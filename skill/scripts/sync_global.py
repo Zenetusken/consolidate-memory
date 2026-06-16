@@ -24,6 +24,11 @@ import re
 import sys
 from pathlib import Path
 
+# est_tokens lives in memory_status (the measurement script); reuse it rather than
+# re-deriving the heuristic. The sibling resolves because a script's own directory is
+# on sys.path[0] at runtime, and stays a sibling through the skill/ symlink.
+from memory_status import est_tokens
+
 GLOBAL = Path.home() / ".claude" / "memory"
 _STACK_KEYWORDS = {
     "python": ["python", "pyproject", "ruff", "pytest"],
@@ -59,13 +64,23 @@ def _frontmatter(text: str) -> dict:
     return out
 
 
+def _kw_hit(blob: str, kw: str) -> bool:
+    """True if `kw` appears in `blob` as a whole token, not a substring (Fix D).
+
+    Plain substring matching made loose keywords over-trigger: `skill` matched
+    `reskilling`, so stack-general facts spread far wider than their stack. We bound
+    matches with non-alphanumeric edges (so dotted keywords like `.claude` / `py.typed`
+    still work, where `\\b` would misbehave around the dot)."""
+    return re.search(rf"(?<![a-z0-9]){re.escape(kw)}(?![a-z0-9])", blob) is not None
+
+
 def detect_stacks(project_dir: Path) -> set[str]:
     blob = ""
     for name in ("pyproject.toml", "CLAUDE.md", "README.md"):
         p = project_dir / name
         if p.exists():
             blob += p.read_text(encoding="utf-8", errors="replace").lower()
-    found = {s for s, kws in _STACK_KEYWORDS.items() if any(k in blob for k in kws)}
+    found = {s for s, kws in _STACK_KEYWORDS.items() if any(_kw_hit(blob, k) for k in kws)}
     return found
 
 
@@ -110,18 +125,35 @@ def _as_mirror(text: str, name: str) -> str:
     return "\n".join(out) + "\n"
 
 
-def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
-    """Add a pointer line to the project's MEMORY.md index if absent. The script
-    owns this so a replicated fact is never left half-installed (file but no pointer)."""
-    idx = store / "MEMORY.md"
-    content = idx.read_text(encoding="utf-8") if idx.exists() else "# Memory Index\n\n"
-    if f"({name}.md)" in content:
-        return False
+def _pointer_line(name: str, fm: dict) -> str:
+    """The canonical index pointer line for a fact (pure — testable). The `description`
+    is the recall hook, truncated; the scope tag mirrors the index's existing style."""
     desc = fm.get("description", "").strip().strip('"')
     hook = (desc[:88] + "…") if len(desc) > 88 else desc
     scope = fm.get("scope", "")
-    line = f"- [{name}]({name}.md) — {hook}" + (f" [{scope}]" if scope else "")
-    idx.write_text(content.rstrip() + "\n" + line + "\n", encoding="utf-8")
+    return f"- [{name}]({name}.md) — {hook}" + (f" [{scope}]" if scope else "")
+
+
+def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
+    """UPSERT the pointer line in the project's MEMORY.md index (Fix C).
+
+    The script owns this so a replicated fact is never left half-installed (file but no
+    pointer) — AND so the ALWAYS-LOADED index hook never drifts from the canonical. The
+    old version early-returned when any line for `name` existed, so a STALE refresh that
+    changed the fact's `description` updated the body but left the index hook stale. Now:
+    insert if absent, REWRITE if present-but-different, no-op if already correct."""
+    idx = store / "MEMORY.md"
+    content = idx.read_text(encoding="utf-8") if idx.exists() else "# Memory Index\n\n"
+    want = _pointer_line(name, fm)
+    lines = content.splitlines()
+    for i, ln in enumerate(lines):
+        if f"({name}.md)" in ln:
+            if ln.strip() == want.strip():
+                return False  # already correct — no-op
+            lines[i] = want  # refresh a drifted hook
+            idx.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+            return True
+    idx.write_text(content.rstrip() + "\n" + want + "\n", encoding="utf-8")  # absent — append
     return True
 
 
@@ -251,12 +283,201 @@ def network() -> int:
     return 0
 
 
+# ── garbage collection: orphaned mirrors (Fix B) ───────────────────────────────
+def _remove_index_pointer(store: Path, name: str) -> bool:
+    """Drop the pointer line for `name` from the project index. Returns True if removed."""
+    idx = store / "MEMORY.md"
+    if not idx.exists():
+        return False
+    lines = idx.read_text(encoding="utf-8").splitlines()
+    kept = [ln for ln in lines if f"({name}.md)" not in ln]
+    if len(kept) == len(lines):
+        return False
+    idx.write_text("\n".join(kept).rstrip() + "\n", encoding="utf-8")
+    return True
+
+
+def _orphans(store: Path) -> list[str]:
+    """Mirror files (`global_ref:`) in this store whose CANONICAL no longer exists in
+    the global store. These are the dead memory --pull can never reclaim (it only
+    iterates LIVE globals), so they accrue forever — the leak Fix B closes."""
+    canon = {n for n, _, _ in global_facts()}
+    out = []
+    if not store.exists():
+        return out
+    for f in store.glob("*.md"):
+        if f.name == "MEMORY.md":
+            continue
+        text = f.read_text(encoding="utf-8", errors="replace")
+        if "global_ref:" in text and f.stem not in canon:  # ONLY managed mirrors
+            out.append(f.stem)
+    return out
+
+
+def gc(project_dir: Path, apply: bool) -> int:
+    """Reclaim orphaned mirrors. Report-by-default; delete only with --apply, and
+    NEVER touch a project-authored (non-`global_ref:`) fact, even on a name collision.
+
+    Dead-edge provenance (a canonical that still exists but lists a project no longer
+    holding it) is REPORTED only, not auto-pruned: absence-of-mirror is a weak signal
+    (a renamed/moved store also 'holds nothing'), and stripping global state on it
+    risks erasing real edges. The proven win is removing the orphan files."""
+    project_dir = project_dir.resolve()
+    store = project_store(project_dir)
+    orphans = _orphans(store)
+    print(f"project : {project_dir.name}  (slug {slug_for(project_dir)})")
+    print(f"store   : {store}  ({'exists' if store.exists() else 'MISSING'})")
+    print(f"orphans : {len(orphans)} mirror(s) whose canonical is gone\n")
+    removed = 0
+    for name in orphans:
+        if apply:
+            (store / f"{name}.md").unlink(missing_ok=True)
+            _remove_index_pointer(store, name)
+            removed += 1
+            print(f"  [removed] {name}  (file + index pointer)")
+        else:
+            print(f"  [orphan ] {name}  (would remove file + index pointer)")
+    tail = (f"removed {removed} orphan(s)" if apply
+            else "run with --apply to delete (surface these to the user first)")
+    print(f"\n{tail}")
+    # Dead-edge provenance, report-only (conservative — see docstring).
+    if apply:
+        return 0
+    dead = []
+    for name, fm, _ in global_facts():
+        for holder in _holders(fm):
+            # we only know THIS project's store path; report if it's listed but absent
+            if holder == project_dir.name and not (store / f"{name}.md").exists():
+                dead.append(name)
+    if dead:
+        print("\ndead provenance edges (canonical lists this project, but no mirror here):")
+        for n in dead:
+            print(f"  • {n}  (report only — not auto-pruned)")
+    return 0
+
+
+# ── token observability: per-node cost across the neural network ────────────────
+def _label_from_slug(slug: str) -> str:
+    """Human label for a node from its slug dir. The slug is the abs path with '/'→'-',
+    NOT losslessly invertible to a basename (can't tell which '-' were '/'), so we do
+    NOT guess a basename — `rsplit('-',1)[-1]` would mislabel any hyphenated project
+    (…-consolidate-memory → 'memory'). De-prefix the leading '-' and keep the
+    informative tail; unambiguous beats pretty for per-node attribution."""
+    s = slug.lstrip("-")
+    return s if len(s) <= 24 else "…" + s[-23:]
+
+
+def _node_label(store: Path) -> str:
+    return _label_from_slug(store.parent.name)
+
+
+def _node_tokens(store: Path) -> dict:
+    """ESTIMATED token cost of one node's auto-memory: the always-loaded index plus the
+    recall-fact pool. Tokens are ≈ chars/4 (est_tokens) — an estimate, not exact."""
+    idx = store / "MEMORY.md"
+    idx_text = idx.read_text(encoding="utf-8", errors="replace") if idx.exists() else ""
+    facts = [f for f in store.glob("*.md") if f.name != "MEMORY.md"]
+    bodies = [f.read_text(encoding="utf-8", errors="replace") for f in facts]
+    shared = sum(1 for b in bodies if "global_ref:" in b)
+    return {
+        "always_loaded_tokens": est_tokens(idx_text),
+        "recall_tokens": sum(est_tokens(b) for b in bodies),
+        "facts": len(facts),
+        "shared": shared,
+    }
+
+
+def _network_nodes() -> list[Path]:
+    """Network nodes = project memory stores holding ≥1 shared (`global_ref:`) mirror.
+
+    This is the PHYSICAL, measurable node set (we have each store's path, so we can
+    weigh its tokens). It deliberately differs from network()'s LOGICAL `minds` set
+    (derived from provenance basenames, which can't be inverted to a store path) — the
+    two views can diverge (names vs slugs); --network = topology, --tokens = cost."""
+    base = Path.home() / ".claude" / "projects"
+    nodes = []
+    if not base.exists():
+        return nodes
+    for proj in sorted(base.iterdir()):
+        store = proj / "memory"
+        if not store.is_dir():
+            continue
+        has_mirror = any(
+            "global_ref:" in f.read_text(encoding="utf-8", errors="replace")
+            for f in store.glob("*.md") if f.name != "MEMORY.md"
+        )
+        if has_mirror:
+            nodes.append(store)
+    return nodes
+
+
+def token_network(project_dir: Path) -> dict:
+    """Build the `network` block of the cycle record: per-node ESTIMATED token cost
+    across every node in the shared-memory network, with the triggering node flagged."""
+    project_dir = project_dir.resolve()
+    trigger_store = project_store(project_dir)
+    nodes = []
+    al_total = rc_total = 0
+    for store in _network_nodes():
+        m = _node_tokens(store)
+        is_trigger = store.resolve() == trigger_store.resolve()
+        nodes.append({
+            "node": project_dir.name if is_trigger else _node_label(store),
+            "trigger": is_trigger,
+            **m,
+        })
+        al_total += m["always_loaded_tokens"]
+        rc_total += m["recall_tokens"]
+    return {
+        "basis": "≈ chars/4 (heuristic estimate, not a tokenizer)",
+        "node_def": "project stores holding ≥1 shared fact",
+        "trigger": project_dir.name,
+        "nodes": nodes,
+        "totals": {"nodes": len(nodes),
+                   "always_loaded_tokens": al_total, "recall_tokens": rc_total},
+    }
+
+
+def token_report(project_dir: Path, as_json: bool) -> int:
+    import json
+    net = token_network(project_dir)
+    if as_json:
+        print(json.dumps(net, indent=2))
+        return 0
+    t = net["totals"]
+    print("=" * 72)
+    print("NEURAL NETWORK — token consumption across all nodes")
+    print("=" * 72)
+    print(f"basis    : {net['basis']}")
+    print(f"node def : {net['node_def']}")
+    print(f"nodes    : {t['nodes']}  ·  triggering node: {net['trigger']}")
+    print(f"TOTAL    : ≈{t['always_loaded_tokens']} always-loaded tok (paid every "
+          f"session, every node) · ≈{t['recall_tokens']} recall-pool tok\n")
+    for n in sorted(net["nodes"], key=lambda d: -d["always_loaded_tokens"]):
+        mark = " ← trigger (dream ran here)" if n["trigger"] else ""
+        print(f"  {n['node'][:28]:<28} always ≈{n['always_loaded_tokens']:>5} · "
+              f"recall ≈{n['recall_tokens']:>6} · {n['facts']:>2} facts "
+              f"({n['shared']} shared){mark}")
+    if not net["nodes"]:
+        print("  (no nodes hold shared facts yet — run --pull somewhere first)")
+    return 0
+
+
 def main() -> int:
     args = sys.argv[1:]
     if args and args[0] == "--network":
         return network()
+    if args and args[0] == "--tokens":
+        as_json = "--json" in args
+        rest = [a for a in args[1:] if a != "--json"]
+        return token_report(Path(rest[0]) if rest else Path.cwd(), as_json)
+    if args and args[0] == "--gc":
+        apply = "--apply" in args
+        rest = [a for a in args[1:] if a != "--apply"]
+        return gc(Path(rest[0]) if rest else Path.cwd(), apply)
     if not args or args[0] not in ("--list", "--pull"):
-        print("usage: sync_global.py --list|--pull PROJECT_DIR  |  --network", file=sys.stderr)
+        print("usage: sync_global.py --list|--pull PROJECT_DIR | --gc [--apply] PROJECT_DIR "
+              "| --tokens [--json] PROJECT_DIR | --network", file=sys.stderr)
         return 2
     pull = args[0] == "--pull"
     project_dir = Path(args[1]) if len(args) > 1 else Path.cwd()

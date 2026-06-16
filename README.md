@@ -148,9 +148,11 @@ gather candidates → verify → consolidate → render). You can also drive the
 directly:
 
 ```bash
-./cm status            # Phase-0 context: stores, git range since last pass, marker
+./cm status            # Phase-0 context: stores, git range since last pass, marker, token budget
 ./cm extract           # curated session signal (human turns + error-gotchas, secrets omitted)
 ./cm pull .            # replicate relevant global facts into this project
+./cm gc . --apply      # reclaim orphaned mirrors (canonical deleted) — report-only without --apply
+./cm tokens .          # per-node + total token consumption across the network (≈ chars/4)
 ./cm network           # the cross-project shared-memory graph
 ./cm render cycle.json # render a dashboard from a cycle record
 ```
@@ -179,7 +181,7 @@ consolidate-memory/
 │   └── scripts/
 │       ├── memory_status.py     # Phase 0: locate stores + git scope + cycle-record seed
 │       ├── extract_signals.py   # Phase 2: curated, secret-safe session signal
-│       ├── sync_global.py       # cross-project: replicate + provenance + --network
+│       ├── sync_global.py       # cross-project: replicate + GC + token observability + --network
 │       └── render_dashboard.py  # the data-driven dashboard
 ├── memory/                      # the shared-consciousness store (GITIGNORED — local only)
 ├── cm                           # one-entry CLI over the scripts
