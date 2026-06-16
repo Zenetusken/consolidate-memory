@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# cm — one entry point for the consolidate-memory tool. Thin dispatcher over the
+# skill's scripts so you can drive a pass (or inspect the network) from the shell.
+set -euo pipefail
+HERE="$(cd "$(dirname "$0")" && pwd)"
+S="$HERE/skill/scripts"
+cmd="${1:-help}"; shift || true
+
+case "$cmd" in
+  status)   exec python3 "$S/memory_status.py" "$@" ;;            # Phase 0 context
+  seed)     exec python3 "$S/memory_status.py" --json "$@" ;;     # cycle-record seed
+  extract)  exec python3 "$S/extract_signals.py" "$@" ;;          # Phase 2 session signal
+  sync)     exec python3 "$S/sync_global.py" "$@" ;;              # --list/--pull PROJECT_DIR
+  pull)     exec python3 "$S/sync_global.py" --pull "${1:-.}" ;;  # replicate globals here
+  network)  exec python3 "$S/sync_global.py" --network ;;         # shared-consciousness graph
+  render)   exec python3 "$S/render_dashboard.py" "$@" ;;         # cycle.json -> dashboard
+  install)  exec "$HERE/install.sh" "$@" ;;
+  help|*)
+    cat <<EOF
+cm — consolidate-memory
+
+  cm status [DIR]      Phase-0 context (stores, git range, marker)
+  cm extract [--json]  curated session signal (human turns + error gotchas)
+  cm sync --list DIR   show which global facts apply to a project
+  cm pull [DIR]        replicate relevant global facts into a project (default: .)
+  cm network           render the cross-project shared-memory graph
+  cm render cycle.json render a dashboard from a cycle record
+  cm install           symlink the skill + memory into ~/.claude
+
+A full pass is best driven by the skill itself: run /reload, then say "dream"
+in any project. See README.md.
+EOF
+    ;;
+esac

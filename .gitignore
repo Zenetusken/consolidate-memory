@@ -1,0 +1,10 @@
+# The shared-consciousness memory stream is personal — NEVER publish it.
+# Keep the dir (for the symlink target on a fresh clone) but ignore its contents.
+memory/*
+!memory/.gitkeep
+# operational state
+**/.consolidation-state.json
+# python + workspace cruft
+__pycache__/
+*.pyc
+*-workspace/
