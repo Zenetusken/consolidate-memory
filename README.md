@@ -70,15 +70,47 @@ anywhere. The fix:
   and each fact's `projects:` provenance grows as it spreads — that provenance is the
   network's edge set.
 
-`./cm network` renders the result:
+`./cm network` renders the result — separating the **universal baseline** (facts
+every project holds) from the **differential edges** that actually carry signal
+(`stack-general` facts binding only the matching-stack projects):
 
 ```
 SHARED CONSCIOUSNESS — cross-project memory network
-  minds (projects) : 2  —  rag-pipeline, web-scraper
-  shared memories  : 4 fact(s)
-  topology (shared-memory edges):
-            rag-pipeline   ●━━━━●   web-scraper    (4 shared)
+  minds (projects) : 3  —  rag-pipeline, doc-search, web-scraper
+  shared memories  : 5  (4 universal · 1 differential)
+
+  universal baseline (user-global — every mind holds these):
+    • gh-pr-edit-broken-in-env   • prefer-typed-stubs-over-ignore   • …
+
+  differential edges (stack-general — the bindings that carry signal):
+        rag-pipeline ●━● doc-search   (1 shared: hybrid-search-tuning)
 ```
+
+(`web-scraper` shares only the universal baseline — it isn't a RAG project, so the
+RAG-specific fact never propagates to it. That selectivity is the point.)
+
+### How insights propagate (the honest model)
+
+It's a **shared bloodstream, not telepathy** — and you never hand-edit another
+project. When project **A** dreams and learns something cross-cutting:
+
+1. **Deposit — instant.** The fact is written to the shared global store
+   (`~/.claude/memory/`) and into A's own store. Done, zero friction.
+2. **Absorb — lazy.** Other projects pick it up on **their** next dream (every
+   dream's first step is a `pull` that ingests new facts and refreshes changed
+   ones). Until B next dreams, B's memory doesn't have A's new insight.
+
+So it's **eventually-consistent**, not a real-time broadcast. Why pull-based and not
+push? Because Claude Code only auto-recalls a project's *own* memory folder — a fact
+has to physically live in B's folder to surface in B's sessions, so it's *replicated*
+there on B's pull (rather than us reaching into projects you're not working in and
+editing them behind your back). The upshot: **no manual per-project busywork ever;
+each project just syncs itself the next time you consolidate it.**
+
+> Want instant whole-network propagation instead? That's a deliberate opt-in, not the
+> default — it would write into every project's memory the moment any one of them
+> learns something. The lazy-pull default keeps a project's memory changing only while
+> *you're* in it.
 
 ## Install
 
@@ -146,6 +178,40 @@ The `memory/` store is **gitignored** — your consolidated memory is personal a
 never leaves your machine via this repo. The skill itself is generic (no hardcoded
 projects, paths, or identities). The secrets firewall applies at *retrieval*, so a
 credential in a transcript is omitted before it could ever reach a fact file.
+
+## Design notes (for the curious)
+
+A few load-bearing choices, in case you're poking at the code or wondering "why is it
+built this way" — written to be readable whether you're vibe-coding or shipping prod:
+
+- **Verification is a gate, not a vibe.** Every candidate fact is checked against the
+  *live* code/git before it's allowed into memory; anything unverifiable is dropped.
+  This is the whole anti-hallucination point — memory you can't trust is worse than no
+  memory. (See `extract` → verify in `SKILL.md`.)
+- **The model produces *data*; scripts produce *presentation*.** A pass emits a small
+  JSON "cycle record" of what it did; `render_dashboard.py` turns that into the
+  dashboard. So the output is consistent run-to-run and the rendering is unit-testable
+  — the LLM never free-writes the report.
+- **Claims-first, secret-safe retrieval.** Transcripts are huge (tens of MB) but the
+  signal is tiny, so we never bulk-read them — we stream, scope to the last run, and
+  pull out discrete claims. Credential-shaped text is dropped *at retrieval*, before
+  it could ever reach a memory file.
+- **Memory loads in tiers, so facts are placed by *how often they're needed*.**
+  Always-loaded (every session — kept scarce), recall (surfaced when its description
+  matches — so the description is written as a search key), on-demand (read when
+  relevant). Context budget is a first-class concern.
+- **`scope` ≠ `tier`.** *Scope* is how widely a fact applies (this project / this
+  stack / everywhere); *tier* is how it loads. Cross-project sharing + the pull-based
+  propagation above fall out of one harness fact: recall is per-project, so global
+  facts must be *replicated* into each project, not just stored once.
+- **Boring-on-purpose engineering.** Zero runtime dependencies (Python stdlib only),
+  the repo *is* the live skill (via symlink — edit and it's live, no build), and the
+  mutating ops are idempotent + reversible (the installer backs up, sync refreshes
+  rather than duplicates, a marker scopes each run to "since last time").
+
+If a design decision here surprised you, it probably has a one-line "why" in
+`skill/SKILL.md` or `skill/references/harness-map.md` — those explain the reasoning,
+not just the rules.
 
 ## Lineage
 
