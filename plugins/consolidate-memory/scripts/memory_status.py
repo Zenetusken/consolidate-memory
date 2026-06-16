@@ -38,6 +38,63 @@ CLAUDE_MD_TOKEN_BUDGET = 4000   # repo CLAUDE.md (project conventions, committed
 # universal config, not a project store. Its own constant so it's tuned independently.
 GLOBAL_CLAUDE_MD_TOKEN_BUDGET = 4000
 
+# ── Rigor tier (v0.1.3): scale pass ceremony with an EARLY magnitude signal ──────────
+# magnitude = git_commits (Phase-0 flow since the marker) + session_candidates (the
+# Phase-2 CURATED candidate-fact count). It DELIBERATELY excludes memories_reviewed:
+# that is a cumulative STOCK, so folding it in pegs any mature store (100+ facts) to
+# HEAVY regardless of how much work THIS pass did — empirically confirmed against the
+# live corpus. The stock instead drives a SEPARATE prune-pressure flag (below). The
+# bands are roadmap-inherited PROVISIONAL defaults: the curated input was never recorded
+# historically, so they are not yet calibrated. The record EXPOSES the magnitude (+ phase) a
+# future calibration could refit against — but only once cycle records are PERSISTED (they
+# render and are discarded today; persisting them is a roadmap prerequisite). The tier is a
+# HINT (derived at render from the model's curated session_candidates), never a hard gate.
+TIER_LIGHT_MAX = 2        # magnitude ≤ 2 → LIGHT
+TIER_SUBSTANTIAL_MAX = 7  # 3..7 → SUBSTANTIAL ; ≥ 8 → HEAVY
+TIER_ORDER = {"LIGHT": 0, "SUBSTANTIAL": 1, "HEAVY": 2}  # canonical rank (sorts / monotonicity checks)
+# Prune-pressure: a near/over-budget index OR an already-large store needs prune rigor on
+# ANY pass (orthogonal to magnitude). Observed store sizes cluster at {6,7} and {100,104};
+# any value in the open interval (7, 100) yields the identical partition — 40 is a tunable
+# midpoint, not a calibrated precision point.
+PRUNE_PRESSURE_FACTS = 40
+
+
+def suggested_tier(git_commits: int, session_candidates: int) -> str:
+    """EARLY pass-magnitude → rigor tier (LIGHT/SUBSTANTIAL/HEAVY). magnitude =
+    git_commits + session_candidates, both FLOWS (work THIS cycle). Takes NO
+    memories_reviewed argument by design: that cumulative STOCK belongs on the
+    prune-pressure axis, not here (folding it in pegs every mature store to HEAVY — the
+    bug this avoids). Pure + total so the smoke tests can sweep it."""
+    magnitude = git_commits + session_candidates
+    if magnitude <= TIER_LIGHT_MAX:
+        return "LIGHT"
+    if magnitude <= TIER_SUBSTANTIAL_MAX:
+        return "SUBSTANTIAL"
+    return "HEAVY"
+
+
+def prune_pressure(index_over: bool, memories_reviewed: int) -> tuple[bool, str]:
+    """Whether the pass MUST prune-or-propose regardless of magnitude tier, plus the
+    reason. Set when the always-loaded index is over budget OR the store already holds a
+    large number of facts. Orthogonal to suggested_tier: a 100-fact store needs prune
+    rigor even on a 1-candidate pass."""
+    if index_over:
+        return (True, "index-over-budget")
+    if memories_reviewed >= PRUNE_PRESSURE_FACTS:
+        return (True, "many-facts")
+    return (False, "")
+
+
+def _provisional_rigor(ctx: dict) -> dict:
+    """The Phase-0 PROVISIONAL rigor block stored in the cycle record: `phase` + the
+    prune-pressure flag/reason. It deliberately stores **no tier** — the tier is DERIVED
+    from `scope` (git_commits + session_candidates) at render, so the label can never drift
+    from its own magnitude. The model sets `phase="final"` in Phase 2 after curating
+    `session_candidates`. (The Phase-0 *report* computes a provisional tier for the operator
+    to read — an operational hint, separate from the record.)"""
+    pp_flag, pp_reason = prune_pressure(ctx["index_lb"][2] > INDEX_TOKEN_BUDGET, len(ctx["fact_files"]))
+    return {"phase": "provisional", "prune_pressure": pp_flag, "prune_reason": pp_reason}
+
 
 def est_tokens(text: str) -> int:
     """Estimate tokens as ceil(chars/4). NOT a real tokenizer — the zero-dependency
@@ -180,7 +237,7 @@ def _stale_since(fact_files: list[Path], marker_ts: str) -> list[str]:
 
 
 def seed_record(ctx: dict) -> dict:
-    """The cycle-record SEED — before-values + scope, for render_dashboard.py."""
+    """The cycle-record SEED — before-values + scope + provisional rigor, for render_dashboard.py."""
     return {
         "project": ctx["project"],
         "session": "",  # fill with the session id when known
@@ -190,6 +247,11 @@ def seed_record(ctx: dict) -> dict:
             "session_candidates": 0,  # fill in Phase 2
             "memories_reviewed": len(ctx["fact_files"]),
         },
+        # Provisional rigor hint (Phase 0): tier from git_commits alone (candidates=0 yet);
+        # the model recomputes with the CURATED session_candidates and sets phase="final" in
+        # Phase 2. `magnitude` is DERIVED from `scope` at render — never stored (no parallel
+        # count to drift). Computed by _provisional_rigor() so seed + Phase-0 report agree.
+        "rigor": _provisional_rigor(ctx),
         "verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0, "method": "inline"},
         "entries": [],  # fill in Phase 4: {action,tier,store,name,reason,citation}
         "budget": {
@@ -304,6 +366,23 @@ def print_report(ctx: dict) -> None:
 
     print(f"\n--- git log {ctx['git_range']} ({len(ctx['commits'])} commits — scope for new facts) ---")
     print("\n".join(f"  {_sane(c)}" for c in ctx["commits"]) or "  (no new commits / no range)")
+
+    # Provisional rigor hint for the operator (separate from the record, which stores NO
+    # tier — the dashboard derives it from scope). prune-pressure shares _provisional_rigor.
+    rg = _provisional_rigor(ctx)
+    gc = len(ctx["commits"])
+    tier = suggested_tier(gc, 0)  # candidates unknown in Phase 0 → 0
+    print("\n--- Suggested rigor (PROVISIONAL — finalize in Phase 2 with curated candidates) ---")
+    if ctx["last_commit"]:
+        print(f"  provisional tier: {tier}   (magnitude = {gc} commits + 0 candidates so far)")
+    else:
+        print(f"  provisional tier: {tier}   (FIRST consolidation: no marker, so this reflects a "
+              f"recent-≤20 commit lookback, NOT new-since-last-time work — advisory only)")
+    if rg["prune_pressure"]:
+        print(f"  ⚠ prune-pressure ({rg['prune_reason']}) — MUST prune-or-propose this pass, at ANY tier")
+    print(f"  ladder: LIGHT ≤{TIER_LIGHT_MAX} inline · SUBSTANTIAL {TIER_LIGHT_MAX + 1}–{TIER_SUBSTANTIAL_MAX} "
+          f"fan-out + 2-source for always-loaded · HEAVY ≥{TIER_SUBSTANTIAL_MAX + 1} + completeness critic + "
+          "over-budget hard-stop  [HINT — you finalize in Phase 2]")
 
     print("\n--- Next ---")
     print("  Re-run with --json to seed the cycle record, then render with render_dashboard.py.")

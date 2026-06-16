@@ -5,6 +5,40 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.3] — 2026-06-16
+
+### Added
+- **Pass-tier rigor modes.** `memory_status.py` computes a deterministic, testable
+  **suggested rigor tier** (LIGHT / SUBSTANTIAL / HEAVY) from an early *flow* magnitude —
+  `git_commits + curated session_candidates` — so ceremony scales with the pass: LIGHT
+  verifies inline; SUBSTANTIAL fans out parallel verification + a 2-source check for any
+  always-loaded-tier fact + the re-verify/GC sweep; HEAVY adds a completeness critic + a
+  hard stop on an over-budget always-loaded write without an explicit prune. It is a HINT
+  (the model finalizes it in Phase 2 and may override with rationale). New pure functions
+  `suggested_tier()` / `prune_pressure()` + a `rigor` block in the cycle record (seed ↔
+  SKILL schema ↔ renderer updated together).
+- **Prune-pressure flag.** Set when the always-loaded index is over budget OR the store
+  already holds ≥ a threshold of facts — forces prune-or-propose regardless of tier. This
+  is the axis the cumulative *stock* (`memories_reviewed`) drives, kept deliberately
+  separate from the magnitude tier.
+
+### Changed
+- **Dashboard** gains a `RIGOR` line (tier · phase · magnitude, plus a prune-pressure ⚠
+  when set); **both the tier and the magnitude are derived from `scope`** at render, never
+  stored — so the displayed tier can't drift from its own magnitude (the way `_outcome`
+  derives from `entries`). The rigor tier (an input-side effort estimate) is a distinct
+  quantity from the write-based outcome banner — a pass can read HEAVY rigor yet LIGHT outcome.
+
+### Notes
+- The magnitude is **flow, not stock**: `memories_reviewed` is excluded from the tier (a
+  cumulative count would peg every mature project to HEAVY — confirmed against the live
+  corpus). `session_candidates` is the **curated** candidate-fact count, not the raw
+  extractor `surfaced`. The band cutoffs are **provisional, tunable defaults**, not yet
+  empirically calibrated (the curated input was never recorded historically). The record
+  exposes the magnitude + `phase` a future calibration could refit against — but cycle
+  records aren't persisted yet (they render and are discarded), so persisting them is the
+  prerequisite (roadmap).
+
 ## [0.1.2] — 2026-06-16
 
 ### Added
