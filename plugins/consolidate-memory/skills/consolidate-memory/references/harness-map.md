@@ -12,7 +12,7 @@ The pieces a consolidation pass works with on Claude Code:
 | Trajectory (what happened this session) | session transcripts `~/.claude/projects/<slug>/*.jsonl` (JSONL, large — never bulk-read) |
 | Durable memory | **two** stores — see below |
 | Citation for a recorded fact | a commit SHA, or the session `.jsonl` basename |
-| Claim verification | **parallel** fan-out via Explore / general-purpose subagents |
+| Claim verification | tier-scaled — LIGHT verifies inline; SUBSTANTIAL/HEAVY fan out via Explore / general-purpose subagents (see *Rigor modes*) |
 
 ## The two memory stores
 
@@ -111,6 +111,48 @@ in Phase 0 (scope `git log <commit>..HEAD`); rewrite it in Phase 5.
   anything to auto-memory.
 - **Never** save what the repo already records (code structure, git history, a fix
   that's already a commit). Save the *non-obvious why*, not the diff.
+
+## Rigor modes — scale ceremony to the pass's magnitude (Phase 0 hint, Phase 2 final)
+
+`memory_status.py` computes a **suggested rigor tier** so a 1-fact pass and a 20-fact
+pass don't get identical machinery. It is a deterministic, testable HINT — the model
+finalizes it in Phase 2 and may override with rationale.
+
+- **Signal = FLOW, not stock.** `magnitude = git_commits + session_candidates` — both
+  count work done *this* cycle. `memories_reviewed` is **deliberately excluded**: it is a
+  cumulative *stock* (the store's total fact count, which only grows), so folding it into
+  magnitude would peg any mature project to HEAVY on every pass regardless of the actual
+  work (confirmed empirically: across the live corpus the `git + reviewed` formula put
+  *every* fact-producing session in HEAVY). `session_candidates` is the **curated**
+  candidate-fact count (post-dedup), NOT the raw `extract_signals` `surfaced` count (which
+  includes every non-noise turn + error result and runs far higher — feeding it in
+  recreates the same collapse on the candidate axis).
+- **Bands (provisional, tunable):** LIGHT ≤ 2 · SUBSTANTIAL 3–7 · HEAVY ≥ 8 —
+  roadmap-inherited defaults, not yet empirically calibrated (the curated input was never
+  recorded historically). The record exposes the magnitude (from `scope`) + `phase` that a
+  future calibration could refit against — but only once cycle records are PERSISTED (they
+  render and are discarded today; persisting them is a roadmap prerequisite). The pure
+  functions `suggested_tier(git_commits, session_candidates)` and
+  `prune_pressure(index_over, memories_reviewed)` live in `memory_status.py` (the renderer
+  imports `suggested_tier` to DERIVE the displayed tier — see below).
+- **Behaviors:** LIGHT = inline verify. SUBSTANTIAL = fan-out verification + a 2-source
+  check for always-loaded-tier facts + the re-verify/GC sweep. HEAVY = + a completeness
+  critic + a hard stop on an over-budget always-loaded write without an explicit prune.
+- **Prune-pressure is a SEPARATE axis.** `index over budget OR memories_reviewed ≥
+  PRUNE_PRESSURE_FACTS` forces prune-or-propose regardless of tier — a large store needs
+  pruning even on a tiny pass. This is where the cumulative stock belongs.
+- **Two phases, but the tier is DERIVED (not stored).** The cycle record stores only
+  `phase` + the prune-pressure flag/reason — never a tier label. Phase 0 seeds `phase:
+  "provisional"` (with no marker `git_commits` is a recent-≤20 lookback, so the tier is
+  advisory). Phase 2 sets the curated `session_candidates` + `phase: "final"`. The renderer
+  DERIVES the tier (and magnitude) from `scope` via `ms.suggested_tier`, so the displayed
+  tier can never contradict its own magnitude — exactly how `_outcome` derives from
+  `entries`. (`memory_status`'s Phase-0 *report* also prints a provisional tier as an
+  operator hint — separate from the record.)
+- **Distinct from the outcome banner.** The rigor tier is an *input*-side effort estimate;
+  the dashboard's `LIGHT/SUBSTANTIAL PASS` banner is an *output*-side label from write
+  counts. They share no scale (a pass can be HEAVY-rigor yet LIGHT-outcome). Both tier and
+  magnitude are derived from `scope` at render, never stored — no parallel count to drift.
 
 ## Verification recipes (Phase 3)
 
@@ -231,4 +273,5 @@ pass). Local pruning works only on **project-authored** index lines.
 The active transcript can be tens of MB. Never hand a subagent "read the
 transcript." In Phase 2 extract a short list of discrete candidate claims (from the
 two `MEMORY.md`s + `git log <marker>..HEAD` + at most the transcript *tail*), then
-in Phase 3 fan out verification of *those specific claims*. Small inputs, cheap runs.
+in Phase 3 verify *those specific claims* — inline on a LIGHT pass, fanned out at
+SUBSTANTIAL+ (see *Rigor modes*). Small inputs, cheap runs.

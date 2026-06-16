@@ -16,8 +16,9 @@ You invoke it by saying **`dream`** (or "consolidate my memory") in any project.
   my-project · session a1b2c3d
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-  SCOPE     git a1b2c3d..HEAD · 0 commits · 5 candidates · 8 reviewed
+  SCOPE     git a1b2c3d..HEAD · 0 commits · 2 candidates · 8 reviewed
   VERIFIED  ✓ 1 confirmed · ~ 0 corrected · ⚠ 0 unverifiable   [inline]
+  RIGOR     LIGHT · final · magnitude 2 (0 commits + 2 candidates)
 
   CHANGES
     + added      claude-code-memory-is-slug-scoped
@@ -54,7 +55,9 @@ already records, it bloats the context budget, and it's trapped inside one proje
   gotchas, stack patterns) flow into a global store and replicate into every project,
   so what you learn in one project sharpens all of them.
 - **Honest, data-driven output.** A no-op pass and a heavy pass look different; the
-  dashboard is rendered from a structured record of what the pass actually did.
+  dashboard is rendered from a structured record of what the pass actually did — including
+  a **rigor tier** that scales verification ceremony to the pass's magnitude (a 1-fact pass
+  stays light; a 20-fact pass fans out and adds a completeness critic).
 
 ## The model: three context-loading tiers
 

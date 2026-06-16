@@ -32,6 +32,8 @@ import os
 import re
 import sys
 
+import memory_status as ms  # sibling script — reuse the canonical tier bands (derive, don't duplicate)
+
 W = 60  # dashboard rule width
 
 # Strip terminal control bytes from any model/record-derived string before printing.
@@ -133,6 +135,15 @@ def _g(n: float) -> str:
     return f"{n:g}"
 
 
+def _flag(x: object) -> bool:
+    """Coerce a model-authored boolean — it may arrive JSON-stringified ('false'/'true').
+    Mirrors _num/_clean: the model→presentation boundary never trusts the raw type, so a
+    stray '"false"' can't read as truthy and flip a flag on."""
+    if isinstance(x, str):
+        return x.strip().lower() in ("true", "1", "yes")
+    return bool(x)
+
+
 def _bar(used: object, budget: object, width: int = 10) -> str:
     """A fixed-width budget bar `[██░░░░░░░░]`, fill colored by headroom (redundant with
     the % and any ⚠). Empty string when there's no budget to gauge against."""
@@ -185,6 +196,14 @@ def _outcome_colored(oc: str) -> str:
     if oc.startswith("LIGHT"):
         return _c(oc, "cyan")
     return _c(oc, "dim")
+
+
+def _tier_colored(tier: str) -> str:
+    """Color the rigor tier (redundant with the word, never the sole signal). HEAVY is
+    rigor-only (bold yellow); LIGHT/SUBSTANTIAL/else delegate to `_outcome_colored` so the
+    rigor line and the outcome banner share ONE palette and can't drift out of sync.
+    `tier` is already _clean()'d by the caller, so a model slip (int/None) renders dim."""
+    return _c(tier, "bold", "yellow") if tier.upper().startswith("HEAVY") else _outcome_colored(tier)
 
 
 def _item(p: object) -> tuple:
@@ -269,13 +288,30 @@ def render(record: dict) -> str:
     # Scope + Verification (aligned label column)
     s = record.get("scope", {})
     out.append("")
-    out.append(_kv("SCOPE", f"git {_clean(s.get('git_range', '?'))} · {s.get('git_commits', 0)} commits · "
-                            f"{s.get('session_candidates', 0)} candidates · {s.get('memories_reviewed', 0)} reviewed"))
+    out.append(_kv("SCOPE", f"git {_clean(s.get('git_range', '?'))} · {_g(_num(s.get('git_commits', 0)))} commits · "
+                            f"{_g(_num(s.get('session_candidates', 0)))} candidates · {_g(_num(s.get('memories_reviewed', 0)))} reviewed"))
     v = record.get("verification", {})
     method = f"   {_c('[' + _clean(v['method']) + ']', 'dim')}" if v.get("method") else ""
     out.append(_kv("VERIFIED", f"{_c('✓', 'green')} {v.get('confirmed', 0)} confirmed · "
                                f"{_c('~', 'yellow')} {v.get('corrected', 0)} corrected · "
                                f"{_c('⚠', 'yellow')} {v.get('unverifiable', 0)} unverifiable{method}"))
+
+    # Rigor tier (v0.1.3) — the EARLY predicted-effort HINT. BOTH the tier and the magnitude
+    # are DERIVED here from `scope` (the tier via the same ms.suggested_tier the scripts use),
+    # so the label can never contradict its own magnitude — there is NO stored tier to drift,
+    # exactly as `_outcome` derives from `entries`. The stored `rigor` block carries only
+    # `phase` + the prune-pressure flag/reason. Presence-checked (not truthiness) so an empty
+    # `rigor: {}` still shows the derived line; legacy records (no `rigor` key) skip it. The
+    # tier is a DISTINCT quantity from the outcome banner (output-based, write counts).
+    if "rigor" in record:
+        rg = record.get("rigor") or {}
+        gc, cand = _num(s.get("git_commits", 0)), _num(s.get("session_candidates", 0))
+        tier = _tier_colored(ms.suggested_tier(gc, cand))
+        detail = _c(f"· {_clean(rg.get('phase', ''))} · magnitude {_g(gc + cand)} "
+                    f"({_g(gc)} commits + {_g(cand)} candidates)", "dim")
+        pp = _c(f"  ⚠ prune-pressure ({_clean(rg.get('prune_reason', ''))})", "yellow") \
+            if _flag(rg.get("prune_pressure")) else ""
+        out.append(_kv("RIGOR", f"{tier} {detail}{pp}"))
 
     # Changes — glyph-coded (legend inline), aligned tier/store + scope columns; the
     # reason+citation move to a single dim sub-line so nothing floats after the name.
@@ -404,6 +440,7 @@ def _demo_record() -> dict:
         "project": "acme-api", "session": "a1b2c3d4",
         "scope": {"git_range": "9ed8d5c..HEAD", "git_commits": 7,
                   "session_candidates": 5, "memories_reviewed": 12},
+        "rigor": {"phase": "final", "prune_pressure": False, "prune_reason": ""},  # tier DERIVED: 7+5=12 → HEAVY
         "verification": {"confirmed": 6, "corrected": 2, "unverifiable": 1, "method": "subagents"},
         "entries": [
             {"action": "added", "tier": "recall", "store": "auto-mem", "scope": "project-local",

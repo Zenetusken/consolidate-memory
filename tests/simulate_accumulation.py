@@ -41,6 +41,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SYNC = ROOT / "plugins" / "consolidate-memory" / "scripts" / "sync_global.py"
+sys.path.insert(0, str(ROOT / "plugins" / "consolidate-memory" / "scripts"))
+import memory_status as ms  # noqa: E402  (pure rigor functions — Probe H)
 
 
 # ── fact synthesis ────────────────────────────────────────────────────────────
@@ -306,6 +308,27 @@ def run() -> None:
         _verdict("G", "GC refuses on an absent OR empty global store (never mass-deletes mirrors)",
                  refused_absent and refused_empty and len(before_mirrors) > 0,
                  "neither a missing nor an empty store means 'all canonicals deleted' — mirrors preserved")
+
+        # ── Probe H: rigor tier tracks FLOW magnitude, never the cumulative stock (v0.1.3) ──
+        # Pure-function behavior + the F1 regression demo. NOT a claim the bands are
+        # calibrated to real data — only that the function spreads and that the REJECTED
+        # stock formula would collapse a mature store to HEAVY.
+        print("\n── Probe H: rigor tier scales with flow magnitude, not the stock (v0.1.3) ──")
+        _order = ms.TIER_ORDER  # canonical tier rank (single source in memory_status)
+        grid = [ms.suggested_tier(0, m) for m in range(0, 13)]
+        mono = all(_order[grid[i]] >= _order[grid[i - 1]] for i in range(1, len(grid)))
+        reachable = set(grid) == {"LIGHT", "SUBSTANTIAL", "HEAVY"}
+        flow_tier = ms.suggested_tier(0, 1)                  # 1 curated candidate, 0 commits → LIGHT
+        stock_collapse = (0 + 104) > ms.TIER_SUBSTANTIAL_MAX  # git+reviewed magnitude → HEAVY
+        print(f"  magnitude 0..12 → {grid}")
+        print(f"  monotonic={mono} · all three tiers reachable={reachable}")
+        print(f"  100-fact store on a 1-candidate pass: FLOW tier={flow_tier} (correct) · "
+              f"git+reviewed(=104) would be {'HEAVY' if stock_collapse else '?'} (the avoided bug)")
+        _verdict("H", "rigor tier scales with flow magnitude (spreads, monotonic); the rejected "
+                 "stock formula would collapse a mature store to HEAVY",
+                 mono and reachable and flow_tier == "LIGHT" and stock_collapse,
+                 "flow keeps a 1-candidate pass LIGHT while git+memories_reviewed (=104) would "
+                 "force HEAVY — the F1 stock-vs-flow defect avoided; bands are provisional/tunable")
 
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")

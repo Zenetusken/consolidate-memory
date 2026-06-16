@@ -98,6 +98,40 @@ Work the phases in order. Phases 0–3 are read-only investigation; Phase 4 is t
 first write, and you **show the user the proposed consolidation before writing it**
 (report-then-apply) so a consolidation pass never silently churns committed docs.
 
+### Rigor modes — scale ceremony to pass magnitude
+
+Not every pass deserves the same machinery. `memory_status.py` computes a **suggested
+rigor tier** from an early magnitude signal — `magnitude = git_commits +
+session_candidates` (both *flows*: work done *this* cycle). It is a **HINT, not a gate**,
+and is **derived from the magnitude** (never a stored label that could drift): in Phase 2
+you set the curated `session_candidates` — itself your judgment entering the magnitude —
+and the tier follows. You may still run heavier or lighter ceremony than the tier implies,
+with explicit rationale; that override shows up in what you verify/record, not a mutated label.
+
+- **LIGHT** (magnitude ≤ 2): verify inline; minimal ceremony.
+- **SUBSTANTIAL** (3–7): fan out parallel verification subagents (Phase 3) and require a
+  **2-source check** for anything bound for the always-loaded tier; run the
+  re-verify-stale + GC sweep (Phase 5).
+- **HEAVY** (≥ 8): everything in SUBSTANTIAL **plus** a completeness critic ("what did we
+  miss or mis-verify?") and a **hard stop** on any write that pushes the always-loaded
+  tier over budget without an explicit prune.
+
+A separate **prune-pressure** flag (set when the index is over budget OR the store
+already holds ≥ a threshold of facts) forces **prune-or-propose this pass regardless of
+tier** — a large store needs pruning even on a tiny pass. `memories_reviewed` drives
+THIS, never the magnitude tier: it is a cumulative *stock*, so folding it into magnitude
+would peg every mature project to HEAVY (the bug this design avoids).
+
+The bands are **provisional, tunable defaults** — the curated-candidate input was never
+recorded historically, so they are not yet empirically calibrated. The record exposes the
+magnitude (from `scope`) + `phase` a future calibration could refit against — but only once
+cycle records are PERSISTED (they render and are discarded today; persisting them is a
+roadmap prerequisite). The rigor tier (an
+*input*-based effort estimate) is a **distinct quantity** from the dashboard's outcome
+banner (an *output*-based label from write counts): they share no scale, and a pass can
+legitimately read "HEAVY" rigor yet "LIGHT" outcome (much to review, little durable to
+write). The dashboard labels both so they never read as one number.
+
 ### Phase 0 — Locate data + the high-water mark
 
 Run the bundled helper (it derives paths, inventories both stores, and computes the
@@ -114,7 +148,10 @@ auto-memory files, the transcript inventory (report only — **never bulk-read t
 `timestamp`), and `git log <marker>..HEAD`. If
 there's no marker, treat this as the first consolidation and scope to the recent
 git log + the current session. If both stores are empty and there's nothing new
-since the marker, report "Nothing to consolidate" and stop.
+since the marker, report "Nothing to consolidate" and stop. It also prints a
+**provisional rigor tier** (from `git_commits`; finalized in Phase 2 once you curate
+`session_candidates`) and any
+**prune-pressure** flag — see *Rigor modes* above.
 
 Then **seed the cycle record** — the structured data that becomes the final
 dashboard (see "Output" below). Re-run the helper with `--json` to capture the
@@ -197,16 +234,26 @@ the repo already records as code or git history; keep the non-obvious *why*. Be
 especially stingy about proposing anything for the always-loaded tier — it must
 earn its per-session cost.
 
-→ **Cycle record:** set `scope.session_candidates` to the count of candidates you
-surfaced from the session (the helper already filled `git_commits` and
-`memories_reviewed`).
+→ **Cycle record:** set `scope.session_candidates` to the count of **curated, discrete
+candidate facts** you carried into Phase 3 (after dedup — **not** the raw extractor
+`surfaced` count, which includes every non-noise turn + error result and runs far
+higher; feeding that in would over-state magnitude and peg the tier to HEAVY). Then set
+`rigor.phase = "final"`. The rigor **tier is DERIVED** from `git_commits +
+session_candidates` at render — you don't store a tier label (so it can't drift from its
+magnitude); your curated `session_candidates` IS your judgment entering the magnitude. If
+you choose heavier or lighter ceremony than the magnitude implies, do so with explicit
+rationale — that override shows up in what you actually verify/record
+(`verification.method`, `entries`), not a mutated label (it's a hint, not a gate). The
+helper already filled `git_commits` and `memories_reviewed`.
 
 ### Phase 3 — Verify (the heart; parallel)
 
-Every candidate is verified against the **live tree** before it can land. Fan out:
-spawn Explore / general-purpose subagents to verify batches of claims concurrently
-(this is the parallel enhancement over serial `/dream`). Hand each subagent the
-**specific claims** to check — never "read the transcript."
+Every candidate is verified against the **live tree** before it can land. **Scale the
+verification to the rigor tier** (see *Rigor modes*): a LIGHT pass may verify inline; a
+SUBSTANTIAL or HEAVY pass MUST fan out — spawn Explore / general-purpose subagents to
+verify batches of claims concurrently (the parallel enhancement over serial `/dream`),
+and at SUBSTANTIAL+ give anything bound for the always-loaded tier a **2-source check**.
+Hand each subagent the **specific claims** to check — never "read the transcript."
 
 Verify with the recipes in `references/harness-map.md` § "verification recipes":
 file/symbol existence (`grep`, `test -e`), claim-matches-current-code (read the
@@ -229,8 +276,11 @@ because Phase 4 writes committed docs and persistent memory; the user should see
 churn (and the per-session cost of anything headed for the always-loaded tier)
 before it happens. **Call out any proposed `CLAUDE.md` edit explicitly** — it is
 committed, team-shared, AND always-loaded, the widest blast radius of anything here;
-make declining it the easy default. Then apply, placing each fact in its tier and
-optimizing it for how that tier loads:
+make declining it the easy default. **Honor the rigor tier + prune-pressure** (see
+*Rigor modes*): if `rigor.prune_pressure` is set, prune-or-propose this pass regardless
+of tier; at **HEAVY**, do not apply any write that pushes the always-loaded tier over
+budget without an explicit prune (hard stop — surface it and prune first). Then apply,
+placing each fact in its tier and optimizing it for how that tier loads:
 
 - **Always-loaded tier — two files, two very different dispositions:**
   - **Auto-memory `MEMORY.md` index** (Claude's own store — you own it; this is the
@@ -287,6 +337,10 @@ NOT record, and why" is part of the dashboard's signal. Each:
 lines/bytes, recall-fact count).
 
 ### Phase 5 — Prune, GC, verify, measure, update the marker, render
+
+**At HEAVY, run a completeness critic first** (see *Rigor modes*): re-ask "what did we
+miss or mis-verify?" — a fact the git range implies but no candidate captured, a claim
+marked confirmed on thin evidence — and loop back one pass if it surfaces anything.
 
 1. Re-read both `MEMORY.md`s: remove duplicates (within and across stores), fix
    broken file/symbol references, drop entries no longer relevant.
@@ -385,6 +439,7 @@ summary alongside it.
   "session": "<active session id>",
   "scope": {"git_range": "abc..HEAD", "git_commits": 0,
             "session_candidates": 0, "memories_reviewed": 0},
+  "rigor": {"phase": "provisional|final", "prune_pressure": false, "prune_reason": ""},
   "verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0,
                    "method": "inline|subagents"},
   "entries": [
@@ -440,6 +495,15 @@ The dashboard derives its outcome banner (`NOTHING TO CONSOLIDATE` / `NO-OP PASS
 `LIGHT PASS` / `SUBSTANTIAL PASS`) from the write counts unless you set an explicit
 `outcome`. Keep entries honest — recording a `skipped` decision (and why) is as
 valuable as recording a write.
+
+The `rigor` block is **seeded provisional** by `memory_status.py` and **finalized in
+Phase 2** (you set the curated `session_candidates` in `scope` and `phase: "final"`).
+Both the **tier and the magnitude are derived from `scope`** at render — neither is
+stored, so the label can never drift from its own magnitude. (A future band calibration
+would filter to `phase: "final"` records and refit from the magnitude→outcome — but only
+once cycle records are persisted, which they are not yet; see roadmap.) It is an early
+effort *hint*, a distinct quantity from the write-based outcome banner (see *Rigor
+modes*); the dashboard labels both so they never read as one number.
 
 ## A note on scope
 

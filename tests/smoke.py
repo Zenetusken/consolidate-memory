@@ -54,6 +54,68 @@ check("outcome: substantial", _oc(4, 8, 12, 5) == "SUBSTANTIAL PASS")
 check("dashboard renders banner", "DREAM · consolidate-memory" in
       rd.render({"project": "p", "session": "s", "scope": {}, "entries": []}))
 
+# --- rigor tier (v0.1.3): FLOW magnitude → tier; provisional/final; NO memories_reviewed ---
+import inspect as _inspect  # noqa: E402
+check("rigor: LIGHT at magnitude <= 2",
+      ms.suggested_tier(2, 0) == "LIGHT" and ms.suggested_tier(0, 2) == "LIGHT" and ms.suggested_tier(1, 1) == "LIGHT")
+check("rigor: SUBSTANTIAL 3..7",
+      ms.suggested_tier(3, 0) == "SUBSTANTIAL" and ms.suggested_tier(4, 3) == "SUBSTANTIAL" and ms.suggested_tier(7, 0) == "SUBSTANTIAL")
+check("rigor: HEAVY at >= 8", ms.suggested_tier(8, 0) == "HEAVY" and ms.suggested_tier(5, 5) == "HEAVY")
+_ord = ms.TIER_ORDER  # canonical tier rank (single source in memory_status)
+check("rigor: monotonic non-decreasing in magnitude",
+      all(_ord[ms.suggested_tier(0, m)] <= _ord[ms.suggested_tier(0, m + 1)] for m in range(0, 20)))
+# F1 regression guard: the magnitude axis is FLOW-only; the cumulative stock
+# (memories_reviewed) must NOT be a parameter, or a mature store pegs every pass to HEAVY.
+check("rigor: suggested_tier excludes memories_reviewed (F1 axis-separation guard)",
+      "memories_reviewed" not in _inspect.signature(ms.suggested_tier).parameters
+      and "reviewed" not in _inspect.signature(ms.suggested_tier).parameters)
+# prune-pressure: the SEPARATE axis the stock drives
+check("rigor: prune_pressure on index-over-budget", ms.prune_pressure(True, 0) == (True, "index-over-budget"))
+check("rigor: prune_pressure on many-facts at threshold", ms.prune_pressure(False, ms.PRUNE_PRESSURE_FACTS) == (True, "many-facts"))
+check("rigor: prune_pressure clear when small + under budget", ms.prune_pressure(False, ms.PRUNE_PRESSURE_FACTS - 1) == (False, ""))
+check("rigor: index-over takes reason precedence over many-facts", ms.prune_pressure(True, 999)[1] == "index-over-budget")
+# A10: no-marker first pass — git_range defaults to a recent-≤20 lookback, so a mature repo's
+# FIRST consolidation reads HEAVY provisional purely from history depth (documented, advisory;
+# the model finalizes in Phase 2). The seed rigor block is phase:provisional regardless.
+check("rigor: no-marker 20-commit lookback → HEAVY provisional (A10)", ms.suggested_tier(20, 0) == "HEAVY")
+check("rigor: provisional rigor block is phase:provisional, no stored tier (A10)",
+      ms._provisional_rigor({"index_lb": (0, 0, 0), "fact_files": []})
+      == {"phase": "provisional", "prune_pressure": False, "prune_reason": ""})
+# render: the RIGOR line shows a tier + magnitude BOTH DERIVED from scope (never stored)
+_rrec = {"project": "p", "session": "s", "scope": {"git_commits": 6, "session_candidates": 9},
+         "entries": [], "rigor": {"phase": "final", "prune_pressure": True, "prune_reason": "many-facts"}}
+check("render: rigor line shows derived tier (6+9=15 → HEAVY)", "RIGOR" in rd.render(_rrec) and "HEAVY" in rd.render(_rrec))
+check("render: rigor magnitude DERIVED from scope (6+9=15)", "magnitude 15" in rd.render(_rrec))
+check("render: prune-pressure surfaced on the rigor line", "prune-pressure" in rd.render(_rrec))
+check("render: legacy record without rigor omits the line (no crash)",
+      "RIGOR" not in rd.render({"project": "p", "session": "s", "scope": {}, "entries": []}))
+# A1 regression: the displayed tier is DERIVED from the magnitude, NEVER a stored label —
+# a stale/contradictory stored suggested_tier must not reach the RIGOR line.
+_drift = {"project": "p", "session": "s", "scope": {"git_commits": 8, "session_candidates": 7},
+          "entries": [], "rigor": {"suggested_tier": "LIGHT", "phase": "final"}}  # stored LIGHT is a lie: mag=15
+_drift_line = next((ln for ln in rd.render(_drift).splitlines() if "RIGOR" in ln), "")
+check("render: tier DERIVED from magnitude, ignores a contradictory stored suggested_tier (A1)",
+      "HEAVY" in _drift_line and "LIGHT" not in _drift_line)
+# A2: a present-but-empty rigor {} still renders the derived line (presence, not truthiness)
+check("render: empty rigor {} still shows the derived RIGOR line (A2)",
+      "RIGOR" in rd.render({"project": "p", "session": "s", "scope": {"git_commits": 3, "session_candidates": 0},
+                            "entries": [], "rigor": {}}))
+# A5: a JSON-stringified 'false' prune_pressure must NOT trip the warning (_flag coercion)
+check("render: stringized 'false' prune_pressure shows no warning (A5/_flag)",
+      "prune-pressure" not in rd.render({"project": "p", "session": "s",
+          "scope": {"git_commits": 1, "session_candidates": 0}, "entries": [],
+          "rigor": {"phase": "final", "prune_pressure": "false"}}))
+check("render: _flag coerces stringized booleans",
+      rd._flag("false") is False and rd._flag("true") is True and rd._flag(True) is True and rd._flag("") is False)
+# model-authored gnarly rigor (string/None/wrong-type) must not crash; tier still derived
+_grig = {"project": "p", "session": "s", "scope": {"git_commits": "7", "session_candidates": None},
+         "entries": [], "rigor": {"suggested_tier": 123, "phase": None,
+                                   "prune_pressure": "yes", "prune_reason": None}}
+_grig_out = rd.render(_grig)
+check("render: gnarly rigor never crashes + derives tier (ignores stored 123)",
+      isinstance(_grig_out, str) and "RIGOR" in _grig_out and "123" not in _grig_out)
+check("demo: rigor tier shown in --demo preview", "RIGOR" in rd.render(rd._demo_record()))
+
 # --- cross-project relevance ---
 check("relevance: user-global everywhere", sg.is_relevant({"scope": "user-global"}, set()) is True)
 check("relevance: stack-general needs match",
