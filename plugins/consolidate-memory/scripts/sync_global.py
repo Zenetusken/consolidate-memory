@@ -27,7 +27,7 @@ from pathlib import Path
 # est_tokens lives in memory_status (the measurement script); reuse it rather than
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
 # on sys.path[0] at runtime, and stays a sibling through the skill/ symlink.
-from memory_status import est_tokens
+from memory_status import _sane, est_tokens, slug_for
 
 GLOBAL = Path.home() / ".claude" / "memory"
 _STACK_KEYWORDS = {
@@ -40,8 +40,20 @@ _STACK_KEYWORDS = {
 }
 
 
-def slug_for(project_dir: Path) -> str:
-    return str(project_dir.resolve()).replace("/", "-")
+_SAFE_NAME = r"[A-Za-z0-9._-]+"  # the documented kebab/snake charset for fact + project names
+
+
+def _safe_stem(stem: str) -> bool:
+    """True iff a fact stem is safe to use as a filename AND to interpolate into the
+    always-loaded index. Rejects markdown/link-injection payloads in a crafted name."""
+    return bool(re.fullmatch(_SAFE_NAME, stem or ""))
+
+
+def _sanitize_token(s: str) -> str:
+    """Collapse anything outside the safe charset to '-'. For values written into the
+    SHARED global store (e.g. a project basename in `projects:`); also neutralizes any
+    regex backreference (`\\1`) before such a value reaches an re.sub replacement."""
+    return re.sub(r"[^A-Za-z0-9._-]", "-", s or "")
 
 
 def project_store(project_dir: Path) -> Path:
@@ -53,15 +65,69 @@ def _frontmatter(text: str) -> dict:
     m = re.search(r"^---\n(.*?)\n---", text, re.S)
     if not m:
         return out
-    for line in m.group(1).splitlines():
-        if ":" in line and not line.startswith(" "):
+    lines = m.group(1).splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if ":" in line and not line.startswith((" ", "\t")):
             k, _, v = line.partition(":")
-            out[k.strip()] = v.strip()
+            v = v.strip()
+            # Folded/block scalar (description: >- | | etc.): the real value is on the
+            # following more-indented lines. Gather + join them (a naive parser would
+            # store the literal ">-" indicator and write THAT as the recall hook into
+            # every pulling project's always-loaded index).
+            if v in (">", ">-", ">+", "|", "|-", "|+"):
+                buf, j = [], i + 1
+                while j < len(lines) and (lines[j].startswith((" ", "\t")) or not lines[j].strip()):
+                    if lines[j].strip():
+                        buf.append(lines[j].strip())
+                    j += 1
+                out[k.strip()] = " ".join(buf)
+                i = j
+                continue
+            out[k.strip()] = v
         else:
             m2 = re.match(r"\s+(scope|stacks|type|projects):\s*(.+)", line)
             if m2:
                 out[m2.group(1)] = m2.group(2).strip()
+        i += 1
     return out
+
+
+def _is_mirror(text: str) -> bool:
+    """True iff a fact is a MANAGED MIRROR — detected by the EXACT structured forms
+    `_as_mirror` writes inside the frontmatter, NEVER a substring anywhere in the file:
+
+      • a column-0 `# global_ref: <name>` comment stamp that is the FIRST frontmatter
+        line (exactly where `_as_mirror` inserts it in the no-metadata-block case — a
+        `# global_ref:` comment *elsewhere* in a hand-authored note must not count), or
+      • a `  global_ref: <name>` line that is a DIRECT (2-space) child of a top-level
+        `metadata:` key (where `_as_mirror` injects it).
+
+    Parses frontmatter STRUCTURE, not the raw block: a regex over the raw text matches
+    `global_ref:` on an indented *folded-scalar continuation line* (e.g. under a
+    `description: >-`), which would misclassify a project-authored note — and GC would
+    then DELETE it. Bias is to False on anything ambiguous: a missed mirror merely isn't
+    reclaimed (safe), whereas a false positive destroys user memory (unsafe)."""
+    m = re.search(r"^---\n(.*?)\n---", text, re.S)
+    if not m:
+        return False
+    top = None       # the current top-level frontmatter key
+    first = True      # the col-0 stamp only counts as the FIRST non-blank frontmatter line
+    for ln in m.group(1).splitlines():
+        if not ln.strip():
+            continue
+        if first and re.match(r"#\s*global_ref:\s*\S", ln):       # col-0 stamp (first line only)
+            return True
+        first = False
+        if not ln[:1].isspace():                                  # a top-level line
+            mk = re.match(r"([^:#\s][^:]*):", ln)
+            top = mk.group(1).strip() if mk else None
+            continue
+        # indented line: accept ONLY as a direct (exactly-2-space) child of metadata
+        if top == "metadata" and re.match(r" {2}global_ref:\s*\S", ln):
+            return True
+    return False
 
 
 def _kw_hit(blob: str, kw: str) -> bool:
@@ -91,6 +157,12 @@ def global_facts() -> list[tuple[str, dict, str]]:
     for f in sorted(GLOBAL.glob("*.md")):
         if f.name == "MEMORY.md":
             continue
+        # The stem becomes a filename AND is interpolated into each pulling project's
+        # always-loaded index (`- [name](name.md) — …`). Reject any stem outside the
+        # documented kebab-case charset so a crafted name can't inject markdown/links
+        # into the tier-1 context of every project that pulls it.
+        if not _safe_stem(f.stem):
+            continue
         text = f.read_text(encoding="utf-8", errors="replace")
         facts.append((f.stem, _frontmatter(text), text))
     return facts
@@ -108,13 +180,21 @@ def is_relevant(fm: dict, stacks: set[str]) -> bool:
 
 def _as_mirror(text: str, name: str) -> str:
     """Return the global fact stamped as a managed mirror (`global_ref: <name>`),
-    robustly — drop any existing global_ref, then insert one after `metadata:`."""
+    robustly — drop any existing global_ref, then insert one after `metadata:`.
+
+    The metadata anchor must be a COLUMN-0 top-level key (mirroring `_is_mirror`'s
+    `not ln[:1].isspace()` test). An INDENTED `  metadata:` is NOT a valid anchor: if it
+    were, this would stamp `  global_ref:` somewhere `_is_mirror` doesn't recognize,
+    producing an unrecognized/never-refreshed/GC-immune mirror (producer↔recognizer
+    desync). Such input instead falls through to the column-0 `# global_ref:` stamp,
+    which `_is_mirror` does recognize. The `_is_mirror(_as_mirror(...))` round-trip is a
+    load-bearing invariant — see the smoke test."""
     lines = [ln for ln in text.splitlines() if not ln.strip().startswith("global_ref:")]
     out: list[str] = []
     injected = False
     for ln in lines:
         out.append(ln)
-        if not injected and ln.strip().rstrip(":") == "metadata":
+        if not injected and not ln[:1].isspace() and ln.strip().rstrip(":") == "metadata":
             out.append(f"  global_ref: {name}")
             injected = True
     if not injected:  # no metadata block — stamp just inside the frontmatter
@@ -127,8 +207,14 @@ def _as_mirror(text: str, name: str) -> str:
 
 def _pointer_line(name: str, fm: dict) -> str:
     """The canonical index pointer line for a fact (pure — testable). The `description`
-    is the recall hook, truncated; the scope tag mirrors the index's existing style."""
+    is the recall hook; it comes from a global fact (possibly crafted) and is written
+    into the always-loaded index, so sanitize it: collapse control bytes/newlines to a
+    space (a stray newline/ESC would break or inject into the index line), then truncate."""
     desc = fm.get("description", "").strip().strip('"')
+    # Strip control bytes (line-break/ESC injection) AND markdown link/bracket chars so a
+    # crafted description can't inject a link or a spoofed `](name.md)` target into the
+    # always-loaded index line.
+    desc = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]()]", " ", desc).split())
     hook = (desc[:88] + "…") if len(desc) > 88 else desc
     scope = fm.get("scope", "")
     return f"- [{name}]({name}.md) — {hook}" + (f" [{scope}]" if scope else "")
@@ -146,8 +232,9 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
     content = idx.read_text(encoding="utf-8") if idx.exists() else "# Memory Index\n\n"
     want = _pointer_line(name, fm)
     lines = content.splitlines()
+    anchor = f"]({name}.md)"  # the LINK TARGET, not a bare substring a description could spoof
     for i, ln in enumerate(lines):
-        if f"({name}.md)" in ln:
+        if anchor in ln:
             if ln.strip() == want.strip():
                 return False  # already correct — no-op
             lines[i] = want  # refresh a drifted hook
@@ -172,7 +259,7 @@ def run(project_dir: Path, pull: bool) -> int:
         path = store / f"{name}.md"
         present = path.exists()
         cur = path.read_text(encoding="utf-8") if present else ""
-        is_mirror = present and "global_ref:" in cur
+        is_mirror = present and _is_mirror(cur)
         want = _as_mirror(text, name)
         if not rel:
             status = "irrelevant"
@@ -213,6 +300,10 @@ def _record_provenance(name: str, project: str) -> None:
     p = GLOBAL / f"{name}.md"
     if not p.exists():
         return
+    # `project` is a directory basename written into a SHARED canonical's frontmatter.
+    # Sanitize it to the safe charset before it ever lands there, so it can't smuggle
+    # YAML/markdown into the shared store (and can't carry a regex backreference below).
+    project = _sanitize_token(project)
     text = p.read_text(encoding="utf-8")
     m = re.search(r"^(\s*projects:\s*)\[([^\]]*)\]\s*$", text, re.M)
     if m:
@@ -221,13 +312,17 @@ def _record_provenance(name: str, project: str) -> None:
             return
         items.append(project)
         p.write_text(text[: m.start()] + f"{m.group(1)}[{', '.join(items)}]" + text[m.end():])
-    else:  # no projects line yet — add one after scope/node_type
-        new = re.sub(r"(\n\s*(?:scope|node_type):.*\n)", rf"\1  projects: [{project}]\n", text, count=1)
+    else:  # no projects line yet — add one after scope/node_type. Use a replacement
+        # FUNCTION (not an f-string template) so `project` is never scanned for `\1`-style
+        # backreferences by re.sub.
+        new = re.sub(r"(\n\s*(?:scope|node_type):.*\n)",
+                     lambda mm: f"{mm.group(1)}  projects: [{project}]\n", text, count=1)
         p.write_text(new)
 
 
 def _holders(fm: dict) -> list[str]:
-    return re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]+", fm.get("projects", ""))
+    # `*` not `+` so a single-character project name is not silently dropped.
+    return re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]*", fm.get("projects", ""))
 
 
 def network() -> int:
@@ -290,7 +385,7 @@ def _remove_index_pointer(store: Path, name: str) -> bool:
     if not idx.exists():
         return False
     lines = idx.read_text(encoding="utf-8").splitlines()
-    kept = [ln for ln in lines if f"({name}.md)" not in ln]
+    kept = [ln for ln in lines if f"]({name}.md)" not in ln]  # match the link target, not a spoofable substring
     if len(kept) == len(lines):
         return False
     idx.write_text("\n".join(kept).rstrip() + "\n", encoding="utf-8")
@@ -309,7 +404,7 @@ def _orphans(store: Path) -> list[str]:
         if f.name == "MEMORY.md":
             continue
         text = f.read_text(encoding="utf-8", errors="replace")
-        if "global_ref:" in text and f.stem not in canon:  # ONLY managed mirrors
+        if _is_mirror(text) and f.stem not in canon:  # ONLY managed mirrors (frontmatter key)
             out.append(f.stem)
     return out
 
@@ -323,6 +418,16 @@ def gc(project_dir: Path, apply: bool) -> int:
     (a renamed/moved store also 'holds nothing'), and stripping global state on it
     risks erasing real edges. The proven win is removing the orphan files."""
     project_dir = project_dir.resolve()
+    # SAFETY: an EMPTY canonical set makes EVERY mirror look orphaned → gc --apply would
+    # delete them all. A global store that is absent OR present-but-empty (unmounted,
+    # moved, not yet synced, or only the MEMORY.md index left) is NOT the same as "all
+    # canonicals were deliberately deleted". Refuse in either case rather than risk wiping
+    # re-pullable / last-surviving memory. (Guard on the FACT COUNT, not mere existence.)
+    if not GLOBAL.exists() or not global_facts():
+        why = "absent" if not GLOBAL.exists() else "present but empty (no canonical facts)"
+        print(f"global store {GLOBAL} is {why} — refusing to GC "
+              "(cannot distinguish that from all-canonicals-deleted).")
+        return 0
     store = project_store(project_dir)
     orphans = _orphans(store)
     print(f"project : {project_dir.name}  (slug {slug_for(project_dir)})")
@@ -363,7 +468,9 @@ def _label_from_slug(slug: str) -> str:
     NOT guess a basename — `rsplit('-',1)[-1]` would mislabel any hyphenated project
     (…-consolidate-memory → 'memory'). De-prefix the leading '-' and keep the
     informative tail; unambiguous beats pretty for per-node attribution."""
-    s = slug.lstrip("-")
+    # _sane strips terminal control bytes: a node's slug comes from a filesystem dir name
+    # that could carry an ANSI escape; this label is printed to the terminal in --tokens.
+    s = _sane(slug.lstrip("-"))
     return s if len(s) <= 24 else "…" + s[-23:]
 
 
@@ -378,7 +485,7 @@ def _node_tokens(store: Path) -> dict:
     idx_text = idx.read_text(encoding="utf-8", errors="replace") if idx.exists() else ""
     facts = [f for f in store.glob("*.md") if f.name != "MEMORY.md"]
     bodies = [f.read_text(encoding="utf-8", errors="replace") for f in facts]
-    shared = sum(1 for b in bodies if "global_ref:" in b)
+    shared = sum(1 for b in bodies if _is_mirror(b))
     return {
         "always_loaded_tokens": est_tokens(idx_text),
         "recall_tokens": sum(est_tokens(b) for b in bodies),
@@ -403,7 +510,7 @@ def _network_nodes() -> list[Path]:
         if not store.is_dir():
             continue
         has_mirror = any(
-            "global_ref:" in f.read_text(encoding="utf-8", errors="replace")
+            _is_mirror(f.read_text(encoding="utf-8", errors="replace"))
             for f in store.glob("*.md") if f.name != "MEMORY.md"
         )
         if has_mirror:
@@ -422,7 +529,8 @@ def token_network(project_dir: Path) -> dict:
         m = _node_tokens(store)
         is_trigger = store.resolve() == trigger_store.resolve()
         nodes.append({
-            "node": project_dir.name if is_trigger else _node_label(store),
+            # _sane the trigger label too — it's the argv-supplied project_dir.name
+            "node": _sane(project_dir.name) if is_trigger else _node_label(store),
             "trigger": is_trigger,
             **m,
         })
@@ -431,7 +539,7 @@ def token_network(project_dir: Path) -> dict:
     return {
         "basis": "≈ chars/4 (heuristic estimate, not a tokenizer)",
         "node_def": "project stores holding ≥1 shared fact",
-        "trigger": project_dir.name,
+        "trigger": _sane(project_dir.name),
         "nodes": nodes,
         "totals": {"nodes": len(nodes),
                    "always_loaded_tokens": al_total, "recall_tokens": rc_total},

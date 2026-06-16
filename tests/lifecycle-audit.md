@@ -38,7 +38,8 @@ context* and *what manages it over its life*.
     it is now real — `memory_status.py` gates the index and `CLAUDE.md` against
     `INDEX_TOKEN_BUDGET` / `CLAUDE_MD_TOKEN_BUDGET` (in estimated tokens), sets
     `budget.*.over`, and the dashboard renders ⚠. *(Originally: the grep
-    `'budget|limit|ceiling|threshold|max_|[0-9]{2,}'` over `skill/scripts/` returned
+    `'budget|limit|ceiling|threshold|max_|[0-9]{2,}'` over the scripts dir (now
+    `plugins/consolidate-memory/scripts/`) returned
     only the cycle-record data field, `--max`, and widths — no ceiling existed.)*
   - *Reclaimed by:* the model pruning lines in Phase 4 (a judgment call, kept human),
     **plus** `--gc` for orphaned mirror pointers (mechanical, now coded).

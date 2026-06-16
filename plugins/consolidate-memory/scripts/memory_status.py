@@ -15,6 +15,7 @@ Usage: python3 memory_status.py [PROJECT_DIR] [--json]
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from datetime import datetime
@@ -39,6 +40,23 @@ def est_tokens(text: str) -> int:
     code. Stable and good enough to budget the always-loaded tier. Always present its
     output as '≈': it is an estimate, never an exact token count."""
     return (len(text) + 3) // 4
+
+
+_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def _sane(s: str) -> str:
+    """Strip terminal control bytes (C0/C1/DEL, keeping tab/newline) from a string before
+    PRINTING it. git commit subjects are attacker-influenceable text; a crafted message
+    with an ESC sequence would otherwise inject into the terminal when this report runs."""
+    return _CTRL.sub("", str(s))
+
+
+def _valid_sha(s: str) -> bool:
+    """True iff `s` is a plausible git commit SHA (hex, 7–40 chars). Used to reject a
+    tampered/garbage `commit` from the on-disk state file before it reaches `git` argv
+    (argument-injection guard — a value like '--output=…' must never be trusted)."""
+    return bool(re.fullmatch(r"[0-9a-fA-F]{7,40}", s or ""))
 
 
 def slug_for(project_dir: Path) -> str:
@@ -93,6 +111,13 @@ def build_context(project_dir: Path) -> dict:
             last_commit, last_ts = st.get("commit", ""), st.get("timestamp", "")
         except (json.JSONDecodeError, OSError):
             pass
+    # Harden: the commit comes from a JSON file on disk and is passed to `git` as an
+    # argv element. Even without a shell, a value like "--output=…" would be read by
+    # git as an OPTION (argument injection). Accept only a real hex SHA; anything else
+    # is treated as "no marker" (first-consolidation scope). Defends the one external
+    # command in this tool against a tampered/garbage state file.
+    if not _valid_sha(last_commit):
+        last_commit = ""
 
     head = _run(["git", "rev-parse", "HEAD"], project_dir)
     git_range = f"{last_commit[:12]}..HEAD" if last_commit else "-20"
@@ -131,11 +156,13 @@ def _stale_since(fact_files: list[Path], marker_ts: str) -> list[str]:
     """Names of fact files last modified at/before the marker — i.e. untouched since
     the previous consolidation, so candidates for RE-verification. Empty if no marker
     (first pass) or the timestamp can't be parsed."""
-    if not marker_ts:
+    # marker_ts comes from an on-disk JSON file; a tampered/garbage non-string value
+    # (number, list) would crash `.replace`. Accept only a real string.
+    if not isinstance(marker_ts, str) or not marker_ts:
         return []
     try:
         cutoff = datetime.fromisoformat(marker_ts.replace("Z", "+00:00")).timestamp()
-    except ValueError:
+    except (ValueError, TypeError):
         return []
     return [f.stem for f in fact_files if f.stat().st_mtime <= cutoff]
 
@@ -244,7 +271,7 @@ def print_report(ctx: dict) -> None:
     print(f"  current HEAD: {ctx['head'][:12] or '(not a git repo?)'}")
 
     print(f"\n--- git log {ctx['git_range']} ({len(ctx['commits'])} commits — scope for new facts) ---")
-    print("\n".join(f"  {c}" for c in ctx["commits"]) or "  (no new commits / no range)")
+    print("\n".join(f"  {_sane(c)}" for c in ctx["commits"]) or "  (no new commits / no range)")
 
     print("\n--- Next ---")
     print("  Re-run with --json to seed the cycle record, then render with render_dashboard.py.")

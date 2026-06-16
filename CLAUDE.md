@@ -1,40 +1,53 @@
 # consolidate-memory — project conventions
 
-A standalone Claude Code skill: **sleep-time memory consolidation** for agents, with
-a cross-project shared-memory layer. This repo is the canonical source; `install.sh`
-symlinks `skill/` → `~/.claude/skills/consolidate-memory` and `memory/` →
-`~/.claude/memory`. See `README.md` for the user-facing pitch and `skill/SKILL.md` +
-`skill/references/harness-map.md` for the full design.
+A **Claude Code plugin**: **sleep-time memory consolidation** for agents, with a
+cross-project shared-memory layer. This repo is both the plugin and its marketplace —
+end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +
+`/plugin install consolidate-memory@zenetusken-plugins`; `install.sh` is a maintainer
+dev-install (local marketplace + plugin, not a symlink). See `README.md` for the
+user-facing pitch and `plugins/consolidate-memory/skills/consolidate-memory/SKILL.md`
++ its `references/harness-map.md` for the full design.
 
 ## The one gotcha that matters
 
-**`skill/` IS the live skill** (it's symlinked into `~/.claude/skills`). Editing it
-changes behaviour in *every* project on this machine immediately — there's no build
-step and no separate "installed" copy. So a broken edit breaks the skill globally
-until fixed. **Run `python3 tests/smoke.py` after any change to `skill/scripts/`.**
+**This ships as a Claude Code *plugin*, not a symlinked skill.** The skill lives at
+`plugins/consolidate-memory/skills/consolidate-memory/` and `SKILL.md` invokes scripts
+via **`${CLAUDE_PLUGIN_ROOT}`** — a variable that is **only set when the skill loads as
+a plugin**. So the old "symlink `skill/` into `~/.claude/skills`" model is dead: a bare
+user-skill copy would have an unset `${CLAUDE_PLUGIN_ROOT}` and every command would
+break. Dogfood via `./install.sh` (registers this repo as a local marketplace +
+installs the plugin). **Run `python3 tests/smoke.py` after any change to `scripts/`.**
 
-How edits take effect:
+How edits take effect (once installed as a local-marketplace plugin):
 
 | You edit | Effect |
 |---|---|
-| `skill/scripts/*.py` | live immediately (exec'd fresh each run) |
-| `skill/SKILL.md` body | next skill invocation |
-| `skill/SKILL.md` frontmatter (name/description) | needs `/reload-skills` to re-register |
+| `plugins/consolidate-memory/scripts/*.py` | live on next run (exec'd fresh) |
+| `…/skills/consolidate-memory/SKILL.md` body | `/reload-plugins` or next session |
+| `plugin.json` / `marketplace.json` | `claude plugin marketplace update` + `/reload-plugins` |
+
+When iterating on the published artifact, re-validate: `claude plugin validate
+./plugins/consolidate-memory --strict`.
 
 ## Layout
 
 ```
-skill/SKILL.md                 6-phase workflow + the context-loading-tier model
-skill/references/harness-map.md paths, fact schema, verification recipes, cross-project model
-skill/scripts/
-  memory_status.py             Phase 0: locate stores + git scope + `--json` cycle-record seed
-  extract_signals.py           Phase 2: curated, secret-safe session signal (claims-first)
-  sync_global.py               cross-project: --list/--pull/--gc/--tokens/--network + provenance
-  render_dashboard.py          the data-driven dashboard (renders a cycle record)
-cm                             one-entry CLI over the scripts
-install.sh                     idempotent symlink installer (+ --uninstall)
-tests/smoke.py                 zero-dependency smoke tests
-memory/                        the live shared-memory store — GITIGNORED, local only
+.claude-plugin/marketplace.json   the marketplace catalog (relative source → plugins/…)
+plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
+  .claude-plugin/plugin.json       plugin manifest (name, version, author, license)
+  skills/consolidate-memory/
+    SKILL.md                       6-phase workflow + the context-loading-tier model
+    references/harness-map.md      paths, fact schema, verification recipes, cross-project model
+  scripts/
+    memory_status.py               Phase 0: locate stores + git scope + `--json` cycle-record seed
+    extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
+    sync_global.py                 cross-project: --list/--pull/--gc/--tokens/--network + provenance
+    render_dashboard.py            the data-driven dashboard (renders a cycle record)
+security/devsecops.workflow.js     reusable multi-agent white-hat pentest gate (run before go-live)
+cm                                 dev CLI over the scripts (uses explicit paths, not ${CLAUDE_PLUGIN_ROOT})
+install.sh                         maintainer dev-install: local marketplace + plugin (+ --uninstall)
+tests/smoke.py, tests/simulate_accumulation.py   zero-dependency smoke + accumulation sim
+memory/                            personal shared-memory store — GITIGNORED, NOT shipped in the plugin
 ```
 
 ## Conventions
@@ -62,9 +75,12 @@ memory/                        the live shared-memory store — GITIGNORED, loca
 ## Dev loop
 
 ```
-edit skill/… → python3 tests/smoke.py → ./cm <cmd> to spot-check → git commit && git push
+edit plugins/consolidate-memory/… → python3 tests/smoke.py → ./cm <cmd> to spot-check
+→ claude plugin validate ./plugins/consolidate-memory --strict
+→ (before go-live) run security/devsecops.workflow.js → git commit && git push
 ```
 
-This tool dogfoods itself: from this repo you can run `dream` (the skill is
-user-level, so it loads here too) to consolidate its own development memory — written
-to its private store at `~/.claude/projects/<slug>/memory/`, never to this repo.
+This tool dogfoods itself: once dev-installed as a plugin (`./install.sh`), run `dream`
+from this repo to consolidate its own development memory — written to its private store
+at `~/.claude/projects/<slug>/memory/`, never to this repo. The `cm` CLI and the tests
+invoke the scripts by explicit path, so they work without the plugin being installed.

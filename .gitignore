@@ -1,10 +1,31 @@
-# The shared-consciousness memory stream is personal — NEVER publish it.
-# Keep the dir (for the symlink target on a fresh clone) but ignore its contents.
+# The shared-consciousness memory stream is personal — NEVER publish it. Keep the dir
+# (the maintainer's dev memory-store symlink target) but ignore its contents. This dir
+# lives at the repo root, OUTSIDE plugins/consolidate-memory/, so it is never bundled
+# into the published plugin (the plugin = plugins/consolidate-memory/ only).
 memory/*
 !memory/.gitkeep
-# operational state
+
+# Operational state written by the skill (per-project high-water mark) — never a fact.
 **/.consolidation-state.json
-# python + workspace cruft
+
+# Python + workspace cruft (covers plugins/consolidate-memory/scripts/__pycache__/).
 __pycache__/
 *.pyc
 *-workspace/
+
+# install.sh backs up a pre-existing skill/memory target as <name>.bak.<timestamp>;
+# those land under ~/.claude, but ignore any that ever appear in-tree.
+*.bak.*
+
+# OS / editor cruft.
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Security audit findings are a LOCAL maintainer artifact — they enumerate what evaded
+# the secrets firewall (incl. accepted residual gaps), i.e. a bypass cookbook. NEVER
+# publish them to this public repo. The reusable harness (security/devsecops.workflow.js)
+# and the defensive posture (SECURITY.md) stay public; the offensive findings do not.
+security/findings-*.md
+security/code-review-*.md

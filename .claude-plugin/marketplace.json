@@ -1,0 +1,17 @@
+{
+  "name": "zenetusken-plugins",
+  "owner": {
+    "name": "Zenetusken",
+    "url": "https://github.com/Zenetusken"
+  },
+  "description": "Plugins by Zenetusken for Claude Code.",
+  "plugins": [
+    {
+      "name": "consolidate-memory",
+      "source": "./plugins/consolidate-memory",
+      "description": "Sleep-time memory consolidation: verify, reconcile, and budget durable memory across context-loading tiers, with a cross-project shared-memory layer and network-wide token observability.",
+      "category": "productivity",
+      "keywords": ["memory", "consolidation", "dream", "cross-project", "context-management"]
+    }
+  ]
+}

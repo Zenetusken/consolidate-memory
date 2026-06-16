@@ -40,7 +40,7 @@ import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SYNC = ROOT / "skill" / "scripts" / "sync_global.py"
+SYNC = ROOT / "plugins" / "consolidate-memory" / "scripts" / "sync_global.py"
 
 
 # ── fact synthesis ────────────────────────────────────────────────────────────
@@ -269,6 +269,35 @@ def run() -> None:
                  measurable,
                  f"{t['nodes']} nodes measured; the always-loaded total is the per-session "
                  "tax paid across the whole fleet — now a number, not a guess")
+
+        # ── Probe G: GC refuses when the global store is ABSENT (data-loss guard) ──
+        # Run-3 finding: with ~/.claude/memory missing, global_facts() returns [] →
+        # empty canon → every mirror looks orphaned → gc --apply would delete them all.
+        # The guard must REFUSE rather than wipe re-pullable / last-surviving memory.
+        print("\n── Probe G: --gc refuses when the global store is absent (data-loss guard) ──")
+        gp = projects[0]
+        before_mirrors = [f for f in _store(home, gp).glob("*.md") if f.name != "MEMORY.md"]
+        shutil.move(str(home / ".claude" / "memory"), str(home / ".claude" / "memory.bak"))
+        out = _gc(home, gp, apply=True)
+        after_mirrors = [f for f in _store(home, gp).glob("*.md") if f.name != "MEMORY.md"]
+        shutil.move(str(home / ".claude" / "memory.bak"), str(home / ".claude" / "memory"))  # restore
+        refused_absent = "refusing to GC" in out and len(after_mirrors) == len(before_mirrors)
+        # also the EMPTY-but-present case: store dir exists with only the index, no facts
+        empty = home / ".claude" / "memory-empty"
+        empty.mkdir(parents=True, exist_ok=True)
+        (empty / "MEMORY.md").write_text("# idx\n")
+        shutil.move(str(home / ".claude" / "memory"), str(home / ".claude" / "memory.bak2"))
+        shutil.move(str(empty), str(home / ".claude" / "memory"))
+        out2 = _gc(home, gp, apply=True)
+        after_empty = [f for f in _store(home, gp).glob("*.md") if f.name != "MEMORY.md"]
+        shutil.rmtree(str(home / ".claude" / "memory"))
+        shutil.move(str(home / ".claude" / "memory.bak2"), str(home / ".claude" / "memory"))  # restore
+        refused_empty = "refusing to GC" in out2 and len(after_empty) == len(before_mirrors)
+        print(f"  absent-store refused: {refused_absent} · empty-store refused: {refused_empty} · "
+              f"mirrors preserved both times (from {len(before_mirrors)})")
+        _verdict("G", "GC refuses on an absent OR empty global store (never mass-deletes mirrors)",
+                 refused_absent and refused_empty and len(before_mirrors) > 0,
+                 "neither a missing nor an empty store means 'all canonicals deleted' — mirrors preserved")
 
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")

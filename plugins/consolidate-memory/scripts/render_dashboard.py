@@ -13,9 +13,21 @@ Usage: python3 render_dashboard.py CYCLE_RECORD.json   (or pipe JSON on stdin)
 from __future__ import annotations
 
 import json
+import re
 import sys
 
 W = 66  # dashboard inner width
+
+# Strip terminal control bytes from any model/record-derived string before printing.
+# The cycle record is produced upstream (by the model); a stray ESC / C0/C1 byte in a
+# fact name, reason, citation, or node label would otherwise be emitted verbatim and
+# could inject terminal escape sequences. \t and \n are preserved; everything else in
+# the C0/DEL/C1 ranges becomes U+FFFD. This is the model→presentation safety boundary.
+_CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def _clean(s: object) -> str:
+    return _CTRL.sub("�", str(s))
 
 # action -> (glyph, label) ; ordering controls display order
 _ACTIONS = {
@@ -37,7 +49,18 @@ def _kv(label: str, value: str) -> str:
     return f"  {label:<11}{value}"
 
 
+def _num(x: object) -> float:
+    """Coerce a model-authored cycle-record value to a number. The record is produced
+    upstream (by the model), so a budget field may arrive as a string like '10' or be
+    absent; never let that raise mid-render."""
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _delta(before: float, after: float, unit: str = "") -> str:
+    before, after = _num(before), _num(after)
     arrow = "▲" if after > before else ("▼" if after < before else "=")
     d = after - before
     sign = f" ({'+' if d > 0 else ''}{d:g}{unit})" if d else ""
@@ -77,16 +100,16 @@ def _network_section(record: dict, net: dict) -> list[str]:
     token movement from the budget delta, GC/refresh from cross_project."""
     t = net.get("totals", {})
     nodes = net.get("nodes", [])
-    out = ["", f"  Neural network — token consumption (all nodes)   basis: {net.get('basis', '?')}"]
-    out.append(f"    nodes: {t.get('nodes', len(nodes))} ({net.get('node_def', 'nodes')}) · "
-               f"triggering node: {net.get('trigger', '?')}")
+    out = ["", f"  Neural network — token consumption (all nodes)   basis: {_clean(net.get('basis', '?'))}"]
+    out.append(f"    nodes: {t.get('nodes', len(nodes))} ({_clean(net.get('node_def', 'nodes'))}) · "
+               f"triggering node: {_clean(net.get('trigger', '?'))}")
     out.append(f"    network total: ≈{t.get('always_loaded_tokens', 0)} always-loaded tok "
                f"(every node, every session) · ≈{t.get('recall_tokens', 0)} recall-pool tok")
     shown = sorted(nodes, key=lambda d: -d.get("always_loaded_tokens", 0))
     cap = 12
     for n in shown[:cap]:
         mark = "  ← trigger (dream ran here)" if n.get("trigger") else ""
-        out.append(f"      {str(n.get('node', '?'))[:26]:<26} always ≈{n.get('always_loaded_tokens', 0):>5} · "
+        out.append(f"      {_clean(n.get('node', '?'))[:26]:<26} always ≈{n.get('always_loaded_tokens', 0):>5} · "
                    f"recall ≈{n.get('recall_tokens', 0):>6} · {n.get('facts', 0):>2} facts "
                    f"({n.get('shared', 0)} shared){mark}")
     if len(shown) > cap:
@@ -100,7 +123,7 @@ def _network_section(record: dict, net: dict) -> list[str]:
     parts = [f"{g} {cnt[k]} {lbl}" for k, (g, lbl) in _ACTIONS.items() if cnt[k]]
     idx = record.get("budget", {}).get("index", {})
     xp = record.get("cross_project", {})
-    out.append(f"    this cycle's lifecycle on {net.get('trigger', '?')} (the node dream ran on):")
+    out.append(f"    this cycle's lifecycle on {_clean(net.get('trigger', '?'))} (the node dream ran on):")
     out.append("      " + (" · ".join(parts) if parts else "no writes"))
     al = ""
     if "after_tokens" in idx:
@@ -118,8 +141,8 @@ def _network_section(record: dict, net: dict) -> list[str]:
 
 def render(record: dict) -> str:
     out: list[str] = []
-    proj = record.get("project", "?")
-    ses = record.get("session", "?")
+    proj = _clean(record.get("project", "?"))
+    ses = _clean(record.get("session", "?"))
     outcome = _outcome(record)
 
     # Banner — rule-based (no right border, so it never misaligns across terminals
@@ -135,7 +158,7 @@ def render(record: dict) -> str:
     out.append(
         _kv(
             "Scope",
-            f"git {s.get('git_range', '?')} ({s.get('git_commits', 0)} commits) · "
+            f"git {_clean(s.get('git_range', '?'))} ({s.get('git_commits', 0)} commits) · "
             f"{s.get('session_candidates', 0)} session candidate(s) · "
             f"{s.get('memories_reviewed', 0)} memories reviewed",
         )
@@ -148,7 +171,7 @@ def render(record: dict) -> str:
             "Verified",
             f"✓ {v.get('confirmed', 0)} confirmed · ~ {v.get('corrected', 0)} corrected · "
             f"⚠ {v.get('unverifiable', 0)} unverifiable"
-            + (f"  [{v['method']}]" if v.get("method") else ""),
+            + (f"  [{_clean(v['method'])}]" if v.get("method") else ""),
         )
     )
 
@@ -162,15 +185,15 @@ def render(record: dict) -> str:
         for key in _ACTIONS:
             for e in [x for x in entries if x.get("action") == key]:
                 glyph, label = _ACTIONS[key]
-                where = "/".join(p for p in (e.get("tier"), e.get("store")) if p and p != "-")
-                scope = _SC.get(e.get("scope", ""), e.get("scope", ""))
+                where = _clean("/".join(p for p in (e.get("tier"), e.get("store")) if p and p != "-"))
+                scope = _clean(_SC.get(e.get("scope", ""), e.get("scope", "")))
                 scope_col = f"<{scope}>" if scope else ""
-                cite = f"  [{e['citation']}]" if e.get("citation") else ""
+                cite = f"  [{_clean(e['citation'])}]" if e.get("citation") else ""
                 out.append(
-                    f"    {glyph} {label:<10} {scope_col:<8} {where or '—':<18} {e.get('name', '?')}{cite}"
+                    f"    {glyph} {label:<10} {scope_col:<8} {where or '—':<18} {_clean(e.get('name', '?'))}{cite}"
                 )
                 if e.get("reason"):
-                    out.append(f"        — {e['reason']}")
+                    out.append(f"        — {_clean(e['reason'])}")
 
     # Always-loaded budget gauge (the per-session cost)
     b = record.get("budget", {})
@@ -210,14 +233,14 @@ def render(record: dict) -> str:
         if pulled:
             out.append("    ↓ pulled (global → here, replicated for recall)")
             for p in pulled:
-                nm = p.get("name", "?") if isinstance(p, dict) else str(p)
-                sc = _SC.get(p.get("scope", ""), p.get("scope", "")) if isinstance(p, dict) else ""
+                nm = _clean(p.get("name", "?") if isinstance(p, dict) else str(p))
+                sc = _clean(_SC.get(p.get("scope", ""), p.get("scope", "")) if isinstance(p, dict) else "")
                 out.append(f"        {nm}" + (f"  <{sc}>" if sc else ""))
         if promoted:
             out.append("    ↑ promoted (here → global, now shareable)")
             for p in promoted:
-                nm = p.get("name", "?") if isinstance(p, dict) else str(p)
-                sc = _SC.get(p.get("scope", ""), p.get("scope", "")) if isinstance(p, dict) else ""
+                nm = _clean(p.get("name", "?") if isinstance(p, dict) else str(p))
+                sc = _clean(_SC.get(p.get("scope", ""), p.get("scope", "")) if isinstance(p, dict) else "")
                 out.append(f"        {nm}" + (f"  <{sc}>" if sc else ""))
         if refreshed:
             out.append(f"    ⟳ {refreshed} stale mirror(s) refreshed from canonical")
@@ -238,22 +261,30 @@ def render(record: dict) -> str:
         dangling = h.get("dangling_links") or []
         bits = [ptr]
         if broken:
-            bits.append(f"broken: {', '.join(broken)}")
+            bits.append(f"broken: {', '.join(_clean(b) for b in broken)}")
         if dangling:
-            bits.append(f"{len(dangling)} dangling link(s): " + ", ".join(f"[[{d}]]" for d in dangling))
+            bits.append(f"{len(dangling)} dangling link(s): " + ", ".join(f"[[{_clean(d)}]]" for d in dangling))
         out.append("")
         out.append(_kv("Health", " · ".join(bits)))
 
     # Marker
     m = record.get("marker", {})
     if m:
-        out.append(_kv("Marker", f"→ {str(m.get('commit', '?'))[:12]} @ {m.get('timestamp', '?')}"))
+        out.append(_kv("Marker", f"→ {_clean(str(m.get('commit', '?'))[:12])} @ {_clean(m.get('timestamp', '?'))}"))
 
     return "\n".join(out)
 
 
 def main() -> int:
-    raw = open(sys.argv[1]).read() if len(sys.argv) > 1 else sys.stdin.read()
+    try:
+        if len(sys.argv) > 1:
+            with open(sys.argv[1], encoding="utf-8") as fh:
+                raw = fh.read()
+        else:
+            raw = sys.stdin.read()
+    except OSError as exc:
+        print(f"render_dashboard: cannot read cycle record: {exc}", file=sys.stderr)
+        return 1
     try:
         record = json.loads(raw)
     except json.JSONDecodeError as exc:
