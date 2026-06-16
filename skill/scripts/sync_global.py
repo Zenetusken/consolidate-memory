@@ -194,42 +194,60 @@ def _record_provenance(name: str, project: str) -> None:
         p.write_text(new)
 
 
+def _holders(fm: dict) -> list[str]:
+    return re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]+", fm.get("projects", ""))
+
+
 def network() -> int:
-    """Render the cross-project memory network — the 'shared consciousness' graph."""
+    """Render the cross-project memory network — the 'shared consciousness' graph.
+
+    Distinguishes the UNIVERSAL baseline (`user-global` facts every mind holds — a
+    complete graph by definition, so uninformative as edges) from DIFFERENTIAL edges
+    (`stack-general` facts that bind only the subset of projects whose stacks match).
+    The differential edges are the meaningful topology; universal facts are a shared
+    substrate listed separately, not drawn as trivial all-to-all edges.
+    """
     facts = global_facts()
-    proj_facts: dict[str, set[str]] = {}
-    fact_holders: dict[str, list[str]] = {}
-    for name, fm, _ in facts:
-        holders = re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]+", fm.get("projects", ""))
-        fact_holders[name] = holders
-        for pr in holders:
-            proj_facts.setdefault(pr, set()).add(name)
-    projects = sorted(proj_facts)
+    minds = sorted({p for _, fm, _ in facts for p in _holders(fm)})
+    universal = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "user-global"]
+    differential = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "stack-general"]
+    other = [(n, fm) for n, fm, _ in facts if fm.get("scope") not in ("user-global", "stack-general")]
 
     print("=" * 72)
     print("SHARED CONSCIOUSNESS — cross-project memory network")
     print("=" * 72)
-    print(f"minds (projects) : {len(projects)}  —  {', '.join(projects) or '(none)'}")
-    print(f"shared memories  : {len(facts)} fact(s) in ~/.claude/memory\n")
+    print(f"minds (projects) : {len(minds)}  —  {', '.join(minds) or '(none)'}")
+    print(f"shared memories  : {len(facts)}  "
+          f"({len(universal)} universal · {len(differential)} differential"
+          + (f" · {len(other)} other" if other else "") + ")\n")
 
-    print("  memory                                   scope        held by")
-    for name, fm, _ in facts:
-        holders = fact_holders[name]
-        print(f"  {name[:38]:<40} {fm.get('scope', '?'):<12} {', '.join(holders) or '(unlinked)'}")
+    # Universal substrate — held by every mind (a complete graph; listed, not drawn)
+    print("  universal baseline (user-global — every mind holds these):")
+    if universal:
+        for n, fm in universal:
+            held = len(_holders(fm))
+            flag = "" if held == len(minds) else f"  (only {held}/{len(minds)} so far)"
+            print(f"    • {n}{flag}")
+    else:
+        print("    (none)")
 
-    # edges: project pairs that share ≥1 fact, weighted by shared count
-    print("\n  topology (shared-memory edges):")
+    # Differential edges — the meaningful topology (stack-general bindings)
+    print("\n  differential edges (stack-general — the bindings that carry signal):")
+    proj_diff: dict[str, set[str]] = {}
+    for n, fm in differential:
+        for pr in _holders(fm):
+            proj_diff.setdefault(pr, set()).add(n)
     edges = []
-    for i, a in enumerate(projects):
-        for b in projects[i + 1:]:
-            shared = len(proj_facts[a] & proj_facts[b])
+    for i, a in enumerate(minds):
+        for b in minds[i + 1:]:
+            shared = len(proj_diff.get(a, set()) & proj_diff.get(b, set()))
             if shared:
                 edges.append((a, b, shared))
     if not edges:
-        print("    (no shared edges yet — pull facts into a 2nd project to form the network)")
+        print("    (none yet — all current memory is universal; differential edges form")
+        print("     when stack-general facts spread to a SUBSET of same-stack projects)")
     for a, b, w in sorted(edges, key=lambda e: -e[2]):
-        bar = "━" * min(w, 20)
-        print(f"    {a[:24]:>24} ●{bar}● {b[:24]:<24} ({w} shared)")
+        print(f"    {a[:24]:>24} ●{'━' * min(w, 20)}● {b[:24]:<24} ({w} shared)")
     return 0
 
 
