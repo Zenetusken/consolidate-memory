@@ -24,6 +24,27 @@ at the project root. These travel with the repo and the team reads them. `AGENTS
 is usually the architecture/gotchas source of truth; `MEMORY.md` a consolidated
 snapshot; `CLAUDE.md` conventions. Edit them like code (they show up in `git diff`).
 
+**`CLAUDE.md` is special — treat it as a guest, not an owner.** It is user
+hand-authored, committed, team-shared, AND always-loaded — the widest blast radius of
+any store — and its content is mostly *normative* (conventions/instructions) that
+Phase-3 verification can't confirm against the tree. So default to NOT writing it:
+route facts to auto-memory or `AGENTS.md`/`MEMORY.md`, and when a genuine always-loaded
+convention truly belongs there, add a single surgical line in the file's own style.
+Never create or reorganize one; propose (don't perform) any trim of its lines.
+
+**There are TWO `CLAUDE.md`s, and they need different handling — don't conflate them:**
+- **Project `<repo>/CLAUDE.md`** — committed, team-shared, loaded for *this* project.
+  Guest-posture *writes* (the conservative edits above) apply here. Measured + budgeted
+  against `CLAUDE_MD_TOKEN_BUDGET`; its ⚠ is *actionable* (propose a trim).
+- **User-global `~/.claude/CLAUDE.md`** — personal, universal, loaded into *every*
+  project, every session. **Strictly read-only**: `memory_status.py` measures it (its
+  own `GLOBAL_CLAUDE_MD_TOKEN_BUDGET`) and the dashboard shows it as a distinct
+  "global · every project · read-only" line so the always-loaded total isn't
+  understated — but the skill **never writes it**. Its ⚠ is *advisory* (it loads
+  everywhere), not a prune instruction. It is NOT the same as a `user-global`-*scope*
+  fact: that's a recall-tier fact replicated via `~/.claude/memory/`; this is the
+  always-loaded global instruction file, which the skill does not manage.
+
 **2. Claude's private auto-memory (per-user, NOT in git):**
 `~/.claude/projects/<slug>/memory/` where `<slug>` is the project's absolute path
 with every `/` replaced by `-` (e.g. `/home/you/project/foo` →
@@ -50,12 +71,12 @@ rather than assuming it. Layout:
   `project` (ongoing goals/constraints not derivable from code; absolute dates),
   `reference` (pointers to URLs/dashboards/tickets).
 
-  **`description:` is a recall key, not a summary.** Fact files are pulled into a
-  future session only when their `description:` matches that session's task (recall
-  is relevance-matched, and the recalled fact arrives inside a `<system-reminder>`).
-  So phrase the description as the *situation you'd want it to surface in* —
-  include the concrete nouns a future task would mention. A true, useful fact with a
-  vague description is effectively invisible.
+  **`description:` is a recall key, not a summary.** A fact's body is NOT auto-surfaced
+  by relevance — Claude Code reads topic-file bodies on demand, not by matching. What
+  is always-loaded is the fact's one-line index entry (its `description:`). So phrase
+  the description as the *cue you'd want sitting in the always-loaded index* when a
+  future task arises — include the concrete nouns that task would mention, so the agent
+  knows to open the fact. A vague description hook leaves a true, useful fact unread.
 
 ## The three context-loading tiers
 
@@ -66,8 +87,9 @@ context. Place each fact by its tier, then optimize it for that tier:
    `MEMORY.md` index. Confirm what's actually injected by inspecting your own context
    block (currently these two; NOT repo `AGENTS.md`/`MEMORY.md`). Most expensive —
    keep ruthlessly lean; only whole-project-framing facts earn a slot.
-2. **Recall-loaded (non-deterministic):** auto-memory fact files, surfaced by
-   `description:` match. Invest in the description (recall key) and `[[links]]`.
+2. **Recall key (always-loaded index hook → on-demand read):** a fact body isn't
+   auto-surfaced; its `description:` is the always-loaded index line that cues the
+   agent to read it on demand. Invest in the description (recall key) and `[[links]]`.
 3. **On-demand (the agent reads them):** repo `AGENTS.md`/`MEMORY.md` + fact bodies.
    Not auto-injected — optimize for completeness, not per-session leanness.
 
@@ -77,8 +99,10 @@ in Phase 0 (scope `git log <commit>..HEAD`); rewrite it in Phase 5.
 
 ## What belongs where
 
-- A fact useful to **anyone** working the repo (architecture, a gotcha, a
-  convention, a verified design decision) → repo docs (`AGENTS.md`/`MEMORY.md`).
+- A fact useful to **anyone** working the repo (architecture, a gotcha, a verified
+  design decision) → repo docs (`AGENTS.md`/`MEMORY.md`). A durable, project-wide
+  *convention* that must steer every session is the rare thing that belongs in
+  `CLAUDE.md` — added conservatively (the guest-posture note above).
 - A fact about **the user, their preferences, your working relationship, or
   cross-session project context** not derivable from code → private auto-memory.
 - **Never duplicate** the same fact in both stores. If it's in the repo docs, the
@@ -106,6 +130,12 @@ flag it — don't silently keep it.
 
 Wrong/stale → correct it (cite the real current state). Unverifiable → drop it or
 mark it explicitly as unverified. Never invent a citation.
+
+**Normative content isn't tree-verifiable.** These recipes confirm *descriptive*
+claims (a file/symbol/behavior exists). A `CLAUDE.md` *convention* ("prefer X", "always
+run Y") has no tree fact to check — which is precisely why `CLAUDE.md` gets the
+guest-posture treatment (write less, in-style, propose don't perform) instead of
+leaning on verification it can't supply.
 
 ## Secrets firewall
 
@@ -177,6 +207,24 @@ tier = how it loads (always/recall/on-demand). A `user-global` fact is still a
 recall-tier fact *in each project it's replicated to*. Peers that aren't CC projects
 (e.g. a data vault of versioned processing artifacts, not CC sessions) can't
 auto-participate — they'd need a separate adapter; deferred.
+
+### Scope is a fleet-wide cost multiplier — and the lever for relieving it
+
+Each replicated fact adds an **always-loaded** index pointer to *every* project it
+reaches. So global-scope facts are a per-session tax paid across the whole fleet:
+- `user-global` → every project (G facts × P projects pointers fleet-wide).
+- `stack-general` on a **common** stack → nearly as wide while *looking* scoped. The
+  `claude-code` stack (`.claude`, `skill`, `agents.md`) matches almost every CC repo,
+  so a `claude-code` stack-general fact behaves like a second user-global tier. Reserve
+  `stack-general` for **narrow** stacks (`gpu`, `rag`, `playwright`).
+
+**The over-budget lever.** When a project's index trips the budget ⚠, attribute the
+cost first: `--tokens` and the dashboard report `mirror_index_tokens` (the share driven
+by replicated mirrors). If the overflow is **mirror-dominated**, *local* pruning is
+futile — `--pull` re-creates a deleted mirror next cycle. The only effective fix is to
+**demote/delete the canonical in `~/.claude/memory/`** (it stops replicating), then
+`--gc --apply` to reclaim the orphans (here, and in every other project on its next
+pass). Local pruning works only on **project-authored** index lines.
 
 ## Why claims-first, not transcript-first
 

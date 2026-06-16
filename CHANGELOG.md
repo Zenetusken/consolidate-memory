@@ -5,6 +5,46 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.2] — 2026-06-16
+
+### Added
+- **Network token attribution.** `sync_global.py --tokens` + the dashboard now report
+  `mirror_index_tokens` — the share of each node's always-loaded index driven by
+  replicated `global_ref:` cross-project mirrors — so a mirror-dominated over-budget
+  index points at the right lever (demote/GC the canonical in the global store, not a
+  futile local prune that just re-pulls).
+- **User-global `CLAUDE.md` observability.** `memory_status.py` measures
+  `~/.claude/CLAUDE.md` **read-only** and the dashboard shows it as a distinct
+  "every project · read-only" line, so the per-session always-loaded cost isn't
+  understated. The skill never writes that file.
+- **`render_dashboard.py --demo`** — paste-free preview of the dashboard from a
+  built-in sample record.
+- **Auto-gated ANSI color** in the dashboard: on only when stdout is a TTY and
+  `NO_COLOR` is unset (`--color=auto|always|never`); captured/piped output stays plain.
+
+### Changed
+- **Dashboard redesign** for readability: one coherent column grid, budget bars,
+  UPPERCASE section anchors, dimmed in-row field labels (color only), self-labelling
+  name-forward Changes rows (a skipped entry reads `· skipped <name>` — no stray `—`),
+  and bracketed citations.
+- **`CLAUDE.md` guest posture.** The skill defaults to *not* writing the project
+  `CLAUDE.md` — facts route to auto-memory or `AGENTS.md`/`MEMORY.md`; only a genuine
+  always-loaded *convention* earns a surgical, in-style line; never create or
+  reorganize one; propose (don't perform) trims of user-authored lines. The user-global
+  `~/.claude/CLAUDE.md` is strictly read-only.
+
+### Fixed
+- **Recall-tier accuracy.** Removed the claim (SKILL.md, harness-map.md, README.md)
+  that fact bodies are auto-surfaced by `description:` match — Claude Code has no such
+  ambient recall; bodies are read on-demand. Reframed: the `description:` is the
+  always-loaded **index hook** that cues an on-demand read. Design unchanged
+  (description-as-recall-key still correct; it *is* the hook).
+- **Render hardening.** The dashboard now coerces every *model-authored* cycle-record
+  value (`_num`/`_clean`) at the network + changes presentation boundary, matching the
+  budget rows — a string/`null` numeric or wrong-typed `tier`/`store` can no longer
+  crash `render()`. Schema block (`SKILL.md`) updated in lockstep with the seed +
+  renderer (`budget.global_claude_md`, `network.*.mirror_index_tokens`).
+
 ## [0.1.1] — 2026-06-16
 
 ### Added

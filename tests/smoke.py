@@ -247,16 +247,68 @@ check("render: _clean preserves plain text", rd._clean("b6d37b6 fix_thing.py") =
 check("render: over-budget flag shows ⚠", "OVER" in rd._over({"over": True, "budget_tokens": 1200}))
 check("render: under budget is silent", rd._over({"over": False}) == "")
 
+# --- global CLAUDE.md: measured read-only, rendered as a distinct every-project line ---
+_gcm = lambda present, over=False: rd.render({"project": "p", "session": "s", "scope": {}, "entries": [],
+    "budget": {"global_claude_md": {"present": present, "tokens": 900, "over": over}}})
+check("render: global CLAUDE.md shows as its own read-only line", "global CLAUDE.md" in _gcm(True))
+check("render: global CLAUDE.md line is framed read-only/every-project", "read-only" in _gcm(True))
+check("render: global CLAUDE.md absent → no line (safe)", "global CLAUDE.md" not in _gcm(False))
+check("render: global CLAUDE.md ⚠ is advisory ('heavy'), not the actionable 'OVER' flag",
+      "heavy" in _gcm(True, over=True) and "OVER" not in _gcm(True, over=True))
+# the project file keeps its DISTINCT actionable flag — the two are handled differently
+check("render: project CLAUDE.md keeps the actionable OVER flag",
+      "OVER" in rd.render({"project": "p", "session": "s", "scope": {}, "entries": [],
+          "budget": {"claude_md": {"before": 0, "after": 0, "over": True, "budget_tokens": 4000}}}))
+
+# --- color: opt-in + AUTO-gated (the safety property: off unless a real TTY) ---
+class _TTY:    # noqa: E306
+    def isatty(self): return True
+class _NoTTY:  # noqa: E306
+    def isatty(self): return False
+check("color: --color=never wins even on a TTY", rd._color_enabled(["--color=never"], _TTY()) is False)
+check("color: --color=always wins even when captured", rd._color_enabled(["--color=always"], _NoTTY()) is True)
+check("color: AUTO is OFF when captured/piped (agent-relay + pipe safe)", rd._color_enabled([], _NoTTY()) is False)
+check("color: _c is a no-op while disabled (default)", rd._c("x", "red") == "x" and rd._COLOR is False)
+
+# --- budget bars: pure, ASCII-grid-safe, fill ∝ usage ---
+check("bar: ~30% fills 3/10", rd._bar(30, 100, 10).count("█") == 3 and rd._bar(30, 100, 10).count("░") == 7)
+check("bar: over-budget fills fully (capped)", rd._bar(150, 100, 10).count("█") == 10)
+check("bar: no budget → empty (nothing to gauge)", rd._bar(5, 0) == "")
+check("pct: rounds to whole percent", rd._pct(30, 120) == "25%" and rd._pct(1, 0) == "")
+
+# --- --demo: paste-free preview record renders the full dashboard ---
+_demo = rd.render(rd._demo_record())
+check("demo: renders the banner", "DREAM · consolidate-memory" in _demo)
+check("demo: skipped entry is self-labelled (action word shown)", "skipped" in _demo)
+check("demo: no stray em-dash placeholder anywhere (the skipped-row fix)", "—" not in _demo)
+check("demo: includes the network section", "NEURAL NETWORK" in _demo)
+
+# --- robustness: a MODEL-authored record (string/None numerics, non-str tier) must not
+# crash render(). The cycle record is model-authored, so numbers can arrive as "6183"/null
+# and a field can be the wrong type; every model->presentation boundary coerces via _num/_clean. ---
+_gnarly = {"project": "p", "session": "s", "scope": {},
+           "entries": [{"action": "added", "tier": 1, "store": "repo", "scope": "user-global",
+                        "name": "x", "reason": "", "citation": ""}],
+           "budget": {"claude_md": {"before": "0", "after": "1", "over": False},
+                      "global_claude_md": {"present": True, "tokens": "2240", "over": False}},
+           "network": {"basis": "x", "trigger": "p",
+                       "nodes": [{"node": "n", "trigger": True, "always_loaded_tokens": "6183",
+                                  "recall_tokens": None, "facts": "12", "shared": 1}],
+                       "totals": {"nodes": 1, "always_loaded_tokens": "6461",
+                                  "mirror_index_tokens": "326", "recall_tokens": 0}}}
+check("render: model-authored string/None numerics + non-str tier never crash render",
+      isinstance(rd.render(_gnarly), str) and "NEURAL NETWORK" in rd.render(_gnarly))
+
 # --- observability: network sub-section is guarded + rendered ---
 _net = {"basis": "≈ chars/4", "node_def": "stores", "trigger": "p",
         "nodes": [{"node": "p", "trigger": True, "always_loaded_tokens": 10,
                    "recall_tokens": 20, "facts": 2, "shared": 1}],
         "totals": {"nodes": 1, "always_loaded_tokens": 10, "recall_tokens": 20}}
 check("render: network section appears when present",
-      "Neural network" in rd.render({"project": "p", "session": "s", "scope": {},
+      "NEURAL NETWORK" in rd.render({"project": "p", "session": "s", "scope": {},
                                       "entries": [], "network": _net}))
 check("render: network section absent when no block (legacy/no-op safe)",
-      "Neural network" not in rd.render({"project": "p", "session": "s", "scope": {}, "entries": []}))
+      "NEURAL NETWORK" not in rd.render({"project": "p", "session": "s", "scope": {}, "entries": []}))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
