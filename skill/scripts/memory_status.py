@@ -17,11 +17,28 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Operational state (NOT a memory fact): the last commit/time we consolidated at.
 STATE_FILE = ".consolidation-state.json"
 REPO_DOCS = ("MEMORY.md", "AGENTS.md", "CLAUDE.md")
+
+# Always-loaded tier budget — heuristic ceilings (in ESTIMATED tokens) on what is
+# injected into EVERY session. There is no tokenizer here (zero-dep), so these gate
+# on est_tokens (≈ chars/4). Tunable; the point is to make the per-session tax
+# VISIBLE and flag overflow, not to be exact. SKILL.md promised "a stated budget" —
+# this is where it's stated.
+INDEX_TOKEN_BUDGET = 1200       # the auto-memory MEMORY.md index (pointers only)
+CLAUDE_MD_TOKEN_BUDGET = 4000   # repo CLAUDE.md (conventions)
+
+
+def est_tokens(text: str) -> int:
+    """Estimate tokens as ceil(chars/4). NOT a real tokenizer — the zero-dependency
+    constraint rules one out — so it slightly over-counts prose and under-counts dense
+    code. Stable and good enough to budget the always-loaded tier. Always present its
+    output as '≈': it is an estimate, never an exact token count."""
+    return (len(text) + 3) // 4
 
 
 def slug_for(project_dir: Path) -> str:
@@ -43,11 +60,12 @@ def _run(cmd: list[str], cwd: Path) -> str:
         return ""
 
 
-def _lines_bytes(p: Path) -> tuple[int, int]:
+def _measure(p: Path) -> tuple[int, int, int]:
+    """(lines, bytes, est_tokens) for a file — (0,0,0) if absent."""
     if not p.exists():
-        return (0, 0)
+        return (0, 0, 0)
     text = p.read_text(encoding="utf-8", errors="replace")
-    return (len(text.splitlines()), len(text.encode()))
+    return (len(text.splitlines()), len(text.encode()), est_tokens(text))
 
 
 def build_context(project_dir: Path) -> dict:
@@ -57,10 +75,10 @@ def build_context(project_dir: Path) -> dict:
     proj_root = Path.home() / ".claude" / "projects" / slug
     auto_mem = proj_root / "memory"
 
-    repo = {name: _lines_bytes(project_dir / name) for name in REPO_DOCS}
+    repo = {name: _measure(project_dir / name) for name in REPO_DOCS}
 
     index_path = auto_mem / "MEMORY.md"
-    index_lb = _lines_bytes(index_path)
+    index_lb = _measure(index_path)
     fact_files = sorted(
         f for f in auto_mem.glob("*.md") if f.name != "MEMORY.md"
     ) if auto_mem.exists() else []
@@ -82,6 +100,12 @@ def build_context(project_dir: Path) -> dict:
     log = _run(["git", "log", "--oneline", "--no-merges", rng], project_dir)
     commits = [ln for ln in log.splitlines() if ln.strip()]
 
+    # Re-verification signal (Fix E): facts not touched since the last consolidation
+    # are candidates to RE-verify (they may have silently gone stale). mtime is a
+    # cheap proxy — no per-fact `last_verified` field needed; the marker timestamp is
+    # the watershed. Report-only: the model decides whether to re-check them.
+    stale_facts = _stale_since(fact_files, last_ts)
+
     return {
         "project_dir": project_dir,
         "project": project_dir.name,
@@ -92,6 +116,7 @@ def build_context(project_dir: Path) -> dict:
         "index_path": index_path,
         "index_lb": index_lb,
         "fact_files": fact_files,
+        "stale_facts": stale_facts,
         "transcripts": transcripts,
         "state_path": state_path,
         "last_commit": last_commit,
@@ -100,6 +125,19 @@ def build_context(project_dir: Path) -> dict:
         "git_range": git_range,
         "commits": commits,
     }
+
+
+def _stale_since(fact_files: list[Path], marker_ts: str) -> list[str]:
+    """Names of fact files last modified at/before the marker — i.e. untouched since
+    the previous consolidation, so candidates for RE-verification. Empty if no marker
+    (first pass) or the timestamp can't be parsed."""
+    if not marker_ts:
+        return []
+    try:
+        cutoff = datetime.fromisoformat(marker_ts.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return []
+    return [f.stem for f in fact_files if f.stat().st_mtime <= cutoff]
 
 
 def seed_record(ctx: dict) -> dict:
@@ -116,10 +154,18 @@ def seed_record(ctx: dict) -> dict:
         "verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0, "method": "inline"},
         "entries": [],  # fill in Phase 4: {action,tier,store,name,reason,citation}
         "budget": {
-            "claude_md": {"before": ctx["repo"]["CLAUDE.md"][0], "after": ctx["repo"]["CLAUDE.md"][0]},
+            "claude_md": {
+                "before": ctx["repo"]["CLAUDE.md"][0], "after": ctx["repo"]["CLAUDE.md"][0],
+                "before_tokens": ctx["repo"]["CLAUDE.md"][2], "after_tokens": ctx["repo"]["CLAUDE.md"][2],
+                "budget_tokens": CLAUDE_MD_TOKEN_BUDGET,
+                "over": ctx["repo"]["CLAUDE.md"][2] > CLAUDE_MD_TOKEN_BUDGET,
+            },
             "index": {
                 "before_lines": ctx["index_lb"][0], "after_lines": ctx["index_lb"][0],
                 "before_bytes": ctx["index_lb"][1], "after_bytes": ctx["index_lb"][1],
+                "before_tokens": ctx["index_lb"][2], "after_tokens": ctx["index_lb"][2],
+                "budget_tokens": INDEX_TOKEN_BUDGET,
+                "over": ctx["index_lb"][2] > INDEX_TOKEN_BUDGET,
             },
             "recall_facts": {"before": len(ctx["fact_files"]), "after": len(ctx["fact_files"])},
         },
@@ -130,6 +176,7 @@ def seed_record(ctx: dict) -> dict:
             "pulled": [],     # fill in Phase 1 (sync_global --pull): global → here
             "promoted": [],   # fill in Phase 4: here → global (new cross-project facts)
             "refreshed": 0,   # stale mirrors refreshed on pull
+            "gc_removed": 0,  # orphan mirrors reclaimed in Phase 5 (sync_global --gc --apply)
         },
         "marker": {
             "before_commit": ctx["last_commit"], "before_timestamp": ctx["last_ts"],
@@ -147,19 +194,32 @@ def print_report(ctx: dict) -> None:
     print(f"proj_root   : {ctx['proj_root']}  ({'exists' if ctx['proj_root'].exists() else 'MISSING'})")
 
     print("\n--- Repo memory docs (committed) ---")
-    for name, (ln, by) in ctx["repo"].items():
+    for name, (ln, by, tok) in ctx["repo"].items():
         loc = ctx["project_dir"] / name
-        print(f"  {loc}  —  {ln} lines, {by} bytes" if ln or by else f"  (absent) {loc}")
+        if not (ln or by):
+            print(f"  (absent) {loc}")
+            continue
+        over = " ⚠ OVER BUDGET" if name == "CLAUDE.md" and tok > CLAUDE_MD_TOKEN_BUDGET else ""
+        budget = f" / {CLAUDE_MD_TOKEN_BUDGET} budget" if name == "CLAUDE.md" else ""
+        print(f"  {loc}  —  {ln} lines, {by} bytes, ≈{tok} tok{budget}{over}")
 
     print("\n--- Claude auto-memory (private) ---")
     if ctx["auto_mem"].exists():
-        il, ib = ctx["index_lb"]
-        print(f"  index: {ctx['index_path']}  —  {il} lines, {ib} bytes  [ALWAYS-LOADED]")
+        il, ib, it = ctx["index_lb"]
+        over = " ⚠ OVER BUDGET" if it > INDEX_TOKEN_BUDGET else ""
+        print(f"  index: {ctx['index_path']}  —  {il} lines, {ib} bytes, "
+              f"≈{it}/{INDEX_TOKEN_BUDGET} tok  [ALWAYS-LOADED]{over}")
         for f in ctx["fact_files"]:
-            ln, by = _lines_bytes(f)
-            print(f"  {f.name}  —  {ln} lines, {by} bytes")
+            ln, by, tok = _measure(f)
+            print(f"  {f.name}  —  {ln} lines, {by} bytes, ≈{tok} tok")
     else:
         print(f"  (absent) {ctx['auto_mem']}")
+
+    if ctx["stale_facts"]:
+        print("\n--- Re-verification candidates (untouched since last consolidation) ---")
+        print("  These facts predate the marker — re-verify them against the live tree:")
+        for name in ctx["stale_facts"]:
+            print(f"  • {name}")
 
     print("\n--- Global cross-project store (~/.claude/memory) ---")
     g = Path.home() / ".claude" / "memory"

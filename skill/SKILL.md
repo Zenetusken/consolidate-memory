@@ -161,6 +161,9 @@ typed messages are <1% of the transcript and carry only the *feedback* slice; th
    python3 ~/.claude/skills/consolidate-memory/scripts/extract_signals.py --json
    ```
 3. **Existing memory entries that look stale** — candidates for re-verification.
+   `memory_status.py` (Phase 0) lists a **"Re-verification candidates"** section: facts
+   untouched since the last consolidation marker (mtime ≤ marker), which may have
+   silently gone stale. Treat them as re-verify candidates in Phase 3.
 
 For each candidate also assign a **`scope`**: `project-local` (specific to this
 repo's domain), `stack-general` (a pattern reusable on same-stack projects), or
@@ -210,9 +213,12 @@ how that tier loads:
 
 - **Always-loaded tier** (`CLAUDE.md` + auto-memory `MEMORY.md` index): add only
   project-framing facts that pay their per-session rent. Keep both lean — prune a
-  low-value line when adding one (the auto-memory index has a stated line/byte
-  budget). The index holds *pointers only* (`- [Title](file.md) — hook`), never fact
-  bodies. Update derived stats (test/module counts) only if you verified them here.
+  low-value line when adding one. The budget is now **encoded**: `memory_status.py`
+  gates the index and `CLAUDE.md` against token ceilings (`INDEX_TOKEN_BUDGET` /
+  `CLAUDE_MD_TOKEN_BUDGET`) and the dashboard renders a ⚠ when `over`. If a write
+  pushes a tier over budget, prune harder before finishing. The index holds *pointers
+  only* (`- [Title](file.md) — hook`), never fact bodies. Update derived stats
+  (test/module counts) only if you verified them here.
 - **Recall tier** (auto-memory fact files): one fact per file with the frontmatter
   schema, and **invest in the `description:` as a recall key** — phrase it as the
   task-context you'd want it to surface in, not a terse summary, or it won't be
@@ -240,24 +246,46 @@ NOT record, and why" is part of the dashboard's signal. Each:
 "citation": "..."}`. After writing, update `budget.*.after` (CLAUDE.md lines, index
 lines/bytes, recall-fact count).
 
-### Phase 5 — Prune, verify, update the marker, render
+### Phase 5 — Prune, GC, verify, measure, update the marker, render
 
 1. Re-read both `MEMORY.md`s: remove duplicates (within and across stores), fix
    broken file/symbol references, drop entries no longer relevant.
-2. Re-confirm every file path / function name you referenced still exists.
+2. **Garbage-collect orphaned mirrors.** A `user-global`/`stack-general` fact deleted
+   from the canonical global store leaves dead mirrors in every project that pulled it
+   — `--pull` can't reclaim them (it only iterates *live* globals). Report them, then
+   apply (surface deletions per the safety rule before applying):
+   ```bash
+   python3 ~/.claude/skills/consolidate-memory/scripts/sync_global.py --gc .          # report
+   python3 ~/.claude/skills/consolidate-memory/scripts/sync_global.py --gc . --apply  # reclaim
+   ```
+   GC only touches `global_ref:` mirror files, never project-authored facts. Record an
+   `entries[]` row (`action: deleted`) per reclaimed orphan and set
+   `cross_project.gc_removed`. (Dead-edge provenance is reported, not auto-pruned.)
+3. Re-confirm every file path / function name you referenced still exists.
    → **Cycle record:** fill `health` — `index_pointers_ok`, any `broken` pointers,
    any `dangling_links` (`[[name]]` wikilinks pointing at no target file). Strip
    inline code spans first: `[[...]]` inside backticks is NOT a wikilink (e.g. TOML
    `[[tool.mypy.overrides]]`) — don't flag those.
-3. **Update the high-water mark**: write `commit` (current `HEAD`) + ISO
+4. **Measure the network's token cost** (the observability section). Capture per-node
+   + total estimated token consumption across every node in the shared-memory network
+   and paste it into the cycle record's `network` block verbatim:
+   ```bash
+   python3 ~/.claude/skills/consolidate-memory/scripts/sync_global.py --tokens . --json
+   ```
+   Also set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
+   so the always-loaded gauge and ⚠ reflect the post-write state.
+5. **Update the high-water mark**: write `commit` (current `HEAD`) + ISO
    `timestamp` to `~/.claude/projects/<slug>/memory/.consolidation-state.json` so
    the next pass scopes correctly (stamp the timestamp at write time), and mirror
    that `timestamp` into the cycle record's `marker.timestamp`.
-4. **Render the dashboard** — this is the skill's output (see below):
+6. **Render the dashboard** — this is the skill's output (see below):
    ```bash
    python3 ~/.claude/skills/consolidate-memory/scripts/render_dashboard.py /tmp/cycle.json
    ```
-   Present the rendered dashboard to the user as the final message.
+   The dashboard now includes a **"Neural network — token consumption (all nodes)"**
+   sub-section: the per-node and total estimated token tax across the network, plus
+   what *this* cycle did in lifecycle terms on the triggering node (the node `dream`
+   ran on). Present the rendered dashboard to the user as the final message.
 
 ## Safety rules
 
@@ -309,8 +337,10 @@ summary alongside it.
      "citation": "<commit sha | session id | empty>"}
   ],
   "budget": {
-    "claude_md": {"before": 0, "after": 0},
-    "index": {"before_lines": 0, "after_lines": 0, "before_bytes": 0, "after_bytes": 0},
+    "claude_md": {"before": 0, "after": 0, "before_tokens": 0, "after_tokens": 0,
+                  "budget_tokens": 4000, "over": false},
+    "index": {"before_lines": 0, "after_lines": 0, "before_bytes": 0, "after_bytes": 0,
+              "before_tokens": 0, "after_tokens": 0, "budget_tokens": 1200, "over": false},
     "recall_facts": {"before": 0, "after": 0}
   },
   "health": {"index_pointers_ok": true, "broken": [], "dangling_links": []},
@@ -318,11 +348,30 @@ summary alongside it.
     "global_store_facts": 0,
     "pulled": [{"name": "...", "scope": "user-global"}],   "_pulled": "Phase 1: global → here",
     "promoted": [{"name": "...", "scope": "stack-general"}], "_promoted": "Phase 4: here → global",
-    "refreshed": 0
+    "refreshed": 0,
+    "gc_removed": 0,   "_gc": "Phase 5: orphan mirrors reclaimed by sync_global --gc --apply"
+  },
+  "network": {
+    "_": "Phase 5: paste sync_global.py --tokens . --json verbatim here (per-node token cost)",
+    "basis": "≈ chars/4 (heuristic estimate, not a tokenizer)",
+    "node_def": "project stores holding ≥1 shared fact",
+    "trigger": "<this project>",
+    "nodes": [{"node": "...", "trigger": false, "always_loaded_tokens": 0,
+               "recall_tokens": 0, "facts": 0, "shared": 0}],
+    "totals": {"nodes": 0, "always_loaded_tokens": 0, "recall_tokens": 0}
   },
   "marker": {"commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"}
 }
 ```
+
+The `budget.*.over` flags and token counts come from `memory_status.py` (it gates on
+the `INDEX_TOKEN_BUDGET` / `CLAUDE_MD_TOKEN_BUDGET` ceilings); the dashboard renders a
+⚠ when over. Token counts are **estimates** (≈ chars/4 — no tokenizer; zero-dep), so
+present them as `≈`, never as exact. The `network` block is the
+`sync_global.py --tokens . --json` output pasted in Phase 5; the dashboard derives the
+"this cycle's lifecycle on the triggering node" line from `entries[]` + the budget
+delta + `cross_project.gc_removed`/`refreshed` — so don't hand-maintain a parallel
+count.
 
 The dashboard derives its outcome banner (`NOTHING TO CONSOLIDATE` / `NO-OP PASS` /
 `LIGHT PASS` / `SUBSTANTIAL PASS`) from the write counts unless you set an explicit

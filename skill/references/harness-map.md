@@ -137,9 +137,42 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
 (relevance matching), `projects: [...]` (provenance). `sync_global.py`:
 - `--list PROJECT_DIR` — show relevant/present/missing (read-only).
 - `--pull PROJECT_DIR` — replicate missing relevant global facts into that project's
-  store (additive, marked `global_ref:` so they re-sync). user-global → every
-  project; stack-general → only if `stacks` intersect the project's detected stacks
-  (inferred from its pyproject.toml + CLAUDE.md).
+  store (additive, marked `global_ref:` so they re-sync), AND refresh stale mirrors +
+  **upsert** the always-loaded index pointer so its hook tracks the canonical's
+  `description` (a changed description rewrites the index line, not just the body).
+  user-global → every project; stack-general → only if `stacks` intersect the
+  project's detected stacks. Stack keywords match on **token boundaries** (`_kw_hit`),
+  not substrings — so `skill` no longer matches `reskilling` while `.claude` still
+  matches `.claude/`.
+- `--gc PROJECT_DIR [--apply]` — reclaim **orphaned mirrors**: `global_ref:` files
+  whose canonical was deleted from the global store. `--pull` can never remove these
+  (it only iterates live globals), so they accrue forever without GC. Report-only by
+  default; `--apply` deletes the file + its index pointer. **Only** touches
+  `global_ref:` mirrors — never a project-authored fact, even on a name collision.
+  Dead-edge provenance (canonical lists a project that no longer holds the mirror) is
+  reported, not auto-pruned (absence-of-mirror is too weak a signal to write global
+  state on — a renamed store also "holds nothing").
+
+### Token observability (the per-session tax, made visible)
+
+- `--tokens PROJECT_DIR [--json]` — estimated token cost across the **neural network**.
+  A node is a **project memory store holding ≥1 shared (`global_ref:`) mirror** — the
+  physical, *measurable* node set (we have each store's path). This deliberately
+  differs from `--network`'s logical `minds` set, which is derived from provenance
+  *basenames* that can't be inverted to a store path: **`--network` = topology,
+  `--tokens` = cost**, and the two can diverge (names vs slugs). Per node it reports
+  always-loaded (index) + recall-pool (fact-body) tokens; the `--json` form is the
+  cycle record's `network` block.
+- **Tokens are estimates** (`est_tokens` ≈ `chars/4`, in `memory_status.py`; reused by
+  `sync_global` via sibling import). There is no tokenizer — the zero-dep constraint
+  rules one out. Always present token figures as `≈`, never as exact.
+- **Always-loaded budget ceilings** live in `memory_status.py` as
+  `INDEX_TOKEN_BUDGET` / `CLAUDE_MD_TOKEN_BUDGET` (heuristic, tunable). It sets
+  `budget.*.over` when a tier exceeds its ceiling; the dashboard renders ⚠. This is the
+  "stated budget" the always-loaded tier always implied but never encoded.
+- **Re-verification signal:** `memory_status.py` lists facts untouched since the marker
+  (mtime ≤ marker timestamp) as re-verification candidates — a cheap staleness proxy
+  needing no per-fact `last_verified` field.
 
 A fact's **scope ≠ its tier**. Scope = how widely it applies (project/stack/user);
 tier = how it loads (always/recall/on-demand). A `user-global` fact is still a

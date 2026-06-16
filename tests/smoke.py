@@ -74,5 +74,47 @@ _t, _scope, score = es._classify("Always validate at the root with tests")
 check("retrieval: marker classified preference", _t == "preference" and score == 2)
 check("retrieval: bare ack ranked lowest", es._classify("yes")[2] == 0)
 
+# --- token estimation (Fix A / observability) ---
+check("tokens: empty is 0", ms.est_tokens("") == 0)
+check("tokens: ceil(chars/4)", ms.est_tokens("abcdefgh") == 2 and ms.est_tokens("abcde") == 2)
+check("tokens: monotonic", ms.est_tokens("a" * 100) > ms.est_tokens("a" * 10))
+# the sibling import must resolve to the SAME function (catches path breakage at the gate)
+check("tokens: sync_global reuses memory_status.est_tokens", sg.est_tokens is ms.est_tokens)
+
+# --- Fix C: index pointer is now an upsert (pure line builder) ---
+check("pointer: builds line with scope tag",
+      sg._pointer_line("foo", {"description": "a hook", "scope": "user-global"})
+      == "- [foo](foo.md) — a hook [user-global]")
+check("pointer: truncates long description to a recall hook",
+      sg._pointer_line("foo", {"description": "x" * 200}).count("…") == 1)
+
+# --- Fix D: stack keyword matching is word-bounded, not substring ---
+check("stacks: 'skill' does NOT match 'reskilling'", sg._kw_hit("a reskilling plan", "skill") is False)
+check("stacks: 'skill' matches the word 'skill'", sg._kw_hit("this skill rocks", "skill") is True)
+check("stacks: dotted '.claude' still matches", sg._kw_hit("see the .claude/ dir", ".claude") is True)
+check("stacks: 'pytest' matches", sg._kw_hit("run pytest now", "pytest") is True)
+
+# --- node label: hyphenated project name not mislabeled (slug is not invertible) ---
+check("node label: keeps hyphenated tail, not 'memory'",
+      sg._label_from_slug("-home-drei-project-consolidate-memory").endswith("consolidate-memory")
+      and sg._label_from_slug("-home-drei-project-consolidate-memory") != "memory")
+check("node label: de-prefixes leading dash on short slug",
+      sg._label_from_slug("-a-b") == "a-b")
+
+# --- Fix A render: budget overflow flag ---
+check("render: over-budget flag shows ⚠", "OVER" in rd._over({"over": True, "budget_tokens": 1200}))
+check("render: under budget is silent", rd._over({"over": False}) == "")
+
+# --- observability: network sub-section is guarded + rendered ---
+_net = {"basis": "≈ chars/4", "node_def": "stores", "trigger": "p",
+        "nodes": [{"node": "p", "trigger": True, "always_loaded_tokens": 10,
+                   "recall_tokens": 20, "facts": 2, "shared": 1}],
+        "totals": {"nodes": 1, "always_loaded_tokens": 10, "recall_tokens": 20}}
+check("render: network section appears when present",
+      "Neural network" in rd.render({"project": "p", "session": "s", "scope": {},
+                                      "entries": [], "network": _net}))
+check("render: network section absent when no block (legacy/no-op safe)",
+      "Neural network" not in rd.render({"project": "p", "session": "s", "scope": {}, "entries": []}))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

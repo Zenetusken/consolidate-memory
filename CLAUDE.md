@@ -29,7 +29,7 @@ skill/references/harness-map.md paths, fact schema, verification recipes, cross-
 skill/scripts/
   memory_status.py             Phase 0: locate stores + git scope + `--json` cycle-record seed
   extract_signals.py           Phase 2: curated, secret-safe session signal (claims-first)
-  sync_global.py               cross-project: --list/--pull/--network + provenance
+  sync_global.py               cross-project: --list/--pull/--gc/--tokens/--network + provenance
   render_dashboard.py          the data-driven dashboard (renders a cycle record)
 cm                             one-entry CLI over the scripts
 install.sh                     idempotent symlink installer (+ --uninstall)

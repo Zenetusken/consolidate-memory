@@ -44,6 +44,14 @@ def _delta(before: float, after: float, unit: str = "") -> str:
     return f"{before:g} → {after:g}{unit} {arrow}{sign}".rstrip()
 
 
+def _over(b: dict) -> str:
+    """A budget-overflow flag for an always-loaded tier line (Fix A). The seed
+    (memory_status) sets `over` against the token ceiling; we just render the ⚠."""
+    if b.get("over"):
+        return f"  ⚠ OVER ≈{b.get('budget_tokens', '?')} tok BUDGET"
+    return ""
+
+
 def _outcome(record: dict) -> str:
     if record.get("outcome"):
         return str(record["outcome"]).upper()
@@ -60,6 +68,52 @@ def _outcome(record: dict) -> str:
     if writes <= 2:
         return "LIGHT PASS"
     return "SUBSTANTIAL PASS"
+
+
+def _network_section(record: dict, net: dict) -> list[str]:
+    """The neural-network token sub-section: per-node ESTIMATED cost across every node,
+    network totals, and what THIS cycle did (lifecycle) on the triggering node. Lifecycle
+    counts are DERIVED from entries[] (single source of truth — never a parallel tally),
+    token movement from the budget delta, GC/refresh from cross_project."""
+    t = net.get("totals", {})
+    nodes = net.get("nodes", [])
+    out = ["", f"  Neural network — token consumption (all nodes)   basis: {net.get('basis', '?')}"]
+    out.append(f"    nodes: {t.get('nodes', len(nodes))} ({net.get('node_def', 'nodes')}) · "
+               f"triggering node: {net.get('trigger', '?')}")
+    out.append(f"    network total: ≈{t.get('always_loaded_tokens', 0)} always-loaded tok "
+               f"(every node, every session) · ≈{t.get('recall_tokens', 0)} recall-pool tok")
+    shown = sorted(nodes, key=lambda d: -d.get("always_loaded_tokens", 0))
+    cap = 12
+    for n in shown[:cap]:
+        mark = "  ← trigger (dream ran here)" if n.get("trigger") else ""
+        out.append(f"      {str(n.get('node', '?'))[:26]:<26} always ≈{n.get('always_loaded_tokens', 0):>5} · "
+                   f"recall ≈{n.get('recall_tokens', 0):>6} · {n.get('facts', 0):>2} facts "
+                   f"({n.get('shared', 0)} shared){mark}")
+    if len(shown) > cap:
+        out.append(f"      … +{len(shown) - cap} more node(s) not shown")
+    if not nodes:
+        out.append("      (no nodes hold shared facts yet)")
+
+    # This cycle's lifecycle on the triggering node — derived, not hand-counted.
+    entries = record.get("entries", [])
+    cnt = {k: sum(1 for e in entries if e.get("action") == k) for k in _ACTIONS}
+    parts = [f"{g} {cnt[k]} {lbl}" for k, (g, lbl) in _ACTIONS.items() if cnt[k]]
+    idx = record.get("budget", {}).get("index", {})
+    xp = record.get("cross_project", {})
+    out.append(f"    this cycle's lifecycle on {net.get('trigger', '?')} (the node dream ran on):")
+    out.append("      " + (" · ".join(parts) if parts else "no writes"))
+    al = ""
+    if "after_tokens" in idx:
+        al = (f"always-loaded ≈{idx.get('before_tokens', 0)} → ≈{idx.get('after_tokens', 0)} tok "
+              f"({_delta(idx.get('before_tokens', 0), idx.get('after_tokens', 0))})")
+    gc_n = xp.get("gc_removed", 0)
+    rf_n = xp.get("refreshed", 0)
+    extras = [s for s in (al,
+                          f"GC reclaimed {gc_n} orphan(s)" if gc_n else "",
+                          f"{rf_n} mirror(s) refreshed" if rf_n else "") if s]
+    if extras:
+        out.append("      " + " · ".join(extras))
+    return out
 
 
 def render(record: dict) -> str:
@@ -126,12 +180,18 @@ def render(record: dict) -> str:
     idx = b.get("index", {})
     rf = b.get("recall_facts", {})
     if cm:
-        out.append(f"    CLAUDE.md       {_delta(cm.get('before', 0), cm.get('after', 0), ' ln')}")
+        line = _delta(cm.get("before", 0), cm.get("after", 0), " ln")
+        if "after_tokens" in cm:
+            line += f"   (≈{cm.get('before_tokens', 0)} → ≈{cm.get('after_tokens', 0)} tok)"
+        out.append(f"    CLAUDE.md       {line}{_over(cm)}")
     if idx:
         line = _delta(idx.get("before_lines", 0), idx.get("after_lines", 0), " ln")
         if "before_bytes" in idx or "after_bytes" in idx:
-            line += f"   ({idx.get('before_bytes', 0)} → {idx.get('after_bytes', 0)} B)"
-        out.append(f"    auto-mem index  {line}")
+            line += f"   ({idx.get('before_bytes', 0)} → {idx.get('after_bytes', 0)} B"
+            if "after_tokens" in idx:
+                line += f", ≈{idx.get('before_tokens', 0)} → ≈{idx.get('after_tokens', 0)} tok"
+            line += ")"
+        out.append(f"    auto-mem index  {line}{_over(idx)}")
     if rf:
         out.append(f"    recall facts    {_delta(rf.get('before', 0), rf.get('after', 0))}")
     if not (cm or idx or rf):
@@ -163,6 +223,12 @@ def render(record: dict) -> str:
             out.append(f"    ⟳ {refreshed} stale mirror(s) refreshed from canonical")
         if not (pulled or promoted or refreshed):
             out.append("    (no cross-project movement this pass)")
+
+    # Neural network — token consumption across all nodes (the observability ask).
+    # Guarded like cross_project: legacy/no-op records without a `network` block skip it.
+    net = record.get("network")
+    if net:
+        out.extend(_network_section(record, net))
 
     # Health
     h = record.get("health", {})
