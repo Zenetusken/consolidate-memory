@@ -3,18 +3,16 @@
 Read this when you need the exact paths, file formats, or grep/git recipes for a
 consolidation pass. The SKILL.md body covers the workflow; this is the lookup table.
 
-## Lineage: mimo `/dream` → Claude Code
+## The substrate at a glance
 
-This skill adapts the mimo harness's `/dream` memory-consolidation command. The
-concept is identical (read memory + trajectory, verify claims against the live
-codebase, update/prune the memory store); the substrate differs:
+The pieces a consolidation pass works with on Claude Code:
 
-| mimo `/dream` | Claude Code equivalent |
+| Concern | Where it lives |
 |---|---|
-| `<DATA>/mimocode.db` (SQLite trajectory) | session transcripts `~/.claude/projects/<slug>/*.jsonl` (JSONL, large — never bulk-read) |
-| single `<DATA>/memory/` (MEMORY.md, checkpoint.md, notes.md) | **two** stores — see below |
-| `[ses_xxx]` session citation | a commit SHA, or the session `.jsonl` basename |
-| serial claim verification | **parallel** fan-out via Explore / general-purpose subagents |
+| Trajectory (what happened this session) | session transcripts `~/.claude/projects/<slug>/*.jsonl` (JSONL, large — never bulk-read) |
+| Durable memory | **two** stores — see below |
+| Citation for a recorded fact | a commit SHA, or the session `.jsonl` basename |
+| Claim verification | **parallel** fan-out via Explore / general-purpose subagents |
 
 ## The two memory stores
 

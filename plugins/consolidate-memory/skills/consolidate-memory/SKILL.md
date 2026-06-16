@@ -22,13 +22,12 @@ durable facts** — and keeps the project's two memory stores accurate and
 non-contradictory. It's the agent analogue of what sleep does to memory: replay
 recent experience, keep what's true and useful, discard what isn't.
 
-This adapts the mimo harness's `/dream` command to Claude Code — but it is **not**
-a path-swap of it. The defining difference is below: Claude Code loads memory into
-context in tiers, and a consolidation pass is really an act of **curating what
-loads, when, and at what cost** — a concept mimo's single flat store doesn't have.
-The exact paths, formats, and recipes live in **`references/harness-map.md`** — read
-it in Phase 0 and whenever you need a detail. Don't restate it from memory; the
-substrate drifts, so re-confirm it (see "verify your own context" below).
+The defining idea is below: Claude Code loads memory into context in **tiers**, so a
+consolidation pass is really an act of **curating what loads, when, and at what cost** —
+not just tidying a flat store. The exact paths, formats, and recipes live in
+**`references/harness-map.md`** — read it in Phase 0 and whenever you need a detail.
+Don't restate it from memory; the substrate drifts, so re-confirm it (see "verify your
+own context" below).
 
 ## How your memory actually loads (the model everything here optimizes)
 
@@ -99,7 +98,7 @@ Run the bundled helper (it derives paths, inventories both stores, and computes 
 git range since the last consolidation — don't hand-derive these):
 
 ```bash
-python3 ~/.claude/skills/consolidate-memory/scripts/memory_status.py
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py
 ```
 
 It prints: the repo docs, the private auto-memory files, the transcript inventory
@@ -115,7 +114,7 @@ measured before-state (scope, before-budget, marker) into a working file you'll 
 in as you go:
 
 ```bash
-python3 ~/.claude/skills/consolidate-memory/scripts/memory_status.py --json > /tmp/cycle.json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --json > /tmp/cycle.json
 ```
 
 You'll add to `/tmp/cycle.json` through the phases (candidates, verification tallies,
@@ -132,7 +131,7 @@ Then **pull relevant global facts** so this project recalls them and Phase 2 can
 dedup against them too (cross-project step; safe + additive):
 
 ```bash
-python3 ~/.claude/skills/consolidate-memory/scripts/sync_global.py --pull .
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .
 ```
 
 This replicates any `user-global` (and stack-matching `stack-general`) facts from
@@ -158,7 +157,7 @@ typed messages are <1% of the transcript and carry only the *feedback* slice; th
    turns** (secrets firewall at retrieval), and returns ranked, structured, scoped
    candidates:
    ```bash
-   python3 ~/.claude/skills/consolidate-memory/scripts/extract_signals.py --json
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --json
    ```
 3. **Existing memory entries that look stale** — candidates for re-verification.
    `memory_status.py` (Phase 0) lists a **"Re-verification candidates"** section: facts
@@ -255,8 +254,8 @@ lines/bytes, recall-fact count).
    — `--pull` can't reclaim them (it only iterates *live* globals). Report them, then
    apply (surface deletions per the safety rule before applying):
    ```bash
-   python3 ~/.claude/skills/consolidate-memory/scripts/sync_global.py --gc .          # report
-   python3 ~/.claude/skills/consolidate-memory/scripts/sync_global.py --gc . --apply  # reclaim
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --gc .          # report
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --gc . --apply  # reclaim
    ```
    GC only touches `global_ref:` mirror files, never project-authored facts. Record an
    `entries[]` row (`action: deleted`) per reclaimed orphan and set
@@ -270,7 +269,7 @@ lines/bytes, recall-fact count).
    + total estimated token consumption across every node in the shared-memory network
    and paste it into the cycle record's `network` block verbatim:
    ```bash
-   python3 ~/.claude/skills/consolidate-memory/scripts/sync_global.py --tokens . --json
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --tokens . --json
    ```
    Also set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
    so the always-loaded gauge and ⚠ reflect the post-write state.
@@ -280,7 +279,7 @@ lines/bytes, recall-fact count).
    that `timestamp` into the cycle record's `marker.timestamp`.
 6. **Render the dashboard** — this is the skill's output (see below):
    ```bash
-   python3 ~/.claude/skills/consolidate-memory/scripts/render_dashboard.py /tmp/cycle.json
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py /tmp/cycle.json
    ```
    The dashboard now includes a **"Neural network — token consumption (all nodes)"**
    sub-section: the per-node and total estimated token tax across the network, plus
@@ -294,6 +293,9 @@ These protect the stores from corruption and the user from leaks:
 - **Secrets firewall.** Never copy credentials, tokens, API keys, or PII from a
   transcript or config file into ANY store (repo docs are committed; auto-memory
   persists). Record a pointer ("creds in `config.toml`, gitignored"), never a value.
+  Note `extract_signals.py` scrubs only the **transcript** mechanically — candidates
+  drawn from **git commit messages/bodies** (a Phase-2 source) are NOT auto-scrubbed,
+  so apply the same firewall judgment to them by hand before recording.
 - **Transcripts are read-only and large.** Report them; read only the tail if you
   must; never write to them or bulk-load them.
 - **Surface deletions you didn't author.** Pruning your own stale entry is fine;

@@ -129,16 +129,25 @@ each project just syncs itself the next time you consolidate it.**
 
 ## Install
 
-```bash
-git clone <this-repo> ~/project/consolidate-memory
-cd ~/project/consolidate-memory
-./install.sh        # symlinks the skill + shared memory into ~/.claude
+This ships as a **Claude Code plugin** — no clone, no symlinks. In Claude Code:
+
+```text
+/plugin marketplace add Zenetusken/consolidate-memory
+/plugin install consolidate-memory@zenetusken-plugins
 ```
 
-`install.sh` is idempotent and safe (it backs up — and merges — any existing
-`~/.claude/memory` rather than clobbering it). Then run `/reload` in Claude Code.
-Because the skill is symlinked at the **user level**, it's available in *every*
-project automatically.
+(or the CLI form: `claude plugin marketplace add Zenetusken/consolidate-memory` then
+`claude plugin install consolidate-memory@zenetusken-plugins`). That's it — the skill
+is available in **every** project. Update later with `/plugin update consolidate-memory`.
+
+> Add the marketplace **via Git** (the `owner/repo` shorthand above), not a direct URL
+> to `marketplace.json` — the plugin uses a relative source path that only resolves
+> over Git.
+
+**Working on the tool itself?** Clone the repo and run `./install.sh` — it registers
+the repo as a local marketplace and installs the plugin so you dogfood the exact
+artifact users get (the old user-skill symlink model is retired: `SKILL.md` now uses
+`${CLAUDE_PLUGIN_ROOT}`, which is only set when the skill loads as a plugin).
 
 ## Usage
 
@@ -174,27 +183,36 @@ structured candidates. Nothing verbatim-secret ever reaches a memory file.
 ## Architecture
 
 ```
-consolidate-memory/
-├── skill/                       # the Claude Code skill (symlinked into ~/.claude/skills)
-│   ├── SKILL.md                 # the 6-phase workflow + the loading-tier model
-│   ├── references/harness-map.md# paths, fact schema, verification recipes, cross-project model
+consolidate-memory/                         # repo root = plugin marketplace
+├── .claude-plugin/marketplace.json         # the marketplace catalog
+├── plugins/consolidate-memory/             # the plugin (= ${CLAUDE_PLUGIN_ROOT})
+│   ├── .claude-plugin/plugin.json          # plugin manifest (name, version, …)
+│   ├── skills/consolidate-memory/
+│   │   ├── SKILL.md                         # the 6-phase workflow + loading-tier model
+│   │   └── references/harness-map.md        # paths, schema, verification recipes
 │   └── scripts/
-│       ├── memory_status.py     # Phase 0: locate stores + git scope + cycle-record seed
-│       ├── extract_signals.py   # Phase 2: curated, secret-safe session signal
-│       ├── sync_global.py       # cross-project: replicate + GC + token observability + --network
-│       └── render_dashboard.py  # the data-driven dashboard
-├── memory/                      # the shared-consciousness store (GITIGNORED — local only)
-├── cm                           # one-entry CLI over the scripts
-├── install.sh                   # symlink installer (idempotent, safe)
-└── tests/smoke.py               # zero-dependency smoke tests
+│       ├── memory_status.py                 # Phase 0: locate stores + git scope + seed
+│       ├── extract_signals.py               # Phase 2: curated, secret-safe session signal
+│       ├── sync_global.py                   # cross-project: replicate + GC + tokens + --network
+│       └── render_dashboard.py              # the data-driven dashboard
+├── tests/                                   # zero-dependency smoke + accumulation + manifest checks
+├── memory/                                  # personal shared-memory store (GITIGNORED)
+├── cm                                       # dev CLI over the scripts
+├── install.sh                               # maintainer dev-install (plugin, not symlink)
+├── SECURITY.md · CHANGELOG.md
+└── README.md · CLAUDE.md · LICENSE
 ```
 
-## Privacy
+## Privacy & security
 
-The `memory/` store is **gitignored** — your consolidated memory is personal and
-never leaves your machine via this repo. The skill itself is generic (no hardcoded
-projects, paths, or identities). The secrets firewall applies at *retrieval*, so a
-credential in a transcript is omitted before it could ever reach a fact file.
+Your consolidated memory is personal and **never leaves your machine** — the scripts
+are **Python 3 stdlib only**, make **no network calls**, and the only external process
+is read-only `git`. The `memory/` store is gitignored and is **not** part of the
+published plugin (only `plugins/consolidate-memory/` ships). The secrets firewall
+applies at *retrieval*, so a credential in a transcript is dropped before it could ever
+reach a fact file. Each release is gated by an internal multi-agent white-hat security
+review; see **[SECURITY.md](SECURITY.md)** for the full threat model, the security
+properties enforced in code, and how to report an issue.
 
 ## Design notes (for the curious)
 
@@ -222,19 +240,22 @@ built this way" — written to be readable whether you're vibe-coding or shippin
   propagation above fall out of one harness fact: recall is per-project, so global
   facts must be *replicated* into each project, not just stored once.
 - **Boring-on-purpose engineering.** Zero runtime dependencies (Python stdlib only),
-  the repo *is* the live skill (via symlink — edit and it's live, no build), and the
-  mutating ops are idempotent + reversible (the installer backs up, sync refreshes
-  rather than duplicates, a marker scopes each run to "since last time").
+  ships as a self-contained plugin (scripts referenced via `${CLAUDE_PLUGIN_ROOT}`, no
+  build step), and the mutating ops are idempotent + reversible (sync refreshes rather
+  than duplicates, GC is report-then-apply, a marker scopes each run to "since last
+  time").
 
 If a design decision here surprised you, it probably has a one-line "why" in
-`skill/SKILL.md` or `skill/references/harness-map.md` — those explain the reasoning,
-not just the rules.
+`plugins/consolidate-memory/skills/consolidate-memory/SKILL.md` or its
+`references/harness-map.md` — those explain the reasoning, not just the rules.
 
-## Lineage
+## The idea
 
-Adapted from the mimo harness's `/dream` command — but rebuilt natively for Claude
-Code rather than ported. The defining difference is the tier-aware, cross-project
-model above, which mimo's single flat store has no concept of.
+Agents accumulate experience in a session but wake up forgetting it. This is the
+sleep-time analogue: replay the session, keep what's **verified and useful**, discard
+the rest — and place each fact in the context-loading tier that fits how often it's
+needed, replicated across projects only where it applies. The tier-aware, cross-project
+model above is the core of it.
 
 ## License
 

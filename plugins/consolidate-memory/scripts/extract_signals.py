@@ -32,9 +32,21 @@ from __future__ import annotations
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
 
 STATE_FILE = ".consolidation-state.json"
+
+
+def _norm(text: str) -> str:
+    """Collapse whitespace AND drop Unicode format/zero-width (Cf) characters, on the
+    SINGLE representation that is both scanned by the firewall and stored. Zero-width
+    chars inserted inside a credential would otherwise split it past every regex arm yet
+    persist verbatim — so strip them before scan and store stay aligned."""
+    return "".join(c for c in " ".join(str(text).split()) if unicodedata.category(c) != "Cf")
+# Max chars of a single turn fed to the classifier/secret regexes. Only text[:300] is
+# ever stored, so a larger cap than that is pure defense-in-depth against huge inputs.
+_PROBE_CAP = 4000
 
 # Unambiguous noise — harness/skill injections and command echoes, not human intent.
 _NOISE = re.compile(
@@ -45,12 +57,62 @@ _NOISE = re.compile(
 # Skill-prompt injections (e.g. the code-review skill's effort header).
 _SKILL_PROMPT = re.compile(r"(effort\s*→|angles\s*×|candidates\s*→|1-vote verify|# Consolidate Memory)", re.I)
 
-# Credential-shaped values — drop the whole turn to a label if any match.
+# Credential-shaped values. Detection is SPLIT in two because the generic high-entropy
+# check needs CASE discrimination (mixed-case is the signal that separates a token from
+# a file path / slug) and the keyword/vendor arms want case-INSENSITIVITY — and one
+# regex can't be both. Use `_looks_secret()` (below) as the firewall, never `_SECRET`
+# directly. Contract: drop-to-label, never surface the verbatim secret.
+#
+# _SECRET (case-insensitive): keyword=value in any serialization (incl. compound names
+# AWS_SECRET_ACCESS_KEY= and quoted JSON "password": "..."), plus high-precision vendor /
+# protocol shapes that carry no high-entropy blob.
 _SECRET = re.compile(
-    r"([A-Za-z0-9+/_-]{40,}={0,2})"  # long base64/token blob
-    r"|((?:li_at|cf_clearance|password|api[_-]?key|secret|token|bearer)\s*[:=]\s*\S+)",
-    re.I,
+    r"""(
+        (?:[A-Za-z0-9]+[_.\-])*(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?:[_.\-][A-Za-z0-9]+)*["']?\s*[:=]\s*["']?\S+
+                                                                     # keyword as a full SEGMENT of a compound id, with
+                                                                     # optional quotes/brackets around the delimiter so
+                                                                     # JSON {"password": "..."} / dict / YAML all match
+      | (?:authorization|bearer)\b["']?\s*:?\s*(?:bearer\s+)?[A-Za-z0-9._~+/=-]{16,}  # auth header / bearer token
+      | [a-z][a-z0-9+.\-]*://[^\s/:@]+:[^\s/@]+@                      # scheme://user:pass@host URI creds
+      | (?:AKIA|ASIA)[0-9A-Z]{16}                                    # AWS access key id
+      | xox[baprs]-[0-9A-Za-z-]{10,}                                 # Slack token
+      | sk-(?:proj-)?[A-Za-z0-9_-]{20,}                              # OpenAI key
+      | (?:sk|rk|pk)_(?:live|test)_[0-9A-Za-z]{10,}                  # Stripe key
+      | gh[pousr]_[0-9A-Za-z]{20,}                                   # GitHub token
+      | AIza[0-9A-Za-z_-]{35}                                        # Google API key
+      | AC[0-9a-f]{32}                                               # Twilio account SID
+      | eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{6,}   # JWT (header.payload.sig)
+      | -----BEGIN[ A-Z]*PRIVATE[ ]KEY-----                          # PEM private key
+    )""",
+    re.I | re.X,
 )
+
+# A contiguous run of base64-ish chars (incl. '/' and '+' so slash-bearing AWS secret
+# access keys are caught). Case-SENSITIVE on purpose (see _entropy_blob).
+_BLOB = re.compile(r"[A-Za-z0-9+/=_-]{40,}")
+
+
+def _entropy_blob(text: str) -> bool:
+    """True if `text` holds a keyword-less high-entropy token (e.g. a bare AWS secret key
+    or base64 blob). Distinguishes a token from a FILE PATH or SLUG without case folding:
+    a token is mixed-case or carries digits; a path is slash-dense; a slug is all-lower
+    with no digits. This is the half the case-insensitive `_SECRET` regex cannot express."""
+    for m in _BLOB.finditer(text):
+        s = m.group(0)
+        if s.count("/") >= 3:           # slash-dense ⇒ a filesystem path, not a token
+            continue
+        has_lower = any(c.islower() for c in s)
+        has_upper = any(c.isupper() for c in s)
+        has_digit = any(c.isdigit() for c in s)
+        if (has_lower and has_upper) or has_digit:   # mixed-case OR digit-bearing ⇒ token-like
+            return True
+    return False
+
+
+def _looks_secret(text: str) -> bool:
+    """The firewall: True if `text` contains a credential-shaped value (keyword/vendor
+    arms OR a high-entropy blob). Use THIS everywhere, not `_SECRET` directly."""
+    return bool(_SECRET.search(text)) or _entropy_blob(text)
 
 # Pure approvals / workflow control — surface but rank lowest (signal score 0).
 _ACK = re.compile(
@@ -121,7 +183,9 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
         for line in f:
             try:
                 o = json.loads(line)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, RecursionError, ValueError):
+                # skip one malformed/pathological line (incl. deeply-nested JSON that
+                # blows the recursion limit) rather than aborting the whole stream
                 continue
             ts = o.get("timestamp", "")
             if since and ts and ts <= since:  # scope to marker
@@ -140,25 +204,41 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                             t = p.get("content")
                             if isinstance(t, list):
                                 t = " ".join(x.get("text", "") for x in t if isinstance(x, dict))
-                            errors.append({"source": "error", "ts": ts,
-                                           "text": " ".join(str(t).split())[:200], "scope_hint": "env"})
+                            # SECRETS FIREWALL — error/stderr output (failed DB connects,
+                            # 401 Authorization headers, dumped env) is a top source of
+                            # leaked credentials. Normalize once, scan + store the same
+                            # representation, capped at _PROBE_CAP like human turns.
+                            tn = _norm(t)
+                            if _looks_secret(tn[:_PROBE_CAP]):
+                                counts["secrets_omitted"] += 1
+                                errors.append({"source": "error", "ts": ts, "scope_hint": "-",
+                                               "text": "(omitted: error tool-result contained a credential-shaped value)"})
+                            else:
+                                errors.append({"source": "error", "ts": ts,
+                                               "text": tn[:200], "scope_hint": "env"})
                 # human turns
                 text = _human_text(msg)
                 if not text:
                     continue
                 counts["human_seen"] += 1
-                if _NOISE.match(text) or _SKILL_PROMPT.search(text[:200]):
+                # Normalize ONCE, then scan AND store the same representation, so the
+                # firewall examines exactly what would be persisted (no scan/store offset
+                # mismatch). _PROBE_CAP bounds regex work (ReDoS/blow-up guard); the stored
+                # excerpt (norm[:300]) is well within it, so everything stored is scanned.
+                norm = _norm(text)
+                probe = norm[:_PROBE_CAP]
+                if _NOISE.match(probe) or _SKILL_PROMPT.search(probe[:200]):
                     counts["noise"] += 1
                     continue
-                if _SECRET.search(text):
+                if _looks_secret(probe):
                     counts["secrets_omitted"] += 1
                     human.append({"source": "human", "ts": ts, "signal_type": "omitted",
                                   "scope_hint": "-", "score": -1,
                                   "text": "(omitted: turn contained a credential-shaped value)"})
                     continue
-                stype, scope, score = _classify(text)
+                stype, scope, score = _classify(probe)
                 human.append({"source": "human", "ts": ts, "signal_type": stype, "scope_hint": scope,
-                              "score": score, "text": " ".join(text.split())[:300]})
+                              "score": score, "text": norm[:300]})
 
     # dedup error-results (the same tool error often repeats verbatim)
     seen: set[str] = set()
@@ -205,7 +285,12 @@ def main() -> int:
         if argv[i] == "--since" and i + 1 < len(argv):
             since = argv[i + 1]; i += 2
         elif argv[i] == "--max" and i + 1 < len(argv):
-            max_n = int(argv[i + 1]); i += 2
+            try:
+                max_n = max(0, int(argv[i + 1]))
+            except ValueError:
+                print(f"--max expects an integer, got {argv[i + 1]!r}", file=sys.stderr)
+                return 2
+            i += 2
         else:
             pos.append(argv[i]); i += 1
     project_dir = Path(pos[0]) if pos else Path.cwd()

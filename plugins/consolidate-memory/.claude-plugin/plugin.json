@@ -1,0 +1,20 @@
+{
+  "name": "consolidate-memory",
+  "version": "0.1.1",
+  "description": "Sleep-time memory consolidation for Claude Code — replays a work session, verifies every candidate fact against the live codebase, reconciles both memory stores across context-loading tiers, budgets the always-loaded token tax, and runs a cross-project shared-memory layer. Invoke by asking to consolidate / checkpoint / \"dream\" your memory.",
+  "author": {
+    "name": "Zenetusken",
+    "url": "https://github.com/Zenetusken"
+  },
+  "homepage": "https://github.com/Zenetusken/consolidate-memory",
+  "repository": "https://github.com/Zenetusken/consolidate-memory",
+  "license": "MIT",
+  "keywords": [
+    "memory",
+    "consolidation",
+    "dream",
+    "cross-project",
+    "context-management",
+    "skill"
+  ]
+}

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# cm — one entry point for the consolidate-memory tool. Thin dispatcher over the
-# skill's scripts so you can drive a pass (or inspect the network) from the shell.
+# cm — dev entry point for the consolidate-memory tool. Thin dispatcher over the
+# plugin's scripts (plugins/consolidate-memory/scripts/) so a maintainer can drive a
+# pass (or inspect the network) from the shell without the plugin being installed.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-S="$HERE/skill/scripts"
+S="$HERE/plugins/consolidate-memory/scripts"
 cmd="${1:-help}"; shift || true
 
 case "$cmd" in
@@ -29,10 +30,11 @@ cm — consolidate-memory
   cm tokens [DIR] [--json] per-node + total token consumption across the network
   cm network           render the cross-project shared-memory graph
   cm render cycle.json render a dashboard from a cycle record
-  cm install           symlink the skill + memory into ~/.claude
+  cm install           dev-install the plugin locally (./install.sh)
 
-A full pass is best driven by the skill itself: run /reload, then say "dream"
-in any project. See README.md.
+A full pass is best driven by the plugin itself: install it (./install.sh or
+/plugin install consolidate-memory@zenetusken-plugins), then say "dream" in any
+project. See README.md.
 EOF
     ;;
 esac
