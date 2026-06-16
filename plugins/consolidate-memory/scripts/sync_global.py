@@ -480,17 +480,34 @@ def _node_label(store: Path) -> str:
 
 def _node_tokens(store: Path) -> dict:
     """ESTIMATED token cost of one node's auto-memory: the always-loaded index plus the
-    recall-fact pool. Tokens are ≈ chars/4 (est_tokens) — an estimate, not exact."""
+    recall-fact pool. Tokens are ≈ chars/4 (est_tokens) — an estimate, not exact.
+
+    Also ATTRIBUTES the always-loaded index cost to mirror-vs-local pointers
+    (`mirror_index_tokens`): the share of the per-session tax driven by replicated
+    cross-project facts (`global_ref:` mirrors). This is the load-bearing signal when an
+    index goes over budget — a mirror-dominated overflow's only effective lever is the
+    canonical in the GLOBAL store (demote/delete + GC fleet-wide); LOCAL pruning is
+    futile because `run()` re-pulls the mirror next cycle."""
     idx = store / "MEMORY.md"
     idx_text = idx.read_text(encoding="utf-8", errors="replace") if idx.exists() else ""
     facts = [f for f in store.glob("*.md") if f.name != "MEMORY.md"]
-    bodies = [f.read_text(encoding="utf-8", errors="replace") for f in facts]
-    shared = sum(1 for b in bodies if _is_mirror(b))
+    bodies = {f.stem: f.read_text(encoding="utf-8", errors="replace") for f in facts}
+    mirror_stems = {stem for stem, b in bodies.items() if _is_mirror(b)}
+    # Attribute the index pointer lines whose target fact (`](<stem>.md)`) is a mirror.
+    # That is the fraction of the always-loaded tax the global store controls — what the
+    # over-budget remedy must actually target. Estimate the matched lines as ONE blob (the
+    # same way always_loaded estimates the whole file), NOT a per-line est_tokens sum: the
+    # ceiling in est_tokens rounds each line up independently, so a per-line sum can exceed
+    # the whole-file total and break the mirror ⊆ total invariant (and render >100%).
+    mirror_lines = [ln for ln in idx_text.splitlines()
+                    if (m := re.search(r"\]\(([^)]+)\.md\)", ln)) and m.group(1) in mirror_stems]
+    mirror_index_tokens = est_tokens("\n".join(mirror_lines))
     return {
         "always_loaded_tokens": est_tokens(idx_text),
-        "recall_tokens": sum(est_tokens(b) for b in bodies),
+        "mirror_index_tokens": mirror_index_tokens,
+        "recall_tokens": sum(est_tokens(b) for b in bodies.values()),
         "facts": len(facts),
-        "shared": shared,
+        "shared": len(mirror_stems),
     }
 
 
@@ -524,7 +541,7 @@ def token_network(project_dir: Path) -> dict:
     project_dir = project_dir.resolve()
     trigger_store = project_store(project_dir)
     nodes = []
-    al_total = rc_total = 0
+    al_total = rc_total = mir_total = 0
     for store in _network_nodes():
         m = _node_tokens(store)
         is_trigger = store.resolve() == trigger_store.resolve()
@@ -536,13 +553,16 @@ def token_network(project_dir: Path) -> dict:
         })
         al_total += m["always_loaded_tokens"]
         rc_total += m["recall_tokens"]
+        mir_total += m["mirror_index_tokens"]
     return {
         "basis": "≈ chars/4 (heuristic estimate, not a tokenizer)",
         "node_def": "project stores holding ≥1 shared fact",
         "trigger": _sane(project_dir.name),
         "nodes": nodes,
-        "totals": {"nodes": len(nodes),
-                   "always_loaded_tokens": al_total, "recall_tokens": rc_total},
+        # mirror_index_tokens: the share of the always-loaded total controlled by the
+        # GLOBAL store (replicated mirrors) — the lever for a mirror-dominated overflow.
+        "totals": {"nodes": len(nodes), "always_loaded_tokens": al_total,
+                   "mirror_index_tokens": mir_total, "recall_tokens": rc_total},
     }
 
 
@@ -560,10 +580,17 @@ def token_report(project_dir: Path, as_json: bool) -> int:
     print(f"node def : {net['node_def']}")
     print(f"nodes    : {t['nodes']}  ·  triggering node: {net['trigger']}")
     print(f"TOTAL    : ≈{t['always_loaded_tokens']} always-loaded tok (paid every "
-          f"session, every node) · ≈{t['recall_tokens']} recall-pool tok\n")
+          f"session, every node) · ≈{t['recall_tokens']} recall-pool tok")
+    mir = t.get("mirror_index_tokens", 0)
+    if mir:
+        pct = round(100 * mir / t["always_loaded_tokens"]) if t["always_loaded_tokens"] else 0
+        print(f"           of the always-loaded tax, ≈{mir} tok ({pct}%) is mirror-driven "
+              "— the lever is the GLOBAL store (demote/GC), NOT local prune")
+    print()
     for n in sorted(net["nodes"], key=lambda d: -d["always_loaded_tokens"]):
         mark = " ← trigger (dream ran here)" if n["trigger"] else ""
-        print(f"  {n['node'][:28]:<28} always ≈{n['always_loaded_tokens']:>5} · "
+        print(f"  {n['node'][:28]:<28} always ≈{n['always_loaded_tokens']:>5} "
+              f"(≈{n.get('mirror_index_tokens', 0)} mirror) · "
               f"recall ≈{n['recall_tokens']:>6} · {n['facts']:>2} facts "
               f"({n['shared']} shared){mark}")
     if not net["nodes"]:

@@ -259,16 +259,24 @@ def run() -> None:
         net = _json.loads(_sync(home, "--tokens", str(projects[0]), "--json"))
         t = net["totals"]
         print(f"  nodes in network: {t['nodes']}  ·  basis: {net['basis']}")
-        print(f"  TOTAL always-loaded ≈{t['always_loaded_tokens']} tok · "
+        print(f"  TOTAL always-loaded ≈{t['always_loaded_tokens']} tok "
+              f"(≈{t.get('mirror_index_tokens', 0)} mirror-driven) · "
               f"recall-pool ≈{t['recall_tokens']} tok")
         for n in sorted(net["nodes"], key=lambda d: -d["always_loaded_tokens"])[:6]:
-            print(f"    {n['node'][:26]:<26} always ≈{n['always_loaded_tokens']:>5} · "
+            print(f"    {n['node'][:26]:<26} always ≈{n['always_loaded_tokens']:>5} "
+                  f"(≈{n.get('mirror_index_tokens', 0)} mirror) · "
                   f"recall ≈{n['recall_tokens']:>6} · {n['facts']} facts ({n['shared']} shared)")
         measurable = t["nodes"] >= 1 and t["always_loaded_tokens"] > 0
-        _verdict("F", "network token consumption is observable per-node and in total",
-                 measurable,
-                 f"{t['nodes']} nodes measured; the always-loaded total is the per-session "
-                 "tax paid across the whole fleet — now a number, not a guess")
+        # The whole point of Probe A was that mirrors accumulate; the attribution must
+        # therefore see them — and a node's mirror share can never exceed its total.
+        mir = t.get("mirror_index_tokens", 0)
+        attributed = mir > 0 and all(
+            n.get("mirror_index_tokens", 0) <= n["always_loaded_tokens"] for n in net["nodes"])
+        _verdict("F", "network token cost is observable per-node, in total, AND attributed "
+                 "to mirror-vs-local (the over-budget lever)",
+                 measurable and attributed,
+                 f"{t['nodes']} nodes measured; ≈{mir} of ≈{t['always_loaded_tokens']} always-loaded "
+                 "tok is mirror-driven — the share a global demote/GC (not local prune) would reclaim")
 
         # ── Probe G: GC refuses when the global store is ABSENT (data-loss guard) ──
         # Run-3 finding: with ~/.claude/memory missing, global_facts() returns [] →

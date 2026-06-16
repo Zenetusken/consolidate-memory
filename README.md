@@ -11,20 +11,31 @@ brain: replay recent experience, keep what's true and useful, discard the rest.
 You invoke it by saying **`dream`** (or "consolidate my memory") in any project.
 
 ```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  DREAM · consolidate-memory     [ LIGHT PASS ]
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ✦ DREAM · consolidate-memory                    LIGHT PASS
   my-project · session a1b2c3d
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Scope      git a1b2c3d..HEAD (0 commits) · 5 session candidate(s) · 8 memories reviewed
-  Verified   ✓ 1 confirmed · ~ 0 corrected · ⚠ 0 unverifiable  [inline]
-  Changes
-    + added    <global> recall/global   claude-code-memory-is-slug-scoped
-    · skipped  <proj>   —               session-workflow-requests  (control flow, not durable)
-  Always-loaded budget   index 7→8 ln (905→1100 B) · recall facts 5→6
-  Cross-project (global tier)   ~/.claude/memory: 4 facts
-    ↑ promoted (here→global) claude-code-memory-is-slug-scoped <global>
-  Health     ✓ all pointers resolve
-  Marker     → a1b2c3def456 @ 2026-06-16T00:00Z
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  SCOPE     git a1b2c3d..HEAD · 0 commits · 5 candidates · 8 reviewed
+  VERIFIED  ✓ 1 confirmed · ~ 0 corrected · ⚠ 0 unverifiable   [inline]
+
+  CHANGES
+    + added      claude-code-memory-is-slug-scoped
+        recall/auto-mem · <global> · recall is slug-scoped; non-obvious · [session]
+    · skipped    session-workflow-requests
+        <proj> · control flow, not durable
+
+  ALWAYS-LOADED   · paid every session
+    project CLAUDE.md ≈1120/4000   [███░░░░░░░] 28%
+    global CLAUDE.md  ≈2240        read-only · every project
+    auto-mem index    ≈275/1200    [██░░░░░░░░] 23%  +1 ln
+    recall facts      6            +1
+
+  CROSS-PROJECT   · global tier · ~/.claude/memory: 4 fact(s)
+    ↑ promoted  <global> claude-code-memory-is-slug-scoped
+
+  HEALTH    ✓ all pointers resolve
+  MARKER    → a1b2c3def456 @ 2026-06-16T00:00Z
 ```
 
 ## Why
@@ -52,8 +63,8 @@ and everything that loads costs tokens. Claude Code loads memory in three tiers:
 
 | Tier | What loads | Consolidation rule |
 |---|---|---|
-| **Always-loaded** | `CLAUDE.md` + the auto-memory `MEMORY.md` index, injected every session | scarce & expensive — only project-framing facts, kept lean and exactly right |
-| **Recall** | auto-memory fact files, surfaced when their `description:` matches the task | the `description:` is a **recall key** — write it as the query you'd want to match |
+| **Always-loaded** | `CLAUDE.md` + the auto-memory `MEMORY.md` index, injected every session | scarce & expensive — the auto-memory index is kept lean; `CLAUDE.md` is user-owned, touched conservatively (a guest, not a fact dump) |
+| **Recall** | a fact's `description:` rides in the always-loaded index; the body is read on-demand when that hook cues it | the `description:` is a **recall key** — write it as the cue that makes a future session open the fact |
 | **On-demand** | repo docs + fact bodies, read when relevant | optimize for completeness, not per-session leanness |
 
 The product of a pass isn't tidy files — it's *correct, well-budgeted context loading*.
@@ -232,9 +243,9 @@ built this way" — written to be readable whether you're vibe-coding or shippin
   pull out discrete claims. Credential-shaped text is dropped *at retrieval*, before
   it could ever reach a memory file.
 - **Memory loads in tiers, so facts are placed by *how often they're needed*.**
-  Always-loaded (every session — kept scarce), recall (surfaced when its description
-  matches — so the description is written as a search key), on-demand (read when
-  relevant). Context budget is a first-class concern.
+  Always-loaded (every session — kept scarce; includes each fact's `description:` as
+  its index hook), on-demand (the body is read when the hook cues it — so the
+  description is written as that cue). Context budget is a first-class concern.
 - **`scope` ≠ `tier`.** *Scope* is how widely a fact applies (this project / this
   stack / everywhere); *tier* is how it loads. Cross-project sharing + the pull-based
   propagation above fall out of one harness fact: recall is per-project, so global

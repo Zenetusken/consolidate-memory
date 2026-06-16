@@ -31,7 +31,12 @@ REPO_DOCS = ("MEMORY.md", "AGENTS.md", "CLAUDE.md")
 # VISIBLE and flag overflow, not to be exact. SKILL.md promised "a stated budget" —
 # this is where it's stated.
 INDEX_TOKEN_BUDGET = 1200       # the auto-memory MEMORY.md index (pointers only)
-CLAUDE_MD_TOKEN_BUDGET = 4000   # repo CLAUDE.md (conventions)
+CLAUDE_MD_TOKEN_BUDGET = 4000   # repo CLAUDE.md (project conventions, committed)
+# ~/.claude/CLAUDE.md — the USER-GLOBAL preamble, loaded in EVERY project, every session.
+# Handled DIFFERENTLY from the repo file: measured READ-ONLY for honest always-loaded
+# accounting (it taxes every project), but the skill NEVER writes it — it's personal,
+# universal config, not a project store. Its own constant so it's tuned independently.
+GLOBAL_CLAUDE_MD_TOKEN_BUDGET = 4000
 
 
 def est_tokens(text: str) -> int:
@@ -95,6 +100,12 @@ def build_context(project_dir: Path) -> dict:
 
     repo = {name: _measure(project_dir / name) for name in REPO_DOCS}
 
+    # The USER-GLOBAL CLAUDE.md (~/.claude/CLAUDE.md): loaded into EVERY session of EVERY
+    # project, so it's part of THIS session's always-loaded tax even though it's neither a
+    # repo doc nor an auto-memory file. Measured READ-ONLY (the skill never edits it) so
+    # the per-session cost the dashboard reports is honest, not understated.
+    global_claude_md = _measure(Path.home() / ".claude" / "CLAUDE.md")
+
     index_path = auto_mem / "MEMORY.md"
     index_lb = _measure(index_path)
     fact_files = sorted(
@@ -138,6 +149,7 @@ def build_context(project_dir: Path) -> dict:
         "proj_root": proj_root,
         "auto_mem": auto_mem,
         "repo": repo,
+        "global_claude_md": global_claude_md,
         "index_path": index_path,
         "index_lb": index_lb,
         "fact_files": fact_files,
@@ -187,6 +199,16 @@ def seed_record(ctx: dict) -> dict:
                 "budget_tokens": CLAUDE_MD_TOKEN_BUDGET,
                 "over": ctx["repo"]["CLAUDE.md"][2] > CLAUDE_MD_TOKEN_BUDGET,
             },
+            # USER-GLOBAL ~/.claude/CLAUDE.md — read-only / no before↔after (the skill never
+            # edits it); a flat per-session cost present in EVERY project. Rendered as its
+            # own distinct line so the always-loaded total isn't understated.
+            "global_claude_md": {
+                "present": ctx["global_claude_md"][1] > 0,
+                "lines": ctx["global_claude_md"][0],
+                "tokens": ctx["global_claude_md"][2],
+                "budget_tokens": GLOBAL_CLAUDE_MD_TOKEN_BUDGET,
+                "over": ctx["global_claude_md"][2] > GLOBAL_CLAUDE_MD_TOKEN_BUDGET,
+            },
             "index": {
                 "before_lines": ctx["index_lb"][0], "after_lines": ctx["index_lb"][0],
                 "before_bytes": ctx["index_lb"][1], "after_bytes": ctx["index_lb"][1],
@@ -229,6 +251,16 @@ def print_report(ctx: dict) -> None:
         over = " ⚠ OVER BUDGET" if name == "CLAUDE.md" and tok > CLAUDE_MD_TOKEN_BUDGET else ""
         budget = f" / {CLAUDE_MD_TOKEN_BUDGET} budget" if name == "CLAUDE.md" else ""
         print(f"  {loc}  —  {ln} lines, {by} bytes, ≈{tok} tok{budget}{over}")
+
+    print("\n--- Global always-loaded (~/.claude/CLAUDE.md — every project; READ-ONLY) ---")
+    gl, gb, gt = ctx["global_claude_md"]
+    gpath = Path.home() / ".claude" / "CLAUDE.md"
+    if gl or gb:
+        heavy = " ⚠ heavy — taxes EVERY project" if gt > GLOBAL_CLAUDE_MD_TOKEN_BUDGET else ""
+        print(f"  {gpath}  —  {gl} lines, {gb} bytes, ≈{gt} tok  "
+              f"[the skill NEVER edits this — measured for honest cost only]{heavy}")
+    else:
+        print(f"  (absent — no user-global CLAUDE.md at {gpath})")
 
     print("\n--- Claude auto-memory (private) ---")
     if ctx["auto_mem"].exists():
