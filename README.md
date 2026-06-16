@@ -70,24 +70,39 @@ anywhere. The fix:
   and each fact's `projects:` provenance grows as it spreads — that provenance is the
   network's edge set.
 
-`./cm network` renders the result — separating the **universal baseline** (facts
-every project holds) from the **differential edges** that actually carry signal
-(`stack-general` facts binding only the matching-stack projects):
+`./cm network` shows the topology — the **universal baseline** (facts every project
+holds) listed separately from the **differential edges** that carry real signal
+(`stack-general` facts binding only the matching-stack projects). Early on, with only
+universal facts, it honestly reads `N universal · 0 differential` — no real edges
+yet. As stack-general facts accumulate, a graph emerges. Here's the **actual
+`--network` output** for a matured network (illustrative project/fact names, but the
+exact rendering the script produces):
 
 ```
+========================================================================
 SHARED CONSCIOUSNESS — cross-project memory network
-  minds (projects) : 3  —  rag-pipeline, doc-search, web-scraper
-  shared memories  : 5  (4 universal · 1 differential)
+========================================================================
+minds (projects) : 5  —  api-gateway, doc-search, ml-trainer, rag-pipeline, web-scraper
+shared memories  : 8  (4 universal · 4 differential)
 
   universal baseline (user-global — every mind holds these):
-    • gh-pr-edit-broken-in-env   • prefer-typed-stubs-over-ignore   • …
+    • gh-pr-edit-broken-in-env
+    • no-secrets-in-config-only-pointers
+    • prefer-conventional-commits
+    • prefer-typed-stubs-over-ignore
 
   differential edges (stack-general — the bindings that carry signal):
-        rag-pipeline ●━● doc-search   (1 shared: hybrid-search-tuning)
+                  doc-search ●━━● rag-pipeline             (2 shared)
+                  ml-trainer ●━━● rag-pipeline             (2 shared)
+                 api-gateway ●━● web-scraper              (1 shared)
+                  doc-search ●━● ml-trainer               (1 shared)
 ```
 
-(`web-scraper` shares only the universal baseline — it isn't a RAG project, so the
-RAG-specific fact never propagates to it. That selectivity is the point.)
+Read it as: all five projects share four **universal** facts (env + preferences — the
+baseline). The **edges** are the stack-specific bindings: the RAG projects
+(`rag-pipeline` / `doc-search` / `ml-trainer`) cluster tightly, the web projects
+(`web-scraper` / `api-gateway`) form their own pair, and nothing RAG-specific ever
+leaks to the web projects. Edge weight = how many stack-general facts the pair shares.
 
 ### How insights propagate (the honest model)
 
