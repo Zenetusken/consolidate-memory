@@ -5,6 +5,34 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.5] — 2026-06-17
+
+### Added
+- **Phase-0 detection of slug-orphans + schema drift (detect / report / OFFER only).**
+  `memory_status.py` now flags **slug-orphans** — a near-duplicate sibling slug under
+  `~/.claude/projects/` (the rename-orphan signature, since a dir rename changes the slug
+  and strands the old slug-scoped store), detected by `near_duplicate_slugs` (norm on
+  `-`/`_`/case, excluding the slug itself, since `slug_for` is lossy) — and **schema
+  drift**: a fact missing the documented `node_type`, a malformed `scope`/`originSessionId`,
+  or an index↔file mismatch (`schema_drift` + `drift_findings`). Both are surfaced in the
+  Phase-0 report + the cycle-record `health` block + the dashboard, and reconciliation /
+  backfill is **offered**, never auto-applied (the model decides in Phase 4).
+- **`--pull` warns on a canonical missing a valid `originSessionId`** — before replicating
+  a `user-global`/`stack-general` canonical, `sync_global.py --pull` emits a stderr WARNING
+  that the gap fans out to every mirror, and **still replicates** (warn, don't block).
+
+### Notes
+- **Detection only — no auto-mutation.** Phase 0 never merges, deletes, or backfills a
+  store; it detects, reports, and offers. The `_frontmatter` parser was promoted to
+  `memory_status.py` (the dependency root) and `sync_global.py` now imports it (single
+  definition), gaining CRLF/BOM tolerance.
+- **Absence is an advisory, not drift.** `scope`/`originSessionId` are skill-/Claude-Code-
+  injected and store-dependent, so their mere absence is reported only as an optional
+  backfill advisory (a separate line that may appear on an otherwise-clean store), never a
+  drift finding.
+- Backward-compatible: legacy cycle records (no `health.slug_orphans`/`schema_drift`) render
+  byte-identically; the new keys + detection + warning are additive → **patch**.
+
 ## [0.1.4] — 2026-06-17
 
 ### Added

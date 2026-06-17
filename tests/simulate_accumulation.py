@@ -398,6 +398,66 @@ def run() -> None:
                  "cycles accrue for a future band refit; self-reported applied/override is the "
                  "over-rigor signal — longitudinal miss-detection (under-rigor) remains future work")
 
+        # ── Probe J: slug-orphan + schema-drift detection on real tmp stores (v0.1.5) ──
+        # smoke.py covers the PURE string/dict helpers; THIS exercises the FS-touching path:
+        # near_duplicate_slugs over real sibling dirs, schema_drift reading real fact files +
+        # the index, and the AC#1 "clean store → zero drift findings" (advisory absence allowed).
+        print("\n── Probe J: slug-orphan + schema-drift detection (real tmp stores) (v0.1.5) ──")
+        proj_root = home / ".claude" / "projects"
+        # Two near-duplicate sibling slugs (the rename-orphan signature: '-' vs '_').
+        twin_a = proj_root / "-home-you-project-Doc-Flo"
+        twin_b = proj_root / "-home-you-project-Doc_Flo"
+        for t in (twin_a, twin_b):
+            (t / "memory").mkdir(parents=True, exist_ok=True)
+        sibling_names = [p.name for p in proj_root.iterdir() if p.is_dir()]
+        twin_hits = ms.near_duplicate_slugs(twin_a.name, sibling_names)
+        orphan_detected = twin_b.name in twin_hits and twin_a.name not in twin_hits  # never flags itself
+
+        # A DRIFTED store: one fact missing node_type, an index↔file mismatch (a fact on disk
+        # with no index pointer + an index pointer to a non-existent file).
+        drift_mem = twin_a / "memory"
+        (drift_mem / "good-fact.md").write_text(
+            "---\nname: good-fact\nmetadata:\n  node_type: memory\n  scope: project-local\n---\nbody\n",
+            encoding="utf-8")
+        (drift_mem / "no-node-type.md").write_text(   # missing the documented node_type
+            "---\nname: no-node-type\ndescription: a fact\n---\nbody\n", encoding="utf-8")
+        (drift_mem / "MEMORY.md").write_text(          # points at good-fact + a GHOST (no file)
+            "# Memory Index\n\n- [good-fact](good-fact.md) — hook\n- [ghost](ghost.md) — dangling\n",
+            encoding="utf-8")
+        drift_facts = sorted(f for f in drift_mem.glob("*.md") if f.name != "MEMORY.md")
+        drift_idx = ms.index_fact_names(drift_mem / "MEMORY.md")
+        sd = ms.schema_drift(drift_facts, drift_idx)
+        # missing node_type: exactly 1 (no-node-type.md). index mismatch: no-node-type (on disk,
+        # not indexed) ^ ghost (indexed, no file) = 2. Advisory absence is NOT asserted against.
+        drift_counts_ok = (sd["missing_node_type"] == 1 and sd["index_mismatch"] == 2
+                           and ms.drift_findings(sd) == 3)  # exactly: 1 node_type + 2 index, 0 malformed
+
+        # A CLEAN single store: every fact has node_type, the index matches the files exactly,
+        # values are well-formed → drift_findings == 0 (advisory absence is permitted, NOT
+        # counted as a finding — AC#1).
+        clean_mem = proj_root / "-home-you-project-clean" / "memory"
+        clean_mem.mkdir(parents=True, exist_ok=True)
+        (clean_mem / "clean-fact.md").write_text(
+            "---\nname: clean-fact\nmetadata:\n  node_type: memory\n  scope: user-global\n---\nbody\n",
+            encoding="utf-8")
+        (clean_mem / "MEMORY.md").write_text(
+            "# Memory Index\n\n- [clean-fact](clean-fact.md) — hook\n", encoding="utf-8")
+        clean_facts = sorted(f for f in clean_mem.glob("*.md") if f.name != "MEMORY.md")
+        clean_sd = ms.schema_drift(clean_facts, ms.index_fact_names(clean_mem / "MEMORY.md"))
+        clean_zero = ms.drift_findings(clean_sd) == 0
+
+        print(f"  near-dup twin detected (excl. self): {orphan_detected}")
+        print(f"  drifted store counts: missing_node_type={sd['missing_node_type']}, "
+              f"index_mismatch={sd['index_mismatch']}, drift_findings={ms.drift_findings(sd)}")
+        print(f"  clean store drift_findings: {ms.drift_findings(clean_sd)} "
+              f"(advisory absent: scope={clean_sd['advisory_no_scope']}, origin={clean_sd['advisory_no_origin']})")
+        _verdict("J", "Phase-0 detects a near-dup slug-orphan + counts real schema drift; a "
+                 "clean single store yields ZERO drift findings (no false positives)",
+                 orphan_detected and drift_counts_ok and clean_zero,
+                 "near_duplicate_slugs flags the '-'/'_' twin (not itself); schema_drift counts the "
+                 "missing node_type + index↔file mismatch; a documented store is drift-free "
+                 "(advisory absence is allowed, not a finding)")
+
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")
         first, last = curve[0], curve[-1]

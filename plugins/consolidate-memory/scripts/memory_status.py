@@ -137,6 +137,136 @@ def slug_for(project_dir: Path) -> str:
     return str(project_dir.resolve()).replace("/", "-")
 
 
+_UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
+_LINK_RE = re.compile(r"\]\(([^)]+)\.md\)")        # MEMORY.md pointer link target (stem)
+_SCOPES = ("project-local", "stack-general", "user-global")
+
+
+def _valid_uuid(s: object) -> bool:
+    """True iff `s` is a full 8-4-4-4-12 hex UUID (an originSessionId). Regex, no `uuid`
+    import — mirrors `_valid_sha`. Used to flag a MALFORMED (present-but-wrong) originSessionId."""
+    return bool(isinstance(s, str) and _UUID_RE.match(s.strip()))
+
+
+def _frontmatter(text: str) -> dict:
+    """Parse a fact file's YAML-ish frontmatter to a flat dict. Lives here (the dependency root)
+    so sync_global imports it — single definition. Tolerant at the model→file boundary: strips a
+    leading BOM + normalizes CRLF (a healthy CRLF/BOM file must not read as EMPTY, else
+    schema_drift miscounts it as fully missing); NEVER raises (returns {} on anything odd)."""
+    if text.startswith("﻿"):
+        text = text[1:]
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    m = re.search(r"^---\n(.*?)\n---", text, re.S)
+    if not m:
+        return {}
+    out: dict = {}
+    lines = m.group(1).splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if ":" in line and not line.startswith((" ", "\t")):
+            k, _, v = line.partition(":")
+            v = v.strip()
+            if v in (">", ">-", ">+", "|", "|-", "|+"):   # folded/block scalar
+                buf, j = [], i + 1
+                while j < len(lines) and (lines[j].startswith((" ", "\t")) or not lines[j].strip()):
+                    if lines[j].strip():
+                        buf.append(lines[j].strip())
+                    j += 1
+                out[k.strip()] = " ".join(buf)
+                i = j
+                continue
+            out[k.strip()] = v
+        else:
+            m2 = re.match(r"\s+(scope|stacks|type|projects|node_type|originSessionId):\s*(.+)", line)
+            if m2:
+                out[m2.group(1)] = m2.group(2).strip()
+        i += 1
+    return out
+
+
+def index_fact_names(index_path: Path) -> set:
+    """Fact stems the always-loaded index points at, via the SAME `](<stem>.md)` link anchor
+    sync_global uses — NOT a naive line parse, so the `# Memory Index` header/blank lines don't
+    inflate an index<->files mismatch. Empty set if absent/unreadable."""
+    if not index_path.exists():
+        return set()
+    try:
+        return set(_LINK_RE.findall(index_path.read_text(encoding="utf-8", errors="replace")))
+    except OSError:
+        return set()
+
+
+def near_duplicate_slugs(slug: str, sibling_slugs: list) -> list:
+    """Sibling project slugs differing from `slug` only by '-'/'_'/case — the rename-orphan
+    signature (`…-Doc-Flo` vs `…-Doc_Flo`). EXCLUDES `slug` itself (a project never flags
+    itself). `slug_for` is lossy, so near-dup is the robust signal vs path reconstruction."""
+    def norm(s: str) -> str:
+        return s.replace("_", "-").lower()
+    target = norm(slug)
+    return sorted(s for s in sibling_slugs if s != slug and norm(s) == target)
+
+
+def schema_drift(fact_files: list, index_names: set) -> dict:
+    """DRIFT (always reported) + optional backfill ADVISORY (absence). DRIFT = documented field
+    `node_type` MISSING, a present-but-MALFORMED `scope`/`originSessionId`, or an index<->file
+    mismatch. Advisory = facts merely LACKING scope/originSessionId (injected/optional → absence
+    is noise, not drift). Pure; never raises."""
+    missing_node_type = malformed_scope = malformed_origin = 0
+    advisory_no_scope = advisory_no_origin = 0
+    stems = set()
+    for f in fact_files:
+        stems.add(f.stem)
+        try:
+            fm = _frontmatter(f.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            fm = {}
+        if "node_type" not in fm:
+            missing_node_type += 1
+        if "scope" in fm:
+            if fm["scope"] not in _SCOPES:
+                malformed_scope += 1
+        else:
+            advisory_no_scope += 1
+        if "originSessionId" in fm:
+            if not _valid_uuid(fm["originSessionId"]):
+                malformed_origin += 1
+        else:
+            advisory_no_origin += 1
+    return {"missing_node_type": missing_node_type, "malformed_scope": malformed_scope,
+            "malformed_origin": malformed_origin, "index_mismatch": len(stems ^ index_names),
+            "advisory_no_scope": advisory_no_scope, "advisory_no_origin": advisory_no_origin}
+
+
+def drift_findings(d: dict) -> int:
+    """Count of DRIFT findings (NOT advisory) — the AC#1 'clean store' gate. Strict `int()` (its
+    callers — the seed + smoke — always pass clean ints). NOTE: render_dashboard does NOT call
+    this; it sums the same four fields via its own `_num` at the model→presentation boundary (a
+    model-authored non-numeric value must not crash render). Keep the two in sync if the drift
+    fields change."""
+    return (int(d.get("missing_node_type", 0)) + int(d.get("malformed_scope", 0))
+            + int(d.get("malformed_origin", 0)) + int(d.get("index_mismatch", 0)))
+
+
+def _newest_mtime(base: Path, pattern: str) -> float:
+    """Newest mtime among base/pattern files; 0.0 if none/absent/UNREADABLE (slug-orphan
+    liveness signal). Never raises: an unreadable sibling dir (PermissionError) or a file that
+    vanishes between glob and stat (TOCTOU FileNotFoundError) degrades to 0.0 — Phase 0 must stay
+    read-only AND crash-proof on a hostile/odd projects tree."""
+    if not base.exists():
+        return 0.0
+    newest = 0.0
+    try:
+        for f in base.glob(pattern):
+            try:
+                newest = max(newest, f.stat().st_mtime)
+            except OSError:
+                continue  # file vanished between glob and stat (TOCTOU) — skip it
+    except OSError:
+        return 0.0  # unreadable dir — degrade, don't crash Phase 0
+    return newest
+
+
 def _run(cmd: list[str], cwd: Path) -> str:
     try:
         out = subprocess.run(  # noqa: S603 - fixed args
@@ -206,6 +336,25 @@ def build_context(project_dir: Path) -> dict:
     # the watershed. Report-only: the model decides whether to re-check them.
     stale_facts = _stale_since(fact_files, last_ts)
 
+    # Schema drift (C2): structural/malformed-field findings vs the index — always
+    # reported; advisory absence-counts are surfaced separately (NOT a drift finding).
+    index_names = index_fact_names(index_path)
+    drift = schema_drift(fact_files, index_names)
+
+    # Slug-orphan / near-duplicate-store detection (C1): a renamed project dir orphans
+    # its slug-scoped memory under the OLD slug. Guard the projects-root scan (mirrors
+    # build_context's auto_mem guard / sync_global's _network_nodes); enumerate sibling
+    # slugs, then gather the liveness signal (newest transcript + fact mtime) LAZILY —
+    # only for the matched twins, never every sibling. Read-only.
+    projects_root = Path.home() / ".claude" / "projects"
+    try:
+        siblings = [p.name for p in projects_root.iterdir() if p.is_dir()] if projects_root.exists() else []
+    except OSError:
+        siblings = []  # unreadable projects root → skip the sibling scan (Phase 0 stays crash-proof)
+    dups = near_duplicate_slugs(slug, siblings)
+    slug_orphans = [{"slug": d, "newest_txn": _newest_mtime(projects_root / d, "*.jsonl"),
+                     "newest_fact": _newest_mtime(projects_root / d / "memory", "*.md")} for d in dups]
+
     return {
         "project_dir": project_dir,
         "project": project_dir.name,
@@ -225,6 +374,9 @@ def build_context(project_dir: Path) -> dict:
         "head": head,
         "git_range": git_range,
         "commits": commits,
+        "index_names": index_names,
+        "schema_drift": drift,
+        "slug_orphans": slug_orphans,
     }
 
 
@@ -287,7 +439,9 @@ def seed_record(ctx: dict) -> dict:
             },
             "recall_facts": {"before": len(ctx["fact_files"]), "after": len(ctx["fact_files"])},
         },
-        "health": {"index_pointers_ok": True, "broken": [], "dangling_links": []},
+        "health": {"index_pointers_ok": True, "broken": [], "dangling_links": [],
+                   "slug_orphans": [o["slug"] for o in ctx["slug_orphans"]],
+                   "schema_drift": ctx["schema_drift"]},
         "cross_project": {
             "global_store_facts": len(list((Path.home() / ".claude" / "memory").glob("*.md")))
             - (1 if (Path.home() / ".claude" / "memory" / "MEMORY.md").exists() else 0),
@@ -348,6 +502,41 @@ def print_report(ctx: dict) -> None:
         print("  These facts predate the marker — re-verify them against the live tree:")
         for name in ctx["stale_facts"]:
             print(f"  • {name}")
+
+    # Slug-orphan / near-duplicate store(s) — a rename moves the slug-scoped store to a
+    # NEW slug, stranding the old one. ADVISORY: name each twin, flag which looks live
+    # (newest mtime), and the reconciliation hint. Never acted on here (detect/offer only).
+    if ctx["slug_orphans"]:
+        print("\n--- ⚠ Slug-orphan / near-duplicate store(s) ---")
+        cur_live = max(_newest_mtime(ctx["proj_root"], "*.jsonl"),
+                       _newest_mtime(ctx["auto_mem"], "*.md"))
+        print(f"  This slug ({ctx['slug']}) has near-duplicate sibling store(s) — likely a")
+        print("  rename-orphan (a dir rename changes the slug and strands the old memory):")
+        for o in ctx["slug_orphans"]:
+            twin_live = max(o["newest_txn"], o["newest_fact"])
+            which = "twin looks LIVE" if twin_live > cur_live else (
+                "current store looks live" if cur_live > twin_live else "same recency")
+            print(f"  • {_sane(o['slug'])}  ({which}; "
+                  f"twin newest mtime {int(twin_live)} vs current {int(cur_live)})")
+        print("  reconciliation: merge toward newest mtime, NOT most files; land under the")
+        print("  slug whose disk path exists — ADVISORY, confirm before acting.")
+
+    # Schema DRIFT — structural/malformed findings (always reported when present). The
+    # advisory absence-counts are a SEPARATE, clearly-optional line that MAY print on an
+    # otherwise-clean store (it is NOT a drift finding).
+    d = ctx["schema_drift"]
+    if drift_findings(d) > 0:
+        print("\n--- ⚠ Schema DRIFT (documented-field / structural) ---")
+        print(f"  missing node_type: {d['missing_node_type']} · malformed scope: {d['malformed_scope']} · "
+              f"malformed originSessionId: {d['malformed_origin']} · index↔file mismatch: {d['index_mismatch']}")
+        print("  offer backfill — ADVISORY, confirm before acting (Phase 0 never mutates a store).")
+    if d["advisory_no_scope"] or d["advisory_no_origin"]:
+        # OPTIONAL backfill advisory — NOT a drift finding; may print on an otherwise-clean
+        # store. memory_status emits plain text (no TTY-gated color like the dashboard), so
+        # 'optional/advisory' is carried by the words, not a raw ANSI dim that would garble
+        # captured output.
+        print("\n  backfill candidates (advisory, NOT drift — optional): "
+              f"{d['advisory_no_scope']} lack scope, {d['advisory_no_origin']} lack originSessionId")
 
     print("\n--- Global cross-project store (~/.claude/memory) ---")
     g = Path.home() / ".claude" / "memory"
