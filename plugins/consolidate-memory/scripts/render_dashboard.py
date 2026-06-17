@@ -60,13 +60,15 @@ _CODES = {"reset": "\x1b[0m", "bold": "\x1b[1m", "dim": "\x1b[2m",
 
 # ── ASCII fallback (opt-in --ascii, for non-UTF8 / older terminals) ──────────────
 _ASCII = False  # set in main(); when on, the FINAL rendered string is translated to ASCII.
-# Each Unicode glyph → a SINGLE ASCII char, so column alignment (computed on plain text) is
-# preserved — a multi-char map like →"->" would shift columns and is forbidden. Applied as the
-# LAST step only, so the default Unicode output + every library/test render() caller stay
-# byte-identical.
+# Each glyph → a SINGLE ASCII char, so column alignment (computed on plain text) is preserved — a
+# multi-char map like →"->" would shift columns and is forbidden. This table is for READABILITY;
+# a width-preserving `.encode("ascii","replace")` catch-all in render() GUARANTEES pure-ASCII output
+# for anything NOT listed (incl. `_clean`'s U+FFFD replacement char + any future glyph), so the set
+# can't silently drift. Applied as the LAST step only, so the default Unicode output stays identical.
 _GLYPH_ASCII = str.maketrans({
     "█": "#", "░": ":", "━": "=", "─": "-", "✦": "*", "⚠": "!", "✓": "+", "✗": "x",
     "◀": "<", "↓": "v", "⟳": "@", "→": ">", "·": ".", "•": "*",
+    "≈": "~", "↑": "^", "−": "-", "…": ".", "↔": "-", "—": "-",   # emitted but earlier-missed (Gate-2)
 })
 
 
@@ -513,7 +515,11 @@ def render(record: ms.CycleRecord) -> str:
         out.append(_kv("MARKER", _c(f"→ {_clean(str(m.get('commit', '?'))[:12])} @ {_clean(m.get('timestamp', '?'))}", "dim")))
 
     result = "\n".join(out)
-    return result.translate(_GLYPH_ASCII) if _ASCII else result   # --ascii: translate as the LAST step
+    if _ASCII:   # --ascii (LAST step): translate for readability, then encode-replace to GUARANTEE
+        # pure ASCII — each remaining non-ASCII codepoint → a single "?" (width-preserving), so an
+        # unmapped/future glyph (or _clean's U+FFFD) can never leak Unicode to a non-UTF8 terminal.
+        result = result.translate(_GLYPH_ASCII).encode("ascii", "replace").decode("ascii")
+    return result
 
 
 def _demo_record() -> ms.CycleRecord:

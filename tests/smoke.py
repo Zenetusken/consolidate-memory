@@ -622,14 +622,18 @@ try:
     _asc = rd.render(rd._demo_record())
 finally:
     rd._ASCII = False
-_GLYPHS_V017 = "█░━─✦⚠✓✗◀↓⟳→·•"
-check("render: --ascii output contains NONE of the 14 Unicode glyphs (v0.1.7 C3)",
-      not any(g in _asc for g in _GLYPHS_V017))
+# The CONTRACT is "pure ASCII" — assert .isascii() (catches ANY unmapped/future glyph + the
+# catch-all's coverage), NOT membership of a hand-listed glyph set (that was circular and missed
+# ≈/−/↑/… in the first pass). Plus: the common glyphs map READABLY (not just catch-all '?').
+check("render: --ascii output is pure ASCII (.isascii() — catches any unmapped glyph) (v0.1.7 C3)",
+      _asc.isascii())
+check("render: --ascii maps common glyphs READABLY (█→#, →→>), not just the catch-all (v0.1.7 C3)",
+      "#" in _asc and ">" in _asc)
 check("render: --ascii preserves line count + per-line width (single-char maps) (v0.1.7 C3)",
       _asc.count("\n") == _uni.count("\n")
       and all(len(a) == len(u) for a, u in zip(_asc.splitlines(), _uni.splitlines())))
-check("render: default (Unicode) render keeps the glyphs — --ascii is opt-in (v0.1.7 C3)",
-      any(g in _uni for g in _GLYPHS_V017))
+check("render: default (Unicode) render is NOT pure ASCII — --ascii is opt-in (v0.1.7 C3)",
+      not _uni.isascii())
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

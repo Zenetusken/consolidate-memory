@@ -9,9 +9,9 @@ version changes on `main`.
 
 ### Added
 - **`--ascii` dashboard fallback** for older / non-UTF8 terminals: `render_dashboard.py --ascii`
-  translates the Unicode glyphs (`█ ░ ━ ─ ✦ ⚠ ✓ ✗ ◀ ↓ ⟳ → · •`) to single ASCII chars
-  (width-preserving, so column alignment holds). Opt-in — the default Unicode output is
-  byte-identical.
+  translates the dashboard's Unicode glyphs to single ASCII chars (width-preserving, so column
+  alignment holds), with a catch-all that **GUARANTEES pure-ASCII output** (`.isascii()`; any
+  unmapped glyph → `?`). Opt-in — the default Unicode output is byte-identical.
 
 ### Changed
 - **No-op passes no longer print a RIGOR line.** A true no-op (magnitude 0 + no entries) used to
