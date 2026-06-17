@@ -137,6 +137,20 @@ def _num(x: object) -> float:
         return 0.0
 
 
+def _dget(m: object, k: str) -> dict:
+    """A dict sub-value of a model-authored record — or {} if the record/value is absent or the
+    WRONG type. The container analog of _num/_clean: the model→presentation boundary never trusts
+    a container's type either (a truthy non-dict `scope`/`health`/… must degrade, not crash)."""
+    v = m.get(k) if isinstance(m, dict) else None
+    return v if isinstance(v, dict) else {}
+
+
+def _lget(m: object, k: str) -> list:
+    """A list sub-value of a model-authored record — or [] if absent/wrong-type."""
+    v = m.get(k) if isinstance(m, dict) else None
+    return v if isinstance(v, list) else []
+
+
 def _g(n: float) -> str:
     """Format a number without a trailing .0 (so 42.0 → '42')."""
     n = _num(n)
@@ -190,9 +204,9 @@ def _outcome(record: Mapping[str, Any]) -> str:
     # json.loads paths work too. We only READ here.
     if record.get("outcome"):
         return str(record["outcome"]).upper()
-    entries = record.get("entries", [])
+    entries = _lget(record, "entries")
     writes = sum(1 for e in entries if e.get("action") in ("added", "corrected", "deleted"))
-    scope = record.get("scope", {})
+    scope = _dget(record, "scope")
     candidates = scope.get("session_candidates", 0) or 0
     git = scope.get("git_commits", 0) or 0
     reviewed = scope.get("memories_reviewed", 0) or 0
@@ -264,11 +278,11 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
         out.append("      (no nodes hold shared facts yet)")
 
     # This cycle's lifecycle on the triggering node — derived, not hand-counted.
-    entries = record.get("entries", [])
+    entries = _lget(record, "entries")
     cnt = {k: sum(1 for e in entries if e.get("action") == k) for k in _ACTIONS}
     parts = [f"{g} {cnt[k]} {lbl}" for k, (g, lbl, _col) in _ACTIONS.items() if cnt[k]]
-    idx = record.get("budget", {}).get("index", {})
-    xp = record.get("cross_project", {})
+    idx = _dget(_dget(record, "budget"), "index")
+    xp = _dget(record, "cross_project")
     trig = _clean(net.get("trigger", "?"))
     # DOUBLE-SPACE join (not ' · ') — same reason as the Changes legend: the skip glyph
     # '·' must not read as a doubled dot beside a '·' separator.
@@ -286,6 +300,8 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
 
 
 def render(record: ms.CycleRecord) -> str:
+    if not isinstance(record, dict):
+        record = {}  # a non-dict record (JSON list/scalar from stdin) degrades — this is the runtime boundary
     out: list = []
     proj = _clean(record.get("project", "?"))
     ses = _clean(record.get("session", "?"))
@@ -301,11 +317,11 @@ def render(record: ms.CycleRecord) -> str:
     out.append(_rule())
 
     # Scope + Verification (aligned label column)
-    s = record.get("scope", {})
+    s = _dget(record, "scope")
     out.append("")
     out.append(_kv("SCOPE", f"git {_clean(s.get('git_range', '?'))} · {_g(_num(s.get('git_commits', 0)))} commits · "
                             f"{_g(_num(s.get('session_candidates', 0)))} candidates · {_g(_num(s.get('memories_reviewed', 0)))} reviewed"))
-    v = record.get("verification", {})
+    v = _dget(record, "verification")
     method = f"   {_c('[' + _clean(v['method']) + ']', 'dim')}" if v.get("method") else ""
     out.append(_kv("VERIFIED", f"{_c('✓', 'green')} {v.get('confirmed', 0)} confirmed · "
                                f"{_c('~', 'yellow')} {v.get('corrected', 0)} corrected · "
@@ -321,7 +337,7 @@ def render(record: ms.CycleRecord) -> str:
     # `rigor: {}` still shows the derived line; legacy records (no `rigor` key) skip it. The
     # tier is a DISTINCT quantity from the outcome banner (output-based, write counts).
     if "rigor" in record:
-        rg = record.get("rigor") or {}
+        rg = _dget(record, "rigor")
         gc, cand = _num(s.get("git_commits", 0)), _num(s.get("session_candidates", 0))
         suggested = ms.suggested_tier(gc, cand)
         # `applied` (v0.1.4) is the ceremony the model ACTUALLY ran — a stored DECISION, not
@@ -347,7 +363,7 @@ def render(record: ms.CycleRecord) -> str:
     # reason+citation move to a single dim sub-line so nothing floats after the name.
     out.append("")
     out.append("  " + _c("CHANGES", "bold"))
-    entries = record.get("entries", [])
+    entries = _lget(record, "entries")
     if not entries:
         out.append("    (none)")
     else:
@@ -374,7 +390,7 @@ def render(record: ms.CycleRecord) -> str:
 
     # Always-loaded budget — ONE grid: label | value | bar/% or descriptor. One unit
     # (estimated tokens) for the gauge; line/fact deltas are a terse trailing note.
-    b = record.get("budget", {})
+    b = _dget(record, "budget")
     cm = b.get("claude_md", {})
     gcm = b.get("global_claude_md", {})
     idx = b.get("index", {})
@@ -407,7 +423,7 @@ def render(record: ms.CycleRecord) -> str:
         out.append("    (unchanged)")
 
     # Cross-project (global tier) — aligned direction | scope | name; counts on one line.
-    xp = record.get("cross_project", {})
+    xp = _dget(record, "cross_project")
     if xp:
         out.append("")
         gtotal = xp.get("global_store_facts")
@@ -435,12 +451,12 @@ def render(record: ms.CycleRecord) -> str:
 
     # Neural network — token consumption across all nodes (the observability ask).
     # Guarded: legacy/no-op records without a `network` block skip it.
-    net = record.get("network")
+    net = _dget(record, "network")
     if net:
         out.extend(_network_section(record, net))
 
     # Health
-    h = record.get("health", {})
+    h = _dget(record, "health")
     if h:
         ok = h.get("index_pointers_ok", True)
         ptr = _c("✓ all pointers resolve", "green") if ok else _c("✗ BROKEN pointers", "red")
@@ -476,7 +492,7 @@ def render(record: ms.CycleRecord) -> str:
         out.append(_kv("HEALTH", " · ".join(bits)))
 
     # Marker
-    m = record.get("marker", {})
+    m = _dget(record, "marker")
     if m:
         out.append(_kv("MARKER", _c(f"→ {_clean(str(m.get('commit', '?'))[:12])} @ {_clean(m.get('timestamp', '?'))}", "dim")))
 
@@ -544,7 +560,7 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> None:
     if not os.path.isdir(dirpath):
         print(f"render_dashboard: --persist dir not found, skipping log: {dirpath}", file=sys.stderr)
         return
-    marker = record.get("marker") or {}
+    marker = _dget(record, "marker")  # tolerate a truthy non-dict marker (model slip) — never .get() on a str
     commit, ts = str(marker.get("commit", "")), str(marker.get("timestamp", ""))
     if not ts:
         print("render_dashboard: marker.timestamp empty (unstamped cycle), skipping persist", file=sys.stderr)

@@ -553,8 +553,8 @@ _validate_crashed = False
 try:
     ms.validate_cycle_record(42)                       # non-dict record
     ms.validate_cycle_record(None)                     # non-dict record
-    ms.validate_cycle_record({"health": "not-a-dict"})  # non-dict health → skipped, no crash
-    ms.validate_cycle_record({"health": ["x"]})        # health-as-list → skipped, no crash
+    ms.validate_cycle_record({"health": "not-a-dict"})  # non-dict health → warns (FIX 2), no crash
+    ms.validate_cycle_record({"health": ["x"]})        # health-as-list → warns (FIX 2), no descend, no crash
     ms.validate_cycle_record(cast(Any, [1, 2, 3]))     # a bare list record
 except Exception:  # noqa: BLE001 — ANY raise fails the never-raise contract
     _validate_crashed = True
@@ -563,6 +563,35 @@ check("validate: NEVER raises on junk (non-dict record / non-dict health / healt
 # A non-dict record returns a single descriptive warning, not a crash:
 check("validate: non-dict record returns a descriptive warning (not a crash)",
       ms.validate_cycle_record(42) == ["cycle record is not a dict (got int)"])
+# FIX 2: a present-but-non-dict `health` now WARNS (it was neither warned nor — before the
+# render guard — survived). Added to the top-level container tuple alongside scope/budget/…
+check("validate: warns on non-dict health (FIX 2)",
+      "health is not a dict" in ms.validate_cycle_record({"health": "x"}))
+
+# Gate-2 FIX 1: render() must DEGRADE (render what it can), NEVER crash, on a MODEL-authored
+# malformed record — a non-dict record (a JSON list/scalar from stdin) or a truthy non-dict /
+# wrong-container top-level value (`scope`/`rigor`/`health`/`budget`/`entries`). The contract
+# is the codebase's never-crash invariant: render returns a `str` (and still emits its fixed
+# skeleton, e.g. the always-rendered "CHANGES" header). NB: HEALTH is `if h:`-guarded, so a
+# bare/malformed-health record renders NO HEALTH section — assert the unconditional skeleton,
+# not HEALTH (only a record carrying a `health` dict, like _demo_record, shows HEALTH).
+for _label, _bad in [
+    ("non-dict record (list)", cast(_R, [1, 2, 3])),
+    ("non-dict record (str)", cast(_R, "x")),
+    ("non-dict record (None)", cast(_R, None)),
+    ("non-dict scope", cast(_R, {"scope": "x", "entries": []})),
+    ("non-dict rigor", cast(_R, {"rigor": "x", "scope": {}, "entries": []})),
+    ("non-dict health", cast(_R, {"health": "x", "scope": {}, "entries": []})),
+    ("non-dict budget", cast(_R, {"budget": "x", "scope": {}, "entries": []})),
+    ("non-list entries", cast(_R, {"entries": "x"})),
+]:
+    _out = rd.render(_bad)
+    check(f"render: degrades (never crashes) on {_label} — returns str with CHANGES skeleton",
+          isinstance(_out, str) and "CHANGES" in _out)
+# and a clean WELL-FORMED record still renders the banner (the degrade path is a no-op on
+# correct types — coercions don't alter a valid record).
+check("render: clean well-formed record still renders the banner (FIX 1 no-op on valid types)",
+      "DREAM · consolidate-memory" in rd.render({"project": "p", "session": "s", "scope": {}, "entries": []}))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

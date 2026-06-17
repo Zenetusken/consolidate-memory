@@ -640,8 +640,9 @@ def validate_cycle_record(record: object) -> list[str]:
     or silence, never a crash).
 
     It flags only a PRESENT key whose CONTAINER type is wrong (the model-slip class behind
-    the Gate-2 crashes), at the ACTUAL nesting — including `health.slug_orphans` /
-    `health.schema_drift`, which nest UNDER `health`. It is deliberately QUIET on a missing
+    the Gate-2 crashes), at the ACTUAL nesting — every top-level container key (`scope`,
+    `health`, … — `health` included, so a non-dict `health` warns) plus `health.slug_orphans`
+    / `health.schema_drift`, which nest UNDER `health`. It is deliberately QUIET on a missing
     key (a partial record is normal, the phases fill it incrementally) and on a correct
     type, and it does NOT check scalar value types — that's the `_num`/`_clean`/`_flag`
     coercion boundary in render, not this structural gate."""
@@ -652,17 +653,16 @@ def validate_cycle_record(record: object) -> list[str]:
         return [f"cycle record is not a dict (got {type(record).__name__})"]
 
     # Top-level keys that MUST be a dict if present.
-    for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker"):
+    for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
     if "entries" in record and not isinstance(record["entries"], list):
         warnings.append("entries is not a list")
 
-    # Nested under health — checked ONLY when health itself is a dict (a non-dict health
-    # is silently skipped here; it is not in the top-level dict list above by design — the
-    # SKILL schema treats health as always-a-dict, so we don't warn on its container, we
-    # just don't descend into a malformed one).
+    # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
+    # already warned via the top-level tuple above ("health is not a dict"); here we just
+    # decline to descend into a malformed one (no double-warn, no crash on its sub-keys).
     health = record.get("health")
     if isinstance(health, dict):
         if "slug_orphans" in health and not isinstance(health["slug_orphans"], list):
