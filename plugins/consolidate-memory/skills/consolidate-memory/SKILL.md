@@ -81,7 +81,11 @@ projects). Those get a **`scope`**: `project-local`, `stack-general`, or
 surface there (they don't auto-cross). `sync_global.py` does that replication; the
 phases below call it. (Renaming a project dir changes its slug and **orphans** its
 old auto-memory — another reason the canonical copy lives in the slug-independent
-global store.) See `references/harness-map.md` § "cross-project".
+global store.) See `references/harness-map.md` § "cross-project". **Phase 2 decides each
+fact's scope by a hard cascade** (Gate 0 → `project-local` · Gate 1 → `stack-general` ·
+Gate 2 → `user-global`), keyed on whether a fact's dependency is *fleet-constant* (the
+user's substrate — can be global) or *fleet-varying* (a per-project stack — at most
+`stack-general`).
 
 ## Why this is its own ritual (and not automatic)
 
@@ -230,20 +234,43 @@ typed messages are <1% of the transcript and carry only the *feedback* slice; th
    silently gone stale. Treat them as re-verify candidates in Phase 3.
 
 For each candidate also assign a **`scope`**: `project-local` (specific to this
-repo's domain), `stack-general` (a pattern reusable on same-stack projects), or
-`user-global` (a preference or environment fact that holds everywhere — e.g. the
-`gh pr edit` env gotcha, the typed-stubs preference). Scope is independent of tier;
-it pre-stages cross-project sharing and sharpens "what belongs where" even today.
+repo's domain), `stack-general` (a pattern reusable on a *narrow* same-stack — e.g.
+the typed-stubs/`mypy` preference), or `user-global` (a preference or environment fact
+that holds across the user's whole fleet — e.g. the `gh pr edit` env gotcha). Scope is
+independent of tier; it pre-stages cross-project sharing and sharpens "what belongs where."
 
-**Scope is a fleet-wide cost lever — promote conservatively.** A `user-global` fact
-replicates an always-loaded index pointer into *every* project (G facts × P projects);
-a `stack-general` fact on a *common* stack does nearly the same while looking scoped
-(e.g. the `claude-code` stack matches almost every Claude Code repo via `.claude` /
-`skill` / `agents.md`). Both inflate the always-loaded tier across the whole fleet at
-once. Default to `project-local`; reserve `user-global` for facts that genuinely apply
-everywhere, and `stack-general` for *narrow* stacks. When in doubt, keep it local — a
-fact can always be promoted later, but un-promoting means a global delete + fleet-wide
-GC (see Phase 4/5).
+**Scope is a fleet-wide cost lever** — a `user-global` fact replicates an always-loaded
+index pointer into *every* project (G facts × P projects) — so decide it by a **hard
+cascade, not vibes.** First the load-bearing distinction:
+- **Fleet-CONSTANT substrate** — the user's OS/account, an always-present CLI (`gh`), the
+  Claude Code harness itself: present in *all* their projects. A gotcha/behavior about it
+  is `user-global` — it is **not** a disqualifying precondition.
+- **Fleet-VARYING precondition** — a stack/tool/workflow in only *some* projects (`mypy`,
+  `pytest`, "projects that cut releases"): scopes a fact to `stack-general`.
+
+Judge by the fact's **content, not its `stacks:` tags**: a workflow for *any* substantial
+change is fleet-constant (→ `user-global`) even if tagged `release`; a rule that applies
+*only when cutting a release* is fleet-varying (→ `stack-general`). Same tags, different scope.
+
+Then walk the cascade in order (it is total; the conservative floor is `project-local`):
+1. **Gate 0 — project-specific?** about *this* repo's domain/code/history → `project-local`.
+2. **Gate 1 — fleet-varying precondition?** Judge the fact's *content* dependency, not its
+   `stacks:` tags. **First:** if the only dependency is the fleet-CONSTANT substrate (the
+   harness/`claude-code`, `gh`, OS/account), it does **not** trip this gate → straight to
+   Gate 2. **Otherwise**, if it holds only given a fleet-varying stack → `stack-general`,
+   **iff** (S1) it names a *specific* such stack and (S2) holds for *all* projects on it
+   (else → `project-local`).
+3. **Gate 2 — `user-global`?** ONLY if ALL hold (any miss → `project-local`): **G2.1** no
+   fleet-varying precondition (constant substrate exempt) · **G2.2** a user/env property,
+   not a codebase one · **G2.3** you can name ≥1 *existing, different* project where it
+   would apply (+ the mechanism) · **G2.4** not already in the always-loaded
+   `~/.claude/CLAUDE.md`, nor re-derivable from each project's code/git · **G2.5** durable,
+   not transient/churn-prone.
+
+(Cost intuition behind Gate 1's carve-out: a `stack-general` fact on a *common* stack like
+`claude-code` would behave like a second `user-global` tier — which is exactly why the
+near-universal substrate routes to Gate 2, not `stack-general`.) When in doubt keep it local:
+promoting later is cheap; un-promoting means a global delete + fleet-wide GC (Phase 4/5).
 
 For each candidate, decide its **tier** (always-loaded / recall / on-demand — the
 model above) and therefore its store and shape, and check whether it's already
@@ -344,7 +371,9 @@ placing each fact in its tier and optimizing it for how that tier loads:
   AND keep a project-store copy so it recalls *here* (recall is slug-scoped). Other
   projects pick it up when they next run their own Phase-1 `--pull`. Don't move a
   fact out of a project store that currently recalls it — the global copy is additive.
-  Record each promotion in `cross_project.promoted` (name + scope).
+  Record each promotion in `cross_project.promoted` (name + scope), and in that entry's
+  **`reason`** capture the **deciding gate + the concrete other project named for G2.3**
+  (the promotion cascade — Phase 2), so the scope decision is auditable.
 - **Cite** each new/changed entry with the commit SHA or session basename it came
   from, so a future pass can trace it.
 
