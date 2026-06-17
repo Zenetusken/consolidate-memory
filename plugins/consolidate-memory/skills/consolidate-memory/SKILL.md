@@ -506,9 +506,17 @@ summary alongside it.
     "totals": {"nodes": 0, "always_loaded_tokens": 0,
                "mirror_index_tokens": 0, "recall_tokens": 0}
   },
-  "marker": {"commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"}
+  "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
+             "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
+  "outcome": ""
 }
 ```
+
+`outcome` is an OPTIONAL explicit override of the derived banner — leave it empty (or
+omit it) and the dashboard derives `NOTHING TO CONSOLIDATE` / `NO-OP PASS` / `LIGHT PASS`
+/ `SUBSTANTIAL PASS` from the write counts; set it only to force a specific banner. (Its
+presence here keeps this schema block key-for-key with the `CycleRecord` TypedDict, which
+a smoke test enforces.)
 
 The `budget.*.over` flags and token counts come from `memory_status.py` (it gates on
 the `INDEX_TOKEN_BUDGET` / `CLAUDE_MD_TOKEN_BUDGET` ceilings); the dashboard renders a

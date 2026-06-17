@@ -31,8 +31,12 @@ import json
 import os
 import re
 import sys
+from typing import Any, Mapping, cast
 
 import memory_status as ms  # sibling script — reuse the canonical tier bands (derive, don't duplicate)
+# The cycle-record CONTRACT (v0.1.6) lives in memory_status; reference it as ms.CycleRecord
+# (the type render() consumes + _demo_record() produces), so this consumer and the producer
+# agree on ONE definition and mypy flags any cross-module disagreement.
 
 W = 60  # dashboard rule width
 
@@ -124,7 +128,11 @@ def _num(x: object) -> float:
     upstream (by the model), so a budget field may arrive as a string like '10' or be
     absent; never let that raise mid-render."""
     try:
-        return float(x)
+        # `x` is typed `object` ON PURPOSE — callers pass `.get()` results, None, str,
+        # numbers — so float() needs a cast to typecheck. The try/except is the actual
+        # runtime guard; cast is a compile-time no-op (the spec-prescribed shape, since
+        # narrowing `x` to float|int|str would break the None/`.get()` callers).
+        return float(cast(Any, x))
     except (TypeError, ValueError):
         return 0.0
 
@@ -162,17 +170,24 @@ def _pct(used: object, budget: object) -> str:
     return "" if b <= 0 else f"{round(100 * _num(used) / b)}%"
 
 
-def _over(b: dict) -> str:
+def _over(b: Mapping[str, Any]) -> str:
     """The ACTIONABLE over-budget flag for a project always-loaded tier (CLAUDE.md /
     index): the seed (memory_status) sets `over` against the token ceiling. Distinct
     from the global CLAUDE.md's *advisory* 'heavy' note — this one means 'prune/propose'.
-    Kept as a named helper because the smoke tests assert its contract directly."""
+    Kept as a named helper because the smoke tests assert its contract directly.
+
+    Param typed `Mapping[str, Any]` (read-only): a TypedDict IS assignable to a read-only
+    Mapping (covariant), so BOTH the ClaudeMdBudget and IndexBudget sub-shapes flow in
+    with no Union — which is what dissolves the old dual-budget-shape mypy friction."""
     if b.get("over"):
         return _c(f"  ⚠ OVER ≈{b.get('budget_tokens', '?')} tok BUDGET", "red")
     return ""
 
 
-def _outcome(record: dict) -> str:
+def _outcome(record: Mapping[str, Any]) -> str:
+    # Read-only Mapping[str, Any]: a CycleRecord IS assignable to it (covariant), so the
+    # render(record: CycleRecord) caller passes through with no error, and the demo /
+    # json.loads paths work too. We only READ here.
     if record.get("outcome"):
         return str(record["outcome"]).upper()
     entries = record.get("entries", [])
@@ -213,7 +228,7 @@ def _item(p: object) -> tuple:
     return _clean(str(p)), ""
 
 
-def _network_section(record: dict, net: dict) -> list:
+def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
     """The neural-network token sub-section: per-node ESTIMATED cost across every node,
     network totals (with the mirror-driven share), and what THIS cycle did on the
     triggering node. Lifecycle counts are DERIVED from entries[] (single source of
@@ -270,7 +285,7 @@ def _network_section(record: dict, net: dict) -> list:
     return out
 
 
-def render(record: dict) -> str:
+def render(record: ms.CycleRecord) -> str:
     out: list = []
     proj = _clean(record.get("project", "?"))
     ses = _clean(record.get("session", "?"))
@@ -468,7 +483,7 @@ def render(record: dict) -> str:
     return "\n".join(out)
 
 
-def _demo_record() -> dict:
+def _demo_record() -> ms.CycleRecord:
     """A representative cycle record for `--demo` — lets anyone preview the dashboard
     (and its color, in a TTY) without authoring or pasting JSON. Mirrors a substantial
     pass: an add, a correction, and a SKIPPED decision (so the skipped-row UI is visible)."""
@@ -518,7 +533,7 @@ def _demo_record() -> dict:
     }
 
 
-def _persist(record: dict, dirpath: str) -> None:
+def _persist(record: Mapping[str, Any], dirpath: str) -> None:
     """Append the cycle record (one JSON line) to <dir>/.consolidation-log.jsonl so
     magnitude→(applied, outcome) data accrues for future band calibration (v0.1.4). The
     record's own `marker` stamps it — no wall-clock call here. Defensive at the model→file
@@ -599,10 +614,18 @@ def main() -> int:
         print(f"render_dashboard: cannot read cycle record: {exc}", file=sys.stderr)
         return 1
     try:
-        record = json.loads(raw)
+        # The record is MODEL-authored JSON; we cast to the contract at this trust
+        # boundary (cast is a runtime no-op) so render() typechecks. The actual
+        # structural check is the warn-only validator below — non-blocking, stderr only.
+        record = cast(ms.CycleRecord, json.loads(raw))
     except json.JSONDecodeError as exc:
         print(f"render_dashboard: invalid cycle-record JSON: {exc}", file=sys.stderr)
         return 1
+    # Warn-only structural validation (v0.1.6): surface a wrong-CONTAINER-type key (the
+    # model-slip class behind the past crashes) on STDERR. NEVER blocks the render and
+    # NEVER touches stdout — the rendered dashboard stays byte-identical.
+    for w in ms.validate_cycle_record(record):
+        print(f"render_dashboard: cycle-record warning: {w}", file=sys.stderr)
     print(render(record))
     if persist_dir:
         _persist(record, persist_dir)

@@ -375,8 +375,8 @@ def run() -> None:
             fh.write("{not valid json\n")             # JSONDecodeError
             fh.write('null\n42\n["x"]\n')              # valid JSON, non-object → .get AttributeError
             fh.write('{"marker": "not-a-dict"}\n')     # dict line, truthy non-dict marker → .get
-        with open(logpath, "ab") as fh:
-            fh.write(b"\xff\xfe not utf-8\n")           # non-UTF-8 → UnicodeDecodeError (a ValueError)
+        with open(logpath, "ab") as fhb:               # distinct name: a BINARY handle (bytes), not the text `fh` above
+            fhb.write(b"\xff\xfe not utf-8\n")          # non-UTF-8 → UnicodeDecodeError (a ValueError)
         crashed = False
         try:
             rd._persist({**rec1, "marker": {"commit": "ddd444", "timestamp": "2026-06-17T03:00:00Z"}}, str(logdir))
