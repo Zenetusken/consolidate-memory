@@ -5,6 +5,37 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.4] — 2026-06-17
+
+### Added
+- **Realized-rigor capture + cycle-record persistence (the band-calibration apparatus).**
+  The cycle record gains `rigor.applied` (the ceremony actually run) and
+  `rigor.override_reason`; `render_dashboard.py --persist DIR` appends each rendered record
+  (one JSON line) to `<store>/.consolidation-log.jsonl`, idempotently — so a project accrues
+  magnitude→(applied, outcome) data a future band calibration can refit against. The
+  *suggested* tier stays DERIVED at render (no-drift); `applied` is a stored decision, not
+  derivable from magnitude.
+
+### Changed
+- **Dashboard `RIGOR` line** shows `suggested → applied · why` when the model overrode the
+  magnitude-derived tier (and just the suggested tier otherwise — legacy records render
+  unchanged).
+
+### Notes
+- **Bands `(2,7)` are KEPT, deliberately, as a coarse HINT — not recalibrated.** A
+  sensitivity probe found magnitude agrees with a rich needed-rigor rubric on only ~half of
+  passes: the deciding features (always-loaded-bound count, conflicts, prune-pressure) are
+  LATE-known, so an EARLY magnitude proxy can't be precision-tuned (`prune_pressure` + the
+  2-source rule cover the blind spots). `INDEX_TOKEN_BUDGET` is the binding prune lever
+  (~20–27 real facts); `PRUNE_PRESSURE_FACTS` is a terse-pointer backstop.
+- **Honest scope of the apparatus:** `applied` is **self-reported** — it catches OVER-rigor,
+  not under-rigor; calibrating the dangerous (under-rigor) direction needs LONGITUDINAL
+  miss-detection (a later pass finds what an earlier one missed), which the persisted log
+  enables but which is future work. Never calibrate bands against the OUTCOME banner —
+  mature passes are systematically high-magnitude/low-outcome, so it fails UNSAFE.
+- Backward-compatible: legacy v0.1.3 cycle records (no `applied`) render unchanged; the new
+  field + flag + log are additive.
+
 ## [0.1.3] — 2026-06-16
 
 ### Added

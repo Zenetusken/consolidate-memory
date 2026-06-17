@@ -53,8 +53,11 @@ TIER_LIGHT_MAX = 2        # magnitude ≤ 2 → LIGHT
 TIER_SUBSTANTIAL_MAX = 7  # 3..7 → SUBSTANTIAL ; ≥ 8 → HEAVY
 TIER_ORDER = {"LIGHT": 0, "SUBSTANTIAL": 1, "HEAVY": 2}  # canonical rank (sorts / monotonicity checks)
 # Prune-pressure: a near/over-budget index OR an already-large store needs prune rigor on
-# ANY pass (orthogonal to magnitude). Observed store sizes cluster at {6,7} and {100,104};
-# any value in the open interval (7, 100) yields the identical partition — 40 is a tunable
+# ANY pass (orthogonal to magnitude). LEVER HIERARCHY (measured 2026-06): INDEX_TOKEN_BUDGET
+# is the BINDING primary lever — at real pointer cost (~45-60 tok/fact) the index trips 1200
+# tokens at ~20-27 facts, well before this count — so PRUNE_PRESSURE_FACTS is a terse-pointer
+# BACKSTOP, not the primary trigger. Observed store sizes cluster at {6,7} and {100,104}; any
+# value in the open interval (7, 100) yields the identical partition — 40 is a tunable
 # midpoint, not a calibrated precision point.
 PRUNE_PRESSURE_FACTS = 40
 
@@ -86,14 +89,18 @@ def prune_pressure(index_over: bool, memories_reviewed: int) -> tuple[bool, str]
 
 
 def _provisional_rigor(ctx: dict) -> dict:
-    """The Phase-0 PROVISIONAL rigor block stored in the cycle record: `phase` + the
-    prune-pressure flag/reason. It deliberately stores **no tier** — the tier is DERIVED
-    from `scope` (git_commits + session_candidates) at render, so the label can never drift
-    from its own magnitude. The model sets `phase="final"` in Phase 2 after curating
-    `session_candidates`. (The Phase-0 *report* computes a provisional tier for the operator
-    to read — an operational hint, separate from the record.)"""
+    """The Phase-0 PROVISIONAL rigor block stored in the cycle record: `phase`, the
+    prune-pressure flag/reason, and the realized-rigor `applied`/`override_reason` (seeded
+    EMPTY here; the model fills them in Phase 2/4). It deliberately stores **no suggested
+    tier** — that tier is DERIVED from `scope` (git_commits + session_candidates) at render,
+    so the label can never drift from its own magnitude. `applied` (the ceremony actually
+    run) is a genuine decision NOT derivable from magnitude, so storing it introduces no
+    drift. The model sets `phase="final"` in Phase 2 after curating `session_candidates`.
+    (The Phase-0 *report* computes a provisional tier for the operator to read — an
+    operational hint, separate from the record.)"""
     pp_flag, pp_reason = prune_pressure(ctx["index_lb"][2] > INDEX_TOKEN_BUDGET, len(ctx["fact_files"]))
-    return {"phase": "provisional", "prune_pressure": pp_flag, "prune_reason": pp_reason}
+    return {"phase": "provisional", "prune_pressure": pp_flag, "prune_reason": pp_reason,
+            "applied": "", "override_reason": ""}
 
 
 def est_tokens(text: str) -> int:

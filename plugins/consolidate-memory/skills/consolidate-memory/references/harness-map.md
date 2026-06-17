@@ -141,8 +141,9 @@ finalizes it in Phase 2 and may override with rationale.
 - **Prune-pressure is a SEPARATE axis.** `index over budget OR memories_reviewed ≥
   PRUNE_PRESSURE_FACTS` forces prune-or-propose regardless of tier — a large store needs
   pruning even on a tiny pass. This is where the cumulative stock belongs.
-- **Two phases, but the tier is DERIVED (not stored).** The cycle record stores only
-  `phase` + the prune-pressure flag/reason — never a tier label. Phase 0 seeds `phase:
+- **Two phases; the suggested tier is DERIVED (not stored).** The cycle record stores
+  `phase`, the prune-pressure flag/reason, and the realized-rigor `applied`/`override_reason`
+  decision (v0.1.4) — never the derivable suggested tier. Phase 0 seeds `phase:
   "provisional"` (with no marker `git_commits` is a recent-≤20 lookback, so the tier is
   advisory). Phase 2 sets the curated `session_candidates` + `phase: "final"`. The renderer
   DERIVES the tier (and magnitude) from `scope` via `ms.suggested_tier`, so the displayed
@@ -153,6 +154,18 @@ finalizes it in Phase 2 and may override with rationale.
   the dashboard's `LIGHT/SUBSTANTIAL PASS` banner is an *output*-side label from write
   counts. They share no scale (a pass can be HEAVY-rigor yet LIGHT-outcome). Both tier and
   magnitude are derived from `scope` at render, never stored — no parallel count to drift.
+- **A coarse HINT by design + the apparatus to calibrate it (v0.1.4).** A sensitivity probe
+  found magnitude matches a rich needed-rigor rubric only ~half the time — the deciding
+  features (always-loaded-bound count, conflicts, prune-pressure) are LATE-known (Phase 2–3),
+  so the EARLY magnitude proxy isn't precision-tunable; `(2,7)` is kept, with `prune_pressure`
+  + the 2-source rule covering the blind spots. To enable a *data-grounded* future
+  calibration, the model records the realized `rigor.applied`/`override_reason` and Phase-5
+  `--persist DIR` appends each cycle record to `<store>/.consolidation-log.jsonl` (idempotent;
+  refuses an unstamped cycle). LEVER NOTE: `INDEX_TOKEN_BUDGET` is the binding prune lever
+  (~20–27 real facts); `PRUNE_PRESSURE_FACTS` is a terse-pointer backstop. CAVEAT: `applied`
+  is self-reported (catches over-rigor only); under-rigor needs LONGITUDINAL miss-detection
+  (future work), and the bands must NEVER be calibrated against the OUTCOME banner — it fails
+  UNSAFE (mature passes are systematically high-magnitude/low-outcome).
 
 ## Verification recipes (Phase 3)
 
