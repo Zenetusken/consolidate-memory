@@ -20,9 +20,9 @@ relays this in markdown), piped, or on a dumb terminal — and it is always REDU
 with the glyphs (✓ ⚠ ✗), never the sole carrier of meaning. So old terminals and the
 agent-relay path get clean plain text; humans running it live get color.
 
-Usage: python3 render_dashboard.py [--color=auto|always|never] CYCLE_RECORD.json
+Usage: python3 render_dashboard.py [--color=auto|always|never] [--ascii] CYCLE_RECORD.json
        python3 render_dashboard.py --demo     # preview with a built-in sample record
-       (or pipe JSON on stdin)
+       (--ascii = no-Unicode fallback for older/non-UTF8 terminals; or pipe JSON on stdin)
 """
 
 from __future__ import annotations
@@ -57,6 +57,17 @@ def _clean(s: object) -> str:
 _COLOR = False  # set in main(); stays False for library/test calls → plain output
 _CODES = {"reset": "\x1b[0m", "bold": "\x1b[1m", "dim": "\x1b[2m",
           "red": "\x1b[31m", "green": "\x1b[32m", "yellow": "\x1b[33m", "cyan": "\x1b[36m"}
+
+# ── ASCII fallback (opt-in --ascii, for non-UTF8 / older terminals) ──────────────
+_ASCII = False  # set in main(); when on, the FINAL rendered string is translated to ASCII.
+# Each Unicode glyph → a SINGLE ASCII char, so column alignment (computed on plain text) is
+# preserved — a multi-char map like →"->" would shift columns and is forbidden. Applied as the
+# LAST step only, so the default Unicode output + every library/test render() caller stay
+# byte-identical.
+_GLYPH_ASCII = str.maketrans({
+    "█": "#", "░": ":", "━": "=", "─": "-", "✦": "*", "⚠": "!", "✓": "+", "✗": "x",
+    "◀": "<", "↓": "v", "⟳": "@", "→": ">", "·": ".", "•": "*",
+})
 
 
 def _color_enabled(argv: list, stream: object) -> bool:
@@ -337,27 +348,32 @@ def render(record: ms.CycleRecord) -> str:
     # `rigor: {}` still shows the derived line; legacy records (no `rigor` key) skip it. The
     # tier is a DISTINCT quantity from the outcome banner (output-based, write counts).
     if "rigor" in record:
-        rg = _dget(record, "rigor")
         gc, cand = _num(s.get("git_commits", 0)), _num(s.get("session_candidates", 0))
-        suggested = ms.suggested_tier(gc, cand)
-        # `applied` (v0.1.4) is the ceremony the model ACTUALLY ran — a stored DECISION, not
-        # derivable from magnitude. Render "suggested → applied · why" only when it differs;
-        # absent/empty/equal renders the derived suggested tier exactly as before (back-compat).
-        # normalize: strip + canonical-case, and honor ONLY a RECOGNIZED tier — a stray
-        # ' HEAVY ' or a non-tier model slip must not render a spurious 'X → junk' override.
-        applied = _clean(rg.get("applied", "")).strip().upper()
-        if applied in ("LIGHT", "SUBSTANTIAL", "HEAVY") and applied != suggested.upper():
-            tier = f"{_tier_colored(suggested)} → {_tier_colored(applied)}"
-            reason = _clean(rg.get("override_reason", ""))
-            applied_note = _c(f" · applied: {reason}", "dim") if reason else ""
-        else:
-            tier = _tier_colored(suggested)
-            applied_note = ""
-        detail = _c(f"· {_clean(rg.get('phase', ''))} · magnitude {_g(gc + cand)} "
-                    f"({_g(gc)} commits + {_g(cand)} candidates)", "dim")
-        pp = _c(f"  ⚠ prune-pressure ({_clean(rg.get('prune_reason', ''))})", "yellow") \
-            if _flag(rg.get("prune_pressure")) else ""
-        out.append(_kv("RIGOR", f"{tier} {detail}{applied_note}{pp}"))
+        # v0.1.7: a TRUE no-op (magnitude 0 AND no entries) carries no effort estimate — skip the
+        # RIGOR line entirely (matches how other empty sections collapse), instead of printing
+        # "RIGOR LIGHT · magnitude 0" on a do-nothing pass. A pass with entries OR magnitude > 0
+        # still shows it.
+        if (gc + cand) or _lget(record, "entries"):
+            rg = _dget(record, "rigor")
+            suggested = ms.suggested_tier(gc, cand)
+            # `applied` (v0.1.4) is the ceremony the model ACTUALLY ran — a stored DECISION, not
+            # derivable from magnitude. Render "suggested → applied · why" only when it differs;
+            # absent/empty/equal renders the derived suggested tier exactly as before (back-compat).
+            # normalize: strip + canonical-case, and honor ONLY a RECOGNIZED tier — a stray
+            # ' HEAVY ' or a non-tier model slip must not render a spurious 'X → junk' override.
+            applied = _clean(rg.get("applied", "")).strip().upper()
+            if applied in ("LIGHT", "SUBSTANTIAL", "HEAVY") and applied != suggested.upper():
+                tier = f"{_tier_colored(suggested)} → {_tier_colored(applied)}"
+                reason = _clean(rg.get("override_reason", ""))
+                applied_note = _c(f" · applied: {reason}", "dim") if reason else ""
+            else:
+                tier = _tier_colored(suggested)
+                applied_note = ""
+            detail = _c(f"· {_clean(rg.get('phase', ''))} · magnitude {_g(gc + cand)} "
+                        f"({_g(gc)} commits + {_g(cand)} candidates)", "dim")
+            pp = _c(f"  ⚠ prune-pressure ({_clean(rg.get('prune_reason', ''))})", "yellow") \
+                if _flag(rg.get("prune_pressure")) else ""
+            out.append(_kv("RIGOR", f"{tier} {detail}{applied_note}{pp}"))
 
     # Changes — glyph-coded (legend inline), aligned tier/store + scope columns; the
     # reason+citation move to a single dim sub-line so nothing floats after the name.
@@ -496,7 +512,8 @@ def render(record: ms.CycleRecord) -> str:
     if m:
         out.append(_kv("MARKER", _c(f"→ {_clean(str(m.get('commit', '?'))[:12])} @ {_clean(m.get('timestamp', '?'))}", "dim")))
 
-    return "\n".join(out)
+    result = "\n".join(out)
+    return result.translate(_GLYPH_ASCII) if _ASCII else result   # --ascii: translate as the LAST step
 
 
 def _demo_record() -> ms.CycleRecord:
@@ -597,9 +614,10 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> None:
 
 
 def main() -> int:
-    global _COLOR
+    global _COLOR, _ASCII
     argv = sys.argv[1:]
     _COLOR = _color_enabled(argv, sys.stdout)
+    _ASCII = "--ascii" in argv   # opt-in no-Unicode fallback (translated as render's last step)
     # --persist DIR (v0.1.4): pull the flag + its value out BEFORE positionals are taken, so
     # the cycle-record path isn't shadowed by '--persist' or its DIR (the blocklist below only
     # strips the --color/--demo chrome). Mirrors how --color is excluded — but consumes TWO
@@ -619,7 +637,7 @@ def main() -> int:
     if "--demo" in argv:  # paste-free preview with a built-in record
         print(render(_demo_record()))
         return 0
-    paths = [a for a in argv if not a.startswith("--color") and a not in ("--no-color", "--demo")]
+    paths = [a for a in argv if not a.startswith("--color") and a not in ("--no-color", "--demo", "--ascii")]
     try:
         if paths:
             with open(paths[0], encoding="utf-8") as fh:
