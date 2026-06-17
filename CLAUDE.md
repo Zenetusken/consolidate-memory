@@ -92,8 +92,33 @@ invoke the scripts by explicit path, so they work without the plugin being insta
 
 Installed plugins auto-update at Claude Code startup when the plugin's `version`
 (`plugins/consolidate-memory/.claude-plugin/plugin.json`) changes on `main` (public
-marketplace, no token needed). So a release = a bumped version landing on `main`. The
-local, gitignored **`./release.sh`** automates it: `./release.sh patch|minor|major`
-bumps the version + CHANGELOG, validates (manifests + smoke + sim), pushes `main`, tags
-`vX.Y.Z`, and cuts the GitHub Release. Run bare (`./release.sh`) to release the current
-version. Keep `version` ONLY in `plugin.json` (never also in `marketplace.json`).
+marketplace, no token needed). So a release = a bumped version landing on `main`. Keep
+`version` ONLY in `plugin.json` (never also in `marketplace.json`).
+
+**Versioning policy (pre-1.0; deterministic — decide IN ORDER):**
+1. First **stable / committed-API** release → **major** (→ `1.0.0`).
+2. **Breaks an existing install** — incompatible cycle-record schema, a removed/renamed
+   script or CLI flag, a changed install/marketplace/manifest contract → **minor**
+   (`0.N → 0.N+1.0`). (Pre-1.0, breaking changes ride a minor bump.)
+3. Otherwise — additive feature, enhancement, fix, or docs that stays
+   **backward-compatible** (legacy cycle records still render, existing installs keep
+   working) → **patch** (`0.N.M → 0.N.M+1`). Precedent (all backward-compatible ⇒ patch):
+   v0.1.1 packaging · v0.1.2 dashboard · v0.1.3 rigor modes.
+
+**The release harness (local, gitignored `./release.sh`) is deterministic by
+construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG
+section** — the single source of truth you author + review during the cycle, NOT a bump
+keyword — then computes the bump TYPE from the delta and enforces the policy. So author
+the `## [X.Y.Z]` CHANGELOG entry first (using the policy above), then:
+- `./release.sh` — **dry-run**: prints current→target, the computed bump type, the tag,
+  and the notes. No writes.
+- `./release.sh --confirm` — sets `plugin.json` to the CHANGELOG version, validates
+  (manifests + smoke + sim), commits `release: vX.Y.Z`, pushes `main`, tags, cuts the GH
+  Release.
+- `./release.sh --expect patch|minor|major [--confirm]` — also **asserts** the computed
+  bump matches your intent (a second guard; aborts on mismatch).
+
+It refuses a non-forward or multi-step version, an unfilled CHANGELOG stub, or a
+dirty/out-of-sync tree / existing tag. (This replaced a keyword-driven flow after a
+`minor`-vs-`patch` slip mis-shipped a version: the version is now structurally tied to the
+reviewed CHANGELOG, not a release-time judgment.)
