@@ -163,6 +163,14 @@ since the marker, report "Nothing to consolidate" and stop. It also prints a
 `session_candidates`) and any
 **prune-pressure** flag — see *Rigor modes* above.
 
+Phase 0 also **flags slug-orphans** (a near-duplicate sibling slug — the rename-orphan
+signature, since a dir rename changes the slug and strands the old slug-scoped store)
+and **schema drift** (a fact missing the documented `node_type`, a malformed
+`scope`/`originSessionId`, or an index↔file mismatch) and **OFFERS** reconciliation /
+backfill — but the model decides in Phase 4; Phase 0 never auto-applies. (Absence of the
+injected `scope`/`originSessionId` is a separate *optional* backfill advisory, not drift —
+see `references/harness-map.md`.)
+
 Then **seed the cycle record** — the structured data that becomes the final
 dashboard (see "Output" below). Re-run the helper with `--json` to capture the
 measured before-state (scope, before-budget, marker) into a working file you'll fill
@@ -479,7 +487,8 @@ summary alongside it.
               "before_tokens": 0, "after_tokens": 0, "budget_tokens": 1200, "over": false},
     "recall_facts": {"before": 0, "after": 0}
   },
-  "health": {"index_pointers_ok": true, "broken": [], "dangling_links": []},
+  "health": {"index_pointers_ok": true, "broken": [], "dangling_links": [],
+             "slug_orphans": [], "schema_drift": {}},
   "cross_project": {
     "global_store_facts": 0,
     "pulled": [{"name": "...", "scope": "user-global"}],   "_pulled": "Phase 1: global → here",

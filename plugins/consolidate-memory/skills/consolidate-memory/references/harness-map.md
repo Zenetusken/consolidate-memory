@@ -214,6 +214,33 @@ cross-project model:
 - **Global facts don't auto-cross** — they must be replicated into each project's
   store to surface there.
 
+**Phase-0 detection (slug-orphans + schema drift) — detect/report/OFFER only, never
+auto-mutated:**
+- **Slug-orphans (near-duplicate slugs).** `slug_for` is **lossy** (`/`→`-`, so a
+  `Doc-Flo` dir and a `Doc/Flo` path collide), making path-reconstruction ambiguous —
+  so the robust rename-orphan signal is a **near-duplicate slug**: a sibling under
+  `~/.claude/projects/` whose `norm()` (`s.replace("_","-").lower()`) equals this slug's,
+  EXCLUDING the slug itself (a project never flags itself). `memory_status.near_duplicate_slugs`
+  computes it; Phase 0 names each twin, flags which looks live (newest transcript/fact
+  mtime), and offers a reconciliation hint (*merge toward newest mtime, NOT most files;
+  land under the slug whose disk path exists*). Advisory — confirm before acting.
+- **Schema drift vs. advisory absence — the fixed definition.** `node_type`/`type` are
+  the only fields the documented fact schema (above) requires; `scope`/`originSessionId`
+  are skill-/Claude-Code-**injected** and store-dependent, so their mere ABSENCE is noise,
+  not drift. So **DRIFT** (always reported, `drift_findings > 0`) =
+  - a fact **missing** the documented `node_type`,
+  - a **present-but-malformed** `scope` (a `scope:` not in
+    {`project-local`, `stack-general`, `user-global`}) or `originSessionId` (present but
+    not a UUID — `_valid_uuid`), or
+  - an **index↔file mismatch** (`stems △ index_names` — facts on disk with no index
+    pointer, or pointers to no file; computed via the `](<stem>.md)` link anchor, NOT a
+    naive line parse, so the `# Memory Index` header/blanks don't inflate it).
+
+  Whereas a fact merely **lacking** `scope`/`originSessionId` is reported only as an
+  **optional backfill advisory** (a separate line that MAY appear on an otherwise-clean
+  store) — it is **NOT** a drift finding. `memory_status.schema_drift` returns both the
+  drift counts and the advisory absence-counts.
+
 **Model:** a global store `~/.claude/memory/` (same fact-file + index format) is the
 canonical home for facts with `scope: stack-general` or `user-global`. Each global
 fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`

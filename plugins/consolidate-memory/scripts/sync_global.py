@@ -27,7 +27,7 @@ from pathlib import Path
 # est_tokens lives in memory_status (the measurement script); reuse it rather than
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
 # on sys.path[0] at runtime, and stays a sibling through the skill/ symlink.
-from memory_status import _sane, est_tokens, slug_for
+from memory_status import _sane, est_tokens, slug_for, _frontmatter, _valid_uuid
 
 GLOBAL = Path.home() / ".claude" / "memory"
 _STACK_KEYWORDS = {
@@ -58,40 +58,6 @@ def _sanitize_token(s: str) -> str:
 
 def project_store(project_dir: Path) -> Path:
     return Path.home() / ".claude" / "projects" / slug_for(project_dir) / "memory"
-
-
-def _frontmatter(text: str) -> dict:
-    out: dict = {}
-    m = re.search(r"^---\n(.*?)\n---", text, re.S)
-    if not m:
-        return out
-    lines = m.group(1).splitlines()
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if ":" in line and not line.startswith((" ", "\t")):
-            k, _, v = line.partition(":")
-            v = v.strip()
-            # Folded/block scalar (description: >- | | etc.): the real value is on the
-            # following more-indented lines. Gather + join them (a naive parser would
-            # store the literal ">-" indicator and write THAT as the recall hook into
-            # every pulling project's always-loaded index).
-            if v in (">", ">-", ">+", "|", "|-", "|+"):
-                buf, j = [], i + 1
-                while j < len(lines) and (lines[j].startswith((" ", "\t")) or not lines[j].strip()):
-                    if lines[j].strip():
-                        buf.append(lines[j].strip())
-                    j += 1
-                out[k.strip()] = " ".join(buf)
-                i = j
-                continue
-            out[k.strip()] = v
-        else:
-            m2 = re.match(r"\s+(scope|stacks|type|projects):\s*(.+)", line)
-            if m2:
-                out[m2.group(1)] = m2.group(2).strip()
-        i += 1
-    return out
 
 
 def _is_mirror(text: str) -> bool:
@@ -275,6 +241,12 @@ def run(project_dir: Path, pull: bool) -> int:
         if rel:
             relevant += 1
         if pull and rel and status in ("MISSING", "STALE-mirror"):
+            # C3: a canonical missing a valid originSessionId fans its gap out to every
+            # mirror this replication creates. WARN (don't block — the fact is still
+            # useful); reuses the in-hand `fm`, no extra I/O.
+            if not _valid_uuid(fm.get("originSessionId", "")):
+                print(f"  ⚠ canonical {name} lacks a valid originSessionId — the gap fans out to every mirror",
+                      file=sys.stderr)
             store.mkdir(parents=True, exist_ok=True)
             path.write_text(want, encoding="utf-8")
             _ensure_index_pointer(store, name, fm)

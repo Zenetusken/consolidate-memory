@@ -205,6 +205,78 @@ check("frontmatter: folds block scalar value",
 check("frontmatter: single-line value unchanged",
       sg._frontmatter("---\nname: x\ndescription: plain hook\n---\nb")["description"] == "plain hook")
 
+# --- v0.1.5: orphan + drift detection (PURE helpers — strings/sets/dicts only; FS-touching
+#     cases live in simulate_accumulation.py since smoke must not mutate the filesystem) ---
+# _frontmatter is now PROMOTED to memory_status (single definition); sync_global imports it.
+check("v0.1.5: sync_global._frontmatter IS memory_status._frontmatter (single definition)",
+      sg._frontmatter is ms._frontmatter)
+# _frontmatter tolerates a malformed file ({}), a CRLF file, and a BOM-prefixed file — and
+# all healthy variants must still extract node_type (else schema_drift miscounts them).
+check("frontmatter: malformed (no fence) returns {} (never raises)",
+      ms._frontmatter("not frontmatter at all\njust text\n") == {})
+_normal_fm = ms._frontmatter("---\nname: x\nmetadata:\n  node_type: memory\n---\nbody\n")
+check("frontmatter: parses a normal block (node_type captured)", _normal_fm.get("node_type") == "memory")
+check("frontmatter: CRLF file still extracts node_type (M3)",
+      ms._frontmatter("---\r\nname: x\r\nmetadata:\r\n  node_type: memory\r\n---\r\nbody\r\n").get("node_type") == "memory")
+check("frontmatter: BOM-prefixed file still extracts node_type (M3)",
+      ms._frontmatter("﻿---\nname: x\nmetadata:\n  node_type: memory\n---\nbody\n").get("node_type") == "memory")
+# _valid_uuid: a real 8-4-4-4-12 hex UUID accepted; truncated / garbage rejected.
+check("uuid: accepts a real 8-4-4-4-12 UUID",
+      ms._valid_uuid("1920c541-0f32-4b9d-8b0b-1da262a307b0"))
+check("uuid: rejects truncated / garbage / non-string",
+      not ms._valid_uuid("1920c541-0f32-4b9d-8b0b") and not ms._valid_uuid("not-a-uuid")
+      and not ms._valid_uuid("") and not ms._valid_uuid(None))
+# near_duplicate_slugs: flags '-'/'_'/case twins, ignores unrelated, NEVER flags itself (B2).
+_slug = "-home-drei-project-Doc-Flo"
+_sibs = ["-home-drei-project-Doc-Flo", "-home-drei-project-Doc_Flo",
+         "-home-drei-project-doc-flo", "-home-drei-project-other"]
+check("near-dup: flags '_' and case variants, excludes self + unrelated",
+      ms.near_duplicate_slugs(_slug, _sibs)
+      == ["-home-drei-project-Doc_Flo", "-home-drei-project-doc-flo"])
+check("near-dup: a slug is never its own duplicate (B2 self-exclusion)",
+      ms.near_duplicate_slugs(_slug, [_slug]) == [])
+check("near-dup: no twins → empty list", ms.near_duplicate_slugs(_slug, ["-x", "-y-z"]) == [])
+# drift_findings: dict → int; counts the four DRIFT fields, NOT the advisory absence-counts.
+check("drift_findings: sums the four drift fields, ignores advisory absence",
+      ms.drift_findings({"missing_node_type": 1, "malformed_scope": 2, "malformed_origin": 0,
+                         "index_mismatch": 3, "advisory_no_scope": 99, "advisory_no_origin": 99}) == 6)
+check("drift_findings: all-zero drift → 0 (defines 'clean' for AC#1)",
+      ms.drift_findings({"missing_node_type": 0, "malformed_scope": 0, "malformed_origin": 0,
+                         "index_mismatch": 0, "advisory_no_scope": 5, "advisory_no_origin": 5}) == 0)
+check("drift_findings: tolerant of missing keys (.get default 0)", ms.drift_findings({}) == 0)
+# render: HEALTH surfaces slug-orphan + schema-drift findings (presence-checked) ...
+_h_orphan = rd.render({"project": "p", "session": "s", "scope": {}, "entries": [],
+                       "health": {"index_pointers_ok": True, "slug_orphans": ["-home-x-Doc_Flo"],
+                                  "schema_drift": {"missing_node_type": 2, "malformed_scope": 0,
+                                                   "malformed_origin": 0, "index_mismatch": 3}}})
+check("render: HEALTH shows slug-orphan twin name", "slug-orphan" in _h_orphan and "Doc_Flo" in _h_orphan)
+check("render: HEALTH shows schema-drift counts when drift_findings > 0",
+      "schema drift" in _h_orphan and "missing node_type" in _h_orphan)
+# ... and a CLEAN store (no drift, advisory-only) shows NO drift ⚠ in HEALTH (AC#3)
+_h_clean = rd.render({"project": "p", "session": "s", "scope": {}, "entries": [],
+                      "health": {"index_pointers_ok": True, "slug_orphans": [],
+                                 "schema_drift": {"missing_node_type": 0, "malformed_scope": 0,
+                                                  "malformed_origin": 0, "index_mismatch": 0,
+                                                  "advisory_no_scope": 9, "advisory_no_origin": 9}}})
+check("render: clean store shows no drift/orphan ⚠ in HEALTH (AC#3)",
+      "schema drift" not in _h_clean and "slug-orphan" not in _h_clean and "✓ all pointers resolve" in _h_clean)
+# LEGACY record (no slug_orphans/schema_drift keys) must render BYTE-IDENTICALLY (AC#5).
+_legacy = {"project": "p", "session": "s", "scope": {}, "entries": [],
+           "health": {"index_pointers_ok": True, "broken": [], "dangling_links": []}}
+import copy as _copy  # noqa: E402
+check("render: legacy health (no v0.1.5 keys) renders byte-identically (AC#5)",
+      rd.render(_legacy) == rd.render(_copy.deepcopy(_legacy)))
+check("render: legacy health has no slug-orphan/schema-drift line (AC#5)",
+      "slug-orphan" not in rd.render(_legacy) and "schema drift" not in rd.render(_legacy))
+# model-authored health: a NON-numeric schema_drift value must NOT crash render (the
+# _num/_clean/_flag never-crash invariant) — render coerces at the boundary, unlike the
+# strict-int ms.drift_findings used by the seed/smoke with clean ints.
+_gnarly_h = rd.render({"project": "p", "session": "s", "scope": {}, "entries": [],
+                       "health": {"index_pointers_ok": True, "slug_orphans": None,
+                                  "schema_drift": {"missing_node_type": "two", "index_mismatch": None}}})
+check("render: non-numeric/None schema_drift never crashes render (model→presentation coercion)",
+      isinstance(_gnarly_h, str) and "HEALTH" in _gnarly_h)
+
 # --- Fix D: stack keyword matching is word-bounded, not substring ---
 check("stacks: 'skill' does NOT match 'reskilling'", sg._kw_hit("a reskilling plan", "skill") is False)
 check("stacks: 'skill' matches the word 'skill'", sg._kw_hit("this skill rocks", "skill") is True)

@@ -436,6 +436,25 @@ def render(record: dict) -> str:
             bits.append(_c(f"broken: {', '.join(_clean(x) for x in broken)}", "red"))
         if dangling:
             bits.append(_c(f"{len(dangling)} dangling: " + ", ".join(f"[[{_clean(d)}]]" for d in dangling), "yellow"))
+        # v0.1.5: slug-orphan / schema-drift findings (presence-checked, so legacy records
+        # without these keys render byte-identically). slug_orphans is a list of twin slug
+        # names; schema_drift is the C2 dict — surface a ⚠ only when a DRIFT finding exists.
+        so = h.get("slug_orphans") or []
+        if so:
+            bits.append(_c(f"⚠ slug-orphan: {', '.join(_clean(x) for x in so)}", "yellow"))
+        sd = h.get("schema_drift") or {}
+        # Coerce the four DRIFT fields via _num at the model→presentation boundary (like every
+        # other render numeric) rather than ms.drift_findings' strict int(): the cycle record is
+        # model-authored, so a field may arrive as a non-numeric string and must NOT crash
+        # render() (the established _num/_clean/_flag invariant). ms.drift_findings keeps its
+        # int()-based definition for its clean-int callers (seed + smoke).
+        _drift_n = sum(_num(sd.get(k, 0)) for k in
+                       ("missing_node_type", "malformed_scope", "malformed_origin", "index_mismatch"))
+        if _drift_n > 0:
+            bits.append(_c(f"⚠ schema drift: {_g(sd.get('missing_node_type', 0))} missing node_type · "
+                           f"{_g(sd.get('malformed_scope', 0))} malformed scope · "
+                           f"{_g(sd.get('malformed_origin', 0))} malformed originSessionId · "
+                           f"{_g(sd.get('index_mismatch', 0))} index↔file", "yellow"))
         out.append("")
         out.append(_kv("HEALTH", " · ".join(bits)))
 
