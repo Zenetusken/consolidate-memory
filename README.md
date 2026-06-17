@@ -158,10 +158,11 @@ is available in **every** project. Update later with `/plugin update consolidate
 > to `marketplace.json` — the plugin uses a relative source path that only resolves
 > over Git.
 
-**Working on the tool itself?** Clone the repo and run `./install.sh` — it registers
-the repo as a local marketplace and installs the plugin so you dogfood the exact
-artifact users get (the old user-skill symlink model is retired: `SKILL.md` now uses
-`${CLAUDE_PLUGIN_ROOT}`, which is only set when the skill loads as a plugin).
+**Working on the tool itself?** Clone the repo, then register it as a local marketplace
+and install the plugin — `claude plugin marketplace add .` then `claude plugin install
+consolidate-memory@zenetusken-plugins` — so you dogfood the exact artifact users get
+(the old user-skill symlink model is retired: `SKILL.md` now uses `${CLAUDE_PLUGIN_ROOT}`,
+which is only set when the skill loads as a plugin).
 
 ## Usage
 
@@ -212,7 +213,6 @@ consolidate-memory/                         # repo root = plugin marketplace
 ├── tests/                                   # zero-dependency smoke + accumulation + manifest checks
 ├── memory/                                  # personal shared-memory store (GITIGNORED)
 ├── cm                                       # dev CLI over the scripts
-├── install.sh                               # maintainer dev-install (plugin, not symlink)
 ├── SECURITY.md · CHANGELOG.md
 └── README.md · CLAUDE.md · LICENSE
 ```

@@ -17,7 +17,6 @@ case "$cmd" in
   tokens)   exec python3 "$S/sync_global.py" --tokens "$@" ;;     # network token consumption (+ --json)
   network)  exec python3 "$S/sync_global.py" --network ;;         # shared-consciousness graph
   render)   exec python3 "$S/render_dashboard.py" "$@" ;;         # cycle.json -> dashboard
-  install)  exec "$HERE/install.sh" "$@" ;;
   help|*)
     cat <<EOF
 cm — consolidate-memory
@@ -30,11 +29,11 @@ cm — consolidate-memory
   cm tokens [DIR] [--json] per-node + total token consumption across the network
   cm network           render the cross-project shared-memory graph
   cm render cycle.json render a dashboard from a cycle record
-  cm install           dev-install the plugin locally (./install.sh)
 
-A full pass is best driven by the plugin itself: install it (./install.sh or
-/plugin install consolidate-memory@zenetusken-plugins), then say "dream" in any
-project. See README.md.
+A full pass is best driven by the plugin itself. Dogfood it from this repo:
+  claude plugin marketplace add .
+  claude plugin install consolidate-memory@zenetusken-plugins
+then say "dream" in any project. See README.md.
 EOF
     ;;
 esac

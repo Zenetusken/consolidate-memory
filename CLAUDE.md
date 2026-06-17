@@ -3,8 +3,8 @@
 A **Claude Code plugin**: **sleep-time memory consolidation** for agents, with a
 cross-project shared-memory layer. This repo is both the plugin and its marketplace —
 end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +
-`/plugin install consolidate-memory@zenetusken-plugins`; `install.sh` is a maintainer
-dev-install (local marketplace + plugin, not a symlink). See `README.md` for the
+`/plugin install consolidate-memory@zenetusken-plugins`; maintainers dogfood the same
+way against this local checkout (`claude plugin marketplace add .` — see below). See `README.md` for the
 user-facing pitch and `plugins/consolidate-memory/skills/consolidate-memory/SKILL.md`
 + its `references/harness-map.md` for the full design.
 
@@ -15,8 +15,9 @@ user-facing pitch and `plugins/consolidate-memory/skills/consolidate-memory/SKIL
 via **`${CLAUDE_PLUGIN_ROOT}`** — a variable that is **only set when the skill loads as
 a plugin**. So the old "symlink `skill/` into `~/.claude/skills`" model is dead: a bare
 user-skill copy would have an unset `${CLAUDE_PLUGIN_ROOT}` and every command would
-break. Dogfood via `./install.sh` (registers this repo as a local marketplace +
-installs the plugin). **Run `python3 tests/smoke.py` after any change to `scripts/`.**
+break. Dogfood by registering this repo as a local marketplace and installing the
+plugin: `claude plugin marketplace add .` then `claude plugin install
+consolidate-memory@zenetusken-plugins`. **Run `python3 tests/smoke.py` after any change to `scripts/`.**
 
 How edits take effect (once installed as a local-marketplace plugin):
 
@@ -44,7 +45,6 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     sync_global.py                 cross-project: --list/--pull/--gc/--tokens/--network + provenance
     render_dashboard.py            the data-driven dashboard (renders a cycle record)
 cm                                 dev CLI over the scripts (uses explicit paths, not ${CLAUDE_PLUGIN_ROOT})
-install.sh                         maintainer dev-install: local marketplace + plugin (+ --uninstall)
 tests/                             zero-dependency smoke + accumulation sim + manifest validation
 memory/                            personal shared-memory store — GITIGNORED, NOT shipped in the plugin
 ```
@@ -95,7 +95,7 @@ is NOT a runtime dep and NOT part of the dep-free `smoke.py` gate; the config is
 (checks `scripts/` + `tests/`, not `--strict`), and must never disable the TypedDict checks
 (`typeddict-item`/`typeddict-unknown-key` ARE the contract).
 
-This tool dogfoods itself: once dev-installed as a plugin (`./install.sh`), run `dream`
+This tool dogfoods itself: once dev-installed as a plugin (local-marketplace add + `claude plugin install`), run `dream`
 from this repo to consolidate its own development memory — written to its private store
 at `~/.claude/projects/<slug>/memory/`, never to this repo. The `cm` CLI and the tests
 invoke the scripts by explicit path, so they work without the plugin being installed.
