@@ -593,5 +593,47 @@ for _label, _bad in [
 check("render: clean well-formed record still renders the banner (FIX 1 no-op on valid types)",
       "DREAM · consolidate-memory" in rd.render({"project": "p", "session": "s", "scope": {}, "entries": []}))
 
+# --- v0.1.7 polish: no-op RIGOR suppression · noise-filter envelopes · --ascii fallback ---
+# C1: a TRUE no-op (magnitude 0 + no entries) omits the RIGOR line; magnitude>0 OR entries keeps it.
+check("render: true no-op (magnitude 0 + no entries) omits the RIGOR line (v0.1.7 C1)",
+      "RIGOR" not in rd.render({"project": "p", "session": "s",
+                                "scope": {"git_commits": 0, "session_candidates": 0},
+                                "entries": [], "rigor": {"phase": "final"}}))
+check("render: a pass with magnitude>0 keeps the RIGOR line (v0.1.7 C1)",
+      "RIGOR" in rd.render({"project": "p", "session": "s",
+                            "scope": {"git_commits": 1, "session_candidates": 0},
+                            "entries": [], "rigor": {"phase": "final"}}))
+check("render: a magnitude-0 pass WITH entries still keeps the RIGOR line (v0.1.7 C1)",
+      "RIGOR" in rd.render({"project": "p", "session": "s",
+                            "scope": {"git_commits": 0, "session_candidates": 0},
+                            "entries": [{"action": "added", "name": "x"}], "rigor": {"phase": "final"}}))
+# C2: the noise filter now drops the harness/agent envelopes the dream meta-test surfaced.
+check("extract: _NOISE drops <task-notification> envelope (v0.1.7 C2)",
+      bool(es._NOISE.match("<task-notification> done </task-notification>")))
+check("extract: _NOISE drops <teammate-message> envelope (v0.1.7 C2)",
+      bool(es._NOISE.match("<teammate-message> hi </teammate-message>")))
+check("extract: _NOISE keeps a normal human turn (no over-match) (v0.1.7 C2)",
+      not es._NOISE.match("Let's ship the polish patch now"))
+# C3: --ascii (the _ASCII global) translates the 14 glyphs to ASCII, WIDTH-PRESERVING; the default
+# (Unicode) render is unaffected.
+_uni = rd.render(rd._demo_record())
+rd._ASCII = True
+try:
+    _asc = rd.render(rd._demo_record())
+finally:
+    rd._ASCII = False
+# The CONTRACT is "pure ASCII" — assert .isascii() (catches ANY unmapped/future glyph + the
+# catch-all's coverage), NOT membership of a hand-listed glyph set (that was circular and missed
+# ≈/−/↑/… in the first pass). Plus: the common glyphs map READABLY (not just catch-all '?').
+check("render: --ascii output is pure ASCII (.isascii() — catches any unmapped glyph) (v0.1.7 C3)",
+      _asc.isascii())
+check("render: --ascii maps common glyphs READABLY (█→#, →→>), not just the catch-all (v0.1.7 C3)",
+      "#" in _asc and ">" in _asc)
+check("render: --ascii preserves line count + per-line width (single-char maps) (v0.1.7 C3)",
+      _asc.count("\n") == _uni.count("\n")
+      and all(len(a) == len(u) for a, u in zip(_asc.splitlines(), _uni.splitlines())))
+check("render: default (Unicode) render is NOT pure ASCII — --ascii is opt-in (v0.1.7 C3)",
+      not _uni.isascii())
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

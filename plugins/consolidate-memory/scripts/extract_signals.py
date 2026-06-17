@@ -54,8 +54,8 @@ _PROBE_CAP = 4000
 
 # Unambiguous noise — harness/skill injections and command echoes, not human intent.
 _NOISE = re.compile(
-    r"^\s*(<local-command-|<command-|Caveat:|Base directory for this skill:|"
-    r"This session is being continued|\[Image:|\[Request interrupted)",
+    r"^\s*(<local-command-|<command-|<task-notification|<teammate-message|Caveat:|"
+    r"Base directory for this skill:|This session is being continued|\[Image:|\[Request interrupted)",
     re.I,
 )
 # Skill-prompt injections (e.g. the code-review skill's effort header).

@@ -5,6 +5,25 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.7] — 2026-06-17
+
+### Added
+- **`--ascii` dashboard fallback** for older / non-UTF8 terminals: `render_dashboard.py --ascii`
+  translates the dashboard's Unicode glyphs to single ASCII chars (width-preserving, so column
+  alignment holds), with a catch-all that **GUARANTEES pure-ASCII output** (`.isascii()`; any
+  unmapped glyph → `?`). Opt-in — the default Unicode output is byte-identical.
+
+### Changed
+- **No-op passes no longer print a RIGOR line.** A true no-op (magnitude 0 + no entries) used to
+  render `RIGOR LIGHT · magnitude 0` — an effort estimate on a do-nothing pass; it now collapses
+  like the other empty sections. A pass with entries or magnitude > 0 is unchanged.
+- **`extract_signals` noise filter** now drops `<task-notification>` / `<teammate-message>`
+  envelopes (multi-agent / harness injections the dream meta-test surfaced as false "feedback") —
+  a precision improvement to the Phase-2 signal; a human still curates candidates.
+
+### Notes
+- All three are additive / cosmetic; backward-compatible → patch.
+
 ## [0.1.6] — 2026-06-17
 
 ### Added
