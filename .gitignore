@@ -1,7 +1,7 @@
 # The shared-consciousness memory stream is personal — NEVER publish it. Keep the dir
-# (the maintainer's dev memory-store symlink target) but ignore its contents. This dir
-# lives at the repo root, OUTSIDE plugins/consolidate-memory/, so it is never bundled
-# into the published plugin (the plugin = plugins/consolidate-memory/ only).
+# but ignore its contents. This dir lives at the repo root, OUTSIDE
+# plugins/consolidate-memory/, so it is never bundled into the published plugin
+# (the plugin = plugins/consolidate-memory/ only).
 memory/*
 !memory/.gitkeep
 
@@ -16,8 +16,7 @@ __pycache__/
 # at the repo root when run — never publish it to this public no-cruft repo.
 .mypy_cache/
 
-# install.sh backs up a pre-existing skill/memory target as <name>.bak.<timestamp>;
-# those land under ~/.claude, but ignore any that ever appear in-tree.
+# Backup files (e.g. <name>.bak.<timestamp>) — never publish them if they appear in-tree.
 *.bak.*
 
 # OS / editor cruft.
