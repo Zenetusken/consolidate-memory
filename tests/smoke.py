@@ -124,6 +124,18 @@ check("render: empty applied → derived tier only, no arrow (v0.1.4)",
 check("render: non-string applied doesn't crash, renders the line (v0.1.4)",
       "RIGOR" in rd.render({"project": "p", "session": "s", "scope": {"git_commits": 1, "session_candidates": 0},
                             "entries": [], "rigor": {"applied": 5}}))
+check("render: whitespace ' HEAVY ' applied is normalized → NO spurious 'X → X' arrow (v0.1.4)",
+      "→" not in next((ln for ln in rd.render({"project": "p", "session": "s",
+                       "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
+                       "rigor": {"applied": " HEAVY "}}).splitlines() if "RIGOR" in ln), ""))
+check("render: unrecognized applied value → no arrow, suggested tier only (v0.1.4)",
+      "→" not in next((ln for ln in rd.render({"project": "p", "session": "s",
+                       "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
+                       "rigor": {"applied": "banana"}}).splitlines() if "RIGOR" in ln), ""))
+check("render: case-insensitive applied 'light' still shows the override arrow (v0.1.4)",
+      "→" in next((ln for ln in rd.render({"project": "p", "session": "s",
+                   "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
+                   "rigor": {"applied": "light"}}).splitlines() if "RIGOR" in ln), ""))
 # A5: a JSON-stringified 'false' prune_pressure must NOT trip the warning (_flag coercion)
 check("render: stringized 'false' prune_pressure shows no warning (A5/_flag)",
       "prune-pressure" not in rd.render({"project": "p", "session": "s",

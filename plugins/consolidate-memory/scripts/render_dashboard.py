@@ -312,8 +312,10 @@ def render(record: dict) -> str:
         # `applied` (v0.1.4) is the ceremony the model ACTUALLY ran — a stored DECISION, not
         # derivable from magnitude. Render "suggested → applied · why" only when it differs;
         # absent/empty/equal renders the derived suggested tier exactly as before (back-compat).
-        applied = _clean(rg.get("applied", ""))
-        if applied and applied.upper() != suggested.upper():
+        # normalize: strip + canonical-case, and honor ONLY a RECOGNIZED tier — a stray
+        # ' HEAVY ' or a non-tier model slip must not render a spurious 'X → junk' override.
+        applied = _clean(rg.get("applied", "")).strip().upper()
+        if applied in ("LIGHT", "SUBSTANTIAL", "HEAVY") and applied != suggested.upper():
             tier = f"{_tier_colored(suggested)} → {_tier_colored(applied)}"
             reason = _clean(rg.get("override_reason", ""))
             applied_note = _c(f" · applied: {reason}", "dim") if reason else ""
@@ -453,7 +455,9 @@ def _demo_record() -> dict:
         "project": "acme-api", "session": "a1b2c3d4",
         "scope": {"git_range": "9ed8d5c..HEAD", "git_commits": 7,
                   "session_candidates": 5, "memories_reviewed": 12},
-        "rigor": {"phase": "final", "prune_pressure": False, "prune_reason": ""},  # tier DERIVED: 7+5=12 → HEAVY
+        "rigor": {"phase": "final", "prune_pressure": False, "prune_reason": "",
+                  "applied": "SUBSTANTIAL",  # suggested HEAVY (7+5=12) → applied SUBSTANTIAL (override)
+                  "override_reason": "small curated set despite the commit volume"},
         "verification": {"confirmed": 6, "corrected": 2, "unverifiable": 1, "method": "subagents"},
         "entries": [
             {"action": "added", "tier": "recall", "store": "auto-mem", "scope": "project-local",
@@ -512,16 +516,23 @@ def _persist(record: dict, dirpath: str) -> None:
     logpath = os.path.join(dirpath, ".consolidation-log.jsonl")
     if os.path.exists(logpath):
         try:
-            with open(logpath, encoding="utf-8") as fh:
+            # errors="replace": a non-UTF-8 byte (e.g. a partial write from a killed process)
+            # must NOT raise UnicodeDecodeError mid-scan — it's a ValueError, not an OSError.
+            with open(logpath, encoding="utf-8", errors="replace") as fh:
                 for line in fh:
                     line = line.strip()
                     if not line:
                         continue
                     try:
-                        pm = json.loads(line).get("marker") or {}
-                    except json.JSONDecodeError:
-                        continue  # tolerate a malformed line — don't let it block logging
-                    if str(pm.get("commit", "")) == commit and str(pm.get("timestamp", "")) == ts:
+                        prev = json.loads(line)
+                        pm = prev.get("marker") or {}
+                        already = (str(pm.get("commit", "")) == commit
+                                   and str(pm.get("timestamp", "")) == ts)
+                    except (ValueError, AttributeError):
+                        # tolerate ANY junk line — bad JSON (ValueError), or valid-JSON-but-
+                        # non-object / non-dict marker (.get → AttributeError). Never block logging.
+                        continue
+                    if already:
                         return  # already logged this cycle — idempotent
         except OSError as exc:
             print(f"render_dashboard: cannot read log, skipping persist: {exc}", file=sys.stderr)

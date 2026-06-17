@@ -341,17 +341,21 @@ def run() -> None:
         logdir.mkdir()
         logpath = logdir / ".consolidation-log.jsonl"
 
-        def _valid_objs() -> list:
-            objs = []
-            for ln in logpath.read_text(encoding="utf-8").splitlines():
+        def _records() -> list:
+            """Record-shaped log lines (a dict with a dict `marker` carrying a commit); junk skipped.
+            Reads with errors='replace' so a non-UTF-8 byte in the log can't crash the TEST either."""
+            out = []
+            for ln in logpath.read_text(encoding="utf-8", errors="replace").splitlines():
                 ln = ln.strip()
                 if not ln:
                     continue
                 try:
-                    objs.append(json.loads(ln))
+                    obj = json.loads(ln)
                 except json.JSONDecodeError:
-                    pass
-            return objs
+                    continue
+                if isinstance(obj, dict) and isinstance(obj.get("marker"), dict) and obj["marker"].get("commit"):
+                    out.append(obj)
+            return out
 
         rec1 = {"project": "alpha", "scope": {"git_commits": 10, "session_candidates": 3},
                 "rigor": {"applied": "LIGHT", "override_reason": "already-consolidated flow"},
@@ -360,16 +364,25 @@ def run() -> None:
         rd._persist(rec1, str(logdir))   # first append
         rd._persist(rec1, str(logdir))   # idempotent: same (commit, ts) → no duplicate
         rd._persist(rec2, str(logdir))   # distinct cycle → second line
-        two_distinct = len(_valid_objs()) == 2
-        round_trip = all(o.get("rigor", {}).get("applied") == "LIGHT" for o in _valid_objs())
+        two_distinct = len(_records()) == 2
+        round_trip = all(o.get("rigor", {}).get("applied") == "LIGHT" for o in _records())
         # unstamped (empty timestamp) cycle → refused (would collide on a (commit, '') key)
         rd._persist({"project": "x", "entries": [], "marker": {"commit": "ccc333", "timestamp": ""}}, str(logdir))
-        refused_unstamped = len(_valid_objs()) == 2
-        # a malformed pre-existing line is tolerated: the dedup scan skips it; a new cycle still appends
+        refused_unstamped = len(_records()) == 2
+        # EVERY malformed-line class must be tolerated by the dedup scan (it claims never-crash):
+        # bad JSON, valid-JSON-non-object, a dict with a non-dict marker, AND a non-UTF-8 byte.
         with open(logpath, "a", encoding="utf-8") as fh:
-            fh.write("{not valid json\n")
-        rd._persist({**rec1, "marker": {"commit": "ddd444", "timestamp": "2026-06-17T03:00:00Z"}}, str(logdir))
-        tolerated = len(_valid_objs()) == 3
+            fh.write("{not valid json\n")             # JSONDecodeError
+            fh.write('null\n42\n["x"]\n')              # valid JSON, non-object → .get AttributeError
+            fh.write('{"marker": "not-a-dict"}\n')     # dict line, truthy non-dict marker → .get
+        with open(logpath, "ab") as fh:
+            fh.write(b"\xff\xfe not utf-8\n")           # non-UTF-8 → UnicodeDecodeError (a ValueError)
+        crashed = False
+        try:
+            rd._persist({**rec1, "marker": {"commit": "ddd444", "timestamp": "2026-06-17T03:00:00Z"}}, str(logdir))
+        except Exception:  # noqa: BLE001 — ANY raise fails the tolerate-junk / never-crash contract
+            crashed = True
+        tolerated = (not crashed) and len(_records()) == 3
         # absent dir → skipped, never crashes, never created
         no_crash = True
         try:
@@ -377,8 +390,8 @@ def run() -> None:
         except Exception:  # noqa: BLE001 — ANY crash fails the defensive contract
             no_crash = False
         absent_skipped = not (home / "nope").exists()
-        print(f"  2 distinct + idempotent re-persist={two_distinct} · round-trip JSON={round_trip} · "
-              f"unstamped refused={refused_unstamped} · malformed tolerated={tolerated} · "
+        print(f"  2 distinct + idempotent={two_distinct} · round-trip JSON={round_trip} · "
+              f"unstamped refused={refused_unstamped} · all-malformed-classes tolerated={tolerated} · "
               f"absent-dir no-crash+skip={no_crash and absent_skipped}")
         _verdict("I", "--persist accrues a per-project cycle log idempotently + defensively",
                  two_distinct and round_trip and refused_unstamped and tolerated and no_crash and absent_skipped,

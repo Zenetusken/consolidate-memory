@@ -395,7 +395,8 @@ marked confirmed on thin evidence — and loop back one pass if it surfaces anyt
    `--persist <store dir>` appends the rendered record (one JSON line) to
    `<store>/.consolidation-log.jsonl` — the per-project cycle log that accrues
    magnitude→(applied, outcome) data for a future band calibration. It is idempotent and
-   **refuses an unstamped cycle**, so run it AFTER step 5 stamps `marker.timestamp`.
+   **skips persisting an unstamped cycle** (the render still succeeds), so run it AFTER
+   step 5 stamps `marker.timestamp`.
    The dashboard now includes a **"Neural network — token consumption (all nodes)"**
    sub-section: the per-node and total estimated token tax across the network, plus
    what *this* cycle did in lifecycle terms on the triggering node (the node `dream`

@@ -161,7 +161,7 @@ finalizes it in Phase 2 and may override with rationale.
   + the 2-source rule covering the blind spots. To enable a *data-grounded* future
   calibration, the model records the realized `rigor.applied`/`override_reason` and Phase-5
   `--persist DIR` appends each cycle record to `<store>/.consolidation-log.jsonl` (idempotent;
-  refuses an unstamped cycle). LEVER NOTE: `INDEX_TOKEN_BUDGET` is the binding prune lever
+  skips persisting an unstamped cycle). LEVER NOTE: `INDEX_TOKEN_BUDGET` is the binding prune lever
   (~20–27 real facts); `PRUNE_PRESSURE_FACTS` is a terse-pointer backstop. CAVEAT: `applied`
   is self-reported (catches over-rigor only); under-rigor needs LONGITUDINAL miss-detection
   (future work), and the bands must NEVER be calibrated against the OUTCOME banner — it fails
