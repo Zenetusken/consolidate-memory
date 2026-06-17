@@ -119,7 +119,7 @@ def detect_stacks(project_dir: Path) -> set[str]:
 
 
 def global_facts() -> list[tuple[str, dict, str]]:
-    facts = []
+    facts: list[tuple[str, dict, str]] = []
     if not GLOBAL.exists():
         return facts
     for f in sorted(GLOBAL.glob("*.md")):
@@ -373,7 +373,7 @@ def _orphans(store: Path) -> list[str]:
     the global store. These are the dead memory --pull can never reclaim (it only
     iterates LIVE globals), so they accrue forever — the leak Fix B closes."""
     canon = {n for n, _, _ in global_facts()}
-    out = []
+    out: list[str] = []
     if not store.exists():
         return out
     for f in store.glob("*.md"):
@@ -495,7 +495,7 @@ def _network_nodes() -> list[Path]:
     (derived from provenance basenames, which can't be inverted to a store path) — the
     two views can diverge (names vs slugs); --network = topology, --tokens = cost."""
     base = Path.home() / ".claude" / "projects"
-    nodes = []
+    nodes: list[Path] = []
     if not base.exists():
         return nodes
     for proj in sorted(base.iterdir()):

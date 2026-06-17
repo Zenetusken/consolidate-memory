@@ -5,6 +5,55 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.6] — 2026-06-17
+
+### Added
+- **A typed cycle-record contract (`TypedDict`) — static, producer-side drift-catching.**
+  The cycle record — the data contract between `memory_status.py` (seeds it), the workflow
+  phases (fill it), and `render_dashboard.py` (renders it) — was an untyped dict whose 42-line
+  shape was hand-maintained in THREE places (the seed ↔ the renderer ↔ `SKILL.md`'s schema
+  block), the recurring source of drift/crash findings. `memory_status.py` now defines the
+  whole shape as `TypedDict`s (`CycleRecord` + every nested shape, all `total=False`), and the
+  producers/consumers are annotated (`seed_record`/`_provisional_rigor`/`schema_drift` →
+  their types; `render`/`_demo_record` → `CycleRecord`). mypy now flags a drifted, renamed,
+  extra, or wrong-typed key in the dict LITERALS this codebase emits — the main historical
+  drift source. **Honest scope:** the static win is **producer-asymmetric** — `total=False`
+  flags a mis-named key via subscript / in a literal, NOT on a `.get()` read, so render's
+  defensive reads are covered by the runtime validator (below) + IDE hints, not mypy.
+- **A warn-only runtime validator `validate_cycle_record(record) -> list[str]`** (in
+  `memory_status.py`): pure, stdlib, NEVER raises. It surfaces the model-slip class behind the
+  past crashes — a PRESENT key of the wrong CONTAINER type, at the ACTUAL nesting (incl.
+  `health.slug_orphans` / `health.schema_drift`, which nest under `health`) — and is quiet on a
+  missing key (a partial record is normal) and on correct types. `render_dashboard.py` runs it
+  after parsing and prints any warning to **stderr** (`render_dashboard: cycle-record
+  warning: …`), non-blocking.
+- **A SKILL↔TypedDict sync test (smoke):** parses the `SKILL.md` cycle-record schema block and
+  asserts its top-level key set == `CycleRecord.__annotations__` (and the nested `health` shape
+  == `Health.__annotations__`), so the doc can't silently drift from the code — "single source
+  for the CODE; `SKILL.md` kept aligned by this test." Added `outcome` (a real optional override
+  render already supports) to the schema block so the two agree key-for-key.
+
+### Changed
+- **`render_dashboard.py` runs the validator** on the parsed record → warnings to stderr
+  (the rendered dashboard on stdout stays **byte-identical** for a well-formed record). The
+  read-only record helpers (`_outcome`/`_over`/`_network_section`/`_persist`) take
+  `Mapping[str, Any]` (a TypedDict is assignable to a read-only Mapping — this also dissolved
+  the old dual-budget-shape friction in `_over`); `_num` keeps `x: object` (guards `.get()`/
+  `None` callers). `suggested_tier` widened to `(float, float)` (render coerces via `_num`).
+
+### Notes
+- **Zero new RUNTIME dependency.** `TypedDict` is stdlib (3.8+) and runtime-INVISIBLE (a
+  TypedDict *is* a plain dict — no runtime cost, the model can still author the record as JSON
+  mid-flight). mypy is a **dev-only** maintainer tool: a committed pragmatic `mypy.ini` at the
+  repo root (outside `plugins/`, so it never ships) keeps `scripts/` + `tests/` clean WITHOUT
+  `--strict` and WITHOUT disabling the TypedDict checks; it is NOT in the dep-free `smoke.py`
+  gate. `.mypy_cache/` is gitignored.
+- **The static win is producer-asymmetric** (framed honestly): strong on the seed/demo literals
+  + cross-module type agreement, near-zero on render's `.get()` reads (those rely on the runtime
+  validator + IDE hints).
+- Backward-compatible: legacy cycle records still render byte-identically; the validator is
+  warn-only and additive; runtime behavior is unchanged → **patch**.
+
 ## [0.1.5] — 2026-06-17
 
 ### Added

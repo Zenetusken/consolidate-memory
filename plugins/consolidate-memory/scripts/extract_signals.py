@@ -38,11 +38,15 @@ from pathlib import Path
 STATE_FILE = ".consolidation-state.json"
 
 
-def _norm(text: str) -> str:
+def _norm(text: object) -> str:
     """Collapse whitespace AND drop Unicode format/zero-width (Cf) characters, on the
     SINGLE representation that is both scanned by the firewall and stored. Zero-width
     chars inserted inside a credential would otherwise split it past every regex arm yet
-    persist verbatim — so strip them before scan and store stay aligned."""
+    persist verbatim — so strip them before scan and store stay aligned.
+
+    Arg typed `object` (it str()s internally) so a tool-result `content` of type
+    `str | Any | None` — the union dict.get yields off the model-authored transcript —
+    flows in without a cast; the str() coercion is the runtime guard."""
     return "".join(c for c in " ".join(str(text).split()) if unicodedata.category(c) != "Cf")
 # Max chars of a single turn fed to the classifier/secret regexes. Only text[:300] is
 # ever stored, so a larger cap than that is pure defense-in-depth against huge inputs.
@@ -240,9 +244,17 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                 human.append({"source": "human", "ts": ts, "signal_type": stype, "scope_hint": scope,
                               "score": score, "text": norm[:300]})
 
-    # dedup error-results (the same tool error often repeats verbatim)
+    # dedup error-results (the same tool error often repeats verbatim). Explicit loop
+    # rather than the `... or seen.add(x)` comprehension trick: set.add returns None (a
+    # value mypy rightly flags as unusable in a boolean), so ADD first, then use the set.
     seen: set[str] = set()
-    errors = [e for e in errors if not (e["text"] in seen or seen.add(e["text"]))]
+    deduped: list[dict] = []
+    for e in errors:
+        if e["text"] in seen:
+            continue
+        seen.add(e["text"])
+        deduped.append(e)
+    errors = deduped
     # rank human turns: high-signal first, acks last; cap at max_n. Keep ONE
     # omitted-secret label for transparency (the consolidation should know a
     # credential-bearing turn was skipped), but never the value.

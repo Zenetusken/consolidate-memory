@@ -20,6 +20,172 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Mapping, TypedDict
+
+# ── The cycle-record CONTRACT (v0.1.6) ───────────────────────────────────────────────
+# The cycle record is the contract between this script (seeds it), the workflow phases
+# (fill it), and render_dashboard.py (renders it). It used to be an untyped dict whose
+# shape was hand-maintained in THREE places (this seed ↔ the renderer ↔ SKILL.md's
+# schema block) — the recurring source of drift/crash findings. These TypedDicts make
+# that shape STATIC so mypy catches a drifted/renamed/wrong-typed key on the PRODUCER
+# side (the dict LITERALS this file emits) and across modules, at dev time.
+#
+# Why TypedDict and not Pydantic/dataclasses: it is stdlib (3.8+), a ZERO runtime
+# dependency, and runtime-INVISIBLE — a TypedDict *is* a plain dict, so there's no
+# runtime cost and the model can still author the record as JSON mid-flight (which a
+# dataclass would break). The static win is PRODUCER-asymmetric: total=False flags a
+# mis-named key only via subscript / in a dict literal, NOT on a `.get()` read — so
+# render's defensive reads rely on `validate_cycle_record` (below) + IDE hints, not
+# mypy. All total=False because the record is filled incrementally across the phases:
+# any key may legitimately be absent at a given moment (a partial record is normal).
+#
+# MIRRORS the SKILL.md "Cycle-record schema" block key-for-key (kept aligned by the
+# smoke test that diffs CycleRecord.__annotations__ against that block). Nested shapes
+# are their own TypedDicts so drift INSIDE them is also caught on the producer side.
+
+
+class Scope(TypedDict, total=False):
+    git_range: str
+    git_commits: int
+    session_candidates: int
+    memories_reviewed: int
+
+
+class Rigor(TypedDict, total=False):
+    phase: str            # "provisional" | "final"
+    prune_pressure: bool
+    prune_reason: str
+    applied: str          # the ceremony actually run: "LIGHT" | "SUBSTANTIAL" | "HEAVY"
+    override_reason: str
+
+
+class Verification(TypedDict, total=False):
+    confirmed: int
+    corrected: int
+    unverifiable: int
+    method: str           # "inline" | "subagents"
+
+
+class Entry(TypedDict, total=False):
+    action: str           # "added" | "corrected" | "deleted" | "reconciled" | "skipped"
+    tier: str             # "always-loaded" | "recall" | "on-demand" | "-"
+    store: str            # "auto-mem" | "repo" | "-"
+    scope: str            # "project-local" | "stack-general" | "user-global"
+    name: str
+    reason: str
+    citation: str
+
+
+class ClaudeMdBudget(TypedDict, total=False):
+    before: int
+    after: int
+    before_tokens: int
+    after_tokens: int
+    budget_tokens: int
+    over: bool
+
+
+class GlobalClaudeMd(TypedDict, total=False):
+    present: bool
+    lines: int
+    tokens: int
+    budget_tokens: int
+    over: bool
+
+
+class IndexBudget(TypedDict, total=False):
+    before_lines: int
+    after_lines: int
+    before_bytes: int
+    after_bytes: int
+    before_tokens: int
+    after_tokens: int
+    budget_tokens: int
+    over: bool
+
+
+class RecallFacts(TypedDict, total=False):
+    before: int
+    after: int
+
+
+class Budget(TypedDict, total=False):
+    claude_md: ClaudeMdBudget
+    global_claude_md: GlobalClaudeMd
+    index: IndexBudget
+    recall_facts: RecallFacts
+
+
+class SchemaDrift(TypedDict, total=False):
+    missing_node_type: int
+    malformed_scope: int
+    malformed_origin: int
+    index_mismatch: int
+    advisory_no_scope: int
+    advisory_no_origin: int
+
+
+class Health(TypedDict, total=False):
+    index_pointers_ok: bool
+    broken: list[str]
+    dangling_links: list[str]
+    slug_orphans: list[str]      # nests UNDER health (twin slug names)
+    schema_drift: SchemaDrift    # nests UNDER health (the C2 drift dict)
+
+
+class CrossProject(TypedDict, total=False):
+    global_store_facts: int
+    pulled: list[dict]       # [{"name": ..., "scope": ...}] — Phase 1: global → here
+    promoted: list[dict]     # [{"name": ..., "scope": ...}] — Phase 4: here → global
+    refreshed: int
+    gc_removed: int
+
+
+class NetworkNode(TypedDict, total=False):
+    node: str
+    trigger: bool
+    always_loaded_tokens: int
+    mirror_index_tokens: int
+    recall_tokens: int
+    facts: int
+    shared: int
+
+
+class NetworkTotals(TypedDict, total=False):
+    nodes: int
+    always_loaded_tokens: int
+    mirror_index_tokens: int
+    recall_tokens: int
+
+
+class Network(TypedDict, total=False):
+    basis: str
+    node_def: str
+    trigger: str
+    nodes: list[NetworkNode]
+    totals: NetworkTotals
+
+
+class Marker(TypedDict, total=False):
+    before_commit: str       # seed-only: the prior marker (for the dashboard delta)
+    before_timestamp: str
+    commit: str
+    timestamp: str           # stamped in Phase 5 at write time
+
+
+class CycleRecord(TypedDict, total=False):
+    project: str
+    session: str
+    scope: Scope
+    rigor: Rigor
+    verification: Verification
+    entries: list[Entry]
+    budget: Budget
+    health: Health
+    cross_project: CrossProject
+    network: Network
+    marker: Marker
+    outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
 
 # Operational state (NOT a memory fact): the last commit/time we consolidated at.
 STATE_FILE = ".consolidation-state.json"
@@ -62,12 +228,15 @@ TIER_ORDER = {"LIGHT": 0, "SUBSTANTIAL": 1, "HEAVY": 2}  # canonical rank (sorts
 PRUNE_PRESSURE_FACTS = 40
 
 
-def suggested_tier(git_commits: int, session_candidates: int) -> str:
+def suggested_tier(git_commits: float, session_candidates: float) -> str:
     """EARLY pass-magnitude → rigor tier (LIGHT/SUBSTANTIAL/HEAVY). magnitude =
     git_commits + session_candidates, both FLOWS (work THIS cycle). Takes NO
     memories_reviewed argument by design: that cumulative STOCK belongs on the
     prune-pressure axis, not here (folding it in pegs every mature store to HEAVY — the
-    bug this avoids). Pure + total so the smoke tests can sweep it."""
+    bug this avoids). Pure + total so the smoke tests can sweep it. Args are FLOAT-typed
+    (not int) because render coerces the model-authored magnitude through `_num` →
+    float before calling; the magnitude sum + the two band comparisons are float-safe,
+    and the int-arg smoke sweeps still pass (int ⊆ float)."""
     magnitude = git_commits + session_candidates
     if magnitude <= TIER_LIGHT_MAX:
         return "LIGHT"
@@ -88,7 +257,7 @@ def prune_pressure(index_over: bool, memories_reviewed: int) -> tuple[bool, str]
     return (False, "")
 
 
-def _provisional_rigor(ctx: dict) -> dict:
+def _provisional_rigor(ctx: dict) -> Rigor:
     """The Phase-0 PROVISIONAL rigor block stored in the cycle record: `phase`, the
     prune-pressure flag/reason, and the realized-rigor `applied`/`override_reason` (seeded
     EMPTY here; the model fills them in Phase 2/4). It deliberately stores **no suggested
@@ -207,7 +376,7 @@ def near_duplicate_slugs(slug: str, sibling_slugs: list) -> list:
     return sorted(s for s in sibling_slugs if s != slug and norm(s) == target)
 
 
-def schema_drift(fact_files: list, index_names: set) -> dict:
+def schema_drift(fact_files: list, index_names: set) -> SchemaDrift:
     """DRIFT (always reported) + optional backfill ADVISORY (absence). DRIFT = documented field
     `node_type` MISSING, a present-but-MALFORMED `scope`/`originSessionId`, or an index<->file
     mismatch. Advisory = facts merely LACKING scope/originSessionId (injected/optional → absence
@@ -238,10 +407,12 @@ def schema_drift(fact_files: list, index_names: set) -> dict:
             "advisory_no_scope": advisory_no_scope, "advisory_no_origin": advisory_no_origin}
 
 
-def drift_findings(d: dict) -> int:
+def drift_findings(d: Mapping[str, Any]) -> int:
     """Count of DRIFT findings (NOT advisory) — the AC#1 'clean store' gate. Strict `int()` (its
-    callers — the seed + smoke — always pass clean ints). NOTE: render_dashboard does NOT call
-    this; it sums the same four fields via its own `_num` at the model→presentation boundary (a
+    callers — the seed + smoke — always pass clean ints). Param is a read-only `Mapping[str, Any]`
+    so the `SchemaDrift` that `schema_drift()` returns flows in (a TypedDict IS assignable to a
+    read-only Mapping, but NOT to invariant `dict`). NOTE: render_dashboard does NOT call this; it
+    sums the same four fields via its own `_num` at the model→presentation boundary (a
     model-authored non-numeric value must not crash render). Keep the two in sync if the drift
     fields change."""
     return (int(d.get("missing_node_type", 0)) + int(d.get("malformed_scope", 0))
@@ -395,8 +566,11 @@ def _stale_since(fact_files: list[Path], marker_ts: str) -> list[str]:
     return [f.stem for f in fact_files if f.stat().st_mtime <= cutoff]
 
 
-def seed_record(ctx: dict) -> dict:
-    """The cycle-record SEED — before-values + scope + provisional rigor, for render_dashboard.py."""
+def seed_record(ctx: dict) -> CycleRecord:
+    """The cycle-record SEED — before-values + scope + provisional rigor, for render_dashboard.py.
+    Annotated as CycleRecord so mypy enforces this LITERAL against the contract: a drifted,
+    renamed, extra, or wrong-typed key here (the main historical drift source — seed↔SKILL)
+    is now a static error, not a runtime surprise downstream."""
     return {
         "project": ctx["project"],
         "session": "",  # fill with the session id when known
@@ -455,6 +629,47 @@ def seed_record(ctx: dict) -> dict:
             "commit": ctx["head"], "timestamp": "",  # stamp at write time in Phase 5
         },
     }
+
+
+def validate_cycle_record(record: object) -> list[str]:
+    """Warn-only RUNTIME structural check on a cycle record — the complement to the
+    static TypedDict (which is producer-asymmetric: it can't see render's `.get()` reads
+    or a model-authored record loaded from JSON). Returns a list of human-readable
+    warnings; PURE, stdlib-only, and NEVER raises (it guards every access, so junk input
+    — a non-dict record, a non-dict `health`, a `health` that is a list — yields warnings
+    or silence, never a crash).
+
+    It flags only a PRESENT key whose CONTAINER type is wrong (the model-slip class behind
+    the Gate-2 crashes), at the ACTUAL nesting — every top-level container key (`scope`,
+    `health`, … — `health` included, so a non-dict `health` warns) plus `health.slug_orphans`
+    / `health.schema_drift`, which nest UNDER `health`. It is deliberately QUIET on a missing
+    key (a partial record is normal, the phases fill it incrementally) and on a correct
+    type, and it does NOT check scalar value types — that's the `_num`/`_clean`/`_flag`
+    coercion boundary in render, not this structural gate."""
+    warnings: list[str] = []
+    if not isinstance(record, dict):
+        # Not even a dict — render's own json.loads guard handles the parse; here we just
+        # report the shape and bail (nothing else is inspectable).
+        return [f"cycle record is not a dict (got {type(record).__name__})"]
+
+    # Top-level keys that MUST be a dict if present.
+    for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health"):
+        if key in record and not isinstance(record[key], dict):
+            warnings.append(f"{key} is not a dict")
+    # entries must be a list if present.
+    if "entries" in record and not isinstance(record["entries"], list):
+        warnings.append("entries is not a list")
+
+    # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
+    # already warned via the top-level tuple above ("health is not a dict"); here we just
+    # decline to descend into a malformed one (no double-warn, no crash on its sub-keys).
+    health = record.get("health")
+    if isinstance(health, dict):
+        if "slug_orphans" in health and not isinstance(health["slug_orphans"], list):
+            warnings.append("health.slug_orphans is not a list")
+        if "schema_drift" in health and not isinstance(health["schema_drift"], dict):
+            warnings.append("health.schema_drift is not a dict")
+    return warnings
 
 
 def print_report(ctx: dict) -> None:

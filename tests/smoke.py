@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "plugins" / "consolidate-memory" / "scripts"))
@@ -86,8 +87,15 @@ check("rigor: seed includes empty applied/override_reason, model fills in Phase 
       ms._provisional_rigor({"index_lb": (0, 0, 0), "fact_files": []})["applied"] == ""
       and ms._provisional_rigor({"index_lb": (0, 0, 0), "fact_files": []})["override_reason"] == "")
 # render: the RIGOR line shows a tier + magnitude BOTH DERIVED from scope (never stored)
-_rrec = {"project": "p", "session": "s", "scope": {"git_commits": 6, "session_candidates": 9},
-         "entries": [], "rigor": {"phase": "final", "prune_pressure": True, "prune_reason": "many-facts"}}
+# NOTE (v0.1.6): render() now takes ms.CycleRecord. The fixtures below are MODEL-AUTHORED-
+# shaped — many deliberately carry malformed/wrong-typed values to prove render NEVER
+# crashes (the _num/_clean/_flag boundary). That is consumer-side input where the TypedDict
+# gives ~zero static value (spec F2), so we cast(ms.CycleRecord, …) at this trust boundary —
+# the spec-endorsed escape hatch (it also casts json.loads → CycleRecord), NOT a disabled
+# check. The producer-side contract (seed_record/_demo_record literals in scripts/) stays
+# fully checked.
+_rrec = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {"git_commits": 6, "session_candidates": 9},
+         "entries": [], "rigor": {"phase": "final", "prune_pressure": True, "prune_reason": "many-facts"}})
 check("render: rigor line shows derived tier (6+9=15 → HEAVY)", "RIGOR" in rd.render(_rrec) and "HEAVY" in rd.render(_rrec))
 check("render: rigor magnitude DERIVED from scope (6+9=15)", "magnitude 15" in rd.render(_rrec))
 check("render: prune-pressure surfaced on the rigor line", "prune-pressure" in rd.render(_rrec))
@@ -95,8 +103,8 @@ check("render: legacy record without rigor omits the line (no crash)",
       "RIGOR" not in rd.render({"project": "p", "session": "s", "scope": {}, "entries": []}))
 # A1 regression: the displayed tier is DERIVED from the magnitude, NEVER a stored label —
 # a stale/contradictory stored suggested_tier must not reach the RIGOR line.
-_drift = {"project": "p", "session": "s", "scope": {"git_commits": 8, "session_candidates": 7},
-          "entries": [], "rigor": {"suggested_tier": "LIGHT", "phase": "final"}}  # stored LIGHT is a lie: mag=15
+_drift = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {"git_commits": 8, "session_candidates": 7},
+          "entries": [], "rigor": {"suggested_tier": "LIGHT", "phase": "final"}})  # stored LIGHT is a lie: mag=15
 _drift_line = next((ln for ln in rd.render(_drift).splitlines() if "RIGOR" in ln), "")
 check("render: tier DERIVED from magnitude, ignores a contradictory stored suggested_tier (A1)",
       "HEAVY" in _drift_line and "LIGHT" not in _drift_line)
@@ -106,9 +114,9 @@ check("render: empty rigor {} still shows the derived RIGOR line (A2)",
                             "entries": [], "rigor": {}}))
 # v0.1.4: the realized-rigor `applied` decision renders "suggested → applied · why" ONLY when it
 # DIFFERS from the magnitude-derived suggested tier; absent/empty/equal renders unchanged (back-compat).
-_app = {"project": "p", "session": "s", "scope": {"git_commits": 10, "session_candidates": 3},
+_app = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {"git_commits": 10, "session_candidates": 3},
         "entries": [], "rigor": {"phase": "final", "applied": "LIGHT",
-                                 "override_reason": "already-consolidated flow"}}
+                                 "override_reason": "already-consolidated flow"}})
 _app_line = next((ln for ln in rd.render(_app).splitlines() if "RIGOR" in ln), "")
 check("render: applied≠suggested shows 'HEAVY → LIGHT' (v0.1.4)",
       "HEAVY" in _app_line and "→" in _app_line and "LIGHT" in _app_line)
@@ -122,8 +130,8 @@ check("render: empty applied → derived tier only, no arrow (v0.1.4)",
                        "scope": {"git_commits": 1, "session_candidates": 0}, "entries": [],
                        "rigor": {"phase": "final", "applied": ""}}).splitlines() if "RIGOR" in ln), ""))
 check("render: non-string applied doesn't crash, renders the line (v0.1.4)",
-      "RIGOR" in rd.render({"project": "p", "session": "s", "scope": {"git_commits": 1, "session_candidates": 0},
-                            "entries": [], "rigor": {"applied": 5}}))
+      "RIGOR" in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {"git_commits": 1, "session_candidates": 0},
+                            "entries": [], "rigor": {"applied": 5}})))
 check("render: whitespace ' HEAVY ' applied is normalized → NO spurious 'X → X' arrow (v0.1.4)",
       "→" not in next((ln for ln in rd.render({"project": "p", "session": "s",
                        "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
@@ -138,15 +146,15 @@ check("render: case-insensitive applied 'light' still shows the override arrow (
                    "rigor": {"applied": "light"}}).splitlines() if "RIGOR" in ln), ""))
 # A5: a JSON-stringified 'false' prune_pressure must NOT trip the warning (_flag coercion)
 check("render: stringized 'false' prune_pressure shows no warning (A5/_flag)",
-      "prune-pressure" not in rd.render({"project": "p", "session": "s",
+      "prune-pressure" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s",
           "scope": {"git_commits": 1, "session_candidates": 0}, "entries": [],
-          "rigor": {"phase": "final", "prune_pressure": "false"}}))
+          "rigor": {"phase": "final", "prune_pressure": "false"}})))
 check("render: _flag coerces stringized booleans",
       rd._flag("false") is False and rd._flag("true") is True and rd._flag(True) is True and rd._flag("") is False)
 # model-authored gnarly rigor (string/None/wrong-type) must not crash; tier still derived
-_grig = {"project": "p", "session": "s", "scope": {"git_commits": "7", "session_candidates": None},
+_grig = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {"git_commits": "7", "session_candidates": None},
          "entries": [], "rigor": {"suggested_tier": 123, "phase": None,
-                                   "prune_pressure": "yes", "prune_reason": None}}
+                                   "prune_pressure": "yes", "prune_reason": None}})
 _grig_out = rd.render(_grig)
 check("render: gnarly rigor never crashes + derives tier (ignores stored 123)",
       isinstance(_grig_out, str) and "RIGOR" in _grig_out and "123" not in _grig_out)
@@ -261,31 +269,37 @@ _h_clean = rd.render({"project": "p", "session": "s", "scope": {}, "entries": []
 check("render: clean store shows no drift/orphan ⚠ in HEALTH (AC#3)",
       "schema drift" not in _h_clean and "slug-orphan" not in _h_clean and "✓ all pointers resolve" in _h_clean)
 # LEGACY record (no slug_orphans/schema_drift keys) must render BYTE-IDENTICALLY (AC#5).
-_legacy = {"project": "p", "session": "s", "scope": {}, "entries": [],
+# Typed dict[str, Any] (not ms.CycleRecord): this fixture is then DEEP-COPIED and MUTATED
+# with nested-key assignments; a plain dict keeps that simple, and render() accepts it via
+# the cast at each call below.
+_legacy: dict[str, Any] = {"project": "p", "session": "s", "scope": {}, "entries": [],
            "health": {"index_pointers_ok": True, "broken": [], "dangling_links": []}}
 import copy as _copy  # noqa: E402
 _legacy_plus = _copy.deepcopy(_legacy)   # same record WITH the v0.1.5 keys present-but-empty
 _legacy_plus["health"]["slug_orphans"] = []
 _legacy_plus["health"]["schema_drift"] = {}
+_R = ms.CycleRecord  # local alias to keep the cast wraps below terse
 check("render: empty v0.1.5 keys render identically to a legacy record (AC#5 back-compat)",
-      rd.render(_legacy) == rd.render(_legacy_plus))
+      rd.render(cast(_R, _legacy)) == rd.render(cast(_R, _legacy_plus)))
 check("render: legacy render is deterministic + non-mutating",
-      rd.render(_legacy) == rd.render(_copy.deepcopy(_legacy)))
+      rd.render(cast(_R, _legacy)) == rd.render(cast(_R, _copy.deepcopy(_legacy))))
 check("render: legacy health has no slug-orphan/schema-drift line (AC#5)",
-      "slug-orphan" not in rd.render(_legacy) and "schema drift" not in rd.render(_legacy))
+      "slug-orphan" not in rd.render(cast(_R, _legacy)) and "schema drift" not in rd.render(cast(_R, _legacy)))
 # model-authored health: a NON-numeric schema_drift value must NOT crash render (the
 # _num/_clean/_flag never-crash invariant) — render coerces at the boundary, unlike the
 # strict-int ms.drift_findings used by the seed/smoke with clean ints.
-_gnarly_h = rd.render({"project": "p", "session": "s", "scope": {}, "entries": [],
+_gnarly_h = rd.render(cast(_R, {"project": "p", "session": "s", "scope": {}, "entries": [],
                        "health": {"index_pointers_ok": True, "slug_orphans": None,
-                                  "schema_drift": {"missing_node_type": "two", "index_mismatch": None}}})
+                                  "schema_drift": {"missing_node_type": "two", "index_mismatch": None}}}))
 check("render: non-numeric/None schema_drift never crashes render (model→presentation coercion)",
       isinstance(_gnarly_h, str) and "HEALTH" in _gnarly_h)
 # Gate-2 F1: a TRUTHY non-dict schema_drift / non-list slug_orphans (model slip) must not crash —
 # `or {}`/`or []` only catch FALSY values; the isinstance guards catch a truthy wrong-type.
-_gnarly2 = rd.render({"project": "p", "session": "s", "scope": {}, "entries": [],
-                      "health": {"index_pointers_ok": True, "slug_orphans": "Doc_Flo",
-                                 "schema_drift": "2 missing node_type"}})
+# This shape is REUSED below by the validate_cycle_record contract test (v0.1.6).
+_gnarly2_rec = {"project": "p", "session": "s", "scope": {}, "entries": [],
+                "health": {"index_pointers_ok": True, "slug_orphans": "Doc_Flo",
+                           "schema_drift": "2 missing node_type"}}
+_gnarly2 = rd.render(cast(_R, _gnarly2_rec))
 check("render: truthy non-dict schema_drift / non-list slug_orphans never crash render (Gate-2 F1)",
       isinstance(_gnarly2, str) and "HEALTH" in _gnarly2)
 
@@ -412,7 +426,7 @@ check("pointer: hook strips markdown link chars (no []() injection)",
       all(c not in sg._pointer_line("foo", {"description": "evil](http://x) link"}).split("—", 1)[1]
           for c in "[]()"))
 check("stale-since: non-string marker does not crash (returns [])",
-      ms._stale_since([], 1234567890) == [] and ms._stale_since([], None) == [])
+      ms._stale_since([], cast(Any, 1234567890)) == [] and ms._stale_since([], cast(Any, None)) == [])
 
 # --- run-3 fixes: name/token hardening into the shared store + tier-1 index ---
 check("name: safe kebab stem accepted", sg._safe_stem("gh-pr-edit-broken_v2.1"))
@@ -469,7 +483,7 @@ check("demo: includes the network section", "NEURAL NETWORK" in _demo)
 # --- robustness: a MODEL-authored record (string/None numerics, non-str tier) must not
 # crash render(). The cycle record is model-authored, so numbers can arrive as "6183"/null
 # and a field can be the wrong type; every model->presentation boundary coerces via _num/_clean. ---
-_gnarly = {"project": "p", "session": "s", "scope": {},
+_gnarly = cast(_R, {"project": "p", "session": "s", "scope": {},
            "entries": [{"action": "added", "tier": 1, "store": "repo", "scope": "user-global",
                         "name": "x", "reason": "", "citation": ""}],
            "budget": {"claude_md": {"before": "0", "after": "1", "over": False},
@@ -478,7 +492,7 @@ _gnarly = {"project": "p", "session": "s", "scope": {},
                        "nodes": [{"node": "n", "trigger": True, "always_loaded_tokens": "6183",
                                   "recall_tokens": None, "facts": "12", "shared": 1}],
                        "totals": {"nodes": 1, "always_loaded_tokens": "6461",
-                                  "mirror_index_tokens": "326", "recall_tokens": 0}}}
+                                  "mirror_index_tokens": "326", "recall_tokens": 0}}})
 check("render: model-authored string/None numerics + non-str tier never crash render",
       isinstance(rd.render(_gnarly), str) and "NEURAL NETWORK" in rd.render(_gnarly))
 
@@ -488,10 +502,96 @@ _net = {"basis": "≈ chars/4", "node_def": "stores", "trigger": "p",
                    "recall_tokens": 20, "facts": 2, "shared": 1}],
         "totals": {"nodes": 1, "always_loaded_tokens": 10, "recall_tokens": 20}}
 check("render: network section appears when present",
-      "NEURAL NETWORK" in rd.render({"project": "p", "session": "s", "scope": {},
-                                      "entries": [], "network": _net}))
+      "NEURAL NETWORK" in rd.render(cast(_R, {"project": "p", "session": "s", "scope": {},
+                                      "entries": [], "network": _net})))
 check("render: network section absent when no block (legacy/no-op safe)",
       "NEURAL NETWORK" not in rd.render({"project": "p", "session": "s", "scope": {}, "entries": []}))
+
+# --- v0.1.6: the cycle-record CONTRACT (TypedDict + warn-only validator + SKILL sync) ---
+
+# C5/F5: the SKILL.md schema block must stay key-for-key with the CycleRecord TypedDict, so
+# the doc can't silently drift from the code. Parse the FIRST fenced ```json block out of
+# SKILL.md, json.loads it, and assert its top-level key set == CycleRecord.__annotations__
+# (and spot-check the nested health shape == Health.__annotations__). This makes the
+# "single source for the CODE; SKILL.md kept aligned by this test" claim ENFORCEABLE.
+import json as _json  # noqa: E402
+_skill_md = (ROOT / "plugins" / "consolidate-memory" / "skills" / "consolidate-memory" / "SKILL.md")
+_skill_text = _skill_md.read_text(encoding="utf-8")
+_fence = "```json"
+_j0 = _skill_text.index(_fence) + len(_fence)        # start of the FIRST ```json block
+_j1 = _skill_text.index("```", _j0)                  # the next closing fence
+_skill_schema = _json.loads(_skill_text[_j0:_j1])
+check("SKILL↔TypedDict: schema-block top-level keys == CycleRecord (incl. outcome) (C5)",
+      set(_skill_schema.keys()) == set(ms.CycleRecord.__annotations__))
+check("SKILL↔TypedDict: schema-block health keys == Health TypedDict (nested spot-check)",
+      set(_skill_schema.get("health", {}).keys()) == set(ms.Health.__annotations__))
+check("SKILL↔TypedDict: schema-block marker keys == Marker TypedDict (incl. before_*; v0.1.6 drift fix)",
+      set(_skill_schema.get("marker", {}).keys()) == set(ms.Marker.__annotations__))
+
+# C3/C8: validate_cycle_record — warn-only, pure, NEVER raises. WARNS on a present key of
+# the wrong CONTAINER type, at the ACTUAL nesting (incl. health.slug_orphans/schema_drift).
+# The CRITICAL contract (exact strings) for the _gnarly2 shape:
+check("validate: _gnarly2 shape → exact two health warnings (C3 contract)",
+      ms.validate_cycle_record({"health": {"slug_orphans": "x", "schema_drift": "y"}})
+      == ["health.slug_orphans is not a list", "health.schema_drift is not a dict"])
+# WARNS on the reused _gnarly2_rec shape (truthy non-list slug_orphans + non-dict schema_drift):
+_w_gnarly = ms.validate_cycle_record(_gnarly2_rec)
+check("validate: warns on _gnarly2_rec (non-list slug_orphans + non-dict schema_drift)",
+      "health.slug_orphans is not a list" in _w_gnarly and "health.schema_drift is not a dict" in _w_gnarly)
+# WARNS on a non-list top-level `entries` and a non-dict `scope`:
+check("validate: warns on non-list entries", "entries is not a list" in
+      ms.validate_cycle_record({"entries": "nope"}))
+check("validate: warns on non-dict scope", "scope is not a dict" in
+      ms.validate_cycle_record({"scope": "nope"}))
+# SILENT on a clean record AND on a minimal partial record (partial is normal):
+check("validate: SILENT on a clean record", ms.validate_cycle_record(
+      {"project": "p", "scope": {}, "entries": [],
+       "health": {"slug_orphans": [], "schema_drift": {}}}) == [])
+check("validate: SILENT on a minimal partial record", ms.validate_cycle_record({"project": "p"}) == [])
+# NEVER RAISES on junk: non-dict record, non-dict health, health-as-list. (No exception ⇒ pass.)
+_validate_crashed = False
+try:
+    ms.validate_cycle_record(42)                       # non-dict record
+    ms.validate_cycle_record(None)                     # non-dict record
+    ms.validate_cycle_record({"health": "not-a-dict"})  # non-dict health → warns (FIX 2), no crash
+    ms.validate_cycle_record({"health": ["x"]})        # health-as-list → warns (FIX 2), no descend, no crash
+    ms.validate_cycle_record(cast(Any, [1, 2, 3]))     # a bare list record
+except Exception:  # noqa: BLE001 — ANY raise fails the never-raise contract
+    _validate_crashed = True
+check("validate: NEVER raises on junk (non-dict record / non-dict health / health-as-list)",
+      not _validate_crashed)
+# A non-dict record returns a single descriptive warning, not a crash:
+check("validate: non-dict record returns a descriptive warning (not a crash)",
+      ms.validate_cycle_record(42) == ["cycle record is not a dict (got int)"])
+# FIX 2: a present-but-non-dict `health` now WARNS (it was neither warned nor — before the
+# render guard — survived). Added to the top-level container tuple alongside scope/budget/…
+check("validate: warns on non-dict health (FIX 2)",
+      "health is not a dict" in ms.validate_cycle_record({"health": "x"}))
+
+# Gate-2 FIX 1: render() must DEGRADE (render what it can), NEVER crash, on a MODEL-authored
+# malformed record — a non-dict record (a JSON list/scalar from stdin) or a truthy non-dict /
+# wrong-container top-level value (`scope`/`rigor`/`health`/`budget`/`entries`). The contract
+# is the codebase's never-crash invariant: render returns a `str` (and still emits its fixed
+# skeleton, e.g. the always-rendered "CHANGES" header). NB: HEALTH is `if h:`-guarded, so a
+# bare/malformed-health record renders NO HEALTH section — assert the unconditional skeleton,
+# not HEALTH (only a record carrying a `health` dict, like _demo_record, shows HEALTH).
+for _label, _bad in [
+    ("non-dict record (list)", cast(_R, [1, 2, 3])),
+    ("non-dict record (str)", cast(_R, "x")),
+    ("non-dict record (None)", cast(_R, None)),
+    ("non-dict scope", cast(_R, {"scope": "x", "entries": []})),
+    ("non-dict rigor", cast(_R, {"rigor": "x", "scope": {}, "entries": []})),
+    ("non-dict health", cast(_R, {"health": "x", "scope": {}, "entries": []})),
+    ("non-dict budget", cast(_R, {"budget": "x", "scope": {}, "entries": []})),
+    ("non-list entries", cast(_R, {"entries": "x"})),
+]:
+    _out = rd.render(_bad)
+    check(f"render: degrades (never crashes) on {_label} — returns str with CHANGES skeleton",
+          isinstance(_out, str) and "CHANGES" in _out)
+# and a clean WELL-FORMED record still renders the banner (the degrade path is a no-op on
+# correct types — coercions don't alter a valid record).
+check("render: clean well-formed record still renders the banner (FIX 1 no-op on valid types)",
+      "DREAM · consolidate-memory" in rd.render({"project": "p", "session": "s", "scope": {}, "entries": []}))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

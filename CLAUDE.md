@@ -55,11 +55,17 @@ Only `SECURITY.md` at the repo root is public.
 
 ## Conventions
 
-- **Zero runtime dependencies.** Scripts use the Python 3 stdlib only (no pip
-  installs). Keep it that way — it must run anywhere Claude Code does.
-- **The cycle record is the contract.** `memory_status.py --json` seeds it, the
-  phases fill it, `render_dashboard.py` renders it. Changing the schema means
-  updating the seed, the renderer, and `SKILL.md`'s schema block together.
+- **Zero runtime dependencies.** Scripts are stdlib-only (uses 3.8+ stdlib; no pip
+  installs); validated on Python 3.10–3.13. Keep it that way — it must run anywhere
+  Claude Code does. (`TypedDict` and the type hints are stdlib + runtime-invisible;
+  mypy is a dev-only maintainer tool, NOT a runtime dep — see the dev loop.)
+- **The cycle record is the contract — now TYPED.** `memory_status.py --json` seeds it,
+  the phases fill it, `render_dashboard.py` renders it. The shape is `TypedDict`s in
+  `memory_status.py` (`CycleRecord` + nested, all `total=False`); a `validate_cycle_record`
+  warns (stderr, never blocks) on a wrong-container-type key at runtime. Changing the
+  schema means updating the seed, the renderer, the **TypedDicts**, and `SKILL.md`'s
+  schema block together — a smoke test pins the SKILL block to `CycleRecord.__annotations__`,
+  so they can't silently drift.
 - **Model produces data, scripts produce presentation.** Don't hand-write report
   prose — emit a cycle record and render it, so output stays consistent.
 - **Style:** match the existing scripts — imperative, explain *why*, type hints,
@@ -78,10 +84,16 @@ Only `SECURITY.md` at the repo root is public.
 ## Dev loop
 
 ```
-edit plugins/consolidate-memory/… → python3 tests/smoke.py → ./cm <cmd> to spot-check
-→ python3 tests/validate_manifests.py (+ claude plugin validate --strict)
+edit plugins/consolidate-memory/… → python3 tests/smoke.py → mypy --config-file mypy.ini
+→ ./cm <cmd> to spot-check → python3 tests/validate_manifests.py (+ claude plugin validate --strict)
 → (before go-live) run the local DevSecOps pentest harness → git commit && git push
 ```
+
+`mypy --config-file mypy.ini` is a **dev-only** contract check (catches cycle-record
+drift on the producer side — a renamed/extra/wrong-typed key in a seed/demo literal). It
+is NOT a runtime dep and NOT part of the dep-free `smoke.py` gate; the config is pragmatic
+(checks `scripts/` + `tests/`, not `--strict`), and must never disable the TypedDict checks
+(`typeddict-item`/`typeddict-unknown-key` ARE the contract).
 
 This tool dogfoods itself: once dev-installed as a plugin (`./install.sh`), run `dream`
 from this repo to consolidate its own development memory — written to its private store

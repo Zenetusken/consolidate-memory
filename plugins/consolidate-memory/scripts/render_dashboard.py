@@ -31,8 +31,12 @@ import json
 import os
 import re
 import sys
+from typing import Any, Mapping, cast
 
 import memory_status as ms  # sibling script — reuse the canonical tier bands (derive, don't duplicate)
+# The cycle-record CONTRACT (v0.1.6) lives in memory_status; reference it as ms.CycleRecord
+# (the type render() consumes + _demo_record() produces), so this consumer and the producer
+# agree on ONE definition and mypy flags any cross-module disagreement.
 
 W = 60  # dashboard rule width
 
@@ -124,9 +128,27 @@ def _num(x: object) -> float:
     upstream (by the model), so a budget field may arrive as a string like '10' or be
     absent; never let that raise mid-render."""
     try:
-        return float(x)
+        # `x` is typed `object` ON PURPOSE — callers pass `.get()` results, None, str,
+        # numbers — so float() needs a cast to typecheck. The try/except is the actual
+        # runtime guard; cast is a compile-time no-op (the spec-prescribed shape, since
+        # narrowing `x` to float|int|str would break the None/`.get()` callers).
+        return float(cast(Any, x))
     except (TypeError, ValueError):
         return 0.0
+
+
+def _dget(m: object, k: str) -> dict:
+    """A dict sub-value of a model-authored record — or {} if the record/value is absent or the
+    WRONG type. The container analog of _num/_clean: the model→presentation boundary never trusts
+    a container's type either (a truthy non-dict `scope`/`health`/… must degrade, not crash)."""
+    v = m.get(k) if isinstance(m, dict) else None
+    return v if isinstance(v, dict) else {}
+
+
+def _lget(m: object, k: str) -> list:
+    """A list sub-value of a model-authored record — or [] if absent/wrong-type."""
+    v = m.get(k) if isinstance(m, dict) else None
+    return v if isinstance(v, list) else []
 
 
 def _g(n: float) -> str:
@@ -162,22 +184,29 @@ def _pct(used: object, budget: object) -> str:
     return "" if b <= 0 else f"{round(100 * _num(used) / b)}%"
 
 
-def _over(b: dict) -> str:
+def _over(b: Mapping[str, Any]) -> str:
     """The ACTIONABLE over-budget flag for a project always-loaded tier (CLAUDE.md /
     index): the seed (memory_status) sets `over` against the token ceiling. Distinct
     from the global CLAUDE.md's *advisory* 'heavy' note — this one means 'prune/propose'.
-    Kept as a named helper because the smoke tests assert its contract directly."""
+    Kept as a named helper because the smoke tests assert its contract directly.
+
+    Param typed `Mapping[str, Any]` (read-only): a TypedDict IS assignable to a read-only
+    Mapping (covariant), so BOTH the ClaudeMdBudget and IndexBudget sub-shapes flow in
+    with no Union — which is what dissolves the old dual-budget-shape mypy friction."""
     if b.get("over"):
         return _c(f"  ⚠ OVER ≈{b.get('budget_tokens', '?')} tok BUDGET", "red")
     return ""
 
 
-def _outcome(record: dict) -> str:
+def _outcome(record: Mapping[str, Any]) -> str:
+    # Read-only Mapping[str, Any]: a CycleRecord IS assignable to it (covariant), so the
+    # render(record: CycleRecord) caller passes through with no error, and the demo /
+    # json.loads paths work too. We only READ here.
     if record.get("outcome"):
         return str(record["outcome"]).upper()
-    entries = record.get("entries", [])
+    entries = _lget(record, "entries")
     writes = sum(1 for e in entries if e.get("action") in ("added", "corrected", "deleted"))
-    scope = record.get("scope", {})
+    scope = _dget(record, "scope")
     candidates = scope.get("session_candidates", 0) or 0
     git = scope.get("git_commits", 0) or 0
     reviewed = scope.get("memories_reviewed", 0) or 0
@@ -213,7 +242,7 @@ def _item(p: object) -> tuple:
     return _clean(str(p)), ""
 
 
-def _network_section(record: dict, net: dict) -> list:
+def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
     """The neural-network token sub-section: per-node ESTIMATED cost across every node,
     network totals (with the mirror-driven share), and what THIS cycle did on the
     triggering node. Lifecycle counts are DERIVED from entries[] (single source of
@@ -249,11 +278,11 @@ def _network_section(record: dict, net: dict) -> list:
         out.append("      (no nodes hold shared facts yet)")
 
     # This cycle's lifecycle on the triggering node — derived, not hand-counted.
-    entries = record.get("entries", [])
+    entries = _lget(record, "entries")
     cnt = {k: sum(1 for e in entries if e.get("action") == k) for k in _ACTIONS}
     parts = [f"{g} {cnt[k]} {lbl}" for k, (g, lbl, _col) in _ACTIONS.items() if cnt[k]]
-    idx = record.get("budget", {}).get("index", {})
-    xp = record.get("cross_project", {})
+    idx = _dget(_dget(record, "budget"), "index")
+    xp = _dget(record, "cross_project")
     trig = _clean(net.get("trigger", "?"))
     # DOUBLE-SPACE join (not ' · ') — same reason as the Changes legend: the skip glyph
     # '·' must not read as a doubled dot beside a '·' separator.
@@ -270,7 +299,9 @@ def _network_section(record: dict, net: dict) -> list:
     return out
 
 
-def render(record: dict) -> str:
+def render(record: ms.CycleRecord) -> str:
+    if not isinstance(record, dict):
+        record = {}  # a non-dict record (JSON list/scalar from stdin) degrades — this is the runtime boundary
     out: list = []
     proj = _clean(record.get("project", "?"))
     ses = _clean(record.get("session", "?"))
@@ -286,11 +317,11 @@ def render(record: dict) -> str:
     out.append(_rule())
 
     # Scope + Verification (aligned label column)
-    s = record.get("scope", {})
+    s = _dget(record, "scope")
     out.append("")
     out.append(_kv("SCOPE", f"git {_clean(s.get('git_range', '?'))} · {_g(_num(s.get('git_commits', 0)))} commits · "
                             f"{_g(_num(s.get('session_candidates', 0)))} candidates · {_g(_num(s.get('memories_reviewed', 0)))} reviewed"))
-    v = record.get("verification", {})
+    v = _dget(record, "verification")
     method = f"   {_c('[' + _clean(v['method']) + ']', 'dim')}" if v.get("method") else ""
     out.append(_kv("VERIFIED", f"{_c('✓', 'green')} {v.get('confirmed', 0)} confirmed · "
                                f"{_c('~', 'yellow')} {v.get('corrected', 0)} corrected · "
@@ -306,7 +337,7 @@ def render(record: dict) -> str:
     # `rigor: {}` still shows the derived line; legacy records (no `rigor` key) skip it. The
     # tier is a DISTINCT quantity from the outcome banner (output-based, write counts).
     if "rigor" in record:
-        rg = record.get("rigor") or {}
+        rg = _dget(record, "rigor")
         gc, cand = _num(s.get("git_commits", 0)), _num(s.get("session_candidates", 0))
         suggested = ms.suggested_tier(gc, cand)
         # `applied` (v0.1.4) is the ceremony the model ACTUALLY ran — a stored DECISION, not
@@ -332,7 +363,7 @@ def render(record: dict) -> str:
     # reason+citation move to a single dim sub-line so nothing floats after the name.
     out.append("")
     out.append("  " + _c("CHANGES", "bold"))
-    entries = record.get("entries", [])
+    entries = _lget(record, "entries")
     if not entries:
         out.append("    (none)")
     else:
@@ -359,7 +390,7 @@ def render(record: dict) -> str:
 
     # Always-loaded budget — ONE grid: label | value | bar/% or descriptor. One unit
     # (estimated tokens) for the gauge; line/fact deltas are a terse trailing note.
-    b = record.get("budget", {})
+    b = _dget(record, "budget")
     cm = b.get("claude_md", {})
     gcm = b.get("global_claude_md", {})
     idx = b.get("index", {})
@@ -392,7 +423,7 @@ def render(record: dict) -> str:
         out.append("    (unchanged)")
 
     # Cross-project (global tier) — aligned direction | scope | name; counts on one line.
-    xp = record.get("cross_project", {})
+    xp = _dget(record, "cross_project")
     if xp:
         out.append("")
         gtotal = xp.get("global_store_facts")
@@ -420,12 +451,12 @@ def render(record: dict) -> str:
 
     # Neural network — token consumption across all nodes (the observability ask).
     # Guarded: legacy/no-op records without a `network` block skip it.
-    net = record.get("network")
+    net = _dget(record, "network")
     if net:
         out.extend(_network_section(record, net))
 
     # Health
-    h = record.get("health", {})
+    h = _dget(record, "health")
     if h:
         ok = h.get("index_pointers_ok", True)
         ptr = _c("✓ all pointers resolve", "green") if ok else _c("✗ BROKEN pointers", "red")
@@ -461,14 +492,14 @@ def render(record: dict) -> str:
         out.append(_kv("HEALTH", " · ".join(bits)))
 
     # Marker
-    m = record.get("marker", {})
+    m = _dget(record, "marker")
     if m:
         out.append(_kv("MARKER", _c(f"→ {_clean(str(m.get('commit', '?'))[:12])} @ {_clean(m.get('timestamp', '?'))}", "dim")))
 
     return "\n".join(out)
 
 
-def _demo_record() -> dict:
+def _demo_record() -> ms.CycleRecord:
     """A representative cycle record for `--demo` — lets anyone preview the dashboard
     (and its color, in a TTY) without authoring or pasting JSON. Mirrors a substantial
     pass: an add, a correction, and a SKIPPED decision (so the skipped-row UI is visible)."""
@@ -518,7 +549,7 @@ def _demo_record() -> dict:
     }
 
 
-def _persist(record: dict, dirpath: str) -> None:
+def _persist(record: Mapping[str, Any], dirpath: str) -> None:
     """Append the cycle record (one JSON line) to <dir>/.consolidation-log.jsonl so
     magnitude→(applied, outcome) data accrues for future band calibration (v0.1.4). The
     record's own `marker` stamps it — no wall-clock call here. Defensive at the model→file
@@ -529,7 +560,7 @@ def _persist(record: dict, dirpath: str) -> None:
     if not os.path.isdir(dirpath):
         print(f"render_dashboard: --persist dir not found, skipping log: {dirpath}", file=sys.stderr)
         return
-    marker = record.get("marker") or {}
+    marker = _dget(record, "marker")  # tolerate a truthy non-dict marker (model slip) — never .get() on a str
     commit, ts = str(marker.get("commit", "")), str(marker.get("timestamp", ""))
     if not ts:
         print("render_dashboard: marker.timestamp empty (unstamped cycle), skipping persist", file=sys.stderr)
@@ -599,10 +630,18 @@ def main() -> int:
         print(f"render_dashboard: cannot read cycle record: {exc}", file=sys.stderr)
         return 1
     try:
-        record = json.loads(raw)
+        # The record is MODEL-authored JSON; we cast to the contract at this trust
+        # boundary (cast is a runtime no-op) so render() typechecks. The actual
+        # structural check is the warn-only validator below — non-blocking, stderr only.
+        record = cast(ms.CycleRecord, json.loads(raw))
     except json.JSONDecodeError as exc:
         print(f"render_dashboard: invalid cycle-record JSON: {exc}", file=sys.stderr)
         return 1
+    # Warn-only structural validation (v0.1.6): surface a wrong-CONTAINER-type key (the
+    # model-slip class behind the past crashes) on STDERR. NEVER blocks the render and
+    # NEVER touches stdout — the rendered dashboard stays byte-identical.
+    for w in ms.validate_cycle_record(record):
+        print(f"render_dashboard: cycle-record warning: {w}", file=sys.stderr)
     print(render(record))
     if persist_dir:
         _persist(record, persist_dir)
