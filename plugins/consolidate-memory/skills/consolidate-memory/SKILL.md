@@ -122,11 +122,21 @@ tier** — a large store needs pruning even on a tiny pass. `memories_reviewed` 
 THIS, never the magnitude tier: it is a cumulative *stock*, so folding it into magnitude
 would peg every mature project to HEAVY (the bug this design avoids).
 
-The bands are **provisional, tunable defaults** — the curated-candidate input was never
-recorded historically, so they are not yet empirically calibrated. The record exposes the
-magnitude (from `scope`) + `phase` a future calibration could refit against — but only once
-cycle records are PERSISTED (they render and are discarded today; persisting them is a
-roadmap prerequisite). The rigor tier (an
+The bands are **provisional, tunable defaults**, kept deliberately as a coarse HINT: a
+sensitivity probe (v0.1.4) found magnitude agrees with a rich needed-rigor rubric on only
+~half of passes — the features that truly decide rigor (always-loaded-bound count,
+cross-store conflicts, prune-pressure) are known only LATE (Phase 2–3), so an EARLY
+magnitude proxy can't be precision-tuned (`prune_pressure` + the always-loaded 2-source
+rule cover its blind spots). So `(2,7)` is kept on that basis. v0.1.4 ships the apparatus to
+make a real calibration POSSIBLE: the model records the realized `rigor.applied` (+
+`override_reason` on an override), and Phase-5 `--persist` appends each rendered record to a
+per-project `.consolidation-log.jsonl`, so magnitude→(applied, outcome) data finally accrues.
+**Honest caveat:** `applied` is **self-reported** — it catches OVER-rigor (ran heavy, didn't
+need it) but NOT under-rigor (ran light, missed something); the dangerous direction needs
+LONGITUDINAL miss-detection (a later pass finds what an earlier one missed), which the log
+enables but which remains future work. And never calibrate the bands against the dashboard's
+OUTCOME banner — mature passes are systematically high-magnitude / low-outcome, so fitting
+`(magnitude, outcome)` fails UNSAFE (it biases toward LESS rigor). The rigor tier (an
 *input*-based effort estimate) is a **distinct quantity** from the dashboard's outcome
 banner (an *output*-based label from write counts): they share no scale, and a pass can
 legitimately read "HEAVY" rigor yet "LIGHT" outcome (much to review, little durable to
@@ -242,9 +252,11 @@ higher; feeding that in would over-state magnitude and peg the tier to HEAVY). T
 session_candidates` at render — you don't store a tier label (so it can't drift from its
 magnitude); your curated `session_candidates` IS your judgment entering the magnitude. If
 you choose heavier or lighter ceremony than the magnitude implies, do so with explicit
-rationale — that override shows up in what you actually verify/record
-(`verification.method`, `entries`), not a mutated label (it's a hint, not a gate). The
-helper already filled `git_commits` and `memories_reviewed`.
+rationale — **record the ceremony you actually run in `rigor.applied`
+(LIGHT/SUBSTANTIAL/HEAVY) and, when it differs from the suggested tier, why in
+`rigor.override_reason`** (v0.1.4). The override also shows up in what you verify/record
+(`verification.method`, `entries`), never a mutated suggested label (it's a hint, not a
+gate). The helper already filled `git_commits` and `memories_reviewed`.
 
 ### Phase 3 — Verify (the heart; parallel)
 
@@ -375,10 +387,16 @@ marked confirmed on thin evidence — and loop back one pass if it surfaces anyt
    `timestamp` to `~/.claude/projects/<slug>/memory/.consolidation-state.json` so
    the next pass scopes correctly (stamp the timestamp at write time), and mirror
    that `timestamp` into the cycle record's `marker.timestamp`.
-6. **Render the dashboard** — this is the skill's output (see below):
+6. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py /tmp/cycle.json
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py /tmp/cycle.json \
+       --persist ~/.claude/projects/<slug>/memory
    ```
+   `--persist <store dir>` appends the rendered record (one JSON line) to
+   `<store>/.consolidation-log.jsonl` — the per-project cycle log that accrues
+   magnitude→(applied, outcome) data for a future band calibration. It is idempotent and
+   **skips persisting an unstamped cycle** (the render still succeeds), so run it AFTER
+   step 5 stamps `marker.timestamp`.
    The dashboard now includes a **"Neural network — token consumption (all nodes)"**
    sub-section: the per-node and total estimated token tax across the network, plus
    what *this* cycle did in lifecycle terms on the triggering node (the node `dream`
@@ -439,7 +457,8 @@ summary alongside it.
   "session": "<active session id>",
   "scope": {"git_range": "abc..HEAD", "git_commits": 0,
             "session_candidates": 0, "memories_reviewed": 0},
-  "rigor": {"phase": "provisional|final", "prune_pressure": false, "prune_reason": ""},
+  "rigor": {"phase": "provisional|final", "prune_pressure": false, "prune_reason": "",
+            "applied": "", "override_reason": ""},
   "verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0,
                    "method": "inline|subagents"},
   "entries": [

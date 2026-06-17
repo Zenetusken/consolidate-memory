@@ -80,7 +80,11 @@ check("rigor: index-over takes reason precedence over many-facts", ms.prune_pres
 check("rigor: no-marker 20-commit lookback → HEAVY provisional (A10)", ms.suggested_tier(20, 0) == "HEAVY")
 check("rigor: provisional rigor block is phase:provisional, no stored tier (A10)",
       ms._provisional_rigor({"index_lb": (0, 0, 0), "fact_files": []})
-      == {"phase": "provisional", "prune_pressure": False, "prune_reason": ""})
+      == {"phase": "provisional", "prune_pressure": False, "prune_reason": "",
+          "applied": "", "override_reason": ""})
+check("rigor: seed includes empty applied/override_reason, model fills in Phase 2/4 (v0.1.4)",
+      ms._provisional_rigor({"index_lb": (0, 0, 0), "fact_files": []})["applied"] == ""
+      and ms._provisional_rigor({"index_lb": (0, 0, 0), "fact_files": []})["override_reason"] == "")
 # render: the RIGOR line shows a tier + magnitude BOTH DERIVED from scope (never stored)
 _rrec = {"project": "p", "session": "s", "scope": {"git_commits": 6, "session_candidates": 9},
          "entries": [], "rigor": {"phase": "final", "prune_pressure": True, "prune_reason": "many-facts"}}
@@ -100,6 +104,38 @@ check("render: tier DERIVED from magnitude, ignores a contradictory stored sugge
 check("render: empty rigor {} still shows the derived RIGOR line (A2)",
       "RIGOR" in rd.render({"project": "p", "session": "s", "scope": {"git_commits": 3, "session_candidates": 0},
                             "entries": [], "rigor": {}}))
+# v0.1.4: the realized-rigor `applied` decision renders "suggested → applied · why" ONLY when it
+# DIFFERS from the magnitude-derived suggested tier; absent/empty/equal renders unchanged (back-compat).
+_app = {"project": "p", "session": "s", "scope": {"git_commits": 10, "session_candidates": 3},
+        "entries": [], "rigor": {"phase": "final", "applied": "LIGHT",
+                                 "override_reason": "already-consolidated flow"}}
+_app_line = next((ln for ln in rd.render(_app).splitlines() if "RIGOR" in ln), "")
+check("render: applied≠suggested shows 'HEAVY → LIGHT' (v0.1.4)",
+      "HEAVY" in _app_line and "→" in _app_line and "LIGHT" in _app_line)
+check("render: override_reason shown when applied differs (v0.1.4)", "already-consolidated flow" in _app_line)
+_eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",
+                 "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
+                 "rigor": {"phase": "final", "applied": "HEAVY"}}).splitlines() if "RIGOR" in ln), "")
+check("render: applied==suggested shows no arrow (v0.1.4)", "→" not in _eq_line and "HEAVY" in _eq_line)
+check("render: empty applied → derived tier only, no arrow (v0.1.4)",
+      "→" not in next((ln for ln in rd.render({"project": "p", "session": "s",
+                       "scope": {"git_commits": 1, "session_candidates": 0}, "entries": [],
+                       "rigor": {"phase": "final", "applied": ""}}).splitlines() if "RIGOR" in ln), ""))
+check("render: non-string applied doesn't crash, renders the line (v0.1.4)",
+      "RIGOR" in rd.render({"project": "p", "session": "s", "scope": {"git_commits": 1, "session_candidates": 0},
+                            "entries": [], "rigor": {"applied": 5}}))
+check("render: whitespace ' HEAVY ' applied is normalized → NO spurious 'X → X' arrow (v0.1.4)",
+      "→" not in next((ln for ln in rd.render({"project": "p", "session": "s",
+                       "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
+                       "rigor": {"applied": " HEAVY "}}).splitlines() if "RIGOR" in ln), ""))
+check("render: unrecognized applied value → no arrow, suggested tier only (v0.1.4)",
+      "→" not in next((ln for ln in rd.render({"project": "p", "session": "s",
+                       "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
+                       "rigor": {"applied": "banana"}}).splitlines() if "RIGOR" in ln), ""))
+check("render: case-insensitive applied 'light' still shows the override arrow (v0.1.4)",
+      "→" in next((ln for ln in rd.render({"project": "p", "session": "s",
+                   "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
+                   "rigor": {"applied": "light"}}).splitlines() if "RIGOR" in ln), ""))
 # A5: a JSON-stringified 'false' prune_pressure must NOT trip the warning (_flag coercion)
 check("render: stringized 'false' prune_pressure shows no warning (A5/_flag)",
       "prune-pressure" not in rd.render({"project": "p", "session": "s",

@@ -32,6 +32,7 @@ No pytest, no network, no deps. Exit 0 if every property holds, 1 on a regressio
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -43,6 +44,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SYNC = ROOT / "plugins" / "consolidate-memory" / "scripts" / "sync_global.py"
 sys.path.insert(0, str(ROOT / "plugins" / "consolidate-memory" / "scripts"))
 import memory_status as ms  # noqa: E402  (pure rigor functions — Probe H)
+import render_dashboard as rd  # noqa: E402  (_persist — Probe I)
 
 
 # ── fact synthesis ────────────────────────────────────────────────────────────
@@ -329,6 +331,72 @@ def run() -> None:
                  mono and reachable and flow_tier == "LIGHT" and stock_collapse,
                  "flow keeps a 1-candidate pass LIGHT while git+memories_reviewed (=104) would "
                  "force HEAVY — the F1 stock-vs-flow defect avoided; bands are provisional/tunable")
+
+        # ── Probe I: --persist accrues a per-project cycle log, idempotently + defensively (v0.1.4) ──
+        # The apparatus that makes a future band calibration POSSIBLE: each cycle appends one
+        # JSON line; a re-render of the same cycle is a no-op; an unstamped cycle is refused;
+        # a malformed pre-existing line is tolerated; an absent dir is skipped (never crash).
+        print("\n── Probe I: --persist cycle-log accrual (idempotent, defensive) (v0.1.4) ──")
+        logdir = home / "persist-probe"
+        logdir.mkdir()
+        logpath = logdir / ".consolidation-log.jsonl"
+
+        def _records() -> list:
+            """Record-shaped log lines (a dict with a dict `marker` carrying a commit); junk skipped.
+            Reads with errors='replace' so a non-UTF-8 byte in the log can't crash the TEST either."""
+            out = []
+            for ln in logpath.read_text(encoding="utf-8", errors="replace").splitlines():
+                ln = ln.strip()
+                if not ln:
+                    continue
+                try:
+                    obj = json.loads(ln)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(obj, dict) and isinstance(obj.get("marker"), dict) and obj["marker"].get("commit"):
+                    out.append(obj)
+            return out
+
+        rec1 = {"project": "alpha", "scope": {"git_commits": 10, "session_candidates": 3},
+                "rigor": {"applied": "LIGHT", "override_reason": "already-consolidated flow"},
+                "entries": [], "marker": {"commit": "aaa111", "timestamp": "2026-06-17T01:00:00Z"}}
+        rec2 = {**rec1, "marker": {"commit": "bbb222", "timestamp": "2026-06-17T02:00:00Z"}}
+        rd._persist(rec1, str(logdir))   # first append
+        rd._persist(rec1, str(logdir))   # idempotent: same (commit, ts) → no duplicate
+        rd._persist(rec2, str(logdir))   # distinct cycle → second line
+        two_distinct = len(_records()) == 2
+        round_trip = all(o.get("rigor", {}).get("applied") == "LIGHT" for o in _records())
+        # unstamped (empty timestamp) cycle → refused (would collide on a (commit, '') key)
+        rd._persist({"project": "x", "entries": [], "marker": {"commit": "ccc333", "timestamp": ""}}, str(logdir))
+        refused_unstamped = len(_records()) == 2
+        # EVERY malformed-line class must be tolerated by the dedup scan (it claims never-crash):
+        # bad JSON, valid-JSON-non-object, a dict with a non-dict marker, AND a non-UTF-8 byte.
+        with open(logpath, "a", encoding="utf-8") as fh:
+            fh.write("{not valid json\n")             # JSONDecodeError
+            fh.write('null\n42\n["x"]\n')              # valid JSON, non-object → .get AttributeError
+            fh.write('{"marker": "not-a-dict"}\n')     # dict line, truthy non-dict marker → .get
+        with open(logpath, "ab") as fh:
+            fh.write(b"\xff\xfe not utf-8\n")           # non-UTF-8 → UnicodeDecodeError (a ValueError)
+        crashed = False
+        try:
+            rd._persist({**rec1, "marker": {"commit": "ddd444", "timestamp": "2026-06-17T03:00:00Z"}}, str(logdir))
+        except Exception:  # noqa: BLE001 — ANY raise fails the tolerate-junk / never-crash contract
+            crashed = True
+        tolerated = (not crashed) and len(_records()) == 3
+        # absent dir → skipped, never crashes, never created
+        no_crash = True
+        try:
+            rd._persist(rec1, str(home / "nope"))
+        except Exception:  # noqa: BLE001 — ANY crash fails the defensive contract
+            no_crash = False
+        absent_skipped = not (home / "nope").exists()
+        print(f"  2 distinct + idempotent={two_distinct} · round-trip JSON={round_trip} · "
+              f"unstamped refused={refused_unstamped} · all-malformed-classes tolerated={tolerated} · "
+              f"absent-dir no-crash+skip={no_crash and absent_skipped}")
+        _verdict("I", "--persist accrues a per-project cycle log idempotently + defensively",
+                 two_distinct and round_trip and refused_unstamped and tolerated and no_crash and absent_skipped,
+                 "cycles accrue for a future band refit; self-reported applied/override is the "
+                 "over-rigor signal — longitudinal miss-detection (under-rigor) remains future work")
 
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")

@@ -299,19 +299,34 @@ def render(record: dict) -> str:
     # Rigor tier (v0.1.3) — the EARLY predicted-effort HINT. BOTH the tier and the magnitude
     # are DERIVED here from `scope` (the tier via the same ms.suggested_tier the scripts use),
     # so the label can never contradict its own magnitude — there is NO stored tier to drift,
-    # exactly as `_outcome` derives from `entries`. The stored `rigor` block carries only
-    # `phase` + the prune-pressure flag/reason. Presence-checked (not truthiness) so an empty
+    # exactly as `_outcome` derives from `entries`. The stored `rigor` block carries `phase`,
+    # the prune-pressure flag/reason, AND the realized-rigor `applied`/`override_reason`
+    # decision (v0.1.4) — never the derivable suggested tier. Presence-checked (not truthiness)
+    # so an empty
     # `rigor: {}` still shows the derived line; legacy records (no `rigor` key) skip it. The
     # tier is a DISTINCT quantity from the outcome banner (output-based, write counts).
     if "rigor" in record:
         rg = record.get("rigor") or {}
         gc, cand = _num(s.get("git_commits", 0)), _num(s.get("session_candidates", 0))
-        tier = _tier_colored(ms.suggested_tier(gc, cand))
+        suggested = ms.suggested_tier(gc, cand)
+        # `applied` (v0.1.4) is the ceremony the model ACTUALLY ran — a stored DECISION, not
+        # derivable from magnitude. Render "suggested → applied · why" only when it differs;
+        # absent/empty/equal renders the derived suggested tier exactly as before (back-compat).
+        # normalize: strip + canonical-case, and honor ONLY a RECOGNIZED tier — a stray
+        # ' HEAVY ' or a non-tier model slip must not render a spurious 'X → junk' override.
+        applied = _clean(rg.get("applied", "")).strip().upper()
+        if applied in ("LIGHT", "SUBSTANTIAL", "HEAVY") and applied != suggested.upper():
+            tier = f"{_tier_colored(suggested)} → {_tier_colored(applied)}"
+            reason = _clean(rg.get("override_reason", ""))
+            applied_note = _c(f" · applied: {reason}", "dim") if reason else ""
+        else:
+            tier = _tier_colored(suggested)
+            applied_note = ""
         detail = _c(f"· {_clean(rg.get('phase', ''))} · magnitude {_g(gc + cand)} "
                     f"({_g(gc)} commits + {_g(cand)} candidates)", "dim")
         pp = _c(f"  ⚠ prune-pressure ({_clean(rg.get('prune_reason', ''))})", "yellow") \
             if _flag(rg.get("prune_pressure")) else ""
-        out.append(_kv("RIGOR", f"{tier} {detail}{pp}"))
+        out.append(_kv("RIGOR", f"{tier} {detail}{applied_note}{pp}"))
 
     # Changes — glyph-coded (legend inline), aligned tier/store + scope columns; the
     # reason+citation move to a single dim sub-line so nothing floats after the name.
@@ -440,7 +455,9 @@ def _demo_record() -> dict:
         "project": "acme-api", "session": "a1b2c3d4",
         "scope": {"git_range": "9ed8d5c..HEAD", "git_commits": 7,
                   "session_candidates": 5, "memories_reviewed": 12},
-        "rigor": {"phase": "final", "prune_pressure": False, "prune_reason": ""},  # tier DERIVED: 7+5=12 → HEAVY
+        "rigor": {"phase": "final", "prune_pressure": False, "prune_reason": "",
+                  "applied": "SUBSTANTIAL",  # suggested HEAVY (7+5=12) → applied SUBSTANTIAL (override)
+                  "override_reason": "small curated set despite the commit volume"},
         "verification": {"confirmed": 6, "corrected": 2, "unverifiable": 1, "method": "subagents"},
         "entries": [
             {"action": "added", "tier": "recall", "store": "auto-mem", "scope": "project-local",
@@ -480,10 +497,73 @@ def _demo_record() -> dict:
     }
 
 
+def _persist(record: dict, dirpath: str) -> None:
+    """Append the cycle record (one JSON line) to <dir>/.consolidation-log.jsonl so
+    magnitude→(applied, outcome) data accrues for future band calibration (v0.1.4). The
+    record's own `marker` stamps it — no wall-clock call here. Defensive at the model→file
+    boundary (mirrors _num/_clean/_flag never-crash): skip if `dir` is absent (never create a
+    stray dir); REFUSE on an empty marker.timestamp (an unstamped cycle would let two distinct
+    passes at the same HEAD collide on a `(commit, '')` dedup key); IDEMPOTENT on
+    (marker.commit, marker.timestamp), tolerating blank/unparseable lines in an existing log."""
+    if not os.path.isdir(dirpath):
+        print(f"render_dashboard: --persist dir not found, skipping log: {dirpath}", file=sys.stderr)
+        return
+    marker = record.get("marker") or {}
+    commit, ts = str(marker.get("commit", "")), str(marker.get("timestamp", ""))
+    if not ts:
+        print("render_dashboard: marker.timestamp empty (unstamped cycle), skipping persist", file=sys.stderr)
+        return
+    logpath = os.path.join(dirpath, ".consolidation-log.jsonl")
+    if os.path.exists(logpath):
+        try:
+            # errors="replace": a non-UTF-8 byte (e.g. a partial write from a killed process)
+            # must NOT raise UnicodeDecodeError mid-scan — it's a ValueError, not an OSError.
+            with open(logpath, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        prev = json.loads(line)
+                        pm = prev.get("marker") or {}
+                        already = (str(pm.get("commit", "")) == commit
+                                   and str(pm.get("timestamp", "")) == ts)
+                    except (ValueError, AttributeError):
+                        # tolerate ANY junk line — bad JSON (ValueError), or valid-JSON-but-
+                        # non-object / non-dict marker (.get → AttributeError). Never block logging.
+                        continue
+                    if already:
+                        return  # already logged this cycle — idempotent
+        except OSError as exc:
+            print(f"render_dashboard: cannot read log, skipping persist: {exc}", file=sys.stderr)
+            return
+    try:
+        with open(logpath, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except OSError as exc:
+        print(f"render_dashboard: cannot append to log: {exc}", file=sys.stderr)
+
+
 def main() -> int:
     global _COLOR
     argv = sys.argv[1:]
     _COLOR = _color_enabled(argv, sys.stdout)
+    # --persist DIR (v0.1.4): pull the flag + its value out BEFORE positionals are taken, so
+    # the cycle-record path isn't shadowed by '--persist' or its DIR (the blocklist below only
+    # strips the --color/--demo chrome). Mirrors how --color is excluded — but consumes TWO
+    # tokens (the flag and its separate value).
+    persist_dir, pruned, i = None, [], 0
+    while i < len(argv):
+        if argv[i] == "--persist":
+            if i + 1 >= len(argv):
+                print("render_dashboard: --persist requires a directory argument", file=sys.stderr)
+                return 2
+            persist_dir = argv[i + 1]
+            i += 2
+            continue
+        pruned.append(argv[i])
+        i += 1
+    argv = pruned
     if "--demo" in argv:  # paste-free preview with a built-in record
         print(render(_demo_record()))
         return 0
@@ -503,6 +583,8 @@ def main() -> int:
         print(f"render_dashboard: invalid cycle-record JSON: {exc}", file=sys.stderr)
         return 1
     print(render(record))
+    if persist_dir:
+        _persist(record, persist_dir)
     return 0
 
 
