@@ -439,10 +439,12 @@ def render(record: dict) -> str:
         # v0.1.5: slug-orphan / schema-drift findings (presence-checked, so legacy records
         # without these keys render byte-identically). slug_orphans is a list of twin slug
         # names; schema_drift is the C2 dict — surface a ⚠ only when a DRIFT finding exists.
-        so = h.get("slug_orphans") or []
+        so = h.get("slug_orphans")
+        so = so if isinstance(so, list) else []   # truthy non-list (model slip) → ignore, don't iterate chars
         if so:
             bits.append(_c(f"⚠ slug-orphan: {', '.join(_clean(x) for x in so)}", "yellow"))
-        sd = h.get("schema_drift") or {}
+        sd = h.get("schema_drift")
+        sd = sd if isinstance(sd, dict) else {}    # truthy non-dict → ignore, don't crash on .get()
         # Coerce the four DRIFT fields via _num at the model→presentation boundary (like every
         # other render numeric) rather than ms.drift_findings' strict int(): the cycle record is
         # model-authored, so a field may arrive as a non-numeric string and must NOT crash

@@ -75,6 +75,8 @@ def _is_mirror(text: str) -> bool:
     `description: >-`), which would misclassify a project-authored note — and GC would
     then DELETE it. Bias is to False on anything ambiguous: a missed mirror merely isn't
     reclaimed (safe), whereas a false positive destroys user memory (unsafe)."""
+    if text.startswith("﻿"):     # tolerate a leading BOM (consistent with _frontmatter), else
+        text = text[1:]                # the ^--- anchor fails and a BOM mirror reads as un-managed
     m = re.search(r"^---\n(.*?)\n---", text, re.S)
     if not m:
         return False
@@ -155,6 +157,8 @@ def _as_mirror(text: str, name: str) -> str:
     desync). Such input instead falls through to the column-0 `# global_ref:` stamp,
     which `_is_mirror` does recognize. The `_is_mirror(_as_mirror(...))` round-trip is a
     load-bearing invariant — see the smoke test."""
+    if text.startswith("﻿"):     # strip a leading BOM so the written mirror begins with '---'
+        text = text[1:]                # (else _is_mirror's ^--- anchor fails on our own output)
     lines = [ln for ln in text.splitlines() if not ln.strip().startswith("global_ref:")]
     out: list[str] = []
     injected = False

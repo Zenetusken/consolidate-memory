@@ -430,7 +430,7 @@ def run() -> None:
         # missing node_type: exactly 1 (no-node-type.md). index mismatch: no-node-type (on disk,
         # not indexed) ^ ghost (indexed, no file) = 2. Advisory absence is NOT asserted against.
         drift_counts_ok = (sd["missing_node_type"] == 1 and sd["index_mismatch"] == 2
-                           and ms.drift_findings(sd) >= 3)
+                           and ms.drift_findings(sd) == 3)  # exactly: 1 node_type + 2 index, 0 malformed
 
         # A CLEAN single store: every fact has node_type, the index matches the files exactly,
         # values are well-formed → drift_findings == 0 (advisory absence is permitted, NOT

@@ -264,7 +264,12 @@ check("render: clean store shows no drift/orphan ⚠ in HEALTH (AC#3)",
 _legacy = {"project": "p", "session": "s", "scope": {}, "entries": [],
            "health": {"index_pointers_ok": True, "broken": [], "dangling_links": []}}
 import copy as _copy  # noqa: E402
-check("render: legacy health (no v0.1.5 keys) renders byte-identically (AC#5)",
+_legacy_plus = _copy.deepcopy(_legacy)   # same record WITH the v0.1.5 keys present-but-empty
+_legacy_plus["health"]["slug_orphans"] = []
+_legacy_plus["health"]["schema_drift"] = {}
+check("render: empty v0.1.5 keys render identically to a legacy record (AC#5 back-compat)",
+      rd.render(_legacy) == rd.render(_legacy_plus))
+check("render: legacy render is deterministic + non-mutating",
       rd.render(_legacy) == rd.render(_copy.deepcopy(_legacy)))
 check("render: legacy health has no slug-orphan/schema-drift line (AC#5)",
       "slug-orphan" not in rd.render(_legacy) and "schema drift" not in rd.render(_legacy))
@@ -276,6 +281,13 @@ _gnarly_h = rd.render({"project": "p", "session": "s", "scope": {}, "entries": [
                                   "schema_drift": {"missing_node_type": "two", "index_mismatch": None}}})
 check("render: non-numeric/None schema_drift never crashes render (model→presentation coercion)",
       isinstance(_gnarly_h, str) and "HEALTH" in _gnarly_h)
+# Gate-2 F1: a TRUTHY non-dict schema_drift / non-list slug_orphans (model slip) must not crash —
+# `or {}`/`or []` only catch FALSY values; the isinstance guards catch a truthy wrong-type.
+_gnarly2 = rd.render({"project": "p", "session": "s", "scope": {}, "entries": [],
+                      "health": {"index_pointers_ok": True, "slug_orphans": "Doc_Flo",
+                                 "schema_drift": "2 missing node_type"}})
+check("render: truthy non-dict schema_drift / non-list slug_orphans never crash render (Gate-2 F1)",
+      isinstance(_gnarly2, str) and "HEALTH" in _gnarly2)
 
 # --- Fix D: stack keyword matching is word-bounded, not substring ---
 check("stacks: 'skill' does NOT match 'reskilling'", sg._kw_hit("a reskilling plan", "skill") is False)
@@ -311,6 +323,7 @@ for _i, _fm in enumerate([
     "---\nname: b\ndescription: just text\n---\nbody\n",                  # no metadata block
     "---\nname: c\n  metadata:\n  scope: user-global\n---\nbody\n",       # INDENTED metadata (adversarial)
     "---\ndescription: >-\n  folded\n  metadata:\n---\nbody\n",           # 'metadata:' inside a folded scalar
+    "﻿---\nname: e\nmetadata:\n  node_type: memory\n---\nbody\n",     # leading BOM (Gate-2 F3)
 ]):
     check(f"mirror: round-trip property holds (shape {_i})",
           sg._is_mirror(sg._as_mirror(_fm, "x")) is True)

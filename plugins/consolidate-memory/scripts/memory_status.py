@@ -239,16 +239,32 @@ def schema_drift(fact_files: list, index_names: set) -> dict:
 
 
 def drift_findings(d: dict) -> int:
-    """Count of DRIFT findings (NOT advisory) — the AC#1 'clean store' gate."""
+    """Count of DRIFT findings (NOT advisory) — the AC#1 'clean store' gate. Strict `int()` (its
+    callers — the seed + smoke — always pass clean ints). NOTE: render_dashboard does NOT call
+    this; it sums the same four fields via its own `_num` at the model→presentation boundary (a
+    model-authored non-numeric value must not crash render). Keep the two in sync if the drift
+    fields change."""
     return (int(d.get("missing_node_type", 0)) + int(d.get("malformed_scope", 0))
             + int(d.get("malformed_origin", 0)) + int(d.get("index_mismatch", 0)))
 
 
 def _newest_mtime(base: Path, pattern: str) -> float:
-    """Newest mtime among base/pattern files, 0.0 if none/absent (slug-orphan liveness signal)."""
+    """Newest mtime among base/pattern files; 0.0 if none/absent/UNREADABLE (slug-orphan
+    liveness signal). Never raises: an unreadable sibling dir (PermissionError) or a file that
+    vanishes between glob and stat (TOCTOU FileNotFoundError) degrades to 0.0 — Phase 0 must stay
+    read-only AND crash-proof on a hostile/odd projects tree."""
     if not base.exists():
         return 0.0
-    return max((f.stat().st_mtime for f in base.glob(pattern)), default=0.0)
+    newest = 0.0
+    try:
+        for f in base.glob(pattern):
+            try:
+                newest = max(newest, f.stat().st_mtime)
+            except OSError:
+                continue  # file vanished between glob and stat (TOCTOU) — skip it
+    except OSError:
+        return 0.0  # unreadable dir — degrade, don't crash Phase 0
+    return newest
 
 
 def _run(cmd: list[str], cwd: Path) -> str:
@@ -331,7 +347,10 @@ def build_context(project_dir: Path) -> dict:
     # slugs, then gather the liveness signal (newest transcript + fact mtime) LAZILY —
     # only for the matched twins, never every sibling. Read-only.
     projects_root = Path.home() / ".claude" / "projects"
-    siblings = [p.name for p in projects_root.iterdir() if p.is_dir()] if projects_root.exists() else []
+    try:
+        siblings = [p.name for p in projects_root.iterdir() if p.is_dir()] if projects_root.exists() else []
+    except OSError:
+        siblings = []  # unreadable projects root → skip the sibling scan (Phase 0 stays crash-proof)
     dups = near_duplicate_slugs(slug, siblings)
     slug_orphans = [{"slug": d, "newest_txn": _newest_mtime(projects_root / d, "*.jsonl"),
                      "newest_fact": _newest_mtime(projects_root / d / "memory", "*.md")} for d in dups]
