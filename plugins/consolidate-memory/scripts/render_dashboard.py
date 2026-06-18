@@ -367,7 +367,7 @@ def render(record: ms.CycleRecord) -> str:
             if applied in ("LIGHT", "SUBSTANTIAL", "HEAVY") and applied != suggested.upper():
                 tier = f"{_tier_colored(suggested)} → {_tier_colored(applied)}"
                 reason = _clean(rg.get("override_reason", ""))
-                applied_note = _c(f" · applied: {reason}", "dim") if reason else ""
+                applied_note = _c(f" · override: {reason}", "dim") if reason else ""
             else:
                 tier = _tier_colored(suggested)
                 applied_note = ""
