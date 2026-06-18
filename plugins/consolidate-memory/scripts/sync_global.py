@@ -12,7 +12,8 @@ each project's store. This is the engine for that:
 
 Relevance: `scope: user-global` facts apply to every project; `scope: stack-general`
 facts apply only if their `stacks:` intersect the project's detected stacks. Project
-stacks are inferred from pyproject.toml + CLAUDE.md keywords.
+stacks are inferred from REAL USAGE — declared dependencies, actual imports, and marker
+dirs/files (NOT doc-mentions; v0.1.16).
 
 The consolidate-memory skill calls --pull in Phase 1 (bring global facts down) and
 writes new global-scope facts up to the global store in Phase 4.
@@ -20,6 +21,8 @@ writes new global-scope facts up to the global store in Phase 4.
 
 from __future__ import annotations
 
+import ast
+import os
 import re
 import sys
 from pathlib import Path
@@ -31,14 +34,25 @@ import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / 
 from memory_status import _sane, est_tokens, slug_for, _frontmatter, _valid_uuid
 
 GLOBAL = Path.home() / ".claude" / "memory"
-_STACK_KEYWORDS = {
-    "python": ["python", "pyproject", "ruff", "pytest"],
-    "mypy": ["mypy", "py.typed", "stubs"],
-    "rag": ["rag", "embedding", "lancedb", "faiss", "vector", "retriev", "mxbai", "rerank"],
-    "gpu": ["cuda", "vllm", "vram", "gpu", "torch"],
-    "playwright": ["playwright", "scraper", "browser"],
-    "claude-code": [".claude", "skill", "agents.md"],
+# Real-usage stack detection (v0.1.16): a stack counts ONLY on a REAL signal — a DECLARED dependency
+# (pyproject), an ACTUAL import (*.py), or a real marker dir/file — NEVER a doc-mention. The old
+# prose-keyword model false-matched a stdlib plugin's README ("rag", "scraper") into rag/playwright,
+# collapsing the stack-general tier toward universal. Two EXACT-token sets per stack: DISTRIBUTION
+# names (matched against parsed pyproject dep names) + MODULE names (matched against import statements).
+# Exact membership, never substring — so `sentence-transformers` (rag) is never read as `transformers`.
+_STACK_DEPS = {   # PEP 503-normalized DISTRIBUTION names → stack
+    "mypy": {"mypy"},
+    "rag": {"lancedb", "faiss", "faiss-cpu", "faiss-gpu", "sentence-transformers", "chromadb", "rerankers"},
+    "gpu": {"torch", "torchvision", "torchaudio", "open-clip-torch", "vllm"},
+    "playwright": {"playwright", "playwright-stealth"},
 }
+_STACK_IMPORTS = {   # top-level MODULE names (as imported) → stack
+    "rag": {"lancedb", "faiss", "sentence_transformers", "chromadb"},
+    "gpu": {"torch", "torchvision", "open_clip", "vllm"},
+    "playwright": {"playwright"},
+}
+_PYPROJECT_CAP = 65536   # bytes read from pyproject (config is small; bound the read)
+_PY_SCAN_CAP = 400       # max *.py files scanned for imports (bound cost on large repos)
 
 
 _SAFE_NAME = r"[A-Za-z0-9._-]+"  # the documented kebab/snake charset for fact + project names
@@ -99,23 +113,177 @@ def _is_mirror(text: str) -> bool:
     return False
 
 
-def _kw_hit(blob: str, kw: str) -> bool:
-    """True if `kw` appears in `blob` as a whole token, not a substring (Fix D).
+def _read_capped(p: Path, cap: int = _PYPROJECT_CAP) -> str:
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")[:cap]
+    except OSError:
+        return ""
 
-    Plain substring matching made loose keywords over-trigger: `skill` matched
-    `reskilling`, so stack-general facts spread far wider than their stack. We bound
-    matches with non-alphanumeric edges (so dotted keywords like `.claude` / `py.typed`
-    still work, where `\\b` would misbehave around the dot)."""
-    return re.search(rf"(?<![a-z0-9]){re.escape(kw)}(?![a-z0-9])", blob) is not None
+
+def _strip_toml_comments(text: str) -> str:
+    """Drop `#` comments STRING-AWARE — a `#` inside a quoted TOML value (a trailing `# note`, a URL
+    fragment) is NOT a comment. Per-line (pyproject dep arrays don't use multiline triple-quoted strings)."""
+    out = []
+    for line in text.splitlines():
+        buf: list[str] = []
+        quote = ""
+        for ch in line:
+            if quote:
+                buf.append(ch)
+                if ch == quote:
+                    quote = ""
+            elif ch in ("'", '"'):
+                quote = ch
+                buf.append(ch)
+            elif ch == "#":
+                break
+            else:
+                buf.append(ch)
+        out.append("".join(buf))
+    return "\n".join(out)
+
+
+def _norm_dep(name: str) -> str:
+    """PEP 503 normalization: lowercase + runs of [-_.] → single '-'."""
+    return re.sub(r"[-_.]+", "-", name.strip().lower())
+
+
+def _names_in_array(block: str) -> set[str]:
+    """Leading distribution names of the quoted ITEMS in a TOML dependency array body. Matches each
+    FULL quoted string (so a quote INSIDE an item — e.g. an env marker `... == 'linux'` — isn't read as
+    its own dep), then takes the item's leading PEP-508 name."""
+    names: set[str] = set()
+    for q in re.finditer(r'"([^"]*)"' + r"|'([^']*)'", block):
+        item = q.group(1) if q.group(1) is not None else (q.group(2) or "")
+        m = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", item)
+        if m:
+            names.add(_norm_dep(m.group(1)))
+    return names
+
+
+def _match_bracket(text: str, i: int) -> int:
+    """`text[i]` is '['. Return the index just past its MATCHING ']' — QUOTE- and NEST-aware, so an
+    extra inside a dep string (`"uvicorn[standard]"`) can't close the array early."""
+    depth, quote = 0, ""
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return len(text)
+
+
+def _arrays_under(text: str, header_re: str) -> set[str]:
+    """Dep names from every `… = [ … ]` array whose `=` is matched by `header_re` (a regex ending just
+    before the value); the array's bounds are found via _match_bracket (extras-safe, not a greedy `]`)."""
+    names: set[str] = set()
+    for m in re.finditer(header_re, text):
+        ob = text.find("[", m.end())
+        if ob != -1:
+            names |= _names_in_array(text[ob:_match_bracket(text, ob)])
+    return names
+
+
+def _dep_names_from_text(pyproject_text: str) -> set[str]:
+    """Parse normalized DIRECT dependency names from pyproject.toml TEXT — PEP 621 `dependencies` +
+    `[project.optional-dependencies]`, PEP 735 `[dependency-groups]`, and poetry `[tool.poetry…dependencies]`
+    tables. Comments stripped string-aware; array bounds extras-safe. Pure (text → names) so it is
+    unit-testable without a filesystem. Stdlib-only (no `tomllib` — the plugin runs on 3.10)."""
+    text = _strip_toml_comments(pyproject_text)
+    names: set[str] = set()
+    for sec in re.finditer(r"(?ms)^\[project\](.*?)(?=^\[|\Z)", text):          # PEP 621 main — ONLY under [project]
+        names |= _arrays_under(sec.group(1), r"(?m)^\s*dependencies\s*=\s*(?=\[)")
+    for sec in re.finditer(r"(?ms)^\[(?:project\.optional-dependencies|dependency-groups)[^\]]*\](.*?)(?=^\[|\Z)", text):
+        names |= _arrays_under(sec.group(1), r"=\s*(?=\[)")                    # arrays inside those tables
+    for sec in re.finditer(r"(?ms)^\[tool\.poetry(?:\.group\.[^\]]+)?\.(?:dev-)?dependencies\](.*?)(?=^\[|\Z)", text):
+        for km in re.finditer(r"(?m)^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*=", sec.group(1)):  # poetry table keys (+ legacy dev-)
+            names.add(_norm_dep(km.group(1)))
+    return names
+
+
+def _pyproject_dep_names(project_dir: Path) -> set[str]:
+    """DIRECT dependency names declared in a project's pyproject.toml (LOCKFILES NOT read — they carry
+    transitive deps → over-detection)."""
+    p = project_dir / "pyproject.toml"
+    return _dep_names_from_text(_read_capped(p)) if p.exists() else set()
+
+
+_PY_SKIP_DIRS = {".venv", "venv", ".git", "node_modules", "__pycache__", "build", "dist", ".mypy_cache", ".tox", ".ruff_cache"}
+
+
+def _imports_in_source(src: str) -> set[str]:
+    """Top-level modules IMPORTED in Python source, via `ast` — so an `import x` inside a docstring or a
+    string literal does NOT count (it isn't a real import). Relative imports (`from . import …`) are
+    skipped (intra-package, no external-stack signal). Returns an empty set on unparseable source."""
+    try:
+        tree = ast.parse(src)
+    except (SyntaxError, ValueError):
+        return set()
+    mods: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                mods.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            mods.add(node.module.split(".")[0])
+    return mods
+
+
+def _scan_py(project_dir: Path) -> tuple[set[str], int, bool]:
+    """One pruned, capped walk of the project tree → (top-level module names actually imported [ast-based],
+    count of .py files seen, whether a real claude-code marker [`.claude/` dir or a `SKILL.md`] exists).
+    Past the .py cap we keep WALKING (so a late/nested marker is still found) but stop PARSING files."""
+    mods: set[str] = set()
+    n = 0
+    claude = False
+    capped = False
+    for root, dirs, files in os.walk(project_dir):
+        if ".claude" in dirs:
+            claude = True
+        dirs[:] = [d for d in dirs if d not in _PY_SKIP_DIRS]
+        for fn in files:
+            if fn == "SKILL.md":
+                claude = True
+            if capped or not fn.endswith(".py"):
+                continue
+            n += 1
+            if n > _PY_SCAN_CAP:
+                capped = True
+                continue
+            mods |= _imports_in_source(_read_capped(Path(root) / fn, 524288))
+    return mods, n, claude
 
 
 def detect_stacks(project_dir: Path) -> set[str]:
-    blob = ""
-    for name in ("pyproject.toml", "CLAUDE.md", "README.md"):
-        p = project_dir / name
-        if p.exists():
-            blob += p.read_text(encoding="utf-8", errors="replace").lower()
-    found = {s for s, kws in _STACK_KEYWORDS.items() if any(_kw_hit(blob, k) for k in kws)}
+    """Detect a project's stacks from REAL USAGE — declared deps, actual imports, and real marker
+    dirs/files — NOT doc-mentions (v0.1.16; see references/harness-map.md). Lockfiles are excluded
+    (transitive deps over-detect). `is_relevant` matches `stack-general` facts against this, so
+    precision here is what keeps the middle tier meaningful: a `stack-general:[rag]` fact must bind real
+    RAG projects, not any repo whose README merely says "rag"."""
+    found: set[str] = set()
+    mods, n_py, has_claude = _scan_py(project_dir)
+    if (project_dir / "pyproject.toml").exists() or n_py:
+        found.add("python")
+    deps = _pyproject_dep_names(project_dir)
+    for stack, names in _STACK_DEPS.items():
+        if deps & names:
+            found.add(stack)
+    if re.search(r"(?m)^\s*\[tool\.mypy\]", _strip_toml_comments(_read_capped(project_dir / "pyproject.toml"))) or (project_dir / "mypy.ini").exists():
+        found.add("mypy")
+    for stack, names in _STACK_IMPORTS.items():
+        if mods & names:
+            found.add(stack)
+    if has_claude:
+        found.add("claude-code")
     return found
 
 

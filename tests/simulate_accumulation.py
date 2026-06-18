@@ -81,12 +81,19 @@ def _write_global(home: Path, name: str, scope: str, stacks: str = "", desc: str
         idx.write_text(head.rstrip() + f"\n- [{name}]({name}.md) — {scope} fact\n", encoding="utf-8")
 
 
-def _make_project(home: Path, name: str, stack_hint: str) -> Path:
-    """A fake project dir with enough surface for detect_stacks() to bite."""
+def _make_project(home: Path, name: str, *, deps: tuple = (), claude: bool = False) -> Path:
+    """A fake project dir with REAL detect_stacks signals (v0.1.16 — detection keys off declared
+    dependencies / imports / marker dirs, NOT prose): a `main.py` (→ python), a pyproject.toml
+    declaring `deps` (so they map to their stacks), and optionally a real `.claude/` dir (→ claude-code)."""
     p = home / "projects-src" / name
     p.mkdir(parents=True, exist_ok=True)
-    # CLAUDE.md keywords drive stack detection; vary them per project.
-    (p / "CLAUDE.md").write_text(f"# {name}\nStack hints: {stack_hint}\n", encoding="utf-8")
+    (p / "main.py").write_text("x = 1\n", encoding="utf-8")          # a real .py → python
+    if deps:
+        body = ",\n  ".join(f'"{d}"' for d in deps)
+        (p / "pyproject.toml").write_text(
+            f'[project]\nname = "{name}"\ndependencies = [\n  {body},\n]\n', encoding="utf-8")
+    if claude:
+        (p / ".claude").mkdir(exist_ok=True)                          # a real marker dir → claude-code
     return p
 
 
@@ -149,14 +156,15 @@ def run() -> None:
         print(f"hermetic HOME: {home}")
         print("=" * 72)
 
-        # M projects with varied stack hints. "py" projects all trip the loose
-        # `python`/`.claude`/`skill` keywords, so stack-general facts spread widely.
+        # M projects with varied REAL stacks (v0.1.16: detection keys off declared deps / a .py / a
+        # real .claude marker, NOT prose). alpha=python-only; beta=rag; gamma=gpu; delta=playwright —
+        # so a stack-general:[python] fact reaches alpha (Probes A/C) while the others vary.
         projects = [
-            _make_project(home, "alpha", "python pyproject ruff pytest"),
-            _make_project(home, "beta", "rag embedding vector lancedb"),
-            _make_project(home, "gamma", "cuda vllm vram torch gpu"),
+            _make_project(home, "alpha"),                          # python only (a .py)
+            _make_project(home, "beta", deps=("lancedb",)),        # python + rag
+            _make_project(home, "gamma", deps=("torch",)),         # python + gpu
             # hyphenated name: guards against _node_label mislabeling it "memory"
-            _make_project(home, "delta-svc", "playwright scraper browser"),
+            _make_project(home, "delta-svc", deps=("playwright",)),  # python + playwright
         ]
 
         # ── Probe A: monotonic always-loaded growth across cycles ──────────────
@@ -223,25 +231,27 @@ def run() -> None:
                  body_updated and hook_updated,
                  "body AND the always-loaded index pointer both track the canonical's recall key")
 
-        # ── Probe D: word-boundary stack matching kills substring false-positives (FIX D) ─
-        # Old substring matching let 'skill' match 'reskilling', so a project that
-        # merely mentions an unrelated word inherited claude-code stack facts. Now
-        # matching is token-bounded: a substring-only mention no longer triggers, while
-        # a genuine '.claude' mention still does (fleet-wide stacks stay broad BY DESIGN).
-        print("\n── Probe D: stack matching precision (FIX D) ──")
-        false_pos = _make_project(home, "epsilon", "our reskilling and upskilling roadmap")
-        genuine = _make_project(home, "zeta", "this repo ships a .claude skill")
+        # ── Probe D: REAL-USAGE detection kills doc-mention false-positives (v0.1.16) ─
+        # The old prose-keyword model let a README MENTION ('.claude', 'rag', 'scraper') confer a
+        # stack — so a stdlib plugin false-matched rag/playwright and the stack-general tier collapsed
+        # toward universal. Detection now keys off REAL markers: a prose-only mention no longer
+        # triggers, while a genuine `.claude/` dir still does.
+        print("\n── Probe D: real-usage stack detection precision (v0.1.16) ──")
+        false_pos = _make_project(home, "epsilon")                # a .py, but NO .claude marker
+        (false_pos / "README.md").write_text(                     # a prose-only ".claude" MENTION must NOT confer it
+            "# epsilon\nThis repo merely talks about a .claude skill in prose.\n", encoding="utf-8")
+        genuine = _make_project(home, "zeta", claude=True)        # a REAL .claude/ dir → claude-code
         _write_global(home, "cc-only", "stack-general", stacks="claude-code")
         _pull(home, false_pos)
         _pull(home, genuine)
         fp_got = (_store(home, false_pos) / "cc-only.md").exists()
         gen_got = (_store(home, genuine) / "cc-only.md").exists()
-        print(f"  'reskilling'-only project inherited claude-code fact : {fp_got}  (want False)")
-        print(f"  genuine '.claude skill' project inherited it          : {gen_got}  (want True)")
-        _verdict("D", "stack matching is token-bounded — substring false-positives eliminated",
+        print(f"  prose-only '.claude' MENTION inherited claude-code fact : {fp_got}  (want False)")
+        print(f"  genuine '.claude/' DIR project inherited it             : {gen_got}  (want True)")
+        _verdict("D", "stack detection keys off REAL usage — doc-mention false-positives eliminated",
                  (not fp_got) and gen_got,
-                 "genuine fleet-wide stacks (e.g. claude-code) stay broad by design; "
-                 "spurious substring spread is gone")
+                 "a prose '.claude' mention no longer confers claude-code; a real .claude/ dir does — "
+                 "the precision fix that lets stack-general bind real stacks, not any repo whose README says so")
 
         # ── Probe E: GC never touches a project-authored (local) fact (SAFETY) ─
         print("\n── Probe E: GC safety — local facts are never reclaimed ──")

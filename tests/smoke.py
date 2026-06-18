@@ -330,11 +330,31 @@ _gnarly2 = rd.render(cast(_R, _gnarly2_rec))
 check("render: truthy non-dict schema_drift / non-list slug_orphans never crash render (Gate-2 F1)",
       isinstance(_gnarly2, str) and "HEALTH" in _gnarly2)
 
-# --- Fix D: stack keyword matching is word-bounded, not substring ---
-check("stacks: 'skill' does NOT match 'reskilling'", sg._kw_hit("a reskilling plan", "skill") is False)
-check("stacks: 'skill' matches the word 'skill'", sg._kw_hit("this skill rocks", "skill") is True)
-check("stacks: dotted '.claude' still matches", sg._kw_hit("see the .claude/ dir", ".claude") is True)
-check("stacks: 'pytest' matches", sg._kw_hit("run pytest now", "pytest") is True)
+# --- v0.1.16: REAL-USAGE stack detection — the PURE pyproject parser + exact-token maps (FS-pure here;
+#     end-to-end detect_stacks is exercised by simulate_accumulation.py Probe D) ---
+_pp16 = ('[project]\nname = "x"\n'
+         'dependencies = ["torch>=2.1", "uvicorn[standard]", "sentence-transformers>=5"]\n'
+         '[project.optional-dependencies]\nserve = ["vllm", "lancedb"]   # faiss only in this comment\n'
+         '[tool.poetry.dependencies]\nmypy = "^1"\n')
+_dn16 = sg._dep_names_from_text(_pp16)
+check("v0.1.16: parser extracts PEP621 + optional-deps + poetry-table dep NAMES",
+      {"torch", "uvicorn", "sentence-transformers", "vllm", "lancedb", "mypy"} == _dn16)
+check("v0.1.16: parser is EXTRAS-safe — a dep after `uvicorn[standard]` is not truncated",
+      "sentence-transformers" in _dn16)
+check("v0.1.16: a dep named only in a COMMENT is excluded (string-aware strip)", "faiss" not in _dn16)
+_sc16 = sg._strip_toml_comments('dep = "a#b"  # real comment')
+check("v0.1.16: comment strip is string-aware (# in a string kept, real comment dropped)",
+      "a#b" in _sc16 and "real comment" not in _sc16)
+check("v0.1.16: EXACT-token map — sentence-transformers is rag, NEVER gpu (no substring bug)",
+      "sentence-transformers" in sg._STACK_DEPS["rag"] and "sentence-transformers" not in sg._STACK_DEPS["gpu"])
+check("v0.1.16: is_relevant(stack-general:[rag]) binds a rag project, excludes a non-rag one",
+      sg.is_relevant({"scope": "stack-general", "stacks": "rag"}, {"python", "rag"}) is True
+      and sg.is_relevant({"scope": "stack-general", "stacks": "rag"}, {"python", "mypy"}) is False)
+check("v0.1.16: a `dependencies = [...]` under a TOOL table (not [project]) is NOT leaked",
+      "torch" not in sg._dep_names_from_text(
+          '[project]\nname = "x"\ndependencies = ["requests"]\n[tool.hatch.envs.t]\ndependencies = ["torch"]\n'))
+check("v0.1.16: imports are ast-based — an `import x` inside a docstring is NOT counted",
+      sg._imports_in_source('import lancedb\n"""\n    import torch\n"""\n') == {"lancedb"})
 
 # --- node label: hyphenated project name not mislabeled (slug is not invertible) ---
 check("node label: keeps hyphenated tail, not 'memory'",

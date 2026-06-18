@@ -258,9 +258,13 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   **upsert** the always-loaded index pointer so its hook tracks the canonical's
   `description` (a changed description rewrites the index line, not just the body).
   user-global → every project; stack-general → only if `stacks` intersect the
-  project's detected stacks. Stack keywords match on **token boundaries** (`_kw_hit`),
-  not substrings — so `skill` no longer matches `reskilling` while `.claude` still
-  matches `.claude/`.
+  project's detected stacks. Stacks are detected from **REAL USAGE** (v0.1.16) — declared
+  dependencies in `pyproject.toml` (PEP 621 / PEP 735 / poetry, matched as EXACT dep-name
+  tokens, so `sentence-transformers` is never read as `transformers`), actual `import`s in
+  `*.py`, and real marker dirs/files (`.claude/`, a `SKILL.md`) — **never a doc-mention**.
+  Lockfiles are excluded (transitive deps over-detect). So a stdlib plugin whose README merely
+  says "rag"/"scraper" no longer false-matches `rag`/`playwright`; a `stack-general:[rag]` fact
+  binds only projects that really depend on / import a RAG library.
 - `--gc PROJECT_DIR [--apply]` — reclaim **orphaned mirrors**: `global_ref:` files
   whose canonical was deleted from the global store. `--pull` can never remove these
   (it only iterates live globals), so they accrue forever without GC. Report-only by
