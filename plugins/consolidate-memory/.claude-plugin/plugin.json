@@ -1,6 +1,6 @@
 {
   "name": "consolidate-memory",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Sleep-time memory consolidation for Claude Code — replays a work session, verifies every candidate fact against the live codebase, reconciles both memory stores across context-loading tiers, budgets the always-loaded token tax, and runs a cross-project shared-memory layer. Invoke by asking to consolidate / checkpoint / \"dream\" your memory.",
   "author": {
     "name": "Zenetusken",
