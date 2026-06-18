@@ -300,6 +300,19 @@ reaches. So global-scope facts are a per-session tax paid across the whole fleet
   so a `claude-code` stack-general fact behaves like a second user-global tier. Reserve
   `stack-general` for **narrow** stacks (`gpu`, `rag`, `playwright`).
 
+**The promotion cascade (mirrors SKILL.md Phase 2).** Decide a fact's scope by the
+fleet-**CONSTANT** vs fleet-**VARYING** distinction: a fact whose only dependency is the
+user's *constant* substrate (OS/account, an always-present CLI like `gh`, the Claude Code
+harness) can be `user-global`; one gated by a *fleet-varying* stack (present in only some
+projects — `mypy`, release-cutting) is at most `stack-general`. Walk in order (total; floor
+= `project-local`): **Gate 0** project-specific → `project-local`; **Gate 1** judge the fact's *content*, not its `stacks:` tags — a fleet-CONSTANT dependency
+(the harness/`claude-code`, `gh`, OS) skips to Gate 2, while a fleet-varying precondition →
+`stack-general` (S1 specific stack + S2 holds for all on it, else → `project-local`); **Gate 2** `user-global` only if ALL of — G2.1 no
+fleet-varying precondition (constant substrate exempt), G2.2 a user/env (not codebase)
+property, G2.3 ≥1 named existing other project it would apply to, G2.4 not already in
+`~/.claude/CLAUDE.md` / not derivable, G2.5 durable. The applicability gate G2.3 is the
+deliberately weakest gate — the demotion-audit (planned) backstops it.
+
 **The over-budget lever.** When a project's index trips the budget ⚠, attribute the
 cost first: `--tokens` and the dashboard report `mirror_index_tokens` (the share driven
 by replicated mirrors). If the overflow is **mirror-dominated**, *local* pruning is

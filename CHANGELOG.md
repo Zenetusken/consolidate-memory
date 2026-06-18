@@ -5,6 +5,25 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.8] — 2026-06-17
+
+### Changed
+- **Promotion governance: a hard scope-decision cascade replaces the prose bar.** SKILL.md
+  Phase 2 now routes each candidate fact to `project-local` / `stack-general` / `user-global`
+  via a total, acyclic cascade (Gate 0 → Gate 1 → Gate 2's five hard gates **G2.1–G2.5**),
+  keyed on a **fleet-CONSTANT substrate** (the user's OS/account, an always-present CLI like
+  `gh`, the Claude Code harness — present in *all* projects → eligible for `user-global`) vs a
+  **fleet-VARYING precondition** (a stack/tool/workflow in only *some* projects — `mypy`,
+  release-cutting → at most `stack-general`). A `user-global`/`stack-general` promotion now
+  records its **deciding gate + the concrete other project named for the applicability gate
+  (G2.3)** in the entry's `reason`. Mirrored into `references/harness-map.md`.
+
+### Notes
+- Policy/prose change only — **no code, no cycle-record schema change, zero new runtime dep**;
+  legacy records render unchanged → **patch**. The complementary **demotion-audit** (flag a
+  `user-global` fact never adopted beyond its origin project, via the lagging `projects:`
+  provenance) is the committed next cycle — it backstops G2.3, the deliberately weakest gate.
+
 ## [0.1.7] — 2026-06-17
 
 ### Added
