@@ -121,6 +121,8 @@ _app_line = next((ln for ln in rd.render(_app).splitlines() if "RIGOR" in ln), "
 check("render: applied≠suggested shows 'HEAVY → LIGHT' (v0.1.4)",
       "HEAVY" in _app_line and "→" in _app_line and "LIGHT" in _app_line)
 check("render: override_reason shown when applied differs (v0.1.4)", "already-consolidated flow" in _app_line)
+check("render: override note uses '· override:' label, not the old '· applied:' (v0.1.9)",
+      "override:" in _app_line and "applied:" not in _app_line)
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",
                  "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
                  "rigor": {"phase": "final", "applied": "HEAVY"}}).splitlines() if "RIGOR" in ln), "")

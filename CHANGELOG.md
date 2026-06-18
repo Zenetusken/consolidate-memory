@@ -5,6 +5,33 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.9] — 2026-06-17
+
+### Added
+- **Demotion backstop for the promotion cascade — a Phase-1 *content* re-audit (SKILL prose).** Each
+  consolidation now re-walks the v0.1.8 promotion cascade over the existing `user-global` facts *by
+  content* and surfaces any that would now route lower (e.g. a `mypy`- or release-gated fact →
+  `stack-general`) as **detect-and-offer demotion candidates** — never auto-applied. This closes the
+  governance loop: the "signal-checked-out" half that backstops Gate 3's deliberately-weak
+  applicability gate.
+
+### Changed
+- **`extract_signals` is now run-or-justify-skip (Phase 2).** A pass must run the extractor (it reads
+  the compaction-proof on-disk transcript) or record an explicit skip-justification — so a compacted
+  session can't silently drop the feedback/gotcha signal.
+- **Dashboard RIGOR line:** an overridden tier now reads `suggested → applied · override: <why>` (was
+  a mislabeled `· applied: <why>` that duplicated the arrow).
+
+### Notes
+- **Empirics-first kill (recorded so it's never re-proposed):** the originally-planned *adoption-based*
+  demotion-audit (flag a fact with few `projects:` holders) has **no valid signal** — `--pull`
+  replicates every `user-global` fact into every project (`is_relevant → True`), so `holders` measures
+  pull-activity, not fit (a mis-scoped fact and a universal one both reach all projects). The valid
+  signal is content (re-walk the cascade); the longitudinal "stuck across N cycles" form is deferred
+  until the per-project cycle-log accrues.
+- SKILL prose + a 1-line render relabel; **no cycle-record schema change, no new mechanical detector,
+  zero runtime dep**; legacy records still render (the relabel is cosmetic) → **patch**.
+
 ## [0.1.8] — 2026-06-17
 
 ### Changed

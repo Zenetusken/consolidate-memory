@@ -209,6 +209,18 @@ canonical changed (the script writes both the fact file and its index pointer). 
 its output and record `cross_project.pulled` (newly replicated) and
 `cross_project.refreshed` in the cycle record. If nothing is missing/stale, no-op.
 
+Then **re-audit the existing `user-global` facts — the backstop for the promotion cascade's weak
+applicability gate (see Phase 2).** Read each canonical's **body** in `~/.claude/memory/` and
+**re-walk the cascade by CONTENT**; any fact that would NOW route lower — e.g. its content carries a
+*fleet-VARYING* precondition (`mypy`, "only when cutting a release") rather than the user's
+*fleet-CONSTANT* substrate — is a **demotion candidate**. Judge by content, **NOT `holders`/adoption**
+(every `user-global` fact `--pull`s into *every* project, so `holders` is pull-activity, not fit) and
+**NOT `stacks:` tags** (a fact tagged `release` may be universal by content). These are
+**detect-and-offer**: surface each in the Phase-4 report as one `entries[]` row (`action: reconciled`,
+reason `"demotion candidate → would route to <scope>"`); on your confirmation, update that **same row
+in place** to `corrected` (re-scope) or `deleted` (canonical delete + Phase-5 GC) — one fact, one
+entry; a declined candidate stays `reconciled`. Never auto-demote.
+
 ### Phase 2 — Gather candidate claims (claims-first)
 
 Produce a short, explicit list of **discrete candidate facts** — each a single
@@ -228,6 +240,12 @@ typed messages are <1% of the transcript and carry only the *feedback* slice; th
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --json
    ```
+   **Run it, or record why you didn't.** The extractor reads the compaction-proof *on-disk*
+   transcript — exactly what a long/compacted session needs, since when your in-context view is the
+   degraded source, your memory of the session is NOT a substitute. If you deliberately skip it,
+   record an explicit skip-justification as an `entries[]` note (it always renders; `rigor.override_reason`
+   only shows on a tier override, so it can't carry a no-override skip) so the skip is a visible
+   decision, not a silent gap.
 3. **Existing memory entries that look stale** — candidates for re-verification.
    `memory_status.py` (Phase 0) lists a **"Re-verification candidates"** section: facts
    untouched since the last consolidation marker (mtime ≤ marker), which may have
@@ -406,7 +424,9 @@ marked confirmed on thin evidence — and loop back one pass if it surfaces anyt
    ```
    GC only touches `global_ref:` mirror files, never project-authored facts. Record an
    `entries[]` row (`action: deleted`) per reclaimed orphan and set
-   `cross_project.gc_removed`. (Dead-edge provenance is reported, not auto-pruned.)
+   `cross_project.gc_removed` — but a mirror orphaned by **this** pass's own demotion already has
+   its Phase-4 `deleted` row; don't re-record it (one fact, one entry). (Dead-edge provenance is
+   reported, not auto-pruned.)
 3. Re-confirm every file path / function name you referenced still exists.
    → **Cycle record:** fill `health` — `index_pointers_ok`, any `broken` pointers,
    any `dangling_links` (`[[name]]` wikilinks pointing at no target file). Strip
