@@ -35,6 +35,12 @@ You invoke it by saying **`dream`** (or "consolidate my memory") in any project.
   CROSS-PROJECT   · global tier · ~/.claude/memory: 4 fact(s)
     ↑ promoted  <global> claude-code-memory-is-slug-scoped
 
+  NEURAL NETWORK   · token cost (≈ est., not a tokenizer)
+    network total   ≈3200 always-loaded · ≈48000 recall-pool
+    of which ≈280 (9%) mirror-driven (lever: global store demote/GC, not local prune)
+    this cycle on my-project: + 1 added
+      always-loaded ≈260 → ≈275 tok · 0 refreshed
+
   HEALTH    ✓ all pointers resolve
   MARKER    → a1b2c3def456 @ 2026-06-16T00:00Z
 ```
@@ -78,7 +84,12 @@ Claude Code recall is **slug-scoped**: a project only auto-recalls its own
 `~/.claude/projects/<slug>/memory/`. So a global store alone wouldn't surface
 anywhere. The fix:
 
-- Facts get a **`scope`**: `project-local`, `stack-general`, or `user-global`.
+- Facts get a **`scope`** — `project-local` / `stack-general` / `user-global` — by a hard
+  **cascade**, not vibes: is the fact's dependency **fleet-constant** (your OS/account, an
+  always-present CLI like `gh`, the Claude Code harness — present in *every* project → can be
+  `user-global`) or **fleet-varying** (a per-project stack like `mypy`/release-cutting → at most
+  `stack-general`)? Each pass also re-audits existing `user-global` facts by content and **offers**
+  demotion for any that drifted over-promoted (never auto-applied).
 - Cross-scope facts live canonically in a **global store** `~/.claude/memory/`.
 - They're **replicated** into each project's store (so they actually recall there),
   and each fact's `projects:` provenance grows as it spreads — that provenance is the
@@ -172,7 +183,7 @@ gather candidates → verify → consolidate → render). You can also drive the
 directly:
 
 ```bash
-./cm status            # Phase-0 context: stores, git range since last pass, marker, token budget
+./cm status            # Phase-0 context: stores, git range, marker, token budget + a no-nag dream-timing nudge
 ./cm extract           # curated session signal (human turns + error-gotchas, secrets omitted)
 ./cm pull .            # replicate relevant global facts into this project
 ./cm gc . --apply      # reclaim orphaned mirrors (canonical deleted) — report-only without --apply
@@ -211,7 +222,7 @@ consolidate-memory/                         # repo root = plugin marketplace
 │       ├── sync_global.py                   # cross-project: replicate + GC + tokens + --network
 │       └── render_dashboard.py              # the data-driven dashboard
 ├── tests/                                   # zero-dependency smoke + accumulation + manifest checks
-├── memory/                                  # personal shared-memory store (GITIGNORED)
+├── memory/                                  # gitignored placeholder (.gitkeep) — store is ~/.claude/memory
 ├── cm                                       # dev CLI over the scripts
 ├── SECURITY.md · CHANGELOG.md
 └── README.md · CLAUDE.md · LICENSE

@@ -213,7 +213,7 @@ its output and record `cross_project.pulled` (newly replicated) and
 `cross_project.refreshed` in the cycle record. If nothing is missing/stale, no-op.
 
 Then **re-audit the existing `user-global` facts — the backstop for the promotion cascade's weak
-applicability gate (see Phase 2).** Read each canonical's **body** in `~/.claude/memory/` and
+applicability gate (G2.3 — see Phase 2).** Read each canonical's **body** in `~/.claude/memory/` and
 **re-walk the cascade by CONTENT**; any fact that would NOW route lower — e.g. its content carries a
 *fleet-VARYING* precondition (`mypy`, "only when cutting a release") rather than the user's
 *fleet-CONSTANT* substrate — is a **demotion candidate**. Judge by content, **NOT `holders`/adoption**
@@ -588,8 +588,9 @@ The `rigor` block is **seeded provisional** by `memory_status.py` and **finalize
 Phase 2** (you set the curated `session_candidates` in `scope` and `phase: "final"`).
 Both the **tier and the magnitude are derived from `scope`** at render — neither is
 stored, so the label can never drift from its own magnitude. (A future band calibration
-would filter to `phase: "final"` records and refit from the magnitude→outcome — but only
-once cycle records are persisted, which they are not yet; see roadmap.) It is an early
+would filter to `phase: "final"` records and refit from the magnitude→outcome; the `--persist`
+log (Phase 5) now accrues those records — a real refit still needs enough of them + longitudinal
+miss-detection. See roadmap.) It is an early
 effort *hint*, a distinct quantity from the write-based outcome banner (see *Rigor
 modes*); the dashboard labels both so they never read as one number.
 

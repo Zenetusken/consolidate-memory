@@ -5,6 +5,19 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.11] — 2026-06-17
+
+### Changed (docs + one stale code comment — no behavior change → patch)
+- **Doc sync: reconcile the docs with the shipped state.** README now documents the v0.1.8
+  **promotion cascade** (fleet-constant vs fleet-varying; Gate 0/1/2) + the v0.1.9 **demotion
+  backstop** in the cross-project model, the v0.1.10 **dream-timing** nudge in Usage, and a
+  NEURAL NETWORK line in the dashboard example. SKILL.md + harness-map.md: fixed a stale "cycle
+  records are not persisted yet" claim that contradicted the shipped `--persist` (v0.1.4); dropped a
+  stale "(planned)" tag on the now-shipped demotion re-audit; named the **G2.3** gate it backstops.
+  Also re-characterized repo-root `memory/` as a gitignored placeholder (the global store decoupled to
+  `~/.claude/memory`), added the dream-timing advisory to harness-map's Phase-0 catalog, and refreshed a
+  stale `sync_global.py` comment + the versioning-precedent list.
+
 ## [0.1.10] — 2026-06-17
 
 ### Added

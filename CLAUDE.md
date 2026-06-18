@@ -46,7 +46,7 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     render_dashboard.py            the data-driven dashboard (renders a cycle record)
 cm                                 dev CLI over the scripts (uses explicit paths, not ${CLAUDE_PLUGIN_ROOT})
 tests/                             zero-dependency smoke + accumulation sim + manifest validation
-memory/                            personal shared-memory store — GITIGNORED, NOT shipped in the plugin
+memory/                            GITIGNORED placeholder (.gitkeep only) — the personal global store lives at ~/.claude/memory (a real dir, decoupled from this repo)
 ```
 
 LOCAL-only maintainer artifacts (GITIGNORED, never published): the `release.sh` release
@@ -73,8 +73,9 @@ Only `SECURITY.md` at the repo root is public.
 
 ## Safety (this repo is PUBLIC)
 
-- **Never commit memory.** `memory/` (the shared-consciousness stream) is gitignored;
-  it's personal. Only `memory/.gitkeep` belongs on the remote. Verify with
+- **Never commit personal memory.** The shared-consciousness stream / global store now lives at
+  `~/.claude/memory` (a real dir, outside this repo — decoupled); repo-root `memory/` is just a
+  gitignored placeholder. Only `memory/.gitkeep` belongs on the remote. Verify with
   `git ls-tree -r --name-only origin/main | grep memory`.
 - **Keep the skill generic.** No hardcoded user paths, project names, or identities —
   use placeholders (`/home/you/project/foo`). It's meant to be reusable by anyone.
@@ -118,7 +119,8 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
 3. Otherwise — additive feature, enhancement, fix, or docs that stays
    **backward-compatible** (legacy cycle records still render, existing installs keep
    working) → **patch** (`0.N.M → 0.N.M+1`). Precedent (all backward-compatible ⇒ patch):
-   v0.1.1 packaging · v0.1.2 dashboard · v0.1.3 rigor modes.
+   v0.1.1 packaging · v0.1.2 dashboard · v0.1.3 rigor modes · v0.1.4–v0.1.11 (calibration apparatus,
+   orphan/drift detection, TypedDict contract, polish, governance cascade + demotion, dream-timing, docs).
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG

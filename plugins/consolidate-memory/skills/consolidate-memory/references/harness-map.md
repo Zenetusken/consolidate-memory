@@ -130,8 +130,9 @@ finalizes it in Phase 2 and may override with rationale.
 - **Bands (provisional, tunable):** LIGHT ≤ 2 · SUBSTANTIAL 3–7 · HEAVY ≥ 8 —
   roadmap-inherited defaults, not yet empirically calibrated (the curated input was never
   recorded historically). The record exposes the magnitude (from `scope`) + `phase` that a
-  future calibration could refit against — but only once cycle records are PERSISTED (they
-  render and are discarded today; persisting them is a roadmap prerequisite). The pure
+  future calibration could refit against — now that cycle records ARE persisted (the `--persist`
+  log, Phase 5; they were render-and-discard before v0.1.4), a real refit still needs enough of
+  them + longitudinal miss-detection. The pure
   functions `suggested_tier(git_commits, session_candidates)` and
   `prune_pressure(index_over, memories_reviewed)` live in `memory_status.py` (the renderer
   imports `suggested_tier` to DERIVE the displayed tier — see below).
@@ -241,6 +242,12 @@ auto-mutated:**
   store) — it is **NOT** a drift finding. `memory_status.schema_drift` returns both the
   drift counts and the advisory absence-counts.
 
+**Dream-timing advisory (a Phase-0 report nudge, v0.1.10 — not a detection).**
+`memory_status.dream_timing_advisory` emits a no-nag `💤 dream-timing` line when commits-since-marker
+cross the SUBSTANTIAL band (and a marker exists) — flagging a good consolidation boundary before
+compaction. Advisory only (never auto-fires; explicit-trigger-only); prospective use is via
+`cm status`. Sibling to the provisional rigor tier + prune-pressure (the other Phase-0 report signals).
+
 **Model:** a global store `~/.claude/memory/` (same fact-file + index format) is the
 canonical home for facts with `scope: stack-general` or `user-global`. Each global
 fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
@@ -311,7 +318,8 @@ projects — `mypy`, release-cutting) is at most `stack-general`. Walk in order 
 fleet-varying precondition (constant substrate exempt), G2.2 a user/env (not codebase)
 property, G2.3 ≥1 named existing other project it would apply to, G2.4 not already in
 `~/.claude/CLAUDE.md` / not derivable, G2.5 durable. The applicability gate G2.3 is the
-deliberately weakest gate — the demotion-audit (planned) backstops it.
+deliberately weakest gate — the **demotion re-audit (Phase 1, shipped)** backstops it: each pass
+re-walks this cascade over existing `user-global` facts by content and offers demotion.
 
 **The over-budget lever.** When a project's index trips the budget ⚠, attribute the
 cost first: `--tokens` and the dashboard report `mirror_index_tokens` (the share driven

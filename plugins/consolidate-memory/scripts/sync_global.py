@@ -26,7 +26,7 @@ from pathlib import Path
 
 # est_tokens lives in memory_status (the measurement script); reuse it rather than
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
-# on sys.path[0] at runtime, and stays a sibling through the skill/ symlink.
+# on sys.path[0] at runtime; both live in the plugin's scripts/ dir.
 from memory_status import _sane, est_tokens, slug_for, _frontmatter, _valid_uuid
 
 GLOBAL = Path.home() / ".claude" / "memory"
