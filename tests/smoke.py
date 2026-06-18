@@ -355,6 +355,17 @@ check("v0.1.16: a `dependencies = [...]` under a TOOL table (not [project]) is N
           '[project]\nname = "x"\ndependencies = ["requests"]\n[tool.hatch.envs.t]\ndependencies = ["torch"]\n'))
 check("v0.1.16: imports are ast-based — an `import x` inside a docstring is NOT counted",
       sg._imports_in_source('import lancedb\n"""\n    import torch\n"""\n') == {"lancedb"})
+check("v0.1.16: _is_mirror is single-source (promoted to memory_status; sync_global imports it)",
+      sg._is_mirror is ms._is_mirror)
+# promotion-candidate SEED filter (pure; the Phase-1 re-audit's pre-filter)
+check("v0.1.16: promotion seed — an unscoped feedback fact IS a candidate",
+      ms._is_promotion_candidate("---\nname: x\nmetadata:\n  type: feedback\n---\nb\n") is True)
+check("v0.1.16: promotion seed — a type:project fact is NOT",
+      ms._is_promotion_candidate("---\nname: y\nmetadata:\n  type: project\n---\nb\n") is False)
+check("v0.1.16: promotion seed — an already-scoped fact is NOT",
+      ms._is_promotion_candidate("---\nname: z\nmetadata:\n  type: feedback\n  scope: user-global\n---\nb\n") is False)
+check("v0.1.16: promotion seed — a mirror is NOT (already global)",
+      ms._is_promotion_candidate("---\nname: m\nmetadata:\n  global_ref: m\n  type: feedback\n---\nb\n") is False)
 
 # --- node label: hyphenated project name not mislabeled (slug is not invertible) ---
 check("node label: keeps hyphenated tail, not 'memory'",

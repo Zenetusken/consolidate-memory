@@ -31,7 +31,7 @@ from pathlib import Path
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
 # on sys.path[0] at runtime; both live in the plugin's scripts/ dir.
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import _sane, est_tokens, slug_for, _frontmatter, _valid_uuid
+from memory_status import _is_mirror, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid
 
 GLOBAL = Path.home() / ".claude" / "memory"
 # Real-usage stack detection (v0.1.16): a stack counts ONLY on a REAL signal — a DECLARED dependency
@@ -73,44 +73,6 @@ def _sanitize_token(s: str) -> str:
 
 def project_store(project_dir: Path) -> Path:
     return Path.home() / ".claude" / "projects" / slug_for(project_dir) / "memory"
-
-
-def _is_mirror(text: str) -> bool:
-    """True iff a fact is a MANAGED MIRROR — detected by the EXACT structured forms
-    `_as_mirror` writes inside the frontmatter, NEVER a substring anywhere in the file:
-
-      • a column-0 `# global_ref: <name>` comment stamp that is the FIRST frontmatter
-        line (exactly where `_as_mirror` inserts it in the no-metadata-block case — a
-        `# global_ref:` comment *elsewhere* in a hand-authored note must not count), or
-      • a `  global_ref: <name>` line that is a DIRECT (2-space) child of a top-level
-        `metadata:` key (where `_as_mirror` injects it).
-
-    Parses frontmatter STRUCTURE, not the raw block: a regex over the raw text matches
-    `global_ref:` on an indented *folded-scalar continuation line* (e.g. under a
-    `description: >-`), which would misclassify a project-authored note — and GC would
-    then DELETE it. Bias is to False on anything ambiguous: a missed mirror merely isn't
-    reclaimed (safe), whereas a false positive destroys user memory (unsafe)."""
-    if text.startswith("﻿"):     # tolerate a leading BOM (consistent with _frontmatter), else
-        text = text[1:]                # the ^--- anchor fails and a BOM mirror reads as un-managed
-    m = re.search(r"^---\n(.*?)\n---", text, re.S)
-    if not m:
-        return False
-    top = None       # the current top-level frontmatter key
-    first = True      # the col-0 stamp only counts as the FIRST non-blank frontmatter line
-    for ln in m.group(1).splitlines():
-        if not ln.strip():
-            continue
-        if first and re.match(r"#\s*global_ref:\s*\S", ln):       # col-0 stamp (first line only)
-            return True
-        first = False
-        if not ln[:1].isspace():                                  # a top-level line
-            mk = re.match(r"([^:#\s][^:]*):", ln)
-            top = mk.group(1).strip() if mk else None
-            continue
-        # indented line: accept ONLY as a direct (exactly-2-space) child of metadata
-        if top == "metadata" and re.match(r" {2}global_ref:\s*\S", ln):
-            return True
-    return False
 
 
 def _read_capped(p: Path, cap: int = _PYPROJECT_CAP) -> str:
