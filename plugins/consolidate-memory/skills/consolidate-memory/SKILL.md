@@ -164,8 +164,11 @@ there's no marker, treat this as the first consolidation and scope to the recent
 git log + the current session. If both stores are empty and there's nothing new
 since the marker, report "Nothing to consolidate" and stop. It also prints a
 **provisional rigor tier** (from `git_commits`; finalized in Phase 2 once you curate
-`session_candidates`) and any
-**prune-pressure** flag — see *Rigor modes* above.
+`session_candidates`), any
+**prune-pressure** flag — see *Rigor modes* above — and (when commits have accrued since the last
+dream) a **dream-timing advisory**: a no-nag nudge that this is a good consolidation boundary. It's
+advisory only (the skill never auto-fires — see *Why this is its own ritual*); its prospective use is
+via `cm status` *outside* a dream.
 
 Phase 0 also **flags slug-orphans** (a near-duplicate sibling slug — the rename-orphan
 signature, since a dir rename changes the slug and strands the old slug-scoped store)

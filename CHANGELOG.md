@@ -5,6 +5,23 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.10] — 2026-06-17
+
+### Added
+- **Dream-timing advisory — a no-nag Phase-0 nudge.** `memory_status.py` now surfaces a
+  `💤 dream-timing` line (also via `cm status`) when commits have accrued **since the last dream** and
+  cross the SUBSTANTIAL band — flagging a good consolidation boundary *before* compaction. Keyed on
+  commits-since-marker + marker age (a coarse hint, not a gate — the count over-counts already-
+  consolidated work). **Advisory only:** it never auto-fires a dream (explicit-trigger-only is a kept
+  design value); silent below the band and on a first consolidation (no prior dream).
+
+### Notes
+- Operationalizes this session's dream-timing research (the ideal moment to consolidate is a work-arc
+  boundary, before `/compact` degrades the model's curation). One pure, never-crash helper
+  (`dream_timing_advisory` — tz-robust float-epoch age, no-marker guard) + a Phase-0 report line + a
+  dev-loop note; **no cycle-record schema change, zero runtime dep** → **patch**. The complementary
+  *curation-quality* longitudinal signal remains deferred (needs the cycle-log to accrue).
+
 ## [0.1.9] — 2026-06-17
 
 ### Added

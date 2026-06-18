@@ -98,7 +98,10 @@ is NOT a runtime dep and NOT part of the dep-free `smoke.py` gate; the config is
 This tool dogfoods itself: once dev-installed as a plugin (local-marketplace add + `claude plugin install`), run `dream`
 from this repo to consolidate its own development memory — written to its private store
 at `~/.claude/projects/<slug>/memory/`, never to this repo. The `cm` CLI and the tests
-invoke the scripts by explicit path, so they work without the plugin being installed.
+invoke the scripts by explicit path, so they work without the plugin being installed. At an arc
+boundary, `cm status` (any `memory_status.py` run) surfaces a **dream-timing advisory** — a no-nag
+nudge when commits have accrued since the last dream — so you can catch a good consolidation boundary
+*before* a compaction (advisory only; the skill never auto-fires).
 
 ## Releasing (auto-update cycle)
 

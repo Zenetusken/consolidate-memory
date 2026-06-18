@@ -79,6 +79,19 @@ check("rigor: index-over takes reason precedence over many-facts", ms.prune_pres
 # FIRST consolidation reads HEAVY provisional purely from history depth (documented, advisory;
 # the model finalizes in Phase 2). The seed rigor block is phase:provisional regardless.
 check("rigor: no-marker 20-commit lookback → HEAVY provisional (A10)", ms.suggested_tier(20, 0) == "HEAVY")
+# v0.1.10: dream-timing advisory — a NO-NAG Phase-0 nudge; pure + never-crash; explicit-trigger-only.
+_dt_a = ms.dream_timing_advisory(3, "2020-01-01T00:00:00+00:00", True)
+check("dream-timing: SUBSTANTIAL accrued + marker → nudge string with age (v0.1.10)",
+      isinstance(_dt_a, str) and "dream-timing" in _dt_a and "SUBSTANTIAL" in _dt_a and "ago" in _dt_a)
+check("dream-timing: below the band (commits <= 2) → None / no-nag (v0.1.10)",
+      ms.dream_timing_advisory(2, "2020-01-01T00:00:00+00:00", True) is None)
+_dt_g = ms.dream_timing_advisory(8, "not-a-timestamp", True)
+check("dream-timing: garbage marker_ts → string, age omitted, no crash (v0.1.10)",
+      isinstance(_dt_g, str) and "HEAVY" in _dt_g and "ago" not in _dt_g)
+check("dream-timing: NO marker (first consolidation) → None even at HEAVY commits (v0.1.10 Gate-1 guard)",
+      ms.dream_timing_advisory(8, "2020-01-01T00:00:00+00:00", False) is None)
+check("dream-timing: future-dated marker → age clamped to '<1h' (v0.1.10)",
+      "<1h" in (ms.dream_timing_advisory(8, "2099-01-01T00:00:00+00:00", True) or ""))
 check("rigor: provisional rigor block is phase:provisional, no stored tier (A10)",
       ms._provisional_rigor({"index_lb": (0, 0, 0), "fact_files": []})
       == {"phase": "provisional", "prune_pressure": False, "prune_reason": "",
