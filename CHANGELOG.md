@@ -5,6 +5,31 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.15] — 2026-06-18
+
+### Added (output polish — hanging-indent wrapping + uniform width; additive, backward-compatible → patch)
+- **Hanging-indent line wrapping.** Long lines no longer overflow past the banner — they word-wrap to
+  the render width with a HANGING INDENT, so a continuation lines up under where its section's content
+  began (a `kv` value continues under the value column; a `·` list item under its own text) instead of
+  falling back to column 0. New ANSI-aware `_ui.wrap()` / `_ui.li()` measure VISIBLE width (escape codes
+  don't count), never split an escape, re-open the active color across a break, and keep an over-long
+  single token (a hash / path) whole.
+- **Uniform, terminal-adaptive width.** The banner rule and the wrap right-edge now share one width W:
+  it fills the terminal when stdout is a TTY (clamped to a readable [60, 100]); a pipe / captured output /
+  test falls back to a fixed 60 so non-interactive output stays deterministic. A new `--width=N` overrides
+  it on any reporting command and the dashboard.
+- Applied across every output (`memory_status`, `sync_global` --list/--network/--tokens/--gc,
+  `extract_signals`, and the `render_dashboard` reference) so the whole tool is symmetric on the sides.
+  `--json` is untouched; `--ascii` still flattens to pure ASCII (now at the uniform width). The dense
+  `--tokens` node table keeps its columns — its trigger marker drops to a hanging line only if it would
+  overflow.
+
+### Internal
+- `render_dashboard` now imports `_ui.wrap` + `_ui.resolve_width` (its other primitives stay mirrored +
+  smoke-pinned). Smoke renders its content assertions WIDE (so wrapping never splits a pinned substring)
+  and adds 9 tests covering wrap fit/hang/ANSI-safety, `kv`/`li` wrapping, the ui↔rd wrap mirror, and
+  width resolution.
+
 ## [0.1.14] — 2026-06-18
 
 ### Added (unified visual language across every output — additive, backward-compatible → patch)

@@ -738,19 +738,19 @@ def print_report(ctx: dict) -> None:
         add(_ui.kv("SCOPE", f"git {ctx['git_range']} · {gc} commit(s)  "
                             + _ui.c("· FIRST consolidation: a ≤20-commit lookback, NOT since-marker work", "dim")))
     for cmt in ctx["commits"]:
-        add("    " + _ui.c("·", "dim") + " " + _sane(cmt))
+        add(_ui.li(_sane(cmt), bullet="·"))
     if not ctx["commits"]:
-        add("    " + _ui.c("· (no new commits in range)", "dim"))
+        add(_ui.li(_ui.c("(no new commits in range)", "dim"), bullet="·"))
 
     # ── RIGOR — provisional effort hint (DERIVED from magnitude; you finalize in Phase 2) ──
     add("")
     add(_ui.kv("RIGOR", f"{_ui.c(tier, tcol)} provisional · magnitude {gc} "
                         + _ui.c(f"(+ curated candidates in Phase 2) · ladder ≤{TIER_LIGHT_MAX} / {TIER_LIGHT_MAX + 1}–{TIER_SUBSTANTIAL_MAX} / ≥{TIER_SUBSTANTIAL_MAX + 1}", "dim")))
     if rg["prune_pressure"]:
-        add("    " + _ui.c(f"⚠ prune-pressure ({rg['prune_reason']}) — prune-or-propose this pass, at ANY tier", "yellow"))
+        add(_ui.li(_ui.c(f"⚠ prune-pressure ({rg['prune_reason']}) — prune-or-propose this pass, at ANY tier", "yellow")))
     advisory = dream_timing_advisory(gc, ctx["last_ts"], has_marker)
     if advisory:
-        add("    " + advisory)
+        add(_ui.li(advisory))
 
     # ── MEMORY LOAD — what the AI re-reads every session (smaller = cheaper, sharper) ──
     add("")
@@ -785,20 +785,22 @@ def print_report(ctx: dict) -> None:
     # ── NEEDS A LOOK — suggestions only; nothing is changed automatically ──
     sig: list = []
     if ctx["stale_facts"]:
-        sig.append("    " + _ui.c("·", "dim") + f" re-verify {len(ctx['stale_facts'])} stale fact(s) (mtime ≤ marker): "
-                   + _ui.c(", ".join(ctx["stale_facts"]), "dim"))
+        sig.append(_ui.li(f"re-verify {len(ctx['stale_facts'])} stale fact(s) (mtime ≤ marker): "
+                          + _ui.c(", ".join(ctx["stale_facts"]), "dim"), bullet="·"))
     if ctx["slug_orphans"]:
         cur_live = max(_newest_mtime(ctx["proj_root"], "*.jsonl"), _newest_mtime(ctx["auto_mem"], "*.md"))
         for o in ctx["slug_orphans"]:
             tl = max(o["newest_txn"], o["newest_fact"])
             which = "twin newer" if tl > cur_live else ("this store newer" if cur_live > tl else "same recency")
-            sig.append("    " + _ui.c("⚠", "yellow") + f" slug-orphan {_sane(o['slug'])} ({which}) — rename-orphan; merge toward newest mtime, confirm first")
+            sig.append(_ui.li(f"slug-orphan {_sane(o['slug'])} ({which}) — rename-orphan; merge toward newest mtime, confirm first",
+                              bullet="⚠", bullet_color="yellow"))
     d = ctx["schema_drift"]
     if drift_findings(d) > 0:
-        sig.append("    " + _ui.c("⚠", "yellow") + f" schema drift: {d['missing_node_type']} missing node_type · {d['malformed_scope']} malformed scope · "
-                   + f"{d['malformed_origin']} malformed origin · {d['index_mismatch']} index↔file — offer backfill, confirm first")
+        sig.append(_ui.li(f"schema drift: {d['missing_node_type']} missing node_type · {d['malformed_scope']} malformed scope · "
+                          f"{d['malformed_origin']} malformed origin · {d['index_mismatch']} index↔file — offer backfill, confirm first",
+                          bullet="⚠", bullet_color="yellow"))
     if d["advisory_no_scope"] or d["advisory_no_origin"]:
-        sig.append("    " + _ui.c(f"· backfill (optional, NOT drift): {d['advisory_no_scope']} lack scope · {d['advisory_no_origin']} lack originSessionId", "dim"))
+        sig.append(_ui.li(_ui.c(f"backfill (optional, NOT drift): {d['advisory_no_scope']} lack scope · {d['advisory_no_origin']} lack originSessionId", "dim"), bullet="·"))
     if sig:
         add("")
         add(_ui.kv("SIGNALS", _ui.c("detect-and-offer — Phase 0 never mutates a store", "dim")))
@@ -812,7 +814,7 @@ def print_report(ctx: dict) -> None:
     if ctx["transcripts"]:
         add(_ui.kv("SESSION", _ui.c("trajectory — the extractor streams it; never bulk-read", "dim")))
         for t in ctx["transcripts"][-5:]:
-            add(f"      {_ui.c('·', 'dim')} {t.name}  {t.stat().st_size / 1_048_576:.1f} MB  " + _ui.c(f"(mtime {int(t.stat().st_mtime)})", "dim"))
+            add(_ui.li(f"{t.name}  {t.stat().st_size / 1_048_576:.1f} MB  " + _ui.c(f"(mtime {int(t.stat().st_mtime)})", "dim"), indent=6, bullet="·"))
 
     # ── NEXT ──
     add("")
@@ -830,7 +832,7 @@ def main() -> int:
     if as_json:
         print(json.dumps(seed_record(ctx), indent=2))
     else:
-        _ui.set_modes(color=_ui.color_enabled(argv, sys.stdout), ascii="--ascii" in argv)
+        _ui.set_modes(color=_ui.color_enabled(argv, sys.stdout), ascii="--ascii" in argv, width=_ui.resolve_width(argv, sys.stdout))
         print_report(ctx)
     return 0
 

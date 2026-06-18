@@ -33,6 +33,7 @@ import re
 import sys
 from typing import Any, Mapping, cast
 
+import _ui  # sibling: shared visual vocabulary — wrap() + resolve_width() (other primitives mirrored below, smoke-pinned)
 import memory_status as ms  # sibling script — reuse the canonical tier bands (derive, don't duplicate)
 # The cycle-record CONTRACT (v0.1.6) lives in memory_status; reference it as ms.CycleRecord
 # (the type render() consumes + _demo_record() produces), so this consumer and the producer
@@ -132,8 +133,9 @@ def _rule(ch: str = "━") -> str:
 
 def _kv(label: str, value: str) -> str:
     # Label is structural chrome → bold (when color on) + UPPERCASE (carries the
-    # hierarchy in monochrome too); the value is the data and stays as-is.
-    return f"  {_c(f'{label:<10}', 'bold')}{value}"
+    # hierarchy in monochrome too); the value wraps to W with a HANGING INDENT under the
+    # value column (12), so a long value stays inside the uniform width instead of overflowing.
+    return f"  {_c(f'{label:<10}', 'bold')}{_ui.wrap(value, hang=12, width=W)}"
 
 
 def _num(x: object) -> float:
@@ -620,10 +622,11 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> None:
 
 
 def main() -> int:
-    global _COLOR, _ASCII
+    global _COLOR, _ASCII, W
     argv = sys.argv[1:]
     _COLOR = _color_enabled(argv, sys.stdout)
     _ASCII = "--ascii" in argv   # opt-in no-Unicode fallback (translated as render's last step)
+    W = _ui.resolve_width(argv, sys.stdout)   # uniform width: fill the terminal (clamped [60,100]); --width=N override; fixed 60 for pipes/tests
     # --persist DIR (v0.1.4): pull the flag + its value out BEFORE positionals are taken, so
     # the cycle-record path isn't shadowed by '--persist' or its DIR (the blocklist below only
     # strips the --color/--demo chrome). Mirrors how --color is excluded — but consumes TWO
@@ -643,7 +646,7 @@ def main() -> int:
     if "--demo" in argv:  # paste-free preview with a built-in record
         print(render(_demo_record()))
         return 0
-    paths = [a for a in argv if not a.startswith("--color") and a not in ("--no-color", "--demo", "--ascii")]
+    paths = [a for a in argv if not a.startswith("--color") and not a.startswith("--width") and a not in ("--no-color", "--demo", "--ascii")]
     try:
         if paths:
             with open(paths[0], encoding="utf-8") as fh:
