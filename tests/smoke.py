@@ -18,6 +18,7 @@ import extract_signals as es  # noqa: E402
 import memory_status as ms  # noqa: E402
 import render_dashboard as rd  # noqa: E402
 import sync_global as sg  # noqa: E402
+import _ui as ui  # noqa: E402  — shared visual vocabulary
 
 passed = failed = 0
 
@@ -566,6 +567,20 @@ for _nm, _obj, _td in [
 ]:
     check(f"SKILL↔TypedDict: schema-block {_nm} == {_td.__name__} (v0.1.12 full nested pin)",
           {k for k in _obj if not k.startswith("_")} == set(_td.__annotations__))
+
+# v0.1.14: _ui.py is the shared visual vocabulary the OTHER scripts import; render_dashboard keeps its
+# OWN copies (the byte-pinned reference, untouched). This DRIFT-PIN asserts _ui stays byte-identical to
+# render's primitives, so the unified look can never silently diverge from the reference.
+check("ui↔rd drift-pin: rule / W / CODES / GLYPH_ASCII identical (v0.1.14)",
+      ui.rule() == rd._rule() and ui.W == rd.W and ui.CODES == rd._CODES and ui.GLYPH_ASCII == rd._GLYPH_ASCII)
+check("ui↔rd drift-pin: kv / bar / pct / num identical (color off)",
+      ui.kv("X", "y") == rd._kv("X", "y") and ui.bar(3, 4) == rd._bar(3, 4)
+      and ui.bar(9, 4) == rd._bar(9, 4) and ui.pct(3, 4) == rd._pct(3, 4) and ui.num("5") == rd._num("5"))
+ui.set_modes(color=True)
+rd._COLOR = True
+check("ui↔rd drift-pin: c() color path identical", ui.c("x", "bold", "green") == rd._c("x", "bold", "green"))
+ui.set_modes(color=False)
+rd._COLOR = False
 
 # C3/C8: validate_cycle_record — warn-only, pure, NEVER raises. WARNS on a present key of
 # the wrong CONTAINER type, at the ACTUAL nesting (incl. health.slug_orphans/schema_drift).
