@@ -566,6 +566,40 @@ def _stale_since(fact_files: list[Path], marker_ts: str) -> list[str]:
     return [f.stem for f in fact_files if f.stat().st_mtime <= cutoff]
 
 
+def dream_timing_advisory(commits: int, marker_ts: str, has_marker: bool) -> str | None:
+    """A NO-NAG dream-timing nudge for the Phase-0 report (and `cm status`): when work has
+    accrued SINCE THE LAST DREAM, suggest consolidating at this arc boundary. Advisory only —
+    it NEVER fires a dream (explicit-trigger-only is a kept design value). Returns None (silent)
+    in the cases where a nudge would be wrong or noise:
+
+    - **No prior dream** (`has_marker` False, from the caller's `bool(ctx["last_commit"])`): with
+      no marker, `commits` is a recent-≤20 *lookback*, NOT since-a-dream, so "overdue since the
+      last dream" is meaningless → None. (You're also mid-dream on a first consolidation.)
+    - **Below the SUBSTANTIAL band** (tier LIGHT, commits ≤ TIER_LIGHT_MAX): too little accrued → None.
+
+    Pure + never-crash: a tampered / tz-aware / garbage `marker_ts` only drops the age clause
+    (never raises) — `datetime.now()` is tz-NAIVE but a marker may be tz-AWARE, so age is computed
+    by subtracting `.timestamp()` FLOATS (the `_stale_since` pattern), not aware−naive datetimes."""
+    if not has_marker:
+        return None
+    tier = suggested_tier(commits, 0)            # candidates unknown at Phase 0 → 0
+    if tier == "LIGHT":                          # below the SUBSTANTIAL band → no-nag
+        return None
+    age = ""
+    if isinstance(marker_ts, str) and marker_ts:
+        try:
+            hrs = (datetime.now().timestamp()
+                   - datetime.fromisoformat(marker_ts.replace("Z", "+00:00")).timestamp()) / 3600
+            age = (" (<1h ago)" if hrs < 1 else        # also clamps a future-dated marker
+                   f" (~{round(hrs)}h ago)" if hrs < 48 else
+                   f" (~{round(hrs / 24)}d ago)")
+        except (ValueError, TypeError, OSError):
+            age = ""
+    return (f"💤 dream-timing: {commits} commits since the last dream{age} — a {tier} unconsolidated "
+            "arc; a good boundary to consolidate before compaction. (Coarse hint: the count over-counts "
+            "work already consolidated between dreams — judge whether there's genuinely new signal.)")
+
+
 def seed_record(ctx: dict) -> CycleRecord:
     """The cycle-record SEED — before-values + scope + provisional rigor, for render_dashboard.py.
     Annotated as CycleRecord so mypy enforces this LITERAL against the contract: a drifted,
@@ -794,6 +828,10 @@ def print_report(ctx: dict) -> None:
     print(f"  ladder: LIGHT ≤{TIER_LIGHT_MAX} inline · SUBSTANTIAL {TIER_LIGHT_MAX + 1}–{TIER_SUBSTANTIAL_MAX} "
           f"fan-out + 2-source for always-loaded · HEAVY ≥{TIER_SUBSTANTIAL_MAX + 1} + completeness critic + "
           "over-budget hard-stop  [HINT — you finalize in Phase 2]")
+
+    advisory = dream_timing_advisory(gc, ctx["last_ts"], bool(ctx["last_commit"]))
+    if advisory:
+        print(f"\n  {advisory}")
 
     print("\n--- Next ---")
     print("  Re-run with --json to seed the cycle record, then render with render_dashboard.py.")
