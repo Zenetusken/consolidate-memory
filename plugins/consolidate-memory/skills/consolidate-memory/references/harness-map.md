@@ -17,7 +17,7 @@ The pieces a consolidation pass works with on Claude Code:
 ## The two memory stores
 
 Claude Code splits memory across two places. Reconciling them — and keeping them
-from contradicting each other — is the core enhancement over single-store `/dream`.
+from contradicting each other — is something a single-store, per-project consolidator like Auto Dream doesn't address.
 
 **1. Repo-committed docs (shared, in git):** `MEMORY.md`, `AGENTS.md`, `CLAUDE.md`
 at the project root. These travel with the repo and the team reads them. `AGENTS.md`

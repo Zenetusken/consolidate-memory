@@ -1,7 +1,7 @@
 {
   "name": "consolidate-memory",
   "version": "0.1.12",
-  "description": "Sleep-time memory consolidation for Claude Code — replays a work session, verifies every candidate fact against the live codebase, reconciles both memory stores across context-loading tiers, budgets the always-loaded token tax, and runs a cross-project shared-memory layer. Invoke by asking to consolidate / checkpoint / \"dream\" your memory.",
+  "description": "Cross-project, verification-first memory for Claude Code — the layer beyond the built-in Auto Dream. Shares memory across your whole fleet (a governed global store, replicated into every project) and verifies facts against the live code (grep/file/git), dropping what it can't confirm — fact-checked, fleet-wide memory, plus tiered context-budget accounting. Where Auto Dream auto-consolidates each project, this is the explicit, rigorous complement; invoke by asking to consolidate / checkpoint / \"dream\" your memory.",
   "author": {
     "name": "Zenetusken",
     "url": "https://github.com/Zenetusken"

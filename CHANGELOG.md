@@ -5,6 +5,26 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.13] — 2026-06-18
+
+### Changed (product repositioning — docs/messaging only, no code change → patch)
+- **Repositioned around the two axes Auto Dream doesn't cover.** Claude Code is rolling out a built-in
+  **Auto Dream** (per-project memory consolidation; auto-trigger + a `/dream` command — currently
+  server-side-flagged/beta, not GA), which commoditizes the base "consolidate a project's memory"
+  pitch. The README, `plugin.json` + `marketplace.json` descriptions, and SKILL framing now lead with
+  what Auto Dream lacks: **cross-project shared memory** (the governed global store + promotion/
+  demotion cascade) and **verification against the live code** (grep/file/`git log` — fact-checked, not
+  transcript-merge), plus tiered context-budget accounting. Positioned honestly as the rigorous,
+  fleet-wide **complement** to Auto Dream's per-project baseline. The `dream` trigger and
+  all behavior are unchanged — the differentiators already exist in code; this aligns the messaging.
+
+### Notes
+- **Strategic context (see roadmap):** Auto Dream + `/dream` are **not yet GA** (server-side flag,
+  beta) → a real first-mover window, but contested by public clones (`jl-cmd/claude-dream`,
+  `grandamenium/dream-skill` — both per-project, neither code-verifying). Our durable edge is the two
+  differentiators above. External / 1.0 / community-directory submission is the open decision this
+  repositioning prepares for.
+
 ## [0.1.12] — 2026-06-18
 
 ### Changed (1.0-prep — docs/comment/test hardening; no behavior change → patch)

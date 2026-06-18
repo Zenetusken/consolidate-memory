@@ -20,7 +20,9 @@ description: >-
 A deliberate pass that turns the fluid experience of a work session into **verified,
 durable facts** — and keeps the project's two memory stores accurate and
 non-contradictory. It's the agent analogue of what sleep does to memory: replay
-recent experience, keep what's true and useful, discard what isn't.
+recent experience, keep what's true and useful, discard what isn't. Where Claude Code's built-in
+Auto Dream consolidates each project in place, this pass adds the two things it doesn't —
+**verification against the live code** and a **cross-project** shared store.
 
 The defining idea is below: Claude Code loads memory into context in **tiers**, so a
 consolidation pass is really an act of **curating what loads, when, and at what cost** —
@@ -57,7 +59,7 @@ one that fits how often it's needed:
    **recall key, not a summary** — write it as the cue that, sitting in the
    always-loaded index, makes a future session decide to *read* this fact. A weak
    description hook leaves a true, useful fact invisible: nothing tells the agent to
-   open it. This lever has no equivalent in single-store `/dream`; use it well.
+   open it. This lever has no equivalent in a single-store, per-project consolidator like Auto Dream; use it well.
 
 3. **On-demand (you read them when relevant):** repo `AGENTS.md` / `MEMORY.md` and
    the fact-file *bodies*. These are not auto-injected, so they don't tax every
@@ -319,7 +321,7 @@ gate). The helper already filled `git_commits` and `memories_reviewed`.
 Every candidate is verified against the **live tree** before it can land. **Scale the
 verification to the rigor tier** (see *Rigor modes*): a LIGHT pass may verify inline; a
 SUBSTANTIAL or HEAVY pass MUST fan out — spawn Explore / general-purpose subagents to
-verify batches of claims concurrently (the parallel enhancement over serial `/dream`),
+verify batches of claims concurrently (the parallel enhancement over a serial single-store pass),
 and at SUBSTANTIAL+ give anything bound for the always-loaded tier a **2-source check**.
 Hand each subagent the **specific claims** to check — never "read the transcript."
 
