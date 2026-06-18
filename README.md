@@ -1,14 +1,16 @@
 # consolidate-memory
 
-**Sleep-time memory consolidation for Claude Code agents — with a cross-project shared
-consciousness.**
+**Cross-project, verification-first memory for Claude Code — the layer beyond Auto Dream.**
 
-A deliberate, verifiable pass that turns the fluid experience of a work session into
-*durable, fact-checked memory* — and keeps that memory accurate, lean, and shared
-across every project you work in. It's the agent analogue of what sleep does for a
-brain: replay recent experience, keep what's true and useful, discard the rest.
+Claude Code is rolling out a built-in **Auto Dream** that consolidates each project's memory in place. `consolidate-memory`
+goes further, on the two axes Auto Dream doesn't cover: it **shares memory across your whole fleet** —
+a governed global store (a promotion/demotion cascade) replicated into every project — and **verifies
+facts against the live code** (grep / file & symbol existence / `git log`), dropping any it can't
+confirm. Fact-checked, fleet-wide memory — not a per-project transcript-merge.
 
-You invoke it by saying **`dream`** (or "consolidate my memory") in any project.
+It **complements** Auto Dream rather than replacing it — a deliberately *explicit*, rigorous pass: Auto Dream keeps each
+project tidy automatically; you invoke **`dream`** (or "consolidate my memory") when you want
+*verified* + *cross-project* consolidation.
 
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -47,10 +49,10 @@ You invoke it by saying **`dream`** (or "consolidate my memory") in any project.
 
 ## Why
 
-LLM agents forget everything between sessions except what's written to memory — and
-most "memory" rots: it's never verified against the code, it duplicates what git
-already records, it bloats the context budget, and it's trapped inside one project.
-`consolidate-memory` fixes all four:
+Auto Dream handles the baseline — each project's memory gets consolidated automatically. The problems it
+*doesn't* touch are where memory still rots: it's **never verified against the code**, it's **trapped
+inside one project**, and it **bloats the context budget** unaccountably. `consolidate-memory` is built
+around these:
 
 - **Verification is the heart.** Every candidate fact is checked against the *live*
   codebase (grep / file & symbol existence / `git log`) before it can land. A claim
@@ -80,7 +82,9 @@ The product of a pass isn't tidy files — it's *correct, well-budgeted context 
 
 ## Cross-project shared consciousness
 
-Claude Code recall is **slug-scoped**: a project only auto-recalls its own
+**This is the tier Auto Dream doesn't have.** Auto Dream consolidates each project in isolation; here, a
+fact learned in one project can flow to all of them. Claude Code recall is **slug-scoped**: a project
+only auto-recalls its own
 `~/.claude/projects/<slug>/memory/`. So a global store alone wouldn't surface
 anywhere. The fix:
 

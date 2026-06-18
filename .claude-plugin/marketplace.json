@@ -9,7 +9,7 @@
     {
       "name": "consolidate-memory",
       "source": "./plugins/consolidate-memory",
-      "description": "Sleep-time memory consolidation: verify, reconcile, and budget durable memory across context-loading tiers, with a cross-project shared-memory layer and network-wide token observability.",
+      "description": "Cross-project, verification-first memory beyond Auto Dream: shares fact-checked memory across your whole fleet (a governed global store) and verifies facts against the live code, dropping what it can't confirm, with tiered context-budget + network token observability.",
       "category": "productivity",
       "keywords": ["memory", "consolidation", "dream", "cross-project", "context-management"]
     }
