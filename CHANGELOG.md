@@ -5,6 +5,26 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.12] — 2026-06-18
+
+### Changed (1.0-prep — docs/comment/test hardening; no behavior change → patch)
+- **`memory_status.py`** — fixed a stale comment claiming cycle records "render and are discarded
+  today; persisting them is a roadmap prerequisite." `--persist` shipped in v0.1.4 (this was the
+  code-comment straggler from the v0.1.11 doc-sync, which corrected the same claim in the `.md` files).
+- **`SECURITY.md`** — corrected the secrets-firewall ReDoS note: the regexes aren't literally "linear
+  (no nested quantifiers)" — they have no *catastrophic backtracking* (each alphanumeric run and its
+  required separator are disjoint) and input is capped at `_PROBE_CAP` = 4000 chars. Same property,
+  accurate wording.
+- **`tests/smoke.py`** — extended the SKILL↔TypedDict pin from 3 shapes (CycleRecord/Health/Marker) to
+  **all nested shapes** (Scope, Rigor, Verification, Entry, Budget + 4 sub-dicts, CrossProject,
+  Network + 2 sub-dicts), so SKILL.md's nested schema block can't silently drift from the code.
+
+### Notes
+- A **1.0-readiness review** (this session) found the contracts **1.0-safe** (additive-by-construction;
+  no breaking change foreseeable in the backlog) and the polish 1.0-grade after these three fixes. The
+  **1.0.0 tag is deliberately deferred** to the broader-discovery push, where its stability signal
+  earns its keep. Docs + one comment + test coverage, zero runtime dep → **patch**.
+
 ## [0.1.11] — 2026-06-17
 
 ### Changed (docs + one stale code comment — no behavior change → patch)
