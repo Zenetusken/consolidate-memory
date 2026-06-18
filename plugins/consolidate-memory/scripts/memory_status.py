@@ -212,8 +212,9 @@ GLOBAL_CLAUDE_MD_TOKEN_BUDGET = 4000
 # live corpus. The stock instead drives a SEPARATE prune-pressure flag (below). The
 # bands are roadmap-inherited PROVISIONAL defaults: the curated input was never recorded
 # historically, so they are not yet calibrated. The record EXPOSES the magnitude (+ phase) a
-# future calibration could refit against — but only once cycle records are PERSISTED (they
-# render and are discarded today; persisting them is a roadmap prerequisite). The tier is a
+# future calibration could refit against — and `--persist` now appends each record to
+# `.consolidation-log.jsonl` (v0.1.4), so that data accrues; a real refit still needs enough
+# records + longitudinal miss-detection (future work). The tier is a
 # HINT (derived at render from the model's curated session_candidates), never a hard gate.
 TIER_LIGHT_MAX = 2        # magnitude ≤ 2 → LIGHT
 TIER_SUBSTANTIAL_MAX = 7  # 3..7 → SUBSTANTIAL ; ≥ 8 → HEAVY

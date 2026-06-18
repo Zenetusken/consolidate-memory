@@ -542,6 +542,30 @@ check("SKILL↔TypedDict: schema-block health keys == Health TypedDict (nested s
       set(_skill_schema.get("health", {}).keys()) == set(ms.Health.__annotations__))
 check("SKILL↔TypedDict: schema-block marker keys == Marker TypedDict (incl. before_*; v0.1.6 drift fix)",
       set(_skill_schema.get("marker", {}).keys()) == set(ms.Marker.__annotations__))
+# v0.1.12: extend the pin to ALL nested shapes (was only top-level + health + marker), so SKILL.md's
+# nested schema can't silently drift from the code. Strip doc-annotation keys (leading "_", e.g.
+# cross_project._pulled / network._) before comparing; list-wrapped shapes compare their [0] item.
+# (SchemaDrift + the pulled/promoted item dicts aren't enumerated in the block — the former renders as
+# an empty {} placeholder, the latter are untyped list[dict] — so they're out of scope for this pin.)
+_sk_b = _skill_schema.get("budget", {})
+_sk_n = _skill_schema.get("network", {})
+for _nm, _obj, _td in [
+    ("scope", _skill_schema.get("scope", {}), ms.Scope),
+    ("rigor", _skill_schema.get("rigor", {}), ms.Rigor),
+    ("verification", _skill_schema.get("verification", {}), ms.Verification),
+    ("entries[0]", (_skill_schema.get("entries") or [{}])[0], ms.Entry),
+    ("budget", _sk_b, ms.Budget),
+    ("budget.claude_md", _sk_b.get("claude_md", {}), ms.ClaudeMdBudget),
+    ("budget.global_claude_md", _sk_b.get("global_claude_md", {}), ms.GlobalClaudeMd),
+    ("budget.index", _sk_b.get("index", {}), ms.IndexBudget),
+    ("budget.recall_facts", _sk_b.get("recall_facts", {}), ms.RecallFacts),
+    ("cross_project", _skill_schema.get("cross_project", {}), ms.CrossProject),
+    ("network", _sk_n, ms.Network),
+    ("network.nodes[0]", (_sk_n.get("nodes") or [{}])[0], ms.NetworkNode),
+    ("network.totals", _sk_n.get("totals", {}), ms.NetworkTotals),
+]:
+    check(f"SKILL↔TypedDict: schema-block {_nm} == {_td.__name__} (v0.1.12 full nested pin)",
+          {k for k in _obj if not k.startswith("_")} == set(_td.__annotations__))
 
 # C3/C8: validate_cycle_record — warn-only, pure, NEVER raises. WARNS on a present key of
 # the wrong CONTAINER type, at the ACTUAL nesting (incl. health.slug_orphans/schema_drift).

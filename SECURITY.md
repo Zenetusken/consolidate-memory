@@ -30,9 +30,10 @@ does, what it never does, and how to report a problem.
   contains a credential-shaped value to a label — the verbatim secret never reaches a
   memory file (repo docs are committed; auto-memory persists). It records a *pointer*,
   never a value.
-- **Bounded input:** transcript turns are length-capped before regex classification
-  (defense-in-depth against pathological input); the regexes are linear (no nested
-  quantifiers).
+- **Bounded input:** transcript turns are length-capped (`_PROBE_CAP` = 4000 chars) before regex
+  classification (defense-in-depth); the regexes have no catastrophic backtracking — each
+  alphanumeric run and its required separator are disjoint, so there's no ambiguity to blow up —
+  and the length cap bounds worst-case matching regardless.
 - **Filesystem safety:** `sync_global.py --gc` only deletes files marked as managed
   mirrors (`global_ref:`) whose canonical is gone — never project-authored facts — and
   defaults to report-only (deletion requires `--apply`).
