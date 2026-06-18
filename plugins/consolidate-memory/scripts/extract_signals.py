@@ -291,7 +291,7 @@ def _report(d: dict) -> None:
     for s in d["signals"]:
         g, col = glyphs.get(s["source"], ("·", "dim"))
         meta = f"{s['source']}/{s.get('signal_type', 'err')}·{s.get('scope_hint', '?')}"
-        add(f"    {_ui.c(g, col)} {_ui.lbl(f'{meta[:26]:<26}')} {s['text']}")
+        add(f"    {_ui.c(g, col)} {_ui.lbl(f'{meta[:26]:<26}')} {_ui.wrap(s['text'], hang=33)}")
     print(_ui.ascii_translate("\n".join(out)))
 
 
@@ -299,7 +299,7 @@ def main() -> int:
     argv = sys.argv[1:]
     as_json = "--json" in argv
     argv = [a for a in argv if a != "--json"]
-    _ui.set_modes(color=_ui.color_enabled(sys.argv[1:], sys.stdout), ascii="--ascii" in sys.argv)
+    _ui.set_modes(color=_ui.color_enabled(sys.argv[1:], sys.stdout), ascii="--ascii" in sys.argv, width=_ui.resolve_width(sys.argv[1:], sys.stdout))
     since = ""
     max_n = 30
     pos = []

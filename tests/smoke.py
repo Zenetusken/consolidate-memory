@@ -20,6 +20,17 @@ import render_dashboard as rd  # noqa: E402
 import sync_global as sg  # noqa: E402
 import _ui as ui  # noqa: E402  — shared visual vocabulary
 
+# v0.1.15: capture the module-load DEFAULT widths BEFORE the wide override below — _ui.W must mirror
+# render_dashboard.W (a direct render()/_ui library caller that never runs a script main() relies on
+# this default; the override would otherwise make the drift-pin's W check tautological).
+_UI_W0, _RD_W0 = ui.W, rd.W
+# The content assertions below pin TEXT, not line-wrapping — render WIDE so a long value is never
+# split by the new hanging-indent wrap (which would break an `"x" in render(...)` check that spans
+# the wrap point). The wrap mechanism itself is exercised by dedicated tests at the end.
+# Production non-TTY default stays W=60.
+ui.set_modes(width=240)
+rd.W = 240
+
 passed = failed = 0
 
 
@@ -688,6 +699,41 @@ check("render: --ascii preserves line count + per-line width (single-char maps) 
       and all(len(a) == len(u) for a, u in zip(_asc.splitlines(), _uni.splitlines())))
 check("render: default (Unicode) render is NOT pure ASCII — --ascii is opt-in (v0.1.7 C3)",
       not _uni.isascii())
+
+# ── v0.1.15: the hanging-indent wrap (shared wrapping mechanism + adaptive width) ─────────────
+# (_NoTTY is defined above — a deterministic non-TTY stream.)
+_w = ui.wrap("alpha beta gamma delta epsilon zeta eta theta iota kappa", hang=4, width=20).split("\n")
+check("wrap: every visible line fits the width, and it actually wrapped",
+      all(ui.vis(line) <= 20 for line in _w) and len(_w) > 1)
+check("wrap: first line is flush-left; continuations HANG at `hang` spaces",
+      not _w[0].startswith(" ") and all(line.startswith("    ") for line in _w[1:]))
+check("wrap: an over-long single word is kept whole, never chopped mid-token",
+      "antidisestablishmentarianism" in ui.wrap("antidisestablishmentarianism x", hang=2, width=8))
+ui.set_modes(color=True, width=240)
+_cw = ui.wrap(ui.c("one two three four five six seven eight nine ten", "dim"), hang=4, width=22).split("\n")
+check("wrap: ANSI-aware — colored value measured by VISIBLE width, every line fits",
+      all(ui.vis(line) <= 22 for line in _cw) and len(_cw) > 1)
+check("wrap: ANSI-aware — every wrapped line re-opens AND closes the color",
+      all(("\x1b[2m" in line and line.rstrip().endswith(ui.CODES["reset"])) for line in _cw if line.strip()))
+_stk = ui.wrap(ui.c("alpha beta gamma delta epsilon zeta eta", "bold", "green"), hang=2, width=18).split("\n")
+check("wrap: ANSI-aware — a STACKED span (bold+green) re-opens BOTH codes on each line (v0.1.15)",
+      len(_stk) > 1 and all(("\x1b[1m" in line and "\x1b[32m" in line) for line in _stk if line.strip()))
+ui.set_modes(color=False, width=240)
+ui.set_modes(width=40)
+rd.W = 40
+_long = " ".join(f"word{i}" for i in range(20))
+check("kv: a long value hangs at the value column (12); a short value stays one line",
+      all(line.startswith(" " * 12) for line in ui.kv("SCOPE", _long).split("\n")[1:]) and "\n" not in ui.kv("SCOPE", "x"))
+check("ui↔rd: kv wraps IDENTICALLY for a long value (v0.1.15 wrap mirror — look can't diverge)",
+      ui.kv("RIGOR", _long) == rd._kv("RIGOR", _long))
+check("li: a bulleted item hangs past the bullet (indent + 2)",
+      all(line.startswith(" " * 6) for line in ui.li(_long, indent=4, bullet="·").split("\n")[1:]))
+ui.set_modes(width=240)
+rd.W = 240
+check("resolve_width: --width=N overrides; a non-TTY falls back to the fixed default (deterministic)",
+      ui.resolve_width(["--width=88"], _NoTTY()) == 88 and ui.resolve_width([], _NoTTY()) == ui.W)
+check("ui↔rd: module-default W mirrors (both 60, captured before the wide override) (v0.1.15)",
+      _UI_W0 == _RD_W0 == 60)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

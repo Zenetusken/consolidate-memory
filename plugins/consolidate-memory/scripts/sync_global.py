@@ -603,11 +603,14 @@ def token_report(project_dir: Path, as_json: bool) -> int:
     out.append("")
     out.append(_ui.kv("NODES", _ui.c("per-project always-loaded + recall-pool cost", "dim")))
     for n in sorted(net["nodes"], key=lambda d: -d["always_loaded_tokens"]):
-        mark = _ui.c("  ◀ dream ran here", "cyan") if n["trigger"] else ""
-        out.append(f"    {_ui.lbl(n['node'][:24], 24)} always ≈{n['always_loaded_tokens']:>5} "
-                   + _ui.c(f"(≈{n.get('mirror_index_tokens', 0)} mirror)", "dim")
-                   + f" · recall ≈{n['recall_tokens']:>6} · {n['facts']:>2} facts "
-                   + _ui.c(f"({n['shared']} shared)", "dim") + mark)
+        base = (f"    {_ui.lbl(n['node'][:24], 24)} always ≈{n['always_loaded_tokens']:>5} "
+                + _ui.c(f"(≈{n.get('mirror_index_tokens', 0)} mirror)", "dim")
+                + f" · recall ≈{n['recall_tokens']:>6} · {n['facts']:>2} facts "
+                + _ui.c(f"({n['shared']} shared)", "dim"))
+        if n["trigger"]:  # keep the dense node columns intact — drop the mark to a hanging line only if it would overflow
+            mk = _ui.c("◀ trigger", "cyan")
+            base += "  " + mk if _ui.vis(base) + 11 <= _ui.W else "\n" + " " * 29 + mk
+        out.append(base)
     if not net["nodes"]:
         out.append("  " + _ui.c("(no nodes hold shared facts yet — run --pull somewhere first)", "dim"))
     print(_ui.ascii_translate("\n".join(out)))
@@ -616,7 +619,7 @@ def token_report(project_dir: Path, as_json: bool) -> int:
 
 def main() -> int:
     args = sys.argv[1:]
-    _ui.set_modes(color=_ui.color_enabled(args, sys.stdout), ascii="--ascii" in args)
+    _ui.set_modes(color=_ui.color_enabled(args, sys.stdout), ascii="--ascii" in args, width=_ui.resolve_width(args, sys.stdout))
     # positional PROJECT_DIR — flags (--json/--apply/--color/--ascii/--no-color) excluded so a
     # bare visual flag is NEVER mis-read as the project dir (which --pull would replicate INTO).
     pos = [a for a in args[1:] if not a.startswith("-")]
