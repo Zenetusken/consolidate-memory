@@ -5,6 +5,38 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.14] — 2026-06-18
+
+### Added (unified visual language across every output — additive, backward-compatible → patch)
+- **`_ui.py` — one shared visual vocabulary.** Extracted the final dashboard's look — the `━` banner,
+  bold-UPPERCASE `kv` section labels (which carry the hierarchy even in monochrome), budget `bar`s,
+  glyphs, auto-gated color, and the `--ascii` fallback — into a new zero-dep, stdlib-only module that
+  `memory_status`, `sync_global`, and `extract_signals` now import. Every human-facing report is
+  visually coherent with `render_dashboard.py`'s reference (same banner, section style, glyph/color
+  palette), each adapted to its own content. `render_dashboard.py` is **unchanged** — it stays the
+  byte-pinned reference (37 output assertions + a determinism check); a new smoke **drift-pin** asserts
+  `_ui` stays byte-identical to render's primitives, so the unified look can never silently diverge.
+- **Restructured the dense reports for clear hierarchy + low cognitive load.** `memory_status`'s 15 flat
+  `---` sections → 7 scannable ones (banner · SCOPE · RIGOR · STORES · SIGNALS · GLOBAL · SESSION · NEXT)
+  with the per-fact inventory in aligned columns + always-loaded budget bars; `sync_global`
+  (`--list`/`--network`/`--tokens`/`--gc`) and `extract_signals` likewise gain the banner + labeled
+  sections + status glyphs (✓ in-sync · ↓ missing · ⟳ stale · ◀ trigger). Every datum the SKILL/agent
+  parses mid-dream is preserved.
+- **`--color` / `--ascii` on `memory_status`, `sync_global`, `extract_signals`** (matching the dashboard):
+  `--color=never|always|auto` (default auto — OFF when piped/captured/non-TTY, so agent tool-calls and
+  pipes stay clean plain text); `--ascii` flattens glyphs to a pure-ASCII fallback. `--json` output is
+  untouched — no color/banner leaks into the machine contract.
+
+### Fixed
+- **`--ascii` now flattens every `sync_global` view.** `network`/`token_report`/`gc` printed glyphs
+  directly, bypassing the ASCII fallback (would `UnicodeEncodeError` / render mojibake on a non-UTF8
+  terminal — the exact case `--ascii` exists to serve); they now buffer and route through
+  `ascii_translate` like the other reports.
+- **A bare visual flag is never mis-read as a project dir.** `sync_global` and `extract_signals` didn't
+  exclude `--color`/`--ascii`/`--no-color` from positional parsing, so e.g. `sync_global --pull --ascii`
+  (dir omitted) treated `--ascii` as the project → a bogus slug it would have replicated mirrors INTO.
+  Both now filter dash-flags from positionals (the pattern `memory_status` already used).
+
 ## [0.1.13] — 2026-06-18
 
 ### Changed (product repositioning — docs/messaging only, no code change → patch)

@@ -22,6 +22,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, TypedDict
 
+import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / bar / glyphs)
+
 # ── The cycle-record CONTRACT (v0.1.6) ───────────────────────────────────────────────
 # The cycle record is the contract between this script (seeds it), the workflow phases
 # (fill it), and render_dashboard.py (renders it). It used to be an untyped dict whose
@@ -708,145 +710,127 @@ def validate_cycle_record(record: object) -> list[str]:
 
 
 def print_report(ctx: dict) -> None:
-    print("=" * 72)
-    print("CONSOLIDATE-MEMORY — Phase 0 context")
-    print("=" * 72)
-    print(f"project dir : {ctx['project_dir']}")
-    print(f"slug        : {ctx['slug']}")
-    print(f"proj_root   : {ctx['proj_root']}  ({'exists' if ctx['proj_root'].exists() else 'MISSING'})")
-
-    print("\n--- Repo memory docs (committed) ---")
-    for name, (ln, by, tok) in ctx["repo"].items():
-        loc = ctx["project_dir"] / name
-        if not (ln or by):
-            print(f"  (absent) {loc}")
-            continue
-        over = " ⚠ OVER BUDGET" if name == "CLAUDE.md" and tok > CLAUDE_MD_TOKEN_BUDGET else ""
-        budget = f" / {CLAUDE_MD_TOKEN_BUDGET} budget" if name == "CLAUDE.md" else ""
-        print(f"  {loc}  —  {ln} lines, {by} bytes, ≈{tok} tok{budget}{over}")
-
-    print("\n--- Global always-loaded (~/.claude/CLAUDE.md — every project; READ-ONLY) ---")
-    gl, gb, gt = ctx["global_claude_md"]
-    gpath = Path.home() / ".claude" / "CLAUDE.md"
-    if gl or gb:
-        heavy = " ⚠ heavy — taxes EVERY project" if gt > GLOBAL_CLAUDE_MD_TOKEN_BUDGET else ""
-        print(f"  {gpath}  —  {gl} lines, {gb} bytes, ≈{gt} tok  "
-              f"[the skill NEVER edits this — measured for honest cost only]{heavy}")
-    else:
-        print(f"  (absent — no user-global CLAUDE.md at {gpath})")
-
-    print("\n--- Claude auto-memory (private) ---")
-    if ctx["auto_mem"].exists():
-        il, ib, it = ctx["index_lb"]
-        over = " ⚠ OVER BUDGET" if it > INDEX_TOKEN_BUDGET else ""
-        print(f"  index: {ctx['index_path']}  —  {il} lines, {ib} bytes, "
-              f"≈{it}/{INDEX_TOKEN_BUDGET} tok  [ALWAYS-LOADED]{over}")
-        for f in ctx["fact_files"]:
-            ln, by, tok = _measure(f)
-            print(f"  {f.name}  —  {ln} lines, {by} bytes, ≈{tok} tok")
-    else:
-        print(f"  (absent) {ctx['auto_mem']}")
-
-    if ctx["stale_facts"]:
-        print("\n--- Re-verification candidates (untouched since last consolidation) ---")
-        print("  These facts predate the marker — re-verify them against the live tree:")
-        for name in ctx["stale_facts"]:
-            print(f"  • {name}")
-
-    # Slug-orphan / near-duplicate store(s) — a rename moves the slug-scoped store to a
-    # NEW slug, stranding the old one. ADVISORY: name each twin, flag which looks live
-    # (newest mtime), and the reconciliation hint. Never acted on here (detect/offer only).
-    if ctx["slug_orphans"]:
-        print("\n--- ⚠ Slug-orphan / near-duplicate store(s) ---")
-        cur_live = max(_newest_mtime(ctx["proj_root"], "*.jsonl"),
-                       _newest_mtime(ctx["auto_mem"], "*.md"))
-        print(f"  This slug ({ctx['slug']}) has near-duplicate sibling store(s) — likely a")
-        print("  rename-orphan (a dir rename changes the slug and strands the old memory):")
-        for o in ctx["slug_orphans"]:
-            twin_live = max(o["newest_txn"], o["newest_fact"])
-            which = "twin looks LIVE" if twin_live > cur_live else (
-                "current store looks live" if cur_live > twin_live else "same recency")
-            print(f"  • {_sane(o['slug'])}  ({which}; "
-                  f"twin newest mtime {int(twin_live)} vs current {int(cur_live)})")
-        print("  reconciliation: merge toward newest mtime, NOT most files; land under the")
-        print("  slug whose disk path exists — ADVISORY, confirm before acting.")
-
-    # Schema DRIFT — structural/malformed findings (always reported when present). The
-    # advisory absence-counts are a SEPARATE, clearly-optional line that MAY print on an
-    # otherwise-clean store (it is NOT a drift finding).
-    d = ctx["schema_drift"]
-    if drift_findings(d) > 0:
-        print("\n--- ⚠ Schema DRIFT (documented-field / structural) ---")
-        print(f"  missing node_type: {d['missing_node_type']} · malformed scope: {d['malformed_scope']} · "
-              f"malformed originSessionId: {d['malformed_origin']} · index↔file mismatch: {d['index_mismatch']}")
-        print("  offer backfill — ADVISORY, confirm before acting (Phase 0 never mutates a store).")
-    if d["advisory_no_scope"] or d["advisory_no_origin"]:
-        # OPTIONAL backfill advisory — NOT a drift finding; may print on an otherwise-clean
-        # store. memory_status emits plain text (no TTY-gated color like the dashboard), so
-        # 'optional/advisory' is carried by the words, not a raw ANSI dim that would garble
-        # captured output.
-        print("\n  backfill candidates (advisory, NOT drift — optional): "
-              f"{d['advisory_no_scope']} lack scope, {d['advisory_no_origin']} lack originSessionId")
-
-    print("\n--- Global cross-project store (~/.claude/memory) ---")
-    g = Path.home() / ".claude" / "memory"
-    if g.exists():
-        gfacts = [f for f in sorted(g.glob("*.md")) if f.name != "MEMORY.md"]
-        print(f"  {len(gfacts)} global fact(s)  —  run sync_global.py --list . to see what applies here")
-    else:
-        print("  (absent — no cross-project facts yet)")
-
-    print("\n--- Session transcripts (trajectory; do NOT bulk-read) ---")
-    if ctx["transcripts"]:
-        for t in ctx["transcripts"][-5:]:
-            print(f"  {t.name}  —  {t.stat().st_size / 1_048_576:.1f} MB  (mtime {int(t.stat().st_mtime)})")
-    else:
-        print("  (none)")
-
-    print("\n--- Consolidation high-water mark ---")
-    if ctx["last_commit"]:
-        print(f"  last consolidated: commit={ctx['last_commit'][:12]}  at={ctx['last_ts']}")
-    else:
-        print(f"  (no marker yet at {ctx['state_path']} — treat as first consolidation)")
-    print(f"  current HEAD: {ctx['head'][:12] or '(not a git repo?)'}")
-
-    print(f"\n--- git log {ctx['git_range']} ({len(ctx['commits'])} commits — scope for new facts) ---")
-    print("\n".join(f"  {_sane(c)}" for c in ctx["commits"]) or "  (no new commits / no range)")
-
-    # Provisional rigor hint for the operator (separate from the record, which stores NO
-    # tier — the dashboard derives it from scope). prune-pressure shares _provisional_rigor.
-    rg = _provisional_rigor(ctx)
+    out: list = []
+    add = out.append
+    proj = ctx["project_dir"].name
     gc = len(ctx["commits"])
     tier = suggested_tier(gc, 0)  # candidates unknown in Phase 0 → 0
-    print("\n--- Suggested rigor (PROVISIONAL — finalize in Phase 2 with curated candidates) ---")
-    if ctx["last_commit"]:
-        print(f"  provisional tier: {tier}   (magnitude = {gc} commits + 0 candidates so far)")
+    rg = _provisional_rigor(ctx)
+    has_marker = bool(ctx["last_commit"])
+    tcol = {"LIGHT": "green", "SUBSTANTIAL": "yellow", "HEAVY": "red"}.get(tier, "bold")
+
+    # ── banner (visually coherent with the final dashboard) ──
+    title = "✦ PHASE 0 · consolidate-memory"
+    tag = tier if (gc or rg["prune_pressure"]) else "NO-OP"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    add(_ui.rule())
+    add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, tcol if tag == tier else "dim"))
+    sub = f"{proj} · {ctx['slug']}" + ("" if ctx["proj_root"].exists() else "   ⚠ proj_root MISSING")
+    add("  " + _ui.c(sub, "dim"))
+    add(_ui.rule())
+
+    # ── SCOPE — the git range to harvest facts from (since the last consolidation) ──
+    add("")
+    if has_marker:
+        add(_ui.kv("SCOPE", f"git {ctx['git_range']} · {gc} commit(s) since marker "
+                            + _ui.c(f"{ctx['last_commit'][:12]} @ {ctx['last_ts']}", "dim")))
     else:
-        print(f"  provisional tier: {tier}   (FIRST consolidation: no marker, so this reflects a "
-              f"recent-≤20 commit lookback, NOT new-since-last-time work — advisory only)")
+        add(_ui.kv("SCOPE", f"git {ctx['git_range']} · {gc} commit(s)  "
+                            + _ui.c("· FIRST consolidation: a ≤20-commit lookback, NOT since-marker work", "dim")))
+    for cmt in ctx["commits"]:
+        add("    " + _ui.c("·", "dim") + " " + _sane(cmt))
+    if not ctx["commits"]:
+        add("    " + _ui.c("· (no new commits in range)", "dim"))
+
+    # ── RIGOR — provisional effort hint (DERIVED from magnitude; you finalize in Phase 2) ──
+    add("")
+    add(_ui.kv("RIGOR", f"{_ui.c(tier, tcol)} provisional · magnitude {gc} "
+                        + _ui.c(f"(+ curated candidates in Phase 2) · ladder ≤{TIER_LIGHT_MAX} / {TIER_LIGHT_MAX + 1}–{TIER_SUBSTANTIAL_MAX} / ≥{TIER_SUBSTANTIAL_MAX + 1}", "dim")))
     if rg["prune_pressure"]:
-        print(f"  ⚠ prune-pressure ({rg['prune_reason']}) — MUST prune-or-propose this pass, at ANY tier")
-    print(f"  ladder: LIGHT ≤{TIER_LIGHT_MAX} inline · SUBSTANTIAL {TIER_LIGHT_MAX + 1}–{TIER_SUBSTANTIAL_MAX} "
-          f"fan-out + 2-source for always-loaded · HEAVY ≥{TIER_SUBSTANTIAL_MAX + 1} + completeness critic + "
-          "over-budget hard-stop  [HINT — you finalize in Phase 2]")
-
-    advisory = dream_timing_advisory(gc, ctx["last_ts"], bool(ctx["last_commit"]))
+        add("    " + _ui.c(f"⚠ prune-pressure ({rg['prune_reason']}) — prune-or-propose this pass, at ANY tier", "yellow"))
+    advisory = dream_timing_advisory(gc, ctx["last_ts"], has_marker)
     if advisory:
-        print(f"\n  {advisory}")
+        add("    " + advisory)
 
-    print("\n--- Next ---")
-    print("  Re-run with --json to seed the cycle record, then render with render_dashboard.py.")
-    print(f"  Marker to write in Phase 5: {ctx['state_path']}  commit={ctx['head'][:12]}")
+    # ── MEMORY LOAD — what the AI re-reads every session (smaller = cheaper, sharper) ──
+    add("")
+    add(_ui.kv("STORES", _ui.c("always-loaded tier paid every session · fact bodies read on-demand", "dim")))
+    if ctx["auto_mem"].exists():
+        il, ib, it = ctx["index_lb"]
+        over = _ui.c("  ⚠ OVER", "red") if it > INDEX_TOKEN_BUDGET else ""
+        add(f"    {_ui.lbl('index', 14)}{_ui.bar(it, INDEX_TOKEN_BUDGET)} {_ui.pct(it, INDEX_TOKEN_BUDGET):>4}  "
+            + _ui.c(f"≈{it}/{INDEX_TOKEN_BUDGET} tok · {il} ln · {ib} by  [ALWAYS-LOADED]", "dim") + over)
+    cl = ctx["repo"].get("CLAUDE.md")
+    if cl and (cl[0] or cl[1]):
+        cln, clb, ct = cl
+        over = _ui.c("  ⚠ OVER", "red") if ct > CLAUDE_MD_TOKEN_BUDGET else ""
+        add(f"    {_ui.lbl('CLAUDE.md', 14)}{_ui.bar(ct, CLAUDE_MD_TOKEN_BUDGET)} {_ui.pct(ct, CLAUDE_MD_TOKEN_BUDGET):>4}  "
+            + _ui.c(f"≈{ct}/{CLAUDE_MD_TOKEN_BUDGET} tok · {cln} ln · {clb} by  [project, committed]", "dim") + over)
+    gl, gb, gt = ctx["global_claude_md"]
+    if gl or gb:
+        heavy = _ui.c("  ⚠ heavy", "yellow") if gt > GLOBAL_CLAUDE_MD_TOKEN_BUDGET else ""
+        add(f"    {_ui.lbl('~/.claude/CLAUDE.md', 14)}" + _ui.c(f"≈{gt} tok · {gl} ln · read-only, every project (never edited here)", "dim") + heavy)
+    for nm in ("MEMORY.md", "AGENTS.md"):
+        r = ctx["repo"].get(nm)
+        if r and (r[0] or r[1]):
+            add(f"    {_ui.lbl(nm, 14)}" + _ui.c(f"{r[0]} ln · {r[1]} by · ≈{r[2]} tok  [on-demand, committed]", "dim"))
+    if ctx["auto_mem"].exists():
+        facts = ctx["fact_files"]
+        add("    " + _ui.c(f"recall facts ({len(facts)}) — bodies read on-demand in Phase 1:", "dim"))
+        wn = min(max((len(f.stem) for f in facts), default=1), 42)
+        for f in facts:
+            fl, fby, ft = _measure(f)
+            add("      " + _ui.c(f"{f.stem:<{wn}}  {fl:>3} ln · {fby:>5} by · ≈{ft:>4} tok", "dim"))
+
+    # ── NEEDS A LOOK — suggestions only; nothing is changed automatically ──
+    sig: list = []
+    if ctx["stale_facts"]:
+        sig.append("    " + _ui.c("·", "dim") + f" re-verify {len(ctx['stale_facts'])} stale fact(s) (mtime ≤ marker): "
+                   + _ui.c(", ".join(ctx["stale_facts"]), "dim"))
+    if ctx["slug_orphans"]:
+        cur_live = max(_newest_mtime(ctx["proj_root"], "*.jsonl"), _newest_mtime(ctx["auto_mem"], "*.md"))
+        for o in ctx["slug_orphans"]:
+            tl = max(o["newest_txn"], o["newest_fact"])
+            which = "twin newer" if tl > cur_live else ("this store newer" if cur_live > tl else "same recency")
+            sig.append("    " + _ui.c("⚠", "yellow") + f" slug-orphan {_sane(o['slug'])} ({which}) — rename-orphan; merge toward newest mtime, confirm first")
+    d = ctx["schema_drift"]
+    if drift_findings(d) > 0:
+        sig.append("    " + _ui.c("⚠", "yellow") + f" schema drift: {d['missing_node_type']} missing node_type · {d['malformed_scope']} malformed scope · "
+                   + f"{d['malformed_origin']} malformed origin · {d['index_mismatch']} index↔file — offer backfill, confirm first")
+    if d["advisory_no_scope"] or d["advisory_no_origin"]:
+        sig.append("    " + _ui.c(f"· backfill (optional, NOT drift): {d['advisory_no_scope']} lack scope · {d['advisory_no_origin']} lack originSessionId", "dim"))
+    if sig:
+        add("")
+        add(_ui.kv("SIGNALS", _ui.c("detect-and-offer — Phase 0 never mutates a store", "dim")))
+        out.extend(sig)
+
+    # ── GLOBAL + SESSION ──
+    add("")
+    g = Path.home() / ".claude" / "memory"
+    gn = len([f for f in g.glob("*.md") if f.name != "MEMORY.md"]) if g.exists() else 0
+    add(_ui.kv("GLOBAL", f"{gn} cross-project fact(s) in ~/.claude/memory  " + _ui.c("(sync_global.py --list . for fit here)", "dim")))
+    if ctx["transcripts"]:
+        add(_ui.kv("SESSION", _ui.c("trajectory — the extractor streams it; never bulk-read", "dim")))
+        for t in ctx["transcripts"][-5:]:
+            add(f"      {_ui.c('·', 'dim')} {t.name}  {t.stat().st_size / 1_048_576:.1f} MB  " + _ui.c(f"(mtime {int(t.stat().st_mtime)})", "dim"))
+
+    # ── NEXT ──
+    add("")
+    add(_ui.kv("NEXT", _ui.c(f"run with --json to start the record · render_dashboard.py draws the summary · saves a checkpoint at {ctx['head'][:12]}", "dim")))
+
+    print(_ui.ascii_translate("\n".join(out)))
 
 
 def main() -> int:
-    args = [a for a in sys.argv[1:] if a != "--json"]
-    as_json = "--json" in sys.argv
-    project_dir = Path(args[0]) if args else Path.cwd()
+    argv = sys.argv[1:]
+    as_json = "--json" in argv
+    pos = [a for a in argv if not a.startswith("-")]   # positional = the project dir; flags (--json/--color/--ascii) excluded
+    project_dir = Path(pos[0]) if pos else Path.cwd()
     ctx = build_context(project_dir)
     if as_json:
         print(json.dumps(seed_record(ctx), indent=2))
     else:
+        _ui.set_modes(color=_ui.color_enabled(argv, sys.stdout), ascii="--ascii" in argv)
         print_report(ctx)
     return 0
 

@@ -35,6 +35,8 @@ import sys
 import unicodedata
 from pathlib import Path
 
+import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
+
 STATE_FILE = ".consolidation-state.json"
 
 
@@ -271,24 +273,33 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
 
 def _report(d: dict) -> None:
     c = d["counts"]
-    print("=" * 72)
-    print("CONSOLIDATE-MEMORY — session signal extraction")
-    print("=" * 72)
-    print(f"transcript : {d['transcript']}")
-    print(f"since      : {d['since']}")
-    print(f"counts     : {c.get('human_seen',0)} human turns seen · {c.get('noise',0)} noise dropped · "
-          f"{c.get('secrets_omitted',0)} secrets omitted · {c.get('errors',0)} error-results · "
-          f"{c.get('surfaced',0)} surfaced")
-    print("\n--- candidates (ranked; verify + dedup before recording) ---")
+    out: list = []
+    add = out.append
+    title = "✦ SESSION SIGNAL · extracted candidates"
+    tag = f"{c.get('surfaced', 0)} surfaced"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    add(_ui.rule())
+    add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    add("  " + _ui.c(f"{d['transcript']} · since {d['since']}", "dim"))
+    add(_ui.rule())
+    add("")
+    add(_ui.kv("COUNTS", f"{c.get('human_seen', 0)} human turns  "
+              + _ui.c(f"· {c.get('noise', 0)} noise dropped · {c.get('secrets_omitted', 0)} secrets omitted · {c.get('errors', 0)} error-results", "dim")))
+    add("")
+    add(_ui.kv("FOUND", _ui.c("ranked candidates — verify + dedup before recording", "dim")))
+    glyphs = {"human": ("·", "cyan"), "error": ("⚠", "yellow")}
     for s in d["signals"]:
-        tag = f"{s['source']}/{s.get('signal_type','err')}·{s.get('scope_hint','?')}"
-        print(f"  [{tag:>26}] {s['text']}")
+        g, col = glyphs.get(s["source"], ("·", "dim"))
+        meta = f"{s['source']}/{s.get('signal_type', 'err')}·{s.get('scope_hint', '?')}"
+        add(f"    {_ui.c(g, col)} {_ui.lbl(f'{meta[:26]:<26}')} {s['text']}")
+    print(_ui.ascii_translate("\n".join(out)))
 
 
 def main() -> int:
     argv = sys.argv[1:]
     as_json = "--json" in argv
     argv = [a for a in argv if a != "--json"]
+    _ui.set_modes(color=_ui.color_enabled(sys.argv[1:], sys.stdout), ascii="--ascii" in sys.argv)
     since = ""
     max_n = 30
     pos = []
@@ -303,8 +314,10 @@ def main() -> int:
                 print(f"--max expects an integer, got {argv[i + 1]!r}", file=sys.stderr)
                 return 2
             i += 2
-        else:
+        elif not argv[i].startswith("-"):
             pos.append(argv[i]); i += 1
+        else:
+            i += 1   # skip visual flags (--ascii/--color/--no-color, handled by set_modes) + unknown flags
     project_dir = Path(pos[0]) if pos else Path.cwd()
     d = extract(project_dir, since, max_n)
     if as_json:

@@ -27,6 +27,7 @@ from pathlib import Path
 # est_tokens lives in memory_status (the measurement script); reuse it rather than
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
 # on sys.path[0] at runtime; both live in the plugin's scripts/ dir.
+import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
 from memory_status import _sane, est_tokens, slug_for, _frontmatter, _valid_uuid
 
 GLOBAL = Path.home() / ".claude" / "memory"
@@ -219,10 +220,21 @@ def run(project_dir: Path, pull: bool) -> int:
     store = project_store(project_dir)
     stacks = detect_stacks(project_dir)
     facts = global_facts()
-    print(f"project   : {project_dir.name}  (slug {slug_for(project_dir)})")
-    print(f"stacks    : {sorted(stacks) or '(none detected)'}")
-    print(f"store      : {store}  ({'exists' if store.exists() else 'MISSING — created on pull'})")
-    print(f"global facts: {len(facts)}\n")
+    out: list = []
+    add = out.append
+    title = "✦ CROSS-PROJECT · " + project_dir.name
+    tag = "PULL" if pull else "LIST"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    add(_ui.rule())
+    add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    add("  " + _ui.c(f"{slug_for(project_dir)} · store {'exists' if store.exists() else 'MISSING — created on pull'}", "dim"))
+    add(_ui.rule())
+    add("")
+    add(_ui.kv("STACKS", (", ".join(sorted(stacks)) if stacks else _ui.c("(none detected)", "dim"))))
+
+    glyphs = {"in-sync": ("✓", "green"), "MISSING": ("↓", "yellow"), "STALE-mirror": ("⟳", "yellow"),
+              "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim")}
+    rows: list = []
     relevant = pulled = refreshed = 0
     for name, fm, text in facts:
         rel = is_relevant(fm, stacks)
@@ -241,7 +253,8 @@ def run(project_dir: Path, pull: bool) -> int:
             status = "in-sync"
         else:
             status = "STALE-mirror"  # canonical changed → must refresh
-        print(f"  [{status:>14}] {name}  ({fm.get('scope', '?')})")
+        g, col = glyphs.get(status, ("·", "dim"))
+        rows.append(f"    {_ui.c(g, col)} {_ui.lbl(f'{status:<14}')}{name}  " + _ui.c(f"({fm.get('scope', '?')})", "dim"))
         if rel:
             relevant += 1
         if pull and rel and status in ("MISSING", "STALE-mirror"):
@@ -262,9 +275,13 @@ def run(project_dir: Path, pull: bool) -> int:
         # (incl. already in-sync), so the network graph reflects reality
         if pull and rel and status in ("MISSING", "STALE-mirror", "in-sync"):
             _record_provenance(name, project_dir.name)  # this mind holds the fact
-    tail = (f"pulled {pulled} new, refreshed {refreshed} stale (index updated)" if pull
+    add(_ui.kv("FACTS", f"{len(facts)} global · {relevant} relevant to this project"))
+    out.extend(rows)
+    add("")
+    tail = (f"pulled {pulled} new · refreshed {refreshed} stale (index updated)" if pull
             else "run with --pull to replicate MISSING + refresh STALE mirrors here")
-    print(f"\nrelevant: {relevant} · {tail}")
+    add(_ui.kv("RESULT", tail))
+    print(_ui.ascii_translate("\n".join(out)))
     return 0
 
 
@@ -316,26 +333,32 @@ def network() -> int:
     differential = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "stack-general"]
     other = [(n, fm) for n, fm, _ in facts if fm.get("scope") not in ("user-global", "stack-general")]
 
-    print("=" * 72)
-    print("SHARED CONSCIOUSNESS — cross-project memory network")
-    print("=" * 72)
-    print(f"minds (projects) : {len(minds)}  —  {', '.join(minds) or '(none)'}")
-    print(f"shared memories  : {len(facts)}  "
-          f"({len(universal)} universal · {len(differential)} differential"
-          + (f" · {len(other)} other" if other else "") + ")\n")
+    out: list = []
+    title = "✦ SHARED CONSCIOUSNESS · cross-project memory"
+    tag = f"{len(minds)} minds"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    out.append("  " + _ui.c(", ".join(minds) or "(no projects yet)", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    out.append(_ui.kv("MEMORIES", f"{len(facts)} shared · {len(universal)} universal · {len(differential)} differential"
+               + (f" · {len(other)} other" if other else "")))
 
     # Universal substrate — held by every mind (a complete graph; listed, not drawn)
-    print("  universal baseline (user-global — every mind holds these):")
+    out.append("")
+    out.append(_ui.kv("UNIVERSAL", _ui.c("user-global — every mind holds these (the shared substrate)", "dim")))
     if universal:
         for n, fm in universal:
             held = len(_holders(fm))
             flag = "" if held == len(minds) else f"  (only {held}/{len(minds)} so far)"
-            print(f"    • {n}{flag}")
+            out.append("    " + _ui.c("•", "cyan") + f" {n}" + _ui.c(flag, "dim"))
     else:
-        print("    (none)")
+        out.append("    " + _ui.c("(none)", "dim"))
 
     # Differential edges — the meaningful topology (stack-general bindings)
-    print("\n  differential edges (stack-general — the bindings that carry signal):")
+    out.append("")
+    out.append(_ui.kv("EDGES", _ui.c("stack-general — the bindings that carry real signal", "dim")))
     proj_diff: dict[str, set[str]] = {}
     for n, fm in differential:
         for pr in _holders(fm):
@@ -347,10 +370,11 @@ def network() -> int:
             if shared:
                 edges.append((a, b, shared))
     if not edges:
-        print("    (none yet — all current memory is universal; differential edges form")
-        print("     when stack-general facts spread to a SUBSET of same-stack projects)")
+        out.append("    " + _ui.c("(none yet — all memory is universal; edges form when stack-general", "dim"))
+        out.append("    " + _ui.c(" facts spread to a SUBSET of same-stack projects)", "dim"))
     for a, b, w in sorted(edges, key=lambda e: -e[2]):
-        print(f"    {a[:24]:>24} ●{'━' * min(w, 20)}● {b[:24]:<24} ({w} shared)")
+        out.append(f"    {a[:24]:>24} {_ui.c('●' + '━' * min(w, 20) + '●', 'cyan')} {b[:24]:<24} " + _ui.c(f"({w} shared)", "dim"))
+    print(_ui.ascii_translate("\n".join(out)))
     return 0
 
 
@@ -406,23 +430,33 @@ def gc(project_dir: Path, apply: bool) -> int:
         return 0
     store = project_store(project_dir)
     orphans = _orphans(store)
-    print(f"project : {project_dir.name}  (slug {slug_for(project_dir)})")
-    print(f"store   : {store}  ({'exists' if store.exists() else 'MISSING'})")
-    print(f"orphans : {len(orphans)} mirror(s) whose canonical is gone\n")
+    out: list = []
+    title = "✦ GARBAGE COLLECT · orphaned mirrors"
+    tag = "APPLY" if apply else "REPORT"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold" if apply else "dim"))
+    out.append("  " + _ui.c(f"{project_dir.name} · {slug_for(project_dir)}", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    out.append(_ui.kv("ORPHANS", f"{len(orphans)} mirror(s) whose canonical is gone"
+               + ("" if orphans else "  " + _ui.c("· nothing to reclaim", "dim"))))
     removed = 0
     for name in orphans:
         if apply:
             (store / f"{name}.md").unlink(missing_ok=True)
             _remove_index_pointer(store, name)
             removed += 1
-            print(f"  [removed] {name}  (file + index pointer)")
+            out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(file + index pointer)", "dim"))
         else:
-            print(f"  [orphan ] {name}  (would remove file + index pointer)")
+            out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer)", "dim"))
     tail = (f"removed {removed} orphan(s)" if apply
             else "run with --apply to delete (surface these to the user first)")
-    print(f"\n{tail}")
+    out.append("")
+    out.append(_ui.kv("RESULT", tail))
     # Dead-edge provenance, report-only (conservative — see docstring).
     if apply:
+        print(_ui.ascii_translate("\n".join(out)))
         return 0
     dead = []
     for name, fm, _ in global_facts():
@@ -431,9 +465,11 @@ def gc(project_dir: Path, apply: bool) -> int:
             if holder == project_dir.name and not (store / f"{name}.md").exists():
                 dead.append(name)
     if dead:
-        print("\ndead provenance edges (canonical lists this project, but no mirror here):")
+        out.append("")
+        out.append(_ui.kv("DEAD", _ui.c("canonical lists this project, but no mirror here (report only)", "dim")))
         for n in dead:
-            print(f"  • {n}  (report only — not auto-pruned)")
+            out.append("    " + _ui.c("·", "dim") + f" {n}")
+    print(_ui.ascii_translate("\n".join(out)))
     return 0
 
 
@@ -549,50 +585,53 @@ def token_report(project_dir: Path, as_json: bool) -> int:
         print(json.dumps(net, indent=2))
         return 0
     t = net["totals"]
-    print("=" * 72)
-    print("NEURAL NETWORK — token consumption across all nodes")
-    print("=" * 72)
-    print(f"basis    : {net['basis']}")
-    print(f"node def : {net['node_def']}")
-    print(f"nodes    : {t['nodes']}  ·  triggering node: {net['trigger']}")
-    print(f"TOTAL    : ≈{t['always_loaded_tokens']} always-loaded tok (paid every "
-          f"session, every node) · ≈{t['recall_tokens']} recall-pool tok")
+    out: list = []
+    title = "✦ NEURAL NETWORK · token cost across all nodes"
+    tag = f"{t['nodes']} nodes"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    out.append("  " + _ui.c(f"trigger: {net['trigger']} · {net['basis']}", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    out.append(_ui.kv("TOTAL", f"≈{t['always_loaded_tokens']} always-loaded "
+               + _ui.c("(paid every session, every node)", "dim") + f" · ≈{t['recall_tokens']} recall-pool"))
     mir = t.get("mirror_index_tokens", 0)
     if mir:
         pct = round(100 * mir / t["always_loaded_tokens"]) if t["always_loaded_tokens"] else 0
-        print(f"           of the always-loaded tax, ≈{mir} tok ({pct}%) is mirror-driven "
-              "— the lever is the GLOBAL store (demote/GC), NOT local prune")
-    print()
+        out.append("    " + _ui.c(f"of which ≈{mir} ({pct}%) mirror-driven — lever is the GLOBAL store (demote/GC), NOT local prune", "dim"))
+    out.append("")
+    out.append(_ui.kv("NODES", _ui.c("per-project always-loaded + recall-pool cost", "dim")))
     for n in sorted(net["nodes"], key=lambda d: -d["always_loaded_tokens"]):
-        mark = " ← trigger (dream ran here)" if n["trigger"] else ""
-        print(f"  {n['node'][:28]:<28} always ≈{n['always_loaded_tokens']:>5} "
-              f"(≈{n.get('mirror_index_tokens', 0)} mirror) · "
-              f"recall ≈{n['recall_tokens']:>6} · {n['facts']:>2} facts "
-              f"({n['shared']} shared){mark}")
+        mark = _ui.c("  ◀ dream ran here", "cyan") if n["trigger"] else ""
+        out.append(f"    {_ui.lbl(n['node'][:24], 24)} always ≈{n['always_loaded_tokens']:>5} "
+                   + _ui.c(f"(≈{n.get('mirror_index_tokens', 0)} mirror)", "dim")
+                   + f" · recall ≈{n['recall_tokens']:>6} · {n['facts']:>2} facts "
+                   + _ui.c(f"({n['shared']} shared)", "dim") + mark)
     if not net["nodes"]:
-        print("  (no nodes hold shared facts yet — run --pull somewhere first)")
+        out.append("  " + _ui.c("(no nodes hold shared facts yet — run --pull somewhere first)", "dim"))
+    print(_ui.ascii_translate("\n".join(out)))
     return 0
 
 
 def main() -> int:
     args = sys.argv[1:]
+    _ui.set_modes(color=_ui.color_enabled(args, sys.stdout), ascii="--ascii" in args)
+    # positional PROJECT_DIR — flags (--json/--apply/--color/--ascii/--no-color) excluded so a
+    # bare visual flag is NEVER mis-read as the project dir (which --pull would replicate INTO).
+    pos = [a for a in args[1:] if not a.startswith("-")]
+    project_dir = Path(pos[0]) if pos else Path.cwd()
     if args and args[0] == "--network":
         return network()
     if args and args[0] == "--tokens":
-        as_json = "--json" in args
-        rest = [a for a in args[1:] if a != "--json"]
-        return token_report(Path(rest[0]) if rest else Path.cwd(), as_json)
+        return token_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
-        apply = "--apply" in args
-        rest = [a for a in args[1:] if a != "--apply"]
-        return gc(Path(rest[0]) if rest else Path.cwd(), apply)
+        return gc(project_dir, "--apply" in args)
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull PROJECT_DIR | --gc [--apply] PROJECT_DIR "
               "| --tokens [--json] PROJECT_DIR | --network", file=sys.stderr)
         return 2
-    pull = args[0] == "--pull"
-    project_dir = Path(args[1]) if len(args) > 1 else Path.cwd()
-    return run(project_dir, pull)
+    return run(project_dir, args[0] == "--pull")
 
 
 if __name__ == "__main__":
