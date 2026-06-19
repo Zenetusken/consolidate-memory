@@ -9,6 +9,10 @@ each project's store. This is the engine for that:
   --list PROJECT_DIR   show which global facts are relevant + present/missing (read-only)
   --pull PROJECT_DIR   copy missing relevant global facts into the project's store
                        (additive; marks copies with `global_ref:` so they re-sync)
+  --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]
+                       hand a project-authored local fact UP to the canonical global store and
+                       convert the origin's copy into a managed mirror (the local→canonical
+                       promotion hand-off; never leaves a dup/orphan — see promote())
 
 Relevance: `scope: user-global` facts apply to every project; `scope: stack-general`
 facts apply only if their `stacks:` intersect the project's detected stacks. Project
@@ -56,6 +60,11 @@ _PY_SCAN_CAP = 400       # max *.py files scanned for imports (bound cost on lar
 
 
 _SAFE_NAME = r"[A-Za-z0-9._-]+"  # the documented kebab/snake charset for fact + project names
+# Stems that name a store's always-loaded INDEX, never a fact. `_safe_stem` accepts them (they are
+# valid filenames), so promote() must reject them explicitly — writing a fact to `<store>/MEMORY.md`
+# would clobber the index every session loads. (`.`/`..` are neutralized by the `.md` suffix, which
+# keeps the write inside the store; `MEMORY` is the one stem that collides with a real, load-bearing file.)
+_RESERVED_STEMS = {"MEMORY"}
 
 
 def _safe_stem(stem: str) -> bool:
@@ -267,13 +276,19 @@ def global_facts() -> list[tuple[str, dict, str]]:
     return facts
 
 
+def _fact_stacks(fm: dict) -> set[str]:
+    """A fact's declared `stacks:` tags as a lowercased-token set. Shared by relevance matching
+    AND the promotion stacks-guard so the two parse `stacks:` identically (a stack-general fact is
+    relevant — and promotable — iff this set is non-empty and intersects the project's stacks)."""
+    return set(re.findall(r"[a-z0-9-]+", fm.get("stacks", "").lower()))
+
+
 def is_relevant(fm: dict, stacks: set[str]) -> bool:
     scope = fm.get("scope", "")
     if scope == "user-global":
         return True
     if scope == "stack-general":
-        fact_stacks = set(re.findall(r"[a-z0-9-]+", fm.get("stacks", "").lower()))
-        return bool(fact_stacks & stacks)
+        return bool(_fact_stacks(fm) & stacks)
     return False
 
 
@@ -603,6 +618,127 @@ def gc(project_dir: Path, apply: bool) -> int:
     return 0
 
 
+# ── promotion: hand a local fact UP to the canonical global store (v0.1.16) ─────
+def promote(project_dir: Path, local_fact: str, canon_name: str) -> int:
+    """Hand a project-authored LOCAL fact up to the canonical global store, then convert the
+    origin's own copy into a managed mirror — the local→canonical hand-off the Phase-1 promotion
+    re-audit drives. SINGLE-SHOT: one invocation does the full hand-off — write the canonical, record
+    provenance, rewrite the origin copy as a mirror, and (on a rename) remove the old-named local file
+    + its index pointer. That closes the gap a MULTI-STEP, hand-done hand-off leaves open: a forgotten
+    conversion step strands a project-authored copy that `--gc` can never reclaim (a non-mirror), and on
+    the next --pull it would either SHADOW the canonical (same name → `present(local)`, never refreshes)
+    or DUPLICATE it (renamed → the canonical re-pulls as a second file). (It is not crash-atomic — an
+    interrupted process can still leave a partial state — but a completed call never does.)
+
+    CANON_NAME defaults to LOCAL_FACT; pass it to RENAME on promote (normalize `_`→`-` / drop a
+    date) or to DEDUP a local copy onto an existing canonical. An existing canonical is treated as
+    AUTHORITATIVE and is never overwritten (other projects already mirror it) — that case is a
+    RECONCILE: only the origin side (mirror + provenance + rename cleanup) runs.
+
+    The model owns the re-scope (sets `scope`/`stacks` on the local fact in Phase 4) and the global
+    MEMORY.md index line (as for any canonical); this op owns the file mechanics + the origin index.
+    Writes the REAL global store, so it is exercised hermetically by simulate_accumulation.py
+    (Probe K), never by smoke.py."""
+    project_dir = project_dir.resolve()
+    store = project_store(project_dir)
+    if not _safe_stem(local_fact) or not _safe_stem(canon_name):
+        print("promote: fact names must be kebab/snake-case (safe stems)", file=sys.stderr)
+        return 2
+    if local_fact in _RESERVED_STEMS or canon_name in _RESERVED_STEMS:
+        print(f"promote: '{'/'.join(_RESERVED_STEMS)}' is a reserved index name, not a fact — refusing "
+              "(writing it would clobber a store's always-loaded MEMORY.md index)", file=sys.stderr)
+        return 2
+    src = store / f"{local_fact}.md"
+    if not src.exists():
+        print(f"promote: no local fact '{local_fact}' in {store}", file=sys.stderr)
+        return 1
+    local_text = src.read_text(encoding="utf-8", errors="replace")
+    if _is_mirror(local_text):  # idempotency + safety guard: a mirror is already global
+        print(f"promote: '{local_fact}' is already a managed mirror (already global) — nothing to promote",
+              file=sys.stderr)
+        return 1
+
+    GLOBAL.mkdir(parents=True, exist_ok=True)
+    canon_path = GLOBAL / f"{canon_name}.md"
+    reconcile = canon_path.exists()  # an existing canonical is authoritative — never clobber it
+    decide_fm = _frontmatter(canon_path.read_text(encoding="utf-8", errors="replace") if reconcile else local_text)
+    scope = decide_fm.get("scope", "")
+    ctx = f"existing canonical '{canon_name}'" if reconcile else f"local fact '{local_fact}'"
+    # Guard 1 — a promoted canonical must be REPLICABLE: scope ∈ {stack-general, user-global}.
+    # A project-local/scopeless canonical is dead weight (is_relevant returns False for it).
+    if scope not in ("stack-general", "user-global"):
+        print(f"promote: {ctx} has scope '{scope or '(none)'}' — set scope: stack-general|user-global "
+              "before promoting (a project-local/scopeless canonical never replicates)", file=sys.stderr)
+        return 1
+    # Guard 2 — a stack-general fact with NO `stacks:` is DEAD: is_relevant intersects an empty set,
+    # so it matches no project ever. Refuse rather than write a canonical that can't replicate.
+    if scope == "stack-general" and not _fact_stacks(decide_fm):
+        print(f"promote: {ctx} is stack-general but declares no `stacks:` — it could match no project "
+              "(is_relevant needs a non-empty stacks intersection). Add stacks: [...] first.", file=sys.stderr)
+        return 1
+    # Guard 3 — a RENAME/dedup whose destination name already holds a DISTINCT project-authored fact
+    # would silently destroy it; run()'s `present(local)` rule is "never clobber" and promote must match
+    # it. `samefile` excludes a case-only rename on a case-insensitive FS (`Foo`→`foo` is one file —
+    # handled at the unlink below); a MIRROR already at the destination is a mirror of THIS canonical, so
+    # refreshing it is safe (the reconcile/idempotent path). Checked BEFORE any write, so no partial state.
+    dest = store / f"{canon_name}.md"
+    if (canon_name != local_fact and dest.exists() and not src.samefile(dest)
+            and not _is_mirror(dest.read_text(encoding="utf-8", errors="replace"))):
+        print(f"promote: a different project-authored fact already occupies '{canon_name}' in this store — "
+              "refusing (a rename here would overwrite it). Pick another CANON_NAME or reconcile by hand.",
+              file=sys.stderr)
+        return 1
+
+    # Write the canonical from the (re-scoped) local fact — but NEVER overwrite an existing one.
+    if not reconcile:
+        canon_path.write_text(local_text, encoding="utf-8")
+    _record_provenance(canon_name, project_dir.name)
+    canon_text = canon_path.read_text(encoding="utf-8", errors="replace")  # re-read POST-provenance
+    fm = _frontmatter(canon_text)
+
+    # Convert the origin's copy into a managed mirror of the POST-provenance canonical, so a later
+    # --pull reports `in-sync` (not a spurious STALE-mirror refresh) and never re-creates a shadow.
+    dest.write_text(_as_mirror(canon_text, canon_name), encoding="utf-8")
+    _ensure_index_pointer(store, canon_name, fm)
+    renamed = canon_name != local_fact
+    if renamed:  # the dup/orphan guard: drop the old-named project-authored file + its index pointer …
+        _remove_index_pointer(store, local_fact)
+        if src.exists() and not src.samefile(dest):  # … but NOT when src IS the freshly-written mirror
+            src.unlink()                             # (a case-only rename on a case-insensitive FS)
+
+    # Change-1↔Change-3 link: if the ORIGIN itself doesn't detect this stack-general fact's stack,
+    # its own mirror reads `irrelevant` on the next --pull and freezes (never refreshes) — almost
+    # always a mis-tag. WARN (the local recall still works + other matching projects pull the live
+    # copy); don't refuse.
+    if scope == "stack-general":
+        origin_stacks = detect_stacks(project_dir)
+        if not (_fact_stacks(fm) & origin_stacks):
+            print(f"  ⚠ origin {project_dir.name} does not detect stack(s) {sorted(_fact_stacks(fm))} "
+                  f"(detected: {sorted(origin_stacks) or '∅'}) — its own mirror will read irrelevant "
+                  "and won't refresh on --pull (likely a mis-tag)", file=sys.stderr)
+
+    out: list = []
+    title = "✦ PROMOTE · " + project_dir.name
+    tag = "RECONCILE" if reconcile else "CREATE"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    out.append("  " + _ui.c(f"{local_fact} → {canon_name}  ({scope})", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    out.append(_ui.kv("CANONICAL", f"{canon_name}.md · "
+               + ("attached origin to existing canonical (not overwritten)" if reconcile
+                  else "written to the global store")))
+    out.append(_ui.kv("ORIGIN", "local copy rewritten as a managed mirror"
+               + ("  · old-named file + index pointer removed (rename)" if renamed else "")))
+    out.append(_ui.kv("PROVENANCE", f"{project_dir.name} recorded as a holder"))
+    out.append("")
+    out.append(_ui.kv("NEXT", _ui.c("add the canonical's line to ~/.claude/memory/MEMORY.md; same-scope "
+               "projects pick it up on their next --pull", "dim")))
+    print(_ui.ascii_translate("\n".join(out)))
+    return 0
+
+
 # ── token observability: per-node cost across the neural network ────────────────
 def _label_from_slug(slug: str) -> str:
     """Human label for a node from its slug dir. The slug is the abs path with '/'→'-',
@@ -760,9 +896,16 @@ def main() -> int:
         return token_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
         return gc(project_dir, "--apply" in args)
+    if args and args[0] == "--promote":
+        # --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]  (CANON_NAME defaults to LOCAL_FACT)
+        if len(pos) < 2:
+            print("usage: sync_global.py --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]", file=sys.stderr)
+            return 2
+        return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1])
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull PROJECT_DIR | --gc [--apply] PROJECT_DIR "
-              "| --tokens [--json] PROJECT_DIR | --network", file=sys.stderr)
+              "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] | --tokens [--json] PROJECT_DIR "
+              "| --network", file=sys.stderr)
         return 2
     return run(project_dir, args[0] == "--pull")
 

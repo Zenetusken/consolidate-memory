@@ -226,6 +226,27 @@ reason `"demotion candidate → would route to <scope>"`); on your confirmation,
 in place** to `corrected` (re-scope) or `deleted` (canonical delete + Phase-5 GC) — one fact, one
 entry; a declined candidate stays `reconciled`. Never auto-demote.
 
+Then re-audit **this project's own local store for PROMOTION — the symmetric, HIGHER-STAKES counterpart**
+to the demotion pass. `memory_status.py` (Phase 0) surfaces a **"promote?"** signal listing **authored,
+non-mirror, unscoped** facts whose `type` leans cross-project (feedback/reference) — a **weak seed, judged
+by CONTENT, not the tag.** For each, **re-walk the Phase-2 cascade by content**: a fact gated only by the
+user's *fleet-CONSTANT* substrate routes to `user-global`; one reusable on a *specific, narrow* same-stack
+(a RAG/GPU technique lesson) routes to `stack-general`; anything project-specific stays put. **Promotion is
+the higher-blast-radius direction** — a wrong/stale promotion replicates an always-loaded pointer into
+*every* same-stack project and is undoable only by a global delete + fleet-wide GC — so gate it **stricter
+than demotion**: the conservative floor (when in doubt, stay local) plus **two distinct screens** — (a) the
+Phase-3 **re-verification** that the fact is still TRUE against the live tree, AND (b) a **point-in-time /
+supersession screen** (a dated snapshot — "X SHIPPED 2026-05-27", a one-off A/B result — is NOT a durable
+rule; check for a newer same-topic fact that supersedes it). Only durable, current lessons promote. **Dedup
+against existing canonicals by CONTENT** (a differently-named local fact that restates a global one — e.g.
+a local `validate-each-increment` vs the global `gated-spec-driven-change-workflow` — reconciles ONTO the
+existing canonical via the rename/dedup path, never a second copy). **Cap/stage** the review (the feedback
+seed first, technique facts a later pass) — never rubber-stamp a batch. These are **detect-and-offer**:
+surface each as one `entries[]` row (`action: reconciled`, reason `"promotion candidate → would route to
+<scope>"`); on your confirmation, set `scope`/`stacks` on the local fact and run the Phase-4 hand-off,
+updating that **same row in place** to `corrected` (one fact, one entry; a declined candidate stays
+`reconciled`). Never auto-promote.
+
 ### Phase 2 — Gather candidate claims (claims-first)
 
 Produce a short, explicit list of **discrete candidate facts** — each a single
@@ -388,12 +409,25 @@ placing each fact in its tier and optimizing it for how that tier loads:
   accuracy and completeness; these don't tax every session.
 - **No cross-store duplication**: if a fact lives in the repo docs, an auto-memory
   entry should point at it, not restate it.
-- **Global-scope facts** (`scope: stack-general` or `user-global`): write the
-  canonical copy to `~/.claude/memory/` with `scope`, `stacks: [...]`, and `projects:
-  [...]` (provenance) in the frontmatter, add a line to `~/.claude/memory/MEMORY.md`,
-  AND keep a project-store copy so it recalls *here* (recall is slug-scoped). Other
-  projects pick it up when they next run their own Phase-1 `--pull`. Don't move a
-  fact out of a project store that currently recalls it — the global copy is additive.
+- **Global-scope facts** (`scope: stack-general` or `user-global`) — two paths:
+  - **A NET-NEW fact discovered this session:** write the canonical copy to
+    `~/.claude/memory/` with `scope`, `stacks: [...]`, and `projects: [...]` (provenance)
+    in the frontmatter, add a line to `~/.claude/memory/MEMORY.md`, AND keep a project-store
+    copy so it recalls *here* (recall is slug-scoped).
+  - **PROMOTING a fact that already exists in this project's local store** (the Phase-1
+    promotion re-audit): **don't hand-copy it** — first set `scope`/`stacks` on the local
+    fact, then run the scripted hand-off, which writes the canonical, converts this project's
+    local copy into a managed mirror, records provenance, and (on a rename) removes the
+    old-named local file + its index pointer — so the promotion can never leave a
+    duplicate/orphan:
+    ```bash
+    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --promote . LOCAL_FACT [CANON_NAME]
+    ```
+    Pass `CANON_NAME` to normalize the name (`_`→`-`, drop a date) or to **dedup** onto an
+    existing canonical (never overwritten). You still **add the `~/.claude/memory/MEMORY.md`
+    line** (the op leaves the global index to you — the single writer).
+  Either way: other projects pick it up when they next run their own Phase-1 `--pull`; don't
+  move a fact out of a project store that currently recalls it (the global copy is additive).
   Record each promotion in `cross_project.promoted` (name + scope), and in that entry's
   **`reason`** capture the **deciding gate + the concrete other project named for G2.3**
   (the promotion cascade — Phase 2), so the scope decision is auditable.

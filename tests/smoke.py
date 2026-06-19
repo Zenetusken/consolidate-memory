@@ -366,6 +366,13 @@ check("v0.1.16: promotion seed — an already-scoped fact is NOT",
       ms._is_promotion_candidate("---\nname: z\nmetadata:\n  type: feedback\n  scope: user-global\n---\nb\n") is False)
 check("v0.1.16: promotion seed — a mirror is NOT (already global)",
       ms._is_promotion_candidate("---\nname: m\nmetadata:\n  global_ref: m\n  type: feedback\n---\nb\n") is False)
+# promotion stacks-guard helper (pure): the set is_relevant intersects AND the dead-canonical guard
+# refuses on. A stack-general fact with an empty set can match no project — promote() must reject it.
+check("v0.1.16: _fact_stacks — tags parse to a set; empty/absent → empty set (the dead-canonical case)",
+      sg._fact_stacks({"stacks": "[rag, gpu]"}) == {"rag", "gpu"} and sg._fact_stacks({}) == set())
+# --promote writes the REAL global store, so it is exercised hermetically in simulate_accumulation.py
+# (Probe K), NEVER here. Pin only that the op is exposed (a missing/renamed op would break the SKILL).
+check("v0.1.16: promote() is exposed (the local→canonical hand-off op)", callable(sg.promote))
 
 # --- node label: hyphenated project name not mislabeled (slug is not invertible) ---
 check("node label: keeps hyphenated tail, not 'memory'",
