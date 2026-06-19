@@ -5,6 +5,53 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.16] — 2026-06-19
+
+### Added (cross-project middle tier — real-usage stack detection + a local→canonical promotion path; additive, backward-compatible → patch)
+- **Real-usage `detect_stacks`.** A project's stacks are now inferred from REAL USAGE, never a doc-mention:
+  declared dependencies in `pyproject.toml` (PEP 621 `[project]` + optional-deps, PEP 735 dependency-groups,
+  and poetry tables — matched as EXACT PEP 503-normalized dep-name tokens, so `sentence-transformers` is
+  never read as `transformers`; comments stripped string-aware; extras-safe array parsing), actual `import`s
+  in `*.py` (ast-based, so an `import` inside a docstring/string literal does not count), and real marker
+  dirs/files (`.claude/`, a `SKILL.md` via bounded `rglob`). Lockfiles are excluded (transitive deps
+  over-detect). This kills the old prose-keyword false-match — a stdlib repo whose README merely said
+  "rag"/"scraper" used to inherit `rag`/`playwright` — so `is_relevant` binds a `stack-general:[rag]` fact
+  only to projects that really depend on / import a RAG library. The middle tier is meaningful, not
+  universal-or-nothing. (`_kw_hit` removed; the detection map keeps every stack — `python`/`mypy`/`rag`/
+  `gpu`/`playwright`/`claude-code` — now real-usage-gated.)
+- **`sync_global.py --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]`** — the local→canonical hand-off
+  symmetric to `--pull`. Hands a project-authored local fact UP to the canonical global store and converts
+  the origin's own copy into a managed `global_ref:` mirror in one single-shot op (canonical write +
+  provenance + origin-mirror + rename cleanup), so a completed call never leaves the dup/orphan a multi-step
+  hand-done hand-off would (a stranded project-authored copy that `--gc` can't reclaim, shadowing or
+  duplicating the canonical on the next `--pull`). `CANON_NAME` renames (`_`→`-` / drop a date) or dedups
+  onto an existing canonical (whose content is **never overwritten** — only the origin is reconciled + the
+  holder appended to provenance). Five refusal guards: an already-mirror fact, a non-replicable scope
+  (must be `stack-general`/`user-global`), a `stack-general` fact with no `stacks:` (matches no project), a
+  destination-clobber of a distinct local fact, and the reserved index name `MEMORY`. Exposed as `cm promote`.
+- **Phase-0 promotion-candidate surface + Phase-1 promotion re-audit.** `memory_status.py` surfaces a
+  "promote?" signal (authored, non-mirror, unscoped facts whose `type` leans cross-project — feedback/
+  reference, capped); the SKILL gains a Phase-1 promotion re-audit symmetric to the existing user-global
+  demotion re-audit — re-walk the scope cascade by CONTENT, gated **stricter** than demotion (it is the
+  higher-blast-radius direction): conservative floor, a Phase-3 re-verify AND a point-in-time/supersession
+  screen, dedup vs existing canonicals by content, a per-pass cap, detect-and-offer only. `_is_mirror`
+  promoted to `memory_status` as the single shared definition (smoke-pinned), so the promotion surface and
+  `sync_global` share one mirror-recognizer.
+
+### Internal
+- `_fact_stacks` extracted as the single `stacks:` parser shared by `is_relevant` + the promotion guards.
+  New smoke coverage: the pyproject parser (PEP 621/735/poetry, extras-safe, string-aware comment strip),
+  ast-based imports, exact-token stack maps, `is_relevant`, the `_is_mirror` single-source pin, the
+  promotion-candidate seed filter, `_fact_stacks`, and the `promote` op surface. `simulate_accumulation.py`
+  gains **Probe K** — a hermetic end-to-end of the `--promote` hand-off (create / rename / reconcile-dedup +
+  all five refusal guards), asserting the load-bearing invariant that a follow-up `--pull` on the origin is
+  `in-sync` (the mirror is already post-provenance), not a STALE rewrite. `references/harness-map.md` +
+  SKILL Phase-1/Phase-4 updated to the real-usage detection + dual (demotion/promotion) re-audit model.
+- **Patch, not minor:** no removed/renamed script or CLI flag (`--promote` is additive), no manifest or
+  cycle-record schema change (legacy records still render). The patch-vs-minor guarantee holds because the
+  global store has **0 `stack-general` facts today** — so no live mirror is re-routed by this release; the
+  first such facts are created by a later curated promotion pass, after this version ships.
+
 ## [0.1.15] — 2026-06-18
 
 ### Added (output polish — hanging-indent wrapping + uniform width; additive, backward-compatible → patch)

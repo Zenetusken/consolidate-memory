@@ -9,10 +9,15 @@ each project's store. This is the engine for that:
   --list PROJECT_DIR   show which global facts are relevant + present/missing (read-only)
   --pull PROJECT_DIR   copy missing relevant global facts into the project's store
                        (additive; marks copies with `global_ref:` so they re-sync)
+  --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]
+                       hand a project-authored local fact UP to the canonical global store and
+                       convert the origin's copy into a managed mirror (the local→canonical
+                       promotion hand-off; never leaves a dup/orphan — see promote())
 
 Relevance: `scope: user-global` facts apply to every project; `scope: stack-general`
 facts apply only if their `stacks:` intersect the project's detected stacks. Project
-stacks are inferred from pyproject.toml + CLAUDE.md keywords.
+stacks are inferred from REAL USAGE — declared dependencies, actual imports, and marker
+dirs/files (NOT doc-mentions; v0.1.16).
 
 The consolidate-memory skill calls --pull in Phase 1 (bring global facts down) and
 writes new global-scope facts up to the global store in Phase 4.
@@ -20,6 +25,8 @@ writes new global-scope facts up to the global store in Phase 4.
 
 from __future__ import annotations
 
+import ast
+import os
 import re
 import sys
 from pathlib import Path
@@ -28,20 +35,36 @@ from pathlib import Path
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
 # on sys.path[0] at runtime; both live in the plugin's scripts/ dir.
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import _sane, est_tokens, slug_for, _frontmatter, _valid_uuid
+from memory_status import _is_mirror, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid
 
 GLOBAL = Path.home() / ".claude" / "memory"
-_STACK_KEYWORDS = {
-    "python": ["python", "pyproject", "ruff", "pytest"],
-    "mypy": ["mypy", "py.typed", "stubs"],
-    "rag": ["rag", "embedding", "lancedb", "faiss", "vector", "retriev", "mxbai", "rerank"],
-    "gpu": ["cuda", "vllm", "vram", "gpu", "torch"],
-    "playwright": ["playwright", "scraper", "browser"],
-    "claude-code": [".claude", "skill", "agents.md"],
+# Real-usage stack detection (v0.1.16): a stack counts ONLY on a REAL signal — a DECLARED dependency
+# (pyproject), an ACTUAL import (*.py), or a real marker dir/file — NEVER a doc-mention. The old
+# prose-keyword model false-matched a stdlib plugin's README ("rag", "scraper") into rag/playwright,
+# collapsing the stack-general tier toward universal. Two EXACT-token sets per stack: DISTRIBUTION
+# names (matched against parsed pyproject dep names) + MODULE names (matched against import statements).
+# Exact membership, never substring — so `sentence-transformers` (rag) is never read as `transformers`.
+_STACK_DEPS = {   # PEP 503-normalized DISTRIBUTION names → stack
+    "mypy": {"mypy"},
+    "rag": {"lancedb", "faiss", "faiss-cpu", "faiss-gpu", "sentence-transformers", "chromadb", "rerankers"},
+    "gpu": {"torch", "torchvision", "torchaudio", "open-clip-torch", "vllm"},
+    "playwright": {"playwright", "playwright-stealth"},
 }
+_STACK_IMPORTS = {   # top-level MODULE names (as imported) → stack
+    "rag": {"lancedb", "faiss", "sentence_transformers", "chromadb"},
+    "gpu": {"torch", "torchvision", "open_clip", "vllm"},
+    "playwright": {"playwright"},
+}
+_PYPROJECT_CAP = 65536   # bytes read from pyproject (config is small; bound the read)
+_PY_SCAN_CAP = 400       # max *.py files scanned for imports (bound cost on large repos)
 
 
 _SAFE_NAME = r"[A-Za-z0-9._-]+"  # the documented kebab/snake charset for fact + project names
+# Stems that name a store's always-loaded INDEX, never a fact. `_safe_stem` accepts them (they are
+# valid filenames), so promote() must reject them explicitly — writing a fact to `<store>/MEMORY.md`
+# would clobber the index every session loads. (`.`/`..` are neutralized by the `.md` suffix, which
+# keeps the write inside the store; `MEMORY` is the one stem that collides with a real, load-bearing file.)
+_RESERVED_STEMS = {"MEMORY"}
 
 
 def _safe_stem(stem: str) -> bool:
@@ -61,61 +84,177 @@ def project_store(project_dir: Path) -> Path:
     return Path.home() / ".claude" / "projects" / slug_for(project_dir) / "memory"
 
 
-def _is_mirror(text: str) -> bool:
-    """True iff a fact is a MANAGED MIRROR — detected by the EXACT structured forms
-    `_as_mirror` writes inside the frontmatter, NEVER a substring anywhere in the file:
-
-      • a column-0 `# global_ref: <name>` comment stamp that is the FIRST frontmatter
-        line (exactly where `_as_mirror` inserts it in the no-metadata-block case — a
-        `# global_ref:` comment *elsewhere* in a hand-authored note must not count), or
-      • a `  global_ref: <name>` line that is a DIRECT (2-space) child of a top-level
-        `metadata:` key (where `_as_mirror` injects it).
-
-    Parses frontmatter STRUCTURE, not the raw block: a regex over the raw text matches
-    `global_ref:` on an indented *folded-scalar continuation line* (e.g. under a
-    `description: >-`), which would misclassify a project-authored note — and GC would
-    then DELETE it. Bias is to False on anything ambiguous: a missed mirror merely isn't
-    reclaimed (safe), whereas a false positive destroys user memory (unsafe)."""
-    if text.startswith("﻿"):     # tolerate a leading BOM (consistent with _frontmatter), else
-        text = text[1:]                # the ^--- anchor fails and a BOM mirror reads as un-managed
-    m = re.search(r"^---\n(.*?)\n---", text, re.S)
-    if not m:
-        return False
-    top = None       # the current top-level frontmatter key
-    first = True      # the col-0 stamp only counts as the FIRST non-blank frontmatter line
-    for ln in m.group(1).splitlines():
-        if not ln.strip():
-            continue
-        if first and re.match(r"#\s*global_ref:\s*\S", ln):       # col-0 stamp (first line only)
-            return True
-        first = False
-        if not ln[:1].isspace():                                  # a top-level line
-            mk = re.match(r"([^:#\s][^:]*):", ln)
-            top = mk.group(1).strip() if mk else None
-            continue
-        # indented line: accept ONLY as a direct (exactly-2-space) child of metadata
-        if top == "metadata" and re.match(r" {2}global_ref:\s*\S", ln):
-            return True
-    return False
+def _read_capped(p: Path, cap: int = _PYPROJECT_CAP) -> str:
+    try:
+        return p.read_text(encoding="utf-8", errors="replace")[:cap]
+    except OSError:
+        return ""
 
 
-def _kw_hit(blob: str, kw: str) -> bool:
-    """True if `kw` appears in `blob` as a whole token, not a substring (Fix D).
+def _strip_toml_comments(text: str) -> str:
+    """Drop `#` comments STRING-AWARE — a `#` inside a quoted TOML value (a trailing `# note`, a URL
+    fragment) is NOT a comment. Per-line (pyproject dep arrays don't use multiline triple-quoted strings)."""
+    out = []
+    for line in text.splitlines():
+        buf: list[str] = []
+        quote = ""
+        for ch in line:
+            if quote:
+                buf.append(ch)
+                if ch == quote:
+                    quote = ""
+            elif ch in ("'", '"'):
+                quote = ch
+                buf.append(ch)
+            elif ch == "#":
+                break
+            else:
+                buf.append(ch)
+        out.append("".join(buf))
+    return "\n".join(out)
 
-    Plain substring matching made loose keywords over-trigger: `skill` matched
-    `reskilling`, so stack-general facts spread far wider than their stack. We bound
-    matches with non-alphanumeric edges (so dotted keywords like `.claude` / `py.typed`
-    still work, where `\\b` would misbehave around the dot)."""
-    return re.search(rf"(?<![a-z0-9]){re.escape(kw)}(?![a-z0-9])", blob) is not None
+
+def _norm_dep(name: str) -> str:
+    """PEP 503 normalization: lowercase + runs of [-_.] → single '-'."""
+    return re.sub(r"[-_.]+", "-", name.strip().lower())
+
+
+def _names_in_array(block: str) -> set[str]:
+    """Leading distribution names of the quoted ITEMS in a TOML dependency array body. Matches each
+    FULL quoted string (so a quote INSIDE an item — e.g. an env marker `... == 'linux'` — isn't read as
+    its own dep), then takes the item's leading PEP-508 name."""
+    names: set[str] = set()
+    for q in re.finditer(r'"([^"]*)"' + r"|'([^']*)'", block):
+        item = q.group(1) if q.group(1) is not None else (q.group(2) or "")
+        m = re.match(r"\s*([A-Za-z0-9][A-Za-z0-9._-]*)", item)
+        if m:
+            names.add(_norm_dep(m.group(1)))
+    return names
+
+
+def _match_bracket(text: str, i: int) -> int:
+    """`text[i]` is '['. Return the index just past its MATCHING ']' — QUOTE- and NEST-aware, so an
+    extra inside a dep string (`"uvicorn[standard]"`) can't close the array early."""
+    depth, quote = 0, ""
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in ("'", '"'):
+            quote = ch
+        elif ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                return i + 1
+        i += 1
+    return len(text)
+
+
+def _arrays_under(text: str, header_re: str) -> set[str]:
+    """Dep names from every `… = [ … ]` array whose `=` is matched by `header_re` (a regex ending just
+    before the value); the array's bounds are found via _match_bracket (extras-safe, not a greedy `]`)."""
+    names: set[str] = set()
+    for m in re.finditer(header_re, text):
+        ob = text.find("[", m.end())
+        if ob != -1:
+            names |= _names_in_array(text[ob:_match_bracket(text, ob)])
+    return names
+
+
+def _dep_names_from_text(pyproject_text: str) -> set[str]:
+    """Parse normalized DIRECT dependency names from pyproject.toml TEXT — PEP 621 `dependencies` +
+    `[project.optional-dependencies]`, PEP 735 `[dependency-groups]`, and poetry `[tool.poetry…dependencies]`
+    tables. Comments stripped string-aware; array bounds extras-safe. Pure (text → names) so it is
+    unit-testable without a filesystem. Stdlib-only (no `tomllib` — the plugin runs on 3.10)."""
+    text = _strip_toml_comments(pyproject_text)
+    names: set[str] = set()
+    for sec in re.finditer(r"(?ms)^\[project\](.*?)(?=^\[|\Z)", text):          # PEP 621 main — ONLY under [project]
+        names |= _arrays_under(sec.group(1), r"(?m)^\s*dependencies\s*=\s*(?=\[)")
+    for sec in re.finditer(r"(?ms)^\[(?:project\.optional-dependencies|dependency-groups)[^\]]*\](.*?)(?=^\[|\Z)", text):
+        names |= _arrays_under(sec.group(1), r"=\s*(?=\[)")                    # arrays inside those tables
+    for sec in re.finditer(r"(?ms)^\[tool\.poetry(?:\.group\.[^\]]+)?\.(?:dev-)?dependencies\](.*?)(?=^\[|\Z)", text):
+        for km in re.finditer(r"(?m)^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*=", sec.group(1)):  # poetry table keys (+ legacy dev-)
+            names.add(_norm_dep(km.group(1)))
+    return names
+
+
+def _pyproject_dep_names(project_dir: Path) -> set[str]:
+    """DIRECT dependency names declared in a project's pyproject.toml (LOCKFILES NOT read — they carry
+    transitive deps → over-detection)."""
+    p = project_dir / "pyproject.toml"
+    return _dep_names_from_text(_read_capped(p)) if p.exists() else set()
+
+
+_PY_SKIP_DIRS = {".venv", "venv", ".git", "node_modules", "__pycache__", "build", "dist", ".mypy_cache", ".tox", ".ruff_cache"}
+
+
+def _imports_in_source(src: str) -> set[str]:
+    """Top-level modules IMPORTED in Python source, via `ast` — so an `import x` inside a docstring or a
+    string literal does NOT count (it isn't a real import). Relative imports (`from . import …`) are
+    skipped (intra-package, no external-stack signal). Returns an empty set on unparseable source."""
+    try:
+        tree = ast.parse(src)
+    except (SyntaxError, ValueError):
+        return set()
+    mods: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                mods.add(alias.name.split(".")[0])
+        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+            mods.add(node.module.split(".")[0])
+    return mods
+
+
+def _scan_py(project_dir: Path) -> tuple[set[str], int, bool]:
+    """One pruned, capped walk of the project tree → (top-level module names actually imported [ast-based],
+    count of .py files seen, whether a real claude-code marker [`.claude/` dir or a `SKILL.md`] exists).
+    Past the .py cap we keep WALKING (so a late/nested marker is still found) but stop PARSING files."""
+    mods: set[str] = set()
+    n = 0
+    claude = False
+    capped = False
+    for root, dirs, files in os.walk(project_dir):
+        if ".claude" in dirs:
+            claude = True
+        dirs[:] = [d for d in dirs if d not in _PY_SKIP_DIRS]
+        for fn in files:
+            if fn == "SKILL.md":
+                claude = True
+            if capped or not fn.endswith(".py"):
+                continue
+            n += 1
+            if n > _PY_SCAN_CAP:
+                capped = True
+                continue
+            mods |= _imports_in_source(_read_capped(Path(root) / fn, 524288))
+    return mods, n, claude
 
 
 def detect_stacks(project_dir: Path) -> set[str]:
-    blob = ""
-    for name in ("pyproject.toml", "CLAUDE.md", "README.md"):
-        p = project_dir / name
-        if p.exists():
-            blob += p.read_text(encoding="utf-8", errors="replace").lower()
-    found = {s for s, kws in _STACK_KEYWORDS.items() if any(_kw_hit(blob, k) for k in kws)}
+    """Detect a project's stacks from REAL USAGE — declared deps, actual imports, and real marker
+    dirs/files — NOT doc-mentions (v0.1.16; see references/harness-map.md). Lockfiles are excluded
+    (transitive deps over-detect). `is_relevant` matches `stack-general` facts against this, so
+    precision here is what keeps the middle tier meaningful: a `stack-general:[rag]` fact must bind real
+    RAG projects, not any repo whose README merely says "rag"."""
+    found: set[str] = set()
+    mods, n_py, has_claude = _scan_py(project_dir)
+    if (project_dir / "pyproject.toml").exists() or n_py:
+        found.add("python")
+    deps = _pyproject_dep_names(project_dir)
+    for stack, names in _STACK_DEPS.items():
+        if deps & names:
+            found.add(stack)
+    if re.search(r"(?m)^\s*\[tool\.mypy\]", _strip_toml_comments(_read_capped(project_dir / "pyproject.toml"))) or (project_dir / "mypy.ini").exists():
+        found.add("mypy")
+    for stack, names in _STACK_IMPORTS.items():
+        if mods & names:
+            found.add(stack)
+    if has_claude:
+        found.add("claude-code")
     return found
 
 
@@ -137,13 +276,19 @@ def global_facts() -> list[tuple[str, dict, str]]:
     return facts
 
 
+def _fact_stacks(fm: dict) -> set[str]:
+    """A fact's declared `stacks:` tags as a lowercased-token set. Shared by relevance matching
+    AND the promotion stacks-guard so the two parse `stacks:` identically (a stack-general fact is
+    relevant — and promotable — iff this set is non-empty and intersects the project's stacks)."""
+    return set(re.findall(r"[a-z0-9-]+", fm.get("stacks", "").lower()))
+
+
 def is_relevant(fm: dict, stacks: set[str]) -> bool:
     scope = fm.get("scope", "")
     if scope == "user-global":
         return True
     if scope == "stack-general":
-        fact_stacks = set(re.findall(r"[a-z0-9-]+", fm.get("stacks", "").lower()))
-        return bool(fact_stacks & stacks)
+        return bool(_fact_stacks(fm) & stacks)
     return False
 
 
@@ -473,6 +618,127 @@ def gc(project_dir: Path, apply: bool) -> int:
     return 0
 
 
+# ── promotion: hand a local fact UP to the canonical global store (v0.1.16) ─────
+def promote(project_dir: Path, local_fact: str, canon_name: str) -> int:
+    """Hand a project-authored LOCAL fact up to the canonical global store, then convert the
+    origin's own copy into a managed mirror — the local→canonical hand-off the Phase-1 promotion
+    re-audit drives. SINGLE-SHOT: one invocation does the full hand-off — write the canonical, record
+    provenance, rewrite the origin copy as a mirror, and (on a rename) remove the old-named local file
+    + its index pointer. That closes the gap a MULTI-STEP, hand-done hand-off leaves open: a forgotten
+    conversion step strands a project-authored copy that `--gc` can never reclaim (a non-mirror), and on
+    the next --pull it would either SHADOW the canonical (same name → `present(local)`, never refreshes)
+    or DUPLICATE it (renamed → the canonical re-pulls as a second file). (It is not crash-atomic — an
+    interrupted process can still leave a partial state — but a completed call never does.)
+
+    CANON_NAME defaults to LOCAL_FACT; pass it to RENAME on promote (normalize `_`→`-` / drop a
+    date) or to DEDUP a local copy onto an existing canonical. An existing canonical is treated as
+    AUTHORITATIVE and is never overwritten (other projects already mirror it) — that case is a
+    RECONCILE: only the origin side (mirror + provenance + rename cleanup) runs.
+
+    The model owns the re-scope (sets `scope`/`stacks` on the local fact in Phase 4) and the global
+    MEMORY.md index line (as for any canonical); this op owns the file mechanics + the origin index.
+    Writes the REAL global store, so it is exercised hermetically by simulate_accumulation.py
+    (Probe K), never by smoke.py."""
+    project_dir = project_dir.resolve()
+    store = project_store(project_dir)
+    if not _safe_stem(local_fact) or not _safe_stem(canon_name):
+        print("promote: fact names must be kebab/snake-case (safe stems)", file=sys.stderr)
+        return 2
+    if local_fact in _RESERVED_STEMS or canon_name in _RESERVED_STEMS:
+        print(f"promote: '{'/'.join(_RESERVED_STEMS)}' is a reserved index name, not a fact — refusing "
+              "(writing it would clobber a store's always-loaded MEMORY.md index)", file=sys.stderr)
+        return 2
+    src = store / f"{local_fact}.md"
+    if not src.exists():
+        print(f"promote: no local fact '{local_fact}' in {store}", file=sys.stderr)
+        return 1
+    local_text = src.read_text(encoding="utf-8", errors="replace")
+    if _is_mirror(local_text):  # idempotency + safety guard: a mirror is already global
+        print(f"promote: '{local_fact}' is already a managed mirror (already global) — nothing to promote",
+              file=sys.stderr)
+        return 1
+
+    GLOBAL.mkdir(parents=True, exist_ok=True)
+    canon_path = GLOBAL / f"{canon_name}.md"
+    reconcile = canon_path.exists()  # an existing canonical is authoritative — never clobber it
+    decide_fm = _frontmatter(canon_path.read_text(encoding="utf-8", errors="replace") if reconcile else local_text)
+    scope = decide_fm.get("scope", "")
+    ctx = f"existing canonical '{canon_name}'" if reconcile else f"local fact '{local_fact}'"
+    # Guard 1 — a promoted canonical must be REPLICABLE: scope ∈ {stack-general, user-global}.
+    # A project-local/scopeless canonical is dead weight (is_relevant returns False for it).
+    if scope not in ("stack-general", "user-global"):
+        print(f"promote: {ctx} has scope '{scope or '(none)'}' — set scope: stack-general|user-global "
+              "before promoting (a project-local/scopeless canonical never replicates)", file=sys.stderr)
+        return 1
+    # Guard 2 — a stack-general fact with NO `stacks:` is DEAD: is_relevant intersects an empty set,
+    # so it matches no project ever. Refuse rather than write a canonical that can't replicate.
+    if scope == "stack-general" and not _fact_stacks(decide_fm):
+        print(f"promote: {ctx} is stack-general but declares no `stacks:` — it could match no project "
+              "(is_relevant needs a non-empty stacks intersection). Add stacks: [...] first.", file=sys.stderr)
+        return 1
+    # Guard 3 — a RENAME/dedup whose destination name already holds a DISTINCT project-authored fact
+    # would silently destroy it; run()'s `present(local)` rule is "never clobber" and promote must match
+    # it. `samefile` excludes a case-only rename on a case-insensitive FS (`Foo`→`foo` is one file —
+    # handled at the unlink below); a MIRROR already at the destination is a mirror of THIS canonical, so
+    # refreshing it is safe (the reconcile/idempotent path). Checked BEFORE any write, so no partial state.
+    dest = store / f"{canon_name}.md"
+    if (canon_name != local_fact and dest.exists() and not src.samefile(dest)
+            and not _is_mirror(dest.read_text(encoding="utf-8", errors="replace"))):
+        print(f"promote: a different project-authored fact already occupies '{canon_name}' in this store — "
+              "refusing (a rename here would overwrite it). Pick another CANON_NAME or reconcile by hand.",
+              file=sys.stderr)
+        return 1
+
+    # Write the canonical from the (re-scoped) local fact — but NEVER overwrite an existing one.
+    if not reconcile:
+        canon_path.write_text(local_text, encoding="utf-8")
+    _record_provenance(canon_name, project_dir.name)
+    canon_text = canon_path.read_text(encoding="utf-8", errors="replace")  # re-read POST-provenance
+    fm = _frontmatter(canon_text)
+
+    # Convert the origin's copy into a managed mirror of the POST-provenance canonical, so a later
+    # --pull reports `in-sync` (not a spurious STALE-mirror refresh) and never re-creates a shadow.
+    dest.write_text(_as_mirror(canon_text, canon_name), encoding="utf-8")
+    _ensure_index_pointer(store, canon_name, fm)
+    renamed = canon_name != local_fact
+    if renamed:  # the dup/orphan guard: drop the old-named project-authored file + its index pointer …
+        _remove_index_pointer(store, local_fact)
+        if src.exists() and not src.samefile(dest):  # … but NOT when src IS the freshly-written mirror
+            src.unlink()                             # (a case-only rename on a case-insensitive FS)
+
+    # Change-1↔Change-3 link: if the ORIGIN itself doesn't detect this stack-general fact's stack,
+    # its own mirror reads `irrelevant` on the next --pull and freezes (never refreshes) — almost
+    # always a mis-tag. WARN (the local recall still works + other matching projects pull the live
+    # copy); don't refuse.
+    if scope == "stack-general":
+        origin_stacks = detect_stacks(project_dir)
+        if not (_fact_stacks(fm) & origin_stacks):
+            print(f"  ⚠ origin {project_dir.name} does not detect stack(s) {sorted(_fact_stacks(fm))} "
+                  f"(detected: {sorted(origin_stacks) or '∅'}) — its own mirror will read irrelevant "
+                  "and won't refresh on --pull (likely a mis-tag)", file=sys.stderr)
+
+    out: list = []
+    title = "✦ PROMOTE · " + project_dir.name
+    tag = "RECONCILE" if reconcile else "CREATE"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    out.append("  " + _ui.c(f"{local_fact} → {canon_name}  ({scope})", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    out.append(_ui.kv("CANONICAL", f"{canon_name}.md · "
+               + ("attached origin to existing canonical (not overwritten)" if reconcile
+                  else "written to the global store")))
+    out.append(_ui.kv("ORIGIN", "local copy rewritten as a managed mirror"
+               + ("  · old-named file + index pointer removed (rename)" if renamed else "")))
+    out.append(_ui.kv("PROVENANCE", f"{project_dir.name} recorded as a holder"))
+    out.append("")
+    out.append(_ui.kv("NEXT", _ui.c("add the canonical's line to ~/.claude/memory/MEMORY.md; same-scope "
+               "projects pick it up on their next --pull", "dim")))
+    print(_ui.ascii_translate("\n".join(out)))
+    return 0
+
+
 # ── token observability: per-node cost across the neural network ────────────────
 def _label_from_slug(slug: str) -> str:
     """Human label for a node from its slug dir. The slug is the abs path with '/'→'-',
@@ -630,9 +896,16 @@ def main() -> int:
         return token_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
         return gc(project_dir, "--apply" in args)
+    if args and args[0] == "--promote":
+        # --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]  (CANON_NAME defaults to LOCAL_FACT)
+        if len(pos) < 2:
+            print("usage: sync_global.py --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]", file=sys.stderr)
+            return 2
+        return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1])
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull PROJECT_DIR | --gc [--apply] PROJECT_DIR "
-              "| --tokens [--json] PROJECT_DIR | --network", file=sys.stderr)
+              "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] | --tokens [--json] PROJECT_DIR "
+              "| --network", file=sys.stderr)
         return 2
     return run(project_dir, args[0] == "--pull")
 

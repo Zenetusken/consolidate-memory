@@ -320,6 +320,41 @@ def _valid_uuid(s: object) -> bool:
     return bool(isinstance(s, str) and _UUID_RE.match(s.strip()))
 
 
+def _is_mirror(text: str) -> bool:
+    """True iff a fact is a MANAGED MIRROR — detected by the EXACT structured forms `_as_mirror`
+    writes inside the frontmatter, NEVER a substring anywhere in the file:
+
+      • a column-0 `# global_ref: <name>` comment stamp that is the FIRST frontmatter line (a
+        `# global_ref:` comment *elsewhere* in a hand-authored note must not count), or
+      • a `  global_ref: <name>` line that is a DIRECT (2-space) child of a top-level `metadata:` key.
+
+    Parses frontmatter STRUCTURE, not the raw block (a raw regex would match `global_ref:` on a
+    folded-scalar continuation line and misclassify a project-authored note — GC/promotion would then
+    mishandle it). Lives here (the dependency root) so sync_global imports it — SINGLE definition shared
+    by --pull / --gc / the promotion re-audit. Bias to False on ambiguity: a missed mirror merely isn't
+    reclaimed (safe); a false positive destroys user memory (unsafe)."""
+    if text.startswith("﻿"):
+        text = text[1:]
+    m = re.search(r"^---\n(.*?)\n---", text, re.S)
+    if not m:
+        return False
+    top = None
+    first = True
+    for ln in m.group(1).splitlines():
+        if not ln.strip():
+            continue
+        if first and re.match(r"#\s*global_ref:\s*\S", ln):
+            return True
+        first = False
+        if not ln[:1].isspace():
+            mk = re.match(r"([^:#\s][^:]*):", ln)
+            top = mk.group(1).strip() if mk else None
+            continue
+        if top == "metadata" and re.match(r" {2}global_ref:\s*\S", ln):
+            return True
+    return False
+
+
 def _frontmatter(text: str) -> dict:
     """Parse a fact file's YAML-ish frontmatter to a flat dict. Lives here (the dependency root)
     so sync_global imports it — single definition. Tolerant at the model→file boundary: strips a
@@ -541,6 +576,7 @@ def build_context(project_dir: Path) -> dict:
         "index_lb": index_lb,
         "fact_files": fact_files,
         "stale_facts": stale_facts,
+        "promotion_candidates": _promotion_candidates(fact_files),
         "transcripts": transcripts,
         "state_path": state_path,
         "last_commit": last_commit,
@@ -567,6 +603,35 @@ def _stale_since(fact_files: list[Path], marker_ts: str) -> list[str]:
     except (ValueError, TypeError):
         return []
     return [f.stem for f in fact_files if f.stat().st_mtime <= cutoff]
+
+
+_PROMO_TYPES = {"feedback", "reference"}   # Auto-Dream memory types that lean cross-project (directives, pointers)
+_PROMO_CAP = 8                              # cap the Phase-1 promotion seed — a re-audit list, not a rubber stamp
+
+
+def _is_promotion_candidate(text: str) -> bool:
+    """True if a fact's frontmatter passes the Phase-1 promotion SEED filter: NOT a mirror, no `scope`
+    set yet, and a cross-project-leaning `type` (feedback/reference — directives, pointers). A WEAK
+    pre-filter only; the model re-walks the scope cascade by CONTENT + re-verifies before promoting."""
+    if _is_mirror(text):                           # already a global mirror → not a candidate
+        return False
+    fm = _frontmatter(text)
+    return not fm.get("scope") and fm.get("type", "") in _PROMO_TYPES
+
+
+def _promotion_candidates(fact_files: list) -> list[str]:
+    """Names of project-authored facts that pass the promotion seed filter — the SEED for the Phase-1
+    promotion re-audit. Capped (a re-audit list, not a rubber stamp)."""
+    out: list[str] = []
+    for f in fact_files:
+        if len(out) >= _PROMO_CAP:
+            break
+        try:
+            if _is_promotion_candidate(f.read_text(encoding="utf-8", errors="replace")):
+                out.append(f.stem)
+        except OSError:
+            continue
+    return out
 
 
 def dream_timing_advisory(commits: int, marker_ts: str, has_marker: bool) -> str | None:
@@ -784,6 +849,10 @@ def print_report(ctx: dict) -> None:
 
     # ── NEEDS A LOOK — suggestions only; nothing is changed automatically ──
     sig: list = []
+    if ctx.get("promotion_candidates"):
+        sig.append(_ui.li(f"promote? {len(ctx['promotion_candidates'])} unscoped feedback/reference fact(s) may apply "
+                          "cross-project — re-scope by content + re-verify in Phase 1: "
+                          + _ui.c(", ".join(ctx["promotion_candidates"]), "dim"), bullet="↑", bullet_color="cyan"))
     if ctx["stale_facts"]:
         sig.append(_ui.li(f"re-verify {len(ctx['stale_facts'])} stale fact(s) (mtime ≤ marker): "
                           + _ui.c(", ".join(ctx["stale_facts"]), "dim"), bullet="·"))

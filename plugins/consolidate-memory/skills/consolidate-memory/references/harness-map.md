@@ -258,9 +258,13 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   **upsert** the always-loaded index pointer so its hook tracks the canonical's
   `description` (a changed description rewrites the index line, not just the body).
   user-global → every project; stack-general → only if `stacks` intersect the
-  project's detected stacks. Stack keywords match on **token boundaries** (`_kw_hit`),
-  not substrings — so `skill` no longer matches `reskilling` while `.claude` still
-  matches `.claude/`.
+  project's detected stacks. Stacks are detected from **REAL USAGE** (v0.1.16) — declared
+  dependencies in `pyproject.toml` (PEP 621 / PEP 735 / poetry, matched as EXACT dep-name
+  tokens, so `sentence-transformers` is never read as `transformers`), actual `import`s in
+  `*.py`, and real marker dirs/files (`.claude/`, a `SKILL.md`) — **never a doc-mention**.
+  Lockfiles are excluded (transitive deps over-detect). So a stdlib plugin whose README merely
+  says "rag"/"scraper" no longer false-matches `rag`/`playwright`; a `stack-general:[rag]` fact
+  binds only projects that really depend on / import a RAG library.
 - `--gc PROJECT_DIR [--apply]` — reclaim **orphaned mirrors**: `global_ref:` files
   whose canonical was deleted from the global store. `--pull` can never remove these
   (it only iterates live globals), so they accrue forever without GC. Report-only by
@@ -269,6 +273,23 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   Dead-edge provenance (canonical lists a project that no longer holds the mirror) is
   reported, not auto-pruned (absence-of-mirror is too weak a signal to write global
   state on — a renamed store also "holds nothing").
+- `--promote PROJECT_DIR LOCAL_FACT [CANON_NAME]` — hand a project-authored LOCAL fact
+  UP to the canonical global store, then convert the origin's own copy into a managed
+  mirror — the local→canonical direction symmetric to `--pull`, driven by the Phase-1
+  promotion re-audit. **Atomic**: one op writes the canonical, records provenance,
+  rewrites the origin copy as a `global_ref:` mirror, and (on a rename) removes the
+  old-named local file + its index pointer — so a promotion can never leave the dup or
+  orphan a hand-done hand-off would (a left-behind project-authored copy is a non-mirror
+  `--gc` never reclaims, and on the next `--pull` it shadows or duplicates the canonical).
+  `CANON_NAME` defaults to `LOCAL_FACT`; pass it to RENAME (`_`→`-` / drop a date) or to
+  DEDUP onto an existing canonical (whose CONTENT is **never overwritten** — only the
+  origin side is reconciled, plus the origin is appended to the canonical's `projects:`
+  provenance). It also refuses to clobber a DISTINCT project-authored fact already sitting
+  at `CANON_NAME`, and the reserved index name `MEMORY`. Refuses a fact that is already a mirror, a non-replicable scope
+  (must be `stack-general`/`user-global`), or a `stack-general` fact with no `stacks:`
+  (it could match no project). The **model** owns the re-scope (sets `scope`/`stacks` on
+  the local fact first) and the global `MEMORY.md` index line; the op owns the file
+  mechanics + the origin's always-loaded index pointer.
 
 ### Token observability (the per-session tax, made visible)
 
@@ -320,6 +341,20 @@ property, G2.3 ≥1 named existing other project it would apply to, G2.4 not alr
 `~/.claude/CLAUDE.md` / not derivable, G2.5 durable. The applicability gate G2.3 is the
 deliberately weakest gate — the **demotion re-audit (Phase 1, shipped)** backstops it: each pass
 re-walks this cascade over existing `user-global` facts by content and offers demotion.
+
+**Two symmetric Phase-1 re-audits walk the cascade by CONTENT (detect-and-offer, never auto):**
+- **Demotion** (over existing `user-global` canonicals) — a fact whose content now carries a
+  fleet-VARYING precondition would route lower; offer to re-scope/delete it (backstops G2.3 above).
+- **Promotion** (over a project's own authored, non-mirror local facts) — a local fact whose content
+  is fleet-CONSTANT or stack-reusable should route UP. `memory_status.py` surfaces the seed
+  (`_promotion_candidates`: authored facts that are unscoped, non-mirror, `type` ∈ {feedback,
+  reference}; capped at `_PROMO_CAP`). Promotion
+  is the **higher-blast-radius** direction (a wrong/stale promotion replicates an always-loaded pointer
+  into every same-stack project, undoable only by a global delete + fleet GC), so gate it STRICTER:
+  conservative floor, a Phase-3 re-verify AND a point-in-time/supersession screen (a dated snapshot is
+  not a durable rule), dedup vs existing canonicals by content, and a per-pass cap. On confirm, the
+  `sync_global.py --promote` op performs the hand-off (canonical write + origin→mirror + provenance +
+  rename cleanup; see the op list above).
 
 **The over-budget lever.** When a project's index trips the budget ⚠, attribute the
 cost first: `--tokens` and the dashboard report `mirror_index_tokens` (the share driven

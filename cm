@@ -14,6 +14,7 @@ case "$cmd" in
   sync)     exec python3 "$S/sync_global.py" "$@" ;;              # --list/--pull PROJECT_DIR
   pull)     exec python3 "$S/sync_global.py" --pull "${1:-.}" ;;  # replicate globals here
   gc)       exec python3 "$S/sync_global.py" --gc "$@" ;;         # reclaim orphan mirrors (+ --apply)
+  promote)  exec python3 "$S/sync_global.py" --promote "$@" ;;    # DIR LOCAL_FACT [CANON]: local→canonical hand-off
   tokens)   exec python3 "$S/sync_global.py" --tokens "$@" ;;     # network token consumption (+ --json)
   network)  exec python3 "$S/sync_global.py" --network ;;         # shared-consciousness graph
   render)   exec python3 "$S/render_dashboard.py" "$@" ;;         # cycle.json -> dashboard
@@ -26,6 +27,7 @@ cm — consolidate-memory
   cm sync --list DIR   show which global facts apply to a project
   cm pull [DIR]        replicate relevant global facts into a project (default: .)
   cm gc [DIR] [--apply] reclaim orphaned mirrors (report-only without --apply)
+  cm promote DIR FACT [CANON]  hand a local fact up to the global store + mirror the origin
   cm tokens [DIR] [--json] per-node + total token consumption across the network
   cm network           render the cross-project shared-memory graph
   cm render cycle.json render a dashboard from a cycle record

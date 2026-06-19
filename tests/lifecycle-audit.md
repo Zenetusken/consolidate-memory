@@ -90,7 +90,7 @@ context* and *what manages it over its life*.
 | Budget ceiling on always-loaded tier (in est. tokens) | ✅ **fixed** | `INDEX_TOKEN_BUDGET` / `CLAUDE_MD_TOKEN_BUDGET`, `budget.*.over` + ⚠ |
 | GC of orphaned mirrors | ✅ **fixed** | `sync_global.py --gc [--apply]` (`_orphans`) |
 | Token observability across the network | ✅ **new** | `sync_global.py --tokens`, dashboard network sub-section |
-| Tighter stack matching (no substring spread) | ✅ **fixed** | `_kw_hit` token-boundary match |
+| Real-usage stack detection (no prose/substring false-match) | ✅ **fixed** | `detect_stacks` reads deps/imports/markers (v0.1.16; superseded the `_kw_hit` keyword patch) |
 | Staleness / re-verification signal | ✅ **fixed** | `memory_status._stale_since` (mtime ≤ marker) |
 | Provenance reclaim (drop dead edges) | ⚠️ **report-only** | `--gc` reports dead edges; auto-prune deferred (weak signal) |
 | Automated dedup across stores | ❌ by design | model prose (Phase 5) — a judgment call, not mechanizable |
@@ -135,12 +135,14 @@ and **invisibility** (the promised budget was never encoded).
 across all nodes. The growth itself stays a human-in-the-loop prune (Probe A still
 holds by design) — but it is now visible and reclaimable, not silent.
 
-**D — Loose stack keywords spread `stack-general` ~universally → token-boundary match.**
-*Found (engineered):* substring matching let `skill` match `reskilling`, so
-`stack-general` facts spread wider than their stack.
-*Fixed:* `_kw_hit` matches on token boundaries (non-alphanumeric edges, so dotted
-keywords like `.claude` still work). Sim Probe D: a `reskilling`-only project no longer
-inherits a `claude-code` fact, while a genuine `.claude` project still does. Genuinely
+**D — Doc-mention keywords spread `stack-general` ~universally → real-usage detection (v0.1.16).**
+*Found (engineered):* keyword matching let a doc-MENTION confer a stack (`skill`→`reskilling`; a
+README "rag"/"scraper" let a stdlib plugin false-match rag/playwright), so `stack-general` facts
+spread wider than their stack.
+*Fixed (v0.1.16 — superseded the earlier `_kw_hit` token-boundary patch):* `detect_stacks` keys off
+REAL usage (declared deps / actual imports / marker dirs), never a doc-mention. Sim Probe D: a
+prose-only `.claude` MENTION no longer inherits a `claude-code` fact, while a project with a real
+`.claude/` dir still does. Genuinely
 fleet-wide stacks (e.g. claude-code) stay broad **by design** — that is correct reach,
 not spurious spread.
 
@@ -170,7 +172,7 @@ data"); all covered by `tests/smoke.py` (pure functions) + `tests/simulate_accum
    dashboard renders a "Neural network — token consumption (all nodes)" sub-section
    that also shows what *this* cycle did in lifecycle terms on the triggering node.
    See §6.
-5. **Token-boundary stack matching (D).** `_kw_hit` replaces substring matching.
+5. **Real-usage stack detection (D).** `detect_stacks` reads deps/imports/markers (v0.1.16 superseded the `_kw_hit` keyword patch).
 6. **Re-verification signal (E).** `_stale_since` flags facts untouched since the marker.
 
 ---
