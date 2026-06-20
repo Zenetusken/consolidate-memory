@@ -5,6 +5,42 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.19] — 2026-06-20
+
+### Fixed (v0.1.18 first-party beta findings — multi-surface orphan safety; additive → patch)
+- **C1 (SAFETY) — never treat an archive-index doc as a fact.** A relocated archive (`SHIPPED.md`, a
+  link-list) was globbed as a fact; its stem matched the tracker regex → the triage advised "evict" = nuking
+  the archive. `build_context` now detects archive-index docs (`_is_archive_index`: a link-list `*.md` with no
+  fact frontmatter) and excludes them from `fact_files`. (Surfaced by verifying the beta pass against memex's
+  real store — it was NOT in the report.)
+- **C2 (SAFETY) — multi-surface orphan check.** The "unindexed → evict" check read only `MEMORY.md`; 23/61
+  flagged orphans were referenced in CLAUDE.md prose → "evict" would dangle the committed guest file. The
+  triage now gathers `reference_stems` from all always-loaded surfaces — CLAUDE.md prose (bare-stem) +
+  archive-index link-targets — and reclassifies a referenced-but-unindexed fact to a new **R (referenced)**
+  stage (de-link the surface FIRST; counts toward keep, re-indexed by the lean rebuild), never a blind evict.
+- **E (defensive)** — a 0-token index read while facts exist (a write-truncate race) would clear the
+  over-budget gate; `build_context` now re-reads once to settle it (a persistent 0 is a genuine all-unindexed
+  drift, flagged by schema_drift, not "under budget").
+- **F (polish)** — the redundant `prune-pressure (index-over-budget)` line is suppressed when the REMEDIATION
+  gate renders (a `many-facts` prune-pressure still prints); the triage output labels `projected_recall` as
+  recall-body hygiene, SEPARATE from the index-pointer relief.
+- **G (polish)** — `seed_record` omits `pruned`/`achieved_*` (model-filled in Phase 5); the dashboard renders
+  their absence as "pending Phase 5", not a misleading ≈0.
+- **H (polish)** — documented the `extract_signals --json` contract (`counts.surfaced` + `signals`; no
+  top-level `surfaced`/`candidates`).
+
+### Deferred (the beta's DESIGN findings → the CLAUDE.md-optimization arc)
+A (a first-class `relocate` lever + split index-pointer vs recall-body projections), B (an archive-index
+budget tier so a mature store can be *genuinely* under budget, not perpetually justified), and D (model
+CLAUDE.md as a second always-loaded index for dedup) share that arc's design space — tracked in the roadmap.
+
+### Internal
+- New `_is_archive_index`; `remediation_triage` gains a defaulted `reference_stems` param + the **R** stage.
+  Probe M (hermetic): archive-exclude · referenced→R-not-A · true-orphan→A · seed-omits-achieved · 0-index-safe.
+  +2 smoke units. smoke 256/0 · sim A–M · mypy · manifests.
+- **Versioning — PATCH:** bug/safety/polish, backward-compatible (defaulted param, no removed flag/script,
+  the `Remediation` typed block unchanged, seed omission `total=False`-safe, legacy records render).
+
 ## [0.1.18] — 2026-06-20
 
 ### Added (inherited-backlog remediation — the prune finally has teeth; additive → patch)

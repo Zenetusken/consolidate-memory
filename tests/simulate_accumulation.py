@@ -683,6 +683,78 @@ def run() -> None:
                  "the inherited-backlog remediation: surfaces ranked candidates for the operator to judge "
                  "(pure — never auto-deletes), with the over-budget gate + mirror-vs-local lever routing")
 
+        # ── Probe M: v0.1.18 beta-patch fixes (C1 archive-exclude · C2 multi-surface orphan · E · G) ──────
+        # First-party beta on memex surfaced: the triage globbed SHIPPED.md (a relocated archive) as a fact →
+        # B-tracker → "evict" (would nuke it); and flagged CLAUDE.md-referenced facts as evict-able orphans
+        # (would dangle the committed guest file). Build a store + a CLAUDE.md + a SHIPPED.md archive and assert
+        # the fixes. Uses a real project dir under the hermetic HOME so build_context resolves the slug.
+        print("\n── Probe M: v0.1.18 beta-patch (archive-exclude · multi-surface orphan · seed) ──")
+        proj = home / "projects-src" / "memexlike"
+        proj.mkdir(parents=True, exist_ok=True)
+        store = home / ".claude" / "projects" / ms.slug_for(proj) / "memory"
+        store.mkdir(parents=True, exist_ok=True)
+
+        def _mf(name: str, body: int = 60) -> None:
+            (store / f"{name}.md").write_text(
+                "---\nname: " + name + "\nmetadata:\n  node_type: memory\n  type: project\n---\n"
+                + "\n".join(f"body line {i} of {name}" for i in range(body)) + "\n", encoding="utf-8")
+
+        indexed = ["durable-a", "durable-b"]
+        unindexed_true = ["orphan_true_one", "orphan_true_two"]            # referenced nowhere → A
+        unindexed_ref = ["referenced_in_claude_2026_05_01"]                # in CLAUDE.md prose → R, NOT A
+        trackers = ["build_status", "p1_tracker"]
+        for n in indexed + unindexed_true + unindexed_ref + trackers:
+            _mf(n)
+        idx = ["# Memory Index", ""] + [f"- [{n}]({n}.md) — " + ("verbose hook " * 120) for n in indexed + trackers]
+        (store / "MEMORY.md").write_text("\n".join(idx) + "\n", encoding="utf-8")   # over budget, leaves orphans/ref unindexed
+        (store / "SHIPPED.md").write_text("# Shipped\n" + "\n".join(f"- [item {i}](shipped_{i}.md) — done" for i in range(10)) + "\n", encoding="utf-8")
+        (proj / "CLAUDE.md").write_text("# Conventions\n\nSee referenced_in_claude_2026_05_01 for the X approach.\n" + ("filler " * 200) + "\n", encoding="utf-8")
+
+        _rh = os.environ.get("HOME")
+        os.environ["HOME"] = str(home)            # build_context uses Path.home() — point it at the hermetic store
+        ctxm = ms.build_context(proj)
+        stm = ctxm["remediation"].get("stages", {})
+        a_stems = [c["stem"] for c in stm.get("A_orphans", [])]
+        r_stems = [c["stem"] for c in stm.get("R_referenced", [])]
+        c1 = (not any(f.name == "SHIPPED.md" for f in ctxm["fact_files"])
+              and not any(c["stem"] == "SHIPPED" for s in stm.values() for c in s))      # archive never a fact/candidate
+        c2_ref = "referenced_in_claude_2026_05_01" in r_stems and "referenced_in_claude_2026_05_01" not in a_stems
+        c2_true = set(unindexed_true) <= set(a_stems)                                     # genuine orphans still in A
+        seedm = ms.seed_record(ctxm).get("remediation", {})
+        g_omit = ("pruned" not in seedm and "achieved_index" not in seedm
+                  and "achieved_recall" not in seedm and "projected_index" in seedm)
+        # E (discriminating): simulate the write-truncate RACE — first index read 0, re-read = real over-budget.
+        # FAILS if the re-read guard is removed (the transient 0 would clear the gate). The over-budget index
+        # written above stays in place.
+        _real_measure = ms._measure
+        _idx_path = store / "MEMORY.md"
+        _seen = {"n": 0}
+
+        def _racy_measure(p: Path) -> tuple:
+            if p == _idx_path:
+                _seen["n"] += 1
+                if _seen["n"] == 1:
+                    return (0, 0, 0)                                                       # the truncate-window read
+            return _real_measure(p)
+        ms._measure = _racy_measure
+        try:
+            ctxe = ms.build_context(proj)
+        finally:
+            ms._measure = _real_measure
+        e_ok = ctxe["remediation"] != {} and bool(ctxe["remediation"].get("required"))     # re-read settled → gate still fires
+        if _rh is not None:
+            os.environ["HOME"] = _rh                                                       # restore the real HOME
+        else:
+            os.environ.pop("HOME", None)
+        print(f"  C1 archive-excluded={c1} · C2 ref→R-not-A={c2_ref} · C2 true-orphan-in-A={c2_true} · "
+              f"G seed-omits-achieved={g_omit} · E race-settled={e_ok}")
+        _verdict("M", "beta patch: archive-index docs excluded from facts (C1); CLAUDE.md-referenced facts are "
+                 "NOT safe-evict orphans, true orphans still are (C2); seed omits achieved_* (G); a write-truncate "
+                 "race (first index read 0) is settled by the re-read so the gate still fires (E)",
+                 c1 and c2_ref and c2_true and g_omit and e_ok,
+                 "the multi-surface orphan safety + archive protection + honest seed — never dangle the guest "
+                 "file or nuke the archive")
+
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")
         first, last = curve[0], curve[-1]
