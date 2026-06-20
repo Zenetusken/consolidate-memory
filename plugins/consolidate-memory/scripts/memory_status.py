@@ -18,6 +18,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Mapping, TypedDict
@@ -328,6 +329,16 @@ def slug_for(project_dir: Path) -> str:
     accepted, documented residual risk (see references/harness-map.md). Don't claim a complete rule.
     """
     return re.sub(r"[/_]", "-", str(project_dir.resolve()))
+
+
+def cycle_seed_path(slug: str) -> str:
+    """A DETERMINISTIC per-project temp path for a dream's cycle record — `<tmpdir>/cm-cycle<slug>.json`.
+    Per-SLUG, NOT a shared `/tmp/cycle.json`: concurrent dreams of DIFFERENT projects each get their own
+    file, so they can't clobber each other's record (a memex dream once overwrote consolidate-memory's via
+    the shared path → a 'franken-record' with mismatched scope/remediation, v0.1.20 fix). Deterministic
+    (slug-derived) so every phase + the render reconstruct the same path with no cross-shell state. The slug
+    is already filesystem-safe (path with '/'+'_' → '-')."""
+    return str(Path(tempfile.gettempdir()) / f"cm-cycle{slug}.json")
 
 
 _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
@@ -1114,7 +1125,7 @@ def print_report(ctx: dict) -> None:
 
     # ── NEXT ──
     add("")
-    add(_ui.kv("NEXT", _ui.c(f"run with --json to start the record · render_dashboard.py draws the summary · saves a checkpoint at {ctx['head'][:12]}", "dim")))
+    add(_ui.kv("NEXT", _ui.c(f"run with --seed to start the record (per-pass file) · render_dashboard.py draws the summary · saves a checkpoint at {ctx['head'][:12]}", "dim")))
 
     print(_ui.ascii_translate("\n".join(out)))
 
@@ -1132,6 +1143,11 @@ def main() -> int:
             _ui.kv("REMEDIATION", _ui.c(f"✓ index under budget ({ctx['index_lb'][2]}/{INDEX_TOKEN_BUDGET} tok) — nothing to remediate", "green"))]
         print(_ui.ascii_translate(_ui.rule() + "\n  " + _ui.c("✦ REMEDIATION TRIAGE · " + ctx["project"], "cyan")
                                   + "\n" + _ui.rule() + "\n\n" + "\n".join(body)))
+        return 0
+    if "--seed" in argv:    # v0.1.20: write the seed to a per-slug temp path (NOT shared /tmp/cycle.json) + print it
+        path = cycle_seed_path(ctx["slug"])
+        Path(path).write_text(json.dumps(seed_record(ctx), indent=2) + "\n", encoding="utf-8")
+        print(path)
         return 0
     if as_json:
         print(json.dumps(seed_record(ctx), indent=2))

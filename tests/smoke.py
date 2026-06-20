@@ -52,6 +52,12 @@ check("v0.1.17: slug maps '_'→'-' too (underscore project reaches its real CC 
       ms.slug_for(Path("/home/you/project/Doc_Flo")) == "-home-you-project-Doc-Flo")
 check("v0.1.17: slug regression-free for a no-underscore path (≡ old replace('/','-'))",
       ms.slug_for(Path("/home/you/project/foo-bar")) == "-home-you-project-foo-bar")
+# v0.1.20: the cycle-record temp path is PER-SLUG (fixes the shared-/tmp/cycle.json concurrent-dream collision).
+check("v0.1.20: cycle_seed_path is per-slug + deterministic (no shared-path collision across projects)",
+      ms.cycle_seed_path("-a-proj1") != ms.cycle_seed_path("-a-proj2")
+      and ms.cycle_seed_path("-x") == ms.cycle_seed_path("-x")
+      and ms.cycle_seed_path("-x").endswith("cm-cycle-x.json")
+      and not ms.cycle_seed_path("-x").endswith("/cycle.json"))
 
 # --- hardening: SHA validation rejects argument-injection from a tampered state file ---
 check("sha: accepts real hex sha", ms._valid_sha("b6d37b6") and ms._valid_sha("a" * 40))
