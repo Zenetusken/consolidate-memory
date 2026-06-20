@@ -32,8 +32,11 @@ version changes on `main`.
 - +6 smoke checks (slug `/`+`_`→`-` with case preserved + a no-underscore regression guard; pdf dep/import
   detection, exact-token disjointness, `is_relevant(stack-general:[pdf])`). `simulate_accumulation.py`'s
   `_store` helper now uses the single `slug_for` (was a third copy of the rule). smoke 249/0 · sim · mypy.
-- **Versioning — MINOR (not patch):** re-points where mirrors live for underscore-named installs (a pre-1.0
-  breaking change to an install's behavior). No cycle-record schema change; no removed flag/script.
+- **Versioning — PATCH:** the deterministic policy's minor triggers are CONTRACT breaks (incompatible
+  cycle-record schema, a removed/renamed script or CLI flag, a changed manifest) — the slug fix hits NONE.
+  Non-underscore installs are byte-identical; underscore installs IMPROVE (unreachable → reachable) with
+  reclaimable orphans (the upgrade note + the shipped near-dup detector handle the one-time migration).
+  Matches the v0.1.16 precedent (which even added a CLI flag, still patch).
 
 ### Upgrade note (only if you have an underscore-named project dir)
 After upgrading, that project's `--pull`/recall targets the correct (hyphen) slug; its **pre-v0.1.17 mirrors
