@@ -190,17 +190,21 @@ injected `scope`/`originSessionId` is a separate *optional* backfill advisory, n
 see `references/harness-map.md`.)
 
 Then **seed the cycle record** — the structured data that becomes the final
-dashboard (see "Output" below). Re-run the helper with `--json` to capture the
+dashboard (see "Output" below). Re-run the helper with `--seed` to capture the
 measured before-state (scope, before-budget, marker) into a working file you'll fill
 in as you go:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --json > /tmp/cycle.json
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --seed   # writes a PER-PASS cycle file + prints its path
 ```
 
-You'll add to `/tmp/cycle.json` through the phases (candidates, verification tallies,
-entries, after-budget, health) and render it at the end. Set `session` to the active
-session id.
+`--seed` writes the seed to a **per-slug** path under the temp dir (`cm-cycle-<slug>.json`) and **prints
+it** — use THAT exact path through every phase and in the Phase-5 render. Do NOT use a shared
+`/tmp/cycle.json`: a concurrent dream of another project would clobber it, grafting that project's
+scope/remediation onto yours (v0.1.20 fix). The path is deterministic (slug-derived), so you can
+reconstruct it in any later phase. (`--json` still streams the seed to stdout for ad-hoc/`cm seed` use.)
+Add to that file through the phases (candidates, verification tallies, entries, after-budget, health) and
+render it at the end. Set `session` to the active session id.
 
 ### Phase 1 — Orient
 
@@ -508,7 +512,7 @@ PROMOTE candidates, not prune) — vs the durable-keep core. Then act on `remedi
    that `timestamp` into the cycle record's `marker.timestamp`.
 6. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py /tmp/cycle.json \
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py <the --seed path> \
        --persist ~/.claude/projects/<slug>/memory
    ```
    `--persist <store dir>` appends the rendered record (one JSON line) to

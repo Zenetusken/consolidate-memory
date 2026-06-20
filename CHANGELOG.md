@@ -5,6 +5,28 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.20] — 2026-06-20
+
+### Fixed (cycle-record temp-path collision across concurrent dreams; additive → patch)
+- **The dream's cycle-record temp path is now PER-SLUG, not the shared `/tmp/cycle.json`.** SKILL.md hardcoded
+  `/tmp/cycle.json` for the Phase-0 seed + Phase-5 render, so two project dreams running concurrently collided:
+  during a consolidate-memory dogfood dream, a **memex dream in another session clobbered the shared file**
+  between seed and render → the dashboard grafted memex's scope/remediation onto consolidate-memory's entries
+  and persisted a "franken-record" to the calibration log. (Caught by the dogfood + measure-don't-assert —
+  "105 reviewed / gate fired" is impossible for a 16-fact under-budget store.)
+  - **`memory_status.py --seed`** (new) writes the seed to `cycle_seed_path(slug)` =
+    `<tmpdir>/cm-cycle-<slug>.json` (deterministic, per-project) and prints the path; SKILL.md Phase 0 now uses
+    `--seed` and references that path through the phases + the render. `--json` (stdout) is unchanged for
+    ad-hoc / `cm seed` use.
+  - Per-slug kills the cross-PROJECT collision (the observed case); same-project concurrent dreams (degenerate)
+    would still share a path — acceptable.
+
+### Internal
+- +1 smoke unit (`cycle_seed_path` per-slug + deterministic, not the shared path). smoke 257/0 · sim · mypy ·
+  manifests.
+- **Versioning — PATCH:** additive (a new flag + helper + SKILL prose); `--json` kept (no removed flag); no
+  cycle-record schema change. The CLAUDE.md-optimization arc renumbers to v0.1.21.
+
 ## [0.1.19] — 2026-06-20
 
 ### Fixed (v0.1.18 first-party beta findings — multi-surface orphan safety; additive → patch)
