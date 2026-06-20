@@ -101,7 +101,7 @@ def _make_project(home: Path, name: str, *, deps: tuple = (), claude: bool = Fal
 
 # ── measurement ───────────────────────────────────────────────────────────────
 def _store(home: Path, project_dir: Path) -> Path:
-    slug = str(project_dir.resolve()).replace("/", "-")
+    slug = ms.slug_for(project_dir)   # single source (v0.1.17: '/'+'_' → '-'); matches what the child CLI computes
     return home / ".claude" / "projects" / slug / "memory"
 
 

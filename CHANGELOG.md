@@ -5,6 +5,42 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.17] — 2026-06-20
+
+### Fixed (cross-project reachability — `slug_for` now matches Claude Code's slug normalization)
+- **`slug_for` maps both `/` AND `_` to `-`** (was `/` only), matching Claude Code's real project-slug
+  rule. Verified on disk: a session with cwd `…/Doc_Flo` is logged by CC under slug `…-Doc-Flo` (hyphen),
+  but the old `/`-only `slug_for` computed `…-Doc_Flo` (underscore). So for ANY underscore-named project,
+  replicated cross-project facts (`--pull`/`--promote`) landed in a slug the project NEVER recalls — the
+  middle tier was silently unreachable there. This is the root-cause reachability fix.
+  - The same `/`-only bug existed in **`extract_signals.py`** (Phase-2 transcript lookup) — the extractor
+    found no transcripts for an underscore project. Both now route through the single `slug_for` (DRY).
+  - **No regression for non-underscore projects:** `re.sub(r"[/_]","-",p) ≡ p.replace("/","-")` with no
+    underscore; case preserved (`Doc-Flo`, not lowercased).
+  - **Honest limit:** verified on disk only for `/` and `_` (no other-char example exists); a `.`/space
+    could diverge further and would NOT be caught by `near_duplicate_slugs` (collapses only `_`/case) — an
+    accepted, documented residual risk. Corrected the `claude-code-memory-is-slug-scoped` fact +
+    `harness-map.md` (the earlier "a rename changed the slug" framing was wrong — it was the `_`→`-` mismatch).
+
+### Added
+- **A `pdf` stack for `detect_stacks`** (dist `{pypdfium2, pymupdf, pdfplumber, pdf2image, pdfminer-six}` /
+  module `{pypdfium2, fitz, pdfplumber, pdf2image, pdfminer}`) — so genuinely cross-project PDF-library
+  gotchas (e.g. pdfium thread-unsafety) can be `stack-general:[pdf]` and bind the fleet's PDF projects.
+  Real-usage gated like every stack (declared dep / real import, never a doc-mention; exact-token).
+
+### Internal
+- +6 smoke checks (slug `/`+`_`→`-` with case preserved + a no-underscore regression guard; pdf dep/import
+  detection, exact-token disjointness, `is_relevant(stack-general:[pdf])`). `simulate_accumulation.py`'s
+  `_store` helper now uses the single `slug_for` (was a third copy of the rule). smoke 249/0 · sim · mypy.
+- **Versioning — MINOR (not patch):** re-points where mirrors live for underscore-named installs (a pre-1.0
+  breaking change to an install's behavior). No cycle-record schema change; no removed flag/script.
+
+### Upgrade note (only if you have an underscore-named project dir)
+After upgrading, that project's `--pull`/recall targets the correct (hyphen) slug; its **pre-v0.1.17 mirrors
+sit under the old `…_…` slug**. Phase 0's near-duplicate-slug detector flags the split — reconcile toward the
+slug CC actually uses (a transcript's recorded `cwd` → its on-disk slug dir is ground truth), then retire the
+old-slug store. Non-underscore projects are unaffected.
+
 ## [0.1.16] — 2026-06-19
 
 ### Added (cross-project middle tier — real-usage stack detection + a local→canonical promotion path; additive, backward-compatible → patch)
