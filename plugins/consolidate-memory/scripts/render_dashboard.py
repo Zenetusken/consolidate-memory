@@ -448,10 +448,17 @@ def render(record: ms.CycleRecord) -> str:
     if rem:
         out.append("")
         out.append("  " + _c("REMEDIATION", "bold") + _c(f"   · over-budget gate · lever {str(rem.get('lever', '')).upper()}", "dim"))
-        cand, pruned = _num(rem.get("candidates_surfaced", 0)), _num(rem.get("pruned", 0))
-        ai, pi = _num(rem.get("achieved_index", 0)), _num(rem.get("projected_index", 0))
-        out.append(f"    {_c('↓', 'yellow')} {_g(cand)} candidate(s) surfaced · {_g(pruned)} pruned · index ≈{_g(ai)} tok (projected ≈{_g(pi)})")
-        if not pruned:
+        cand, pi = _num(rem.get("candidates_surfaced", 0)), _num(rem.get("projected_index", 0))
+        # G (v0.1.18.x): the seed OMITS pruned/achieved_* (pre-pass) — render "pending Phase 5" when absent,
+        # NOT ≈0 (which reads as "emptied"). Once the model fills them in Phase 5, show the actual values.
+        if "achieved_index" in rem or "pruned" in rem:
+            pruned, ai = _num(rem.get("pruned", 0)), _num(rem.get("achieved_index", 0))
+            out.append(f"    {_c('↓', 'yellow')} {_g(cand)} candidate(s) surfaced · {_g(pruned)} pruned · index ≈{_g(ai)} tok (projected ≈{_g(pi)})")
+            acted = pruned
+        else:
+            out.append(f"    {_c('↓', 'yellow')} {_g(cand)} candidate(s) surfaced · pruned/achieved pending Phase 5 · projected index ≈{_g(pi)} tok")
+            acted = 0
+        if not acted:
             note = {"gc": "mirror-dominated — global demote/GC lever, not a local prune",
                     "justify": "justified — nothing safely prunable (see entries[])",
                     "prune": "⚠ gate fired but not acted on — surface candidates + prune-or-justify"}.get(str(rem.get("lever", "")), "")

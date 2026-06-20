@@ -174,6 +174,11 @@ def _classify(text: str) -> tuple[str, str, int]:
 
 
 def extract(project_dir: Path, since: str, max_n: int) -> dict:
+    """The `--json` CONTRACT (beta finding H — published for consumers): the top-level shape is
+    `{"transcript": <path|None>, "since": <iso|"">, "counts": {human_seen, noise, secrets_omitted, errors,
+    surfaced}, "signals": [{source, signal_type, scope, text, ...}, ...]}`. NOTE: the candidate count lives at
+    `counts.surfaced` (NOT a top-level `surfaced`), and the candidate list is `signals` (NOT a top-level
+    `candidates`) — a reader expecting top-level `surfaced`/`candidates` gets neither."""
     project_dir = project_dir.resolve()
     proj_root = Path.home() / ".claude" / "projects" / slug_for(project_dir)
     auto_mem = proj_root / "memory"

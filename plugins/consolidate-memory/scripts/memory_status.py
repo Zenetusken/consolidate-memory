@@ -492,25 +492,48 @@ _MIRROR_DOMINATED = 0.5        # mirror share of the index above which the lever
 _LEAN_HOOK_TOK = 30            # est tokens/pointer for a lean re-index of the keep core (the projected_index target)
 
 
+def _is_archive_index(path: Path) -> bool:
+    """True if a store `*.md` is an ARCHIVE INDEX (a link-list like MEMORY.md / SHIPPED.md), NOT a fact.
+    A fact begins with `---` frontmatter; an archive index does not and is mostly `](x.md)` links. v0.1.18.x
+    (beta finding C1): the triage globs every `*.md` as a fact, so a relocated archive (`SHIPPED.md`, whose
+    stem matches the tracker regex) lands in B → "evict" → nuking the archive. Excluding archive docs from
+    fact_files prevents that, and lets their link-targets count as reference surfaces. Cheap: the 64-byte head
+    short-circuits the common (fact-with-frontmatter) case before reading the whole file."""
+    try:
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            head = fh.read(64)
+            if head.lstrip("﻿").lstrip().startswith("---"):   # fact frontmatter (BOM-tolerant, cf _frontmatter) → not an archive
+                return False
+            rest = head + fh.read()
+    except OSError:
+        return False
+    return len(_LINK_RE.findall(rest)) >= 3          # link-list with no frontmatter → archive index
+
+
 def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
-                       mirror_index_tokens: int, budget: int = INDEX_TOKEN_BUDGET) -> dict:
+                       mirror_index_tokens: int, budget: int = INDEX_TOKEN_BUDGET,
+                       reference_stems: set | None = None) -> dict:
     """PURE: for an OVER-budget store, rank LOCAL prune candidates into cost-ordered STAGES + route the lever.
     Returns {} when the index is under budget (no false alarm on a healthy store). Heuristics RANK/surface;
     they NEVER decide durability (empirics: name/date mis-classifies) — the model judges content, the user
     confirms. NO unlink/write path here.
 
-    Stages: A unindexed orphans (unrecallable dead weight; evict OR re-index) · B tracker/status-named
-    (transient) · C dated/oversized (the UNRELIABLE class — ranked by cost, content_review-flagged, may even
-    be a PROMOTE candidate). Lever routing: MIRROR-dominated overflow (mirrors > 50% of index) → "gc" (local
+    Stages: A TRUE orphans (unindexed AND unreferenced — dead weight; evict OR re-index) · B tracker/status
+    (transient) · C dated/oversized (UNRELIABLE class — content_review-flagged, may even be a PROMOTE candidate)
+    · R referenced (unindexed BUT reachable via CLAUDE.md/archive `reference_stems` — NOT a safe evict; de-link
+    the surface first; counts toward keep_core, re-indexed by the lean rebuild). Lever routing: MIRROR-dominated
+    overflow (mirrors > 50% of index) → "gc" (local
     pruning is futile — --pull re-creates mirrors); local-dominated with candidates → "prune"; over budget but
     nothing locally prunable (all-durable) → "justify" (the gate is satisfiable by a recorded justification,
     never a deadlock)."""
     if index_tokens <= budget:
         return {}
     share = (mirror_index_tokens / index_tokens) if index_tokens else 0.0
+    refs = reference_stems or set()
     A: list = []
     B: list = []
     C: list = []
+    R: list = []
     keep = 0
     for f in fact_files:
         try:
@@ -522,7 +545,12 @@ def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
             continue
         cand = {"stem": f.stem, "body_tokens": est_tokens(text)}
         if f.stem not in index_names:
-            A.append(cand)                  # unindexed orphan — unrecallable dead weight
+            if f.stem in refs:
+                cand["referenced"] = True   # C2: reachable via CLAUDE.md/archive prose → NOT a safe-evict orphan
+                R.append(cand)
+                keep += 1                   # counts toward keep_core: the lean rebuild re-indexes it (Gate-1 #3)
+            else:
+                A.append(cand)              # TRUE orphan — unindexed AND unreferenced = unreachable dead weight
         elif _TRACKER_RE.search(f.stem):
             B.append(cand)                  # tracker/status — transient by nature
         elif _DATED_RE.search(f.stem) or cand["body_tokens"] > _OVERSIZED_TOK:
@@ -530,17 +558,17 @@ def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
             C.append(cand)
         else:
             keep += 1                       # durable-keep core
-    for stage in (A, B, C):
+    for stage in (A, B, C, R):
         stage.sort(key=lambda c: -c["body_tokens"])
-    cands = A + B + C
+    cands = A + B + C                        # R is NOT a safe-evict candidate (referenced elsewhere) — surfaced separately
     lever = "gc" if share > _MIRROR_DOMINATED else ("prune" if cands else "justify")
     return {
         "required": True, "lever": lever,
         "index_tokens": index_tokens, "budget": budget, "mirror_share": round(share, 2),
-        "candidates": len(cands), "keep_core": keep,
-        "stages": {"A_orphans": A, "B_trackers": B, "C_dated_oversized": C},
+        "candidates": len(cands), "keep_core": keep, "referenced": len(R),
+        "stages": {"A_orphans": A, "B_trackers": B, "C_dated_oversized": C, "R_referenced": R},
         "projected_recall": sum(c["body_tokens"] for c in cands),
-        "projected_index": keep * _LEAN_HOOK_TOK,   # est lean re-index of the keep core
+        "projected_index": keep * _LEAN_HOOK_TOK,   # est lean re-index of the keep core (incl. R, re-indexed)
     }
 
 
@@ -598,9 +626,17 @@ def build_context(project_dir: Path) -> dict:
 
     index_path = auto_mem / "MEMORY.md"
     index_lb = _measure(index_path)
-    fact_files = sorted(
-        f for f in auto_mem.glob("*.md") if f.name != "MEMORY.md"
-    ) if auto_mem.exists() else []
+    # C1 (v0.1.18.x): split store *.md into FACTS vs ARCHIVE-INDEX docs (link-lists like SHIPPED.md). Archive
+    # indexes are NOT facts — exclude them so the triage never classifies/evicts a relocated archive (MEMORY.md
+    # is already excluded by name; this generalizes). archive_docs double as a reference surface below.
+    _store_md = sorted(f for f in auto_mem.glob("*.md") if f.name != "MEMORY.md") if auto_mem.exists() else []
+    archive_docs = [f for f in _store_md if _is_archive_index(f)]
+    fact_files = [f for f in _store_md if f not in archive_docs]
+    # E (v0.1.18.x): a 0-token index read WHILE facts exist is anomalous (a write-truncate race) and would
+    # wrongly clear the over-budget gate — re-read ONCE to settle it. A persistent 0 is a genuine all-unindexed
+    # store (schema_drift flags the mismatch), not "under budget / all well".
+    if index_lb[2] == 0 and fact_files and index_path.exists():
+        index_lb = _measure(index_path)
 
     transcripts = sorted(proj_root.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
 
@@ -634,7 +670,10 @@ def build_context(project_dir: Path) -> dict:
 
     # Schema drift (C2): structural/malformed-field findings vs the index — always
     # reported; advisory absence-counts are surfaced separately (NOT a drift finding).
-    index_names = index_fact_names(index_path)
+    # An indexed archive (MEMORY.md links to SHIPPED.md) is NOT a fact pointer — drop archive stems from
+    # index_names so schema_drift's stems^index_names doesn't count it as a phantom mismatch (Gate-2 #2), and
+    # so the triage never reads an archive as "indexed".
+    index_names = index_fact_names(index_path) - {f.stem for f in archive_docs}
     drift = schema_drift(fact_files, index_names)
 
     # Slug-orphan / near-duplicate-store detection (C1): a renamed project dir orphans
@@ -669,7 +708,33 @@ def build_context(project_dir: Path) -> dict:
         _idx_text = index_path.read_text(encoding="utf-8", errors="replace") if index_path.exists() else ""
         _mirror_idx = [ln for ln in _idx_text.splitlines()
                        if (m := _LINK_RE.search(ln)) and m.group(1) in mirror_stems]
-        remediation = remediation_triage(fact_files, index_names, index_lb[2], est_tokens("\n".join(_mirror_idx)))
+        # C2 (v0.1.18.x): gather reference_stems from the OTHER always-loaded surfaces so a fact reachable
+        # there is NOT mis-flagged as a safe-evict orphan. Two match modes (Gate-1 #5): archive-index docs →
+        # link-targets; CLAUDE.md prose → bare-stem substring.
+        ref_stems: set = set()
+        for _adoc in archive_docs:                       # store archive indexes (SHIPPED.md et al.) — link targets
+            try:
+                ref_stems.update(m.group(1) for m in _LINK_RE.finditer(_adoc.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                continue
+        _cmd_text = ""
+        for _cmd in project_dir.glob("**/CLAUDE.md"):    # the repo CLAUDE.md hierarchy — bare-stem prose mentions
+            if any(p in {".venv", "node_modules", ".git"} for p in _cmd.parts):
+                continue
+            try:
+                _cmd_text += "\n" + _cmd.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+        if _cmd_text:
+            for _f in fact_files:
+                _base = re.sub(r"_20\d\d.*", "", _f.stem)
+                # full-stem match always; the date-stripped base only when distinctive (a date WAS stripped AND
+                # base ≥12 chars) — a short base ("audit") substrings unrelated prose (Gate-2 #3). Safe either
+                # way (a match → R/keep, never a blind evict), so this only trims noise.
+                if _f.stem in _cmd_text or (_base != _f.stem and len(_base) >= 12 and _base in _cmd_text):
+                    ref_stems.add(_f.stem)
+        remediation = remediation_triage(fact_files, index_names, index_lb[2],
+                                         est_tokens("\n".join(_mirror_idx)), reference_stems=ref_stems)
 
     return {
         "project_dir": project_dir,
@@ -840,15 +905,16 @@ def seed_record(ctx: dict) -> CycleRecord:
         },
     }
     # v0.1.18: seed the remediation block ONLY when the over-budget triage fired (else the key is
-    # ABSENT — healthy/legacy records stay valid under total=False). The model fills pruned/achieved_*
-    # in Phase 5 after acting on (or justifying) the staged candidates.
+    # ABSENT — healthy/legacy records stay valid under total=False).
+    # G (v0.1.18.x): seed the PRE-pass ANALYSIS only; OMIT pruned/achieved_* — the model fills them in Phase 5.
+    # Seeding achieved_index=current read as "no progress"; ABSENT renders as "pending Phase 5" (total=False).
     rem = ctx.get("remediation") or {}
     if rem:
         record["remediation"] = {
             "required": rem["required"], "lever": rem["lever"],
-            "candidates_surfaced": rem["candidates"], "pruned": 0,
-            "projected_index": rem.get("projected_index", 0), "achieved_index": ctx["index_lb"][2],
-            "projected_recall": rem.get("projected_recall", 0), "achieved_recall": 0,
+            "candidates_surfaced": rem["candidates"],
+            "projected_index": rem.get("projected_index", 0),
+            "projected_recall": rem.get("projected_recall", 0),
         }
     return record
 
@@ -901,15 +967,23 @@ def _remediation_section(rem: dict) -> list:
         return []
     out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
                                        f"— GATE active · lever {rem['lever'].upper()}", "red"))]
-    for key, label in (("A_orphans", "unindexed orphans (dead weight → evict / re-index)"),
+    for key, label in (("A_orphans", "TRUE orphans (dead weight → evict / re-index)"),
                        ("B_trackers", "tracker/status (transient)"),
                        ("C_dated_oversized", "dated/oversized (content-review — heuristic ranks, you JUDGE)")):
         items = rem["stages"].get(key, [])
         if items:
             top = ", ".join(c["stem"] for c in items[:4]) + (f" +{len(items) - 4} more" if len(items) > 4 else "")
             out.append(_ui.li(f"{len(items):>2} {label}: " + _ui.c(top, "dim"), indent=4, bullet="↓", bullet_color="yellow"))
-    out.append(_ui.li(f"keep core {rem['keep_core']} · projected: index ≈{rem['projected_index']}/{rem['budget']} tok"
-                      f" · recall −≈{rem['projected_recall']} tok", indent=4, bullet="→", bullet_color="cyan"))
+    referenced = rem["stages"].get("R_referenced", [])
+    if referenced:
+        rtop = ", ".join(c["stem"] for c in referenced[:4]) + (f" +{len(referenced) - 4} more" if len(referenced) > 4 else "")
+        out.append(_ui.li(f"{len(referenced):>2} referenced in CLAUDE.md/archive — NOT safe to evict; de-link the surface FIRST: "
+                          + _ui.c(rtop, "dim"), indent=4, bullet="⚠", bullet_color="red"))
+    # F (v0.1.18.x): the GATED quantity is INDEX-POINTER tokens (relocate/shorten pointers); recall body-disk
+    # is a SEPARATE axis — label them so the recall number isn't misread as the index remedy.
+    out.append(_ui.li(f"keep core {rem['keep_core']} · projected index relief ≈{rem['projected_index']}/{rem['budget']} tok "
+                      f"(pointers) · recall body-hygiene −≈{rem['projected_recall']} tok (SEPARATE disk axis)",
+                      indent=4, bullet="→", bullet_color="cyan"))
     hint = {"gc": "mirror-dominated → the GLOBAL demote/GC lever (a local prune is futile)",
             "justify": "nothing safely prunable → justify-and-proceed (record an entries[] note)",
             "prune": "confirm the candidates, then prune / rebuild the index lean"}.get(rem["lever"], "")
@@ -955,7 +1029,10 @@ def print_report(ctx: dict) -> None:
     add("")
     add(_ui.kv("RIGOR", f"{_ui.c(tier, tcol)} provisional · magnitude {gc} "
                         + _ui.c(f"(+ curated candidates in Phase 2) · ladder ≤{TIER_LIGHT_MAX} / {TIER_LIGHT_MAX + 1}–{TIER_SUBSTANTIAL_MAX} / ≥{TIER_SUBSTANTIAL_MAX + 1}", "dim")))
-    if rg["prune_pressure"]:
+    # F (v0.1.18.x): when the REMEDIATION gate will render (index over budget), suppress the redundant
+    # `index-over-budget` prune-pressure line — the gate is its actionable form. A `many-facts` prune-pressure
+    # is a genuinely separate signal → still print it. (Suppress the PRINT only; the seeded flag stays true.)
+    if rg["prune_pressure"] and not (rg.get("prune_reason") == "index-over-budget" and ctx.get("remediation")):
         add(_ui.li(_ui.c(f"⚠ prune-pressure ({rg['prune_reason']}) — prune-or-propose this pass, at ANY tier", "yellow")))
     advisory = dream_timing_advisory(gc, ctx["last_ts"], has_marker)
     if advisory:

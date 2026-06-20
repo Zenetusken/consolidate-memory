@@ -650,6 +650,21 @@ check("v0.1.18: tracker/dated regexes match transient/dated, NOT a durable name"
       bool(ms._TRACKER_RE.search("build_status")) and bool(ms._TRACKER_RE.search("p3_tracker"))
       and bool(ms._DATED_RE.search("foo_2026_05_28")) and not ms._TRACKER_RE.search("use-placeholders")
       and not ms._DATED_RE.search("use-placeholders"))
+# v0.1.18.x (beta patch): C1 archive-index docs are not facts; C2 referenced facts are not safe-evict orphans.
+import tempfile as _tempfile  # noqa: E402
+with _tempfile.TemporaryDirectory() as _bp_td:
+    _bp_dir = Path(_bp_td)
+    (_bp_dir / "archive.md").write_text("# Shipped\n- [a](a.md) — x\n- [b](b.md) — y\n- [c](c.md) — z\n", encoding="utf-8")
+    (_bp_dir / "fact.md").write_text("---\nname: fact\nmetadata:\n  node_type: memory\n---\nbody\n", encoding="utf-8")
+    check("v0.1.18.x: _is_archive_index — link-list YES, fact (frontmatter) NO (C1: never evict an archive)",
+          ms._is_archive_index(_bp_dir / "archive.md") is True and ms._is_archive_index(_bp_dir / "fact.md") is False)
+    (_bp_dir / "reffed.md").write_text("---\nname: reffed\nmetadata:\n  node_type: memory\n---\n" + "b\n" * 50, encoding="utf-8")
+    (_bp_dir / "lonely.md").write_text("---\nname: lonely\nmetadata:\n  node_type: memory\n---\n" + "b\n" * 50, encoding="utf-8")
+    _bp_tri = ms.remediation_triage([_bp_dir / "reffed.md", _bp_dir / "lonely.md"], set(), 6000, 0, reference_stems={"reffed"})
+    _bp_orphans = [c["stem"] for c in _bp_tri["stages"]["A_orphans"]]
+    _bp_refs = [c["stem"] for c in _bp_tri["stages"]["R_referenced"]]
+    check("v0.1.18.x: C2 — referenced-unindexed → R (de-link first), unreferenced-unindexed → A (true orphan)",
+          "reffed" in _bp_refs and "reffed" not in _bp_orphans and "lonely" in _bp_orphans and "lonely" not in _bp_refs)
 
 # v0.1.14: _ui.py is the shared visual vocabulary the OTHER scripts import; render_dashboard keeps its
 # OWN copies (the byte-pinned reference, untouched). This DRIFT-PIN asserts _ui stays byte-identical to
