@@ -175,6 +175,18 @@ class Marker(TypedDict, total=False):
     timestamp: str           # stamped in Phase 5 at write time
 
 
+class Remediation(TypedDict, total=False):
+    # v0.1.18: inherited-backlog remediation — the over-budget GATE + the staged triage outcome.
+    required: bool                 # the gate is active (the always-loaded index is over budget)
+    lever: str                     # ROUTED: "prune" (local-dominated) | "gc" (mirror-dominated) | "justify" (all-durable)
+    candidates_surfaced: int       # ranked prune candidates triage offered (stages A+B+C); model judges + user confirms
+    pruned: int                    # what the dream actually pruned this pass (Phase 5)
+    projected_index: int           # est index tokens after evicting the candidates
+    achieved_index: int            # actual index tokens after the pass
+    projected_recall: int          # est recall-pool tokens freed if the candidates were evicted
+    achieved_recall: int
+
+
 class CycleRecord(TypedDict, total=False):
     project: str
     session: str
@@ -186,6 +198,7 @@ class CycleRecord(TypedDict, total=False):
     health: Health
     cross_project: CrossProject
     network: Network
+    remediation: Remediation       # v0.1.18: over-budget gate + staged-triage outcome (additive; legacy records render)
     marker: Marker
     outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
 
@@ -465,6 +478,72 @@ def drift_findings(d: Mapping[str, Any]) -> int:
             + int(d.get("malformed_origin", 0)) + int(d.get("index_mismatch", 0)))
 
 
+# ── v0.1.18: inherited-backlog remediation ──────────────────────────────────────
+# The app PREVENTS incremental bloat (budget ⚠ + prune_pressure) but couldn't REMEDIATE a backlog inherited
+# from CC's Auto-Dream (unbounded append, no index discipline) — observed on memex (110 facts, index 5.5×
+# budget, 30 unindexed orphans; the one dream that ran GREW the index 5.5× over). Empirics: a name/type/date
+# heuristic MIS-classifies durability (false-pos durable techniques, false-neg dated refs), so triage
+# RANKS/surfaces candidates in cost-ordered STAGES — it NEVER decides; the model judges content + the user
+# confirms (no delete path here, like schema_drift / _promotion_candidates).
+_TRACKER_RE = re.compile(r"(?i)(?:^|[_-])(?:tracker|status|shipped|backlog|roadmap|todo|progress|next[_-]?priorit\w*)(?:[_-]|$)|^p\d+[_-]|(?:^|[_-])bak(?:[_-]|$)")
+_DATED_RE = re.compile(r"(?:^|[_-])20\d\d[_-]\d\d[_-]\d\d(?:[_-]|$)")   # an Auto-Dream _YYYY_MM_DD stamp
+_OVERSIZED_TOK = 2500          # a body this big is a dump/research-note → a (ranking) content-review candidate
+_MIRROR_DOMINATED = 0.5        # mirror share of the index above which the lever is GC, not a futile local prune
+_LEAN_HOOK_TOK = 30            # est tokens/pointer for a lean re-index of the keep core (the projected_index target)
+
+
+def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
+                       mirror_index_tokens: int, budget: int = INDEX_TOKEN_BUDGET) -> dict:
+    """PURE: for an OVER-budget store, rank LOCAL prune candidates into cost-ordered STAGES + route the lever.
+    Returns {} when the index is under budget (no false alarm on a healthy store). Heuristics RANK/surface;
+    they NEVER decide durability (empirics: name/date mis-classifies) — the model judges content, the user
+    confirms. NO unlink/write path here.
+
+    Stages: A unindexed orphans (unrecallable dead weight; evict OR re-index) · B tracker/status-named
+    (transient) · C dated/oversized (the UNRELIABLE class — ranked by cost, content_review-flagged, may even
+    be a PROMOTE candidate). Lever routing: MIRROR-dominated overflow (mirrors > 50% of index) → "gc" (local
+    pruning is futile — --pull re-creates mirrors); local-dominated with candidates → "prune"; over budget but
+    nothing locally prunable (all-durable) → "justify" (the gate is satisfiable by a recorded justification,
+    never a deadlock)."""
+    if index_tokens <= budget:
+        return {}
+    share = (mirror_index_tokens / index_tokens) if index_tokens else 0.0
+    A: list = []
+    B: list = []
+    C: list = []
+    keep = 0
+    for f in fact_files:
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _is_mirror(text):
+            keep += 1                       # cross-project mirror — GC's domain, not a LOCAL prune candidate
+            continue
+        cand = {"stem": f.stem, "body_tokens": est_tokens(text)}
+        if f.stem not in index_names:
+            A.append(cand)                  # unindexed orphan — unrecallable dead weight
+        elif _TRACKER_RE.search(f.stem):
+            B.append(cand)                  # tracker/status — transient by nature
+        elif _DATED_RE.search(f.stem) or cand["body_tokens"] > _OVERSIZED_TOK:
+            cand["content_review"] = True   # the unreliable class — ranked, JUDGED by content (never auto-pruned)
+            C.append(cand)
+        else:
+            keep += 1                       # durable-keep core
+    for stage in (A, B, C):
+        stage.sort(key=lambda c: -c["body_tokens"])
+    cands = A + B + C
+    lever = "gc" if share > _MIRROR_DOMINATED else ("prune" if cands else "justify")
+    return {
+        "required": True, "lever": lever,
+        "index_tokens": index_tokens, "budget": budget, "mirror_share": round(share, 2),
+        "candidates": len(cands), "keep_core": keep,
+        "stages": {"A_orphans": A, "B_trackers": B, "C_dated_oversized": C},
+        "projected_recall": sum(c["body_tokens"] for c in cands),
+        "projected_index": keep * _LEAN_HOOK_TOK,   # est lean re-index of the keep core
+    }
+
+
 def _newest_mtime(base: Path, pattern: str) -> float:
     """Newest mtime among base/pattern files; 0.0 if none/absent/UNREADABLE (slug-orphan
     liveness signal). Never raises: an unreadable sibling dir (PermissionError) or a file that
@@ -572,6 +651,26 @@ def build_context(project_dir: Path) -> dict:
     slug_orphans = [{"slug": d, "newest_txn": _newest_mtime(projects_root / d, "*.jsonl"),
                      "newest_fact": _newest_mtime(projects_root / d / "memory", "*.md")} for d in dups]
 
+    # v0.1.18 remediation triage (only non-empty when the index is OVER budget). mirror_index_tokens —
+    # the share of the always-loaded index driven by cross-project mirrors — ROUTES the lever: a
+    # mirror-dominated overflow's fix is global GC, not a futile local prune (mirrors sync_global's
+    # _node_tokens attribution).
+    # Only relevant when the index is OVER budget — skip the mirror-attribution scan (which reads every
+    # fact body) on the healthy path (remediation_triage would short-circuit to {} anyway). Gate-2 nit.
+    remediation: dict = {}
+    if index_lb[2] > INDEX_TOKEN_BUDGET:
+        mirror_stems: set = set()
+        for _f in fact_files:
+            try:
+                if _is_mirror(_f.read_text(encoding="utf-8", errors="replace")):
+                    mirror_stems.add(_f.stem)
+            except OSError:
+                continue
+        _idx_text = index_path.read_text(encoding="utf-8", errors="replace") if index_path.exists() else ""
+        _mirror_idx = [ln for ln in _idx_text.splitlines()
+                       if (m := _LINK_RE.search(ln)) and m.group(1) in mirror_stems]
+        remediation = remediation_triage(fact_files, index_names, index_lb[2], est_tokens("\n".join(_mirror_idx)))
+
     return {
         "project_dir": project_dir,
         "project": project_dir.name,
@@ -595,6 +694,7 @@ def build_context(project_dir: Path) -> dict:
         "index_names": index_names,
         "schema_drift": drift,
         "slug_orphans": slug_orphans,
+        "remediation": remediation,
     }
 
 
@@ -681,7 +781,7 @@ def seed_record(ctx: dict) -> CycleRecord:
     Annotated as CycleRecord so mypy enforces this LITERAL against the contract: a drifted,
     renamed, extra, or wrong-typed key here (the main historical drift source — seed↔SKILL)
     is now a static error, not a runtime surprise downstream."""
-    return {
+    record: CycleRecord = {
         "project": ctx["project"],
         "session": "",  # fill with the session id when known
         "scope": {
@@ -739,6 +839,18 @@ def seed_record(ctx: dict) -> CycleRecord:
             "commit": ctx["head"], "timestamp": "",  # stamp at write time in Phase 5
         },
     }
+    # v0.1.18: seed the remediation block ONLY when the over-budget triage fired (else the key is
+    # ABSENT — healthy/legacy records stay valid under total=False). The model fills pruned/achieved_*
+    # in Phase 5 after acting on (or justifying) the staged candidates.
+    rem = ctx.get("remediation") or {}
+    if rem:
+        record["remediation"] = {
+            "required": rem["required"], "lever": rem["lever"],
+            "candidates_surfaced": rem["candidates"], "pruned": 0,
+            "projected_index": rem.get("projected_index", 0), "achieved_index": ctx["index_lb"][2],
+            "projected_recall": rem.get("projected_recall", 0), "achieved_recall": 0,
+        }
+    return record
 
 
 def validate_cycle_record(record: object) -> list[str]:
@@ -780,6 +892,30 @@ def validate_cycle_record(record: object) -> list[str]:
         if "schema_drift" in health and not isinstance(health["schema_drift"], dict):
             warnings.append("health.schema_drift is not a dict")
     return warnings
+
+
+def _remediation_section(rem: dict) -> list:
+    """The REMEDIATION report lines (v0.1.18) — shared by print_report + --triage. Empty when the index is
+    under budget (rem is {}). Presentation only; the heuristics RANK, the model JUDGES + confirms."""
+    if not rem:
+        return []
+    out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
+                                       f"— GATE active · lever {rem['lever'].upper()}", "red"))]
+    for key, label in (("A_orphans", "unindexed orphans (dead weight → evict / re-index)"),
+                       ("B_trackers", "tracker/status (transient)"),
+                       ("C_dated_oversized", "dated/oversized (content-review — heuristic ranks, you JUDGE)")):
+        items = rem["stages"].get(key, [])
+        if items:
+            top = ", ".join(c["stem"] for c in items[:4]) + (f" +{len(items) - 4} more" if len(items) > 4 else "")
+            out.append(_ui.li(f"{len(items):>2} {label}: " + _ui.c(top, "dim"), indent=4, bullet="↓", bullet_color="yellow"))
+    out.append(_ui.li(f"keep core {rem['keep_core']} · projected: index ≈{rem['projected_index']}/{rem['budget']} tok"
+                      f" · recall −≈{rem['projected_recall']} tok", indent=4, bullet="→", bullet_color="cyan"))
+    hint = {"gc": "mirror-dominated → the GLOBAL demote/GC lever (a local prune is futile)",
+            "justify": "nothing safely prunable → justify-and-proceed (record an entries[] note)",
+            "prune": "confirm the candidates, then prune / rebuild the index lean"}.get(rem["lever"], "")
+    out.append(_ui.li(_ui.c(f"{hint} · detect-and-offer — confirm before any prune; NEVER auto-deleted", "dim"),
+                      indent=6, bullet="·"))
+    return out
 
 
 def print_report(ctx: dict) -> None:
@@ -883,6 +1019,12 @@ def print_report(ctx: dict) -> None:
         add(_ui.kv("SIGNALS", _ui.c("detect-and-offer — Phase 0 never mutates a store", "dim")))
         out.extend(sig)
 
+    # ── REMEDIATION (v0.1.18) — only present when the index is OVER budget (the gate) ──
+    rem_lines = _remediation_section(ctx.get("remediation") or {})
+    if rem_lines:
+        add("")
+        out.extend(rem_lines)
+
     # ── GLOBAL + SESSION ──
     add("")
     g = Path.home() / ".claude" / "memory"
@@ -906,6 +1048,14 @@ def main() -> int:
     pos = [a for a in argv if not a.startswith("-")]   # positional = the project dir; flags (--json/--color/--ascii) excluded
     project_dir = Path(pos[0]) if pos else Path.cwd()
     ctx = build_context(project_dir)
+    if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)
+        _ui.set_modes(color=_ui.color_enabled(argv, sys.stdout), ascii="--ascii" in argv, width=_ui.resolve_width(argv, sys.stdout))
+        rem = ctx.get("remediation") or {}
+        body = _remediation_section(rem) if rem else [
+            _ui.kv("REMEDIATION", _ui.c(f"✓ index under budget ({ctx['index_lb'][2]}/{INDEX_TOKEN_BUDGET} tok) — nothing to remediate", "green"))]
+        print(_ui.ascii_translate(_ui.rule() + "\n  " + _ui.c("✦ REMEDIATION TRIAGE · " + ctx["project"], "cyan")
+                                  + "\n" + _ui.rule() + "\n\n" + "\n".join(body)))
+        return 0
     if as_json:
         print(json.dumps(seed_record(ctx), indent=2))
     else:

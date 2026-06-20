@@ -122,6 +122,15 @@ with explicit rationale; that override shows up in what you verify/record, not a
   miss or mis-verify?") and a **hard stop** on any write that pushes the always-loaded
   tier over budget without an explicit prune.
 
+**The over-budget remediation GATE (v0.1.18 — independent of tier).** When the always-loaded **index is
+ALREADY over budget** (`remediation.required`), the HEAVY hard-stop applies at **ANY** tier: the pass may
+**not net-grow** the over-budget index, and it must run the **remediation triage** (Phase 5) and act on it —
+**prune-or-justify**. This is the teeth the advisory `prune_pressure` lacked (a real over-budget dream once
+*grew* the index 5.5× over). The gate is **routed** by `remediation.lever`: `prune` (local-authored
+overflow → triage + evict candidates), `gc` (mirror-dominated overflow → the global demote/GC lever; a local
+prune is futile), or `justify` (over budget but nothing safely prunable → record an explicit justification,
+never deadlock). It NEVER auto-deletes — the triage *offers*; you confirm (Safety rule).
+
 A separate **prune-pressure** flag (set when the index is over budget OR the store
 already holds ≥ a threshold of facts) forces **prune-or-propose this pass regardless of
 tier** — a large store needs pruning even on a tiny pass. `memories_reviewed` drives
@@ -448,6 +457,20 @@ lines/bytes, recall-fact count).
 miss or mis-verify?" — a fact the git range implies but no candidate captured, a claim
 marked confirmed on thin evidence — and loop back one pass if it surfaces anything.
 
+**0. Over-budget remediation (v0.1.18 — GATE when `remediation.required`).** If Phase 0 flagged the index
+OVER budget, this is a hard gate, not advisory: you may not finish a pass that net-grows it (the failure a
+real over-budget dream once made). Read the staged triage (`memory_status.py --triage .`, or the Phase-0
+REMEDIATION section) — cost-ranked candidate stages: **A** unindexed orphans (unrecallable dead weight →
+evict, or re-index if durable, which itself net-grows so it's gated too), **B** tracker/status facts
+(transient), **C** dated/oversized (content-review — the heuristic RANKS, you JUDGE; these may even be
+PROMOTE candidates, not prune) — vs the durable-keep core. Then act on `remediation.lever`:
+   - **prune** (local-dominated): surface the candidates, evict the confirmed ones (a `deleted` `entries[]`
+     row each) and/or rebuild the index lean. **Never auto-delete** — the triage offers, you confirm.
+   - **gc** (mirror-dominated, `mirror_index_tokens` > 50%): a local prune is futile (`--pull` re-creates
+     mirrors) — use the global demote/GC lever (Phase-4 demote the canonical + step 2 GC), don't churn local.
+   - **justify** (over budget, nothing safely prunable): record an explicit justification as an `entries[]`
+     note — the gate is satisfied, no deadlock.
+   Fill the cycle record's `remediation` block (`pruned`, `achieved_index`/`achieved_recall`).
 1. Re-read both `MEMORY.md`s: remove duplicates (within and across stores), fix
    broken file/symbol references, drop entries no longer relevant.
 2. **Garbage-collect orphaned mirrors.** A `user-global`/`stack-general` fact deleted
@@ -593,6 +616,13 @@ summary alongside it.
                "mirror_index_tokens": 0, "recall_tokens": 0, "facts": 0, "shared": 0}],
     "totals": {"nodes": 0, "always_loaded_tokens": 0,
                "mirror_index_tokens": 0, "recall_tokens": 0}
+  },
+  "remediation": {
+    "_": "v0.1.18: present ONLY when the always-loaded index is OVER budget (the over-budget GATE); absent on a healthy store. Seeded by Phase 0; pruned/achieved_* filled in Phase 5.",
+    "required": false, "lever": "prune|gc|justify",
+    "candidates_surfaced": 0, "pruned": 0,
+    "projected_index": 0, "achieved_index": 0,
+    "projected_recall": 0, "achieved_recall": 0
   },
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
              "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
