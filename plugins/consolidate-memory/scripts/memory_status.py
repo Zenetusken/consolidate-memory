@@ -301,12 +301,20 @@ def _valid_sha(s: str) -> bool:
 
 
 def slug_for(project_dir: Path) -> str:
-    """cwd → Claude's project slug: absolute path with '/' replaced by '-'.
+    """cwd → Claude's project slug: the absolute path with BOTH '/' AND '_' replaced by '-'.
 
-    e.g. /home/you/project/foo -> -home-you-project-foo. Verified empirically
-    against ~/.claude/projects/ rather than assumed.
+    e.g. /home/you/project/Doc_Flo -> -home-you-project-Doc-Flo (case PRESERVED). Claude Code
+    normalizes '/' and '_' to '-' — verified on disk (a session with cwd .../Doc_Flo was logged
+    by CC under slug ...-Doc-Flo). A '/'-only slug (the pre-v0.1.17 bug) sent replicated
+    cross-project facts to a slug an underscore-named project never recalls — the cross-project
+    reachability blocker this fixes.
+
+    HONEST LIMIT: the rule is verified ONLY for '/' and '_' (memex is the lone underscore example on
+    disk; no '.'/space/other example exists). A dir with such a char COULD diverge further; that would
+    NOT be caught by near_duplicate_slugs (it collapses only '_'/case), so it'd be a silent miss — an
+    accepted, documented residual risk (see references/harness-map.md). Don't claim a complete rule.
     """
-    return str(project_dir.resolve()).replace("/", "-")
+    return re.sub(r"[/_]", "-", str(project_dir.resolve()))
 
 
 _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")

@@ -47,9 +47,12 @@ Never create or reorganize one; propose (don't perform) any trim of its lines.
 
 **2. Claude's private auto-memory (per-user, NOT in git):**
 `~/.claude/projects/<slug>/memory/` where `<slug>` is the project's absolute path
-with every `/` replaced by `-` (e.g. `/home/you/project/foo` →
-`-home-you-project-foo`). Verify the slug rule with `ls ~/.claude/projects/`
-rather than assuming it. Layout:
+with both `/` AND `_` replaced by `-`, case preserved (e.g. `/home/you/project/Doc_Flo`
+→ `-home-you-project-Doc-Flo`; v0.1.17 — CC normalizes underscores too, verified on disk).
+The rule is verified ONLY for `/`+`_` (no other-char example exists); a `.`/space could
+diverge further and would NOT be caught by `near_duplicate_slugs` (collapses only `_`/case)
+— an accepted residual risk. Verify a concrete slug with `ls ~/.claude/projects/` (a
+transcript's recorded `cwd` → its on-disk slug dir is ground truth). Layout:
 - `MEMORY.md` — the index, one line per fact: `- [Title](file.md) — hook`. Loaded
   into context every session. Never put fact bodies here.
 - `<name>.md` fact files — one fact each, with frontmatter (match the EXISTING
@@ -208,17 +211,19 @@ Recall is **slug-scoped**: a project auto-recalls only its own
 harness even makes per-slug stores for non-project cwds). Two consequences shape the
 cross-project model:
 
-- **Renaming a project dir orphans its memory.** The slug is the path with `/`→`-`,
-  so renaming `~/project/foo` → `~/project/bar` moves the store from slug
-  `-home-you-project-foo` to an empty `-home-you-project-bar` — stranding every fact
-  under the old slug. Canonical cross-project facts must live somewhere slug-independent.
+- **Renaming a project dir — OR an underscore in its name — orphans/splits its memory.**
+  The slug is the path with `/` AND `_` → `-`, so renaming `~/project/foo` → `~/project/bar`
+  strands every fact under the old slug; and an underscore dir (`Doc_Flo`) maps to a hyphen
+  slug (`-Doc-Flo`) — the v0.1.17 `slug_for` fix matches CC here, but a pre-v0.1.17 store may
+  sit under the wrong `…-Doc_Flo` slug. Canonical cross-project facts must live somewhere
+  slug-independent.
 - **Global facts don't auto-cross** — they must be replicated into each project's
   store to surface there.
 
 **Phase-0 detection (slug-orphans + schema drift) — detect/report/OFFER only, never
 auto-mutated:**
-- **Slug-orphans (near-duplicate slugs).** `slug_for` is **lossy** (`/`→`-`, so a
-  `Doc-Flo` dir and a `Doc/Flo` path collide), making path-reconstruction ambiguous —
+- **Slug-orphans (near-duplicate slugs).** `slug_for` is **lossy** (`/` AND `_` → `-`, so
+  `Doc-Flo`, `Doc_Flo`, and a `Doc/Flo` path all collide to one slug), making path-reconstruction ambiguous —
   so the robust rename-orphan signal is a **near-duplicate slug**: a sibling under
   `~/.claude/projects/` whose `norm()` (`s.replace("_","-").lower()`) equals this slug's,
   EXCLUDING the slug itself (a project never flags itself). `memory_status.near_duplicate_slugs`

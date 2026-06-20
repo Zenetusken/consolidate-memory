@@ -46,6 +46,12 @@ def check(name: str, cond: bool) -> None:
 
 # --- slug rule ---
 check("slug: / -> -", ms.slug_for(Path("/home/you/project/foo")) == "-home-you-project-foo")
+# v0.1.17: CC normalizes BOTH '/' and '_' to '-' (verified on disk: cwd .../Doc_Flo → slug ...-Doc-Flo).
+# The pre-fix '/'-only slug sent cross-project facts to a slug an underscore-named project never recalls.
+check("v0.1.17: slug maps '_'→'-' too (underscore project reaches its real CC store), case PRESERVED",
+      ms.slug_for(Path("/home/you/project/Doc_Flo")) == "-home-you-project-Doc-Flo")
+check("v0.1.17: slug regression-free for a no-underscore path (≡ old replace('/','-'))",
+      ms.slug_for(Path("/home/you/project/foo-bar")) == "-home-you-project-foo-bar")
 
 # --- hardening: SHA validation rejects argument-injection from a tampered state file ---
 check("sha: accepts real hex sha", ms._valid_sha("b6d37b6") and ms._valid_sha("a" * 40))
@@ -355,6 +361,19 @@ check("v0.1.16: a `dependencies = [...]` under a TOOL table (not [project]) is N
           '[project]\nname = "x"\ndependencies = ["requests"]\n[tool.hatch.envs.t]\ndependencies = ["torch"]\n'))
 check("v0.1.16: imports are ast-based — an `import x` inside a docstring is NOT counted",
       sg._imports_in_source('import lancedb\n"""\n    import torch\n"""\n') == {"lancedb"})
+# v0.1.17: the `pdf` stack — so PDF-lib gotchas (pdfium thread-unsafety) bind cross-project. Real-usage
+# gated like every stack: a declared dep or a real import, NEVER a doc-mention; exact-token (no substring).
+check("v0.1.17: pdf dep — a declared pypdfium2 maps to the pdf stack",
+      "pypdfium2" in sg._STACK_DEPS["pdf"]
+      and "pypdfium2" in sg._dep_names_from_text('[project]\ndependencies = ["pypdfium2>=4.0"]\n'))
+check("v0.1.17: pdf import — pymupdf imports as `fitz` (module≠dist), and it's in the pdf import set",
+      "fitz" in sg._STACK_IMPORTS["pdf"] and sg._imports_in_source("import fitz\n") == {"fitz"})
+check("v0.1.17: pdf is EXACT-token — no pdf token collides with another stack's sets",
+      all(sg._STACK_DEPS["pdf"].isdisjoint(sg._STACK_DEPS[s]) for s in ("rag", "gpu", "playwright", "mypy"))
+      and all(sg._STACK_IMPORTS["pdf"].isdisjoint(sg._STACK_IMPORTS[s]) for s in ("rag", "gpu", "playwright")))
+check("v0.1.17: is_relevant(stack-general:[pdf]) binds a pdf project, excludes a non-pdf one",
+      sg.is_relevant({"scope": "stack-general", "stacks": "pdf"}, {"python", "pdf"}) is True
+      and sg.is_relevant({"scope": "stack-general", "stacks": "pdf"}, {"python", "rag"}) is False)
 check("v0.1.16: _is_mirror is single-source (promoted to memory_status; sync_global imports it)",
       sg._is_mirror is ms._is_mirror)
 # promotion-candidate SEED filter (pure; the Phase-1 re-audit's pre-filter)

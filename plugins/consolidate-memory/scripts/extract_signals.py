@@ -36,6 +36,7 @@ import unicodedata
 from pathlib import Path
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
+from memory_status import slug_for  # single source of the CC slug rule ('/'+'_' → '-'); v0.1.17
 
 STATE_FILE = ".consolidation-state.json"
 
@@ -174,7 +175,7 @@ def _classify(text: str) -> tuple[str, str, int]:
 
 def extract(project_dir: Path, since: str, max_n: int) -> dict:
     project_dir = project_dir.resolve()
-    proj_root = Path.home() / ".claude" / "projects" / str(project_dir).replace("/", "-")
+    proj_root = Path.home() / ".claude" / "projects" / slug_for(project_dir)
     auto_mem = proj_root / "memory"
     since = since or _marker_ts(auto_mem)
     transcript = _latest_transcript(proj_root)

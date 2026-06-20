@@ -49,11 +49,13 @@ _STACK_DEPS = {   # PEP 503-normalized DISTRIBUTION names → stack
     "rag": {"lancedb", "faiss", "faiss-cpu", "faiss-gpu", "sentence-transformers", "chromadb", "rerankers"},
     "gpu": {"torch", "torchvision", "torchaudio", "open-clip-torch", "vllm"},
     "playwright": {"playwright", "playwright-stealth"},
+    "pdf": {"pypdfium2", "pymupdf", "pdfplumber", "pdf2image", "pdfminer-six"},  # v0.1.17: PDF-lib gotchas (pdfium thread-unsafety) bind cross-project
 }
 _STACK_IMPORTS = {   # top-level MODULE names (as imported) → stack
     "rag": {"lancedb", "faiss", "sentence_transformers", "chromadb"},
     "gpu": {"torch", "torchvision", "open_clip", "vllm"},
     "playwright": {"playwright"},
+    "pdf": {"pypdfium2", "fitz", "pdfplumber", "pdf2image", "pdfminer"},  # pymupdf imports as `fitz`; pdfminer.six as `pdfminer`
 }
 _PYPROJECT_CAP = 65536   # bytes read from pyproject (config is small; bound the read)
 _PY_SCAN_CAP = 400       # max *.py files scanned for imports (bound cost on large repos)
@@ -741,9 +743,9 @@ def promote(project_dir: Path, local_fact: str, canon_name: str) -> int:
 
 # ── token observability: per-node cost across the neural network ────────────────
 def _label_from_slug(slug: str) -> str:
-    """Human label for a node from its slug dir. The slug is the abs path with '/'→'-',
-    NOT losslessly invertible to a basename (can't tell which '-' were '/'), so we do
-    NOT guess a basename — `rsplit('-',1)[-1]` would mislabel any hyphenated project
+    """Human label for a node from its slug dir. The slug is the abs path with '/' AND '_' → '-'
+    (v0.1.17), so it is EVEN LESS invertible to a basename (a '-' could have been '/', '_', or a
+    literal '-'); we do NOT guess a basename — `rsplit('-',1)[-1]` would mislabel any hyphenated project
     (…-consolidate-memory → 'memory'). De-prefix the leading '-' and keep the
     informative tail; unambiguous beats pretty for per-node attribution."""
     # _sane strips terminal control bytes: a node's slug comes from a filesystem dir name
