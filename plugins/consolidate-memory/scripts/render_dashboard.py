@@ -442,6 +442,22 @@ def render(record: ms.CycleRecord) -> str:
     if not (cm or idx or rf or gcm.get("present")):
         out.append("    (unchanged)")
 
+    # Remediation gate (v0.1.18) — present ONLY when the index was over budget. Shows whether the gate was
+    # ACTED on (pruned>0 / justified / gc) — a fired-but-unacted gate (pruned 0, lever prune) stays visible.
+    rem = _dget(record, "remediation")
+    if rem:
+        out.append("")
+        out.append("  " + _c("REMEDIATION", "bold") + _c(f"   · over-budget gate · lever {str(rem.get('lever', '')).upper()}", "dim"))
+        cand, pruned = _num(rem.get("candidates_surfaced", 0)), _num(rem.get("pruned", 0))
+        ai, pi = _num(rem.get("achieved_index", 0)), _num(rem.get("projected_index", 0))
+        out.append(f"    {_c('↓', 'yellow')} {_g(cand)} candidate(s) surfaced · {_g(pruned)} pruned · index ≈{_g(ai)} tok (projected ≈{_g(pi)})")
+        if not pruned:
+            note = {"gc": "mirror-dominated — global demote/GC lever, not a local prune",
+                    "justify": "justified — nothing safely prunable (see entries[])",
+                    "prune": "⚠ gate fired but not acted on — surface candidates + prune-or-justify"}.get(str(rem.get("lever", "")), "")
+            if note:
+                out.append("    " + _c(note, "dim" if rem.get("lever") != "prune" else "yellow"))
+
     # Cross-project (global tier) — aligned direction | scope | name; counts on one line.
     xp = _dget(record, "cross_project")
     if xp:

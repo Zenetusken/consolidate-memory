@@ -632,9 +632,24 @@ for _nm, _obj, _td in [
     ("network", _sk_n, ms.Network),
     ("network.nodes[0]", (_sk_n.get("nodes") or [{}])[0], ms.NetworkNode),
     ("network.totals", _sk_n.get("totals", {}), ms.NetworkTotals),
+    ("remediation", _skill_schema.get("remediation", {}), ms.Remediation),   # v0.1.18
 ]:
     check(f"SKILL↔TypedDict: schema-block {_nm} == {_td.__name__} (v0.1.12 full nested pin)",
           {k for k in _obj if not k.startswith("_")} == set(_td.__annotations__))
+
+# v0.1.18: remediation triage — pure units (the full classifier is exercised hermetically in
+# simulate_accumulation.py Probe L; these pin the short-circuit, the lever routing, and the regexes).
+check("v0.1.18: triage is SILENT under budget (no false alarm on a healthy store)",
+      ms.remediation_triage([], set(), 500, 0) == {})
+check("v0.1.18: triage over-budget with no local candidates → lever 'justify' (no deadlock)",
+      ms.remediation_triage([], set(), 6000, 0).get("lever") == "justify")
+check("v0.1.18: triage routes a MIRROR-dominated overflow → 'gc' (not a futile local prune)",
+      ms.remediation_triage([], set(), 6000, 4000).get("lever") == "gc"
+      and ms.remediation_triage([], set(), 6000, 100).get("lever") == "justify")
+check("v0.1.18: tracker/dated regexes match transient/dated, NOT a durable name",
+      bool(ms._TRACKER_RE.search("build_status")) and bool(ms._TRACKER_RE.search("p3_tracker"))
+      and bool(ms._DATED_RE.search("foo_2026_05_28")) and not ms._TRACKER_RE.search("use-placeholders")
+      and not ms._DATED_RE.search("use-placeholders"))
 
 # v0.1.14: _ui.py is the shared visual vocabulary the OTHER scripts import; render_dashboard keeps its
 # OWN copies (the byte-pinned reference, untouched). This DRIFT-PIN asserts _ui stays byte-identical to

@@ -16,7 +16,9 @@ property —
   E GC never touches a project-authored (non-`global_ref:`) fact,
   F per-node + total network token consumption is observable,
   K --promote hands a local fact UP to the canonical store + mirrors the origin atomically
-    (in-sync follow-up pull, no dup/orphan; never clobbers an existing canonical).
+    (in-sync follow-up pull, no dup/orphan; never clobbers an existing canonical),
+  L remediation triage stages an inherited over-budget backlog (mechanical A/B/C ranking +
+    projected lean rebuild), routes the lever (prune/gc/justify), and NEVER deletes.
 
 Scope (stated honestly): this exercises only the SCRIPT-driven lifecycle. Phase-4
 prose decisions (which facts to prune, dedup, re-verify) remain a model call, so the
@@ -589,6 +591,97 @@ def run() -> None:
                  "canonical written, origin converted to a POST-provenance mirror (follow-up --pull is "
                  "in-sync, not STALE), a rename removes the old file + pointer, an existing canonical is "
                  "never clobbered, and the five guards block every unsafe/unreplicable promotion")
+
+        # ── Probe L: inherited-backlog remediation triage (v0.1.18) ────────────
+        # The app PREVENTS incremental bloat but must also REMEDIATE a backlog inherited from CC's
+        # Auto-Dream (memex: 110 facts, index 5.5× over, 30 orphans; the one dream that ran GREW the index).
+        # Build an Auto-Dream-style bloated store and assert `remediation_triage`: (1) over-budget → staged
+        # candidates by MECHANICAL membership (A orphans / B trackers / C dated-oversized, content_review-
+        # flagged) + a projected lean-rebuild under budget; (2) lever ROUTED (local→prune, mirror-dominated→
+        # gc, all-durable→justify — no deadlock); (3) NEVER deletes (pure analysis); (4) a clean under-budget
+        # store → {} (no false alarm). Calls the pure fn directly (no CLI/slug).
+        print("\n── Probe L: inherited-backlog remediation triage (v0.1.18) ──")
+        bl = home / ".claude" / "projects" / "-bloated" / "memory"
+        bl.mkdir(parents=True, exist_ok=True)
+
+        def _wf(name: str, body_lines: int, mirror: bool = False) -> None:
+            fm = ["---"]
+            if mirror:
+                fm.append(f"# global_ref: {name}")          # col-0 first frontmatter line → _is_mirror True
+            fm += [f"name: {name}", "metadata:", "  node_type: memory", "  type: project", "---", ""]
+            fm += [f"durable body line {i} about {name}." for i in range(body_lines)]
+            (bl / f"{name}.md").write_text("\n".join(fm) + "\n", encoding="utf-8")
+
+        trackers = ["build_status", "p1_tracker", "shipped_log", "roadmap_notes", "next_priorities", "progress_main"]
+        dated = ["alpha_2026_05_28", "beta_2026_06_01", "gamma_2026_05_15", "delta_2026_06_07"]
+        oversized = ["bigdump_one", "bigdump_two"]          # non-dated non-tracker, huge body → class C
+        durable = ["use-placeholders", "prefer-x", "avoid-y", "do-z"]
+        mirrors = ["mir-one", "mir-two"]
+        orphans = ["orphan_a_2026_05_01", "orphan_b", "orphan_c", "orphan_d", "orphan_e"]   # NOT indexed → A
+        for n in trackers + dated:
+            _wf(n, 30)
+        for n in oversized:
+            _wf(n, 900)                                     # ~> _OVERSIZED_TOK
+        for n in durable:
+            _wf(n, 3)
+        for n in mirrors:
+            _wf(n, 3, mirror=True)
+        for n in orphans:
+            _wf(n, 20)
+        idx = ["# Memory Index", ""]
+        for n in trackers + dated + oversized + durable + mirrors:   # index everything EXCEPT the orphans
+            idx.append(f"- [{n}]({n}.md) — " + ("a long verbose recall hook about " + n + " that wastes always-loaded budget ") * 3)
+        (bl / "MEMORY.md").write_text("\n".join(idx) + "\n", encoding="utf-8")
+
+        facts = [f for f in bl.glob("*.md") if f.name != "MEMORY.md"]
+        before_n = len(facts)
+        idx_names = ms.index_fact_names(bl / "MEMORY.md")
+        idx_tok = ms.est_tokens((bl / "MEMORY.md").read_text(encoding="utf-8"))
+        mir_stems = {f.stem for f in facts if ms._is_mirror(f.read_text(encoding="utf-8"))}
+        mir_lines = [ln for ln in (bl / "MEMORY.md").read_text(encoding="utf-8").splitlines()
+                     if any(f"]({s}.md)" in ln for s in mir_stems)]
+        mir_tok = ms.est_tokens("\n".join(mir_lines))
+        tri = ms.remediation_triage(facts, idx_names, idx_tok, mir_tok)
+        st = tri.get("stages", {})
+        over = idx_tok > ms.INDEX_TOKEN_BUDGET
+        members_ok = (len(st.get("A_orphans", [])) == len(orphans)
+                      and len(st.get("B_trackers", [])) == len(trackers)
+                      and len(st.get("C_dated_oversized", [])) == len(dated) + len(oversized))
+        c_flagged = bool(st.get("C_dated_oversized")) and all(c.get("content_review") for c in st["C_dated_oversized"])
+        keep_ok = tri.get("keep_core") == len(durable) + len(mirrors)
+        lever_ok = tri.get("lever") == "prune"                                   # local-dominated (tiny mirror share)
+        proj_ok = 0 < tri.get("projected_index", 1 << 30) < ms.INDEX_TOKEN_BUDGET  # lean rebuild back under budget
+        no_delete = len([f for f in bl.glob("*.md") if f.name != "MEMORY.md"]) == before_n
+        # clean under-budget store → {} (no false alarm)
+        cl = home / ".claude" / "projects" / "-cleanrem" / "memory"
+        cl.mkdir(parents=True, exist_ok=True)
+        (cl / "a.md").write_text("---\nname: a\nmetadata:\n  node_type: memory\n---\nx\n", encoding="utf-8")
+        (cl / "MEMORY.md").write_text("# Memory Index\n- [a](a.md) — hook\n", encoding="utf-8")
+        clf = [f for f in cl.glob("*.md") if f.name != "MEMORY.md"]
+        clean_quiet = ms.remediation_triage(clf, ms.index_fact_names(cl / "MEMORY.md"),
+                                            ms.est_tokens((cl / "MEMORY.md").read_text(encoding="utf-8")), 0) == {}
+        # mirror-dominated routing → gc (same store, mirror share forced > 50%)
+        gc_route = ms.remediation_triage(facts, idx_names, idx_tok, int(idx_tok * 0.6)).get("lever") == "gc"
+        # all-durable over-budget → justify (no deadlock): only durable facts, but a bloated index
+        nd = home / ".claude" / "projects" / "-alldurable" / "memory"
+        nd.mkdir(parents=True, exist_ok=True)
+        for n in durable:
+            (nd / f"{n}.md").write_text("---\nname: " + n + "\nmetadata:\n  node_type: memory\n---\nshort\n", encoding="utf-8")
+        ndi = ["# Memory Index", ""] + [f"- [{n}]({n}.md) — " + ("verbose hook " * 120) for n in durable]
+        (nd / "MEMORY.md").write_text("\n".join(ndi) + "\n", encoding="utf-8")
+        ndf = [f for f in nd.glob("*.md") if f.name != "MEMORY.md"]
+        justify_route = ms.remediation_triage(ndf, ms.index_fact_names(nd / "MEMORY.md"),
+                                              ms.est_tokens((nd / "MEMORY.md").read_text(encoding="utf-8")), 0).get("lever") == "justify"
+        print(f"  over-budget={over} · members(A/B/C)={members_ok} · C-flagged={c_flagged} · keep={keep_ok} · "
+              f"lever=prune={lever_ok} · projected<budget={proj_ok}")
+        print(f"  never-delete={no_delete} · clean-quiet={clean_quiet} · mirror→gc={gc_route} · all-durable→justify={justify_route}")
+        _verdict("L", "remediation triage stages an over-budget backlog (mechanical A/B/C + projected lean "
+                 "rebuild), routes the lever (prune/gc/justify, no deadlock), NEVER deletes, stays quiet on a "
+                 "healthy store",
+                 over and members_ok and c_flagged and keep_ok and lever_ok and proj_ok and no_delete
+                 and clean_quiet and gc_route and justify_route,
+                 "the inherited-backlog remediation: surfaces ranked candidates for the operator to judge "
+                 "(pure — never auto-deletes), with the over-budget gate + mirror-vs-local lever routing")
 
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")

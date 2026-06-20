@@ -5,6 +5,37 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.18] — 2026-06-20
+
+### Added (inherited-backlog remediation — the prune finally has teeth; additive → patch)
+- **Remediation triage + an over-budget GATE.** The app prevented *incremental* bloat (budget ⚠ +
+  `prune_pressure`) but couldn't REMEDIATE a backlog inherited from Claude Code's Auto-Dream (unbounded
+  append, no index discipline) — observed on a real store: 110 facts, index 5.5× budget, 30 unindexed
+  orphans, and a dream that fired `prune_pressure` yet *grew* the index. v0.1.18 adds:
+  - **`remediation_triage` (`memory_status.py`)** — for an over-budget index, a PURE classifier ranks local
+    prune candidates into cost-ordered stages: **A** unindexed orphans (unrecallable dead weight), **B**
+    tracker/status (transient), **C** dated/oversized (content-review) — vs the durable-keep core, with a
+    projected lean rebuild. Surfaced in Phase 0 + a new `memory_status.py --triage` view. Empirics showed a
+    name/date heuristic mis-classifies durability, so the triage **RANKS/surfaces; it never decides** — the
+    model judges content, the user confirms.
+  - **The over-budget gate (the teeth)** — the previously HEAVY-only hard-stop now applies at ANY tier when
+    the index is already over budget: a pass may not net-grow it, and must **prune-or-justify**. ROUTED by
+    the mirror-vs-local attribution: `prune` (local-dominated), `gc` (mirror-dominated >50% — a local prune
+    is futile), or `justify` (nothing safely prunable — no deadlock).
+  - **Never auto-deletes** (hard invariant): the classifier is pure/no-delete; prunes route through the model
+    + the user's confirm (the existing "surface deletions you didn't author" rule).
+- A cycle-record `remediation` block (additive `total=False`; legacy records still render) + the dashboard
+  renders it — a gate that fired-but-was-unacted stays visible.
+
+### Internal
+- New `Remediation` TypedDict via the four-place contract co-edit (TypedDict + SKILL schema block +
+  `CycleRecord` + the smoke nested schema-pin). **Probe L** (hermetic) builds an Auto-Dream-style bloated
+  store and asserts the A/B/C staging, the lever routing (prune/gc/justify), the never-delete invariant, and
+  no-false-alarm on a healthy store. +4 smoke units. smoke 254/0 · sim A–L · mypy · manifests.
+- **Versioning — PATCH:** additive (a new analysis + a new guard + prose); no removed/renamed flag/script,
+  no manifest change; the cycle-record block is additive `total=False`; the gate only changes behavior for
+  already-over-budget stores. (empirics → spec → Gate-1 → meta-test → Gate-2.)
+
 ## [0.1.17] — 2026-06-20
 
 ### Fixed (cross-project reachability — `slug_for` now matches Claude Code's slug normalization)
