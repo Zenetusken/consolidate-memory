@@ -5,8 +5,13 @@
 memory/*
 !memory/.gitkeep
 
-# Operational state written by the skill (per-project high-water mark) — never a fact.
+# Operational state + logs written by the skill (high-water mark, calibration log, mutation
+# audit trail) — never facts, never published. Defense-in-depth: the private store lives at
+# ~/.claude/projects/<slug>/memory/ (out of tree) AND this repo dogfoods itself, so guard the
+# names too in case a path ever points in-tree (this is a PUBLIC repo).
 **/.consolidation-state.json
+**/.consolidation-log.jsonl
+**/.mutation-log.jsonl
 
 # Python + workspace cruft (covers plugins/consolidate-memory/scripts/__pycache__/).
 __pycache__/

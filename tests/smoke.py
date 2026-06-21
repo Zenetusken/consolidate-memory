@@ -656,6 +656,12 @@ for _nm, _obj, _td in [
     ("network.nodes[0]", (_sk_n.get("nodes") or [{}])[0], ms.NetworkNode),
     ("network.totals", _sk_n.get("totals", {}), ms.NetworkTotals),
     ("remediation", _skill_schema.get("remediation", {}), ms.Remediation),   # v0.1.18
+    # v0.1.22: whole-hierarchy measure + the deterministic audit block (+ their list-item shapes via [0]).
+    ("budget.claude_md_hierarchy", _sk_b.get("claude_md_hierarchy", {}), ms.ClaudeMdHierarchy),
+    ("budget.claude_md_hierarchy.files[0]", (_sk_b.get("claude_md_hierarchy", {}).get("files") or [{}])[0], ms.ClaudeMdHierarchyFile),
+    ("audit", _skill_schema.get("audit", {}), ms.Audit),
+    ("audit.memory", _skill_schema.get("audit", {}).get("memory", {}), ms.AuditStoreDelta),
+    ("audit.operations[0]", (_skill_schema.get("audit", {}).get("operations") or [{}])[0], ms.AuditOp),
 ]:
     check(f"SKILL↔TypedDict: schema-block {_nm} == {_td.__name__} (v0.1.12 full nested pin)",
           {k for k in _obj if not k.startswith("_")} == set(_td.__annotations__))

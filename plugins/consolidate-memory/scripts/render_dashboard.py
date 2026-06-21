@@ -450,6 +450,14 @@ def render(record: ms.CycleRecord) -> str:
         _brow("recall facts", _g(rf.get("after", 0)), (f"{'+' if d >= 0 else ''}{_g(d)}" if d else ""))
     if not (cm or idx or rf or gcm.get("present")):
         out.append("    (unchanged)")
+    # v0.1.22 (read-only): the WHOLE CLAUDE.md hierarchy. CC loads CLAUDE.md hierarchically, so the load-bearing
+    # number is worst_path — a session in the heaviest subtree pays every ancestor CLAUDE.md every turn.
+    hier = _dget(_dget(record, "budget"), "claude_md_hierarchy")
+    _cmbud = _num(cm.get("budget_tokens", 0)) or 4000
+    if hier and (_num(hier.get("total_files", 0)) > 1 or _num(hier.get("worst_path_tokens", 0)) > _cmbud):
+        wt, wp = _num(hier.get("worst_path_tokens", 0)), _clean(hier.get("worst_path", "?"))
+        heavy = _c("  ⚠ heavy", "yellow") if wt > _cmbud else ""
+        _brow("CLAUDE.md tree", f"≈{_g(wt)}", f"{_g(hier.get('total_files', 0))} files · a session in {wp} pays this/turn{heavy}")
 
     # Remediation gate (v0.1.18) — present ONLY when the index was over budget. Shows whether the gate was
     # ACTED on (pruned>0 / justified / gc) — a fired-but-unacted gate (pruned 0, lever prune) stays visible.
@@ -480,6 +488,24 @@ def render(record: ms.CycleRecord) -> str:
                     "prune": "⚠ gate fired but not acted on — surface candidates + prune-or-justify"}.get(str(rem.get("lever", "")), "")
             if note:
                 out.append("    " + _c(note, "dim" if rem.get("lever") != "prune" else "yellow"))
+
+    # AUDIT (v0.1.22) — the DETERMINISTIC, script-observed mutation trail for THIS pass (a content-hash diff),
+    # the counterpart to the model-narrated entries[]. Present only once Phase 5 fills it.
+    aud = _dget(record, "audit")
+    if aud:
+        out.append("")
+        out.append("  " + _c("AUDIT", "bold") + _c("   · files this pass changed (script-observed; cf. entries[])", "dim"))
+        any_change = False
+        for store in ("memory", "claude_md"):
+            s = _dget(aud, store)
+            cr, md, dl = _num(s.get("created", 0)), _num(s.get("modified", 0)), _num(s.get("deleted", 0))
+            if cr or md or dl:
+                any_change = True
+                td = _num(s.get("token_delta", 0))
+                out.append(f"    {store:<10} +{_g(cr)} created · ~{_g(md)} modified · −{_g(dl)} deleted · {'+' if td >= 0 else ''}{_g(td)} tok")
+        if not any_change:
+            out.append("    " + _c("no file mutations detected this pass", "dim"))
+        out.append("    " + _c("window phase0..phase5 — any change in the span is attributed to this pass", "dim"))
 
     # Cross-project (global tier) — aligned direction | scope | name; counts on one line.
     xp = _dget(record, "cross_project")

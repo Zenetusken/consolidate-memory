@@ -14,6 +14,7 @@ Usage: python3 memory_status.py [PROJECT_DIR] [--json]
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -112,11 +113,50 @@ class RecallFacts(TypedDict, total=False):
     after: int
 
 
+class ClaudeMdHierarchyFile(TypedDict, total=False):
+    path: str          # repo-relative path of a CLAUDE.md
+    tokens: int
+
+
+class ClaudeMdHierarchy(TypedDict, total=False):
+    # v0.1.22: the WHOLE CLAUDE.md hierarchy (root + nested), not just the root. CLAUDE.md loads hierarchically,
+    # so worst_path = the heaviest root→leaf ancestor chain ("a session in <dir> pays worst_path_tokens").
+    files: list[ClaudeMdHierarchyFile]
+    worst_path: str            # the dir whose CLAUDE.md ancestor-chain sums highest (repo-relative)
+    worst_path_tokens: int
+    total_files: int
+
+
 class Budget(TypedDict, total=False):
     claude_md: ClaudeMdBudget
     global_claude_md: GlobalClaudeMd
     index: IndexBudget
     recall_facts: RecallFacts
+    claude_md_hierarchy: ClaudeMdHierarchy   # v0.1.22: whole-hierarchy measure (read-only)
+
+
+class AuditOp(TypedDict, total=False):
+    path: str          # store-/repo-relative path that changed
+    op: str            # created | modified | deleted (v0.1.23 relocate = a delete+create pair)
+    token_delta: int   # after − before tokens
+    store: str         # memory | claude_md
+
+
+class AuditStoreDelta(TypedDict, total=False):
+    created: int
+    modified: int
+    deleted: int
+    token_delta: int
+
+
+class Audit(TypedDict, total=False):
+    # v0.1.22: the DETERMINISTIC, script-emitted mutation trail — what this pass ACTUALLY changed (a content-hash
+    # snapshot diffed Phase0→Phase5), the counterpart to the model-narrated entries[]. HONEST GAP: the window
+    # attributes ANY change in the Phase0→Phase5 span to the dream (an interrupted/concurrent edit mis-attributes).
+    memory: AuditStoreDelta
+    claude_md: AuditStoreDelta
+    operations: list[AuditOp]
+    window: str
 
 
 class SchemaDrift(TypedDict, total=False):
@@ -204,6 +244,7 @@ class CycleRecord(TypedDict, total=False):
     cross_project: CrossProject
     network: Network
     remediation: Remediation       # v0.1.18: over-budget gate + staged-triage outcome (additive; legacy records render)
+    audit: Audit                   # v0.1.22: deterministic script-emitted mutation trail (additive; legacy records render)
     marker: Marker
     outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
 
@@ -666,6 +707,105 @@ def _measure(p: Path) -> tuple[int, int, int]:
     return (len(text.splitlines()), len(text.encode()), est_tokens(text))
 
 
+def _claude_md_files(project_dir: Path) -> list[Path]:
+    """Every CLAUDE.md in the repo tree (root + nested), excluding vendored/VCS dirs — the shared reference-scan
+    predicate (mirrors the build_context glob). glob('**/') does NOT follow directory symlinks (no cycle risk)."""
+    return [p for p in project_dir.glob("**/CLAUDE.md")
+            if not any(part in {".venv", "node_modules", ".git"} for part in p.parts)]
+
+
+def claude_md_hierarchy(project_dir: Path) -> dict:
+    """v0.1.22 (READ-ONLY): measure the WHOLE CLAUDE.md hierarchy, not just the root. CLAUDE.md loads
+    HIERARCHICALLY — a session in a leaf dir pays every ancestor's CLAUDE.md up to the repo root — so the
+    load-bearing number is `worst_path`: the dir whose root→leaf CLAUDE.md ancestor-chain sums highest
+    ('a session in <dir> pays worst_path_tokens of CLAUDE.md every turn'). Bounded at project_dir (the repo root
+    via .resolve()), never the filesystem root. Pure read; never mutates."""
+    root = project_dir.resolve()
+    by_dir = {p.parent.resolve(): est_tokens(p.read_text(encoding="utf-8", errors="replace"))
+              for p in _claude_md_files(root)}
+    worst_dir, worst_tokens = root, 0
+    for d in by_dir:                                    # 'leaf' = every dir that HAS a CLAUDE.md (Gate-1 #3)
+        chain, cur = 0, d
+        while True:                                     # sum this dir + all ancestors up to the repo root
+            chain += by_dir.get(cur, 0)
+            if cur == root or cur.parent == cur:        # stop at repo root (or filesystem root — belt-and-suspenders)
+                break
+            cur = cur.parent
+        if chain > worst_tokens:
+            worst_dir, worst_tokens = d, chain
+
+    def _rel(p: Path) -> str:
+        try:
+            return str(p.relative_to(root)) or "."
+        except ValueError:
+            return str(p)
+
+    files = [{"path": _rel(d / "CLAUDE.md"), "tokens": t}
+             for d, t in sorted(by_dir.items(), key=lambda kv: -kv[1])]
+    return {"files": files, "worst_path": _rel(worst_dir),
+            "worst_path_tokens": worst_tokens, "total_files": len(by_dir)}
+
+
+def audit_snapshot_path(slug: str) -> str:
+    """v0.1.22: deterministic per-slug temp path for a dream's BEFORE audit snapshot (sibling of cycle_seed_path)."""
+    return str(Path(tempfile.gettempdir()) / f"cm-audit{slug}.json")
+
+
+def audit_snapshot(project_dir: Path) -> dict:
+    """v0.1.22: a deterministic content-hash snapshot of everything a dream may mutate — the private memory store
+    (`*.md`: fact files + MEMORY.md + any archive index) and the CLAUDE.md hierarchy. The dream's own infra
+    (`.consolidation-state.json` / `.consolidation-log.jsonl` / `.mutation-log.jsonl`) is NOT `*.md`, so the glob
+    already excludes it — only legitimate facts/index/CLAUDE.md are tracked (MEMORY.md IS included: a re-index is
+    a real, wanted write the audit SHOULD catch — the renderer labels an index-only diff as expected). READ-ONLY;
+    a content hash the model can't fake. Pairs with audit_diff for the Phase0→Phase5 mutation trail."""
+    project_dir = project_dir.resolve()
+    auto_mem = Path.home() / ".claude" / "projects" / slug_for(project_dir) / "memory"
+    snap: dict = {}
+
+    def _add(label: str, p: Path, store: str) -> None:
+        try:
+            data = p.read_bytes()
+        except OSError:
+            return
+        snap[label] = {"hash": hashlib.sha1(data).hexdigest(),
+                       "tokens": est_tokens(data.decode("utf-8", "replace")), "store": store}
+
+    if auto_mem.exists():
+        for f in sorted(auto_mem.glob("*.md")):
+            _add(f"memory/{f.name}", f, "memory")
+    for p in _claude_md_files(project_dir):
+        try:
+            label = f"claude_md/{p.relative_to(project_dir)}"
+        except ValueError:
+            label = f"claude_md/{p.name}"
+        _add(label, p, "claude_md")
+    return snap
+
+
+def audit_diff(before: dict, after: dict) -> dict:
+    """v0.1.22: the DETERMINISTIC mutation set between two audit_snapshots — one op per file whose content-hash
+    CHANGED (created / modified / deleted); an unchanged file (same hash) is NOT an op. Per-store rollups
+    (memory / claude_md). This is the script-OBSERVED counterpart to the model-narrated entries[]."""
+    ops: list = []
+    roll = {"memory": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0},
+            "claude_md": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0}}
+    for label in sorted(set(before) | set(after)):
+        b, a = before.get(label), after.get(label)
+        store = (a or b or {}).get("store", "memory")
+        if b and a and b["hash"] != a["hash"]:
+            op, delta = "modified", a["tokens"] - b["tokens"]
+        elif a and not b:
+            op, delta = "created", a["tokens"]
+        elif b and not a:
+            op, delta = "deleted", -b["tokens"]
+        else:
+            continue                                    # unchanged (same hash) or both absent → not an op
+        ops.append({"path": label, "op": op, "token_delta": delta, "store": store})
+        roll[store][op] += 1
+        roll[store]["token_delta"] += delta
+    return {"memory": roll["memory"], "claude_md": roll["claude_md"], "operations": ops}
+
+
 def build_context(project_dir: Path) -> dict:
     """Gather all Phase-0 facts into one dict (basis for both report and --json seed)."""
     project_dir = project_dir.resolve()
@@ -824,6 +964,7 @@ def build_context(project_dir: Path) -> dict:
         "auto_mem": auto_mem,
         "repo": repo,
         "global_claude_md": global_claude_md,
+        "claude_md_hierarchy": claude_md_hierarchy(project_dir),   # v0.1.22: whole-hierarchy measure (read-only)
         "index_path": index_path,
         "index_lb": index_lb,
         "fact_files": fact_files,
@@ -967,6 +1108,7 @@ def seed_record(ctx: dict) -> CycleRecord:
                 "over": ctx["index_lb"][2] > INDEX_TOKEN_BUDGET,
             },
             "recall_facts": {"before": len(ctx["fact_files"]), "after": len(ctx["fact_files"])},
+            "claude_md_hierarchy": ctx["claude_md_hierarchy"],   # v0.1.22: whole-hierarchy measure (read-only)
         },
         "health": {"index_pointers_ok": True, "broken": [], "dangling_links": [],
                    "slug_orphans": [o["slug"] for o in ctx["slug_orphans"]],
@@ -1027,7 +1169,7 @@ def validate_cycle_record(record: object) -> list[str]:
         return [f"cycle record is not a dict (got {type(record).__name__})"]
 
     # Top-level keys that MUST be a dict if present.
-    for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health"):
+    for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health", "audit"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
@@ -1159,6 +1301,15 @@ def print_report(ctx: dict) -> None:
         over = _ui.c("  ⚠ OVER", "red") if ct > CLAUDE_MD_TOKEN_BUDGET else ""
         add(f"    {_ui.lbl('CLAUDE.md', 14)}{_ui.bar(ct, CLAUDE_MD_TOKEN_BUDGET)} {_ui.pct(ct, CLAUDE_MD_TOKEN_BUDGET):>4}  "
             + _ui.c(f"≈{ct}/{CLAUDE_MD_TOKEN_BUDGET} tok · {cln} ln · {clb} by  [project, committed]", "dim") + over)
+    # v0.1.22 (read-only): the WHOLE CLAUDE.md hierarchy — CC loads it hierarchically, so a session in the
+    # heaviest subtree pays every ancestor CLAUDE.md. Surface worst_path when nested files exist (the root row
+    # above already covers a single-file repo). Detect-and-REPORT only — NOT wired into the remediation gate.
+    _hier = ctx.get("claude_md_hierarchy") or {}
+    if _hier.get("total_files", 0) > 1 or _hier.get("worst_path_tokens", 0) > CLAUDE_MD_TOKEN_BUDGET:
+        _wt = _hier.get("worst_path_tokens", 0)
+        _heavy = _ui.c("  ⚠ heavy", "yellow") if _wt > CLAUDE_MD_TOKEN_BUDGET else ""
+        add(f"    {_ui.lbl('CLAUDE.md tree', 14)}"
+            + _ui.c(f"≈{_wt} tok · {_hier.get('total_files', 0)} files · a session in {_hier.get('worst_path', '?')} pays this/turn", "dim") + _heavy)
     gl, gb, gt = ctx["global_claude_md"]
     if gl or gb:
         heavy = _ui.c("  ⚠ heavy", "yellow") if gt > GLOBAL_CLAUDE_MD_TOKEN_BUDGET else ""
@@ -1234,8 +1385,13 @@ def print_report(ctx: dict) -> None:
 
 def main() -> int:
     argv = sys.argv[1:]
+    audit_before = ""    # v0.1.22: --audit <before-snapshot-path> — capture its path arg so pos doesn't read it as project_dir
+    if "--audit" in argv:
+        _ai = argv.index("--audit")
+        if _ai + 1 < len(argv) and not argv[_ai + 1].startswith("-"):
+            audit_before = argv[_ai + 1]
     as_json = "--json" in argv
-    pos = [a for a in argv if not a.startswith("-")]   # positional = the project dir; flags (--json/--color/--ascii) excluded
+    pos = [a for a in argv if not a.startswith("-") and a != audit_before]   # positional = the project dir
     project_dir = Path(pos[0]) if pos else Path.cwd()
     ctx = build_context(project_dir)
     if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)
@@ -1250,6 +1406,25 @@ def main() -> int:
         path = cycle_seed_path(ctx["slug"])
         Path(path).write_text(json.dumps(seed_record(ctx), indent=2) + "\n", encoding="utf-8")
         print(path)
+        return 0
+    if "--snapshot" in argv:    # v0.1.22: Phase-0 BEFORE audit snapshot → per-slug temp path + print it
+        path = audit_snapshot_path(ctx["slug"])
+        Path(path).write_text(json.dumps(audit_snapshot(project_dir), indent=2) + "\n", encoding="utf-8")
+        print(path)
+        return 0
+    if "--audit" in argv:       # v0.1.22: Phase-5 diff vs the BEFORE snapshot → append the deterministic log + print summary
+        try:
+            before = json.loads(Path(audit_before).read_text(encoding="utf-8")) if audit_before else {}
+        except (OSError, json.JSONDecodeError):
+            before = {}
+        diff = audit_diff(before if isinstance(before, dict) else {}, audit_snapshot(project_dir))
+        try:                    # the ONLY write in the audit path — an append, mirroring the _persist log pattern
+            ctx["auto_mem"].mkdir(parents=True, exist_ok=True)
+            with open(ctx["auto_mem"] / ".mutation-log.jsonl", "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"window": "phase0..phase5", **diff}) + "\n")
+        except OSError:
+            pass
+        print(json.dumps(diff, indent=2))
         return 0
     if as_json:
         print(json.dumps(seed_record(ctx), indent=2))
