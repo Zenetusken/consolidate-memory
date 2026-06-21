@@ -284,6 +284,16 @@ fact = "---\nname: x\nmetadata:\n  node_type: memory\n---\nbody\n"
 mirror = sg._as_mirror(fact, "x")
 check("mirror: injects global_ref", "global_ref: x" in mirror)
 check("mirror: idempotent", sg._as_mirror(mirror, "x").count("global_ref: x") == 1)
+# v0.1.26 (provenance-churn root-fix): the canonical-only `projects:` provenance is NEVER carried into a
+# mirror — eliminates cross-fleet staleness when a pull grows a canonical's holder list. Frontmatter-scoped:
+# a prose body line starting "projects:" must SURVIVE; the round-trip + frontmatter validity must hold.
+_canon_prov = "---\nname: y\nmetadata:\n  node_type: memory\n  scope: user-global\n  projects: [a, b, c]\n---\nbody\nprojects: prose survives\n"
+_mir_prov = sg._as_mirror(_canon_prov, "y")
+check("v0.1.26: _as_mirror strips frontmatter projects:, preserves body, keeps round-trip",
+      "projects: [a, b, c]" not in _mir_prov            # frontmatter provenance gone
+      and "projects: prose survives" in _mir_prov        # body line untouched (FM-scoped)
+      and sg._is_mirror(_mir_prov) is True               # load-bearing round-trip
+      and sg._frontmatter(_mir_prov).get("scope") == "user-global")  # frontmatter still parses
 
 # --- retrieval safety: secret omission + noise filtering ---
 check("retrieval: secret pattern hit (long token)", bool(es._looks_secret("AQ3D" + "x7Y2k9" * 9)))

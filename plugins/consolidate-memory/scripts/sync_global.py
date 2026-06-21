@@ -319,12 +319,23 @@ def _as_mirror(text: str, name: str) -> str:
     load-bearing invariant — see the smoke test."""
     if text.startswith("﻿"):     # strip a leading BOM so the written mirror begins with '---'
         text = text[1:]                # (else _is_mirror's ^--- anchor fails on our own output)
-    lines = [ln for ln in text.splitlines() if not ln.strip().startswith("global_ref:")]
     out: list[str] = []
     injected = False
-    for ln in lines:
+    dashes = 0                         # frontmatter = the span between the 1st and 2nd '---'
+    for ln in text.splitlines():
+        s = ln.strip()
+        if s == "---":
+            dashes += 1
+        if s.startswith("global_ref:"):
+            continue                   # drop any existing global_ref (re-stamped below)
+        # v0.1.26 (provenance-churn root-fix): `projects:` is CANONICAL-ONLY bookkeeping (the synapse
+        # record `network()`/`_holders` read off the global store). NEVER carry it into a mirror — else
+        # every pull that grows a canonical's holder list marks all OTHER mirrors stale (cosmetic churn).
+        # Frontmatter-scoped (dashes == 1) so a prose body line can never be stripped.
+        if dashes == 1 and s.startswith("projects:"):
+            continue
         out.append(ln)
-        if not injected and not ln[:1].isspace() and ln.strip().rstrip(":") == "metadata":
+        if not injected and not ln[:1].isspace() and s.rstrip(":") == "metadata":
             out.append(f"  global_ref: {name}")
             injected = True
     if not injected:  # no metadata block — stamp just inside the frontmatter
