@@ -410,20 +410,40 @@ placing each fact in its tier and optimizing it for how that tier loads:
     **demote/delete the canonical in `~/.claude/memory/`**, then GC the orphans
     fleet-wide (Phase 5). Local pruning works only on **project-authored** pointers.
     The index holds *pointers only* (`- [Title](file.md) — hook`), never fact bodies.
-  - **Repo `CLAUDE.md`** (user hand-authored, committed, team-shared — you are a
-    **guest**): **default to NOT writing it.** It is the most expensive tier *and* the
-    one the skill can least verify — Phase-3 checks *descriptive* claims against the
-    tree, but a good `CLAUDE.md` is mostly *normative* (conventions, instructions) that
-    no `grep` can confirm. So route a fact to auto-memory (private) or
-    `AGENTS.md`/`MEMORY.md` (team) **first**. Touch `CLAUDE.md` only for a genuine,
-    durable, project-wide **convention** that must load every session — and then as a
-    **surgical single-line addition in the file's existing style and section**.
-    **Never create** a `CLAUDE.md` where the repo has none; **never reorganize** one.
-    It is gated against `CLAUDE_MD_TOKEN_BUDGET` (⚠ when `over`), but if it's over, do
-    **not** silently prune the user's lines — **propose** specific trims in the report
-    and let them decide (Safety rule). Don't introduce drift-prone derived stats
-    (test/module counts) into it; update an existing such line only if you verified it
-    here.
+  - **Repo `CLAUDE.md`** (user hand-authored, committed, team-shared — you are a **guest WITH permission to
+    tidy, ON THE RECORD**, v0.1.24): you MAY relocate/compress/prune the CLAUDE.md hierarchy, but ONLY **gated
+    per-change** (report-then-apply, explicit approval) and **audited** (the Phase-5 `--audit` recorder captures
+    every change). The hard invariants:
+    - **The DIRECTIVE always STAYS; relocate only the ELABORATION.** CLAUDE.md is always-loaded (enforced EVERY
+      session); a committed doc is on-demand (enforced only if a pointer cues a read). Relocating a *binding
+      directive* silently drops it a tier — **enforcement erosion**, invisible in a content diff. So a relocate
+      SPLITS a heavy section: KEEP every directive (the binding rule) + add a one-line pointer in CLAUDE.md; MOVE
+      the elaboration (rationale / examples / mechanics) to a committed doc. **NEVER relocate a directive.** Two
+      checks, in order: (1) run `_has_normative_marker` on the chunk you intend to MOVE — a hit (MUST/NEVER/
+      ALWAYS/SHALL/REQUIRED/DON'T) means it IS a directive, keep it. This marker is **SUFFICIENT, NOT NECESSARY**:
+      a MISS does NOT license a relocate — the DOMINANT directive form is the **bare imperative** ("Keep src/
+      pyright-clean", "Run the gate before pushing") which carries NO marker. (2) So you must AFFIRMATIVELY judge
+      the chunk is non-binding *elaboration* before moving it; when unsure, keep it. `memory_status.py --sections`
+      flags heavy sections + `has_directive` per section (MECHANICAL hint, same sufficient-not-necessary caveat —
+      it does NOT decide the split). The per-change proposal MUST show: **directive-that-stays · the pointer ·
+      elaboration-that-moves · the target doc** — the human-approved proposal is the ultimate guard; show it so
+      enforcement-preservation is visible and rejectable.
+    - **Relocate targets: EXISTING committed in-repo docs only.** Validate EVERY target with
+      `memory_status.valid_relocate_target(path, project_dir)` (in-repo AND not `~/.claude` AND not gitignored —
+      relocating into the private store or a gitignored dir is silent team data loss). No fitting target →
+      PROPOSE creating one ("relocate to a new `docs/TYPING.md` — create it?") and let the HUMAN create/approve;
+      never impose repo structure. **Never create a `CLAUDE.md`** where the repo has none.
+    - **compress** (tighten normative prose) is a HIGH-SCRUTINY exception — a rewrite can silently drop a clause;
+      explicit per-change approval, show before/after verbatim. **prune** only a *descriptive* line whose
+      referenced code/file is grep-confirmed GONE; a *normative* line is NEVER pruned on your judgment — you
+      PROPOSE, the human owns the "still wanted?" call (team intent isn't in the tree). Default
+      relocate-not-delete.
+    - Gated against `CLAUDE_MD_TOKEN_BUDGET` + the whole-hierarchy worst-path (Phase 0) — the relocate lever is
+      how you cut an over-budget nested CLAUDE.md without eroding enforcement. The Phase-5 `--audit` conservation
+      check flags any CLAUDE.md token drop without matching target growth — that's a relocate whose bytes didn't
+      land OR an intended compress/prune; either way **verify it was deliberate** (it fires on authorized
+      compress/prune too, by design — confirm, don't dismiss). Don't introduce drift-prone derived stats
+      (test/module counts); update an existing such line only if you verified it here.
 - **Recall tier** (auto-memory fact files): one fact per file with the frontmatter
   schema, and **invest in the `description:` as a recall key** — it becomes the
   always-loaded index hook, so phrase it as the task-context that should cue a future
@@ -583,13 +603,15 @@ These protect the stores from corruption and the user from leaks:
 - **Surface deletions you didn't author.** Pruning your own stale entry is fine;
   before deleting a memory file or repo-doc fact you didn't write this pass, name it
   in the Phase 4 report and let the user confirm.
-- **`CLAUDE.md` is the user's, not the store's — treat it as a guest.** It's committed,
-  team-shared, AND always-loaded (the widest blast radius of any store), and its
-  conventions are *normative*, so verification can't confirm them. Never create one
-  where none exists; never reorganize one; add at most a surgical, in-style line for a
-  genuine always-loaded convention; and **propose** (never silently perform) any trim
-  of user-authored lines. Prefer auto-memory or `AGENTS.md`/`MEMORY.md` for everything
-  else.
+- **`CLAUDE.md` is the user's, not the store's — guest WITH permission to tidy, on the record (v0.1.24).** It's
+  committed, team-shared, AND always-loaded (the widest blast radius of any store), and its conventions are
+  *normative*, so verification can't confirm them. You MAY relocate/compress/prune the hierarchy, but ONLY gated
+  per-change + audited, and under the Phase-4 invariants: **the directive always STAYS — relocate only the
+  elaboration** (moving a binding directive to an on-demand doc silently erodes enforcement); **never create a
+  `CLAUDE.md`** where none exists; **relocate to existing committed in-repo targets only** (`valid_relocate_target`
+  — never the private store / a gitignored dir); compress is high-scrutiny; **propose** (never silently perform)
+  any normative trim — the human owns the staleness call. Prefer auto-memory or `AGENTS.md`/`MEMORY.md` for new
+  facts; reserve CLAUDE.md edits for tidying the always-loaded tier.
 - **Two `CLAUDE.md`s, handled differently — never confuse them.** The conservative
   edits above apply ONLY to the **project** `<repo>/CLAUDE.md`. The **user-global**
   `~/.claude/CLAUDE.md` (loaded into *every* project, every session) is **strictly
@@ -678,7 +700,9 @@ summary alongside it.
     "_": "v0.1.22: DETERMINISTIC script-emitted mutation trail. Phase 0 `memory_status.py --snapshot` writes a per-slug BEFORE snapshot; Phase 5 `--audit <snapshot>` diffs, appends .mutation-log.jsonl, and fills this — what THIS pass ACTUALLY changed (content-hash), cf. the model-narrated entries[]. MEMORY.md modified = expected re-index churn.",
     "memory": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0},
     "claude_md": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0},
+    "repo_doc": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0},
     "operations": [{"path": "memory/foo.md", "op": "modified", "token_delta": 0, "store": "memory"}],
+    "conservation": {"claude_md_drop": 0, "repo_doc_growth": 0, "possible_loss": false},
     "window": "phase0..phase5"
   },
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",

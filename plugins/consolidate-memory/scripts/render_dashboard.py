@@ -496,13 +496,18 @@ def render(record: ms.CycleRecord) -> str:
         out.append("")
         out.append("  " + _c("AUDIT", "bold") + _c("   · files this pass changed (script-observed; cf. entries[])", "dim"))
         any_change = False
-        for store in ("memory", "claude_md"):
+        for store in ("memory", "claude_md", "repo_doc"):
             s = _dget(aud, store)
             cr, md, dl = _num(s.get("created", 0)), _num(s.get("modified", 0)), _num(s.get("deleted", 0))
             if cr or md or dl:
                 any_change = True
                 td = _num(s.get("token_delta", 0))
                 out.append(f"    {store:<10} +{_g(cr)} created · ~{_g(md)} modified · −{_g(dl)} deleted · {'+' if td >= 0 else ''}{_g(td)} tok")
+        # v0.1.24: relocate conservation — a gross CLAUDE.md drop with little relocate-target growth = possible loss.
+        cons = _dget(aud, "conservation")
+        if cons.get("possible_loss"):
+            out.append("    " + _c(f"⚠ possible lost relocate — CLAUDE.md −{_g(cons.get('claude_md_drop', 0))} tok but "
+                                   f"targets only +{_g(cons.get('repo_doc_growth', 0))}: verify this was a prune, not a dropped move", "yellow"))
         if not any_change:
             out.append("    " + _c("no file mutations detected this pass", "dim"))
         out.append("    " + _c("window phase0..phase5 — any change in the span is attributed to this pass", "dim"))

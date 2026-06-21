@@ -114,6 +114,23 @@ check("v0.1.23: resolve_wikilink resolves an archive/index ref present in the va
       and ms.resolve_wikilink("MEMORY", {"a", "b", "SHIPPED", "MEMORY"}) == "MEMORY"
       and ms.resolve_wikilink("SHIPPED", {"a", "b"}) is None)          # absent from the set → unresolved (correctly)
 
+# v0.1.24 (SAFETY backstop): _has_normative_marker catches a binding directive in a relocate's moving chunk.
+check("v0.1.24: _has_normative_marker flags RFC-2119/imperative directives (+ smart-quote/spacing), not plain prose",
+      ms._has_normative_marker("you MUST keep src/ pyright-clean")
+      and ms._has_normative_marker("never delete the canonical")
+      and ms._has_normative_marker("Always run the gate")
+      and ms._has_normative_marker("Don’t commit secrets")          # Gate-2 1a: smart-quote apostrophe
+      and ms._has_normative_marker("DO  NOT  edit this")                 # Gate-2 1a: irregular DO NOT spacing
+      and not ms._has_normative_marker("the rationale is batching improves throughput")
+      and not ms._has_normative_marker("mustard and almonds"))            # word-boundary: 'must' in 'mustard' ≠ a marker
+# v0.1.24 (SAFETY firewall): valid_relocate_target REJECTS outside-repo / private-store / .. -escape (these
+# short-circuit before the git check, so they're testable without a git fixture; the gitignored case is Probe Q).
+_fakerepo = Path("/home/nobody/some-repo")
+check("v0.1.24: valid_relocate_target rejects outside-repo, private-store, and .. -escape targets",
+      ms.valid_relocate_target("/tmp/elsewhere.md", _fakerepo) is False
+      and ms.valid_relocate_target(str(Path.home() / ".claude" / "x.md"), _fakerepo) is False
+      and ms.valid_relocate_target("../escape.md", _fakerepo) is False)
+
 # --- hardening: SHA validation rejects argument-injection from a tampered state file ---
 check("sha: accepts real hex sha", ms._valid_sha("b6d37b6") and ms._valid_sha("a" * 40))
 check("sha: rejects git option injection", not ms._valid_sha("--output=/etc/passwd"))
@@ -700,6 +717,7 @@ for _nm, _obj, _td in [
     ("audit", _skill_schema.get("audit", {}), ms.Audit),
     ("audit.memory", _skill_schema.get("audit", {}).get("memory", {}), ms.AuditStoreDelta),
     ("audit.operations[0]", (_skill_schema.get("audit", {}).get("operations") or [{}])[0], ms.AuditOp),
+    ("audit.conservation", _skill_schema.get("audit", {}).get("conservation", {}), ms.Conservation),   # v0.1.24
 ]:
     check(f"SKILL↔TypedDict: schema-block {_nm} == {_td.__name__} (v0.1.12 full nested pin)",
           {k for k in _obj if not k.startswith("_")} == set(_td.__annotations__))
