@@ -414,6 +414,14 @@ def resolve_wikilink(target: str, stems: set) -> str | None:
     return None
 
 
+def valid_link_targets(auto_mem: Path) -> set:
+    """v0.1.23 (D10): every valid `[[wikilink]]` target stem in a store — ALL `*.md` (fact files, archive-index
+    docs like SHIPPED.md, AND MEMORY.md → stem 'MEMORY'). A `[[SHIPPED]]` / `[[MEMORY]]` ref is a REAL target,
+    not a dangling link; the Phase-5 dangling check must resolve against THIS set (not fact-stems alone) or it
+    false-flags archive/index refs (the D10 false-positive class). READ-ONLY."""
+    return {f.stem for f in auto_mem.glob("*.md")} if auto_mem.exists() else set()
+
+
 _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
 _LINK_RE = re.compile(r"\]\(([^)]+)\.md\)")        # MEMORY.md pointer link target (stem)
 _SCOPES = ("project-local", "stack-general", "user-global")
@@ -576,6 +584,9 @@ _MIRROR_DOMINATED = 0.5        # mirror share of the index above which the lever
 _LEAN_HOOK_TOK = 30            # est tokens/pointer for a lean re-index of the keep core (the projected_index target)
 _STANDING_JUSTIFY_DELTA = 10   # v0.1.21: a standing-justified over-budget gate re-FIRES once the store grows by this
                                # many facts past the justified baseline (the delta-detector) — keeps the v0.1.18 teeth
+_STANDING_JUSTIFY_TOKEN_FACTOR = 1.25   # v0.1.23 (D6): ALSO re-fire when index tokens exceed the justified baseline
+                                        # tokens × this — token bloat with flat fact-count was a blind spot; re-index
+                                        # noise on a flat store is ~0%, real growth ~15-20%, so 1.25 is above noise
 
 
 def _standing_baseline(sj: object) -> int | None:
@@ -584,6 +595,16 @@ def _standing_baseline(sj: object) -> int | None:
     suppress on garbage; suppression is the dangerous direction). Pairs with _STANDING_JUSTIFY_DELTA."""
     if isinstance(sj, dict) and isinstance(sj.get("facts"), int):
         return sj["facts"]
+    return None
+
+
+def _standing_baseline_tokens(sj: object) -> int | None:
+    """v0.1.23 (D6): the justified index-TOKEN baseline from a marker's `standing_justify`, or None. FAILS OPEN
+    exactly like _standing_baseline — a malformed/absent `index_tokens` returns None ⇒ the token axis can't be
+    proven safe ⇒ the gate FIRES (suppression is the dangerous direction). The v0.1.21 SKILL standing_justify
+    write persists `index_tokens` (landed with the feature in c3e3ec7), so a real marker always carries it."""
+    if isinstance(sj, dict) and isinstance(sj.get("index_tokens"), int):
+        return sj["index_tokens"]
     return None
 
 
@@ -914,12 +935,14 @@ def build_context(project_dir: Path) -> dict:
     # Only relevant when the index is OVER budget — skip the mirror-attribution scan (which reads every
     # fact body) on the healthy path (remediation_triage would short-circuit to {} anyway). Gate-2 nit.
     remediation: dict = {}
-    _sj_baseline = _standing_baseline(standing_justify)   # v0.1.21 (D7): justified-density baseline, or None (fail-open)
-    if (index_lb[2] > INDEX_TOKEN_BUDGET and _sj_baseline is not None
-            and len(fact_files) <= _sj_baseline + _STANDING_JUSTIFY_DELTA):
-        # STANDING-JUSTIFIED (D6/D7): the density was judged EARNED at this baseline and the store hasn't grown by
-        # Δ — SUPPRESS the gate (don't re-surface the same triage every pass). The delta-detector re-fires below
-        # once fact-count exceeds baseline+Δ (new density to review). Keeps the v0.1.18 teeth without alarm fatigue.
+    _sj_baseline = _standing_baseline(standing_justify)          # v0.1.21 (D7): justified fact-count baseline, or None
+    _sj_tokens = _standing_baseline_tokens(standing_justify)     # v0.1.23 (D6): justified index-token baseline, or None
+    # STANDING-JUSTIFIED suppresses ONLY when BOTH axes are within bound: fact-count ≤ baseline+Δ AND index tokens
+    # ≤ baseline_tokens × FACTOR. Either axis growing (or no valid baseline) re-FIRES the gate (fail-open) — so
+    # token bloat with flat fact-count no longer hides (D6), while genuine earned density stays suppressed.
+    if (index_lb[2] > INDEX_TOKEN_BUDGET
+            and _sj_baseline is not None and len(fact_files) <= _sj_baseline + _STANDING_JUSTIFY_DELTA
+            and _sj_tokens is not None and index_lb[2] <= int(_sj_tokens * _STANDING_JUSTIFY_TOKEN_FACTOR)):
         remediation = {"required": False, "standing_justified": True, "baseline_facts": _sj_baseline,
                        "index_tokens": index_lb[2], "budget": INDEX_TOKEN_BUDGET, "candidates": 0,
                        "current_facts": len(fact_files)}
@@ -1217,7 +1240,7 @@ def _remediation_section(rem: dict) -> list:
         grew = f"+{cur - base}" if isinstance(cur, int) else "?"
         return [_ui.kv("REMEDIATION", _ui.c(
             f"✓ over budget ({rem.get('index_tokens', '?')}/{rem.get('budget', INDEX_TOKEN_BUDGET)} tok) but "
-            f"STANDING-JUSTIFIED · {cur} facts vs baseline {base} ({grew}; re-fires at +{_STANDING_JUSTIFY_DELTA})", "green"))]
+            f"STANDING-JUSTIFIED · {cur} facts vs baseline {base} ({grew}; re-fires at +{_STANDING_JUSTIFY_DELTA} facts or on index-token bloat)", "green"))]
     out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
                                        f"— GATE active · lever {rem['lever'].upper()}", "red"))]
     # D8 (v0.1.21): lead with the INDEX-RELIEF stages (B/C move the gated index); R = de-link-first; A = disk-only LAST.

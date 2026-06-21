@@ -518,12 +518,15 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. T
    reported, not auto-pruned.)
 3. Re-confirm every file path / function name you referenced still exists.
    → **Cycle record:** fill `health` — `index_pointers_ok`, any `broken` pointers,
-   any `dangling_links` (`[[name]]` wikilinks pointing at no target file). Strip
-   inline code spans first: `[[...]]` inside backticks is NOT a wikilink (e.g. TOML
-   `[[tool.mypy.overrides]]`) — don't flag those. For each dangling `[[name]]`, try
-   `memory_status.resolve_wikilink(name, stems)` — it resolves slug-drift
-   (`[[qwen-migration-research]]` → `qwen_migration_research_2026_05_26`); SUGGEST the
-   drifted target as a fix and confirm before re-linking, never auto-rewrite (D10, v0.1.21).
+   any `dangling_links` (`[[name]]` wikilinks pointing at no target file). Resolve against
+   the FULL valid-target set — `memory_status.valid_link_targets(auto_mem)` (every `*.md`:
+   facts + archive-index docs like `SHIPPED.md` + `MEMORY`): an archive/index ref such as
+   `[[SHIPPED]]` / `[[MEMORY]]` is a REAL target, NOT dangling (D10, v0.1.23 — don't
+   false-flag it). Strip inline code spans first: `[[...]]` inside backticks is NOT a
+   wikilink (e.g. TOML `[[tool.mypy.overrides]]`) — don't flag those. For each genuinely
+   dangling `[[name]]`, try `memory_status.resolve_wikilink(name, valid_link_targets(auto_mem))`
+   — it resolves slug-drift (`[[qwen-migration-research]]` → `qwen_migration_research_2026_05_26`);
+   SUGGEST the drifted target as a fix and confirm before re-linking, never auto-rewrite (D10, v0.1.21).
 4. **Measure the network's token cost** (the observability section). Capture per-node
    + total estimated token consumption across every node in the shared-memory network
    and paste it into the cycle record's `network` block verbatim:

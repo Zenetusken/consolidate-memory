@@ -801,10 +801,10 @@ def run() -> None:
         _nfacts = len(ctxn["fact_files"])
         _mk = nstore / ".consolidation-state.json"
         _mk.write_text(json.dumps({"commit": "x", "timestamp": "2026-06-20T00:00:00Z",
-                                   "standing_justify": {"facts": _nfacts, "index_tokens": 9, "at": "2026-06-20T00:00:00Z"}}), encoding="utf-8")
+                                   "standing_justify": {"facts": _nfacts, "index_tokens": 10**9, "at": "2026-06-20T00:00:00Z"}}), encoding="utf-8")  # v0.1.23: generous token baseline isolates the FACT-axis (the token-axis is Probe P)
         sj_suppressed = ms.build_context(pn)["remediation"].get("standing_justified") is True
         _mk.write_text(json.dumps({"commit": "x", "timestamp": "2026-06-20T00:00:00Z",
-                                   "standing_justify": {"facts": _nfacts - ms._STANDING_JUSTIFY_DELTA - 1, "index_tokens": 9, "at": "2026-06-20T00:00:00Z"}}), encoding="utf-8")
+                                   "standing_justify": {"facts": _nfacts - ms._STANDING_JUSTIFY_DELTA - 1, "index_tokens": 10**9, "at": "2026-06-20T00:00:00Z"}}), encoding="utf-8")  # v0.1.23: generous token baseline isolates the FACT-axis (the token-axis is Probe P)
         _gr = ms.build_context(pn)["remediation"]
         sj_fires = _gr.get("required") is True and not _gr.get("standing_justified")
         _mk.write_text(json.dumps({"commit": "x", "timestamp": "2026-06-20T00:00:00Z", "standing_justify": "garbage"}), encoding="utf-8")
@@ -874,6 +874,58 @@ def run() -> None:
                  "measuring is READ-ONLY (no mutation, no log written)",
                  hier_ok and infra_excluded and audit_ok and readonly_ok,
                  "surfaces the ~54k nested-CLAUDE.md cost + a deterministic mutation trail — the safety substrate for v0.1.23")
+
+        # ── Probe P: v0.1.23 memory-index residuals (D6 standing-justify TOKEN-axis · D10 archive-target wikilinks) ──
+        # The beta-harness WARNed D6 (token bloat with flat fact-count stayed suppressed) + D10 ([[SHIPPED]] archive
+        # ref flagged dangling). Assert: the gate now re-fires on token growth AND still on fact growth (independent),
+        # fails open on missing/zero token baseline; and an archive/index ref is a valid wikilink target, not dangling.
+        print("\n── Probe P: v0.1.23 (standing-justify token-axis · archive-target wikilinks) ──")
+        projP = home / "projects-src" / "residP"
+        projP.mkdir(parents=True, exist_ok=True)
+        stP = home / ".claude" / "projects" / ms.slug_for(projP) / "memory"
+        stP.mkdir(parents=True, exist_ok=True)
+        for _n in ("a", "b", "c", "d", "e"):
+            (stP / f"{_n}.md").write_text(f"---\nname: {_n}\nmetadata:\n  node_type: memory\n  type: project\n---\nbody\n", encoding="utf-8")
+        (stP / "SHIPPED.md").write_text("# Shipped\n" + "\n".join(f"- [{n}]({n}.md) — done" for n in ("x", "y", "z")), encoding="utf-8")
+        (stP / "MEMORY.md").write_text("# Memory Index\n" + "\n".join(
+            f"- [{n}]({n}.md) — " + ("verbose hook " * 60) for n in ("a", "b", "c", "d", "e", "f", "g", "h")), encoding="utf-8")
+        _rhP = os.environ.get("HOME")
+        os.environ["HOME"] = str(home)
+        idxP = ms.build_context(projP)["index_lb"][2]
+        nfP = len(ms.build_context(projP)["fact_files"])
+
+        def _sj(facts: int, tokens=None) -> dict:
+            sj: dict = {"facts": facts}
+            if tokens is not None:
+                sj["index_tokens"] = tokens
+            (stP / ".consolidation-state.json").write_text(
+                json.dumps({"commit": "x", "timestamp": "2026-06-20T00:00:00Z", "standing_justify": sj}), encoding="utf-8")
+            return ms.build_context(projP)["remediation"]
+
+        over_budget = idxP > ms.INDEX_TOKEN_BUDGET                       # fixture must be over budget for the gate to engage
+        d6_suppress = _sj(nfP, idxP).get("standing_justified") is True   # both axes within bound → SUPPRESSED
+        d6_token_fires = _sj(nfP, idxP // 2).get("required") is True     # tokens > (idx/2)×1.25, flat facts → token-axis FIRES
+        d6_fact_fires = _sj(nfP - ms._STANDING_JUSTIFY_DELTA - 1, idxP * 10).get("required") is True  # facts grew, tokens generous → fact-axis FIRES
+        d6_zero_fires = _sj(nfP, 0).get("required") is True              # baseline tokens 0 → FIRES
+        d6_failopen = _sj(nfP).get("required") is True                   # marker missing index_tokens → fail-open FIRES
+        d6_helper = (ms._standing_baseline_tokens({"index_tokens": 9}) == 9 and ms._standing_baseline_tokens("x") is None
+                     and ms._standing_baseline_tokens({}) is None and ms._standing_baseline_tokens({"index_tokens": "12"}) is None
+                     and ms._standing_baseline_tokens(None) is None)
+        vtP = ms.valid_link_targets(stP)
+        d10_ok = ("SHIPPED" in vtP and "MEMORY" in vtP and ms.resolve_wikilink("SHIPPED", vtP) == "SHIPPED"
+                  and ms.resolve_wikilink("MEMORY", vtP) == "MEMORY" and ms.resolve_wikilink("no-such-target-xyz", vtP) is None)
+        if _rhP is not None:
+            os.environ["HOME"] = _rhP
+        else:
+            os.environ.pop("HOME", None)
+        print(f"  D6: over-budget-fixture={over_budget} · suppress-both-within={d6_suppress} · token-axis-fires={d6_token_fires} · "
+              f"fact-axis-fires={d6_fact_fires} · zero-tokens-fires={d6_zero_fires} · fail-open-missing={d6_failopen} · helper={d6_helper}")
+        print(f"  D10: archive/index are valid wikilink targets (not dangling) + resolve={d10_ok}")
+        _verdict("P", "v0.1.23 residuals: standing-justify re-fires on TOKEN bloat (flat facts) AND still on fact growth "
+                 "(independent axes), fails open on missing/zero token baseline (D6); valid_link_targets makes "
+                 "[[SHIPPED]]/[[MEMORY]] real targets, not dangling (D10)",
+                 over_budget and d6_suppress and d6_token_fires and d6_fact_fires and d6_zero_fires and d6_failopen and d6_helper and d10_ok,
+                 "closes the beta-harness D6/D10 WARNs — token bloat no longer hides, archive refs aren't false-dangling")
 
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")

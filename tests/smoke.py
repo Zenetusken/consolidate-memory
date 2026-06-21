@@ -101,6 +101,19 @@ check("v0.1.22: audit_diff is robust to a malformed before-snapshot (missing tok
                      "memory/z.md": "not-a-dict"},                                  # non-dict entry
                     {"memory/x.md": {"hash": "b", "tokens": 9, "store": "memory"}})["memory"]["modified"] == 1)
 
+# v0.1.23 (D6): _standing_baseline_tokens fails OPEN exactly like _standing_baseline (only a well-formed int yields a baseline).
+check("v0.1.23: _standing_baseline_tokens returns the int baseline only for a well-formed dict, else None (fail-open)",
+      ms._standing_baseline_tokens({"index_tokens": 2000}) == 2000
+      and ms._standing_baseline_tokens({"facts": 5}) is None          # facts present, index_tokens missing
+      and ms._standing_baseline_tokens("garbage") is None
+      and ms._standing_baseline_tokens({"index_tokens": "12"}) is None  # stringified → not int
+      and ms._standing_baseline_tokens(None) is None)
+# v0.1.23 (D10): resolve_wikilink finds an archive/index stem when it's in the valid-target set (the [[SHIPPED]] fix is set-membership).
+check("v0.1.23: resolve_wikilink resolves an archive/index ref present in the valid-target set (D10)",
+      ms.resolve_wikilink("SHIPPED", {"a", "b", "SHIPPED", "MEMORY"}) == "SHIPPED"
+      and ms.resolve_wikilink("MEMORY", {"a", "b", "SHIPPED", "MEMORY"}) == "MEMORY"
+      and ms.resolve_wikilink("SHIPPED", {"a", "b"}) is None)          # absent from the set → unresolved (correctly)
+
 # --- hardening: SHA validation rejects argument-injection from a tampered state file ---
 check("sha: accepts real hex sha", ms._valid_sha("b6d37b6") and ms._valid_sha("a" * 40))
 check("sha: rejects git option injection", not ms._valid_sha("--output=/etc/passwd"))
