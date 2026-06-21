@@ -5,6 +5,35 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.28] — 2026-06-21
+
+### Added — rich HTML observability dashboard ("dream telemetry")
+A gorgeous, ZERO-dependency, self-contained HTML dashboard — the visual sibling of the ASCII report (one
+cycle-record contract, two renderers). `render_html.py` (stdlib) injects the data inline (XSS / `</script>` /
+attribute-quote-safe) into a BUNDLED template and auto-opens it via `webbrowser` (headless-safe — prints the
+path if no browser). Offline + works out-of-the-box from the marketplace install.
+- **Renders** the current cycle — **repo identity**, budget meters (index / CLAUDE.md), rigor, verification +
+  health, the script-observed audit trail, the cross-project "shared-consciousness" network — AND longitudinal
+  trends from `.consolidation-log`: the **index-budget trajectory** toward the ceiling with a least-squares
+  projected-breach early-warning, recall-fact growth, per-cycle churn, and the rigor tier + dream cadence.
+- **Editorial "field report" aesthetic**: warm light + warm-dark themes, auto-detected via `prefers-color-scheme`
+  + a manual auto/light/dark toggle; refined serif/mono pairing; precise round-axis ink-on-paper hand-rolled SVG
+  charts; one restrained accent.
+- **Integration**: Phase 5 generates it after the ASCII render (auto-opens — the post-dream payoff);
+  **`cm report [DIR]`** re-opens a project's latest. Coherent with the ASCII renderer (same record; key numbers
+  asserted equal in smoke).
+
+### Internal
+- `render_html.py` + bundled `dashboard.template.html` (found via `__file__` → marketplace-cache-safe). +9 smoke
+  units (coherence round-trip, XSS `</script>` + attribute-quote escaping, zero-external-deps, bundling,
+  legacy/sparse render, malformed-log robustness, `_store_for`). smoke 282/0 · mypy · manifests. Independent
+  re-audit (1 MED attribute-XSS found + fixed). Charts: least-squares budget slope, breach marker on the exact
+  fractional crossing, round-number axes, canonical `CYCLES` series so all longitudinal charts agree; visual
+  verified via browser screenshots + coordinate-free DOM probes.
+- **Versioning — PATCH**: additive (new renderer + bundled template + `cm report` + SKILL Phase-5 hookup; no
+  cycle-record schema change, no removed flag, no install break). The per-repo dream **archive** mini-site
+  (browse history + `cm report <hash>`) is the next cycle (v0.1.29).
+
 ## [0.1.27] — 2026-06-21
 
 ### Added (SKILL doc — the archive-relocation remediation discipline; from the network audit)
