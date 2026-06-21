@@ -32,7 +32,9 @@ cm — consolidate-memory
   cm tokens [DIR] [--json] per-node + total token consumption across the network
   cm network           render the cross-project shared-memory graph
   cm render cycle.json render an ASCII dashboard from a cycle record
-  cm report [DIR]      open the per-repo dream ARCHIVE — browse all dreams (self-contained, zero-dep)
+  cm report [DIR]      [maintainer dev CLI] open DIR's dream archive (DEFAULT: THIS repo — pass another
+                       repo's path to view it, e.g. cm report ~/project/job-applicator-python).
+                       End users just open ~/.claude/projects/<slug>/dashboards/index.html directly.
   cm report HASH [DIR] re-open a specific dream's dashboard by its commit-hash prefix
 
 A full pass is best driven by the plugin itself. Dogfood it from this repo:
