@@ -12,6 +12,13 @@
       "description": "Cross-project, verification-first memory beyond Auto Dream: shares fact-checked memory across your whole fleet (a governed global store) and verifies facts against the live code, dropping what it can't confirm, with tiered context-budget + network token observability.",
       "category": "productivity",
       "keywords": ["memory", "consolidation", "dream", "cross-project", "context-management"]
+    },
+    {
+      "name": "dream-beta-tester",
+      "source": "./plugins/dream-beta-tester",
+      "description": "QA companion to consolidate-memory: beta-tests the \"dream\" skill itself. A deterministic invariant oracle + a judgment-lens skill (/dream-beta-test) that finds defects, regressions, and dishonest reports in the consolidation skill — honest by construction (confirmed vs suspected kept separate). Includes a maintainer continuous-QA pre-push gate with a frozen self-test canary + a deterministic orchestrator contract (latest.json) for autonomous release self-heal.",
+      "category": "productivity",
+      "keywords": ["beta-testing", "qa", "regression", "consolidate-memory", "dream", "self-heal"]
     }
   ]
 }
