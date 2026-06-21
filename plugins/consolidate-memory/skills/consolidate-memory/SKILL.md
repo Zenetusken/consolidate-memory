@@ -461,19 +461,30 @@ lines/bytes, recall-fact count).
 miss or mis-verify?" — a fact the git range implies but no candidate captured, a claim
 marked confirmed on thin evidence — and loop back one pass if it surfaces anything.
 
-**0. Over-budget remediation (v0.1.18 — GATE when `remediation.required`).** If Phase 0 flagged the index
-OVER budget, this is a hard gate, not advisory: you may not finish a pass that net-grows it (the failure a
-real over-budget dream once made). Read the staged triage (`memory_status.py --triage .`, or the Phase-0
-REMEDIATION section) — cost-ranked candidate stages: **A** unindexed orphans (unrecallable dead weight →
-evict, or re-index if durable, which itself net-grows so it's gated too), **B** tracker/status facts
-(transient), **C** dated/oversized (content-review — the heuristic RANKS, you JUDGE; these may even be
-PROMOTE candidates, not prune) — vs the durable-keep core. Then act on `remediation.lever`:
-   - **prune** (local-dominated): surface the candidates, evict the confirmed ones (a `deleted` `entries[]`
-     row each) and/or rebuild the index lean. **Never auto-delete** — the triage offers, you confirm.
+**0. Over-budget remediation (v0.1.18 GATE; v0.1.21 standing-justify) — when `remediation.required`.** If Phase 0
+flagged the index OVER budget AND the gate is NOT standing-justified, it's a hard gate: you may not finish a pass
+that net-grows it. (When `remediation.standing_justified` is true the gate is **SUPPRESSED** — the density was
+judged earned at a baseline and the store hasn't grown by Δ since; nothing to do here.) Read the staged triage
+(`memory_status.py --triage .`): the INDEX-RELIEF stages are **B** tracker/status (transient) + **C** dated/oversized
+(content-review — RANKS, you JUDGE; may be PROMOTE candidates); **R** referenced (in CLAUDE.md / an archive / a
+`[[wikilink]]` from another fact — NOT safe to evict; **de-link the surface FIRST**); **A** TRUE orphans (unindexed
+AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. Then act on `remediation.lever`:
+   - **prune** (local-dominated): surface the candidates, evict the confirmed ones (a `deleted` `entries[]` row
+     each) and/or rebuild the index lean. **Never auto-delete** — the triage offers, you confirm. **If
+     `reaches_budget` is false** (a full prune still exceeds budget — earned density), prune what's safely
+     transient, THEN **standing-justify the residual** (below); do NOT force-evict durable density to chase an
+     unreachable number.
    - **gc** (mirror-dominated, `mirror_index_tokens` > 50%): a local prune is futile (`--pull` re-creates
      mirrors) — use the global demote/GC lever (Phase-4 demote the canonical + step 2 GC), don't churn local.
-   - **justify** (over budget, nothing safely prunable): record an explicit justification as an `entries[]`
-     note — the gate is satisfied, no deadlock.
+   - **justify** (over budget, nothing safely prunable): record an explicit `entries[]` justification.
+   - **Standing-justify (D6/D7) — on a `justify` or prune-then-justify outcome:** persist the earned baseline so
+     the gate STOPS re-litigating every pass. In the Phase-5 marker write (step 5), add
+     `standing_justify: {"facts": <current fact-count>, "index_tokens": <current>, "at": "<iso>"}`. The next pass
+     SUPPRESSES the gate until fact-count grows by Δ (the delta-detector re-fires on NEW density). NEVER
+     standing-justify a store you could actually prune under budget — that hides real bloat.
+   - **D3/D11 — do NOT "backfill" an over-budget index.** Phase 0's `index↔file` gap, when over budget, is
+     INTENTIONAL (a mature store earns density by not indexing everything) — it is NOT drift to backfill (that
+     net-grows under the gate). Backfill is legit only UNDER budget.
    Fill the cycle record's `remediation` block (`pruned`, `achieved_index`/`achieved_recall`).
 1. Re-read both `MEMORY.md`s: remove duplicates (within and across stores), fix
    broken file/symbol references, drop entries no longer relevant.
@@ -497,7 +508,10 @@ PROMOTE candidates, not prune) — vs the durable-keep core. Then act on `remedi
    → **Cycle record:** fill `health` — `index_pointers_ok`, any `broken` pointers,
    any `dangling_links` (`[[name]]` wikilinks pointing at no target file). Strip
    inline code spans first: `[[...]]` inside backticks is NOT a wikilink (e.g. TOML
-   `[[tool.mypy.overrides]]`) — don't flag those.
+   `[[tool.mypy.overrides]]`) — don't flag those. For each dangling `[[name]]`, try
+   `memory_status.resolve_wikilink(name, stems)` — it resolves slug-drift
+   (`[[qwen-migration-research]]` → `qwen_migration_research_2026_05_26`); SUGGEST the
+   drifted target as a fix and confirm before re-linking, never auto-rewrite (D10, v0.1.21).
 4. **Measure the network's token cost** (the observability section). Capture per-node
    + total estimated token consumption across every node in the shared-memory network
    and paste it into the cycle record's `network` block verbatim:
@@ -509,7 +523,10 @@ PROMOTE candidates, not prune) — vs the durable-keep core. Then act on `remedi
 5. **Update the high-water mark**: write `commit` (current `HEAD`) + ISO
    `timestamp` to `~/.claude/projects/<slug>/memory/.consolidation-state.json` so
    the next pass scopes correctly (stamp the timestamp at write time), and mirror
-   that `timestamp` into the cycle record's `marker.timestamp`.
+   that `timestamp` into the cycle record's `marker.timestamp`. **If the over-budget gate
+   was JUSTIFIED this pass** (lever `justify` or prune-then-justify, step 0), ALSO write
+   `standing_justify: {"facts": <current fact-count>, "index_tokens": <current>, "at": "<iso>"}`
+   to the marker — the next pass SUPPRESSES the gate until the store grows by Δ (D6/D7, v0.1.21).
 6. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py <the --seed path> \
@@ -622,11 +639,12 @@ summary alongside it.
                "mirror_index_tokens": 0, "recall_tokens": 0}
   },
   "remediation": {
-    "_": "v0.1.18: present ONLY when the always-loaded index is OVER budget (the over-budget GATE); absent on a healthy store. Seeded by Phase 0; pruned/achieved_* filled in Phase 5.",
+    "_": "v0.1.18: present ONLY when the index is OVER budget (the GATE); absent on a healthy store. v0.1.21: when standing_justified the gate is SUPPRESSED (required=false) until fact-count grows by Δ. Seeded by Phase 0; pruned/achieved_* filled in Phase 5.",
     "required": false, "lever": "prune|gc|justify",
     "candidates_surfaced": 0, "pruned": 0,
     "projected_index": 0, "achieved_index": 0,
-    "projected_recall": 0, "achieved_recall": 0
+    "projected_recall": 0, "achieved_recall": 0,
+    "standing_justified": false, "baseline_facts": 0, "reaches_budget": true
   },
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
              "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
