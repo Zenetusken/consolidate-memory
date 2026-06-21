@@ -115,10 +115,12 @@ check("v0.1.23: resolve_wikilink resolves an archive/index ref present in the va
       and ms.resolve_wikilink("SHIPPED", {"a", "b"}) is None)          # absent from the set → unresolved (correctly)
 
 # v0.1.24 (SAFETY backstop): _has_normative_marker catches a binding directive in a relocate's moving chunk.
-check("v0.1.24: _has_normative_marker flags RFC-2119/imperative directives (MUST/NEVER/…), not plain prose",
+check("v0.1.24: _has_normative_marker flags RFC-2119/imperative directives (+ smart-quote/spacing), not plain prose",
       ms._has_normative_marker("you MUST keep src/ pyright-clean")
       and ms._has_normative_marker("never delete the canonical")
       and ms._has_normative_marker("Always run the gate")
+      and ms._has_normative_marker("Don’t commit secrets")          # Gate-2 1a: smart-quote apostrophe
+      and ms._has_normative_marker("DO  NOT  edit this")                 # Gate-2 1a: irregular DO NOT spacing
       and not ms._has_normative_marker("the rationale is batching improves throughput")
       and not ms._has_normative_marker("mustard and almonds"))            # word-boundary: 'must' in 'mustard' ≠ a marker
 # v0.1.24 (SAFETY firewall): valid_relocate_target REJECTS outside-repo / private-store / .. -escape (these

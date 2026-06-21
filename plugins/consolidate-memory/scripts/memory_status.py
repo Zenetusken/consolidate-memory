@@ -780,16 +780,20 @@ def claude_md_hierarchy(project_dir: Path) -> dict:
             "worst_path_tokens": worst_tokens, "total_files": len(by_dir)}
 
 
-# v0.1.24: binding-directive markers (RFC-2119 + imperatives). re.IGNORECASE catches MUST and must alike.
-_NORMATIVE_RE = re.compile(r"\b(?:MUST|SHALL|REQUIRED|NEVER|ALWAYS|DO NOT|DON'T)\b", re.IGNORECASE)
+# v0.1.24: binding-directive markers (RFC-2119 + imperatives). IGNORECASE → MUST≡must; the apostrophe class
+# covers ASCII + smart quotes (Don't ≡ Don’t, Gate-2 1a); DO\s+NOT tolerates any spacing ("DO  NOT", "DO\tNOT").
+_NORMATIVE_RE = re.compile(r"\b(?:MUST|SHALL|REQUIRED|NEVER|ALWAYS|DO\s+NOT|DON['‘’]T)\b", re.IGNORECASE)
 
 
 def _has_normative_marker(text: str) -> bool:
-    """v0.1.24 (SAFETY backstop for CLAUDE.md relocate): does this chunk carry a BINDING-directive marker? Run it
-    against the elaboration-that-MOVES — a hit means a directive is being relocated DOWN a tier (always-loaded →
-    on-demand = enforcement erosion), which the byte-CONSERVATION check can't catch (the bytes still land). Mirrors
-    the _looks_secret tripwire: asymmetric-safe (a false positive only makes a human look; the residual miss is a
-    directive phrased purely descriptively, which judgment still owns). Makes the #1 safety guarantee testable."""
+    """v0.1.24 (SAFETY backstop for CLAUDE.md relocate): does this chunk carry an EXPLICIT binding-directive
+    marker? Run it against the elaboration-that-MOVES — a hit means a directive is being relocated DOWN a tier
+    (always-loaded → on-demand = enforcement erosion), which the byte-CONSERVATION check can't catch (the bytes
+    still land). Mirrors the _looks_secret tripwire: asymmetric-safe (a false positive only costs a human look).
+    SUFFICIENT, NOT NECESSARY (Gate-2 1c): a hit ⇒ definitely a directive, keep it — but a MISS does NOT mean
+    safe-to-relocate. It catches only EXPLICIT RFC-2119/imperative markers; the DOMINANT directive form is the
+    bare imperative ('Keep src/ clean', 'Run the gate') which carries NO marker — judgment still owns those, and
+    the per-change human-approved proposal is the ultimate guard. Marker-absence must NEVER license a relocate."""
     return bool(_NORMATIVE_RE.search(text))
 
 
@@ -838,13 +842,18 @@ def claude_md_sections(path: Path) -> list:
     buf: list[str] = []
     for line in text.splitlines():
         if line.startswith("## "):
-            if "\n".join(buf).strip():
-                sections.append({"title": title, "tokens": est_tokens("\n".join(buf))})
+            body = "\n".join(buf)
+            if body.strip():
+                # has_directive (Gate-2): a mechanical signal that this section carries EXPLICIT binding markers —
+                # split it carefully. SUFFICIENT not NECESSARY: a False does NOT mean 'all elaboration' (bare
+                # imperatives carry no marker); it's a hint, the directive/elaboration judgment stays the model's.
+                sections.append({"title": title, "tokens": est_tokens(body), "has_directive": _has_normative_marker(body)})
             title, buf = line[3:].strip(), [line]
         else:
             buf.append(line)
-    if "\n".join(buf).strip():
-        sections.append({"title": title, "tokens": est_tokens("\n".join(buf))})
+    body = "\n".join(buf)
+    if body.strip():
+        sections.append({"title": title, "tokens": est_tokens(body), "has_directive": _has_normative_marker(body)})
     return sections
 
 

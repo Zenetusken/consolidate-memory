@@ -418,11 +418,16 @@ placing each fact in its tier and optimizing it for how that tier loads:
       session); a committed doc is on-demand (enforced only if a pointer cues a read). Relocating a *binding
       directive* silently drops it a tier — **enforcement erosion**, invisible in a content diff. So a relocate
       SPLITS a heavy section: KEEP every directive (the binding rule) + add a one-line pointer in CLAUDE.md; MOVE
-      the elaboration (rationale / examples / mechanics) to a committed doc. **NEVER relocate a directive** — if
-      the elaboration-to-move carries a binding marker (MUST/NEVER/ALWAYS/…), it's a directive, keep it. Run
-      `memory_status.py --sections` for the heavy sections (MECHANICAL — it does NOT say what's directive vs
-      elaboration; that's your judgment). The per-change proposal MUST show: **directive-that-stays · the
-      pointer · elaboration-that-moves · the target doc** — so the human sees enforcement is preserved.
+      the elaboration (rationale / examples / mechanics) to a committed doc. **NEVER relocate a directive.** Two
+      checks, in order: (1) run `_has_normative_marker` on the chunk you intend to MOVE — a hit (MUST/NEVER/
+      ALWAYS/SHALL/REQUIRED/DON'T) means it IS a directive, keep it. This marker is **SUFFICIENT, NOT NECESSARY**:
+      a MISS does NOT license a relocate — the DOMINANT directive form is the **bare imperative** ("Keep src/
+      pyright-clean", "Run the gate before pushing") which carries NO marker. (2) So you must AFFIRMATIVELY judge
+      the chunk is non-binding *elaboration* before moving it; when unsure, keep it. `memory_status.py --sections`
+      flags heavy sections + `has_directive` per section (MECHANICAL hint, same sufficient-not-necessary caveat —
+      it does NOT decide the split). The per-change proposal MUST show: **directive-that-stays · the pointer ·
+      elaboration-that-moves · the target doc** — the human-approved proposal is the ultimate guard; show it so
+      enforcement-preservation is visible and rejectable.
     - **Relocate targets: EXISTING committed in-repo docs only.** Validate EVERY target with
       `memory_status.valid_relocate_target(path, project_dir)` (in-repo AND not `~/.claude` AND not gitignored —
       relocating into the private store or a gitignored dir is silent team data loss). No fitting target →
@@ -435,8 +440,10 @@ placing each fact in its tier and optimizing it for how that tier loads:
       relocate-not-delete.
     - Gated against `CLAUDE_MD_TOKEN_BUDGET` + the whole-hierarchy worst-path (Phase 0) — the relocate lever is
       how you cut an over-budget nested CLAUDE.md without eroding enforcement. The Phase-5 `--audit` conservation
-      check flags a CLAUDE.md drop with no matching target growth (a lost relocate). Don't introduce drift-prone
-      derived stats (test/module counts); update an existing such line only if you verified it here.
+      check flags any CLAUDE.md token drop without matching target growth — that's a relocate whose bytes didn't
+      land OR an intended compress/prune; either way **verify it was deliberate** (it fires on authorized
+      compress/prune too, by design — confirm, don't dismiss). Don't introduce drift-prone derived stats
+      (test/module counts); update an existing such line only if you verified it here.
 - **Recall tier** (auto-memory fact files): one fact per file with the frontmatter
   schema, and **invest in the `description:` as a recall key** — it becomes the
   always-loaded index hook, so phrase it as the task-context that should cue a future
