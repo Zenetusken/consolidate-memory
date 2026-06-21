@@ -72,6 +72,11 @@
   /* ── sections ─────────────────────────────────────────────────────────── */
   section.blk{margin-top:46px}
   .shead{display:flex;align-items:baseline;gap:14px;margin-bottom:20px}
+  #app .blk>.shead{cursor:pointer;user-select:none}
+  #app .blk>.shead::after{content:"\25BE";font-size:9px;color:var(--faint);margin-left:2px;align-self:center}
+  #app .blk.collapsed>.shead::after{content:"\25B8"}
+  #app .blk.collapsed>.shead{margin-bottom:0}
+  #app .blk.collapsed>*:not(.shead){display:none}
   .shead .no{font-family:var(--serif);font-size:13px;font-style:italic;color:var(--accent)}
   .shead h3{font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em}
   .shead .ln{flex:1;height:1px;background:var(--rule);align-self:center}
@@ -131,6 +136,11 @@
     color:var(--ink2);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
     padding:5px 11px;border-radius:2px;cursor:pointer;transition:color .15s,border-color .15s}
   .theme-tog:hover{border-color:var(--accent);color:var(--accent)}
+  #dens-tog{right:92px}                       /* density toggle, left of the theme toggle */
+  body.compact section.blk{margin-top:24px}
+  body.compact .lead{padding:16px 0 6px}
+  body.compact .mast{padding:24px 0 12px}
+  body.compact .row{padding-top:9px;padding-bottom:9px}
   .tip{position:fixed;z-index:30;pointer-events:none;background:var(--ink);color:var(--paper);border-radius:2px;
     padding:5px 9px;font-size:11px;opacity:0;transition:opacity .12s;white-space:nowrap;font-variant-numeric:tabular-nums}
   footer{margin-top:60px;padding-top:16px;border-top:2px solid var(--ink);display:flex;justify-content:space-between;
@@ -154,6 +164,10 @@
   .arch-row .rg,.arch-row .ix,.arch-row .en{font-size:12px;color:var(--ink2)}
   .arch-row .hh{font-size:11px;color:var(--ghost)}
   .arch-row.cur{background:rgba(179,71,39,.05)} .arch-row.cur .oc{color:var(--accent)}
+  .arch-tools{display:flex;gap:18px;align-items:center;margin-bottom:8px;font-size:11px;color:var(--ink2);flex-wrap:wrap}
+  .arch-tools label{display:flex;gap:6px;align-items:center;letter-spacing:.04em;text-transform:uppercase;font-size:10px;color:var(--faint)}
+  .arch-tools select{background:var(--card);color:var(--ink);border:1px solid var(--rule2);font-family:var(--mono);font-size:11px;padding:3px 7px;border-radius:2px;text-transform:none}
+  .arch-tools .f-count{margin-left:auto;color:var(--faint);font-variant-numeric:tabular-nums}
   @media(max-width:680px){.arch-head>span:nth-child(n+4),.arch-row>*:nth-child(n+4){display:none}.arch-head,.arch-row{grid-template-columns:128px 1fr}}
 
   /* ── loading: editorial "compiling" ── */
@@ -176,6 +190,7 @@
 </head>
 <body>
 <button id="theme-tog" class="theme-tog" aria-label="toggle color theme">◐ auto</button>
+<button id="dens-tog" class="theme-tog" aria-label="toggle density">⊟ compact</button>
 <div id="boot"><div class="bt">compiling field report</div><div class="bl"><i></i></div><div class="bn" id="boot-proj">consolidate-memory</div></div>
 <div class="tip" id="tip"></div>
 
@@ -198,6 +213,7 @@
     <div class="sub" id="a-sub"></div>
   </div>
   <section class="blk"><div class="shead"><span class="no">◆</span><h3>Dream Sequences</h3><span class="ln"></span><span class="note" id="a-note"></span></div>
+    <div class="arch-tools" id="arch-tools"></div>
     <div class="arch-head"><span>when</span><span>outcome</span><span>rigor</span><span>index&nbsp;tok</span><span>writes</span><span>commit</span></div>
     <div id="arch-list"></div>
   </section>
@@ -390,7 +406,7 @@
     svg.appendChild(ln); try{var L=ln.getTotalLength();ln.style.setProperty("--len",L);ln.classList.add("draw");}catch(e){}
     pts.forEach(function(p,i){var last=i===pts.length-1;
       var c=S("circle",{cx:p[0],cy:p[1],r:last?5:3,fill:last?"var(--accent)":"var(--paper)",stroke:last?"var(--accent)":"var(--data)","stroke-width":1.8});
-      c.addEventListener("mousemove",tip(fmt(s[i])+" tok · cycle "+(i+1)));c.addEventListener("mouseleave",untip);svg.appendChild(c);});
+      c.style.cursor="pointer";c.addEventListener("click",function(){location.hash="#sel="+i;});c.addEventListener("mousemove",tip(fmt(s[i])+" tok · cycle "+(i+1)+" — click to open"));c.addEventListener("mouseleave",untip);svg.appendChild(c);});
     if(t.breach!=null){var w=el("traj-warn");w.style.display="block";
       w.innerHTML="<b>Heads-up.</b> At the current rate the always-loaded index breaches its "+fmt(IDXB)+"-token budget in roughly "+t.breach+" dreams.";}
   })();
@@ -437,7 +453,7 @@
       var ln=S("path",{d:d,fill:"none",stroke:"var(--data)","stroke-width":2,"stroke-linejoin":"round"});svg.appendChild(ln);
       try{var L=ln.getTotalLength();ln.style.setProperty("--len",L);ln.classList.add("draw");}catch(e){}
       pts.forEach(function(p,i){var c=S("circle",{cx:p[0],cy:p[1],r:i===pts.length-1?4:2.4,fill:i===pts.length-1?"var(--data)":"var(--paper)",stroke:"var(--data)","stroke-width":1.6});
-        c.addEventListener("mousemove",tip(facts[i]+" facts · +"+churn[i].a+" ~"+churn[i].c+" -"+churn[i].d));c.addEventListener("mouseleave",untip);svg.appendChild(c);});}
+        c.style.cursor="pointer";c.addEventListener("click",function(){location.hash="#sel="+i;});c.addEventListener("mousemove",tip(facts[i]+" facts · +"+churn[i].a+" ~"+churn[i].c+" -"+churn[i].d+" — click to open"));c.addEventListener("mouseleave",untip);svg.appendChild(c);});}
     if(n<2){var t=S("text",{x:(pL+W-pR)/2,y:split/2,"text-anchor":"middle",class:"axt d"});t.textContent="trends accrue across dreams — "+n+" logged so far";svg.appendChild(t);}
   })();
 
@@ -457,7 +473,7 @@
         if(times[i]!=null&&times[i-1]!=null){var hh=(times[i]-times[i-1])/3.6e6,gl=hh<48?Math.round(hh)+"h":Math.round(hh/24)+"d";
           var gt=S("text",{x:(bx(i-1)+bx(i))/2,y:Math.min(ty[pk],ty[k])-8,"text-anchor":"middle",class:"axt d"});gt.setAttribute("style","font-size:8.5px");gt.textContent=gl;svg.appendChild(gt);}}
       var c=S("circle",{cx:bx(i),cy:ty[k],r:4.5,fill:tc[k],stroke:"var(--paper)","stroke-width":1.5});
-      c.addEventListener("mousemove",tip("cycle "+(i+1)+" · "+k));c.addEventListener("mouseleave",untip);svg.appendChild(c);
+      c.style.cursor="pointer";c.addEventListener("click",function(){location.hash="#sel="+i;});c.addEventListener("mousemove",tip("cycle "+(i+1)+" · "+k+" — click to open"));c.addEventListener("mouseleave",untip);svg.appendChild(c);
       var lt=S("text",{x:bx(i),y:H-12,"text-anchor":"middle",class:"axt"});lt.textContent=i+1;svg.appendChild(lt);});
   })();
 
@@ -549,20 +565,35 @@
     el("a-gen").textContent=String(DATA.generated_at||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
     el("a-head").innerHTML="Browse <span class=\"hot\">"+ALL.length+"</span> dream"+(ALL.length!==1?"s":"")+" for this repository.";
     el("a-sub").textContent="Every consolidation pass, revisitable — click any row to open its full dashboard.";
-    el("a-note").textContent=ALL.length+" sequence"+(ALL.length!==1?"s":"");
+    el("a-note").textContent=ALL.length+" sequence"+(ALL.length!==1?"s":"")+" logged";
     el("a-foot").textContent=(DATA.project||PROJ)+" · dream telemetry";
-    var html=[];
-    for(var i=ALL.length-1;i>=0;i--){var c=ALL[i];   // newest first
-      var oc=g(c,"outcome","")||(magnitude(c)===0&&!(Array.isArray(c.entries)&&c.entries.length)?"nothing to consolidate":"pass");
-      var ts=String(g(c,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"").slice(0,16);
-      var rg=String(g(c,"rigor.applied","—"));rg=rg.charAt(0)+rg.slice(1).toLowerCase();
-      var ix=num(g(c,"budget.index.after_tokens",g(c,"budget.index.before_tokens",0)));
-      var en=(Array.isArray(c.entries)?c.entries:[]).filter(function(e){return ["added","corrected","deleted","reconciled"].indexOf(g(e,"action",""))>=0;}).length;
-      var hh=String(g(c,"marker.commit","")).slice(0,9)||"—";
-      html.push('<a class="arch-row'+(i===ALL.length-1?" cur":"")+'" href="#sel='+i+'">'
-        +'<span class="dt">'+esc(ts)+'</span><span class="oc">'+esc(oc)+'</span><span class="rg">'+esc(rg)+'</span>'
-        +'<span class="ix">'+fmt(ix)+'</span><span class="en">'+en+'</span><span class="hh">'+esc(hh)+'</span></a>');}
-    el("arch-list").innerHTML=html.join("");
+    // per-cycle row data — raw values for filter/sort (READ-ONLY; never mutates ALL)
+    var rows=ALL.map(function(c,i){var rg=String(g(c,"rigor.applied","—"));
+      return {i:i, oc:g(c,"outcome","")||(magnitude(c)===0&&!(Array.isArray(c.entries)&&c.entries.length)?"nothing to consolidate":"pass"),
+        rgRaw:rg.toUpperCase(), rg:rg.charAt(0)+rg.slice(1).toLowerCase(),
+        ts:String(g(c,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"").slice(0,16), tsRaw:String(g(c,"marker.timestamp","")),
+        ix:num(g(c,"budget.index.after_tokens",g(c,"budget.index.before_tokens",0))),
+        en:(Array.isArray(c.entries)?c.entries:[]).filter(function(e){return ["added","corrected","deleted","reconciled"].indexOf(g(e,"action",""))>=0;}).length,
+        hh:String(g(c,"marker.commit","")).slice(0,9)||"—"};});
+    var st={rig:"all", key:"tsRaw", dir:-1};   // default: newest first
+    var rigs=["all"].concat(["HEAVY","SUBSTANTIAL","LIGHT"].filter(function(r){return rows.some(function(x){return x.rgRaw===r;});}));
+    el("arch-tools").innerHTML=
+      '<label>rigor <select id="f-rig">'+rigs.map(function(r){return '<option value="'+r+'">'+(r==="all"?"all":r.charAt(0)+r.slice(1).toLowerCase())+'</option>';}).join("")+'</select></label>'
+      +'<label>sort <select id="f-sort"><option value="tsRaw:-1">newest</option><option value="tsRaw:1">oldest</option><option value="ix:-1">index ↓</option><option value="ix:1">index ↑</option><option value="en:-1">writes ↓</option><option value="en:1">writes ↑</option></select></label>'
+      +'<span class="f-count" id="f-count"></span>';
+    function build(){
+      var fr=rows.filter(function(x){return st.rig==="all"||x.rgRaw===st.rig;});
+      fr.sort(function(a,b){var d=(a[st.key]>b[st.key]?1:a[st.key]<b[st.key]?-1:0)*st.dir; return d|| (b.i-a.i);});
+      el("f-count").textContent=fr.length+(fr.length!==rows.length?" of "+rows.length:"")+" shown";
+      el("arch-list").innerHTML=fr.map(function(x){
+        return '<a class="arch-row'+(x.i===ALL.length-1?" cur":"")+'" href="#sel='+x.i+'">'
+          +'<span class="dt">'+esc(x.ts)+'</span><span class="oc">'+esc(x.oc)+'</span><span class="rg">'+esc(x.rg)+'</span>'
+          +'<span class="ix">'+fmt(x.ix)+'</span><span class="en">'+x.en+'</span><span class="hh">'+esc(x.hh)+'</span></a>';
+      }).join("") || '<div class="cap" style="padding:14px 0">no dreams match this filter</div>';
+    }
+    el("f-rig").addEventListener("change",function(){st.rig=this.value;build();});
+    el("f-sort").addEventListener("change",function(){var p=this.value.split(":");st.key=p[0];st.dir=+p[1];build();});
+    build();
   }
   // ── dream-view nav: back to the archive + prev/next ──
   function showDreamNav(){
@@ -576,6 +607,37 @@
   if(VIEW==="archive"){ el("app").style.display="none"; el("archive").style.display=""; showArchive(); }
   else { showDreamNav(); }
   window.addEventListener("hashchange", function(){ location.reload(); });
+  // keyboard nav (dream view): ← → step dreams · Esc → archive (ignored while typing in a filter control)
+  document.addEventListener("keydown", function(e){
+    if(/^(INPUT|SELECT|TEXTAREA)$/.test((e.target||{}).tagName||"")) return;
+    if(VIEW!=="dream") return;
+    if(e.key==="ArrowLeft" && selIdx>0) location.hash="#sel="+(selIdx-1);
+    else if(e.key==="ArrowRight" && selIdx<ALL.length-1) location.hash="#sel="+(selIdx+1);
+    else if(e.key==="Escape") location.hash="";
+  });
+
+  // focus: collapse/expand dashboard sections (persisted across reloads, incl. nav), keyed on the section title
+  (function(){
+    var COLL; try{COLL=JSON.parse(localStorage.getItem("cm-collapsed")||"[]");}catch(e){COLL=[];}
+    if(!Array.isArray(COLL))COLL=[];   // tolerate a tampered non-array localStorage value (else .indexOf throws)
+    [].slice.call(document.querySelectorAll("#app .blk>.shead")).forEach(function(h){
+      var key=((h.querySelector("h3")||{}).textContent||"").trim();
+      if(COLL.indexOf(key)>=0) h.parentNode.classList.add("collapsed");
+      h.addEventListener("click",function(){
+        var on=h.parentNode.classList.toggle("collapsed"), j=COLL.indexOf(key);
+        if(on && j<0) COLL.push(key); else if(!on && j>=0) COLL.splice(j,1);
+        try{localStorage.setItem("cm-collapsed",JSON.stringify(COLL));}catch(e){}
+      });
+    });
+  })();
+  // density: compact / cozy (persisted)
+  (function(){
+    var b=el("dens-tog"); if(!b) return;
+    function apply(c){document.body.classList.toggle("compact",c);b.textContent=c?"⊞ cozy":"⊟ compact";}
+    var on=false; try{on=localStorage.getItem("cm-dense")==="1";}catch(e){}
+    apply(on);
+    b.addEventListener("click",function(){on=!document.body.classList.contains("compact");apply(on);try{localStorage.setItem("cm-dense",on?"1":"0");}catch(e){}});
+  })();
 
   function reveal(){
     (VIEW==="archive"?el("archive"):el("app")).style.visibility="visible";
