@@ -149,13 +149,22 @@ class AuditStoreDelta(TypedDict, total=False):
     token_delta: int
 
 
+class Conservation(TypedDict, total=False):
+    # v0.1.24: a CLAUDE.md relocate should CONSERVE content — tokens leaving CLAUDE.md land in a relocate target.
+    claude_md_drop: int       # net tokens that LEFT the CLAUDE.md hierarchy
+    repo_doc_growth: int      # tokens that LANDED in relocate targets (sum of POSITIVE per-op deltas, not netted)
+    possible_loss: bool       # a gross drop with little growth ⇒ a likely lost relocate (eviction, not move) — look
+
+
 class Audit(TypedDict, total=False):
     # v0.1.22: the DETERMINISTIC, script-emitted mutation trail — what this pass ACTUALLY changed (a content-hash
     # snapshot diffed Phase0→Phase5), the counterpart to the model-narrated entries[]. HONEST GAP: the window
     # attributes ANY change in the Phase0→Phase5 span to the dream (an interrupted/concurrent edit mis-attributes).
     memory: AuditStoreDelta
     claude_md: AuditStoreDelta
+    repo_doc: AuditStoreDelta      # v0.1.24: relocate-target docs (the conservation other-side of a CLAUDE.md relocate)
     operations: list[AuditOp]
+    conservation: Conservation    # v0.1.24: the relocate conservation self-check (possible_loss flag)
     window: str
 
 
@@ -771,6 +780,74 @@ def claude_md_hierarchy(project_dir: Path) -> dict:
             "worst_path_tokens": worst_tokens, "total_files": len(by_dir)}
 
 
+# v0.1.24: binding-directive markers (RFC-2119 + imperatives). re.IGNORECASE catches MUST and must alike.
+_NORMATIVE_RE = re.compile(r"\b(?:MUST|SHALL|REQUIRED|NEVER|ALWAYS|DO NOT|DON'T)\b", re.IGNORECASE)
+
+
+def _has_normative_marker(text: str) -> bool:
+    """v0.1.24 (SAFETY backstop for CLAUDE.md relocate): does this chunk carry a BINDING-directive marker? Run it
+    against the elaboration-that-MOVES — a hit means a directive is being relocated DOWN a tier (always-loaded →
+    on-demand = enforcement erosion), which the byte-CONSERVATION check can't catch (the bytes still land). Mirrors
+    the _looks_secret tripwire: asymmetric-safe (a false positive only makes a human look; the residual miss is a
+    directive phrased purely descriptively, which judgment still owns). Makes the #1 safety guarantee testable."""
+    return bool(_NORMATIVE_RE.search(text))
+
+
+def _git_check_ignore(rel: str, root: Path) -> bool:
+    """True if `rel` is git-ignored OR can't be confirmed safe — FAIL-CLOSED (a target we can't prove reaches
+    teammates is unsafe). `git check-ignore -q`: exit 0 = ignored, 1 = not ignored, 128 = error → only 1 is safe."""
+    try:
+        r = subprocess.run(["git", "check-ignore", "-q", rel], cwd=root,  # noqa: S603 - fixed args
+                           capture_output=True, timeout=15, check=False)
+        return r.returncode != 1
+    except (OSError, subprocess.SubprocessError):
+        return True
+
+
+def valid_relocate_target(path: str, project_dir: Path) -> bool:
+    """v0.1.24 (SAFETY firewall): is `path` a SAFE relocate destination for committed CLAUDE.md content? True ONLY
+    if it resolves INSIDE project_dir AND is NOT under ~/.claude (the private per-user store) AND is NOT git-ignored.
+    Relocating team content into the private store OR a gitignored dir = silent team data loss (it never reaches
+    teammates) — the exact failure this guards. Relative targets anchor to project_dir (cwd is not stable across
+    calls); absolute paths resolve as-is. 3.8 idiom (relative_to/ValueError, not is_relative_to)."""
+    root = project_dir.resolve()
+    target = (root / path).resolve()                      # absolute `path` wins; relative anchors to root
+    try:
+        rel = target.relative_to(root)                    # must be inside the repo
+    except ValueError:
+        return False
+    try:
+        target.relative_to((Path.home() / ".claude").resolve())   # must NOT be under the private store
+        return False
+    except ValueError:
+        pass
+    return not _git_check_ignore(str(rel), root)          # must NOT be git-ignored (fail-closed)
+
+
+def claude_md_sections(path: Path) -> list:
+    """v0.1.24 (MECHANICAL only): split a CLAUDE.md into `##` sections with per-section token counts, so a heavy
+    section can be EXAMINED for a directive/elaboration split. It does NOT rank-to-relocate (the biggest section is
+    often the most load-bearing) and does NOT judge directive-vs-elaboration or staleness — that's the model's. The
+    surfaced flag must say 'examine for a directive/elaboration split', NEVER 'relocate candidate'."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    sections: list = []
+    title = "(preamble)"
+    buf: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if "\n".join(buf).strip():
+                sections.append({"title": title, "tokens": est_tokens("\n".join(buf))})
+            title, buf = line[3:].strip(), [line]
+        else:
+            buf.append(line)
+    if "\n".join(buf).strip():
+        sections.append({"title": title, "tokens": est_tokens("\n".join(buf))})
+    return sections
+
+
 def audit_snapshot_path(slug: str) -> str:
     """v0.1.22: deterministic per-slug temp path for a dream's BEFORE audit snapshot (sibling of cycle_seed_path)."""
     return str(Path(tempfile.gettempdir()) / f"cm-audit{slug}.json")
@@ -798,12 +875,24 @@ def audit_snapshot(project_dir: Path) -> dict:
     if auto_mem.exists():
         for f in sorted(auto_mem.glob("*.md")):
             _add(f"memory/{f.name}", f, "memory")
+    _cmd_set = {p.resolve() for p in _claude_md_files(project_dir)}
     for p in _claude_md_files(project_dir):
         try:
             label = f"claude_md/{p.relative_to(project_dir)}"
         except ValueError:
             label = f"claude_md/{p.name}"
         _add(label, p, "claude_md")
+    # v0.1.24: the relocate-TARGET tree — non-gitignored repo *.md BEYOND the CLAUDE.md hierarchy — so a relocate
+    # (CLAUDE.md shrink + target grow) is conservation-checked by the recorder itself, not just git diff. git
+    # ls-files (tracked) + --others --exclude-standard (new-but-not-ignored) → committed targets AND a freshly
+    # proposed-created one, while .gitignore'd noise (incl. vendored dirs) is excluded.
+    _repo_md = set(_run(["git", "ls-files", "*.md"], project_dir).splitlines())
+    _repo_md |= set(_run(["git", "ls-files", "--others", "--exclude-standard", "*.md"], project_dir).splitlines())
+    for rel in sorted(_repo_md):
+        p = project_dir / rel
+        if p.resolve() in _cmd_set:                       # already 'claude_md' — no double-count
+            continue
+        _add(f"repo_doc/{rel}", p, "repo_doc")
     return snap
 
 
@@ -813,7 +902,8 @@ def audit_diff(before: dict, after: dict) -> dict:
     (memory / claude_md). This is the script-OBSERVED counterpart to the model-narrated entries[]."""
     ops: list = []
     roll = {"memory": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0},
-            "claude_md": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0}}
+            "claude_md": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0},
+            "repo_doc": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0}}   # v0.1.24: relocate targets
 
     # The BEFORE snapshot is UNTRUSTED (a stale/cross-version/hand-edited file on disk) — guard every entry's
     # shape (Gate-2): non-dict entry → ignored; missing hash/tokens → coerced; an unexpected `store` → clamped to
@@ -842,7 +932,16 @@ def audit_diff(before: dict, after: dict) -> dict:
         ops.append({"path": label, "op": op, "token_delta": delta, "store": store})
         roll[store][op] += 1
         roll[store]["token_delta"] += delta
-    return {"memory": roll["memory"], "claude_md": roll["claude_md"], "operations": ops}
+    # v0.1.24 CONSERVATION: tokens that net-LEFT the CLAUDE.md hierarchy should land in relocate targets. Sum
+    # repo_doc GROWTH from per-op POSITIVE deltas — NOT the netted rollup (a prune in doc B must not cancel a
+    # relocate-grow in doc A; Gate-1 #4). A gross CLAUDE.md drop with little growth = a possible LOST relocate (an
+    # eviction, not a move). Approximate (CLAUDE.md keeps directive+pointer) → flag only a GROSS shortfall.
+    cmd_drop = max(0, -roll["claude_md"]["token_delta"])
+    repo_growth = sum(o["token_delta"] for o in ops if o["store"] == "repo_doc" and o["token_delta"] > 0)
+    conservation = {"claude_md_drop": cmd_drop, "repo_doc_growth": repo_growth,
+                    "possible_loss": cmd_drop > 50 and repo_growth < cmd_drop * 0.5}
+    return {"memory": roll["memory"], "claude_md": roll["claude_md"], "repo_doc": roll["repo_doc"],
+            "operations": ops, "conservation": conservation}
 
 
 def build_context(project_dir: Path) -> dict:
@@ -1447,6 +1546,17 @@ def main() -> int:
         path = cycle_seed_path(ctx["slug"])
         Path(path).write_text(json.dumps(seed_record(ctx), indent=2) + "\n", encoding="utf-8")
         print(path)
+        return 0
+    if "--sections" in argv:    # v0.1.24: mechanical ## breakdown of the heaviest CLAUDE.md — EXAMINE for a directive/elaboration split
+        _wp = ctx["claude_md_hierarchy"].get("worst_path", ".")
+        _cmd = project_dir / ("CLAUDE.md" if _wp in (".", "") else f"{_wp}/CLAUDE.md")
+        try:
+            _rel = str(_cmd.relative_to(project_dir))
+        except ValueError:
+            _rel = str(_cmd)
+        print(json.dumps({"file": _rel, "_": "EXAMINE each heavy section for a directive(STAYS)/elaboration(relocates) split — "
+                          "NEVER relocate a directive (it would drop from always-loaded to on-demand = enforcement erosion)",
+                          "sections": claude_md_sections(_cmd)}, indent=2))
         return 0
     if "--snapshot" in argv:    # v0.1.22: Phase-0 BEFORE audit snapshot → per-slug temp path + print it
         path = audit_snapshot_path(ctx["slug"])

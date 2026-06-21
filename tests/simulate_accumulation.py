@@ -927,6 +927,49 @@ def run() -> None:
                  over_budget and d6_suppress and d6_token_fires and d6_fact_fires and d6_zero_fires and d6_failopen and d6_helper and d10_ok,
                  "closes the beta-harness D6/D10 WARNs — token bloat no longer hides, archive refs aren't false-dangling")
 
+        # ── Probe Q: v0.1.24 CLAUDE.md mutation — the MECHANICAL safety halves (enforcement-preservation itself is
+        # SKILL judgment, not unit-testable). Assert: the normative-marker backstop catches a directive in the
+        # moving chunk; valid_relocate_target firewalls gitignored/private/outside/escape targets; claude_md_sections
+        # splits mechanically; the audit conservation check passes a relocate but flags an eviction as possible loss.
+        print("\n── Probe Q: v0.1.24 (normative backstop · relocate firewall · sections · conservation) ──")
+        repoQ = home / "repoQ"
+        repoQ.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["git", "init", "-q"], cwd=repoQ, check=False)
+        subprocess.run(["git", "config", "user.email", "x@x"], cwd=repoQ, check=False)
+        subprocess.run(["git", "config", "user.name", "x"], cwd=repoQ, check=False)
+        (repoQ / ".gitignore").write_text("secret/\n", encoding="utf-8")
+        (repoQ / "CLAUDE.md").write_text("# conv\n## Type\n- pyright is a gate.\n" + "elaboration rationale line\n" * 40, encoding="utf-8")
+        (repoQ / "docs").mkdir(exist_ok=True)
+        (repoQ / "docs" / "TYPING.md").write_text("placeholder\n", encoding="utf-8")
+        (repoQ / "secret").mkdir(exist_ok=True)
+        (repoQ / "secret" / "x.md").write_text("ignored\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=repoQ, check=False)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=repoQ, check=False)
+        nm_ok = (ms._has_normative_marker("you MUST keep it clean") and ms._has_normative_marker("never delete this")
+                 and not ms._has_normative_marker("the rationale is that batching helps throughput"))
+        fw_ok = (ms.valid_relocate_target("docs/TYPING.md", repoQ)                        # in-repo, not ignored → True
+                 and not ms.valid_relocate_target("secret/x.md", repoQ)                   # gitignored → False
+                 and not ms.valid_relocate_target(str(home / ".claude" / "x.md"), repoQ)  # private store → False
+                 and not ms.valid_relocate_target("/tmp/escape-xyz.md", repoQ)            # outside repo → False
+                 and not ms.valid_relocate_target("../escape.md", repoQ))                 # .. escape → False
+        secsQ = ms.claude_md_sections(repoQ / "CLAUDE.md")
+        sec_ok = any(s["title"] == "Type" for s in secsQ) and all("tokens" in s for s in secsQ)
+        beforeQ = ms.audit_snapshot(repoQ)
+        repo_doc_seen = any(v.get("store") == "repo_doc" for v in beforeQ.values())
+        (repoQ / "CLAUDE.md").write_text("# conv\n## Type\n- pyright is a gate — details in docs/TYPING.md.\n", encoding="utf-8")
+        (repoQ / "docs" / "TYPING.md").write_text("placeholder\n" + "elaboration rationale line\n" * 40, encoding="utf-8")
+        cons_relocate = not ms.audit_diff(beforeQ, ms.audit_snapshot(repoQ))["conservation"]["possible_loss"]
+        (repoQ / "docs" / "TYPING.md").write_text("placeholder\n", encoding="utf-8")      # undo growth → eviction
+        cons_evict = ms.audit_diff(beforeQ, ms.audit_snapshot(repoQ))["conservation"]["possible_loss"]
+        print(f"  normative-marker={nm_ok} · firewall(valid/gitignored/private/outside/escape)={fw_ok} · sections={sec_ok}")
+        print(f"  audit: repo_doc-snapshotted={repo_doc_seen} · relocate-conserves={cons_relocate} · eviction-flags-loss={cons_evict}")
+        _verdict("Q", "v0.1.24 CLAUDE.md mutation (mechanical halves): the normative-marker backstop catches a directive "
+                 "in the moving chunk; valid_relocate_target rejects gitignored/private/outside/escape targets; "
+                 "claude_md_sections splits mechanically; the audit conservation check passes a relocate but flags an "
+                 "eviction as possible loss",
+                 nm_ok and fw_ok and sec_ok and repo_doc_seen and cons_relocate and cons_evict,
+                 "the dream can relocate-the-elaboration safely — directive stays, targets firewalled, moves conservation-checked")
+
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")
         first, last = curve[0], curve[-1]

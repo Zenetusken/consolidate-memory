@@ -5,6 +5,38 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.24] — 2026-06-20
+
+### Added (CLAUDE.md MUTATION — the dream can now tidy committed CLAUDE.md, gated + audited; additive → patch)
+Part two of the CLAUDE.md arc, riding the v0.1.22 recorder. The dream may relocate / compress / prune the
+committed, team-shared CLAUDE.md hierarchy — **gated per-change, report-then-apply, never auto.**
+- **The directive STAYS; relocate only the ELABORATION.** CLAUDE.md is always-loaded (enforced every session); a
+  committed doc is on-demand (enforced only if a pointer cues a read). Relocating a *binding directive* silently
+  erodes enforcement — invisible in a content diff. So a relocate SPLITS a heavy section: keep the directive + a
+  pointer in CLAUDE.md, move the rationale/examples to a committed doc. A mechanical **normative-marker backstop**
+  (`_has_normative_marker`, RFC-2119 / imperatives) flags a directive in the moving chunk — the guarantee the
+  byte-conservation check can't give (the bytes still land). `--sections` surfaces heavy sections (mechanical; the
+  directive-vs-elaboration judgment stays with the model).
+- **Committed-target firewall.** `valid_relocate_target` accepts a target ONLY if it's in-repo AND not under
+  `~/.claude` AND not git-ignored (fail-closed) — relocating into the private store or a gitignored dir is silent
+  team data loss. Existing committed targets only; a missing target is PROPOSED for the human to create (the dream
+  never imposes repo structure, never creates a `CLAUDE.md`).
+- **Conservation self-check.** The audit snapshot extends to the relocate-target tree (`repo_doc`); the Phase-5
+  `--audit` flags a CLAUDE.md drop with no matching target growth (a lost relocate vs a real move) — matched
+  per-op, not per-store-netted. `compress` is a high-scrutiny exception (before/after verbatim); `prune` only a
+  *descriptive* line whose referenced code is grep-confirmed gone (a *normative* line always proposes — the human
+  owns the staleness call).
+
+### Internal
+- New `_has_normative_marker` / `valid_relocate_target` / `claude_md_sections` / `--sections`; `audit_snapshot`
+  extends to `repo_doc`; `audit_diff` gains the `conservation` self-check; the `Audit` block gains `repo_doc` +
+  `conservation` (additive `total=False`; co-edit across TypedDict + SKILL json + smoke pin + render). The Phase-4
+  guest-rule shifts to "guest WITH permission to tidy, on the record" (both SKILL sites reconciled).
+- Probe Q (normative backstop · firewall gitignored/private/outside/escape · sections · relocate-conserves vs
+  eviction-flags-loss) + 2 smoke units. smoke 272/0 · sim · mypy · manifests.
+- **Versioning — PATCH:** an additive capability + additive audit fields (legacy records render); no removed/renamed
+  flag, no install/manifest break. finding-B (memory-index archive budget tier) → a later cycle.
+
 ## [0.1.23] — 2026-06-20
 
 ### Fixed (memory-index residuals from the dream beta-harness WARNs on v0.1.22; additive → patch)
