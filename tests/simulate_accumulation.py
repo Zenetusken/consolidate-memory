@@ -822,6 +822,59 @@ def run() -> None:
                  rw_ok and fo_ok and d4_ok and d8_ok and d5_ok and sj_suppressed and sj_fires and sj_failopen,
                  "the over-budget gate becomes a delta-detector (keeps teeth, kills alarm fatigue) + reachability-aware orphans")
 
+        # ── Probe O: v0.1.22 foundation (whole-CLAUDE.md-hierarchy measure + deterministic audit trail) ──
+        # The empirics showed memex pays ~54k tok of nested CLAUDE.md/turn, invisible to the tool. Assert the
+        # hierarchy measure computes the heaviest root→leaf chain (excl .venv), and the audit trail detects
+        # created/modified/deleted via content-hash (unchanged ≠ op; infra excluded; measuring is read-only).
+        print("\n── Probe O: v0.1.22 (CLAUDE.md hierarchy measure · deterministic audit trail) ──")
+        repoO = home / "repoO"
+        (repoO / "a" / "b").mkdir(parents=True, exist_ok=True)
+        (repoO / ".venv").mkdir(parents=True, exist_ok=True)
+        (repoO / "CLAUDE.md").write_text("root " * 20, encoding="utf-8")
+        (repoO / "a" / "CLAUDE.md").write_text("mid " * 200, encoding="utf-8")
+        (repoO / "a" / "b" / "CLAUDE.md").write_text("leaf " * 80, encoding="utf-8")
+        (repoO / ".venv" / "CLAUDE.md").write_text("vendored " * 999, encoding="utf-8")   # excluded
+        hO = ms.claude_md_hierarchy(repoO)
+        chainO = sum(ms.est_tokens((repoO / p).read_text()) for p in ("CLAUDE.md", "a/CLAUDE.md", "a/b/CLAUDE.md"))
+        hier_ok = (hO["total_files"] == 3 and hO["worst_path"].replace("\\", "/") == "a/b"
+                   and hO["worst_path_tokens"] == chainO)
+        projO = home / "projects-src" / "auditO"
+        projO.mkdir(parents=True, exist_ok=True)
+        (projO / "CLAUDE.md").write_text("conv\n", encoding="utf-8")
+        stO = home / ".claude" / "projects" / ms.slug_for(projO) / "memory"
+        stO.mkdir(parents=True, exist_ok=True)
+        for _n, _b in (("keep", "keep body\n"), ("edit", "v1\n"), ("gone", "delete me\n")):
+            (stO / f"{_n}.md").write_text(_b, encoding="utf-8")
+        (stO / ".consolidation-log.jsonl").write_text('{"x":1}\n', encoding="utf-8")       # infra → must NOT snapshot
+        _rhO = os.environ.get("HOME")
+        os.environ["HOME"] = str(home)
+        before = ms.audit_snapshot(projO)
+        infra_excluded = not any("consolidation-log" in k or "mutation-log" in k for k in before)
+        (stO / "edit.md").write_text("v2 a longer body now\n", encoding="utf-8")           # modified
+        (stO / "gone.md").unlink()                                                          # deleted
+        (stO / "new.md").write_text("brand new fact\n", encoding="utf-8")                   # created
+        diffO = ms.audit_diff(before, ms.audit_snapshot(projO))
+        opmap = {o["path"].rsplit("/", 1)[-1]: o["op"] for o in diffO["operations"]}
+        audit_ok = (opmap.get("edit.md") == "modified" and opmap.get("gone.md") == "deleted"
+                    and opmap.get("new.md") == "created" and "keep.md" not in opmap
+                    and diffO["memory"]["created"] == 1 and diffO["memory"]["modified"] == 1
+                    and diffO["memory"]["deleted"] == 1)
+        snap_a = ms.audit_snapshot(projO)
+        ms.claude_md_hierarchy(repoO)                                                       # measuring must not mutate
+        readonly_ok = snap_a == ms.audit_snapshot(projO) and not (stO / ".mutation-log.jsonl").exists()
+        if _rhO is not None:
+            os.environ["HOME"] = _rhO
+        else:
+            os.environ.pop("HOME", None)
+        print(f"  hierarchy worst-path={hier_ok} (worst {hO['worst_path']} ≈{hO['worst_path_tokens']} tok, .venv excluded) · "
+              f"infra-excluded={infra_excluded}")
+        print(f"  audit created/modified/deleted={audit_ok} · unchanged≠op · measuring-is-read-only={readonly_ok}")
+        _verdict("O", "v0.1.22 foundation: claude_md_hierarchy computes the heaviest root→leaf chain (excl .venv); "
+                 "the audit trail detects created/modified/deleted via content-hash (unchanged ≠ op, infra excluded); "
+                 "measuring is READ-ONLY (no mutation, no log written)",
+                 hier_ok and infra_excluded and audit_ok and readonly_ok,
+                 "surfaces the ~54k nested-CLAUDE.md cost + a deterministic mutation trail — the safety substrate for v0.1.23")
+
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")
         first, last = curve[0], curve[-1]

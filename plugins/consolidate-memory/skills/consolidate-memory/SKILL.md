@@ -206,6 +206,18 @@ reconstruct it in any later phase. (`--json` still streams the seed to stdout fo
 Add to that file through the phases (candidates, verification tallies, entries, after-budget, health) and
 render it at the end. Set `session` to the active session id.
 
+Then capture the **BEFORE audit snapshot** (v0.1.22) — a deterministic content-hash of the memory store +
+the CLAUDE.md hierarchy, so Phase 5 can emit a script-OBSERVED mutation trail (not just your narrated
+`entries[]`):
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --snapshot   # writes a per-slug BEFORE snapshot + prints its path
+```
+
+Keep that path for Phase 5's `--audit`. (Phase 0 also now reports the **whole CLAUDE.md hierarchy** — the
+nested files CC loads hierarchically, with a `worst_path` "a session in <dir> pays ~Nk/turn"; read-only,
+detect-and-report — a heavy nested CLAUDE.md is a v0.1.23 optimization target, not a gate.)
+
 ### Phase 1 — Orient
 
 Read fully: both `MEMORY.md`s (repo + auto-memory index), the auto-memory fact
@@ -527,6 +539,17 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. T
    was JUSTIFIED this pass** (lever `justify` or prune-then-justify, step 0), ALSO write
    `standing_justify: {"facts": <current fact-count>, "index_tokens": <current>, "at": "<iso>"}`
    to the marker — the next pass SUPPRESSES the gate until the store grows by Δ (D6/D7, v0.1.21).
+   Then **emit the deterministic mutation audit** (v0.1.22) — diff the post-write state against the Phase-0
+   `--snapshot`:
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --audit <the --snapshot path>
+   ```
+   It appends a per-operation record to `~/.claude/projects/<slug>/memory/.mutation-log.jsonl` (the durable,
+   script-emitted trail) and prints the audit summary — paste that into the cycle record's `audit` block. This
+   is the script-OBSERVED counterpart to your `entries[]` narration; they should AGREE — a divergence (a file
+   changed that no entry mentions, or an entry with no file change) is a signal to investigate. HONEST GAP: the
+   snapshot window attributes ANY change between Phase 0 and now to this pass (an interrupted/concurrent edit
+   would mis-attribute) — don't over-trust it.
 6. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py <the --seed path> \
@@ -617,7 +640,9 @@ summary alongside it.
                          "budget_tokens": 4000, "over": false},
     "index": {"before_lines": 0, "after_lines": 0, "before_bytes": 0, "after_bytes": 0,
               "before_tokens": 0, "after_tokens": 0, "budget_tokens": 1200, "over": false},
-    "recall_facts": {"before": 0, "after": 0}
+    "recall_facts": {"before": 0, "after": 0},
+    "claude_md_hierarchy": {"files": [{"path": "CLAUDE.md", "tokens": 0}],
+                            "worst_path": ".", "worst_path_tokens": 0, "total_files": 0}
   },
   "health": {"index_pointers_ok": true, "broken": [], "dangling_links": [],
              "slug_orphans": [], "schema_drift": {}},
@@ -645,6 +670,13 @@ summary alongside it.
     "projected_index": 0, "achieved_index": 0,
     "projected_recall": 0, "achieved_recall": 0,
     "standing_justified": false, "baseline_facts": 0, "reaches_budget": true
+  },
+  "audit": {
+    "_": "v0.1.22: DETERMINISTIC script-emitted mutation trail. Phase 0 `memory_status.py --snapshot` writes a per-slug BEFORE snapshot; Phase 5 `--audit <snapshot>` diffs, appends .mutation-log.jsonl, and fills this — what THIS pass ACTUALLY changed (content-hash), cf. the model-narrated entries[]. MEMORY.md modified = expected re-index churn.",
+    "memory": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0},
+    "claude_md": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0},
+    "operations": [{"path": "memory/foo.md", "op": "modified", "token_delta": 0, "store": "memory"}],
+    "window": "phase0..phase5"
   },
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
              "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},

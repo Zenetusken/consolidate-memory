@@ -5,6 +5,38 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.22] — 2026-06-20
+
+### Added (CLAUDE.md-arc FOUNDATION — whole-hierarchy measurement + deterministic mutation audit trail; additive → patch)
+The CLAUDE.md-optimization arc is SPLIT (advisor sequencing): v0.1.22 ships the read-only / low-risk foundation;
+the actual CLAUDE.md mutation (relocate/compress/prune) rides this recorder in v0.1.23.
+- **Whole-hierarchy CLAUDE.md measurement (read-only).** Empirics: memex's `src/memex/CLAUDE.md` (~34k tok) +
+  `src/memex/webui/CLAUDE.md` (~16k) mean a session in `webui/` pays **~54k tok of CLAUDE.md every turn** —
+  invisible to the tool, which measured only the root file (vs `CLAUDE_MD_TOKEN_BUDGET=4000`). `claude_md_hierarchy`
+  now finds every CLAUDE.md (root + nested, excl vendored/VCS) and reports the **worst-case root→leaf path** ("a
+  session in `<dir>` pays ~Nk/turn") in the Phase-0 report + the dashboard. **Detect-and-report only — NOT wired
+  into the memory-index gate** (different subsystem).
+- **Deterministic, script-emitted mutation audit trail.** `memory_status.py --snapshot` (Phase 0) writes a
+  per-slug content-hash snapshot of the memory store + CLAUDE.md hierarchy; `--audit <snapshot>` (Phase 5) diffs
+  it, appends a per-operation record (created/modified/deleted + token deltas) to `.mutation-log.jsonl`, and fills
+  the cycle record's new `audit` block. This is the script-OBSERVED counterpart to the model-narrated `entries[]`
+  — they should agree; a divergence is a signal. **Honest gap:** the Phase0→Phase5 window attributes any change in
+  the span to the pass. Covers the memory writes every cycle already does — the dogfood that proves the recorder
+  before v0.1.23 turns on CLAUDE.md mutation.
+
+### Internal
+- New helpers `claude_md_hierarchy` / `audit_snapshot` / `audit_diff` / `audit_snapshot_path` + `--snapshot` /
+  `--audit` modes. Cycle record gains `budget.claude_md_hierarchy` + a top-level `audit` block (5 new TypedDicts;
+  the contract co-edit lands across the TypedDicts + SKILL `​```json` + the smoke nested-pin + `seed_record` + the
+  renderer + `validate_cycle_record`'s dict-type guard).
+- `.gitignore` now also guards `.mutation-log.jsonl` + `.consolidation-log.jsonl` (PUBLIC-repo defense-in-depth;
+  the store is also out-of-tree).
+- Probe O (hierarchy worst-path · audit created/modified/deleted via content-hash · unchanged ≠ op · infra
+  excluded · measuring is read-only) + 3 smoke units. smoke 264/0 · sim · mypy · manifests.
+- **Versioning — PATCH:** additive (read-only measure + a new audit subsystem; new flags; `total=False` blocks);
+  no removed/renamed flag; NO CLAUDE.md mutation (that's v0.1.23); legacy records render. The mutation arc →
+  v0.1.23; finding-B + the token-axis wire-up stay backlogged.
+
 ## [0.1.21] — 2026-06-20
 
 ### Fixed (v0.1.19 first-party beta defect catalog — 9 root-cause fixes; additive → patch)
