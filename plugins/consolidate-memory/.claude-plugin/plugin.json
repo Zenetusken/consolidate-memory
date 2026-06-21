@@ -1,6 +1,6 @@
 {
   "name": "consolidate-memory",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "description": "Cross-project, verification-first memory for Claude Code — the layer beyond the built-in Auto Dream. Shares memory across your whole fleet (a governed global store, replicated into every project) and verifies facts against the live code (grep/file/git), dropping what it can't confirm — fact-checked, fleet-wide memory, plus tiered context-budget accounting. Where Auto Dream auto-consolidates each project, this is the explicit, rigorous complement; invoke by asking to consolidate / checkpoint / \"dream\" your memory.",
   "author": {
     "name": "Zenetusken",
