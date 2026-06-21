@@ -18,7 +18,7 @@ case "$cmd" in
   tokens)   exec python3 "$S/sync_global.py" --tokens "$@" ;;     # network token consumption (+ --json)
   network)  exec python3 "$S/sync_global.py" --network ;;         # shared-consciousness graph
   render)   exec python3 "$S/render_dashboard.py" "$@" ;;         # cycle.json -> ASCII dashboard
-  report)   if echo "${1:-}" | grep -qE '^[0-9a-f]{4,40}$'; then exec python3 "$S/render_html.py" --select "$1" --project "${2:-.}"; else exec python3 "$S/render_html.py" --project "${1:-.}"; fi ;;  # archive index, or a dream by hash
+  report)   if [ -d "${1:-}" ]; then exec python3 "$S/render_html.py" --project "$1"; elif echo "${1:-}" | grep -qE '^[0-9a-f]{4,40}$'; then exec python3 "$S/render_html.py" --select "$1" --project "${2:-.}"; else exec python3 "$S/render_html.py" --project "${1:-.}"; fi ;;  # existing dir → its archive · hex → a dream by hash · else cwd archive
   help|*)
     cat <<EOF
 cm — consolidate-memory

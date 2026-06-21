@@ -971,6 +971,9 @@ check("v0.1.29: build_html embeds the archive contract (cycles[] + project + tot
       isinstance(_ae.get("cycles"), list) and len(_ae["cycles"]) == 2 and _ae.get("project") == "p" and _ae.get("total") == 2)
 check("v0.1.29: render_html template carries the archive routing (sel parse + archive view + hashchange reload)",
       "_readSel" in _html and 'id="archive"' in _html and "showArchive" in _html and "hashchange" in _html)
+check("v0.1.29: _marker + assemble_cycles tolerate a non-dict marker (a corrupt log entry can't crash --select/dedup)",
+      rhtml._marker({"marker": "oops"}) == (None, None)
+      and len(rhtml.assemble_cycles({}, [{"marker": "x"}, {"marker": {"commit": "a", "timestamp": "t"}}])[0]) == 2)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

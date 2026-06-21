@@ -61,8 +61,11 @@ _ARCHIVE_CAP = 120   # embed at most the latest N cycles (bounded HTML size); a 
 
 def _marker(r: dict) -> tuple:
     """A dream's identity for dedup/selection. Timestamp is UNIQUE per dream; commit COLLIDES when dreams share a
-    HEAD — so the (commit, timestamp) pair dedups and timestamp is the real key."""
-    m = r.get("marker", {}) if isinstance(r, dict) else {}
+    HEAD — so the (commit, timestamp) pair dedups and timestamp is the real key. Tolerates a non-dict `marker`
+    (a corrupted log entry) so dedup/--select can't crash — mirrors the JS side's defensive accessor."""
+    m = r.get("marker") if isinstance(r, dict) else None
+    if not isinstance(m, dict):
+        m = {}
     return (m.get("commit"), m.get("timestamp"))
 
 
@@ -152,7 +155,7 @@ def main(argv: list) -> int:
     # which view to OPEN: a specific dream (#sel=i) or the archive index (no fragment). The JS reads #sel= on load.
     frag = ""
     if args.select:
-        matches = [i for i, c in enumerate(cycles) if str(c.get("marker", {}).get("commit", "")).startswith(args.select)]
+        matches = [i for i, c in enumerate(cycles) if str(_marker(c)[0] or "").startswith(args.select)]   # _marker guards a non-dict marker
         if not matches:
             print(f"render_html: no embedded dream matches hash {args.select!r} (may be older than the latest {_ARCHIVE_CAP})", file=sys.stderr)
             return 1
