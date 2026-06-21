@@ -63,8 +63,7 @@
   /* ── key indicators band ──────────────────────────────────────────────── */
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid var(--ink);
     border-bottom:1px solid var(--rule);margin-top:26px}
-  .kpi{padding:18px 22px 18px 0;border-right:1px solid var(--rule)}
-  .kpi:last-child{border-right:0}
+  .kpi{padding:18px 26px 18px 0}   /* spacing separates the KPIs — no vertical cell-dividers (cleaner band) */
   .kpi .n{font-size:34px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
   .kpi .n small{font-size:14px;color:var(--faint)}
   .kpi .k{font-family:var(--serif);font-size:13px;font-style:italic;color:var(--ink2);margin-top:9px}
@@ -92,6 +91,7 @@
   @keyframes draw{to{stroke-dashoffset:0}}
 
   .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:10.5px;color:var(--ink2);letter-spacing:.02em;margin-top:14px}
+  .legend.center{justify-content:center}   /* under a centered chart (the network graph), the legend centers too */
   .legend i{display:inline-block;width:18px;height:2px;margin-right:6px;vertical-align:3px}
   .legend i.dot{width:8px;height:8px;border-radius:50%;vertical-align:0}
 
@@ -110,7 +110,7 @@
   .row{display:grid;grid-template-columns:96px 1fr auto;gap:18px;padding:13px 0;border-bottom:1px solid var(--rule);align-items:baseline}
   .row .act{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-family:var(--mono)}
   .row .nm{font-size:13px}.row .nm em{font-family:var(--serif);font-size:11px;color:var(--faint);font-style:italic;letter-spacing:0}
-  .row .rs{font-size:11.5px;color:var(--ink2);line-height:1.55;margin-top:3px;max-width:78ch}
+  .row .rs{font-size:11.5px;color:var(--ink2);line-height:1.55;margin-top:3px}   /* fill the column — no early width cap */
   .row .ci{font-size:10px;color:var(--ghost);white-space:nowrap;font-variant-numeric:tabular-nums}
   .a-added{color:var(--ok)} .a-corrected{color:var(--data)} .a-deleted{color:var(--crit)}
   .a-reconciled{color:var(--warn)} .a-skipped{color:var(--faint)}
@@ -255,7 +255,7 @@
         <div class="cap">Always-loaded budgets, this pass. The marker is the ceiling; fill is current consumption.</div>
       </div>
       <div><svg id="net" viewBox="0 0 520 210" style="height:210px"></svg>
-        <div class="legend"><span><i class="dot" style="background:var(--accent)"></i>trigger node</span><span><i class="dot" style="background:var(--ink2)"></i>peer · sized by facts</span></div>
+        <div class="legend center"><span><i class="dot" style="background:var(--accent)"></i>trigger node</span><span><i class="dot" style="background:var(--ink2)"></i>peer · sized by facts</span></div>
       </div>
     </div>
   </section>
