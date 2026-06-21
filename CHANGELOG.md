@@ -5,6 +5,17 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.30] — 2026-06-21
+
+### Changed
+- Dashboard KPI band ("numerical dash"): dropped the bottom hairline rule (top rule only) so the key indicators
+  read as floating below the rule — a cleaner, un-boxed feel (review polish, completing v0.1.29's removal of the
+  vertical cell-dividers + the centered network legend + the full-width Changes reason text). Pure CSS, no logic
+  change.
+
+### Internal
+- **Versioning — PATCH:** a one-line cosmetic CSS change in dashboard.template.html. smoke 286/0 · mypy · manifests.
+
 ## [0.1.29] — 2026-06-21
 
 ### Added — per-repo dream ARCHIVE (browse + revisit every dashboard)
