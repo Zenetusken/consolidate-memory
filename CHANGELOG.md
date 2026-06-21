@@ -5,6 +5,25 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.36] — 2026-06-21
+
+### Fixed (defensive hardening) — the remediation block gates on `required`, not mere presence
+`render_dashboard` rendered the over-budget `REMEDIATION` block whenever a `remediation` object was present,
+regardless of its `required` flag (`elif rem:`). A record carrying `remediation: {required: false}` — the
+cycle-record schema's own DEFAULT — therefore rendered a spurious "over-budget gate" on a store that is UNDER
+budget (a self-contradiction, the same class as the v0.1.35 `acted=pruned` bug, one branch up). Fix:
+`elif rem and rem.get("required")`. **Not a live-dream regression** — a healthy dream's seed OMITS remediation
+entirely (measured), and the over-budget triage sets `required: true` (so the safety gate still fires); the gap
+was reachable only by a record following the schema default or a non-omitting producer. Found by dogfooding the
+v0.1.35 dream.
+- +2 regression smoke units (required=false → no block; required=true → block preserved).
+- **dream-beta-tester 0.1.2:** new `remediation_render_coherence` family guarding BOTH renderer fixes (v0.1.35
+  rebuild-lean-resolved, v0.1.36 required=false) AND the seed→renderer SAFETY contract — a real over-budget,
+  non-justified store MUST seed `required: true`, else the v0.1.36 renderer would silently drop the gate.
+  Verified: PASS on the fixed renderer, FAIL on the buggy cache 0.1.35, seed-contract FAILs a gate-dropping seed.
+- **mypy.ini now covers `plugins/dream-beta-tester/scripts`** — a latent v0.1.35 `tgt`-type drift slipped
+  because dbt was uncovered; now caught. smoke 298/0 · mypy · manifests. PATCH.
+
 ## [0.1.35] — 2026-06-21
 
 ### Fixed — remediation gate mislabeled "not acted on" after a rebuild-lean (beta-test-confirmed)

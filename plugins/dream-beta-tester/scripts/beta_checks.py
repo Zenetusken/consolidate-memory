@@ -966,7 +966,7 @@ def closure_reachability(ctx: Ctx) -> list[Result]:
         suggestions: dict[str, str] = {}
         for raw in sorted(ctx.raw_wikilinks):
             if raw in valid_targets:
-                tgt = raw   # direct hit — incl. archive-index docs ([[SHIPPED]]/[[MEMORY]] are real, D10)
+                tgt: str | None = raw   # direct hit — incl. archive-index docs ([[SHIPPED]]/[[MEMORY]] are real, D10)
             elif resolve is not None:
                 tgt = resolve(raw, valid_targets)
             else:
@@ -1052,6 +1052,89 @@ def calibration(ctx: Ctx) -> list[Result]:
                       "standing-justify (see CHK-STANDING-JUSTIFY) so the gate is not a dead-end — only a raw budget "
                       "number that earned density outgrows",
                       "budget.index", "D6", basis="rendered" if sj_resolves else "structural"))
+    return out
+
+
+@family
+def remediation_render_coherence(ctx: Ctx) -> list[Result]:
+    """The remediation block stays coherent with the cycle record. Guards two renderer fixes + the
+    seed→renderer SAFETY contract:
+      (1) v0.1.36 — the over-budget block renders only when remediation.required is truthy, NOT on mere
+          presence; a record carrying {required:false} (the schema default) must render NO block.
+      (2) v0.1.35 — a rebuild-lean-resolved gate (pruned=0, achieved_index<=budget) reads 'resolved',
+          not 'gate fired but not acted on'.
+      (3) seed contract (HIGH) — a REAL over-budget, non-justified store MUST seed required=True, else
+          the v0.1.36 renderer (gating on `required`) would SILENTLY drop the over-budget safety gate.
+    The render checks are field-aware (basis=rendered): they subprocess the skill's OWN render_dashboard
+    from cwd=target repo, per the harness's clean-subprocess discipline."""
+    import json as _json, os as _os, subprocess as _sp, sys as _sys, tempfile as _tf
+    out: list[Result] = []
+    rd = Path(ctx.skill) / "render_dashboard.py"
+
+    def _probe(rem: dict[str, Any], after: int, over: bool) -> str | None:
+        rec = {"project": "p", "session": "s", "scope": {}, "entries": [],
+               "budget": {"index": {"after_tokens": after, "budget_tokens": 1200, "over": over}},
+               "remediation": rem, "marker": {"commit": "probe", "timestamp": "2026-01-01T00:00:00Z"}}
+        fd, p = _tf.mkstemp(suffix=".json")
+        try:
+            _os.write(fd, _json.dumps(rec).encode()); _os.close(fd)
+            r = _sp.run([_sys.executable, str(rd), p, "--no-color"],
+                        capture_output=True, text=True, timeout=30, cwd=str(ctx.repo))
+            return r.stdout if r.returncode == 0 else None
+        except Exception:  # noqa: BLE001 — a render failure SKIPs, never crashes the oracle
+            return None
+        finally:
+            try:
+                _os.unlink(p)
+            except OSError:
+                pass
+
+    if rd.exists():
+        # (1) v0.1.36 — required=false must render NO over-budget block
+        o = _probe({"required": False}, 900, False)
+        if o is None:
+            out.append(_R("remediation_render_coherence", "CHK-REM-REQUIRED", "required=false → no over-budget block",
+                          "MED", "SKIP", "no REMEDIATION block for required=false", "render unavailable",
+                          "", "render_dashboard.py", "v0.1.36", "rendered"))
+        else:
+            spurious = "REMEDIATION" in o
+            out.append(_R("remediation_render_coherence", "CHK-REM-REQUIRED", "required=false → no over-budget block",
+                          "MED", "FAIL" if spurious else "PASS",
+                          "no REMEDIATION block for a record with remediation.required=false",
+                          "spurious over-budget block rendered" if spurious else "no block (correct)",
+                          "the renderer must gate on `required`, not mere presence (schema default is required:false present)",
+                          "render_dashboard.py", "v0.1.36", "rendered",
+                          (_grep_quote(o, "REMEDIATION") or "") if spurious else ""))
+        # (2) v0.1.35 — a rebuild-lean-resolved gate reads 'resolved', not 'not acted on'
+        o2 = _probe({"required": True, "lever": "prune", "pruned": 0, "achieved_index": 900,
+                     "candidates_surfaced": 1, "projected_index": 480, "reaches_budget": True}, 900, False)
+        if o2 is None:
+            out.append(_R("remediation_render_coherence", "CHK-REM-RESOLVED", "rebuild-lean-resolved → 'resolved'",
+                          "MED", "SKIP", "resolved-by-rebuild-lean, not 'not acted on'", "render unavailable",
+                          "", "render_dashboard.py", "v0.1.35", "rendered"))
+        else:
+            mislabeled = "not acted on" in o2
+            out.append(_R("remediation_render_coherence", "CHK-REM-RESOLVED",
+                          "rebuild-lean-resolved gate reads 'resolved', not 'not acted on'", "MED",
+                          "FAIL" if mislabeled else "PASS",
+                          "a gate resolved via rebuild-lean (pruned=0, achieved<=budget) reads as resolved",
+                          "mislabeled 'gate fired but not acted on'" if mislabeled else "resolved (correct)",
+                          "acted-on must include rebuild-lean resolution, not eviction only",
+                          "render_dashboard.py", "v0.1.35", "rendered",
+                          (_grep_quote(o2, "not acted on") or "") if mislabeled else ""))
+
+    # (3) seed→renderer SAFETY contract — an over-budget, non-justified store MUST seed required=True
+    rem = ctx.status.get("remediation") or {}
+    if rem and not rem.get("standing_justified"):
+        ok = rem.get("required") is True
+        out.append(_R("remediation_render_coherence", "CHK-REM-SEED-CONTRACT",
+                      "over-budget seed sets required=True (gate-firing contract)", "HIGH",
+                      "PASS" if ok else "FAIL",
+                      "an over-budget, non-justified store seeds remediation.required=True",
+                      "required=True (the v0.1.36 renderer fires the gate)" if ok
+                      else f"required={rem.get('required')!r} — the v0.1.36 renderer would DROP the gate",
+                      "memory_status seed → render_dashboard gate-firing contract",
+                      "memory_status.py", "v0.1.36", "structural"))
     return out
 
 
