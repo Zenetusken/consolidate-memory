@@ -750,6 +750,12 @@ with _tempfile.TemporaryDirectory() as _bp_td:
     _bp_refs = [c["stem"] for c in _bp_tri["stages"]["R_referenced"]]
     check("v0.1.18.x: C2 — referenced-unindexed → R (de-link first), unreferenced-unindexed → A (true orphan)",
           "reffed" in _bp_refs and "reffed" not in _bp_orphans and "lonely" in _bp_orphans and "lonely" not in _bp_refs)
+    # v0.1.25: the --promote dangle guard — wikilinks to NON-global facts (would dangle in mirrors); excludes
+    # an existing global fact, a self-reference, and a code-span dotted ref ([[tool.mypy.overrides]]).
+    check("v0.1.25: _nonglobal_wikilinks flags project-local links, excludes global/self/code-span",
+          sg._nonglobal_wikilinks("see [[fact]] and [[nonexistent-xyz]] and [[tool.mypy.overrides]]", _bp_dir) == ["nonexistent-xyz"]
+          and sg._nonglobal_wikilinks("[[self-ref]] [[nonexistent-xyz]]", _bp_dir, exclude="self-ref") == ["nonexistent-xyz"]
+          and sg._nonglobal_wikilinks("no links here", _bp_dir) == [])
 
 # v0.1.14: _ui.py is the shared visual vocabulary the OTHER scripts import; render_dashboard keeps its
 # OWN copies (the byte-pinned reference, untouched). This DRIFT-PIN asserts _ui stays byte-identical to

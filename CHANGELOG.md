@@ -5,6 +5,30 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.25] — 2026-06-21
+
+### Fixed (cross-project wikilink integrity — surfaced by a job-applicator dream pass; additive → patch)
+A job-applicator dream flagged 3 dangling wikilinks inside *pulled mirrors* — all `[[wikilinks]]` in
+global/stack-general canonicals pointing to **project-local facts of their origin project** (e.g.
+`user-fleet-is-monostack-python`→`[[consolidate-memory-roadmap]]`/`[[governance-signal]]`,
+`keyfigures-example-hallucination`→`[[contextual-retrieval-negative-2026-05-25]]`). A global fact's links travel
+with it into every mirror, so a project-local link dead-ends in every *other* project (a fleet-wide latent defect).
+- **`sync_global.py --promote` now WARNS** (non-blocking) when a fact being promoted carries `[[wikilinks]]` to
+  non-global targets (`_nonglobal_wikilinks`) — a global fact should link only to other global facts. Prevents
+  new fleet-wide dangling links at the source.
+- The 3 existing canonicals were corrected — the project-local wikilinks converted to plain text (naming the
+  origin project; they propagate to mirrors on each project's next `--pull`).
+- SKILL: a note to avoid committing to the repo *while a dream runs* — a concurrent commit moves HEAD (the marker
+  advances past it) and the Phase0→Phase5 audit window attributes it to the pass; the dream detects HEAD-moved +
+  re-measures but can't fully disentangle it.
+
+### Internal
+- New `_nonglobal_wikilinks` helper + 1 smoke unit (flags project-local links; excludes global / self-ref /
+  code-span `[[tool.mypy.overrides]]`). smoke 273/0 · sim · mypy · manifests.
+- **Versioning — PATCH:** additive (a non-blocking promote warning + a helper + a SKILL note); no removed/renamed
+  flag, no schema change. The audit concurrent-commit attribution + the marker-timing edge are accepted/documented
+  honest gaps (the tool detects + flags them correctly), not engineered around — per the advisor's re-rank.
+
 ## [0.1.24] — 2026-06-20
 
 ### Added (CLAUDE.md MUTATION — the dream can now tidy committed CLAUDE.md, gated + audited; additive → patch)
