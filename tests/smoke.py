@@ -933,9 +933,10 @@ _rec = {"project": "demo", "session": "s1", "budget": {"index": {"after_tokens":
 _html = rhtml.build_html(_rec, [_rec], "2026-06-21T00:00:00")
 _m = _re.search(r'<script type="application/json" id="cm-data">(.*?)</script>', _html, _re.S)
 _embed = _json.loads(_m.group(1).replace("\\u003c", "<").replace("\\u003e", ">").replace("\\u0026", "&")) if _m else {}
+_emc = (_embed.get("cycles") or [{}])[-1]   # v0.1.29: the archive embeds `cycles`; the current pass is the last
 check("v0.1.28: render_html embeds the cycle record COHERENTLY (round-trip key numbers match the input)",
-      _embed.get("current", {}).get("budget", {}).get("index", {}).get("after_tokens") == 900
-      and _embed.get("current", {}).get("budget", {}).get("recall_facts", {}).get("after") == 16)
+      _emc.get("budget", {}).get("index", {}).get("after_tokens") == 900
+      and _emc.get("budget", {}).get("recall_facts", {}).get("after") == 16)
 _evil = rhtml.build_html({"project": "x", "entries": [{"action": "added", "name": "</script><img src=x onerror=alert(1)>", "reason": "<b>&</b>"}]}, [], "t")
 check("v0.1.28: render_html is </script>-break-out-safe (XSS hostile fixture escaped, not raw)",
       "</script><img" not in _evil and "\\u003c/script" in _evil)
@@ -957,6 +958,22 @@ check("v0.1.28: render_html _store_for resolves --store / --project (slug) / nei
       str(rhtml._store_for("/tmp/s", None)) == "/tmp/s"
       and rhtml._store_for(None, None) is None
       and str(rhtml._store_for(None, "/home/x/proj")).endswith("/memory"))
+# v0.1.29 — the per-repo dream ARCHIVE: assemble_cycles builds the series (dedup by marker; current appended iff newer)
+_h2 = [{"marker": {"commit": "a", "timestamp": "t1"}, "project": "p"}, {"marker": {"commit": "b", "timestamp": "t2"}, "project": "p"}]
+_cyA, _tA = rhtml.assemble_cycles({}, _h2)                                                   # no current → just the log
+_cyB, _tB = rhtml.assemble_cycles({"marker": {"commit": "c", "timestamp": "t3"}, "project": "p"}, _h2)  # newer → appended
+_cyC, _tC = rhtml.assemble_cycles(_h2[-1], _h2)                                              # current == last log → NOT doubled
+check("v0.1.29: assemble_cycles builds the archive series (dedup by marker; current appended iff newer)",
+      (_tA, len(_cyA)) == (2, 2) and (_tB, len(_cyB)) == (3, 3) and (_tC, len(_cyC)) == (2, 2))
+_am = _re.search(r'id="cm-data">(.*?)</script>', rhtml.build_html({}, _h2, "t"), _re.S)
+_ae = _json.loads(_am.group(1).replace("\\u003c", "<").replace("\\u003e", ">").replace("\\u0026", "&")) if _am else {}
+check("v0.1.29: build_html embeds the archive contract (cycles[] + project + total)",
+      isinstance(_ae.get("cycles"), list) and len(_ae["cycles"]) == 2 and _ae.get("project") == "p" and _ae.get("total") == 2)
+check("v0.1.29: render_html template carries the archive routing (sel parse + archive view + hashchange reload)",
+      "_readSel" in _html and 'id="archive"' in _html and "showArchive" in _html and "hashchange" in _html)
+check("v0.1.29: _marker + assemble_cycles tolerate a non-dict marker (a corrupt log entry can't crash --select/dedup)",
+      rhtml._marker({"marker": "oops"}) == (None, None)
+      and len(rhtml.assemble_cycles({}, [{"marker": "x"}, {"marker": {"commit": "a", "timestamp": "t"}}])[0]) == 2)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
