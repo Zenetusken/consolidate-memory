@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "plugins" / "consolidate-memory" / "scripts"))
 import extract_signals as es  # noqa: E402
 import memory_status as ms  # noqa: E402
 import render_dashboard as rd  # noqa: E402
+import render_html as rhtml  # noqa: E402
 import sync_global as sg  # noqa: E402
 import _ui as ui  # noqa: E402  — shared visual vocabulary
 
@@ -922,6 +923,40 @@ check("resolve_width: --width=N overrides; a non-TTY falls back to the fixed def
       ui.resolve_width(["--width=88"], _NoTTY()) == 88 and ui.resolve_width([], _NoTTY()) == ui.W)
 check("ui↔rd: module-default W mirrors (both 60, captured before the wide override) (v0.1.15)",
       _UI_W0 == _RD_W0 == 60)
+
+# ── v0.1.28: HTML observability dashboard (render_html) — gated MECHANICAL guarantees (the visual is eye-judged) ──
+import json as _json  # noqa: E402
+import re as _re  # noqa: E402
+_rec = {"project": "demo", "session": "s1", "budget": {"index": {"after_tokens": 900, "budget_tokens": 1200, "over": False},
+        "recall_facts": {"after": 16}}, "verification": {"confirmed": 5}, "rigor": {"applied": "LIGHT"},
+        "entries": [{"action": "added", "name": "x", "reason": "r"}], "marker": {"commit": "abc", "timestamp": "2026-06-21T00:00"}}
+_html = rhtml.build_html(_rec, [_rec], "2026-06-21T00:00:00")
+_m = _re.search(r'<script type="application/json" id="cm-data">(.*?)</script>', _html, _re.S)
+_embed = _json.loads(_m.group(1).replace("\\u003c", "<").replace("\\u003e", ">").replace("\\u0026", "&")) if _m else {}
+check("v0.1.28: render_html embeds the cycle record COHERENTLY (round-trip key numbers match the input)",
+      _embed.get("current", {}).get("budget", {}).get("index", {}).get("after_tokens") == 900
+      and _embed.get("current", {}).get("budget", {}).get("recall_facts", {}).get("after") == 16)
+_evil = rhtml.build_html({"project": "x", "entries": [{"action": "added", "name": "</script><img src=x onerror=alert(1)>", "reason": "<b>&</b>"}]}, [], "t")
+check("v0.1.28: render_html is </script>-break-out-safe (XSS hostile fixture escaped, not raw)",
+      "</script><img" not in _evil and "\\u003c/script" in _evil)
+# the attribute-context escaping happens client-side in esc(); verify the hardened esc() (quotes too) SHIPS in the template.
+check("v0.1.28: client esc() is attribute-safe — escapes quotes too (the re-audit MED XSS fix is present)",
+      'replace(/"/g,"&quot;")' in _html and "&#39;" in _html)
+_ext = [u for u in _re.findall(r'https?://[a-z][a-z0-9.\-]*', _html) if "www.w3.org" not in u]
+check("v0.1.28: render_html output has ZERO external deps (self-contained / offline)",
+      _ext == [] and "<link" not in _html.lower() and "@import" not in _html and " src=" not in _html)
+check("v0.1.28: dashboard.template.html is BUNDLED under the plugin (marketplace out-of-the-box)",
+      (Path(rhtml.__file__).parent / "dashboard.template.html").exists())
+check("v0.1.28: render_html renders a legacy/sparse record (no audit/hierarchy, empty history) without error",
+      "<!DOCTYPE html>" in rhtml.build_html({"project": "old"}, [], "t"))
+with _tempfile.TemporaryDirectory() as _hd:
+    (Path(_hd) / ".consolidation-log.jsonl").write_text('{"a":1}\nNOT JSON\n{"b":2}\n', encoding="utf-8")
+    check("v0.1.28: read_history skips malformed log lines (a corrupt log can't break the dashboard)",
+          len(rhtml.read_history(Path(_hd))) == 2)
+check("v0.1.28: render_html _store_for resolves --store / --project (slug) / neither (powers cm report)",
+      str(rhtml._store_for("/tmp/s", None)) == "/tmp/s"
+      and rhtml._store_for(None, None) is None
+      and str(rhtml._store_for(None, "/home/x/proj")).endswith("/memory"))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

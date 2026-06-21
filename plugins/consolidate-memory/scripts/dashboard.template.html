@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dream Telemetry — consolidate-memory</title>
+<style>
+  /* ── Dream Telemetry · an editorial "field report" for memory consolidation. ──────────────────
+     Zero-dep: system serif (display) + system mono (data); precise ink-on-paper charts; one accent. */
+  :root{
+    --paper:#f3efe6; --paper2:#ece7da; --card:#f7f4ed; --rule:#ddd5c5; --rule2:#cabfa9;
+    --ink:#211e18; --ink2:#544d40; --faint:#938b79; --ghost:#b7af9c;
+    --accent:#b34727;          /* rust — emphasis + the critical/budget line, used SPARINGLY */
+    --data:#2f5d55;            /* deep muted teal — primary data lines (calm, not neon) */
+    --ok:#46703f; --warn:#9a6b1c; --crit:#b34727; --glow:#f7f4ec;
+    --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,ui-serif,serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
+  }
+  /* dark editorial — warm espresso / candlelit-newsprint (NOT cold-neon). Auto via prefers-color-scheme
+     unless manually set to light; the manual data-theme override wins. Same palette in both dark blocks. */
+  @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+    --paper:#15120d; --paper2:#1e1913; --card:#1c1711; --rule:#332c22; --rule2:#493f30;
+    --ink:#ece4d2; --ink2:#b4a98e; --faint:#7f755f; --ghost:#564d3e;
+    --accent:#d96a3f; --data:#5fa996; --ok:#7cae65; --warn:#d4a24d; --crit:#d96a3f; --glow:#221b13;
+  } }
+  :root[data-theme="dark"]{
+    --paper:#15120d; --paper2:#1e1913; --card:#1c1711; --rule:#332c22; --rule2:#493f30;
+    --ink:#ece4d2; --ink2:#b4a98e; --faint:#7f755f; --ghost:#564d3e;
+    --accent:#d96a3f; --data:#5fa996; --ok:#7cae65; --warn:#d4a24d; --crit:#d96a3f; --glow:#221b13;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{height:100%}
+  body{
+    background:var(--paper); color:var(--ink); font-family:var(--mono); font-size:13px; line-height:1.55;
+    -webkit-font-smoothing:antialiased; min-height:100%;
+    background-image:radial-gradient(1200px 700px at 50% -200px, var(--glow), transparent 70%);
+  }
+  /* very faint paper tooth */
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.45;z-index:0;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.025'/%3E%3C/svg%3E")}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 40px 80px;position:relative;z-index:1}
+
+  /* ── masthead ─────────────────────────────────────────────────────────── */
+  .mast{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;
+    padding:48px 0 18px;border-bottom:2px solid var(--ink)}
+  .mast .over{font-size:10.5px;letter-spacing:.42em;text-transform:uppercase;color:var(--accent);margin-bottom:10px;font-weight:600}
+  .mast .repo-tag{font-size:10px;letter-spacing:.26em;text-transform:uppercase;color:var(--faint);margin:9px 0 3px;display:flex;align-items:center;gap:7px}
+  .mast .repo-tag::before{content:"";width:7px;height:7px;border:1.5px solid var(--accent);transform:rotate(45deg);flex:none}
+  .mast h1{font-family:var(--serif);font-size:46px;line-height:.96;letter-spacing:-.015em;font-weight:600}
+  .mast h1 em{font-style:italic;color:var(--ink2);font-weight:500}
+  .mast .meta{text-align:right;font-size:11px;color:var(--faint);line-height:2;letter-spacing:.03em}
+  .mast .meta b{color:var(--ink2);font-weight:400}
+  .rule-thin{height:1px;background:var(--rule);border:0}
+
+  /* ── lead / hero ──────────────────────────────────────────────────────── */
+  .lead{padding:34px 0 12px;display:grid;grid-template-columns:1fr;gap:6px}
+  .lead .kicker{font-size:10.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--faint)}
+  .lead h2{font-family:var(--serif);font-size:29px;line-height:1.25;letter-spacing:-.01em;font-weight:500;max-width:44ch}
+  .lead h2 .hot{color:var(--accent);font-style:italic}
+  .lead .sub{color:var(--ink2);font-size:12.5px;margin-top:4px}
+  .hero-chart{margin:18px 0 6px}
+
+  /* ── key indicators band ──────────────────────────────────────────────── */
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:0;border-top:1px solid var(--ink);
+    border-bottom:1px solid var(--rule);margin-top:26px}
+  .kpi{padding:18px 22px 18px 0;border-right:1px solid var(--rule)}
+  .kpi:last-child{border-right:0}
+  .kpi .n{font-size:34px;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .kpi .n small{font-size:14px;color:var(--faint)}
+  .kpi .k{font-family:var(--serif);font-size:13px;font-style:italic;color:var(--ink2);margin-top:9px}
+  .kpi .d{font-size:10.5px;color:var(--faint);letter-spacing:.02em;margin-top:3px}
+  @media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}.kpi{border-bottom:1px solid var(--rule)}}
+
+  /* ── sections ─────────────────────────────────────────────────────────── */
+  section.blk{margin-top:46px}
+  .shead{display:flex;align-items:baseline;gap:14px;margin-bottom:20px}
+  .shead .no{font-family:var(--serif);font-size:13px;font-style:italic;color:var(--accent)}
+  .shead h3{font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em}
+  .shead .ln{flex:1;height:1px;background:var(--rule);align-self:center}
+  .shead .note{font-size:10.5px;letter-spacing:.04em;color:var(--faint)}
+  .cols{display:grid;gap:38px}
+  .c2{grid-template-columns:1.15fr .85fr}.c2b{grid-template-columns:.85fr 1.15fr}
+  @media(max-width:760px){.cols{grid-template-columns:1fr!important}}
+  .cap{font-size:11px;color:var(--ink2);font-family:var(--serif);font-style:italic;margin-top:10px}
+
+  /* svg + charts (ink on paper, precise) */
+  svg{display:block;width:100%;overflow:visible}
+  .axt{fill:var(--faint);font-size:9.5px;font-family:var(--mono);letter-spacing:.02em}
+  .axt.r{fill:var(--accent)} .axt.d{fill:var(--ink2)}
+  .grid{stroke:var(--rule);stroke-width:1} .grid.f{stroke:var(--paper2)}
+  .draw{stroke-dasharray:var(--len);stroke-dashoffset:var(--len);animation:draw 1.05s .15s cubic-bezier(.3,.7,.3,1) forwards}
+  @keyframes draw{to{stroke-dashoffset:0}}
+
+  .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:10.5px;color:var(--ink2);letter-spacing:.02em;margin-top:14px}
+  .legend i{display:inline-block;width:18px;height:2px;margin-right:6px;vertical-align:3px}
+  .legend i.dot{width:8px;height:8px;border-radius:50%;vertical-align:0}
+
+  /* gauges as compact bar-meters (calmer than rings) */
+  .meter{margin:0 0 20px}
+  .meter .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+  .meter .top .lab{font-family:var(--serif);font-style:italic;font-size:13px;color:var(--ink2)}
+  .meter .top .val{font-size:13px;font-variant-numeric:tabular-nums}
+  .meter .track{height:8px;background:var(--paper2);border:1px solid var(--rule);position:relative;overflow:hidden}
+  .meter .fill{position:absolute;inset:0 auto 0 0;width:0;background:var(--data);transition:width 1s .2s cubic-bezier(.3,.7,.3,1)}
+  .meter .mark{position:absolute;top:-3px;bottom:-3px;width:1.5px;background:var(--accent)}
+  .meter .d{font-size:10.5px;color:var(--faint);margin-top:5px}
+
+  /* entries — a clean ledger */
+  .ledger{border-top:1px solid var(--ink)}
+  .row{display:grid;grid-template-columns:96px 1fr auto;gap:18px;padding:13px 0;border-bottom:1px solid var(--rule);align-items:baseline}
+  .row .act{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-family:var(--mono)}
+  .row .nm{font-size:13px}.row .nm em{font-family:var(--serif);font-size:11px;color:var(--faint);font-style:italic;letter-spacing:0}
+  .row .rs{font-size:11.5px;color:var(--ink2);line-height:1.55;margin-top:3px;max-width:78ch}
+  .row .ci{font-size:10px;color:var(--ghost);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .a-added{color:var(--ok)} .a-corrected{color:var(--data)} .a-deleted{color:var(--crit)}
+  .a-reconciled{color:var(--warn)} .a-skipped{color:var(--faint)}
+
+  .audit-ln{display:grid;grid-template-columns:1fr auto;gap:12px;padding:11px 0;border-bottom:1px solid var(--rule);font-size:12px;align-items:baseline}
+  .audit-ln .s{font-family:var(--serif);font-style:italic;color:var(--ink2)}
+  .audit-ln .nums{font-variant-numeric:tabular-nums;color:var(--ink2)}
+  /* audit STORE rows: fixed right-aligned number columns so new/mod/del/Δtok line up across rows regardless of width */
+  .audit-row{display:grid;grid-template-columns:1fr 2.7em 2.7em 2.7em 4.4em;gap:8px;padding:11px 0;border-bottom:1px solid var(--rule);font-size:12px;align-items:baseline}
+  .audit-row .s{font-family:var(--serif);font-style:italic;color:var(--ink2)}
+  .audit-row>span:not(.s){text-align:right;font-variant-numeric:tabular-nums}
+  .audit-row .tk{color:var(--faint)}
+  .audit-row.head,.audit-ln.head{border-bottom-color:var(--rule2)}
+  .audit-row.head>span,.audit-ln.head>span{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-style:normal}
+  .flag{margin-top:14px;padding:10px 13px;border-left:3px solid var(--accent);background:rgba(179,71,39,.06);
+    font-size:11.5px;color:var(--ink2);display:none}
+
+  .theme-tog{position:fixed;top:15px;right:16px;z-index:45;background:var(--card);border:1px solid var(--rule2);
+    color:var(--ink2);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
+    padding:5px 11px;border-radius:2px;cursor:pointer;transition:color .15s,border-color .15s}
+  .theme-tog:hover{border-color:var(--accent);color:var(--accent)}
+  .tip{position:fixed;z-index:30;pointer-events:none;background:var(--ink);color:var(--paper);border-radius:2px;
+    padding:5px 9px;font-size:11px;opacity:0;transition:opacity .12s;white-space:nowrap;font-variant-numeric:tabular-nums}
+  footer{margin-top:60px;padding-top:16px;border-top:2px solid var(--ink);display:flex;justify-content:space-between;
+    flex-wrap:wrap;gap:12px;font-size:10.5px;color:var(--faint);letter-spacing:.03em}
+  footer .em{font-family:var(--serif);font-style:italic}
+
+  /* ── loading: editorial "compiling" ── */
+  #boot{position:fixed;inset:0;z-index:50;background:var(--paper);display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:20px;transition:opacity .55s ease}
+  #boot.gone{opacity:0;pointer-events:none}
+  #boot .bt{font-family:var(--serif);font-style:italic;font-size:20px;color:var(--ink2)}
+  #boot .bl{width:200px;height:2px;background:var(--rule);position:relative;overflow:hidden}
+  #boot .bl i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--accent);animation:fillb 1s ease-out forwards}
+  @keyframes fillb{to{width:100%}}
+  #boot .bn{font-size:10px;letter-spacing:.34em;text-transform:uppercase;color:var(--faint)}
+
+  @media(prefers-reduced-motion:reduce){
+    .draw{animation:none;stroke-dashoffset:0}.meter .fill{transition:none}
+    #boot .bl i{animation:none;width:100%}
+  }
+</style>
+<script>/* no-flash: apply a saved manual theme before first paint (auto = follow prefers-color-scheme) */
+(function(){try{var m=localStorage.getItem("cm-theme");if(m==="light"||m==="dark")document.documentElement.setAttribute("data-theme",m);}catch(e){}})();</script>
+</head>
+<body>
+<button id="theme-tog" class="theme-tog" aria-label="toggle color theme">◐ auto</button>
+<div id="boot"><div class="bt">compiling field report</div><div class="bl"><i></i></div><div class="bn" id="boot-proj">consolidate-memory</div></div>
+<div class="tip" id="tip"></div>
+
+<div class="wrap" id="app" style="visibility:hidden">
+  <div class="mast">
+    <div>
+      <div class="over">Dream Telemetry · Memory Consolidation</div>
+      <div class="repo-tag">Repository</div>
+      <h1 id="h-proj">consolidate-memory</h1>
+    </div>
+    <div class="meta">
+      <div><b id="h-banner">—</b></div>
+      <div>session <span id="h-sess">—</span></div>
+      <div>scope <span id="h-scope">—</span></div>
+      <div id="h-gen">—</div>
+    </div>
+  </div>
+
+  <!-- LEAD: the takeaway-first headline + the hero chart -->
+  <div class="lead">
+    <div class="kicker">Lead Indicator · Always-Loaded Index</div>
+    <h2 id="lead-head">—</h2>
+    <div class="sub" id="lead-sub"></div>
+  </div>
+  <div class="hero-chart"><svg id="traj" viewBox="0 0 1100 300" preserveAspectRatio="none" style="height:300px"></svg></div>
+  <div class="flag" id="traj-warn"></div>
+
+  <!-- KEY INDICATORS -->
+  <div class="kpis" id="kpis"></div>
+
+  <!-- 01 longitudinal -->
+  <section class="blk"><div class="shead"><span class="no">01</span><h3>Longitudinal</h3><span class="ln"></span><span class="note" id="hist-note"></span></div>
+    <div class="cols c2">
+      <div><svg id="trend" viewBox="0 0 660 240" style="height:240px"></svg>
+        <div class="legend"><span><i class="dot" style="background:var(--data)"></i>recall facts</span><span><i style="background:var(--ok)"></i>added</span><span><i style="background:var(--warn)"></i>corrected / reconciled</span><span><i style="background:var(--crit)"></i>deleted</span></div>
+        <div class="cap">Store growth and per-cycle churn. Bars are write volume; the line is the live fact count.</div>
+      </div>
+      <div><svg id="rigor" viewBox="0 0 460 240" style="height:240px"></svg>
+        <div class="cap">Applied rigor tier per cycle, with the interval since the previous dream.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 02 network + budgets -->
+  <section class="blk"><div class="shead"><span class="no">02</span><h3>Shared Consciousness</h3><span class="ln"></span><span class="note" id="net-note"></span></div>
+    <div class="cols c2b">
+      <div>
+        <div class="meter" id="m-index"></div>
+        <div class="meter" id="m-cmd"></div>
+        <div class="cap">Always-loaded budgets, this pass. The marker is the ceiling; fill is current consumption.</div>
+      </div>
+      <div><svg id="net" viewBox="0 0 520 210" style="height:210px"></svg>
+        <div class="legend"><span><i class="dot" style="background:var(--accent)"></i>trigger node</span><span><i class="dot" style="background:var(--ink2)"></i>peer · sized by facts</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 03 this pass: audit + verification -->
+  <section class="blk"><div class="shead"><span class="no">03</span><h3>This Pass</h3><span class="ln"></span><span class="note" id="pass-note"></span></div>
+    <div class="cols c2b">
+      <div id="audit"></div>
+      <div id="verify"></div>
+    </div>
+  </section>
+
+  <!-- 04 ledger -->
+  <section class="blk"><div class="shead"><span class="no">04</span><h3>Changes &amp; Decisions</h3><span class="ln"></span><span class="note" id="ent-note"></span></div>
+    <div class="ledger" id="entries"></div>
+  </section>
+
+  <footer>
+    <span id="f-marker">—</span>
+    <span class="em">self-contained · zero-dependency · token figures are ≈ char/4 estimates</span>
+  </footer>
+</div>
+
+<script type="application/json" id="cm-data">/*__CM_DATA__*/</script>
+<script>
+"use strict";
+(function(){
+  var DATA={}; try{ DATA=JSON.parse(document.getElementById("cm-data").textContent)||{}; }catch(e){ DATA={}; }
+  var CUR=(DATA.current&&typeof DATA.current==="object")?DATA.current:{};
+  var HIST=Array.isArray(DATA.history)?DATA.history:[];
+  var BUD=(DATA.budgets&&typeof DATA.budgets==="object")?DATA.budgets:{index:1200,claude_md:4000};
+  var IDXB=num(BUD.index,1200), CMB=num(BUD.claude_md,4000);
+
+  function g(o,p,d){var c=o,a=p.split(".");for(var i=0;i<a.length;i++){if(c==null||typeof c!=="object")return d;c=c[a[i]];}return c==null?d:c;}
+  function num(x,d){var n=typeof x==="number"?x:parseFloat(x);return isFinite(n)?n:(d===undefined?0:d);}
+  // attribute-SAFE escape: textContent handles <>&, then quotes too, so esc() is safe in BOTH text and
+  // attribute context (an entry name/action with a stray " or ' can never break out — re-audit MED fix).
+  function esc(s){s=(s==null)?"":String(s);var e=document.createElement("div");e.textContent=s;return e.innerHTML.replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+  function el(id){return document.getElementById(id);}
+  function S(t,a){var n=document.createElementNS("http://www.w3.org/2000/svg",t);if(a)for(var k in a)n.setAttribute(k,a[k]);return n;}
+  function fmt(n){n=Math.round(num(n));var s=n<0?"-":"";n=Math.abs(n);return s+(n>=1000?(n/1000).toFixed(n>=10000?0:1)+"k":String(n));}
+  function pct(a,b){return b>0?Math.round(100*a/b):0;}
+  function idxTok(r){var t=g(r,"budget.index.after_tokens",null);if(t==null)t=g(r,"budget.index.before_tokens",null);return num(t,0);}
+  function recallN(r){var n=g(r,"budget.recall_facts.after",null);if(n==null)n=g(r,"budget.recall_facts.before",null);return num(n,0);}
+  function magnitude(r){return num(g(r,"scope.git_commits",0))+num(g(r,"scope.session_candidates",0));}
+
+  var PROJ=g(CUR,"project","consolidate-memory");
+  el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
+  el("h-sess").textContent=String(g(CUR,"session","—")).slice(0,16);
+  el("h-scope").textContent=g(CUR,"scope.git_range","—");
+  el("h-gen").textContent=String(DATA.generated_at||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
+  var ENT=Array.isArray(CUR.entries)?CUR.entries:[];
+
+  // ── canonical cycle series ── HIST plus the CURRENT pass IF it isn't already the last logged record
+  // (dedup by MARKER, not value). EVERY longitudinal chart (trajectory · fact growth · churn · rigor) reads
+  // this one array, so they can never disagree on cycle count or identity — the gap/inconsistency guard.
+  function sameCycle(a,b){return !!(a&&b&&g(a,"marker.commit","x")===g(b,"marker.commit","y")&&g(a,"marker.timestamp","x")===g(b,"marker.timestamp","y"));}
+  var CYCLES=HIST.slice(); if(!CYCLES.length||!sameCycle(CYCLES[CYCLES.length-1],CUR))CYCLES.push(CUR);
+  // carry the last valid value forward over any 0/missing field, so a legacy record can't dip a line to zero.
+  function carryFwd(arr){var p=0;return arr.map(function(v){v=num(v);if(v<=0)v=p;p=v;return v;});}
+  // a "nice" round axis step for ~`ticks` divisions (1/2/5×10ⁿ) → round tick labels (0/500/1000), not maxV/4 fractions.
+  function niceStep(range,ticks){if(range<=0)return 1;var raw=range/Math.max(1,ticks);var p=Math.pow(10,Math.floor(Math.log(raw)/Math.LN10));var n=raw/p;var s=n<1.5?1:n<3?2:n<7?5:10;return s*p;}
+  function niceMax(v,ticks){var st=niceStep(v,ticks);return {step:st,max:Math.ceil(v/st)*st};}
+  (function(){var w=ENT.filter(function(e){return ["added","corrected","deleted"].indexOf(g(e,"action",""))>=0;}).length;
+    var oc=g(CUR,"outcome",""),lab;
+    if(oc)lab=oc; else if(magnitude(CUR)===0&&!ENT.length)lab="Nothing to consolidate";
+    else if(w===0)lab="No-op pass"; else if(w>=4)lab="Substantial pass"; else lab="Light pass";
+    el("h-banner").textContent=lab;})();
+
+  // ── compute the lead trajectory once (shared by headline + hero chart) ──
+  // least-squares slope over a short window — a robust per-cycle drift, not a noisy 2-point endpoint slope.
+  function lsSlope(ys){var k=ys.length;if(k<2)return 0;var sx=0,sy=0,sxx=0,sxy=0,i;
+    for(i=0;i<k;i++){sx+=i;sy+=ys[i];sxx+=i*i;sxy+=i*ys[i];}var d=k*sxx-sx*sx;return d===0?0:(k*sxy-sx*sy)/d;}
+  var traj=(function(){
+    var s=carryFwd(CYCLES.map(idxTok)); if(!s.length)s=[0];
+    var cur=s[s.length-1], n=s.length, slope=0, bf=null, breach=null;
+    if(n>=3 && cur<IDXB){ slope=lsSlope(s.slice(Math.max(0,n-4)));     // fit over the last ≤4 cycles
+      if(slope>0.5){ bf=(IDXB-cur)/slope;                              // EXACT (fractional) cycles to the ceiling
+        var b=Math.round(bf); if(bf>0 && b<=60){breach=Math.max(1,b);} else {bf=null;} } }
+    return {s:s,n:n,cur:cur,slope:slope,bf:bf,breach:breach,over:cur>=IDXB};
+  })();
+
+  // ── LEAD headline (takeaway-first) ──
+  (function(){
+    var t=traj, h=el("lead-head"), sub=el("lead-sub"), p=pct(t.cur,IDXB);
+    if(t.over){ h.innerHTML="The always-loaded index is <span class=\"hot\">over budget</span> at "+fmt(t.cur)+" of "+fmt(IDXB)+" tokens.";
+      sub.textContent="Remediation gate applies — prune, archive, or standing-justify before net growth."; }
+    else if(t.breach!=null){ h.innerHTML="The index sits at "+p+"% of budget and is <span class=\"hot\">trending toward a breach in ~"+t.breach+" dreams</span>.";
+      sub.textContent="Climbing ≈"+Math.round(t.slope)+" tokens per cycle. Begin archiving completed arcs before the ceiling forces a prune."; }
+    else if(t.n<3){ h.innerHTML="The index holds at "+p+"% of budget; the trajectory is still forming.";
+      sub.textContent="Only "+t.n+" cycle"+(t.n!==1?"s":"")+" logged — the breach projection sharpens as more dreams accrue."; }
+    else { h.innerHTML="The index is holding at <span class=\"hot\">"+p+"% of budget</span>, with no breach in sight.";
+      sub.textContent="Consumption is flat across recent cycles — the store is mature and well-bounded."; }
+  })();
+
+  // ── HERO trajectory (precise, ink-on-paper) ──
+  (function(){
+    var W=1100,H=300,pL=58,pR=120,pT=24,pB=34, svg=el("traj"), t=traj, s=t.s, n=t.n;
+    var ex = (t.bf!=null) ? Math.min(Math.ceil(t.bf)+1, 18) : 0;    // cycles of projection drawn past the last point
+    var projPeak = (t.bf!=null) ? t.cur + t.slope*ex : 0;
+    var _nm=niceMax(Math.max(IDXB*1.08, Math.max.apply(null,s)*1.12, projPeak*1.02, 100), 4), maxV=_nm.max;
+    var totD=(n-1)+ex;
+    var bx=function(i){return pL+(totD<=0?(W-pL-pR)/2:i*(W-pL-pR)/totD);};
+    var by=function(v){return H-pB-(v/maxV)*(H-pT-pB);};
+    // horizontal grid + ROUND y labels (0, step, 2·step, … maxV — not maxV/4 fractions)
+    for(var gv=0;gv<=maxV+_nm.step*.01;gv+=_nm.step){var gy=by(gv);svg.appendChild(S("line",{x1:pL,y1:gy,x2:W-pR,y2:gy,class:"grid"+(gv===0?"":" f")}));
+      var tx=S("text",{x:pL-9,y:gy+3,class:"axt","text-anchor":"end"});tx.textContent=fmt(gv);svg.appendChild(tx);}
+    // budget ceiling
+    var ry=by(IDXB); svg.appendChild(S("line",{x1:pL,y1:ry,x2:W-pR+10,y2:ry,stroke:"var(--accent)","stroke-width":1.3,"stroke-dasharray":"2 5"}));
+    var bl=S("text",{x:W-pR+14,y:ry+3,class:"axt r"});bl.textContent="budget "+fmt(IDXB);svg.appendChild(bl);
+    // projection — the line reaches the budget at EXACTLY (n-1)+bf cycles; the marker sits on that crossing, so
+    // the dashed projection, the budget rule, and the breach dot all meet at one precise point.
+    if(t.bf!=null){
+      var xCur=bx(n-1), yCur=by(t.cur), xEnd=bx(totD), yEnd=by(Math.min(maxV,projPeak));
+      svg.appendChild(S("line",{x1:xCur,y1:yCur,x2:xEnd,y2:yEnd,stroke:"var(--accent)","stroke-width":1.3,"stroke-dasharray":"4 4",opacity:.75}));
+      var xCross=bx((n-1)+t.bf);
+      svg.appendChild(S("circle",{cx:xCross,cy:ry,r:4,fill:"var(--accent)"}));
+      var bt=S("text",{x:xCross,y:ry-10,class:"axt r","text-anchor":"middle"});bt.textContent="~"+t.breach+" dream"+(t.breach!==1?"s":"");svg.appendChild(bt);}
+    // area + line
+    var pts=s.map(function(v,i){return[bx(i),by(v)];});
+    var dl=pts.map(function(p,i){return(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1);}).join(" ");
+    var grad=S("linearGradient",{id:"tg",x1:0,y1:0,x2:0,y2:1});
+    grad.appendChild(S("stop",{offset:"0%","stop-color":"var(--data)","stop-opacity":.14}));
+    grad.appendChild(S("stop",{offset:"100%","stop-color":"var(--data)","stop-opacity":0}));
+    var defs=S("defs");defs.appendChild(grad);svg.appendChild(defs);
+    svg.appendChild(S("path",{d:dl+" L"+pts[pts.length-1][0].toFixed(1)+" "+(H-pB)+" L"+pts[0][0].toFixed(1)+" "+(H-pB)+" Z",fill:"url(#tg)"}));
+    var ln=S("path",{d:dl,fill:"none",stroke:"var(--data)","stroke-width":2.2,"stroke-linejoin":"round","stroke-linecap":"round"});
+    svg.appendChild(ln); try{var L=ln.getTotalLength();ln.style.setProperty("--len",L);ln.classList.add("draw");}catch(e){}
+    pts.forEach(function(p,i){var last=i===pts.length-1;
+      var c=S("circle",{cx:p[0],cy:p[1],r:last?5:3,fill:last?"var(--accent)":"var(--paper)",stroke:last?"var(--accent)":"var(--data)","stroke-width":1.8});
+      c.addEventListener("mousemove",tip(fmt(s[i])+" tok · cycle "+(i+1)));c.addEventListener("mouseleave",untip);svg.appendChild(c);});
+    if(t.breach!=null){var w=el("traj-warn");w.style.display="block";
+      w.innerHTML="<b>Heads-up.</b> At the current rate the always-loaded index breaches its "+fmt(IDXB)+"-token budget in roughly "+t.breach+" dreams.";}
+  })();
+
+  // ── KEY INDICATORS ──
+  (function(){
+    var v=CUR.verification||{}, ix=g(CUR,"budget.index.after_tokens",traj.cur), io=!!g(CUR,"budget.index.over",false);
+    var rg=g(CUR,"rigor.applied","—");
+    function kpi(n,k,d,cls){return '<div class="kpi"><div class="n'+(cls?" ":"")+'" '+(cls?'style="color:'+cls+'"':'')+'>'+n+'</div><div class="k">'+esc(k)+'</div><div class="d">'+esc(d)+'</div></div>';}
+    el("kpis").innerHTML=
+      kpi(pct(num(ix),IDXB)+'<small>%</small>', "index budget", fmt(num(ix))+" / "+fmt(IDXB)+" tok", io?"var(--crit)":null)
+     +kpi(recallN(CUR), "recall facts", "in the private store", null)
+     +kpi(num(v.confirmed)+'<small> ✓</small>', "verified", num(v.corrected)+" corrected · "+num(v.unverifiable)+" unverifiable", num(v.unverifiable)>0?"var(--warn)":null)
+     +kpi(esc(rg).charAt(0)+esc(rg).slice(1).toLowerCase(), "rigor", "via "+g(CUR,"verification.method","—"), null);
+  })();
+
+  // ── trend: facts + churn ──
+  (function(){
+    var svg=el("trend"),W=660,H=240,pL=42,pR=52,pT=14,pB=30;   // pR leaves room for the churn (right) axis
+    var rows=CYCLES,n=rows.length; el("hist-note").textContent=n+" cycle"+(n!==1?"s":"")+" logged";
+    var facts=carryFwd(rows.map(recallN));
+    var fm=niceMax(Math.max(Math.max.apply(null,facts)*1.1,4),3),maxF=fm.max;
+    var churn=rows.map(function(r){var e=Array.isArray(r.entries)?r.entries:[];return{
+      a:e.filter(function(x){return x.action==="added";}).length,
+      c:e.filter(function(x){return x.action==="corrected"||x.action==="reconciled";}).length,
+      d:e.filter(function(x){return x.action==="deleted";}).length};});
+    var cm2=niceMax(Math.max(1,Math.max.apply(null,churn.map(function(c){return c.a+c.c+c.d;}))),2),maxCh=cm2.max;
+    // TWO non-overlapping bands: the fact line up top, the churn bars in a labelled band below a divider.
+    var split=pT+(H-pT-pB)*0.58, chBase=H-pB, chTop=split+16;
+    var bx=function(i){return pL+(n<=1?(W-pL-pR)/2:i*(W-pL-pR)/(n-1));},fy=function(v){return split-(v/maxF)*(split-pT);};
+    // facts LEFT axis (round) within the top band
+    for(var fv=0;fv<=maxF+fm.step*.01;fv+=fm.step){var fyy=fy(fv);svg.appendChild(S("line",{x1:pL,y1:fyy,x2:W-pR,y2:fyy,class:"grid"+(fv===0?"":" f")}));
+      var t=S("text",{x:pL-7,y:fyy+3,class:"axt","text-anchor":"end"});t.textContent=fv;svg.appendChild(t);}
+    // churn band baseline + RIGHT axis (round, its own scale)
+    svg.appendChild(S("line",{x1:pL,y1:chBase,x2:W-pR,y2:chBase,class:"grid"}));
+    svg.appendChild(S("text",{x:W-pR+7,y:chTop+3,class:"axt d"})).textContent=maxCh;
+    svg.appendChild(S("text",{x:W-pR+7,y:chBase+3,class:"axt d"})).textContent="0";
+    svg.appendChild(S("text",{x:W-pR+7,y:chTop-9,class:"axt d"})).textContent="writes";
+    var bw=Math.max(4,Math.min(22,(W-pL-pR)/(n*2.0)));
+    churn.forEach(function(c,i){var x=bx(i)-bw/2,base=chBase;[["a","var(--ok)"],["c","var(--warn)"],["d","var(--crit)"]].forEach(function(sg){
+      var val=c[sg[0]];if(val<=0)return;var h=(val/maxCh)*(chBase-chTop);base-=h;svg.appendChild(S("rect",{x:x,y:base,width:bw,height:h,fill:sg[1],opacity:.6}));});});
+    if(facts.some(function(v){return v>0;})){var pts=facts.map(function(v,i){return[bx(i),fy(v)];});
+      var d=pts.map(function(p,i){return(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1);}).join(" ");
+      var ln=S("path",{d:d,fill:"none",stroke:"var(--data)","stroke-width":2,"stroke-linejoin":"round"});svg.appendChild(ln);
+      try{var L=ln.getTotalLength();ln.style.setProperty("--len",L);ln.classList.add("draw");}catch(e){}
+      pts.forEach(function(p,i){var c=S("circle",{cx:p[0],cy:p[1],r:i===pts.length-1?4:2.4,fill:i===pts.length-1?"var(--data)":"var(--paper)",stroke:"var(--data)","stroke-width":1.6});
+        c.addEventListener("mousemove",tip(facts[i]+" facts · +"+churn[i].a+" ~"+churn[i].c+" -"+churn[i].d));c.addEventListener("mouseleave",untip);svg.appendChild(c);});}
+    if(n<2){var t=S("text",{x:(pL+W-pR)/2,y:split/2,"text-anchor":"middle",class:"axt d"});t.textContent="trends accrue across dreams — "+n+" logged so far";svg.appendChild(t);}
+  })();
+
+  // ── rigor + cadence ──
+  (function(){
+    var svg=el("rigor"),W=460,H=240,pL=66,pR=22,pT=26,pB=34;
+    var rows=CYCLES,n=rows.length;
+    var ty={LIGHT:H-pB-16,SUBSTANTIAL:H-pB-86,HEAVY:H-pB-156},tc={LIGHT:"var(--faint)",SUBSTANTIAL:"var(--data)",HEAVY:"var(--accent)"};
+    ["HEAVY","SUBSTANTIAL","LIGHT"].forEach(function(k){
+      var y=ty[k];svg.appendChild(S("line",{x1:pL-6,y1:y,x2:W-pR,y2:y,class:"grid f"}));
+      var t=S("text",{x:pL-12,y:y+3,class:"axt","text-anchor":"end"});t.textContent=k.charAt(0)+k.slice(1).toLowerCase();svg.appendChild(t);});
+    var times=rows.map(function(r){var d=Date.parse(g(r,"marker.timestamp",""));return isFinite(d)?d:null;});
+    var bx=function(i){return pL+(n<=1?(W-pL-pR)/2:i*(W-pL-pR)/(n-1));};   // UNIFORM spacing — readable; cadence shown as gap labels
+    rows.forEach(function(r,i){var k=String(g(r,"rigor.applied","")).toUpperCase();if(!ty[k])k="LIGHT";
+      if(i>0){var pk=String(g(rows[i-1],"rigor.applied","LIGHT")).toUpperCase();if(!ty[pk])pk="LIGHT";
+        svg.appendChild(S("line",{x1:bx(i-1),y1:ty[pk],x2:bx(i),y2:ty[k],stroke:"var(--rule2)","stroke-width":1}));
+        if(times[i]!=null&&times[i-1]!=null){var hh=(times[i]-times[i-1])/3.6e6,gl=hh<48?Math.round(hh)+"h":Math.round(hh/24)+"d";
+          var gt=S("text",{x:(bx(i-1)+bx(i))/2,y:Math.min(ty[pk],ty[k])-8,"text-anchor":"middle",class:"axt d"});gt.setAttribute("style","font-size:8.5px");gt.textContent=gl;svg.appendChild(gt);}}
+      var c=S("circle",{cx:bx(i),cy:ty[k],r:4.5,fill:tc[k],stroke:"var(--paper)","stroke-width":1.5});
+      c.addEventListener("mousemove",tip("cycle "+(i+1)+" · "+k));c.addEventListener("mouseleave",untip);svg.appendChild(c);
+      var lt=S("text",{x:bx(i),y:H-12,"text-anchor":"middle",class:"axt"});lt.textContent=i+1;svg.appendChild(lt);});
+  })();
+
+  // ── budget meters ──
+  (function(){
+    function meter(box,lab,val,max,over){var f=Math.max(0,Math.min(1,max>0?val/max:0));
+      var col=over?"var(--crit)":f>=.85?"var(--warn)":"var(--data)";
+      box.innerHTML='<div class="top"><span class="lab">'+esc(lab)+'</span><span class="val" style="color:'+col+'">'+pct(val,max)+'% · '+fmt(val)+'/'+fmt(max)+'</span></div>'
+        +'<div class="track"><div class="fill"></div><div class="mark" style="left:100%"></div></div>'
+        +'<div class="d">'+(over?"over ceiling — remediation gate active":f>=.85?"approaching ceiling":"within budget")+'</div>';
+      var fill=box.querySelector(".fill");fill.style.background=col;requestAnimationFrame(function(){fill.style.width=(f*100).toFixed(1)+"%";});}
+    meter(el("m-index"),"Auto-memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),IDXB,!!g(CUR,"budget.index.over",false));
+    meter(el("m-cmd"),"CLAUDE.md (root)",num(g(CUR,"budget.claude_md.after_tokens",g(CUR,"budget.claude_md.before_tokens",0))),CMB,!!g(CUR,"budget.claude_md.over",false));
+  })();
+
+  // ── network ──
+  (function(){
+    var net=CUR.network||{},nodes=Array.isArray(net.nodes)?net.nodes:[],svg=el("net");
+    el("net-note").textContent=nodes.length+" node"+(nodes.length!==1?"s":"")+" share memory";
+    if(!nodes.length){var t=S("text",{x:260,y:140,"text-anchor":"middle",class:"axt d"});t.textContent="no shared-memory network yet";svg.appendChild(t);return;}
+    var cx=260,cy=94,N=nodes.length,maxF=Math.max.apply(null,nodes.map(function(d){return num(d.facts,1);}))||1;
+    var pos=nodes.map(function(d,i){if(N===1)return[cx,cy];var ang=(i/N)*2*Math.PI-Math.PI/2,rad=N===2?52:64;return[cx+rad*Math.cos(ang),cy+rad*Math.sin(ang)];});
+    var trig=nodes.findIndex(function(d){return d.trigger;});if(trig<0)trig=0;
+    nodes.forEach(function(d,i){if(i===trig)return;var sh=num(d.shared,0);if(sh<=0)return;
+      svg.appendChild(S("line",{x1:pos[trig][0],y1:pos[trig][1],x2:pos[i][0],y2:pos[i][1],stroke:"var(--rule2)","stroke-width":Math.max(.8,Math.min(3,sh/3))}));});
+    nodes.forEach(function(d,i){var r=7+11*Math.sqrt(num(d.facts,1)/maxF),isT=i===trig;
+      var c=S("circle",{cx:pos[i][0],cy:pos[i][1],r:r,fill:isT?"rgba(179,71,39,.1)":"var(--card)",stroke:isT?"var(--accent)":"var(--ink2)","stroke-width":isT?2:1.3});
+      var nm=String(d.node||"?").replace(/^.*[-/]/,"").slice(0,18);
+      c.addEventListener("mousemove",tip(esc(d.node)+" · "+num(d.facts)+" facts · "+fmt(num(d.always_loaded_tokens))+" tok always-loaded"));c.addEventListener("mouseleave",untip);svg.appendChild(c);
+      var lt=S("text",{x:pos[i][0],y:pos[i][1]+r+14,"text-anchor":"middle",class:"axt"+(isT?" r":"")});lt.textContent=nm;svg.appendChild(lt);
+      var ft=S("text",{x:pos[i][0],y:pos[i][1]+4,"text-anchor":"middle",class:"axt d",style:"font-size:11px"});ft.textContent=num(d.facts);svg.appendChild(ft);});
+  })();
+
+  // ── audit + verification (this pass) ──
+  (function(){
+    var a=CUR.audit||{},box=el("audit");el("pass-note").textContent="phase 0 → phase 5";
+    function ln(s,d){d=d||{};var td=num(d.token_delta);
+      return '<div class="audit-row"><span class="s">'+esc(s)+'</span><span class="a-added">+'+num(d.created)+'</span><span class="a-corrected">~'+num(d.modified)+'</span><span class="a-deleted">−'+num(d.deleted)+'</span><span class="tk">'+(td>=0?"+":"")+fmt(td)+'</span></div>';}
+    var any=["memory","claude_md","repo_doc"].some(function(s){var d=a[s]||{};return num(d.created)+num(d.modified)+num(d.deleted)!==0;});
+    var head='<div style="font-family:var(--serif);font-style:italic;color:var(--ink2);margin-bottom:8px">Script-observed mutations</div>'
+      +'<div class="audit-row head"><span class="s">store</span><span>new</span><span>mod</span><span>del</span><span>Δtok</span></div>';
+    if(!any){box.innerHTML=head+'<div class="cap" style="margin-top:0">No file mutations detected this pass.</div>';}
+    else{var h=head+ln("memory",a.memory)+ln("CLAUDE.md",a.claude_md)+ln("repo docs",a.repo_doc);
+      var cons=a.conservation||{};if(cons.possible_loss)h+='<div class="flag" style="display:block">⚠ Possible lost relocate — CLAUDE.md −'+fmt(num(cons.claude_md_drop))+' tok but targets only +'+fmt(num(cons.repo_doc_growth))+'. Verify it was intended.</div>';
+      box.innerHTML=h;}
+    // verification block
+    var v=CUR.verification||{},h=CUR.health||{},vb=el("verify");
+    var pointers=g(h,"index_pointers_ok",true), dang=(g(h,"dangling_links",[])||[]).length, broke=(g(h,"broken",[])||[]).length;
+    vb.innerHTML='<div style="font-family:var(--serif);font-style:italic;color:var(--ink2);margin-bottom:8px">Verification &amp; health</div>'
+      +'<div class="audit-ln head"><span class="s">check</span><span class="nums">result</span></div>'
+      +'<div class="audit-ln"><span class="s">claims confirmed</span><span class="nums">'+num(v.confirmed)+' ✓ · '+num(v.corrected)+' corrected · '+num(v.unverifiable)+' dropped</span></div>'
+      +'<div class="audit-ln"><span class="s">index pointers</span><span class="nums" style="color:'+(pointers?"var(--ok)":"var(--crit)")+'">'+(pointers?"all resolve":"broken")+(broke?" · "+broke+" broken":"")+'</span></div>'
+      +'<div class="audit-ln"><span class="s">dangling wikilinks</span><span class="nums" style="color:'+(dang?"var(--warn)":"var(--ok)")+'">'+(dang?dang+" to review":"none")+'</span></div>'
+      +'<div class="cap" style="margin-top:10px">Every recorded claim is checked against the live tree before it lands.</div>';
+  })();
+
+  // ── ledger ──
+  (function(){
+    var box=el("entries");el("ent-note").textContent=ENT.length+" entr"+(ENT.length!==1?"ies":"y");
+    if(!ENT.length){box.innerHTML='<div class="cap" style="padding:16px 0">No recorded decisions this pass.</div>';return;}
+    box.innerHTML=ENT.map(function(e){var act=g(e,"action","-"),tier=g(e,"tier","");tier=(tier===""||tier==="-")?"":tier;var sc=g(e,"scope","");
+      return '<div class="row"><div class="act a-'+esc(act)+'">'+esc(act)+'</div>'
+        +'<div><div class="nm">'+esc(g(e,"name","—"))+(tier||sc?' <em>'+esc([tier,sc].filter(Boolean).join(" · "))+'</em>':'')+'</div>'
+        +(g(e,"reason","")?'<div class="rs">'+esc(g(e,"reason",""))+'</div>':'')+'</div>'
+        +'<div class="ci">'+(g(e,"citation","")?esc(g(e,"citation","")):'')+'</div></div>';}).join("");
+  })();
+
+  el("f-marker").textContent="marker → "+String(g(CUR,"marker.commit","—")).slice(0,12)+" @ "+String(g(CUR,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"");
+
+  // ── theme toggle · auto (follow system) → light → dark ──
+  (function(){
+    var root=document.documentElement, btn=el("theme-tog"), modes=["auto","light","dark"], icon={auto:"◐ auto",light:"○ light",dark:"● dark"};
+    function read(){try{return localStorage.getItem("cm-theme")||"auto";}catch(e){return "auto";}}
+    function apply(m){ if(m==="auto")root.removeAttribute("data-theme"); else root.setAttribute("data-theme",m);
+      btn.textContent=icon[m]||"◐ auto"; try{localStorage.setItem("cm-theme",m);}catch(e){} }
+    var cur=read(); apply(cur);
+    btn.addEventListener("click",function(){ cur=modes[(modes.indexOf(cur)+1)%3]; apply(cur); });
+  })();
+
+  var TIP=el("tip");
+  function tip(t){return function(ev){TIP.textContent=t;TIP.style.opacity=1;TIP.style.left=(ev.clientX+13)+"px";TIP.style.top=(ev.clientY+13)+"px";};}
+  function untip(){TIP.style.opacity=0;}
+
+  function reveal(){el("app").style.visibility="visible";var b=el("boot");
+    setTimeout(function(){b.classList.add("gone");setTimeout(function(){b.style.display="none";},560);},760);}
+  if(document.readyState!=="loading")setTimeout(reveal,300);else window.addEventListener("DOMContentLoaded",function(){setTimeout(reveal,300);});
+})();
+</script>
+</body>
+</html>

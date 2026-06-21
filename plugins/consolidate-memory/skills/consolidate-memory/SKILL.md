@@ -605,7 +605,19 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    The dashboard now includes a **"Neural network — token consumption (all nodes)"**
    sub-section: the per-node and total estimated token tax across the network, plus
    what *this* cycle did in lifecycle terms on the triggering node (the node `dream`
-   ran on). Present the rendered dashboard to the user as the final message.
+   ran on).
+
+   Then generate the **rich HTML dashboard** — the visual sibling of the ASCII report (one
+   cycle-record contract, two renderers): the same data plus the longitudinal index-budget
+   trajectory, rendered as a self-contained page.
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_html.py <the --seed path> \
+       --store ~/.claude/projects/<slug>/memory
+   ```
+   It writes a ZERO-dependency, self-contained HTML file and **auto-opens it in the browser**
+   (headless-safe — with no browser it just prints the path; `--no-open` suppresses the open).
+   This is the post-dream payoff; re-open any project's latest with `cm report [DIR]`. Present
+   BOTH the ASCII dashboard (in-terminal) and the HTML path as the final message.
 
 ## Safety rules
 
