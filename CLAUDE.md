@@ -44,7 +44,9 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     memory_status.py               Phase 0: locate stores + git scope + `--json` cycle-record seed
     extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
     sync_global.py                 cross-project: --list/--pull/--gc/--tokens/--network + provenance
-    render_dashboard.py            the data-driven dashboard (renders a cycle record)
+    render_dashboard.py            the data-driven ASCII dashboard (renders ONE cycle record)
+    render_html.py                 the self-contained HTML archive (all cycles, rich; + dashboards/diffs sidecars)
+    render_log.py                  the lean per-dream audit TABLE (all cycles; powers `cm log`) — the 3rd log view
 cm                                 dev CLI over the scripts (uses explicit paths, not ${CLAUDE_PLUGIN_ROOT}).
                                    symlink-safe (readlink -f) → install on PATH for frictionless per-repo use:
                                    `ln -s "$(pwd)/cm" ~/.local/bin/cm` (then `cm report`/`cm status`/`cm log`
