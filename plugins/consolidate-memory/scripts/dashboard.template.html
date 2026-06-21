@@ -115,6 +115,27 @@
   .row .act{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-family:var(--mono)}
   .row .nm{font-size:13px}.row .nm em{font-family:var(--serif);font-size:11px;color:var(--faint);font-style:italic;letter-spacing:0}
   .row .rs{font-size:11.5px;color:var(--ink2);line-height:1.55;margin-top:3px}   /* fill the column — no early width cap */
+  /* ── v0.1.32 diff-modal: clickable changed-fact filename (in the ledger) + the diff overlay ── */
+  .nm-diff{background:none;border:0;padding:0;font:inherit;color:var(--accent);cursor:pointer;
+    border-bottom:1px dotted var(--accent);transition:opacity .12s}
+  .nm-diff:hover{opacity:.7}
+  .act.a-changed{color:var(--data)}
+  .modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center}
+  .modal-bg{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+  .modal-box{position:relative;background:var(--paper);border:1px solid var(--ink);max-width:880px;width:90%;
+    max-height:82vh;display:flex;flex-direction:column;box-shadow:0 22px 64px rgba(0,0,0,.42)}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 18px;
+    border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:12px}
+  .modal-head b{font-weight:600;letter-spacing:.02em;color:var(--ink)}
+  .modal-x{background:none;border:0;color:var(--faint);font-size:21px;line-height:1;cursor:pointer;padding:0 2px}
+  .modal-x:hover{color:var(--accent)}
+  .modal-body{overflow:auto;padding:9px 0;font-family:var(--mono);font-size:11.5px;line-height:1.55}
+  .dl{padding:0 18px;white-space:pre-wrap;word-break:break-word}
+  .dl-plus{background:rgba(95,169,150,.13);color:var(--data)}
+  .dl-minus{background:rgba(179,71,39,.11);color:var(--accent)}
+  .dl-at{color:var(--faint);font-style:italic;margin:5px 0;letter-spacing:.04em}
+  .dl-ctx{color:var(--ink2)}
+  .dl-more{padding:9px 18px;color:var(--faint);font-style:italic;border-top:1px solid var(--rule);margin-top:6px}
   .row .ci{font-size:10px;color:var(--ghost);white-space:nowrap;font-variant-numeric:tabular-nums}
   .a-added{color:var(--ok)} .a-corrected{color:var(--data)} .a-deleted{color:var(--crit)}
   .a-reconciled{color:var(--warn)} .a-skipped{color:var(--faint)}
@@ -193,6 +214,9 @@
 <button id="dens-tog" class="theme-tog" aria-label="toggle density">⊟ compact</button>
 <div id="boot"><div class="bt">compiling field report</div><div class="bl"><i></i></div><div class="bn" id="boot-proj">consolidate-memory</div></div>
 <div class="tip" id="tip"></div>
+<div class="modal" id="dmodal" style="display:none"><div class="modal-bg" id="dmodal-bg"></div>
+  <div class="modal-box"><div class="modal-head"><b id="dmodal-title">—</b><button class="modal-x" id="dmodal-x" aria-label="close diff">×</button></div>
+  <div class="modal-body" id="dmodal-body"></div></div></div>
 
 <!-- ARCHIVE INDEX VIEW — shown when the URL has no #sel (cm report [DIR]) -->
 <div class="wrap" id="archive" style="visibility:hidden;display:none">
@@ -306,6 +330,10 @@
   var SEL=_readSel(), VIEW=(SEL===null)?"archive":"dream", selIdx=(SEL===null)?ALL.length-1:SEL;
   var CUR=ALL[selIdx]||{};            // the selected dream — the existing render path renders THIS one
   var HIST=ALL.slice(0,selIdx);       // history BEFORE it → CYCLES = HIST+CUR = ALL[0..selIdx] (faithful as-of view)
+  var ALLDIFFS=(DATA.diffs&&typeof DATA.diffs==="object")?DATA.diffs:{};   // v0.1.32: cycleKey → its persisted memory diffs
+  function diffKey(m){m=(m&&typeof m==="object")?m:{};   // MUST mirror memory_status.diff_key (the write side)
+    var c=String(m.commit||"").replace(/[^0-9A-Za-z]/g,"").slice(0,12)||"nocommit";
+    var t=String(m.timestamp||"").replace(/[^0-9A-Za-z]/g,"-")||"nots"; return c+"__"+t;}
   var BUD=(DATA.budgets&&typeof DATA.budgets==="object")?DATA.budgets:{index:1200,claude_md:4000};
   var IDXB=num(BUD.index,1200), CMB=num(BUD.claude_md,4000);
 
@@ -530,15 +558,43 @@
       +'<div class="cap" style="margin-top:10px">Every recorded claim is checked against the live tree before it lands.</div>';
   })();
 
-  // ── ledger ──
+  // ── v0.1.32 diff-modal: THIS dream's per-file memory diffs; a changed fact's NAME is clickable in the ledger ──
+  var DREAMDIFFS=ALLDIFFS[diffKey((CUR&&CUR.marker)||{})]||{};
+  function openDiff(p){
+    var d=DREAMDIFFS[p]; if(!d)return;
+    el("dmodal-title").textContent=String(p).replace(/^memory\//,"")+"  ·  "+(d.op||"modified");
+    var html=(d.lines||[]).map(function(l){
+      var t=l.t, cls=t==="+"?"dl-plus":t==="-"?"dl-minus":t==="@"?"dl-at":"dl-ctx";
+      var pre=t==="+"?"+ ":t==="-"?"- ":t==="@"?"":"  ";
+      return '<div class="dl '+cls+'">'+esc(pre+(l.s==null?"":l.s))+'</div>';   // esc() = the load-bearing XSS guard
+    }).join("");
+    if(d.more>0)html+='<div class="dl-more">+ '+(d.more|0)+' more line'+(d.more!==1?"s":"")+' (capped)</div>';
+    el("dmodal-body").innerHTML=html||'<div class="dl-more">no textual diff</div>';
+    el("dmodal").style.display="flex";
+  }
+  function closeDiff(){el("dmodal").style.display="none";}
+  el("dmodal-x").addEventListener("click",closeDiff);
+  el("dmodal-bg").addEventListener("click",closeDiff);
+
+  // ── ledger: the narrated entries; a changed-memory-fact's NAME links to its diff (ONE list, no separate section) ──
   (function(){
-    var box=el("entries");el("ent-note").textContent=ENT.length+" entr"+(ENT.length!==1?"ies":"y");
-    if(!ENT.length){box.innerHTML='<div class="cap" style="padding:16px 0">No recorded decisions this pass.</div>';return;}
-    box.innerHTML=ENT.map(function(e){var act=g(e,"action","-"),tier=g(e,"tier","");tier=(tier===""||tier==="-")?"":tier;var sc=g(e,"scope","");
+    var box=el("entries"), used={};
+    function nameCell(nm){var p="memory/"+nm+".md";   // a memory fact's entry name == its slug → match the sidecar key
+      if(DREAMDIFFS[p]){used[p]=1;return '<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>';}
+      return esc(nm);}
+    var rows=ENT.map(function(e){var act=g(e,"action","-"),tier=g(e,"tier","");tier=(tier===""||tier==="-")?"":tier;var sc=g(e,"scope","");
       return '<div class="row"><div class="act a-'+esc(act)+'">'+esc(act)+'</div>'
-        +'<div><div class="nm">'+esc(g(e,"name","—"))+(tier||sc?' <em>'+esc([tier,sc].filter(Boolean).join(" · "))+'</em>':'')+'</div>'
+        +'<div><div class="nm">'+nameCell(g(e,"name","—"))+(tier||sc?' <em>'+esc([tier,sc].filter(Boolean).join(" · "))+'</em>':'')+'</div>'
         +(g(e,"reason","")?'<div class="rs">'+esc(g(e,"reason",""))+'</div>':'')+'</div>'
-        +'<div class="ci">'+(g(e,"citation","")?esc(g(e,"citation","")):'')+'</div></div>';}).join("");
+        +'<div class="ci">'+(g(e,"citation","")?esc(g(e,"citation","")):'')+'</div></div>';});
+    Object.keys(DREAMDIFFS).filter(function(p){return !used[p];}).forEach(function(p){   // a changed file with no narrated entry → appended (rare; nothing hidden)
+      var nm=String(p).replace(/^memory\//,"").replace(/\.md$/,"");
+      rows.push('<div class="row"><div class="act a-changed">changed</div><div><div class="nm">'
+        +'<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button> <em>memory · diff</em></div></div><div class="ci"></div></div>');});
+    var nd=Object.keys(DREAMDIFFS).length;
+    el("ent-note").textContent=ENT.length+" entr"+(ENT.length!==1?"ies":"y")+(nd?" · "+nd+" diff"+(nd!==1?"s":""):"");
+    box.innerHTML=rows.length?rows.join(""):'<div class="cap" style="padding:16px 0">No recorded decisions this pass.</div>';
+    [].slice.call(box.querySelectorAll(".nm-diff")).forEach(function(b){b.addEventListener("click",function(){openDiff(b.getAttribute("data-p"));});});
   })();
 
   el("f-marker").textContent="marker → "+String(g(CUR,"marker.commit","—")).slice(0,12)+" @ "+String(g(CUR,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"");
@@ -609,6 +665,7 @@
   window.addEventListener("hashchange", function(){ location.reload(); });
   // keyboard nav (dream view): ← → step dreams · Esc → archive (ignored while typing in a filter control)
   document.addEventListener("keydown", function(e){
+    if(e.key==="Escape" && el("dmodal") && el("dmodal").style.display!=="none"){ closeDiff(); return; }   // modal closes first
     if(/^(INPUT|SELECT|TEXTAREA)$/.test((e.target||{}).tagName||"")) return;
     if(VIEW!=="dream") return;
     if(e.key==="ArrowLeft" && selIdx>0) location.hash="#sel="+(selIdx-1);

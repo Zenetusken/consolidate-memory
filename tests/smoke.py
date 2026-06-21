@@ -976,6 +976,20 @@ check("v0.1.29: _marker + assemble_cycles tolerate a non-dict marker (a corrupt 
       and len(rhtml.assemble_cycles({}, [{"marker": "x"}, {"marker": {"commit": "a", "timestamp": "t"}}])[0]) == 2)
 check("v0.1.31: template carries cycle-1 interactions (click-through + keyboard, archive filter/sort, collapse, density)",
       all(s in _html for s in ['location.hash="#sel="', '"keydown"', 'id="arch-tools"', 'f-sort', 'cm-collapsed', 'id="dens-tog"', 'cm-dense']))
+# v0.1.32 — diff-modal capture: shared key + one-sided/capped diff + safe embed + template hooks
+check("v0.1.32: diff_key sanitizes commit+timestamp to a safe filename + tolerates a non-dict marker (shared write/read key)",
+      "/" not in ms.diff_key({"commit": "a/b", "timestamp": "t:1"}) and ":" not in ms.diff_key({"commit": "a", "timestamp": "2026:01"})
+      and ms.diff_key("oops") == "nocommit__nots")
+_cr = ms._diff_lines("", "a\nb\n"); _de = ms._diff_lines("a\nb\n", "")
+check("v0.1.32: _diff_lines one-sided (create→adds, delete→removes) + per-file cap with +N more",
+      all(l["t"] in ("+", "@") for l in _cr["lines"]) and all(l["t"] in ("-", "@") for l in _de["lines"])
+      and ms._diff_lines("\n".join(map(str, range(300))), "\n".join("x" + str(i) for i in range(300)))["more"] > 0)
+_hd = rhtml.build_html({"project": "p", "marker": {"commit": "c", "timestamp": "t"}}, [], "t",
+                       {"c__t": {"memory/x.md": {"op": "modified", "lines": [{"t": "+", "s": "</script><img src=x onerror=alert(1)>"}], "more": 0}}})
+check("v0.1.32: build_html embeds diffs INSIDE the data dict — a </script> in a diff line is escaped, not raw",
+      '"diffs"' in _hd and "</script><img" not in _hd and "\\u003c/script" in _hd)
+check("v0.1.32: template carries the diff-modal (diffKey mirror, dmodal overlay, openDiff, clickable ledger filename, esc'd lines)",
+      all(s in _html for s in ["function diffKey", 'id="dmodal"', "function openDiff", "nm-diff", "DREAMDIFFS", "dl-plus"]))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
