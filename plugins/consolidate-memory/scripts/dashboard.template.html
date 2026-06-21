@@ -138,6 +138,25 @@
     flex-wrap:wrap;gap:12px;font-size:10.5px;color:var(--faint);letter-spacing:.03em}
   footer .em{font-family:var(--serif);font-style:italic}
 
+  /* ── v0.1.29 archive: dream-nav (in a dream view) + the index ledger (reuse the design system) ── */
+  .dreamnav{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:8px 0 0;font-size:11px;letter-spacing:.04em}
+  .dreamnav a{color:var(--accent);text-decoration:none;font-family:var(--mono)}
+  .dreamnav a:hover{text-decoration:underline}
+  .dreamnav a.off{color:var(--ghost);pointer-events:none}
+  .dreamnav .pos{color:var(--faint);text-transform:uppercase;letter-spacing:.16em;font-size:10px}
+  .arch-head,.arch-row{display:grid;grid-template-columns:150px 1fr 92px 90px 60px 80px;gap:14px;align-items:baseline}
+  .arch-head{padding:9px 4px;border-bottom:1px solid var(--rule2)}
+  .arch-head>span{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .arch-head>span:not(:first-child),.arch-row>*:not(:nth-child(2)){text-align:right;font-variant-numeric:tabular-nums}
+  .arch-row{padding:13px 4px;border-bottom:1px solid var(--rule);text-decoration:none;color:inherit;cursor:pointer;transition:background .12s}
+  .arch-row:hover{background:var(--paper2)}
+  .arch-row .dt{font-size:12px;color:var(--ink2)}
+  .arch-row .oc{font-family:var(--serif);font-style:italic;font-size:13.5px;color:var(--ink);text-align:left}
+  .arch-row .rg,.arch-row .ix,.arch-row .en{font-size:12px;color:var(--ink2)}
+  .arch-row .hh{font-size:11px;color:var(--ghost)}
+  .arch-row.cur{background:rgba(179,71,39,.05)} .arch-row.cur .oc{color:var(--accent)}
+  @media(max-width:680px){.arch-head>span:nth-child(n+4),.arch-row>*:nth-child(n+4){display:none}.arch-head,.arch-row{grid-template-columns:128px 1fr}}
+
   /* ── loading: editorial "compiling" ── */
   #boot{position:fixed;inset:0;z-index:50;background:var(--paper);display:flex;align-items:center;justify-content:center;
     flex-direction:column;gap:20px;transition:opacity .55s ease}
@@ -161,7 +180,33 @@
 <div id="boot"><div class="bt">compiling field report</div><div class="bl"><i></i></div><div class="bn" id="boot-proj">consolidate-memory</div></div>
 <div class="tip" id="tip"></div>
 
+<!-- ARCHIVE INDEX VIEW — shown when the URL has no #sel (cm report [DIR]) -->
+<div class="wrap" id="archive" style="visibility:hidden;display:none">
+  <div class="mast">
+    <div>
+      <div class="over">Dream Telemetry · Memory Consolidation</div>
+      <div class="repo-tag">Repository</div>
+      <h1 id="a-proj">consolidate-memory</h1>
+    </div>
+    <div class="meta">
+      <div><span class="lab">dreams logged</span> <b id="a-count">—</b></div>
+      <div id="a-gen">—</div>
+    </div>
+  </div>
+  <div class="lead">
+    <div class="kicker">Dream Archive</div>
+    <h2 id="a-head">—</h2>
+    <div class="sub" id="a-sub"></div>
+  </div>
+  <section class="blk"><div class="shead"><span class="no">◆</span><h3>Dream Sequences</h3><span class="ln"></span><span class="note" id="a-note"></span></div>
+    <div class="arch-head"><span>when</span><span>outcome</span><span>rigor</span><span>index&nbsp;tok</span><span>writes</span><span>commit</span></div>
+    <div id="arch-list"></div>
+  </section>
+  <footer><span>self-contained · zero-dependency · click a dream to revisit it</span><span class="em" id="a-foot">dream telemetry</span></footer>
+</div>
+
 <div class="wrap" id="app" style="visibility:hidden">
+  <div class="dreamnav" id="dreamnav"></div>
   <div class="mast">
     <div>
       <div class="over">Dream Telemetry · Memory Consolidation</div>
@@ -239,8 +284,13 @@
 "use strict";
 (function(){
   var DATA={}; try{ DATA=JSON.parse(document.getElementById("cm-data").textContent)||{}; }catch(e){ DATA={}; }
-  var CUR=(DATA.current&&typeof DATA.current==="object")?DATA.current:{};
-  var HIST=Array.isArray(DATA.history)?DATA.history:[];
+  // v0.1.29 — the archive embeds ALL cycles; the URL #sel=N selects a dream (else the archive INDEX view).
+  var ALL=Array.isArray(DATA.cycles)?DATA.cycles.filter(function(c){return c&&typeof c==="object";}):[];
+  if(!ALL.length)ALL=[{}];
+  function _readSel(){var m=(location.hash+" "+location.search).match(/sel=(\d+)/);if(!m)return null;var i=+m[1];return (i>=0&&i<ALL.length)?i:null;}
+  var SEL=_readSel(), VIEW=(SEL===null)?"archive":"dream", selIdx=(SEL===null)?ALL.length-1:SEL;
+  var CUR=ALL[selIdx]||{};            // the selected dream — the existing render path renders THIS one
+  var HIST=ALL.slice(0,selIdx);       // history BEFORE it → CYCLES = HIST+CUR = ALL[0..selIdx] (faithful as-of view)
   var BUD=(DATA.budgets&&typeof DATA.budgets==="object")?DATA.budgets:{index:1200,claude_md:4000};
   var IDXB=num(BUD.index,1200), CMB=num(BUD.claude_md,4000);
 
@@ -492,8 +542,49 @@
   function tip(t){return function(ev){TIP.textContent=t;TIP.style.opacity=1;TIP.style.left=(ev.clientX+13)+"px";TIP.style.top=(ev.clientY+13)+"px";};}
   function untip(){TIP.style.opacity=0;}
 
-  function reveal(){el("app").style.visibility="visible";var b=el("boot");
-    setTimeout(function(){b.classList.add("gone");setTimeout(function(){b.style.display="none";},560);},760);}
+  // ── archive index view (the dream list) ──
+  function showArchive(){
+    el("a-proj").textContent=DATA.project||PROJ;
+    var tot=num(DATA.total,ALL.length);
+    el("a-count").textContent=tot+(tot>ALL.length?" (latest "+ALL.length+" shown)":"");
+    el("a-gen").textContent=String(DATA.generated_at||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
+    el("a-head").innerHTML="Browse <span class=\"hot\">"+ALL.length+"</span> dream"+(ALL.length!==1?"s":"")+" for this repository.";
+    el("a-sub").textContent="Every consolidation pass, revisitable — click any row to open its full dashboard.";
+    el("a-note").textContent=ALL.length+" sequence"+(ALL.length!==1?"s":"");
+    el("a-foot").textContent=(DATA.project||PROJ)+" · dream telemetry";
+    var html=[];
+    for(var i=ALL.length-1;i>=0;i--){var c=ALL[i];   // newest first
+      var oc=g(c,"outcome","")||(magnitude(c)===0&&!(Array.isArray(c.entries)&&c.entries.length)?"nothing to consolidate":"pass");
+      var ts=String(g(c,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"").slice(0,16);
+      var rg=String(g(c,"rigor.applied","—"));rg=rg.charAt(0)+rg.slice(1).toLowerCase();
+      var ix=num(g(c,"budget.index.after_tokens",g(c,"budget.index.before_tokens",0)));
+      var en=(Array.isArray(c.entries)?c.entries:[]).filter(function(e){return ["added","corrected","deleted","reconciled"].indexOf(g(e,"action",""))>=0;}).length;
+      var hh=String(g(c,"marker.commit","")).slice(0,9)||"—";
+      html.push('<a class="arch-row'+(i===ALL.length-1?" cur":"")+'" href="#sel='+i+'">'
+        +'<span class="dt">'+esc(ts)+'</span><span class="oc">'+esc(oc)+'</span><span class="rg">'+esc(rg)+'</span>'
+        +'<span class="ix">'+fmt(ix)+'</span><span class="en">'+en+'</span><span class="hh">'+esc(hh)+'</span></a>');}
+    el("arch-list").innerHTML=html.join("");
+  }
+  // ── dream-view nav: back to the archive + prev/next ──
+  function showDreamNav(){
+    var n=ALL.length,prev=selIdx-1,next=selIdx+1;
+    el("dreamnav").innerHTML='<a href="#">← Archive</a>'
+      +'<span class="pos">dream '+(selIdx+1)+' / '+n+(num(DATA.total,n)>n?" of "+num(DATA.total,n):"")+'</span>'
+      +'<span><a class="'+(prev<0?"off":"")+'" href="#sel='+Math.max(0,prev)+'">‹ prev</a> &nbsp; <a class="'+(next>=n?"off":"")+'" href="#sel='+Math.min(n-1,next)+'">next ›</a></span>';
+  }
+
+  // route the view, wire navigation (reload-with-param: every link is a fresh load on this one render path)
+  if(VIEW==="archive"){ el("app").style.display="none"; el("archive").style.display=""; showArchive(); }
+  else { showDreamNav(); }
+  window.addEventListener("hashchange", function(){ location.reload(); });
+
+  function reveal(){
+    (VIEW==="archive"?el("archive"):el("app")).style.visibility="visible";
+    var b=el("boot"),booted=false; try{booted=sessionStorage.getItem("cm-booted")==="1";}catch(e){}
+    if(booted){ b.style.display="none"; return; }                       // boot animation once per session, not on nav-reloads
+    try{sessionStorage.setItem("cm-booted","1");}catch(e){}
+    setTimeout(function(){b.classList.add("gone");setTimeout(function(){b.style.display="none";},560);},760);
+  }
   if(document.readyState!=="loading")setTimeout(reveal,300);else window.addEventListener("DOMContentLoaded",function(){setTimeout(reveal,300);});
 })();
 </script>

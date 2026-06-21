@@ -607,17 +607,19 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    what *this* cycle did in lifecycle terms on the triggering node (the node `dream`
    ran on).
 
-   Then generate the **rich HTML dashboard** — the visual sibling of the ASCII report (one
-   cycle-record contract, two renderers): the same data plus the longitudinal index-budget
-   trajectory, rendered as a self-contained page.
+   Then generate the **rich HTML dashboard + dream ARCHIVE** — the visual sibling of the ASCII
+   report (one cycle-record contract, two renderers): the same data plus the longitudinal
+   index-budget trajectory, rendered into the per-repo archive mini-site.
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_html.py <the --seed path> \
-       --store ~/.claude/projects/<slug>/memory
+       --store ~/.claude/projects/<slug>/memory --latest
    ```
-   It writes a ZERO-dependency, self-contained HTML file and **auto-opens it in the browser**
-   (headless-safe — with no browser it just prints the path; `--no-open` suppresses the open).
-   This is the post-dream payoff; re-open any project's latest with `cm report [DIR]`. Present
-   BOTH the ASCII dashboard (in-terminal) and the HTML path as the final message.
+   It writes a ZERO-dependency, self-contained `dashboards/index.html` (the whole per-repo
+   archive of dreams in one file) and **auto-opens this dream's dashboard** (`--latest` →
+   `#sel=<newest>`); headless-safe (no browser → prints the path; `--no-open` suppresses).
+   This is the post-dream payoff. Re-open the **archive** any time with `cm report [DIR]`, or a
+   specific dream with `cm report <hash>`. Present BOTH the ASCII dashboard (in-terminal) and the
+   HTML path as the final message.
 
 ## Safety rules
 

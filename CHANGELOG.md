@@ -5,6 +5,28 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.29] — 2026-06-21
+
+### Added — per-repo dream ARCHIVE (browse + revisit every dashboard)
+The HTML dashboard becomes a per-repo mini-site: ONE self-contained, zero-dep file embedding ALL logged cycles,
+with two branded views sharing the v0.1.28 design system.
+- **Archive index** — a per-repo ledger of every dream (when · outcome · rigor · index tokens · writes · commit),
+  newest first, each row a link to that dream's dashboard.
+- **Dream dashboard** — the full v0.1.28 telemetry for any selected dream, rendered as-of that pass (the repo
+  identity is explicit in both views).
+- **Navigation** — reload-with-param (`#sel=<i>`): a dream row, prev/next, or "← Archive" is a fresh load on the
+  one tested render path (no in-place re-render). Keyed on `marker.timestamp` (unique); the commit hash is a
+  display value + the `cm report <hash>` commit-prefix filter (latest on collision).
+- **Stored + revisitable** — written to a stable `~/.claude/projects/<slug>/dashboards/index.html` (the dream and
+  `cm report` write the SAME file). `cm report [DIR]` → the archive; `cm report <hash>` → a dream; Phase 5
+  `--latest` → the just-completed dream's dashboard.
+
+### Internal
+- render_html: `assemble_cycles` (dedup-by-marker series builder, capped at the latest 120 with a visible note),
+  `--select`/`--latest`, unified `_default_out`. Template: `#sel` routing + `showArchive`/`showDreamNav` +
+  hashchange-reload + boot-once. +4 smoke units; the navigation JS-probe verified (`#sel=k` renders cycle k, not
+  the latest). smoke 285/0 · mypy · manifests. PATCH (additive: new views/args + a per-repo `dashboards/` output).
+
 ## [0.1.28] — 2026-06-21
 
 ### Added — rich HTML observability dashboard ("dream telemetry")
