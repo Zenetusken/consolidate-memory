@@ -974,6 +974,8 @@ check("v0.1.29: render_html template carries the archive routing (sel parse + ar
 check("v0.1.29: _marker + assemble_cycles tolerate a non-dict marker (a corrupt log entry can't crash --select/dedup)",
       rhtml._marker({"marker": "oops"}) == (None, None)
       and len(rhtml.assemble_cycles({}, [{"marker": "x"}, {"marker": {"commit": "a", "timestamp": "t"}}])[0]) == 2)
+check("v0.1.31: template carries cycle-1 interactions (click-through + keyboard, archive filter/sort, collapse, density)",
+      all(s in _html for s in ['location.hash="#sel="', '"keydown"', 'id="arch-tools"', 'f-sort', 'cm-collapsed', 'id="dens-tog"', 'cm-dense']))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -5,6 +5,25 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.31] — 2026-06-21
+
+### Added — dashboard interactivity (cycle 1 of the interactivity arc; client-side, READ-ONLY)
+Three intuitive interactions on the dashboard + archive — all pure client-side transforms of the already-embedded
+data (no new data, no schema, no contract change — safe by construction, the user's "doesn't break anything
+logically"):
+- **Click-through + keyboard nav** — click any trajectory point, rigor dot, or archive row to open that dream;
+  ← → step prev/next, Esc → archive (ignored while typing in a filter).
+- **Archive filter & sort** — filter the dream ledger by rigor + sort by date / index tokens / writes (re-renders
+  the LIST only; the embedded dreams stay the source of truth).
+- **Focus & density** — collapse/expand any dashboard section + a compact/cozy density toggle, both persisted in
+  localStorage.
+
+### Internal
+- All interactions live in dashboard.template.html (vanilla JS, zero-dep); navigation stays reload-with-param.
+  +1 smoke unit; each interaction JS-probe-verified (rigor filter 7→6, sort ascending, click-through 21 points,
+  keyboard #sel step, collapse + density toggles). smoke 287/0 · mypy · manifests. PATCH (additive, read-only).
+  The diff-modal (persistent sidecar) is cycle 2.
+
 ## [0.1.30] — 2026-06-21
 
 ### Changed
