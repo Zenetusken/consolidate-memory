@@ -248,6 +248,17 @@ check("v0.1.35: a gate STILL over budget (pruned=0, achieved>budget) DOES warn '
           "budget": {"index": {"after_tokens": 1500, "budget_tokens": 1200, "over": True}},
           "remediation": {"required": True, "lever": "prune", "candidates_surfaced": 1, "pruned": 0,
                           "achieved_index": 1500, "projected_index": 480, "reaches_budget": False}})))
+# v0.1.36 — the remediation block gates on `required`, NOT mere presence: a record carrying
+# remediation={required:false} (the schema default) must render NO over-budget block.
+check("v0.1.36: required=false renders NO over-budget block (gate on `required`, not presence)",
+      "REMEDIATION" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+          "budget": {"index": {"after_tokens": 900, "budget_tokens": 1200, "over": False}},
+          "remediation": {"required": False}})))
+check("v0.1.36: required=true still renders the over-budget block (the safety gate is preserved)",
+      "REMEDIATION" in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+          "budget": {"index": {"after_tokens": 1500, "budget_tokens": 1200, "over": True}},
+          "remediation": {"required": True, "lever": "prune", "candidates_surfaced": 1, "pruned": 0,
+                          "achieved_index": 1500, "projected_index": 480, "reaches_budget": False}})))
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",
                  "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
                  "rigor": {"phase": "final", "applied": "HEAVY"}}).splitlines() if "RIGOR" in ln), "")

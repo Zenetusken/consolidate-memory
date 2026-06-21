@@ -467,7 +467,10 @@ def render(record: ms.CycleRecord) -> str:
         out.append("")
         out.append("  " + _c("REMEDIATION", "bold") + _c("   · over-budget gate · STANDING-JUSTIFIED (suppressed)", "dim"))
         out.append(f"    {_c('✓', 'green')} density justified at baseline {_g(rem.get('baseline_facts', 0))} facts — gate suppressed until +Δ facts or index-token bloat")
-    elif rem:
+    elif rem and rem.get("required"):
+        # v0.1.36: gate on `required`, NOT mere presence — a healthy record may carry remediation={required:false}
+        # (the schema default), which must NOT render an over-budget block (it did pre-v0.1.36: `elif rem:`). The
+        # standing_justified branch above handles required=false+suppressed; an absent/required-false record → nothing.
         out.append("")
         out.append("  " + _c("REMEDIATION", "bold") + _c(f"   · over-budget gate · lever {str(rem.get('lever', '')).upper()}", "dim"))
         cand, pi = _num(rem.get("candidates_surfaced", 0)), _num(rem.get("projected_index", 0))
