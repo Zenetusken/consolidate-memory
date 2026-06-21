@@ -186,6 +186,10 @@ class Remediation(TypedDict, total=False):
     achieved_index: int            # actual index tokens after the pass
     projected_recall: int          # est recall-pool tokens freed if the candidates were evicted
     achieved_recall: int
+    # v0.1.21 (beta defect cluster D3/D5/D6/D7/D11):
+    standing_justified: bool       # the over-budget gate is SUPPRESSED — density already justified, store hasn't grown by Δ
+    baseline_facts: int            # the fact-count baseline at which the density was last justified (delta-detector)
+    reaches_budget: bool           # can a full prune of the candidates reach budget? False ⇒ prune-then-standing-justify
 
 
 class CycleRecord(TypedDict, total=False):
@@ -339,6 +343,34 @@ def cycle_seed_path(slug: str) -> str:
     (slug-derived) so every phase + the render reconstruct the same path with no cross-shell state. The slug
     is already filesystem-safe (path with '/'+'_' → '-')."""
     return str(Path(tempfile.gettempdir()) / f"cm-cycle{slug}.json")
+
+
+def resolve_wikilink(target: str, stems: set) -> str | None:
+    """v0.1.21 (D4/D10): resolve a `[[target]]` to an EXISTING fact stem across slug-drift — EXACT match only,
+    NEVER substring/prefix. Order: exact stem → normalized-exact (dash↔underscore, lowercased) → date-stripped
+    EXACT-base equality (`[[foo]]`↔`foo_2026_05_28` and the reverse), only when the base is DISTINCTIVE (≥12
+    chars). Ambiguous (>1 candidate) ⇒ None — DON'T resolve: a resolved target gets added to reference_stems,
+    which SUPPRESSES an eviction, so the safe bias is to NOT match on doubt (the inverse of evict-safety).
+    Powers wikilink in-degree (D4: a wikilinked fact is not a safe-evict orphan) + dangling-link fix hints (D10)."""
+    if target in stems:
+        return target
+
+    def _norm(s: str) -> str:
+        return re.sub(r"[-_]", "-", s).lower()
+
+    nt = _norm(target)
+    hits = [s for s in stems if _norm(s) == nt]
+    if len(hits) == 1:
+        return hits[0]
+    if len(hits) > 1:
+        return None                                   # ambiguous → don't resolve
+    base = re.sub(r"[-_]20\d\d.*", "", target)
+    if len(base) >= 12:                               # distinctive base only (mirrors the reference-scan guard)
+        nb = _norm(base)
+        dated = [s for s in stems if _norm(re.sub(r"[-_]20\d\d.*", "", s)) == nb]
+        if len(dated) == 1:
+            return dated[0]
+    return None
 
 
 _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
@@ -501,6 +533,17 @@ _DATED_RE = re.compile(r"(?:^|[_-])20\d\d[_-]\d\d[_-]\d\d(?:[_-]|$)")   # an Aut
 _OVERSIZED_TOK = 2500          # a body this big is a dump/research-note → a (ranking) content-review candidate
 _MIRROR_DOMINATED = 0.5        # mirror share of the index above which the lever is GC, not a futile local prune
 _LEAN_HOOK_TOK = 30            # est tokens/pointer for a lean re-index of the keep core (the projected_index target)
+_STANDING_JUSTIFY_DELTA = 10   # v0.1.21: a standing-justified over-budget gate re-FIRES once the store grows by this
+                               # many facts past the justified baseline (the delta-detector) — keeps the v0.1.18 teeth
+
+
+def _standing_baseline(sj: object) -> int | None:
+    """v0.1.21 (D7): the justified fact-count baseline from a marker's `standing_justify`, or None. FAILS OPEN —
+    a malformed/absent value (legacy marker, non-dict, non-int `facts`) returns None ⇒ the gate FIRES (never
+    suppress on garbage; suppression is the dangerous direction). Pairs with _STANDING_JUSTIFY_DELTA."""
+    if isinstance(sj, dict) and isinstance(sj.get("facts"), int):
+        return sj["facts"]
+    return None
 
 
 def _is_archive_index(path: Path) -> bool:
@@ -580,6 +623,9 @@ def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
         "stages": {"A_orphans": A, "B_trackers": B, "C_dated_oversized": C, "R_referenced": R},
         "projected_recall": sum(c["body_tokens"] for c in cands),
         "projected_index": keep * _LEAN_HOOK_TOK,   # est lean re-index of the keep core (incl. R, re-indexed)
+        # D5 (v0.1.21): can a full prune even reach budget? If not, the lever is prune-the-safe-THEN-standing-justify
+        # the residual — not a clean achievable "prune" (mature stores: keep core alone often exceeds budget).
+        "reaches_budget": keep * _LEAN_HOOK_TOK <= budget,
     }
 
 
@@ -653,10 +699,12 @@ def build_context(project_dir: Path) -> dict:
 
     state_path = auto_mem / STATE_FILE
     last_commit = last_ts = ""
+    standing_justify: object = None
     if state_path.exists():
         try:
             st = json.loads(state_path.read_text())
             last_commit, last_ts = st.get("commit", ""), st.get("timestamp", "")
+            standing_justify = st.get("standing_justify")   # v0.1.21 (D7): the justified-density baseline, if any
         except (json.JSONDecodeError, OSError):
             pass
     # Harden: the commit comes from a JSON file on disk and is passed to `git` as an
@@ -708,7 +756,16 @@ def build_context(project_dir: Path) -> dict:
     # Only relevant when the index is OVER budget — skip the mirror-attribution scan (which reads every
     # fact body) on the healthy path (remediation_triage would short-circuit to {} anyway). Gate-2 nit.
     remediation: dict = {}
-    if index_lb[2] > INDEX_TOKEN_BUDGET:
+    _sj_baseline = _standing_baseline(standing_justify)   # v0.1.21 (D7): justified-density baseline, or None (fail-open)
+    if (index_lb[2] > INDEX_TOKEN_BUDGET and _sj_baseline is not None
+            and len(fact_files) <= _sj_baseline + _STANDING_JUSTIFY_DELTA):
+        # STANDING-JUSTIFIED (D6/D7): the density was judged EARNED at this baseline and the store hasn't grown by
+        # Δ — SUPPRESS the gate (don't re-surface the same triage every pass). The delta-detector re-fires below
+        # once fact-count exceeds baseline+Δ (new density to review). Keeps the v0.1.18 teeth without alarm fatigue.
+        remediation = {"required": False, "standing_justified": True, "baseline_facts": _sj_baseline,
+                       "index_tokens": index_lb[2], "budget": INDEX_TOKEN_BUDGET, "candidates": 0,
+                       "current_facts": len(fact_files)}
+    elif index_lb[2] > INDEX_TOKEN_BUDGET:
         mirror_stems: set = set()
         for _f in fact_files:
             try:
@@ -744,6 +801,18 @@ def build_context(project_dir: Path) -> dict:
                 # way (a match → R/keep, never a blind evict), so this only trims noise.
                 if _f.stem in _cmd_text or (_base != _f.stem and len(_base) >= 12 and _base in _cmd_text):
                     ref_stems.add(_f.stem)
+        # D4 (v0.1.21): a fact [[wikilinked]] FROM another fact is reachable — fold its RESOLVED target into
+        # reference_stems so the A-stage won't flag it a safe-evict orphan (evicting would dangle the link).
+        # resolve_wikilink handles slug-drift; ambiguous → skipped, so we never over-suppress a real orphan.
+        _stems = {f.stem for f in fact_files}
+        for _f in fact_files:
+            try:
+                for _m in re.finditer(r"\[\[([^\]]+)\]\]", _f.read_text(encoding="utf-8", errors="replace")):
+                    _tgt = resolve_wikilink(_m.group(1).strip(), _stems)
+                    if _tgt:
+                        ref_stems.add(_tgt)
+            except OSError:
+                continue
         remediation = remediation_triage(fact_files, index_names, index_lb[2],
                                          est_tokens("\n".join(_mirror_idx)), reference_stems=ref_stems)
 
@@ -920,12 +989,18 @@ def seed_record(ctx: dict) -> CycleRecord:
     # G (v0.1.18.x): seed the PRE-pass ANALYSIS only; OMIT pruned/achieved_* — the model fills them in Phase 5.
     # Seeding achieved_index=current read as "no progress"; ABSENT renders as "pending Phase 5" (total=False).
     rem = ctx.get("remediation") or {}
-    if rem:
+    if rem and rem.get("standing_justified"):
+        # v0.1.21 (D7): the gate is SUPPRESSED (density already justified, store within Δ) — seed the lightweight
+        # suppressed block (no lever/triage to surface). required=False so the dashboard reads "standing-justified".
+        record["remediation"] = {"required": False, "standing_justified": True,
+                                 "baseline_facts": rem.get("baseline_facts", 0)}
+    elif rem:
         record["remediation"] = {
             "required": rem["required"], "lever": rem["lever"],
             "candidates_surfaced": rem["candidates"],
             "projected_index": rem.get("projected_index", 0),
             "projected_recall": rem.get("projected_recall", 0),
+            "reaches_budget": rem.get("reaches_budget", True),   # D5: False ⇒ prune-then-standing-justify
         }
     return record
 
@@ -976,10 +1051,17 @@ def _remediation_section(rem: dict) -> list:
     under budget (rem is {}). Presentation only; the heuristics RANK, the model JUDGES + confirms."""
     if not rem:
         return []
+    # v0.1.21 (D6/D7): a STANDING-JUSTIFIED over-budget index is suppressed — show the standing state, no triage.
+    if rem.get("standing_justified"):
+        cur, base = rem.get("current_facts"), rem.get("baseline_facts", 0)
+        grew = f"+{cur - base}" if isinstance(cur, int) else "?"
+        return [_ui.kv("REMEDIATION", _ui.c(
+            f"✓ over budget ({rem.get('index_tokens', '?')}/{rem.get('budget', INDEX_TOKEN_BUDGET)} tok) but "
+            f"STANDING-JUSTIFIED · {cur} facts vs baseline {base} ({grew}; re-fires at +{_STANDING_JUSTIFY_DELTA})", "green"))]
     out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
                                        f"— GATE active · lever {rem['lever'].upper()}", "red"))]
-    for key, label in (("A_orphans", "TRUE orphans (dead weight → evict / re-index)"),
-                       ("B_trackers", "tracker/status (transient)"),
+    # D8 (v0.1.21): lead with the INDEX-RELIEF stages (B/C move the gated index); R = de-link-first; A = disk-only LAST.
+    for key, label in (("B_trackers", "tracker/status (transient)"),
                        ("C_dated_oversized", "dated/oversized (content-review — heuristic ranks, you JUDGE)")):
         items = rem["stages"].get(key, [])
         if items:
@@ -988,16 +1070,24 @@ def _remediation_section(rem: dict) -> list:
     referenced = rem["stages"].get("R_referenced", [])
     if referenced:
         rtop = ", ".join(c["stem"] for c in referenced[:4]) + (f" +{len(referenced) - 4} more" if len(referenced) > 4 else "")
-        out.append(_ui.li(f"{len(referenced):>2} referenced in CLAUDE.md/archive — NOT safe to evict; de-link the surface FIRST: "
+        out.append(_ui.li(f"{len(referenced):>2} referenced in CLAUDE.md/archive/wikilinks — NOT safe to evict; de-link FIRST: "
                           + _ui.c(rtop, "dim"), indent=4, bullet="⚠", bullet_color="red"))
-    # F (v0.1.18.x): the GATED quantity is INDEX-POINTER tokens (relocate/shorten pointers); recall body-disk
-    # is a SEPARATE axis — label them so the recall number isn't misread as the index remedy.
+    orphans = rem["stages"].get("A_orphans", [])
+    if orphans:
+        otop = ", ".join(c["stem"] for c in orphans[:4]) + (f" +{len(orphans) - 4} more" if len(orphans) > 4 else "")
+        out.append(_ui.li(f"{len(orphans):>2} TRUE orphans (disk hygiene — 0 index relief; evict / re-index): "
+                          + _ui.c(otop, "dim"), indent=4, bullet="·"))
+    # F (v0.1.18.x): the GATED quantity is INDEX-POINTER tokens; recall body-disk is a SEPARATE axis.
     out.append(_ui.li(f"keep core {rem['keep_core']} · projected index relief ≈{rem['projected_index']}/{rem['budget']} tok "
                       f"(pointers) · recall body-hygiene −≈{rem['projected_recall']} tok (SEPARATE disk axis)",
                       indent=4, bullet="→", bullet_color="cyan"))
-    hint = {"gc": "mirror-dominated → the GLOBAL demote/GC lever (a local prune is futile)",
-            "justify": "nothing safely prunable → justify-and-proceed (record an entries[] note)",
-            "prune": "confirm the candidates, then prune / rebuild the index lean"}.get(rem["lever"], "")
+    # D5 (v0.1.21): if a full prune can't reach budget, it's prune-the-safe-THEN-standing-justify the residual.
+    if rem["lever"] == "prune" and not rem.get("reaches_budget", True):
+        hint = "prune the safe candidates, THEN standing-justify the residual (full prune can't reach budget — earned density)"
+    else:
+        hint = {"gc": "mirror-dominated → the GLOBAL demote/GC lever (a local prune is futile)",
+                "justify": "nothing safely prunable → justify-and-proceed (record an entries[] note)",
+                "prune": "confirm the candidates, then prune / rebuild the index lean"}.get(rem["lever"], "")
     out.append(_ui.li(_ui.c(f"{hint} · detect-and-offer — confirm before any prune; NEVER auto-deleted", "dim"),
                       indent=6, bullet="·"))
     return out
@@ -1038,8 +1128,14 @@ def print_report(ctx: dict) -> None:
 
     # ── RIGOR — provisional effort hint (DERIVED from magnitude; you finalize in Phase 2) ──
     add("")
+    # D9 (v0.1.21): an active over-budget gate imposes HEAVY-equivalent hard-stop behavior — annotate the
+    # provisional rigor so "LIGHT" doesn't undersell a gated pass (reuse the gate predicate; no third copy).
+    _rem = ctx.get("remediation") or {}
+    _gate = ((" · " + _ui.c("⚠ over-budget GATE active → HEAVY-equivalent hard-stop", "red")) if _rem.get("required")
+             else (" · " + _ui.c("✓ over budget but STANDING-JUSTIFIED (gate suppressed)", "green")) if _rem.get("standing_justified")
+             else "")
     add(_ui.kv("RIGOR", f"{_ui.c(tier, tcol)} provisional · magnitude {gc} "
-                        + _ui.c(f"(+ curated candidates in Phase 2) · ladder ≤{TIER_LIGHT_MAX} / {TIER_LIGHT_MAX + 1}–{TIER_SUBSTANTIAL_MAX} / ≥{TIER_SUBSTANTIAL_MAX + 1}", "dim")))
+                        + _ui.c(f"(+ curated candidates in Phase 2) · ladder ≤{TIER_LIGHT_MAX} / {TIER_LIGHT_MAX + 1}–{TIER_SUBSTANTIAL_MAX} / ≥{TIER_SUBSTANTIAL_MAX + 1}", "dim") + _gate))
     # F (v0.1.18.x): when the REMEDIATION gate will render (index over budget), suppress the redundant
     # `index-over-budget` prune-pressure line — the gate is its actionable form. A `many-facts` prune-pressure
     # is a genuinely separate signal → still print it. (Suppress the PRINT only; the seeded flag stays true.)
@@ -1097,8 +1193,14 @@ def print_report(ctx: dict) -> None:
                               bullet="⚠", bullet_color="yellow"))
     d = ctx["schema_drift"]
     if drift_findings(d) > 0:
+        # D3/D11 (v0.1.21): when the index is OVER budget, the index↔file gap is INTENTIONAL (a mature store earns
+        # density by NOT indexing everything) — do NOT offer "backfill" (it net-grows under the no-net-grow gate).
+        # Under budget, backfill is legit. Only the index_mismatch clause is gate-sensitive; the rest always show.
+        _mismatch = (f"{d['index_mismatch']} un-indexed (over budget → INTENTIONAL, do NOT backfill — net-grows)"
+                     if ctx["index_lb"][2] > INDEX_TOKEN_BUDGET
+                     else f"{d['index_mismatch']} index↔file — offer backfill, confirm first")
         sig.append(_ui.li(f"schema drift: {d['missing_node_type']} missing node_type · {d['malformed_scope']} malformed scope · "
-                          f"{d['malformed_origin']} malformed origin · {d['index_mismatch']} index↔file — offer backfill, confirm first",
+                          f"{d['malformed_origin']} malformed origin · {_mismatch}",
                           bullet="⚠", bullet_color="yellow"))
     if d["advisory_no_scope"] or d["advisory_no_origin"]:
         sig.append(_ui.li(_ui.c(f"backfill (optional, NOT drift): {d['advisory_no_scope']} lack scope · {d['advisory_no_origin']} lack originSessionId", "dim"), bullet="·"))

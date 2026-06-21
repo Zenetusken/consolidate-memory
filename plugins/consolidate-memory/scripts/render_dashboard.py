@@ -436,6 +436,15 @@ def render(record: ms.CycleRecord) -> str:
         dln = _num(idx.get("after_lines", 0)) - _num(idx.get("before_lines", 0))
         note = (f"  {'+' if dln >= 0 else ''}{_g(dln)} ln" if dln else "")
         _brow("auto-mem index", f"≈{_g(at)}/{_g(bt)}", f"{_bar(at, bt)} {_pct(at, bt)}{note}{_over(idx)}")
+        # D1/D2 defensive (v0.1.21): the gauge sources budget.index; the TRIGGER network-node has the same
+        # index (its always_loaded_tokens). A GROSS divergence = the wrong-budget class the /tmp/cycle.json
+        # collision produced (885 vs 2771 = 3×). Advisory only, generous tolerance (>1.5×) → never false-warn.
+        _trig = next((n for n in _dget(record, "network").get("nodes", []) if n.get("trigger")), None)
+        if _trig:
+            _itok, _ntok = _num(at), _num(_trig.get("always_loaded_tokens", 0))
+            if _itok and _ntok and max(_itok, _ntok) / max(1, min(_itok, _ntok)) > 1.5:
+                out.append("    " + _c(f"⚠ budget sources disagree — gauge ≈{_g(_itok)} vs trigger node ≈{_g(_ntok)}: "
+                                       "possible cycle-record collision (check the --seed path)", "red"))
     if rf:
         d = _num(rf.get("after", 0)) - _num(rf.get("before", 0))
         _brow("recall facts", _g(rf.get("after", 0)), (f"{'+' if d >= 0 else ''}{_g(d)}" if d else ""))
@@ -445,7 +454,12 @@ def render(record: ms.CycleRecord) -> str:
     # Remediation gate (v0.1.18) — present ONLY when the index was over budget. Shows whether the gate was
     # ACTED on (pruned>0 / justified / gc) — a fired-but-unacted gate (pruned 0, lever prune) stays visible.
     rem = _dget(record, "remediation")
-    if rem:
+    if rem and rem.get("standing_justified"):
+        # v0.1.21 (D6/D7): over budget but the density is STANDING-JUSTIFIED — gate suppressed, no re-surface.
+        out.append("")
+        out.append("  " + _c("REMEDIATION", "bold") + _c("   · over-budget gate · STANDING-JUSTIFIED (suppressed)", "dim"))
+        out.append(f"    {_c('✓', 'green')} density justified at baseline {_g(rem.get('baseline_facts', 0))} facts — gate suppressed until +Δ growth")
+    elif rem:
         out.append("")
         out.append("  " + _c("REMEDIATION", "bold") + _c(f"   · over-budget gate · lever {str(rem.get('lever', '')).upper()}", "dim"))
         cand, pi = _num(rem.get("candidates_surfaced", 0)), _num(rem.get("projected_index", 0))
@@ -458,6 +472,8 @@ def render(record: ms.CycleRecord) -> str:
         else:
             out.append(f"    {_c('↓', 'yellow')} {_g(cand)} candidate(s) surfaced · pruned/achieved pending Phase 5 · projected index ≈{_g(pi)} tok")
             acted = 0
+        if rem.get("reaches_budget") is False:   # D5 (v0.1.21): a full prune can't reach budget
+            out.append("    " + _c("prune can't reach budget → prune-safe-THEN-standing-justify the residual (earned density)", "dim"))
         if not acted:
             note = {"gc": "mirror-dominated — global demote/GC lever, not a local prune",
                     "justify": "justified — nothing safely prunable (see entries[])",

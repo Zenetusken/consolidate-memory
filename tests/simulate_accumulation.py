@@ -755,6 +755,73 @@ def run() -> None:
                  "the multi-surface orphan safety + archive protection + honest seed — never dangle the guest "
                  "file or nuke the archive")
 
+        # ── Probe N: v0.1.21 defect-patch (standing-justify · D4 wikilink · D5 · D8 · resolve_wikilink) ──
+        # A v0.1.19 beta on memex surfaced 9 defects. Build a bloated store + assert: resolve_wikilink resolves
+        # slug-drift; a [[wikilinked]] fact is R (not a safe-evict orphan) — D4; the triage leads with index-relief
+        # stages — D8; reaches_budget reflects whether a prune can reach budget — D5; and the standing-justify
+        # delta-detector suppresses within Δ, fires past Δ, and FAILS OPEN on garbage — D6/D7.
+        print("\n── Probe N: v0.1.21 (standing-justify · wikilink-aware orphan · D5/D8) ──")
+        _rw = {"qwen_migration_research_2026_05_26", "keyfigures-example-hallucination", "use-placeholders"}
+        rw_ok = (ms.resolve_wikilink("qwen-migration-research", _rw) == "qwen_migration_research_2026_05_26"
+                 and ms.resolve_wikilink("keyfigures-example-hallucination-2026-05-28", _rw) == "keyfigures-example-hallucination"
+                 and ms.resolve_wikilink("use-placeholders", _rw) == "use-placeholders"
+                 and ms.resolve_wikilink("nonexistent-xyz-thing", _rw) is None)
+        fo_ok = ms._standing_baseline("garbage") is None and ms._standing_baseline({"facts": 50}) == 50 and ms._standing_baseline({}) is None
+        pn = home / "projects-src" / "memexN"
+        pn.mkdir(parents=True, exist_ok=True)
+        nstore = home / ".claude" / "projects" / ms.slug_for(pn) / "memory"
+        nstore.mkdir(parents=True, exist_ok=True)
+
+        def _nf(name: str, body: int, link: str = "") -> None:
+            b = ["---", f"name: {name}", "metadata:", "  node_type: memory", "  type: project", "---", ""]
+            if link:
+                b.append(f"see [[{link}]] for the details")
+            b += [f"line {i} of {name}" for i in range(body)]
+            (nstore / f"{name}.md").write_text("\n".join(b) + "\n", encoding="utf-8")
+
+        _nf("hub_fact", 40, link="form-research")          # INDEXED, wikilinks (across drift) to the unindexed dated fact
+        _nf("form_research_2026_06_15", 30)                # unindexed BUT wikilinked → must be R, not A (D4)
+        _nf("lonely_orphan_2026_06_01", 30)               # unindexed, unreferenced → A (true orphan)
+        _nf("build_status", 40)                            # tracker → B
+        _nf("dur-a", 3)
+        _nf("dur-b", 3)
+        (nstore / "MEMORY.md").write_text("\n".join(["# Memory Index", ""] + [
+            f"- [{n}]({n}.md) — " + ("verbose hook " * 120) for n in ["hub_fact", "build_status", "dur-a", "dur-b"]]) + "\n", encoding="utf-8")
+
+        _rh = os.environ.get("HOME")
+        os.environ["HOME"] = str(home)
+        ctxn = ms.build_context(pn)
+        stn = ctxn["remediation"].get("stages", {})
+        A = [c["stem"] for c in stn.get("A_orphans", [])]
+        R = [c["stem"] for c in stn.get("R_referenced", [])]
+        d4_ok = "form_research_2026_06_15" in R and "form_research_2026_06_15" not in A and "lonely_orphan_2026_06_01" in A
+        d5_ok = ctxn["remediation"].get("reaches_budget") is True   # small keep core → a prune CAN reach budget
+        _sec = ms._remediation_section(ctxn["remediation"])
+        d8_ok = bool(ctxn["remediation"].get("required")) and not any("TRUE orphans" in str(s) for s in _sec[:3])
+        _nfacts = len(ctxn["fact_files"])
+        _mk = nstore / ".consolidation-state.json"
+        _mk.write_text(json.dumps({"commit": "x", "timestamp": "2026-06-20T00:00:00Z",
+                                   "standing_justify": {"facts": _nfacts, "index_tokens": 9, "at": "2026-06-20T00:00:00Z"}}), encoding="utf-8")
+        sj_suppressed = ms.build_context(pn)["remediation"].get("standing_justified") is True
+        _mk.write_text(json.dumps({"commit": "x", "timestamp": "2026-06-20T00:00:00Z",
+                                   "standing_justify": {"facts": _nfacts - ms._STANDING_JUSTIFY_DELTA - 1, "index_tokens": 9, "at": "2026-06-20T00:00:00Z"}}), encoding="utf-8")
+        _gr = ms.build_context(pn)["remediation"]
+        sj_fires = _gr.get("required") is True and not _gr.get("standing_justified")
+        _mk.write_text(json.dumps({"commit": "x", "timestamp": "2026-06-20T00:00:00Z", "standing_justify": "garbage"}), encoding="utf-8")
+        sj_failopen = ms.build_context(pn)["remediation"].get("required") is True
+        if _rh is not None:
+            os.environ["HOME"] = _rh
+        else:
+            os.environ.pop("HOME", None)
+        print(f"  resolve_wikilink={rw_ok} · fail-open-helper={fo_ok} · D4 wikilinked→R-not-A={d4_ok} · "
+              f"D8 index-relief-first={d8_ok} · D5 reaches_budget={d5_ok}")
+        print(f"  standing-justify: suppressed-within-Δ={sj_suppressed} · fires-past-Δ={sj_fires} · fail-open-garbage={sj_failopen}")
+        _verdict("N", "v0.1.21 defects: resolve_wikilink resolves slug-drift; a [[wikilinked]] fact is R not a "
+                 "safe-evict orphan (D4); triage leads with index-relief stages (D8); reaches_budget set (D5); the "
+                 "standing-justify delta-detector suppresses within Δ, fires past Δ, fails OPEN on garbage (D6/D7)",
+                 rw_ok and fo_ok and d4_ok and d8_ok and d5_ok and sj_suppressed and sj_fires and sj_failopen,
+                 "the over-budget gate becomes a delta-detector (keeps teeth, kills alarm fatigue) + reachability-aware orphans")
+
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")
         first, last = curve[0], curve[-1]

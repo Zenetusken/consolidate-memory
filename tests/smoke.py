@@ -59,6 +59,23 @@ check("v0.1.20: cycle_seed_path is per-slug + deterministic (no shared-path coll
       and ms.cycle_seed_path("-x").endswith("cm-cycle-x.json")
       and not ms.cycle_seed_path("-x").endswith("/cycle.json"))
 
+# v0.1.21 (D4/D10): resolve_wikilink — EXACT/normalized/date-base only, NEVER substring; ambiguous → None.
+_rw_stems = {"qwen_migration_research_2026_05_26", "keyfigures-example-hallucination",
+             "form_table_research_2026_05_28", "form_table_research_2026_06_01"}
+check("v0.1.21: resolve_wikilink resolves slug-drift (date-base, dash↔underscore) but never substring/ambiguous",
+      ms.resolve_wikilink("qwen-migration-research", _rw_stems) == "qwen_migration_research_2026_05_26"
+      and ms.resolve_wikilink("keyfigures-example-hallucination-2026-05-28", _rw_stems) == "keyfigures-example-hallucination"
+      and ms.resolve_wikilink("nonexistent-thing-here", _rw_stems) is None
+      and ms.resolve_wikilink("form_table_research_2026_05_28", _rw_stems) == "form_table_research_2026_05_28"  # exact wins
+      and ms.resolve_wikilink("form-table-research", _rw_stems) is None)        # ambiguous date-base (two dated siblings) → None
+# v0.1.21 (D7): _standing_baseline FAILS OPEN — only a dict with an int `facts` yields a baseline; else None (gate fires).
+check("v0.1.21: _standing_baseline returns the int baseline only for a well-formed dict, else None (fail-open)",
+      ms._standing_baseline({"facts": 42}) == 42
+      and ms._standing_baseline("garbage") is None
+      and ms._standing_baseline({}) is None
+      and ms._standing_baseline({"facts": "12"}) is None
+      and ms._standing_baseline(None) is None)
+
 # --- hardening: SHA validation rejects argument-injection from a tampered state file ---
 check("sha: accepts real hex sha", ms._valid_sha("b6d37b6") and ms._valid_sha("a" * 40))
 check("sha: rejects git option injection", not ms._valid_sha("--output=/etc/passwd"))

@@ -5,6 +5,48 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.21] — 2026-06-20
+
+### Fixed (v0.1.19 first-party beta defect catalog — 9 root-cause fixes; additive → patch)
+A second memex beta (106 facts, index 231% over) filed an 11-defect catalog; all verified empirically.
+**D1/D2 were the `/tmp/cycle.json` collision already fixed in v0.1.20** (the "render reads the wrong node"
+hypothesis was REFUTED — the gauge reads `budget.index`; a concurrent dream clobbered the shared seed → the
+Doc_Flo render showed consolidate-memory's 885/2256). D3–D11 are fixed here at root-cause; the archive-index
+BUDGET TIER (finding B) stays in the CLAUDE.md arc (no double budget model).
+
+- **Standing-justify-as-delta-detector (D3·D5·D6·D7·D11) — the cluster root.** The fixed 1200-tok index budget is
+  unreachable for a mature lean store (105 facts × ~20-tok floor = 2100; even a max prune = 2160 > 1200), so the
+  gate fired every pass and re-litigated the same triage. Rather than scale the budget (which would defeat the
+  v0.1.18 gate — a bloated large store would get a budget that hides the bloat; earned-vs-bloat is irreducibly
+  content-aware), a **standing-justify**: the operator confirms the density is earned once
+  (`standing_justify: {facts, index_tokens, at}` in the marker) and the gate is SUPPRESSED until fact-count grows
+  by Δ (10) — a delta-detector that keeps the teeth (fires on NEW density) while killing alarm fatigue. **Fails
+  OPEN** — a garbage/legacy marker → gate fires (suppression requires a valid baseline). `reaches_budget` (D5):
+  when a full prune can't reach budget the lever is prune-the-safe-THEN-standing-justify the residual, not a clean
+  achievable "prune." Gate-aware drift (D3/D11): over budget, the index↔file gap is INTENTIONAL — no "backfill"
+  offer (it net-grows under the no-net-grow gate); backfill stays legit UNDER budget.
+- **Wikilink-aware orphan reachability (D4 — SAFETY).** `resolve_wikilink` resolves a `[[target]]` across
+  slug-drift (date-suffix, dash↔underscore; EXACT-only, ambiguous→skip — never substring). A fact `[[wikilinked]]`
+  from another fact now folds into `reference_stems`, so the A-stage no longer flags it a safe-evict orphan
+  (evicting would dangle the live link — e.g. `form_table_research`/`grounding_gate_overrefusal` on memex, both
+  wikilinked from indexed facts). Extends the v0.1.19 C2 surfaces (CLAUDE.md + archive) with the auto-memory
+  wikilink surface.
+- **Presentation + defensive (D8/D9/D10 · D1/D2-class).** D8: the remediation surface leads with the INDEX-RELIEF
+  stages (B/C/R — what moves the gated index); TRUE orphans (disk-only, 0 index relief) render LAST. D9: the
+  Phase-0 RIGOR line annotates an active over-budget gate (HEAVY-equivalent hard-stop) so "LIGHT" doesn't
+  undersell a gated pass. D10: dangling-wikilink health uses `resolve_wikilink` to suggest the drifted target.
+  D1/D2 defensive: the dashboard warns when `budget.index` and the trigger network-node grossly diverge (>1.5×) —
+  catches the wrong-budget class beyond v0.1.20's per-slug seed fix.
+
+### Internal
+- The `Remediation` block gains `standing_justified`/`baseline_facts`/`reaches_budget` (additive `total=False`);
+  the typed contract co-edit (TypedDict + SKILL `​```json` + smoke pin + `seed_record` + the renderer) lands
+  together. `memory_status.py` gains `--seed`-independent helpers `resolve_wikilink` + `_standing_baseline`.
+- Probe N (standing-justify suppress-within-Δ / fire-past-Δ / fail-open · D4 wikilink→R · D5/D8 · resolve_wikilink
+  drift) + 2 smoke units. smoke 259/0 · sim · mypy · manifests.
+- **Versioning — PATCH:** additive (a new optional marker field, helpers, flags, gate-aware framing, presentation,
+  a render warning); no removed/renamed flag; legacy records render. The CLAUDE.md-optimization arc → v0.1.22.
+
 ## [0.1.20] — 2026-06-20
 
 ### Fixed (cycle-record temp-path collision across concurrent dreams; additive → patch)
