@@ -234,6 +234,20 @@ check("render: applied≠suggested shows 'HEAVY → LIGHT' (v0.1.4)",
 check("render: override_reason shown when applied differs (v0.1.4)", "already-consolidated flow" in _app_line)
 check("render: override note uses '· override:' label, not the old '· applied:' (v0.1.9)",
       "override:" in _app_line and "applied:" not in _app_line)
+# v0.1.35 — remediation-resolution coherence (beta-test-confirmed bug): a rebuild-lean (pruned=0) that brought
+# the index UNDER budget RESOLVED the gate — it is "acted on", NOT "gate fired but not acted on".
+_rem_lean = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+        "budget": {"index": {"after_tokens": 900, "budget_tokens": 1200, "over": False}},
+        "remediation": {"required": True, "lever": "prune", "candidates_surfaced": 1, "pruned": 0,
+                        "achieved_index": 900, "projected_index": 480, "reaches_budget": True}})
+_rem_lean_out = rd.render(_rem_lean)
+check("v0.1.35: rebuild-lean-resolved gate (pruned=0, achieved≤budget) renders RESOLVED, not 'not acted on'",
+      "resolved by rebuild-lean" in _rem_lean_out and "not acted on" not in _rem_lean_out)
+check("v0.1.35: a gate STILL over budget (pruned=0, achieved>budget) DOES warn 'not acted on'",
+      "not acted on" in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+          "budget": {"index": {"after_tokens": 1500, "budget_tokens": 1200, "over": True}},
+          "remediation": {"required": True, "lever": "prune", "candidates_surfaced": 1, "pruned": 0,
+                          "achieved_index": 1500, "projected_index": 480, "reaches_budget": False}})))
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",
                  "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
                  "rigor": {"phase": "final", "applied": "HEAVY"}}).splitlines() if "RIGOR" in ln), "")
