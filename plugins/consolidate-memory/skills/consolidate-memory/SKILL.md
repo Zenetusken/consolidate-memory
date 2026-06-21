@@ -572,7 +572,10 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. T
    is the script-OBSERVED counterpart to your `entries[]` narration; they should AGREE — a divergence (a file
    changed that no entry mentions, or an entry with no file change) is a signal to investigate. HONEST GAP: the
    snapshot window attributes ANY change between Phase 0 and now to this pass (an interrupted/concurrent edit
-   would mis-attribute) — don't over-trust it.
+   would mis-attribute) — don't over-trust it. Best avoided by **not committing to the repo while a dream runs**
+   (a concurrent commit also moves HEAD → the marker advances past it; the dream detects HEAD-moved + re-measures,
+   but can't fully disentangle a concurrent commit's files from its own). If HEAD moved, say so (cf. an audit op
+   you didn't make = a concurrent commit, e.g. via `git log <before-marker>..HEAD`).
 6. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py <the --seed path> \

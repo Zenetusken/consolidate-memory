@@ -38,6 +38,18 @@ import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / 
 from memory_status import _is_mirror, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid
 
 GLOBAL = Path.home() / ".claude" / "memory"
+
+
+def _nonglobal_wikilinks(text: str, global_dir: Path, exclude: str = "") -> list[str]:
+    """v0.1.25: the `[[wikilink]]` targets in `text` that are NOT global canonicals — so they DANGLE in every
+    mirror of a promoted fact (a global fact's links travel with it into every project). Excludes code-span
+    dotted refs (e.g. `[[tool.mypy.overrides]]`, a TOML table) + `exclude` (a self-reference). A global fact
+    should link only to OTHER global facts; a project-local link dead-ends in every mirror. Sorted + de-duped.
+    Surfaced by `promote` (found via a job-applicator dream — 3 such links dangled fleet-wide)."""
+    return sorted({w for w in re.findall(r"\[\[([^\]]+)\]\]", text)
+                   if "." not in w and w != exclude and not (global_dir / f"{w}.md").exists()})
+
+
 # Real-usage stack detection (v0.1.16): a stack counts ONLY on a REAL signal — a DECLARED dependency
 # (pyproject), an ACTUAL import (*.py), or a real marker dir/file — NEVER a doc-mention. The old
 # prose-keyword model false-matched a stdlib plugin's README ("rag", "scraper") into rag/playwright,
@@ -690,6 +702,13 @@ def promote(project_dir: Path, local_fact: str, canon_name: str) -> int:
               "refusing (a rename here would overwrite it). Pick another CANON_NAME or reconcile by hand.",
               file=sys.stderr)
         return 1
+    # Guard 4 (v0.1.25, WARN not block) — [[wikilinks]] to NON-global facts DANGLE in every mirror (a global
+    # fact's links travel with it). Advisory: the promotion still proceeds, but convert them to plain text.
+    _dangling = _nonglobal_wikilinks(local_text, GLOBAL, exclude=canon_name)
+    if _dangling:
+        print("promote: NOTE — wikilink(s) to non-global facts will DANGLE in every mirror: "
+              + ", ".join(f"[[{w}]]" for w in _dangling)
+              + ". Convert to plain text — a global fact should link only to other global facts.", file=sys.stderr)
 
     # Write the canonical from the (re-scoped) local fact — but NEVER overwrite an existing one.
     if not reconcile:
