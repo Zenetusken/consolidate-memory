@@ -607,6 +607,19 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    what *this* cycle did in lifecycle terms on the triggering node (the node `dream`
    ran on).
 
+   Then **capture the per-memory-file diffs** (v0.1.32) for the dashboard's diff-modal — the
+   before/after of each changed memory fact. This MUST run AFTER `--persist` (so
+   `marker.timestamp` is stamped) and BEFORE `render_html` (so the dashboard embeds it):
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --diffs <the --seed path> \
+       --before <the --snapshot path>
+   ```
+   It writes a per-dream sidecar `dashboards/diffs/<commit>__<timestamp>.json` (memory store
+   ONLY — the `MEMORY.md` index excluded; per-file diff capped; `chmod 600`, so fact bodies
+   stay owner-only) that `render_html` reads to make each changed fact clickable in the dream
+   view. Best-effort — skipped (never crashes a dream) if the cycle is unstamped or the
+   snapshot is missing.
+
    Then generate the **rich HTML dashboard + dream ARCHIVE** — the visual sibling of the ASCII
    report (one cycle-record contract, two renderers): the same data plus the longitudinal
    index-budget trajectory, rendered into the per-repo archive mini-site.

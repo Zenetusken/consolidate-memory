@@ -115,6 +115,29 @@
   .row .act{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-family:var(--mono)}
   .row .nm{font-size:13px}.row .nm em{font-family:var(--serif);font-size:11px;color:var(--faint);font-style:italic;letter-spacing:0}
   .row .rs{font-size:11.5px;color:var(--ink2);line-height:1.55;margin-top:3px}   /* fill the column — no early width cap */
+  /* ── v0.1.32 diff-modal: clickable changed-memory-file chips + the diff overlay ── */
+  .memdiffs-head{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:2px 0 8px}
+  .memdiffs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
+  .memdiff{cursor:pointer;border:1px solid var(--rule2);border-radius:2px;padding:5px 11px;font-family:var(--mono);
+    font-size:11px;color:var(--ink2);background:none;display:flex;gap:8px;align-items:center;transition:border-color .12s,color .12s}
+  .memdiff:hover{border-color:var(--accent);color:var(--accent)}
+  .memdiff .mop{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint)}
+  .modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center}
+  .modal-bg{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+  .modal-box{position:relative;background:var(--paper);border:1px solid var(--ink);max-width:880px;width:90%;
+    max-height:82vh;display:flex;flex-direction:column;box-shadow:0 22px 64px rgba(0,0,0,.42)}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:13px 18px;
+    border-bottom:1px solid var(--rule);font-family:var(--mono);font-size:12px}
+  .modal-head b{font-weight:600;letter-spacing:.02em;color:var(--ink)}
+  .modal-x{background:none;border:0;color:var(--faint);font-size:21px;line-height:1;cursor:pointer;padding:0 2px}
+  .modal-x:hover{color:var(--accent)}
+  .modal-body{overflow:auto;padding:9px 0;font-family:var(--mono);font-size:11.5px;line-height:1.55}
+  .dl{padding:0 18px;white-space:pre-wrap;word-break:break-word}
+  .dl-plus{background:rgba(95,169,150,.13);color:var(--data)}
+  .dl-minus{background:rgba(179,71,39,.11);color:var(--accent)}
+  .dl-at{color:var(--faint);font-style:italic;margin:5px 0;letter-spacing:.04em}
+  .dl-ctx{color:var(--ink2)}
+  .dl-more{padding:9px 18px;color:var(--faint);font-style:italic;border-top:1px solid var(--rule);margin-top:6px}
   .row .ci{font-size:10px;color:var(--ghost);white-space:nowrap;font-variant-numeric:tabular-nums}
   .a-added{color:var(--ok)} .a-corrected{color:var(--data)} .a-deleted{color:var(--crit)}
   .a-reconciled{color:var(--warn)} .a-skipped{color:var(--faint)}
@@ -193,6 +216,9 @@
 <button id="dens-tog" class="theme-tog" aria-label="toggle density">⊟ compact</button>
 <div id="boot"><div class="bt">compiling field report</div><div class="bl"><i></i></div><div class="bn" id="boot-proj">consolidate-memory</div></div>
 <div class="tip" id="tip"></div>
+<div class="modal" id="dmodal" style="display:none"><div class="modal-bg" id="dmodal-bg"></div>
+  <div class="modal-box"><div class="modal-head"><b id="dmodal-title">—</b><button class="modal-x" id="dmodal-x" aria-label="close diff">×</button></div>
+  <div class="modal-body" id="dmodal-body"></div></div></div>
 
 <!-- ARCHIVE INDEX VIEW — shown when the URL has no #sel (cm report [DIR]) -->
 <div class="wrap" id="archive" style="visibility:hidden;display:none">
@@ -285,6 +311,8 @@
 
   <!-- 04 ledger -->
   <section class="blk"><div class="shead"><span class="no">04</span><h3>Changes &amp; Decisions</h3><span class="ln"></span><span class="note" id="ent-note"></span></div>
+    <div class="memdiffs-head" id="memdiffs-head" style="display:none">memory diffs · click a file to inspect the before/after</div>
+    <div class="memdiffs" id="memdiffs"></div>
     <div class="ledger" id="entries"></div>
   </section>
 
@@ -306,6 +334,10 @@
   var SEL=_readSel(), VIEW=(SEL===null)?"archive":"dream", selIdx=(SEL===null)?ALL.length-1:SEL;
   var CUR=ALL[selIdx]||{};            // the selected dream — the existing render path renders THIS one
   var HIST=ALL.slice(0,selIdx);       // history BEFORE it → CYCLES = HIST+CUR = ALL[0..selIdx] (faithful as-of view)
+  var ALLDIFFS=(DATA.diffs&&typeof DATA.diffs==="object")?DATA.diffs:{};   // v0.1.32: cycleKey → its persisted memory diffs
+  function diffKey(m){m=(m&&typeof m==="object")?m:{};   // MUST mirror memory_status.diff_key (the write side)
+    var c=String(m.commit||"").replace(/[^0-9A-Za-z]/g,"").slice(0,12)||"nocommit";
+    var t=String(m.timestamp||"").replace(/[^0-9A-Za-z]/g,"-")||"nots"; return c+"__"+t;}
   var BUD=(DATA.budgets&&typeof DATA.budgets==="object")?DATA.budgets:{index:1200,claude_md:4000};
   var IDXB=num(BUD.index,1200), CMB=num(BUD.claude_md,4000);
 
@@ -543,6 +575,36 @@
 
   el("f-marker").textContent="marker → "+String(g(CUR,"marker.commit","—")).slice(0,12)+" @ "+String(g(CUR,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"");
 
+  // ── v0.1.32 diff-modal: the clickable changed-memory-file chips (driven by THIS dream's sidecar) ──
+  var DREAMDIFFS=ALLDIFFS[diffKey(g(CUR,"marker",{}))]||{};
+  (function(){
+    var paths=Object.keys(DREAMDIFFS);
+    if(!paths.length)return;                       // legacy / pre-feature dream → no chips, no modal (graceful)
+    el("memdiffs-head").style.display="";
+    el("memdiffs").innerHTML=paths.map(function(p){
+      var nm=String(p).replace(/^memory\//,"").replace(/\.md$/,"");
+      return '<button class="memdiff" data-p="'+esc(p)+'"><span class="mop">'+esc((DREAMDIFFS[p]||{}).op||"")+'</span>'+esc(nm)+'</button>';
+    }).join("");
+    [].slice.call(el("memdiffs").querySelectorAll(".memdiff")).forEach(function(b){
+      b.addEventListener("click",function(){openDiff(b.getAttribute("data-p"));});
+    });
+  })();
+  function openDiff(p){
+    var d=DREAMDIFFS[p]; if(!d)return;
+    el("dmodal-title").textContent=String(p).replace(/^memory\//,"")+"  ·  "+(d.op||"modified");
+    var html=(d.lines||[]).map(function(l){
+      var t=l.t, cls=t==="+"?"dl-plus":t==="-"?"dl-minus":t==="@"?"dl-at":"dl-ctx";
+      var pre=t==="+"?"+ ":t==="-"?"- ":t==="@"?"":"  ";
+      return '<div class="dl '+cls+'">'+esc(pre+(l.s==null?"":l.s))+'</div>';   // esc() = the load-bearing XSS guard
+    }).join("");
+    if(d.more>0)html+='<div class="dl-more">+ '+(d.more|0)+' more line'+(d.more!==1?"s":"")+' (capped)</div>';
+    el("dmodal-body").innerHTML=html||'<div class="dl-more">no textual diff</div>';
+    el("dmodal").style.display="flex";
+  }
+  function closeDiff(){el("dmodal").style.display="none";}
+  el("dmodal-x").addEventListener("click",closeDiff);
+  el("dmodal-bg").addEventListener("click",closeDiff);
+
   // ── theme toggle · auto (follow system) → light → dark ──
   (function(){
     var root=document.documentElement, btn=el("theme-tog"), modes=["auto","light","dark"], icon={auto:"◐ auto",light:"○ light",dark:"● dark"};
@@ -609,6 +671,7 @@
   window.addEventListener("hashchange", function(){ location.reload(); });
   // keyboard nav (dream view): ← → step dreams · Esc → archive (ignored while typing in a filter control)
   document.addEventListener("keydown", function(e){
+    if(e.key==="Escape" && el("dmodal") && el("dmodal").style.display!=="none"){ closeDiff(); return; }   // modal closes first
     if(/^(INPUT|SELECT|TEXTAREA)$/.test((e.target||{}).tagName||"")) return;
     if(VIEW!=="dream") return;
     if(e.key==="ArrowLeft" && selIdx>0) location.hash="#sel="+(selIdx-1);

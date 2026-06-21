@@ -5,6 +5,29 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.32] — 2026-06-21
+
+### Added — diff-modal (interactivity cycle 2): click a changed memory fact → its before/after diff
+The dream view now shows the **memory files changed that pass** as clickable chips (§04) → a **modal** rendering the
+before/after **diff**. The diff data lives in a **persistent per-dream sidecar**
+(`dashboards/diffs/<commit>__<timestamp>.json`), NOT in the cycle-record contract — revisitable from the archive,
+no schema change.
+- **Capture** (`memory_status.py --diffs <cycle> --before <snapshot>`, Phase 5 after `--persist`): extends the
+  Phase-0 snapshot to stash before-content for the **memory store only** (the `MEMORY.md` index excluded — pointer
+  churn, not a fact), then `difflib` per changed fact; one-sided create/delete handled; per-file line cap with
+  "+N more". Best-effort (never crashes a dream). The snapshot + sidecar are `chmod 600` (they now hold fact bodies).
+- **Embed**: `render_html` reads each embedded cycle's sidecar (keyed by the shared `diff_key`) into the
+  self-contained HTML — offline, no fetch.
+- **Modal**: +/- /hunk-colored diff; Esc / × / backdrop close. Every line through `esc()` — the load-bearing XSS
+  guard on the first feature to render raw fact *bodies* (hostile-fixture verified inert).
+
+### Internal
+- New `--diffs` step + `capture_diffs`/`diff_key`/`_diff_lines`/`diffs_dir` (memory_status), `read_diffs` +
+  `build_html(…, diffs)` (render_html, kept PURE), the modal (dashboard.template.html). +4 smoke units; data layer +
+  modal JS-probe-verified (scoped/capped/one-sided; key sanitized; embed `</script>`-safe; modal opens/closes;
+  hostile body inert). Gate-1 spec-review folded (1 HIGH clickable-surface → drive off the sidecar; safety/ordering/
+  keying MEDs); independent Gate-2 re-audit. smoke 291/0 · mypy · manifests. PATCH (diff data OUTSIDE the contract).
+
 ## [0.1.31] — 2026-06-21
 
 ### Added — dashboard interactivity (cycle 1 of the interactivity arc; client-side, READ-ONLY)

@@ -14,6 +14,7 @@ Usage: python3 memory_status.py [PROJECT_DIR] [--json]
 
 from __future__ import annotations
 
+import difflib
 import hashlib
 import json
 import re
@@ -878,8 +879,11 @@ def audit_snapshot(project_dir: Path) -> dict:
             data = p.read_bytes()
         except OSError:
             return
-        snap[label] = {"hash": hashlib.sha1(data).hexdigest(),
-                       "tokens": est_tokens(data.decode("utf-8", "replace")), "store": store}
+        entry = {"hash": hashlib.sha1(data).hexdigest(),
+                 "tokens": est_tokens(data.decode("utf-8", "replace")), "store": store}
+        if store == "memory":   # v0.1.32: stash content (memory store ONLY) — the before-side for the diff-modal sidecar
+            entry["content"] = data.decode("utf-8", "replace")
+        snap[label] = entry
 
     if auto_mem.exists():
         for f in sorted(auto_mem.glob("*.md")):
@@ -951,6 +955,59 @@ def audit_diff(before: dict, after: dict) -> dict:
                     "possible_loss": cmd_drop > 50 and repo_growth < cmd_drop * 0.5}
     return {"memory": roll["memory"], "claude_md": roll["claude_md"], "repo_doc": roll["repo_doc"],
             "operations": ops, "conservation": conservation}
+
+
+# ── v0.1.32: per-dream diff capture for the diff-modal (memory store only; sidecar OUTSIDE the cycle record) ──
+_DIFF_LINE_CAP = 80   # per-file diff line cap for the modal — a giant fact rewrite won't bloat the sidecar
+
+
+def diff_key(marker: object) -> str:
+    """The per-dream diff-sidecar key — the (commit, timestamp) `_marker` pair, sanitized to a filename. render_html
+    reconstructs the SAME key from each embedded cycle's marker to find + embed its sidecar (belt-and-suspenders vs
+    a timestamp-only collision when two dreams share a HEAD)."""
+    m = marker if isinstance(marker, dict) else {}
+    commit = re.sub(r"[^0-9A-Za-z]", "", str(m.get("commit", "") or ""))[:12] or "nocommit"
+    ts = re.sub(r"[^0-9A-Za-z]", "-", str(m.get("timestamp", "") or "")) or "nots"
+    return f"{commit}__{ts}"
+
+
+def diffs_dir(project_dir: Path) -> Path:
+    """The PRIVATE per-repo diff-sidecar dir: <store>/../dashboards/diffs (never the repo)."""
+    auto_mem = Path.home() / ".claude" / "projects" / slug_for(project_dir.resolve()) / "memory"
+    return auto_mem.parent / "dashboards" / "diffs"
+
+
+def _diff_lines(before_text: str, after_text: str, cap: int = _DIFF_LINE_CAP) -> dict:
+    """A capped unified diff (stdlib difflib) as structured lines for the modal: {lines:[{t,s}], more:N}. `t` is
+    '+'/'-'/'@'/' ' (added/removed/hunk/context); the modal renders each `s` via esc() — the load-bearing XSS guard
+    on the highest-volume untrusted-text-into-DOM path in the dashboard."""
+    raw = [ln for ln in difflib.unified_diff(before_text.splitlines(), after_text.splitlines(), lineterm="", n=3)
+           if not ln.startswith("--- ") and not ln.startswith("+++ ")]   # drop the file-header pair
+    lines = []
+    for ln in raw[:cap]:
+        c = ln[:1]
+        t = c if c in ("+", "-", "@") else " "
+        lines.append({"t": t, "s": ln if t == "@" else ln[1:]})
+    return {"lines": lines, "more": max(0, len(raw) - cap)}
+
+
+def capture_diffs(before: object, project_dir: Path) -> dict:
+    """Per-CHANGED-memory-file before/after diffs — the script-observed diff of THIS dream's memory mutations.
+    `before` = the Phase-0 snapshot (with `content`); after = the current store. Scoped to store=='memory';
+    one-sided create/delete handled (the empty side). Returns {path: {op, lines, more}}. Best-effort (caller guards)."""
+    bsnap = before if isinstance(before, dict) else {}
+    after = audit_snapshot(project_dir)
+    diffs: dict = {}
+    for op in audit_diff(bsnap, after).get("operations", []):
+        label = str(op.get("path", ""))
+        if op.get("store") != "memory" or label == "memory/MEMORY.md":   # exclude the index — pointer churn, not a fact
+            continue
+        b = bsnap.get(label) if isinstance(bsnap.get(label), dict) else {}
+        a = after.get(label) if isinstance(after.get(label), dict) else {}
+        d = _diff_lines(str((b or {}).get("content", "")), str((a or {}).get("content", "")))
+        d["op"] = op.get("op", "modified")
+        diffs[label] = d
+    return diffs
 
 
 def build_context(project_dir: Path) -> dict:
@@ -1539,8 +1596,18 @@ def main() -> int:
         _ai = argv.index("--audit")
         if _ai + 1 < len(argv) and not argv[_ai + 1].startswith("-"):
             audit_before = argv[_ai + 1]
+    diffs_cycle = diffs_before = ""   # v0.1.32: --diffs <cycle-path> + --before <snapshot-path> for the diff sidecar
+    for _flag in ("--diffs", "--before"):
+        if _flag in argv:
+            _fi = argv.index(_flag)
+            if _fi + 1 < len(argv) and not argv[_fi + 1].startswith("-"):
+                if _flag == "--diffs":
+                    diffs_cycle = argv[_fi + 1]
+                else:
+                    diffs_before = argv[_fi + 1]
     as_json = "--json" in argv
-    pos = [a for a in argv if not a.startswith("-") and a != audit_before]   # positional = the project dir
+    _argpaths = {audit_before, diffs_cycle, diffs_before} - {""}
+    pos = [a for a in argv if not a.startswith("-") and a not in _argpaths]   # positional = the project dir
     project_dir = Path(pos[0]) if pos else Path.cwd()
     ctx = build_context(project_dir)
     if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)
@@ -1570,6 +1637,10 @@ def main() -> int:
     if "--snapshot" in argv:    # v0.1.22: Phase-0 BEFORE audit snapshot → per-slug temp path + print it
         path = audit_snapshot_path(ctx["slug"])
         Path(path).write_text(json.dumps(audit_snapshot(project_dir), indent=2) + "\n", encoding="utf-8")
+        try:                    # v0.1.32: the snapshot now holds memory fact BODIES (the diff before-side) → owner-only
+            Path(path).chmod(0o600)
+        except OSError:
+            pass
         print(path)
         return 0
     if "--audit" in argv:       # v0.1.22: Phase-5 diff vs the BEFORE snapshot → append the deterministic log + print summary
@@ -1585,6 +1656,35 @@ def main() -> int:
         except OSError:
             pass
         print(json.dumps(diff, indent=2))
+        return 0
+    if "--diffs" in argv:       # v0.1.32: Phase-5 (post-persist) diff capture → per-dream sidecar for the diff-modal
+        try:
+            before = json.loads(Path(diffs_before).read_text(encoding="utf-8")) if diffs_before else {}
+        except (OSError, json.JSONDecodeError):
+            before = {}
+        try:
+            cyc = json.loads(Path(diffs_cycle).read_text(encoding="utf-8")) if diffs_cycle else {}
+        except (OSError, json.JSONDecodeError):
+            cyc = {}
+        marker = cyc.get("marker") if isinstance(cyc, dict) else None
+        if not isinstance(marker, dict):
+            marker = {}
+        if not str(marker.get("timestamp", "")).strip():   # mirror _persist's refusal — never key a sidecar on a blank ts
+            print("--diffs: skipped (cycle has no marker.timestamp — unstamped)", file=sys.stderr)
+            return 0
+        try:                    # best-effort — a diff-capture failure must NEVER crash a dream (mirrors --audit)
+            diffs = capture_diffs(before, project_dir)
+            _d = diffs_dir(project_dir)
+            _d.mkdir(parents=True, exist_ok=True)
+            sp = _d / (diff_key(marker) + ".json")
+            sp.write_text(json.dumps(diffs) + "\n", encoding="utf-8")
+            try:                # holds memory fact BODIES → owner-only
+                sp.chmod(0o600)
+            except OSError:
+                pass
+            print(f"diffs → {sp}  ({len(diffs)} memory file(s) changed)")
+        except Exception as e:   # noqa: BLE001 — never crash a dream over a sidecar
+            print(f"--diffs: skipped ({e})", file=sys.stderr)
         return 0
     if as_json:
         print(json.dumps(seed_record(ctx), indent=2))

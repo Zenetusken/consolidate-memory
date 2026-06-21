@@ -80,10 +80,11 @@ def assemble_cycles(record: dict, history: list) -> tuple:
     return (cycles[-_ARCHIVE_CAP:] if total > _ARCHIVE_CAP else cycles), total
 
 
-def build_html(record: dict, history: list, generated_at: str) -> str:
+def build_html(record: dict, history: list, generated_at: str, diffs: "dict | None" = None) -> str:
     """Embed the ARCHIVE (all logged cycles, capped) + the repo identity into the bundled template; the JS reads
-    `cycles`/`project`/`budgets` and renders either the archive index or a single dream selected by URL `#sel=`.
-    PURE w.r.t. inputs (only reads the template) so a smoke test can exercise it + assert the embedded round-trip."""
+    `cycles`/`project`/`budgets`/`diffs` and renders either the archive index or a single dream selected by URL
+    `#sel=`. `diffs` (v0.1.32) maps a cycle's diff_key → its persisted memory diffs (the diff-modal); read by
+    main() so build_html stays PURE w.r.t. inputs (a smoke test exercises it + asserts the embedded round-trip)."""
     template = _TEMPLATE.read_text(encoding="utf-8")
     cycles, total = assemble_cycles(record, history)
     rec = record if isinstance(record, dict) else {}
@@ -95,8 +96,33 @@ def build_html(record: dict, history: list, generated_at: str) -> str:
         "budgets": {"index": INDEX_TOKEN_BUDGET, "claude_md": CLAUDE_MD_TOKEN_BUDGET},
         "total": total,
         "cap": _ARCHIVE_CAP,
+        "diffs": diffs if isinstance(diffs, dict) else {},
     }
     return template.replace(_PLACEHOLDER, _safe_embed(data))
+
+
+def read_diffs(store: "Path | None", cycles: list) -> dict:
+    """v0.1.32: load each embedded cycle's persisted diff sidecar (`dashboards/diffs/<diff_key>.json`), keyed by the
+    SAME `diff_key` the capture used → the diff-modal payload. Best-effort: a missing/corrupt sidecar is skipped
+    (legacy / pre-feature cycles simply have none, so their facts just aren't clickable)."""
+    if store is None:
+        return {}
+    from memory_status import diff_key
+    ddir = Path(store).parent / "dashboards" / "diffs"
+    if not ddir.exists():
+        return {}
+    out: dict = {}
+    for c in cycles:
+        key = diff_key(c.get("marker") if isinstance(c, dict) else {})
+        if key in out or not (ddir / (key + ".json")).exists():
+            continue
+        try:
+            d = json.loads((ddir / (key + ".json")).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(d, dict):
+            out[key] = d
+    return out
 
 
 def _default_out(record: dict, store: "Path | None") -> Path:
@@ -164,7 +190,7 @@ def main(argv: list) -> int:
         frag = f"#sel={len(cycles) - 1}"
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    html = build_html(record, history, generated_at)
+    html = build_html(record, history, generated_at, read_diffs(store, cycles))
     out = Path(args.out) if args.out else _default_out(record, store)
     out.write_text(html, encoding="utf-8")
 
