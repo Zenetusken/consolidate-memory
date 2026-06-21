@@ -5,6 +5,25 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.33] — 2026-06-21
+
+### Fixed — the post-dream re-open instruction was wrong for plugin users
+The SKILL told users to "re-open with `cm report`" — but `cm` is the **maintainer dev CLI**: it lives only in the
+consolidate-memory repo, isn't on a plugin user's PATH, and CWD-defaults. So a plugin user in another repo (e.g.
+job-applicator) has no `cm`, and running it from the consolidate-memory repo opens the WRONG repo's archive. The
+dashboards were always correctly **isolated per-repo** (each `~/.claude/projects/<slug>/dashboards/index.html`
+embeds only its own dreams — verified by parsing the embedded data); the defect was purely the instruction.
+- Phase 5 now points end-users at the **self-contained file at the stable per-repo path** — that file IS the
+  fleet-wide re-open (works from any repo) — and explicitly flags `cm report` as maintainer-only.
+- `cm`'s own `--help` now notes it defaults to the CWD repo (pass another repo's path to view it) and that end
+  users just open the `dashboards/index.html` file.
+
+A convenient fleet-wide re-open command + the `cm log` audit dump remain **separate, deliberate features** (not
+smuggled into this correctness fix).
+
+### Internal
+- SKILL Phase-5 re-open prose + `cm` help text only. No code/schema/flag change. smoke 291/0 · mypy · manifests. PATCH.
+
 ## [0.1.32] — 2026-06-21
 
 ### Added — diff-modal (interactivity cycle 2): click a changed memory fact → its before/after diff

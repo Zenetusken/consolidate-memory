@@ -630,9 +630,14 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    It writes a ZERO-dependency, self-contained `dashboards/index.html` (the whole per-repo
    archive of dreams in one file) and **auto-opens this dream's dashboard** (`--latest` →
    `#sel=<newest>`); headless-safe (no browser → prints the path; `--no-open` suppresses).
-   This is the post-dream payoff. Re-open the **archive** any time with `cm report [DIR]`, or a
-   specific dream with `cm report <hash>`. Present BOTH the ASCII dashboard (in-terminal) and the
-   HTML path as the final message.
+   This is the post-dream payoff. The dashboard is a **self-contained file at a STABLE per-repo path**
+   — `~/.claude/projects/<slug>/dashboards/index.html`. **Present that exact path as the final message
+   and tell the user they can re-open it any time by opening the file** (it holds the whole archive;
+   navigate dreams in-page via the ledger/filenames). That file IS the fleet-wide re-open — it works from
+   any repo. Do **NOT** tell an end-user to run `cm report`: that is a MAINTAINER dev CLI living only in
+   the consolidate-memory repo (not on a plugin user's PATH, and it CWD-defaults), useful only when
+   dogfooding this plugin from its own checkout. Present BOTH the ASCII dashboard (in-terminal) and the
+   file path as the final message.
 
 ## Safety rules
 
