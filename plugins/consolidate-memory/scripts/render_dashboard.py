@@ -473,16 +473,24 @@ def render(record: ms.CycleRecord) -> str:
         cand, pi = _num(rem.get("candidates_surfaced", 0)), _num(rem.get("projected_index", 0))
         # G (v0.1.18.x): the seed OMITS pruned/achieved_* (pre-pass) — render "pending Phase 5" when absent,
         # NOT ≈0 (which reads as "emptied"). Once the model fills them in Phase 5, show the actual values.
+        budget_tok = _num(_dget(_dget(record, "budget"), "index").get("budget_tokens", 1200))
+        resolved_by_lean = False
         if "achieved_index" in rem or "pruned" in rem:
             pruned, ai = _num(rem.get("pruned", 0)), _num(rem.get("achieved_index", 0))
             out.append(f"    {_c('↓', 'yellow')} {_g(cand)} candidate(s) surfaced · {_g(pruned)} pruned · index ≈{_g(ai)} tok (projected ≈{_g(pi)})")
-            acted = pruned
+            # v0.1.35: "acted on" is NOT eviction-only. A rebuild-lean (pruned=0) that brought the index back
+            # UNDER budget RESOLVED the gate — the skill sanctions "prune … and/or rebuild the index lean"
+            # (Phase 5 step 0). Was `acted = pruned`, which mislabeled a resolved gate "not acted on".
+            resolved_by_lean = (not pruned) and (0 < ai <= budget_tok)
+            acted = pruned or resolved_by_lean
         else:
             out.append(f"    {_c('↓', 'yellow')} {_g(cand)} candidate(s) surfaced · pruned/achieved pending Phase 5 · projected index ≈{_g(pi)} tok")
             acted = 0
         if rem.get("reaches_budget") is False:   # D5 (v0.1.21): a full prune can't reach budget
             out.append("    " + _c("prune can't reach budget → prune-safe-THEN-standing-justify the residual (earned density)", "dim"))
-        if not acted:
+        if resolved_by_lean:
+            out.append("    " + _c("✓ gate resolved by rebuild-lean — index back under budget, no eviction needed", "green"))
+        elif not acted:
             note = {"gc": "mirror-dominated — global demote/GC lever, not a local prune",
                     "justify": "justified — nothing safely prunable (see entries[])",
                     "prune": "⚠ gate fired but not acted on — surface candidates + prune-or-justify"}.get(str(rem.get("lever", "")), "")

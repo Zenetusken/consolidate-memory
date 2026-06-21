@@ -5,6 +5,21 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.35] — 2026-06-21
+
+### Fixed — remediation gate mislabeled "not acted on" after a rebuild-lean (beta-test-confirmed)
+`render_dashboard` reported an over-budget remediation gate **resolved by a rebuild-lean** (re-indexing MEMORY.md
+leaner — `pruned=0` but `achieved_index ≤ budget`) as `⚠ gate fired but not acted on — surface candidates +
+prune-or-justify`, **while the always-loaded gauge showed the index UNDER budget** — a self-contradicting dashboard
+that could prompt needless fact-eviction. Root cause: `render_dashboard.py:479` `acted = pruned` derived "acted on"
+from facts-evicted ONLY, ignoring `achieved_index`; but the skill SANCTIONS rebuild-lean as a remediation action
+(Phase 5 step 0: "prune … and/or rebuild the index lean"). Fix: `acted = pruned or (rebuild-lean brought the index
+≤ budget)`, with a clear `✓ gate resolved by rebuild-lean — index back under budget, no eviction needed` note
+replacing the false warning. A gate genuinely still over budget (or unacted) still warns correctly.
+- Surfaced by the **dream-beta-tester**'s Coherence judgment lens — the deterministic oracle could not reach it
+  (an under-budget store renders no remediation block) — and hit LIVE in this repo's own v0.1.34 dream.
+- +2 regression smoke units (rebuild-lean-resolved → resolved; still-over → warns). smoke 296/0 · mypy · manifests. PATCH.
+
 ## [0.1.34] — 2026-06-21
 
 ### Added — `cm log`: the lean log-audit view (the 3rd renderer of the cycle log)

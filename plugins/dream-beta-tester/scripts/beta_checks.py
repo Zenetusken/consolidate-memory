@@ -953,17 +953,25 @@ def closure_reachability(ctx: Ctx) -> list[Result]:
                       f"required={rem.get('required')}, lever={rem.get('lever')}",
                       "no active prune gate this run", "remediation", "D5"))
 
-    # ── D10: dangling wikilinks (resolve_wikilink semantics) ──
+    # ── D10: dangling wikilinks — resolve against the FULL valid-target set (facts + archive-index
+    #    docs like [[SHIPPED]]/[[MEMORY]]), mirroring the skill's valid_link_targets. Resolving against
+    #    archive-EXCLUDED fact_stems alone RE-FIRED the v0.1.23 D10 fix: it false-flagged [[SHIPPED]]
+    #    as dangling though SHIPPED.md is a valid target the skill resolves (beta-tester self-bug,
+    #    caught 2026-06-21 on Doc_Flo: 7 flagged → 6 once archive docs are honored). ──
     if ctx.store_present:
         resolve = getattr(ctx.ms, "resolve_wikilink", None)
+        vlt = getattr(ctx.ms, "valid_link_targets", None)
+        valid_targets = set(vlt(ctx.store)) if vlt is not None else {p.stem for p in ctx.store.glob("*.md")}
         dangling: list[str] = []
         suggestions: dict[str, str] = {}
         for raw in sorted(ctx.raw_wikilinks):
-            if resolve is not None:
-                tgt = resolve(raw, set(ctx.fact_stems))
+            if raw in valid_targets:
+                tgt = raw   # direct hit — incl. archive-index docs ([[SHIPPED]]/[[MEMORY]] are real, D10)
+            elif resolve is not None:
+                tgt = resolve(raw, valid_targets)
             else:
                 nt = _local_norm(raw)
-                hits = [s for s in ctx.fact_stems if _local_norm(s) == nt]
+                hits = [s for s in valid_targets if _local_norm(s) == nt]
                 tgt = hits[0] if len(hits) == 1 else None
             if tgt is None:
                 dangling.append(raw)
@@ -973,7 +981,7 @@ def closure_reachability(ctx: Ctx) -> list[Result]:
                 # resolver refuses ambiguous slug-drift, so the oracle must not over-claim a fix it
                 # wouldn't make (the prototype's startswith/substring matcher did).
                 if resolve is not None:
-                    for cand in sorted(ctx.fact_stems):
+                    for cand in sorted(valid_targets):
                         if resolve(raw, {cand}) == cand:
                             suggestions[raw] = cand
                             break
