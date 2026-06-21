@@ -18,6 +18,7 @@ import extract_signals as es  # noqa: E402
 import memory_status as ms  # noqa: E402
 import render_dashboard as rd  # noqa: E402
 import render_html as rhtml  # noqa: E402
+import render_log as rlog  # noqa: E402
 import sync_global as sg  # noqa: E402
 import _ui as ui  # noqa: E402  — shared visual vocabulary
 
@@ -990,6 +991,17 @@ check("v0.1.32: build_html embeds diffs INSIDE the data dict — a </script> in 
       '"diffs"' in _hd and "</script><img" not in _hd and "\\u003c/script" in _hd)
 check("v0.1.32: template carries the diff-modal (diffKey mirror, dmodal overlay, openDiff, clickable ledger filename, esc'd lines)",
       all(s in _html for s in ["function diffKey", 'id="dmodal"', "function openDiff", "nm-diff", "DREAMDIFFS", "dl-plus"]))
+# v0.1.34 — cm log: the lean log-audit renderer (3rd view; reuses the ONE read_history; legacy-safe; --json)
+_lr = [{"marker": {"commit": "aaaa1111bb", "timestamp": "2026-06-21T01:00"}, "rigor": {"applied": "LIGHT"}, "project": "p",
+        "budget": {"index": {"before_tokens": 100, "after_tokens": 120}, "recall_facts": {"before": 5, "after": 6}},
+        "entries": [{"action": "added"}, {"action": "skipped"}], "audit": {"memory": {"created": 1, "modified": 0, "deleted": 0}}}]
+_lt = rlog.render(_lr, 1, "p")
+check("v0.1.34: render_log builds the dense per-dream table (marker · rigor · budget Δ · audit all present)",
+      "DREAM LOG" in _lt and "aaaa1111bb" in _lt and "LIGHT" in _lt and "120 (+20)" in _lt and "+1 ~0 -0" in _lt)
+check("v0.1.34: render_log is legacy/sparse-safe — a bare {} record renders (defaults, no KeyError)",
+      "DREAM LOG" in rlog.render([{}], 1, "p"))
+check("v0.1.34: render_log reuses render_html.read_history (ONE log reader, not a second)",
+      rlog.read_history is rhtml.read_history)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

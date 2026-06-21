@@ -5,6 +5,23 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.34] — 2026-06-21
+
+### Added — `cm log`: the lean log-audit view (the 3rd renderer of the cycle log)
+A dense, one-row-per-dream table over `<store>/.consolidation-log.jsonl` — audit any project's dream history
+without hand-parsing JSONL or opening a browser. **One log, THREE views** now: ASCII dashboard (`render_dashboard`,
+ONE cycle) · HTML archive (`render_html`, all cycles, rich) · **LOG (`render_log`, all cycles, lean-tabular)**.
+- **`cm log [DIR] [-n N] [--json]`** — DIR defaults to CWD; fleet-reachable via the PATH-installed `cm` (v0.1.33).
+  Columns: WHEN · MARKER · RIGOR · INDEX (Δ) · RECALL (Δ) · ENTRIES (by-action code) · AUDIT (+created ~modified
+  -deleted). `--json` emits the last N raw cycle records (pipe to jq / any programmatic audit — the real "plug in").
+- **New plugin renderer `scripts/render_log.py`** (stdlib, zero-dep) — **ships with the plugin/marketplace**;
+  reuses the SAME `read_history` + `_store_for` (render_html) that `cm report` uses (so they agree on the store) +
+  the `_ui` vocabulary. `-n` caps AFTER the newest-first sort. Legacy/sparse + empty-log + malformed-line safe.
+
+### Internal
+- `cm log` dispatch (dir-first; `-n`/`--json` pass through) + help; CLAUDE.md layout now lists all three renderers.
+  +3 smoke units (table build, legacy-`{}`-safe, `read_history`-reuse). smoke 294/0 · mypy (10 files) · manifests. PATCH.
+
 ## [0.1.33] — 2026-06-21
 
 ### Fixed — the post-dream re-open instruction was wrong for plugin users

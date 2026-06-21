@@ -19,6 +19,7 @@ case "$cmd" in
   network)  exec python3 "$S/sync_global.py" --network ;;         # shared-consciousness graph
   render)   exec python3 "$S/render_dashboard.py" "$@" ;;         # cycle.json -> ASCII dashboard
   report)   if [ -d "${1:-}" ]; then exec python3 "$S/render_html.py" --project "$1"; elif echo "${1:-}" | grep -qE '^[0-9a-f]{4,40}$'; then exec python3 "$S/render_html.py" --select "$1" --project "${2:-.}"; else exec python3 "$S/render_html.py" --project "${1:-.}"; fi ;;  # existing dir → its archive · hex → a dream by hash · else cwd archive
+  log)      if [ -d "${1:-}" ]; then D="$1"; shift; else D="."; fi; exec python3 "$S/render_log.py" --project "$D" "$@" ;;  # lean per-dream audit table ([-n N] / --json pass through)
   help|*)
     cat <<EOF
 cm — consolidate-memory
@@ -36,6 +37,8 @@ cm — consolidate-memory
                        repo's path to view it, e.g. cm report ~/project/job-applicator-python).
                        End users just open ~/.claude/projects/<slug>/dashboards/index.html directly.
   cm report HASH [DIR] re-open a specific dream's dashboard by its commit-hash prefix
+  cm log [DIR] [-n N]  dense per-dream audit TABLE over DIR's .consolidation-log.jsonl (DEFAULT: THIS repo);
+                       add --json for the raw cycle records (pipe to jq). The 3rd view of the dream log.
 
 A full pass is best driven by the plugin itself. Dogfood it from this repo:
   claude plugin marketplace add .
