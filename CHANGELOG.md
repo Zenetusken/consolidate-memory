@@ -5,6 +5,29 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.27] — 2026-06-21
+
+### Added (SKILL doc — the archive-relocation remediation discipline; from the network audit)
+The cross-project network audit found the dream ALREADY relocates completed/merged arcs out of the always-loaded
+`MEMORY.md` index into an on-demand archive (`SHIPPED.md`) **by judgment** — Doc_Flo's `SHIPPED.md` cites the
+v0.1.18 remediation, 57 facts archived — but the SKILL never documented it (the model improvised it correctly).
+The deferred **mechanical "archive lever" (finding-B) is off the table**: the budget tier already exists (the
+archive is off `INDEX_TOKEN_BUDGET`, on-demand) and judgment does the keep/archive split well; a mechanical lever
+would automate a working process and add a silent recall-erosion risk. This codifies the proven discipline so
+future dreams apply it consistently + safely.
+- **Phase-5 remediation runbook gains an `archive` option** (PREFERRED, non-destructive — applied before
+  prune/justify): relocate completed-arc pointers `MEMORY.md`→an on-demand archive index, keeping the fact body
+  (recallable) and keeping lesson-bearing / NEGATIVE / active-state / directive pointers live **even if
+  dated/"SHIPPED"**. The keep-vs-archive call is judgment with a SILENT failure mode (archive a live lesson →
+  recall lost; the recall-tier analogue of CLAUDE.md enforcement-erosion) → conservative, propose-only,
+  archive-then-justify the earned residual.
+- NOT a routed `lever` (the script still routes prune/gc/justify) — a model disposition; **no code/schema change.**
+
+### Internal
+- SKILL.md prose only (Phase-5 remediation runbook). smoke 274/0 · mypy · manifests (json-pin unaffected — no
+  schema change).
+- **Versioning — PATCH:** additive SKILL guidance; no code, no schema, no lever-routing change.
+
 ## [0.1.26] — 2026-06-21
 
 ### Fixed (provenance-churn staleness — ROOT-fix; surfaced by the cross-project network audit)
