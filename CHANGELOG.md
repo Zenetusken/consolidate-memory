@@ -5,6 +5,29 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.26] — 2026-06-21
+
+### Fixed (provenance-churn staleness — ROOT-fix; surfaced by the cross-project network audit)
+The network audit found widespread "stale" mirrors after pulls. Root cause: the canonical `projects:`
+provenance list was copied INTO every mirror, and it grows every time *any* project pulls a fact — so each
+pull marked *all other* projects' mirrors stale, though the fact content was identical (perpetual cross-fleet
+refresh churn + misleading "everything stale" dashboards; functionally harmless — recall content was always
+correct).
+- **`_as_mirror` no longer carries `projects:` into a mirror** (root-fix, not a comparison hack): provenance is
+  CANONICAL-only bookkeeping — the synapse record `network()`/`_holders` read off the global store; nothing
+  reads a mirror's provenance (verified across all scripts). A mirror now stays in-sync regardless of canonical
+  holder-list growth. Frontmatter-scoped so a prose body line is never touched; the `_is_mirror(_as_mirror(…))`
+  round-trip invariant holds.
+- **One-time migration:** existing mirrors refresh once (provenance-stripped) on their next `--pull`/dream, then
+  stay in-sync. Verified live: after the one-time refresh, a repeated `--pull` shows **0 refreshed** (churn gone).
+
+### Internal
+- `_as_mirror` frontmatter-scoped `projects:` strip + 1 smoke unit (strips FM `projects:`, preserves a body
+  `projects:` prose line, round-trip + frontmatter validity hold). smoke 274/0 · sim · mypy · manifests.
+- **Versioning — PATCH:** a behavioral fix to mirror content (mirrors drop canonical-only bookkeeping; the
+  canonical's provenance is untouched; no cycle-record schema change, no removed flag; legacy mirrors self-migrate
+  on the next pull).
+
 ## [0.1.25] — 2026-06-21
 
 ### Fixed (cross-project wikilink integrity — surfaced by a job-applicator dream pass; additive → patch)
