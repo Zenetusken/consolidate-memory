@@ -500,7 +500,23 @@ judged earned at a baseline and the store hasn't grown by Δ since; nothing to d
 (`memory_status.py --triage .`): the INDEX-RELIEF stages are **B** tracker/status (transient) + **C** dated/oversized
 (content-review — RANKS, you JUDGE; may be PROMOTE candidates); **R** referenced (in CLAUDE.md / an archive / a
 `[[wikilink]]` from another fact — NOT safe to evict; **de-link the surface FIRST**); **A** TRUE orphans (unindexed
-AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. Then act on `remediation.lever`:
+AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. **Relieve NON-DESTRUCTIVELY first
+(archive), then act on the routed `remediation.lever`:**
+   - **archive (PREFERRED — non-destructive; the proven discipline, v0.1.27):** before pruning or justifying,
+     RELOCATE the index pointers of **COMPLETED/MERGED arcs** — work that shipped AND whose durable lessons are
+     ALREADY extracted into kept facts — out of the always-loaded `MEMORY.md` into an ON-DEMAND **archive index**
+     (e.g. `SHIPPED.md`, an `_is_archive_index` link-list). The fact BODY stays (recallable via the archive); only
+     the always-loaded INDEX pointer moves — and the archive is OFF the index budget (on-demand, not measured by
+     `INDEX_TOKEN_BUDGET`), so this is the **budget-tier relief**: a lean always-loaded index with nothing lost.
+     **The keep-vs-archive call is JUDGMENT with a SILENT failure mode** — archive a *live* lesson and it stops
+     being recalled, with nothing to flag it (the recall-tier analogue of CLAUDE.md enforcement-erosion). So
+     **KEEP in `MEMORY.md`** anything lesson-bearing, a NEGATIVE / "don't-retry" finding, active state, or a
+     directive — **even if it's dated or says "SHIPPED"** (a `… SHIPPED 2026-05-31` pointer that is really a live
+     SQL-oracle lesson STAYS). Archive ONLY a genuinely-completed arc; when in doubt, keep (or standing-justify).
+     **Propose-then-apply — never auto-archive** (Safety rule): show the relocations + confirm. Record each as a
+     `reconciled` `entries[]` row (pointer relocated `MEMORY.md`→archive; body unchanged). Then **archive-then-
+     justify** the earned residual (the kept lessons/negatives that MUST stay always-loaded). (Not a routed
+     `lever` — a disposition you apply under any lever; most relief comes from it on a mature shipped-heavy store.)
    - **prune** (local-dominated): surface the candidates, evict the confirmed ones (a `deleted` `entries[]` row
      each) and/or rebuild the index lean. **Never auto-delete** — the triage offers, you confirm. **If
      `reaches_budget` is false** (a full prune still exceeds budget — earned density), prune what's safely
@@ -509,11 +525,11 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. T
    - **gc** (mirror-dominated, `mirror_index_tokens` > 50%): a local prune is futile (`--pull` re-creates
      mirrors) — use the global demote/GC lever (Phase-4 demote the canonical + step 2 GC), don't churn local.
    - **justify** (over budget, nothing safely prunable): record an explicit `entries[]` justification.
-   - **Standing-justify (D6/D7) — on a `justify` or prune-then-justify outcome:** persist the earned baseline so
-     the gate STOPS re-litigating every pass. In the Phase-5 marker write (step 5), add
+   - **Standing-justify (D6/D7) — on a `justify`, prune-then-justify, or archive-then-justify outcome:** persist
+     the earned baseline so the gate STOPS re-litigating every pass. In the Phase-5 marker write (step 5), add
      `standing_justify: {"facts": <current fact-count>, "index_tokens": <current>, "at": "<iso>"}`. The next pass
      SUPPRESSES the gate until fact-count grows by Δ (the delta-detector re-fires on NEW density). NEVER
-     standing-justify a store you could actually prune under budget — that hides real bloat.
+     standing-justify a store you could actually prune OR archive under budget — that hides real bloat.
    - **D3/D11 — do NOT "backfill" an over-budget index.** Phase 0's `index↔file` gap, when over budget, is
      INTENTIONAL (a mature store earns density by not indexing everything) — it is NOT drift to backfill (that
      net-grows under the gate). Backfill is legit only UNDER budget.
