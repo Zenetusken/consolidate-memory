@@ -17,6 +17,7 @@ from __future__ import annotations
 import difflib
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -977,6 +978,21 @@ def diffs_dir(project_dir: Path) -> Path:
     return auto_mem.parent / "dashboards" / "diffs"
 
 
+def _write_private(path: Path, text: str) -> None:
+    """v0.1.32: write owner-only (0o600) ATOMICALLY — these files hold memory fact BODIES. os.open WITH the mode
+    avoids the write_text-then-chmod TOCTOU (content never lands in a world-readable 0o644 window); the trailing
+    chmod also tightens a pre-existing file from before this fix."""
+    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.write(fd, text.encode("utf-8"))
+    finally:
+        os.close(fd)
+    try:
+        os.chmod(str(path), 0o600)
+    except OSError:
+        pass
+
+
 def _diff_lines(before_text: str, after_text: str, cap: int = _DIFF_LINE_CAP) -> dict:
     """A capped unified diff (stdlib difflib) as structured lines for the modal: {lines:[{t,s}], more:N}. `t` is
     '+'/'-'/'@'/' ' (added/removed/hunk/context); the modal renders each `s` via esc() — the load-bearing XSS guard
@@ -1636,11 +1652,7 @@ def main() -> int:
         return 0
     if "--snapshot" in argv:    # v0.1.22: Phase-0 BEFORE audit snapshot → per-slug temp path + print it
         path = audit_snapshot_path(ctx["slug"])
-        Path(path).write_text(json.dumps(audit_snapshot(project_dir), indent=2) + "\n", encoding="utf-8")
-        try:                    # v0.1.32: the snapshot now holds memory fact BODIES (the diff before-side) → owner-only
-            Path(path).chmod(0o600)
-        except OSError:
-            pass
+        _write_private(Path(path), json.dumps(audit_snapshot(project_dir), indent=2) + "\n")   # v0.1.32: holds fact bodies → 0o600 atomically
         print(path)
         return 0
     if "--audit" in argv:       # v0.1.22: Phase-5 diff vs the BEFORE snapshot → append the deterministic log + print summary
@@ -1677,11 +1689,7 @@ def main() -> int:
             _d = diffs_dir(project_dir)
             _d.mkdir(parents=True, exist_ok=True)
             sp = _d / (diff_key(marker) + ".json")
-            sp.write_text(json.dumps(diffs) + "\n", encoding="utf-8")
-            try:                # holds memory fact BODIES → owner-only
-                sp.chmod(0o600)
-            except OSError:
-                pass
+            _write_private(sp, json.dumps(diffs) + "\n")   # holds memory fact BODIES → 0o600 atomically
             print(f"diffs → {sp}  ({len(diffs)} memory file(s) changed)")
         except Exception as e:   # noqa: BLE001 — never crash a dream over a sidecar
             print(f"--diffs: skipped ({e})", file=sys.stderr)

@@ -988,8 +988,8 @@ _hd = rhtml.build_html({"project": "p", "marker": {"commit": "c", "timestamp": "
                        {"c__t": {"memory/x.md": {"op": "modified", "lines": [{"t": "+", "s": "</script><img src=x onerror=alert(1)>"}], "more": 0}}})
 check("v0.1.32: build_html embeds diffs INSIDE the data dict — a </script> in a diff line is escaped, not raw",
       '"diffs"' in _hd and "</script><img" not in _hd and "\\u003c/script" in _hd)
-check("v0.1.32: template carries the diff-modal (diffKey mirror, dmodal overlay, openDiff, memdiff chips, esc'd lines)",
-      all(s in _html for s in ["function diffKey", 'id="dmodal"', "function openDiff", 'id="memdiffs"', "DREAMDIFFS", "dl-plus"]))
+check("v0.1.32: template carries the diff-modal (diffKey mirror, dmodal overlay, openDiff, clickable ledger filename, esc'd lines)",
+      all(s in _html for s in ["function diffKey", 'id="dmodal"', "function openDiff", "nm-diff", "DREAMDIFFS", "dl-plus"]))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

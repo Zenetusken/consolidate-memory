@@ -115,13 +115,11 @@
   .row .act{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-family:var(--mono)}
   .row .nm{font-size:13px}.row .nm em{font-family:var(--serif);font-size:11px;color:var(--faint);font-style:italic;letter-spacing:0}
   .row .rs{font-size:11.5px;color:var(--ink2);line-height:1.55;margin-top:3px}   /* fill the column — no early width cap */
-  /* ── v0.1.32 diff-modal: clickable changed-memory-file chips + the diff overlay ── */
-  .memdiffs-head{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);margin:2px 0 8px}
-  .memdiffs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px}
-  .memdiff{cursor:pointer;border:1px solid var(--rule2);border-radius:2px;padding:5px 11px;font-family:var(--mono);
-    font-size:11px;color:var(--ink2);background:none;display:flex;gap:8px;align-items:center;transition:border-color .12s,color .12s}
-  .memdiff:hover{border-color:var(--accent);color:var(--accent)}
-  .memdiff .mop{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--faint)}
+  /* ── v0.1.32 diff-modal: clickable changed-fact filename (in the ledger) + the diff overlay ── */
+  .nm-diff{background:none;border:0;padding:0;font:inherit;color:var(--accent);cursor:pointer;
+    border-bottom:1px dotted var(--accent);transition:opacity .12s}
+  .nm-diff:hover{opacity:.7}
+  .act.a-changed{color:var(--data)}
   .modal{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center}
   .modal-bg{position:absolute;inset:0;background:rgba(0,0,0,.55)}
   .modal-box{position:relative;background:var(--paper);border:1px solid var(--ink);max-width:880px;width:90%;
@@ -311,8 +309,6 @@
 
   <!-- 04 ledger -->
   <section class="blk"><div class="shead"><span class="no">04</span><h3>Changes &amp; Decisions</h3><span class="ln"></span><span class="note" id="ent-note"></span></div>
-    <div class="memdiffs-head" id="memdiffs-head" style="display:none">memory diffs · click a file to inspect the before/after</div>
-    <div class="memdiffs" id="memdiffs"></div>
     <div class="ledger" id="entries"></div>
   </section>
 
@@ -562,33 +558,8 @@
       +'<div class="cap" style="margin-top:10px">Every recorded claim is checked against the live tree before it lands.</div>';
   })();
 
-  // ── ledger ──
-  (function(){
-    var box=el("entries");el("ent-note").textContent=ENT.length+" entr"+(ENT.length!==1?"ies":"y");
-    if(!ENT.length){box.innerHTML='<div class="cap" style="padding:16px 0">No recorded decisions this pass.</div>';return;}
-    box.innerHTML=ENT.map(function(e){var act=g(e,"action","-"),tier=g(e,"tier","");tier=(tier===""||tier==="-")?"":tier;var sc=g(e,"scope","");
-      return '<div class="row"><div class="act a-'+esc(act)+'">'+esc(act)+'</div>'
-        +'<div><div class="nm">'+esc(g(e,"name","—"))+(tier||sc?' <em>'+esc([tier,sc].filter(Boolean).join(" · "))+'</em>':'')+'</div>'
-        +(g(e,"reason","")?'<div class="rs">'+esc(g(e,"reason",""))+'</div>':'')+'</div>'
-        +'<div class="ci">'+(g(e,"citation","")?esc(g(e,"citation","")):'')+'</div></div>';}).join("");
-  })();
-
-  el("f-marker").textContent="marker → "+String(g(CUR,"marker.commit","—")).slice(0,12)+" @ "+String(g(CUR,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"");
-
-  // ── v0.1.32 diff-modal: the clickable changed-memory-file chips (driven by THIS dream's sidecar) ──
-  var DREAMDIFFS=ALLDIFFS[diffKey(g(CUR,"marker",{}))]||{};
-  (function(){
-    var paths=Object.keys(DREAMDIFFS);
-    if(!paths.length)return;                       // legacy / pre-feature dream → no chips, no modal (graceful)
-    el("memdiffs-head").style.display="";
-    el("memdiffs").innerHTML=paths.map(function(p){
-      var nm=String(p).replace(/^memory\//,"").replace(/\.md$/,"");
-      return '<button class="memdiff" data-p="'+esc(p)+'"><span class="mop">'+esc((DREAMDIFFS[p]||{}).op||"")+'</span>'+esc(nm)+'</button>';
-    }).join("");
-    [].slice.call(el("memdiffs").querySelectorAll(".memdiff")).forEach(function(b){
-      b.addEventListener("click",function(){openDiff(b.getAttribute("data-p"));});
-    });
-  })();
+  // ── v0.1.32 diff-modal: THIS dream's per-file memory diffs; a changed fact's NAME is clickable in the ledger ──
+  var DREAMDIFFS=ALLDIFFS[diffKey((CUR&&CUR.marker)||{})]||{};
   function openDiff(p){
     var d=DREAMDIFFS[p]; if(!d)return;
     el("dmodal-title").textContent=String(p).replace(/^memory\//,"")+"  ·  "+(d.op||"modified");
@@ -604,6 +575,29 @@
   function closeDiff(){el("dmodal").style.display="none";}
   el("dmodal-x").addEventListener("click",closeDiff);
   el("dmodal-bg").addEventListener("click",closeDiff);
+
+  // ── ledger: the narrated entries; a changed-memory-fact's NAME links to its diff (ONE list, no separate section) ──
+  (function(){
+    var box=el("entries"), used={};
+    function nameCell(nm){var p="memory/"+nm+".md";   // a memory fact's entry name == its slug → match the sidecar key
+      if(DREAMDIFFS[p]){used[p]=1;return '<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>';}
+      return esc(nm);}
+    var rows=ENT.map(function(e){var act=g(e,"action","-"),tier=g(e,"tier","");tier=(tier===""||tier==="-")?"":tier;var sc=g(e,"scope","");
+      return '<div class="row"><div class="act a-'+esc(act)+'">'+esc(act)+'</div>'
+        +'<div><div class="nm">'+nameCell(g(e,"name","—"))+(tier||sc?' <em>'+esc([tier,sc].filter(Boolean).join(" · "))+'</em>':'')+'</div>'
+        +(g(e,"reason","")?'<div class="rs">'+esc(g(e,"reason",""))+'</div>':'')+'</div>'
+        +'<div class="ci">'+(g(e,"citation","")?esc(g(e,"citation","")):'')+'</div></div>';});
+    Object.keys(DREAMDIFFS).filter(function(p){return !used[p];}).forEach(function(p){   // a changed file with no narrated entry → appended (rare; nothing hidden)
+      var nm=String(p).replace(/^memory\//,"").replace(/\.md$/,"");
+      rows.push('<div class="row"><div class="act a-changed">changed</div><div><div class="nm">'
+        +'<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button> <em>memory · diff</em></div></div><div class="ci"></div></div>');});
+    var nd=Object.keys(DREAMDIFFS).length;
+    el("ent-note").textContent=ENT.length+" entr"+(ENT.length!==1?"ies":"y")+(nd?" · "+nd+" diff"+(nd!==1?"s":""):"");
+    box.innerHTML=rows.length?rows.join(""):'<div class="cap" style="padding:16px 0">No recorded decisions this pass.</div>';
+    [].slice.call(box.querySelectorAll(".nm-diff")).forEach(function(b){b.addEventListener("click",function(){openDiff(b.getAttribute("data-p"));});});
+  })();
+
+  el("f-marker").textContent="marker → "+String(g(CUR,"marker.commit","—")).slice(0,12)+" @ "+String(g(CUR,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"");
 
   // ── theme toggle · auto (follow system) → light → dark ──
   (function(){
