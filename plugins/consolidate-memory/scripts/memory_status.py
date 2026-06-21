@@ -721,8 +721,12 @@ def claude_md_hierarchy(project_dir: Path) -> dict:
     ('a session in <dir> pays worst_path_tokens of CLAUDE.md every turn'). Bounded at project_dir (the repo root
     via .resolve()), never the filesystem root. Pure read; never mutates."""
     root = project_dir.resolve()
-    by_dir = {p.parent.resolve(): est_tokens(p.read_text(encoding="utf-8", errors="replace"))
-              for p in _claude_md_files(root)}
+    by_dir: dict = {}
+    for p in _claude_md_files(root):                     # guard the read (Gate-2): a dir-named CLAUDE.md or an
+        try:                                             # unreadable/raced file must NOT crash build_context — this
+            by_dir[p.parent.resolve()] = est_tokens(p.read_text(encoding="utf-8", errors="replace"))
+        except OSError:                                  # is on the critical path (build_context calls it always)
+            continue
     worst_dir, worst_tokens = root, 0
     for d in by_dir:                                    # 'leaf' = every dir that HAS a CLAUDE.md (Gate-1 #3)
         chain, cur = 0, d
@@ -789,15 +793,29 @@ def audit_diff(before: dict, after: dict) -> dict:
     ops: list = []
     roll = {"memory": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0},
             "claude_md": {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0}}
+
+    # The BEFORE snapshot is UNTRUSTED (a stale/cross-version/hand-edited file on disk) — guard every entry's
+    # shape (Gate-2): non-dict entry → ignored; missing hash/tokens → coerced; an unexpected `store` → clamped to
+    # 'memory'. (JSONDecodeError/OSError on the file are already handled at the --audit call site.)
+    def _tok(d: object) -> int:
+        try:
+            return int((d or {}).get("tokens", 0) or 0) if isinstance(d, dict) else 0
+        except (TypeError, ValueError):
+            return 0
+
     for label in sorted(set(before) | set(after)):
-        b, a = before.get(label), after.get(label)
+        b = before.get(label) if isinstance(before.get(label), dict) else None
+        a = after.get(label) if isinstance(after.get(label), dict) else None
         store = (a or b or {}).get("store", "memory")
-        if b and a and b["hash"] != a["hash"]:
-            op, delta = "modified", a["tokens"] - b["tokens"]
+        if store not in roll:
+            store = "memory"
+        bt, at = _tok(b), _tok(a)
+        if b and a and b.get("hash") != a.get("hash"):
+            op, delta = "modified", at - bt
         elif a and not b:
-            op, delta = "created", a["tokens"]
+            op, delta = "created", at
         elif b and not a:
-            op, delta = "deleted", -b["tokens"]
+            op, delta = "deleted", -bt
         else:
             continue                                    # unchanged (same hash) or both absent → not an op
         ops.append({"path": label, "op": op, "token_delta": delta, "store": store})

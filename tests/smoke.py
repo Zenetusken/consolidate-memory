@@ -76,6 +76,31 @@ check("v0.1.21: _standing_baseline returns the int baseline only for a well-form
       and ms._standing_baseline({"facts": "12"}) is None
       and ms._standing_baseline(None) is None)
 
+# v0.1.22: audit_snapshot_path is per-slug + deterministic (sibling of cycle_seed_path).
+check("v0.1.22: audit_snapshot_path is per-slug + deterministic, distinct from the cycle path",
+      ms.audit_snapshot_path("-a") == ms.audit_snapshot_path("-a")
+      and ms.audit_snapshot_path("-a") != ms.audit_snapshot_path("-b")
+      and ms.audit_snapshot_path("-a") != ms.cycle_seed_path("-a")
+      and ms.audit_snapshot_path("-a").endswith("cm-audit-a.json"))
+# v0.1.22: audit_diff classifies created/modified/deleted by content-hash; unchanged ≠ op.
+_a_before = {"memory/keep.md": {"hash": "h1", "tokens": 5, "store": "memory"},
+             "memory/edit.md": {"hash": "h2", "tokens": 5, "store": "memory"},
+             "memory/gone.md": {"hash": "h3", "tokens": 4, "store": "memory"}}
+_a_after = {"memory/keep.md": {"hash": "h1", "tokens": 5, "store": "memory"},      # unchanged
+            "memory/edit.md": {"hash": "hX", "tokens": 9, "store": "memory"},      # modified
+            "memory/new.md": {"hash": "h4", "tokens": 7, "store": "memory"}}       # created
+_ad = ms.audit_diff(_a_before, _a_after)
+_adops = {o["path"].rsplit("/", 1)[-1]: o["op"] for o in _ad["operations"]}
+check("v0.1.22: audit_diff = created/modified/deleted by hash; unchanged is NOT an op",
+      _adops == {"edit.md": "modified", "gone.md": "deleted", "new.md": "created"}
+      and _ad["memory"]["created"] == 1 and _ad["memory"]["modified"] == 1 and _ad["memory"]["deleted"] == 1)
+# v0.1.22 (Gate-2): the BEFORE snapshot is untrusted — a malformed/legacy entry must NOT crash audit_diff.
+check("v0.1.22: audit_diff is robust to a malformed before-snapshot (missing tokens · bad store · non-dict)",
+      ms.audit_diff({"memory/x.md": {"hash": "a"},                                  # missing tokens
+                     "memory/y.md": {"hash": "h", "tokens": 5, "store": "weird"},   # unexpected store → clamped
+                     "memory/z.md": "not-a-dict"},                                  # non-dict entry
+                    {"memory/x.md": {"hash": "b", "tokens": 9, "store": "memory"}})["memory"]["modified"] == 1)
+
 # --- hardening: SHA validation rejects argument-injection from a tampered state file ---
 check("sha: accepts real hex sha", ms._valid_sha("b6d37b6") and ms._valid_sha("a" * 40))
 check("sha: rejects git option injection", not ms._valid_sha("--output=/etc/passwd"))
