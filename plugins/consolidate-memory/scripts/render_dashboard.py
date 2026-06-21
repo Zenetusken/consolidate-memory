@@ -439,7 +439,7 @@ def render(record: ms.CycleRecord) -> str:
         # D1/D2 defensive (v0.1.21): the gauge sources budget.index; the TRIGGER network-node has the same
         # index (its always_loaded_tokens). A GROSS divergence = the wrong-budget class the /tmp/cycle.json
         # collision produced (885 vs 2771 = 3×). Advisory only, generous tolerance (>1.5×) → never false-warn.
-        _trig = next((n for n in _dget(record, "network").get("nodes", []) if n.get("trigger")), None)
+        _trig = next((n for n in _lget(_dget(record, "network"), "nodes") if isinstance(n, dict) and n.get("trigger")), None)
         if _trig:
             _itok, _ntok = _num(at), _num(_trig.get("always_loaded_tokens", 0))
             if _itok and _ntok and max(_itok, _ntok) / max(1, min(_itok, _ntok)) > 1.5:
