@@ -1138,6 +1138,39 @@ def remediation_render_coherence(ctx: Ctx) -> list[Result]:
     return out
 
 
+@family
+def maintenance_pivot_coherence(ctx: Ctx) -> list[Result]:
+    """v0.1.37: the no-op SELF-HEAL pivot CUE is surfaced. A store with maintenance work (dangling links
+    / over-budget-not-justified) MUST render the Phase-0 MAINTENANCE cue, so a magnitude-0 dream is CUED
+    to pivot (Phase 1 --pull + Phase 5 health) instead of exiting with "nothing to do". Deterministic:
+    checks the cue is PRESENT in the skill's real Phase-0 output — it CANNOT observe the model's pivot
+    DECISION (m5), only that the signal foundation exists. Version-aware: a pre-v0.1.37 skill (no
+    `maintenance` block in --json) is not-applicable → SKIP-by-empty."""
+    import subprocess as _sp, sys as _sys
+    out: list[Result] = []
+    maint = (ctx.status.get("maintenance") if isinstance(ctx.status, dict) else None) or {}
+    if not maint:
+        return out                              # pre-v0.1.37 skill, or no store → not applicable
+    if not maint.get("work"):
+        return out                              # no maintenance work on this store → no cue required
+    ms_py = Path(ctx.skill) / "memory_status.py"
+    if not ms_py.exists():
+        return out
+    try:
+        r = _sp.run([_sys.executable, str(ms_py)], capture_output=True, text=True, timeout=30, cwd=str(ctx.repo))
+        render = r.stdout if r.returncode == 0 else ""
+    except Exception:  # noqa: BLE001 — a render failure SKIPs, never crashes the oracle
+        return out
+    cued = "MAINTENANCE" in render
+    out.append(_R("maintenance_pivot_coherence", "CHK-MAINT-CUE",
+                  "maintenance work surfaces the Phase-0 pivot cue", "MED", "PASS" if cued else "FAIL",
+                  "a store with maintenance.work renders the Phase-0 MAINTENANCE cue (the pivot signal)",
+                  f"maintenance.work=true (dangling={maint.get('dangling', 0)}); Phase-0 cue {'present' if cued else 'ABSENT'}",
+                  "memory_status Phase-0 render", "memory_status.py", "v0.1.37", "rendered",
+                  (_grep_quote(render, "MAINTENANCE") or "") if cued else ""))
+    return out
+
+
 # ─────────────────────────────── run + report ───────────────────────────────
 
 

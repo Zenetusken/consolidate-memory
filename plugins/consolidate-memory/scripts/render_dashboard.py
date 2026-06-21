@@ -225,6 +225,11 @@ def _outcome(record: Mapping[str, Any]) -> str:
     candidates = scope.get("session_candidates", 0) or 0
     git = scope.get("git_commits", 0) or 0
     reviewed = scope.get("memories_reviewed", 0) or 0
+    # v0.1.37: a maintenance pass that PIVOTED on a no-op (self-heal / cross-node enrichment) but made no
+    # new-fact writes must NOT read as NOTHING/NO-OP (the misleading banner the no-op bug produced). After
+    # the explicit `outcome` override (above), before the write-count fallbacks.
+    if _dget(record, "maintenance").get("pivoted") and writes == 0:
+        return "MAINTENANCE PASS · self-heal / cross-node enrichment"
     if writes == 0 and candidates == 0 and git == 0 and reviewed == 0:
         return "NOTHING TO CONSOLIDATE"  # nothing even to examine
     if writes == 0:
