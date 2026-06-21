@@ -45,7 +45,11 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
     sync_global.py                 cross-project: --list/--pull/--gc/--tokens/--network + provenance
     render_dashboard.py            the data-driven dashboard (renders a cycle record)
-cm                                 dev CLI over the scripts (uses explicit paths, not ${CLAUDE_PLUGIN_ROOT})
+cm                                 dev CLI over the scripts (uses explicit paths, not ${CLAUDE_PLUGIN_ROOT}).
+                                   symlink-safe (readlink -f) → install on PATH for frictionless per-repo use:
+                                   `ln -s "$(pwd)/cm" ~/.local/bin/cm` (then `cm report`/`cm status`/`cm log`
+                                   from ANY repo, CWD-defaulting to that project). MAINTAINER tool — end users
+                                   open ~/.claude/projects/<slug>/dashboards/index.html (see SKILL Phase 5).
 tests/                             zero-dependency smoke + accumulation sim + manifest validation
 memory/                            GITIGNORED placeholder (.gitkeep only) — the personal global store lives at ~/.claude/memory (a real dir, decoupled from this repo)
 ```

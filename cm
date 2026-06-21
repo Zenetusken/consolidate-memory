@@ -3,7 +3,7 @@
 # plugin's scripts (plugins/consolidate-memory/scripts/) so a maintainer can drive a
 # pass (or inspect the network) from the shell without the plugin being installed.
 set -euo pipefail
-HERE="$(cd "$(dirname "$0")" && pwd)"
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"   # readlink -f → resolve a PATH symlink to the real repo (so `cm` works installed on PATH)
 S="$HERE/plugins/consolidate-memory/scripts"
 cmd="${1:-help}"; shift || true
 
