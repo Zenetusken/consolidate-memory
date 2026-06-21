@@ -5,6 +5,34 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.23] — 2026-06-20
+
+### Fixed (memory-index residuals from the dream beta-harness WARNs on v0.1.22; additive → patch)
+The dream beta-harness confirmed the v0.1.20/21 fixes (D1–D5, D7 FAIL→PASS against git history) and left two
+advisory WARNs — both verified live + closed here (orthogonal to the CLAUDE.md arc):
+- **D6 — the standing-justify now re-fires on index-TOKEN growth, not just fact-count.** The v0.1.21 suppress
+  predicate keyed on fact-count alone, so hook bloat (tokens up, facts flat) past a justified baseline stayed
+  silently suppressed — blind to the exact axis the budget polices. The gate now suppresses ONLY when BOTH
+  fact-count ≤ baseline+Δ AND index tokens ≤ baseline_tokens × 1.25 (`_STANDING_JUSTIFY_TOKEN_FACTOR`); either
+  axis growing — or no valid token baseline — re-fires. Fails OPEN like the fact-axis. The marker already
+  persists `index_tokens` (since v0.1.21), so no schema change.
+- **D10 — archive-index docs + MEMORY.md are now valid wikilink targets.** memex's "dangling" links were mostly
+  false positives: `[[SHIPPED]]` points at the real `SHIPPED.md` archive but was flagged because the check saw
+  fact-stems only. `valid_link_targets(auto_mem)` returns every `*.md` stem (facts + archive docs + `MEMORY`);
+  the Phase-5 dangling check + `resolve_wikilink` resolve against it, so `[[SHIPPED]]`/`[[MEMORY]]` aren't
+  false-flagged. (The bulk of the rest — code-span `[[...]]`, paths — is the model's SKILL-instructed
+  code-span-stripping job; the genuinely drifted few still surface for a dream's judgment.)
+
+### Internal
+- New `_standing_baseline_tokens` + `_STANDING_JUSTIFY_TOKEN_FACTOR` + `valid_link_targets`; a two-axis suppress
+  predicate; SKILL dangling-check prose. NO cycle-record change (the token baseline lives in the marker; the
+  surface text is static prose — no co-edit).
+- Probe P (token-axis fires on bloat · fact-axis still fires independently · zero/missing token baseline fail-open
+  · archive/index resolve) + 2 smoke units. (Probe N's marker got a generous token baseline to isolate the
+  fact-axis it tests.) smoke 269/0 · sim · mypy · manifests.
+- **Versioning — PATCH:** additive helper + a behavioral tightening (the gate fires more accurately on token
+  bloat — the safe direction); no removed/renamed flag, no schema change. The CLAUDE.md mutation → v0.1.24.
+
 ## [0.1.22] — 2026-06-20
 
 ### Added (CLAUDE.md-arc FOUNDATION — whole-hierarchy measurement + deterministic mutation audit trail; additive → patch)

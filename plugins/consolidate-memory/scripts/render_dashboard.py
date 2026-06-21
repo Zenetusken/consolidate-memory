@@ -466,7 +466,7 @@ def render(record: ms.CycleRecord) -> str:
         # v0.1.21 (D6/D7): over budget but the density is STANDING-JUSTIFIED — gate suppressed, no re-surface.
         out.append("")
         out.append("  " + _c("REMEDIATION", "bold") + _c("   · over-budget gate · STANDING-JUSTIFIED (suppressed)", "dim"))
-        out.append(f"    {_c('✓', 'green')} density justified at baseline {_g(rem.get('baseline_facts', 0))} facts — gate suppressed until +Δ growth")
+        out.append(f"    {_c('✓', 'green')} density justified at baseline {_g(rem.get('baseline_facts', 0))} facts — gate suppressed until +Δ facts or index-token bloat")
     elif rem:
         out.append("")
         out.append("  " + _c("REMEDIATION", "bold") + _c(f"   · over-budget gate · lever {str(rem.get('lever', '')).upper()}", "dim"))
