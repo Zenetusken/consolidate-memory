@@ -618,7 +618,8 @@
 
   // focus: collapse/expand dashboard sections (persisted across reloads, incl. nav), keyed on the section title
   (function(){
-    var COLL; try{COLL=JSON.parse(localStorage.getItem("cm-collapsed")||"[]")||[];}catch(e){COLL=[];}
+    var COLL; try{COLL=JSON.parse(localStorage.getItem("cm-collapsed")||"[]");}catch(e){COLL=[];}
+    if(!Array.isArray(COLL))COLL=[];   // tolerate a tampered non-array localStorage value (else .indexOf throws)
     [].slice.call(document.querySelectorAll("#app .blk>.shead")).forEach(function(h){
       var key=((h.querySelector("h3")||{}).textContent||"").trim();
       if(COLL.indexOf(key)>=0) h.parentNode.classList.add("collapsed");
