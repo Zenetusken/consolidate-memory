@@ -290,6 +290,19 @@ check("v0.1.38/M1: --allow-net-grow overrides the guard", sg._would_net_grow(_B3
 check("v0.1.38/M1: cross_project.held renders the LOUD lever (RENDER half only — the stdout→record capture is a SKILL Phase-1 instruction, model-driven, not script-testable here)",
       "held 2" in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {"git_commits": 1},
           "entries": [], "cross_project": {"held": 2}})))
+# v0.1.39 (M2) — _bodies_match: frontmatter-stripped, whitespace-normalized BODY compare (the promote()
+# reconcile data-loss guard). Identical body / differing frontmatter → True; a re-framed body → False.
+check("v0.1.39/M2: _bodies_match True on identical body despite differing frontmatter",
+      sg._bodies_match("---\na: 1\n---\nThe lesson.\n\n- pt\n", "---\nb: 2\nprojects: [p]\n---\nThe lesson.\n\n- pt\n") is True)
+check("v0.1.39/M2: _bodies_match False on a re-framed body (the silent-data-loss case promote() now refuses)",
+      sg._bodies_match("---\na: 1\n---\nThe lesson.\n", "---\na: 1\n---\nThe lesson, RE-FRAMED.\n") is False)
+check("v0.1.39/M2: _body strips ONLY the leading frontmatter, preserving `---` rules in the body (not split('---'))",
+      sg._body("---\nn: x\n---\nintro\n\n---\n\nmore") == "intro\n\n---\n\nmore")
+# v0.1.39 (M4) — promote() Guard-2 validates stack-general stacks: ⊆ _DETECTABLE_STACKS (the closed vocab).
+check("v0.1.39/M4: _DETECTABLE_STACKS covers the detectable vocab (⊇ the known stacks)",
+      {"rag", "gpu", "pdf", "playwright", "python", "mypy", "claude-code"} <= sg._DETECTABLE_STACKS)
+check("v0.1.39/M4: an undetectable stack is NOT in the vocab ([release]/[ci-cd] → fleet-dead, refused)",
+      not ({"release", "ci-cd"} <= sg._DETECTABLE_STACKS))
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",
                  "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
                  "rigor": {"phase": "final", "applied": "HEAVY"}}).splitlines() if "RIGOR" in ln), "")

@@ -5,6 +5,26 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.39] — 2026-06-22
+
+### Fixed — M2 + M4: two `promote()` pre-write guards (audit MAJORs)
+- **M2 — `promote()` reconcile silently DISCARDED a re-framed local fact (data loss).** On reconcile (the canonical
+  exists), `promote()` rewrites the origin as a mirror of the EXISTING canonical body — so a local carrying NEW
+  re-framed content was destroyed with no trace, reported as benign success. A content-divergence guard (pure
+  `_bodies_match()` — frontmatter-stripped via a leading-block-only regex so a body's own `---`/`***` rules
+  survive, whitespace-normalized, strict) now REFUSES the reconcile when the local body differs ("merge into the
+  canonical first") — or `--prefer-canonical` keeps the canonical + drops the local body (the genuine dedup intent,
+  mirroring M1's `--allow-net-grow`). Covers BOTH sub-cases (rename + same-name).
+- **M4 — `promote()` Guard-2 let an undetectable-stacks fact write a fleet-DEAD canonical.** A stack-general fact
+  whose `stacks:` are non-empty but outside `detect_stacks`'s closed vocabulary (a typo, or a real-but-undetectable
+  stack like `release`/`ci-cd`) wrote a canonical `is_relevant` matches for NO project. Guard-2 now validates
+  `stacks ⊆ _DETECTABLE_STACKS` (block), beside the existing empty-set check.
+- Both are pre-write guards (Guard-3's no-partial-state rule) in one `promote()` cycle. Verified by a hermetic E2E
+  (M2 refuse + `--prefer-canonical` escape + M4 refuse + a detectable-stack negative control) + 5 smoke units on the
+  pure helpers. Process: the audit is the spec → implement → Gate-2. smoke 313/0 · mypy 15 · manifests. **PATCH**
+  (additive `--prefer-canonical` flag + `prefer_canonical` param; the guards refuse only what was already broken —
+  data-loss / fleet-dead writes — valid promotes unaffected).
+
 ## [0.1.38] — 2026-06-22
 
 ### Fixed — M1: the over-budget net-grow guard (completes the v0.1.37 self-heal pivot; audit BLOCKER)
