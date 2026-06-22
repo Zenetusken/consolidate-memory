@@ -5,6 +5,26 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.43] — 2026-06-22
+
+### Fixed — session-id discovery: window-aware extract_signals + originSessionId producer (pre-1.0 audit blocker #2)
+Discovery read only the NEWEST-mtime transcript, not all sessions in the marker..HEAD window — so a fresh session
+opened JUST to run dream HID the prior heavy session's intent (the killer case the on-disk read was meant to
+defend). And originSessionId was validated/consumed but NEVER produced.
+- **A — window-aware `extract_signals` (Phase-2-internal):** `_latest_transcript` → `_window_transcripts` — pool
+  ALL `*.jsonl` in the window (mtime-prune only definitely-stale files; the per-line `since` does the exact
+  scoping) through the SAME single per-line path, emitting each candidate's `sessionId`. **SECRETS FIREWALL
+  preserved (the ship-gate):** one per-line scrub path fed from the pooled files — NO second read path; a smoke
+  case pins the scrub across >1 pooled file (secret value absent). Pooled dedup; `max_n` caps the pooled set.
+  CONTRACT change (internal-only consumer): `--json` `transcript` (single) → `transcripts` (list). ZERO
+  SKILL-command change.
+- **C — `originSessionId` producer:** the fact-write template (harness-map + SKILL Phase 4) now stamps it from the
+  signal's `sessionId` (the MOTIVATING session — may be a PRIOR one), omitted for git-derived project facts —
+  closing the producer gap the old "CC-INJECTED" wording wrongly presumed existed.
+Bounded (git log already covers project facts; the loss was prior-session feedback/prefs — the durable
+user-global slice). smoke 333/0 (incl. firewall + multi-session + mtime-prune units) · mypy 16. Meta-req HELD
+(Phase-2-internal, no new command/manual step). **PATCH** (internal contract; no external consumer).
+
 ## [0.1.42] — 2026-06-22
 
 ### Added — cold-start bootstrap: the dream is NETWORK-AWARE on an empty store (pre-1.0 audit blocker #1)
