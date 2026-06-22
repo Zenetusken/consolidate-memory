@@ -172,8 +172,19 @@ auto-memory files, the transcript inventory (report only — **never bulk-read t
 `.jsonl`; it can be tens of MB**), the last consolidation marker (`commit` +
 `timestamp`), and `git log <marker>..HEAD`. If
 there's no marker, treat this as the first consolidation and scope to the recent
-git log + the current session. If both stores are empty and there's nothing new
-since the marker, report "Nothing to consolidate" and stop. It also prints a
+git log + the current session.
+
+**The no-op rule (v0.1.37 — self-heal pivot).** Report "Nothing to consolidate" and STOP **only when
+the store is EMPTY**. A **non-empty** store with 0 new commits is NOT a no-op — it is a **MAINTENANCE
+pass**: even with no new work, the store may carry health debt (dangling links, stale records) and the
+cross-project tier may hold NEW sibling-promoted facts to pull. So do **not** stop at Phase 0 — PROCEED
+through Phase 1 (`sync_global --pull` cross-node enrichment; pass `--refresh-only` when the index is
+**over-budget-not-justified**, so it can't net-grow a gated index) + Phase 5 (health: dangling-fix /
+prune-or-justify), **report-then-apply** (propose the writes — `--pull` is the only auto-safe step).
+Phase 0 emits a **MAINTENANCE cue** (the `maintenance` block + a "PROCEED" line) so the pivot is
+signal-driven, not a thing to remember. Set `maintenance.pivoted=true` when you run it; a pivot that
+writes no new facts renders a **MAINTENANCE PASS** banner (not the misleading NOTHING/NO-OP). A TRUE
+no-op (the empty-store stop) is the only case that ends at Phase 0. It also prints a
 **provisional rigor tier** (from `git_commits`; finalized in Phase 2 once you curate
 `session_candidates`), any
 **prune-pressure** flag — see *Rigor modes* above — and (when commits have accrued since the last
@@ -554,15 +565,16 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    reported, not auto-pruned.)
 3. Re-confirm every file path / function name you referenced still exists.
    → **Cycle record:** fill `health` — `index_pointers_ok`, any `broken` pointers,
-   any `dangling_links` (`[[name]]` wikilinks pointing at no target file). Resolve against
-   the FULL valid-target set — `memory_status.valid_link_targets(auto_mem)` (every `*.md`:
-   facts + archive-index docs like `SHIPPED.md` + `MEMORY`): an archive/index ref such as
-   `[[SHIPPED]]` / `[[MEMORY]]` is a REAL target, NOT dangling (D10, v0.1.23 — don't
-   false-flag it). Strip inline code spans first: `[[...]]` inside backticks is NOT a
-   wikilink (e.g. TOML `[[tool.mypy.overrides]]`) — don't flag those. For each genuinely
-   dangling `[[name]]`, try `memory_status.resolve_wikilink(name, valid_link_targets(auto_mem))`
-   — it resolves slug-drift (`[[qwen-migration-research]]` → `qwen_migration_research_2026_05_26`);
-   SUGGEST the drifted target as a fix and confirm before re-linking, never auto-rewrite (D10, v0.1.21).
+   any `dangling_links` (`[[name]]` wikilinks pointing at no target file). **Use the SINGLE-SOURCE
+   helper — `memory_status.dangling_links(auto_mem)`** (v0.1.37): it resolves every `[[name]]` against
+   the FULL valid-target set (`valid_link_targets` — facts + archive-index docs like `SHIPPED.md` /
+   `MEMORY`, so `[[SHIPPED]]`/`[[MEMORY]]` are REAL targets, NOT dangling — D10) with inline code spans
+   stripped (`[[...]]` in backticks, e.g. TOML `[[tool.mypy.overrides]]`, is not a wikilink). **Phase-0
+   `maintenance.dangling` calls the SAME helper**, so the two counts can't drift (the cycle-record-contract
+   discipline). For each genuinely dangling `[[name]]`, try `memory_status.resolve_wikilink(name,
+   valid_link_targets(auto_mem))` — it resolves slug-drift (`[[qwen-migration-research]]` →
+   `qwen_migration_research_2026_05_26`); SUGGEST the drifted target as a fix and confirm before
+   re-linking, never auto-rewrite (D10, v0.1.21).
 4. **Measure the network's token cost** (the observability section). Capture per-node
    + total estimated token consumption across every node in the shared-memory network
    and paste it into the cycle record's `network` block verbatim:
@@ -746,6 +758,10 @@ summary alongside it.
     "projected_index": 0, "achieved_index": 0,
     "projected_recall": 0, "achieved_recall": 0,
     "standing_justified": false, "baseline_facts": 0, "reaches_budget": true
+  },
+  "maintenance": {
+    "_": "v0.1.37: the no-op SELF-HEAL pivot signal (seeded Phase 0, cheap/local). A NON-EMPTY store with 0 new commits is a MAINTENANCE pass, NOT a no-op — PROCEED to Phase 1 --pull (cross-node enrichment) + Phase 5 health. over_budget_not_justified = remediation.required (the dual-axis suppression result, not a fresh budget compare). Set pivoted=true in Phase 5 when you run it → drives the MAINTENANCE PASS banner.",
+    "dangling": 0, "over_budget_not_justified": false, "work": false, "pivoted": false
   },
   "audit": {
     "_": "v0.1.22: DETERMINISTIC script-emitted mutation trail. Phase 0 `memory_status.py --snapshot` writes a per-slug BEFORE snapshot; Phase 5 `--audit <snapshot>` diffs, appends .mutation-log.jsonl, and fills this — what THIS pass ACTUALLY changed (content-hash), cf. the model-narrated entries[]. MEMORY.md modified = expected re-index churn.",

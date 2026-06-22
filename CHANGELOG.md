@@ -5,6 +5,38 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.37] — 2026-06-21
+
+### Added — the no-op SELF-HEAL pivot: a no-op dream no longer exits with "nothing to do, bye"
+A magnitude-0 dream (0 new commits) on a NON-EMPTY store is no longer a no-op — it is a **MAINTENANCE pass**:
+the store may carry health debt (dangling links, stale records) and the cross-project tier may hold new
+sibling-promoted facts to pull. The Phase-0 stop now fires ONLY for an EMPTY store; a non-empty store PIVOTS
+into Phase 1 (`--pull` cross-node enrichment) + Phase 5 (health: dangling-fix / prune-or-justify),
+report-then-apply. (Found by dogfooding: Doc_Flo carried 6 dangling links + a stale store a no-op kept skipping.)
+- **Signal-driven, not prose** — `memory_status` emits a `maintenance` block (`dangling`,
+  `over_budget_not_justified` = the dual-axis suppression result, `work`) + a Phase-0 PROCEED cue, so the pivot
+  is cued by DATA (missing prose was the bug).
+- **Read-only by default** (the safety posture) — `--pull` is proposed, and a new `sync_global --pull
+  --refresh-only` mode refreshes stale mirrors but HOLDS BACK missing new globals (no index net-grow), the
+  enforced gate the pivot uses when the index is over-budget-not-justified (honors the v0.1.18 no-net-grow
+  invariant — enforced, not model discretion).
+- **Single-source dangling** — a new `memory_status.dangling_links()` helper; Phase-0 maintenance, the Phase-5
+  health fill, and the smoke test all call it, so the dangling count can't drift.
+- **MAINTENANCE PASS banner** — `render_dashboard._outcome()` no longer renders a pivoted self-heal pass as the
+  misleading NOTHING/NO-OP.
+- **dream-beta-tester 0.1.3** — new `maintenance_pivot_coherence` family: a store with maintenance work MUST
+  surface the Phase-0 pivot cue (the regression guard for the signal foundation).
+- Gated: empirics → spec → Gate-1 independent review-to-zero (3 blockers folded — read-only pivot,
+  steady-state trigger [dropped the perpetual-nag `stale_since_marker`], banner mechanism) → impl → Gate-2
+  (`/code-review`, max effort). An impl-time empirical discovery (a live sibling-promoted global a no-op would
+  miss) refined the PROCEED cue to fire on `commits==0` + non-empty, not just local work. **Gate-2 caught a real
+  bug** — a held-back MISSING fact under `--refresh-only` still wrote PHANTOM provenance to the shared global
+  canonical (`_record_provenance` fired on `status=="MISSING"`); fixed to exclude the held case — plus 6
+  hardening fixes (the Phase-0 cue now emits the gated `--pull --refresh-only` command itself; `dangling_links`
+  strips fenced code blocks too; `maintenance` added to the nested SKILL↔TypedDict pin + `validate_cycle_record`;
+  the beta family reuses the captured render). +4 smoke units. smoke 302/0 · mypy 15 files · manifests. PATCH
+  (additive; read-only pivot → no contract break).
+
 ## [0.1.36] — 2026-06-21
 
 ### Fixed (defensive hardening) — the remediation block gates on `required`, not mere presence

@@ -243,6 +243,16 @@ class Remediation(TypedDict, total=False):
     reaches_budget: bool           # can a full prune of the candidates reach budget? False ⇒ prune-then-standing-justify
 
 
+class Maintenance(TypedDict, total=False):
+    # v0.1.37: the no-op SELF-HEAL pivot signal — surfaced on EVERY pass, load-bearing on magnitude-0. A
+    # NON-EMPTY store with `work` true PIVOTS into Phase 1 (--pull) + Phase 5 (health) instead of the
+    # Phase-0 no-op stop. Signal-driven: the pivot cue is DATA, not prose (missing prose is what failed).
+    dangling: int                    # dangling [[wikilinks]] (len(dangling_links()) — the single-source helper)
+    over_budget_not_justified: bool  # = remediation.required (the dual-axis suppression result; NOT a fresh budget compare)
+    work: bool                       # any(dangling>0, over_budget_not_justified) — the magnitude-0 pivot trigger
+    pivoted: bool                    # Phase 5: the model RAN a maintenance pass (drives the MAINTENANCE outcome banner)
+
+
 class CycleRecord(TypedDict, total=False):
     project: str
     session: str
@@ -255,6 +265,7 @@ class CycleRecord(TypedDict, total=False):
     cross_project: CrossProject
     network: Network
     remediation: Remediation       # v0.1.18: over-budget gate + staged-triage outcome (additive; legacy records render)
+    maintenance: Maintenance       # v0.1.37: no-op self-heal pivot signal (additive; legacy records render)
     audit: Audit                   # v0.1.22: deterministic script-emitted mutation trail (additive; legacy records render)
     marker: Marker
     outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
@@ -431,6 +442,35 @@ def valid_link_targets(auto_mem: Path) -> set:
     not a dangling link; the Phase-5 dangling check must resolve against THIS set (not fact-stems alone) or it
     false-flags archive/index refs (the D10 false-positive class). READ-ONLY."""
     return {f.stem for f in auto_mem.glob("*.md")} if auto_mem.exists() else set()
+
+
+def dangling_links(auto_mem: Path) -> list[str]:
+    """v0.1.37: the SINGLE-SOURCE dangling-[[wikilink]] list for a store — every `[[target]]` in a fact
+    body resolving to NO valid target (resolve_wikilink against valid_link_targets), code spans stripped
+    first — fenced (```...```) AND inline (`...`) — so a `[[x]]` inside a code block (e.g. TOML
+    `[[tool.mypy.overrides]]`) is NOT a wikilink. (A 4-space-indented code block is a known minor gap → at
+    worst a spurious-but-safe maintenance cue, never a wrong write.)
+    Phase-0 maintenance, the Phase-5 health fill, and the smoke test all call THIS, so the dangling count
+    can't drift between them (the drift class the cycle-record contract exists to prevent). READ-ONLY."""
+    if not auto_mem.exists():
+        return []
+    targets = valid_link_targets(auto_mem)
+    out: set[str] = set()
+    for f in auto_mem.glob("*.md"):
+        if f.name == "MEMORY.md":              # the index holds pointer links, not [[wikilinks]]
+            continue
+        try:
+            body = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        body = re.sub(r"```.*?```", "", body, flags=re.DOTALL)   # fenced code blocks (```toml [[x]] ```)
+        body = re.sub(r"`[^`]*`", "", body)                       # inline code spans (`[[x]]`)
+        for raw in re.findall(r"\[\[([^\]]+)\]\]", body):
+            name = raw.strip()
+            if name in targets or resolve_wikilink(name, targets):
+                continue
+            out.add(name)
+    return sorted(out)
 
 
 _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
@@ -1178,6 +1218,16 @@ def build_context(project_dir: Path) -> dict:
         remediation = remediation_triage(fact_files, index_names, index_lb[2],
                                          est_tokens("\n".join(_mirror_idx)), reference_stems=ref_stems)
 
+    # v0.1.37: the no-op SELF-HEAL maintenance signal — cheap, LOCAL-only (no cross-store scan on the
+    # always-run Phase-0 path; pullable is a Phase-1 `--list` concern, m1). `over_budget_not_justified`
+    # REUSES the dual-axis suppression result (`remediation.required`), NOT a fresh budget compare — so a
+    # standing-justified store reads False (no perpetual pivot). `remediation` is {} on the healthy path,
+    # hence `.get`, not subscript (would KeyError). No `stale_since_marker` (it re-fires every run).
+    _dangling = dangling_links(auto_mem)
+    _obnj = bool((remediation or {}).get("required"))
+    maintenance: dict = {"dangling": len(_dangling), "over_budget_not_justified": _obnj,
+                         "work": bool(_dangling) or _obnj}
+
     return {
         "project_dir": project_dir,
         "project": project_dir.name,
@@ -1203,6 +1253,7 @@ def build_context(project_dir: Path) -> dict:
         "schema_drift": drift,
         "slug_orphans": slug_orphans,
         "remediation": remediation,
+        "maintenance": maintenance,
     }
 
 
@@ -1335,6 +1386,9 @@ def seed_record(ctx: dict) -> CycleRecord:
         "health": {"index_pointers_ok": True, "broken": [], "dangling_links": [],
                    "slug_orphans": [o["slug"] for o in ctx["slug_orphans"]],
                    "schema_drift": ctx["schema_drift"]},
+        "maintenance": {"dangling": ctx["maintenance"]["dangling"],
+                        "over_budget_not_justified": ctx["maintenance"]["over_budget_not_justified"],
+                        "work": ctx["maintenance"]["work"]},
         "cross_project": {
             "global_store_facts": len(list((Path.home() / ".claude" / "memory").glob("*.md")))
             - (1 if (Path.home() / ".claude" / "memory" / "MEMORY.md").exists() else 0),
@@ -1391,7 +1445,8 @@ def validate_cycle_record(record: object) -> list[str]:
         return [f"cycle record is not a dict (got {type(record).__name__})"]
 
     # Top-level keys that MUST be a dict if present.
-    for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health", "audit"):
+    for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health",
+                "audit", "remediation", "maintenance"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
@@ -1547,6 +1602,32 @@ def print_report(ctx: dict) -> None:
         for f in facts:
             fl, fby, ft = _measure(f)
             add("      " + _ui.c(f"{f.stem:<{wn}}  {fl:>3} ln · {fby:>5} by · ≈{ft:>4} tok", "dim"))
+
+    # v0.1.37: the no-op SELF-HEAL pivot cue — prominent so a magnitude-0 pass on a NON-EMPTY store routes
+    # into maintenance (Phase 1 --pull + Phase 5 health, report-then-apply) instead of exiting. The cue is
+    # this line + the --json `maintenance` block (signal-driven; prose alone is what failed).
+    _m = ctx.get("maintenance") or {}
+    # The PROCEED cue fires on commits==0 + NON-EMPTY store (not just local `work`): cross-node enrichment
+    # (a newly-promoted sibling global, found in Phase-1 --pull) is real + Phase-0-invisible, so a
+    # local-only `work` gate would skip a pullable-only pass. Stop ONLY when the store is empty.
+    _noop_nonempty = len(ctx["commits"]) == 0 and bool(ctx["fact_files"])
+    if _m.get("work") or _noop_nonempty:
+        _bits = []
+        if _m.get("dangling"):
+            _bits.append(f"{_m['dangling']} dangling [[link]](s)")
+        if _m.get("over_budget_not_justified"):
+            _bits.append("index over budget (not standing-justified)")
+        _detail = "self-heal available — " + " · ".join(_bits) if _bits else "store-health + cross-node enrichment check"
+        add("")
+        add("  " + _ui.c("MAINTENANCE", "bold") + _ui.c("  " + _detail, "yellow"))
+        # The cue carries the EXACT gated command (signal-driven, not "remember --refresh-only"): when the
+        # index is over-budget-not-justified, --pull must be --refresh-only so it can't net-grow the gated index.
+        _pull_cmd = "--pull --refresh-only" if _m.get("over_budget_not_justified") else "--pull"
+        add("    " + _ui.c(f"→ Phase 1 `sync_global {_pull_cmd} .` (cross-node enrichment) + Phase 5 health, report-then-apply", "dim"))
+        if _m.get("over_budget_not_justified"):
+            add("    " + _ui.c("--refresh-only: index over-budget-not-justified → refresh stale mirrors, HOLD new-global pulls (no unbounded net-grow)", "dim"))
+        if _noop_nonempty:
+            add("    " + _ui.c("0 new commits + NON-EMPTY store → PROCEED (a maintenance pass, NOT a no-op); stop ONLY if the store is empty", "dim"))
 
     # ── NEEDS A LOOK — suggestions only; nothing is changed automatically ──
     sig: list = []

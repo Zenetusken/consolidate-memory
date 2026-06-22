@@ -8,6 +8,8 @@ each project's store. This is the engine for that:
 
   --list PROJECT_DIR   show which global facts are relevant + present/missing (read-only)
   --pull PROJECT_DIR   copy missing relevant global facts into the project's store
+  --pull --refresh-only  refresh STALE mirrors only — HOLD BACK missing new globals (no index net-grow;
+                       the no-op self-heal pivot uses this when the index is over-budget-not-justified)
                        (additive; marks copies with `global_ref:` so they re-sync)
   --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]
                        hand a project-authored local fact UP to the canonical global store and
@@ -385,7 +387,12 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
     return True
 
 
-def run(project_dir: Path, pull: bool) -> int:
+def run(project_dir: Path, pull: bool, refresh_only: bool = False) -> int:
+    # v0.1.37 (R1): refresh_only — HOLD BACK MISSING new globals (the UNBOUNDED net-grow: a whole new index
+    # pointer per fact — the v0.1.18 blowup class) but still refresh STALE mirrors (a drifted hook is a
+    # correctness fix; its index delta is BOUNDED by the ~88-char hook cap — net-neutral in practice, never a
+    # blowup). The ENFORCED gate the no-op self-heal pivot invokes when the index is over-budget-not-justified,
+    # so a maintenance pass can't trip the unbounded net-grow. An enforced MODE, not model discretion.
     project_dir = project_dir.resolve()
     store = project_store(project_dir)
     stacks = detect_stacks(project_dir)
@@ -393,7 +400,7 @@ def run(project_dir: Path, pull: bool) -> int:
     out: list = []
     add = out.append
     title = "✦ CROSS-PROJECT · " + project_dir.name
-    tag = "PULL" if pull else "LIST"
+    tag = ("PULL · refresh-only" if refresh_only else "PULL") if pull else "LIST"
     gap = max(2, _ui.W - 2 - len(title) - len(tag))
     add(_ui.rule())
     add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
@@ -405,7 +412,7 @@ def run(project_dir: Path, pull: bool) -> int:
     glyphs = {"in-sync": ("✓", "green"), "MISSING": ("↓", "yellow"), "STALE-mirror": ("⟳", "yellow"),
               "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim")}
     rows: list = []
-    relevant = pulled = refreshed = 0
+    relevant = pulled = refreshed = held = 0
     for name, fm, text in facts:
         rel = is_relevant(fm, stacks)
         path = store / f"{name}.md"
@@ -427,7 +434,9 @@ def run(project_dir: Path, pull: bool) -> int:
         rows.append(f"    {_ui.c(g, col)} {_ui.lbl(f'{status:<14}')}{name}  " + _ui.c(f"({fm.get('scope', '?')})", "dim"))
         if rel:
             relevant += 1
-        if pull and rel and status in ("MISSING", "STALE-mirror"):
+        if pull and refresh_only and rel and status == "MISSING":
+            held += 1  # v0.1.37: refresh-only holds back a NEW-global pull (a new index pointer net-grows)
+        elif pull and rel and status in ("MISSING", "STALE-mirror"):
             # C3: a canonical missing a valid originSessionId fans its gap out to every
             # mirror this replication creates. WARN (don't block — the fact is still
             # useful); reuses the in-hand `fm`, no extra I/O.
@@ -441,14 +450,17 @@ def run(project_dir: Path, pull: bool) -> int:
                 pulled += 1
             else:
                 refreshed += 1
-        # record provenance for ANY fact this project now holds as a mirror
-        # (incl. already in-sync), so the network graph reflects reality
-        if pull and rel and status in ("MISSING", "STALE-mirror", "in-sync"):
+        # record provenance for ANY fact this project now holds as a mirror (incl. already in-sync), so
+        # the network graph reflects reality. v0.1.37: EXCLUDE a refresh-only HELD MISSING — it was NOT
+        # pulled, so the project does NOT hold it; recording it would write a PHANTOM holder edge into the
+        # shared canonical during a hold-back mode (and lie in the network graph).
+        if pull and rel and status in ("MISSING", "STALE-mirror", "in-sync") and not (refresh_only and status == "MISSING"):
             _record_provenance(name, project_dir.name)  # this mind holds the fact
     add(_ui.kv("FACTS", f"{len(facts)} global · {relevant} relevant to this project"))
     out.extend(rows)
     add("")
-    tail = (f"pulled {pulled} new · refreshed {refreshed} stale (index updated)" if pull
+    held_note = f" · held {held} new (refresh-only — over-budget gate)" if held else ""
+    tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note} (index updated)" if pull
             else "run with --pull to replicate MISSING + refresh STALE mirrors here")
     add(_ui.kv("RESULT", tail))
     print(_ui.ascii_translate("\n".join(out)))
@@ -935,11 +947,11 @@ def main() -> int:
             return 2
         return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1])
     if not args or args[0] not in ("--list", "--pull"):
-        print("usage: sync_global.py --list|--pull PROJECT_DIR | --gc [--apply] PROJECT_DIR "
+        print("usage: sync_global.py --list|--pull [--refresh-only] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] | --tokens [--json] PROJECT_DIR "
               "| --network", file=sys.stderr)
         return 2
-    return run(project_dir, args[0] == "--pull")
+    return run(project_dir, args[0] == "--pull", refresh_only="--refresh-only" in args)
 
 
 if __name__ == "__main__":

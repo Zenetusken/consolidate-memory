@@ -1138,6 +1138,32 @@ def remediation_render_coherence(ctx: Ctx) -> list[Result]:
     return out
 
 
+@family
+def maintenance_pivot_coherence(ctx: Ctx) -> list[Result]:
+    """v0.1.37: the no-op SELF-HEAL pivot CUE is surfaced. A store with maintenance work (dangling links
+    / over-budget-not-justified) MUST render the Phase-0 MAINTENANCE cue, so a magnitude-0 dream is CUED
+    to pivot (Phase 1 --pull + Phase 5 health) instead of exiting with "nothing to do". Deterministic:
+    checks the cue is PRESENT in the skill's ALREADY-CAPTURED Phase-0 report (`ctx.status_report_text`, the
+    same surface every other rendered-basis family reuses) — it CANNOT observe the model's pivot DECISION
+    (m5), only that the signal foundation exists. Version-aware: a pre-v0.1.37 skill (no `maintenance`
+    block in --json) is not-applicable → SKIP-by-empty."""
+    out: list[Result] = []
+    maint = (ctx.status.get("maintenance") if isinstance(ctx.status, dict) else None) or {}
+    if not maint or not maint.get("work"):
+        return out                              # pre-v0.1.37 skill, or no maintenance work → not applicable
+    render = ctx.status_report_text or ""
+    if not render:
+        return out                              # no captured Phase-0 render (harness issue) → SKIP, not a false FAIL
+    cued = "MAINTENANCE" in render
+    out.append(_R("maintenance_pivot_coherence", "CHK-MAINT-CUE",
+                  "maintenance work surfaces the Phase-0 pivot cue", "MED", "PASS" if cued else "FAIL",
+                  "a store with maintenance.work renders the Phase-0 MAINTENANCE cue (the pivot signal)",
+                  f"maintenance.work=true (dangling={maint.get('dangling', 0)}); Phase-0 cue {'present' if cued else 'ABSENT'}",
+                  "memory_status Phase-0 render", "memory_status.py", "-", "rendered",
+                  (_grep_quote(render, "MAINTENANCE") or "") if cued else ""))
+    return out
+
+
 # ─────────────────────────────── run + report ───────────────────────────────
 
 
