@@ -163,6 +163,73 @@ banner (an *output*-based label from write counts): they share no scale, and a p
 legitimately read "HEAVY" rigor yet "LIGHT" outcome (much to review, little durable to
 write). The dashboard labels both so they never read as one number.
 
+### The dream arc — one coherent sequence (asleep → dreaming → waking)
+
+This skill IS a dream — the agent analogue of sleep (replay the session, keep what's true,
+defrag what's stale). So **role-play the whole pass as one dream arc**: settle into it (the
+opening), move through it (the phases), wake from it (the debrief). This is a **STYLE layer
+ONLY** — the dream voice rides *on top of* the dense technical substance; it **never** trims a
+detail, a count, or a command. **Pin the PRINCIPLE, not a template:** every movement is
+judgment-rendered and VARIES run-to-run — not a canned line, not purple prose, not gimmickry —
+and it **scales to the pass** (see *Proportionality* below). It is the styling layer over the
+same phases; it changes the VOICE, never what each phase does or surfaces.
+
+- **Opening — entering the dream (after the first `memory_status.py` read).** Once Phase 0's
+  first read shows the lay of the land (magnitude, the stores, no-op-or-proceed), emit a BRIEF
+  (1–3 line) creative settling-in: the orchestrator coming off the session's work and drifting
+  into the consolidation dream. **Coherent with the work just done** (reference it lightly),
+  **creative + varied** (an LLM line, never a constant), **scaled** (a true no-op → a one-line
+  stir, not a sleep-narrative). It comes AFTER the read so it's grounded in what Phase 0 actually
+  found, not before it (before, there's nothing to be coherent with or scale to).
+- **Intermediate — dreaming (the phase narration).** The per-phase progress the user watches in
+  the CLI (Phase 0 locate · 1 orient · 2 gather · 3 verify · 5 prune/defrag — illustrative, not
+  exhaustive) carries a LIGHT dream-voice: the phases as the dream's movements (drifting the
+  memory-scape, sifting truth from staleness, pruning / defragging). **HARD CONSTRAINT —
+  functional clarity is SACROSANCT:** the user must still see plainly WHICH phase, WHAT command
+  ran, and WHAT it found. The voice touches the framing / transitions, **never** the substance
+  (commands, counts, results); **when in doubt, function wins and the voice recedes.** This
+  movement carries the sharpest risk (fogging the work-in-progress the user relies on) → it gets
+  the lightest touch.
+- **CARVE-OUT — Phase 4 (report-then-apply) stays PLAIN, un-styled.** The proposed-consolidation
+  diff + the explicit `CLAUDE.md`-edit call-out (the approval gate for committed, team-shared,
+  always-loaded churn) is the highest-clarity-stakes moment: a fogged approval risks a
+  mis-approved IRREVERSIBLE write. The dream-voice frames the *investigation* phases; the Phase-4
+  approval prompt is presented plainly. (The one phase where the cost of fogging is irreversible.)
+- **Closing — waking (the debrief).** The structured synthesis of what the dream replayed, kept,
+  and pruned — qualities pinned just below.
+
+**The debrief (the close) — pin QUALITIES, not a skeleton.** "Deterministic" here means **always
+present + always structured + scaled — NOT identical** (a rigid form makes debriefs go rote and
+get *worse*; judgment fills this, it is not a template):
+- **Dream-framed VOICE** — a reflective consolidation voice over what was replayed, kept, and
+  defragged; the framing rides on top of the technical content, never cuts it.
+- **Visual hierarchy** — a lead line (outcome + one functional emoji), then bold-headed sections.
+- **Dense + technical** — bullets with bold lead-ins, no filler; don't dumb the content down.
+- **Functional, SPARSE emojis** — status / section markers (🌙 dream · 🚀 ship · 📊 dashboard ·
+  ✓ / ⚠), never decoration.
+- **FRAMES, doesn't DUPLICATE** — name the non-obvious WHY + what was KEPT / PRUNED / verified;
+  the dashboard holds the gauges / counts / tallies. **"Don't duplicate" ≠ "drop the numbers":**
+  cite a figure when it carries the point (e.g. "8443→2685 tok, all lessons kept"); just don't
+  re-tabulate the gauge set in prose. (This is the real intent of *Output*'s "single source of the
+  **data** report": don't re-tabulate the data — DO frame it.)
+- **Always ends with the 📊 dashboard path** (any pass that produces a debrief; the true-no-op
+  produces none — see *Proportionality*) + the "re-open it any time by opening the file" note.
+
+**Proportionality — scale to the OUTCOME BANNER (never the rigor tier).** They are distinct
+quantities that share no scale (see *Rigor modes*), and `_outcome()` tops out at **`SUBSTANTIAL
+PASS`** — there is NO `HEAVY` *banner* (HEAVY is a rigor TIER; tiering the debrief on it
+re-imports the exact conflation the skill guards against):
+- **TRUE NO-OP** (NOTHING-TO-CONSOLIDATE — stops at Phase 0, never renders) → a one-line
+  dream-touch ("nothing to consolidate"); **NO dashboard, NO path** (the pass never reaches Phase
+  5, so the mandatory `render_html` does not apply — a distinct reachability class).
+- **NO-OP / MAINTENANCE / LIGHT PASS** (proceeds to Phase 5, renders) → one or two lines + the 📊
+  path; the dream voice survives as a brief touch, no section scaffolding.
+- **SUBSTANTIAL PASS** → the full structured debrief above.
+
+**Honest limit:** these instructions **raise the floor** (every orchestrator now gets the
+auto-open + a structured, scaled debrief) but **cannot fully transfer the judgment** that makes a
+*great* synthesis — that's model capability, not instruction.
+
 ### Phase 0 — Locate data + the high-water mark
 
 Run the bundled helper (it derives paths, inventories both stores, and computes the
@@ -205,6 +272,11 @@ store AND empty-or-all-irrelevant network — is the only case that ends at Phas
 dream) a **dream-timing advisory**: a no-nag nudge that this is a good consolidation boundary. It's
 advisory only (the skill never auto-fires — see *Why this is its own ritual*); its prospective use is
 via `cm status` *outside* a dream.
+
+**Enter the dream here.** With Phase 0's first read in hand (magnitude, the stores, no-op-or-proceed),
+emit the **opening dream-touch** — the go-to-sleep settling-in, scaled to what the read found (a true
+no-op gets only a one-line stir; a substantial pass a fuller drift into the dream). See *The dream arc*
+for the voice + guardrails.
 
 Phase 0 also **flags slug-orphans** (a near-duplicate sibling slug — the rename-orphan
 signature, since a dir rename changes the slug and strands the old slug-scoped store)
@@ -420,8 +492,11 @@ and set `verification.method` (`inline` or `subagents`).
 ### Phase 4 — Consolidate (report, then apply)
 
 First, **present the proposed consolidation to the user**: what you'll add, correct,
-or delete, in which **tier/store**, and why — a short diff-like summary. This matters
-because Phase 4 writes committed docs and persistent memory; the user should see the
+or delete, in which **tier/store**, and why — a short diff-like summary. **Present this
+report PLAIN, not dream-styled** (the carve-out in *The dream arc*): this is the approval
+gate for irreversible, committed, always-loaded churn, and fogging the prompt is the one
+unrecoverable mistake — the dream-voice frames the investigation phases, never this one.
+This matters because Phase 4 writes committed docs and persistent memory; the user should see the
 churn (and the per-session cost of anything headed for the always-loaded tier)
 before it happens. **Call out any proposed `CLAUDE.md` edit explicitly** — it is
 committed, team-shared, AND always-loaded, the widest blast radius of anything here;
@@ -709,14 +784,28 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    It writes a ZERO-dependency, self-contained `dashboards/index.html` (the whole per-repo
    archive of dreams in one file) and **auto-opens this dream's dashboard** (`--latest` →
    `#sel=<newest>`); headless-safe (no browser → prints the path; `--no-open` suppresses).
-   This is the post-dream payoff. The dashboard is a **self-contained file at a STABLE per-repo path**
-   — `~/.claude/projects/<slug>/dashboards/index.html`. **Present that exact path as the final message
-   and tell the user they can re-open it any time by opening the file** (it holds the whole archive;
-   navigate dreams in-page via the ledger/filenames). That file IS the fleet-wide re-open — it works from
-   any repo. Do **NOT** tell an end-user to run `cm report`: that is a MAINTAINER dev CLI living only in
-   the consolidate-memory repo (not on a plugin user's PATH, and it CWD-defaults), useful only when
-   dogfooding this plugin from its own checkout. Present BOTH the ASCII dashboard (in-terminal) and the
-   file path as the final message.
+   This is the **post-dream payoff, and it is MANDATORY**: a cleanly completing dream is **not done
+   until `render_html … --latest` runs.** Its `webbrowser.open()` auto-open is the whole point —
+   **never pass `--no-open` in a normal dream** (headless degrades to printing the path, the only
+   non-open path). Reaching a clean (exit-0) `--persist` and stopping *without* `render_html` means you
+   have NOT finished. **Two carve-outs:** (1) it is mandatory only on the clean **exit-0** pass —
+   **never run it right after an exit-3** `--persist` (that would paper over the very lazy-skip the
+   integrity gate exists to catch; go re-verify and re-render to exit 0 FIRST — see the procedure-integrity
+   gate above); (2) a **true Phase-0 no-op** never reaches Phase 5, so it has no dashboard and no path
+   (see *The dream arc* → Proportionality).
+
+   **Then wake from the dream — the closing debrief (the final message).** With the ASCII dashboard
+   already printed in-terminal (the `render_dashboard` step above) and the HTML auto-opened, deliver the
+   structured **session debrief** — qualities + proportionality pinned in *The dream arc*: a lead line
+   (outcome + one functional emoji), bold-headed sections, dense bullets that **FRAME** the pass (the
+   non-obvious WHY + what was KEPT / PRUNED / verified) rather than re-tabulate the dashboard's gauges,
+   **scaled to the outcome banner** (a no-op / maintenance / light pass gets one or two lines + the path,
+   NOT the full debrief). The debrief **ends on the 📊 dashboard path** — the self-contained file at the
+   STABLE per-repo path `~/.claude/projects/<slug>/dashboards/index.html` — and tells the user they can
+   **re-open it any time by opening that file** (it holds the whole archive; navigate dreams in-page via
+   the ledger/filenames; it IS the fleet-wide re-open — works from any repo). Do **NOT** tell an end-user
+   to run `cm report`: that is a MAINTAINER dev CLI living only in the consolidate-memory repo (not on a
+   plugin user's PATH, and it CWD-defaults), useful only when dogfooding this plugin from its own checkout.
 
 ## Safety rules
 
@@ -756,7 +845,7 @@ These protect the stores from corruption and the user from leaks:
 
 ## Output: the cycle record → dashboard
 
-The output is **not** free-form prose. It's a fixed dashboard whose content is
+The **data** report is **not** free-form prose. It's a fixed dashboard whose content is
 driven by what the pass actually did. You accumulate a small JSON **cycle record**
 through the phases (seeded by `memory_status.py --json`), then render it with
 `render_dashboard.py` — the model produces the data, the script produces the
@@ -764,8 +853,13 @@ presentation, so the report is consistent run-to-run but reflects this cycle (a
 no-op pass and a heavy pass render visibly differently; empty sections collapse, and
 the outcome banner is derived from the write counts).
 
-The render script is the single source of the final report — don't hand-write a
-summary alongside it.
+The render script is the single source of the **data** report — the gauges, counts, and
+tallies; **don't re-tabulate them in prose.** The dream's closing **debrief** (see *The dream
+arc*) is the complementary half — it **FRAMES** the dashboard (the non-obvious WHY + what was
+kept / pruned / verified) and cites a figure only when it carries the point (e.g. "8443→2685
+tok, all lessons kept"). So: **frame the data, don't duplicate it — and don't drop the numbers
+that carry meaning.** (The debrief is a structured synthesis, not the ad-hoc free-form prose
+this once warned against; the dashboard remains the source of the figures.)
 
 ### Cycle-record schema
 

@@ -5,6 +5,44 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.47] — 2026-06-22
+
+### Added — pin the DREAM-ARC styling (asleep → dreaming → waking) + mandatory HTML auto-open
+Two end-of-dream behaviours that only some orchestrators reliably produced — the HTML dashboard auto-opening and a
+structured session debrief — are now PINNED in the SKILL, and extended into a whole-pass DREAM ARC (a user-requested
+vision): the orchestrator role-plays the consolidation as one dream — fall asleep → dream → wake. SKILL-prose only; the
+auto-open already existed in code (`render_html` calls `webbrowser.open()` by default), so what was missing was the
+instruction marking it MANDATORY + the debrief format + the arc voice. Full design: `docs/final-phase-debrief.spec.md`.
+- **One single-source `### The dream arc` subsection** (after *Rigor modes*) pins the whole arc — opening, intermediate,
+  closing, proportionality, the honest limit — so the phases POINT to it instead of restating it. This HARMONIZES the
+  four previously-scattered "final message" directives into ONE protocol (a naive addition would have left the SKILL
+  self-contradictory): the old absolutist "the output is not free-form prose / the render script is the single source of
+  the final report" is REWORDED in place — the dashboard stays the single source of the *data* (don't re-tabulate the
+  gauges), the dream now CLOSES with a debrief that *frames* it ("don't duplicate" ≠ "drop the numbers").
+- **`render_html … --latest` = the MANDATORY closing action.** A cleanly-completing dream is not done until it runs (its
+  auto-open is the post-dream payoff; never `--no-open` in a normal dream). Two carve-outs keep it coherent with the
+  existing gates: it runs ONLY on a clean exit-0 `--persist` — NEVER right after an exit-3 procedure-integrity halt
+  (which correctly stops to re-verify); and a true Phase-0 no-op never reaches Phase 5, so it has no dashboard / no path.
+- **The debrief = pin PRINCIPLES, not a template** (a rigid skeleton makes debriefs go rote): a dream-framed reflective
+  voice, visual hierarchy (lead line + bold-headed sections), dense/technical bullets, sparse FUNCTIONAL emojis, FRAMES
+  (the non-obvious WHY + what was kept/pruned/verified) rather than duplicates the dashboard, always ends on the 📊 path.
+  **Proportional to the OUTCOME BANNER, never the rigor tier** (true-no-op → a one-line stir, no path; no-op/maintenance/
+  light → a line or two + path; substantial → the full debrief) — `_outcome()` tops at `SUBSTANTIAL PASS`, there is no
+  `HEAVY` banner, so tiering on rigor would re-import the conflation the SKILL guards against.
+- **The arc spans the pass:** an OPENING "going-to-sleep" role-play emitted AFTER the first `memory_status.py` read (so
+  it's coherent with + scaled to what Phase 0 found) + a LIGHT dream-voice on the INTERMEDIATE phase narration —
+  **functional clarity SACROSANCT** (which phase / what command / what result stay plain; when in doubt, function wins).
+  **Phase 4 (report-then-apply) stays PLAIN** — fogging the irreversible `CLAUDE.md`-churn approval prompt is the one
+  unrecoverable mistake.
+- **Backward-compatible (PATCH):** SKILL-prose only — no code change (auto-open already existed), no cycle-record schema
+  change (the smoke schema-pin is untouched: NO ` ```json ` fence added before the schema block), no removed/renamed
+  script or flag.
+- Gated: independent spec-review (2 rounds + a mid-flight scope expansion for the dream-vision → zero inconsistencies) +
+  an independent SKILL self-consistency review (7/7 checks PASS: no surviving contradiction, all folded substance
+  preserved, banner strings verified against `_outcome()`, generic / no identity leak). smoke 375/0 · mypy clean · sim ✓
+  · `claude plugin validate --strict` ✓. Honest limit: an instruction raises the FLOOR (every orchestrator now gets the
+  auto-open + a structured, scaled debrief); it cannot fully transfer the judgment that makes a *great* synthesis.
+
 ## [0.1.46] — 2026-06-22
 
 ### Added — body-defragmentation: curate bloated ACTIVE files (Cycle 2 of the harness-audit follow-up)
