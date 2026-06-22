@@ -5,6 +5,24 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.42] — 2026-06-22
+
+### Added — cold-start bootstrap: the dream is NETWORK-AWARE on an empty store (pre-1.0 audit blocker #1)
+The cold-start audit found a real gap — the HYBRID path: a fresh/dormant repo in an established fleet (EMPTY local
+store + ~0 commits + a RICH cross-project network) hit the network-BLIND no-op STOP and exited before Phase 1,
+never discovering the fleet's relevant facts. SKILL-only fix (the no-op STOP is a SKILL instruction, not
+script-enforced; `global_store_facts` is already seeded; `--list` already does the `is_relevant` filter):
+- **B3 — network-aware no-op rule:** STOP only when the local store is EMPTY *and* the network is empty
+  (`cross_project.global_store_facts == 0`). An empty-store-but-rich-network repo PROCEEDS to a COLD-START
+  BOOTSTRAP (Phase 1 `--list`→`--pull`, M1-bounded; Phase 5 health) — generalizing the v0.1.37 MAINTENANCE-pivot.
+  Scoped to pull+health ONLY (no Phase-2/4 authoring — the genuine from-scratch case stays a STOP; never
+  force-seeds). Graceful degradation: `--list` 0-relevant → honest no-op ("network checked · 0 relevant").
+- **B1 — `--list` before `--pull`:** surface relevant/present/missing/held BEFORE the pull writes — legible
+  enrichment, not a blind pull. Read-only, no code.
+NARROWED by the audit verdict: a cloned-history repo has commits>0 → already bootstraps (first-consolidation), so
+the gap is the empty-history/dormant repo only. Rejected B4 (selective-pull flag) + B5 (cold `--evict`) as
+bolt-on/wrong-tool. SKILL-only · no schema change · meta-requirement HELD (hooks Phase 0→1, no new command). **PATCH.**
+
 ## [dream-beta-tester 0.1.6] — 2026-06-22
 
 ### Fixed — install-gate updates a STALE DBT-owned pre-push hook instead of refusing
