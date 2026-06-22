@@ -1183,5 +1183,93 @@ with _tf43.TemporaryDirectory() as _td43:
     check("v0.1.43/A: a PRIOR session's clean intent surfaced w/ its sessionId (the fresh-session killer-case fix)",
           any(s.get("sessionId") == "sessA" for s in _r43.get("signals", [])))
 
+# ── v0.1.44: procedure-integrity detector — the lazy-skip safeguard ──────────────────
+# The MEASURED 2026-06-22 failure: 3 dreams ran 0/0/0 verification while self-labeled
+# SUBSTANTIAL/HEAVY. The predicate FIRES on that signature (magnitude>=SUBSTANTIAL AND tally==0),
+# resting on script-derived git_commits (not the self-report). These pin the regression + the
+# no-false-fire boundary (LIGHT/maintenance/bootstrap/seed) + the legacy no-op + the --persist gate.
+def _pi(commits: int, cands: int, c: int = 0, cc: int = 0, u: int = 0, applied: "str | None" = None) -> Any:
+    r: Any = {"scope": {"git_commits": commits, "session_candidates": cands},
+              "verification": {"confirmed": c, "corrected": cc, "unverifiable": u}}
+    if applied is not None:
+        r["rigor"] = {"applied": applied}
+    return r
+
+# FIRES on the 3 real failures (by their logged field-values)
+check("v0.1.44: FIRES on rushed HEAVY 11c/0cand/0-0-0 (the worst real failure — 0 candidates)",
+      not ms.procedure_integrity(_pi(11, 0, applied="HEAVY"))[0])
+check("v0.1.44: FIRES on rushed SUBSTANTIAL 3c+2cand/0-0-0",
+      not ms.procedure_integrity(_pi(3, 2, applied="SUBSTANTIAL"))[0])
+check("v0.1.44: FIRES on rushed SUBSTANTIAL 4c+2cand/0-0-0",
+      not ms.procedure_integrity(_pi(4, 2, applied="SUBSTANTIAL"))[0])
+# SPARES legit passes that recorded verification, and the legit low-magnitude cases the skill supports
+check("v0.1.44: SPARES the corrected dream (4c+2cand, 19/2/2)",
+      ms.procedure_integrity(_pi(4, 2, 19, 2, 2, applied="SUBSTANTIAL"))[0])
+check("v0.1.44: SPARES a SUBSTANTIAL pass with tally>0 (verification recorded)",
+      ms.procedure_integrity(_pi(2, 4, 10, 2, 0))[0])
+check("v0.1.44: SPARES a LIGHT pass (magnitude<=2), even at 0/0/0",
+      ms.procedure_integrity(_pi(2, 0))[0] and ms.procedure_integrity(_pi(0, 2))[0])
+check("v0.1.44: SPARES maintenance/bootstrap (0 commits, 0 candidates, 0/0/0)",
+      ms.procedure_integrity(_pi(0, 0))[0])
+# the downgrade dodge: HEAVY magnitude relabeled LIGHT, 0 tally -> still FIRES + surfaces the dodge
+_dd_ok, _dd_reason, _dd_sev = ms.procedure_integrity(_pi(11, 0, applied="LIGHT"))
+check("v0.1.44: FIRES on the downgrade dodge (HEAVY magnitude labeled LIGHT, 0/0/0)", not _dd_ok)
+check("v0.1.44: the downgrade dodge is SURFACED in the reason", "below magnitude" in _dd_reason)
+# severity: self-admitted SUBSTANTIAL/HEAVY -> alert; unlabeled -> warn
+check("v0.1.44: severity 'alert' when self-labeled SUBSTANTIAL/HEAVY (self-admission)",
+      ms.procedure_integrity(_pi(11, 0, applied="HEAVY"))[2] == "alert")
+check("v0.1.44: severity 'warn' when not self-labeled substantial",
+      ms.procedure_integrity(_pi(11, 0))[2] == "warn")
+# legacy / non-conformant -> NO-OP (never retroactively flag): missing verification/scope, non-dict
+check("v0.1.44: NO-OP (ok) on a legacy record missing the verification block",
+      ms.procedure_integrity({"scope": {"git_commits": 11, "session_candidates": 0}})[0])
+check("v0.1.44: NO-OP (ok) on a record missing the scope block",
+      ms.procedure_integrity({"verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0}})[0])
+check("v0.1.44: NO-OP (ok) on a non-dict record",
+      ms.procedure_integrity(cast(Any, "junk"))[0] and ms.procedure_integrity(cast(Any, None))[0])
+# coercion: model-slip string ints handled (never crashes, still fires)
+check("v0.1.44: coerces model-slip string ints (still FIRES on '11'/'0' + '0'/'0'/'0')",
+      not ms.procedure_integrity({"scope": {"git_commits": "11", "session_candidates": "0"},
+                                  "verification": {"confirmed": "0", "corrected": "0", "unverifiable": "0"}})[0])
+# NEVER raises on junk — incl. NON-FINITE floats (json.loads accepts NaN/Infinity; int(nan/inf) raises) [Gate-2 blocker fix]
+_pi_crashed = False
+try:
+    ms.procedure_integrity(cast(Any, [1, 2, 3]))
+    ms.procedure_integrity(cast(Any, {"scope": 5, "verification": "x"}))
+    ms.procedure_integrity(cast(Any, {"scope": {"git_commits": None}, "verification": {"confirmed": [1]}}))
+    ms.procedure_integrity(cast(Any, {"scope": {"git_commits": float("nan"), "session_candidates": float("inf")},
+                                      "verification": {"confirmed": float("-inf"), "corrected": 0, "unverifiable": 0}}))
+    ms.procedure_integrity(cast(Any, {"scope": {"git_commits": "inf", "session_candidates": "nan"},
+                                      "verification": {"confirmed": "0", "corrected": "0", "unverifiable": "0"}}))
+except Exception:  # noqa: BLE001 — ANY raise fails the never-raise contract
+    _pi_crashed = True
+check("v0.1.44: procedure_integrity NEVER raises on junk (incl. NaN/Infinity floats — Gate-2 blocker)", not _pi_crashed)
+check("v0.1.44: non-finite floats (NaN/±inf) coerce to 0 — magnitude 0, SPARED (no crash at the render boundary)",
+      ms.procedure_integrity({"scope": {"git_commits": float("nan"), "session_candidates": float("inf")},
+                              "verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0}})[0])
+check("v0.1.44: a negative/junk tally does NOT dodge (tally<=0 fires on substantial magnitude — Gate-2 hardening)",
+      not ms.procedure_integrity(_pi(11, 0, c=-100))[0])
+# the FULL 13-record separation (the spec's empirical proof, PINNED): exactly the 3 rushed fire.
+# tuples = (commits, cands, confirmed, corrected, unverifiable) from the live .consolidation-log.jsonl
+_records_13 = [
+    (11, 8, 7, 1, 0), (6, 10, 7, 1, 0), (11, 2, 11, 1, 0), (2, 4, 10, 2, 0), (2, 3, 12, 2, 0),
+    (4, 2, 16, 1, 0), (11, 1, 15, 1, 0), (21, 5, 6, 1, 0), (2, 2, 16, 0, 0),
+    (11, 0, 0, 0, 0), (3, 2, 0, 0, 0), (4, 2, 0, 0, 0),    # the 3 rushed failures
+    (4, 2, 19, 2, 2),                                       # the corrected dream
+]
+_fires = sum(1 for (gc, cd, c, cc, u) in _records_13 if not ms.procedure_integrity(_pi(gc, cd, c, cc, u))[0])
+check("v0.1.44: the 13 real records separate cleanly — EXACTLY 3 fire (the spec's empirical proof)",
+      _fires == 3)
+# render integration: the panel is GATED on `judged` (set by main() iff --persist). A seed/preview
+# render (judged=False, the default) is the BEFORE state and must NOT show the panel — the re-gate F1 fix.
+check("v0.1.44: render(judged=True) SHOWS the PROCEDURE INTEGRITY panel on a firing record",
+      "PROCEDURE INTEGRITY" in rd.render(_pi(11, 0, applied="HEAVY"), judged=True))
+check("v0.1.44: render(judged=False) does NOT show the panel (seed/preview — the --persist gate)",
+      "PROCEDURE INTEGRITY" not in rd.render(_pi(11, 0, applied="HEAVY"), judged=False))
+check("v0.1.44: render() default (no judged) does NOT show the panel (back-compat)",
+      "PROCEDURE INTEGRITY" not in rd.render(_pi(11, 0, applied="HEAVY")))
+check("v0.1.44: render(judged=True) shows NO panel on a clean record (no false-fire in the panel)",
+      "PROCEDURE INTEGRITY" not in rd.render(_pi(2, 4, 10, 2, 0), judged=True))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -171,9 +171,12 @@ finalizes it in Phase 2 and may override with rationale.
   `--persist DIR` appends each cycle record to `<store>/.consolidation-log.jsonl` (idempotent;
   skips persisting an unstamped cycle). LEVER NOTE: `INDEX_TOKEN_BUDGET` is the binding prune lever
   (~20–27 real facts); `PRUNE_PRESSURE_FACTS` is a terse-pointer backstop. CAVEAT: `applied`
-  is self-reported (catches over-rigor only); under-rigor needs LONGITUDINAL miss-detection
-  (future work), and the bands must NEVER be calibrated against the OUTCOME banner — it fails
-  UNSAFE (mature passes are systematically high-magnitude/low-outcome).
+  is self-reported (catches over-rigor only); the LAZY-SKIP under-rigor case (SUBSTANTIAL+
+  magnitude with 0/0/0 verification) is now caught by the v0.1.44 `procedure_integrity` detector at
+  `render_dashboard --persist` (⚠ panel + exit 3; it rests on script-derived `git_commits`, not the
+  self-report, so it can't be graded away — not a diligent-liar proof). The GENERAL under-rigor case
+  still needs LONGITUDINAL miss-detection (future work), and the bands must NEVER be calibrated
+  against the OUTCOME banner — it fails UNSAFE (mature passes are systematically high-magnitude/low-outcome).
 
 ## Verification recipes (Phase 3)
 

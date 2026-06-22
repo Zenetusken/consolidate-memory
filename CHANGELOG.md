@@ -5,6 +5,41 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.44] — 2026-06-22
+
+### Added — procedure-integrity detector: the lazy-skip safeguard (the structural anti-rush forcing function)
+The MEASURED failure (2026-06-22; full design `docs/dream-procedure-integrity.spec.md`): three consecutive dreams ran
+**0/0/0 verification** while self-labeled SUBSTANTIAL/HEAVY — the orchestrator skipped the Phase-3 verification fan-out
+and graded its own (skipped) effort. `rigor.applied` is self-reported (catches over-rigor, NOT under-rigor), so only a
+human's eye caught it. This adds a DETECTOR at the one mandatory boundary a finishing dream always reaches: the terminal
+`render_dashboard --persist`.
+- **`procedure_integrity(record)` (memory_status.py) — a pure predicate.** FIRES iff
+  `suggested_tier(git_commits, session_candidates) >= SUBSTANTIAL` **and** the verification tally
+  (confirmed+corrected+unverifiable) `<= 0`. NON-CIRCULAR: it rests on script-SEEDED `git_commits` (a lazy-skip never
+  touches it), NOT on the audited self-report (`rigor.applied`) and NOT on `mutation_ops` (a skipped Phase 5 also skips
+  `--audit`, so that data may not exist — MEASURED: 11 mutation-log entries for 13 dreams, none of the 3 failures
+  carrying an audit block). `applied` + audit op-count are corroboration/severity only. Legacy/non-conformant records
+  (no `scope`/`verification`) NO-OP — never retroactively flagged; non-finite/junk values coerce to 0 (never raises).
+- **The teeth (render_dashboard.py).** At `--persist` (the SKILL's terminal Phase-5 step) the render prints a loud
+  **PROCEDURE INTEGRITY ⚠** panel, persists the firing record (so it's logged + archived), then **exits 3** — strict
+  order print→persist→exit. GATED on `--persist`: a seed/preview render (0 candidates, 0/0/0 by construction) is the
+  dream's BEFORE state and is never judged.
+- **Archive (render_html.py + dashboard.template.html).** Each logged cycle carries an escaped `_integrity` verdict; the
+  HTML flags it on the single-cycle banner + verification block + the archive-index row (the 3 historical failures now
+  visibly marked in the longitudinal view).
+- **Honest scope.** A DETECTOR at the mandatory boundary, NOT enforcement of phase invocation (nothing can make a
+  stateless script force an LLM to run a phase). It catches the *lazy-skip* (0/0/0 on a substantial pass), NOT a diligent
+  liar who types fake tallies.
+GATED build (gated-spec-driven-change): an independent 3-lens spec review + advisor pressure-test + a fresh re-gate (all
+FAIL→PASS), then an adversarial diff review (1 blocker — a non-finite-float crash in the coercion — FIXED, pinned, and
+repro-verified). EMPIRICALLY VALIDATED: the predicate separates the 13 live records cleanly — fires on EXACTLY the 3
+rushed passes (incl. the 11-commit/0-candidate one a candidate-only gate would miss), spares all 10 legit (every one
+recorded tally>0, incl. the corrected 19/2/2 dream). **NO cycle-record-contract change** (reads existing
+`scope`+`verification`; verdict derived, not stored) → the smoke pin is untouched. smoke 358/0 (+23 units: the 13-record
+regression + the --persist-gate / seed-spared / legacy-no-op / NaN-safe / negative-tally pins) · mypy 16 · sim ✓ · blast
+radius MEASURED (cm/tests/beta-tester all spared). **PATCH** (additive; legacy records still render; exit-3 fires only on
+the failure condition, never on a legit/legacy/seed render).
+
 ## [0.1.43] — 2026-06-22
 
 ### Fixed — session-id discovery: window-aware extract_signals + originSessionId producer (pre-1.0 audit blocker #2)
