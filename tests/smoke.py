@@ -312,6 +312,14 @@ with _tf37.TemporaryDirectory() as _td39:
           sg.detect_stacks(_p39) == sg._DETECTABLE_STACKS)
 check("v0.1.39/M4: an undetectable stack is NOT in the vocab ([release]/[ci-cd] → fleet-dead, refused)",
       not ({"release", "ci-cd"} <= sg._DETECTABLE_STACKS))
+# v0.1.40 (M3) — slug_for generalizes to ALL non-alphanumerics (CC's rule), fixing the '.'-segment split-brain;
+# regression-IDENTICAL for the fleet; near_duplicate_slugs uses the same rule so a '.'-vs-'-' twin is detected.
+check("v0.1.40/M3: slug_for maps '.' (a dotfile-dir path) → '-', matching CC (was split-brain)",
+      ms.slug_for(Path("/home/u/.claude/app")) == "-home-u--claude-app")
+check("v0.1.40/M3: slug_for is regression-IDENTICAL for the fleet (paths with only / _ -)",
+      ms.slug_for(Path("/home/drei/project/Doc_Flo")) == "-home-drei-project-Doc-Flo")
+check("v0.1.40/M3: near_duplicate_slugs catches a '.'-vs-'-' twin (the split-brain detector, was '_'/case-only)",
+      ms.near_duplicate_slugs("-home-u-.claude-app", ["-home-u--claude-app", "-unrelated"]) == ["-home-u--claude-app"])
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",
                  "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
                  "rigor": {"phase": "final", "applied": "HEAVY"}}).splitlines() if "RIGOR" in ln), "")

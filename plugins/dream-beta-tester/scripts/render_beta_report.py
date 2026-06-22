@@ -165,11 +165,11 @@ class ReportModel:
 
 
 def slug_for(repo: Path) -> str:
-    """Claude Code project slug: the absolute path with BOTH '/' and '_' → '-' (case kept).
+    """Claude Code project slug: the absolute path with EVERY non-alphanumeric char → '-' (case kept).
 
-    Identical to the skill's / oracle's rule (re.sub(r'[/_]', '-', ...)) so reports for one repo
-    share a stable filename prefix across runs (the cross-version diff hinges on this match)."""
-    return re.sub(r"[/_]", "-", str(repo.resolve()))
+    Identical to the skill's / oracle's rule (v0.1.40 M3: re.sub(r'[^A-Za-z0-9]', '-', ...)) so reports for
+    one repo share a stable filename prefix across runs (the cross-version diff hinges on this match)."""
+    return re.sub(r"[^A-Za-z0-9]", "-", str(repo.resolve()))
 
 
 def _read_text(path: str) -> str:

@@ -92,16 +92,16 @@ REPORTS_DIR: Path = Path(os.environ.get("DREAM_BETA_REPORTS") or (Path.home() / 
 MANIFEST_VERSION: int = 1
 MANIFEST_NAME: str = "manifest.json"
 
-_SLUG_SUB = re.compile(r"[/_]")
+_SLUG_SUB = re.compile(r"[^A-Za-z0-9]")  # v0.1.40 (M3): match the skill's generalized slug rule (all non-alnum → '-')
 
 
 # ─────────────────────────────── slug / store resolution ───────────────────────────────
 
 
 def slug_for(repo: Path) -> str:
-    """Claude Code project slug: the absolute path with BOTH ``/`` and ``_`` → ``-`` (case kept).
+    """Claude Code project slug: the absolute path with EVERY non-alphanumeric char → ``-`` (case kept).
 
-    Mirrors the skill's ``memory_status.slug_for`` (``re.sub(r'[/_]', '-', ...)``) so the snapshot
+    Mirrors the skill's ``memory_status.slug_for`` (v0.1.40 M3: ``re.sub(r'[^A-Za-z0-9]', '-', ...)``) so the snapshot
     targets the SAME store the skill manages (see claude-code-memory-is-slug-scoped). Re-implemented
     rather than imported to keep this module skill-discovery-free.
     """
