@@ -12,6 +12,10 @@ each project's store. This is the engine for that:
                        net-grow guard); STALE mirrors always refresh. Reports `held N` — prune/justify to
                        receive. (additive; marks copies with `global_ref:` so they re-sync)
   --pull --allow-net-grow  override the guard — pull even if it net-grows the over-budget index
+  --pull --evict=FACT  EVICT-TO-RECEIVE (v0.1.41): free one low-value local pointer (FACT) so a HELD global can
+                       land — net-neutral, so M1's budget stays enforced. The release valve for a chronically-full
+                       store. Refuses an orphaning evict (FACT has inbound [[links]]) or a too-small one (frees
+                       less than the smallest held). A plain `--pull` with anything held prints the candidates.
   --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical]
                        hand a project-authored local fact UP to the canonical global store and
                        convert the origin's copy into a managed mirror (the local→canonical
@@ -41,7 +45,8 @@ from pathlib import Path
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
 # on sys.path[0] at runtime; both live in the plugin's scripts/ dir.
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import _is_mirror, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid, INDEX_TOKEN_BUDGET
+from memory_status import (_is_mirror, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid,
+                           INDEX_TOKEN_BUDGET, extract_wikilinks, resolve_wikilink)
 
 GLOBAL = Path.home() / ".claude" / "memory"
 
@@ -403,7 +408,35 @@ def _would_net_grow(running_idx: int, pointer_cost: int, allow_net_grow: bool) -
     return (not allow_net_grow) and (running_idx + pointer_cost > INDEX_TOKEN_BUDGET)
 
 
-def run(project_dir: Path, pull: bool, allow_net_grow: bool = False) -> int:
+def _inbound_links(store: Path, target: str) -> list[str]:
+    """v0.1.41 (evict-to-receive safety): local fact stems whose body `[[links]]` to `target` — evicting `target`
+    would ORPHAN them (the cascade --evict must refuse). Reuses extract_wikilinks (the SINGLE [[...]] extractor,
+    code spans stripped) + resolve_wikilink (so a dash/underscore/date VARIANT link counts too — the safe bias).
+    Excludes `target` itself + MEMORY.md (the pointer index holds no wikilinks). READ-ONLY."""
+    out: list[str] = []
+    if not store.is_dir():
+        return out
+    for f in sorted(store.glob("*.md")):
+        if f.name == "MEMORY.md" or f.stem == target:
+            continue
+        try:
+            body = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if any(resolve_wikilink(l, {target}) == target for l in extract_wikilinks(body)):
+            out.append(f.stem)
+    return out
+
+
+def _evict_frees_enough(running_idx: int, freed: int, held_costs: list, budget: int = INDEX_TOKEN_BUDGET) -> bool:
+    """v0.1.41 (evict-to-receive fit-check, no-partial-loss): would evicting a pointer that frees `freed` tokens
+    make room for at least the SMALLEST held global? `(running_idx - freed) + min(held_costs) <= budget`. False ⇒
+    the evict frees too little — REFUSE before deleting (Guard-3: never a destructive op that gains nothing).
+    PURE (smoke-pinned). Caller ensures held_costs is non-empty (no held ⇒ nothing to receive ⇒ refuse earlier)."""
+    return bool(held_costs) and (running_idx - freed) + min(held_costs) <= budget
+
+
+def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str | None = None) -> int:
     # v0.1.38 (M1): the PROJECTED net-grow BACKSTOP. A MISSING fact = a NEW always-loaded index pointer (the
     # v0.1.18 blowup class); on --pull we HOLD it when it would LEAVE the index over INDEX_TOKEN_BUDGET
     # (running_idx + the pointer's own cost) — so a pull never net-grows an over/at-budget index, even on a
@@ -436,6 +469,38 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False) -> int:
     # cost; the guard below holds any pull that would push it over INDEX_TOKEN_BUDGET. Seed from the live index.
     _idxp = store / "MEMORY.md"
     running_idx = est_tokens(_idxp.read_text(encoding="utf-8", errors="replace")) if _idxp.exists() else est_tokens("# Memory Index\n\n")
+    held_facts: list = []   # (name, cost) of relevant MISSING globals HELD this pass — drives the evict-to-receive offer
+    # v0.1.41: --evict <fact> — the EVICT-TO-RECEIVE valve (the release for M1's hold). Free ONE low-value local
+    # pointer so a held global can land; net-neutral, so M1's budget stays enforced. Pre-checks BEFORE any delete
+    # (Guard-3 no-partial-state): the fact EXISTS, has NO inbound [[links]] (orphan-safety), held globals EXIST to
+    # receive, and the freed room actually FITS the smallest held. The agent NAMES the fact (report-then-apply).
+    if pull and evict is not None:
+        ep = store / f"{evict}.md"
+        if not ep.exists():
+            print(f"evict: no local fact '{evict}' in {store}", file=sys.stderr); return 1
+        inbound = _inbound_links(store, evict)
+        if inbound:
+            print(f"evict: '{evict}' is [[linked]] by {inbound} — evicting it would ORPHAN those links. "
+                  "Pick another fact, or de-link first.", file=sys.stderr); return 1
+        held_pre: list = []
+        for n, fm, _ in facts:
+            if is_relevant(fm, stacks) and not (store / f"{n}.md").exists():
+                c = est_tokens(_pointer_line(n, fm))
+                if _would_net_grow(running_idx, c, allow_net_grow):   # SAME predicate as the pull loop (Gate-2):
+                    held_pre.append((n, c))                            # under --allow-net-grow nothing is held, so
+                # held_pre empties → the evict refuses ("nothing held") rather than a gratuitous delete-then-pull-all.
+        if not held_pre:
+            print(f"evict: nothing is held (no over-budget MISSING globals) — evicting '{evict}' would free "
+                  "budget for NOTHING. There is no swap to make.", file=sys.stderr); return 1
+        freed = est_tokens(_pointer_line(evict, _frontmatter(ep.read_text(encoding="utf-8", errors="replace"))))
+        if not _evict_frees_enough(running_idx, freed, [c for _, c in held_pre]):
+            print(f"evict: '{evict}' frees only ~{freed} tok — not enough to fit the smallest held global "
+                  f"(~{min(c for _, c in held_pre)} tok at idx {running_idx}/{INDEX_TOKEN_BUDGET}). "
+                  "Pick a larger-pointer fact.", file=sys.stderr); return 1
+        ep.unlink()
+        _remove_index_pointer(store, evict)
+        running_idx -= freed
+        print(f"  ✓ evicted '{evict}' (~{freed} tok freed) → pulling held globals into the freed room", file=sys.stderr)
     for name, fm, text in facts:
         rel = is_relevant(fm, stacks)
         path = store / f"{name}.md"
@@ -465,6 +530,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False) -> int:
                      and _would_net_grow(running_idx, cost, allow_net_grow))
         if held_this:
             held += 1  # net-grow of an over/at-budget index → hold (prune/justify to receive, or --allow-net-grow)
+            held_facts.append((name, cost))
         elif pull and rel and status in ("MISSING", "STALE-mirror"):
             # C3: a canonical missing a valid originSessionId fans its gap out to every
             # mirror this replication creates. WARN (don't block — the fact is still
@@ -492,6 +558,26 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False) -> int:
     tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note} (index updated)" if pull
             else "run with --pull to replicate MISSING + refresh STALE mirrors here")
     add(_ui.kv("RESULT", tail))
+    # v0.1.41: the EVICT-TO-RECEIVE offer (the report half of report-then-apply). When globals are HELD, surface
+    # the held + the evictable local pointers with RAW, UNORDERED metadata (scope · mirror? · pointer-cost) —
+    # NEVER ranked. A staleness/mtime rank actively misleads (a foundational fact is untouched yet vital), so the
+    # agent judges which to evict; --evict then applies it orphan-safe + fit-checked. A safe scalpel, not auto-eviction.
+    if held and store.is_dir():
+        add("")
+        add("  " + _ui.c("EVICT-TO-RECEIVE", "bold") + _ui.c(f"   · {held} held — free ONE low-value pointer to land a held global (net-neutral)", "dim"))
+        add("    held: " + _ui.c(", ".join(f"{n} (~{c}t)" for n, c in held_facts), "yellow"))
+        add("    " + _ui.c("evictable local pointers (raw metadata, UNORDERED — YOU judge value, never auto-ranked):", "dim"))
+        for f in sorted(store.glob("*.md")):
+            if f.name == "MEMORY.md":
+                continue
+            try:                                  # Gate-2: match the no-raise convention of every store scan
+                t = f.read_text(encoding="utf-8", errors="replace")   # (a concurrent gc/chmod between glob+read
+            except OSError:                       # must not abort the whole --pull after RESULT is built)
+                continue
+            ffm = _frontmatter(t)
+            add("      " + _ui.c(f"· {f.stem:<40} {ffm.get('scope', '?'):<14} "
+                                 f"{'mirror' if _is_mirror(t) else 'authored':<9} ~{est_tokens(_pointer_line(f.stem, ffm))}t", "dim"))
+        add("    " + _ui.c("→ sync_global.py --pull --evict=<fact> .   (refuses an orphaning OR too-small evict; never auto-deletes)", "dim"))
     print(_ui.ascii_translate("\n".join(out)))
     return 0
 
@@ -1018,11 +1104,17 @@ def main() -> int:
             return 2
         return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1], prefer_canonical="--prefer-canonical" in args)
     if not args or args[0] not in ("--list", "--pull"):
-        print("usage: sync_global.py --list|--pull [--allow-net-grow] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
+        print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] | --tokens [--json] PROJECT_DIR "
               "| --network", file=sys.stderr)
         return 2
-    return run(project_dir, args[0] == "--pull", allow_net_grow="--allow-net-grow" in args)
+    evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)
+    if evict is not None:                          # Gate-2: a destructive flag must not silently no-op
+        if evict == "":
+            print("evict: --evict= requires a fact name (e.g. --evict=stale-fact)", file=sys.stderr); return 2
+        if args[0] != "--pull":
+            print("evict: --evict requires --pull (it's a destructive swap, not a read-only --list)", file=sys.stderr); return 2
+    return run(project_dir, args[0] == "--pull", allow_net_grow="--allow-net-grow" in args, evict=evict)
 
 
 if __name__ == "__main__":

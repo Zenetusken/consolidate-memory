@@ -43,11 +43,16 @@ echo "3/3 pre-push hook on $CM_REPO …"
 HOOKS="$CM_REPO/.git/hooks"
 if [ ! -d "$HOOKS" ]; then
   echo "    WARNING: $HOOKS not found — is $CM_REPO a git repo? Skipping hook install."
-elif [ -e "$HOOKS/pre-push" ]; then
-  echo "    WARNING: $HOOKS/pre-push already exists — NOT overwriting."
+elif [ -e "$HOOKS/pre-push" ] && ! grep -q "dream-beta-test continuous-QA gate" "$HOOKS/pre-push" 2>/dev/null; then
+  echo "    WARNING: $HOOKS/pre-push exists and is NOT a dream-beta-test hook — NOT overwriting (won't clobber yours)."
   echo "             To chain, add this line to it:"
   echo "             G=\"\$(ls -d \"\$HOME\"/.claude/plugins/cache/*/dream-beta-tester/*/maintainer/ci_check.sh 2>/dev/null | sort -V | tail -1)\"; [ -n \"\$G\" ] && \"\$G\""
 else
+  # No hook, OR a STALE dream-beta-test hook (marker matched) → (re)install the CURRENT one. v0.1.41 stale-hook
+  # fix: the marker lets a re-run UPDATE its own hook after a location/slug move. The OLD hook exec'd a FROZEN
+  # `~/.claude/dream-beta-tester/ci_check.sh` that went stale (old-slug) and FALSE-FAILED the M3 split-brain
+  # CHK-QTY; this one resolves the cache-LATEST, surviving plugin updates. Without the marker check, install-gate
+  # refused to overwrite and left the stale hook in place (the exact bug that blocked the v0.1.41 push).
   cat > "$HOOKS/pre-push" <<'HOOK'
 #!/bin/sh
 # dream-beta-test continuous-QA gate — runs the LATEST installed dream-beta-tester (survives updates).

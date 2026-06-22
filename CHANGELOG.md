@@ -5,6 +5,40 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [dream-beta-tester 0.1.6] — 2026-06-22
+
+### Fixed — install-gate updates a STALE DBT-owned pre-push hook instead of refusing
+The hook installer refused to overwrite ANY existing `pre-push`, so when the gate's stable location/slug moved,
+a re-run left the OLD hook in place — it exec'd a frozen `~/.claude/dream-beta-tester/ci_check.sh` (old-slug
+`beta_checks`) that FALSE-FAILED the M3 split-brain `CHK-QTY` on the `.`-bearing path, blocking a verified-clean
+push (the cm v0.1.41 evict ship). Now install-gate detects a dream-beta-test-OWNED hook (by marker) and UPDATES
+it to the cache-latest resolver (which survives plugin updates); a non-DBT hook is still never clobbered.
+
+## [0.1.41] — 2026-06-22
+
+### Added — evict-to-receive: the release valve for M1's hold (the budget ↔ cross-pollination tension)
+M1 (v0.1.38) holds a new global on an over/near-budget store + surfaces the lever, but a chronically-full store
+then HOLDS forever (the audit's "starves until it prunes" tension; Doc_Flo holds 5). `sync_global --pull
+--evict=FACT` is the release valve: free ONE low-value local pointer so a held global can land — NET-NEUTRAL (a
+swap, not a grow, so M1's budget stays enforced). It COMPLETES M1 (guard ↔ valve), doesn't compete with it.
+- **Safe operator scalpel, report-then-apply (NEVER auto-eviction):** a plain `--pull` with anything held surfaces
+  the held + the evictable pointers with RAW, UNORDERED metadata (scope · mirror? · cost) — explicitly NOT ranked
+  (a staleness/mtime rank misleads: a foundational fact is untouched yet vital). The agent judges; `--evict`
+  applies. Pre-checks BEFORE any delete (Guard-3 no-partial-state): the fact exists, has NO inbound `[[links]]`
+  (`_inbound_links` — orphan-safety), held globals exist to receive, and the freed room FITS the smallest held
+  (`_evict_frees_enough` — never delete for nothing).
+- Factored `extract_wikilinks` — the SINGLE `[[...]]` extractor (`dangling_links` + the evict inbound-scan both
+  call it; no 4th wikilink regex, per the v0.1.40 reimplementation-pin lesson).
+- Gate-2 hardening (2 independent reviewers; core destructive guarantees confirmed sound): `--evict` now honors
+  `--allow-net-grow` in its held pre-check (no gratuitous evict when the override makes nothing held); the
+  surfacing read is OSError-safe (matches every other store scan); `--evict` requires `--pull` and rejects an
+  empty `--evict=` at parse (a destructive flag never silently no-ops). install-gate hook-update is runtime-
+  verified (the recurrence-guard fired on the real stale hook); a bash test for it is a noted gap.
+- Verified: hermetic CLI E2E (happy · inbound-orphan refusal · too-small-fit refusal · the surfacing) + 6 smoke
+  units on the pure guards. smoke 328/0 · mypy 16 · sim A–Q. **PATCH** (additive `--evict`; `--pull` unchanged).
+- Deferred (separate, pre-existing): a pulled global linking a HELD global dangles (the dangling-detector is
+  local-only) — not eviction-specific. This valve is a scalpel, NOT a cure: it does not auto-rank or "solve" the tension.
+
 ## [0.1.40] — 2026-06-22
 
 ### Fixed — M3: `slug_for` generalizes to all non-alphanumerics, fixing the dot-segment split-brain (audit MAJOR)
