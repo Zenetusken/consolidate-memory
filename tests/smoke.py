@@ -1127,12 +1127,37 @@ check("v0.1.40/M3: all 5 slug_for reimplementations AGREE (skill + snapshot/beta
 # _inbound_links (orphan-safety). The hermetic CLI E2E (happy + both refusals + surfacing) ran green out-of-band.
 check("v0.1.41: extract_wikilinks strips fenced + inline code, finds [[real]] only (single [[...]] extractor)",
       ms.extract_wikilinks("a [[real]] b `[[inline]]` c\n```\n[[fenced]]\n```\n") == ["real"])
+# explicit budget=1200 pins these to the eviction LOGIC, not the production INDEX_TOKEN_BUDGET
+# (which moved 1200→1500) — a fixture sized to the live constant silently breaks on a re-ground.
 check("v0.1.41: _evict_frees_enough True when the freed room fits the smallest held",
-      sg._evict_frees_enough(1190, 80, [40, 60]) is True)        # (1190-80)+40 = 1150 ≤ 1200
+      sg._evict_frees_enough(1190, 80, [40, 60], budget=1200) is True)        # (1190-80)+40 = 1150 ≤ 1200
 check("v0.1.41: _evict_frees_enough False when the evict frees too little (no-partial-loss refusal)",
-      sg._evict_frees_enough(1190, 10, [40]) is False)           # (1190-10)+40 = 1220 > 1200
+      sg._evict_frees_enough(1190, 10, [40], budget=1200) is False)           # (1190-10)+40 = 1220 > 1200
 check("v0.1.41: _evict_frees_enough False when nothing is held (nothing to receive)",
-      sg._evict_frees_enough(1190, 80, []) is False)
+      sg._evict_frees_enough(1190, 80, [], budget=1200) is False)
+
+# vNEXT: archive_candidates — completion-driven (dated-stem + KEEP-veto), INDEXED-only, high-precision.
+import tempfile as _tf
+from pathlib import Path as _ArcPath
+with _tf.TemporaryDirectory() as _arc_td:
+    _arc_dir = _ArcPath(_arc_td)
+    (_arc_dir / "feat_shipped_2026_05_01.md").write_text("---\nname: a\n---\nThis arc SHIPPED.\n", encoding="utf-8")
+    (_arc_dir / "lesson_2026_05_01.md").write_text("---\nname: b\ndescription: NEVER retry X — a standing rule\n---\nbody.\n", encoding="utf-8")
+    (_arc_dir / "bodyonly_2026_05_01.md").write_text("---\nname: f\n---\nThe rule: NEVER retry.\n", encoding="utf-8")
+    (_arc_dir / "active_design.md").write_text("---\nname: c\n---\nongoing active notes\n", encoding="utf-8")
+    (_arc_dir / "orphan_2026_05_01.md").write_text("---\nname: d\n---\ndated but UNindexed\n", encoding="utf-8")
+    (_arc_dir / "mirror_2026_05_01.md").write_text("---\nname: e\nmetadata:\n  global_ref: x\n---\ndated mirror\n", encoding="utf-8")
+    _arc_idx = {"feat_shipped_2026_05_01", "lesson_2026_05_01", "bodyonly_2026_05_01", "active_design", "mirror_2026_05_01"}  # orphan NOT indexed
+    _arc_got = {c["stem"] for c in ms.archive_candidates(list(_arc_dir.glob("*.md")), _arc_idx)}
+    check("vNEXT: archive_candidates flags an indexed dated completed-arc", "feat_shipped_2026_05_01" in _arc_got)
+    check("vNEXT: archive_candidates VETOes a dated fact whose DESCRIPTION signals a lesson (frontmatter KEEP → STAYS)", "lesson_2026_05_01" not in _arc_got)
+    check("vNEXT: archive_candidates SURFACES a dated fact with a body-only directive (model's Phase-5 judgment is the net — measured: a whole-body veto collapses recall)", "bodyonly_2026_05_01" in _arc_got)
+    check("vNEXT: archive_candidates spares an undated active fact", "active_design" not in _arc_got)
+    check("vNEXT: archive_candidates spares an UNINDEXED dated fact (only indexed taxes budget)", "orphan_2026_05_01" not in _arc_got)
+    check("vNEXT: archive_candidates spares a managed mirror (GC's domain)", "mirror_2026_05_01" not in _arc_got)
+    check("vNEXT: archive_candidates surfaces EXACTLY {feat_shipped, bodyonly} on this fixture", _arc_got == {"feat_shipped_2026_05_01", "bodyonly_2026_05_01"})
+check("vNEXT: archive_candidates never raises on a missing/odd file (OSError → skip)",
+      ms.archive_candidates([_ArcPath("/nonexistent/zzz.md")], {"zzz"}) == [])
 with _tf37.TemporaryDirectory() as _td41:
     _s41 = Path(_td41)
     (_s41 / "target.md").write_text("---\nname: target\n---\nbody\n")
