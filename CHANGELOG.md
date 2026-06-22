@@ -5,6 +5,15 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [dream-beta-tester 0.1.6] — 2026-06-22
+
+### Fixed — install-gate updates a STALE DBT-owned pre-push hook instead of refusing
+The hook installer refused to overwrite ANY existing `pre-push`, so when the gate's stable location/slug moved,
+a re-run left the OLD hook in place — it exec'd a frozen `~/.claude/dream-beta-tester/ci_check.sh` (old-slug
+`beta_checks`) that FALSE-FAILED the M3 split-brain `CHK-QTY` on the `.`-bearing path, blocking a verified-clean
+push (the cm v0.1.41 evict ship). Now install-gate detects a dream-beta-test-OWNED hook (by marker) and UPDATES
+it to the cache-latest resolver (which survives plugin updates); a non-DBT hook is still never clobbered.
+
 ## [0.1.41] — 2026-06-22
 
 ### Added — evict-to-receive: the release valve for M1's hold (the budget ↔ cross-pollination tension)
