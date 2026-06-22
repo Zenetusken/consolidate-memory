@@ -544,6 +544,18 @@ is *sufficient-not-necessary*, so YOU judge each by content; the helper only RAN
 non-dated completed arc the helper won't surface — catch those by the same judgment. This is the primary
 defragmentation that keeps the index lean; the over-budget gate below is what catches the rare case it doesn't.
 
+**Body-defragmentation (runs EVERY dream — v0.1.x, Cycle 2).** Phase 0 also surfaces **`defrag? N`** bloated ACTIVE
+files — indexed, non-mirror, NON-dated facts whose BODY is a size outlier (≫ the store median; `defrag_candidates`).
+These are long-lived status/roadmap docs that have ACCRETED completed/stale items over time. Curate the BODY **in
+place** (the index pointer STAYS — distinct from archiving a whole dated fact): **COLLAPSE** completed detail that is
+redundant with git/CHANGELOG — but **READ the CHANGELOG/git and CONFIRM the detail is actually present there BEFORE
+collapsing** (verified, not assumed; else KEEP or relocate); **RELOCATE** still-useful-completed detail to an archive
+doc; **KEEP** active/forward content (OPEN items, current state, watch-list) and live lessons / negative findings.
+**Propose-then-apply IN-CONVERSATION (show the body edits + confirm), never auto-trim** — the Phase-5 `--diffs` sidecar
+is the POST-write audit record, NOT the pre-apply gate. Higher-risk than pointer-archiving (intra-file): keep-on-doubt,
+relocate-over-delete. Goal — the file returns toward the store's typical length, kept accurate + forward-looking. Full
+design: `docs/body-defragmentation.spec.md`.
+
 **0. Over-budget remediation (v0.1.18 GATE; v0.1.21 standing-justify) — when `remediation.required`.** If Phase 0
 flagged the index OVER budget AND the gate is NOT standing-justified, it's a hard gate: you may not finish a pass
 that net-grows it. (When `remediation.standing_justified` is true the gate is **SUPPRESSED** — the density was

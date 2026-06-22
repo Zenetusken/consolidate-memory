@@ -5,6 +5,30 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.46] — 2026-06-22
+
+### Added — body-defragmentation: curate bloated ACTIVE files (Cycle 2 of the harness-audit follow-up)
+Cycle 1 (v0.1.45) archives whole COMPLETED facts (dated pointers → on-demand archive). This handles the orthogonal
+case: a long-lived ACTIVE file (a roadmap/status doc) whose BODY has accreted completed/stale items. Measured: 2
+bloated active files fleet-wide (the cm roadmap at ≈12.7× its store median; Doc-Flo `next_priorities` at ≈9.1×).
+- **`defrag_candidates(fact_files, index_names, *, factor=2.5)` (memory_status.py) — a pure, budget-INDEPENDENT
+  helper.** Surfaces INDEXED, non-mirror, NON-dated facts whose `body_tokens` exceeds `factor ×` the MEDIAN over that
+  SAME population (self-consistent). Edge guards: returns `[]` on a <3-fact or degenerate (all-equal / non-positive)
+  median. RANKS only — the model curates by CONTENT + the user confirms (no write path). DISJOINT from
+  `archive_candidates` by the dated-stem gate (dated → pointer-archive; non-dated → body-defrag).
+- **Phase 0 surfaces a `defrag? N` stdout advisory** (beside `archive?`; NOT in the cycle record → no schema change).
+  **SKILL Phase 5 gains a body-defrag sub-phase** (runs every dream): curate the bloated file's BODY in place (the
+  index pointer STAYS) — COLLAPSE detail verifiably redundant with git/CHANGELOG (READ + confirm BEFORE collapsing),
+  RELOCATE still-useful-completed detail, KEEP active content + live lessons. **Propose-then-apply IN-CONVERSATION,
+  never auto-trim** (the Phase-5 `--diffs` sidecar is the POST-write audit record, not the pre-apply gate). Higher-risk
+  (intra-file): keep-on-doubt, relocate-over-delete.
+- **Backward-compatible (PATCH):** no cycle-record schema change; no removed/renamed script or flag. +9
+  `defrag_candidates` smoke checks (flag/spare/edge guards). Full design: `docs/body-defragmentation.spec.md`.
+- Gated: independent spec-review (FAIL→PASS: median population pinned + ratios corrected, the `--diffs`-vs-real-gate
+  citation fixed, CHANGELOG-verify operationalized, edge guards, remediation-C overlap documented) + a focused
+  adversarial review (no correctness bugs; the relative-median ranking has design-inherent small-population edges —
+  the model's content judgment is the net). smoke 375/0 · mypy clean · sim ✓.
+
 ## [0.1.45] — 2026-06-22
 
 ### Changed — completion-driven archiving + the index budget re-grounded in active-set demand

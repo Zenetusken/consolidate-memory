@@ -790,6 +790,39 @@ def archive_candidates(fact_files: list, index_names: set) -> list:
     return out
 
 
+def defrag_candidates(fact_files: list, index_names: set, *, factor: float = 2.5) -> list:
+    """PURE, budget-INDEPENDENT: surface INDEXED, non-mirror, NON-dated (active) facts whose BODY is a
+    SIZE outlier — `body_tokens` > `factor` × the MEDIAN body_tokens over that SAME population (indexed,
+    non-mirror, non-dated — self-consistent/reproducible). These are bloated ACTIVE files (a roadmap/
+    status doc accreting completed/stale items) → candidates for BODY-defragmentation (curate the body
+    in place; the index pointer STAYS), DISTINCT from archive_candidates (whole DATED completed facts →
+    pointer-archive; disjoint by the dated-stem gate). A body-SIZE outlier is a structural signal — the
+    helper RANKS; the model curates by CONTENT + the user confirms (no write path here). Edge guards:
+    returns [] when the population has <3 facts or a degenerate (all-equal / non-positive) median — no
+    div-by-zero, no noise on a tiny/uniform store. Never raises (OSError → skip)."""
+    pop: list = []                                  # (stem, body_tokens) over indexed, non-mirror, non-dated
+    for f in fact_files:
+        if f.stem not in index_names or _DATED_RE.search(f.stem):
+            continue
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _is_mirror(text):
+            continue
+        pop.append((f.stem, est_tokens(text)))
+    if len(pop) < 3:                                # too few to define an outlier
+        return []
+    sizes = sorted(t for _, t in pop)
+    n = len(sizes)
+    med = sizes[n // 2] if n % 2 else (sizes[n // 2 - 1] + sizes[n // 2]) / 2
+    if med <= 0 or sizes[0] == sizes[-1]:           # degenerate / all-equal → no meaningful outlier
+        return []
+    out = [{"stem": s, "body_tokens": t, "ratio": round(t / med, 1)} for s, t in pop if t > factor * med]
+    out.sort(key=lambda c: -c["body_tokens"])
+    return out
+
+
 def _newest_mtime(base: Path, pattern: str) -> float:
     """Newest mtime among base/pattern files; 0.0 if none/absent/UNREADABLE (slug-orphan
     liveness signal). Never raises: an unreadable sibling dir (PermissionError) or a file that
@@ -1770,12 +1803,20 @@ def print_report(ctx: dict) -> None:
     if ctx["stale_facts"]:
         sig.append(_ui.li(f"re-verify {len(ctx['stale_facts'])} stale fact(s) (mtime ≤ marker): "
                           + _ui.c(", ".join(ctx["stale_facts"]), "dim"), bullet="·"))
-    _arch = archive_candidates(ctx["fact_files"], index_fact_names(ctx["auto_mem"] / "MEMORY.md"))
+    _idxn = index_fact_names(ctx["auto_mem"] / "MEMORY.md")
+    _arch = archive_candidates(ctx["fact_files"], _idxn)
     if _arch:
         sig.append(_ui.li(f"archive? {len(_arch)} indexed completed-arc pointer(s) (dated) → relocate to the on-demand "
                           "archive (e.g. SHIPPED.md) so the always-loaded index = the ACTIVE set "
                           "(completion-driven, NOT budget-gated; judge each, a dated-but-live lesson STAYS): "
                           + _ui.c(", ".join(c["stem"] for c in _arch[:8]) + ("…" if len(_arch) > 8 else ""), "dim"),
+                          bullet="↓", bullet_color="cyan"))
+    _defrag = defrag_candidates(ctx["fact_files"], _idxn)
+    if _defrag:
+        sig.append(_ui.li(f"defrag? {len(_defrag)} bloated ACTIVE file(s) (body ≫ store median) → curate the BODY "
+                          "in place (collapse completed detail that's redundant with git/CHANGELOG, keep active "
+                          "content + live lessons; propose-then-apply): "
+                          + _ui.c(", ".join(f"{c['stem']}({c['ratio']}×)" for c in _defrag[:6]) + ("…" if len(_defrag) > 6 else ""), "dim"),
                           bullet="↓", bullet_color="cyan"))
     if ctx["slug_orphans"]:
         cur_live = max(_newest_mtime(ctx["proj_root"], "*.jsonl"), _newest_mtime(ctx["auto_mem"], "*.md"))
