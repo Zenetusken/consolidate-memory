@@ -29,6 +29,11 @@ swap, not a grow, so M1's budget stays enforced). It COMPLETES M1 (guard ↔ val
   (`_evict_frees_enough` — never delete for nothing).
 - Factored `extract_wikilinks` — the SINGLE `[[...]]` extractor (`dangling_links` + the evict inbound-scan both
   call it; no 4th wikilink regex, per the v0.1.40 reimplementation-pin lesson).
+- Gate-2 hardening (2 independent reviewers; core destructive guarantees confirmed sound): `--evict` now honors
+  `--allow-net-grow` in its held pre-check (no gratuitous evict when the override makes nothing held); the
+  surfacing read is OSError-safe (matches every other store scan); `--evict` requires `--pull` and rejects an
+  empty `--evict=` at parse (a destructive flag never silently no-ops). install-gate hook-update is runtime-
+  verified (the recurrence-guard fired on the real stale hook); a bash test for it is a noted gap.
 - Verified: hermetic CLI E2E (happy · inbound-orphan refusal · too-small-fit refusal · the surfacing) + 6 smoke
   units on the pure guards. smoke 328/0 · mypy 16 · sim A–Q. **PATCH** (additive `--evict`; `--pull` unchanged).
 - Deferred (separate, pre-existing): a pulled global linking a HELD global dangles (the dangling-detector is

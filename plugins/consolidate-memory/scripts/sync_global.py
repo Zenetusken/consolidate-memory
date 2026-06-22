@@ -486,8 +486,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         for n, fm, _ in facts:
             if is_relevant(fm, stacks) and not (store / f"{n}.md").exists():
                 c = est_tokens(_pointer_line(n, fm))
-                if _would_net_grow(running_idx, c, False):
-                    held_pre.append((n, c))
+                if _would_net_grow(running_idx, c, allow_net_grow):   # SAME predicate as the pull loop (Gate-2):
+                    held_pre.append((n, c))                            # under --allow-net-grow nothing is held, so
+                # held_pre empties → the evict refuses ("nothing held") rather than a gratuitous delete-then-pull-all.
         if not held_pre:
             print(f"evict: nothing is held (no over-budget MISSING globals) — evicting '{evict}' would free "
                   "budget for NOTHING. There is no swap to make.", file=sys.stderr); return 1
@@ -569,7 +570,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         for f in sorted(store.glob("*.md")):
             if f.name == "MEMORY.md":
                 continue
-            t = f.read_text(encoding="utf-8", errors="replace")
+            try:                                  # Gate-2: match the no-raise convention of every store scan
+                t = f.read_text(encoding="utf-8", errors="replace")   # (a concurrent gc/chmod between glob+read
+            except OSError:                       # must not abort the whole --pull after RESULT is built)
+                continue
             ffm = _frontmatter(t)
             add("      " + _ui.c(f"· {f.stem:<40} {ffm.get('scope', '?'):<14} "
                                  f"{'mirror' if _is_mirror(t) else 'authored':<9} ~{est_tokens(_pointer_line(f.stem, ffm))}t", "dim"))
@@ -1105,6 +1109,11 @@ def main() -> int:
               "| --network", file=sys.stderr)
         return 2
     evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)
+    if evict is not None:                          # Gate-2: a destructive flag must not silently no-op
+        if evict == "":
+            print("evict: --evict= requires a fact name (e.g. --evict=stale-fact)", file=sys.stderr); return 2
+        if args[0] != "--pull":
+            print("evict: --evict requires --pull (it's a destructive swap, not a read-only --list)", file=sys.stderr); return 2
     return run(project_dir, args[0] == "--pull", allow_net_grow="--allow-net-grow" in args, evict=evict)
 
 
