@@ -319,7 +319,24 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
     return out
 
 
-def render(record: ms.CycleRecord) -> str:
+def _procedure_integrity_section(record: Mapping[str, Any]) -> list:
+    """v0.1.44: the loud PROCEDURE INTEGRITY panel — the lazy-skip detector's user-visible teeth.
+    Empty (no panel) when the verdict is ok. The CALLER gates this on --persist (only a completed,
+    persisting dream is judged; a seed/preview render is the dream's BEFORE state, not a skip)."""
+    ok, reason, severity = ms.procedure_integrity(record)
+    if ok:
+        return []
+    col = "red" if severity == "alert" else "yellow"
+    out = ["", _rule()]
+    out.append("  " + _c("⚠ PROCEDURE INTEGRITY", "bold", col)
+               + _c("   · substantial pass, zero verification recorded", "dim"))
+    out.append(_rule())
+    out.append("    " + _ui.wrap(_clean(reason), hang=4))
+    out.append("    " + _c("→ run the Phase-3 verification fan-out, then re-render (a clean pass clears this ⚠ + exits 0)", "dim"))
+    return out
+
+
+def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     if not isinstance(record, dict):
         record = {}  # a non-dict record (JSON list/scalar from stdin) degrades — this is the runtime boundary
     out: list = []
@@ -335,6 +352,12 @@ def render(record: ms.CycleRecord) -> str:
     out.append("  " + _c("✦", "cyan") + title[1:] + " " * gap + _outcome_colored(oc))
     out.append("  " + _c(f"{proj} · session {ses}", "dim"))
     out.append(_rule())
+
+    # v0.1.44: PROCEDURE INTEGRITY — the lazy-skip detector's panel, RIGHT after the banner so it's
+    # unmissable. Gated on `judged` (set by main() iff --persist): only a completed, persisting dream
+    # is judged — a seed/preview render (no --persist) is the BEFORE state and is never flagged.
+    if judged:
+        out += _procedure_integrity_section(record)
 
     # Scope + Verification (aligned label column)
     s = _dget(record, "scope")
@@ -758,9 +781,21 @@ def main() -> int:
     # NEVER touches stdout — the rendered dashboard stays byte-identical.
     for w in ms.validate_cycle_record(record):
         print(f"render_dashboard: cycle-record warning: {w}", file=sys.stderr)
-    print(render(record))
+    # `judged` only when persisting: a completed dream is judged by the PROCEDURE INTEGRITY detector;
+    # a seed/preview render (no --persist) is the dream's BEFORE state (0 candidates, 0/0/0 by
+    # construction) and must NOT be flagged. So the panel is gated here, matching the exit below.
+    judged = persist_dir is not None
+    print(render(record, judged=judged))
     if persist_dir:
+        # Strict order print → persist → exit (v0.1.44): the firing record MUST be logged (it accrues
+        # for calibration + surfaces in the archive's longitudinal ⚠), THEN the terminal --persist
+        # render exits 3 on a procedure-integrity violation — the lazy-skip teeth at the one boundary a
+        # finishing dream always hits. DETECT, not enforce: the dashboard (incl. the ⚠ panel) already
+        # printed; exit 3 is the nonzero SIGNAL the orchestrator must act on (Exit 1/2 stay read/arg).
         _persist(record, persist_dir)
+        ok, _reason, _sev = ms.procedure_integrity(record)
+        if not ok:
+            return 3
     return 0
 
 

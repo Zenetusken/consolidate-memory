@@ -371,6 +371,7 @@
     var oc=g(CUR,"outcome",""),lab;
     if(oc)lab=oc; else if(magnitude(CUR)===0&&!ENT.length)lab="Nothing to consolidate";
     else if(w===0)lab="No-op pass"; else if(w>=4)lab="Substantial pass"; else lab="Light pass";
+    if(CUR&&CUR._integrity)lab+=" · ⚠ procedure integrity";
     el("h-banner").textContent=lab;})();
 
   // ── compute the lead trajectory once (shared by headline + hero chart) ──
@@ -549,8 +550,9 @@
       box.innerHTML=h;}
     // verification block
     var v=CUR.verification||{},h=CUR.health||{},vb=el("verify");
+    var INTG=(CUR&&CUR._integrity)?'<div class="flag" style="display:block">⚠ Procedure integrity — '+esc(CUR._integrity.reason)+'</div>':'';
     var pointers=g(h,"index_pointers_ok",true), dang=(g(h,"dangling_links",[])||[]).length, broke=(g(h,"broken",[])||[]).length;
-    vb.innerHTML='<div style="font-family:var(--serif);font-style:italic;color:var(--ink2);margin-bottom:8px">Verification &amp; health</div>'
+    vb.innerHTML='<div style="font-family:var(--serif);font-style:italic;color:var(--ink2);margin-bottom:8px">Verification &amp; health</div>'+INTG
       +'<div class="audit-ln head"><span class="s">check</span><span class="nums">result</span></div>'
       +'<div class="audit-ln"><span class="s">claims confirmed</span><span class="nums">'+num(v.confirmed)+' ✓ · '+num(v.corrected)+' corrected · '+num(v.unverifiable)+' dropped</span></div>'
       +'<div class="audit-ln"><span class="s">index pointers</span><span class="nums" style="color:'+(pointers?"var(--ok)":"var(--crit)")+'">'+(pointers?"all resolve":"broken")+(broke?" · "+broke+" broken":"")+'</span></div>'
@@ -625,7 +627,7 @@
     el("a-foot").textContent=(DATA.project||PROJ)+" · dream telemetry";
     // per-cycle row data — raw values for filter/sort (READ-ONLY; never mutates ALL)
     var rows=ALL.map(function(c,i){var rg=String(g(c,"rigor.applied","—"));
-      return {i:i, oc:g(c,"outcome","")||(magnitude(c)===0&&!(Array.isArray(c.entries)&&c.entries.length)?"nothing to consolidate":"pass"),
+      return {i:i, intg:!!(c&&c._integrity), oc:g(c,"outcome","")||(magnitude(c)===0&&!(Array.isArray(c.entries)&&c.entries.length)?"nothing to consolidate":"pass"),
         rgRaw:rg.toUpperCase(), rg:rg.charAt(0)+rg.slice(1).toLowerCase(),
         ts:String(g(c,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"").slice(0,16), tsRaw:String(g(c,"marker.timestamp","")),
         ix:num(g(c,"budget.index.after_tokens",g(c,"budget.index.before_tokens",0))),
@@ -643,7 +645,7 @@
       el("f-count").textContent=fr.length+(fr.length!==rows.length?" of "+rows.length:"")+" shown";
       el("arch-list").innerHTML=fr.map(function(x){
         return '<a class="arch-row'+(x.i===ALL.length-1?" cur":"")+'" href="#sel='+x.i+'">'
-          +'<span class="dt">'+esc(x.ts)+'</span><span class="oc">'+esc(x.oc)+'</span><span class="rg">'+esc(x.rg)+'</span>'
+          +'<span class="dt">'+esc(x.ts)+'</span><span class="oc">'+esc(x.oc)+(x.intg?' <span style="color:var(--crit)" title="procedure integrity: verification skipped on a substantial pass">⚠</span>':'')+'</span><span class="rg">'+esc(x.rg)+'</span>'
           +'<span class="ix">'+fmt(x.ix)+'</span><span class="en">'+x.en+'</span><span class="hh">'+esc(x.hh)+'</span></a>';
       }).join("") || '<div class="cap" style="padding:14px 0">no dreams match this filter</div>';
     }

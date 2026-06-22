@@ -18,6 +18,8 @@ import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
+import memory_status as ms  # sibling: the SINGLE-SOURCE procedure_integrity predicate (v0.1.44) — derive, don't duplicate
+
 # The gorgeous HTML/CSS/vanilla-JS lives in a sibling BUNDLED template (a real editable asset, shipped under
 # plugins/consolidate-memory/scripts/). Found via __file__ so it resolves from the installed plugin cache
 # regardless of ${CLAUDE_PLUGIN_ROOT}. A single placeholder is replaced (NOT str.format — CSS/JS braces).
@@ -89,6 +91,15 @@ def build_html(record: dict, history: list, generated_at: str, diffs: "dict | No
     cycles, total = assemble_cycles(record, history)
     rec = record if isinstance(record, dict) else {}
     project = (rec.get("project") or (cycles[-1].get("project") if cycles else "")) or "dream"
+    # v0.1.44: attach the procedure-integrity verdict per cycle (single-source ms.procedure_integrity),
+    # ONLY when it fires (lean payload) — the JS surfaces an escaped ⚠ panel + archive badge from
+    # `_integrity`. A shallow copy carries it into the embedded series without mutating the source dicts.
+    def _embed_integrity(c: object) -> object:
+        if not isinstance(c, dict):
+            return c
+        ok, reason, severity = ms.procedure_integrity(c)
+        return c if ok else {**c, "_integrity": {"severity": severity, "reason": reason}}
+    cycles = [_embed_integrity(c) for c in cycles]
     data = {
         "cycles": cycles,
         "project": project,

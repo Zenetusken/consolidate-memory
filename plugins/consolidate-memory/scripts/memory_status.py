@@ -17,6 +17,7 @@ from __future__ import annotations
 import difflib
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -1469,6 +1470,90 @@ def validate_cycle_record(record: object) -> list[str]:
         if "schema_drift" in health and not isinstance(health["schema_drift"], dict):
             warnings.append("health.schema_drift is not a dict")
     return warnings
+
+
+# ── v0.1.44: procedure-integrity detector — the lazy-skip safeguard ──────────────────
+# The MEASURED failure (2026-06-22): three consecutive dreams ran 0/0/0 verification while
+# self-labeled SUBSTANTIAL/HEAVY — the orchestrator skipped the Phase-3 verification fan-out
+# and graded its own (skipped) effort. `rigor.applied` is self-reported, so it can't catch this
+# (it catches OVER-rigor, not UNDER-rigor). This is a DETECTOR at the one mandatory boundary a
+# finishing dream always reaches (render_dashboard --persist, the SKILL's terminal step), NOT
+# enforcement of phase invocation — nothing can make a stateless script force an LLM to run a
+# phase. It fires on the lazy-skip SIGNATURE: substantial WORK existed (script-derived magnitude)
+# yet ZERO verification was recorded. It does NOT catch a diligent liar who types fake tallies
+# (the same limit as any self-reported scheme). Design + the empirical 13-record validation:
+# docs/dream-procedure-integrity.spec.md.
+#
+# NON-CIRCULAR leg: magnitude derives from scope.git_commits (script-SEEDED by seed_record from
+# `git log` — a lazy-skip never touches it) + session_candidates (model-curated, but LOWERING it
+# only LOWERS magnitude, so the dodge can't manufacture a substantial pass). The trigger does NOT
+# rest on rigor.applied (the audited self-report) NOR on mutation_ops (a skipped Phase 5 also
+# skips --audit, so that data may not exist — measured: 11 mutation-log entries for 13 dreams,
+# none of the 3 failures carrying an audit block). `applied` + any audit op-count are
+# CORROBORATION / severity ONLY — never gating.
+
+
+def _pi_int(x: object) -> int:
+    """Coerce a model-authored numeric (a cycle record is model-emitted JSON) to int; 0 on
+    anything odd. Local to this module (the dependency root render imports), mirroring render's
+    `_num` at the model→logic boundary. Never raises."""
+    if isinstance(x, bool):                 # bool ⊂ int — count True/False as 1/0 explicitly
+        return int(x)
+    if isinstance(x, (int, float)):
+        return int(x) if math.isfinite(x) else 0   # NaN/±inf → 0: json.loads accepts NaN/Infinity, and int(nan/inf) raises
+    if isinstance(x, str):
+        try:
+            f = float(x.strip() or 0)
+        except ValueError:
+            return 0
+        return int(f) if math.isfinite(f) else 0    # "inf"/"nan" parse to a non-finite float → 0 (not a crash)
+    return 0
+
+
+def procedure_integrity(record: object) -> tuple[bool, str, str]:
+    """DETECT the lazy-skip: a SUBSTANTIAL-or-larger-MAGNITUDE pass that recorded ZERO
+    verification. Returns (ok, reason, severity); ok=True ⇒ no violation (or the record can't be
+    evaluated). PURE; never raises. The renderer calls it, and `render_dashboard --persist` turns
+    a violation into a loud panel + a nonzero exit (the teeth — see SKILL Phase 5).
+
+    LEGACY / non-conformant GATE: returns (True, "", "") when `scope` or `verification` is absent
+    or non-dict — an ancient or partial record predates this check and must NEVER be retroactively
+    flagged. Every record this skill seeds carries both blocks, so real passes are always judged.
+
+    FIRE (ok=False) iff `suggested_tier(git_commits, session_candidates) >= SUBSTANTIAL` AND the
+    verification tally (confirmed+corrected+unverifiable) <= 0 (a negative/junk tally can't dodge it).
+    `applied` + any audit op-count are CORROBORATION / severity ONLY (see the module note above) — never gating."""
+    if not isinstance(record, dict):
+        return (True, "", "")
+    scope = record.get("scope")
+    verif = record.get("verification")
+    if not isinstance(scope, dict) or not isinstance(verif, dict):
+        return (True, "", "")               # can't evaluate → no-op (legacy / partial record)
+    commits = _pi_int(scope.get("git_commits"))
+    cands = _pi_int(scope.get("session_candidates"))
+    tally = _pi_int(verif.get("confirmed")) + _pi_int(verif.get("corrected")) + _pi_int(verif.get("unverifiable"))
+    tier = suggested_tier(commits, cands)
+    if TIER_ORDER.get(tier, 0) < TIER_ORDER["SUBSTANTIAL"] or tally > 0:
+        return (True, "", "")               # honest LIGHT/maintenance/bootstrap, or POSITIVE verification recorded (tally>0)
+    reason = (f"magnitude {tier} ({commits} commit(s) + {cands} candidate(s)) but 0 verification "
+              f"recorded — the Phase-3 verification fan-out was likely skipped")
+    severity = "warn"
+    rg_raw = record.get("rigor")            # assign-then-narrow (a double .get() doesn't narrow for mypy)
+    rg = rg_raw if isinstance(rg_raw, dict) else {}
+    applied = str(rg.get("applied", "")).strip().upper()
+    if applied in ("SUBSTANTIAL", "HEAVY"):
+        severity = "alert"                  # self-graded substantial effort AND verified nothing — the measured failure
+        reason += f"; self-labeled rigor.applied={applied} (effort graded, not done)"
+    elif applied in TIER_ORDER and TIER_ORDER[applied] < TIER_ORDER[tier]:
+        ov = str(rg.get("override_reason", "")).strip()    # the downgrade dodge — labeled below magnitude
+        reason += f"; labeled rigor.applied={applied} below magnitude {tier}" + ("" if ov else " with no override_reason")
+    audit = record.get("audit")
+    if isinstance(audit, dict) and audit:
+        ops = audit.get("operations")
+        reason += f"; wrote {len(ops) if isinstance(ops, list) else 0} file op(s) this pass"
+    else:
+        reason += "; no audit trail (Phase-5 --audit also skipped)"
+    return (False, reason, severity)
 
 
 def _remediation_section(rem: dict) -> list:

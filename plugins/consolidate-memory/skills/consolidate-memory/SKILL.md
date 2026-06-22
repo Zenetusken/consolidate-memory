@@ -149,7 +149,13 @@ per-project `.consolidation-log.jsonl`, so magnitude→(applied, outcome) data f
 **Honest caveat:** `applied` is **self-reported** — it catches OVER-rigor (ran heavy, didn't
 need it) but NOT under-rigor (ran light, missed something); the dangerous direction needs
 LONGITUDINAL miss-detection (a later pass finds what an earlier one missed), which the log
-enables but which remains future work. And never calibrate the bands against the dashboard's
+enables but which remains future work. **One under-rigor case IS now caught (v0.1.44): the
+lazy-skip** — a SUBSTANTIAL-or-larger-MAGNITUDE pass that records 0/0/0 verification trips the
+**procedure-integrity detector** at the terminal `render_dashboard --persist` (a loud ⚠ panel +
+exit 3 — see Phase 5). It rests on the script-derived magnitude (`git_commits`), not the
+self-report, so it can't be graded away; it does NOT catch a diligent liar who types fake
+tallies (same limit). This is the structural fix for the MEASURED 2026-06-22 failure (three
+dreams ran 0/0/0 while self-labeled SUBSTANTIAL/HEAVY). See `docs/dream-procedure-integrity.spec.md`. And never calibrate the bands against the dashboard's
 OUTCOME banner — mature passes are systematically high-magnitude / low-outcome, so fitting
 `(magnitude, outcome)` fails UNSAFE (it biases toward LESS rigor). The rigor tier (an
 *input*-based effort estimate) is a **distinct quantity** from the dashboard's outcome
@@ -633,6 +639,21 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    magnitude→(applied, outcome) data for a future band calibration. It is idempotent and
    **skips persisting an unstamped cycle** (the render still succeeds), so run it AFTER
    step 5 stamps `marker.timestamp`.
+
+   **Procedure-integrity gate (v0.1.44).** Because this terminal `--persist` is the one step
+   every finishing dream runs, the render also JUDGES the completed dream here: if a
+   SUBSTANTIAL-or-larger-MAGNITUDE pass recorded **0/0/0 verification** (the lazy-skip — you
+   skipped the Phase-3 fan-out), it prints a loud **PROCEDURE INTEGRITY ⚠** panel, persists the
+   record (so the failure is logged + shows in the archive), and then **exits 3**. That nonzero
+   exit means THIS dream is incomplete — go run the Phase-3 verification fan-out, then re-render
+   (a clean pass exits 0; THEN continue Phase 5 — `--diffs`, `render_html`). It is a DETECTOR (not a
+   block — the dashboard prints first); a seed/preview render WITHOUT `--persist` is the BEFORE
+   state and is never judged. **SCOPE (be honest about what it does NOT catch):** it catches the
+   *measured* lazy-skip — a skipped **Phase-3** verification (0/0/0 on a substantial pass) — NOT the
+   general "skipped a phase" class: a pass that DOES verify but skips the Phase-1 re-audits or the
+   Phase-5 GC/stale-reverify records `tally>0` and is spared, and a diligent liar who types fake
+   tallies defeats it. Rare false-positive: a substantial-commits pass with genuinely nothing
+   memory-relevant to verify fires too — note it and proceed (the ⚠ is a signal, not a block).
    The dashboard now includes a **"Neural network — token consumption (all nodes)"**
    sub-section: the per-node and total estimated token tax across the network, plus
    what *this* cycle did in lifecycle terms on the triggering node (the node `dream`
