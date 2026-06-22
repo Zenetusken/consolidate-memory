@@ -1112,6 +1112,16 @@ with _tfm5.TemporaryDirectory() as _tdm5:
     check("v0.1.4/M5: restore rolls a dream-added file OUT of the store (--test leaves no trace)", not (_s5 / "c.md").exists())
     check("v0.1.4/M5: the rolled-out file is QUARANTINED (recoverable), not destroyed",
           any((_r5 / "reports").glob(".restore-trash-*/c.md")))
+# v0.1.40 (M3, altitude/recurrence guard) — the FIVE slug_for reimplementations MUST agree. make_fixture.py
+# drifting (it kept [/_] after the other 4 generalized) was the M3 bug, caught only by eyeballing the prove
+# step's slug — NOT a test. Pin them equal on a path with the chars that matter (. _ uppercase) so the NEXT
+# drift FAILS deterministically here, instead of recurring as a silent split-brain store.
+sys.path.insert(0, str(ROOT / "plugins" / "dream-beta-tester" / "fixtures"))
+import beta_checks as _bc40, render_beta_report as _rbr40, make_fixture as _mf40  # noqa: E402
+_p40 = Path("/home/u/.config/My_App.v2/repo")
+_slugs40 = {ms.slug_for(_p40), _snap.slug_for(_p40), _bc40.slug_for(_p40), _rbr40.slug_for(_p40), _mf40.slug_for(_p40)}
+check("v0.1.40/M3: all 5 slug_for reimplementations AGREE (skill + snapshot/beta_checks/render/make_fixture)",
+      len(_slugs40) == 1)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
