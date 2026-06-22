@@ -1142,6 +1142,46 @@ with _tf37.TemporaryDirectory() as _td41:
           sg._inbound_links(_s41, "target") == ["linker"])
     check("v0.1.41: _inbound_links empty when nothing links the target (safe to evict)",
           sg._inbound_links(_s41, "lone") == [])
+# v0.1.43 (session-id, Option A) — the SECRETS FIREWALL across POOLED sessions is the advisor's ship-gate:
+# reading N transcripts must NOT widen what reaches context before the scrub. One per-line scrub path, fed from
+# all pooled files. Also pins: the multi-session pool surfaces a PRIOR session's intent (the killer-case fix),
+# and each signal carries sessionId (the originSessionId source). + _window_transcripts mtime-prune direction.
+import os as _os43, tempfile as _tf43, json as _json43, time as _time43
+with _tf43.TemporaryDirectory() as _twd43:
+    _wpr43 = Path(_twd43)
+    (_wpr43 / "old.jsonl").write_text("{}\n"); (_wpr43 / "new.jsonl").write_text("{}\n")
+    _os43.utime(_wpr43 / "old.jsonl", (1000, 1000))                                  # ancient → before any marker
+    _os43.utime(_wpr43 / "new.jsonl", (_time43.time() + 10, _time43.time() + 10))    # future → after the marker
+    check("v0.1.43/A: _window_transcripts keeps mtime>marker, prunes <=marker (current session never dropped)",
+          [p.name for p in es._window_transcripts(_wpr43, "2026-06-22T00:00:00+00:00")] == ["new.jsonl"])
+    check("v0.1.43/A: _window_transcripts no-marker → keeps ALL (first-pass safe)",
+          len(es._window_transcripts(_wpr43, "")) == 2)
+    check("v0.1.43/A: _window_transcripts Z-suffix marker prunes right (Gate-2: 3.10 no-op fix — Z normalized)",
+          [p.name for p in es._window_transcripts(_wpr43, "2026-06-22T00:00:00Z")] == ["new.jsonl"])
+    check("v0.1.43/A: _window_transcripts NAIVE marker treated as UTC not LOCAL (Gate-2: no wrong prior-session drop)",
+          [p.name for p in es._window_transcripts(_wpr43, "2026-06-22T00:00:00")] == ["new.jsonl"])
+with _tf43.TemporaryDirectory() as _td43:
+    _home43 = Path(_td43); _proj43 = _home43 / "proj"; _proj43.mkdir()
+    _pr43 = _home43 / ".claude" / "projects" / es.slug_for(_proj43); _pr43.mkdir(parents=True)
+    def _tl43(sid, content):
+        return _json43.dumps({"timestamp": "2026-06-22T10:00:00Z", "sessionId": sid,
+                              "message": {"role": "user", "content": content}}) + "\n"
+    (_pr43 / "sessA.jsonl").write_text(_tl43("sessA", "I strongly prefer typed stubs over a type-ignore comment here"))
+    _SECRET43 = "export AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLEKEYabcdef0123456789"
+    (_pr43 / "sessB.jsonl").write_text(_tl43("sessB", _SECRET43) + _tl43("sessB", "the deploy runs from the makefile release target"))
+    _os43.utime(_pr43 / "sessB.jsonl", (_time43.time() + 10, _time43.time() + 10))  # B is the newer session
+    _old43 = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_home43)
+    try:
+        _r43 = es.extract(_proj43, "", 20)
+    finally:
+        _os43.environ["HOME"] = _old43 if _old43 is not None else ""
+    _txt43 = " ".join(s.get("text", "") for s in _r43.get("signals", []))
+    check("v0.1.43/A: pooled BOTH window sessions (multi-session coverage, not just newest)",
+          len(_r43.get("transcripts", [])) == 2)
+    check("v0.1.43/A: FIREWALL holds across pooled files — secret SCRUBBED, value absent (ship-gate)",
+          _r43["counts"]["secrets_omitted"] >= 1 and "AKIAIOSFODNN7EXAMPLE" not in _txt43)
+    check("v0.1.43/A: a PRIOR session's clean intent surfaced w/ its sessionId (the fresh-session killer-case fix)",
+          any(s.get("sessionId") == "sessA" for s in _r43.get("signals", [])))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

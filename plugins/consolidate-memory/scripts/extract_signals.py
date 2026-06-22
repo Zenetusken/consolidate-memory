@@ -33,6 +33,7 @@ import json
 import re
 import sys
 import unicodedata
+from datetime import datetime, timezone
 from pathlib import Path
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
@@ -137,9 +138,28 @@ _MARKERS = [
 ]
 
 
-def _latest_transcript(proj_root: Path) -> Path | None:
-    ts = sorted(proj_root.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
-    return ts[-1] if ts else None
+def _window_transcripts(proj_root: Path, since: str) -> list[Path]:
+    """v0.1.43: ALL transcripts in the dream window, not just the newest. A marker..HEAD window spans MANY
+    sessions (each .jsonl == one session); reading only `ts[-1]` meant a fresh session opened JUST to run dream
+    HID the heavy prior session's intent (the killer case the on-disk read was meant to defend). Glob all
+    `*.jsonl`; mtime-PRUNE only DEFINITELY-stale files (mtime <= the marker → nothing in scope). The per-line
+    `since` filter (a KEEP-safe lexicographic compare) does the scoping, so the mtime-prune is purely an
+    open-fewer-files optimization. TZ-CORRECT (Gate-2): normalize a `Z` suffix (else `fromisoformat` REJECTS it on
+    Python 3.10 → the prune silently no-ops) AND treat a NAIVE marker as UTC (else `.timestamp()` assumes LOCAL →
+    under a west-of-UTC TZ the cutoff shifts and a prior in-window session is wrongly DROPPED — the very bug this
+    fix exists to prevent). No marker / unparseable → keep ALL (safe). Oldest-first (deterministic; per-line
+    `since` + dedup handle session overlap)."""
+    files = sorted(proj_root.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
+    if not since:
+        return files
+    try:
+        dt = datetime.fromisoformat(since.replace("Z", "+00:00"))   # 3.10 rejects a bare Z — normalize first
+        if dt.tzinfo is None:                                       # naive marker → assume UTC (mtime is a UTC epoch)
+            dt = dt.replace(tzinfo=timezone.utc)
+        cutoff = dt.timestamp()
+    except (ValueError, TypeError):
+        return files
+    return [f for f in files if f.stat().st_mtime > cutoff]
 
 
 def _marker_ts(auto_mem: Path) -> str:
@@ -174,96 +194,107 @@ def _classify(text: str) -> tuple[str, str, int]:
 
 
 def extract(project_dir: Path, since: str, max_n: int) -> dict:
-    """The `--json` CONTRACT (beta finding H — published for consumers): the top-level shape is
-    `{"transcript": <path|None>, "since": <iso|"">, "counts": {human_seen, noise, secrets_omitted, errors,
-    surfaced}, "signals": [{source, signal_type, scope, text, ...}, ...]}`. NOTE: the candidate count lives at
-    `counts.surfaced` (NOT a top-level `surfaced`), and the candidate list is `signals` (NOT a top-level
-    `candidates`) — a reader expecting top-level `surfaced`/`candidates` gets neither."""
+    """The `--json` CONTRACT (beta finding H; v0.1.43 multi-session): the top-level shape is
+    `{"transcripts": [<name>, ...], "since": <iso|"">, "counts": {human_seen, noise, secrets_omitted, errors,
+    surfaced}, "signals": [{source, signal_type, scope, sessionId, text, ...}, ...]}`. v0.1.43 CHANGES: `transcript`
+    (a single name) → `transcripts` (a LIST — ALL sessions pooled across the marker..HEAD window), and each signal
+    carries `sessionId` (the session that PRODUCED it — the originSessionId source for a session-derived fact). The
+    candidate count lives at `counts.surfaced` (NOT top-level), and the list is `signals` (NOT `candidates`)."""
     project_dir = project_dir.resolve()
     proj_root = Path.home() / ".claude" / "projects" / slug_for(project_dir)
     auto_mem = proj_root / "memory"
     since = since or _marker_ts(auto_mem)
-    transcript = _latest_transcript(proj_root)
+    transcripts = _window_transcripts(proj_root, since)
 
     counts = {"human_seen": 0, "noise": 0, "secrets_omitted": 0, "errors": 0}
     human: list[dict] = []
     errors: list[dict] = []
-    if not transcript:
-        return {"transcript": None, "since": since, "counts": counts, "signals": []}
+    if not transcripts:
+        return {"transcripts": [], "since": since, "counts": counts, "signals": []}
 
-    with transcript.open(encoding="utf-8", errors="replace") as f:
-        for line in f:
-            try:
-                o = json.loads(line)
-            except (json.JSONDecodeError, RecursionError, ValueError):
-                # skip one malformed/pathological line (incl. deeply-nested JSON that
-                # blows the recursion limit) rather than aborting the whole stream
-                continue
-            ts = o.get("timestamp", "")
-            if since and ts and ts <= since:  # scope to marker
-                continue
-            msg = o.get("message")
-            if not isinstance(msg, dict):
-                continue
-            role = msg.get("role")
-            if role == "user":
-                # error tool-results (gotcha source)
-                c = msg.get("content")
-                if isinstance(c, list):
-                    for p in c:
-                        if isinstance(p, dict) and p.get("type") == "tool_result" and p.get("is_error"):
-                            counts["errors"] += 1
-                            t = p.get("content")
-                            if isinstance(t, list):
-                                t = " ".join(x.get("text", "") for x in t if isinstance(x, dict))
-                            # SECRETS FIREWALL — error/stderr output (failed DB connects,
-                            # 401 Authorization headers, dumped env) is a top source of
-                            # leaked credentials. Normalize once, scan + store the same
-                            # representation, capped at _PROBE_CAP like human turns.
-                            tn = _norm(t)
-                            if _looks_secret(tn[:_PROBE_CAP]):
-                                counts["secrets_omitted"] += 1
-                                errors.append({"source": "error", "ts": ts, "scope_hint": "-",
-                                               "text": "(omitted: error tool-result contained a credential-shaped value)"})
-                            else:
-                                errors.append({"source": "error", "ts": ts,
-                                               "text": tn[:200], "scope_hint": "env"})
-                # human turns
-                text = _human_text(msg)
-                if not text:
+    # v0.1.43: pool EVERY in-window session through the SAME single per-line path (scrub -> since -> classify).
+    # The secrets firewall (_looks_secret, below) runs per-line HERE, so it covers every pooled file identically —
+    # there is NO second read path for the "extra" sessions (that would risk an un-scrubbed leak + reimplementation
+    # drift). The outer loop only chooses WHICH files feed the one path.
+    for transcript in transcripts:
+        try:
+            fh = transcript.open(encoding="utf-8", errors="replace")
+        except OSError:
+            continue  # a concurrent gc/chmod must not abort the whole pooled scan (matches the store-scan convention)
+        with fh as f:
+            for line in f:
+                try:
+                    o = json.loads(line)
+                except (json.JSONDecodeError, RecursionError, ValueError):
+                    # skip one malformed/pathological line (incl. deeply-nested JSON that
+                    # blows the recursion limit) rather than aborting the whole stream
                     continue
-                counts["human_seen"] += 1
-                # Normalize ONCE, then scan AND store the same representation, so the
-                # firewall examines exactly what would be persisted (no scan/store offset
-                # mismatch). _PROBE_CAP bounds regex work (ReDoS/blow-up guard); the stored
-                # excerpt (norm[:300]) is well within it, so everything stored is scanned.
-                norm = _norm(text)
-                probe = norm[:_PROBE_CAP]
-                if _NOISE.match(probe) or _SKILL_PROMPT.search(probe[:200]):
-                    counts["noise"] += 1
+                ts = o.get("timestamp", "")
+                if since and ts and ts <= since:  # scope to marker (EXACT, per-line — across every pooled file)
                     continue
-                if _looks_secret(probe):
-                    counts["secrets_omitted"] += 1
-                    human.append({"source": "human", "ts": ts, "signal_type": "omitted",
-                                  "scope_hint": "-", "score": -1,
-                                  "text": "(omitted: turn contained a credential-shaped value)"})
+                sid = o.get("sessionId", "")       # v0.1.43: the producing session (the originSessionId source)
+                msg = o.get("message")
+                if not isinstance(msg, dict):
                     continue
-                stype, scope, score = _classify(probe)
-                human.append({"source": "human", "ts": ts, "signal_type": stype, "scope_hint": scope,
-                              "score": score, "text": norm[:300]})
+                role = msg.get("role")
+                if role == "user":
+                    # error tool-results (gotcha source)
+                    c = msg.get("content")
+                    if isinstance(c, list):
+                        for p in c:
+                            if isinstance(p, dict) and p.get("type") == "tool_result" and p.get("is_error"):
+                                counts["errors"] += 1
+                                t = p.get("content")
+                                if isinstance(t, list):
+                                    t = " ".join(x.get("text", "") for x in t if isinstance(x, dict))
+                                # SECRETS FIREWALL — error/stderr output (failed DB connects,
+                                # 401 Authorization headers, dumped env) is a top source of
+                                # leaked credentials. Normalize once, scan + store the same
+                                # representation, capped at _PROBE_CAP like human turns.
+                                tn = _norm(t)
+                                if _looks_secret(tn[:_PROBE_CAP]):
+                                    counts["secrets_omitted"] += 1
+                                    errors.append({"source": "error", "ts": ts, "sessionId": sid, "scope_hint": "-",
+                                                   "text": "(omitted: error tool-result contained a credential-shaped value)"})
+                                else:
+                                    errors.append({"source": "error", "ts": ts, "sessionId": sid,
+                                                   "text": tn[:200], "scope_hint": "env"})
+                    # human turns
+                    text = _human_text(msg)
+                    if not text:
+                        continue
+                    counts["human_seen"] += 1
+                    # Normalize ONCE, then scan AND store the same representation, so the
+                    # firewall examines exactly what would be persisted (no scan/store offset
+                    # mismatch). _PROBE_CAP bounds regex work (ReDoS/blow-up guard); the stored
+                    # excerpt (norm[:300]) is well within it, so everything stored is scanned.
+                    norm = _norm(text)
+                    probe = norm[:_PROBE_CAP]
+                    if _NOISE.match(probe) or _SKILL_PROMPT.search(probe[:200]):
+                        counts["noise"] += 1
+                        continue
+                    if _looks_secret(probe):
+                        counts["secrets_omitted"] += 1
+                        human.append({"source": "human", "ts": ts, "sessionId": sid, "signal_type": "omitted",
+                                      "scope_hint": "-", "score": -1,
+                                      "text": "(omitted: turn contained a credential-shaped value)"})
+                        continue
+                    stype, scope, score = _classify(probe)
+                    human.append({"source": "human", "ts": ts, "sessionId": sid, "signal_type": stype,
+                                  "scope_hint": scope, "score": score, "text": norm[:300]})
 
-    # dedup error-results (the same tool error often repeats verbatim). Explicit loop
-    # rather than the `... or seen.add(x)` comprehension trick: set.add returns None (a
-    # value mypy rightly flags as unusable in a boolean), so ADD first, then use the set.
-    seen: set[str] = set()
-    deduped: list[dict] = []
-    for e in errors:
-        if e["text"] in seen:
-            continue
-        seen.add(e["text"])
-        deduped.append(e)
-    errors = deduped
-    # rank human turns: high-signal first, acks last; cap at max_n. Keep ONE
+    # dedup error-results AND human turns (the same gotcha/turn can repeat across pooled sessions). Explicit loop
+    # rather than the `... or seen.add(x)` trick: set.add returns None (mypy flags it), so ADD first, then use.
+    def _dedup(items: list[dict]) -> list[dict]:
+        seen: set[str] = set(); out: list[dict] = []
+        for it in items:
+            if it["text"] in seen:
+                continue
+            seen.add(it["text"]); out.append(it)
+        return out
+    errors = _dedup(errors)
+    human = _dedup(human)
+    # rank human turns: high-signal first, acks last; cap at max_n ACROSS THE POOLED set. Keep ONE
     # omitted-secret label for transparency (the consolidation should know a
     # credential-bearing turn was skipped), but never the value.
     human.sort(key=lambda d: d.get("score", 0), reverse=True)
@@ -273,7 +304,7 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                          "text": f"({counts['secrets_omitted']} turn(s) omitted — credential-shaped value)"})
     signals = surfaced + errors
     counts["surfaced"] = len(signals)
-    return {"transcript": transcript.name, "since": since or "(none — first pass)",
+    return {"transcripts": [t.name for t in transcripts], "since": since or "(none — first pass)",
             "counts": counts, "signals": signals}
 
 
@@ -286,7 +317,9 @@ def _report(d: dict) -> None:
     gap = max(2, _ui.W - 2 - len(title) - len(tag))
     add(_ui.rule())
     add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
-    add("  " + _ui.c(f"{d['transcript']} · since {d['since']}", "dim"))
+    _tx = d.get("transcripts", [])
+    _txn = f"{len(_tx)} session(s): {', '.join(_tx)}" if _tx else "(no transcript)"
+    add("  " + _ui.c(f"{_txn} · since {d['since']}", "dim"))
     add(_ui.rule())
     add("")
     add(_ui.kv("COUNTS", f"{c.get('human_seen', 0)} human turns  "

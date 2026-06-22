@@ -65,6 +65,10 @@ transcript's recorded `cwd` → its on-disk slug dir is ground truth). Layout:
   metadata:
     node_type: memory
     type: user | feedback | project | reference
+    originSessionId: <v0.1.43 — for a SESSION-DERIVED fact, the sessionId of the session that MOTIVATED it
+                      (NOT the active dream's session): use the `sessionId` extract_signals now attaches to the
+                      signal this fact came from. OMIT for a git/commit-derived project fact (no motivating
+                      session). This is the PRODUCER the old "CC-INJECTED" wording wrongly presumed existed.>
   ---
 
   <the fact. For feedback/project, follow with **Why:** and **How to apply:** lines.

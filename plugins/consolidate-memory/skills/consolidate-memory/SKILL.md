@@ -476,7 +476,10 @@ placing each fact in its tier and optimizing it for how that tier loads:
   always-loaded index hook, so phrase it as the task-context that should cue a future
   session to read this fact, not a terse summary, or the agent won't know to open it.
   Link related facts with `[[name]]`; pick the right `type`. Then add its one-line
-  pointer to the index.
+  pointer to the index. **Stamp `originSessionId` (v0.1.43) for a SESSION-DERIVED fact** — from the `sessionId`
+  that `extract_signals` (Phase 2) now attaches to the signal this fact came from (the session that MOTIVATED it,
+  which on a multi-session window may be a PRIOR session, NOT the active dream). OMIT it for a git/commit-derived
+  project fact (no motivating session). This is the producer the schema always assumed but never had.
 - **On-demand tier** (repo `AGENTS.md`/`MEMORY.md`, fact bodies): optimize for
   accuracy and completeness; these don't tax every session.
 - **No cross-store duplication**: if a fact lives in the repo docs, an auto-memory
