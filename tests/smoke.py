@@ -1236,6 +1236,46 @@ with _tf43.TemporaryDirectory() as _td43:
     check("v0.1.43/A: a PRIOR session's clean intent surfaced w/ its sessionId (the fresh-session killer-case fix)",
           any(s.get("sessionId") == "sessA" for s in _r43.get("signals", [])))
 
+# ── v0.1.48: uniform signal schema — EVERY emitted signal carries the canonical keyset ──
+# The "?"/"s?" bug: error rows + the omitted-summary label grew free-form dict literals that dropped
+# signal_type/score, so any consumer's `.get(k,'?')` rendered a literal `?`. The _signal constructor is the
+# single funnel; this pins that --json output is UNIFORM over a fixture spanning ALL three classes that
+# drifted or could (a scored human turn · an error tool_result · the redacted-secret omitted-summary label).
+with _tf43.TemporaryDirectory() as _td48:
+    _home48 = Path(_td48); _proj48 = _home48 / "proj"; _proj48.mkdir()
+    _pr48 = _home48 / ".claude" / "projects" / es.slug_for(_proj48); _pr48.mkdir(parents=True)
+    _SECRET48 = "export AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLEKEYabcdef0123456789"
+    def _hl48(text: str) -> str:   # a human-turn transcript line
+        return _json43.dumps({"timestamp": "2026-06-22T10:00:00Z", "sessionId": "s48",
+                              "message": {"role": "user", "content": text}}) + "\n"
+    def _el48(text: str) -> str:   # an error tool_result transcript line (the gotcha branch)
+        return _json43.dumps({"timestamp": "2026-06-22T10:00:01Z", "sessionId": "s48",
+                              "message": {"role": "user", "content": [
+                                  {"type": "tool_result", "is_error": True,
+                                   "content": [{"type": "text", "text": text}]}]}}) + "\n"
+    (_pr48 / "s48.jsonl").write_text(
+        _hl48("Always validate at the root with tests") +    # → a scored human signal (preference marker)
+        _hl48(_SECRET48) +                                   # → secrets_omitted → the omitted-summary label
+        _el48("Exit code 1 Traceback: connection refused"))  # → an error signal (was [error|?|s?])
+    _old48 = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_home48)
+    try:
+        _r48 = es.extract(_proj48, "", 20)
+    finally:
+        _os43.environ["HOME"] = _old48 if _old48 is not None else ""
+    _sigs48 = _r48.get("signals", [])
+    _srcs48 = {s["source"] for s in _sigs48}; _types48 = {s.get("signal_type") for s in _sigs48}
+    check("v0.1.48: fixture spans all 3 classes (human · error · omitted-summary label)",
+          "human" in _srcs48 and "error" in _srcs48 and "omitted" in _types48 and _r48["counts"]["secrets_omitted"] >= 1)
+    check("v0.1.48: EVERY signal carries the canonical keyset (no missing key → no '?' for any consumer)",
+          bool(_sigs48) and all(set(s) >= es._CANONICAL_KEYS for s in _sigs48))
+    check("v0.1.48: signal_type AND score present + non-None on every signal (the exact '?'/'s?' guard, pre-fix FAILS)",
+          all(s.get("signal_type") is not None and s.get("score") is not None for s in _sigs48))
+    check("v0.1.48: error signals carry signal_type+score (the reported bug — error rows were [error|?|s?])",
+          any(s["source"] == "error" for s in _sigs48)
+          and all({"signal_type", "score"} <= set(s) for s in _sigs48 if s["source"] == "error"))
+    check("v0.1.48: _CANONICAL_KEYS is single-sourced FROM the constructor (cannot drift from emitted shape)",
+          es._CANONICAL_KEYS == frozenset(es._signal("x", "y", signal_type="z", score=0)))
+
 # ── v0.1.44: procedure-integrity detector — the lazy-skip safeguard ──────────────────
 # The MEASURED 2026-06-22 failure: 3 dreams ran 0/0/0 verification while self-labeled
 # SUBSTANTIAL/HEAVY. The predicate FIRES on that signature (magnitude>=SUBSTANTIAL AND tally==0),
