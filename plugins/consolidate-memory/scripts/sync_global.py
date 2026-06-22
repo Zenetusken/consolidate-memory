@@ -12,10 +12,13 @@ each project's store. This is the engine for that:
                        net-grow guard); STALE mirrors always refresh. Reports `held N` — prune/justify to
                        receive. (additive; marks copies with `global_ref:` so they re-sync)
   --pull --allow-net-grow  override the guard — pull even if it net-grows the over-budget index
-  --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]
+  --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical]
                        hand a project-authored local fact UP to the canonical global store and
                        convert the origin's copy into a managed mirror (the local→canonical
-                       promotion hand-off; never leaves a dup/orphan — see promote())
+                       promotion hand-off; never leaves a dup/orphan — see promote()). A RECONCILE
+                       onto an existing canonical REFUSES if the local's body differs (M2 — would
+                       silently discard it); --prefer-canonical keeps the canonical, drops the local
+                       body (the dedup intent). stack-general stacks: must be DETECTABLE (M4).
 
 Relevance: `scope: user-global` facts apply to every project; `scope: stack-general`
 facts apply only if their `stacks:` intersect the project's detected stacks. Project
@@ -72,6 +75,11 @@ _STACK_IMPORTS = {   # top-level MODULE names (as imported) → stack
     "playwright": {"playwright"},
     "pdf": {"pypdfium2", "fitz", "pdfplumber", "pdf2image", "pdfminer"},  # pymupdf imports as `fitz`; pdfminer.six as `pdfminer`
 }
+# M4 (v0.1.39): the CLOSED set of stacks detect_stacks can ever emit — the maps' KEYS plus the three special
+# markers (python always; mypy via [tool.mypy]; claude-code via .claude/). promote() validates a stack-general
+# fact's `stacks:` against THIS, so a tag detect_stacks can never produce (a typo, or a real-but-undetectable
+# stack like 'release'/'ci-cd') is refused, not written as a canonical that matches NO project (fleet-dead).
+_DETECTABLE_STACKS = set(_STACK_DEPS) | set(_STACK_IMPORTS) | {"python", "mypy", "claude-code"}
 _PYPROJECT_CAP = 65536   # bytes read from pyproject (config is small; bound the read)
 _PY_SCAN_CAP = 400       # max *.py files scanned for imports (bound cost on large repos)
 
@@ -677,7 +685,25 @@ def gc(project_dir: Path, apply: bool) -> int:
 
 
 # ── promotion: hand a local fact UP to the canonical global store (v0.1.16) ─────
-def promote(project_dir: Path, local_fact: str, canon_name: str) -> int:
+def _body(text: str) -> str:
+    r"""The fact BODY — markdown AFTER the leading frontmatter block. Strips ONLY the first `^---\n…\n---\n`
+    span (non-greedy, once) — NOT split('---'), since a body legitimately contains `---`/`***` horizontal
+    rules. Trailing whitespace (per line + overall) is normalized so the M2 compare ignores cosmetic drift."""
+    if text.startswith("﻿"):       # strip a leading BOM (some editors add one) so the \A--- anchor holds
+        text = text[1:]
+    text = text.replace("\r\n", "\n").replace("\r", "\n")   # CRLF/CR (a model→file artifact) — match _frontmatter
+    body = re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
+    return "\n".join(ln.rstrip() for ln in body.splitlines()).strip()
+
+
+def _bodies_match(a: str, b: str) -> bool:
+    """M2 (v0.1.39): do two fact files carry the SAME body? Frontmatter legitimately differs on promote
+    (scope/projects/global_ref), so compare BODIES only. STRICT — identical→True, any divergence→False: a
+    false positive costs a manual merge, a false negative IS the silent data loss. PURE (smoke pins it)."""
+    return _body(a) == _body(b)
+
+
+def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonical: bool = False) -> int:
     """Hand a project-authored LOCAL fact up to the canonical global store, then convert the
     origin's own copy into a managed mirror — the local→canonical hand-off the Phase-1 promotion
     re-audit drives. SINGLE-SHOT: one invocation does the full hand-off — write the canonical, record
@@ -719,7 +745,8 @@ def promote(project_dir: Path, local_fact: str, canon_name: str) -> int:
     GLOBAL.mkdir(parents=True, exist_ok=True)
     canon_path = GLOBAL / f"{canon_name}.md"
     reconcile = canon_path.exists()  # an existing canonical is authoritative — never clobber it
-    decide_fm = _frontmatter(canon_path.read_text(encoding="utf-8", errors="replace") if reconcile else local_text)
+    canon_existing = canon_path.read_text(encoding="utf-8", errors="replace") if reconcile else ""
+    decide_fm = _frontmatter(canon_existing if reconcile else local_text)
     scope = decide_fm.get("scope", "")
     ctx = f"existing canonical '{canon_name}'" if reconcile else f"local fact '{local_fact}'"
     # Guard 1 — a promoted canonical must be REPLICABLE: scope ∈ {stack-general, user-global}.
@@ -728,12 +755,22 @@ def promote(project_dir: Path, local_fact: str, canon_name: str) -> int:
         print(f"promote: {ctx} has scope '{scope or '(none)'}' — set scope: stack-general|user-global "
               "before promoting (a project-local/scopeless canonical never replicates)", file=sys.stderr)
         return 1
-    # Guard 2 — a stack-general fact with NO `stacks:` is DEAD: is_relevant intersects an empty set,
-    # so it matches no project ever. Refuse rather than write a canonical that can't replicate.
-    if scope == "stack-general" and not _fact_stacks(decide_fm):
-        print(f"promote: {ctx} is stack-general but declares no `stacks:` — it could match no project "
-              "(is_relevant needs a non-empty stacks intersection). Add stacks: [...] first.", file=sys.stderr)
-        return 1
+    # Guard 2 — a stack-general fact's `stacks:` must be NON-EMPTY *and* DETECTABLE. is_relevant intersects
+    # them against detect_stacks's output, so an empty set OR a tag detect_stacks can NEVER emit (a typo, or a
+    # real-but-undetectable stack like 'release'/'ci-cd') makes the canonical match NO project — a fleet-DEAD
+    # write. M4 (v0.1.39) closes the undetectable half (the empty-set half was the original guard).
+    if scope == "stack-general":
+        _fs = _fact_stacks(decide_fm)
+        if not _fs:
+            print(f"promote: {ctx} is stack-general but declares no `stacks:` — it could match no project "
+                  "(is_relevant needs a non-empty stacks intersection). Add stacks: [...] first.", file=sys.stderr)
+            return 1
+        _undet = _fs - _DETECTABLE_STACKS
+        if _undet:
+            print(f"promote: {ctx} declares stack(s) {sorted(_undet)} that detect_stacks can NEVER emit "
+                  f"(detectable: {sorted(_DETECTABLE_STACKS)}) — the canonical would match NO project (fleet-dead). "
+                  "Use a detectable stack, or scope user-global if it isn't stack-gated.", file=sys.stderr)
+            return 1
     # Guard 3 — a RENAME/dedup whose destination name already holds a DISTINCT project-authored fact
     # would silently destroy it; run()'s `present(local)` rule is "never clobber" and promote must match
     # it. `samefile` excludes a case-only rename on a case-insensitive FS (`Foo`→`foo` is one file —
@@ -753,6 +790,19 @@ def promote(project_dir: Path, local_fact: str, canon_name: str) -> int:
         print("promote: NOTE — wikilink(s) to non-global facts will DANGLE in every mirror: "
               + ", ".join(f"[[{w}]]" for w in _dangling)
               + ". Convert to plain text — a global fact should link only to other global facts.", file=sys.stderr)
+
+    # Guard 5 (M2, v0.1.39) — RECONCILE must not silently DISCARD the local's body. On reconcile the origin is
+    # rewritten as a mirror of the EXISTING canonical (below), so a local carrying DIFFERENT body content (a
+    # re-frame / an edit) would be destroyed with no trace. Refuse unless --prefer-canonical declares the
+    # canonical authoritative (the dedup intent). Body-only compare (frontmatter legitimately differs); BEFORE
+    # any write (Guard-3's no-partial-state rule). Hits BOTH sub-cases: rename (src.unlink) AND same-name (in place).
+    if reconcile and not prefer_canonical and not _bodies_match(local_text, canon_existing):
+        _what = f"rename onto '{canon_name}'" if canon_name != local_fact else f"update of '{canon_name}'"
+        print(f"promote: the local fact's BODY differs from the existing canonical '{canon_name}' — this {_what} "
+              "would DISCARD the local content (reconcile rewrites the origin as a mirror of the canonical). "
+              "Either merge the local's body into the canonical first, then re-run; or pass --prefer-canonical "
+              "to keep the canonical and drop the local body (the dedup intent).", file=sys.stderr)
+        return 1
 
     # Write the canonical from the (re-scoped) local fact — but NEVER overwrite an existing one.
     if not reconcile:
@@ -964,9 +1014,9 @@ def main() -> int:
     if args and args[0] == "--promote":
         # --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]  (CANON_NAME defaults to LOCAL_FACT)
         if len(pos) < 2:
-            print("usage: sync_global.py --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]", file=sys.stderr)
+            print("usage: sync_global.py --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical]", file=sys.stderr)
             return 2
-        return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1])
+        return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1], prefer_canonical="--prefer-canonical" in args)
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull [--allow-net-grow] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] | --tokens [--json] PROJECT_DIR "
