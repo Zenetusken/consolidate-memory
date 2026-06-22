@@ -174,17 +174,25 @@ auto-memory files, the transcript inventory (report only — **never bulk-read t
 there's no marker, treat this as the first consolidation and scope to the recent
 git log + the current session.
 
-**The no-op rule (v0.1.37 — self-heal pivot).** Report "Nothing to consolidate" and STOP **only when
-the store is EMPTY**. A **non-empty** store with 0 new commits is NOT a no-op — it is a **MAINTENANCE
-pass**: even with no new work, the store may carry health debt (dangling links, stale records) and the
-cross-project tier may hold NEW sibling-promoted facts to pull. So do **not** stop at Phase 0 — PROCEED
-through Phase 1 (`sync_global --pull` cross-node enrichment — it AUTO-HOLDS, M1, any new-global pull that
-would *leave* the index over budget, reporting `held N` so you prune/justify to receive) + Phase 5 (health:
-dangling-fix / prune-or-justify), **report-then-apply** (propose the writes — `--pull` is the only auto-safe step).
-Phase 0 emits a **MAINTENANCE cue** (the `maintenance` block + a "PROCEED" line) so the pivot is
-signal-driven, not a thing to remember. Set `maintenance.pivoted=true` when you run it; a pivot that
-writes no new facts renders a **MAINTENANCE PASS** banner (not the misleading NOTHING/NO-OP). A TRUE
-no-op (the empty-store stop) is the only case that ends at Phase 0. It also prints a
+**The no-op rule (v0.1.37 self-heal pivot · v0.1.42 cold-start bootstrap).** Report "Nothing to consolidate"
+and STOP **only when the local store is EMPTY *AND* the cross-project network is empty** (`cross_project.
+global_store_facts == 0`, from the `--seed`). TWO non-stop cases PROCEED past Phase 0:
+- **MAINTENANCE pass** (NON-empty store, 0 commits): health debt (dangling/stale) + NEW sibling-promoted facts
+  to pull → Phase 1 `sync_global --pull` (AUTO-HOLDS, M1, any new-global pull that would *leave* the index over
+  budget — `held N`) + Phase 5 (health: dangling-fix / prune-or-justify).
+- **COLD-START BOOTSTRAP** (EMPTY local store, ~0 commits, but `global_store_facts > 0` — a fresh/dormant repo in
+  an established fleet): the network holds the user's OWN real facts, so do NOT STOP and "let it accumulate".
+  PROCEED to a **bootstrap** — Phase 1 `sync_global --list .` **first** (surface which globals are RELEVANT — the
+  real `is_relevant`/stack filter), **then** `--pull` (M1-bounded). Scope it to **pull + Phase-5 health ONLY** (an
+  empty store has no session signal to consolidate — Phase-2/4 *authoring* is the genuine from-scratch case, which
+  correctly stays a STOP; never fabricate/force-seed facts). **Graceful degradation:** if `--list` shows **0
+  relevant** (network non-empty but all-irrelevant to this repo's stack/domain), it degrades to an HONEST no-op —
+  the cross-project section reports "network checked · 0 relevant", NOT a hollow "bootstrapped".
+Both PROCEED cases are signal-driven from Phase-0 data (the `maintenance` block / the seeded `global_store_facts`),
+not a thing to remember. Set `maintenance.pivoted=true` when you run a maintenance/bootstrap pass; a pass that
+writes no new facts renders a **MAINTENANCE PASS** banner (not a misleading NOTHING/NO-OP). The bootstrap's
+`--pull` writes (mirrors + index pointers) render normally via `cross_project.pulled`. A TRUE no-op — empty local
+store AND empty-or-all-irrelevant network — is the only case that ends at Phase 0. It also prints a
 **provisional rigor tier** (from `git_commits`; finalized in Phase 2 once you curate
 `session_candidates`), any
 **prune-pressure** flag — see *Rigor modes* above — and (when commits have accrued since the last
@@ -238,10 +246,15 @@ and conform to it, never restructure it (see Phase 4). Build a mental model of w
 already recorded so Phase 2 can dedup against it.
 
 Then **pull relevant global facts** so this project recalls them and Phase 2 can
-dedup against them too (cross-project step; safe + additive):
+dedup against them too (cross-project step; safe + additive). **First `--list` (read-only), then `--pull`**
+(v0.1.42, B1): the `--list` surfaces *which* globals are relevant + present/missing/held BEFORE `--pull` writes
+them — so the enrichment is legible (you see the bootstrap/refresh picture + can reason about budget) instead of
+a blind pull. On a COLD-START bootstrap (empty store, rich network — see the no-op rule) this `--list` is the
+relevance filter that decides PROCEED-vs-honest-no-op; on a normal pass it's a cheap read that costs nothing:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .   # surface relevant/present/missing/held (read-only)
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .   # then replicate (M1 auto-holds an over-budget pull)
 ```
 
 This replicates any `user-global` (and stack-matching `stack-general`) facts from
@@ -764,7 +777,7 @@ summary alongside it.
     "standing_justified": false, "baseline_facts": 0, "reaches_budget": true
   },
   "maintenance": {
-    "_": "v0.1.37: the no-op SELF-HEAL pivot signal (seeded Phase 0, cheap/local). A NON-EMPTY store with 0 new commits is a MAINTENANCE pass, NOT a no-op — PROCEED to Phase 1 --pull (cross-node enrichment) + Phase 5 health. over_budget_not_justified = remediation.required (the dual-axis suppression result, not a fresh budget compare). Set pivoted=true in Phase 5 when you run it → drives the MAINTENANCE PASS banner.",
+    "_": "v0.1.37/v0.1.42: the no-op SELF-HEAL pivot signal (seeded Phase 0, cheap/local). TWO PROCEED cases (NOT a no-op): a NON-EMPTY store with 0 commits = a MAINTENANCE pass; AND (v0.1.42) an EMPTY store + 0 commits + a non-empty network (cross_project.global_store_facts>0) = a COLD-START BOOTSTRAP — both PROCEED to Phase 1 --list→--pull (cross-node enrichment) + Phase 5 health. over_budget_not_justified = remediation.required (the dual-axis suppression result, not a fresh budget compare). Set pivoted=true in Phase 5 when you run either → drives the MAINTENANCE PASS banner.",
     "dangling": 0, "over_budget_not_justified": false, "work": false, "pivoted": false
   },
   "audit": {
