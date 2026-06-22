@@ -33,7 +33,7 @@ import json
 import re
 import sys
 import unicodedata
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
@@ -143,15 +143,20 @@ def _window_transcripts(proj_root: Path, since: str) -> list[Path]:
     sessions (each .jsonl == one session); reading only `ts[-1]` meant a fresh session opened JUST to run dream
     HID the heavy prior session's intent (the killer case the on-disk read was meant to defend). Glob all
     `*.jsonl`; mtime-PRUNE only DEFINITELY-stale files (mtime <= the marker → nothing in scope). The per-line
-    `since` filter does the EXACT scoping, so the mtime-prune is purely an open-fewer-files optimization — a
-    slightly-off cutoff (naive-vs-aware ISO) at worst opens one extra file, still correctly scoped per-line. No
-    marker / an unparseable one → keep ALL (safe). Oldest-first (deterministic; per-line `since` + dedup handle
-    the session overlap)."""
+    `since` filter (a KEEP-safe lexicographic compare) does the scoping, so the mtime-prune is purely an
+    open-fewer-files optimization. TZ-CORRECT (Gate-2): normalize a `Z` suffix (else `fromisoformat` REJECTS it on
+    Python 3.10 → the prune silently no-ops) AND treat a NAIVE marker as UTC (else `.timestamp()` assumes LOCAL →
+    under a west-of-UTC TZ the cutoff shifts and a prior in-window session is wrongly DROPPED — the very bug this
+    fix exists to prevent). No marker / unparseable → keep ALL (safe). Oldest-first (deterministic; per-line
+    `since` + dedup handle session overlap)."""
     files = sorted(proj_root.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
     if not since:
         return files
     try:
-        cutoff = datetime.fromisoformat(since).timestamp()
+        dt = datetime.fromisoformat(since.replace("Z", "+00:00"))   # 3.10 rejects a bare Z — normalize first
+        if dt.tzinfo is None:                                       # naive marker → assume UTC (mtime is a UTC epoch)
+            dt = dt.replace(tzinfo=timezone.utc)
+        cutoff = dt.timestamp()
     except (ValueError, TypeError):
         return files
     return [f for f in files if f.stat().st_mtime > cutoff]

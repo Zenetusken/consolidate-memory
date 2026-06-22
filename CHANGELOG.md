@@ -13,7 +13,8 @@ opened JUST to run dream HID the prior heavy session's intent (the killer case t
 defend). And originSessionId was validated/consumed but NEVER produced.
 - **A — window-aware `extract_signals` (Phase-2-internal):** `_latest_transcript` → `_window_transcripts` — pool
   ALL `*.jsonl` in the window (mtime-prune only definitely-stale files; the per-line `since` does the exact
-  scoping) through the SAME single per-line path, emitting each candidate's `sessionId`. **SECRETS FIREWALL
+  scoping) through the SAME single per-line path, emitting each candidate's `sessionId` (mtime-prune TZ-corrected per
+  Gate-2: Z-normalized + naive-marker-as-UTC, so it never wrongly drops a prior in-window session). **SECRETS FIREWALL
   preserved (the ship-gate):** one per-line scrub path fed from the pooled files — NO second read path; a smoke
   case pins the scrub across >1 pooled file (secret value absent). Pooled dedup; `max_n` caps the pooled set.
   CONTRACT change (internal-only consumer): `--json` `transcript` (single) → `transcripts` (list). ZERO

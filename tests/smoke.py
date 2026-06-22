@@ -1156,6 +1156,10 @@ with _tf43.TemporaryDirectory() as _twd43:
           [p.name for p in es._window_transcripts(_wpr43, "2026-06-22T00:00:00+00:00")] == ["new.jsonl"])
     check("v0.1.43/A: _window_transcripts no-marker → keeps ALL (first-pass safe)",
           len(es._window_transcripts(_wpr43, "")) == 2)
+    check("v0.1.43/A: _window_transcripts Z-suffix marker prunes right (Gate-2: 3.10 no-op fix — Z normalized)",
+          [p.name for p in es._window_transcripts(_wpr43, "2026-06-22T00:00:00Z")] == ["new.jsonl"])
+    check("v0.1.43/A: _window_transcripts NAIVE marker treated as UTC not LOCAL (Gate-2: no wrong prior-session drop)",
+          [p.name for p in es._window_transcripts(_wpr43, "2026-06-22T00:00:00")] == ["new.jsonl"])
 with _tf43.TemporaryDirectory() as _td43:
     _home43 = Path(_td43); _proj43 = _home43 / "proj"; _proj43.mkdir()
     _pr43 = _home43 / ".claude" / "projects" / es.slug_for(_proj43); _pr43.mkdir(parents=True)
