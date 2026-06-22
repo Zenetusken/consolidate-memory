@@ -158,8 +158,8 @@ class FileEntry:
     name: str  # basename (store) or repo-relative doc name (REPO_DOCS)
     rel: str  # path within the snapshot dir, e.g. "store/MEMORY.md" / "repo/CLAUDE.md"
     src: str  # absolute source path it was copied FROM (the restore target)
-    sha256: str  # content hash
-    size: int  # bytes
+    sha256: str | None  # content hash; None = unreadable at capture (M5: recorded so restore PRESERVES it — never deletes a pre-run file it couldn't hash, never overwrites it with nothing)
+    size: int  # bytes (-1 when unreadable at capture)
     derived: bool  # store-side: is this an allowlisted derived side file (vs a fact/index)?
 
 
@@ -240,7 +240,12 @@ def snapshot(repo: Path, store: Path, out: Path | None = None) -> Manifest:
                 continue  # the store has no managed sub-dirs; skip any stray dir/symlink-to-dir
             digest = _sha256(src)
             if digest is None:
-                notes.append(f"store file unreadable, skipped: {src.name}")
+                # M5 (v0.1.4): RECORD an unreadable pre-run file (no copy) instead of skipping it — so its
+                # name ∈ snapshot_store_names → restore's delete-loop will NOT unlink it (it existed pre-run),
+                # and the write-loop skips it (no snapshot copy → nothing to overwrite it with). Preserved, not lost.
+                notes.append(f"store file unreadable, RECORDED-not-copied (preserved on restore): {src.name}")
+                files.append(FileEntry(origin="store", name=src.name, rel=f"store/{src.name}",
+                                       src=str(src), sha256=None, size=-1, derived=src.name in DERIVED_SIDE_FILES))
                 continue
             dst = store_dst / src.name
             try:
@@ -437,6 +442,9 @@ def diff(before: Manifest, after: Manifest, *, against_live: bool = False) -> Di
     deltas: list[FileDelta] = []
     unexpected: list[str] = []
 
+    def _d(s: str | None) -> str:  # M5: coerce a recorded-unreadable hash (None) to a display token, so the
+        return "(unreadable)" if s is None else s  # str-typed FileDelta fields never carry None
+
     for key in sorted(set(bidx) | set(aidx)):
         origin, name = key
         b = bidx.get(key)
@@ -444,14 +452,14 @@ def diff(before: Manifest, after: Manifest, *, against_live: bool = False) -> Di
         if b and a and b.sha256 == a.sha256:
             continue  # unchanged
         if b and a:
-            op, before_sha, after_sha = "modified", b.sha256, a.sha256
+            op, before_sha, after_sha = "modified", _d(b.sha256), _d(a.sha256)
             size_delta = a.size - b.size
         elif a and not b:
-            op, before_sha, after_sha = "created", "", a.sha256
+            op, before_sha, after_sha = "created", "", _d(a.sha256)
             size_delta = a.size
         else:  # b and not a (the key came from bidx|aidx and we didn't `continue`, so b is set)
             assert b is not None
-            op, before_sha, after_sha = "deleted", b.sha256, ""
+            op, before_sha, after_sha = "deleted", _d(b.sha256), ""
             size_delta = -b.size
         classification, expected = _classify(origin, name)
         deltas.append(
@@ -504,7 +512,7 @@ class RestorePlan:
     before_dir: str
     dry_run: bool
     writes: list[str]  # "store/<name>" / "repo/<name>" to (over)write from the snapshot
-    deletes: list[str]  # live store files NOT in the snapshot → removed to reach the BEFORE state
+    deletes: list[str]  # live store files NOT in the snapshot → QUARANTINED (moved to reports/.restore-trash-*, not deleted) to reach BEFORE
     skipped: list[str]  # planned ops that could not be carried out (with a reason), in non-dry runs
     notes: list[str] = field(default_factory=list)
 
@@ -513,11 +521,12 @@ def restore(before: Manifest, repo: Path, store: Path, *, dry_run: bool = False)
     """Write a BEFORE snapshot's files back over the live store + repo docs, returning the plan.
 
     Reaches the recorded BEFORE state exactly: every captured file is (over)written from the snapshot,
-    and any live STORE file absent from the snapshot is DELETED (a dream that created a new fact is
-    rolled back). Repo docs are only (over)written, never deleted — a snapshot that didn't capture a
-    repo doc (it was absent) leaves the live tree's absence intact. ``--dry-run`` reports the plan
-    without touching disk. Restore is the default disposition for a pure ``--test`` (a beta-test
-    leaves no mutation); ``--keep`` skips it in the runner.
+    and any live STORE file absent from the snapshot is QUARANTINED (M5: moved to a ``reports/.restore-trash-*``
+    dir, NOT deleted — a dream-created fact is rolled out of the store but never destroyed, since the store
+    alone can't distinguish a dream-added file from a concurrent-session or unreadable-at-capture one). Repo
+    docs are only (over)written, never removed — a snapshot that didn't capture a repo doc (it was absent)
+    leaves the live tree's absence intact. ``--dry-run`` reports the plan without touching disk. Restore is
+    the default disposition for a pure ``--test`` (a beta-test leaves no mutation); ``--keep`` skips it.
     """
     repo = repo.resolve()
     store = store.resolve()
@@ -545,7 +554,11 @@ def restore(before: Manifest, repo: Path, store: Path, *, dry_run: bool = False)
         except OSError as e:
             skipped.append(f"{fe.rel} → {dst}: {type(e).__name__}: {e}")
 
-    # ── delete live STORE files the snapshot didn't have (roll back dream-created facts) ──
+    # ── QUARANTINE (M5: not delete) live STORE files the snapshot didn't have — roll back dream-created facts
+    # WITHOUT destroying anything. "Live file ∉ snapshot" is, from the store alone, indistinguishable between
+    # dream-added / concurrent-session-added / unreadable-at-capture; quarantine (move to the harness's reports
+    # area) makes a wrong move RECOVERABLE while still reaching the BEFORE state (the extras are out of the store).
+    trash_dir = REPORTS_DIR / f".restore-trash-{int(time.time())}"
     if store.is_dir():
         for live in sorted(store.iterdir(), key=lambda p: p.name):
             if not live.is_file():
@@ -555,9 +568,12 @@ def restore(before: Manifest, repo: Path, store: Path, *, dry_run: bool = False)
                 if dry_run:
                     continue
                 try:
-                    live.unlink()
+                    trash_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.move(str(live), str(trash_dir / live.name))
                 except OSError as e:
-                    skipped.append(f"delete store/{live.name}: {type(e).__name__}: {e}")
+                    skipped.append(f"quarantine store/{live.name}: {type(e).__name__}: {e}")
+        if not dry_run and trash_dir.is_dir():
+            notes.append(f"quarantined {len(deletes)} extra store file(s) → {trash_dir} (recoverable, NOT deleted)")
     elif before.store_present:
         notes.append(f"store {store} vanished since the snapshot — recreating from the snapshot files")
         if not dry_run:

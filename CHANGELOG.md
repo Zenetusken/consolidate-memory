@@ -5,6 +5,23 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [dream-beta-tester 0.1.4] — 2026-06-22
+
+### Fixed — M5: dream-beta-tester `restore()` no longer destroys data (audit MAJOR; dbt-only, cm UNCHANGED)
+The harness's `restore()` (default `--test`) could DELETE a live store file: it unlinked any live store file
+absent from the snapshot, AND capture SKIPPED unreadable files — so a present-but-unreadable PRE-RUN file was
+deterministically deleted (constructible, no race; the concurrent-writer variant — another session's fact added
+in the snapshot→restore window — was also exposed).
+- **Fix (advisor-vetted): QUARANTINE, not delete.** `restore()` now MOVES an extra live file to a
+  `reports/.restore-trash-<ts>/` dir instead of `unlink()` — a wrong roll-out is recoverable, and `--test`'s
+  leave-no-trace still holds (the store reaches BEFORE exactly; the extra is out, in the harness's own area).
+  Capture now RECORDS an unreadable file (`sha256=None`, no copy) so `restore()` PRESERVES it (never deleted,
+  never overwritten). Quarantine subsumes the audit's gate/refuse/dry-run-default brainstorm — it removes the
+  need to distinguish dream-added from concurrent/unreadable at all.
+- Verified by a hermetic E2E (unreadable preserved · extra quarantined-not-destroyed · dream-add rolled out) +
+  4 smoke units. smoke 318/0 · mypy 15. **dbt 0.1.3 → 0.1.4** (manual bump; `release.sh` releases cm only). The
+  consolidate-memory scripts are UNCHANGED — this sails the cache gate (no slug/skill change).
+
 ## [0.1.39] — 2026-06-22
 
 ### Fixed — M2 + M4: two `promote()` pre-write guards (audit MAJORs)

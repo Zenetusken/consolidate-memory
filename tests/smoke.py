@@ -1082,5 +1082,28 @@ check("v0.1.34: render_log is legacy/sparse-safe — a bare {} record renders (d
 check("v0.1.34: render_log reuses render_html.read_history (ONE log reader, not a second)",
       rlog.read_history is rhtml.read_history)
 
+# v0.1.4 (dream-beta-tester M5) — restore() must NOT destroy data. The audit found: restore unlinked any live
+# store file absent from the snapshot, and capture SKIPPED unreadable files → a present-but-unreadable PRE-RUN
+# file was deterministically deleted. Fix: capture RECORDS unreadable files (preserved on restore); restore
+# QUARANTINES extras (moves to reports/.restore-trash-*), never unlinks. (chmod-0 needs non-root to bite; under
+# root the file stays readable → case 1 exercises the normal-preserve path, still a valid assertion.)
+sys.path.insert(0, str(ROOT / "plugins" / "dream-beta-tester" / "scripts"))
+import snapshot as _snap  # noqa: E402
+import tempfile as _tfm5  # noqa: E402
+with _tfm5.TemporaryDirectory() as _tdm5:
+    _r5 = Path(_tdm5); _s5 = _r5 / "store"; _s5.mkdir()
+    _snap.REPORTS_DIR = _r5 / "reports"   # REPORTS_DIR binds at import; override the module attr so quarantine → temp
+    (_s5 / "a.md").write_text("fact a\n")
+    (_s5 / "b.md").write_text("fact b\n"); (_s5 / "b.md").chmod(0)        # b: UNREADABLE at capture
+    _m5 = _snap.snapshot(_r5, _s5, _r5 / "snap")
+    (_s5 / "c.md").write_text("dream-added\n")                            # an extra file appears post-snapshot
+    _snap.restore(_m5, _r5, _s5)
+    (_s5 / "b.md").chmod(0o644)
+    check("v0.1.4/M5: restore PRESERVES an unreadable pre-run file (recorded, not deleted)", (_s5 / "b.md").exists())
+    check("v0.1.4/M5: restore is byte-faithful on a normal pre-run file", (_s5 / "a.md").read_text() == "fact a\n")
+    check("v0.1.4/M5: restore rolls a dream-added file OUT of the store (--test leaves no trace)", not (_s5 / "c.md").exists())
+    check("v0.1.4/M5: the rolled-out file is QUARANTINED (recoverable), not destroyed",
+          any((_r5 / "reports").glob(".restore-trash-*/c.md")))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
