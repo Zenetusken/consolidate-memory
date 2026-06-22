@@ -5,6 +5,37 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.48] — 2026-06-22
+
+### Fixed — uniform signal schema in `extract_signals.py` (the `[error|?|s?]` rows)
+`extract_signals.py --json` (the Phase-2 session-signal extractor) emitted a NON-UNIFORM signal schema:
+human-sourced signals carried `signal_type` + `score`, but **error-sourced signals did not** — so any consumer
+reading those fields with a fallback (the user's ad-hoc one-liner `s.get('signal_type','?')`, and even the
+script's own `_report`) rendered a literal `?`/`s?` on every error row. (These are extracted, marker-classified
+session *signals* — `source · signal_type · scope_hint · score · text` — not embeddings; the `?` was purely a
+missing-key artifact.) Full root-cause + design: `docs/signal-schema-uniformity.spec.md`.
+- **Root cause (3 defects):** the five signal-append sites were free-form dict literals with nothing pinning a
+  keyset, so two drifted — both **error** branches dropped `signal_type`+`score`, and the **omitted-secret
+  summary label** dropped `score` (also `sessionId`/`ts`). The `--json` contract docstring never pinned the
+  shape (it documented `scope`, not the emitted `scope_hint`, and omitted `score`), so nothing caught it.
+- **Fix at altitude — one constructor, not three spot-patches.** A single `_signal(source, text, *,
+  signal_type, score, scope_hint="-", sessionId="", ts="")` is now the ONE funnel every signal goes through;
+  `signal_type` + `score` are **required keyword params**, so a future append site physically cannot reintroduce
+  the bug. Errors now carry `signal_type="error"` (or `"omitted"` when redacted) + a **named `_NA_SCORE` (0)**
+  sentinel — documented in the `--json` contract as N/A (non-human signals are never salience-ranked; they bypass
+  `_classify` and are appended unranked, so the sentinel is display-only and `source`/`signal_type` disambiguate
+  it from a low-salience human turn). The contract docstring is corrected to the true canonical keyset.
+- **Durable pin:** a smoke invariant drives `extract()` over a fixture spanning all three classes (a scored human
+  turn · an error `tool_result` · the redacted-secret omitted-summary label) and asserts EVERY signal carries the
+  canonical keyset; `_CANONICAL_KEYS` is single-sourced FROM the constructor so the test and the emitted shape
+  cannot drift. +5 smoke checks (380 passed, 0 failed).
+- **Backward-compatible (PATCH):** purely additive (adds keys to error/label rows) — every existing consumer
+  already uses `.get(…, fallback)`, and the change makes the code MATCH the documented `--json` contract (a
+  bugfix, not a break). No removed/renamed key, script, or flag; cycle-record schema untouched.
+- Gated: independent spec-review (zero blockers — all claims, line numbers, the blast radius, the bypass-`_classify`
+  + append-order invariants, and the pre-fix test failure VERIFIED against source; 4 minor gaps folded in) +
+  `/code-review`. mypy clean · sim ✓ · `claude plugin validate --strict` ✓ · dream-beta-test gate 0 FAIL.
+
 ## [0.1.47] — 2026-06-22
 
 ### Added — pin the DREAM-ARC styling (asleep → dreaming → waking) + mandatory HTML auto-open

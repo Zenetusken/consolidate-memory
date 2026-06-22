@@ -193,13 +193,38 @@ def _classify(text: str) -> tuple[str, str, int]:
     return ("statement", "project", 1)  # non-noise, no marker — still surfaced
 
 
+# v0.1.48: the SINGLE signal constructor — every emitted signal goes through here, so it carries EXACTLY the
+# canonical keyset and any --json consumer sees a value, never a missing key (the "?"/"s?" bug: error rows +
+# the omitted-summary label had grown free-form dict literals that dropped signal_type/score). signal_type +
+# score are BOTH keyword-REQUIRED, so a future append site physically cannot omit them; scope_hint/sessionId/
+# ts default. `score` is human-turn SALIENCE (2 high · 1 med · 0 low/ack · -1 omitted); non-human (error)
+# signals carry _NA_SCORE — N/A, never salience-ranked (they bypass _classify + are appended unranked); the
+# source + signal_type fields disambiguate it from a low-salience human turn.
+_NA_SCORE = 0
+
+
+def _signal(source: str, text: str, *, signal_type: str, score: int,
+            scope_hint: str = "-", sessionId: str = "", ts: str = "") -> dict:
+    return {"source": source, "signal_type": signal_type, "scope_hint": scope_hint,
+            "sessionId": sessionId, "ts": ts, "score": score, "text": text}
+
+
+# Derived FROM the constructor (single-source: the test's expected keyset and the emitted keyset cannot
+# drift apart — the repo's "a contract can't silently drift" convention).
+_CANONICAL_KEYS = frozenset(_signal("", "", signal_type="", score=0))
+
+
 def extract(project_dir: Path, since: str, max_n: int) -> dict:
     """The `--json` CONTRACT (beta finding H; v0.1.43 multi-session): the top-level shape is
     `{"transcripts": [<name>, ...], "since": <iso|"">, "counts": {human_seen, noise, secrets_omitted, errors,
-    surfaced}, "signals": [{source, signal_type, scope, sessionId, text, ...}, ...]}`. v0.1.43 CHANGES: `transcript`
-    (a single name) → `transcripts` (a LIST — ALL sessions pooled across the marker..HEAD window), and each signal
-    carries `sessionId` (the session that PRODUCED it — the originSessionId source for a session-derived fact). The
-    candidate count lives at `counts.surfaced` (NOT top-level), and the list is `signals` (NOT `candidates`)."""
+    surfaced}, "signals": [<signal>, ...]}`. v0.1.48: EVERY <signal> carries the SAME canonical keyset (built by
+    `_signal` — no missing keys, so no consumer renders a `?`): `{source, signal_type, scope_hint, sessionId, ts,
+    score, text}` (was documented as `scope`/no-`score` — the gap that let error rows drift). `score` is human-turn
+    salience (2 high · 1 med · 0 low/ack · -1 omitted); non-human (`error`) signals carry `_NA_SCORE` (0) = N/A,
+    never salience-ranked. v0.1.43 CHANGES: `transcript` (a single name) → `transcripts` (a LIST — ALL sessions
+    pooled across the marker..HEAD window), and each signal carries `sessionId` (the session that PRODUCED it — the
+    originSessionId source for a session-derived fact). The candidate count lives at `counts.surfaced` (NOT
+    top-level), and the list is `signals` (NOT `candidates`)."""
     project_dir = project_dir.resolve()
     proj_root = Path.home() / ".claude" / "projects" / slug_for(project_dir)
     auto_mem = proj_root / "memory"
@@ -254,11 +279,11 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                                 tn = _norm(t)
                                 if _looks_secret(tn[:_PROBE_CAP]):
                                     counts["secrets_omitted"] += 1
-                                    errors.append({"source": "error", "ts": ts, "sessionId": sid, "scope_hint": "-",
-                                                   "text": "(omitted: error tool-result contained a credential-shaped value)"})
+                                    errors.append(_signal("error", "(omitted: error tool-result contained a credential-shaped value)",
+                                                          signal_type="omitted", score=_NA_SCORE, scope_hint="-", sessionId=sid, ts=ts))
                                 else:
-                                    errors.append({"source": "error", "ts": ts, "sessionId": sid,
-                                                   "text": tn[:200], "scope_hint": "env"})
+                                    errors.append(_signal("error", tn[:200], signal_type="error",
+                                                          score=_NA_SCORE, scope_hint="env", sessionId=sid, ts=ts))
                     # human turns
                     text = _human_text(msg)
                     if not text:
@@ -275,13 +300,12 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                         continue
                     if _looks_secret(probe):
                         counts["secrets_omitted"] += 1
-                        human.append({"source": "human", "ts": ts, "sessionId": sid, "signal_type": "omitted",
-                                      "scope_hint": "-", "score": -1,
-                                      "text": "(omitted: turn contained a credential-shaped value)"})
+                        human.append(_signal("human", "(omitted: turn contained a credential-shaped value)",
+                                             signal_type="omitted", score=-1, scope_hint="-", sessionId=sid, ts=ts))
                         continue
                     stype, scope, score = _classify(probe)
-                    human.append({"source": "human", "ts": ts, "sessionId": sid, "signal_type": stype,
-                                  "scope_hint": scope, "score": score, "text": norm[:300]})
+                    human.append(_signal("human", norm[:300], signal_type=stype,
+                                         score=score, scope_hint=scope, sessionId=sid, ts=ts))
 
     # dedup error-results AND human turns (the same gotcha/turn can repeat across pooled sessions). Explicit loop
     # rather than the `... or seen.add(x)` trick: set.add returns None (mypy flags it), so ADD first, then use.
@@ -300,8 +324,8 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
     human.sort(key=lambda d: d.get("score", 0), reverse=True)
     surfaced = [s for s in human if s.get("score", 0) >= 0][:max_n]
     if counts["secrets_omitted"]:
-        surfaced.append({"source": "human", "signal_type": "omitted", "scope_hint": "-",
-                         "text": f"({counts['secrets_omitted']} turn(s) omitted — credential-shaped value)"})
+        surfaced.append(_signal("human", f"({counts['secrets_omitted']} turn(s) omitted — credential-shaped value)",
+                                signal_type="omitted", score=-1, scope_hint="-"))  # synthetic row → sessionId/ts default ""
     signals = surfaced + errors
     counts["surfaced"] = len(signals)
     return {"transcripts": [t.name for t in transcripts], "since": since or "(none — first pass)",
