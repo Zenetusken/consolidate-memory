@@ -689,6 +689,9 @@ def _body(text: str) -> str:
     r"""The fact BODY — markdown AFTER the leading frontmatter block. Strips ONLY the first `^---\n…\n---\n`
     span (non-greedy, once) — NOT split('---'), since a body legitimately contains `---`/`***` horizontal
     rules. Trailing whitespace (per line + overall) is normalized so the M2 compare ignores cosmetic drift."""
+    if text.startswith("﻿"):       # strip a leading BOM (some editors add one) so the \A--- anchor holds
+        text = text[1:]
+    text = text.replace("\r\n", "\n").replace("\r", "\n")   # CRLF/CR (a model→file artifact) — match _frontmatter
     body = re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
     return "\n".join(ln.rstrip() for ln in body.splitlines()).strip()
 

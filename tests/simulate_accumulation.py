@@ -539,14 +539,20 @@ def run() -> None:
         existing = (g / "rag-chunk-overlap.md").read_text(encoding="utf-8")
         (pstore / "rag-chunk-overlap.md").unlink()
         _local_fact("rag_overlap_dupe", "stack-general", stacks="rag")
-        _promote(home, promo, "rag_overlap_dupe", "rag-chunk-overlap")
+        # M2 (v0.1.39): a DIVERGENT reconcile (the dupe's body ≠ the canonical's — _local_fact embeds the stem)
+        # is REFUSED without --prefer-canonical (the silent-data-loss guard), leaving the dupe untouched.
+        _m2 = _promote(home, promo, "rag_overlap_dupe", "rag-chunk-overlap")
+        m2_refuses_divergent = (_m2.returncode != 0 and "differs" in _m2.stderr.lower()
+                                and (pstore / "rag_overlap_dupe.md").exists())
+        # the DEDUP intent (canonical is authoritative, drop the local body) proceeds WITH --prefer-canonical.
+        _promote(home, promo, "rag_overlap_dupe", "rag-chunk-overlap", "--prefer-canonical")
         not_clobbered = (g / "rag-chunk-overlap.md").read_text(encoding="utf-8") == existing
         dupe_gone = not (pstore / "rag_overlap_dupe.md").exists()
         recon_mirror = _bytes("rag-chunk-overlap") if (pstore / "rag-chunk-overlap.md").exists() else ""
         # teeth: the re-created mirror carries the CANONICAL's body, never the dup's — proving reconcile
         # mirrored the existing canonical (a residue-only pass would leave the dup's marker, or nothing).
         dupe_mirrored = "global_ref:" in recon_mirror and "rag_overlap_dupe" not in recon_mirror
-        reconcile_ok = not_clobbered and dupe_gone and dupe_mirrored
+        reconcile_ok = m2_refuses_divergent and not_clobbered and dupe_gone and dupe_mirrored
 
         # (4) GUARD: re-promoting an already-mirror local fact is refused (the idempotency guard).
         r_mirror = _promote(home, promo, "rag-chunk-overlap")
@@ -557,6 +563,12 @@ def run() -> None:
         r_dead = _promote(home, promo, "stackless-rule")
         refused_dead = (r_dead.returncode != 0 and "declares no `stacks:`" in r_dead.stderr
                         and not (g / "stackless-rule.md").exists())
+        # (5b) GUARD (M4, v0.1.39): a stack-general fact whose stacks: are UNDETECTABLE (detect_stacks can't
+        # emit them — e.g. `release`) also matches no project → refused, no canonical.
+        _local_fact("undetectable-rule", "stack-general", stacks="release")
+        r_undet = _promote(home, promo, "undetectable-rule")
+        refused_undetectable = (r_undet.returncode != 0 and "never emit" in r_undet.stderr.lower()
+                                and not (g / "undetectable-rule.md").exists())
 
         # (6) GUARD: a scopeless/project-local fact is non-replicable → refused (Guard 1), no canonical.
         _local_fact("local-only-note", "project-local")
@@ -582,15 +594,17 @@ def run() -> None:
 
         print(f"  create+norename={create_ok} · create+rename={rename_ok} · reconcile/dedup={reconcile_ok}")
         print(f"  guards: re-promote-mirror={refused_mirror} · dead-stack-general={refused_dead} · "
-              f"scopeless={refused_scope} · no-clobber={refused_clobber} · reserved-MEMORY={refused_memory}")
-        _verdict("K", "--promote hands a local fact to the canonical store + mirrors the origin "
-                 "atomically (in-sync follow-up pull, no dup/orphan); its 5 guards refuse a re-promote, "
-                 "a non-replicable scope, a dead stack-general, a destination-clobber, and `MEMORY`",
+              f"undetectable-stack={refused_undetectable} · scopeless={refused_scope} · "
+              f"no-clobber={refused_clobber} · reserved-MEMORY={refused_memory}")
+        _verdict("K", "--promote hands a local fact to the canonical store + mirrors the origin atomically "
+                 "(in-sync follow-up pull, no dup/orphan); a divergent reconcile is refused (M2; "
+                 "--prefer-canonical to dedup); its 6 guards refuse a re-promote, a non-replicable scope, a "
+                 "dead stack-general (empty OR undetectable stacks), a destination-clobber, and `MEMORY`",
                  create_ok and rename_ok and reconcile_ok and refused_mirror and refused_dead
-                 and refused_scope and refused_clobber and refused_memory,
+                 and refused_undetectable and refused_scope and refused_clobber and refused_memory,
                  "canonical written, origin converted to a POST-provenance mirror (follow-up --pull is "
                  "in-sync, not STALE), a rename removes the old file + pointer, an existing canonical is "
-                 "never clobbered, and the five guards block every unsafe/unreplicable promotion")
+                 "never clobbered, and the guards block every unsafe/unreplicable promotion")
 
         # ── Probe L: inherited-backlog remediation triage (v0.1.18) ────────────
         # The app PREVENTS incremental bloat but must also REMEDIATE a backlog inherited from CC's
