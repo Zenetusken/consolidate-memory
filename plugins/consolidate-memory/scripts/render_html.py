@@ -26,7 +26,7 @@ import memory_status as ms  # sibling: the SINGLE-SOURCE procedure_integrity pre
 _TEMPLATE = Path(__file__).parent / "dashboard.template.html"
 _PLACEHOLDER = "/*__CM_DATA__*/"
 
-INDEX_TOKEN_BUDGET = 1200       # mirrors memory_status.INDEX_TOKEN_BUDGET (the always-loaded MEMORY.md index)
+INDEX_TOKEN_BUDGET = 1500       # mirrors memory_status.INDEX_TOKEN_BUDGET (the always-loaded MEMORY.md index)
 CLAUDE_MD_TOKEN_BUDGET = 4000   # mirrors memory_status.CLAUDE_MD_TOKEN_BUDGET (the root CLAUDE.md)
 
 

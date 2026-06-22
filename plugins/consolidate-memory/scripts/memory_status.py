@@ -281,7 +281,12 @@ REPO_DOCS = ("MEMORY.md", "AGENTS.md", "CLAUDE.md")
 # on est_tokens (≈ chars/4). Tunable; the point is to make the per-session tax
 # VISIBLE and flag overflow, not to be exact. SKILL.md promised "a stated budget" —
 # this is where it's stated.
-INDEX_TOKEN_BUDGET = 1200       # the auto-memory MEMORY.md index (pointers only)
+INDEX_TOKEN_BUDGET = 1500       # auto-memory MEMORY.md index (pointers only). Sized to the ACTIVE
+                                # /lesson-bearing set (measured ~1100-1200 tok across real stores) +
+                                # ~25% growth headroom — NOT a fraction of native's 25KB (~6400 tok)
+                                # HARD-truncation ceiling (that's the failure limit, not a target).
+                                # Completion-driven archiving keeps the index = the active set; this
+                                # budget is the headroom, and the over-budget gate is a backstop.
 CLAUDE_MD_TOKEN_BUDGET = 4000   # repo CLAUDE.md (project conventions, committed)
 # ~/.claude/CLAUDE.md — the USER-GLOBAL preamble, loaded in EVERY project, every session.
 # Handled DIFFERENTLY from the repo file: measured READ-ONLY for honest always-loaded
@@ -306,8 +311,8 @@ TIER_SUBSTANTIAL_MAX = 7  # 3..7 → SUBSTANTIAL ; ≥ 8 → HEAVY
 TIER_ORDER = {"LIGHT": 0, "SUBSTANTIAL": 1, "HEAVY": 2}  # canonical rank (sorts / monotonicity checks)
 # Prune-pressure: a near/over-budget index OR an already-large store needs prune rigor on
 # ANY pass (orthogonal to magnitude). LEVER HIERARCHY (measured 2026-06): INDEX_TOKEN_BUDGET
-# is the BINDING primary lever — at real pointer cost (~45-60 tok/fact) the index trips 1200
-# tokens at ~20-27 facts, well before this count — so PRUNE_PRESSURE_FACTS is a terse-pointer
+# is the BINDING primary lever — at real pointer cost (~45-60 tok/fact) the index trips 1500
+# tokens at ~25-33 facts, well before this count — so PRUNE_PRESSURE_FACTS is a terse-pointer
 # BACKSTOP, not the primary trigger. Observed store sizes cluster at {6,7} and {100,104}; any
 # value in the open interval (7, 100) yields the identical partition — 40 is a tunable
 # midpoint, not a calibrated precision point.
@@ -636,6 +641,7 @@ def drift_findings(d: Mapping[str, Any]) -> int:
 # confirms (no delete path here, like schema_drift / _promotion_candidates).
 _TRACKER_RE = re.compile(r"(?i)(?:^|[_-])(?:tracker|status|shipped|backlog|roadmap|todo|progress|next[_-]?priorit\w*)(?:[_-]|$)|^p\d+[_-]|(?:^|[_-])bak(?:[_-]|$)")
 _DATED_RE = re.compile(r"(?:^|[_-])20\d\d[_-]\d\d[_-]\d\d(?:[_-]|$)")   # an Auto-Dream _YYYY_MM_DD stamp
+_KEEP_RE = re.compile(r"(?i)\b(?:never|don['’]?t|do not|avoid|gotcha|footgun|always|must|shall|prefer|should|shouldn['’]?t|cannot|can['’]?t|won['’]?t|caveat)\b")  # lesson/negative/directive → VETO archive_candidates (a dated-but-live lesson STAYS); scanned over the WHOLE body, false-negative bias (over-veto is the safe direction)
 _OVERSIZED_TOK = 2500          # a body this big is a dump/research-note → a (ranking) content-review candidate
 _MIRROR_DOMINATED = 0.5        # mirror share of the index above which the lever is GC, not a futile local prune
 _LEAN_HOOK_TOK = 30            # est tokens/pointer for a lean re-index of the keep core (the projected_index target)
@@ -746,6 +752,42 @@ def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
         # the residual — not a clean achievable "prune" (mature stores: keep core alone often exceeds budget).
         "reaches_budget": keep * _LEAN_HOOK_TOK <= budget,
     }
+
+
+def archive_candidates(fact_files: list, index_names: set) -> list:
+    """PURE, budget-INDEPENDENT: surface INDEXED, non-mirror facts that read as COMPLETED arcs — a
+    dated stem (`_DATED_RE` — the Auto-Dream/CM `_YYYY_MM_DD` completed-arc convention) and carry NO
+    keep-signal. These are candidates to relocate from the always-loaded index to the on-demand
+    archive PROACTIVELY, every dream (the completion-driven decoupling), NOT only when over budget.
+
+    CONSERVATIVE: a keep-signal (`_KEEP_RE`: lesson / negative / directive) VETOES the candidate — a
+    dated-but-live lesson STAYS (the silent-failure guard). But the KEEP list is SUFFICIENT-NOT-
+    NECESSARY (a marker-less live lesson can slip through), so this RANKS only — the model judges
+    content + the user confirms (no relocate path here, like remediation_triage / schema_drift).
+    Only INDEXED pointers cost always-loaded budget, so an unindexed completed fact is not a
+    candidate. Never raises (OSError → skip)."""
+    out: list = []
+    for f in fact_files:
+        if f.stem not in index_names:          # only an indexed pointer taxes the always-loaded tier
+            continue
+        try:
+            text = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if _is_mirror(text):                   # a cross-project mirror is GC's domain, not an archive candidate
+            continue
+        if not _DATED_RE.search(f.stem):       # the completed-arc convention; a non-dated completed arc is
+            continue                           # left to the model's Phase-5 judgment (helper stays high-precision)
+        body = text[1:] if text.startswith("﻿") else text
+        fm = re.search(r"^---\n(.*?)\n---", body, re.S)    # VETO on the CURATED frontmatter (description), NOT the
+        if _KEEP_RE.search(fm.group(1) if fm else body):  # analysis BODY: a whole-body scan vetoes completed scope-docs
+            continue                                       # (their analysis says "never"/"must" too → recall collapsed to
+                                                           # ~0, MEASURED). A dated fact whose lesson-nature is ONLY in the
+                                                           # body (not its description) relies on the model's Phase-5
+                                                           # judgment (propose-then-apply) — the helper RANKS, the model decides.
+        out.append({"stem": f.stem, "body_tokens": est_tokens(text), "reason": "dated (completed-arc convention)"})
+    out.sort(key=lambda c: -c["body_tokens"])
+    return out
 
 
 def _newest_mtime(base: Path, pattern: str) -> float:
@@ -1728,6 +1770,13 @@ def print_report(ctx: dict) -> None:
     if ctx["stale_facts"]:
         sig.append(_ui.li(f"re-verify {len(ctx['stale_facts'])} stale fact(s) (mtime ≤ marker): "
                           + _ui.c(", ".join(ctx["stale_facts"]), "dim"), bullet="·"))
+    _arch = archive_candidates(ctx["fact_files"], index_fact_names(ctx["auto_mem"] / "MEMORY.md"))
+    if _arch:
+        sig.append(_ui.li(f"archive? {len(_arch)} indexed completed-arc pointer(s) (dated) → relocate to the on-demand "
+                          "archive (e.g. SHIPPED.md) so the always-loaded index = the ACTIVE set "
+                          "(completion-driven, NOT budget-gated; judge each, a dated-but-live lesson STAYS): "
+                          + _ui.c(", ".join(c["stem"] for c in _arch[:8]) + ("…" if len(_arch) > 8 else ""), "dim"),
+                          bullet="↓", bullet_color="cyan"))
     if ctx["slug_orphans"]:
         cur_live = max(_newest_mtime(ctx["proj_root"], "*.jsonl"), _newest_mtime(ctx["auto_mem"], "*.md"))
         for o in ctx["slug_orphans"]:

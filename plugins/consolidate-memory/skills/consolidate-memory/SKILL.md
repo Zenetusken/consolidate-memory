@@ -529,6 +529,21 @@ lines/bytes, recall-fact count).
 miss or mis-verify?" — a fact the git range implies but no candidate captured, a claim
 marked confirmed on thin evidence — and loop back one pass if it surfaces anything.
 
+**Phase 5 is an always-on staleness/defrag SWEEP — the consolidation mandate, run EVERY dream, not a budget
+reaction.** Curating completed/stale content out of the active tier is the default each pass; the over-budget gate
+(step 0) is a BACKSTOP, not the trigger.
+
+**Completion-driven archive (runs EVERY dream, decoupled from budget — v0.1.x).** Phase 0 surfaces **`archive? N`**
+candidates — indexed pointers with a dated `_YYYY_MM_DD` stem, already KEEP-vetoed for live lessons
+(`archive_candidates`). Review them EVERY pass and PROACTIVELY archive the genuinely-completed ones — don't wait for
+budget pressure to accumulate them: the always-loaded index should equal the **active / lesson-bearing set**, so a
+completed/merged arc's pointer belongs in the on-demand archive the moment its durable lessons are extracted into kept
+facts. Apply the SAME keep-vs-archive JUDGMENT, propose-then-apply, and `reconciled` `entries[]` recording as step 0's
+archive disposition below — the **SILENT-failure guard holds**: a dated-but-LIVE lesson STAYS (the helper's KEEP-veto
+is *sufficient-not-necessary*, so YOU judge each by content; the helper only RANKS, the user confirms). A
+non-dated completed arc the helper won't surface — catch those by the same judgment. This is the primary
+defragmentation that keeps the index lean; the over-budget gate below is what catches the rare case it doesn't.
+
 **0. Over-budget remediation (v0.1.18 GATE; v0.1.21 standing-justify) — when `remediation.required`.** If Phase 0
 flagged the index OVER budget AND the gate is NOT standing-justified, it's a hard gate: you may not finish a pass
 that net-grows it. (When `remediation.standing_justified` is true the gate is **SUPPRESSED** — the density was

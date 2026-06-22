@@ -5,6 +5,34 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.45] — 2026-06-22
+
+### Changed — completion-driven archiving + the index budget re-grounded in active-set demand
+A harness audit flagged CM's `INDEX_TOKEN_BUDGET` (1200) as ~5× tighter than Claude Code's native always-loaded
+truncation (200 lines OR 25 KB ≈ 6400 tok). Deeper measurement FLIPPED the diagnosis: the budget is ~right for the
+ACTIVE/lesson-bearing set (real stores measured ~1056–1181 tok, all-active); the permanent over-budget churn was
+COMPLETED arcs LINGERING in the index because archiving only fired UNDER budget pressure (the Phase-5 step-0 gate).
+The fix decouples archiving from the budget gate. Full design + the empirical record: `docs/completion-driven-archiving.spec.md`.
+- **`archive_candidates(fact_files, index_names)` (memory_status.py) — a pure, budget-INDEPENDENT helper.** Surfaces
+  INDEXED, non-mirror facts with a dated `_YYYY_MM_DD` stem (the Auto-Dream/CM completed-arc convention), VETOing any
+  whose CURATED frontmatter/description signals a live lesson (`_KEEP_RE`). It RANKS only — the model judges by content
+  + the user confirms (no relocate path), like `remediation_triage`. Empirically tuned: a whole-body keyword scan
+  collapsed recall to ~0 (completed research-docs use "never"/"must" in analysis), so the veto keys on the curated
+  description; a dated fact whose lesson-nature is ONLY in its body relies on the model's Phase-5 judgment (documented limit).
+- **Phase 0 surfaces an `archive? N` stdout advisory** (detect-and-offer; NOT written to the cycle record → no schema
+  change). **SKILL Phase 5 gains a standing completion-driven archive step** that runs EVERY dream, independent of
+  budget. **Phase 5 is reframed as an always-on staleness/defrag sweep; the over-budget remediation gate is now a
+  BACKSTOP, not the trigger** (it still exists, tested, for genuine active-set overflow).
+- **`INDEX_TOKEN_BUDGET` 1200 → 1500** (memory_status.py + render_html.py) — grounded in the measured active-set demand
+  + ~25% growth headroom, NOT a fraction of native's 25 KB hard-truncation ceiling (the failure limit, not a target).
+  `CLAUDE_MD_TOKEN_BUDGET` (4000 ≈ native's <200-line CLAUDE.md guidance) and `PRUNE_PRESSURE_FACTS` (40) unchanged.
+- **Backward-compatible (PATCH):** no cycle-record schema change (legacy records carry their own `budget_tokens` and
+  render unchanged); no removed/renamed script or flag. Tests: +8 `archive_candidates` smoke checks, the Probe-L
+  over-budget fixture resized for 1500, the `_evict_frees_enough` test pinned to an explicit budget (decoupled from the moved constant).
+- **Deferred on evidence:** an always-on DEEP re-verification rotation (+ a fleet-wide `last_verified` schema migration)
+  was gated behind a staleness-rate probe → ~10 % SUBSTANTIVE drift over month-old facts (mostly recoverable
+  file-relocation), too low to justify the schema cost. Body-defragmentation of bloated active files is the next cycle.
+
 ## [0.1.44] — 2026-06-22
 
 ### Added — procedure-integrity detector: the lazy-skip safeguard (the structural anti-rush forcing function)

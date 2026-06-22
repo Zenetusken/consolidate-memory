@@ -644,7 +644,7 @@ def run() -> None:
             _wf(n, 20)
         idx = ["# Memory Index", ""]
         for n in trackers + dated + oversized + durable + mirrors:   # index everything EXCEPT the orphans
-            idx.append(f"- [{n}]({n}.md) — " + ("a long verbose recall hook about " + n + " that wastes always-loaded budget ") * 3)
+            idx.append(f"- [{n}]({n}.md) — " + ("a long verbose recall hook about " + n + " that wastes always-loaded budget ") * 4)  # *4 keeps the fixture > the 1500 budget (v0.1.x re-ground)
         (bl / "MEMORY.md").write_text("\n".join(idx) + "\n", encoding="utf-8")
 
         facts = [f for f in bl.glob("*.md") if f.name != "MEMORY.md"]
