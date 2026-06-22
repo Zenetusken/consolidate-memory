@@ -383,20 +383,17 @@ def _valid_sha(s: str) -> bool:
 
 
 def slug_for(project_dir: Path) -> str:
-    """cwd → Claude's project slug: the absolute path with BOTH '/' AND '_' replaced by '-'.
+    """cwd → Claude's project slug: the absolute path with EVERY non-alphanumeric char replaced by '-'
+    (case PRESERVED, no dash-collapsing) — Claude Code's slug rule.
 
-    e.g. /home/you/project/Doc_Flo -> -home-you-project-Doc-Flo (case PRESERVED). Claude Code
-    normalizes '/' and '_' to '-' — verified on disk (a session with cwd .../Doc_Flo was logged
-    by CC under slug ...-Doc-Flo). A '/'-only slug (the pre-v0.1.17 bug) sent replicated
-    cross-project facts to a slug an underscore-named project never recalls — the cross-project
-    reachability blocker this fixes.
-
-    HONEST LIMIT: the rule is verified ONLY for '/' and '_' (memex is the lone underscore example on
-    disk; no '.'/space/other example exists). A dir with such a char COULD diverge further; that would
-    NOT be caught by near_duplicate_slugs (it collapses only '_'/case), so it'd be a silent miss — an
-    accepted, documented residual risk (see references/harness-map.md). Don't claim a complete rule.
-    """
-    return re.sub(r"[/_]", "-", str(project_dir.resolve()))
+    e.g. /home/you/project/Doc_Flo -> -home-you-project-Doc-Flo · /home/you/.config/app -> -home-you--config-app.
+    VERIFIED on disk for '/', '_', and '.' (a CC-created session under /home/drei/.claude/… slugs to
+    `-home-drei--claude-…` — the '/' AND the '.' both map to '-', giving the '--'); GENERALIZED to all
+    non-alphanumerics — strictly safer than a per-char list and regression-IDENTICAL for the fleet (paths
+    with only '/ _ -'). v0.1.40 (audit M3): the prior `[/_]`-only rule left a '.'-segment project (a dotfile
+    dir like ~/.claude) SPLIT-BRAIN — two stores, neither recalling the other. `near_duplicate_slugs` uses
+    the SAME generalization so it can still detect such a twin."""
+    return re.sub(r"[^A-Za-z0-9]", "-", str(project_dir.resolve()))
 
 
 def cycle_seed_path(slug: str) -> str:
@@ -573,8 +570,8 @@ def near_duplicate_slugs(slug: str, sibling_slugs: list) -> list:
     """Sibling project slugs differing from `slug` only by '-'/'_'/case — the rename-orphan
     signature (`…-Doc-Flo` vs `…-Doc_Flo`). EXCLUDES `slug` itself (a project never flags
     itself). `slug_for` is lossy, so near-dup is the robust signal vs path reconstruction."""
-    def norm(s: str) -> str:
-        return s.replace("_", "-").lower()
+    def norm(s: str) -> str:                          # v0.1.40 (M3): match slug_for's generalization (ALL
+        return re.sub(r"[^a-z0-9]", "-", s.lower())   # non-alnum → '-'), so a '.'/space twin is caught, not just '_'/case
     target = norm(slug)
     return sorted(s for s in sibling_slugs if s != slug and norm(s) == target)
 
