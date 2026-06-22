@@ -1158,6 +1158,34 @@ with _tf.TemporaryDirectory() as _arc_td:
     check("vNEXT: archive_candidates surfaces EXACTLY {feat_shipped, bodyonly} on this fixture", _arc_got == {"feat_shipped_2026_05_01", "bodyonly_2026_05_01"})
 check("vNEXT: archive_candidates never raises on a missing/odd file (OSError → skip)",
       ms.archive_candidates([_ArcPath("/nonexistent/zzz.md")], {"zzz"}) == [])
+
+# vNEXT: defrag_candidates — bloated ACTIVE-file detector (body-size outlier vs self-consistent median; edge guards).
+with _tf.TemporaryDirectory() as _dfg_td:
+    _dfg_dir = _ArcPath(_dfg_td)
+    for _dfn in "abcd":
+        (_dfg_dir / f"{_dfn}.md").write_text("---\nname: " + _dfn + "\n---\n" + ("lean body " * 20), encoding="utf-8")
+    (_dfg_dir / "roadmap.md").write_text("---\nname: roadmap\n---\n" + ("bloated body " * 400), encoding="utf-8")
+    (_dfg_dir / "big_2026_05_01.md").write_text("---\nname: dated\n---\n" + ("bloated " * 400), encoding="utf-8")
+    (_dfg_dir / "mir.md").write_text("---\nname: mir\nmetadata:\n  global_ref: x\n---\n" + ("bloated " * 400), encoding="utf-8")
+    (_dfg_dir / "unindexed_big.md").write_text("---\nname: ux\n---\n" + ("bloated " * 400), encoding="utf-8")
+    _dfg_idx = {"a", "b", "c", "d", "roadmap", "big_2026_05_01", "mir"}  # unindexed_big NOT indexed
+    _dfg_got = {c["stem"] for c in ms.defrag_candidates(list(_dfg_dir.glob("*.md")), _dfg_idx)}
+    check("vNEXT: defrag_candidates flags a bloated ACTIVE file (body ≫ median)", "roadmap" in _dfg_got)
+    check("vNEXT: defrag_candidates spares a DATED bloated file (Cycle-1 pointer-archive's domain)", "big_2026_05_01" not in _dfg_got)
+    check("vNEXT: defrag_candidates spares a bloated MIRROR", "mir" not in _dfg_got)
+    check("vNEXT: defrag_candidates spares an UNINDEXED bloated file", "unindexed_big" not in _dfg_got)
+    check("vNEXT: defrag_candidates spares the lean active facts", _dfg_got.isdisjoint({"a", "b", "c", "d"}))
+    check("vNEXT: defrag_candidates flags EXACTLY {roadmap} on this fixture (high-precision)", _dfg_got == {"roadmap"})
+with _tf.TemporaryDirectory() as _dfg_td2:
+    _d2 = _ArcPath(_dfg_td2)
+    (_d2 / "a.md").write_text("---\nname: a\n---\nx", encoding="utf-8"); (_d2 / "b.md").write_text("---\nname: b\n---\nx", encoding="utf-8")
+    check("vNEXT: defrag_candidates edge — <3-fact population → [] (no outlier)", ms.defrag_candidates(list(_d2.glob("*.md")), {"a", "b"}) == [])
+with _tf.TemporaryDirectory() as _dfg_td3:
+    _d3 = _ArcPath(_dfg_td3)
+    for _eqn in "abc":
+        (_d3 / f"{_eqn}.md").write_text("---\nname: " + _eqn + "\n---\nidentical body size here\n", encoding="utf-8")
+    check("vNEXT: defrag_candidates edge — all-equal median → [] (no degenerate outlier)", ms.defrag_candidates(list(_d3.glob("*.md")), set("abc")) == [])
+check("vNEXT: defrag_candidates never raises on a missing/odd file", ms.defrag_candidates([_ArcPath("/nonexistent/q.md")], {"q"}) == [])
 with _tf37.TemporaryDirectory() as _td41:
     _s41 = Path(_td41)
     (_s41 / "target.md").write_text("---\nname: target\n---\nbody\n")
