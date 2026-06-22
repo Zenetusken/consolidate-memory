@@ -7,10 +7,11 @@ global store and be expected to surface elsewhere — they must be REPLICATED in
 each project's store. This is the engine for that:
 
   --list PROJECT_DIR   show which global facts are relevant + present/missing (read-only)
-  --pull PROJECT_DIR   copy missing relevant global facts into the project's store
-  --pull --refresh-only  refresh STALE mirrors only — HOLD BACK missing new globals (no index net-grow;
-                       the no-op self-heal pivot uses this when the index is over-budget-not-justified)
-                       (additive; marks copies with `global_ref:` so they re-sync)
+  --pull PROJECT_DIR   copy missing relevant global facts into the project's store. AUTO-HOLDS (M1) any
+                       new-global pull that would LEAVE the always-loaded index over INDEX_TOKEN_BUDGET (a
+                       net-grow guard); STALE mirrors always refresh. Reports `held N` — prune/justify to
+                       receive. (additive; marks copies with `global_ref:` so they re-sync)
+  --pull --allow-net-grow  override the guard — pull even if it net-grows the over-budget index
   --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]
                        hand a project-authored local fact UP to the canonical global store and
                        convert the origin's copy into a managed mirror (the local→canonical
@@ -37,7 +38,7 @@ from pathlib import Path
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
 # on sys.path[0] at runtime; both live in the plugin's scripts/ dir.
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import _is_mirror, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid
+from memory_status import _is_mirror, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid, INDEX_TOKEN_BUDGET
 
 GLOBAL = Path.home() / ".claude" / "memory"
 
@@ -387,12 +388,22 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
     return True
 
 
-def run(project_dir: Path, pull: bool, refresh_only: bool = False) -> int:
-    # v0.1.37 (R1): refresh_only — HOLD BACK MISSING new globals (the UNBOUNDED net-grow: a whole new index
-    # pointer per fact — the v0.1.18 blowup class) but still refresh STALE mirrors (a drifted hook is a
-    # correctness fix; its index delta is BOUNDED by the ~88-char hook cap — net-neutral in practice, never a
-    # blowup). The ENFORCED gate the no-op self-heal pivot invokes when the index is over-budget-not-justified,
-    # so a maintenance pass can't trip the unbounded net-grow. An enforced MODE, not model discretion.
+def _would_net_grow(running_idx: int, pointer_cost: int, allow_net_grow: bool) -> bool:
+    """M1: True iff pulling a new fact (its pointer adds `pointer_cost` tokens) would LEAVE the always-loaded
+    index over INDEX_TOKEN_BUDGET — the projected net-grow guard. `allow_net_grow` overrides. PURE + the single
+    source for the hold decision in run() (so smoke can pin all three cases deterministically)."""
+    return (not allow_net_grow) and (running_idx + pointer_cost > INDEX_TOKEN_BUDGET)
+
+
+def run(project_dir: Path, pull: bool, allow_net_grow: bool = False) -> int:
+    # v0.1.38 (M1): the PROJECTED net-grow BACKSTOP. A MISSING fact = a NEW always-loaded index pointer (the
+    # v0.1.18 blowup class); on --pull we HOLD it when it would LEAVE the index over INDEX_TOKEN_BUDGET
+    # (running_idx + the pointer's own cost) — so a pull never net-grows an over/at-budget index, even on a
+    # NEAR-budget store one pull would tip over (the case a model-read cue MISSES: it can't know the per-pull
+    # cost; only this function, which both measures the index AND writes, can). STALE refreshes ALWAYS run (a
+    # drifted hook is a correctness fix, bounded by the ~88-char hook cap). The DECISION lives HERE, not in a
+    # Phase-0 cue, so it holds regardless of whether any cue fired — finishing the v0.1.37 R1 mode (which had
+    # the enforcement but left the decision to the model). Escape: --allow-net-grow. Supersedes --refresh-only.
     project_dir = project_dir.resolve()
     store = project_store(project_dir)
     stacks = detect_stacks(project_dir)
@@ -400,7 +411,7 @@ def run(project_dir: Path, pull: bool, refresh_only: bool = False) -> int:
     out: list = []
     add = out.append
     title = "✦ CROSS-PROJECT · " + project_dir.name
-    tag = ("PULL · refresh-only" if refresh_only else "PULL") if pull else "LIST"
+    tag = "PULL" if pull else "LIST"
     gap = max(2, _ui.W - 2 - len(title) - len(tag))
     add(_ui.rule())
     add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
@@ -413,6 +424,10 @@ def run(project_dir: Path, pull: bool, refresh_only: bool = False) -> int:
               "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim")}
     rows: list = []
     relevant = pulled = refreshed = held = 0
+    # M1: the running always-loaded index size (tokens). Each pulled MISSING fact grows it by its pointer's
+    # cost; the guard below holds any pull that would push it over INDEX_TOKEN_BUDGET. Seed from the live index.
+    _idxp = store / "MEMORY.md"
+    running_idx = est_tokens(_idxp.read_text(encoding="utf-8")) if _idxp.exists() else est_tokens("# Memory Index\n\n")
     for name, fm, text in facts:
         rel = is_relevant(fm, stacks)
         path = store / f"{name}.md"
@@ -434,8 +449,14 @@ def run(project_dir: Path, pull: bool, refresh_only: bool = False) -> int:
         rows.append(f"    {_ui.c(g, col)} {_ui.lbl(f'{status:<14}')}{name}  " + _ui.c(f"({fm.get('scope', '?')})", "dim"))
         if rel:
             relevant += 1
-        if pull and refresh_only and rel and status == "MISSING":
-            held += 1  # v0.1.37: refresh-only holds back a NEW-global pull (a new index pointer net-grows)
+        # M1: would PULLING this MISSING fact (a NEW index pointer) LEAVE the index over budget? Cost it from
+        # the pointer line itself (the only honest per-pull figure). `held_this` gates BOTH the write-skip and
+        # the provenance record (a held fact is NOT held by this project).
+        cost = est_tokens(_pointer_line(name, fm)) if status == "MISSING" else 0
+        held_this = (pull and rel and status == "MISSING"
+                     and _would_net_grow(running_idx, cost, allow_net_grow))
+        if held_this:
+            held += 1  # net-grow of an over/at-budget index → hold (prune/justify to receive, or --allow-net-grow)
         elif pull and rel and status in ("MISSING", "STALE-mirror"):
             # C3: a canonical missing a valid originSessionId fans its gap out to every
             # mirror this replication creates. WARN (don't block — the fact is still
@@ -448,18 +469,18 @@ def run(project_dir: Path, pull: bool, refresh_only: bool = False) -> int:
             _ensure_index_pointer(store, name, fm)
             if status == "MISSING":
                 pulled += 1
+                running_idx += cost          # the index just grew by this pointer — track it for the next guard
             else:
                 refreshed += 1
-        # record provenance for ANY fact this project now holds as a mirror (incl. already in-sync), so
-        # the network graph reflects reality. v0.1.37: EXCLUDE a refresh-only HELD MISSING — it was NOT
-        # pulled, so the project does NOT hold it; recording it would write a PHANTOM holder edge into the
-        # shared canonical during a hold-back mode (and lie in the network graph).
-        if pull and rel and status in ("MISSING", "STALE-mirror", "in-sync") and not (refresh_only and status == "MISSING"):
+        # record provenance for ANY fact this project now holds as a mirror (incl. already in-sync), so the
+        # network graph reflects reality. EXCLUDE a HELD MISSING — it was NOT pulled, so the project does NOT
+        # hold it; recording it would write a PHANTOM holder edge into the shared canonical (and lie in the graph).
+        if pull and rel and status in ("MISSING", "STALE-mirror", "in-sync") and not held_this:
             _record_provenance(name, project_dir.name)  # this mind holds the fact
     add(_ui.kv("FACTS", f"{len(facts)} global · {relevant} relevant to this project"))
     out.extend(rows)
     add("")
-    held_note = f" · held {held} new (refresh-only — over-budget gate)" if held else ""
+    held_note = f" · held {held} (would net-grow the over-budget index — prune/justify to receive, or --allow-net-grow)" if held else ""
     tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note} (index updated)" if pull
             else "run with --pull to replicate MISSING + refresh STALE mirrors here")
     add(_ui.kv("RESULT", tail))
@@ -947,11 +968,11 @@ def main() -> int:
             return 2
         return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1])
     if not args or args[0] not in ("--list", "--pull"):
-        print("usage: sync_global.py --list|--pull [--refresh-only] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
+        print("usage: sync_global.py --list|--pull [--allow-net-grow] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] | --tokens [--json] PROJECT_DIR "
               "| --network", file=sys.stderr)
         return 2
-    return run(project_dir, args[0] == "--pull", refresh_only="--refresh-only" in args)
+    return run(project_dir, args[0] == "--pull", allow_net_grow="--allow-net-grow" in args)
 
 
 if __name__ == "__main__":

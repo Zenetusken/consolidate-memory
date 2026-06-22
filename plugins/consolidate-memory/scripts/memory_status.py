@@ -192,6 +192,7 @@ class CrossProject(TypedDict, total=False):
     pulled: list[dict]       # [{"name": ..., "scope": ...}] — Phase 1: global → here
     promoted: list[dict]     # [{"name": ..., "scope": ...}] — Phase 4: here → global
     refreshed: int
+    held: int                # v0.1.38 (M1): new-global pulls HELD (would net-grow the over-budget index) — prune/justify to receive
     gc_removed: int
 
 
@@ -1395,6 +1396,7 @@ def seed_record(ctx: dict) -> CycleRecord:
             "pulled": [],     # fill in Phase 1 (sync_global --pull): global → here
             "promoted": [],   # fill in Phase 4: here → global (new cross-project facts)
             "refreshed": 0,   # stale mirrors refreshed on pull
+            "held": 0,        # v0.1.38 (M1): new-global pulls held back (would net-grow the over-budget index)
             "gc_removed": 0,  # orphan mirrors reclaimed in Phase 5 (sync_global --gc --apply)
         },
         "marker": {
@@ -1620,12 +1622,11 @@ def print_report(ctx: dict) -> None:
         _detail = "self-heal available — " + " · ".join(_bits) if _bits else "store-health + cross-node enrichment check"
         add("")
         add("  " + _ui.c("MAINTENANCE", "bold") + _ui.c("  " + _detail, "yellow"))
-        # The cue carries the EXACT gated command (signal-driven, not "remember --refresh-only"): when the
-        # index is over-budget-not-justified, --pull must be --refresh-only so it can't net-grow the gated index.
-        _pull_cmd = "--pull --refresh-only" if _m.get("over_budget_not_justified") else "--pull"
-        add("    " + _ui.c(f"→ Phase 1 `sync_global {_pull_cmd} .` (cross-node enrichment) + Phase 5 health, report-then-apply", "dim"))
-        if _m.get("over_budget_not_justified"):
-            add("    " + _ui.c("--refresh-only: index over-budget-not-justified → refresh stale mirrors, HOLD new-global pulls (no unbounded net-grow)", "dim"))
+        add("    " + _ui.c("→ Phase 1 `sync_global --pull .` (cross-node enrichment) + Phase 5 health, report-then-apply", "dim"))
+        # v0.1.38 (M1): the net-grow guard lives IN --pull (auto-holds a new pointer that would leave the index
+        # over budget) — not a cue command to remember (a cue can't know the per-pull cost; only --pull can). So
+        # this is ADVISORY: surface the lever, don't gate here.
+        add("    " + _ui.c("--pull AUTO-HOLDS a new-global pull that would leave the index over budget (reports `held N` — prune/justify to receive)", "dim"))
         if _noop_nonempty:
             add("    " + _ui.c("0 new commits + NON-EMPTY store → PROCEED (a maintenance pass, NOT a no-op); stop ONLY if the store is empty", "dim"))
 

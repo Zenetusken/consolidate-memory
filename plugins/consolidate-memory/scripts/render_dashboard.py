@@ -552,7 +552,10 @@ def render(record: ms.CycleRecord) -> str:
             moved.append(f"− {xp['gc_removed']} orphan(s) reclaimed")
         if moved:
             out.append("    " + _c(" · ".join(moved), "dim"))
-        if not (pulled or promoted or moved):
+        if xp.get("held"):  # v0.1.38 (M1): the LOUD lever — a new-global pull was HELD (index over budget); the
+            # most-relevant store starves until it prunes, so surface it prominently, not buried in the dim line.
+            out.append("    " + _c(f"⚠ held {xp['held']} cross-node fact(s) — index over budget; prune/justify to receive", "yellow"))
+        if not (pulled or promoted or moved or xp.get("held")):
             out.append("    " + _c("(no cross-project movement this pass)", "dim"))
 
     # Neural network — token consumption across all nodes (the observability ask).

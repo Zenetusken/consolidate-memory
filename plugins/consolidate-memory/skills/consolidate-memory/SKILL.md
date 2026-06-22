@@ -178,9 +178,9 @@ git log + the current session.
 the store is EMPTY**. A **non-empty** store with 0 new commits is NOT a no-op — it is a **MAINTENANCE
 pass**: even with no new work, the store may carry health debt (dangling links, stale records) and the
 cross-project tier may hold NEW sibling-promoted facts to pull. So do **not** stop at Phase 0 — PROCEED
-through Phase 1 (`sync_global --pull` cross-node enrichment; pass `--refresh-only` when the index is
-**over-budget-not-justified**, so it can't net-grow a gated index) + Phase 5 (health: dangling-fix /
-prune-or-justify), **report-then-apply** (propose the writes — `--pull` is the only auto-safe step).
+through Phase 1 (`sync_global --pull` cross-node enrichment — it AUTO-HOLDS, M1, any new-global pull that
+would *leave* the index over budget, reporting `held N` so you prune/justify to receive) + Phase 5 (health:
+dangling-fix / prune-or-justify), **report-then-apply** (propose the writes — `--pull` is the only auto-safe step).
 Phase 0 emits a **MAINTENANCE cue** (the `maintenance` block + a "PROCEED" line) so the pivot is
 signal-driven, not a thing to remember. Set `maintenance.pivoted=true` when you run it; a pivot that
 writes no new facts renders a **MAINTENANCE PASS** banner (not the misleading NOTHING/NO-OP). A TRUE
@@ -739,6 +739,7 @@ summary alongside it.
     "pulled": [{"name": "...", "scope": "user-global"}],   "_pulled": "Phase 1: global → here",
     "promoted": [{"name": "...", "scope": "stack-general"}], "_promoted": "Phase 4: here → global",
     "refreshed": 0,
+    "held": 0,   "_held": "v0.1.38 (M1): new-global pulls --pull HELD (would net-grow the over-budget index) — prune/justify to receive",
     "gc_removed": 0,   "_gc": "Phase 5: orphan mirrors reclaimed by sync_global --gc --apply"
   },
   "network": {
