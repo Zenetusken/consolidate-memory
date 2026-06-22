@@ -287,7 +287,7 @@ check("v0.1.38/M1: an under-budget store with room PULLS (no false hold)", sg._w
 check("v0.1.38/M1: a pull that fits EXACTLY to budget is allowed (boundary: ==budget, not >)",
       sg._would_net_grow(_B38 - 40, 40, False) is False)
 check("v0.1.38/M1: --allow-net-grow overrides the guard", sg._would_net_grow(_B38 + 1561, 40, True) is False)
-check("v0.1.38/M1: cross_project.held renders the LOUD lever (case 3 — reaches the report, not just stdout)",
+check("v0.1.38/M1: cross_project.held renders the LOUD lever (RENDER half only — the stdout→record capture is a SKILL Phase-1 instruction, model-driven, not script-testable here)",
       "held 2" in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {"git_commits": 1},
           "entries": [], "cross_project": {"held": 2}})))
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",

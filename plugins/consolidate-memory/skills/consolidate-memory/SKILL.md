@@ -246,9 +246,12 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .
 
 This replicates any `user-global` (and stack-matching `stack-general`) facts from
 `~/.claude/memory/` that are missing here, and **refreshes any stale mirrors** whose
-canonical changed (the script writes both the fact file and its index pointer). Read
-its output and record `cross_project.pulled` (newly replicated) and
-`cross_project.refreshed` in the cycle record. If nothing is missing/stale, no-op.
+canonical changed (the script writes both the fact file and its index pointer). It also **AUTO-HOLDS**
+(M1) any new-global pull that would *leave* the always-loaded index over budget — reported as `held N`.
+Read its output and record `cross_project.pulled` (newly replicated), `cross_project.refreshed`, **and
+`cross_project.held`** (the `held N` count — new globals withheld to protect the over-budget index; the
+dashboard renders it as the `⚠ held N — prune/justify to receive` lever) in the cycle record. If nothing
+is missing/stale/held, no-op.
 
 Then **re-audit the existing `user-global` facts — the backstop for the promotion cascade's weak
 applicability gate (G2.3 — see Phase 2).** Read each canonical's **body** in `~/.claude/memory/` and

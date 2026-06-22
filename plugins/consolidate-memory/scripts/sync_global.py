@@ -427,7 +427,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False) -> int:
     # M1: the running always-loaded index size (tokens). Each pulled MISSING fact grows it by its pointer's
     # cost; the guard below holds any pull that would push it over INDEX_TOKEN_BUDGET. Seed from the live index.
     _idxp = store / "MEMORY.md"
-    running_idx = est_tokens(_idxp.read_text(encoding="utf-8")) if _idxp.exists() else est_tokens("# Memory Index\n\n")
+    running_idx = est_tokens(_idxp.read_text(encoding="utf-8", errors="replace")) if _idxp.exists() else est_tokens("# Memory Index\n\n")
     for name, fm, text in facts:
         rel = is_relevant(fm, stacks)
         path = store / f"{name}.md"
