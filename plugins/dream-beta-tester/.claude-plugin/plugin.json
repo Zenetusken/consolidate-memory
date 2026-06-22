@@ -1,6 +1,6 @@
 {
   "name": "dream-beta-tester",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Beta-tests the consolidate-memory \"dream\" skill ITSELF — the QA companion to it. A deterministic invariant oracle plus a judgment-lens skill (/dream-beta-test) that finds defects, regressions, and dishonest reports in the dream/consolidation skill, honest by construction (confirmed defects are kept separate from suspected ones). Use to QA, audit, stress-test, or validate a consolidate-memory version before shipping it; NOT for normal memory consolidation (that is the consolidate-memory skill itself). Ships a maintainer continuous-QA pre-push gate with a frozen self-test canary, and a deterministic orchestrator contract (reports/latest.json) for autonomous release self-heal.",
   "author": {
     "name": "Zenetusken",
