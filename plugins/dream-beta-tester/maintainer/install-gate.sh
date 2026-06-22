@@ -24,10 +24,19 @@ CSRC="$(ls -d "$HOME"/.claude/plugins/cache/*/consolidate-memory/0.1.19/scripts 
 if [ -n "$CSRC" ]; then
   rm -rf "$STATE/canary-v0.1.19"; mkdir -p "$STATE/canary-v0.1.19"
   cp -r "$CSRC" "$STATE/canary-v0.1.19/scripts"
-  echo "    canary ✓  ($CSRC)"
+  # M3-SLUG GRAFT (required since cm v0.1.40): the v0.1.19 canary computes the OLD slug
+  # (re.sub(r'[/_]', ...)); the M3 harness uses re.sub(r'[^A-Za-z0-9]', ...). On a state path
+  # containing a '.' (default ~/.dream-beta-test), the two DIVERGE → the un-grafted canary resolves a
+  # DIFFERENT, empty store → reports 0 → spurious FAILs that coincidentally satisfy "≥2 FAIL" → a
+  # FALSE-GREEN self-test (it can't actually prove detection). Graft ONLY the slug rule (NOT the
+  # D3/D4 defect logic — the slug is not the defect) so the canary resolves the SAME fixture store
+  # the M3 harness creates and exhibits its REAL backfill-under-gate / evict-orphan defects.
+  sed -i 's/re\.sub(r"\[\/_\]"/re.sub(r"[^A-Za-z0-9]"/g' "$STATE/canary-v0.1.19/scripts"/*.py
+  echo "    canary ✓  ($CSRC)  [M3-slug grafted]"
 else
   echo "    NOTE: no cached consolidate-memory 0.1.19 found — the gate's self-test will SKIP."
-  echo "          install v0.1.19 once (any version predating the D3/D4 fixes) to enable watch-the-watcher."
+  echo "          install a v0.1.19 cache once to enable watch-the-watcher; install-gate grafts the"
+  echo "          M3 slug onto it automatically (v0.1.19 is old-slug, incompatible with v0.1.40's M3 rule)."
 fi
 
 echo "3/3 pre-push hook on $CM_REPO …"

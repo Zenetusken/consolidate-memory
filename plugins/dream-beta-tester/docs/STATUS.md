@@ -14,8 +14,16 @@ a version that regresses a known defect** (oracle FAIL); WARN-level findings pri
   **Fail-open** on harness error; logs to `reports/.gate-log.tsv`. Override a block with `git push --no-verify`.
 - Proven both ends: allows v0.1.23 (0 FAIL, 0 WARN — the fixture is noise-free); blocks cached v0.1.19 (D3+D4 FAIL).
 - **Self-test (watch-the-watcher):** before trusting an "allow", the gate proves the oracle still detects a
-  FROZEN known-bad (`fixtures/canary-v0.1.19` → ≥2 FAIL). If the canary stops dying, detection is broken →
-  loud alert + fail-open (verdicts UNTRUSTWORTHY, logged `SELFTEST_BROKEN`). Closes the silent-fail-open hole.
+  FROZEN known-bad (`fixtures/canary-v0.1.19` → ≥2 FAIL). The canary is v0.1.19 (real D3/D4 defect) with the
+  **M3 slug GRAFTED at install-gate time** — REQUIRED since cm v0.1.40: v0.1.19 is old-slug (`[/_]`), the
+  harness is M3 (`[^A-Za-z0-9]`), so on a `.`-bearing state path (default `~/.dream-beta-test`) an un-grafted
+  canary resolves a DIFFERENT, EMPTY store → reports 0 → *spurious* FAILs that coincidentally satisfy "≥2" =
+  a FALSE-GREEN that does not actually prove detection (the 2026-06-22 fix; the slug isn't the defect, so the
+  graft preserves D3/D4). If the canary stops dying, detection is broken → loud alert + fail-open (verdicts
+  UNTRUSTWORTHY, logged `SELFTEST_BROKEN`). Closes the silent-fail-open hole.
+  **KNOWN GAP (recommended follow-on):** the self-test checks the FAIL *count* (≥2), not the SPECIFIC ids — a
+  future canary break could again hit a spurious ≥2 (the false-green class). Harden to require the real
+  `CHK-GATE-BACKFILL` + `CHK-EVICT-STAGE` in the canary's FAILs, not just `count ≥ 2`.
 - **Novel-class reminder:** on a version bump the gate reminds you to run `/dream-beta-test` (the lens pass) —
   the gate itself only catches KNOWN-defect regressions, not new classes.
 - DECLINED: a skip-on-unchanged speed optimization — a mis-keyed skip would silently pass a regressed version,
