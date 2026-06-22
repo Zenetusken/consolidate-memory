@@ -1122,6 +1122,26 @@ _p40 = Path("/home/u/.config/My_App.v2/repo")
 _slugs40 = {ms.slug_for(_p40), _snap.slug_for(_p40), _bc40.slug_for(_p40), _rbr40.slug_for(_p40), _mf40.slug_for(_p40)}
 check("v0.1.40/M3: all 5 slug_for reimplementations AGREE (skill + snapshot/beta_checks/render/make_fixture)",
       len(_slugs40) == 1)
+# v0.1.41 (evict-to-receive) — the pure guards behind --evict (the release valve for M1's hold). extract_wikilinks
+# (the single [[...]] extractor, factored from dangling_links); _evict_frees_enough (fit-check, no-partial-loss);
+# _inbound_links (orphan-safety). The hermetic CLI E2E (happy + both refusals + surfacing) ran green out-of-band.
+check("v0.1.41: extract_wikilinks strips fenced + inline code, finds [[real]] only (single [[...]] extractor)",
+      ms.extract_wikilinks("a [[real]] b `[[inline]]` c\n```\n[[fenced]]\n```\n") == ["real"])
+check("v0.1.41: _evict_frees_enough True when the freed room fits the smallest held",
+      sg._evict_frees_enough(1190, 80, [40, 60]) is True)        # (1190-80)+40 = 1150 ≤ 1200
+check("v0.1.41: _evict_frees_enough False when the evict frees too little (no-partial-loss refusal)",
+      sg._evict_frees_enough(1190, 10, [40]) is False)           # (1190-10)+40 = 1220 > 1200
+check("v0.1.41: _evict_frees_enough False when nothing is held (nothing to receive)",
+      sg._evict_frees_enough(1190, 80, []) is False)
+with _tf37.TemporaryDirectory() as _td41:
+    _s41 = Path(_td41)
+    (_s41 / "target.md").write_text("---\nname: target\n---\nbody\n")
+    (_s41 / "linker.md").write_text("---\nname: linker\n---\nsee [[target]]\n")
+    (_s41 / "lone.md").write_text("---\nname: lone\n---\nno links here\n")
+    check("v0.1.41: _inbound_links finds the fact that [[links]] the evict target (orphan-safety)",
+          sg._inbound_links(_s41, "target") == ["linker"])
+    check("v0.1.41: _inbound_links empty when nothing links the target (safe to evict)",
+          sg._inbound_links(_s41, "lone") == [])
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

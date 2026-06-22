@@ -442,6 +442,16 @@ def valid_link_targets(auto_mem: Path) -> set:
     return {f.stem for f in auto_mem.glob("*.md")} if auto_mem.exists() else set()
 
 
+def extract_wikilinks(text: str) -> list[str]:
+    """Every `[[target]]` in `text`, code spans stripped FIRST — fenced (```...```) THEN inline (`...`) — so a
+    `[[x]]` inside a code block (e.g. TOML `[[tool.mypy.overrides]]`) is NOT counted. The SINGLE `[[...]]`
+    extractor: `dangling_links` AND sync_global's evict inbound-link scan both call THIS (a 4th wikilink regex
+    is the reimplementation-drift the v0.1.40 slug-agreement guard exists to prevent). Targets are `.strip()`ed."""
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)   # fenced code blocks
+    text = re.sub(r"`[^`]*`", "", text)                       # inline code spans
+    return [m.strip() for m in re.findall(r"\[\[([^\]]+)\]\]", text)]
+
+
 def dangling_links(auto_mem: Path) -> list[str]:
     """v0.1.37: the SINGLE-SOURCE dangling-[[wikilink]] list for a store — every `[[target]]` in a fact
     body resolving to NO valid target (resolve_wikilink against valid_link_targets), code spans stripped
@@ -461,10 +471,7 @@ def dangling_links(auto_mem: Path) -> list[str]:
             body = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        body = re.sub(r"```.*?```", "", body, flags=re.DOTALL)   # fenced code blocks (```toml [[x]] ```)
-        body = re.sub(r"`[^`]*`", "", body)                       # inline code spans (`[[x]]`)
-        for raw in re.findall(r"\[\[([^\]]+)\]\]", body):
-            name = raw.strip()
+        for name in extract_wikilinks(body):
             if name in targets or resolve_wikilink(name, targets):
                 continue
             out.add(name)
