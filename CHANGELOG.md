@@ -5,6 +5,40 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.49] — 2026-06-22
+
+### Changed — filter transient tool-protocol noise from the error-signal channel (+ cap)
+`extract_signals.py` surfaces `is_error` tool-results as a Phase-2 gotcha source, but — unlike human turns
+(which get a noise filter AND a cap) — the error channel got **neither**, flooding Phase-2 input with Claude's
+own transient tool-usage mistakes. **Measured across the fleet** (12 projects, 57k transcript lines): of 186
+non-secret error tool-results (77 unique), **~73% of raw / 52% unique are `<tool_use_error>`-wrapped** —
+Claude's own tool-protocol retries (file-not-read, string-not-found), never an environment gotcha. Full
+measurement + design: `docs/error-signal-noise-filter.spec.md`.
+- **Drop `<tool_use_error>`-wrapped results** (`_ERROR_NOISE`, an `elif` after the secrets firewall so the
+  firewall keeps precedence). It is the one error class that is high-volume, **harness-stable**, and
+  **zero-false-drop** — a tool-usage error is never an env gotcha (those arrive as bash stderr / exit codes).
+  Verified there is NO structural discriminator (protocol- and bash-errors share keys), so the content marker
+  is the only signal (anchored to a LEADING wrapper, so an env error that merely quotes the marker mid-body is
+  not false-dropped — zero recall loss vs unanchored, 136/136 fleet-wide; substrate-drift watch noted).
+  Filtered errors increment `counts["noise"]`.
+- **Cap surviving errors at `MAX_ERRORS` (8), AFTER the filter.** Errors are unranked (chronological, no score
+  sort), so the cap is a **flood backstop, not a ranking**; running it post-filter avoids wasting cap slots on
+  noise. (Honest limit: post-filter it can still clip a chronologically-late durable gotcha in a pathological
+  flaky-loop session — the accepted cost; the cap rarely binds, ~37 survivors fleet-wide / 12 projects.)
+- **Deliberately NOT filtered** (the over-reach avoided): inline-script tracebacks — a `python3 -c "import X"`
+  → `ModuleNotFoundError` IS a durable "X isn't installed here" gotcha; lint substrings (rot + over-match); and
+  the auto-mode-classifier **denials** (the highest-signal error class — redundancy with human turns resolves
+  at fact-level dedup in Phase 2/4, never by dropping). The residual falls to the cap + the model's Phase-2 judgment.
+- **Honest framing:** this is **context HYGIENE** (less transient noise in the input the model already curates),
+  **NOT signal recovery** — no previously-missed gotchas are rescued (the durable yield is ~6–7 items fleet-wide).
+  Note: `counts["noise"]` now also counts filtered errors (it has a single consumer — the `_report` summary line).
+- **Backward-compatible (PATCH):** signal schema unchanged (the v0.1.48 canonical keyset is untouched); the
+  output simply carries fewer noise rows + a bounded error count. No removed/renamed key, script, or flag.
+  +7 smoke checks (drop / keep-env-gotcha / keep-denial / keyset-intact / cap-after-filter) → 387 passed, 0 failed.
+- Gated: independent spec-review (no blockers, all 10 checks verified against source + a re-run of the
+  measurement; 1 medium + 3 low gaps folded in) + `/code-review`. mypy clean · sim ✓ · `claude plugin validate
+  --strict` ✓ · dream-beta-test gate 0 FAIL.
+
 ## [0.1.48] — 2026-06-22
 
 ### Fixed — uniform signal schema in `extract_signals.py` (the `[error|?|s?]` rows)
