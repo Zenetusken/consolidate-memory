@@ -65,6 +65,20 @@ _NOISE = re.compile(
 # Skill-prompt injections (e.g. the code-review skill's effort header).
 _SKILL_PROMPT = re.compile(r"(effort\s*→|angles\s*×|candidates\s*→|1-vote verify|# Consolidate Memory)", re.I)
 
+# v0.1.49: transient tool-protocol noise in the ERROR channel. A <tool_use_error> wrapper is Claude Code's OWN
+# tool-usage error (file-not-read, string-not-found, file-modified, no-task-found) — Claude's retryable mistake,
+# NEVER an environment gotcha (env facts arrive as bash stderr / exit codes, unwrapped). It is the one error
+# class that is high-volume (~73% of raw error results, measured), harness-stable, and zero-false-drop. We do
+# NOT filter inline-script tracebacks (a `python3 -c "import X"` → ModuleNotFoundError IS a durable env fact) or
+# lint (a free-form match that rots) — that residual falls to MAX_ERRORS + the model's Phase-2 judgment.
+# ANCHORED to a LEADING wrapper (the actual tool-protocol-error shape) so an env error that merely *quotes*
+# the marker mid-body is NOT false-dropped — verified zero recall loss vs unanchored (136/136 fleet-wide),
+# higher precision (this repo processes transcripts that contain the marker).
+_ERROR_NOISE = re.compile(r"^\s*<tool_use_error>", re.I)
+# A flood backstop for the UNRANKED, post-filter error survivors (errors carry no salience score). Generous for
+# a normal session (real gotchas are rare), bounds a pathological flaky-loop session. NOT a quality ranking.
+MAX_ERRORS = 8
+
 # Credential-shaped values. Detection is SPLIT in two because the generic high-entropy
 # check needs CASE discrimination (mixed-case is the signal that separates a token from
 # a file path / slug) and the keyword/vendor arms want case-INSENSITIVITY — and one
@@ -277,10 +291,12 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                                 # leaked credentials. Normalize once, scan + store the same
                                 # representation, capped at _PROBE_CAP like human turns.
                                 tn = _norm(t)
-                                if _looks_secret(tn[:_PROBE_CAP]):
+                                if _looks_secret(tn[:_PROBE_CAP]):           # firewall FIRST (precedence)
                                     counts["secrets_omitted"] += 1
                                     errors.append(_signal("error", "(omitted: error tool-result contained a credential-shaped value)",
                                                           signal_type="omitted", score=_NA_SCORE, scope_hint="-", sessionId=sid, ts=ts))
+                                elif _ERROR_NOISE.search(tn[:_PROBE_CAP]):   # v0.1.49: drop Claude's own tool-protocol mistake (not an env gotcha)
+                                    counts["noise"] += 1
                                 else:
                                     errors.append(_signal("error", tn[:200], signal_type="error",
                                                           score=_NA_SCORE, scope_hint="env", sessionId=sid, ts=ts))
@@ -316,7 +332,7 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                 continue
             seen.add(it["text"]); out.append(it)
         return out
-    errors = _dedup(errors)
+    errors = _dedup(errors)[:MAX_ERRORS]   # v0.1.49: flood backstop on the UNRANKED survivors, AFTER the noise filter
     human = _dedup(human)
     # rank human turns: high-signal first, acks last; cap at max_n ACROSS THE POOLED set. Keep ONE
     # omitted-secret label for transparency (the consolidation should know a

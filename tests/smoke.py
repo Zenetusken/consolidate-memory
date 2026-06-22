@@ -1276,6 +1276,61 @@ with _tf43.TemporaryDirectory() as _td48:
     check("v0.1.48: _CANONICAL_KEYS is single-sourced FROM the constructor (cannot drift from emitted shape)",
           es._CANONICAL_KEYS == frozenset(es._signal("x", "y", signal_type="z", score=0)))
 
+# ── v0.1.49: error-channel noise filter (<tool_use_error>) + cap ──────────────────
+# Measured: ~73% of raw error tool-results are <tool_use_error> wrappers — Claude's OWN tool-protocol
+# mistakes (file-not-read, string-not-found), NEVER an env gotcha. Drop them; KEEP genuine env signal
+# (a ModuleNotFoundError inline-script error IS "X isn't installed here"; classifier-denials are the
+# highest-signal class); cap the UNRANKED survivors AFTER the filter.
+def _el49(text: str, sid: str = "s49") -> str:   # an error tool_result transcript line
+    return _json43.dumps({"timestamp": "2026-06-22T10:00:00Z", "sessionId": sid,
+                          "message": {"role": "user", "content": [
+                              {"type": "tool_result", "is_error": True,
+                               "content": [{"type": "text", "text": text}]}]}}) + "\n"
+# Scenario A — drop/keep behaviour (under the cap)
+with _tf43.TemporaryDirectory() as _td49a:
+    _h49a = Path(_td49a); _p49a = _h49a / "proj"; _p49a.mkdir()
+    _pr49a = _h49a / ".claude" / "projects" / es.slug_for(_p49a); _pr49a.mkdir(parents=True)
+    (_pr49a / "s.jsonl").write_text(
+        _el49("<tool_use_error>String to replace not found in file.</tool_use_error>") +   # DROP (tool-protocol)
+        _el49("<tool_use_error>File has not been read yet.</tool_use_error>") +            # DROP (tool-protocol)
+        _el49('Exit code 1 Traceback (most recent call last): File "<string>", line 1 ModuleNotFoundError: No module named \'foo\'') +  # KEEP (env gotcha)
+        _el49("Permission for this action was denied by the Claude Code auto mode classifier. Reason: rm -rf of a real dir") +          # KEEP (highest-signal)
+        _el49("Exit code 127 somecli: command not found"))                                 # KEEP (env gotcha)
+    _old49a = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_h49a)
+    try:
+        _r49a = es.extract(_p49a, "", 30)
+    finally:
+        _os43.environ["HOME"] = _old49a if _old49a is not None else ""
+    _errs49a = [s for s in _r49a["signals"] if s["source"] == "error"]
+    _etext49a = " ".join(s["text"] for s in _errs49a)
+    check("v0.1.49: <tool_use_error> tool-protocol noise DROPPED from signals (the 73%-of-raw class)",
+          "tool_use_error" not in _etext49a and "String to replace not found" not in _etext49a)
+    check("v0.1.49: filtered tool-protocol errors counted as noise (≥2 dropped here)",
+          _r49a["counts"]["noise"] >= 2)
+    check("v0.1.49: a ModuleNotFoundError inline-script error is KEPT (NOT L2 — it's a durable env gotcha)",
+          any("ModuleNotFoundError" in s["text"] for s in _errs49a))
+    check("v0.1.49: a classifier-denial is KEPT (the highest-signal error class — never dropped)",
+          any("auto mode classifier" in s["text"] for s in _errs49a))
+    check("v0.1.49: surviving errors still carry the canonical keyset (filter didn't bypass _signal)",
+          bool(_errs49a) and all(set(s) >= es._CANONICAL_KEYS for s in _errs49a))
+# Scenario B — cap binds AFTER the filter (wrapped error FIRST → a naive cap-raw-then-filter would yield 7, not 8)
+with _tf43.TemporaryDirectory() as _td49b:
+    _h49b = Path(_td49b); _p49b = _h49b / "proj"; _p49b.mkdir()
+    _pr49b = _h49b / ".claude" / "projects" / es.slug_for(_p49b); _pr49b.mkdir(parents=True)
+    _lines49b = [_el49("<tool_use_error>File has not been read yet.</tool_use_error>")]  # FIRST → drops; tests order
+    _lines49b += [_el49(f"Exit code 1 distinct env failure number {i}: connection refused") for i in range(es.MAX_ERRORS + 4)]
+    (_pr49b / "s.jsonl").write_text("".join(_lines49b))
+    _old49b = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_h49b)
+    try:
+        _r49b = es.extract(_p49b, "", 30)
+    finally:
+        _os43.environ["HOME"] = _old49b if _old49b is not None else ""
+    _errs49b = [s for s in _r49b["signals"] if s["source"] == "error"]
+    check("v0.1.49: error survivors capped at MAX_ERRORS AFTER the filter (cap-raw-then-filter would give MAX_ERRORS-1)",
+          len(_errs49b) == es.MAX_ERRORS)
+    check("v0.1.49: the leading <tool_use_error> is still absent under the cap (filter precedes cap)",
+          all("tool_use_error" not in s["text"] for s in _errs49b))
+
 # ── v0.1.44: procedure-integrity detector — the lazy-skip safeguard ──────────────────
 # The MEASURED 2026-06-22 failure: 3 dreams ran 0/0/0 verification while self-labeled
 # SUBSTANTIAL/HEAVY. The predicate FIRES on that signature (magnitude>=SUBSTANTIAL AND tally==0),
