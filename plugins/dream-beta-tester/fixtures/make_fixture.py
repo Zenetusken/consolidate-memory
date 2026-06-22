@@ -30,7 +30,9 @@ HOOK = ("a deliberately dense, information-rich pointer hook written to push the
 
 
 def slug_for(repo: Path) -> str:
-    return re.sub(r"[/_]", "-", str(repo.resolve()))
+    # v0.1.40 (M3): match the skill's generalized slug rule (ALL non-alnum → '-'), not just [/_]; else the
+    # fixture store lands at a different slug than the skill/oracle resolve → the gate sees an empty store.
+    return re.sub(r"[^A-Za-z0-9]", "-", str(repo.resolve()))
 
 
 def fm(name: str, desc: str) -> str:
