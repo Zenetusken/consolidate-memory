@@ -5,6 +5,29 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.38] — 2026-06-22
+
+### Fixed — M1: the over-budget net-grow guard (completes the v0.1.37 self-heal pivot; audit BLOCKER)
+The adversarial cross-project audit found v0.1.37's `--refresh-only` guard **incomplete**: it was keyed on
+`over_budget_not_justified` (= `remediation.required`), which **standing-justify SUPPRESSES** — so the most-over
+stores (Doc_Flo, 230% over + standing-justified) were cued a PLAIN `--pull` that silently net-grew the gated
+index (violating the tool's own v0.1.18 no-net-grow invariant), and the guard ran only on the no-op pivot, never
+the normal Phase-1 `--pull`.
+- **Fix (advisor-vetted): move the DECISION into `sync_global`** (the only place that knows the per-pull cost).
+  `--pull` now AUTO-HOLDS a MISSING new-global pull that would *leave* the always-loaded index over
+  `INDEX_TOKEN_BUDGET` (projected: `running_idx + the pointer's own cost`) — so it can't net-grow an over- OR
+  **near**-budget index (the near-budget overshoot a model-read cue can't catch — the exact bug that bit
+  consolidate-memory itself: 1153→1224). STALE mirror refreshes always run (bounded hook-delta).
+- **The held-count is the LOUD lever:** `sync_global` reports `held N`, and the dashboard's CROSS-PROJECT section
+  surfaces `⚠ held N — prune/justify to receive`. The most-relevant store *starves* until it prunes under budget
+  (the audit's deepest tension) — now visible, not silent. Eviction (pull + evict a lower-value pointer) is post-1.0.
+- Replaces the v0.1.37 `--refresh-only` with the always-on auto-hold + `--allow-net-grow` (the escape hatch).
+  `sync_global._would_net_grow()` is the pure single-source guard; smoke pins cases 1/2/boundary/override + the
+  held render. `cross_project.held` added to the cycle record (additive, `total=False`) + the nested SKILL↔TypedDict pin.
+- Process: the audit served as M1's independent spec (Gate-1-equivalent); implement → Gate-2. +6 smoke units,
+  smoke 308/0 · mypy 15 files · manifests. **PATCH** (additive cycle-record; the removed `--refresh-only` is
+  gracefully ignored + superseded by the auto-hold — no install breaks).
+
 ## [0.1.37] — 2026-06-21
 
 ### Added — the no-op SELF-HEAL pivot: a no-op dream no longer exits with "nothing to do, bye"

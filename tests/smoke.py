@@ -276,6 +276,20 @@ with _tf37.TemporaryDirectory() as _td37:
     (_s37 / "beta.md").write_text("---\nname: beta\n---\nbody\n")
     check("v0.1.37: dangling_links finds [[ghost-fact]]; resolves [[beta]]; ignores inline + FENCED code spans",
           ms.dangling_links(_s37) == ["ghost-fact"])
+# v0.1.38 (M1) — the projected net-grow guard (sync_global._would_net_grow), the SINGLE source for the
+# pull-hold decision. The NEAR-budget overshoot (case 2) is the bug v0.1.37's cue-with-a-before-compare missed:
+# `index > BUDGET` was False on a near-budget store, so it let the pull tip the index over.
+_B38 = ms.INDEX_TOKEN_BUDGET
+check("v0.1.38/M1: an over-budget store holds ANY new pull (case 1)", sg._would_net_grow(_B38 + 1561, 40, False) is True)
+check("v0.1.38/M1: a NEAR-budget store holds a pull that would overshoot (case 2 — the v0.1.37 miss)",
+      sg._would_net_grow(_B38 - 10, 40, False) is True)
+check("v0.1.38/M1: an under-budget store with room PULLS (no false hold)", sg._would_net_grow(800, 40, False) is False)
+check("v0.1.38/M1: a pull that fits EXACTLY to budget is allowed (boundary: ==budget, not >)",
+      sg._would_net_grow(_B38 - 40, 40, False) is False)
+check("v0.1.38/M1: --allow-net-grow overrides the guard", sg._would_net_grow(_B38 + 1561, 40, True) is False)
+check("v0.1.38/M1: cross_project.held renders the LOUD lever (RENDER half only — the stdout→record capture is a SKILL Phase-1 instruction, model-driven, not script-testable here)",
+      "held 2" in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {"git_commits": 1},
+          "entries": [], "cross_project": {"held": 2}})))
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",
                  "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
                  "rigor": {"phase": "final", "applied": "HEAVY"}}).splitlines() if "RIGOR" in ln), "")
