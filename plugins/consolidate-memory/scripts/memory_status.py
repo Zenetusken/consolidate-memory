@@ -446,8 +446,10 @@ def valid_link_targets(auto_mem: Path) -> set:
 
 def dangling_links(auto_mem: Path) -> list[str]:
     """v0.1.37: the SINGLE-SOURCE dangling-[[wikilink]] list for a store — every `[[target]]` in a fact
-    body resolving to NO valid target (resolve_wikilink against valid_link_targets), inline-code spans
-    stripped first (a `[[x]]` inside backticks is NOT a wikilink — e.g. TOML `[[tool.mypy.overrides]]`).
+    body resolving to NO valid target (resolve_wikilink against valid_link_targets), code spans stripped
+    first — fenced (```...```) AND inline (`...`) — so a `[[x]]` inside a code block (e.g. TOML
+    `[[tool.mypy.overrides]]`) is NOT a wikilink. (A 4-space-indented code block is a known minor gap → at
+    worst a spurious-but-safe maintenance cue, never a wrong write.)
     Phase-0 maintenance, the Phase-5 health fill, and the smoke test all call THIS, so the dangling count
     can't drift between them (the drift class the cycle-record contract exists to prevent). READ-ONLY."""
     if not auto_mem.exists():
@@ -458,9 +460,11 @@ def dangling_links(auto_mem: Path) -> list[str]:
         if f.name == "MEMORY.md":              # the index holds pointer links, not [[wikilinks]]
             continue
         try:
-            body = re.sub(r"`[^`]*`", "", f.read_text(encoding="utf-8", errors="replace"))
+            body = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        body = re.sub(r"```.*?```", "", body, flags=re.DOTALL)   # fenced code blocks (```toml [[x]] ```)
+        body = re.sub(r"`[^`]*`", "", body)                       # inline code spans (`[[x]]`)
         for raw in re.findall(r"\[\[([^\]]+)\]\]", body):
             name = raw.strip()
             if name in targets or resolve_wikilink(name, targets):
@@ -1441,7 +1445,8 @@ def validate_cycle_record(record: object) -> list[str]:
         return [f"cycle record is not a dict (got {type(record).__name__})"]
 
     # Top-level keys that MUST be a dict if present.
-    for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health", "audit"):
+    for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health",
+                "audit", "remediation", "maintenance"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
@@ -1615,7 +1620,12 @@ def print_report(ctx: dict) -> None:
         _detail = "self-heal available — " + " · ".join(_bits) if _bits else "store-health + cross-node enrichment check"
         add("")
         add("  " + _ui.c("MAINTENANCE", "bold") + _ui.c("  " + _detail, "yellow"))
-        add("    " + _ui.c("→ Phase 1 --pull (cross-node enrichment) + Phase 5 health, report-then-apply", "dim"))
+        # The cue carries the EXACT gated command (signal-driven, not "remember --refresh-only"): when the
+        # index is over-budget-not-justified, --pull must be --refresh-only so it can't net-grow the gated index.
+        _pull_cmd = "--pull --refresh-only" if _m.get("over_budget_not_justified") else "--pull"
+        add("    " + _ui.c(f"→ Phase 1 `sync_global {_pull_cmd} .` (cross-node enrichment) + Phase 5 health, report-then-apply", "dim"))
+        if _m.get("over_budget_not_justified"):
+            add("    " + _ui.c("--refresh-only: index over-budget-not-justified → refresh stale mirrors, HOLD new-global pulls (no unbounded net-grow)", "dim"))
         if _noop_nonempty:
             add("    " + _ui.c("0 new commits + NON-EMPTY store → PROCEED (a maintenance pass, NOT a no-op); stop ONLY if the store is empty", "dim"))
 

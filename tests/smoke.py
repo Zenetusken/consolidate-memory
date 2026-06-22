@@ -272,9 +272,9 @@ check("v0.1.37: a non-pivoted no-op does NOT render MAINTENANCE PASS (branch gat
 import tempfile as _tf37  # noqa: E402
 with _tf37.TemporaryDirectory() as _td37:
     _s37 = Path(_td37)
-    (_s37 / "alpha.md").write_text("---\nname: alpha\n---\nrefs [[beta]] (valid) · [[ghost-fact]] (dangling) · `[[code.span]]` (ignored)\n")
+    (_s37 / "alpha.md").write_text("---\nname: alpha\n---\nrefs [[beta]] (valid) · [[ghost-fact]] (dangling) · `[[code.span]]` (ignored)\n\n```toml\n[[fenced.ghost]]\n```\n")
     (_s37 / "beta.md").write_text("---\nname: beta\n---\nbody\n")
-    check("v0.1.37: dangling_links finds [[ghost-fact]], resolves [[beta]], ignores code-span",
+    check("v0.1.37: dangling_links finds [[ghost-fact]]; resolves [[beta]]; ignores inline + FENCED code spans",
           ms.dangling_links(_s37) == ["ghost-fact"])
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",
                  "scope": {"git_commits": 10, "session_candidates": 3}, "entries": [],
@@ -765,6 +765,7 @@ for _nm, _obj, _td in [
     ("network.nodes[0]", (_sk_n.get("nodes") or [{}])[0], ms.NetworkNode),
     ("network.totals", _sk_n.get("totals", {}), ms.NetworkTotals),
     ("remediation", _skill_schema.get("remediation", {}), ms.Remediation),   # v0.1.18
+    ("maintenance", _skill_schema.get("maintenance", {}), ms.Maintenance),   # v0.1.37
     # v0.1.22: whole-hierarchy measure + the deterministic audit block (+ their list-item shapes via [0]).
     ("budget.claude_md_hierarchy", _sk_b.get("claude_md_hierarchy", {}), ms.ClaudeMdHierarchy),
     ("budget.claude_md_hierarchy.files[0]", (_sk_b.get("claude_md_hierarchy", {}).get("files") or [{}])[0], ms.ClaudeMdHierarchyFile),

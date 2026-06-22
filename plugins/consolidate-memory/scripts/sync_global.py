@@ -388,10 +388,11 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
 
 
 def run(project_dir: Path, pull: bool, refresh_only: bool = False) -> int:
-    # v0.1.37 (R1): refresh_only — refresh STALE mirrors (same-size rewrite, no net-grow) but HOLD BACK
-    # MISSING new globals (a new index pointer net-grows). The enforced gate the no-op self-heal pivot
-    # invokes when the index is over-budget-not-justified, so a maintenance pass can't trip the v0.1.18
-    # no-net-grow invariant. An ENFORCED mode, not model discretion (the failure class this all escapes).
+    # v0.1.37 (R1): refresh_only — HOLD BACK MISSING new globals (the UNBOUNDED net-grow: a whole new index
+    # pointer per fact — the v0.1.18 blowup class) but still refresh STALE mirrors (a drifted hook is a
+    # correctness fix; its index delta is BOUNDED by the ~88-char hook cap — net-neutral in practice, never a
+    # blowup). The ENFORCED gate the no-op self-heal pivot invokes when the index is over-budget-not-justified,
+    # so a maintenance pass can't trip the unbounded net-grow. An enforced MODE, not model discretion.
     project_dir = project_dir.resolve()
     store = project_store(project_dir)
     stacks = detect_stacks(project_dir)
@@ -449,9 +450,11 @@ def run(project_dir: Path, pull: bool, refresh_only: bool = False) -> int:
                 pulled += 1
             else:
                 refreshed += 1
-        # record provenance for ANY fact this project now holds as a mirror
-        # (incl. already in-sync), so the network graph reflects reality
-        if pull and rel and status in ("MISSING", "STALE-mirror", "in-sync"):
+        # record provenance for ANY fact this project now holds as a mirror (incl. already in-sync), so
+        # the network graph reflects reality. v0.1.37: EXCLUDE a refresh-only HELD MISSING — it was NOT
+        # pulled, so the project does NOT hold it; recording it would write a PHANTOM holder edge into the
+        # shared canonical during a hold-back mode (and lie in the network graph).
+        if pull and rel and status in ("MISSING", "STALE-mirror", "in-sync") and not (refresh_only and status == "MISSING"):
             _record_provenance(name, project_dir.name)  # this mind holds the fact
     add(_ui.kv("FACTS", f"{len(facts)} global · {relevant} relevant to this project"))
     out.extend(rows)

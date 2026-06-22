@@ -26,10 +26,15 @@ report-then-apply. (Found by dogfooding: Doc_Flo carried 6 dangling links + a st
   misleading NOTHING/NO-OP.
 - **dream-beta-tester 0.1.3** — new `maintenance_pivot_coherence` family: a store with maintenance work MUST
   surface the Phase-0 pivot cue (the regression guard for the signal foundation).
-- Gated: empirics → spec → Gate-1 independent review-to-zero (3 blockers caught + folded — read-only pivot,
-  steady-state trigger [dropped the perpetual-nag `stale_since_marker`], banner mechanism). An impl-time
-  empirical discovery (a live sibling-promoted global a no-op would miss) refined the PROCEED cue to fire on
-  `commits==0` + non-empty, not just local work. +3 smoke units. smoke 301/0 · mypy 15 files · manifests. PATCH
+- Gated: empirics → spec → Gate-1 independent review-to-zero (3 blockers folded — read-only pivot,
+  steady-state trigger [dropped the perpetual-nag `stale_since_marker`], banner mechanism) → impl → Gate-2
+  (`/code-review`, max effort). An impl-time empirical discovery (a live sibling-promoted global a no-op would
+  miss) refined the PROCEED cue to fire on `commits==0` + non-empty, not just local work. **Gate-2 caught a real
+  bug** — a held-back MISSING fact under `--refresh-only` still wrote PHANTOM provenance to the shared global
+  canonical (`_record_provenance` fired on `status=="MISSING"`); fixed to exclude the held case — plus 6
+  hardening fixes (the Phase-0 cue now emits the gated `--pull --refresh-only` command itself; `dangling_links`
+  strips fenced code blocks too; `maintenance` added to the nested SKILL↔TypedDict pin + `validate_cycle_record`;
+  the beta family reuses the captured render). +4 smoke units. smoke 302/0 · mypy 15 files · manifests. PATCH
   (additive; read-only pivot → no contract break).
 
 ## [0.1.36] — 2026-06-21
