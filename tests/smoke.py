@@ -1309,8 +1309,10 @@ with _tf43.TemporaryDirectory() as _td48:
 # ── v0.1.49: error-channel noise filter (<tool_use_error>) + cap ──────────────────
 # Measured: ~73% of raw error tool-results are <tool_use_error> wrappers — Claude's OWN tool-protocol
 # mistakes (file-not-read, string-not-found), NEVER an env gotcha. Drop them; KEEP genuine env signal
-# (a ModuleNotFoundError inline-script error IS "X isn't installed here"; classifier-denials are the
-# highest-signal class); cap the UNRANKED survivors AFTER the filter.
+# (a ModuleNotFoundError inline-script error IS "X isn't installed here"); cap the UNRANKED survivors AFTER
+# the filter. v0.1.53 REVERSAL: classifier-denials + the model-unavailable message — v0.1.49 kept the denial
+# as "highest-signal" — are now DROPPED as harness artifacts (a transient classifier event, not a durable env
+# gotcha; the real lesson is authored from session context, not the denial row). User-flagged as noise.
 def _el49(text: str, sid: str = "s49") -> str:   # an error tool_result transcript line
     return _json43.dumps({"timestamp": "2026-06-22T10:00:00Z", "sessionId": sid,
                           "message": {"role": "user", "content": [
@@ -1324,7 +1326,7 @@ with _tf43.TemporaryDirectory() as _td49a:
         _el49("<tool_use_error>String to replace not found in file.</tool_use_error>") +   # DROP (tool-protocol)
         _el49("<tool_use_error>File has not been read yet.</tool_use_error>") +            # DROP (tool-protocol)
         _el49('Exit code 1 Traceback (most recent call last): File "<string>", line 1 ModuleNotFoundError: No module named \'foo\'') +  # KEEP (env gotcha)
-        _el49("Permission for this action was denied by the Claude Code auto mode classifier. Reason: rm -rf of a real dir") +          # KEEP (highest-signal)
+        _el49("Permission for this action was denied by the Claude Code auto mode classifier. Reason: rm -rf of a real dir") +          # v0.1.53: now DROP (harness artifact; reverses v0.1.49)
         _el49("Exit code 127 somecli: command not found"))                                 # KEEP (env gotcha)
     _old49a = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_h49a)
     try:
@@ -1339,8 +1341,8 @@ with _tf43.TemporaryDirectory() as _td49a:
           _r49a["counts"]["noise"] >= 2)
     check("v0.1.49: a ModuleNotFoundError inline-script error is KEPT (NOT L2 — it's a durable env gotcha)",
           any("ModuleNotFoundError" in s["text"] for s in _errs49a))
-    check("v0.1.49: a classifier-denial is KEPT (the highest-signal error class — never dropped)",
-          any("auto mode classifier" in s["text"] for s in _errs49a))
+    check("v0.1.53: a classifier-denial is now DROPPED as a harness artifact (REVERSES v0.1.49's keep — user-flagged noise, not a durable gotcha)",
+          not any("auto mode classifier" in s["text"] for s in _errs49a))
     check("v0.1.49: surviving errors still carry the canonical keyset (filter didn't bypass _signal)",
           bool(_errs49a) and all(set(s) >= es._CANONICAL_KEYS for s in _errs49a))
 # Scenario B — cap binds AFTER the filter (wrapped error FIRST → a naive cap-raw-then-filter would yield 7, not 8)
@@ -1556,6 +1558,75 @@ check("v0.1.44: render() default (no judged) does NOT show the panel (back-compa
       "PROCEDURE INTEGRITY" not in rd.render(_pi(11, 0, applied="HEAVY")))
 check("v0.1.44: render(judged=True) shows NO panel on a clean record (no false-fire in the panel)",
       "PROCEDURE INTEGRITY" not in rd.render(_pi(2, 4, 10, 2, 0), judged=True))
+
+# ── v0.1.53: signal-pipeline hardening (spec: docs/signal-pipeline-hardening.spec.md) ──
+# Bug 1 — compound control acks demote to `ack` (score 0); _MARKERS WIN (reorder); signal turns stay surfaced.
+for _t53 in ["Yes go ahead", "Ship it please", "Yes ship it", "Retry please", "Let's continue",
+             "Implement it now", "Ship it and let's continue logically"]:
+    check(f"v0.1.53 ack-demote (whole turn is ack-vocab → score 0): {_t53!r}", es._classify(_t53)[0] == "ack")
+check("v0.1.53 ack: marker WINS over ack (reorder) — 'always' → preference, not ack",
+      es._classify("Yes, but always validate at the root")[0] == "preference")
+# the recall guard (cr2 CONFIRMED): a SHORT turn opening with a control verb but carrying a CONTENT noun is NOT
+# an ack — the signal lives in the noun ("postgres migration", "parser.py", "50"), which the whole-turn vocab
+# check keeps as `statement`/score-1 (a length-bound alone wrongly demoted these to score-0).
+for _keep53 in ["proceed with the postgres migration", "yes the bug is in parser.py",
+                "push to the staging remote only", "Sure let's allow up to 50",
+                "Sure I'll live test it, give me a series of logical verification patterns",
+                "Let's add a toggle in the search options modal as an option"]:
+    check(f"v0.1.53 ack-KEEP (content noun → stays signal): {_keep53!r}", es._classify(_keep53)[0] != "ack")
+# Bug 2 — strip leading [Image #N] markers; image-only turn → empty (noise).
+check("v0.1.53 image: marker stripped, real text kept",
+      es._strip_markers("[Image #1] [Image #2] the table is broken") == "the table is broken")
+check("v0.1.53 image: image-only turn strips to empty (→ noise)", es._strip_markers("[Image #1] [Image #2]") == "")
+check("v0.1.53 attach: leading quoted screenshot paths stripped, the prose that FOLLOWS revealed (real case)",
+      es._strip_markers("'/home/d/Screenshot from 2026.png' '/home/d/b.png' Here are the impressions, revise")
+      == "Here are the impressions, revise")
+check("v0.1.53 attach: a BARE leading path is NOT stripped (it may be the subject)",
+      es._strip_markers("/home/x/config.py needs fixing") == "/home/x/config.py needs fixing")
+check("v0.1.53 attach: quoted path-ONLY strips to empty → noise via the empty-check (the real pipeline path, not _PATH_ONLY)",
+      es._strip_markers("'/home/x/a.png' '/home/x/b.png'") == "")
+# Bug 3 — path-only turns are noise; path + prose is kept.
+check("v0.1.53 path-only: bare screenshot paths → noise", bool(es._PATH_ONLY.match("'/home/x/a.png' '/home/x/b.png'")))
+check("v0.1.53 path-only: QUOTED path WITH SPACES → noise (the real screenshot case bare-\\S+ missed)",
+      bool(es._PATH_ONLY.match("'/home/d/Pictures/Screenshot from 2026-06-22 19-48-49.png' '/home/d/Screenshot from 2.png'")))
+check("v0.1.53 path-only: a single bare path → noise", bool(es._PATH_ONLY.match("/home/x/a.png")))
+check("v0.1.53 path-only: path + prose is NOT path-only", not es._PATH_ONLY.match("see /home/x/a.png it is broken"))
+# Bug 4 — error-channel noise arms (DROP harness/transient/own-bug) vs real env gotchas (KEEP).
+for _e53, _drop53 in [
+    ("Permission for this action was denied by the Claude Code auto mode classifier. Reason: x", True),
+    ("claude-opus-4-8[1m] is temporarily unavailable, so auto mode cannot determine the safety of Bash", True),
+    ("Exit code 1 === ruff check === E501 Line too long (102 > 100) --> a.py:1:101", True),
+    ("Exit code 1 E501 Line too long (103 > 100) --> app.py:234", True),
+    ("Exit code 1 All checks passed! Would reformat: app.py 1 file would be reformatted", True),
+    ('Exit code 1 Traceback (most recent call last): File "<stdin>", line 20 KeyError: audit', True),
+    ('Traceback File "<string>", line 5 ModuleNotFoundError: No module named requests', False),  # genuine env fact → KEEP
+    ('Traceback File "<stdin>", line 3 OperationalError: could not connect: Connection refused', False),  # env fact via -c → KEEP (fix B)
+    ("FileNotFoundError: /usr/bin/ruff check failed to find config", False),  # real error mentioning 'ruff check' → KEEP (fix G)
+    ("ruff: command not found", False),                          # real env gotcha (no === / check) → KEEP
+    ("HTTP 401 Unauthorized: bad token endpoint", False),        # real env error → KEEP
+    ("PermissionError: [Errno 13] Permission denied: '/etc/x'", False),  # filesystem EPERM (not the classifier) → KEEP
+]:
+    check(f"v0.1.53 error-noise {'DROP' if _drop53 else 'KEEP'}: {_e53[:40]!r}", es._is_error_noise(_e53) is _drop53)
+# Bug 5 — `--audit --into <cycle>` injects the audit block (no manual merge → no KeyError); the --into path is NOT
+# mis-read as the positional project_dir. Hermetic: HOME → tmp (no real ~/.claude writes).
+import subprocess as _sp53, os as _os53  # noqa: E402
+with _tf43.TemporaryDirectory() as _td53:
+    (Path(_td53) / "home").mkdir(); (Path(_td53) / "proj").mkdir()
+    (Path(_td53) / "snap.json").write_text("{}")
+    _cyc53 = Path(_td53) / "cycle.json"
+    _cyc53.write_text('{"project":"p","marker":{"timestamp":"2026-01-01T00:00:00Z"}}')
+    _scr53 = str(ROOT / "plugins" / "consolidate-memory" / "scripts" / "memory_status.py")
+    _sp53.run([sys.executable, _scr53, "--audit", str(Path(_td53) / "snap.json"), "--into", str(_cyc53),
+               str(Path(_td53) / "proj")], capture_output=True, text=True, timeout=60,
+              env={**_os53.environ, "HOME": str(Path(_td53) / "home")})
+    _after53 = _json43.loads(_cyc53.read_text())
+    check("v0.1.53 bug5: --audit --into injects the audit block (no KeyError, no manual merge)",
+          isinstance(_after53.get("audit"), dict))
+    # the mutation-log lands under the PROJECT's slug → proves --into was NOT consumed as the positional
+    # project_dir (else slug_for(cycle.json) and this path wouldn't exist) — the _argpaths regression guard.
+    _mlog53 = Path(_td53) / "home" / ".claude" / "projects" / ms.slug_for(Path(_td53) / "proj") / "memory" / ".mutation-log.jsonl"
+    check("v0.1.53 bug5: --audit wrote the mutation-log under the PROJECT slug (--into NOT mis-read as project_dir)",
+          _mlog53.exists())
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

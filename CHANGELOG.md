@@ -5,6 +5,38 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.53] — 2026-06-23
+
+### Fixed — signal-pipeline hardening: the per-release defects a live v0.1.51 dream surfaced
+A real dream run showed the signal pipeline was roughly half-noise (measured: 39 human signals / ~18 noise; 8
+error signals / 0 durable gotchas) plus a hard crash — one lingering defect per recent release. Each
+root-caused + fixed (spec: `docs/signal-pipeline-hardening.spec.md`):
+- **Compound acks no longer masquerade as signal** *(v0.1.50)* — "Ship it please", "Yes ship it", "Let's
+  continue" etc. were classified `statement`/score-1 (the anchored `_ACK` only matched a lone ack word). Now
+  `_classify` checks markers FIRST, then a control-opener + length-bounded ack matcher demotes them to score-0
+  (a marker-bearing turn like "yes, but **always** X" stays a preference; a long signal turn opening with
+  "sure" is protected by the word-bound).
+- **`[Image #N]` markers + pasted screenshot paths stripped** *(v0.1.50)* — leading attachment noise is removed
+  to reveal the real instruction that follows (which `norm[:300]` had truncated off); a pure image-only /
+  path-only turn becomes noise. (Quoted paths may contain spaces — the real screenshot case.)
+- **Error channel cleaned of transient noise** *(v0.1.49)* — ruff lint/format, the model's own inline-script
+  (`<stdin>`/`<string>`) tracebacks, and Claude-Code auto-mode classifier messages (denial / unavailable) are
+  dropped as harness-artifact / transient noise. A genuine env error (a `ModuleNotFoundError` from `python3 -c
+  "import x"`, `ruff: command not found`, an HTTP 401, a filesystem `PermissionError`) is still KEPT.
+  **Reverses a v0.1.49 call:** classifier-denials were kept as "highest-signal"; they're now noise (a transient
+  harness event, not a durable env gotcha — the real lesson is authored from session context).
+- **`KeyError: 'audit'` crash fixed** *(v0.1.22 flow)* — `memory_status.py --audit <snapshot> --into <cycle>`
+  now injects the audit block straight into the cycle record (deterministic; no model-improvised merge). The
+  SKILL Phase-5 step uses it; absent `--into` it still prints the summary (backward-compatible).
+- **Dream-arc styling un-hedged** *(v0.1.47)* — the opening + closing debrief are now REQUIRED bookends; the
+  "function wins, voice recedes" hedge is scoped to the intermediate phase narration only (the model was
+  generalizing it to the whole arc, so the voice evaporated in every dense pass).
+- **Phase-2 `--json` schema documented** *(v0.1.48)* — the SKILL now states the keys (`counts.surfaced`, each
+  signal's `signal_type`), so the orchestrator stops reading `kind`/top-level `surfaced` (both `None`).
+
+All backward-compatible (the `--json` schema is unchanged, `--into` is additive, the rest is SKILL prose) →
+patch. 443 smoke + mypy green; validated end-to-end on the real transcript that surfaced the defects.
+
 ## [0.1.52] — 2026-06-23
 
 ### Fixed — cross-store dangling-link resolution (the recurring 1–2 "broken wikilinks" every cycle)

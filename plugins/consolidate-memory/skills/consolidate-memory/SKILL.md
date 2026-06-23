@@ -174,6 +174,15 @@ judgment-rendered and VARIES run-to-run — not a canned line, not purple prose,
 and it **scales to the pass** (see *Proportionality* below). It is the styling layer over the
 same phases; it changes the VOICE, never what each phase does or surfaces.
 
+**The two bookends — the OPENING and the CLOSING debrief — are REQUIRED, never optional.** They are
+low-clarity-risk (they don't run over work-in-progress), and they are what makes the pass *feel* like a dream
+rather than a phase dump. The "functional clarity is SACROSANCT / when in doubt, function wins and the voice
+recedes" rule below applies **ONLY to the intermediate phase narration** (and Phase 4 stays plain) — it is
+**not** license to drop the opening or the debrief. The single most common failure is exactly that: a dense
+technical pass reads the whole arc as "in doubt → recede" and the dream evaporates into bare phase labels with
+at most a token gesture at the end. Do not. The bookends always land (scaled to the outcome — see
+*Proportionality*); only the *intermediate* voice is the light, recede-when-in-doubt one.
+
 - **Opening — entering the dream (after the first `memory_status.py` read).** Once Phase 0's
   first read shows the lay of the land (magnitude, the stores, no-op-or-proceed), emit a BRIEF
   (1–3 line) creative settling-in: the orchestrator coming off the session's work and drifting
@@ -396,7 +405,10 @@ typed messages are <1% of the transcript and carry only the *feedback* slice; th
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --json
    ```
-   **Run it, or record why you didn't.** The extractor reads the compaction-proof *on-disk*
+   (For *eyeballing*, run it WITHOUT `--json` — the human-readable table is already formatted; reserve `--json`
+   for machine capture. The `--json` shape is `{counts:{…, surfaced}, signals:[…]}` where each signal is
+   `{source, signal_type, scope_hint, score, text}` — the type key is **`signal_type`** (not `kind`) and the
+   count is **`counts.surfaced`** (not a top-level `surfaced`).) **Run it, or record why you didn't.** The extractor reads the compaction-proof *on-disk*
    transcript — exactly what a long/compacted session needs, since when your in-context view is the
    degraded source, your memory of the session is NOT a substitute. If you deliberately skip it,
    record an explicit skip-justification as an `entries[]` note (it always renders; `rigor.override_reason`
@@ -723,10 +735,15 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    Then **emit the deterministic mutation audit** (v0.1.22) — diff the post-write state against the Phase-0
    `--snapshot`:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --audit <the --snapshot path>
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --audit <the --snapshot path> --into <the --seed path>
    ```
    It appends a per-operation record to `~/.claude/projects/<slug>/memory/.mutation-log.jsonl` (the durable,
-   script-emitted trail) and prints the audit summary — paste that into the cycle record's `audit` block. This
+   script-emitted trail) AND `--into <the --seed path>` **injects the audit block straight into the cycle record**
+   (v0.1.53 — deterministic; do NOT hand-merge the printed JSON into `d["audit"]`, which KeyErrors on a seed that
+   lacks the key). **Run this LAST in step 5** — after stamping `marker.timestamp` above — since `--into`
+   read-modify-writes the seed (a later seed write would clobber the injected audit). It also prints the summary;
+   only if you omit `--into` (or its write fails) paste that printed summary into the cycle record's `audit`
+   block. This
    is the script-OBSERVED counterpart to your `entries[]` narration; they should AGREE — a divergence (a file
    changed that no entry mentions, or an entry with no file change) is a signal to investigate. HONEST GAP: the
    snapshot window attributes ANY change between Phase 0 and now to this pass (an interrupted/concurrent edit
