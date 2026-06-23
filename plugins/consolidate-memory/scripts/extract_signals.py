@@ -33,6 +33,7 @@ import json
 import re
 import sys
 import unicodedata
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -58,7 +59,8 @@ _PROBE_CAP = 4000
 
 # Unambiguous noise — harness/skill injections and command echoes, not human intent.
 _NOISE = re.compile(
-    r"^\s*(<local-command-|<command-|<task-notification|<teammate-message|Caveat:|"
+    r"^\s*(<local-command-|<command-|<task-notification|<teammate-message|"
+    r"Another Claude session sent a message:|Caveat:|"
     r"Base directory for this skill:|This session is being continued|\[Image:|\[Request interrupted)",
     re.I,
 )
@@ -78,6 +80,34 @@ _ERROR_NOISE = re.compile(r"^\s*<tool_use_error>", re.I)
 # A flood backstop for the UNRANKED, post-filter error survivors (errors carry no salience score). Generous for
 # a normal session (real gotchas are rare), bounds a pathological flaky-loop session. NOT a quality ranking.
 MAX_ERRORS = 8
+
+# v0.1.50: a dedup KEY that collapses byte-noise variants of ONE error class to a single row (the error channel
+# dedups by exact text + caps at MAX_ERRORS, so byte-noise — exit codes, line numbers, temp paths, PIDs,
+# timestamps — fragments one class into many and dilutes the cap). HEAD-EXTRACTION does the heavy lifting: keying
+# from a `Word…Error/Exception/Warning:` head onward drops the "Exit code 1 Traceback … File "/…", line N" preamble
+# + frames (incl. their varying paths/line-numbers) while PRESERVING the message — so 'foo' != 'bar' and
+# ModuleNotFoundError != PermissionError stay distinct. Then only LIGHT, UNAMBIGUOUS byte-noise normalization
+# (exit codes, line numbers, ISO timestamps). Deliberately we normalize NOTHING whose value could be SIGNAL —
+# NO path->/PATH, NO blanket \d{3,}->N, NO bare-hex->HEX, NO bare-clock(HH:MM)->TS: the binary in "foocli: command
+# not found", "HTTP 404" vs "500", a Windows HRESULT "0x80004005", and a slice "arr[10:20]" are SIGNAL, not noise
+# (the gate-2 asymmetry fix — keep the byte-noise list symmetric: only-noise tokens, never a possible identifier).
+# Head-extraction already handles traceback paths/frames. Keys only — the stored verbatim text is untouched
+# (display unaffected). The cross-session recurrence MULTIPLIER is deferred (D1).
+_ERR_HEAD = re.compile(r"\b\w+(?:Error|Exception|Warning):\s*.*", re.S)
+_ERR_KEY_SUBS = (
+    (re.compile(r"(?i)\bexit code \d+"), "exit code N"),
+    (re.compile(r"(?i)\bline \d+"), "line N"),
+    (re.compile(r"\d{4}-\d{2}-\d{2}[ T][\d:]+"), "TS"),   # ISO timestamps only (unambiguous noise)
+)
+
+
+def _error_key(text: str) -> str:
+    """Collapse byte-noise variants of one error CLASS to a stable key; keep distinct errors distinct."""
+    m = _ERR_HEAD.search(text)
+    base = m.group(0) if m else text
+    for rx, repl in _ERR_KEY_SUBS:
+        base = rx.sub(repl, base)
+    return " ".join(base.split())[:160]
 
 # Credential-shaped values. Detection is SPLIT in two because the generic high-entropy
 # check needs CASE discrimination (mixed-case is the signal that separates a token from
@@ -325,14 +355,18 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
 
     # dedup error-results AND human turns (the same gotcha/turn can repeat across pooled sessions). Explicit loop
     # rather than the `... or seen.add(x)` trick: set.add returns None (mypy flags it), so ADD first, then use.
-    def _dedup(items: list[dict]) -> list[dict]:
+    def _dedup(items: list[dict], key: Callable[[dict], str] | None = None) -> list[dict]:
+        k = key or (lambda it: it["text"])    # default: exact-text (human behaviour UNCHANGED)
         seen: set[str] = set(); out: list[dict] = []
         for it in items:
-            if it["text"] in seen:
+            ky = k(it)
+            if ky in seen:
                 continue
-            seen.add(it["text"]); out.append(it)
+            seen.add(ky); out.append(it)
         return out
-    errors = _dedup(errors)[:MAX_ERRORS]   # v0.1.49: flood backstop on the UNRANKED survivors, AFTER the noise filter
+    # v0.1.50: dedup errors by a normalized error-CLASS key (byte-noise variants of one class collapse to one
+    # row), keeping the first occurrence's verbatim text; THEN the v0.1.49 flood backstop on the UNRANKED survivors.
+    errors = _dedup(errors, key=lambda it: _error_key(it["text"]))[:MAX_ERRORS]
     human = _dedup(human)
     # rank human turns: high-signal first, acks last; cap at max_n ACROSS THE POOLED set. Keep ONE
     # omitted-secret label for transparency (the consolidation should know a

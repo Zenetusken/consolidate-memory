@@ -1331,6 +1331,50 @@ with _tf43.TemporaryDirectory() as _td49b:
     check("v0.1.49: the leading <tool_use_error> is still absent under the cap (filter precedes cap)",
           all("tool_use_error" not in s["text"] for s in _errs49b))
 
+# ── v0.1.50: foundation signal-extraction sharpeners (distill stage 1) ──────────────────
+# Change 1: the "Another Claude session sent a message:" prose wrapper is agent-coordination noise that leaks
+# through _NOISE (the bare <teammate-message tag arm doesn't fire — the prose precedes the tag). Change 2: dedup
+# the error channel to a CLASS (byte-noise variants collapse; distinct errors stay separate — the recall guard).
+# _error_key unit assertions (the recall guard with real teeth — GAP-1/GAP-2):
+check("v0.1.50: _error_key MERGES same class+msg differing only in byte-noise (exit/line/path)",
+      es._error_key('Exit code 1 Traceback ... File "/tmp/a/x.py", line 5 ModuleNotFoundError: No module named \'foo\'')
+      == es._error_key('Exit code 2 Traceback ... File "/tmp/b/y.py", line 99 ModuleNotFoundError: No module named \'foo\''))
+check("v0.1.50: _error_key SEPARATES same family / different identifier (foo vs bar — the STRONG recall guard)",
+      es._error_key("ModuleNotFoundError: No module named 'foo'") != es._error_key("ModuleNotFoundError: No module named 'bar'"))
+check("v0.1.50: _error_key SEPARATES different families (ModuleNotFoundError vs PermissionError)",
+      es._error_key("ModuleNotFoundError: x") != es._error_key("PermissionError: x"))
+check("v0.1.50: _error_key SEPARATES no-head command-not-found by binary name (foocli vs barcli — GAP-2, no path-strip)",
+      es._error_key("Exit code 127 /usr/bin/foocli: command not found") != es._error_key("Exit code 127 /usr/bin/barcli: command not found"))
+check("v0.1.50: _error_key PRESERVES signal-bearing hex/clock (HRESULT 0x… + slice [10:20] stay distinct — gate-2 symmetry fix)",
+      es._error_key("RuntimeError: HRESULT 0x80004005") != es._error_key("RuntimeError: HRESULT 0xC0000005")
+      and es._error_key("IndexError: bad slice arr[10:20]") != es._error_key("IndexError: bad slice arr[30:40]"))
+# End-to-end through extract(): Change-1 drop + Change-2 collapse
+with _tf43.TemporaryDirectory() as _td50:
+    _h50 = Path(_td50); _p50 = _h50 / "proj"; _p50.mkdir()
+    _pr50 = _h50 / ".claude" / "projects" / es.slug_for(_p50); _pr50.mkdir(parents=True)
+    def _hl50(t: str) -> str:
+        return _json43.dumps({"timestamp": "2026-06-22T10:00:00Z", "sessionId": "s50", "message": {"role": "user", "content": t}}) + "\n"
+    def _el50(t: str) -> str:
+        return _json43.dumps({"timestamp": "2026-06-22T10:00:00Z", "sessionId": "s50", "message": {"role": "user", "content": [
+            {"type": "tool_result", "is_error": True, "content": [{"type": "text", "text": t}]}]}}) + "\n"
+    (_pr50 / "s.jsonl").write_text(
+        _hl50("Another Claude session sent a message: please run the tests") +     # Change-1 → DROP
+        _hl50("Always pin the dependency versions in the lockfile") +              # real human turn → KEEP
+        _el50('Exit code 1 File "/tmp/a/x.py", line 5 KeyError: \'gate\'') +       # error class A …
+        _el50('Exit code 2 File "/tmp/b/y.py", line 88 KeyError: \'gate\'') +      # … collapses with A (byte-noise)
+        _el50("PermissionError: [Errno 13] Permission denied"))                    # error class B → stays separate
+    _old50 = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_h50)
+    try:
+        _r50 = es.extract(_p50, "", 30)
+    finally:
+        _os43.environ["HOME"] = _old50 if _old50 is not None else ""
+    _sig50 = _r50["signals"]; _htext50 = " ".join(s["text"] for s in _sig50 if s["source"] == "human")
+    _errs50 = [s for s in _sig50 if s["source"] == "error"]
+    check("v0.1.50: Change-1 'Another Claude session...' wrapper DROPPED from human signal, real turn KEPT (end-to-end)",
+          "Another Claude session" not in _htext50 and any("pin the dependency" in s["text"] for s in _sig50))
+    check("v0.1.50: Change-2 same-class errors COLLAPSE, distinct family stays → exactly 2 error rows (KeyError + PermissionError)",
+          len(_errs50) == 2 and any("KeyError" in s["text"] for s in _errs50) and any("PermissionError" in s["text"] for s in _errs50))
+
 # ── v0.1.44: procedure-integrity detector — the lazy-skip safeguard ──────────────────
 # The MEASURED 2026-06-22 failure: 3 dreams ran 0/0/0 verification while self-labeled
 # SUBSTANTIAL/HEAVY. The predicate FIRES on that signature (magnitude>=SUBSTANTIAL AND tally==0),

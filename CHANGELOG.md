@@ -5,6 +5,42 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.50] — 2026-06-22
+
+### Changed — signal-extraction foundation: 2 channel-precision sharpeners (distill stage 1)
+A measure-first, 5-lens discovery (`docs/signal-extraction-foundation.spec.md` + the `distill-feature-plan`
+memory) partitioned every signal-extraction enhancement against a 3-part bar — ship only if MEASURED-real AND
+non-redundant with the existing 3 sources + git AND zero new firewall surface. The decisive result: **sharpen
+channels already parsed; don't add sources** (every new-source candidate failed — file-hotspots = git-derivable;
+a command/Bash source = 87% `cd` + 5% firewall-trip + already-covered by errors). This ships the 2 unanimous
+sharpeners; both are PRECISION fixes to existing channels (no new source → no new firewall surface).
+- **Teammate-message `_NOISE` anchor.** `_NOISE` caught the bare `<teammate-message` tag but MISSED the
+  `Another Claude session sent a message:` prose wrapper (the prose precedes the tag, so the bare-tag arm never
+  fired). Measured: **~49-55 such turns ≈ 7% of human turns leaked through as human feedback**, all carrying
+  `scope_hint="user"` (predominantly the `preference` class) → they fed user-global facts. Anchoring the prose
+  prefix drops them (agent coordination, not human intent). Verified 0 leaks remaining on real projects.
+- **Error-channel dedup to a CLASS (`_error_key`).** The error channel deduped by EXACT text + capped at
+  `MAX_ERRORS=8`, so byte-noise (exit codes, line numbers, temp paths, PIDs, timestamps) fragmented one error
+  class into many rows and diluted the cap. `_error_key` keys by a normalized class: **head-extraction** (key
+  from a `…Error/Exception/Warning:` head onward) drops the `Traceback … File "/…", line N` preamble + frames
+  while PRESERVING the message, then only UNAMBIGUOUS byte-noise normalization (exit code / line number / ISO
+  timestamp). Deliberately normalizes nothing whose value could be SIGNAL — **NO path→/PATH, NO blanket
+  `\d{3,}`→N, NO bare-hex→HEX, NO bare-clock→TS** (the binary in `foocli: command not found`, `HTTP 404` vs
+  `500`, a Windows HRESULT `0x80004005`, a slice `arr[10:20]` are signal, not noise — the byte-noise list is kept
+  symmetric). `_dedup` gains an optional `key=` (default = exact text → human dedup UNCHANGED); errors dedup by
+  `_error_key` before the cap. Normalization only — the cross-session recurrence MULTIPLIER is deferred (D1).
+- **Deferred** (per the discovery + anti-bloat): the exact-form-literal salience nudge (modest measured benefit,
+  heuristic FP risk, rarely binds — the skeptic lens recommended exactly these two); the D1 recurrence family;
+  the D4 `/distill` workflow→artifact vertical.
+- **Backward-compatible (PATCH):** signal schema unchanged (v0.1.48 canonical keyset untouched), no new source,
+  no new firewall surface, no removed/renamed key/script/flag; `_dedup`'s default key preserves human behavior
+  exactly; keys never alter the stored verbatim text (display unaffected). +7 smoke checks (the `_error_key`
+  merge/separate recall guard incl. same-family-different-identifier, the foocli/barcli + hex/clock no-over-merge
+  pins, + end-to-end drop/collapse) → 394 passed, 0 failed.
+- Gated: independent spec-review (no blockers, both changes prototyped; 4 gaps folded in — dropped the
+  over-merging path-strip, corrected the leak framing to ~49 all-scope=user, strengthened the recall-guard
+  fixture) + `/code-review`. mypy clean · sim ✓ · `claude plugin validate --strict` ✓ · dream-beta-test 0 FAIL.
+
 ## [0.1.49] — 2026-06-22
 
 ### Changed — filter transient tool-protocol noise from the error-signal channel (+ cap)
