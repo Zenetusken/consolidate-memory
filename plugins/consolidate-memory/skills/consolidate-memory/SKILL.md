@@ -693,13 +693,16 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
 3. Re-confirm every file path / function name you referenced still exists.
    → **Cycle record:** fill `health` — `index_pointers_ok`, any `broken` pointers,
    any `dangling_links` (`[[name]]` wikilinks pointing at no target file). **Use the SINGLE-SOURCE
-   helper — `memory_status.dangling_links(auto_mem)`** (v0.1.37): it resolves every `[[name]]` against
-   the FULL valid-target set (`valid_link_targets` — facts + archive-index docs like `SHIPPED.md` /
-   `MEMORY`, so `[[SHIPPED]]`/`[[MEMORY]]` are REAL targets, NOT dangling — D10) with inline code spans
-   stripped (`[[...]]` in backticks, e.g. TOML `[[tool.mypy.overrides]]`, is not a wikilink). **Phase-0
-   `maintenance.dangling` calls the SAME helper**, so the two counts can't drift (the cycle-record-contract
-   discipline). For each genuinely dangling `[[name]]`, try `memory_status.resolve_wikilink(name,
-   valid_link_targets(auto_mem))` — it resolves slug-drift (`[[qwen-migration-research]]` →
+   helper — `memory_status.dangling_links(auto_mem, global_dir=Path.home()/".claude"/"memory")`** (v0.1.37;
+   v0.1.52 cross-store): it resolves every `[[name]]` against the FULL valid-target set (`valid_link_targets`
+   — facts + archive-index docs like `SHIPPED.md` / `MEMORY`, so `[[SHIPPED]]`/`[[MEMORY]]` are REAL targets,
+   NOT dangling — D10) across **local ∪ the global canonical**, with inline code spans stripped (`[[...]]` in
+   backticks, e.g. TOML `[[tool.mypy.overrides]]`, is not a wikilink). **Pass `global_dir`** so a pending-pull
+   up-link to a budget-HELD global fact is NOT mis-flagged (a sibling-project-local DOWN-link still is —
+   genuinely unreachable here). **Phase-0 `maintenance.dangling` calls the SAME helper with the SAME
+   `global_dir`**, so the two counts can't drift (the cycle-record-contract discipline). For each genuinely
+   dangling `[[name]]`, try `memory_status.resolve_wikilink(name, valid_link_targets(auto_mem) |
+   valid_link_targets(global_dir))` — it resolves slug-drift (`[[qwen-migration-research]]` →
    `qwen_migration_research_2026_05_26`); SUGGEST the drifted target as a fix and confirm before
    re-linking, never auto-rewrite (D10, v0.1.21).
 4. **Measure the network's token cost** (the observability section). Capture per-node

@@ -5,6 +5,26 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.52] — 2026-06-23
+
+### Fixed — cross-store dangling-link resolution (the recurring 1–2 "broken wikilinks" every cycle)
+Root-caused the dangling-link false positive that surfaced on **every** consolidation cycle. The detector
+(`memory_status.dangling_links`) resolved each `[[target]]` against ONLY the single store it scanned, but the
+memory graph is multi-store (project-local · global canonical · per-node mirrors) and cross-scope, so two
+legitimate link shapes were mis-flagged — now distinguished:
+- **`dangling_links(auto_mem, global_dir=…)`** resolves against **local ∪ the global canonical** (the only
+  OTHER store a slug-scoped node can pull from — NOT fleet-wide). A `[[target]]` that is a real global fact
+  pending mirror (a budget-HELD up-link) is **pending-pull, not dangling** (the M1 `held` count is the real
+  signal) — this was the recurring false positive (a link flickered "dangling" for 4 cycles until its global
+  target was finally pulled). A target absent from BOTH stores stays flagged: a real typo, OR a sibling-
+  project-local DOWN-link genuinely unreachable here (correctly still surfaced).
+- **Both fill sites widened together** — the Phase-0 `maintenance.dangling` seed AND the SKILL Phase-5
+  `health.dangling_links` fill — so the two counts can't drift (smoke-pinned). `global_dir=None`/missing ⇒
+  byte-identical legacy behavior (backward-compatible — hence a patch).
+- DRY: the global-store path is now the `GLOBAL_STORE` module constant (cf. `sync_global.GLOBAL`).
+- Tests: +3 (Class B resolved · Class A still flagged · backward-compat + global-absent) + 2 SKILL drift-pins
+  + 1 cross-store isolation guard. Spec: `docs/dangling-cross-store-resolution.spec.md`.
+
 ## [0.1.51] — 2026-06-22
 
 ### Added — distill: a workflow-recurrence PHASE in the dream sequence (distill arc, stage 2 — the MVP)

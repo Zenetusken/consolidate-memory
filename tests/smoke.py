@@ -277,6 +277,26 @@ with _tf37.TemporaryDirectory() as _td37:
     (_s37 / "beta.md").write_text("---\nname: beta\n---\nbody\n")
     check("v0.1.37: dangling_links finds [[ghost-fact]]; resolves [[beta]]; ignores inline + FENCED code spans",
           ms.dangling_links(_s37) == ["ghost-fact"])
+# v0.1.52 — cross-store resolution: dangling_links(auto_mem, global_dir) resolves a pending-pull up-link to a
+# global-only fact (Class B, the recurring false positive) while a sibling-project-local DOWN-link stays
+# flagged (Class A, a true positive — unreachable here). global_dir=None/missing ⇒ byte-identical legacy.
+import tempfile as _tf52  # noqa: E402
+with _tf52.TemporaryDirectory() as _td52l, _tf52.TemporaryDirectory() as _td52g:
+    _loc52, _glob52 = Path(_td52l), Path(_td52g)
+    (_loc52 / "host.md").write_text("---\nname: host\n---\nup-link [[only-in-global]] (pending-pull) · down-link [[ghost-nowhere]] (unreachable)\n")
+    (_glob52 / "only-in-global.md").write_text("---\nname: only-in-global\n---\nbody\n")
+    check("v0.1.52: cross-store resolves a pending-pull up-link; a sibling-local down-link stays flagged (Class A)",
+          ms.dangling_links(_loc52, global_dir=_glob52) == ["ghost-nowhere"])
+    check("v0.1.52: global_dir=None is byte-identical legacy local-only (backward-compat; Class A still flagged)",
+          ms.dangling_links(_loc52) == ["ghost-nowhere", "only-in-global"])
+    check("v0.1.52: a MISSING global_dir collapses to legacy (the fresh-machine first-run path)",
+          ms.dangling_links(_loc52, global_dir=_loc52 / "no-such-global") == ms.dangling_links(_loc52))
+    # ISOLATION invariant: dangling_links globs ONLY auto_mem's *.md for links — the global store contributes
+    # to the target SET but is never SCANNED. So a global-only dangling link must NOT leak into a local scan's
+    # output (else a future union-the-scan refactor would surface OTHER projects' dangling links here).
+    (_glob52 / "gphantom.md").write_text("---\nname: gphantom\n---\na global-only dangling [[global-ghost]]\n")
+    check("v0.1.52: a global-only dangling link never leaks into a LOCAL scan (cross-store isolation)",
+          "global-ghost" not in ms.dangling_links(_loc52, global_dir=_glob52))
 # v0.1.38 (M1) — the projected net-grow guard (sync_global._would_net_grow), the SINGLE source for the
 # pull-hold decision. The NEAR-budget overshoot (case 2) is the bug v0.1.37's cue-with-a-before-compare missed:
 # `index > BUDGET` was False on a near-budget store, so it let the pull tip the index over.
@@ -821,6 +841,15 @@ for _nm, _obj, _td in [
 ]:
     check(f"SKILL↔TypedDict: schema-block {_nm} == {_td.__name__} (v0.1.12 full nested pin)",
           {k for k in _obj if not k.startswith("_")} == set(_td.__annotations__))
+
+# v0.1.52: BLOCKER guard — Phase-5's health fill MUST call dangling_links with the SAME global_dir as Phase-0
+# (memory_status.py), or health.dangling_links re-introduces the Class B false positive that maintenance.dangling
+# drops (the count-drift the single-source helper exists to prevent). Pin the SKILL prose so a future edit can't
+# silently drop the cross-store arg from either the count call or the fix-suggestion.
+check("v0.1.52: SKILL Phase-5 dangling_links call passes global_dir (cross-store; closes Phase-0↔5 drift)",
+      "dangling_links(auto_mem, global_dir=" in _skill_text)
+check("v0.1.52: SKILL Phase-5 fix-suggestion resolves cross-store — valid_link_targets(global_dir)",
+      "valid_link_targets(global_dir)" in _skill_text)
 
 # v0.1.18: remediation triage — pure units (the full classifier is exercised hermetically in
 # simulate_accumulation.py Probe L; these pin the short-circuit, the lever routing, and the regexes).
