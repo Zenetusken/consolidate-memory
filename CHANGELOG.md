@@ -5,6 +5,40 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.51] — 2026-06-22
+
+### Added — distill: a workflow-recurrence PHASE in the dream sequence (distill arc, stage 2 — the MVP)
+The dream's **second vertical**: where it consolidates FACTS into memory, **distill** detects repeated WORKFLOW
+patterns and PROPOSES a durable artifact (a command / skill) — report-then-apply. Inspired by MiMo-Code's
+`/distill`, but **integrated as a PHASE of the regular dream** (one skill package, frictionless — the user's
+call), not a separate skill/command. Measure-first validated the premise on cm's own transcripts (the gated
+release cycle recurs ≥12×). Full design: `docs/distill-phase.spec.md`; plan: the `distill-feature-plan` memory.
+- **`distill_scan.py` (new stdlib script)** — a LIVE within-project recurrence scan (NO persisted cross-dream
+  tally → the D1 recurrence family stays deferred). Reuses `extract_signals`'s `_norm`/`_looks_secret`/
+  `_window_transcripts` + `memory_status.slug_for` (no re-implementation). Extracts assistant `tool_use` Bash
+  commands over a recent (~30-day) window — BROADER than the dream's `marker..HEAD`; firewall FIRST; then
+  normalizes to a CLASS **template over MULTI-LINE input** (split on `\n`/`&&`/`;`, drop pure-`cd` + leading
+  `VAR=` segments, heredoc→head, drop quoted/paths/branch/value args) and counts recurrence (`count≥2`, ranked).
+  `--json` contract: `{window, scanned:{sessions,commands}, recurring:[{template,count,sample}]}` — DATA only
+  (the model does the workflow-recognition + proposal). `cm distill [DIR]` added.
+- **The distill PHASE (SKILL.md Phase 5 step 6; render renumbered to step 7).** The model RECOGNIZES a coherent
+  repeated workflow from the templates (not a single generic verb), GATES it (≥2× + stable + repeatable + clear
+  stopping + **not-already-covered** — inventory existing skills/commands first), and **PROPOSES the SMALLEST
+  artifact** report-then-apply. **"Create nothing" is the common, expected outcome** on today's small fleet.
+- **Safety (the highest-blast-radius feature — gate-reviewed SOUND):** the script CANNOT author (DATA only); the
+  phase **NEVER auto-writes an executable artifact** — it presents the proposal **PLAIN/un-styled**, the human
+  confirms, and a single confirmation authorizes **ONE named artifact** (not a suite). Proposed artifacts are
+  **genericized** (no abs paths / machine names / personal values — the firewall catches credential-*shaped*
+  values, not machine-specific ones). Known gap (acknowledged): an authored artifact lands outside the Phase-5
+  `--audit` mutation trail, so it's named explicitly in the closing debrief.
+- **Backward-compatible (PATCH):** additive new script + additive phase; **no `CycleRecord` schema/TypedDict/
+  smoke-pin change** (the proposal is in-conversation, like Phase 4); no removed/renamed key/script/flag. +12
+  smoke checks (the `_template` recall guard on REAL command forms — multi-line/heredoc/bare-cd/VAR=, branch
+  grouping, push≠pull — + end-to-end scan recurrence/firewall/create-nothing/contract) → 406 passed, 0 failed.
+- Gated: independent spec-review (report-then-apply + blast-radius SOUND; 1 BLOCKER [the `cd &&` strip was wrong
+  for the 92%-multi-line channel] fixed + re-measured on real data, + 5 gaps folded in) + `/code-review`. mypy
+  clean · sim ✓ · `claude plugin validate --strict` ✓ · dream-beta-test 0 FAIL.
+
 ## [0.1.50] — 2026-06-22
 
 ### Changed — signal-extraction foundation: 2 channel-precision sharpeners (distill stage 1)

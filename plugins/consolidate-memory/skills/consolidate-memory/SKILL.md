@@ -731,7 +731,38 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    (a concurrent commit also moves HEAD → the marker advances past it; the dream detects HEAD-moved + re-measures,
    but can't fully disentangle a concurrent commit's files from its own). If HEAD moved, say so (cf. an audit op
    you didn't make = a concurrent commit, e.g. via `git log <before-marker>..HEAD`).
-6. **Render the dashboard AND persist the record** — this is the skill's output (see below):
+6. **Distill — surface repeated WORKFLOWS → propose a durable artifact (report-then-apply).** The dream's
+   SECOND vertical: where the steps above consolidate FACTS into memory, distill detects repeated workflow /
+   tool-use patterns and proposes packaging the high-confidence ones into a reusable artifact (a command or
+   skill). Run the scan (cheap; **usually proposes nothing**):
+   ```bash
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py . --json
+   ```
+   It returns recurring Bash-command **templates** (count≥2) over a RECENT window (~30 days — deliberately
+   BROADER than this dream's `marker..HEAD`; **say so**, so the user isn't confused why distill sees commands
+   from outside this dream's scope). The script only COUNTS — you do the judgment:
+   - **RECOGNIZE a coherent repeated workflow** from the recurring templates (e.g. a release cycle =
+     `smoke`+`mypy`+`release.sh`+`gh pr`+`git checkout -b`/`push` recurring together) — NOT a single generic
+     verb (`echo`/`grep`/`ls` are noise; ignore them).
+   - **GATE (all must hold):** it occurred **≥2×** AND has stable inputs AND a repeatable procedure AND a clear
+     output/stopping condition AND is **NOT already covered** — inventory existing skills/commands first (the
+     repo, the plugin, `~/.claude`) so you EXTEND/REUSE, never duplicate.
+   - **PROPOSE the SMALLEST form** (prefer a command over a skill over a subagent; on-demand over always-loaded
+     — the destination-layer is the bloat lever). **"Create nothing" is a valid, EXPECTED outcome** — on a thin
+     project or with no coherent repeated workflow, propose nothing and move on.
+   - **REPORT-THEN-APPLY — present the proposal PLAIN / un-styled (never dream-voice an approval) and NEVER
+     auto-write an executable artifact.** Show the artifact you would create + the evidence (the counts); the
+     user confirms; only then you author it. A single confirmation authorizes **ONE specific named artifact**
+     (not "build out the workflow") — re-propose each. (Public-plugin blast radius; the conductor/Stop-hook were
+     rejected for exactly this — auto-authoring an always-on/executable artifact is the highest-blast-radius move.)
+   - **GENERICIZE before authoring (PUBLIC-plugin safety):** the firewall drops credential-*shaped* commands but
+     NOT machine-specific ones — a proposed/authored artifact must carry **no absolute paths, host/machine names,
+     or personal values** (the `sample` may show `python3 /home/you/…`; use relative paths + `<arg>` placeholders).
+   - **HONEST GAP:** an authored artifact lands in `skills/`/`commands/` (repo or `~/.claude`), OUTSIDE the
+     Phase-5 `--audit` mutation trail (memory store + CLAUDE.md only) and the dashboard — so an authored artifact
+     has no audit record; **name it explicitly in the closing debrief.** Fold the distill outcome (proposed N /
+     created N / nothing) into the debrief.
+7. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py <the --seed path> \
        --persist ~/.claude/projects/<slug>/memory
@@ -798,7 +829,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    already printed in-terminal (the `render_dashboard` step above) and the HTML auto-opened, deliver the
    structured **session debrief** — qualities + proportionality pinned in *The dream arc*: a lead line
    (outcome + one functional emoji), bold-headed sections, dense bullets that **FRAME** the pass (the
-   non-obvious WHY + what was KEPT / PRUNED / verified) rather than re-tabulate the dashboard's gauges,
+   non-obvious WHY + what was KEPT / PRUNED / verified — and the **distill outcome**: any workflow artifact
+   proposed / created, or nothing) rather than re-tabulate the dashboard's gauges,
    **scaled to the outcome banner** (a no-op / maintenance / light pass gets one or two lines + the path,
    NOT the full debrief). The debrief **ends on the 📊 dashboard path** — the self-contained file at the
    STABLE per-repo path `~/.claude/projects/<slug>/dashboards/index.html` — and tells the user they can

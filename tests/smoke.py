@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "plugins" / "consolidate-memory" / "scripts"))
 
 import extract_signals as es  # noqa: E402
 import memory_status as ms  # noqa: E402
+import distill_scan as ds  # noqa: E402
 import render_dashboard as rd  # noqa: E402
 import render_html as rhtml  # noqa: E402
 import render_log as rlog  # noqa: E402
@@ -1374,6 +1375,70 @@ with _tf43.TemporaryDirectory() as _td50:
           "Another Claude session" not in _htext50 and any("pin the dependency" in s["text"] for s in _sig50))
     check("v0.1.50: Change-2 same-class errors COLLAPSE, distinct family stays → exactly 2 error rows (KeyError + PermissionError)",
           len(_errs50) == 2 and any("KeyError" in s["text"] for s in _errs50) and any("PermissionError" in s["text"] for s in _errs50))
+
+# ── v0.1.51: distill — workflow-recurrence scan (distill_scan.py) for the dream's distill phase ──────────
+# _template normalization recall guard — REAL command forms (multi-line cd-first-line / heredoc / bare-cd),
+# NOT the rare `cd && ` join (the BLOCKER-1 trap: a join-only suite would certify a normalizer that breaks on
+# the dominant 92% multi-line channel).
+check("v0.1.51: _template multi-line cd-first-line → the real command (cd line stripped)",
+      ds._template("cd /home/drei/project/x\npython3 tests/smoke.py") == "python3 tests/smoke.py")
+check("v0.1.51: _template bare cd → None (a 'cd' is NOT a workflow template)",
+      ds._template("cd /home/drei/project/x") is None)
+check("v0.1.51: _template heredoc → head ('python3 -', body dropped)",
+      ds._template("cd /x\npython3 - <<'PY'\nprint(1)\nPY") == "python3 -")
+check("v0.1.51: _template drops a leading VAR= assignment, templates the real command",
+      (ds._template("cd /x\nS=plugins/y\npython3 $S/foo.py") or "").startswith("python3")
+      and "S=" not in (ds._template("cd /x\nS=plugins/y\npython3 $S/foo.py") or ""))
+check("v0.1.51: _template GROUPS branch variants (checkout -b feat/X == feat/Y)",
+      ds._template("git checkout -b feat/X") == ds._template("git checkout -b feat/Y") == "git checkout -b")
+check("v0.1.51: _template SEPARATES distinct subcommands (push != pull)",
+      ds._template("git push") != ds._template("git pull"))
+check("v0.1.51: _template never emits a cd-prefix or an abs path",
+      "cd" not in (ds._template("cd /home/x\nmypy --config-file mypy.ini") or "")
+      and "/home/" not in (ds._template("cd /home/x\nmypy --config-file mypy.ini") or ""))
+# End-to-end scan() through a fixture transcript (recurrence + firewall + contract shape)
+def _bl51(cmd: str) -> str:   # an assistant Bash tool_use transcript line
+    return _json43.dumps({"timestamp": "2026-06-22T10:00:00Z", "sessionId": "s51",
+                          "message": {"role": "assistant", "content": [
+                              {"type": "tool_use", "name": "Bash", "input": {"command": cmd}}]}}) + "\n"
+with _tf43.TemporaryDirectory() as _td51:
+    _h51 = Path(_td51); _p51 = _h51 / "proj"; _p51.mkdir()
+    _pr51 = _h51 / ".claude" / "projects" / es.slug_for(_p51); _pr51.mkdir(parents=True)
+    _repo51 = str(_p51)
+    _lines51 = []
+    for _i in range(3):
+        _lines51.append(_bl51(f"cd {_repo51}\npython3 tests/smoke.py"))          # → "python3 tests/smoke.py" ×3
+        _lines51.append(_bl51(f"cd {_repo51}\ngit push -u origin feat/x{_i}"))    # → "git push -u origin" ×3 (branch varies)
+    for _ in range(2):  # ≥2× so absence tests the MECHANISM (firewall drop / _template→None), NOT the count<2 filter
+        _lines51.append(_bl51(f"cd {_repo51}\nexport AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLEKEYabcdef0123456789"))  # secret → firewall drops
+        _lines51.append(_bl51(f"cd {_repo51}"))                                   # bare cd → _template returns None
+    _lines51.append(_bl51(f"cd {_repo51}\nls -la"))                               # one-off (count 1) → the count<2 filter
+    (_pr51 / "s.jsonl").write_text("".join(_lines51))
+    _old51 = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_h51)
+    try:
+        _r51 = ds.scan(_p51, "")
+    finally:
+        _os43.environ["HOME"] = _old51 if _old51 is not None else ""
+    _tpls51 = {r["template"]: r["count"] for r in _r51["recurring"]}
+    check("v0.1.51: scan surfaces the repeated MULTI-LINE workflow (smoke ×3, push ×3 across branch variants)",
+          _tpls51.get("python3 tests/smoke.py") == 3 and _tpls51.get("git push -u origin") == 3)
+    check("v0.1.51: scan FIREWALL drops the secret command (absent from templates + samples)",
+          not any("AWS_SECRET" in r["template"] or "AKIA" in r["sample"] for r in _r51["recurring"]))
+    check("v0.1.51: scan — bare cd + one-off ls do NOT surface (no cd template; count<2 dropped)",
+          not any(r["template"].startswith("cd") for r in _r51["recurring"]) and "ls -la" not in _tpls51)
+    check("v0.1.51: scan --json contract shape (window / scanned{sessions,commands} / recurring)",
+          set(_r51) == {"window", "scanned", "recurring"} and set(_r51["scanned"]) == {"sessions", "commands"})
+with _tf43.TemporaryDirectory() as _td51b:   # "create nothing" — distinct one-offs, no recurrence
+    _h51b = Path(_td51b); _p51b = _h51b / "proj"; _p51b.mkdir()
+    _pr51b = _h51b / ".claude" / "projects" / es.slug_for(_p51b); _pr51b.mkdir(parents=True)
+    (_pr51b / "s.jsonl").write_text("".join(_bl51(f"cd {_p51b}\necho distinct-{_i}-{_i*7}") for _i in range(4)))
+    _old51b = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_h51b)
+    try:
+        _r51b = ds.scan(_p51b, "")
+    finally:
+        _os43.environ["HOME"] = _old51b if _old51b is not None else ""
+    check("v0.1.51: scan 'create nothing' — distinct one-offs surface NO recurring workflow (count<2)",
+          _r51b["recurring"] == [])
 
 # ── v0.1.44: procedure-integrity detector — the lazy-skip safeguard ──────────────────
 # The MEASURED 2026-06-22 failure: 3 dreams ran 0/0/0 verification while self-labeled
