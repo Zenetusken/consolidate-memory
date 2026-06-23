@@ -294,6 +294,11 @@ CLAUDE_MD_TOKEN_BUDGET = 4000   # repo CLAUDE.md (project conventions, committed
 # universal config, not a project store. Its own constant so it's tuned independently.
 GLOBAL_CLAUDE_MD_TOKEN_BUDGET = 4000
 
+# The cross-project canonical store (the global tier). ONE named constant (cf. sync_global.GLOBAL)
+# so the dangling cross-store resolver, the `global_store_facts` seed, and the network display can't
+# drift on the path. READ-only here (it's the replication source); decoupled from this repo (v0.1.52).
+GLOBAL_STORE = Path.home() / ".claude" / "memory"
+
 # ── Rigor tier (v0.1.3): scale pass ceremony with an EARLY magnitude signal ──────────
 # magnitude = git_commits (Phase-0 flow since the marker) + session_candidates (the
 # Phase-2 CURATED candidate-fact count). It DELIBERATELY excludes memories_reviewed:
@@ -458,17 +463,24 @@ def extract_wikilinks(text: str) -> list[str]:
     return [m.strip() for m in re.findall(r"\[\[([^\]]+)\]\]", text)]
 
 
-def dangling_links(auto_mem: Path) -> list[str]:
-    """v0.1.37: the SINGLE-SOURCE dangling-[[wikilink]] list for a store — every `[[target]]` in a fact
-    body resolving to NO valid target (resolve_wikilink against valid_link_targets), code spans stripped
-    first — fenced (```...```) AND inline (`...`) — so a `[[x]]` inside a code block (e.g. TOML
-    `[[tool.mypy.overrides]]`) is NOT a wikilink. (A 4-space-indented code block is a known minor gap → at
-    worst a spurious-but-safe maintenance cue, never a wrong write.)
+def dangling_links(auto_mem: Path, global_dir: Path | None = None) -> list[str]:
+    """v0.1.37 (+v0.1.52 cross-store): the SINGLE-SOURCE dangling-[[wikilink]] list for a store — every
+    `[[target]]` in a fact body resolving to NO valid target (resolve_wikilink against valid_link_targets),
+    code spans stripped first — fenced (```...```) AND inline (`...`) — so a `[[x]]` inside a code block
+    (e.g. TOML `[[tool.mypy.overrides]]`) is NOT a wikilink. (A 4-space-indented code block is a known minor
+    gap → at worst a spurious-but-safe maintenance cue, never a wrong write.)
+    v0.1.52: resolution spans local ∪ `global_dir` (the canonical store) when given — a `[[target]]` that is
+    a real global fact pending mirror (a budget-HELD up-link) is PENDING-PULL, not dangling (the M1 `held`
+    count already signals it); a target absent from BOTH stays flagged (a real typo, OR a sibling-project-
+    local DOWN-link genuinely unreachable here — recall is slug-scoped, so the global canonical is the only
+    OTHER store this node can pull from; NOT fleet-wide). `global_dir=None`/missing ⇒ legacy local-only.
     Phase-0 maintenance, the Phase-5 health fill, and the smoke test all call THIS, so the dangling count
     can't drift between them (the drift class the cycle-record contract exists to prevent). READ-ONLY."""
     if not auto_mem.exists():
         return []
     targets = valid_link_targets(auto_mem)
+    if global_dir is not None:
+        targets = targets | valid_link_targets(global_dir)   # cross-store: a pending-pull up-link ≠ dangling
     out: set[str] = set()
     for f in auto_mem.glob("*.md"):
         if f.name == "MEMORY.md":              # the index holds pointer links, not [[wikilinks]]
@@ -1299,12 +1311,14 @@ def build_context(project_dir: Path) -> dict:
         remediation = remediation_triage(fact_files, index_names, index_lb[2],
                                          est_tokens("\n".join(_mirror_idx)), reference_stems=ref_stems)
 
-    # v0.1.37: the no-op SELF-HEAL maintenance signal — cheap, LOCAL-only (no cross-store scan on the
-    # always-run Phase-0 path; pullable is a Phase-1 `--list` concern, m1). `over_budget_not_justified`
+    # v0.1.37 (+v0.1.52): the no-op SELF-HEAL maintenance signal. Resolves dangling against local ∪ the
+    # global canonical (a stem GLOB only — still cheap on the always-run Phase-0 path, NOT a dependency
+    # scan) so a pending-pull up-link to a budget-HELD global isn't false-flagged (M1 `held` is the real
+    # pull signal; a sibling-project-local DOWN-link stays flagged — unreachable here). `over_budget_not_justified`
     # REUSES the dual-axis suppression result (`remediation.required`), NOT a fresh budget compare — so a
     # standing-justified store reads False (no perpetual pivot). `remediation` is {} on the healthy path,
     # hence `.get`, not subscript (would KeyError). No `stale_since_marker` (it re-fires every run).
-    _dangling = dangling_links(auto_mem)
+    _dangling = dangling_links(auto_mem, global_dir=GLOBAL_STORE)
     _obnj = bool((remediation or {}).get("required"))
     maintenance: dict = {"dangling": len(_dangling), "over_budget_not_justified": _obnj,
                          "work": bool(_dangling) or _obnj}
@@ -1471,8 +1485,8 @@ def seed_record(ctx: dict) -> CycleRecord:
                         "over_budget_not_justified": ctx["maintenance"]["over_budget_not_justified"],
                         "work": ctx["maintenance"]["work"]},
         "cross_project": {
-            "global_store_facts": len(list((Path.home() / ".claude" / "memory").glob("*.md")))
-            - (1 if (Path.home() / ".claude" / "memory" / "MEMORY.md").exists() else 0),
+            "global_store_facts": len(list(GLOBAL_STORE.glob("*.md")))
+            - (1 if (GLOBAL_STORE / "MEMORY.md").exists() else 0),
             "pulled": [],     # fill in Phase 1 (sync_global --pull): global → here
             "promoted": [],   # fill in Phase 4: here → global (new cross-project facts)
             "refreshed": 0,   # stale mirrors refreshed on pull
@@ -1851,7 +1865,7 @@ def print_report(ctx: dict) -> None:
 
     # ── GLOBAL + SESSION ──
     add("")
-    g = Path.home() / ".claude" / "memory"
+    g = GLOBAL_STORE
     gn = len([f for f in g.glob("*.md") if f.name != "MEMORY.md"]) if g.exists() else 0
     add(_ui.kv("GLOBAL", f"{gn} cross-project fact(s) in ~/.claude/memory  " + _ui.c("(sync_global.py --list . for fit here)", "dim")))
     if ctx["transcripts"]:
