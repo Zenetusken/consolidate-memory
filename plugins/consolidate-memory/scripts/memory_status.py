@@ -1887,17 +1887,19 @@ def main() -> int:
         _ai = argv.index("--audit")
         if _ai + 1 < len(argv) and not argv[_ai + 1].startswith("-"):
             audit_before = argv[_ai + 1]
-    diffs_cycle = diffs_before = ""   # v0.1.32: --diffs <cycle-path> + --before <snapshot-path> for the diff sidecar
-    for _flag in ("--diffs", "--before"):
+    diffs_cycle = diffs_before = audit_into = ""   # v0.1.32: --diffs/--before sidecar; v0.1.53: --into <cycle> = inject the --audit block
+    for _flag in ("--diffs", "--before", "--into"):
         if _flag in argv:
             _fi = argv.index(_flag)
             if _fi + 1 < len(argv) and not argv[_fi + 1].startswith("-"):
                 if _flag == "--diffs":
                     diffs_cycle = argv[_fi + 1]
-                else:
+                elif _flag == "--before":
                     diffs_before = argv[_fi + 1]
+                else:
+                    audit_into = argv[_fi + 1]
     as_json = "--json" in argv
-    _argpaths = {audit_before, diffs_cycle, diffs_before} - {""}
+    _argpaths = {audit_before, diffs_cycle, diffs_before, audit_into} - {""}   # v0.1.53: --into value is NOT the positional project_dir
     pos = [a for a in argv if not a.startswith("-") and a not in _argpaths]   # positional = the project dir
     project_dir = Path(pos[0]) if pos else Path.cwd()
     ctx = build_context(project_dir)
@@ -1942,6 +1944,17 @@ def main() -> int:
                 fh.write(json.dumps({"window": "phase0..phase5", **diff}) + "\n")
         except OSError:
             pass
+        if audit_into:          # v0.1.53: deterministically inject the audit block INTO the cycle record (no model
+            try:                # merge → no `d["audit"][k]` KeyError on a seed that lacks the key). Best-effort.
+                _cyc = json.loads(Path(audit_into).read_text(encoding="utf-8"))
+                if isinstance(_cyc, dict):
+                    _cyc["audit"] = diff
+                    _write_private(Path(audit_into), json.dumps(_cyc, indent=2, ensure_ascii=False) + "\n")  # holds fact bodies → 0o600
+                    print(f"audit → injected into {audit_into}", file=sys.stderr)
+                else:           # JSON but not an object → can't inject; tell the user (don't silently no-op)
+                    print("--into: skipped (cycle record root is not a JSON object); paste the summary below into the `audit` block", file=sys.stderr)
+            except (OSError, json.JSONDecodeError, ValueError) as e:   # never crash a dream — the printed summary below is the fallback
+                print(f"--into: skipped ({e}); paste the summary below into the cycle record's `audit` block", file=sys.stderr)
         print(json.dumps(diff, indent=2))
         return 0
     if "--diffs" in argv:       # v0.1.32: Phase-5 (post-persist) diff capture → per-dream sidecar for the diff-modal

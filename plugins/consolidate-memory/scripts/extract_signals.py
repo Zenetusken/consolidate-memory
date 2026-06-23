@@ -67,6 +67,29 @@ _NOISE = re.compile(
 # Skill-prompt injections (e.g. the code-review skill's effort header).
 _SKILL_PROMPT = re.compile(r"(effort\s*→|angles\s*×|candidates\s*→|1-vote verify|# Consolidate Memory)", re.I)
 
+# v0.1.53: a human turn often opens with harness `[Image #N]` (or `[Image: source: …]`) attachment markers and
+# then carries REAL text. The old `_NOISE` `\[Image:` arm matched the colon form only AND dropped the WHOLE turn
+# (losing the feedback that follows). Instead STRIP leading image markers; if nothing remains it was an image-
+# only turn (noise); else classify the remainder. Runs on the `_norm`'d text so the firewall still scans/stores
+# exactly the stripped text (a secret after a marker is still seen). Anchored, non-overlapping → ReDoS-free.
+# A QUOTED absolute-path token MAY contain spaces ('/…/Screenshot from ….png' — the real-world screenshot
+# paste a bare-\S+ rule misses); a BARE token is whitespace-free.
+_QUOTED_PATH = r"(?:'/[^']*'|\"/[^\"]*\")"
+_PATH_TOKEN = rf"(?:{_QUOTED_PATH}|/[^\s'\"]+)"
+# A turn that is ONLY pasted path token(s) → noise (no durable signal). "see /home/x — broken" does NOT match
+# (leading non-path token). Runs on the capped, marker-stripped probe; unix-absolute-only by design.
+_PATH_ONLY = re.compile(rf"^{_PATH_TOKEN}(?:\s+{_PATH_TOKEN})*$")
+# Leading ATTACHMENT noise to STRIP (revealing the real prose that FOLLOWS): [Image #N] markers + a leading run
+# of pasted QUOTED screenshot paths (the dominant case — the user pastes 'screenshot1' 'screenshot2' … THEN the
+# actual instruction, which `norm[:300]` would otherwise truncate off the end). A BARE leading path is NOT
+# stripped (it may be the subject — "/x/config.py needs fixing"); a bare path-ONLY turn is still caught by _PATH_ONLY.
+_LEAD_ATTACH = re.compile(rf"^(?:\[Image[^\]]*\]\s*|{_QUOTED_PATH}\s*)+", re.I)
+
+
+def _strip_markers(text: str) -> str:
+    """Strip leading attachment noise ([Image #N] markers + pasted quoted paths); return the real remainder."""
+    return _LEAD_ATTACH.sub("", text).strip()
+
 # v0.1.49: transient tool-protocol noise in the ERROR channel. A <tool_use_error> wrapper is Claude Code's OWN
 # tool-usage error (file-not-read, string-not-found, file-modified, no-task-found) — Claude's retryable mistake,
 # NEVER an environment gotcha (env facts arrive as bash stderr / exit codes, unwrapped). It is the one error
@@ -77,6 +100,40 @@ _SKILL_PROMPT = re.compile(r"(effort\s*→|angles\s*×|candidates\s*→|1-vote v
 # the marker mid-body is NOT false-dropped — verified zero recall loss vs unanchored (136/136 fleet-wide),
 # higher precision (this repo processes transcripts that contain the marker).
 _ERROR_NOISE = re.compile(r"^\s*<tool_use_error>", re.I)
+# v0.1.53: extend the error-channel filter beyond <tool_use_error> to the other classes the live data showed
+# are ~100% of the survivors (a real session surfaced 8 errors, 0 durable gotchas). Each arm is PRECISE — a
+# real env error must still pass:
+#  • AUTO-MODE — Claude Code's own auto-mode classifier messages (permission denial / model-unavailable). Same
+#    harness-artifact class as <tool_use_error>; never an environment fact. Anchored to the SPECIFIC phrasings.
+#  • LINT/FORMAT — ruff's RUN output (`=== ruff`, `ruff check`), a lint LINE (an `E###` code PAIRED with its
+#    `Line too long` message), and ruff-format's `Would reformat:` / `N file(s) would be reformatted`. Transient
+#    style, never durable. Does NOT match `ruff: command not found` (a real env gotcha — kept): no `===`/`check`.
+#  • INLINE-SCRIPT OWN-BUG — a `File "<stdin>"`/`File "<string>"` traceback (a `python3 -c`/heredoc the MODEL
+#    wrote) whose exception is NOT Import/ModuleNotFound is the model's transient logic bug, not an env fact.
+#    A genuine `python3 -c "import x"` ModuleNotFoundError IS a durable env fact → KEPT (the v0.1.49 carve-out).
+_AUTOMODE_NOISE = re.compile(
+    r"denied by the [Cc]laude [Cc]ode auto mode classifier|auto mode cannot determine|temporarily unavailable, so auto mode", re.I)
+_LINT_NOISE = re.compile(
+    r"===\s*ruff\b|\bE\d{3}\b[^\n]*\bLine too long\b|\bWould reformat:|\b\d+ files? would be reformatted\b", re.I)
+_INLINE_TB = re.compile(r'File "<(?:stdin|string)>"')
+# The model's OWN inline-script LOGIC-bug exceptions (a buggy `python3 -c`/heredoc) — distinct from a real ENV
+# fact surfaced via the SAME channel (ImportError/ConnectionError/OperationalError/PermissionError/OSError/timeout
+# = "X is broken/missing HERE", KEPT). Drop a <stdin>/<string> traceback ONLY when its exception is a clear
+# code-bug class — NOT the earlier "non-import" rule, which over-dropped a real env error that merely had an
+# incidental <string> frame (jinja/exec) or came from a `python3 -c` probe (e.g. a down-DB OperationalError).
+_LOGIC_BUG = re.compile(
+    r"\b(?:KeyError|NameError|AttributeError|TypeError|IndexError|UnboundLocalError|ZeroDivisionError|"
+    r"IndentationError|SyntaxError)\b")
+
+
+def _is_error_noise(text: str) -> bool:
+    """True if an error tool-result is a HARNESS ARTIFACT or transient style/own-bug — NOT a durable env gotcha.
+    Runs AFTER the secrets firewall (a credential-shaped error is omitted, never reaches here)."""
+    if _ERROR_NOISE.search(text) or _AUTOMODE_NOISE.search(text) or _LINT_NOISE.search(text):
+        return True
+    # the model's own inline-script logic bug (KeyError/NameError/… in a -c/heredoc) — NOT an env fact.
+    return bool(_INLINE_TB.search(text)) and bool(_LOGIC_BUG.search(text))
+
 # A flood backstop for the UNRANKED, post-filter error survivors (errors carry no salience score). Generous for
 # a normal session (real gotchas are rare), bounds a pathological flaky-loop session. NOT a quality ranking.
 MAX_ERRORS = 8
@@ -172,6 +229,33 @@ _ACK = re.compile(
     r"merge|ship it|approved|fix all( of them)?|try now|dream|next|perfect|thanks?)\b[\s.!]*$",
     re.I,
 )
+# v0.1.53: the exact-`_ACK` regex only matched a SINGLE ack word, so COMPOUND control turns ("Ship it please",
+# "Yes ship it", "Let's continue") escaped → surfaced as `statement`/score-1, diluting the signal. An ack now =
+# the exact form OR a turn whose ENTIRE content is ack-VOCABULARY (affirmations + control verbs + pure filler):
+# strip every vocab token; if only whitespace/punctuation remains (and ≥1 token matched), the turn carries no
+# durable content → ack. A turn with ANY content noun/path/identifier after the control verb ("proceed with the
+# postgres migration", "yes the bug is in parser.py") leaves a non-empty remainder → NOT an ack — the recall
+# guard (a length-bound alone wrongly demoted those short-but-signal-bearing turns to score-0). `_classify` runs
+# `_MARKERS` FIRST, so "yes, but ALWAYS X" is a preference, never reaches here. `.sub` + emptiness ⇒ ReDoS-free.
+_ACK_VOCAB = re.compile(
+    r"\b(?:yes|yeah|yep|ok|okay|sure|perfect|great|nice|cool|alright|thanks|thank you|sounds good|lgtm|"
+    r"please|go ahead|do it|ship it|ship them|send it|go for it|that works|proceed|continue|push|merge|"
+    r"retry|approve|approved|next|dream|implement it|"
+    r"let'?s (?:go|continue|proceed|ship|do it|finish|wrap|move on)|"
+    r"and|then|now|too|also|it|them|the|here|logically|structurally|sequentially|all of them)\b",
+    re.I,
+)
+_ACK_LEFTOVER = re.compile(r"[\s,.!?;:'\"()\[\]-]+")
+
+
+def _is_ack(text: str) -> bool:
+    """A pure approval / workflow-control turn (signal score 0): the ENTIRE turn is ack-vocabulary — nothing but
+    affirmations, control verbs, and filler; no durable content noun/path/identifier survives the strip."""
+    if _ACK.match(text):
+        return True
+    if not _ACK_VOCAB.search(text):
+        return False
+    return _ACK_LEFTOVER.sub("", _ACK_VOCAB.sub(" ", text)) == ""
 
 # Signal markers → (signal_type, scope_hint). Order = priority.
 _MARKERS = [
@@ -228,12 +312,13 @@ def _human_text(msg: dict) -> str | None:
 
 
 def _classify(text: str) -> tuple[str, str, int]:
-    """Return (signal_type, scope_hint, score). Markers rank; they never gate."""
-    if _ACK.match(text):
-        return ("ack", "project", 0)
+    """Return (signal_type, scope_hint, score). Markers rank; they never gate. v0.1.53: _MARKERS run FIRST so a
+    marker-bearing turn ("yes, but ALWAYS use X") is never demoted to ack by the broadened ack matcher (_is_ack)."""
     for stype, scope, rx in _MARKERS:
         if rx.search(text):
             return (stype, scope, 2)
+    if _is_ack(text):
+        return ("ack", "project", 0)
     return ("statement", "project", 1)  # non-noise, no marker — still surfaced
 
 
@@ -325,7 +410,7 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                                     counts["secrets_omitted"] += 1
                                     errors.append(_signal("error", "(omitted: error tool-result contained a credential-shaped value)",
                                                           signal_type="omitted", score=_NA_SCORE, scope_hint="-", sessionId=sid, ts=ts))
-                                elif _ERROR_NOISE.search(tn[:_PROBE_CAP]):   # v0.1.49: drop Claude's own tool-protocol mistake (not an env gotcha)
+                                elif _is_error_noise(tn[:_PROBE_CAP]):       # v0.1.49/53: harness artifact / transient style / own inline-bug (not an env gotcha)
                                     counts["noise"] += 1
                                 else:
                                     errors.append(_signal("error", tn[:200], signal_type="error",
@@ -335,13 +420,16 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                     if not text:
                         continue
                     counts["human_seen"] += 1
-                    # Normalize ONCE, then scan AND store the same representation, so the
-                    # firewall examines exactly what would be persisted (no scan/store offset
-                    # mismatch). _PROBE_CAP bounds regex work (ReDoS/blow-up guard); the stored
-                    # excerpt (norm[:300]) is well within it, so everything stored is scanned.
-                    norm = _norm(text)
+                    # Normalize ONCE (+ v0.1.53 strip leading [Image #N] markers), then scan AND store the SAME
+                    # representation, so the firewall examines exactly what would be persisted (no scan/store
+                    # offset mismatch — a secret AFTER a stripped marker is still in `norm`, so still scanned).
+                    # _PROBE_CAP bounds regex work; the stored excerpt (norm[:300]) is well within it.
+                    norm = _strip_markers(_norm(text))
+                    if not norm:                           # v0.1.53: an image-marker-only turn → noise (no real text)
+                        counts["noise"] += 1
+                        continue
                     probe = norm[:_PROBE_CAP]
-                    if _NOISE.match(probe) or _SKILL_PROMPT.search(probe[:200]):
+                    if _NOISE.match(probe) or _SKILL_PROMPT.search(probe[:200]) or _PATH_ONLY.match(probe):  # v0.1.53: + path-only turns
                         counts["noise"] += 1
                         continue
                     if _looks_secret(probe):
