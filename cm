@@ -11,6 +11,7 @@ case "$cmd" in
   status)   exec python3 "$S/memory_status.py" "$@" ;;            # Phase 0 context
   seed)     exec python3 "$S/memory_status.py" --json "$@" ;;     # cycle-record seed
   extract)  exec python3 "$S/extract_signals.py" "$@" ;;          # Phase 2 session signal
+  distill)  exec python3 "$S/distill_scan.py" "$@" ;;             # Phase-5 distill: recurring workflow templates
   sync)     exec python3 "$S/sync_global.py" "$@" ;;              # --list/--pull PROJECT_DIR
   pull)     exec python3 "$S/sync_global.py" --pull "${1:-.}" ;;  # replicate globals here
   gc)       exec python3 "$S/sync_global.py" --gc "$@" ;;         # reclaim orphan mirrors (+ --apply)
@@ -26,6 +27,7 @@ cm — consolidate-memory
 
   cm status [DIR]      Phase-0 context (stores, git range, marker)
   cm extract [--json]  curated session signal (human turns + error gotchas)
+  cm distill [DIR]     recurring Bash-command workflow templates (the distill phase's scan; --json)
   cm sync --list DIR   show which global facts apply to a project
   cm pull [DIR]        replicate relevant global facts into a project (default: .)
   cm gc [DIR] [--apply] reclaim orphaned mirrors (report-only without --apply)
