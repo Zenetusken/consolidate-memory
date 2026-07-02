@@ -1085,6 +1085,15 @@ def token_report(project_dir: Path, as_json: bool) -> int:
 
 
 def main() -> int:
+    rc = _dispatch()
+    if rc == 0:   # v0.1.54: ONE dream-arc cue per run (stderr, CM_DREAM_ARC-gated); a usage/error
+        # exit doesn't cue — nothing ran that deserves a beat. See _ui.dream_cue.
+        _ui.dream_cue("SKILL dream-arc: cross-project beat due — the other projects drifting "
+                      "through (> *🌙 …*) above the plain report (private cue — don't echo)")
+    return rc
+
+
+def _dispatch() -> int:
     args = sys.argv[1:]
     _ui.set_modes(color=_ui.color_enabled(args, sys.stdout), ascii="--ascii" in args, width=_ui.resolve_width(args, sys.stdout))
     # positional PROJECT_DIR — flags (--json/--apply/--color/--ascii/--no-color) excluded so a

@@ -623,6 +623,20 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         out.append("")
         out.append(_kv("HEALTH", " · ".join(bits)))
 
+    # v0.1.54: dream-arc capture presence — gated on the key, so legacy records (and seeds,
+    # which never carry `dream`) render byte-identically. One line: which beats were captured;
+    # a partial arc shows its gaps (✗) honestly. The stanzas themselves live in the HTML archive.
+    dr = record.get("dream")
+    if isinstance(dr, dict) and dr:
+        _beats = dr.get("beats")
+        _nb = len(_beats) if isinstance(_beats, list) else 0
+        _have = [bool(str(dr.get("sleep", "")).strip()), bool(str(dr.get("wake", "")).strip())]
+        out.append("")
+        out.append(_kv("DREAM ARC", " · ".join([
+            (_c("✓", "green") if _have[0] else _c("✗", "yellow")) + " sleep",
+            f"{_g(_nb)} beat" + ("" if _nb == 1 else "s"),
+            (_c("✓", "green") if _have[1] else _c("✗", "yellow")) + " wake"])))
+
     # Marker
     m = _dget(record, "marker")
     if m:
@@ -794,8 +808,17 @@ def main() -> int:
         # printed; exit 3 is the nonzero SIGNAL the orchestrator must act on (Exit 1/2 stay read/arg).
         _persist(record, persist_dir)
         ok, _reason, _sev = ms.procedure_integrity(record)
+        # v0.1.54: the dream-arc cue SPLITS on the integrity outcome — the WAKE hint may only
+        # fire on the clean terminal boundary; the exit-3 path must keep the model IN the dream
+        # through the Phase-3 loop-back (waking here would contradict SKILL's re-verify rule).
         if not ok:
+            _ui.dream_cue("SKILL dream-arc: NOT over — the dream pulls you back: narrate the "
+                          "return to Phase-3 verification dreamily; WAKE only on the clean "
+                          "re-render (private cue — don't echo)")
             return 3
+        _ui.dream_cue("SKILL dream-arc: the dream ends — WAKE: > *☀️ 2–5 italic lines*, then "
+                      "'☀️ **Awake.**', then the plain debrief, 📊 path last "
+                      "(private cue — don't echo)")
     return 0
 
 

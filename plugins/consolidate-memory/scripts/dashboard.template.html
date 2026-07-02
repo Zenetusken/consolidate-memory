@@ -68,6 +68,9 @@
   .kpi .k{font-family:var(--serif);font-size:13px;font-style:italic;color:var(--ink2);margin-top:9px}
   .kpi .d{font-size:10.5px;color:var(--faint);letter-spacing:.02em;margin-top:3px}
   @media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}.kpi{border-bottom:1px solid var(--rule)}}
+  /* v0.1.54 — the dream as dreamt: the captured dream-arc stanzas, serif-italic like the panel leads */
+  .dream-stanza{margin:11px 0}
+  .dream-stanza div{font-family:var(--serif);font-style:italic;color:var(--ink2);font-size:14.5px;line-height:1.6}
 
   /* ── sections ─────────────────────────────────────────────────────────── */
   section.blk{margin-top:46px}
@@ -272,6 +275,11 @@
   <!-- KEY INDICATORS -->
   <div class="kpis" id="kpis"></div>
 
+  <!-- 00 the dream as dreamt (v0.1.54) — present only when the cycle captured its dream arc -->
+  <section class="blk" id="dream-blk" style="display:none"><div class="shead"><span class="no">00</span><h3>The Dream</h3><span class="ln"></span><span class="note" id="dream-note"></span></div>
+    <div id="dream-arc"></div>
+  </section>
+
   <!-- 01 longitudinal -->
   <section class="blk"><div class="shead"><span class="no">01</span><h3>Longitudinal</h3><span class="ln"></span><span class="note" id="hist-note"></span></div>
     <div class="cols c2">
@@ -450,6 +458,24 @@
      +kpi(recallN(CUR), "recall facts", "in the private store", null)
      +kpi(num(v.confirmed)+'<small> ✓</small>', "verified", num(v.corrected)+" corrected · "+num(v.unverifiable)+" unverifiable", num(v.unverifiable)>0?"var(--warn)":null)
      +kpi(esc(rg).charAt(0)+esc(rg).slice(1).toLowerCase(), "rigor", "via "+g(CUR,"verification.method","—"), null);
+  })();
+
+  // ── v0.1.54 the dream as dreamt — captured dream-arc stanzas (sleep · beats · wake). The record
+  // stores the RAW markdown blocks (`> *🌙 …*` lines); strip the wrappers here and let CSS italicize.
+  // esc() on every line = the load-bearing XSS guard (model-authored text). Absent/empty → panel hidden.
+  (function(){
+    var d=CUR.dream; if(!d||typeof d!=="object"||Array.isArray(d))return;
+    function strip(s){return String(s==null?"":s).split(/\n/).map(function(l){
+      return l.replace(/^\s*>\s*/,"").replace(/^\*(.*)\*\s*$/,"$1").trim();}).filter(Boolean);}
+    var beats=(Array.isArray(d.beats)?d.beats:[]).map(strip).filter(function(ls){return ls.length;});
+    var sl=strip(d.sleep), wk=strip(d.wake);
+    var stanzas=(sl.length?[sl]:[]).concat(beats).concat(wk.length?[wk]:[]);
+    if(!stanzas.length)return;
+    el("dream-note").textContent=(sl.length?"sleep · ":"")+beats.length+" beat"+(beats.length!==1?"s":"")+(wk.length?" · wake":"");
+    el("dream-arc").innerHTML=stanzas.map(function(ls){
+      return '<div class="dream-stanza">'+ls.map(function(l){return '<div>'+esc(l)+'</div>';}).join("")+'</div>';
+    }).join("");
+    el("dream-blk").style.display="";
   })();
 
   // ── trend: facts + churn ──

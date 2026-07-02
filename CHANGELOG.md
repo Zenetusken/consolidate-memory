@@ -5,6 +5,35 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.54] — 2026-07-01
+
+### Fixed — the dream-arc contract: the persona that "does absolutely nothing" now has mechanics
+The dream persona shipped twice as SKILL prose (v0.1.47 styling, v0.1.53 "bookends REQUIRED") and failed
+twice in live use — plain procedural narration, at most a token gesture at the end. Root-caused (escape-hatch
+wording · no output contract · load-time instruction for a write-time need · style and function sharing one
+channel · an unsanctioned register) and rebuilt as a three-leg system (spec:
+`docs/dream-arc-contract.spec.md`, two adversarial review rounds + a dedicated prose gate):
+- **A pinned sequence contract** *(SKILL rewrite)* — SLEEP 💤 (first output on invocation) → a DREAM BEAT 🌙
+  opening every phase → a one-line SURFACING before the plain Phase-4 proposal → WAKE ☀️ (+ `☀️ **Awake.**`)
+  before the debrief. Format pinned to standout blockquote-italic (`> *🌙 …*`, 1–2 dream emojis); content
+  improvised from each pass's real material; proportionality scales DEPTH, never presence. The "voice
+  recedes" hedge and the defeatist "honest limit" coda are gone; the dreamy register is explicitly sanctioned.
+- **Write-time cues** *(new, env-gated)* — every SKILL command line now carries `CM_DREAM_ARC=1`; the scripts
+  answer with one-line `[dream-arc]` stderr reminders (`_ui.dream_cue`) at the exact moment a beat is due —
+  the same deterministic-carrier move as v0.1.53's `--into`. The `render_dashboard --persist` cue SPLITS on
+  procedure integrity: clean exit-0 → the WAKE hint; exit-3 → a "the dream pulls you back to Phase-3" hint
+  (never a wake on the lazy-skip path). stderr-only + stdout-only parsers keep every `--json` consumer,
+  `cm`, the tests, and the beta oracle byte-identical; without the env var, nothing changes.
+- **The dream is captured** *(additive schema)* — a `dream` block (`sleep`/`beats[]`/`wake`) on the cycle
+  record, mirrored from the conversation (conversation first — filling the record instead of narrating is a
+  defect). The ASCII dashboard gains a gated one-line `DREAM ARC ✓ sleep · N beats · wake` presence line; the
+  HTML archive renders each dream's stanzas serif-italic in a new "The Dream" panel (esc()-guarded); the
+  dream-beta-tester gains a LOW/WARN `dream_arc_capture` family (latest persisted record; SKIP-by-empty;
+  pre-v0.1.54 caveat) so a skipped arc is a measured regression, not an anecdote.
+
+Additive `total=False` schema key (legacy records render byte-identically), opt-in env var, SKILL prose →
+patch. 484 smoke (+41) + mypy green.
+
 ## [0.1.53] — 2026-06-23
 
 ### Fixed — signal-pipeline hardening: the per-release defects a live v0.1.51 dream surfaced
