@@ -5,6 +5,38 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.55] — 2026-07-02
+
+### Fixed — distill: clean signal, chain structure, captured verdict ("does nothing" no more)
+The distill vertical (v0.1.51) measured broken on its richest corpus: 43% of commands collapsed into an
+`echo` noise row ranked #1, the REAL command in every echo-led chain was never counted (a 4× undercount —
+smoke 60 → 234), recurrence had no episode dimension, and the outcome left zero persistent trace — "ran and
+correctly proposed nothing" was indistinguishable from "never ran". Rebuilt per
+`docs/distill-signal-and-capture.spec.md` (two adversarial review rounds; the design lens PROVED two of its
+findings by execution):
+- **All-segment extraction, order-hardened** — every segment of a compound command templates (not just the
+  first); heredoc BODIES strip FIRST (before quote-strip, which deleted the quoted tag — the proven B1
+  defect; `<<-` included); `\`-continuations join; redirects truncate split-keep-head (no dangling `2` from
+  `2>&1`, no leaked filenames); loop bodies keep their command (`do mypy $f` → `mypy` — the proven M2
+  defect); a stoplist drops generic/investigation verbs + inline-interpreter false classes. A template
+  counts once per command.
+- **Day-spread + chains** *(additive `--json` keys)* — each row/chain carries `days` (the episode dimension:
+  ×27 across 9 days is a workflow, ×27 in one hour is a loop; ranked by days then count, rank is a hint) and
+  `chains` surfaces adjacent kept-segment bigrams with BRIDGE semantics (`a && echo ok && b` → `a → b`).
+  Acceptance on the live corpus: zero noise rows; `smoke ×234/9d`, `./release.sh ×52/9d` clean; chains read
+  like the actual workflow (`smoke → mypy ×105`, `git push → gh pr create ×30`).
+- **The verdict is captured** *(additive schema)* — a `distill` block on the cycle record
+  (`sessions`/`commands`/`n_recurring`/`n_chains`/`proposed`/`created`/`verdict`); the SKILL step now REQUIRES
+  a one-line disposition verdict naming the top candidate and the gate leg that decided it (`nothing:
+  <candidate> fails <leg>` — a bare "nothing" is non-compliant), with the double null-priming hedges
+  ("usually proposes nothing" / "'Create nothing' is EXPECTED") deleted. Gated `DISTILL` dashboard line +
+  archive line; a `distill_capture` LOW/WARN beta family (PASS iff the verdict is non-empty;
+  `maintenance.pivoted` passes SKIP; unknown versions fail closed) — built on a new `_latest_capture_check`
+  scaffold shared with `dream_arc_capture` (refactored onto it, behavior pinned by its existing cases).
+
+Additive `--json` keys + additive `total=False` schema + SKILL prose + presence-gated renderer lines →
+patch. 522 smoke (+30) + mypy green; scanner rebuilt with spec-review B1/M2 regressions pinned.
+
 ## [0.1.54] — 2026-07-01
 
 ### Fixed — the dream-arc contract: the persona that "does absolutely nothing" now has mechanics

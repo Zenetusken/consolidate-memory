@@ -264,6 +264,21 @@ class DreamArc(TypedDict, total=False):
     wake: str                # the waking stanza (composed at final record-fill, performed after the render)
 
 
+class Distill(TypedDict, total=False):
+    # v0.1.55: the distill VERDICT capture — the model mirrors the Phase-5 distill outcome here so it
+    # survives into the log/dashboard/archive ("ran and correctly proposed nothing" must be
+    # distinguishable from "never ran"). The `verdict` is the terminal carrier and ENCODES disposition:
+    # `created <X>` · `proposed <X> — awaiting confirmation` · `proposed <X> — declined` ·
+    # `nothing: <top candidate> fails <gate leg>`. ONE line, ≤~60 chars (dashboard cell; HTML shows full).
+    sessions: int            # scan scale, from the scan JSON's scanned.sessions
+    commands: int            # scanned.commands
+    n_recurring: int         # = len(scan.recurring) — n_ prefix: the scan JSON's `recurring` is a LIST
+    n_chains: int            # = len(scan.chains)
+    proposed: list[str]      # artifacts proposed BY NAME (confirmation usually arrives post-persist)
+    created: list[str]       # authored BEFORE --persist only (the rare interactive case)
+    verdict: str             # the one-line disposition (see above) — REQUIRED for a compliant distill
+
+
 class CycleRecord(TypedDict, total=False):
     project: str
     session: str
@@ -279,6 +294,7 @@ class CycleRecord(TypedDict, total=False):
     maintenance: Maintenance       # v0.1.37: no-op self-heal pivot signal (additive; legacy records render)
     audit: Audit                   # v0.1.22: deterministic script-emitted mutation trail (additive; legacy records render)
     dream: DreamArc                # v0.1.54: dream-arc capture (additive; legacy records render)
+    distill: Distill               # v0.1.55: distill-verdict capture (additive; legacy records render)
     marker: Marker
     outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
 
@@ -1552,7 +1568,7 @@ def validate_cycle_record(record: object) -> list[str]:
 
     # Top-level keys that MUST be a dict if present.
     for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health",
-                "audit", "remediation", "maintenance", "dream"):
+                "audit", "remediation", "maintenance", "dream", "distill"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
@@ -1563,6 +1579,12 @@ def validate_cycle_record(record: object) -> list[str]:
     dream = record.get("dream")
     if isinstance(dream, dict) and "beats" in dream and not isinstance(dream["beats"], list):
         warnings.append("dream.beats is not a list")
+    # distill.proposed / distill.created must be lists if present (same descend-only-into-dict rule).
+    distill = record.get("distill")
+    if isinstance(distill, dict):
+        for lk in ("proposed", "created"):
+            if lk in distill and not isinstance(distill[lk], list):
+                warnings.append(f"distill.{lk} is not a list")
 
     # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
     # already warned via the top-level tuple above ("health is not a dict"); here we just

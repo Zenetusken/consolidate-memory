@@ -1,16 +1,28 @@
 #!/usr/bin/env python3
-"""distill_scan.py — within-project WORKFLOW-RECURRENCE scan for the dream's DISTILL phase (v0.1.51).
+"""distill_scan.py — within-project WORKFLOW-RECURRENCE scan for the dream's DISTILL phase (v0.1.51;
+extraction rebuilt v0.1.55).
 
 Surfaces repeated assistant **Bash-command templates** across a project's recent transcripts, so the distill
 phase (SKILL.md) can RECOGNIZE repeated workflows and PROPOSE a durable artifact (report-then-apply; the model
 judges + proposes, this script ONLY counts — no proposal, no authoring here). A LIVE within-project scan with
 NO persisted cross-dream tally (that is the deferred D1 recurrence family).
 
-The `--json` CONTRACT: `{"window": <iso|"">, "scanned": {sessions, commands}, "recurring": [{template, count,
-sample}, ...]}`. `recurring` = templates with `count >= MIN_RECUR`, ranked desc, capped at `MAX_RECUR_OUT`.
-`template` is the normalized command CLASS (cd/VAR= prefixes dropped, multi-line segmented, args genericized);
-`sample` is ONE firewall-screened raw command for that template (DISPLAY only — the model genericizes any
-absolute path / machine value before ever authoring an artifact; see SKILL.md distill phase).
+The `--json` CONTRACT (v0.1.55): `{"window": <iso|"(all)">, "scanned": {sessions, commands, days},
+"recurring": [{template, count, days, sample}, ...], "chains": [{templates: [a, b], count, days}, ...]}`.
+`recurring` = templates with `count >= MIN_RECUR`, ranked by (days, count) desc, capped at `MAX_RECUR_OUT`;
+`chains` = adjacent kept-segment bigrams WITHIN one compound command (the `&&`-glued sub-steps of a workflow
+— NOT the multi-Bash-call arc, which the model recognizes from co-ranked rows), same threshold/ranking,
+capped at `MAX_CHAIN_OUT`. `days` = distinct active days (the EPISODE dimension — ×27 across 9 days is a
+workflow; ×27 in one hour is a loop; rank is a hint, not a filter). `template` is the normalized command
+CLASS; `sample` is ONE firewall-screened raw command (DISPLAY only — the model genericizes any absolute
+path / machine value before ever authoring an artifact; see SKILL.md distill phase).
+
+Extraction (v0.1.55, order LOAD-BEARING): join `\\`-continuations → strip heredoc BODIES (FIRST — quote-strip
+would delete a quoted tag: `<<'PY'` → `<<`, the proven spec-review B1 defect) → strip quoted strings →
+segment on newline/&&/; → per-segment template with keyword handling (PREFIX-STRIP `do`/`then`, which CARRY
+a command; DROP-WHOLE `done`/`fi`/… + `for`/`if`/… condition heads) + a generic/investigation-verb stoplist.
+A template counts ONCE per command. Known residuals (accepted, low-frequency): `||` is not a separator;
+`;`/`&&` inside `$(...)` mis-segments.
 
 Reuses `extract_signals`' firewall/window/norm + `memory_status`' slug rule — does NOT re-implement them
 (the reimplementation-pin discipline).
@@ -29,6 +41,7 @@ from memory_status import slug_for  # single source of the CC slug rule
 
 MIN_RECUR = 2            # MiMo's bar: a workflow is a candidate only when it actually recurred (>=2x)
 MAX_RECUR_OUT = 40       # cap the surfaced templates — the model judges; don't flood the phase
+MAX_CHAIN_OUT = 20       # v0.1.55: cap the surfaced chains (same rationale)
 DEFAULT_WINDOW_DAYS = 30  # distill scans a BROADER window than the dream's marker..HEAD (recurrence needs episodes)
 
 # Leading shell segments that are NOT the command (constant noise that otherwise ranks #1): a bare `cd`, or a
@@ -36,48 +49,109 @@ DEFAULT_WINDOW_DAYS = 30  # distill scans a BROADER window than the dream's mark
 _CD_OR_ASSIGN = re.compile(r"(?:cd\s|[A-Za-z_][A-Za-z0-9_]*=)")
 # branch-name-like tokens are VARIABLE (drop from the template so `checkout -b feat/X` == `…/feat/Y`).
 _BRANCHY = re.compile(r"(?:feat|fix|chore|docs|refactor|release|hotfix)/")
+# v0.1.55: heredoc BODY strip — runs FIRST on the continuation-joined RAW command, BEFORE quote-strip
+# (which would delete the quoted tag: `<<'PY'` → `<<` — the proven B1 order defect). Matches
+# <<TAG / <<'TAG' / <<"TAG" / <<-TAG; consumes the MARKER through the terminator line (a dangling `<<`
+# token must not survive into the template). Unterminated heredoc → cut to end (never leak the body).
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1.*?\n\s*\2\s*(?:\n|$)", re.S)
+_HEREDOC_OPEN = re.compile(r"<<-?\s*(['\"]?)(\w+)\1.*\Z", re.S)
+# Keyword handling (v0.1.55, spec-review M2 — proven): `do mypy $f` dropped whole loses the real command.
+_KW_PREFIX = {"do", "then"}                                  # keyword-led segments that CARRY a command → strip + re-template
+_KW_DROP = {"done", "fi", "esac", "else"}                    # keyword-only noise → drop whole
+_KW_HEAD_DROP = {"for", "while", "if", "case", "elif", "until"}  # condition/iterator heads, not commands → drop whole
+# Stoplist — gates what can BE a row or a chain endpoint: generic verbs + investigation verbs + the
+# inline-interpreter false classes (quote-strip collapses their bodies to one identical head, so each
+# invocation is a distinct one-off script masquerading as recurrence).
+_STOP_HEADS = {"echo", "printf", "ls", "pwd", "which", "type", "true", "sleep", "date", "touch", "mkdir",
+               "grep", "rg", "cat", "head", "tail", "wc", "sed", "awk", "find", "diff"}
+_STOP_TPLS = {"python3 -", "python3 -c", "bash -c", "sh -c"}
+# Redirect handling is SPLIT-keep-head, never sub (sub would leave the target filename as a noise token:
+# `cmd >> app.log` → `cmd  app.log`). The `\d?` consumes the `2` of `2>&1` (the D6b dangling-`2` fix).
+_REDIR = re.compile(r"\s\d?>{1,2}")
 
 
-def _template(cmd: str) -> str | None:
-    """Normalize a (possibly multi-line) Bash command to its recurring CLASS template, or None if it is pure
-    cd/assignment noise. This is distill_scan's OWN transform on the RAW command (keeps newlines to segment) —
-    separate from `_norm` (which collapses newlines and is used ONLY for the firewall scan)."""
-    cmd = re.sub(r'"[^"]*"|\'[^\']*\'', "", cmd)           # drop quoted strings FIRST — BEFORE the split, so a ; or
-    #                                                        && inside a quoted arg ("git commit -m 'fix; x'") can't
-    #                                                        truncate the segment / leak an open-quote fragment.
-    # NOTE: a noise-led chain ("echo ... && <realcmd>") templates to its FIRST real segment ("echo") — acceptable:
-    # the distill phase tells the model to ignore generic verbs (echo/grep/ls) + the real workflow recurs standalone.
+def _strip_heredocs(cmd: str) -> str:
+    """Remove heredoc marker+body+terminator (terminated), then any unterminated remainder to end."""
+    cmd = _HEREDOC.sub(" ", cmd)
+    return _HEREDOC_OPEN.sub(" ", cmd)
+
+
+def _seg_template(seg: str) -> str | None:
+    """ONE (already quote-stripped) segment → its recurring CLASS template, or None if it is noise:
+    pure cd/assignment, a bare/condition shell keyword, or a stoplisted head. `do`/`then` prefixes are
+    stripped and the remainder re-templated (a loop body CARRIES the real command)."""
+    seg = seg.strip()
+    if not seg or _CD_OR_ASSIGN.match(seg):
+        return None
+    parts = seg.split(None, 1)
+    if parts and parts[0] in _KW_PREFIX:             # `do mypy $f` → `mypy $f` (M2: keep the command)
+        seg = parts[1].strip() if len(parts) > 1 else ""
+        if not seg:
+            return None
+        parts = seg.split(None, 1)
+    if parts and (parts[0] in _KW_DROP or parts[0] in _KW_HEAD_DROP):
+        return None
+    seg = _REDIR.split(seg)[0]                       # truncate at the first redirect (keep head)
+    seg = seg.split("|")[0].split(">")[0].strip()    # first pipe stage / any residual redirect
+    out: list[str] = []
+    for tok in seg.split():
+        if tok.startswith("-"):
+            out.append(tok.split("=")[0])            # flag NAME (drop =value)
+        elif tok.startswith(("/", "~")) or "/home/" in tok or _BRANCHY.search(tok):
+            continue                                 # drop abs paths + branch-likes (variable)
+        elif re.search(r"\d", tok) and len(out) >= 2:
+            continue                                 # drop numeric/value args after the head
+        else:
+            out.append(tok)
+        if len(out) >= 5:
+            break
+    tpl = " ".join(out).strip()
+    if not tpl or tpl in _STOP_TPLS or tpl.split()[0] in _STOP_HEADS:
+        return None
+    return tpl
+
+
+def _scan_cmd(cmd: str) -> tuple[list[str], list[tuple[str, str]]]:
+    """One RAW Bash command → (kept templates, deduped ONCE per command; adjacent kept-pair chains,
+    once per command, no self-chains). Pipeline order is LOAD-BEARING (spec-review B1): join
+    continuations → strip heredoc BODIES → strip quotes → segment → per-segment template. Chains are
+    filter-then-adjacent (BRIDGE semantics): `a && echo ok && b` yields (a, b) — the stoplisted middle
+    is decoration (the labeled-gate idiom), not a workflow boundary."""
+    cmd = cmd.replace("\\\n", " ")                   # join `\`-continuations (D6c)
+    cmd = _strip_heredocs(cmd)                       # BEFORE quote-strip (B1)
+    cmd = re.sub(r'"[^"]*"|\'[^\']*\'', "", cmd)     # drop quoted strings (safe now — tags consumed)
+    kept: list[str] = []
     for seg in re.split(r"\n|&&|;", cmd):
-        seg = seg.strip()
-        if not seg or _CD_OR_ASSIGN.match(seg):
-            continue                                       # drop empty + pure-cd + leading VAR= assignments
-        seg = re.split(r"<<", seg, maxsplit=1)[0]          # heredoc → keep the head ("python3 - <<'PY'" → "python3 -")
-        seg = seg.split("|")[0].split(">")[0].strip()      # first pipe / redirect stage
-        out: list[str] = []
-        for tok in seg.split():
-            if tok.startswith("-"):
-                out.append(tok.split("=")[0])              # flag NAME (drop =value)
-            elif tok.startswith(("/", "~")) or "/home/" in tok or _BRANCHY.search(tok):
-                continue                                   # drop abs paths + branch-likes (variable)
-            elif re.search(r"\d", tok) and len(out) >= 2:
-                continue                                   # drop numeric/value args after the head
-            else:
-                out.append(tok)
-            if len(out) >= 5:
-                break
-        tpl = " ".join(out).strip()
-        return tpl or None
-    return None  # nothing but cd / assignments → not a command
+        tpl = _seg_template(seg)
+        if tpl:
+            kept.append(tpl)
+    templates: list[str] = []
+    seen: set = set()
+    for t in kept:
+        if t not in seen:                            # once per command (a retry isn't recurrence)
+            seen.add(t)
+            templates.append(t)
+    chains: list[tuple[str, str]] = []
+    cseen: set = set()
+    for a, b in zip(kept, kept[1:]):
+        if a != b and (a, b) not in cseen:
+            cseen.add((a, b))
+            chains.append((a, b))
+    return templates, chains
 
 
 def scan(project_dir: Path, since: str) -> dict:
-    """Count recurring Bash-command templates across the project's in-window transcripts. `since` empty → all
-    (matches `_window_transcripts`); the CLI defaults it to ~30 days. Firewall runs FIRST, on `_norm(cmd)`."""
+    """Count recurring Bash-command templates + intra-command chains across the project's in-window
+    transcripts, with per-item day-spread (the episode dimension). `since` empty → all (matches
+    `_window_transcripts`); the CLI defaults it to ~30 days. Firewall runs FIRST, on `_norm(cmd)` —
+    BEFORE any template transform (unchanged v0.1.51 contract)."""
     project_dir = project_dir.resolve()
     proj_root = Path.home() / ".claude" / "projects" / slug_for(project_dir)
     transcripts = _window_transcripts(proj_root, since)
-    counts = {"sessions": len(transcripts), "commands": 0}
-    tally: dict[str, dict] = {}  # template -> {count, sample}
+    counts = {"sessions": len(transcripts), "commands": 0, "days": 0}
+    days_seen: set = set()
+    tally: dict[str, dict] = {}          # template -> {count, days, sample}
+    ctally: dict[tuple, dict] = {}       # (a, b) -> {count, days}
     for tr in transcripts:
         try:
             fh = tr.open(encoding="utf-8", errors="replace")
@@ -97,6 +171,7 @@ def scan(project_dir: Path, since: str) -> dict:
                 content = msg.get("content")
                 if not isinstance(content, list):
                     continue
+                day = str(o.get("timestamp") or "")[:10]   # null-guarded; empty days simply don't accrue
                 for p in content:
                     if not (isinstance(p, dict) and p.get("type") == "tool_use" and p.get("name") == "Bash"):
                         continue
@@ -106,19 +181,32 @@ def scan(project_dir: Path, since: str) -> dict:
                     if _looks_secret(_norm(cmd)[:_PROBE_CAP]):  # FIREWALL first (on _norm); never the template transform
                         continue
                     counts["commands"] += 1
-                    tpl = _template(cmd)
-                    if not tpl:
-                        continue
-                    rec = tally.get(tpl)
-                    if rec is None:
-                        tally[tpl] = {"count": 1, "sample": " ".join(cmd.split())[:160]}  # sample = screened, ws-collapsed
-                    else:
+                    if day:
+                        days_seen.add(day)
+                    templates, chains = _scan_cmd(cmd)
+                    sample = " ".join(cmd.split())[:160]        # screened, ws-collapsed (display only)
+                    for t in templates:
+                        rec = tally.setdefault(t, {"count": 0, "days": set(), "sample": sample})
                         rec["count"] += 1
+                        if day:
+                            rec["days"].add(day)
+                    for pair in chains:
+                        crec = ctally.setdefault(pair, {"count": 0, "days": set()})
+                        crec["count"] += 1
+                        if day:
+                            crec["days"].add(day)
+    counts["days"] = len(days_seen)
     recurring = sorted(
-        ({"template": t, "count": v["count"], "sample": v["sample"]} for t, v in tally.items() if v["count"] >= MIN_RECUR),
-        key=lambda r: (r["count"], r["template"]), reverse=True,
+        ({"template": t, "count": v["count"], "days": len(v["days"]), "sample": v["sample"]}
+         for t, v in tally.items() if v["count"] >= MIN_RECUR),
+        key=lambda r: (r["days"], r["count"], r["template"]), reverse=True,
     )[:MAX_RECUR_OUT]
-    return {"window": since or "(all)", "scanned": counts, "recurring": recurring}
+    chains_out = sorted(
+        ({"templates": list(pair), "count": v["count"], "days": len(v["days"])}
+         for pair, v in ctally.items() if v["count"] >= MIN_RECUR),
+        key=lambda r: (r["days"], r["count"], r["templates"]), reverse=True,
+    )[:MAX_CHAIN_OUT]
+    return {"window": since or "(all)", "scanned": counts, "recurring": recurring, "chains": chains_out}
 
 
 def _report(d: dict) -> None:
@@ -126,19 +214,27 @@ def _report(d: dict) -> None:
     out: list = []
     add = out.append
     title = "✦ DISTILL · recurring workflow signal"
-    tag = f"{len(d['recurring'])} template(s)"
+    tag = f"{len(d['recurring'])} template(s) · {len(d.get('chains', []))} chain(s)"
     gap = max(2, _ui.W - 2 - len(title) - len(tag))
     add(_ui.rule())
     add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
-    add("  " + _ui.c(f"{c.get('sessions', 0)} session(s) · {c.get('commands', 0)} Bash cmds scanned · window {d['window']}", "dim"))
+    add("  " + _ui.c(f"{c.get('sessions', 0)} session(s) · {c.get('commands', 0)} Bash cmds · "
+                     f"{c.get('days', 0)} active day(s) · window {d['window']}", "dim"))
     add(_ui.rule())
     add("")
     if not d["recurring"]:
-        add(_ui.kv("RESULT", _ui.c("no repeated workflow at count≥2 — create nothing (the common, valid outcome)", "dim")))
+        add(_ui.kv("RESULT", _ui.c("no repeated workflow at count≥2 — a valid verdict when the gate says so", "dim")))
     else:
-        add(_ui.kv("RECURRING", _ui.c("templates the model judges → propose the SMALLEST artifact, report-then-apply", "dim")))
+        add(_ui.kv("RECURRING", _ui.c("ranked by day-spread (episodes) then count — rank is a hint, not truth", "dim")))
         for r in d["recurring"]:
-            add(f"    {_ui.c('×' + str(r['count']), 'yellow')} {_ui.lbl(r['template'][:40])}  {_ui.c(_ui.wrap(r['sample'], hang=8)[:90], 'dim')}")
+            add(f"    {_ui.c('×' + str(r['count']), 'yellow')} {_ui.c(str(r.get('days', 0)) + 'd', 'dim')} "
+                f"{_ui.lbl(r['template'][:36])}  {_ui.c(_ui.wrap(r['sample'], hang=8)[:80], 'dim')}")
+    if d.get("chains"):
+        add("")
+        add(_ui.kv("CHAINS", _ui.c("adjacent steps inside one command — a chain IS a candidate workflow", "dim")))
+        for r in d["chains"]:
+            add(f"    {_ui.c('×' + str(r['count']), 'yellow')} {_ui.c(str(r.get('days', 0)) + 'd', 'dim')} "
+                f"{_ui.lbl(r['templates'][0][:30])} → {_ui.lbl(r['templates'][1][:30])}")
     print(_ui.ascii_translate("\n".join(out)))
 
 
