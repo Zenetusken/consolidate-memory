@@ -1650,6 +1650,10 @@ check("v0.1.54 render: partial arc shows its gaps (✗ sleep / ✗ wake, 1 beat)
       "DREAM ARC" in _dr54_partial and "✗ sleep" in _dr54_partial and "✗ wake" in _dr54_partial and "1 beat" in _dr54_partial)
 check("v0.1.54 render: NO DREAM ARC line without the key (legacy unchanged)",
       "DREAM ARC" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s"})))
+# a JSON-null stanza must read ABSENT (✗), never a truthy str(None) — the null-arc honesty fix.
+_dr54_null = rd.render(cast(ms.CycleRecord, {"project": "p", "dream": {"sleep": None, "beats": ["> *🌙 a*"], "wake": None}}))
+check("v0.1.54 render: null sleep/wake → ✗ gaps (str(None) truthiness fixed)",
+      "✗ sleep" in _dr54_null and "✗ wake" in _dr54_null and "1 beat" in _dr54_null)
 
 # (3) the HTML surface: the template ships the gated panel (hidden by default; JS reveals) and
 # build_html embeds the dream data through the XSS-safe embed (round-trip via the escaped JSON).
@@ -1701,14 +1705,37 @@ with _tf43.TemporaryDirectory() as _td54:
     _so54, _se54, _rc54 = _run54("render_dashboard.py", str(_clean54), cue=True)
     check("v0.1.54 render cue: NO cue without --persist (preview render is mid-dream, not a boundary)",
           _rc54 == 0 and "[dream-arc]" not in _se54)
+    # the clean persist does NOT wake — two mandatory SKILL steps remain (--diffs, render_html);
+    # it cues "Phase 5 continues" and the WAKE cue fires at render_html (the archive open).
     _so54, _se54, _rc54 = _run54("render_dashboard.py", str(_clean54), "--persist", _pdir54, cue=True)
-    check("v0.1.54 render cue: clean --persist (exit 0) → the WAKE hint",
-          _rc54 == 0 and "WAKE:" in _se54 and "Awake." in _se54)
+    check("v0.1.54 render cue: clean --persist (exit 0) → continue-Phase-5 hint, NOT a wake",
+          _rc54 == 0 and "persist clean" in _se54 and "WAKE comes after that, not now" in _se54
+          and "WAKE now" not in _se54)
     _so54, _se54, _rc54 = _run54("render_dashboard.py", str(_lazy54), "--persist", _pdir54, cue=True)
-    check("v0.1.54 render cue: integrity exit-3 --persist → the NOT-over hint, never WAKE",
-          _rc54 == 3 and "NOT over" in _se54 and "WAKE:" not in _se54)
+    check("v0.1.54 render cue: integrity exit-3 --persist → the NOT-over hint, never a wake",
+          _rc54 == 3 and "NOT over" in _se54 and "WAKE now" not in _se54)
     _so54, _se54, _rc54 = _run54("render_dashboard.py", str(_lazy54), "--persist", _pdir54, cue=False)
     check("v0.1.54 render cue: env absent → exit-3 path silent too", _rc54 == 3 and "[dream-arc]" not in _se54)
+    # render_html = the arc's true terminal boundary → the WAKE cue lives there (after the print).
+    _out54 = str(Path(_td54) / "arc.html")
+    _so54, _se54, _rc54 = _run54("render_html.py", str(_clean54), "--no-open", "--out", _out54, cue=True)
+    check("v0.1.54 render_html cue: archive rendered → the WAKE hint (☀️ Awake, 📊 path last)",
+          _rc54 == 0 and "WAKE now" in _se54 and "Awake." in _se54)
+    _so54, _se54, _rc54 = _run54("render_html.py", str(_clean54), "--no-open", "--out", _out54, cue=False)
+    check("v0.1.54 render_html cue: env absent → silent", _rc54 == 0 and "[dream-arc]" not in _se54)
+    # cue-mode gating in sync_global: --network is outside dream flow → NO cue even with env set.
+    _so54, _se54, _rc54 = _run54("sync_global.py", "--network", cue=True)
+    check("v0.1.54 sync_global cue-mode gate: --network (non-dream mode) stays silent",
+          "[dream-arc]" not in _se54)
+    # env-value robustness: the conventional off-values do NOT fire the cue.
+    _env054 = {**_os53.environ, "HOME": _home54, "CM_DREAM_ARC": "0"}
+    _p054 = _sp53.run([sys.executable, str(_scripts54 / "extract_signals.py"), _proj54, "--json"],
+                      capture_output=True, text=True, timeout=60, env=_env054)
+    check("v0.1.54 cue env gate: CM_DREAM_ARC=0 counts as OFF", "[dream-arc]" not in _p054.stderr)
+    # the plain/--json read cue is PHASE-NEUTRAL (it also serves Phase 5's final gauge re-read).
+    _so54, _se54, _rc54 = _run54("memory_status.py", _proj54, cue=True)
+    check("v0.1.54 memory_status read cue is phase-neutral (serves Phase 0 AND the Phase-5 re-read)",
+          "this read's beat" in _se54 and "Phase-0" not in _se54)
 
 # (5) SKILL pins: every scripts/ command line carries the CM_DREAM_ARC=1 prefix (uniform rule —
 # zero unprefixed invocations), and the contract anchors exist (format schematic, beats, never-echo).
@@ -1736,8 +1763,14 @@ check("v0.1.54 beta family: dreamless latest record → LOW/WARN with the pre-fe
       len(_r54) == 1 and _r54[0].status == "WARN" and _r54[0].severity == "LOW" and "pre-v0.1.54" in _r54[0].actual)
 _FakeCtx54.log_records = [{"dream": {"sleep": "s", "beats": ["b"], "wake": "w"}, "marker": {"timestamp": "t2"}}]
 check("v0.1.54 beta family: complete arc → PASS", _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54()))[0].status == "PASS")
+_FakeCtx54.log_records = [{"dream": {"sleep": None, "beats": ["b"], "wake": None}, "marker": {"timestamp": "t3"}}]
+check("v0.1.54 beta family: JSON-null stanzas count as MISSING → WARN (str(None) truthiness fixed)",
+      _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54()))[0].status == "WARN")
 _FakeCtx54.skill_version = "0.1.53"
 check("v0.1.54 beta family: pre-feature skill under test → SKIP-by-empty",
+      _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54())) == [])
+_FakeCtx54.skill_version = "unknown"
+check("v0.1.54 beta family: UNPARSEABLE version fails CLOSED → SKIP-by-empty (no spurious WARN)",
       _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54())) == [])
 _FakeCtx54.skill_version = "0.1.54"
 _FakeCtx54.log_records = []

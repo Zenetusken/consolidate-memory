@@ -1895,12 +1895,16 @@ def print_report(ctx: dict) -> None:
     print(_ui.ascii_translate("\n".join(out)))
 
 
-# v0.1.54: write-time dream-arc cues (stderr, CM_DREAM_ARC-gated — see _ui.dream_cue). Worded as
-# SKILL-contract reminders, not fresh imperatives (the cue resurfaces a high-authority obligation).
-_CUE_PHASE0 = ("SKILL dream-arc: Phase-0 beat due — > *🌙 1–3 italic lines* above the plain findings; "
-               "SLEEP block first if you haven't slept yet (private cue — don't echo)")
-_CUE_PHASE5 = ("SKILL dream-arc: Phase-5 beat due — narrate the audit/defrag dreamily (> *🌙 …*); "
-               "WAKE only after the final clean render (private cue — don't echo)")
+# v0.1.54: write-time dream-arc cues (stderr, CM_DREAM_ARC-gated — see _ui.dream_cue, which owns
+# the authority prefix + never-echo suffix). _CUE_READ is PHASE-NEUTRAL: the plain/--json read runs
+# in Phase 0 AND as Phase 5's final gauge re-read, and this script can't know which one it is
+# serving — a phase-labeled cue there would issue a wrong-phase stage direction mid-Phase-5.
+_CUE_READ = ("this read's beat is due — > *🌙 1–3 italic lines* above the plain findings; "
+             "if the arc hasn't opened yet, SLEEP comes first")
+_CUE_PHASE0 = ("Phase-0 beat due — > *🌙 1–3 italic lines* above the plain findings; "
+               "SLEEP block first if you haven't slept yet")
+_CUE_PHASE5 = ("Phase-5 beat due — narrate the audit/defrag dreamily (> *🌙 …*); "
+               "WAKE only after the archive opens (render_html)")
 
 
 def main() -> int:
@@ -2014,7 +2018,7 @@ def main() -> int:
     else:
         _ui.set_modes(color=_ui.color_enabled(argv, sys.stdout), ascii="--ascii" in argv, width=_ui.resolve_width(argv, sys.stdout))
         print_report(ctx)
-    _ui.dream_cue(_CUE_PHASE0)
+    _ui.dream_cue(_CUE_READ)
     return 0
 
 

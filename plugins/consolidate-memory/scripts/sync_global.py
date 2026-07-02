@@ -1084,12 +1084,20 @@ def token_report(project_dir: Path, as_json: bool) -> int:
     return 0
 
 
+# The dream-flow modes that carry a cross-project BEAT: --list/--pull (Phase 1) and --gc/--tokens
+# (Phase 5). --promote runs in Phase 4's APPLY — the one phase whose contract deliberately excludes
+# dream beats (only the plain proposal + the single SURFACING line) — and --network is a
+# maintainer utility outside dream flow, so neither cues.
+_CUED_MODES = ("--list", "--pull", "--gc", "--tokens")
+
+
 def main() -> int:
     rc = _dispatch()
-    if rc == 0:   # v0.1.54: ONE dream-arc cue per run (stderr, CM_DREAM_ARC-gated); a usage/error
-        # exit doesn't cue — nothing ran that deserves a beat. See _ui.dream_cue.
-        _ui.dream_cue("SKILL dream-arc: cross-project beat due — the other projects drifting "
-                      "through (> *🌙 …*) above the plain report (private cue — don't echo)")
+    if rc == 0 and sys.argv[1:2] and sys.argv[1] in _CUED_MODES:
+        # v0.1.54: ONE dream-arc cue per run (stderr, CM_DREAM_ARC-gated); a usage/error exit
+        # doesn't cue — nothing ran that deserves a beat. See _ui.dream_cue.
+        _ui.dream_cue("cross-project beat due — the other projects drifting through (> *🌙 …*) "
+                      "above the plain report")
     return rc
 
 

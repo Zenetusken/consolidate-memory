@@ -19,11 +19,14 @@ channel · an unsanctioned register) and rebuilt as a three-leg system (spec:
   improvised from each pass's real material; proportionality scales DEPTH, never presence. The "voice
   recedes" hedge and the defeatist "honest limit" coda are gone; the dreamy register is explicitly sanctioned.
 - **Write-time cues** *(new, env-gated)* — every SKILL command line now carries `CM_DREAM_ARC=1`; the scripts
-  answer with one-line `[dream-arc]` stderr reminders (`_ui.dream_cue`) at the exact moment a beat is due —
-  the same deterministic-carrier move as v0.1.53's `--into`. The `render_dashboard --persist` cue SPLITS on
-  procedure integrity: clean exit-0 → the WAKE hint; exit-3 → a "the dream pulls you back to Phase-3" hint
-  (never a wake on the lazy-skip path). stderr-only + stdout-only parsers keep every `--json` consumer,
-  `cm`, the tests, and the beta oracle byte-identical; without the env var, nothing changes.
+  answer with one-line `[dream-arc]` stderr reminders (`_ui.dream_cue`, which owns the authority prefix +
+  never-echo suffix) at the exact moment a beat is due — the same deterministic-carrier move as v0.1.53's
+  `--into`. Cues are phase-correct end-to-end: the plain read's cue is phase-neutral (it also serves Phase 5's
+  final gauge re-read), `sync_global` cues only its dream-flow modes (never Phase-4 `--promote`), the
+  `render_dashboard --persist` cue splits on procedure integrity (clean → *continue Phase 5*; exit-3 → *back
+  to Phase-3*, never a wake), and the WAKE cue fires at `render_html` — the arc's true terminal boundary
+  (after the mandatory archive open), not two steps early. stderr-only + stdout-only parsers keep every
+  `--json` consumer, `cm`, the tests, and the beta oracle byte-identical; without the env var, nothing changes.
 - **The dream is captured** *(additive schema)* — a `dream` block (`sleep`/`beats[]`/`wake`) on the cycle
   record, mirrored from the conversation (conversation first — filling the record instead of narrating is a
   defect). The ASCII dashboard gains a gated one-line `DREAM ARC ✓ sleep · N beats · wake` presence line; the
@@ -32,7 +35,9 @@ channel · an unsanctioned register) and rebuilt as a three-leg system (spec:
   pre-v0.1.54 caveat) so a skipped arc is a measured regression, not an anecdote.
 
 Additive `total=False` schema key (legacy records render byte-identically), opt-in env var, SKILL prose →
-patch. 484 smoke (+41) + mypy green.
+patch. 492 smoke (+49) + mypy green; max-effort adversarial code-review round fixed 6 confirmed defect
+clusters pre-merge (early-wake cue ordering, `str(None)` truthiness ×2, a fail-open version gate,
+literal-`**` leakage in the archive panel, two wrong-phase cues).
 
 ## [0.1.53] — 2026-06-23
 

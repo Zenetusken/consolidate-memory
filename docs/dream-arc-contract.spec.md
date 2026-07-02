@@ -135,28 +135,35 @@ weaker than v0.1.53's `--into`, which writes the data itself — claimed accordi
 - **Never-echo (finding 7):** cues are private stage directions. The SKILL prose forbids
   the string `[dream-arc]` from ever appearing in model output, and every hint carries a
   terse `(private cue — don't echo)` tail so the rule survives compaction.
-- **Call sites + hint strings** (each ≤ ~170 chars; worded as SKILL-contract reminders):
+- **Call sites + hint middles** (`dream_cue` owns the `[dream-arc] SKILL contract:` prefix
+  and the `(private cue — don't echo)` suffix, so no call site can drop the leak guard;
+  off-values `0`/`false`/`no`/empty disable the gate):
 
-| Script / mode | Hint |
+| Script / mode | Hint middle |
 |---|---|
-| `memory_status` (plain, `--json`, `--seed`, `--snapshot` — Phase-0 paths) | `SKILL dream-arc: Phase-0 beat due — > *🌙 1–3 italic lines* above the plain findings; SLEEP block first if you haven't slept yet (private cue — don't echo)` |
-| `memory_status --audit` / `--diffs` (Phase 5) | `SKILL dream-arc: Phase-5 beat due — narrate the audit/defrag dreamily (> *🌙 …*); WAKE only after the final clean render (private cue — don't echo)` |
-| `extract_signals` (Phase 2) | `SKILL dream-arc: Phase-2 beat due — the session's signals as dream imagery (> *🌙 …*) above the plain counts (private cue — don't echo)` |
-| `sync_global` (Phases 1/5) | `SKILL dream-arc: cross-project beat due — the other projects drifting through (> *🌙 …*) above the plain report (private cue — don't echo)` |
-| `distill_scan` (Phase 5.6) | `SKILL dream-arc: distill beat due — recurring gestures condensing (> *🌙 …*) above the plain scan results (private cue — don't echo)` |
-| `render_dashboard --persist`, **clean (exit-0) path only** | `SKILL dream-arc: the dream ends — WAKE: > *☀️ 2–5 italic lines*, then '☀️ **Awake.**', then the plain debrief, 📊 path last (private cue — don't echo)` |
-| `render_dashboard --persist`, **procedure-integrity exit-3 path** | `SKILL dream-arc: NOT over — the dream pulls you back: narrate the return to Phase-3 verification dreamily; WAKE only on the clean re-render (private cue — don't echo)` |
+| `memory_status` plain / `--json` — **phase-neutral**: this read serves Phase 0 AND Phase 5's mandated final gauge re-read, and the script can't know which (code-review cluster E) | `this read's beat is due — > *🌙 1–3 italic lines* above the plain findings; if the arc hasn't opened yet, SLEEP comes first` |
+| `memory_status --seed` / `--snapshot` (Phase-0-only utilities) | `Phase-0 beat due — > *🌙 1–3 italic lines* above the plain findings; SLEEP block first if you haven't slept yet` |
+| `memory_status --audit` / `--diffs` (Phase 5) | `Phase-5 beat due — narrate the audit/defrag dreamily (> *🌙 …*); WAKE only after the archive opens (render_html)` |
+| `extract_signals` (Phase 2) | `Phase-2 beat due — the session's signals as dream imagery (> *🌙 …*) above the plain counts` |
+| `sync_global` — **mode-gated** to `--list`/`--pull`/`--gc`/`--tokens`; `--promote` (Phase-4 apply — the beat-free phase) and `--network` (maintainer utility) never cue (cluster F) | `cross-project beat due — the other projects drifting through (> *🌙 …*) above the plain report` |
+| `distill_scan` (Phase 5.6) | `distill beat due — recurring gestures condensing (> *🌙 …*) above the plain scan results` |
+| `render_dashboard --persist`, **clean (exit-0)** — NOT a wake: two mandatory steps remain (cluster A) | `persist clean — Phase 5 continues (--diffs, then render_html opens the archive); WAKE comes after that, not now` |
+| `render_dashboard --persist`, **procedure-integrity exit-3** | `NOT over — the dream pulls you back: narrate the return to Phase-3 verification dreamily; WAKE only on the clean re-run` |
+| `render_html` (success) — **the WAKE cue**, at the SKILL's pinned wake point ("after the terminal clean render + archive open") | `the archive is open — WAKE now: > *☀️ 2–5 italic lines*, then '☀️ **Awake.**', then the plain debrief, 📊 path last` |
 
-  The exit-3 split is round-1 finding 2 (BLOCK-grade defect in draft 1): the wake cue must
+  The exit-3 split is round-1 finding 2 (BLOCK-grade defect in draft 1): a wake signal must
   never fire on the lazy-skip path — it would instruct waking exactly where the SKILL
   forbids proceeding (SKILL:842–844). The split cue keeps the model in-dream through the
-  verification loop-back, reinforcing the existing carve-out instead of fighting it.
-  (`render_html` gets no cue — the wake was already cued at the clean `--persist`
-  immediately preceding it; `render_log` is a maintainer view, out of dream flow.)
+  verification loop-back. The **WAKE cue lives at `render_html`**, not `--persist` — the
+  code-review round confirmed draft 2's `--persist` wake fired two mandatory steps early
+  (`--diffs`, the mandatory archive open) and was then contradicted by the `--diffs` cue
+  (cluster A); the earlier claim that `--persist` "immediately precedes" `render_html` was
+  wrong. (`render_log` is a maintainer view, out of dream flow — no cue.)
   **Un-cued beats (accepted):** SLEEP (nothing precedes the first tool call) and the
   Phase-3 verify beat (verification is a subagent fan-out — no bundled script runs) are
   SKILL-carried only; both are wedged between cued beats, so a drop is caught one message
-  later by the next cue's contract reminder.
+  later by the next cue's contract reminder. The SKILL's cue rule pins **one beat per
+  phase, not per cue** (several same-phase commands repeat the same reminder).
 - Cue lines contain the `> *🌙` anchor (non-ASCII on stderr is fine — the cue targets the
   model, not the `--ascii` display pipeline).
 
@@ -434,3 +441,35 @@ applied, SKILL + §6 kept verbatim-synced):
 4. MINOR — SURFACING format unpinned → "single blockquote-italic line (`> *…*`)".
 5. MINOR — Phase-3 beat has no cue carrier → accepted + documented (§3.2 un-cued beats).
 6. MINOR — duplicate emoji rule → cut from Content rules (the dream-channel bullet owns it).
+
+**Code-review round (max effort, 2026-07-02):** the workflow's verify pass died on session
+limits (17/17 verifiers + sweep; its "0 findings" was a false green), so all 31 finder
+candidates were verified INLINE against source. Deduped to 6 confirmed clusters + polish,
+all fixed; 2 rejected:
+- **A (CONFIRMED, worst)** — the WAKE cue at clean `--persist` fired two mandatory steps
+  before the SKILL's pinned wake point and was contradicted by the very next `--diffs` cue;
+  a compliant model would wake + debrief and could skip the MANDATORY `render_html` →
+  `--persist` now cues *continue-Phase-5*; the WAKE cue moved to `render_html` (success
+  path); `--diffs` hint retargeted to "after the archive opens".
+- **B (CONFIRMED)** — `str(None)` truthiness: a JSON-null `sleep`/`wake` rendered ✓ present
+  (dashboard) and PASSed (beta family) → `or ""` on both; smoke pins both.
+- **C (CONFIRMED)** — the beta version gate failed OPEN on `_skill_version`'s documented
+  `"unknown"` fallback (spurious WARN on old installs) → reuse the file's `_version_tuple`
+  ((-1,-1,-1) for unparseable) and fail CLOSED; smoke pins it.
+- **D (CONFIRMED)** — the panel strip left literal `*`/`**` on `☀️ **Awake.**`-style lines
+  and inner emphasis → display-layer flattening (drop residual asterisk runs) + skip
+  non-string stanzas/beats.
+- **E (CONFIRMED)** — the plain/`--json` read is ALSO Phase 5's mandated final gauge
+  re-read, so its "Phase-0 beat / SLEEP first" cue was a wrong-phase direction mid-Phase-5
+  → the read cue is now phase-neutral; `--seed`/`--snapshot` keep the Phase-0 wording.
+- **F (CONFIRMED)** — `sync_global`'s one-cue-for-all-modes directed a dream beat during
+  Phase 4's `--promote` apply (the beat-free phase) → mode-gated to
+  `--list`/`--pull`/`--gc`/`--tokens`.
+- Polish (applied): `dream_cue` owns the authority prefix + never-echo suffix (no call site
+  can drop the leak guard) and treats `0`/`false`/`no` as OFF; the dashboard presence block
+  uses the file's `_dget`/`_lget` boundary idiom; SKILL adds "one beat per phase, not per
+  cue" + the shorthand-mention prefix clause.
+- Rejected: importing `render_html.read_history` into the beta harness (deliberate
+  12-line tolerant-read mirror; low drift risk, heavy import machinery); the `_persist`
+  same-marker dedup edge on the integrity loop-back (pre-existing v0.1.44 behavior,
+  untouched by this diff — noted as a known edge, not this arc's scope).

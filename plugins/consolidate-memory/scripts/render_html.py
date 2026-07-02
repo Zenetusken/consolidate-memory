@@ -18,6 +18,7 @@ import webbrowser
 from datetime import datetime, timezone
 from pathlib import Path
 
+import _ui  # sibling: dream_cue (v0.1.54 — the WAKE cue fires HERE, the arc's true terminal boundary)
 import memory_status as ms  # sibling: the SINGLE-SOURCE procedure_integrity predicate (v0.1.44) — derive, don't duplicate
 
 # The gorgeous HTML/CSS/vanilla-JS lives in a sibling BUNDLED template (a real editable asset, shipped under
@@ -212,6 +213,10 @@ def main(argv: list) -> int:
         except Exception:             # noqa: BLE001 - the whole point is don't-crash-on-open
             opened = False
     print(f"dashboard → {out}{frag}" + ("" if opened else "  · open this file in a browser" if not args.no_open else ""))
+    # v0.1.54: the WAKE cue — this archive render/open is the SKILL's pinned wake point ("after the
+    # terminal clean render + archive open"), the LAST scripted step of a completing dream.
+    _ui.dream_cue("the archive is open — WAKE now: > *☀️ 2–5 italic lines*, then '☀️ **Awake.**', "
+                  "then the plain debrief, 📊 path last")
     return 0
 
 

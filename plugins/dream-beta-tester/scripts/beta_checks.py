@@ -1196,11 +1196,12 @@ def dream_arc_capture(ctx: Ctx) -> list[Result]:
     legitimately lacks the key (records carry no version stamp) — check the record's recency before
     promoting. Necessary-not-sufficient: presence cannot prove the user SAW the narration (that needs
     the transcript — a judgment-lens check); this family catches only the fully-skipped arc.
-    Version-aware: a pre-v0.1.54 skill under test → SKIP-by-empty; no log yet → SKIP-by-empty."""
+    Version-aware: a pre-v0.1.54 skill under test → SKIP-by-empty, and an UNPARSEABLE version
+    ("unknown" — _skill_version's documented fallback) fails CLOSED via _version_tuple's
+    (-1,-1,-1): a spurious WARN against a genuinely old install is worse than a missed advisory."""
     out: list[Result] = []
-    ver = tuple(int(x) for x in re.findall(r"\d+", ctx.skill_version or "")[:3])
-    if ver and ver < (0, 1, 54):
-        return out                              # skill under test predates the dream-arc capture → not applicable
+    if _version_tuple(ctx.skill_version or "") < (0, 1, 54):
+        return out                              # pre-v0.1.54 or unknown-version skill → not applicable
     if not ctx.log_records:
         return out                              # no persisted dreams yet (pre-first-dream store) → not applicable
     latest = ctx.log_records[-1]
@@ -1208,8 +1209,9 @@ def dream_arc_capture(ctx: Ctx) -> list[Result]:
     dream: dict[str, Any] = _d if isinstance(_d, dict) else {}
     _b = dream.get("beats")
     beats: list[Any] = _b if isinstance(_b, list) else []
-    have_sleep = bool(str(dream.get("sleep", "")).strip())
-    have_wake = bool(str(dream.get("wake", "")).strip())
+    # `or ""` — a JSON-null stanza must read ABSENT (str(None) == "None" is truthy).
+    have_sleep = bool(str(dream.get("sleep") or "").strip())
+    have_wake = bool(str(dream.get("wake") or "").strip())
     complete = have_sleep and have_wake and len(beats) > 0
     _m = latest.get("marker")
     m: dict[str, Any] = _m if isinstance(_m, dict) else {}

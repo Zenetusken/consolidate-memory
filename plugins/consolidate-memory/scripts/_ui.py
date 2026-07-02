@@ -208,10 +208,14 @@ def ascii_translate(s: str) -> str:
 
 def dream_cue(hint: str) -> None:
     """A one-line `[dream-arc] …` reminder for the dream-arc contract (SKILL: *The dream arc*),
-    printed ONLY when `CM_DREAM_ARC` is set — the SKILL's command lines set it per-invocation
-    and nothing ever exports it, so `cm`, the tests, and the beta harness never see a cue.
-    STDERR-only is the load-bearing half of the contract: every machine consumer of these
-    scripts parses STDOUT and discards stderr, so the cue must never move to stdout and no
-    consumer may merge streams (stderr=STDOUT) — either would inject the cue into parsed JSON."""
-    if os.environ.get("CM_DREAM_ARC"):
-        print(f"[dream-arc] {hint}", file=sys.stderr)
+    printed ONLY when `CM_DREAM_ARC` is enabled ("0"/"false"/"no"/empty count as OFF) — the
+    SKILL's command lines set it per-invocation and nothing ever exports it, so `cm`, the
+    tests, and the beta harness never see a cue. This helper owns the authority prefix and the
+    never-echo suffix so no call site can drop the leak guard; callers pass only the
+    distinctive middle. STDERR-only is the load-bearing half of the contract: every machine
+    consumer of these scripts parses STDOUT and discards stderr, so the cue must never move to
+    stdout and no consumer may merge streams (stderr=STDOUT) — either would inject the cue
+    into parsed JSON."""
+    if os.environ.get("CM_DREAM_ARC", "").strip().lower() in ("", "0", "false", "no"):
+        return
+    print(f"[dream-arc] SKILL contract: {hint} (private cue — don't echo)", file=sys.stderr)

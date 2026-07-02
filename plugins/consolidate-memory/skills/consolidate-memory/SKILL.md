@@ -213,13 +213,16 @@ record INSTEAD of narrating is a defect, not compliance.
 
 **The cues.** During a dream, every `scripts/` invocation carries `CM_DREAM_ARC=1` — it is
 part of the command, not optional chrome; the command lines in the phases below all include
-it. The scripts answer with one-line `[dream-arc]` reminders on stderr: private stage
-directions resurfacing THIS contract at the moment a beat is due. When one appears in a
-tool result, the named beat lands in your NEXT message. Never quote, echo, or display a
-cue — the string `[dream-arc]` must not appear in anything you write. If a cue arrives and
-the SLEEP block never happened (you went straight to tools), emit it before that phase's
-beat — late beats land; skipped beats don't. Already asleep? The reminder costs nothing —
-carry on.
+it, and when you compose a command from a shorthand mention (`--triage`, `--sections`),
+carry the prefix too. The scripts answer with one-line `[dream-arc]` reminders on stderr:
+private stage directions resurfacing THIS contract at the moment a beat is due. When one
+appears in a tool result, the named beat lands in your NEXT message — but **one beat per
+phase, not per cue**: several commands in the same phase repeat the same reminder, and a
+beat you already emitted is satisfied (carry on; only a cue naming a NEW beat — the WAKE —
+adds one). Never quote, echo, or display a cue — the string `[dream-arc]` must not appear
+in anything you write. If a cue arrives and the SLEEP block never happened (you went
+straight to tools), emit it before that phase's beat — late beats land; skipped beats
+don't. Already asleep? The reminder costs nothing — carry on.
 
 **Proportionality — depth scales, presence doesn't** (scale to the outcome banner, never
 the rigor tier — distinct quantities that share no scale, see *Rigor modes*):

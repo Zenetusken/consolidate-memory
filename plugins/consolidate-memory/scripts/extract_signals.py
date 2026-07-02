@@ -526,8 +526,8 @@ def main() -> int:
     else:
         _report(d)
     # v0.1.54: write-time dream-arc cue (stderr, CM_DREAM_ARC-gated — see _ui.dream_cue)
-    _ui.dream_cue("SKILL dream-arc: Phase-2 beat due — the session's signals as dream imagery "
-                  "(> *🌙 …*) above the plain counts (private cue — don't echo)")
+    _ui.dream_cue("Phase-2 beat due — the session's signals as dream imagery (> *🌙 …*) "
+                  "above the plain counts")
     return 0
 
 

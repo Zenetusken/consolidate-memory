@@ -465,8 +465,11 @@
   // esc() on every line = the load-bearing XSS guard (model-authored text). Absent/empty → panel hidden.
   (function(){
     var d=CUR.dream; if(!d||typeof d!=="object"||Array.isArray(d))return;
-    function strip(s){return String(s==null?"":s).split(/\n/).map(function(l){
-      return l.replace(/^\s*>\s*/,"").replace(/^\*(.*)\*\s*$/,"$1").trim();}).filter(Boolean);}
+    // display-only markdown flattening: unwrap `> ` + the full-line italic pair, then drop ALL
+    // residual asterisk runs (inner `**Awake.**`-style emphasis would otherwise show literal
+    // markers — CSS italicizes the whole panel anyway). Non-string stanzas/beats are skipped.
+    function strip(s){if(typeof s!=="string")return[];return s.split(/\n/).map(function(l){
+      return l.replace(/^\s*>\s*/,"").replace(/^\*(.*)\*\s*$/,"$1").replace(/\*+/g,"").trim();}).filter(Boolean);}
     var beats=(Array.isArray(d.beats)?d.beats:[]).map(strip).filter(function(ls){return ls.length;});
     var sl=strip(d.sleep), wk=strip(d.wake);
     var stanzas=(sl.length?[sl]:[]).concat(beats).concat(wk.length?[wk]:[]);
