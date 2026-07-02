@@ -153,6 +153,10 @@ weaker than v0.1.53's `--into`, which writes the data itself — claimed accordi
   verification loop-back, reinforcing the existing carve-out instead of fighting it.
   (`render_html` gets no cue — the wake was already cued at the clean `--persist`
   immediately preceding it; `render_log` is a maintainer view, out of dream flow.)
+  **Un-cued beats (accepted):** SLEEP (nothing precedes the first tool call) and the
+  Phase-3 verify beat (verification is a subagent fan-out — no bundled script runs) are
+  SKILL-carried only; both are wedged between cued beats, so a drop is caught one message
+  later by the next cue's contract reminder.
 - Cue lines contain the `> *🌙` anchor (non-ASCII on stderr is fine — the cue targets the
   model, not the `--ascii` display pipeline).
 
@@ -282,9 +286,8 @@ real material; what never varies is that the beats fire.
 - **Dream channel** — blockquote-italic: every line `> *…*`, 1–2 dream emojis per block
   (🌙 💤 🌊 🫧 ✨ 🌀 ☁️ ☀️). The voice lives here and only here.
 - **Plain channel** — everything else: phase labels, commands, counts, findings, proposals,
-  the debrief body. Complete and self-sufficient — a reader who skips every dream block
-  loses zero operational information, and a dream block never carries data the plain
-  channel needs.
+  the debrief body. The plain channel must stand alone — complete and self-sufficient — so
+  the dream never has to carry operational weight and never competes with it.
 The two never compete for the same sentence, so you never choose between them: emit both,
 every phase — the dream block above, the plain findings below.
 
@@ -294,8 +297,8 @@ every phase — the dream block above, the plain findings below.
 |---|---|---|
 | **SLEEP 💤** | Your FIRST output on invocation, before the first tool call — falling asleep out of the session's just-finished work (fresh session, nothing in context → a neutral drift-off) | 1–3 lines (short — the dream hasn't found anything yet; depth arrives with the beats) |
 | **DREAM BEAT 🌙** | Opens EVERY phase's narration (0 locate · 1 network · 2 signals · 3 verify · 5 defrag/render): dream block first, that phase's plain findings below | 1–3 lines |
-| **SURFACING** | Phase 4's one-line transition — the dream thins to show the proposal. It ORIENTS only ("the pass surfaces to ask…"); it never editorializes what's proposed (this is the approval gate for irreversible writes) — then the proposal itself is delivered fully in the plain channel | 1 line |
-| **WAKE ☀️** | After the terminal clean (exit-0) render + archive open, before the debrief: surfacing out of the dream, then `☀️ **Awake.**` on its own line, then the plain debrief | 2–5 lines |
+| **SURFACING** | Phase 4's single blockquote-italic line (`> *…*`) — the dream thins to show the proposal. It ORIENTS only ("the pass surfaces to ask…"); it never editorializes what's proposed (this is the approval gate for irreversible writes) — then the proposal itself is delivered fully in the plain channel | 1 line |
+| **WAKE ☀️** | After the terminal clean (exit-0) render + archive open, before the debrief: surfacing out of the dream, then `☀️ **Awake.**` on its own line, then the plain debrief. (A true no-op reaches no render: its wake is the single dreamless line — see *Proportionality*) | 2–5 lines |
 
 The format, as a schematic (placeholders — not lines to reuse):
 
@@ -306,9 +309,8 @@ One illustrative line for the quality bar — **illustrative only, never reuse i
 `> *🌙 Somewhere below, a wikilink that pointed at nothing all week quietly finds its file.*`
 
 **Content rules.** Present tense; concrete imagery from THIS pass (real fact names, real
-paths, real counts, seen dreamily); 1–2 emojis per block; every line is new — never a
-stock, reused, or template-filled sentence. Vivid but grounded: the dream is ABOUT the
-work.
+paths, real counts, seen dreamily); every line is new — never a stock, reused, or
+template-filled sentence. Vivid but grounded: the dream is ABOUT the work.
 
 **Conversation first, record second.** The conversational dream blocks are the feature.
 Mirror them into the cycle record's `dream` block as a cheap secondary echo — `dream.sleep`,
@@ -332,7 +334,7 @@ the rigor tier — distinct quantities that share no scale, see *Rigor modes*):
 - **TRUE NO-OP** (stops at Phase 0): SLEEP still opens the pass; the wake is one dreamless
   line (`> *☀️ <a dreamless-night line — nothing to consolidate>*`). No dashboard, no path
   (Phase 5 is never reached).
-- **NO-OP / MAINTENANCE / LIGHT PASS:** every beat at minimum depth (1 line); a one-or-two
+- **NO-OP / MAINTENANCE / LIGHT PASS:** every beat at its own minimum depth; a one-or-two
   line debrief + the 📊 path.
 - **SUBSTANTIAL PASS:** beats at full depth; the full structured debrief.
 A mid-dream compaction doesn't reset the arc: the cues state what's due now. A repeated
@@ -419,4 +421,16 @@ Resolutions:
    prefix on line 1; anchor immune to prose mentions).
 8. MINOR HTML `> *…*` markers + demo em-dash → §3.3 render_html bullet (store raw, strip at
    render, italic via CSS); §7 smoke row notes the "—" style pin.
-**Prose gate on §6:** pending.
+**Prose gate on §6 (2026-07-02):** verdict PASS-WITH-EDITS — criteria C1/C3/C4/C6 + tone
+cleanly met; C2 (zero escape sentences) held only after one MAJOR fix. Resolutions (all
+applied, SKILL + §6 kept verbatim-synced):
+1. MAJOR — "a dream block never carries data the plain channel needs" described the dream
+   by its ABSENCE of operational content (the one quotable demotion clause left; lands on
+   RC5 exactly) → replaced with the MUST-form ("the plain channel must stand alone … so
+   the dream never has to carry operational weight and never competes with it").
+2. MINOR — WAKE's WHEN gated on a render the true no-op never reaches → no-op carve-out
+   added to the WAKE cell.
+3. MINOR — "minimum depth (1 line)" contradicted WAKE's 2–5 floor → "its own minimum depth".
+4. MINOR — SURFACING format unpinned → "single blockquote-italic line (`> *…*`)".
+5. MINOR — Phase-3 beat has no cue carrier → accepted + documented (§3.2 un-cued beats).
+6. MINOR — duplicate emoji rule → cut from Content rules (the dream-channel bullet owns it).
