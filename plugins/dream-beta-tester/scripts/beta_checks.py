@@ -322,6 +322,7 @@ class Ctx:
     archive_stems: set[str]  # archive-index docs (SHIPPED.md et al.) — NOT facts
     wikilink_targets: dict[str, set[str]]  # RESOLVED target stem -> {referrer stems} (skill semantics)
     raw_wikilinks: set[str]  # every raw [[target]] seen (for dangling detection)
+    log_records: list[dict[str, Any]] = field(default_factory=list)  # v0.1.54: parsed .consolidation-log.jsonl (persisted dreams, oldest-first)
     notes: list[str] = field(default_factory=list)
 
 
@@ -457,13 +458,34 @@ def gather(repo: Path, store: Path, skill: Path, ms: ModuleType | None, skill_ve
                     except OSError:
                         pass
 
+    # v0.1.54: the persisted-record channel — the consolidation log the dream's terminal --persist
+    # appends to (same tolerant line-JSON read as render_html.read_history). The dream_arc_capture
+    # family inspects the LATEST record; a corrupt line is skipped, a missing log stays [].
+    log_records: list[dict[str, Any]] = []
+    log_path = store / ".consolidation-log.jsonl"
+    if store_present and log_path.exists():
+        try:
+            for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
+                s = line.strip()
+                if not s:
+                    continue
+                try:
+                    rec = json.loads(s)
+                except (json.JSONDecodeError, ValueError):
+                    continue
+                if isinstance(rec, dict):
+                    log_records.append(rec)
+        except OSError as e:
+            notes.append(f"consolidation-log read failed: {type(e).__name__}: {e}")
+
     return Ctx(
         repo=repo, store=store, skill=skill, skill_version=skill_version, store_present=store_present,
         ms=ms, status=status, network=network, render_text=render_text,
         status_report_text=status_report_text, triage_text=triage_text,
         file_bytes=file_bytes, file_chars=file_chars, fact_stems=fact_stems,
         index_targets=index_targets, archive_stems=archive_stems,
-        wikilink_targets=wikilink_targets, raw_wikilinks=raw_wikilinks, notes=notes,
+        wikilink_targets=wikilink_targets, raw_wikilinks=raw_wikilinks,
+        log_records=log_records, notes=notes,
     )
 
 
@@ -1161,6 +1183,49 @@ def maintenance_pivot_coherence(ctx: Ctx) -> list[Result]:
                   f"maintenance.work=true (dangling={maint.get('dangling', 0)}); Phase-0 cue {'present' if cued else 'ABSENT'}",
                   "memory_status Phase-0 render", "memory_status.py", "-", "rendered",
                   (_grep_quote(render, "MAINTENANCE") or "") if cued else ""))
+    return out
+
+
+@family
+def dream_arc_capture(ctx: Ctx) -> list[Result]:
+    """v0.1.54: the dream-arc CAPTURE exists on the latest persisted dream. The skill's dream-arc
+    contract mirrors the conversational dream blocks (sleep · beats · wake) into the cycle record's
+    `dream` block; every persisted record IS a proceeding pass by construction (a true no-op stops at
+    Phase 0 and never persists), so a latest record missing the capture is a fully-skipped arc.
+    ADVISORY (LOW / WARN, never FAIL): style is not procedure, and a record written by ≤ v0.1.53
+    legitimately lacks the key (records carry no version stamp) — check the record's recency before
+    promoting. Necessary-not-sufficient: presence cannot prove the user SAW the narration (that needs
+    the transcript — a judgment-lens check); this family catches only the fully-skipped arc.
+    Version-aware: a pre-v0.1.54 skill under test → SKIP-by-empty, and an UNPARSEABLE version
+    ("unknown" — _skill_version's documented fallback) fails CLOSED via _version_tuple's
+    (-1,-1,-1): a spurious WARN against a genuinely old install is worse than a missed advisory."""
+    out: list[Result] = []
+    if _version_tuple(ctx.skill_version or "") < (0, 1, 54):
+        return out                              # pre-v0.1.54 or unknown-version skill → not applicable
+    if not ctx.log_records:
+        return out                              # no persisted dreams yet (pre-first-dream store) → not applicable
+    latest = ctx.log_records[-1]
+    _d = latest.get("dream")
+    dream: dict[str, Any] = _d if isinstance(_d, dict) else {}
+    _b = dream.get("beats")
+    beats: list[Any] = _b if isinstance(_b, list) else []
+    # `or ""` — a JSON-null stanza must read ABSENT (str(None) == "None" is truthy).
+    have_sleep = bool(str(dream.get("sleep") or "").strip())
+    have_wake = bool(str(dream.get("wake") or "").strip())
+    complete = have_sleep and have_wake and len(beats) > 0
+    _m = latest.get("marker")
+    m: dict[str, Any] = _m if isinstance(_m, dict) else {}
+    out.append(_R("dream_arc_capture", "CHK-DREAM-ARC",
+                  "latest persisted dream captured its dream arc (sleep · beats · wake)", "LOW",
+                  "PASS" if complete else "WARN",
+                  "a v0.1.54+ dream mirrors its conversational dream blocks into the record's `dream` block",
+                  (f"sleep={'present' if have_sleep else 'MISSING'} · beats={len(beats)} · "
+                   f"wake={'present' if have_wake else 'MISSING'}"
+                   + ("" if complete else
+                      " — expected on pre-v0.1.54 records; a defect on any dream run with v0.1.54+ "
+                        "(check the record's recency before promoting)")),
+                  "the persisted .consolidation-log.jsonl (latest record)",
+                  f"log[-1] @ {m.get('timestamp') or 'unstamped'}", "v0.1.54", "structural"))
     return out
 
 

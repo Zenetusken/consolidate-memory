@@ -831,6 +831,7 @@ for _nm, _obj, _td in [
     ("network.totals", _sk_n.get("totals", {}), ms.NetworkTotals),
     ("remediation", _skill_schema.get("remediation", {}), ms.Remediation),   # v0.1.18
     ("maintenance", _skill_schema.get("maintenance", {}), ms.Maintenance),   # v0.1.37
+    ("dream", _skill_schema.get("dream", {}), ms.DreamArc),                  # v0.1.54
     # v0.1.22: whole-hierarchy measure + the deterministic audit block (+ their list-item shapes via [0]).
     ("budget.claude_md_hierarchy", _sk_b.get("claude_md_hierarchy", {}), ms.ClaudeMdHierarchy),
     ("budget.claude_md_hierarchy.files[0]", (_sk_b.get("claude_md_hierarchy", {}).get("files") or [{}])[0], ms.ClaudeMdHierarchyFile),
@@ -1627,6 +1628,153 @@ with _tf43.TemporaryDirectory() as _td53:
     _mlog53 = Path(_td53) / "home" / ".claude" / "projects" / ms.slug_for(Path(_td53) / "proj") / "memory" / ".mutation-log.jsonl"
     check("v0.1.53 bug5: --audit wrote the mutation-log under the PROJECT slug (--into NOT mis-read as project_dir)",
           _mlog53.exists())
+
+# --- v0.1.54: the dream-arc contract (write-time cues + record capture + surfaces) ---
+# (1) validate_cycle_record: `dream` container checks (dict at top level, beats a list).
+check("v0.1.54 validate: warns on non-dict dream", "dream is not a dict" in
+      ms.validate_cycle_record({"dream": []}))
+check("v0.1.54 validate: warns on non-list dream.beats", "dream.beats is not a list" in
+      ms.validate_cycle_record({"dream": {"beats": "x"}}))
+check("v0.1.54 validate: SILENT on a well-formed dream block",
+      ms.validate_cycle_record({"dream": {"sleep": "> *💤 s*", "beats": ["> *🌙 b*"], "wake": "> *☀️ w*"}}) == [])
+
+# (2) dashboard presence line — gated on the key: with `dream` → DREAM ARC line (beats counted,
+# missing halves flagged ✗); without → not rendered (legacy byte-path untouched).
+_dr54 = cast(ms.CycleRecord, {"project": "p", "session": "s",
+                              "dream": {"sleep": "> *💤 s*", "beats": ["> *🌙 a*", "> *🌙 b*"], "wake": "> *☀️ w*"}})
+_dr54_out = rd.render(_dr54)
+check("v0.1.54 render: DREAM ARC line present when captured (sleep · N beats · wake)",
+      "DREAM ARC" in _dr54_out and "2 beats" in _dr54_out and "sleep" in _dr54_out and "wake" in _dr54_out)
+_dr54_partial = rd.render(cast(ms.CycleRecord, {"project": "p", "dream": {"beats": ["> *🌙 a*"]}}))
+check("v0.1.54 render: partial arc shows its gaps (✗ sleep / ✗ wake, 1 beat)",
+      "DREAM ARC" in _dr54_partial and "✗ sleep" in _dr54_partial and "✗ wake" in _dr54_partial and "1 beat" in _dr54_partial)
+check("v0.1.54 render: NO DREAM ARC line without the key (legacy unchanged)",
+      "DREAM ARC" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s"})))
+# a JSON-null stanza must read ABSENT (✗), never a truthy str(None) — the null-arc honesty fix.
+_dr54_null = rd.render(cast(ms.CycleRecord, {"project": "p", "dream": {"sleep": None, "beats": ["> *🌙 a*"], "wake": None}}))
+check("v0.1.54 render: null sleep/wake → ✗ gaps (str(None) truthiness fixed)",
+      "✗ sleep" in _dr54_null and "✗ wake" in _dr54_null and "1 beat" in _dr54_null)
+
+# (3) the HTML surface: the template ships the gated panel (hidden by default; JS reveals) and
+# build_html embeds the dream data through the XSS-safe embed (round-trip via the escaped JSON).
+_tpl54 = (ROOT / "plugins" / "consolidate-memory" / "scripts" / "dashboard.template.html").read_text(encoding="utf-8")
+check("v0.1.54 html: template ships the dream panel, hidden by default",
+      'id="dream-blk" style="display:none"' in _tpl54 and 'id="dream-arc"' in _tpl54 and "The Dream" in _tpl54)
+_html54 = rhtml.build_html(cast(dict, _dr54), [], "2026-07-01T00:00:00+00:00")
+check("v0.1.54 html: build_html embeds the dream block (safe-embedded, round-trippable)",
+      _json43.loads(_html54.split('id="cm-data">', 1)[1].split("</script>", 1)[0])["cycles"][-1]["dream"]["beats"][0] == "> *🌙 a*")
+
+# (4) write-time cues — env-gated, stderr-only, stdout stays pure. Subprocess-driven (the gate is
+# os.environ at runtime). Hermetic HOME (no real ~/.claude reads for the store-derived paths).
+_scripts54 = ROOT / "plugins" / "consolidate-memory" / "scripts"
+with _tf43.TemporaryDirectory() as _td54:
+    _home54 = str(Path(_td54) / "home"); (Path(_td54) / "home").mkdir()
+    _proj54 = str(Path(_td54) / "proj"); (Path(_td54) / "proj").mkdir()
+
+    def _run54(script: str, *args: str, cue: bool) -> "tuple[str, str, int]":
+        env = {**_os53.environ, "HOME": _home54}
+        env.pop("CM_DREAM_ARC", None)
+        if cue:
+            env["CM_DREAM_ARC"] = "1"
+        p = _sp53.run([sys.executable, str(_scripts54 / script), *args],
+                      capture_output=True, text=True, timeout=60, env=env)
+        return p.stdout, p.stderr, p.returncode
+
+    for _script54, _args54 in [("memory_status.py", (_proj54,)), ("memory_status.py", (_proj54, "--json")),
+                               ("extract_signals.py", (_proj54, "--json")), ("sync_global.py", ("--list", _proj54)),
+                               ("sync_global.py", ("--tokens", _proj54, "--json")), ("distill_scan.py", (_proj54, "--json"))]:
+        _lbl54 = f"{_script54} {' '.join(a for a in _args54 if a.startswith('--')) or '(plain)'}"
+        _so54, _se54, _ = _run54(_script54, *_args54, cue=True)
+        check(f"v0.1.54 cue ON → [dream-arc] on stderr only: {_lbl54}",
+              "[dream-arc]" in _se54 and "[dream-arc]" not in _so54)
+        _so54n, _se54n, _ = _run54(_script54, *_args54, cue=False)
+        check(f"v0.1.54 cue OFF → silent: {_lbl54}",
+              "[dream-arc]" not in _se54n and "[dream-arc]" not in _so54n)
+        if "--json" in _args54:
+            check(f"v0.1.54 stdout purity under cue: {_lbl54}", isinstance(_json43.loads(_so54), dict))
+    # render_dashboard: cue ONLY with --persist, split by procedure integrity (WAKE ↔ NOT-over).
+    _clean54 = Path(_td54) / "clean.json"
+    _clean54.write_text(_json43.dumps({"project": "p", "scope": {"git_commits": 9, "session_candidates": 3},
+                                       "verification": {"confirmed": 3, "corrected": 1, "unverifiable": 0},
+                                       "marker": {"timestamp": "2026-07-01T00:00:00Z"}}))
+    _lazy54 = Path(_td54) / "lazy.json"
+    _lazy54.write_text(_json43.dumps({"project": "p", "scope": {"git_commits": 9, "session_candidates": 3},
+                                      "verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0},
+                                      "marker": {"timestamp": "2026-07-01T00:00:01Z"}}))
+    _pdir54 = str(Path(_td54) / "persist"); Path(_pdir54).mkdir()
+    _so54, _se54, _rc54 = _run54("render_dashboard.py", str(_clean54), cue=True)
+    check("v0.1.54 render cue: NO cue without --persist (preview render is mid-dream, not a boundary)",
+          _rc54 == 0 and "[dream-arc]" not in _se54)
+    # the clean persist does NOT wake — two mandatory SKILL steps remain (--diffs, render_html);
+    # it cues "Phase 5 continues" and the WAKE cue fires at render_html (the archive open).
+    _so54, _se54, _rc54 = _run54("render_dashboard.py", str(_clean54), "--persist", _pdir54, cue=True)
+    check("v0.1.54 render cue: clean --persist (exit 0) → continue-Phase-5 hint, NOT a wake",
+          _rc54 == 0 and "persist clean" in _se54 and "WAKE comes after that, not now" in _se54
+          and "WAKE now" not in _se54)
+    _so54, _se54, _rc54 = _run54("render_dashboard.py", str(_lazy54), "--persist", _pdir54, cue=True)
+    check("v0.1.54 render cue: integrity exit-3 --persist → the NOT-over hint, never a wake",
+          _rc54 == 3 and "NOT over" in _se54 and "WAKE now" not in _se54)
+    _so54, _se54, _rc54 = _run54("render_dashboard.py", str(_lazy54), "--persist", _pdir54, cue=False)
+    check("v0.1.54 render cue: env absent → exit-3 path silent too", _rc54 == 3 and "[dream-arc]" not in _se54)
+    # render_html = the arc's true terminal boundary → the WAKE cue lives there (after the print).
+    _out54 = str(Path(_td54) / "arc.html")
+    _so54, _se54, _rc54 = _run54("render_html.py", str(_clean54), "--no-open", "--out", _out54, cue=True)
+    check("v0.1.54 render_html cue: archive rendered → the WAKE hint (☀️ Awake, 📊 path last)",
+          _rc54 == 0 and "WAKE now" in _se54 and "Awake." in _se54)
+    _so54, _se54, _rc54 = _run54("render_html.py", str(_clean54), "--no-open", "--out", _out54, cue=False)
+    check("v0.1.54 render_html cue: env absent → silent", _rc54 == 0 and "[dream-arc]" not in _se54)
+    # cue-mode gating in sync_global: --network is outside dream flow → NO cue even with env set.
+    _so54, _se54, _rc54 = _run54("sync_global.py", "--network", cue=True)
+    check("v0.1.54 sync_global cue-mode gate: --network (non-dream mode) stays silent",
+          "[dream-arc]" not in _se54)
+    # env-value robustness: the conventional off-values do NOT fire the cue.
+    _env054 = {**_os53.environ, "HOME": _home54, "CM_DREAM_ARC": "0"}
+    _p054 = _sp53.run([sys.executable, str(_scripts54 / "extract_signals.py"), _proj54, "--json"],
+                      capture_output=True, text=True, timeout=60, env=_env054)
+    check("v0.1.54 cue env gate: CM_DREAM_ARC=0 counts as OFF", "[dream-arc]" not in _p054.stderr)
+    # the plain/--json read cue is PHASE-NEUTRAL (it also serves Phase 5's final gauge re-read).
+    _so54, _se54, _rc54 = _run54("memory_status.py", _proj54, cue=True)
+    check("v0.1.54 memory_status read cue is phase-neutral (serves Phase 0 AND the Phase-5 re-read)",
+          "this read's beat" in _se54 and "Phase-0" not in _se54)
+
+# (5) SKILL pins: every scripts/ command line carries the CM_DREAM_ARC=1 prefix (uniform rule —
+# zero unprefixed invocations), and the contract anchors exist (format schematic, beats, never-echo).
+_sk54 = _skill_md.read_text(encoding="utf-8")
+_cmd54 = [ln for ln in _sk54.splitlines() if "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/" in ln]
+check(f"v0.1.54 SKILL pin: every scripts/ command line is CM_DREAM_ARC=1-prefixed ({len(_cmd54)} lines)",
+      bool(_cmd54) and all("CM_DREAM_ARC=1 python3" in ln for ln in _cmd54))
+check("v0.1.54 SKILL pin: the dream-arc contract anchors (schematic, beats, Awake, never-echo)",
+      "> *🌙" in _sk54 and "SLEEP" in _sk54 and "SURFACING" in _sk54 and "WAKE" in _sk54
+      and "☀️ **Awake.**" in _sk54 and "[dream-arc]" in _sk54)
+
+# (6) the beta-harness family (same repo, sibling plugin): WARN on a dreamless latest record,
+# PASS on a complete one, SKIP-by-empty on old skill / empty log.
+sys.path.insert(0, str(ROOT / "plugins" / "dream-beta-tester" / "scripts"))
+import beta_checks as _bc54  # noqa: E402
+
+
+class _FakeCtx54:
+    skill_version = "0.1.54"
+    log_records: list = [{"marker": {"timestamp": "t1"}}]
+
+
+_r54 = _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54()))
+check("v0.1.54 beta family: dreamless latest record → LOW/WARN with the pre-feature caveat",
+      len(_r54) == 1 and _r54[0].status == "WARN" and _r54[0].severity == "LOW" and "pre-v0.1.54" in _r54[0].actual)
+_FakeCtx54.log_records = [{"dream": {"sleep": "s", "beats": ["b"], "wake": "w"}, "marker": {"timestamp": "t2"}}]
+check("v0.1.54 beta family: complete arc → PASS", _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54()))[0].status == "PASS")
+_FakeCtx54.log_records = [{"dream": {"sleep": None, "beats": ["b"], "wake": None}, "marker": {"timestamp": "t3"}}]
+check("v0.1.54 beta family: JSON-null stanzas count as MISSING → WARN (str(None) truthiness fixed)",
+      _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54()))[0].status == "WARN")
+_FakeCtx54.skill_version = "0.1.53"
+check("v0.1.54 beta family: pre-feature skill under test → SKIP-by-empty",
+      _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54())) == [])
+_FakeCtx54.skill_version = "unknown"
+check("v0.1.54 beta family: UNPARSEABLE version fails CLOSED → SKIP-by-empty (no spurious WARN)",
+      _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54())) == [])
+_FakeCtx54.skill_version = "0.1.54"
+_FakeCtx54.log_records = []
+check("v0.1.54 beta family: empty log → SKIP-by-empty", _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54())) == [])
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

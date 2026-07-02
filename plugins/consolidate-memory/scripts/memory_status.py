@@ -255,6 +255,15 @@ class Maintenance(TypedDict, total=False):
     pivoted: bool                    # Phase 5: the model RAN a maintenance pass (drives the MAINTENANCE outcome banner)
 
 
+class DreamArc(TypedDict, total=False):
+    # v0.1.54: the dream-arc capture — the model MIRRORS its conversational dream blocks here
+    # (conversation first, record second: filling this INSTEAD of narrating is a defect). Raw
+    # markdown as emitted (`> *🌙 …*` lines); render_html strips the wrappers at display time.
+    sleep: str               # the falling-asleep stanza (first output on invocation)
+    beats: list[str]         # per-phase dream blocks in order (Phase-4 surfacing line included)
+    wake: str                # the waking stanza (composed at final record-fill, performed after the render)
+
+
 class CycleRecord(TypedDict, total=False):
     project: str
     session: str
@@ -269,6 +278,7 @@ class CycleRecord(TypedDict, total=False):
     remediation: Remediation       # v0.1.18: over-budget gate + staged-triage outcome (additive; legacy records render)
     maintenance: Maintenance       # v0.1.37: no-op self-heal pivot signal (additive; legacy records render)
     audit: Audit                   # v0.1.22: deterministic script-emitted mutation trail (additive; legacy records render)
+    dream: DreamArc                # v0.1.54: dream-arc capture (additive; legacy records render)
     marker: Marker
     outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
 
@@ -1542,12 +1552,17 @@ def validate_cycle_record(record: object) -> list[str]:
 
     # Top-level keys that MUST be a dict if present.
     for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health",
-                "audit", "remediation", "maintenance"):
+                "audit", "remediation", "maintenance", "dream"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
     if "entries" in record and not isinstance(record["entries"], list):
         warnings.append("entries is not a list")
+    # dream.beats must be a list if present (mirrors the health.* nested checks: descend only
+    # into a well-formed dream — a non-dict dream already warned above).
+    dream = record.get("dream")
+    if isinstance(dream, dict) and "beats" in dream and not isinstance(dream["beats"], list):
+        warnings.append("dream.beats is not a list")
 
     # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
     # already warned via the top-level tuple above ("health is not a dict"); here we just
@@ -1880,6 +1895,18 @@ def print_report(ctx: dict) -> None:
     print(_ui.ascii_translate("\n".join(out)))
 
 
+# v0.1.54: write-time dream-arc cues (stderr, CM_DREAM_ARC-gated — see _ui.dream_cue, which owns
+# the authority prefix + never-echo suffix). _CUE_READ is PHASE-NEUTRAL: the plain/--json read runs
+# in Phase 0 AND as Phase 5's final gauge re-read, and this script can't know which one it is
+# serving — a phase-labeled cue there would issue a wrong-phase stage direction mid-Phase-5.
+_CUE_READ = ("this read's beat is due — > *🌙 1–3 italic lines* above the plain findings; "
+             "if the arc hasn't opened yet, SLEEP comes first")
+_CUE_PHASE0 = ("Phase-0 beat due — > *🌙 1–3 italic lines* above the plain findings; "
+               "SLEEP block first if you haven't slept yet")
+_CUE_PHASE5 = ("Phase-5 beat due — narrate the audit/defrag dreamily (> *🌙 …*); "
+               "WAKE only after the archive opens (render_html)")
+
+
 def main() -> int:
     argv = sys.argv[1:]
     audit_before = ""    # v0.1.22: --audit <before-snapshot-path> — capture its path arg so pos doesn't read it as project_dir
@@ -1915,6 +1942,7 @@ def main() -> int:
         path = cycle_seed_path(ctx["slug"])
         Path(path).write_text(json.dumps(seed_record(ctx), indent=2) + "\n", encoding="utf-8")
         print(path)
+        _ui.dream_cue(_CUE_PHASE0)
         return 0
     if "--sections" in argv:    # v0.1.24: mechanical ## breakdown of the heaviest CLAUDE.md — EXAMINE for a directive/elaboration split
         _wp = ctx["claude_md_hierarchy"].get("worst_path", ".")
@@ -1931,6 +1959,7 @@ def main() -> int:
         path = audit_snapshot_path(ctx["slug"])
         _write_private(Path(path), json.dumps(audit_snapshot(project_dir), indent=2) + "\n")   # v0.1.32: holds fact bodies → 0o600 atomically
         print(path)
+        _ui.dream_cue(_CUE_PHASE0)
         return 0
     if "--audit" in argv:       # v0.1.22: Phase-5 diff vs the BEFORE snapshot → append the deterministic log + print summary
         try:
@@ -1956,6 +1985,7 @@ def main() -> int:
             except (OSError, json.JSONDecodeError, ValueError) as e:   # never crash a dream — the printed summary below is the fallback
                 print(f"--into: skipped ({e}); paste the summary below into the cycle record's `audit` block", file=sys.stderr)
         print(json.dumps(diff, indent=2))
+        _ui.dream_cue(_CUE_PHASE5)
         return 0
     if "--diffs" in argv:       # v0.1.32: Phase-5 (post-persist) diff capture → per-dream sidecar for the diff-modal
         try:
@@ -1981,12 +2011,14 @@ def main() -> int:
             print(f"diffs → {sp}  ({len(diffs)} memory file(s) changed)")
         except Exception as e:   # noqa: BLE001 — never crash a dream over a sidecar
             print(f"--diffs: skipped ({e})", file=sys.stderr)
+        _ui.dream_cue(_CUE_PHASE5)
         return 0
     if as_json:
         print(json.dumps(seed_record(ctx), indent=2))
     else:
         _ui.set_modes(color=_ui.color_enabled(argv, sys.stdout), ascii="--ascii" in argv, width=_ui.resolve_width(argv, sys.stdout))
         print_report(ctx)
+    _ui.dream_cue(_CUE_READ)
     return 0
 
 

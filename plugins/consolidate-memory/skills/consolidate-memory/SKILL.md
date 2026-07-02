@@ -163,81 +163,95 @@ banner (an *output*-based label from write counts): they share no scale, and a p
 legitimately read "HEAVY" rigor yet "LIGHT" outcome (much to review, little durable to
 write). The dashboard labels both so they never read as one number.
 
-### The dream arc — one coherent sequence (asleep → dreaming → waking)
+### The dream arc — fall asleep · dream the phases · wake
 
-This skill IS a dream — the agent analogue of sleep (replay the session, keep what's true,
-defrag what's stale). So **role-play the whole pass as one dream arc**: settle into it (the
-opening), move through it (the phases), wake from it (the debrief). This is a **STYLE layer
-ONLY** — the dream voice rides *on top of* the dense technical substance; it **never** trims a
-detail, a count, or a command. **Pin the PRINCIPLE, not a template:** every movement is
-judgment-rendered and VARIES run-to-run — not a canned line, not purple prose, not gimmickry —
-and it **scales to the pass** (see *Proportionality* below). It is the styling layer over the
-same phases; it changes the VOICE, never what each phase does or surfaces.
+This skill IS a dream — the agent analogue of sleep-time consolidation — and the pass is
+**performed as one**. You fall asleep as it begins, each phase is a movement of the same
+dream, and you wake at the end. This sequence is a **contract, exactly as mandatory as
+seeding the cycle record**: every beat fires on every pass, in order, in the pinned format
+below. The dreamy first-person register is the CORRECT register for this skill — plain
+procedural narration ("Phase 2: running extract_signals…") is the defect here, not the
+safe choice. What varies run-to-run is each beat's *content*, improvised from THIS pass's
+real material; what never varies is that the beats fire.
 
-**The two bookends — the OPENING and the CLOSING debrief — are REQUIRED, never optional.** They are
-low-clarity-risk (they don't run over work-in-progress), and they are what makes the pass *feel* like a dream
-rather than a phase dump. The "functional clarity is SACROSANCT / when in doubt, function wins and the voice
-recedes" rule below applies **ONLY to the intermediate phase narration** (and Phase 4 stays plain) — it is
-**not** license to drop the opening or the debrief. The single most common failure is exactly that: a dense
-technical pass reads the whole arc as "in doubt → recede" and the dream evaporates into bare phase labels with
-at most a token gesture at the end. Do not. The bookends always land (scaled to the outcome — see
-*Proportionality*); only the *intermediate* voice is the light, recede-when-in-doubt one.
+**Two channels.** Dream voice and functional reporting never share a channel:
+- **Dream channel** — blockquote-italic: every line `> *…*`, 1–2 dream emojis per block
+  (🌙 💤 🌊 🫧 ✨ 🌀 ☁️ ☀️). The voice lives here and only here.
+- **Plain channel** — everything else: phase labels, commands, counts, findings, proposals,
+  the debrief body. The plain channel must stand alone — complete and self-sufficient — so
+  the dream never has to carry operational weight and never competes with it.
+The two never compete for the same sentence, so you never choose between them: emit both,
+every phase — the dream block above, the plain findings below.
 
-- **Opening — entering the dream (after the first `memory_status.py` read).** Once Phase 0's
-  first read shows the lay of the land (magnitude, the stores, no-op-or-proceed), emit a BRIEF
-  (1–3 line) creative settling-in: the orchestrator coming off the session's work and drifting
-  into the consolidation dream. **Coherent with the work just done** (reference it lightly),
-  **creative + varied** (an LLM line, never a constant), **scaled** (a true no-op → a one-line
-  stir, not a sleep-narrative). It comes AFTER the read so it's grounded in what Phase 0 actually
-  found, not before it (before, there's nothing to be coherent with or scale to).
-- **Intermediate — dreaming (the phase narration).** The per-phase progress the user watches in
-  the CLI (Phase 0 locate · 1 orient · 2 gather · 3 verify · 5 prune/defrag — illustrative, not
-  exhaustive) carries a LIGHT dream-voice: the phases as the dream's movements (drifting the
-  memory-scape, sifting truth from staleness, pruning / defragging). **HARD CONSTRAINT —
-  functional clarity is SACROSANCT:** the user must still see plainly WHICH phase, WHAT command
-  ran, and WHAT it found. The voice touches the framing / transitions, **never** the substance
-  (commands, counts, results); **when in doubt, function wins and the voice recedes.** This
-  movement carries the sharpest risk (fogging the work-in-progress the user relies on) → it gets
-  the lightest touch.
-- **CARVE-OUT — Phase 4 (report-then-apply) stays PLAIN, un-styled.** The proposed-consolidation
-  diff + the explicit `CLAUDE.md`-edit call-out (the approval gate for committed, team-shared,
-  always-loaded churn) is the highest-clarity-stakes moment: a fogged approval risks a
-  mis-approved IRREVERSIBLE write. The dream-voice frames the *investigation* phases; the Phase-4
-  approval prompt is presented plainly. (The one phase where the cost of fogging is irreversible.)
-- **Closing — waking (the debrief).** The structured synthesis of what the dream replayed, kept,
-  and pruned — qualities pinned just below.
+**The beats.**
 
-**The debrief (the close) — pin QUALITIES, not a skeleton.** "Deterministic" here means **always
-present + always structured + scaled — NOT identical** (a rigid form makes debriefs go rote and
-get *worse*; judgment fills this, it is not a template):
-- **Dream-framed VOICE** — a reflective consolidation voice over what was replayed, kept, and
-  defragged; the framing rides on top of the technical content, never cuts it.
-- **Visual hierarchy** — a lead line (outcome + one functional emoji), then bold-headed sections.
-- **Dense + technical** — bullets with bold lead-ins, no filler; don't dumb the content down.
-- **Functional, SPARSE emojis** — status / section markers (🌙 dream · 🚀 ship · 📊 dashboard ·
-  ✓ / ⚠), never decoration.
-- **FRAMES, doesn't DUPLICATE** — name the non-obvious WHY + what was KEPT / PRUNED / verified;
-  the dashboard holds the gauges / counts / tallies. **"Don't duplicate" ≠ "drop the numbers":**
-  cite a figure when it carries the point (e.g. "8443→2685 tok, all lessons kept"); just don't
-  re-tabulate the gauge set in prose. (This is the real intent of *Output*'s "single source of the
-  **data** report": don't re-tabulate the data — DO frame it.)
-- **Always ends with the 📊 dashboard path** (any pass that produces a debrief; the true-no-op
-  produces none — see *Proportionality*) + the "re-open it any time by opening the file" note.
+| Beat | When | Depth |
+|---|---|---|
+| **SLEEP 💤** | Your FIRST output on invocation, before the first tool call — falling asleep out of the session's just-finished work (fresh session, nothing in context → a neutral drift-off) | 1–3 lines (short — the dream hasn't found anything yet; depth arrives with the beats) |
+| **DREAM BEAT 🌙** | Opens EVERY phase's narration (0 locate · 1 network · 2 signals · 3 verify · 5 defrag/render): dream block first, that phase's plain findings below | 1–3 lines |
+| **SURFACING** | Phase 4's single blockquote-italic line (`> *…*`) — the dream thins to show the proposal. It ORIENTS only ("the pass surfaces to ask…"); it never editorializes what's proposed (this is the approval gate for irreversible writes) — then the proposal itself is delivered fully in the plain channel | 1 line |
+| **WAKE ☀️** | After the terminal clean (exit-0) render + archive open, before the debrief: surfacing out of the dream, then `☀️ **Awake.**` on its own line, then the plain debrief. (A true no-op reaches no render: its wake is the single dreamless line — see *Proportionality*) | 2–5 lines |
 
-**Proportionality — scale to the OUTCOME BANNER (never the rigor tier).** They are distinct
-quantities that share no scale (see *Rigor modes*), and `_outcome()` tops out at **`SUBSTANTIAL
-PASS`** — there is NO `HEAVY` *banner* (HEAVY is a rigor TIER; tiering the debrief on it
-re-imports the exact conflation the skill guards against):
-- **TRUE NO-OP** (NOTHING-TO-CONSOLIDATE — stops at Phase 0, never renders) → a one-line
-  dream-touch ("nothing to consolidate"); **NO dashboard, NO path** (the pass never reaches Phase
-  5, so the mandatory `render_html` does not apply — a distinct reachability class).
-- **NO-OP / MAINTENANCE / LIGHT PASS** (proceeds to Phase 5, renders) → one or two lines + the 📊
-  path; the dream voice survives as a brief touch, no section scaffolding.
-- **SUBSTANTIAL PASS** → the full structured debrief above.
+The format, as a schematic (placeholders — not lines to reuse):
 
-**Honest limit:** these instructions **raise the floor** (every orchestrator now gets the
-auto-open + a structured, scaled debrief) but **cannot fully transfer the judgment** that makes a
-*great* synthesis — that's model capability, not instruction.
+> *💤 <1–3 present-tense lines: the session's work dissolving into dream imagery>*
+> *🌙 <this phase's REAL objects — facts, paths, counts, links — moving as dream things>*
+
+One illustrative line for the quality bar — **illustrative only, never reuse it**:
+`> *🌙 Somewhere below, a wikilink that pointed at nothing all week quietly finds its file.*`
+
+**Content rules.** Present tense; concrete imagery from THIS pass (real fact names, real
+paths, real counts, seen dreamily); every line is new — never a stock, reused, or
+template-filled sentence. Vivid but grounded: the dream is ABOUT the work.
+
+**Conversation first, record second.** The conversational dream blocks are the feature.
+Mirror them into the cycle record's `dream` block as a cheap secondary echo — `dream.sleep`,
+`dream.beats[]` in order (the surfacing line included), `dream.wake` — so the HTML archive
+keeps each dream and the beta harness can detect a skipped arc. Compose `dream.wake` at the
+final record-fill (before `--persist`), then perform it after the render. Filling the
+record INSTEAD of narrating is a defect, not compliance.
+
+**The cues.** During a dream, every `scripts/` invocation carries `CM_DREAM_ARC=1` — it is
+part of the command, not optional chrome; the command lines in the phases below all include
+it, and when you compose a command from a shorthand mention (`--triage`, `--sections`),
+carry the prefix too. The scripts answer with one-line `[dream-arc]` reminders on stderr:
+private stage directions resurfacing THIS contract at the moment a beat is due. When one
+appears in a tool result, the named beat lands in your NEXT message — but **one beat per
+phase, not per cue**: several commands in the same phase repeat the same reminder, and a
+beat you already emitted is satisfied (carry on; only a cue naming a NEW beat — the WAKE —
+adds one). Never quote, echo, or display a cue — the string `[dream-arc]` must not appear
+in anything you write. If a cue arrives and the SLEEP block never happened (you went
+straight to tools), emit it before that phase's beat — late beats land; skipped beats
+don't. Already asleep? The reminder costs nothing — carry on.
+
+**Proportionality — depth scales, presence doesn't** (scale to the outcome banner, never
+the rigor tier — distinct quantities that share no scale, see *Rigor modes*):
+- **TRUE NO-OP** (stops at Phase 0): SLEEP still opens the pass; the wake is one dreamless
+  line (`> *☀️ <a dreamless-night line — nothing to consolidate>*`). No dashboard, no path
+  (Phase 5 is never reached).
+- **NO-OP / MAINTENANCE / LIGHT PASS:** every beat at its own minimum depth; a one-or-two
+  line debrief + the 📊 path.
+- **SUBSTANTIAL PASS:** beats at full depth; the full structured debrief.
+A mid-dream compaction doesn't reset the arc: the cues state what's due now. A repeated
+SLEEP is cosmetic; a skipped beat isn't — follow the cue.
+
+**The debrief (the plain close, after WAKE).** Always present when the pass renders, always
+structured, scaled to the outcome banner:
+- **Visual hierarchy** — a lead line (outcome + one functional emoji), then bold-headed
+  sections.
+- **Dense + technical** — bullets with bold lead-ins, no filler; don't dumb the content
+  down.
+- **Functional, SPARSE emojis** — status / section markers (🌙 dream · 🚀 ship ·
+  📊 dashboard · ✓ / ⚠), never decoration. (The dream-emoji vocabulary belongs to the dream
+  channel; here emojis mark sections.)
+- **FRAMES, doesn't DUPLICATE** — name the non-obvious WHY + what was KEPT / PRUNED /
+  verified; the dashboard holds the gauges / counts / tallies. **"Don't duplicate" ≠ "drop
+  the numbers":** cite a figure when it carries the point (e.g. "8443→2685 tok, all lessons
+  kept"); just don't re-tabulate the gauge set in prose. (This is the real intent of
+  *Output*'s "single source of the **data** report": don't re-tabulate the data — DO frame
+  it.)
+- **Always ends with the 📊 dashboard path** + the "re-open it any time by opening the
+  file" note. (The true no-op produces no debrief and no path — it never reaches Phase 5.)
 
 ### Phase 0 — Locate data + the high-water mark
 
@@ -245,7 +259,7 @@ Run the bundled helper (it derives paths, inventories both stores, and computes 
 git range since the last consolidation — don't hand-derive these):
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py
 ```
 
 It prints: the repo docs, the **user-global `~/.claude/CLAUDE.md`** (read-only — a
@@ -282,10 +296,10 @@ dream) a **dream-timing advisory**: a no-nag nudge that this is a good consolida
 advisory only (the skill never auto-fires — see *Why this is its own ritual*); its prospective use is
 via `cm status` *outside* a dream.
 
-**Enter the dream here.** With Phase 0's first read in hand (magnitude, the stores, no-op-or-proceed),
-emit the **opening dream-touch** — the go-to-sleep settling-in, scaled to what the read found (a true
-no-op gets only a one-line stir; a substantial pass a fuller drift into the dream). See *The dream arc*
-for the voice + guardrails.
+**The first dream beat lands here.** The SLEEP block already opened the pass — it precedes the
+first tool call (see *The dream arc*); if you reached this read without it, emit it now, before
+the beat. With the read in hand, open Phase 0's narration with its dream beat (1–3
+blockquote-italic lines on what the read surfaced), then give the plain findings.
 
 Phase 0 also **flags slug-orphans** (a near-duplicate sibling slug — the rename-orphan
 signature, since a dir rename changes the slug and strands the old slug-scoped store)
@@ -301,7 +315,7 @@ measured before-state (scope, before-budget, marker) into a working file you'll 
 in as you go:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --seed   # writes a PER-PASS cycle file + prints its path
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --seed   # writes a PER-PASS cycle file + prints its path
 ```
 
 `--seed` writes the seed to a **per-slug** path under the temp dir (`cm-cycle-<slug>.json`) and **prints
@@ -317,7 +331,7 @@ the CLAUDE.md hierarchy, so Phase 5 can emit a script-OBSERVED mutation trail (n
 `entries[]`):
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --snapshot   # writes a per-slug BEFORE snapshot + prints its path
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --snapshot   # writes a per-slug BEFORE snapshot + prints its path
 ```
 
 Keep that path for Phase 5's `--audit`. (Phase 0 also now reports the **whole CLAUDE.md hierarchy** — the
@@ -340,8 +354,8 @@ a blind pull. On a COLD-START bootstrap (empty store, rich network — see the n
 relevance filter that decides PROCEED-vs-honest-no-op; on a normal pass it's a cheap read that costs nothing:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .   # surface relevant/present/missing/held (read-only)
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .   # then replicate (M1 auto-holds an over-budget pull)
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .   # surface relevant/present/missing/held (read-only)
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .   # then replicate (M1 auto-holds an over-budget pull)
 ```
 
 This replicates any `user-global` (and stack-matching `stack-general`) facts from
@@ -403,7 +417,7 @@ typed messages are <1% of the transcript and carry only the *feedback* slice; th
    turns** (secrets firewall at retrieval), and returns ranked, structured, scoped
    candidates:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --json
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --json
    ```
    (For *eyeballing*, run it WITHOUT `--json` — the human-readable table is already formatted; reserve `--json`
    for machine capture. The `--json` shape is `{counts:{…, surfaced}, signals:[…]}` where each signal is
@@ -503,11 +517,13 @@ and set `verification.method` (`inline` or `subagents`).
 
 ### Phase 4 — Consolidate (report, then apply)
 
-First, **present the proposed consolidation to the user**: what you'll add, correct,
-or delete, in which **tier/store**, and why — a short diff-like summary. **Present this
-report PLAIN, not dream-styled** (the carve-out in *The dream arc*): this is the approval
-gate for irreversible, committed, always-loaded churn, and fogging the prompt is the one
-unrecoverable mistake — the dream-voice frames the investigation phases, never this one.
+First, the **SURFACING beat** — one blockquote-italic line, the dream thinning to show the
+proposal; it ORIENTS the transition, never editorializes the proposal's merits (see *The
+dream arc*). Then **present the proposed consolidation to the user fully PLAIN**: what
+you'll add, correct, or delete, in which **tier/store**, and why — a short diff-like
+summary. This is the approval gate for irreversible, committed, always-loaded churn, and
+fogging it is the one unrecoverable mistake — the proposal itself never carries the dream
+voice (approvals live in the plain channel).
 This matters because Phase 4 writes committed docs and persistent memory; the user should see the
 churn (and the per-session cost of anything headed for the always-loaded tier)
 before it happens. **Call out any proposed `CLAUDE.md` edit explicitly** — it is
@@ -589,7 +605,7 @@ placing each fact in its tier and optimizing it for how that tier loads:
     old-named local file + its index pointer — so the promotion can never leave a
     duplicate/orphan:
     ```bash
-    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --promote . LOCAL_FACT [CANON_NAME]
+    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --promote . LOCAL_FACT [CANON_NAME]
     ```
     Pass `CANON_NAME` to normalize the name (`_`→`-`, drop a date) or to **dedup** onto an
     existing canonical (never overwritten). You still **add the `~/.claude/memory/MEMORY.md`
@@ -694,8 +710,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    here (and the orphan clears in every other project on its next pass too). Report
    them, then apply (surface deletions per the safety rule before applying):
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --gc .          # report
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --gc . --apply  # reclaim
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --gc .          # report
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --gc . --apply  # reclaim
    ```
    GC only touches `global_ref:` mirror files, never project-authored facts. Record an
    `entries[]` row (`action: deleted`) per reclaimed orphan and set
@@ -721,7 +737,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    + total estimated token consumption across every node in the shared-memory network
    and paste it into the cycle record's `network` block verbatim:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --tokens . --json
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --tokens . --json
    ```
    Also set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
    so the always-loaded gauge and ⚠ reflect the post-write state.
@@ -735,7 +751,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    Then **emit the deterministic mutation audit** (v0.1.22) — diff the post-write state against the Phase-0
    `--snapshot`:
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --audit <the --snapshot path> --into <the --seed path>
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --audit <the --snapshot path> --into <the --seed path>
    ```
    It appends a per-operation record to `~/.claude/projects/<slug>/memory/.mutation-log.jsonl` (the durable,
    script-emitted trail) AND `--into <the --seed path>` **injects the audit block straight into the cycle record**
@@ -756,7 +772,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    tool-use patterns and proposes packaging the high-confidence ones into a reusable artifact (a command or
    skill). Run the scan (cheap; **usually proposes nothing**):
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py . --json
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py . --json
    ```
    It returns recurring Bash-command **templates** (count≥2) over a RECENT window (~30 days — deliberately
    BROADER than this dream's `marker..HEAD`; **say so**, so the user isn't confused why distill sees commands
@@ -784,7 +800,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      created N / nothing) into the debrief.
 7. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py <the --seed path> \
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py <the --seed path> \
        --persist ~/.claude/projects/<slug>/memory
    ```
    `--persist <store dir>` appends the rendered record (one JSON line) to
@@ -816,7 +832,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    before/after of each changed memory fact. This MUST run AFTER `--persist` (so
    `marker.timestamp` is stamped) and BEFORE `render_html` (so the dashboard embeds it):
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --diffs <the --seed path> \
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --diffs <the --seed path> \
        --before <the --snapshot path>
    ```
    It writes a per-dream sidecar `dashboards/diffs/<commit>__<timestamp>.json` (memory store
@@ -829,7 +845,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    report (one cycle-record contract, two renderers): the same data plus the longitudinal
    index-budget trajectory, rendered into the per-repo archive mini-site.
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_html.py <the --seed path> \
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_html.py <the --seed path> \
        --store ~/.claude/projects/<slug>/memory --latest
    ```
    It writes a ZERO-dependency, self-contained `dashboards/index.html` (the whole per-repo
@@ -845,8 +861,11 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    gate above); (2) a **true Phase-0 no-op** never reaches Phase 5, so it has no dashboard and no path
    (see *The dream arc* → Proportionality).
 
-   **Then wake from the dream — the closing debrief (the final message).** With the ASCII dashboard
-   already printed in-terminal (the `render_dashboard` step above) and the HTML auto-opened, deliver the
+   **Then WAKE — and only then debrief.** With the ASCII dashboard already printed in-terminal (the
+   clean exit-0 `render_dashboard --persist` above) and the HTML auto-opened, emit the **WAKE block**
+   — 2–5 blockquote-italic lines surfacing out of the dream, then `☀️ **Awake.**` on its own line (see
+   *The dream arc*; `dream.wake` was already composed into the record at the final fill, before
+   `--persist`). Then deliver the
    structured **session debrief** — qualities + proportionality pinned in *The dream arc*: a lead line
    (outcome + one functional emoji), bold-headed sections, dense bullets that **FRAME** the pass (the
    non-obvious WHY + what was KEPT / PRUNED / verified — and the **distill outcome**: any workflow artifact
@@ -986,6 +1005,9 @@ this once warned against; the dashboard remains the source of the figures.)
     "conservation": {"claude_md_drop": 0, "repo_doc_growth": 0, "possible_loss": false},
     "window": "phase0..phase5"
   },
+  "dream": {"sleep": "<the SLEEP stanza, raw `> *💤 …*` markdown>",
+            "beats": ["<each phase's dream block, in order (surfacing line included)>"],
+            "wake": "<the WAKE stanza — composed at this final fill, performed after the render>"},
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
              "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
   "outcome": ""

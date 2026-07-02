@@ -623,6 +623,21 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         out.append("")
         out.append(_kv("HEALTH", " · ".join(bits)))
 
+    # v0.1.54: dream-arc capture presence — gated on the key, so legacy records (and seeds,
+    # which never carry `dream`) render byte-identically. One line: which beats were captured;
+    # a partial arc shows its gaps (✗) honestly. The stanzas themselves live in the HTML archive.
+    # _dget/_lget = the file's model-boundary idiom; `or ""` so a JSON-null stanza reads ✗ (absent),
+    # never a truthy str(None).
+    dr = _dget(record, "dream")
+    if dr:
+        _nb = len(_lget(dr, "beats"))
+        _have = [bool(str(dr.get("sleep") or "").strip()), bool(str(dr.get("wake") or "").strip())]
+        out.append("")
+        out.append(_kv("DREAM ARC", " · ".join([
+            (_c("✓", "green") if _have[0] else _c("✗", "yellow")) + " sleep",
+            f"{_g(_nb)} beat" + ("" if _nb == 1 else "s"),
+            (_c("✓", "green") if _have[1] else _c("✗", "yellow")) + " wake"])))
+
     # Marker
     m = _dget(record, "marker")
     if m:
@@ -794,8 +809,17 @@ def main() -> int:
         # printed; exit 3 is the nonzero SIGNAL the orchestrator must act on (Exit 1/2 stay read/arg).
         _persist(record, persist_dir)
         ok, _reason, _sev = ms.procedure_integrity(record)
+        # v0.1.54: the dream-arc cue SPLITS on the integrity outcome. The exit-3 path keeps the
+        # model IN the dream through the Phase-3 loop-back (waking here would contradict SKILL's
+        # re-verify rule). The clean path does NOT cue a wake — two mandatory SKILL steps remain
+        # (--diffs, then the render_html archive open); the WAKE cue fires there (render_html),
+        # at the arc's true terminal boundary.
         if not ok:
+            _ui.dream_cue("NOT over — the dream pulls you back: narrate the return to Phase-3 "
+                          "verification dreamily; WAKE only on the clean re-run")
             return 3
+        _ui.dream_cue("persist clean — Phase 5 continues (--diffs, then render_html opens the "
+                      "archive); WAKE comes after that, not now")
     return 0
 
 
