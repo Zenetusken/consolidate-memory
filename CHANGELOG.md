@@ -5,6 +5,33 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.57] — 2026-07-03
+
+### Changed — dashboard coherence + the quiet dream (design feedback from the first live v0.1.54–56 dream)
+The first end-to-end dream on the new stack surfaced visual-design debt in the HTML archive and an
+over-decorated dream voice. Both fixed; user-directed design, gated by a completed adversarial review round
+(13/13 agents; 8 verified findings, all fixed pre-merge):
+- **The quiet dream** *(contract change, SKILL + cues)* — the dream channel drops the blockquote (`> `) accent
+  bar: plain italics alone mark the voice. Emojis now exist ONLY on the bookends — SLEEP opens `*💤 …*`, WAKE
+  opens `*☀️ …*` — intermediate beats carry none. All six cue hints, the schematic, and the schema comments
+  follow; the HTML dream panel normalizes LEGACY stanzas at display time (multi-emoji runs, bare ☀/☁ variants;
+  an emoji-only legacy line is preserved rather than vanishing).
+- **HTML dashboard, sections 01–03 re-aligned** — the two Longitudinal charts share one plot frame (equal
+  heights, aligned tops); the rigor strip thins its gap/cycle labels by a skip factor when segments get narrow
+  (with a collision guard so the forced last numeral never smears into its neighbor); the churn band's right
+  axis restacked; Shared Consciousness gains a matching caption + de-centered legend; This Pass unifies both
+  panels' lead/head/caption rhythm.
+- **The distill verdict is readable** — its own full-width block (counts right-aligned in the header; the
+  disposition as a tag — `created` green, `proposed` amber only while *awaiting* (a declined proposal renders
+  neutral, resolved), `nothing` neutral; the explanation as a serif sentence). A disposition-only verdict
+  shows its tag without the false "no verdict recorded" fallback. The ASCII dashboard renders the verdict in
+  full on a wrapped continuation line (was a mid-word 60-char cut) with a 220-char runaway guard.
+- Also: the verify panel's "N confirmed" is green only when N > 0; the emoji-strip regex writes its variation
+  selector as an explicit `️` escape (no invisible source character).
+
+Template/prose/presentation only — the record schema and every `--json` contract unchanged; legacy records
+render (better) → patch. 546 smoke + mypy green; layout verified live in-browser (DOM + eyeball).
+
 ## [0.1.56] — 2026-07-03
 
 ### Docs — full sync to the v0.1.54 (dream-arc) + v0.1.55 (distill) feature set

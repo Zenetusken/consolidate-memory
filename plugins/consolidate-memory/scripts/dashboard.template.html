@@ -153,6 +153,16 @@
   .audit-row .tk{color:var(--faint)}
   .audit-row.head,.audit-ln.head{border-bottom-color:var(--rule2)}
   .audit-row.head>span,.audit-ln.head>span{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-style:normal}
+  /* panel lead line (03) — one shared style for “Script-observed mutations” / “Verification & health” */
+  .panel-lead{font-family:var(--serif);font-style:italic;color:var(--ink2);margin-bottom:8px}
+  /* v0.1.57 — the distill verdict as a readable full-width block (was a crammed table cell) */
+  .dstl{margin-top:30px}
+  .dstl-verdict{display:flex;gap:12px;align-items:baseline;padding:13px 0 2px;font-size:13px;line-height:1.6;color:var(--ink)}
+  .dstl-verdict .tag{flex:none;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+    padding:3px 8px;border:1px solid var(--rule2);color:var(--ink2);border-radius:2px;position:relative;top:-2px}
+  .dstl-verdict .tag.ok{color:var(--ok);border-color:var(--ok)}
+  .dstl-verdict .tag.warn{color:var(--warn);border-color:var(--warn)}
+  .dstl-verdict .vtx{font-family:var(--serif);font-size:14px;color:var(--ink2)}
   .flag{margin-top:14px;padding:10px 13px;border-left:3px solid var(--accent);background:rgba(179,71,39,.06);
     font-size:11.5px;color:var(--ink2);display:none}
 
@@ -301,17 +311,23 @@
         <div class="meter" id="m-cmd"></div>
         <div class="cap">Always-loaded budgets, this pass. The marker is the ceiling; fill is current consumption.</div>
       </div>
-      <div><svg id="net" viewBox="0 0 520 210" style="height:210px"></svg>
-        <div class="legend center"><span><i class="dot" style="background:var(--accent)"></i>trigger node</span><span><i class="dot" style="background:var(--ink2)"></i>peer · sized by facts</span></div>
+      <div><svg id="net" viewBox="0 0 520 200" style="height:200px"></svg>
+        <div class="legend"><span><i class="dot" style="background:var(--accent)"></i>trigger node</span><span><i class="dot" style="background:var(--ink2)"></i>peer · sized by facts</span></div>
+        <div class="cap">The shared-memory network — this pass ran on the trigger node; edge weight is shared facts.</div>
       </div>
     </div>
   </section>
 
-  <!-- 03 this pass: audit + verification -->
+  <!-- 03 this pass: audit + verification + the distill verdict -->
   <section class="blk"><div class="shead"><span class="no">03</span><h3>This Pass</h3><span class="ln"></span><span class="note" id="pass-note"></span></div>
     <div class="cols c2b">
       <div id="audit"></div>
       <div id="verify"></div>
+    </div>
+    <div class="dstl" id="distill-blk" style="display:none">
+      <div class="audit-ln head"><span class="s">distill · recurring workflows</span><span class="nums" id="dstl-counts"></span></div>
+      <div class="dstl-verdict" id="dstl-verdict"></div>
+      <div class="cap">Recurring command templates and their &amp;&amp;-chains over a ~30-day window — broader than this dream's git scope by design.</div>
     </div>
   </section>
 
@@ -461,16 +477,25 @@
   })();
 
   // ── v0.1.54 the dream as dreamt — captured dream-arc stanzas (sleep · beats · wake). The record
-  // stores the RAW markdown blocks (`> *🌙 …*` lines); strip the wrappers here and let CSS italicize.
+  // stores the RAW markdown stanzas (`*…*` italic lines; legacy records used `> *…*` blockquotes);
+  // strip the wrappers here and let CSS italicize.
   // esc() on every line = the load-bearing XSS guard (model-authored text). Absent/empty → panel hidden.
   (function(){
     var d=CUR.dream; if(!d||typeof d!=="object"||Array.isArray(d))return;
-    // display-only markdown flattening: unwrap `> ` + the full-line italic pair, then drop ALL
-    // residual asterisk runs (inner `**Awake.**`-style emphasis would otherwise show literal
+    // display-only markdown flattening: unwrap a legacy `> ` prefix + the full-line italic pair, then
+    // drop ALL residual asterisk runs (inner `**Awake.**`-style emphasis would otherwise show literal
     // markers — CSS italicizes the whole panel anyway). Non-string stanzas/beats are skipped.
     function strip(s){if(typeof s!=="string")return[];return s.split(/\n/).map(function(l){
       return l.replace(/^\s*>\s*/,"").replace(/^\*(.*)\*\s*$/,"$1").replace(/\*+/g,"").trim();}).filter(Boolean);}
-    var beats=(Array.isArray(d.beats)?d.beats:[]).map(strip).filter(function(ls){return ls.length;});
+    // v0.1.57 — a quiet dream: emojis belong to the SLEEP (💤) and WAKE (☀️) bookends only. Intermediate
+    // beats render without a leading emoji (the contract no longer emits one; legacy stanzas are
+    // normalized at display time). The class covers the pinned dream-emoji vocabulary: the `+` strips a
+    // RUN of them, ☀/☁ are the bare sun/cloud variants (models/terminals emit both forms), and
+    // ️ is the variation selector written as an ESCAPE so no invisible character hides in the source.
+    var LEAD=/^(?:(?:🌙|🌊|🫧|✨|🌀|🌘|💤|☀|☁)\uFE0F?\s*)+/u;
+    function deEmoji(ls){var out=ls.map(function(l){return l.replace(LEAD,"");}).filter(Boolean);
+      return out.length?out:ls;}   // an emoji-only legacy beat keeps its original lines rather than vanishing
+    var beats=(Array.isArray(d.beats)?d.beats:[]).map(strip).map(deEmoji).filter(function(ls){return ls.length;});
     var sl=strip(d.sleep), wk=strip(d.wake);
     var stanzas=(sl.length?[sl]:[]).concat(beats).concat(wk.length?[wk]:[]);
     if(!stanzas.length)return;
@@ -481,9 +506,10 @@
     el("dream-blk").style.display="";
   })();
 
-  // ── trend: facts + churn ──
+  // ── trend: facts + churn ── (v0.1.57: anatomy shared with the rigor strip — same pT/pB, so the two
+  // panels' plot frames align; the churn band's right axis is recessive and collision-free.)
   (function(){
-    var svg=el("trend"),W=660,H=240,pL=42,pR=52,pT=14,pB=30;   // pR leaves room for the churn (right) axis
+    var svg=el("trend"),W=660,H=240,pL=42,pR=56,pT=18,pB=30;   // pR leaves room for the churn (right) axis
     var rows=CYCLES,n=rows.length; el("hist-note").textContent=n+" cycle"+(n!==1?"s":"")+" logged";
     var facts=carryFwd(rows.map(recallN));
     var fm=niceMax(Math.max(Math.max.apply(null,facts)*1.1,4),3),maxF=fm.max;
@@ -493,16 +519,18 @@
       d:e.filter(function(x){return x.action==="deleted";}).length};});
     var cm2=niceMax(Math.max(1,Math.max.apply(null,churn.map(function(c){return c.a+c.c+c.d;}))),2),maxCh=cm2.max;
     // TWO non-overlapping bands: the fact line up top, the churn bars in a labelled band below a divider.
-    var split=pT+(H-pT-pB)*0.58, chBase=H-pB, chTop=split+16;
+    var split=pT+(H-pT-pB)*0.58, chBase=H-pB, chTop=split+18;
     var bx=function(i){return pL+(n<=1?(W-pL-pR)/2:i*(W-pL-pR)/(n-1));},fy=function(v){return split-(v/maxF)*(split-pT);};
     // facts LEFT axis (round) within the top band
     for(var fv=0;fv<=maxF+fm.step*.01;fv+=fm.step){var fyy=fy(fv);svg.appendChild(S("line",{x1:pL,y1:fyy,x2:W-pR,y2:fyy,class:"grid"+(fv===0?"":" f")}));
       var t=S("text",{x:pL-7,y:fyy+3,class:"axt","text-anchor":"end"});t.textContent=fv;svg.appendChild(t);}
-    // churn band baseline + RIGHT axis (round, its own scale)
+    // churn band: a faint top rule closes the band; the right axis reads writes ↓ 0 top-to-bottom,
+    // one label style (.axt, faint), stacked with fixed clearances so nothing collides.
+    svg.appendChild(S("line",{x1:pL,y1:chTop-6,x2:W-pR,y2:chTop-6,class:"grid f"}));
     svg.appendChild(S("line",{x1:pL,y1:chBase,x2:W-pR,y2:chBase,class:"grid"}));
-    svg.appendChild(S("text",{x:W-pR+7,y:chTop+3,class:"axt d"})).textContent=maxCh;
-    svg.appendChild(S("text",{x:W-pR+7,y:chBase+3,class:"axt d"})).textContent="0";
-    svg.appendChild(S("text",{x:W-pR+7,y:chTop-9,class:"axt d"})).textContent="writes";
+    svg.appendChild(S("text",{x:W-pR+8,y:chTop-9,class:"axt"})).textContent="writes";
+    svg.appendChild(S("text",{x:W-pR+8,y:chTop+6,class:"axt"})).textContent=fmt(maxCh);
+    svg.appendChild(S("text",{x:W-pR+8,y:chBase+3,class:"axt"})).textContent="0";
     var bw=Math.max(4,Math.min(22,(W-pL-pR)/(n*2.0)));
     churn.forEach(function(c,i){var x=bx(i)-bw/2,base=chBase;[["a","var(--ok)"],["c","var(--warn)"],["d","var(--crit)"]].forEach(function(sg){
       var val=c[sg[0]];if(val<=0)return;var h=(val/maxCh)*(chBase-chTop);base-=h;svg.appendChild(S("rect",{x:x,y:base,width:bw,height:h,fill:sg[1],opacity:.6}));});});
@@ -515,24 +543,31 @@
     if(n<2){var t=S("text",{x:(pL+W-pR)/2,y:split/2,"text-anchor":"middle",class:"axt d"});t.textContent="trends accrue across dreams — "+n+" logged so far";svg.appendChild(t);}
   })();
 
-  // ── rigor + cadence ──
+  // ── rigor + cadence ── (v0.1.57: same pT/pB frame as the trend chart; gap + cycle labels thin
+  // themselves by a shared skip factor when segments get narrow, so a long history stays legible.)
   (function(){
-    var svg=el("rigor"),W=460,H=240,pL=66,pR=22,pT=26,pB=34;
+    var svg=el("rigor"),W=460,H=240,pL=66,pR=22,pT=18,pB=30;
     var rows=CYCLES,n=rows.length;
-    var ty={LIGHT:H-pB-16,SUBSTANTIAL:H-pB-86,HEAVY:H-pB-156},tc={LIGHT:"var(--faint)",SUBSTANTIAL:"var(--data)",HEAVY:"var(--accent)"};
+    var base=H-pB, span=H-pT-pB;
+    var ty={LIGHT:base-Math.round(span*.08),SUBSTANTIAL:base-Math.round(span*.46),HEAVY:base-Math.round(span*.84)};
+    var tc={LIGHT:"var(--faint)",SUBSTANTIAL:"var(--data)",HEAVY:"var(--accent)"};
     ["HEAVY","SUBSTANTIAL","LIGHT"].forEach(function(k){
       var y=ty[k];svg.appendChild(S("line",{x1:pL-6,y1:y,x2:W-pR,y2:y,class:"grid f"}));
       var t=S("text",{x:pL-12,y:y+3,class:"axt","text-anchor":"end"});t.textContent=k.charAt(0)+k.slice(1).toLowerCase();svg.appendChild(t);});
     var times=rows.map(function(r){var d=Date.parse(g(r,"marker.timestamp",""));return isFinite(d)?d:null;});
     var bx=function(i){return pL+(n<=1?(W-pL-pR)/2:i*(W-pL-pR)/(n-1));};   // UNIFORM spacing — readable; cadence shown as gap labels
+    var seg=n>1?(W-pL-pR)/(n-1):W;                     // px per segment
+    var skip=Math.max(1,Math.ceil(30/seg));            // label every k-th gap/cycle when crowded
     rows.forEach(function(r,i){var k=String(g(r,"rigor.applied","")).toUpperCase();if(!ty[k])k="LIGHT";
       if(i>0){var pk=String(g(rows[i-1],"rigor.applied","LIGHT")).toUpperCase();if(!ty[pk])pk="LIGHT";
         svg.appendChild(S("line",{x1:bx(i-1),y1:ty[pk],x2:bx(i),y2:ty[k],stroke:"var(--rule2)","stroke-width":1}));
-        if(times[i]!=null&&times[i-1]!=null){var hh=(times[i]-times[i-1])/3.6e6,gl=hh<48?Math.round(hh)+"h":Math.round(hh/24)+"d";
-          var gt=S("text",{x:(bx(i-1)+bx(i))/2,y:Math.min(ty[pk],ty[k])-8,"text-anchor":"middle",class:"axt d"});gt.setAttribute("style","font-size:8.5px");gt.textContent=gl;svg.appendChild(gt);}}
+        if(times[i]!=null&&times[i-1]!=null&&((i-1)%skip===0)){var hh=(times[i]-times[i-1])/3.6e6,gl=hh<48?Math.round(hh)+"h":Math.round(hh/24)+"d";
+          var gt=S("text",{x:(bx(i-1)+bx(i))/2,y:Math.min(ty[pk],ty[k])-9,"text-anchor":"middle",class:"axt"});gt.setAttribute("style","font-size:8.5px;fill:var(--ghost)");gt.textContent=gl;svg.appendChild(gt);}}
       var c=S("circle",{cx:bx(i),cy:ty[k],r:4.5,fill:tc[k],stroke:"var(--paper)","stroke-width":1.5});
       c.style.cursor="pointer";c.addEventListener("click",function(){location.hash="#sel="+i;});c.addEventListener("mousemove",tip("cycle "+(i+1)+" · "+k+" — click to open"));c.addEventListener("mouseleave",untip);svg.appendChild(c);
-      var lt=S("text",{x:bx(i),y:H-12,"text-anchor":"middle",class:"axt"});lt.textContent=i+1;svg.appendChild(lt);});
+      // the LAST cycle numeral always draws; a skip-multiple suppresses itself within 18px of it
+      // (two ~12px numerals one narrow segment apart would smear — the collision the thinning exists to prevent)
+      if(i===n-1||(i%skip===0&&(n-1-i)*seg>=18)){var lt=S("text",{x:bx(i),y:H-12,"text-anchor":"middle",class:"axt"});lt.textContent=i+1;svg.appendChild(lt);}});
   })();
 
   // ── budget meters ──
@@ -565,33 +600,53 @@
       var ft=S("text",{x:pos[i][0],y:pos[i][1]+4,"text-anchor":"middle",class:"axt d",style:"font-size:11px"});ft.textContent=num(d.facts);svg.appendChild(ft);});
   })();
 
-  // ── audit + verification (this pass) ──
+  // ── audit + verification + distill (this pass) ── (v0.1.57: the two panels share one lead/head/cap
+  // rhythm, and the distill verdict is its own readable full-width block instead of a crammed cell.)
   (function(){
     var a=CUR.audit||{},box=el("audit");el("pass-note").textContent="phase 0 → phase 5";
     function ln(s,d){d=d||{};var td=num(d.token_delta);
       return '<div class="audit-row"><span class="s">'+esc(s)+'</span><span class="a-added">+'+num(d.created)+'</span><span class="a-corrected">~'+num(d.modified)+'</span><span class="a-deleted">−'+num(d.deleted)+'</span><span class="tk">'+(td>=0?"+":"")+fmt(td)+'</span></div>';}
     var any=["memory","claude_md","repo_doc"].some(function(s){var d=a[s]||{};return num(d.created)+num(d.modified)+num(d.deleted)!==0;});
-    var head='<div style="font-family:var(--serif);font-style:italic;color:var(--ink2);margin-bottom:8px">Script-observed mutations</div>'
+    var head='<div class="panel-lead">Script-observed mutations</div>'
       +'<div class="audit-row head"><span class="s">store</span><span>new</span><span>mod</span><span>del</span><span>Δtok</span></div>';
-    if(!any){box.innerHTML=head+'<div class="cap" style="margin-top:0">No file mutations detected this pass.</div>';}
+    if(!any){box.innerHTML=head+'<div class="cap">No file mutations detected between phase 0 and phase 5.</div>';}
     else{var h=head+ln("memory",a.memory)+ln("CLAUDE.md",a.claude_md)+ln("repo docs",a.repo_doc);
       var cons=a.conservation||{};if(cons.possible_loss)h+='<div class="flag" style="display:block">⚠ Possible lost relocate — CLAUDE.md −'+fmt(num(cons.claude_md_drop))+' tok but targets only +'+fmt(num(cons.repo_doc_growth))+'. Verify it was intended.</div>';
+      h+='<div class="cap">Content-hash diff of the stores across the pass — the script-observed counterpart to the ledger below.</div>';
       box.innerHTML=h;}
-    // verification block
+    // verification & health — same head style; each check reads label → plain-english result.
     var v=CUR.verification||{},h=CUR.health||{},vb=el("verify");
     var INTG=(CUR&&CUR._integrity)?'<div class="flag" style="display:block">⚠ Procedure integrity — '+esc(CUR._integrity.reason)+'</div>':'';
     var pointers=g(h,"index_pointers_ok",true), dang=(g(h,"dangling_links",[])||[]).length, broke=(g(h,"broken",[])||[]).length;
-    vb.innerHTML='<div style="font-family:var(--serif);font-style:italic;color:var(--ink2);margin-bottom:8px">Verification &amp; health</div>'+INTG
+    var conf=num(v.confirmed),corr=num(v.corrected),unv=num(v.unverifiable);
+    vb.innerHTML='<div class="panel-lead">Verification &amp; health</div>'+INTG
       +'<div class="audit-ln head"><span class="s">check</span><span class="nums">result</span></div>'
-      +'<div class="audit-ln"><span class="s">claims confirmed</span><span class="nums">'+num(v.confirmed)+' ✓ · '+num(v.corrected)+' corrected · '+num(v.unverifiable)+' dropped</span></div>'
+      +'<div class="audit-ln"><span class="s">claims verified</span><span class="nums">'
+        +(conf>0?'<span style="color:var(--ok)">'+conf+' confirmed</span>':conf+' confirmed')+' · '+corr+' corrected · '
+        +(unv>0?'<span style="color:var(--warn)">'+unv+' dropped</span>':'0 dropped')+'</span></div>'
       +'<div class="audit-ln"><span class="s">index pointers</span><span class="nums" style="color:'+(pointers?"var(--ok)":"var(--crit)")+'">'+(pointers?"all resolve":"broken")+(broke?" · "+broke+" broken":"")+'</span></div>'
       +'<div class="audit-ln"><span class="s">dangling wikilinks</span><span class="nums" style="color:'+(dang?"var(--warn)":"var(--ok)")+'">'+(dang?dang+" to review":"none")+'</span></div>'
-      // v0.1.55 — the distill verdict (gated on the key; legacy cycles show nothing). Full verdict here;
-      // the ASCII dashboard truncates its cell at 60. esc() on every model-authored string.
-      +((CUR.distill&&typeof CUR.distill==="object"&&!Array.isArray(CUR.distill))
-        ?'<div class="audit-ln"><span class="s">distill</span><span class="nums">'+num(CUR.distill.n_recurring)+' recurring · '+num(CUR.distill.n_chains)+' chains'+(CUR.distill.verdict?' — '+esc(String(CUR.distill.verdict)):'')+'</span></div>'
-        :'')
-      +'<div class="cap" style="margin-top:10px">Every recorded claim is checked against the live tree before it lands.</div>';
+      +'<div class="cap">Every recorded claim is checked against the live tree before it lands.</div>';
+    // v0.1.55/57 — the distill verdict (gated on the key; legacy cycles hide the block). The verdict's
+    // disposition (created / proposed / nothing) renders as a tag; the explanation reads as a sentence.
+    var D=CUR.distill;
+    if(D&&typeof D==="object"&&!Array.isArray(D)){
+      var counts=[num(D.n_recurring)+" recurring",num(D.n_chains)+" chains"];
+      if(num(D.commands)>0)counts.push(fmt(num(D.commands))+" commands / "+num(D.sessions)+" session"+(num(D.sessions)!==1?"s":""));
+      el("dstl-counts").textContent=counts.join(" · ");
+      var vd=String(D.verdict==null?"":D.verdict), m=vd.match(/^\s*(created|proposed|nothing)\b[:\s]*/i);
+      var tag=m?m[1].toLowerCase():"", rest=m?vd.slice(m[0].length):vd;
+      // a DECLINED proposal is a resolved state — neutral tag, never the pending-amber (the at-a-glance
+      // distinction the schema encodes as 'awaiting confirmation' vs 'declined').
+      var declined=tag==="proposed"&&/\bdeclined\b/i.test(rest);
+      var cls=tag==="created"?" ok":(tag==="proposed"&&!declined)?" warn":"";
+      // a disposition-only verdict ('nothing:') IS a recorded verdict — show the tag alone; the
+      // incomplete-step fallback fires only when the verdict string is entirely empty.
+      el("dstl-verdict").innerHTML=(tag?'<span class="tag'+cls+'">'+esc(tag)+'</span>':"")
+        +(rest?'<span class="vtx">'+esc(rest)+'</span>'
+          :(tag?"":'<span class="vtx" style="color:var(--faint)">no verdict recorded — a distill step without one is incomplete</span>'));
+      el("distill-blk").style.display="";
+    }
   })();
 
   // ── v0.1.32 diff-modal: THIS dream's per-file memory diffs; a changed fact's NAME is clickable in the ledger ──

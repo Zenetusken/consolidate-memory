@@ -331,8 +331,8 @@ def main() -> int:
     else:
         _report(d)
     # v0.1.54: write-time dream-arc cue (stderr, CM_DREAM_ARC-gated — see _ui.dream_cue)
-    _ui.dream_cue("distill beat due — recurring gestures condensing (> *🌙 …*) above the "
-                  "plain scan results")
+    _ui.dream_cue("distill beat due — recurring gestures condensing (plain italics, no emoji) "
+                  "above the plain scan results")
     return 0
 
 

@@ -1752,9 +1752,12 @@ _sk54 = _skill_md.read_text(encoding="utf-8")
 _cmd54 = [ln for ln in _sk54.splitlines() if "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/" in ln]
 check(f"v0.1.54 SKILL pin: every scripts/ command line is CM_DREAM_ARC=1-prefixed ({len(_cmd54)} lines)",
       bool(_cmd54) and all("CM_DREAM_ARC=1 python3" in ln for ln in _cmd54))
-check("v0.1.54 SKILL pin: the dream-arc contract anchors (schematic, beats, Awake, never-echo)",
-      "> *🌙" in _sk54 and "SLEEP" in _sk54 and "SURFACING" in _sk54 and "WAKE" in _sk54
+check("v0.1.54/57 SKILL pin: the dream-arc contract anchors (schematic, beats, Awake, never-echo)",
+      "*💤" in _sk54 and "SLEEP" in _sk54 and "SURFACING" in _sk54 and "WAKE" in _sk54
       and "☀️ **Awake.**" in _sk54 and "[dream-arc]" in _sk54)
+check("v0.1.57 SKILL pin: the quiet-dream format — no blockquote schematic, bookend-only emojis",
+      "> *💤" not in _sk54 and "> *🌙" not in _sk54 and "no blockquote" in _sk54
+      and "every other dream line carries none" in _sk54)
 
 # (6) the beta-harness family (same repo, sibling plugin): WARN on a dreamless latest record,
 # PASS on a complete one, SKIP-by-empty on old skill / empty log.
@@ -1907,13 +1910,20 @@ check("v0.1.55 validate: warns on non-list distill.proposed / distill.created",
 check("v0.1.55 validate: SILENT on a well-formed distill block",
       ms.validate_cycle_record({"distill": {"sessions": 1, "commands": 9, "n_recurring": 3, "n_chains": 1,
                                             "proposed": [], "created": [], "verdict": "nothing: x fails covered"}}) == [])
-# (5) dashboard: gated DISTILL line (verdict truncated at 60; missing verdict flagged; legacy absent).
+# (5) dashboard: gated DISTILL line (verdict rendered IN FULL on a wrapped continuation line —
+# v0.1.57, was a mid-word 60-char truncation; missing verdict flagged; legacy absent).
 _di55 = cast(ms.CycleRecord, {"project": "p", "distill": {"n_recurring": 14, "n_chains": 6,
-                              "verdict": "nothing: the smoke→mypy→sim gate-chain — already covered by release.sh XXXX"}})
+                              "verdict": "nothing: the smoke→mypy→sim gate-chain — already covered by release.sh ENDTOKEN"}})
 _di55_out = rd.render(_di55)
-check("v0.1.55 render: DISTILL line present (counts + verdict, truncated ≤60)",
+check("v0.1.55/57 render: DISTILL counts + the FULL verdict (no truncation — the tail survives)",
       "DISTILL" in _di55_out and "14 recurring" in _di55_out and "6 chains" in _di55_out
-      and "already covered" in _di55_out and "XXXX" not in _di55_out)
+      and "already covered" in _di55_out and "ENDTOKEN" in _di55_out)
+# …but a runaway model-authored verdict is still BOUNDED (220-char guard — "one sentence" is
+# guidance, not validation; an unbounded slip would inflate the fixed-rhythm dashboard).
+_di57_long = rd.render(cast(ms.CycleRecord, {"project": "p", "distill": {"n_recurring": 1, "n_chains": 0,
+                       "verdict": "nothing: " + "x" * 400 + " TAILTOKEN"}}))
+check("v0.1.57 render: a runaway verdict is capped at ~220 chars (ellipsis, no TAILTOKEN)",
+      "TAILTOKEN" not in _di57_long and "…" in _di57_long)
 check("v0.1.55 render: distill without a verdict flags the gap",
       "✗ no verdict" in rd.render(cast(ms.CycleRecord, {"project": "p", "distill": {"n_recurring": 2}})))
 check("v0.1.55 render: NO DISTILL line without the key (legacy unchanged)",

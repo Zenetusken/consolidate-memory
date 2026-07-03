@@ -175,8 +175,9 @@ safe choice. What varies run-to-run is each beat's *content*, improvised from TH
 real material; what never varies is that the beats fire.
 
 **Two channels.** Dream voice and functional reporting never share a channel:
-- **Dream channel** — blockquote-italic: every line `> *…*`, 1–2 dream emojis per block
-  (🌙 💤 🌊 🫧 ✨ 🌀 ☁️ ☀️). The voice lives here and only here.
+- **Dream channel** — plain italic: every line `*…*`. The italics alone mark the voice —
+  no blockquote, no accent bar. Emojis exist ONLY on the two bookends: the SLEEP block
+  opens `*💤 …*` and the WAKE block `*☀️ …*`; every other dream line carries none.
 - **Plain channel** — everything else: phase labels, commands, counts, findings, proposals,
   the debrief body. The plain channel must stand alone — complete and self-sufficient — so
   the dream never has to carry operational weight and never competes with it.
@@ -187,18 +188,18 @@ every phase — the dream block above, the plain findings below.
 
 | Beat | When | Depth |
 |---|---|---|
-| **SLEEP 💤** | Your FIRST output on invocation, before the first tool call — falling asleep out of the session's just-finished work (fresh session, nothing in context → a neutral drift-off) | 1–3 lines (short — the dream hasn't found anything yet; depth arrives with the beats) |
-| **DREAM BEAT 🌙** | Opens EVERY phase's narration (0 locate · 1 network · 2 signals · 3 verify · 5 defrag/render): dream block first, that phase's plain findings below | 1–3 lines |
-| **SURFACING** | Phase 4's single blockquote-italic line (`> *…*`) — the dream thins to show the proposal. It ORIENTS only ("the pass surfaces to ask…"); it never editorializes what's proposed (this is the approval gate for irreversible writes) — then the proposal itself is delivered fully in the plain channel | 1 line |
-| **WAKE ☀️** | After the terminal clean (exit-0) render + archive open, before the debrief: surfacing out of the dream, then `☀️ **Awake.**` on its own line, then the plain debrief. (A true no-op reaches no render: its wake is the single dreamless line — see *Proportionality*) | 2–5 lines |
+| **SLEEP 💤** | Your FIRST output on invocation, before the first tool call — falling asleep out of the session's just-finished work (fresh session, nothing in context → a neutral drift-off). Opens `*💤 …*` | 1–3 lines (short — the dream hasn't found anything yet; depth arrives with the beats) |
+| **DREAM BEAT** | Opens EVERY phase's narration (0 locate · 1 network · 2 signals · 3 verify · 5 defrag/render): dream block first (plain italics, no emoji), that phase's plain findings below | 1–3 lines |
+| **SURFACING** | Phase 4's single italic line (`*…*`, no emoji) — the dream thins to show the proposal. It ORIENTS only ("the pass surfaces to ask…"); it never editorializes what's proposed (this is the approval gate for irreversible writes) — then the proposal itself is delivered fully in the plain channel | 1 line |
+| **WAKE ☀️** | After the terminal clean (exit-0) render + archive open, before the debrief: surfacing out of the dream — opens `*☀️ …*` — then `☀️ **Awake.**` on its own line, then the plain debrief. (A true no-op reaches no render: its wake is the single dreamless line — see *Proportionality*) | 2–5 lines |
 
 The format, as a schematic (placeholders — not lines to reuse):
 
-> *💤 <1–3 present-tense lines: the session's work dissolving into dream imagery>*
-> *🌙 <this phase's REAL objects — facts, paths, counts, links — moving as dream things>*
+*💤 <the sleep bookend: 1–3 present-tense lines, the session's work dissolving into dream imagery>*
+*<a phase beat: this phase's REAL objects — facts, paths, counts, links — moving as dream things; no emoji>*
 
 One illustrative line for the quality bar — **illustrative only, never reuse it**:
-`> *🌙 Somewhere below, a wikilink that pointed at nothing all week quietly finds its file.*`
+`*Somewhere below, a wikilink that pointed at nothing all week quietly finds its file.*`
 
 **Content rules.** Present tense; concrete imagery from THIS pass (real fact names, real
 paths, real counts, seen dreamily); every line is new — never a stock, reused, or
@@ -227,7 +228,7 @@ don't. Already asleep? The reminder costs nothing — carry on.
 **Proportionality — depth scales, presence doesn't** (scale to the outcome banner, never
 the rigor tier — distinct quantities that share no scale, see *Rigor modes*):
 - **TRUE NO-OP** (stops at Phase 0): SLEEP still opens the pass; the wake is one dreamless
-  line (`> *☀️ <a dreamless-night line — nothing to consolidate>*`). No dashboard, no path
+  line (`*☀️ <a dreamless-night line — nothing to consolidate>*`). No dashboard, no path
   (Phase 5 is never reached).
 - **NO-OP / MAINTENANCE / LIGHT PASS:** every beat at its own minimum depth; a one-or-two
   line debrief + the 📊 path.
@@ -242,8 +243,8 @@ structured, scaled to the outcome banner:
 - **Dense + technical** — bullets with bold lead-ins, no filler; don't dumb the content
   down.
 - **Functional, SPARSE emojis** — status / section markers (🌙 dream · 🚀 ship ·
-  📊 dashboard · ✓ / ⚠), never decoration. (The dream-emoji vocabulary belongs to the dream
-  channel; here emojis mark sections.)
+  📊 dashboard · ✓ / ⚠), never decoration. (In the dream channel, 💤/☀️ mark only the
+  sleep/wake bookends; here emojis mark sections.)
 - **FRAMES, doesn't DUPLICATE** — name the non-obvious WHY + what was KEPT / PRUNED /
   verified; the dashboard holds the gauges / counts / tallies. **"Don't duplicate" ≠ "drop
   the numbers":** cite a figure when it carries the point (e.g. "8443→2685 tok, all lessons
@@ -299,7 +300,7 @@ via `cm status` *outside* a dream.
 **The first dream beat lands here.** The SLEEP block already opened the pass — it precedes the
 first tool call (see *The dream arc*); if you reached this read without it, emit it now, before
 the beat. With the read in hand, open Phase 0's narration with its dream beat (1–3
-blockquote-italic lines on what the read surfaced), then give the plain findings.
+italic lines on what the read surfaced), then give the plain findings.
 
 Phase 0 also **flags slug-orphans** (a near-duplicate sibling slug — the rename-orphan
 signature, since a dir rename changes the slug and strands the old slug-scoped store)
@@ -517,7 +518,7 @@ and set `verification.method` (`inline` or `subagents`).
 
 ### Phase 4 — Consolidate (report, then apply)
 
-First, the **SURFACING beat** — one blockquote-italic line, the dream thinning to show the
+First, the **SURFACING beat** — one plain-italic line, the dream thinning to show the
 proposal; it ORIENTS the transition, never editorializes the proposal's merits (see *The
 dream arc*). Then **present the proposed consolidation to the user fully PLAIN**: what
 you'll add, correct, or delete, in which **tier/store**, and why — a short diff-like
@@ -799,7 +800,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      `distill` block**: `sessions`/`commands` from `scanned`, `n_recurring = len(recurring)`,
      `n_chains = len(chains)`, `proposed`/`created` by name (`created` = authored BEFORE `--persist` only —
      confirmation usually arrives later; the record is an honest snapshot, never retro-written), and
-     `verdict` = the one-liner (≤~60 chars — the dashboard cell truncates; the HTML archive shows it full).
+     `verdict` = the one-liner (both dashboards show it in full — keep it one sentence).
    - **REPORT-THEN-APPLY — present the proposal PLAIN / un-styled (never dream-voice an approval) and NEVER
      auto-write an executable artifact.** Show the artifact you would create + the evidence (the counts); the
      user confirms; only then you author it. A single confirmation authorizes **ONE specific named artifact**
@@ -876,7 +877,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
 
    **Then WAKE — and only then debrief.** With the ASCII dashboard already printed in-terminal (the
    clean exit-0 `render_dashboard --persist` above) and the HTML auto-opened, emit the **WAKE block**
-   — 2–5 blockquote-italic lines surfacing out of the dream, then `☀️ **Awake.**` on its own line (see
+   — 2–5 italic lines surfacing out of the dream (`*☀️ …*`), then `☀️ **Awake.**` on its own line (see
    *The dream arc*; `dream.wake` was already composed into the record at the final fill, before
    `--persist`). Then deliver the
    structured **session debrief** — qualities + proportionality pinned in *The dream arc*: a lead line
@@ -1018,7 +1019,7 @@ this once warned against; the dashboard remains the source of the figures.)
     "conservation": {"claude_md_drop": 0, "repo_doc_growth": 0, "possible_loss": false},
     "window": "phase0..phase5"
   },
-  "dream": {"sleep": "<the SLEEP stanza, raw `> *💤 …*` markdown>",
+  "dream": {"sleep": "<the SLEEP stanza, raw `*💤 …*` markdown — italics only, no blockquote>",
             "beats": ["<each phase's dream block, in order (surfacing line included)>"],
             "wake": "<the WAKE stanza — composed at this final fill, performed after the render>"},
   "distill": {"sessions": 0, "commands": 0, "n_recurring": 0, "n_chains": 0,
