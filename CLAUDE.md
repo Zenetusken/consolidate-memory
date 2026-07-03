@@ -44,9 +44,11 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     memory_status.py               Phase 0: locate stores + git scope + `--json` cycle-record seed
     extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
     sync_global.py                 cross-project: --list/--pull/--gc/--tokens/--network + provenance
+    distill_scan.py                Phase 5 distill: recurring Bash-command templates + `&&`-chains (workflow signal)
     render_dashboard.py            the data-driven ASCII dashboard (renders ONE cycle record)
     render_html.py                 the self-contained HTML archive (all cycles, rich; + dashboards/diffs sidecars)
     render_log.py                  the lean per-dream audit TABLE (all cycles; powers `cm log`) — the 3rd log view
+    _ui.py                         shared visual vocabulary (color/rule/kv/bar/glyphs + the CM_DREAM_ARC dream-cue); the OTHER scripts import it, render_dashboard keeps byte-pinned copies
 cm                                 dev CLI over the scripts (uses explicit paths, not ${CLAUDE_PLUGIN_ROOT}).
                                    symlink-safe (readlink -f) → install on PATH for frictionless per-repo use:
                                    `ln -s "$(pwd)/cm" ~/.local/bin/cm` (then `cm report`/`cm status`/`cm log`
@@ -127,7 +129,10 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
    **backward-compatible** (legacy cycle records still render, existing installs keep
    working) → **patch** (`0.N.M → 0.N.M+1`). Precedent (all backward-compatible ⇒ patch):
    v0.1.1 packaging · v0.1.2 dashboard · v0.1.3 rigor modes · v0.1.4–v0.1.11 (calibration apparatus,
-   orphan/drift detection, TypedDict contract, polish, governance cascade + demotion, dream-timing, docs).
+   orphan/drift detection, TypedDict contract, polish, governance cascade + demotion, dream-timing, docs) ·
+   v0.1.12–v0.1.55 (audit follow-up, completion-driven archiving, the dream-arc CONTRACT [v0.1.54: additive
+   `dream` key], the distill rebuild [v0.1.55: additive `distill` key + `--json` keys]) — every one an
+   additive `total=False` schema key / additive `--json` key / SKILL prose, never a break.
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG

@@ -31,7 +31,7 @@ project tidy automatically; you invoke **`dream`** (or "consolidate my memory") 
   ALWAYS-LOADED   · paid every session
     project CLAUDE.md ≈1120/4000   [███░░░░░░░] 28%
     global CLAUDE.md  ≈2240        read-only · every project
-    auto-mem index    ≈275/1200    [██░░░░░░░░] 23%  +1 ln
+    auto-mem index    ≈275/1500    [██░░░░░░░░] 18%  +1 ln
     recall facts      6            +1
 
   CROSS-PROJECT   · global tier · ~/.claude/memory: 4 fact(s)
@@ -183,18 +183,30 @@ which is only set when the skill loads as a plugin).
 
 In any project, just say **`dream`** — or "consolidate my memory" / "what should I
 remember from this?". The skill runs a 6-phase pass (locate → orient + pull globals →
-gather candidates → verify → consolidate → render). You can also drive the pieces
-directly:
+gather candidates → verify → consolidate → render), and it **performs the pass as a dream** —
+a brief sleep → per-phase dream narration → wake, in a distinct italic voice layered *on top of*
+the dense technical reporting (never replacing it). You can also drive the pieces directly:
 
 ```bash
 ./cm status            # Phase-0 context: stores, git range, marker, token budget + a no-nag dream-timing nudge
 ./cm extract           # curated session signal (human turns + error-gotchas, secrets omitted)
+./cm distill           # recurring Bash-command workflows (templates + &&-chains) — distill's raw signal
 ./cm pull .            # replicate relevant global facts into this project
 ./cm gc . --apply      # reclaim orphaned mirrors (canonical deleted) — report-only without --apply
 ./cm tokens .          # per-node + total token consumption across the network (≈ chars/4)
 ./cm network           # the cross-project shared-memory graph
-./cm render cycle.json # render a dashboard from a cycle record
+./cm render cycle.json # render ONE cycle record → the ASCII dashboard
+./cm report            # open the rich self-contained HTML archive (all dreams for this repo)
+./cm log               # the lean per-dream audit table (all cycles)
 ```
+
+**A second vertical — distill.** Beyond consolidating *facts*, a dream also watches for repeated
+*workflows*: `distill_scan.py` surfaces recurring command templates and their `&&`-chains (with a
+day-spread so a genuine multi-day workflow outranks a one-hour retry loop), and the pass proposes
+packaging a high-confidence one into a durable command/skill — **report-then-apply, never
+auto-written**. "Create nothing" is a frequent, honorable verdict; every distill step ends with a
+one-line disposition (what it proposed/created, or which gate leg killed the top candidate) captured
+on the cycle record.
 
 ## How retrieval works (and why it's safe)
 
@@ -224,7 +236,10 @@ consolidate-memory/                         # repo root = plugin marketplace
 │       ├── memory_status.py                 # Phase 0: locate stores + git scope + seed
 │       ├── extract_signals.py               # Phase 2: curated, secret-safe session signal
 │       ├── sync_global.py                   # cross-project: replicate + GC + tokens + --network
-│       └── render_dashboard.py              # the data-driven dashboard
+│       ├── distill_scan.py                  # Phase 5: recurring-workflow signal (templates + chains)
+│       ├── render_dashboard.py              # the data-driven ASCII dashboard (one cycle)
+│       ├── render_html.py                   # the rich self-contained HTML archive (all dreams)
+│       └── render_log.py                    # the lean per-dream audit table
 ├── tests/                                   # zero-dependency smoke + accumulation + manifest checks
 ├── memory/                                  # gitignored placeholder (.gitkeep) — store is ~/.claude/memory
 ├── cm                                       # dev CLI over the scripts
