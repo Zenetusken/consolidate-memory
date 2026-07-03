@@ -336,6 +336,33 @@ fixed:
   the scaffold for a pre-check costs more than it saves); one-liner `case` FIRST-arm
   recovery (requires parsing `in …)` — documented residual).
 
+**Code-review round 3 — the FULL workflow, completed (max effort, 2026-07-02):** the
+re-run (session limits reset) ran the verify pass to completion — 11/11 verifiers, only
+the post-verification sweep stalled — returning 8 distinct verified defects (1 refuted).
+The two severe ones were regressions my round-2 heredoc fix left open:
+- **Heredoc amputation, fully closed** — the `_HEREDOC_OPEN` "unterminated" branch
+  (`.*\Z`) still amputated every following command when a quoted or multi-line `<<`
+  slipped past (`git commit -m "…a << b…" && git push` → `git push` deleted; an empty-body
+  `cat <<EOF\nEOF\nnext` too). Fix: match **only a TERMINATED heredoc** (self-validating —
+  a real terminator must appear), so a stray `<<` never matches and never amputates; the
+  unterminated branch is DELETED. Also: tag must start non-digit (kills `1<<20` without
+  the whitespace-lookbehind, so no-space `cat<<EOF` is now recognised), empty body allowed.
+- **`$(…)` command substitutions removed in `_scan_cmd`** — a substitution is a VALUE, not
+  the command; its tokens + a split-out `)` leaked as junk rows (`NET=$(… --json)` →
+  `… --json)`), and the `$(…)`-aware `_ENV_PREFIX` backtracked into the substitution's
+  inner space. Removing `$(…)`/backticks up front fixes both and lets `_ENV_PREFIX` revert
+  to its simple form.
+- Plus: case-arm `"(" not in` guard (function defs no longer mis-stripped) + bare
+  `pattern)` drop (multi-line case labels don't leak); subshell grouping parens shed
+  (`( a && b )` fragments); **`_day_of` → UTC** (deterministic across machines — the
+  local-tz conversion made `scanned.days`/ranking runner-dependent); two efficiency fixes
+  (lazy sample on new-template-only; `_day_of` deferred to the first Bash part).
+- **Empirical acceptance re-run:** the live 1,525-command corpus now yields **40 rows +
+  20 chains with ZERO noise** (rows AND chains) — the paren/substitution leaks that
+  survived round 2 are gone. 544 smoke, all gates green.
+- Refuted (correctly, by the workflow's own verifier): a "dead `and not chains`" clause —
+  it is reachable and correct.
+
 **Round 1 — impl lens (2026-07-02):** verdict APPROVE-WITH-CHANGES, 3 MAJOR + 5 MINOR,
 no blockers. Resolutions (all applied):
 1. MAJOR-1 omitted test-updates + misleading compat claim → §3.1 pins the

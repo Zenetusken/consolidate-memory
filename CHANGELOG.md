@@ -35,13 +35,13 @@ findings by execution):
   scaffold shared with `dream_arc_capture` (refactored onto it, behavior pinned by its existing cases).
 
 Additive `--json` keys + additive `total=False` schema + SKILL prose + presence-gated renderer lines →
-patch. 535 smoke (+43) + mypy green. A max-effort adversarial code-review round then fixed 12 more
-confirmed extraction clusters pre-merge — the sharpest: quoted-`<<` amputation (a bit-shift or a `<<` in a
-commit message deleted every following command), the post-heredoc glue (the write-then-run idiom vanished),
-and the env-prefix drop (`CM_DREAM_ARC=1 python3 …` — the v0.1.54 SKILL's own idiom — was discarded whole);
-plus structural heredoc matching, `&>` redirects, case-arm/else-arm recovery, here-string immunity,
-local-timezone day-spread, and a test-integrity pass (a vacuous order pin rebuilt, dead or-arms removed,
-MIN_RECUR re-covered).
+patch. 544 smoke (+52) + mypy green. TWO max-effort adversarial code-review rounds hardened the shell
+normalizer pre-merge: round 2 fixed 12 clusters (env-prefix drop of `CM_DREAM_ARC=1 python3 …` — the
+SKILL's own idiom; the post-heredoc glue; `&>` redirects; else/case-arm recovery); round 3 — the first to
+run its verify pass to completion — closed the heredoc amputation for good (match only TERMINATED heredocs,
+so a quoted or multi-line `<<` can never delete a following command), removed `$(…)` command substitutions
+(a value, not a command — they leaked `… )` junk rows), made day-spread UTC-deterministic across machines,
+and shed subshell parens. Live-corpus acceptance: 40 recurring rows + 20 chains, zero noise in either.
 
 ## [0.1.54] — 2026-07-01
 

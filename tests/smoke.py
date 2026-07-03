@@ -1835,6 +1835,32 @@ check("v0.1.55 r2/hyphen-tag: <<'MY-TAG' body stripped (tag class is [\\w-]+)",
       == ["some-tool run", "mypy --strict"])
 check("v0.1.55 r2/bare-interp: `python3 <<PY` strips to a stoplisted bare interpreter (no junk row)",
       ds._scan_cmd("python3 <<'PY'\nprint(1)\nPY") == ([], []))
+# (1c) round-3 code-review regressions — heredoc terminated-only (no amputation), $()-env, case/func.
+check("v0.1.55 r3/multiline-commit: a quoted/multi-line `<<` NEVER amputates the following command",
+      ds._scan_cmd('git commit -m "fix: a << b\n\nCo-Authored-By: X" && git push')[0]
+      == ["git commit -m", "git push"])
+check("v0.1.55 r3/empty-body-heredoc: `cat <<EOF\\nEOF\\nnext` keeps the following command",
+      ds._scan_cmd("cat <<EOF\nEOF\nreal-cmd run && next")[0] == ["real-cmd run", "next"])
+check("v0.1.55 r3/no-space-heredoc: `cat<<EOF` body IS stripped (tag starts non-digit, no ws-lookbehind)",
+      ds._scan_cmd("cat<<EOF\nprint(1)\nEOF\nmypy --strict")[0] == ["mypy --strict"])
+check("v0.1.55 r3/env-substitution: `TAG=$(git describe --tags) make` keeps the carried command (no leak)",
+      ds._scan_cmd("TAG=$(git describe --tags) make release")[0] == ["make release"]
+      and ds._scan_cmd("VERSION=$(cat VERSION) deploy-tool run")[0] == ["deploy-tool run"])
+check("v0.1.55 r3/func-def: a function def is NOT mis-stripped into junk `{ cmd` (the case-arm '(' guard)",
+      ds._scan_cmd("deploy() { kubectl apply -f .; }")[0][0].startswith("deploy()"))
+check("v0.1.55 r3/multiline-case: a bare `pattern)` arm label leaks NO junk row (dropped)",
+      not any(t.endswith(")") for t in
+              ds._scan_cmd("case $1 in\n start)\n run-server\n ;;\n stop)\n kill-server\n ;;\nesac")[0]))
+check("v0.1.55 r3/cmd-substitution: `VAR=$(cmd …)` on its own line leaks NO `… )` junk row (a $() is a value)",
+      ds._scan_cmd("NET=$(some-tool --tokens . --json)\nreal-tool run")[0] == ["real-tool run"])
+check("v0.1.55 r3/subshell-parens: `( a && b )` sheds the orphan grouping parens (no '(' / ')' rows)",
+      not any(t.startswith("(") or t.endswith(")") for t in
+              ds._scan_cmd("(alpha-tool run && beta-tool run)")[0]))
+# (1d) day-spread is DETERMINISTIC across timezones (round-3): UTC bucketing, machine-independent.
+_dayA = ds._day_of("2026-07-01T23:30:00Z")
+_dayB = ds._day_of("2026-07-02T00:30:00Z")
+check("v0.1.55 r3/day-utc: _day_of buckets by UTC date (deterministic, not runner-local)",
+      _dayA == "2026-07-01" and _dayB == "2026-07-02")
 # (2) chains — BRIDGE semantics (filter-then-adjacent): the stoplisted middle is decoration.
 check("v0.1.55 chains: a && b && c → (a,b), (b,c)",
       ds._scan_cmd("alpha-tool run && beta-tool run && gamma-tool run")[1]
