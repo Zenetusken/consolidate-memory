@@ -638,6 +638,16 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
             f"{_g(_nb)} beat" + ("" if _nb == 1 else "s"),
             (_c("✓", "green") if _have[1] else _c("✗", "yellow")) + " wake"])))
 
+    # v0.1.55: distill-verdict capture presence — gated on the key (legacy/seed records render
+    # byte-identically). The verdict is the payload; counts frame it. HTML shows the full verdict.
+    di = _dget(record, "distill")
+    if di:
+        _dv = _clean(str(di.get("verdict") or ""))[:60]
+        out.append("")
+        out.append(_kv("DISTILL", f"{_g(_num(di.get('n_recurring', 0)))} recurring · "
+                                  f"{_g(_num(di.get('n_chains', 0)))} chains"
+                                  + (f" · {_dv}" if _dv else " · " + _c("✗ no verdict", "yellow"))))
+
     # Marker
     m = _dget(record, "marker")
     if m:

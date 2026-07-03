@@ -832,6 +832,7 @@ for _nm, _obj, _td in [
     ("remediation", _skill_schema.get("remediation", {}), ms.Remediation),   # v0.1.18
     ("maintenance", _skill_schema.get("maintenance", {}), ms.Maintenance),   # v0.1.37
     ("dream", _skill_schema.get("dream", {}), ms.DreamArc),                  # v0.1.54
+    ("distill", _skill_schema.get("distill", {}), ms.Distill),               # v0.1.55
     # v0.1.22: whole-hierarchy measure + the deterministic audit block (+ their list-item shapes via [0]).
     ("budget.claude_md_hierarchy", _sk_b.get("claude_md_hierarchy", {}), ms.ClaudeMdHierarchy),
     ("budget.claude_md_hierarchy.files[0]", (_sk_b.get("claude_md_hierarchy", {}).get("files") or [{}])[0], ms.ClaudeMdHierarchyFile),
@@ -1408,26 +1409,27 @@ with _tf43.TemporaryDirectory() as _td50:
     check("v0.1.50: Change-2 same-class errors COLLAPSE, distinct family stays → exactly 2 error rows (KeyError + PermissionError)",
           len(_errs50) == 2 and any("KeyError" in s["text"] for s in _errs50) and any("PermissionError" in s["text"] for s in _errs50))
 
-# ── v0.1.51: distill — workflow-recurrence scan (distill_scan.py) for the dream's distill phase ──────────
-# _template normalization recall guard — REAL command forms (multi-line cd-first-line / heredoc / bare-cd),
-# NOT the rare `cd && ` join (the BLOCKER-1 trap: a join-only suite would certify a normalizer that breaks on
-# the dominant 92% multi-line channel).
-check("v0.1.51: _template multi-line cd-first-line → the real command (cd line stripped)",
-      ds._template("cd /home/drei/project/x\npython3 tests/smoke.py") == "python3 tests/smoke.py")
-check("v0.1.51: _template bare cd → None (a 'cd' is NOT a workflow template)",
-      ds._template("cd /home/drei/project/x") is None)
-check("v0.1.51: _template heredoc → head ('python3 -', body dropped)",
-      ds._template("cd /x\npython3 - <<'PY'\nprint(1)\nPY") == "python3 -")
-check("v0.1.51: _template drops a leading VAR= assignment, templates the real command",
-      (ds._template("cd /x\nS=plugins/y\npython3 $S/foo.py") or "").startswith("python3")
-      and "S=" not in (ds._template("cd /x\nS=plugins/y\npython3 $S/foo.py") or ""))
-check("v0.1.51: _template GROUPS branch variants (checkout -b feat/X == feat/Y)",
-      ds._template("git checkout -b feat/X") == ds._template("git checkout -b feat/Y") == "git checkout -b")
-check("v0.1.51: _template SEPARATES distinct subcommands (push != pull)",
-      ds._template("git push") != ds._template("git pull"))
-check("v0.1.51: _template never emits a cd-prefix or an abs path",
-      "cd" not in (ds._template("cd /home/x\nmypy --config-file mypy.ini") or "")
-      and "/home/" not in (ds._template("cd /home/x\nmypy --config-file mypy.ini") or ""))
+# ── v0.1.51 (extraction REBUILT v0.1.55): distill — workflow-recurrence scan (distill_scan.py) ──────────
+# The v0.1.51 recall guards retarget to the v0.1.55 decomposition: pure per-segment `_seg_template`
+# + command-level `_scan_cmd` (all-segment; the retired first-segment `_template` undercounted 4× on
+# the measured corpus). REAL command forms (multi-line cd-first-line / heredoc / bare-cd), NOT the
+# rare `cd && ` join.
+check("v0.1.51/55: _scan_cmd multi-line cd-first-line → the real command (cd line stripped)",
+      ds._scan_cmd("cd /home/drei/project/x\npython3 tests/smoke.py")[0] == ["python3 tests/smoke.py"])
+check("v0.1.51/55: _scan_cmd bare cd → nothing (a 'cd' is NOT a workflow template)",
+      ds._scan_cmd("cd /home/drei/project/x") == ([], []))
+check("v0.1.55: heredoc → body dropped AND the 'python3 -' false class stoplisted (was a v0.1.51 row)",
+      ds._scan_cmd("cd /x\npython3 - <<'PY'\nprint(1)\nPY") == ([], []))
+_v55 = ds._scan_cmd("cd /x\nS=plugins/y\npython3 $S/foo.py")[0]
+check("v0.1.51/55: _scan_cmd drops a leading VAR= assignment, templates the real command",
+      len(_v55) == 1 and _v55[0].startswith("python3") and "S=" not in _v55[0])
+check("v0.1.51/55: _seg_template GROUPS branch variants (checkout -b feat/X == feat/Y)",
+      ds._seg_template("git checkout -b feat/X") == ds._seg_template("git checkout -b feat/Y") == "git checkout -b")
+check("v0.1.51/55: _seg_template SEPARATES distinct subcommands (push != pull)",
+      ds._seg_template("git push") != ds._seg_template("git pull"))
+_cdp55 = ds._scan_cmd("cd /home/x\nmypy --config-file mypy.ini")[0]
+check("v0.1.51/55: templates never carry a cd-prefix or an abs path (non-empty — no vacuous all())",
+      len(_cdp55) == 1 and _cdp55[0].split()[0] != "cd" and "/home/" not in _cdp55[0])
 # End-to-end scan() through a fixture transcript (recurrence + firewall + contract shape)
 def _bl51(cmd: str) -> str:   # an assistant Bash tool_use transcript line
     return _json43.dumps({"timestamp": "2026-06-22T10:00:00Z", "sessionId": "s51",
@@ -1444,7 +1446,8 @@ with _tf43.TemporaryDirectory() as _td51:
     for _ in range(2):  # ≥2× so absence tests the MECHANISM (firewall drop / _template→None), NOT the count<2 filter
         _lines51.append(_bl51(f"cd {_repo51}\nexport AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLEKEYabcdef0123456789"))  # secret → firewall drops
         _lines51.append(_bl51(f"cd {_repo51}"))                                   # bare cd → _template returns None
-    _lines51.append(_bl51(f"cd {_repo51}\nls -la"))                               # one-off (count 1) → the count<2 filter
+    _lines51.append(_bl51(f"cd {_repo51}\nls -la"))                # stoplisted (ls) → never a row (v0.1.55)
+    _lines51.append(_bl51(f"cd {_repo51}\noneoff-tool run"))       # NOT stoplisted, count 1 → the MIN_RECUR filter
     (_pr51 / "s.jsonl").write_text("".join(_lines51))
     _old51 = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_h51)
     try:
@@ -1456,21 +1459,27 @@ with _tf43.TemporaryDirectory() as _td51:
           _tpls51.get("python3 tests/smoke.py") == 3 and _tpls51.get("git push -u origin") == 3)
     check("v0.1.51: scan FIREWALL drops the secret command (absent from templates + samples)",
           not any("AWS_SECRET" in r["template"] or "AKIA" in r["sample"] for r in _r51["recurring"]))
-    check("v0.1.51: scan — bare cd + one-off ls do NOT surface (no cd template; count<2 dropped)",
+    check("v0.1.51/55: scan — bare cd + ls do NOT surface (no cd template; ls stoplisted)",
           not any(r["template"].startswith("cd") for r in _r51["recurring"]) and "ls -la" not in _tpls51)
-    check("v0.1.51: scan --json contract shape (window / scanned{sessions,commands} / recurring)",
-          set(_r51) == {"window", "scanned", "recurring"} and set(_r51["scanned"]) == {"sessions", "commands"})
-with _tf43.TemporaryDirectory() as _td51b:   # "create nothing" — distinct one-offs, no recurrence
+    check("v0.1.55: MIN_RECUR — a genuine (non-stoplisted) one-off stays below the count≥2 bar",
+          "oneoff-tool run" not in _tpls51)
+    check("v0.1.55: scan --json contract shape (+chains, +days — the exact-set pins updated with the keys)",
+          set(_r51) == {"window", "scanned", "recurring", "chains"}
+          and set(_r51["scanned"]) == {"sessions", "commands", "days"}
+          and all(set(r) == {"template", "count", "days", "sample"} for r in _r51["recurring"]))
+with _tf43.TemporaryDirectory() as _td51b:   # "create nothing" — distinct NON-stoplisted one-offs, so the
+    # empty result exercises the MIN_RECUR count<2 filter itself (v0.1.55: the old `echo …` probes were
+    # intercepted by the stoplist before ever reaching the tally — a vacuous pass).
     _h51b = Path(_td51b); _p51b = _h51b / "proj"; _p51b.mkdir()
     _pr51b = _h51b / ".claude" / "projects" / es.slug_for(_p51b); _pr51b.mkdir(parents=True)
-    (_pr51b / "s.jsonl").write_text("".join(_bl51(f"cd {_p51b}\necho distinct-{_i}-{_i*7}") for _i in range(4)))
+    (_pr51b / "s.jsonl").write_text("".join(_bl51(f"cd {_p51b}\nprobe-tool-{_i} run") for _i in range(4)))
     _old51b = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_h51b)
     try:
         _r51b = ds.scan(_p51b, "")
     finally:
         _os43.environ["HOME"] = _old51b if _old51b is not None else ""
-    check("v0.1.51: scan 'create nothing' — distinct one-offs surface NO recurring workflow (count<2)",
-          _r51b["recurring"] == [])
+    check("v0.1.51/55: scan 'create nothing' — distinct one-offs surface NO recurring workflow (count<2)",
+          _r51b["recurring"] == [] and _r51b["chains"] == [])
 
 # ── v0.1.44: procedure-integrity detector — the lazy-skip safeguard ──────────────────
 # The MEASURED 2026-06-22 failure: 3 dreams ran 0/0/0 verification while self-labeled
@@ -1775,6 +1784,177 @@ check("v0.1.54 beta family: UNPARSEABLE version fails CLOSED → SKIP-by-empty (
 _FakeCtx54.skill_version = "0.1.54"
 _FakeCtx54.log_records = []
 check("v0.1.54 beta family: empty log → SKIP-by-empty", _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54())) == [])
+
+# --- v0.1.55: distill — clean signal (all-segment + stoplist + day-spread + chains) + captured verdict ---
+# (1) extraction unit table (pure): the spec-review-proven regressions. The B1 pin is NON-VACUOUS by
+# construction (round-2 finding: a bare `== ([],[])` also passed under the flipped-order defect): a
+# command FOLLOWS the heredoc — the flipped order amputates it, the correct order keeps it.
+check("v0.1.55 B1: quoted-tag heredoc body stripped AND the next command survives (order pin)",
+      ds._scan_cmd("python3 - <<'PY'\nprint(1)\nPY\nmypy --strict") == (["mypy --strict"], []))
+check("v0.1.55: dash-heredoc (<<-EOF) body stripped too",
+      ds._scan_cmd("some-tool run <<-EOF\n\tbody line\n\tEOF") == (["some-tool run"], []))
+check("v0.1.55 M2: loop body keeps its command (for/do/done → mypy counted, keywords absent)",
+      ds._scan_cmd("for f in *.py; do mypy $f; done") == (["mypy $f"], []))
+check("v0.1.55 D6b: 2>&1 leaves no dangling '2' token",
+      ds._scan_cmd("./release.sh 2>&1 | tail -20")[0] == ["./release.sh"])
+check("v0.1.55 m1: '>> file' truncates (split-keep-head — no leaked filename token)",
+      ds._scan_cmd("some-tool run >> app.log")[0] == ["some-tool run"])
+check("v0.1.55 D6c: backslash-continuation joins to ONE exact template (5-token cap)",
+      ds._scan_cmd("gh pr create --base main \\\n  --title x \\\n  --body y")[0] == ["gh pr create --base main"])
+check("v0.1.55 D1: echo-led chain counts the REAL segments; echo row absent",
+      ds._scan_cmd('echo "=== gate ===" && python3 tests/smoke.py && mypy --strict')[0]
+      == ["python3 tests/smoke.py", "mypy --strict"])
+check("v0.1.55: once-per-command dedup (a retry isn't recurrence)",
+      ds._scan_cmd("python3 tests/smoke.py && python3 tests/smoke.py")[0] == ["python3 tests/smoke.py"])
+# (1b) round-2 code-review regressions — every mechanism verified live before AND after the fix.
+check("v0.1.55 r2/H1: write-then-run — the command AFTER a heredoc keeps its own segment + chain",
+      ds._scan_cmd("cat > conf.yml <<'EOF'\nkey: v\nEOF\npython3 run_pipeline.py && pytest tests/")
+      == (["python3 run_pipeline.py", "pytest tests/"], [("python3 run_pipeline.py", "pytest tests/")]))
+check("v0.1.55 r2/H2: quoted << (bit-shift / commit message) never amputates the command",
+      ds._scan_cmd("python3 -c 'x = 1<<20; print(x)' && make build")[0] == ["make build"]
+      and ds._scan_cmd('git commit -m "see << docs" && git push')[0] == ["git commit -m", "git push"])
+check("v0.1.55 r2/H3: same-line tail after the heredoc tag survives (cmd <<TAG && next)",
+      ds._scan_cmd("sqlite3 db <<SQL && pytest tests/\nselect 1;\nSQL") == (["sqlite3 db", "pytest tests/"],
+                                                                            [("sqlite3 db", "pytest tests/")]))
+check("v0.1.55 r2/K2: do-cd stays noise (the prefix strip re-applies the cd/assignment gate)",
+      ds._scan_cmd("for d in */; do cd $d && git pull; done") == (["git pull"], []))
+check("v0.1.55 r2/K3: env-prefixed invocation keeps the carried command (the SKILL's own CM_DREAM_ARC=1 idiom)",
+      ds._scan_cmd("CM_DREAM_ARC=1 python3 tests/smoke.py") == (["python3 tests/smoke.py"], []))
+check("v0.1.55 r2/else: the else arm carries its command (same M2 class as do/then)",
+      ds._scan_cmd("if pytest tests/; then notify-ok; else diagnose-tool run; fi")[0]
+      == ["notify-ok", "diagnose-tool run"])
+check("v0.1.55 r2/&>: '&>' redirects truncate cleanly (no dangling '&' token)",
+      ds._scan_cmd("python3 build_all.py &> build.log && pytest tests/")[0]
+      == ["python3 build_all.py", "pytest tests/"])
+check("v0.1.55 r2/case: a later case arm recovers its command (first arm = documented residual)",
+      ds._scan_cmd("case $1 in start) run-server;; stop) kill-server;; esac")[0] == ["kill-server"])
+check("v0.1.55 r2/here-string: '<<<' never treated as a heredoc; the backstop keeps the head clean",
+      ds._scan_cmd('jq -r .x <<< "$json" && ./deploy.sh')[0] == ["jq -r .x", "./deploy.sh"])
+check("v0.1.55 r2/hyphen-tag: <<'MY-TAG' body stripped (tag class is [\\w-]+)",
+      ds._scan_cmd("some-tool run <<'MY-TAG'\ndanger-cmd --oops\nMY-TAG\nmypy --strict")[0]
+      == ["some-tool run", "mypy --strict"])
+check("v0.1.55 r2/bare-interp: `python3 <<PY` strips to a stoplisted bare interpreter (no junk row)",
+      ds._scan_cmd("python3 <<'PY'\nprint(1)\nPY") == ([], []))
+# (1c) round-3 code-review regressions — heredoc terminated-only (no amputation), $()-env, case/func.
+check("v0.1.55 r3/multiline-commit: a quoted/multi-line `<<` NEVER amputates the following command",
+      ds._scan_cmd('git commit -m "fix: a << b\n\nCo-Authored-By: X" && git push')[0]
+      == ["git commit -m", "git push"])
+check("v0.1.55 r3/empty-body-heredoc: `cat <<EOF\\nEOF\\nnext` keeps the following command",
+      ds._scan_cmd("cat <<EOF\nEOF\nreal-cmd run && next")[0] == ["real-cmd run", "next"])
+check("v0.1.55 r3/no-space-heredoc: `cat<<EOF` body IS stripped (tag starts non-digit, no ws-lookbehind)",
+      ds._scan_cmd("cat<<EOF\nprint(1)\nEOF\nmypy --strict")[0] == ["mypy --strict"])
+check("v0.1.55 r3/env-substitution: `TAG=$(git describe --tags) make` keeps the carried command (no leak)",
+      ds._scan_cmd("TAG=$(git describe --tags) make release")[0] == ["make release"]
+      and ds._scan_cmd("VERSION=$(cat VERSION) deploy-tool run")[0] == ["deploy-tool run"])
+check("v0.1.55 r3/func-def: a function def is NOT mis-stripped into junk `{ cmd` (the case-arm '(' guard)",
+      ds._scan_cmd("deploy() { kubectl apply -f .; }")[0][0].startswith("deploy()"))
+check("v0.1.55 r3/multiline-case: a bare `pattern)` arm label leaks NO junk row (dropped)",
+      not any(t.endswith(")") for t in
+              ds._scan_cmd("case $1 in\n start)\n run-server\n ;;\n stop)\n kill-server\n ;;\nesac")[0]))
+check("v0.1.55 r3/cmd-substitution: `VAR=$(cmd …)` on its own line leaks NO `… )` junk row (a $() is a value)",
+      ds._scan_cmd("NET=$(some-tool --tokens . --json)\nreal-tool run")[0] == ["real-tool run"])
+check("v0.1.55 r3/subshell-parens: `( a && b )` sheds the orphan grouping parens (no '(' / ')' rows)",
+      not any(t.startswith("(") or t.endswith(")") for t in
+              ds._scan_cmd("(alpha-tool run && beta-tool run)")[0]))
+# (1d) day-spread is DETERMINISTIC across timezones (round-3): UTC bucketing, machine-independent.
+_dayA = ds._day_of("2026-07-01T23:30:00Z")
+_dayB = ds._day_of("2026-07-02T00:30:00Z")
+check("v0.1.55 r3/day-utc: _day_of buckets by UTC date (deterministic, not runner-local)",
+      _dayA == "2026-07-01" and _dayB == "2026-07-02")
+# (2) chains — BRIDGE semantics (filter-then-adjacent): the stoplisted middle is decoration.
+check("v0.1.55 chains: a && b && c → (a,b), (b,c)",
+      ds._scan_cmd("alpha-tool run && beta-tool run && gamma-tool run")[1]
+      == [("alpha-tool run", "beta-tool run"), ("beta-tool run", "gamma-tool run")])
+check("v0.1.55 chains: a && echo x && b → (a,b) — the bridge",
+      ds._scan_cmd("alpha-tool run && echo progress && beta-tool run")[1]
+      == [("alpha-tool run", "beta-tool run")])
+check("v0.1.55 chains: a && a → no self-chain",
+      ds._scan_cmd("alpha-tool run && alpha-tool run")[1] == [])
+# (3) day-spread — the episode dimension (a two-day recurrence outranks a one-day burst).
+def _bl55(cmd: str, ts: str) -> str:
+    return _json43.dumps({"timestamp": ts, "sessionId": "s55",
+                          "message": {"role": "assistant", "content": [
+                              {"type": "tool_use", "name": "Bash", "input": {"command": cmd}}]}}) + "\n"
+with _tf43.TemporaryDirectory() as _td55:
+    _h55 = Path(_td55); _p55 = _h55 / "proj"; _p55.mkdir()
+    _pr55 = _h55 / ".claude" / "projects" / es.slug_for(_p55); _pr55.mkdir(parents=True)
+    _l55 = []
+    for _i in range(5):                                    # one-day burst ×5
+        _l55.append(_bl55("burst-tool run", "2026-07-01T10:00:00Z"))
+    _l55.append(_bl55("steady-tool run && echo ok && mypy --strict", "2026-07-01T09:00:00Z"))
+    _l55.append(_bl55("steady-tool run && echo ok && mypy --strict", "2026-07-02T09:00:00Z"))  # two days ×2
+    (_pr55 / "s.jsonl").write_text("".join(_l55))
+    _old55 = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_h55)
+    try:
+        _r55 = ds.scan(_p55, "")
+    finally:
+        _os43.environ["HOME"] = _old55 if _old55 is not None else ""
+    _rows55 = {r["template"]: r for r in _r55["recurring"]}
+    check("v0.1.55 day-spread: per-row days counted (steady 2d, burst 1d) + scanned.days = 2",
+          _rows55["steady-tool run"]["days"] == 2 and _rows55["burst-tool run"]["days"] == 1
+          and _r55["scanned"]["days"] == 2)
+    check("v0.1.55 ranking: 2-day ×2 outranks 1-day ×5 (episodes over volume)",
+          _r55["recurring"][0]["template"] == "steady-tool run")
+    check("v0.1.55 chains end-to-end: the bridged (steady → mypy) chain surfaces with day-spread",
+          _r55["chains"] and _r55["chains"][0]["templates"] == ["steady-tool run", "mypy --strict"]
+          and _r55["chains"][0]["count"] == 2 and _r55["chains"][0]["days"] == 2)
+# (4) validator: the distill container checks.
+check("v0.1.55 validate: warns on non-dict distill", "distill is not a dict" in
+      ms.validate_cycle_record({"distill": []}))
+check("v0.1.55 validate: warns on non-list distill.proposed / distill.created",
+      "distill.proposed is not a list" in ms.validate_cycle_record({"distill": {"proposed": "x"}})
+      and "distill.created is not a list" in ms.validate_cycle_record({"distill": {"created": {}}}))
+check("v0.1.55 validate: SILENT on a well-formed distill block",
+      ms.validate_cycle_record({"distill": {"sessions": 1, "commands": 9, "n_recurring": 3, "n_chains": 1,
+                                            "proposed": [], "created": [], "verdict": "nothing: x fails covered"}}) == [])
+# (5) dashboard: gated DISTILL line (verdict truncated at 60; missing verdict flagged; legacy absent).
+_di55 = cast(ms.CycleRecord, {"project": "p", "distill": {"n_recurring": 14, "n_chains": 6,
+                              "verdict": "nothing: the smoke→mypy→sim gate-chain — already covered by release.sh XXXX"}})
+_di55_out = rd.render(_di55)
+check("v0.1.55 render: DISTILL line present (counts + verdict, truncated ≤60)",
+      "DISTILL" in _di55_out and "14 recurring" in _di55_out and "6 chains" in _di55_out
+      and "already covered" in _di55_out and "XXXX" not in _di55_out)
+check("v0.1.55 render: distill without a verdict flags the gap",
+      "✗ no verdict" in rd.render(cast(ms.CycleRecord, {"project": "p", "distill": {"n_recurring": 2}})))
+check("v0.1.55 render: NO DISTILL line without the key (legacy unchanged)",
+      "DISTILL" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s"})))
+# (6) HTML: the gated distill line ships in the verify panel JS (esc()-guarded, key-gated).
+# (_tpl54 is read at RUNTIME above, so it already holds the current template — one arm, no dead dup.)
+check("v0.1.55 html: template ships the gated distill line",
+      "CUR.distill" in _tpl54 and "n_recurring" in _tpl54)
+# (7) beta family: 6-case + the dream regression suite above still green post-refactor.
+_FakeCtx54.skill_version = "0.1.55"
+_FakeCtx54.log_records = [{"marker": {"timestamp": "d1"}}]
+_rd55 = _bc54.distill_capture(cast(_bc54.Ctx, _FakeCtx54()))
+check("v0.1.55 beta family: no distill block on latest → LOW/WARN with the pre-feature caveat",
+      len(_rd55) == 1 and _rd55[0].status == "WARN" and _rd55[0].severity == "LOW" and "pre-v0.1.55" in _rd55[0].actual)
+_FakeCtx54.log_records = [{"distill": {"n_recurring": 3}, "marker": {"timestamp": "d2"}}]
+check("v0.1.55 beta family: counts-only block (empty verdict) → WARN (a skipped judgment)",
+      _bc54.distill_capture(cast(_bc54.Ctx, _FakeCtx54()))[0].status == "WARN")
+_FakeCtx54.log_records = [{"distill": {"verdict": "nothing: gate-chain — already covered"}, "marker": {"timestamp": "d3"}}]
+check("v0.1.55 beta family: non-empty verdict → PASS",
+      _bc54.distill_capture(cast(_bc54.Ctx, _FakeCtx54()))[0].status == "PASS")
+_FakeCtx54.log_records = [{"maintenance": {"pivoted": True}, "marker": {"timestamp": "d4"}}]
+check("v0.1.55 beta family: maintenance-pivot pass → SKIP-by-empty (distill legitimately skipped)",
+      _bc54.distill_capture(cast(_bc54.Ctx, _FakeCtx54())) == [])
+_FakeCtx54.log_records = [{"maintenance": {"pivoted": "false"}, "marker": {"timestamp": "d4b"}}]
+check("v0.1.55 beta family: pivoted='false' (truthy STRING) does NOT skip — coerced, WARNs normally",
+      len(_bc54.distill_capture(cast(_bc54.Ctx, _FakeCtx54()))) == 1
+      and _bc54.distill_capture(cast(_bc54.Ctx, _FakeCtx54()))[0].status == "WARN")
+_FakeCtx54.skill_version = "unknown"
+_FakeCtx54.log_records = [{"marker": {"timestamp": "d5"}}]
+check("v0.1.55 beta family: unknown version fails CLOSED → SKIP-by-empty",
+      _bc54.distill_capture(cast(_bc54.Ctx, _FakeCtx54())) == [])
+_FakeCtx54.skill_version = "0.1.55"
+_FakeCtx54.log_records = []
+check("v0.1.55 beta family: empty log → SKIP-by-empty", _bc54.distill_capture(cast(_bc54.Ctx, _FakeCtx54())) == [])
+# (8) SKILL pins: the verdict contract anchors present; the deleted null-priming hedges ABSENT.
+_sk55 = _skill_md.read_text(encoding="utf-8")
+check("v0.1.55 SKILL pin: verdict contract anchors present",
+      "THE VERDICT" in _sk55 and "fails" in _sk55 and "READ THE CHAINS FIRST" in _sk55
+      and "n_recurring = len(recurring)" in _sk55)
+check("v0.1.55 SKILL pin: the null-priming hedges are DELETED",
+      "usually proposes nothing" not in _sk55 and "EXPECTED outcome" not in _sk55)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

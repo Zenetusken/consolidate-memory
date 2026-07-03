@@ -586,6 +586,11 @@
       +'<div class="audit-ln"><span class="s">claims confirmed</span><span class="nums">'+num(v.confirmed)+' ✓ · '+num(v.corrected)+' corrected · '+num(v.unverifiable)+' dropped</span></div>'
       +'<div class="audit-ln"><span class="s">index pointers</span><span class="nums" style="color:'+(pointers?"var(--ok)":"var(--crit)")+'">'+(pointers?"all resolve":"broken")+(broke?" · "+broke+" broken":"")+'</span></div>'
       +'<div class="audit-ln"><span class="s">dangling wikilinks</span><span class="nums" style="color:'+(dang?"var(--warn)":"var(--ok)")+'">'+(dang?dang+" to review":"none")+'</span></div>'
+      // v0.1.55 — the distill verdict (gated on the key; legacy cycles show nothing). Full verdict here;
+      // the ASCII dashboard truncates its cell at 60. esc() on every model-authored string.
+      +((CUR.distill&&typeof CUR.distill==="object"&&!Array.isArray(CUR.distill))
+        ?'<div class="audit-ln"><span class="s">distill</span><span class="nums">'+num(CUR.distill.n_recurring)+' recurring · '+num(CUR.distill.n_chains)+' chains'+(CUR.distill.verdict?' — '+esc(String(CUR.distill.verdict)):'')+'</span></div>'
+        :'')
       +'<div class="cap" style="margin-top:10px">Every recorded claim is checked against the live tree before it lands.</div>';
   })();
 

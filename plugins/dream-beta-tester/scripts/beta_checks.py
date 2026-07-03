@@ -1186,47 +1186,99 @@ def maintenance_pivot_coherence(ctx: Ctx) -> list[Result]:
     return out
 
 
+def _latest_capture_check(ctx: Ctx, *, block_key: str, family_name: str,
+                          min_version: tuple[int, int, int], check_id: str, title: str,
+                          expected: str, defect_ref: str,
+                          is_complete: Callable[[dict[str, Any]], tuple[bool, str]]) -> list[Result]:
+    """v0.1.55: the SHARED scaffold for the 'capture exists on the latest persisted dream' families
+    (dream_arc_capture / distill_capture) — extracted per the reimplementation-pin discipline. Owns:
+    the version gate (fail-CLOSED via _version_tuple — "unknown" → (-1,-1,-1) → SKIP: a spurious WARN
+    against a genuinely old install is worse than a missed advisory), the SKIP-by-empty log guard, the
+    latest-record read, and the LOW / PASS-or-WARN / never-FAIL result. Every persisted record IS a
+    proceeding pass by construction (a true no-op stops at Phase 0 and never persists); family-specific
+    carve-outs (e.g. distill's maintenance-pivot SKIP) live in the caller. `is_complete(block)` returns
+    (complete?, the actual-string); `block` is {} when the key is absent or non-dict."""
+    out: list[Result] = []
+    if _version_tuple(ctx.skill_version or "") < min_version:
+        return out                              # pre-feature or unknown-version skill → not applicable
+    if not ctx.log_records:
+        return out                              # no persisted dreams yet (pre-first-dream store) → not applicable
+    latest = ctx.log_records[-1]
+    _b = latest.get(block_key)
+    block: dict[str, Any] = _b if isinstance(_b, dict) else {}
+    complete, actual = is_complete(block)
+    _m = latest.get("marker")
+    m: dict[str, Any] = _m if isinstance(_m, dict) else {}
+    out.append(_R(family_name, check_id, title, "LOW", "PASS" if complete else "WARN",
+                  expected, actual,
+                  "the persisted .consolidation-log.jsonl (latest record)",
+                  f"log[-1] @ {m.get('timestamp') or 'unstamped'}", defect_ref, "structural"))
+    return out
+
+
 @family
 def dream_arc_capture(ctx: Ctx) -> list[Result]:
     """v0.1.54: the dream-arc CAPTURE exists on the latest persisted dream. The skill's dream-arc
     contract mirrors the conversational dream blocks (sleep · beats · wake) into the cycle record's
-    `dream` block; every persisted record IS a proceeding pass by construction (a true no-op stops at
-    Phase 0 and never persists), so a latest record missing the capture is a fully-skipped arc.
-    ADVISORY (LOW / WARN, never FAIL): style is not procedure, and a record written by ≤ v0.1.53
-    legitimately lacks the key (records carry no version stamp) — check the record's recency before
-    promoting. Necessary-not-sufficient: presence cannot prove the user SAW the narration (that needs
-    the transcript — a judgment-lens check); this family catches only the fully-skipped arc.
-    Version-aware: a pre-v0.1.54 skill under test → SKIP-by-empty, and an UNPARSEABLE version
-    ("unknown" — _skill_version's documented fallback) fails CLOSED via _version_tuple's
-    (-1,-1,-1): a spurious WARN against a genuinely old install is worse than a missed advisory."""
-    out: list[Result] = []
-    if _version_tuple(ctx.skill_version or "") < (0, 1, 54):
-        return out                              # pre-v0.1.54 or unknown-version skill → not applicable
-    if not ctx.log_records:
-        return out                              # no persisted dreams yet (pre-first-dream store) → not applicable
-    latest = ctx.log_records[-1]
-    _d = latest.get("dream")
-    dream: dict[str, Any] = _d if isinstance(_d, dict) else {}
-    _b = dream.get("beats")
-    beats: list[Any] = _b if isinstance(_b, list) else []
-    # `or ""` — a JSON-null stanza must read ABSENT (str(None) == "None" is truthy).
-    have_sleep = bool(str(dream.get("sleep") or "").strip())
-    have_wake = bool(str(dream.get("wake") or "").strip())
-    complete = have_sleep and have_wake and len(beats) > 0
-    _m = latest.get("marker")
-    m: dict[str, Any] = _m if isinstance(_m, dict) else {}
-    out.append(_R("dream_arc_capture", "CHK-DREAM-ARC",
-                  "latest persisted dream captured its dream arc (sleep · beats · wake)", "LOW",
-                  "PASS" if complete else "WARN",
-                  "a v0.1.54+ dream mirrors its conversational dream blocks into the record's `dream` block",
-                  (f"sleep={'present' if have_sleep else 'MISSING'} · beats={len(beats)} · "
-                   f"wake={'present' if have_wake else 'MISSING'}"
-                   + ("" if complete else
-                      " — expected on pre-v0.1.54 records; a defect on any dream run with v0.1.54+ "
-                        "(check the record's recency before promoting)")),
-                  "the persisted .consolidation-log.jsonl (latest record)",
-                  f"log[-1] @ {m.get('timestamp') or 'unstamped'}", "v0.1.54", "structural"))
-    return out
+    `dream` block; a latest record missing the capture is a fully-skipped arc. ADVISORY (LOW / WARN,
+    never FAIL): style is not procedure, and a record written by ≤ v0.1.53 legitimately lacks the key
+    (records carry no version stamp) — check the record's recency before promoting.
+    Necessary-not-sufficient: presence cannot prove the user SAW the narration (that needs the
+    transcript — a judgment-lens check); this family catches only the fully-skipped arc.
+    Version gate / empty-log SKIP / latest-read: `_latest_capture_check` (v0.1.55 refactor,
+    behavior-pinned by the v0.1.54 smoke cases)."""
+    def is_complete(dream: dict[str, Any]) -> tuple[bool, str]:
+        _b = dream.get("beats")
+        beats: list[Any] = _b if isinstance(_b, list) else []
+        # `or ""` — a JSON-null stanza must read ABSENT (str(None) == "None" is truthy).
+        have_sleep = bool(str(dream.get("sleep") or "").strip())
+        have_wake = bool(str(dream.get("wake") or "").strip())
+        complete = have_sleep and have_wake and len(beats) > 0
+        return complete, (f"sleep={'present' if have_sleep else 'MISSING'} · beats={len(beats)} · "
+                          f"wake={'present' if have_wake else 'MISSING'}"
+                          + ("" if complete else
+                             " — expected on pre-v0.1.54 records; a defect on any dream run with v0.1.54+ "
+                               "(check the record's recency before promoting)"))
+    return _latest_capture_check(
+        ctx, block_key="dream", family_name="dream_arc_capture", min_version=(0, 1, 54),
+        check_id="CHK-DREAM-ARC",
+        title="latest persisted dream captured its dream arc (sleep · beats · wake)",
+        expected="a v0.1.54+ dream mirrors its conversational dream blocks into the record's `dream` block",
+        defect_ref="v0.1.54", is_complete=is_complete)
+
+
+@family
+def distill_capture(ctx: Ctx) -> list[Result]:
+    """v0.1.55: the distill VERDICT exists on the latest persisted dream. The skill's distill step
+    must end in a one-line disposition verdict (`created X` / `proposed X — awaiting confirmation` /
+    `proposed X — declined` / `nothing: <candidate> fails <gate leg>`) mirrored into the record's
+    `distill` block — the capture that makes "ran and correctly proposed nothing" distinguishable
+    from "never ran". PASS iff the verdict is a non-empty string (a counts-only block is a skipped
+    JUDGMENT, not a capture). Carve-out: a maintenance/bootstrap pass (`maintenance.pivoted`)
+    legitimately skips the distill step (the pivot scopes the pass to pull + health) → SKIP-by-empty,
+    never a WARN. ADVISORY (LOW / WARN, never FAIL); pre-v0.1.55 records legitimately lack the key.
+    Scaffold: `_latest_capture_check`."""
+    if ctx.log_records:
+        _mt = ctx.log_records[-1].get("maintenance")
+        # coerce, don't trust truthiness: a model-authored `"pivoted": "false"` is a truthy STRING
+        # (the exact model-slip class render_dashboard's _flag coercion exists for) — it must NOT skip.
+        _pv = _mt.get("pivoted") if isinstance(_mt, dict) else None
+        if _pv is True or str(_pv).strip().lower() in ("true", "1"):
+            return []                           # maintenance/bootstrap pass — distill legitimately skipped
+    def is_complete(distill: dict[str, Any]) -> tuple[bool, str]:
+        verdict = str(distill.get("verdict") or "").strip()
+        if verdict:
+            return True, f"verdict: {verdict[:90]}"
+        return False, (("distill block present but verdict EMPTY (a skipped judgment)" if distill
+                        else "no distill block")
+                       + " — expected on pre-v0.1.55 records; a defect on any dream run with v0.1.55+ "
+                         "(check the record's recency before promoting)")
+    return _latest_capture_check(
+        ctx, block_key="distill", family_name="distill_capture", min_version=(0, 1, 55),
+        check_id="CHK-DISTILL-VERDICT",
+        title="latest persisted dream captured its distill verdict",
+        expected="a v0.1.55+ dream ends its distill step with a disposition verdict mirrored into `distill`",
+        defect_ref="v0.1.55", is_complete=is_complete)
 
 
 # ─────────────────────────────── run + report ───────────────────────────────

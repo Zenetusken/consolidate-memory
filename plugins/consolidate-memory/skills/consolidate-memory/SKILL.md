@@ -770,22 +770,36 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
 6. **Distill — surface repeated WORKFLOWS → propose a durable artifact (report-then-apply).** The dream's
    SECOND vertical: where the steps above consolidate FACTS into memory, distill detects repeated workflow /
    tool-use patterns and proposes packaging the high-confidence ones into a reusable artifact (a command or
-   skill). Run the scan (cheap; **usually proposes nothing**):
+   skill). Run the scan (cheap):
    ```bash
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py . --json
    ```
-   It returns recurring Bash-command **templates** (count≥2) over a RECENT window (~30 days — deliberately
-   BROADER than this dream's `marker..HEAD`; **say so**, so the user isn't confused why distill sees commands
-   from outside this dream's scope). The script only COUNTS — you do the judgment:
-   - **RECOGNIZE a coherent repeated workflow** from the recurring templates (e.g. a release cycle =
-     `smoke`+`mypy`+`release.sh`+`gh pr`+`git checkout -b`/`push` recurring together) — NOT a single generic
-     verb (`echo`/`grep`/`ls` are noise; ignore them).
+   It returns recurring Bash-command **templates** (`recurring`, count≥2, each with a `days` episode-spread)
+   AND **chains** (`chains` — adjacent steps inside one compound command: the `&&`-glued sub-steps of a
+   workflow), over a RECENT window (~30 days — deliberately BROADER than this dream's `marker..HEAD`;
+   **say so**, so the user isn't confused why distill sees commands from outside this dream's scope).
+   Ranking is by day-spread then count — rank is a HINT, not truth (a same-day high-count workflow can
+   still be real). The script only COUNTS — you do the judgment:
+   - **READ THE CHAINS FIRST — a chain IS a candidate workflow** (e.g. `smoke → mypy → sim` = a gate-check
+     pipeline). Then **RECOGNIZE the multi-command arcs** from co-ranked rows (e.g. a release cycle =
+     `release.sh`+`gh pr`+`git checkout -b`/`push` recurring across the same days) — chains capture the
+     intra-command glue; the cross-command arc is yours to see.
    - **GATE (all must hold):** it occurred **≥2×** AND has stable inputs AND a repeatable procedure AND a clear
      output/stopping condition AND is **NOT already covered** — inventory existing skills/commands first (the
      repo, the plugin, `~/.claude`) so you EXTEND/REUSE, never duplicate.
    - **PROPOSE the SMALLEST form** (prefer a command over a skill over a subagent; on-demand over always-loaded
-     — the destination-layer is the bloat lever). **"Create nothing" is a valid, EXPECTED outcome** — on a thin
-     project or with no coherent repeated workflow, propose nothing and move on.
+     — the destination-layer is the bloat lever). "Create nothing" is a frequent and honorable **verdict** —
+     but it is a verdict the GATE produces, never a default you reach for.
+   - **THE VERDICT (required — a distill step without it is incomplete):** end the phase with ONE plain-channel
+     line naming (a) the scan scale (`N recurring · M chains`), (b) the **top candidate you actually
+     considered** (a template or chain, by name), and (c) the disposition: `created <X>` ·
+     `proposed <X> — awaiting confirmation` · `proposed <X> — declined` · `nothing: <top candidate> fails
+     <which gate leg>` (e.g. "nothing: the smoke→mypy→sim gate-chain — already covered by release.sh").
+     A bare "nothing" with no named nearest-miss is non-compliant. **Mirror it into the cycle record's
+     `distill` block**: `sessions`/`commands` from `scanned`, `n_recurring = len(recurring)`,
+     `n_chains = len(chains)`, `proposed`/`created` by name (`created` = authored BEFORE `--persist` only —
+     confirmation usually arrives later; the record is an honest snapshot, never retro-written), and
+     `verdict` = the one-liner (≤~60 chars — the dashboard cell truncates; the HTML archive shows it full).
    - **REPORT-THEN-APPLY — present the proposal PLAIN / un-styled (never dream-voice an approval) and NEVER
      auto-write an executable artifact.** Show the artifact you would create + the evidence (the counts); the
      user confirms; only then you author it. A single confirmation authorizes **ONE specific named artifact**
@@ -796,8 +810,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      or personal values** (the `sample` may show `python3 /home/you/…`; use relative paths + `<arg>` placeholders).
    - **HONEST GAP:** an authored artifact lands in `skills/`/`commands/` (repo or `~/.claude`), OUTSIDE the
      Phase-5 `--audit` mutation trail (memory store + CLAUDE.md only) and the dashboard — so an authored artifact
-     has no audit record; **name it explicitly in the closing debrief.** Fold the distill outcome (proposed N /
-     created N / nothing) into the debrief.
+     has no audit record; **name it explicitly in the closing debrief** and fold the verdict into the debrief.
 7. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py <the --seed path> \
@@ -1008,6 +1021,9 @@ this once warned against; the dashboard remains the source of the figures.)
   "dream": {"sleep": "<the SLEEP stanza, raw `> *💤 …*` markdown>",
             "beats": ["<each phase's dream block, in order (surfacing line included)>"],
             "wake": "<the WAKE stanza — composed at this final fill, performed after the render>"},
+  "distill": {"sessions": 0, "commands": 0, "n_recurring": 0, "n_chains": 0,
+              "proposed": [], "created": [],
+              "verdict": "<one line: created X | proposed X — awaiting confirmation | proposed X — declined | nothing: <candidate> fails <gate leg>>"},
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
              "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
   "outcome": ""
