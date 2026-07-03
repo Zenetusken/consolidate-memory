@@ -5,6 +5,25 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.56] — 2026-07-03
+
+### Docs — full sync to the v0.1.54 (dream-arc) + v0.1.55 (distill) feature set
+Documentation-only, plus one cosmetic in-plugin fix; no runtime behavior change (legacy cycle records still
+render, existing installs keep working):
+- **SKILL.md** — the cycle-record schema *example* now shows the index budget as **1500** (was a stale
+  `1200` — the v0.1.45 re-ground); the `--seed` already writes the real value at runtime, so this only
+  corrects the documented example a model reads.
+- **README** — the **distill** vertical (recurring-workflow → durable artifact, report-then-apply) and the
+  **dream-arc voice** are described in Usage; the `cm` command list (`distill`/`report`/`log`) and the
+  architecture script tree (`distill_scan`/`render_html`/`render_log`) are brought current; the example
+  dashboard's index budget is corrected `1200 → 1500`.
+- **CLAUDE.md** — `distill_scan.py` + `_ui.py` (with its `CM_DREAM_ARC` dream-cue) added to the layout; the
+  versioning precedent extended through v0.1.55 (every version additive).
+- **SECURITY.md** — records that `distill_scan.py` applies the **same** secrets firewall
+  (`_looks_secret` before templating), so both transcript readers are covered.
+
+All backward-compatible ⇒ patch. 544 smoke + mypy green.
+
 ## [0.1.55] — 2026-07-02
 
 ### Fixed — distill: clean signal, chain structure, captured verdict ("does nothing" no more)
