@@ -29,7 +29,10 @@ does, what it never does, and how to report a problem.
 - **Secrets firewall at retrieval:** `extract_signals.py` drops any session turn that
   contains a credential-shaped value to a label — the verbatim secret never reaches a
   memory file (repo docs are committed; auto-memory persists). It records a *pointer*,
-  never a value.
+  never a value. `distill_scan.py` (the workflow-recurrence reader) is the other
+  transcript consumer and applies the **same** firewall — it screens every Bash command
+  through `extract_signals._looks_secret` *before* templating, so a credential-shaped
+  command is dropped and never surfaces as a "recurring workflow" candidate.
 - **Bounded input:** transcript turns are length-capped (`_PROBE_CAP` = 4000 chars) before regex
   classification (defense-in-depth); the regexes have no catastrophic backtracking — each
   alphanumeric run and its required separator are disjoint, so there's no ambiguity to blow up —
