@@ -190,7 +190,7 @@ the dense technical reporting (never replacing it). You can also drive the piece
 ```bash
 ./cm status            # Phase-0 context: stores, git range, marker, token budget + a no-nag dream-timing nudge
 ./cm extract           # curated session signal (human turns + error-gotchas, secrets omitted)
-./cm distill           # recurring Bash-command workflows (templates + &&-chains) — distill's raw signal
+./cm distill           # recurring Bash-command workflows (templates + compound-command chains) — distill's raw signal
 ./cm pull .            # replicate relevant global facts into this project
 ./cm gc . --apply      # reclaim orphaned mirrors (canonical deleted) — report-only without --apply
 ./cm tokens .          # per-node + total token consumption across the network (≈ chars/4)
@@ -201,7 +201,8 @@ the dense technical reporting (never replacing it). You can also drive the piece
 ```
 
 **A second vertical — distill.** Beyond consolidating *facts*, a dream also watches for repeated
-*workflows*: `distill_scan.py` surfaces recurring command templates and their `&&`-chains (with a
+*workflows*: `distill_scan.py` surfaces recurring command templates and their compound-command
+chains (`&&`/newline/`;`-glued sub-steps, with a
 day-spread so a genuine multi-day workflow outranks a one-hour retry loop), and the pass proposes
 packaging a high-confidence one into a durable command/skill — **report-then-apply, never
 auto-written**. "Create nothing" is a frequent, honorable verdict; every distill step ends with a

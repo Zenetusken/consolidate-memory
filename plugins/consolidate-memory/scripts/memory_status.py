@@ -271,13 +271,24 @@ class Distill(TypedDict, total=False):
     # distinguishable from "never ran"). The `verdict` is the terminal carrier and ENCODES disposition:
     # `created <X>` · `proposed <X> — awaiting confirmation` · `proposed <X> — declined` ·
     # `nothing: <top candidate> fails <gate leg>`. ONE sentence — both dashboards render it in full.
-    sessions: int            # scan scale, from the scan JSON's scanned.sessions
-    commands: int            # scanned.commands
+    # v0.1.58: the COUNTS are script-ONLY, injected by `distill_scan.py --into` (the first production
+    # record hand-mirrored an impossible n_recurring=47 against a hard cap of 40); only the judgment
+    # fields (proposed/created/verdict) are model-authored (by flag, preferred, or by hand).
+    sessions: int            # scan scale, from the scan JSON's scanned.sessions (script-injected)
+    commands: int            # scanned.commands (script-injected)
     n_recurring: int         # = len(scan.recurring) — n_ prefix: the scan JSON's `recurring` is a LIST
     n_chains: int            # = len(scan.chains)
+    window: str              # v0.1.58: the scan window (`--since` ISO or "(all)") — a record can tell scopes apart
+    secrets_omitted: int     # v0.1.58: firewall-flagged commands (samples suppressed) — capture parity with the scan
     proposed: list[str]      # artifacts proposed BY NAME (confirmation usually arrives post-persist)
     created: list[str]       # authored BEFORE --persist only (the rare interactive case)
     verdict: str             # the one-sentence disposition (see above) — REQUIRED for a compliant distill
+
+
+# v0.1.58: the distill scanner's output caps, MIRRORED (importing distill_scan here would cycle —
+# distill_scan imports FROM this module). A smoke pin asserts equality with distill_scan.MAX_RECUR_OUT /
+# MAX_CHAIN_OUT, so the mirror cannot drift. Used by validate_cycle_record's impossible-count backstop.
+_DISTILL_CAPS = (40, 20)
 
 
 class CycleRecord(TypedDict, total=False):
@@ -1586,6 +1597,15 @@ def validate_cycle_record(record: object) -> list[str]:
         for lk in ("proposed", "created"):
             if lk in distill and not isinstance(distill[lk], list):
                 warnings.append(f"distill.{lk} is not a list")
+        # v0.1.58 numeric backstop: counts above the scanner caps are IMPOSSIBLE from a capped scan —
+        # the measured hand-mirror failure (a persisted n_recurring=47 vs MAX_RECUR_OUT=40). `--into`
+        # is the cure; this warn catches a hand-fill that dodged it. Coercion-guarded (warn-only gate).
+        for ck, cap in (("n_recurring", _DISTILL_CAPS[0]), ("n_chains", _DISTILL_CAPS[1])):
+            try:
+                if ck in distill and int(distill[ck]) > cap:
+                    warnings.append(f"distill.{ck} exceeds the scanner cap ({cap}) — impossible from a capped scan")
+            except (TypeError, ValueError):
+                pass  # a non-numeric count is a shape problem the render coercion boundary absorbs
 
     # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
     # already warned via the top-level tuple above ("health is not a dict"); here we just

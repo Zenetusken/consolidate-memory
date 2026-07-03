@@ -27,7 +27,8 @@ cm — consolidate-memory
 
   cm status [DIR]      Phase-0 context (stores, git range, marker)
   cm extract [--json]  curated session signal (human turns + error gotchas)
-  cm distill [DIR]     recurring Bash-command workflow templates (the distill phase's scan; --json)
+  cm distill [DIR]     recurring Bash-command workflow templates + chains (the distill phase's scan;
+                       [--since ISO] [--json]; --into SEED injects the counts into a cycle record)
   cm sync --list DIR   show which global facts apply to a project
   cm pull [DIR]        replicate relevant global facts into a project (default: .)
   cm gc [DIR] [--apply] reclaim orphaned mirrors (report-only without --apply)

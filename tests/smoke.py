@@ -1463,9 +1463,9 @@ with _tf43.TemporaryDirectory() as _td51:
           not any(r["template"].startswith("cd") for r in _r51["recurring"]) and "ls -la" not in _tpls51)
     check("v0.1.55: MIN_RECUR — a genuine (non-stoplisted) one-off stays below the count≥2 bar",
           "oneoff-tool run" not in _tpls51)
-    check("v0.1.55: scan --json contract shape (+chains, +days — the exact-set pins updated with the keys)",
+    check("v0.1.55/58: scan --json contract shape (+chains, +days; +secrets_omitted v0.1.58)",
           set(_r51) == {"window", "scanned", "recurring", "chains"}
-          and set(_r51["scanned"]) == {"sessions", "commands", "days"}
+          and set(_r51["scanned"]) == {"sessions", "commands", "days", "secrets_omitted"}
           and all(set(r) == {"template", "count", "days", "sample"} for r in _r51["recurring"]))
 with _tf43.TemporaryDirectory() as _td51b:   # "create nothing" — distinct NON-stoplisted one-offs, so the
     # empty result exercises the MIN_RECUR count<2 filter itself (v0.1.55: the old `echo …` probes were
@@ -1961,10 +1961,180 @@ check("v0.1.55 beta family: empty log → SKIP-by-empty", _bc54.distill_capture(
 # (8) SKILL pins: the verdict contract anchors present; the deleted null-priming hedges ABSENT.
 _sk55 = _skill_md.read_text(encoding="utf-8")
 check("v0.1.55 SKILL pin: verdict contract anchors present",
-      "THE VERDICT" in _sk55 and "fails" in _sk55 and "READ THE CHAINS FIRST" in _sk55
-      and "n_recurring = len(recurring)" in _sk55)
+      "THE VERDICT" in _sk55 and "fails" in _sk55 and "READ THE CHAINS FIRST" in _sk55)
 check("v0.1.55 SKILL pin: the null-priming hedges are DELETED",
       "usually proposes nothing" not in _sk55 and "EXPECTED outcome" not in _sk55)
+check("v0.1.58 SKILL pin: the hand-mirror count language is DELETED (counts are script-only via --into)",
+      "n_recurring = len(" not in _sk55 and "--into <the --seed path>" in _sk55)
+check("v0.1.58 SKILL pin: gate leg 6 (previously DECLINED) present",
+      "previously DECLINED" in _sk55 and ".consolidation-log.jsonl" in _sk55)
+
+# ── v0.1.58: distill hardening — closed POSIX noise classes, structural interpreter rule,
+# firewall-at-emission, --into deterministic capture, per-line window, CLI honesty ───────────────
+# (1) F1 — each junk class measured LIVE in the 2026-07-03 audit's top-40, one pin per class.
+check("v0.1.58 F1: test-guard segment drops; the real command survives",
+      ds._scan_cmd('[ -d "$X" ] && real-tool run') == (["real-tool run"], []))
+check("v0.1.58 F1: 3-seg bridge ACROSS the dropped guard (non-vacuous adjacency — the 2-seg case is trivial)",
+      ds._scan_cmd("[ -f x ] && alpha-tool run && beta-tool run")
+      == (["alpha-tool run", "beta-tool run"], [("alpha-tool run", "beta-tool run")]))
+check("v0.1.58 F1: brace-group opener carries, closer drops (no '{ cmd' fusion, no '}' row)",
+      ds._scan_cmd("{ real-tool run; } 2>&1 | tee log") == (["real-tool run"], []))
+check("v0.1.58 F1: control heads drop WITH args (exit 1 / continue / break / return 0)",
+      ds._scan_cmd("x-tool run && exit 1")[0] == ["x-tool run"]
+      and ds._scan_cmd("y-tool run && continue")[0] == ["y-tool run"]
+      and ds._scan_cmd("z-tool run && break")[0] == ["z-tool run"]
+      and ds._scan_cmd("w-tool run && return 0")[0] == ["w-tool run"])
+check("v0.1.58 F1: a bare '}' line drops (the ×16 live row)",
+      ds._scan_cmd("if x; then\n  real-tool run\nfi\n}") == (["real-tool run"], []))
+check("v0.1.58 F1: '!' negation carries the command (then the stoplist applies)",
+      ds._scan_cmd("! grep -q pat f && add-thing run") == (["add-thing run"], [])
+      and ds._scan_cmd("! deploy-check run")[0] == ["deploy-check run"])
+check("v0.1.58 F1: assignment keywords drop whole (no value retention, no bare-name rows)",
+      ds._scan_cmd("export CM_FLAG=on") == ([], []) and ds._scan_cmd("export PATH") == ([], [])
+      and ds._scan_cmd("readonly FOO") == ([], []) and ds._scan_cmd("declare -A m") == ([], []))
+check("v0.1.58 F1: 'export … && cmd' keeps only the carried command",
+      ds._scan_cmd("export PATH=$PATH:/x && real-tool run") == (["real-tool run"], []))
+check("v0.1.58 F1: env-manipulation heads drop (set -euo pipefail)",
+      ds._scan_cmd("set -euo pipefail\nreal-tool run") == (["real-tool run"], []))
+check("v0.1.58 F1: eval-of-substitution strips to nothing; exec carries a real command",
+      ds._scan_cmd('eval "$(ssh-agent -s)"') == ([], [])
+      and ds._scan_cmd("exec gunicorn-run app")[0] == ["gunicorn-run app"])
+check("v0.1.58 F1: exec fd-plumbing drops (2>&1 / 3< file — guard + numeric screen)",
+      ds._scan_cmd("exec 2>&1") == ([], []) and ds._scan_cmd("exec 3< file") == ([], []))
+# (2) F2 — the structural interpreter rule (the v0.1.55 literal stoplist regenerated the false class:
+# `.venv/bin/python -` ×204 measured live). Segment-token placement: the abs-path head case is the proof.
+check("v0.1.58 F2: any-path/any-runner inline-body interpreters drop",
+      ds._scan_cmd(".venv/bin/python - <<'PY'\nprint(1)\nPY") == ([], [])
+      and ds._scan_cmd('.venv/bin/python -c "import x"') == ([], [])
+      and ds._scan_cmd('python3.12 -c "import x"') == ([], [])
+      and ds._scan_cmd("uv run python - <<'PY'\nprint(1)\nPY") == ([], [])
+      and ds._scan_cmd("/usr/bin/python3 -c 'x'") == ([], [])
+      and ds._scan_cmd("/usr/bin/env python3 -") == ([], []))
+check("v0.1.58 F2: survivors keep their class (real invocations, and the -F - false-positive guard)",
+      ds._scan_cmd("python3 tests/smoke.py")[0] == ["python3 tests/smoke.py"]
+      and ds._scan_cmd(".venv/bin/python -m pytest -m unit")[0] == [".venv/bin/python -m pytest -m unit"]
+      and ds._scan_cmd("git commit -q -F -")[0] == ["git commit -q -F -"])
+# (3) F3 — firewall-at-emission, end-to-end: flagged commands COUNT, their samples are labels, the
+# transparency counter includes ALL-NOISE flagged commands (the increment sits BEFORE the all-noise
+# skip), and suppression keys off the _norm flag (the zero-width divergence — a raw re-probe misses it).
+_zw58 = "A1" * 20
+_zwsplit58 = _zw58[:20] + "​" + _zw58[20:]   # split: invisible to a raw probe, caught by _norm
+with _tf43.TemporaryDirectory() as _td58a:
+    _h58 = Path(_td58a); _p58 = _h58 / "proj"; _p58.mkdir()
+    _pr58 = _h58 / ".claude" / "projects" / es.slug_for(_p58); _pr58.mkdir(parents=True)
+    _l58 = [
+        _bl55("cd /x\ndeploy-tool run --key=AKIAIOSFODNN7EXAMPLE", "2026-07-01T10:00:00Z"),  # flagged FIRST
+        _bl55("cd /x\ndeploy-tool run --key=redacted", "2026-07-01T11:00:00Z"),              # clean repeat
+        _bl55(f"stealth-tool run {_zwsplit58}", "2026-07-01T12:00:00Z"),                     # zw-split, flagged FIRST
+        _bl55("stealth-tool run", "2026-07-01T13:00:00Z"),                                   # clean repeat
+        _bl55("export AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE", "2026-07-01T14:00:00Z"),  # flagged + ALL-NOISE
+    ]
+    (_pr58 / "s.jsonl").write_text("".join(_l58))
+    _old58 = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_td58a)
+    try:
+        _r58 = ds.scan(_p58, "")
+    finally:
+        _os43.environ["HOME"] = _old58 if _old58 is not None else ""
+    _rows58 = {r["template"]: r for r in _r58["recurring"]}
+    check("v0.1.58 F3: flagged commands COUNT into their class (deploy ×2, stealth ×2)",
+          _rows58.get("deploy-tool run --key", {}).get("count") == 2
+          and _rows58.get("stealth-tool run", {}).get("count") == 2)
+    check("v0.1.58 F3: a flagged command's new template gets the omission LABEL as its sample (both arms)",
+          _rows58["deploy-tool run --key"]["sample"] == ds._OMIT_SAMPLE
+          and _rows58["stealth-tool run"]["sample"] == ds._OMIT_SAMPLE)
+    check("v0.1.58 F3: secrets_omitted counts ALL flagged incl. the all-noise export; commands includes them",
+          _r58["scanned"]["secrets_omitted"] == 3 and _r58["scanned"]["commands"] == 5)
+    _dump58 = _json43.dumps(_r58)
+    check("v0.1.58 F3: no raw secret anywhere in the JSON (vendor key, zw blob, zw char)",
+          "AKIA" not in _dump58 and _zw58 not in _dump58 and "​" not in _dump58)
+check("v0.1.58 F3: the emission choke-point screens a secret-shaped template (rows AND chain endpoints)",
+      ds._seg_template(f"deploy-tool {_zw58}") is None)
+# (4) F4 — --into deterministic capture: sub-key merge, script-truth counts, judgment preserved/replaced.
+_scan58 = {"window": "W58", "scanned": {"sessions": 2, "commands": 9, "days": 3, "secrets_omitted": 1},
+           "recurring": [{"template": "t", "count": 2, "days": 1, "sample": ""}], "chains": []}
+with _tf43.TemporaryDirectory() as _td58b:
+    _seed58 = Path(_td58b) / "cycle.json"
+    _seed58.write_text(_json43.dumps({"project": "p", "session": "s",
+                                      "distill": {"verdict": "nothing: x fails leg", "n_recurring": 47}}))
+    check("v0.1.58 --into: returns True on a well-formed seed", ds.inject_into(str(_seed58), _scan58, "", [], []))
+    _aft58 = _json43.loads(_seed58.read_text())
+    check("v0.1.58 --into: counts are script-truth (the impossible 47 → 1), verdict PRESERVED, other keys untouched",
+          _aft58["distill"]["n_recurring"] == 1 and _aft58["distill"]["verdict"] == "nothing: x fails leg"
+          and _aft58["distill"]["window"] == "W58" and _aft58["distill"]["secrets_omitted"] == 1
+          and _aft58["project"] == "p" and _aft58["session"] == "s")
+    ds.inject_into(str(_seed58), _scan58, "proposed X — declined", ["X"], [])
+    ds.inject_into(str(_seed58), _scan58, "proposed X — declined", ["X"], [])   # idempotence: run twice
+    _aft58b = _json43.loads(_seed58.read_text())
+    check("v0.1.58 --into: provided flags REPLACE their keys (list = whole list); re-run is idempotent",
+          _aft58b["distill"]["verdict"] == "proposed X — declined" and _aft58b["distill"]["proposed"] == ["X"])
+    check("v0.1.58 --into: missing seed → False (stderr, never a crash)",
+          ds.inject_into(str(Path(_td58b) / "nope.json"), _scan58, "", [], []) is False)
+    (Path(_td58b) / "arr.json").write_text("[]")
+    check("v0.1.58 --into: non-object seed root → False",
+          ds.inject_into(str(Path(_td58b) / "arr.json"), _scan58, "", [], []) is False)
+# (5) validator backstop + the caps cross-module pin (no runtime import cycle; smoke pins the mirror).
+check("v0.1.58 validate: warns on an impossible count (the ×47 production mis-fill class)",
+      any("exceeds the scanner cap" in w for w in ms.validate_cycle_record({"distill": {"n_recurring": 47}}))
+      and any("exceeds the scanner cap" in w for w in ms.validate_cycle_record({"distill": {"n_chains": 21}})))
+check("v0.1.58 validate: silent AT the caps and on non-numeric junk",
+      not any("exceeds" in w for w in ms.validate_cycle_record({"distill": {"n_recurring": 40, "n_chains": 20}}))
+      and not any("exceeds" in w for w in ms.validate_cycle_record({"distill": {"n_recurring": "junk"}})))
+check("v0.1.58 caps cross-module pin (the mirror cannot drift)",
+      ms._DISTILL_CAPS == (ds.MAX_RECUR_OUT, ds.MAX_CHAIN_OUT))
+# (6) F7 — the per-line window: a fresh-mtime file's OLD-timestamp line is excluded from counts AND days.
+with _tf43.TemporaryDirectory() as _td58c:
+    _h58c = Path(_td58c); _p58c = _h58c / "proj"; _p58c.mkdir()
+    _pr58c = _h58c / ".claude" / "projects" / es.slug_for(_p58c); _pr58c.mkdir(parents=True)
+    (_pr58c / "s.jsonl").write_text(
+        _bl55("ancient-tool run", "2026-01-01T10:00:00Z") + _bl55("fresh-tool run", "2026-07-01T10:00:00Z")
+        + _bl55("fresh-tool run", "2026-07-02T10:00:00Z"))
+    _old58c = _os43.environ.get("HOME"); _os43.environ["HOME"] = str(_td58c)
+    try:
+        _r58c = ds.scan(_p58c, "2026-06-01T00:00:00+00:00")
+    finally:
+        _os43.environ["HOME"] = _old58c if _old58c is not None else ""
+    check("v0.1.58 F7: out-of-window lines excluded from commands, days, and the tally",
+          _r58c["scanned"]["commands"] == 2 and _r58c["scanned"]["days"] == 2
+          and [r["template"] for r in _r58c["recurring"]] == ["fresh-tool run"])
+# (7) F8 — CLI honesty (subprocess, hermetic HOME): --since validation, dir warning, flag whitelist,
+# --json --into stdout purity (injection summary on stderr).
+with _tf43.TemporaryDirectory() as _td58d:
+    _home58 = str(Path(_td58d) / "home"); Path(_home58).mkdir()
+    _proj58 = str(Path(_td58d) / "proj"); Path(_proj58).mkdir()
+
+    def _run58(*args: str) -> "tuple[str, str, int]":
+        env = {**_os53.environ, "HOME": _home58}
+        env.pop("CM_DREAM_ARC", None)
+        p = _sp53.run([sys.executable, str(_scripts54 / "distill_scan.py"), *args],
+                      capture_output=True, text=True, timeout=60, env=env)
+        return p.stdout, p.stderr, p.returncode
+
+    _so58, _se58, _rc58 = _run58(_proj58, "--since", "banana")
+    check("v0.1.58 F8: garbage --since → exit 2 + stderr (never a silent drop-everything compare)",
+          _rc58 == 2 and "--since expects an ISO timestamp" in _se58)
+    _so58, _se58, _rc58 = _run58(str(Path(_td58d) / "no-such-dir"), "--json")
+    check("v0.1.58 F8: nonexistent project dir → stderr warning, exit 0, zero counts (visible, recall-safe)",
+          _rc58 == 0 and "does not exist" in _se58 and _json43.loads(_so58)["scanned"]["sessions"] == 0)
+    _so58, _se58, _rc58 = _run58(_proj58, "--sicne", "2026-06-01", "--json")
+    check("v0.1.58 F8: an unknown flag is WARNED, and its value is not silently swallowed into a wrong scan",
+          _rc58 == 0 and "ignoring unknown flag: --sicne" in _se58)
+    _so58, _se58, _rc58 = _run58(_proj58, "--ascii", "--json")
+    check("v0.1.58 F8: the visual flags do NOT misfire the unknown-flag warning",
+          _rc58 == 0 and "ignoring unknown flag" not in _se58)
+    _seed58d = Path(_td58d) / "seed.json"
+    _seed58d.write_text(_json43.dumps({"project": "p"}))
+    _so58, _se58, _rc58 = _run58(_proj58, "--json", "--into", str(_seed58d), "--verdict", "nothing: n/a — empty corpus")
+    check("v0.1.58 F8: --json --into keeps stdout pure (scan JSON) with the injection summary on stderr",
+          _rc58 == 0 and isinstance(_json43.loads(_so58), dict) and "distill → injected" in _se58
+          and _json43.loads(_seed58d.read_text())["distill"]["verdict"] == "nothing: n/a — empty corpus")
+# (8) docs pins — the stale docstring claims are gone; the harness-map distill section exists.
+check("v0.1.58 docstring pins: residuals re-stated honestly (no 'low-frequency' ||; nested-only $(); glue wording)",
+      "low-frequency" not in (ds.__doc__ or "") and "inside a NESTED" in (ds.__doc__ or "")
+      and "`&&`/newline/`;`-glued" in (ds.__doc__ or ""))
+_hmap58 = (ROOT / "plugins" / "consolidate-memory" / "skills" / "consolidate-memory" / "references"
+           / "harness-map.md").read_text(encoding="utf-8")
+check("v0.1.58 harness-map pin: the distill section exists (was ZERO mentions)",
+      "## Distill (the second vertical" in _hmap58 and "script-only" in _hmap58)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

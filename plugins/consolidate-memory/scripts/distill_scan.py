@@ -1,31 +1,53 @@
 #!/usr/bin/env python3
 """distill_scan.py — within-project WORKFLOW-RECURRENCE scan for the dream's DISTILL phase (v0.1.51;
-extraction rebuilt v0.1.55).
+extraction rebuilt v0.1.55; hardened + deterministic capture v0.1.58).
 
 Surfaces repeated assistant **Bash-command templates** across a project's recent transcripts, so the distill
 phase (SKILL.md) can RECOGNIZE repeated workflows and PROPOSE a durable artifact (report-then-apply; the model
 judges + proposes, this script ONLY counts — no proposal, no authoring here). A LIVE within-project scan with
 NO persisted cross-dream tally (that is the deferred D1 recurrence family).
 
-The `--json` CONTRACT (v0.1.55): `{"window": <iso|"(all)">, "scanned": {sessions, commands, days},
+The `--json` CONTRACT (v0.1.55; +`scanned.secrets_omitted` v0.1.58): `{"window": <iso|"(all)">,
+"scanned": {sessions, commands, days, secrets_omitted},
 "recurring": [{template, count, days, sample}, ...], "chains": [{templates: [a, b], count, days}, ...]}`.
 `recurring` = templates with `count >= MIN_RECUR`, ranked by (days, count) desc, capped at `MAX_RECUR_OUT`;
-`chains` = adjacent kept-segment bigrams WITHIN one compound command (the `&&`-glued sub-steps of a workflow
-— NOT the multi-Bash-call arc, which the model recognizes from co-ranked rows), same threshold/ranking,
-capped at `MAX_CHAIN_OUT`. `days` = distinct active days (the EPISODE dimension — ×27 across 9 days is a
-workflow; ×27 in one hour is a loop; rank is a hint, not a filter). `template` is the normalized command
-CLASS; `sample` is ONE firewall-screened raw command (DISPLAY only — the model genericizes any absolute
+`chains` = adjacent kept-segment bigrams WITHIN one compound command (the `&&`/newline/`;`-glued sub-steps
+of a workflow — NOT the multi-Bash-call arc, which the model recognizes from co-ranked rows), same
+threshold/ranking, capped at `MAX_CHAIN_OUT`. `days` = distinct active days (the EPISODE dimension — ×27
+across 9 days is a workflow; ×27 in one hour is a loop; rank is a hint, not a filter). `template` is the
+normalized command CLASS; `sample` is ONE raw command (DISPLAY only — the model genericizes any absolute
 path / machine value before ever authoring an artifact; see SKILL.md distill phase).
+
+FIREWALL (v0.1.58 — at the EMISSION point; the audited v0.1.55 behavior dropped the whole command, which
+silently un-counted ~5% of the measured corpus as false positives with zero transparency): a command-level
+`_looks_secret(_norm(cmd))` hit now counts into `scanned.secrets_omitted` and STILL counts its templates —
+but its raw text can never be a `sample` (a flagged command's new templates get an omission LABEL), and
+`_seg_template` screens every EMITTED template through `_looks_secret` (the choke-point — covers rows AND
+chain endpoints). Suppression keys off the ONE `_norm`-based command-level flag, never a re-probe of the
+raw sample (a zero-width-split secret is caught by `_norm` but invisible to a raw re-probe).
+
+`--into <seed>` (v0.1.58) injects the script-truth counts (`sessions/commands/n_recurring/n_chains/window/
+secrets_omitted`) into the cycle-record seed's `distill` block via a sub-key MERGE — model-authored
+`proposed`/`created`/`verdict` are preserved unless the matching `--verdict`/`--proposed`/`--created`
+flags replace them (a provided list-flag replaces the WHOLE list — idempotent). Counts are script-ONLY:
+the measured hand-mirror failure (a persisted `n_recurring: 47` against a hard cap of 40) is why.
 
 Extraction (v0.1.55, order LOAD-BEARING): join `\\`-continuations → strip heredoc BODIES (FIRST — quote-strip
 would delete a quoted tag: `<<'PY'` → `<<`, the proven spec-review B1 defect) → strip quoted strings →
-segment on newline/&&/; → per-segment template with keyword handling (PREFIX-STRIP `do`/`then`, which CARRY
-a command; DROP-WHOLE `done`/`fi`/… + `for`/`if`/… condition heads) + a generic/investigation-verb stoplist.
-A template counts ONCE per command. Known residuals (accepted, low-frequency): `||` is not a separator;
-`;`/`&&` inside `$(...)` mis-segments.
+segment on newline/&&/; → per-segment template with keyword handling (PREFIX-STRIP keywords that CARRY a
+command: `do`/`then`/`else`/`{`/`!`/`eval`/`exec`; DROP-WHOLE the closed POSIX classes that cannot:
+`done`/`fi`/…, control (`exit`/`break`/`continue`/`return`/`:`), test guards (`[`/`[[`/`test`),
+env-manipulation (`set`/`trap`/…), assignment keywords (`export`/`declare`/… — they never carry a command),
+and `for`/`if`/… condition heads) + a generic/investigation-verb stoplist + a structural interpreter rule
+(any-path/any-runner `… python -c|-e|-` inline bodies are one-off scripts, not recurrence). A template
+counts ONCE per command. Known residuals (accepted): `||` is not a separator — present in ~16% of measured
+commands but low-HARM (only fallback arms are lost); a single `&` does not separate (`a & b` fuses); a
+stoplisted-head PIPELINE hides its downstream tool (`cat x | tool`); `;`/`&&` inside a NESTED `$( $( ) )`
+mis-segments (the flat case is removed); the FIRST one-line case arm is lost; a bridge-chain can span a
+dropped control terminator (`a && break && b` → a→b, contrived-rare).
 
-Reuses `extract_signals`' firewall/window/norm + `memory_status`' slug rule — does NOT re-implement them
-(the reimplementation-pin discipline).
+Reuses `extract_signals`' firewall/window/norm + `memory_status`' slug rule + `_write_private` — does NOT
+re-implement them (the reimplementation-pin discipline).
 """
 from __future__ import annotations
 
@@ -37,7 +59,7 @@ from pathlib import Path
 
 import _ui  # sibling: shared visual vocabulary
 from extract_signals import _PROBE_CAP, _looks_secret, _norm, _window_transcripts
-from memory_status import slug_for  # single source of the CC slug rule
+from memory_status import _write_private, slug_for  # slug rule + 0o600-atomic seed write (house single-source)
 
 MIN_RECUR = 2            # MiMo's bar: a workflow is a candidate only when it actually recurred (>=2x)
 MAX_RECUR_OUT = 40       # cap the surfaced templates — the model judges; don't flood the phase
@@ -67,9 +89,35 @@ _BRANCHY = re.compile(r"(?:feat|fix|chore|docs|refactor|release|hotfix)/")
 _HEREDOC = re.compile(r"<<(?!<)-?\s*(['\"]?)([A-Za-z_][\w-]*)\1([^\n]*)\n(?:.*?\n)?\s*\2\s*(?:\n|$)", re.S)
 # Keyword handling (v0.1.55, spec-review M2 — proven): a keyword-led segment that CARRIES a command must
 # keep it. `else` belongs here too (`if …; then A; else B; fi` — round-2 CONFIRMED finding).
-_KW_PREFIX = {"do", "then", "else"}                          # strip the keyword, re-template the remainder
-_KW_DROP = {"done", "fi", "esac"}                            # keyword-only noise → drop whole
-_KW_HEAD_DROP = {"for", "while", "if", "case", "elif", "until"}  # condition/iterator heads, not commands → drop whole
+# v0.1.58: the REMAINING closed POSIX classes join (the audit's live top-40 carried `[ = ]`/`}`/`continue`/
+# `exit 1` junk rows + an `exit 1 → }` junk chain — enumerate-by-idiom rots; POSIX syntax closes):
+#   PREFIX-STRIP gains `{` (brace-group opener carries: `{ real-tool run`), `!` (the negated command still
+#   executes; the stoplist then applies), `eval`/`exec` (they exec their argument — with an fd-plumbing
+#   guard: a post-strip remainder opening with a digit or `<` is `exec 2>&1`/`exec 3< f`, not a command).
+#   DROP-WHOLE gains `}` + control (`exit`/`break`/`continue`/`return`/`:` — args irrelevant: `exit 1` is
+#   control flow, never a workflow row), env-manipulation (`set`/`shopt`/`trap`/`unset`/`umask`/`ulimit`/
+#   `shift`), and the assignment KEYWORDS (`export`/`local`/`declare`/`typeset`/`readonly` — POSIX: they
+#   take names/assignments, NEVER a command; drop-whole both kills the measured value-retention
+#   (`export CM_FLAG=on` templated WITH its value) and avoids the junk a prefix-strip would open
+#   (`export PATH` → a bare `PATH` row — proven in spec review).
+#   HEAD-DROP gains the test guards `[`/`[[`/`test` (a condition, not a command; `[ -d x ] && cmd` keeps
+#   `cmd`, and the bridge-chain spans the dropped guard — pinned).
+_KW_PREFIX = {"do", "then", "else", "{", "!", "eval", "exec"}    # strip the keyword, re-template the remainder
+_FD_GUARDED = {"eval", "exec"}                               # post-strip digit/`<` remainder = fd plumbing → drop
+_KW_DROP = {"done", "fi", "esac", "}",
+            "exit", "break", "continue", "return", ":",
+            "set", "shopt", "trap", "unset", "umask", "ulimit", "shift",
+            "export", "local", "declare", "typeset", "readonly"}  # keyword/control/assignment noise → drop whole
+_KW_HEAD_DROP = {"for", "while", "if", "case", "elif", "until",
+                 "[", "[[", "test"}                          # condition/iterator/guard heads, not commands → drop whole
+# v0.1.58: the v0.1.55 interpreter stoplist pinned exact SPELLINGS (`python3 -`), so the false class
+# regenerated under any other spelling — measured `.venv/bin/python -` ×204 + `-c` ×95 on the job corpus.
+# The structural rule: an inline-body carrier (`… <interp> -|-c|-e`) or a BARE interpreter, matched by the
+# token's BASENAME so any path (`/usr/bin/python3`, `.venv/bin/python`) or runner (`uv run python -`,
+# `docker run img python -c` — intentionally the same one-off class) is caught. Runs on the POST-TRUNCATION
+# SEGMENT tokens (BEFORE the 5-token transform drops abs-path heads — on finalized template tokens
+# `/usr/bin/python3 -c` has already lost its head and would leak a bare `-c` row; proven in spec review).
+_INTERP = re.compile(r"^(?:python\d*(?:\.\d+)?|pypy\d?|node|deno|bun|ruby|perl|php|bash|sh|zsh|dash|ksh)$")
 # Stoplist — gates what can BE a row or a chain endpoint: generic verbs + investigation verbs + the
 # inline-interpreter false classes (quote-strip collapses their bodies to one identical head, so each
 # invocation is a distinct one-off script masquerading as recurrence). BARE interpreters included
@@ -112,20 +160,24 @@ def _day_of(ts: str) -> str:
 
 def _seg_template(seg: str) -> str | None:
     """ONE (already quote-stripped) segment → its recurring CLASS template, or None if it is noise:
-    pure cd/bare-assignment, a keyword-only/condition shell keyword, or a stoplisted head. Prefixes that
-    CARRY a command are stripped and the remainder templated: `do`/`then`/`else` keywords (M2 + round-2),
-    case-arm heads (`start) run-server` → `run-server`), and env assignments (`CM_DREAM_ARC=1 python3 …`
-    → `python3 …`). The cd/assignment noise gate runs AFTER the prefix strips (round-2: `do cd $d` must
-    drop, not leak a `cd` row)."""
+    pure cd/bare-assignment, a keyword-only/condition/control/guard/assignment-keyword segment, a
+    stoplisted head, a structural interpreter inline-body, a purely-numeric residue, or a secret-shaped
+    emission. Prefixes that CARRY a command are stripped and the remainder templated: `do`/`then`/`else`/
+    `{`/`!`/`eval`/`exec` keywords (M2 + round-2 + v0.1.58), case-arm heads (`start) run-server` →
+    `run-server`), and env assignments (`CM_DREAM_ARC=1 python3 …` → `python3 …`). The cd/assignment
+    noise gate runs AFTER the prefix strips (round-2: `do cd $d` must drop, not leak a `cd` row)."""
     seg = seg.strip().strip("()").strip()            # subshell fragments: `( cmd && x )` splits to
     #                                                  `( cmd` / `x )` → shed the orphan grouping parens
     if not seg:
         return None
     parts = seg.split(None, 1)
-    while parts and parts[0] in _KW_PREFIX:          # `do mypy $f` / `else rollback.sh` → keep the command
+    while parts and parts[0] in _KW_PREFIX:          # `do mypy $f` / `else rollback.sh` / `{ real-tool run`
+        kw = parts[0]                                # → keep the carried command (stackable: `! { cmd`)
         seg = parts[1].strip() if len(parts) > 1 else ""
         if not seg:
             return None
+        if kw in _FD_GUARDED and (seg[0] == "<" or seg[0].isdigit()):
+            return None                              # `exec 2>&1` / `exec 3< file` — fd plumbing, not a command
         parts = seg.split(None, 1)
     # case-arm label `pattern)` — `"(" not in` excludes a function def `name()` / a `$(...)` head
     # (round-3: `deploy() { … }` was mis-stripped to a junk `{ …` row). A single-line arm keeps its
@@ -146,6 +198,15 @@ def _seg_template(seg: str) -> str | None:
     #                                                  truncation only — never amputates a later segment)
     seg = _REDIR.split(seg)[0]                       # truncate at the first redirect (keep head)
     seg = seg.split("|")[0].split(">")[0].strip()    # first pipe stage / any residual redirect
+    # v0.1.58: the structural interpreter rule — on the POST-TRUNCATION segment tokens, BEFORE the
+    # transform loop below drops abs-path heads (see _INTERP rationale). Bare interpreter (any path) or
+    # an inline-body carrier tail (`… <interp> -|-c|-e`). `git commit -q -F -` survives (toks[-2] `-F`).
+    toks = seg.split()
+    if toks:
+        if len(toks) == 1 and _INTERP.match(toks[0].rsplit("/", 1)[-1]):
+            return None
+        if toks[-1] in ("-", "-c", "-e") and len(toks) >= 2 and _INTERP.match(toks[-2].rsplit("/", 1)[-1]):
+            return None
     out: list[str] = []
     for tok in seg.split():
         if tok == "&":
@@ -163,6 +224,10 @@ def _seg_template(seg: str) -> str | None:
     tpl = " ".join(out).strip()
     if not tpl or tpl in _STOP_TPLS or tpl.split()[0] in _STOP_HEADS:
         return None
+    if re.fullmatch(r"\d+", tpl):                    # v0.1.58: numeric plumbing residue is never a class
+        return None
+    if _looks_secret(tpl):                           # v0.1.58: the EMISSION choke-point — one screen covers
+        return None                                  # rows AND chain endpoints (chains derive from kept tpls)
     return tpl
 
 
@@ -201,15 +266,22 @@ def _scan_cmd(cmd: str) -> tuple[list[str], list[tuple[str, str]]]:
     return templates, chains
 
 
+_OMIT_SAMPLE = "(sample omitted — credential-shaped command)"
+
+
 def scan(project_dir: Path, since: str) -> dict:
     """Count recurring Bash-command templates + intra-command chains across the project's in-window
     transcripts, with per-item day-spread (the episode dimension). `since` empty → all (matches
-    `_window_transcripts`); the CLI defaults it to ~30 days. Firewall runs FIRST, on `_norm(cmd)` —
-    BEFORE any template transform (unchanged v0.1.51 contract)."""
+    `_window_transcripts`); the CLI defaults it to ~30 days, and v0.1.58 adds the PER-LINE `ts <= since`
+    skip (the same KEEP-safe lexicographic compare `extract()` uses — CC emits UTC-`Z` ts, the default
+    `since` is `+00:00`; an equal-instant boundary false-KEEPS, never false-skips), so a long-lived
+    session file no longer leaks out-of-window lines into counts/day-spreads. FIREWALL (v0.1.58): the
+    command-level `_looks_secret(_norm(cmd))` hit gates the SAMPLE and counts into `secrets_omitted` —
+    the command's templates still count, each screened at emission by `_seg_template` (see module doc)."""
     project_dir = project_dir.resolve()
     proj_root = Path.home() / ".claude" / "projects" / slug_for(project_dir)
     transcripts = _window_transcripts(proj_root, since)
-    counts = {"sessions": len(transcripts), "commands": 0, "days": 0}
+    counts = {"sessions": len(transcripts), "commands": 0, "days": 0, "secrets_omitted": 0}
     days_seen: set = set()
     tally: dict[str, dict] = {}          # template -> {count, days, sample}
     ctally: dict[tuple, dict] = {}       # (a, b) -> {count, days}
@@ -232,6 +304,9 @@ def scan(project_dir: Path, since: str) -> dict:
                 content = msg.get("content")
                 if not isinstance(content, list):
                     continue
+                ts = str(o.get("timestamp") or "")
+                if since and ts and ts <= since:   # v0.1.58: per-line window (file mtime alone over-included)
+                    continue
                 day = None   # v0.1.55 (round-3): compute the episode-day LAZILY on the first Bash part,
                 #              so a Read/Edit/Grep-only message (the session majority) never parses a
                 #              timestamp it won't use. Memoised for a multi-Bash message.
@@ -241,10 +316,17 @@ def scan(project_dir: Path, since: str) -> dict:
                     cmd = str((p.get("input") or {}).get("command", ""))
                     if not cmd:
                         continue
-                    if _looks_secret(_norm(cmd)[:_PROBE_CAP]):  # FIREWALL first (on _norm); never the template transform
-                        continue
+                    # v0.1.58 firewall-at-emission: the ONE command-level flag drives the sample suppression
+                    # AND the transparency counter — incremented HERE (before commands++/the all-noise skip:
+                    # the measured majority of flagged commands are all-noise `export SECRET=…` shapes that
+                    # a later increment would never count). The command still scans; templates are screened
+                    # at emission (_seg_template). Never re-probe the raw sample — a zero-width-split secret
+                    # is caught by _norm here but invisible to a raw re-probe.
+                    flagged = _looks_secret(_norm(cmd)[:_PROBE_CAP])
+                    if flagged:
+                        counts["secrets_omitted"] += 1
                     if day is None:
-                        day = _day_of(str(o.get("timestamp") or ""))
+                        day = _day_of(ts)
                         if day:
                             days_seen.add(day)
                     counts["commands"] += 1
@@ -253,7 +335,11 @@ def scan(project_dir: Path, since: str) -> dict:
                         continue                                # all-noise command — don't build a sample for nothing
                     # build the sample only when a template is NEW (setdefault would discard it on a repeat —
                     # round-3 efficiency finding); `any` covers a command that introduces two new templates.
-                    sample = " ".join(cmd.split())[:160] if any(t not in tally for t in templates) else ""
+                    # A FLAGGED command's raw text never becomes a sample — its new templates get the label.
+                    if any(t not in tally for t in templates):
+                        sample = _OMIT_SAMPLE if flagged else " ".join(cmd.split())[:160]
+                    else:
+                        sample = ""
                     for t in templates:
                         rec = tally.setdefault(t, {"count": 0, "days": set(), "sample": sample})
                         rec["count"] += 1
@@ -287,8 +373,9 @@ def _report(d: dict) -> None:
     gap = max(2, _ui.W - 2 - len(title) - len(tag))
     add(_ui.rule())
     add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    _sec = f" · {c['secrets_omitted']} secret-shaped (samples omitted)" if c.get("secrets_omitted") else ""
     add("  " + _ui.c(f"{c.get('sessions', 0)} session(s) · {c.get('commands', 0)} Bash cmds · "
-                     f"{c.get('days', 0)} active day(s) · window {d['window']}", "dim"))
+                     f"{c.get('days', 0)} active day(s){_sec} · window {d['window']}", "dim"))
     add(_ui.rule())
     add("")
     if not d["recurring"]:
@@ -307,29 +394,99 @@ def _report(d: dict) -> None:
     print(_ui.ascii_translate("\n".join(out)))
 
 
+def inject_into(seed_path: str, d: dict, verdict: str, proposed: list, created: list) -> bool:
+    """v0.1.58: deterministically inject the SCRIPT-TRUTH distill counts into the cycle-record seed —
+    the capture's counts are script-ONLY (the measured hand-mirror failure: a persisted `n_recurring: 47`
+    against a hard cap of 40). A sub-key MERGE, deliberately NOT the audit `--into` wholesale assignment
+    (the distill block is split-ownership): counts/window/secrets_omitted overwrite; model-authored
+    `proposed`/`created`/`verdict` are preserved UNLESS the matching flag was given (a provided flag
+    REPLACES its key; a provided list-flag replaces the WHOLE list — idempotent on re-run). Best-effort
+    (mirrors the audit `--into`): missing/corrupt/non-object seed → one stderr line, False, never a crash;
+    all messaging on stderr so `--json` stdout stays pure."""
+    try:
+        record = json.loads(Path(seed_path).read_text(encoding="utf-8"))
+        if not isinstance(record, dict):
+            print("--into: skipped (cycle record root is not a JSON object)", file=sys.stderr)
+            return False
+        blk = record.get("distill")
+        blk = blk if isinstance(blk, dict) else {}
+        blk.update({"sessions": d["scanned"]["sessions"], "commands": d["scanned"]["commands"],
+                    "n_recurring": len(d["recurring"]), "n_chains": len(d["chains"]),
+                    "window": d["window"], "secrets_omitted": d["scanned"]["secrets_omitted"]})
+        if verdict:
+            blk["verdict"] = verdict
+        if proposed:
+            blk["proposed"] = proposed
+        if created:
+            blk["created"] = created
+        record["distill"] = blk
+        _write_private(Path(seed_path), json.dumps(record, indent=2, ensure_ascii=False) + "\n")
+        print(f"distill → injected into {seed_path}", file=sys.stderr)
+        return True
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        print(f"--into: skipped ({e}); the scan output above is the fallback", file=sys.stderr)
+        return False
+
+
+# CLI flags this script OWNS (value-taking ones consume the next argv slot) + the visual flags consumed
+# by _ui.set_modes/color_enabled/resolve_width from sys.argv. Anything else is genuinely unknown and
+# warned to stderr — silently swallowing `--sicne 2026-06-01` turned the VALUE into the project dir and
+# produced a 0-session scan indistinguishable from a real empty corpus (audit F8).
+_VALUE_FLAGS = ("--since", "--into", "--verdict", "--proposed", "--created")
+_KNOWN_FLAGS = ("--json", "--ascii", "--color", "--no-color")
+
+
 def main() -> int:
     argv = sys.argv[1:]
     as_json = "--json" in argv
     argv = [a for a in argv if a != "--json"]
     _ui.set_modes(color=_ui.color_enabled(sys.argv[1:], sys.stdout), ascii="--ascii" in sys.argv, width=_ui.resolve_width(sys.argv[1:], sys.stdout))
     since = ""
+    into = ""
+    verdict = ""
+    proposed: list = []
+    created: list = []
     pos = []
     i = 0
     while i < len(argv):
-        if argv[i] == "--since" and i + 1 < len(argv):
-            since = argv[i + 1]; i += 2
-        elif not argv[i].startswith("-"):
-            pos.append(argv[i]); i += 1
+        a = argv[i]
+        if a in _VALUE_FLAGS and i + 1 < len(argv):
+            v = argv[i + 1]
+            if a == "--since":
+                since = v
+            elif a == "--into":
+                into = v
+            elif a == "--verdict":
+                verdict = v
+            elif a == "--proposed":
+                proposed.append(v)
+            else:
+                created.append(v)
+            i += 2
+        elif not a.startswith("-"):
+            pos.append(a); i += 1
         else:
-            i += 1  # skip visual/unknown flags
-    if not since:  # default to a recent window (BROADER than the dream's marker..HEAD; recurrence needs episodes)
+            if a not in _KNOWN_FLAGS and not a.startswith(("--color=", "--width=")):
+                print(f"ignoring unknown flag: {a}", file=sys.stderr)
+            i += 1  # visual flags are handled by set_modes; unknown ones are warned, never swallowed silently
+    if since:
+        try:  # validate BEFORE the lexicographic per-line compare — `ts <= "banana"` would drop everything
+            datetime.fromisoformat(since.replace("Z", "+00:00"))
+        except ValueError:
+            print(f"--since expects an ISO timestamp, got {since!r}", file=sys.stderr)
+            return 2
+    else:  # default to a recent window (BROADER than the dream's marker..HEAD; recurrence needs episodes)
         since = (datetime.now(timezone.utc) - timedelta(days=DEFAULT_WINDOW_DAYS)).isoformat()
     project_dir = Path(pos[0]) if pos else Path.cwd()
+    if not project_dir.is_dir():  # visible, recall-safe (the scan proceeds and prints zeros)
+        print(f"warning: project dir does not exist: {project_dir}", file=sys.stderr)
     d = scan(project_dir, since)
     if as_json:
         print(json.dumps(d, indent=2))
     else:
         _report(d)
+    if into:
+        inject_into(into, d, verdict, proposed, created)
     # v0.1.54: write-time dream-arc cue (stderr, CM_DREAM_ARC-gated — see _ui.dream_cue)
     _ui.dream_cue("distill beat due — recurring gestures condensing (plain italics, no emoji) "
                   "above the plain scan results")
