@@ -1096,8 +1096,8 @@ def main() -> int:
     if rc == 0 and sys.argv[1:2] and sys.argv[1] in _CUED_MODES:
         # v0.1.54: ONE dream-arc cue per run (stderr, CM_DREAM_ARC-gated); a usage/error exit
         # doesn't cue — nothing ran that deserves a beat. See _ui.dream_cue.
-        _ui.dream_cue("cross-project beat due — the other projects drifting through (> *🌙 …*) "
-                      "above the plain report")
+        _ui.dream_cue("cross-project beat due — the other projects drifting through (plain italics, "
+                      "no emoji) above the plain report")
     return rc
 
 

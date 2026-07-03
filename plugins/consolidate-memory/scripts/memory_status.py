@@ -258,7 +258,8 @@ class Maintenance(TypedDict, total=False):
 class DreamArc(TypedDict, total=False):
     # v0.1.54: the dream-arc capture — the model MIRRORS its conversational dream blocks here
     # (conversation first, record second: filling this INSTEAD of narrating is a defect). Raw
-    # markdown as emitted (`> *🌙 …*` lines); render_html strips the wrappers at display time.
+    # markdown as emitted (`*…*` italic lines; 💤/☀️ only on sleep/wake); render_html strips the
+    # wrappers at display time (and tolerates the legacy `> *…*` blockquote form).
     sleep: str               # the falling-asleep stanza (first output on invocation)
     beats: list[str]         # per-phase dream blocks in order (Phase-4 surfacing line included)
     wake: str                # the waking stanza (composed at final record-fill, performed after the render)
@@ -269,14 +270,14 @@ class Distill(TypedDict, total=False):
     # survives into the log/dashboard/archive ("ran and correctly proposed nothing" must be
     # distinguishable from "never ran"). The `verdict` is the terminal carrier and ENCODES disposition:
     # `created <X>` · `proposed <X> — awaiting confirmation` · `proposed <X> — declined` ·
-    # `nothing: <top candidate> fails <gate leg>`. ONE line, ≤~60 chars (dashboard cell; HTML shows full).
+    # `nothing: <top candidate> fails <gate leg>`. ONE sentence — both dashboards render it in full.
     sessions: int            # scan scale, from the scan JSON's scanned.sessions
     commands: int            # scanned.commands
     n_recurring: int         # = len(scan.recurring) — n_ prefix: the scan JSON's `recurring` is a LIST
     n_chains: int            # = len(scan.chains)
     proposed: list[str]      # artifacts proposed BY NAME (confirmation usually arrives post-persist)
     created: list[str]       # authored BEFORE --persist only (the rare interactive case)
-    verdict: str             # the one-line disposition (see above) — REQUIRED for a compliant distill
+    verdict: str             # the one-sentence disposition (see above) — REQUIRED for a compliant distill
 
 
 class CycleRecord(TypedDict, total=False):
@@ -1921,11 +1922,11 @@ def print_report(ctx: dict) -> None:
 # the authority prefix + never-echo suffix). _CUE_READ is PHASE-NEUTRAL: the plain/--json read runs
 # in Phase 0 AND as Phase 5's final gauge re-read, and this script can't know which one it is
 # serving — a phase-labeled cue there would issue a wrong-phase stage direction mid-Phase-5.
-_CUE_READ = ("this read's beat is due — > *🌙 1–3 italic lines* above the plain findings; "
-             "if the arc hasn't opened yet, SLEEP comes first")
-_CUE_PHASE0 = ("Phase-0 beat due — > *🌙 1–3 italic lines* above the plain findings; "
-               "SLEEP block first if you haven't slept yet")
-_CUE_PHASE5 = ("Phase-5 beat due — narrate the audit/defrag dreamily (> *🌙 …*); "
+_CUE_READ = ("this read's beat is due — *1–3 plain-italic lines, no emoji* above the plain findings; "
+             "if the arc hasn't opened yet, SLEEP (*💤 …*) comes first")
+_CUE_PHASE0 = ("Phase-0 beat due — *1–3 plain-italic lines, no emoji* above the plain findings; "
+               "SLEEP block (*💤 …*) first if you haven't slept yet")
+_CUE_PHASE5 = ("Phase-5 beat due — narrate the audit/defrag dreamily (plain italics, no emoji); "
                "WAKE only after the archive opens (render_html)")
 
 

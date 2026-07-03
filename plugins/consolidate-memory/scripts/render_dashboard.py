@@ -642,11 +642,20 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     # byte-identically). The verdict is the payload; counts frame it. HTML shows the full verdict.
     di = _dget(record, "distill")
     if di:
-        _dv = _clean(str(di.get("verdict") or ""))[:60]
+        # v0.1.57: the verdict renders IN FULL on its own wrapped line (was truncated at 60 —
+        # unreadable mid-word cuts); counts stay on the labeled line. _kv("") = a label-aligned
+        # continuation line with the same hanging-indent wrap. A generous 220-char bound remains —
+        # the verdict is MODEL-authored ("one sentence" is guidance, not validation), and an
+        # unbounded multi-sentence slip would inflate the fixed-rhythm dashboard.
+        _dv = _clean(str(di.get("verdict") or ""))
+        if len(_dv) > 220:
+            _dv = _dv[:219] + "…"
         out.append("")
         out.append(_kv("DISTILL", f"{_g(_num(di.get('n_recurring', 0)))} recurring · "
                                   f"{_g(_num(di.get('n_chains', 0)))} chains"
-                                  + (f" · {_dv}" if _dv else " · " + _c("✗ no verdict", "yellow"))))
+                                  + ("" if _dv else " · " + _c("✗ no verdict", "yellow"))))
+        if _dv:
+            out.append(_kv("", _c(_dv, "dim")))
 
     # Marker
     m = _dget(record, "marker")
