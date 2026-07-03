@@ -299,6 +299,43 @@ the two load-bearing claims verified by EXECUTION. Resolutions (all applied):
     multi-call arc stays model-recognized).
 11. m7 verdict length → pinned (one line, ≤~60 dashboard, HTML full).
 
+**Code-review round (max effort, 2026-07-02):** the workflow's verify pass died on session
+limits AGAIN (30/31 verifiers + sweep + synthesize; 1 verifier survived and CONFIRMED the
+`else`-drop) — 41 finder candidates were therefore verified INLINE, every load-bearing
+mechanism re-proven by execution BEFORE and AFTER the fix. 12 confirmed clusters, all
+fixed:
+- **H1** — `_HEREDOC.sub(" ")` consumed the terminator's newline, gluing the NEXT command
+  into the heredoc segment (the write-then-run idiom vanished) → the sub now restores the
+  newline boundary.
+- **H2 (worst)** — `_HEREDOC_OPEN` amputated everything after ANY non-heredoc `<<`
+  (bit-shifts in `-c` code, `<<` in commit messages) → heredocs are now matched
+  STRUCTURALLY: whitespace-before `<<`, not-`<<<`, and (for the unterminated form) a
+  required newline after the opener line.
+- **H3** — the same-line tail after a heredoc tag (`cmd <<EOF && next`) was swallowed →
+  preserved via a capture group.
+- **K3 (self-inflicted, corpus-critical)** — `VAR=x cmd` segments dropped WHOLE, which
+  discards every `CM_DREAM_ARC=1 python3 …` command the v0.1.54 SKILL itself emits → env
+  prefixes strip and the carried command templates.
+- **else-drop (the surviving verifier's CONFIRMED find)** — `else` moved from drop-whole
+  to prefix-strip (same M2 class).
+- **K2** — `do cd $d` leaked `cd` rows (the prefix strip skipped the noise gate) → the
+  cd/assignment gate re-applies after all prefix strips.
+- Also: `&>`/`&>>` redirects + stray `&` tokens; case-arm recovery (`stop) kill-server` →
+  `kill-server`; the FIRST arm remains a documented residual); here-string `<<<` immunity
+  + a `\s<<` per-segment backstop for exotic tags; hyphenated heredoc tags (`[\w-]+`);
+  bare-interpreter stoplisting (`python3 <<PY` → `python3`); LOCAL-timezone day-spread
+  (a UTC slice split one evening sitting into 2 "days"); beta pivot coercion
+  (`"pivoted": "false"` is a truthy string — now coerced); lazy sample construction.
+- **Test-integrity fixes (round-2 findings on the new suite itself):** the B1 pin was
+  VACUOUS (`== ([],[])` also passed under the flipped-order defect) → rebuilt with a
+  trailing command that the defect amputates; three dead `or`-arms removed (D6c/M2/
+  dash-heredoc now exact-pin); the vacuous `all()` guarded non-empty; MIN_RECUR regained
+  real coverage (the old probes were stoplist-intercepted — new non-stoplisted one-off
+  probes); the html dup-arm removed.
+- Rejected: the pivot-carve-out's 2-line `log_records[-1]` duplication (parameterizing
+  the scaffold for a pre-check costs more than it saves); one-liner `case` FIRST-arm
+  recovery (requires parsing `in …)` — documented residual).
+
 **Round 1 — impl lens (2026-07-02):** verdict APPROVE-WITH-CHANGES, 3 MAJOR + 5 MINOR,
 no blockers. Resolutions (all applied):
 1. MAJOR-1 omitted test-updates + misleading compat claim → §3.1 pins the

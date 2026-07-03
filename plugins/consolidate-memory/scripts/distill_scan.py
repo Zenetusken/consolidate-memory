@@ -50,51 +50,90 @@ _CD_OR_ASSIGN = re.compile(r"(?:cd\s|[A-Za-z_][A-Za-z0-9_]*=)")
 # branch-name-like tokens are VARIABLE (drop from the template so `checkout -b feat/X` == `…/feat/Y`).
 _BRANCHY = re.compile(r"(?:feat|fix|chore|docs|refactor|release|hotfix)/")
 # v0.1.55: heredoc BODY strip — runs FIRST on the continuation-joined RAW command, BEFORE quote-strip
-# (which would delete the quoted tag: `<<'PY'` → `<<` — the proven B1 order defect). Matches
-# <<TAG / <<'TAG' / <<"TAG" / <<-TAG; consumes the MARKER through the terminator line (a dangling `<<`
-# token must not survive into the template). Unterminated heredoc → cut to end (never leak the body).
-_HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1.*?\n\s*\2\s*(?:\n|$)", re.S)
-_HEREDOC_OPEN = re.compile(r"<<-?\s*(['\"]?)(\w+)\1.*\Z", re.S)
-# Keyword handling (v0.1.55, spec-review M2 — proven): `do mypy $f` dropped whole loses the real command.
-_KW_PREFIX = {"do", "then"}                                  # keyword-led segments that CARRY a command → strip + re-template
-_KW_DROP = {"done", "fi", "esac", "else"}                    # keyword-only noise → drop whole
+# (which would delete the quoted tag: `<<'PY'` → `<<` — the proven B1 order defect). Because quotes are
+# still intact here, a real heredoc is approximated STRUCTURALLY (code-review round 2, all proven live):
+#   · `(?<=\s)` — whitespace before `<<` kills the bit-shift class (`$((1<<20))`, `print(1<<3)`);
+#   · `(?!<)`   — never match a `<<<` here-string;
+#   · tag is `[\w-]+` (hyphenated tags like END-OF-SQL included; backslash/var tags stay a documented
+#     residual — the _seg_template `\s<<` backstop keeps the HEAD clean if one slips through);
+#   · group 3 PRESERVES the same-line tail after the tag (`cmd <<EOF && next` — bash runs `next`), and
+#     the terminated form restores the terminator's NEWLINE, so the command on the line AFTER a heredoc
+#     keeps its own segment (the write-then-run idiom: `cat > x <<'EOF' … EOF` + `python3 run.py`);
+#   · the unterminated form requires a newline after the opener line (a heredoc body lives on FOLLOWING
+#     lines), so a single-line quoted `<<` (`git commit -m "see << docs" && git push`) never amputates.
+_HEREDOC = re.compile(r"(?<=\s)<<(?!<)-?\s*(['\"]?)([\w-]+)\1([^\n]*)\n.*?\n\s*\2\s*(?:\n|$)", re.S)
+_HEREDOC_OPEN = re.compile(r"(?<=\s)<<(?!<)-?\s*(['\"]?)([\w-]+)\1([^\n]*)\n.*\Z", re.S)
+# Keyword handling (v0.1.55, spec-review M2 — proven): a keyword-led segment that CARRIES a command must
+# keep it. `else` belongs here too (`if …; then A; else B; fi` — round-2 CONFIRMED finding).
+_KW_PREFIX = {"do", "then", "else"}                          # strip the keyword, re-template the remainder
+_KW_DROP = {"done", "fi", "esac"}                            # keyword-only noise → drop whole
 _KW_HEAD_DROP = {"for", "while", "if", "case", "elif", "until"}  # condition/iterator heads, not commands → drop whole
 # Stoplist — gates what can BE a row or a chain endpoint: generic verbs + investigation verbs + the
 # inline-interpreter false classes (quote-strip collapses their bodies to one identical head, so each
-# invocation is a distinct one-off script masquerading as recurrence).
+# invocation is a distinct one-off script masquerading as recurrence). BARE interpreters included
+# (`python3 <<PY` strips to `python3` — the same false class; round-2 finding).
 _STOP_HEADS = {"echo", "printf", "ls", "pwd", "which", "type", "true", "sleep", "date", "touch", "mkdir",
                "grep", "rg", "cat", "head", "tail", "wc", "sed", "awk", "find", "diff"}
-_STOP_TPLS = {"python3 -", "python3 -c", "bash -c", "sh -c"}
+_STOP_TPLS = {"python3 -", "python3 -c", "bash -c", "sh -c", "python3", "python", "bash", "sh", "node"}
 # Redirect handling is SPLIT-keep-head, never sub (sub would leave the target filename as a noise token:
-# `cmd >> app.log` → `cmd  app.log`). The `\d?` consumes the `2` of `2>&1` (the D6b dangling-`2` fix).
-_REDIR = re.compile(r"\s\d?>{1,2}")
+# `cmd >> app.log` → `cmd  app.log`). `\d?` consumes the `2` of `2>&1`; `&` covers `&>`/`&>>` (round 2).
+_REDIR = re.compile(r"\s(?:\d?|&)>{1,2}")
+# env-assignment PREFIXES carry a command (`CM_DREAM_ARC=1 python3 …` — the SKILL's own idiom since
+# v0.1.54!); strip them and template the carried command. A BARE assignment still drops via _CD_OR_ASSIGN.
+_ENV_PREFIX = re.compile(r"^(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)+")
 
 
 def _strip_heredocs(cmd: str) -> str:
-    """Remove heredoc marker+body+terminator (terminated), then any unterminated remainder to end."""
-    cmd = _HEREDOC.sub(" ", cmd)
-    return _HEREDOC_OPEN.sub(" ", cmd)
+    """Remove heredoc marker+body(+terminator), PRESERVING the opener line's same-line tail and the
+    segment boundary after the terminator (see the regex rationale above)."""
+    cmd = _HEREDOC.sub(r"\3\n", cmd)
+    return _HEREDOC_OPEN.sub(r"\3", cmd)
+
+
+def _day_of(ts: str) -> str:
+    """A transcript timestamp → its LOCAL calendar date (the episode unit). Transcripts stamp UTC `Z`;
+    a raw `[:10]` slice would split one local evening sitting across the UTC midnight into 2 'active
+    days' and inflate the day-spread ranking (round-2 finding). Falls back to the raw slice on any
+    unparseable input; '' stays '' (no day accrues)."""
+    if not ts:
+        return ""
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone().date().isoformat()
+    except ValueError:
+        return ts[:10]
 
 
 def _seg_template(seg: str) -> str | None:
     """ONE (already quote-stripped) segment → its recurring CLASS template, or None if it is noise:
-    pure cd/assignment, a bare/condition shell keyword, or a stoplisted head. `do`/`then` prefixes are
-    stripped and the remainder re-templated (a loop body CARRIES the real command)."""
+    pure cd/bare-assignment, a keyword-only/condition shell keyword, or a stoplisted head. Prefixes that
+    CARRY a command are stripped and the remainder templated: `do`/`then`/`else` keywords (M2 + round-2),
+    case-arm heads (`start) run-server` → `run-server`), and env assignments (`CM_DREAM_ARC=1 python3 …`
+    → `python3 …`). The cd/assignment noise gate runs AFTER the prefix strips (round-2: `do cd $d` must
+    drop, not leak a `cd` row)."""
     seg = seg.strip()
-    if not seg or _CD_OR_ASSIGN.match(seg):
+    if not seg:
         return None
     parts = seg.split(None, 1)
-    if parts and parts[0] in _KW_PREFIX:             # `do mypy $f` → `mypy $f` (M2: keep the command)
+    while parts and parts[0] in _KW_PREFIX:          # `do mypy $f` / `else rollback.sh` → keep the command
         seg = parts[1].strip() if len(parts) > 1 else ""
         if not seg:
             return None
         parts = seg.split(None, 1)
+    if parts and parts[0].endswith(")") and not parts[0].startswith("$(") and len(parts) > 1:
+        seg = parts[1].strip()                       # case arm `start) run-server` → `run-server`
+        parts = seg.split(None, 1)
     if parts and (parts[0] in _KW_DROP or parts[0] in _KW_HEAD_DROP):
         return None
+    seg = _ENV_PREFIX.sub("", seg)                   # env-prefixed invocation → the carried command
+    if not seg or _CD_OR_ASSIGN.match(seg):
+        return None                                  # bare cd / bare assignment — AFTER the prefix strips
+    seg = re.split(r"\s<<", seg)[0]                  # heredoc/here-string RESIDUE backstop (exotic tags)
     seg = _REDIR.split(seg)[0]                       # truncate at the first redirect (keep head)
     seg = seg.split("|")[0].split(">")[0].strip()    # first pipe stage / any residual redirect
     out: list[str] = []
     for tok in seg.split():
+        if tok == "&":
+            continue                                 # background/leftover ampersand is never class-defining
         if tok.startswith("-"):
             out.append(tok.split("=")[0])            # flag NAME (drop =value)
         elif tok.startswith(("/", "~")) or "/home/" in tok or _BRANCHY.search(tok):
@@ -171,7 +210,7 @@ def scan(project_dir: Path, since: str) -> dict:
                 content = msg.get("content")
                 if not isinstance(content, list):
                     continue
-                day = str(o.get("timestamp") or "")[:10]   # null-guarded; empty days simply don't accrue
+                day = _day_of(str(o.get("timestamp") or ""))   # LOCAL date; '' simply doesn't accrue
                 for p in content:
                     if not (isinstance(p, dict) and p.get("type") == "tool_use" and p.get("name") == "Bash"):
                         continue
@@ -184,6 +223,8 @@ def scan(project_dir: Path, since: str) -> dict:
                     if day:
                         days_seen.add(day)
                     templates, chains = _scan_cmd(cmd)
+                    if not templates and not chains:
+                        continue                                # all-noise command — don't build a sample for nothing
                     sample = " ".join(cmd.split())[:160]        # screened, ws-collapsed (display only)
                     for t in templates:
                         rec = tally.setdefault(t, {"count": 0, "days": set(), "sample": sample})

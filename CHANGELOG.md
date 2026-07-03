@@ -35,7 +35,13 @@ findings by execution):
   scaffold shared with `dream_arc_capture` (refactored onto it, behavior pinned by its existing cases).
 
 Additive `--json` keys + additive `total=False` schema + SKILL prose + presence-gated renderer lines →
-patch. 522 smoke (+30) + mypy green; scanner rebuilt with spec-review B1/M2 regressions pinned.
+patch. 535 smoke (+43) + mypy green. A max-effort adversarial code-review round then fixed 12 more
+confirmed extraction clusters pre-merge — the sharpest: quoted-`<<` amputation (a bit-shift or a `<<` in a
+commit message deleted every following command), the post-heredoc glue (the write-then-run idiom vanished),
+and the env-prefix drop (`CM_DREAM_ARC=1 python3 …` — the v0.1.54 SKILL's own idiom — was discarded whole);
+plus structural heredoc matching, `&>` redirects, case-arm/else-arm recovery, here-string immunity,
+local-timezone day-spread, and a test-integrity pass (a vacuous order pin rebuilt, dead or-arms removed,
+MIN_RECUR re-covered).
 
 ## [0.1.54] — 2026-07-01
 

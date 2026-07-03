@@ -1187,9 +1187,9 @@ def maintenance_pivot_coherence(ctx: Ctx) -> list[Result]:
 
 
 def _latest_capture_check(ctx: Ctx, *, block_key: str, family_name: str,
-                          min_version: "tuple[int, int, int]", check_id: str, title: str,
+                          min_version: tuple[int, int, int], check_id: str, title: str,
                           expected: str, defect_ref: str,
-                          is_complete: "Callable[[dict[str, Any]], tuple[bool, str]]") -> list[Result]:
+                          is_complete: Callable[[dict[str, Any]], tuple[bool, str]]) -> list[Result]:
     """v0.1.55: the SHARED scaffold for the 'capture exists on the latest persisted dream' families
     (dream_arc_capture / distill_capture) — extracted per the reimplementation-pin discipline. Owns:
     the version gate (fail-CLOSED via _version_tuple — "unknown" → (-1,-1,-1) → SKIP: a spurious WARN
@@ -1227,7 +1227,7 @@ def dream_arc_capture(ctx: Ctx) -> list[Result]:
     transcript — a judgment-lens check); this family catches only the fully-skipped arc.
     Version gate / empty-log SKIP / latest-read: `_latest_capture_check` (v0.1.55 refactor,
     behavior-pinned by the v0.1.54 smoke cases)."""
-    def is_complete(dream: "dict[str, Any]") -> "tuple[bool, str]":
+    def is_complete(dream: dict[str, Any]) -> tuple[bool, str]:
         _b = dream.get("beats")
         beats: list[Any] = _b if isinstance(_b, list) else []
         # `or ""` — a JSON-null stanza must read ABSENT (str(None) == "None" is truthy).
@@ -1260,9 +1260,12 @@ def distill_capture(ctx: Ctx) -> list[Result]:
     Scaffold: `_latest_capture_check`."""
     if ctx.log_records:
         _mt = ctx.log_records[-1].get("maintenance")
-        if isinstance(_mt, dict) and _mt.get("pivoted"):
+        # coerce, don't trust truthiness: a model-authored `"pivoted": "false"` is a truthy STRING
+        # (the exact model-slip class render_dashboard's _flag coercion exists for) — it must NOT skip.
+        _pv = _mt.get("pivoted") if isinstance(_mt, dict) else None
+        if _pv is True or str(_pv).strip().lower() in ("true", "1"):
             return []                           # maintenance/bootstrap pass — distill legitimately skipped
-    def is_complete(distill: "dict[str, Any]") -> "tuple[bool, str]":
+    def is_complete(distill: dict[str, Any]) -> tuple[bool, str]:
         verdict = str(distill.get("verdict") or "").strip()
         if verdict:
             return True, f"verdict: {verdict[:90]}"
