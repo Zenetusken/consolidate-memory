@@ -88,6 +88,7 @@
   .c2{grid-template-columns:1.15fr .85fr}.c2b{grid-template-columns:.85fr 1.15fr}
   @media(max-width:760px){.cols{grid-template-columns:1fr!important}}
   .cap{font-size:11px;color:var(--ink2);font-family:var(--serif);font-style:italic;margin-top:10px}
+  .cap.center{text-align:center}   /* under a centered chart (the network graph), the caption centers with its legend */
 
   /* svg + charts (ink on paper, precise) */
   svg{display:block;width:100%;overflow:visible}
@@ -99,6 +100,10 @@
 
   .legend{display:flex;gap:18px;flex-wrap:wrap;font-size:10.5px;color:var(--ink2);letter-spacing:.02em;margin-top:14px}
   .legend.center{justify-content:center}   /* under a centered chart (the network graph), the legend centers too */
+  /* the network graph is fixed-height + auto-width (overrides svg{width:100%}) and its viewBox is fitted to
+     the drawn content in JS — so the graph frames tightly for ANY node count and the legend/caption sit
+     directly beneath it (coherent with the left chart's caption), not detached below a tall dead-space box. */
+  #net{width:auto;height:154px;max-width:100%;margin:0 auto}
   .legend i{display:inline-block;width:18px;height:2px;margin-right:6px;vertical-align:3px}
   .legend i.dot{width:8px;height:8px;border-radius:50%;vertical-align:0}
 
@@ -311,9 +316,9 @@
         <div class="meter" id="m-cmd"></div>
         <div class="cap">Always-loaded budgets, this pass. The marker is the ceiling; fill is current consumption.</div>
       </div>
-      <div><svg id="net" viewBox="0 0 520 200" style="height:200px"></svg>
-        <div class="legend"><span><i class="dot" style="background:var(--accent)"></i>trigger node</span><span><i class="dot" style="background:var(--ink2)"></i>peer · sized by facts</span></div>
-        <div class="cap">The shared-memory network — this pass ran on the trigger node; edge weight is shared facts.</div>
+      <div><svg id="net" viewBox="0 0 520 170"></svg>
+        <div class="legend center"><span><i class="dot" style="background:var(--accent)"></i>trigger node</span><span><i class="dot" style="background:var(--ink2)"></i>peer · sized by facts</span></div>
+        <div class="cap center">The shared-memory network — this pass ran on the trigger node; edge weight is shared facts.</div>
       </div>
     </div>
   </section>
@@ -598,6 +603,17 @@
       c.addEventListener("mousemove",tip(esc(d.node)+" · "+num(d.facts)+" facts · "+fmt(num(d.always_loaded_tokens))+" tok always-loaded"));c.addEventListener("mouseleave",untip);svg.appendChild(c);
       var lt=S("text",{x:pos[i][0],y:pos[i][1]+r+14,"text-anchor":"middle",class:"axt"+(isT?" r":"")});lt.textContent=nm;svg.appendChild(lt);
       var ft=S("text",{x:pos[i][0],y:pos[i][1]+4,"text-anchor":"middle",class:"axt d",style:"font-size:11px"});ft.textContent=num(d.facts);svg.appendChild(ft);});
+    // fit the viewBox to the drawn content (+pad) so #net's fixed-height/auto-width box frames the graph
+    // tightly for ANY node count — the legend/caption then sit directly beneath it, not below dead space.
+    // Computed from the known node geometry (NOT getBBox — which throws/returns empty on a not-yet-visible
+    // archived dream section, leaving the fallback viewBox and the old detached gap).
+    var minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+    nodes.forEach(function(d,i){var r=7+11*Math.sqrt(num(d.facts,1)/maxF);
+      var nm=String(d.node||"?").replace(/^.*[-/]/,"").slice(0,18),hw=Math.max(r,nm.length*2.7);
+      minX=Math.min(minX,pos[i][0]-hw);maxX=Math.max(maxX,pos[i][0]+hw);
+      minY=Math.min(minY,pos[i][1]-r);maxY=Math.max(maxY,pos[i][1]+r+20);});   // +20: the label sits at +r+14 (~6px tall)
+    var pad=8;
+    svg.setAttribute("viewBox",(minX-pad)+" "+(minY-pad)+" "+(maxX-minX+2*pad)+" "+(maxY-minY+2*pad));
   })();
 
   // ── audit + verification + distill (this pass) ── (v0.1.57: the two panels share one lead/head/cap
