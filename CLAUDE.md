@@ -136,8 +136,9 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
    `dream` key], the distill rebuild [v0.1.55: additive `distill` key + `--json` keys], full doc sync [v0.1.56],
    dashboard coherence + the quiet dream [v0.1.57], the distill HARDENING [v0.1.58: additive
    `Distill.window`/`secrets_omitted` schema keys + `scanned.secrets_omitted` `--json` key + `--into`/`--from`
-   flags]) — every one an additive `total=False` schema key / additive `--json` key / additive flag / SKILL
-   prose, never a break.
+   flags]) · v0.1.59 (full doc sync to the v0.1.58 state) · v0.1.60–61 (HTML dashboard two-column alignment)
+   · v0.1.62 (the dream debrief's double sign-off fix) — every one an additive `total=False` schema key /
+   additive `--json` key / additive flag / SKILL prose, never a break.
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG

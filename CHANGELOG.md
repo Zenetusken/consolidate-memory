@@ -5,6 +5,27 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.65] — 2026-07-04
+
+### Fixed — full doc sync to the v0.1.63/v0.1.64 state
+An independent doc-audit agent (the same discipline as v0.1.56/v0.1.59) cross-checked README/CLAUDE.md/
+SECURITY.md/harness-map.md/the Phase A spec doc/`cm`/`extract_signals.py` against the actual shipped
+code. Found and fixed 4 confirmed drift points (5 targets checked out clean, incl. `harness-map.md`,
+already synced in the v0.1.63 commit itself):
+
+- `docs/index-usage-and-budget-ladder.spec.md`'s status header still read "DRAFT for review" and framed
+  Phase A as a future proposal — it shipped. Corrected to state Phase A SHIPPED (v0.1.63), Phase B/C
+  still the design to build against.
+- `CLAUDE.md`'s versioning-precedent list stopped at v0.1.58, omitting the four already-*released*
+  versions v0.1.59–v0.1.62 (v0.1.62 — the current `plugin.json` version — wasn't even in its own
+  precedent list).
+- `cm`'s help text for `cm extract` and `extract_signals.py`'s own module docstring both omitted the new
+  `--recalls [--into SEED]` mode (works today via the dispatcher's transparent `"$@"` forwarding, but was
+  invisible in both places a user would look for it).
+
+Docs + one help-text/docstring line only, plugin behavior byte-identical → **patch**, same class as
+v0.1.56/v0.1.59.
+
 ## [0.1.64] — 2026-07-04
 
 ### Fixed — SKILL.md: WAKE's own two lines duplicated each other (a second, adjacent defect to v0.1.62's)
