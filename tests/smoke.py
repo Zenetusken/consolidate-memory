@@ -2014,6 +2014,10 @@ check("v0.1.58 F2: survivors keep their class (real invocations, and the -F - fa
       ds._scan_cmd("python3 tests/smoke.py")[0] == ["python3 tests/smoke.py"]
       and ds._scan_cmd(".venv/bin/python -m pytest -m unit")[0] == [".venv/bin/python -m pytest -m unit"]
       and ds._scan_cmd("git commit -q -F -")[0] == ["git commit -q -F -"])
+check("v0.1.58 [3]: the eval/exec fd-guard fires on a REDIRECT, not a digit-NAMED tool (7z/2to3 survive)",
+      ds._scan_cmd("exec 7z x archive.zip")[0] == ["7z x archive.zip"]
+      and ds._scan_cmd("eval 2to3 -w src")[0] == ["2to3 -w src"]
+      and ds._scan_cmd("exec 2>&1") == ([], []) and ds._scan_cmd("exec 3< file") == ([], []))
 # (3) F3 — firewall-at-emission, end-to-end: flagged commands COUNT; a flagged-FIRST template UPGRADES to
 # a clean sample once a clean occurrence exists (code-review [8]) but an ALWAYS-flagged one keeps the
 # label; the transparency counter includes ALL-NOISE flagged commands (increment BEFORE the all-noise skip).
@@ -2076,6 +2080,14 @@ with _tf43.TemporaryDirectory() as _td58b:
     (Path(_td58b) / "arr.json").write_text("[]")
     check("v0.1.58 --into: non-object seed root → False",
           ds.inject_into(str(Path(_td58b) / "arr.json"), _scan58, "", [], []) is False)
+    # [0/1/2]: a PARTIAL scan dict (stale/pre-v0.1.58 — no secrets_omitted, no window) must NOT KeyError-crash;
+    # the defensive .get() defaults keep the capture working (0 / "(all)").
+    _seed58p = Path(_td58b) / "partial.json"; _seed58p.write_text(_json43.dumps({"project": "p"}))
+    _partial58 = {"scanned": {"sessions": 1, "commands": 3}, "recurring": [], "chains": []}  # missing keys
+    check("v0.1.58 [0/1/2]: inject_into tolerates a partial --from scan (no crash; defaults fill the gaps)",
+          ds.inject_into(str(_seed58p), _partial58, "nothing: n/a", [], []) is True
+          and _json43.loads(_seed58p.read_text())["distill"]["secrets_omitted"] == 0
+          and _json43.loads(_seed58p.read_text())["distill"]["window"] == "(all)")
 # (5) validator backstop + the caps cross-module pin (no runtime import cycle; smoke pins the mirror).
 check("v0.1.58 validate: warns on an impossible count (the ×47 production mis-fill class)",
       any("exceeds the scanner cap" in w for w in ms.validate_cycle_record({"distill": {"n_recurring": 47}}))

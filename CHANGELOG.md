@@ -73,8 +73,20 @@ above, all fixed pre-merge:
   panel (the schema-cascade contract). NOTE: `scanned.commands` now **includes** firewall-flagged
   commands (~+5% vs v0.1.57), a deliberate cross-version value shift for transparency.
 
+A SECOND workflow review (thoroughness pass over the fixes) then found 7 more, 5 fixed:
+- **`inject_into` could crash on a partial `--from` scan** (a stale scan missing `secrets_omitted`/
+  `window` KeyError'd instead of a clean exit) → defensive `.get()` defaults + a KeyError backstop.
+- **The eval/exec fd-guard false-dropped digit-named tools** (`exec 7z …`, `eval 2to3 …`) → a precise
+  fd-redirect match so only real redirects (`exec 2>&1`) drop.
+- **`_parse_ts` was promoted into `extract_signals`** so the file-prune and the per-line window share ONE
+  timestamp parser (the reimplementation-pin; a divergent copy let the `±HHMM`-offset prune silently
+  no-op), plus a `_day_str` helper retires the now-dead `_day_of` inline copy and a doubled `seg.split()`.
+- Two PLAUSIBLE findings accepted as consistent-by-design (a secret-only day counting toward the advisory
+  `scanned.days`; a skipped `--into` leaving an absent block — already caught by the beta family + the
+  non-zero exit).
+
 Additive `--json`/schema keys (`window`, `secrets_omitted`) + additive flags (`--into`/`--from`/judgment)
-+ stricter noise-dropping under an additive shape + SKILL/doc prose → patch. 590 smoke (+44) + mypy + sim
++ stricter noise-dropping under an additive shape + SKILL/doc prose → patch. 592 smoke (+46) + mypy + sim
 + manifests + `claude plugin validate --strict` green. Live acceptance: this repo 40 rows + 20 chains
 **zero junk** (was ~15%) with `secrets_omitted: 83` surfaced; the sibling Python corpus's top row is now
 the real gate (`pytest -m unit` ×284/14d) with the `.venv/bin/python -`/`-c` false classes (×299) gone.

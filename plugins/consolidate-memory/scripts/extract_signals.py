@@ -266,27 +266,47 @@ _MARKERS = [
 ]
 
 
+# A `±HHMM` offset (no colon — what `date -u +%z` prints) → `±HH:MM`, which `fromisoformat` requires on
+# Python 3.8–3.10 (3.11 relaxed it). Anchored to the END so it can't touch the date's own `-`/`:`.
+_OFFSET_NOCOLON = re.compile(r"([+-]\d{2})(\d{2})$")
+
+
+def _parse_ts(ts: str) -> "datetime | None":
+    """A transcript/marker/`--since` timestamp string → an AWARE UTC datetime, or None if empty/unparseable.
+    THE single timestamp parser for the pipeline — `_window_transcripts`' file-prune cutoff AND distill's
+    per-line window compare both route through it, so the two window mechanisms cannot disagree (the DRY pin;
+    a distill-local copy once diverged on a no-colon offset, so the file-prune no-op'd while the per-line
+    filter worked). Normalizes a bare `Z` (3.10 rejects it) and a `±HHMM` no-colon offset; a NAIVE stamp is
+    assumed UTC (CC emits `…Z`); an offset stamp is converted to its true UTC INSTANT."""
+    if not ts:
+        return None
+    s = _OFFSET_NOCOLON.sub(r"\1:\2", ts.replace("Z", "+00:00"))
+    try:
+        dt = datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _window_transcripts(proj_root: Path, since: str) -> list[Path]:
     """v0.1.43: ALL transcripts in the dream window, not just the newest. A marker..HEAD window spans MANY
     sessions (each .jsonl == one session); reading only `ts[-1]` meant a fresh session opened JUST to run dream
     HID the heavy prior session's intent (the killer case the on-disk read was meant to defend). Glob all
     `*.jsonl`; mtime-PRUNE only DEFINITELY-stale files (mtime <= the marker → nothing in scope). The per-line
-    `since` filter (a KEEP-safe lexicographic compare) does the scoping, so the mtime-prune is purely an
-    open-fewer-files optimization. TZ-CORRECT (Gate-2): normalize a `Z` suffix (else `fromisoformat` REJECTS it on
-    Python 3.10 → the prune silently no-ops) AND treat a NAIVE marker as UTC (else `.timestamp()` assumes LOCAL →
-    under a west-of-UTC TZ the cutoff shifts and a prior in-window session is wrongly DROPPED — the very bug this
-    fix exists to prevent). No marker / unparseable → keep ALL (safe). Oldest-first (deterministic; per-line
-    `since` + dedup handle session overlap)."""
+    `since` filter does the scoping, so the mtime-prune is purely an open-fewer-files optimization. The cutoff
+    parse routes through `_parse_ts` (v0.1.58 — the shared parser: handles a bare `Z` [3.10 rejects it → the
+    prune would silently no-op], a naive marker as UTC [else `.timestamp()` assumes LOCAL → a west-of-UTC TZ
+    shifts the cutoff and wrongly DROPS a prior in-window session], AND a `±HHMM` no-colon offset). No marker /
+    unparseable → keep ALL (safe). Oldest-first (deterministic; per-line `since` + dedup handle overlap)."""
     files = sorted(proj_root.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
     if not since:
         return files
-    try:
-        dt = datetime.fromisoformat(since.replace("Z", "+00:00"))   # 3.10 rejects a bare Z — normalize first
-        if dt.tzinfo is None:                                       # naive marker → assume UTC (mtime is a UTC epoch)
-            dt = dt.replace(tzinfo=timezone.utc)
-        cutoff = dt.timestamp()
-    except (ValueError, TypeError):
+    dt = _parse_ts(since)
+    if dt is None:
         return files
+    cutoff = dt.timestamp()
     return [f for f in files if f.stat().st_mtime > cutoff]
 
 

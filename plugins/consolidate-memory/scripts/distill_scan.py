@@ -58,7 +58,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import _ui  # sibling: shared visual vocabulary
-from extract_signals import _PROBE_CAP, _looks_secret, _norm, _window_transcripts
+from extract_signals import _parse_ts, _PROBE_CAP, _looks_secret, _norm, _window_transcripts
 from memory_status import _write_private, slug_for  # slug rule + 0o600-atomic seed write (house single-source)
 
 MIN_RECUR = 2            # MiMo's bar: a workflow is a candidate only when it actually recurred (>=2x)
@@ -103,7 +103,11 @@ _HEREDOC = re.compile(r"<<(?!<)-?\s*(['\"]?)([A-Za-z_][\w-]*)\1([^\n]*)\n(?:.*?\
 #   HEAD-DROP gains the test guards `[`/`[[`/`test` (a condition, not a command; `[ -d x ] && cmd` keeps
 #   `cmd`, and the bridge-chain spans the dropped guard — pinned).
 _KW_PREFIX = {"do", "then", "else", "{", "!", "eval", "exec"}    # strip the keyword, re-template the remainder
-_FD_GUARDED = {"eval", "exec"}                               # post-strip digit/`<` remainder = fd plumbing → drop
+_FD_GUARDED = {"eval", "exec"}                               # a post-strip fd-redirect remainder = plumbing → drop
+# An fd-REDIRECT remainder (`exec 2>&1`, `exec 3< f`, `exec >log`, `exec &>log`): an optional fd number then a
+# redirect operator. Must NOT match a digit-NAMED command (`exec 7z x a.zip`, `eval 2to3 -w src`) — the naive
+# `seg[0].isdigit()` guard false-dropped those (code-review [3]): `7z` is `\d+` then a LETTER, not `[<>&]`.
+_FD_REDIR = re.compile(r"^(?:\d+)?[<>&]")
 _KW_DROP = {"done", "fi", "esac", "}",
             "exit", "break", "continue", "return", ":",
             "set", "shopt", "trap", "unset", "umask", "ulimit", "shift",
@@ -142,30 +146,12 @@ def _strip_heredocs(cmd: str) -> str:
     return _HEREDOC.sub(r"\3\n", cmd)
 
 
-# v0.1.58: a `±HHMM` offset (no colon — what `date -u +%z` prints) → `±HH:MM`, which `fromisoformat`
-# requires on Python 3.8–3.10 (3.11 relaxed it). Anchored to the END so it can't touch the date's own
-# `-`/`:` separators. Removes the version-skew where `--since …+0000` parsed on 3.11 but aborted on 3.10
-# (code-review [3]).
-_OFFSET_NOCOLON = re.compile(r"([+-]\d{2})(\d{2})$")
-
-
-def _parse_ts(ts: str) -> "datetime | None":
-    """A transcript/`--since` timestamp string → an AWARE UTC datetime, or None if empty/unparseable.
-    The single timestamp parser (day-bucketing AND the window compare both route through it), so the two
-    can never disagree. A naive stamp is assumed UTC (CC emits `…Z`); an offset stamp (`…+05:30`) is
-    converted to its true UTC INSTANT — which is why the window filter compares parsed instants, not raw
-    strings: a lexicographic `ts <= since` mis-orders a local-offset `--since` against CC's `Z` stamps
-    (code-review [2])."""
-    if not ts:
-        return None
-    s = _OFFSET_NOCOLON.sub(r"\1:\2", ts.replace("Z", "+00:00"))
-    try:
-        dt = datetime.fromisoformat(s)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+def _day_str(dt: "datetime | None", raw: str) -> str:
+    """A parsed instant (+ its raw string, for the fallback) → the UTC calendar date (the episode-day unit),
+    or the raw 10-char slice when unparseable, or '' when empty. The SINGLE day-formatting expression —
+    `_day_of` and `scan()` both call it (scan passing its already-parsed `ts_dt` to dodge a re-parse), so
+    the two can't drift (code-review [7])."""
+    return dt.date().isoformat() if dt else (raw[:10] if raw else "")
 
 
 def _day_of(ts: str) -> str:
@@ -175,8 +161,7 @@ def _day_of(ts: str) -> str:
     different distill signal on a UTC server vs a local laptop (round-3 finding). The tradeoff (a single
     sitting straddling UTC midnight counts as 2 days) is cosmetic — `days` is an advisory rank hint, not a
     filter. Falls back to the raw slice on unparseable input; '' stays '' (no day accrues)."""
-    dt = _parse_ts(ts)
-    return dt.date().isoformat() if dt else (ts[:10] if ts else "")
+    return _day_str(_parse_ts(ts), ts)
 
 
 def _seg_template(seg: str) -> str | None:
@@ -197,7 +182,7 @@ def _seg_template(seg: str) -> str | None:
         seg = parts[1].strip() if len(parts) > 1 else ""
         if not seg:
             return None
-        if kw in _FD_GUARDED and (seg[0] == "<" or seg[0].isdigit()):
+        if kw in _FD_GUARDED and _FD_REDIR.match(seg):
             return None                              # `exec 2>&1` / `exec 3< file` — fd plumbing, not a command
         parts = seg.split(None, 1)
     # case-arm label `pattern)` — `"(" not in` excludes a function def `name()` / a `$(...)` head
@@ -229,7 +214,7 @@ def _seg_template(seg: str) -> str | None:
         if toks[-1] in ("-", "-c", "-e") and len(toks) >= 2 and _INTERP.match(toks[-2].rsplit("/", 1)[-1]):
             return None
     out: list[str] = []
-    for tok in seg.split():
+    for tok in toks:                                 # reuse the split from the interpreter check (code-review [8])
         if tok == "&":
             continue                                 # background/leftover ampersand is never class-defining
         if tok.startswith("-"):
@@ -353,7 +338,7 @@ def scan(project_dir: Path, since: str) -> dict:
                     if flagged:
                         counts["secrets_omitted"] += 1
                     if day is None:
-                        day = ts_dt.date().isoformat() if ts_dt else (ts[:10] if ts else "")
+                        day = _day_str(ts_dt, ts)       # the shared formatter; ts_dt already parsed above
                         if day:
                             days_seen.add(day)
                     counts["commands"] += 1
@@ -437,9 +422,14 @@ def inject_into(seed_path: str, d: dict, verdict: str, proposed: list, created: 
             return False
         blk = record.get("distill")
         blk = blk if isinstance(blk, dict) else {}
-        blk.update({"sessions": d["scanned"]["sessions"], "commands": d["scanned"]["commands"],
-                    "n_recurring": len(d["recurring"]), "n_chains": len(d["chains"]),
-                    "window": d["window"], "secrets_omitted": d["scanned"]["secrets_omitted"]})
+        # DEFENSIVE reads — a fresh scan always carries every key, but a `--from` file can be a stale
+        # (pre-v0.1.58, no `secrets_omitted`) or hand-edited scan that passed the shape gate; `.get` with
+        # defaults keeps a partial-but-valid scan working instead of a KeyError crash + lost capture ([0]).
+        sc = d.get("scanned")
+        sc = sc if isinstance(sc, dict) else {}
+        blk.update({"sessions": sc.get("sessions", 0), "commands": sc.get("commands", 0),
+                    "n_recurring": len(d.get("recurring") or []), "n_chains": len(d.get("chains") or []),
+                    "window": d.get("window", "(all)"), "secrets_omitted": sc.get("secrets_omitted", 0)})
         if verdict:
             blk["verdict"] = verdict
         if proposed:
@@ -450,7 +440,7 @@ def inject_into(seed_path: str, d: dict, verdict: str, proposed: list, created: 
         _write_private(Path(seed_path), json.dumps(record, indent=2, ensure_ascii=False) + "\n")
         print(f"distill → injected into {seed_path}", file=sys.stderr)
         return True
-    except (OSError, json.JSONDecodeError, ValueError) as e:
+    except (OSError, json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
         print(f"--into: skipped ({e}); the scan output above is the fallback", file=sys.stderr)
         return False
 

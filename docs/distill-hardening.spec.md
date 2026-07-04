@@ -421,3 +421,31 @@ re-gated (590 smoke, +8):
 Two LOW duplication findings ([16]/[17]) were dropped under the report cap; both are deliberate
 (the `inject_into` sub-key merge is intentionally NOT the audit wholesale-clobber; `_DISTILL_CAPS` is
 a pinned mirror, not accidental drift). Refuted: none (all 20 candidates verified).
+
+**Round 4 — SECOND workflow code review (high effort, 2026-07-03; 14 agents, verify-per-location; the
+user asked for a thoroughness pass over the round-3 FIXES):** 7 distinct defects — 5 fixed, 2 accepted
+as consistent-by-design:
+1. **[0/1/2] (headline) `inject_into` KeyError on a partial `--from` scan.** The new `--from` gate
+   accepts a dict with `scanned`/`recurring`/`chains` but `inject_into` direct-indexed `d["window"]` /
+   `d["scanned"]["secrets_omitted"]` (absent from a stale pre-v0.1.58 scan) and its `except` omitted
+   KeyError → uncaught crash + lost capture. Fixed: defensive `.get()` defaults (a partial-but-valid
+   scan now works, `secrets_omitted`→0 / `window`→"(all)") + KeyError/TypeError in the backstop.
+2. **[3] the eval/exec fd-guard false-dropped digit-NAMED tools** (`exec 7z x a.zip`, `eval 2to3 -w`
+   → `([],[])` via the naive `seg[0].isdigit()`). Fixed: a precise `^(?:\d+)?[<>&]` fd-REDIRECT match —
+   `7z`/`2to3` survive, `exec 2>&1`/`3< f`/`>log` still drop.
+3. **[6] `_parse_ts` re-implemented `_window_transcripts`' inline parse** (the reimplementation-pin), so
+   the `±HHMM`-offset robustness reached the per-line filter but NOT the file-prune (which no-op'd →
+   opened all history). Fixed: `_parse_ts` PROMOTED into `extract_signals`, `_window_transcripts` routes
+   through it, distill imports it — one parser, the two window mechanisms can't diverge.
+4. **[7] `_day_of` went dead** (scan inlined its body). Fixed: a `_day_str(dt, raw)` helper both call
+   (scan passes its already-parsed `ts_dt`, no re-parse), single source of the fallback expression.
+5. **[8] doubled `seg.split()`** in the hot per-segment path → reuse `toks`.
+- **[4] PLAUSIBLE (accepted, consistent-by-design):** a secret-only day now accrues to `scanned.days`.
+  The old exclusion was a side-effect of dropping the whole flagged command; now that flagged commands
+  COUNT (into `commands`/`secrets_omitted`), counting their active day is coherent — `days` is advisory.
+- **[5] PLAUSIBLE (accepted, already covered):** a skipped `--into` leaves an absent block. Not a code
+  defect — the validator can't warn on a legitimately-absent block (maintenance pivots skip distill);
+  detectability already lives at the right layers (the `distill_capture` beta family PASSes only on a
+  non-empty verdict; round-3 [6] made `--into` failure exit non-zero).
+Refuted by the round's own verifier: 1 of 10 candidates. Re-gated: 592 smoke (+2), mypy + sim +
+manifests + plugin-validate green; the two correctness fixes proven live.
