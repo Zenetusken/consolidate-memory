@@ -215,8 +215,8 @@ def main(argv: list) -> int:
     print(f"dashboard → {out}{frag}" + ("" if opened else "  · open this file in a browser" if not args.no_open else ""))
     # v0.1.54: the WAKE cue — this archive render/open is the SKILL's pinned wake point ("after the
     # terminal clean render + archive open"), the LAST scripted step of a completing dream.
-    _ui.dream_cue("the archive is open — WAKE now: *☀️ 2–5 italic lines*, then '☀️ **Awake.**', "
-                  "then the plain debrief, 📊 path last")
+    _ui.dream_cue("the archive is open — WAKE now: *☀️ 2–5 italic lines*, full stop (v0.1.64: no "
+                  "trailing 'Awake.' line), then the plain debrief, 📊 path last")
     return 0
 
 

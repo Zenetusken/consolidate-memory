@@ -1728,8 +1728,9 @@ with _tf43.TemporaryDirectory() as _td54:
     # render_html = the arc's true terminal boundary → the WAKE cue lives there (after the print).
     _out54 = str(Path(_td54) / "arc.html")
     _so54, _se54, _rc54 = _run54("render_html.py", str(_clean54), "--no-open", "--out", _out54, cue=True)
-    check("v0.1.54 render_html cue: archive rendered → the WAKE hint (☀️ Awake, 📊 path last)",
-          _rc54 == 0 and "WAKE now" in _se54 and "Awake." in _se54)
+    check("v0.1.54/64 render_html cue: archive rendered → the WAKE hint (full stop, no trailing Awake, 📊 path last)",
+          _rc54 == 0 and "WAKE now" in _se54 and "no trailing" in _se54
+          and "then '☀️ **Awake.**'" not in _se54)
     _so54, _se54, _rc54 = _run54("render_html.py", str(_clean54), "--no-open", "--out", _out54, cue=False)
     check("v0.1.54 render_html cue: env absent → silent", _rc54 == 0 and "[dream-arc]" not in _se54)
     # cue-mode gating in sync_global: --network is outside dream flow → NO cue even with env set.
@@ -1752,9 +1753,9 @@ _sk54 = _skill_md.read_text(encoding="utf-8")
 _cmd54 = [ln for ln in _sk54.splitlines() if "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/" in ln]
 check(f"v0.1.54 SKILL pin: every scripts/ command line is CM_DREAM_ARC=1-prefixed ({len(_cmd54)} lines)",
       bool(_cmd54) and all("CM_DREAM_ARC=1 python3" in ln for ln in _cmd54))
-check("v0.1.54/57 SKILL pin: the dream-arc contract anchors (schematic, beats, Awake, never-echo)",
+check("v0.1.54/57 SKILL pin: the dream-arc contract anchors (schematic, beats, never-echo)",
       "*💤" in _sk54 and "SLEEP" in _sk54 and "SURFACING" in _sk54 and "WAKE" in _sk54
-      and "☀️ **Awake.**" in _sk54 and "[dream-arc]" in _sk54)
+      and "[dream-arc]" in _sk54)
 check("v0.1.57 SKILL pin: the quiet-dream format — no blockquote schematic, bookend-only emojis",
       "> *💤" not in _sk54 and "> *🌙" not in _sk54 and "no blockquote" in _sk54
       and "every other dream line carries none" in _sk54)
@@ -2311,6 +2312,22 @@ check("v0.1.63 render: legacy index gauge has no cliff/hooks tail (keys absent)"
 check("v0.1.63 cm log: READS column from usage.reads; em-dash on a legacy record",
       rlog._row({"usage": {"reads": 7}})[5] == "7" and rlog._row({})[5] == "—"
       and rlog._HEAD[5] == "READS")
+
+# ── v0.1.64: WAKE is ONE line, full stop — no trailing bolded "Awake." (a SECOND, adjacent
+# defect to v0.1.62's, caught live from the RENDERED HTML archive: WAKE's own two lines
+# duplicated each other, one layer under the fix v0.1.62 shipped). ─────────────────────────
+_sk64 = _skill_md.read_text(encoding="utf-8")
+check("v0.1.64 SKILL pin: the WAKE beat-table row retires the trailing 'Awake.' line as a live instruction",
+      "no trailing bolded" in _sk64 and 'then `☀️ **Awake.**` on its own line, then the plain debrief' not in _sk64)
+check("v0.1.64 SKILL pin: the debrief section documents the second defect + the fix",
+      "A second, adjacent defect" in _sk64 and "no trailing bolded line, ever" in _sk64)
+check("v0.1.64 SKILL pin: the Phase-5 step-7 WAKE instruction echoes the fix (no drift between the two sites)",
+      "no trailing bolded \"Awake.\"" in _sk64.split("Then WAKE — and only then debrief")[1][:300])
+_rh64_src = (ROOT / "plugins" / "consolidate-memory" / "scripts" / "render_html.py").read_text(encoding="utf-8")
+check("v0.1.64 render_html cue source: the dream_cue text itself no longer instructs a trailing Awake line",
+      "full stop (v0.1.64: no" in _rh64_src
+      and "trailing 'Awake.' line), then the plain debrief" in _rh64_src
+      and "then '☀️ **Awake.**'" not in _rh64_src)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

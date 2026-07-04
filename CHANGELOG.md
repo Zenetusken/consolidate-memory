@@ -5,6 +5,26 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.64] — 2026-07-04
+
+### Fixed — SKILL.md: WAKE's own two lines duplicated each other (a second, adjacent defect to v0.1.62's)
+Reported live from the RENDERED HTML archive (a screenshot, not the raw chat text): even after v0.1.62
+ended the debrief's redundant second sign-off, WAKE's own bookend — the italic surfacing paragraph
+*and* a separate bolded `☀️ **Awake.**` line — still duplicated each other. The archive renders them as
+two separate sun-marked bullets: the exact shape v0.1.62 fixed one layer up, recurring one layer down
+in the same contract. The surfacing paragraph already conveys emergence from the dream; a second,
+content-free "Awake." line added nothing.
+
+- **WAKE is now a single italic paragraph, full stop** — no trailing bolded line, ever, in any case
+  (the true no-op's single dreamless line was already this shape and needed no change). The debrief's
+  bold lead line (v0.1.62) is unchanged and remains the only thing that follows WAKE.
+- Fixed at all three sites that stated the old two-line shape (the beats table, the debrief section's
+  own framing sentence, and the Phase-5 step-7 echo) plus the `render_html.py` WAKE cue text shown to
+  the model at the moment the beat is due — a duplicated rule that drifts is worse than one, so all
+  four were updated in lockstep and smoke-pinned against re-drift.
+- No cycle-record schema change (dream.wake is still one string; nothing new to inject) → **patch**,
+  same class as v0.1.62.
+
 ## [0.1.63] — 2026-07-04
 
 ### Added — index-lifecycle Phase A: recall-usage instrumentation + hook/cliff telemetry (observe-only)

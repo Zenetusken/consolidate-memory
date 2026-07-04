@@ -191,7 +191,7 @@ every phase — the dream block above, the plain findings below.
 | **SLEEP 💤** | Your FIRST output on invocation, before the first tool call — falling asleep out of the session's just-finished work (fresh session, nothing in context → a neutral drift-off). Opens `*💤 …*` | 1–3 lines (short — the dream hasn't found anything yet; depth arrives with the beats) |
 | **DREAM BEAT** | Opens EVERY phase's narration (0 locate · 1 network · 2 signals · 3 verify · 5 defrag/render): dream block first (plain italics, no emoji), that phase's plain findings below | 1–3 lines |
 | **SURFACING** | Phase 4's single italic line (`*…*`, no emoji) — the dream thins to show the proposal. It ORIENTS only ("the pass surfaces to ask…"); it never editorializes what's proposed (this is the approval gate for irreversible writes) — then the proposal itself is delivered fully in the plain channel | 1 line |
-| **WAKE ☀️** | After the terminal clean (exit-0) render + archive open, before the debrief: surfacing out of the dream — opens `*☀️ …*` — then `☀️ **Awake.**` on its own line, then the plain debrief. (A true no-op reaches no render: its wake is the single dreamless line — see *Proportionality*) | 2–5 lines |
+| **WAKE ☀️** | After the terminal clean (exit-0) render + archive open, before the debrief: surfacing out of the dream — ONE italic block opening `*☀️ …*`, full stop, no trailing bolded "Awake." line (retired v0.1.64 — see *The debrief*) — then straight into the plain debrief. (A true no-op reaches no render: its wake is the single dreamless line — see *Proportionality*) | 2–5 lines |
 
 The format, as a schematic (placeholders — not lines to reuse):
 
@@ -236,13 +236,13 @@ the rigor tier — distinct quantities that share no scale, see *Rigor modes*):
 A mid-dream compaction doesn't reset the arc: the cues state what's due now. A repeated
 SLEEP is cosmetic; a skipped beat isn't — follow the cue.
 
-**The debrief (the plain close, after WAKE — ONE sign-off, then the card, v0.1.62).**
+**The debrief (the plain close, after WAKE — ONE sign-off, then the card, v0.1.62/v0.1.64).**
 Always present when the pass renders, always structured, scaled to the outcome banner.
-WAKE already performed the pass's single closing gesture (`*☀️ …*` → `☀️ **Awake.**`) —
-the debrief is the CARD that follows it, not a second landing. **A measured defect
-(2026-07-04): the debrief's lead line used to carry its OWN "outcome + emoji" flourish
-right after `☀️ **Awake.**`, reading as a second sign-off stacked on the first (☀️/☀️/🌙 in
-three lines) — a coherence bug in this contract itself, not a one-off slip.** Fixed:
+WAKE already performed the pass's single closing gesture (`*☀️ …*` alone) — the debrief is
+the CARD that follows it, not a second landing. **A measured defect (2026-07-04): the
+debrief's lead line used to carry its OWN "outcome + emoji" flourish right after
+`☀️ **Awake.**`, reading as a second sign-off stacked on the first (☀️/☀️/🌙 in three
+lines) — a coherence bug in this contract itself, not a one-off slip.** Fixed:
 - **Visual hierarchy** — ONE bold lead line naming the outcome banner (e.g. **LIGHT
   PASS**) — text only, **no emoji on the lead line**: WAKE already closed the dream, so a
   second emoji here would be a redundant third landing gesture. Bold-headed sections
@@ -263,6 +263,17 @@ three lines) — a coherence bug in this contract itself, not a one-off slip.** 
   it.)
 - **Always ends with the 📊 dashboard path** + the "re-open it any time by opening the
   file" note. (The true no-op produces no debrief and no path — it never reaches Phase 5.)
+
+**A second, adjacent defect (2026-07-04, same day — caught live from the RENDERED HTML archive,
+not the raw chat text, by the user).** Even after the v0.1.62 fix above, WAKE's own two lines —
+the italic surfacing paragraph and the separate bolded `☀️ **Awake.**` — still duplicated EACH
+OTHER: the archive renders them as two separate sun-marked bullets, the same redundant shape
+v0.1.62 ended one layer up, just recurring one layer down. The surfacing paragraph already
+conveys emergence from the dream; a second, content-free "Awake." line adds nothing —
+"more elegant" without it, in the user's own words. **Fixed (v0.1.64): WAKE is now the single
+italic paragraph, full stop — no trailing bolded line, ever, in ANY case including the true
+no-op** (which was already single-line and needed no change). The debrief's bold lead line
+(v0.1.62) is unchanged and remains the ONLY thing that follows WAKE.
 
 ### Phase 0 — Locate data + the high-water mark
 
@@ -917,7 +928,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
 
    **Then WAKE — and only then debrief.** With the ASCII dashboard already printed in-terminal (the
    clean exit-0 `render_dashboard --persist` above) and the HTML auto-opened, emit the **WAKE block**
-   — 2–5 italic lines surfacing out of the dream (`*☀️ …*`), then `☀️ **Awake.**` on its own line (see
+   — 2–5 italic lines surfacing out of the dream (`*☀️ …*`), full stop — no trailing bolded "Awake."
+   line (v0.1.64; see *The dream arc* → *The debrief*) — straight into the debrief next (see
    *The dream arc*; `dream.wake` was already composed into the record at the final fill, before
    `--persist`). Then deliver the
    structured **session debrief** — qualities + proportionality pinned in *The dream arc*: ONE bold
