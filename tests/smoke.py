@@ -2185,5 +2185,17 @@ _hmap58 = (ROOT / "plugins" / "consolidate-memory" / "skills" / "consolidate-mem
 check("v0.1.58 harness-map pin: the distill section exists (was ZERO mentions)",
       "## Distill (the second vertical" in _hmap58 and "script-only" in _hmap58)
 
+# ── v0.1.62: the debrief is ONE sign-off (WAKE) + the card — no second emoji'd lead line ─────────
+# MEASURED 2026-07-04: WAKE's `☀️ … / ☀️ **Awake.**` was followed by a debrief lead line ALSO
+# carrying "outcome + one functional emoji" (🌙) — read as a redundant third landing (☀️/☀️/🌙 in
+# three lines). Both occurrences of the old instruction (the dream-arc rule + the Phase-5 step-7
+# echo) are fixed; pin their absence + the new no-emoji-lead-line rule's presence.
+check("v0.1.62 SKILL pin: the old 'outcome + one functional emoji' lead-line instruction is GONE",
+      "outcome + one functional emoji" not in _sk55)
+check("v0.1.62 SKILL pin: the no-emoji lead-line rule + the retired generic 🌙 marker are documented",
+      "no emoji on the lead line" in _sk55 and "Retired: a bare" in _sk55)
+check("v0.1.62 SKILL pin: both debrief-instruction sites (dream-arc + Phase-5 step 7) name the fix",
+      "no emoji — WAKE already closed the dream" in _sk55 and "A measured defect" in _sk55)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

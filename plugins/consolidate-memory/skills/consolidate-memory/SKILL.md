@@ -236,15 +236,25 @@ the rigor tier — distinct quantities that share no scale, see *Rigor modes*):
 A mid-dream compaction doesn't reset the arc: the cues state what's due now. A repeated
 SLEEP is cosmetic; a skipped beat isn't — follow the cue.
 
-**The debrief (the plain close, after WAKE).** Always present when the pass renders, always
-structured, scaled to the outcome banner:
-- **Visual hierarchy** — a lead line (outcome + one functional emoji), then bold-headed
-  sections.
+**The debrief (the plain close, after WAKE — ONE sign-off, then the card, v0.1.62).**
+Always present when the pass renders, always structured, scaled to the outcome banner.
+WAKE already performed the pass's single closing gesture (`*☀️ …*` → `☀️ **Awake.**`) —
+the debrief is the CARD that follows it, not a second landing. **A measured defect
+(2026-07-04): the debrief's lead line used to carry its OWN "outcome + emoji" flourish
+right after `☀️ **Awake.**`, reading as a second sign-off stacked on the first (☀️/☀️/🌙 in
+three lines) — a coherence bug in this contract itself, not a one-off slip.** Fixed:
+- **Visual hierarchy** — ONE bold lead line naming the outcome banner (e.g. **LIGHT
+  PASS**) — text only, **no emoji on the lead line**: WAKE already closed the dream, so a
+  second emoji here would be a redundant third landing gesture. Bold-headed sections
+  follow.
 - **Dense + technical** — bullets with bold lead-ins, no filler; don't dumb the content
   down.
-- **Functional, SPARSE emojis** — status / section markers (🌙 dream · 🚀 ship ·
-  📊 dashboard · ✓ / ⚠), never decoration. (In the dream channel, 💤/☀️ mark only the
-  sleep/wake bookends; here emojis mark sections.)
+- **Functional, SPARSE emojis — IN THE BODY ONLY, never on the lead line.** A section
+  marker earns its emoji by naming a SPECIFIC thing that section is about (🚀 ship ·
+  📊 dashboard · ✓ / ⚠ status) — never a generic "this is a dream pass" decoration.
+  (Retired: a bare 🌙 as a whole-debrief marker — it duplicated WAKE's ☀️ with no content
+  of its own to mark.) In the dream channel, 💤/☀️ still mark only the sleep/wake
+  bookends — unchanged.
 - **FRAMES, doesn't DUPLICATE** — name the non-obvious WHY + what was KEPT / PRUNED /
   verified; the dashboard holds the gauges / counts / tallies. **"Don't duplicate" ≠ "drop
   the numbers":** cite a figure when it carries the point (e.g. "8443→2685 tok, all lessons
@@ -900,8 +910,9 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    — 2–5 italic lines surfacing out of the dream (`*☀️ …*`), then `☀️ **Awake.**` on its own line (see
    *The dream arc*; `dream.wake` was already composed into the record at the final fill, before
    `--persist`). Then deliver the
-   structured **session debrief** — qualities + proportionality pinned in *The dream arc*: a lead line
-   (outcome + one functional emoji), bold-headed sections, dense bullets that **FRAME** the pass (the
+   structured **session debrief** — qualities + proportionality pinned in *The dream arc*: ONE bold
+   lead line naming the outcome banner (text only, no emoji — WAKE already closed the dream; see
+   *The dream arc* → the debrief), bold-headed sections, dense bullets that **FRAME** the pass (the
    non-obvious WHY + what was KEPT / PRUNED / verified — and the **distill outcome**: any workflow artifact
    proposed / created, or nothing) rather than re-tabulate the dashboard's gauges,
    **scaled to the outcome banner** (a no-op / maintenance / light pass gets one or two lines + the path,
