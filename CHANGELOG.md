@@ -5,6 +5,33 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.59] — 2026-07-04
+
+### Docs — full sync to the v0.1.58 distill-hardening state
+The v0.1.58 release brought its own plugin docs current (SKILL.md, harness-map.md), but the repo-root
+maintainer/public docs lagged. An independent doc-staleness audit (all six docs cross-checked against the
+shipped code) found the drift; fixed:
+- **SECURITY.md** — the distill firewall description still documented the RETIRED v0.1.55 behavior
+  ("screens every Bash command *before* templating, so a credential-shaped command is dropped"). Rewritten
+  to the v0.1.58 firewall-AT-EMISSION model: a credential-shaped command still counts into its command-CLASS
+  template (recurrence stays accurate) and into the `scanned.secrets_omitted` transparency counter, but its
+  raw text never surfaces — the display `sample` becomes an omission label and every emitted template is
+  screened on its `_norm`'d form (so a zero-width-split secret is caught) before it can be a row or chain
+  endpoint. (The public security doc was the highest-value fix.)
+- **CLAUDE.md** — the "Releasing" versioning-precedent list (ended at v0.1.55) extended through v0.1.58 with
+  the additive keys spelled out; the layout table's `distill_scan.py` entry corrected (compound-command
+  chains, not "`&&`-chains"; the `--into`/`--from` capture flags noted); the cycle-record-contract bullet's
+  `validate_cycle_record` description extended for the v0.1.58 impossible-distill-count backstop (already
+  documented in harness-map.md — CLAUDE.md was the odd one out).
+- **README.md** — the architecture tree omitted `_ui.py` (pre-existing; every renderer imports it and
+  CLAUDE.md's layout lists it) — added.
+
+Docs-only, no plugin-runtime/schema/`--json` change (the published plugin under
+`plugins/consolidate-memory/` is byte-identical to v0.1.58 apart from the version bump; legacy records
+render) → patch. Gated by the standard battery (smoke + mypy + sim + manifests + `--strict`) via
+`release.sh` + an independent doc-audit agent that verified SKILL.md, harness-map.md, PREFLIGHT.md, and the
+`cm` help as already-current.
+
 ## [0.1.58] — 2026-07-04
 
 ### Fixed — distill hardening: closed noise classes, honest firewall, script-truth capture (the end-to-end audit arc)

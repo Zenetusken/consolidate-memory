@@ -30,9 +30,13 @@ does, what it never does, and how to report a problem.
   contains a credential-shaped value to a label — the verbatim secret never reaches a
   memory file (repo docs are committed; auto-memory persists). It records a *pointer*,
   never a value. `distill_scan.py` (the workflow-recurrence reader) is the other
-  transcript consumer and applies the **same** firewall — it screens every Bash command
-  through `extract_signals._looks_secret` *before* templating, so a credential-shaped
-  command is dropped and never surfaces as a "recurring workflow" candidate.
+  transcript consumer and applies the **same** `extract_signals._looks_secret` firewall,
+  at the point of EMISSION (v0.1.58): a credential-shaped command still counts into its
+  command-CLASS template (so recurrence stays accurate) and into a `scanned.secrets_omitted`
+  transparency counter, but its raw text can never surface — its display `sample` becomes an
+  omission label, and every emitted template is screened through the same firewall (on the
+  `_norm`'d form, so a zero-width-split secret is caught) before it can become a row or a
+  chain endpoint.
 - **Bounded input:** transcript turns are length-capped (`_PROBE_CAP` = 4000 chars) before regex
   classification (defense-in-depth); the regexes have no catastrophic backtracking — each
   alphanumeric run and its required separator are disjoint, so there's no ambiguity to blow up —
