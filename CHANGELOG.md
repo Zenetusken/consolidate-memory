@@ -5,6 +5,32 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.62] — 2026-07-04
+
+### Fixed — SKILL.md: the dream's closing debrief was a double sign-off, not a single one
+Reported directly from a live dream's own output: the WAKE bookend (`*☀️ …*` → `☀️ **Awake.**`)
+was immediately followed by the debrief's own lead line, which SKILL.md instructed to carry
+"outcome + one functional emoji" (e.g. 🌙) — three landing gestures in three lines (☀️ / ☀️ / 🌙)
+reading as a redundant second sign-off stacked on the first, not one coherent close into a summary
+card. This was a defect in the **contract itself** (both places SKILL.md stated the rule — the
+dream-arc section and its Phase-5 step-7 echo — said the same thing), not a one-off authoring slip;
+left alone, every future dream would reproduce it.
+
+- **The debrief's lead line is now text-only, no emoji.** WAKE already performs the pass's one
+  closing gesture; the debrief is the card that follows it, not a second landing. The lead line
+  states the outcome banner in bold (e.g. **LIGHT PASS**) and nothing else.
+- **The generic 🌙 "dream" section marker is retired** from the debrief's functional-emoji palette.
+  The remaining emoji (🚀 ship · 📊 dashboard · ✓/⚠ status) stay, but only as in-body markers for a
+  section that names something concrete — never as a whole-debrief decoration.
+- Both instruction sites were fixed in lockstep (a duplicated rule that drifts is worse than one
+  that's merely wrong); a new smoke pin asserts the old "outcome + one functional emoji" phrasing
+  is gone and the new no-emoji-lead-line rule is present at both sites, so this can't silently
+  regress.
+
+Prose-only change to the skill's own operating instructions — no schema, `--json`, or script
+behavior change; no effect on any persisted cycle record → patch. 597 smoke (+3) + mypy + sim +
+manifests + `--strict` green.
+
 ## [0.1.61] — 2026-07-04
 
 ### Fixed — HTML dashboard: a structural rule for two-column alignment (v0.1.60 was incomplete)
