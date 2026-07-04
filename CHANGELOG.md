@@ -5,7 +5,7 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
-## [0.1.58] — 2026-07-03
+## [0.1.58] — 2026-07-04
 
 ### Fixed — distill hardening: closed noise classes, honest firewall, script-truth capture (the end-to-end audit arc)
 A full business-logic audit of the distill vertical (three live corpora + a 27-case adversarial battery)
