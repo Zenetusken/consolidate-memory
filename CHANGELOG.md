@@ -5,6 +5,30 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.60] — 2026-07-04
+
+### Changed — HTML dashboard: the Shared Consciousness network chart's metadata is now coherent
+In the "02 Shared Consciousness" section, the two charts presented their metadata inconsistently: the
+left chart (the budget meters) kept its caption tight beneath it, while the right chart (the network
+graph) had its legend + caption **detached into a lower band**, reading as a separate section rather than
+part of the graph. Root cause: the network `<svg>` had a fixed `height:200px` but the graph draws small
+and centered in a wide coordinate space, so ~47px of dead space pushed the legend/caption well below the
+graph (the right metadata sat 87px lower than the left).
+- The network SVG is now **fixed-height + auto-width** (`#net{height:154px;width:auto}`, overriding the
+  global `svg{width:100%}`) and its **viewBox is fitted to the drawn node geometry** in JS — computed from
+  the node positions/radii/labels (NOT `getBBox`, which throws/returns empty on a not-yet-visible archived
+  dream section), so the box frames the graph tightly for ANY node count.
+- The legend and caption are **centered under the centered graph** (`.legend.center` + new
+  `.cap.center`), so the right chart is internally coherent (centered graph + centered metadata) the way
+  the left is (left bars + left caption).
+
+Result (DOM-verified in-browser): dead space around the graph 47px → ~10px, the legend now sits 24px
+directly beneath the graph (was 46px + a detached band), and the metadata offset from the left chart 87px
+→ 41px (the residual is just the graph being taller than two thin bars — the metadata is now attached to
+its chart, which was the incoherence). Template/CSS/JS only — no record schema, `--json`, or script
+behavior change; legacy dreams render (the fit is presentation-time) → patch. 594 smoke + mypy green;
+verified via the actual DOM (screenshots render light, so layout was confirmed by measurement).
+
 ## [0.1.59] — 2026-07-04
 
 ### Docs — full sync to the v0.1.58 distill-hardening state
