@@ -112,6 +112,7 @@ class IndexBudget(TypedDict, total=False):
     fat_hooks: int         # v0.1.63 (Phase A): pointer lines over HOOK_TOKEN_WARN (hook_stats)
     hook_max_tokens: int   # v0.1.63 (Phase A): the fattest pointer line (est tok)
     cliff_pct: int         # v0.1.63 (Phase A): % of the native 25KB/200-line truncation cliff (exact units)
+    ceiling_tokens: int    # v0.1.66 (Phase B): INDEX_CEILING_TOKENS, stored for display (the budget_tokens precedent)
 
 
 class RecallFacts(TypedDict, total=False):
@@ -216,7 +217,7 @@ class CrossProject(TypedDict, total=False):
     pulled: list[dict]       # [{"name": ..., "scope": ...}] — Phase 1: global → here
     promoted: list[dict]     # [{"name": ..., "scope": ...}] — Phase 4: here → global
     refreshed: int
-    held: int                # v0.1.38 (M1): new-global pulls HELD (would net-grow the over-budget index) — prune/justify to receive
+    held: int                # v0.1.38 (M1): new-global pulls HELD (v0.1.66: would push the index past the HARD CEILING) — shrink to receive
     gc_removed: int
 
 
@@ -266,6 +267,9 @@ class Remediation(TypedDict, total=False):
     standing_justified: bool       # the over-budget gate is SUPPRESSED — density already justified, store hasn't grown by Δ
     baseline_facts: int            # the fact-count baseline at which the density was last justified (delta-detector)
     reaches_budget: bool           # can a full prune of the candidates reach budget? False ⇒ prune-then-standing-justify
+    # v0.1.66 (Phase B): the hard ceiling — a SIBLING of `required`, never its replacement. Computed
+    # independently (index tokens > INDEX_CEILING_TOKENS); standing-justify does NOT apply to it.
+    over_ceiling: bool             # the index exceeds the HARD ceiling — M1 holds all new pulls until it shrinks
 
 
 class Maintenance(TypedDict, total=False):
@@ -378,8 +382,26 @@ CLIFF_NEAR_FRACTION = 0.8       # ≥ this share of either native cap → red (s
 HOOK_TOKEN_WARN = 60            # est tok per index POINTER line above which the hook is flagged FAT.
                                 # Measured (2026-07-04): fleet median ≈48-57 tok/line, the triage's
                                 # lean model 30; the offenders (116/141 tok) were status-content-in-
-                                # the-hook — 2 lines = 17% of the whole budget. Detection only here
-                                # (report + seed); the write-time lint is Phase B.
+                                # the-hook — 2 lines = 17% of the whole budget. Detected here (report
+                                # + seed, v0.1.63); linted at write time in sync_global (v0.1.66).
+
+# ── v0.1.66 (Phase B): the HARD CEILING — a SECOND, INDEPENDENT signal beside the target ─────────
+# NOT a re-key of INDEX_TOKEN_BUDGET or of anything that reads it: the target gate (remediation
+# `required`, the triage levers, standing-justify, prune-pressure, the maintenance pivot) is
+# UNTOUCHED and still keys to INDEX_TOKEN_BUDGET above. This ceiling drives ONLY the new hard
+# mechanisms: the M1 pull-hold + the evict fit-check (sync_global passes it at the call site) and
+# the `remediation.over_ceiling` flag the renderers show. It is structurally standing-justify-
+# INDEPENDENT — the comparison never reads `standing_justify` (same shape as _would_net_grow) — so
+# there is no suppression to tune and no justify escape: over the ceiling, only shrinking satisfies.
+# UNIT: one canonical est-token number derived from the BYTE axis of the native cliff (est_tokens ≈
+# chars/4 ≈ bytes/4 on the ~ASCII index); the LINE axis (200-line cap) is deliberately NOT folded in
+# — every mechanism this keys measures est-tokens, and line-axis proximity is already watched by
+# cliff_pct (red at CLIFF_NEAR_FRACTION). A 3-lens spec-review gate (2026-07-04) produced this
+# design after the original single-field re-key was found to break triage-at-amber, the maintenance
+# pivot, and dream-beta-tester's CHK-REM-SEED-CONTRACT release oracle at once.
+# Full design: docs/index-usage-and-budget-ladder.spec.md §Phase B.
+INDEX_CEILING_FRACTION = 0.6
+INDEX_CEILING_TOKENS = round(INDEX_CEILING_FRACTION * NATIVE_INDEX_CAP_BYTES / 4)   # = 3840 est tok
 
 # The cross-project canonical store (the global tier). ONE named constant (cf. sync_global.GLOBAL)
 # so the dangling cross-store resolver, the `global_store_facts` seed, and the network display can't
@@ -1435,6 +1457,13 @@ def build_context(project_dir: Path) -> dict:
                 continue
         remediation = remediation_triage(fact_files, index_names, index_lb[2],
                                          est_tokens("\n".join(_mirror_idx)), reference_stems=ref_stems)
+    # v0.1.66 (Phase B): the hard-ceiling flag — a SIBLING assignment, deliberately OUTSIDE both branches
+    # above so it never enters the `required`/standing-justify computation (the sibling-signal design the
+    # 3-lens spec-review gate mandated; docs/index-usage-and-budget-ladder.spec.md §Phase B). Any store over
+    # the ceiling is necessarily over the target (3840 > 1500 est tok), so `remediation` is always non-empty
+    # when this could be True; a healthy (under-target) store carries no remediation block and no key.
+    if remediation:
+        remediation["over_ceiling"] = index_lb[2] > INDEX_CEILING_TOKENS
 
     # v0.1.37 (+v0.1.52): the no-op SELF-HEAL maintenance signal. Resolves dangling against local ∪ the
     # global canonical (a stem GLOB only — still cheap on the always-run Phase-0 path, NOT a dependency
@@ -1603,6 +1632,7 @@ def seed_record(ctx: dict) -> CycleRecord:
                 # v0.1.63 (Phase A): hook + cliff telemetry (observe-only; Phase B acts on them)
                 "fat_hooks": ctx["index_hooks"][0], "hook_max_tokens": ctx["index_hooks"][1],
                 "cliff_pct": ctx["index_cliff"],
+                "ceiling_tokens": INDEX_CEILING_TOKENS,   # v0.1.66 (Phase B): the hard ceiling, for display
             },
             "recall_facts": {"before": len(ctx["fact_files"]), "after": len(ctx["fact_files"])},
             "claude_md_hierarchy": ctx["claude_md_hierarchy"],   # v0.1.22: whole-hierarchy measure (read-only)
@@ -1619,7 +1649,7 @@ def seed_record(ctx: dict) -> CycleRecord:
             "pulled": [],     # fill in Phase 1 (sync_global --pull): global → here
             "promoted": [],   # fill in Phase 4: here → global (new cross-project facts)
             "refreshed": 0,   # stale mirrors refreshed on pull
-            "held": 0,        # v0.1.38 (M1): new-global pulls held back (would net-grow the over-budget index)
+            "held": 0,        # v0.1.38 (M1): new-global pulls held back (v0.1.66: past the HARD CEILING, was over-target)
             "gc_removed": 0,  # orphan mirrors reclaimed in Phase 5 (sync_global --gc --apply)
         },
         "marker": {
@@ -1635,8 +1665,11 @@ def seed_record(ctx: dict) -> CycleRecord:
     if rem and rem.get("standing_justified"):
         # v0.1.21 (D7): the gate is SUPPRESSED (density already justified, store within Δ) — seed the lightweight
         # suppressed block (no lever/triage to surface). required=False so the dashboard reads "standing-justified".
+        # v0.1.66 (Phase B): over_ceiling rides along UNCHANGED by the suppression — the ceiling is SJ-independent
+        # by construction (the sibling-signal design), so a justified store past the ceiling still shows it.
         record["remediation"] = {"required": False, "standing_justified": True,
-                                 "baseline_facts": rem.get("baseline_facts", 0)}
+                                 "baseline_facts": rem.get("baseline_facts", 0),
+                                 "over_ceiling": bool(rem.get("over_ceiling"))}
     elif rem:
         record["remediation"] = {
             "required": rem["required"], "lever": rem["lever"],
@@ -1644,6 +1677,7 @@ def seed_record(ctx: dict) -> CycleRecord:
             "projected_index": rem.get("projected_index", 0),
             "projected_recall": rem.get("projected_recall", 0),
             "reaches_budget": rem.get("reaches_budget", True),   # D5: False ⇒ prune-then-standing-justify
+            "over_ceiling": bool(rem.get("over_ceiling")),       # v0.1.66 (Phase B): sibling of required, never a re-key
         }
     return record
 
@@ -1809,15 +1843,24 @@ def _remediation_section(rem: dict) -> list:
     under budget (rem is {}). Presentation only; the heuristics RANK, the model JUDGES + confirms."""
     if not rem:
         return []
+    # v0.1.66 (Phase B): the hard-ceiling line renders in BOTH branches below — the ceiling is
+    # standing-justify-INDEPENDENT (sibling signal), so suppression of the target gate never hides it.
+    _ceil_line = (_ui.li(_ui.c(f"⚠ HARD CEILING exceeded (>{INDEX_CEILING_TOKENS} est tok) — M1 holds ALL new "
+                               "pulls; standing-justify does not apply to the ceiling; shrink to receive",
+                               "red"), indent=4, bullet="⚠", bullet_color="red")
+                  if rem.get("over_ceiling") else None)
     # v0.1.21 (D6/D7): a STANDING-JUSTIFIED over-budget index is suppressed — show the standing state, no triage.
     if rem.get("standing_justified"):
         cur, base = rem.get("current_facts"), rem.get("baseline_facts", 0)
         grew = f"+{cur - base}" if isinstance(cur, int) else "?"
         return [_ui.kv("REMEDIATION", _ui.c(
             f"✓ over budget ({rem.get('index_tokens', '?')}/{rem.get('budget', INDEX_TOKEN_BUDGET)} tok) but "
-            f"STANDING-JUSTIFIED · {cur} facts vs baseline {base} ({grew}; re-fires at +{_STANDING_JUSTIFY_DELTA} facts or on index-token bloat)", "green"))]
+            f"STANDING-JUSTIFIED · {cur} facts vs baseline {base} ({grew}; re-fires at +{_STANDING_JUSTIFY_DELTA} facts or on index-token bloat)", "green"))] \
+            + ([_ceil_line] if _ceil_line else [])
     out = [_ui.kv("REMEDIATION", _ui.c(f"⚠ index OVER budget ({rem['index_tokens']}/{rem['budget']} tok) "
                                        f"— GATE active · lever {rem['lever'].upper()}", "red"))]
+    if _ceil_line:
+        out.append(_ceil_line)
     # D8 (v0.1.21): lead with the INDEX-RELIEF stages (B/C move the gated index); R = de-link-first; A = disk-only LAST.
     for key, label in (("B_trackers", "tracker/status (transient)"),
                        ("C_dated_oversized", "dated/oversized (content-review — heuristic ranks, you JUDGE)")):
@@ -1911,11 +1954,15 @@ def print_report(ctx: dict) -> None:
         over = _ui.c("  ⚠ OVER", "red") if it > INDEX_TOKEN_BUDGET else ""
         # v0.1.63 (Phase A): cliff proximity on the gauge line (red at CLIFF_NEAR_FRACTION — silent
         # truncation near); fat hooks on their own advisory line (a fat cue taxes every session).
+        # v0.1.66 (Phase B): the hard-ceiling flag — independent of the target `over` and of
+        # standing-justify (sibling signal; M1 holds all new pulls while it shows).
         _cp = ctx.get("index_cliff", 0)
         cliff = (_ui.c(f"  ⚠ cliff {_cp}% of native 25KB/200ln — SILENT truncation near", "red")
                  if _cp >= int(CLIFF_NEAR_FRACTION * 100) else _ui.c(f" · cliff {_cp}%", "dim"))
+        ceil = _ui.c(f"  ⚠ HARD CEILING (>{INDEX_CEILING_TOKENS} tok — M1 holds all new pulls)", "red") \
+            if it > INDEX_CEILING_TOKENS else ""
         add(f"    {_ui.lbl('index', 14)}{_ui.bar(it, INDEX_TOKEN_BUDGET)} {_ui.pct(it, INDEX_TOKEN_BUDGET):>4}  "
-            + _ui.c(f"≈{it}/{INDEX_TOKEN_BUDGET} tok · {il} ln · {ib} by  [ALWAYS-LOADED]", "dim") + over + cliff)
+            + _ui.c(f"≈{it}/{INDEX_TOKEN_BUDGET} tok · {il} ln · {ib} by  [ALWAYS-LOADED]", "dim") + over + ceil + cliff)
         _fh, _hm, _off = ctx.get("index_hooks", (0, 0, []))
         if _fh:
             _tops = " · ".join(f"{n} ≈{t}t" for t, n in _off[:3])
@@ -1972,7 +2019,7 @@ def print_report(ctx: dict) -> None:
         # v0.1.38 (M1): the net-grow guard lives IN --pull (auto-holds a new pointer that would leave the index
         # over budget) — not a cue command to remember (a cue can't know the per-pull cost; only --pull can). So
         # this is ADVISORY: surface the lever, don't gate here.
-        add("    " + _ui.c("--pull AUTO-HOLDS a new-global pull that would leave the index over budget (reports `held N` — prune/justify to receive)", "dim"))
+        add("    " + _ui.c(f"--pull AUTO-HOLDS a new-global pull that would push the index past the HARD CEILING (>{INDEX_CEILING_TOKENS} tok; reports `held N` — shrink to receive)", "dim"))
         if _noop_nonempty:
             add("    " + _ui.c("0 new commits + NON-EMPTY store → PROCEED (a maintenance pass, NOT a no-op); stop ONLY if the store is empty", "dim"))
 

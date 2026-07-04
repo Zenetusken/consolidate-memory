@@ -29,6 +29,7 @@ _PLACEHOLDER = "/*__CM_DATA__*/"
 
 INDEX_TOKEN_BUDGET = 1500       # mirrors memory_status.INDEX_TOKEN_BUDGET (the always-loaded MEMORY.md index)
 CLAUDE_MD_TOKEN_BUDGET = 4000   # mirrors memory_status.CLAUDE_MD_TOKEN_BUDGET (the root CLAUDE.md)
+INDEX_CEILING_TOKENS = 3840     # mirrors memory_status.INDEX_CEILING_TOKENS (v0.1.66 Phase B hard ceiling; smoke-pinned)
 
 
 def _safe_embed(data: dict) -> str:
@@ -105,7 +106,8 @@ def build_html(record: dict, history: list, generated_at: str, diffs: "dict | No
         "cycles": cycles,
         "project": project,
         "generated_at": generated_at,
-        "budgets": {"index": INDEX_TOKEN_BUDGET, "claude_md": CLAUDE_MD_TOKEN_BUDGET},
+        "budgets": {"index": INDEX_TOKEN_BUDGET, "claude_md": CLAUDE_MD_TOKEN_BUDGET,
+                    "index_ceiling": INDEX_CEILING_TOKENS},   # v0.1.66 (Phase B): the hard ceiling, for the meter
         "total": total,
         "cap": _ARCHIVE_CAP,
         "diffs": diffs if isinstance(diffs, dict) else {},

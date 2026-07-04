@@ -375,9 +375,21 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   dashboard go red at `CLIFF_NEAR_FRACTION` (80%). Hook-cost telemetry rides the same seed
   (`fat_hooks`/`hook_max_tokens`, threshold `HOOK_TOKEN_WARN`); recall-utility telemetry is
   `extract_signals.py --recalls --into <seed>` → the `usage` block (organic fact-body reads,
-  dream-span excluded; **0 reads = absence of evidence, never "unused"**). Observe-only in Phase A —
-  the budget-ladder semantics that act on these are Phase B. Design:
+  dream-span excluded; **0 reads = absence of evidence, never "unused"**). Design:
   `docs/index-usage-and-budget-ladder.spec.md`.
+- **The HARD CEILING (v0.1.66, Phase B)** — the budget ladder's real-harm rung, a **second,
+  independent signal** beside the target gate (never a re-key of `remediation.required`, whose
+  target-keyed semantics the dream-beta-tester's `CHK-REM-SEED-CONTRACT` oracle pins):
+  `INDEX_CEILING_FRACTION` (0.6) × the native 25KB byte cap → `INDEX_CEILING_TOKENS` (≈3840 est tok,
+  ONE canonical est-token number — the line axis stays cliff_pct's job). Drives: the M1 pull-hold +
+  the `--evict` fit-check (`sync_global` passes it at the call site — the over-TARGET amber band now
+  receives pulls freely) and the `remediation.over_ceiling` seed flag (a SIBLING of `required`,
+  rendered red on the dashboard gauge, the Phase-0 report, and the HTML meter). **Structurally
+  standing-justify-independent** — the comparison never reads `standing_justify`, so suppression
+  can't hide it and there is no justify escape. Write-time fat-hook lint rides the same release
+  (`_fat_hook_warning` in `sync_global` — every written pointer > `HOOK_TOKEN_WARN` warns on stderr,
+  naming the canonical's description; never truncates). No real fleet store is near the ceiling
+  today — it is a backstop, exercised by synthetic fixtures.
 - **Re-verification signal:** `memory_status.py` lists facts untouched since the marker
   (mtime ≤ marker timestamp) as re-verification candidates — a cheap staleness proxy
   needing no per-fact `last_verified` field.

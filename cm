@@ -32,7 +32,8 @@ cm — consolidate-memory
                        [--since ISO] [--json]; --into SEED injects the counts into a cycle record,
                        --from SCAN.json injects a saved scan without re-scanning)
   cm sync --list DIR   show which global facts apply to a project
-  cm pull [DIR]        replicate relevant global facts into a project (default: .)
+  cm pull [DIR]        replicate relevant global facts into a project (default: .); M1 holds a pull
+                       only past the HARD CEILING (~3840t, v0.1.66) — an over-target store receives
   cm gc [DIR] [--apply] reclaim orphaned mirrors (report-only without --apply)
   cm promote DIR FACT [CANON]  hand a local fact up to the global store + mirror the origin
   cm tokens [DIR] [--json] per-node + total token consumption across the network

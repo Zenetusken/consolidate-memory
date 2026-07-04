@@ -465,7 +465,11 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         note = (f"  {'+' if dln >= 0 else ''}{_g(dln)} ln" if dln else "")
         # v0.1.63 (Phase A): cliff + fat-hook telemetry on the gauge tail (keys absent on a legacy
         # record → tail unchanged). Thresholds come from ms (already imported for the record type).
+        # v0.1.66 (Phase B): the hard-ceiling flag — ADDITIVE beside the target `_over(idx)` flag, never
+        # replacing it; sourced from remediation.over_ceiling (absent on legacy records → tail unchanged).
         tail = f"{_bar(at, bt)} {_pct(at, bt)}{note}{_over(idx)}"
+        if _dget(record, "remediation").get("over_ceiling"):
+            tail += _c(f" ⚠ HARD CEILING ≈{_g(idx.get('ceiling_tokens', 0))}t — M1 holds new pulls", "red")
         _cp = _num(idx.get("cliff_pct", 0))
         if _cp:
             tail += _c(f" · cliff {_g(_cp)}%", "red" if _cp >= int(ms.CLIFF_NEAR_FRACTION * 100) else "dim")
@@ -516,17 +520,25 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     # Remediation gate (v0.1.18) — present ONLY when the index was over budget. Shows whether the gate was
     # ACTED on (pruned>0 / justified / gc) — a fired-but-unacted gate (pruned 0, lever prune) stays visible.
     rem = _dget(record, "remediation")
+    # v0.1.66 (Phase B): the hard-ceiling line — renders in BOTH branches below (the ceiling is
+    # standing-justify-INDEPENDENT; suppression of the target gate never hides it). Falsy/absent → nothing.
+    _ceil_ln = ("    " + _c("⚠ HARD CEILING exceeded — M1 holds ALL new pulls; standing-justify does not "
+                            "apply to the ceiling; shrink to receive", "red")) if rem.get("over_ceiling") else ""
     if rem and rem.get("standing_justified"):
         # v0.1.21 (D6/D7): over budget but the density is STANDING-JUSTIFIED — gate suppressed, no re-surface.
         out.append("")
         out.append("  " + _c("REMEDIATION", "bold") + _c("   · over-budget gate · STANDING-JUSTIFIED (suppressed)", "dim"))
         out.append(f"    {_c('✓', 'green')} density justified at baseline {_g(rem.get('baseline_facts', 0))} facts — gate suppressed until +Δ facts or index-token bloat")
+        if _ceil_ln:
+            out.append(_ceil_ln)
     elif rem and rem.get("required"):
         # v0.1.36: gate on `required`, NOT mere presence — a healthy record may carry remediation={required:false}
         # (the schema default), which must NOT render an over-budget block (it did pre-v0.1.36: `elif rem:`). The
         # standing_justified branch above handles required=false+suppressed; an absent/required-false record → nothing.
         out.append("")
         out.append("  " + _c("REMEDIATION", "bold") + _c(f"   · over-budget gate · lever {str(rem.get('lever', '')).upper()}", "dim"))
+        if _ceil_ln:
+            out.append(_ceil_ln)
         cand, pi = _num(rem.get("candidates_surfaced", 0)), _num(rem.get("projected_index", 0))
         # G (v0.1.18.x): the seed OMITS pruned/achieved_* (pre-pass) — render "pending Phase 5" when absent,
         # NOT ≈0 (which reads as "emptied"). Once the model fills them in Phase 5, show the actual values.
@@ -603,7 +615,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
             out.append("    " + _c(" · ".join(moved), "dim"))
         if xp.get("held"):  # v0.1.38 (M1): the LOUD lever — a new-global pull was HELD (index over budget); the
             # most-relevant store starves until it prunes, so surface it prominently, not buried in the dim line.
-            out.append("    " + _c(f"⚠ held {xp['held']} cross-node fact(s) — index over budget; prune/justify to receive", "yellow"))
+            out.append("    " + _c(f"⚠ held {xp['held']} cross-node fact(s) — index past the hard ceiling; shrink to receive", "yellow"))
         if not (pulled or promoted or moved or xp.get("held")):
             out.append("    " + _c("(no cross-project movement this pass)", "dim"))
 

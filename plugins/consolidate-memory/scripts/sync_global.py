@@ -8,10 +8,15 @@ each project's store. This is the engine for that:
 
   --list PROJECT_DIR   show which global facts are relevant + present/missing (read-only)
   --pull PROJECT_DIR   copy missing relevant global facts into the project's store. AUTO-HOLDS (M1) any
-                       new-global pull that would LEAVE the always-loaded index over INDEX_TOKEN_BUDGET (a
-                       net-grow guard); STALE mirrors always refresh. Reports `held N` — prune/justify to
-                       receive. (additive; marks copies with `global_ref:` so they re-sync)
-  --pull --allow-net-grow  override the guard — pull even if it net-grows the over-budget index
+                       new-global pull that would push the always-loaded index past the HARD CEILING
+                       (INDEX_CEILING_TOKENS ≈3840 est tok — v0.1.66 Phase B; the over-TARGET amber band
+                       no longer holds, so verified knowledge flows until the real harm boundary; the
+                       target gate/standing-justify are a separate, untouched signal). STALE mirrors
+                       always refresh. Reports `held N` — shrink below the ceiling to receive. Every
+                       written pointer is fat-hook-LINTED (> HOOK_TOKEN_WARN est tok → stderr warning
+                       naming the canonical description; never truncated). (additive; marks copies with
+                       `global_ref:` so they re-sync)
+  --pull --allow-net-grow  override the guard — pull even past the ceiling
   --pull --evict=FACT  EVICT-TO-RECEIVE (v0.1.41): free one low-value local pointer (FACT) so a HELD global can
                        land — net-neutral, so M1's budget stays enforced. The release valve for a chronically-full
                        store. Refuses an orphaning evict (FACT has inbound [[links]]) or a too-small one (frees
@@ -46,7 +51,8 @@ from pathlib import Path
 # on sys.path[0] at runtime; both live in the plugin's scripts/ dir.
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
 from memory_status import (_is_mirror, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid,
-                           INDEX_TOKEN_BUDGET, extract_wikilinks, resolve_wikilink)
+                           INDEX_TOKEN_BUDGET, INDEX_CEILING_TOKENS, HOOK_TOKEN_WARN,
+                           extract_wikilinks, resolve_wikilink)
 
 GLOBAL = Path.home() / ".claude" / "memory"
 
@@ -377,6 +383,19 @@ def _pointer_line(name: str, fm: dict) -> str:
     return f"- [{name}]({name}.md) — {hook}" + (f" [{scope}]" if scope else "")
 
 
+def _fat_hook_warning(pointer_line: str, name: str) -> str | None:
+    """v0.1.66 (Phase B): the write-time fat-hook LINT — a warning string when a pointer line exceeds
+    HOOK_TOKEN_WARN est tok, else None. PURE (smoke-pinned). Detection names the CANONICAL's description
+    as the fix site (the pointer is derived from it, so a fat mirror hook taxes every node on every
+    session); the line is NEVER truncated — a recall cue silently shortened is a recall cue silently
+    broken (report-then-apply: the human tightens the canonical)."""
+    t = est_tokens(pointer_line)
+    if t > HOOK_TOKEN_WARN:
+        return (f"⚠ fat hook: '{name}' pointer ≈{t} tok > {HOOK_TOKEN_WARN} — tighten the CANONICAL's "
+                f"description (~/.claude/memory/{name}.md); this line taxes every session on every node")
+    return None
+
+
 def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
     """UPSERT the pointer line in the project's MEMORY.md index (Fix C).
 
@@ -384,10 +403,13 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
     pointer) — AND so the ALWAYS-LOADED index hook never drifts from the canonical. The
     old version early-returned when any line for `name` existed, so a STALE refresh that
     changed the fact's `description` updated the body but left the index hook stale. Now:
-    insert if absent, REWRITE if present-but-different, no-op if already correct."""
+    insert if absent, REWRITE if present-but-different, no-op if already correct.
+    v0.1.66: every WRITE (insert or rewrite — the single choke point for --pull, refresh,
+    AND --promote pointers) is fat-hook-linted to stderr; a no-op is not (nothing written)."""
     idx = store / "MEMORY.md"
     content = idx.read_text(encoding="utf-8") if idx.exists() else "# Memory Index\n\n"
     want = _pointer_line(name, fm)
+    lint = _fat_hook_warning(want, name)
     lines = content.splitlines()
     anchor = f"]({name}.md)"  # the LINK TARGET, not a bare substring a description could spoof
     for i, ln in enumerate(lines):
@@ -395,17 +417,28 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
             if ln.strip() == want.strip():
                 return False  # already correct — no-op
             lines[i] = want  # refresh a drifted hook
+            if lint:
+                print(f"  {lint}", file=sys.stderr)
             idx.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
             return True
+    if lint:
+        print(f"  {lint}", file=sys.stderr)
     idx.write_text(content.rstrip() + "\n" + want + "\n", encoding="utf-8")  # absent — append
     return True
 
 
-def _would_net_grow(running_idx: int, pointer_cost: int, allow_net_grow: bool) -> bool:
+def _would_net_grow(running_idx: int, pointer_cost: int, allow_net_grow: bool,
+                    budget: int = INDEX_TOKEN_BUDGET) -> bool:
     """M1: True iff pulling a new fact (its pointer adds `pointer_cost` tokens) would LEAVE the always-loaded
-    index over INDEX_TOKEN_BUDGET — the projected net-grow guard. `allow_net_grow` overrides. PURE + the single
-    source for the hold decision in run() (so smoke can pin all three cases deterministically)."""
-    return (not allow_net_grow) and (running_idx + pointer_cost > INDEX_TOKEN_BUDGET)
+    index over `budget` — the projected net-grow guard. `allow_net_grow` overrides. PURE + the single
+    source for the hold decision in run() (so smoke can pin all cases deterministically).
+
+    v0.1.66 (Phase B): PRODUCTION call sites pass budget=INDEX_CEILING_TOKENS — the hold fires only past
+    the HARD CEILING, no longer in the over-target amber band (verified knowledge flows until the real
+    harm boundary; the target gate is a separate, untouched signal). The target DEFAULT preserves this
+    pure contract for the existing v0.1.38 smoke pins, which deliberately exercise the LOGIC at the
+    target threshold — the default is not a production path."""
+    return (not allow_net_grow) and (running_idx + pointer_cost > budget)
 
 
 def _inbound_links(store: Path, target: str) -> list[str]:
@@ -438,13 +471,17 @@ def _evict_frees_enough(running_idx: int, freed: int, held_costs: list, budget: 
 
 def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str | None = None) -> int:
     # v0.1.38 (M1): the PROJECTED net-grow BACKSTOP. A MISSING fact = a NEW always-loaded index pointer (the
-    # v0.1.18 blowup class); on --pull we HOLD it when it would LEAVE the index over INDEX_TOKEN_BUDGET
-    # (running_idx + the pointer's own cost) — so a pull never net-grows an over/at-budget index, even on a
-    # NEAR-budget store one pull would tip over (the case a model-read cue MISSES: it can't know the per-pull
-    # cost; only this function, which both measures the index AND writes, can). STALE refreshes ALWAYS run (a
-    # drifted hook is a correctness fix, bounded by the ~88-char hook cap). The DECISION lives HERE, not in a
-    # Phase-0 cue, so it holds regardless of whether any cue fired — finishing the v0.1.37 R1 mode (which had
-    # the enforcement but left the decision to the model). Escape: --allow-net-grow. Supersedes --refresh-only.
+    # v0.1.18 blowup class); on --pull we HOLD it when it would push the index past the threshold
+    # (running_idx + the pointer's own cost) — even on a NEAR-threshold store one pull would tip over (the
+    # case a model-read cue MISSES: it can't know the per-pull cost; only this function, which both measures
+    # the index AND writes, can). STALE refreshes ALWAYS run (a drifted hook is a correctness fix, bounded by
+    # the ~88-char hook cap). The DECISION lives HERE, not in a Phase-0 cue, so it holds regardless of whether
+    # any cue fired — finishing the v0.1.37 R1 mode (which had the enforcement but left the decision to the
+    # model). Escape: --allow-net-grow. Supersedes --refresh-only.
+    # v0.1.66 (Phase B): the threshold is the HARD CEILING (INDEX_CEILING_TOKENS), no longer the target
+    # budget — an over-TARGET (amber) store now RECEIVES verified knowledge; only a store past the real
+    # harm boundary holds. The target gate/standing-justify are a separate, untouched signal
+    # (docs/index-usage-and-budget-ladder.spec.md §Phase B — the sibling-signal design).
     project_dir = project_dir.resolve()
     store = project_store(project_dir)
     stacks = detect_stacks(project_dir)
@@ -464,7 +501,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     glyphs = {"in-sync": ("✓", "green"), "MISSING": ("↓", "yellow"), "STALE-mirror": ("⟳", "yellow"),
               "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim")}
     rows: list = []
-    relevant = pulled = refreshed = held = 0
+    relevant = pulled = refreshed = held = fat = 0   # fat: v0.1.66 — pointers written over HOOK_TOKEN_WARN
     # M1: the running always-loaded index size (tokens). Each pulled MISSING fact grows it by its pointer's
     # cost; the guard below holds any pull that would push it over INDEX_TOKEN_BUDGET. Seed from the live index.
     _idxp = store / "MEMORY.md"
@@ -486,16 +523,17 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         for n, fm, _ in facts:
             if is_relevant(fm, stacks) and not (store / f"{n}.md").exists():
                 c = est_tokens(_pointer_line(n, fm))
-                if _would_net_grow(running_idx, c, allow_net_grow):   # SAME predicate as the pull loop (Gate-2):
-                    held_pre.append((n, c))                            # under --allow-net-grow nothing is held, so
-                # held_pre empties → the evict refuses ("nothing held") rather than a gratuitous delete-then-pull-all.
+                if _would_net_grow(running_idx, c, allow_net_grow, budget=INDEX_CEILING_TOKENS):   # SAME predicate
+                    held_pre.append((n, c))                            # as the pull loop (Gate-2); under
+                # --allow-net-grow nothing is held, so held_pre empties → the evict refuses ("nothing held")
+                # rather than a gratuitous delete-then-pull-all.
         if not held_pre:
-            print(f"evict: nothing is held (no over-budget MISSING globals) — evicting '{evict}' would free "
-                  "budget for NOTHING. There is no swap to make.", file=sys.stderr); return 1
+            print(f"evict: nothing is held (no past-the-ceiling MISSING globals) — evicting '{evict}' would free "
+                  "room for NOTHING. There is no swap to make.", file=sys.stderr); return 1
         freed = est_tokens(_pointer_line(evict, _frontmatter(ep.read_text(encoding="utf-8", errors="replace"))))
-        if not _evict_frees_enough(running_idx, freed, [c for _, c in held_pre]):
+        if not _evict_frees_enough(running_idx, freed, [c for _, c in held_pre], budget=INDEX_CEILING_TOKENS):
             print(f"evict: '{evict}' frees only ~{freed} tok — not enough to fit the smallest held global "
-                  f"(~{min(c for _, c in held_pre)} tok at idx {running_idx}/{INDEX_TOKEN_BUDGET}). "
+                  f"(~{min(c for _, c in held_pre)} tok at idx {running_idx}/{INDEX_CEILING_TOKENS} ceiling). "
                   "Pick a larger-pointer fact.", file=sys.stderr); return 1
         ep.unlink()
         _remove_index_pointer(store, evict)
@@ -522,14 +560,14 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         rows.append(f"    {_ui.c(g, col)} {_ui.lbl(f'{status:<14}')}{name}  " + _ui.c(f"({fm.get('scope', '?')})", "dim"))
         if rel:
             relevant += 1
-        # M1: would PULLING this MISSING fact (a NEW index pointer) LEAVE the index over budget? Cost it from
-        # the pointer line itself (the only honest per-pull figure). `held_this` gates BOTH the write-skip and
-        # the provenance record (a held fact is NOT held by this project).
+        # M1: would PULLING this MISSING fact (a NEW index pointer) push the index past the HARD CEILING?
+        # Cost it from the pointer line itself (the only honest per-pull figure). `held_this` gates BOTH the
+        # write-skip and the provenance record (a held fact is NOT held by this project).
         cost = est_tokens(_pointer_line(name, fm)) if status == "MISSING" else 0
         held_this = (pull and rel and status == "MISSING"
-                     and _would_net_grow(running_idx, cost, allow_net_grow))
+                     and _would_net_grow(running_idx, cost, allow_net_grow, budget=INDEX_CEILING_TOKENS))
         if held_this:
-            held += 1  # net-grow of an over/at-budget index → hold (prune/justify to receive, or --allow-net-grow)
+            held += 1  # past-the-ceiling net-grow → hold (shrink to receive, or --allow-net-grow) — v0.1.66
             held_facts.append((name, cost))
         elif pull and rel and status in ("MISSING", "STALE-mirror"):
             # C3: a canonical missing a valid originSessionId fans its gap out to every
@@ -541,6 +579,8 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             store.mkdir(parents=True, exist_ok=True)
             path.write_text(want, encoding="utf-8")
             _ensure_index_pointer(store, name, fm)
+            if _fat_hook_warning(_pointer_line(name, fm), name):
+                fat += 1                     # v0.1.66: count for the RESULT line (the stderr warn already fired)
             if status == "MISSING":
                 pulled += 1
                 running_idx += cost          # the index just grew by this pointer — track it for the next guard
@@ -554,8 +594,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     add(_ui.kv("FACTS", f"{len(facts)} global · {relevant} relevant to this project"))
     out.extend(rows)
     add("")
-    held_note = f" · held {held} (would net-grow the over-budget index — prune/justify to receive, or --allow-net-grow)" if held else ""
-    tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note} (index updated)" if pull
+    held_note = f" · held {held} (would push the index past the HARD CEILING ≈{INDEX_CEILING_TOKENS} tok — shrink to receive, or --allow-net-grow)" if held else ""
+    fat_note = f" · ⚠ {fat} fat hook(s) >{HOOK_TOKEN_WARN}t written (tighten the canonical descriptions)" if fat else ""
+    tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note}{fat_note} (index updated)" if pull
             else "run with --pull to replicate MISSING + refresh STALE mirrors here")
     add(_ui.kv("RESULT", tail))
     # v0.1.41: the EVICT-TO-RECEIVE offer (the report half of report-then-apply). When globals are HELD, surface

@@ -2329,5 +2329,132 @@ check("v0.1.64 render_html cue source: the dream_cue text itself no longer instr
       and "trailing 'Awake.' line), then the plain debrief" in _rh64_src
       and "then '☀️ **Awake.**'" not in _rh64_src)
 
+# ── v0.1.66 (Phase B): the HARD CEILING — a second, independent signal beside the target ─────────
+# docs/index-usage-and-budget-ladder.spec.md §Phase B (the post-3-lens-gate design). Invariants pinned
+# here: (a) the ceiling is ONE canonical est-token constant; (b) the M1/evict re-key is CALL-SITE-
+# passed — the v0.1.38 target-default pins above stay byte-identical; (c) over_ceiling is a SIBLING of
+# required, NEVER entering the standing-justify computation (SJ-independence — the invariant whose
+# violation the spec gate caught in the original design); (d) renders are additive + legacy-safe.
+import contextlib as _ctxB  # noqa: E402
+import io as _ioB  # noqa: E402
+import json as _jsonB  # noqa: E402
+import os as _osB  # noqa: E402
+import tempfile as _tfB  # noqa: E402
+
+# (1) constant derivation + the render_html mirror
+check("v0.1.66 ceiling: ONE canonical est-token threshold from the native byte cap (0.6 × 25KB/4 = 3840, > target)",
+      ms.INDEX_CEILING_TOKENS == round(ms.INDEX_CEILING_FRACTION * ms.NATIVE_INDEX_CAP_BYTES / 4) == 3840
+      and ms.INDEX_CEILING_TOKENS > ms.INDEX_TOKEN_BUDGET)
+check("v0.1.66 ceiling: render_html mirror pinned (the byte-pinned-copy convention)",
+      rhtml.INDEX_CEILING_TOKENS == ms.INDEX_CEILING_TOKENS)
+
+# (2) _would_net_grow at the ceiling — the NEW call-site behavior (the v0.1.38 target-default pins above
+# are UNCHANGED calls at the UNCHANGED default; these pass the ceiling explicitly, as run() now does).
+check("v0.1.66 M1: an over-TARGET (amber) store RECEIVES a pull under the ceiling threshold",
+      sg._would_net_grow(1600, 50, False, budget=ms.INDEX_CEILING_TOKENS) is False)
+check("v0.1.66 M1: a pull that would cross the ceiling HOLDS",
+      sg._would_net_grow(ms.INDEX_CEILING_TOKENS - 40, 50, False, budget=ms.INDEX_CEILING_TOKENS) is True)
+check("v0.1.66 M1: exactly-to-ceiling is allowed (boundary: ==, not >)",
+      sg._would_net_grow(ms.INDEX_CEILING_TOKENS - 50, 50, False, budget=ms.INDEX_CEILING_TOKENS) is False)
+check("v0.1.66 M1: --allow-net-grow still overrides at the ceiling",
+      sg._would_net_grow(ms.INDEX_CEILING_TOKENS + 500, 50, True, budget=ms.INDEX_CEILING_TOKENS) is False)
+
+# (3) the write-time fat-hook lint (pure)
+check("v0.1.66 hook lint: a fat pointer warns naming the CANONICAL's description; a lean one is silent",
+      "tighten the CANONICAL" in (sg._fat_hook_warning("- [fat](fat.md) — " + "x" * 300, "fat") or "")
+      and sg._fat_hook_warning("- [ok](ok.md) — lean", "ok") is None)
+
+# (4) seeding — over_ceiling is a SIBLING of required; standing-justify NEVER hides it
+with _tfB.TemporaryDirectory() as _tdB:
+    _homeB = Path(_tdB)
+    _projB = (_homeB / "projects-src" / "ceil").resolve(); _projB.mkdir(parents=True)
+    _stB = _homeB / ".claude" / "projects" / ms.slug_for(_projB) / "memory"; _stB.mkdir(parents=True)
+    (_stB / "f.md").write_text("---\nname: f\nmetadata:\n  node_type: memory\n  type: project\n---\nbody\n",
+                               encoding="utf-8")
+    _oldHomeB = _osB.environ.get("HOME"); _osB.environ["HOME"] = str(_homeB)
+    try:
+        def _ctxAt(tokens: int) -> dict:
+            (_stB / "MEMORY.md").write_text("# Memory Index\n- [f](f.md) — " + "h" * (tokens * 4),
+                                            encoding="utf-8")
+            return ms.build_context(_projB)
+        _amberB = _ctxAt(1600)["remediation"]
+        check("v0.1.66 seed: over-TARGET-under-ceiling → required True (target gate UNTOUCHED) · over_ceiling False",
+              _amberB.get("required") is True and _amberB.get("over_ceiling") is False)
+        _ceilB = _ctxAt(4000)
+        check("v0.1.66 seed: past-the-ceiling → over_ceiling True BESIDE the unchanged target gate",
+              _ceilB["remediation"].get("over_ceiling") is True and _ceilB["remediation"].get("required") is True)
+        _idxTokB = _ceilB["index_lb"][2]
+        (_stB / ".consolidation-state.json").write_text(_jsonB.dumps(
+            {"commit": "x", "timestamp": "2026-07-01T00:00:00Z",
+             "standing_justify": {"facts": 1, "index_tokens": _idxTokB}}), encoding="utf-8")
+        _sjB = ms.build_context(_projB)
+        check("v0.1.66 seed: standing-justify suppresses `required` but NEVER over_ceiling (the sibling-signal invariant)",
+              _sjB["remediation"].get("standing_justified") is True
+              and _sjB["remediation"].get("required") is False
+              and _sjB["remediation"].get("over_ceiling") is True)
+        _seedB = ms.seed_record(_sjB)
+        check("v0.1.66 seed_record: over_ceiling relayed through the SJ branch + ceiling_tokens on budget.index",
+              _seedB["remediation"]["over_ceiling"] is True
+              and _seedB["budget"]["index"]["ceiling_tokens"] == ms.INDEX_CEILING_TOKENS)
+        check("v0.1.66 seed: an under-target store carries NO remediation block (healthy stays keyless)",
+              _ctxAt(300)["remediation"] == {})
+    finally:
+        if _oldHomeB is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldHomeB
+
+# (5) renderers — additive red flag; suppression never hides it; False/legacy → byte-safe absence
+_ceilRecB = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+    "budget": {"index": {"after_tokens": 3900, "budget_tokens": 1500, "over": True, "ceiling_tokens": 3840}},
+    "remediation": {"required": True, "lever": "justify", "candidates_surfaced": 0,
+                    "projected_index": 3900, "over_ceiling": True}})
+_ceilOutB = rd.render(_ceilRecB)
+check("v0.1.66 render: gauge AND panel carry the HARD CEILING flag on an over-ceiling record",
+      _ceilOutB.count("HARD CEILING") >= 2 and "M1 holds" in _ceilOutB)
+_sjOutB = rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+    "remediation": {"required": False, "standing_justified": True, "baseline_facts": 9, "over_ceiling": True}}))
+check("v0.1.66 render: standing-justify does NOT hide the ceiling line (suppressed branch renders it too)",
+      "HARD CEILING" in _sjOutB and "STANDING-JUSTIFIED" in _sjOutB)
+check("v0.1.66 render: over_ceiling False and legacy (no key) both render NO ceiling flag",
+      "CEILING" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+          "remediation": {"required": True, "lever": "prune", "candidates_surfaced": 1,
+                          "projected_index": 100, "over_ceiling": False}}))
+      and "CEILING" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {},
+          "entries": [], "budget": {"index": {"after_tokens": 1504, "budget_tokens": 1500, "over": True}}})))
+
+# (6) the run() call-site re-key — the actual behavior change, end to end (fixtured GLOBAL + HOME)
+with _tfB.TemporaryDirectory() as _tdB2:
+    _homeB2 = Path(_tdB2)
+    _projB2 = (_homeB2 / "src" / "amberproj").resolve(); _projB2.mkdir(parents=True)
+    _stB2 = _homeB2 / ".claude" / "projects" / ms.slug_for(_projB2) / "memory"; _stB2.mkdir(parents=True)
+    _glB2 = _homeB2 / "global-mem"; _glB2.mkdir(parents=True)
+    (_glB2 / "gfact.md").write_text(
+        "---\nname: gfact\ndescription: \"a global lesson\"\nmetadata:\n  node_type: memory\n"
+        "  scope: user-global\n  type: feedback\n---\nbody\n", encoding="utf-8")
+    _oldHomeB2 = _osB.environ.get("HOME"); _osB.environ["HOME"] = str(_homeB2)
+    _oldGlobalB2 = sg.GLOBAL
+    sg.GLOBAL = _glB2
+    try:
+        (_stB2 / "MEMORY.md").write_text("# Memory Index\n- [f](f.md) — " + "h" * 6400, encoding="utf-8")
+        _buf1B = _ioB.StringIO()
+        with _ctxB.redirect_stdout(_buf1B):
+            sg.run(_projB2, pull=True)
+        check("v0.1.66 run(): an over-TARGET (amber ≈1600t) store RECEIVES the pull — THE Phase-B behavior change",
+              "pulled 1 new" in _buf1B.getvalue() and (_stB2 / "gfact.md").exists())
+        (_stB2 / "gfact.md").unlink()
+        (_stB2 / "MEMORY.md").write_text("# Memory Index\n- [f](f.md) — " + "h" * 15600, encoding="utf-8")
+        _buf2B = _ioB.StringIO()
+        with _ctxB.redirect_stdout(_buf2B):
+            sg.run(_projB2, pull=True)
+        check("v0.1.66 run(): a past-the-CEILING (≈3900t) store HOLDS the pull",
+              "held 1" in _buf2B.getvalue() and not (_stB2 / "gfact.md").exists())
+    finally:
+        sg.GLOBAL = _oldGlobalB2
+        if _oldHomeB2 is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldHomeB2
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

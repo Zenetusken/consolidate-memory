@@ -131,6 +131,17 @@ overflow → triage + evict candidates), `gc` (mirror-dominated overflow → the
 prune is futile), or `justify` (over budget but nothing safely prunable → record an explicit justification,
 never deadlock). It NEVER auto-deletes — the triage *offers*; you confirm (Safety rule).
 
+**The HARD CEILING (v0.1.66, Phase B) — a SECOND, INDEPENDENT signal beside the target gate above, never a
+re-key of it.** `INDEX_CEILING_TOKENS` (≈3840 est tok = 0.6 × the harness's native 25KB truncation cap;
+`memory_status.py`) is the real-harm rung of the budget ladder: past it, `sync_global --pull` **M1-holds
+ALL new pulls** and the evict fit-check keys to it — while the over-TARGET amber band (1500..ceiling) now
+**receives** verified knowledge freely. The ceiling is **structurally standing-justify-INDEPENDENT** (the
+comparison never reads `standing_justify` — there is nothing to suppress and no justify escape; over the
+ceiling, only shrinking satisfies). Everything in the v0.1.18 paragraph above — `required`, the triage
+levers, standing-justify, prune-pressure, the maintenance pivot — is UNTOUCHED and still keys to the
+target. Surfaced as `remediation.over_ceiling` + a red flag on every gauge (dashboard, Phase-0 report,
+HTML archive). Design + the 3-lens gate that produced it: `docs/index-usage-and-budget-ladder.spec.md`.
+
 A separate **prune-pressure** flag (set when the index is over budget OR the store
 already holds ≥ a threshold of facts) forces **prune-or-propose this pass regardless of
 tier** — a large store needs pruning even on a tiny pass. `memories_reviewed` drives
@@ -296,8 +307,9 @@ git log + the current session.
 and STOP **only when the local store is EMPTY *AND* the cross-project network is empty** (`cross_project.
 global_store_facts == 0`, from the `--seed`). TWO non-stop cases PROCEED past Phase 0:
 - **MAINTENANCE pass** (NON-empty store, 0 commits): health debt (dangling/stale) + NEW sibling-promoted facts
-  to pull → Phase 1 `sync_global --pull` (AUTO-HOLDS, M1, any new-global pull that would *leave* the index over
-  budget — `held N`) + Phase 5 (health: dangling-fix / prune-or-justify).
+  to pull → Phase 1 `sync_global --pull` (AUTO-HOLDS, M1, any new-global pull that would push the index past
+  the HARD CEILING — `held N`; v0.1.66: the over-target amber band no longer holds) + Phase 5 (health:
+  dangling-fix / prune-or-justify).
 - **COLD-START BOOTSTRAP** (EMPTY local store, ~0 commits, but `global_store_facts > 0` — a fresh/dormant repo in
   an established fleet): the network holds the user's OWN real facts, so do NOT STOP and "let it accumulate".
   PROCEED to a **bootstrap** — Phase 1 `sync_global --list .` **first** (surface which globals are RELEVANT — the
@@ -377,17 +389,20 @@ relevance filter that decides PROCEED-vs-honest-no-op; on a normal pass it's a c
 
 ```bash
 CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .   # surface relevant/present/missing/held (read-only)
-CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .   # then replicate (M1 auto-holds an over-budget pull)
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .   # then replicate (M1 auto-holds a past-the-CEILING pull)
 ```
 
 This replicates any `user-global` (and stack-matching `stack-general`) facts from
 `~/.claude/memory/` that are missing here, and **refreshes any stale mirrors** whose
 canonical changed (the script writes both the fact file and its index pointer). It also **AUTO-HOLDS**
-(M1) any new-global pull that would *leave* the always-loaded index over budget — reported as `held N`.
-Read its output and record `cross_project.pulled` (newly replicated), `cross_project.refreshed`, **and
-`cross_project.held`** (the `held N` count — new globals withheld to protect the over-budget index; the
-dashboard renders it as the `⚠ held N — prune/justify to receive` lever) in the cycle record. If nothing
-is missing/stale/held, no-op.
+(M1) any new-global pull that would push the always-loaded index past the **HARD CEILING**
+(`INDEX_CEILING_TOKENS` ≈3840 est tok — v0.1.66; an over-TARGET amber store now receives freely, since
+withholding verified knowledge keys to the real harm boundary, not the curation target) — reported as
+`held N`. Every written pointer is fat-hook-linted (>`HOOK_TOKEN_WARN` → a stderr warning naming the
+canonical's description; never truncated). Read its output and record `cross_project.pulled` (newly
+replicated), `cross_project.refreshed`, **and `cross_project.held`** (the `held N` count — new globals
+withheld to protect a past-the-ceiling index; the dashboard renders it as the `⚠ held N — shrink to
+receive` lever) in the cycle record. If nothing is missing/stale/held, no-op.
 
 Then **re-audit the existing `user-global` facts — the backstop for the promotion cascade's weak
 applicability gate (G2.3 — see Phase 2).** Read each canonical's **body** in `~/.claude/memory/` and
@@ -607,7 +622,11 @@ placing each fact in its tier and optimizing it for how that tier loads:
   always-loaded index hook, so phrase it as the task-context that should cue a future
   session to read this fact, not a terse summary, or the agent won't know to open it.
   Link related facts with `[[name]]`; pick the right `type`. Then add its one-line
-  pointer to the index. **Stamp `originSessionId` (v0.1.43) for a SESSION-DERIVED fact** — from the `sessionId`
+  pointer to the index — **keep the pointer's hook a distilled cue ≤ ~60 est tok
+  (`HOOK_TOKEN_WARN`, v0.1.66)**: the `description:` stays the full recall key, but the
+  index LINE you write from it must not restate body content (a fat hook taxes every
+  session; `sync_global` lints its own written pointers the same way — the measured
+  offenders were 116/141-tok status-paragraphs-as-hooks). **Stamp `originSessionId` (v0.1.43) for a SESSION-DERIVED fact** — from the `sessionId`
   that `extract_signals` (Phase 2) now attaches to the signal this fact came from (the session that MOTIVATED it,
   which on a multi-session window may be a PRIOR session, NOT the active dream). OMIT it for a git/commit-derived
   project fact (no motivating session). This is the producer the schema always assumed but never had.
@@ -1027,7 +1046,7 @@ this once warned against; the dashboard remains the source of the figures.)
                          "budget_tokens": 4000, "over": false},
     "index": {"before_lines": 0, "after_lines": 0, "before_bytes": 0, "after_bytes": 0,
               "before_tokens": 0, "after_tokens": 0, "budget_tokens": 1500, "over": false,
-              "fat_hooks": 0, "hook_max_tokens": 0, "cliff_pct": 0},
+              "fat_hooks": 0, "hook_max_tokens": 0, "cliff_pct": 0, "ceiling_tokens": 3840},
     "recall_facts": {"before": 0, "after": 0},
     "claude_md_hierarchy": {"files": [{"path": "CLAUDE.md", "tokens": 0}],
                             "worst_path": ".", "worst_path_tokens": 0, "total_files": 0}
@@ -1039,7 +1058,7 @@ this once warned against; the dashboard remains the source of the figures.)
     "pulled": [{"name": "...", "scope": "user-global"}],   "_pulled": "Phase 1: global → here",
     "promoted": [{"name": "...", "scope": "stack-general"}], "_promoted": "Phase 4: here → global",
     "refreshed": 0,
-    "held": 0,   "_held": "v0.1.38 (M1): new-global pulls --pull HELD (would net-grow the over-budget index) — prune/justify to receive",
+    "held": 0,   "_held": "v0.1.38 (M1): new-global pulls --pull HELD (v0.1.66: would push the index past the HARD CEILING) — shrink to receive",
     "gc_removed": 0,   "_gc": "Phase 5: orphan mirrors reclaimed by sync_global --gc --apply"
   },
   "network": {
@@ -1053,12 +1072,13 @@ this once warned against; the dashboard remains the source of the figures.)
                "mirror_index_tokens": 0, "recall_tokens": 0}
   },
   "remediation": {
-    "_": "v0.1.18: present ONLY when the index is OVER budget (the GATE); absent on a healthy store. v0.1.21: when standing_justified the gate is SUPPRESSED (required=false) until fact-count grows by Δ. Seeded by Phase 0; pruned/achieved_* filled in Phase 5.",
+    "_": "v0.1.18: present ONLY when the index is OVER budget (the GATE); absent on a healthy store. v0.1.21: when standing_justified the gate is SUPPRESSED (required=false) until fact-count grows by Δ. v0.1.66: over_ceiling is a SIBLING signal (the hard ceiling, SJ-independent) — never a re-key of required. Seeded by Phase 0; pruned/achieved_* filled in Phase 5.",
     "required": false, "lever": "prune|gc|justify",
     "candidates_surfaced": 0, "pruned": 0,
     "projected_index": 0, "achieved_index": 0,
     "projected_recall": 0, "achieved_recall": 0,
-    "standing_justified": false, "baseline_facts": 0, "reaches_budget": true
+    "standing_justified": false, "baseline_facts": 0, "reaches_budget": true,
+    "over_ceiling": false
   },
   "maintenance": {
     "_": "v0.1.37/v0.1.42: the no-op SELF-HEAL pivot signal (seeded Phase 0, cheap/local). TWO PROCEED cases (NOT a no-op): a NON-EMPTY store with 0 commits = a MAINTENANCE pass; AND (v0.1.42) an EMPTY store + 0 commits + a non-empty network (cross_project.global_store_facts>0) = a COLD-START BOOTSTRAP — both PROCEED to Phase 1 --list→--pull (cross-node enrichment) + Phase 5 health. over_budget_not_justified = remediation.required (the dual-axis suppression result, not a fresh budget compare). Set pivoted=true in Phase 5 when you run either → drives the MAINTENANCE PASS banner.",
