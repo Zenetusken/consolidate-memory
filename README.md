@@ -240,7 +240,8 @@ consolidate-memory/                         # repo root = plugin marketplace
 │       ├── distill_scan.py                  # Phase 5: recurring-workflow signal (templates + chains)
 │       ├── render_dashboard.py              # the data-driven ASCII dashboard (one cycle)
 │       ├── render_html.py                   # the rich self-contained HTML archive (all dreams)
-│       └── render_log.py                    # the lean per-dream audit table
+│       ├── render_log.py                    # the lean per-dream audit table
+│       └── _ui.py                           # shared visual vocabulary (color/rule/glyphs) the others import
 ├── tests/                                   # zero-dependency smoke + accumulation + manifest checks
 ├── memory/                                  # gitignored placeholder (.gitkeep) — store is ~/.claude/memory
 ├── cm                                       # dev CLI over the scripts

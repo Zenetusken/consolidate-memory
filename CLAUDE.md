@@ -44,7 +44,7 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     memory_status.py               Phase 0: locate stores + git scope + `--json` cycle-record seed
     extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
     sync_global.py                 cross-project: --list/--pull/--gc/--tokens/--network + provenance
-    distill_scan.py                Phase 5 distill: recurring Bash-command templates + `&&`-chains (workflow signal)
+    distill_scan.py                Phase 5 distill: recurring Bash-command templates + compound-command chains (workflow signal); `--into`/`--from` inject script-truth counts into a cycle record
     render_dashboard.py            the data-driven ASCII dashboard (renders ONE cycle record)
     render_html.py                 the self-contained HTML archive (all cycles, rich; + dashboards/diffs sidecars)
     render_log.py                  the lean per-dream audit TABLE (all cycles; powers `cm log`) — the 3rd log view
@@ -71,7 +71,9 @@ Only `SECURITY.md` at the repo root is public.
 - **The cycle record is the contract — now TYPED.** `memory_status.py --json` seeds it,
   the phases fill it, `render_dashboard.py` renders it. The shape is `TypedDict`s in
   `memory_status.py` (`CycleRecord` + nested, all `total=False`); a `validate_cycle_record`
-  warns (stderr, never blocks) on a wrong-container-type key at runtime. Changing the
+  warns (stderr, never blocks) on a wrong-container-type key — or an impossible distill count
+  above the scanner caps (`_DISTILL_CAPS`, pinned to `distill_scan` by a cross-module smoke
+  test) — at runtime. Changing the
   schema means updating the seed, the renderer, the **TypedDicts**, and `SKILL.md`'s
   schema block together — a smoke test pins the SKILL block to `CycleRecord.__annotations__`,
   so they can't silently drift.
@@ -130,9 +132,12 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
    working) → **patch** (`0.N.M → 0.N.M+1`). Precedent (all backward-compatible ⇒ patch):
    v0.1.1 packaging · v0.1.2 dashboard · v0.1.3 rigor modes · v0.1.4–v0.1.11 (calibration apparatus,
    orphan/drift detection, TypedDict contract, polish, governance cascade + demotion, dream-timing, docs) ·
-   v0.1.12–v0.1.55 (audit follow-up, completion-driven archiving, the dream-arc CONTRACT [v0.1.54: additive
-   `dream` key], the distill rebuild [v0.1.55: additive `distill` key + `--json` keys]) — every one an
-   additive `total=False` schema key / additive `--json` key / SKILL prose, never a break.
+   v0.1.12–v0.1.58 (audit follow-up, completion-driven archiving, the dream-arc CONTRACT [v0.1.54: additive
+   `dream` key], the distill rebuild [v0.1.55: additive `distill` key + `--json` keys], full doc sync [v0.1.56],
+   dashboard coherence + the quiet dream [v0.1.57], the distill HARDENING [v0.1.58: additive
+   `Distill.window`/`secrets_omitted` schema keys + `scanned.secrets_omitted` `--json` key + `--into`/`--from`
+   flags]) — every one an additive `total=False` schema key / additive `--json` key / additive flag / SKILL
+   prose, never a break.
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG
