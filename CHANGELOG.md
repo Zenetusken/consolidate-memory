@@ -5,6 +5,35 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.61] — 2026-07-04
+
+### Fixed — HTML dashboard: a structural rule for two-column alignment (v0.1.60 was incomplete)
+v0.1.60 tightened the network graph's own frame, but that was a fix to *one chart's* box, not to the
+*layout mechanism* — the actual defect. CSS Grid's `.cols` rows already stretch both columns to equal
+height (the default `align-items:stretch`), but each column's content just sat at the natural height at
+the TOP of that equal cell — so any two columns of differing content height (fewer meters vs. a legend +
+caption; a compact chart vs. a taller one) left the shorter column's caption stranded near the top with a
+dead gap below it, while the taller column's caption landed much lower. Visually this read as exactly what
+it was: two independently-floating columns with no shared baseline — "loose," "free-form," not a coherent
+grid. This was present in **all three** two-column sections (Longitudinal, Shared Consciousness, This
+Pass), not just the one chart v0.1.60 touched.
+
+**The fix is a dashboard-wide structural rule, not a per-chart patch:** every `.cols` column is now a flex
+column (`.cols>div{display:flex;flex-direction:column}`), and its trailing metadata block — the legend +
+caption, wrapped in a new `.meta` class — gets `margin-top:auto`. In a flex column, an auto top-margin
+consumes all the leftover vertical space above it, which pins `.meta` to the bottom of the (grid-equalized)
+column regardless of how tall the chart above it is. This holds for any content height and any viewport
+width above the existing 760px stack-to-single-column breakpoint — it references no pixel value, no
+computed geometry, no JS at all (unlike v0.1.60's viewBox-fit, which stays, since it solves a different,
+narrower problem: how big the network graph renders within its own frame).
+
+Applied to all three `.cols` sections, including the two JS-built columns in "This Pass" (audit/verify),
+whose trailing `.cap` is now wrapped in `.meta` at construction time. DOM-verified: every column pair's
+caption-bottom now lands at the identical pixel (`baseline_delta_px: 0`) across all three sections.
+
+Template/CSS/JS only — no record schema, `--json`, or script-behavior change; legacy dreams render →
+patch. 594 smoke + mypy + sim + manifests + `--strict` green.
+
 ## [0.1.60] — 2026-07-04
 
 ### Changed — HTML dashboard: the Shared Consciousness network chart's metadata is now coherent

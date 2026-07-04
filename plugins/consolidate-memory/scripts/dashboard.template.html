@@ -87,6 +87,17 @@
   .cols{display:grid;gap:38px}
   .c2{grid-template-columns:1.15fr .85fr}.c2b{grid-template-columns:.85fr 1.15fr}
   @media(max-width:760px){.cols{grid-template-columns:1fr!important}}
+  /* STRUCTURAL RULE (dashboard-wide, not per-section): CSS Grid already stretches both columns of a `.cols`
+     row to equal height (the default `align-items:stretch`), but without this, each column's own content
+     just sits at its natural height at the TOP of that equal-height cell — so a chart with less content
+     (fewer meters, no legend, a compact graph) leaves its caption stranded near the top with a big dead
+     gap below, while a taller sibling's caption lands much lower. That mismatch is what read as "loose /
+     free-form": captions across the two columns of one row never shared a baseline. Fix: every `.cols`
+     column is a flex column, and its trailing metadata block (`.meta` — the legend+caption, or caption
+     alone) gets `margin-top:auto`, which consumes all the leftover vertical space ABOVE it — pinning every
+     column's caption to the SAME bottom line of the row, regardless of how tall its chart content is. */
+  .cols>div{display:flex;flex-direction:column}
+  .meta{margin-top:auto}
   .cap{font-size:11px;color:var(--ink2);font-family:var(--serif);font-style:italic;margin-top:10px}
   .cap.center{text-align:center}   /* under a centered chart (the network graph), the caption centers with its legend */
 
@@ -299,11 +310,13 @@
   <section class="blk"><div class="shead"><span class="no">01</span><h3>Longitudinal</h3><span class="ln"></span><span class="note" id="hist-note"></span></div>
     <div class="cols c2">
       <div><svg id="trend" viewBox="0 0 660 240" style="height:240px"></svg>
-        <div class="legend"><span><i class="dot" style="background:var(--data)"></i>recall facts</span><span><i style="background:var(--ok)"></i>added</span><span><i style="background:var(--warn)"></i>corrected / reconciled</span><span><i style="background:var(--crit)"></i>deleted</span></div>
-        <div class="cap">Store growth and per-cycle churn. Bars are write volume; the line is the live fact count.</div>
+        <div class="meta">
+          <div class="legend"><span><i class="dot" style="background:var(--data)"></i>recall facts</span><span><i style="background:var(--ok)"></i>added</span><span><i style="background:var(--warn)"></i>corrected / reconciled</span><span><i style="background:var(--crit)"></i>deleted</span></div>
+          <div class="cap">Store growth and per-cycle churn. Bars are write volume; the line is the live fact count.</div>
+        </div>
       </div>
       <div><svg id="rigor" viewBox="0 0 460 240" style="height:240px"></svg>
-        <div class="cap">Applied rigor tier per cycle, with the interval since the previous dream.</div>
+        <div class="meta"><div class="cap">Applied rigor tier per cycle, with the interval since the previous dream.</div></div>
       </div>
     </div>
   </section>
@@ -314,11 +327,13 @@
       <div>
         <div class="meter" id="m-index"></div>
         <div class="meter" id="m-cmd"></div>
-        <div class="cap">Always-loaded budgets, this pass. The marker is the ceiling; fill is current consumption.</div>
+        <div class="meta"><div class="cap">Always-loaded budgets, this pass. The marker is the ceiling; fill is current consumption.</div></div>
       </div>
       <div><svg id="net" viewBox="0 0 520 170"></svg>
-        <div class="legend center"><span><i class="dot" style="background:var(--accent)"></i>trigger node</span><span><i class="dot" style="background:var(--ink2)"></i>peer · sized by facts</span></div>
-        <div class="cap center">The shared-memory network — this pass ran on the trigger node; edge weight is shared facts.</div>
+        <div class="meta">
+          <div class="legend center"><span><i class="dot" style="background:var(--accent)"></i>trigger node</span><span><i class="dot" style="background:var(--ink2)"></i>peer · sized by facts</span></div>
+          <div class="cap center">The shared-memory network — this pass ran on the trigger node; edge weight is shared facts.</div>
+        </div>
       </div>
     </div>
   </section>
@@ -625,10 +640,10 @@
     var any=["memory","claude_md","repo_doc"].some(function(s){var d=a[s]||{};return num(d.created)+num(d.modified)+num(d.deleted)!==0;});
     var head='<div class="panel-lead">Script-observed mutations</div>'
       +'<div class="audit-row head"><span class="s">store</span><span>new</span><span>mod</span><span>del</span><span>Δtok</span></div>';
-    if(!any){box.innerHTML=head+'<div class="cap">No file mutations detected between phase 0 and phase 5.</div>';}
+    if(!any){box.innerHTML=head+'<div class="meta"><div class="cap">No file mutations detected between phase 0 and phase 5.</div></div>';}
     else{var h=head+ln("memory",a.memory)+ln("CLAUDE.md",a.claude_md)+ln("repo docs",a.repo_doc);
       var cons=a.conservation||{};if(cons.possible_loss)h+='<div class="flag" style="display:block">⚠ Possible lost relocate — CLAUDE.md −'+fmt(num(cons.claude_md_drop))+' tok but targets only +'+fmt(num(cons.repo_doc_growth))+'. Verify it was intended.</div>';
-      h+='<div class="cap">Content-hash diff of the stores across the pass — the script-observed counterpart to the ledger below.</div>';
+      h+='<div class="meta"><div class="cap">Content-hash diff of the stores across the pass — the script-observed counterpart to the ledger below.</div></div>';
       box.innerHTML=h;}
     // verification & health — same head style; each check reads label → plain-english result.
     var v=CUR.verification||{},h=CUR.health||{},vb=el("verify");
@@ -642,7 +657,7 @@
         +(unv>0?'<span style="color:var(--warn)">'+unv+' dropped</span>':'0 dropped')+'</span></div>'
       +'<div class="audit-ln"><span class="s">index pointers</span><span class="nums" style="color:'+(pointers?"var(--ok)":"var(--crit)")+'">'+(pointers?"all resolve":"broken")+(broke?" · "+broke+" broken":"")+'</span></div>'
       +'<div class="audit-ln"><span class="s">dangling wikilinks</span><span class="nums" style="color:'+(dang?"var(--warn)":"var(--ok)")+'">'+(dang?dang+" to review":"none")+'</span></div>'
-      +'<div class="cap">Every recorded claim is checked against the live tree before it lands.</div>';
+      +'<div class="meta"><div class="cap">Every recorded claim is checked against the live tree before it lands.</div></div>';
     // v0.1.55/57 — the distill verdict (gated on the key; legacy cycles hide the block). The verdict's
     // disposition (created / proposed / nothing) renders as a tag; the explanation reads as a sentence.
     var D=CUR.distill;
