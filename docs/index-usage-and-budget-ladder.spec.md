@@ -1,13 +1,17 @@
 # SPEC — index usage instrumentation + the budget ladder (Phase A/B of the index lifecycle)
 
-**Status:** DRAFT for review — produced by the 2026-07-04 over-budget investigation (measured against the
-live fleet stores, the 19-record `.consolidation-log.jsonl`, event-level transcript parsing, and primary
-sources; nothing below is asserted from intuition). This spec covers **Phase A (instrument — no behavior
-change)** and **Phase B (budget semantics — small, additive)**. **Phase C (rank-under-budget demotion, the
-pruning protocol proper) is deliberately NOT here** — it consumes Phase A's accrued data and gets its own
-spec once ~5–10 dreams of usage data exist (§Deferred).
-**Build shape:** two gated cycles/PRs recommended (A then B — A's instrument validates independently;
-B's semantics change behavior), each a **patch** per the deterministic-release-versioning policy.
+**Status:** **Phase A SHIPPED** — merged to `main` as v0.1.63 (CHANGELOG'd 2026-07-04; released via
+`release.sh` separately from this doc edit — see the CHANGELOG for the exact tag). Produced by the
+2026-07-04 over-budget investigation (measured against the live fleet stores, the 19-record
+`.consolidation-log.jsonl`, event-level transcript parsing, and primary sources; nothing below was
+asserted from intuition). This spec covers **Phase A (instrument — no behavior change, SHIPPED)** and
+**Phase B (budget semantics — small, additive, NOT YET BUILT)** — the design below for B is still the
+target to build against. **Phase C (rank-under-budget demotion, the pruning protocol proper) is
+deliberately NOT here** — it consumes Phase A's accrued data and gets its own spec once ~5–10 dreams of
+usage data exist (§Deferred).
+**Build shape:** two gated cycles/PRs (A then B — A's instrument validates independently; B's semantics
+change behavior), each a **patch** per the deterministic-release-versioning policy. A shipped as PR #71;
+B is open.
 
 ## The problem (MEASURED, not asserted)
 

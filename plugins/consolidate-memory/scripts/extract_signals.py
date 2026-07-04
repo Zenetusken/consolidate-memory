@@ -25,6 +25,8 @@ Business logic, grounded in the probe:
 
 Usage: extract_signals.py [PROJECT_DIR] [--since ISO_TS] [--max N] [--json]
        (default --since: the marker timestamp; default --max 30)
+       extract_signals.py --recalls [PROJECT_DIR] [--since ISO_TS] [--json] [--into SEED]
+       (Phase A recall-usage telemetry: organic fact-body reads this window, script-only)
 """
 
 from __future__ import annotations

@@ -26,7 +26,8 @@ case "$cmd" in
 cm — consolidate-memory
 
   cm status [DIR]      Phase-0 context (stores, git range, marker)
-  cm extract [--json]  curated session signal (human turns + error gotchas)
+  cm extract [--json]  curated session signal (human turns + error gotchas); --recalls [--into SEED]
+                       tracks organic fact-body reads this window (Phase A usage telemetry, script-only)
   cm distill [DIR]     recurring Bash-command workflow templates + chains (the distill phase's scan;
                        [--since ISO] [--json]; --into SEED injects the counts into a cycle record,
                        --from SCAN.json injects a saved scan without re-scanning)
