@@ -650,9 +650,13 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         _dv = _clean(str(di.get("verdict") or ""))
         if len(_dv) > 220:
             _dv = _dv[:219] + "…"
+        # v0.1.58: surface the firewall-suppression count — the transparency the secrets_omitted counter
+        # exists for (CLAUDE.md: a schema key must reach the renderer, not just the JSON). Gated on > 0.
+        _so = _num(di.get("secrets_omitted", 0))
         out.append("")
         out.append(_kv("DISTILL", f"{_g(_num(di.get('n_recurring', 0)))} recurring · "
                                   f"{_g(_num(di.get('n_chains', 0)))} chains"
+                                  + (f" · {_c(_g(_so) + ' secret-shaped', 'yellow')}" if _so else "")
                                   + ("" if _dv else " · " + _c("✗ no verdict", "yellow"))))
         if _dv:
             out.append(_kv("", _c(_dv, "dim")))

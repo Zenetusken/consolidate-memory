@@ -211,6 +211,52 @@ credentials, tokens, API keys, or PII from a transcript or config into ANY memor
 store — repo docs are committed and auto-memory persists. Record a *pointer*
 ("credentials live in `config.toml`, gitignored") not the value.
 
+## Distill (the second vertical — Phase 5 step 6)
+
+Where the phases above consolidate **facts**, distill detects repeated **workflows** and
+proposes packaging one into a durable artifact — report-then-apply, never auto-written.
+`scripts/distill_scan.py` is the counter; the model is the judge; the cycle record is the
+capture.
+
+**The scan `--json` contract** (v0.1.55; `secrets_omitted` v0.1.58):
+
+```json
+{"window": "<ISO or (all)>",
+ "scanned": {"sessions": 0, "commands": 0, "days": 0, "secrets_omitted": 0},
+ "recurring": [{"template": "...", "count": 0, "days": 0, "sample": "..."}],
+ "chains":    [{"templates": ["a", "b"], "count": 0, "days": 0}]}
+```
+
+`recurring` = normalized command CLASSES with `count ≥ 2`, ranked by (days, count),
+capped at 40; `chains` = adjacent kept-segment bigrams inside ONE compound command
+(`&&`/newline/`;`-glued sub-steps), capped at 20. `days` is the episode dimension —
+×27 across 9 days is a workflow, ×27 in one hour is a loop; rank is a hint, not a
+filter. A credential-shaped command still counts into its class, but its `sample` is an
+omission label and every emitted template is firewall-screened (`secrets_omitted` is the
+transparency counter). The window (~30 days, `--since` to override) is deliberately
+broader than the dream's `marker..HEAD` — say so when reporting.
+
+**The `distill` record block** (`Distill` TypedDict; all keys `total=False`):
+`sessions`/`commands`/`n_recurring`/`n_chains`/`window`/`secrets_omitted` are
+**script-only** — never hand-author counts (a hand-mirrored count once shipped an
+impossible `n_recurring: 47` against a cap of 40; `validate_cycle_record` warns when a
+count exceeds the scanner caps). Capture in ONE scan: save `--json` to a file, judge it,
+then inject that SAVED scan so the recorded counts equal the judged ones —
+`distill_scan.py --from <scan.json> --into <seed> --verdict '…' [--proposed X]
+[--created X]`. The judgment fields (`proposed`/`created`/`verdict`) are the model's,
+passed via the flags. `--into` is the LAST write to that block; it exits non-zero if the
+seed can't be written (capture loss is never silent) and warns if a judgment flag is
+passed without `--into`. The window filter compares parsed INSTANTS (a local-offset
+`--since` is honored correctly, not lexicographically mis-ordered against CC's `Z`
+stamps).
+
+**Acceptance recipe** (after touching the scanner): run
+`python3 scripts/distill_scan.py <repo> --json` against a rich corpus and judge the
+output — zero shell-syntax rows (`[ … ]`, `{`/`}`, `exit`/`continue`), zero
+interpreter-inline classes (`… python -c`), chains that read like the project's real
+gate/release pipelines. The smoke suite pins each noise class; the live-corpus read is
+the honesty check the pins can't give.
+
 ## Cross-project (the global tier)
 
 Recall is **slug-scoped**: a project auto-recalls only its own

@@ -5,6 +5,94 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.58] — 2026-07-04
+
+### Fixed — distill hardening: closed noise classes, honest firewall, script-truth capture (the end-to-end audit arc)
+A full business-logic audit of the distill vertical (three live corpora + a 27-case adversarial battery)
+found the v0.1.55 "zero noise" acceptance had already rotted (~15% of this repo's top-40 rows were shell
+syntax: `[ = ]` ×33, `}` ×16, `continue`/`exit 1` ×10 each, plus an `exit 1 → }` junk CHAIN), the literal
+interpreter stoplist regenerating its false class under other spellings (`.venv/bin/python -` ×204 on a
+sibling corpus), the reused firewall silently un-counting ~5% of commands as false positives with zero
+transparency, and the ONE production distill record carrying a hand-mirrored, structurally-impossible
+`n_recurring: 47` (hard cap: 40). Rebuilt per `docs/distill-hardening.spec.md` (two adversarial review
+rounds, design + impl lenses; every load-bearing claim proven by execution):
+- **Closed POSIX noise classes** — the keyword tables now cover the REST of shell syntax, not just loop
+  keywords: test guards (`[`/`[[`/`test`), brace groups (`{` carries, `}` drops), control heads with args
+  (`exit 1`/`break`/`continue`/`return`/`:`), env-manipulation (`set`/`trap`/`shopt`/…), assignment
+  keywords (`export`/`declare`/… — drop-whole: they never carry a command, and prefix-stripping would
+  open bare-name junk), `!` negation and `eval`/`exec` carriers (with an fd-plumbing guard: `exec 2>&1`),
+  and a purely-numeric template screen. Unlike the verb stoplist, POSIX syntax is a finite set — this
+  class of rot ends rather than shrinks.
+- **Structural interpreter rule** — an inline-body carrier (`… <interp> -|-c|-e`) or bare interpreter is
+  matched by token BASENAME on the post-truncation segment tokens, so any path (`/usr/bin/python3`,
+  `.venv/bin/python`), any version (`python3.12`), and any runner (`uv run`, `docker run img`) is the
+  same one-off class — while `git commit -q -F -` (×165 live) and `python -m pytest` survive, pinned.
+- **Firewall at the EMISSION point** *(additive `scanned.secrets_omitted`; `commands` now includes
+  flagged commands — ~+5% on the measured corpus)* — a credential-shaped command still counts into its
+  class; what it can never do is surface raw text: its samples become an omission label (suppression
+  keys off the ONE `_norm`-based flag — a zero-width-split secret is caught; a raw re-probe would miss
+  it, pinned) and every emitted template is screened at a single choke-point covering rows AND chain
+  endpoints. The predicate itself is untouched; ~5% recall returns, with the count made visible.
+- **Script-truth capture: `distill_scan.py --into <seed>`** *(additive flags + additive
+  `Distill.window`/`secrets_omitted` schema keys)* — the counts are now script-ONLY, injected by a
+  sub-key MERGE that preserves model-authored judgment fields unless `--verdict`/`--proposed`/`--created`
+  replace them (a provided list-flag replaces the whole list — idempotent); the SKILL's hand-mirror
+  count instruction is DELETED (its absence is pinned), and `validate_cycle_record` gains an
+  impossible-count backstop (warns above the scanner caps; caps mirrored under a cross-module smoke pin).
+- **Window + CLI honesty** — a per-line `ts <= since` filter (a long-lived session file no longer leaks
+  out-of-window lines into counts/day-spreads); `--since` validated at the CLI (exit 2 on garbage —
+  which would otherwise lexicographically drop everything); a nonexistent project dir and genuinely
+  unknown flags warn on stderr (`--sicne X` no longer silently scans a wrong dir as a 0-session result);
+  `cm distill` help documents `--since`/`--into`.
+- **Docs made true** — SKILL gate gains leg 6 (*not previously DECLINED* — read recent verdicts from the
+  cycle log; new evidence, never a re-ask); chains wording corrected everywhere to `&&`/newline/`;`-glued
+  (README ×2, SKILL, module doc); `harness-map.md` gains the missing distill section (scan contract,
+  record block, `--into` recipe, acceptance recipe); the stale docstring residual claims rewritten
+  honestly (`||` is ~16% of commands but low-HARM; `$()` mis-segmentation is nested-only; the single-`&`
+  fusion, stoplisted-head pipelines, and control-terminator bridge chains are named as accepted
+  residuals).
+
+A high-effort workflow-backed code review (20 agents) then found 10 confirmed impl regressions in the
+above, all fixed pre-merge:
+- **The firewall screen probed the raw template, not the `_norm`'d one** — a zero-width-split credential
+  that flagged the command could still leak into a template row; now screened through `_norm` (the
+  security-critical fix), with a non-vacuous zero-width smoke pin.
+- **The per-line window compared raw strings** — a local-offset or compact `--since` silently dropped
+  in-window lines or zero-scanned the corpus; now compares parsed UTC **instants** via a shared
+  `_parse_ts` (which also normalizes a `±HHMM` no-colon offset, ending the 3.10-vs-3.11 skew).
+- **CLI honesty** — a trailing value-flag (its value lost) or a genuinely unknown flag is now a usage
+  error (exit 2), judgment flags without `--into` warn loudly, and `main` **exits non-zero when an
+  `--into` capture fails** (the deleted hand-mirror left no fallback, so a silent failure was
+  unrecoverable).
+- **`--from <scan.json>`** — the SKILL now scans ONCE, judges that output, and injects the SAVED scan,
+  so the recorded counts are byte-identical to the judged evidence (no drift, no double scan).
+- **Sample recovery** — a class first seen in a credential-shaped command now upgrades its display
+  sample once a clean occurrence of the same class appears (was pinned to the omission label by arrival
+  order).
+- **Renderer parity** — `secrets_omitted` now shows on the ASCII DISTILL line and the HTML "This Pass"
+  panel (the schema-cascade contract). NOTE: `scanned.commands` now **includes** firewall-flagged
+  commands (~+5% vs v0.1.57), a deliberate cross-version value shift for transparency.
+
+A SECOND workflow review (thoroughness pass over the fixes) then found 7 more, 5 fixed:
+- **`inject_into` could crash on a partial `--from` scan** (a stale scan missing `secrets_omitted`/
+  `window` KeyError'd instead of a clean exit) → defensive `.get()` defaults + a KeyError backstop.
+- **The eval/exec fd-guard false-dropped digit-named tools** (`exec 7z …`, `eval 2to3 …`) → a precise
+  fd-redirect match so only real redirects (`exec 2>&1`) drop.
+- **`_parse_ts` was promoted into `extract_signals`** so the file-prune and the per-line window share ONE
+  timestamp parser (the reimplementation-pin; a divergent copy let the `±HHMM`-offset prune silently
+  no-op), plus a `_day_str` helper retires the now-dead `_day_of` inline copy and a doubled `seg.split()`.
+- Two PLAUSIBLE findings accepted as consistent-by-design (a secret-only day counting toward the advisory
+  `scanned.days`; a skipped `--into` leaving an absent block — already caught by the beta family + the
+  non-zero exit).
+
+Additive `--json`/schema keys (`window`, `secrets_omitted`) + additive flags (`--into`/`--from`/judgment)
++ stricter noise-dropping under an additive shape + SKILL/doc prose → patch. 594 smoke (+48) + mypy + sim
++ manifests + `claude plugin validate --strict` green (incl. a pin that the `secrets_omitted` count renders
+on the ASCII + HTML dashboards — a review follow-up that also caught + fixed a `12.0`→`12` float format).
+Live acceptance: this repo 40 rows + 20 chains
+**zero junk** (was ~15%) with `secrets_omitted: 83` surfaced; the sibling Python corpus's top row is now
+the real gate (`pytest -m unit` ×284/14d) with the `.venv/bin/python -`/`-c` false classes (×299) gone.
+
 ## [0.1.57] — 2026-07-03
 
 ### Changed — dashboard coherence + the quiet dream (design feedback from the first live v0.1.54–56 dream)
