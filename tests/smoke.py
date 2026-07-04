@@ -1928,10 +1928,18 @@ check("v0.1.55 render: distill without a verdict flags the gap",
       "✗ no verdict" in rd.render(cast(ms.CycleRecord, {"project": "p", "distill": {"n_recurring": 2}})))
 check("v0.1.55 render: NO DISTILL line without the key (legacy unchanged)",
       "DISTILL" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s"})))
+# v0.1.58 [9]: the secrets_omitted transparency count REACHES the ASCII line (gated on > 0 — the
+# schema-cascade contract; the fix was unpinned until here, the exact "key never reaches the view" gap).
+check("v0.1.58 [9] render: secrets_omitted > 0 shows 'N secret-shaped' on the DISTILL line",
+      "7 secret-shaped" in rd.render(cast(ms.CycleRecord, {"project": "p", "distill":
+          {"n_recurring": 3, "n_chains": 1, "secrets_omitted": 7, "verdict": "nothing: x fails leg"}})))
+check("v0.1.58 [9] render: secrets_omitted == 0 adds NO clause (gated)",
+      "secret-shaped" not in rd.render(cast(ms.CycleRecord, {"project": "p", "distill":
+          {"n_recurring": 3, "n_chains": 1, "secrets_omitted": 0, "verdict": "nothing: x fails leg"}})))
 # (6) HTML: the gated distill line ships in the verify panel JS (esc()-guarded, key-gated).
 # (_tpl54 is read at RUNTIME above, so it already holds the current template — one arm, no dead dup.)
-check("v0.1.55 html: template ships the gated distill line",
-      "CUR.distill" in _tpl54 and "n_recurring" in _tpl54)
+check("v0.1.55/58 html: template ships the gated distill line + the secrets_omitted clause",
+      "CUR.distill" in _tpl54 and "n_recurring" in _tpl54 and "secret-shaped" in _tpl54)
 # (7) beta family: 6-case + the dream regression suite above still green post-refactor.
 _FakeCtx54.skill_version = "0.1.55"
 _FakeCtx54.log_records = [{"marker": {"timestamp": "d1"}}]

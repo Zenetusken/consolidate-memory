@@ -656,7 +656,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         out.append("")
         out.append(_kv("DISTILL", f"{_g(_num(di.get('n_recurring', 0)))} recurring · "
                                   f"{_g(_num(di.get('n_chains', 0)))} chains"
-                                  + (f" · {_c(str(_so) + ' secret-shaped', 'yellow')}" if _so else "")
+                                  + (f" · {_c(_g(_so) + ' secret-shaped', 'yellow')}" if _so else "")
                                   + ("" if _dv else " · " + _c("✗ no verdict", "yellow"))))
         if _dv:
             out.append(_kv("", _c(_dv, "dim")))

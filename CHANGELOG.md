@@ -86,8 +86,10 @@ A SECOND workflow review (thoroughness pass over the fixes) then found 7 more, 5
   non-zero exit).
 
 Additive `--json`/schema keys (`window`, `secrets_omitted`) + additive flags (`--into`/`--from`/judgment)
-+ stricter noise-dropping under an additive shape + SKILL/doc prose → patch. 592 smoke (+46) + mypy + sim
-+ manifests + `claude plugin validate --strict` green. Live acceptance: this repo 40 rows + 20 chains
++ stricter noise-dropping under an additive shape + SKILL/doc prose → patch. 594 smoke (+48) + mypy + sim
++ manifests + `claude plugin validate --strict` green (incl. a pin that the `secrets_omitted` count renders
+on the ASCII + HTML dashboards — a review follow-up that also caught + fixed a `12.0`→`12` float format).
+Live acceptance: this repo 40 rows + 20 chains
 **zero junk** (was ~15%) with `secrets_omitted: 83` surfaced; the sibling Python corpus's top row is now
 the real gate (`pytest -m unit` ×284/14d) with the `.venv/bin/python -`/`-c` false classes (×299) gone.
 
