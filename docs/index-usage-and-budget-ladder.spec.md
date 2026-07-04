@@ -1,17 +1,23 @@
 # SPEC — index usage instrumentation + the budget ladder (Phase A/B of the index lifecycle)
 
-**Status:** **Phase A SHIPPED** — merged to `main` as v0.1.63 (CHANGELOG'd 2026-07-04; released via
-`release.sh` separately from this doc edit — see the CHANGELOG for the exact tag). Produced by the
-2026-07-04 over-budget investigation (measured against the live fleet stores, the 19-record
-`.consolidation-log.jsonl`, event-level transcript parsing, and primary sources; nothing below was
-asserted from intuition). This spec covers **Phase A (instrument — no behavior change, SHIPPED)** and
-**Phase B (budget semantics — small, additive, NOT YET BUILT)** — the design below for B is still the
-target to build against. **Phase C (rank-under-budget demotion, the pruning protocol proper) is
-deliberately NOT here** — it consumes Phase A's accrued data and gets its own spec once ~5–10 dreams of
-usage data exist (§Deferred).
+**Status:** **Phase A SHIPPED** (`main`, v0.1.63, PR #71). **Phase B REVISED** after an independent
+3-lens spec-review gate (2026-07-04, this repo's own established precedent — see
+`docs/dream-procedure-integrity.spec.md`) found the original B1 design load-bearing-broken: re-keying
+the single field `remediation.required` from the target to the ceiling would have silently stopped
+triage from firing in the amber band, flipped the maintenance-pass pivot for the whole amber band, AND
+**inverted a HIGH-severity release-blocking oracle** in the sibling `dream-beta-tester` plugin's
+pre-push gate (`CHK-REM-SEED-CONTRACT`) — meaning the original spec, if built as written, would have
+blocked the next release the first time a store sat over-target-under-ceiling. Full findings + the
+redesign rationale: §Phase B below is the POST-gate design; the original is not reproduced (superseded,
+not historical — unlike Phase A's shipped record, nothing here shipped, so there is no split-decision
+need to preserve the pre-gate text). The gate also found two dead-symbol references (`_should_hold`,
+`_pass_budget_flag` — neither exists; real functions `_would_net_grow`/`_over()`) and a measurement
+error in Phase A's own problem statement (Doc-Flo's cliff-line figure was mis-wired from its fact
+count) — both fixed below.
 **Build shape:** two gated cycles/PRs (A then B — A's instrument validates independently; B's semantics
-change behavior), each a **patch** per the deterministic-release-versioning policy. A shipped as PR #71;
-B is open.
+add new behavior). A shipped as PR #71 (patch). B, per the deterministic-release-versioning policy, is
+also a **patch** — additive only (see §Phase B's design; nothing existing changes meaning) — pending
+implementation.
 
 ## The problem (MEASURED, not asserted)
 
@@ -39,9 +45,12 @@ The operator correctly read this as "something is wrong in the system or the ass
   lines of MEMORY.md, or the first 25KB, whichever comes first, are loaded at the start of every
   conversation. Content beyond that threshold is not loaded"* (code.claude.com/docs/en/memory; verified
   2026-07-04). No relevance filtering — verbatim inclusion to the cap, then silent data loss. Fleet
-  position: consolidate-memory 6,138 B / 27 ln = **25% / 14%** of the cliff; Doc-Flo ≈11 KB / ~107 ln =
-  **44% / 54%**; job-applicator ≈8.8 KB / ~38 ln = **35% / 19%**. All three nodes are over the 1500 soft
-  target (100.3% / 184% / 147%).
+  position: consolidate-memory 6,138 B / 27 ln = **25% / 14%** of the cliff; Doc-Flo 11,244 B / 46 ln =
+  **44% / 23%** of the cliff (CORRECTED 2026-07-04 spec-review gate — the original "107" was Doc-Flo's
+  *fact count*, mis-wired into the line-count slot; its real index is 46 lines, not 107); job-applicator
+  ≈8.8 KB / ~38 ln = **35% / 19%**. All three nodes are over the 1500 soft target (100.3% / 184% / 147%),
+  but **no real fleet store is anywhere near the 120-line cliff axis** — only synthetic QA fixtures are
+  (see Phase B's Honest Limits).
 - **Half the local overage is hook fat, not fact count.** Index lines average 57 est tok (mirrors 48,
   locals 83); the two fattest local hooks (`distill-feature-plan` 141, `consolidate-memory-roadmap` 116)
   are **17% of the whole budget in 2 lines** — status-content in the index, against the skill's own
@@ -173,60 +182,110 @@ smoke test (the `_DISTILL_CAPS` pattern, `memory_status.py:291`). SKILL.md schem
 same change (the existing smoke pin forces this). `render_html.py` mirrors any displayed constant as a
 byte-pinned copy (its existing convention, `render_html.py:30`).
 
-## Phase B — the budget ladder (semantics; small behavior change)
+## Phase B — the budget ladder (semantics; ADDITIVE — nothing existing changes meaning)
 
-One number becomes an explicit escalation ladder. Constants in `memory_status.py` (the dependency root;
-`sync_global` already imports from it, `sync_global.py:48`):
+**The gate-review pivot, stated once so every clause below is legible against it:** the original design
+re-keyed ONE existing field (`remediation.required`) from the target to the ceiling. That field is not
+free-standing — it is read by three other things that must NOT change meaning: the Phase-5 triage/
+prune-pressure surfacing (fires at amber, per the ladder's own table), `maintenance.over_budget_not_
+justified` (the no-commit maintenance-pass pivot, `memory_status.py:1447-1449`), and `dream-beta-tester`'s
+`CHK-REM-SEED-CONTRACT` release-gating oracle (asserts over-target-non-SJ ⟹ `required is True` — a
+HIGH-severity, push-blocking check). Re-keying `required` breaks all three at once. **The fix is not a
+different threshold for the same field — it is a SECOND, INDEPENDENT signal for a SECOND, INDEPENDENT
+concern:**
+
+- **The existing amber signal (`remediation.required`, `remediation_triage()`, standing-justify) is
+  UNTOUCHED** — same threshold (`INDEX_TOKEN_BUDGET`), same triage-at-amber behavior, same
+  maintenance-pivot wiring, same oracle contract. Nothing here is Phase B's to edit.
+- **A NEW hard ceiling check is ADDED alongside it** — its own constant, its own cycle-record field, its
+  own SKILL prose, and (structurally, not by a documented exception) **never consults standing-justify at
+  all** — it is defined the same way `_would_net_grow` already is today: a pure comparison with no SJ
+  input. There is no "boundary where SJ stops suppressing" to place, because SJ was never wired to this
+  check in the first place — mirroring how `_would_net_grow` (the REAL M1 hold predicate; see Dead
+  symbols below) already ignores `standing_justify` entirely (`sync_global.py:404-408`, verified: it takes
+  `(running_idx, pointer_cost, allow_net_grow)`, no SJ parameter).
 
 ```
 rung                 threshold (this store today)          drives
 ─────────────────────────────────────────────────────────────────────────────────────────────
 green                < 1500 est tok (target)               nothing — healthy
-amber · over target  ≥ INDEX_TOKEN_BUDGET (1500)           prune_pressure (unchanged) · Phase-5 sweep ·
+amber · over target  ≥ INDEX_TOKEN_BUDGET (1500)           UNCHANGED: prune_pressure · Phase-5 sweep ·
                                                            triage OFFERED · standing-justify quiets repeats
-amber · SJ-refire    baseline +10 facts or ×1.25 tok       the triage conversation re-fires (unchanged)
-RED · over ceiling   > INDEX_CEILING_FRACTION(0.6) of      the v0.1.18 HARD GATE (may-not-net-grow,
-                     native caps: >15,360 B or >120 ln     prune-or-justify) · M1 hold · --evict valve
-                     (display ≈3840 est tok)               — and standing-justify does NOT suppress here
-RED · cliff-near     ≥ 80% of native caps                  loud data-loss warning (A3)
+amber · SJ-refire    baseline +10 facts or ×1.25 tok       UNCHANGED: the triage conversation re-fires
+RED · over ceiling   > INDEX_CEILING_TOKENS (≈3840,        NEW, independent hard gate: may-not-net-grow ·
+                     derived from 0.6 × native caps —      M1 hold (re-keyed) · --evict valve. Structurally
+                     see B1's single-source note)          SJ-independent (nothing to suppress; see above)
+RED · cliff-near     ≥ 80% of native caps                  loud data-loss warning (Phase A, shipped)
 cliff                25 KB / 200 ln (harness)              silent truncation — never reachable if the
                                                            ladder works
 ```
 
-**B1. Re-key the hard mechanisms to the ceiling.** `_should_hold` (`sync_global.py:405`) and
-`_evict_frees_enough`'s default budget (`:431`) compare against the ceiling, not the target — both are
-pure, already smoke-pinned functions; the re-key is the comparison constant. `remediation.required` (the
-seed's gate flag) keys to over-ceiling. **Standing-justify re-scopes DOWN the ladder:** it continues to
-quiet the *amber* band's repeat triage (its real function today) but can no longer suppress the
-over-ceiling gate — over the ceiling, only shrinking satisfies (justification is not a defense against
-data loss). `--allow-net-grow` and `--evict` keep their semantics against the new threshold.
-Consequence, stated plainly: **the 2 currently-held globals land on the next `--pull`** (index → ≈1600
-est tok, amber), and holds effectively stop firing fleet-wide until a node crosses ≈3840 est tok — that is
-the intent: withholding verified knowledge is the harshest lever and now keys to the harm boundary.
+**B1. Dead symbols (gate-confirmed, all three lenses independently) — fix before anything else.**
+`_should_hold` does not exist anywhere in the codebase; the real M1 hold predicate is
+`_would_net_grow(running_idx, pointer_cost, allow_net_grow)` (`sync_global.py:404`, 3 required
+positional args, no default — every real call site and smoke pin passes all three). `_pass_budget_flag`
+does not exist; the real over-target gauge flag is `_over(b)` (`render_dashboard.py:202`, returns the red
+`⚠ OVER` string when `b.get("over")`) — it is **shared** by both the index gauge (`:468`) and the
+CLAUDE.md gauge (`:458`, which has no ceiling concept and must not gain one). Every reference below uses
+the real names.
 
-**B2. Gauge honesty.** The index gauge renders the rung, not a binary: amber shows
-`over target · justified` when standing-justified (today the gauge stays red while the remediation panel
-says ✓ — the measured mixed-signal this investigation started from); red is reserved for over-ceiling /
-cliff-near. `render_dashboard` (`_pass_budget_flag` + the gauge site) gains the remediation/rung context;
-`render_html` mirrors. Legacy records (no `over_ceiling` key) render **byte-identically** to today
-(smoke-pinned, the AC#5 pattern).
+**B2. The new ceiling gate — a single-source token threshold, isolated from the byte/line cliff math.**
+Add `INDEX_CEILING_TOKENS` as a **module-level constant in `memory_status.py`**, computed once from the
+existing native caps (`round(INDEX_CEILING_FRACTION * min(NATIVE_INDEX_CAP_BYTES // 4,
+NATIVE_INDEX_CAP_LINES_AS_TOKENS))` or an equivalent single deterministic formula — the point is ONE
+canonical est-token number, not a live byte/line re-derivation at each comparison site, so `_would_net_
+grow`, the new dashboard flag, and the new SKILL prose all compare the SAME value in the SAME unit
+(closes the byte/line-vs-est-token mismatch the gate review found in the original B1). `_would_net_grow`
+(`sync_global.py:408`) and `_evict_frees_enough`'s default (`:431`) take this constant via their EXISTING
+parameter (no signature change — both already accept the threshold as an argument/default, so re-keying
+is passing `INDEX_CEILING_TOKENS` instead of `INDEX_TOKEN_BUDGET` at the call site, not editing the
+functions). New seed field: **`remediation.over_ceiling: bool`** — computed independently from
+`index_lb[2] > INDEX_CEILING_TOKENS`, alongside (never inside) the existing `required`-setting branch in
+`memory_status.py`'s remediation-dict construction (~`:1376-1388`) — it is a sibling assignment, not a
+replacement. `--allow-net-grow` and `--evict` keep their semantics, now checked against
+`INDEX_CEILING_TOKENS`. Consequence, honestly stated (corrected from the original, self-healed-stale
+numbers): **no real fleet store is within reach of this gate today** (this project: 1406/3840 tok;
+Doc-Flo: the largest real node, well under; job-applicator: under) — it is a backstop for a state none of
+the three live nodes are in, which is the intended shape of a ceiling (see Honest Limits).
 
-**B3. Hook lint at write time.** `sync_global --pull`/`--promote` warn (stderr + report line, never
-truncate) when a written pointer (`_pointer_line`, `sync_global.py:365`) exceeds `HOOK_TOKEN_WARN`,
-naming the **canonical's description** as the fix site (the pointer is derived from it; a fat mirror hook
-taxes *every* node). SKILL.md Phase 4 gets the same rule for model-authored pointers ("the hook is a
-distilled cue ≤ ~60 est tok; the `description:` stays the full recall key").
+**B3. Gauge honesty — three renderers, not one, plus SKILL prose (a genuinely NEW addition, not an edit
+to existing behavioral text).** `over_ceiling` renders alongside the existing `over` flag, never replacing
+it, at all three sites that show the index budget: `render_dashboard.py`'s `_over(idx)` call (`:468`,
+index gauge only — leave the CLAUDE.md call at `:458` untouched), `memory_status.py`'s own Phase-0/
+`cm status` report (the gauge at `:1911/1917-1918`, the `_remediation_section` panel at `:1819`, the RIGOR
+line at `:1892` — this is the operator's daily view via `cm status` outside a dream and must not keep
+showing only the old signal), and `render_html.py` (which today renders NO remediation/rung state at all
+— this is net-new work, not a mirror of an existing render). Legacy records (no `over_ceiling` key)
+render **byte-identically** — gate this on **key presence** (`"over_ceiling" in idx`), not
+`idx.get("over_ceiling")` (which defaults `False` and would silently pass a trivial/degenerate legacy
+check instead of a real absence-check — the gate review's degenerate-pass-assertion finding). SKILL.md
+gains NEW prose (not an edit to the existing Rigor-modes/Phase-5-step-0 text, which stays accurate as
+written) documenting the additive ceiling gate: it fires independent of standing-justify, and the
+existing over-target/justify language is unaffected by it.
 
-**B4. Schema.** `IndexBudget` gains `ceiling_tokens: int` (display ≈), `over_ceiling: bool`. The existing
-`over` keeps its exact current meaning (over-*target*) — no key is renamed or removed; legacy records
-carry no new keys and render as before.
+**B4. Hook lint at write time (unchanged from the original design — no lens found an issue here).**
+`sync_global --pull`/`--promote` warn (stderr + report line, never truncate) when a written pointer
+(`_pointer_line`, `sync_global.py:365`) exceeds `HOOK_TOKEN_WARN`, naming the **canonical's description**
+as the fix site (the pointer is derived from it; a fat mirror hook taxes *every* node). SKILL.md Phase 4
+gets the same rule for model-authored pointers ("the hook is a distilled cue ≤ ~60 est tok; the
+`description:` stays the full recall key").
+
+**B5. Schema.** `IndexBudget` gains `ceiling_tokens: int` (the display value). `remediation` gains
+`over_ceiling: bool` as a sibling of `required` (both `total=False`, additive). The existing `over` and
+`required` keep their EXACT current meaning and computation — no key is renamed, removed, or re-derived;
+legacy records carry no new keys and render as before.
 
 ## What Phase B does NOT do (scope fence)
 
 No ranking, no demotion, no archive automation, no global-store budget, no change to verification, KEEP-
 veto, archive/defrag candidate surfacing, prune-pressure, rigor tiers, or the procedure-integrity
-detector. The justify lever still exists over the ceiling (a genuinely all-durable over-ceiling store
-records its justification — but the gate re-fires every pass there; no standing suppression).
+detector. **No change whatsoever to `remediation.required`, `remediation_triage()`'s lever routing,
+`maintenance.over_budget_not_justified`, or standing-justify's existing suppression of the amber band** —
+all of that is the pre-existing, oracle-verified target-based gate, and Phase B adds a second, independent
+signal beside it rather than touching it (this fence is itself a gate-review finding, not the original
+design's — it exists specifically because the original draft crossed it). The over-ceiling gate has no
+"justify" escape (unlike the target gate) precisely because it never had a "standing-justified" state to
+escape from — it is a plain, always-live comparison, same shape as `_would_net_grow` today.
 
 ## Empirical gates (measure-don't-assert; each names its command + expected observation)
 
@@ -247,23 +306,46 @@ Phase A:
   identical except additive USAGE/gauge-suffix lines.
 
 Phase B:
-- **G-B1 (pure re-key):** `_should_hold(1504, 50)` → False (was True); `_should_hold(3800, 50)` → True;
-  `_evict_frees_enough` default follows.
-- **G-B2 (ladder rendering):** latest live record renders amber `over target · justified`, no red `⚠ OVER`;
-  a synthetic over-ceiling record renders red + gate; a synthetic over-ceiling **standing-justified**
-  record still renders the gate (SJ must not suppress it); legacy record byte-identical.
-- **G-B3 (live acceptance, operator present):** next dream on this repo — `--pull` receives the 2 held
-  facts (index ≈1600 est tok, amber, no hold), the Phase-5 sweep tightens the 2 fat hooks
-  (report-then-apply as always) → index ≤ target, green, **28 facts indexed, zero knowledge lost**. That
-  end state is the demonstration that the target was reachable without evicting anything — the
-  investigation's central claim.
-- **G-B4 (blast radius):** the accumulation sim keys gate-engagement to `ms.INDEX_TOKEN_BUDGET`
-  (`simulate_accumulation.py:660,919` — its over-budget fixtures must be re-based to the rung they mean:
-  triage fixtures to the target, gate/hold fixtures past the ceiling). The smoke `_evict_frees_enough`
-  tests already pass explicit `budget=` args by design ("a fixture sized to the live constant silently
-  breaks on a re-ground", `smoke.py:1162`) and survive unchanged — only default-parameter tests are new.
-  Dream-beta-tester oracle checked for pinned over-budget semantics; `cm` help text and the harness-map
-  budget section updated.
+- **G-B1 (pure re-key, real names/arity):** `_would_net_grow(1504, 50, False)` → False under the OLD
+  budget's math becoming irrelevant to this call — the actual pin is at the ceiling: `_would_net_grow(
+  INDEX_CEILING_TOKENS - 40, 50, False)` → True (crosses); `_would_net_grow(INDEX_CEILING_TOKENS - 200,
+  50, False)` → False (doesn't cross). `_evict_frees_enough`'s default follows the same re-key.
+  **Existing smoke.py:303-310 hardcodes `_B38 = ms.INDEX_TOKEN_BUDGET` for `_would_net_grow` assertions —
+  these are UNCHANGED calls to an UNCHANGED function at an UNCHANGED (target) threshold, since the
+  re-keyed calls are NEW call sites passing `INDEX_CEILING_TOKENS` explicitly, not a change to what
+  `INDEX_TOKEN_BUDGET`-keyed calls mean.** (Corrects the original G-B4, which wrongly implied these
+  existing tests needed re-basing — they don't, because nothing about the target-keyed path changes.)
+- **G-B2 (ladder rendering, 3 sites):** latest live record (currently green, 1406/1495 tok — see G-B3)
+  renders unchanged at target-level; a synthetic over-ceiling fixture renders the NEW red flag at all
+  three sites named in B3 (dashboard index gauge, `cm status`'s Phase-0 report, the HTML archive); the
+  SAME fixture with `standing_justified: true` in its `remediation` block **still renders the new red
+  flag** (trivially true by construction — `over_ceiling` never reads `standing_justified`, so there is
+  no suppression path to test failing to suppress); a legacy record (no `over_ceiling` key) renders
+  byte-identically, asserted via **key-presence**, not `.get()` default (closes the degenerate-pass trap
+  the gate review found in the original G-B2).
+- **G-B3 (synthetic acceptance — corrected from a live claim that gate-review measurement disproved).**
+  The original G-B3 claimed the *next live dream* on this repo would demonstrate the ceiling gate's value
+  (2 held facts landing, fat hooks shrinking). Gate-review measurement found this **already happened
+  without Phase B** — a later dream (2026-07-04T18:45) independently tightened the fat hooks; this
+  project's live index now sits at 1406→1495 tok (post-pull), green, zero fat hooks over 70 tok. No real
+  fleet node is within reach of `INDEX_CEILING_TOKENS`. So live acceptance cannot validate this feature —
+  build a **synthetic fixture** (a store engineered past 0.6× the native caps) and confirm: `--pull` HOLDS
+  a new global there (unaffected by standing-justify, confirmed via a fixture with `standing_justify` set
+  showing the SAME hold), `remediation.over_ceiling` is `True`, `remediation.required` is whatever the
+  UNCHANGED target-based logic already says for that store (independent, may be True or False), and the
+  dashboard/`cm status`/HTML all show the new red flag consistently.
+- **G-B4 (blast radius, corrected).** `simulate_accumulation.py`'s existing fixtures at `:660,667,919`
+  test the UNCHANGED target/standing-justify path (Probe L and Probe P respectively) and need **NO
+  re-basing** — re-basing Probe P (an SJ-behavior test) past the ceiling, as the original G-B4 instructed,
+  would have tested behavior Phase B does not touch, at a threshold Phase B does not move it to. Only
+  **net-new** fixtures are needed, for the net-new ceiling gate. `tests/dream-beta-tester`'s
+  `CHK-REM-SEED-CONTRACT` (severity HIGH, asserts over-target-non-SJ ⟹ `required is True`) and
+  `CHK-BUDGET-CALIBRATION` are **unaffected by construction** (they read `remediation.required`/
+  `budget.index.budget_tokens`, neither of which Phase B changes) — verify this holds post-build by
+  running the beta-tester's own CI check (`plugins/dream-beta-tester/maintainer/ci_check.sh`) against the
+  built code, not by inspecting the oracle's source (the gate review already did that; a live run is the
+  actual proof). `cm` help text and the harness-map budget section gain the NEW ceiling-gate documentation
+  (additive, not an edit to the existing target-gate passages).
 
 ## Honest limits
 
@@ -272,7 +354,19 @@ Phase B:
   is weak evidence. Phase C carries the burden of corroboration.
 - **The ceiling fraction (0.6) is a chosen safety margin, not a calibrated point** — sized so the worst
   measured intra-day ambient spike (+~5 KB, 2026-06-21) fits between ceiling and cliff. Tunable; the
-  ladder structure, not the fraction, is the design.
+  ladder structure, not the fraction, is the design. **No real fleet store is within reach of it today**
+  (largest live node well under `INDEX_CEILING_TOKENS`) — it is a backstop for a future state, not a
+  current one; the QA-fixture repo in `dream-beta-tester` is the only store near it, and its position
+  there (over vs. under, at the current 0.6) is presently incidental to how that fixture was originally
+  sized (against the OLD 1200-era target, not this ceiling) — tightening the 0.6 fraction later should
+  re-check that fixture's disposition explicitly, not assume it stays put.
+- **The ceiling gate is deliberately NOT standing-justify-aware, by construction, not by a placed
+  boundary.** The gate-review's original open question — "where should SJ stop suppressing?" — dissolves
+  under this design: the ceiling check never reads `standing_justified` in the first place (same shape as
+  `_would_net_grow` today), so there is nothing to suppress and no boundary to tune. If a future dream
+  finds a genuinely earned-density store parked over the ceiling with nothing prunable, that is a Phase C
+  problem (rank-under-budget demotion actually frees space) — Phase B's job is only to make the ceiling
+  real, not to also invent a way around it.
 - **chars/4 remains an estimate** (±20% vs a real tokenizer); all cliff math deliberately bypasses it.
 - **A dream that never runs `--recalls` accrues no usage** — same class as skipping `--tokens`; the SKILL
   step + the `--into` injection make it cheap, and a missing `usage` block is visible in the log.
