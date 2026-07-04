@@ -2197,5 +2197,120 @@ check("v0.1.62 SKILL pin: the no-emoji lead-line rule + the retired generic 🌙
 check("v0.1.62 SKILL pin: both debrief-instruction sites (dream-arc + Phase-5 step 7) name the fix",
       "no emoji — WAKE already closed the dream" in _sk55 and "A measured defect" in _sk55)
 
+# ── v0.1.63 (Phase A): usage instrumentation + hook/cliff telemetry (observe-only) ───────────────
+# docs/index-usage-and-budget-ladder.spec.md. Pure-function + render + contract pins; NO behavior
+# change is the phase's own invariant (no new gates — the ladder semantics are Phase B).
+import json as _jsonA  # noqa: E402
+import tempfile as _tfA  # noqa: E402
+
+# (1) cross-module cap pin — the validator's backstop mirrors the producer (the _DISTILL_CAPS shape).
+check("v0.1.63 caps cross-module pin: ms._USAGE_FACT_CAP == es._USAGE_FACT_CAP",
+      ms._USAGE_FACT_CAP == es._USAGE_FACT_CAP)
+
+# (2) split_dream_span — the PURE classifier: outside-span reads are ORGANIC, in-span are dream-
+# procedure; no arc ⇒ all organic (a non-dream session); inter-arc gap over-excluded by design.
+_spanA = [{"i": 1, "kind": "read", "stem": "a", "ts": "t1"},
+          {"i": 5, "kind": "arc", "stem": "", "ts": "t2"},
+          {"i": 7, "kind": "read", "stem": "b", "ts": "t3"},
+          {"i": 9, "kind": "arc", "stem": "", "ts": "t4"},
+          {"i": 12, "kind": "read", "stem": "c", "ts": "t5"}]
+_orgA, _exclA = es.split_dream_span(_spanA)
+check("v0.1.63 split_dream_span: before/after-span organic, in-span excluded (first..last arc)",
+      [r["stem"] for r in _orgA] == ["a", "c"] and _exclA == 1)
+_noarcA = [{"i": 3, "kind": "read", "stem": "x", "ts": ""}]
+check("v0.1.63 split_dream_span: no arc ⇒ all reads organic, 0 excluded",
+      es.split_dream_span(list(_noarcA)) == (_noarcA, 0))
+
+# (3) _recall_items — stream fixture: fact Reads collected; MEMORY.md / archive stems / foreign paths
+# / nested paths never counted; only a Bash-tool_use CM_DREAM_ARC command is an arc (prose mentions
+# must not widen the span — the strict spec rule).
+with _tfA.TemporaryDirectory() as _tdA:
+    _trA = Path(_tdA) / "s.jsonl"
+    _storeA = "/home/u/.claude/projects/x/memory/"
+
+    def _evA(name: str, inp: dict) -> str:
+        return _jsonA.dumps({"timestamp": "2026-07-04T00:00:00Z",
+                             "message": {"role": "assistant",
+                                         "content": [{"type": "tool_use", "name": name, "input": inp}]}})
+
+    _trA.write_text("\n".join([
+        _evA("Read", {"file_path": _storeA + "alpha.md"}),                      # organic (before arc)
+        _jsonA.dumps({"timestamp": "2026-07-04T00:00:00Z",                       # PROSE mention — not an arc
+                      "message": {"role": "user", "content": [{"type": "text", "text": "CM_DREAM_ARC docs"}]}}),
+        _evA("Bash", {"command": "CM_DREAM_ARC=1 python3 x.py"}),               # arc start
+        _evA("Read", {"file_path": _storeA + "beta.md"}),                       # dream-procedure
+        _evA("Bash", {"command": "CM_DREAM_ARC=1 python3 y.py"}),               # arc end
+        _evA("Read", {"file_path": _storeA + "gamma.md"}),                      # organic (after arc)
+        _evA("Read", {"file_path": _storeA + "MEMORY.md"}),                     # index — never a fact recall
+        _evA("Read", {"file_path": _storeA + "SHIPPED.md"}),                    # archive stem — excluded
+        _evA("Read", {"file_path": _storeA + "sub/dir.md"}),                    # nested — not a store fact
+        _evA("Read", {"file_path": "/elsewhere/notes.md"}),                     # foreign path
+    ]) + "\n")
+    _itemsA = es._recall_items(_trA, _storeA, "", frozenset({"SHIPPED"}))
+    _orgA2, _exclA2 = es.split_dream_span(_itemsA)
+    check("v0.1.63 _recall_items+span: organic={alpha,gamma}, 1 in-span excluded; index/archive/nested/foreign never counted",
+          sorted(r["stem"] for r in _orgA2) == ["alpha", "gamma"] and _exclA2 == 1)
+    # per-line since filter: everything stamped ≤ since drops (transcripts straddle the marker).
+    check("v0.1.63 _recall_items: per-line since filter drops in-marker lines",
+          es._recall_items(_trA, _storeA, "2026-07-05T00:00:00Z", frozenset()) == [])
+    # (3b) inject_usage — wholesale script-truth assignment; a bad seed FAILS LOUD (False), never silent.
+    _seedA = Path(_tdA) / "seed.json"
+    _seedA.write_text(_jsonA.dumps({"project": "p"}))
+    _blockA = {"window": "w", "transcripts": 1, "dream_excluded": 1, "reads": 2, "facts_read": 2,
+               "per_fact": [{"name": "alpha", "reads": 1, "last": "t"}]}
+    check("v0.1.63 inject_usage: injects the usage block wholesale into the seed",
+          es.inject_usage(str(_seedA), _blockA) is True
+          and _jsonA.loads(_seedA.read_text())["usage"]["reads"] == 2)
+    check("v0.1.63 inject_usage: missing seed → False (fails loud, never a silent drop)",
+          es.inject_usage(str(Path(_tdA) / "nope.json"), _blockA) is False)
+
+# (4) hook_stats — only POINTER lines are measured; expected values derived from est_tokens (no magic).
+_leanA = "- [lean](lean.md) — ok"
+_fatA = "- [fat](fat.md) — " + "x" * 300
+_fhA, _hmA, _offA = ms.hook_stats("# Memory Index\n" + _leanA + "\n" + _fatA + "\nprose, not a pointer\n")
+check("v0.1.63 hook_stats: fat POINTER lines counted, header/prose ignored, offenders fattest-first",
+      _fhA == 1 and _hmA == ms.est_tokens(_fatA) and _offA[0][1] == "fat")
+check("v0.1.63 hook_stats: empty/pointer-free text → (0, 0, [])", ms.hook_stats("") == (0, 0, []))
+
+# (5) cliff_pct — the BINDING native axis wins; exact units (the 2026-07-04 live store = 24%).
+check("v0.1.63 cliff_pct: bytes-bound (6138 B / 27 ln → 24%)", ms.cliff_pct(6138, 27) == 24)
+check("v0.1.63 cliff_pct: lines-bound (1000 B / 150 ln → 75%)", ms.cliff_pct(1000, 150) == 75)
+check("v0.1.63 cliff_pct: at the red rung (20480 B → 80%)", ms.cliff_pct(20480, 100) == 80)
+
+# (6) validator backstop — impossible per_fact length warns; capped list + junk shapes stay sane.
+check("v0.1.63 validate: usage.per_fact over the cap warns (impossible from a capped scan)",
+      any("usage.per_fact exceeds" in w for w in ms.validate_cycle_record(
+          {"usage": {"per_fact": [{"name": str(i)} for i in range(ms._USAGE_FACT_CAP + 1)]}})))
+check("v0.1.63 validate: non-dict usage warns; a capped per_fact is quiet; non-list per_fact warns",
+      any("usage is not a dict" in w for w in ms.validate_cycle_record({"usage": []}))
+      and not ms.validate_cycle_record({"usage": {"per_fact": [{"name": "a"}]}})
+      and any("usage.per_fact is not a list" in w for w in ms.validate_cycle_record({"usage": {"per_fact": 3}})))
+
+# (7) render — USAGE section on a usage-bearing record; ABSENT on a legacy record (additive-only);
+# gauge tail carries cliff/hooks only when the keys exist.
+_urecA = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                               "usage": {"window": "w", "transcripts": 2, "dream_excluded": 4,
+                                         "reads": 7, "facts_read": 3,
+                                         "per_fact": [{"name": "gh-pr-edit", "reads": 4, "last": "t"}]}})
+_uoutA = rd.render(_urecA)
+check("v0.1.63 render: USAGE section renders counts + top fact", "USAGE" in _uoutA and "gh-pr-edit" in _uoutA
+      and "7 read(s) over 3 fact(s)" in _uoutA)
+check("v0.1.63 render: USAGE absent on a legacy record (no usage key)",
+      "USAGE" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": []})))
+_gidxA = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                               "budget": {"index": {"after_tokens": 100, "budget_tokens": 1500,
+                                                    "cliff_pct": 24, "fat_hooks": 8, "hook_max_tokens": 141}}})
+_goutA = rd.render(_gidxA)
+check("v0.1.63 render: index gauge tail carries cliff % + fat-hook count (max ≈ tok)",
+      "cliff 24%" in _goutA and "hooks 8>" in _goutA and "max ≈141" in _goutA)
+check("v0.1.63 render: legacy index gauge has no cliff/hooks tail (keys absent)",
+      "cliff" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                                                     "budget": {"index": {"after_tokens": 100, "budget_tokens": 1500}}})))
+
+# (8) cm log — READS column: usage.reads renders; legacy rows show an em-dash (0 ≠ absent).
+check("v0.1.63 cm log: READS column from usage.reads; em-dash on a legacy record",
+      rlog._row({"usage": {"reads": 7}})[5] == "7" and rlog._row({})[5] == "—"
+      and rlog._HEAD[5] == "READS")
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

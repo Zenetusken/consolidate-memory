@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import slug_for  # single source of the CC slug rule ('/'+'_' → '-'); v0.1.17
+from memory_status import _is_archive_index, _write_private, slug_for  # slug rule (v0.1.17) + archive-index classifier + 0o600-atomic seed write (v0.1.63 --recalls)
 
 STATE_FILE = ".consolidation-state.json"
 
@@ -516,18 +516,159 @@ def _report(d: dict) -> None:
     print(_ui.ascii_translate("\n".join(out)))
 
 
+# ── v0.1.63 (Phase A): --recalls — organic fact-body recall tracking ─────────────────────────────
+# docs/index-usage-and-budget-ladder.spec.md. The missing utility axis: merit is judged at write time
+# (verification) but nothing measured whether a fact is ever READ. Transcripts record every tool_use
+# Read; retention is short (MEASURED 2026-07-04: 3-8 survivors/project), so usage must be accrued
+# per-dream while the window is still on disk — the distill_scan pattern. PINNED BIAS: every mechanism
+# here UNDERCOUNTS (retention, span over-exclusion, any harness auto-recall invisible to Read events)
+# — 0 reads = ABSENCE OF EVIDENCE, never evidence of no use; Phase C must corroborate before acting.
+
+_USAGE_FACT_CAP = 20   # per_fact rows emitted (nonzero, fattest-read first); mirrored by
+                       # memory_status._USAGE_FACT_CAP (smoke-pinned) for the validator backstop
+_ARC_MARK = "CM_DREAM_ARC"
+
+
+def split_dream_span(items: list) -> tuple[list, int]:
+    """PURE classifier (smoke-pinned): ONE transcript's ordered items — [{'i': line#, 'kind':
+    'arc'|'read', 'stem': …, 'ts': …}] — → (organic_read_items, dream_excluded_count). A read is
+    DREAM-PROCEDURE iff first_arc ≤ i ≤ last_arc (Phase 1 reads every fact as procedure — counting
+    those as recall would saturate utility); everything outside the span is ORGANIC. Deliberately
+    conservative: a multi-dream session's inter-dream gap is over-excluded (undercount = the safe
+    direction under the pinned bias above). Whole-TRANSCRIPT exclusion was rejected: on a dream-heavy
+    repo every surviving transcript contains a dream, so it measures 0 forever (MEASURED)."""
+    arcs = [it["i"] for it in items if it.get("kind") == "arc"]
+    reads = [it for it in items if it.get("kind") == "read"]
+    if not arcs:
+        return reads, 0
+    lo, hi = min(arcs), max(arcs)
+    organic = [r for r in reads if not (lo <= r["i"] <= hi)]
+    return organic, len(reads) - len(organic)
+
+
+def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems: frozenset) -> list:
+    """Stream ONE transcript → ordered arc/read items for split_dream_span. Substring pre-filters keep
+    the hot loop cheap on tens-of-MB files (json.loads only lines that can matter). An ARC item is a
+    Bash tool_use whose command carries CM_DREAM_ARC (the dream's scripted invocations — the spec's
+    strict rule: prose mentions of the marker must NOT widen the span); a READ item is a Read tool_use
+    on a fact file directly under the store (MEMORY.md + archive indexes excluded — an archive read is
+    not a fact recall). The per-line `since` compare scopes to the window exactly like extract()
+    (transcripts straddle the marker)."""
+    items: list = []
+    try:
+        fh = transcript.open(encoding="utf-8", errors="replace")
+    except OSError:
+        return items                      # concurrent gc/chmod must not abort the scan (store-scan convention)
+    with fh as f:
+        for i, line in enumerate(f):
+            arc_hint = _ARC_MARK in line
+            if not arc_hint and (store_prefix not in line or '"Read"' not in line):
+                continue
+            try:
+                o = json.loads(line)
+            except (json.JSONDecodeError, RecursionError, ValueError):
+                continue
+            ts = o.get("timestamp", "")
+            if since and ts and ts <= since:
+                continue
+            msg = o.get("message")
+            if not isinstance(msg, dict) or not isinstance(msg.get("content"), list):
+                continue
+            for p in msg["content"]:
+                if not (isinstance(p, dict) and p.get("type") == "tool_use"):
+                    continue
+                inp = p.get("input")
+                if not isinstance(inp, dict):
+                    inp = {}
+                if arc_hint and p.get("name") == "Bash" and _ARC_MARK in str(inp.get("command", "")):
+                    items.append({"i": i, "kind": "arc", "stem": "", "ts": ts})
+                elif p.get("name") == "Read":
+                    fp = str(inp.get("file_path", ""))
+                    if fp.startswith(store_prefix) and fp.endswith(".md") and "/" not in fp[len(store_prefix):]:
+                        stem = fp[len(store_prefix):-3]
+                        if stem != "MEMORY" and stem not in archive_stems:
+                            items.append({"i": i, "kind": "read", "stem": stem, "ts": ts})
+    return items
+
+
+def recall_scan(project_dir: Path, since: str) -> dict:
+    """The --recalls entry: scan the window's transcripts for ORGANIC fact-body Read events → the
+    cycle record's `usage` block shape (script-truth; injected via --into, never hand-authored)."""
+    project_dir = project_dir.resolve()
+    proj_root = Path.home() / ".claude" / "projects" / slug_for(project_dir)
+    auto_mem = proj_root / "memory"
+    since = since or _marker_ts(auto_mem)
+    store_prefix = str(auto_mem) + "/"
+    archive_stems = (frozenset(f.stem for f in auto_mem.glob("*.md") if _is_archive_index(f))
+                     if auto_mem.exists() else frozenset())
+    transcripts = _window_transcripts(proj_root, since)
+    reads: dict = {}     # stem -> {"reads": n, "last": iso}
+    excluded = 0
+    for tr in transcripts:
+        organic, dream_n = split_dream_span(_recall_items(tr, store_prefix, since, archive_stems))
+        excluded += dream_n
+        for r in organic:
+            rec = reads.setdefault(r["stem"], {"reads": 0, "last": ""})
+            rec["reads"] += 1
+            rec["last"] = max(rec["last"], r["ts"] or "")   # CC ISO stamps compare lexicographically
+    per_fact = [{"name": k, "reads": v["reads"], "last": v["last"]}
+                for k, v in sorted(reads.items(), key=lambda kv: (-kv[1]["reads"], kv[0]))][:_USAGE_FACT_CAP]
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    return {"window": f"{since or '(no marker — all transcripts)'}..{now}",
+            "transcripts": len(transcripts), "dream_excluded": excluded,
+            "reads": sum(v["reads"] for v in reads.values()), "facts_read": len(reads),
+            "per_fact": per_fact}
+
+
+def inject_usage(seed_path: str, block: dict) -> bool:
+    """Deterministically inject the script-truth `usage` block into a cycle-record seed — wholesale
+    assignment (the whole block is script-produced; no model judgment fields to merge around, unlike
+    distill's sub-key merge). stderr + False on any failure, so a typo'd path is caught LOUD, never a
+    silently-dropped count (the distill --into contract)."""
+    try:
+        record = json.loads(Path(seed_path).read_text(encoding="utf-8"))
+        if not isinstance(record, dict):
+            print("--into: skipped (cycle record root is not a JSON object)", file=sys.stderr)
+            return False
+        record["usage"] = block
+        _write_private(Path(seed_path), json.dumps(record, indent=2, ensure_ascii=False) + "\n")
+        print(f"usage → injected into {seed_path}", file=sys.stderr)
+        return True
+    except (OSError, json.JSONDecodeError, ValueError) as e:
+        print(f"--into: skipped ({e}); the scan output above is the fallback", file=sys.stderr)
+        return False
+
+
+def _recalls_report(d: dict) -> None:
+    """Human view of the recall scan (reserve --json for machine capture, like the signal report)."""
+    print(_ui.rule())
+    print("  " + _ui.c("✦ RECALLS · organic fact-body reads this window", "cyan"))
+    print(_ui.rule())
+    print("  " + _ui.c(f"{d['transcripts']} transcript(s) · {d['dream_excluded']} dream-procedure "
+                       f"read(s) excluded · window {d['window']}", "dim"))
+    for f in d["per_fact"]:
+        print(f"  {f['reads']:>4} × {f['name']}  " + _ui.c(f"last {str(f['last'])[:16]}", "dim"))
+    if not d["per_fact"]:
+        print("  (no organic fact reads in the window — 0 reads = absence of evidence, not proof of no use)")
+    print("  " + _ui.c(f"total {d['reads']} read(s) over {d['facts_read']} fact(s)", "dim"))
+
+
 def main() -> int:
     argv = sys.argv[1:]
     as_json = "--json" in argv
-    argv = [a for a in argv if a != "--json"]
+    recalls = "--recalls" in argv   # v0.1.63 (Phase A): the recall-utility scan — its own mode
+    argv = [a for a in argv if a not in ("--json", "--recalls")]
     _ui.set_modes(color=_ui.color_enabled(sys.argv[1:], sys.stdout), ascii="--ascii" in sys.argv, width=_ui.resolve_width(sys.argv[1:], sys.stdout))
     since = ""
+    into = ""
     max_n = 30
     pos = []
     i = 0
     while i < len(argv):
         if argv[i] == "--since" and i + 1 < len(argv):
             since = argv[i + 1]; i += 2
+        elif argv[i] == "--into" and i + 1 < len(argv):   # v0.1.63: --recalls seed-injection target
+            into = argv[i + 1]; i += 2
         elif argv[i] == "--max" and i + 1 < len(argv):
             try:
                 max_n = max(0, int(argv[i + 1]))
@@ -540,6 +681,19 @@ def main() -> int:
         else:
             i += 1   # skip visual flags (--ascii/--color/--no-color, handled by set_modes) + unknown flags
     project_dir = Path(pos[0]) if pos else Path.cwd()
+    if recalls:
+        # v0.1.63 (Phase A): the recall scan is a Phase-5 command — no Phase-2 cue here (the phase's
+        # beat is already cued by its sibling commands; a wrong-phase cue would misdirect the arc).
+        u = recall_scan(project_dir, since)
+        if as_json:
+            print(json.dumps(u, indent=2))
+        else:
+            _recalls_report(u)
+        if into and not inject_usage(into, u):
+            return 3   # a typo'd seed path FAILS LOUD — counts must never silently drop (distill contract)
+        return 0
+    if into:
+        print("warning: --into applies to --recalls only — not captured", file=sys.stderr)
     d = extract(project_dir, since, max_n)
     if as_json:
         print(json.dumps(d, indent=2))

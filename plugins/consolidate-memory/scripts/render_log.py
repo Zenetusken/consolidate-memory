@@ -41,14 +41,16 @@ def _row(rec: dict) -> list:
     rigor = str(_d(rec, "rigor", "applied") or "—")
     ib, ia = _n(_d(rec, "budget", "index", "before_tokens")), _n(_d(rec, "budget", "index", "after_tokens"))
     rb, ra = _n(_d(rec, "budget", "recall_facts", "before")), _n(_d(rec, "budget", "recall_facts", "after"))
+    u = _d(rec, "usage", "reads")                    # v0.1.63 (Phase A): organic recalls (None on legacy)
+    reads = "—" if u is None else str(_n(u))
     ents = [e for e in (rec.get("entries") or []) if isinstance(e, dict)]
     code = " ".join(f"{n}{a}" for a, n in sorted(Counter(str(e.get("action", "?"))[:1] for e in ents).items())) or "—"
     cr, mo, de = (_n(_d(rec, "audit", "memory", "created")), _n(_d(rec, "audit", "memory", "modified")),
                   _n(_d(rec, "audit", "memory", "deleted")))
-    return [when, commit, rigor, f"{ia} ({ia - ib:+d})", f"{ra} ({ra - rb:+d})", code, f"+{cr} ~{mo} -{de}"]
+    return [when, commit, rigor, f"{ia} ({ia - ib:+d})", f"{ra} ({ra - rb:+d})", reads, code, f"+{cr} ~{mo} -{de}"]
 
 
-_HEAD = ["WHEN", "MARKER", "RIGOR", "INDEX (Δ)", "RECALL (Δ)", "ENTRIES", "AUDIT"]
+_HEAD = ["WHEN", "MARKER", "RIGOR", "INDEX (Δ)", "RECALL (Δ)", "READS", "ENTRIES", "AUDIT"]
 
 
 def render(recent: list, total: int, project: str) -> str:

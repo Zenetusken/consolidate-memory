@@ -463,7 +463,16 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         at, bt = idx.get("after_tokens", 0), idx.get("budget_tokens", 0)
         dln = _num(idx.get("after_lines", 0)) - _num(idx.get("before_lines", 0))
         note = (f"  {'+' if dln >= 0 else ''}{_g(dln)} ln" if dln else "")
-        _brow("auto-mem index", f"≈{_g(at)}/{_g(bt)}", f"{_bar(at, bt)} {_pct(at, bt)}{note}{_over(idx)}")
+        # v0.1.63 (Phase A): cliff + fat-hook telemetry on the gauge tail (keys absent on a legacy
+        # record → tail unchanged). Thresholds come from ms (already imported for the record type).
+        tail = f"{_bar(at, bt)} {_pct(at, bt)}{note}{_over(idx)}"
+        _cp = _num(idx.get("cliff_pct", 0))
+        if _cp:
+            tail += _c(f" · cliff {_g(_cp)}%", "red" if _cp >= int(ms.CLIFF_NEAR_FRACTION * 100) else "dim")
+        _fh = _num(idx.get("fat_hooks", 0))
+        if _fh:
+            tail += _c(f" · hooks {_g(_fh)}>{ms.HOOK_TOKEN_WARN}t (max ≈{_g(idx.get('hook_max_tokens', 0))})", "yellow")
+        _brow("auto-mem index", f"≈{_g(at)}/{_g(bt)}", tail)
         # D1/D2 defensive (v0.1.21): the gauge sources budget.index; the TRIGGER network-node has the same
         # index (its always_loaded_tokens). A GROSS divergence = the wrong-budget class the /tmp/cycle.json
         # collision produced (885 vs 2771 = 3×). Advisory only, generous tolerance (>1.5×) → never false-warn.
@@ -486,6 +495,23 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         wt, wp = _num(hier.get("worst_path_tokens", 0)), _clean(hier.get("worst_path", "?"))
         heavy = _c("  ⚠ heavy", "yellow") if wt > _cmbud else ""
         _brow("CLAUDE.md tree", f"≈{_g(wt)}", f"{_g(hier.get('total_files', 0))} files · a session in {wp} pays this/turn{heavy}")
+
+    # v0.1.63 (Phase A): organic recall utility this window — script-injected by extract_signals
+    # --recalls --into (docs/index-usage-and-budget-ladder.spec.md). Absent on a legacy record → the
+    # section collapses. PINNED BIAS: 0 reads = absence of evidence (retention + span-exclusion
+    # undercount), never "unused" — the renderer reports counts; it never editorializes zeros.
+    usage = _dget(record, "usage")
+    if usage:
+        out.append("")
+        out.append("  " + _c("USAGE", "bold")
+                   + _c("   · organic fact recalls this window (dream-procedure reads excluded)", "dim"))
+        out.append(f"    {_g(usage.get('reads', 0))} read(s) over {_g(usage.get('facts_read', 0))} fact(s)  "
+                   + _c(f"{_g(usage.get('transcripts', 0))} transcript(s) · "
+                        f"{_g(usage.get('dream_excluded', 0))} dream read(s) excluded", "dim"))
+        _utop = [f for f in _lget(usage, "per_fact") if isinstance(f, dict)][:3]
+        if _utop:
+            out.append("    " + _c("top:", "dim") + " " + " · ".join(
+                f"{_clean(f.get('name', '?'))} ×{_g(f.get('reads', 0))}" for f in _utop))
 
     # Remediation gate (v0.1.18) — present ONLY when the index was over budget. Shows whether the gate was
     # ACTED on (pruned>0 / justified / gc) — a fired-but-unacted gate (pruned 0, lever prune) stays visible.

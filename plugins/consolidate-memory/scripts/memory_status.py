@@ -109,11 +109,34 @@ class IndexBudget(TypedDict, total=False):
     after_tokens: int
     budget_tokens: int
     over: bool
+    fat_hooks: int         # v0.1.63 (Phase A): pointer lines over HOOK_TOKEN_WARN (hook_stats)
+    hook_max_tokens: int   # v0.1.63 (Phase A): the fattest pointer line (est tok)
+    cliff_pct: int         # v0.1.63 (Phase A): % of the native 25KB/200-line truncation cliff (exact units)
 
 
 class RecallFacts(TypedDict, total=False):
     before: int
     after: int
+
+
+class UsageFact(TypedDict, total=False):
+    # v0.1.63 (Phase A): one organically-recalled fact this window (extract_signals --recalls).
+    name: str
+    reads: int
+    last: str          # ISO of the newest organic read
+
+
+class Usage(TypedDict, total=False):
+    # v0.1.63 (Phase A): organic fact-body recall telemetry — script-injected by
+    # `extract_signals.py --recalls --into <seed>` (Phase 5), never hand-authored. Dream-procedure
+    # reads (Phase 1 reads every fact as procedure) are span-excluded. PINNED BIAS: retention +
+    # span-exclusion UNDERCOUNT — 0 reads = absence of evidence, never evidence of no use.
+    window: str
+    transcripts: int
+    dream_excluded: int
+    reads: int
+    facts_read: int
+    per_fact: list[UsageFact]
 
 
 class ClaudeMdHierarchyFile(TypedDict, total=False):
@@ -290,6 +313,11 @@ class Distill(TypedDict, total=False):
 # MAX_CHAIN_OUT, so the mirror cannot drift. Used by validate_cycle_record's impossible-count backstop.
 _DISTILL_CAPS = (40, 20)
 
+# v0.1.63 (Phase A): mirrors extract_signals._USAGE_FACT_CAP (the --recalls per_fact emission cap;
+# smoke-pinned so the mirror cannot drift) — validate_cycle_record's impossible-count backstop for
+# the usage block, same shape as _DISTILL_CAPS above.
+_USAGE_FACT_CAP = 20
+
 
 class CycleRecord(TypedDict, total=False):
     project: str
@@ -307,6 +335,7 @@ class CycleRecord(TypedDict, total=False):
     audit: Audit                   # v0.1.22: deterministic script-emitted mutation trail (additive; legacy records render)
     dream: DreamArc                # v0.1.54: dream-arc capture (additive; legacy records render)
     distill: Distill               # v0.1.55: distill-verdict capture (additive; legacy records render)
+    usage: Usage                   # v0.1.63 (Phase A): organic recall telemetry (additive; legacy records render)
     marker: Marker
     outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
 
@@ -331,6 +360,26 @@ CLAUDE_MD_TOKEN_BUDGET = 4000   # repo CLAUDE.md (project conventions, committed
 # accounting (it taxes every project), but the skill NEVER writes it — it's personal,
 # universal config, not a project store. Its own constant so it's tuned independently.
 GLOBAL_CLAUDE_MD_TOKEN_BUDGET = 4000
+
+# ── v0.1.63 (Phase A): the HARNESS-NATIVE index truncation cliff + hook telemetry ────────────────
+# The REAL failure boundary for the auto-memory index, distinct from the curation target above:
+# "The first 200 lines of MEMORY.md, or the first 25KB, whichever comes first, are loaded at the
+# start of every conversation. Content beyond that threshold is not loaded."
+# (code.claude.com/docs/en/memory, verified 2026-07-04.) Truncation is SILENT — facts past the cap
+# simply stop loading — so the Phase-0 report + the dashboard surface proximity
+# (`budget.index.cliff_pct`) and go loud at CLIFF_NEAR_FRACTION. Measured in the harness's OWN units
+# (real st_size bytes, real lines) — the chars/4 estimator is deliberately not involved. 25KB is
+# read as 25×1024; if the harness means 25,000 the shift is <2.5% (immaterial to an 80% alarm).
+# Observe-only in Phase A; the budget-ladder semantics that ACT on these are Phase B.
+# Full design: docs/index-usage-and-budget-ladder.spec.md.
+NATIVE_INDEX_CAP_BYTES = 25 * 1024
+NATIVE_INDEX_CAP_LINES = 200
+CLIFF_NEAR_FRACTION = 0.8       # ≥ this share of either native cap → red (silent data loss imminent)
+HOOK_TOKEN_WARN = 60            # est tok per index POINTER line above which the hook is flagged FAT.
+                                # Measured (2026-07-04): fleet median ≈48-57 tok/line, the triage's
+                                # lean model 30; the offenders (116/141 tok) were status-content-in-
+                                # the-hook — 2 lines = 17% of the whole budget. Detection only here
+                                # (report + seed); the write-time lint is Phase B.
 
 # The cross-project canonical store (the global tier). ONE named constant (cf. sync_global.GLOBAL)
 # so the dangling cross-store resolver, the `global_store_facts` seed, and the network display can't
@@ -412,6 +461,37 @@ def est_tokens(text: str) -> int:
     code. Stable and good enough to budget the always-loaded tier. Always present its
     output as '≈': it is an estimate, never an exact token count."""
     return (len(text) + 3) // 4
+
+
+_POINTER_LINE_RE = re.compile(r"^\s*-\s*\[([^\]]+)\]\(")   # an index pointer: "- [Title](file.md) — hook"
+
+
+def hook_stats(index_text: str, warn: int = HOOK_TOKEN_WARN) -> tuple[int, int, list]:
+    """v0.1.63 (Phase A): per-pointer hook cost over the always-loaded index TEXT →
+    (fat_hooks, hook_max_tokens, offenders), offenders = [(est_tokens, title)] for pointer lines over
+    `warn`, fattest first. PURE (text in, no I/O — smoke-pinned). Only `- [Title](file.md) — hook`
+    pointer lines are measured: they are the per-session recall cues the budget pays for; headers and
+    prose aren't cues. Detection only — nothing here trims (the write-time lint is Phase B)."""
+    offenders: list = []
+    hook_max = 0
+    for ln in index_text.splitlines():
+        m = _POINTER_LINE_RE.match(ln)
+        if not m:
+            continue
+        t = est_tokens(ln)
+        hook_max = max(hook_max, t)
+        if t > warn:
+            offenders.append((t, m.group(1)))
+    offenders.sort(key=lambda o: -o[0])
+    return len(offenders), hook_max, offenders
+
+
+def cliff_pct(index_bytes: int, index_lines: int) -> int:
+    """v0.1.63 (Phase A): proximity to the harness-native index truncation cliff as a percent — the
+    BINDING axis wins: max(bytes/25KB, lines/200). PURE; exact units by design (see the constants
+    block: the cliff is the harness's cap, so it's measured in the harness's units, never
+    est_tokens)."""
+    return round(100 * max(index_bytes / NATIVE_INDEX_CAP_BYTES, index_lines / NATIVE_INDEX_CAP_LINES))
 
 
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
@@ -1225,6 +1305,13 @@ def build_context(project_dir: Path) -> dict:
     # store (schema_drift flags the mismatch), not "under budget / all well".
     if index_lb[2] == 0 and fact_files and index_path.exists():
         index_lb = _measure(index_path)
+    # v0.1.63 (Phase A): hook-cost + native-cliff telemetry for the always-loaded index (report + seed).
+    try:
+        _index_text = index_path.read_text(encoding="utf-8", errors="replace") if index_path.exists() else ""
+    except OSError:
+        _index_text = ""
+    index_hooks = hook_stats(_index_text)
+    index_cliff = cliff_pct(index_lb[1], index_lb[0])
 
     transcripts = sorted(proj_root.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
 
@@ -1372,6 +1459,7 @@ def build_context(project_dir: Path) -> dict:
         "claude_md_hierarchy": claude_md_hierarchy(project_dir),   # v0.1.22: whole-hierarchy measure (read-only)
         "index_path": index_path,
         "index_lb": index_lb,
+        "index_hooks": index_hooks, "index_cliff": index_cliff,   # v0.1.63 (Phase A) telemetry
         "fact_files": fact_files,
         "stale_facts": stale_facts,
         "promotion_candidates": _promotion_candidates(fact_files),
@@ -1512,6 +1600,9 @@ def seed_record(ctx: dict) -> CycleRecord:
                 "before_tokens": ctx["index_lb"][2], "after_tokens": ctx["index_lb"][2],
                 "budget_tokens": INDEX_TOKEN_BUDGET,
                 "over": ctx["index_lb"][2] > INDEX_TOKEN_BUDGET,
+                # v0.1.63 (Phase A): hook + cliff telemetry (observe-only; Phase B acts on them)
+                "fat_hooks": ctx["index_hooks"][0], "hook_max_tokens": ctx["index_hooks"][1],
+                "cliff_pct": ctx["index_cliff"],
             },
             "recall_facts": {"before": len(ctx["fact_files"]), "after": len(ctx["fact_files"])},
             "claude_md_hierarchy": ctx["claude_md_hierarchy"],   # v0.1.22: whole-hierarchy measure (read-only)
@@ -1580,7 +1671,7 @@ def validate_cycle_record(record: object) -> list[str]:
 
     # Top-level keys that MUST be a dict if present.
     for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health",
-                "audit", "remediation", "maintenance", "dream", "distill"):
+                "audit", "remediation", "maintenance", "dream", "distill", "usage"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
@@ -1606,6 +1697,16 @@ def validate_cycle_record(record: object) -> list[str]:
                     warnings.append(f"distill.{ck} exceeds the scanner cap ({cap}) — impossible from a capped scan")
             except (TypeError, ValueError):
                 pass  # a non-numeric count is a shape problem the render coercion boundary absorbs
+
+    # v0.1.63 (Phase A): usage.per_fact must be a list; a length above the producer cap is IMPOSSIBLE
+    # from a capped --recalls scan (the distill hand-mirror lesson — same backstop shape). A non-dict
+    # `usage` already warned via the top-level tuple; descend only into a well-formed one.
+    usage = record.get("usage")
+    if isinstance(usage, dict) and "per_fact" in usage:
+        if not isinstance(usage["per_fact"], list):
+            warnings.append("usage.per_fact is not a list")
+        elif len(usage["per_fact"]) > _USAGE_FACT_CAP:
+            warnings.append(f"usage.per_fact exceeds the scanner cap ({_USAGE_FACT_CAP}) — impossible from a capped scan")
 
     # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
     # already warned via the top-level tuple above ("health is not a dict"); here we just
@@ -1808,8 +1909,17 @@ def print_report(ctx: dict) -> None:
     if ctx["auto_mem"].exists():
         il, ib, it = ctx["index_lb"]
         over = _ui.c("  ⚠ OVER", "red") if it > INDEX_TOKEN_BUDGET else ""
+        # v0.1.63 (Phase A): cliff proximity on the gauge line (red at CLIFF_NEAR_FRACTION — silent
+        # truncation near); fat hooks on their own advisory line (a fat cue taxes every session).
+        _cp = ctx.get("index_cliff", 0)
+        cliff = (_ui.c(f"  ⚠ cliff {_cp}% of native 25KB/200ln — SILENT truncation near", "red")
+                 if _cp >= int(CLIFF_NEAR_FRACTION * 100) else _ui.c(f" · cliff {_cp}%", "dim"))
         add(f"    {_ui.lbl('index', 14)}{_ui.bar(it, INDEX_TOKEN_BUDGET)} {_ui.pct(it, INDEX_TOKEN_BUDGET):>4}  "
-            + _ui.c(f"≈{it}/{INDEX_TOKEN_BUDGET} tok · {il} ln · {ib} by  [ALWAYS-LOADED]", "dim") + over)
+            + _ui.c(f"≈{it}/{INDEX_TOKEN_BUDGET} tok · {il} ln · {ib} by  [ALWAYS-LOADED]", "dim") + over + cliff)
+        _fh, _hm, _off = ctx.get("index_hooks", (0, 0, []))
+        if _fh:
+            _tops = " · ".join(f"{n} ≈{t}t" for t, n in _off[:3])
+            add("    " + " " * 14 + _ui.c(f"hooks: {_fh} pointer(s) > {HOOK_TOKEN_WARN} tok — {_tops}", "yellow"))
     cl = ctx["repo"].get("CLAUDE.md")
     if cl and (cl[0] or cl[1]):
         cln, clb, ct = cl
