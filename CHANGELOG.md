@@ -5,6 +5,36 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.63] — 2026-07-04
+
+### Added — index-lifecycle Phase A: recall-usage instrumentation + hook/cliff telemetry (observe-only)
+From the 2026-07-04 over-budget investigation (design: `docs/index-usage-and-budget-ladder.spec.md`):
+the always-loaded index pins at ~100% of `INDEX_TOKEN_BUDGET` with every fact "merited" — merit was
+only ever judged on content-truth, nothing measured whether a fact is ever *recalled*, hook cost was
+unbounded (2 fat pointers = 17% of the whole budget, MEASURED), and the real failure boundary —
+Claude Code's SILENT 25KB/200-line MEMORY.md truncation — was represented nowhere. Phase A adds the
+instruments; **no behavior change** (no new gates, no changed thresholds — the budget-ladder
+semantics are Phase B, separately specced).
+
+- **`extract_signals.py --recalls [--json] [--into SEED]`** — organic fact-body recall tracking over
+  the dream window: streams the window transcripts, collects `Read` tool events on store fact files,
+  excludes dream-procedure reads by the CM_DREAM_ARC Bash-event line-span (whole-transcript exclusion
+  measures 0 forever on a dream-heavy repo — MEASURED), and injects the script-truth `usage` block
+  into the cycle-record seed (fails LOUD on a bad seed path — the distill `--into` contract). Pinned
+  bias, stated everywhere it surfaces: **0 reads = absence of evidence, never evidence of no use**
+  (retention + span-exclusion undercount).
+- **Hook-cost telemetry** — `hook_stats` flags index pointer lines over `HOOK_TOKEN_WARN` (60 est
+  tok); the Phase-0 report names the offenders; the seed carries `budget.index.fat_hooks` /
+  `hook_max_tokens`; the dashboard gauge shows `hooks N>60t (max ≈…)`.
+- **Cliff telemetry** — `cliff_pct` measures proximity to the harness-native truncation cap in the
+  harness's own units (`NATIVE_INDEX_CAP_BYTES`/`NATIVE_INDEX_CAP_LINES`; exact bytes/lines, the
+  chars/4 estimator deliberately not involved); report + dashboard render it on the index gauge and
+  go red at `CLIFF_NEAR_FRACTION` (80% — silent data loss near).
+- **Contract:** additive `usage` block + three additive `budget.index` keys (all `total=False` —
+  legacy records render unchanged); `validate_cycle_record` gains the usage impossible-count backstop
+  (`_USAGE_FACT_CAP`, smoke-pinned to the producer, the `_DISTILL_CAPS` shape); SKILL schema block +
+  Phase-5 step + harness-map synced; `cm log` gains a READS column (em-dash on legacy records).
+
 ## [0.1.62] — 2026-07-04
 
 ### Fixed — SKILL.md: the dream's closing debrief was a double sign-off, not a single one

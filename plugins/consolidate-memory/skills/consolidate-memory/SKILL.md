@@ -750,6 +750,16 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    ```bash
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --tokens . --json
    ```
+   Then **capture recall utility** (v0.1.63, Phase A — the usage instrument): scan the window's
+   transcripts for ORGANIC fact-body reads (dream-procedure reads span-excluded) and inject the
+   script-truth `usage` block into the seed — counts are script-only, never hand-authored:
+   ```bash
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --recalls --into <the --seed path>
+   ```
+   Transcripts rotate quickly, so this per-dream capture is the ONLY way usage accrues. A fact showing
+   0 reads is ABSENCE OF EVIDENCE (retention + span-exclusion undercount), never proof it's unused —
+   never prune on it alone (that judgment is Phase C's, with corroboration; see
+   `docs/index-usage-and-budget-ladder.spec.md`).
    Also set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
    so the always-loaded gauge and ⚠ reflect the post-write state.
 5. **Update the high-water mark**: write `commit` (current `HEAD`) + ISO
@@ -1004,7 +1014,8 @@ this once warned against; the dashboard remains the source of the figures.)
     "global_claude_md": {"present": false, "lines": 0, "tokens": 0,
                          "budget_tokens": 4000, "over": false},
     "index": {"before_lines": 0, "after_lines": 0, "before_bytes": 0, "after_bytes": 0,
-              "before_tokens": 0, "after_tokens": 0, "budget_tokens": 1500, "over": false},
+              "before_tokens": 0, "after_tokens": 0, "budget_tokens": 1500, "over": false,
+              "fat_hooks": 0, "hook_max_tokens": 0, "cliff_pct": 0},
     "recall_facts": {"before": 0, "after": 0},
     "claude_md_hierarchy": {"files": [{"path": "CLAUDE.md", "tokens": 0}],
                             "worst_path": ".", "worst_path_tokens": 0, "total_files": 0}
@@ -1057,6 +1068,10 @@ this once warned against; the dashboard remains the source of the figures.)
               "window": "<the scan window ISO, script-injected>", "secrets_omitted": 0,
               "proposed": [], "created": [],
               "verdict": "<one line: created X | proposed X — awaiting confirmation | proposed X — declined | nothing: <candidate> fails <gate leg>>"},
+  "usage": {"_": "v0.1.63 (Phase A): script-injected by extract_signals --recalls --into (Phase 5) — organic fact-body Read events in the window, dream-span excluded; counts are script-only, never hand-authored. 0 reads = absence of evidence, never evidence of no use.",
+            "window": "<since..now ISO>", "transcripts": 0, "dream_excluded": 0,
+            "reads": 0, "facts_read": 0,
+            "per_fact": [{"name": "...", "reads": 0, "last": "<ISO>"}]},
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
              "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
   "outcome": ""

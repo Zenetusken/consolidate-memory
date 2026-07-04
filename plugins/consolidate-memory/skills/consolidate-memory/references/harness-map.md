@@ -366,6 +366,18 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   `INDEX_TOKEN_BUDGET` / `CLAUDE_MD_TOKEN_BUDGET` (heuristic, tunable). It sets
   `budget.*.over` when a tier exceeds its ceiling; the dashboard renders ⚠. This is the
   "stated budget" the always-loaded tier always implied but never encoded.
+- **The native truncation CLIFF + usage telemetry (v0.1.63, Phase A)** — distinct from the curation
+  target above: Claude Code hard-truncates the index at load ("The first 200 lines of `MEMORY.md`, or
+  the first 25KB, whichever comes first, are loaded at the start of every conversation" —
+  code.claude.com/docs/en/memory, verified 2026-07-04; truncation is SILENT). Encoded as
+  `NATIVE_INDEX_CAP_BYTES`/`NATIVE_INDEX_CAP_LINES` in `memory_status.py`; seeded as
+  `budget.index.cliff_pct` (exact bytes/lines — `est_tokens` deliberately not involved); report +
+  dashboard go red at `CLIFF_NEAR_FRACTION` (80%). Hook-cost telemetry rides the same seed
+  (`fat_hooks`/`hook_max_tokens`, threshold `HOOK_TOKEN_WARN`); recall-utility telemetry is
+  `extract_signals.py --recalls --into <seed>` → the `usage` block (organic fact-body reads,
+  dream-span excluded; **0 reads = absence of evidence, never "unused"**). Observe-only in Phase A —
+  the budget-ladder semantics that act on these are Phase B. Design:
+  `docs/index-usage-and-budget-ladder.spec.md`.
 - **Re-verification signal:** `memory_status.py` lists facts untouched since the marker
   (mtime ≤ marker timestamp) as re-verification candidates — a cheap staleness proxy
   needing no per-fact `last_verified` field.
