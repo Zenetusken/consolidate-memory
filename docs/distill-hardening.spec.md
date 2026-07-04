@@ -381,3 +381,43 @@ Validated by the round: the interpreter regex survivors/drops (incl. `git commit
 --into clobber-safety precedent (record #16's script audit block co-existing with hand blocks),
 gate-leg-6's groundedness (the log DOES carry verdicts), patch versioning, and that §2.3 does not
 weaken the firewall in spirit (drop-to-label preserved; the choke-point is strictly added).
+
+**Round 3 — workflow-backed code review (high effort, 2026-07-03; 20 agents, one finder per angle +
+independent verify-per-location):** 10 CONFIRMED findings on the IMPLEMENTATION (the spec was sound;
+these are impl defects — several regressions the code introduced vs the spec's intent). All fixed +
+re-gated (590 smoke, +8):
+1. **[1] firewall weakening (the severe one, SECURITY).** The emission choke-point probed the RAW
+   template (`_looks_secret(tpl)`), NOT `_norm(tpl)` — so a zero-width-split credential that flagged
+   the command via `_norm` (driving sample suppression) still leaked into a template row/chain
+   endpoint (reproduced live). §2.3's own text said "screens through `_looks_secret`" but the impl
+   dropped the `_norm`. Fixed: `_looks_secret(_norm(tpl))`; a NON-VACUOUS zw-split smoke pin
+   (letters-only blob that survives tokenisation and is invisible to a raw probe).
+2. **[2] window compared raw strings, not instants.** `ts <= since` lexicographic against a
+   `fromisoformat`-validated `--since` mis-orders a local-offset (`+05:30`) or 3.11-compact `--since`
+   → silent data loss / full-corpus zero-scan. §2.5's "KEEP-safe" was scoped to CC's `Z` stamps but
+   the `--since` INPUT wasn't constrained. Fixed: a shared `_parse_ts` (used by BOTH the window and
+   day-bucketing) compares parsed UTC INSTANTS.
+3. **[3] `--since` acceptance version-skewed** (a `+0000` no-colon offset parsed on 3.11, aborted on
+   3.10). Folded into `_parse_ts`: a `±HHMM` offset is normalised to `±HH:MM` before `fromisoformat`.
+4. **[4]/[7] a trailing/unknown flag was swallowed** (mislabelled "unknown", or its value became a
+   wrong project dir at exit 0). Fixed: a value-flag missing its value, or a genuinely unknown flag,
+   is a USAGE ERROR (exit 2) — consistent with garbage `--since`.
+5. **[5] judgment flags without `--into` were silently discarded** → a loud stderr warning.
+6. **[6] `main` returned 0 even when injection failed.** Because the hand-mirror fallback was DELETED
+   (design MAJOR-F1), a failed `--into` is an unrecoverable capture loss — so this OVERRIDES the
+   impl-round m7 "exit 0" pin: `main` now exits non-zero when `--into` was requested and failed. (The
+   discrete SKILL step is not `&&`-chained to anything destructive, so a non-zero exit is safe.)
+7. **[8] a flagged-FIRST template pinned the omission label forever** (setdefault), even when a later
+   clean occurrence existed → the sample now UPGRADES to the clean one when a clean occurrence of the
+   same class arrives.
+8. **[9] the new `window`/`secrets_omitted` keys were invisible in the renderers** (CLAUDE.md's
+   schema-cascade contract) → added `secrets_omitted` to the ASCII DISTILL line + the HTML "This Pass"
+   counts (gated on > 0).
+9. **[10] the `--into` re-scan could diverge from the judged scan** (the corpus shifts between the
+   judgment scan and the capture re-scan) + double I/O → NEW `--from <scan.json>`: the SKILL saves ONE
+   `--json` scan, judges it, and injects THAT file — the recorded counts are byte-identical to the
+   judged ones, and the expensive scan runs once. (This ADDS to §2.4; the spec's re-scan flow is
+   superseded by the single-scan flow.)
+Two LOW duplication findings ([16]/[17]) were dropped under the report cap; both are deliberate
+(the `inject_into` sub-key merge is intentionally NOT the audit wholesale-clobber; `_DISTILL_CAPS` is
+a pinned mirror, not accidental drift). Refuted: none (all 20 candidates verified).

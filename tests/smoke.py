@@ -2014,19 +2014,17 @@ check("v0.1.58 F2: survivors keep their class (real invocations, and the -F - fa
       ds._scan_cmd("python3 tests/smoke.py")[0] == ["python3 tests/smoke.py"]
       and ds._scan_cmd(".venv/bin/python -m pytest -m unit")[0] == [".venv/bin/python -m pytest -m unit"]
       and ds._scan_cmd("git commit -q -F -")[0] == ["git commit -q -F -"])
-# (3) F3 — firewall-at-emission, end-to-end: flagged commands COUNT, their samples are labels, the
-# transparency counter includes ALL-NOISE flagged commands (the increment sits BEFORE the all-noise
-# skip), and suppression keys off the _norm flag (the zero-width divergence — a raw re-probe misses it).
-_zw58 = "A1" * 20
-_zwsplit58 = _zw58[:20] + "​" + _zw58[20:]   # split: invisible to a raw probe, caught by _norm
+# (3) F3 — firewall-at-emission, end-to-end: flagged commands COUNT; a flagged-FIRST template UPGRADES to
+# a clean sample once a clean occurrence exists (code-review [8]) but an ALWAYS-flagged one keeps the
+# label; the transparency counter includes ALL-NOISE flagged commands (increment BEFORE the all-noise skip).
 with _tf43.TemporaryDirectory() as _td58a:
     _h58 = Path(_td58a); _p58 = _h58 / "proj"; _p58.mkdir()
     _pr58 = _h58 / ".claude" / "projects" / es.slug_for(_p58); _pr58.mkdir(parents=True)
     _l58 = [
-        _bl55("cd /x\ndeploy-tool run --key=AKIAIOSFODNN7EXAMPLE", "2026-07-01T10:00:00Z"),  # flagged FIRST
-        _bl55("cd /x\ndeploy-tool run --key=redacted", "2026-07-01T11:00:00Z"),              # clean repeat
-        _bl55(f"stealth-tool run {_zwsplit58}", "2026-07-01T12:00:00Z"),                     # zw-split, flagged FIRST
-        _bl55("stealth-tool run", "2026-07-01T13:00:00Z"),                                   # clean repeat
+        _bl55("deploy-tool run --opt=AKIAIOSFODNN7EXAMPLE", "2026-07-01T10:00:00Z"),         # flagged FIRST
+        _bl55("deploy-tool run --opt=redacted", "2026-07-01T11:00:00Z"),                     # clean → upgrades sample
+        _bl55("vault-tool run --opt=AKIAIOSFODNN7EXAMPLE", "2026-07-01T12:00:00Z"),          # flagged (never clean)
+        _bl55("vault-tool run --opt=AKIAJJJJODNN7EXAMPLE", "2026-07-01T13:00:00Z"),          # flagged again → stays label
         _bl55("export AWS_SECRET_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE", "2026-07-01T14:00:00Z"),  # flagged + ALL-NOISE
     ]
     (_pr58 / "s.jsonl").write_text("".join(_l58))
@@ -2036,19 +2034,25 @@ with _tf43.TemporaryDirectory() as _td58a:
     finally:
         _os43.environ["HOME"] = _old58 if _old58 is not None else ""
     _rows58 = {r["template"]: r for r in _r58["recurring"]}
-    check("v0.1.58 F3: flagged commands COUNT into their class (deploy ×2, stealth ×2)",
-          _rows58.get("deploy-tool run --key", {}).get("count") == 2
-          and _rows58.get("stealth-tool run", {}).get("count") == 2)
-    check("v0.1.58 F3: a flagged command's new template gets the omission LABEL as its sample (both arms)",
-          _rows58["deploy-tool run --key"]["sample"] == ds._OMIT_SAMPLE
-          and _rows58["stealth-tool run"]["sample"] == ds._OMIT_SAMPLE)
+    check("v0.1.58 F3: flagged commands COUNT into their class (deploy ×2, vault ×2)",
+          _rows58.get("deploy-tool run --opt", {}).get("count") == 2
+          and _rows58.get("vault-tool run --opt", {}).get("count") == 2)
+    check("v0.1.58 F3 [8]: a flagged-FIRST template UPGRADES to a clean sample once a clean one exists",
+          _rows58["deploy-tool run --opt"]["sample"] == "deploy-tool run --opt=redacted")
+    check("v0.1.58 F3: an ALWAYS-flagged template keeps the omission label (no clean occurrence to upgrade to)",
+          _rows58["vault-tool run --opt"]["sample"] == ds._OMIT_SAMPLE)
     check("v0.1.58 F3: secrets_omitted counts ALL flagged incl. the all-noise export; commands includes them",
-          _r58["scanned"]["secrets_omitted"] == 3 and _r58["scanned"]["commands"] == 5)
-    _dump58 = _json43.dumps(_r58)
-    check("v0.1.58 F3: no raw secret anywhere in the JSON (vendor key, zw blob, zw char)",
-          "AKIA" not in _dump58 and _zw58 not in _dump58 and "​" not in _dump58)
-check("v0.1.58 F3: the emission choke-point screens a secret-shaped template (rows AND chain endpoints)",
-      ds._seg_template(f"deploy-tool {_zw58}") is None)
+          _r58["scanned"]["secrets_omitted"] == 4 and _r58["scanned"]["commands"] == 5)
+    check("v0.1.58 F3: no raw vendor secret anywhere in the JSON",
+          "AKIA" not in _json43.dumps(_r58))
+# choke-point NON-VACUOUS: a zero-width-SPLIT, letters-only blob survives tokenization (no digit, position 2)
+# and is INVISIBLE to a raw _looks_secret probe — only _norm(tpl) fuses it. Proves the screen uses _norm ([1]).
+_zwl58 = "aB" * 20                            # 40 mixed-case letters, no digit → survives the template transform
+_zwlsplit58 = _zwl58[:20] + "​" + _zwl58[20:]
+check("v0.1.58 F3/[1]: raw _looks_secret MISSES the zw-split blob (the divergence the screen must cover)",
+      not es._looks_secret(f"deploy-tool {_zwlsplit58}"))
+check("v0.1.58 F3/[1]: the choke-point screens it via _norm (rows AND chain endpoints)",
+      ds._seg_template(f"deploy-tool {_zwlsplit58}") is None)
 # (4) F4 — --into deterministic capture: sub-key merge, script-truth counts, judgment preserved/replaced.
 _scan58 = {"window": "W58", "scanned": {"sessions": 2, "commands": 9, "days": 3, "secrets_omitted": 1},
            "recurring": [{"template": "t", "count": 2, "days": 1, "sample": ""}], "chains": []}
@@ -2096,8 +2100,9 @@ with _tf43.TemporaryDirectory() as _td58c:
     check("v0.1.58 F7: out-of-window lines excluded from commands, days, and the tally",
           _r58c["scanned"]["commands"] == 2 and _r58c["scanned"]["days"] == 2
           and [r["template"] for r in _r58c["recurring"]] == ["fresh-tool run"])
-# (7) F8 — CLI honesty (subprocess, hermetic HOME): --since validation, dir warning, flag whitelist,
-# --json --into stdout purity (injection summary on stderr).
+# (7) F8 — CLI honesty (subprocess, hermetic HOME): --since validation, dir warning, usage-error exits on
+# bad/unknown/valueless flags (code-review [4]/[7]), judgment-without-into warning ([5]), inject-fail exit
+# ([6]), --from single-scan ([10]), and --json --into stdout purity (injection summary on stderr).
 with _tf43.TemporaryDirectory() as _td58d:
     _home58 = str(Path(_td58d) / "home"); Path(_home58).mkdir()
     _proj58 = str(Path(_td58d) / "proj"); Path(_proj58).mkdir()
@@ -2112,21 +2117,45 @@ with _tf43.TemporaryDirectory() as _td58d:
     _so58, _se58, _rc58 = _run58(_proj58, "--since", "banana")
     check("v0.1.58 F8: garbage --since → exit 2 + stderr (never a silent drop-everything compare)",
           _rc58 == 2 and "--since expects an ISO timestamp" in _se58)
+    _so58, _se58, _rc58 = _run58(_proj58, "--since", "2026-06-01T00:00:00+0000", "--json")
+    check("v0.1.58 F8/[3]: a no-colon offset (date -u +%z form) is accepted, not version-skew-aborted",
+          _rc58 == 0 and isinstance(_json43.loads(_so58), dict))
     _so58, _se58, _rc58 = _run58(str(Path(_td58d) / "no-such-dir"), "--json")
     check("v0.1.58 F8: nonexistent project dir → stderr warning, exit 0, zero counts (visible, recall-safe)",
           _rc58 == 0 and "does not exist" in _se58 and _json43.loads(_so58)["scanned"]["sessions"] == 0)
     _so58, _se58, _rc58 = _run58(_proj58, "--sicne", "2026-06-01", "--json")
-    check("v0.1.58 F8: an unknown flag is WARNED, and its value is not silently swallowed into a wrong scan",
-          _rc58 == 0 and "ignoring unknown flag: --sicne" in _se58)
+    check("v0.1.58 F8/[7]: an unknown flag is a USAGE ERROR (exit 2), not a swallowed value → wrong scan",
+          _rc58 == 2 and "unknown flag: --sicne" in _se58)
+    _so58, _se58, _rc58 = _run58(_proj58, "--json", "--into")
+    check("v0.1.58 F8/[4]: a trailing value-flag missing its value → exit 2 (not a mislabeled 'unknown flag')",
+          _rc58 == 2 and "--into requires a value" in _se58)
+    _so58, _se58, _rc58 = _run58(_proj58, "--json", "--verdict", "nothing: x")
+    check("v0.1.58 F8/[5]: judgment flags WITHOUT --into → loud warning (the verdict would go nowhere)",
+          _rc58 == 0 and "require --into" in _se58)
     _so58, _se58, _rc58 = _run58(_proj58, "--ascii", "--json")
-    check("v0.1.58 F8: the visual flags do NOT misfire the unknown-flag warning",
-          _rc58 == 0 and "ignoring unknown flag" not in _se58)
+    check("v0.1.58 F8: the visual flags do NOT misfire the unknown-flag error",
+          _rc58 == 0 and "unknown flag" not in _se58)
     _seed58d = Path(_td58d) / "seed.json"
     _seed58d.write_text(_json43.dumps({"project": "p"}))
     _so58, _se58, _rc58 = _run58(_proj58, "--json", "--into", str(_seed58d), "--verdict", "nothing: n/a — empty corpus")
     check("v0.1.58 F8: --json --into keeps stdout pure (scan JSON) with the injection summary on stderr",
           _rc58 == 0 and isinstance(_json43.loads(_so58), dict) and "distill → injected" in _se58
           and _json43.loads(_seed58d.read_text())["distill"]["verdict"] == "nothing: n/a — empty corpus")
+    _so58, _se58, _rc58 = _run58(_proj58, "--into", str(Path(_td58d) / "nope" / "seed.json"), "--verdict", "x")
+    check("v0.1.58 F8/[6]: a failed injection (unwritable seed) → non-zero exit (capture loss is detectable)",
+          _rc58 != 0)
+    # [10] --from: inject a SAVED scan JSON without re-scanning (counts identical to the judged evidence)
+    _fromjson58 = Path(_td58d) / "scan.json"
+    _fromjson58.write_text(_json43.dumps(_scan58))            # the fixture scan dict from block (4)
+    _seed58e = Path(_td58d) / "seed2.json"; _seed58e.write_text(_json43.dumps({"project": "p"}))
+    _so58, _se58, _rc58 = _run58("--from", str(_fromjson58), "--into", str(_seed58e), "--verdict", "nothing: via --from")
+    _blk58 = _json43.loads(_seed58e.read_text()).get("distill", {})
+    check("v0.1.58 F8/[10]: --from injects the SAVED scan's counts (no re-scan) + the verdict",
+          _rc58 == 0 and _blk58.get("n_recurring") == 1 and _blk58.get("window") == "W58"
+          and _blk58.get("verdict") == "nothing: via --from")
+    _so58, _se58, _rc58 = _run58("--from", str(Path(_td58d) / "missing.json"), "--into", str(_seed58e))
+    check("v0.1.58 F8/[10]: --from on a missing/invalid scan file → exit 2",
+          _rc58 == 2 and "--from" in _se58)
 # (8) docs pins — the stale docstring claims are gone; the harness-map distill section exists.
 check("v0.1.58 docstring pins: residuals re-stated honestly (no 'low-frequency' ||; nested-only $(); glue wording)",
       "low-frequency" not in (ds.__doc__ or "") and "inside a NESTED" in (ds.__doc__ or "")

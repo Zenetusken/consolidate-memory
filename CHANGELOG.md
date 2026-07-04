@@ -52,11 +52,32 @@ rounds, design + impl lenses; every load-bearing claim proven by execution):
   fusion, stoplisted-head pipelines, and control-terminator bridge chains are named as accepted
   residuals).
 
-Additive `--json`/schema keys + additive flags + stricter noise-dropping under an additive shape + SKILL/
-doc prose → patch. 582 smoke (+36) + mypy + sim + manifests + `claude plugin validate --strict` green.
-Live acceptance: this repo 40 rows + 20 chains **zero junk** (was ~15%) with `secrets_omitted: 83`
-surfaced; the sibling Python corpus's top row is now the real gate (`pytest -m unit` ×284/14d) with the
-`.venv/bin/python -`/`-c` false classes (×299) gone.
+A high-effort workflow-backed code review (20 agents) then found 10 confirmed impl regressions in the
+above, all fixed pre-merge:
+- **The firewall screen probed the raw template, not the `_norm`'d one** — a zero-width-split credential
+  that flagged the command could still leak into a template row; now screened through `_norm` (the
+  security-critical fix), with a non-vacuous zero-width smoke pin.
+- **The per-line window compared raw strings** — a local-offset or compact `--since` silently dropped
+  in-window lines or zero-scanned the corpus; now compares parsed UTC **instants** via a shared
+  `_parse_ts` (which also normalizes a `±HHMM` no-colon offset, ending the 3.10-vs-3.11 skew).
+- **CLI honesty** — a trailing value-flag (its value lost) or a genuinely unknown flag is now a usage
+  error (exit 2), judgment flags without `--into` warn loudly, and `main` **exits non-zero when an
+  `--into` capture fails** (the deleted hand-mirror left no fallback, so a silent failure was
+  unrecoverable).
+- **`--from <scan.json>`** — the SKILL now scans ONCE, judges that output, and injects the SAVED scan,
+  so the recorded counts are byte-identical to the judged evidence (no drift, no double scan).
+- **Sample recovery** — a class first seen in a credential-shaped command now upgrades its display
+  sample once a clean occurrence of the same class appears (was pinned to the omission label by arrival
+  order).
+- **Renderer parity** — `secrets_omitted` now shows on the ASCII DISTILL line and the HTML "This Pass"
+  panel (the schema-cascade contract). NOTE: `scanned.commands` now **includes** firewall-flagged
+  commands (~+5% vs v0.1.57), a deliberate cross-version value shift for transparency.
+
+Additive `--json`/schema keys (`window`, `secrets_omitted`) + additive flags (`--into`/`--from`/judgment)
++ stricter noise-dropping under an additive shape + SKILL/doc prose → patch. 590 smoke (+44) + mypy + sim
++ manifests + `claude plugin validate --strict` green. Live acceptance: this repo 40 rows + 20 chains
+**zero junk** (was ~15%) with `secrets_omitted: 83` surfaced; the sibling Python corpus's top row is now
+the real gate (`pytest -m unit` ×284/14d) with the `.venv/bin/python -`/`-c` false classes (×299) gone.
 
 ## [0.1.57] — 2026-07-03
 

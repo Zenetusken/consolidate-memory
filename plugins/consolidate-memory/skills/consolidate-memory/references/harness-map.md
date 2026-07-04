@@ -238,12 +238,17 @@ broader than the dream's `marker..HEAD` — say so when reporting.
 
 **The `distill` record block** (`Distill` TypedDict; all keys `total=False`):
 `sessions`/`commands`/`n_recurring`/`n_chains`/`window`/`secrets_omitted` are
-**script-only** — injected by `distill_scan.py . --into <seed> --verdict '…'
-[--proposed X] [--created X]`; never hand-author counts (a hand-mirrored count once
-shipped an impossible value; `validate_cycle_record` warns when a count exceeds the
-scanner caps). The judgment fields (`proposed`/`created`/`verdict`) are the model's —
-passed via the flags (preferred) or by hand. The `--into` is the LAST write to that
-block.
+**script-only** — never hand-author counts (a hand-mirrored count once shipped an
+impossible `n_recurring: 47` against a cap of 40; `validate_cycle_record` warns when a
+count exceeds the scanner caps). Capture in ONE scan: save `--json` to a file, judge it,
+then inject that SAVED scan so the recorded counts equal the judged ones —
+`distill_scan.py --from <scan.json> --into <seed> --verdict '…' [--proposed X]
+[--created X]`. The judgment fields (`proposed`/`created`/`verdict`) are the model's,
+passed via the flags. `--into` is the LAST write to that block; it exits non-zero if the
+seed can't be written (capture loss is never silent) and warns if a judgment flag is
+passed without `--into`. The window filter compares parsed INSTANTS (a local-offset
+`--since` is honored correctly, not lexicographically mis-ordered against CC's `Z`
+stamps).
 
 **Acceptance recipe** (after touching the scanner): run
 `python3 scripts/distill_scan.py <repo> --json` against a rich corpus and judge the

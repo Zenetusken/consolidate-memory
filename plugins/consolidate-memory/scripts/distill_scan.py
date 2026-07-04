@@ -142,20 +142,41 @@ def _strip_heredocs(cmd: str) -> str:
     return _HEREDOC.sub(r"\3\n", cmd)
 
 
+# v0.1.58: a `±HHMM` offset (no colon — what `date -u +%z` prints) → `±HH:MM`, which `fromisoformat`
+# requires on Python 3.8–3.10 (3.11 relaxed it). Anchored to the END so it can't touch the date's own
+# `-`/`:` separators. Removes the version-skew where `--since …+0000` parsed on 3.11 but aborted on 3.10
+# (code-review [3]).
+_OFFSET_NOCOLON = re.compile(r"([+-]\d{2})(\d{2})$")
+
+
+def _parse_ts(ts: str) -> "datetime | None":
+    """A transcript/`--since` timestamp string → an AWARE UTC datetime, or None if empty/unparseable.
+    The single timestamp parser (day-bucketing AND the window compare both route through it), so the two
+    can never disagree. A naive stamp is assumed UTC (CC emits `…Z`); an offset stamp (`…+05:30`) is
+    converted to its true UTC INSTANT — which is why the window filter compares parsed instants, not raw
+    strings: a lexicographic `ts <= since` mis-orders a local-offset `--since` against CC's `Z` stamps
+    (code-review [2])."""
+    if not ts:
+        return None
+    s = _OFFSET_NOCOLON.sub(r"\1:\2", ts.replace("Z", "+00:00"))
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _day_of(ts: str) -> str:
     """A transcript timestamp → its UTC calendar date (the episode-day unit). UTC is chosen for
-    DETERMINISM: an earlier LOCAL-tz conversion (`astimezone()`) made `scanned.days`/per-row `days` — and
-    thus the (days, count) ranking the model reads — depend on the RUNNER's timezone, so the same repo
-    rendered a different distill signal on a UTC server vs a local laptop (round-3 finding). The tradeoff
-    (a single sitting straddling UTC midnight counts as 2 days) is cosmetic — `days` is an advisory rank
-    hint, not a filter. `fromisoformat` also normalises an offset stamp (`…-05:00`) to its true UTC date.
-    Falls back to the raw slice on unparseable input; '' stays '' (no day accrues)."""
-    if not ts:
-        return ""
-    try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(timezone.utc).date().isoformat()
-    except ValueError:
-        return ts[:10]
+    DETERMINISM: an earlier LOCAL-tz conversion made `scanned.days`/per-row `days` — and thus the
+    (days, count) ranking the model reads — depend on the RUNNER's timezone, so the same repo rendered a
+    different distill signal on a UTC server vs a local laptop (round-3 finding). The tradeoff (a single
+    sitting straddling UTC midnight counts as 2 days) is cosmetic — `days` is an advisory rank hint, not a
+    filter. Falls back to the raw slice on unparseable input; '' stays '' (no day accrues)."""
+    dt = _parse_ts(ts)
+    return dt.date().isoformat() if dt else (ts[:10] if ts else "")
 
 
 def _seg_template(seg: str) -> str | None:
@@ -226,8 +247,10 @@ def _seg_template(seg: str) -> str | None:
         return None
     if re.fullmatch(r"\d+", tpl):                    # v0.1.58: numeric plumbing residue is never a class
         return None
-    if _looks_secret(tpl):                           # v0.1.58: the EMISSION choke-point — one screen covers
-        return None                                  # rows AND chain endpoints (chains derive from kept tpls)
+    if _looks_secret(_norm(tpl)):                    # v0.1.58: the EMISSION choke-point — one screen covers
+        return None                                  # rows AND chain endpoints (chains derive from kept tpls).
+    #   Probe the _norm'd template, matching the command-level flag: a zero-width-split credential is fused
+    #   by _norm (Cf-stripped) so it can't slip a raw-probe miss into a template row (code-review [1]).
     return tpl
 
 
@@ -272,15 +295,16 @@ _OMIT_SAMPLE = "(sample omitted — credential-shaped command)"
 def scan(project_dir: Path, since: str) -> dict:
     """Count recurring Bash-command templates + intra-command chains across the project's in-window
     transcripts, with per-item day-spread (the episode dimension). `since` empty → all (matches
-    `_window_transcripts`); the CLI defaults it to ~30 days, and v0.1.58 adds the PER-LINE `ts <= since`
-    skip (the same KEEP-safe lexicographic compare `extract()` uses — CC emits UTC-`Z` ts, the default
-    `since` is `+00:00`; an equal-instant boundary false-KEEPS, never false-skips), so a long-lived
-    session file no longer leaks out-of-window lines into counts/day-spreads. FIREWALL (v0.1.58): the
+    `_window_transcripts`); the CLI defaults it to ~30 days, and v0.1.58 adds the PER-LINE window skip —
+    an INSTANT compare (`_parse_ts(ts) <= _parse_ts(since)`, not a raw-string compare, so a local-offset
+    `--since` can't mis-order against CC's `Z` stamps), so a long-lived session file no longer leaks
+    out-of-window lines into counts/day-spreads. FIREWALL (v0.1.58): the
     command-level `_looks_secret(_norm(cmd))` hit gates the SAMPLE and counts into `secrets_omitted` —
     the command's templates still count, each screened at emission by `_seg_template` (see module doc)."""
     project_dir = project_dir.resolve()
     proj_root = Path.home() / ".claude" / "projects" / slug_for(project_dir)
     transcripts = _window_transcripts(proj_root, since)
+    since_dt = _parse_ts(since) if since else None   # compare INSTANTS, not raw strings (code-review [2])
     counts = {"sessions": len(transcripts), "commands": 0, "days": 0, "secrets_omitted": 0}
     days_seen: set = set()
     tally: dict[str, dict] = {}          # template -> {count, days, sample}
@@ -305,17 +329,20 @@ def scan(project_dir: Path, since: str) -> dict:
                 if not isinstance(content, list):
                     continue
                 ts = str(o.get("timestamp") or "")
-                if since and ts and ts <= since:   # v0.1.58: per-line window (file mtime alone over-included)
-                    continue
-                day = None   # v0.1.55 (round-3): compute the episode-day LAZILY on the first Bash part,
-                #              so a Read/Edit/Grep-only message (the session majority) never parses a
-                #              timestamp it won't use. Memoised for a multi-Bash message.
+                ts_dt: "datetime | None" = None   # parsed LAZILY on the first Bash part (a Read/Edit-only
+                ts_done = False                   # message — the session majority — never parses a timestamp),
+                #   yet the window is enforced per-COMMAND before it counts. `ts_done` memoises the parse.
+                day = None
                 for p in content:
                     if not (isinstance(p, dict) and p.get("type") == "tool_use" and p.get("name") == "Bash"):
                         continue
                     cmd = str((p.get("input") or {}).get("command", ""))
                     if not cmd:
                         continue
+                    if not ts_done:
+                        ts_dt = _parse_ts(ts); ts_done = True
+                    if since_dt and ts_dt and ts_dt <= since_dt:   # per-line window (file mtime over-included);
+                        break                                      # all parts share this line's ts → skip them all
                     # v0.1.58 firewall-at-emission: the ONE command-level flag drives the sample suppression
                     # AND the transparency counter — incremented HERE (before commands++/the all-noise skip:
                     # the measured majority of flagged commands are all-noise `export SECRET=…` shapes that
@@ -326,22 +353,21 @@ def scan(project_dir: Path, since: str) -> dict:
                     if flagged:
                         counts["secrets_omitted"] += 1
                     if day is None:
-                        day = _day_of(ts)
+                        day = ts_dt.date().isoformat() if ts_dt else (ts[:10] if ts else "")
                         if day:
                             days_seen.add(day)
                     counts["commands"] += 1
                     templates, chains = _scan_cmd(cmd)
                     if not templates and not chains:
                         continue                                # all-noise command — don't build a sample for nothing
-                    # build the sample only when a template is NEW (setdefault would discard it on a repeat —
-                    # round-3 efficiency finding); `any` covers a command that introduces two new templates.
-                    # A FLAGGED command's raw text never becomes a sample — its new templates get the label.
-                    if any(t not in tally for t in templates):
-                        sample = _OMIT_SAMPLE if flagged else " ".join(cmd.split())[:160]
-                    else:
-                        sample = ""
                     for t in templates:
-                        rec = tally.setdefault(t, {"count": 0, "days": set(), "sample": sample})
+                        rec = tally.get(t)
+                        if rec is None:                         # new template: seed its sample (label if flagged)
+                            rec = tally[t] = {"count": 0, "days": set(),
+                                              "sample": _OMIT_SAMPLE if flagged else " ".join(cmd.split())[:160]}
+                        elif not flagged and rec["sample"] == _OMIT_SAMPLE:
+                            rec["sample"] = " ".join(cmd.split())[:160]   # upgrade a placeholder once a clean
+                            #   occurrence of the SAME class exists — arrival order no longer strands it (code-review [8])
                         rec["count"] += 1
                         if day:
                             rec["days"].add(day)
@@ -400,9 +426,10 @@ def inject_into(seed_path: str, d: dict, verdict: str, proposed: list, created: 
     against a hard cap of 40). A sub-key MERGE, deliberately NOT the audit `--into` wholesale assignment
     (the distill block is split-ownership): counts/window/secrets_omitted overwrite; model-authored
     `proposed`/`created`/`verdict` are preserved UNLESS the matching flag was given (a provided flag
-    REPLACES its key; a provided list-flag replaces the WHOLE list — idempotent on re-run). Best-effort
-    (mirrors the audit `--into`): missing/corrupt/non-object seed → one stderr line, False, never a crash;
-    all messaging on stderr so `--json` stdout stays pure."""
+    REPLACES its key; a provided list-flag replaces the WHOLE list — idempotent on re-run). Never crashes
+    (missing/corrupt/non-object seed → one stderr line, returns False) — but because the hand-mirror
+    fallback was DELETED, a False is a real capture loss with no recovery, so `main` surfaces it as a
+    non-zero exit (code-review [6]); all messaging is on stderr so `--json` stdout stays pure."""
     try:
         record = json.loads(Path(seed_path).read_text(encoding="utf-8"))
         if not isinstance(record, dict):
@@ -428,12 +455,12 @@ def inject_into(seed_path: str, d: dict, verdict: str, proposed: list, created: 
         return False
 
 
-# CLI flags this script OWNS (value-taking ones consume the next argv slot) + the visual flags consumed
-# by _ui.set_modes/color_enabled/resolve_width from sys.argv. Anything else is genuinely unknown and
-# warned to stderr — silently swallowing `--sicne 2026-06-01` turned the VALUE into the project dir and
-# produced a 0-session scan indistinguishable from a real empty corpus (audit F8).
-_VALUE_FLAGS = ("--since", "--into", "--verdict", "--proposed", "--created")
-_KNOWN_FLAGS = ("--json", "--ascii", "--color", "--no-color")
+# CLI flags this script OWNS. Value-taking flags consume the next argv slot; `--from` feeds a saved scan
+# JSON (single-scan capture — code-review [10]); the visual flags are consumed by _ui from sys.argv. A
+# genuinely unknown flag, or a value-flag missing its value, is a USAGE ERROR (exit 2 — consistent with
+# garbage `--since`), never a swallowed value that becomes a wrong-dir 0-session scan (audit F8 / [4]/[7]).
+_VALUE_FLAGS = ("--since", "--into", "--from", "--verdict", "--proposed", "--created")
+_VISUAL_FLAGS = ("--ascii", "--color", "--no-color")
 
 
 def main() -> int:
@@ -441,21 +468,24 @@ def main() -> int:
     as_json = "--json" in argv
     argv = [a for a in argv if a != "--json"]
     _ui.set_modes(color=_ui.color_enabled(sys.argv[1:], sys.stdout), ascii="--ascii" in sys.argv, width=_ui.resolve_width(sys.argv[1:], sys.stdout))
-    since = ""
-    into = ""
-    verdict = ""
+    since = into = from_path = verdict = ""
     proposed: list = []
     created: list = []
     pos = []
     i = 0
     while i < len(argv):
         a = argv[i]
-        if a in _VALUE_FLAGS and i + 1 < len(argv):
+        if a in _VALUE_FLAGS:
+            if i + 1 >= len(argv):                       # a trailing value-flag (its value lost) is a usage
+                print(f"{a} requires a value", file=sys.stderr)  # error, not an "unknown flag" (code-review [4])
+                return 2
             v = argv[i + 1]
             if a == "--since":
                 since = v
             elif a == "--into":
                 into = v
+            elif a == "--from":
+                from_path = v
             elif a == "--verdict":
                 verdict = v
             elif a == "--proposed":
@@ -465,32 +495,45 @@ def main() -> int:
             i += 2
         elif not a.startswith("-"):
             pos.append(a); i += 1
+        elif a in _VISUAL_FLAGS or a.startswith(("--color=", "--width=")):
+            i += 1                                       # visual flags are handled by _ui.set_modes
         else:
-            if a not in _KNOWN_FLAGS and not a.startswith(("--color=", "--width=")):
-                print(f"ignoring unknown flag: {a}", file=sys.stderr)
-            i += 1  # visual flags are handled by set_modes; unknown ones are warned, never swallowed silently
-    if since:
-        try:  # validate BEFORE the lexicographic per-line compare — `ts <= "banana"` would drop everything
-            datetime.fromisoformat(since.replace("Z", "+00:00"))
-        except ValueError:
-            print(f"--since expects an ISO timestamp, got {since!r}", file=sys.stderr)
+            print(f"unknown flag: {a}", file=sys.stderr)  # exit 2, not a swallowed value → wrong scan ([7])
             return 2
-    else:  # default to a recent window (BROADER than the dream's marker..HEAD; recurrence needs episodes)
-        since = (datetime.now(timezone.utc) - timedelta(days=DEFAULT_WINDOW_DAYS)).isoformat()
-    project_dir = Path(pos[0]) if pos else Path.cwd()
-    if not project_dir.is_dir():  # visible, recall-safe (the scan proceeds and prints zeros)
-        print(f"warning: project dir does not exist: {project_dir}", file=sys.stderr)
-    d = scan(project_dir, since)
+    if (verdict or proposed or created) and not into:    # judgment flags go nowhere without --into: warn LOUD
+        print("warning: --verdict/--proposed/--created require --into — not captured", file=sys.stderr)  # [5]
+    if from_path:                                        # single-scan capture: inject a SAVED scan (code-review [10])
+        try:
+            d = json.loads(Path(from_path).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            print(f"--from: cannot read {from_path} ({e})", file=sys.stderr)
+            return 2
+        if not (isinstance(d, dict) and isinstance(d.get("scanned"), dict)
+                and isinstance(d.get("recurring"), list) and isinstance(d.get("chains"), list)):
+            print(f"--from: {from_path} is not a distill scan JSON", file=sys.stderr)
+            return 2
+    else:
+        if since:
+            if _parse_ts(since) is None:                 # validate BEFORE the instant compare (garbage → drop-all)
+                print(f"--since expects an ISO timestamp, got {since!r}", file=sys.stderr)
+                return 2
+        else:  # default to a recent window (BROADER than the dream's marker..HEAD; recurrence needs episodes)
+            since = (datetime.now(timezone.utc) - timedelta(days=DEFAULT_WINDOW_DAYS)).isoformat()
+        project_dir = Path(pos[0]) if pos else Path.cwd()
+        if not project_dir.is_dir():  # visible, recall-safe (the scan proceeds and prints zeros)
+            print(f"warning: project dir does not exist: {project_dir}", file=sys.stderr)
+        d = scan(project_dir, since)
     if as_json:
         print(json.dumps(d, indent=2))
-    else:
+    elif not from_path:                                  # --from is a capture-only mode; no report to re-print
         _report(d)
-    if into:
-        inject_into(into, d, verdict, proposed, created)
+    rc = 0
+    if into and not inject_into(into, d, verdict, proposed, created):
+        rc = 1                                           # capture failure is detectable by exit code (code-review [6])
     # v0.1.54: write-time dream-arc cue (stderr, CM_DREAM_ARC-gated — see _ui.dream_cue)
     _ui.dream_cue("distill beat due — recurring gestures condensing (plain italics, no emoji) "
                   "above the plain scan results")
-    return 0
+    return rc
 
 
 if __name__ == "__main__":

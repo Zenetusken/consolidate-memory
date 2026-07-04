@@ -771,10 +771,12 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
 6. **Distill — surface repeated WORKFLOWS → propose a durable artifact (report-then-apply).** The dream's
    SECOND vertical: where the steps above consolidate FACTS into memory, distill detects repeated workflow /
    tool-use patterns and proposes packaging the high-confidence ones into a reusable artifact (a command or
-   skill). Run the scan (cheap):
+   skill). Run the scan ONCE and save it (so the same counts you judge are the counts captured — no
+   second scan whose window has drifted):
    ```bash
-   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py . --json
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py . --json > <the --scan path>
    ```
+   (`<the --scan path>` = a temp file, e.g. the snapshot dir's sibling `distill-scan.json`.) Read it:
    It returns recurring Bash-command **templates** (`recurring`, count≥2, each with a `days` episode-spread)
    AND **chains** (`chains` — adjacent steps inside one compound command: the `&&`/newline/`;`-glued
    sub-steps of a workflow), over a RECENT window (~30 days — deliberately BROADER than this dream's
@@ -802,18 +804,22 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      `proposed <X> — awaiting confirmation` · `proposed <X> — declined` · `nothing: <top candidate> fails
      <which gate leg>` (e.g. "nothing: the smoke→mypy→sim gate-chain — already covered by release.sh").
      A bare "nothing" with no named nearest-miss is non-compliant. **Then CAPTURE it — counts are
-     script-only, never hand-authored** (a hand-mirrored count already shipped an impossible value once):
+     script-only, never hand-authored** (a hand-mirrored count already shipped an impossible value once).
+     Feed the SAVED scan straight into the seed with `--from` (no second scan — the injected counts are
+     byte-identical to the ones you just judged):
      ```bash
-     CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py . --into <the --seed path> \
+     CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py \
+         --from <the --scan path> --into <the --seed path> \
          --verdict '<the one-liner>' [--proposed <X>]... [--created <X>]...
      ```
-     It re-scans (cheap) and injects the script-truth `sessions`/`commands`/`n_recurring`/`n_chains`/
-     `window`/`secrets_omitted` into the seed's `distill` block, writing your judgment fields from the
-     flags (`created` = authored BEFORE `--persist` only — confirmation usually arrives later; the record
-     is an honest snapshot, never retro-written; `verdict` = the one-liner, one sentence — both dashboards
-     show it in full). This `--into` is the **LAST write to the `distill` block** — a later hand-edit of
-     the seed must not touch that block (targeted edits to OTHER keys only, same rule as the audit
-     `--into`).
+     It injects the script-truth `sessions`/`commands`/`n_recurring`/`n_chains`/`window`/`secrets_omitted`
+     into the seed's `distill` block, writing your judgment fields from the flags (`created` = authored
+     BEFORE `--persist` only — confirmation usually arrives later; the record is an honest snapshot, never
+     retro-written; `verdict` = the one-liner, one sentence — both dashboards show it in full). It **exits
+     non-zero if the seed can't be written** (a typo'd path is caught, not silently dropped) and warns if a
+     `--verdict`/`--proposed`/`--created` is passed WITHOUT `--into`. This `--into` is the **LAST write to
+     the `distill` block** — a later hand-edit of the seed must not touch that block (targeted edits to
+     OTHER keys only, same rule as the audit `--into`).
    - **REPORT-THEN-APPLY — present the proposal PLAIN / un-styled (never dream-voice an approval) and NEVER
      auto-write an executable artifact.** Show the artifact you would create + the evidence (the counts); the
      user confirms; only then you author it. A single confirmation authorizes **ONE specific named artifact**

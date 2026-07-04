@@ -633,6 +633,8 @@
     if(D&&typeof D==="object"&&!Array.isArray(D)){
       var counts=[num(D.n_recurring)+" recurring",num(D.n_chains)+" chains"];
       if(num(D.commands)>0)counts.push(fmt(num(D.commands))+" commands / "+num(D.sessions)+" session"+(num(D.sessions)!==1?"s":""));
+      // v0.1.58 — the firewall-suppression count, so the transparency counter reaches the human view.
+      if(num(D.secrets_omitted)>0)counts.push(num(D.secrets_omitted)+" secret-shaped");
       el("dstl-counts").textContent=counts.join(" · ");
       var vd=String(D.verdict==null?"":D.verdict), m=vd.match(/^\s*(created|proposed|nothing)\b[:\s]*/i);
       var tag=m?m[1].toLowerCase():"", rest=m?vd.slice(m[0].length):vd;
