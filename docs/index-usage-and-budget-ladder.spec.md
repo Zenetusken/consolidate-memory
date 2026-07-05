@@ -2,11 +2,11 @@
 
 **Status:** **Phase A SHIPPED** (`main`, v0.1.63, PR #71). **Phase B SHIPPED** (`main`, v0.1.66,
 PR #75 — built to the 3-lens-gate-revised design below, then hardened by a max-effort code-review
-workflow: 3 confirmed findings, all fixed pre-merge). **Phase C SPECCED then REVISED** (2026-07-05) after a
-code-review-skill gate on the draft (6 finder angles completed; the verifier fleet died on session
-limits, so every one of the 44 pooled candidates was verified inline against the live code — ~20
-distinct findings survived, including two policy-killing defects in the draft's evidence-gate design;
-§Phase C below is the POST-gate design).
+workflow: 3 confirmed findings, all fixed pre-merge). **Phase C SHIPPED** (`main`, v0.1.67, PR #76 —
+specced then revised after a code-review-skill gate on the draft: 6 finder angles completed; the
+verifier fleet died on session limits, so every one of the 44 pooled candidates was verified inline
+against the live code — ~20 distinct findings survived, including two policy-killing defects in the
+draft's evidence-gate design; §Phase C below is the POST-gate, as-shipped design).
 **Phase B REVISED** after an independent
 3-lens spec-review gate (2026-07-04, this repo's own established precedent — see
 `docs/dream-procedure-integrity.spec.md`) found the original B1 design load-bearing-broken: re-keying
@@ -23,10 +23,10 @@ error in Phase A's own problem statement (Doc-Flo's cliff-line figure was mis-wi
 count) — both fixed below.
 **Build shape:** three gated cycles/PRs (A, then B, then C — A's instrument validates independently;
 B's semantics add new behavior; C's policy consumes A's data). A shipped as PR #71 (patch). B shipped
-as PR #75 (v0.1.66, patch — additive only; hardened by a max-effort code-review workflow). C, per the
-deterministic-release-versioning policy, is also a **patch** — additive only (see §Phase C: new pure
-functions, additive `total=False` schema keys, a new read-only sync mode, warn-only advisories; nothing
-existing changes meaning).
+as PR #75 (v0.1.66, patch — additive only; hardened by a max-effort code-review workflow). C shipped as
+PR #76 (v0.1.67); per the deterministic-release-versioning policy, also a **patch** — additive only
+(see §Phase C: new pure functions, additive `total=False` schema keys, a new read-only sync mode,
+warn-only advisories; nothing existing changes meaning).
 
 **Phase C status note (2026-07-04; corrected 2026-07-05 — the gate found the draft mis-attributed a
 quote here):** the binding spec-time precondition is §Design principles' **instrument-before-policy

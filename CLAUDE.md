@@ -137,8 +137,14 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
    dashboard coherence + the quiet dream [v0.1.57], the distill HARDENING [v0.1.58: additive
    `Distill.window`/`secrets_omitted` schema keys + `scanned.secrets_omitted` `--json` key + `--into`/`--from`
    flags]) · v0.1.59 (full doc sync to the v0.1.58 state) · v0.1.60–61 (HTML dashboard two-column alignment)
-   · v0.1.62 (the dream debrief's double sign-off fix) — every one an additive `total=False` schema key /
-   additive `--json` key / additive flag / SKILL prose, never a break.
+   · v0.1.62 (the dream debrief's double sign-off fix) · v0.1.63 (index-lifecycle Phase A: recall-usage
+   instrumentation, observe-only — additive `usage` block + `budget.index` keys) · v0.1.64 (WAKE is one
+   line, not two — a second SKILL.md sign-off defect adjacent to v0.1.62's) · v0.1.65 (full doc sync to
+   the v0.1.63/v0.1.64 state) · v0.1.66 (index-lifecycle Phase B: the HARD CEILING — a second,
+   independent budget signal) · v0.1.67 (index-lifecycle Phase C: the utility policy — demotion triage ·
+   the miss loop · fleet utility) · v0.1.68 (dashboard HTML: stop the masthead glow from tiling down the
+   page + badge the demotion panel's dormant verdict to match distill's) — every one an additive
+   `total=False` schema key / additive `--json` key / additive flag / SKILL prose, never a break.
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG
