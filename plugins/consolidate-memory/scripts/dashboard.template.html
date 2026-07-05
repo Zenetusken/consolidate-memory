@@ -33,7 +33,11 @@
   body{
     background:var(--paper); color:var(--ink); font-family:var(--mono); font-size:13px; line-height:1.55;
     -webkit-font-smoothing:antialiased; min-height:100%;
+    /* one glow, pinned to the masthead — `background:` above resets repeat to its initial "repeat",
+       so without no-repeat this 700px-tall gradient TILES down the whole page, landing an unrelated
+       second/third glow mid-page wherever a section happens to fall at a ~700px multiple. */
     background-image:radial-gradient(1200px 700px at 50% -200px, var(--glow), transparent 70%);
+    background-repeat:no-repeat;
   }
   /* very faint paper tooth */
   body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.45;z-index:0;
@@ -707,11 +711,19 @@
       if(missN>0)bits+='<span class="tag" style="color:var(--crit);border-color:var(--crit)">'+missN+" MISS"+(missN!==1?"ES":"")+'</span>'
         +'<span class="vtx" style="color:var(--crit)">'+esc(U.misses.filter(function(m){return typeof m==="string";}).join(", "))
         +' — archived-tier fact'+(missN!==1?"s":"")+' read organically; re-promote to MEMORY.md</span>';
+      // v0.1.68 — mirror the distill panel's tag+prose grammar: a leading disposition word (dormant/
+      // demoted/justified/none) becomes the bordered tag, same as distill's created/proposed/nothing —
+      // so a dormant triage reads as a badge + sentence, not bare italic text beside a badged sibling.
       var dvd=String(DM.verdict==null?"":DM.verdict);
-      if(dvd)bits+=(bits?'<span class="vtx"> · </span>':"")+'<span class="vtx">'+esc(dvd)+'</span>';
-      if(!bits)bits='<span class="vtx" style="color:var(--faint)">'
-        +(num(DM.eligible)>0?"no verdict recorded — a triage with eligible candidates and no verdict is incomplete"
-                            :"dormant — evidence accrues per-dream via --recalls")+'</span>';
+      if(!dvd&&missN===0&&num(DM.eligible)===0)dvd="dormant — evidence accrues per-dream via --recalls";
+      if(dvd){
+        var dm2=dvd.match(/^\s*(dormant|demoted|justified|none)\b[:\s—-]*/i);
+        var dtag=dm2?dm2[1].toLowerCase():"", drest=dm2?dvd.slice(dm2[0].length):dvd;
+        var dcls=(dtag==="demoted"||dtag==="justified")?" ok":"";
+        bits+=(bits?'<span class="vtx"> · </span>':"")
+          +(dtag?'<span class="tag'+dcls+'">'+esc(dtag)+'</span>':"")+'<span class="vtx">'+esc(drest)+'</span>';
+      }
+      if(!bits)bits='<span class="vtx" style="color:var(--faint)">no verdict recorded — a triage with eligible candidates and no verdict is incomplete</span>';
       el("demo-verdict").innerHTML=bits;
       el("demotion-blk").style.display="";
     }
