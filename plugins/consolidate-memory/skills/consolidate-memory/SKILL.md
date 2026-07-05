@@ -650,7 +650,10 @@ placing each fact in its tier and optimizing it for how that tier loads:
     ```
     Pass `CANON_NAME` to normalize the name (`_`→`-`, drop a date) or to **dedup** onto an
     existing canonical (never overwritten). You still **add the `~/.claude/memory/MEMORY.md`
-    line** (the op leaves the global index to you — the single writer).
+    line** (the op leaves the global index to you — the single writer). v0.1.67 (Phase C): the
+    op prints a **fleet-tax advisory** (warn-only, never a block) when the fleet's total
+    Σ pointer×holders crosses `GLOBAL_FLEET_TAX_ADVISORY` — every canonical taxes every holder
+    node's always-loaded index every session; `--utility` has the per-canonical evidence table.
   Either way: other projects pick it up when they next run their own Phase-1 `--pull`; don't
   move a fact out of a project store that currently recalls it (the global copy is additive).
   Record each promotion in `cross_project.promoted` (name + scope), and in that entry's
@@ -758,7 +761,12 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    `entries[]` row (`action: deleted`) per reclaimed orphan and set
    `cross_project.gc_removed` — but a mirror orphaned by **this** pass's own demotion already has
    its Phase-4 `deleted` row; don't re-record it (one fact, one entry). (Dead-edge provenance is
-   reported, not auto-pruned.)
+   reported, not auto-pruned.) **When the step-0 lever routed `gc` (mirror-dominated), pull the
+   fleet's usage EVIDENCE first** (v0.1.67, Phase C): `sync_global.py --utility .` aggregates each
+   canonical's mirror-attributed organic reads across every node's cycle log + its fleet tax
+   (pointer × holders, an upper bound) — a canonical unread everywhere it's instrumented is
+   demote/gc *evidence*, but the decision stays CONTENT-gated (holders/adoption ≠ fit; judge the
+   cascade, never auto-gc on numbers).
 3. Re-confirm every file path / function name you referenced still exists.
    → **Cycle record:** fill `health` — `index_pointers_ok`, any `broken` pointers,
    any `dangling_links` (`[[name]]` wikilinks pointing at no target file). **Use the SINGLE-SOURCE
@@ -782,16 +790,44 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    ```
    Then **capture recall utility** (v0.1.63, Phase A — the usage instrument): scan the window's
    transcripts for ORGANIC fact-body reads (dream-procedure reads span-excluded) and inject the
-   script-truth `usage` block into the seed — counts are script-only, never hand-authored:
+   script-truth `usage` block into the seed — counts are script-only, never hand-authored. **Pass the
+   Phase-0 `--snapshot` path as `--before`** (v0.1.67, Phase C): the miss-detector's archive-tier
+   classification is judged against the WINDOW-START state, so a fact you archived earlier THIS pass
+   (whose reads happened while it was still indexed) is never misclassified as a miss:
    ```bash
-   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --recalls --into <the --seed path>
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --recalls --into <the --seed path> --before <the --snapshot path>
    ```
    Transcripts rotate quickly, so this per-dream capture is the ONLY way usage accrues. A fact showing
    0 reads is ABSENCE OF EVIDENCE (retention + span-exclusion undercount), never proof it's unused —
-   never prune on it alone (that judgment is Phase C's, with corroboration; see
-   `docs/index-usage-and-budget-ladder.spec.md`).
-   Also set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
-   so the always-loaded gauge and ⚠ reflect the post-write state.
+   never prune on it alone (that judgment is the DEMOTION TRIAGE below, with corroboration).
+   **`usage.misses` non-empty = a DEMOTION ERROR caught red-handed**: an archived-tier fact was read
+   organically this window — propose RE-PROMOTING its pointer to `MEMORY.md` (report-then-apply, a
+   `reconciled` row); the log remembers the miss forever and it permanently vetoes that fact from
+   future demotion candidacy.
+
+   **Then the DEMOTION TRIAGE (v0.1.67, Phase C — run BEFORE the final budget re-read below, since
+   dispositions mutate the index).** Phase 0 seeded `demotion` (windows_observed / eligible /
+   surfaced, hook-cost ranked) and the `--recalls --into` you just ran STRUCK any surfaced stem read
+   THIS window (`demotion.struck` — never demote those). While `eligible: 0` the policy is DORMANT
+   (the evidence gate: a fact needs ≥3 probative zero-read windows + corroboration before it even
+   surfaces) — record `verdict: "dormant — N probative windows"` and move on. When candidates
+   remain: **judge each by CONTENT** — the keep-vs-archive judgment has a SILENT failure mode
+   (an archived live lesson stops being recalled with nothing to flag it), so keep-on-doubt —
+   then apply per-item dispositions, **report-then-apply, recorded as `entries[]` rows** (never
+   tally counts into the record — entries[] is the single source):
+   - **demote-to-archive**: the pointer moves `MEMORY.md` → an archive index (`SHIPPED.md` et al.);
+     the BODY stays (a load-tier change, never a delete). A `reconciled` row.
+   - **compress**: tighten the fact's `description:`/hook (the fat-hook fix site). A `corrected` row.
+   - **merge**: fold distinct content into the surfaced `similar` neighbor (a `corrected` row), then
+     rewrite the merged-out fact as a one-line `[[neighbor]]` redirect stub and demote its pointer
+     (a `reconciled` row). NO deletion under this policy — removing the stub later is the normal
+     confirmed-prune path.
+   - **counter-justify**: the fact stays, with a `skipped` row recording why, AND step 5's marker
+     write gains `demotion_justify` (below) so it doesn't re-nag every dream.
+   Fill `demotion.verdict` — ONE sentence, always (a dormant/none verdict is still a verdict; "ran
+   and proposed nothing" must be distinguishable from "never ran").
+   Finally set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
+   so the always-loaded gauge and ⚠ reflect the post-write state (AFTER any dispositions above).
 5. **Update the high-water mark**: write `commit` (current `HEAD`) + ISO
    `timestamp` to `~/.claude/projects/<slug>/memory/.consolidation-state.json` so
    the next pass scopes correctly (stamp the timestamp at write time), and mirror
@@ -799,6 +835,11 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    was JUSTIFIED this pass** (lever `justify` or prune-then-justify, step 0), ALSO write
    `standing_justify: {"facts": <current fact-count>, "index_tokens": <current>, "at": "<iso>"}`
    to the marker — the next pass SUPPRESSES the gate until the store grows by Δ (D6/D7, v0.1.21).
+   **If any demotion candidate was COUNTER-JUSTIFIED this pass** (step 4's triage, v0.1.67), ALSO
+   merge into the marker's `demotion_justify` map:
+   `demotion_justify: {"<stem>": {"windows": <demotion.windows_observed>, "at": "<iso>"}}` — the
+   per-item delta-detector: that candidate stays suppressed until the store accrues 5 more probative
+   usage windows (a malformed entry does NOT suppress — candidates fail open toward re-surfacing).
    Then **emit the deterministic mutation audit** (v0.1.22) — diff the post-write state against the Phase-0
    `--snapshot`:
    ```bash
@@ -1100,10 +1141,15 @@ this once warned against; the dashboard remains the source of the figures.)
               "window": "<the scan window ISO, script-injected>", "secrets_omitted": 0,
               "proposed": [], "created": [],
               "verdict": "<one line: created X | proposed X — awaiting confirmation | proposed X — declined | nothing: <candidate> fails <gate leg>>"},
-  "usage": {"_": "v0.1.63 (Phase A): script-injected by extract_signals --recalls --into (Phase 5) — organic fact-body Read events in the window, dream-span excluded; counts are script-only, never hand-authored. 0 reads = absence of evidence, never evidence of no use.",
+  "usage": {"_": "v0.1.63 (Phase A): script-injected by extract_signals --recalls --into (Phase 5) — organic fact-body Read events in the window, dream-span excluded; counts are script-only, never hand-authored. 0 reads = absence of evidence, never evidence of no use. v0.1.67 (Phase C): archive_reads/misses = the MISS-DETECTOR — organic reads of ARCHIVED-tier facts (tier judged at window start via --before <snapshot>); a miss is a demotion error: re-promote the pointer, and the log's misses permanently veto the stem from future candidacy.",
             "window": "<since..now ISO>", "transcripts": 0, "dream_excluded": 0,
             "reads": 0, "facts_read": 0,
-            "per_fact": [{"name": "...", "reads": 0, "last": "<ISO>"}]},
+            "per_fact": [{"name": "...", "reads": 0, "last": "<ISO>"}],
+            "archive_reads": 0, "misses": []},
+  "demotion": {"_": "v0.1.67 (Phase C): the rank-under-budget demotion triage. windows_observed/eligible/surfaced are SCRIPT-seeded (Phase 0, from the accrued usage log — the per-fact evidence gate keeps it DORMANT until ≥3 probative zero-read windows + corroboration); struck is SCRIPT-written by --recalls --into (surfaced stems read THIS window — never demote). Dispositions are entries[] rows (single source — no counts here); verdict is the ONE model sentence (a dormant/none verdict is still a verdict).",
+               "windows_observed": 0, "eligible": 0,
+               "surfaced": [], "struck": [],
+               "verdict": "<one line: dormant — N probative windows | demoted X · justified Y | none: <top candidate> kept because …>"},
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
              "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
   "outcome": ""

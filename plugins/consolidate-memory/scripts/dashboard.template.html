@@ -349,6 +349,12 @@
       <div class="dstl-verdict" id="dstl-verdict"></div>
       <div class="cap">Recurring command templates and their &amp;&amp;-chains over a ~30-day window — broader than this dream's git scope by design.</div>
     </div>
+    <!-- v0.1.67 (Phase C): the demotion triage — same lead/verdict rhythm as distill; key-gated (legacy cycles hide it) -->
+    <div class="dstl" id="demotion-blk" style="display:none">
+      <div class="audit-ln head"><span class="s">demotion · rank-under-budget triage</span><span class="nums" id="demo-counts"></span></div>
+      <div class="dstl-verdict" id="demo-verdict"></div>
+      <div class="cap">Evidence-gated, report-then-apply: 0-read indexed facts over enough probative usage windows; dispositions are entries[] rows. A red MISS badge means an archived fact was read organically — a demotion error to re-promote.</div>
+    </div>
   </section>
 
   <!-- 04 ledger -->
@@ -683,6 +689,31 @@
         +(rest?'<span class="vtx">'+esc(rest)+'</span>'
           :(tag?"":'<span class="vtx" style="color:var(--faint)">no verdict recorded — a distill step without one is incomplete</span>'));
       el("distill-blk").style.display="";
+    }
+    // v0.1.67 (Phase C) — the demotion block + the miss badge (both key-gated; legacy cycles render
+    // byte-identically with the blocks hidden). Disposition counts stay entries[]-derived (the ledger);
+    // this shows the SEED (windows/eligible/surfaced/struck) + the one model verdict sentence.
+    var DM=CUR.demotion, U=CUR.usage;
+    var missN=(U&&typeof U==="object"&&Array.isArray(U.misses))?U.misses.length:0;
+    if((DM&&typeof DM==="object"&&!Array.isArray(DM))||missN>0){
+      DM=(DM&&typeof DM==="object"&&!Array.isArray(DM))?DM:{};
+      var dmc=[num(DM.windows_observed)+" probative window"+(num(DM.windows_observed)!==1?"s":""),
+               num(DM.eligible)+" eligible"];
+      var surf=Array.isArray(DM.surfaced)?DM.surfaced:[], stk=Array.isArray(DM.struck)?DM.struck:[];
+      if(surf.length)dmc.push(surf.length+" surfaced");
+      if(stk.length)dmc.push(stk.length+" struck (read this window)");
+      el("demo-counts").textContent=dmc.join(" · ");
+      var bits="";
+      if(missN>0)bits+='<span class="tag" style="color:var(--crit);border-color:var(--crit)">'+missN+" MISS"+(missN!==1?"ES":"")+'</span>'
+        +'<span class="vtx" style="color:var(--crit)">'+esc(U.misses.filter(function(m){return typeof m==="string";}).join(", "))
+        +' — archived-tier fact'+(missN!==1?"s":"")+' read organically; re-promote to MEMORY.md</span>';
+      var dvd=String(DM.verdict==null?"":DM.verdict);
+      if(dvd)bits+=(bits?'<span class="vtx"> · </span>':"")+'<span class="vtx">'+esc(dvd)+'</span>';
+      if(!bits)bits='<span class="vtx" style="color:var(--faint)">'
+        +(num(DM.eligible)>0?"no verdict recorded — a triage with eligible candidates and no verdict is incomplete"
+                            :"dormant — evidence accrues per-dream via --recalls")+'</span>';
+      el("demo-verdict").innerHTML=bits;
+      el("demotion-blk").style.display="";
     }
   })();
 

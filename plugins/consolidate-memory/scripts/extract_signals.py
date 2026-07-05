@@ -40,7 +40,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import _is_archive_index, _write_private, slug_for  # slug rule (v0.1.17) + archive-index classifier + 0o600-atomic seed write (v0.1.63 --recalls)
+from memory_status import (_is_archive_index, _is_archive_index_text, _parse_ts, _write_private,
+                           index_fact_names, slug_for, _LINK_RE)
+# slug rule (v0.1.17) + archive-index classifiers + 0o600-atomic seed write (v0.1.63 --recalls) + the
+# relocated single timestamp parser & the index-pointer link anchor + index reader (v0.1.67 miss-detector)
 
 STATE_FILE = ".consolidation-state.json"
 
@@ -268,28 +271,13 @@ _MARKERS = [
 ]
 
 
-# A `±HHMM` offset (no colon — what `date -u +%z` prints) → `±HH:MM`, which `fromisoformat` requires on
-# Python 3.8–3.10 (3.11 relaxed it). Anchored to the END so it can't touch the date's own `-`/`:`.
-_OFFSET_NOCOLON = re.compile(r"([+-]\d{2})(\d{2})$")
-
-
-def _parse_ts(ts: str) -> "datetime | None":
-    """A transcript/marker/`--since` timestamp string → an AWARE UTC datetime, or None if empty/unparseable.
-    THE single timestamp parser for the pipeline — `_window_transcripts`' file-prune cutoff AND distill's
-    per-line window compare both route through it, so the two window mechanisms cannot disagree (the DRY pin;
-    a distill-local copy once diverged on a no-colon offset, so the file-prune no-op'd while the per-line
-    filter worked). Normalizes a bare `Z` (3.10 rejects it) and a `±HHMM` no-colon offset; a NAIVE stamp is
-    assumed UTC (CC emits `…Z`); an offset stamp is converted to its true UTC INSTANT."""
-    if not ts:
-        return None
-    s = _OFFSET_NOCOLON.sub(r"\1:\2", ts.replace("Z", "+00:00"))
-    try:
-        dt = datetime.fromisoformat(s)
-    except (ValueError, TypeError):
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+# v0.1.67 (Phase C): _parse_ts RELOCATED to memory_status (the dependency root) — memory_status's
+# usage_history/demotion_candidates need it, and this module imports FROM memory_status, so keeping it
+# here would force either a circular import or a second parser (the documented already-bitten divergence
+# class: a distill-local copy once diverged on a no-colon offset, so the file-prune no-op'd while the
+# per-line filter worked). Re-imported at the top so every existing consumer — `_window_transcripts`'
+# file-prune cutoff, distill_scan's `from extract_signals import _parse_ts` — resolves the SAME function
+# object (smoke-pinned identity across all three modules). Behavior unchanged.
 
 
 def _window_transcripts(proj_root: Path, since: str) -> list[Path]:
@@ -526,8 +514,11 @@ def _report(d: dict) -> None:
 # here UNDERCOUNTS (retention, span over-exclusion, any harness auto-recall invisible to Read events)
 # — 0 reads = ABSENCE OF EVIDENCE, never evidence of no use; Phase C must corroborate before acting.
 
-_USAGE_FACT_CAP = 20   # per_fact rows emitted (nonzero, fattest-read first); mirrored by
-                       # memory_status._USAGE_FACT_CAP (smoke-pinned) for the validator backstop
+_USAGE_FACT_CAP = 40   # per_fact rows emitted (nonzero, fattest-read first); mirrored by
+                       # memory_status._USAGE_FACT_CAP (smoke-pinned) for the validator backstop.
+                       # v0.1.67 (Phase C): 20 → 40 — the heaviest fleet node measured 22 facts/window,
+                       # so under 20 its every window was cap-truncated = non-probative for zero-read
+                       # evidence (see memory_status's mirror comment; the pins move together)
 _ARC_MARK = "CM_DREAM_ARC"
 
 
@@ -593,9 +584,47 @@ def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems
     return items
 
 
-def recall_scan(project_dir: Path, since: str) -> dict:
+def _tier_sets(auto_mem: Path, snapshot: "dict | None") -> tuple:
+    """v0.1.67 (Phase C): → (indexed_stems, archived_stems) for the miss-detector's tier classification.
+    From the Phase-0 `--snapshot` dict when given — the state that HELD at window start, so a fact
+    archived THIS pass (whose organic reads happened while it was still indexed) is never misclassified
+    as a miss (the SKILL's Phase-5 archive steps run BEFORE the --recalls capture — a spec-gate finding).
+    Falls back to the live store (documented limitation; the SKILL step always passes the snapshot).
+    archived = `](stem.md)` link-targets of archive-index docs, MINUS indexed (indexed wins when both).
+    Both classifiers share memory_status's single archive-index rule (_is_archive_index[_text])."""
+    if isinstance(snapshot, dict):
+        idx_content = ""
+        arch_targets: set = set()
+        for label, entry in snapshot.items():
+            if not (isinstance(label, str) and label.startswith("memory/") and isinstance(entry, dict)):
+                continue
+            content = str(entry.get("content", "") or "")
+            if label == "memory/MEMORY.md":
+                idx_content = content
+            elif _is_archive_index_text(content):
+                arch_targets.update(_LINK_RE.findall(content))
+        indexed = frozenset(_LINK_RE.findall(idx_content))
+        return indexed, frozenset(arch_targets - indexed)
+    indexed = frozenset(index_fact_names(auto_mem / "MEMORY.md"))
+    arch: set = set()
+    if auto_mem.exists():
+        for f in auto_mem.glob("*.md"):
+            if f.name == "MEMORY.md" or not _is_archive_index(f):
+                continue
+            try:
+                arch.update(_LINK_RE.findall(f.read_text(encoding="utf-8", errors="replace")))
+            except OSError:
+                continue
+    return indexed, frozenset(arch - indexed)
+
+
+def recall_scan(project_dir: Path, since: str, before: str = "") -> dict:
     """The --recalls entry: scan the window's transcripts for ORGANIC fact-body Read events → the
-    cycle record's `usage` block shape (script-truth; injected via --into, never hand-authored)."""
+    cycle record's `usage` block shape (script-truth; injected via --into, never hand-authored).
+    v0.1.67 (Phase C): `before` = the Phase-0 --snapshot path — tier classification for the
+    miss-detector (`archive_reads`/`misses`) is judged against that WINDOW-START state when given.
+    `misses` derives from the UNCAPPED tally (never the capped per_fact rows — a spec-gate finding:
+    a rare archived read must not fall off the cap and vanish), with its own cap."""
     project_dir = project_dir.resolve()
     proj_root = Path.home() / ".claude" / "projects" / slug_for(project_dir)
     auto_mem = proj_root / "memory"
@@ -604,7 +633,7 @@ def recall_scan(project_dir: Path, since: str) -> dict:
     archive_stems = (frozenset(f.stem for f in auto_mem.glob("*.md") if _is_archive_index(f))
                      if auto_mem.exists() else frozenset())
     transcripts = _window_transcripts(proj_root, since)
-    reads: dict = {}     # stem -> {"reads": n, "last": iso}
+    reads: dict = {}     # stem -> {"reads": n, "last": iso} — the UNCAPPED tally
     excluded = 0
     for tr in transcripts:
         organic, dream_n = split_dream_span(_recall_items(tr, store_prefix, since, archive_stems))
@@ -615,11 +644,25 @@ def recall_scan(project_dir: Path, since: str) -> dict:
             rec["last"] = max(rec["last"], r["ts"] or "")   # CC ISO stamps compare lexicographically
     per_fact = [{"name": k, "reads": v["reads"], "last": v["last"]}
                 for k, v in sorted(reads.items(), key=lambda kv: (-kv[1]["reads"], kv[0]))][:_USAGE_FACT_CAP]
+    # v0.1.67 (Phase C): the miss-detector — organic reads of ARCHIVED-tier facts. A miss is a
+    # transcript-visible demotion error; usage_history folds it into miss_stems (a permanent candidacy
+    # veto) and Phase 5 proposes re-promoting the pointer (report-then-apply).
+    snap: "dict | None" = None
+    if before:
+        try:
+            _s = json.loads(Path(before).read_text(encoding="utf-8"))
+            snap = _s if isinstance(_s, dict) else None
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            print(f"--before: unreadable snapshot ({e}) — tier falls back to the LIVE store", file=sys.stderr)
+    _indexed, _archived = _tier_sets(auto_mem, snap)
+    misses = sorted(k for k in reads if k in _archived)[:_USAGE_FACT_CAP]
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return {"window": f"{since or '(no marker — all transcripts)'}..{now}",
             "transcripts": len(transcripts), "dream_excluded": excluded,
             "reads": sum(v["reads"] for v in reads.values()), "facts_read": len(reads),
-            "per_fact": per_fact}
+            "per_fact": per_fact,
+            "archive_reads": sum(v["reads"] for k, v in reads.items() if k in _archived),
+            "misses": misses}
 
 
 def inject_usage(seed_path: str, block: dict) -> bool:
@@ -633,6 +676,23 @@ def inject_usage(seed_path: str, block: dict) -> bool:
             print("--into: skipped (cycle record root is not a JSON object)", file=sys.stderr)
             return False
         record["usage"] = block
+        # v0.1.67 (Phase C): close the rank's CURRENT-WINDOW blindness deterministically — the demotion
+        # block was seeded at Phase 0 from the LOG, before this window's usage existed; a surfaced stem
+        # with reads in the block being injected RIGHT NOW must not stay a candidate (it could be demoted
+        # in the very record that shows its reads — a spec-gate finding). Script-truth strike; the SKILL
+        # step also instructs the cross-check, but nothing relies on the model doing it.
+        demo = record.get("demotion")
+        if isinstance(demo, dict) and isinstance(demo.get("surfaced"), list):
+            read_stems = {str(r.get("name", "")) for r in (block.get("per_fact") or [])
+                          if isinstance(r, dict) and r.get("reads")}
+            struck = sorted(s for s in demo["surfaced"] if isinstance(s, str) and s in read_stems)
+            if struck:
+                demo["surfaced"] = [s for s in demo["surfaced"] if s not in read_stems]
+                prev_raw = demo.get("struck")            # assign-then-narrow (the codebase's mypy idiom)
+                prev = prev_raw if isinstance(prev_raw, list) else []
+                demo["struck"] = sorted({*(x for x in prev if isinstance(x, str)), *struck})
+                print(f"demotion: struck {len(struck)} surfaced stem(s) read THIS window — "
+                      + ", ".join(struck), file=sys.stderr)
         _write_private(Path(seed_path), json.dumps(record, indent=2, ensure_ascii=False) + "\n")
         print(f"usage → injected into {seed_path}", file=sys.stderr)
         return True
@@ -653,6 +713,11 @@ def _recalls_report(d: dict) -> None:
     if not d["per_fact"]:
         print("  (no organic fact reads in the window — 0 reads = absence of evidence, not proof of no use)")
     print("  " + _ui.c(f"total {d['reads']} read(s) over {d['facts_read']} fact(s)", "dim"))
+    # v0.1.67 (Phase C): the miss-detector — loud, it is the demotion policy's own error signal.
+    if d.get("misses"):
+        print("  " + _ui.c(f"⚠ demotion MISS: {len(d['misses'])} archived-tier fact(s) read organically "
+                           f"({d.get('archive_reads', 0)} read(s)) — " + ", ".join(d["misses"])
+                           + " · re-promote the pointer(s) to MEMORY.md (report-then-apply)", "red"))
 
 
 def main() -> int:
@@ -663,6 +728,7 @@ def main() -> int:
     _ui.set_modes(color=_ui.color_enabled(sys.argv[1:], sys.stdout), ascii="--ascii" in sys.argv, width=_ui.resolve_width(sys.argv[1:], sys.stdout))
     since = ""
     into = ""
+    before = ""
     max_n = 30
     pos = []
     i = 0
@@ -671,6 +737,8 @@ def main() -> int:
             since = argv[i + 1]; i += 2
         elif argv[i] == "--into" and i + 1 < len(argv):   # v0.1.63: --recalls seed-injection target
             into = argv[i + 1]; i += 2
+        elif argv[i] == "--before" and i + 1 < len(argv):   # v0.1.67: Phase-0 snapshot → window-start tiering
+            before = argv[i + 1]; i += 2
         elif argv[i] == "--max" and i + 1 < len(argv):
             try:
                 max_n = max(0, int(argv[i + 1]))
@@ -686,7 +754,7 @@ def main() -> int:
     if recalls:
         # v0.1.63 (Phase A): the recall scan is a Phase-5 command — no Phase-2 cue here (the phase's
         # beat is already cued by its sibling commands; a wrong-phase cue would misdirect the arc).
-        u = recall_scan(project_dir, since)
+        u = recall_scan(project_dir, since, before=before)
         if as_json:
             print(json.dumps(u, indent=2))
         else:
@@ -694,8 +762,8 @@ def main() -> int:
         if into and not inject_usage(into, u):
             return 3   # a typo'd seed path FAILS LOUD — counts must never silently drop (distill contract)
         return 0
-    if into:
-        print("warning: --into applies to --recalls only — not captured", file=sys.stderr)
+    if into or before:
+        print("warning: --into/--before apply to --recalls only — not captured", file=sys.stderr)
     d = extract(project_dir, since, max_n)
     if as_json:
         print(json.dumps(d, indent=2))

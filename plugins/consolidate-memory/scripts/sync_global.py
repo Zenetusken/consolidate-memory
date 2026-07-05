@@ -28,6 +28,11 @@ each project's store. This is the engine for that:
                        onto an existing canonical REFUSES if the local's body differs (M2 — would
                        silently discard it); --prefer-canonical keeps the canonical, drops the local
                        body (the dedup intent). stack-general stacks: must be DETECTABLE (M4).
+  --utility PROJECT_DIR  (v0.1.67, Phase C) READ-ONLY fleet usage evidence: per-canonical organic reads
+                       aggregated across every node's cycle log (mirror-attributed; same-stem locals
+                       report as shadow, never attributed) + fleet_tax = pointer×holders against the
+                       warn-only GLOBAL_FLEET_TAX_ADVISORY. The gc lever's evidence table — judgment
+                       stays content-gated, never auto-gc. --json for machine capture.
 
 Relevance: `scope: user-global` facts apply to every project; `scope: stack-general`
 facts apply only if their `stacks:` intersect the project's detected stacks. Project
@@ -50,11 +55,21 @@ from pathlib import Path
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
 # on sys.path[0] at runtime; both live in the plugin's scripts/ dir.
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import (_is_mirror, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid,
+from memory_status import (_is_mirror, _parse_ts, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid,
                            INDEX_TOKEN_BUDGET, INDEX_CEILING_TOKENS, HOOK_TOKEN_WARN,
-                           extract_wikilinks, resolve_wikilink)
+                           extract_wikilinks, resolve_wikilink, usage_history)
 
 GLOBAL = Path.home() / ".claude" / "memory"
+
+# v0.1.67 (Phase C): the global store's fleet-tax ADVISORY — a warn-only ceiling on Σ(pointer_tok ×
+# holders) over all canonicals: the per-session always-loaded cost the global store imposes across the
+# fleet (each holder node pays each mirror's pointer line every session). Derivation (the
+# HOOK_TOKEN_WARN / INDEX_TOKEN_BUDGET measured-derivation precedent): MEASURED 2026-07-05 — 26
+# canonicals, Σ fleet_tax = 3283 est tok (0 unheld) — + ~50% headroom, rounded. UPPER-BOUND basis:
+# `holders` is provenance, which accrues dead edges (--gc reports them, never auto-prunes), so the
+# figure over-counts toward safety. NEVER a block or a hold — a hard fleet gate would be a new
+# load-bearing mechanism needing its own oracle-grade gate review (spec §Deferred beyond Phase C).
+GLOBAL_FLEET_TAX_ADVISORY = 5000
 
 
 def _nonglobal_wikilinks(text: str, global_dir: Path, exclude: str = "") -> list[str]:
@@ -988,6 +1003,16 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
                   f"(detected: {sorted(origin_stacks) or '∅'}) — its own mirror will read irrelevant "
                   "and won't refresh on --pull (likely a mis-tag)", file=sys.stderr)
 
+    # v0.1.67 (Phase C): the fleet-tax ADVISORY — post-write script truth, WARN-only (never a block; a
+    # hard fleet gate needs its own oracle-grade review). Each canonical's pointer taxes every holder
+    # node's always-loaded index every session; surface when the fleet total crosses the advisory.
+    _tot = sum(est_tokens(_pointer_line(n, f)) * len(_holders(f)) for n, f, _ in global_facts())
+    if _tot > GLOBAL_FLEET_TAX_ADVISORY:
+        _mine = est_tokens(_pointer_line(canon_name, fm)) * max(1, len(_holders(fm)))
+        print(f"  ⚠ fleet-tax advisory: Σ pointer×holders ≈{_tot} tok > {GLOBAL_FLEET_TAX_ADVISORY} "
+              f"(this canonical adds ≈{_mine}) — warn-only; `--utility` has the per-canonical evidence",
+              file=sys.stderr)
+
     out: list = []
     title = "✦ PROMOTE · " + project_dir.name
     tag = "RECONCILE" if reconcile else "CREATE"
@@ -1154,11 +1179,121 @@ def token_report(project_dir: Path, as_json: bool) -> int:
     return 0
 
 
-# The dream-flow modes that carry a cross-project BEAT: --list/--pull (Phase 1) and --gc/--tokens
-# (Phase 5). --promote runs in Phase 4's APPLY — the one phase whose contract deliberately excludes
-# dream beats (only the plain proposal + the single SURFACING line) — and --network is a
-# maintainer utility outside dream flow, so neither cues.
-_CUED_MODES = ("--list", "--pull", "--gc", "--tokens")
+# ── v0.1.67 (Phase C): fleet utility — the gc lever's missing evidence ───────────────────────────
+def fleet_utility(project_dir: Path) -> dict:
+    """READ-ONLY: per-canonical usage evidence aggregated across every node's cycle log (usage_history —
+    the same reader the demotion rank uses), joined with a MIRROR CHECK before attribution: a node's
+    reads for stem X count toward canonical X only if the node's `X.md` is a managed mirror — a
+    same-stem, never-pulled LOCAL fact (the `present(local)` shadow case run() already recognizes) is
+    tallied as `shadow_reads`, never attributed (a spec-gate finding: stem equality alone lies).
+    `fleet_tax = pointer_tok × len(holders)` — ZERO for an unheld canonical (nobody pays it; its
+    would-be per-node cost is listed separately), on the stated provenance UPPER-BOUND basis. This is
+    EVIDENCE for the model's gc/demote judgment (Phase-5 step 2, Phase-4 governance) — never an auto-gc
+    input: scope/keep decisions stay CONTENT-gated (holders/adoption ≠ fit). JSON-safe (lists, never
+    sets). docs/index-usage-and-budget-ladder.spec.md §Phase C4."""
+    project_dir = project_dir.resolve()
+    canon = {n: fm for n, fm, _ in global_facts()}
+    stores = _network_nodes()
+    trig = project_store(project_dir)
+    if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
+        stores.append(trig)
+    nodes_reporting = 0
+    per: dict = {n: {"reads": 0, "windows": 0, "last": "", "_ep": None, "shadow": 0} for n in canon}
+    for store in stores:
+        hist = usage_history(store)
+        if hist["windows_full"] >= 1:
+            nodes_reporting += 1
+        for stem in canon:
+            row = hist["per_fact"].get(stem)
+            reads = row.get("reads", 0) if isinstance(row, dict) else 0
+            reads = reads if isinstance(reads, int) and not isinstance(reads, bool) and reads > 0 else 0
+            p = store / f"{stem}.md"
+            if not p.exists():
+                continue
+            try:
+                text = p.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            if not _is_mirror(text):
+                if reads:
+                    per[stem]["shadow"] += reads       # same-stem local — reported, never attributed
+                continue
+            per[stem]["windows"] += hist["windows_full"]
+            per[stem]["reads"] += reads
+            ts = str((row or {}).get("last", "") or "") if isinstance(row, dict) else ""
+            dt = _parse_ts(ts)
+            if dt is not None and (per[stem]["_ep"] is None or dt.timestamp() > per[stem]["_ep"]):
+                per[stem]["_ep"], per[stem]["last"] = dt.timestamp(), ts
+    entries: list = []
+    total_tax = 0
+    unheld: list = []
+    for stem, fm in canon.items():
+        pt = est_tokens(_pointer_line(stem, fm))
+        holders = _holders(fm)
+        tax = pt * len(holders)
+        total_tax += tax
+        e = {"name": stem, "scope": fm.get("scope", ""), "reads": per[stem]["reads"],
+             "windows": per[stem]["windows"], "last": per[stem]["last"],
+             "holders": len(holders), "pointer_tok": pt, "fleet_tax": tax}
+        if per[stem]["shadow"]:
+            e["shadow_reads"] = per[stem]["shadow"]
+        if not holders:
+            unheld.append(stem)
+        entries.append(e)
+    entries.sort(key=lambda e: (-e["fleet_tax"], e["name"]))
+    return {"nodes": len(stores), "nodes_reporting": nodes_reporting, "canonicals": entries,
+            "total_fleet_tax": total_tax, "advisory": GLOBAL_FLEET_TAX_ADVISORY, "unheld": unheld}
+
+
+def utility_report(project_dir: Path, as_json: bool) -> int:
+    """Render fleet_utility — the per-canonical evidence table + the fleet-tax gauge (warn-only)."""
+    import json as _json
+    u = fleet_utility(project_dir)
+    if as_json:
+        print(_json.dumps(u, indent=2))
+        return 0
+    out: list = []
+    title = "✦ FLEET UTILITY · per-canonical usage evidence"
+    tag = f"{u['nodes_reporting']}/{u['nodes']} nodes reporting"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    out.append("  " + _ui.c("usage exists only where post-v0.1.63 dreams ran --recalls; holders = "
+                            "provenance UPPER bound (dead edges reported by --gc, never auto-pruned)", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    over = _ui.c("  ⚠ over advisory (warn-only — evidence for gc/demote judgment, never a gate)", "red") \
+        if u["total_fleet_tax"] > u["advisory"] else ""
+    out.append(_ui.kv("FLEET TAX", f"{_ui.bar(u['total_fleet_tax'], u['advisory'])} "
+               + _ui.c(f"≈{u['total_fleet_tax']}/{u['advisory']} est tok · Σ pointer × holders over "
+                       f"{len(u['canonicals'])} canonical(s)", "dim") + over))
+    out.append("")
+    out.append(_ui.kv("CANON", _ui.c("fleet_tax desc · reads are MIRROR-attributed organic recalls "
+                                     "across reporting nodes · windows = Σ probative windows on holding nodes", "dim")))
+    for e in u["canonicals"]:
+        if e["windows"] and not e["reads"]:
+            ev = _ui.c(f"0 reads/{e['windows']}w — unread where instrumented", "yellow")
+        elif e["reads"]:
+            ev = _ui.c(f"{e['reads']} read(s)/{e['windows']}w · last {str(e['last'])[:16]}", "green")
+        else:
+            ev = _ui.c("uninstrumented (0 probative windows on holders)", "dim")
+        shadow = _ui.c(f" · shadow {e['shadow_reads']}", "yellow") if e.get("shadow_reads") else ""
+        out.append(f"    {_ui.lbl(e['name'][:40], 40)} {e['fleet_tax']:>5}t "
+                   + _ui.c(f"({e['pointer_tok']}t × {e['holders']})", "dim") + f"  {ev}{shadow}")
+    if u["unheld"]:
+        out.append("    " + _ui.c(f"unheld (0 fleet tax — nobody pays them yet): {', '.join(u['unheld'])}", "dim"))
+    out.append("")
+    out.append(_ui.kv("NEXT", _ui.c("a 0-reads/instrumented canonical is gc-lever EVIDENCE — judge its "
+                                    "CONTENT before any demote (holders/adoption ≠ fit); never auto-gc", "dim")))
+    print(_ui.ascii_translate("\n".join(out)))
+    return 0
+
+
+# The dream-flow modes that carry a cross-project BEAT: --list/--pull (Phase 1) and --gc/--tokens/
+# --utility (Phase 5; --utility is the gc lever's evidence view, v0.1.67). --promote runs in Phase 4's
+# APPLY — the one phase whose contract deliberately excludes dream beats (only the plain proposal + the
+# single SURFACING line) — and --network is a maintainer utility outside dream flow, so neither cues.
+_CUED_MODES = ("--list", "--pull", "--gc", "--tokens", "--utility")
 
 
 def main() -> int:
@@ -1182,6 +1317,8 @@ def _dispatch() -> int:
         return network()
     if args and args[0] == "--tokens":
         return token_report(project_dir, "--json" in args)
+    if args and args[0] == "--utility":   # v0.1.67 (Phase C): fleet usage evidence (READ-ONLY, like --list)
+        return utility_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
         return gc(project_dir, "--apply" in args)
     if args and args[0] == "--promote":
@@ -1193,7 +1330,7 @@ def _dispatch() -> int:
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] | --tokens [--json] PROJECT_DIR "
-              "| --network", file=sys.stderr)
+              "| --utility [--json] PROJECT_DIR | --network", file=sys.stderr)
         return 2
     evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)
     if evict is not None:                          # Gate-2: a destructive flag must not silently no-op

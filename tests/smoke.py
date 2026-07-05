@@ -2509,5 +2509,356 @@ with _tfB.TemporaryDirectory() as _tdB3:
         else:
             _osB.environ["HOME"] = _oldHomeB3
 
+# ── v0.1.67 (Phase C): the utility policy — demotion triage · miss loop · fleet utility ──────────
+# docs/index-usage-and-budget-ladder.spec.md §Phase C (the post-code-review-skill-gate design).
+# Invariants pinned: (a) _parse_ts relocated UNCHANGED — one function object across all three modules;
+# (b) the 20→40 cap bump landed on BOTH sides; (c) reads merge from EVERY usage block while only
+# full-fidelity parseable windows are PROBATIVE (the anti-conservative-draft fix); (d) per-FACT window
+# counting (no span latch — a new fact accrues eligibility as new windows accrue); (e) every evidence-
+# gate leg vetoes independently; (f) misses derive from the UNCAPPED tally and tier is judged at
+# WINDOW START via --before; (g) inject_usage strikes just-read stems deterministically; (h) renders
+# are additive + legacy-safe; (i) --utility attributes only through mirrors and never writes.
+import hashlib as _hlC  # noqa: E402
+
+# (1) relocation + cap pins
+check("v0.1.67 _parse_ts relocation: ONE function object across ms/es/ds (the single-parser rule survives)",
+      es._parse_ts is ms._parse_ts and ds._parse_ts is ms._parse_ts)
+check("v0.1.67 _parse_ts behavior unchanged: bare Z + no-colon offset both parse to UTC instants",
+      ms._parse_ts("2026-01-01T00:00:00Z") is not None
+      and ms._parse_ts("2026-01-01T01:00:00+0100") == ms._parse_ts("2026-01-01T00:00:00Z")
+      and ms._parse_ts("(no marker — all transcripts)") is None and ms._parse_ts("") is None)
+check("v0.1.67 cap bump: _USAGE_FACT_CAP is 40 on BOTH sides (producer + validator mirror move together)",
+      ms._USAGE_FACT_CAP == es._USAGE_FACT_CAP == 40)
+check("v0.1.67 sg: --utility is a cued Phase-5 mode (joins --gc/--tokens)", "--utility" in sg._CUED_MODES)
+check("v0.1.67 fleet-tax advisory: a positive documented constant above today's measured Σ (3283)",
+      isinstance(sg.GLOBAL_FLEET_TAX_ADVISORY, int) and sg.GLOBAL_FLEET_TAX_ADVISORY > 3283)
+
+# (2) iter_cycle_log + the read_history delegation (the shared-reader single-source rule)
+with _tfB.TemporaryDirectory() as _tdC:
+    _logC = Path(_tdC) / ".consolidation-log.jsonl"
+    _logC.write_text('{"a": 1}\nnot json\n\n42\n{"b": 2}\n', encoding="utf-8")
+    check("v0.1.67 iter_cycle_log: malformed/blank skipped, order + non-dict values kept, tail bounds",
+          ms.iter_cycle_log(_logC) == [{"a": 1}, 42, {"b": 2}]
+          and ms.iter_cycle_log(_logC, tail=1) == [{"b": 2}]
+          and ms.iter_cycle_log(Path(_tdC) / "missing.jsonl") == [])
+    check("v0.1.67 read_history delegates to iter_cycle_log (same output, non-dict lines included)",
+          rhtml.read_history(Path(_tdC)) == ms.iter_cycle_log(_logC))
+
+# (3) usage_history — G-C1: reads merge from EVERY block; only full+parseable windows are probative
+def _uwC(window: str, tx: int, facts_read: int, per_fact: list, misses: "list | None" = None) -> str:
+    u: dict = {"window": window, "transcripts": tx, "dream_excluded": 0,
+               "reads": sum(f.get("reads", 0) for f in per_fact), "facts_read": facts_read,
+               "per_fact": per_fact}
+    if misses is not None:
+        u["misses"] = misses
+    return _jsonB.dumps({"usage": u})
+
+with _tfB.TemporaryDirectory() as _tdC1:
+    _amC1 = Path(_tdC1)
+    (_amC1 / ".consolidation-log.jsonl").write_text("\n".join([
+        _uwC("2026-01-01T00:00:00Z..2026-01-02T00:00:00Z", 2, 1,
+             [{"name": "a", "reads": 2, "last": "2026-01-01T12:00:00Z"}], misses=["m1"]),
+        _uwC("2026-01-02T00:00:00Z..2026-01-03T00:00:00Z", 0, 0, []),                       # empty window
+        _uwC("2026-01-03T00:00:00Z..2026-01-04T00:00:00Z", 1, 3,
+             [{"name": "b", "reads": 5, "last": "2026-01-03T05:00:00Z"}]),                  # cap-TRUNCATED
+        _uwC("(no marker — all transcripts)..2026-01-05T00:00:00Z", 1, 1,
+             [{"name": "a", "reads": 1, "last": "2026-01-04T00:00:00+01:00"}], misses=["m2"]),  # unplaceable
+        "junk line",
+    ]) + "\n", encoding="utf-8")
+    _hC1 = ms.usage_history(_amC1)
+    _dtC1 = ms._parse_ts("2026-01-01T00:00:00Z")
+    check("v0.1.67 usage_history: only the full+parseable window is PROBATIVE (windows_full == 1)",
+          _hC1["windows_full"] == 1 and len(_hC1["window_starts"]) == 1
+          and _dtC1 is not None and _hC1["window_starts"][0] == _dtC1.timestamp())
+    check("v0.1.67 usage_history: reads MERGE from every block — truncated + unplaceable included (a=3, b=5)",
+          _hC1["per_fact"]["a"]["reads"] == 3 and _hC1["per_fact"]["b"]["reads"] == 5)
+    check("v0.1.67 usage_history: `last` merges by parsed-EPOCH max (the +01:00 stamp is the later instant)",
+          _hC1["per_fact"]["a"]["last"] == "2026-01-04T00:00:00+01:00")
+    check("v0.1.67 usage_history: miss_stems unions across ALL blocks (a caught miss never rotates away)",
+          _hC1["miss_stems"] == ["m1", "m2"])
+    check("v0.1.67 usage_history: missing store/log → clean zero-state",
+          ms.usage_history(Path(_tdC1) / "nope") == {"windows_full": 0, "window_starts": [],
+                                                     "per_fact": {}, "miss_stems": []})
+
+# (4) _demotion_justify — the guarded reader (malformed does NOT suppress; the _standing_baseline direction)
+check("v0.1.67 _demotion_justify: well-formed kept; non-dict/bool/str-windows entries DROPPED (fail open to surface)",
+      ms._demotion_justify({"good": {"windows": 3}, "b1": "junk", "b2": {"windows": True},
+                            "b3": {"windows": "3"}, "b4": None}) == {"good": 3}
+      and ms._demotion_justify("garbage") == {} and ms._demotion_justify(None) == {})
+
+# (5) demotion_candidates — every evidence-gate leg, the rank, the cap
+_epC = [ms._parse_ts(t) for t in ("2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-03-01T00:00:00Z")]
+assert all(d is not None for d in _epC)
+_e1C, _e2C, _e3C = (d.timestamp() for d in _epC if d is not None)
+with _tfB.TemporaryDirectory() as _tdC2:
+    _stC2 = Path(_tdC2)
+
+    def _factC(stem: str, desc: str, mtime: float, mirror: bool = False, body: str = "body") -> Path:
+        p = _stC2 / f"{stem}.md"
+        gref = f"  global_ref: {stem}\n" if mirror else ""
+        p.write_text(f'---\nname: {stem}\ndescription: "{desc}"\nmetadata:\n{gref}'
+                     f"  node_type: memory\n  type: reference\n---\n{body}\n", encoding="utf-8")
+        _osB.utime(p, (mtime, mtime))
+        return p
+
+    _ffC = [
+        _factC("dead-ref", "an old pointer to a dashboard nobody opens", 1000.0),
+        _factC("fresh-fact", "a recently edited reference note", _e2C + 60),        # zrw = 1 → not yet
+        _factC("read-fact", "a reference that was actually recalled", 1000.0),
+        _factC("lesson-fact", "never retry the flaky endpoint without backoff", 1000.0),   # KEEP veto
+        _factC("missed-fact", "a reference once mis-demoted", 1000.0),
+        _factC("justified-fact", "a reference the human vouched for", 1000.0),
+        _factC("mirror-fact", "a replicated global reference", 1000.0, mirror=True),
+        _factC("linker", "a fact whose body links to the dead one for depth", 1000.0,
+               body="see [[dead-ref]] for the old dashboard"),
+        _factC("dead-ref-twin", "an old pointer to a dashboard nobody opens at all", 1000.0),
+    ]
+    _idxC = {"dead-ref", "fresh-fact", "read-fact", "lesson-fact", "missed-fact",
+             "justified-fact", "mirror-fact", "linker", "dead-ref-twin"}
+    _itxC = "# Memory Index\n" + "\n".join(
+        f"- [{s}]({s}.md) — " + "h" * n for s, n in
+        [("dead-ref", 200), ("fresh-fact", 40), ("read-fact", 40), ("lesson-fact", 40),
+         ("missed-fact", 40), ("justified-fact", 40), ("mirror-fact", 40), ("linker", 300),
+         ("dead-ref-twin", 100)]) + "\n"
+    _histC = {"windows_full": 3, "window_starts": [_e1C, _e2C, _e3C],
+              "per_fact": {"read-fact": {"reads": 4, "last": "2026-01-15T00:00:00Z"}},
+              "miss_stems": ["missed-fact"]}
+    _dcC = ms.demotion_candidates(_ffC, _idxC, _histC, _itxC, justify={"justified-fact": 1})
+    _stemsC = [c["stem"] for c in _dcC["candidates"]]
+    check("v0.1.67 gate: eligible = 0-read, ≥3-window, indexed, non-mirror, non-KEEP, un-missed, un-justified",
+          _dcC["eligible"] == 3 and set(_stemsC) == {"dead-ref", "linker", "dead-ref-twin"})
+    check("v0.1.67 gate vetoes tally independently (read · keep · justified · missed)",
+          _dcC["vetoed_read"] == 1 and _dcC["vetoed_keep"] == 1
+          and _dcC["vetoed_justified"] == 1 and _dcC["vetoed_missed"] == 1)
+    check("v0.1.67 gate: a fact edited mid-span counts only the windows it predates (fresh ⇒ not yet, not vetoed)",
+          "fresh-fact" not in _stemsC and _dcC["eligible"] + sum(
+              _dcC[k] for k in ("vetoed_read", "vetoed_keep", "vetoed_justified", "vetoed_missed")) == 7)
+    check("v0.1.67 rank: hook-cost desc (linker 300h > dead-ref 200h > twin 100h)",
+          _stemsC == ["linker", "dead-ref", "dead-ref-twin"])
+    _c0C = _dcC["candidates"][1]                                   # dead-ref — wikilinked from linker
+    check("v0.1.67 evidence: indegree counts the [[wikilink]] from another fact",
+          _c0C["indegree"] == 1 and _dcC["candidates"][0]["indegree"] == 0)
+    check("v0.1.67 evidence: nearest-description similarity ≥ 0.6 surfaces as merge evidence (deterministic pair)",
+          _c0C.get("similar") == "dead-ref-twin" and _c0C.get("ratio", 0) >= 0.6)
+    check("v0.1.67 evidence: zero_read_windows counts per-fact probative windows (3 for a pre-span fact)",
+          _c0C["zero_read_windows"] == 3)
+    check("v0.1.67 dormant short-circuit: < 3 probative windows ⇒ eligible 0, no candidates, no vetoes",
+          ms.demotion_candidates(_ffC, _idxC, {**_histC, "windows_full": 2}, _itxC)
+          == {"windows_full": 2, "eligible": 0, "candidates": [],
+              "vetoed_read": 0, "vetoed_keep": 0, "vetoed_justified": 0, "vetoed_missed": 0})
+    _h8C = {**_histC, "windows_full": 8, "window_starts": [_e1C] * 8, "miss_stems": []}
+    check("v0.1.67 justify re-fire boundary: suppressed while jw+REFIRE > wf, re-surfaces at exactly +REFIRE",
+          "justified-fact" in [c["stem"] for c in
+                               ms.demotion_candidates(_ffC, _idxC, _h8C, _itxC,
+                                                      justify={"justified-fact": 3})["candidates"]]
+          and "justified-fact" not in [c["stem"] for c in
+                                       ms.demotion_candidates(_ffC, _idxC, {**_h8C, "windows_full": 7,
+                                                                            "window_starts": [_e1C] * 7},
+                                                              _itxC, justify={"justified-fact": 3})["candidates"]])
+    _manyC = [_factC(f"bulk-{i}", f"an unread reference row number {i}", 1000.0) for i in range(7)]
+    _midxC = {f"bulk-{i}" for i in range(7)}
+    # 20-char steps = 5-token steps — a 1-char step would tie inside one ceil(chars/4) bucket and
+    # the (-hook, stem) tiebreak would sort alphabetically instead of by cost.
+    _mitxC = "# Memory Index\n" + "\n".join(f"- [bulk-{i}](bulk-{i}.md) — " + "h" * (10 + 20 * i) for i in range(7)) + "\n"
+    _mrkC = ms.demotion_candidates(_manyC, _midxC, {**_histC, "per_fact": {}, "miss_stems": []}, _mitxC)
+    check("v0.1.67 cap: 7 eligible → 5 surfaced (bottom-K), eligible reports the true count",
+          _mrkC["eligible"] == 7 and len(_mrkC["candidates"]) == ms._DEMOTION_BOTTOM_K
+          and _mrkC["candidates"][0]["stem"] == "bulk-6")
+
+# (6) validator backstops — additive; a clean/legacy record stays quiet
+check("v0.1.67 validate: usage.misses non-list + over-cap both warn; capped list is quiet",
+      any("usage.misses is not a list" in w for w in ms.validate_cycle_record({"usage": {"misses": 3}}))
+      and any("usage.misses exceeds" in w for w in ms.validate_cycle_record(
+          {"usage": {"misses": [str(i) for i in range(ms._USAGE_FACT_CAP + 1)]}}))
+      and not ms.validate_cycle_record({"usage": {"misses": ["a"]}}))
+check("v0.1.67 validate: demotion non-dict warns; surfaced over the rank cap warns; struck non-list warns",
+      any("demotion is not a dict" in w for w in ms.validate_cycle_record({"demotion": []}))
+      and any("demotion.surfaced exceeds" in w for w in ms.validate_cycle_record(
+          {"demotion": {"surfaced": [str(i) for i in range(ms._DEMOTION_BOTTOM_K + 1)]}}))
+      and any("demotion.struck is not a list" in w for w in ms.validate_cycle_record({"demotion": {"struck": 0}}))
+      and not ms.validate_cycle_record({"demotion": {"windows_observed": 1, "eligible": 0, "surfaced": []}}))
+
+# (7) inject_usage — the current-window STRIKE (script-truth; the model check is belt-and-suspenders)
+with _tfB.TemporaryDirectory() as _tdC3:
+    _seedC = Path(_tdC3) / "cycle.json"
+    _seedC.write_text(_jsonB.dumps({"project": "p", "demotion": {
+        "windows_observed": 4, "eligible": 2, "surfaced": ["keep-me", "just-read"]}}), encoding="utf-8")
+    _blkC = {"window": "w", "transcripts": 1, "dream_excluded": 0, "reads": 1, "facts_read": 1,
+             "per_fact": [{"name": "just-read", "reads": 1, "last": "t"}], "archive_reads": 0, "misses": []}
+    with _ctxB.redirect_stderr(_ioB.StringIO()) as _errC3:
+        _okC3 = es.inject_usage(str(_seedC), _blkC)
+    _afterC3 = _jsonB.loads(_seedC.read_text(encoding="utf-8"))
+    check("v0.1.67 inject_usage strike: a surfaced stem read THIS window moves surfaced → struck (stderr-logged)",
+          _okC3 and _afterC3["demotion"]["surfaced"] == ["keep-me"]
+          and _afterC3["demotion"]["struck"] == ["just-read"]
+          and "struck 1 surfaced stem" in _errC3.getvalue()
+          and _afterC3["usage"]["per_fact"][0]["name"] == "just-read")
+    _seedC.write_text(_jsonB.dumps({"project": "p", "demotion": {"surfaced": ["keep-me"]}}), encoding="utf-8")
+    with _ctxB.redirect_stderr(_ioB.StringIO()):
+        es.inject_usage(str(_seedC), {**_blkC, "per_fact": []})
+    check("v0.1.67 inject_usage: no reads this window → surfaced untouched, no struck key invented",
+          _jsonB.loads(_seedC.read_text(encoding="utf-8"))["demotion"] == {"surfaced": ["keep-me"]})
+
+# (8) the miss-detector — recall_scan tiering, window-start via --before, uncapped-tally misses
+def _rlC(ts: str, kind: str, path_or_cmd: str) -> str:
+    tu = ({"type": "tool_use", "name": "Bash", "input": {"command": path_or_cmd}} if kind == "arc"
+          else {"type": "tool_use", "name": "Read", "input": {"file_path": path_or_cmd}})
+    return _jsonB.dumps({"timestamp": ts, "message": {"content": [tu]}})
+
+with _tfB.TemporaryDirectory() as _tdC4:
+    _homeC4 = Path(_tdC4)
+    _projC4 = (_homeC4 / "src" / "missproj").resolve(); _projC4.mkdir(parents=True)
+    _prC4 = _homeC4 / ".claude" / "projects" / ms.slug_for(_projC4)
+    _stC4 = _prC4 / "memory"; _stC4.mkdir(parents=True)
+    (_stC4 / "MEMORY.md").write_text("# Memory Index\n- [ind](ind.md) — indexed fact\n", encoding="utf-8")
+    (_stC4 / "SHIPPED.md").write_text("archive\n- [arch1](arch1.md) — done\n- [arch2](arch2.md) — done\n"
+                                      "- [zz-arch](zz-arch.md) — done\n", encoding="utf-8")
+    for _fnC4 in ("ind", "arch1", "arch2", "zz-arch"):
+        (_stC4 / f"{_fnC4}.md").write_text(f"---\nname: {_fnC4}\n---\nbody\n", encoding="utf-8")
+    _linesC4 = [_rlC("2026-01-01T01:00:00Z", "read", str(_stC4 / "arch1.md")),      # organic ARCHIVED read → MISS
+                _rlC("2026-01-01T02:00:00Z", "read", str(_stC4 / "ind.md")),        # organic indexed read → not a miss
+                _rlC("2026-01-01T03:00:00Z", "arc", "CM_DREAM_ARC=1 python3 x.py"),
+                _rlC("2026-01-01T04:00:00Z", "read", str(_stC4 / "arch2.md")),      # inside the arc span → excluded
+                _rlC("2026-01-01T05:00:00Z", "arc", "CM_DREAM_ARC=1 python3 y.py")]
+    (_prC4 / "t1.jsonl").write_text("\n".join(_linesC4) + "\n", encoding="utf-8")
+    _oldHomeC4 = _osB.environ.get("HOME"); _osB.environ["HOME"] = str(_homeC4)
+    try:
+        _u1C4 = es.recall_scan(_projC4, "")
+        check("v0.1.67 miss-detector: an organic archived-tier read is a MISS; indexed isn't; arc-span is excluded",
+              _u1C4["misses"] == ["arch1"] and _u1C4["archive_reads"] == 1
+              and _u1C4["dream_excluded"] == 1 and _u1C4["reads"] == 2)
+        _snapC4 = Path(_tdC4) / "before.json"
+        _snapC4.write_text(_jsonB.dumps({
+            "memory/MEMORY.md": {"store": "memory",
+                                 "content": "# Memory Index\n- [ind](ind.md) — x\n- [arch1](arch1.md) — y\n"},
+            "memory/SHIPPED.md": {"store": "memory",
+                                  "content": "archive\n- [arch2](arch2.md) — a\n- [zz-arch](zz-arch.md) — b\n- [old](old.md) — c\n"},
+        }), encoding="utf-8")
+        _u2C4 = es.recall_scan(_projC4, "", before=str(_snapC4))
+        check("v0.1.67 miss-detector --before: tier at WINDOW START — a fact archived THIS pass is NOT a miss",
+              _u2C4["misses"] == [] and _u2C4["archive_reads"] == 0)
+        # uncapped-tally leg: 41 organic reads push per_fact past the cap; the archived read (zz-arch,
+        # sorts last alphabetically at equal reads) falls OFF per_fact yet still lands in misses.
+        _bulkC4 = [_rlC(f"2026-01-01T06:{i:02d}:00Z", "read", str(_stC4 / f"f{i:02d}.md")) for i in range(41)]
+        _bulkC4.append(_rlC("2026-01-01T07:00:00Z", "read", str(_stC4 / "zz-arch.md")))
+        (_prC4 / "t2.jsonl").write_text("\n".join(_bulkC4) + "\n", encoding="utf-8")
+        (_prC4 / "t1.jsonl").unlink()
+        _u3C4 = es.recall_scan(_projC4, "")
+        check("v0.1.67 miss-detector: misses derive from the UNCAPPED tally — a miss beyond the per_fact cap still lands",
+              "zz-arch" in _u3C4["misses"]
+              and "zz-arch" not in [f["name"] for f in _u3C4["per_fact"]]
+              and len(_u3C4["per_fact"]) == es._USAGE_FACT_CAP and _u3C4["facts_read"] == 42)
+    finally:
+        if _oldHomeC4 is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldHomeC4
+
+# (9) seed integration — build_context + seed_record carry the demotion block (dormant AND eligible)
+with _tfB.TemporaryDirectory() as _tdC5:
+    _homeC5 = Path(_tdC5)
+    _projC5 = (_homeC5 / "src" / "seedproj").resolve(); _projC5.mkdir(parents=True)
+    _stC5 = _homeC5 / ".claude" / "projects" / ms.slug_for(_projC5) / "memory"; _stC5.mkdir(parents=True)
+    (_stC5 / "MEMORY.md").write_text("# Memory Index\n- [old-ref](old-ref.md) — an aging pointer\n", encoding="utf-8")
+    (_stC5 / "old-ref.md").write_text('---\nname: old-ref\ndescription: "an aging reference pointer"\n'
+                                      "metadata:\n  node_type: memory\n  type: reference\n---\nbody\n",
+                                      encoding="utf-8")
+    _osB.utime(_stC5 / "old-ref.md", (1000.0, 1000.0))
+    _oldHomeC5 = _osB.environ.get("HOME"); _osB.environ["HOME"] = str(_homeC5)
+    try:
+        _rec5a = ms.seed_record(ms.build_context(_projC5))
+        check("v0.1.67 seed: a log-less store seeds an HONEST dormant block (0 windows, 0 eligible)",
+              _rec5a.get("demotion") == {"windows_observed": 0, "eligible": 0, "surfaced": []})
+        (_stC5 / ".consolidation-log.jsonl").write_text("\n".join(
+            _uwC(f"2026-0{i}-01T00:00:00Z..2026-0{i}-02T00:00:00Z", 1, 0, []) for i in (1, 2, 3)) + "\n",
+            encoding="utf-8")
+        _rec5b = ms.seed_record(ms.build_context(_projC5))
+        check("v0.1.67 seed: 3 probative windows + an old 0-read fact → eligible, surfaced by name",
+              _rec5b.get("demotion") == {"windows_observed": 3, "eligible": 1, "surfaced": ["old-ref"]})
+    finally:
+        if _oldHomeC5 is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldHomeC5
+
+# (10) render — additive DEMOTION/MISS surfaces; legacy renders byte-identically (key-presence gates)
+_drecC = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                               "demotion": {"windows_observed": 1, "eligible": 0}})
+check("v0.1.67 render: a dormant demotion block renders the DORMANT line",
+      "DEMOTION" in rd.render(_drecC) and "dormant — 1 probative" in rd.render(_drecC))
+_drec2C = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                                "demotion": {"windows_observed": 4, "eligible": 2,
+                                             "surfaced": ["a-fact"], "struck": ["b-fact"],
+                                             "verdict": "demoted 1 · justified 1"}})
+_dout2C = rd.render(_drec2C)
+check("v0.1.67 render: eligible block shows surfaced + struck + the verdict sentence",
+      "surfaced: a-fact" in _dout2C and "b-fact" in _dout2C and "verdict:" in _dout2C
+      and "demoted 1 · justified 1" in _dout2C)
+_mrecC = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                               "usage": {"reads": 3, "facts_read": 2, "transcripts": 1, "dream_excluded": 0,
+                                         "archive_reads": 2, "misses": ["mfact"],
+                                         "per_fact": [{"name": "mfact", "reads": 2, "last": "t"}]}})
+check("v0.1.67 render: a non-empty misses list renders the red demotion-MISS line naming the fact",
+      "demotion MISS" in rd.render(_mrecC) and "mfact" in rd.render(_mrecC))
+_legC = rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                                        "usage": {"reads": 1, "facts_read": 1, "transcripts": 1,
+                                                  "dream_excluded": 0, "per_fact": []}}))
+check("v0.1.67 render: legacy records (no demotion / no misses keys) carry NEITHER new surface",
+      "DEMOTION" not in _legC and "demotion MISS" not in _legC)
+
+# (11) fleet_utility — mirror-attributed reads, shadow separation, unheld = 0 tax, read-only, JSON-safe
+with _tfB.TemporaryDirectory() as _tdC6:
+    _homeC6 = Path(_tdC6)
+    _projC6 = (_homeC6 / "src" / "trigproj").resolve(); _projC6.mkdir(parents=True)
+    _glC6 = _homeC6 / "global-mem"; _glC6.mkdir(parents=True)
+    (_glC6 / "canon-x.md").write_text('---\nname: canon-x\ndescription: "a shared canonical"\nmetadata:\n'
+                                      "  node_type: memory\n  scope: user-global\n  type: feedback\n"
+                                      "  projects: [nodeA]\n---\nbody\n", encoding="utf-8")
+    (_glC6 / "canon-unheld.md").write_text('---\nname: canon-unheld\ndescription: "held by nobody"\nmetadata:\n'
+                                           "  node_type: memory\n  scope: user-global\n  type: feedback\n---\nbody\n",
+                                           encoding="utf-8")
+    _projRootC6 = _homeC6 / ".claude" / "projects"
+    _nAC6 = _projRootC6 / "-src-nodeA" / "memory"; _nAC6.mkdir(parents=True)
+    _nBC6 = _projRootC6 / "-src-nodeB" / "memory"; _nBC6.mkdir(parents=True)
+    _canonTextC6 = (_glC6 / "canon-x.md").read_text(encoding="utf-8")
+    (_nAC6 / "canon-x.md").write_text(sg._as_mirror(_canonTextC6, "canon-x"), encoding="utf-8")
+    (_nAC6 / ".consolidation-log.jsonl").write_text(
+        _uwC("2026-01-01T00:00:00Z..2026-01-02T00:00:00Z", 1, 1,
+             [{"name": "canon-x", "reads": 3, "last": "2026-01-01T12:00:00Z"}]) + "\n", encoding="utf-8")
+    # node B: a mirror of the UNHELD canonical (so it counts as a network node) + a same-stem LOCAL
+    # (never-pulled) fact shadowing canon-x, with reads that must NOT be attributed.
+    (_nBC6 / "canon-unheld.md").write_text(
+        sg._as_mirror((_glC6 / "canon-unheld.md").read_text(encoding="utf-8"), "canon-unheld"), encoding="utf-8")
+    (_nBC6 / "canon-x.md").write_text("---\nname: canon-x\nmetadata:\n  node_type: memory\n---\nlocal twin\n",
+                                      encoding="utf-8")
+    (_nBC6 / ".consolidation-log.jsonl").write_text(
+        _uwC("2026-01-03T00:00:00Z..2026-01-04T00:00:00Z", 1, 1,
+             [{"name": "canon-x", "reads": 7, "last": "2026-01-03T12:00:00Z"}]) + "\n", encoding="utf-8")
+    _hashesC6 = {p: _hlC.sha1(p.read_bytes()).hexdigest() for p in _projRootC6.rglob("*") if p.is_file()}
+    _oldHomeC6 = _osB.environ.get("HOME"); _osB.environ["HOME"] = str(_homeC6)
+    _oldGlobalC6 = sg.GLOBAL
+    sg.GLOBAL = _glC6
+    try:
+        _fuC6 = sg.fleet_utility(_projC6)
+        _byC6 = {e["name"]: e for e in _fuC6["canonicals"]}
+        check("v0.1.67 --utility: reads attribute ONLY through a mirror (nodeA 3); a same-stem local is shadow (7)",
+              _byC6["canon-x"]["reads"] == 3 and _byC6["canon-x"].get("shadow_reads") == 7
+              and _byC6["canon-x"]["windows"] == 1)
+        check("v0.1.67 --utility: fleet_tax = pointer × holders; an unheld canonical is 0 tax and listed",
+              _byC6["canon-x"]["fleet_tax"] == _byC6["canon-x"]["pointer_tok"] * 1
+              and _byC6["canon-unheld"]["fleet_tax"] == 0 and _fuC6["unheld"] == ["canon-unheld"])
+        check("v0.1.67 --utility: nodes_reporting counts probative-window stores; payload is JSON-safe",
+              _fuC6["nodes_reporting"] == 2 and _fuC6["nodes"] == 2
+              and isinstance(_jsonB.dumps(_fuC6), str))
+        check("v0.1.67 --utility: READ-ONLY — no store file changed",
+              _hashesC6 == {p: _hlC.sha1(p.read_bytes()).hexdigest()
+                            for p in _projRootC6.rglob("*") if p.is_file()})
+    finally:
+        sg.GLOBAL = _oldGlobalC6
+        if _oldHomeC6 is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldHomeC6
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
