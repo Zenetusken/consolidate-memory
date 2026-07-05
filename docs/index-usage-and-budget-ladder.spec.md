@@ -2,8 +2,11 @@
 
 **Status:** **Phase A SHIPPED** (`main`, v0.1.63, PR #71). **Phase B SHIPPED** (`main`, v0.1.66,
 PR #75 — built to the 3-lens-gate-revised design below, then hardened by a max-effort code-review
-workflow: 3 confirmed findings, all fixed pre-merge). **Phase C SPECCED** (2026-07-04, §Phase C below;
-gated by the code-review skill on this spec before build, per the established gate discipline).
+workflow: 3 confirmed findings, all fixed pre-merge). **Phase C SPECCED then REVISED** (2026-07-05) after a
+code-review-skill gate on the draft (6 finder angles completed; the verifier fleet died on session
+limits, so every one of the 44 pooled candidates was verified inline against the live code — ~20
+distinct findings survived, including two policy-killing defects in the draft's evidence-gate design;
+§Phase C below is the POST-gate design).
 **Phase B REVISED** after an independent
 3-lens spec-review gate (2026-07-04, this repo's own established precedent — see
 `docs/dream-procedure-integrity.spec.md`) found the original B1 design load-bearing-broken: re-keying
@@ -25,15 +28,19 @@ deterministic-release-versioning policy, is also a **patch** — additive only (
 functions, additive `total=False` schema keys, a new read-only sync mode, warn-only advisories; nothing
 existing changes meaning).
 
-**Phase C status note (2026-07-04):** the original §Deferred text said Phase C "gets its own spec once
-~5–10 dreams of usage data exist." That precondition is **MEASURED unmet**: 20 logged cycles on this
-repo, exactly ONE carries a `usage` block (2026-07-04T18:45 — 0 organic reads over 2 transcripts, 3
-dream-procedure reads excluded), and no other fleet node has run a post-Phase-A dream at all. Rather
-than wait (or fake the data — the rigor-bands lesson), §Phase C moves the precondition **from spec-time
-to runtime**: the demotion rank carries an EVIDENCE GATE that keeps the policy structurally DORMANT
-until enough full-fidelity usage windows accrue — the feature ships honest-and-inert on every real node
-today (the same shape as Phase B's ceiling, which no real store can currently trip), and wakes only as
-the data it needs actually exists.
+**Phase C status note (2026-07-04; corrected 2026-07-05 — the gate found the draft mis-attributed a
+quote here):** the binding spec-time precondition is §Design principles' **instrument-before-policy
+pin** — *"The demotion policy (Phase C) is specced only after real usage data accrues."* (The draft
+quoted a "~5–10 dreams" figure as §Deferred text; no such text exists — that number was a working
+estimate, kept below only as an unattributed order of magnitude.) The pin's condition is **MEASURED
+unmet**: 20 logged cycles on this repo, exactly ONE carries a `usage` block (2026-07-04T18:45 — 0
+organic reads over 2 transcripts, 3 dream-procedure reads excluded), and no other fleet node has run a
+post-Phase-A dream at all. §Phase C therefore AMENDS the pin explicitly rather than violating it
+silently: the *policy* still acts only after real usage data accrues — what ships now is the rank
+PLUMBING plus a runtime EVIDENCE GATE that keeps it structurally DORMANT (per-fact, not just
+store-level) until the data exists. Shipping dormant machinery ≠ acting on absent data; the feature is
+honest-and-inert on every real node today (the same shape as Phase B's ceiling, which no real store can
+currently trip) and wakes per-fact as evidence accrues, on the order of ~5–10 instrumented dreams.
 
 ## The problem (MEASURED, not asserted)
 
@@ -390,185 +397,272 @@ Phase B:
 ## Phase C — the utility policy (rank-under-budget demotion · fleet utility · the miss-detector)
 
 **What it closes.** Root cause #1 (no utility axis) got its *instrument* in Phase A; Phase C is the
-*policy* that consumes it — plus the two evidence gaps §Deferred recorded: the gc lever's missing
-fleet-wide utility evidence, and the global store's unmeasured fleet tax. The closed-loop miss-detector
-makes the policy self-auditing — and it is exactly the **longitudinal miss-detection instrument** the
-rigor-bands decision said real calibration requires (the calibration this repo deliberately refused to
-fake with a synthetic A/B sweep). Phase C builds that instrument; the refit itself stays future work.
+*policy* that consumes it — plus the two evidence gaps the original §Deferred stub (superseded by this
+section) recorded: the gc lever's missing fleet-wide utility evidence, and the global store's
+unmeasured fleet tax. The closed-loop miss-detector makes the policy self-auditing — and it is exactly
+the **longitudinal miss-detection instrument** the rigor-bands decision said real calibration requires
+(the calibration this repo deliberately refused to fake with a synthetic A/B sweep). Phase C builds
+that instrument; the refit itself stays future work.
 
-**Binding pins (from §Design principles, quoted as that section requires):** *"Zero reads ≠ zero use —
-… Phase C must treat 0-reads as absence of evidence requiring corroboration (age, verification history,
-redundancy), never as sole grounds to demote."* · *"Script-truth counts, never hand-authored."* ·
-*"Never delete verified truth over budget; change its LOAD tier."* · *"The estimator stays chars/4 and
-honest (`≈`)."* · *"Report-then-apply everywhere, unchanged. Nothing here auto-writes, auto-prunes, or
-auto-demotes."* Every mechanism below is designed inside these five.
+**Binding pins (ALL SIX of §Design principles, quoted as the §Deferred stub required):**
+1. *"Instrument before policy … The demotion policy (Phase C) is specced only after real usage data
+   accrues."* — **explicitly AMENDED, not silently dropped** (the gate caught the draft omitting it):
+   see the status note above. The policy still *acts* only on accrued data; what ships is dormant
+   plumbing behind a per-fact evidence gate.
+2. *"Zero reads ≠ zero use … Phase C must treat 0-reads as absence of evidence requiring corroboration
+   (age, verification history, redundancy), never as sole grounds to demote."*
+3. *"Script-truth counts, never hand-authored."*
+4. *"Never delete verified truth over budget; change its LOAD tier."*
+5. *"The estimator stays chars/4 and honest (`≈`)."*
+6. *"Report-then-apply everywhere, unchanged. Nothing here auto-writes, auto-prunes, or auto-demotes."*
+
+**Naming (gate finding): the record block is `demotion`, NOT `lifecycle`** — render_dashboard already
+has an entries[]-derived "lifecycle" line ("Lifecycle counts are DERIVED from entries[] (single source
+of truth)", render_dashboard.py:268); reusing the word for a new hand-adjacent block invites exactly
+the drift that convention exists to prevent. Constants are `_DEMOTION_*`; the state key is
+`demotion_justify`.
+
+### C0. Shared plumbing the gate forced into the open
+
+- **`_parse_ts` RELOCATES to memory_status.py** (the dependency root). C1/C2 must parse window-`since`
+  ISO stamps and compare them to `st_mtime` epochs; THE single timestamp parser lives in
+  extract_signals.py, which imports FROM memory_status — reusing it in place is a circular import, and
+  a second local parser is the documented already-bitten divergence class (extract_signals.py:278-282).
+  Pure relocation; extract_signals imports it back; a smoke pin asserts the two modules resolve the
+  SAME function object. All epoch↔ISO comparisons go through it (never lexicographic across mixed
+  offsets; never a bare `fromisoformat().timestamp()` whose naive-=-LOCAL assumption the parser's own
+  docstring warns about).
+- **A shared cycle-log reader.** `usage_history` must not become the second independent
+  `.consolidation-log.jsonl` line-parser beside `render_html.read_history` (the render_log-reused one).
+  A small `iter_cycle_log(path)` lands in memory_status (guarded line-parse, tail-capped at
+  `_LOG_TAIL_CAP = 500` lines — bounded Phase-0 cost on an append-only log; today's log is 20 lines);
+  `usage_history` builds on it and `render_html.read_history` refactors onto it, behavior-identical
+  (smoke-guarded).
+- **`_USAGE_FACT_CAP` rises 20 → 40** (producer `extract_signals`, the memory_status mirror, the
+  validator backstop, and the smoke pins move together — the pinning infrastructure exists for exactly
+  this). Reason (gate finding): the fleet's heaviest-usage node measured 22 distinct facts read in one
+  window — above the old cap, so its every window would be cap-truncated and non-probative, keeping the
+  policy dormant precisely where usage evidence is richest. 40 matches `_DISTILL_CAPS[0]`'s scale;
+  additive-safe (old records with ≤20 rows stay valid under a raised upper bound).
 
 ### C1. Longitudinal usage aggregation — `usage_history()` (memory_status.py)
 
 The per-window `usage` blocks already persist forever in `<store>/.consolidation-log.jsonl` (written by
-`render_dashboard --persist`; the live log verified above). A new reader aggregates them:
+`render_dashboard --persist`; the live log verified above). The aggregator:
 
 ```python
 def usage_history(auto_mem: Path) -> dict:
-    # {"windows_full": int, "per_fact": {stem: {"reads": int, "last": iso}},
-    #  "span_start": iso|"" , "miss_stems": frozenset}
+    # {"windows_full": int,                              # store-level dormancy display
+    #  "window_starts": list[float],                     # epoch starts of PROBATIVE windows (see below)
+    #  "per_fact": {stem: {"reads": int, "last": iso}},  # merged over ALL usage blocks
+    #  "miss_stems": list[str]}                          # sorted; JSON-safe by construction
 ```
 
-- A logged cycle counts as a **full-fidelity window** iff its `usage` block is a dict with
-  `transcripts ≥ 1` AND `facts_read == len(per_fact)` — a 0-transcript window observed nothing
-  (retention gap), and a cap-truncated window (`facts_read > len(per_fact)`, possible past
-  `_USAGE_FACT_CAP`) cannot prove any fact unread. Both are EXCLUDED from the evidence count
-  (conservative by construction, per the pin).
-- `per_fact` merges reads by sum, `last` by max, across counted windows. `span_start` = the `since`
-  side of the OLDEST counted window's `window` string (unparseable ⇒ `""` ⇒ nothing is eligible — fail
-  safe). `miss_stems` = the union of every logged `usage.misses` list (C3) — misses persist in the log
+- **Reads merge from EVERY logged `usage` block** — full, truncated, or empty windows alike: positive
+  read evidence is never discarded (gate finding: the draft merged reads only from full windows, so a
+  fact genuinely read in a cap-truncated window could rank as 0-reads — anti-conservative, violating
+  its own "any read ⇒ never a candidate"). `reads` sums; `last` merges by `_parse_ts` epoch max
+  (lexicographic max only as the unparseable fallback).
+- A window is **probative for zero-read evidence** iff `transcripts ≥ 1` AND
+  `facts_read == len(per_fact)` (not cap-truncated) AND its `window` since-side parses via `_parse_ts`.
+  A 0-transcript window observed nothing; a truncated window cannot prove any fact unread; an
+  unparseable since-side — including every store's FIRST window, whose literal since is
+  `"(no marker — all transcripts)"` (recall_scan) — cannot be placed in time. Each such window is
+  simply **skipped for evidence counting** (gate finding: the draft anchored a global `span_start` to
+  the OLDEST window's since-side, which on that first window latches to `""` FOREVER in an append-only
+  log — the policy would have shipped permanently dead, not dormant). `windows_full` counts probative
+  windows; `window_starts` carries their epoch starts for C2's per-fact counting.
+- `miss_stems` = the sorted union of every logged `usage.misses` list (C3) — misses persist in the log
   even after the transcripts that revealed them rotate away.
 - Malformed lines/blocks are skipped, never raised on (the store-scan convention). READ-ONLY.
 
 ### C2. The demotion rank — `demotion_candidates()` (memory_status.py; the `*_candidates` family)
 
 PURE, RANKS only, same contract as `archive_candidates`/`defrag_candidates`/`remediation_triage`: the
-script surfaces + the model judges content + the user confirms; **no write path**. A fact is
-**eligible** only when ALL of the following hold (the evidence gate — the §Design pin made structural):
+script surfaces + the model judges content + the user confirms; **no write path**. Evidence is counted
+**per fact** (gate finding: the draft's single store-level span anchor made every fact created or
+edited after the first instrumented window PERMANENTLY ineligible — the policy would have decayed
+toward dead as the store evolved). A fact's **zero-read windows** = the probative windows whose epoch
+start ≥ the fact's `st_mtime` (the fact, in its current form, existed through the whole window; an
+edit resets mtime and restarts the clock — undercounts eligibility, the safe direction). A fact is
+**eligible** only when ALL of the following hold:
 
-1. `windows_full ≥ _LIFECYCLE_MIN_WINDOWS` (**3**; a coarse, documented-tunable hint — the rigor-bands
-   posture, NOT a calibrated point). Below it the whole rank is DORMANT (`eligible = 0` always).
+1. **Per-fact `zero_read_windows ≥ _DEMOTION_MIN_WINDOWS`** (**3**; a coarse, documented-tunable hint —
+   the rigor-bands posture, NOT a calibrated point). New facts accrue eligibility as new windows
+   accrue; nothing latches.
 2. The stem is **indexed** (`index_fact_names` — only an indexed pointer taxes the always-loaded tier;
    the `archive_candidates` precedent).
 3. **Not a mirror** (`_is_mirror` — a mirror is GC's/the canonical's domain, `remediation_triage`
    precedent; its utility question is C4's, fleet-wide).
-4. **0 recorded reads** across all counted windows (any read ⇒ never a candidate).
-5. The fact **existed through the observed span**: `st_mtime ≤ span_start` (mtime is edit-time, so a
-   recently-edited fact reads as new ⇒ excluded — undercounts eligibility, the safe direction).
-6. **No KEEP-signal in the frontmatter description** (`_KEEP_RE` — the same veto, same
+4. **0 merged reads in `per_fact`** — over ALL windows, truncated ones included (C1); any recorded
+   read, ever, ⇒ never a candidate.
+5. **No KEEP-signal in the frontmatter description** (`_KEEP_RE` — the same veto, same
    sufficient-not-necessary caveat, as `archive_candidates`: a lesson/negative/directive STAYS; the
-   demotion rank exists to find dead *reference/status* weight, not to relitigate lessons).
-7. **Not in `miss_stems`** — a fact once demoted and then organically read from the archive (C3) is
+   demotion rank exists to find dead *reference/status* weight, not to relitigate lessons — see §Honest
+   limits for what this deliberately leaves out of reach).
+6. **Not in `miss_stems`** — a fact once demoted and then organically read from the archive (C3) is
    scarred: it proved live once; the rank never surfaces it again.
-8. **Not suppressed by a live per-item counter-justify** (see dispositions): the state file's
-   `lifecycle_justify[stem]` suppresses until `windows_full` grows by `_LIFECYCLE_JUSTIFY_REFIRE`
-   (**5**) past the justification's recorded window count — the `standing_justify` delta-detector
-   shape, per-item. A malformed entry does NOT suppress (surfacing is the safe direction here: the
-   output is report-only — the exact INVERSE of `_standing_baseline`'s fail-open-to-FIRE, and for the
-   same reason: err toward the human seeing it).
+7. **Not suppressed by a live per-item counter-justify** (see dispositions): the state file's
+   `demotion_justify[stem]` suppresses until `windows_full` grows by `_DEMOTION_JUSTIFY_REFIRE` (**5**)
+   past the justification's recorded window count — the `standing_justify` delta-detector shape,
+   per-item. A malformed entry does NOT suppress — the **SAME fail direction as `_standing_baseline`**
+   (malformed ⇒ the gate fires/the candidate surfaces; err toward the human seeing it — the gate
+   corrected the draft's mislabeling of this as an "inverse").
 
 Eligible facts are ranked by **`hook_tokens` desc** — the fact's actual pointer-line cost in the live
 index text (the measurable always-loaded relief its demotion frees; the `remediation_triage`
-sort-by-cost precedent) — and capped at `_LIFECYCLE_BOTTOM_K` (**5**) surfaced. **Deliberately NOT an
+sort-by-cost precedent) — and capped at `_DEMOTION_BOTTOM_K` (**5**) surfaced. **Deliberately NOT an
 ACT-R activation fit**: with eligibility already a binary evidence gate (0 reads × ≥3 windows ×
 corroboration), a parameterized decay score would be uncalibratable fake-empirics today (the
 rigor-bands lesson); "ACT-R-flavored" survives as the *shape* — evidence-of-disuse + cost — not as
 fitted constants. Each candidate carries its evidence for the model's judgment: `stem`, `hook_tokens`,
-`zero_read_windows`, `stale` (mtime ≤ marker — the existing re-verify signal), `indegree` (wikilink
-in-degree — safe for archive-demotion since the BODY stays and `valid_link_targets` spans all `*.md`,
-but load-bearing for a merge), and `similar`/`ratio` — the nearest same-store description by
-`difflib.SequenceMatcher` ratio ≥ `_LIFECYCLE_SIMILAR` (**0.6**; stdlib, deterministic) — the
-redundancy/merge evidence.
+`zero_read_windows`, `indegree` (wikilink in-degree — safe for archive-demotion since the BODY stays
+and `valid_link_targets` spans all `*.md`, but load-bearing for a merge), and `similar`/`ratio` — the
+nearest same-store description by `difflib.SequenceMatcher(None, a, b, autojunk=False)` over the
+canonically-sorted stem pair, ratio ≥ `_DEMOTION_SIMILAR` (**0.6**) — the redundancy/merge evidence
+(gate finding: default `autojunk` silently degrades ≥200-char comparisons, and an unstated argument
+order is an unstated nondeterminism). The draft's `stale` field is DROPPED — mtime ≤ marker is implied
+by the per-fact window requirement for every possible candidate (degenerate corroboration; the
+Phase-0 re-verify signal already reports staleness separately). The report line also prints the
+veto tallies (`vetoed: N keep-signal · M read · K justified`) so the evidence the gate withholds from
+candidacy is still VISIBLE — information for the human, without becoming policy.
 
 **Dispositions (model-judged in Phase 5, report-then-apply, recorded as `entries[]` rows per the
-existing conventions):**
+existing conventions — the record block does NOT re-tally them; see C6):**
 - **demote-to-archive** — the pointer moves `MEMORY.md` → an archive index (`SHIPPED.md` et al.); the
-  BODY STAYS on disk (the never-delete pin: a load-tier change only). A `reconciled` row — the exact
-  mechanics the completion-driven archive step already uses.
+  BODY STAYS on disk (pin 4: a load-tier change only). A `reconciled` row — the exact mechanics the
+  completion-driven archive step already uses.
 - **compress** — the hook is fat and the fact stays: tighten the `description:` (the fix site the
   fat-hook lint already names). A `corrected` row.
-- **merge** — fold into its `similar` neighbor (dedup by content judgment; refuse on doubt). `deleted`
-  + `corrected` rows.
+- **merge** — fold the fact's distinct content into its `similar` neighbor (a `corrected` row on the
+  neighbor), then rewrite the merged-out fact as a one-line `[[neighbor]]` redirect stub and demote its
+  pointer to the archive (a `reconciled` row). **No deletion under this policy** (gate finding: the
+  draft's `deleted` row contradicted pin 4, which it itself quoted); removing the stub later remains
+  the EXISTING user-confirmed prune path, untouched.
 - **counter-justify** — the fact stays as-is with a recorded reason (a `skipped` row), AND the Phase-5
-  marker write adds `lifecycle_justify: {"<stem>": {"windows": <windows_full>, "at": "<iso>"}}` to
+  marker write adds `demotion_justify: {"<stem>": {"windows": <windows_full>, "at": "<iso>"}}` to
   `.consolidation-state.json` (the `standing_justify` write precedent) so the same candidate doesn't
-  re-nag every dream (re-fires at +`_LIFECYCLE_JUSTIFY_REFIRE` windows).
+  re-nag every dream (re-fires at +`_DEMOTION_JUSTIFY_REFIRE` windows).
 
 ### C3. The miss-detector — `--recalls` tier classification (extract_signals.py)
 
 `recall_scan` already counts organic reads of every fact file; it just doesn't know the fact's TIER.
-Post-classify each organic per-fact stem at scan time: **archived-tier** = a `](stem.md)` link-target
-of an archive-index doc (`_is_archive_index` + `_LINK_RE`, both already imported/importable) AND not in
-`index_fact_names(MEMORY.md)` (indexed wins when both). Two additive `usage` keys, script-truth like
-the rest of the block: `archive_reads: int` (organic reads of archived-tier facts this window) and
-`misses: list[str]` (the archived-tier stems read, sorted, capped at `_USAGE_FACT_CAP` — the existing
-cap, validator-backstopped). **A miss is a transcript-visible demotion error**: the fact was moved out
-of the always-loaded tier, and a session needed it anyway. The loop closes twice: the dashboard
-surfaces it loud (C7), and `usage_history` folds it into `miss_stems` — permanently vetoing the stem
-from future candidacy (C2.7) — while Phase 5 proposes RE-PROMOTING the pointer to `MEMORY.md`
-(report-then-apply, a `reconciled` row). The span-exclusion classifier (`split_dream_span`) is
-UNTOUCHED — a dream-procedure read of an archived fact is still not a miss.
+Classify each organically-read stem: **archived-tier** = a `](stem.md)` link-target of an
+archive-index doc (`_is_archive_index` + `_LINK_RE`) AND not in `index_fact_names(MEMORY.md)` (indexed
+wins when both). Two additive `usage` keys, script-truth like the rest of the block:
+`archive_reads: int` and `misses: list[str]` — **computed from the UNCAPPED scan tally** (gate
+finding: deriving misses from the capped `per_fact` rows would let a rare archived read fall off the
+cap and vanish), sorted, with their own `_USAGE_FACT_CAP` bound, validator-backstopped.
+
+**Tier is judged against the WINDOW-START state, not the post-dream state** (gate finding): the SKILL's
+Phase-5 order runs the completion-archive step BEFORE the `--recalls` capture, so a fact archived
+*this* pass — whose organic reads happened while it was still indexed — would be misclassified as a
+miss. `--recalls` therefore accepts **`--before <snapshot>`** (the Phase-0 `--snapshot` path, already
+produced every dream and already consumed by `--audit`): when given, the index/archive membership used
+for tier classification is reconstructed from the snapshot's stored `memory/MEMORY.md` + archive-doc
+contents — the state that actually held during the window. Without the flag it falls back to the live
+store (documented limitation, and the SKILL step always passes it).
+
+**A miss is a transcript-visible demotion error**: the fact was moved out of the always-loaded tier,
+and a session needed it anyway. The loop closes twice: the dashboard surfaces it loud (C7), and
+`usage_history` folds it into `miss_stems` — permanently vetoing the stem from future candidacy
+(C2.6) — while Phase 5 proposes RE-PROMOTING the pointer to `MEMORY.md` (report-then-apply, a
+`reconciled` row). The span-exclusion classifier (`split_dream_span`) is UNTOUCHED — a dream-procedure
+read of an archived fact is still not a miss.
+
+**Current-window blindness is closed at the injection point** (gate finding: the rank is seeded at
+Phase 0 from the log, so a fact read organically THIS window could be surfaced and demoted in the very
+record that shows its reads): `inject_usage` — which already read-modify-writes the seed — additionally
+STRIKES from `demotion.surfaced` any stem with `reads > 0` in the block it is injecting, moving it to
+`demotion.struck` (script-truth, stderr-logged; the SKILL step ALSO instructs the cross-check, but the
+deterministic strike does not rely on it).
 
 ### C4. Fleet utility — `sync_global.py --utility [--json]` (the gc lever's missing evidence)
 
 A new READ-ONLY mode. Nodes = `_network_nodes()` ∪ the trigger store; per node, aggregate its log via
 `usage_history` (imported from memory_status — the dependency root, the established import direction).
-Join per **canonical** stem (`global_facts()` — a mirror keeps its canonical's stem by construction of
-`--pull`): `reads` summed across nodes, `nodes_reporting` (nodes with ≥1 full-fidelity window),
-`windows` summed, `last` (max ISO), `holders` (`_holders` provenance), `pointer_tok`
-(`est_tokens(_pointer_line(name, fm))`), and `fleet_tax = pointer_tok × max(1, len(holders))` — the
-per-session always-loaded cost this canonical imposes across the fleet. Report (canonicals sorted
-fleet_tax desc, zero-read-everywhere flagged) + `--json`. This is **evidence for the model's gc/demote
-judgment at Phase-5 step 2 and Phase-4 governance — never an auto-gc input**: scope/keep decisions stay
-CONTENT-gated (the governance pin: holders/adoption ≠ fit; utility evidence informs the human-confirmed
-judgment, it does not replace the cascade). Honesty figure printed in the header: `nodes_reporting /
-nodes` — per-node usage exists only where post-Phase-A dreams have run `--recalls` (today: 1 node, 1
-window, 0 reads — the mode ships as an instrument-coverage report first, an evidence table later).
+Join per **canonical** stem (`global_facts()`), with a **mirror check before attribution** (gate
+finding: a node-local, never-pulled fact can share a canonical's stem — the `present(local)` shadow
+case `run()` already recognizes — and stem-equality alone would attribute its reads to the canonical):
+a node's reads for stem X count toward canonical X only if the node's `X.md` `_is_mirror`; a same-stem
+non-mirror is tallied separately as `shadow` (reported, not attributed). Per canonical: `reads` summed
+across attributing nodes, `nodes_reporting` (nodes with ≥1 probative window), `windows` summed, `last`
+(epoch-max via `_parse_ts`), `holders` (`_holders` provenance), `pointer_tok`
+(`est_tokens(_pointer_line(name, fm))`), and **`fleet_tax = pointer_tok × len(holders)`** — zero for
+an unheld canonical (gate finding: the draft's `max(1, …)` charged a per-session cost nobody pays);
+unheld canonicals are listed separately with their would-be per-node cost. JSON payloads carry lists,
+never sets. Report (canonicals sorted fleet_tax desc, zero-read-everywhere flagged) + `--json`. This is
+**evidence for the model's gc/demote judgment at Phase-5 step 2 and Phase-4 governance — never an
+auto-gc input**: scope/keep decisions stay CONTENT-gated (the governance pin: holders/adoption ≠ fit).
+Two honesty figures print in the header: `nodes_reporting / nodes` (per-node usage exists only where
+post-Phase-A dreams have run `--recalls`), and the provenance caveat — `holders` is an UPPER BOUND
+(dead edges are reported by `--gc`, never auto-pruned, so fleet_tax systematically over-counts toward
+safety).
 
 ### C5. The global-store fleet-tax advisory (a budget of its own, warn-only)
 
-`GLOBAL_FLEET_TAX_ADVISORY` (sync_global.py, beside `GLOBAL`): an advisory ceiling on
-`Σ fleet_tax` over all canonicals — the figure C4 computes. Derivation at build time, stated in the
-code comment (the `HOOK_TOKEN_WARN`/`INDEX_TOKEN_BUDGET` measured-derivation precedent): measure the
-live fleet's Σ fleet_tax, add ~50% headroom, round. Two warn-only surfaces: the `--utility` report
-renders a gauge against it, and `promote()` prints an advisory line when the NEW canonical's marginal
-fleet tax pushes the projected total past it (`this canonical adds ≈N tok × M holder(s) …`). **Never a
-block, never a hold** — a hard fleet gate would be a new load-bearing mechanism needing its own
-oracle-grade gate review (recorded in §Deferred beyond Phase C). No cycle-record change for C4/C5: the
-`network` block already carries the per-node mirror attribution; the fleet-tax view is a report.
+`GLOBAL_FLEET_TAX_ADVISORY` (sync_global.py, beside `GLOBAL`): an advisory ceiling on `Σ fleet_tax`
+over all canonicals — the figure C4 computes, on the same stated upper-bound basis. Derivation at build
+time, stated in the code comment (the `HOOK_TOKEN_WARN`/`INDEX_TOKEN_BUDGET` measured-derivation
+precedent): measure the live fleet's Σ fleet_tax, add ~50% headroom, round. Two warn-only surfaces: the
+`--utility` report renders a gauge against it, and `promote()` prints an advisory line when the NEW
+canonical's marginal fleet tax pushes the projected total past it (`this canonical adds ≈N tok × M
+holder(s) …`). **Never a block, never a hold** — a hard fleet gate would be a new load-bearing
+mechanism needing its own oracle-grade gate review (recorded in §Deferred beyond Phase C). No
+cycle-record change for C4/C5: the `network` block already carries the per-node mirror attribution; the
+fleet-tax view is a report.
 
 ### C6. Contract changes (all additive, `total=False`)
 
 - `Usage` gains `archive_reads: int` + `misses: list[str]` (script-injected by `--recalls` only).
-- `CycleRecord` gains `lifecycle: Lifecycle`:
+- `CycleRecord` gains `demotion: Demotion`:
   ```python
-  class Lifecycle(TypedDict, total=False):
-      windows_observed: int   # script-seeded: usage_history windows_full
-      eligible: int           # script-seeded: candidates past the evidence gate
-      surfaced: list[str]     # script-seeded: bottom-K stems (≤ _LIFECYCLE_BOTTOM_K)
-      demoted: int            # model, Phase 5: dispositions actually applied
-      compressed: int
-      merged: int
-      justified: int
-      verdict: str            # one sentence — "ran and proposed nothing" ≠ "never ran" (the distill precedent)
+  class Demotion(TypedDict, total=False):
+      windows_observed: int   # script-seeded: usage_history windows_full (probative windows)
+      eligible: int           # script-seeded: facts past the per-fact evidence gate
+      surfaced: list[str]     # script-seeded: bottom-K stems (≤ _DEMOTION_BOTTOM_K)
+      struck: list[str]       # script-written by inject_usage: surfaced stems read THIS window
+      verdict: str            # the ONE model-authored sentence — "ran and proposed nothing" ≠ "never ran"
   ```
-  Seeded by `seed_record` whenever the store exists (a DORMANT pass records `windows_observed`/`eligible: 0`
-  honestly); disposition counts + `verdict` are model-filled in Phase 5.
-- `validate_cycle_record`: `usage.misses` list-check + cap backstop (`_USAGE_FACT_CAP`); `lifecycle` in
-  the top-level dict-check tuple; `lifecycle.surfaced` list-check + cap backstop (`_LIFECYCLE_BOTTOM_K`
-  — producer and validator live in the SAME module here, so no cross-module mirror/smoke-pin is needed,
-  unlike `_DISTILL_CAPS`/`_USAGE_FACT_CAP`).
-- State file: `lifecycle_justify` (model-written in the Phase-5 marker write; read by a
-  `_standing_baseline`-style guarded reader that treats malformed as not-suppressing — see C2.8 for why
-  the fail direction inverts).
+  Seeded by `seed_record` whenever the store exists (a DORMANT pass records
+  `windows_observed`/`eligible: 0` honestly). **No model-tallied disposition counts** (gate finding:
+  the draft's `demoted`/`compressed`/`merged`/`justified` ints were a hand-tallied parallel of the
+  same dispositions' `entries[]` rows — the single-source violation the distill hand-mirror already
+  shipped once, and the dashboard's lifecycle counts are already entries[]-derived). Disposition
+  detail lives in `entries[]`; `verdict` is the one judgment sentence (the distill precedent).
+- `validate_cycle_record`: `usage.misses` list-check + cap backstop (`_USAGE_FACT_CAP`); `demotion` in
+  the top-level dict-check tuple; `demotion.surfaced`/`struck` list-checks + the surfaced cap backstop
+  (`_DEMOTION_BOTTOM_K` — producer and validator share this module, so no cross-module mirror is
+  needed, unlike `_DISTILL_CAPS`/`_USAGE_FACT_CAP`).
+- State file: `demotion_justify` (model-written in the Phase-5 marker write; read by a
+  `_standing_baseline`-style guarded reader — malformed does not suppress, the same
+  err-toward-visibility direction).
 - SKILL.md schema block updated in the same change (the smoke pin forces it).
 
 ### C7. Surfaces
 
 - **Phase-0 report / `cm status`:** SIGNALS gains a `demote?` line when `eligible > 0` (stems +
-  evidence, beside `archive?`/`defrag?`); while DORMANT, one dim line — `usage evidence N/3 full
-  windows — demotion policy dormant (accrues per-dream via --recalls)` — so the accrual is visible, not
-  mysterious.
+  evidence + the veto tallies, beside `archive?`/`defrag?`); while DORMANT, one dim line — `usage
+  evidence N/3 probative windows — demotion policy dormant (accrues per-dream via --recalls)` — so the
+  accrual is visible, not mysterious.
 - **render_dashboard:** the USAGE section gains a red `⚠ demotion miss` line when `misses` is
-  non-empty; a new LIFECYCLE line renders the block (dormant / eligible+surfaced / disposition counts +
-  verdict). Legacy records (no `lifecycle`, no `misses` key) render **byte-identically** — key-presence
-  gates, not `.get()` defaults (the degenerate-pass lesson, again).
-- **render_html:** the per-dream detail gains the misses badge + the lifecycle verdict line (additive;
-  legacy byte-identical). `render_log`: NO change (the READS column stands; lifecycle detail is
-  dashboard territory — scope fence).
+  non-empty; a new DEMOTION line renders the block (dormant / eligible + surfaced + struck / verdict —
+  disposition counts stay entries[]-derived, where they already render). Legacy records (no `demotion`,
+  no `misses` key) render **byte-identically** — key-presence gates, not `.get()` defaults (the
+  degenerate-pass lesson, again).
+- **render_html:** the per-dream detail gains the misses badge + the demotion verdict line (additive;
+  legacy byte-identical). `render_log`: NO change (the READS column stands — scope fence).
 - **cm:** a `utility` subcommand (`sync_global --utility`); help lines for the new `--recalls` fields.
-- **SKILL.md:** Phase 5 gains the lifecycle-triage step right after the `--recalls` capture (read the
-  seeded block, judge each candidate by CONTENT — keep-on-doubt, the archive step's silent-failure
-  language applies verbatim — apply dispositions report-then-apply, fill the block, re-promote any
-  miss); step 2 (gc) points at `--utility` for the mirror-dominated lever's evidence; step 5's marker
-  write documents `lifecycle_justify`; step 4's "that judgment is Phase C's" prose updates to point at
-  the new step. Phase-4 governance: the promote advisory (C5) noted.
-- **harness-map.md:** the three-tiers/budget section gains the lifecycle bullet (+the evidence gate),
+- **SKILL.md:** Phase 5 gains the demotion-triage step immediately after the `--recalls --into
+  --before <snapshot>` capture and **explicitly BEFORE the final `budget.*.after` gauge re-read and the
+  step-5 marker write** (gate finding: dispositions mutate the index, so an unpinned order would leave
+  `after_tokens` stale): read the seeded block minus `struck`, judge each candidate by CONTENT —
+  keep-on-doubt, the archive step's silent-failure language applies verbatim — apply dispositions
+  report-then-apply, fill `verdict`, re-promote any miss; step 2 (gc) points at `--utility` for the
+  mirror-dominated lever's evidence; step 5's marker write documents `demotion_justify`; step 4's "that
+  judgment is Phase C's" prose updates to point at the new step. Phase-4 governance: the promote
+  advisory (C5) noted.
+- **harness-map.md:** the three-tiers/budget section gains the demotion bullet (+the evidence gate),
   `--utility`, and the fleet-tax advisory.
 
 ## What Phase C does NOT do (scope fence)
@@ -576,60 +670,95 @@ oracle-grade gate review (recorded in §Deferred beyond Phase C). No cycle-recor
 **No existing mechanism changes meaning.** `remediation.*` (the target gate, triage levers,
 standing-justify, `over_ceiling`), the M1 hold, the KEEP-veto, `archive_candidates`/`defrag_candidates`,
 the `--recalls` span classifier, and every dream-beta-tester oracle input are UNTOUCHED — Phase C adds
-siblings beside them, the Phase-B discipline. **No auto-writes anywhere**: scripts rank/aggregate/warn;
-every disposition is model-judged + user-confirmed. **No fitted decay constants** (C2's rationale). **No
+siblings beside them, the Phase-B discipline. (The two deliberate, pinned exceptions: `_USAGE_FACT_CAP`
+rises 20→40 with its mirrors/pins moved together — an upper bound loosening, additive-safe; and
+`_parse_ts`/the log reader RELOCATE to memory_status unchanged, smoke-pinned identical.) **No
+auto-writes anywhere**: scripts rank/aggregate/warn/strike within the seed they already own; every
+disposition is model-judged + user-confirmed. **No fitted decay constants** (C2's rationale). **No
 hard global-store gate** (C5 is warn-only). **`--utility` never writes** (read-only, like `--list`).
-**0 reads is never sole grounds**: the evidence gate requires window sufficiency + fact-age + the
-KEEP/miss/justify vetoes before a stem is even *surfaced*, and surfacing is still only a proposal.
+**No deletion under this policy** (the merge stub redefinition — pin 4). **0 reads is never sole
+grounds**: the evidence gate requires per-fact window sufficiency + the KEEP/miss/justify vetoes before
+a stem is even *surfaced*, and surfacing is still only a proposal.
 
-## Empirical gates (Phase C — measure-don't-assert; each names its command + expected observation)
+## Empirical gates (Phase C — measure-don't-assert; each names its command + expected observation.
+Live-store expectations are RECOMPUTED at build time, never frozen — the gate re-found the G-B3
+fragile-live-pin shape in the draft's own gates)
 
-- **G-C1 (aggregator fidelity):** `usage_history` on THIS repo's live log → `windows_full == 1`,
-  `per_fact == {}` (the measured state above). Synthetic log fixture: 3 windows — one full-fidelity, one
-  `transcripts: 0`, one cap-truncated (`facts_read > len(per_fact)`) → `windows_full == 1`, only the
-  full window's reads merged.
-- **G-C2 (the evidence gate, every leg):** fixture store + history sweeps — <3 windows ⇒ `eligible == 0`
-  regardless of everything else; ≥3 ⇒ eligible iff indexed ∧ non-mirror ∧ 0 reads ∧ mtime ≤ span_start ∧
-  no description KEEP-marker ∧ not missed ∧ not justify-suppressed; each veto exercised independently;
-  the justify suppression re-fires at exactly +`_LIFECYCLE_JUSTIFY_REFIRE`; a malformed justify entry
-  does NOT suppress.
-- **G-C3 (rank + cap):** eligible sorted by `hook_tokens` desc; ≤ `_LIFECYCLE_BOTTOM_K` surfaced; the
-  validator backstop warns above the cap.
+- **G-C1 (aggregator fidelity):** synthetic log fixture — 4 windows: full-fidelity, `transcripts: 0`,
+  cap-truncated (`facts_read > len(per_fact)`), and unparseable-since (`"(no marker — all
+  transcripts)..<iso>"`) → `windows_full == 1` (only the full one is probative), but `per_fact` reads
+  MERGE from all four (positive evidence survives truncation); `miss_stems` unions across all. Against
+  THIS repo's live log: `windows_full` equals the count of probative usage-bearing records **measured
+  at build time** (recompute; do not assume 1).
+- **G-C2 (the evidence gate, every leg):** fixture store + history sweeps — per-fact
+  `zero_read_windows < 3` ⇒ ineligible regardless of everything else; a fact whose mtime postdates two
+  of three probative windows counts only the one it predates; ≥3 ⇒ eligible iff indexed ∧ non-mirror ∧
+  0 merged reads ∧ no description KEEP-marker ∧ not missed ∧ not justify-suppressed; each veto
+  exercised independently; a read recorded ONLY in a cap-truncated window still vetoes (the C1 merge
+  fix, pinned); the justify suppression re-fires at exactly +`_DEMOTION_JUSTIFY_REFIRE`; a malformed
+  justify entry does NOT suppress.
+- **G-C3 (rank + cap + strike):** eligible sorted by `hook_tokens` desc; ≤ `_DEMOTION_BOTTOM_K`
+  surfaced; the validator backstop warns above the cap; `inject_usage` on a seed whose
+  `demotion.surfaced` intersects the injected block's read stems moves exactly those to `struck`.
 - **G-C4 (miss-detector):** synthetic transcript fixture — an organic `Read` of an archived-tier fact →
   `misses == [stem]`, `archive_reads == 1`; the SAME read inside the arc span → excluded (not a miss);
   an indexed fact's read → counted, NOT a miss; a stem linked from BOTH the index and an archive doc →
-  indexed wins.
-- **G-C5 (live dormancy + read-only):** on this repo today — the seed carries
-  `lifecycle.windows_observed == 1`, `eligible == 0`; the report shows the DORMANT line;
-  `--utility` runs against the live fleet with `nodes_reporting == 1` and **changes no store file**
-  (hash the stores before/after).
+  indexed wins; with `--before <snapshot>` where the snapshot shows the stem INDEXED at window start →
+  NOT a miss even though the live store has it archived (the same-pass-archival case); a miss stem
+  found in a busy window with >`_USAGE_FACT_CAP` facts read still lands in `misses` (the uncapped-tally
+  fix, pinned).
+- **G-C5 (live dormancy + read-only, recomputed):** on this repo at build time — the seed's
+  `demotion.windows_observed` equals the measured probative-window count; if it is < 3 the report shows
+  the DORMANT line and `eligible == 0` (if the fleet has accrued ≥3 by then, dormancy is demonstrated
+  on a synthetic sub-threshold fixture instead — either way the property, not a frozen number, is the
+  gate); `--utility` runs against the live fleet, `nodes_reporting` equals the measured count, and
+  **changes no store file** (hash every store before/after).
 - **G-C6 (contract):** `python3 tests/smoke.py` (SKILL-schema pin + the new cap backstops + the
-  key-presence legacy-render pins) · `mypy --config-file mypy.ini` · `tests/validate_manifests.py` ·
-  `claude plugin validate --strict` · `tests/simulate_accumulation.py`. A legacy record renders
-  byte-identically on all three renderers.
+  key-presence legacy-render pins + the `_parse_ts`/log-reader relocation pins + the 20→40 cap-move
+  pins) · `mypy --config-file mypy.ini` · `tests/validate_manifests.py` · `claude plugin validate
+  --strict` · `tests/simulate_accumulation.py`. A legacy record renders byte-identically on all three
+  renderers.
 - **G-C7 (oracle blast radius, by live run not inspection):** `plugins/dream-beta-tester/maintainer/
   ci_check.sh` against the built code → 0 FAIL (`CHK-REM-SEED-CONTRACT`/`CHK-BUDGET-CALIBRATION` read
   fields Phase C never writes — the G-B4 lesson: prove it by running the gate).
-- **G-C8 (advisory derivation):** `GLOBAL_FLEET_TAX_ADVISORY`'s in-code comment reproduces the build-time
-  measurement (`--utility --json` Σ fleet_tax) + the stated headroom — a documented derivation, not a
-  smoke assertion (smoke is hermetic; it cannot read the live fleet).
+- **G-C8 (advisory derivation):** `GLOBAL_FLEET_TAX_ADVISORY`'s in-code comment reproduces the
+  build-time measurement (`--utility --json` Σ fleet_tax, upper-bound basis stated) + the stated
+  headroom — a documented derivation, not a smoke assertion (smoke is hermetic; it cannot read the
+  live fleet).
 
 ## Honest limits (Phase C additions)
 
 - **Everything inherits Phase A's undercount** — retention, span over-exclusion, invisible harness
-  auto-recall — PLUS the per-window `per_fact` cap; full-fidelity window counting excludes truncated/
-  empty windows (conservative both ways). The evidence gate is built ON an undercounting instrument,
-  which is exactly why 0-reads alone never suffices.
+  auto-recall. Probative-window counting additionally excludes truncated/empty/unparseable windows from
+  ZERO-read evidence while positive reads merge from everywhere — conservative in both directions, and
+  still built ON an undercounting instrument, which is exactly why 0-reads alone never suffices.
+- **A window reading > `_USAGE_FACT_CAP` (40) distinct facts is still non-probative** for zero-read
+  evidence — on a node that busy, the gate accrues slower or not at all; the cap bump moves the
+  boundary past the fleet's measured maximum (22), it does not remove it.
+- **The KEEP-veto (C2.5) deliberately puts the all-lessons residual out of demotion's reach.** The
+  motivating store — every fact a well-written lesson, every lever terminating in `justify` — will
+  yield `eligible ≈ 0` even with rich usage data; that is the design (a lesson demoted on 0-read
+  evidence is the silent recall failure this skill exists to prevent), not a gap. The rank targets
+  dead *reference/status* weight; for lessons, the utility evidence surfaces as the report's veto
+  tallies + `--utility`'s per-canonical table — information for the human's standing-justify/gc
+  judgment, never candidacy.
+- **The miss-detector's recall is bounded by `_is_archive_index`'s ≥3-link recognition** — a 1–2
+  pointer archive doc is not recognized, so reads of its facts classify as neither indexed nor
+  archived (no miss recorded). Undercount direction; SHIPPED.md-style archives exceed 3 links almost
+  immediately in practice. The shared classifier is NOT loosened (it guards the evict path — blast
+  radius).
 - **A miss can itself be missed** (the revealing transcript can rotate before the next dream) — but a
-  CAUGHT miss persists forever in the log's `usage.misses`, so the veto (C2.7) never forgets one.
+  CAUGHT miss persists forever in the log's `usage.misses`, so the veto (C2.6) never forgets one.
 - **Fleet utility sees only instrumented nodes** — `nodes_reporting` is printed precisely so the table
-  can't be read as fleet truth when it's one node's telemetry.
-- **The constants are coarse hints** (`_LIFECYCLE_MIN_WINDOWS`/`_BOTTOM_K`/`_JUSTIFY_REFIRE`/
-  `_SIMILAR`, the advisory): documented tunable, uncalibrated by design — calibration is longitudinal,
-  and Phase C is what CREATES its instrument (the miss loop). Do not A/B-sweep them (rigor-bands).
-- **No real node can trip the rank today** (1/3 windows) — live acceptance is dormancy (G-C5) +
-  synthetic fixtures (G-C2..4), the Phase-B/G-B3 acceptance shape.
-- **`lifecycle_justify` lives in a mutable state file** — deleted/malformed ⇒ candidates re-surface
+  can't be read as fleet truth when it's one node's telemetry; `holders` is a stated upper bound (dead
+  edges), so `fleet_tax` over-counts toward safety.
+- **The constants are coarse hints** (`_DEMOTION_MIN_WINDOWS`/`_BOTTOM_K`/`_JUSTIFY_REFIRE`/
+  `_SIMILAR`, `_LOG_TAIL_CAP`, the advisory): documented tunable, uncalibrated by design — calibration
+  is longitudinal, and Phase C is what CREATES its instrument (the miss loop). Do not A/B-sweep them
+  (rigor-bands).
+- **No real node can trip the rank today** (< 3 probative windows everywhere) — live acceptance is
+  dormancy (G-C5) + synthetic fixtures (G-C1..4), the Phase-B/G-B3 acceptance shape.
+- **`demotion_justify` lives in a mutable state file** — deleted/malformed ⇒ candidates re-surface
   (fail-open toward surfacing; report-only output makes that the safe direction).
 
 ## Deferred beyond Phase C (recorded so it isn't re-walked)
