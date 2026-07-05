@@ -403,7 +403,7 @@ def _fat_hook_warning(pointer_line: str, name: str) -> str | None:
     return None
 
 
-def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
+def _ensure_index_pointer(store: Path, name: str, fm: dict) -> tuple[bool, bool]:
     """UPSERT the pointer line in the project's MEMORY.md index (Fix C).
 
     The script owns this so a replicated fact is never left half-installed (file but no
@@ -412,7 +412,16 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
     changed the fact's `description` updated the body but left the index hook stale. Now:
     insert if absent, REWRITE if present-but-different, no-op if already correct.
     v0.1.66: every WRITE (insert or rewrite — the single choke point for --pull, refresh,
-    AND --promote pointers) is fat-hook-linted to stderr; a no-op is not (nothing written)."""
+    AND --promote pointers) is fat-hook-linted to stderr; a no-op is not (nothing written).
+
+    Returns `(wrote, is_fat)` — a CALLER that counts/reports fat hooks (e.g. run()'s RESULT
+    line) MUST use `is_fat`, never re-derive it via a second `_pointer_line`/`_fat_hook_warning`
+    call: this function already computes both internally to decide the stderr print, and a
+    max-effort code-review workflow (2026-07-04) found the original discard-then-recompute
+    shape at the ONE caller that needed it is exactly how a real accounting bug (a no-op
+    refresh double-counted as a fresh "written" fat hook) got in — a second, independent
+    computation of the same fact is a single-source-of-truth violation waiting to drift, not
+    just here but at the NEXT caller that copies the old pattern instead of using this return."""
     idx = store / "MEMORY.md"
     content = idx.read_text(encoding="utf-8") if idx.exists() else "# Memory Index\n\n"
     want = _pointer_line(name, fm)
@@ -422,29 +431,31 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> bool:
     for i, ln in enumerate(lines):
         if anchor in ln:
             if ln.strip() == want.strip():
-                return False  # already correct — no-op
+                return False, False  # already correct — no-op
             lines[i] = want  # refresh a drifted hook
             if lint:
                 print(f"  {lint}", file=sys.stderr)
             idx.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
-            return True
+            return True, bool(lint)
     if lint:
         print(f"  {lint}", file=sys.stderr)
     idx.write_text(content.rstrip() + "\n" + want + "\n", encoding="utf-8")  # absent — append
-    return True
+    return True, bool(lint)
 
 
-def _would_net_grow(running_idx: int, pointer_cost: int, allow_net_grow: bool,
-                    budget: int = INDEX_TOKEN_BUDGET) -> bool:
+def _would_net_grow(running_idx: int, pointer_cost: int, allow_net_grow: bool, budget: int) -> bool:
     """M1: True iff pulling a new fact (its pointer adds `pointer_cost` tokens) would LEAVE the always-loaded
     index over `budget` — the projected net-grow guard. `allow_net_grow` overrides. PURE + the single
     source for the hold decision in run() (so smoke can pin all cases deterministically).
 
     v0.1.66 (Phase B): PRODUCTION call sites pass budget=INDEX_CEILING_TOKENS — the hold fires only past
     the HARD CEILING, no longer in the over-target amber band (verified knowledge flows until the real
-    harm boundary; the target gate is a separate, untouched signal). The target DEFAULT preserves this
-    pure contract for the existing v0.1.38 smoke pins, which deliberately exercise the LOGIC at the
-    target threshold — the default is not a production path."""
+    harm boundary; the target gate is a separate, untouched signal). `budget` is REQUIRED, no default
+    (a max-effort code-review workflow, 2026-07-04, flagged the original `= INDEX_TOKEN_BUDGET` default
+    as an unenforced drift risk: a future call site that forgot the `budget=` kwarg would silently
+    resurrect the pre-Phase-B semantics — holding in the amber band again — with no test or type error
+    catching it). The v0.1.38 smoke pins now pass `budget=INDEX_TOKEN_BUDGET` explicitly to exercise the
+    same pure logic at the target threshold."""
     return (not allow_net_grow) and (running_idx + pointer_cost > budget)
 
 
@@ -468,11 +479,14 @@ def _inbound_links(store: Path, target: str) -> list[str]:
     return out
 
 
-def _evict_frees_enough(running_idx: int, freed: int, held_costs: list, budget: int = INDEX_TOKEN_BUDGET) -> bool:
+def _evict_frees_enough(running_idx: int, freed: int, held_costs: list, budget: int) -> bool:
     """v0.1.41 (evict-to-receive fit-check, no-partial-loss): would evicting a pointer that frees `freed` tokens
     make room for at least the SMALLEST held global? `(running_idx - freed) + min(held_costs) <= budget`. False ⇒
     the evict frees too little — REFUSE before deleting (Guard-3: never a destructive op that gains nothing).
-    PURE (smoke-pinned). Caller ensures held_costs is non-empty (no held ⇒ nothing to receive ⇒ refuse earlier)."""
+    PURE (smoke-pinned). Caller ensures held_costs is non-empty (no held ⇒ nothing to receive ⇒ refuse earlier).
+    `budget` is REQUIRED, no default — the same unenforced-drift-risk fix applied to `_would_net_grow`
+    (v0.1.66); every real call site already passed it explicitly, so this only removes a silent fallback
+    a future caller could accidentally rely on."""
     return bool(held_costs) and (running_idx - freed) + min(held_costs) <= budget
 
 
@@ -587,11 +601,14 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             path.write_text(want, encoding="utf-8")
             # v0.1.66: count for the RESULT line ONLY when the pointer was actually WRITTEN this pass — a
             # STALE-mirror refresh whose BODY changed but whose derived pointer line didn't (description/
-            # scope unchanged) makes _ensure_index_pointer correctly no-op (no stderr lint fired inside it);
-            # counting `fat` unconditionally here would over-count AND mislabel a no-op as "written" (a real
-            # bug caught by the max-effort code-review workflow, 2026-07-04 — the RESULT line would claim a
-            # fat hook was written when nothing was, with no accompanying stderr line to explain why).
-            if _ensure_index_pointer(store, name, fm) and _fat_hook_warning(_pointer_line(name, fm), name):
+            # scope unchanged) makes _ensure_index_pointer correctly no-op (no stderr lint fired inside it).
+            # Use its OWN returned (wrote, is_fat) — never re-derive via a second _pointer_line/
+            # _fat_hook_warning call (a max-effort code-review workflow, 2026-07-04, found the original
+            # discard-then-recompute shape here IS how a real accounting bug got in: it over-counted AND
+            # mislabeled a no-op as "written"; a second finding flagged the recompute itself as the root
+            # single-source-of-truth risk, refactored away by returning is_fat directly).
+            _wrote, _is_fat = _ensure_index_pointer(store, name, fm)
+            if _is_fat:
                 fat += 1
             if status == "MISSING":
                 pulled += 1

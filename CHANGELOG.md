@@ -36,6 +36,14 @@ release oracle; the shipped design is ADDITIVE instead, and all three stay byte-
   RESULT line counts them.
 - Contract: 2 additive schema keys; SKILL schema block + the M1/hold prose sites + harness-map +
   `cm` help synced; legacy records render byte-identically (gated).
+- **Gated by a max-effort code-review workflow** (independent finder angles + verify pass) after the
+  initial implementation: found and fixed a real accounting bug (the fat-hook `RESULT` line double-
+  counted/mislabeled a no-op STALE-mirror refresh as "written" — `_ensure_index_pointer`'s return value
+  was discarded at the call site), refactored its root cause (the function now returns `(wrote, is_fat)`
+  instead of forcing the caller to re-derive the lint from scratch), removed an unenforced-default drift
+  risk (`_would_net_grow`/`_evict_frees_enough`'s `budget` param is now REQUIRED, no silent fallback to
+  the pre-Phase-B target), and replaced a hardcoded constant mirror in `render_html.py` with a live
+  reference to `memory_status.INDEX_CEILING_TOKENS` (the module was already imported).
 
 ## [0.1.65] — 2026-07-04
 

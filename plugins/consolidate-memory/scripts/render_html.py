@@ -29,7 +29,12 @@ _PLACEHOLDER = "/*__CM_DATA__*/"
 
 INDEX_TOKEN_BUDGET = 1500       # mirrors memory_status.INDEX_TOKEN_BUDGET (the always-loaded MEMORY.md index)
 CLAUDE_MD_TOKEN_BUDGET = 4000   # mirrors memory_status.CLAUDE_MD_TOKEN_BUDGET (the root CLAUDE.md)
-INDEX_CEILING_TOKENS = 3840     # mirrors memory_status.INDEX_CEILING_TOKENS (v0.1.66 Phase B hard ceiling; smoke-pinned)
+# v0.1.66: a live REFERENCE, not a hardcoded copy like the two constants above — `ms` is already
+# imported in this module (unlike when INDEX_TOKEN_BUDGET/CLAUDE_MD_TOKEN_BUDGET were first added), so
+# a literal mirror here would be a needless, structurally-avoidable drift risk a code-review workflow
+# flagged (2026-07-04): if INDEX_CEILING_FRACTION is ever retuned, this stays correct with no smoke pin
+# to remember updating by hand.
+INDEX_CEILING_TOKENS = ms.INDEX_CEILING_TOKENS
 
 
 def _safe_embed(data: dict) -> str:

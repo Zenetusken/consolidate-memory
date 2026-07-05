@@ -300,14 +300,20 @@ with _tf52.TemporaryDirectory() as _td52l, _tf52.TemporaryDirectory() as _td52g:
 # v0.1.38 (M1) — the projected net-grow guard (sync_global._would_net_grow), the SINGLE source for the
 # pull-hold decision. The NEAR-budget overshoot (case 2) is the bug v0.1.37's cue-with-a-before-compare missed:
 # `index > BUDGET` was False on a near-budget store, so it let the pull tip the index over.
+# v0.1.66: `budget` is a REQUIRED arg (no default) — every pin below passes it explicitly (the fix
+# for a code-review-flagged unenforced-drift risk: a future call site that forgot `budget=` would
+# have silently reverted to the pre-Phase-B semantics with no test or type error to catch it).
 _B38 = ms.INDEX_TOKEN_BUDGET
-check("v0.1.38/M1: an over-budget store holds ANY new pull (case 1)", sg._would_net_grow(_B38 + 1561, 40, False) is True)
+check("v0.1.38/M1: an over-budget store holds ANY new pull (case 1)",
+      sg._would_net_grow(_B38 + 1561, 40, False, budget=_B38) is True)
 check("v0.1.38/M1: a NEAR-budget store holds a pull that would overshoot (case 2 — the v0.1.37 miss)",
-      sg._would_net_grow(_B38 - 10, 40, False) is True)
-check("v0.1.38/M1: an under-budget store with room PULLS (no false hold)", sg._would_net_grow(800, 40, False) is False)
+      sg._would_net_grow(_B38 - 10, 40, False, budget=_B38) is True)
+check("v0.1.38/M1: an under-budget store with room PULLS (no false hold)",
+      sg._would_net_grow(800, 40, False, budget=_B38) is False)
 check("v0.1.38/M1: a pull that fits EXACTLY to budget is allowed (boundary: ==budget, not >)",
-      sg._would_net_grow(_B38 - 40, 40, False) is False)
-check("v0.1.38/M1: --allow-net-grow overrides the guard", sg._would_net_grow(_B38 + 1561, 40, True) is False)
+      sg._would_net_grow(_B38 - 40, 40, False, budget=_B38) is False)
+check("v0.1.38/M1: --allow-net-grow overrides the guard",
+      sg._would_net_grow(_B38 + 1561, 40, True, budget=_B38) is False)
 check("v0.1.38/M1: cross_project.held renders the LOUD lever (RENDER half only — the stdout→record capture is a SKILL Phase-1 instruction, model-driven, not script-testable here)",
       "held 2" in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {"git_commits": 1},
           "entries": [], "cross_project": {"held": 2}})))
@@ -2345,7 +2351,7 @@ import tempfile as _tfB  # noqa: E402
 check("v0.1.66 ceiling: ONE canonical est-token threshold from the native byte cap (0.6 × 25KB/4 = 3840, > target)",
       ms.INDEX_CEILING_TOKENS == round(ms.INDEX_CEILING_FRACTION * ms.NATIVE_INDEX_CAP_BYTES / 4) == 3840
       and ms.INDEX_CEILING_TOKENS > ms.INDEX_TOKEN_BUDGET)
-check("v0.1.66 ceiling: render_html mirror pinned (the byte-pinned-copy convention)",
+check("v0.1.66 ceiling: render_html references ms.INDEX_CEILING_TOKENS directly (a live reference, not a hardcoded copy)",
       rhtml.INDEX_CEILING_TOKENS == ms.INDEX_CEILING_TOKENS)
 
 # (2) _would_net_grow at the ceiling — the NEW call-site behavior (the v0.1.38 target-default pins above
