@@ -5,6 +5,46 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.66] — 2026-07-04
+
+### Added — index-lifecycle Phase B: the HARD CEILING (a second, independent budget signal)
+The budget ladder's real-harm rung, built to the 3-lens-gate-revised design in
+`docs/index-usage-and-budget-ladder.spec.md` §Phase B (the original single-field re-key was found
+load-bearing-broken at the spec gate — it would have silently stripped triage from the amber band,
+flipped the maintenance pivot, and inverted dream-beta-tester's HIGH-severity `CHK-REM-SEED-CONTRACT`
+release oracle; the shipped design is ADDITIVE instead, and all three stay byte-for-byte unaffected).
+
+- **`INDEX_CEILING_FRACTION` (0.6) / `INDEX_CEILING_TOKENS` (≈3840 est tok)** — one canonical
+  est-token threshold derived from the native 25KB byte cap (the line axis stays `cliff_pct`'s job).
+  Structurally standing-justify-INDEPENDENT: the comparison never reads `standing_justify`, so there
+  is no suppression to tune and no justify escape — over the ceiling, only shrinking satisfies.
+- **M1 re-key to the ceiling** — `sync_global --pull`'s hold and the `--evict` fit-check now pass
+  `INDEX_CEILING_TOKENS` at the call site (`_would_net_grow` gains a `budget` param whose target
+  default preserves the pure contract the v0.1.38 smoke pins exercise). An over-TARGET (amber) store
+  now RECEIVES verified knowledge; only a store past the real harm boundary holds. The target gate
+  (`remediation.required`, triage levers, standing-justify, prune-pressure, maintenance pivot) is
+  untouched and still keys to `INDEX_TOKEN_BUDGET`.
+- **`remediation.over_ceiling`** — a sibling flag of `required` (additive, `total=False`; absent on
+  healthy/legacy records), rendered red at all three gauges: the ASCII dashboard index gauge +
+  remediation panel (both branches — suppression never hides it), the Phase-0/`cm status` report, and
+  the HTML meter (net-new — the archive previously rendered no remediation state; also corrected the
+  meter wording that called the *target* a "ceiling"). `budget.index.ceiling_tokens` carries the
+  display value.
+- **Write-time fat-hook lint** — `_fat_hook_warning` (pure, smoke-pinned): every pointer
+  `sync_global` writes (pull, refresh, promote — one choke point) warns on stderr when it exceeds
+  `HOOK_TOKEN_WARN`, naming the CANONICAL's description as the fix site; never truncates. `--pull`'s
+  RESULT line counts them.
+- Contract: 2 additive schema keys; SKILL schema block + the M1/hold prose sites + harness-map +
+  `cm` help synced; legacy records render byte-identically (gated).
+- **Gated by a max-effort code-review workflow** (independent finder angles + verify pass) after the
+  initial implementation: found and fixed a real accounting bug (the fat-hook `RESULT` line double-
+  counted/mislabeled a no-op STALE-mirror refresh as "written" — `_ensure_index_pointer`'s return value
+  was discarded at the call site), refactored its root cause (the function now returns `(wrote, is_fat)`
+  instead of forcing the caller to re-derive the lint from scratch), removed an unenforced-default drift
+  risk (`_would_net_grow`/`_evict_frees_enough`'s `budget` param is now REQUIRED, no silent fallback to
+  the pre-Phase-B target), and replaced a hardcoded constant mirror in `render_html.py` with a live
+  reference to `memory_status.INDEX_CEILING_TOKENS` (the module was already imported).
+
 ## [0.1.65] — 2026-07-04
 
 ### Fixed — full doc sync to the v0.1.63/v0.1.64 state

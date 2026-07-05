@@ -327,7 +327,7 @@
       <div>
         <div class="meter" id="m-index"></div>
         <div class="meter" id="m-cmd"></div>
-        <div class="meta"><div class="cap">Always-loaded budgets, this pass. The marker is the ceiling; fill is current consumption.</div></div>
+        <div class="meta"><div class="cap">Always-loaded budgets, this pass. The marker is the budget; fill is current consumption.</div></div>
       </div>
       <div><svg id="net" viewBox="0 0 520 170"></svg>
         <div class="meta">
@@ -592,13 +592,17 @@
 
   // ── budget meters ──
   (function(){
-    function meter(box,lab,val,max,over){var f=Math.max(0,Math.min(1,max>0?val/max:0));
-      var col=over?"var(--crit)":f>=.85?"var(--warn)":"var(--data)";
+    // v0.1.66 (Phase B): ceilTxt — an OVERRIDE status line for the index meter when the record carries
+    // remediation.over_ceiling (the hard ceiling is a SECOND signal beside the target `over`, never a
+    // relabel of it; absent on legacy records → meters render exactly as before).
+    function meter(box,lab,val,max,over,ceilTxt){var f=Math.max(0,Math.min(1,max>0?val/max:0));
+      var col=(ceilTxt||over)?"var(--crit)":f>=.85?"var(--warn)":"var(--data)";
       box.innerHTML='<div class="top"><span class="lab">'+esc(lab)+'</span><span class="val" style="color:'+col+'">'+pct(val,max)+'% · '+fmt(val)+'/'+fmt(max)+'</span></div>'
         +'<div class="track"><div class="fill"></div><div class="mark" style="left:100%"></div></div>'
-        +'<div class="d">'+(over?"over ceiling — remediation gate active":f>=.85?"approaching ceiling":"within budget")+'</div>';
+        +'<div class="d">'+(ceilTxt?ceilTxt:over?"over budget — remediation gate active":f>=.85?"approaching budget":"within budget")+'</div>';
       var fill=box.querySelector(".fill");fill.style.background=col;requestAnimationFrame(function(){fill.style.width=(f*100).toFixed(1)+"%";});}
-    meter(el("m-index"),"Auto-memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),IDXB,!!g(CUR,"budget.index.over",false));
+    var ceilTxt=g(CUR,"remediation.over_ceiling",false)?("over the HARD CEILING ≈"+fmt(num(BUD.index_ceiling,3840))+" — M1 holds new pulls"):null;
+    meter(el("m-index"),"Auto-memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),IDXB,!!g(CUR,"budget.index.over",false),ceilTxt);
     meter(el("m-cmd"),"CLAUDE.md (root)",num(g(CUR,"budget.claude_md.after_tokens",g(CUR,"budget.claude_md.before_tokens",0))),CMB,!!g(CUR,"budget.claude_md.over",false));
   })();
 
