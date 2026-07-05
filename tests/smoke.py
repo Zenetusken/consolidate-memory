@@ -2874,5 +2874,139 @@ with _tfB.TemporaryDirectory() as _tdC6:
         else:
             _osB.environ["HOME"] = _oldHomeC6
 
+# ── v0.1.69 (audit hygiene — docs/audit-hygiene-remediation.spec.md): red-first gates ──────────────
+# Each check below FAILED on the pre-fix tree (recorded in the PR); the fixes flip them green.
+import contextlib as _cl69  # noqa: E402
+import io as _io69  # noqa: E402
+import json as _json69  # noqa: E402
+import os as _os69  # noqa: E402
+import re as _re69  # noqa: E402
+import tempfile as _tf69  # noqa: E402
+
+# A1: the per-line window compare must be PARSED-instant, not raw-string (distill's v0.1.58 twin fix,
+# never ported to extract). Vector: since 18:00+02:00 == 16:00Z; a 16:30Z line is instant-AFTER (must
+# be kept) but raw-string-compares BELOW "…18:00…+02:00" (pre-fix: wrongly dropped). 15:30Z drops both ways.
+_SINCE69 = "2026-07-05T18:00:00+02:00"          # == 2026-07-05T16:00:00Z
+def _hl69(ts: str, text: str) -> str:            # a human-turn transcript line at ts
+    return _json69.dumps({"timestamp": ts, "sessionId": "s69",
+                          "message": {"role": "user", "content": text}}) + "\n"
+with _tf69.TemporaryDirectory() as _td69:
+    _home69 = Path(_td69); _proj69 = _home69 / "proj"; _proj69.mkdir()
+    _pr69 = _home69 / ".claude" / "projects" / es.slug_for(_proj69); _pr69.mkdir(parents=True)
+    (_pr69 / "sess.jsonl").write_text(
+        _hl69("2026-07-05T16:30:00Z", "prefer the frobnicator flag for exports")
+        + _hl69("2026-07-05T15:30:00Z", "stale turn from before the marker")
+        + _hl69("not-a-timestamp", "unparseable ts line kept fail-open"), encoding="utf-8")
+    _old69 = _os69.environ.get("HOME"); _os69.environ["HOME"] = str(_home69)
+    try:
+        _r69 = es.extract(_proj69, _SINCE69, 20)
+    finally:
+        _os69.environ["HOME"] = _old69 if _old69 is not None else ""
+    _texts69 = " ".join(s.get("text", "") for s in _r69.get("signals", []))
+    check("v0.1.69/A1: an offset `since` keeps the instant-AFTER Z-stamped line (raw-string compare dropped it)",
+          "frobnicator" in _texts69)
+    check("v0.1.69/A1: …and still drops the instant-BEFORE line (window semantics unchanged)",
+          "stale turn" not in _texts69)
+    check("v0.1.69/A1: an unparseable line ts fails OPEN — kept, never raises (green both ends; semantics pin)",
+          "unparseable ts line" in _texts69)
+
+# A1 twin: _recall_items carries the same raw-string compare on the recall-usage scan.
+with _tf69.TemporaryDirectory() as _td69b:
+    _store69 = _td69b + "/memory/"
+    _tr69 = Path(_td69b) / "t.jsonl"
+    def _rl69(ts: str, stem: str) -> str:        # a Read-tool_use line on a store fact
+        return _json69.dumps({"timestamp": ts, "message": {"content": [
+            {"type": "tool_use", "name": "Read", "input": {"file_path": _store69 + stem + ".md"}}]}}) + "\n"
+    _tr69.write_text(_rl69("2026-07-05T16:30:00Z", "kept-fact") + _rl69("2026-07-05T15:30:00Z", "old-fact"),
+                     encoding="utf-8")
+    _items69 = es._recall_items(_tr69, _store69, _SINCE69, frozenset())
+    _stems69 = {it.get("stem") for it in _items69}
+    check("v0.1.69/A1: _recall_items keeps the instant-AFTER read under an offset since (twin site)",
+          "kept-fact" in _stems69 and "old-fact" not in _stems69)
+
+# A2: _report is a TTY presentation boundary — repo-controlled error text must be _sane()d there.
+# ESC survives _norm (it strips Cf; ESC is Cc) → pre-fix the raw \x1b reaches stdout = escape injection.
+_sig69 = {"counts": {"human_seen": 1, "noise": 0, "secrets_omitted": 0, "errors": 1, "surfaced": 1},
+          "transcripts": ["t.jsonl"], "since": "2026-07-05T00:00:00Z",
+          "signals": [{"source": "error", "signal_type": "gotcha", "scope_hint": "env",
+                       "sessionId": "", "ts": "", "score": 0, "text": "\x1b[31mred\x1b[0m alert"}]}
+_buf69 = _io69.StringIO()
+with _cl69.redirect_stdout(_buf69):
+    es._report(_sig69)
+_out69 = _buf69.getvalue()
+check("v0.1.69/A2: report output carries NO raw ESC byte, text content preserved (presentation _sane)",
+      "\x1b" not in _out69 and "red" in _out69)
+
+# A3: the store-scan convention (skip unreadable, never abort) applied to the two token/node scans.
+_a3_tok_ok = _a3_net_ok = False
+with _tf69.TemporaryDirectory() as _td69c:
+    _st69 = Path(_td69c) / "memory"; _st69.mkdir()
+    (_st69 / "real.md").write_text("---\nname: real\n---\nbody\n", encoding="utf-8")
+    (_st69 / "ghost.md").symlink_to(_st69 / "nowhere")     # dangling: read_text raises OSError
+    try:
+        _a3_tok_ok = sg._node_tokens(_st69).get("facts") == 1   # ghost skipped, real counted
+    except OSError:
+        _a3_tok_ok = False
+    check("v0.1.69/A3: _node_tokens skips a vanished/dangling fact instead of crashing", _a3_tok_ok)
+with _tf69.TemporaryDirectory() as _td69d:
+    _home69d = Path(_td69d)
+    _stA69 = _home69d / ".claude" / "projects" / "-p-a" / "memory"; _stA69.mkdir(parents=True)
+    (_stA69 / "ghost.md").symlink_to(_stA69 / "nowhere")   # ghost-ONLY store sorts FIRST (deterministic red)
+    _stB69 = _home69d / ".claude" / "projects" / "-p-b" / "memory"; _stB69.mkdir(parents=True)
+    (_stB69 / "m.md").write_text("---\nname: m\nmetadata:\n  global_ref: m\n---\nb\n", encoding="utf-8")
+    _oldH69 = _os69.environ.get("HOME"); _os69.environ["HOME"] = str(_home69d)
+    try:
+        _nodes69 = sg._network_nodes()
+        _a3_net_ok = _stB69 in _nodes69 and _stA69 not in _nodes69
+    except OSError:
+        _a3_net_ok = False
+    finally:
+        _os69.environ["HOME"] = _oldH69 if _oldH69 is not None else ""
+    check("v0.1.69/A3: _network_nodes survives a dangling-only store and still finds the readable mirror",
+          _a3_net_ok)
+
+# A4: a git failure must be LABELED (stderr, once per process) — silent "" made broken-git ≡ empty-repo.
+def _boom69(*a: Any, **k: Any) -> Any:
+    raise FileNotFoundError("git not found")
+_real_run69 = ms.subprocess.run
+setattr(ms, "_GIT_WARNED", False)                # reset (attr exists only post-fix; setattr is pre-fix-safe)
+_err69 = _io69.StringIO()
+try:
+    setattr(ms.subprocess, "run", _boom69)
+    with _cl69.redirect_stderr(_err69):
+        _rv69a = ms._run(["git", "log"], Path("."))
+        _rv69b = ms._run(["git", "status"], Path("."))
+finally:
+    setattr(ms.subprocess, "run", _real_run69)
+_errtxt69 = _err69.getvalue()
+check("v0.1.69/A4: git failure returns '' AND labels the degradation on stderr (no-masking law)",
+      _rv69a == "" and _rv69b == "" and "git unavailable" in _errtxt69)
+check("v0.1.69/A4: the label fires ONCE per process (no spam across repeated _run calls)",
+      _errtxt69.count("git unavailable") == 1)
+setattr(ms, "_GIT_WARNED", False)                # leave clean for any later check exercising _run
+
+# A5: genericity PIN — no personal /home/<name> (slash) or -home-<name>- (slug) may enter the
+# shipped/public tree. Allowed = the five generic placeholders in use; extending this set is a
+# CONSCIOUS edit here (that friction is the guard). The name class is deliberately restrictive
+# ([A-Za-z0-9_]) so the remediation spec's pin-inert `<user>` placeholder can never match.
+_GENERIC69 = {"you", "u", "x", "d", "nobody"}
+_SKIP69 = {"__pycache__", ".mypy_cache", ".ruff_cache"}
+_bad69: list = []
+for _root69 in (ROOT / "plugins" / "consolidate-memory", ROOT / "tests", ROOT / "docs"):
+    for _p69 in sorted(_root69.rglob("*")):
+        if not _p69.is_file() or _p69.suffix not in {".py", ".md", ".sh", ".html"}:
+            continue
+        if any(part in _SKIP69 for part in _p69.parts):
+            continue
+        _t69 = _p69.read_text(encoding="utf-8", errors="replace")
+        for _nm69 in (_re69.findall(r"/home/([A-Za-z0-9_]+)", _t69)
+                      + _re69.findall(r"-home-([A-Za-z0-9_]+)-", _t69)):
+            if _nm69 not in _GENERIC69:
+                _bad69.append(f"{_p69.relative_to(ROOT)}:{_nm69}")
+check("v0.1.69/A5: genericity pin — every /home/<name> + -home-<name>- under plugins/consolidate-memory, "
+      "tests, docs is a generic placeholder (you/u/x/d/nobody)", not _bad69)
+if _bad69:
+    print(f"    offending: {sorted(set(_bad69))[:8]}", file=sys.stderr)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
