@@ -5,6 +5,29 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.68] — 2026-07-05
+
+### Fixed — the dashboard's masthead glow tiled down the whole page; the demotion panel's dormant verdict carried no tag
+Reported live from a rendered dashboard screenshot (the same "look at the actual archive, not raw
+JSON" discipline as v0.1.62/v0.1.64): the "02 Shared Consciousness" section showed an unrelated bright
+patch bleeding through its middle, and the demotion sub-panel's "dormant" state read as bare italic
+text beside distill's always-badged sibling panel.
+
+- **`background-repeat:no-repeat`** on the masthead's `body` radial-gradient glow — `background:var(--paper)`
+  (the shorthand) resets `background-repeat` to its initial `repeat` before `background-image` sets the
+  700px-tall glow, so without an explicit `no-repeat` the browser tiled a fresh copy of it every ~700px
+  down the entire page. Confirmed by pixel-sampling a headless render: before the fix, a second glow
+  appeared mid-page wherever a section happened to land on that interval; after, it's a single instance
+  that fades within ~300px of the masthead — exactly what the color values (`--glow` deliberately close
+  to `--paper`) were designed for.
+- **The demotion panel's verdict now parses the same leading-disposition-word grammar as distill's**
+  (`dormant`/`demoted`/`justified`/`none`, mirroring distill's `created`/`proposed`/`nothing`) into a
+  bordered `.tag` badge ahead of the prose — a dormant triage now reads `[DORMANT] 1 probative window …`,
+  matching distill's `[NOTHING] the smoke→mypy…` rhythm, instead of unbadged italic text beside an
+  always-badged sibling.
+- Presentation-only — `dashboard.template.html`'s embedded CSS/JS; no cycle-record schema change, no
+  new keys → **patch**.
+
 ## [0.1.67] — 2026-07-05
 
 ### Added — index-lifecycle Phase C: the utility policy (demotion triage · miss loop · fleet utility)
