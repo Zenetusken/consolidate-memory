@@ -390,6 +390,24 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   (`_fat_hook_warning` in `sync_global` — every written pointer > `HOOK_TOKEN_WARN` warns on stderr,
   naming the canonical's description; never truncates). No real fleet store is near the ceiling
   today — it is a backstop, exercised by synthetic fixtures.
+- **The DEMOTION TRIAGE + the miss loop (v0.1.67, Phase C)** — the policy leg that consumes Phase A's
+  accrued data. `memory_status.usage_history` aggregates the cycle log's `usage` blocks (reads merge
+  from EVERY window — positive evidence always vetoes; only full-fidelity, parseable windows are
+  PROBATIVE for zero-read evidence); `demotion_candidates` is the `*_candidates`-family rank —
+  eligible iff a fact has ≥ `_DEMOTION_MIN_WINDOWS` (3) per-fact zero-read probative windows AND is
+  indexed, non-mirror, 0-reads-ever, non-KEEP-description, never-missed, and not counter-justified
+  (`demotion_justify` in the state file, a per-item delta-detector re-firing at
+  +`_DEMOTION_JUSTIFY_REFIRE` windows). Ranked by hook cost, capped at `_DEMOTION_BOTTOM_K`; seeded
+  as the record's `demotion` block; DORMANT on every real node today. Dispositions
+  (demote-to-archive / compress / merge-to-stub / counter-justify) are report-then-apply `entries[]`
+  rows — NO deletion under this policy. The **miss-detector** closes the loop: `--recalls --before
+  <snapshot>` classifies organic reads by WINDOW-START tier; an archived-tier read = `usage.misses`
+  (a demotion error → re-promote; permanently vetoes future candidacy). `--recalls --into` also
+  STRIKES just-read stems from the seeded `demotion.surfaced` (current-window blindness, closed
+  deterministically). Fleet evidence: `sync_global --utility` (mirror-attributed per-canonical reads
+  + `fleet_tax` = pointer × holders vs the warn-only `GLOBAL_FLEET_TAX_ADVISORY`) — the gc lever's
+  evidence table; decisions stay content-gated. Design + the evidence-gate rationale:
+  `docs/index-usage-and-budget-ladder.spec.md` §Phase C.
 - **Re-verification signal:** `memory_status.py` lists facts untouched since the marker
   (mtime ≤ marker timestamp) as re-verification candidates — a cheap staleness proxy
   needing no per-fact `last_verified` field.

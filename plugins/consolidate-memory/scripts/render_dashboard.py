@@ -516,6 +516,39 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         if _utop:
             out.append("    " + _c("top:", "dim") + " " + " · ".join(
                 f"{_clean(f.get('name', '?'))} ×{_g(f.get('reads', 0))}" for f in _utop))
+        # v0.1.67 (Phase C): the MISS-DETECTOR line — an archived-tier fact read organically is a
+        # demotion error, rendered LOUD (it is the policy's own error signal). Key-presence gated:
+        # a legacy/miss-free record (no `misses` key / empty) renders byte-identically.
+        _miss = [m for m in _lget(usage, "misses") if isinstance(m, str)]
+        if _miss:
+            out.append("    " + _c(f"⚠ demotion MISS: {len(_miss)} archived-tier fact(s) read organically "
+                                   f"({_g(usage.get('archive_reads', 0))} read(s)) — " + ", ".join(_clean(m) for m in _miss)
+                                   + " · re-promote to MEMORY.md", "red"))
+
+    # v0.1.67 (Phase C): the demotion-triage block — dormant/eligible + surfaced/struck + the one model
+    # verdict sentence. Disposition COUNTS deliberately do NOT render from here — they are entries[] rows
+    # and stay entries[]-derived (single source; the distill hand-mirror lesson). Key-presence gated:
+    # a legacy record (no `demotion` key) renders byte-identically.
+    demo = _dget(record, "demotion")
+    if demo:
+        out.append("")
+        out.append("  " + _c("DEMOTION", "bold")
+                   + _c("   · rank-under-budget triage (evidence-gated; report-then-apply)", "dim"))
+        _dw, _de = _num(demo.get("windows_observed", 0)), _num(demo.get("eligible", 0))
+        if _de:
+            _surf = [s for s in _lget(demo, "surfaced") if isinstance(s, str)]
+            _stk = [s for s in _lget(demo, "struck") if isinstance(s, str)]
+            line = f"    {_g(_de)} eligible over {_g(_dw)} probative window(s)"
+            if _surf:
+                line += "  " + _c("surfaced: " + ", ".join(_clean(s) for s in _surf), "yellow")
+            out.append(line)
+            if _stk:
+                out.append("    " + _c("struck (read THIS window — never demote): " + ", ".join(_clean(s) for s in _stk), "dim"))
+        else:
+            out.append("    " + _c(f"dormant — {_g(_dw)} probative usage window(s) accrued (wakes per-fact as evidence accrues)", "dim"))
+        _dv = _clean(demo.get("verdict", ""))
+        if _dv:
+            out.append("    " + _c("verdict: ", "dim") + _dv)
 
     # Remediation gate (v0.1.18) — present ONLY when the index was over budget. Shows whether the gate was
     # ACTED on (pruned>0 / justified / gc) — a fired-but-unacted gate (pruned 0, lever prune) stays visible.

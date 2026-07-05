@@ -47,22 +47,13 @@ def _safe_embed(data: dict) -> str:
 
 def read_history(store: Path | None) -> list:
     """The accrued cycle records from `<store>/.consolidation-log.jsonl` — the longitudinal series. Robust:
-    a malformed line is skipped (a corrupt log must not break the dashboard), a missing log → []."""
+    a malformed line is skipped (a corrupt log must not break the dashboard), a missing log → [].
+    v0.1.67 (Phase C): DELEGATES to ms.iter_cycle_log — the shared reader usage_history also uses, so the
+    log line-parse has ONE definition (the single-source rule; a smoke pin guards the delegation).
+    tail=None: render surfaces read ALL cycles, unchanged (_ARCHIVE_CAP bounds the embed downstream)."""
     if store is None:
         return []
-    log = Path(store) / ".consolidation-log.jsonl"
-    if not log.exists():
-        return []
-    out: list = []
-    for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
-        s = line.strip()
-        if not s:
-            continue
-        try:
-            out.append(json.loads(s))
-        except (json.JSONDecodeError, ValueError):
-            continue
-    return out
+    return ms.iter_cycle_log(Path(store) / ".consolidation-log.jsonl", tail=None)
 
 
 _ARCHIVE_CAP = 120   # embed at most the latest N cycles (bounded HTML size); a VISIBLE note flags any truncation

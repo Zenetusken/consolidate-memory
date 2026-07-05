@@ -5,6 +5,70 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.67] — 2026-07-05
+
+### Added — index-lifecycle Phase C: the utility policy (demotion triage · miss loop · fleet utility)
+The policy leg that consumes Phase A's usage instrument — built to the code-review-skill-gated design
+in `docs/index-usage-and-budget-ladder.spec.md` §Phase C (the spec gate verified 44 finder candidates
+inline after the verifier fleet died on session limits; ~20 findings — including two policy-killing
+evidence-gate defects in the draft — were folded in before a line of code was written). Ships
+**DORMANT-AND-HONEST**: the instrument-before-policy pin is amended, not violated — a per-fact
+evidence gate keeps the rank inert until real usage windows accrue (today: 1/3 on this repo, 0
+elsewhere), the Phase-B ceiling's acceptance shape.
+
+- **`usage_history` + `iter_cycle_log` (memory_status)** — longitudinal aggregation of the cycle
+  log's script-truth `usage` blocks. Reads merge from EVERY window (positive evidence always vetoes);
+  only full-fidelity, parseable windows are PROBATIVE for zero-read evidence (a 0-transcript window
+  observed nothing; a cap-truncated one can't prove any fact unread; a store's first
+  `"(no marker …)"` window is skipped, never fatal). `render_html.read_history` now delegates to the
+  shared reader (single source).
+- **`demotion_candidates` (the `*_candidates` family)** — PURE, ranks only, report-then-apply.
+  Eligible iff PER-FACT: ≥ `_DEMOTION_MIN_WINDOWS` (3) zero-read probative windows (an edit restarts
+  the fact's clock — nothing latches) ∧ indexed ∧ non-mirror ∧ 0 reads ever ∧ no KEEP-signal
+  description (lessons stay, by design) ∧ never a logged miss ∧ not counter-justified
+  (`demotion_justify` in the state file — a per-item delta-detector re-firing at
+  +`_DEMOTION_JUSTIFY_REFIRE` (5) windows; malformed fails open toward surfacing). Ranked by hook
+  cost, capped at `_DEMOTION_BOTTOM_K` (5); candidates carry indegree + nearest-description
+  similarity (`SequenceMatcher`, `autojunk=False`, canonical pair order) as merge evidence; veto
+  tallies surface in the report. Dispositions are `entries[]` rows — demote-to-archive / compress /
+  merge-to-stub (NO deletion under this policy) / counter-justify.
+- **The miss-detector** — `--recalls` classifies organic reads by tier **at WINDOW START** (the new
+  `--before <snapshot>` reuses the Phase-0 snapshot, so a fact archived mid-pass is never
+  misclassified); an archived-tier read = `usage.misses` (computed from the UNCAPPED tally) — a
+  transcript-visible demotion error, rendered red, proposed for re-promotion, and a PERMANENT
+  candidacy veto via the log. `inject_usage` also **strikes** any just-read stem from the seeded
+  `demotion.surfaced` (current-window blindness closed deterministically, `demotion.struck`).
+- **`sync_global --utility [--json]`** — READ-ONLY fleet usage evidence for the gc lever:
+  per-canonical reads aggregated across every node's log with a **mirror check before attribution**
+  (a same-stem never-pulled local reports as `shadow_reads`, never attributed) + `fleet_tax` =
+  pointer × holders (0 for unheld; provenance stated as an upper bound) against the warn-only
+  **`GLOBAL_FLEET_TAX_ADVISORY`** (5000 est tok — measured Σ 3283 + ~50% headroom, 2026-07-05).
+  `promote()` prints the same advisory when the fleet total crosses it. Never a block, never auto-gc.
+- **`_parse_ts` relocates to memory_status** (the dependency root; extract_signals/distill_scan
+  re-import the SAME object — smoke-pinned identity) and **`_USAGE_FACT_CAP` rises 20 → 40** (the
+  heaviest node measured 22 facts/window — permanently non-probative under the old cap; producer +
+  mirror + pins move together, additive-safe).
+- Contract: additive `usage.archive_reads`/`usage.misses` + the `demotion` block
+  (`windows_observed`/`eligible`/`surfaced`/`struck`/`verdict` — no model-tallied disposition counts;
+  entries[] stays the single source) + validator backstops; SKILL Phase-5 triage step (pinned BEFORE
+  the final budget re-read) + Phase-4/step-2/step-5 prose + schema block + harness-map + `cm utility`
+  synced. Legacy records render byte-identically on all three renderers (key-presence gated).
+- Gates: smoke **680** (41 new Phase-C checks) · mypy clean · accumulation sim · manifests +
+  `plugin validate --strict` · dream-beta-tester ci_check **0 FAIL** (live run — the target-gate
+  oracles read fields Phase C never writes) · live G-C5: this repo seeds
+  `demotion: {windows_observed: 1, eligible: 0}` and `--utility` reports 1/3 nodes, read-only.
+- **Gated by an inline adversarial code review** (single no-swarm mode, user-directed; multiple finder
+  angles over the full diff, every candidate verified against the live code before reporting). One
+  confirmed medium: `--utility` credited a holding node's ENTIRE probative-window history to a
+  freshly-pulled mirror — overstating zero-read evidence, the same fact-age defect the spec gate caught
+  in C2, reproduced fleet-side; fixed by mtime-gating the per-canonical window count (a refresh resets
+  the clock — undercount, the safe direction; live effect: 7/26 canonicals honestly dropped to
+  "uninstrumented"). One confirmed low: transcript-derived stems (from `Read` file_paths) printed to
+  the terminal unsanitized in the `--recalls` report + the strike's stderr line — now routed through
+  `_sane` (the git-subject convention; also hardened Phase A's pre-existing per_fact print). Two nits
+  (a silent non-dict `--before` fallback now warns; an unused tier-tuple unpack). Refuted: log
+  double-count (the producer `_persist` is marker-idempotent).
+
 ## [0.1.66] — 2026-07-04
 
 ### Added — index-lifecycle Phase B: the HARD CEILING (a second, independent budget signal)

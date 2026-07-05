@@ -23,7 +23,7 @@ import re
 import subprocess
 import sys
 import tempfile
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, TypedDict
 
@@ -138,6 +138,27 @@ class Usage(TypedDict, total=False):
     reads: int
     facts_read: int
     per_fact: list[UsageFact]
+    # v0.1.67 (Phase C): the MISS-DETECTOR — organic reads of ARCHIVED-tier facts (pointer in an
+    # archive index, not MEMORY.md; tier judged against the Phase-0 snapshot state when --before is
+    # given, so a same-pass archival is never misclassified). A miss = a transcript-visible demotion
+    # error; it permanently vetoes the stem from future demotion candidacy (usage_history.miss_stems).
+    # Computed from the UNCAPPED scan tally (never derived from the capped per_fact rows).
+    archive_reads: int
+    misses: list[str]
+
+
+class Demotion(TypedDict, total=False):
+    # v0.1.67 (Phase C): the rank-under-budget demotion triage — script-SEEDED by seed_record from
+    # usage_history + demotion_candidates (docs/index-usage-and-budget-ladder.spec.md §Phase C).
+    # DORMANT until per-fact evidence accrues (the instrument-before-policy pin, amended to runtime).
+    # NO model-tallied disposition counts here: dispositions are entries[] rows (single source — the
+    # distill hand-mirror lesson); `verdict` is the ONE model-authored sentence (the distill precedent:
+    # "ran and proposed nothing" must be distinguishable from "never ran").
+    windows_observed: int   # store-level PROBATIVE usage windows in the log (usage_history windows_full)
+    eligible: int           # facts past the per-fact evidence gate (0 while dormant)
+    surfaced: list[str]     # bottom-K stems, hook-cost ranked (≤ _DEMOTION_BOTTOM_K)
+    struck: list[str]       # script-written by extract_signals.inject_usage: surfaced stems READ this window
+    verdict: str            # the one model sentence, filled in Phase 5
 
 
 class ClaudeMdHierarchyFile(TypedDict, total=False):
@@ -320,7 +341,12 @@ _DISTILL_CAPS = (40, 20)
 # v0.1.63 (Phase A): mirrors extract_signals._USAGE_FACT_CAP (the --recalls per_fact emission cap;
 # smoke-pinned so the mirror cannot drift) — validate_cycle_record's impossible-count backstop for
 # the usage block, same shape as _DISTILL_CAPS above.
-_USAGE_FACT_CAP = 20
+# v0.1.67 (Phase C): 20 → 40. The fleet's heaviest-usage node measured 22 distinct facts read in one
+# window — above the old cap, so its EVERY window would be cap-truncated and non-probative for
+# zero-read evidence, keeping the demotion policy dormant exactly where usage data is richest (a
+# spec-gate finding). 40 matches _DISTILL_CAPS[0]'s scale; an upper-bound LOOSENING is additive-safe
+# (old ≤20-row records stay valid). Producer + this mirror + the smoke pins move together.
+_USAGE_FACT_CAP = 40
 
 
 class CycleRecord(TypedDict, total=False):
@@ -340,6 +366,7 @@ class CycleRecord(TypedDict, total=False):
     dream: DreamArc                # v0.1.54: dream-arc capture (additive; legacy records render)
     distill: Distill               # v0.1.55: distill-verdict capture (additive; legacy records render)
     usage: Usage                   # v0.1.63 (Phase A): organic recall telemetry (additive; legacy records render)
+    demotion: Demotion             # v0.1.67 (Phase C): demotion triage seed + verdict (additive; legacy records render)
     marker: Marker
     outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
 
@@ -407,6 +434,16 @@ INDEX_CEILING_TOKENS = round(INDEX_CEILING_FRACTION * NATIVE_INDEX_CAP_BYTES / 4
 # so the dangling cross-store resolver, the `global_store_facts` seed, and the network display can't
 # drift on the path. READ-only here (it's the replication source); decoupled from this repo (v0.1.52).
 GLOBAL_STORE = Path.home() / ".claude" / "memory"
+
+# ── v0.1.67 (Phase C): the demotion rank's evidence-gate constants ────────────────────────────────
+# ALL coarse, documented-tunable HINTS (the rigor-bands posture) — uncalibrated BY DESIGN: calibration
+# is longitudinal, via the cycle log + the miss loop Phase C itself creates. Do not A/B-sweep them.
+# Full design: docs/index-usage-and-budget-ladder.spec.md §Phase C.
+_DEMOTION_MIN_WINDOWS = 3     # per-fact zero-read PROBATIVE windows before a fact is even eligible
+_DEMOTION_BOTTOM_K = 5        # candidates surfaced per pass (also the validator's impossible-count cap)
+_DEMOTION_JUSTIFY_REFIRE = 5  # a per-item counter-justify suppresses until windows_full grows by this
+_DEMOTION_SIMILAR = 0.6       # SequenceMatcher ratio ≥ this → the nearest-description merge evidence
+_LOG_TAIL_CAP = 500           # iter_cycle_log's Phase-0 tail bound (an append-only log; ~1 line/dream)
 
 # ── Rigor tier (v0.1.3): scale pass ceremony with an EARLY magnitude signal ──────────
 # magnitude = git_commits (Phase-0 flow since the marker) + session_candidates (the
@@ -514,6 +551,33 @@ def cliff_pct(index_bytes: int, index_lines: int) -> int:
     block: the cliff is the harness's cap, so it's measured in the harness's units, never
     est_tokens)."""
     return round(100 * max(index_bytes / NATIVE_INDEX_CAP_BYTES, index_lines / NATIVE_INDEX_CAP_LINES))
+
+
+# A `±HHMM` offset (no colon — what `date -u +%z` prints) → `±HH:MM`, which `fromisoformat` requires on
+# Python 3.8–3.10 (3.11 relaxed it). Anchored to the END so it can't touch the date's own `-`/`:`.
+_OFFSET_NOCOLON = re.compile(r"([+-]\d{2})(\d{2})$")
+
+
+def _parse_ts(ts: str) -> "datetime | None":
+    """A transcript/marker/`--since` timestamp string → an AWARE UTC datetime, or None if empty/unparseable.
+    THE single timestamp parser for the pipeline. v0.1.67 (Phase C): RELOCATED here from extract_signals
+    (unchanged — smoke pins identity across all three modules) because usage_history/demotion_candidates
+    need it and extract_signals imports FROM this module — reusing it in place would be a circular import,
+    and a second local parser is the documented already-bitten divergence class (a distill-local copy once
+    diverged on a no-colon offset, so the file-prune no-op'd while the per-line filter worked).
+    extract_signals re-imports it (distill_scan's `from extract_signals import _parse_ts` still resolves).
+    Normalizes a bare `Z` (3.10 rejects it) and a `±HHMM` no-colon offset; a NAIVE stamp is assumed UTC
+    (CC emits `…Z`); an offset stamp is converted to its true UTC INSTANT."""
+    if not ts:
+        return None
+    s = _OFFSET_NOCOLON.sub(r"\1:\2", ts.replace("Z", "+00:00"))
+    try:
+        dt = datetime.fromisoformat(s)
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 _CTRL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
@@ -823,22 +887,32 @@ def _standing_baseline_tokens(sj: object) -> int | None:
     return None
 
 
+def _is_archive_index_text(text: str) -> bool:
+    """v0.1.67 (Phase C): the archive-index rule on TEXT — split out of _is_archive_index so the
+    miss-detector can classify tier from a Phase-0 --snapshot's stored CONTENT (the window-start state)
+    with the SAME rule the path classifier uses (single source; the two cannot drift)."""
+    if text.lstrip("﻿").lstrip().startswith("---"):   # fact frontmatter (BOM-tolerant, cf _frontmatter) → not an archive
+        return False
+    return len(_LINK_RE.findall(text)) >= 3          # link-list with no frontmatter → archive index
+
+
 def _is_archive_index(path: Path) -> bool:
     """True if a store `*.md` is an ARCHIVE INDEX (a link-list like MEMORY.md / SHIPPED.md), NOT a fact.
     A fact begins with `---` frontmatter; an archive index does not and is mostly `](x.md)` links. v0.1.18.x
     (beta finding C1): the triage globs every `*.md` as a fact, so a relocated archive (`SHIPPED.md`, whose
     stem matches the tracker regex) lands in B → "evict" → nuking the archive. Excluding archive docs from
     fact_files prevents that, and lets their link-targets count as reference surfaces. Cheap: the 64-byte head
-    short-circuits the common (fact-with-frontmatter) case before reading the whole file."""
+    short-circuits the common (fact-with-frontmatter) case before reading the whole file; the rule itself
+    lives in _is_archive_index_text (v0.1.67 — shared with snapshot-content tiering)."""
     try:
         with path.open(encoding="utf-8", errors="replace") as fh:
             head = fh.read(64)
-            if head.lstrip("﻿").lstrip().startswith("---"):   # fact frontmatter (BOM-tolerant, cf _frontmatter) → not an archive
+            if head.lstrip("﻿").lstrip().startswith("---"):   # short-circuit before reading the whole file
                 return False
             rest = head + fh.read()
     except OSError:
         return False
-    return len(_LINK_RE.findall(rest)) >= 3          # link-list with no frontmatter → archive index
+    return _is_archive_index_text(rest)
 
 
 def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
@@ -972,6 +1046,198 @@ def defrag_candidates(fact_files: list, index_names: set, *, factor: float = 2.5
         return []
     out = [{"stem": s, "body_tokens": t, "ratio": round(t / med, 1)} for s, t in pop if t > factor * med]
     out.sort(key=lambda c: -c["body_tokens"])
+    return out
+
+
+def iter_cycle_log(log: Path, tail: "int | None" = None) -> list:
+    """v0.1.67 (Phase C): THE shared `.consolidation-log.jsonl` reader — parsed JSON values in file order,
+    malformed/blank lines skipped, never raises (a corrupt log must not break a dream OR a dashboard).
+    `tail=N` bounds the read to the last N lines (the Phase-0 path passes _LOG_TAIL_CAP; render surfaces
+    pass None = all, so their output is unchanged). Exists so usage_history does NOT become the second
+    independent log line-parser beside render_html.read_history — that reader now delegates here (the
+    single-source rule; a smoke pin guards the delegation)."""
+    if not log.exists():
+        return []
+    try:
+        lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    if tail is not None:
+        lines = lines[-tail:]
+    out: list = []
+    for line in lines:
+        s = line.strip()
+        if not s:
+            continue
+        try:
+            out.append(json.loads(s))
+        except (json.JSONDecodeError, ValueError):
+            continue
+    return out
+
+
+def usage_history(auto_mem: Path) -> dict:
+    """v0.1.67 (Phase C): aggregate the per-window script-truth `usage` blocks accrued in the cycle log →
+    {"windows_full": int, "window_starts": list[float], "per_fact": {stem: {"reads", "last"}},
+    "miss_stems": list[str]}. READ-ONLY; guarded everywhere (malformed blocks skipped).
+
+    TWO deliberately different inclusion rules (a spec-gate finding — the draft used one and was
+    anti-conservative): per-fact READS merge from EVERY usage block — full, cap-truncated, or empty —
+    because positive read evidence must never be discarded (any recorded read vetoes demotion candidacy);
+    but a window is PROBATIVE for zero-read evidence only iff transcripts ≥ 1 (an empty window observed
+    nothing), facts_read == len(per_fact) (a cap-truncated window cannot prove any fact unread), AND its
+    window since-side parses via _parse_ts (an unplaceable window — including every store's FIRST, whose
+    literal since is "(no marker — all transcripts)" — is skipped for evidence, never fatal: the draft's
+    global span anchor latched dead on it forever). `window_starts` carries the probative windows' epoch
+    starts for demotion_candidates' per-fact counting. `miss_stems` unions every logged usage.misses —
+    a caught miss persists here even after the transcript that revealed it rotates away. `last` merges by
+    parsed-epoch max (lexicographic only as the unparseable fallback)."""
+    windows_full = 0
+    window_starts: list = []
+    acc: dict = {}       # stem -> {"reads": int, "last": iso, "_ep": float|None}
+    misses: set = set()
+    for rec in iter_cycle_log(auto_mem / ".consolidation-log.jsonl", tail=_LOG_TAIL_CAP):
+        u = rec.get("usage") if isinstance(rec, dict) else None
+        if not isinstance(u, dict):
+            continue
+        pf = u.get("per_fact")
+        pf = pf if isinstance(pf, list) else []
+        for row in pf:                                   # reads merge from EVERY block (see docstring)
+            if not isinstance(row, dict):
+                continue
+            name = str(row.get("name", "") or "")
+            if not name:
+                continue
+            a = acc.setdefault(name, {"reads": 0, "last": "", "_ep": None})
+            a["reads"] += max(0, _pi_int(row.get("reads")))
+            ts = str(row.get("last", "") or "")
+            dt = _parse_ts(ts)
+            if dt is not None and (a["_ep"] is None or dt.timestamp() > a["_ep"]):
+                a["_ep"], a["last"] = dt.timestamp(), ts
+            elif dt is None and a["_ep"] is None and ts > a["last"]:
+                a["last"] = ts                           # both unparseable → lexicographic fallback
+        m = u.get("misses")
+        for stem in (m if isinstance(m, list) else []):
+            if isinstance(stem, str) and stem:
+                misses.add(stem)
+        if _pi_int(u.get("transcripts")) < 1 or _pi_int(u.get("facts_read")) != len(pf):
+            continue                                     # non-probative: observed nothing / cap-truncated
+        start = _parse_ts(str(u.get("window", "") or "").split("..", 1)[0])
+        if start is None:
+            continue                                     # unplaceable window — skip for evidence, not fatal
+        windows_full += 1
+        window_starts.append(start.timestamp())
+    per_fact = {k: {"reads": v["reads"], "last": v["last"]} for k, v in acc.items()}
+    return {"windows_full": windows_full, "window_starts": window_starts,
+            "per_fact": per_fact, "miss_stems": sorted(misses)}
+
+
+def _demotion_justify(dj: object) -> dict:
+    """v0.1.67 (Phase C): the per-item counter-justify map from a marker's `demotion_justify` state →
+    {stem: windows_at_justify}. WELL-FORMED entries only — a malformed entry (non-dict, non-int windows,
+    bool) is DROPPED, i.e. does NOT suppress: the SAME fail direction as _standing_baseline (malformed ⇒
+    the gate fires / the candidate surfaces — err toward the human seeing it; here the output is
+    report-only, so surfacing is the safe direction)."""
+    out: dict = {}
+    if isinstance(dj, dict):
+        for k, v in dj.items():
+            if (isinstance(k, str) and isinstance(v, dict)
+                    and isinstance(v.get("windows"), int) and not isinstance(v.get("windows"), bool)):
+                out[k] = v["windows"]
+    return out
+
+
+def demotion_candidates(fact_files: list, index_names: set, hist: Mapping[str, Any],
+                        index_text: str, justify: "Mapping[str, int] | None" = None) -> dict:
+    """v0.1.67 (Phase C): the rank-under-budget demotion triage — the `*_candidates` family contract:
+    PURE(ish — reads the given fact files), RANKS only, the model judges content + the user confirms;
+    NO write path. docs/index-usage-and-budget-ladder.spec.md §Phase C2.
+
+    Evidence is counted PER FACT: a fact's zero-read windows = the probative windows (hist.window_starts)
+    whose epoch start ≥ the fact's st_mtime — the fact, in its current form, existed through the whole
+    window; an edit resets mtime and restarts its clock (undercounts eligibility — the safe direction).
+    ELIGIBLE iff: ≥ _DEMOTION_MIN_WINDOWS such windows · indexed (only an indexed pointer taxes the
+    always-loaded tier) · not a mirror (GC's domain) · 0 merged reads EVER (truncated windows included —
+    any recorded read vetoes) · no _KEEP_RE signal in the frontmatter description (a lesson STAYS; the
+    rank finds dead reference/status weight — sufficient-not-necessary, the archive_candidates caveat) ·
+    not in miss_stems (a fact once read from the archive proved live — scarred, never re-surfaced) · not
+    suppressed by a live per-item counter-justify (re-fires at +_DEMOTION_JUSTIFY_REFIRE windows).
+
+    Ranked by hook_tokens desc (the measurable always-loaded relief a demotion frees — the
+    remediation_triage sort-by-cost shape), capped at _DEMOTION_BOTTOM_K. Deliberately NOT an ACT-R
+    activation fit: eligibility is a binary evidence gate; fitted decay constants would be uncalibratable
+    fake-empirics today (the rigor-bands posture). Veto TALLIES return so the report can show what the
+    gate withheld — information for the human, without becoming policy. Surfaced candidates carry
+    `indegree` (wikilink in-degree — safe for archive-demotion, load-bearing for a merge) and
+    `similar`/`ratio` (nearest same-population description, SequenceMatcher autojunk=False over the
+    canonically-sorted pair — deterministic; a spec-gate finding on the default autojunk)."""
+    justify = justify or {}
+    wf = _pi_int(hist.get("windows_full"))
+    out: dict = {"windows_full": wf, "eligible": 0, "candidates": [],
+                 "vetoed_read": 0, "vetoed_keep": 0, "vetoed_justified": 0, "vetoed_missed": 0}
+    if wf < _DEMOTION_MIN_WINDOWS:
+        return out                                       # DORMANT — no fact can out-count the store
+    starts = [s for s in (hist.get("window_starts") or []) if isinstance(s, (int, float))]
+    pf_raw = hist.get("per_fact")                        # assign-then-narrow (the module's mypy idiom)
+    pf = pf_raw if isinstance(pf_raw, dict) else {}
+    miss_stems = set(hist.get("miss_stems") or [])
+    bodies: dict = {}
+    mtimes: dict = {}
+    for f in fact_files:
+        try:
+            bodies[f.stem] = f.read_text(encoding="utf-8", errors="replace")
+            mtimes[f.stem] = f.stat().st_mtime
+        except OSError:
+            continue
+    # The candidate POPULATION: indexed, non-mirror facts (the tier the budget pays for; mirrors are C4's).
+    pop = {s for s in bodies if s in index_names and not _is_mirror(bodies[s])}
+    descs = {s: _frontmatter(bodies[s]).get("description", "") for s in pop}
+    eligible: list = []
+    for stem in sorted(pop):
+        row_raw = pf.get(stem)                           # assign-then-narrow (the module's mypy idiom)
+        row = row_raw if isinstance(row_raw, dict) else {}
+        if _pi_int(row.get("reads")) > 0:
+            out["vetoed_read"] += 1                      # any recorded read, ever → never a candidate
+            continue
+        zrw = sum(1 for s in starts if s >= mtimes[stem])
+        if zrw < _DEMOTION_MIN_WINDOWS:
+            continue                                     # insufficient evidence YET — not a veto
+        if stem in miss_stems:
+            out["vetoed_missed"] += 1                    # proved live from the archive once — scarred
+            continue
+        jw = justify.get(stem)
+        if isinstance(jw, int) and not isinstance(jw, bool) and jw + _DEMOTION_JUSTIFY_REFIRE > wf:
+            out["vetoed_justified"] += 1                 # counter-justified; re-fires on +REFIRE windows
+            continue
+        if _KEEP_RE.search(descs[stem]):
+            out["vetoed_keep"] += 1                      # lesson/negative/directive — stays, by design
+            continue
+        hook = next((est_tokens(ln) for ln in index_text.splitlines() if f"]({stem}.md)" in ln), 0)
+        eligible.append({"stem": stem, "hook_tokens": hook, "zero_read_windows": zrw})
+    out["eligible"] = len(eligible)
+    eligible.sort(key=lambda c: (-c["hook_tokens"], c["stem"]))
+    surfaced = eligible[:_DEMOTION_BOTTOM_K]
+    if surfaced:
+        indeg: dict = {s: 0 for s in pop}
+        all_stems = set(bodies)
+        for src, body in bodies.items():
+            for link in extract_wikilinks(body):
+                tgt = link if link in all_stems else resolve_wikilink(link, all_stems)
+                if tgt and tgt != src and tgt in indeg:
+                    indeg[tgt] += 1
+        for c in surfaced:
+            c["indegree"] = indeg.get(c["stem"], 0)
+            best, best_r = "", 0.0
+            for other in pop:
+                if other == c["stem"] or not descs[other] or not descs[c["stem"]]:
+                    continue
+                a, b = sorted((c["stem"], other))        # canonical arg order → deterministic ratio
+                r = difflib.SequenceMatcher(None, descs[a], descs[b], autojunk=False).ratio()
+                if r > best_r:
+                    best, best_r = other, r
+            if best_r >= _DEMOTION_SIMILAR:
+                c["similar"], c["ratio"] = best, round(best_r, 2)
+    out["candidates"] = surfaced
     return out
 
 
@@ -1340,11 +1606,13 @@ def build_context(project_dir: Path) -> dict:
     state_path = auto_mem / STATE_FILE
     last_commit = last_ts = ""
     standing_justify: object = None
+    demotion_justify: object = None
     if state_path.exists():
         try:
             st = json.loads(state_path.read_text())
             last_commit, last_ts = st.get("commit", ""), st.get("timestamp", "")
             standing_justify = st.get("standing_justify")   # v0.1.21 (D7): the justified-density baseline, if any
+            demotion_justify = st.get("demotion_justify")   # v0.1.67 (Phase C): per-item counter-justify map, if any
         except (json.JSONDecodeError, OSError):
             pass
     # Harden: the commit comes from a JSON file on disk and is passed to `git` as an
@@ -1477,6 +1745,15 @@ def build_context(project_dir: Path) -> dict:
     maintenance: dict = {"dangling": len(_dangling), "over_budget_not_justified": _obnj,
                          "work": bool(_dangling) or _obnj}
 
+    # v0.1.67 (Phase C): the demotion-triage seed — longitudinal usage aggregation + the per-fact
+    # evidence-gated rank. Cheap on the always-run Phase-0 path: one tail-capped log read + one store
+    # scan (the archive/defrag candidate scans already set that cost precedent). DORMANT (eligible 0,
+    # empty candidates) until probative windows accrue — see the §Phase C evidence gate.
+    usage_hist = usage_history(auto_mem) if auto_mem.exists() else {
+        "windows_full": 0, "window_starts": [], "per_fact": {}, "miss_stems": []}
+    demotion = demotion_candidates(fact_files, index_names, usage_hist, _index_text,
+                                   justify=_demotion_justify(demotion_justify))
+
     return {
         "project_dir": project_dir,
         "project": project_dir.name,
@@ -1504,6 +1781,8 @@ def build_context(project_dir: Path) -> dict:
         "slug_orphans": slug_orphans,
         "remediation": remediation,
         "maintenance": maintenance,
+        "usage_hist": usage_hist,   # v0.1.67 (Phase C)
+        "demotion": demotion,       # v0.1.67 (Phase C)
     }
 
 
@@ -1679,6 +1958,15 @@ def seed_record(ctx: dict) -> CycleRecord:
             "reaches_budget": rem.get("reaches_budget", True),   # D5: False ⇒ prune-then-standing-justify
             "over_ceiling": bool(rem.get("over_ceiling")),       # v0.1.66 (Phase B): sibling of required, never a re-key
         }
+    # v0.1.67 (Phase C): seed the demotion-triage block whenever the store exists — a DORMANT pass
+    # records windows_observed / eligible: 0 HONESTLY ("ran and proposed nothing" ≠ "never ran", the
+    # distill precedent). `struck` is written later by extract_signals.inject_usage; `verdict` is the
+    # model's Phase-5 sentence. Absent key on a store-less run — legacy records stay valid (total=False).
+    if ctx["auto_mem"].exists():
+        demo = ctx.get("demotion") or {}
+        record["demotion"] = {"windows_observed": _pi_int(demo.get("windows_full")),
+                              "eligible": _pi_int(demo.get("eligible")),
+                              "surfaced": [c["stem"] for c in demo.get("candidates", []) if isinstance(c, dict)]}
     return record
 
 
@@ -1705,7 +1993,7 @@ def validate_cycle_record(record: object) -> list[str]:
 
     # Top-level keys that MUST be a dict if present.
     for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health",
-                "audit", "remediation", "maintenance", "dream", "distill", "usage"):
+                "audit", "remediation", "maintenance", "dream", "distill", "usage", "demotion"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
@@ -1741,6 +2029,22 @@ def validate_cycle_record(record: object) -> list[str]:
             warnings.append("usage.per_fact is not a list")
         elif len(usage["per_fact"]) > _USAGE_FACT_CAP:
             warnings.append(f"usage.per_fact exceeds the scanner cap ({_USAGE_FACT_CAP}) — impossible from a capped scan")
+    # v0.1.67 (Phase C): usage.misses — same producer, same cap, same backstop shape.
+    if isinstance(usage, dict) and "misses" in usage:
+        if not isinstance(usage["misses"], list):
+            warnings.append("usage.misses is not a list")
+        elif len(usage["misses"]) > _USAGE_FACT_CAP:
+            warnings.append(f"usage.misses exceeds the scanner cap ({_USAGE_FACT_CAP}) — impossible from a capped scan")
+
+    # v0.1.67 (Phase C): the demotion block — surfaced is script-seeded and capped at _DEMOTION_BOTTOM_K
+    # (producer + validator share THIS module, so no cross-module mirror is needed, unlike _DISTILL_CAPS).
+    demotion = record.get("demotion")
+    if isinstance(demotion, dict):
+        for lk in ("surfaced", "struck"):
+            if lk in demotion and not isinstance(demotion[lk], list):
+                warnings.append(f"demotion.{lk} is not a list")
+        if isinstance(demotion.get("surfaced"), list) and len(demotion["surfaced"]) > _DEMOTION_BOTTOM_K:
+            warnings.append(f"demotion.surfaced exceeds the rank cap ({_DEMOTION_BOTTOM_K}) — impossible from a capped rank")
 
     # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
     # already warned via the top-level tuple above ("health is not a dict"); here we just
@@ -2047,6 +2351,25 @@ def print_report(ctx: dict) -> None:
                           "content + live lessons; propose-then-apply): "
                           + _ui.c(", ".join(f"{c['stem']}({c['ratio']}×)" for c in _defrag[:6]) + ("…" if len(_defrag) > 6 else ""), "dim"),
                           bullet="↓", bullet_color="cyan"))
+    # v0.1.67 (Phase C): the demotion triage — `demote?` when eligible; the dim DORMANT accrual line while
+    # the evidence gate hasn't opened (so the accrual is visible, not mysterious). Veto tallies show what
+    # the gate withheld — information for the human, never policy.
+    _demo = ctx.get("demotion") or {}
+    if _demo.get("eligible"):
+        _dtop = ", ".join(f"{c['stem']}(≈{c['hook_tokens']}t·{c['zero_read_windows']}w)"
+                          for c in _demo.get("candidates", []))
+        _vet = (f"vetoed: {_demo.get('vetoed_keep', 0)} keep-signal · {_demo.get('vetoed_read', 0)} read · "
+                f"{_demo.get('vetoed_justified', 0)} justified"
+                + (f" · {_demo['vetoed_missed']} missed" if _demo.get("vetoed_missed") else ""))
+        sig.append(_ui.li(f"demote? {_demo['eligible']} eligible 0-read indexed fact(s) over ≥{_DEMOTION_MIN_WINDOWS} "
+                          "probative window(s) → demote-to-archive / compress / merge / counter-justify "
+                          "(report-then-apply — YOU judge content, keep-on-doubt): "
+                          + _ui.c(_dtop, "dim") + "  " + _ui.c(_vet, "dim"),
+                          bullet="↓", bullet_color="yellow"))
+    elif ctx["auto_mem"].exists() and _demo.get("windows_full", 0) < _DEMOTION_MIN_WINDOWS:
+        sig.append(_ui.li(_ui.c(f"usage evidence {_demo.get('windows_full', 0)}/{_DEMOTION_MIN_WINDOWS} probative "
+                                "windows — demotion policy DORMANT (accrues per-dream via --recalls)", "dim"),
+                          bullet="·"))
     if ctx["slug_orphans"]:
         cur_live = max(_newest_mtime(ctx["proj_root"], "*.jsonl"), _newest_mtime(ctx["auto_mem"], "*.md"))
         for o in ctx["slug_orphans"]:
