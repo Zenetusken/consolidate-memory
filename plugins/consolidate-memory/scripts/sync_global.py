@@ -388,7 +388,14 @@ def _fat_hook_warning(pointer_line: str, name: str) -> str | None:
     HOOK_TOKEN_WARN est tok, else None. PURE (smoke-pinned). Detection names the CANONICAL's description
     as the fix site (the pointer is derived from it, so a fat mirror hook taxes every node on every
     session); the line is NEVER truncated — a recall cue silently shortened is a recall cue silently
-    broken (report-then-apply: the human tightens the canonical)."""
+    broken (report-then-apply: the human tightens the canonical).
+
+    HONEST REACH LIMIT: `_pointer_line`'s own 88-char description truncation caps its output well under
+    HOOK_TOKEN_WARN for any realistic fact name (measured: a name needs to run ~65+ chars before the line
+    crosses 60 est tok) — this lint mostly guards an extreme-name edge case for GLOBAL/mirror pointers.
+    The fat hooks actually measured this session (116/141 tok) were project-authored LOCAL pointers the
+    model hand-writes in Phase 4, a path this script never touches — SKILL.md's Phase-4 prose is the
+    only guard there (the "≤ ~60 est tok" rule), not this function."""
     t = est_tokens(pointer_line)
     if t > HOOK_TOKEN_WARN:
         return (f"⚠ fat hook: '{name}' pointer ≈{t} tok > {HOOK_TOKEN_WARN} — tighten the CANONICAL's "
@@ -578,9 +585,14 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                       file=sys.stderr)
             store.mkdir(parents=True, exist_ok=True)
             path.write_text(want, encoding="utf-8")
-            _ensure_index_pointer(store, name, fm)
-            if _fat_hook_warning(_pointer_line(name, fm), name):
-                fat += 1                     # v0.1.66: count for the RESULT line (the stderr warn already fired)
+            # v0.1.66: count for the RESULT line ONLY when the pointer was actually WRITTEN this pass — a
+            # STALE-mirror refresh whose BODY changed but whose derived pointer line didn't (description/
+            # scope unchanged) makes _ensure_index_pointer correctly no-op (no stderr lint fired inside it);
+            # counting `fat` unconditionally here would over-count AND mislabel a no-op as "written" (a real
+            # bug caught by the max-effort code-review workflow, 2026-07-04 — the RESULT line would claim a
+            # fat hook was written when nothing was, with no accompanying stderr line to explain why).
+            if _ensure_index_pointer(store, name, fm) and _fat_hook_warning(_pointer_line(name, fm), name):
+                fat += 1
             if status == "MISSING":
                 pulled += 1
                 running_idx += cost          # the index just grew by this pointer — track it for the next guard

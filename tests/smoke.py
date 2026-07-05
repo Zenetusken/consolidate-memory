@@ -2456,5 +2456,52 @@ with _tfB.TemporaryDirectory() as _tdB2:
         else:
             _osB.environ["HOME"] = _oldHomeB2
 
+# (7) fat-hook RESULT-line accounting on a STALE-mirror refresh — a max-effort code-review workflow
+# finding (2026-07-04): the outer loop discarded _ensure_index_pointer's return value and unconditionally
+# recounted `fat`, so a body-only canonical edit (description/scope unchanged → the derived pointer line
+# is byte-identical → _ensure_index_pointer correctly NO-OPS, printing no stderr lint) still incremented
+# `fat` on the SECOND pull, making the RESULT line claim a fat hook was "written" a second time with no
+# accompanying stderr line to explain why. Fixed: `fat` counts only when the pointer was ACTUALLY written.
+with _tfB.TemporaryDirectory() as _tdB3:
+    _homeB3 = Path(_tdB3)
+    _projB3 = (_homeB3 / "src" / "fatproj").resolve(); _projB3.mkdir(parents=True)
+    _stB3 = _homeB3 / ".claude" / "projects" / ms.slug_for(_projB3) / "memory"; _stB3.mkdir(parents=True)
+    _glB3 = _homeB3 / "global-mem"; _glB3.mkdir(parents=True)
+    # _pointer_line truncates the DESCRIPTION hook to 88 chars — a realistic description alone can't cross
+    # HOOK_TOKEN_WARN (60 est tok; the name occurs TWICE in `[name](name.md)`, so an unusually long NAME is
+    # what actually crosses it here — confirmed empirically before picking this length).
+    _fatName = "g" * 70
+    _fatDesc = "x" * 100
+    (_glB3 / f"{_fatName}.md").write_text(
+        f'---\nname: {_fatName}\ndescription: "{_fatDesc}"\nmetadata:\n  node_type: memory\n'
+        "  scope: user-global\n  type: feedback\n---\nbody v1\n", encoding="utf-8")
+    _oldHomeB3 = _osB.environ.get("HOME"); _osB.environ["HOME"] = str(_homeB3)
+    _oldGlobalB3 = sg.GLOBAL
+    sg.GLOBAL = _glB3
+    try:
+        (_stB3 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+        _buf3aB = _ioB.StringIO()
+        with _ctxB.redirect_stdout(_buf3aB), _ctxB.redirect_stderr(_ioB.StringIO()) as _err3aB:
+            sg.run(_projB3, pull=True)
+        check("v0.1.66 fat-hook accounting: a genuinely NEW fat pointer counts + lints on the pull that writes it",
+              "fat hook(s)" in _buf3aB.getvalue() and f"fat hook: '{_fatName}'" in _err3aB.getvalue())
+        # Edit the CANONICAL's BODY only (frontmatter/description unchanged) → the mirror goes STALE, but
+        # the derived pointer line is byte-identical, so _ensure_index_pointer must no-op on refresh.
+        (_glB3 / f"{_fatName}.md").write_text(
+            f'---\nname: {_fatName}\ndescription: "{_fatDesc}"\nmetadata:\n  node_type: memory\n'
+            "  scope: user-global\n  type: feedback\n---\nbody v2, changed\n", encoding="utf-8")
+        _buf3bB = _ioB.StringIO()
+        with _ctxB.redirect_stdout(_buf3bB), _ctxB.redirect_stderr(_ioB.StringIO()) as _err3bB:
+            sg.run(_projB3, pull=True)
+        check("v0.1.66 fat-hook accounting: a STALE-mirror body-only refresh (pointer unchanged) does NOT recount `fat`",
+              "refreshed 1" in _buf3bB.getvalue() and "fat hook(s)" not in _buf3bB.getvalue()
+              and "fat hook:" not in _err3bB.getvalue())
+    finally:
+        sg.GLOBAL = _oldGlobalB3
+        if _oldHomeB3 is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldHomeB3
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
