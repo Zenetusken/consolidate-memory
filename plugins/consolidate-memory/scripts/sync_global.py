@@ -1186,7 +1186,10 @@ def fleet_utility(project_dir: Path) -> dict:
     reads for stem X count toward canonical X only if the node's `X.md` is a managed mirror — a
     same-stem, never-pulled LOCAL fact (the `present(local)` shadow case run() already recognizes) is
     tallied as `shadow_reads`, never attributed (a spec-gate finding: stem equality alone lies).
-    `fleet_tax = pointer_tok × len(holders)` — ZERO for an unheld canonical (nobody pays it; its
+    Per-canonical `windows` counts only the probative windows each holding MIRROR existed through
+    (window start ≥ mirror mtime — the demotion rank's fact-age rule, applied fleet-side; an inline
+    adversarial review found the unconditional windows_full credit overstated zero-read evidence on
+    freshly-pulled mirrors). `fleet_tax = pointer_tok × len(holders)` — ZERO for an unheld canonical (nobody pays it; its
     would-be per-node cost is listed separately), on the stated provenance UPPER-BOUND basis. This is
     EVIDENCE for the model's gc/demote judgment (Phase-5 step 2, Phase-4 governance) — never an auto-gc
     input: scope/keep decisions stay CONTENT-gated (holders/adoption ≠ fit). JSON-safe (lists, never
@@ -1212,13 +1215,20 @@ def fleet_utility(project_dir: Path) -> dict:
                 continue
             try:
                 text = p.read_text(encoding="utf-8", errors="replace")
+                mt = p.stat().st_mtime
             except OSError:
                 continue
             if not _is_mirror(text):
                 if reads:
                     per[stem]["shadow"] += reads       # same-stem local — reported, never attributed
                 continue
-            per[stem]["windows"] += hist["windows_full"]
+            # Count only the probative windows the MIRROR existed through (window start ≥ mirror mtime) —
+            # crediting a node's whole window history to a freshly-pulled mirror would overstate its
+            # zero-read evidence ("0 reads/10w" on a one-day-old mirror), the same per-fact fact-age rule
+            # demotion_candidates applies locally (found by the inline adversarial review, 2026-07-05).
+            # A refresh resets mtime → undercounts, the safe direction under the pinned bias.
+            per[stem]["windows"] += sum(1 for s in hist["window_starts"]
+                                        if isinstance(s, (int, float)) and s >= mt)
             per[stem]["reads"] += reads
             ts = str((row or {}).get("last", "") or "") if isinstance(row, dict) else ""
             dt = _parse_ts(ts)
@@ -1269,7 +1279,8 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
                        f"{len(u['canonicals'])} canonical(s)", "dim") + over))
     out.append("")
     out.append(_ui.kv("CANON", _ui.c("fleet_tax desc · reads are MIRROR-attributed organic recalls "
-                                     "across reporting nodes · windows = Σ probative windows on holding nodes", "dim")))
+                                     "across reporting nodes · windows = Σ probative windows each holding "
+                                     "MIRROR existed through (mtime-gated; a refresh resets the clock)", "dim")))
     for e in u["canonicals"]:
         if e["windows"] and not e["reads"]:
             ev = _ui.c(f"0 reads/{e['windows']}w — unread where instrumented", "yellow")

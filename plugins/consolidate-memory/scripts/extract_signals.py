@@ -40,10 +40,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import (_is_archive_index, _is_archive_index_text, _parse_ts, _write_private,
+from memory_status import (_is_archive_index, _is_archive_index_text, _parse_ts, _sane, _write_private,
                            index_fact_names, slug_for, _LINK_RE)
 # slug rule (v0.1.17) + archive-index classifiers + 0o600-atomic seed write (v0.1.63 --recalls) + the
 # relocated single timestamp parser & the index-pointer link anchor + index reader (v0.1.67 miss-detector)
+# + _sane: fact STEMS printed by --recalls derive from transcript Read file_paths (attacker-influenceable
+# session content) — strip control bytes before they reach the terminal (the git-subject convention)
 
 STATE_FILE = ".consolidation-state.json"
 
@@ -651,10 +653,14 @@ def recall_scan(project_dir: Path, since: str, before: str = "") -> dict:
     if before:
         try:
             _s = json.loads(Path(before).read_text(encoding="utf-8"))
-            snap = _s if isinstance(_s, dict) else None
+            if isinstance(_s, dict):
+                snap = _s
+            else:   # valid JSON, wrong shape — warn like the unreadable path (review nit: no silent fallback)
+                print("--before: snapshot root is not a JSON object — tier falls back to the LIVE store",
+                      file=sys.stderr)
         except (OSError, json.JSONDecodeError, ValueError) as e:
             print(f"--before: unreadable snapshot ({e}) — tier falls back to the LIVE store", file=sys.stderr)
-    _indexed, _archived = _tier_sets(auto_mem, snap)
+    _archived = _tier_sets(auto_mem, snap)[1]   # [0] (indexed) is _tier_sets-internal (indexed-wins subtraction)
     misses = sorted(k for k in reads if k in _archived)[:_USAGE_FACT_CAP]
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     return {"window": f"{since or '(no marker — all transcripts)'}..{now}",
@@ -692,7 +698,7 @@ def inject_usage(seed_path: str, block: dict) -> bool:
                 prev = prev_raw if isinstance(prev_raw, list) else []
                 demo["struck"] = sorted({*(x for x in prev if isinstance(x, str)), *struck})
                 print(f"demotion: struck {len(struck)} surfaced stem(s) read THIS window — "
-                      + ", ".join(struck), file=sys.stderr)
+                      + ", ".join(_sane(s) for s in struck), file=sys.stderr)
         _write_private(Path(seed_path), json.dumps(record, indent=2, ensure_ascii=False) + "\n")
         print(f"usage → injected into {seed_path}", file=sys.stderr)
         return True
@@ -709,14 +715,15 @@ def _recalls_report(d: dict) -> None:
     print("  " + _ui.c(f"{d['transcripts']} transcript(s) · {d['dream_excluded']} dream-procedure "
                        f"read(s) excluded · window {d['window']}", "dim"))
     for f in d["per_fact"]:
-        print(f"  {f['reads']:>4} × {f['name']}  " + _ui.c(f"last {str(f['last'])[:16]}", "dim"))
+        # _sane (v0.1.67 review): the stem derives from a transcript Read file_path — terminal-inject guard
+        print(f"  {f['reads']:>4} × {_sane(f['name'])}  " + _ui.c(f"last {str(f['last'])[:16]}", "dim"))
     if not d["per_fact"]:
         print("  (no organic fact reads in the window — 0 reads = absence of evidence, not proof of no use)")
     print("  " + _ui.c(f"total {d['reads']} read(s) over {d['facts_read']} fact(s)", "dim"))
     # v0.1.67 (Phase C): the miss-detector — loud, it is the demotion policy's own error signal.
     if d.get("misses"):
         print("  " + _ui.c(f"⚠ demotion MISS: {len(d['misses'])} archived-tier fact(s) read organically "
-                           f"({d.get('archive_reads', 0)} read(s)) — " + ", ".join(d["misses"])
+                           f"({d.get('archive_reads', 0)} read(s)) — " + ", ".join(_sane(m) for m in d["misses"])
                            + " · re-promote the pointer(s) to MEMORY.md (report-then-apply)", "red"))
 
 

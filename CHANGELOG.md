@@ -53,10 +53,21 @@ elsewhere), the Phase-B ceiling's acceptance shape.
   entries[] stays the single source) + validator backstops; SKILL Phase-5 triage step (pinned BEFORE
   the final budget re-read) + Phase-4/step-2/step-5 prose + schema block + harness-map + `cm utility`
   synced. Legacy records render byte-identically on all three renderers (key-presence gated).
-- Gates: smoke **679** (40 new Phase-C checks) · mypy clean · accumulation sim · manifests +
+- Gates: smoke **680** (41 new Phase-C checks) · mypy clean · accumulation sim · manifests +
   `plugin validate --strict` · dream-beta-tester ci_check **0 FAIL** (live run — the target-gate
   oracles read fields Phase C never writes) · live G-C5: this repo seeds
   `demotion: {windows_observed: 1, eligible: 0}` and `--utility` reports 1/3 nodes, read-only.
+- **Gated by an inline adversarial code review** (single no-swarm mode, user-directed; multiple finder
+  angles over the full diff, every candidate verified against the live code before reporting). One
+  confirmed medium: `--utility` credited a holding node's ENTIRE probative-window history to a
+  freshly-pulled mirror — overstating zero-read evidence, the same fact-age defect the spec gate caught
+  in C2, reproduced fleet-side; fixed by mtime-gating the per-canonical window count (a refresh resets
+  the clock — undercount, the safe direction; live effect: 7/26 canonicals honestly dropped to
+  "uninstrumented"). One confirmed low: transcript-derived stems (from `Read` file_paths) printed to
+  the terminal unsanitized in the `--recalls` report + the strike's stderr line — now routed through
+  `_sane` (the git-subject convention; also hardened Phase A's pre-existing per_fact print). Two nits
+  (a silent non-dict `--before` fallback now warns; an unused tier-tuple unpack). Refuted: log
+  double-count (the producer `_persist` is marker-idempotent).
 
 ## [0.1.66] — 2026-07-04
 

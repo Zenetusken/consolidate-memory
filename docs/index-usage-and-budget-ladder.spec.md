@@ -586,7 +586,10 @@ finding: a node-local, never-pulled fact can share a canonical's stem — the `p
 case `run()` already recognizes — and stem-equality alone would attribute its reads to the canonical):
 a node's reads for stem X count toward canonical X only if the node's `X.md` `_is_mirror`; a same-stem
 non-mirror is tallied separately as `shadow` (reported, not attributed). Per canonical: `reads` summed
-across attributing nodes, `nodes_reporting` (nodes with ≥1 probative window), `windows` summed, `last`
+across attributing nodes, `nodes_reporting` (nodes with ≥1 probative window), `windows` = the probative
+windows each holding MIRROR existed through (window start ≥ mirror mtime — C2's fact-age rule applied
+fleet-side; the build's inline adversarial review found an unconditional windows_full credit overstated
+zero-read evidence on freshly-pulled mirrors; a refresh resets the clock — undercount, safe), `last`
 (epoch-max via `_parse_ts`), `holders` (`_holders` provenance), `pointer_tok`
 (`est_tokens(_pointer_line(name, fm))`), and **`fleet_tax = pointer_tok × len(holders)`** — zero for
 an unheld canonical (gate finding: the draft's `max(1, …)` charged a per-session cost nobody pays);

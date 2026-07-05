@@ -2822,6 +2822,10 @@ with _tfB.TemporaryDirectory() as _tdC6:
     _nBC6 = _projRootC6 / "-src-nodeB" / "memory"; _nBC6.mkdir(parents=True)
     _canonTextC6 = (_glC6 / "canon-x.md").read_text(encoding="utf-8")
     (_nAC6 / "canon-x.md").write_text(sg._as_mirror(_canonTextC6, "canon-x"), encoding="utf-8")
+    # the mirror must PREDATE the window for its windows to count (the mtime gate — see the review leg below)
+    _dtPreC6 = ms._parse_ts("2025-12-01T00:00:00Z")
+    assert _dtPreC6 is not None
+    _osB.utime(_nAC6 / "canon-x.md", (_dtPreC6.timestamp(), _dtPreC6.timestamp()))
     (_nAC6 / ".consolidation-log.jsonl").write_text(
         _uwC("2026-01-01T00:00:00Z..2026-01-02T00:00:00Z", 1, 1,
              [{"name": "canon-x", "reads": 3, "last": "2026-01-01T12:00:00Z"}]) + "\n", encoding="utf-8")
@@ -2853,6 +2857,16 @@ with _tfB.TemporaryDirectory() as _tdC6:
         check("v0.1.67 --utility: READ-ONLY — no store file changed",
               _hashesC6 == {p: _hlC.sha1(p.read_bytes()).hexdigest()
                             for p in _projRootC6.rglob("*") if p.is_file()})
+        # the inline adversarial review (2026-07-05): a FRESHLY-pulled mirror must not be credited the
+        # node's whole window history — mtime-gate the per-canonical window count (0 reads/10w on a
+        # one-day-old mirror overstates zero-read evidence; a refresh resets the clock — undercount, safe).
+        _dtPostC6 = ms._parse_ts("2026-06-01T00:00:00Z")
+        assert _dtPostC6 is not None
+        _osB.utime(_nAC6 / "canon-x.md", (_dtPostC6.timestamp(), _dtPostC6.timestamp()))
+        _fu2C6 = sg.fleet_utility(_projC6)
+        _by2C6 = {e["name"]: e for e in _fu2C6["canonicals"]}
+        check("v0.1.67 --utility review fix: a mirror pulled AFTER a window gets NO zero-read credit for it",
+              _by2C6["canon-x"]["windows"] == 0 and _by2C6["canon-x"]["reads"] == 3)
     finally:
         sg.GLOBAL = _oldGlobalC6
         if _oldHomeC6 is None:
