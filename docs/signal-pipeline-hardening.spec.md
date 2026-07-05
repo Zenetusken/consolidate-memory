@@ -46,7 +46,7 @@ turn (that loses signal).
 
 ## Bug 3 — path-only turns surface as statements *(v0.1.50 cluster)*
 
-**Symptom:** "'/home/drei/Pictures/Screenshots/Screenshot from ….png' '/home/…'" surfaced as `statement`.
+**Symptom:** "'/home/you/Pictures/Screenshots/Screenshot from ….png' '/home/…'" surfaced as `statement`.
 **Root cause:** no filter for a turn that is *only* pasted file path(s).
 **Fix:** in the noise check, drop a turn that — after `_strip_markers` + whitespace — is **only** quoted/bare
 absolute-path tokens (`^(['"]?\/\S+['"]?\s*)+$`). A turn that mentions a path *plus prose* is kept (only

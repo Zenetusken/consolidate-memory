@@ -602,8 +602,8 @@ def slug_for(project_dir: Path) -> str:
     (case PRESERVED, no dash-collapsing) — Claude Code's slug rule.
 
     e.g. /home/you/project/Doc_Flo -> -home-you-project-Doc-Flo · /home/you/.config/app -> -home-you--config-app.
-    VERIFIED on disk for '/', '_', and '.' (a CC-created session under /home/drei/.claude/… slugs to
-    `-home-drei--claude-…` — the '/' AND the '.' both map to '-', giving the '--'); GENERALIZED to all
+    VERIFIED on disk for '/', '_', and '.' (a CC-created session under /home/you/.claude/… slugs to
+    `-home-you--claude-…` — the '/' AND the '.' both map to '-', giving the '--'); GENERALIZED to all
     non-alphanumerics — strictly safer than a per-char list and regression-IDENTICAL for the fleet (paths
     with only '/ _ -'). v0.1.40 (audit M3): the prior `[/_]`-only rule left a '.'-segment project (a dotfile
     dir like ~/.claude) SPLIT-BRAIN — two stores, neither recalling the other. `near_duplicate_slugs` uses
@@ -1260,13 +1260,24 @@ def _newest_mtime(base: Path, pattern: str) -> float:
     return newest
 
 
+_GIT_WARNED = False   # v0.1.69/A4: one label per process — _run fires many times per pass
+
+
 def _run(cmd: list[str], cwd: Path) -> str:
+    global _GIT_WARNED
     try:
         out = subprocess.run(  # noqa: S603 - fixed args
             cmd, cwd=cwd, capture_output=True, text=True, timeout=15, check=False
         )
         return out.stdout.strip()
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError) as e:
+        # v0.1.69/A4: LABEL the degraded path — a missing/broken/timed-out git must be distinguishable
+        # from a clean repo with no new commits, or the dream silently under-scopes ("NOTHING TO
+        # CONSOLIDATE" on a git failure would mask the failure). Degrade stays (""), now labeled.
+        if not _GIT_WARNED:
+            _GIT_WARNED = True
+            print(f"memory_status: git unavailable ({type(e).__name__}) — scope degraded to empty",
+                  file=sys.stderr)
         return ""
 
 

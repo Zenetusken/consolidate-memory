@@ -344,7 +344,7 @@ check("v0.1.39/M4: an undetectable stack is NOT in the vocab ([release]/[ci-cd] 
 check("v0.1.40/M3: slug_for maps '.' (a dotfile-dir path) → '-', matching CC (was split-brain)",
       ms.slug_for(Path("/home/u/.claude/app")) == "-home-u--claude-app")
 check("v0.1.40/M3: slug_for is regression-IDENTICAL for the fleet (paths with only / _ -)",
-      ms.slug_for(Path("/home/drei/project/Doc_Flo")) == "-home-drei-project-Doc-Flo")
+      ms.slug_for(Path("/home/you/project/Doc_Flo")) == "-home-you-project-Doc-Flo")
 check("v0.1.40/M3: near_duplicate_slugs catches a '.'-vs-'-' twin (the split-brain detector, was '_'/case-only)",
       ms.near_duplicate_slugs("-home-u-.claude-app", ["-home-u--claude-app", "-unrelated"]) == ["-home-u--claude-app"])
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",
@@ -471,12 +471,12 @@ check("uuid: rejects truncated / garbage / non-string",
       not ms._valid_uuid("1920c541-0f32-4b9d-8b0b") and not ms._valid_uuid("not-a-uuid")
       and not ms._valid_uuid("") and not ms._valid_uuid(None))
 # near_duplicate_slugs: flags '-'/'_'/case twins, ignores unrelated, NEVER flags itself (B2).
-_slug = "-home-drei-project-Doc-Flo"
-_sibs = ["-home-drei-project-Doc-Flo", "-home-drei-project-Doc_Flo",
-         "-home-drei-project-doc-flo", "-home-drei-project-other"]
+_slug = "-home-you-project-Doc-Flo"
+_sibs = ["-home-you-project-Doc-Flo", "-home-you-project-Doc_Flo",
+         "-home-you-project-doc-flo", "-home-you-project-other"]
 check("near-dup: flags '_' and case variants, excludes self + unrelated",
       ms.near_duplicate_slugs(_slug, _sibs)
-      == ["-home-drei-project-Doc_Flo", "-home-drei-project-doc-flo"])
+      == ["-home-you-project-Doc_Flo", "-home-you-project-doc-flo"])
 check("near-dup: a slug is never its own duplicate (B2 self-exclusion)",
       ms.near_duplicate_slugs(_slug, [_slug]) == [])
 check("near-dup: no twins → empty list", ms.near_duplicate_slugs(_slug, ["-x", "-y-z"]) == [])
@@ -819,6 +819,8 @@ check("SKILL↔TypedDict: schema-block marker keys == Marker TypedDict (incl. be
 # cross_project._pulled / network._) before comparing; list-wrapped shapes compare their [0] item.
 # (SchemaDrift + the pulled/promoted item dicts aren't enumerated in the block — the former renders as
 # an empty {} placeholder, the latter are untyped list[dict] — so they're out of scope for this pin.)
+# v0.1.69/A7: usage/usage.per_fact/demotion + explicit audit.claude_md/repo_doc rows close the last
+# gaps — the two carve-outs above are now the ONLY un-pinned shapes.
 _sk_b = _skill_schema.get("budget", {})
 _sk_n = _skill_schema.get("network", {})
 for _nm, _obj, _td in [
@@ -839,6 +841,13 @@ for _nm, _obj, _td in [
     ("maintenance", _skill_schema.get("maintenance", {}), ms.Maintenance),   # v0.1.37
     ("dream", _skill_schema.get("dream", {}), ms.DreamArc),                  # v0.1.54
     ("distill", _skill_schema.get("distill", {}), ms.Distill),               # v0.1.55
+    ("usage", _skill_schema.get("usage", {}), ms.Usage),                     # v0.1.63 (Phase A)
+    ("usage.per_fact[0]", (_skill_schema.get("usage", {}).get("per_fact") or [{}])[0], ms.UsageFact),
+    ("demotion", _skill_schema.get("demotion", {}), ms.Demotion),            # v0.1.67 (Phase C)
+    # v0.1.69/A7: covered only TRANSITIVELY before (same AuditStoreDelta as audit.memory) — explicit
+    # rows make the all-nested-shapes claim literally true.
+    ("audit.claude_md", _skill_schema.get("audit", {}).get("claude_md", {}), ms.AuditStoreDelta),
+    ("audit.repo_doc", _skill_schema.get("audit", {}).get("repo_doc", {}), ms.AuditStoreDelta),
     # v0.1.22: whole-hierarchy measure + the deterministic audit block (+ their list-item shapes via [0]).
     ("budget.claude_md_hierarchy", _sk_b.get("claude_md_hierarchy", {}), ms.ClaudeMdHierarchy),
     ("budget.claude_md_hierarchy.files[0]", (_sk_b.get("claude_md_hierarchy", {}).get("files") or [{}])[0], ms.ClaudeMdHierarchyFile),
@@ -1421,9 +1430,9 @@ with _tf43.TemporaryDirectory() as _td50:
 # the measured corpus). REAL command forms (multi-line cd-first-line / heredoc / bare-cd), NOT the
 # rare `cd && ` join.
 check("v0.1.51/55: _scan_cmd multi-line cd-first-line → the real command (cd line stripped)",
-      ds._scan_cmd("cd /home/drei/project/x\npython3 tests/smoke.py")[0] == ["python3 tests/smoke.py"])
+      ds._scan_cmd("cd /home/you/project/x\npython3 tests/smoke.py")[0] == ["python3 tests/smoke.py"])
 check("v0.1.51/55: _scan_cmd bare cd → nothing (a 'cd' is NOT a workflow template)",
-      ds._scan_cmd("cd /home/drei/project/x") == ([], []))
+      ds._scan_cmd("cd /home/you/project/x") == ([], []))
 check("v0.1.55: heredoc → body dropped AND the 'python3 -' false class stoplisted (was a v0.1.51 row)",
       ds._scan_cmd("cd /x\npython3 - <<'PY'\nprint(1)\nPY") == ([], []))
 _v55 = ds._scan_cmd("cd /x\nS=plugins/y\npython3 $S/foo.py")[0]

@@ -1063,9 +1063,18 @@ def _node_tokens(store: Path) -> dict:
     canonical in the GLOBAL store (demote/delete + GC fleet-wide); LOCAL pruning is
     futile because `run()` re-pulls the mirror next cycle."""
     idx = store / "MEMORY.md"
-    idx_text = idx.read_text(encoding="utf-8", errors="replace") if idx.exists() else ""
-    facts = [f for f in store.glob("*.md") if f.name != "MEMORY.md"]
-    bodies = {f.stem: f.read_text(encoding="utf-8", errors="replace") for f in facts}
+    try:                                      # v0.1.69/A3: exists()→read is a TOCTOU window — treat a
+        idx_text = idx.read_text(encoding="utf-8", errors="replace") if idx.exists() else ""
+    except OSError:                           # vanished index as absent (store-scan convention)
+        idx_text = ""
+    bodies: dict[str, str] = {}
+    for f in store.glob("*.md"):
+        if f.name == "MEMORY.md":
+            continue
+        try:                                  # a concurrent gc/chmod between glob+read must not
+            bodies[f.stem] = f.read_text(encoding="utf-8", errors="replace")
+        except OSError:                       # abort the token scan (store-scan convention)
+            continue
     mirror_stems = {stem for stem, b in bodies.items() if _is_mirror(b)}
     # Attribute the index pointer lines whose target fact (`](<stem>.md)`) is a mirror.
     # That is the fraction of the always-loaded tax the global store controls — what the
@@ -1080,7 +1089,7 @@ def _node_tokens(store: Path) -> dict:
         "always_loaded_tokens": est_tokens(idx_text),
         "mirror_index_tokens": mirror_index_tokens,
         "recall_tokens": sum(est_tokens(b) for b in bodies.values()),
-        "facts": len(facts),
+        "facts": len(bodies),                 # readable facts only — a vanished file is not counted
         "shared": len(mirror_stems),
     }
 
@@ -1100,10 +1109,17 @@ def _network_nodes() -> list[Path]:
         store = proj / "memory"
         if not store.is_dir():
             continue
-        has_mirror = any(
-            _is_mirror(f.read_text(encoding="utf-8", errors="replace"))
-            for f in store.glob("*.md") if f.name != "MEMORY.md"
-        )
+        has_mirror = False
+        for f in store.glob("*.md"):
+            if f.name == "MEMORY.md":
+                continue
+            try:                              # v0.1.69/A3: a dangling/vanished fact must not abort
+                body = f.read_text(encoding="utf-8", errors="replace")
+            except OSError:                   # the node scan (store-scan convention)
+                continue
+            if _is_mirror(body):
+                has_mirror = True
+                break
         if has_mirror:
             nodes.append(store)
     return nodes

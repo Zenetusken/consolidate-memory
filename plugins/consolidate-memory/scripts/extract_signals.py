@@ -371,6 +371,10 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
     auto_mem = proj_root / "memory"
     since = since or _marker_ts(auto_mem)
     transcripts = _window_transcripts(proj_root, since)
+    # v0.1.69/A1: parse the window ONCE — the per-line compare is instant-vs-instant (an offset
+    # marker/--since vs CC's Z stamps mis-orders lexicographically; distill's v0.1.58 twin fix, now
+    # ported). Unparseable since/ts fail OPEN — keep the line (recall-biased).
+    since_dt = _parse_ts(since) if since else None
 
     counts = {"human_seen": 0, "noise": 0, "secrets_omitted": 0, "errors": 0}
     human: list[dict] = []
@@ -396,7 +400,8 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                     # blows the recursion limit) rather than aborting the whole stream
                     continue
                 ts = o.get("timestamp", "")
-                if since and ts and ts <= since:  # scope to marker (EXACT, per-line — across every pooled file)
+                ts_dt = _parse_ts(ts) if (since_dt and ts) else None
+                if since_dt and ts_dt and ts_dt <= since_dt:  # scope to marker (EXACT instant, per-line — across every pooled file)
                     continue
                 sid = o.get("sessionId", "")       # v0.1.43: the producing session (the originSessionId source)
                 msg = o.get("message")
@@ -504,7 +509,9 @@ def _report(d: dict) -> None:
     for s in d["signals"]:
         g, col = glyphs.get(s["source"], ("·", "dim"))
         meta = f"{s['source']}/{s.get('signal_type', 'err')}·{s.get('scope_hint', '?')}"
-        add(f"    {_ui.c(g, col)} {_ui.lbl(f'{meta[:26]:<26}')} {_ui.wrap(s['text'], hang=33)}")
+        # v0.1.69/A2 presentation boundary: _sane strips C0/ESC from repo-controlled text (terminal-
+        # escape injection guard). --json stays raw-but-escaped (json.dumps; bytes can BE the signal).
+        add(f"    {_ui.c(g, col)} {_ui.lbl(f'{meta[:26]:<26}')} {_ui.wrap(_sane(s['text']), hang=33)}")
     print(_ui.ascii_translate("\n".join(out)))
 
 
@@ -550,6 +557,7 @@ def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems
     not a fact recall). The per-line `since` compare scopes to the window exactly like extract()
     (transcripts straddle the marker)."""
     items: list = []
+    since_dt = _parse_ts(since) if since else None   # v0.1.69/A1: instant compare — twin of extract()'s
     try:
         fh = transcript.open(encoding="utf-8", errors="replace")
     except OSError:
@@ -564,7 +572,8 @@ def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems
             except (json.JSONDecodeError, RecursionError, ValueError):
                 continue
             ts = o.get("timestamp", "")
-            if since and ts and ts <= since:
+            ts_dt = _parse_ts(ts) if (since_dt and ts) else None
+            if since_dt and ts_dt and ts_dt <= since_dt:
                 continue
             msg = o.get("message")
             if not isinstance(msg, dict) or not isinstance(msg.get("content"), list):

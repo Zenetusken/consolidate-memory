@@ -20,6 +20,9 @@ __pycache__/
 # mypy is a DEV-ONLY maintainer tool (the cycle-record contract check); its cache lands
 # at the repo root when run — never publish it to this public no-cruft repo.
 .mypy_cache/
+# ruff likewise (it self-ignores today via an internal .gitignore; the repo's no-cruft stanza must
+# not depend on a tool's self-discipline).
+.ruff_cache/
 
 # Backup files (e.g. <name>.bak.<timestamp>) — never publish them if they appear in-tree.
 *.bak.*
