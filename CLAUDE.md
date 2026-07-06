@@ -47,8 +47,11 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     distill_scan.py                Phase 5 distill: recurring Bash-command templates + compound-command chains (workflow signal); `--into`/`--from` inject script-truth counts into a cycle record
     render_dashboard.py            the data-driven ASCII dashboard (renders ONE cycle record)
     render_html.py                 the self-contained HTML archive (all cycles, rich; + dashboards/diffs sidecars)
+    dashboard.template.html        the HTML shell render_html.py fills
     render_log.py                  the lean per-dream audit TABLE (all cycles; powers `cm log`) — the 3rd log view
-    _ui.py                         shared visual vocabulary (color/rule/kv/bar/glyphs + the CM_DREAM_ARC dream-cue); the OTHER scripts import it, render_dashboard keeps byte-pinned copies
+    _ui.py                         shared visual vocabulary (color/rule/kv/bar/glyphs + the CM_DREAM_ARC dream-cue);
+                                   render_dashboard keeps its OWN copies of this vocabulary, behaviorally
+                                   drift-pinned against it by a smoke test (output equality, not literal source bytes)
 cm                                 dev CLI over the scripts (uses explicit paths, not ${CLAUDE_PLUGIN_ROOT}).
                                    symlink-safe (readlink -f) → install on PATH for frictionless per-repo use:
                                    `ln -s "$(pwd)/cm" ~/.local/bin/cm` (then `cm report`/`cm status`/`cm log`
@@ -56,6 +59,13 @@ cm                                 dev CLI over the scripts (uses explicit paths
                                    open ~/.claude/projects/<slug>/dashboards/index.html (see SKILL Phase 5).
 tests/                             zero-dependency smoke + accumulation sim + manifest validation
 memory/                            GITIGNORED placeholder (.gitkeep only) — the personal global store lives at ~/.claude/memory (a real dir, decoupled from this repo)
+
+plugins/dream-beta-tester/          QA companion plugin — beta-tests the dream skill itself
+  .claude-plugin/plugin.json        plugin manifest
+  skills/dream-beta-test/SKILL.md   the judgment-lens pass (/dream-beta-test)
+  scripts/                          the deterministic oracle (beta_checks.py) + snapshot/report/run
+  maintainer/                       the continuous-QA pre-push gate (ci_check.sh/install-gate.sh)
+  docs/STATUS.md                    full design + validation matrix (see there, not here)
 ```
 
 LOCAL-only maintainer artifacts (GITIGNORED, never published): the `release.sh` release
