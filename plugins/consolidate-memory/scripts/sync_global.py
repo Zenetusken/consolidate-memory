@@ -72,6 +72,17 @@ GLOBAL = Path.home() / ".claude" / "memory"
 GLOBAL_FLEET_TAX_ADVISORY = 5000
 
 
+def _safe_read_text(path: Path) -> "str | None":
+    """The store-scan convention, factored ONCE (v0.1.69 Gate-2a review: the pattern had been
+    hand-copied at three call sites and a fourth — `_orphans` — was left unguarded because
+    copy-paste doesn't propagate a fix). A concurrent gc/chmod/delete between `glob` and `read`
+    must not abort the whole scan; every fact-body-in-a-loop reader shares this ONE fallible read."""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
 def _nonglobal_wikilinks(text: str, global_dir: Path, exclude: str = "") -> list[str]:
     """v0.1.25: the `[[wikilink]]` targets in `text` that are NOT global canonicals — so they DANGLE in every
     mirror of a promoted fact (a global fact's links travel with it into every project). Excludes code-span
@@ -655,9 +666,8 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         for f in sorted(store.glob("*.md")):
             if f.name == "MEMORY.md":
                 continue
-            try:                                  # Gate-2: match the no-raise convention of every store scan
-                t = f.read_text(encoding="utf-8", errors="replace")   # (a concurrent gc/chmod between glob+read
-            except OSError:                       # must not abort the whole --pull after RESULT is built)
+            t = _safe_read_text(f)                # store-scan convention (a concurrent gc/chmod between
+            if t is None:                         # glob+read must not abort the whole --pull after RESULT is built)
                 continue
             ffm = _frontmatter(t)
             add("      " + _ui.c(f"· {f.stem:<40} {ffm.get('scope', '?'):<14} "
@@ -785,7 +795,9 @@ def _orphans(store: Path) -> list[str]:
     for f in store.glob("*.md"):
         if f.name == "MEMORY.md":
             continue
-        text = f.read_text(encoding="utf-8", errors="replace")
+        text = _safe_read_text(f)    # v0.1.69/A3 (Gate-2a follow-up): store-scan convention — a
+        if text is None:             # vanished/unreadable fact must not abort the orphan scan
+            continue
         if _is_mirror(text) and f.stem not in canon:  # ONLY managed mirrors (frontmatter key)
             out.append(f.stem)
     return out
@@ -1063,18 +1075,14 @@ def _node_tokens(store: Path) -> dict:
     canonical in the GLOBAL store (demote/delete + GC fleet-wide); LOCAL pruning is
     futile because `run()` re-pulls the mirror next cycle."""
     idx = store / "MEMORY.md"
-    try:                                      # v0.1.69/A3: exists()→read is a TOCTOU window — treat a
-        idx_text = idx.read_text(encoding="utf-8", errors="replace") if idx.exists() else ""
-    except OSError:                           # vanished index as absent (store-scan convention)
-        idx_text = ""
+    idx_text = _safe_read_text(idx) or ""    # store-scan convention: a vanished index reads as absent
     bodies: dict[str, str] = {}
     for f in store.glob("*.md"):
         if f.name == "MEMORY.md":
             continue
-        try:                                  # a concurrent gc/chmod between glob+read must not
-            bodies[f.stem] = f.read_text(encoding="utf-8", errors="replace")
-        except OSError:                       # abort the token scan (store-scan convention)
-            continue
+        body = _safe_read_text(f)             # store-scan convention (shared helper — v0.1.69 Gate-2a)
+        if body is not None:
+            bodies[f.stem] = body
     mirror_stems = {stem for stem, b in bodies.items() if _is_mirror(b)}
     # Attribute the index pointer lines whose target fact (`](<stem>.md)`) is a mirror.
     # That is the fraction of the always-loaded tax the global store controls — what the
@@ -1113,11 +1121,8 @@ def _network_nodes() -> list[Path]:
         for f in store.glob("*.md"):
             if f.name == "MEMORY.md":
                 continue
-            try:                              # v0.1.69/A3: a dangling/vanished fact must not abort
-                body = f.read_text(encoding="utf-8", errors="replace")
-            except OSError:                   # the node scan (store-scan convention)
-                continue
-            if _is_mirror(body):
+            body = _safe_read_text(f)         # store-scan convention (shared helper — v0.1.69 Gate-2a)
+            if body is not None and _is_mirror(body):
                 has_mirror = True
                 break
         if has_mirror:

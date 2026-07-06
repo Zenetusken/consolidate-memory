@@ -3000,22 +3000,31 @@ setattr(ms, "_GIT_WARNED", False)                # leave clean for any later che
 # shipped/public tree. Allowed = the five generic placeholders in use; extending this set is a
 # CONSCIOUS edit here (that friction is the guard). The name class is deliberately restrictive
 # ([A-Za-z0-9_]) so the remediation spec's pin-inert `<user>` placeholder can never match.
+# v0.1.69 Gate-2a follow-up: the original suffix filter (.py/.md/.sh/.html) missed the
+# extensionless `cm` CLI and .json manifests — both real, tracked, shipped/public files a
+# personal path could hide in undetected. .json now scans inside the 3 recursive roots; `cm`
+# and the repo-root marketplace.json (outside all 3 roots) are checked as explicit extras
+# rather than widening the recursive scan to bare-no-suffix (which risks sweeping in binaries).
 _GENERIC69 = {"you", "u", "x", "d", "nobody"}
 _SKIP69 = {"__pycache__", ".mypy_cache", ".ruff_cache"}
 _bad69: list = []
+_extra69 = [ROOT / "cm", ROOT / ".claude-plugin" / "marketplace.json"]
+_files69 = [p for p in _extra69 if p.is_file()]
 for _root69 in (ROOT / "plugins" / "consolidate-memory", ROOT / "tests", ROOT / "docs"):
     for _p69 in sorted(_root69.rglob("*")):
-        if not _p69.is_file() or _p69.suffix not in {".py", ".md", ".sh", ".html"}:
+        if not _p69.is_file() or _p69.suffix not in {".py", ".md", ".sh", ".html", ".json"}:
             continue
         if any(part in _SKIP69 for part in _p69.parts):
             continue
-        _t69 = _p69.read_text(encoding="utf-8", errors="replace")
-        for _nm69 in (_re69.findall(r"/home/([A-Za-z0-9_]+)", _t69)
-                      + _re69.findall(r"-home-([A-Za-z0-9_]+)-", _t69)):
-            if _nm69 not in _GENERIC69:
-                _bad69.append(f"{_p69.relative_to(ROOT)}:{_nm69}")
+        _files69.append(_p69)
+for _p69 in _files69:
+    _t69 = _p69.read_text(encoding="utf-8", errors="replace")
+    for _nm69 in (_re69.findall(r"/home/([A-Za-z0-9_]+)", _t69)
+                  + _re69.findall(r"-home-([A-Za-z0-9_]+)-", _t69)):
+        if _nm69 not in _GENERIC69:
+            _bad69.append(f"{_p69.relative_to(ROOT)}:{_nm69}")
 check("v0.1.69/A5: genericity pin — every /home/<name> + -home-<name>- under plugins/consolidate-memory, "
-      "tests, docs is a generic placeholder (you/u/x/d/nobody)", not _bad69)
+      "tests, docs (+ .json manifests + the `cm` CLI) is a generic placeholder (you/u/x/d/nobody)", not _bad69)
 if _bad69:
     print(f"    offending: {sorted(set(_bad69))[:8]}", file=sys.stderr)
 

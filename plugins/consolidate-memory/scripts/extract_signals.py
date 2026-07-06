@@ -498,7 +498,10 @@ def _report(d: dict) -> None:
     add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
     _tx = d.get("transcripts", [])
     _txn = f"{len(_tx)} session(s): {', '.join(_tx)}" if _tx else "(no transcript)"
-    add("  " + _ui.c(f"{_txn} · since {d['since']}", "dim"))
+    # v0.1.69/A2 follow-up (Gate-2a): the header line interpolates `since` (a --since CLI value or
+    # the on-disk marker timestamp) and transcript filenames — the SAME injection surface as the
+    # per-signal text below, sanitize it the same way rather than leaving it one line away.
+    add("  " + _ui.c(_sane(f"{_txn} · since {d['since']}"), "dim"))
     add(_ui.rule())
     add("")
     add(_ui.kv("COUNTS", f"{c.get('human_seen', 0)} human turns  "
