@@ -3207,5 +3207,28 @@ check("Track B Gate-2b: self_test.meaning on a BROKEN self-test (ok:false) says 
       "never 'proved detection' (the exact contradiction Gate-2b found in the sibling branch)",
       "FAILED" in _meaning and "BROKEN" in _meaning and "proved" not in _meaning)
 
+# Track D3 — dashboard.template.html has no automated LAYOUT test (its CSS paint + inline JS execute
+# only in a real browser; jsdom parses the DOM but computes no layout/paint, so it can't catch either
+# bug class below — verified against jsdom's own docs before ruling it out). These are STRUCTURAL
+# SOURCE-TEXT pins on the real shipped template, not render/paint proofs: pixel-level dashboard QA
+# stays eye-judged. Each pin is a reversion tripwire for a specific, already-fixed (v0.1.68) defect —
+# sabotage-verified (reverting either fix locally flips its check red) before landing.
+import re as _re69  # noqa: E402
+
+check("v0.1.68 CSS pin: the masthead's radial-gradient is immediately followed by background-repeat:"
+      "no-repeat (its absence is exactly what tiled the glow down the page — CSS's `background:` "
+      "shorthand earlier in the same rule resets repeat to its 'repeat' initial value)",
+      _re69.search(r"background-image:radial-gradient\([^)]*var\(--glow\)[^)]*\);\s*"
+                   r"background-repeat:no-repeat;", _tpl54) is not None)
+
+check("v0.1.68 JS pin: the demotion-verdict classifier still parses a leading dormant/demoted/"
+      "justified/none disposition word into the badge tag (the tag+prose split the fix introduced, "
+      "mirroring the distill panel's grammar)",
+      'dvd.match(/^\\s*(dormant|demoted|justified|none)\\b[:\\s—-]*/i)' in _tpl54)
+
+check("v0.1.68 JS pin: demoted/justified verdicts still get the 'ok' (positive) badge class, not the "
+      "neutral default (dormant/none stay neutral — only a resolved-favorably verdict reads as OK)",
+      'dcls=(dtag==="demoted"||dtag==="justified")?" ok":""' in _tpl54)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

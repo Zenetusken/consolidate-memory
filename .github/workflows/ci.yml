@@ -8,10 +8,28 @@ on:
 jobs:
   test:
     name: test (python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          # 3.8/3.9 have no official build for the ubuntu-latest (24.04) runner image
+          # (actions/setup-python fails to provision them there) — pin to 22.04, which
+          # is documented and confirmed to still carry both. CLAUDE.md's "3.8+ stdlib"
+          # claim is a deliberate design floor (see the `from __future__ import
+          # annotations` + relative_to/fromisoformat workarounds in memory_status.py),
+          # so this matrix exists to actually test it, not just assert it.
+          - python-version: "3.8"
+            os: ubuntu-22.04
+          - python-version: "3.9"
+            os: ubuntu-22.04
+          - python-version: "3.10"
+            os: ubuntu-latest
+          - python-version: "3.11"
+            os: ubuntu-latest
+          - python-version: "3.12"
+            os: ubuntu-latest
+          - python-version: "3.13"
+            os: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
