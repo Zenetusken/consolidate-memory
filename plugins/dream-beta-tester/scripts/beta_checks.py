@@ -9,8 +9,8 @@ the live memory store, and asserts a small set of GENERAL invariant FAMILIES (SP
 on a NOVEL violation no one hand-wrote a field check for — not a hardcode of the field
 that broke last time.
 
-This is CONSUMER / beta-tester tooling. It lives OUTSIDE the skill
-(`~/.claude/dream-beta-tester/`) and NEVER patches it.
+This is CONSUMER / beta-tester tooling. It lives as its own plugin
+(`plugins/dream-beta-tester/`) and NEVER patches the skill it tests.
 
 Design (rebuilt from the v0.1.19 D-specific prototype, which was scaffolding):
   * DISCOVERY is portable + version-aware: env → --skill → broadened plugin-cache glob
@@ -760,6 +760,12 @@ def cycle_identity(ctx: Ctx) -> list[Result]:
     FROM the target, so this is largely an IDENTITY assertion — its real teeth are the full-dream path,
     where a contaminated record (another project's project/budget) is the failure. We note that coverage
     limit on the finding.
+
+    v0.1.69/B7(b): both checks below carry `basis="identity-by-construction"` — they CANNOT fail as
+    shipped (scripts-only mode has no second project in the loop to contaminate from), so a reader must
+    not mistake a PASS here for the same class of teeth CHK-EVICT-STAGE/CHK-GATE-BACKFILL have. Making
+    them fail-capable needs a synthetic contaminated-record probe — a declared NON-GOAL this cycle
+    (roadmap; see STATUS.md's known-gaps list).
     """
     if not ctx.status:
         return [_R("cycle_identity", "CHK-CYCLE-IDENTITY", "Cycle record identifies the target repo",
@@ -769,12 +775,17 @@ def cycle_identity(ctx: Ctx) -> list[Result]:
     proj = ctx.status.get("project")
     want = ctx.repo.resolve().name
     ok_proj = proj == want
+    # v0.1.69/B7(b): explicit basis="identity-by-construction" (was the "structural" default) — in
+    # scripts-only mode this check CANNOT fail (the seed is built FROM the target, so proj==want by
+    # construction); labeling it honestly means a reader can't mistake "PASS" here for the same kind
+    # of teeth CHK-EVICT-STAGE/CHK-GATE-BACKFILL have. The contaminated-record probe that would make
+    # this fail-capable is a declared non-goal (needs a synthetic contamination harness — roadmap).
     out.append(_R("cycle_identity", "CHK-CYCLE-PROJECT", "Cycle record project == target repo",
                   "HIGH", "PASS" if ok_proj else "FAIL",
                   f"project == '{want}'", f"project == '{proj}'",
                   f"the cycle record names project='{proj}'; target repo basename='{want}' "
                   "(scripts-only: identity by construction; the teeth are the full-dream contaminated-record case)",
-                  "project", "D1"))
+                  "project", "D1", basis="identity-by-construction"))
 
     # budget ↔ trigger node consistency (the contaminated-budget signature).
     node = _trigger_node(ctx)
@@ -782,13 +793,18 @@ def cycle_identity(ctx: Ctx) -> list[Result]:
     if node is not None and isinstance(jtok, int):
         ntok = node.get("always_loaded_tokens")
         ok_bud = isinstance(ntok, int) and abs(jtok - ntok) <= max(50, int(0.10 * ntok))
+        # v0.1.69/B7(b): both cycle_identity checks are identity-by-construction in scripts-only mode —
+        # jtok and ntok are both derived from the SAME target repo's live store (no second project is
+        # ever in the loop here), so they necessarily agree; the real contaminated-budget teeth are the
+        # full-dream path, not this reconstruction. Labeled the same as CHK-CYCLE-PROJECT above.
         out.append(_R("cycle_identity", "CHK-CYCLE-BUDGET", "Cycle budget matches the trigger node",
                       "HIGH", "PASS" if ok_bud else "FAIL",
                       f"record index ≈ trigger node always-loaded ({ntok})",
                       f"record index={jtok}, trigger node={ntok}",
                       f"trigger node '{node.get('node')}' always_loaded_tokens={ntok}; record "
-                      f"budget.index.after_tokens={jtok} (a split = a wrong-project/contaminated budget)",
-                      "budget.index", "D1"))
+                      f"budget.index.after_tokens={jtok} (a split = a wrong-project/contaminated budget) "
+                      "(scripts-only: identity by construction; the teeth are the full-dream contaminated-record case)",
+                      "budget.index", "D1", basis="identity-by-construction"))
     return out
 
 
@@ -870,6 +886,25 @@ def safe_suggestion(ctx: Ctx) -> list[Result]:
 
     # ── leg (1): the skill's ACTUAL evict (A-stage) set ──
     triage = _skill_triage(ctx)
+    if triage is None:
+        # v0.1.69/B7(a): `_skill_triage` returns None for THREE reasons — store absent (already
+        # handled above), legitimately under budget / standing-justified (a real, silent no-op — no
+        # result needed), or the `build_context`/`remediation_triage` helpers were renamed/removed.
+        # The over-budget signal is independently available from ctx.status (NOT via _skill_triage),
+        # so: over-budget-per-status AND triage-still-None can ONLY be the third case — the FAIL-
+        # capable leg silently degrading to nothing instead of a loud SKIP. Gate-1B named this the
+        # systemic backstop for a defused D4: it also kills the canary's CHK-EVICT-STAGE FAIL, which
+        # B6's id-matched self-test now catches (SELFTEST_BROKEN) — this SKIP is the local signal,
+        # B6 is the fleet-wide one.
+        _rem = ctx.status.get("remediation") or {}
+        if bool(_rem.get("required")):
+            out.append(_R("safe_suggestion", "CHK-EVICT-STAGE", "Skill evict-stage spares wikilinked facts",
+                          "MED", "SKIP",
+                          "the skill's build_context/remediation_triage helpers, re-run over an over-budget store",
+                          "helpers unavailable (renamed/removed) despite the store being over budget",
+                          "D4 leg not provable: triage helpers unavailable — this leg is dark; the "
+                          "skill-independent leg (2) below and B6's id-matched canary self-test remain",
+                          "remediation A-stage", "D4"))
     if triage is not None:
         a_stage = [c.get("stem") for c in triage.get("stages", {}).get("A_orphans", []) if c.get("stem")]
         offenders = []
@@ -1279,6 +1314,56 @@ def distill_capture(ctx: Ctx) -> list[Result]:
         title="latest persisted dream captured its distill verdict",
         expected="a v0.1.55+ dream ends its distill step with a disposition verdict mirrored into `distill`",
         defect_ref="v0.1.55", is_complete=is_complete)
+
+
+@family
+def usage_capture(ctx: Ctx) -> list[Result]:
+    """v0.1.69 (Track B / Gate-2b QA-currency fix): the Phase-A usage-instrument CAPTURE exists on the
+    latest persisted dream. `usage.window` is script-injected by `extract_signals.py --recalls --into`
+    every v0.1.63+ pass (even a dormant, zero-read window still stamps a real window string — the
+    instrument runs regardless of what it finds). A missing/empty window on a v0.1.63+ record means the
+    injection step was skipped entirely, not that usage was zero. ADVISORY (LOW / WARN, never FAIL) —
+    same posture as its dream/distill siblings; pre-v0.1.63 records legitimately lack the key.
+    Scaffold: `_latest_capture_check`."""
+    def is_complete(usage: dict[str, Any]) -> tuple[bool, str]:
+        window = str(usage.get("window") or "").strip()
+        if window:
+            return True, f"window: {window[:60]}"
+        return False, (("usage block present but window EMPTY (the injection step ran but stamped "
+                        "nothing)" if usage else "no usage block")
+                       + " — expected on pre-v0.1.63 records; a defect on any dream run with v0.1.63+ "
+                         "(check the record's recency before promoting)")
+    return _latest_capture_check(
+        ctx, block_key="usage", family_name="usage_capture", min_version=(0, 1, 63),
+        check_id="CHK-USAGE-CAPTURE",
+        title="latest persisted dream captured its Phase-A usage window",
+        expected="a v0.1.63+ dream mirrors extract_signals --recalls's window into the record's `usage` block",
+        defect_ref="v0.1.63", is_complete=is_complete)
+
+
+@family
+def demotion_capture(ctx: Ctx) -> list[Result]:
+    """v0.1.69 (Track B / Gate-2b QA-currency fix): the Phase-C demotion-triage CAPTURE exists on the
+    latest persisted dream. Ships DORMANT-AND-HONEST (v0.1.67): even with zero eligible facts, the
+    triage still stamps a one-sentence `verdict` (e.g. "dormant — N probative windows observed") — the
+    same "ran and correctly did nothing" vs "never ran" distinction distill_capture makes. PASS iff the
+    verdict is non-empty (matches distill_capture's is_complete shape exactly). ADVISORY (LOW / WARN,
+    never FAIL); pre-v0.1.67 records legitimately lack the key. Scaffold: `_latest_capture_check`."""
+    def is_complete(demotion: dict[str, Any]) -> tuple[bool, str]:
+        verdict = str(demotion.get("verdict") or "").strip()
+        if verdict:
+            return True, f"verdict: {verdict[:90]}"
+        return False, (("demotion block present but verdict EMPTY (a skipped judgment)" if demotion
+                        else "no demotion block")
+                       + " — expected on pre-v0.1.67 records; a defect on any dream run with v0.1.67+ "
+                         "(check the record's recency before promoting)")
+    return _latest_capture_check(
+        ctx, block_key="demotion", family_name="demotion_capture", min_version=(0, 1, 67),
+        check_id="CHK-DEMOTION-VERDICT",
+        title="latest persisted dream captured its demotion-triage verdict",
+        expected="a v0.1.67+ dream ends its demotion triage with a disposition verdict mirrored into `demotion` "
+                 "(dormant is a valid, honest verdict — never blank)",
+        defect_ref="v0.1.67", is_complete=is_complete)
 
 
 # ─────────────────────────────── run + report ───────────────────────────────

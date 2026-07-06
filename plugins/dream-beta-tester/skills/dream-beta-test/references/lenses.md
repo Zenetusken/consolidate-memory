@@ -61,7 +61,7 @@ glance, a recommendation a human cannot act on, an outcome banner that fights th
 ## Crystallizing a confirmed class (SKILL.md step 6)
 
 If a confirmed finding is a **novel, general** class — not an existing family, not a one-off —
-add a family to `~/.claude/dream-beta-tester/beta_checks.py`:
+add a family to `plugins/dream-beta-tester/scripts/beta_checks.py`:
 
 - a `(Ctx) -> list[Result]` predicate that scans for the **principle**, not the specific field
   that broke (general-via-registry where a surface extractor is needed — render emits human

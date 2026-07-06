@@ -7,8 +7,8 @@ the "model produces data, script renders" split the dream itself uses: ZERO judg
 here — every classification is a deterministic function of the oracle payload (+ an optional
 freshly-captured rendered surface for the honesty re-verification grep).
 
-This is CONSUMER / beta-tester tooling. It lives OUTSIDE the consolidate-memory skill
-(`~/.claude/dream-beta-tester/`) and NEVER patches it.
+This is CONSUMER / beta-tester tooling. It lives as its own plugin
+(`plugins/dream-beta-tester/`) and NEVER patches the skill it tests.
 
 Report shape (SPEC §6 / the build-plan ARTIFACT 3 contract):
 

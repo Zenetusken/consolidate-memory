@@ -31,7 +31,13 @@ if [ -n "$CSRC" ]; then
   # FALSE-GREEN self-test (it can't actually prove detection). Graft ONLY the slug rule (NOT the
   # D3/D4 defect logic — the slug is not the defect) so the canary resolves the SAME fixture store
   # the M3 harness creates and exhibits its REAL backfill-under-gate / evict-orphan defects.
-  sed -i 's/re\.sub(r"\[\/_\]"/re.sub(r"[^A-Za-z0-9]"/g' "$STATE/canary-v0.1.19/scripts"/*.py
+  # v0.1.69/B8: `sed -i 's/…/…/g'` (no backup-suffix arg) is GNU-only — BSD/macOS sed REQUIRES a
+  # suffix arg (`sed -i ''`) and errors otherwise, silently leaving the canary un-grafted → the
+  # exact false-green self-test this graft exists to prevent (STATUS.md's documented failure mode).
+  # A portable tmp+mv loop works identically on GNU and BSD/macOS.
+  for f in "$STATE/canary-v0.1.19/scripts"/*.py; do
+    sed 's/re\.sub(r"\[\/_\]"/re.sub(r"[^A-Za-z0-9]"/g' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  done
   echo "    canary ✓  ($CSRC)  [M3-slug grafted]"
 else
   echo "    NOTE: no cached consolidate-memory 0.1.19 found — the gate's self-test will SKIP."

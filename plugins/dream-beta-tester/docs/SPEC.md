@@ -24,11 +24,30 @@ fuzz-tested regression suite for a skill we are only allowed to *consume*, never
 **Non-goals**
 - Never patches / modifies the consolidate-memory skill (consumer-only directive).
 - Not a replacement for the dream — it *drives* the real, unmodified skill.
-- Does not live under `/home/drei/project/consolidate-memory/`.
+- Ships as its own plugin (`plugins/dream-beta-tester/` in the consolidate-memory repo)
+  — consumer-only: it never patches the skill it tests.
 
 ---
 
-## 2. Placement & portability  *(decided: user-global)*
+## 2. Placement & portability  *(v0.1 design draft — placement superseded by the shipped
+plugin layout below; see `STATUS.md` for the current, validated state)*
+
+Shipped placement (supersedes the `~/.claude/dream-beta-tester/` draft below):
+
+```
+plugins/dream-beta-tester/
+  .claude-plugin/plugin.json   plugin manifest
+  docs/{SPEC.md,STATUS.md,CONTRACT.md}   this file · status/validation matrix · orchestrator contract
+  scripts/{beta_checks.py,render_beta_report.py,snapshot.py,run_beta.py,emit_result.py}   the engine
+  fixtures/                    the frozen synthetic gate-repo fixture + make_fixture.py
+  maintainer/{ci_check.sh,install-gate.sh}   the continuous-QA pre-push gate
+  skills/dream-beta-test/SKILL.md   the judgment-lens pass (/dream-beta-test)
+```
+Maintainer runtime state (fixture/canary/reports, not the plugin itself) lives at
+`~/.dream-beta-test/` (overridable via `$DREAM_BETA_STATE`).
+
+Original v0.1 draft placement (superseded, kept for design-history context — the
+any-repo rules below are still true regardless of WHERE the plugin lives):
 
 ```
 ~/.claude/dream-beta-tester/

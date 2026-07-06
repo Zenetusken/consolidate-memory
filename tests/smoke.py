@@ -3042,7 +3042,9 @@ _SKIP69 = {"__pycache__", ".mypy_cache", ".ruff_cache"}
 _bad69: list = []
 _extra69 = [ROOT / "cm", ROOT / ".claude-plugin" / "marketplace.json", ROOT / "CHANGELOG.md"]
 _files69 = [p for p in _extra69 if p.is_file()]
-for _root69 in (ROOT / "plugins" / "consolidate-memory", ROOT / "tests", ROOT / "docs"):
+for _root69 in (ROOT / "plugins", ROOT / "tests", ROOT / "docs"):   # v0.1.69/B9: widened from
+    # plugins/consolidate-memory to ALL of plugins/ (both plugins covered — Track B's own
+    # genericity scrub (B4/B10) is what this widening enforces going forward)
     for _p69 in sorted(_root69.rglob("*")):
         if not _p69.is_file() or _p69.suffix not in {".py", ".md", ".sh", ".html", ".json"}:
             continue
@@ -3055,8 +3057,9 @@ for _p69 in _files69:
                   + _re69.findall(r"-home-([A-Za-z0-9_]+)-", _t69)):
         if _nm69 not in _GENERIC69:
             _bad69.append(f"{_p69.relative_to(ROOT)}:{_nm69}")
-check("v0.1.69/A5: genericity pin — every /home/<name> + -home-<name>- under plugins/consolidate-memory, "
-      "tests, docs (+ .json manifests, the `cm` CLI, CHANGELOG.md) is a generic placeholder (you/u/x/d/nobody)",
+check("v0.1.69/A5+B9: genericity pin — every /home/<name> + -home-<name>- under ALL of plugins/ "
+      "(both plugins, widened at Track B), tests, docs (+ .json manifests, the `cm` CLI, "
+      "CHANGELOG.md) is a generic placeholder (you/u/x/d/nobody)",
       not _bad69)
 if _bad69:
     print(f"    offending: {sorted(set(_bad69))[:8]}", file=sys.stderr)

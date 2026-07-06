@@ -50,8 +50,8 @@ Design choices (each load-bearing):
     NEVER the project slug dir (which holds live session transcripts) — the P-5 snapshot-contract
     lesson. Every scratch file is unlinked in a ``finally``.
 
-This is CONSUMER / beta-tester tooling. It lives OUTSIDE the consolidate-memory skill
-(``~/.claude/dream-beta-tester/``) and NEVER patches it. Pure stdlib.
+This is CONSUMER / beta-tester tooling. It lives as its own plugin
+(``plugins/dream-beta-tester/``) and NEVER patches the skill it tests. Pure stdlib.
 
 Usage:
     python3 run_beta.py [--repo DIR] [--store DIR] [--skill DIR]
