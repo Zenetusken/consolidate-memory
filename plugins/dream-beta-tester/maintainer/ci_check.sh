@@ -78,6 +78,12 @@ if [ -d "$CANARY" ]; then
   fi
 else
   CFAIL="no-canary"; CIDS=""
+  # v0.1.69 Gate-2a follow-up: the self-test never RAN here — the contract must not claim
+  # expected_ids ⊆ detected_ids was proven when detected_ids is necessarily empty (a real
+  # contradiction the prior code shipped: self_test.ok:true alongside a visibly-false ids claim).
+  # Clear the EMITTED expected-ids too, so an empty ⊆ empty reads as "nothing compared", not
+  # "compared and passed" — emit_result.py's `meaning` field is conditioned on this being empty.
+  DBT_EXPECTED_IDS=""
   echo "$TAG note: canary missing — self-test SKIPPED (re-run install-gate.sh to populate it)." >&2
 fi
 

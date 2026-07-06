@@ -112,6 +112,20 @@ def main() -> int:
     fails = [r for r in results if r.get("status") == "FAIL"]
     warns = [r for r in results if r.get("status") == "WARN"]
     actionable = [{k: r.get(k) for k in _ACTIONABLE_FIELDS} for r in fails]
+    expected_ids = [x for x in a.expected_ids.split(",") if x]
+    detected_ids = [x for x in a.detected_ids.split(",") if x]
+    # v0.1.69 Gate-2a follow-up: a no-canary run passes expected-ids="" (ci_check.sh clears it), so
+    # expected_ids is empty here — the self-test genuinely never RAN (not "ran and passed vacuously").
+    # The meaning string must say so; asserting "proved detection" alongside an empty comparison is
+    # the exact self-contradiction Gate-2a found (self_test.ok:true next to a visibly-false ⊆ claim).
+    _self_test_meaning = (
+        "the self-test did not run — no canary was available to compare against (ok=true is the "
+        "designed fail-open default for a MISSING canary, not a proof of detection; install-gate.sh "
+        "populates the canary to enable the real watch-the-watcher check)"
+        if not expected_ids else
+        "the oracle proved it can still DETECT the frozen known-bad BY IDENTITY "
+        "(expected_ids ⊆ detected_ids), not merely a spurious FAIL count, before this verdict was trusted"
+    )
 
     contract = {
         "schema": "dream-beta-test/result/v1",
@@ -124,11 +138,10 @@ def main() -> int:
             "canary": "v0.1.19",
             "min_fail_expected": 2,   # v0.1.69/B6: now a reported DETAIL, not the gate — see expected/detected_ids
             "actual_fail": (int(a.canary_fail) if a.canary_fail.isdigit() else a.canary_fail),
-            "expected_ids": [x for x in a.expected_ids.split(",") if x],
-            "detected_ids": [x for x in a.detected_ids.split(",") if x],
+            "expected_ids": expected_ids,
+            "detected_ids": detected_ids,
             "ok": st_ok,
-            "meaning": "the oracle proved it can still DETECT the frozen known-bad BY IDENTITY "
-                      "(expected_ids ⊆ detected_ids), not merely a spurious FAIL count, before this verdict was trusted",
+            "meaning": _self_test_meaning,
         },
         "summary": summary,
         "actionable": actionable,

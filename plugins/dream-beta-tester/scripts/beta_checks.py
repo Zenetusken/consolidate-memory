@@ -887,21 +887,33 @@ def safe_suggestion(ctx: Ctx) -> list[Result]:
     # ── leg (1): the skill's ACTUAL evict (A-stage) set ──
     triage = _skill_triage(ctx)
     if triage is None:
-        # v0.1.69/B7(a): `_skill_triage` returns None for THREE reasons — store absent (already
+        # v0.1.69/B7(a): `_skill_triage` returns None for SEVERAL reasons — store absent (already
         # handled above), legitimately under budget / standing-justified (a real, silent no-op — no
-        # result needed), or the `build_context`/`remediation_triage` helpers were renamed/removed.
-        # The over-budget signal is independently available from ctx.status (NOT via _skill_triage),
-        # so: over-budget-per-status AND triage-still-None can ONLY be the third case — the FAIL-
-        # capable leg silently degrading to nothing instead of a loud SKIP. Gate-1B named this the
-        # systemic backstop for a defused D4: it also kills the canary's CHK-EVICT-STAGE FAIL, which
-        # B6's id-matched self-test now catches (SELFTEST_BROKEN) — this SKIP is the local signal,
-        # B6 is the fleet-wide one.
+        # result needed), the memory_status module failed to import (`ctx.ms is None`), the
+        # `memory_status --json` subprocess itself crashed/errored (surfaces in `ctx.notes`,
+        # gather():362 — Gate-2a found this ALSO zeroes `ctx.status`, so the naive "check
+        # ctx.status.get('remediation').get('required')" signal goes dark in EXACTLY the scenario
+        # it's meant to catch: a renamed `build_context`/`remediation_triage` in an UNCOMPILABLE
+        # module state crashes the same subprocess `ctx.status` depends on), or the helpers were
+        # cleanly renamed/removed as part of a real refactor (module still runs; getattr misses).
+        # Widened to fire whenever the store IS provably over budget OR we simply can't tell (the
+        # status subprocess errored) — "can't tell" must not read as "nothing to report" — with the
+        # evidence naming WHICH scenario actually happened, not assuming the narrowest one.
+        _status_crashed = any(n.startswith("memory_status --json:") for n in ctx.notes)
         _rem = ctx.status.get("remediation") or {}
-        if bool(_rem.get("required")):
+        _over_budget = bool(_rem.get("required"))
+        if _over_budget or _status_crashed:
+            if ctx.ms is None:
+                _cause = "the memory_status module failed to import entirely"
+            elif _status_crashed:
+                _crash_note = next((n for n in ctx.notes if n.startswith("memory_status --json:")), "")
+                _cause = f"memory_status --json itself failed to run cleanly ({_crash_note})"
+            else:
+                _cause = "helpers unavailable (renamed/removed) despite the store being over budget"
             out.append(_R("safe_suggestion", "CHK-EVICT-STAGE", "Skill evict-stage spares wikilinked facts",
                           "MED", "SKIP",
                           "the skill's build_context/remediation_triage helpers, re-run over an over-budget store",
-                          "helpers unavailable (renamed/removed) despite the store being over budget",
+                          _cause,
                           "D4 leg not provable: triage helpers unavailable — this leg is dark; the "
                           "skill-independent leg (2) below and B6's id-matched canary self-test remain",
                           "remediation A-stage", "D4"))
@@ -1282,6 +1294,20 @@ def dream_arc_capture(ctx: Ctx) -> list[Result]:
         defect_ref="v0.1.54", is_complete=is_complete)
 
 
+def _maintenance_pivoted(ctx: Ctx) -> bool:
+    """True iff the latest persisted record is a maintenance/bootstrap pivot pass (scoped to pull +
+    health only) — factored out (v0.1.69 Gate-2a follow-up: usage_capture/demotion_capture need the
+    SAME carve-out distill_capture has, not a triplicated copy) so all three capture families that can
+    be legitimately skipped by a pivot share ONE definition."""
+    if not ctx.log_records:
+        return False
+    _mt = ctx.log_records[-1].get("maintenance")
+    # coerce, don't trust truthiness: a model-authored `"pivoted": "false"` is a truthy STRING (the
+    # exact model-slip class render_dashboard's _flag coercion exists for) — it must NOT read as pivoted.
+    _pv = _mt.get("pivoted") if isinstance(_mt, dict) else None
+    return _pv is True or str(_pv).strip().lower() in ("true", "1")
+
+
 @family
 def distill_capture(ctx: Ctx) -> list[Result]:
     """v0.1.55: the distill VERDICT exists on the latest persisted dream. The skill's distill step
@@ -1293,13 +1319,8 @@ def distill_capture(ctx: Ctx) -> list[Result]:
     legitimately skips the distill step (the pivot scopes the pass to pull + health) → SKIP-by-empty,
     never a WARN. ADVISORY (LOW / WARN, never FAIL); pre-v0.1.55 records legitimately lack the key.
     Scaffold: `_latest_capture_check`."""
-    if ctx.log_records:
-        _mt = ctx.log_records[-1].get("maintenance")
-        # coerce, don't trust truthiness: a model-authored `"pivoted": "false"` is a truthy STRING
-        # (the exact model-slip class render_dashboard's _flag coercion exists for) — it must NOT skip.
-        _pv = _mt.get("pivoted") if isinstance(_mt, dict) else None
-        if _pv is True or str(_pv).strip().lower() in ("true", "1"):
-            return []                           # maintenance/bootstrap pass — distill legitimately skipped
+    if _maintenance_pivoted(ctx):
+        return []                               # maintenance/bootstrap pass — distill legitimately skipped
     def is_complete(distill: dict[str, Any]) -> tuple[bool, str]:
         verdict = str(distill.get("verdict") or "").strip()
         if verdict:
@@ -1323,8 +1344,12 @@ def usage_capture(ctx: Ctx) -> list[Result]:
     every v0.1.63+ pass (even a dormant, zero-read window still stamps a real window string — the
     instrument runs regardless of what it finds). A missing/empty window on a v0.1.63+ record means the
     injection step was skipped entirely, not that usage was zero. ADVISORY (LOW / WARN, never FAIL) —
-    same posture as its dream/distill siblings; pre-v0.1.63 records legitimately lack the key.
-    Scaffold: `_latest_capture_check`."""
+    same posture as its dream/distill siblings; pre-v0.1.63 records legitimately lack the key. Carve-out
+    (v0.1.69 Gate-2a follow-up): a maintenance/bootstrap pass (`maintenance.pivoted`) scopes to pull +
+    health only, so the recall-usage injection legitimately never runs — SKIP-by-empty, never a WARN,
+    matching distill_capture's own carve-out. Scaffold: `_latest_capture_check`."""
+    if _maintenance_pivoted(ctx):
+        return []                               # maintenance/bootstrap pass — usage injection legitimately skipped
     def is_complete(usage: dict[str, Any]) -> tuple[bool, str]:
         window = str(usage.get("window") or "").strip()
         if window:
@@ -1348,7 +1373,12 @@ def demotion_capture(ctx: Ctx) -> list[Result]:
     triage still stamps a one-sentence `verdict` (e.g. "dormant — N probative windows observed") — the
     same "ran and correctly did nothing" vs "never ran" distinction distill_capture makes. PASS iff the
     verdict is non-empty (matches distill_capture's is_complete shape exactly). ADVISORY (LOW / WARN,
-    never FAIL); pre-v0.1.67 records legitimately lack the key. Scaffold: `_latest_capture_check`."""
+    never FAIL); pre-v0.1.67 records legitimately lack the key. Carve-out (v0.1.69 Gate-2a follow-up):
+    a maintenance/bootstrap pass (`maintenance.pivoted`) scopes to pull + health only, so the demotion
+    triage legitimately never runs — SKIP-by-empty, never a WARN, matching distill_capture's own
+    carve-out. Scaffold: `_latest_capture_check`."""
+    if _maintenance_pivoted(ctx):
+        return []                               # maintenance/bootstrap pass — demotion triage legitimately skipped
     def is_complete(demotion: dict[str, Any]) -> tuple[bool, str]:
         verdict = str(demotion.get("verdict") or "").strip()
         if verdict:

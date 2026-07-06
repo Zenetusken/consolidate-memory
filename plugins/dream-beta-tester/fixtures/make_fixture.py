@@ -46,7 +46,10 @@ def main() -> int:
     # the audit's live repro: `make_fixture.py --help` silently created `./--help/`. argparse's
     # built-in help action now intercepts --help/-h BEFORE the positional is ever touched
     # (prints usage, exits 0, creates nothing).
-    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    # Gate-2a follow-up: __doc__ is None under -OO/PYTHONOPTIMIZE=2 (docstrings stripped) — a bare
+    # __doc__.splitlines() crashed the fixture generator before argparse even ran in that environment.
+    ap = argparse.ArgumentParser(
+        description=(__doc__ or "Generate the FROZEN gate fixture store.").splitlines()[0])
     ap.add_argument("fixture_repo", nargs="?", default=str(Path(__file__).parent / "gate-repo"),
                     help="target fixture repo directory (default: <this dir>/gate-repo)")
     args = ap.parse_args()
