@@ -275,10 +275,10 @@ are **stdlib-only** (uses 3.8+ stdlib; validated on Python 3.10–3.13), make **
 calls**, and the only external process is read-only `git`. The `memory/` store is gitignored and is **not** part of the
 published plugin (only `plugins/consolidate-memory/` ships). The secrets firewall
 applies at *retrieval*, so a credential in a transcript is dropped before it could ever
-reach a fact file. **Portable by construction** — pure Python + read-only `git`, no
-POSIX-only modules (`fcntl`/`pwd`/`grp`/`termios`) — works on Linux and macOS; on native
-Windows, run it under WSL (the `cm` dev CLI is a POSIX shell script; end users interact
-only through the skill, not `cm`). Each release is gated by an internal multi-agent white-hat security
+reach a fact file. **Portable by construction** — no POSIX-only modules
+(`fcntl`/`pwd`/`grp`/`termios`) — runs natively on Linux and macOS; on Windows, both the
+`cm` dev CLI and the skill's own shell invocations use POSIX syntax (`VAR=val` prefixes),
+so run under WSL. Each release is gated by an internal multi-agent white-hat security
 review; see **[SECURITY.md](SECURITY.md)** for the full threat model, the security
 properties enforced in code, and how to report an issue.
 
