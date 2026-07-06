@@ -2979,10 +2979,10 @@ def _boom69(*a: Any, **k: Any) -> Any:
     raise FileNotFoundError("git not found")
 _real_run69 = ms.subprocess.run
 setattr(ms, "_GIT_WARNED", False)                # reset (attr exists only post-fix; setattr is pre-fix-safe)
-_err69 = _io69.StringIO()
+_err69 = _io69.StringIO(); _out69b = _io69.StringIO()
 try:
     setattr(ms.subprocess, "run", _boom69)
-    with _cl69.redirect_stderr(_err69):
+    with _cl69.redirect_stderr(_err69), _cl69.redirect_stdout(_out69b):
         _rv69a = ms._run(["git", "log"], Path("."))
         _rv69b = ms._run(["git", "status"], Path("."))
 finally:
@@ -2992,6 +2992,8 @@ check("v0.1.69/A4: git failure returns '' AND labels the degradation on stderr (
       _rv69a == "" and _rv69b == "" and "git unavailable" in _errtxt69)
 check("v0.1.69/A4: the label fires ONCE per process (no spam across repeated _run calls)",
       _errtxt69.count("git unavailable") == 1)
+check("v0.1.69/A4: stdout stays EMPTY on the degraded path (diagnostic is stderr-only; --json purity)",
+      _out69b.getvalue() == "")
 setattr(ms, "_GIT_WARNED", False)                # leave clean for any later check exercising _run
 
 # A5: genericity PIN — no personal /home/<name> (slash) or -home-<name>- (slug) may enter the
