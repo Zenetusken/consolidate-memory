@@ -72,6 +72,17 @@ GLOBAL = Path.home() / ".claude" / "memory"
 GLOBAL_FLEET_TAX_ADVISORY = 5000
 
 
+def _safe_read_text(path: Path) -> "str | None":
+    """The store-scan convention, factored ONCE (v0.1.69 Gate-2a review: the pattern had been
+    hand-copied at three call sites and a fourth — `_orphans` — was left unguarded because
+    copy-paste doesn't propagate a fix). A concurrent gc/chmod/delete between `glob` and `read`
+    must not abort the whole scan; every fact-body-in-a-loop reader shares this ONE fallible read."""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
 def _nonglobal_wikilinks(text: str, global_dir: Path, exclude: str = "") -> list[str]:
     """v0.1.25: the `[[wikilink]]` targets in `text` that are NOT global canonicals — so they DANGLE in every
     mirror of a promoted fact (a global fact's links travel with it into every project). Excludes code-span
@@ -322,7 +333,9 @@ def global_facts() -> list[tuple[str, dict, str]]:
         # into the tier-1 context of every project that pulls it.
         if not _safe_stem(f.stem):
             continue
-        text = f.read_text(encoding="utf-8", errors="replace")
+        text = _safe_read_text(f)   # v0.1.69 Gate-2b follow-up: store-scan convention — a
+        if text is None:            # concurrent gc/chmod on the GLOBAL store must not abort the scan
+            continue
         facts.append((f.stem, _frontmatter(text), text))
     return facts
 
@@ -438,7 +451,7 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> tuple[bool, bool]
     computation of the same fact is a single-source-of-truth violation waiting to drift, not
     just here but at the NEXT caller that copies the old pattern instead of using this return."""
     idx = store / "MEMORY.md"
-    content = idx.read_text(encoding="utf-8") if idx.exists() else "# Memory Index\n\n"
+    content = _safe_read_text(idx) or "# Memory Index\n\n"   # store-scan convention (v0.1.69 Gate-2b)
     want = _pointer_line(name, fm)
     lint = _fat_hook_warning(want, name)
     lines = content.splitlines()
@@ -485,9 +498,8 @@ def _inbound_links(store: Path, target: str) -> list[str]:
     for f in sorted(store.glob("*.md")):
         if f.name == "MEMORY.md" or f.stem == target:
             continue
-        try:
-            body = f.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        body = _safe_read_text(f)   # store-scan convention (shared helper — v0.1.69 Gate-2b)
+        if body is None:
             continue
         if any(resolve_wikilink(l, {target}) == target for l in extract_wikilinks(body)):
             out.append(f.stem)
@@ -541,7 +553,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # M1: the running always-loaded index size (tokens). Each pulled MISSING fact grows it by its pointer's
     # cost; the guard below holds any pull that would push it over INDEX_TOKEN_BUDGET. Seed from the live index.
     _idxp = store / "MEMORY.md"
-    running_idx = est_tokens(_idxp.read_text(encoding="utf-8", errors="replace")) if _idxp.exists() else est_tokens("# Memory Index\n\n")
+    running_idx = est_tokens(_safe_read_text(_idxp) or "# Memory Index\n\n")   # store-scan convention (v0.1.69 Gate-2b)
     held_facts: list = []   # (name, cost) of relevant MISSING globals HELD this pass — drives the evict-to-receive offer
     # v0.1.41: --evict <fact> — the EVICT-TO-RECEIVE valve (the release for M1's hold). Free ONE low-value local
     # pointer so a held global can land; net-neutral, so M1's budget stays enforced. Pre-checks BEFORE any delete
@@ -566,7 +578,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         if not held_pre:
             print(f"evict: nothing is held (no past-the-ceiling MISSING globals) — evicting '{evict}' would free "
                   "room for NOTHING. There is no swap to make.", file=sys.stderr); return 1
-        freed = est_tokens(_pointer_line(evict, _frontmatter(ep.read_text(encoding="utf-8", errors="replace"))))
+        _ep_text = _safe_read_text(ep)   # v0.1.69 Gate-2b: TOCTOU since the ep.exists() check above —
+        if _ep_text is None:              # a vanished evict target refuses cleanly, same as "not present"
+            print(f"evict: '{evict}' vanished from {store} — refusing (nothing to evict)", file=sys.stderr); return 1
+        freed = est_tokens(_pointer_line(evict, _frontmatter(_ep_text)))
         if not _evict_frees_enough(running_idx, freed, [c for _, c in held_pre], budget=INDEX_CEILING_TOKENS):
             print(f"evict: '{evict}' frees only ~{freed} tok — not enough to fit the smallest held global "
                   f"(~{min(c for _, c in held_pre)} tok at idx {running_idx}/{INDEX_CEILING_TOKENS} ceiling). "
@@ -579,7 +594,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         rel = is_relevant(fm, stacks)
         path = store / f"{name}.md"
         present = path.exists()
-        cur = path.read_text(encoding="utf-8") if present else ""
+        cur = (_safe_read_text(path) or "") if present else ""   # store-scan convention (v0.1.69 Gate-2b)
         is_mirror = present and _is_mirror(cur)
         want = _as_mirror(text, name)
         if not rel:
@@ -655,9 +670,8 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         for f in sorted(store.glob("*.md")):
             if f.name == "MEMORY.md":
                 continue
-            try:                                  # Gate-2: match the no-raise convention of every store scan
-                t = f.read_text(encoding="utf-8", errors="replace")   # (a concurrent gc/chmod between glob+read
-            except OSError:                       # must not abort the whole --pull after RESULT is built)
+            t = _safe_read_text(f)                # store-scan convention (a concurrent gc/chmod between
+            if t is None:                         # glob+read must not abort the whole --pull after RESULT is built)
                 continue
             ffm = _frontmatter(t)
             add("      " + _ui.c(f"· {f.stem:<40} {ffm.get('scope', '?'):<14} "
@@ -673,13 +687,13 @@ def _record_provenance(name: str, project: str) -> None:
     As a fact propagates to more projects, its provenance grows; that list IS the
     cross-project network's edge set (which minds hold which memory)."""
     p = GLOBAL / f"{name}.md"
-    if not p.exists():
+    text = _safe_read_text(p)   # v0.1.69 Gate-2b: TOCTOU-tightened — a vanished canonical is
+    if text is None:            # nothing to record provenance for (same as the old not-exists early-return)
         return
     # `project` is a directory basename written into a SHARED canonical's frontmatter.
     # Sanitize it to the safe charset before it ever lands there, so it can't smuggle
     # YAML/markdown into the shared store (and can't carry a regex backreference below).
     project = _sanitize_token(project)
-    text = p.read_text(encoding="utf-8")
     m = re.search(r"^(\s*projects:\s*)\[([^\]]*)\]\s*$", text, re.M)
     if m:
         items = [x.strip() for x in m.group(2).split(",") if x.strip()]
@@ -764,9 +778,10 @@ def network() -> int:
 def _remove_index_pointer(store: Path, name: str) -> bool:
     """Drop the pointer line for `name` from the project index. Returns True if removed."""
     idx = store / "MEMORY.md"
-    if not idx.exists():
+    _idx_text = _safe_read_text(idx)   # v0.1.69 Gate-2b: TOCTOU-tightened (was exists()-then-read)
+    if _idx_text is None:
         return False
-    lines = idx.read_text(encoding="utf-8").splitlines()
+    lines = _idx_text.splitlines()
     kept = [ln for ln in lines if f"]({name}.md)" not in ln]  # match the link target, not a spoofable substring
     if len(kept) == len(lines):
         return False
@@ -785,7 +800,9 @@ def _orphans(store: Path) -> list[str]:
     for f in store.glob("*.md"):
         if f.name == "MEMORY.md":
             continue
-        text = f.read_text(encoding="utf-8", errors="replace")
+        text = _safe_read_text(f)    # v0.1.69/A3 (Gate-2a follow-up): store-scan convention — a
+        if text is None:             # vanished/unreadable fact must not abort the orphan scan
+            continue
         if _is_mirror(text) and f.stem not in canon:  # ONLY managed mirrors (frontmatter key)
             out.append(f.stem)
     return out
@@ -1063,9 +1080,14 @@ def _node_tokens(store: Path) -> dict:
     canonical in the GLOBAL store (demote/delete + GC fleet-wide); LOCAL pruning is
     futile because `run()` re-pulls the mirror next cycle."""
     idx = store / "MEMORY.md"
-    idx_text = idx.read_text(encoding="utf-8", errors="replace") if idx.exists() else ""
-    facts = [f for f in store.glob("*.md") if f.name != "MEMORY.md"]
-    bodies = {f.stem: f.read_text(encoding="utf-8", errors="replace") for f in facts}
+    idx_text = _safe_read_text(idx) or ""    # store-scan convention: a vanished index reads as absent
+    bodies: dict[str, str] = {}
+    for f in store.glob("*.md"):
+        if f.name == "MEMORY.md":
+            continue
+        body = _safe_read_text(f)             # store-scan convention (shared helper — v0.1.69 Gate-2a)
+        if body is not None:
+            bodies[f.stem] = body
     mirror_stems = {stem for stem, b in bodies.items() if _is_mirror(b)}
     # Attribute the index pointer lines whose target fact (`](<stem>.md)`) is a mirror.
     # That is the fraction of the always-loaded tax the global store controls — what the
@@ -1080,7 +1102,7 @@ def _node_tokens(store: Path) -> dict:
         "always_loaded_tokens": est_tokens(idx_text),
         "mirror_index_tokens": mirror_index_tokens,
         "recall_tokens": sum(est_tokens(b) for b in bodies.values()),
-        "facts": len(facts),
+        "facts": len(bodies),                 # readable facts only — a vanished file is not counted
         "shared": len(mirror_stems),
     }
 
@@ -1100,10 +1122,14 @@ def _network_nodes() -> list[Path]:
         store = proj / "memory"
         if not store.is_dir():
             continue
-        has_mirror = any(
-            _is_mirror(f.read_text(encoding="utf-8", errors="replace"))
-            for f in store.glob("*.md") if f.name != "MEMORY.md"
-        )
+        has_mirror = False
+        for f in store.glob("*.md"):
+            if f.name == "MEMORY.md":
+                continue
+            body = _safe_read_text(f)         # store-scan convention (shared helper — v0.1.69 Gate-2a)
+            if body is not None and _is_mirror(body):
+                has_mirror = True
+                break
         if has_mirror:
             nodes.append(store)
     return nodes

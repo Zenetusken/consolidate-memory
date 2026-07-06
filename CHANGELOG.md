@@ -5,6 +5,39 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.69] — 2026-07-05
+
+### Fixed — audit-hygiene remediation (Track A of the four-lens release-readiness audit)
+Every behavioral fix landed red-first (a smoke check that FAILS on the pre-fix tree — 8 red gates
+recorded on the PR), to the Gate-1-reviewed spec `docs/audit-hygiene-remediation.spec.md` (3
+independent review rounds to zero inconsistencies).
+
+- **Parsed-instant window compares in `extract_signals.py`** (`extract()` + `_recall_items()`) — the
+  per-line `ts <= since` was a RAW-STRING compare, so an offset-bearing marker/`--since` (`+02:00`,
+  `+0200`) against CC's `Z` stamps mis-ordered lexicographically and silently mis-windowed boundary
+  sessions. Ported distill's v0.1.58 twin fix (`_parse_ts` instants; unparseable fails OPEN,
+  recall-biased).
+- **`cm extract`'s TTY report `_sane()`s signal text** at the presentation boundary — ESC survives
+  `_norm` (it's Cc, not Cf), so repo-controlled error output could inject terminal escapes; `--json`
+  stays raw-but-escaped (the bytes can BE the signal there).
+- **Store-scan convention in `_node_tokens`/`_network_nodes`** — three unguarded `read_text` calls
+  crashed `cm tokens`/`cm network`/the dream's Phase-5 network capture on a concurrent gc/chmod
+  vanish; now skip-and-count-readable, per the module's own convention.
+- **`_run` labels a git failure** (one stderr line per process, `_GIT_WARNED`) — a missing/broken/
+  timed-out git was indistinguishable from a clean no-commit repo, silently under-scoping the dream
+  to "NOTHING TO CONSOLIDATE".
+- **Genericity: the maintainer username scrubbed** from the shipped `memory_status.py` docstring
+  (slash AND dash-form slug) + public tests/docs, and a NEW smoke **genericity pin** (slash
+  `/home/<name>` + slug `-home-<name>-`, allowlist you/u/x/d/nobody, restrictive name class) keeps
+  any personal path out of the shipped/public tree permanently.
+- **SKILL `--list` claim corrected** — `held` counts exist only under `--pull` (harness-map was
+  already right); prose + inline comment aligned to the code, no behavior change.
+- **Schema-pin hole closed** — `usage`, `usage.per_fact[0]`, `demotion` + explicit
+  `audit.claude_md`/`audit.repo_doc` rows join the SKILL↔TypedDict pin loop (the two newest schema
+  blocks looked pinned and weren't; the carve-out comment is exhaustive again).
+- `.gitignore` gains `.ruff_cache/`.
+- Fixes/tests/docs only — no schema key, no flag change; legacy records render unchanged → **patch**.
+
 ## [0.1.68] — 2026-07-05
 
 ### Fixed — the dashboard's masthead glow tiled down the whole page; the demotion panel's dormant verdict carried no tag

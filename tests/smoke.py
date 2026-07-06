@@ -344,7 +344,7 @@ check("v0.1.39/M4: an undetectable stack is NOT in the vocab ([release]/[ci-cd] 
 check("v0.1.40/M3: slug_for maps '.' (a dotfile-dir path) → '-', matching CC (was split-brain)",
       ms.slug_for(Path("/home/u/.claude/app")) == "-home-u--claude-app")
 check("v0.1.40/M3: slug_for is regression-IDENTICAL for the fleet (paths with only / _ -)",
-      ms.slug_for(Path("/home/drei/project/Doc_Flo")) == "-home-drei-project-Doc-Flo")
+      ms.slug_for(Path("/home/you/project/Doc_Flo")) == "-home-you-project-Doc-Flo")
 check("v0.1.40/M3: near_duplicate_slugs catches a '.'-vs-'-' twin (the split-brain detector, was '_'/case-only)",
       ms.near_duplicate_slugs("-home-u-.claude-app", ["-home-u--claude-app", "-unrelated"]) == ["-home-u--claude-app"])
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",
@@ -471,12 +471,12 @@ check("uuid: rejects truncated / garbage / non-string",
       not ms._valid_uuid("1920c541-0f32-4b9d-8b0b") and not ms._valid_uuid("not-a-uuid")
       and not ms._valid_uuid("") and not ms._valid_uuid(None))
 # near_duplicate_slugs: flags '-'/'_'/case twins, ignores unrelated, NEVER flags itself (B2).
-_slug = "-home-drei-project-Doc-Flo"
-_sibs = ["-home-drei-project-Doc-Flo", "-home-drei-project-Doc_Flo",
-         "-home-drei-project-doc-flo", "-home-drei-project-other"]
+_slug = "-home-you-project-Doc-Flo"
+_sibs = ["-home-you-project-Doc-Flo", "-home-you-project-Doc_Flo",
+         "-home-you-project-doc-flo", "-home-you-project-other"]
 check("near-dup: flags '_' and case variants, excludes self + unrelated",
       ms.near_duplicate_slugs(_slug, _sibs)
-      == ["-home-drei-project-Doc_Flo", "-home-drei-project-doc-flo"])
+      == ["-home-you-project-Doc_Flo", "-home-you-project-doc-flo"])
 check("near-dup: a slug is never its own duplicate (B2 self-exclusion)",
       ms.near_duplicate_slugs(_slug, [_slug]) == [])
 check("near-dup: no twins → empty list", ms.near_duplicate_slugs(_slug, ["-x", "-y-z"]) == [])
@@ -819,6 +819,8 @@ check("SKILL↔TypedDict: schema-block marker keys == Marker TypedDict (incl. be
 # cross_project._pulled / network._) before comparing; list-wrapped shapes compare their [0] item.
 # (SchemaDrift + the pulled/promoted item dicts aren't enumerated in the block — the former renders as
 # an empty {} placeholder, the latter are untyped list[dict] — so they're out of scope for this pin.)
+# v0.1.69/A7: usage/usage.per_fact/demotion + explicit audit.claude_md/repo_doc rows close the last
+# gaps — the two carve-outs above are now the ONLY un-pinned shapes.
 _sk_b = _skill_schema.get("budget", {})
 _sk_n = _skill_schema.get("network", {})
 for _nm, _obj, _td in [
@@ -839,6 +841,13 @@ for _nm, _obj, _td in [
     ("maintenance", _skill_schema.get("maintenance", {}), ms.Maintenance),   # v0.1.37
     ("dream", _skill_schema.get("dream", {}), ms.DreamArc),                  # v0.1.54
     ("distill", _skill_schema.get("distill", {}), ms.Distill),               # v0.1.55
+    ("usage", _skill_schema.get("usage", {}), ms.Usage),                     # v0.1.63 (Phase A)
+    ("usage.per_fact[0]", (_skill_schema.get("usage", {}).get("per_fact") or [{}])[0], ms.UsageFact),
+    ("demotion", _skill_schema.get("demotion", {}), ms.Demotion),            # v0.1.67 (Phase C)
+    # v0.1.69/A7: covered only TRANSITIVELY before (same AuditStoreDelta as audit.memory) — explicit
+    # rows make the all-nested-shapes claim literally true.
+    ("audit.claude_md", _skill_schema.get("audit", {}).get("claude_md", {}), ms.AuditStoreDelta),
+    ("audit.repo_doc", _skill_schema.get("audit", {}).get("repo_doc", {}), ms.AuditStoreDelta),
     # v0.1.22: whole-hierarchy measure + the deterministic audit block (+ their list-item shapes via [0]).
     ("budget.claude_md_hierarchy", _sk_b.get("claude_md_hierarchy", {}), ms.ClaudeMdHierarchy),
     ("budget.claude_md_hierarchy.files[0]", (_sk_b.get("claude_md_hierarchy", {}).get("files") or [{}])[0], ms.ClaudeMdHierarchyFile),
@@ -1421,9 +1430,9 @@ with _tf43.TemporaryDirectory() as _td50:
 # the measured corpus). REAL command forms (multi-line cd-first-line / heredoc / bare-cd), NOT the
 # rare `cd && ` join.
 check("v0.1.51/55: _scan_cmd multi-line cd-first-line → the real command (cd line stripped)",
-      ds._scan_cmd("cd /home/drei/project/x\npython3 tests/smoke.py")[0] == ["python3 tests/smoke.py"])
+      ds._scan_cmd("cd /home/you/project/x\npython3 tests/smoke.py")[0] == ["python3 tests/smoke.py"])
 check("v0.1.51/55: _scan_cmd bare cd → nothing (a 'cd' is NOT a workflow template)",
-      ds._scan_cmd("cd /home/drei/project/x") == ([], []))
+      ds._scan_cmd("cd /home/you/project/x") == ([], []))
 check("v0.1.55: heredoc → body dropped AND the 'python3 -' false class stoplisted (was a v0.1.51 row)",
       ds._scan_cmd("cd /x\npython3 - <<'PY'\nprint(1)\nPY") == ([], []))
 _v55 = ds._scan_cmd("cd /x\nS=plugins/y\npython3 $S/foo.py")[0]
@@ -2873,6 +2882,192 @@ with _tfB.TemporaryDirectory() as _tdC6:
             _osB.environ.pop("HOME", None)
         else:
             _osB.environ["HOME"] = _oldHomeC6
+
+# ── v0.1.69 (audit hygiene — docs/audit-hygiene-remediation.spec.md): red-first gates ──────────────
+# Each check below FAILED on the pre-fix tree (recorded in the PR); the fixes flip them green.
+import contextlib as _cl69  # noqa: E402
+import io as _io69  # noqa: E402
+import json as _json69  # noqa: E402
+import os as _os69  # noqa: E402
+import re as _re69  # noqa: E402
+import tempfile as _tf69  # noqa: E402
+
+# A1: the per-line window compare must be PARSED-instant, not raw-string (distill's v0.1.58 twin fix,
+# never ported to extract). Vector: since 18:00+02:00 == 16:00Z; a 16:30Z line is instant-AFTER (must
+# be kept) but raw-string-compares BELOW "…18:00…+02:00" (pre-fix: wrongly dropped). 15:30Z drops both ways.
+_SINCE69 = "2026-07-05T18:00:00+02:00"          # == 2026-07-05T16:00:00Z
+def _hl69(ts: str, text: str) -> str:            # a human-turn transcript line at ts
+    return _json69.dumps({"timestamp": ts, "sessionId": "s69",
+                          "message": {"role": "user", "content": text}}) + "\n"
+with _tf69.TemporaryDirectory() as _td69:
+    _home69 = Path(_td69); _proj69 = _home69 / "proj"; _proj69.mkdir()
+    _pr69 = _home69 / ".claude" / "projects" / es.slug_for(_proj69); _pr69.mkdir(parents=True)
+    (_pr69 / "sess.jsonl").write_text(
+        _hl69("2026-07-05T16:30:00Z", "prefer the frobnicator flag for exports")
+        + _hl69("2026-07-05T15:30:00Z", "stale turn from before the marker")
+        + _hl69("not-a-timestamp", "unparseable ts line kept fail-open"), encoding="utf-8")
+    _old69 = _os69.environ.get("HOME"); _os69.environ["HOME"] = str(_home69)
+    try:
+        _r69 = es.extract(_proj69, _SINCE69, 20)
+    finally:
+        _os69.environ["HOME"] = _old69 if _old69 is not None else ""
+    _texts69 = " ".join(s.get("text", "") for s in _r69.get("signals", []))
+    check("v0.1.69/A1: an offset `since` keeps the instant-AFTER Z-stamped line (raw-string compare dropped it)",
+          "frobnicator" in _texts69)
+    check("v0.1.69/A1: …and still drops the instant-BEFORE line (window semantics unchanged)",
+          "stale turn" not in _texts69)
+    check("v0.1.69/A1: an unparseable line ts fails OPEN — kept, never raises (green both ends; semantics pin)",
+          "unparseable ts line" in _texts69)
+
+# A1 twin: _recall_items carries the same raw-string compare on the recall-usage scan.
+with _tf69.TemporaryDirectory() as _td69b:
+    _store69 = _td69b + "/memory/"
+    _tr69 = Path(_td69b) / "t.jsonl"
+    def _rl69(ts: str, stem: str) -> str:        # a Read-tool_use line on a store fact
+        return _json69.dumps({"timestamp": ts, "message": {"content": [
+            {"type": "tool_use", "name": "Read", "input": {"file_path": _store69 + stem + ".md"}}]}}) + "\n"
+    _tr69.write_text(_rl69("2026-07-05T16:30:00Z", "kept-fact") + _rl69("2026-07-05T15:30:00Z", "old-fact"),
+                     encoding="utf-8")
+    _items69 = es._recall_items(_tr69, _store69, _SINCE69, frozenset())
+    _stems69 = {it.get("stem") for it in _items69}
+    check("v0.1.69/A1: _recall_items keeps the instant-AFTER read under an offset since (twin site)",
+          "kept-fact" in _stems69 and "old-fact" not in _stems69)
+
+# A2: _report is a TTY presentation boundary — repo-controlled error text must be _sane()d there.
+# ESC survives _norm (it strips Cf; ESC is Cc) → pre-fix the raw \x1b reaches stdout = escape injection.
+_sig69 = {"counts": {"human_seen": 1, "noise": 0, "secrets_omitted": 0, "errors": 1, "surfaced": 1},
+          "transcripts": ["t.jsonl"], "since": "2026-07-05T00:00:00Z",
+          "signals": [{"source": "error", "signal_type": "gotcha", "scope_hint": "env",
+                       "sessionId": "", "ts": "", "score": 0, "text": "\x1b[31mred\x1b[0m alert"}]}
+_buf69 = _io69.StringIO()
+with _cl69.redirect_stdout(_buf69):
+    es._report(_sig69)
+_out69 = _buf69.getvalue()
+check("v0.1.69/A2: report output carries NO raw ESC byte, text content preserved (presentation _sane)",
+      "\x1b" not in _out69 and "red" in _out69)
+# v0.1.69/A2 Gate-2b follow-up: the spec's OWN acceptance criterion ("the same record through the
+# --json path keeps signal_type/score intact") was never exercised — the --json path is a SEPARATE
+# emitter (`print(json.dumps(d, ...))`, main():796) that never calls _report/_sane; prove sanitization
+# stays presentation-only and doesn't leak into (or corrupt) the machine-readable path.
+_json69_out = _json43.dumps(_sig69, indent=2)
+_json69_rt = _json43.loads(_json69_out)
+_json69_sig = _json69_rt["signals"][0]
+check("v0.1.69/A2: --json path keeps signal_type/score intact AND the RAW (unsanitized) text — "
+      "sanitize is presentation-only, never a stored/machine-readable mutation",
+      _json69_sig.get("signal_type") == "gotcha" and _json69_sig.get("score") == 0
+      and _json69_sig.get("text") == "\x1b[31mred\x1b[0m alert")
+
+# A3: the store-scan convention (skip unreadable, never abort) applied to the two token/node scans.
+_a3_tok_ok = _a3_net_ok = False
+with _tf69.TemporaryDirectory() as _td69c:
+    _st69 = Path(_td69c) / "memory"; _st69.mkdir()
+    (_st69 / "real.md").write_text("---\nname: real\n---\nbody\n", encoding="utf-8")
+    (_st69 / "ghost.md").symlink_to(_st69 / "nowhere")     # dangling: read_text raises OSError
+    try:
+        _a3_tok_ok = sg._node_tokens(_st69).get("facts") == 1   # ghost skipped, real counted
+    except OSError:
+        _a3_tok_ok = False
+    check("v0.1.69/A3: _node_tokens skips a vanished/dangling fact instead of crashing", _a3_tok_ok)
+with _tf69.TemporaryDirectory() as _td69d:
+    _home69d = Path(_td69d)
+    _stA69 = _home69d / ".claude" / "projects" / "-p-a" / "memory"; _stA69.mkdir(parents=True)
+    (_stA69 / "ghost.md").symlink_to(_stA69 / "nowhere")   # ghost-ONLY store sorts FIRST (deterministic red)
+    _stB69 = _home69d / ".claude" / "projects" / "-p-b" / "memory"; _stB69.mkdir(parents=True)
+    (_stB69 / "m.md").write_text("---\nname: m\nmetadata:\n  global_ref: m\n---\nb\n", encoding="utf-8")
+    _oldH69 = _os69.environ.get("HOME"); _os69.environ["HOME"] = str(_home69d)
+    try:
+        _nodes69 = sg._network_nodes()
+        _a3_net_ok = _stB69 in _nodes69 and _stA69 not in _nodes69
+    except OSError:
+        _a3_net_ok = False
+    finally:
+        _os69.environ["HOME"] = _oldH69 if _oldH69 is not None else ""
+    check("v0.1.69/A3: _network_nodes survives a dangling-only store and still finds the readable mirror",
+          _a3_net_ok)
+# v0.1.69/A3 Gate-2b follow-up: _orphans() (feeds `cm gc`) was the 4th unguarded site found AFTER this
+# spec's original 3-site scope — it got the fix (via the shared _safe_read_text helper) but no
+# dedicated regression test, unlike its _node_tokens/_network_nodes siblings just above. Close the gap.
+_a3_orphan_ok = False
+with _tf69.TemporaryDirectory() as _td69e:
+    _st69e = Path(_td69e) / "memory"; _st69e.mkdir()
+    (_st69e / "real.md").write_text("---\nname: real\nmetadata:\n  global_ref: real\n---\nbody\n",
+                                     encoding="utf-8")   # a mirror whose canonical is gone → a real orphan
+    (_st69e / "ghost.md").symlink_to(_st69e / "nowhere")  # dangling: read_text raises OSError
+    _oldGlobal69e = sg.GLOBAL
+    sg.GLOBAL = Path(_td69e) / "empty-global"   # no canonicals at all → "real" IS orphaned
+    try:
+        _a3_orphan_ok = sg._orphans(_st69e) == ["real"]   # ghost skipped (not a crash), real correctly flagged
+    except OSError:
+        _a3_orphan_ok = False
+    finally:
+        sg.GLOBAL = _oldGlobal69e
+    check("v0.1.69/A3: _orphans() skips a dangling fact instead of crashing `cm gc` "
+          "(the 4th unguarded site, found post-spec at Gate-2a)", _a3_orphan_ok)
+
+# A4: a git failure must be LABELED (stderr, once per process) — silent "" made broken-git ≡ empty-repo.
+def _boom69(*a: Any, **k: Any) -> Any:
+    raise FileNotFoundError("git not found")
+_real_run69 = ms.subprocess.run
+setattr(ms, "_GIT_WARNED", False)                # reset (attr exists only post-fix; setattr is pre-fix-safe)
+_err69 = _io69.StringIO(); _out69b = _io69.StringIO()
+try:
+    setattr(ms.subprocess, "run", _boom69)
+    with _cl69.redirect_stderr(_err69), _cl69.redirect_stdout(_out69b):
+        _rv69a = ms._run(["git", "log"], Path("."))
+        _rv69b = ms._run(["git", "status"], Path("."))
+finally:
+    setattr(ms.subprocess, "run", _real_run69)
+_errtxt69 = _err69.getvalue()
+check("v0.1.69/A4: git failure returns '' AND labels the degradation on stderr (no-masking law)",
+      _rv69a == "" and _rv69b == "" and "git unavailable" in _errtxt69)
+check("v0.1.69/A4: the label fires ONCE per process (no spam across repeated _run calls)",
+      _errtxt69.count("git unavailable") == 1)
+check("v0.1.69/A4: stdout stays EMPTY on the degraded path (diagnostic is stderr-only; --json purity)",
+      _out69b.getvalue() == "")
+setattr(ms, "_GIT_WARNED", False)                # leave clean for any later check exercising _run
+
+# A5: genericity PIN — no personal /home/<name> (slash) or -home-<name>- (slug) may enter the
+# shipped/public tree. Allowed = the five generic placeholders in use; extending this set is a
+# CONSCIOUS edit here (that friction is the guard). The name class is deliberately restrictive
+# ([A-Za-z0-9_]) so the remediation spec's pin-inert `<user>` placeholder can never match.
+# v0.1.69 Gate-2a follow-up: the original suffix filter (.py/.md/.sh/.html) missed the
+# extensionless `cm` CLI and .json manifests — both real, tracked, shipped/public files a
+# personal path could hide in undetected. .json now scans inside the 3 recursive roots; `cm`,
+# the repo-root marketplace.json, AND CHANGELOG.md (Gate-2b follow-up: a shipped, public,
+# repo-root file edited on every release — an easy place for a bad copy-paste from a bug
+# repro to land) are checked as explicit extras rather than widening the recursive scan to
+# bare-no-suffix (which risks sweeping in binaries).
+_GENERIC69 = {"you", "u", "x", "d", "nobody"}
+_SKIP69 = {"__pycache__", ".mypy_cache", ".ruff_cache"}
+_bad69: list = []
+_extra69 = [ROOT / "cm", ROOT / ".claude-plugin" / "marketplace.json", ROOT / "CHANGELOG.md"]
+_files69 = [p for p in _extra69 if p.is_file()]
+for _root69 in (ROOT / "plugins" / "consolidate-memory", ROOT / "tests", ROOT / "docs"):
+    for _p69 in sorted(_root69.rglob("*")):
+        if not _p69.is_file() or _p69.suffix not in {".py", ".md", ".sh", ".html", ".json"}:
+            continue
+        if any(part in _SKIP69 for part in _p69.parts):
+            continue
+        _files69.append(_p69)
+for _p69 in _files69:
+    _t69 = _p69.read_text(encoding="utf-8", errors="replace")
+    for _nm69 in (_re69.findall(r"/home/([A-Za-z0-9_]+)", _t69)
+                  + _re69.findall(r"-home-([A-Za-z0-9_]+)-", _t69)):
+        if _nm69 not in _GENERIC69:
+            _bad69.append(f"{_p69.relative_to(ROOT)}:{_nm69}")
+check("v0.1.69/A5: genericity pin — every /home/<name> + -home-<name>- under plugins/consolidate-memory, "
+      "tests, docs (+ .json manifests, the `cm` CLI, CHANGELOG.md) is a generic placeholder (you/u/x/d/nobody)",
+      not _bad69)
+if _bad69:
+    print(f"    offending: {sorted(set(_bad69))[:8]}", file=sys.stderr)
+
+# A6 (Gate-2b follow-up): SKILL.md's ONLY previously had a MANUAL grep as its spec's acceptance
+# criterion — no automated regression check, unlike every other A-item. Pin it: the --list command's
+# inline comment must describe a read-only preview, NEVER "held" (held only exists under --pull).
+_list69_line = next((ln for ln in _skill_text.splitlines() if "sync_global.py --list ." in ln), "")
+check("v0.1.69/A6: SKILL.md's --list command comment never overclaims 'held' (regression guard — "
+      "held only exists under --pull, per sync_global.py's own held_this predicate)",
+      bool(_list69_line) and "held" not in _list69_line)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

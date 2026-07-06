@@ -382,13 +382,13 @@ already recorded so Phase 2 can dedup against it.
 
 Then **pull relevant global facts** so this project recalls them and Phase 2 can
 dedup against them too (cross-project step; safe + additive). **First `--list` (read-only), then `--pull`**
-(v0.1.42, B1): the `--list` surfaces *which* globals are relevant + present/missing/held BEFORE `--pull` writes
-them — so the enrichment is legible (you see the bootstrap/refresh picture + can reason about budget) instead of
-a blind pull. On a COLD-START bootstrap (empty store, rich network — see the no-op rule) this `--list` is the
+(v0.1.42, B1): the `--list` surfaces *which* globals are relevant + present/missing BEFORE `--pull` writes
+them — so the enrichment is legible (you see the bootstrap/refresh picture; hold/refresh counts appear on
+`--pull`, which auto-holds any past-the-CEILING pull) instead of a blind pull. On a COLD-START bootstrap (empty store, rich network — see the no-op rule) this `--list` is the
 relevance filter that decides PROCEED-vs-honest-no-op; on a normal pass it's a cheap read that costs nothing:
 
 ```bash
-CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .   # surface relevant/present/missing/held (read-only)
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .   # surface relevant/present/missing (read-only)
 CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .   # then replicate (M1 auto-holds a past-the-CEILING pull)
 ```
 
