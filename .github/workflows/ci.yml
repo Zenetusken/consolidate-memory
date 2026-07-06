@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    name: test (python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: smoke tests (zero-dependency)
+        run: python3 tests/smoke.py
+      - name: manifest shape validation (portable, no CLI needed)
+        run: python3 tests/validate_manifests.py
+      - name: lifecycle accumulation simulation
+        run: python3 tests/simulate_accumulation.py
+
+  typecheck:
+    name: typecheck (mypy, dev-only contract check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install mypy
+      - run: mypy --config-file mypy.ini
+
+  manifest:
+    name: plugin manifest validation (claude CLI)
+    runs-on: ubuntu-latest
+    # This job's OWN first real run (PR #79, commit 88efa9e) empirically confirmed
+    # `claude plugin validate` needs no API auth in an unauthenticated GitHub Actions
+    # runner — all three calls below passed cleanly. That resolves the open question a
+    # prior draft of this job flagged as unverified; it is now a REAL, blocking gate
+    # (no job- or step-level continue-on-error) — a broken plugin.json/marketplace.json
+    # must fail CI, not silently pass behind a safety net proven unnecessary.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: claude plugin validate ./plugins/consolidate-memory --strict
+      - run: claude plugin validate ./plugins/dream-beta-tester --strict
+      - run: claude plugin validate .

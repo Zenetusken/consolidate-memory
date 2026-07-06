@@ -179,6 +179,24 @@ consolidate-memory@zenetusken-plugins` — so you dogfood the exact artifact use
 (the old user-skill symlink model is retired: `SKILL.md` now uses `${CLAUDE_PLUGIN_ROOT}`,
 which is only set when the skill loads as a plugin).
 
+### Uninstall / purge your data
+
+`/plugin uninstall consolidate-memory` removes the code. Your consolidated memory is
+**separate and untouched by uninstall** — that split is the whole privacy posture. To
+also purge the data itself: remove `~/.claude/memory/` (the global, cross-project store)
+and/or `~/.claude/projects/<slug>/memory/` per project (that project's own store) — both
+are plain directories of markdown, safe to `rm -rf` by hand. This is **not recoverable**
+once removed.
+
+### The QA companion plugin
+
+This repo also ships a second, optional plugin — **`dream-beta-tester`** — a QA companion
+that beta-tests consolidate-memory *itself* (a deterministic regression oracle plus an
+agent-driven judgment-lens pass, `/dream-beta-test`). It's for maintainers/contributors
+validating a change, not needed for day-to-day `dream` use; install it the same way
+(`/plugin install dream-beta-tester@zenetusken-plugins`) if you want to help QA new
+versions.
+
 ## Usage
 
 In any project, just say **`dream`** — or "consolidate my memory" / "what should I
@@ -240,6 +258,7 @@ consolidate-memory/                         # repo root = plugin marketplace
 │       ├── distill_scan.py                  # Phase 5: recurring-workflow signal (templates + chains)
 │       ├── render_dashboard.py              # the data-driven ASCII dashboard (one cycle)
 │       ├── render_html.py                   # the rich self-contained HTML archive (all dreams)
+│       ├── dashboard.template.html          # the HTML shell render_html.py fills
 │       ├── render_log.py                    # the lean per-dream audit table
 │       └── _ui.py                           # shared visual vocabulary (color/rule/glyphs) the others import
 ├── tests/                                   # zero-dependency smoke + accumulation + manifest checks
@@ -256,7 +275,10 @@ are **stdlib-only** (uses 3.8+ stdlib; validated on Python 3.10–3.13), make **
 calls**, and the only external process is read-only `git`. The `memory/` store is gitignored and is **not** part of the
 published plugin (only `plugins/consolidate-memory/` ships). The secrets firewall
 applies at *retrieval*, so a credential in a transcript is dropped before it could ever
-reach a fact file. Each release is gated by an internal multi-agent white-hat security
+reach a fact file. **Portable by construction** — no POSIX-only modules
+(`fcntl`/`pwd`/`grp`/`termios`) — runs natively on Linux and macOS; on Windows, both the
+`cm` dev CLI and the skill's own shell invocations use POSIX syntax (`VAR=val` prefixes),
+so run under WSL. Each release is gated by an internal multi-agent white-hat security
 review; see **[SECURITY.md](SECURITY.md)** for the full threat model, the security
 properties enforced in code, and how to report an issue.
 
