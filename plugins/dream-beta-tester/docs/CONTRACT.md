@@ -31,7 +31,7 @@ pre-push git hook runs the same script automatically.
 | `verdict` | `clean` · `regression` · `selftest_broken` · `harness_error` (the only branch you switch on) |
 | `ship_ok` | `true` iff `verdict == "clean"` |
 | `version_under_test` | the working-tree plugin.json version |
-| `self_test` | `{canary, min_fail_expected, actual_fail, expected_ids, detected_ids, ok}` — detection is now an IDENTITY check (`expected_ids ⊆ detected_ids`, the real D3/D4 defect ids), not a count; `min_fail_expected`/`actual_fail` are reported detail only. `ok=false` ⇒ the HARNESS is broken, not the release |
+| `self_test` | `{canary, min_fail_expected, actual_fail, expected_ids, detected_ids, ok, meaning}` — detection is now an IDENTITY check (`expected_ids ⊆ detected_ids`, the real D3/D4 defect ids), not a count; `min_fail_expected`/`actual_fail` are reported detail only. `meaning` is a human-readable sentence conditioned on `ok`/whether a comparison ran at all — never trust it over `ok` itself, but it's the fastest way to see WHY. `ok=false` ⇒ the HARNESS is broken, not the release |
 | `summary` | `{fail, warn, pass, skip, total}` |
 | `actionable` | the FAILs to fix, each: `{id, defect_ref, severity, title, expected, actual, evidence, site, basis}` |
 | `findings` | every check (PASS/WARN/FAIL) — full detail |

@@ -31,14 +31,14 @@ if [ ! -f "$TEST_REPO/README.md" ]; then
 
 mkdir -p "$REPORTS" 2>/dev/null
 
-# v0.1.69/B8: fixed names in a world-writable /tmp (not $TMPDIR-portable, and a predictable shared
+# v0.1.7/B8: fixed names in a world-writable /tmp (not $TMPDIR-portable, and a predictable shared
 # path is a collision/symlink-clobber footgun on a multi-user host) — mktemp + a trap so every exit
 # path (including the early `exit 0`s above/below) cleans up.
 DBT_CANARY_TMP="$(mktemp)"
 DBT_DETAIL_TMP="$(mktemp)"
 trap 'rm -f "$DBT_CANARY_TMP" "$DBT_DETAIL_TMP"' EXIT
 
-# v0.1.69/B6: the 4th field is the comma-joined FAIL ids (additive — CSUM's tab-split callers below
+# v0.1.7/B6: the 4th field is the comma-joined FAIL ids (additive — CSUM's tab-split callers below
 # still read fields 1-3 positionally; unaffected). This is what lets the self-test move from a COUNT
 # (`≥2 FAIL` — provably spurious-FAIL-able, the exact 2026-06-22 false-green incident) to an IDENTITY
 # check (the SPECIFIC known defects, not just "something failed twice").
@@ -78,7 +78,7 @@ if [ -d "$CANARY" ]; then
   fi
 else
   CFAIL="no-canary"; CIDS=""
-  # v0.1.69 Gate-2a follow-up: the self-test never RAN here — the contract must not claim
+  # v0.1.7 Gate-2a follow-up: the self-test never RAN here — the contract must not claim
   # expected_ids ⊆ detected_ids was proven when detected_ids is necessarily empty (a real
   # contradiction the prior code shipped: self_test.ok:true alongside a visibly-false ids claim).
   # Clear the EMITTED expected-ids too, so an empty ⊆ empty reads as "nothing compared", not

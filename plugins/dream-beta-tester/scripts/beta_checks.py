@@ -761,7 +761,7 @@ def cycle_identity(ctx: Ctx) -> list[Result]:
     where a contaminated record (another project's project/budget) is the failure. We note that coverage
     limit on the finding.
 
-    v0.1.69/B7(b): both checks below carry `basis="identity-by-construction"` — they CANNOT fail as
+    v0.1.7/B7(b): both checks below carry `basis="identity-by-construction"` — they CANNOT fail as
     shipped (scripts-only mode has no second project in the loop to contaminate from), so a reader must
     not mistake a PASS here for the same class of teeth CHK-EVICT-STAGE/CHK-GATE-BACKFILL have. Making
     them fail-capable needs a synthetic contaminated-record probe — a declared NON-GOAL this cycle
@@ -775,7 +775,7 @@ def cycle_identity(ctx: Ctx) -> list[Result]:
     proj = ctx.status.get("project")
     want = ctx.repo.resolve().name
     ok_proj = proj == want
-    # v0.1.69/B7(b): explicit basis="identity-by-construction" (was the "structural" default) — in
+    # v0.1.7/B7(b): explicit basis="identity-by-construction" (was the "structural" default) — in
     # scripts-only mode this check CANNOT fail (the seed is built FROM the target, so proj==want by
     # construction); labeling it honestly means a reader can't mistake "PASS" here for the same kind
     # of teeth CHK-EVICT-STAGE/CHK-GATE-BACKFILL have. The contaminated-record probe that would make
@@ -793,7 +793,7 @@ def cycle_identity(ctx: Ctx) -> list[Result]:
     if node is not None and isinstance(jtok, int):
         ntok = node.get("always_loaded_tokens")
         ok_bud = isinstance(ntok, int) and abs(jtok - ntok) <= max(50, int(0.10 * ntok))
-        # v0.1.69/B7(b): both cycle_identity checks are identity-by-construction in scripts-only mode —
+        # v0.1.7/B7(b): both cycle_identity checks are identity-by-construction in scripts-only mode —
         # jtok and ntok are both derived from the SAME target repo's live store (no second project is
         # ever in the loop here), so they necessarily agree; the real contaminated-budget teeth are the
         # full-dream path, not this reconstruction. Labeled the same as CHK-CYCLE-PROJECT above.
@@ -887,7 +887,7 @@ def safe_suggestion(ctx: Ctx) -> list[Result]:
     # ── leg (1): the skill's ACTUAL evict (A-stage) set ──
     triage = _skill_triage(ctx)
     if triage is None:
-        # v0.1.69/B7(a): `_skill_triage` returns None for SEVERAL reasons — store absent (already
+        # v0.1.7/B7(a): `_skill_triage` returns None for SEVERAL reasons — store absent (already
         # handled above), legitimately under budget / standing-justified (a real, silent no-op — no
         # result needed), the memory_status module failed to import (`ctx.ms is None`), the
         # `memory_status --json` subprocess itself crashed/errored (surfaces in `ctx.notes`,
@@ -1296,7 +1296,7 @@ def dream_arc_capture(ctx: Ctx) -> list[Result]:
 
 def _maintenance_pivoted(ctx: Ctx) -> bool:
     """True iff the latest persisted record is a maintenance/bootstrap pivot pass (scoped to pull +
-    health only) — factored out (v0.1.69 Gate-2a follow-up: usage_capture/demotion_capture need the
+    health only) — factored out (v0.1.7 Gate-2a follow-up: usage_capture/demotion_capture need the
     SAME carve-out distill_capture has, not a triplicated copy) so all three capture families that can
     be legitimately skipped by a pivot share ONE definition."""
     if not ctx.log_records:
@@ -1339,13 +1339,13 @@ def distill_capture(ctx: Ctx) -> list[Result]:
 
 @family
 def usage_capture(ctx: Ctx) -> list[Result]:
-    """v0.1.69 (Track B / Gate-2b QA-currency fix): the Phase-A usage-instrument CAPTURE exists on the
+    """v0.1.7 (Track B / Gate-2b QA-currency fix): the Phase-A usage-instrument CAPTURE exists on the
     latest persisted dream. `usage.window` is script-injected by `extract_signals.py --recalls --into`
     every v0.1.63+ pass (even a dormant, zero-read window still stamps a real window string — the
     instrument runs regardless of what it finds). A missing/empty window on a v0.1.63+ record means the
     injection step was skipped entirely, not that usage was zero. ADVISORY (LOW / WARN, never FAIL) —
     same posture as its dream/distill siblings; pre-v0.1.63 records legitimately lack the key. Carve-out
-    (v0.1.69 Gate-2a follow-up): a maintenance/bootstrap pass (`maintenance.pivoted`) scopes to pull +
+    (v0.1.7 Gate-2a follow-up): a maintenance/bootstrap pass (`maintenance.pivoted`) scopes to pull +
     health only, so the recall-usage injection legitimately never runs — SKIP-by-empty, never a WARN,
     matching distill_capture's own carve-out. Scaffold: `_latest_capture_check`."""
     if _maintenance_pivoted(ctx):
@@ -1368,12 +1368,12 @@ def usage_capture(ctx: Ctx) -> list[Result]:
 
 @family
 def demotion_capture(ctx: Ctx) -> list[Result]:
-    """v0.1.69 (Track B / Gate-2b QA-currency fix): the Phase-C demotion-triage CAPTURE exists on the
+    """v0.1.7 (Track B / Gate-2b QA-currency fix): the Phase-C demotion-triage CAPTURE exists on the
     latest persisted dream. Ships DORMANT-AND-HONEST (v0.1.67): even with zero eligible facts, the
     triage still stamps a one-sentence `verdict` (e.g. "dormant — N probative windows observed") — the
     same "ran and correctly did nothing" vs "never ran" distinction distill_capture makes. PASS iff the
     verdict is non-empty (matches distill_capture's is_complete shape exactly). ADVISORY (LOW / WARN,
-    never FAIL); pre-v0.1.67 records legitimately lack the key. Carve-out (v0.1.69 Gate-2a follow-up):
+    never FAIL); pre-v0.1.67 records legitimately lack the key. Carve-out (v0.1.7 Gate-2a follow-up):
     a maintenance/bootstrap pass (`maintenance.pivoted`) scopes to pull + health only, so the demotion
     triage legitimately never runs — SKIP-by-empty, never a WARN, matching distill_capture's own
     carve-out. Scaffold: `_latest_capture_check`."""

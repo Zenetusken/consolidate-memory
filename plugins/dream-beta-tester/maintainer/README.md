@@ -15,9 +15,11 @@ plugin cache (any consolidate-memory ≤ 0.1.19 — predating the D3/D4 fixes), 
 `pre-push` hook that resolves the latest installed dream-beta-tester at fire time (survives updates).
 
 ## Behaviour
-- **Self-test first** (watch-the-watcher): the oracle must still detect the frozen canary (≥2 FAIL)
-  before any "allow" is trusted. If it can't, the gate alerts loudly and **fails open** — it never
-  blocks your work on its own malfunction.
+- **Self-test first** (watch-the-watcher): the oracle must still detect the frozen canary BY DEFECT
+  IDENTITY — `{CHK-GATE-BACKFILL, CHK-EVICT-STAGE} ⊆` the canary's FAIL ids (v0.1.7: hardened from a
+  `≥2 FAIL` count check, which the 2026-06-22 incident proved could pass on spurious FAILs that
+  contained none of the real defects) — before any "allow" is trusted. If it can't, the gate alerts
+  loudly and **fails open** — it never blocks your work on its own malfunction.
 - **Blocks** a version whose oracle verdict is `regression`; WARN-level findings print but don't block.
 - Writes the deterministic contract to `~/.dream-beta-test/reports/latest.json` (see `../docs/CONTRACT.md`)
   for an orchestrator to read + self-heal. Override a block with `git push --no-verify`.

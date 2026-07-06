@@ -31,7 +31,7 @@ _ACTIONABLE_FIELDS = ("id", "defect_ref", "severity", "title", "expected", "actu
 
 def _last_json_object(txt: str) -> dict[str, Any] | None:
     """The LAST TOP-LEVEL balanced {...} object in `txt`, or None — a small inline copy of
-    beta_checks.py's `_last_json_object` (v0.1.69 Gate-2b-class fix, ported here at B2/Track B: the
+    beta_checks.py's `_last_json_object` (v0.1.7 Gate-2b-class fix, ported here at B2/Track B: the
     original `raw.find("{")` FIRST-brace parse is exactly the naive shape beta_checks.py's own
     docstring rejects — a stray leading `{` in a WARN title or log line would mis-land the parse).
     The two scripts deliberately share no import path (emit_result runs standalone, piped oracle
@@ -84,7 +84,7 @@ def main() -> int:
     ap.add_argument("--version", default="?")
     ap.add_argument("--self-test-ok", default="true")
     ap.add_argument("--canary-fail", default="?")
-    ap.add_argument("--expected-ids", default="")   # v0.1.69/B6: comma-joined, additive — id-match self-test
+    ap.add_argument("--expected-ids", default="")   # v0.1.7/B6: comma-joined, additive — id-match self-test
     ap.add_argument("--detected-ids", default="")   # comma-joined FAIL ids the canary run actually produced
     ap.add_argument("--generated-at", default="")
     ap.add_argument("--out", required=True)
@@ -95,7 +95,7 @@ def main() -> int:
     data: dict[str, Any] = _last_json_object(raw) or {} if raw else {}
     results: list[dict[str, Any]] = data.get("results", [])
     summary: dict[str, Any] = data.get("summary", {})
-    # v0.1.69/B2(c): require the EXACT literal "true" — a typo/garbage/empty value now fails
+    # v0.1.7/B2(c): require the EXACT literal "true" — a typo/garbage/empty value now fails
     # toward distrust (selftest_broken), matching the guardrail's intent (fail-open toward "harness
     # broken" is safe; fail-open toward "harness OK" on garbage input is the wrong direction).
     st_ok = a.self_test_ok == "true"
@@ -114,18 +114,27 @@ def main() -> int:
     actionable = [{k: r.get(k) for k in _ACTIONABLE_FIELDS} for r in fails]
     expected_ids = [x for x in a.expected_ids.split(",") if x]
     detected_ids = [x for x in a.detected_ids.split(",") if x]
-    # v0.1.69 Gate-2a follow-up: a no-canary run passes expected-ids="" (ci_check.sh clears it), so
-    # expected_ids is empty here — the self-test genuinely never RAN (not "ran and passed vacuously").
-    # The meaning string must say so; asserting "proved detection" alongside an empty comparison is
-    # the exact self-contradiction Gate-2a found (self_test.ok:true next to a visibly-false ⊆ claim).
-    _self_test_meaning = (
-        "the self-test did not run — no canary was available to compare against (ok=true is the "
-        "designed fail-open default for a MISSING canary, not a proof of detection; install-gate.sh "
-        "populates the canary to enable the real watch-the-watcher check)"
-        if not expected_ids else
-        "the oracle proved it can still DETECT the frozen known-bad BY IDENTITY "
-        "(expected_ids ⊆ detected_ids), not merely a spurious FAIL count, before this verdict was trusted"
-    )
+    # Gate-2a (round 1) fixed the no-canary case: expected_ids=="" → "did not run", not a false proof.
+    # Gate-2b found this was incomplete — st_ok was never checked, so the SELFTEST_BROKEN path (a
+    # REAL canary that FAILED to detect) still asserted "proved detection", contradicting ok:false and
+    # the verdict itself. st_ok is checked FIRST: broken beats "ran" beats "didn't run".
+    if not st_ok:
+        _self_test_meaning = (
+            "the self-test FAILED — the oracle no longer detects the frozen known-bad BY IDENTITY "
+            "(expected_ids ⊄ detected_ids); detection is BROKEN, this verdict is UNTRUSTWORTHY "
+            "(do not ship on the strength of this run — see CONTRACT.md's selftest_broken guardrail)"
+        )
+    elif not expected_ids:
+        _self_test_meaning = (
+            "the self-test did not run — no canary was available to compare against (ok=true is the "
+            "designed fail-open default for a MISSING canary, not a proof of detection; install-gate.sh "
+            "populates the canary to enable the real watch-the-watcher check)"
+        )
+    else:
+        _self_test_meaning = (
+            "the oracle proved it can still DETECT the frozen known-bad BY IDENTITY "
+            "(expected_ids ⊆ detected_ids), not merely a spurious FAIL count, before this verdict was trusted"
+        )
 
     contract = {
         "schema": "dream-beta-test/result/v1",
@@ -136,7 +145,7 @@ def main() -> int:
         "ship_ok": verdict == "clean",
         "self_test": {
             "canary": "v0.1.19",
-            "min_fail_expected": 2,   # v0.1.69/B6: now a reported DETAIL, not the gate — see expected/detected_ids
+            "min_fail_expected": 2,   # v0.1.7/B6: now a reported DETAIL, not the gate — see expected/detected_ids
             "actual_fail": (int(a.canary_fail) if a.canary_fail.isdigit() else a.canary_fail),
             "expected_ids": expected_ids,
             "detected_ids": detected_ids,

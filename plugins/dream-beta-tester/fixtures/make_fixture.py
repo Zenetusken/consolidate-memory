@@ -42,7 +42,7 @@ def fm(name: str, desc: str) -> str:
 
 
 def main() -> int:
-    # v0.1.69/B8: a bare `sys.argv[1]` used ANY flag (including `--help`) as a literal path —
+    # v0.1.7/B8: a bare `sys.argv[1]` used ANY flag (including `--help`) as a literal path —
     # the audit's live repro: `make_fixture.py --help` silently created `./--help/`. argparse's
     # built-in help action now intercepts --help/-h BEFORE the positional is ever touched
     # (prints usage, exits 0, creates nothing).
@@ -97,7 +97,7 @@ def main() -> int:
         json.dumps({"commit": "fixturecommit0000000000000000000000000000", "timestamp": "2026-06-21T00:00:00Z"}),
         encoding="utf-8")
 
-    # v0.1.69/B5: a persisted dream — WITHOUT this, dream_arc_capture/distill_capture return `[]` on
+    # v0.1.7/B5: a persisted dream — WITHOUT this, dream_arc_capture/distill_capture return `[]` on
     # the empty-log guard (invisible to families_ran/families_skipped, not even a SKIP row), and
     # usage_capture/demotion_capture (below) can never fire at all. ONE current-shape record, honest
     # dormant/zero values throughout (this fixture has no real usage history) — a dot-file, invisible

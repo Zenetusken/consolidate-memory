@@ -3192,5 +3192,20 @@ for _stok_flag, _stok_expect in [("TRUE", "selftest_broken"), ("", "selftest_bro
     check(f"Track B/B2(c): --self-test-ok {_stok_flag!r} (empty stdin) → verdict={_stok_expect!r} (exact-'true' required)",
           _verdict == _stok_expect)
 
+# Gate-2b: self_test.meaning must be conditioned on st_ok FIRST — a broken self-test (ok:false) must
+# never assert "proved detection" (the round-1 fix only handled the no-canary/empty-expected-ids case;
+# Gate-2b found the sibling selftest_broken branch — a REAL canary that FAILED — still lied).
+with _tf69.TemporaryDirectory() as _tdMeaning:
+    _outMeaning = str(Path(_tdMeaning) / "latest.json")
+    _spB.run([sys.executable, str(ROOT / "plugins" / "dream-beta-tester" / "scripts" / "emit_result.py"),
+              "--version", "0.0.0", "--self-test-ok", "false",
+              "--expected-ids", "CHK-GATE-BACKFILL,CHK-EVICT-STAGE", "--detected-ids", "CHK-QTY-x-TRUTH",
+              "--canary-fail", "4", "--out", _outMeaning, "--generated-at", "t"],
+             input="", capture_output=True, text=True)
+    _meaning = _json69.loads(Path(_outMeaning).read_text())["self_test"]["meaning"]
+check("Track B Gate-2b: self_test.meaning on a BROKEN self-test (ok:false) says FAILED/BROKEN, "
+      "never 'proved detection' (the exact contradiction Gate-2b found in the sibling branch)",
+      "FAILED" in _meaning and "BROKEN" in _meaning and "proved" not in _meaning)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -31,7 +31,7 @@ if [ -n "$CSRC" ]; then
   # FALSE-GREEN self-test (it can't actually prove detection). Graft ONLY the slug rule (NOT the
   # D3/D4 defect logic — the slug is not the defect) so the canary resolves the SAME fixture store
   # the M3 harness creates and exhibits its REAL backfill-under-gate / evict-orphan defects.
-  # v0.1.69/B8: `sed -i 's/…/…/g'` (no backup-suffix arg) is GNU-only — BSD/macOS sed REQUIRES a
+  # v0.1.7/B8: `sed -i 's/…/…/g'` (no backup-suffix arg) is GNU-only — BSD/macOS sed REQUIRES a
   # suffix arg (`sed -i ''`) and errors otherwise, silently leaving the canary un-grafted → the
   # exact false-green self-test this graft exists to prevent (STATUS.md's documented failure mode).
   # A portable tmp+mv loop works identically on GNU and BSD/macOS.

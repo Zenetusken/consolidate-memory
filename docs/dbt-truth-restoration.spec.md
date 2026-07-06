@@ -39,8 +39,14 @@ installed-cache glob the pre-push hook uses as the alternative), RESULT →
 `~/.dream-beta-test/reports/latest.json`, with the `DREAM_BETA_STATE` / `DREAM_BETA_REPORTS` env
 overrides documented once. All four lines.
 
-**Acceptance.** `grep -rn 'claude/dream-beta-tester' plugins/dream-beta-tester/` → 0 hits;
-the documented RUN path exists in-tree; the documented RESULT path matches ci_check.sh's default
+**Acceptance.** `grep -rn 'claude/dream-beta-tester' plugins/dream-beta-tester/` → **exactly 3
+deliberate hits, never more**: `maintainer/install-gate.sh` (the v0.1.41 stale-hook HISTORY note) and
+`docs/SPEC.md` ×2 (the explicitly-labeled "superseded" draft-placement block, B4). *(Gate-2b
+correction: this acceptance originally said "0 hits" — falsified by B4's own kept-history block and
+B10's own kept-history note, both deliberate per THIS spec. A future re-verification must not read
+those 3 as a regression; the actual anti-regression gate for CONTRACT.md/emit_result.py/STATUS.md/
+scripts/skill-reference specifically is B10's narrower grep below.)* The documented RUN path exists
+in-tree; the documented RESULT path matches ci_check.sh's default
 exactly ($STATE/reports/latest.json with $STATE default `~/.dream-beta-test`).
 
 ## B2 — emit_result truthfulness
