@@ -30,12 +30,25 @@ if [ ! -f "$TEST_REPO/README.md" ]; then
   echo "$TAG fixture not set up — run $HERE/install-gate.sh first. Gate SKIPPED (fail-open)." >&2; exit 0; fi
 
 mkdir -p "$REPORTS" 2>/dev/null
+
+# v0.1.7/B8: fixed names in a world-writable /tmp (not $TMPDIR-portable, and a predictable shared
+# path is a collision/symlink-clobber footgun on a multi-user host) — mktemp + a trap so every exit
+# path (including the early `exit 0`s above/below) cleans up.
+DBT_CANARY_TMP="$(mktemp)"
+DBT_DETAIL_TMP="$(mktemp)"
+trap 'rm -f "$DBT_CANARY_TMP" "$DBT_DETAIL_TMP"' EXIT
+
+# v0.1.7/B6: the 4th field is the comma-joined FAIL ids (additive — CSUM's tab-split callers below
+# still read fields 1-3 positionally; unaffected). This is what lets the self-test move from a COUNT
+# (`≥2 FAIL` — provably spurious-FAIL-able, the exact 2026-06-22 false-green incident) to an IDENTITY
+# check (the SPECIFIC known defects, not just "something failed twice").
 run_oracle() {
   python3 "$SCRIPTS/beta_checks.py" --repo "$TEST_REPO" --skill "$1" --json 2>/dev/null | python3 -c "
 import sys,json
 try:
     d=json.load(sys.stdin); s=d['summary']
-    print(f\"{s['fail']}\t{s['warn']}\t{s['pass']}\")
+    fail_ids=','.join(r['id'] for r in d['results'] if r['status']=='FAIL')
+    print(f\"{s['fail']}\t{s['warn']}\t{s['pass']}\t{fail_ids}\")
     for r in d['results']:
         if r['status']=='FAIL': sys.stderr.write(f\"  FAIL {r['id']} ({r.get('defect_ref','')}) — {r.get('title','')}\n\")
         elif r['status']=='WARN': sys.stderr.write(f\"  warn {r['id']} ({r.get('defect_ref','')})\n\")
@@ -44,19 +57,33 @@ except Exception as e:
 " 2>"$2"
 }
 
-# ── SELF-TEST: the oracle must still detect the frozen known-bad (≥2 FAIL). ──
+# ── SELF-TEST: the oracle must still detect the frozen known-bad — by DEFECT IDENTITY, not count. ──
+DBT_EXPECTED_IDS="CHK-GATE-BACKFILL,CHK-EVICT-STAGE"   # the real D3/D4 canary identities (beta_checks.py)
 if [ -d "$CANARY" ]; then
-  CSUM="$(run_oracle "$CANARY" /tmp/.dbt_canary)"; rm -f /tmp/.dbt_canary
+  CSUM="$(run_oracle "$CANARY" "$DBT_CANARY_TMP")"
   CFAIL="$(printf '%s' "$CSUM" | cut -f1)"
-  if ! printf '%s' "$CFAIL" | grep -qE '^[0-9]+$' || [ "$CFAIL" -lt 2 ]; then
-    echo "$TAG ⚠⚠ SELF-TEST FAILED — the oracle no longer detects the frozen canary (expected ≥2 FAIL, got '$CFAIL')." >&2
+  CIDS="$(printf '%s' "$CSUM" | cut -f4)"
+  # subset check: every expected id must appear in the comma-joined CIDS list (substring match on a
+  # comma-delimited set is safe here — the ids are a fixed, non-overlapping, hyphenated vocabulary).
+  IDS_OK=1
+  IFS=','; for _want in $DBT_EXPECTED_IDS; do
+    case ",$CIDS," in *",$_want,"*) ;; *) IDS_OK=0 ;; esac
+  done; unset IFS
+  if [ "$IDS_OK" -ne 1 ]; then
+    echo "$TAG ⚠⚠ SELF-TEST FAILED — the oracle no longer detects the frozen canary by IDENTITY (expected {$DBT_EXPECTED_IDS} ⊆ FAIL ids, got '$CIDS')." >&2
     echo "$TAG DETECTION is BROKEN; verdicts UNTRUSTWORTHY. Push ALLOWED (fail-open) — fix scripts/beta_checks.py." >&2
-    : | python3 "$SCRIPTS/emit_result.py" --version "$(ver)" --self-test-ok false --canary-fail "$CFAIL" --generated-at "$(now)" --out "$REPORTS/latest.json" >/dev/null 2>&1 || true
-    printf '%s\tSELFTEST_BROKEN\tcanary_fail=%s\n' "$(now)" "$CFAIL" >> "$REPORTS/.gate-log.tsv" 2>/dev/null
+    : | python3 "$SCRIPTS/emit_result.py" --version "$(ver)" --self-test-ok false --canary-fail "$CFAIL" --expected-ids "$DBT_EXPECTED_IDS" --detected-ids "$CIDS" --generated-at "$(now)" --out "$REPORTS/latest.json" >/dev/null 2>&1 || true
+    printf '%s\tSELFTEST_BROKEN\tcanary_fail=%s\tids=%s\n' "$(now)" "$CFAIL" "$CIDS" >> "$REPORTS/.gate-log.tsv" 2>/dev/null
     exit 0
   fi
 else
-  CFAIL="no-canary"
+  CFAIL="no-canary"; CIDS=""
+  # v0.1.7 Gate-2a follow-up: the self-test never RAN here — the contract must not claim
+  # expected_ids ⊆ detected_ids was proven when detected_ids is necessarily empty (a real
+  # contradiction the prior code shipped: self_test.ok:true alongside a visibly-false ids claim).
+  # Clear the EMITTED expected-ids too, so an empty ⊆ empty reads as "nothing compared", not
+  # "compared and passed" — emit_result.py's `meaning` field is conditioned on this being empty.
+  DBT_EXPECTED_IDS=""
   echo "$TAG note: canary missing — self-test SKIPPED (re-run install-gate.sh to populate it)." >&2
 fi
 
@@ -69,8 +96,9 @@ fi
 echo "$TAG consolidate-memory v$VER  vs  fixture  (self-test ✓ detection live) …" >&2
 FULL="$(python3 "$SCRIPTS/beta_checks.py" --repo "$TEST_REPO" --skill "$SKILL" --json 2>/dev/null)"
 VERDICT="$(printf '%s' "$FULL" | python3 "$SCRIPTS/emit_result.py" --version "$VER" --self-test-ok true \
-  --canary-fail "$CFAIL" --generated-at "$(now)" --out "$REPORTS/latest.json" 2>/tmp/.dbt_detail)"
-DETAIL="$(cat /tmp/.dbt_detail 2>/dev/null)"; rm -f /tmp/.dbt_detail
+  --canary-fail "$CFAIL" --expected-ids "$DBT_EXPECTED_IDS" --detected-ids "$CIDS" \
+  --generated-at "$(now)" --out "$REPORTS/latest.json" 2>"$DBT_DETAIL_TMP")"
+DETAIL="$(cat "$DBT_DETAIL_TMP" 2>/dev/null)"
 SUM="$(printf '%s' "$FULL" | python3 -c "import sys,json
 try:
     d=json.load(sys.stdin); s=d['summary']; print(f\"{s['fail']}\t{s['warn']}\t{s['pass']}\")

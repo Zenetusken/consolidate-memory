@@ -36,8 +36,8 @@ Design choices (each load-bearing):
   * **SKIP, never crash** (SPEC): an absent store / absent repo doc / missing snapshot dir is a
     first-class outcome, reported with a reason — not an exception.
 
-This is CONSUMER / beta-tester tooling. It lives OUTSIDE the skill
-(``~/.claude/dream-beta-tester/``) and NEVER patches it. Pure stdlib.
+This is CONSUMER / beta-tester tooling. It lives as its own plugin
+(``plugins/dream-beta-tester/``) and NEVER patches the skill it tests. Pure stdlib.
 
 Usage:
     python3 snapshot.py snapshot [--repo DIR] [--store DIR] [--out DIR] [--json]

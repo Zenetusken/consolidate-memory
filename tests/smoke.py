@@ -3042,7 +3042,9 @@ _SKIP69 = {"__pycache__", ".mypy_cache", ".ruff_cache"}
 _bad69: list = []
 _extra69 = [ROOT / "cm", ROOT / ".claude-plugin" / "marketplace.json", ROOT / "CHANGELOG.md"]
 _files69 = [p for p in _extra69 if p.is_file()]
-for _root69 in (ROOT / "plugins" / "consolidate-memory", ROOT / "tests", ROOT / "docs"):
+for _root69 in (ROOT / "plugins", ROOT / "tests", ROOT / "docs"):   # v0.1.69/B9: widened from
+    # plugins/consolidate-memory to ALL of plugins/ (both plugins covered — Track B's own
+    # genericity scrub (B4/B10) is what this widening enforces going forward)
     for _p69 in sorted(_root69.rglob("*")):
         if not _p69.is_file() or _p69.suffix not in {".py", ".md", ".sh", ".html", ".json"}:
             continue
@@ -3055,8 +3057,9 @@ for _p69 in _files69:
                   + _re69.findall(r"-home-([A-Za-z0-9_]+)-", _t69)):
         if _nm69 not in _GENERIC69:
             _bad69.append(f"{_p69.relative_to(ROOT)}:{_nm69}")
-check("v0.1.69/A5: genericity pin — every /home/<name> + -home-<name>- under plugins/consolidate-memory, "
-      "tests, docs (+ .json manifests, the `cm` CLI, CHANGELOG.md) is a generic placeholder (you/u/x/d/nobody)",
+check("v0.1.69/A5+B9: genericity pin — every /home/<name> + -home-<name>- under ALL of plugins/ "
+      "(both plugins, widened at Track B), tests, docs (+ .json manifests, the `cm` CLI, "
+      "CHANGELOG.md) is a generic placeholder (you/u/x/d/nobody)",
       not _bad69)
 if _bad69:
     print(f"    offending: {sorted(set(_bad69))[:8]}", file=sys.stderr)
@@ -3068,6 +3071,141 @@ _list69_line = next((ln for ln in _skill_text.splitlines() if "sync_global.py --
 check("v0.1.69/A6: SKILL.md's --list command comment never overclaims 'held' (regression guard — "
       "held only exists under --pull, per sync_global.py's own held_this predicate)",
       bool(_list69_line) and "held" not in _list69_line)
+
+# ── Track B (v0.1.7 dbt truth restoration) — Gate-2a follow-up: close the test-coverage gap ──
+# every capture family got dedicated tests EXCEPT usage_capture/demotion_capture; emit_result.py's
+# B2 fixes and the safe_suggestion SKIP / cycle_identity basis relabel had ZERO smoke coverage.
+import subprocess as _spB  # noqa: E402
+sys.path.insert(0, str(ROOT / "plugins" / "dream-beta-tester" / "scripts"))
+import emit_result as _erB  # noqa: E402
+
+
+class _FakeCtxB:
+    skill_version = "0.1.63"
+    log_records: list = [{"marker": {"timestamp": "t1"}}]
+
+
+# usage_capture — mirrors dream_arc_capture's v0.1.54 battery exactly (same scaffold, same shapes).
+check("Track B: usage_capture — dormant/absent-window latest record → LOW/WARN with the pre-feature caveat",
+      len(_bc54.usage_capture(cast(_bc54.Ctx, _FakeCtxB()))) == 1
+      and _bc54.usage_capture(cast(_bc54.Ctx, _FakeCtxB()))[0].status == "WARN"
+      and "pre-v0.1.63" in _bc54.usage_capture(cast(_bc54.Ctx, _FakeCtxB()))[0].actual)
+_FakeCtxB.log_records = [{"usage": {"window": "2026-01-01..2026-01-02", "reads": 0}, "marker": {"timestamp": "t2"}}]
+check("Track B: usage_capture — a stamped window (even zero-read/dormant) → PASS",
+      _bc54.usage_capture(cast(_bc54.Ctx, _FakeCtxB()))[0].status == "PASS")
+_FakeCtxB.log_records = [{"usage": {"window": ""}, "marker": {"timestamp": "t3"}}]
+check("Track B: usage_capture — usage block present but window EMPTY → WARN (injection ran, stamped nothing)",
+      _bc54.usage_capture(cast(_bc54.Ctx, _FakeCtxB()))[0].status == "WARN")
+_FakeCtxB.skill_version = "0.1.62"
+check("Track B: usage_capture — pre-feature skill (< 0.1.63) → SKIP-by-empty",
+      _bc54.usage_capture(cast(_bc54.Ctx, _FakeCtxB())) == [])
+_FakeCtxB.skill_version = "unknown"
+check("Track B: usage_capture — unparseable version fails CLOSED → SKIP-by-empty",
+      _bc54.usage_capture(cast(_bc54.Ctx, _FakeCtxB())) == [])
+_FakeCtxB.skill_version = "0.1.63"
+_FakeCtxB.log_records = []
+check("Track B: usage_capture — empty log → SKIP-by-empty (invisible, not even a SKIP row)",
+      _bc54.usage_capture(cast(_bc54.Ctx, _FakeCtxB())) == [])
+_FakeCtxB.log_records = [{"maintenance": {"pivoted": True}, "marker": {"timestamp": "t4"}}]
+check("Track B: usage_capture — maintenance.pivoted=True → legitimately skipped (SKIP-by-empty, not WARN)",
+      _bc54.usage_capture(cast(_bc54.Ctx, _FakeCtxB())) == [])
+_FakeCtxB.log_records = [{"maintenance": {"pivoted": "false"}, "marker": {"timestamp": "t5"}}]
+check("Track B: usage_capture — pivoted='false' (truthy STRING) does NOT skip (str(None)-truthiness class bug guard)",
+      _bc54.usage_capture(cast(_bc54.Ctx, _FakeCtxB())) != [])
+
+# demotion_capture — same battery.
+_FakeCtxB.skill_version = "0.1.67"
+_FakeCtxB.log_records = [{"marker": {"timestamp": "t1"}}]
+check("Track B: demotion_capture — no demotion block on a v0.1.67+ record → WARN",
+      _bc54.demotion_capture(cast(_bc54.Ctx, _FakeCtxB()))[0].status == "WARN")
+_FakeCtxB.log_records = [{"demotion": {"verdict": "dormant — 0 probative windows observed"}, "marker": {"timestamp": "t2"}}]
+check("Track B: demotion_capture — a dormant (but stamped) verdict → PASS (dormant is honest, not a defect)",
+      _bc54.demotion_capture(cast(_bc54.Ctx, _FakeCtxB()))[0].status == "PASS")
+_FakeCtxB.log_records = [{"demotion": {"verdict": ""}, "marker": {"timestamp": "t3"}}]
+check("Track B: demotion_capture — demotion block present but verdict EMPTY → WARN (skipped judgment)",
+      _bc54.demotion_capture(cast(_bc54.Ctx, _FakeCtxB()))[0].status == "WARN")
+_FakeCtxB.skill_version = "0.1.66"
+check("Track B: demotion_capture — pre-feature skill (< 0.1.67) → SKIP-by-empty",
+      _bc54.demotion_capture(cast(_bc54.Ctx, _FakeCtxB())) == [])
+_FakeCtxB.skill_version = "0.1.67"
+_FakeCtxB.log_records = []
+check("Track B: demotion_capture — empty log → SKIP-by-empty",
+      _bc54.demotion_capture(cast(_bc54.Ctx, _FakeCtxB())) == [])
+_FakeCtxB.log_records = [{"maintenance": {"pivoted": True}, "marker": {"timestamp": "t4"}}]
+check("Track B: demotion_capture — maintenance.pivoted=True → legitimately skipped (SKIP-by-empty, not WARN)",
+      _bc54.demotion_capture(cast(_bc54.Ctx, _FakeCtxB())) == [])
+
+# cycle_identity — basis="identity-by-construction" (was mislabeled "structural").
+class _FakeCtxCI:
+    repo = ROOT
+    status = {"project": ROOT.resolve().name, "budget": {"index": {"after_tokens": 100}}}
+    network: dict = {"nodes": []}
+
+
+_ci_rows = _bc54.cycle_identity(cast(_bc54.Ctx, _FakeCtxCI()))
+check("Track B: cycle_identity CHK-CYCLE-PROJECT carries basis='identity-by-construction' (was 'structural')",
+      any(r.id == "CHK-CYCLE-PROJECT" and r.basis == "identity-by-construction" for r in _ci_rows))
+
+# safe_suggestion's B7(a) SKIP branch — force _skill_triage(ctx) → None via ctx.ms=None (the simplest,
+# real (non-mocked) path into _skill_triage's first guard), with ctx.status reporting over-budget.
+class _FakeCtxSS:
+    store = ROOT   # any real, existing dir — only .is_dir() is checked by safe_suggestion
+    store_present = True
+    ms = None
+    status = {"remediation": {"required": True}}
+    notes: list = []
+    repo = ROOT
+    fact_stems: set = set()          # leg (2)'s recompute basis — empty is a valid, harmless no-op
+    index_targets: list = []
+    wikilink_targets: dict = {}
+
+
+with _cl69.redirect_stdout(_io69.StringIO()):   # store.glob("*.md") on ROOT is noisy but harmless; silence it
+    _ss_rows = _bc54.safe_suggestion(cast(_bc54.Ctx, _FakeCtxSS()))
+_ss_skip = next((r for r in _ss_rows if r.id == "CHK-EVICT-STAGE"), None)
+check("Track B: safe_suggestion SKIP fires when ctx.ms is None over an over-budget store (was silent omission)",
+      _ss_skip is not None and _ss_skip.status == "SKIP" and "module failed to import" in _ss_skip.actual)
+_FakeCtxSS.status = {"remediation": {"required": False}}
+check("Track B: safe_suggestion — ctx.ms None but store NOT over budget → no CHK-EVICT-STAGE row (real no-op, not defused)",
+      not any(r.id == "CHK-EVICT-STAGE" for r in _bc54.safe_suggestion(cast(_bc54.Ctx, _FakeCtxSS()))))
+
+# emit_result.py's B2 fixes — a stray leading '{' must not mis-land the parse (the exact class
+# beta_checks.py's own _last_json_object docstring rejects), and --self-test-ok must require the
+# EXACT literal "true" (a typo/garbage must fail toward distrust, not toward trust).
+check("Track B/B2(b): _last_json_object skips a stray leading non-JSON '{' and lands the REAL trailing object",
+      _erB._last_json_object('{not json') is None
+      and _erB._last_json_object('log: {oops} then ' + _json69.dumps({"results": [], "summary": {"fail": 0}}))
+      == {"results": [], "summary": {"fail": 0}})
+check("Track B/B2(b): emit_result._last_json_object AGREES with beta_checks._last_json_object "
+      "(the reimplementation-pin discipline this repo already applies to slug_for)",
+      all(_erB._last_json_object(sample) == _bc54._last_json_object(sample) for sample in [
+          '{"a": 1}', 'junk {"a": {"b": 1}} more junk {"c": 2}', '', 'not json at all',
+          '{"nested": {"deep": {"x": [1, "a{b}c", 2]}}}',
+      ]))
+for _stok_flag, _stok_expect in [("TRUE", "selftest_broken"), ("", "selftest_broken"), ("junk", "selftest_broken"),
+                                 ("true", "harness_error")]:   # "true" + empty stdin → harness_error (no results), not selftest_broken
+    _p = _spB.run([sys.executable, str(ROOT / "plugins" / "dream-beta-tester" / "scripts" / "emit_result.py"),
+                   "--version", "0.0.0", "--self-test-ok", _stok_flag, "--canary-fail", "0",
+                   "--out", "/dev/null", "--generated-at", "t"],
+                  input="", capture_output=True, text=True)
+    _verdict = _p.stdout.strip()
+    check(f"Track B/B2(c): --self-test-ok {_stok_flag!r} (empty stdin) → verdict={_stok_expect!r} (exact-'true' required)",
+          _verdict == _stok_expect)
+
+# Gate-2b: self_test.meaning must be conditioned on st_ok FIRST — a broken self-test (ok:false) must
+# never assert "proved detection" (the round-1 fix only handled the no-canary/empty-expected-ids case;
+# Gate-2b found the sibling selftest_broken branch — a REAL canary that FAILED — still lied).
+with _tf69.TemporaryDirectory() as _tdMeaning:
+    _outMeaning = str(Path(_tdMeaning) / "latest.json")
+    _spB.run([sys.executable, str(ROOT / "plugins" / "dream-beta-tester" / "scripts" / "emit_result.py"),
+              "--version", "0.0.0", "--self-test-ok", "false",
+              "--expected-ids", "CHK-GATE-BACKFILL,CHK-EVICT-STAGE", "--detected-ids", "CHK-QTY-x-TRUTH",
+              "--canary-fail", "4", "--out", _outMeaning, "--generated-at", "t"],
+             input="", capture_output=True, text=True)
+    _meaning = _json69.loads(Path(_outMeaning).read_text())["self_test"]["meaning"]
+check("Track B Gate-2b: self_test.meaning on a BROKEN self-test (ok:false) says FAILED/BROKEN, "
+      "never 'proved detection' (the exact contradiction Gate-2b found in the sibling branch)",
+      "FAILED" in _meaning and "BROKEN" in _meaning and "proved" not in _meaning)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -6,9 +6,17 @@ consolidate-memory and **self-heals a release** from the beta-harness's verdict.
 ## Where to point
 
 ```
-RESULT:  ~/.claude/dream-beta-tester/reports/latest.json     # the deterministic verdict (overwritten every run)
-RUN:     ~/.claude/dream-beta-tester/ci_check.sh             # runs the gate → writes latest.json → exit 0 (ok) / 1 (block)
+RESULT:  ~/.dream-beta-test/reports/latest.json              # the deterministic verdict (overwritten every run)
+RUN:     plugins/dream-beta-tester/maintainer/ci_check.sh    # runs the gate → writes latest.json → exit 0 (ok) / 1 (block)
 ```
+
+`RUN` is repo-relative (run from the consolidate-memory checkout you're developing — `ci_check.sh`
+resolves its own engine scripts and the skill under test relative to that repo, so this IS the
+correct path for a dev orchestrator, not a placeholder). The installed pre-push hook instead execs
+whichever cached plugin copy is newest: `~/.claude/plugins/cache/*/dream-beta-tester/*/maintainer/ci_check.sh`
+(sorted, last) — use that glob if driving an already-installed plugin rather than a dev checkout.
+`RESULT`'s directory defaults to `~/.dream-beta-test` (override via `$DREAM_BETA_STATE` /
+`$DREAM_BETA_REPORTS` — see `ci_check.sh`'s own header).
 
 Do **not** parse the human `.md` reports or the gate log — `latest.json` is the contract.
 `ci_check.sh` tests the **working-tree** consolidate-memory dev checkout (the code you're about
@@ -23,7 +31,7 @@ pre-push git hook runs the same script automatically.
 | `verdict` | `clean` · `regression` · `selftest_broken` · `harness_error` (the only branch you switch on) |
 | `ship_ok` | `true` iff `verdict == "clean"` |
 | `version_under_test` | the working-tree plugin.json version |
-| `self_test` | `{canary, min_fail_expected, actual_fail, ok}` — `ok=false` ⇒ the HARNESS is broken, not the release |
+| `self_test` | `{canary, min_fail_expected, actual_fail, expected_ids, detected_ids, ok, meaning}` — detection is now an IDENTITY check (`expected_ids ⊆ detected_ids`, the real D3/D4 defect ids), not a count; `min_fail_expected`/`actual_fail` are reported detail only. `meaning` is a human-readable sentence conditioned on `ok`/whether a comparison ran at all — never trust it over `ok` itself, but it's the fastest way to see WHY. `ok=false` ⇒ the HARNESS is broken, not the release |
 | `summary` | `{fail, warn, pass, skip, total}` |
 | `actionable` | the FAILs to fix, each: `{id, defect_ref, severity, title, expected, actual, evidence, site, basis}` |
 | `findings` | every check (PASS/WARN/FAIL) — full detail |
@@ -34,8 +42,8 @@ pre-push git hook runs the same script automatically.
 
 ```
 loop:
-  run  ~/.claude/dream-beta-tester/ci_check.sh        # writes latest.json
-  read ~/.claude/dream-beta-tester/reports/latest.json
+  run  plugins/dream-beta-tester/maintainer/ci_check.sh   # writes latest.json (see "Where to point")
+  read ~/.dream-beta-test/reports/latest.json
   switch verdict:
     "clean"           → ship the release. done.
     "regression"      → for each f in actionable:

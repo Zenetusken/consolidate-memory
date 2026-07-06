@@ -29,26 +29,76 @@ from typing import Any
 _ACTIONABLE_FIELDS = ("id", "defect_ref", "severity", "title", "expected", "actual", "evidence", "site", "basis")
 
 
+def _last_json_object(txt: str) -> dict[str, Any] | None:
+    """The LAST TOP-LEVEL balanced {...} object in `txt`, or None — a small inline copy of
+    beta_checks.py's `_last_json_object` (v0.1.7 Gate-2b-class fix, ported here at B2/Track B: the
+    original `raw.find("{")` FIRST-brace parse is exactly the naive shape beta_checks.py's own
+    docstring rejects — a stray leading `{` in a WARN title or log line would mis-land the parse).
+    The two scripts deliberately share no import path (emit_result runs standalone, piped oracle
+    JSON on stdin), so this is a small duplicated implementation, not a refactor into a shared module."""
+    best: dict[str, Any] | None = None
+    i = 0
+    n = len(txt)
+    while i < n:
+        if txt[i] != "{":
+            i += 1
+            continue
+        depth = 0
+        in_str = False
+        esc = False
+        end = -1
+        for j in range(i, n):
+            ch = txt[j]
+            if in_str:
+                if esc:
+                    esc = False
+                elif ch == "\\":
+                    esc = True
+                elif ch == '"':
+                    in_str = False
+                continue
+            if ch == '"':
+                in_str = True
+            elif ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    end = j
+                    break
+        if end == -1:
+            i += 1
+            continue
+        try:
+            obj = json.loads(txt[i : end + 1])
+        except json.JSONDecodeError:
+            obj = None
+        if isinstance(obj, dict):
+            best = obj
+        i = end + 1
+    return best
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--version", default="?")
     ap.add_argument("--self-test-ok", default="true")
     ap.add_argument("--canary-fail", default="?")
+    ap.add_argument("--expected-ids", default="")   # v0.1.7/B6: comma-joined, additive — id-match self-test
+    ap.add_argument("--detected-ids", default="")   # comma-joined FAIL ids the canary run actually produced
     ap.add_argument("--generated-at", default="")
     ap.add_argument("--out", required=True)
     ap.add_argument("--human-report", default="")
     a = ap.parse_args()
 
     raw = sys.stdin.read().strip()
-    data: dict[str, Any] = {}
-    if raw:
-        try:
-            data = json.loads(raw[raw.find("{"):])
-        except (json.JSONDecodeError, ValueError):
-            data = {}
+    data: dict[str, Any] = _last_json_object(raw) or {} if raw else {}
     results: list[dict[str, Any]] = data.get("results", [])
     summary: dict[str, Any] = data.get("summary", {})
-    st_ok = a.self_test_ok != "false"
+    # v0.1.7/B2(c): require the EXACT literal "true" — a typo/garbage/empty value now fails
+    # toward distrust (selftest_broken), matching the guardrail's intent (fail-open toward "harness
+    # broken" is safe; fail-open toward "harness OK" on garbage input is the wrong direction).
+    st_ok = a.self_test_ok == "true"
 
     if not st_ok:
         verdict = "selftest_broken"
@@ -62,6 +112,29 @@ def main() -> int:
     fails = [r for r in results if r.get("status") == "FAIL"]
     warns = [r for r in results if r.get("status") == "WARN"]
     actionable = [{k: r.get(k) for k in _ACTIONABLE_FIELDS} for r in fails]
+    expected_ids = [x for x in a.expected_ids.split(",") if x]
+    detected_ids = [x for x in a.detected_ids.split(",") if x]
+    # Gate-2a (round 1) fixed the no-canary case: expected_ids=="" → "did not run", not a false proof.
+    # Gate-2b found this was incomplete — st_ok was never checked, so the SELFTEST_BROKEN path (a
+    # REAL canary that FAILED to detect) still asserted "proved detection", contradicting ok:false and
+    # the verdict itself. st_ok is checked FIRST: broken beats "ran" beats "didn't run".
+    if not st_ok:
+        _self_test_meaning = (
+            "the self-test FAILED — the oracle no longer detects the frozen known-bad BY IDENTITY "
+            "(expected_ids ⊄ detected_ids); detection is BROKEN, this verdict is UNTRUSTWORTHY "
+            "(do not ship on the strength of this run — see CONTRACT.md's selftest_broken guardrail)"
+        )
+    elif not expected_ids:
+        _self_test_meaning = (
+            "the self-test did not run — no canary was available to compare against (ok=true is the "
+            "designed fail-open default for a MISSING canary, not a proof of detection; install-gate.sh "
+            "populates the canary to enable the real watch-the-watcher check)"
+        )
+    else:
+        _self_test_meaning = (
+            "the oracle proved it can still DETECT the frozen known-bad BY IDENTITY "
+            "(expected_ids ⊆ detected_ids), not merely a spurious FAIL count, before this verdict was trusted"
+        )
 
     contract = {
         "schema": "dream-beta-test/result/v1",
@@ -72,16 +145,18 @@ def main() -> int:
         "ship_ok": verdict == "clean",
         "self_test": {
             "canary": "v0.1.19",
-            "min_fail_expected": 2,
+            "min_fail_expected": 2,   # v0.1.7/B6: now a reported DETAIL, not the gate — see expected/detected_ids
             "actual_fail": (int(a.canary_fail) if a.canary_fail.isdigit() else a.canary_fail),
+            "expected_ids": expected_ids,
+            "detected_ids": detected_ids,
             "ok": st_ok,
-            "meaning": "the oracle proved it can still DETECT a frozen known-bad before this verdict was trusted",
+            "meaning": _self_test_meaning,
         },
         "summary": summary,
         "actionable": actionable,
         "findings": results,
-        "fix_reference": "patch by `defect_ref` — see ~/consolidate-memory-v0.1.19-defects.md and "
-                         "~/.claude/dream-beta-tester/STATUS.md (fixed-vs-open table)",
+        "fix_reference": "patch by `defect_ref` — see the dream-beta-tester plugin's "
+                         "docs/STATUS.md fixed-vs-open table",
         "novel_class_note": "this is the DETERMINISTIC gate (known-defect families only); for NEW classes run "
                             "/dream-beta-test (the judgment-lens pass) and read its markdown report",
         "human_report": a.human_report,
