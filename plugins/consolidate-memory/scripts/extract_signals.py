@@ -14,7 +14,15 @@ memory_status.py — not duplicated here.)
 
 Business logic, grounded in the probe:
   - SCOPE to the marker: only entries after the last-consolidation timestamp, so a
-    re-run doesn't re-surface everything (efficiency).
+    re-run doesn't re-surface everything (efficiency). v0.1.69/A1: the compare is
+    PARSED-instant, not raw-string (an offset marker/`--since` could mis-order against
+    CC's `Z` stamps otherwise) — and it fails OPEN: an unparseable marker/`--since`, or a
+    single line's unparseable `ts`, disables the filter rather than raising. This is a
+    DELIBERATE, tested tradeoff (recall-biased, matching the rest of this module's
+    posture) that consciously NARROWS the efficiency invariant above in the rare
+    malformed-timestamp case — re-surfacing already-consolidated turns is judged safer
+    than silently dropping a genuine new one on a parse failure. Sign off on this
+    weighing before changing it (Gate-2b, 2026-07-06).
   - DROP unambiguous noise (harness/skill injections, command echoes, image refs).
   - SECRETS firewall at RETRIEVAL: a turn containing a credential-shaped value is
     dropped to a label — never surface the verbatim secret (it could flow to a

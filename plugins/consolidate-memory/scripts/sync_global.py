@@ -333,7 +333,9 @@ def global_facts() -> list[tuple[str, dict, str]]:
         # into the tier-1 context of every project that pulls it.
         if not _safe_stem(f.stem):
             continue
-        text = f.read_text(encoding="utf-8", errors="replace")
+        text = _safe_read_text(f)   # v0.1.69 Gate-2b follow-up: store-scan convention — a
+        if text is None:            # concurrent gc/chmod on the GLOBAL store must not abort the scan
+            continue
         facts.append((f.stem, _frontmatter(text), text))
     return facts
 
@@ -449,7 +451,7 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> tuple[bool, bool]
     computation of the same fact is a single-source-of-truth violation waiting to drift, not
     just here but at the NEXT caller that copies the old pattern instead of using this return."""
     idx = store / "MEMORY.md"
-    content = idx.read_text(encoding="utf-8") if idx.exists() else "# Memory Index\n\n"
+    content = _safe_read_text(idx) or "# Memory Index\n\n"   # store-scan convention (v0.1.69 Gate-2b)
     want = _pointer_line(name, fm)
     lint = _fat_hook_warning(want, name)
     lines = content.splitlines()
@@ -496,9 +498,8 @@ def _inbound_links(store: Path, target: str) -> list[str]:
     for f in sorted(store.glob("*.md")):
         if f.name == "MEMORY.md" or f.stem == target:
             continue
-        try:
-            body = f.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        body = _safe_read_text(f)   # store-scan convention (shared helper — v0.1.69 Gate-2b)
+        if body is None:
             continue
         if any(resolve_wikilink(l, {target}) == target for l in extract_wikilinks(body)):
             out.append(f.stem)
@@ -552,7 +553,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # M1: the running always-loaded index size (tokens). Each pulled MISSING fact grows it by its pointer's
     # cost; the guard below holds any pull that would push it over INDEX_TOKEN_BUDGET. Seed from the live index.
     _idxp = store / "MEMORY.md"
-    running_idx = est_tokens(_idxp.read_text(encoding="utf-8", errors="replace")) if _idxp.exists() else est_tokens("# Memory Index\n\n")
+    running_idx = est_tokens(_safe_read_text(_idxp) or "# Memory Index\n\n")   # store-scan convention (v0.1.69 Gate-2b)
     held_facts: list = []   # (name, cost) of relevant MISSING globals HELD this pass — drives the evict-to-receive offer
     # v0.1.41: --evict <fact> — the EVICT-TO-RECEIVE valve (the release for M1's hold). Free ONE low-value local
     # pointer so a held global can land; net-neutral, so M1's budget stays enforced. Pre-checks BEFORE any delete
@@ -577,7 +578,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         if not held_pre:
             print(f"evict: nothing is held (no past-the-ceiling MISSING globals) — evicting '{evict}' would free "
                   "room for NOTHING. There is no swap to make.", file=sys.stderr); return 1
-        freed = est_tokens(_pointer_line(evict, _frontmatter(ep.read_text(encoding="utf-8", errors="replace"))))
+        _ep_text = _safe_read_text(ep)   # v0.1.69 Gate-2b: TOCTOU since the ep.exists() check above —
+        if _ep_text is None:              # a vanished evict target refuses cleanly, same as "not present"
+            print(f"evict: '{evict}' vanished from {store} — refusing (nothing to evict)", file=sys.stderr); return 1
+        freed = est_tokens(_pointer_line(evict, _frontmatter(_ep_text)))
         if not _evict_frees_enough(running_idx, freed, [c for _, c in held_pre], budget=INDEX_CEILING_TOKENS):
             print(f"evict: '{evict}' frees only ~{freed} tok — not enough to fit the smallest held global "
                   f"(~{min(c for _, c in held_pre)} tok at idx {running_idx}/{INDEX_CEILING_TOKENS} ceiling). "
@@ -590,7 +594,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         rel = is_relevant(fm, stacks)
         path = store / f"{name}.md"
         present = path.exists()
-        cur = path.read_text(encoding="utf-8") if present else ""
+        cur = (_safe_read_text(path) or "") if present else ""   # store-scan convention (v0.1.69 Gate-2b)
         is_mirror = present and _is_mirror(cur)
         want = _as_mirror(text, name)
         if not rel:
@@ -683,13 +687,13 @@ def _record_provenance(name: str, project: str) -> None:
     As a fact propagates to more projects, its provenance grows; that list IS the
     cross-project network's edge set (which minds hold which memory)."""
     p = GLOBAL / f"{name}.md"
-    if not p.exists():
+    text = _safe_read_text(p)   # v0.1.69 Gate-2b: TOCTOU-tightened — a vanished canonical is
+    if text is None:            # nothing to record provenance for (same as the old not-exists early-return)
         return
     # `project` is a directory basename written into a SHARED canonical's frontmatter.
     # Sanitize it to the safe charset before it ever lands there, so it can't smuggle
     # YAML/markdown into the shared store (and can't carry a regex backreference below).
     project = _sanitize_token(project)
-    text = p.read_text(encoding="utf-8")
     m = re.search(r"^(\s*projects:\s*)\[([^\]]*)\]\s*$", text, re.M)
     if m:
         items = [x.strip() for x in m.group(2).split(",") if x.strip()]
@@ -774,9 +778,10 @@ def network() -> int:
 def _remove_index_pointer(store: Path, name: str) -> bool:
     """Drop the pointer line for `name` from the project index. Returns True if removed."""
     idx = store / "MEMORY.md"
-    if not idx.exists():
+    _idx_text = _safe_read_text(idx)   # v0.1.69 Gate-2b: TOCTOU-tightened (was exists()-then-read)
+    if _idx_text is None:
         return False
-    lines = idx.read_text(encoding="utf-8").splitlines()
+    lines = _idx_text.splitlines()
     kept = [ln for ln in lines if f"]({name}.md)" not in ln]  # match the link target, not a spoofable substring
     if len(kept) == len(lines):
         return False

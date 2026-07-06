@@ -2945,6 +2945,17 @@ with _cl69.redirect_stdout(_buf69):
 _out69 = _buf69.getvalue()
 check("v0.1.69/A2: report output carries NO raw ESC byte, text content preserved (presentation _sane)",
       "\x1b" not in _out69 and "red" in _out69)
+# v0.1.69/A2 Gate-2b follow-up: the spec's OWN acceptance criterion ("the same record through the
+# --json path keeps signal_type/score intact") was never exercised — the --json path is a SEPARATE
+# emitter (`print(json.dumps(d, ...))`, main():796) that never calls _report/_sane; prove sanitization
+# stays presentation-only and doesn't leak into (or corrupt) the machine-readable path.
+_json69_out = _json43.dumps(_sig69, indent=2)
+_json69_rt = _json43.loads(_json69_out)
+_json69_sig = _json69_rt["signals"][0]
+check("v0.1.69/A2: --json path keeps signal_type/score intact AND the RAW (unsanitized) text — "
+      "sanitize is presentation-only, never a stored/machine-readable mutation",
+      _json69_sig.get("signal_type") == "gotcha" and _json69_sig.get("score") == 0
+      and _json69_sig.get("text") == "\x1b[31mred\x1b[0m alert")
 
 # A3: the store-scan convention (skip unreadable, never abort) applied to the two token/node scans.
 _a3_tok_ok = _a3_net_ok = False
@@ -2973,6 +2984,25 @@ with _tf69.TemporaryDirectory() as _td69d:
         _os69.environ["HOME"] = _oldH69 if _oldH69 is not None else ""
     check("v0.1.69/A3: _network_nodes survives a dangling-only store and still finds the readable mirror",
           _a3_net_ok)
+# v0.1.69/A3 Gate-2b follow-up: _orphans() (feeds `cm gc`) was the 4th unguarded site found AFTER this
+# spec's original 3-site scope — it got the fix (via the shared _safe_read_text helper) but no
+# dedicated regression test, unlike its _node_tokens/_network_nodes siblings just above. Close the gap.
+_a3_orphan_ok = False
+with _tf69.TemporaryDirectory() as _td69e:
+    _st69e = Path(_td69e) / "memory"; _st69e.mkdir()
+    (_st69e / "real.md").write_text("---\nname: real\nmetadata:\n  global_ref: real\n---\nbody\n",
+                                     encoding="utf-8")   # a mirror whose canonical is gone → a real orphan
+    (_st69e / "ghost.md").symlink_to(_st69e / "nowhere")  # dangling: read_text raises OSError
+    _oldGlobal69e = sg.GLOBAL
+    sg.GLOBAL = Path(_td69e) / "empty-global"   # no canonicals at all → "real" IS orphaned
+    try:
+        _a3_orphan_ok = sg._orphans(_st69e) == ["real"]   # ghost skipped (not a crash), real correctly flagged
+    except OSError:
+        _a3_orphan_ok = False
+    finally:
+        sg.GLOBAL = _oldGlobal69e
+    check("v0.1.69/A3: _orphans() skips a dangling fact instead of crashing `cm gc` "
+          "(the 4th unguarded site, found post-spec at Gate-2a)", _a3_orphan_ok)
 
 # A4: a git failure must be LABELED (stderr, once per process) — silent "" made broken-git ≡ empty-repo.
 def _boom69(*a: Any, **k: Any) -> Any:
@@ -3002,13 +3032,15 @@ setattr(ms, "_GIT_WARNED", False)                # leave clean for any later che
 # ([A-Za-z0-9_]) so the remediation spec's pin-inert `<user>` placeholder can never match.
 # v0.1.69 Gate-2a follow-up: the original suffix filter (.py/.md/.sh/.html) missed the
 # extensionless `cm` CLI and .json manifests — both real, tracked, shipped/public files a
-# personal path could hide in undetected. .json now scans inside the 3 recursive roots; `cm`
-# and the repo-root marketplace.json (outside all 3 roots) are checked as explicit extras
-# rather than widening the recursive scan to bare-no-suffix (which risks sweeping in binaries).
+# personal path could hide in undetected. .json now scans inside the 3 recursive roots; `cm`,
+# the repo-root marketplace.json, AND CHANGELOG.md (Gate-2b follow-up: a shipped, public,
+# repo-root file edited on every release — an easy place for a bad copy-paste from a bug
+# repro to land) are checked as explicit extras rather than widening the recursive scan to
+# bare-no-suffix (which risks sweeping in binaries).
 _GENERIC69 = {"you", "u", "x", "d", "nobody"}
 _SKIP69 = {"__pycache__", ".mypy_cache", ".ruff_cache"}
 _bad69: list = []
-_extra69 = [ROOT / "cm", ROOT / ".claude-plugin" / "marketplace.json"]
+_extra69 = [ROOT / "cm", ROOT / ".claude-plugin" / "marketplace.json", ROOT / "CHANGELOG.md"]
 _files69 = [p for p in _extra69 if p.is_file()]
 for _root69 in (ROOT / "plugins" / "consolidate-memory", ROOT / "tests", ROOT / "docs"):
     for _p69 in sorted(_root69.rglob("*")):
@@ -3024,9 +3056,18 @@ for _p69 in _files69:
         if _nm69 not in _GENERIC69:
             _bad69.append(f"{_p69.relative_to(ROOT)}:{_nm69}")
 check("v0.1.69/A5: genericity pin — every /home/<name> + -home-<name>- under plugins/consolidate-memory, "
-      "tests, docs (+ .json manifests + the `cm` CLI) is a generic placeholder (you/u/x/d/nobody)", not _bad69)
+      "tests, docs (+ .json manifests, the `cm` CLI, CHANGELOG.md) is a generic placeholder (you/u/x/d/nobody)",
+      not _bad69)
 if _bad69:
     print(f"    offending: {sorted(set(_bad69))[:8]}", file=sys.stderr)
+
+# A6 (Gate-2b follow-up): SKILL.md's ONLY previously had a MANUAL grep as its spec's acceptance
+# criterion — no automated regression check, unlike every other A-item. Pin it: the --list command's
+# inline comment must describe a read-only preview, NEVER "held" (held only exists under --pull).
+_list69_line = next((ln for ln in _skill_text.splitlines() if "sync_global.py --list ." in ln), "")
+check("v0.1.69/A6: SKILL.md's --list command comment never overclaims 'held' (regression guard — "
+      "held only exists under --pull, per sync_global.py's own held_this predicate)",
+      bool(_list69_line) and "held" not in _list69_line)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
