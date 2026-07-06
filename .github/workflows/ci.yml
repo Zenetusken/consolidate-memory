@@ -38,13 +38,12 @@ jobs:
   manifest:
     name: plugin manifest validation (claude CLI)
     runs-on: ubuntu-latest
-    # BEST-EFFORT: the `claude` CLI installs via a real, documented npm package
-    # (`@anthropic-ai/claude-code`, confirmed 2026-07), but whether `plugin validate`
-    # needs API auth in an unauthenticated CI runner is UNVERIFIED — this job is the
-    # empirical test. continue-on-error so a transient/auth failure here never blocks
-    # a contributor PR on the load-bearing test+typecheck jobs above; tighten to
-    # blocking once a real run confirms it works unauthenticated.
-    continue-on-error: true
+    # This job's OWN first real run (PR #79, commit 88efa9e) empirically confirmed
+    # `claude plugin validate` needs no API auth in an unauthenticated GitHub Actions
+    # runner — all three calls below passed cleanly. That resolves the open question a
+    # prior draft of this job flagged as unverified; it is now a REAL, blocking gate
+    # (no job- or step-level continue-on-error) — a broken plugin.json/marketplace.json
+    # must fail CI, not silently pass behind a safety net proven unnecessary.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

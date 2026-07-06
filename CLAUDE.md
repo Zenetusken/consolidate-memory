@@ -60,12 +60,14 @@ cm                                 dev CLI over the scripts (uses explicit paths
 tests/                             zero-dependency smoke + accumulation sim + manifest validation
 memory/                            GITIGNORED placeholder (.gitkeep only) — the personal global store lives at ~/.claude/memory (a real dir, decoupled from this repo)
 
-plugins/dream-beta-tester/          QA companion plugin — beta-tests the dream skill itself
-  .claude-plugin/plugin.json        plugin manifest
-  skills/dream-beta-test/SKILL.md   the judgment-lens pass (/dream-beta-test)
-  scripts/                          the deterministic oracle (beta_checks.py) + snapshot/report/run
-  maintainer/                       the continuous-QA pre-push gate (ci_check.sh/install-gate.sh)
-  docs/STATUS.md                    full design + validation matrix (see there, not here)
+plugins/dream-beta-tester/         QA companion plugin — beta-tests the dream skill itself
+  .claude-plugin/plugin.json       plugin manifest
+  skills/dream-beta-test/SKILL.md  the judgment-lens pass (/dream-beta-test)
+  scripts/                         the deterministic oracle (beta_checks.py) + snapshot/report/run
+  fixtures/                        the frozen synthetic gate-repo fixture + the canary-v0.1.19 self-test
+  maintainer/                      the continuous-QA pre-push gate (ci_check.sh/install-gate.sh)
+  docs/SPEC.md                     design-of-record (STATUS.md hands design off to this file)
+  docs/STATUS.md                   validation matrix + fixed-vs-open defect log
 ```
 
 LOCAL-only maintainer artifacts (GITIGNORED, never published): the `release.sh` release

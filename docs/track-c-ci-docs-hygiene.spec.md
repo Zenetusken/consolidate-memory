@@ -81,18 +81,23 @@ against `harness-map.md`'s path table — no drift from the actual paths the scr
 ## C3 — platform-support statement
 
 **Change.** One line in **Privacy & security** (which already states stdlib-only/3.8+/no
-network): "Portable by construction — pure Python + read-only `git`, no POSIX-only
-modules (`fcntl`/`pwd`/`grp`/`termios`) — works on Linux and macOS; on native Windows, run
-it under WSL (the `cm` dev CLI is a POSIX shell script; end users interact only through
-the skill, not `cm`)." *(Gate-1C correction: the draft originally also claimed "UTF-8 I/O
-throughout … every file op passes `encoding=`" — FALSE on main today: four `read_text`/
-`write_text` calls omit it — `extract_signals.py:309`, `memory_status.py:1612`,
-`sync_global.py:689`, `sync_global.py:695`. Track C is docs-only and can't fix runtime
-code, so the claim is DROPPED rather than shipped false; the surviving no-POSIX-modules
-claim is independently true and doesn't depend on the encoding sub-claim. The encoding gap
-itself is a real, if minor, robustness item — Track D follow-up, not Track C's to fix or
-claim away.)* This is a claim I can back with the runtime audit's own verified findings,
-not a new claim — no untested assertion.
+network): "Portable by construction — no POSIX-only modules (`fcntl`/`pwd`/`grp`/
+`termios`) — runs natively on Linux and macOS; on Windows, both the `cm` dev CLI and the
+skill's own shell invocations use POSIX syntax (`VAR=val` prefixes), so run under WSL."
+*(Gate-1C correction: the draft originally also claimed "UTF-8 I/O throughout … every
+file op passes `encoding=`" — FALSE on main today: four `read_text`/`write_text` calls
+omit it — `extract_signals.py:309`, `memory_status.py:1612`, `sync_global.py:689`,
+`sync_global.py:695`. Track C is docs-only and can't fix runtime code, so the claim is
+DROPPED rather than shipped false; the surviving no-POSIX-modules claim is independently
+true and doesn't depend on the encoding sub-claim. The encoding gap itself is a real, if
+minor, robustness item — Track D follow-up, not Track C's to fix or claim away.)*
+*(Gate-2b correction, PR #79: the draft's original WSL parenthetical wrongly scoped the
+caveat to "the `cm` dev CLI... end users interact only through the skill, not `cm`" —
+FALSE: `SKILL.md`'s own documented invocations use the identical POSIX `VAR=val` syntax
+(e.g. `CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py`), so the
+skill isn't exempt. Corrected to name BOTH as needing POSIX syntax — this is now the
+shipped text, not a draft claim.)* This is a claim I can back with the runtime audit's
+own verified findings, not a new claim — no untested assertion.
 
 **Acceptance.** Statement present; every sub-claim traceable to an audit finding already
 confirmed (this spec doesn't introduce a new portability test — Track D/CI's matrix is
@@ -139,23 +144,35 @@ CLAUDE.md for orientation has no idea the second plugin exists until they `ls pl
    omission — it didn't, until now.)* In the EXISTING `plugins/consolidate-memory/` block,
    insert one line right after `CLAUDE.md:49`'s `render_html.py` row (same terse style):
    `    dashboard.template.html         the HTML shell render_html.py fills`.
-2. Add a second top-level block to the Layout tree (same terse style as the existing one,
-   pointing at `plugins/dream-beta-tester/docs/STATUS.md` for the full design rather than
-   duplicating it — mirrors how the existing block points at SKILL.md/harness-map.md
-   instead of inlining them):
+2. Add a second top-level block to the Layout tree, column-aligned to the SAME description
+   column as the existing block (col 35 — a Gate-2b finding caught a 1-space drift in an
+   earlier draft of this block; verify alignment fresh, don't trust a stale example).
+   *(Gate-2b correction, PR #79: this block originally omitted `fixtures/` — one of the
+   six paths this item's own "Current" motivating text above names — and claimed
+   `docs/STATUS.md` holds "full design", which is false: STATUS.md's own opening line
+   hands design off to `SPEC.md`. Both fixed below — `fixtures/` added, and the doc
+   pointer split into `docs/SPEC.md` [design] + `docs/STATUS.md` [validation matrix],
+   matching what STATUS.md itself says. `CONTRACT.md` stays unmentioned — deliberately:
+   it's a machine-facing orchestrator contract, not part of a human-orientation map, and
+   adding it isn't what either finding asked for.)*
 ```
-plugins/dream-beta-tester/          QA companion plugin — beta-tests the dream skill itself
-  .claude-plugin/plugin.json        plugin manifest
-  skills/dream-beta-test/SKILL.md   the judgment-lens pass (/dream-beta-test)
-  scripts/                          the deterministic oracle (beta_checks.py) + snapshot/report/run
-  maintainer/                       the continuous-QA pre-push gate (ci_check.sh/install-gate.sh)
-  docs/STATUS.md                    full design + validation matrix (see there, not here)
+plugins/dream-beta-tester/         QA companion plugin — beta-tests the dream skill itself
+  .claude-plugin/plugin.json       plugin manifest
+  skills/dream-beta-test/SKILL.md  the judgment-lens pass (/dream-beta-test)
+  scripts/                         the deterministic oracle (beta_checks.py) + snapshot/report/run
+  fixtures/                        the frozen synthetic gate-repo fixture + the canary-v0.1.19 self-test
+  maintainer/                      the continuous-QA pre-push gate (ci_check.sh/install-gate.sh)
+  docs/SPEC.md                     design-of-record (STATUS.md hands design off to this file)
+  docs/STATUS.md                   validation matrix + fixed-vs-open defect log
 ```
 
-**Acceptance.** Layout tree lists both plugins; the existing consolidate-memory block now
-names `dashboard.template.html` (making C4's "fixed by C6" claim true — `grep -n
-'dashboard.template' CLAUDE.md` → ≥1 hit); no duplication of Track B's STATUS.md content
-(a pointer, per the existing convention for the first plugin).
+**Acceptance.** Layout tree lists both plugins, including `fixtures/`; the existing
+consolidate-memory block now names `dashboard.template.html` (making C4's "fixed by C6"
+claim true — `grep -n 'dashboard.template' CLAUDE.md` → ≥1 hit); the STATUS.md line no
+longer claims "full design" (that's SPEC.md's role, now stated); every line's description
+starts at the same column as the rest of the tree (no visual seam where the new block
+begins); no duplication of Track B's STATUS.md content (a pointer, per the existing
+convention for the first plugin).
 
 ## C7 — correct the byte-pin wording
 
