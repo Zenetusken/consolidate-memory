@@ -3213,13 +3213,13 @@ check("Track B Gate-2b: self_test.meaning on a BROKEN self-test (ok:false) says 
 # SOURCE-TEXT pins on the real shipped template, not render/paint proofs: pixel-level dashboard QA
 # stays eye-judged. Each pin is a reversion tripwire for a specific, already-fixed (v0.1.68) defect —
 # sabotage-verified (reverting either fix locally flips its check red) before landing.
-import re as _re69  # noqa: E402
+# (reuses the module-wide `_re` import from line 1064 — no new alias needed)
 
 check("v0.1.68 CSS pin: the masthead's radial-gradient is immediately followed by background-repeat:"
       "no-repeat (its absence is exactly what tiled the glow down the page — CSS's `background:` "
       "shorthand earlier in the same rule resets repeat to its 'repeat' initial value)",
-      _re69.search(r"background-image:radial-gradient\([^)]*var\(--glow\)[^)]*\);\s*"
-                   r"background-repeat:no-repeat;", _tpl54) is not None)
+      _re.search(r"background-image:radial-gradient\([^)]*var\(--glow\)[^)]*\);\s*"
+                 r"background-repeat:no-repeat;", _tpl54) is not None)
 
 check("v0.1.68 JS pin: the demotion-verdict classifier still parses a leading dormant/demoted/"
       "justified/none disposition word into the badge tag (the tag+prose split the fix introduced, "
