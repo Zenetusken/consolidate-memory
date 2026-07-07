@@ -984,6 +984,31 @@ def run() -> None:
                  nm_ok and fw_ok and sec_ok and repo_doc_seen and cons_relocate and cons_evict,
                  "the dream can relocate-the-elaboration safely — directive stays, targets firewalled, moves conservation-checked")
 
+        # ── Probe R: v0.1.70 security — `--evict=` path-traversal (CONFIRMED by an independent
+        # DevSecOps pentest, reproduced against the live subprocess). Pre-fix, a crafted evict name
+        # containing '../' segments resolved OUTSIDE the project's own store and got unlink()'d —
+        # proven exploitable against a file in the shared GLOBAL store, not just in theory. The
+        # `./`-padding trick (harmless no-op path components) also inflates the evicted "pointer"'s
+        # apparent token cost past the fit-check, which is why the payload below pads with many.
+        print("\n── Probe R: v0.1.70 security (--evict= path traversal) ──")
+        (home / ".claude" / "memory").mkdir(parents=True, exist_ok=True)
+        (home / ".claude" / "memory" / "held-thing.md").write_text(
+            "---\nname: held-thing\ndescription: x\nmetadata:\n  scope: user-global\n---\n\nbody\n", encoding="utf-8")
+        victimR = home / "OUTSIDE-STORE-VICTIM.md"
+        victimR.write_text("must survive\n", encoding="utf-8")
+        projR = _make_project(home, "victimprojR")
+        storeR = _store(home, projR)
+        storeR.mkdir(parents=True, exist_ok=True)
+        (storeR / "MEMORY.md").write_text("# Memory Index\n\n" + "x" * 15400, encoding="utf-8")  # pad near the ceiling
+        payloadR = "./" * 400 + os.path.relpath(str(home / "OUTSIDE-STORE-VICTIM"), str(storeR))
+        procR = subprocess.run([sys.executable, str(SYNC), "--pull", f"--evict={payloadR}", str(projR)],
+                               env=dict(os.environ, HOME=str(home)), capture_output=True, text=True, check=False)
+        _verdict("R", "v0.1.70 security: `--evict=` refuses a path-traversal-shaped fact name (the exact "
+                 "charset guard `promote()` already applies to local_fact/canon_name) — a crafted name can "
+                 "no longer walk outside the project's own store to delete an arbitrary file",
+                 victimR.exists() and "not a safe fact name" in procR.stderr,
+                 "the shared global store (and any other reachable file) survives a malicious/crafted --evict= value")
+
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")
         first, last = curve[0], curve[-1]

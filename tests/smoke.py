@@ -625,6 +625,10 @@ for _i, _fm in enumerate([
     "---\nname: c\n  metadata:\n  scope: user-global\n---\nbody\n",       # INDENTED metadata (adversarial)
     "---\ndescription: >-\n  folded\n  metadata:\n---\nbody\n",           # 'metadata:' inside a folded scalar
     "﻿---\nname: e\nmetadata:\n  node_type: memory\n---\nbody\n",     # leading BOM (Gate-2 F3)
+    # v0.1.70 security: no metadata: key in frontmatter, but the BODY has a bare, unindented
+    # 'metadata:' line — pre-fix this stole the anchor and stamped global_ref: into the body,
+    # OUTSIDE the span _is_mirror parses, permanently desyncing producer/recognizer.
+    "---\nscope: user-global\nnode_type: fact\n---\n# Heading\n\nprose.\n\nmetadata:\nmore prose.\n",
 ]):
     check(f"mirror: round-trip property holds (shape {_i})",
           sg._is_mirror(sg._as_mirror(_fm, "x")) is True)
@@ -719,6 +723,13 @@ check("stale-since: non-string marker does not crash (returns [])",
 check("name: safe kebab stem accepted", sg._safe_stem("gh-pr-edit-broken_v2.1"))
 check("name: markdown-link injection stem rejected", sg._safe_stem("evil](http://x)") is False)
 check("name: whitespace stem rejected", sg._safe_stem("a b") is False and sg._safe_stem("") is False)
+# v0.1.70 security: --evict='s path-traversal guard — a crafted evict name must never be able to
+# walk outside the project's own store (confirmed exploitable pre-fix: reproduced deleting a file
+# in the GLOBAL store via `--evict=../../../memory/<name>`; see simulate_accumulation.py Probe R
+# for the full end-to-end proof against the live subprocess).
+check("name: relative-traversal stem rejected", sg._safe_stem("../../../memory/victim") is False)
+check("name: absolute-path stem rejected", sg._safe_stem("/etc/passwd") is False)
+check("name: embedded-slash stem rejected", sg._safe_stem("a/b") is False)
 check("token: project name sanitized (neutralizes backref + brackets)",
       sg._sanitize_token(r"proj\1]evil") == "proj-1-evil")
 check("token: clean project name unchanged", sg._sanitize_token("home-you-project-foo") == "home-you-project-foo")

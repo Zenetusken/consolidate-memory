@@ -1353,7 +1353,7 @@ def _git_check_ignore(rel: str, root: Path) -> bool:
     """True if `rel` is git-ignored OR can't be confirmed safe — FAIL-CLOSED (a target we can't prove reaches
     teammates is unsafe). `git check-ignore -q`: exit 0 = ignored, 1 = not ignored, 128 = error → only 1 is safe."""
     try:
-        r = subprocess.run(["git", "check-ignore", "-q", rel], cwd=root,  # noqa: S603 - fixed args
+        r = subprocess.run(["git", "check-ignore", "-q", "--", rel], cwd=root,  # noqa: S603 - fixed args
                            capture_output=True, timeout=15, check=False)
         return r.returncode != 1
     except (OSError, subprocess.SubprocessError):

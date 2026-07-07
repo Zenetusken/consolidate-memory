@@ -385,7 +385,12 @@ def _as_mirror(text: str, name: str) -> str:
         if dashes == 1 and s.startswith("projects:"):
             continue
         out.append(ln)
-        if not injected and not ln[:1].isspace() and s.rstrip(":") == "metadata":
+        # v0.1.70 security: frontmatter-scoped (dashes == 1), exactly like the projects: strip above —
+        # an unscoped scan lets a bare `metadata:` line in the BODY (prose, or crafted) steal the anchor,
+        # stamping global_ref: outside the span _is_mirror() parses. That breaks this function's own
+        # documented _is_mirror(_as_mirror(...)) round-trip invariant and produces a permanent,
+        # un-refreshable, GC-immune mirror (never reclaimed, never updated).
+        if not injected and dashes == 1 and not ln[:1].isspace() and s.rstrip(":") == "metadata":
             out.append(f"  global_ref: {name}")
             injected = True
     if not injected:  # no metadata block — stamp just inside the frontmatter
@@ -560,6 +565,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # (Guard-3 no-partial-state): the fact EXISTS, has NO inbound [[links]] (orphan-safety), held globals EXIST to
     # receive, and the freed room actually FITS the smallest held. The agent NAMES the fact (report-then-apply).
     if pull and evict is not None:
+        if not _safe_stem(evict):    # v0.1.70 security: same charset guard promote() applies to local_fact/canon_name
+            print(f"evict: {evict!r} is not a safe fact name (must match {_SAFE_NAME!r}, no path separators) "
+                  "— refusing", file=sys.stderr); return 1
         ep = store / f"{evict}.md"
         if not ep.exists():
             print(f"evict: no local fact '{evict}' in {store}", file=sys.stderr); return 1
