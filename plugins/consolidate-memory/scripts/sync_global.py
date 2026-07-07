@@ -376,7 +376,12 @@ def _as_mirror(text: str, name: str) -> str:
         s = ln.strip()
         if s == "---":
             dashes += 1
-        if s.startswith("global_ref:"):
+        # v0.1.70 Gate-2a: frontmatter-scoped (dashes == 1) — was unscoped, silently deleting ANY body
+        # line starting with the literal text "global_ref:" (plausible in this self-documenting repo,
+        # e.g. a note explaining the mirror mechanism itself). Both of THIS function's own legitimate
+        # stamps (the metadata-child form and the post-opening-'---' fallback) land strictly within
+        # dashes == 1, so scoping the strip the same way loses no correctness.
+        if dashes == 1 and s.startswith("global_ref:"):
             continue                   # drop any existing global_ref (re-stamped below)
         # v0.1.26 (provenance-churn root-fix): `projects:` is CANONICAL-ONLY bookkeeping (the synapse
         # record `network()`/`_holders` read off the global store). NEVER carry it into a mirror — else
@@ -568,6 +573,12 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         if not _safe_stem(evict):    # v0.1.70 security: same charset guard promote() applies to local_fact/canon_name
             print(f"evict: {evict!r} is not a safe fact name (must match {_SAFE_NAME!r}, no path separators) "
                   "— refusing", file=sys.stderr); return 1
+        if evict in _RESERVED_STEMS:  # Gate-2a: the charset guard alone still let 'MEMORY' through —
+            # store / 'MEMORY.md' IS the live index (_idxp above); unlink()'ing it and rebuilding from
+            # scratch silently drops every previously-indexed pointer (mirrors AND project-authored
+            # locals) with rc=0 and no error. Same reserved-name guard promote() already applies.
+            print(f"evict: '{'/'.join(_RESERVED_STEMS)}' is a reserved index name, not a fact — refusing "
+                  "(it would clobber the store's own always-loaded MEMORY.md index)", file=sys.stderr); return 1
         ep = store / f"{evict}.md"
         if not ep.exists():
             print(f"evict: no local fact '{evict}' in {store}", file=sys.stderr); return 1

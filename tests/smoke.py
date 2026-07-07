@@ -633,6 +633,18 @@ for _i, _fm in enumerate([
     check(f"mirror: round-trip property holds (shape {_i})",
           sg._is_mirror(sg._as_mirror(_fm, "x")) is True)
 
+# v0.1.70 Gate-2a: _as_mirror's global_ref: strip was unscoped (unlike the adjacent projects:/
+# metadata: checks) — ANY body line starting with the literal text "global_ref:" was silently
+# deleted, not just the function's own frontmatter-child stamp. A self-documenting fact whose
+# prose explains the mirror mechanism itself is a realistic trigger, not just an adversarial one.
+_body_gr_fixture = ("---\nname: x\nmetadata:\n  scope: user-global\n---\n# Notes\n\n"
+                    "global_ref: this line is plain prose written by a human, not YAML\nmore text.\n")
+_body_gr_out = sg._as_mirror(_body_gr_fixture, "crafted")
+check("mirror: _as_mirror does NOT delete a body line merely starting with 'global_ref:' (Gate-2a)",
+      "this line is plain prose written by a human" in _body_gr_out and "more text." in _body_gr_out)
+check("mirror: _as_mirror still round-trips correctly on the same fixture",
+      sg._is_mirror(_body_gr_out) is True)
+
 # --- pentest fix (High): secrets firewall covers credential-shaped ERROR output ---
 check("firewall: catches bearer token in error text",
       bool(es._looks_secret("HTTP 401 WWW-Authenticate: Bearer " + "a" * 50)))

@@ -1009,6 +1009,34 @@ def run() -> None:
                  victimR.exists() and "not a safe fact name" in procR.stderr,
                  "the shared global store (and any other reachable file) survives a malicious/crafted --evict= value")
 
+        # ── Probe R2: v0.1.70 Gate-2a — `--evict=MEMORY` passed the charset guard (MEMORY is a
+        # valid kebab/snake stem) but targets `store / "MEMORY.md"` — the project's OWN live
+        # index — same self-clobber class `promote()` already guards via `_RESERVED_STEMS`. Reuses
+        # storeR's real, non-trivial MEMORY.md from Probe R (still on disk, untouched by it).
+        _idx_before_r2 = (storeR / "MEMORY.md").read_text(encoding="utf-8")
+        procR2 = subprocess.run([sys.executable, str(SYNC), "--pull", "--evict=MEMORY", str(projR)],
+                                env=dict(os.environ, HOME=str(home)), capture_output=True, text=True, check=False)
+        _idx_after_r2 = (storeR / "MEMORY.md").read_text(encoding="utf-8")
+        _verdict("R2", "v0.1.70 Gate-2a: `--evict=MEMORY` is refused (a reserved index name, not a fact) — "
+                 "the charset guard alone let it through, which would have unlink()'d and rebuilt the "
+                 "project's own live index, dropping every previously-indexed pointer with rc=0",
+                 "reserved index name" in procR2.stderr and _idx_after_r2 == _idx_before_r2,
+                 "the project's own MEMORY.md index survives byte-for-byte against a self-targeting --evict=MEMORY")
+
+        # ── Probe R3: v0.1.70 Gate-2a — pin the `git check-ignore -- <path>` argv-injection fix,
+        # which shipped with zero regression test (every existing valid_relocate_target fixture uses
+        # a path that doesn't start with '-', so the smoke suite couldn't have caught a future revert
+        # of the `--` separator). Reuses repoQ (a real git repo) from Probe Q.
+        (repoQ / "-dash-leading.md").write_text("not gitignored, just an odd name\n", encoding="utf-8")
+        subprocess.run(["git", "add", "-A"], cwd=repoQ, check=False)
+        subprocess.run(["git", "commit", "-qm", "dash file"], cwd=repoQ, check=False)
+        _verdict("R3", "v0.1.70 Gate-2a: a relocate target whose relative path starts with '-' is judged "
+                 "correctly (NOT git-flag-parsed) — `git check-ignore -- <path>` reaches the real path, "
+                 "not an option",
+                 ms.valid_relocate_target("-dash-leading.md", repoQ) is True,
+                 "a dash-leading, un-ignored path is a VALID relocate target (was: misread as a git flag "
+                 "without the `--` separator, likely fail-closed to unsafe)")
+
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")
         first, last = curve[0], curve[-1]
