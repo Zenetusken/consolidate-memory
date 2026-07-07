@@ -272,6 +272,18 @@ cross-project model:
   slug-independent.
 - **Global facts don't auto-cross** — they must be replicated into each project's
   store to surface there.
+- **Concurrent writes to the shared global store (v0.1.71, Track D).** Two different
+  projects dreaming around the same time can both write to `~/.claude/memory`. Every
+  individual write there is atomic (write-temp + `os.replace`/`os.link` — never a torn
+  file visible mid-write), and `promote()`'s canonical CREATE is exclusive (two projects
+  racing to promote onto the same new name: the loser is refused and told to retry, not
+  silently clobbered). One narrower gap is accepted, not fixed: two concurrent
+  `_record_provenance()` calls on the SAME existing canonical can still race their
+  read-modify-write of its `projects:` list — a lost update is possible (one project's
+  provenance entry silently dropped), self-healing the next time that project's own
+  dream promotes/pulls again. See
+  `docs/track-d-write-atomicity-seed-hardening.spec.md` for the full design + why a
+  lock wasn't built for that residual case.
 
 **Phase-0 detection (slug-orphans + schema drift) — detect/report/OFFER only, never
 auto-mutated:**

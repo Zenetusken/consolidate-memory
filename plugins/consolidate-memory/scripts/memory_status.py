@@ -1824,7 +1824,7 @@ def build_context(project_dir: Path) -> dict:
     demotion_justify: object = None
     if state_path.exists():
         try:
-            st = json.loads(state_path.read_text())
+            st = json.loads(state_path.read_text(encoding="utf-8"))
             last_commit, last_ts = st.get("commit", ""), st.get("timestamp", "")
             standing_justify = st.get("standing_justify")   # v0.1.21 (D7): the justified-density baseline, if any
             demotion_justify = st.get("demotion_justify")   # v0.1.67 (Phase C): per-item counter-justify map, if any
@@ -2678,7 +2678,10 @@ def main() -> int:
         return 0
     if "--seed" in argv:    # v0.1.20: write the seed to a per-slug temp path (NOT shared /tmp/cycle.json) + print it
         path = cycle_seed_path(ctx["slug"])
-        Path(path).write_text(json.dumps(seed_record(ctx), indent=2) + "\n", encoding="utf-8")
+        # v0.1.71 (Track D-3): owner-only 0o600, set atomically at creation (os.open's mode arg —
+        # no write-then-chmod TOCTOU window) — matches --snapshot below; this file can hold
+        # recall-candidate fact text and sat at the process's default (often world-readable) mode.
+        _write_private(Path(path), json.dumps(seed_record(ctx), indent=2) + "\n")
         print(path)
         _ui.dream_cue(_CUE_PHASE0)
         return 0
