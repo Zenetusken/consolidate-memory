@@ -714,14 +714,15 @@ for _name, _val, _want in [
      "mysqldump -uroot -pMyS3cretPassw0rd db > out.sql", False),
     ("curl -u user:pass without scheme (deliberately NOT covered — collides with -u UID:GID)",
      "curl -u admin:Sup3rSecretPass https://internal.example.com/api", False),
-    # Gate-2a [0]: cross-segment mixed-case — the per-segment-ONLY redesign lost the ability to
-    # catch a value split by only 1-2 slashes into segments each internally single-cased.
-    ("cross-segment mixed case (Gate-2a: was lost by the per-segment-only redesign)",
-     "thisisalowercasesegmentofconsiderablelength/THISISANUPPERCASESEGMENTALSOLONGENOUGH", True),
-    # Gate-2a [7]: chunking a keyword-less secret into <8-char segments evaded the per-segment
-    # digit/case check entirely — the whole-blob mixed-case check (restored above) now catches it.
-    ("short-segment-chunked secret (Gate-2a: was still a live bypass)",
-     "wJalrXU/tnFEMIK/7MDENGb/PxRfiCY/EXAMPLE/KEY1234/56", True),
+    # Gate-2a round 3 (accepted, documented gaps — see _entropy_blob's docstring): a whole-blob
+    # mixed-case check briefly closed these two, but it FP'd on this repo's own everyday path
+    # shape (a '/'-path ending in an ALL-CAPS filename stem, e.g. .../SKILL.md) once long enough
+    # to clear the blob floor — a worse trade than the narrow gap it closed. Reverted to
+    # per-token scoping; both stay accepted, narrow residual gaps rather than chased further.
+    ("cross-segment mixed case (accepted gap: neither segment is internally mixed-case)",
+     "thisisalowercasesegmentofconsiderablelength/THISISANUPPERCASESEGMENTALSOLONGENOUGH", False),
+    ("short-segment-chunked secret (accepted gap: every segment is under the entropy floor)",
+     "wJalrXU/tnFEMIK/7MDENGb/PxRfiCY/EXAMPLE/KEY1234/56", False),
     # Gate-2a [1]: the CLI-flag arm's keyword list was narrower than the main arm's — these three
     # evaded entirely even though the `=`-delimited form of the SAME keyword was already caught.
     ("--credentials value (Gate-2a: keyword was missing from the CLI-flag arm)",
@@ -763,8 +764,28 @@ for _name, _val in [
     ("conventional-commit-style 'token: <value>' (Gate-2a: was flagged)", "token: bump TTL to 3600"),
     ("test-count-style 'pass: N fail: N' (Gate-2a: was flagged)", "pass: 5 fail: 0"),
     ("prose 'secret: <short value>' (Gate-2a: was flagged)", "secret: rotate the signing key"),
+    # Gate-2a round 3: the whole-blob mixed-case check (briefly restored to close the
+    # cross-segment gap above) flagged this repo's OWN routine path shape — a '/'-path ending
+    # in an ALL-CAPS filename stem, long enough to clear the 40-char blob floor once nested a
+    # couple of directories deep. Reverted to per-token scoping (see _entropy_blob's docstring).
+    ("commit mentioning a deep path ending in an ALL-CAPS filename stem (Gate-2a round 3: was flagged)",
+     "docs: update plugins/consolidate-memory/skills/consolidate-memory/SKILL.md wording"),
 ]:
     check(f"firewall FALSE-POSITIVE guard: {_name!r} -> stays clean",
+          es._looks_secret(_val) is False)
+
+# --- Gate-2a round 3 (accepted, documented gap — see _entropy_blob's docstring): a short,
+# no-digit, single-case value (a weak password) is indistinguishable in SHAPE from an ordinary
+# short English word ("flag", "usage") in the same 'keyword: value' position — no threshold
+# separates them. The firewall favors fewer false positives on ordinary commit prose; this is
+# a documented product tradeoff, not a bug this test expects to be tightened away. ---
+for _name, _val in [
+    ("weak no-digit password (accepted gap: same shape as 'keyword: <ordinary word>')",
+     "fix: reset password=qwerty in the seed fixture"),
+    ("weak no-digit password, short keyword form (accepted gap)",
+     "chore: rotate pwd=letmein for the test account"),
+]:
+    check(f"firewall accepted-gap (documented, not chased): {_name!r} -> stays clean",
           es._looks_secret(_val) is False)
 
 # --- v0.1.70 security: ReDoS — the firewall must stay LINEAR-time on adversarial input (a

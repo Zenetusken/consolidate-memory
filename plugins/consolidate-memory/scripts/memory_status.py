@@ -828,42 +828,41 @@ def _entropy_blob(text: str) -> bool:
     a token is mixed-case or carries digits; a path is slash-dense; a slug is all-lower
     with no digits. This is the half the case-insensitive `_SECRET` regex cannot express.
 
-    v0.1.70 SECURITY: TWO independent signals, each scoped differently on purpose:
-    (1) mixed-case (upper AND lower present) judged over the WHOLE matched blob — a real
-        path/identifier is overwhelmingly single-cased per component (kebab/snake), so
-        this is the stronger signal and needs no length floor.
-    (2) digit-bearing judged per '/','-','_','.' -delimited TOKEN (finer than the old
-        '/'-only split) at/past a length floor — catches a pure-lowercase-or-uppercase
-        secret (a hex token, a lowercase base64 run) without also flagging a natural
-        kebab-case path segment with a short version/date suffix ("v0-1-68", "module2024").
+    Both signals — mixed-case and digit-bearing — are judged per '/','-','_','.' -delimited
+    TOKEN (finer than a '/'-only split) at/past a length floor. Per-token scoping is what
+    keeps a real path clean: a path component is overwhelmingly single-cased on its own
+    (kebab/snake, or a single ALL-CAPS filename stem like "SKILL"/"README"), so requiring
+    the mix *within one token* — not across the whole blob — excludes the ordinary case
+    "plugins/.../SKILL" (one all-lower run next to one all-upper run, neither internally
+    mixed) while still catching a genuinely random-looking token like "AbCdEf" or a
+    lowercase hex/base64 run with digits. The floor also stops a natural kebab-case
+    segment with a short version/date suffix ("v0-1-68", "module2024") from tripping the
+    digit check — no sub-token there is both ≥8 chars and digit-bearing.
 
-    v0.1.70 Gate-2a found TWO real gaps in the prior (per-'/'-segment-only) design:
-    (a) it lost cross-segment mixed-case detection — a value split by only 1-2 slashes
-        into segments that are each internally single-cased (e.g. one all-lowercase run,
-        one all-uppercase run) went undetected even though the OLD whole-blob check (for
-        <3 slashes) caught it; fixed by restoring the whole-blob mixed-case check.
-    (b) chunking a keyword-less secret into segments each under the 8-char floor evaded
-        detection entirely (the same bypass class this function set out to close, just
-        moved) — the restored whole-blob mixed-case check also closes this for any
-        chunked secret that mixes case at all; a pure-single-case chunked secret (e.g.
-        all-lowercase hex) remains a known, narrower residual gap.
-    Finer '-_.' -splitting for the digit signal (not just '/') closes the false-positive
-    Gate-2a found in the ORIGINAL per-segment design: a versioned path
-    (`docs/release-notes/v0-1-68-index-lifecycle-...md`) has a long '/'-segment that
-    contains digits, but no *sub-token* of it (split further on '-_.') is both ≥8 chars
-    AND digit-bearing — every digit run there ("v0", "1", "68") is short. A CamelCase
-    directory name that ALSO carries a digit (e.g. "UserProfile2024Settings") is still
-    flagged via the mixed-case signal — an accepted, pre-existing tradeoff (the same
-    heuristic already treats a bare "AbCdEf"-shaped mixed-case run as suspicious), not
-    something this fix chases further: reverting it would reopen the exact bypass above."""
+    v0.1.70 Gate-2a round 3 found the WHOLE-BLOB mixed-case variant of this check (added in
+    round 2 to catch a synthetic two-segment case where each segment was internally
+    single-cased but the two disagreed) is a worse trade than the FP it was chasing: it
+    flags this repo's own everyday path shape (any '/'-path ending in an ALL-CAPS filename
+    stem like SKILL.md/README.md/CLAUDE.md, once long enough to clear the blob floor) as a
+    secret. Reverted to per-token scoping; the synthetic cross-segment case it caught is
+    accepted as a known, narrow residual gap (not a realistic secret shape) rather than
+    chased with more heuristics — see the accepted-gap test in tests/smoke.py.
+
+    A short, no-digit, single-case value (a weak password like "qwerty" or "letmein") is
+    ALSO a known, accepted gap on the keyword side (see the value-gating lookahead in
+    `_SECRET`) — no length/digit threshold separates a weak password from an ordinary
+    short English word ("flag", "usage") in the same position, so tightening one re-opens
+    the other. This is a real tradeoff, not a bug to keep tuning; the firewall favors
+    fewer false positives on ordinary commit prose over catching every possible weak,
+    keyword-adjacent password. Widening it is a product decision, not a fix."""
     for m in _BLOB.finditer(text):
         s = m.group(0)
-        has_lower = any(c.islower() for c in s)
-        has_upper = any(c.isupper() for c in s)
-        if has_lower and has_upper:
-            return True
         for seg in re.split(r"[/\-_.]", s):
-            if len(seg) >= _ENTROPY_SEG_FLOOR and any(c.isdigit() for c in seg):
+            if len(seg) < _ENTROPY_SEG_FLOOR:
+                continue
+            has_lower = any(c.islower() for c in seg)
+            has_upper = any(c.isupper() for c in seg)
+            if (has_lower and has_upper) or any(c.isdigit() for c in seg):
                 return True
     return False
 
