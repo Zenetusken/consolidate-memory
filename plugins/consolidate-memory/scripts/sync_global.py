@@ -525,7 +525,7 @@ def _inbound_links(store: Path, target: str) -> list[str]:
     if not store.is_dir():
         return out
     for f in sorted(store.glob("*.md")):
-        if f.name == "MEMORY.md" or f.stem == target:
+        if f.name == "MEMORY.md" or _is_reserved_stem(f.stem) or f.stem == target:
             continue
         body = _safe_read_text(f)   # store-scan convention (shared helper — v0.1.69 Gate-2b)
         if body is None:
@@ -706,7 +706,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         add("    held: " + _ui.c(", ".join(f"{n} (~{c}t)" for n, c in held_facts), "yellow"))
         add("    " + _ui.c("evictable local pointers (raw metadata, UNORDERED — YOU judge value, never auto-ranked):", "dim"))
         for f in sorted(store.glob("*.md")):
-            if f.name == "MEMORY.md":
+            if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
                 continue
             t = _safe_read_text(f)                # store-scan convention (a concurrent gc/chmod between
             if t is None:                         # glob+read must not abort the whole --pull after RESULT is built)
@@ -836,7 +836,7 @@ def _orphans(store: Path) -> list[str]:
     if not store.exists():
         return out
     for f in store.glob("*.md"):
-        if f.name == "MEMORY.md":
+        if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
             continue
         text = _safe_read_text(f)    # v0.1.69/A3 (Gate-2a follow-up): store-scan convention — a
         if text is None:             # vanished/unreadable fact must not abort the orphan scan
@@ -1121,7 +1121,7 @@ def _node_tokens(store: Path) -> dict:
     idx_text = _safe_read_text(idx) or ""    # store-scan convention: a vanished index reads as absent
     bodies: dict[str, str] = {}
     for f in store.glob("*.md"):
-        if f.name == "MEMORY.md":
+        if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
             continue
         body = _safe_read_text(f)             # store-scan convention (shared helper — v0.1.69 Gate-2a)
         if body is not None:
@@ -1162,7 +1162,7 @@ def _network_nodes() -> list[Path]:
             continue
         has_mirror = False
         for f in store.glob("*.md"):
-            if f.name == "MEMORY.md":
+            if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
                 continue
             body = _safe_read_text(f)         # store-scan convention (shared helper — v0.1.69 Gate-2a)
             if body is not None and _is_mirror(body):

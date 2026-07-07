@@ -3262,5 +3262,29 @@ with _tf70g.TemporaryDirectory() as _td70g:
 check("global_facts() excludes a case-variant 'memory.md' global fact (not just exact 'MEMORY.md')",
       "memory" not in _stems70g and "real-fact" in _stems70g)
 
+# v0.1.70 Gate-2a (4th pass): _orphans() (which feeds gc(..., apply=True)'s destructive unlink())
+# had the SAME exact-case gap as global_facts() — a genuine mirror file literally named memory.md
+# would be scanned as an ordinary fact, and since its canonical never exists (GLOBAL has none),
+# _orphans() would report it as reclaimable — `gc --apply` would then delete a file whose bare
+# name collides with the store's own live MEMORY.md on a case-insensitive filesystem. Now routed
+# through the same _is_reserved_stem() predicate as every other guard in this file.
+with _tf70g.TemporaryDirectory() as _td70o:
+    _store70o = Path(_td70o) / "store"
+    _store70o.mkdir()
+    (_store70o / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_store70o / "memory.md").write_text(          # a genuine MIRROR (global_ref: stamped) —
+        "---\n# global_ref: memory\nname: memory\n---\nbody\n", encoding="utf-8")   # would be a real orphan pre-fix
+    (_store70o / "real-orphan.md").write_text(
+        "---\n# global_ref: real-orphan\nname: real-orphan\n---\nbody\n", encoding="utf-8")
+    _emptyGlobal70o = Path(_td70o) / "empty-global"   # no canonicals at all -> everything's an orphan pre-fix
+    _oldGlobal70o = sg.GLOBAL
+    sg.GLOBAL = _emptyGlobal70o
+    try:
+        _orphans70o = sg._orphans(_store70o)
+    finally:
+        sg.GLOBAL = _oldGlobal70o
+check("_orphans() excludes a case-variant 'memory.md' mirror (not reclaimable by gc --apply)",
+      "memory" not in _orphans70o and "real-orphan" in _orphans70o)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
