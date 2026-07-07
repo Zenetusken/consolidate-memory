@@ -984,22 +984,26 @@ def run() -> None:
                  nm_ok and fw_ok and sec_ok and repo_doc_seen and cons_relocate and cons_evict,
                  "the dream can relocate-the-elaboration safely — directive stays, targets firewalled, moves conservation-checked")
 
-        # ── Probe R: v0.1.70 security — `--evict=` path-traversal (CONFIRMED by an independent
-        # DevSecOps pentest, reproduced against the live subprocess). Pre-fix, a crafted evict name
-        # containing '../' segments resolved OUTSIDE the project's own store and got unlink()'d —
-        # proven exploitable against a file in the shared GLOBAL store, not just in theory. The
-        # `./`-padding trick (harmless no-op path components) also inflates the evicted "pointer"'s
-        # apparent token cost past the fit-check, which is why the payload below pads with many.
+        # ── Probe R / R2: v0.1.70 security — `--evict=` guards (CONFIRMED by an independent
+        # DevSecOps pentest, reproduced against the live subprocess). Both `_safe_stem`/
+        # `_is_reserved_stem` fire at the TOP of run()'s evict block, before any held/fit-check
+        # logic ever reads the store's contents — so, per a Gate-2a re-review finding, the probes
+        # need no token-budget/held-fact fixture at all (an earlier version padded MEMORY.md near
+        # the ceiling and seeded a global fact "to justify eviction"; that setup was dead weight
+        # for what these two probes actually assert, and looked like load-bearing precondition
+        # setup to a reader). A minimal MEMORY.md is kept ONLY so R2 has real bytes to assert
+        # survive unchanged.
         print("\n── Probe R: v0.1.70 security (--evict= path traversal) ──")
-        (home / ".claude" / "memory").mkdir(parents=True, exist_ok=True)
-        (home / ".claude" / "memory" / "held-thing.md").write_text(
-            "---\nname: held-thing\ndescription: x\nmetadata:\n  scope: user-global\n---\n\nbody\n", encoding="utf-8")
         victimR = home / "OUTSIDE-STORE-VICTIM.md"
         victimR.write_text("must survive\n", encoding="utf-8")
         projR = _make_project(home, "victimprojR")
         storeR = _store(home, projR)
         storeR.mkdir(parents=True, exist_ok=True)
-        (storeR / "MEMORY.md").write_text("# Memory Index\n\n" + "x" * 15400, encoding="utf-8")  # pad near the ceiling
+        (storeR / "MEMORY.md").write_text("# Memory Index\n\n- [x](x.md) — y\n", encoding="utf-8")
+        # the `./`-padding trick (harmless no-op path components) is the exact bypass a live pentest
+        # reproduced pre-fix — inflating the evicted "pointer"'s apparent token cost past the
+        # fit-check — kept here as a faithful reproduction of that PoC shape, even though the
+        # charset guard alone (which fires first) already refuses this payload today.
         payloadR = "./" * 400 + os.path.relpath(str(home / "OUTSIDE-STORE-VICTIM"), str(storeR))
         procR = subprocess.run([sys.executable, str(SYNC), "--pull", f"--evict={payloadR}", str(projR)],
                                env=dict(os.environ, HOME=str(home)), capture_output=True, text=True, check=False)
@@ -1012,7 +1016,7 @@ def run() -> None:
         # ── Probe R2: v0.1.70 Gate-2a — `--evict=MEMORY` passed the charset guard (MEMORY is a
         # valid kebab/snake stem) but targets `store / "MEMORY.md"` — the project's OWN live
         # index — same self-clobber class `promote()` already guards via `_RESERVED_STEMS`. Reuses
-        # storeR's real, non-trivial MEMORY.md from Probe R (still on disk, untouched by it).
+        # storeR's MEMORY.md from Probe R (still on disk, untouched by it).
         _idx_before_r2 = (storeR / "MEMORY.md").read_text(encoding="utf-8")
         procR2 = subprocess.run([sys.executable, str(SYNC), "--pull", "--evict=MEMORY", str(projR)],
                                 env=dict(os.environ, HOME=str(home)), capture_output=True, text=True, check=False)

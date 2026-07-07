@@ -742,6 +742,15 @@ check("name: whitespace stem rejected", sg._safe_stem("a b") is False and sg._sa
 check("name: relative-traversal stem rejected", sg._safe_stem("../../../memory/victim") is False)
 check("name: absolute-path stem rejected", sg._safe_stem("/etc/passwd") is False)
 check("name: embedded-slash stem rejected", sg._safe_stem("a/b") is False)
+# v0.1.70 Gate-2a (2nd pass): the reserved-stem guard (--evict=MEMORY, promote()'s local_fact/
+# canon_name) must be CASE-insensitive — an exact-string match let 'memory'/'Memory' sail through
+# on a case-insensitive filesystem (macOS/Windows, both supported), where it resolves to the SAME
+# file as the real MEMORY.md index. Shared by both promote() and the evict guard (was two
+# independent, already-drifted hand-written copies).
+for _n in ("MEMORY", "memory", "Memory", "MeMoRy"):
+    check(f"name: reserved stem {_n!r} rejected case-insensitively", sg._is_reserved_stem(_n) is True)
+check("name: a non-reserved stem is NOT rejected", sg._is_reserved_stem("memoryx") is False
+      and sg._is_reserved_stem("not-memory") is False)
 check("token: project name sanitized (neutralizes backref + brackets)",
       sg._sanitize_token(r"proj\1]evil") == "proj-1-evil")
 check("token: clean project name unchanged", sg._sanitize_token("home-you-project-foo") == "home-you-project-foo")

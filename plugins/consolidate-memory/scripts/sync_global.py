@@ -129,6 +129,17 @@ _SAFE_NAME = r"[A-Za-z0-9._-]+"  # the documented kebab/snake charset for fact +
 _RESERVED_STEMS = {"MEMORY"}
 
 
+def _is_reserved_stem(name: str) -> bool:
+    """True iff `name` collides with a reserved index name — case-INSENSITIVE. v0.1.70 Gate-2a:
+    an exact-string `name in _RESERVED_STEMS` check lets a case-variant ('memory', 'Memory') sail
+    straight through on a case-insensitive filesystem (macOS/Windows — both supported per README),
+    where it resolves to the SAME file as the real, load-bearing MEMORY.md — the exact self-clobber
+    class this guard exists to close, reached via a one-character case change. Shared by promote()'s
+    guard and run()'s --evict= guard so a future change to _RESERVED_STEMS (or this comparison)
+    can't drift between the two call sites, as the two independent hand-written copies already had."""
+    return name.upper() in {s.upper() for s in _RESERVED_STEMS}
+
+
 def _safe_stem(stem: str) -> bool:
     """True iff a fact stem is safe to use as a filename AND to interpolate into the
     always-loaded index. Rejects markdown/link-injection payloads in a crafted name."""
@@ -573,7 +584,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         if not _safe_stem(evict):    # v0.1.70 security: same charset guard promote() applies to local_fact/canon_name
             print(f"evict: {evict!r} is not a safe fact name (must match {_SAFE_NAME!r}, no path separators) "
                   "— refusing", file=sys.stderr); return 1
-        if evict in _RESERVED_STEMS:  # Gate-2a: the charset guard alone still let 'MEMORY' through —
+        if _is_reserved_stem(evict):  # Gate-2a: the charset guard alone still let 'MEMORY' through —
             # store / 'MEMORY.md' IS the live index (_idxp above); unlink()'ing it and rebuilding from
             # scratch silently drops every previously-indexed pointer (mirrors AND project-authored
             # locals) with rc=0 and no error. Same reserved-name guard promote() already applies.
@@ -935,7 +946,7 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
     if not _safe_stem(local_fact) or not _safe_stem(canon_name):
         print("promote: fact names must be kebab/snake-case (safe stems)", file=sys.stderr)
         return 2
-    if local_fact in _RESERVED_STEMS or canon_name in _RESERVED_STEMS:
+    if _is_reserved_stem(local_fact) or _is_reserved_stem(canon_name):
         print(f"promote: '{'/'.join(_RESERVED_STEMS)}' is a reserved index name, not a fact — refusing "
               "(writing it would clobber a store's always-loaded MEMORY.md index)", file=sys.stderr)
         return 2
