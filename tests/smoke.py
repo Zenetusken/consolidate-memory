@@ -3239,5 +3239,28 @@ check("Track B Gate-2b: self_test.meaning on a BROKEN self-test (ok:false) says 
       "never 'proved detection' (the exact contradiction Gate-2b found in the sibling branch)",
       "FAILED" in _meaning and "BROKEN" in _meaning and "proved" not in _meaning)
 
+# v0.1.70 Gate-2a (3rd pass): global_facts() excluded the reserved index by an exact-case
+# f.name == "MEMORY.md" check — a global fact literally named memory.md/Memory.md (reachable from
+# data written before promote()'s OWN case-insensitive guard existed, or hand-placed) passed both
+# that check and _safe_stem("memory"), so it was treated as an ordinary ingestible global and would
+# later be pulled/written to a project's store / "memory.md" — colliding with the project's own
+# MEMORY.md on a case-insensitive filesystem (macOS).
+import tempfile as _tf70g  # noqa: E402
+with _tf70g.TemporaryDirectory() as _td70g:
+    _glob70g = Path(_td70g)
+    (_glob70g / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_glob70g / "memory.md").write_text(
+        "---\nname: memory\nmetadata:\n  scope: user-global\n---\nbody\n", encoding="utf-8")
+    (_glob70g / "real-fact.md").write_text(
+        "---\nname: real-fact\nmetadata:\n  scope: user-global\n---\nbody\n", encoding="utf-8")
+    _oldGlobal70g = sg.GLOBAL
+    sg.GLOBAL = _glob70g
+    try:
+        _stems70g = {n for n, _fm, _t in sg.global_facts()}
+    finally:
+        sg.GLOBAL = _oldGlobal70g
+check("global_facts() excludes a case-variant 'memory.md' global fact (not just exact 'MEMORY.md')",
+      "memory" not in _stems70g and "real-fact" in _stems70g)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

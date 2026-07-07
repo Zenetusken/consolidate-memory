@@ -132,8 +132,10 @@ _RESERVED_STEMS = {"MEMORY"}
 def _is_reserved_stem(name: str) -> bool:
     """True iff `name` collides with a reserved index name — case-INSENSITIVE. v0.1.70 Gate-2a:
     an exact-string `name in _RESERVED_STEMS` check lets a case-variant ('memory', 'Memory') sail
-    straight through on a case-insensitive filesystem (macOS/Windows — both supported per README),
-    where it resolves to the SAME file as the real, load-bearing MEMORY.md — the exact self-clobber
+    straight through on a case-insensitive filesystem — macOS (APFS/HFS+ default) primarily; the
+    README's Windows path is WSL, whose Linux-side filesystem is case-sensitive by default, so this
+    guards against an odd case-insensitive mount there rather than the common case — where it
+    resolves to the SAME file as the real, load-bearing MEMORY.md — the exact self-clobber
     class this guard exists to close, reached via a one-character case change. Shared by promote()'s
     guard and run()'s --evict= guard so a future change to _RESERVED_STEMS (or this comparison)
     can't drift between the two call sites, as the two independent hand-written copies already had."""
@@ -336,7 +338,13 @@ def global_facts() -> list[tuple[str, dict, str]]:
     if not GLOBAL.exists():
         return facts
     for f in sorted(GLOBAL.glob("*.md")):
-        if f.name == "MEMORY.md":
+        if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
+            # v0.1.70 Gate-2a (3rd pass): the exact-case check alone missed a global fact literally
+            # named memory.md/Memory.md/etc — _safe_stem(f.stem) below happily accepts "memory" as a
+            # valid kebab stem, so such a fact would be treated as an ordinary ingestible global and
+            # later pulled/written to a project's store / "memory.md", colliding with the project's
+            # own MEMORY.md on a case-insensitive filesystem (macOS). Reachable from data written by
+            # promote() before ITS OWN case-insensitive guard existed (this same PR's earlier fix).
             continue
         # The stem becomes a filename AND is interpolated into each pulling project's
         # always-loaded index (`- [name](name.md) — …`). Reject any stem outside the
