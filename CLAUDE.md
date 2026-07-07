@@ -77,8 +77,10 @@ Only `SECURITY.md` at the repo root is public.
 ## Conventions
 
 - **Zero runtime dependencies.** Scripts are stdlib-only (uses 3.8+ stdlib; no pip
-  installs); validated on Python 3.10–3.13. Keep it that way — it must run anywhere
-  Claude Code does. (`TypedDict` and the type hints are stdlib + runtime-invisible;
+  installs); CI validates the full 3.8–3.13 range (3.8/3.9 pinned to `ubuntu-22.04` —
+  actions/setup-python has no build for either on the current `ubuntu-latest`/24.04
+  runner image). Keep it that way — it must run anywhere Claude Code does. (`TypedDict`
+  and the type hints are stdlib + runtime-invisible;
   mypy is a dev-only maintainer tool, NOT a runtime dep — see the dev loop.)
 - **The cycle record is the contract — now TYPED.** `memory_status.py --json` seeds it,
   the phases fill it, `render_dashboard.py` renders it. The shape is `TypedDict`s in

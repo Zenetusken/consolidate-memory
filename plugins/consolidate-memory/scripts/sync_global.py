@@ -129,6 +129,19 @@ _SAFE_NAME = r"[A-Za-z0-9._-]+"  # the documented kebab/snake charset for fact +
 _RESERVED_STEMS = {"MEMORY"}
 
 
+def _is_reserved_stem(name: str) -> bool:
+    """True iff `name` collides with a reserved index name — case-INSENSITIVE. v0.1.70 Gate-2a:
+    an exact-string `name in _RESERVED_STEMS` check lets a case-variant ('memory', 'Memory') sail
+    straight through on a case-insensitive filesystem — macOS (APFS/HFS+ default) primarily; the
+    README's Windows path is WSL, whose Linux-side filesystem is case-sensitive by default, so this
+    guards against an odd case-insensitive mount there rather than the common case — where it
+    resolves to the SAME file as the real, load-bearing MEMORY.md — the exact self-clobber
+    class this guard exists to close, reached via a one-character case change. Shared by promote()'s
+    guard and run()'s --evict= guard so a future change to _RESERVED_STEMS (or this comparison)
+    can't drift between the two call sites, as the two independent hand-written copies already had."""
+    return name.upper() in {s.upper() for s in _RESERVED_STEMS}
+
+
 def _safe_stem(stem: str) -> bool:
     """True iff a fact stem is safe to use as a filename AND to interpolate into the
     always-loaded index. Rejects markdown/link-injection payloads in a crafted name."""
@@ -230,7 +243,7 @@ def _dep_names_from_text(pyproject_text: str) -> set[str]:
     """Parse normalized DIRECT dependency names from pyproject.toml TEXT — PEP 621 `dependencies` +
     `[project.optional-dependencies]`, PEP 735 `[dependency-groups]`, and poetry `[tool.poetry…dependencies]`
     tables. Comments stripped string-aware; array bounds extras-safe. Pure (text → names) so it is
-    unit-testable without a filesystem. Stdlib-only (no `tomllib` — the plugin runs on 3.10)."""
+    unit-testable without a filesystem. Stdlib-only (no `tomllib` — that needs 3.11+; this plugin's floor is 3.8)."""
     text = _strip_toml_comments(pyproject_text)
     names: set[str] = set()
     for sec in re.finditer(r"(?ms)^\[project\](.*?)(?=^\[|\Z)", text):          # PEP 621 main — ONLY under [project]
@@ -325,7 +338,13 @@ def global_facts() -> list[tuple[str, dict, str]]:
     if not GLOBAL.exists():
         return facts
     for f in sorted(GLOBAL.glob("*.md")):
-        if f.name == "MEMORY.md":
+        if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
+            # v0.1.70 Gate-2a (3rd pass): the exact-case check alone missed a global fact literally
+            # named memory.md/Memory.md/etc — _safe_stem(f.stem) below happily accepts "memory" as a
+            # valid kebab stem, so such a fact would be treated as an ordinary ingestible global and
+            # later pulled/written to a project's store / "memory.md", colliding with the project's
+            # own MEMORY.md on a case-insensitive filesystem (macOS). Reachable from data written by
+            # promote() before ITS OWN case-insensitive guard existed (this same PR's earlier fix).
             continue
         # The stem becomes a filename AND is interpolated into each pulling project's
         # always-loaded index (`- [name](name.md) — …`). Reject any stem outside the
@@ -376,7 +395,12 @@ def _as_mirror(text: str, name: str) -> str:
         s = ln.strip()
         if s == "---":
             dashes += 1
-        if s.startswith("global_ref:"):
+        # v0.1.70 Gate-2a: frontmatter-scoped (dashes == 1) — was unscoped, silently deleting ANY body
+        # line starting with the literal text "global_ref:" (plausible in this self-documenting repo,
+        # e.g. a note explaining the mirror mechanism itself). Both of THIS function's own legitimate
+        # stamps (the metadata-child form and the post-opening-'---' fallback) land strictly within
+        # dashes == 1, so scoping the strip the same way loses no correctness.
+        if dashes == 1 and s.startswith("global_ref:"):
             continue                   # drop any existing global_ref (re-stamped below)
         # v0.1.26 (provenance-churn root-fix): `projects:` is CANONICAL-ONLY bookkeeping (the synapse
         # record `network()`/`_holders` read off the global store). NEVER carry it into a mirror — else
@@ -385,7 +409,12 @@ def _as_mirror(text: str, name: str) -> str:
         if dashes == 1 and s.startswith("projects:"):
             continue
         out.append(ln)
-        if not injected and not ln[:1].isspace() and s.rstrip(":") == "metadata":
+        # v0.1.70 security: frontmatter-scoped (dashes == 1), exactly like the projects: strip above —
+        # an unscoped scan lets a bare `metadata:` line in the BODY (prose, or crafted) steal the anchor,
+        # stamping global_ref: outside the span _is_mirror() parses. That breaks this function's own
+        # documented _is_mirror(_as_mirror(...)) round-trip invariant and produces a permanent,
+        # un-refreshable, GC-immune mirror (never reclaimed, never updated).
+        if not injected and dashes == 1 and not ln[:1].isspace() and s.rstrip(":") == "metadata":
             out.append(f"  global_ref: {name}")
             injected = True
     if not injected:  # no metadata block — stamp just inside the frontmatter
@@ -496,7 +525,7 @@ def _inbound_links(store: Path, target: str) -> list[str]:
     if not store.is_dir():
         return out
     for f in sorted(store.glob("*.md")):
-        if f.name == "MEMORY.md" or f.stem == target:
+        if f.name == "MEMORY.md" or _is_reserved_stem(f.stem) or f.stem == target:
             continue
         body = _safe_read_text(f)   # store-scan convention (shared helper — v0.1.69 Gate-2b)
         if body is None:
@@ -560,6 +589,15 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # (Guard-3 no-partial-state): the fact EXISTS, has NO inbound [[links]] (orphan-safety), held globals EXIST to
     # receive, and the freed room actually FITS the smallest held. The agent NAMES the fact (report-then-apply).
     if pull and evict is not None:
+        if not _safe_stem(evict):    # v0.1.70 security: same charset guard promote() applies to local_fact/canon_name
+            print(f"evict: {evict!r} is not a safe fact name (must match {_SAFE_NAME!r}, no path separators) "
+                  "— refusing", file=sys.stderr); return 1
+        if _is_reserved_stem(evict):  # Gate-2a: the charset guard alone still let 'MEMORY' through —
+            # store / 'MEMORY.md' IS the live index (_idxp above); unlink()'ing it and rebuilding from
+            # scratch silently drops every previously-indexed pointer (mirrors AND project-authored
+            # locals) with rc=0 and no error. Same reserved-name guard promote() already applies.
+            print(f"evict: '{'/'.join(_RESERVED_STEMS)}' is a reserved index name, not a fact — refusing "
+                  "(it would clobber the store's own always-loaded MEMORY.md index)", file=sys.stderr); return 1
         ep = store / f"{evict}.md"
         if not ep.exists():
             print(f"evict: no local fact '{evict}' in {store}", file=sys.stderr); return 1
@@ -668,7 +706,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         add("    held: " + _ui.c(", ".join(f"{n} (~{c}t)" for n, c in held_facts), "yellow"))
         add("    " + _ui.c("evictable local pointers (raw metadata, UNORDERED — YOU judge value, never auto-ranked):", "dim"))
         for f in sorted(store.glob("*.md")):
-            if f.name == "MEMORY.md":
+            if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
                 continue
             t = _safe_read_text(f)                # store-scan convention (a concurrent gc/chmod between
             if t is None:                         # glob+read must not abort the whole --pull after RESULT is built)
@@ -798,7 +836,7 @@ def _orphans(store: Path) -> list[str]:
     if not store.exists():
         return out
     for f in store.glob("*.md"):
-        if f.name == "MEMORY.md":
+        if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
             continue
         text = _safe_read_text(f)    # v0.1.69/A3 (Gate-2a follow-up): store-scan convention — a
         if text is None:             # vanished/unreadable fact must not abort the orphan scan
@@ -916,7 +954,7 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
     if not _safe_stem(local_fact) or not _safe_stem(canon_name):
         print("promote: fact names must be kebab/snake-case (safe stems)", file=sys.stderr)
         return 2
-    if local_fact in _RESERVED_STEMS or canon_name in _RESERVED_STEMS:
+    if _is_reserved_stem(local_fact) or _is_reserved_stem(canon_name):
         print(f"promote: '{'/'.join(_RESERVED_STEMS)}' is a reserved index name, not a fact — refusing "
               "(writing it would clobber a store's always-loaded MEMORY.md index)", file=sys.stderr)
         return 2
@@ -1083,7 +1121,7 @@ def _node_tokens(store: Path) -> dict:
     idx_text = _safe_read_text(idx) or ""    # store-scan convention: a vanished index reads as absent
     bodies: dict[str, str] = {}
     for f in store.glob("*.md"):
-        if f.name == "MEMORY.md":
+        if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
             continue
         body = _safe_read_text(f)             # store-scan convention (shared helper — v0.1.69 Gate-2a)
         if body is not None:
@@ -1124,7 +1162,7 @@ def _network_nodes() -> list[Path]:
             continue
         has_mirror = False
         for f in store.glob("*.md"):
-            if f.name == "MEMORY.md":
+            if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
                 continue
             body = _safe_read_text(f)         # store-scan convention (shared helper — v0.1.69 Gate-2a)
             if body is not None and _is_mirror(body):

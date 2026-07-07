@@ -625,9 +625,25 @@ for _i, _fm in enumerate([
     "---\nname: c\n  metadata:\n  scope: user-global\n---\nbody\n",       # INDENTED metadata (adversarial)
     "---\ndescription: >-\n  folded\n  metadata:\n---\nbody\n",           # 'metadata:' inside a folded scalar
     "﻿---\nname: e\nmetadata:\n  node_type: memory\n---\nbody\n",     # leading BOM (Gate-2 F3)
+    # v0.1.70 security: no metadata: key in frontmatter, but the BODY has a bare, unindented
+    # 'metadata:' line — pre-fix this stole the anchor and stamped global_ref: into the body,
+    # OUTSIDE the span _is_mirror parses, permanently desyncing producer/recognizer.
+    "---\nscope: user-global\nnode_type: fact\n---\n# Heading\n\nprose.\n\nmetadata:\nmore prose.\n",
 ]):
     check(f"mirror: round-trip property holds (shape {_i})",
           sg._is_mirror(sg._as_mirror(_fm, "x")) is True)
+
+# v0.1.70 Gate-2a: _as_mirror's global_ref: strip was unscoped (unlike the adjacent projects:/
+# metadata: checks) — ANY body line starting with the literal text "global_ref:" was silently
+# deleted, not just the function's own frontmatter-child stamp. A self-documenting fact whose
+# prose explains the mirror mechanism itself is a realistic trigger, not just an adversarial one.
+_body_gr_fixture = ("---\nname: x\nmetadata:\n  scope: user-global\n---\n# Notes\n\n"
+                    "global_ref: this line is plain prose written by a human, not YAML\nmore text.\n")
+_body_gr_out = sg._as_mirror(_body_gr_fixture, "crafted")
+check("mirror: _as_mirror does NOT delete a body line merely starting with 'global_ref:' (Gate-2a)",
+      "this line is plain prose written by a human" in _body_gr_out and "more text." in _body_gr_out)
+check("mirror: _as_mirror still round-trips correctly on the same fixture",
+      sg._is_mirror(_body_gr_out) is True)
 
 # --- pentest fix (High): secrets firewall covers credential-shaped ERROR output ---
 check("firewall: catches bearer token in error text",
@@ -872,6 +888,22 @@ check("stale-since: non-string marker does not crash (returns [])",
 check("name: safe kebab stem accepted", sg._safe_stem("gh-pr-edit-broken_v2.1"))
 check("name: markdown-link injection stem rejected", sg._safe_stem("evil](http://x)") is False)
 check("name: whitespace stem rejected", sg._safe_stem("a b") is False and sg._safe_stem("") is False)
+# v0.1.70 security: --evict='s path-traversal guard — a crafted evict name must never be able to
+# walk outside the project's own store (confirmed exploitable pre-fix: reproduced deleting a file
+# in the GLOBAL store via `--evict=../../../memory/<name>`; see simulate_accumulation.py Probe R
+# for the full end-to-end proof against the live subprocess).
+check("name: relative-traversal stem rejected", sg._safe_stem("../../../memory/victim") is False)
+check("name: absolute-path stem rejected", sg._safe_stem("/etc/passwd") is False)
+check("name: embedded-slash stem rejected", sg._safe_stem("a/b") is False)
+# v0.1.70 Gate-2a (2nd pass): the reserved-stem guard (--evict=MEMORY, promote()'s local_fact/
+# canon_name) must be CASE-insensitive — an exact-string match let 'memory'/'Memory' sail through
+# on a case-insensitive filesystem (macOS/Windows, both supported), where it resolves to the SAME
+# file as the real MEMORY.md index. Shared by both promote() and the evict guard (was two
+# independent, already-drifted hand-written copies).
+for _n in ("MEMORY", "memory", "Memory", "MeMoRy"):
+    check(f"name: reserved stem {_n!r} rejected case-insensitively", sg._is_reserved_stem(_n) is True)
+check("name: a non-reserved stem is NOT rejected", sg._is_reserved_stem("memoryx") is False
+      and sg._is_reserved_stem("not-memory") is False)
 check("token: project name sanitized (neutralizes backref + brackets)",
       sg._sanitize_token(r"proj\1]evil") == "proj-1-evil")
 check("token: clean project name unchanged", sg._sanitize_token("home-you-project-foo") == "home-you-project-foo")
@@ -3359,6 +3391,76 @@ with _tf69.TemporaryDirectory() as _tdMeaning:
 check("Track B Gate-2b: self_test.meaning on a BROKEN self-test (ok:false) says FAILED/BROKEN, "
       "never 'proved detection' (the exact contradiction Gate-2b found in the sibling branch)",
       "FAILED" in _meaning and "BROKEN" in _meaning and "proved" not in _meaning)
+
+# v0.1.70 Gate-2a (3rd pass): global_facts() excluded the reserved index by an exact-case
+# f.name == "MEMORY.md" check — a global fact literally named memory.md/Memory.md (reachable from
+# data written before promote()'s OWN case-insensitive guard existed, or hand-placed) passed both
+# that check and _safe_stem("memory"), so it was treated as an ordinary ingestible global and would
+# later be pulled/written to a project's store / "memory.md" — colliding with the project's own
+# MEMORY.md on a case-insensitive filesystem (macOS).
+import tempfile as _tf70g  # noqa: E402
+with _tf70g.TemporaryDirectory() as _td70g:
+    _glob70g = Path(_td70g)
+    (_glob70g / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_glob70g / "memory.md").write_text(
+        "---\nname: memory\nmetadata:\n  scope: user-global\n---\nbody\n", encoding="utf-8")
+    (_glob70g / "real-fact.md").write_text(
+        "---\nname: real-fact\nmetadata:\n  scope: user-global\n---\nbody\n", encoding="utf-8")
+    _oldGlobal70g = sg.GLOBAL
+    sg.GLOBAL = _glob70g
+    try:
+        _stems70g = {n for n, _fm, _t in sg.global_facts()}
+    finally:
+        sg.GLOBAL = _oldGlobal70g
+check("global_facts() excludes a case-variant 'memory.md' global fact (not just exact 'MEMORY.md')",
+      "memory" not in _stems70g and "real-fact" in _stems70g)
+
+# v0.1.70 Gate-2a (4th pass): _orphans() (which feeds gc(..., apply=True)'s destructive unlink())
+# had the SAME exact-case gap as global_facts() — a genuine mirror file literally named memory.md
+# would be scanned as an ordinary fact, and since its canonical never exists (GLOBAL has none),
+# _orphans() would report it as reclaimable — `gc --apply` would then delete a file whose bare
+# name collides with the store's own live MEMORY.md on a case-insensitive filesystem. Now routed
+# through the same _is_reserved_stem() predicate as every other guard in this file.
+with _tf70g.TemporaryDirectory() as _td70o:
+    _store70o = Path(_td70o) / "store"
+    _store70o.mkdir()
+    (_store70o / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_store70o / "memory.md").write_text(          # a genuine MIRROR (global_ref: stamped) —
+        "---\n# global_ref: memory\nname: memory\n---\nbody\n", encoding="utf-8")   # would be a real orphan pre-fix
+    (_store70o / "real-orphan.md").write_text(
+        "---\n# global_ref: real-orphan\nname: real-orphan\n---\nbody\n", encoding="utf-8")
+    _emptyGlobal70o = Path(_td70o) / "empty-global"   # no canonicals at all -> everything's an orphan pre-fix
+    _oldGlobal70o = sg.GLOBAL
+    sg.GLOBAL = _emptyGlobal70o
+    try:
+        _orphans70o = sg._orphans(_store70o)
+    finally:
+        sg.GLOBAL = _oldGlobal70o
+check("_orphans() excludes a case-variant 'memory.md' mirror (not reclaimable by gc --apply)",
+      "memory" not in _orphans70o and "real-orphan" in _orphans70o)
+
+# Track D3 — dashboard.template.html has no automated LAYOUT test (its CSS paint + inline JS execute
+# only in a real browser; jsdom parses the DOM but computes no layout/paint, so it can't catch either
+# bug class below — verified against jsdom's own docs before ruling it out). These are STRUCTURAL
+# SOURCE-TEXT pins on the real shipped template, not render/paint proofs: pixel-level dashboard QA
+# stays eye-judged. Each pin is a reversion tripwire for a specific, already-fixed (v0.1.68) defect —
+# sabotage-verified (reverting either fix locally flips its check red) before landing.
+# (reuses the module-wide `_re` import from line 1064 — no new alias needed)
+
+check("v0.1.68 CSS pin: the masthead's radial-gradient is immediately followed by background-repeat:"
+      "no-repeat (its absence is exactly what tiled the glow down the page — CSS's `background:` "
+      "shorthand earlier in the same rule resets repeat to its 'repeat' initial value)",
+      _re.search(r"background-image:radial-gradient\([^)]*var\(--glow\)[^)]*\);\s*"
+                 r"background-repeat:no-repeat;", _tpl54) is not None)
+
+check("v0.1.68 JS pin: the demotion-verdict classifier still parses a leading dormant/demoted/"
+      "justified/none disposition word into the badge tag (the tag+prose split the fix introduced, "
+      "mirroring the distill panel's grammar)",
+      'dvd.match(/^\\s*(dormant|demoted|justified|none)\\b[:\\s—-]*/i)' in _tpl54)
+
+check("v0.1.68 JS pin: demoted/justified verdicts still get the 'ok' (positive) badge class, not the "
+      "neutral default (dormant/none stay neutral — only a resolved-favorably verdict reads as OK)",
+      'dcls=(dtag==="demoted"||dtag==="justified")?" ok":""' in _tpl54)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
