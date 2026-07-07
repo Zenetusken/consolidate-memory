@@ -10,7 +10,8 @@ transcript-borne sources — so the workflow never bulk-loads the transcript:
   • error tool-results → gotchas (env/tooling surprises)
 
 (The third source, git `marker..HEAD`, is structured already and handled by
-memory_status.py — not duplicated here.)
+memory_status.py — not duplicated here. v0.1.70: memory_status.py now runs commit
+subjects through this SAME secrets firewall — see `_scrub_commit_log` there.)
 
 Business logic, grounded in the probe:
   - SCOPE to the marker: only entries after the last-consolidation timestamp, so a
@@ -48,8 +49,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import (_is_archive_index, _is_archive_index_text, _parse_ts, _sane, _write_private,
-                           index_fact_names, slug_for, _LINK_RE)
+from memory_status import (_entropy_blob, _is_archive_index, _is_archive_index_text, _looks_secret,
+                           _parse_ts, _sane, _SECRET, _write_private, index_fact_names, slug_for, _LINK_RE)
 # slug rule (v0.1.17) + archive-index classifiers + 0o600-atomic seed write (v0.1.63 --recalls) + the
 # relocated single timestamp parser & the index-pointer link anchor + index reader (v0.1.67 miss-detector)
 # + _sane: fact STEMS printed by --recalls derive from transcript Read file_paths (attacker-influenceable
@@ -181,62 +182,11 @@ def _error_key(text: str) -> str:
         base = rx.sub(repl, base)
     return " ".join(base.split())[:160]
 
-# Credential-shaped values. Detection is SPLIT in two because the generic high-entropy
-# check needs CASE discrimination (mixed-case is the signal that separates a token from
-# a file path / slug) and the keyword/vendor arms want case-INSENSITIVITY — and one
-# regex can't be both. Use `_looks_secret()` (below) as the firewall, never `_SECRET`
-# directly. Contract: drop-to-label, never surface the verbatim secret.
-#
-# _SECRET (case-insensitive): keyword=value in any serialization (incl. compound names
-# AWS_SECRET_ACCESS_KEY= and quoted JSON "password": "..."), plus high-precision vendor /
-# protocol shapes that carry no high-entropy blob.
-_SECRET = re.compile(
-    r"""(
-        (?:[A-Za-z0-9]+[_.\-])*(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?:[_.\-][A-Za-z0-9]+)*["']?\s*[:=]\s*["']?\S+
-                                                                     # keyword as a full SEGMENT of a compound id, with
-                                                                     # optional quotes/brackets around the delimiter so
-                                                                     # JSON {"password": "..."} / dict / YAML all match
-      | (?:authorization|bearer)\b["']?\s*:?\s*(?:bearer\s+)?[A-Za-z0-9._~+/=-]{16,}  # auth header / bearer token
-      | [a-z][a-z0-9+.\-]*://[^\s/:@]+:[^\s/@]+@                      # scheme://user:pass@host URI creds
-      | (?:AKIA|ASIA)[0-9A-Z]{16}                                    # AWS access key id
-      | xox[baprs]-[0-9A-Za-z-]{10,}                                 # Slack token
-      | sk-(?:proj-)?[A-Za-z0-9_-]{20,}                              # OpenAI key
-      | (?:sk|rk|pk)_(?:live|test)_[0-9A-Za-z]{10,}                  # Stripe key
-      | gh[pousr]_[0-9A-Za-z]{20,}                                   # GitHub token
-      | AIza[0-9A-Za-z_-]{35}                                        # Google API key
-      | AC[0-9a-f]{32}                                               # Twilio account SID
-      | eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{6,}   # JWT (header.payload.sig)
-      | -----BEGIN[ A-Z]*PRIVATE[ ]KEY-----                          # PEM private key
-    )""",
-    re.I | re.X,
-)
-
-# A contiguous run of base64-ish chars (incl. '/' and '+' so slash-bearing AWS secret
-# access keys are caught). Case-SENSITIVE on purpose (see _entropy_blob).
-_BLOB = re.compile(r"[A-Za-z0-9+/=_-]{40,}")
-
-
-def _entropy_blob(text: str) -> bool:
-    """True if `text` holds a keyword-less high-entropy token (e.g. a bare AWS secret key
-    or base64 blob). Distinguishes a token from a FILE PATH or SLUG without case folding:
-    a token is mixed-case or carries digits; a path is slash-dense; a slug is all-lower
-    with no digits. This is the half the case-insensitive `_SECRET` regex cannot express."""
-    for m in _BLOB.finditer(text):
-        s = m.group(0)
-        if s.count("/") >= 3:           # slash-dense ⇒ a filesystem path, not a token
-            continue
-        has_lower = any(c.islower() for c in s)
-        has_upper = any(c.isupper() for c in s)
-        has_digit = any(c.isdigit() for c in s)
-        if (has_lower and has_upper) or has_digit:   # mixed-case OR digit-bearing ⇒ token-like
-            return True
-    return False
-
-
-def _looks_secret(text: str) -> bool:
-    """The firewall: True if `text` contains a credential-shaped value (keyword/vendor
-    arms OR a high-entropy blob). Use THIS everywhere, not `_SECRET` directly."""
-    return bool(_SECRET.search(text)) or _entropy_blob(text)
+# The secrets firewall (_SECRET / _entropy_blob / _looks_secret) now LIVES in memory_status.py
+# (v0.1.70: relocated — the dependency root, mirroring the _is_mirror/_frontmatter precedent) so
+# memory_status.py's OWN git-log commit-subject path can use it without a circular import (this
+# module already imports FROM memory_status). Imported below; use `_looks_secret()` as the
+# firewall, never `_SECRET` directly. Contract unchanged: drop-to-label, never surface the secret.
 
 # Pure approvals / workflow control — surface but rank lowest (signal score 0).
 _ACK = re.compile(

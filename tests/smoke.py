@@ -708,6 +708,159 @@ for _name, _val, _want in [
     check(f"firewall(redesign): {_name} -> {'flagged' if _want else 'clean'}",
           bool(es._looks_secret(_val)) is _want)
 
+# --- v0.1.70 security: firewall is single-sourced in memory_status.py (the dependency root —
+# extract_signals.py imports it, mirroring the _is_mirror precedent), and its regex fixes hold ---
+check("firewall: _looks_secret is single-source (promoted to memory_status; extract_signals imports it)",
+      es._looks_secret is ms._looks_secret and es._SECRET is ms._SECRET and es._entropy_blob is ms._entropy_blob)
+
+for _name, _val, _want in [
+    # the CONFIRMED bypass: a keyword-less high-entropy value chunked into 3+ slash segments
+    # used to be exempted WHOLESALE once any 3 '/' appeared anywhere in the match.
+    ("AWS key + 1 more slash (was the exact bypass)",
+     "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY/x", True),
+    ("synthetic 4-segment slash-chunked secret (was secrets_omitted:0 end-to-end)",
+     "aB3xY9kL2mQ7wErT1zXcVbNmQweRtYuIoPasDfGh/aB3xY9kL2mQ7wErT1zXc/VbNmQweRtYuIoPasDfGh/x", True),
+    # Stripe webhook signing secret (whsec_ + hex) — no keyword, under the old 40-char floor
+    ("Stripe whsec_", "whsec_1234567890abcdef1234567890abcdef", True),
+    # CLI-flag-shaped keyword (whitespace/=, not just :/=) — the --password/-p gap
+    ("--password value (space-delimited flag)", "--password hunter2longvalue", True),
+    ("--password=value (CLI flag, = form)", "--password=hunter2longvalue", True),
+    # deliberately-excluded gaps (documented false-positive-risk tradeoffs, not silently missed):
+    ("mysqldump -p concatenated (deliberately NOT covered — collides with -p8080:80 etc.)",
+     "mysqldump -uroot -pMyS3cretPassw0rd db > out.sql", False),
+    ("curl -u user:pass without scheme (deliberately NOT covered — collides with -u UID:GID)",
+     "curl -u admin:Sup3rSecretPass https://internal.example.com/api", False),
+    # Gate-2a round 3 (accepted, documented gaps — see _entropy_blob's docstring): a whole-blob
+    # mixed-case check briefly closed these two, but it FP'd on this repo's own everyday path
+    # shape (a '/'-path ending in an ALL-CAPS filename stem, e.g. .../SKILL.md) once long enough
+    # to clear the blob floor — a worse trade than the narrow gap it closed. Reverted to
+    # per-token scoping; both stay accepted, narrow residual gaps rather than chased further.
+    ("cross-segment mixed case (accepted gap: neither segment is internally mixed-case)",
+     "thisisalowercasesegmentofconsiderablelength/THISISANUPPERCASESEGMENTALSOLONGENOUGH", False),
+    ("short-segment-chunked secret (accepted gap: every segment is under the entropy floor)",
+     "wJalrXU/tnFEMIK/7MDENGb/PxRfiCY/EXAMPLE/KEY1234/56", False),
+    # Gate-2a [1]: the CLI-flag arm's keyword list was narrower than the main arm's — these three
+    # evaded entirely even though the `=`-delimited form of the SAME keyword was already caught.
+    ("--credentials value (Gate-2a: keyword was missing from the CLI-flag arm)",
+     "--credentials mySecretValue123", True),
+    ("--li_at value (Gate-2a: keyword was missing from the CLI-flag arm)",
+     "--li_at ABCDEFGHIJ0123456789", True),
+    ("--cf_clearance value (Gate-2a: keyword was missing from the CLI-flag arm)",
+     "--cf_clearance ABCDEFGHIJ0123456789", True),
+]:
+    check(f"firewall(v0.1.70): {_name} -> {'flagged' if _want else 'clean'}",
+          bool(es._looks_secret(_val)) is _want)
+
+# --- v0.1.70 security: false-positive corpus — ordinary content that must NOT be omitted.
+# Mandatory per the firewall's own asymmetric-safe design AND because v0.1.70 wires this same
+# firewall onto git commit subjects (memory_status.py) — an over-greedy arm now silently drops
+# legitimate commit messages, not just recall signal. ---
+for _name, _val in [
+    ("ordinary commit subject", "fix(cm): stop the masthead glow from tiling down the page"),
+    ("commit subject mentioning 'token' as a noun", "refactor: extract the auth token validation into a helper"),
+    ("commit subject mentioning 'password' as a noun", "docs: clarify the password reset flow in the README"),
+    ("commit subject with a docker port mapping", "chore: docker run -p 8080:80 the staging container"),
+    ("commit subject with a docker UID:GID flag", "fix: run the container as -u 1000:1000 not root"),
+    ("commit subject with a real file path", "fix: correct the import path in scripts/memory_status.py"),
+    ("prose mentioning 'secret' as a common noun", "the secret to a good API is a stable contract"),
+    ("a git SHA-shaped hex string", "revert " + "a1b2c3d4e5f6" * 3),
+    ("a UUID (dashless, 32 hex)", "session " + "0123456789abcdef" * 2),
+    # Gate-2a [3]: a versioned/dated path segment — no individual '-_.'-delimited TOKEN within it
+    # is both >=8 chars AND digit-bearing (every digit run there is short: "v0", "1", "68").
+    ("versioned path with digits (Gate-2a: was flagged by the original per-'/'-segment design)",
+     "docs: add docs/release-notes/v0-1-68-index-lifecycle-phase-c-summary.md"),
+    # Gate-2a [2]: the CLI-flag arm's value clause was bare `\S{4,}` (any 4+-char word) — a
+    # commit merely MENTIONING a flag name is not a leaked value.
+    ("commit mentioning a --secret flag by name (Gate-2a: was flagged as a value)",
+     "feat: add a --secret flag to enable debug logging"),
+    ("commit mentioning a --api-key flag by name (Gate-2a: was flagged as a value)",
+     "docs: document the --api-key flag usage"),
+    # Gate-2a [6]: ordinary 'keyword: value' commit/prose clauses (not adversarial, not a CLI
+    # flag) where the keyword-arm's old bare `\S+` accepted ANY short value after the delimiter.
+    ("conventional-commit-style 'token: <value>' (Gate-2a: was flagged)", "token: bump TTL to 3600"),
+    ("test-count-style 'pass: N fail: N' (Gate-2a: was flagged)", "pass: 5 fail: 0"),
+    ("prose 'secret: <short value>' (Gate-2a: was flagged)", "secret: rotate the signing key"),
+    # Gate-2a round 3: the whole-blob mixed-case check (briefly restored to close the
+    # cross-segment gap above) flagged this repo's OWN routine path shape — a '/'-path ending
+    # in an ALL-CAPS filename stem, long enough to clear the 40-char blob floor once nested a
+    # couple of directories deep. Reverted to per-token scoping (see _entropy_blob's docstring).
+    ("commit mentioning a deep path ending in an ALL-CAPS filename stem (Gate-2a round 3: was flagged)",
+     "docs: update plugins/consolidate-memory/skills/consolidate-memory/SKILL.md wording"),
+]:
+    check(f"firewall FALSE-POSITIVE guard: {_name!r} -> stays clean",
+          es._looks_secret(_val) is False)
+
+# --- Gate-2a round 3 (accepted, documented gap — see _entropy_blob's docstring): a short,
+# no-digit, single-case value (a weak password) is indistinguishable in SHAPE from an ordinary
+# short English word ("flag", "usage") in the same 'keyword: value' position — no threshold
+# separates them. The firewall favors fewer false positives on ordinary commit prose; this is
+# a documented product tradeoff, not a bug this test expects to be tightened away. ---
+for _name, _val in [
+    ("weak no-digit password (accepted gap: same shape as 'keyword: <ordinary word>')",
+     "fix: reset password=qwerty in the seed fixture"),
+    ("weak no-digit password, short keyword form (accepted gap)",
+     "chore: rotate pwd=letmein for the test account"),
+]:
+    check(f"firewall accepted-gap (documented, not chased): {_name!r} -> stays clean",
+          es._looks_secret(_val) is False)
+
+# --- v0.1.70 security: ReDoS — the firewall must stay LINEAR-time on adversarial input (a
+# CONFIRMED bypass: the unbounded compound-keyword prefix AND a sibling unbounded URI-creds arm
+# both gave real re.search O(n²) blowup; a THIRD instance was found in the JWT arm via a
+# repeated-anchor attack; #4 the authorization|bearer arm, a Gate-2a-found 4th instance). Assert
+# completion under a GENEROUS wall-clock bound (2.0s — deliberately loose vs. this machine's
+# actual post-fix timings, ~0.005-0.19s below, to absorb slower/loaded-CI variance without going
+# flaky) at a payload size chosen so the PRE-fix regex clearly exceeds it by a wide margin (3.4s
+# to 21s measured, i.e. the bound isn't just barely tripped — a real regression fails it hard).
+import time as _time70  # noqa: E402
+for _redos_name, _redos_payload in [
+    ("dotted/dashed run (original pentest PoC shape)", ("a1b2-c3d4." * 5000)),
+    ("pure-alnum run + trailing keyword, no separator", ("x" * 49992) + "password" + ("y" * 12)),
+    ("repeated JWT anchor, no periods", "eyJ" * 33333),
+    ("authorization + padding spaces (Gate-2a's 4th instance)", "authorization" + " " * 20000),
+]:
+    _t0_70 = _time70.time()
+    ms._SECRET.search(_redos_payload)
+    _dt_70 = _time70.time() - _t0_70
+    check(f"firewall ReDoS guard: {_redos_name} (len={len(_redos_payload)}) completes in <2s (was multi-second/unbounded)",
+          _dt_70 < 2.0)
+
+# --- v0.1.70 security: git-log commit subjects now pass through the SAME firewall (was: only
+# _sane()'s control-byte strip — no credential-shape check at all, a stark asymmetry against
+# extract_signals.py's session-signal source, which SKILL.md itself documents as firewalled) ---
+# NB: the credential-shaped subject below is ASSEMBLED by concatenation from obviously-fake
+# parts (matching this file's existing provider-token-fixture convention below) so no
+# contiguous real-looking secret literal exists in this source file (GitHub push protection
+# matches source text, not runtime values).
+_scrub70_secret_line = ("d4e5f6a debug: hardcoded STRIPE_KEY=" + "sk_" + "live_" + "51H8" + "x" * 20
+                        + " to unblock CI, revert before merge")
+_scrub70_log = "\n".join([
+    "a1b2c3d fix: normal commit message",
+    _scrub70_secret_line,
+    "",   # a blank line must not crash / must not become a bogus entry
+    "789abcd docs: update the README",
+])
+_scrub70_out = ms._scrub_commit_log(_scrub70_log)
+check("commit-log firewall: 3 real commits survive, blank line dropped", len(_scrub70_out) == 3)
+check("commit-log firewall: the credential-shaped subject is redacted, SHA kept",
+      _scrub70_out[1].startswith("d4e5f6a ") and "STRIPE_KEY" not in _scrub70_out[1]
+      and ("sk_" + "live_" + "51H8") not in _scrub70_out[1] and "omitted" in _scrub70_out[1])
+check("commit-log firewall: ordinary commit subjects pass through UNCHANGED",
+      _scrub70_out[0] == "a1b2c3d fix: normal commit message"
+      and _scrub70_out[2] == "789abcd docs: update the README")
+check("commit-log firewall: a subject-less line (bare SHA, no space) is not mistaken for a secret hit",
+      ms._scrub_commit_log("a1b2c3d") == ["a1b2c3d"])
+
+# v0.1.70 Gate-2a [4]: _scrub_commit_log must cap the subject before firewall-scanning it — git
+# enforces no length limit on a commit's first line, and the raw regex costs real time per char.
+import time as _time_scrub70  # noqa: E402
+_huge_subject_line = "abc1234 " + "eyJ" * 300000   # ~900,000-char subject, no keyword needed to be slow
+_t0_scrub70 = _time_scrub70.time()
+ms._scrub_commit_log(_huge_subject_line)
+_dt_scrub70 = _time_scrub70.time() - _t0_scrub70
+check(f"commit-log firewall: a ~900,000-char commit subject is capped before scanning (took {_dt_scrub70:.2f}s, must be <2s)",
+      _dt_scrub70 < 2.0)
+
 # --- re-gate(2) fix (Low): a `# global_ref:` comment NOT on the first frontmatter line
 #     is not a mirror (so plain --pull never clobbers a hand-authored note) ---
 check("mirror: # global_ref comment below the first line is NOT a mirror",
