@@ -271,8 +271,8 @@ consolidate-memory/                         # repo root = plugin marketplace
 ## Privacy & security
 
 Your consolidated memory is personal and **never leaves your machine** — the scripts
-are **stdlib-only** (uses 3.8+ stdlib; validated on Python 3.10–3.13), make **no network
-calls**, and the only external process is read-only `git`. The `memory/` store is gitignored and is **not** part of the
+are **stdlib-only** (uses 3.8+ stdlib; CI validates the full 3.8–3.13 range), make **no
+network calls**, and the only external process is read-only `git`. The `memory/` store is gitignored and is **not** part of the
 published plugin (only `plugins/consolidate-memory/` ships). The secrets firewall
 applies at *retrieval*, so a credential in a transcript is dropped before it could ever
 reach a fact file. **Portable by construction** — no POSIX-only modules
@@ -308,7 +308,7 @@ built this way" — written to be readable whether you're vibe-coding or shippin
   propagation above fall out of one harness fact: recall is per-project, so global
   facts must be *replicated* into each project, not just stored once.
 - **Boring-on-purpose engineering.** Zero runtime dependencies (stdlib-only — uses 3.8+
-  stdlib, validated on Python 3.10–3.13),
+  stdlib; CI validates the full 3.8–3.13 range),
   ships as a self-contained plugin (scripts referenced via `${CLAUDE_PLUGIN_ROOT}`, no
   build step), and the mutating ops are idempotent + reversible (sync refreshes rather
   than duplicates, GC is report-then-apply, a marker scopes each run to "since last

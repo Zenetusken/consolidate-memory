@@ -230,7 +230,7 @@ def _dep_names_from_text(pyproject_text: str) -> set[str]:
     """Parse normalized DIRECT dependency names from pyproject.toml TEXT — PEP 621 `dependencies` +
     `[project.optional-dependencies]`, PEP 735 `[dependency-groups]`, and poetry `[tool.poetry…dependencies]`
     tables. Comments stripped string-aware; array bounds extras-safe. Pure (text → names) so it is
-    unit-testable without a filesystem. Stdlib-only (no `tomllib` — the plugin runs on 3.10)."""
+    unit-testable without a filesystem. Stdlib-only (no `tomllib` — that needs 3.11+; this plugin's floor is 3.8)."""
     text = _strip_toml_comments(pyproject_text)
     names: set[str] = set()
     for sec in re.finditer(r"(?ms)^\[project\](.*?)(?=^\[|\Z)", text):          # PEP 621 main — ONLY under [project]
