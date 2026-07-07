@@ -714,6 +714,22 @@ for _name, _val, _want in [
      "mysqldump -uroot -pMyS3cretPassw0rd db > out.sql", False),
     ("curl -u user:pass without scheme (deliberately NOT covered — collides with -u UID:GID)",
      "curl -u admin:Sup3rSecretPass https://internal.example.com/api", False),
+    # Gate-2a [0]: cross-segment mixed-case — the per-segment-ONLY redesign lost the ability to
+    # catch a value split by only 1-2 slashes into segments each internally single-cased.
+    ("cross-segment mixed case (Gate-2a: was lost by the per-segment-only redesign)",
+     "thisisalowercasesegmentofconsiderablelength/THISISANUPPERCASESEGMENTALSOLONGENOUGH", True),
+    # Gate-2a [7]: chunking a keyword-less secret into <8-char segments evaded the per-segment
+    # digit/case check entirely — the whole-blob mixed-case check (restored above) now catches it.
+    ("short-segment-chunked secret (Gate-2a: was still a live bypass)",
+     "wJalrXU/tnFEMIK/7MDENGb/PxRfiCY/EXAMPLE/KEY1234/56", True),
+    # Gate-2a [1]: the CLI-flag arm's keyword list was narrower than the main arm's — these three
+    # evaded entirely even though the `=`-delimited form of the SAME keyword was already caught.
+    ("--credentials value (Gate-2a: keyword was missing from the CLI-flag arm)",
+     "--credentials mySecretValue123", True),
+    ("--li_at value (Gate-2a: keyword was missing from the CLI-flag arm)",
+     "--li_at ABCDEFGHIJ0123456789", True),
+    ("--cf_clearance value (Gate-2a: keyword was missing from the CLI-flag arm)",
+     "--cf_clearance ABCDEFGHIJ0123456789", True),
 ]:
     check(f"firewall(v0.1.70): {_name} -> {'flagged' if _want else 'clean'}",
           bool(es._looks_secret(_val)) is _want)
@@ -732,6 +748,21 @@ for _name, _val in [
     ("prose mentioning 'secret' as a common noun", "the secret to a good API is a stable contract"),
     ("a git SHA-shaped hex string", "revert " + "a1b2c3d4e5f6" * 3),
     ("a UUID (dashless, 32 hex)", "session " + "0123456789abcdef" * 2),
+    # Gate-2a [3]: a versioned/dated path segment — no individual '-_.'-delimited TOKEN within it
+    # is both >=8 chars AND digit-bearing (every digit run there is short: "v0", "1", "68").
+    ("versioned path with digits (Gate-2a: was flagged by the original per-'/'-segment design)",
+     "docs: add docs/release-notes/v0-1-68-index-lifecycle-phase-c-summary.md"),
+    # Gate-2a [2]: the CLI-flag arm's value clause was bare `\S{4,}` (any 4+-char word) — a
+    # commit merely MENTIONING a flag name is not a leaked value.
+    ("commit mentioning a --secret flag by name (Gate-2a: was flagged as a value)",
+     "feat: add a --secret flag to enable debug logging"),
+    ("commit mentioning a --api-key flag by name (Gate-2a: was flagged as a value)",
+     "docs: document the --api-key flag usage"),
+    # Gate-2a [6]: ordinary 'keyword: value' commit/prose clauses (not adversarial, not a CLI
+    # flag) where the keyword-arm's old bare `\S+` accepted ANY short value after the delimiter.
+    ("conventional-commit-style 'token: <value>' (Gate-2a: was flagged)", "token: bump TTL to 3600"),
+    ("test-count-style 'pass: N fail: N' (Gate-2a: was flagged)", "pass: 5 fail: 0"),
+    ("prose 'secret: <short value>' (Gate-2a: was flagged)", "secret: rotate the signing key"),
 ]:
     check(f"firewall FALSE-POSITIVE guard: {_name!r} -> stays clean",
           es._looks_secret(_val) is False)
@@ -739,21 +770,23 @@ for _name, _val in [
 # --- v0.1.70 security: ReDoS — the firewall must stay LINEAR-time on adversarial input (a
 # CONFIRMED bypass: the unbounded compound-keyword prefix AND a sibling unbounded URI-creds arm
 # both gave real re.search O(n²) blowup; a THIRD instance was found in the JWT arm via a
-# repeated-anchor attack). Assert completion well under a generous wall-clock bound at a size
-# that would take seconds-to-minutes pre-fix, across the shapes that were each independently
-# slow: a long separator-free identifier run, a keyword immediately preceded by one with no
-# separator anywhere, and a repeated JWT anchor with no periods.
+# repeated-anchor attack; #4 the authorization|bearer arm, a Gate-2a-found 4th instance). Assert
+# completion under a GENEROUS wall-clock bound (2.0s — deliberately loose vs. this machine's
+# actual post-fix timings, ~0.005-0.19s below, to absorb slower/loaded-CI variance without going
+# flaky) at a payload size chosen so the PRE-fix regex clearly exceeds it by a wide margin (3.4s
+# to 21s measured, i.e. the bound isn't just barely tripped — a real regression fails it hard).
 import time as _time70  # noqa: E402
 for _redos_name, _redos_payload in [
-    ("dotted/dashed run (original pentest PoC shape)", ("a1b2-c3d4." * 10000)),
-    ("pure-alnum run + trailing keyword, no separator", ("x" * 79992) + "password" + ("y" * 12)),
-    ("repeated JWT anchor, no periods", "eyJ" * 26666),
+    ("dotted/dashed run (original pentest PoC shape)", ("a1b2-c3d4." * 5000)),
+    ("pure-alnum run + trailing keyword, no separator", ("x" * 49992) + "password" + ("y" * 12)),
+    ("repeated JWT anchor, no periods", "eyJ" * 33333),
+    ("authorization + padding spaces (Gate-2a's 4th instance)", "authorization" + " " * 20000),
 ]:
     _t0_70 = _time70.time()
     ms._SECRET.search(_redos_payload)
     _dt_70 = _time70.time() - _t0_70
-    check(f"firewall ReDoS guard: {_redos_name} (len={len(_redos_payload)}) completes in <1s (was multi-second/unbounded)",
-          _dt_70 < 1.0)
+    check(f"firewall ReDoS guard: {_redos_name} (len={len(_redos_payload)}) completes in <2s (was multi-second/unbounded)",
+          _dt_70 < 2.0)
 
 # --- v0.1.70 security: git-log commit subjects now pass through the SAME firewall (was: only
 # _sane()'s control-byte strip — no credential-shape check at all, a stark asymmetry against
@@ -780,6 +813,16 @@ check("commit-log firewall: ordinary commit subjects pass through UNCHANGED",
       and _scrub70_out[2] == "789abcd docs: update the README")
 check("commit-log firewall: a subject-less line (bare SHA, no space) is not mistaken for a secret hit",
       ms._scrub_commit_log("a1b2c3d") == ["a1b2c3d"])
+
+# v0.1.70 Gate-2a [4]: _scrub_commit_log must cap the subject before firewall-scanning it — git
+# enforces no length limit on a commit's first line, and the raw regex costs real time per char.
+import time as _time_scrub70  # noqa: E402
+_huge_subject_line = "abc1234 " + "eyJ" * 300000   # ~900,000-char subject, no keyword needed to be slow
+_t0_scrub70 = _time_scrub70.time()
+ms._scrub_commit_log(_huge_subject_line)
+_dt_scrub70 = _time_scrub70.time() - _t0_scrub70
+check(f"commit-log firewall: a ~900,000-char commit subject is capped before scanning (took {_dt_scrub70:.2f}s, must be <2s)",
+      _dt_scrub70 < 2.0)
 
 # --- re-gate(2) fix (Low): a `# global_ref:` comment NOT on the first frontmatter line
 #     is not a mirror (so plain --pull never clobbers a hand-authored note) ---

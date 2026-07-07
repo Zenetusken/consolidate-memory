@@ -717,7 +717,7 @@ def dangling_links(auto_mem: Path, global_dir: Path | None = None) -> list[str]:
 # protocol shapes that carry no high-entropy blob.
 _SECRET = re.compile(
     r"""(
-        (?:[A-Za-z0-9]{1,40}[_.\-]){0,8}(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?:[_.\-][A-Za-z0-9]{1,40}){0,8}["']?\s*[:=]\s*["']?\S+
+        (?:[A-Za-z0-9]{1,40}[_.\-]){0,8}(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?:[_.\-][A-Za-z0-9]{1,40}){0,8}["']?\s*[:=]\s*["']?(?=\S{8,}|(?=\S{4,})\S*\d)\S+
                                                                      # keyword as a full SEGMENT of a compound id, with
                                                                      # optional quotes/brackets around the delimiter so
                                                                      # JSON {"password": "..."} / dict / YAML all match.
@@ -741,20 +741,44 @@ _SECRET = re.compile(
                                                                      # ≤19) bounds that sweep to a constant, restoring
                                                                      # true linear scaling (verified to ≥256000 chars
                                                                      # across dotted, separator-free, and mixed shapes).
-      | --?(?:password|passwd|pwd|pass(?:phrase)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)\b[= ]\S{4,}
+                                                                     # v0.1.70 Gate-2a: the value clause is now gated
+                                                                     # (a lookahead requiring EITHER 8+ non-whitespace
+                                                                     # chars OR a 4+-char run containing a digit) — bare
+                                                                     # `\S+` matched ANY value including ordinary short
+                                                                     # words in "keyword: value" conventional-commit
+                                                                     # prose ("token: bump TTL to 3600", "pass: 5 fail:
+                                                                     # 0"), which this firewall now also gates commit
+                                                                     # subjects against (v0.1.70's _scrub_commit_log).
+      | --?(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)\b[= ](?=\S{8,}|(?=\S{4,})\S*\d)\S{4,}
                                                                      # v0.1.70: a CLI-FLAG-shaped keyword (a leading
                                                                      # `-`/`--` is the signal — ordinary prose essentially
                                                                      # never spells "-password") followed by `=` or a
                                                                      # single space then a value, so `--password hunter2`
                                                                      # / `--password=hunter2` are caught (whitespace-only
                                                                      # delimited, not just `[:=]`). Deliberately NOT a
-                                                                     # bare keyword+whitespace pattern (that would flag
-                                                                     # ordinary sentences like "the password field") and
-                                                                     # deliberately NOT a generic concatenated short flag
-                                                                     # like `-p<value>` (collides with common non-secret
-                                                                     # flags — `docker run -p8080:80`, `tar -pxvf`) — both
-                                                                     # considered and rejected for false-positive risk.
-      | (?:authorization|bearer)\b["']?\s*:?\s*(?:bearer\s+)?[A-Za-z0-9._~+/=-]{16,}  # auth header / bearer token
+                                                                     # generic concatenated short flag like `-p<value>`
+                                                                     # (collides with common non-secret flags —
+                                                                     # `docker run -p8080:80`, `tar -pxvf`) — considered
+                                                                     # and rejected for false-positive risk. v0.1.70
+                                                                     # Gate-2a: (a) the keyword list now matches the
+                                                                     # main arm's — it omitted li_at/cf_clearance/
+                                                                     # cred(?:ential)?s? entirely, so `--li_at <token>`
+                                                                     # evaded the firewall even though `--li_at=<token>`
+                                                                     # was caught by the main arm; (b) the SAME
+                                                                     # length-or-digit value gate as the main arm — bare
+                                                                     # `\S{4,}` matched ANY 4+-char word, so
+                                                                     # "--secret flag to enable debug logging" flagged
+                                                                     # the ordinary word "flag" as a credential.
+      | (?:authorization|bearer)\b["']?\s{0,20}:?\s{0,20}(?:bearer\s+)?[A-Za-z0-9._~+/=-]{16,}  # auth header / bearer
+                                                                     # token. v0.1.70 Gate-2a: a 4TH ReDoS instance in
+                                                                     # this same regex, missed by the first pass — the
+                                                                     # `\s*:?\s*` sandwich is two adjacent unbounded
+                                                                     # same-charset quantifiers separated by an optional
+                                                                     # token (the classic ambiguous-split shape); measured
+                                                                     # 0.06s/0.23s/0.94s/3.76s at n=2000/4000/8000/16000
+                                                                     # (clean O(n²)) on "authorization"+padding spaces.
+                                                                     # Bounded to {0,20} each (generous past any real
+                                                                     # header whitespace) restores linear scaling.
       | [a-z][a-z0-9+.\-]{0,20}://[^\s/:@]+:[^\s/@]+@                 # scheme://user:pass@host URI creds
                                                                      # v0.1.70 SECURITY: bounded (was an unbounded
                                                                      # `*`) — a SECOND, independently-discovered
@@ -794,6 +818,8 @@ _SECRET = re.compile(
 _BLOB = re.compile(r"[A-Za-z0-9+/=_-]{40,}")
 _ENTROPY_SEG_FLOOR = 8   # v0.1.70: minimum PER-SEGMENT length before judging mixed-case/digit (below this,
                          # a real path component too often coincidentally looks token-like — e.g. "User1")
+_COMMIT_SUBJECT_CAP = 4000   # v0.1.70 Gate-2a: bounds _scrub_commit_log's firewall call — git enforces no
+                             # length limit on a commit subject; mirrors extract_signals.py's _PROBE_CAP.
 
 
 def _entropy_blob(text: str) -> bool:
@@ -802,22 +828,42 @@ def _entropy_blob(text: str) -> bool:
     a token is mixed-case or carries digits; a path is slash-dense; a slug is all-lower
     with no digits. This is the half the case-insensitive `_SECRET` regex cannot express.
 
-    v0.1.70 SECURITY: judges each '/'-separated SEGMENT independently (was: exempting the
-    WHOLE match once it held 3+ '/' anywhere — reproduced bypass: the real AWS example key
-    `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` (2 slashes) was correctly flagged, but the
-    identical value with one more trailing '/' segment appended was NOT, and a synthetic
-    slash-chunked keyword-less credential passed `extract()` end-to-end with secrets_omitted:0).
-    A real path's segments are typically all-lowercase words; a slash-chunked secret's segments
-    stay individually mixed-case/digit-bearing — so flag if ANY segment (past the length floor)
-    passes, rather than exempting the whole blob once enough '/' appear anywhere in it."""
+    v0.1.70 SECURITY: TWO independent signals, each scoped differently on purpose:
+    (1) mixed-case (upper AND lower present) judged over the WHOLE matched blob — a real
+        path/identifier is overwhelmingly single-cased per component (kebab/snake), so
+        this is the stronger signal and needs no length floor.
+    (2) digit-bearing judged per '/','-','_','.' -delimited TOKEN (finer than the old
+        '/'-only split) at/past a length floor — catches a pure-lowercase-or-uppercase
+        secret (a hex token, a lowercase base64 run) without also flagging a natural
+        kebab-case path segment with a short version/date suffix ("v0-1-68", "module2024").
+
+    v0.1.70 Gate-2a found TWO real gaps in the prior (per-'/'-segment-only) design:
+    (a) it lost cross-segment mixed-case detection — a value split by only 1-2 slashes
+        into segments that are each internally single-cased (e.g. one all-lowercase run,
+        one all-uppercase run) went undetected even though the OLD whole-blob check (for
+        <3 slashes) caught it; fixed by restoring the whole-blob mixed-case check.
+    (b) chunking a keyword-less secret into segments each under the 8-char floor evaded
+        detection entirely (the same bypass class this function set out to close, just
+        moved) — the restored whole-blob mixed-case check also closes this for any
+        chunked secret that mixes case at all; a pure-single-case chunked secret (e.g.
+        all-lowercase hex) remains a known, narrower residual gap.
+    Finer '-_.' -splitting for the digit signal (not just '/') closes the false-positive
+    Gate-2a found in the ORIGINAL per-segment design: a versioned path
+    (`docs/release-notes/v0-1-68-index-lifecycle-...md`) has a long '/'-segment that
+    contains digits, but no *sub-token* of it (split further on '-_.') is both ≥8 chars
+    AND digit-bearing — every digit run there ("v0", "1", "68") is short. A CamelCase
+    directory name that ALSO carries a digit (e.g. "UserProfile2024Settings") is still
+    flagged via the mixed-case signal — an accepted, pre-existing tradeoff (the same
+    heuristic already treats a bare "AbCdEf"-shaped mixed-case run as suspicious), not
+    something this fix chases further: reverting it would reopen the exact bypass above."""
     for m in _BLOB.finditer(text):
-        for seg in m.group(0).split("/"):
-            if len(seg) < _ENTROPY_SEG_FLOOR:
-                continue
-            has_lower = any(c.islower() for c in seg)
-            has_upper = any(c.isupper() for c in seg)
-            has_digit = any(c.isdigit() for c in seg)
-            if (has_lower and has_upper) or has_digit:   # mixed-case OR digit-bearing ⇒ token-like
+        s = m.group(0)
+        has_lower = any(c.islower() for c in s)
+        has_upper = any(c.isupper() for c in s)
+        if has_lower and has_upper:
+            return True
+        for seg in re.split(r"[/\-_.]", s):
+            if len(seg) >= _ENTROPY_SEG_FLOOR and any(c.isdigit() for c in seg):
                 return True
     return False
 
@@ -1715,13 +1761,20 @@ def _scrub_commit_log(log: str) -> list:
     credential-shape) — this scrubs through the SAME firewall extract_signals uses, at construction,
     so every consumer (print_report, any future reader) sees only sanitized text. The short SHA is
     kept (harmless, and lets a human `git show` it directly); only a flagged subject is redacted.
-    Pure (str -> list[str], no I/O) so it's directly unit-testable without a git repo."""
+    Pure (str -> list[str], no I/O) so it's directly unit-testable without a git repo.
+
+    v0.1.70 Gate-2a: `_looks_secret` runs on the subject CAPPED at `_COMMIT_SUBJECT_CAP` first —
+    unlike extract_signals.py's three call sites (which all cap at `_PROBE_CAP` before scanning),
+    this one originally fed the RAW, unbounded subject straight to the regex. Git enforces no
+    length limit on a commit message's first line, so a single ~900,000-char subject (a pasted
+    blob committed as one line, deliberate or not) measured 6.4s against the real firewall — this
+    read-only Phase-0 path runs on every `cm status`/dream invocation, so that's a real stall."""
     out: list = []
     for ln in log.splitlines():
         if not ln.strip():
             continue
         sha, sep, subject = ln.partition(" ")
-        if sep and _looks_secret(subject):
+        if sep and _looks_secret(subject[:_COMMIT_SUBJECT_CAP]):
             out.append(f"{sha} (omitted: commit subject contained a credential-shaped value)")
         else:
             out.append(ln)
