@@ -5,6 +5,80 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.70] — 2026-07-07
+
+### Fixed — DevSecOps pentest remediation: evict/mirror/git-argv hardening
+A full-scope pentest pass (both plugins) confirmed 8 findings; every fix here is independently
+reproduced against a real subprocess/sandbox (not just accepted from the pentest's own verifier
+votes), and every regression test is sabotage-verified (reverting the fix flips it red).
+
+- **`--evict=` path-traversal** — a crafted fact name could walk outside the project's own store
+  and delete an arbitrary file; now runs through the same charset guard (`_safe_stem`) `promote()`
+  already applies to `local_fact`/`canon_name`.
+- **`--evict=MEMORY` (and case-variants) self-clobber** — the reserved-index check was case-SENSITIVE,
+  so `--evict=memory`/`Memory` (and, separately, a global fact literally named `memory.md`) sailed
+  through on a case-insensitive filesystem (macOS APFS/HFS+) and would `unlink()` + rebuild the
+  project's own live `MEMORY.md`, dropping every previously-indexed pointer. Closed by a single
+  shared `_is_reserved_stem()` predicate (case-insensitive), now used by every guard that used to
+  hand-roll its own `f.name == "MEMORY.md"` / `_RESERVED_STEMS` check: `promote()`, the `--evict=`
+  guard, `global_facts()`, `_orphans()` (the destructive path feeding `gc --apply`'s `unlink()`),
+  `_inbound_links()`, `_node_tokens()`, `_network_nodes()`.
+- **Mirror-anchor body injection** — `_as_mirror()`'s `global_ref:`/`metadata:` anchor checks now
+  scope strictly to the frontmatter block (`dashes == 1`), so a crafted fact **body** can no longer
+  masquerade as a mirror stamp.
+- **`git check-ignore` argv injection** — a relocate target whose relative path starts with `-`
+  used to reach `git check-ignore` as a bare positional arg (parsed as a flag); now separated with
+  `--` so the path always reaches git as a path, never an option.
+
+### Fixed — DevSecOps pentest remediation: the secrets firewall bundle
+The firewall (`_looks_secret`/`_SECRET`/`_entropy_blob`) is now single-sourced in
+`memory_status.py` (the dependency root — `extract_signals.py` imports it, mirroring the
+pre-existing `_is_mirror` precedent) so `memory_status.py`'s own new git-commit-subject scan
+(`_scrub_commit_log`) can use it — commit subjects reaching a rendered report or `--json` were
+previously ungated, a stark asymmetry against the session-signal source, which was already
+firewalled.
+
+- **The confirmed bypass**: a keyword-less high-entropy value chunked into 3+ slash segments was
+  exempted wholesale (an artifact of an old "≥3 slashes ⇒ it's a path" heuristic). Closed.
+- **Four ReDoS instances** (ordinary `re.search`, catastrophic backtracking) — the compound-keyword
+  arm's prefix/suffix quantifiers, the URI-creds arm, the JWT arm (via a repeated anchor with no
+  periods), and the `authorization|bearer` arm's whitespace sandwich. Each confirmed by direct
+  timing measurement (O(n²) pre-fix, linear post-fix) before and after, not just theorized; all four
+  arms now carry bounded quantifiers.
+- **Coverage gaps closed**: a Stripe webhook signing secret (`whsec_…`), and a CLI-flag-shaped
+  keyword arm (`--password value`, `-li_at value`, `-cf_clearance value`, space- or `=`-delimited —
+  previously only the `key=value`/`key: value` forms were covered).
+- **False-positive fixes** (each independently reproduced, not accepted on the pentest's word):
+  ordinary `keyword: <short word>` commit prose (`"token: bump TTL to 3600"`, `"secret: rotate the
+  signing key"`) no longer reads as a leaked value; a versioned/dated path segment
+  (`v0-1-68-index-lifecycle-…`) no longer reads as a digit-bearing secret; a deep `/`-path ending in
+  an ALL-CAPS filename stem (this repo's own `.../SKILL.md`, `.../README.md` shape) no longer reads
+  as a mixed-case token — `_entropy_blob` scopes both its mixed-case and digit signals to the same
+  per-`/`,`-`,`_`,`.`-delimited token, rather than a whole-blob check that over-fired on this exact
+  path shape.
+- **Two residual gaps are accepted and documented, not chased further** (see `_entropy_blob`'s and
+  `_SECRET`'s docstrings): a keyword-less secret chunked into segments each under the entropy floor,
+  or split across segments that individually are single-cased but disagree with each other; and a
+  short, no-digit, single-case weak password (`password=qwerty`) — indistinguishable in shape from
+  an ordinary short English word in the same position. Tightening either reopens an ordinary-prose
+  false positive on the other; the firewall favors fewer false positives on routine commit messages.
+- A ~900,000-char commit subject is now capped (`_COMMIT_SUBJECT_CAP`) before it ever reaches the
+  firewall regex.
+
+### Fixed — Track D: CI Python floor + dashboard regression coverage
+- **CI test matrix widened 3.10–3.13 → 3.8–3.13** (3.8/3.9 pinned to `ubuntu-22.04`, which can still
+  provision them; 3.10+ stays on `ubuntu-latest`) — closes a long-standing gap between the
+  documented "3.8+ stdlib-only" floor and what CI actually verified.
+- **Two v0.1.68 dashboard fixes gained automated regression pins** in `tests/smoke.py` (a source-text
+  check on `dashboard.template.html`'s CSS `background-repeat:no-repeat` and its verdict-tag
+  classifier regex) — v0.1.68 shipped without them; a real layout/paint proof still isn't feasible
+  headless (jsdom parses the DOM but computes no layout/paint), so pixel-level dashboard QA stays
+  eye-judged, but a source-text reversion of either fix now trips red.
+- Doc sync: README/CLAUDE.md's "validated on 3.10–3.13" claims corrected to 3.8–3.13 throughout.
+
+Every fix above: no cycle-record schema key changed, no CLI flag removed/renamed, no
+install/marketplace contract changed — legacy records render unchanged → **patch**.
+
 ## [0.1.69] — 2026-07-05
 
 ### Fixed — audit-hygiene remediation (Track A of the four-lens release-readiness audit)

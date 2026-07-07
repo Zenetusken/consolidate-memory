@@ -157,8 +157,17 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
    the v0.1.63/v0.1.64 state) · v0.1.66 (index-lifecycle Phase B: the HARD CEILING — a second,
    independent budget signal) · v0.1.67 (index-lifecycle Phase C: the utility policy — demotion triage ·
    the miss loop · fleet utility) · v0.1.68 (dashboard HTML: stop the masthead glow from tiling down the
-   page + badge the demotion panel's dormant verdict to match distill's) — every one an additive
-   `total=False` schema key / additive `--json` key / additive flag / SKILL prose, never a break.
+   page + badge the demotion panel's dormant verdict to match distill's) · v0.1.69 (audit-hygiene
+   remediation: parsed-instant window compares, TTY report sanitization, three unguarded store-scan
+   read_text crashes, a labeled git-failure degradation, genericity scrub + pin, a SKILL `--list`
+   correction, a schema-pin hole closed) · v0.1.70 (DevSecOps pentest remediation across both
+   plugins — evict path-traversal + case-insensitive reserved-index self-clobber + mirror-anchor
+   body injection + git-argv injection, all unified onto shared guards; the secrets firewall bundle
+   single-sourced onto git commit subjects, closing a chunked-secret bypass + four ReDoS instances +
+   several false-positive/false-negative regressions, two residual gaps accepted and documented
+   rather than chased; Track D: CI floor widened to 3.8–3.13 + the v0.1.68 dashboard fixes gained
+   automated regression pins) — every one an additive `total=False` schema key / additive `--json`
+   key / additive flag / SKILL prose, never a break.
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG
