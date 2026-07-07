@@ -183,14 +183,15 @@ def _create_exclusive(path: Path, text: str, encoding: str = "utf-8") -> bool:
     exists to close, reopened here if that primitive were used instead. Always cleans up
     its own temp file (success or collision), never leaks one."""
     tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
-    tmp.write_text(text, encoding=encoding)
     try:
-        os.link(str(tmp), str(path))
-        return True
+        tmp.write_text(text, encoding=encoding)  # v0.1.71 Gate-2a: moved INSIDE try — a failure
+        os.link(str(tmp), str(path))             # here (disk-full etc.) used to skip the finally,
+        return True                              # leaving a partial/empty temp sibling behind.
     except FileExistsError:
         return False
     finally:
         tmp.unlink(missing_ok=True)
+    return True
 
 
 def _read_capped(p: Path, cap: int = _PYPROJECT_CAP) -> str:
