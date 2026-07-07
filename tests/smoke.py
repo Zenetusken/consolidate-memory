@@ -692,6 +692,95 @@ for _name, _val, _want in [
     check(f"firewall(redesign): {_name} -> {'flagged' if _want else 'clean'}",
           bool(es._looks_secret(_val)) is _want)
 
+# --- v0.1.70 security: firewall is single-sourced in memory_status.py (the dependency root —
+# extract_signals.py imports it, mirroring the _is_mirror precedent), and its regex fixes hold ---
+check("firewall: _looks_secret is single-source (promoted to memory_status; extract_signals imports it)",
+      es._looks_secret is ms._looks_secret and es._SECRET is ms._SECRET and es._entropy_blob is ms._entropy_blob)
+
+for _name, _val, _want in [
+    # the CONFIRMED bypass: a keyword-less high-entropy value chunked into 3+ slash segments
+    # used to be exempted WHOLESALE once any 3 '/' appeared anywhere in the match.
+    ("AWS key + 1 more slash (was the exact bypass)",
+     "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY/x", True),
+    ("synthetic 4-segment slash-chunked secret (was secrets_omitted:0 end-to-end)",
+     "aB3xY9kL2mQ7wErT1zXcVbNmQweRtYuIoPasDfGh/aB3xY9kL2mQ7wErT1zXc/VbNmQweRtYuIoPasDfGh/x", True),
+    # Stripe webhook signing secret (whsec_ + hex) — no keyword, under the old 40-char floor
+    ("Stripe whsec_", "whsec_1234567890abcdef1234567890abcdef", True),
+    # CLI-flag-shaped keyword (whitespace/=, not just :/=) — the --password/-p gap
+    ("--password value (space-delimited flag)", "--password hunter2longvalue", True),
+    ("--password=value (CLI flag, = form)", "--password=hunter2longvalue", True),
+    # deliberately-excluded gaps (documented false-positive-risk tradeoffs, not silently missed):
+    ("mysqldump -p concatenated (deliberately NOT covered — collides with -p8080:80 etc.)",
+     "mysqldump -uroot -pMyS3cretPassw0rd db > out.sql", False),
+    ("curl -u user:pass without scheme (deliberately NOT covered — collides with -u UID:GID)",
+     "curl -u admin:Sup3rSecretPass https://internal.example.com/api", False),
+]:
+    check(f"firewall(v0.1.70): {_name} -> {'flagged' if _want else 'clean'}",
+          bool(es._looks_secret(_val)) is _want)
+
+# --- v0.1.70 security: false-positive corpus — ordinary content that must NOT be omitted.
+# Mandatory per the firewall's own asymmetric-safe design AND because v0.1.70 wires this same
+# firewall onto git commit subjects (memory_status.py) — an over-greedy arm now silently drops
+# legitimate commit messages, not just recall signal. ---
+for _name, _val in [
+    ("ordinary commit subject", "fix(cm): stop the masthead glow from tiling down the page"),
+    ("commit subject mentioning 'token' as a noun", "refactor: extract the auth token validation into a helper"),
+    ("commit subject mentioning 'password' as a noun", "docs: clarify the password reset flow in the README"),
+    ("commit subject with a docker port mapping", "chore: docker run -p 8080:80 the staging container"),
+    ("commit subject with a docker UID:GID flag", "fix: run the container as -u 1000:1000 not root"),
+    ("commit subject with a real file path", "fix: correct the import path in scripts/memory_status.py"),
+    ("prose mentioning 'secret' as a common noun", "the secret to a good API is a stable contract"),
+    ("a git SHA-shaped hex string", "revert " + "a1b2c3d4e5f6" * 3),
+    ("a UUID (dashless, 32 hex)", "session " + "0123456789abcdef" * 2),
+]:
+    check(f"firewall FALSE-POSITIVE guard: {_name!r} -> stays clean",
+          es._looks_secret(_val) is False)
+
+# --- v0.1.70 security: ReDoS — the firewall must stay LINEAR-time on adversarial input (a
+# CONFIRMED bypass: the unbounded compound-keyword prefix AND a sibling unbounded URI-creds arm
+# both gave real re.search O(n²) blowup; a THIRD instance was found in the JWT arm via a
+# repeated-anchor attack). Assert completion well under a generous wall-clock bound at a size
+# that would take seconds-to-minutes pre-fix, across the shapes that were each independently
+# slow: a long separator-free identifier run, a keyword immediately preceded by one with no
+# separator anywhere, and a repeated JWT anchor with no periods.
+import time as _time70  # noqa: E402
+for _redos_name, _redos_payload in [
+    ("dotted/dashed run (original pentest PoC shape)", ("a1b2-c3d4." * 10000)),
+    ("pure-alnum run + trailing keyword, no separator", ("x" * 79992) + "password" + ("y" * 12)),
+    ("repeated JWT anchor, no periods", "eyJ" * 26666),
+]:
+    _t0_70 = _time70.time()
+    ms._SECRET.search(_redos_payload)
+    _dt_70 = _time70.time() - _t0_70
+    check(f"firewall ReDoS guard: {_redos_name} (len={len(_redos_payload)}) completes in <1s (was multi-second/unbounded)",
+          _dt_70 < 1.0)
+
+# --- v0.1.70 security: git-log commit subjects now pass through the SAME firewall (was: only
+# _sane()'s control-byte strip — no credential-shape check at all, a stark asymmetry against
+# extract_signals.py's session-signal source, which SKILL.md itself documents as firewalled) ---
+# NB: the credential-shaped subject below is ASSEMBLED by concatenation from obviously-fake
+# parts (matching this file's existing provider-token-fixture convention below) so no
+# contiguous real-looking secret literal exists in this source file (GitHub push protection
+# matches source text, not runtime values).
+_scrub70_secret_line = ("d4e5f6a debug: hardcoded STRIPE_KEY=" + "sk_" + "live_" + "51H8" + "x" * 20
+                        + " to unblock CI, revert before merge")
+_scrub70_log = "\n".join([
+    "a1b2c3d fix: normal commit message",
+    _scrub70_secret_line,
+    "",   # a blank line must not crash / must not become a bogus entry
+    "789abcd docs: update the README",
+])
+_scrub70_out = ms._scrub_commit_log(_scrub70_log)
+check("commit-log firewall: 3 real commits survive, blank line dropped", len(_scrub70_out) == 3)
+check("commit-log firewall: the credential-shaped subject is redacted, SHA kept",
+      _scrub70_out[1].startswith("d4e5f6a ") and "STRIPE_KEY" not in _scrub70_out[1]
+      and ("sk_" + "live_" + "51H8") not in _scrub70_out[1] and "omitted" in _scrub70_out[1])
+check("commit-log firewall: ordinary commit subjects pass through UNCHANGED",
+      _scrub70_out[0] == "a1b2c3d fix: normal commit message"
+      and _scrub70_out[2] == "789abcd docs: update the README")
+check("commit-log firewall: a subject-less line (bare SHA, no space) is not mistaken for a secret hit",
+      ms._scrub_commit_log("a1b2c3d") == ["a1b2c3d"])
+
 # --- re-gate(2) fix (Low): a `# global_ref:` comment NOT on the first frontmatter line
 #     is not a mirror (so plain --pull never clobbers a hand-authored note) ---
 check("mirror: # global_ref comment below the first line is NOT a mirror",

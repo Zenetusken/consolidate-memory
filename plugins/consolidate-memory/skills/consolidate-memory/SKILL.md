@@ -448,6 +448,12 @@ typed messages are <1% of the transcript and carry only the *feedback* slice; th
 1. **`git log <marker>..HEAD`** (commit bodies) → **project facts** (what changed +
    why). The strongest, highest-precision source — it happened and it's in git.
    `memory_status.py` (Phase 0) already lists this range; read the commit bodies.
+   v0.1.70: commit subjects now pass through the SAME secrets firewall as source #2
+   below (a credential-shaped subject is redacted to `(omitted: commit subject
+   contained a credential-shaped value)`, SHA kept) — but the firewall is a mechanical
+   backstop, not a guarantee against every shape. Never transcribe a commit subject
+   verbatim into a persisted fact if it still looks credential-shaped to you; paraphrase
+   the change instead.
 2. **Session signal** → **feedback/preferences** (human turns) + **gotchas** (error
    tool-results). Don't read the raw transcript — run the extractor, which streams
    it, scopes to the marker, drops harness/skill noise, **omits credential-shaped

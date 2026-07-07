@@ -700,6 +700,134 @@ def dangling_links(auto_mem: Path, global_dir: Path | None = None) -> list[str]:
     return sorted(out)
 
 
+# ── the secrets firewall (v0.1.70: RELOCATED here from extract_signals.py, the dependency
+# root — mirrors the _is_mirror/_frontmatter precedent) ─────────────────────────────────
+# extract_signals.py imports these three names from here; distill_scan.py and tests/smoke.py
+# import/access them transitively through extract_signals' namespace — a smoke pin asserts
+# single-sourcing (`es._looks_secret is ms._looks_secret`), matching the existing _is_mirror pin.
+#
+# Credential-shaped values. Detection is SPLIT in two because the generic high-entropy
+# check needs CASE discrimination (mixed-case is the signal that separates a token from
+# a file path / slug) and the keyword/vendor arms want case-INSENSITIVITY — and one
+# regex can't be both. Use `_looks_secret()` (below) as the firewall, never `_SECRET`
+# directly. Contract: drop-to-label, never surface the verbatim secret.
+#
+# _SECRET (case-insensitive): keyword=value in any serialization (incl. compound names
+# AWS_SECRET_ACCESS_KEY= and quoted JSON "password": "..."), plus high-precision vendor /
+# protocol shapes that carry no high-entropy blob.
+_SECRET = re.compile(
+    r"""(
+        (?:[A-Za-z0-9]{1,40}[_.\-]){0,8}(?:li_at|cf_clearance|password|passwd|pwd|pass(?:phrase)?|cred(?:ential)?s?|api[_-]?key|access[_-]?key|private[_-]?key|secret|token|bearer|authorization)(?:[_.\-][A-Za-z0-9]{1,40}){0,8}["']?\s*[:=]\s*["']?\S+
+                                                                     # keyword as a full SEGMENT of a compound id, with
+                                                                     # optional quotes/brackets around the delimiter so
+                                                                     # JSON {"password": "..."} / dict / YAML all match.
+                                                                     # v0.1.70 SECURITY: BOTH dimensions bounded now —
+                                                                     # the repetition count ({0,8}, was an unbounded `*`)
+                                                                     # AND each segment's own length ({1,40}, was an
+                                                                     # unbounded `+`). Bounding only the repetition count
+                                                                     # is NOT sufficient: on a payload with no separator
+                                                                     # char anywhere (e.g. a long plain-letter run, or a
+                                                                     # keyword immediately preceded by one), a single
+                                                                     # `[A-Za-z0-9]+` repetition attempt greedily consumes
+                                                                     # to the end of the alnum run, then backtracks
+                                                                     # character-by-character looking for a separator —
+                                                                     # an O(remaining-length) sweep repeated at EVERY
+                                                                     # starting position, i.e. still O(n²) overall
+                                                                     # (measured: 0.03s/0.11s/0.45s/1.79s/7.15s at
+                                                                     # n=2000/4000/8000/16000/32000 with the count-only
+                                                                     # bound — unchanged from the ORIGINAL unbounded
+                                                                     # form). Capping the inner segment to 40 chars
+                                                                     # (generous — AWS_SECRET_ACCESS_KEY's segments are
+                                                                     # ≤19) bounds that sweep to a constant, restoring
+                                                                     # true linear scaling (verified to ≥256000 chars
+                                                                     # across dotted, separator-free, and mixed shapes).
+      | --?(?:password|passwd|pwd|pass(?:phrase)?|secret|token|api[_-]?key|access[_-]?key|private[_-]?key)\b[= ]\S{4,}
+                                                                     # v0.1.70: a CLI-FLAG-shaped keyword (a leading
+                                                                     # `-`/`--` is the signal — ordinary prose essentially
+                                                                     # never spells "-password") followed by `=` or a
+                                                                     # single space then a value, so `--password hunter2`
+                                                                     # / `--password=hunter2` are caught (whitespace-only
+                                                                     # delimited, not just `[:=]`). Deliberately NOT a
+                                                                     # bare keyword+whitespace pattern (that would flag
+                                                                     # ordinary sentences like "the password field") and
+                                                                     # deliberately NOT a generic concatenated short flag
+                                                                     # like `-p<value>` (collides with common non-secret
+                                                                     # flags — `docker run -p8080:80`, `tar -pxvf`) — both
+                                                                     # considered and rejected for false-positive risk.
+      | (?:authorization|bearer)\b["']?\s*:?\s*(?:bearer\s+)?[A-Za-z0-9._~+/=-]{16,}  # auth header / bearer token
+      | [a-z][a-z0-9+.\-]{0,20}://[^\s/:@]+:[^\s/@]+@                 # scheme://user:pass@host URI creds
+                                                                     # v0.1.70 SECURITY: bounded (was an unbounded
+                                                                     # `*`) — a SECOND, independently-discovered
+                                                                     # instance of the same O(n²) ReDoS class the
+                                                                     # pentest flagged on the keyword arm (measured
+                                                                     # ~identical quadratic scaling in isolation);
+                                                                     # 20 chars covers every real URI scheme name
+                                                                     # with generous headroom (longest common ones,
+                                                                     # e.g. "mongodb+srv", are under 12)
+      | (?:AKIA|ASIA)[0-9A-Z]{16}                                    # AWS access key id
+      | xox[baprs]-[0-9A-Za-z-]{10,}                                 # Slack token
+      | sk-(?:proj-)?[A-Za-z0-9_-]{20,}                              # OpenAI key
+      | (?:sk|rk|pk)_(?:live|test)_[0-9A-Za-z]{10,}                  # Stripe key
+      | whsec_[0-9a-fA-F]{16,}                                       # Stripe webhook signing secret (v0.1.70)
+      | gh[pousr]_[0-9A-Za-z]{20,}                                   # GitHub token
+      | AIza[0-9A-Za-z_-]{35}                                        # Google API key
+      | AC[0-9a-f]{32}                                               # Twilio account SID
+      | eyJ[A-Za-z0-9_-]{8,2000}\.[A-Za-z0-9_-]{8,4000}\.[A-Za-z0-9_-]{6,200}  # JWT (header.payload.sig)
+                                                                     # v0.1.70 SECURITY: each segment's unbounded `{n,}`
+                                                                     # is now `{n,MAX}` — the charset a JWT segment
+                                                                     # matches (`[A-Za-z0-9_-]`) includes the literal
+                                                                     # anchor's OWN chars ('e','y','J'), so a repeated
+                                                                     # `eyJeyJeyJ...` payload (no periods) makes each
+                                                                     # occurrence's backtrack sweep run to the end of
+                                                                     # the string — O(n²) over many repeats (measured
+                                                                     # 0.001s/0.02s/0.33s at n=2000/8000/32000, ~16x per
+                                                                     # 4x length). The caps are generous past any real
+                                                                     # JWT (a payload of thousands of claims) and restore
+                                                                     # linear scaling (verified to 128000 chars).
+      | -----BEGIN[ A-Z]*PRIVATE[ ]KEY-----                          # PEM private key
+    )""",
+    re.I | re.X,
+)
+
+# A contiguous run of base64-ish chars (incl. '/' and '+' so slash-bearing AWS secret
+# access keys are caught). Case-SENSITIVE on purpose (see _entropy_blob).
+_BLOB = re.compile(r"[A-Za-z0-9+/=_-]{40,}")
+_ENTROPY_SEG_FLOOR = 8   # v0.1.70: minimum PER-SEGMENT length before judging mixed-case/digit (below this,
+                         # a real path component too often coincidentally looks token-like — e.g. "User1")
+
+
+def _entropy_blob(text: str) -> bool:
+    """True if `text` holds a keyword-less high-entropy token (e.g. a bare AWS secret key
+    or base64 blob). Distinguishes a token from a FILE PATH or SLUG without case folding:
+    a token is mixed-case or carries digits; a path is slash-dense; a slug is all-lower
+    with no digits. This is the half the case-insensitive `_SECRET` regex cannot express.
+
+    v0.1.70 SECURITY: judges each '/'-separated SEGMENT independently (was: exempting the
+    WHOLE match once it held 3+ '/' anywhere — reproduced bypass: the real AWS example key
+    `wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY` (2 slashes) was correctly flagged, but the
+    identical value with one more trailing '/' segment appended was NOT, and a synthetic
+    slash-chunked keyword-less credential passed `extract()` end-to-end with secrets_omitted:0).
+    A real path's segments are typically all-lowercase words; a slash-chunked secret's segments
+    stay individually mixed-case/digit-bearing — so flag if ANY segment (past the length floor)
+    passes, rather than exempting the whole blob once enough '/' appear anywhere in it."""
+    for m in _BLOB.finditer(text):
+        for seg in m.group(0).split("/"):
+            if len(seg) < _ENTROPY_SEG_FLOOR:
+                continue
+            has_lower = any(c.islower() for c in seg)
+            has_upper = any(c.isupper() for c in seg)
+            has_digit = any(c.isdigit() for c in seg)
+            if (has_lower and has_upper) or has_digit:   # mixed-case OR digit-bearing ⇒ token-like
+                return True
+    return False
+
+
+def _looks_secret(text: str) -> bool:
+    """The firewall: True if `text` contains a credential-shaped value (keyword/vendor
+    arms OR a high-entropy blob). Use THIS everywhere, not `_SECRET` directly."""
+    return bool(_SECRET.search(text)) or _entropy_blob(text)
+
+
 _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z")
 _LINK_RE = re.compile(r"\]\(([^)]+)\.md\)")        # MEMORY.md pointer link target (stem)
 _SCOPES = ("project-local", "stack-general", "user-global")
@@ -1576,6 +1704,30 @@ def capture_diffs(before: object, project_dir: Path) -> dict:
     return diffs
 
 
+def _scrub_commit_log(log: str) -> list:
+    """v0.1.70 SECURITY: `git log --oneline` subject lines are attacker/mistake-influenceable text
+    (a routine real-world slip — `git commit -m "debug: hardcoded STRIPE_KEY=sk_live_... to unblock
+    CI"` — or a deliberate plant on a shared branch) that flowed straight into the Phase-0 report the
+    model reads every dream, with SKILL.md itself framing git log as the "strongest, highest-precision
+    source" for facts — yet this was the one Phase-2 source with NO secrets-firewall pass
+    (extract_signals.py's session-signal source has one; this didn't). `_sane()` (used by
+    print_report) only strips terminal control bytes, a DIFFERENT concern (injection-safety, not
+    credential-shape) — this scrubs through the SAME firewall extract_signals uses, at construction,
+    so every consumer (print_report, any future reader) sees only sanitized text. The short SHA is
+    kept (harmless, and lets a human `git show` it directly); only a flagged subject is redacted.
+    Pure (str -> list[str], no I/O) so it's directly unit-testable without a git repo."""
+    out: list = []
+    for ln in log.splitlines():
+        if not ln.strip():
+            continue
+        sha, sep, subject = ln.partition(" ")
+        if sep and _looks_secret(subject):
+            out.append(f"{sha} (omitted: commit subject contained a credential-shaped value)")
+        else:
+            out.append(ln)
+    return out
+
+
 def build_context(project_dir: Path) -> dict:
     """Gather all Phase-0 facts into one dict (basis for both report and --json seed)."""
     project_dir = project_dir.resolve()
@@ -1638,7 +1790,7 @@ def build_context(project_dir: Path) -> dict:
     git_range = f"{last_commit[:12]}..HEAD" if last_commit else "-20"
     rng = f"{last_commit}..HEAD" if last_commit else "-20"
     log = _run(["git", "log", "--oneline", "--no-merges", rng], project_dir)
-    commits = [ln for ln in log.splitlines() if ln.strip()]
+    commits = _scrub_commit_log(log)
 
     # Re-verification signal (Fix E): facts not touched since the last consolidation
     # are candidates to RE-verify (they may have silently gone stale). mtime is a
