@@ -3462,5 +3462,77 @@ check("v0.1.68 JS pin: demoted/justified verdicts still get the 'ok' (positive) 
       "neutral default (dormant/none stay neutral — only a resolved-favorably verdict reads as OK)",
       'dcls=(dtag==="demoted"||dtag==="justified")?" ok":""' in _tpl54)
 
+# --- v0.1.71 Track D-1: _atomic_write_text — write-temp+os.replace, no torn write visible ---
+import tempfile as _tf71  # noqa: E402
+import stat as _stat71  # noqa: E402
+import os as _os71  # noqa: E402
+
+with _tf71.TemporaryDirectory() as _td71:
+    _p71 = Path(_td71) / "canon.md"
+    _p71.write_text("OLD CONTENT", encoding="utf-8")
+    sg._atomic_write_text(_p71, "NEW CONTENT")
+    check("v0.1.71 D-1: _atomic_write_text produces the expected final content",
+          _p71.read_text(encoding="utf-8") == "NEW CONTENT")
+    check("v0.1.71 D-1: _atomic_write_text leaves no .tmp<pid> sibling behind",
+          list(Path(_td71).glob("*.tmp*")) == [])
+
+    # Sabotage-style: interrupt AFTER the temp write but BEFORE os.replace (monkeypatch os.replace
+    # to raise — this patches the SAME shared `os` module object sync_global.py itself imported,
+    # so it's observed there too) — the destination must be untouched, never partial.
+    _p71b = Path(_td71) / "canon2.md"
+    _p71b.write_text("PRE-EXISTING", encoding="utf-8")
+    _real_replace71 = _os71.replace
+    def _boom_replace71(*a, **kw):  # noqa: E306
+        raise OSError("simulated crash between temp-write and replace")
+    _os71.replace = _boom_replace71
+    try:
+        try:
+            sg._atomic_write_text(_p71b, "WOULD-BE NEW CONTENT")
+            _raised71 = False
+        except OSError:
+            _raised71 = True
+    finally:
+        _os71.replace = _real_replace71
+    check("v0.1.71 D-1: an interrupted os.replace propagates (doesn't swallow the error) "
+          "AND leaves the destination's pre-write content untouched (no partial/torn write)",
+          _raised71 and _p71b.read_text(encoding="utf-8") == "PRE-EXISTING")
+    check("v0.1.71 D-1 Gate-2b: the interrupted write leaves NO .tmp<pid> sibling behind either "
+          "(the same cleanup-on-failure guarantee Gate-2a gave _create_exclusive — the parity "
+          "fix _atomic_write_text was missing)",
+          list(Path(_td71).glob("*.tmp*")) == [])
+
+# --- v0.1.71 Track D-2b: _create_exclusive — atomic create-or-detect-collision, no torn-read window ---
+with _tf71.TemporaryDirectory() as _td71c:
+    _new71 = Path(_td71c) / "new-canon.md"
+    _won71 = sg._create_exclusive(_new71, "WINNER CONTENT")
+    check("v0.1.71 D-2b: _create_exclusive returns True and writes the content when the path is absent",
+          _won71 is True and _new71.read_text(encoding="utf-8") == "WINNER CONTENT")
+    check("v0.1.71 D-2b: _create_exclusive leaves no .tmp<pid> sibling on the success path",
+          list(Path(_td71c).glob("*.tmp*")) == [])
+
+    # The race: the destination ALREADY exists (simulating another process's concurrent create) —
+    # this call must lose cleanly: return False, leave the winner's content byte-identical, leak no temp.
+    _lost71 = sg._create_exclusive(_new71, "LOSER CONTENT — must never land")
+    check("v0.1.71 D-2b: _create_exclusive returns False when the path already exists (lost the race)",
+          _lost71 is False)
+    check("v0.1.71 D-2b: the pre-existing (winner's) content is COMPLETELY untouched by the loser's attempt "
+          "(the exact silent-clobber this item exists to prevent)",
+          _new71.read_text(encoding="utf-8") == "WINNER CONTENT")
+    check("v0.1.71 D-2b: the loser's attempt leaves no .tmp<pid> sibling behind (cleaned up in `finally`)",
+          list(Path(_td71c).glob("*.tmp*")) == [])
+
+# --- v0.1.71 Track D-3: --seed's write is hardened the same way --snapshot's already is ---
+check("v0.1.71 D-3: the --seed branch calls _write_private (owner-only 0o600), not a bare write_text "
+      "(was the inconsistency vs. --snapshot, which already used it)",
+      "_write_private(Path(path), json.dumps(seed_record(ctx), indent=2)" in
+      Path(ms.__file__).read_text(encoding="utf-8"))
+
+with _tf71.TemporaryDirectory() as _td71p:
+    _priv71 = Path(_td71p) / "seed.json"
+    ms._write_private(_priv71, '{"x": 1}')
+    check("v0.1.71 D-3: _write_private produces an owner-only 0o600 file (no existing test pinned "
+          "this before — verified 0 hits for '_write_private'/'0o600' in tests/ pre-fix)",
+          _stat71.S_IMODE(_priv71.stat().st_mode) == 0o600)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -5,6 +5,51 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.71] — 2026-07-09
+
+### Fixed — Track D: global-store write atomicity + seed-path hardening
+The shared global store (`~/.claude/memory`) is the one place two different projects'
+dreams can write concurrently. A Gate-1 spec (two single-agent review rounds, the second
+of which caught a bug in the first's own proposed fix) scoped this to the actual threat
+model — a single-user tool, not a hostile multi-tenant host — and explicitly rejected a
+lock/mutex subsystem as disproportionate. Every fix is sabotage-verified (reverting it
+flips its regression test red). See `docs/track-d-write-atomicity-seed-hardening.spec.md`.
+
+- **D-1: atomic global-store writes** — the 2 real `GLOBAL`-store write sites
+  (`promote()`'s canonical write, `_record_provenance()`'s two `projects:`-list writes)
+  now route through a new `_atomic_write_text` (write-temp + `os.replace`, same-directory
+  sibling so the rename never crosses filesystems). A concurrent reader sees fully-old or
+  fully-new content, never a torn/partial canonical.
+- **D-2b: the `promote()` create-create race** (found at Gate-1 review, worse than the
+  audit's own finding) — two projects concurrently promoting different local facts onto
+  the same NEW `canon_name` could silently clobber one another's canonical AND erase the
+  loser's own local copy via the follow-on mirror write. A new `_create_exclusive`
+  (write-temp + `os.link` — deliberately NOT `O_CREAT|O_EXCL` against the destination,
+  which would create it empty-then-filled and reopen D-1's torn-read window) makes the
+  create atomic-and-exclusive: the loser is refused with an explicit retry message
+  (rc=1), never silently overwritten. A Probe K sub-test injects a concurrent
+  canonical-create into a live `promote()` run to pin the integration end-to-end.
+- **D-2: a documented accepted gap** — `_record_provenance()`'s read-modify-write of a
+  canonical's `projects:` list is not mutually exclusive; a lost update (one provenance
+  entry dropped, body untouched, self-healing on that project's next promote/pull) is
+  accepted rather than fixed: a real lock needs `fcntl` (banned — no POSIX-only modules)
+  or hand-rolled staleness detection (its own bug class). Documented in the docstring +
+  `harness-map.md`'s cross-project model.
+- **D-3: `--seed` write hardening** — the Phase-0 seed (which can hold recall-candidate
+  fact text) now routes through the existing `_write_private` helper (owner-only 0o600,
+  set atomically at creation) for consistency with `--snapshot`; it previously landed at
+  the process's default, often world-readable, mode.
+- **Gate-2a/2b follow-ups on the new primitives themselves** — a failed temp write no
+  longer leaks a partial `.tmp<pid>` sibling (`_create_exclusive` at Gate-2a,
+  `_atomic_write_text` parity at Gate-2b; errors still propagate, never masked), plus an
+  unreachable leftover `return` removed.
+- Also lands audit task #29's remaining two bare-`read_text` sites (`extract_signals.py`'s
+  `_marker_ts`, `memory_status.py`'s state-file read) with explicit `encoding="utf-8"`;
+  its other two were subsumed by D-1's refactor.
+
+Backward-compatible throughout (no schema change, no flag/CLI change — a new refusal
+path only where data was previously silently lost) ⇒ patch.
+
 ## [0.1.70] — 2026-07-07
 
 ### Fixed — DevSecOps pentest remediation: evict/mirror/git-argv hardening

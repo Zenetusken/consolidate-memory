@@ -159,6 +159,45 @@ def project_store(project_dir: Path) -> Path:
     return Path.home() / ".claude" / "projects" / slug_for(project_dir) / "memory"
 
 
+def _atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
+    """Overwrite `path` ATOMICALLY (v0.1.71, Track D-1) — write to a temp sibling then
+    `os.replace()` (same directory, so the rename stays on one filesystem; atomic on
+    POSIX and Windows since Python 3.3). A concurrent reader always sees either the
+    fully-old or fully-new content, never a partial write. Use for GLOBAL-store
+    overwrites specifically (the shared store multiple projects' dreams can write to
+    around the same time) — NOT for a create-or-detect-collision write, which needs
+    `os.link`'s exclusivity instead (see `_create_exclusive` / `promote()`). Like
+    `_create_exclusive`, never leaks its temp sibling — a failed write/replace still
+    propagates (no masking), but cleans up the partial temp first."""
+    tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+    try:
+        tmp.write_text(text, encoding=encoding)
+        os.replace(tmp, path)   # on success this consumes tmp — the finally's unlink no-ops
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _create_exclusive(path: Path, text: str, encoding: str = "utf-8") -> bool:
+    """Create `path` with `text` IFF it doesn't already exist — True if THIS call created
+    it, False if something else already occupies `path` (left completely untouched).
+    v0.1.71 (Track D-2b): writes the FULL content to a temp sibling first, then
+    `os.link`s it into place — existence and content become visible together in one
+    atomic step. Deliberately NOT `open(path, O_CREAT|O_EXCL)` + write + close: that
+    creates `path` EMPTY first and fills it as a separate step, so a concurrent reader
+    could observe a torn (empty) file in between — exactly the window `_atomic_write_text`
+    exists to close, reopened here if that primitive were used instead. Always cleans up
+    its own temp file (success or collision), never leaks one."""
+    tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+    try:
+        tmp.write_text(text, encoding=encoding)  # v0.1.71 Gate-2a: moved INSIDE try — a failure
+        os.link(str(tmp), str(path))             # here (disk-full etc.) used to skip the finally,
+        return True                              # leaving a partial/empty temp sibling behind.
+    except FileExistsError:
+        return False
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def _read_capped(p: Path, cap: int = _PYPROJECT_CAP) -> str:
     try:
         return p.read_text(encoding="utf-8", errors="replace")[:cap]
@@ -723,7 +762,19 @@ def _record_provenance(name: str, project: str) -> None:
     """Add `project` to the canonical fact's `projects:` list — the synapse record.
 
     As a fact propagates to more projects, its provenance grows; that list IS the
-    cross-project network's edge set (which minds hold which memory)."""
+    cross-project network's edge set (which minds hold which memory).
+
+    v0.1.71 (Track D-2, accepted gap): this read-modify-write is NOT mutually exclusive
+    across processes. Two concurrent promotes/pulls touching the SAME canonical can both
+    read the list before either writes; the second (atomic, via `_atomic_write_text`)
+    write can still overwrite the first's append, dropping one `projects:` entry. Left
+    as a documented gap, not fixed with a lock: the window is milliseconds wide (fires at
+    dream/arc boundaries, not continuously), the canonical's BODY is untouched, and the
+    miss self-heals the next time the dropped project's own dream promotes/pulls again. A
+    real fix needs either `fcntl` (banned — this repo's no-POSIX-only-modules guarantee)
+    or a hand-rolled staleness-detecting lock (its own bug class) — disproportionate for
+    an undercount-by-one on a non-load-bearing list. See
+    docs/track-d-write-atomicity-seed-hardening.spec.md D-2."""
     p = GLOBAL / f"{name}.md"
     text = _safe_read_text(p)   # v0.1.69 Gate-2b: TOCTOU-tightened — a vanished canonical is
     if text is None:            # nothing to record provenance for (same as the old not-exists early-return)
@@ -738,13 +789,13 @@ def _record_provenance(name: str, project: str) -> None:
         if project in items:
             return
         items.append(project)
-        p.write_text(text[: m.start()] + f"{m.group(1)}[{', '.join(items)}]" + text[m.end():])
+        _atomic_write_text(p, text[: m.start()] + f"{m.group(1)}[{', '.join(items)}]" + text[m.end():])
     else:  # no projects line yet — add one after scope/node_type. Use a replacement
         # FUNCTION (not an f-string template) so `project` is never scanned for `\1`-style
         # backreferences by re.sub.
         new = re.sub(r"(\n\s*(?:scope|node_type):.*\n)",
                      lambda mm: f"{mm.group(1)}  projects: [{project}]\n", text, count=1)
-        p.write_text(new)
+        _atomic_write_text(p, new)
 
 
 def _holders(fm: dict) -> list[str]:
@@ -938,7 +989,12 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
     conversion step strands a project-authored copy that `--gc` can never reclaim (a non-mirror), and on
     the next --pull it would either SHADOW the canonical (same name → `present(local)`, never refreshes)
     or DUPLICATE it (renamed → the canonical re-pulls as a second file). (It is not crash-atomic — an
-    interrupted process can still leave a partial state — but a completed call never does.)
+    interrupted process can still leave a partial state — but a completed call never does. v0.1.71:
+    the canonical CREATE itself is now exclusive — two processes racing to promote different local
+    facts onto the same NEW canon_name can no longer silently clobber one another; the loser is
+    refused and told to retry. That's a create-vs-create guard, not full multi-step atomicity — a
+    crash mid-sequence between an already-successful create and the later mirror/index writes is
+    still possible, same as before.)
 
     CANON_NAME defaults to LOCAL_FACT; pass it to RENAME on promote (normalize `_`→`-` / drop a
     date) or to DEDUP a local copy onto an existing canonical. An existing canonical is treated as
@@ -1031,8 +1087,18 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
         return 1
 
     # Write the canonical from the (re-scoped) local fact — but NEVER overwrite an existing one.
-    if not reconcile:
-        canon_path.write_text(local_text, encoding="utf-8")
+    # v0.1.71 (Track D-2b): `reconcile` was computed from `canon_path.exists()` back at guard-setup
+    # time — if a DIFFERENT process concurrently creates the SAME canon_name in the window since,
+    # an unconditional write here would silently clobber it (and, via the mirror-write below, erase
+    # the loser's own local copy too — this exact race, found at Gate-1 review, is why `reconcile`
+    # can't just be trusted this many lines later). `_create_exclusive` closes it: False means
+    # someone else's canonical won the race, untouched — refuse and ask the caller to retry (which
+    # correctly reconciles against it, since `canon_path.exists()` is now true).
+    if not reconcile and not _create_exclusive(canon_path, local_text):
+        print(f"promote: another process just created the canonical '{canon_name}' concurrently — "
+              "refusing to risk a silent clobber. Re-run promote — it will now correctly "
+              "reconcile against the canonical that landed.", file=sys.stderr)
+        return 1
     _record_provenance(canon_name, project_dir.name)
     canon_text = canon_path.read_text(encoding="utf-8", errors="replace")  # re-read POST-provenance
     fm = _frontmatter(canon_text)

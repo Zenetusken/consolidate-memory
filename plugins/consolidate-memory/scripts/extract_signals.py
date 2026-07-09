@@ -264,7 +264,7 @@ def _marker_ts(auto_mem: Path) -> str:
     sp = auto_mem / STATE_FILE
     if sp.exists():
         try:
-            return json.loads(sp.read_text()).get("timestamp", "")
+            return json.loads(sp.read_text(encoding="utf-8")).get("timestamp", "")
         except (json.JSONDecodeError, OSError):
             pass
     return ""

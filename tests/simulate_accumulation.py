@@ -145,6 +145,40 @@ def _promote(home: Path, project_dir: Path, *rest: str) -> subprocess.CompletedP
                           env=dict(os.environ, HOME=str(home)), capture_output=True, text=True, check=False)
 
 
+def _promote_racing(home: Path, project_dir: Path, local_fact: str, canon_name: str,
+                     winner_text: str) -> subprocess.CompletedProcess:
+    """v0.1.71 Gate-2a (Track D-2b): exercise `promote()`'s create-create race INTEGRATION, not
+    just `_create_exclusive` in isolation (the gap the review found — the isolated helper had
+    teeth, but nothing proved `promote()` actually wires it up / handles a `False` return
+    correctly end-to-end). `promote()` is a single, synchronous function call, so a REAL two-
+    process race is non-deterministic to reproduce in a test; instead this runs `promote()`
+    directly (not via the CLI's `main()`, which reads `sys.argv`) in a FRESH subprocess (still
+    HOME-sandboxed — `sync_global.GLOBAL` computes correctly from the overridden $HOME at import
+    time, same hermetic guarantee `_promote` gets) with `_nonglobal_wikilinks` monkeypatched to
+    inject the race deterministically: it's called (Guard 4) AFTER the `reconcile` check but
+    BEFORE the write this item hardens, with `global_dir`/`exclude` already equal to
+    `GLOBAL`/`canon_name` — exactly the ingredients needed to plant a "winner" canonical at the
+    precise moment another process would have. Returns a `CompletedProcess`-shaped result
+    (`returncode`, `stderr`) so callers can assert identically to `_promote`."""
+    script = f"""
+import sys
+from pathlib import Path
+sys.path.insert(0, {str(SYNC.parent)!r})
+import sync_global as sg
+
+_orig = sg._nonglobal_wikilinks
+def _patched(text, global_dir, exclude=""):
+    (global_dir / (exclude + ".md")).write_text({winner_text!r}, encoding="utf-8")
+    return _orig(text, global_dir, exclude=exclude)
+sg._nonglobal_wikilinks = _patched
+
+rc = sg.promote(Path({str(project_dir)!r}), {local_fact!r}, {canon_name!r})
+sys.exit(rc)
+"""
+    return subprocess.run([sys.executable, "-c", script],
+                          env=dict(os.environ, HOME=str(home)), capture_output=True, text=True, check=False)
+
+
 def _assert_hermetic(home: Path) -> None:
     """Refuse to run if the child CLI would resolve a store outside tmp.
 
@@ -592,19 +626,38 @@ def run() -> None:
         refused_memory = (r_mem.returncode != 0 and "reserved index name" in r_mem.stderr
                           and (pstore / "MEMORY.md").read_text(encoding="utf-8") == idx_before)
 
+        # (9) GUARD (v0.1.71 Gate-2a, Track D-2b): two processes racing to CREATE the same NEW
+        # canon_name — the loser must be refused, not silently clobber the winner's canonical NOR
+        # have its own local fact erased via the follow-on mirror write. `_create_exclusive` alone
+        # had a unit test (smoke.py); this exercises it THROUGH `promote()`'s actual control flow,
+        # closing the coverage gap the review found (nothing previously proved the integration
+        # point — the `if not reconcile and not _create_exclusive(...)` branch — works end to end).
+        _local_fact("race-fact", "user-global")
+        _race_local_before = _bytes("race-fact")
+        _winner_text = "---\nname: race-canon\nmetadata:\n  scope: user-global\n---\nWINNER (another process)\n"
+        r_race = _promote_racing(home, promo, "race-fact", "race-canon", _winner_text)
+        refused_race = (r_race.returncode != 0 and "concurrently" in r_race.stderr
+                        and (g / "race-canon.md").read_text(encoding="utf-8") == _winner_text
+                        and (pstore / "race-fact.md").exists() and _bytes("race-fact") == _race_local_before
+                        and not list(g.glob("race-canon.md.tmp*")))
+
         print(f"  create+norename={create_ok} · create+rename={rename_ok} · reconcile/dedup={reconcile_ok}")
         print(f"  guards: re-promote-mirror={refused_mirror} · dead-stack-general={refused_dead} · "
               f"undetectable-stack={refused_undetectable} · scopeless={refused_scope} · "
-              f"no-clobber={refused_clobber} · reserved-MEMORY={refused_memory}")
+              f"no-clobber={refused_clobber} · reserved-MEMORY={refused_memory} · "
+              f"create-create-race={refused_race}")
         _verdict("K", "--promote hands a local fact to the canonical store + mirrors the origin atomically "
                  "(in-sync follow-up pull, no dup/orphan); a divergent reconcile is refused (M2; "
-                 "--prefer-canonical to dedup); its 6 guards refuse a re-promote, a non-replicable scope, a "
-                 "dead stack-general (empty OR undetectable stacks), a destination-clobber, and `MEMORY`",
+                 "--prefer-canonical to dedup); its 7 guards refuse a re-promote, a non-replicable scope, a "
+                 "dead stack-general (empty OR undetectable stacks), a destination-clobber, `MEMORY`, and a "
+                 "concurrent create-create race onto the same NEW canon_name (v0.1.71, Track D-2b)",
                  create_ok and rename_ok and reconcile_ok and refused_mirror and refused_dead
-                 and refused_undetectable and refused_scope and refused_clobber and refused_memory,
+                 and refused_undetectable and refused_scope and refused_clobber and refused_memory
+                 and refused_race,
                  "canonical written, origin converted to a POST-provenance mirror (follow-up --pull is "
                  "in-sync, not STALE), a rename removes the old file + pointer, an existing canonical is "
-                 "never clobbered, and the guards block every unsafe/unreplicable promotion")
+                 "never clobbered, the guards block every unsafe/unreplicable promotion, and a racing "
+                 "concurrent create is refused rather than silently destroying the loser's own fact")
 
         # ── Probe L: inherited-backlog remediation triage (v0.1.18) ────────────
         # The app PREVENTS incremental bloat but must also REMEDIATE a backlog inherited from CC's

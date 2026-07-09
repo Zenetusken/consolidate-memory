@@ -166,7 +166,11 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
    single-sourced onto git commit subjects, closing a chunked-secret bypass + four ReDoS instances +
    several false-positive/false-negative regressions, two residual gaps accepted and documented
    rather than chased; Track D: CI floor widened to 3.8–3.13 + the v0.1.68 dashboard fixes gained
-   automated regression pins) — every one an additive `total=False` schema key / additive `--json`
+   automated regression pins) · v0.1.71 (Track D write atomicity: the 2 global-store write sites
+   made atomic [write-temp + `os.replace`], `promote()`'s canonical create made exclusive
+   [write-temp + `os.link` — the create-create race loser is refused, not silently clobbered], the
+   `_record_provenance` lost-update race accepted + documented, `--seed` routed through
+   `_write_private` 0o600) — every one an additive `total=False` schema key / additive `--json`
    key / additive flag / SKILL prose, never a break.
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
