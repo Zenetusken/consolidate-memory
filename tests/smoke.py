@@ -3496,6 +3496,10 @@ with _tf71.TemporaryDirectory() as _td71:
     check("v0.1.71 D-1: an interrupted os.replace propagates (doesn't swallow the error) "
           "AND leaves the destination's pre-write content untouched (no partial/torn write)",
           _raised71 and _p71b.read_text(encoding="utf-8") == "PRE-EXISTING")
+    check("v0.1.71 D-1 Gate-2b: the interrupted write leaves NO .tmp<pid> sibling behind either "
+          "(the same cleanup-on-failure guarantee Gate-2a gave _create_exclusive — the parity "
+          "fix _atomic_write_text was missing)",
+          list(Path(_td71).glob("*.tmp*")) == [])
 
 # --- v0.1.71 Track D-2b: _create_exclusive — atomic create-or-detect-collision, no torn-read window ---
 with _tf71.TemporaryDirectory() as _td71c:

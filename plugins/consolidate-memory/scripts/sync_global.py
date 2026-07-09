@@ -166,10 +166,15 @@ def _atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
     fully-old or fully-new content, never a partial write. Use for GLOBAL-store
     overwrites specifically (the shared store multiple projects' dreams can write to
     around the same time) — NOT for a create-or-detect-collision write, which needs
-    `os.link`'s exclusivity instead (see `_create_exclusive` / `promote()`)."""
+    `os.link`'s exclusivity instead (see `_create_exclusive` / `promote()`). Like
+    `_create_exclusive`, never leaks its temp sibling — a failed write/replace still
+    propagates (no masking), but cleans up the partial temp first."""
     tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
-    tmp.write_text(text, encoding=encoding)
-    os.replace(tmp, path)
+    try:
+        tmp.write_text(text, encoding=encoding)
+        os.replace(tmp, path)   # on success this consumes tmp — the finally's unlink no-ops
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _create_exclusive(path: Path, text: str, encoding: str = "utf-8") -> bool:
@@ -191,7 +196,6 @@ def _create_exclusive(path: Path, text: str, encoding: str = "utf-8") -> bool:
         return False
     finally:
         tmp.unlink(missing_ok=True)
-    return True
 
 
 def _read_capped(p: Path, cap: int = _PYPROJECT_CAP) -> str:
