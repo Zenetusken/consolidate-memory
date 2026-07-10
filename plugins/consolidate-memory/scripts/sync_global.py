@@ -39,6 +39,10 @@ each project's store. This is the engine for that:
                        rotation destroys them — usage capture was dream-gated per node (measured: 1/3 nodes
                        reporting). Watermarked + idempotent; reads-only (no miss classification); --utility
                        surfaces the harvested evidence, source-labeled, for nodes with no own-log usage.
+  --staleness PROJECT_DIR  (v0.1.80) READ-ONLY absorption-lag sweep over ALL project stores (beacon
+                       Stage A): per node — last-dream marker age, MISSING relevant globals (never
+                       absorbed), content-stale mirrors, usage/harvest coverage. Scope basis honest per
+                       node (full relevance only for the trigger; others user-global-only, labeled).
   --utility PROJECT_DIR  (v0.1.67, Phase C) READ-ONLY fleet usage evidence: per-canonical organic reads
                        aggregated across every node's cycle log (mirror-attributed; same-stem locals
                        report as shadow, never attributed) + fleet_tax = pointer×holders against the
@@ -1627,6 +1631,123 @@ def token_report(project_dir: Path, as_json: bool) -> int:
     return 0
 
 
+# ── v0.1.80: fleet STALENESS — absorption lag, measured per node (beacon Stage A) ────────────────
+def _all_stores() -> "list[Path]":
+    """EVERY project store under ~/.claude/projects holding ≥1 *.md — deliberately wider than
+    _network_nodes() (mirror-holders): a store with ZERO mirrors is exactly the most starved node
+    the staleness sweep exists to surface."""
+    base = Path.home() / ".claude" / "projects"
+    out: list = []
+    if base.is_dir():
+        for proj in sorted(base.iterdir()):
+            store = proj / "memory"
+            if store.is_dir() and any(store.glob("*.md")):
+                out.append(store)
+    return out
+
+
+def fleet_staleness(project_dir: Path) -> dict:
+    """READ-ONLY absorption-lag sweep (docs/fleet-staleness-report.spec.md — the observe-only
+    Stage A that must prove/refute the SessionStart beacon's premise). Per node: last-dream
+    marker age, mirror/fact counts, MISSING relevant globals (never absorbed), content-stale
+    mirrors (body-lineage hash vs the canonical — v0.1.78; hook drift is --pull's job, stale
+    KNOWLEDGE is what lag harms), own-log usage windows + harvest-ledger coverage. Scope basis
+    is HONEST per node: full relevance (live detect_stacks) only for the TRIGGER — a slug is
+    not invertible to a project path, so other nodes are assessed on user-global canonicals
+    only, labeled, never guessed (Stage B's state-file stacks cache upgrades this)."""
+    import json as _json
+    project_dir = project_dir.resolve()
+    gfacts = global_facts()
+    trig_store = project_store(project_dir)
+    trig_stacks = detect_stacks(project_dir)
+    ledger_nodes = {str(r.get("node", "")) for r in _ledger_rows()}
+    now_ep = datetime.now(timezone.utc).timestamp()
+    body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts}
+    nodes: list = []
+    for store in _all_stores():
+        is_trig = store.resolve() == trig_store.resolve()
+        marker = ""
+        raw_state = _safe_read_text(store / ".consolidation-state.json")
+        if raw_state:
+            try:
+                _st = _json.loads(raw_state)
+                marker = str((_st or {}).get("timestamp", "") or "") if isinstance(_st, dict) else ""
+            except (ValueError, TypeError):
+                marker = ""
+        mdt = _parse_ts(marker) if marker else None
+        missing = stale = 0
+        for n, fm, _text in gfacts:
+            scope = fm.get("scope", "")
+            if scope == "user-global":
+                relv = True
+            elif scope == "stack-general" and is_trig:
+                relv = bool(_fact_stacks(fm) & trig_stacks)
+            else:
+                continue   # stack-general on a non-trigger node: not assessable — never guessed
+            if not relv:
+                continue
+            cur = _safe_read_text(store / f"{n}.md")
+            if cur is None:
+                missing += 1
+            elif _is_mirror(cur) and _body_hash(cur) != body_hashes[n]:
+                stale += 1
+        m = _node_tokens(store)
+        hist = usage_history(store)
+        nodes.append({"node": _sane(project_dir.name) if is_trig else _node_label(store),
+                      "trigger": is_trig,
+                      "last_dream": marker,
+                      "age_days": (round((now_ep - mdt.timestamp()) / 86400, 1) if mdt else None),
+                      "facts": m["facts"], "mirrors": m["shared"],
+                      "missing_globals": missing, "stale_mirrors": stale,
+                      "scope_basis": ("full (live stacks)" if is_trig else "user-global only (no stacks cache)"),
+                      "usage_windows": hist["windows_full"],
+                      "harvested": store.parent.name in ledger_nodes})
+    nodes.sort(key=lambda d: (-d["missing_globals"], -(d["age_days"] if d["age_days"] is not None else 1e9)))
+    return {"nodes": nodes,
+            "behind": sum(1 for d in nodes if d["missing_globals"]),
+            "never_dreamed": sum(1 for d in nodes if d["last_dream"] == "")}
+
+
+def staleness_report(project_dir: Path, as_json: bool) -> int:
+    """Render fleet_staleness — the per-node absorption-lag table. Advisory only: a node absorbs
+    on ITS next dream (never auto-pulled from here — report-then-apply and the dream-governance
+    model own writes). Maintainer/observability lens outside dream flow (like --network): uncued."""
+    import json as _json
+    project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
+    s = fleet_staleness(project_dir)
+    if as_json:
+        print(_json.dumps(s, indent=2))
+        return 0
+    out: list = []
+    title = "✦ FLEET STALENESS · absorption lag per node"
+    tag = f"{s['behind']}/{len(s['nodes'])} behind"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold" if s["behind"] else "dim"))
+    out.append("  " + _ui.c("eventual consistency's honesty debt, measured — a node absorbs on ITS next "
+                            "dream; nothing is auto-pulled from here", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    for d in s["nodes"]:
+        age = ("never dreamed" if d["age_days"] is None else f"dreamed {d['age_days']:g}d ago")
+        gapscol = (_ui.c(f"↓{d['missing_globals']} missing", "yellow") if d["missing_globals"]
+                   else _ui.c("· 0 missing", "dim"))
+        stalecol = (_ui.c(f" · ⟳{d['stale_mirrors']} content-stale", "yellow") if d["stale_mirrors"] else "")
+        cover = f"windows {d['usage_windows']}" + (" · harvested" if d["harvested"] else "")
+        mark = "  " + _ui.c("◀ trigger", "cyan") if d["trigger"] else ""
+        out.append(f"    {_ui.lbl(d['node'][:24], 24)} {age:<18} {gapscol}{stalecol}  "
+                   + _ui.c(f"{d['mirrors']} mirror(s)/{d['facts']} fact(s) · {cover} · {d['scope_basis']}", "dim") + mark)
+    out.append("")
+    out.append(_ui.kv("RESULT", f"{s['behind']} node(s) behind · {s['never_dreamed']} never dreamed — "
+               "the lag lever is a dream ON that node (its Phase 1 pulls + harvests); Stage B's "
+               "session beacon will surface this at session start"))
+    print(_ui.ascii_translate("\n".join(out)))
+    return 0
+
+
 # ── v0.1.79: fleet usage HARVEST — capture non-dreaming nodes' windows before transcripts rot ────
 _LEDGER_TAIL_CAP = 2000   # ledger rows read from the tail (~1 row/node/harvest — years of headroom)
 
@@ -1946,10 +2067,11 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
     return 0
 
 
-# The dream-flow modes that carry a cross-project BEAT: --list/--pull (Phase 1) and --gc/--tokens/
-# --utility (Phase 5; --utility is the gc lever's evidence view, v0.1.67). --promote runs in Phase 4's
-# APPLY — the one phase whose contract deliberately excludes dream beats (only the plain proposal + the
-# single SURFACING line) — and --network is a maintainer utility outside dream flow, so neither cues.
+# The dream-flow modes that carry a cross-project BEAT: --list/--pull/--harvest (Phase 1) and --gc/
+# --tokens/--utility (Phase 5; --utility is the gc lever's evidence view, v0.1.67). --promote runs in
+# Phase 4's APPLY — the one phase whose contract deliberately excludes dream beats (only the plain
+# proposal + the single SURFACING line) — and --network/--staleness are maintainer/observability
+# utilities outside dream flow, so none of those cue.
 _CUED_MODES = ("--list", "--pull", "--gc", "--tokens", "--utility", "--harvest")
 
 
@@ -1988,6 +2110,8 @@ def _dispatch() -> int:
         return utility_report(project_dir, "--json" in args)
     if args and args[0] == "--harvest":   # v0.1.79: capture every node's usage windows into the shared ledger
         return harvest(project_dir)
+    if args and args[0] == "--staleness":   # v0.1.80: READ-ONLY absorption-lag sweep (beacon Stage A)
+        return staleness_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
         return gc(project_dir, "--apply" in args)
     if args and args[0] == "--promote":
@@ -1999,7 +2123,8 @@ def _dispatch() -> int:
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
-              "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --network", file=sys.stderr)
+              "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --staleness [--json] PROJECT_DIR "
+              "| --network", file=sys.stderr)
         return 2
     evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)
     if evict is not None:                          # Gate-2: a destructive flag must not silently no-op

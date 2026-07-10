@@ -4121,5 +4121,53 @@ with _Env73() as _e:
           "the v1 no-double-count rule), own reads attributed normally",
           _e79b["reads"] == 2 and "harvested_reads" not in _e79b and _fu79b["nodes_harvested"] == 0)
 
+# --- v0.1.80: fleet STALENESS (docs/fleet-staleness-report.spec.md — beacon Stage A). The blind
+# spot is structural: absorption latency was unbounded AND unmeasured (a lagging node by definition
+# never runs the only flows that report lag). Live first-run proof: a real node 18d behind with 11
+# missing globals + 4 content-stale mirrors, previously invisible.
+with _Env73() as _e:
+    def _canon80(name, body):
+        return (f"---\nname: {name}\ndescription: \"d\"\nmetadata:\n  node_type: memory\n"
+                f"  scope: user-global\n  type: feedback\n---\n{body}\n")
+    (_e.glob / "g-one.md").write_text(_canon80("g-one", "body one"), encoding="utf-8")
+    (_e.glob / "g-two.md").write_text(_canon80("g-two", "body two"), encoding="utf-8")
+    _nA80 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-fresh" / "memory"
+    _nA80.mkdir(parents=True)
+    for _n80 in ("g-one", "g-two"):
+        _t80 = (_e.glob / f"{_n80}.md").read_text(encoding="utf-8")
+        (_nA80 / f"{_n80}.md").write_text(sg._as_mirror(_t80, _n80, since="2026-07-01T00:00:00Z",
+                                                        body_hash=sg._body_hash(_t80)), encoding="utf-8")
+    (_nA80 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_nA80 / ".consolidation-state.json").write_text(
+        _jsonB.dumps({"commit": "x", "timestamp": "2026-07-09T00:00:00Z"}), encoding="utf-8")
+    _nB80 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-starved" / "memory"
+    _nB80.mkdir(parents=True)
+    _old80 = _canon80("g-one", "an OLD body")
+    (_nB80 / "g-one.md").write_text(sg._as_mirror(_old80, "g-one", since="2026-01-01T00:00:00Z",
+                                                  body_hash=sg._body_hash(_old80)), encoding="utf-8")
+    (_nB80 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")   # the trigger's own store
+    import hashlib as _hl80
+    _pre80 = {p: _hl80.sha1(p.read_bytes()).hexdigest()
+              for p in (Path(_osB.environ["HOME"]) / ".claude").rglob("*") if p.is_file()}
+    _s80 = sg.fleet_staleness(_e.proj)
+    _post80 = {p: _hl80.sha1(p.read_bytes()).hexdigest()
+               for p in (Path(_osB.environ["HOME"]) / ".claude").rglob("*") if p.is_file()}
+    _by80 = {d["node"]: d for d in _s80["nodes"]}
+    check("v0.1.80: fleet_staleness measures the starved node exactly — never-dreamed (age null-safe), "
+          "1 missing user-global, 1 content-stale mirror — and the fresh node reads clean",
+          _by80["src-starved"]["missing_globals"] == 1 and _by80["src-starved"]["stale_mirrors"] == 1
+          and _by80["src-starved"]["age_days"] is None and _by80["src-starved"]["last_dream"] == ""
+          and _by80["src-fresh"]["missing_globals"] == 0 and _by80["src-fresh"]["stale_mirrors"] == 0
+          and _by80["src-fresh"]["age_days"] is not None
+          and _s80["behind"] == 2 and _s80["never_dreamed"] == 2)   # starved + the trigger's own empty store
+    check("v0.1.80: scope basis is HONEST per node — full (live stacks) only for the trigger; non-trigger "
+          "nodes labeled user-global-only (a slug is never guessed back to a path)",
+          _by80["src-starved"]["scope_basis"] == "user-global only (no stacks cache)"
+          and {d["node"]: d for d in _s80["nodes"] if d["trigger"]} != {}
+          and all(d["scope_basis"] == "full (live stacks)" for d in _s80["nodes"] if d["trigger"]))
+    check("v0.1.80: the sweep is READ-ONLY over every store, and the payload is JSON-safe (null age)",
+          _pre80 == _post80 and isinstance(_jsonB.dumps(_s80), str))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
