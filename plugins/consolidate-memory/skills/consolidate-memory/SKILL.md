@@ -134,7 +134,9 @@ never deadlock). It NEVER auto-deletes — the triage *offers*; you confirm (Saf
 **The HARD CEILING (v0.1.66, Phase B) — a SECOND, INDEPENDENT signal beside the target gate above, never a
 re-key of it.** `INDEX_CEILING_TOKENS` (≈3840 est tok = 0.6 × the harness's native 25KB truncation cap;
 `memory_status.py`) is the real-harm rung of the budget ladder: past it, `sync_global --pull` **M1-holds
-ALL new pulls** and the evict fit-check keys to it — while the over-TARGET amber band (1500..ceiling) now
+ALL new pulls** and the evict gain-gate keys to it (v0.1.73: an A/B replay of the actual pull plan, with
+`freed` MEASURED from the live index line — a mirror, an unindexed, or a gainless evict is refused;
+see `docs/evict-accounting-truth.spec.md`) — while the over-TARGET amber band (1500..ceiling) now
 **receives** verified knowledge freely. The ceiling is **structurally standing-justify-INDEPENDENT** (the
 comparison never reads `standing_justify` — there is nothing to suppress and no justify escape; over the
 ceiling, only shrinking satisfies). Everything in the v0.1.18 paragraph above — `required`, the triage

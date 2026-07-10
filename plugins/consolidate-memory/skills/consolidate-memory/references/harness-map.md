@@ -394,8 +394,10 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   target-keyed semantics the dream-beta-tester's `CHK-REM-SEED-CONTRACT` oracle pins):
   `INDEX_CEILING_FRACTION` (0.6) × the native 25KB byte cap → `INDEX_CEILING_TOKENS` (≈3840 est tok,
   ONE canonical est-token number — the line axis stays cliff_pct's job). Drives: the M1 pull-hold +
-  the `--evict` fit-check (`sync_global` passes it at the call site — the over-TARGET amber band now
-  receives pulls freely) and the `remediation.over_ceiling` seed flag (a SIBLING of `required`,
+  the `--evict` gain-gate (`sync_global` passes it at the call site — v0.1.73: the gate is an A/B replay
+  of the actual pull plan with `freed` MEASURED from the live index line, refusing a mirror/unindexed/
+  gainless evict; the over-TARGET amber band still receives pulls freely) and the
+  `remediation.over_ceiling` seed flag (a SIBLING of `required`,
   rendered red on the dashboard gauge, the Phase-0 report, and the HTML meter). **Structurally
   standing-justify-independent** — the comparison never reads `standing_justify`, so suppression
   can't hide it and there is no justify escape. Write-time fat-hook lint rides the same release

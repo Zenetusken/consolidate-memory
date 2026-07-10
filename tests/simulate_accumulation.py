@@ -1094,6 +1094,51 @@ def run() -> None:
                  "a dash-leading, un-ignored path is a VALID relocate target (was: misread as a git flag "
                  "without the `--` separator, likely fail-closed to unsafe)")
 
+        # ── Probe V: v0.1.73 evict-to-receive HAPPY PATH + mirror refusal, live CLI ──
+        # (docs/evict-accounting-truth.spec.md). The happy path had ZERO in-repo coverage before
+        # this (smoke.py conceded it ran "out-of-band"); the 2026-07-10 audit found 3 MAJOR defects
+        # hiding exactly there. Fixture: an authored junk pointer whose REAL index line is generous
+        # (freed ≥ the held global's pointer cost), a store padded exactly TO the ceiling, one
+        # missing user-global → plain --pull holds it; --evict=junk must land it, net-under-ceiling.
+        print("\n── Probe V: v0.1.73 evict-to-receive (happy path + mirror refusal) ──")
+        # Own HOME root: the sim's shared global store already holds ~16 facts from earlier
+        # probes, which would make EVERY count/target assertion here order- and count-fragile
+        # (a fresh store pulls them all). One canonical, one authored pointer, exact arithmetic.
+        homeV = home / "probe-v-home"
+        _write_global(homeV, "vvv-wanted", "user-global", desc="a held global worth receiving")
+        projV = _make_project(homeV, "evictprojV")
+        storeV = _store(homeV, projV)
+        storeV.mkdir(parents=True, exist_ok=True)
+        (storeV / "junk-pointer.md").write_text(
+            "---\nname: junk-pointer\ndescription: low-value authored\nmetadata:\n  type: reference\n---\njunk\n",
+            encoding="utf-8")
+        _junk_line = "- [junk-pointer](junk-pointer.md) — " + "a deliberately generous hand-written hook " * 6
+        _ceilV = ms.INDEX_CEILING_TOKENS
+        _baseV = "# Memory Index\n" + _junk_line + "\n- [vpad](vpad.md) — "
+        (storeV / "MEMORY.md").write_text(_baseV + "p" * (_ceilV * 4 - len(_baseV) - 1) + "\n", encoding="utf-8")
+        outV1 = _sync(homeV, "--pull", str(projV))
+        _held_not_landed = not (storeV / "vvv-wanted.md").exists()   # captured BEFORE the evict lands it
+        procV = subprocess.run([sys.executable, str(SYNC), "--pull", "--evict=junk-pointer", str(projV)],
+                               env=dict(os.environ, HOME=str(homeV)), capture_output=True, text=True, check=False)
+        _idxV = (storeV / "MEMORY.md").read_text(encoding="utf-8")
+        _verdict("V", "v0.1.73: the evict-to-receive happy path works end-to-end — a plain --pull holds the "
+                 "global; --evict of a low-value AUTHORED pointer frees MEASURED room, the held global lands "
+                 "as a mirror, and the index stays at/under the hard ceiling",
+                 "held 1" in outV1 and _held_not_landed
+                 and procV.returncode == 0 and "pulled 1 new" in procV.stdout
+                 and not (storeV / "junk-pointer.md").exists()
+                 and (storeV / "vvv-wanted.md").exists() and "global_ref:" in (storeV / "vvv-wanted.md").read_text(encoding="utf-8")
+                 and ms.est_tokens(_idxV) <= _ceilV and "(junk-pointer.md)" not in _idxV,
+                 f"swap executed: freed measured line, landed vvv-wanted, index ≈{ms.est_tokens(_idxV)}/{_ceilV}")
+
+        procV2 = subprocess.run([sys.executable, str(SYNC), "--pull", "--evict=vvv-wanted", str(projV)],
+                                env=dict(os.environ, HOME=str(homeV)), capture_output=True, text=True, check=False)
+        _verdict("V2", "v0.1.73: --evict of a managed MIRROR is refused via the live CLI (self-defeating swap "
+                 "— the audit's F1; the pre-fix candidates table even offered mirrors), mirror intact",
+                 procV2.returncode == 1 and "managed MIRROR" in procV2.stderr
+                 and (storeV / "vvv-wanted.md").exists(),
+                 "the lever for a mirror is the GLOBAL store (demote/delete + --gc), never a local delete")
+
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")
         first, last = curve[0], curve[-1]

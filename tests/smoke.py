@@ -1449,18 +1449,29 @@ _slugs40 = {ms.slug_for(_p40), _snap.slug_for(_p40), _bc40.slug_for(_p40), _rbr4
 check("v0.1.40/M3: all 5 slug_for reimplementations AGREE (skill + snapshot/beta_checks/render/make_fixture)",
       len(_slugs40) == 1)
 # v0.1.41 (evict-to-receive) — the pure guards behind --evict (the release valve for M1's hold). extract_wikilinks
-# (the single [[...]] extractor, factored from dangling_links); _evict_frees_enough (fit-check, no-partial-loss);
-# _inbound_links (orphan-safety). The hermetic CLI E2E (happy + both refusals + surfacing) ran green out-of-band.
+# (the single [[...]] extractor, factored from dangling_links); _inbound_links (orphan-safety). v0.1.73 replaced
+# the static _evict_frees_enough fit-check with the _plan_pull A/B replay (docs/evict-accounting-truth.spec.md);
+# its pins are below, and the once-out-of-band evict CLI E2E is now IN-REPO (the v0.1.73 block + sim Probe V).
 check("v0.1.41: extract_wikilinks strips fenced + inline code, finds [[real]] only (single [[...]] extractor)",
       ms.extract_wikilinks("a [[real]] b `[[inline]]` c\n```\n[[fenced]]\n```\n") == ["real"])
-# explicit budget=1200 pins these to the eviction LOGIC, not the production INDEX_TOKEN_BUDGET
-# (which moved 1200→1500) — a fixture sized to the live constant silently breaks on a re-ground.
-check("v0.1.41: _evict_frees_enough True when the freed room fits the smallest held",
-      sg._evict_frees_enough(1190, 80, [40, 60], budget=1200) is True)        # (1190-80)+40 = 1150 ≤ 1200
-check("v0.1.41: _evict_frees_enough False when the evict frees too little (no-partial-loss refusal)",
-      sg._evict_frees_enough(1190, 10, [40], budget=1200) is False)           # (1190-10)+40 = 1220 > 1200
-check("v0.1.41: _evict_frees_enough False when nothing is held (nothing to receive)",
-      sg._evict_frees_enough(1190, 80, [], budget=1200) is False)
+# v0.1.73: _plan_pull — the ONE accounting replay both run()'s write loop and the --evict gain-gate consume.
+# explicit budget=1200 pins these to the planning LOGIC, not the production ceiling constant (the v0.1.41 rule).
+_pp73 = sg._plan_pull([("a", "MISSING", 30, 0), ("z", "MISSING", 30, 0)], 1150, False, budget=1200)
+check("v0.1.73: _plan_pull ACCUMULATES in iteration order — the first pull's growth holds the second "
+      "(a static per-fact pre-scan would pull both; F3's root)",
+      _pp73["pull"] == ["a"] and _pp73["held"] == [("z", 30)] and _pp73["end_idx"] == 1180)
+_pp73b = sg._plan_pull([("s", "STALE-mirror", 40, 10), ("m", "MISSING", 20, 0)], 1170, False, budget=1200)
+check("v0.1.73: _plan_pull counts a STALE refresh's real pointer delta (F4) — the later MISSING holds at the ceiling",
+      _pp73b["pull"] == [] and _pp73b["held"] == [("m", 20)] and _pp73b["end_idx"] == 1200)
+check("v0.1.73: _plan_pull nets a MISSING fact against its EXISTING real line (index-drift state); ==budget boundary pulls",
+      sg._plan_pull([("m", "MISSING", 30, 25)], 1195, False, budget=1200)["pull"] == ["m"])
+check("v0.1.73: _plan_pull under --allow-net-grow holds nothing",
+      sg._plan_pull([("a", "MISSING", 999, 0)], 1199, True, budget=1200)["held"] == [])
+check("v0.1.73: _index_line_cost measures the REAL line via its ](stem.md) anchor; absent stem → 0 "
+      "(F2: freed is measured, never derived)",
+      sg._index_line_cost("# Memory Index\n- [x](x.md) — a real line here\n", "x") ==
+      ms.est_tokens("- [x](x.md) — a real line here")
+      and sg._index_line_cost("# Memory Index\n- [x](x.md) — y\n", "nope") == 0)
 
 # vNEXT: archive_candidates — completion-driven (dated-stem + KEEP-veto), INDEXED-only, high-precision.
 import tempfile as _tf
@@ -3627,6 +3638,162 @@ with _tf71.TemporaryDirectory() as _td71p:
     check("v0.1.71 D-3: _write_private produces an owner-only 0o600 file (no existing test pinned "
           "this before — verified 0 hits for '_write_private'/'0o600' in tests/ pre-fix)",
           _stat71.S_IMODE(_priv71.stat().st_mode) == 0o600)
+
+# --- v0.1.73: evict accounting truth (docs/evict-accounting-truth.spec.md) — the five audit
+# repro probes, ported IN-REPO after running RED against the pre-fix tree (5/5 defects present,
+# measured 2026-07-10) and GREEN after. Fixtured GLOBAL + HOME, in-process (the Phase-B pattern);
+# exact-token fixtures derived from the live constants, never hardcoded to them.
+import contextlib as _ctx73, io as _io73, os as _os73, tempfile as _tf73  # noqa: E401,E402
+
+
+def _fact73(name: str, desc: str) -> str:
+    return (f"---\nname: {name}\ndescription: \"{desc}\"\nmetadata:\n  node_type: memory\n"
+            f"  scope: user-global\n  type: feedback\n---\nbody of {name}\n")
+
+
+def _pad_index73(target_tokens: int, lines: list) -> str:
+    """Index text whose est_tokens == target_tokens exactly, containing `lines` + one pad line."""
+    base = "# Memory Index\n" + "".join(ln + "\n" for ln in lines)
+    prefix = "- [zzzpad](zzzpad.md) — "
+    need = target_tokens * 4 - len(base) - len(prefix) - 1
+    assert need > 0, f"pad target too small (need={need})"
+    text = base + prefix + "p" * need + "\n"
+    assert ms.est_tokens(text) == target_tokens
+    return text
+
+
+class _Env73:
+    """Hermetic store+global fixture: HOME and sg.GLOBAL both redirected into a tempdir."""
+    def __enter__(self):
+        self._td = _tf73.TemporaryDirectory(prefix="smoke73-")
+        home = Path(self._td.name)
+        self.proj = (home / "src" / "proj73").resolve(); self.proj.mkdir(parents=True)
+        self.store = home / ".claude" / "projects" / ms.slug_for(self.proj) / "memory"
+        self.store.mkdir(parents=True)
+        self.glob = home / "global-mem"; self.glob.mkdir(parents=True)
+        self._home, self._global = _os73.environ.get("HOME"), sg.GLOBAL
+        _os73.environ["HOME"] = str(home); sg.GLOBAL = self.glob
+        return self
+
+    def __exit__(self, *a):
+        sg.GLOBAL = self._global
+        if self._home is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = self._home
+        self._td.cleanup()
+
+
+def _run73(proj, evict=None):
+    out, err = _io73.StringIO(), _io73.StringIO()
+    with _ctx73.redirect_stdout(out), _ctx73.redirect_stderr(err):
+        rc = sg.run(proj, pull=True, evict=evict)
+    return rc, out.getvalue(), err.getvalue()
+
+
+_C73 = ms.INDEX_CEILING_TOKENS
+
+# F1 — a managed MIRROR is refused as evictee (pre-fix: accepted, re-pulled itself the same pass,
+# the held global never landed — a destructive op that gained nothing).
+with _Env73() as _e:
+    (_e.glob / "aaa-m.md").write_text(_fact73("aaa-m", "short a"), encoding="utf-8")
+    (_e.glob / "zzz-h.md").write_text(_fact73("zzz-h", "short z"), encoding="utf-8")
+    _mir = sg._as_mirror((_e.glob / "aaa-m.md").read_text(encoding="utf-8"), "aaa-m")
+    (_e.store / "aaa-m.md").write_text(_mir, encoding="utf-8")
+    _lineA = sg._pointer_line("aaa-m", sg._frontmatter(_mir))
+    (_e.store / "MEMORY.md").write_text(_pad_index73(_C73 - 1, [_lineA]), encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj, evict="aaa-m")
+    check("v0.1.73/F1: --evict of a managed MIRROR is refused (self-defeating swap), mirror untouched",
+          _rc == 1 and "managed MIRROR" in _err and (_e.store / "aaa-m.md").read_text(encoding="utf-8") == _mir)
+
+# F2a — an UNINDEXED evictee frees nothing real: refused BEFORE any delete; the ceiling is never
+# breached by phantom credit (pre-fix: deleted the fact, under-counted, real index landed ≈3857 > C).
+with _Env73() as _e:
+    (_e.glob / "held-g.md").write_text(_fact73("held-g", "a held global fact"), encoding="utf-8")
+    (_e.store / "evictme.md").write_text(
+        "---\nname: evictme\ndescription: \"local authored\"\nmetadata:\n  type: reference\n---\nlocal body\n",
+        encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text(_pad_index73(_C73 + 2, []), encoding="utf-8")  # over ceiling; evictme NOT indexed
+    _rc, _out, _err = _run73(_e.proj, evict="evictme")
+    check("v0.1.73/F2a: --evict of an UNINDEXED fact is refused (freed is MEASURED, phantom credit gone) "
+          "and the fact survives",
+          _rc == 1 and "frees NOTHING" in _err and (_e.store / "evictme.md").exists()
+          and not (_e.store / "held-g.md").exists())
+
+# F2b — a fat HAND-WRITTEN real line is credited at its real cost: the evict is ACCEPTED and the
+# held global lands (pre-fix: judged by its lean derived pointer ≈7t and refused).
+with _Env73() as _e:
+    (_e.glob / "held-g.md").write_text(_fact73("held-g", "a held global fact"), encoding="utf-8")
+    (_e.store / "fatline.md").write_text(
+        "---\nname: fatline\ndescription: \"x\"\nmetadata:\n  type: reference\n---\nbody\n", encoding="utf-8")
+    _fat_real = "- [fatline](fatline.md) — " + "hand-written enormous hook " * 10
+    (_e.store / "MEMORY.md").write_text(_pad_index73(_C73 + 2, [_fat_real]), encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj, evict="fatline")
+    check("v0.1.73/F2b: a fat REAL index line evicts at its MEASURED cost — accepted, held global lands",
+          _rc == 0 and "measured" in _err and not (_e.store / "fatline.md").exists()
+          and (_e.store / "held-g.md").exists() and "pulled 1 new" in _out)
+
+# F3 — the gain-gate: an evict whose A/B plan replay lands NO additional held global is refused and
+# the authored fact SURVIVES (pre-fix: static fit-check passed, the loop's accumulation re-held the
+# target, the irreplaceable authored fact was deleted for zero gain). Constraints (seed = C - fill):
+# held_pre ∋ mmm ⇔ held > fill; static fit passes ⇔ freed ≥ held - fill; loop re-holds ⇔ freed < held.
+with _Env73() as _e:
+    (_e.glob / "aab-fill.md").write_text(_fact73("aab-fill", "ff"), encoding="utf-8")
+    (_e.glob / "mmm-held.md").write_text(
+        _fact73("mmm-held", "a much longer description string here to size the pointer"), encoding="utf-8")
+    _cf = ms.est_tokens(sg._pointer_line("aab-fill", sg._frontmatter((_e.glob / "aab-fill.md").read_text(encoding="utf-8"))))
+    _ch = ms.est_tokens(sg._pointer_line("mmm-held", sg._frontmatter((_e.glob / "mmm-held.md").read_text(encoding="utf-8"))))
+    (_e.store / "evictme.md").write_text(
+        "---\nname: evictme\ndescription: \"" + "d" * 50 + "\"\nmetadata:\n  type: reference\n---\nirreplaceable\n",
+        encoding="utf-8")
+    _evl = sg._pointer_line("evictme", sg._frontmatter((_e.store / "evictme.md").read_text(encoding="utf-8")))
+    _fr = ms.est_tokens(_evl)
+    assert _ch > _cf and _ch - _cf <= _fr < _ch, (_cf, _ch, _fr)
+    (_e.store / "MEMORY.md").write_text(_pad_index73(_C73 - _cf, [_evl]), encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj, evict="evictme")
+    check("v0.1.73/F3: a GAINLESS evict is refused by the A/B plan replay — the authored fact survives "
+          "(Guard-3 by construction; was: destroyed for zero gain)",
+          _rc == 1 and "gains nothing" in _err and (_e.store / "evictme.md").exists())
+
+# F4 — a STALE refresh's pointer delta is counted before later hold decisions: the subsequent
+# MISSING fact HOLDS instead of breaching (pre-fix: pulled on the stale figure, real index ≈3862 > C).
+with _Env73() as _e:
+    _old_canon = _fact73("aaa-stale", "old")
+    (_e.glob / "aaa-stale.md").write_text(
+        _fact73("aaa-stale", "a new grown description that is much much longer than before, sized near the "
+                             "eighty-eight char hook cap"), encoding="utf-8")
+    (_e.glob / "nnn-new.md").write_text(_fact73("nnn-new", "n" * 20), encoding="utf-8")
+    (_e.store / "aaa-stale.md").write_text(sg._as_mirror(_old_canon, "aaa-stale"), encoding="utf-8")
+    _oldl = sg._pointer_line("aaa-stale", sg._frontmatter(_old_canon))
+    _delta = (ms.est_tokens(sg._pointer_line("aaa-stale", sg._frontmatter((_e.glob / "aaa-stale.md").read_text(encoding="utf-8"))))
+              - ms.est_tokens(_oldl))
+    _cn = ms.est_tokens(sg._pointer_line("nnn-new", sg._frontmatter((_e.glob / "nnn-new.md").read_text(encoding="utf-8"))))
+    assert _delta > 0 and _cn > 0
+    (_e.store / "MEMORY.md").write_text(_pad_index73(_C73 - _cn, [_oldl]), encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.73/F4: a STALE refresh's real pointer delta is tracked — the later MISSING pull HOLDS "
+          "instead of breaching the ceiling on a stale figure",
+          _rc == 0 and "held 1" in _out and "refreshed 1" in _out and not (_e.store / "nnn-new.md").exists())
+
+# The offer table — mirrors are never offered as evict candidates; authored candidates carry the
+# MEASURED real-line cost (the pre-fix table listed mirrors, labeled, feeding F1's trap).
+with _Env73() as _e:
+    (_e.glob / "aaa-m.md").write_text(_fact73("aaa-m", "short a"), encoding="utf-8")
+    (_e.glob / "zzz-h.md").write_text(_fact73("zzz-h", "short z"), encoding="utf-8")
+    _mir = sg._as_mirror((_e.glob / "aaa-m.md").read_text(encoding="utf-8"), "aaa-m")
+    (_e.store / "aaa-m.md").write_text(_mir, encoding="utf-8")
+    (_e.store / "local-a.md").write_text(
+        "---\nname: local-a\ndescription: \"authored local\"\nmetadata:\n  type: reference\n---\nbody\n",
+        encoding="utf-8")
+    _lla = "- [local-a](local-a.md) — authored local"
+    (_e.store / "MEMORY.md").write_text(
+        _pad_index73(_C73 - 1, [sg._pointer_line("aaa-m", sg._frontmatter(_mir)), _lla]), encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    _offer = _out.split("EVICT-TO-RECEIVE", 1)[1] if "EVICT-TO-RECEIVE" in _out else ""
+    check("v0.1.73: the EVICT-TO-RECEIVE offer lists AUTHORED candidates only (measured cost); mirrors "
+          "are never offered",
+          "held 1" in _out and bool(_offer) and "local-a" in _offer and "measured" in _offer
+          and "aaa-m" not in _offer)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
