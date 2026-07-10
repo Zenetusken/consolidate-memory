@@ -81,7 +81,7 @@ class Entry(TypedDict, total=False):
     name: str
     reason: str
     citation: str
-    files: list           # v0.1.72: audit_snapshot label(s) this entry touched (e.g. "memory/x.md",
+    files: list[str]      # v0.1.72: audit_snapshot label(s) this entry touched (e.g. "memory/x.md",
                            # "memory/MEMORY.md", "claude_md/CLAUDE.md") — model-declared so the diff-modal
                            # links deterministically, never guesses. Omit when nothing tracked changed.
 
@@ -1590,11 +1590,14 @@ def audit_snapshot_path(slug: str) -> str:
     return str(Path(tempfile.gettempdir()) / f"cm-audit{slug}.json")
 
 
-# v0.1.72: cap on what audit_snapshot's _add() will stash as diffable `content` for claude_md/repo_doc files
-# (memory facts are exempt — always small). Sized well above a normal CLAUDE.md/spec doc, well below this
-# repo's own CHANGELOG.md/SKILL.md — so real per-dream edits stay diffable while a giant doc just loses its
-# textual diff (capture_diffs still records that it changed; see `size_capped`).
+# v0.1.72: caps on what audit_snapshot's _add() will stash as diffable `content` for claude_md/repo_doc files
+# (memory facts are exempt — always small). PER-FILE: sized well above a normal CLAUDE.md/spec doc, well below
+# this repo's own CHANGELOG.md/SKILL.md. AGGREGATE: bounds the total across ALL claude_md/repo_doc files in one
+# snapshot — the per-file cap alone doesn't stop many medium-sized docs from adding up (e.g. ~40 docs just under
+# the per-file cap would still stash ~1.3MB). Either cap being hit just drops that file's textual diff
+# (capture_diffs still records that it changed; see `size_capped`) — never a crash, never a missing op.
 _DIFF_CONTENT_CAP_TOKENS = 8000
+_DIFF_CONTENT_AGGREGATE_CAP_TOKENS = 40000
 
 
 def audit_snapshot(project_dir: Path) -> dict:
@@ -1608,8 +1611,10 @@ def audit_snapshot(project_dir: Path) -> dict:
     project_dir = project_dir.resolve()
     auto_mem = Path.home() / ".claude" / "projects" / slug_for(project_dir) / "memory"
     snap: dict = {}
+    stashed_tokens = 0   # running total for claude_md/repo_doc (the aggregate cap; memory facts don't count)
 
     def _add(label: str, p: Path, store: str) -> None:
+        nonlocal stashed_tokens
         try:
             data = p.read_bytes()
         except OSError:
@@ -1619,11 +1624,15 @@ def audit_snapshot(project_dir: Path) -> dict:
         entry = {"hash": hashlib.sha1(data).hexdigest(), "tokens": tokens, "store": store}
         # v0.1.32/v0.1.72: stash content — the before-side for the diff-modal sidecar (capture_diffs). memory
         # facts are individual notes and always small, so stash unconditionally; claude_md/repo_doc can be a
-        # whole doc (this repo's own CHANGELOG.md is 175KB) — cap those so a giant doc doesn't bloat the /tmp
-        # snapshot on every dream. A capped file still gets its hash/op tracked (audit_diff sees it changed);
-        # it just won't have textual diff lines (capture_diffs flags it size_capped instead of faking one).
-        if store == "memory" or tokens <= _DIFF_CONTENT_CAP_TOKENS:
+        # whole doc (this repo's own CHANGELOG.md is 175KB) — cap those (per-file AND aggregate) so a dream
+        # can't bloat the /tmp snapshot. A capped file still gets its hash/op tracked (audit_diff sees it
+        # changed); it just won't have textual diff lines (capture_diffs flags it size_capped instead of
+        # faking one).
+        if store == "memory":
             entry["content"] = text
+        elif tokens <= _DIFF_CONTENT_CAP_TOKENS and stashed_tokens + tokens <= _DIFF_CONTENT_AGGREGATE_CAP_TOKENS:
+            entry["content"] = text
+            stashed_tokens += tokens
         snap[label] = entry
 
     if auto_mem.exists():

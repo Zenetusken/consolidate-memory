@@ -1312,15 +1312,25 @@ check("v0.1.32: template carries the diff-modal (diffKey mirror, dmodal overlay,
       all(s in _html for s in ["function diffKey", 'id="dmodal"', "function openDiff", "nm-diff", "DREAMDIFFS", "dl-plus"]))
 check("v0.1.72: template generalizes the diff-modal beyond the memory/ prefix (store-aware split + the size-capped message)",
       all(s in _html for s in ["function splitDiffPath", "function diffDisplayName", "size_capped", "too large to snapshot"]))
-check("v0.1.72: an index-line-only entry (no diff for its OWN memory/<name>.md) falls back to the shared MEMORY.md diff, "
-      "and a store='repo' entry auto-links an UNAMBIGUOUS single claude_md/repo_doc candidate (not a guess when >1)",
-      'store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"]' in _html
-      and "cmKeys.length===1" in _html and "rdKeys.length===1" in _html)
+check("v0.1.72: an index-line-only entry (no diff for its OWN memory/<name>.md) falls back to the shared MEMORY.md diff",
+      'store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"]' in _html)
+check("v0.1.72 Gate-2: the store='repo' fallback checks ambiguity JOINTLY across claude_md+repo_doc "
+      "(repoKeys=cmKeys.concat(rdKeys); repoKeys.length===1) — NOT independently per store, which would auto-link "
+      "an entry to the wrong file whenever exactly one claude_md AND one repo_doc file both changed in the same pass",
+      "repoKeys.length===1" in _html and "cmKeys.length===1" not in _html and "rdKeys.length===1" not in _html)
 check("v0.1.72: template gives model-declared entry.files[] priority over the name-match/store heuristics — "
-      "deterministic linking (possibly MULTIPLE files per entry), not a guess; the heuristics are the LEGACY-only fallback",
+      "deterministic linking (possibly MULTIPLE files per entry), not a guess",
       "Array.isArray(rawFiles)" in _html and "declared.length" in _html
       and _html.index("Array.isArray(rawFiles)") < _html.index('store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"]'))
-check("Entry.files is in the CycleRecord contract (TypedDict) and the SKILL.md schema-block pin catches drift",
+check("v0.1.72 Gate-2: declared entry.files are DEDUPED (seen{}) before rendering chips — a files[] array listing "
+      "the same path twice must not render two redundant chips for one diff",
+      "declared=[], seen={}" in _html and "seen[p]" in _html)
+check("v0.1.72 Gate-2: an entry with declared-but-UNRESOLVED files (empty after the DREAMDIFFS filter — a model "
+      "typo/omission) falls through to the legacy heuristic instead of trusting a possibly-wrong negative "
+      "declaration and silently dropping a real, observed diff",
+      _html.index("if(declared.length){") < _html.index('var p="memory/"+nm+".md";'))
+check("Entry.files is list[str] (not bare list) in the CycleRecord contract (TypedDict), and the SKILL.md "
+      "schema-block pin (the top-level entries[0]==Entry.__annotations__ loop) catches key drift",
       "files" in ms.Entry.__annotations__)
 # v0.1.72 — capture_diffs/audit_snapshot: the diff-modal now covers EVERY audit_snapshot store (memory facts +
 # the MEMORY.md index + CLAUDE.md + repo docs), not memory-facts-only (the v0.1.32 scope) — a real screenshot
@@ -1365,6 +1375,34 @@ check("v0.1.72: a giant repo doc (over _DIFF_CONTENT_CAP_TOKENS) is flagged size
 check("v0.1.72: a plain memory-fact diff still works exactly as before (no regression on the original v0.1.32 path)",
       "memory/fact.md" in _diffs72 and not _diffs72["memory/fact.md"].get("size_capped")
       and any(l["s"] == "v2" for l in _diffs72["memory/fact.md"]["lines"]))
+
+# v0.1.72 Gate-2 — the AGGREGATE cap (_DIFF_CONTENT_AGGREGATE_CAP_TOKENS): the per-file cap alone doesn't stop
+# many medium-sized docs from adding up (the code-review-flagged gap — a per-file-only cap's own docstring
+# claimed it prevents /tmp snapshot bloat, but 40 files each just under the per-file cap would still stash
+# ~1.3MB). 6 repo docs at exactly 7000 est_tokens each (42000 total, over the 40000 aggregate cap, each
+# individually under the 8000 per-file cap) — processed in sorted filename order, the first 5 (35000) fit,
+# the 6th pushes over and must NOT be content-stashed.
+with _tf72.TemporaryDirectory() as _td72b:
+    _home72b = Path(_td72b) / "home"; _home72b.mkdir()
+    _proj72b = Path(_td72b) / "proj"; _proj72b.mkdir()
+    _sp72.run(["git", "init", "-q"], cwd=_proj72b, check=True)
+    _doc72b = "d" * 28000   # (28000+3)//4 == 7000 est_tokens exactly
+    for _n72b in "abcdef":
+        (_proj72b / f"doc-{_n72b}.md").write_text(_doc72b)
+    _pr72b = _home72b / ".claude" / "projects" / ms.slug_for(_proj72b) / "memory"; _pr72b.mkdir(parents=True)
+    _old72b = _os72.environ.get("HOME"); _os72.environ["HOME"] = str(_home72b)
+    try:
+        _before72b = ms.audit_snapshot(_proj72b)
+        for _n72b in "abcdef":
+            (_proj72b / f"doc-{_n72b}.md").write_text(_doc72b + _n72b)   # mutate every file, same order preserved
+        _diffs72b = ms.capture_diffs(_before72b, _proj72b)
+    finally:
+        _os72.environ["HOME"] = _old72b if _old72b is not None else ""
+check("v0.1.72 Gate-2: the aggregate cap lets the first N docs (cumulative <= 40000 tokens) diff normally",
+      all(not _diffs72b.get(f"repo_doc/doc-{_n}.md", {}).get("size_capped") for _n in "abcde"))
+check("v0.1.72 Gate-2: the aggregate cap stops the doc that pushes the running total OVER 40000, even though "
+      "it is individually well under the 8000 per-file cap — flagged size_capped, not silently unbounded growth",
+      _diffs72b.get("repo_doc/doc-f.md", {}).get("size_capped") is True)
 
 # v0.1.34 — cm log: the lean log-audit renderer (3rd view; reuses the ONE read_history; legacy-safe; --json)
 _lr = [{"marker": {"commit": "aaaa1111bb", "timestamp": "2026-06-21T01:00"}, "rigor": {"applied": "LIGHT"}, "project": "p",

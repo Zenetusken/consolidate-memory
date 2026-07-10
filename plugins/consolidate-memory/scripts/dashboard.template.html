@@ -764,19 +764,20 @@
     var box=el("entries"), used={};
     function link(p,nm){used[p]=1;return '<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>';}
     // v0.1.72: the model DECLARES which file(s) an entry touched (`files[]`, audit_snapshot labels) — the
-    // deterministic path, no guessing which diff an entry means. A record with `files` present (even empty)
-    // is respected as-is (the model said "nothing tracked changed" — don't second-guess it). Only a record
-    // with NO `files` key at all (pre-v0.1.72) falls back to the old name-match/store heuristics below.
+    // deterministic path, no guessing which diff an entry means. Declared files (deduped) take priority
+    // whenever at least one resolves to a real diff. Otherwise — no `files` field at all (pre-v0.1.72), OR
+    // an empty/unresolved `files` the model got wrong — fall through to the legacy heuristics below rather
+    // than trusting a possibly-mistaken negative declaration and silently dropping a real, observed change.
     function nameCell(e){
-      var nm=g(e,"name","—"), rawFiles=g(e,"files",null);
-      if(Array.isArray(rawFiles)){
-        var declared=rawFiles.map(String).filter(function(p){return DREAMDIFFS[p];});
-        if(!declared.length)return esc(nm);
+      var nm=g(e,"name","—"), rawFiles=g(e,"files",null), declared=[], seen={};
+      if(Array.isArray(rawFiles))rawFiles.forEach(function(p){p=String(p);
+        if(DREAMDIFFS[p]&&!seen[p]){seen[p]=1;declared.push(p);}});
+      if(declared.length){
         var primary=link(declared[0],nm), extra=declared.slice(1).map(function(p){return link(p,diffDisplayName(p));});
         return extra.length?primary+' <em>+</em> '+extra.join(' '):primary;
       }
-      // legacy fallback (no `files` field): an entry's OWN file may carry no diff even though something real
-      // changed FOR it — an index-line-only compression touches memory/MEMORY.md, not memory/<name>.md; a
+      // legacy/fallback heuristic: an entry's OWN file may carry no diff even though something real changed
+      // FOR it — an index-line-only compression touches memory/MEMORY.md, not memory/<name>.md; a
       // claude_md/repo_doc entry has no per-entry filename convention to begin with.
       var p="memory/"+nm+".md";   // a memory fact's entry name == its slug → match the sidecar key
       if(DREAMDIFFS[p])return link(p,nm);
@@ -785,9 +786,10 @@
       if(store==="repo"){
         var cmKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("claude_md/")===0;});
         var rdKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("repo_doc/")===0;});
-        // only auto-link when UNAMBIGUOUS (exactly one candidate) — a wrong guess is worse than the safety-net row
-        if(cmKeys.length===1)return link(cmKeys[0],nm);
-        if(rdKeys.length===1)return link(rdKeys[0],nm);
+        // only auto-link when JOINTLY unambiguous (exactly one candidate across BOTH stores combined) — one
+        // claude_md file AND one repo_doc file changed in the same pass is still two real candidates, not one
+        var repoKeys=cmKeys.concat(rdKeys);
+        if(repoKeys.length===1)return link(repoKeys[0],nm);
       }
       return esc(nm);}
     var rows=ENT.map(function(e){var act=g(e,"action","-"),tier=g(e,"tier","");tier=(tier===""||tier==="-")?"":tier;var sc=g(e,"scope","");
