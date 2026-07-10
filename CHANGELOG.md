@@ -5,6 +5,53 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.81] — 2026-07-10
+
+### Added — the SessionStart beacon: the absorption-rate lever (Stage B)
+The fourth enhancement increment (`docs/session-beacon.spec.md`), shipped only after Stage A
+measured its premise live (12/13 fleet stores behind; a real node 18d/11-missing) and after the
+plugin hooks contract was verified against current docs, not memory: SessionStart stdout is
+INJECTED INTO CONTEXT, the timeout is in seconds, matchers are per-source, and exit codes cannot
+block.
+
+- **`hooks/hooks.json`** — the plugin's FIRST hook component: SessionStart on `startup`+`resume`
+  only (two explicit matcher entries; never `clear`/`compact` — those are mid-flow), 2s hard
+  timeout, invoking **`scripts/session_beacon.py`**. Personal-scope installs enable it with the
+  plugin install itself (no separate per-hook trust prompt is documented); enterprise
+  `allowManagedHooksOnly` can disable it wholesale.
+- **The beacon**: at most ONE factual line, only when THIS project's store is measurably behind —
+  missing/content-stale counts via `_store_gaps` (the SAME predicate `--staleness` uses, factored
+  shared so the two can never disagree), the M1 ceiling-held projection, and marker age. Silence
+  rules: never-participated dirs (no `*.md` — random dirs must cost zero), in-sync stores,
+  `beacon_snooze_until` (per-store, set only on an explicit user ask), absent/empty global store.
+  Failure posture: empty stdout + stderr diagnostic + exit 0 (a best-effort advisory never
+  injects a traceback nor renders an error notice). Advisory only — never pulls; dreams stay
+  explicit-trigger-only. MEASURED ~40ms end-to-end against the 2s budget.
+- **The stacks cache** (the beacon's measured prerequisite: `detect_stacks` costs 2003ms on the
+  fleet's biggest repo): `--pull` merge-writes script-truth `stacks` + `project_path` into
+  `.consolidation-state.json` at the moment detection actually ran — model-written marker keys
+  preserved verbatim; a cache-write failure warns and degrades, never fails the pull.
+  `--staleness` non-trigger rows upgrade to `cached stacks (as of last pull)` (the honest basis
+  ladder: live → cached → user-global-only). SKILL Phase-5 step 5 gains the load-bearing MERGE
+  rule (a wholesale state-file rewrite would wipe the script-owned keys until the next pull).
+- v1 reach limits (documented): no subprocesses in the hook (the git-based dream-timing advisory
+  stays in `cm status`); silent on never-participated dirs (discovery is `--staleness`'s job).
+
+New plugin component (hooks) + a new script + additive state-file keys; `claude plugin validate
+--strict` passes with the hooks file; smoke pins the full behavior battery incl. the sabotage
+failure posture ⇒ patch.
+
+Hardened by a two-lens review team before merge (core-correctness + hook-surface, both verdicts
+MERGE-READY): the ceiling-held projection now calls `_plan_pull` itself — the reviewer's verified
+divergence fixture (a stale pointer-drift delta made the hand-rolled loop advertise a pull the
+real ceiling refused) is the new pin; the stacks-cache write is atomic (Track-D convention); the
+emitted line names its own snooze escape and README documents the beacon + the auto-update
+rollout (a context line appearing after an update is this feature); the index is split once
+(O(relevant + index_bytes), stated bound); the portable manifest validator gained a hooks.json
+shape check; `cm beacon` is the debug lens. Injection resistance and the ≤2s budget were
+adversarially confirmed (crafted canonicals/state never reach the line; 500-canonical stress
+stays sub-second).
+
 ## [0.1.80] — 2026-07-10
 
 ### Added — fleet staleness report: absorption lag, measured per node (beacon Stage A)

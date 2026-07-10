@@ -4244,5 +4244,116 @@ with _Env73() as _e:
           "store (not flagged '?'); a truly storeless mind still flags",
           sg._mind_unresolved("Doc_Flo") is False and sg._mind_unresolved("ghost_project_x") is True)
 
+# --- v0.1.81: the SessionStart beacon (Stage B — docs/session-beacon.spec.md). Premise MEASURED
+# by Stage A (12/13 stores behind); constraints MEASURED (detect_stacks 2003ms on the biggest
+# fleet repo vs the 2s hook budget → the --pull-written stacks cache; beacon wall ~40ms).
+import subprocess as _sp81  # noqa: E402
+_HOOKS81 = _jsonB.loads((ROOT / "plugins" / "consolidate-memory" / "hooks" / "hooks.json").read_text(encoding="utf-8"))
+_SS81 = _HOOKS81.get("hooks", {}).get("SessionStart", [])
+check("v0.1.81: hooks.json pins the documented contract — double nesting, EXACTLY the startup+resume "
+      "matchers (never clear/compact — those are mid-flow), command type, seconds timeout ≤ 2, "
+      "${CLAUDE_PLUGIN_ROOT} command path",
+      [g.get("matcher") for g in _SS81] == ["startup", "resume"]
+      and all(g["hooks"][0]["type"] == "command" and g["hooks"][0]["timeout"] <= 2
+              and "${CLAUDE_PLUGIN_ROOT}" in g["hooks"][0]["command"]
+              and "session_beacon.py" in g["hooks"][0]["command"] for g in _SS81))
+_BEACON81 = ROOT / "plugins" / "consolidate-memory" / "scripts" / "session_beacon.py"
+
+
+def _beacon81(home, cwd, stdin_obj=None):
+    return _sp81.run([sys.executable, str(_BEACON81)],
+                     input=_jsonB.dumps(stdin_obj if stdin_obj is not None else {"cwd": str(cwd)}),
+                     env=dict(_osB.environ, HOME=str(home)), capture_output=True, text=True, timeout=10)
+
+
+with _tf73.TemporaryDirectory() as _td81:
+    _h81 = Path(_td81)
+    _p81 = (_h81 / "src" / "proj").resolve(); _p81.mkdir(parents=True)
+    _st81 = _h81 / ".claude" / "projects" / ms.slug_for(_p81) / "memory"; _st81.mkdir(parents=True)
+    _g81 = _h81 / ".claude" / "memory"; _g81.mkdir(parents=True)
+    for _n81 in ("g-one", "g-two"):
+        (_g81 / f"{_n81}.md").write_text(f"---\nname: {_n81}\ndescription: \"d\"\nmetadata:\n"
+                                         f"  scope: user-global\n  type: feedback\n---\nbody\n", encoding="utf-8")
+    _r = _beacon81(_h81, _p81)
+    check("v0.1.81: a NEVER-PARTICIPATED store (no *.md) is silent — the plugin is user-wide, random "
+          "dirs must cost zero (discovery is --staleness's job)",
+          _r.returncode == 0 and _r.stdout == "")
+    (_st81 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _r = _beacon81(_h81, _p81)
+    check("v0.1.81: a BEHIND store gets exactly ONE factual line — token-bounded, no-cache basis "
+          "labeled, no imperative 'always/never' phrasing (context-injection guidance)",
+          _r.returncode == 0 and len(_r.stdout.splitlines()) == 1
+          and "2 shared global fact(s)" in _r.stdout and "no stacks cache" in _r.stdout
+          and ms.est_tokens(_r.stdout) <= 60)
+    (_st81 / ".consolidation-state.json").write_text(
+        _jsonB.dumps({"beacon_snooze_until": "2099-01-01T00:00:00Z"}), encoding="utf-8")
+    check("v0.1.81: beacon_snooze_until in the future silences the beacon (per-store, explicit-ask key)",
+          _beacon81(_h81, _p81).stdout == "")
+    (_st81 / ".consolidation-state.json").write_text("NOT JSON", encoding="utf-8")
+    _r = _beacon81(_h81, _p81)
+    check("v0.1.81: a GARBAGE state file never hides a real gap (line still emitted) and never crashes",
+          _r.returncode == 0 and len(_r.stdout.splitlines()) == 1)
+    _bad81 = _h81 / "afile"; _bad81.write_text("x", encoding="utf-8")
+    _r = _beacon81(_bad81, _p81)
+    check("v0.1.81: FAILURE POSTURE — sabotaged environment (HOME=a file) yields rc=0 + EMPTY stdout "
+          "(a best-effort advisory never injects noise or an error notice into session start)",
+          _r.returncode == 0 and _r.stdout == "")
+    # the cache: --pull writes script-truth stacks+project_path, MERGE-preserving model keys;
+    # the beacon then drops its no-cache label; --staleness upgrades the node's basis.
+    (_st81 / ".consolidation-state.json").write_text(
+        _jsonB.dumps({"commit": "abc", "timestamp": "2026-07-01T00:00:00Z"}), encoding="utf-8")
+    _oldH81, _oldG81 = _osB.environ.get("HOME"), sg.GLOBAL
+    _osB.environ["HOME"] = str(_h81); sg.GLOBAL = _g81
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()):
+            sg.run(_p81, pull=True)
+    finally:
+        sg.GLOBAL = _oldG81
+        _osB.environ["HOME"] = _oldH81 if _oldH81 else ""
+    _st81j = _jsonB.loads((_st81 / ".consolidation-state.json").read_text(encoding="utf-8"))
+    check("v0.1.81: --pull MERGE-writes the script-truth stacks cache + project_path, preserving the "
+          "model-written marker keys verbatim",
+          _st81j.get("commit") == "abc" and _st81j.get("timestamp") == "2026-07-01T00:00:00Z"
+          and isinstance(_st81j.get("stacks"), list) and _st81j.get("project_path") == str(_p81))
+    _trig81 = (_h81 / "src" / "othertrig").resolve(); _trig81.mkdir(parents=True)
+    _oldH81b, _oldG81b = _osB.environ.get("HOME"), sg.GLOBAL
+    _osB.environ["HOME"] = str(_h81); sg.GLOBAL = _g81
+    try:
+        _stale81 = {d["node"]: d for d in sg.fleet_staleness(_trig81)["nodes"]}
+    finally:
+        sg.GLOBAL = _oldG81b
+        _osB.environ["HOME"] = _oldH81b if _oldH81b else ""
+    _prow81 = next(v for k, v in _stale81.items() if k.endswith("src-proj"))   # label = slug tail (truncated)
+    check("v0.1.81: --staleness assesses a NON-trigger node at 'cached stacks (as of last pull)' once "
+          "the cache exists (the honest basis ladder: live → cached → user-global-only)",
+          _prow81["scope_basis"] == "cached stacks (as of last pull)")
+    check("v0.1.81: after the pull the store is in-sync and the beacon returns to SILENT (the common "
+          "case stays free)",
+          _beacon81(_h81, _p81).stdout == "")
+    # PR-#94 review F1 (verified divergence fixture): the held parenthetical must count STALE
+    # refresh deltas exactly like a real --pull — a description-drifted mirror sorting BEFORE a
+    # near-ceiling MISSING fact consumes the headroom; the first draft's MISSING-only loop said
+    # held=0 while run() held 1. The beacon now calls _plan_pull (one accounting replay).
+    (_g81 / "aaa-drift.md").write_text(
+        "---\nname: aaa-drift\ndescription: \"" + "g" * 80 + "\"\nmetadata:\n  scope: user-global\n"
+        "  type: feedback\n---\ndrift body\n", encoding="utf-8")
+    _adm81 = sg._as_mirror((_g81 / "aaa-drift.md").read_text(encoding="utf-8"), "aaa-drift",
+                           since="2026-01-01T00:00:00Z",
+                           body_hash=sg._body_hash((_g81 / "aaa-drift.md").read_text(encoding="utf-8")))
+    (_st81 / "aaa-drift.md").write_text(_adm81, encoding="utf-8")
+    (_g81 / "zzz-miss.md").write_text(
+        "---\nname: zzz-miss\ndescription: \"m\"\nmetadata:\n  scope: user-global\n  type: feedback\n---\nmb\n",
+        encoding="utf-8")
+    _short81 = "- [aaa-drift](aaa-drift.md) — old"   # real line much leaner than the derived pointer
+    _drift81 = ms.est_tokens(sg._pointer_line("aaa-drift", sg._frontmatter(_adm81))) - ms.est_tokens(_short81)
+    _cz81 = ms.est_tokens(sg._pointer_line("zzz-miss", sg._frontmatter((_g81 / "zzz-miss.md").read_text(encoding="utf-8"))))
+    assert _drift81 > 0 and _cz81 > 0
+    (_st81 / "MEMORY.md").write_text(_pad_index73(_C73 - _cz81, [_short81]), encoding="utf-8")
+    _r = _beacon81(_h81, _p81)
+    check("v0.1.81/review-F1: the beacon's held projection counts STALE pointer-drift deltas via "
+          "_plan_pull — it reports the missing fact as ceiling-held exactly where a real --pull "
+          "would hold it (the hand-rolled loop said absorbable)",
+          "would be ceiling-held" in _r.stdout and "1 shared global fact(s)" in _r.stdout)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

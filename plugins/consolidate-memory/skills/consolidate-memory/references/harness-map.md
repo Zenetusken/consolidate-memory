@@ -335,6 +335,16 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   Lockfiles are excluded (transitive deps over-detect). So a stdlib plugin whose README merely
   says "rag"/"scraper" no longer false-matches `rag`/`playwright`; a `stack-general:[rag]` fact
   binds only projects that really depend on / import a RAG library.
+- **The SessionStart beacon** (v0.1.81, `docs/session-beacon.spec.md` — the plugin's first HOOK
+  component, `hooks/hooks.json` → `scripts/session_beacon.py`): at session start/resume, at most
+  ONE factual line is injected into context when THIS project's store is measurably behind the
+  fleet (missing/content-stale counts via the same `_store_gaps` predicate `--staleness` uses,
+  M1 ceiling-held projection, marker age). Read-only, advisory-only (never pulls — dreams stay
+  explicit-trigger-only), silent on never-participated dirs / in-sync stores / snooze
+  (`beacon_snooze_until` state key, set on explicit user ask), and silent-with-exit-0 on any
+  failure. Budget: no `detect_stacks` (measured 2s on a big repo — reads the `--pull`-written
+  `stacks`/`project_path` state cache instead, degrading to user-global-only when absent), no
+  subprocesses; measured ~40ms against the 2s hook timeout.
 - `--staleness PROJECT_DIR [--json]` — (v0.1.80, `docs/fleet-staleness-report.spec.md`) READ-ONLY
   absorption-lag sweep over ALL project stores (wider than mirror-holders — a zero-mirror store is
   the most starved): per node, last-dream marker age, MISSING relevant globals, content-stale

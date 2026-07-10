@@ -71,6 +71,28 @@ def main() -> int:
                     # the docs warn against setting version in BOTH places (plugin.json wins silently)
                     if "version" in entry:
                         err(f"plugins[{i}] sets version in BOTH marketplace.json and plugin.json — keep it in plugin.json only")
+                # v0.1.81 (PR-#94 review F5): hooks/hooks.json, when present, must parse and keep
+                # the double-nested shape with command entries — the schema half `claude plugin
+                # validate` checks, portable (the smoke suite pins the beacon-specific contract).
+                hooks_path = pdir / "hooks" / "hooks.json"
+                if hooks_path.exists():
+                    hooks = _load(hooks_path)
+                    if hooks is not None:
+                        if not isinstance(hooks.get("hooks"), dict):
+                            err(f"{hooks_path.relative_to(ROOT)} missing top-level 'hooks' object")
+                        else:
+                            for ev, groups in hooks["hooks"].items():
+                                if not isinstance(groups, list):
+                                    err(f"hooks.json {ev} must be a LIST of matcher groups")
+                                    continue
+                                for g in groups:
+                                    inner = g.get("hooks") if isinstance(g, dict) else None
+                                    if not (isinstance(inner, list) and inner
+                                            and all(isinstance(h, dict) and h.get("type") and
+                                                    (h.get("type") != "command" or h.get("command"))
+                                                    for h in inner)):
+                                        err(f"hooks.json {ev} group malformed (double 'hooks' nesting "
+                                            "with typed entries required; command entries need 'command')")
 
     if errors:
         print("✗ manifest validation FAILED:")

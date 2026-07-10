@@ -156,6 +156,28 @@ each project just syncs itself the next time you consolidate it.**
 > learns something. The lazy-pull default keeps a project's memory changing only while
 > *you're* in it.
 
+### The session beacon (v0.1.81)
+
+Lazy absorption has one honest cost: a project you rarely consolidate can drift far
+behind the fleet without anything telling you. The plugin now ships a tiny
+**SessionStart hook** that measures exactly that — when you open a session in a
+project whose memory store is behind (shared facts not yet mirrored here, or mirrors
+whose canonical content changed), it adds **at most one factual line** to the session's
+context, e.g.:
+
+> *Cross-project memory: 3 shared global fact(s) are not yet mirrored here (1 would be
+> ceiling-held); last consolidation 12.4d ago. A consolidation pass (dream) on this
+> project absorbs them; asking to snooze this reminder quiets it for this store.*
+
+It is read-only and advisory — it never pulls or writes anything; absorption still
+happens only when *you* run a dream. It stays **silent** in the common cases: projects
+that have never used the memory system, stores that are in sync, and stores you've
+snoozed (just ask Claude to "snooze the memory beacon for this project" — it sets a
+`beacon_snooze_until` date in the store's state file). It runs in ~40ms, needs
+`python3` on PATH (like the rest of the plugin), and if anything goes wrong it says
+nothing rather than guessing. Note for existing installs: the hook arrives with the
+normal plugin auto-update — if the line appears after an update, that's this feature.
+
 ## Install
 
 This ships as a **Claude Code plugin** — no clone, no symlinks. In Claude Code:
