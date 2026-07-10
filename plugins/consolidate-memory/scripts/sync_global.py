@@ -61,7 +61,8 @@ from pathlib import Path
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
 # on sys.path[0] at runtime; both live in the plugin's scripts/ dir.
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import (_is_mirror, _parse_ts, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid,
+from memory_status import (_is_archive_index_text, _is_mirror, _parse_ts, _sane, est_tokens, slug_for,
+                           _frontmatter, _valid_uuid,
                            INDEX_TOKEN_BUDGET, INDEX_CEILING_TOKENS, HOOK_TOKEN_WARN,
                            extract_wikilinks, resolve_wikilink, usage_history)
 
@@ -298,6 +299,10 @@ def _dep_names_from_text(pyproject_text: str) -> set[str]:
     for sec in re.finditer(r"(?ms)^\[tool\.poetry(?:\.group\.[^\]]+)?\.(?:dev-)?dependencies\](.*?)(?=^\[|\Z)", text):
         for km in re.finditer(r"(?m)^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*=", sec.group(1)):  # poetry table keys (+ legacy dev-)
             names.add(_norm_dep(km.group(1)))
+    # v0.1.76 (audit): poetry DOTTED subtables — `[tool.poetry.dependencies.torch]` declares torch as a
+    # header, not a key, so the key-scan above never saw it (a legitimate, if uncommon, poetry form).
+    for m in re.finditer(r"(?m)^\[tool\.poetry(?:\.group\.[^\]]+)?\.(?:dev-)?dependencies\.([A-Za-z0-9._-]+)\]", text):
+        names.add(_norm_dep(m.group(1)))
     return names
 
 
@@ -368,7 +373,12 @@ def detect_stacks(project_dir: Path) -> set[str]:
     for stack, names in _STACK_DEPS.items():
         if deps & names:
             found.add(stack)
-    if re.search(r"(?m)^\s*\[tool\.mypy\]", _strip_toml_comments(_read_capped(project_dir / "pyproject.toml"))) or (project_dir / "mypy.ini").exists():
+    # v0.1.76 (audit): all four DOCUMENTED mypy config locations — pyproject [tool.mypy], mypy.ini,
+    # .mypy.ini, setup.cfg [mypy] (mypy.readthedocs.io/en/stable/config_file.html). The first two
+    # alone under-detected the stack on .mypy.ini/setup.cfg projects (this fleet is mypy-heavy).
+    if (re.search(r"(?m)^\s*\[tool\.mypy\]", _strip_toml_comments(_read_capped(project_dir / "pyproject.toml")))
+            or (project_dir / "mypy.ini").exists() or (project_dir / ".mypy.ini").exists()
+            or re.search(r"(?m)^\[mypy\]\s*$", _read_capped(project_dir / "setup.cfg"))):
         found.add("mypy")
     for stack, names in _STACK_IMPORTS.items():
         if mods & names:
@@ -798,12 +808,16 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         if held_this:
             held += 1  # past-the-ceiling net-grow → hold (shrink to receive, or --allow-net-grow) — v0.1.66
         elif pull and rel and status in ("MISSING", "STALE-mirror"):
-            # C3: a canonical missing a valid originSessionId fans its gap out to every
-            # mirror this replication creates. WARN (don't block — the fact is still
-            # useful); reuses the in-hand `fm`, no extra I/O.
-            if not _valid_uuid(fm.get("originSessionId", "")):
-                print(f"  ⚠ canonical {name} lacks a valid originSessionId — the gap fans out to every mirror",
-                      file=sys.stderr)
+            # C3: a canonical with an INVALID originSessionId fans its gap out to every mirror this
+            # replication creates. WARN (don't block — the fact is still useful); reuses the in-hand
+            # `fm`, no extra I/O. v0.1.76 (audit): ABSENCE no longer warns — harness-map's schema
+            # rules say a git/commit-derived fact legitimately OMITS originSessionId (absence is an
+            # optional-backfill advisory, never drift), so the old warn-on-absent was steady stderr
+            # noise on every replication of every legitimate git-derived canonical.
+            _osid = fm.get("originSessionId", "")
+            if _osid and not _valid_uuid(_osid):
+                print(f"  ⚠ canonical {name} has an INVALID originSessionId ({_osid[:24]!r}) — the gap "
+                      "fans out to every mirror", file=sys.stderr)
             store.mkdir(parents=True, exist_ok=True)
             path.write_text(want, encoding="utf-8")
             # v0.1.66: count for the RESULT line ONLY when the pointer was actually WRITTEN this pass — a
@@ -908,8 +922,30 @@ def _record_provenance(name: str, project: str) -> None:
 
 
 def _holders(fm: dict) -> list[str]:
-    # `*` not `+` so a single-character project name is not silently dropped.
-    return re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]*", fm.get("projects", ""))
+    # v0.1.76 (audit): parse the SAME token space _sanitize_token WRITES. The old alnum-first-char
+    # regex silently shortened a dot/dash-prefixed holder ('.claude' → 'claude'; the sanitized
+    # '-scope' from '@scope' → 'scope'), so gc's dead-edge compare could never match such a project
+    # and network()/--utility displayed a name provenance doesn't hold. Tokens must still carry ≥1
+    # alnum (a bare '-'/'.' is separator noise, not a holder); single-character names still kept.
+    return [t for t in re.findall(r"[A-Za-z0-9._-]+", fm.get("projects", ""))
+            if any(c.isalnum() for c in t)]
+
+
+def _mind_unresolved(name: str) -> bool:
+    """v0.1.76 (audit): True iff NO slug dir under ~/.claude/projects plausibly matches this
+    provenance basename — the honest partial inverse of the lossy slug (sanitized-token endswith
+    match). CONSERVATIVE direction: any match — including an ambiguous one — reads as resolved;
+    only a zero-match mind is flagged. Display-only (a `?` glyph + footnote in network()); never a
+    prune input — provenance stays reported-not-pruned (a renamed project also matches nothing)."""
+    norm = _sanitize_token(name).lower()
+    base = Path.home() / ".claude" / "projects"
+    if not norm.strip("-.") or not base.is_dir():
+        return False   # degenerate token / no projects dir → nothing claimable; stay conservative
+    for d in base.iterdir():
+        s = d.name.lower()
+        if s == norm or s.endswith("-" + norm):
+            return False
+    return True
 
 
 def network() -> int:
@@ -920,7 +956,11 @@ def network() -> int:
     (`stack-general` facts that bind only the subset of projects whose stacks match).
     The differential edges are the meaningful topology; universal facts are a shared
     substrate listed separately, not drawn as trivial all-to-all edges.
-    """
+
+    v0.1.76 (audit): minds derive from provenance basenames, which accrue DEAD entries
+    (deleted test projects measured live in this fleet) — every count here silently
+    included them. A mind with no plausible on-disk store now renders with a `?` and a
+    footnote; the flag is display-only (see _mind_unresolved — report, never prune)."""
     facts = global_facts()
     minds = sorted({p for _, fm, _ in facts for p in _holders(fm)})
     universal = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "user-global"]
@@ -933,7 +973,11 @@ def network() -> int:
     gap = max(2, _ui.W - 2 - len(title) - len(tag))
     out.append(_ui.rule())
     out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
-    out.append("  " + _ui.c(", ".join(minds) or "(no projects yet)", "dim"))
+    _unres = {m for m in minds if _mind_unresolved(m)}
+    out.append("  " + _ui.c(", ".join((m + "?" if m in _unres else m) for m in minds) or "(no projects yet)", "dim"))
+    if _unres:
+        out.append("  " + _ui.c(f"? = no matching store on disk ({len(_unres)}) — a deleted/renamed project's "
+                                "dead provenance edge; counts below include it (report-only, never auto-pruned)", "yellow"))
     out.append(_ui.rule())
     out.append("")
     out.append(_ui.kv("MEMORIES", f"{len(facts)} shared · {len(universal)} universal · {len(differential)} differential"
@@ -1102,8 +1146,10 @@ def gc(project_dir: Path, apply: bool) -> int:
     dead = []
     for name, fm, _ in gfacts:
         for holder in _holders(fm):
-            # we only know THIS project's store path; report if it's listed but absent
-            if holder == project_dir.name and not (store / f"{name}.md").exists():
+            # we only know THIS project's store path; report if it's listed but absent.
+            # v0.1.76: compare in the SANITIZED token space provenance is written in — a basename
+            # _sanitize_token rewrites ('@scope' → '-scope') never equalled its raw self here.
+            if holder == _sanitize_token(project_dir.name) and not (store / f"{name}.md").exists():
                 dead.append(name)
     if dead:
         out.append("")
@@ -1252,11 +1298,25 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
     # can't just be trusted this many lines later). `_create_exclusive` closes it: False means
     # someone else's canonical won the race, untouched — refuse and ask the caller to retry (which
     # correctly reconciles against it, since `canon_path.exists()` is now true).
-    if not reconcile and not _create_exclusive(canon_path, local_text):
-        print(f"promote: another process just created the canonical '{canon_name}' concurrently — "
-              "refusing to risk a silent clobber. Re-run promote — it will now correctly "
-              "reconcile against the canonical that landed.", file=sys.stderr)
-        return 1
+    if not reconcile:
+        try:
+            _created = _create_exclusive(canon_path, local_text)
+        except OSError as _e:
+            # v0.1.76 (audit): os.link raises EPERM/EOPNOTSUPP/ENOSYS on a no-hardlink filesystem
+            # (FAT/exFAT, some network mounts) — that used to propagate as a raw traceback mid-promote.
+            # Refuse CLEANLY instead: nothing has been written (the finally cleaned the temp), and the
+            # race guard genuinely needs hardlink atomicity (see _create_exclusive — os.replace can't
+            # detect "am I first", raw O_EXCL reopens the torn-read window Track D-1 closed).
+            print(f"promote: cannot create the canonical atomically on this filesystem "
+                  f"({type(_e).__name__}: {_e}) — the create-create race guard needs hardlink support "
+                  "(os.link). Nothing was written; move ~/.claude/memory to a hardlink-capable "
+                  "filesystem or promote from there.", file=sys.stderr)
+            return 1
+        if not _created:
+            print(f"promote: another process just created the canonical '{canon_name}' concurrently — "
+                  "refusing to risk a silent clobber. Re-run promote — it will now correctly "
+                  "reconcile against the canonical that landed.", file=sys.stderr)
+            return 1
     _record_provenance(canon_name, project_dir.name)
     canon_text = canon_path.read_text(encoding="utf-8", errors="replace")  # re-read POST-provenance
     fm = _frontmatter(canon_text)
@@ -1348,7 +1408,12 @@ def _node_tokens(store: Path) -> dict:
         if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
             continue
         body = _safe_read_text(f)             # store-scan convention (shared helper — v0.1.69 Gate-2a)
-        if body is not None:
+        # v0.1.76 (audit): exclude ARCHIVE-INDEX docs (link-lists like SHIPPED.md — no frontmatter,
+        # ≥3 links) — memory_status's own C1 fact/archive split, applied here too. They were counted
+        # as recall facts (a live node's 7.6k-tok SHIPPED.md inflated recall_tokens + `facts`), so
+        # --tokens over-reported any store using the archive convention. Same text-level rule
+        # (_is_archive_index_text), single source — the two counters cannot drift.
+        if body is not None and not _is_archive_index_text(body):
             bodies[f.stem] = body
     mirror_stems = {stem for stem, b in bodies.items() if _is_mirror(b)}
     # Attribute the index pointer lines whose target fact (`](<stem>.md)`) is a mirror.
