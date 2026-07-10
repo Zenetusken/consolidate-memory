@@ -656,6 +656,11 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # one accounting replay that both the write loop and the --evict gain-gate consume, with stale-refresh
     # deltas tracked and `freed` measured from the real index (docs/evict-accounting-truth.spec.md).
     project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        # v0.1.75 defense-in-depth (audit F5) — the CLI choke is _dispatch's guard; direct callers get
+        # the same refusal (a phantom store + bogus provenance must be unmintable from any entry point).
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
     store = project_store(project_dir)
     stacks = detect_stacks(project_dir)
     facts = global_facts()
@@ -672,7 +677,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     add(_ui.kv("STACKS", (", ".join(sorted(stacks)) if stacks else _ui.c("(none detected)", "dim"))))
 
     glyphs = {"in-sync": ("✓", "green"), "MISSING": ("↓", "yellow"), "STALE-mirror": ("⟳", "yellow"),
-              "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim")}
+              "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim"), "frozen(mirror)": ("✻", "yellow")}
     rows: list = []
     relevant = pulled = refreshed = held = fat = 0   # fat: v0.1.66 — pointers written over HOOK_TOKEN_WARN
     # v0.1.73 (accounting truth — docs/evict-accounting-truth.spec.md): CLASSIFY first (no writes),
@@ -692,7 +697,12 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         is_mirror = present and _is_mirror(cur)
         want = _as_mirror(text, name)
         if not rel:
-            status = "irrelevant"
+            # v0.1.75 (audit F6): a PRESENT mirror whose canonical is alive but no longer relevant here
+            # (a dropped stack) is FROZEN — never refreshed (this branch short-circuits staleness), never
+            # gc'd as an orphan (canonical exists), still taxing the always-loaded index. Render it
+            # DISTINCTLY (it used to read as a plain 'irrelevant', byte-identical to never-pulled) so the
+            # operator can see it; the reclaim lever is --gc's FROZEN section (report + --apply).
+            status = "frozen(mirror)" if present and is_mirror else "irrelevant"
         elif not present:
             status = "MISSING"
         elif not is_mirror:
@@ -702,6 +712,21 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         else:
             status = "STALE-mirror"  # canonical changed → must refresh
         classified.append((name, fm, text, status, path, want, rel))
+    # v0.1.75 (audit F7 — the M4-bypass SURFACE): promote() refuses an undetectable `stacks:` tag, but the
+    # SKILL's documented Phase-4 NET-NEW path hand-writes canonicals directly — a typo'd ('gpuu') or
+    # real-but-undetectable ('release') tag lands unvalidated, and the canonical is FLEET-DEAD:
+    # is_relevant can never match it to ANY project, silently, forever. Every dream's Phase 1 walks this
+    # read path, so warn HERE (report-only, never a block) — the loop-native surface for the bypass.
+    for _fn, _ffm, _t, _s, _p, _w, _r in classified:
+        if _ffm.get("scope") == "stack-general":
+            _fs = _fact_stacks(_ffm)
+            _bad = sorted(_fs - _DETECTABLE_STACKS)
+            if not _fs or _bad:
+                _why = f"undetectable stack tag(s) {_bad}" if _bad else "NO `stacks:` tags at all"
+                print(f"  ⚠ fleet-dead canonical: '{_fn}' is stack-general with {_why} — detect_stacks can "
+                      f"never match it to any project. Retag with a detectable stack "
+                      f"({sorted(_DETECTABLE_STACKS)}), re-scope user-global, or demote it "
+                      f"(~/.claude/memory/{_fn}.md).", file=sys.stderr)
     items = [(name, status, est_tokens(_pointer_line(name, fm)), _index_line_cost(idx_text, name))
              for name, fm, _t, status, _p, _w, rel in classified if rel and status in ("MISSING", "STALE-mirror")]
     plan = _plan_pull(items, seed_idx, allow_net_grow, budget=INDEX_CEILING_TOKENS)
@@ -809,6 +834,11 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note}{fat_note} (index updated)" if pull
             else "run with --pull to replicate MISSING + refresh STALE mirrors here")
     add(_ui.kv("RESULT", tail))
+    _n_frozen = sum(1 for _n2, _f2, _t2, _s2, _p2, _w2, _r2 in classified if _s2 == "frozen(mirror)")
+    if _n_frozen:
+        add("  " + _ui.c(f"✻ {_n_frozen} frozen mirror(s) — canonical alive but IRRELEVANT here (a dropped "
+                         "stack): never refreshed, still taxing the always-loaded index. --gc reports them; "
+                         "--gc --apply reclaims (safe — re-pullable if the stack returns)", "yellow"))
     # v0.1.41 → v0.1.73: the EVICT-TO-RECEIVE offer (the report half of report-then-apply). When globals are
     # HELD, surface the held + the evictable AUTHORED pointers with RAW, UNORDERED metadata — NEVER ranked
     # (a staleness/mtime rank actively misleads: a foundational fact is untouched yet vital). Mirrors are
@@ -957,11 +987,17 @@ def _remove_index_pointer(store: Path, name: str) -> bool:
     return True
 
 
-def _orphans(store: Path) -> list[str]:
+def _orphans(store: Path, canon: "set[str] | None" = None) -> list[str]:
     """Mirror files (`global_ref:`) in this store whose CANONICAL no longer exists in
     the global store. These are the dead memory --pull can never reclaim (it only
-    iterates LIVE globals), so they accrue forever — the leak Fix B closes."""
-    canon = {n for n, _, _ in global_facts()}
+    iterates LIVE globals), so they accrue forever — the leak Fix B closes.
+    v0.1.75: gc() passes `canon` from its ONE global_facts() snapshot, so the mass-delete
+    safety guard and this scan can never see different store states (the audit's guard-TOCTOU:
+    a store emptying between the guard's read and a second read here would have made EVERY
+    mirror look orphaned — the exact wipe the guard exists to prevent). Default None
+    self-computes (direct/test callers keep working)."""
+    if canon is None:
+        canon = {n for n, _, _ in global_facts()}
     out: list[str] = []
     if not store.exists():
         return out
@@ -980,23 +1016,50 @@ def gc(project_dir: Path, apply: bool) -> int:
     """Reclaim orphaned mirrors. Report-by-default; delete only with --apply, and
     NEVER touch a project-authored (non-`global_ref:`) fact, even on a name collision.
 
+    v0.1.75 (audit F6): also reports/reclaims FROZEN mirrors — `global_ref:` files whose canonical is
+    ALIVE but no longer relevant to this project (a dropped stack): --pull can't refresh them
+    (irrelevant short-circuits), the orphan scan can't see them (the canonical exists), so they sat
+    stale forever, still taxing the always-loaded index. Reclaim is safe by construction — a frozen
+    mirror is a replica of a LIVE canonical, so if the stack returns (or detection flickered) the
+    next --pull simply re-pulls it; no memory can be lost.
+
     Dead-edge provenance (a canonical that still exists but lists a project no longer
     holding it) is REPORTED only, not auto-pruned: absence-of-mirror is a weak signal
     (a renamed/moved store also 'holds nothing'), and stripping global state on it
     risks erasing real edges. The proven win is removing the orphan files."""
     project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        # v0.1.75 defense-in-depth (audit F5) — same phantom-store guard as run(); _dispatch is the CLI choke.
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
     # SAFETY: an EMPTY canonical set makes EVERY mirror look orphaned → gc --apply would
     # delete them all. A global store that is absent OR present-but-empty (unmounted,
     # moved, not yet synced, or only the MEMORY.md index left) is NOT the same as "all
     # canonicals were deliberately deleted". Refuse in either case rather than risk wiping
     # re-pullable / last-surviving memory. (Guard on the FACT COUNT, not mere existence.)
-    if not GLOBAL.exists() or not global_facts():
+    # v0.1.75: ONE global_facts() snapshot — the guard, the orphan scan, the frozen scan, and the
+    # dead-edge report all see the SAME store state (the audit's guard-TOCTOU: a store emptying
+    # between the guard's read and a second scan read would have made every mirror look orphaned —
+    # the exact mass-wipe the guard exists to prevent).
+    gfacts = global_facts() if GLOBAL.exists() else []
+    if not gfacts:
         why = "absent" if not GLOBAL.exists() else "present but empty (no canonical facts)"
         print(f"global store {GLOBAL} is {why} — refusing to GC "
               "(cannot distinguish that from all-canonicals-deleted).")
         return 0
     store = project_store(project_dir)
-    orphans = _orphans(store)
+    orphans = _orphans(store, canon={n for n, _, _ in gfacts})
+    # v0.1.75 (audit F6): FROZEN mirrors — see the docstring. Detected against the SAME snapshot.
+    stacks = detect_stacks(project_dir)
+    canon_fm = {n: fm for n, fm, _ in gfacts}
+    frozen: list = []
+    if store.exists():
+        for f in sorted(store.glob("*.md")):
+            if f.name == "MEMORY.md" or _is_reserved_stem(f.stem) or f.stem not in canon_fm:
+                continue
+            t = _safe_read_text(f)   # store-scan convention — a vanished file must not abort the scan
+            if t is not None and _is_mirror(t) and not is_relevant(canon_fm[f.stem], stacks):
+                frozen.append(f.stem)
     out: list = []
     title = "✦ GARBAGE COLLECT · orphaned mirrors"
     tag = "APPLY" if apply else "REPORT"
@@ -1017,7 +1080,18 @@ def gc(project_dir: Path, apply: bool) -> int:
             out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(file + index pointer)", "dim"))
         else:
             out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer)", "dim"))
-    tail = (f"removed {removed} orphan(s)" if apply
+    out.append(_ui.kv("FROZEN", f"{len(frozen)} mirror(s) whose canonical is ALIVE but irrelevant here (dropped stack)"
+               + ("" if frozen else "  " + _ui.c("· none", "dim"))))
+    removed_frozen = 0
+    for name in frozen:
+        if apply:
+            (store / f"{name}.md").unlink(missing_ok=True)
+            _remove_index_pointer(store, name)
+            removed_frozen += 1
+            out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(re-pullable if the stack returns)", "dim"))
+        else:
+            out.append("    " + _ui.c("✻", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer; re-pullable — canonical stays)", "dim"))
+    tail = (f"removed {removed} orphan(s) + {removed_frozen} frozen" if apply
             else "run with --apply to delete (surface these to the user first)")
     out.append("")
     out.append(_ui.kv("RESULT", tail))
@@ -1026,7 +1100,7 @@ def gc(project_dir: Path, apply: bool) -> int:
         print(_ui.ascii_translate("\n".join(out)))
         return 0
     dead = []
-    for name, fm, _ in global_facts():
+    for name, fm, _ in gfacts:
         for holder in _holders(fm):
             # we only know THIS project's store path; report if it's listed but absent
             if holder == project_dir.name and not (store / f"{name}.md").exists():
@@ -1540,6 +1614,16 @@ def _dispatch() -> int:
     project_dir = Path(pos[0]) if pos else Path.cwd()
     if args and args[0] == "--network":
         return network()
+    # v0.1.75 (audit F5): a TYPO'D PROJECT_DIR must never mint a phantom store. resolve() is non-strict,
+    # os.walk on a missing dir is silently empty, and --pull's store.mkdir would then create a store under
+    # the bogus slug AND write the bogus basename into every shared canonical's `projects:` provenance —
+    # pollution --gc can never reclaim (the phantom's mirrors "exist", so its edges are never dead).
+    # Refuse EVERY project-dir mode up front (--network above takes none).
+    if not project_dir.is_dir():
+        print(f"error: PROJECT_DIR {project_dir} does not exist / is not a directory — refusing "
+              "(a typo'd path would mint a phantom store under its slug and write bogus provenance "
+              "into every shared canonical)", file=sys.stderr)
+        return 2
     if args and args[0] == "--tokens":
         return token_report(project_dir, "--json" in args)
     if args and args[0] == "--utility":   # v0.1.67 (Phase C): fleet usage evidence (READ-ONLY, like --list)

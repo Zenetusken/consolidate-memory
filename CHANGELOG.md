@@ -5,6 +5,40 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.75] — 2026-07-10
+
+### Fixed — pull-side guards: the M4-bypass surface, the phantom-store guard, the frozen-mirror lifecycle (audit F5/F6/F7)
+Three confirmed audit findings, all on the pull/read side; 3/3 repro probes ran RED pre-fix.
+
+- **F7 — fleet-dead canonicals surfaced (the M4 bypass).** The `_DETECTABLE_STACKS` "refused, not
+  written" guard lives only in `--promote`; the SKILL's documented Phase-4 NET-NEW path hand-writes
+  canonicals directly, so a typo'd (`gpuu`) or undetectable (`release`) `stacks:` tag landed
+  unvalidated — fleet-dead (`is_relevant` can never match it), silently, forever. Every dream's
+  Phase-1 `--list`/`--pull` now warns `⚠ fleet-dead canonical` naming the bad tags and the three
+  fixes (retag detectable / re-scope user-global / demote) — report-only, never a block. SKILL
+  Phase-4 gains the validate-first instruction on the net-new path.
+- **F5 — a typo'd PROJECT_DIR can no longer mint a phantom store.** `resolve()` is non-strict and
+  `store.mkdir(parents=True)` obliges: `--pull /path/typo` returned rc=0, created a store under the
+  bogus slug, mirrored every user-global fact into it, and wrote the bogus basename into every
+  shared canonical's `projects:` provenance — pollution `--gc` can never reclaim (the phantom's
+  mirrors "exist", so its edges are never dead). `_dispatch` now refuses every project-dir mode up
+  front (rc=2), with defense-in-depth guards in `run()` and `gc()` for direct callers.
+- **F6 — frozen mirrors get a lifecycle.** A project that drops a stack left its stack-general
+  mirrors in a state nothing could see or fix: never refreshed (`irrelevant` short-circuits
+  staleness), never gc'd (the canonical is alive), index pointer still taxing every session, and
+  rendered byte-identical to a never-pulled irrelevant fact. Now: `run()` renders a distinct
+  `frozen(mirror)` row + a summary note; `--gc` gains a FROZEN section (report-only by default) and
+  `--gc --apply` reclaims them — **safe by construction** (a frozen mirror is a replica of a LIVE
+  canonical; the stack's return simply re-pulls it — pinned as a round-trip test). Also folds in
+  the gc guard-TOCTOU fix: ONE `global_facts()` snapshot now feeds the mass-delete safety guard,
+  the orphan scan, the frozen scan, and the dead-edge report (`_orphans` gains an optional `canon`
+  parameter), closing the window where a store emptying mid-gc made every mirror look orphaned.
+
+New pins: smoke v0.1.75 block (7 checks incl. the frozen lifecycle round-trip) + sim Probe W (CLI
+phantom guard, provenance-clean assertion). No schema change; `--gc --apply` now reclaims one
+additional, loss-proof category (called out here loudly); everything else is refuse-direction or
+report-only ⇒ patch.
+
 ## [0.1.74] — 2026-07-10
 
 ### Fixed — fence-boundary parity: `_as_mirror`/`_body` now agree with `_frontmatter` (audit finding #1)
