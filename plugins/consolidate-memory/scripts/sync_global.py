@@ -1663,8 +1663,15 @@ def fleet_staleness(project_dir: Path) -> dict:
     ledger_nodes = {str(r.get("node", "")) for r in _ledger_rows()}
     now_ep = datetime.now(timezone.utc).timestamp()
     body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts}
+    stores = _all_stores()
+    if trig_store.resolve() not in {s.resolve() for s in stores}:
+        # PR-#93 review F1 (two reviewers, convergent): the TRIGGER appears UNCONDITIONALLY — an
+        # absent/empty trigger store is the maximally-starved row (never dreamed, absorbed nothing),
+        # not an omission. The same force-append harvest()/fleet_utility already use; every relevant
+        # canonical then counts MISSING via the not-exists check below.
+        stores.append(trig_store)
     nodes: list = []
-    for store in _all_stores():
+    for store in stores:
         is_trig = store.resolve() == trig_store.resolve()
         marker = ""
         raw_state = _safe_read_text(store / ".consolidation-state.json")
@@ -1677,26 +1684,29 @@ def fleet_staleness(project_dir: Path) -> dict:
         mdt = _parse_ts(marker) if marker else None
         missing = stale = 0
         for n, fm, _text in gfacts:
-            scope = fm.get("scope", "")
-            if scope == "user-global":
-                relv = True
-            elif scope == "stack-general" and is_trig:
-                relv = bool(_fact_stacks(fm) & trig_stacks)
-            else:
-                continue   # stack-general on a non-trigger node: not assessable — never guessed
-            if not relv:
+            # review F4: delegate to is_relevant — the SINGLE relevance predicate (a 4th hand copy
+            # is how predicates diverge). Non-trigger → empty stacks → stack-general never matches:
+            # exactly the labeled user-global-only basis (a slug is never guessed back to a path).
+            if not is_relevant(fm, trig_stacks if is_trig else set()):
                 continue
-            cur = _safe_read_text(store / f"{n}.md")
-            if cur is None:
+            p = store / f"{n}.md"
+            if not p.exists():
                 missing += 1
-            elif _is_mirror(cur) and _body_hash(cur) != body_hashes[n]:
+                continue
+            cur = _safe_read_text(p)
+            if cur is None:
+                continue   # review F2: PRESENT but unreadable (chmod/read race) is neither missing
+                           # nor stale — never guess; skipping under-reports, the pinned safe bias
+            if _is_mirror(cur) and _body_hash(cur) != body_hashes[n]:
                 stale += 1
-        m = _node_tokens(store)
+        m = _node_tokens(store) if store.is_dir() else {"facts": 0, "shared": 0}
         hist = usage_history(store)
         nodes.append({"node": _sane(project_dir.name) if is_trig else _node_label(store),
                       "trigger": is_trig,
                       "last_dream": marker,
-                      "age_days": (round((now_ep - mdt.timestamp()) / 86400, 1) if mdt else None),
+                      # review F5: a FUTURE marker (clock skew / hand-edit) clamps to 0.0 — never a
+                      # negative "dreamed -26472d ago"; the raw marker stays in last_dream for audit.
+                      "age_days": (max(0.0, round((now_ep - mdt.timestamp()) / 86400, 1)) if mdt else None),
                       "facts": m["facts"], "mirrors": m["shared"],
                       "missing_globals": missing, "stale_mirrors": stale,
                       "scope_basis": ("full (live stacks)" if is_trig else "user-global only (no stacks cache)"),
@@ -1704,8 +1714,12 @@ def fleet_staleness(project_dir: Path) -> dict:
                       "harvested": store.parent.name in ledger_nodes})
     nodes.sort(key=lambda d: (-d["missing_globals"], -(d["age_days"] if d["age_days"] is not None else 1e9)))
     return {"nodes": nodes,
-            "behind": sum(1 for d in nodes if d["missing_globals"]),
-            "never_dreamed": sum(1 for d in nodes if d["last_dream"] == "")}
+            # review F6: content-stale mirrors ARE lag — a node with 0 missing but stale knowledge
+            # counts as behind (the sweep's other half). review F3: never_dreamed keys on age_days —
+            # the SAME predicate the render and the sort use, so a present-but-UNPARSEABLE marker
+            # reads as never-dreamed everywhere consistently instead of contradicting the aggregate.
+            "behind": sum(1 for d in nodes if d["missing_globals"] or d["stale_mirrors"]),
+            "never_dreamed": sum(1 for d in nodes if d["age_days"] is None)}
 
 
 def staleness_report(project_dir: Path, as_json: bool) -> int:
@@ -1777,8 +1791,12 @@ def _ledger_rows() -> list:
 
 def _append_ledger(row: dict) -> None:
     """One-line O_APPEND|O_CREAT 0o600 append. Concurrency stance = the documented D-2
-    accepted-gap philosophy (dream-boundary cadence; single-line appends interleave whole);
-    script-truth telemetry in the render_dashboard --persist class, never a memory-content write."""
+    accepted-gap philosophy (dream-boundary cadence). PR-#92 review precision: O_APPEND
+    atomicity is only POSIX-guaranteed under PIPE_BUF (~4KB) and a fat 40-fact row can reach
+    that, so a rare concurrent-dream append could tear a line — accepted, because the reader
+    (_ledger_rows) skips unparseable lines and the next harvest re-covers the window
+    (self-healing, same class as D-2). Script-truth telemetry in the render_dashboard
+    --persist class, never a memory-content write."""
     import json
     GLOBAL.mkdir(parents=True, exist_ok=True)
     fd = os.open(str(_ledger_path()), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)

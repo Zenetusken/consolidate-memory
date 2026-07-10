@@ -4169,5 +4169,32 @@ with _Env73() as _e:
     check("v0.1.80: the sweep is READ-ONLY over every store, and the payload is JSON-safe (null age)",
           _pre80 == _post80 and isinstance(_jsonB.dumps(_s80), str))
 
+# --- PR-#93 review-team pins (two reviewers, convergent top finding) ---
+with _Env73() as _e:
+    # F1: an EMPTY trigger store (0 *.md) — previously silently omitted from its own report, the
+    # maximally-starved case. Now force-appended (the harvest/fleet_utility precedent).
+    (_e.glob / "g-one.md").write_text(
+        "---\nname: g-one\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n---\nb\n",
+        encoding="utf-8")
+    _s93 = sg.fleet_staleness(_e.proj)
+    _trig93 = [d for d in _s93["nodes"] if d["trigger"]]
+    check("v0.1.80/review-F1: an EMPTY trigger store still yields the trigger row — never-dreamed, "
+          "all relevant globals MISSING (was: silently omitted from its own report)",
+          len(_trig93) == 1 and _trig93[0]["missing_globals"] == 1 and _trig93[0]["age_days"] is None
+          and _s93["behind"] >= 1 and _s93["never_dreamed"] >= 1)
+    # F3: a present-but-MALFORMED marker must read as never-dreamed EVERYWHERE (render, sort, and
+    # the aggregate — the old aggregate keyed on last_dream=="" and contradicted the row display).
+    _nM93 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-badmarker" / "memory"
+    _nM93.mkdir(parents=True)
+    (_nM93 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_nM93 / ".consolidation-state.json").write_text(
+        _jsonB.dumps({"commit": "x", "timestamp": "not-a-date"}), encoding="utf-8")
+    _s93b = sg.fleet_staleness(_e.proj)
+    _bad93 = [d for d in _s93b["nodes"] if d["node"] == "src-badmarker"][0]
+    check("v0.1.80/review-F3: a present-but-UNPARSEABLE marker counts as never-dreamed in the "
+          "AGGREGATE too (age_days is the one predicate; raw marker kept in last_dream for audit)",
+          _bad93["age_days"] is None and _bad93["last_dream"] == "not-a-date"
+          and _s93b["never_dreamed"] == 2)   # the empty trigger + the bad-marker node
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

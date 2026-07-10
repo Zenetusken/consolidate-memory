@@ -19,8 +19,10 @@ doesn't run.
 ## Design — read-only, all stores, never guessed
 
 `--staleness` sweeps **every** project store under `~/.claude/projects/` (not just
-mirror-holders — a store with zero mirrors is exactly the most starved), plus the trigger.
-Per node:
+mirror-holders — a store with zero mirrors is exactly the most starved), plus the trigger —
+**unconditionally** (PR-#93 review, two reviewers convergent): an absent or empty trigger store
+is the maximally-starved row (never dreamed, absorbed nothing), never an omission; every
+relevant canonical then counts MISSING. Per node:
 
 - **last dream** — the `.consolidation-state.json` marker timestamp → age in days;
   `(never dreamed)` when absent. The marker is model-written (SKILL Phase 5 step 5); this only
@@ -37,9 +39,14 @@ Per node:
 - **evidence coverage** — own-log usage windows (`usage_history`) and whether the harvest
   ledger covers the node.
 
-Aggregates: nodes behind (missing > 0), never-dreamed count. `--json` for machines (the Stage-B
-beacon and any future absorption-latency metric consume this shape). Not in `_CUED_MODES` —
-like `--network`, a maintainer/observability lens outside dream flow.
+Aggregates: nodes behind (**missing > 0 OR content-stale > 0** — stale knowledge is the sweep's
+other half), never-dreamed count (keyed on the SAME unparseable-age predicate the render and
+sort use — a present-but-malformed marker reads as never-dreamed everywhere, consistently).
+Review-hardened edges: a PRESENT-but-unreadable fact file (chmod/read race) is neither missing
+nor stale (skip — under-report, the pinned bias); a FUTURE marker clamps age to 0.0 (raw
+timestamp kept in `last_dream` for audit). `--json` for machines (the Stage-B beacon and any
+future absorption-latency metric consume this shape). Not in `_CUED_MODES` — like `--network`,
+a maintainer/observability lens outside dream flow.
 
 ## Alternatives rejected
 

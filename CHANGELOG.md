@@ -29,6 +29,16 @@ days behind with 11 missing globals and 4 content-stale mirrors, previously invi
 
 New read-only mode; no schema change ⇒ patch.
 
+Hardened by a two-lens review team before merge (staleness-core + seams/adversarial, both
+verdicts MERGE-READY; the convergent top finding fixed): the TRIGGER row is now unconditional
+(an absent/empty trigger store was silently omitted from its own report — the maximally-starved
+case); a present-but-unreadable fact is neither missing nor stale (was over-reported missing);
+`never_dreamed` keys on the same unparseable-age predicate the render and sort use (a malformed
+marker no longer contradicts the aggregate); `behind` includes content-stale-only nodes; future
+markers clamp to age 0; the relevance predicate delegates to `is_relevant` (no 4th hand copy);
+the harvest ledger's append-atomicity claim made precise (PIPE_BUF — torn lines self-heal via
+the guarded reader). Review pins added.
+
 ## [0.1.79] — 2026-07-10
 
 ### Added — fleet usage harvest: capture every node's windows before the transcripts rot (audit P1)
