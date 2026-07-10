@@ -5,6 +5,46 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.72] — 2026-07-09
+
+### Fixed — the diff-modal's "any changed file must be observable" gap
+A real dashboard screenshot showed the ledger's diff count under-reporting: a `CLAUDE.md`
+edit and four index-line-only fact compressions were narrated in "Changes & Decisions"
+with **no way to ever surface a diff for them**, because `capture_diffs` (v0.1.32) had a
+hardcoded `store != "memory"` exclusion plus a `memory/MEMORY.md` carve-out treating the
+index as pointer churn, not a real file change. Confirmed against the actual session's
+own `/tmp` Phase-0 snapshot + `git diff` before touching anything.
+
+- **`audit_snapshot`/`capture_diffs` now cover every tracked store** — memory facts, the
+  `MEMORY.md` index, the CLAUDE.md hierarchy, and relocate-target repo docs. A
+  claude_md/repo_doc file over `_DIFF_CONTENT_CAP_TOKENS` (8000; this repo's own
+  CHANGELOG.md is 175KB) skips content-stashing to avoid bloating the Phase-0 `/tmp`
+  snapshot every dream — `capture_diffs` flags it `size_capped` instead of emitting a
+  misleadingly one-sided diff. Memory facts stay uncapped (always small).
+- **`Entry.files: list[str]`** (additive, `total=False`) — the model now DECLARES which
+  `audit_snapshot` label(s) an entry touched (`memory/x.md`, `memory/MEMORY.md`,
+  `claude_md/CLAUDE.md`, …) when authoring it in Phase 5, so the dashboard links
+  deterministically instead of guessing. An index-line-only correction lists
+  `memory/MEMORY.md`; a correction touching both a fact body and the index lists both
+  (the ledger renders one primary link plus a `+ <file>` chip per extra file). SKILL.md's
+  Phase-5 entry-authoring instructions and cycle-record schema block updated together
+  (the existing SKILL↔TypedDict smoke pin catches drift).
+- A cycle record with no `files` field at all (every record logged before this version)
+  degrades to the old name-match heuristic, now widened: an `auto-mem` entry with no
+  diff for its own `memory/<name>.md` falls back to a shared `memory/MEMORY.md` diff if
+  one exists; a `repo`-store entry auto-links the single unambiguous `claude_md/`or
+  `repo_doc/` diff if there's exactly one candidate (never guesses when there's more
+  than one — an unresolved entry stays a plain, honest label rather than risking a wrong
+  link).
+- The dashboard's "changed file with no narrated entry" safety-net row is unchanged in
+  purpose but now fires far less often — with declared/heuristic linking absorbing most
+  diffed files into their narrated row, an orphan `changed` row is now a genuine signal
+  that the model's narration missed something, not a structural side-effect of the old
+  memory-only scope.
+
+Backward-compatible throughout (additive `total=False` schema key, legacy records still
+render via the widened heuristic, no flag/CLI change) ⇒ patch.
+
 ## [0.1.71] — 2026-07-09
 
 ### Fixed — Track D: global-store write atomicity + seed-path hardening

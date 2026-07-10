@@ -729,11 +729,23 @@
     }
   })();
 
-  // ── v0.1.32 diff-modal: THIS dream's per-file memory diffs; a changed fact's NAME is clickable in the ledger ──
+  // ── v0.1.32/v0.1.72 diff-modal: THIS dream's per-file diffs (memory facts + MEMORY.md index + CLAUDE.md +
+  // repo docs — every audit_snapshot store); a changed fact's NAME is clickable in the ledger ──
   var DREAMDIFFS=ALLDIFFS[diffKey((CUR&&CUR.marker)||{})]||{};
+  var STORE_PREFIXES=[["memory/","memory"],["claude_md/","claude_md"],["repo_doc/","repo doc"]];
+  function splitDiffPath(p){p=String(p);
+    for(var i=0;i<STORE_PREFIXES.length;i++){var pre=STORE_PREFIXES[i][0];
+      if(p.indexOf(pre)===0)return {rel:p.slice(pre.length), store:STORE_PREFIXES[i][1]};}
+    return {rel:p, store:""};}
+  function diffDisplayName(p){var sp=splitDiffPath(p);return sp.store==="memory"?sp.rel.replace(/\.md$/,""):sp.rel;}
   function openDiff(p){
     var d=DREAMDIFFS[p]; if(!d)return;
-    el("dmodal-title").textContent=String(p).replace(/^memory\//,"")+"  ·  "+(d.op||"modified");
+    var sp=splitDiffPath(p);
+    el("dmodal-title").textContent=diffDisplayName(p)+(sp.store?"  ·  "+sp.store:"")+"  ·  "+(d.op||"modified");
+    if(d.size_capped){
+      el("dmodal-body").innerHTML='<div class="dl-more">diff not available — file too large to snapshot (this dream still recorded that it changed)</div>';
+      el("dmodal").style.display="flex"; return;
+    }
     var html=(d.lines||[]).map(function(l){
       var t=l.t, cls=t==="+"?"dl-plus":t==="-"?"dl-minus":t==="@"?"dl-at":"dl-ctx";
       var pre=t==="+"?"+ ":t==="-"?"- ":t==="@"?"":"  ";
@@ -750,18 +762,49 @@
   // ── ledger: the narrated entries; a changed-memory-fact's NAME links to its diff (ONE list, no separate section) ──
   (function(){
     var box=el("entries"), used={};
-    function nameCell(nm){var p="memory/"+nm+".md";   // a memory fact's entry name == its slug → match the sidecar key
-      if(DREAMDIFFS[p]){used[p]=1;return '<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>';}
+    function link(p,nm){used[p]=1;return '<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>';}
+    // v0.1.72: the model DECLARES which file(s) an entry touched (`files[]`, audit_snapshot labels) — the
+    // deterministic path, no guessing which diff an entry means. Declared files (deduped) take priority
+    // whenever at least one resolves to a real diff. Otherwise — no `files` field at all (pre-v0.1.72), OR
+    // an empty/unresolved `files` the model got wrong — fall through to the legacy heuristics below rather
+    // than trusting a possibly-mistaken negative declaration and silently dropping a real, observed change.
+    function nameCell(e){
+      var nm=g(e,"name","—"), rawFiles=g(e,"files",null), declared=[], seen={};
+      if(Array.isArray(rawFiles))rawFiles.forEach(function(p){p=String(p);
+        if(DREAMDIFFS[p]&&!seen[p]){seen[p]=1;declared.push(p);}});
+      if(declared.length){
+        var primary=link(declared[0],nm), extra=declared.slice(1).map(function(p){return link(p,diffDisplayName(p));});
+        return extra.length?primary+' <em>+</em> '+extra.join(' '):primary;
+      }
+      // legacy/fallback heuristic: an entry's OWN file may carry no diff even though something real changed
+      // FOR it — an index-line-only compression touches memory/MEMORY.md, not memory/<name>.md; a
+      // claude_md/repo_doc entry has no per-entry filename convention to begin with.
+      var p="memory/"+nm+".md";   // a memory fact's entry name == its slug → match the sidecar key
+      if(DREAMDIFFS[p])return link(p,nm);
+      var store=g(e,"store","");
+      if(store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"])return link("memory/MEMORY.md",nm);   // index-only edit
+      if(store==="repo"){
+        var cmKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("claude_md/")===0;});
+        var rdKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("repo_doc/")===0;});
+        // only auto-link when JOINTLY unambiguous (exactly one candidate across BOTH stores combined) — one
+        // claude_md file AND one repo_doc file changed in the same pass is still two real candidates, not one
+        var repoKeys=cmKeys.concat(rdKeys);
+        if(repoKeys.length===1)return link(repoKeys[0],nm);
+      }
       return esc(nm);}
     var rows=ENT.map(function(e){var act=g(e,"action","-"),tier=g(e,"tier","");tier=(tier===""||tier==="-")?"":tier;var sc=g(e,"scope","");
       return '<div class="row"><div class="act a-'+esc(act)+'">'+esc(act)+'</div>'
-        +'<div><div class="nm">'+nameCell(g(e,"name","—"))+(tier||sc?' <em>'+esc([tier,sc].filter(Boolean).join(" · "))+'</em>':'')+'</div>'
+        +'<div><div class="nm">'+nameCell(e)+(tier||sc?' <em>'+esc([tier,sc].filter(Boolean).join(" · "))+'</em>':'')+'</div>'
         +(g(e,"reason","")?'<div class="rs">'+esc(g(e,"reason",""))+'</div>':'')+'</div>'
         +'<div class="ci">'+(g(e,"citation","")?esc(g(e,"citation","")):'')+'</div></div>';});
-    Object.keys(DREAMDIFFS).filter(function(p){return !used[p];}).forEach(function(p){   // a changed file with no narrated entry → appended (rare; nothing hidden)
-      var nm=String(p).replace(/^memory\//,"").replace(/\.md$/,"");
+    // a changed file with no narrated entry → appended (e.g. an index-line-only compression, or a CLAUDE.md/repo-doc
+    // edit — those stores have no per-entry name convention to match). Every DREAMDIFFS key lands SOMEWHERE in the
+    // ledger, narrated or not — no observed file change is ever silently dropped.
+    Object.keys(DREAMDIFFS).filter(function(p){return !used[p];}).forEach(function(p){
+      var sp=splitDiffPath(p), nm=diffDisplayName(p);
       rows.push('<div class="row"><div class="act a-changed">changed</div><div><div class="nm">'
-        +'<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button> <em>memory · diff</em></div></div><div class="ci"></div></div>');});
+        +'<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>'
+        +' <em>'+esc(sp.store||"file")+' · diff</em></div></div><div class="ci"></div></div>');});
     var nd=Object.keys(DREAMDIFFS).length;
     el("ent-note").textContent=ENT.length+" entr"+(ENT.length!==1?"ies":"y")+(nd?" · "+nd+" diff"+(nd!==1?"s":""):"");
     box.innerHTML=rows.length?rows.join(""):'<div class="cap" style="padding:16px 0">No recorded decisions this pass.</div>';
