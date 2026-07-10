@@ -864,7 +864,12 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
 5. **Update the high-water mark**: write `commit` (current `HEAD`) + ISO
    `timestamp` to `~/.claude/projects/<slug>/memory/.consolidation-state.json` so
    the next pass scopes correctly (stamp the timestamp at write time), and mirror
-   that `timestamp` into the cycle record's `marker.timestamp`. **If the over-budget gate
+   that `timestamp` into the cycle record's `marker.timestamp`. **MERGE into the existing
+   JSON — never rewrite it wholesale** (v0.1.81): the file also carries SCRIPT-OWNED keys —
+   `stacks`/`project_path` (the `--pull`-written cache the SessionStart beacon and `--staleness`
+   read; recomputing stacks costs ~2s on a big repo, which is why it is cached) and
+   `beacon_snooze_until` (set ONLY on an explicit user ask to quiet the beacon for this store) —
+   a wholesale rewrite would wipe them until the next pull. **If the over-budget gate
    was JUSTIFIED this pass** (lever `justify` or prune-then-justify, step 0), ALSO write
    `standing_justify: {"facts": <current fact-count>, "index_tokens": <current>, "at": "<iso>"}`
    to the marker — the next pass SUPPRESSES the gate until the store grows by Δ (D6/D7, v0.1.21).

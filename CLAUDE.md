@@ -40,7 +40,11 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
   skills/consolidate-memory/
     SKILL.md                       6-phase workflow + the context-loading-tier model
     references/harness-map.md      paths, fact schema, verification recipes, cross-project model
+  hooks/hooks.json                 SessionStart beacon (startup+resume, 2s timeout) → session_beacon.py
   scripts/
+    session_beacon.py              ≤1 factual context-injected line when THIS store is behind the fleet
+                                   (read-only, no-nag tiers, silent-exit-0 on failure; stacks via the
+                                   --pull-written state cache — never detect_stacks, measured 2s on big repos)
     memory_status.py               Phase 0: locate stores + git scope + `--json` cycle-record seed
     extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
     sync_global.py                 cross-project: --list/--pull [--evict=F | --allow-net-grow]/--promote/

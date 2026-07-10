@@ -709,6 +709,37 @@ def _plan_pull(items: list, start_idx: int, allow_net_grow: bool, budget: int) -
     return {"pull": pull, "held": held, "end_idx": idx}
 
 
+def _write_stacks_cache(store: Path, project_dir: Path, stacks: set) -> None:
+    """v0.1.81 (session-beacon Stage B, docs/session-beacon.spec.md): merge SCRIPT-TRUTH
+    `stacks` + `project_path` into the store's .consolidation-state.json at --pull time —
+    detect_stacks just ran (this is its freshest possible value), and the SessionStart beacon
+    cannot afford to recompute it (MEASURED: 2003ms on the fleet's biggest repo vs the hook's
+    2s budget; 144ms even on this repo). `project_path` is the honest slug→path inverse,
+    recorded at the one moment it is authoritatively known (the lossy-slug rule: never guess
+    it back). MERGE-write — every model-written key (timestamp/commit/standing_justify/
+    demotion_justify) is preserved verbatim; best-effort: a failure degrades the beacon and
+    --staleness to user-global-only (labeled), never fails the pull."""
+    import json
+    sp = store / ".consolidation-state.json"
+    try:
+        st: dict = {}
+        raw = _safe_read_text(sp)
+        if raw:
+            try:
+                _parsed = json.loads(raw)
+                if isinstance(_parsed, dict):
+                    st = _parsed
+            except (ValueError, TypeError):
+                st = {}   # unreadable state: still cache (readers tolerate the extra keys)
+        st["stacks"] = sorted(stacks)
+        st["project_path"] = str(project_dir)
+        store.mkdir(parents=True, exist_ok=True)
+        sp.write_text(json.dumps(st, indent=2) + "\n", encoding="utf-8")
+    except OSError as e:
+        print(f"  ⚠ stacks-cache write skipped ({e.__class__.__name__}) — the session beacon "
+              "degrades to user-global-only until the next pull", file=sys.stderr)
+
+
 def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str | None = None) -> int:
     # v0.1.38 (M1): the PROJECTED net-grow BACKSTOP. A MISSING fact = a NEW always-loaded index pointer (the
     # v0.1.18 blowup class); on --pull we HOLD it when it would push the index past the threshold
@@ -745,6 +776,8 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     add(_ui.rule())
     add("")
     add(_ui.kv("STACKS", (", ".join(sorted(stacks)) if stacks else _ui.c("(none detected)", "dim"))))
+    if pull:
+        _write_stacks_cache(store, project_dir, stacks)   # v0.1.81: the beacon's stacks cache (script-truth)
 
     glyphs = {"in-sync": ("✓", "green"), "MISSING": ("↓", "yellow"), "STALE-mirror": ("⟳", "yellow"),
               "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim"), "frozen(mirror)": ("✻", "yellow")}
@@ -1672,6 +1705,28 @@ def _all_stores() -> "list[Path]":
     return out
 
 
+def _store_gaps(store: Path, stacks: "set | None", gfacts: list, body_hashes: dict) -> "tuple[int, int]":
+    """(missing, content_stale) for ONE store against the given relevance basis — the SINGLE gap
+    predicate shared by fleet_staleness (per node) and the SessionStart beacon (its own store);
+    v0.1.81, factored so the two can never diverge. `stacks=None` → user-global-only (the honest
+    no-cache basis). Same review-hardened edges as the staleness sweep: a PRESENT-but-unreadable
+    file is neither missing nor stale (under-report, the pinned bias)."""
+    missing = stale = 0
+    for n, fm, _text in gfacts:
+        if not is_relevant(fm, stacks if stacks is not None else set()):
+            continue
+        p = store / f"{n}.md"
+        if not p.exists():
+            missing += 1
+            continue
+        cur = _safe_read_text(p)
+        if cur is None:
+            continue
+        if _is_mirror(cur) and _body_hash(cur) != body_hashes[n]:
+            stale += 1
+    return missing, stale
+
+
 def fleet_staleness(project_dir: Path) -> dict:
     """READ-ONLY absorption-lag sweep (docs/fleet-staleness-report.spec.md — the observe-only
     Stage A that must prove/refute the SessionStart beacon's premise). Per node: last-dream
@@ -1700,31 +1755,25 @@ def fleet_staleness(project_dir: Path) -> dict:
     for store in stores:
         is_trig = store.resolve() == trig_store.resolve()
         marker = ""
+        cached_stacks: "set | None" = None
         raw_state = _safe_read_text(store / ".consolidation-state.json")
         if raw_state:
             try:
                 _st = _json.loads(raw_state)
-                marker = str((_st or {}).get("timestamp", "") or "") if isinstance(_st, dict) else ""
+                if isinstance(_st, dict):
+                    marker = str(_st.get("timestamp", "") or "")
+                    if isinstance(_st.get("stacks"), list):
+                        # v0.1.81: the --pull-written stacks cache (script-truth, as of the node's
+                        # last pull) upgrades this non-trigger row to full-scope relevance — still
+                        # never guessed (absent cache stays user-global-only, labeled).
+                        cached_stacks = {str(x) for x in _st["stacks"]}
             except (ValueError, TypeError):
                 marker = ""
         mdt = _parse_ts(marker) if marker else None
-        missing = stale = 0
-        for n, fm, _text in gfacts:
-            # review F4: delegate to is_relevant — the SINGLE relevance predicate (a 4th hand copy
-            # is how predicates diverge). Non-trigger → empty stacks → stack-general never matches:
-            # exactly the labeled user-global-only basis (a slug is never guessed back to a path).
-            if not is_relevant(fm, trig_stacks if is_trig else set()):
-                continue
-            p = store / f"{n}.md"
-            if not p.exists():
-                missing += 1
-                continue
-            cur = _safe_read_text(p)
-            if cur is None:
-                continue   # review F2: PRESENT but unreadable (chmod/read race) is neither missing
-                           # nor stale — never guess; skipping under-reports, the pinned safe bias
-            if _is_mirror(cur) and _body_hash(cur) != body_hashes[n]:
-                stale += 1
+        # review F4 + v0.1.81: ONE gap predicate (_store_gaps — shared with the session beacon so
+        # they can never diverge). Trigger → live stacks; non-trigger → the --pull-written cache
+        # when present, else None (user-global-only, labeled — never guessed).
+        missing, stale = _store_gaps(store, trig_stacks if is_trig else cached_stacks, gfacts, body_hashes)
         m = _node_tokens(store) if store.is_dir() else {"facts": 0, "shared": 0}
         hist = usage_history(store)
         nodes.append({"node": _sane(project_dir.name) if is_trig else _node_label(store),
@@ -1735,7 +1784,9 @@ def fleet_staleness(project_dir: Path) -> dict:
                       "age_days": (max(0.0, round((now_ep - mdt.timestamp()) / 86400, 1)) if mdt else None),
                       "facts": m["facts"], "mirrors": m["shared"],
                       "missing_globals": missing, "stale_mirrors": stale,
-                      "scope_basis": ("full (live stacks)" if is_trig else "user-global only (no stacks cache)"),
+                      "scope_basis": ("full (live stacks)" if is_trig
+                                      else ("cached stacks (as of last pull)" if cached_stacks is not None
+                                            else "user-global only (no stacks cache)")),
                       "usage_windows": hist["windows_full"],
                       "harvested": store.parent.name in ledger_nodes})
     nodes.sort(key=lambda d: (-d["missing_globals"], -(d["age_days"] if d["age_days"] is not None else 1e9)))
