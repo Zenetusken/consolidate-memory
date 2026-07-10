@@ -337,8 +337,12 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   binds only projects that really depend on / import a RAG library.
 - `--gc PROJECT_DIR [--apply]` — reclaim **orphaned mirrors**: `global_ref:` files
   whose canonical was deleted from the global store. `--pull` can never remove these
-  (it only iterates live globals), so they accrue forever without GC. Report-only by
-  default; `--apply` deletes the file + its index pointer. **Only** touches
+  (it only iterates live globals), so they accrue forever without GC. v0.1.75 also
+  reports/reclaims **frozen mirrors** — a mirror whose canonical is ALIVE but no longer
+  relevant here (a dropped stack): `--pull` can't refresh it (irrelevant short-circuits)
+  and the orphan scan can't see it (the canonical exists); reclaim is safe by construction
+  (a replica of a live canonical — the next `--pull` re-pulls it if the stack returns).
+  Report-only by default; `--apply` deletes the file + its index pointer. **Only** touches
   `global_ref:` mirrors — never a project-authored fact, even on a name collision.
   Dead-edge provenance (canonical lists a project that no longer holds the mirror) is
   reported, not auto-pruned (absence-of-mirror is too weak a signal to write global

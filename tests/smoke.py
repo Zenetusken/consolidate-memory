@@ -3829,5 +3829,55 @@ check("v0.1.74: _bodies_match TRUE for two body-less facts with differing frontm
       "(was a spurious promote Guard-5 'body differs' refusal)",
       sg._bodies_match("---\nscope: user-global\n---", "---\nscope: stack-general\nstacks: [gpu]\n---") is True)
 
+# --- v0.1.75: pull-side guards (audit F5/F6/F7) — ran RED pre-fix (3/3 defects present, 2026-07-10):
+# a fleet-dead canonical was invisible, a typo'd PROJECT_DIR minted a phantom store + polluted shared
+# provenance, and a relevance-flipped mirror froze forever with no surfacing and no reclaim lever.
+with _Env73() as _e:
+    (_e.glob / "dead-tag.md").write_text(
+        "---\nname: dead-tag\ndescription: \"d\"\nmetadata:\n  scope: stack-general\n  stacks: [release]\n"
+        "  type: feedback\n---\nbody\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.75/F7: the read path warns on a FLEET-DEAD stack-general canonical (undetectable stacks "
+          "tag — the M4 bypass via the SKILL's net-new hand-write path, surfaced every dream's Phase 1)",
+          _rc == 0 and "fleet-dead canonical: 'dead-tag'" in _err and "release" in _err)
+
+check("v0.1.75/F5: run() refuses a nonexistent project dir up front (phantom-store guard, rc=2, "
+      "defense-in-depth behind _dispatch's CLI guard — sim Probe W pins the CLI half)",
+      sg.run(Path("/nonexistent/typo-proj-xyz"), pull=True) == 2)
+
+with _Env73() as _e:
+    # F6 frozen-mirror lifecycle: relevant → pulled → stack dropped → FROZEN (distinct render) →
+    # gc reports → gc --apply reclaims → stack returns → --pull re-pulls (safe by construction).
+    (_e.proj / "pyproject.toml").write_text('[project]\nname = "p"\ndependencies = ["lancedb"]\n', encoding="utf-8")
+    (_e.proj / "main.py").write_text("x = 1\n", encoding="utf-8")
+    (_e.glob / "rag-tip.md").write_text(
+        "---\nname: rag-tip\ndescription: \"r\"\nmetadata:\n  scope: stack-general\n  stacks: [rag]\n"
+        "  type: feedback\n---\nbody\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _run73(_e.proj)
+    check("v0.1.75/F6 setup: the rag mirror pulled while the stack was live", (_e.store / "rag-tip.md").exists())
+    (_e.proj / "pyproject.toml").write_text('[project]\nname = "p"\ndependencies = []\n', encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.75/F6: a dropped stack renders the mirror FROZEN, distinctly (was byte-identical to a "
+          "never-pulled 'irrelevant' row)",
+          "frozen(mirror)" in _out and "frozen mirror(s)" in _out)
+    _g75a = _io73.StringIO()
+    with _ctx73.redirect_stdout(_g75a):
+        sg.gc(_e.proj, apply=False)
+    check("v0.1.75/F6: gc REPORTS the frozen mirror (report-only default; file untouched)",
+          "FROZEN" in _g75a.getvalue() and "rag-tip" in _g75a.getvalue() and (_e.store / "rag-tip.md").exists())
+    _g75b = _io73.StringIO()
+    with _ctx73.redirect_stdout(_g75b):
+        sg.gc(_e.proj, apply=True)
+    check("v0.1.75/F6: gc --apply reclaims the frozen mirror (file + index pointer)",
+          not (_e.store / "rag-tip.md").exists()
+          and "(rag-tip.md)" not in (_e.store / "MEMORY.md").read_text(encoding="utf-8"))
+    (_e.proj / "pyproject.toml").write_text('[project]\nname = "p"\ndependencies = ["lancedb"]\n', encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.75/F6: the reclaim is SAFE BY CONSTRUCTION — the stack's return re-pulls the mirror "
+          "(replica of a live canonical; no memory can be lost)",
+          "pulled 1 new" in _out and (_e.store / "rag-tip.md").exists())
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

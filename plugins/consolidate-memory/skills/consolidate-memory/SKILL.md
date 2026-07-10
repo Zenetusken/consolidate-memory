@@ -649,7 +649,13 @@ placing each fact in its tier and optimizing it for how that tier loads:
   - **A NET-NEW fact discovered this session:** write the canonical copy to
     `~/.claude/memory/` with `scope`, `stacks: [...]`, and `projects: [...]` (provenance)
     in the frontmatter, add a line to `~/.claude/memory/MEMORY.md`, AND keep a project-store
-    copy so it recalls *here* (recall is slug-scoped).
+    copy so it recalls *here* (recall is slug-scoped). **Validate a `stack-general` fact's
+    `stacks:` against the detectable set FIRST** — the same M4 rule `--promote` enforces
+    mechanically, which this hand-write path bypasses (the 2026-07-10 audit's F7): a tag
+    `detect_stacks` can never emit — a typo (`gpuu`) or a real-but-undetectable stack
+    (`release`, `ci-cd`) — makes the canonical **fleet-dead** (matches no project, ever,
+    silently). Every later dream's Phase-1 `--list`/`--pull` now warns `⚠ fleet-dead
+    canonical` on such a tag, but write it right the first time.
   - **PROMOTING a fact that already exists in this project's local store** (the Phase-1
     promotion re-audit): **don't hand-copy it** — first set `scope`/`stacks` on the local
     fact, then run the scripted hand-off, which writes the canonical, converts this project's
