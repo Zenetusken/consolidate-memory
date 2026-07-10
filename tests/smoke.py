@@ -3795,5 +3795,39 @@ with _Env73() as _e:
           "held 1" in _out and bool(_offer) and "local-a" in _offer and "measured" in _offer
           and "aaa-m" not in _offer)
 
+# --- v0.1.74: _as_mirror/_body fence-boundary PARITY with _frontmatter (audit finding #1, VERIFIED
+# major) — ran RED pre-fix (5/5 defects present, measured 2026-07-10). The parser closes frontmatter
+# on ANY line starting '---' (`^---\n(.*?)\n---`), while _as_mirror counted only bare stripped '---'
+# lines (and counted INDENTED ones the parser ignores): a non-bare close ('----', '--- notes') made
+# the frontmatter-scoped strips eat BODY lines to EOF — silent mirror corruption via --pull (every
+# puller) and --promote (the origin's own copy) — and an indented '---' leaked canonical-only
+# 'projects:' provenance into mirrors (the v0.1.26 churn class, reopened).
+_t74 = ("---\nname: x\ndescription: \"d\"\nmetadata:\n  node_type: memory\n  scope: user-global\n"
+        "----\nBody first line.\nglobal_ref: a body line about the mirror mechanism\n"
+        "projects: a body line listing projects\nlast body line\n")
+check("v0.1.74: the fixture's non-bare close ('----') IS a parser-valid frontmatter close (the fact "
+      "parses relevant/replicable — the corruption was reachable, not contrived)",
+      ms._frontmatter(_t74).get("scope") == "user-global")
+_m74 = sg._as_mirror(_t74, "x")
+check("v0.1.74: through a '----' close, body lines starting 'projects:'/'global_ref:' SURVIVE mirroring "
+      "(were eaten to EOF pre-fix; fence parity with _frontmatter/_is_mirror)",
+      "projects: a body line listing projects" in _m74
+      and "global_ref: a body line about the mirror mechanism" in _m74
+      and "Body first line." in _m74 and "last body line" in _m74)
+check("v0.1.74: the '----'-fenced mirror still ROUND-TRIPS (_is_mirror recognizes the stamp) and "
+      "_as_mirror stays idempotent on it",
+      ms._is_mirror(_m74) and sg._as_mirror(_m74, "x") == _m74)
+_t74b = ("---\nname: z\ndescription: \"d\"\nnotes: |\n  ---\nmetadata:\n  scope: user-global\n"
+         "  projects: [alpha]\n---\nbody\n")
+check("v0.1.74: an INDENTED '  ---' is NOT a close fence (parser parity) — canonical-only 'projects:' "
+      "provenance is still STRIPPED from the mirror (v0.1.26 stays closed; was leaked by the early close)",
+      "projects: [alpha]" not in sg._as_mirror(_t74b, "z") and ms._is_mirror(sg._as_mirror(_t74b, "z")))
+check("v0.1.74: _body strips a frontmatter block closed at EOF (no trailing newline) AND consumes a "
+      "non-bare close line whole",
+      sg._body("---\nscope: x\n---") == "" and sg._body("---\nscope: x\n--- tail\nreal body\n") == "real body")
+check("v0.1.74: _bodies_match TRUE for two body-less facts with differing frontmatter "
+      "(was a spurious promote Guard-5 'body differs' refusal)",
+      sg._bodies_match("---\nscope: user-global\n---", "---\nscope: stack-general\nstacks: [gpu]\n---") is True)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
