@@ -427,7 +427,11 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   STRIKES just-read stems from the seeded `demotion.surfaced` (current-window blindness, closed
   deterministically). Fleet evidence: `sync_global --utility` (mirror-attributed per-canonical reads
   + `fleet_tax` = pointer × holders vs the warn-only `GLOBAL_FLEET_TAX_ADVISORY`) — the gc lever's
-  evidence table; decisions stay content-gated. Design + the evidence-gate rationale:
+  evidence table; decisions stay content-gated. Fleet windows are gated on each mirror's
+  **`global_ref_since` evidence-clock stamp** (v0.1.78, `docs/evidence-clock-stamps.spec.md`):
+  carried across refreshes when the canonical's BODY is unchanged (a description tweak no longer
+  wipes accrued zero-read windows — the starvation an audit measured), reset on a real body change
+  (old zero-reads don't indict new content), mtime-fallback on unstamped mirrors. Design + the evidence-gate rationale:
   `docs/index-usage-and-budget-ladder.spec.md` §Phase C.
 - **Re-verification signal:** `memory_status.py` lists facts untouched since the marker
   (mtime ≤ marker timestamp) as re-verification candidates — a cheap staleness proxy
