@@ -4061,5 +4061,65 @@ with _Env73() as _e:
           "refreshed 1" in _out and "restamped" not in _out
           and "global_ref_since" not in (_e.store / "nm.md").read_text(encoding="utf-8"))
 
+# --- v0.1.79: fleet usage HARVEST (docs/fleet-usage-harvest.spec.md — audit enhancement P1).
+# RED baseline (measured): a node holding a mirror, a real organic Read in its transcript, NO cycle
+# log → fleet_utility reads=0/windows=0/nodes_reporting=0 — the evidence rotting unobserved (live
+# fleet: 1/3 nodes reporting). The harvest captures it into the shared 0o600 ledger, watermarked.
+import stat as _stat79  # noqa: E402
+with _Env73() as _e:
+    _ct79 = ("---\nname: canon-x\ndescription: \"d\"\nmetadata:\n  node_type: memory\n"
+             "  scope: user-global\n  type: feedback\n  projects: [nodeB]\n---\nbody\n")
+    (_e.glob / "canon-x.md").write_text(_ct79, encoding="utf-8")
+    _nB79 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-nodeB" / "memory"
+    _nB79.mkdir(parents=True)
+    (_nB79 / "canon-x.md").write_text(sg._as_mirror(_ct79, "canon-x", since="2025-12-01T00:00:00Z",
+                                                    body_hash=sg._body_hash(_ct79)), encoding="utf-8")
+    (_nB79.parent / "sess1.jsonl").write_text(_jsonB.dumps({
+        "timestamp": "2026-01-15T10:00:00Z",
+        "message": {"content": [{"type": "tool_use", "name": "Read",
+                                 "input": {"file_path": str(_nB79 / "canon-x.md")}}]}}) + "\n", encoding="utf-8")
+    _fu79pre = sg.fleet_utility(_e.proj)
+    _e79pre = {x["name"]: x for x in _fu79pre["canonicals"]}["canon-x"]
+    check("v0.1.79: PRE-harvest, a non-dreaming node's organic read is invisible (the measured hole: "
+          "reads=0, no harvested keys, nodes_reporting=0)",
+          _e79pre["reads"] == 0 and "harvested_reads" not in _e79pre and _fu79pre["nodes_reporting"] == 0)
+    _hout79 = _io73.StringIO()
+    with _ctx73.redirect_stdout(_hout79):
+        _hrc79a = sg.harvest(_e.proj)
+    with _ctx73.redirect_stdout(_io73.StringIO()):
+        _hrc79b = sg.harvest(_e.proj)   # idempotence: watermark makes the re-run a no-op
+    _lp79 = _e.glob / ".fleet-usage.jsonl"
+    _rows79 = _lp79.read_text(encoding="utf-8").splitlines()
+    _w79 = _jsonB.loads(_rows79[0])["window"]
+    _s79raw, _end79raw = _w79.split("..")
+    _s79dt, _end79dt = ms._parse_ts(_s79raw), ms._parse_ts(_end79raw)
+    check("v0.1.79: --harvest appends ONE 0o600 ledger row (start ≤ end), reports the capture, and a "
+          "re-run appends NOTHING (watermark idempotence — evidence accrues from time, not invocations)",
+          _hrc79a == 0 and _hrc79b == 0 and len(_rows79) == 1
+          and _stat79.S_IMODE(_lp79.stat().st_mode) == 0o600
+          and _s79dt is not None and _end79dt is not None
+          and _s79dt.timestamp() <= _end79dt.timestamp()
+          and "organic reads 1" in _hout79.getvalue())
+    _fu79 = sg.fleet_utility(_e.proj)
+    _e79 = {x["name"]: x for x in _fu79["canonicals"]}["canon-x"]
+    check("v0.1.79: --utility surfaces the harvested evidence SOURCE-LABELED for the no-own-usage node "
+          "(harvested_reads/windows_harvested — never blended into own-log reads)",
+          _e79["reads"] == 0 and _e79.get("harvested_reads") == 1 and _e79.get("windows_harvested") == 1
+          and _fu79["nodes_harvested"] == 1 and _e79["last"] == "2026-01-15T10:00:00Z")
+    with _lp79.open("a", encoding="utf-8") as _f79:
+        _f79.write("NOT JSON — a torn/garbage ledger line\n")
+    check("v0.1.79: a garbage ledger line is skipped, never fatal",
+          {x["name"]: x for x in sg.fleet_utility(_e.proj)["canonicals"]}["canon-x"].get("harvested_reads") == 1)
+    # own-log strictly primary (the v1 rule): once the node has ANY own usage, its harvested rows
+    # are ignored entirely — no interval math, no double-count.
+    (_nB79 / ".consolidation-log.jsonl").write_text(
+        _uw78("2026-02-01T00:00:00Z..2026-02-02T00:00:00Z", [{"name": "canon-x", "reads": 2, "last": "2026-02-01T12:00:00Z"}]) + "\n",
+        encoding="utf-8")
+    _fu79b = sg.fleet_utility(_e.proj)
+    _e79b = {x["name"]: x for x in _fu79b["canonicals"]}["canon-x"]
+    check("v0.1.79: a node WITH own-log usage ignores its harvested rows (own-log strictly primary — "
+          "the v1 no-double-count rule), own reads attributed normally",
+          _e79b["reads"] == 2 and "harvested_reads" not in _e79b and _fu79b["nodes_harvested"] == 0)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -335,6 +335,13 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   Lockfiles are excluded (transitive deps over-detect). So a stdlib plugin whose README merely
   says "rag"/"scraper" no longer false-matches `rag`/`playwright`; a `stack-general:[rag]` fact
   binds only projects that really depend on / import a RAG library.
+- `--harvest PROJECT_DIR` — (v0.1.79, `docs/fleet-usage-harvest.spec.md`) capture EVERY node's
+  organic fact-read windows from its transcripts into the shared append-only ledger
+  (`~/.claude/memory/.fleet-usage.jsonl`, 0o600) before rotation destroys them. Usage capture was
+  dream-gated per node (measured: 1/3 nodes reporting, the rest unobserved). Watermarked per node,
+  idempotent; reuses the `--recalls` scan machinery (dream-span excluded; only Read file-paths and
+  arc-marker presence leave the scan). `--utility` surfaces harvested evidence — source-labeled,
+  only for nodes with no own-log usage (own-log strictly primary in v1).
 - `--gc PROJECT_DIR [--apply]` — reclaim **orphaned mirrors**: `global_ref:` files
   whose canonical was deleted from the global store. `--pull` can never remove these
   (it only iterates live globals), so they accrue forever without GC. v0.1.75 also

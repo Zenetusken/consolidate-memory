@@ -390,9 +390,16 @@ them — so the enrichment is legible (you see the bootstrap/refresh picture; ho
 relevance filter that decides PROCEED-vs-honest-no-op; on a normal pass it's a cheap read that costs nothing:
 
 ```bash
-CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .   # surface relevant/present/missing (read-only)
-CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .   # then replicate (M1 auto-holds a past-the-CEILING pull)
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .    # surface relevant/present/missing (read-only)
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .    # then replicate (M1 auto-holds a past-the-CEILING pull)
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest . # then harvest EVERY node's usage windows (v0.1.79)
 ```
+
+The `--harvest` (v0.1.79) captures every OTHER node's organic fact-read windows from its
+transcripts into the shared ledger before rotation destroys them — usage capture used to be
+dream-gated per node, so a project that never dreams never contributed evidence. Watermarked and
+idempotent (re-runs are cheap no-ops); reads-only; no message content leaves the scan. Its
+evidence surfaces in Phase 5's `--utility`, source-labeled (`harvested`).
 
 This replicates any `user-global` (and stack-matching `stack-general`) facts from
 `~/.claude/memory/` that are missing here, and **refreshes any stale mirrors** whose

@@ -5,6 +5,40 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.79] — 2026-07-10
+
+### Added — fleet usage harvest: capture every node's windows before the transcripts rot (audit P1)
+The second enhancement increment (`docs/fleet-usage-harvest.spec.md`). Usage capture was
+dream-gated per node — `--recalls` runs only inside the triggering project's own dream — so a
+project that never dreams NEVER contributes evidence, and its transcripts rotate away in weeks,
+destroying the windows before they can be observed (live fleet: 1 of 3 mirror nodes reporting).
+Red baseline: a node holding a mirror, a real organic `Read` in its transcript, no cycle log —
+`fleet_utility` saw nothing.
+
+- **`sync_global.py --harvest PROJECT_DIR`** (+ `cm harvest`, + a SKILL Phase-1 step after
+  `--pull`): for every node (`_network_nodes()` ∪ trigger), scan its transcript dir with the
+  EXACT `--recalls` machinery (`_window_transcripts` + `_recall_items` + `split_dream_span` —
+  dream-span excluded; only Read file-paths and arc-marker presence leave the scan, no new
+  privacy surface) and append one usage-shaped row per (node, window) to the shared ledger
+  `~/.claude/memory/.fleet-usage.jsonl` — `O_APPEND|O_CREAT` at `0o600`, a dot-file invisible to
+  `global_facts()`/`--pull`/every index (zero always-loaded tax).
+- **Watermarked + idempotent**: re-runs append nothing; a subsequent harvest that finds no new
+  reads emits NO row (an empty row per invocation would mint probative zero-read windows from
+  re-running the tool — evidence must accrue from time passing). Window start = the oldest
+  scanned transcript's mtime (a transcript's mtime is its END, so the claimed span only
+  UNDER-states coverage); all stamps ceiled, start ≤ end always.
+- **Consumption (v1 rule, deliberately conservative)**: `fleet_utility` merges harvested rows
+  ONLY for nodes with no own-log usage at all — own-log strictly primary, no double-count.
+  Source-labeled additive `--json` keys: per-canonical `harvested_reads`/`windows_harvested`,
+  payload `nodes_harvested`; same mirror-gated attribution + shadow separation; window credit
+  still gates on the evidence clock (v0.1.78). Deferred to the consumption release: miss/tier
+  classification (needs the node's own Phase-0 snapshot), mixed-node interval merging, and the
+  `cross_project.harvested` cycle-record key (instrument-before-policy).
+
+No cycle-record schema change; the ledger is script-truth telemetry in the `--persist` class,
+report-then-apply intact (every appended row is printed). New read-mostly mode + additive
+`--json` keys ⇒ patch.
+
 ## [0.1.78] — 2026-07-10
 
 ### Added — evidence-clock stamps: zero-read windows that survive mirror refreshes (audit F9)

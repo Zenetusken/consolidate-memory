@@ -34,6 +34,11 @@ each project's store. This is the engine for that:
                        onto an existing canonical REFUSES if the local's body differs (M2 — would
                        silently discard it); --prefer-canonical keeps the canonical, drops the local
                        body (the dedup intent). stack-general stacks: must be DETECTABLE (M4).
+  --harvest PROJECT_DIR  (v0.1.79) capture EVERY node's organic fact-read windows from its transcripts into
+                       the shared append-only ledger (~/.claude/memory/.fleet-usage.jsonl, 0o600) BEFORE
+                       rotation destroys them — usage capture was dream-gated per node (measured: 1/3 nodes
+                       reporting). Watermarked + idempotent; reads-only (no miss classification); --utility
+                       surfaces the harvested evidence, source-labeled, for nodes with no own-log usage.
   --utility PROJECT_DIR  (v0.1.67, Phase C) READ-ONLY fleet usage evidence: per-canonical organic reads
                        aggregated across every node's cycle log (mirror-attributed; same-stem locals
                        report as shadow, never attributed) + fleet_tax = pointer×holders against the
@@ -1622,6 +1627,144 @@ def token_report(project_dir: Path, as_json: bool) -> int:
     return 0
 
 
+# ── v0.1.79: fleet usage HARVEST — capture non-dreaming nodes' windows before transcripts rot ────
+_LEDGER_TAIL_CAP = 2000   # ledger rows read from the tail (~1 row/node/harvest — years of headroom)
+
+
+def _ledger_path() -> Path:
+    return GLOBAL / ".fleet-usage.jsonl"
+
+
+def _ledger_rows() -> list:
+    """Guarded tail read of the shared harvest ledger (docs/fleet-usage-harvest.spec.md) —
+    malformed lines skipped, never fatal. A dot-file in GLOBAL: structurally invisible to
+    global_facts()'s *.md glob, to --pull, and to every index — zero always-loaded tax."""
+    import json
+    text = _safe_read_text(_ledger_path())
+    if text is None:
+        return []
+    rows: list = []
+    for ln in text.splitlines()[-_LEDGER_TAIL_CAP:]:
+        try:
+            o = json.loads(ln)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(o, dict):
+            rows.append(o)
+    return rows
+
+
+def _append_ledger(row: dict) -> None:
+    """One-line O_APPEND|O_CREAT 0o600 append. Concurrency stance = the documented D-2
+    accepted-gap philosophy (dream-boundary cadence; single-line appends interleave whole);
+    script-truth telemetry in the render_dashboard --persist class, never a memory-content write."""
+    import json
+    GLOBAL.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(_ledger_path()), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    try:
+        os.write(fd, (json.dumps(row) + "\n").encode("utf-8"))
+    finally:
+        os.close(fd)
+
+
+def _harvest_node(store: Path, watermark: str, by: str) -> "dict | None":
+    """Scan ONE node's transcript dir for organic fact reads since `watermark` → a usage-shaped
+    ledger row, or None when no transcript is newer (idempotent re-runs). Reuses the EXACT
+    --recalls machinery (extract_signals) — only Read file-paths and arc-marker presence leave
+    the scan, never message content, so no new privacy surface. Reads-only: no miss/tier
+    classification (that needs the node's own Phase-0 window-start snapshot — a dreaming-node
+    signal; spec §v1 reach limits). The window START is the oldest scanned transcript's mtime —
+    a transcript's mtime is its END, so the claimed span only UNDER-states coverage (the pinned
+    bias); the END is now."""
+    from extract_signals import _USAGE_FACT_CAP, _recall_items, _window_transcripts, split_dream_span
+    proj_root = store.parent
+    store_prefix = str(store) + "/"
+    archive_stems = frozenset(
+        f.stem for f in store.glob("*.md")
+        if f.name != "MEMORY.md" and (t := _safe_read_text(f)) is not None and _is_archive_index_text(t))
+    transcripts = _window_transcripts(proj_root, watermark)
+    if not transcripts:
+        return None
+    reads: dict = {}
+    excluded = 0
+    for tr in transcripts:
+        organic, dn = split_dream_span(_recall_items(tr, store_prefix, watermark, archive_stems))
+        excluded += dn
+        for r in organic:
+            rec = reads.setdefault(r["stem"], {"reads": 0, "last": ""})
+            rec["reads"] += 1
+            rec["last"] = max(rec["last"], r["ts"] or "")
+    if watermark and not reads and not excluded:
+        # a SUBSEQUENT harvest that found nothing new (e.g. a transcript touched in the same second
+        # as the last watermark — the per-line `since` filter is the correctness backstop behind the
+        # mtime prune). Emitting an empty row here would mint a fresh probative zero-read window on
+        # EVERY invocation — evidence must accrue from TIME passing, never from re-running the tool.
+        # (The FIRST harvest's zero-read row is meaningful: a full-history zero-read window.)
+        return None
+    now_ep = datetime.now(timezone.utc).timestamp()
+    now = _ceil_iso(now_ep)   # ceiled like every stamp — and the same format as the window START,
+    try:                      # so start ≤ end always holds (a fresh transcript's ceiled mtime could
+        start = watermark or _ceil_iso(min(min(t.stat().st_mtime for t in transcripts), now_ep))
+    except OSError:           # otherwise land one second PAST a truncated `now`, inverting the window)
+        start = now   # a transcript vanished mid-scan: claim a zero-width span (undercount-safe)
+    per_fact = [{"name": k, "reads": v["reads"], "last": v["last"]}
+                for k, v in sorted(reads.items(), key=lambda kv: (-kv[1]["reads"], kv[0]))][:_USAGE_FACT_CAP]
+    return {"node": proj_root.name, "window": f"{start}..{now}", "transcripts": len(transcripts),
+            "dream_excluded": excluded, "reads": sum(v["reads"] for v in reads.values()),
+            "facts_read": len(reads), "per_fact": per_fact, "harvested_at": now, "by": by}
+
+
+def harvest(project_dir: Path) -> int:
+    """--harvest: for EVERY node (mirror-holding stores ∪ the trigger), capture organic fact-read
+    windows from its transcripts into the shared ledger — closing the dream-gated capture hole
+    (measured live: 1/3 nodes reporting; the others' evidence rotting unobserved, and a sandboxed
+    red probe showed a real organic read invisible to fleet_utility). Watermarked per node,
+    idempotent; every appended row is printed (legibility norm). docs/fleet-usage-harvest.spec.md."""
+    project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
+    stores = _network_nodes()
+    trig = project_store(project_dir)
+    if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
+        stores.append(trig)
+    marks: dict = {}   # node slug -> (epoch, iso) of the max window END already harvested
+    for r in _ledger_rows():
+        node = str(r.get("node", ""))
+        end = str(r.get("window", "")).split("..")[-1]
+        dt = _parse_ts(end)
+        if node and dt is not None and (node not in marks or dt.timestamp() > marks[node][0]):
+            marks[node] = (dt.timestamp(), end)
+    out: list = []
+    title = "✦ FLEET HARVEST · usage windows from every node"
+    tag = f"{len(stores)} node(s)"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    out.append("  " + _ui.c("reads-only capture via the --recalls machinery (dream-span excluded; no message "
+                            "content leaves the scan)", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    harvested = 0
+    for store in stores:
+        label = _node_label(store)
+        row = _harvest_node(store, marks.get(store.parent.name, (0.0, ""))[1], by=_sane(project_dir.name))
+        if row is None:
+            out.append("    " + _ui.c("·", "dim") + f" {label:<28} "
+                       + _ui.c("up to date (no transcripts past the watermark)", "dim"))
+            continue
+        _append_ledger(row)
+        harvested += 1
+        out.append("    " + _ui.c("✓", "green") + f" {label:<28} "
+                   + _ui.c(f"window {row['window']} · transcripts {row['transcripts']} · organic reads "
+                           f"{row['reads']} on {row['facts_read']} fact(s) · dream-excluded {row['dream_excluded']}", "dim"))
+    out.append("")
+    out.append(_ui.kv("RESULT", f"harvested {harvested} node window(s) → {_ledger_path().name} "
+               "(append-only, 0o600) · --utility surfaces them for nodes with no own-log usage"))
+    print(_ui.ascii_translate("\n".join(out)))
+    return 0
+
+
 # ── v0.1.67 (Phase C): fleet utility — the gc lever's missing evidence ───────────────────────────
 def fleet_utility(project_dir: Path) -> dict:
     """READ-ONLY: per-canonical usage evidence aggregated across every node's cycle log (usage_history —
@@ -1645,16 +1788,38 @@ def fleet_utility(project_dir: Path) -> dict:
     trig = project_store(project_dir)
     if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
         stores.append(trig)
-    nodes_reporting = 0
-    per: dict = {n: {"reads": 0, "windows": 0, "last": "", "_ep": None, "shadow": 0, "fallback": 0} for n in canon}
+    nodes_reporting = nodes_harvested = 0
+    ledger_by_node: dict = {}
+    for _lr in _ledger_rows():
+        if isinstance(_lr.get("per_fact"), list):
+            ledger_by_node.setdefault(str(_lr.get("node", "")), []).append(_lr)
+    per: dict = {n: {"reads": 0, "windows": 0, "last": "", "_ep": None, "shadow": 0, "fallback": 0,
+                     "h_reads": 0, "h_windows": 0} for n in canon}
     for store in stores:
         hist = usage_history(store)
         if hist["windows_full"] >= 1:
             nodes_reporting += 1
+        # v0.1.79 (docs/fleet-usage-harvest.spec.md, the v1 rule): harvested ledger rows contribute
+        # ONLY for a node with NO own-log usage at all — own-log strictly primary, no interval-overlap
+        # math, no double-count risk (mixed-node merging is the consumption release's refinement).
+        hrows: list = []
+        if hist["windows_full"] == 0 and not hist["per_fact"]:
+            hrows = ledger_by_node.get(store.parent.name, [])
+        if hrows:
+            nodes_harvested += 1
         for stem in canon:
             row = hist["per_fact"].get(stem)
             reads = row.get("reads", 0) if isinstance(row, dict) else 0
             reads = reads if isinstance(reads, int) and not isinstance(reads, bool) and reads > 0 else 0
+            h_reads = 0
+            h_last = ""
+            for hr in hrows:
+                for pf in hr.get("per_fact", []):
+                    if isinstance(pf, dict) and pf.get("name") == stem:
+                        _hr = pf.get("reads", 0)
+                        if isinstance(_hr, int) and not isinstance(_hr, bool) and _hr > 0:
+                            h_reads += _hr
+                            h_last = max(h_last, str(pf.get("last", "") or ""))
             p = store / f"{stem}.md"
             if not p.exists():
                 continue
@@ -1664,8 +1829,8 @@ def fleet_utility(project_dir: Path) -> dict:
             except OSError:
                 continue
             if not _is_mirror(text):
-                if reads:
-                    per[stem]["shadow"] += reads       # same-stem local — reported, never attributed
+                if reads or h_reads:
+                    per[stem]["shadow"] += reads + h_reads   # same-stem local — reported, never attributed
                 continue
             # Count only the probative windows the MIRROR's content-lineage existed through — the fact-age
             # rule (2026-07-05 review: crediting whole window history to a fresh mirror overstates
@@ -1689,6 +1854,21 @@ def fleet_utility(project_dir: Path) -> dict:
             dt = _parse_ts(ts)
             if dt is not None and (per[stem]["_ep"] is None or dt.timestamp() > per[stem]["_ep"]):
                 per[stem]["_ep"], per[stem]["last"] = dt.timestamp(), ts
+            # v0.1.79: harvested evidence for this (no-own-usage) node — source-labeled, same
+            # mirror-gated attribution; window credit still gates on the mirror's evidence clock,
+            # and a cap-truncated row (facts_read != len(per_fact)) is non-probative, same as own-log.
+            if h_reads:
+                per[stem]["h_reads"] += h_reads
+                _hdt = _parse_ts(h_last)
+                if _hdt is not None and (per[stem]["_ep"] is None or _hdt.timestamp() > per[stem]["_ep"]):
+                    per[stem]["_ep"], per[stem]["last"] = _hdt.timestamp(), h_last
+            for hr in hrows:
+                _ws = _parse_ts(str(hr.get("window", "")).split("..")[0])
+                _tx = hr.get("transcripts", 0)
+                if (_ws is not None and isinstance(_tx, int) and not isinstance(_tx, bool) and _tx >= 1
+                        and hr.get("facts_read", -1) == len(hr.get("per_fact", []))
+                        and _ws.timestamp() >= clock):
+                    per[stem]["h_windows"] += 1
     entries: list = []
     total_tax = 0
     unheld: list = []
@@ -1704,11 +1884,15 @@ def fleet_utility(project_dir: Path) -> dict:
             e["shadow_reads"] = per[stem]["shadow"]
         if per[stem]["fallback"]:   # v0.1.78: evidence-provenance — holders still on the mtime clock
             e["fallback_nodes"] = per[stem]["fallback"]
+        if per[stem]["h_reads"] or per[stem]["h_windows"]:   # v0.1.79: harvested, source-labeled
+            e["harvested_reads"] = per[stem]["h_reads"]
+            e["windows_harvested"] = per[stem]["h_windows"]
         if not holders:
             unheld.append(stem)
         entries.append(e)
     entries.sort(key=lambda e: (-e["fleet_tax"], e["name"]))
-    return {"nodes": len(stores), "nodes_reporting": nodes_reporting, "canonicals": entries,
+    return {"nodes": len(stores), "nodes_reporting": nodes_reporting, "nodes_harvested": nodes_harvested,
+            "canonicals": entries,
             "total_fleet_tax": total_tax, "advisory": GLOBAL_FLEET_TAX_ADVISORY, "unheld": unheld}
 
 
@@ -1726,7 +1910,9 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
     out.append(_ui.rule())
     out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
     out.append("  " + _ui.c("usage exists only where post-v0.1.63 dreams ran --recalls; holders = "
-                            "provenance UPPER bound (dead edges reported by --gc, never auto-pruned)", "dim"))
+                            "provenance UPPER bound (dead edges reported by --gc, never auto-pruned)"
+                            + (f" · harvested ledger covers {u['nodes_harvested']} no-own-usage node(s)"
+                               if u.get("nodes_harvested") else ""), "dim"))
     out.append(_ui.rule())
     out.append("")
     over = _ui.c("  ⚠ over advisory (warn-only — evidence for gc/demote judgment, never a gate)", "red") \
@@ -1747,8 +1933,10 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
         else:
             ev = _ui.c("uninstrumented (0 probative windows on holders)", "dim")
         shadow = _ui.c(f" · shadow {e['shadow_reads']}", "yellow") if e.get("shadow_reads") else ""
+        harv = (_ui.c(f" · +{e.get('harvested_reads', 0)}r/{e.get('windows_harvested', 0)}w harvested", "cyan")
+                if (e.get("harvested_reads") or e.get("windows_harvested")) else "")
         out.append(f"    {_ui.lbl(e['name'][:40], 40)} {e['fleet_tax']:>5}t "
-                   + _ui.c(f"({e['pointer_tok']}t × {e['holders']})", "dim") + f"  {ev}{shadow}")
+                   + _ui.c(f"({e['pointer_tok']}t × {e['holders']})", "dim") + f"  {ev}{shadow}{harv}")
     if u["unheld"]:
         out.append("    " + _ui.c(f"unheld (0 fleet tax — nobody pays them yet): {', '.join(u['unheld'])}", "dim"))
     out.append("")
@@ -1762,7 +1950,7 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
 # --utility (Phase 5; --utility is the gc lever's evidence view, v0.1.67). --promote runs in Phase 4's
 # APPLY — the one phase whose contract deliberately excludes dream beats (only the plain proposal + the
 # single SURFACING line) — and --network is a maintainer utility outside dream flow, so neither cues.
-_CUED_MODES = ("--list", "--pull", "--gc", "--tokens", "--utility")
+_CUED_MODES = ("--list", "--pull", "--gc", "--tokens", "--utility", "--harvest")
 
 
 def main() -> int:
@@ -1798,6 +1986,8 @@ def _dispatch() -> int:
         return token_report(project_dir, "--json" in args)
     if args and args[0] == "--utility":   # v0.1.67 (Phase C): fleet usage evidence (READ-ONLY, like --list)
         return utility_report(project_dir, "--json" in args)
+    if args and args[0] == "--harvest":   # v0.1.79: capture every node's usage windows into the shared ledger
+        return harvest(project_dir)
     if args and args[0] == "--gc":
         return gc(project_dir, "--apply" in args)
     if args and args[0] == "--promote":
@@ -1809,7 +1999,7 @@ def _dispatch() -> int:
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
-              "| --utility [--json] PROJECT_DIR | --network", file=sys.stderr)
+              "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --network", file=sys.stderr)
         return 2
     evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)
     if evict is not None:                          # Gate-2: a destructive flag must not silently no-op
