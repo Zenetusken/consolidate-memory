@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import math
 import os
 import re
 import sys
@@ -440,15 +441,26 @@ def _body_hash(text: str) -> str:
     return hashlib.sha1(_body(text).encode("utf-8")).hexdigest()[:12]
 
 
+def _ceil_iso(epoch: float) -> str:
+    """Epoch → whole-second ISO, seconds CEILED (PR-#91 adversarial F3): a FLOORED stamp lets a
+    window starting inside [floor(t), t) count where the raw float clock would not — over-crediting
+    zero-read evidence against the pinned undercount bias. Ceiling keeps `window_start >= clock`
+    strictly conservative (a window in the same second as the write never counts)."""
+    return datetime.fromtimestamp(math.ceil(epoch), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return _ceil_iso(datetime.now(timezone.utc).timestamp())
 
 
 def _mtime_iso(path: Path) -> str:
     """The file's mtime as ISO — the migration seed for a pre-stamp mirror's lineage clock
-    (the best clock we have; NOT now(), which would restart the fleet's evidence from zero)."""
+    (the best clock we have; deliberately NOT now(), which would restart the fleet's evidence
+    from zero). The OSError fallback IS now(): reachable only via a delete race after the caller
+    already read the file, and it fails toward LESS evidence (undercount — the pinned safe bias),
+    never toward inventing age. Seconds are ceiled — see _ceil_iso."""
     try:
-        return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        return _ceil_iso(path.stat().st_mtime)
     except OSError:
         return _now_iso()
 
@@ -499,8 +511,12 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "") -> st
         # e.g. a note explaining the mirror mechanism itself). Both of THIS function's own legitimate
         # stamps (the metadata-child form and the post-opening-'---' fallback) land strictly within
         # dashes == 1, so scoping the strip the same way loses no correctness.
-        if dashes == 1 and s.startswith("global_ref"):
-            continue                   # drop any existing global_ref[+_since/_body stamps] (re-stamped below)
+        if dashes == 1 and s.startswith(("global_ref:", "global_ref_since:", "global_ref_body:")):
+            # drop any existing global_ref + stamp lines (re-stamped below). EXACT three keys, not the
+            # bare "global_ref" prefix (PR-#91 adversarial review): the wide prefix re-ate what the
+            # v0.1.70 narrowing protects — e.g. a folded-scalar description continuation line that
+            # happens to begin "global_reference …" was silently dropped from the mirror's frontmatter.
+            continue
         # v0.1.26 (provenance-churn root-fix): `projects:` is CANONICAL-ONLY bookkeeping (the synapse
         # record `network()`/`_holders` read off the global store). NEVER carry it into a mirror — else
         # every pull that grows a canonical's holder list marks all OTHER mirrors stale (cosmetic churn).
@@ -748,6 +764,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         # (the migration wave — never restart the fleet's evidence from zero); body genuinely changed
         # (or a fresh pull) → NEW lineage (old zero-reads don't indict new content).
         new_hash = _body_hash(text)
+        _migrated = False   # took the mtime-seeded branch (the honest referent of `restamped` — review #91)
         if is_mirror:
             cur_fm = _frontmatter(cur)
             cur_since = str(cur_fm.get("global_ref_since", "") or "")
@@ -755,12 +772,19 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                 since = cur_since
             elif _body_hash(cur) == new_hash:
                 since = _mtime_iso(path)
+                _migrated = True
             else:
                 since = _now_iso()
         else:
             cur_fm = {}
             since = _now_iso()
         want = _as_mirror(text, name, since=since, body_hash=new_hash)
+        if _migrated and not _frontmatter(want).get("global_ref_since"):
+            # PR-#91 adversarial F2a: a no-metadata-block mirror (the `# global_ref:` fallback form)
+            # can never receive the stamp — without this, EVERY refresh of such a mirror reported
+            # "restamped 1" forever while global_ref_since stayed absent. A migration that didn't
+            # happen must not be reported as one; the mirror stays on the documented mtime fallback.
+            _migrated = False
         if not rel:
             # v0.1.75 (audit F6): a PRESENT mirror whose canonical is alive but no longer relevant here
             # (a dropped stack) is FROZEN — never refreshed (this branch short-circuits staleness), never
@@ -776,8 +800,12 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             status = "in-sync"
         else:
             status = "STALE-mirror"  # canonical changed → must refresh
-        if pull and status == "STALE-mirror" and not cur_fm.get("global_ref_body", ""):
-            restamped += 1   # pre-stamp mirror gaining its clock this refresh (since = its mtime)
+        if pull and status == "STALE-mirror" and _migrated:
+            # counts ONLY the mtime-seeded migrations (PR-#91 review: the old not-yet-stamped gate also
+            # counted a legacy mirror whose canonical BODY changed this same pass — branch 3, seeded from
+            # NOW — making the RESULT's "seeded from each mirror's mtime" clause dishonest for that subset;
+            # a body-changed legacy mirror is a genuine content refresh, reported as plain `refreshed`).
+            restamped += 1
         classified.append((name, fm, text, status, path, want, rel))
     # v0.1.75 (audit F7 — the M4-bypass SURFACE): promote() refuses an undetectable `stacks:` tag, but the
     # SKILL's documented Phase-4 NET-NEW path hand-writes canonicals directly — a typo'd ('gpuu') or

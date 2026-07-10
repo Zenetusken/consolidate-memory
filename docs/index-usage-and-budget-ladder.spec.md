@@ -589,7 +589,11 @@ non-mirror is tallied separately as `shadow` (reported, not attributed). Per can
 across attributing nodes, `nodes_reporting` (nodes with ≥1 probative window), `windows` = the probative
 windows each holding MIRROR existed through (window start ≥ mirror mtime — C2's fact-age rule applied
 fleet-side; the build's inline adversarial review found an unconditional windows_full credit overstated
-zero-read evidence on freshly-pulled mirrors; a refresh resets the clock — undercount, safe), `last`
+zero-read evidence on freshly-pulled mirrors; a refresh resets the clock — undercount, safe.
+**SUPERSEDED for mirrors in v0.1.78**: the clock is now the mirror's `global_ref_since` lineage stamp,
+which survives refreshes — a 2026-07-10 audit measured the mtime rule starving the evidence loop, any
+description tweak wiping accrued windows fleet-wide; mtime remains the fallback for unstamped mirrors
+and the rule for authored facts — see `docs/evidence-clock-stamps.spec.md`), `last`
 (epoch-max via `_parse_ts`), `holders` (`_holders` provenance), `pointer_tok`
 (`est_tokens(_pointer_line(name, fm))`), and **`fleet_tax = pointer_tok × len(holders)`** — zero for
 an unheld canonical (gate finding: the draft's `max(1, …)` charged a per-session cost nobody pays);

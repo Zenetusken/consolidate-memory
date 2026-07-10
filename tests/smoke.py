@@ -4032,5 +4032,34 @@ with _Env73() as _e:
           "accrued window SURVIVES the upgrade refresh, and RESULT reports 'restamped'",
           "restamped 1" in _out and _fu78b["windows"] == 1 and "fallback_nodes" not in _fu78b)
 
+# --- PR-#91 review-team pins (three LOW findings, fixed on-branch before merge) ---
+_t78r = ("---\nname: gr\ndescription: >-\n  global_reference architecture notes for the fleet\n"
+         "global_reference: a-legit-hypothetical-key\nmetadata:\n  node_type: memory\n"
+         "  scope: user-global\n  type: feedback\n---\nbody\n")
+_m78r = sg._as_mirror(_t78r, "gr", since="2026-01-05T00:00:00Z", body_hash=sg._body_hash(_t78r))
+check("v0.1.78/review-F1: the stamp strip targets the EXACT three keys — a folded-scalar description "
+      "continuation beginning 'global_reference' AND a 'global_reference:' frontmatter key both SURVIVE "
+      "mirroring (the wide 'global_ref' prefix re-ate what the v0.1.70 narrowing protects)",
+      "global_reference architecture notes for the fleet" in _m78r
+      and "global_reference: a-legit-hypothetical-key" in _m78r
+      and ms._is_mirror(_m78r) and "global_ref_since: 2026-01-05T00:00:00Z" in _m78r)
+check("v0.1.78/review-F3: stamp seconds are CEILED, never floored — a floored clock would over-credit a "
+      "window starting inside [floor(t), t) against the pinned undercount bias",
+      sg._ceil_iso(100.2) == "1970-01-01T00:01:41Z" and sg._ceil_iso(100.0) == "1970-01-01T00:01:40Z")
+with _Env73() as _e:
+    # review-F2a: a no-metadata-block canonical mirrors via the `# global_ref:` fallback form — the
+    # stamp can never land, so its refreshes must NOT report a migration that didn't happen.
+    (_e.glob / "nm.md").write_text("---\nname: nm\ndescription: \"v1\"\nscope: user-global\n---\nbody\n",
+                                   encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _run73(_e.proj)
+    (_e.glob / "nm.md").write_text("---\nname: nm\ndescription: \"v2 edited\"\nscope: user-global\n---\nbody\n",
+                                   encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.78/review-F2a: a fallback-form (no-metadata) mirror refresh reports plain 'refreshed', "
+          "never 'restamped' (the stamp cannot land there — it stays on the documented mtime fallback)",
+          "refreshed 1" in _out and "restamped" not in _out
+          and "global_ref_since" not in (_e.store / "nm.md").read_text(encoding="utf-8"))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

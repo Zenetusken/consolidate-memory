@@ -36,6 +36,15 @@ No cycle-record schema change; no policy change (every demotion veto and report-
 posture untouched — this only makes negative evidence accrue truthfully). Additive frontmatter
 keys + one additive `--json` key ⇒ patch.
 
+Hardened by a three-lens review team (carry-correctness / seams / adversarial — all three
+verdicts MERGE-READY) before merge: the stamp strip re-narrowed to the exact three keys (the
+wide `global_ref` prefix ate folded-scalar `global_reference…` continuations — the v0.1.70
+class); `restamped` now counts only true mtime-seeded migrations (not body-changed legacies,
+not fallback-form mirrors whose stamp can never land); stamp seconds are CEILED, never floored
+(a floored clock over-credited a same-second window against the pinned undercount bias);
+`docs/index-usage-and-budget-ladder.spec.md` §C4 gained the supersession back-pointer. Every
+review finding pinned in smoke.
+
 ## [0.1.77] — 2026-07-10
 
 ### Docs — drift sync to code truth (audit doc-code-contract findings)
