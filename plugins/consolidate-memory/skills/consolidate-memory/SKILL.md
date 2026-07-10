@@ -390,9 +390,16 @@ them — so the enrichment is legible (you see the bootstrap/refresh picture; ho
 relevance filter that decides PROCEED-vs-honest-no-op; on a normal pass it's a cheap read that costs nothing:
 
 ```bash
-CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .   # surface relevant/present/missing (read-only)
-CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .   # then replicate (M1 auto-holds a past-the-CEILING pull)
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .    # surface relevant/present/missing (read-only)
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .    # then replicate (M1 auto-holds a past-the-CEILING pull)
+CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest . # then harvest EVERY node's usage windows (v0.1.79)
 ```
+
+The `--harvest` (v0.1.79) captures every OTHER node's organic fact-read windows from its
+transcripts into the shared ledger before rotation destroys them — usage capture used to be
+dream-gated per node, so a project that never dreams never contributed evidence. Watermarked and
+idempotent (re-runs are cheap no-ops); reads-only; no message content leaves the scan. Its
+evidence surfaces in Phase 5's `--utility`, source-labeled (`harvested`).
 
 This replicates any `user-global` (and stack-matching `stack-general`) facts from
 `~/.claude/memory/` that are missing here, and **refreshes any stale mirrors** whose
@@ -649,7 +656,13 @@ placing each fact in its tier and optimizing it for how that tier loads:
   - **A NET-NEW fact discovered this session:** write the canonical copy to
     `~/.claude/memory/` with `scope`, `stacks: [...]`, and `projects: [...]` (provenance)
     in the frontmatter, add a line to `~/.claude/memory/MEMORY.md`, AND keep a project-store
-    copy so it recalls *here* (recall is slug-scoped).
+    copy so it recalls *here* (recall is slug-scoped). **Validate a `stack-general` fact's
+    `stacks:` against the detectable set FIRST** — the same M4 rule `--promote` enforces
+    mechanically, which this hand-write path bypasses (the 2026-07-10 audit's F7): a tag
+    `detect_stacks` can never emit — a typo (`gpuu`) or a real-but-undetectable stack
+    (`release`, `ci-cd`) — makes the canonical **fleet-dead** (matches no project, ever,
+    silently). Every later dream's Phase-1 `--list`/`--pull` now warns `⚠ fleet-dead
+    canonical` on such a tag, but write it right the first time.
   - **PROMOTING a fact that already exists in this project's local store** (the Phase-1
     promotion re-audit): **don't hand-copy it** — first set `scope`/`stacks` on the local
     fact, then run the scripted hand-off, which writes the canonical, converts this project's

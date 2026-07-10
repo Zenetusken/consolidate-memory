@@ -337,8 +337,10 @@ with _tf37.TemporaryDirectory() as _td39:
     (_p39 / ".claude").mkdir()
     check("v0.1.39/M4: _DETECTABLE_STACKS == detect_stacks codomain (fixture triggers every stack; catches a new .add marker)",
           sg.detect_stacks(_p39) == sg._DETECTABLE_STACKS)
-check("v0.1.39/M4: an undetectable stack is NOT in the vocab ([release]/[ci-cd] → fleet-dead, refused)",
-      not ({"release", "ci-cd"} <= sg._DETECTABLE_STACKS))
+check("v0.1.39/M4: an undetectable stack is NOT in the vocab ([release]/[ci-cd] → fleet-dead, refused) — "
+      "per-element isdisjoint, v0.1.77: the old negated-subset passed if EITHER element was missing, so "
+      "adding 'release' alone (the exact regression this pins) would have stayed green",
+      {"release", "ci-cd"}.isdisjoint(sg._DETECTABLE_STACKS))
 # v0.1.40 (M3) — slug_for generalizes to ALL non-alphanumerics (CC's rule), fixing the '.'-segment split-brain;
 # regression-IDENTICAL for the fleet; near_duplicate_slugs uses the same rule so a '.'-vs-'-' twin is detected.
 check("v0.1.40/M3: slug_for maps '.' (a dotfile-dir path) → '-', matching CC (was split-brain)",
@@ -3794,6 +3796,453 @@ with _Env73() as _e:
           "are never offered",
           "held 1" in _out and bool(_offer) and "local-a" in _offer and "measured" in _offer
           and "aaa-m" not in _offer)
+
+# --- v0.1.74: _as_mirror/_body fence-boundary PARITY with _frontmatter (audit finding #1, VERIFIED
+# major) — ran RED pre-fix (5/5 defects present, measured 2026-07-10). The parser closes frontmatter
+# on ANY line starting '---' (`^---\n(.*?)\n---`), while _as_mirror counted only bare stripped '---'
+# lines (and counted INDENTED ones the parser ignores): a non-bare close ('----', '--- notes') made
+# the frontmatter-scoped strips eat BODY lines to EOF — silent mirror corruption via --pull (every
+# puller) and --promote (the origin's own copy) — and an indented '---' leaked canonical-only
+# 'projects:' provenance into mirrors (the v0.1.26 churn class, reopened).
+_t74 = ("---\nname: x\ndescription: \"d\"\nmetadata:\n  node_type: memory\n  scope: user-global\n"
+        "----\nBody first line.\nglobal_ref: a body line about the mirror mechanism\n"
+        "projects: a body line listing projects\nlast body line\n")
+check("v0.1.74: the fixture's non-bare close ('----') IS a parser-valid frontmatter close (the fact "
+      "parses relevant/replicable — the corruption was reachable, not contrived)",
+      ms._frontmatter(_t74).get("scope") == "user-global")
+_m74 = sg._as_mirror(_t74, "x")
+check("v0.1.74: through a '----' close, body lines starting 'projects:'/'global_ref:' SURVIVE mirroring "
+      "(were eaten to EOF pre-fix; fence parity with _frontmatter/_is_mirror)",
+      "projects: a body line listing projects" in _m74
+      and "global_ref: a body line about the mirror mechanism" in _m74
+      and "Body first line." in _m74 and "last body line" in _m74)
+check("v0.1.74: the '----'-fenced mirror still ROUND-TRIPS (_is_mirror recognizes the stamp) and "
+      "_as_mirror stays idempotent on it",
+      ms._is_mirror(_m74) and sg._as_mirror(_m74, "x") == _m74)
+_t74b = ("---\nname: z\ndescription: \"d\"\nnotes: |\n  ---\nmetadata:\n  scope: user-global\n"
+         "  projects: [alpha]\n---\nbody\n")
+check("v0.1.74: an INDENTED '  ---' is NOT a close fence (parser parity) — canonical-only 'projects:' "
+      "provenance is still STRIPPED from the mirror (v0.1.26 stays closed; was leaked by the early close)",
+      "projects: [alpha]" not in sg._as_mirror(_t74b, "z") and ms._is_mirror(sg._as_mirror(_t74b, "z")))
+check("v0.1.74: _body strips a frontmatter block closed at EOF (no trailing newline) AND consumes a "
+      "non-bare close line whole",
+      sg._body("---\nscope: x\n---") == "" and sg._body("---\nscope: x\n--- tail\nreal body\n") == "real body")
+check("v0.1.74: _bodies_match TRUE for two body-less facts with differing frontmatter "
+      "(was a spurious promote Guard-5 'body differs' refusal)",
+      sg._bodies_match("---\nscope: user-global\n---", "---\nscope: stack-general\nstacks: [gpu]\n---") is True)
+
+# --- v0.1.75: pull-side guards (audit F5/F6/F7) — ran RED pre-fix (3/3 defects present, 2026-07-10):
+# a fleet-dead canonical was invisible, a typo'd PROJECT_DIR minted a phantom store + polluted shared
+# provenance, and a relevance-flipped mirror froze forever with no surfacing and no reclaim lever.
+with _Env73() as _e:
+    (_e.glob / "dead-tag.md").write_text(
+        "---\nname: dead-tag\ndescription: \"d\"\nmetadata:\n  scope: stack-general\n  stacks: [release]\n"
+        "  type: feedback\n---\nbody\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.75/F7: the read path warns on a FLEET-DEAD stack-general canonical (undetectable stacks "
+          "tag — the M4 bypass via the SKILL's net-new hand-write path, surfaced every dream's Phase 1)",
+          _rc == 0 and "fleet-dead canonical: 'dead-tag'" in _err and "release" in _err)
+
+check("v0.1.75/F5: run() refuses a nonexistent project dir up front (phantom-store guard, rc=2, "
+      "defense-in-depth behind _dispatch's CLI guard — sim Probe W pins the CLI half)",
+      sg.run(Path("/nonexistent/typo-proj-xyz"), pull=True) == 2)
+
+with _Env73() as _e:
+    # F6 frozen-mirror lifecycle: relevant → pulled → stack dropped → FROZEN (distinct render) →
+    # gc reports → gc --apply reclaims → stack returns → --pull re-pulls (safe by construction).
+    (_e.proj / "pyproject.toml").write_text('[project]\nname = "p"\ndependencies = ["lancedb"]\n', encoding="utf-8")
+    (_e.proj / "main.py").write_text("x = 1\n", encoding="utf-8")
+    (_e.glob / "rag-tip.md").write_text(
+        "---\nname: rag-tip\ndescription: \"r\"\nmetadata:\n  scope: stack-general\n  stacks: [rag]\n"
+        "  type: feedback\n---\nbody\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _run73(_e.proj)
+    check("v0.1.75/F6 setup: the rag mirror pulled while the stack was live", (_e.store / "rag-tip.md").exists())
+    (_e.proj / "pyproject.toml").write_text('[project]\nname = "p"\ndependencies = []\n', encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.75/F6: a dropped stack renders the mirror FROZEN, distinctly (was byte-identical to a "
+          "never-pulled 'irrelevant' row)",
+          "frozen(mirror)" in _out and "frozen mirror(s)" in _out)
+    _g75a = _io73.StringIO()
+    with _ctx73.redirect_stdout(_g75a):
+        sg.gc(_e.proj, apply=False)
+    check("v0.1.75/F6: gc REPORTS the frozen mirror (report-only default; file untouched)",
+          "FROZEN" in _g75a.getvalue() and "rag-tip" in _g75a.getvalue() and (_e.store / "rag-tip.md").exists())
+    _g75b = _io73.StringIO()
+    with _ctx73.redirect_stdout(_g75b):
+        sg.gc(_e.proj, apply=True)
+    check("v0.1.75/F6: gc --apply reclaims the frozen mirror (file + index pointer)",
+          not (_e.store / "rag-tip.md").exists()
+          and "(rag-tip.md)" not in (_e.store / "MEMORY.md").read_text(encoding="utf-8"))
+    (_e.proj / "pyproject.toml").write_text('[project]\nname = "p"\ndependencies = ["lancedb"]\n', encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.75/F6: the reclaim is SAFE BY CONSTRUCTION — the stack's return re-pulls the mirror "
+          "(replica of a live canonical; no memory can be lost)",
+          "pulled 1 new" in _out and (_e.store / "rag-tip.md").exists())
+
+# --- v0.1.76: robustness batch (audit minors) — every check ran RED pre-fix (7/7, 2026-07-10). ---
+check("v0.1.76/a: _holders parses the SAME token space _sanitize_token writes — dot/dash-prefixed "
+      "holders survive whole ('.claude' was read back as 'claude'); separator noise still dropped",
+      sg._holders({"projects": "[.claude, -scope, job-app]"}) == [".claude", "-scope", "job-app"]
+      and sg._holders({"projects": "[a]"}) == ["a"]
+      and sg._holders({"projects": "[-, .]"}) == [])
+check("v0.1.76/f: a poetry DOTTED subtable dep ([tool.poetry.dependencies.torch]) is parsed "
+      "(was invisible to the key-scan); the inline form still works",
+      "torch" in sg._dep_names_from_text('[tool.poetry.dependencies.torch]\nversion = "^2.0"\n')
+      and "torch" in sg._dep_names_from_text('[tool.poetry.dependencies]\ntorch = "^2.0"\n'))
+with _tf73.TemporaryDirectory() as _td76:
+    _p76 = Path(_td76); (_p76 / "main.py").write_text("x=1\n", encoding="utf-8")
+    (_p76 / ".mypy.ini").write_text("[mypy]\nstrict = True\n", encoding="utf-8")
+    _s76a = sg.detect_stacks(_p76)
+with _tf73.TemporaryDirectory() as _td76b:
+    _p76b = Path(_td76b); (_p76b / "main.py").write_text("x=1\n", encoding="utf-8")
+    (_p76b / "setup.cfg").write_text("[metadata]\nname = x\n[mypy]\nstrict = True\n", encoding="utf-8")
+    _s76b = sg.detect_stacks(_p76b)
+check("v0.1.76/e: .mypy.ini AND setup.cfg [mypy] both detect the mypy stack (all four documented "
+      "config locations; was pyproject+mypy.ini only — under-detection on a mypy-heavy fleet)",
+      "mypy" in _s76a and "mypy" in _s76b)
+with _tf73.TemporaryDirectory() as _td76c:
+    _st76 = Path(_td76c)
+    (_st76 / "MEMORY.md").write_text("# Memory Index\n- [f](f.md) — h\n", encoding="utf-8")
+    (_st76 / "f.md").write_text("---\nname: f\n---\nbody\n", encoding="utf-8")
+    (_st76 / "SHIPPED.md").write_text("# Shipped\n- [a](a.md) — x\n- [b](b.md) — y\n- [c](c.md) — z\n",
+                                      encoding="utf-8")
+    _nt76 = sg._node_tokens(_st76)
+    check("v0.1.76/g: _node_tokens excludes an archive-index doc from recall facts/tokens "
+          "(memory_status's own C1 split, applied to --tokens — a live SHIPPED.md inflated both)",
+          _nt76["facts"] == 1 and _nt76["recall_tokens"] == ms.est_tokens("---\nname: f\n---\nbody\n"))
+with _Env73() as _e:
+    (_e.glob / "gfact.md").write_text(
+        "---\nname: gfact\ndescription: \"d\"\nmetadata:\n  scope: user-global\n"
+        "  projects: [ghost-proj, proj73]\n  type: feedback\n---\nbody\n", encoding="utf-8")
+    _nout = _io73.StringIO()
+    with _ctx73.redirect_stdout(_nout):
+        sg.network()
+    _no = _nout.getvalue()
+    check("v0.1.76/h: network() flags a DEAD provenance mind with '?' + footnote (display-only; the "
+          "live mind — whose slug store exists — is unflagged)",
+          "ghost-proj?" in _no and "proj73?" not in _no and "no matching store" in _no)
+with _Env73() as _e:
+    (_e.glob / "git-fact.md").write_text(
+        "---\nname: git-fact\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: project\n---\nbody\n",
+        encoding="utf-8")
+    (_e.glob / "bad-osid.md").write_text(
+        "---\nname: bad-osid\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: project\n"
+        "  originSessionId: not-a-uuid\n---\nbody\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.76/i: originSessionId warn split — ABSENT is silent (legitimate for git-derived facts "
+          "per harness-map), present-but-INVALID still warns",
+          "git-fact" not in _err and "bad-osid" in _err and "INVALID originSessionId" in _err)
+with _Env73() as _e:
+    (_e.store / "loc.md").write_text(
+        "---\nname: loc\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n---\nbody\n",
+        encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n- [loc](loc.md) — d\n", encoding="utf-8")
+    _orig_link76 = _os73.link
+
+    def _no_link76(*a, **k):
+        raise PermissionError(1, "Operation not permitted (fixture: no-hardlink fs)")
+    _os73.link = _no_link76
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()) as _perr76:
+            _rc76 = sg.promote(_e.proj, "loc", "loc")
+    finally:
+        _os73.link = _orig_link76
+    check("v0.1.76/b: promote on a no-hardlink filesystem refuses CLEANLY (rc=1, names the constraint, "
+          "no canonical, local intact — was an uncaught PermissionError traceback)",
+          _rc76 == 1 and "hardlink" in _perr76.getvalue() and not (_e.glob / "loc.md").exists()
+          and (_e.store / "loc.md").exists() and list(_e.glob.glob("*.tmp*")) == [])
+
+# --- v0.1.78: evidence-clock stamps (docs/evidence-clock-stamps.spec.md — audit F9's starvation fix).
+# RED pre-fix (measured): one probative window accrued, one DESCRIPTION-only canonical edit + --pull,
+# fleet windows 1 → 0 (mtime clock wiped by the refresh). Post-fix: carried lineage preserves them;
+# a BODY edit still resets (old zero-reads don't indict new content).
+_t78 = ("---\nname: cx\ndescription: \"v1\"\nmetadata:\n  node_type: memory\n  scope: user-global\n"
+        "  type: feedback\n---\nthe body\n")
+_m78 = sg._as_mirror(_t78, "cx", since="2026-01-05T00:00:00Z", body_hash=sg._body_hash(_t78))
+check("v0.1.78: a stamped mirror round-trips — _is_mirror recognizes it, _frontmatter reads both stamps "
+      "back, and the body hash is the BODY-only sha1-12",
+      ms._is_mirror(_m78) and ms._frontmatter(_m78).get("global_ref_since") == "2026-01-05T00:00:00Z"
+      and ms._frontmatter(_m78).get("global_ref_body") == sg._body_hash(_t78)
+      and sg._body_hash(_t78) == sg._body_hash(_t78.replace('description: "v1"', 'description: "v2 changed"')))
+
+
+def _uw78(window, per_fact):
+    return _jsonB.dumps({"usage": {"window": window, "transcripts": 1, "dream_excluded": 0,
+                                   "reads": sum(f.get("reads", 0) for f in per_fact),
+                                   "facts_read": len(per_fact), "per_fact": per_fact}})
+
+
+def _canon78(desc, body):
+    return (f"---\nname: canon-x\ndescription: \"{desc}\"\nmetadata:\n  node_type: memory\n"
+            f"  scope: user-global\n  type: feedback\n---\n{body}\n")
+
+
+import re as _re78  # noqa: E402
+with _Env73() as _e:
+    (_e.glob / "canon-x.md").write_text(_canon78("v1 description", "the body"), encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _run73(_e.proj)
+    # backdate the mirror's LINEAGE stamp so a probative window can start after it (the fact-age rule)
+    _mir78 = _re78.sub(r"(?m)^  global_ref_since: .*$", "  global_ref_since: 2025-12-01T00:00:00Z",
+                       (_e.store / "canon-x.md").read_text(encoding="utf-8"))
+    (_e.store / "canon-x.md").write_text(_mir78, encoding="utf-8")
+    (_e.store / ".consolidation-log.jsonl").write_text(
+        _uw78("2026-01-01T00:00:00Z..2026-01-02T00:00:00Z", [{"name": "other", "reads": 1, "last": "t"}]) + "\n",
+        encoding="utf-8")
+    _w78 = lambda: {x["name"]: x for x in sg.fleet_utility(_e.proj)["canonicals"]}["canon-x"]["windows"]  # noqa: E731
+    _w0 = _w78()
+    (_e.glob / "canon-x.md").write_text(_canon78("v2 description grew much longer", "the body"), encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    _w1 = _w78()
+    check("v0.1.78: a DESCRIPTION-only canonical edit + refresh PRESERVES accrued fleet windows "
+          "(was 1→0, the F9 starvation; the refreshed mirror carries its lineage stamp)",
+          _w0 == 1 and _w1 == 1 and "refreshed 1" in _out)
+    _in_sync = _run73(_e.proj)
+    check("v0.1.78: the carry is STABLE — an immediate re-pull is in-sync (no refresh churn from the stamps)",
+          "refreshed 0" in _in_sync[1] and "pulled 0" in _in_sync[1])
+    (_e.glob / "canon-x.md").write_text(_canon78("v2 description grew much longer", "a genuinely NEW body"),
+                                        encoding="utf-8")
+    _run73(_e.proj)
+    check("v0.1.78: a BODY edit RESETS the lineage (windows → 0 — old zero-reads don't indict new content)",
+          _w78() == 0)
+
+with _Env73() as _e:
+    # legacy migration wave: an UNSTAMPED (pre-upgrade) mirror refreshes → since seeds from its
+    # mtime (never now() — don't restart the fleet's evidence from zero) and RESULT says restamped.
+    (_e.glob / "canon-x.md").write_text(_canon78("v1", "the body"), encoding="utf-8")
+    _legacy78 = sg._as_mirror((_e.glob / "canon-x.md").read_text(encoding="utf-8"), "canon-x")  # bare = no stamps
+    (_e.store / "canon-x.md").write_text(_legacy78, encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n- [canon-x](canon-x.md) — v1 [user-global]\n",
+                                        encoding="utf-8")
+    _old78 = ms._parse_ts("2025-12-01T00:00:00Z")
+    assert _old78 is not None
+    _osB.utime(_e.store / "canon-x.md", (_old78.timestamp(), _old78.timestamp()))
+    (_e.store / ".consolidation-log.jsonl").write_text(
+        _uw78("2026-01-01T00:00:00Z..2026-01-02T00:00:00Z", [{"name": "other", "reads": 1, "last": "t"}]) + "\n",
+        encoding="utf-8")
+    _fu78 = {x["name"]: x for x in sg.fleet_utility(_e.proj)["canonicals"]}["canon-x"]
+    check("v0.1.78: an UNSTAMPED mirror stays on the mtime fallback clock, disclosed via fallback_nodes",
+          _fu78["windows"] == 1 and _fu78.get("fallback_nodes") == 1)
+    _rc, _out, _err = _run73(_e.proj)   # description unchanged → but legacy mirror lacks stamps → STALE
+    _fu78b = {x["name"]: x for x in sg.fleet_utility(_e.proj)["canonicals"]}["canon-x"]
+    check("v0.1.78: the migration wave restamps a legacy mirror — since seeds from its OLD mtime, so the "
+          "accrued window SURVIVES the upgrade refresh, and RESULT reports 'restamped'",
+          "restamped 1" in _out and _fu78b["windows"] == 1 and "fallback_nodes" not in _fu78b)
+
+# --- PR-#91 review-team pins (three LOW findings, fixed on-branch before merge) ---
+_t78r = ("---\nname: gr\ndescription: >-\n  global_reference architecture notes for the fleet\n"
+         "global_reference: a-legit-hypothetical-key\nmetadata:\n  node_type: memory\n"
+         "  scope: user-global\n  type: feedback\n---\nbody\n")
+_m78r = sg._as_mirror(_t78r, "gr", since="2026-01-05T00:00:00Z", body_hash=sg._body_hash(_t78r))
+check("v0.1.78/review-F1: the stamp strip targets the EXACT three keys — a folded-scalar description "
+      "continuation beginning 'global_reference' AND a 'global_reference:' frontmatter key both SURVIVE "
+      "mirroring (the wide 'global_ref' prefix re-ate what the v0.1.70 narrowing protects)",
+      "global_reference architecture notes for the fleet" in _m78r
+      and "global_reference: a-legit-hypothetical-key" in _m78r
+      and ms._is_mirror(_m78r) and "global_ref_since: 2026-01-05T00:00:00Z" in _m78r)
+check("v0.1.78/review-F3: stamp seconds are CEILED, never floored — a floored clock would over-credit a "
+      "window starting inside [floor(t), t) against the pinned undercount bias",
+      sg._ceil_iso(100.2) == "1970-01-01T00:01:41Z" and sg._ceil_iso(100.0) == "1970-01-01T00:01:40Z")
+with _Env73() as _e:
+    # review-F2a: a no-metadata-block canonical mirrors via the `# global_ref:` fallback form — the
+    # stamp can never land, so its refreshes must NOT report a migration that didn't happen.
+    (_e.glob / "nm.md").write_text("---\nname: nm\ndescription: \"v1\"\nscope: user-global\n---\nbody\n",
+                                   encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _run73(_e.proj)
+    (_e.glob / "nm.md").write_text("---\nname: nm\ndescription: \"v2 edited\"\nscope: user-global\n---\nbody\n",
+                                   encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.78/review-F2a: a fallback-form (no-metadata) mirror refresh reports plain 'refreshed', "
+          "never 'restamped' (the stamp cannot land there — it stays on the documented mtime fallback)",
+          "refreshed 1" in _out and "restamped" not in _out
+          and "global_ref_since" not in (_e.store / "nm.md").read_text(encoding="utf-8"))
+
+# --- v0.1.79: fleet usage HARVEST (docs/fleet-usage-harvest.spec.md — audit enhancement P1).
+# RED baseline (measured): a node holding a mirror, a real organic Read in its transcript, NO cycle
+# log → fleet_utility reads=0/windows=0/nodes_reporting=0 — the evidence rotting unobserved (live
+# fleet: 1/3 nodes reporting). The harvest captures it into the shared 0o600 ledger, watermarked.
+import stat as _stat79  # noqa: E402
+with _Env73() as _e:
+    _ct79 = ("---\nname: canon-x\ndescription: \"d\"\nmetadata:\n  node_type: memory\n"
+             "  scope: user-global\n  type: feedback\n  projects: [nodeB]\n---\nbody\n")
+    (_e.glob / "canon-x.md").write_text(_ct79, encoding="utf-8")
+    _nB79 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-nodeB" / "memory"
+    _nB79.mkdir(parents=True)
+    (_nB79 / "canon-x.md").write_text(sg._as_mirror(_ct79, "canon-x", since="2025-12-01T00:00:00Z",
+                                                    body_hash=sg._body_hash(_ct79)), encoding="utf-8")
+    (_nB79.parent / "sess1.jsonl").write_text(_jsonB.dumps({
+        "timestamp": "2026-01-15T10:00:00Z",
+        "message": {"content": [{"type": "tool_use", "name": "Read",
+                                 "input": {"file_path": str(_nB79 / "canon-x.md")}}]}}) + "\n", encoding="utf-8")
+    _fu79pre = sg.fleet_utility(_e.proj)
+    _e79pre = {x["name"]: x for x in _fu79pre["canonicals"]}["canon-x"]
+    check("v0.1.79: PRE-harvest, a non-dreaming node's organic read is invisible (the measured hole: "
+          "reads=0, no harvested keys, nodes_reporting=0)",
+          _e79pre["reads"] == 0 and "harvested_reads" not in _e79pre and _fu79pre["nodes_reporting"] == 0)
+    _hout79 = _io73.StringIO()
+    with _ctx73.redirect_stdout(_hout79):
+        _hrc79a = sg.harvest(_e.proj)
+    with _ctx73.redirect_stdout(_io73.StringIO()):
+        _hrc79b = sg.harvest(_e.proj)   # idempotence: watermark makes the re-run a no-op
+    _lp79 = _e.glob / ".fleet-usage.jsonl"
+    _rows79 = _lp79.read_text(encoding="utf-8").splitlines()
+    _w79 = _jsonB.loads(_rows79[0])["window"]
+    _s79raw, _end79raw = _w79.split("..")
+    _s79dt, _end79dt = ms._parse_ts(_s79raw), ms._parse_ts(_end79raw)
+    check("v0.1.79: --harvest appends ONE 0o600 ledger row (start ≤ end), reports the capture, and a "
+          "re-run appends NOTHING (watermark idempotence — evidence accrues from time, not invocations)",
+          _hrc79a == 0 and _hrc79b == 0 and len(_rows79) == 1
+          and _stat79.S_IMODE(_lp79.stat().st_mode) == 0o600
+          and _s79dt is not None and _end79dt is not None
+          and _s79dt.timestamp() <= _end79dt.timestamp()
+          and "organic reads 1" in _hout79.getvalue())
+    _fu79 = sg.fleet_utility(_e.proj)
+    _e79 = {x["name"]: x for x in _fu79["canonicals"]}["canon-x"]
+    check("v0.1.79: --utility surfaces the harvested evidence SOURCE-LABELED for the no-own-usage node "
+          "(harvested_reads/windows_harvested — never blended into own-log reads)",
+          _e79["reads"] == 0 and _e79.get("harvested_reads") == 1 and _e79.get("windows_harvested") == 1
+          and _fu79["nodes_harvested"] == 1 and _e79["last"] == "2026-01-15T10:00:00Z")
+    with _lp79.open("a", encoding="utf-8") as _f79:
+        _f79.write("NOT JSON — a torn/garbage ledger line\n")
+    check("v0.1.79: a garbage ledger line is skipped, never fatal",
+          {x["name"]: x for x in sg.fleet_utility(_e.proj)["canonicals"]}["canon-x"].get("harvested_reads") == 1)
+    # own-log strictly primary (the v1 rule): once the node has ANY own usage, its harvested rows
+    # are ignored entirely — no interval math, no double-count.
+    (_nB79 / ".consolidation-log.jsonl").write_text(
+        _uw78("2026-02-01T00:00:00Z..2026-02-02T00:00:00Z", [{"name": "canon-x", "reads": 2, "last": "2026-02-01T12:00:00Z"}]) + "\n",
+        encoding="utf-8")
+    _fu79b = sg.fleet_utility(_e.proj)
+    _e79b = {x["name"]: x for x in _fu79b["canonicals"]}["canon-x"]
+    check("v0.1.79: a node WITH own-log usage ignores its harvested rows (own-log strictly primary — "
+          "the v1 no-double-count rule), own reads attributed normally",
+          _e79b["reads"] == 2 and "harvested_reads" not in _e79b and _fu79b["nodes_harvested"] == 0)
+
+# --- v0.1.80: fleet STALENESS (docs/fleet-staleness-report.spec.md — beacon Stage A). The blind
+# spot is structural: absorption latency was unbounded AND unmeasured (a lagging node by definition
+# never runs the only flows that report lag). Live first-run proof: a real node 18d behind with 11
+# missing globals + 4 content-stale mirrors, previously invisible.
+with _Env73() as _e:
+    def _canon80(name, body):
+        return (f"---\nname: {name}\ndescription: \"d\"\nmetadata:\n  node_type: memory\n"
+                f"  scope: user-global\n  type: feedback\n---\n{body}\n")
+    (_e.glob / "g-one.md").write_text(_canon80("g-one", "body one"), encoding="utf-8")
+    (_e.glob / "g-two.md").write_text(_canon80("g-two", "body two"), encoding="utf-8")
+    _nA80 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-fresh" / "memory"
+    _nA80.mkdir(parents=True)
+    for _n80 in ("g-one", "g-two"):
+        _t80 = (_e.glob / f"{_n80}.md").read_text(encoding="utf-8")
+        (_nA80 / f"{_n80}.md").write_text(sg._as_mirror(_t80, _n80, since="2026-07-01T00:00:00Z",
+                                                        body_hash=sg._body_hash(_t80)), encoding="utf-8")
+    (_nA80 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_nA80 / ".consolidation-state.json").write_text(
+        _jsonB.dumps({"commit": "x", "timestamp": "2026-07-09T00:00:00Z"}), encoding="utf-8")
+    _nB80 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-starved" / "memory"
+    _nB80.mkdir(parents=True)
+    _old80 = _canon80("g-one", "an OLD body")
+    (_nB80 / "g-one.md").write_text(sg._as_mirror(_old80, "g-one", since="2026-01-01T00:00:00Z",
+                                                  body_hash=sg._body_hash(_old80)), encoding="utf-8")
+    (_nB80 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")   # the trigger's own store
+    import hashlib as _hl80
+    _pre80 = {p: _hl80.sha1(p.read_bytes()).hexdigest()
+              for p in (Path(_osB.environ["HOME"]) / ".claude").rglob("*") if p.is_file()}
+    _s80 = sg.fleet_staleness(_e.proj)
+    _post80 = {p: _hl80.sha1(p.read_bytes()).hexdigest()
+               for p in (Path(_osB.environ["HOME"]) / ".claude").rglob("*") if p.is_file()}
+    _by80 = {d["node"]: d for d in _s80["nodes"]}
+    check("v0.1.80: fleet_staleness measures the starved node exactly — never-dreamed (age null-safe), "
+          "1 missing user-global, 1 content-stale mirror — and the fresh node reads clean",
+          _by80["src-starved"]["missing_globals"] == 1 and _by80["src-starved"]["stale_mirrors"] == 1
+          and _by80["src-starved"]["age_days"] is None and _by80["src-starved"]["last_dream"] == ""
+          and _by80["src-fresh"]["missing_globals"] == 0 and _by80["src-fresh"]["stale_mirrors"] == 0
+          and _by80["src-fresh"]["age_days"] is not None
+          and _s80["behind"] == 2 and _s80["never_dreamed"] == 2)   # starved + the trigger's own empty store
+    check("v0.1.80: scope basis is HONEST per node — full (live stacks) only for the trigger; non-trigger "
+          "nodes labeled user-global-only (a slug is never guessed back to a path)",
+          _by80["src-starved"]["scope_basis"] == "user-global only (no stacks cache)"
+          and {d["node"]: d for d in _s80["nodes"] if d["trigger"]} != {}
+          and all(d["scope_basis"] == "full (live stacks)" for d in _s80["nodes"] if d["trigger"]))
+    check("v0.1.80: the sweep is READ-ONLY over every store, and the payload is JSON-safe (null age)",
+          _pre80 == _post80 and isinstance(_jsonB.dumps(_s80), str))
+
+# --- PR-#93 review-team pins (two reviewers, convergent top finding) ---
+with _Env73() as _e:
+    # F1: an EMPTY trigger store (0 *.md) — previously silently omitted from its own report, the
+    # maximally-starved case. Now force-appended (the harvest/fleet_utility precedent).
+    (_e.glob / "g-one.md").write_text(
+        "---\nname: g-one\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n---\nb\n",
+        encoding="utf-8")
+    _s93 = sg.fleet_staleness(_e.proj)
+    _trig93 = [d for d in _s93["nodes"] if d["trigger"]]
+    check("v0.1.80/review-F1: an EMPTY trigger store still yields the trigger row — never-dreamed, "
+          "all relevant globals MISSING (was: silently omitted from its own report)",
+          len(_trig93) == 1 and _trig93[0]["missing_globals"] == 1 and _trig93[0]["age_days"] is None
+          and _s93["behind"] >= 1 and _s93["never_dreamed"] >= 1)
+    # F3: a present-but-MALFORMED marker must read as never-dreamed EVERYWHERE (render, sort, and
+    # the aggregate — the old aggregate keyed on last_dream=="" and contradicted the row display).
+    _nM93 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-badmarker" / "memory"
+    _nM93.mkdir(parents=True)
+    (_nM93 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_nM93 / ".consolidation-state.json").write_text(
+        _jsonB.dumps({"commit": "x", "timestamp": "not-a-date"}), encoding="utf-8")
+    _s93b = sg.fleet_staleness(_e.proj)
+    _bad93 = [d for d in _s93b["nodes"] if d["node"] == "src-badmarker"][0]
+    check("v0.1.80/review-F3: a present-but-UNPARSEABLE marker counts as never-dreamed in the "
+          "AGGREGATE too (age_days is the one predicate; raw marker kept in last_dream for audit)",
+          _bad93["age_days"] is None and _bad93["last_dream"] == "not-a-date"
+          and _s93b["never_dreamed"] == 2)   # the empty trigger + the bad-marker node
+
+# --- Pre-merge train-review pins (#86/#88/#89 merge-gate team, 2026-07-10) ---
+with _Env73() as _e:
+    # F-A (HIGH, verified E2E by the reviewer): the LATERAL-SWAP evict — freeing room lets the
+    # alphabetically-earlier LARGER global (aaa) displace the later smaller one (zzz): old
+    # set-difference gate ACCEPTED (gain=['aaa']) and destroyed the authored fact for zero net
+    # gain; the count gate must REFUSE. Constraints (seed = C - cost_zzz): cost_aaa > cost_zzz;
+    # freed ∈ [cost_aaa - cost_zzz, cost_aaa).
+    (_e.glob / "aaa-big.md").write_text(_fact73("aaa-big", "a deliberately much longer description "
+                                                "string to fatten this pointer"), encoding="utf-8")
+    (_e.glob / "zzz-sml.md").write_text(_fact73("zzz-sml", "s"), encoding="utf-8")
+    _cA = ms.est_tokens(sg._pointer_line("aaa-big", sg._frontmatter((_e.glob / "aaa-big.md").read_text(encoding="utf-8"))))
+    _cZ = ms.est_tokens(sg._pointer_line("zzz-sml", sg._frontmatter((_e.glob / "zzz-sml.md").read_text(encoding="utf-8"))))
+    (_e.store / "evictme.md").write_text(
+        "---\nname: evictme\ndescription: \"" + "d" * 64 + "\"\nmetadata:\n  type: reference\n---\nirreplaceable\n",
+        encoding="utf-8")
+    _evl86 = sg._pointer_line("evictme", sg._frontmatter((_e.store / "evictme.md").read_text(encoding="utf-8")))
+    _fr86 = ms.est_tokens(_evl86)
+    assert _cA > _cZ and _cA - _cZ <= _fr86 < _cA, (_cA, _cZ, _fr86)
+    (_e.store / "MEMORY.md").write_text(_pad_index73(_C73 - _cZ, [_evl86]), encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj, evict="evictme")
+    check("train-review/F-A: a LATERAL-SWAP evict is REFUSED by the count gate (earlier-bigger global "
+          "would displace the later-smaller one — gain non-empty, count unchanged; the authored fact "
+          "survives; was: destroyed for zero net gain with a '✓ lands:' success message)",
+          _rc == 1 and "lateral swap" in _err and (_e.store / "evictme.md").exists()
+          and "gains nothing" in _err)
+
+with _Env73() as _e:
+    # F-B: MIXED stack tags ([python, fastpai]) are NOT fleet-dead — the blanket "can never match
+    # any project" wording was false for them; they get the dead-weight wording instead.
+    (_e.glob / "mixed-tag.md").write_text(
+        "---\nname: mixed-tag\ndescription: \"d\"\nmetadata:\n  scope: stack-general\n"
+        "  stacks: [python, fastpai]\n  type: feedback\n---\nbody\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("train-review/F-B: a MIXED-tag stack-general canonical warns 'dead weight' naming the live "
+          "tags — never the false 'fleet-dead / can never match any project' claim",
+          "dead weight" in _err and "fleet-dead" not in _err and "fastpai" in _err and "python" in _err)
+
+with _Env73() as _e:
+    # train-robust F1 (measured live): _mind_unresolved must normalize in SLUG space — a live
+    # underscore-basename project (Doc_Flo → slug …-Doc-Flo) was falsely flagged dead because
+    # _sanitize_token preserves '_' while slug dirs map it to '-'.
+    _dfd = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-Doc-Flo" / "memory"
+    _dfd.mkdir(parents=True)
+    check("train-review/robust-F1: an underscore-basename LIVE project (Doc_Flo) resolves to its slug "
+          "store (not flagged '?'); a truly storeless mind still flags",
+          sg._mind_unresolved("Doc_Flo") is False and sg._mind_unresolved("ghost_project_x") is True)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

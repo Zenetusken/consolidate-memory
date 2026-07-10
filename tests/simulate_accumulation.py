@@ -1139,6 +1139,27 @@ def run() -> None:
                  and (storeV / "vvv-wanted.md").exists(),
                  "the lever for a mirror is the GLOBAL store (demote/delete + --gc), never a local delete")
 
+        # ── Probe W: v0.1.75 phantom-store guard (audit F5), live CLI ──
+        # resolve() is non-strict + store.mkdir(parents=True) meant a typo'd PROJECT_DIR returned rc=0,
+        # minted a store under the bogus slug, mirrored every user-global fact into it, AND wrote the
+        # bogus basename into every shared canonical's projects: provenance — pollution --gc can never
+        # reclaim (the phantom's mirrors "exist", so its edges are never dead).
+        print("\n── Probe W: v0.1.75 phantom-store guard ──")
+        bogusW = home / "no" / "such" / "dir-typo"
+        procW = subprocess.run([sys.executable, str(SYNC), "--pull", str(bogusW)],
+                               env=dict(os.environ, HOME=str(home)), capture_output=True, text=True, check=False)
+        procW2 = subprocess.run([sys.executable, str(SYNC), "--gc", "--apply", str(bogusW)],
+                                env=dict(os.environ, HOME=str(home)), capture_output=True, text=True, check=False)
+        phantomW = home / ".claude" / "projects" / ms.slug_for(bogusW.resolve())
+        _prov_cleanW = all("dir-typo" not in f.read_text(encoding="utf-8")
+                           for f in (home / ".claude" / "memory").glob("*.md"))
+        _verdict("W", "v0.1.75: a typo'd PROJECT_DIR is refused up front (rc=2) on --pull AND --gc --apply — "
+                 "no phantom store minted under the bogus slug, no bogus provenance written into any shared "
+                 "canonical (was: rc=0 + store created + every user-global canonical polluted)",
+                 procW.returncode == 2 and procW2.returncode == 2 and not phantomW.exists()
+                 and _prov_cleanW and "does not exist" in procW.stderr,
+                 "the guard is the only thing between a one-character typo and fleet-wide provenance pollution")
+
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")
         first, last = curve[0], curve[-1]

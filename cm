@@ -18,6 +18,8 @@ case "$cmd" in
   promote)  exec python3 "$S/sync_global.py" --promote "$@" ;;    # DIR LOCAL_FACT [CANON]: local→canonical hand-off
   tokens)   exec python3 "$S/sync_global.py" --tokens "$@" ;;     # network token consumption (+ --json)
   utility)  exec python3 "$S/sync_global.py" --utility "$@" ;;    # fleet usage evidence + fleet tax (+ --json)
+  harvest)  exec python3 "$S/sync_global.py" --harvest "$@" ;;    # capture every node's usage windows into the fleet ledger
+  staleness) exec python3 "$S/sync_global.py" --staleness "$@" ;; # absorption lag per node (read-only; beacon Stage A)
   network)  exec python3 "$S/sync_global.py" --network ;;         # shared-consciousness graph
   render)   exec python3 "$S/render_dashboard.py" "$@" ;;         # cycle.json -> ASCII dashboard
   report)   if [ -d "${1:-}" ]; then exec python3 "$S/render_html.py" --project "$1"; elif echo "${1:-}" | grep -qE '^[0-9a-f]{4,40}$'; then exec python3 "$S/render_html.py" --select "$1" --project "${2:-.}"; else exec python3 "$S/render_html.py" --project "${1:-.}"; fi ;;  # existing dir → its archive · hex → a dream by hash · else cwd archive
@@ -42,6 +44,8 @@ cm — consolidate-memory
   cm tokens [DIR] [--json] per-node + total token consumption across the network
   cm utility [DIR] [--json] fleet usage evidence per canonical (mirror-attributed reads, fleet tax vs
                        the warn-only advisory) — the gc lever's evidence table (v0.1.67, Phase C)
+  cm harvest [DIR]        capture every node's organic-read windows into ~/.claude/memory/.fleet-usage.jsonl
+  cm staleness [DIR] [--json] absorption lag per node — last dream, missing globals, stale mirrors (read-only)
   cm network           render the cross-project shared-memory graph
   cm render cycle.json render an ASCII dashboard from a cycle record
   cm report [DIR]      [maintainer dev CLI] open DIR's dream archive (DEFAULT: THIS repo — pass another

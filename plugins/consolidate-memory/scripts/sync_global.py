@@ -34,6 +34,15 @@ each project's store. This is the engine for that:
                        onto an existing canonical REFUSES if the local's body differs (M2 — would
                        silently discard it); --prefer-canonical keeps the canonical, drops the local
                        body (the dedup intent). stack-general stacks: must be DETECTABLE (M4).
+  --harvest PROJECT_DIR  (v0.1.79) capture EVERY node's organic fact-read windows from its transcripts into
+                       the shared append-only ledger (~/.claude/memory/.fleet-usage.jsonl, 0o600) BEFORE
+                       rotation destroys them — usage capture was dream-gated per node (measured: 1/3 nodes
+                       reporting). Watermarked + idempotent; reads-only (no miss classification); --utility
+                       surfaces the harvested evidence, source-labeled, for nodes with no own-log usage.
+  --staleness PROJECT_DIR  (v0.1.80) READ-ONLY absorption-lag sweep over ALL project stores (beacon
+                       Stage A): per node — last-dream marker age, MISSING relevant globals (never
+                       absorbed), content-stale mirrors, usage/harvest coverage. Scope basis honest per
+                       node (full relevance only for the trigger; others user-global-only, labeled).
   --utility PROJECT_DIR  (v0.1.67, Phase C) READ-ONLY fleet usage evidence: per-canonical organic reads
                        aggregated across every node's cycle log (mirror-attributed; same-stem locals
                        report as shadow, never attributed) + fleet_tax = pointer×holders against the
@@ -52,16 +61,20 @@ writes new global-scope facts up to the global store in Phase 4.
 from __future__ import annotations
 
 import ast
+import hashlib
+import math
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # est_tokens lives in memory_status (the measurement script); reuse it rather than
 # re-deriving the heuristic. The sibling resolves because a script's own directory is
 # on sys.path[0] at runtime; both live in the plugin's scripts/ dir.
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / glyphs)
-from memory_status import (_is_mirror, _parse_ts, _sane, est_tokens, slug_for, _frontmatter, _valid_uuid,
+from memory_status import (_is_archive_index_text, _is_mirror, _parse_ts, _sane, est_tokens, slug_for,
+                           _frontmatter, _valid_uuid,
                            INDEX_TOKEN_BUDGET, INDEX_CEILING_TOKENS, HOOK_TOKEN_WARN,
                            extract_wikilinks, resolve_wikilink, usage_history)
 
@@ -298,6 +311,10 @@ def _dep_names_from_text(pyproject_text: str) -> set[str]:
     for sec in re.finditer(r"(?ms)^\[tool\.poetry(?:\.group\.[^\]]+)?\.(?:dev-)?dependencies\](.*?)(?=^\[|\Z)", text):
         for km in re.finditer(r"(?m)^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*=", sec.group(1)):  # poetry table keys (+ legacy dev-)
             names.add(_norm_dep(km.group(1)))
+    # v0.1.76 (audit): poetry DOTTED subtables — `[tool.poetry.dependencies.torch]` declares torch as a
+    # header, not a key, so the key-scan above never saw it (a legitimate, if uncommon, poetry form).
+    for m in re.finditer(r"(?m)^\[tool\.poetry(?:\.group\.[^\]]+)?\.(?:dev-)?dependencies\.([A-Za-z0-9._-]+)\]", text):
+        names.add(_norm_dep(m.group(1)))
     return names
 
 
@@ -368,7 +385,12 @@ def detect_stacks(project_dir: Path) -> set[str]:
     for stack, names in _STACK_DEPS.items():
         if deps & names:
             found.add(stack)
-    if re.search(r"(?m)^\s*\[tool\.mypy\]", _strip_toml_comments(_read_capped(project_dir / "pyproject.toml"))) or (project_dir / "mypy.ini").exists():
+    # v0.1.76 (audit): all four DOCUMENTED mypy config locations — pyproject [tool.mypy], mypy.ini,
+    # .mypy.ini, setup.cfg [mypy] (mypy.readthedocs.io/en/stable/config_file.html). The first two
+    # alone under-detected the stack on .mypy.ini/setup.cfg projects (this fleet is mypy-heavy).
+    if (re.search(r"(?m)^\s*\[tool\.mypy\]", _strip_toml_comments(_read_capped(project_dir / "pyproject.toml")))
+            or (project_dir / "mypy.ini").exists() or (project_dir / ".mypy.ini").exists()
+            or re.search(r"(?m)^\[mypy\]\s*$", _read_capped(project_dir / "setup.cfg"))):
         found.add("mypy")
     for stack, names in _STACK_IMPORTS.items():
         if mods & names:
@@ -420,9 +442,50 @@ def is_relevant(fm: dict, stacks: set[str]) -> bool:
     return False
 
 
-def _as_mirror(text: str, name: str) -> str:
+def _body_hash(text: str) -> str:
+    """sha1-12 of the fact BODY (`_body` — frontmatter stripped): the mirror's content-LINEAGE key
+    (v0.1.78, docs/evidence-clock-stamps.spec.md). BODY-only by design — a description/stacks/
+    provenance tweak refreshes the mirror TEXT but is not new content, so it must not reset the
+    fleet's zero-read evidence clock; a body change is, and must. Not a security boundary."""
+    return hashlib.sha1(_body(text).encode("utf-8")).hexdigest()[:12]
+
+
+def _ceil_iso(epoch: float) -> str:
+    """Epoch → whole-second ISO, seconds CEILED (PR-#91 adversarial F3): a FLOORED stamp lets a
+    window starting inside [floor(t), t) count where the raw float clock would not — over-crediting
+    zero-read evidence against the pinned undercount bias. Ceiling keeps `window_start >= clock`
+    strictly conservative (a window in the same second as the write never counts)."""
+    return datetime.fromtimestamp(math.ceil(epoch), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _now_iso() -> str:
+    return _ceil_iso(datetime.now(timezone.utc).timestamp())
+
+
+def _mtime_iso(path: Path) -> str:
+    """The file's mtime as ISO — the migration seed for a pre-stamp mirror's lineage clock
+    (the best clock we have; deliberately NOT now(), which would restart the fleet's evidence
+    from zero). The OSError fallback IS now(): reachable only via a delete race after the caller
+    already read the file, and it fails toward LESS evidence (undercount — the pinned safe bias),
+    never toward inventing age. Seconds are ceiled — see _ceil_iso."""
+    try:
+        return _ceil_iso(path.stat().st_mtime)
+    except OSError:
+        return _now_iso()
+
+
+def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "") -> str:
     """Return the global fact stamped as a managed mirror (`global_ref: <name>`),
     robustly — drop any existing global_ref, then insert one after `metadata:`.
+
+    v0.1.78 (evidence-clock stamps): when `since`/`body_hash` are supplied, two sibling stamps
+    ride the same metadata anchor — `global_ref_since:` (when this mirror's content-lineage
+    began) and `global_ref_body:` (the sha1-12 lineage key). run()/promote() compute the carry;
+    bare calls (tests, legacy paths) emit no stamps. The frontmatter-scoped strip covers the
+    whole `global_ref` prefix so re-stamping stays idempotent; `_is_mirror` keys on
+    `global_ref:` only, so the smoke-pinned round-trip is untouched. REACH LIMIT: the
+    no-metadata-block fallback form (`# global_ref:` comment) carries no stamps — such a
+    mirror stays on the consumer's mtime fallback clock.
 
     The metadata anchor must be a COLUMN-0 top-level key (mirroring `_is_mirror`'s
     `not ln[:1].isspace()` test). An INDENTED `  metadata:` is NOT a valid anchor: if it
@@ -435,18 +498,34 @@ def _as_mirror(text: str, name: str) -> str:
         text = text[1:]                # (else _is_mirror's ^--- anchor fails on our own output)
     out: list[str] = []
     injected = False
-    dashes = 0                         # frontmatter = the span between the 1st and 2nd '---'
-    for ln in text.splitlines():
+    dashes = 0                         # frontmatter = the span between the OPEN fence and the CLOSE fence
+    for i, ln in enumerate(text.splitlines()):
         s = ln.strip()
-        if s == "---":
-            dashes += 1
+        # v0.1.74 fence PARITY with _frontmatter/_is_mirror (`^---\n(.*?)\n---` — the ONE boundary rule):
+        # the OPEN fence is the exact FIRST line '---'; the CLOSE is any later line whose RAW start is
+        # '---' ('----', '--- notes' close there; an INDENTED '  ---' is NOT a fence). The old
+        # bare-stripped-'---'-only count diverged from the parser BOTH ways (2026-07-10 audit finding #1,
+        # measured): through a non-bare close it stayed "inside frontmatter" to EOF, so the dashes==1-scoped
+        # strips below ATE every body line starting 'projects:'/'global_ref:' — silent mirror corruption on
+        # --pull (every puller) and on --promote (the origin's OWN copy) — and an indented '---' closed it
+        # EARLY, leaking canonical-only 'projects:' provenance into every mirror (the v0.1.26 churn class,
+        # reopened). A pre-existing corrupted mirror self-heals: the corrected `want` differs → STALE → refresh.
+        if dashes == 0:
+            if i == 0 and ln == "---":
+                dashes = 1
+        elif dashes == 1 and ln.startswith("---"):
+            dashes = 2
         # v0.1.70 Gate-2a: frontmatter-scoped (dashes == 1) — was unscoped, silently deleting ANY body
         # line starting with the literal text "global_ref:" (plausible in this self-documenting repo,
         # e.g. a note explaining the mirror mechanism itself). Both of THIS function's own legitimate
         # stamps (the metadata-child form and the post-opening-'---' fallback) land strictly within
         # dashes == 1, so scoping the strip the same way loses no correctness.
-        if dashes == 1 and s.startswith("global_ref:"):
-            continue                   # drop any existing global_ref (re-stamped below)
+        if dashes == 1 and s.startswith(("global_ref:", "global_ref_since:", "global_ref_body:")):
+            # drop any existing global_ref + stamp lines (re-stamped below). EXACT three keys, not the
+            # bare "global_ref" prefix (PR-#91 adversarial review): the wide prefix re-ate what the
+            # v0.1.70 narrowing protects — e.g. a folded-scalar description continuation line that
+            # happens to begin "global_reference …" was silently dropped from the mirror's frontmatter.
+            continue
         # v0.1.26 (provenance-churn root-fix): `projects:` is CANONICAL-ONLY bookkeeping (the synapse
         # record `network()`/`_holders` read off the global store). NEVER carry it into a mirror — else
         # every pull that grows a canonical's holder list marks all OTHER mirrors stale (cosmetic churn).
@@ -461,6 +540,9 @@ def _as_mirror(text: str, name: str) -> str:
         # un-refreshable, GC-immune mirror (never reclaimed, never updated).
         if not injected and dashes == 1 and not ln[:1].isspace() and s.rstrip(":") == "metadata":
             out.append(f"  global_ref: {name}")
+            if since:   # v0.1.78: the content-lineage clock (see docstring; caller computes the carry)
+                out.append(f"  global_ref_since: {since}")
+                out.append(f"  global_ref_body: {body_hash}")
             injected = True
     if not injected:  # no metadata block — stamp just inside the frontmatter
         for i, ln in enumerate(out):
@@ -644,6 +726,11 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # one accounting replay that both the write loop and the --evict gain-gate consume, with stale-refresh
     # deltas tracked and `freed` measured from the real index (docs/evict-accounting-truth.spec.md).
     project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        # v0.1.75 defense-in-depth (audit F5) — the CLI choke is _dispatch's guard; direct callers get
+        # the same refusal (a phantom store + bogus provenance must be unmintable from any entry point).
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
     store = project_store(project_dir)
     stacks = detect_stacks(project_dir)
     facts = global_facts()
@@ -660,9 +747,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     add(_ui.kv("STACKS", (", ".join(sorted(stacks)) if stacks else _ui.c("(none detected)", "dim"))))
 
     glyphs = {"in-sync": ("✓", "green"), "MISSING": ("↓", "yellow"), "STALE-mirror": ("⟳", "yellow"),
-              "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim")}
+              "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim"), "frozen(mirror)": ("✻", "yellow")}
     rows: list = []
     relevant = pulled = refreshed = held = fat = 0   # fat: v0.1.66 — pointers written over HOOK_TOKEN_WARN
+    restamped = 0   # v0.1.78: STALE refreshes of PRE-STAMP mirrors — the one-time evidence-clock migration wave
     # v0.1.73 (accounting truth — docs/evict-accounting-truth.spec.md): CLASSIFY first (no writes),
     # PLAN the index accounting ONCE via _plan_pull, THEN execute — the write loop consults plan
     # membership and never re-decides. Seed from the live index (store-scan convention, v0.1.69
@@ -678,9 +766,41 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         present = path.exists()
         cur = (_safe_read_text(path) or "") if present else ""   # store-scan convention (v0.1.69 Gate-2b)
         is_mirror = present and _is_mirror(cur)
-        want = _as_mirror(text, name)
+        # v0.1.78 evidence-clock carry (docs/evidence-clock-stamps.spec.md): same body as the current
+        # mirror → CARRY its since (a description/stacks/provenance tweak refreshes the text without
+        # wiping the fleet's accrued zero-read windows — the audit's F9 starvation, measured 1→0 on a
+        # description-only edit); legacy/garbled stamps but same body → seed from the file's mtime
+        # (the migration wave — never restart the fleet's evidence from zero); body genuinely changed
+        # (or a fresh pull) → NEW lineage (old zero-reads don't indict new content).
+        new_hash = _body_hash(text)
+        _migrated = False   # took the mtime-seeded branch (the honest referent of `restamped` — review #91)
+        if is_mirror:
+            cur_fm = _frontmatter(cur)
+            cur_since = str(cur_fm.get("global_ref_since", "") or "")
+            if cur_fm.get("global_ref_body", "") == new_hash and cur_since and _parse_ts(cur_since) is not None:
+                since = cur_since
+            elif _body_hash(cur) == new_hash:
+                since = _mtime_iso(path)
+                _migrated = True
+            else:
+                since = _now_iso()
+        else:
+            cur_fm = {}
+            since = _now_iso()
+        want = _as_mirror(text, name, since=since, body_hash=new_hash)
+        if _migrated and not _frontmatter(want).get("global_ref_since"):
+            # PR-#91 adversarial F2a: a no-metadata-block mirror (the `# global_ref:` fallback form)
+            # can never receive the stamp — without this, EVERY refresh of such a mirror reported
+            # "restamped 1" forever while global_ref_since stayed absent. A migration that didn't
+            # happen must not be reported as one; the mirror stays on the documented mtime fallback.
+            _migrated = False
         if not rel:
-            status = "irrelevant"
+            # v0.1.75 (audit F6): a PRESENT mirror whose canonical is alive but no longer relevant here
+            # (a dropped stack) is FROZEN — never refreshed (this branch short-circuits staleness), never
+            # gc'd as an orphan (canonical exists), still taxing the always-loaded index. Render it
+            # DISTINCTLY (it used to read as a plain 'irrelevant', byte-identical to never-pulled) so the
+            # operator can see it; the reclaim lever is --gc's FROZEN section (report + --apply).
+            status = "frozen(mirror)" if present and is_mirror else "irrelevant"
         elif not present:
             status = "MISSING"
         elif not is_mirror:
@@ -689,7 +809,36 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             status = "in-sync"
         else:
             status = "STALE-mirror"  # canonical changed → must refresh
+        if pull and status == "STALE-mirror" and _migrated:
+            # counts ONLY the mtime-seeded migrations (PR-#91 review: the old not-yet-stamped gate also
+            # counted a legacy mirror whose canonical BODY changed this same pass — branch 3, seeded from
+            # NOW — making the RESULT's "seeded from each mirror's mtime" clause dishonest for that subset;
+            # a body-changed legacy mirror is a genuine content refresh, reported as plain `refreshed`).
+            restamped += 1
         classified.append((name, fm, text, status, path, want, rel))
+    # v0.1.75 (audit F7 — the M4-bypass SURFACE): promote() refuses an undetectable `stacks:` tag, but the
+    # SKILL's documented Phase-4 NET-NEW path hand-writes canonicals directly — a typo'd ('gpuu') or
+    # real-but-undetectable ('release') tag lands unvalidated, and the canonical is FLEET-DEAD:
+    # is_relevant can never match it to ANY project, silently, forever. Every dream's Phase 1 walks this
+    # read path, so warn HERE (report-only, never a block) — the loop-native surface for the bypass.
+    for _fn, _ffm, _t, _s, _p, _w, _r in classified:
+        if _ffm.get("scope") == "stack-general":
+            _fs = _fact_stacks(_ffm)
+            _bad = sorted(_fs - _DETECTABLE_STACKS)
+            if not (_fs & _DETECTABLE_STACKS):
+                # NO detectable tag at all (empty, or all-undetectable) → genuinely fleet-dead
+                _why = f"undetectable stack tag(s) {_bad}" if _bad else "NO `stacks:` tags at all"
+                print(f"  ⚠ fleet-dead canonical: '{_fn}' is stack-general with {_why} — detect_stacks can "
+                      f"never match it to any project. Retag with a detectable stack "
+                      f"({sorted(_DETECTABLE_STACKS)}), re-scope user-global, or demote it "
+                      f"(~/.claude/memory/{_fn}.md).", file=sys.stderr)
+            elif _bad:
+                # train-review F-B: MIXED tags (e.g. [python, fastpai]) are NOT fleet-dead — the fact
+                # still matches via its detectable tag(s); the old blanket "can never match any
+                # project" wording was false here. The undetectable tag is dead weight worth cleaning.
+                print(f"  ⚠ undetectable stack tag(s) {_bad} on '{_fn}' — dead weight (the fact still "
+                      f"matches via {sorted(_fs & _DETECTABLE_STACKS)}); clean the tags "
+                      f"(~/.claude/memory/{_fn}.md).", file=sys.stderr)
     items = [(name, status, est_tokens(_pointer_line(name, fm)), _index_line_cost(idx_text, name))
              for name, fm, _t, status, _p, _w, rel in classified if rel and status in ("MISSING", "STALE-mirror")]
     plan = _plan_pull(items, seed_idx, allow_net_grow, budget=INDEX_CEILING_TOKENS)
@@ -736,12 +885,26 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                   file=sys.stderr); return 1
         plan_evict = _plan_pull(items, seed_idx - freed, allow_net_grow, budget=INDEX_CEILING_TOKENS)
         gain = [n for n in plan_evict["pull"] if n not in set(plan["pull"])]
-        if not gain:   # Guard-3 by construction (F3): the destruction must demonstrably land a held global
+        displaced = [n for n in plan["pull"] if n not in set(plan_evict["pull"])]
+        if len(plan_evict["pull"]) <= len(plan["pull"]):
+            # Guard-3 is a COUNT (train-review F-A, HIGH, verified E2E): the old set-difference test
+            # accepted a LATERAL SWAP — freeing room let an alphabetically-earlier, larger-pointer
+            # global jump into the plan and push a later, smaller one over the ceiling, so `gain` was
+            # non-empty while the pull COUNT was unchanged (or lower) and the authored fact was
+            # destroyed for zero net gain — the exact F3 harm this gate exists to refuse, re-admitted.
+            # The destruction must land strictly MORE globals than no-evict would.
+            _swap = (f" — a lateral swap (+{', '.join(gain)} / −{', '.join(displaced)}), not a gain"
+                     if gain else "")
             print(f"evict: destroying '{evict}' (~{freed} tok measured) lands NO additional held global — "
-                  f"the replayed plan pulls {plan_evict['pull'] or '[]'} with the evict vs {plan['pull'] or '[]'} "
-                  f"without; held either way: {', '.join(n for n, _c in plan_evict['held'])}. "
+                  f"the replayed plan pulls {len(plan_evict['pull'])} ({', '.join(plan_evict['pull']) or 'none'}) "
+                  f"with the evict vs {len(plan['pull'])} ({', '.join(plan['pull']) or 'none'}) without{_swap}; "
+                  f"held either way: {', '.join(n for n, _c in plan_evict['held'])}. "
                   "Refusing a destructive op that gains nothing — pick a larger-pointer fact.",
                   file=sys.stderr); return 1
+        if displaced:
+            # count strictly increased but the composition shifted — proceed, and say so honestly
+            print(f"  ⚠ evict replan displaced {', '.join(displaced)} (freed room re-ordered the pulls; "
+                  f"net {len(plan_evict['pull'])} land vs {len(plan['pull'])} without the evict)", file=sys.stderr)
         ep.unlink()
         _remove_index_pointer(store, evict)
         plan = plan_evict   # the gate approved THIS plan; the write loop below executes exactly it
@@ -761,12 +924,16 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         if held_this:
             held += 1  # past-the-ceiling net-grow → hold (shrink to receive, or --allow-net-grow) — v0.1.66
         elif pull and rel and status in ("MISSING", "STALE-mirror"):
-            # C3: a canonical missing a valid originSessionId fans its gap out to every
-            # mirror this replication creates. WARN (don't block — the fact is still
-            # useful); reuses the in-hand `fm`, no extra I/O.
-            if not _valid_uuid(fm.get("originSessionId", "")):
-                print(f"  ⚠ canonical {name} lacks a valid originSessionId — the gap fans out to every mirror",
-                      file=sys.stderr)
+            # C3: a canonical with an INVALID originSessionId fans its gap out to every mirror this
+            # replication creates. WARN (don't block — the fact is still useful); reuses the in-hand
+            # `fm`, no extra I/O. v0.1.76 (audit): ABSENCE no longer warns — harness-map's schema
+            # rules say a git/commit-derived fact legitimately OMITS originSessionId (absence is an
+            # optional-backfill advisory, never drift), so the old warn-on-absent was steady stderr
+            # noise on every replication of every legitimate git-derived canonical.
+            _osid = fm.get("originSessionId", "")
+            if _osid and not _valid_uuid(_osid):
+                print(f"  ⚠ canonical {name} has an INVALID originSessionId ({_osid[:24]!r}) — the gap "
+                      "fans out to every mirror", file=sys.stderr)
             store.mkdir(parents=True, exist_ok=True)
             path.write_text(want, encoding="utf-8")
             # v0.1.66: count for the RESULT line ONLY when the pointer was actually WRITTEN this pass — a
@@ -794,9 +961,16 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     add("")
     held_note = f" · held {held} (would push the index past the HARD CEILING ≈{INDEX_CEILING_TOKENS} tok — shrink to receive, or --allow-net-grow)" if held else ""
     fat_note = f" · ⚠ {fat} fat hook(s) >{HOOK_TOKEN_WARN}t written (tighten the canonical descriptions)" if fat else ""
-    tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note}{fat_note} (index updated)" if pull
+    restamp_note = (f" · restamped {restamped} (evidence-clock stamps added; lineage seeded from each "
+                    "mirror's mtime — one-time upgrade wave, not churn)") if restamped else ""
+    tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note}{restamp_note}{fat_note} (index updated)" if pull
             else "run with --pull to replicate MISSING + refresh STALE mirrors here")
     add(_ui.kv("RESULT", tail))
+    _n_frozen = sum(1 for _n2, _f2, _t2, _s2, _p2, _w2, _r2 in classified if _s2 == "frozen(mirror)")
+    if _n_frozen:
+        add("  " + _ui.c(f"✻ {_n_frozen} frozen mirror(s) — canonical alive but IRRELEVANT here (a dropped "
+                         "stack): never refreshed, still taxing the always-loaded index. --gc reports them; "
+                         "--gc --apply reclaims (safe — re-pullable if the stack returns)", "yellow"))
     # v0.1.41 → v0.1.73: the EVICT-TO-RECEIVE offer (the report half of report-then-apply). When globals are
     # HELD, surface the held + the evictable AUTHORED pointers with RAW, UNORDERED metadata — NEVER ranked
     # (a staleness/mtime rank actively misleads: a foundational fact is untouched yet vital). Mirrors are
@@ -866,8 +1040,34 @@ def _record_provenance(name: str, project: str) -> None:
 
 
 def _holders(fm: dict) -> list[str]:
-    # `*` not `+` so a single-character project name is not silently dropped.
-    return re.findall(r"[A-Za-z0-9][A-Za-z0-9_.-]*", fm.get("projects", ""))
+    # v0.1.76 (audit): parse the SAME token space _sanitize_token WRITES. The old alnum-first-char
+    # regex silently shortened a dot/dash-prefixed holder ('.claude' → 'claude'; the sanitized
+    # '-scope' from '@scope' → 'scope'), so gc's dead-edge compare could never match such a project
+    # and network()/--utility displayed a name provenance doesn't hold. Tokens must still carry ≥1
+    # alnum (a bare '-'/'.' is separator noise, not a holder); single-character names still kept.
+    return [t for t in re.findall(r"[A-Za-z0-9._-]+", fm.get("projects", ""))
+            if any(c.isalnum() for c in t)]
+
+
+def _mind_unresolved(name: str) -> bool:
+    """v0.1.76 (audit): True iff NO slug dir under ~/.claude/projects plausibly matches this
+    provenance basename — the honest partial inverse of the lossy slug (sanitized-token endswith
+    match). CONSERVATIVE direction: any match — including an ambiguous one — reads as resolved;
+    only a zero-match mind is flagged. Display-only (a `?` glyph + footnote in network()); never a
+    prune input — provenance stays reported-not-pruned (a renamed project also matches nothing).
+    Train-review F1 (measured on the real fleet): normalize in SLUG space (every non-alnum → '-',
+    the slug_for/near_duplicate_slugs rule) — the original _sanitize_token normalization PRESERVES
+    '_'/'.' while slug dirs map them to '-', so a live underscore-named project (Doc_Flo) could
+    never match its own on-disk store and was falsely flagged dead."""
+    norm = re.sub(r"[^a-z0-9]", "-", name.lower())
+    base = Path.home() / ".claude" / "projects"
+    if not norm.strip("-.") or not base.is_dir():
+        return False   # degenerate token / no projects dir → nothing claimable; stay conservative
+    for d in base.iterdir():
+        s = d.name.lower()
+        if s == norm or s.endswith("-" + norm):
+            return False
+    return True
 
 
 def network() -> int:
@@ -878,7 +1078,11 @@ def network() -> int:
     (`stack-general` facts that bind only the subset of projects whose stacks match).
     The differential edges are the meaningful topology; universal facts are a shared
     substrate listed separately, not drawn as trivial all-to-all edges.
-    """
+
+    v0.1.76 (audit): minds derive from provenance basenames, which accrue DEAD entries
+    (deleted test projects measured live in this fleet) — every count here silently
+    included them. A mind with no plausible on-disk store now renders with a `?` and a
+    footnote; the flag is display-only (see _mind_unresolved — report, never prune)."""
     facts = global_facts()
     minds = sorted({p for _, fm, _ in facts for p in _holders(fm)})
     universal = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "user-global"]
@@ -891,7 +1095,11 @@ def network() -> int:
     gap = max(2, _ui.W - 2 - len(title) - len(tag))
     out.append(_ui.rule())
     out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
-    out.append("  " + _ui.c(", ".join(minds) or "(no projects yet)", "dim"))
+    _unres = {m for m in minds if _mind_unresolved(m)}
+    out.append("  " + _ui.c(", ".join((m + "?" if m in _unres else m) for m in minds) or "(no projects yet)", "dim"))
+    if _unres:
+        out.append("  " + _ui.c(f"? = no matching store on disk ({len(_unres)}) — a deleted/renamed project's "
+                                "dead provenance edge; counts below include it (report-only, never auto-pruned)", "yellow"))
     out.append(_ui.rule())
     out.append("")
     out.append(_ui.kv("MEMORIES", f"{len(facts)} shared · {len(universal)} universal · {len(differential)} differential"
@@ -945,11 +1153,17 @@ def _remove_index_pointer(store: Path, name: str) -> bool:
     return True
 
 
-def _orphans(store: Path) -> list[str]:
+def _orphans(store: Path, canon: "set[str] | None" = None) -> list[str]:
     """Mirror files (`global_ref:`) in this store whose CANONICAL no longer exists in
     the global store. These are the dead memory --pull can never reclaim (it only
-    iterates LIVE globals), so they accrue forever — the leak Fix B closes."""
-    canon = {n for n, _, _ in global_facts()}
+    iterates LIVE globals), so they accrue forever — the leak Fix B closes.
+    v0.1.75: gc() passes `canon` from its ONE global_facts() snapshot, so the mass-delete
+    safety guard and this scan can never see different store states (the audit's guard-TOCTOU:
+    a store emptying between the guard's read and a second read here would have made EVERY
+    mirror look orphaned — the exact wipe the guard exists to prevent). Default None
+    self-computes (direct/test callers keep working)."""
+    if canon is None:
+        canon = {n for n, _, _ in global_facts()}
     out: list[str] = []
     if not store.exists():
         return out
@@ -968,23 +1182,50 @@ def gc(project_dir: Path, apply: bool) -> int:
     """Reclaim orphaned mirrors. Report-by-default; delete only with --apply, and
     NEVER touch a project-authored (non-`global_ref:`) fact, even on a name collision.
 
+    v0.1.75 (audit F6): also reports/reclaims FROZEN mirrors — `global_ref:` files whose canonical is
+    ALIVE but no longer relevant to this project (a dropped stack): --pull can't refresh them
+    (irrelevant short-circuits), the orphan scan can't see them (the canonical exists), so they sat
+    stale forever, still taxing the always-loaded index. Reclaim is safe by construction — a frozen
+    mirror is a replica of a LIVE canonical, so if the stack returns (or detection flickered) the
+    next --pull simply re-pulls it; no memory can be lost.
+
     Dead-edge provenance (a canonical that still exists but lists a project no longer
     holding it) is REPORTED only, not auto-pruned: absence-of-mirror is a weak signal
     (a renamed/moved store also 'holds nothing'), and stripping global state on it
     risks erasing real edges. The proven win is removing the orphan files."""
     project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        # v0.1.75 defense-in-depth (audit F5) — same phantom-store guard as run(); _dispatch is the CLI choke.
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
     # SAFETY: an EMPTY canonical set makes EVERY mirror look orphaned → gc --apply would
     # delete them all. A global store that is absent OR present-but-empty (unmounted,
     # moved, not yet synced, or only the MEMORY.md index left) is NOT the same as "all
     # canonicals were deliberately deleted". Refuse in either case rather than risk wiping
     # re-pullable / last-surviving memory. (Guard on the FACT COUNT, not mere existence.)
-    if not GLOBAL.exists() or not global_facts():
+    # v0.1.75: ONE global_facts() snapshot — the guard, the orphan scan, the frozen scan, and the
+    # dead-edge report all see the SAME store state (the audit's guard-TOCTOU: a store emptying
+    # between the guard's read and a second scan read would have made every mirror look orphaned —
+    # the exact mass-wipe the guard exists to prevent).
+    gfacts = global_facts() if GLOBAL.exists() else []
+    if not gfacts:
         why = "absent" if not GLOBAL.exists() else "present but empty (no canonical facts)"
         print(f"global store {GLOBAL} is {why} — refusing to GC "
               "(cannot distinguish that from all-canonicals-deleted).")
         return 0
     store = project_store(project_dir)
-    orphans = _orphans(store)
+    orphans = _orphans(store, canon={n for n, _, _ in gfacts})
+    # v0.1.75 (audit F6): FROZEN mirrors — see the docstring. Detected against the SAME snapshot.
+    stacks = detect_stacks(project_dir)
+    canon_fm = {n: fm for n, fm, _ in gfacts}
+    frozen: list = []
+    if store.exists():
+        for f in sorted(store.glob("*.md")):
+            if f.name == "MEMORY.md" or _is_reserved_stem(f.stem) or f.stem not in canon_fm:
+                continue
+            t = _safe_read_text(f)   # store-scan convention — a vanished file must not abort the scan
+            if t is not None and _is_mirror(t) and not is_relevant(canon_fm[f.stem], stacks):
+                frozen.append(f.stem)
     out: list = []
     title = "✦ GARBAGE COLLECT · orphaned mirrors"
     tag = "APPLY" if apply else "REPORT"
@@ -1005,7 +1246,18 @@ def gc(project_dir: Path, apply: bool) -> int:
             out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(file + index pointer)", "dim"))
         else:
             out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer)", "dim"))
-    tail = (f"removed {removed} orphan(s)" if apply
+    out.append(_ui.kv("FROZEN", f"{len(frozen)} mirror(s) whose canonical is ALIVE but irrelevant here (dropped stack)"
+               + ("" if frozen else "  " + _ui.c("· none", "dim"))))
+    removed_frozen = 0
+    for name in frozen:
+        if apply:
+            (store / f"{name}.md").unlink(missing_ok=True)
+            _remove_index_pointer(store, name)
+            removed_frozen += 1
+            out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(re-pullable if the stack returns)", "dim"))
+        else:
+            out.append("    " + _ui.c("✻", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer; re-pullable — canonical stays)", "dim"))
+    tail = (f"removed {removed} orphan(s) + {removed_frozen} frozen" if apply
             else "run with --apply to delete (surface these to the user first)")
     out.append("")
     out.append(_ui.kv("RESULT", tail))
@@ -1014,10 +1266,12 @@ def gc(project_dir: Path, apply: bool) -> int:
         print(_ui.ascii_translate("\n".join(out)))
         return 0
     dead = []
-    for name, fm, _ in global_facts():
+    for name, fm, _ in gfacts:
         for holder in _holders(fm):
-            # we only know THIS project's store path; report if it's listed but absent
-            if holder == project_dir.name and not (store / f"{name}.md").exists():
+            # we only know THIS project's store path; report if it's listed but absent.
+            # v0.1.76: compare in the SANITIZED token space provenance is written in — a basename
+            # _sanitize_token rewrites ('@scope' → '-scope') never equalled its raw self here.
+            if holder == _sanitize_token(project_dir.name) and not (store / f"{name}.md").exists():
                 dead.append(name)
     if dead:
         out.append("")
@@ -1030,13 +1284,18 @@ def gc(project_dir: Path, apply: bool) -> int:
 
 # ── promotion: hand a local fact UP to the canonical global store (v0.1.16) ─────
 def _body(text: str) -> str:
-    r"""The fact BODY — markdown AFTER the leading frontmatter block. Strips ONLY the first `^---\n…\n---\n`
-    span (non-greedy, once) — NOT split('---'), since a body legitimately contains `---`/`***` horizontal
-    rules. Trailing whitespace (per line + overall) is normalized so the M2 compare ignores cosmetic drift."""
+    r"""The fact BODY — markdown AFTER the leading frontmatter block. Strips ONLY the first
+    `^---\n…\n---` span (non-greedy, once) — NOT split('---'), since a body legitimately contains
+    `---`/`***` horizontal rules. Trailing whitespace (per line + overall) is normalized so the M2
+    compare ignores cosmetic drift. v0.1.74 close-fence PARITY with _frontmatter (audit): the close is
+    the WHOLE first line starting '---' ('----'/'--- notes' close there too) and may sit at EOF with no
+    trailing newline — the old `\n---\n`-exact close left a body-less fact's frontmatter unstripped, so
+    two body-less facts with differing frontmatter compared UNEQUAL and promote's Guard-5 spuriously
+    refused a clean reconcile."""
     if text.startswith("﻿"):       # strip a leading BOM (some editors add one) so the \A--- anchor holds
         text = text[1:]
     text = text.replace("\r\n", "\n").replace("\r", "\n")   # CRLF/CR (a model→file artifact) — match _frontmatter
-    body = re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
+    body = re.sub(r"\A---\n.*?\n---[^\n]*(?:\n|\Z)", "", text, count=1, flags=re.DOTALL)
     return "\n".join(ln.rstrip() for ln in body.splitlines()).strip()
 
 
@@ -1161,18 +1420,35 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
     # can't just be trusted this many lines later). `_create_exclusive` closes it: False means
     # someone else's canonical won the race, untouched — refuse and ask the caller to retry (which
     # correctly reconciles against it, since `canon_path.exists()` is now true).
-    if not reconcile and not _create_exclusive(canon_path, local_text):
-        print(f"promote: another process just created the canonical '{canon_name}' concurrently — "
-              "refusing to risk a silent clobber. Re-run promote — it will now correctly "
-              "reconcile against the canonical that landed.", file=sys.stderr)
-        return 1
+    if not reconcile:
+        try:
+            _created = _create_exclusive(canon_path, local_text)
+        except OSError as _e:
+            # v0.1.76 (audit): os.link raises EPERM/EOPNOTSUPP/ENOSYS on a no-hardlink filesystem
+            # (FAT/exFAT, some network mounts) — that used to propagate as a raw traceback mid-promote.
+            # Refuse CLEANLY instead: nothing has been written (the finally cleaned the temp), and the
+            # race guard genuinely needs hardlink atomicity (see _create_exclusive — os.replace can't
+            # detect "am I first", raw O_EXCL reopens the torn-read window Track D-1 closed).
+            print(f"promote: cannot create the canonical atomically ({type(_e).__name__}: {_e}) — "
+                  "commonly a filesystem without hardlink support (os.link, which the create-create "
+                  "race guard needs), but check the error itself (e.g. ENOSPC is disk-full, not a "
+                  "hardlink problem). Nothing was written.", file=sys.stderr)
+            return 1
+        if not _created:
+            print(f"promote: another process just created the canonical '{canon_name}' concurrently — "
+                  "refusing to risk a silent clobber. Re-run promote — it will now correctly "
+                  "reconcile against the canonical that landed.", file=sys.stderr)
+            return 1
     _record_provenance(canon_name, project_dir.name)
     canon_text = canon_path.read_text(encoding="utf-8", errors="replace")  # re-read POST-provenance
     fm = _frontmatter(canon_text)
 
     # Convert the origin's copy into a managed mirror of the POST-provenance canonical, so a later
     # --pull reports `in-sync` (not a spurious STALE-mirror refresh) and never re-creates a shadow.
-    dest.write_text(_as_mirror(canon_text, canon_name), encoding="utf-8")
+    # v0.1.78: minted with a FRESH evidence-clock stamp (a just-promoted lineage begins now); the next
+    # --pull carries it (same body hash), preserving the Probe-K byte-identical follow-up invariant.
+    dest.write_text(_as_mirror(canon_text, canon_name, since=_now_iso(), body_hash=_body_hash(canon_text)),
+                    encoding="utf-8")
     _ensure_index_pointer(store, canon_name, fm)
     renamed = canon_name != local_fact
     if renamed:  # the dup/orphan guard: drop the old-named project-authored file + its index pointer …
@@ -1257,7 +1533,12 @@ def _node_tokens(store: Path) -> dict:
         if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
             continue
         body = _safe_read_text(f)             # store-scan convention (shared helper — v0.1.69 Gate-2a)
-        if body is not None:
+        # v0.1.76 (audit): exclude ARCHIVE-INDEX docs (link-lists like SHIPPED.md — no frontmatter,
+        # ≥3 links) — memory_status's own C1 fact/archive split, applied here too. They were counted
+        # as recall facts (a live node's 7.6k-tok SHIPPED.md inflated recall_tokens + `facts`), so
+        # --tokens over-reported any store using the archive convention. Same text-level rule
+        # (_is_archive_index_text), single source — the two counters cannot drift.
+        if body is not None and not _is_archive_index_text(body):
             bodies[f.stem] = body
     mirror_stems = {stem for stem, b in bodies.items() if _is_mirror(b)}
     # Attribute the index pointer lines whose target fact (`](<stem>.md)`) is a mirror.
@@ -1376,6 +1657,279 @@ def token_report(project_dir: Path, as_json: bool) -> int:
     return 0
 
 
+# ── v0.1.80: fleet STALENESS — absorption lag, measured per node (beacon Stage A) ────────────────
+def _all_stores() -> "list[Path]":
+    """EVERY project store under ~/.claude/projects holding ≥1 *.md — deliberately wider than
+    _network_nodes() (mirror-holders): a store with ZERO mirrors is exactly the most starved node
+    the staleness sweep exists to surface."""
+    base = Path.home() / ".claude" / "projects"
+    out: list = []
+    if base.is_dir():
+        for proj in sorted(base.iterdir()):
+            store = proj / "memory"
+            if store.is_dir() and any(store.glob("*.md")):
+                out.append(store)
+    return out
+
+
+def fleet_staleness(project_dir: Path) -> dict:
+    """READ-ONLY absorption-lag sweep (docs/fleet-staleness-report.spec.md — the observe-only
+    Stage A that must prove/refute the SessionStart beacon's premise). Per node: last-dream
+    marker age, mirror/fact counts, MISSING relevant globals (never absorbed), content-stale
+    mirrors (body-lineage hash vs the canonical — v0.1.78; hook drift is --pull's job, stale
+    KNOWLEDGE is what lag harms), own-log usage windows + harvest-ledger coverage. Scope basis
+    is HONEST per node: full relevance (live detect_stacks) only for the TRIGGER — a slug is
+    not invertible to a project path, so other nodes are assessed on user-global canonicals
+    only, labeled, never guessed (Stage B's state-file stacks cache upgrades this)."""
+    import json as _json
+    project_dir = project_dir.resolve()
+    gfacts = global_facts()
+    trig_store = project_store(project_dir)
+    trig_stacks = detect_stacks(project_dir)
+    ledger_nodes = {str(r.get("node", "")) for r in _ledger_rows()}
+    now_ep = datetime.now(timezone.utc).timestamp()
+    body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts}
+    stores = _all_stores()
+    if trig_store.resolve() not in {s.resolve() for s in stores}:
+        # PR-#93 review F1 (two reviewers, convergent): the TRIGGER appears UNCONDITIONALLY — an
+        # absent/empty trigger store is the maximally-starved row (never dreamed, absorbed nothing),
+        # not an omission. The same force-append harvest()/fleet_utility already use; every relevant
+        # canonical then counts MISSING via the not-exists check below.
+        stores.append(trig_store)
+    nodes: list = []
+    for store in stores:
+        is_trig = store.resolve() == trig_store.resolve()
+        marker = ""
+        raw_state = _safe_read_text(store / ".consolidation-state.json")
+        if raw_state:
+            try:
+                _st = _json.loads(raw_state)
+                marker = str((_st or {}).get("timestamp", "") or "") if isinstance(_st, dict) else ""
+            except (ValueError, TypeError):
+                marker = ""
+        mdt = _parse_ts(marker) if marker else None
+        missing = stale = 0
+        for n, fm, _text in gfacts:
+            # review F4: delegate to is_relevant — the SINGLE relevance predicate (a 4th hand copy
+            # is how predicates diverge). Non-trigger → empty stacks → stack-general never matches:
+            # exactly the labeled user-global-only basis (a slug is never guessed back to a path).
+            if not is_relevant(fm, trig_stacks if is_trig else set()):
+                continue
+            p = store / f"{n}.md"
+            if not p.exists():
+                missing += 1
+                continue
+            cur = _safe_read_text(p)
+            if cur is None:
+                continue   # review F2: PRESENT but unreadable (chmod/read race) is neither missing
+                           # nor stale — never guess; skipping under-reports, the pinned safe bias
+            if _is_mirror(cur) and _body_hash(cur) != body_hashes[n]:
+                stale += 1
+        m = _node_tokens(store) if store.is_dir() else {"facts": 0, "shared": 0}
+        hist = usage_history(store)
+        nodes.append({"node": _sane(project_dir.name) if is_trig else _node_label(store),
+                      "trigger": is_trig,
+                      "last_dream": marker,
+                      # review F5: a FUTURE marker (clock skew / hand-edit) clamps to 0.0 — never a
+                      # negative "dreamed -26472d ago"; the raw marker stays in last_dream for audit.
+                      "age_days": (max(0.0, round((now_ep - mdt.timestamp()) / 86400, 1)) if mdt else None),
+                      "facts": m["facts"], "mirrors": m["shared"],
+                      "missing_globals": missing, "stale_mirrors": stale,
+                      "scope_basis": ("full (live stacks)" if is_trig else "user-global only (no stacks cache)"),
+                      "usage_windows": hist["windows_full"],
+                      "harvested": store.parent.name in ledger_nodes})
+    nodes.sort(key=lambda d: (-d["missing_globals"], -(d["age_days"] if d["age_days"] is not None else 1e9)))
+    return {"nodes": nodes,
+            # review F6: content-stale mirrors ARE lag — a node with 0 missing but stale knowledge
+            # counts as behind (the sweep's other half). review F3: never_dreamed keys on age_days —
+            # the SAME predicate the render and the sort use, so a present-but-UNPARSEABLE marker
+            # reads as never-dreamed everywhere consistently instead of contradicting the aggregate.
+            "behind": sum(1 for d in nodes if d["missing_globals"] or d["stale_mirrors"]),
+            "never_dreamed": sum(1 for d in nodes if d["age_days"] is None)}
+
+
+def staleness_report(project_dir: Path, as_json: bool) -> int:
+    """Render fleet_staleness — the per-node absorption-lag table. Advisory only: a node absorbs
+    on ITS next dream (never auto-pulled from here — report-then-apply and the dream-governance
+    model own writes). Maintainer/observability lens outside dream flow (like --network): uncued."""
+    import json as _json
+    project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
+    s = fleet_staleness(project_dir)
+    if as_json:
+        print(_json.dumps(s, indent=2))
+        return 0
+    out: list = []
+    title = "✦ FLEET STALENESS · absorption lag per node"
+    tag = f"{s['behind']}/{len(s['nodes'])} behind"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold" if s["behind"] else "dim"))
+    out.append("  " + _ui.c("eventual consistency's honesty debt, measured — a node absorbs on ITS next "
+                            "dream; nothing is auto-pulled from here", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    for d in s["nodes"]:
+        age = ("never dreamed" if d["age_days"] is None else f"dreamed {d['age_days']:g}d ago")
+        gapscol = (_ui.c(f"↓{d['missing_globals']} missing", "yellow") if d["missing_globals"]
+                   else _ui.c("· 0 missing", "dim"))
+        stalecol = (_ui.c(f" · ⟳{d['stale_mirrors']} content-stale", "yellow") if d["stale_mirrors"] else "")
+        cover = f"windows {d['usage_windows']}" + (" · harvested" if d["harvested"] else "")
+        mark = "  " + _ui.c("◀ trigger", "cyan") if d["trigger"] else ""
+        out.append(f"    {_ui.lbl(d['node'][:24], 24)} {age:<18} {gapscol}{stalecol}  "
+                   + _ui.c(f"{d['mirrors']} mirror(s)/{d['facts']} fact(s) · {cover} · {d['scope_basis']}", "dim") + mark)
+    out.append("")
+    out.append(_ui.kv("RESULT", f"{s['behind']} node(s) behind · {s['never_dreamed']} never dreamed — "
+               "the lag lever is a dream ON that node (its Phase 1 pulls + harvests); Stage B's "
+               "session beacon will surface this at session start"))
+    print(_ui.ascii_translate("\n".join(out)))
+    return 0
+
+
+# ── v0.1.79: fleet usage HARVEST — capture non-dreaming nodes' windows before transcripts rot ────
+_LEDGER_TAIL_CAP = 2000   # ledger rows read from the tail (~1 row/node/harvest — years of headroom)
+
+
+def _ledger_path() -> Path:
+    return GLOBAL / ".fleet-usage.jsonl"
+
+
+def _ledger_rows() -> list:
+    """Guarded tail read of the shared harvest ledger (docs/fleet-usage-harvest.spec.md) —
+    malformed lines skipped, never fatal. A dot-file in GLOBAL: structurally invisible to
+    global_facts()'s *.md glob, to --pull, and to every index — zero always-loaded tax."""
+    import json
+    text = _safe_read_text(_ledger_path())
+    if text is None:
+        return []
+    rows: list = []
+    for ln in text.splitlines()[-_LEDGER_TAIL_CAP:]:
+        try:
+            o = json.loads(ln)
+        except (json.JSONDecodeError, ValueError):
+            continue
+        if isinstance(o, dict):
+            rows.append(o)
+    return rows
+
+
+def _append_ledger(row: dict) -> None:
+    """One-line O_APPEND|O_CREAT 0o600 append. Concurrency stance = the documented D-2
+    accepted-gap philosophy (dream-boundary cadence). PR-#92 review precision: O_APPEND
+    atomicity is only POSIX-guaranteed under PIPE_BUF (~4KB) and a fat 40-fact row can reach
+    that, so a rare concurrent-dream append could tear a line — accepted, because the reader
+    (_ledger_rows) skips unparseable lines and the next harvest re-covers the window
+    (self-healing, same class as D-2). Script-truth telemetry in the render_dashboard
+    --persist class, never a memory-content write."""
+    import json
+    GLOBAL.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(_ledger_path()), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    try:
+        os.write(fd, (json.dumps(row) + "\n").encode("utf-8"))
+    finally:
+        os.close(fd)
+
+
+def _harvest_node(store: Path, watermark: str, by: str) -> "dict | None":
+    """Scan ONE node's transcript dir for organic fact reads since `watermark` → a usage-shaped
+    ledger row, or None when no transcript is newer (idempotent re-runs). Reuses the EXACT
+    --recalls machinery (extract_signals) — only Read file-paths and arc-marker presence leave
+    the scan, never message content, so no new privacy surface. Reads-only: no miss/tier
+    classification (that needs the node's own Phase-0 window-start snapshot — a dreaming-node
+    signal; spec §v1 reach limits). The window START is the oldest scanned transcript's mtime —
+    a transcript's mtime is its END, so the claimed span only UNDER-states coverage (the pinned
+    bias); the END is now."""
+    from extract_signals import _USAGE_FACT_CAP, _recall_items, _window_transcripts, split_dream_span
+    proj_root = store.parent
+    store_prefix = str(store) + "/"
+    archive_stems = frozenset(
+        f.stem for f in store.glob("*.md")
+        if f.name != "MEMORY.md" and (t := _safe_read_text(f)) is not None and _is_archive_index_text(t))
+    transcripts = _window_transcripts(proj_root, watermark)
+    if not transcripts:
+        return None
+    reads: dict = {}
+    excluded = 0
+    for tr in transcripts:
+        organic, dn = split_dream_span(_recall_items(tr, store_prefix, watermark, archive_stems))
+        excluded += dn
+        for r in organic:
+            rec = reads.setdefault(r["stem"], {"reads": 0, "last": ""})
+            rec["reads"] += 1
+            rec["last"] = max(rec["last"], r["ts"] or "")
+    if watermark and not reads and not excluded:
+        # a SUBSEQUENT harvest that found nothing new (e.g. a transcript touched in the same second
+        # as the last watermark — the per-line `since` filter is the correctness backstop behind the
+        # mtime prune). Emitting an empty row here would mint a fresh probative zero-read window on
+        # EVERY invocation — evidence must accrue from TIME passing, never from re-running the tool.
+        # (The FIRST harvest's zero-read row is meaningful: a full-history zero-read window.)
+        return None
+    now_ep = datetime.now(timezone.utc).timestamp()
+    now = _ceil_iso(now_ep)   # ceiled like every stamp — and the same format as the window START,
+    try:                      # so start ≤ end always holds (a fresh transcript's ceiled mtime could
+        start = watermark or _ceil_iso(min(min(t.stat().st_mtime for t in transcripts), now_ep))
+    except OSError:           # otherwise land one second PAST a truncated `now`, inverting the window)
+        start = now   # a transcript vanished mid-scan: claim a zero-width span (undercount-safe)
+    per_fact = [{"name": k, "reads": v["reads"], "last": v["last"]}
+                for k, v in sorted(reads.items(), key=lambda kv: (-kv[1]["reads"], kv[0]))][:_USAGE_FACT_CAP]
+    return {"node": proj_root.name, "window": f"{start}..{now}", "transcripts": len(transcripts),
+            "dream_excluded": excluded, "reads": sum(v["reads"] for v in reads.values()),
+            "facts_read": len(reads), "per_fact": per_fact, "harvested_at": now, "by": by}
+
+
+def harvest(project_dir: Path) -> int:
+    """--harvest: for EVERY node (mirror-holding stores ∪ the trigger), capture organic fact-read
+    windows from its transcripts into the shared ledger — closing the dream-gated capture hole
+    (measured live: 1/3 nodes reporting; the others' evidence rotting unobserved, and a sandboxed
+    red probe showed a real organic read invisible to fleet_utility). Watermarked per node,
+    idempotent; every appended row is printed (legibility norm). docs/fleet-usage-harvest.spec.md."""
+    project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
+    stores = _network_nodes()
+    trig = project_store(project_dir)
+    if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
+        stores.append(trig)
+    marks: dict = {}   # node slug -> (epoch, iso) of the max window END already harvested
+    for r in _ledger_rows():
+        node = str(r.get("node", ""))
+        end = str(r.get("window", "")).split("..")[-1]
+        dt = _parse_ts(end)
+        if node and dt is not None and (node not in marks or dt.timestamp() > marks[node][0]):
+            marks[node] = (dt.timestamp(), end)
+    out: list = []
+    title = "✦ FLEET HARVEST · usage windows from every node"
+    tag = f"{len(stores)} node(s)"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    out.append("  " + _ui.c("reads-only capture via the --recalls machinery (dream-span excluded; no message "
+                            "content leaves the scan)", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    harvested = 0
+    for store in stores:
+        label = _node_label(store)
+        row = _harvest_node(store, marks.get(store.parent.name, (0.0, ""))[1], by=_sane(project_dir.name))
+        if row is None:
+            out.append("    " + _ui.c("·", "dim") + f" {label:<28} "
+                       + _ui.c("up to date (no transcripts past the watermark)", "dim"))
+            continue
+        _append_ledger(row)
+        harvested += 1
+        out.append("    " + _ui.c("✓", "green") + f" {label:<28} "
+                   + _ui.c(f"window {row['window']} · transcripts {row['transcripts']} · organic reads "
+                           f"{row['reads']} on {row['facts_read']} fact(s) · dream-excluded {row['dream_excluded']}", "dim"))
+    out.append("")
+    out.append(_ui.kv("RESULT", f"harvested {harvested} node window(s) → {_ledger_path().name} "
+               "(append-only, 0o600) · --utility surfaces them for nodes with no own-log usage"))
+    print(_ui.ascii_translate("\n".join(out)))
+    return 0
+
+
 # ── v0.1.67 (Phase C): fleet utility — the gc lever's missing evidence ───────────────────────────
 def fleet_utility(project_dir: Path) -> dict:
     """READ-ONLY: per-canonical usage evidence aggregated across every node's cycle log (usage_history —
@@ -1383,10 +1937,12 @@ def fleet_utility(project_dir: Path) -> dict:
     reads for stem X count toward canonical X only if the node's `X.md` is a managed mirror — a
     same-stem, never-pulled LOCAL fact (the `present(local)` shadow case run() already recognizes) is
     tallied as `shadow_reads`, never attributed (a spec-gate finding: stem equality alone lies).
-    Per-canonical `windows` counts only the probative windows each holding MIRROR existed through
-    (window start ≥ mirror mtime — the demotion rank's fact-age rule, applied fleet-side; an inline
-    adversarial review found the unconditional windows_full credit overstated zero-read evidence on
-    freshly-pulled mirrors). `fleet_tax = pointer_tok × len(holders)` — ZERO for an unheld canonical (nobody pays it; its
+    Per-canonical `windows` counts only the probative windows each holding MIRROR's content-lineage
+    existed through (window start ≥ the mirror's `global_ref_since` stamp — v0.1.78, surviving
+    refreshes; st_mtime fallback on unstamped mirrors — the demotion rank's fact-age rule, applied
+    fleet-side; an inline adversarial review found the unconditional windows_full credit overstated
+    zero-read evidence on freshly-pulled mirrors, and the 2026-07-10 audit found the mtime clock
+    starved it the other way: any description tweak wiped the fleet's accrued windows). `fleet_tax = pointer_tok × len(holders)` — ZERO for an unheld canonical (nobody pays it; its
     would-be per-node cost is listed separately), on the stated provenance UPPER-BOUND basis. This is
     EVIDENCE for the model's gc/demote judgment (Phase-5 step 2, Phase-4 governance) — never an auto-gc
     input: scope/keep decisions stay CONTENT-gated (holders/adoption ≠ fit). JSON-safe (lists, never
@@ -1397,16 +1953,38 @@ def fleet_utility(project_dir: Path) -> dict:
     trig = project_store(project_dir)
     if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
         stores.append(trig)
-    nodes_reporting = 0
-    per: dict = {n: {"reads": 0, "windows": 0, "last": "", "_ep": None, "shadow": 0} for n in canon}
+    nodes_reporting = nodes_harvested = 0
+    ledger_by_node: dict = {}
+    for _lr in _ledger_rows():
+        if isinstance(_lr.get("per_fact"), list):
+            ledger_by_node.setdefault(str(_lr.get("node", "")), []).append(_lr)
+    per: dict = {n: {"reads": 0, "windows": 0, "last": "", "_ep": None, "shadow": 0, "fallback": 0,
+                     "h_reads": 0, "h_windows": 0} for n in canon}
     for store in stores:
         hist = usage_history(store)
         if hist["windows_full"] >= 1:
             nodes_reporting += 1
+        # v0.1.79 (docs/fleet-usage-harvest.spec.md, the v1 rule): harvested ledger rows contribute
+        # ONLY for a node with NO own-log usage at all — own-log strictly primary, no interval-overlap
+        # math, no double-count risk (mixed-node merging is the consumption release's refinement).
+        hrows: list = []
+        if hist["windows_full"] == 0 and not hist["per_fact"]:
+            hrows = ledger_by_node.get(store.parent.name, [])
+        if hrows:
+            nodes_harvested += 1
         for stem in canon:
             row = hist["per_fact"].get(stem)
             reads = row.get("reads", 0) if isinstance(row, dict) else 0
             reads = reads if isinstance(reads, int) and not isinstance(reads, bool) and reads > 0 else 0
+            h_reads = 0
+            h_last = ""
+            for hr in hrows:
+                for pf in hr.get("per_fact", []):
+                    if isinstance(pf, dict) and pf.get("name") == stem:
+                        _hr = pf.get("reads", 0)
+                        if isinstance(_hr, int) and not isinstance(_hr, bool) and _hr > 0:
+                            h_reads += _hr
+                            h_last = max(h_last, str(pf.get("last", "") or ""))
             p = store / f"{stem}.md"
             if not p.exists():
                 continue
@@ -1416,21 +1994,46 @@ def fleet_utility(project_dir: Path) -> dict:
             except OSError:
                 continue
             if not _is_mirror(text):
-                if reads:
-                    per[stem]["shadow"] += reads       # same-stem local — reported, never attributed
+                if reads or h_reads:
+                    per[stem]["shadow"] += reads + h_reads   # same-stem local — reported, never attributed
                 continue
-            # Count only the probative windows the MIRROR existed through (window start ≥ mirror mtime) —
-            # crediting a node's whole window history to a freshly-pulled mirror would overstate its
-            # zero-read evidence ("0 reads/10w" on a one-day-old mirror), the same per-fact fact-age rule
-            # demotion_candidates applies locally (found by the inline adversarial review, 2026-07-05).
-            # A refresh resets mtime → undercounts, the safe direction under the pinned bias.
+            # Count only the probative windows the MIRROR's content-lineage existed through — the fact-age
+            # rule (2026-07-05 review: crediting whole window history to a fresh mirror overstates
+            # zero-read evidence). v0.1.78 (docs/evidence-clock-stamps.spec.md): the clock is the mirror's
+            # `global_ref_since` stamp when present+parseable — it SURVIVES refreshes, so a description
+            # tweak no longer wipes the fleet's accrued windows (the audit's F9 starvation: mtime-gated
+            # windows measured 1→0 on a description-only edit; at real cadence the demotion evidence gate
+            # could never converge for an occasionally-edited canonical). st_mtime is the legacy fallback
+            # (unstamped mirror → pre-upgrade behavior; a garbled stamp fails toward less evidence).
+            _since = str(_frontmatter(text).get("global_ref_since", "") or "")
+            _sdt = _parse_ts(_since) if _since else None
+            if _sdt is not None:
+                clock = _sdt.timestamp()
+            else:
+                clock = mt
+                per[stem]["fallback"] += 1
             per[stem]["windows"] += sum(1 for s in hist["window_starts"]
-                                        if isinstance(s, (int, float)) and s >= mt)
+                                        if isinstance(s, (int, float)) and s >= clock)
             per[stem]["reads"] += reads
             ts = str((row or {}).get("last", "") or "") if isinstance(row, dict) else ""
             dt = _parse_ts(ts)
             if dt is not None and (per[stem]["_ep"] is None or dt.timestamp() > per[stem]["_ep"]):
                 per[stem]["_ep"], per[stem]["last"] = dt.timestamp(), ts
+            # v0.1.79: harvested evidence for this (no-own-usage) node — source-labeled, same
+            # mirror-gated attribution; window credit still gates on the mirror's evidence clock,
+            # and a cap-truncated row (facts_read != len(per_fact)) is non-probative, same as own-log.
+            if h_reads:
+                per[stem]["h_reads"] += h_reads
+                _hdt = _parse_ts(h_last)
+                if _hdt is not None and (per[stem]["_ep"] is None or _hdt.timestamp() > per[stem]["_ep"]):
+                    per[stem]["_ep"], per[stem]["last"] = _hdt.timestamp(), h_last
+            for hr in hrows:
+                _ws = _parse_ts(str(hr.get("window", "")).split("..")[0])
+                _tx = hr.get("transcripts", 0)
+                if (_ws is not None and isinstance(_tx, int) and not isinstance(_tx, bool) and _tx >= 1
+                        and hr.get("facts_read", -1) == len(hr.get("per_fact", []))
+                        and _ws.timestamp() >= clock):
+                    per[stem]["h_windows"] += 1
     entries: list = []
     total_tax = 0
     unheld: list = []
@@ -1444,11 +2047,17 @@ def fleet_utility(project_dir: Path) -> dict:
              "holders": len(holders), "pointer_tok": pt, "fleet_tax": tax}
         if per[stem]["shadow"]:
             e["shadow_reads"] = per[stem]["shadow"]
+        if per[stem]["fallback"]:   # v0.1.78: evidence-provenance — holders still on the mtime clock
+            e["fallback_nodes"] = per[stem]["fallback"]
+        if per[stem]["h_reads"] or per[stem]["h_windows"]:   # v0.1.79: harvested, source-labeled
+            e["harvested_reads"] = per[stem]["h_reads"]
+            e["windows_harvested"] = per[stem]["h_windows"]
         if not holders:
             unheld.append(stem)
         entries.append(e)
     entries.sort(key=lambda e: (-e["fleet_tax"], e["name"]))
-    return {"nodes": len(stores), "nodes_reporting": nodes_reporting, "canonicals": entries,
+    return {"nodes": len(stores), "nodes_reporting": nodes_reporting, "nodes_harvested": nodes_harvested,
+            "canonicals": entries,
             "total_fleet_tax": total_tax, "advisory": GLOBAL_FLEET_TAX_ADVISORY, "unheld": unheld}
 
 
@@ -1466,7 +2075,9 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
     out.append(_ui.rule())
     out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
     out.append("  " + _ui.c("usage exists only where post-v0.1.63 dreams ran --recalls; holders = "
-                            "provenance UPPER bound (dead edges reported by --gc, never auto-pruned)", "dim"))
+                            "provenance UPPER bound (dead edges reported by --gc, never auto-pruned)"
+                            + (f" · harvested ledger covers {u['nodes_harvested']} no-own-usage node(s)"
+                               if u.get("nodes_harvested") else ""), "dim"))
     out.append(_ui.rule())
     out.append("")
     over = _ui.c("  ⚠ over advisory (warn-only — evidence for gc/demote judgment, never a gate)", "red") \
@@ -1477,7 +2088,8 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
     out.append("")
     out.append(_ui.kv("CANON", _ui.c("fleet_tax desc · reads are MIRROR-attributed organic recalls "
                                      "across reporting nodes · windows = Σ probative windows each holding "
-                                     "MIRROR existed through (mtime-gated; a refresh resets the clock)", "dim")))
+                                     "MIRROR's content-lineage existed through (global_ref_since-gated — "
+                                     "survives refreshes; mtime fallback on unstamped mirrors)", "dim")))
     for e in u["canonicals"]:
         if e["windows"] and not e["reads"]:
             ev = _ui.c(f"0 reads/{e['windows']}w — unread where instrumented", "yellow")
@@ -1486,8 +2098,10 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
         else:
             ev = _ui.c("uninstrumented (0 probative windows on holders)", "dim")
         shadow = _ui.c(f" · shadow {e['shadow_reads']}", "yellow") if e.get("shadow_reads") else ""
+        harv = (_ui.c(f" · +{e.get('harvested_reads', 0)}r/{e.get('windows_harvested', 0)}w harvested", "cyan")
+                if (e.get("harvested_reads") or e.get("windows_harvested")) else "")
         out.append(f"    {_ui.lbl(e['name'][:40], 40)} {e['fleet_tax']:>5}t "
-                   + _ui.c(f"({e['pointer_tok']}t × {e['holders']})", "dim") + f"  {ev}{shadow}")
+                   + _ui.c(f"({e['pointer_tok']}t × {e['holders']})", "dim") + f"  {ev}{shadow}{harv}")
     if u["unheld"]:
         out.append("    " + _ui.c(f"unheld (0 fleet tax — nobody pays them yet): {', '.join(u['unheld'])}", "dim"))
     out.append("")
@@ -1497,11 +2111,12 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
     return 0
 
 
-# The dream-flow modes that carry a cross-project BEAT: --list/--pull (Phase 1) and --gc/--tokens/
-# --utility (Phase 5; --utility is the gc lever's evidence view, v0.1.67). --promote runs in Phase 4's
-# APPLY — the one phase whose contract deliberately excludes dream beats (only the plain proposal + the
-# single SURFACING line) — and --network is a maintainer utility outside dream flow, so neither cues.
-_CUED_MODES = ("--list", "--pull", "--gc", "--tokens", "--utility")
+# The dream-flow modes that carry a cross-project BEAT: --list/--pull/--harvest (Phase 1) and --gc/
+# --tokens/--utility (Phase 5; --utility is the gc lever's evidence view, v0.1.67). --promote runs in
+# Phase 4's APPLY — the one phase whose contract deliberately excludes dream beats (only the plain
+# proposal + the single SURFACING line) — and --network/--staleness are maintainer/observability
+# utilities outside dream flow, so none of those cue.
+_CUED_MODES = ("--list", "--pull", "--gc", "--tokens", "--utility", "--harvest")
 
 
 def main() -> int:
@@ -1523,10 +2138,24 @@ def _dispatch() -> int:
     project_dir = Path(pos[0]) if pos else Path.cwd()
     if args and args[0] == "--network":
         return network()
+    # v0.1.75 (audit F5): a TYPO'D PROJECT_DIR must never mint a phantom store. resolve() is non-strict,
+    # os.walk on a missing dir is silently empty, and --pull's store.mkdir would then create a store under
+    # the bogus slug AND write the bogus basename into every shared canonical's `projects:` provenance —
+    # pollution --gc can never reclaim (the phantom's mirrors "exist", so its edges are never dead).
+    # Refuse EVERY project-dir mode up front (--network above takes none).
+    if not project_dir.is_dir():
+        print(f"error: PROJECT_DIR {project_dir} does not exist / is not a directory — refusing "
+              "(a typo'd path would mint a phantom store under its slug and write bogus provenance "
+              "into every shared canonical)", file=sys.stderr)
+        return 2
     if args and args[0] == "--tokens":
         return token_report(project_dir, "--json" in args)
     if args and args[0] == "--utility":   # v0.1.67 (Phase C): fleet usage evidence (READ-ONLY, like --list)
         return utility_report(project_dir, "--json" in args)
+    if args and args[0] == "--harvest":   # v0.1.79: capture every node's usage windows into the shared ledger
+        return harvest(project_dir)
+    if args and args[0] == "--staleness":   # v0.1.80: READ-ONLY absorption-lag sweep (beacon Stage A)
+        return staleness_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
         return gc(project_dir, "--apply" in args)
     if args and args[0] == "--promote":
@@ -1537,8 +2166,9 @@ def _dispatch() -> int:
         return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1], prefer_canonical="--prefer-canonical" in args)
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
-              "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] | --tokens [--json] PROJECT_DIR "
-              "| --utility [--json] PROJECT_DIR | --network", file=sys.stderr)
+              "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
+              "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --staleness [--json] PROJECT_DIR "
+              "| --network", file=sys.stderr)
         return 2
     evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)
     if evict is not None:                          # Gate-2: a destructive flag must not silently no-op

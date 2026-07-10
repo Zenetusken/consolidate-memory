@@ -952,7 +952,11 @@ def _frontmatter(text: str) -> dict:
                 continue
             out[k.strip()] = v
         else:
-            m2 = re.match(r"\s+(scope|stacks|type|projects|node_type|originSessionId):\s*(.+)", line)
+            # v0.1.78: + the evidence-clock stamps (global_ref_since/global_ref_body — script-owned
+            # mirror metadata; sync_global's carry logic and fleet_utility's window clock read them back
+            # through THIS one parser, docs/evidence-clock-stamps.spec.md).
+            m2 = re.match(r"\s+(scope|stacks|type|projects|node_type|originSessionId"
+                          r"|global_ref_since|global_ref_body):\s*(.+)", line)
             if m2:
                 out[m2.group(1)] = m2.group(2).strip()
         i += 1

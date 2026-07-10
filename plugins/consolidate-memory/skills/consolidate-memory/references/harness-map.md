@@ -335,10 +335,28 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   Lockfiles are excluded (transitive deps over-detect). So a stdlib plugin whose README merely
   says "rag"/"scraper" no longer false-matches `rag`/`playwright`; a `stack-general:[rag]` fact
   binds only projects that really depend on / import a RAG library.
+- `--staleness PROJECT_DIR [--json]` — (v0.1.80, `docs/fleet-staleness-report.spec.md`) READ-ONLY
+  absorption-lag sweep over ALL project stores (wider than mirror-holders — a zero-mirror store is
+  the most starved): per node, last-dream marker age, MISSING relevant globals, content-stale
+  mirrors (body-lineage hash), usage/harvest coverage. Scope basis honest per node (full relevance
+  only for the trigger — slugs aren't invertible; others assessed user-global-only, labeled).
+  Maintainer/observability lens (`cm staleness`), uncued; the observe-only Stage A of the
+  session-beacon track — never auto-pulls (a node absorbs on ITS next dream).
+- `--harvest PROJECT_DIR` — (v0.1.79, `docs/fleet-usage-harvest.spec.md`) capture EVERY node's
+  organic fact-read windows from its transcripts into the shared append-only ledger
+  (`~/.claude/memory/.fleet-usage.jsonl`, 0o600) before rotation destroys them. Usage capture was
+  dream-gated per node (measured: 1/3 nodes reporting, the rest unobserved). Watermarked per node,
+  idempotent; reuses the `--recalls` scan machinery (dream-span excluded; only Read file-paths and
+  arc-marker presence leave the scan). `--utility` surfaces harvested evidence — source-labeled,
+  only for nodes with no own-log usage (own-log strictly primary in v1).
 - `--gc PROJECT_DIR [--apply]` — reclaim **orphaned mirrors**: `global_ref:` files
   whose canonical was deleted from the global store. `--pull` can never remove these
-  (it only iterates live globals), so they accrue forever without GC. Report-only by
-  default; `--apply` deletes the file + its index pointer. **Only** touches
+  (it only iterates live globals), so they accrue forever without GC. v0.1.75 also
+  reports/reclaims **frozen mirrors** — a mirror whose canonical is ALIVE but no longer
+  relevant here (a dropped stack): `--pull` can't refresh it (irrelevant short-circuits)
+  and the orphan scan can't see it (the canonical exists); reclaim is safe by construction
+  (a replica of a live canonical — the next `--pull` re-pulls it if the stack returns).
+  Report-only by default; `--apply` deletes the file + its index pointer. **Only** touches
   `global_ref:` mirrors — never a project-authored fact, even on a name collision.
   Dead-edge provenance (canonical lists a project that no longer holds the mirror) is
   reported, not auto-pruned (absence-of-mirror is too weak a signal to write global
@@ -346,11 +364,14 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
 - `--promote PROJECT_DIR LOCAL_FACT [CANON_NAME]` — hand a project-authored LOCAL fact
   UP to the canonical global store, then convert the origin's own copy into a managed
   mirror — the local→canonical direction symmetric to `--pull`, driven by the Phase-1
-  promotion re-audit. **Atomic**: one op writes the canonical, records provenance,
-  rewrites the origin copy as a `global_ref:` mirror, and (on a rename) removes the
-  old-named local file + its index pointer — so a promotion can never leave the dup or
-  orphan a hand-done hand-off would (a left-behind project-authored copy is a non-mirror
-  `--gc` never reclaims, and on the next `--pull` it shadows or duplicates the canonical).
+  promotion re-audit. **Single-shot** (deliberately NOT "atomic" — promote()'s own docstring
+  says it is *not crash-atomic*; an interrupted process can leave partial state, though the
+  canonical CREATE itself is exclusive per Track D-2b): one completed op writes the canonical,
+  records provenance, rewrites the origin copy as a `global_ref:` mirror, and (on a rename)
+  removes the old-named local file + its index pointer — so a COMPLETED promotion never leaves
+  the dup or orphan a hand-done hand-off would (a left-behind project-authored copy is a
+  non-mirror `--gc` never reclaims, and on the next `--pull` it shadows or duplicates the
+  canonical).
   `CANON_NAME` defaults to `LOCAL_FACT`; pass it to RENAME (`_`→`-` / drop a date) or to
   DEDUP onto an existing canonical (whose CONTENT is **never overwritten** — only the
   origin side is reconciled, plus the origin is appended to the canonical's `projects:`
@@ -420,7 +441,11 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   STRIKES just-read stems from the seeded `demotion.surfaced` (current-window blindness, closed
   deterministically). Fleet evidence: `sync_global --utility` (mirror-attributed per-canonical reads
   + `fleet_tax` = pointer × holders vs the warn-only `GLOBAL_FLEET_TAX_ADVISORY`) — the gc lever's
-  evidence table; decisions stay content-gated. Design + the evidence-gate rationale:
+  evidence table; decisions stay content-gated. Fleet windows are gated on each mirror's
+  **`global_ref_since` evidence-clock stamp** (v0.1.78, `docs/evidence-clock-stamps.spec.md`):
+  carried across refreshes when the canonical's BODY is unchanged (a description tweak no longer
+  wipes accrued zero-read windows — the starvation an audit measured), reset on a real body change
+  (old zero-reads don't indict new content), mtime-fallback on unstamped mirrors. Design + the evidence-gate rationale:
   `docs/index-usage-and-budget-ladder.spec.md` §Phase C.
 - **Re-verification signal:** `memory_status.py` lists facts untouched since the marker
   (mtime ≤ marker timestamp) as re-verification candidates — a cheap staleness proxy
@@ -438,7 +463,8 @@ Each replicated fact adds an **always-loaded** index pointer to *every* project 
 reaches. So global-scope facts are a per-session tax paid across the whole fleet:
 - `user-global` → every project (G facts × P projects pointers fleet-wide).
 - `stack-general` on a **common** stack → nearly as wide while *looking* scoped. The
-  `claude-code` stack (`.claude`, `skill`, `agents.md`) matches almost every CC repo,
+  `claude-code` stack (a real `.claude/` dir or a `SKILL.md` file — the only two markers
+  `detect_stacks` actually checks) matches almost every CC repo,
   so a `claude-code` stack-general fact behaves like a second user-global tier. Reserve
   `stack-general` for **narrow** stacks (`gpu`, `rag`, `playwright`).
 

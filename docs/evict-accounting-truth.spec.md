@@ -61,9 +61,13 @@ The `--evict` gate then becomes an **A/B replay of the actual plan**, not a stat
   demote/delete the canonical, then `--gc`*; closes F1). The candidates table offers
   **authored facts only**, with measured real-line costs.
 - Gain gate (Guard-3, now enforced by construction): `plan_with = _plan_pull(items,
-  seed − freed, …)`; refuse unless `plan_with["pull"]` strictly exceeds `plan["pull"]` —
-  i.e. the destruction demonstrably lands ≥1 additional held global (closes F3). The refusal
-  prints both plans (measured A/B, no vibes).
+  seed − freed, …)`; refuse unless `len(plan_with["pull"]) > len(plan["pull"])` — the
+  destruction must land strictly MORE globals than no-evict would (closes F3). **COUNT-based
+  by requirement** (the pre-merge train review, HIGH, verified E2E): a set-difference test
+  accepted a *lateral swap* — freeing room let an earlier, larger-pointer global displace a
+  later, smaller one, `gain` non-empty at unchanged count, the authored fact destroyed for
+  zero net gain. A composition shift on a genuine net increase proceeds but is reported
+  (`⚠ evict replan displaced …`). The refusal prints both plans (measured A/B, no vibes).
 - On an accepted evict, the executed plan IS `plan_with` — the gain check and the writes can
   never diverge (statuses are frozen at classify time; a same-stem global freed by evicting a
   local *shadow* re-enters on the NEXT pull, deliberately — the plan the gate approved is the

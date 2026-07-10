@@ -5,6 +5,225 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.80] — 2026-07-10
+
+### Added — fleet staleness report: absorption lag, measured per node (beacon Stage A)
+The third enhancement increment (`docs/fleet-staleness-report.spec.md`). The propagation model is
+eventually-consistent by design, with a structural blind spot the audit's intent map flagged:
+absorption latency is unbounded and NOTHING measured it — a lagging node by definition never runs
+the only flows that report lag. First live run proved the premise immediately: a real node 18
+days behind with 11 missing globals and 4 content-stale mirrors, previously invisible.
+
+- **`sync_global.py --staleness [--json]`** (+ `cm staleness`): READ-ONLY sweep over ALL project
+  stores (deliberately wider than mirror-holders — a zero-mirror store is the most starved). Per
+  node: last-dream marker age (`(never dreamed)` null-safe), mirror/fact counts, MISSING relevant
+  globals, content-stale mirrors (body-lineage hash, v0.1.78 — what lag harms is stale KNOWLEDGE;
+  hook drift is `--pull`'s refresh job), own-log usage windows + harvest-ledger coverage.
+- **Scope basis honest per node**: full relevance (live `detect_stacks`) only for the TRIGGER — a
+  slug is not invertible to a project path, so other nodes are assessed on user-global canonicals
+  only, each row labeled, never guessed. (Stage B's SKILL-written `stacks`/`project_path` state
+  cache will upgrade non-trigger rows — deferred with the SessionStart beacon itself, which this
+  observe-only report exists to prove or refute first.)
+- Advisory only, uncued (a maintainer/observability lens like `--network`): a node absorbs on ITS
+  next dream — nothing is ever auto-pulled from here.
+
+New read-only mode; no schema change ⇒ patch.
+
+Hardened by a two-lens review team before merge (staleness-core + seams/adversarial, both
+verdicts MERGE-READY; the convergent top finding fixed): the TRIGGER row is now unconditional
+(an absent/empty trigger store was silently omitted from its own report — the maximally-starved
+case); a present-but-unreadable fact is neither missing nor stale (was over-reported missing);
+`never_dreamed` keys on the same unparseable-age predicate the render and sort use (a malformed
+marker no longer contradicts the aggregate); `behind` includes content-stale-only nodes; future
+markers clamp to age 0; the relevance predicate delegates to `is_relevant` (no 4th hand copy);
+the harvest ledger's append-atomicity claim made precise (PIPE_BUF — torn lines self-heal via
+the guarded reader). Review pins added.
+
+## [0.1.79] — 2026-07-10
+
+### Added — fleet usage harvest: capture every node's windows before the transcripts rot (audit P1)
+The second enhancement increment (`docs/fleet-usage-harvest.spec.md`). Usage capture was
+dream-gated per node — `--recalls` runs only inside the triggering project's own dream — so a
+project that never dreams NEVER contributes evidence, and its transcripts rotate away in weeks,
+destroying the windows before they can be observed (live fleet: 1 of 3 mirror nodes reporting).
+Red baseline: a node holding a mirror, a real organic `Read` in its transcript, no cycle log —
+`fleet_utility` saw nothing.
+
+- **`sync_global.py --harvest PROJECT_DIR`** (+ `cm harvest`, + a SKILL Phase-1 step after
+  `--pull`): for every node (`_network_nodes()` ∪ trigger), scan its transcript dir with the
+  EXACT `--recalls` machinery (`_window_transcripts` + `_recall_items` + `split_dream_span` —
+  dream-span excluded; only Read file-paths and arc-marker presence leave the scan, no new
+  privacy surface) and append one usage-shaped row per (node, window) to the shared ledger
+  `~/.claude/memory/.fleet-usage.jsonl` — `O_APPEND|O_CREAT` at `0o600`, a dot-file invisible to
+  `global_facts()`/`--pull`/every index (zero always-loaded tax).
+- **Watermarked + idempotent**: re-runs append nothing; a subsequent harvest that finds no new
+  reads emits NO row (an empty row per invocation would mint probative zero-read windows from
+  re-running the tool — evidence must accrue from time passing). Window start = the oldest
+  scanned transcript's mtime (a transcript's mtime is its END, so the claimed span only
+  UNDER-states coverage); all stamps ceiled, start ≤ end always.
+- **Consumption (v1 rule, deliberately conservative)**: `fleet_utility` merges harvested rows
+  ONLY for nodes with no own-log usage at all — own-log strictly primary, no double-count.
+  Source-labeled additive `--json` keys: per-canonical `harvested_reads`/`windows_harvested`,
+  payload `nodes_harvested`; same mirror-gated attribution + shadow separation; window credit
+  still gates on the evidence clock (v0.1.78). Deferred to the consumption release: miss/tier
+  classification (needs the node's own Phase-0 snapshot), mixed-node interval merging, and the
+  `cross_project.harvested` cycle-record key (instrument-before-policy).
+
+No cycle-record schema change; the ledger is script-truth telemetry in the `--persist` class,
+report-then-apply intact (every appended row is printed). New read-mostly mode + additive
+`--json` keys ⇒ patch.
+
+## [0.1.78] — 2026-07-10
+
+### Added — evidence-clock stamps: zero-read windows that survive mirror refreshes (audit F9)
+The first increment of the audit's enhancement program (`docs/evidence-clock-stamps.spec.md`).
+Fleet zero-read evidence was mtime-gated, and a STALE refresh rewrites every holder's mirror —
+so ANY canonical text delta, including a pure `description:` hook tweak, wiped the fleet's
+accrued probative windows (measured red: 1 → 0 on a description-only edit). With
+`_DEMOTION_MIN_WINDOWS = 3` and dreams at arc boundaries, an occasionally-edited canonical's
+evidence could never converge. The clock granularity was wrong, not the instinct: "content
+changed" (reset is right) is not "file mechanically rewritten" (evidence must persist).
+
+- `_as_mirror` gains two script-owned stamps under the `metadata:` anchor —
+  `global_ref_since:` (when this mirror's content-lineage began) and `global_ref_body:`
+  (sha1-12 of the canonical BODY, the lineage key; body-only by design, so description/stacks/
+  provenance tweaks don't reset it). `run()` computes the carry at classify time (`cur == want`
+  keeps its exact in-sync shape — pinned: an immediate re-pull is in-sync, zero churn);
+  `promote()` mints a fresh stamp (Probe K's byte-identical follow-up pull still holds).
+- **Migration wave**: a pre-stamp mirror's first refresh seeds `since` from its OLD mtime — the
+  fleet's existing evidence age is preserved, never restarted from zero — and RESULT reports
+  `restamped N` (one-time upgrade, not churn). Pinned: the accrued window survives the upgrade.
+- **Consumer**: `fleet_utility` counts windows against the stamp when present+parseable, else
+  st_mtime (legacy fallback, undercount-safe; garbled stamps fail toward less evidence);
+  per-canonical `fallback_nodes` (additive `--json` key) keeps evidence provenance visible.
+  A DESCRIPTION edit now preserves windows; a BODY edit resets them — both pinned.
+- `_frontmatter`'s metadata-child whitelist gains the two stamp keys (the ONE shared parser —
+  producer carry and consumer clock read through it, no second parse path).
+
+No cycle-record schema change; no policy change (every demotion veto and report-then-apply
+posture untouched — this only makes negative evidence accrue truthfully). Additive frontmatter
+keys + one additive `--json` key ⇒ patch.
+
+Hardened by a three-lens review team (carry-correctness / seams / adversarial — all three
+verdicts MERGE-READY) before merge: the stamp strip re-narrowed to the exact three keys (the
+wide `global_ref` prefix ate folded-scalar `global_reference…` continuations — the v0.1.70
+class); `restamped` now counts only true mtime-seeded migrations (not body-changed legacies,
+not fallback-form mirrors whose stamp can never land); stamp seconds are CEILED, never floored
+(a floored clock over-credited a same-second window against the pinned undercount bias);
+`docs/index-usage-and-budget-ladder.spec.md` §C4 gained the supersession back-pointer. Every
+review finding pinned in smoke.
+
+## [0.1.77] — 2026-07-10
+
+### Docs — drift sync to code truth (audit doc-code-contract findings)
+- harness-map no longer calls `--promote` "**Atomic**" — the code's own docstring says *not
+  crash-atomic* (an interrupted process can leave partial state; the canonical CREATE alone is
+  exclusive per Track D-2b). Reworded to **single-shot**, with the completed-call guarantee stated
+  precisely.
+- harness-map's claude-code stack markers corrected to what `detect_stacks` actually checks
+  (a real `.claude/` dir or a `SKILL.md` file — not "`.claude`, `skill`, `agents.md`").
+- CLAUDE.md's script inventory line now lists the full sync_global surface
+  (`--promote`/`--utility`/`--evict`/`--allow-net-grow`/`--apply` were missing).
+- The generic usage string includes `--prefer-canonical` in the `--promote` synopsis (the
+  promote-specific usage already did).
+- Test hygiene: the M4 vocabulary pin `not ({"release","ci-cd"} <= _DETECTABLE_STACKS)` was a
+  negated-subset that stayed green if EITHER element was missing — adding `release` alone (the
+  exact regression it pins) would not have failed it. Now `isdisjoint` (per-element).
+
+Docs + one usage string + one test assertion; no behavior change ⇒ patch.
+
+## [0.1.76] — 2026-07-10
+
+### Fixed — robustness batch (seven audit minors, each red-first: 7/7 pre-fix)
+- **Holder-token round-trip** — `_holders` now parses the same token space `_sanitize_token`
+  writes: a dot/dash-prefixed holder (`.claude`; the sanitized `-scope` from `@scope`) was silently
+  shortened on read, so gc's dead-edge compare could never match such a project and
+  `network()`/`--utility` displayed names provenance doesn't hold. gc's dead-edge compare now also
+  runs in the sanitized space on both sides.
+- **Clean refusal on no-hardlink filesystems** — `promote()`'s exclusive canonical create
+  (`os.link`, Track D-2b) crashed with a raw `PermissionError`/`OSError` traceback on FAT/exFAT/
+  some network mounts; it now refuses cleanly (rc=1, names the hardlink constraint, nothing
+  written, no temp leak).
+- **mypy stack: all four documented config locations** — `.mypy.ini` and `setup.cfg [mypy]` now
+  detect the stack (was pyproject `[tool.mypy]` + `mypy.ini` only — under-detection on a
+  mypy-heavy fleet).
+- **Poetry dotted subtables** — `[tool.poetry.dependencies.torch]` declares the dep in the header,
+  not a key; the key-scan never saw it. Now parsed (groups + legacy `dev-` forms included).
+- **`--tokens` archive split** — `_node_tokens` counted archive-index docs (link-lists like a
+  relocated `SHIPPED.md`) as recall facts, inflating `recall_tokens`/`facts` (measured live: a
+  7.6k-tok archive doc on a real node). Now excluded via the same `_is_archive_index_text` rule
+  memory_status's C1 split uses — single source, the two counters cannot drift.
+- **`--network` minds liveness** — minds derive from provenance basenames, which accrue DEAD
+  entries (two deleted test projects measured live); a mind with no plausible on-disk store now
+  renders `name?` with a footnote. Display-only (conservative zero-match heuristic; ambiguity
+  reads as live) — provenance stays reported-not-pruned.
+- **`originSessionId` warn split** — the C3 replication warning fired on ABSENT ids, which
+  harness-map's own schema rules define as legitimate for git/commit-derived facts (steady stderr
+  noise on every pull); absence is now silent, present-but-invalid still warns.
+
+No CLI/schema change; pins in the smoke v0.1.76 block (8 checks). Backward-compatible ⇒ patch.
+
+## [0.1.75] — 2026-07-10
+
+### Fixed — pull-side guards: the M4-bypass surface, the phantom-store guard, the frozen-mirror lifecycle (audit F5/F6/F7)
+Three confirmed audit findings, all on the pull/read side; 3/3 repro probes ran RED pre-fix.
+
+- **F7 — fleet-dead canonicals surfaced (the M4 bypass).** The `_DETECTABLE_STACKS` "refused, not
+  written" guard lives only in `--promote`; the SKILL's documented Phase-4 NET-NEW path hand-writes
+  canonicals directly, so a typo'd (`gpuu`) or undetectable (`release`) `stacks:` tag landed
+  unvalidated — fleet-dead (`is_relevant` can never match it), silently, forever. Every dream's
+  Phase-1 `--list`/`--pull` now warns `⚠ fleet-dead canonical` naming the bad tags and the three
+  fixes (retag detectable / re-scope user-global / demote) — report-only, never a block. SKILL
+  Phase-4 gains the validate-first instruction on the net-new path.
+- **F5 — a typo'd PROJECT_DIR can no longer mint a phantom store.** `resolve()` is non-strict and
+  `store.mkdir(parents=True)` obliges: `--pull /path/typo` returned rc=0, created a store under the
+  bogus slug, mirrored every user-global fact into it, and wrote the bogus basename into every
+  shared canonical's `projects:` provenance — pollution `--gc` can never reclaim (the phantom's
+  mirrors "exist", so its edges are never dead). `_dispatch` now refuses every project-dir mode up
+  front (rc=2), with defense-in-depth guards in `run()` and `gc()` for direct callers.
+- **F6 — frozen mirrors get a lifecycle.** A project that drops a stack left its stack-general
+  mirrors in a state nothing could see or fix: never refreshed (`irrelevant` short-circuits
+  staleness), never gc'd (the canonical is alive), index pointer still taxing every session, and
+  rendered byte-identical to a never-pulled irrelevant fact. Now: `run()` renders a distinct
+  `frozen(mirror)` row + a summary note; `--gc` gains a FROZEN section (report-only by default) and
+  `--gc --apply` reclaims them — **safe by construction** (a frozen mirror is a replica of a LIVE
+  canonical; the stack's return simply re-pulls it — pinned as a round-trip test). Also folds in
+  the gc guard-TOCTOU fix: ONE `global_facts()` snapshot now feeds the mass-delete safety guard,
+  the orphan scan, the frozen scan, and the dead-edge report (`_orphans` gains an optional `canon`
+  parameter), closing the window where a store emptying mid-gc made every mirror look orphaned.
+
+New pins: smoke v0.1.75 block (7 checks incl. the frozen lifecycle round-trip) + sim Probe W (CLI
+phantom guard, provenance-clean assertion). No schema change; `--gc --apply` now reclaims one
+additional, loss-proof category (called out here loudly); everything else is refuse-direction or
+report-only ⇒ patch.
+
+## [0.1.74] — 2026-07-10
+
+### Fixed — fence-boundary parity: `_as_mirror`/`_body` now agree with `_frontmatter` (audit finding #1)
+The audit's one verified silent-data-corruption bug. `_frontmatter`/`_is_mirror` close a
+frontmatter block on ANY line starting `---` (`^---\n(.*?)\n---`), but `_as_mirror` counted only
+bare stripped `---` lines — so a fact whose close fence is `----`/`--- notes` parsed as relevant
+and replicable, yet `_as_mirror` stayed "inside frontmatter" to EOF and its v0.1.70
+frontmatter-scoped strips ATE every body line starting `projects:`/`global_ref:` — silent mirror
+corruption via `--pull` (in every puller) and via `--promote` (the origin's OWN copy rewritten
+corrupted), reading in-sync forever after. The stripped-line count also diverged the OTHER way: an
+INDENTED `  ---` (e.g. a block-scalar continuation) is not a fence to the parser but closed
+`_as_mirror` early, leaking canonical-only `projects:` provenance into every mirror — the exact
+churn class the v0.1.26 root-fix closed, reopened. All five repro probes ran RED pre-fix
+(5/5 defects present, pure-function fixtures) and are pinned green in-repo (the smoke v0.1.74 block).
+
+- **`_as_mirror` fence parity**: OPEN = the exact first line `---` (what `^---\n` anchors);
+  CLOSE = any later line whose RAW start is `---`; an indented `  ---` is never a fence. The
+  `_is_mirror(_as_mirror(...))` round-trip and idempotence hold on the malformed-fence shapes
+  (pinned). A pre-existing corrupted mirror in the wild self-heals: the corrected `want` differs
+  → STALE → refreshed on the next pull.
+- **`_body` close parity**: the close-fence line is consumed WHOLE (`----`/`--- tail`) and may sit
+  at EOF with no trailing newline — pre-fix, a body-less fact's frontmatter was left unstripped,
+  so two body-less facts with differing frontmatter compared UNEQUAL and promote's Guard-5
+  spuriously refused a clean reconcile (M2 false negative in the refuse direction).
+
+No CLI/schema change; both deltas are correctness on malformed-but-parser-valid input ⇒ patch.
+
 ## [0.1.73] — 2026-07-10
 
 ### Fixed — evict accounting truth: plan once, measure freed, refuse gainless (audit F1–F4)
