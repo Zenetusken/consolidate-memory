@@ -334,12 +334,26 @@ class Distill(TypedDict, total=False):
     proposed: list[str]      # artifacts proposed BY NAME (confirmation usually arrives post-persist)
     created: list[str]       # authored BEFORE --persist only (the rare interactive case)
     verdict: str             # the one-sentence disposition (see above) — REQUIRED for a compliant distill
+    # v0.1.82 (W-A, docs/distill-template-persistence.spec.md): template-LEVEL evidence, persisted —
+    # it used to die with each scan (counts only), making fleet aggregation (W-B --workflows),
+    # longitudinal recurrence, and cross-node decline-dedup impossible. Script-injected via --into,
+    # NEVER hand-authored (the n_recurring=47 lesson); compact single-letter row keys — this block
+    # rides every dream's log line forever. Rows carry NO `sample` (raw command text stays display-only).
+    top: list                # [{"t": template, "n": count, "d": days}] — ≤ _DISTILL_PERSIST_CAP[0]
+    top_chains: list         # [{"t": [a, b], "n": count, "d": days}] — ≤ _DISTILL_PERSIST_CAP[1]
+    used: list               # [{"a": skill-name, "n": count}] Skill-invocation adoption tally — ≤ _DISTILL_USED_CAP
 
 
 # v0.1.58: the distill scanner's output caps, MIRRORED (importing distill_scan here would cycle —
 # distill_scan imports FROM this module). A smoke pin asserts equality with distill_scan.MAX_RECUR_OUT /
 # MAX_CHAIN_OUT, so the mirror cannot drift. Used by validate_cycle_record's impossible-count backstop.
 _DISTILL_CAPS = (40, 20)
+
+# v0.1.82 (W-A): the PERSISTED-row caps, mirrored from distill_scan._DISTILL_PERSIST_CAP/_USED_CAP
+# (same no-import rationale + the same cross-module smoke-pin discipline as _DISTILL_CAPS above).
+# Used by validate_cycle_record's impossible-length backstop on distill.top/top_chains/used.
+_DISTILL_PERSIST_CAP = (12, 8)
+_DISTILL_USED_CAP = 12
 
 # v0.1.63 (Phase A): mirrors extract_signals._USAGE_FACT_CAP (the --recalls per_fact emission cap;
 # smoke-pinned so the mirror cannot drift) — validate_cycle_record's impossible-count backstop for
@@ -2273,6 +2287,15 @@ def validate_cycle_record(record: object) -> list[str]:
                     warnings.append(f"distill.{ck} exceeds the scanner cap ({cap}) — impossible from a capped scan")
             except (TypeError, ValueError):
                 pass  # a non-numeric count is a shape problem the render coercion boundary absorbs
+        # v0.1.82 (W-A): same backstop shape for the persisted ROWS — a length above the producer cap
+        # is impossible from a capped --into injection (only a hand-fill can produce it).
+        for lk2, cap2 in (("top", _DISTILL_PERSIST_CAP[0]), ("top_chains", _DISTILL_PERSIST_CAP[1]),
+                          ("used", _DISTILL_USED_CAP)):
+            if lk2 in distill:
+                if not isinstance(distill[lk2], list):
+                    warnings.append(f"distill.{lk2} is not a list")
+                elif len(distill[lk2]) > cap2:
+                    warnings.append(f"distill.{lk2} exceeds the persist cap ({cap2}) — impossible from --into")
 
     # v0.1.63 (Phase A): usage.per_fact must be a list; a length above the producer cap is IMPOSSIBLE
     # from a capped --recalls scan (the distill hand-mirror lesson — same backstop shape). A non-dict

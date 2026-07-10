@@ -1770,10 +1770,12 @@ with _tf43.TemporaryDirectory() as _td51:
           not any(r["template"].startswith("cd") for r in _r51["recurring"]) and "ls -la" not in _tpls51)
     check("v0.1.55: MIN_RECUR — a genuine (non-stoplisted) one-off stays below the count≥2 bar",
           "oneoff-tool run" not in _tpls51)
-    check("v0.1.55/58: scan --json contract shape (+chains, +days; +secrets_omitted v0.1.58)",
-          set(_r51) == {"window", "scanned", "recurring", "chains"}
+    check("v0.1.55/58/82: scan --json contract shape (+chains, +days; +secrets_omitted v0.1.58; "
+          "+used v0.1.82 — the Skill-adoption tally)",
+          set(_r51) == {"window", "scanned", "recurring", "chains", "used"}
           and set(_r51["scanned"]) == {"sessions", "commands", "days", "secrets_omitted"}
-          and all(set(r) == {"template", "count", "days", "sample"} for r in _r51["recurring"]))
+          and all(set(r) == {"template", "count", "days", "sample"} for r in _r51["recurring"])
+          and isinstance(_r51["used"], list))
 with _tf43.TemporaryDirectory() as _td51b:   # "create nothing" — distinct NON-stoplisted one-offs, so the
     # empty result exercises the MIN_RECUR count<2 filter itself (v0.1.55: the old `echo …` probes were
     # intercepted by the stoplist before ever reaching the tally — a vacuous pass).
@@ -4354,6 +4356,66 @@ with _tf73.TemporaryDirectory() as _td81:
           "_plan_pull — it reports the missing fact as ceiling-held exactly where a real --pull "
           "would hold it (the hand-rolled loop said absorbable)",
           "would be ceiling-held" in _r.stdout and "1 shared global fact(s)" in _r.stdout)
+
+# --- v0.1.82: distill-template persistence (W-A — docs/distill-template-persistence.spec.md).
+# RED baseline is the contract itself: before this, --into persisted COUNTS only (the pre-change
+# scan-contract pin asserted the exact key set WITHOUT `used`; the record block had no rows), so
+# template evidence died with each scan and fleet aggregation (W-B) was impossible.
+check("v0.1.82: the persist-cap mirrors cannot drift (producer == memory_status, the _DISTILL_CAPS "
+      "cross-module pin pattern)",
+      ds._DISTILL_PERSIST_CAP == ms._DISTILL_PERSIST_CAP and ds._USED_CAP == ms._DISTILL_USED_CAP)
+with _tf73.TemporaryDirectory() as _td82:
+    _seed82 = Path(_td82) / "cycle.json"
+    _seed82.write_text(_jsonB.dumps({"project": "p", "session": "s",
+                                     "distill": {"verdict": "model-authored, must survive"}}),
+                       encoding="utf-8")
+    _scan82 = {"window": "2026-06-10T00:00:00Z..2026-07-10T00:00:00Z",
+               "scanned": {"sessions": 3, "commands": 50, "days": 4, "secrets_omitted": 1},
+               "recurring": [{"template": f"tpl-{i:02d}", "count": 20 - i, "days": 5,
+                              "sample": "RAW COMMAND TEXT — must never persist"} for i in range(15)],
+               "chains": [{"templates": [f"a{i}", f"b{i}"], "count": 9 - (i % 3), "days": 2}
+                          for i in range(10)],
+               "used": [{"a": f"skill-{i}", "n": 30 - i} for i in range(14)]}
+    check("v0.1.82: inject_into persists the TOP rows capped + projected to {t,n,d} — NO sample ever "
+          "reaches the durable record (privacy tier), model verdict preserved, counts still script-truth",
+          ds.inject_into(str(_seed82), _scan82, "", [], []) is True)
+    _rec82 = _jsonB.loads(_seed82.read_text(encoding="utf-8"))["distill"]
+    check("v0.1.82: the persisted block — top ≤12 in scan order, top_chains ≤8, used ≤12, "
+          "sample-free, verdict intact, n_recurring counts the FULL scan (15) not the persisted head",
+          len(_rec82["top"]) == 12 and _rec82["top"][0] == {"t": "tpl-00", "n": 20, "d": 5}
+          and all(set(r) == {"t", "n", "d"} for r in _rec82["top"])
+          and "sample" not in _jsonB.dumps(_rec82) and "RAW COMMAND" not in _jsonB.dumps(_rec82)
+          and len(_rec82["top_chains"]) == 8 and _rec82["top_chains"][0]["t"] == ["a0", "b0"]
+          and len(_rec82["used"]) == 12 and _rec82["verdict"] == "model-authored, must survive"
+          and _rec82["n_recurring"] == 15)
+    _w82 = ms.validate_cycle_record(cast(ms.CycleRecord, {"project": "p", "session": "s",
+                                                          "distill": {"top": [{"t": "x"}] * 13}}))
+    check("v0.1.82: validate_cycle_record backstops an over-cap top (impossible from --into — the "
+          "n_recurring=47 hand-fill lesson, row edition)",
+          any("exceeds the persist cap" in w for w in _w82))
+with _tf73.TemporaryDirectory() as _td82b:
+    # the Skill-adoption tally end-to-end: one in-window Skill invocation counts, one pre-window
+    # is excluded (the same per-line instant rule Bash uses); Bash templates unaffected.
+    _h82 = Path(_td82b)
+    _pj82 = (_h82 / "src" / "dproj").resolve(); _pj82.mkdir(parents=True)
+    _pr82 = _h82 / ".claude" / "projects" / ms.slug_for(_pj82); _pr82.mkdir(parents=True)
+    _lines82 = [
+        _jsonB.dumps({"timestamp": "2026-07-01T00:00:00Z", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Skill", "input": {"skill": "code-review"}}]}}),
+        _jsonB.dumps({"timestamp": "2026-05-01T00:00:00Z", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Skill", "input": {"skill": "old-skill"}}]}}),
+        _jsonB.dumps({"timestamp": "2026-07-02T00:00:00Z", "message": {"role": "assistant", "content": [
+            {"type": "tool_use", "name": "Skill", "input": {"skill": "code-review"}}]}}),
+    ]
+    (_pr82 / "s1.jsonl").write_text("\n".join(_lines82) + "\n", encoding="utf-8")
+    _oldH82 = _osB.environ.get("HOME"); _osB.environ["HOME"] = str(_h82)
+    try:
+        _sc82 = ds.scan(_pj82, "2026-06-01T00:00:00Z")
+    finally:
+        _osB.environ["HOME"] = _oldH82 if _oldH82 else ""
+    check("v0.1.82: scan tallies Skill invocations by name, window-scoped (the pre-window one excluded) "
+          "— the adoption denominator, accrued while transcripts are on disk",
+          _sc82["used"] == [{"a": "code-review", "n": 2}])
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
