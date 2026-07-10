@@ -4121,5 +4121,128 @@ with _Env73() as _e:
           "the v1 no-double-count rule), own reads attributed normally",
           _e79b["reads"] == 2 and "harvested_reads" not in _e79b and _fu79b["nodes_harvested"] == 0)
 
+# --- v0.1.80: fleet STALENESS (docs/fleet-staleness-report.spec.md — beacon Stage A). The blind
+# spot is structural: absorption latency was unbounded AND unmeasured (a lagging node by definition
+# never runs the only flows that report lag). Live first-run proof: a real node 18d behind with 11
+# missing globals + 4 content-stale mirrors, previously invisible.
+with _Env73() as _e:
+    def _canon80(name, body):
+        return (f"---\nname: {name}\ndescription: \"d\"\nmetadata:\n  node_type: memory\n"
+                f"  scope: user-global\n  type: feedback\n---\n{body}\n")
+    (_e.glob / "g-one.md").write_text(_canon80("g-one", "body one"), encoding="utf-8")
+    (_e.glob / "g-two.md").write_text(_canon80("g-two", "body two"), encoding="utf-8")
+    _nA80 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-fresh" / "memory"
+    _nA80.mkdir(parents=True)
+    for _n80 in ("g-one", "g-two"):
+        _t80 = (_e.glob / f"{_n80}.md").read_text(encoding="utf-8")
+        (_nA80 / f"{_n80}.md").write_text(sg._as_mirror(_t80, _n80, since="2026-07-01T00:00:00Z",
+                                                        body_hash=sg._body_hash(_t80)), encoding="utf-8")
+    (_nA80 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_nA80 / ".consolidation-state.json").write_text(
+        _jsonB.dumps({"commit": "x", "timestamp": "2026-07-09T00:00:00Z"}), encoding="utf-8")
+    _nB80 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-starved" / "memory"
+    _nB80.mkdir(parents=True)
+    _old80 = _canon80("g-one", "an OLD body")
+    (_nB80 / "g-one.md").write_text(sg._as_mirror(_old80, "g-one", since="2026-01-01T00:00:00Z",
+                                                  body_hash=sg._body_hash(_old80)), encoding="utf-8")
+    (_nB80 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")   # the trigger's own store
+    import hashlib as _hl80
+    _pre80 = {p: _hl80.sha1(p.read_bytes()).hexdigest()
+              for p in (Path(_osB.environ["HOME"]) / ".claude").rglob("*") if p.is_file()}
+    _s80 = sg.fleet_staleness(_e.proj)
+    _post80 = {p: _hl80.sha1(p.read_bytes()).hexdigest()
+               for p in (Path(_osB.environ["HOME"]) / ".claude").rglob("*") if p.is_file()}
+    _by80 = {d["node"]: d for d in _s80["nodes"]}
+    check("v0.1.80: fleet_staleness measures the starved node exactly — never-dreamed (age null-safe), "
+          "1 missing user-global, 1 content-stale mirror — and the fresh node reads clean",
+          _by80["src-starved"]["missing_globals"] == 1 and _by80["src-starved"]["stale_mirrors"] == 1
+          and _by80["src-starved"]["age_days"] is None and _by80["src-starved"]["last_dream"] == ""
+          and _by80["src-fresh"]["missing_globals"] == 0 and _by80["src-fresh"]["stale_mirrors"] == 0
+          and _by80["src-fresh"]["age_days"] is not None
+          and _s80["behind"] == 2 and _s80["never_dreamed"] == 2)   # starved + the trigger's own empty store
+    check("v0.1.80: scope basis is HONEST per node — full (live stacks) only for the trigger; non-trigger "
+          "nodes labeled user-global-only (a slug is never guessed back to a path)",
+          _by80["src-starved"]["scope_basis"] == "user-global only (no stacks cache)"
+          and {d["node"]: d for d in _s80["nodes"] if d["trigger"]} != {}
+          and all(d["scope_basis"] == "full (live stacks)" for d in _s80["nodes"] if d["trigger"]))
+    check("v0.1.80: the sweep is READ-ONLY over every store, and the payload is JSON-safe (null age)",
+          _pre80 == _post80 and isinstance(_jsonB.dumps(_s80), str))
+
+# --- PR-#93 review-team pins (two reviewers, convergent top finding) ---
+with _Env73() as _e:
+    # F1: an EMPTY trigger store (0 *.md) — previously silently omitted from its own report, the
+    # maximally-starved case. Now force-appended (the harvest/fleet_utility precedent).
+    (_e.glob / "g-one.md").write_text(
+        "---\nname: g-one\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n---\nb\n",
+        encoding="utf-8")
+    _s93 = sg.fleet_staleness(_e.proj)
+    _trig93 = [d for d in _s93["nodes"] if d["trigger"]]
+    check("v0.1.80/review-F1: an EMPTY trigger store still yields the trigger row — never-dreamed, "
+          "all relevant globals MISSING (was: silently omitted from its own report)",
+          len(_trig93) == 1 and _trig93[0]["missing_globals"] == 1 and _trig93[0]["age_days"] is None
+          and _s93["behind"] >= 1 and _s93["never_dreamed"] >= 1)
+    # F3: a present-but-MALFORMED marker must read as never-dreamed EVERYWHERE (render, sort, and
+    # the aggregate — the old aggregate keyed on last_dream=="" and contradicted the row display).
+    _nM93 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-badmarker" / "memory"
+    _nM93.mkdir(parents=True)
+    (_nM93 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_nM93 / ".consolidation-state.json").write_text(
+        _jsonB.dumps({"commit": "x", "timestamp": "not-a-date"}), encoding="utf-8")
+    _s93b = sg.fleet_staleness(_e.proj)
+    _bad93 = [d for d in _s93b["nodes"] if d["node"] == "src-badmarker"][0]
+    check("v0.1.80/review-F3: a present-but-UNPARSEABLE marker counts as never-dreamed in the "
+          "AGGREGATE too (age_days is the one predicate; raw marker kept in last_dream for audit)",
+          _bad93["age_days"] is None and _bad93["last_dream"] == "not-a-date"
+          and _s93b["never_dreamed"] == 2)   # the empty trigger + the bad-marker node
+
+# --- Pre-merge train-review pins (#86/#88/#89 merge-gate team, 2026-07-10) ---
+with _Env73() as _e:
+    # F-A (HIGH, verified E2E by the reviewer): the LATERAL-SWAP evict — freeing room lets the
+    # alphabetically-earlier LARGER global (aaa) displace the later smaller one (zzz): old
+    # set-difference gate ACCEPTED (gain=['aaa']) and destroyed the authored fact for zero net
+    # gain; the count gate must REFUSE. Constraints (seed = C - cost_zzz): cost_aaa > cost_zzz;
+    # freed ∈ [cost_aaa - cost_zzz, cost_aaa).
+    (_e.glob / "aaa-big.md").write_text(_fact73("aaa-big", "a deliberately much longer description "
+                                                "string to fatten this pointer"), encoding="utf-8")
+    (_e.glob / "zzz-sml.md").write_text(_fact73("zzz-sml", "s"), encoding="utf-8")
+    _cA = ms.est_tokens(sg._pointer_line("aaa-big", sg._frontmatter((_e.glob / "aaa-big.md").read_text(encoding="utf-8"))))
+    _cZ = ms.est_tokens(sg._pointer_line("zzz-sml", sg._frontmatter((_e.glob / "zzz-sml.md").read_text(encoding="utf-8"))))
+    (_e.store / "evictme.md").write_text(
+        "---\nname: evictme\ndescription: \"" + "d" * 64 + "\"\nmetadata:\n  type: reference\n---\nirreplaceable\n",
+        encoding="utf-8")
+    _evl86 = sg._pointer_line("evictme", sg._frontmatter((_e.store / "evictme.md").read_text(encoding="utf-8")))
+    _fr86 = ms.est_tokens(_evl86)
+    assert _cA > _cZ and _cA - _cZ <= _fr86 < _cA, (_cA, _cZ, _fr86)
+    (_e.store / "MEMORY.md").write_text(_pad_index73(_C73 - _cZ, [_evl86]), encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj, evict="evictme")
+    check("train-review/F-A: a LATERAL-SWAP evict is REFUSED by the count gate (earlier-bigger global "
+          "would displace the later-smaller one — gain non-empty, count unchanged; the authored fact "
+          "survives; was: destroyed for zero net gain with a '✓ lands:' success message)",
+          _rc == 1 and "lateral swap" in _err and (_e.store / "evictme.md").exists()
+          and "gains nothing" in _err)
+
+with _Env73() as _e:
+    # F-B: MIXED stack tags ([python, fastpai]) are NOT fleet-dead — the blanket "can never match
+    # any project" wording was false for them; they get the dead-weight wording instead.
+    (_e.glob / "mixed-tag.md").write_text(
+        "---\nname: mixed-tag\ndescription: \"d\"\nmetadata:\n  scope: stack-general\n"
+        "  stacks: [python, fastpai]\n  type: feedback\n---\nbody\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("train-review/F-B: a MIXED-tag stack-general canonical warns 'dead weight' naming the live "
+          "tags — never the false 'fleet-dead / can never match any project' claim",
+          "dead weight" in _err and "fleet-dead" not in _err and "fastpai" in _err and "python" in _err)
+
+with _Env73() as _e:
+    # train-robust F1 (measured live): _mind_unresolved must normalize in SLUG space — a live
+    # underscore-basename project (Doc_Flo → slug …-Doc-Flo) was falsely flagged dead because
+    # _sanitize_token preserves '_' while slug dirs map it to '-'.
+    _dfd = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-Doc-Flo" / "memory"
+    _dfd.mkdir(parents=True)
+    check("train-review/robust-F1: an underscore-basename LIVE project (Doc_Flo) resolves to its slug "
+          "store (not flagged '?'); a truly storeless mind still flags",
+          sg._mind_unresolved("Doc_Flo") is False and sg._mind_unresolved("ghost_project_x") is True)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

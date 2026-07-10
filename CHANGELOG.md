@@ -5,6 +5,40 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.80] — 2026-07-10
+
+### Added — fleet staleness report: absorption lag, measured per node (beacon Stage A)
+The third enhancement increment (`docs/fleet-staleness-report.spec.md`). The propagation model is
+eventually-consistent by design, with a structural blind spot the audit's intent map flagged:
+absorption latency is unbounded and NOTHING measured it — a lagging node by definition never runs
+the only flows that report lag. First live run proved the premise immediately: a real node 18
+days behind with 11 missing globals and 4 content-stale mirrors, previously invisible.
+
+- **`sync_global.py --staleness [--json]`** (+ `cm staleness`): READ-ONLY sweep over ALL project
+  stores (deliberately wider than mirror-holders — a zero-mirror store is the most starved). Per
+  node: last-dream marker age (`(never dreamed)` null-safe), mirror/fact counts, MISSING relevant
+  globals, content-stale mirrors (body-lineage hash, v0.1.78 — what lag harms is stale KNOWLEDGE;
+  hook drift is `--pull`'s refresh job), own-log usage windows + harvest-ledger coverage.
+- **Scope basis honest per node**: full relevance (live `detect_stacks`) only for the TRIGGER — a
+  slug is not invertible to a project path, so other nodes are assessed on user-global canonicals
+  only, each row labeled, never guessed. (Stage B's SKILL-written `stacks`/`project_path` state
+  cache will upgrade non-trigger rows — deferred with the SessionStart beacon itself, which this
+  observe-only report exists to prove or refute first.)
+- Advisory only, uncued (a maintainer/observability lens like `--network`): a node absorbs on ITS
+  next dream — nothing is ever auto-pulled from here.
+
+New read-only mode; no schema change ⇒ patch.
+
+Hardened by a two-lens review team before merge (staleness-core + seams/adversarial, both
+verdicts MERGE-READY; the convergent top finding fixed): the TRIGGER row is now unconditional
+(an absent/empty trigger store was silently omitted from its own report — the maximally-starved
+case); a present-but-unreadable fact is neither missing nor stale (was over-reported missing);
+`never_dreamed` keys on the same unparseable-age predicate the render and sort use (a malformed
+marker no longer contradicts the aggregate); `behind` includes content-stale-only nodes; future
+markers clamp to age 0; the relevance predicate delegates to `is_relevant` (no 4th hand copy);
+the harvest ledger's append-atomicity claim made precise (PIPE_BUF — torn lines self-heal via
+the guarded reader). Review pins added.
+
 ## [0.1.79] — 2026-07-10
 
 ### Added — fleet usage harvest: capture every node's windows before the transcripts rot (audit P1)

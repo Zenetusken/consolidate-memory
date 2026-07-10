@@ -44,7 +44,7 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     memory_status.py               Phase 0: locate stores + git scope + `--json` cycle-record seed
     extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
     sync_global.py                 cross-project: --list/--pull [--evict=F | --allow-net-grow]/--promote/
-                                   --gc [--apply]/--tokens/--utility/--network + provenance
+                                   --gc [--apply]/--tokens/--utility/--harvest/--staleness/--network + provenance
     distill_scan.py                Phase 5 distill: recurring Bash-command templates + compound-command chains (workflow signal); `--into`/`--from` inject script-truth counts into a cycle record
     render_dashboard.py            the data-driven ASCII dashboard (renders ONE cycle record)
     render_html.py                 the self-contained HTML archive (all cycles, rich; + dashboards/diffs sidecars)

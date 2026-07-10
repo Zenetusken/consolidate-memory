@@ -39,6 +39,10 @@ each project's store. This is the engine for that:
                        rotation destroys them — usage capture was dream-gated per node (measured: 1/3 nodes
                        reporting). Watermarked + idempotent; reads-only (no miss classification); --utility
                        surfaces the harvested evidence, source-labeled, for nodes with no own-log usage.
+  --staleness PROJECT_DIR  (v0.1.80) READ-ONLY absorption-lag sweep over ALL project stores (beacon
+                       Stage A): per node — last-dream marker age, MISSING relevant globals (never
+                       absorbed), content-stale mirrors, usage/harvest coverage. Scope basis honest per
+                       node (full relevance only for the trigger; others user-global-only, labeled).
   --utility PROJECT_DIR  (v0.1.67, Phase C) READ-ONLY fleet usage evidence: per-canonical organic reads
                        aggregated across every node's cycle log (mirror-attributed; same-stem locals
                        report as shadow, never attributed) + fleet_tax = pointer×holders against the
@@ -821,11 +825,19 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         if _ffm.get("scope") == "stack-general":
             _fs = _fact_stacks(_ffm)
             _bad = sorted(_fs - _DETECTABLE_STACKS)
-            if not _fs or _bad:
+            if not (_fs & _DETECTABLE_STACKS):
+                # NO detectable tag at all (empty, or all-undetectable) → genuinely fleet-dead
                 _why = f"undetectable stack tag(s) {_bad}" if _bad else "NO `stacks:` tags at all"
                 print(f"  ⚠ fleet-dead canonical: '{_fn}' is stack-general with {_why} — detect_stacks can "
                       f"never match it to any project. Retag with a detectable stack "
                       f"({sorted(_DETECTABLE_STACKS)}), re-scope user-global, or demote it "
+                      f"(~/.claude/memory/{_fn}.md).", file=sys.stderr)
+            elif _bad:
+                # train-review F-B: MIXED tags (e.g. [python, fastpai]) are NOT fleet-dead — the fact
+                # still matches via its detectable tag(s); the old blanket "can never match any
+                # project" wording was false here. The undetectable tag is dead weight worth cleaning.
+                print(f"  ⚠ undetectable stack tag(s) {_bad} on '{_fn}' — dead weight (the fact still "
+                      f"matches via {sorted(_fs & _DETECTABLE_STACKS)}); clean the tags "
                       f"(~/.claude/memory/{_fn}.md).", file=sys.stderr)
     items = [(name, status, est_tokens(_pointer_line(name, fm)), _index_line_cost(idx_text, name))
              for name, fm, _t, status, _p, _w, rel in classified if rel and status in ("MISSING", "STALE-mirror")]
@@ -873,12 +885,26 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                   file=sys.stderr); return 1
         plan_evict = _plan_pull(items, seed_idx - freed, allow_net_grow, budget=INDEX_CEILING_TOKENS)
         gain = [n for n in plan_evict["pull"] if n not in set(plan["pull"])]
-        if not gain:   # Guard-3 by construction (F3): the destruction must demonstrably land a held global
+        displaced = [n for n in plan["pull"] if n not in set(plan_evict["pull"])]
+        if len(plan_evict["pull"]) <= len(plan["pull"]):
+            # Guard-3 is a COUNT (train-review F-A, HIGH, verified E2E): the old set-difference test
+            # accepted a LATERAL SWAP — freeing room let an alphabetically-earlier, larger-pointer
+            # global jump into the plan and push a later, smaller one over the ceiling, so `gain` was
+            # non-empty while the pull COUNT was unchanged (or lower) and the authored fact was
+            # destroyed for zero net gain — the exact F3 harm this gate exists to refuse, re-admitted.
+            # The destruction must land strictly MORE globals than no-evict would.
+            _swap = (f" — a lateral swap (+{', '.join(gain)} / −{', '.join(displaced)}), not a gain"
+                     if gain else "")
             print(f"evict: destroying '{evict}' (~{freed} tok measured) lands NO additional held global — "
-                  f"the replayed plan pulls {plan_evict['pull'] or '[]'} with the evict vs {plan['pull'] or '[]'} "
-                  f"without; held either way: {', '.join(n for n, _c in plan_evict['held'])}. "
+                  f"the replayed plan pulls {len(plan_evict['pull'])} ({', '.join(plan_evict['pull']) or 'none'}) "
+                  f"with the evict vs {len(plan['pull'])} ({', '.join(plan['pull']) or 'none'}) without{_swap}; "
+                  f"held either way: {', '.join(n for n, _c in plan_evict['held'])}. "
                   "Refusing a destructive op that gains nothing — pick a larger-pointer fact.",
                   file=sys.stderr); return 1
+        if displaced:
+            # count strictly increased but the composition shifted — proceed, and say so honestly
+            print(f"  ⚠ evict replan displaced {', '.join(displaced)} (freed room re-ordered the pulls; "
+                  f"net {len(plan_evict['pull'])} land vs {len(plan['pull'])} without the evict)", file=sys.stderr)
         ep.unlink()
         _remove_index_pointer(store, evict)
         plan = plan_evict   # the gate approved THIS plan; the write loop below executes exactly it
@@ -1028,8 +1054,12 @@ def _mind_unresolved(name: str) -> bool:
     provenance basename — the honest partial inverse of the lossy slug (sanitized-token endswith
     match). CONSERVATIVE direction: any match — including an ambiguous one — reads as resolved;
     only a zero-match mind is flagged. Display-only (a `?` glyph + footnote in network()); never a
-    prune input — provenance stays reported-not-pruned (a renamed project also matches nothing)."""
-    norm = _sanitize_token(name).lower()
+    prune input — provenance stays reported-not-pruned (a renamed project also matches nothing).
+    Train-review F1 (measured on the real fleet): normalize in SLUG space (every non-alnum → '-',
+    the slug_for/near_duplicate_slugs rule) — the original _sanitize_token normalization PRESERVES
+    '_'/'.' while slug dirs map them to '-', so a live underscore-named project (Doc_Flo) could
+    never match its own on-disk store and was falsely flagged dead."""
+    norm = re.sub(r"[^a-z0-9]", "-", name.lower())
     base = Path.home() / ".claude" / "projects"
     if not norm.strip("-.") or not base.is_dir():
         return False   # degenerate token / no projects dir → nothing claimable; stay conservative
@@ -1399,10 +1429,10 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
             # Refuse CLEANLY instead: nothing has been written (the finally cleaned the temp), and the
             # race guard genuinely needs hardlink atomicity (see _create_exclusive — os.replace can't
             # detect "am I first", raw O_EXCL reopens the torn-read window Track D-1 closed).
-            print(f"promote: cannot create the canonical atomically on this filesystem "
-                  f"({type(_e).__name__}: {_e}) — the create-create race guard needs hardlink support "
-                  "(os.link). Nothing was written; move ~/.claude/memory to a hardlink-capable "
-                  "filesystem or promote from there.", file=sys.stderr)
+            print(f"promote: cannot create the canonical atomically ({type(_e).__name__}: {_e}) — "
+                  "commonly a filesystem without hardlink support (os.link, which the create-create "
+                  "race guard needs), but check the error itself (e.g. ENOSPC is disk-full, not a "
+                  "hardlink problem). Nothing was written.", file=sys.stderr)
             return 1
         if not _created:
             print(f"promote: another process just created the canonical '{canon_name}' concurrently — "
@@ -1627,6 +1657,137 @@ def token_report(project_dir: Path, as_json: bool) -> int:
     return 0
 
 
+# ── v0.1.80: fleet STALENESS — absorption lag, measured per node (beacon Stage A) ────────────────
+def _all_stores() -> "list[Path]":
+    """EVERY project store under ~/.claude/projects holding ≥1 *.md — deliberately wider than
+    _network_nodes() (mirror-holders): a store with ZERO mirrors is exactly the most starved node
+    the staleness sweep exists to surface."""
+    base = Path.home() / ".claude" / "projects"
+    out: list = []
+    if base.is_dir():
+        for proj in sorted(base.iterdir()):
+            store = proj / "memory"
+            if store.is_dir() and any(store.glob("*.md")):
+                out.append(store)
+    return out
+
+
+def fleet_staleness(project_dir: Path) -> dict:
+    """READ-ONLY absorption-lag sweep (docs/fleet-staleness-report.spec.md — the observe-only
+    Stage A that must prove/refute the SessionStart beacon's premise). Per node: last-dream
+    marker age, mirror/fact counts, MISSING relevant globals (never absorbed), content-stale
+    mirrors (body-lineage hash vs the canonical — v0.1.78; hook drift is --pull's job, stale
+    KNOWLEDGE is what lag harms), own-log usage windows + harvest-ledger coverage. Scope basis
+    is HONEST per node: full relevance (live detect_stacks) only for the TRIGGER — a slug is
+    not invertible to a project path, so other nodes are assessed on user-global canonicals
+    only, labeled, never guessed (Stage B's state-file stacks cache upgrades this)."""
+    import json as _json
+    project_dir = project_dir.resolve()
+    gfacts = global_facts()
+    trig_store = project_store(project_dir)
+    trig_stacks = detect_stacks(project_dir)
+    ledger_nodes = {str(r.get("node", "")) for r in _ledger_rows()}
+    now_ep = datetime.now(timezone.utc).timestamp()
+    body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts}
+    stores = _all_stores()
+    if trig_store.resolve() not in {s.resolve() for s in stores}:
+        # PR-#93 review F1 (two reviewers, convergent): the TRIGGER appears UNCONDITIONALLY — an
+        # absent/empty trigger store is the maximally-starved row (never dreamed, absorbed nothing),
+        # not an omission. The same force-append harvest()/fleet_utility already use; every relevant
+        # canonical then counts MISSING via the not-exists check below.
+        stores.append(trig_store)
+    nodes: list = []
+    for store in stores:
+        is_trig = store.resolve() == trig_store.resolve()
+        marker = ""
+        raw_state = _safe_read_text(store / ".consolidation-state.json")
+        if raw_state:
+            try:
+                _st = _json.loads(raw_state)
+                marker = str((_st or {}).get("timestamp", "") or "") if isinstance(_st, dict) else ""
+            except (ValueError, TypeError):
+                marker = ""
+        mdt = _parse_ts(marker) if marker else None
+        missing = stale = 0
+        for n, fm, _text in gfacts:
+            # review F4: delegate to is_relevant — the SINGLE relevance predicate (a 4th hand copy
+            # is how predicates diverge). Non-trigger → empty stacks → stack-general never matches:
+            # exactly the labeled user-global-only basis (a slug is never guessed back to a path).
+            if not is_relevant(fm, trig_stacks if is_trig else set()):
+                continue
+            p = store / f"{n}.md"
+            if not p.exists():
+                missing += 1
+                continue
+            cur = _safe_read_text(p)
+            if cur is None:
+                continue   # review F2: PRESENT but unreadable (chmod/read race) is neither missing
+                           # nor stale — never guess; skipping under-reports, the pinned safe bias
+            if _is_mirror(cur) and _body_hash(cur) != body_hashes[n]:
+                stale += 1
+        m = _node_tokens(store) if store.is_dir() else {"facts": 0, "shared": 0}
+        hist = usage_history(store)
+        nodes.append({"node": _sane(project_dir.name) if is_trig else _node_label(store),
+                      "trigger": is_trig,
+                      "last_dream": marker,
+                      # review F5: a FUTURE marker (clock skew / hand-edit) clamps to 0.0 — never a
+                      # negative "dreamed -26472d ago"; the raw marker stays in last_dream for audit.
+                      "age_days": (max(0.0, round((now_ep - mdt.timestamp()) / 86400, 1)) if mdt else None),
+                      "facts": m["facts"], "mirrors": m["shared"],
+                      "missing_globals": missing, "stale_mirrors": stale,
+                      "scope_basis": ("full (live stacks)" if is_trig else "user-global only (no stacks cache)"),
+                      "usage_windows": hist["windows_full"],
+                      "harvested": store.parent.name in ledger_nodes})
+    nodes.sort(key=lambda d: (-d["missing_globals"], -(d["age_days"] if d["age_days"] is not None else 1e9)))
+    return {"nodes": nodes,
+            # review F6: content-stale mirrors ARE lag — a node with 0 missing but stale knowledge
+            # counts as behind (the sweep's other half). review F3: never_dreamed keys on age_days —
+            # the SAME predicate the render and the sort use, so a present-but-UNPARSEABLE marker
+            # reads as never-dreamed everywhere consistently instead of contradicting the aggregate.
+            "behind": sum(1 for d in nodes if d["missing_globals"] or d["stale_mirrors"]),
+            "never_dreamed": sum(1 for d in nodes if d["age_days"] is None)}
+
+
+def staleness_report(project_dir: Path, as_json: bool) -> int:
+    """Render fleet_staleness — the per-node absorption-lag table. Advisory only: a node absorbs
+    on ITS next dream (never auto-pulled from here — report-then-apply and the dream-governance
+    model own writes). Maintainer/observability lens outside dream flow (like --network): uncued."""
+    import json as _json
+    project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
+    s = fleet_staleness(project_dir)
+    if as_json:
+        print(_json.dumps(s, indent=2))
+        return 0
+    out: list = []
+    title = "✦ FLEET STALENESS · absorption lag per node"
+    tag = f"{s['behind']}/{len(s['nodes'])} behind"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold" if s["behind"] else "dim"))
+    out.append("  " + _ui.c("eventual consistency's honesty debt, measured — a node absorbs on ITS next "
+                            "dream; nothing is auto-pulled from here", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    for d in s["nodes"]:
+        age = ("never dreamed" if d["age_days"] is None else f"dreamed {d['age_days']:g}d ago")
+        gapscol = (_ui.c(f"↓{d['missing_globals']} missing", "yellow") if d["missing_globals"]
+                   else _ui.c("· 0 missing", "dim"))
+        stalecol = (_ui.c(f" · ⟳{d['stale_mirrors']} content-stale", "yellow") if d["stale_mirrors"] else "")
+        cover = f"windows {d['usage_windows']}" + (" · harvested" if d["harvested"] else "")
+        mark = "  " + _ui.c("◀ trigger", "cyan") if d["trigger"] else ""
+        out.append(f"    {_ui.lbl(d['node'][:24], 24)} {age:<18} {gapscol}{stalecol}  "
+                   + _ui.c(f"{d['mirrors']} mirror(s)/{d['facts']} fact(s) · {cover} · {d['scope_basis']}", "dim") + mark)
+    out.append("")
+    out.append(_ui.kv("RESULT", f"{s['behind']} node(s) behind · {s['never_dreamed']} never dreamed — "
+               "the lag lever is a dream ON that node (its Phase 1 pulls + harvests); Stage B's "
+               "session beacon will surface this at session start"))
+    print(_ui.ascii_translate("\n".join(out)))
+    return 0
+
+
 # ── v0.1.79: fleet usage HARVEST — capture non-dreaming nodes' windows before transcripts rot ────
 _LEDGER_TAIL_CAP = 2000   # ledger rows read from the tail (~1 row/node/harvest — years of headroom)
 
@@ -1656,8 +1817,12 @@ def _ledger_rows() -> list:
 
 def _append_ledger(row: dict) -> None:
     """One-line O_APPEND|O_CREAT 0o600 append. Concurrency stance = the documented D-2
-    accepted-gap philosophy (dream-boundary cadence; single-line appends interleave whole);
-    script-truth telemetry in the render_dashboard --persist class, never a memory-content write."""
+    accepted-gap philosophy (dream-boundary cadence). PR-#92 review precision: O_APPEND
+    atomicity is only POSIX-guaranteed under PIPE_BUF (~4KB) and a fat 40-fact row can reach
+    that, so a rare concurrent-dream append could tear a line — accepted, because the reader
+    (_ledger_rows) skips unparseable lines and the next harvest re-covers the window
+    (self-healing, same class as D-2). Script-truth telemetry in the render_dashboard
+    --persist class, never a memory-content write."""
     import json
     GLOBAL.mkdir(parents=True, exist_ok=True)
     fd = os.open(str(_ledger_path()), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
@@ -1946,10 +2111,11 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
     return 0
 
 
-# The dream-flow modes that carry a cross-project BEAT: --list/--pull (Phase 1) and --gc/--tokens/
-# --utility (Phase 5; --utility is the gc lever's evidence view, v0.1.67). --promote runs in Phase 4's
-# APPLY — the one phase whose contract deliberately excludes dream beats (only the plain proposal + the
-# single SURFACING line) — and --network is a maintainer utility outside dream flow, so neither cues.
+# The dream-flow modes that carry a cross-project BEAT: --list/--pull/--harvest (Phase 1) and --gc/
+# --tokens/--utility (Phase 5; --utility is the gc lever's evidence view, v0.1.67). --promote runs in
+# Phase 4's APPLY — the one phase whose contract deliberately excludes dream beats (only the plain
+# proposal + the single SURFACING line) — and --network/--staleness are maintainer/observability
+# utilities outside dream flow, so none of those cue.
 _CUED_MODES = ("--list", "--pull", "--gc", "--tokens", "--utility", "--harvest")
 
 
@@ -1988,6 +2154,8 @@ def _dispatch() -> int:
         return utility_report(project_dir, "--json" in args)
     if args and args[0] == "--harvest":   # v0.1.79: capture every node's usage windows into the shared ledger
         return harvest(project_dir)
+    if args and args[0] == "--staleness":   # v0.1.80: READ-ONLY absorption-lag sweep (beacon Stage A)
+        return staleness_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
         return gc(project_dir, "--apply" in args)
     if args and args[0] == "--promote":
@@ -1999,7 +2167,8 @@ def _dispatch() -> int:
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
-              "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --network", file=sys.stderr)
+              "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --staleness [--json] PROJECT_DIR "
+              "| --network", file=sys.stderr)
         return 2
     evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)
     if evict is not None:                          # Gate-2: a destructive flag must not silently no-op

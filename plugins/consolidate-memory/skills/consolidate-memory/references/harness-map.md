@@ -335,6 +335,13 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   Lockfiles are excluded (transitive deps over-detect). So a stdlib plugin whose README merely
   says "rag"/"scraper" no longer false-matches `rag`/`playwright`; a `stack-general:[rag]` fact
   binds only projects that really depend on / import a RAG library.
+- `--staleness PROJECT_DIR [--json]` — (v0.1.80, `docs/fleet-staleness-report.spec.md`) READ-ONLY
+  absorption-lag sweep over ALL project stores (wider than mirror-holders — a zero-mirror store is
+  the most starved): per node, last-dream marker age, MISSING relevant globals, content-stale
+  mirrors (body-lineage hash), usage/harvest coverage. Scope basis honest per node (full relevance
+  only for the trigger — slugs aren't invertible; others assessed user-global-only, labeled).
+  Maintainer/observability lens (`cm staleness`), uncued; the observe-only Stage A of the
+  session-beacon track — never auto-pulls (a node absorbs on ITS next dream).
 - `--harvest PROJECT_DIR` — (v0.1.79, `docs/fleet-usage-harvest.spec.md`) capture EVERY node's
   organic fact-read windows from its transcripts into the shared append-only ledger
   (`~/.claude/memory/.fleet-usage.jsonl`, 0o600) before rotation destroys them. Usage capture was
