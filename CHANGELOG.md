@@ -5,6 +5,37 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.76] — 2026-07-10
+
+### Fixed — robustness batch (seven audit minors, each red-first: 7/7 pre-fix)
+- **Holder-token round-trip** — `_holders` now parses the same token space `_sanitize_token`
+  writes: a dot/dash-prefixed holder (`.claude`; the sanitized `-scope` from `@scope`) was silently
+  shortened on read, so gc's dead-edge compare could never match such a project and
+  `network()`/`--utility` displayed names provenance doesn't hold. gc's dead-edge compare now also
+  runs in the sanitized space on both sides.
+- **Clean refusal on no-hardlink filesystems** — `promote()`'s exclusive canonical create
+  (`os.link`, Track D-2b) crashed with a raw `PermissionError`/`OSError` traceback on FAT/exFAT/
+  some network mounts; it now refuses cleanly (rc=1, names the hardlink constraint, nothing
+  written, no temp leak).
+- **mypy stack: all four documented config locations** — `.mypy.ini` and `setup.cfg [mypy]` now
+  detect the stack (was pyproject `[tool.mypy]` + `mypy.ini` only — under-detection on a
+  mypy-heavy fleet).
+- **Poetry dotted subtables** — `[tool.poetry.dependencies.torch]` declares the dep in the header,
+  not a key; the key-scan never saw it. Now parsed (groups + legacy `dev-` forms included).
+- **`--tokens` archive split** — `_node_tokens` counted archive-index docs (link-lists like a
+  relocated `SHIPPED.md`) as recall facts, inflating `recall_tokens`/`facts` (measured live: a
+  7.6k-tok archive doc on a real node). Now excluded via the same `_is_archive_index_text` rule
+  memory_status's C1 split uses — single source, the two counters cannot drift.
+- **`--network` minds liveness** — minds derive from provenance basenames, which accrue DEAD
+  entries (two deleted test projects measured live); a mind with no plausible on-disk store now
+  renders `name?` with a footnote. Display-only (conservative zero-match heuristic; ambiguity
+  reads as live) — provenance stays reported-not-pruned.
+- **`originSessionId` warn split** — the C3 replication warning fired on ABSENT ids, which
+  harness-map's own schema rules define as legitimate for git/commit-derived facts (steady stderr
+  noise on every pull); absence is now silent, present-but-invalid still warns.
+
+No CLI/schema change; pins in the smoke v0.1.76 block (8 checks). Backward-compatible ⇒ patch.
+
 ## [0.1.75] — 2026-07-10
 
 ### Fixed — pull-side guards: the M4-bypass surface, the phantom-store guard, the frozen-mirror lifecycle (audit F5/F6/F7)

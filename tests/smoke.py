@@ -3879,5 +3879,79 @@ with _Env73() as _e:
           "(replica of a live canonical; no memory can be lost)",
           "pulled 1 new" in _out and (_e.store / "rag-tip.md").exists())
 
+# --- v0.1.76: robustness batch (audit minors) — every check ran RED pre-fix (7/7, 2026-07-10). ---
+check("v0.1.76/a: _holders parses the SAME token space _sanitize_token writes — dot/dash-prefixed "
+      "holders survive whole ('.claude' was read back as 'claude'); separator noise still dropped",
+      sg._holders({"projects": "[.claude, -scope, job-app]"}) == [".claude", "-scope", "job-app"]
+      and sg._holders({"projects": "[a]"}) == ["a"]
+      and sg._holders({"projects": "[-, .]"}) == [])
+check("v0.1.76/f: a poetry DOTTED subtable dep ([tool.poetry.dependencies.torch]) is parsed "
+      "(was invisible to the key-scan); the inline form still works",
+      "torch" in sg._dep_names_from_text('[tool.poetry.dependencies.torch]\nversion = "^2.0"\n')
+      and "torch" in sg._dep_names_from_text('[tool.poetry.dependencies]\ntorch = "^2.0"\n'))
+with _tf73.TemporaryDirectory() as _td76:
+    _p76 = Path(_td76); (_p76 / "main.py").write_text("x=1\n", encoding="utf-8")
+    (_p76 / ".mypy.ini").write_text("[mypy]\nstrict = True\n", encoding="utf-8")
+    _s76a = sg.detect_stacks(_p76)
+with _tf73.TemporaryDirectory() as _td76b:
+    _p76b = Path(_td76b); (_p76b / "main.py").write_text("x=1\n", encoding="utf-8")
+    (_p76b / "setup.cfg").write_text("[metadata]\nname = x\n[mypy]\nstrict = True\n", encoding="utf-8")
+    _s76b = sg.detect_stacks(_p76b)
+check("v0.1.76/e: .mypy.ini AND setup.cfg [mypy] both detect the mypy stack (all four documented "
+      "config locations; was pyproject+mypy.ini only — under-detection on a mypy-heavy fleet)",
+      "mypy" in _s76a and "mypy" in _s76b)
+with _tf73.TemporaryDirectory() as _td76c:
+    _st76 = Path(_td76c)
+    (_st76 / "MEMORY.md").write_text("# Memory Index\n- [f](f.md) — h\n", encoding="utf-8")
+    (_st76 / "f.md").write_text("---\nname: f\n---\nbody\n", encoding="utf-8")
+    (_st76 / "SHIPPED.md").write_text("# Shipped\n- [a](a.md) — x\n- [b](b.md) — y\n- [c](c.md) — z\n",
+                                      encoding="utf-8")
+    _nt76 = sg._node_tokens(_st76)
+    check("v0.1.76/g: _node_tokens excludes an archive-index doc from recall facts/tokens "
+          "(memory_status's own C1 split, applied to --tokens — a live SHIPPED.md inflated both)",
+          _nt76["facts"] == 1 and _nt76["recall_tokens"] == ms.est_tokens("---\nname: f\n---\nbody\n"))
+with _Env73() as _e:
+    (_e.glob / "gfact.md").write_text(
+        "---\nname: gfact\ndescription: \"d\"\nmetadata:\n  scope: user-global\n"
+        "  projects: [ghost-proj, proj73]\n  type: feedback\n---\nbody\n", encoding="utf-8")
+    _nout = _io73.StringIO()
+    with _ctx73.redirect_stdout(_nout):
+        sg.network()
+    _no = _nout.getvalue()
+    check("v0.1.76/h: network() flags a DEAD provenance mind with '?' + footnote (display-only; the "
+          "live mind — whose slug store exists — is unflagged)",
+          "ghost-proj?" in _no and "proj73?" not in _no and "no matching store" in _no)
+with _Env73() as _e:
+    (_e.glob / "git-fact.md").write_text(
+        "---\nname: git-fact\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: project\n---\nbody\n",
+        encoding="utf-8")
+    (_e.glob / "bad-osid.md").write_text(
+        "---\nname: bad-osid\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: project\n"
+        "  originSessionId: not-a-uuid\n---\nbody\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.76/i: originSessionId warn split — ABSENT is silent (legitimate for git-derived facts "
+          "per harness-map), present-but-INVALID still warns",
+          "git-fact" not in _err and "bad-osid" in _err and "INVALID originSessionId" in _err)
+with _Env73() as _e:
+    (_e.store / "loc.md").write_text(
+        "---\nname: loc\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n---\nbody\n",
+        encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n- [loc](loc.md) — d\n", encoding="utf-8")
+    _orig_link76 = _os73.link
+
+    def _no_link76(*a, **k):
+        raise PermissionError(1, "Operation not permitted (fixture: no-hardlink fs)")
+    _os73.link = _no_link76
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()) as _perr76:
+            _rc76 = sg.promote(_e.proj, "loc", "loc")
+    finally:
+        _os73.link = _orig_link76
+    check("v0.1.76/b: promote on a no-hardlink filesystem refuses CLEANLY (rc=1, names the constraint, "
+          "no canonical, local intact — was an uncaught PermissionError traceback)",
+          _rc76 == 1 and "hardlink" in _perr76.getvalue() and not (_e.glob / "loc.md").exists()
+          and (_e.store / "loc.md").exists() and list(_e.glob.glob("*.tmp*")) == [])
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
