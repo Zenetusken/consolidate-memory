@@ -350,11 +350,14 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
 - `--promote PROJECT_DIR LOCAL_FACT [CANON_NAME]` — hand a project-authored LOCAL fact
   UP to the canonical global store, then convert the origin's own copy into a managed
   mirror — the local→canonical direction symmetric to `--pull`, driven by the Phase-1
-  promotion re-audit. **Atomic**: one op writes the canonical, records provenance,
-  rewrites the origin copy as a `global_ref:` mirror, and (on a rename) removes the
-  old-named local file + its index pointer — so a promotion can never leave the dup or
-  orphan a hand-done hand-off would (a left-behind project-authored copy is a non-mirror
-  `--gc` never reclaims, and on the next `--pull` it shadows or duplicates the canonical).
+  promotion re-audit. **Single-shot** (deliberately NOT "atomic" — promote()'s own docstring
+  says it is *not crash-atomic*; an interrupted process can leave partial state, though the
+  canonical CREATE itself is exclusive per Track D-2b): one completed op writes the canonical,
+  records provenance, rewrites the origin copy as a `global_ref:` mirror, and (on a rename)
+  removes the old-named local file + its index pointer — so a COMPLETED promotion never leaves
+  the dup or orphan a hand-done hand-off would (a left-behind project-authored copy is a
+  non-mirror `--gc` never reclaims, and on the next `--pull` it shadows or duplicates the
+  canonical).
   `CANON_NAME` defaults to `LOCAL_FACT`; pass it to RENAME (`_`→`-` / drop a date) or to
   DEDUP onto an existing canonical (whose CONTENT is **never overwritten** — only the
   origin side is reconciled, plus the origin is appended to the canonical's `projects:`
@@ -442,7 +445,8 @@ Each replicated fact adds an **always-loaded** index pointer to *every* project 
 reaches. So global-scope facts are a per-session tax paid across the whole fleet:
 - `user-global` → every project (G facts × P projects pointers fleet-wide).
 - `stack-general` on a **common** stack → nearly as wide while *looking* scoped. The
-  `claude-code` stack (`.claude`, `skill`, `agents.md`) matches almost every CC repo,
+  `claude-code` stack (a real `.claude/` dir or a `SKILL.md` file — the only two markers
+  `detect_stacks` actually checks) matches almost every CC repo,
   so a `claude-code` stack-general fact behaves like a second user-global tier. Reserve
   `stack-general` for **narrow** stacks (`gpu`, `rag`, `playwright`).
 
