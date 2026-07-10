@@ -435,11 +435,23 @@ def _as_mirror(text: str, name: str) -> str:
         text = text[1:]                # (else _is_mirror's ^--- anchor fails on our own output)
     out: list[str] = []
     injected = False
-    dashes = 0                         # frontmatter = the span between the 1st and 2nd '---'
-    for ln in text.splitlines():
+    dashes = 0                         # frontmatter = the span between the OPEN fence and the CLOSE fence
+    for i, ln in enumerate(text.splitlines()):
         s = ln.strip()
-        if s == "---":
-            dashes += 1
+        # v0.1.74 fence PARITY with _frontmatter/_is_mirror (`^---\n(.*?)\n---` — the ONE boundary rule):
+        # the OPEN fence is the exact FIRST line '---'; the CLOSE is any later line whose RAW start is
+        # '---' ('----', '--- notes' close there; an INDENTED '  ---' is NOT a fence). The old
+        # bare-stripped-'---'-only count diverged from the parser BOTH ways (2026-07-10 audit finding #1,
+        # measured): through a non-bare close it stayed "inside frontmatter" to EOF, so the dashes==1-scoped
+        # strips below ATE every body line starting 'projects:'/'global_ref:' — silent mirror corruption on
+        # --pull (every puller) and on --promote (the origin's OWN copy) — and an indented '---' closed it
+        # EARLY, leaking canonical-only 'projects:' provenance into every mirror (the v0.1.26 churn class,
+        # reopened). A pre-existing corrupted mirror self-heals: the corrected `want` differs → STALE → refresh.
+        if dashes == 0:
+            if i == 0 and ln == "---":
+                dashes = 1
+        elif dashes == 1 and ln.startswith("---"):
+            dashes = 2
         # v0.1.70 Gate-2a: frontmatter-scoped (dashes == 1) — was unscoped, silently deleting ANY body
         # line starting with the literal text "global_ref:" (plausible in this self-documenting repo,
         # e.g. a note explaining the mirror mechanism itself). Both of THIS function's own legitimate
@@ -1030,13 +1042,18 @@ def gc(project_dir: Path, apply: bool) -> int:
 
 # ── promotion: hand a local fact UP to the canonical global store (v0.1.16) ─────
 def _body(text: str) -> str:
-    r"""The fact BODY — markdown AFTER the leading frontmatter block. Strips ONLY the first `^---\n…\n---\n`
-    span (non-greedy, once) — NOT split('---'), since a body legitimately contains `---`/`***` horizontal
-    rules. Trailing whitespace (per line + overall) is normalized so the M2 compare ignores cosmetic drift."""
+    r"""The fact BODY — markdown AFTER the leading frontmatter block. Strips ONLY the first
+    `^---\n…\n---` span (non-greedy, once) — NOT split('---'), since a body legitimately contains
+    `---`/`***` horizontal rules. Trailing whitespace (per line + overall) is normalized so the M2
+    compare ignores cosmetic drift. v0.1.74 close-fence PARITY with _frontmatter (audit): the close is
+    the WHOLE first line starting '---' ('----'/'--- notes' close there too) and may sit at EOF with no
+    trailing newline — the old `\n---\n`-exact close left a body-less fact's frontmatter unstripped, so
+    two body-less facts with differing frontmatter compared UNEQUAL and promote's Guard-5 spuriously
+    refused a clean reconcile."""
     if text.startswith("﻿"):       # strip a leading BOM (some editors add one) so the \A--- anchor holds
         text = text[1:]
     text = text.replace("\r\n", "\n").replace("\r", "\n")   # CRLF/CR (a model→file artifact) — match _frontmatter
-    body = re.sub(r"\A---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
+    body = re.sub(r"\A---\n.*?\n---[^\n]*(?:\n|\Z)", "", text, count=1, flags=re.DOTALL)
     return "\n".join(ln.rstrip() for ln in body.splitlines()).strip()
 
 

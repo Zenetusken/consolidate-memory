@@ -5,6 +5,33 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.74] — 2026-07-10
+
+### Fixed — fence-boundary parity: `_as_mirror`/`_body` now agree with `_frontmatter` (audit finding #1)
+The audit's one verified silent-data-corruption bug. `_frontmatter`/`_is_mirror` close a
+frontmatter block on ANY line starting `---` (`^---\n(.*?)\n---`), but `_as_mirror` counted only
+bare stripped `---` lines — so a fact whose close fence is `----`/`--- notes` parsed as relevant
+and replicable, yet `_as_mirror` stayed "inside frontmatter" to EOF and its v0.1.70
+frontmatter-scoped strips ATE every body line starting `projects:`/`global_ref:` — silent mirror
+corruption via `--pull` (in every puller) and via `--promote` (the origin's OWN copy rewritten
+corrupted), reading in-sync forever after. The stripped-line count also diverged the OTHER way: an
+INDENTED `  ---` (e.g. a block-scalar continuation) is not a fence to the parser but closed
+`_as_mirror` early, leaking canonical-only `projects:` provenance into every mirror — the exact
+churn class the v0.1.26 root-fix closed, reopened. All five repro probes ran RED pre-fix
+(5/5 defects present, pure-function fixtures) and are pinned green in-repo (the smoke v0.1.74 block).
+
+- **`_as_mirror` fence parity**: OPEN = the exact first line `---` (what `^---\n` anchors);
+  CLOSE = any later line whose RAW start is `---`; an indented `  ---` is never a fence. The
+  `_is_mirror(_as_mirror(...))` round-trip and idempotence hold on the malformed-fence shapes
+  (pinned). A pre-existing corrupted mirror in the wild self-heals: the corrected `want` differs
+  → STALE → refreshed on the next pull.
+- **`_body` close parity**: the close-fence line is consumed WHOLE (`----`/`--- tail`) and may sit
+  at EOF with no trailing newline — pre-fix, a body-less fact's frontmatter was left unstripped,
+  so two body-less facts with differing frontmatter compared UNEQUAL and promote's Guard-5
+  spuriously refused a clean reconcile (M2 false negative in the refuse direction).
+
+No CLI/schema change; both deltas are correctness on malformed-but-parser-valid input ⇒ patch.
+
 ## [0.1.73] — 2026-07-10
 
 ### Fixed — evict accounting truth: plan once, measure freed, refuse gainless (audit F1–F4)
