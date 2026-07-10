@@ -1703,7 +1703,7 @@ def _dispatch() -> int:
         return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1], prefer_canonical="--prefer-canonical" in args)
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
-              "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] | --tokens [--json] PROJECT_DIR "
+              "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
               "| --utility [--json] PROJECT_DIR | --network", file=sys.stderr)
         return 2
     evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)

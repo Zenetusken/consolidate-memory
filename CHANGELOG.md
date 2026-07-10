@@ -5,6 +5,25 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.77] — 2026-07-10
+
+### Docs — drift sync to code truth (audit doc-code-contract findings)
+- harness-map no longer calls `--promote` "**Atomic**" — the code's own docstring says *not
+  crash-atomic* (an interrupted process can leave partial state; the canonical CREATE alone is
+  exclusive per Track D-2b). Reworded to **single-shot**, with the completed-call guarantee stated
+  precisely.
+- harness-map's claude-code stack markers corrected to what `detect_stacks` actually checks
+  (a real `.claude/` dir or a `SKILL.md` file — not "`.claude`, `skill`, `agents.md`").
+- CLAUDE.md's script inventory line now lists the full sync_global surface
+  (`--promote`/`--utility`/`--evict`/`--allow-net-grow`/`--apply` were missing).
+- The generic usage string includes `--prefer-canonical` in the `--promote` synopsis (the
+  promote-specific usage already did).
+- Test hygiene: the M4 vocabulary pin `not ({"release","ci-cd"} <= _DETECTABLE_STACKS)` was a
+  negated-subset that stayed green if EITHER element was missing — adding `release` alone (the
+  exact regression it pins) would not have failed it. Now `isdisjoint` (per-element).
+
+Docs + one usage string + one test assertion; no behavior change ⇒ patch.
+
 ## [0.1.76] — 2026-07-10
 
 ### Fixed — robustness batch (seven audit minors, each red-first: 7/7 pre-fix)

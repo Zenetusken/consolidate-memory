@@ -337,8 +337,10 @@ with _tf37.TemporaryDirectory() as _td39:
     (_p39 / ".claude").mkdir()
     check("v0.1.39/M4: _DETECTABLE_STACKS == detect_stacks codomain (fixture triggers every stack; catches a new .add marker)",
           sg.detect_stacks(_p39) == sg._DETECTABLE_STACKS)
-check("v0.1.39/M4: an undetectable stack is NOT in the vocab ([release]/[ci-cd] → fleet-dead, refused)",
-      not ({"release", "ci-cd"} <= sg._DETECTABLE_STACKS))
+check("v0.1.39/M4: an undetectable stack is NOT in the vocab ([release]/[ci-cd] → fleet-dead, refused) — "
+      "per-element isdisjoint, v0.1.77: the old negated-subset passed if EITHER element was missing, so "
+      "adding 'release' alone (the exact regression this pins) would have stayed green",
+      {"release", "ci-cd"}.isdisjoint(sg._DETECTABLE_STACKS))
 # v0.1.40 (M3) — slug_for generalizes to ALL non-alphanumerics (CC's rule), fixing the '.'-segment split-brain;
 # regression-IDENTICAL for the fleet; near_duplicate_slugs uses the same rule so a '.'-vs-'-' twin is detected.
 check("v0.1.40/M3: slug_for maps '.' (a dotfile-dir path) → '-', matching CC (was split-brain)",
