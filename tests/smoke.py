@@ -4330,6 +4330,30 @@ with _tf73.TemporaryDirectory() as _td81:
     check("v0.1.81: after the pull the store is in-sync and the beacon returns to SILENT (the common "
           "case stays free)",
           _beacon81(_h81, _p81).stdout == "")
+    # PR-#94 review F1 (verified divergence fixture): the held parenthetical must count STALE
+    # refresh deltas exactly like a real --pull — a description-drifted mirror sorting BEFORE a
+    # near-ceiling MISSING fact consumes the headroom; the first draft's MISSING-only loop said
+    # held=0 while run() held 1. The beacon now calls _plan_pull (one accounting replay).
+    (_g81 / "aaa-drift.md").write_text(
+        "---\nname: aaa-drift\ndescription: \"" + "g" * 80 + "\"\nmetadata:\n  scope: user-global\n"
+        "  type: feedback\n---\ndrift body\n", encoding="utf-8")
+    _adm81 = sg._as_mirror((_g81 / "aaa-drift.md").read_text(encoding="utf-8"), "aaa-drift",
+                           since="2026-01-01T00:00:00Z",
+                           body_hash=sg._body_hash((_g81 / "aaa-drift.md").read_text(encoding="utf-8")))
+    (_st81 / "aaa-drift.md").write_text(_adm81, encoding="utf-8")
+    (_g81 / "zzz-miss.md").write_text(
+        "---\nname: zzz-miss\ndescription: \"m\"\nmetadata:\n  scope: user-global\n  type: feedback\n---\nmb\n",
+        encoding="utf-8")
+    _short81 = "- [aaa-drift](aaa-drift.md) — old"   # real line much leaner than the derived pointer
+    _drift81 = ms.est_tokens(sg._pointer_line("aaa-drift", sg._frontmatter(_adm81))) - ms.est_tokens(_short81)
+    _cz81 = ms.est_tokens(sg._pointer_line("zzz-miss", sg._frontmatter((_g81 / "zzz-miss.md").read_text(encoding="utf-8"))))
+    assert _drift81 > 0 and _cz81 > 0
+    (_st81 / "MEMORY.md").write_text(_pad_index73(_C73 - _cz81, [_short81]), encoding="utf-8")
+    _r = _beacon81(_h81, _p81)
+    check("v0.1.81/review-F1: the beacon's held projection counts STALE pointer-drift deltas via "
+          "_plan_pull — it reports the missing fact as ceiling-held exactly where a real --pull "
+          "would hold it (the hand-rolled loop said absorbable)",
+          "would be ceiling-held" in _r.stdout and "1 shared global fact(s)" in _r.stdout)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

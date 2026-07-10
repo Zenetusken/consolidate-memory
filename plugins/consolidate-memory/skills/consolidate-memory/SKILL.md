@@ -868,8 +868,10 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    JSON — never rewrite it wholesale** (v0.1.81): the file also carries SCRIPT-OWNED keys —
    `stacks`/`project_path` (the `--pull`-written cache the SessionStart beacon and `--staleness`
    read; recomputing stacks costs ~2s on a big repo, which is why it is cached) and
-   `beacon_snooze_until` (set ONLY on an explicit user ask to quiet the beacon for this store) —
-   a wholesale rewrite would wipe them until the next pull. **If the over-budget gate
+   `beacon_snooze_until` (set ONLY on an explicit user ask to quiet the beacon for this store;
+   MUST be ISO-8601 — a non-ISO value fails OPEN, i.e. the beacon resumes, deliberately: a
+   garbled suppressor must never silently defeat the absorption signal) — a wholesale rewrite
+   would wipe them until the next pull. **If the over-budget gate
    was JUSTIFIED this pass** (lever `justify` or prune-then-justify, step 0), ALSO write
    `standing_justify: {"facts": <current fact-count>, "index_tokens": <current>, "at": "<iso>"}`
    to the marker — the next pass SUPPRESSES the gate until the store grows by Δ (D6/D7, v0.1.21).

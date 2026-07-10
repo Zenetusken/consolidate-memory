@@ -34,14 +34,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from memory_status import _parse_ts, est_tokens, slug_for, INDEX_CEILING_TOKENS  # noqa: E402
-from sync_global import (GLOBAL, _body_hash, _index_line_cost, _pointer_line, _safe_read_text,  # noqa: E402
-                         _store_gaps, global_facts)
+from sync_global import (GLOBAL, _body_hash, _plan_pull, _pointer_line,  # noqa: E402
+                         _safe_read_text, _store_gaps, global_facts, is_relevant)
 
 
 def _cwd_from_stdin() -> str:
@@ -83,20 +84,35 @@ def beacon_line(store: Path) -> str:
     missing, stale = _store_gaps(store, stacks, gfacts, body_hashes)
     if not missing and not stale:
         return ""
-    # the M1 projection: how many of the missing would the HARD CEILING hold on a pull?
+    # The M1 projection: how many of the missing would the HARD CEILING hold on a pull?
+    # PR-#94 review F1 (verified divergence fixture): a hand-rolled MISSING-only loop OMITTED the
+    # STALE-refresh deltas _plan_pull counts, so the beacon advertised a pull the ceiling would
+    # refuse. One accounting replay, by law: build the SAME items shape and call _plan_pull.
+    # STALE stands in as POINTER DRIFT (real index line ≠ derived pointer): a description-drifted
+    # mirror carries exactly the refresh delta a real --pull applies; body-only staleness is
+    # delta-0 (nothing to count). Reach note: a hand-edited index line under a genuinely in-sync
+    # mirror counts a phantom delta — conservative direction (fewer advertised as absorbable).
     idx_text = _safe_read_text(store / "MEMORY.md") or ""
-    running = est_tokens(idx_text)
-    held = 0
-    fm_by = {n: fm for n, fm, _t in gfacts}
-    from sync_global import is_relevant  # local: keep module import surface identical to _store_gaps
+    # PR-#94 review F4: build the anchor→cost map ONCE — per-fact _index_line_cost re-split the
+    # whole index every call (O(relevant × index_bytes); measured 4.5s only at a pathological
+    # 500-fact × 4MB fixture, sub-ms at any ceiling-governed size — hoisted regardless, so the
+    # bound is O(relevant + index_bytes) and the spec can state it).
+    line_cost: dict = {}
+    for _ln in idx_text.splitlines():
+        _m = re.search(r"\]\(([^)]+)\.md\)", _ln)
+        if _m and _m.group(1) not in line_cost:
+            line_cost[_m.group(1)] = est_tokens(_ln)
+    items = []
     for n, fm, _t in gfacts:
-        if not is_relevant(fm, stacks if stacks is not None else set()) or (store / f"{n}.md").exists():
+        if not is_relevant(fm, stacks if stacks is not None else set()):
             continue
-        cost = est_tokens(_pointer_line(n, fm)) - _index_line_cost(idx_text, n)
-        if running + cost > INDEX_CEILING_TOKENS:
-            held += 1
-        else:
-            running += cost
+        cost_new = est_tokens(_pointer_line(n, fm))
+        cost_old = line_cost.get(n, 0)
+        if not (store / f"{n}.md").exists():
+            items.append((n, "MISSING", cost_new, cost_old))
+        elif cost_old and cost_new != cost_old:
+            items.append((n, "STALE-mirror", cost_new, cost_old))
+    held = len(_plan_pull(items, est_tokens(idx_text), False, budget=INDEX_CEILING_TOKENS)["held"])
     mdt = _parse_ts(str(st.get("timestamp", "") or ""))
     age = ""
     if mdt is not None:
@@ -110,7 +126,8 @@ def beacon_line(store: Path) -> str:
     if stale:
         parts.append(f"{stale} mirror(s) carry outdated content")
     return ("Cross-project memory: " + " and ".join(parts) + basis + age
-            + ". A consolidation pass (dream) on this project absorbs them.")
+            + ". A consolidation pass (dream) on this project absorbs them; asking to snooze "
+            "this reminder quiets it for this store.")
 
 
 def main() -> int:

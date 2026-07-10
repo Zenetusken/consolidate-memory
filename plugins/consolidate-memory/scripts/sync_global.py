@@ -734,7 +734,9 @@ def _write_stacks_cache(store: Path, project_dir: Path, stacks: set) -> None:
         st["stacks"] = sorted(stacks)
         st["project_path"] = str(project_dir)
         store.mkdir(parents=True, exist_ok=True)
-        sp.write_text(json.dumps(st, indent=2) + "\n", encoding="utf-8")
+        # PR-#94 review F3: atomic per the Track-D convention — a concurrently-starting session's
+        # beacon must never read a torn state file (it would degrade the basis needlessly).
+        _atomic_write_text(sp, json.dumps(st, indent=2) + "\n")
     except OSError as e:
         print(f"  ⚠ stacks-cache write skipped ({e.__class__.__name__}) — the session beacon "
               "degrades to user-global-only until the next pull", file=sys.stderr)

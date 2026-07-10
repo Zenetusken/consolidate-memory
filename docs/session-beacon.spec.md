@@ -33,10 +33,15 @@ never runs the flows that report lag; SessionStart is the one surface every sess
 At most ONE factual line, e.g.: *"Cross-project memory: 3 shared global fact(s) are not yet
 mirrored here (1 would be ceiling-held); last consolidation 12.4d ago. A consolidation pass
 (dream) on this project absorbs them."* (~45 est tok when it fires; ~0 in the common case). The
-ceiling-held figure replays the M1 projection (`_pointer_line` costs vs `INDEX_CEILING_TOKENS`)
-so the beacon never advertises a pull the ceiling would refuse without saying so. The gap counts
-come from `_store_gaps` — the SAME predicate `fleet_staleness` uses (factored shared, so the
-beacon and the report can never disagree).
+ceiling-held figure calls **`_plan_pull` itself** — the one accounting replay (PR-#94 review F1
+found the first draft's hand-rolled MISSING-only loop omitted STALE-refresh deltas and, in a
+verified fixture, advertised a pull the real ceiling refused; the divergence class `_plan_pull`
+exists to kill). STALE items enter as POINTER DRIFT (real index line ≠ derived pointer — exactly
+the refresh delta a real `--pull` applies; body-only staleness is delta-0). Reach notes: a
+hand-edited index line under an in-sync mirror counts a phantom delta (conservative — fewer
+advertised as absorbable); `beacon_snooze_until` must be ISO-8601 and fails OPEN (a garbled
+suppressor never silently defeats the signal). The gap counts come from `_store_gaps` — the SAME
+predicate `fleet_staleness` uses (factored shared, so the beacon and the report cannot disagree).
 
 **Silence rules (no-nag, all deliberate):** global store absent/empty · this store holds no
 `*.md` (never-participated dirs must cost zero — the plugin is user-wide; discovery is
@@ -47,6 +52,14 @@ report-then-apply applies to snoozing too) · 0 missing and 0 stale.
 exit 0 — a best-effort advisory must never inject a traceback into every session start nor render
 an error notice (exit 2 would). Advisory only: the beacon never pulls, never writes any store —
 absorption still happens only through a dream on that project (explicit-trigger-only untouched).
+
+**Complexity bound (PR-#94 review F4):** O(relevant + index_bytes) — the index is split once into
+an anchor→cost map (the per-fact re-split measured 4.5s only at a pathological 500-fact × 4MB
+fixture; any ceiling-governed store is sub-millisecond, today's fleet ~40ms end-to-end).
+**Rollout note (review F1):** the hook arrives via the normal plugin auto-update; whether Claude
+Code prompts when an UPDATE introduces a hook that wasn't there at install time is not documented
+either way — the README carries the user-facing sentence regardless, and the emitted line names
+its own snooze escape (review F2). `cm beacon [DIR]` is the debug lens.
 
 **The SKILL Phase-5 merge rule (load-bearing):** the model writes the state file at marker time —
 it must MERGE into the existing JSON, preserving the script-owned keys (`stacks`, `project_path`,

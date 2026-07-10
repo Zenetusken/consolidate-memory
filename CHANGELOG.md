@@ -39,7 +39,18 @@ block.
 
 New plugin component (hooks) + a new script + additive state-file keys; `claude plugin validate
 --strict` passes with the hooks file; smoke pins the full behavior battery incl. the sabotage
-failure posture (10 checks) ⇒ patch.
+failure posture ⇒ patch.
+
+Hardened by a two-lens review team before merge (core-correctness + hook-surface, both verdicts
+MERGE-READY): the ceiling-held projection now calls `_plan_pull` itself — the reviewer's verified
+divergence fixture (a stale pointer-drift delta made the hand-rolled loop advertise a pull the
+real ceiling refused) is the new pin; the stacks-cache write is atomic (Track-D convention); the
+emitted line names its own snooze escape and README documents the beacon + the auto-update
+rollout (a context line appearing after an update is this feature); the index is split once
+(O(relevant + index_bytes), stated bound); the portable manifest validator gained a hooks.json
+shape check; `cm beacon` is the debug lens. Injection resistance and the ≤2s budget were
+adversarially confirmed (crafted canonicals/state never reach the line; 500-canonical stress
+stays sub-second).
 
 ## [0.1.80] — 2026-07-10
 
