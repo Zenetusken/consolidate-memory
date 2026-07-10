@@ -5,6 +5,46 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.78] — 2026-07-10
+
+### Added — evidence-clock stamps: zero-read windows that survive mirror refreshes (audit F9)
+The first increment of the audit's enhancement program (`docs/evidence-clock-stamps.spec.md`).
+Fleet zero-read evidence was mtime-gated, and a STALE refresh rewrites every holder's mirror —
+so ANY canonical text delta, including a pure `description:` hook tweak, wiped the fleet's
+accrued probative windows (measured red: 1 → 0 on a description-only edit). With
+`_DEMOTION_MIN_WINDOWS = 3` and dreams at arc boundaries, an occasionally-edited canonical's
+evidence could never converge. The clock granularity was wrong, not the instinct: "content
+changed" (reset is right) is not "file mechanically rewritten" (evidence must persist).
+
+- `_as_mirror` gains two script-owned stamps under the `metadata:` anchor —
+  `global_ref_since:` (when this mirror's content-lineage began) and `global_ref_body:`
+  (sha1-12 of the canonical BODY, the lineage key; body-only by design, so description/stacks/
+  provenance tweaks don't reset it). `run()` computes the carry at classify time (`cur == want`
+  keeps its exact in-sync shape — pinned: an immediate re-pull is in-sync, zero churn);
+  `promote()` mints a fresh stamp (Probe K's byte-identical follow-up pull still holds).
+- **Migration wave**: a pre-stamp mirror's first refresh seeds `since` from its OLD mtime — the
+  fleet's existing evidence age is preserved, never restarted from zero — and RESULT reports
+  `restamped N` (one-time upgrade, not churn). Pinned: the accrued window survives the upgrade.
+- **Consumer**: `fleet_utility` counts windows against the stamp when present+parseable, else
+  st_mtime (legacy fallback, undercount-safe; garbled stamps fail toward less evidence);
+  per-canonical `fallback_nodes` (additive `--json` key) keeps evidence provenance visible.
+  A DESCRIPTION edit now preserves windows; a BODY edit resets them — both pinned.
+- `_frontmatter`'s metadata-child whitelist gains the two stamp keys (the ONE shared parser —
+  producer carry and consumer clock read through it, no second parse path).
+
+No cycle-record schema change; no policy change (every demotion veto and report-then-apply
+posture untouched — this only makes negative evidence accrue truthfully). Additive frontmatter
+keys + one additive `--json` key ⇒ patch.
+
+Hardened by a three-lens review team (carry-correctness / seams / adversarial — all three
+verdicts MERGE-READY) before merge: the stamp strip re-narrowed to the exact three keys (the
+wide `global_ref` prefix ate folded-scalar `global_reference…` continuations — the v0.1.70
+class); `restamped` now counts only true mtime-seeded migrations (not body-changed legacies,
+not fallback-form mirrors whose stamp can never land); stamp seconds are CEILED, never floored
+(a floored clock over-credited a same-second window against the pinned undercount bias);
+`docs/index-usage-and-budget-ladder.spec.md` §C4 gained the supersession back-pointer. Every
+review finding pinned in smoke.
+
 ## [0.1.77] — 2026-07-10
 
 ### Docs — drift sync to code truth (audit doc-code-contract findings)

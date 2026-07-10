@@ -3955,5 +3955,111 @@ with _Env73() as _e:
           _rc76 == 1 and "hardlink" in _perr76.getvalue() and not (_e.glob / "loc.md").exists()
           and (_e.store / "loc.md").exists() and list(_e.glob.glob("*.tmp*")) == [])
 
+# --- v0.1.78: evidence-clock stamps (docs/evidence-clock-stamps.spec.md — audit F9's starvation fix).
+# RED pre-fix (measured): one probative window accrued, one DESCRIPTION-only canonical edit + --pull,
+# fleet windows 1 → 0 (mtime clock wiped by the refresh). Post-fix: carried lineage preserves them;
+# a BODY edit still resets (old zero-reads don't indict new content).
+_t78 = ("---\nname: cx\ndescription: \"v1\"\nmetadata:\n  node_type: memory\n  scope: user-global\n"
+        "  type: feedback\n---\nthe body\n")
+_m78 = sg._as_mirror(_t78, "cx", since="2026-01-05T00:00:00Z", body_hash=sg._body_hash(_t78))
+check("v0.1.78: a stamped mirror round-trips — _is_mirror recognizes it, _frontmatter reads both stamps "
+      "back, and the body hash is the BODY-only sha1-12",
+      ms._is_mirror(_m78) and ms._frontmatter(_m78).get("global_ref_since") == "2026-01-05T00:00:00Z"
+      and ms._frontmatter(_m78).get("global_ref_body") == sg._body_hash(_t78)
+      and sg._body_hash(_t78) == sg._body_hash(_t78.replace('description: "v1"', 'description: "v2 changed"')))
+
+
+def _uw78(window, per_fact):
+    return _jsonB.dumps({"usage": {"window": window, "transcripts": 1, "dream_excluded": 0,
+                                   "reads": sum(f.get("reads", 0) for f in per_fact),
+                                   "facts_read": len(per_fact), "per_fact": per_fact}})
+
+
+def _canon78(desc, body):
+    return (f"---\nname: canon-x\ndescription: \"{desc}\"\nmetadata:\n  node_type: memory\n"
+            f"  scope: user-global\n  type: feedback\n---\n{body}\n")
+
+
+import re as _re78  # noqa: E402
+with _Env73() as _e:
+    (_e.glob / "canon-x.md").write_text(_canon78("v1 description", "the body"), encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _run73(_e.proj)
+    # backdate the mirror's LINEAGE stamp so a probative window can start after it (the fact-age rule)
+    _mir78 = _re78.sub(r"(?m)^  global_ref_since: .*$", "  global_ref_since: 2025-12-01T00:00:00Z",
+                       (_e.store / "canon-x.md").read_text(encoding="utf-8"))
+    (_e.store / "canon-x.md").write_text(_mir78, encoding="utf-8")
+    (_e.store / ".consolidation-log.jsonl").write_text(
+        _uw78("2026-01-01T00:00:00Z..2026-01-02T00:00:00Z", [{"name": "other", "reads": 1, "last": "t"}]) + "\n",
+        encoding="utf-8")
+    _w78 = lambda: {x["name"]: x for x in sg.fleet_utility(_e.proj)["canonicals"]}["canon-x"]["windows"]  # noqa: E731
+    _w0 = _w78()
+    (_e.glob / "canon-x.md").write_text(_canon78("v2 description grew much longer", "the body"), encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    _w1 = _w78()
+    check("v0.1.78: a DESCRIPTION-only canonical edit + refresh PRESERVES accrued fleet windows "
+          "(was 1→0, the F9 starvation; the refreshed mirror carries its lineage stamp)",
+          _w0 == 1 and _w1 == 1 and "refreshed 1" in _out)
+    _in_sync = _run73(_e.proj)
+    check("v0.1.78: the carry is STABLE — an immediate re-pull is in-sync (no refresh churn from the stamps)",
+          "refreshed 0" in _in_sync[1] and "pulled 0" in _in_sync[1])
+    (_e.glob / "canon-x.md").write_text(_canon78("v2 description grew much longer", "a genuinely NEW body"),
+                                        encoding="utf-8")
+    _run73(_e.proj)
+    check("v0.1.78: a BODY edit RESETS the lineage (windows → 0 — old zero-reads don't indict new content)",
+          _w78() == 0)
+
+with _Env73() as _e:
+    # legacy migration wave: an UNSTAMPED (pre-upgrade) mirror refreshes → since seeds from its
+    # mtime (never now() — don't restart the fleet's evidence from zero) and RESULT says restamped.
+    (_e.glob / "canon-x.md").write_text(_canon78("v1", "the body"), encoding="utf-8")
+    _legacy78 = sg._as_mirror((_e.glob / "canon-x.md").read_text(encoding="utf-8"), "canon-x")  # bare = no stamps
+    (_e.store / "canon-x.md").write_text(_legacy78, encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n- [canon-x](canon-x.md) — v1 [user-global]\n",
+                                        encoding="utf-8")
+    _old78 = ms._parse_ts("2025-12-01T00:00:00Z")
+    assert _old78 is not None
+    _osB.utime(_e.store / "canon-x.md", (_old78.timestamp(), _old78.timestamp()))
+    (_e.store / ".consolidation-log.jsonl").write_text(
+        _uw78("2026-01-01T00:00:00Z..2026-01-02T00:00:00Z", [{"name": "other", "reads": 1, "last": "t"}]) + "\n",
+        encoding="utf-8")
+    _fu78 = {x["name"]: x for x in sg.fleet_utility(_e.proj)["canonicals"]}["canon-x"]
+    check("v0.1.78: an UNSTAMPED mirror stays on the mtime fallback clock, disclosed via fallback_nodes",
+          _fu78["windows"] == 1 and _fu78.get("fallback_nodes") == 1)
+    _rc, _out, _err = _run73(_e.proj)   # description unchanged → but legacy mirror lacks stamps → STALE
+    _fu78b = {x["name"]: x for x in sg.fleet_utility(_e.proj)["canonicals"]}["canon-x"]
+    check("v0.1.78: the migration wave restamps a legacy mirror — since seeds from its OLD mtime, so the "
+          "accrued window SURVIVES the upgrade refresh, and RESULT reports 'restamped'",
+          "restamped 1" in _out and _fu78b["windows"] == 1 and "fallback_nodes" not in _fu78b)
+
+# --- PR-#91 review-team pins (three LOW findings, fixed on-branch before merge) ---
+_t78r = ("---\nname: gr\ndescription: >-\n  global_reference architecture notes for the fleet\n"
+         "global_reference: a-legit-hypothetical-key\nmetadata:\n  node_type: memory\n"
+         "  scope: user-global\n  type: feedback\n---\nbody\n")
+_m78r = sg._as_mirror(_t78r, "gr", since="2026-01-05T00:00:00Z", body_hash=sg._body_hash(_t78r))
+check("v0.1.78/review-F1: the stamp strip targets the EXACT three keys — a folded-scalar description "
+      "continuation beginning 'global_reference' AND a 'global_reference:' frontmatter key both SURVIVE "
+      "mirroring (the wide 'global_ref' prefix re-ate what the v0.1.70 narrowing protects)",
+      "global_reference architecture notes for the fleet" in _m78r
+      and "global_reference: a-legit-hypothetical-key" in _m78r
+      and ms._is_mirror(_m78r) and "global_ref_since: 2026-01-05T00:00:00Z" in _m78r)
+check("v0.1.78/review-F3: stamp seconds are CEILED, never floored — a floored clock would over-credit a "
+      "window starting inside [floor(t), t) against the pinned undercount bias",
+      sg._ceil_iso(100.2) == "1970-01-01T00:01:41Z" and sg._ceil_iso(100.0) == "1970-01-01T00:01:40Z")
+with _Env73() as _e:
+    # review-F2a: a no-metadata-block canonical mirrors via the `# global_ref:` fallback form — the
+    # stamp can never land, so its refreshes must NOT report a migration that didn't happen.
+    (_e.glob / "nm.md").write_text("---\nname: nm\ndescription: \"v1\"\nscope: user-global\n---\nbody\n",
+                                   encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _run73(_e.proj)
+    (_e.glob / "nm.md").write_text("---\nname: nm\ndescription: \"v2 edited\"\nscope: user-global\n---\nbody\n",
+                                   encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("v0.1.78/review-F2a: a fallback-form (no-metadata) mirror refresh reports plain 'refreshed', "
+          "never 'restamped' (the stamp cannot land there — it stays on the documented mtime fallback)",
+          "refreshed 1" in _out and "restamped" not in _out
+          and "global_ref_since" not in (_e.store / "nm.md").read_text(encoding="utf-8"))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

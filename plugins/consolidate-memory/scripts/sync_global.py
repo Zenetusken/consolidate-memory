@@ -52,9 +52,12 @@ writes new global-scope facts up to the global store in Phase 4.
 from __future__ import annotations
 
 import ast
+import hashlib
+import math
 import os
 import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 # est_tokens lives in memory_status (the measurement script); reuse it rather than
@@ -430,9 +433,50 @@ def is_relevant(fm: dict, stacks: set[str]) -> bool:
     return False
 
 
-def _as_mirror(text: str, name: str) -> str:
+def _body_hash(text: str) -> str:
+    """sha1-12 of the fact BODY (`_body` — frontmatter stripped): the mirror's content-LINEAGE key
+    (v0.1.78, docs/evidence-clock-stamps.spec.md). BODY-only by design — a description/stacks/
+    provenance tweak refreshes the mirror TEXT but is not new content, so it must not reset the
+    fleet's zero-read evidence clock; a body change is, and must. Not a security boundary."""
+    return hashlib.sha1(_body(text).encode("utf-8")).hexdigest()[:12]
+
+
+def _ceil_iso(epoch: float) -> str:
+    """Epoch → whole-second ISO, seconds CEILED (PR-#91 adversarial F3): a FLOORED stamp lets a
+    window starting inside [floor(t), t) count where the raw float clock would not — over-crediting
+    zero-read evidence against the pinned undercount bias. Ceiling keeps `window_start >= clock`
+    strictly conservative (a window in the same second as the write never counts)."""
+    return datetime.fromtimestamp(math.ceil(epoch), tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _now_iso() -> str:
+    return _ceil_iso(datetime.now(timezone.utc).timestamp())
+
+
+def _mtime_iso(path: Path) -> str:
+    """The file's mtime as ISO — the migration seed for a pre-stamp mirror's lineage clock
+    (the best clock we have; deliberately NOT now(), which would restart the fleet's evidence
+    from zero). The OSError fallback IS now(): reachable only via a delete race after the caller
+    already read the file, and it fails toward LESS evidence (undercount — the pinned safe bias),
+    never toward inventing age. Seconds are ceiled — see _ceil_iso."""
+    try:
+        return _ceil_iso(path.stat().st_mtime)
+    except OSError:
+        return _now_iso()
+
+
+def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "") -> str:
     """Return the global fact stamped as a managed mirror (`global_ref: <name>`),
     robustly — drop any existing global_ref, then insert one after `metadata:`.
+
+    v0.1.78 (evidence-clock stamps): when `since`/`body_hash` are supplied, two sibling stamps
+    ride the same metadata anchor — `global_ref_since:` (when this mirror's content-lineage
+    began) and `global_ref_body:` (the sha1-12 lineage key). run()/promote() compute the carry;
+    bare calls (tests, legacy paths) emit no stamps. The frontmatter-scoped strip covers the
+    whole `global_ref` prefix so re-stamping stays idempotent; `_is_mirror` keys on
+    `global_ref:` only, so the smoke-pinned round-trip is untouched. REACH LIMIT: the
+    no-metadata-block fallback form (`# global_ref:` comment) carries no stamps — such a
+    mirror stays on the consumer's mtime fallback clock.
 
     The metadata anchor must be a COLUMN-0 top-level key (mirroring `_is_mirror`'s
     `not ln[:1].isspace()` test). An INDENTED `  metadata:` is NOT a valid anchor: if it
@@ -467,8 +511,12 @@ def _as_mirror(text: str, name: str) -> str:
         # e.g. a note explaining the mirror mechanism itself). Both of THIS function's own legitimate
         # stamps (the metadata-child form and the post-opening-'---' fallback) land strictly within
         # dashes == 1, so scoping the strip the same way loses no correctness.
-        if dashes == 1 and s.startswith("global_ref:"):
-            continue                   # drop any existing global_ref (re-stamped below)
+        if dashes == 1 and s.startswith(("global_ref:", "global_ref_since:", "global_ref_body:")):
+            # drop any existing global_ref + stamp lines (re-stamped below). EXACT three keys, not the
+            # bare "global_ref" prefix (PR-#91 adversarial review): the wide prefix re-ate what the
+            # v0.1.70 narrowing protects — e.g. a folded-scalar description continuation line that
+            # happens to begin "global_reference …" was silently dropped from the mirror's frontmatter.
+            continue
         # v0.1.26 (provenance-churn root-fix): `projects:` is CANONICAL-ONLY bookkeeping (the synapse
         # record `network()`/`_holders` read off the global store). NEVER carry it into a mirror — else
         # every pull that grows a canonical's holder list marks all OTHER mirrors stale (cosmetic churn).
@@ -483,6 +531,9 @@ def _as_mirror(text: str, name: str) -> str:
         # un-refreshable, GC-immune mirror (never reclaimed, never updated).
         if not injected and dashes == 1 and not ln[:1].isspace() and s.rstrip(":") == "metadata":
             out.append(f"  global_ref: {name}")
+            if since:   # v0.1.78: the content-lineage clock (see docstring; caller computes the carry)
+                out.append(f"  global_ref_since: {since}")
+                out.append(f"  global_ref_body: {body_hash}")
             injected = True
     if not injected:  # no metadata block — stamp just inside the frontmatter
         for i, ln in enumerate(out):
@@ -690,6 +741,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
               "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim"), "frozen(mirror)": ("✻", "yellow")}
     rows: list = []
     relevant = pulled = refreshed = held = fat = 0   # fat: v0.1.66 — pointers written over HOOK_TOKEN_WARN
+    restamped = 0   # v0.1.78: STALE refreshes of PRE-STAMP mirrors — the one-time evidence-clock migration wave
     # v0.1.73 (accounting truth — docs/evict-accounting-truth.spec.md): CLASSIFY first (no writes),
     # PLAN the index accounting ONCE via _plan_pull, THEN execute — the write loop consults plan
     # membership and never re-decides. Seed from the live index (store-scan convention, v0.1.69
@@ -705,7 +757,34 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         present = path.exists()
         cur = (_safe_read_text(path) or "") if present else ""   # store-scan convention (v0.1.69 Gate-2b)
         is_mirror = present and _is_mirror(cur)
-        want = _as_mirror(text, name)
+        # v0.1.78 evidence-clock carry (docs/evidence-clock-stamps.spec.md): same body as the current
+        # mirror → CARRY its since (a description/stacks/provenance tweak refreshes the text without
+        # wiping the fleet's accrued zero-read windows — the audit's F9 starvation, measured 1→0 on a
+        # description-only edit); legacy/garbled stamps but same body → seed from the file's mtime
+        # (the migration wave — never restart the fleet's evidence from zero); body genuinely changed
+        # (or a fresh pull) → NEW lineage (old zero-reads don't indict new content).
+        new_hash = _body_hash(text)
+        _migrated = False   # took the mtime-seeded branch (the honest referent of `restamped` — review #91)
+        if is_mirror:
+            cur_fm = _frontmatter(cur)
+            cur_since = str(cur_fm.get("global_ref_since", "") or "")
+            if cur_fm.get("global_ref_body", "") == new_hash and cur_since and _parse_ts(cur_since) is not None:
+                since = cur_since
+            elif _body_hash(cur) == new_hash:
+                since = _mtime_iso(path)
+                _migrated = True
+            else:
+                since = _now_iso()
+        else:
+            cur_fm = {}
+            since = _now_iso()
+        want = _as_mirror(text, name, since=since, body_hash=new_hash)
+        if _migrated and not _frontmatter(want).get("global_ref_since"):
+            # PR-#91 adversarial F2a: a no-metadata-block mirror (the `# global_ref:` fallback form)
+            # can never receive the stamp — without this, EVERY refresh of such a mirror reported
+            # "restamped 1" forever while global_ref_since stayed absent. A migration that didn't
+            # happen must not be reported as one; the mirror stays on the documented mtime fallback.
+            _migrated = False
         if not rel:
             # v0.1.75 (audit F6): a PRESENT mirror whose canonical is alive but no longer relevant here
             # (a dropped stack) is FROZEN — never refreshed (this branch short-circuits staleness), never
@@ -721,6 +800,12 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             status = "in-sync"
         else:
             status = "STALE-mirror"  # canonical changed → must refresh
+        if pull and status == "STALE-mirror" and _migrated:
+            # counts ONLY the mtime-seeded migrations (PR-#91 review: the old not-yet-stamped gate also
+            # counted a legacy mirror whose canonical BODY changed this same pass — branch 3, seeded from
+            # NOW — making the RESULT's "seeded from each mirror's mtime" clause dishonest for that subset;
+            # a body-changed legacy mirror is a genuine content refresh, reported as plain `refreshed`).
+            restamped += 1
         classified.append((name, fm, text, status, path, want, rel))
     # v0.1.75 (audit F7 — the M4-bypass SURFACE): promote() refuses an undetectable `stacks:` tag, but the
     # SKILL's documented Phase-4 NET-NEW path hand-writes canonicals directly — a typo'd ('gpuu') or
@@ -845,7 +930,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     add("")
     held_note = f" · held {held} (would push the index past the HARD CEILING ≈{INDEX_CEILING_TOKENS} tok — shrink to receive, or --allow-net-grow)" if held else ""
     fat_note = f" · ⚠ {fat} fat hook(s) >{HOOK_TOKEN_WARN}t written (tighten the canonical descriptions)" if fat else ""
-    tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note}{fat_note} (index updated)" if pull
+    restamp_note = (f" · restamped {restamped} (evidence-clock stamps added; lineage seeded from each "
+                    "mirror's mtime — one-time upgrade wave, not churn)") if restamped else ""
+    tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note}{restamp_note}{fat_note} (index updated)" if pull
             else "run with --pull to replicate MISSING + refresh STALE mirrors here")
     add(_ui.kv("RESULT", tail))
     _n_frozen = sum(1 for _n2, _f2, _t2, _s2, _p2, _w2, _r2 in classified if _s2 == "frozen(mirror)")
@@ -1323,7 +1410,10 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
 
     # Convert the origin's copy into a managed mirror of the POST-provenance canonical, so a later
     # --pull reports `in-sync` (not a spurious STALE-mirror refresh) and never re-creates a shadow.
-    dest.write_text(_as_mirror(canon_text, canon_name), encoding="utf-8")
+    # v0.1.78: minted with a FRESH evidence-clock stamp (a just-promoted lineage begins now); the next
+    # --pull carries it (same body hash), preserving the Probe-K byte-identical follow-up invariant.
+    dest.write_text(_as_mirror(canon_text, canon_name, since=_now_iso(), body_hash=_body_hash(canon_text)),
+                    encoding="utf-8")
     _ensure_index_pointer(store, canon_name, fm)
     renamed = canon_name != local_fact
     if renamed:  # the dup/orphan guard: drop the old-named project-authored file + its index pointer …
@@ -1539,10 +1629,12 @@ def fleet_utility(project_dir: Path) -> dict:
     reads for stem X count toward canonical X only if the node's `X.md` is a managed mirror — a
     same-stem, never-pulled LOCAL fact (the `present(local)` shadow case run() already recognizes) is
     tallied as `shadow_reads`, never attributed (a spec-gate finding: stem equality alone lies).
-    Per-canonical `windows` counts only the probative windows each holding MIRROR existed through
-    (window start ≥ mirror mtime — the demotion rank's fact-age rule, applied fleet-side; an inline
-    adversarial review found the unconditional windows_full credit overstated zero-read evidence on
-    freshly-pulled mirrors). `fleet_tax = pointer_tok × len(holders)` — ZERO for an unheld canonical (nobody pays it; its
+    Per-canonical `windows` counts only the probative windows each holding MIRROR's content-lineage
+    existed through (window start ≥ the mirror's `global_ref_since` stamp — v0.1.78, surviving
+    refreshes; st_mtime fallback on unstamped mirrors — the demotion rank's fact-age rule, applied
+    fleet-side; an inline adversarial review found the unconditional windows_full credit overstated
+    zero-read evidence on freshly-pulled mirrors, and the 2026-07-10 audit found the mtime clock
+    starved it the other way: any description tweak wiped the fleet's accrued windows). `fleet_tax = pointer_tok × len(holders)` — ZERO for an unheld canonical (nobody pays it; its
     would-be per-node cost is listed separately), on the stated provenance UPPER-BOUND basis. This is
     EVIDENCE for the model's gc/demote judgment (Phase-5 step 2, Phase-4 governance) — never an auto-gc
     input: scope/keep decisions stay CONTENT-gated (holders/adoption ≠ fit). JSON-safe (lists, never
@@ -1554,7 +1646,7 @@ def fleet_utility(project_dir: Path) -> dict:
     if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
         stores.append(trig)
     nodes_reporting = 0
-    per: dict = {n: {"reads": 0, "windows": 0, "last": "", "_ep": None, "shadow": 0} for n in canon}
+    per: dict = {n: {"reads": 0, "windows": 0, "last": "", "_ep": None, "shadow": 0, "fallback": 0} for n in canon}
     for store in stores:
         hist = usage_history(store)
         if hist["windows_full"] >= 1:
@@ -1575,13 +1667,23 @@ def fleet_utility(project_dir: Path) -> dict:
                 if reads:
                     per[stem]["shadow"] += reads       # same-stem local — reported, never attributed
                 continue
-            # Count only the probative windows the MIRROR existed through (window start ≥ mirror mtime) —
-            # crediting a node's whole window history to a freshly-pulled mirror would overstate its
-            # zero-read evidence ("0 reads/10w" on a one-day-old mirror), the same per-fact fact-age rule
-            # demotion_candidates applies locally (found by the inline adversarial review, 2026-07-05).
-            # A refresh resets mtime → undercounts, the safe direction under the pinned bias.
+            # Count only the probative windows the MIRROR's content-lineage existed through — the fact-age
+            # rule (2026-07-05 review: crediting whole window history to a fresh mirror overstates
+            # zero-read evidence). v0.1.78 (docs/evidence-clock-stamps.spec.md): the clock is the mirror's
+            # `global_ref_since` stamp when present+parseable — it SURVIVES refreshes, so a description
+            # tweak no longer wipes the fleet's accrued windows (the audit's F9 starvation: mtime-gated
+            # windows measured 1→0 on a description-only edit; at real cadence the demotion evidence gate
+            # could never converge for an occasionally-edited canonical). st_mtime is the legacy fallback
+            # (unstamped mirror → pre-upgrade behavior; a garbled stamp fails toward less evidence).
+            _since = str(_frontmatter(text).get("global_ref_since", "") or "")
+            _sdt = _parse_ts(_since) if _since else None
+            if _sdt is not None:
+                clock = _sdt.timestamp()
+            else:
+                clock = mt
+                per[stem]["fallback"] += 1
             per[stem]["windows"] += sum(1 for s in hist["window_starts"]
-                                        if isinstance(s, (int, float)) and s >= mt)
+                                        if isinstance(s, (int, float)) and s >= clock)
             per[stem]["reads"] += reads
             ts = str((row or {}).get("last", "") or "") if isinstance(row, dict) else ""
             dt = _parse_ts(ts)
@@ -1600,6 +1702,8 @@ def fleet_utility(project_dir: Path) -> dict:
              "holders": len(holders), "pointer_tok": pt, "fleet_tax": tax}
         if per[stem]["shadow"]:
             e["shadow_reads"] = per[stem]["shadow"]
+        if per[stem]["fallback"]:   # v0.1.78: evidence-provenance — holders still on the mtime clock
+            e["fallback_nodes"] = per[stem]["fallback"]
         if not holders:
             unheld.append(stem)
         entries.append(e)
@@ -1633,7 +1737,8 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
     out.append("")
     out.append(_ui.kv("CANON", _ui.c("fleet_tax desc · reads are MIRROR-attributed organic recalls "
                                      "across reporting nodes · windows = Σ probative windows each holding "
-                                     "MIRROR existed through (mtime-gated; a refresh resets the clock)", "dim")))
+                                     "MIRROR's content-lineage existed through (global_ref_since-gated — "
+                                     "survives refreshes; mtime fallback on unstamped mirrors)", "dim")))
     for e in u["canonicals"]:
         if e["windows"] and not e["reads"]:
             ev = _ui.c(f"0 reads/{e['windows']}w — unread where instrumented", "yellow")
