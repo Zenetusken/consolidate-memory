@@ -1310,6 +1310,62 @@ check("v0.1.32: build_html embeds diffs INSIDE the data dict — a </script> in 
       '"diffs"' in _hd and "</script><img" not in _hd and "\\u003c/script" in _hd)
 check("v0.1.32: template carries the diff-modal (diffKey mirror, dmodal overlay, openDiff, clickable ledger filename, esc'd lines)",
       all(s in _html for s in ["function diffKey", 'id="dmodal"', "function openDiff", "nm-diff", "DREAMDIFFS", "dl-plus"]))
+check("v0.1.72: template generalizes the diff-modal beyond the memory/ prefix (store-aware split + the size-capped message)",
+      all(s in _html for s in ["function splitDiffPath", "function diffDisplayName", "size_capped", "too large to snapshot"]))
+check("v0.1.72: an index-line-only entry (no diff for its OWN memory/<name>.md) falls back to the shared MEMORY.md diff, "
+      "and a store='repo' entry auto-links an UNAMBIGUOUS single claude_md/repo_doc candidate (not a guess when >1)",
+      'store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"]' in _html
+      and "cmKeys.length===1" in _html and "rdKeys.length===1" in _html)
+check("v0.1.72: template gives model-declared entry.files[] priority over the name-match/store heuristics — "
+      "deterministic linking (possibly MULTIPLE files per entry), not a guess; the heuristics are the LEGACY-only fallback",
+      "Array.isArray(rawFiles)" in _html and "declared.length" in _html
+      and _html.index("Array.isArray(rawFiles)") < _html.index('store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"]'))
+check("Entry.files is in the CycleRecord contract (TypedDict) and the SKILL.md schema-block pin catches drift",
+      "files" in ms.Entry.__annotations__)
+# v0.1.72 — capture_diffs/audit_snapshot: the diff-modal now covers EVERY audit_snapshot store (memory facts +
+# the MEMORY.md index + CLAUDE.md + repo docs), not memory-facts-only (the v0.1.32 scope) — a real screenshot
+# showed a CLAUDE.md edit and 4 index-line-only fact compressions narrated in the ledger with NO way to ever
+# link to a diff, because capture_diffs hard-excluded store!='memory' and label=='memory/MEMORY.md'. A real
+# end-to-end fixture (git repo + HOME override, not hand-built dicts) so audit_snapshot's actual size-cap
+# logic (_DIFF_CONTENT_CAP_TOKENS) runs, not just capture_diffs' handling of a pre-built input.
+import os as _os72, subprocess as _sp72, tempfile as _tf72  # noqa: E402
+with _tf72.TemporaryDirectory() as _td72:
+    _home72 = Path(_td72) / "home"; _home72.mkdir()
+    _proj72 = Path(_td72) / "proj"; _proj72.mkdir()
+    _sp72.run(["git", "init", "-q"], cwd=_proj72, check=True)
+    (_proj72 / "CLAUDE.md").write_text("small claude.md v1\n")
+    (_proj72 / "docs.md").write_text("x" * 40)             # small repo doc (untracked-but-not-ignored)
+    _big72 = "y " * 40000                                   # ~20000 est_tokens — well over the 8000 cap
+    (_proj72 / "BIG.md").write_text(_big72)
+    _pr72 = _home72 / ".claude" / "projects" / ms.slug_for(_proj72) / "memory"; _pr72.mkdir(parents=True)
+    (_pr72 / "fact.md").write_text("---\nname: fact\n---\nv1\n")
+    (_pr72 / "MEMORY.md").write_text("- [fact](fact.md) v1\n")
+    _old72 = _os72.environ.get("HOME"); _os72.environ["HOME"] = str(_home72)
+    try:
+        _before72 = ms.audit_snapshot(_proj72)
+        (_proj72 / "CLAUDE.md").write_text("small claude.md v2\n")
+        (_proj72 / "docs.md").write_text("x" * 41)
+        (_proj72 / "BIG.md").write_text(_big72 + "z")
+        (_pr72 / "fact.md").write_text("---\nname: fact\n---\nv2\n")
+        (_pr72 / "MEMORY.md").write_text("- [fact](fact.md) v2\n")
+        _diffs72 = ms.capture_diffs(_before72, _proj72)
+    finally:
+        _os72.environ["HOME"] = _old72 if _old72 is not None else ""
+check("v0.1.72: capture_diffs now covers a claude_md file (was memory-store-only)",
+      "claude_md/CLAUDE.md" in _diffs72 and _diffs72["claude_md/CLAUDE.md"]["op"] == "modified"
+      and not _diffs72["claude_md/CLAUDE.md"].get("size_capped")
+      and any(l["s"] == "small claude.md v2" for l in _diffs72["claude_md/CLAUDE.md"]["lines"]))
+check("v0.1.72: capture_diffs now covers the MEMORY.md index (was hard-excluded as 'pointer churn')",
+      "memory/MEMORY.md" in _diffs72 and not _diffs72["memory/MEMORY.md"].get("size_capped"))
+check("v0.1.72: capture_diffs now covers a small repo doc",
+      "repo_doc/docs.md" in _diffs72 and not _diffs72["repo_doc/docs.md"].get("size_capped"))
+check("v0.1.72: a giant repo doc (over _DIFF_CONTENT_CAP_TOKENS) is flagged size_capped, not diffed misleadingly one-sided",
+      _diffs72.get("repo_doc/BIG.md", {}).get("size_capped") is True and _diffs72["repo_doc/BIG.md"]["lines"] == []
+      and _diffs72["repo_doc/BIG.md"]["op"] == "modified")
+check("v0.1.72: a plain memory-fact diff still works exactly as before (no regression on the original v0.1.32 path)",
+      "memory/fact.md" in _diffs72 and not _diffs72["memory/fact.md"].get("size_capped")
+      and any(l["s"] == "v2" for l in _diffs72["memory/fact.md"]["lines"]))
+
 # v0.1.34 — cm log: the lean log-audit renderer (3rd view; reuses the ONE read_history; legacy-safe; --json)
 _lr = [{"marker": {"commit": "aaaa1111bb", "timestamp": "2026-06-21T01:00"}, "rigor": {"applied": "LIGHT"}, "project": "p",
         "budget": {"index": {"before_tokens": 100, "after_tokens": 120}, "recall_facts": {"before": 5, "after": 6}},

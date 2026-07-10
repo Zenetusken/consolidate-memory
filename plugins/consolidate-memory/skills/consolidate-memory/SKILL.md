@@ -676,8 +676,17 @@ just writes but also `skipped` and `reconciled` ones, since "what I deliberately
 NOT record, and why" is part of the dashboard's signal. Each:
 `{"action": "...", "tier": "...", "store": "...", "scope":
 "project-local|stack-general|user-global", "name": "...", "reason": "...",
-"citation": "..."}`. After writing, update `budget.*.after` (CLAUDE.md lines, index
-lines/bytes, recall-fact count).
+"citation": "...", "files": [...]}`. After writing, update `budget.*.after` (CLAUDE.md
+lines, index lines/bytes, recall-fact count).
+
+**`files` (v0.1.72) — declare, don't make the dashboard guess.** When an entry's action changed a
+file `memory_status.py --diffs` tracks (a fact body, `MEMORY.md`, a `claude_md/*` file, a repo doc),
+list its `audit_snapshot` label(s) — `memory/<slug>.md`, `memory/MEMORY.md`, `claude_md/CLAUDE.md`.
+This is how the dashboard's diff-modal links that entry to its before/after — deterministically, from
+what YOU state, not a name-match heuristic. An index-line-only compression (fact body untouched)
+still touched `memory/MEMORY.md` — list it. A fact whose body AND its index line both changed lists
+both. Omit `files` (or leave it empty) for a `skipped` entry or a `reconciled` one that only verified
+(no edit made) — nothing tracked changed, so there's nothing to link.
 
 ### Phase 5 — Prune, GC, verify, measure, update the marker, render
 
@@ -962,18 +971,23 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    what *this* cycle did in lifecycle terms on the triggering node (the node `dream`
    ran on).
 
-   Then **capture the per-memory-file diffs** (v0.1.32) for the dashboard's diff-modal — the
-   before/after of each changed memory fact. This MUST run AFTER `--persist` (so
-   `marker.timestamp` is stamped) and BEFORE `render_html` (so the dashboard embeds it):
+   Then **capture the per-file diffs** (v0.1.32; every `audit_snapshot` store as of v0.1.72) for
+   the dashboard's diff-modal — the before/after of each changed memory fact, the `MEMORY.md`
+   index, the CLAUDE.md hierarchy, and relocate-target repo docs. This MUST run AFTER `--persist`
+   (so `marker.timestamp` is stamped) and BEFORE `render_html` (so the dashboard embeds it):
    ```bash
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --diffs <the --seed path> \
        --before <the --snapshot path>
    ```
-   It writes a per-dream sidecar `dashboards/diffs/<commit>__<timestamp>.json` (memory store
-   ONLY — the `MEMORY.md` index excluded; per-file diff capped; `chmod 600`, so fact bodies
-   stay owner-only) that `render_html` reads to make each changed fact clickable in the dream
-   view. Best-effort — skipped (never crashes a dream) if the cycle is unstamped or the
-   snapshot is missing.
+   It writes a per-dream sidecar `dashboards/diffs/<commit>__<timestamp>.json` (per-file diff
+   capped; `chmod 600`, so fact bodies stay owner-only) that `render_html` reads to make each
+   changed file clickable in the dream view — a memory fact's own ledger row links inline; a
+   changed `MEMORY.md`/CLAUDE.md/repo-doc has no per-entry name convention to match, so it's
+   appended as its own `changed` row instead (nothing observed is ever silently dropped). A
+   claude_md/repo_doc file too large to snapshot (`_DIFF_CONTENT_CAP_TOKENS`, memory facts are
+   exempt — always small) still gets its op recorded, flagged `size_capped` instead of a
+   misleading partial diff. Best-effort — skipped (never crashes a dream) if the cycle is
+   unstamped or the snapshot is missing.
 
    Then generate the **rich HTML dashboard + dream ARCHIVE** — the visual sibling of the ASCII
    report (one cycle-record contract, two renderers): the same data plus the longitudinal
@@ -1087,7 +1101,8 @@ this once warned against; the dashboard remains the source of the figures.)
      "scope": "project-local|stack-general|user-global",
      "name": "<fact slug or short label>",
      "reason": "<why — esp. for skipped/deleted>",
-     "citation": "<commit sha | session id | empty>"}
+     "citation": "<commit sha | session id | empty>",
+     "files": ["<audit_snapshot label(s) actually changed — memory/x.md | memory/MEMORY.md | claude_md/CLAUDE.md — empty if nothing tracked changed>"]}
   ],
   "budget": {
     "claude_md": {"before": 0, "after": 0, "before_tokens": 0, "after_tokens": 0,
