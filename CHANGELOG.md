@@ -5,6 +5,46 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.73] — 2026-07-10
+
+### Fixed — evict accounting truth: plan once, measure freed, refuse gainless (audit F1–F4)
+A multi-agent end-to-end audit of the cross-project layer (independent finders + adversarial
+verifiers, every finding reproduced in a HOME-sandboxed fixture) found four defects in the
+`--pull`/`--evict` flow sharing one root: run() decided pull/hold in one place, the `--evict`
+pre-scan re-decided against a STATIC index in another, and `freed` was DERIVED from frontmatter
+instead of measured. All five repro probes ran RED against the pre-fix tree (5/5 defects present)
+and flip green with this release — the measure-first gate. Design: `docs/evict-accounting-truth.spec.md`.
+
+- **`run()` restructured classify → plan → execute.** A new pure `_plan_pull` replays the pull
+  loop's accumulating index accounting ONCE, in iteration order; the write loop and the `--evict`
+  gate both consume that single plan and can no longer diverge (F3, measured: the old static
+  `held_pre` pre-scan let an evict pass its fit-check, the loop's accumulation re-held the target
+  global, and an **authored fact — with no canonical to re-pull it — was destroyed for zero
+  gain**). STALE-refresh pointer deltas now count toward later hold decisions (F4, measured: an
+  untracked +22t refresh let a subsequent pull land the real index at ≈3862 > the 3840 ceiling).
+- **`freed` is MEASURED from the live index line** (new pure `_index_line_cost`, `](stem.md)`
+  anchor), never derived from `_pointer_line` (F2, measured both ways: an UNINDEXED evictee
+  credited ~33 phantom tokens — `_remove_index_pointer`'s False return silently ignored — and the
+  pull breached the hard ceiling at ≈3857; a fat HAND-WRITTEN 74t line was judged by its lean
+  derived ~7t pointer and the best candidate refused). An unindexed evictee is now refused
+  (frees nothing); a fat real line is credited honestly.
+- **A managed MIRROR is refused as evictee** and the EVICT-TO-RECEIVE candidates table now offers
+  **authored facts only**, each with its measured real-line cost (F1, measured: evicting a mirror
+  of a live relevant canonical re-pulled it into the freed room the SAME pass — alphabetical order
+  deciding — so the held global never landed; opposite order oscillates forever). The refusal
+  routes to the real lever: demote/delete the canonical, then `--gc`.
+- **The gain-gate is Guard-3 by construction**: an evict is accepted only when the A/B plan replay
+  (with vs without the evict) demonstrably lands ≥1 additional held global; the refusal prints
+  both plans. `_evict_frees_enough` is superseded and removed (an internal pure helper; its smoke
+  pins are replaced by `_plan_pull`/`_index_line_cost` pins).
+- **The evict happy path is now pinned IN-REPO** (sim Probe V/V2 + a six-check smoke block) — it
+  previously had zero in-repo coverage (smoke.py conceded the E2E "ran green out-of-band"), which
+  is exactly where the audit's majors were hiding. SKILL.md + harness-map ceiling prose updated to
+  the gain-gate semantics.
+
+CLI surface unchanged (`--pull --evict=FACT [--allow-net-grow]`); no schema change; every
+behavior delta is refuse-direction or accounting-correctness. Backward-compatible ⇒ patch.
+
 ## [0.1.72] — 2026-07-09
 
 ### Fixed — the diff-modal's "any changed file must be observable" gap

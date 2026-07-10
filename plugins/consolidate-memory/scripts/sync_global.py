@@ -17,10 +17,16 @@ each project's store. This is the engine for that:
                        naming the canonical description; never truncated). (additive; marks copies with
                        `global_ref:` so they re-sync)
   --pull --allow-net-grow  override the guard — pull even past the ceiling
-  --pull --evict=FACT  EVICT-TO-RECEIVE (v0.1.41): free one low-value local pointer (FACT) so a HELD global can
-                       land — net-neutral, so M1's budget stays enforced. The release valve for a chronically-full
-                       store. Refuses an orphaning evict (FACT has inbound [[links]]) or a too-small one (frees
-                       less than the smallest held). A plain `--pull` with anything held prints the candidates.
+  --pull --evict=FACT  EVICT-TO-RECEIVE (v0.1.41; accounting-truth rebuild v0.1.73 — see
+                       docs/evict-accounting-truth.spec.md): free one low-value project-AUTHORED pointer (FACT)
+                       so a HELD global can land — net-neutral, so M1's budget stays enforced. The release valve
+                       for a chronically-full store. `freed` is MEASURED from the store's real MEMORY.md line
+                       (never derived from frontmatter), and the swap gate is an A/B replay of the actual pull
+                       plan. Refuses: a managed MIRROR (self-defeating — the live canonical re-pulls the same
+                       pass; the lever for mirrors is the GLOBAL store), an orphaning evict (inbound [[links]]),
+                       an unindexed evict (no real index line — frees nothing), and a GAINLESS one (the replayed
+                       plan lands no additional held global). A plain `--pull` with anything held prints the
+                       authored candidates.
   --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical]
                        hand a project-authored local fact UP to the canonical global store and
                        convert the origin's copy into a managed mirror (the local→canonical
@@ -541,8 +547,8 @@ def _ensure_index_pointer(store: Path, name: str, fm: dict) -> tuple[bool, bool]
 
 def _would_net_grow(running_idx: int, pointer_cost: int, allow_net_grow: bool, budget: int) -> bool:
     """M1: True iff pulling a new fact (its pointer adds `pointer_cost` tokens) would LEAVE the always-loaded
-    index over `budget` — the projected net-grow guard. `allow_net_grow` overrides. PURE + the single
-    source for the hold decision in run() (so smoke can pin all cases deterministically).
+    index over `budget` — the projected net-grow guard. `allow_net_grow` overrides. PURE — the primitive
+    _plan_pull replays for every hold decision in run() (so smoke can pin all cases deterministically).
 
     v0.1.66 (Phase B): PRODUCTION call sites pass budget=INDEX_CEILING_TOKENS — the hold fires only past
     the HARD CEILING, no longer in the over-target amber band (verified knowledge flows until the real
@@ -574,15 +580,51 @@ def _inbound_links(store: Path, target: str) -> list[str]:
     return out
 
 
-def _evict_frees_enough(running_idx: int, freed: int, held_costs: list, budget: int) -> bool:
-    """v0.1.41 (evict-to-receive fit-check, no-partial-loss): would evicting a pointer that frees `freed` tokens
-    make room for at least the SMALLEST held global? `(running_idx - freed) + min(held_costs) <= budget`. False ⇒
-    the evict frees too little — REFUSE before deleting (Guard-3: never a destructive op that gains nothing).
-    PURE (smoke-pinned). Caller ensures held_costs is non-empty (no held ⇒ nothing to receive ⇒ refuse earlier).
-    `budget` is REQUIRED, no default — the same unenforced-drift-risk fix applied to `_would_net_grow`
-    (v0.1.66); every real call site already passed it explicitly, so this only removes a silent fallback
-    a future caller could accidentally rely on."""
-    return bool(held_costs) and (running_idx - freed) + min(held_costs) <= budget
+def _index_line_cost(index_text: str, stem: str) -> int:
+    """est-token cost of the REAL index line for `stem` — matched by its `](stem.md)` link anchor
+    (the same spoof-resistant rule _ensure_index_pointer/_remove_index_pointer use) — 0 when absent.
+    The evict valve's `freed` MUST come from here, never from a derived _pointer_line estimate
+    (docs/evict-accounting-truth.spec.md F2, measured): a pointer-LESS fact once "freed" a phantom
+    ~33t and the pull then breached the hard ceiling by real bytes, while a fat HAND-WRITTEN line
+    (~74t real) was judged by its lean derived pointer (~7t) and the best candidate refused."""
+    anchor = f"]({stem}.md)"
+    for ln in index_text.splitlines():
+        if anchor in ln:
+            return est_tokens(ln)
+    return 0
+
+
+def _plan_pull(items: list, start_idx: int, allow_net_grow: bool, budget: int) -> dict:
+    """Replay the pull loop's index accounting IN ITERATION ORDER — the single decision source
+    BOTH run()'s write loop and the --evict A/B gain-gate consume (docs/evict-accounting-truth.spec.md
+    F3/F4, measured): the old held_pre pre-scan evaluated each fact against the STATIC seeded index
+    while the loop ACCUMULATED (same function, DIFFERENT argument — the trap the old "SAME predicate"
+    comment papered over), so near the ceiling an evict could pass its fit-check yet land nothing.
+
+    `items` = (name, status, cost_new, cost_old) for every RELEVANT MISSING/STALE-mirror fact in
+    loop order; cost_old is the fact's REAL existing index line (_index_line_cost, usually 0 for
+    MISSING). A MISSING pull grows the index by (cost_new - cost_old) unless that would net-grow
+    past `budget` (→ HELD, at its full pointer cost for display); a STALE-mirror refresh ALWAYS
+    runs and contributes its real pointer delta (F4: refresh deltas were previously untracked, so
+    a later hold decision used a stale figure and breached the ceiling by a measured +22t).
+    PURE (smoke-pinned). `budget` REQUIRED, no default (the _would_net_grow v0.1.66 drift-risk rule).
+    Granularity note: the caller seeds start_idx from the WHOLE index file while deltas are
+    per-line est_tokens — the known ceil-rounding mix (see _node_tokens), unchanged here.
+    Returns {"pull": [names], "held": [(name, cost_new)], "end_idx": int}."""
+    idx = start_idx
+    pull: list = []
+    held: list = []
+    for name, status, cost_new, cost_old in items:
+        if status == "MISSING":
+            delta = cost_new - cost_old
+            if _would_net_grow(idx, delta, allow_net_grow, budget=budget):
+                held.append((name, cost_new))
+            else:
+                pull.append(name)
+                idx += delta
+        elif status == "STALE-mirror":
+            idx += cost_new - cost_old
+    return {"pull": pull, "held": held, "end_idx": idx}
 
 
 def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str | None = None) -> int:
@@ -598,6 +640,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # budget — an over-TARGET (amber) store now RECEIVES verified knowledge; only a store past the real
     # harm boundary holds. The target gate/standing-justify are a separate, untouched signal
     # (docs/index-usage-and-budget-ladder.spec.md §Phase B — the sibling-signal design).
+    # v0.1.73 (accounting truth): the decision itself moved into _plan_pull — classify → plan → execute,
+    # one accounting replay that both the write loop and the --evict gain-gate consume, with stale-refresh
+    # deltas tracked and `freed` measured from the real index (docs/evict-accounting-truth.spec.md).
     project_dir = project_dir.resolve()
     store = project_store(project_dir)
     stacks = detect_stacks(project_dir)
@@ -618,55 +663,15 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
               "present(local)": ("•", "cyan"), "irrelevant": ("·", "dim")}
     rows: list = []
     relevant = pulled = refreshed = held = fat = 0   # fat: v0.1.66 — pointers written over HOOK_TOKEN_WARN
-    # M1: the running always-loaded index size (tokens). Each pulled MISSING fact grows it by its pointer's
-    # cost; the guard below holds any pull that would push it over INDEX_TOKEN_BUDGET. Seed from the live index.
+    # v0.1.73 (accounting truth — docs/evict-accounting-truth.spec.md): CLASSIFY first (no writes),
+    # PLAN the index accounting ONCE via _plan_pull, THEN execute — the write loop consults plan
+    # membership and never re-decides. Seed from the live index (store-scan convention, v0.1.69
+    # Gate-2b); cost_old per stem is the REAL existing line (_index_line_cost), so a stale-refresh
+    # delta and a line-without-file drift state both net honestly instead of slipping the ceiling.
     _idxp = store / "MEMORY.md"
-    running_idx = est_tokens(_safe_read_text(_idxp) or "# Memory Index\n\n")   # store-scan convention (v0.1.69 Gate-2b)
-    held_facts: list = []   # (name, cost) of relevant MISSING globals HELD this pass — drives the evict-to-receive offer
-    # v0.1.41: --evict <fact> — the EVICT-TO-RECEIVE valve (the release for M1's hold). Free ONE low-value local
-    # pointer so a held global can land; net-neutral, so M1's budget stays enforced. Pre-checks BEFORE any delete
-    # (Guard-3 no-partial-state): the fact EXISTS, has NO inbound [[links]] (orphan-safety), held globals EXIST to
-    # receive, and the freed room actually FITS the smallest held. The agent NAMES the fact (report-then-apply).
-    if pull and evict is not None:
-        if not _safe_stem(evict):    # v0.1.70 security: same charset guard promote() applies to local_fact/canon_name
-            print(f"evict: {evict!r} is not a safe fact name (must match {_SAFE_NAME!r}, no path separators) "
-                  "— refusing", file=sys.stderr); return 1
-        if _is_reserved_stem(evict):  # Gate-2a: the charset guard alone still let 'MEMORY' through —
-            # store / 'MEMORY.md' IS the live index (_idxp above); unlink()'ing it and rebuilding from
-            # scratch silently drops every previously-indexed pointer (mirrors AND project-authored
-            # locals) with rc=0 and no error. Same reserved-name guard promote() already applies.
-            print(f"evict: '{'/'.join(_RESERVED_STEMS)}' is a reserved index name, not a fact — refusing "
-                  "(it would clobber the store's own always-loaded MEMORY.md index)", file=sys.stderr); return 1
-        ep = store / f"{evict}.md"
-        if not ep.exists():
-            print(f"evict: no local fact '{evict}' in {store}", file=sys.stderr); return 1
-        inbound = _inbound_links(store, evict)
-        if inbound:
-            print(f"evict: '{evict}' is [[linked]] by {inbound} — evicting it would ORPHAN those links. "
-                  "Pick another fact, or de-link first.", file=sys.stderr); return 1
-        held_pre: list = []
-        for n, fm, _ in facts:
-            if is_relevant(fm, stacks) and not (store / f"{n}.md").exists():
-                c = est_tokens(_pointer_line(n, fm))
-                if _would_net_grow(running_idx, c, allow_net_grow, budget=INDEX_CEILING_TOKENS):   # SAME predicate
-                    held_pre.append((n, c))                            # as the pull loop (Gate-2); under
-                # --allow-net-grow nothing is held, so held_pre empties → the evict refuses ("nothing held")
-                # rather than a gratuitous delete-then-pull-all.
-        if not held_pre:
-            print(f"evict: nothing is held (no past-the-ceiling MISSING globals) — evicting '{evict}' would free "
-                  "room for NOTHING. There is no swap to make.", file=sys.stderr); return 1
-        _ep_text = _safe_read_text(ep)   # v0.1.69 Gate-2b: TOCTOU since the ep.exists() check above —
-        if _ep_text is None:              # a vanished evict target refuses cleanly, same as "not present"
-            print(f"evict: '{evict}' vanished from {store} — refusing (nothing to evict)", file=sys.stderr); return 1
-        freed = est_tokens(_pointer_line(evict, _frontmatter(_ep_text)))
-        if not _evict_frees_enough(running_idx, freed, [c for _, c in held_pre], budget=INDEX_CEILING_TOKENS):
-            print(f"evict: '{evict}' frees only ~{freed} tok — not enough to fit the smallest held global "
-                  f"(~{min(c for _, c in held_pre)} tok at idx {running_idx}/{INDEX_CEILING_TOKENS} ceiling). "
-                  "Pick a larger-pointer fact.", file=sys.stderr); return 1
-        ep.unlink()
-        _remove_index_pointer(store, evict)
-        running_idx -= freed
-        print(f"  ✓ evicted '{evict}' (~{freed} tok freed) → pulling held globals into the freed room", file=sys.stderr)
+    idx_text = _safe_read_text(_idxp) or "# Memory Index\n\n"
+    seed_idx = est_tokens(idx_text)
+    classified: list = []   # (name, fm, text, status, path, want, rel) — statuses FROZEN at scan time
     for name, fm, text in facts:
         rel = is_relevant(fm, stacks)
         path = store / f"{name}.md"
@@ -684,19 +689,77 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             status = "in-sync"
         else:
             status = "STALE-mirror"  # canonical changed → must refresh
+        classified.append((name, fm, text, status, path, want, rel))
+    items = [(name, status, est_tokens(_pointer_line(name, fm)), _index_line_cost(idx_text, name))
+             for name, fm, _t, status, _p, _w, rel in classified if rel and status in ("MISSING", "STALE-mirror")]
+    plan = _plan_pull(items, seed_idx, allow_net_grow, budget=INDEX_CEILING_TOKENS)
+    # v0.1.41 → v0.1.73: --evict <fact> — the EVICT-TO-RECEIVE valve (the release for M1's hold),
+    # rebuilt on measured accounting. Pre-checks BEFORE any delete (Guard-3 no-partial-state); the
+    # swap gate is an A/B REPLAY of the actual pull plan, so acceptance and outcome cannot diverge
+    # the way the old static held_pre pre-scan did. The agent NAMES the fact (report-then-apply).
+    if pull and evict is not None:
+        if not _safe_stem(evict):    # v0.1.70 security: same charset guard promote() applies to local_fact/canon_name
+            print(f"evict: {evict!r} is not a safe fact name (must match {_SAFE_NAME!r}, no path separators) "
+                  "— refusing", file=sys.stderr); return 1
+        if _is_reserved_stem(evict):  # Gate-2a: the charset guard alone still let 'MEMORY' through —
+            # store / 'MEMORY.md' IS the live index (_idxp above); unlink()'ing it and rebuilding from
+            # scratch silently drops every previously-indexed pointer (mirrors AND project-authored
+            # locals) with rc=0 and no error. Same reserved-name guard promote() already applies.
+            print(f"evict: '{'/'.join(_RESERVED_STEMS)}' is a reserved index name, not a fact — refusing "
+                  "(it would clobber the store's own always-loaded MEMORY.md index)", file=sys.stderr); return 1
+        ep = store / f"{evict}.md"
+        if not ep.exists():
+            print(f"evict: no local fact '{evict}' in {store}", file=sys.stderr); return 1
+        _ep_text = _safe_read_text(ep)   # v0.1.69 Gate-2b: TOCTOU since the ep.exists() check above —
+        if _ep_text is None:              # a vanished evict target refuses cleanly, same as "not present"
+            print(f"evict: '{evict}' vanished from {store} — refusing (nothing to evict)", file=sys.stderr); return 1
+        if _is_mirror(_ep_text):
+            # v0.1.73 (F1, measured): a mirror of a live relevant canonical re-pulls into the freed
+            # room THIS same pass (or oscillates held forever) — a destructive op that gains nothing.
+            print(f"evict: '{evict}' is a managed MIRROR (global_ref) — evicting it is self-defeating "
+                  "(the live canonical re-pulls into the freed room this same pass). The lever for a "
+                  "mirror is the GLOBAL store: demote/delete the canonical (then --gc --apply), or "
+                  "tighten its description.", file=sys.stderr); return 1
+        inbound = _inbound_links(store, evict)
+        if inbound:
+            print(f"evict: '{evict}' is [[linked]] by {inbound} — evicting it would ORPHAN those links. "
+                  "Pick another fact, or de-link first.", file=sys.stderr); return 1
+        if not plan["held"]:
+            # under --allow-net-grow nothing is ever held → this refuses ("nothing to receive")
+            # rather than a gratuitous delete-then-pull-all — the pre-v0.1.73 behavior, kept.
+            print(f"evict: nothing is held (no past-the-ceiling MISSING globals) — evicting '{evict}' would free "
+                  "room for NOTHING. There is no swap to make.", file=sys.stderr); return 1
+        freed = _index_line_cost(idx_text, evict)   # MEASURED from the live index — never derived (F2)
+        if freed == 0:
+            print(f"evict: '{evict}' has no pointer line in the live index — evicting it frees NOTHING "
+                  "(freed is MEASURED from MEMORY.md, never derived from frontmatter). Pick an indexed fact.",
+                  file=sys.stderr); return 1
+        plan_evict = _plan_pull(items, seed_idx - freed, allow_net_grow, budget=INDEX_CEILING_TOKENS)
+        gain = [n for n in plan_evict["pull"] if n not in set(plan["pull"])]
+        if not gain:   # Guard-3 by construction (F3): the destruction must demonstrably land a held global
+            print(f"evict: destroying '{evict}' (~{freed} tok measured) lands NO additional held global — "
+                  f"the replayed plan pulls {plan_evict['pull'] or '[]'} with the evict vs {plan['pull'] or '[]'} "
+                  f"without; held either way: {', '.join(n for n, _c in plan_evict['held'])}. "
+                  "Refusing a destructive op that gains nothing — pick a larger-pointer fact.",
+                  file=sys.stderr); return 1
+        ep.unlink()
+        _remove_index_pointer(store, evict)
+        plan = plan_evict   # the gate approved THIS plan; the write loop below executes exactly it
+        print(f"  ✓ evicted '{evict}' (~{freed} tok freed, measured) → lands: {', '.join(gain)}", file=sys.stderr)
+    pulled_set = set(plan["pull"])
+    held_facts: list = plan["held"]   # (name, cost) — drives the RESULT line + the evict-to-receive offer
+    for name, fm, text, status, path, want, rel in classified:
         g, col = glyphs.get(status, ("·", "dim"))
         rows.append(f"    {_ui.c(g, col)} {_ui.lbl(f'{status:<14}')}{name}  " + _ui.c(f"({fm.get('scope', '?')})", "dim"))
         if rel:
             relevant += 1
-        # M1: would PULLING this MISSING fact (a NEW index pointer) push the index past the HARD CEILING?
-        # Cost it from the pointer line itself (the only honest per-pull figure). `held_this` gates BOTH the
-        # write-skip and the provenance record (a held fact is NOT held by this project).
-        cost = est_tokens(_pointer_line(name, fm)) if status == "MISSING" else 0
-        held_this = (pull and rel and status == "MISSING"
-                     and _would_net_grow(running_idx, cost, allow_net_grow, budget=INDEX_CEILING_TOKENS))
+        # M1 → v0.1.73: the hold decision is the PLAN's (single source — _plan_pull replayed the loop's
+        # own accumulating accounting; a relevant MISSING fact not in plan["pull"] was held there, past
+        # the HARD CEILING). `held_this` gates BOTH the write-skip and the provenance record (a held
+        # fact is NOT held by this project).
+        held_this = pull and rel and status == "MISSING" and name not in pulled_set
         if held_this:
             held += 1  # past-the-ceiling net-grow → hold (shrink to receive, or --allow-net-grow) — v0.1.66
-            held_facts.append((name, cost))
         elif pull and rel and status in ("MISSING", "STALE-mirror"):
             # C3: a canonical missing a valid originSessionId fans its gap out to every
             # mirror this replication creates. WARN (don't block — the fact is still
@@ -719,7 +782,6 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                 fat += 1
             if status == "MISSING":
                 pulled += 1
-                running_idx += cost          # the index just grew by this pointer — track it for the next guard
             else:
                 refreshed += 1
         # record provenance for ANY fact this project now holds as a mirror (incl. already in-sync), so the
@@ -735,25 +797,30 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     tail = (f"pulled {pulled} new · refreshed {refreshed} stale{held_note}{fat_note} (index updated)" if pull
             else "run with --pull to replicate MISSING + refresh STALE mirrors here")
     add(_ui.kv("RESULT", tail))
-    # v0.1.41: the EVICT-TO-RECEIVE offer (the report half of report-then-apply). When globals are HELD, surface
-    # the held + the evictable local pointers with RAW, UNORDERED metadata (scope · mirror? · pointer-cost) —
-    # NEVER ranked. A staleness/mtime rank actively misleads (a foundational fact is untouched yet vital), so the
-    # agent judges which to evict; --evict then applies it orphan-safe + fit-checked. A safe scalpel, not auto-eviction.
+    # v0.1.41 → v0.1.73: the EVICT-TO-RECEIVE offer (the report half of report-then-apply). When globals are
+    # HELD, surface the held + the evictable AUTHORED pointers with RAW, UNORDERED metadata — NEVER ranked
+    # (a staleness/mtime rank actively misleads: a foundational fact is untouched yet vital). Mirrors are
+    # never offered (F1 — evicting one self-defeats; their lever is the GLOBAL store), and each candidate's
+    # cost is MEASURED from its real index line post-write (F2 — a derived pointer estimate lied both ways).
+    # The agent judges which to evict; --evict then applies it orphan-safe + gain-gated. A scalpel, not auto-eviction.
     if held and store.is_dir():
         add("")
         add("  " + _ui.c("EVICT-TO-RECEIVE", "bold") + _ui.c(f"   · {held} held — free ONE low-value pointer to land a held global (net-neutral)", "dim"))
         add("    held: " + _ui.c(", ".join(f"{n} (~{c}t)" for n, c in held_facts), "yellow"))
-        add("    " + _ui.c("evictable local pointers (raw metadata, UNORDERED — YOU judge value, never auto-ranked):", "dim"))
+        add("    " + _ui.c("evictable AUTHORED pointers (raw metadata, UNORDERED — YOU judge value, never auto-ranked;", "dim"))
+        add("    " + _ui.c(" mirrors are never offered — their lever is the GLOBAL store, not a local delete):", "dim"))
+        _idx_now = _safe_read_text(_idxp) or ""   # re-read: the loop above just rewrote pointers
         for f in sorted(store.glob("*.md")):
             if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
                 continue
             t = _safe_read_text(f)                # store-scan convention (a concurrent gc/chmod between
-            if t is None:                         # glob+read must not abort the whole --pull after RESULT is built)
+            if t is None or _is_mirror(t):        # glob+read must not abort the offer; mirrors refused as evictees
                 continue
             ffm = _frontmatter(t)
+            _lc = _index_line_cost(_idx_now, f.stem)
             add("      " + _ui.c(f"· {f.stem:<40} {ffm.get('scope', '?'):<14} "
-                                 f"{'mirror' if _is_mirror(t) else 'authored':<9} ~{est_tokens(_pointer_line(f.stem, ffm))}t", "dim"))
-        add("    " + _ui.c("→ sync_global.py --pull --evict=<fact> .   (refuses an orphaning OR too-small evict; never auto-deletes)", "dim"))
+                                 f"{f'~{_lc}t line (measured)' if _lc else 'unindexed (frees 0 — refused)'}", "dim"))
+        add("    " + _ui.c("→ sync_global.py --pull --evict=<fact> .   (refuses a mirror, an orphaning, an unindexed, or a GAINLESS evict; never auto-deletes)", "dim"))
     print(_ui.ascii_translate("\n".join(out)))
     return 0
 
