@@ -4196,5 +4196,53 @@ with _Env73() as _e:
           _bad93["age_days"] is None and _bad93["last_dream"] == "not-a-date"
           and _s93b["never_dreamed"] == 2)   # the empty trigger + the bad-marker node
 
+# --- Pre-merge train-review pins (#86/#88/#89 merge-gate team, 2026-07-10) ---
+with _Env73() as _e:
+    # F-A (HIGH, verified E2E by the reviewer): the LATERAL-SWAP evict — freeing room lets the
+    # alphabetically-earlier LARGER global (aaa) displace the later smaller one (zzz): old
+    # set-difference gate ACCEPTED (gain=['aaa']) and destroyed the authored fact for zero net
+    # gain; the count gate must REFUSE. Constraints (seed = C - cost_zzz): cost_aaa > cost_zzz;
+    # freed ∈ [cost_aaa - cost_zzz, cost_aaa).
+    (_e.glob / "aaa-big.md").write_text(_fact73("aaa-big", "a deliberately much longer description "
+                                                "string to fatten this pointer"), encoding="utf-8")
+    (_e.glob / "zzz-sml.md").write_text(_fact73("zzz-sml", "s"), encoding="utf-8")
+    _cA = ms.est_tokens(sg._pointer_line("aaa-big", sg._frontmatter((_e.glob / "aaa-big.md").read_text(encoding="utf-8"))))
+    _cZ = ms.est_tokens(sg._pointer_line("zzz-sml", sg._frontmatter((_e.glob / "zzz-sml.md").read_text(encoding="utf-8"))))
+    (_e.store / "evictme.md").write_text(
+        "---\nname: evictme\ndescription: \"" + "d" * 64 + "\"\nmetadata:\n  type: reference\n---\nirreplaceable\n",
+        encoding="utf-8")
+    _evl86 = sg._pointer_line("evictme", sg._frontmatter((_e.store / "evictme.md").read_text(encoding="utf-8")))
+    _fr86 = ms.est_tokens(_evl86)
+    assert _cA > _cZ and _cA - _cZ <= _fr86 < _cA, (_cA, _cZ, _fr86)
+    (_e.store / "MEMORY.md").write_text(_pad_index73(_C73 - _cZ, [_evl86]), encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj, evict="evictme")
+    check("train-review/F-A: a LATERAL-SWAP evict is REFUSED by the count gate (earlier-bigger global "
+          "would displace the later-smaller one — gain non-empty, count unchanged; the authored fact "
+          "survives; was: destroyed for zero net gain with a '✓ lands:' success message)",
+          _rc == 1 and "lateral swap" in _err and (_e.store / "evictme.md").exists()
+          and "gains nothing" in _err)
+
+with _Env73() as _e:
+    # F-B: MIXED stack tags ([python, fastpai]) are NOT fleet-dead — the blanket "can never match
+    # any project" wording was false for them; they get the dead-weight wording instead.
+    (_e.glob / "mixed-tag.md").write_text(
+        "---\nname: mixed-tag\ndescription: \"d\"\nmetadata:\n  scope: stack-general\n"
+        "  stacks: [python, fastpai]\n  type: feedback\n---\nbody\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _rc, _out, _err = _run73(_e.proj)
+    check("train-review/F-B: a MIXED-tag stack-general canonical warns 'dead weight' naming the live "
+          "tags — never the false 'fleet-dead / can never match any project' claim",
+          "dead weight" in _err and "fleet-dead" not in _err and "fastpai" in _err and "python" in _err)
+
+with _Env73() as _e:
+    # train-robust F1 (measured live): _mind_unresolved must normalize in SLUG space — a live
+    # underscore-basename project (Doc_Flo → slug …-Doc-Flo) was falsely flagged dead because
+    # _sanitize_token preserves '_' while slug dirs map it to '-'.
+    _dfd = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-Doc-Flo" / "memory"
+    _dfd.mkdir(parents=True)
+    check("train-review/robust-F1: an underscore-basename LIVE project (Doc_Flo) resolves to its slug "
+          "store (not flagged '?'); a truly storeless mind still flags",
+          sg._mind_unresolved("Doc_Flo") is False and sg._mind_unresolved("ghost_project_x") is True)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -825,11 +825,19 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         if _ffm.get("scope") == "stack-general":
             _fs = _fact_stacks(_ffm)
             _bad = sorted(_fs - _DETECTABLE_STACKS)
-            if not _fs or _bad:
+            if not (_fs & _DETECTABLE_STACKS):
+                # NO detectable tag at all (empty, or all-undetectable) → genuinely fleet-dead
                 _why = f"undetectable stack tag(s) {_bad}" if _bad else "NO `stacks:` tags at all"
                 print(f"  ⚠ fleet-dead canonical: '{_fn}' is stack-general with {_why} — detect_stacks can "
                       f"never match it to any project. Retag with a detectable stack "
                       f"({sorted(_DETECTABLE_STACKS)}), re-scope user-global, or demote it "
+                      f"(~/.claude/memory/{_fn}.md).", file=sys.stderr)
+            elif _bad:
+                # train-review F-B: MIXED tags (e.g. [python, fastpai]) are NOT fleet-dead — the fact
+                # still matches via its detectable tag(s); the old blanket "can never match any
+                # project" wording was false here. The undetectable tag is dead weight worth cleaning.
+                print(f"  ⚠ undetectable stack tag(s) {_bad} on '{_fn}' — dead weight (the fact still "
+                      f"matches via {sorted(_fs & _DETECTABLE_STACKS)}); clean the tags "
                       f"(~/.claude/memory/{_fn}.md).", file=sys.stderr)
     items = [(name, status, est_tokens(_pointer_line(name, fm)), _index_line_cost(idx_text, name))
              for name, fm, _t, status, _p, _w, rel in classified if rel and status in ("MISSING", "STALE-mirror")]
@@ -877,12 +885,26 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                   file=sys.stderr); return 1
         plan_evict = _plan_pull(items, seed_idx - freed, allow_net_grow, budget=INDEX_CEILING_TOKENS)
         gain = [n for n in plan_evict["pull"] if n not in set(plan["pull"])]
-        if not gain:   # Guard-3 by construction (F3): the destruction must demonstrably land a held global
+        displaced = [n for n in plan["pull"] if n not in set(plan_evict["pull"])]
+        if len(plan_evict["pull"]) <= len(plan["pull"]):
+            # Guard-3 is a COUNT (train-review F-A, HIGH, verified E2E): the old set-difference test
+            # accepted a LATERAL SWAP — freeing room let an alphabetically-earlier, larger-pointer
+            # global jump into the plan and push a later, smaller one over the ceiling, so `gain` was
+            # non-empty while the pull COUNT was unchanged (or lower) and the authored fact was
+            # destroyed for zero net gain — the exact F3 harm this gate exists to refuse, re-admitted.
+            # The destruction must land strictly MORE globals than no-evict would.
+            _swap = (f" — a lateral swap (+{', '.join(gain)} / −{', '.join(displaced)}), not a gain"
+                     if gain else "")
             print(f"evict: destroying '{evict}' (~{freed} tok measured) lands NO additional held global — "
-                  f"the replayed plan pulls {plan_evict['pull'] or '[]'} with the evict vs {plan['pull'] or '[]'} "
-                  f"without; held either way: {', '.join(n for n, _c in plan_evict['held'])}. "
+                  f"the replayed plan pulls {len(plan_evict['pull'])} ({', '.join(plan_evict['pull']) or 'none'}) "
+                  f"with the evict vs {len(plan['pull'])} ({', '.join(plan['pull']) or 'none'}) without{_swap}; "
+                  f"held either way: {', '.join(n for n, _c in plan_evict['held'])}. "
                   "Refusing a destructive op that gains nothing — pick a larger-pointer fact.",
                   file=sys.stderr); return 1
+        if displaced:
+            # count strictly increased but the composition shifted — proceed, and say so honestly
+            print(f"  ⚠ evict replan displaced {', '.join(displaced)} (freed room re-ordered the pulls; "
+                  f"net {len(plan_evict['pull'])} land vs {len(plan['pull'])} without the evict)", file=sys.stderr)
         ep.unlink()
         _remove_index_pointer(store, evict)
         plan = plan_evict   # the gate approved THIS plan; the write loop below executes exactly it
@@ -1032,8 +1054,12 @@ def _mind_unresolved(name: str) -> bool:
     provenance basename — the honest partial inverse of the lossy slug (sanitized-token endswith
     match). CONSERVATIVE direction: any match — including an ambiguous one — reads as resolved;
     only a zero-match mind is flagged. Display-only (a `?` glyph + footnote in network()); never a
-    prune input — provenance stays reported-not-pruned (a renamed project also matches nothing)."""
-    norm = _sanitize_token(name).lower()
+    prune input — provenance stays reported-not-pruned (a renamed project also matches nothing).
+    Train-review F1 (measured on the real fleet): normalize in SLUG space (every non-alnum → '-',
+    the slug_for/near_duplicate_slugs rule) — the original _sanitize_token normalization PRESERVES
+    '_'/'.' while slug dirs map them to '-', so a live underscore-named project (Doc_Flo) could
+    never match its own on-disk store and was falsely flagged dead."""
+    norm = re.sub(r"[^a-z0-9]", "-", name.lower())
     base = Path.home() / ".claude" / "projects"
     if not norm.strip("-.") or not base.is_dir():
         return False   # degenerate token / no projects dir → nothing claimable; stay conservative
@@ -1403,10 +1429,10 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
             # Refuse CLEANLY instead: nothing has been written (the finally cleaned the temp), and the
             # race guard genuinely needs hardlink atomicity (see _create_exclusive — os.replace can't
             # detect "am I first", raw O_EXCL reopens the torn-read window Track D-1 closed).
-            print(f"promote: cannot create the canonical atomically on this filesystem "
-                  f"({type(_e).__name__}: {_e}) — the create-create race guard needs hardlink support "
-                  "(os.link). Nothing was written; move ~/.claude/memory to a hardlink-capable "
-                  "filesystem or promote from there.", file=sys.stderr)
+            print(f"promote: cannot create the canonical atomically ({type(_e).__name__}: {_e}) — "
+                  "commonly a filesystem without hardlink support (os.link, which the create-create "
+                  "race guard needs), but check the error itself (e.g. ENOSPC is disk-full, not a "
+                  "hardlink problem). Nothing was written.", file=sys.stderr)
             return 1
         if not _created:
             print(f"promote: another process just created the canonical '{canon_name}' concurrently — "
