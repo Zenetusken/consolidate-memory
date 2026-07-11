@@ -5,6 +5,36 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.82] — 2026-07-10
+
+### Added — distill-template persistence: the workflow vertical's Phase A (W-A)
+The fifth enhancement increment (`docs/distill-template-persistence.spec.md`). Template-level
+distill evidence was computed every dream and DISCARDED above the counts — the pre-Phase-A usage
+mistake, byte for byte: transcripts rotate, so fleet aggregation ("this workflow recurs in 4 of 6
+nodes" — the strongest promotion evidence, the workflow analog of G2.3), longitudinal recurrence,
+and cross-node decline-dedup were impossible to ever build. W-B (`--workflows`) and W-C (the
+registrar + adoption loop) were strictly blocked on this.
+
+- **Additive `Distill` rows, script-truth only** (injected by the existing `--from`/`--into`
+  path; never hand-authored — the `n_recurring: 47` lesson, row edition): `top` (≤12 `{t,n,d}`
+  template rows), `top_chains` (≤8), `used` (≤12 `{a,n}`). Compact keys — the block rides every
+  dream's log line forever. Validator length-backstops against the new
+  `_DISTILL_PERSIST_CAP`/`_DISTILL_USED_CAP` mirrors (cross-module smoke-pinned, the
+  `_DISTILL_CAPS` pattern).
+- **Privacy boundary unchanged and pinned**: rows persist WITHOUT `sample` — raw command text
+  stays display-only; templates are already the firewall-screened safe tier.
+- **The `used` adoption tally** (new scan branch): Skill `tool_use` invocations by name,
+  window-scoped by the same per-line instant rule as Bash — the denominator the W-C lifecycle
+  quadrant needs (invoked + raw templates declining = a working distillation), accrued now or
+  lost to rotation. Live first run: 6 real rows on this repo. Undercount bias pinned (a skill
+  can fire without a Skill tool_use — zero invocations is never sole grounds).
+- The overlapping-window consumer trap is designed against up front (harness-map: W-B must
+  aggregate from the LATEST record per node; the persisted `window` proves coverage). The
+  SKILL schema block + scan-contract pins updated in the same commit — both schema-pin smoke
+  tests fired during implementation, exactly as the convention intends.
+
+Additive `total=False` keys + additive scan `--json` key; legacy records render unchanged ⇒ patch.
+
 ## [0.1.81] — 2026-07-10
 
 ### Added — the SessionStart beacon: the absorption-rate lever (Stage B)

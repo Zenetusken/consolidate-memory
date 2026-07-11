@@ -224,8 +224,12 @@ capture.
 {"window": "<ISO or (all)>",
  "scanned": {"sessions": 0, "commands": 0, "days": 0, "secrets_omitted": 0},
  "recurring": [{"template": "...", "count": 0, "days": 0, "sample": "..."}],
- "chains":    [{"templates": ["a", "b"], "count": 0, "days": 0}]}
+ "chains":    [{"templates": ["a", "b"], "count": 0, "days": 0}],
+ "used":      [{"a": "<skill-name>", "n": 0}]}
 ```
+
+`used` (v0.1.82) = Skill tool_use invocations by name in the window — the ADOPTION denominator
+the workflow lifecycle loop needs (did a created skill displace its raw commands?), capped at 12.
 
 `recurring` = normalized command CLASSES with `count ≥ 2`, ranked by (days, count),
 capped at 40; `chains` = adjacent kept-segment bigrams inside ONE compound command
@@ -240,7 +244,18 @@ broader than the dream's `marker..HEAD` — say so when reporting.
 `sessions`/`commands`/`n_recurring`/`n_chains`/`window`/`secrets_omitted` are
 **script-only** — never hand-author counts (a hand-mirrored count once shipped an
 impossible `n_recurring: 47` against a cap of 40; `validate_cycle_record` warns when a
-count exceeds the scanner caps). Capture in ONE scan: save `--json` to a file, judge it,
+count exceeds the scanner caps). v0.1.82 (W-A, `docs/distill-template-persistence.spec.md`)
+adds the persisted ROWS, equally script-only: `top` (≤12 `{t,n,d}` template rows),
+`top_chains` (≤8 `{t:[a,b],n,d}`), `used` (≤12 `{a,n}` Skill-adoption tallies) — compact
+single-letter keys (the block rides every dream's log line forever), **never carrying
+`sample`** (raw command text stays display-only, the privacy tier), length-backstopped by
+the validator against `_DISTILL_PERSIST_CAP`/`_DISTILL_USED_CAP` (cross-module smoke-pinned
+mirrors). Template evidence used to DIE with each scan; these rows are what make fleet
+aggregation (the deferred `--workflows` twin of `--utility`), longitudinal recurrence, and
+cross-node decline-dedup computable at all. Consumer trap, designed against up front:
+consecutive dreams scan OVERLAPPING ~30-day windows, so summing a node's rows across
+records double-counts — aggregate from the LATEST record per node (the persisted `window`
+string proves what was aggregated). Capture in ONE scan: save `--json` to a file, judge it,
 then inject that SAVED scan so the recorded counts equal the judged ones —
 `distill_scan.py --from <scan.json> --into <seed> --verdict '…' [--proposed X]
 [--created X]`. The judgment fields (`proposed`/`created`/`verdict`) are the model's,

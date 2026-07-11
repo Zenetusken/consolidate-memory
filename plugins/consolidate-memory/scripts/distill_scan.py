@@ -64,6 +64,12 @@ from memory_status import _write_private, slug_for  # slug rule + 0o600-atomic s
 MIN_RECUR = 2            # MiMo's bar: a workflow is a candidate only when it actually recurred (>=2x)
 MAX_RECUR_OUT = 40       # cap the surfaced templates — the model judges; don't flood the phase
 MAX_CHAIN_OUT = 20       # v0.1.55: cap the surfaced chains (same rationale)
+# v0.1.82 (W-A, docs/distill-template-persistence.spec.md): how many top rows PERSIST into the cycle
+# record (top templates, chains) + the Skill-adoption tally cap. Deliberately far below the surfacing
+# caps — the log line is appended every dream forever; fleet joins (W-B) need only the head. Mirrored
+# by memory_status._DISTILL_PERSIST_CAP/_DISTILL_USED_CAP (smoke-pinned, the _DISTILL_CAPS pattern).
+_DISTILL_PERSIST_CAP = (12, 8)
+_USED_CAP = 12
 DEFAULT_WINDOW_DAYS = 30  # distill scans a BROADER window than the dream's marker..HEAD (recurrence needs episodes)
 
 # Leading shell segments that are NOT the command (constant noise that otherwise ranks #1): a bare `cd`, or a
@@ -294,6 +300,9 @@ def scan(project_dir: Path, since: str) -> dict:
     days_seen: set = set()
     tally: dict[str, dict] = {}          # template -> {count, days, sample}
     ctally: dict[tuple, dict] = {}       # (a, b) -> {count, days}
+    used_tally: dict[str, int] = {}      # v0.1.82 (W-A): Skill invocations by name — the ADOPTION
+    #   denominator the workflow lifecycle loop needs (did a created skill displace its raw commands?).
+    #   Accrued per-window NOW or lost to transcript rotation — the exact pre-Phase-A usage lesson.
     for tr in transcripts:
         try:
             fh = tr.open(encoding="utf-8", errors="replace")
@@ -319,7 +328,19 @@ def scan(project_dir: Path, since: str) -> dict:
                 #   yet the window is enforced per-COMMAND before it counts. `ts_done` memoises the parse.
                 day = None
                 for p in content:
-                    if not (isinstance(p, dict) and p.get("type") == "tool_use" and p.get("name") == "Bash"):
+                    if not (isinstance(p, dict) and p.get("type") == "tool_use"):
+                        continue
+                    if p.get("name") == "Skill":
+                        # v0.1.82 (W-A): the adoption tally — same per-line window rule as Bash below.
+                        if not ts_done:
+                            ts_dt = _parse_ts(ts); ts_done = True
+                        if since_dt and ts_dt and ts_dt <= since_dt:
+                            break
+                        _sk = str((p.get("input") or {}).get("skill", "") or "")
+                        if _sk:
+                            used_tally[_sk] = used_tally.get(_sk, 0) + 1
+                        continue
+                    if p.get("name") != "Bash":
                         continue
                     cmd = str((p.get("input") or {}).get("command", ""))
                     if not cmd:
@@ -372,7 +393,10 @@ def scan(project_dir: Path, since: str) -> dict:
          for pair, v in ctally.items() if v["count"] >= MIN_RECUR),
         key=lambda r: (r["days"], r["count"], r["templates"]), reverse=True,
     )[:MAX_CHAIN_OUT]
-    return {"window": since or "(all)", "scanned": counts, "recurring": recurring, "chains": chains_out}
+    used_out = [{"a": k, "n": v} for k, v in
+                sorted(used_tally.items(), key=lambda kv: (-kv[1], kv[0]))[:_USED_CAP]]
+    return {"window": since or "(all)", "scanned": counts, "recurring": recurring, "chains": chains_out,
+            "used": used_out}
 
 
 def _report(d: dict) -> None:
@@ -430,6 +454,15 @@ def inject_into(seed_path: str, d: dict, verdict: str, proposed: list, created: 
         blk.update({"sessions": sc.get("sessions", 0), "commands": sc.get("commands", 0),
                     "n_recurring": len(d.get("recurring") or []), "n_chains": len(d.get("chains") or []),
                     "window": d.get("window", "(all)"), "secrets_omitted": sc.get("secrets_omitted", 0)})
+        # v0.1.82 (W-A): persist the TOP rows — projected to compact {t,n,d}, deliberately WITHOUT
+        # `sample` (samples carry raw command text and stay display-only: the privacy tier the module
+        # doc pins). Script-truth like the counts; template-level evidence used to DIE with each scan,
+        # making fleet aggregation (W-B --workflows) impossible — the exact pre-Phase-A usage mistake.
+        blk["top"] = [{"t": r.get("template", ""), "n": r.get("count", 0), "d": r.get("days", 0)}
+                      for r in (d.get("recurring") or [])[:_DISTILL_PERSIST_CAP[0]] if isinstance(r, dict)]
+        blk["top_chains"] = [{"t": list(r.get("templates") or []), "n": r.get("count", 0), "d": r.get("days", 0)}
+                             for r in (d.get("chains") or [])[:_DISTILL_PERSIST_CAP[1]] if isinstance(r, dict)]
+        blk["used"] = [r for r in (d.get("used") or []) if isinstance(r, dict)][:_USED_CAP]
         if verdict:
             blk["verdict"] = verdict
         if proposed:
