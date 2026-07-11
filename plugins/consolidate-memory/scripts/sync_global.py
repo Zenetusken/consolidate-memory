@@ -1098,7 +1098,14 @@ def _slug_matches(name: str) -> "list[Path]":
     never match its own store) and match by equality or '-'-suffix. Only dirs that actually HOLD
     a memory store count (a bare transcript dir is not a node). Degenerate token / no projects
     dir → [] with the CALLER deciding conservatively. The ONE resolver — _mind_unresolved and
-    the P4 edge classifier both delegate here (a second copy is how the F1 bug happened)."""
+    the P4 edge classifier both delegate here (a second copy is how the F1 bug happened).
+    REACH LIMIT (PR-#97 review F2, accepted — the lossy slug's cost): the `-`-suffix match
+    over-matches — a ghost token `memory` suffix-collides with a live `…-consolidate-memory`
+    store. This only ADDS matches, so it can NEVER produce a false `unresolved` → never a wrong
+    prune (the safe direction); its sole effect is `fleet_tax_live` crediting a ghost edge as live
+    (advisory, printed beside — never replacing — the upper bound). Tightening it would break the
+    load-bearing lossy inverse (holder `Doc_Flo` → `-…-Doc-Flo` NEEDS the suffix match), so this
+    is left as an accepted reach limit, exactly like the slug's other documented lossy cases."""
     norm = re.sub(r"[^a-z0-9]", "-", name.lower())
     base = Path.home() / ".claude" / "projects"
     if not norm.strip("-.") or not base.is_dir():
@@ -1127,9 +1134,11 @@ def _classify_edge(holder: str, stem: str) -> str:
       'live'       ≥1 matching store holds <stem>.md as a managed MIRROR (it pays the pointer tax);
       'stale'      exactly one match, mirror absent (real project, dropped mirror — NEVER prunable:
                    self-identifying, and _record_provenance re-adds on its next pull anyway);
-      'unresolved' ZERO store matches (deleted/renamed project — the ghost class, measured live at
-                   21% of edges / 20% of fleet tax; the ONLY prunable class, and only via the
-                   confirmed --gc --edges --apply);
+      'unresolved' ZERO store matches — NO live memory STORE resolves (PR-#97 review F3: this means
+                   store-DELETED, not merely project-renamed — a provenance holder had a store BY
+                   CONSTRUCTION since run() mkdir's before _record_provenance, so no-store = deleted =
+                   correctly dead); the ghost class, measured live at 21% of edges / 20% of fleet tax;
+                   the ONLY prunable class, and only via the confirmed --gc --edges --apply;
       'ambiguous'  multiple matches, none holding (can't tell which store was meant), OR a
                    degenerate token (a token we can't even normalize is not PROVABLY a ghost) —
                    conservative, never prunable."""
@@ -1293,6 +1302,19 @@ def _gc_edges(gfacts: list, apply: bool) -> int:
             counts[c] += 1
             if c == "unresolved":
                 ghosts.setdefault(n, []).append(h)
+    # PR-#97 review F1 (the real mass-prune blocker): the is_dir() guard above refuses only on
+    # ABSENCE, but its "mass-delete guard's sibling" claim demands the COUNT parity gc() has — a
+    # present-but-STORELESS projects tree (unmounted/moved store tree, partial restore, transcript-
+    # only dirs) resolves EVERY holder to [] → every edge unresolved → --apply would write
+    # `projects: []` on every canonical. Guard on the FACT that SOMETHING resolves: if edges exist
+    # but NONE are live-or-stale (nothing points at a real store), that is indistinguishable from a
+    # wiped/unmounted store tree — refuse, exactly as gc() refuses an empty global store.
+    if sum(counts.values()) > 0 and counts["live"] + counts["stale"] == 0:
+        print(f"refusing --edges: {counts['unresolved']} edge(s) and NOT ONE resolves to a live store "
+              "under ~/.claude/projects — indistinguishable from an unmounted/moved store tree, not "
+              "proof every project was deleted. (The gc mass-delete guard's true sibling: guard on "
+              "the resolved COUNT, not mere dir existence.)")
+        return 0
     out: list = []
     title = "✦ PROVENANCE EDGES · fleet-wide liveness triage"
     tag = "APPLY" if apply else "REPORT"
@@ -2446,7 +2468,8 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
     out.append(_ui.rule())
     out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
     out.append("  " + _ui.c("usage exists only where post-v0.1.63 dreams ran --recalls; holders = "
-                            "provenance UPPER bound (dead edges reported by --gc, never auto-pruned)"
+                            "provenance UPPER bound (dead edges reported by --gc; --edges --apply prunes "
+                            "only the provable ghosts)"
                             + (f" · harvested ledger covers {u['nodes_harvested']} no-own-usage node(s)"
                                if u.get("nodes_harvested") else ""), "dim"))
     out.append(_ui.rule())

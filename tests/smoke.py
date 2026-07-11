@@ -4546,10 +4546,15 @@ with _Env73() as _e:
     _gout84 = _io73.StringIO()
     with _ctx73.redirect_stdout(_gout84):
         sg.gc(_e.proj, apply=False, edges=True)
-    check("v0.1.84: --gc --edges REPORTS exactly the ghost class (stale/ambiguous never offered)",
-          "ghost-proj" in _gout84.getvalue() and "would prune" in _gout84.getvalue()
-          and "staleproj" not in _gout84.getvalue().split("EDGES")[1].split("RESULT")[0].replace("1 stale", "")
-          and "16" not in _gout84.getvalue())
+    # PR-#97 review F4: assert the POSITIVE counts line (strictly stronger than the old degenerate
+    # `"16" not in`, which couldn't appear on a 4-edge fixture anyway) + the twin absent from ghosts.
+    _greport84 = _gout84.getvalue()
+    _gzone84 = _greport84.split("EDGES", 1)[1].split("RESULT", 1)[0]
+    check("v0.1.84: --gc --edges REPORTS the exact class breakdown (4 total · 1 live · 1 stale · "
+          "1 unresolved · 1 ambiguous) and lists ONLY the ghost (stale AND ambiguous twin never offered)",
+          "4 total · 1 live · 1 stale · 1 unresolved · 1 ambiguous" in _greport84
+          and "ghost-proj" in _gzone84 and "would prune" in _greport84
+          and "staleproj" not in _gzone84 and "twinproj" not in _gzone84)
     with _ctx73.redirect_stdout(_io73.StringIO()):
         sg.gc(_e.proj, apply=True, edges=True)
     _ct84b = (_e.glob / "canon-x.md").read_text(encoding="utf-8")
@@ -4563,6 +4568,35 @@ with _Env73() as _e:
     sg._record_provenance("canon-x", "ghost-proj")
     check("v0.1.84: a pruned edge SELF-HEALS via _record_provenance on that project's next pull/promote",
           "ghost-proj" in (_e.glob / "canon-x.md").read_text(encoding="utf-8"))
+# PR-#97 review F1 (the mass-prune blocker): a present-but-STORELESS projects tree (unmounted /
+# transcript-only) must REFUSE — every edge resolves to nothing, indistinguishable from a wiped
+# store tree; --apply must NOT write `projects: []` fleet-wide.
+with _Env73() as _e:
+    (_e.glob / "canon-y.md").write_text(
+        "---\nname: canon-y\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n"
+        "  projects: [proj-a, proj-b]\n---\nbody\n", encoding="utf-8")
+    # present but STORELESS: _Env73 makes the trigger's OWN store; delete it so no memory/ store
+    # dir exists anywhere → every holder resolves to nothing (the unmounted-tree degenerate state).
+    import shutil as _sh84
+    _sh84.rmtree(_e.store)
+    (Path(_osB.environ["HOME"]) / ".claude" / "projects").mkdir(parents=True, exist_ok=True)
+    _gy84 = _io73.StringIO()
+    with _ctx73.redirect_stdout(_gy84):
+        _rc = sg.gc(_e.proj, apply=True, edges=True)
+    check("v0.1.84/review-F1: --edges --apply REFUSES when nothing resolves to a live store (guard on "
+          "the resolved COUNT, not dir existence) — provenance survives verbatim, no mass-prune",
+          _rc == 0 and "refusing --edges" in _gy84.getvalue()
+          and "projects: [proj-a, proj-b]" in (_e.glob / "canon-y.md").read_text(encoding="utf-8"))
+# PR-#97 review F3: the tightened predicate — a name-matching slug dir WITHOUT a memory store
+# classifies unresolved (store-deleted = dead), the direction the F1 fixture masks by mkdir'ing memory.
+with _Env73() as _e:
+    (_e.glob / "canon-z.md").write_text(
+        "---\nname: canon-z\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n---\nz\n",
+        encoding="utf-8")
+    (Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-storeless").mkdir(parents=True, exist_ok=True)  # dir, NO memory/
+    check("v0.1.84/review-F3: a slug dir WITHOUT a memory store is unresolved (store-deleted = dead — "
+          "a holder had a store by construction), and _mind_unresolved agrees",
+          sg._classify_edge("storeless", "canon-z") == "unresolved" and sg._mind_unresolved("storeless") is True)
 
 # --- v0.1.85: mention-tier attribution (P3 — docs/mention-tier-attribution.spec.md). The hook
 # channel (fact stems NAMED in assistant text without a body read) is the layer's actual product

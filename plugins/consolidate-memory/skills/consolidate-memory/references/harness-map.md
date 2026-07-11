@@ -402,9 +402,11 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   (a replica of a live canonical — the next `--pull` re-pulls it if the stack returns).
   Report-only by default; `--apply` deletes the file + its index pointer. **Only** touches
   `global_ref:` mirrors — never a project-authored fact, even on a name collision.
-  Dead-edge provenance (canonical lists a project that no longer holds the mirror) is
-  reported, not auto-pruned (absence-of-mirror is too weak a signal to write global
-  state on — a renamed store also "holds nothing").
+  Dead-edge provenance here = the mirror-absent STALE case (a store that still EXISTS but
+  dropped the mirror) — reported, never auto-pruned (absence-of-mirror is too weak: a renamed
+  store also "holds nothing"). Distinct from the store-ABSENT ghost class the fleet-wide
+  `--gc --edges` lever (v0.1.84, below) prunes — that one keys on the STORE dir being gone, a
+  strong signal.
 - `--promote PROJECT_DIR LOCAL_FACT [CANON_NAME]` — hand a project-authored LOCAL fact
   UP to the canonical global store, then convert the origin's own copy into a managed
   mirror — the local→canonical direction symmetric to `--pull`, driven by the Phase-1
