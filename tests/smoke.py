@@ -4417,5 +4417,62 @@ with _tf73.TemporaryDirectory() as _td82b:
           "— the adoption denominator, accrued while transcripts are on disk",
           _sc82["used"] == [{"a": "code-review", "n": 2}])
 
+# --- v0.1.83: the fleet WORKFLOWS lens (W-B — docs/fleet-workflows.spec.md). RED baseline is
+# structural: before this, "template X recurs in N nodes" was uncomputable (no lens existed over
+# the W-A rows); live cold-start renders 0/N reporting honestly while the verdict lineage already
+# carries real historical dispositions.
+def _wblog(session, top, chains=None, used=None, verdict=""):
+    d: dict = {"window": "2026-06-10..2026-07-10", "top": top, "top_chains": chains or [], "used": used or []}
+    if verdict:
+        d["verdict"] = verdict
+    return _jsonB.dumps({"session": session, "distill": d})
+
+
+with _Env73() as _e:
+    _nA83 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-alpha" / "memory"
+    _nB83 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-beta" / "memory"
+    _nA83.mkdir(parents=True); _nB83.mkdir(parents=True)
+    (_nA83 / ".consolidation-log.jsonl").write_text(
+        _wblog("old", [{"t": "python3 tests/smoke.py", "n": 99, "d": 9}],
+               verdict="proposed gate-check — declined") + "\n" +
+        _wblog("new", [{"t": "python3 tests/smoke.py", "n": 4, "d": 3},
+                       {"t": "mypy --config-file mypy.ini", "n": 3, "d": 2}],
+               chains=[{"t": ["python3 tests/smoke.py", "mypy --config-file mypy.ini"], "n": 3, "d": 2}],
+               used=[{"a": "code-review", "n": 5}]) + "\n", encoding="utf-8")
+    (_nB83 / ".consolidation-log.jsonl").write_text(
+        _wblog("b1", [{"t": "python3 tests/smoke.py", "n": 2, "d": 2},
+                      {"t": "python3 tests/smoke.py --quick", "n": 2, "d": 1}],
+               used=[{"a": "code-review", "n": 1}]) + "\n", encoding="utf-8")
+    _w83 = sg.fleet_workflows(_e.proj)
+    _by83 = {r["template"]: r for r in _w83["templates"]}
+    check("v0.1.83: the fleet join — exact-string across nodes' LATEST rows only (the stale record's "
+          "n=99 IGNORED — the overlapping-window trap honored), fleet flag at ≥2 nodes, single-node "
+          "rows unflagged",
+          _w83["nodes_reporting"] == 2
+          and _by83["python3 tests/smoke.py"]["fleet"] is True
+          and _by83["python3 tests/smoke.py"]["n"] == 6
+          and sorted(_by83["python3 tests/smoke.py"]["nodes"]) == ["src-alpha", "src-beta"]
+          and _by83["mypy --config-file mypy.ini"]["fleet"] is False)
+    check("v0.1.83: head-signature FAMILIES hint (same tool, drifting flags) — variants grouped, "
+          "counts never merged; adoption summed latest-per-node; the DECLINED disposition survives "
+          "in the cross-node lineage (fleet-wide decline-dedup)",
+          any(len(f["templates"]) == 2 for f in _w83["families"])
+          and _w83["used"][0] == {"skill": "code-review", "nodes": ["src-alpha", "src-beta"], "n": 6}
+          and any("declined" in v["verdict"] and v["node"] == "src-alpha" for v in _w83["verdicts"]))
+    check("v0.1.83: chains join like templates; the fleet gate applies (single-node chain unflagged)",
+          len(_w83["chains"]) == 1 and _w83["chains"][0]["fleet"] is False
+          and _w83["chains"][0]["n"] == 3)
+    import hashlib as _hl83
+    _pre83 = {p: _hl83.sha1(p.read_bytes()).hexdigest()
+              for p in (Path(_osB.environ["HOME"]) / ".claude").rglob("*") if p.is_file()}
+    sg.fleet_workflows(_e.proj)
+    check("v0.1.83: the lens is READ-ONLY over every store, and the payload is JSON-safe",
+          _pre83 == {p: _hl83.sha1(p.read_bytes()).hexdigest()
+                     for p in (Path(_osB.environ["HOME"]) / ".claude").rglob("*") if p.is_file()}
+          and isinstance(_jsonB.dumps(_w83), str))
+check("v0.1.83: distill_history returns latest-row-block + full verdict lineage; absent log → "
+      "empty-honest shape",
+      ms.distill_history(Path("/nonexistent")) == {"latest": None, "verdicts": []})
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

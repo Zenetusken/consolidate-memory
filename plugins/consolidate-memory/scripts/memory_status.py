@@ -1270,6 +1270,35 @@ def iter_cycle_log(log: Path, tail: "int | None" = None) -> list:
     return out
 
 
+def distill_history(auto_mem: Path) -> dict:
+    """v0.1.83 (W-B, docs/fleet-workflows.spec.md): aggregate the cycle log's `distill` blocks —
+    the usage_history TWIN (same iter_cycle_log reader, same tail cap, same guarded-skip posture) →
+    {"latest": <the newest distill block CARRYING evidence rows (a `top` list — v0.1.82+)> | None,
+     "verdicts": [{"session", "verdict", "proposed", "created"}, …]  (full lineage, file order)}.
+
+    LATEST-record-only for the evidence rows, by design (the W-A consumer trap, recorded when the
+    rows shipped): consecutive dreams scan OVERLAPPING ~30-day windows, so SUMMING a node's rows
+    across records double-counts; the block's persisted `window` string proves what was aggregated.
+    The verdict lineage keeps EVERY record (dispositions don't overlap — they accumulate), which is
+    what makes the SKILL's materially-new-evidence decline rule checkable fleet-wide. READ-ONLY."""
+    latest: "dict | None" = None
+    verdicts: list = []
+    for rec in iter_cycle_log(auto_mem / ".consolidation-log.jsonl", tail=_LOG_TAIL_CAP):
+        if not isinstance(rec, dict):
+            continue
+        d = rec.get("distill")
+        if not isinstance(d, dict):
+            continue
+        if d.get("verdict") or d.get("proposed") or d.get("created"):
+            verdicts.append({"session": str(rec.get("session", "") or ""),
+                             "verdict": str(d.get("verdict", "") or ""),
+                             "proposed": [str(x) for x in d.get("proposed", []) if isinstance(x, str)],
+                             "created": [str(x) for x in d.get("created", []) if isinstance(x, str)]})
+        if isinstance(d.get("top"), list):
+            latest = d           # file order — the last row-carrying block wins
+    return {"latest": latest, "verdicts": verdicts}
+
+
 def usage_history(auto_mem: Path) -> dict:
     """v0.1.67 (Phase C): aggregate the per-window script-truth `usage` blocks accrued in the cycle log →
     {"windows_full": int, "window_starts": list[float], "per_fact": {stem: {"reads", "last"}},

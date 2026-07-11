@@ -944,9 +944,22 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
          --verdict '<the one-liner>' [--proposed <X>]... [--created <X>]...
      ```
      It injects the script-truth `sessions`/`commands`/`n_recurring`/`n_chains`/`window`/`secrets_omitted`
-     into the seed's `distill` block, writing your judgment fields from the flags (`created` = authored
+     into the seed's `distill` block — plus, v0.1.82, the persisted evidence ROWS (`top`/`top_chains`/
+     `used`, capped + sample-free) — writing your judgment fields from the flags (`created` = authored
      BEFORE `--persist` only — confirmation usually arrives later; the record is an honest snapshot, never
-     retro-written; `verdict` = the one-liner, one sentence — both dashboards show it in full). It **exits
+     retro-written; `verdict` = the one-liner, one sentence — both dashboards show it in full).
+     **Before finalizing the gate verdict, also consult the FLEET view** (v0.1.83, read-only):
+     ```bash
+     CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --workflows .
+     ```
+     Fold its evidence into the SAME gate: **breadth strengthens** a candidate (a template recurring in
+     ≥2 nodes is the workflow analog of the cascade's G2.3 named-other-project witness — necessary
+     evidence, never sufficient: two nodes running the same accidental command is not a workflow); a
+     **fleet-wide DECLINE blocks a naive re-propose** from this node (the materially-new-evidence rule,
+     now checkable across every node's lineage, not just this log); the **inventory panel** replaces
+     ad-hoc `~/.claude` listing for the coverage check (name matches are hints — coverage judgment is
+     yours, content-gated). On a cold fleet it honestly reads `0/N nodes reporting` — rows accrue per
+     dream since v0.1.82; never infer fleet absence from missing instrumentation. It **exits
      non-zero if the seed can't be written** (a typo'd path is caught, not silently dropped) and warns if a
      `--verdict`/`--proposed`/`--created` is passed WITHOUT `--into`. This `--into` is the **LAST write to
      the `distill` block** — a later hand-edit of the seed must not touch that block (targeted edits to
