@@ -46,7 +46,28 @@ A stem quoted from a fact BODY the agent just Read (a wikilink) co-occurs with i
 — the binary-per-window + ≥4-stem-dump guards bound it, and mentions are corroborative, never
 sole grounds. A mention without a Skill/Read tool_use in some harness path stays invisible
 (undercount, the pinned direction). No embedding/fuzzy matching — an exact identifier match is
-deterministic, stdlib, auditable.
+deterministic, stdlib, auditable. `stem.md` named in prose matches (the `.` isn't in the boundary
+class) — measured 6.8% of raw occurrences, no stem filename-dominated; naming a fact's file is
+arguably a legit reference and binary-per-window makes it negligible.
+
+## Carried to the v2 mention-CONSUMPTION (veto) release — MUST address before mentions gate policy
+
+The reviews (PRs #98) confirmed mentions are display-only in v1 (demotion_candidates, the
+miss-detector, and the inject_usage STRIKE all provably ignore them). Before any release lets a
+mention VETO demotion, these display-only-safe-but-policy-unsafe gaps must close:
+
+- **Clock-gate fleet mentions like reads** (seams F1): `fleet_utility` credits a mention +1
+  regardless of whether the naming window predates the mirror's `global_ref_since` clock — reads
+  are clock-gated, mentions are only mirror-gated. Cosmetic over-credit now; a veto would inherit it.
+- **Harvest must scan mentions** (seams F2): `_harvest_node` calls `_recall_items` without
+  `mention_re`, so a non-dreaming node's hook activity is invisible fleet-side (its reads harvest,
+  its mentions don't) — the same coverage hole harvest closed for reads.
+- **The debrief inflation vector** (seams F3): a post-dream debrief naming stems AFTER the last arc
+  lands organic (reads occur DURING the procedure, so they're better bounded). The ≥4-stem dump
+  guard catches a real multi-stem debrief; a single-stem debrief mention is the residual.
+- **Archived FACTS stay mentionable** (core note A): `archive_stems` excludes only archive-INDEX
+  docs, so naming a demoted (still-globbed, frontmatter-bearing) fact counts as a `mention` rather
+  than routing into `misses` — a stronger miss signal left on the table for the veto release.
 
 ## Acceptance gates
 

@@ -509,9 +509,13 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         out.append("")
         out.append("  " + _c("USAGE", "bold")
                    + _c("   · organic fact recalls this window (dream-procedure reads excluded)", "dim"))
-        out.append(f"    {_g(usage.get('reads', 0))} read(s) over {_g(usage.get('facts_read', 0))} fact(s)  "
-                   + _c(f"{_g(usage.get('transcripts', 0))} transcript(s) · "
-                        f"{_g(usage.get('dream_excluded', 0))} dream read(s) excluded", "dim"))
+        _ment = usage.get("mentions", 0)
+        _ment_s = (_c(f" · {_g(_ment)} hook mention(s)", "dim")) if _ment else ""
+        out.append(f"    {_g(usage.get('reads', 0))} read(s) over {_g(usage.get('facts_read', 0))} fact(s)" + _ment_s
+                   + "  " + _c(f"{_g(usage.get('transcripts', 0))} transcript(s) · "
+                              # PR-#98 review F4: dream_excluded now counts reads AND mentions — the label
+                              # must not say "read(s)" (was imprecise once mentions joined the span split).
+                              f"{_g(usage.get('dream_excluded', 0))} dream-procedure recall(s) excluded", "dim"))
         _utop = [f for f in _lget(usage, "per_fact") if isinstance(f, dict)][:3]
         if _utop:
             out.append("    " + _c("top:", "dim") + " " + " · ".join(

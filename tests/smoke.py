@@ -4674,6 +4674,20 @@ with _Env73() as _e:
     check("v0.1.85: fleet_utility attributes a mention through a MIRROR (like reads) — a 0-reads "
           "canonical reads as hook-active, not dormant; display-only key emitted only when non-zero",
           _e85.get("mentions") == 1 and _e85["reads"] == 0)
+# PR-#98 review F4: the per-cycle dashboard renders the mentions channel + the corrected
+# dream-procedure-excluded label (was "dream read(s) excluded" — imprecise once mentions joined
+# the span split); a legacy usage block with no mentions renders neither (key-presence gated).
+_mrec85 = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+               "usage": {"reads": 0, "facts_read": 0, "transcripts": 2, "dream_excluded": 3,
+                         "per_fact": [], "mentions": 4, "mention_stems": ["a", "b", "c", "d"]}})
+_mout85 = rd.render(_mrec85)
+check("v0.1.85/review-F4: dashboard renders the hook-mentions count + 'dream-procedure recall(s) "
+      "excluded' (never the stale 'read(s)' label); a legacy no-mentions record shows neither",
+      "4 hook mention(s)" in _mout85 and "dream-procedure recall(s) excluded" in _mout85
+      and "dream read(s) excluded" not in _mout85
+      and "hook mention(s)" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s",
+          "scope": {}, "entries": [], "usage": {"reads": 1, "facts_read": 1, "transcripts": 1,
+          "dream_excluded": 0, "per_fact": [{"name": "x", "reads": 1, "last": "t"}]}})))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -539,9 +539,10 @@ def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems
             arc_hint = _ARC_MARK in line
             read_hint = store_prefix in line and '"Read"' in line
             # v0.1.85: a cheap RAW-line stem pre-filter — the C-level regex over the whole JSON line
-            # skips the (majority) assistant lines that name no fact, before any json.loads.
-            mention_hint = mention_re is not None and mention_re.search(line) is not None
-            if not (arc_hint or read_hint or mention_hint):
+            # skips the (majority) assistant lines that name no fact, before any json.loads. PR-#98
+            # review note C: `or` short-circuits, so the regex runs ONLY when the line isn't already
+            # an arc/read hit — no wasted scan on the minority of tool-carrying lines.
+            if not (arc_hint or read_hint or (mention_re is not None and mention_re.search(line))):
                 continue
             try:
                 o = json.loads(line)
