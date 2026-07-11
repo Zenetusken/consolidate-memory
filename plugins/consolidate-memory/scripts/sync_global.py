@@ -1090,25 +1090,59 @@ def _holders(fm: dict) -> list[str]:
             if any(c.isalnum() for c in t)]
 
 
-def _mind_unresolved(name: str) -> bool:
-    """v0.1.76 (audit): True iff NO slug dir under ~/.claude/projects plausibly matches this
-    provenance basename — the honest partial inverse of the lossy slug (sanitized-token endswith
-    match). CONSERVATIVE direction: any match — including an ambiguous one — reads as resolved;
-    only a zero-match mind is flagged. Display-only (a `?` glyph + footnote in network()); never a
-    prune input — provenance stays reported-not-pruned (a renamed project also matches nothing).
-    Train-review F1 (measured on the real fleet): normalize in SLUG space (every non-alnum → '-',
-    the slug_for/near_duplicate_slugs rule) — the original _sanitize_token normalization PRESERVES
-    '_'/'.' while slug dirs map them to '-', so a live underscore-named project (Doc_Flo) could
-    never match its own on-disk store and was falsely flagged dead."""
+def _slug_matches(name: str) -> "list[Path]":
+    """v0.1.84 (P4, docs/provenance-liveness.spec.md): the STORE dirs under ~/.claude/projects
+    that plausibly match a provenance basename — the honest partial inverse of the lossy slug.
+    Normalize in SLUG space (every non-alnum → '-', the slug_for rule — the train-review F1
+    lesson: _sanitize_token preserves '_'/'.' while slug dirs map them to '-', so Doc_Flo could
+    never match its own store) and match by equality or '-'-suffix. Only dirs that actually HOLD
+    a memory store count (a bare transcript dir is not a node). Degenerate token / no projects
+    dir → [] with the CALLER deciding conservatively. The ONE resolver — _mind_unresolved and
+    the P4 edge classifier both delegate here (a second copy is how the F1 bug happened)."""
     norm = re.sub(r"[^a-z0-9]", "-", name.lower())
     base = Path.home() / ".claude" / "projects"
     if not norm.strip("-.") or not base.is_dir():
-        return False   # degenerate token / no projects dir → nothing claimable; stay conservative
-    for d in base.iterdir():
+        return []
+    out: list = []
+    for d in sorted(base.iterdir()):
         s = d.name.lower()
-        if s == norm or s.endswith("-" + norm):
-            return False
-    return True
+        if (s == norm or s.endswith("-" + norm)) and (d / "memory").is_dir():
+            out.append(d / "memory")
+    return out
+
+
+def _mind_unresolved(name: str) -> bool:
+    """v0.1.76 (audit): True iff NO slug dir plausibly matches this provenance basename.
+    CONSERVATIVE: any match — including an ambiguous one — reads as resolved; a degenerate token
+    also reads resolved (nothing claimable ≠ ghost). Display-only (the `?` glyph + footnote in
+    network()); never a prune input. v0.1.84: delegates to _slug_matches (the ONE resolver; the
+    prune-capable classifier is _classify_edge, stricter by design)."""
+    if not re.sub(r"[^a-z0-9]", "-", name.lower()).strip("-."):
+        return False   # degenerate token — nothing claimable; stay conservative
+    return not _slug_matches(name)
+
+
+def _classify_edge(holder: str, stem: str) -> str:
+    """v0.1.84 (P4): classify ONE provenance edge (holder token × canonical stem) —
+      'live'       ≥1 matching store holds <stem>.md as a managed MIRROR (it pays the pointer tax);
+      'stale'      exactly one match, mirror absent (real project, dropped mirror — NEVER prunable:
+                   self-identifying, and _record_provenance re-adds on its next pull anyway);
+      'unresolved' ZERO store matches (deleted/renamed project — the ghost class, measured live at
+                   21% of edges / 20% of fleet tax; the ONLY prunable class, and only via the
+                   confirmed --gc --edges --apply);
+      'ambiguous'  multiple matches, none holding (can't tell which store was meant), OR a
+                   degenerate token (a token we can't even normalize is not PROVABLY a ghost) —
+                   conservative, never prunable."""
+    if not re.sub(r"[^a-z0-9]", "-", holder.lower()).strip("-."):
+        return "ambiguous"
+    stores = _slug_matches(holder)
+    if not stores:
+        return "unresolved"
+    holding = [s for s in stores
+               if (t := _safe_read_text(s / f"{stem}.md")) is not None and _is_mirror(t)]
+    if holding:
+        return "live"
+    return "stale" if len(stores) == 1 else "ambiguous"
 
 
 def network() -> int:
@@ -1219,7 +1253,81 @@ def _orphans(store: Path, canon: "set[str] | None" = None) -> list[str]:
     return out
 
 
-def gc(project_dir: Path, apply: bool) -> int:
+def _prune_holders(p: Path, drop: set) -> int:
+    """v0.1.84 (P4): remove `drop` tokens from ONE canonical's `projects:` list — the SAME line
+    regex _record_provenance writes through, atomic (_atomic_write_text), canonical BODY untouched.
+    Returns how many tokens were removed. The D-2 concurrency stance is inherited: a concurrent
+    _record_provenance append can race this rewrite (lost-update, self-healing on the next pull)."""
+    text = _safe_read_text(p)
+    if text is None:
+        return 0
+    m = re.search(r"^(\s*projects:\s*)\[([^\]]*)\]\s*$", text, re.M)
+    if not m:
+        return 0
+    items = [x.strip() for x in m.group(2).split(",") if x.strip()]
+    kept = [x for x in items if x not in drop]
+    removed = len(items) - len(kept)
+    if removed:
+        _atomic_write_text(p, text[:m.start()] + f"{m.group(1)}[{', '.join(kept)}]" + text[m.end():])
+    return removed
+
+
+def _gc_edges(gfacts: list, apply: bool) -> int:
+    """v0.1.84 (P4, docs/provenance-liveness.spec.md): the fleet-wide provenance-edge triage —
+    the lever the single-project dead-edge report never had. Classifies EVERY edge; reports the
+    UNRESOLVED (ghost) class with its resolution attempt shown; `--apply` prunes ONLY those
+    tokens (stale/ambiguous are NEVER prunable — a renamed store also matches nothing, and a
+    wrongly pruned edge self-heals via _record_provenance on that project's next pull, bounding
+    the failure cost to a temporary undercount). This UPGRADES, not violates, the
+    reported-not-pruned rule: still never automatic — the report is finally fleet-complete and
+    the confirmed-apply lever exists. Measured at ship: 16/76 edges (21%) ghost."""
+    if not (Path.home() / ".claude" / "projects").is_dir():
+        print("~/.claude/projects is absent — refusing --edges (nothing claimable ≠ everything ghost; "
+              "the gc mass-delete guard's sibling).")
+        return 0
+    counts = {"live": 0, "stale": 0, "unresolved": 0, "ambiguous": 0}
+    ghosts: dict = {}   # canonical stem -> [ghost holder tokens]
+    for n, fm, _t in gfacts:
+        for h in _holders(fm):
+            c = _classify_edge(h, n)
+            counts[c] += 1
+            if c == "unresolved":
+                ghosts.setdefault(n, []).append(h)
+    out: list = []
+    title = "✦ PROVENANCE EDGES · fleet-wide liveness triage"
+    tag = "APPLY" if apply else "REPORT"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold" if apply else "dim"))
+    out.append("  " + _ui.c("live = a matching store holds the mirror · stale/ambiguous NEVER prunable "
+                            "(self-identifying / not provably ghost) · a wrong prune self-heals on that "
+                            "project's next pull", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    out.append(_ui.kv("EDGES", f"{sum(counts.values())} total · "
+               + " · ".join(f"{v} {k}" for k, v in counts.items())))
+    removed_total = 0
+    if not ghosts:
+        out.append("    " + _ui.c("· no unresolved (ghost) edges — provenance tracks live topology", "dim"))
+    for n in sorted(ghosts):
+        hs = sorted(set(ghosts[n]))
+        if apply:
+            removed = _prune_holders(GLOBAL / f"{n}.md", set(hs))
+            removed_total += removed
+            out.append("    " + _ui.c("✓", "green") + f" {n}  " + _ui.c(f"pruned {', '.join(hs)} "
+                       f"({removed} token(s); body untouched)", "dim"))
+        else:
+            out.append("    " + _ui.c("⌀", "yellow") + f" {n}  " + _ui.c(f"ghost holder(s) {', '.join(hs)} "
+                       "— 0 store matches under ~/.claude/projects (would prune)", "dim"))
+    out.append("")
+    tail = (f"pruned {removed_total} ghost token(s) — the live-basis fleet tax now matches topology" if apply
+            else "run with --edges --apply to prune the ghosts (surface these to the user first)")
+    out.append(_ui.kv("RESULT", tail))
+    print(_ui.ascii_translate("\n".join(out)))
+    return 0
+
+
+def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     """Reclaim orphaned mirrors. Report-by-default; delete only with --apply, and
     NEVER touch a project-authored (non-`global_ref:`) fact, even on a name collision.
 
@@ -1254,6 +1362,8 @@ def gc(project_dir: Path, apply: bool) -> int:
         print(f"global store {GLOBAL} is {why} — refusing to GC "
               "(cannot distinguish that from all-canonicals-deleted).")
         return 0
+    if edges:   # v0.1.84 (P4): fleet-wide edge triage — project_dir-independent, same snapshot
+        return _gc_edges(gfacts, apply)
     store = project_store(project_dir)
     orphans = _orphans(store, canon={n for n, _, _ in gfacts})
     # v0.1.75 (audit F6): FROZEN mirrors — see the docstring. Detected against the SAME snapshot.
@@ -2277,16 +2387,29 @@ def fleet_utility(project_dir: Path) -> dict:
                         and _ws.timestamp() >= clock):
                     per[stem]["h_windows"] += 1
     entries: list = []
-    total_tax = 0
+    total_tax = total_tax_live = 0
     unheld: list = []
     for stem, fm in canon.items():
         pt = est_tokens(_pointer_line(stem, fm))
         holders = _holders(fm)
         tax = pt * len(holders)
         total_tax += tax
+        # v0.1.84 (P4): classify every edge — the provenance UPPER BOUND stays the advisory's
+        # denominator (documented derivation, unchanged); fleet_tax_live (pointer × LIVE holders —
+        # the stores actually paying the pointer) prints BESIDE it, never replacing it. Measured
+        # at ship time: 20% of the provenance-basis tax was ghost-attributed.
+        cls = {"live": 0, "stale": 0, "unresolved": 0, "ambiguous": 0}
+        for h in holders:
+            cls[_classify_edge(h, stem)] += 1
+        tax_live = pt * cls["live"]
+        total_tax_live += tax_live
         e = {"name": stem, "scope": fm.get("scope", ""), "reads": per[stem]["reads"],
              "windows": per[stem]["windows"], "last": per[stem]["last"],
-             "holders": len(holders), "pointer_tok": pt, "fleet_tax": tax}
+             "holders": len(holders), "pointer_tok": pt, "fleet_tax": tax,
+             "fleet_tax_live": tax_live}
+        for _ck in ("live", "stale", "unresolved", "ambiguous"):
+            if cls[_ck]:
+                e[f"holders_{_ck}"] = cls[_ck]
         if per[stem]["shadow"]:
             e["shadow_reads"] = per[stem]["shadow"]
         if per[stem]["fallback"]:   # v0.1.78: evidence-provenance — holders still on the mtime clock
@@ -2300,7 +2423,8 @@ def fleet_utility(project_dir: Path) -> dict:
     entries.sort(key=lambda e: (-e["fleet_tax"], e["name"]))
     return {"nodes": len(stores), "nodes_reporting": nodes_reporting, "nodes_harvested": nodes_harvested,
             "canonicals": entries,
-            "total_fleet_tax": total_tax, "advisory": GLOBAL_FLEET_TAX_ADVISORY, "unheld": unheld}
+            "total_fleet_tax": total_tax, "total_fleet_tax_live": total_tax_live,
+            "advisory": GLOBAL_FLEET_TAX_ADVISORY, "unheld": unheld}
 
 
 def utility_report(project_dir: Path, as_json: bool) -> int:
@@ -2327,6 +2451,11 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
     out.append(_ui.kv("FLEET TAX", f"{_ui.bar(u['total_fleet_tax'], u['advisory'])} "
                + _ui.c(f"≈{u['total_fleet_tax']}/{u['advisory']} est tok · Σ pointer × holders over "
                        f"{len(u['canonicals'])} canonical(s)", "dim") + over))
+    if u.get("total_fleet_tax_live", u["total_fleet_tax"]) != u["total_fleet_tax"]:
+        _ghost_tax = u["total_fleet_tax"] - u["total_fleet_tax_live"]
+        out.append("    " + _ui.c(f"live-basis ≈{u['total_fleet_tax_live']} (≈{_ghost_tax} rides non-LIVE "
+                                  "edges — ghosts/stale/ambiguous; `--gc . --edges` enumerates the ghosts, "
+                                  "--apply prunes ONLY those)", "yellow"))
     out.append("")
     out.append(_ui.kv("CANON", _ui.c("fleet_tax desc · reads are MIRROR-attributed organic recalls "
                                      "across reporting nodes · windows = Σ probative windows each holding "
@@ -2401,7 +2530,7 @@ def _dispatch() -> int:
     if args and args[0] == "--workflows":   # v0.1.83 (W-B): READ-ONLY fleet workflow evidence lens
         return workflows_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
-        return gc(project_dir, "--apply" in args)
+        return gc(project_dir, "--apply" in args, edges="--edges" in args)
     if args and args[0] == "--promote":
         # --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]  (CANON_NAME defaults to LOCAL_FACT)
         if len(pos) < 2:
@@ -2409,7 +2538,7 @@ def _dispatch() -> int:
             return 2
         return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1], prefer_canonical="--prefer-canonical" in args)
     if not args or args[0] not in ("--list", "--pull"):
-        print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
+        print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--edges] [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
               "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --staleness [--json] PROJECT_DIR "
               "| --workflows [--json] PROJECT_DIR "

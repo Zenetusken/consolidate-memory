@@ -4511,5 +4511,58 @@ with _tf73.TemporaryDirectory() as _td95:
           _r95b["used"] == [{"a": "code-review", "n": 2}]
           and "EXTRA_LEAK" not in _jsonB.dumps(_r95b) and "AKIA" not in _jsonB.dumps(_r95b))
 
+# --- v0.1.84: provenance liveness + edge triage (P4 — docs/provenance-liveness.spec.md).
+# RED baseline MEASURED live: 16/76 edges (21%) ghost, ≈20% of fleet tax ghost-attributed; the
+# live acceptance (the spec's own stated test) ran clean: 59 live · 1 stale · 16 unresolved ·
+# 0 ambiguous, the ghosts exactly the two known dead fixtures.
+with _Env73() as _e:
+    _h84 = Path(_osB.environ["HOME"])
+    # four stores: live-holder (mirror present), stale (store, no mirror), two ambiguity twins
+    _live84 = _h84 / ".claude" / "projects" / "-src-liveproj" / "memory"; _live84.mkdir(parents=True)
+    _stale84 = _h84 / ".claude" / "projects" / "-src-staleproj" / "memory"; _stale84.mkdir(parents=True)
+    for _tw in ("-a-twinproj", "-b-twinproj"):
+        (_h84 / ".claude" / "projects" / _tw / "memory").mkdir(parents=True)
+    _ct84 = ("---\nname: canon-x\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n"
+             "  projects: [liveproj, staleproj, ghost-proj, twinproj]\n---\nbody\n")
+    (_e.glob / "canon-x.md").write_text(_ct84, encoding="utf-8")
+    (_live84 / "canon-x.md").write_text(sg._as_mirror(_ct84, "canon-x", since="2026-01-01T00:00:00Z",
+                                                      body_hash=sg._body_hash(_ct84)), encoding="utf-8")
+    check("v0.1.84: _classify_edge — all four classes (live=mirror-holding store; stale=one match no "
+          "mirror; unresolved=zero matches; ambiguous=multi-match none holding); degenerate token is "
+          "ambiguous (not provably ghost), never unresolved",
+          sg._classify_edge("liveproj", "canon-x") == "live"
+          and sg._classify_edge("staleproj", "canon-x") == "stale"
+          and sg._classify_edge("ghost-proj", "canon-x") == "unresolved"
+          and sg._classify_edge("twinproj", "canon-x") == "ambiguous"
+          and sg._classify_edge("---", "canon-x") == "ambiguous")
+    _fu84 = sg.fleet_utility(_e.proj)
+    _e84 = {x["name"]: x for x in _fu84["canonicals"]}["canon-x"]
+    check("v0.1.84: fleet_utility classifies holders per canonical and prints the LIVE basis BESIDE "
+          "the provenance upper bound (never replacing it; live ≤ provenance always)",
+          _e84["holders"] == 4 and _e84.get("holders_live") == 1 and _e84.get("holders_stale") == 1
+          and _e84.get("holders_unresolved") == 1 and _e84.get("holders_ambiguous") == 1
+          and _e84["fleet_tax_live"] == _e84["pointer_tok"]
+          and _fu84["total_fleet_tax_live"] <= _fu84["total_fleet_tax"])
+    _gout84 = _io73.StringIO()
+    with _ctx73.redirect_stdout(_gout84):
+        sg.gc(_e.proj, apply=False, edges=True)
+    check("v0.1.84: --gc --edges REPORTS exactly the ghost class (stale/ambiguous never offered)",
+          "ghost-proj" in _gout84.getvalue() and "would prune" in _gout84.getvalue()
+          and "staleproj" not in _gout84.getvalue().split("EDGES")[1].split("RESULT")[0].replace("1 stale", "")
+          and "16" not in _gout84.getvalue())
+    with _ctx73.redirect_stdout(_io73.StringIO()):
+        sg.gc(_e.proj, apply=True, edges=True)
+    _ct84b = (_e.glob / "canon-x.md").read_text(encoding="utf-8")
+    check("v0.1.84: --edges --apply prunes ONLY the unresolved token — live/stale/ambiguous holders "
+          "byte-verbatim, canonical body untouched",
+          "ghost-proj" not in _ct84b
+          and "projects: [liveproj, staleproj, twinproj]" in _ct84b
+          and _ct84b.endswith("body\n"))
+    # the self-heal: a pull from a live project re-adds ITS OWN edge (a wrong prune is a
+    # temporary undercount, never a loss)
+    sg._record_provenance("canon-x", "ghost-proj")
+    check("v0.1.84: a pruned edge SELF-HEALS via _record_provenance on that project's next pull/promote",
+          "ghost-proj" in (_e.glob / "canon-x.md").read_text(encoding="utf-8"))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

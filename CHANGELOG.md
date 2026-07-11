@@ -5,6 +5,36 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.84] — 2026-07-11
+
+### Added — provenance liveness: the denominator finally tracks live topology (P4)
+The seventh enhancement increment (`docs/provenance-liveness.spec.md`). MEASURED red baseline on
+the live fleet: **16 of 76 provenance edges (21%) were ghosts** — exactly the two known dead test
+fixtures — and **≈20% of the fleet tax was ghost-attributed**; every denominator consumer
+(`fleet_tax` vs the advisory, `--utility`, `--network` minds, the gated graduation lane) was
+drifting on corpses, the dead-edge report was single-project-scoped, and no prune lever existed.
+
+- **One resolver** (`_slug_matches`, factored from the train-review-fixed `_mind_unresolved`,
+  which now delegates) + **`_classify_edge`**: live (a matching store HOLDS the mirror — it pays
+  the pointer tax) / stale (real store, dropped mirror — never prunable, self-identifying) /
+  unresolved (zero matches — the ghost class, the ONLY prunable one) / ambiguous (multi-match or
+  degenerate token — never prunable; a token we can't normalize is not provably a ghost).
+- **`--utility`**: per-canonical `holders_live/stale/unresolved/ambiguous` (additive keys) +
+  `fleet_tax_live` (pointer × LIVE holders) printed BESIDE the provenance upper bound — which
+  stays the advisory's documented denominator (re-deriving the advisory is a separate reviewed
+  change). Live at ship: ≈2664 live-basis vs ≈3420 provenance.
+- **`--gc . --edges [--apply]`**: the fleet-wide ghost report (resolution attempts shown);
+  `--apply` prunes ONLY unresolved tokens — atomic, body-untouched, and a wrong prune
+  **self-heals** via `_record_provenance` on that project's next pull (pinned). Refuses when
+  `~/.claude/projects` is absent (nothing claimable ≠ everything ghost). Upgrades, never
+  violates, the reported-not-pruned rule: nothing automatic, the report is finally
+  fleet-complete, the confirmed lever exists.
+- Live acceptance (the spec's own stated test) ran clean: 59 live · 1 stale · 16 unresolved ·
+  0 ambiguous — the ghosts exactly the two known fixtures, all three live nodes (incl. the
+  underscore case) resolving correctly.
+
+New flag + additive `--json` keys; nothing existing changes meaning ⇒ patch.
+
 ## [0.1.83] — 2026-07-10
 
 ### Added — the fleet workflows lens: breadth becomes computable (W-B)
