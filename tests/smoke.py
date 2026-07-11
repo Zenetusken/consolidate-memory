@@ -4474,5 +4474,30 @@ check("v0.1.83: distill_history returns latest-row-block + full verdict lineage;
       "empty-honest shape",
       ms.distill_history(Path("/nonexistent")) == {"latest": None, "verdicts": []})
 
+# --- PR-#95 review pins (persistence-core lens — all three findings fire only on the
+# hand-edited / pre-v0.1.82 --from path; the dream path was already clean) ---
+with _tf73.TemporaryDirectory() as _td95:
+    _seed95 = Path(_td95) / "cycle.json"
+    _seed95.write_text(_jsonB.dumps({"project": "p", "session": "s"}), encoding="utf-8")
+    _old95 = {"window": "w", "scanned": {"sessions": 1, "commands": 2, "days": 1, "secrets_omitted": 0},
+              "recurring": [{"template": "x" * 500, "count": "47", "days": None, "sample": "s"}],
+              "chains": [{"templates": 5, "count": 1, "days": 1},
+                         {"templates": "ab", "count": 2, "days": 1},
+                         {"templates": ["real-a", "real-b"], "count": 3, "days": 2}]}
+    check("v0.1.82/review: a pre-v0.1.82 --from scan (no `used` key) injects WITHOUT crashing — the "
+          "old bare list() poison-pill (templates=5 → TypeError → WHOLE capture lost) is now a "
+          "per-row skip",
+          ds.inject_into(str(_seed95), _old95, "", [], []) is True)
+    _r95 = _jsonB.loads(_seed95.read_text(encoding="utf-8"))["distill"]
+    check("v0.1.82/review: absent-vs-empty honesty — an UNMEASURED scan writes NO `used` key (an "
+          "empty list would register a false 'measured, zero invocations' window in W-B's adoption "
+          "view — the usage_history discipline)",
+          "used" not in _r95)
+    check("v0.1.82/review: per-row value coercion — t clamped to 200 chars (the compact contract is "
+          "on VALUES), garbage n/d coerced to 0, the string-templates char-split garbage gone, the "
+          "one valid chain row survives",
+          len(_r95["top"][0]["t"]) == 200 and _r95["top"][0]["n"] == 0 and _r95["top"][0]["d"] == 0
+          and _r95["top_chains"] == [{"t": ["real-a", "real-b"], "n": 3, "d": 2}])
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
