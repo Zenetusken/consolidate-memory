@@ -474,8 +474,13 @@ def inject_into(seed_path: str, d: dict, verdict: str, proposed: list, created: 
                              for r in (d.get("chains") or [])[:_DISTILL_PERSIST_CAP[1]]
                              if isinstance(r, dict) and isinstance(r.get("templates"), list)]
         if "used" in d:
+            # PR-#95 seams review F1: skill names are the one persisted field not born from
+            # _seg_template — screen them through the same emission firewall (a secret-shaped name
+            # is pathological — harness skill names are resolved slugs — but uniform screening is
+            # cheap and the reprojection above already killed the extra-key passthrough).
             blk["used"] = [{"a": str(r.get("a", ""))[:200], "n": _i(r.get("n"))}
-                           for r in (d.get("used") or []) if isinstance(r, dict)][:_USED_CAP]
+                           for r in (d.get("used") or [])
+                           if isinstance(r, dict) and not _looks_secret(_norm(str(r.get("a", ""))))][:_USED_CAP]
         if verdict:
             blk["verdict"] = verdict
         if proposed:

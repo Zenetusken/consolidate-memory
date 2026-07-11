@@ -4498,6 +4498,18 @@ with _tf73.TemporaryDirectory() as _td95:
           "one valid chain row survives",
           len(_r95["top"][0]["t"]) == 200 and _r95["top"][0]["n"] == 0 and _r95["top"][0]["d"] == 0
           and _r95["top_chains"] == [{"t": ["real-a", "real-b"], "n": 3, "d": 2}])
+    _old95b = {"window": "w", "scanned": {"sessions": 1, "commands": 1, "days": 1, "secrets_omitted": 0},
+               "recurring": [], "chains": [],
+               "used": [{"a": "code-review", "n": 2, "EXTRA_LEAK": "/home/x/secret-passthrough"},
+                        {"a": "AKIAIOSFODNN7EXAMPLE", "n": 1}]}
+    _seed95b = Path(_td95) / "cycle2.json"
+    _seed95b.write_text(_jsonB.dumps({"project": "p", "session": "s"}), encoding="utf-8")
+    ds.inject_into(str(_seed95b), _old95b, "", [], [])
+    _r95b = _jsonB.loads(_seed95b.read_text(encoding="utf-8"))["distill"]
+    check("v0.1.82/seams-review: `used` rows are REPROJECTED to {a,n} (extra-key passthrough dead) "
+          "and names screened through the emission firewall (a secret-shaped name is dropped)",
+          _r95b["used"] == [{"a": "code-review", "n": 2}]
+          and "EXTRA_LEAK" not in _jsonB.dumps(_r95b) and "AKIA" not in _jsonB.dumps(_r95b))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
