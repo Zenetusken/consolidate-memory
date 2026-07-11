@@ -27,6 +27,7 @@ How edits take effect (once installed as a local-marketplace plugin):
 | `plugins/consolidate-memory/scripts/*.py` | live on next run (exec'd fresh) |
 | `…/skills/consolidate-memory/SKILL.md` body | `/reload-plugins` or next session |
 | `plugin.json` / `marketplace.json` | `claude plugin marketplace update` + `/reload-plugins` |
+| a release lands on `main` | installed copy re-reads its version ONLY at CC startup — mid-session: `claude plugin marketplace update` → `claude plugin update consolidate-memory@zenetusken-plugins` → `/reload-plugins` (`plugin install` no-ops when already installed) |
 
 When iterating on the published artifact, re-validate: `claude plugin validate
 ./plugins/consolidate-memory --strict`.
@@ -48,7 +49,8 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     memory_status.py               Phase 0: locate stores + git scope + `--json` cycle-record seed
     extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
     sync_global.py                 cross-project: --list/--pull [--evict=F | --allow-net-grow]/--promote/
-                                   --gc [--apply]/--tokens/--utility/--harvest/--staleness/--network + provenance
+                                   --gc [--edges] [--apply]/--tokens/--utility/--harvest/--staleness/
+                                   --workflows/--network + provenance
     distill_scan.py                Phase 5 distill: recurring Bash-command templates + compound-command chains (workflow signal); `--into`/`--from` inject script-truth counts into a cycle record
     render_dashboard.py            the data-driven ASCII dashboard (renders ONE cycle record)
     render_html.py                 the self-contained HTML archive (all cycles, rich; + dashboards/diffs sidecars)
@@ -175,8 +177,24 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
    made atomic [write-temp + `os.replace`], `promote()`'s canonical create made exclusive
    [write-temp + `os.link` — the create-create race loser is refused, not silently clobbered], the
    `_record_provenance` lost-update race accepted + documented, `--seed` routed through
-   `_write_private` 0o600) — every one an additive `total=False` schema key / additive `--json`
-   key / additive flag / SKILL prose, never a break.
+   `_write_private` 0o600) · **v0.1.73–v0.1.77 (the cross-project-layer AUDIT remediation train:**
+   v0.1.73 evict accounting truth [classify→plan→execute, `_plan_pull`, measured `freed`, gainless-
+   evict refusal] · v0.1.74 `_as_mirror`/`_body` fence-boundary parity [silent mirror-corruption fix] ·
+   v0.1.75 pull-side guards [M4-bypass warning, phantom-store guard, frozen-mirror lifecycle] ·
+   v0.1.76 robustness batch [holder round-trip, no-hardlink clean refusal, mypy/poetry detection,
+   archive-doc token split, minds-liveness `?`, originSessionId warn split] · v0.1.77 doc-drift sync)
+   · **v0.1.78–v0.1.85 (the ENHANCEMENT program, signal-sufficiency + workflow + harness-native
+   lenses, each measure-first + red-first + two-lens-reviewed):** v0.1.78 evidence-clock stamps
+   [`global_ref_since`/`global_ref_body` — zero-read windows survive refreshes] · v0.1.79 fleet usage
+   harvest [`--harvest` → the shared `.fleet-usage.jsonl` ledger] · v0.1.80 fleet staleness
+   [`--staleness` absorption-lag sweep] · v0.1.81 the SessionStart BEACON [the plugin's first HOOK
+   component — `hooks/hooks.json` + `session_beacon.py` + the `--pull`-written stacks cache] ·
+   v0.1.82 distill-template persistence [W-A: additive `Distill.top`/`top_chains`/`used`] · v0.1.83
+   fleet workflows [W-B: `--workflows` + `distill_history`] · v0.1.84 provenance liveness [P4:
+   `_classify_edge`, `--gc --edges`, `fleet_tax_live`] · v0.1.85 mention-tier attribution [P3: the
+   hook channel — additive `usage.mentions`/`mention_stems`, display-only]) — every one an additive
+   `total=False` schema key / additive `--json` key / additive flag / new read-only mode / new plugin
+   component / SKILL prose, never a break.
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG
