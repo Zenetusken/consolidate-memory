@@ -458,11 +458,29 @@ def inject_into(seed_path: str, d: dict, verdict: str, proposed: list, created: 
         # `sample` (samples carry raw command text and stay display-only: the privacy tier the module
         # doc pins). Script-truth like the counts; template-level evidence used to DIE with each scan,
         # making fleet aggregation (W-B --workflows) impossible — the exact pre-Phase-A usage mistake.
-        blk["top"] = [{"t": r.get("template", ""), "n": r.get("count", 0), "d": r.get("days", 0)}
+        # PR-#95 review hardening (all three findings fire only on hand-edited/pre-v0.1.82 --from
+        # files; the dream path is unaffected): values COERCED per row (t clamped [:200] — the durable
+        # "compact" contract is on VALUES, not just keys; n/d int-or-0, handing W-B clean types), a
+        # chain row whose `templates` isn't a list is SKIPPED (the old bare list() was a poison pill:
+        # one bad row TypeError'd the WHOLE injection — capture loss — and a string char-split into
+        # garbage), and `used` is written ONLY when the scan measured it (an old scan yielding
+        # `used: []` would register a FALSE "measured, zero invocations" window in W-B's adoption
+        # view — absent-vs-empty honesty, the usage_history discipline).
+        def _i(v: object) -> int:
+            return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else 0
+        blk["top"] = [{"t": str(r.get("template", ""))[:200], "n": _i(r.get("count")), "d": _i(r.get("days"))}
                       for r in (d.get("recurring") or [])[:_DISTILL_PERSIST_CAP[0]] if isinstance(r, dict)]
-        blk["top_chains"] = [{"t": list(r.get("templates") or []), "n": r.get("count", 0), "d": r.get("days", 0)}
-                             for r in (d.get("chains") or [])[:_DISTILL_PERSIST_CAP[1]] if isinstance(r, dict)]
-        blk["used"] = [r for r in (d.get("used") or []) if isinstance(r, dict)][:_USED_CAP]
+        blk["top_chains"] = [{"t": [str(x)[:200] for x in r["templates"]], "n": _i(r.get("count")), "d": _i(r.get("days"))}
+                             for r in (d.get("chains") or [])[:_DISTILL_PERSIST_CAP[1]]
+                             if isinstance(r, dict) and isinstance(r.get("templates"), list)]
+        if "used" in d:
+            # PR-#95 seams review F1: skill names are the one persisted field not born from
+            # _seg_template — screen them through the same emission firewall (a secret-shaped name
+            # is pathological — harness skill names are resolved slugs — but uniform screening is
+            # cheap and the reprojection above already killed the extra-key passthrough).
+            blk["used"] = [{"a": str(r.get("a", ""))[:200], "n": _i(r.get("n"))}
+                           for r in (d.get("used") or [])
+                           if isinstance(r, dict) and not _looks_secret(_norm(str(r.get("a", ""))))][:_USED_CAP]
         if verdict:
             blk["verdict"] = verdict
         if proposed:

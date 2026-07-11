@@ -350,6 +350,16 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   Lockfiles are excluded (transitive deps over-detect). So a stdlib plugin whose README merely
   says "rag"/"scraper" no longer false-matches `rag`/`playwright`; a `stack-general:[rag]` fact
   binds only projects that really depend on / import a RAG library.
+- `--workflows PROJECT_DIR [--json]` — (v0.1.83, W-B, `docs/fleet-workflows.spec.md`) READ-ONLY
+  fleet workflow evidence: joins every log-holding node's LATEST W-A distill rows by exact
+  template string (latest-record-per-node — overlapping windows are never summed). Breadth
+  (≥2 nodes, the `fleet` flag) is the workflow analog of the cascade's G2.3 witness — the first
+  cascade leg with mechanical evidence; plus head-signature near-join HINTS (counts never
+  merged), the Skill-adoption view, the cross-node verdict LINEAGE (a decline anywhere blocks a
+  naive re-propose everywhere), and the user-level artifact inventory (names only — coverage
+  judgment stays with the model, content-gated). Dream-flow: Phase 5's distill gate consults it
+  (cued); `cm workflows` for maintainers. Cold-start honest: `0/N reporting` until nodes dream
+  on v0.1.82+.
 - **The SessionStart beacon** (v0.1.81, `docs/session-beacon.spec.md` — the plugin's first HOOK
   component, `hooks/hooks.json` → `scripts/session_beacon.py`): at session start/resume, at most
   ONE factual line is injected into context when THIS project's store is measurably behind the

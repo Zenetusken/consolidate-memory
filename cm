@@ -20,6 +20,7 @@ case "$cmd" in
   utility)  exec python3 "$S/sync_global.py" --utility "$@" ;;    # fleet usage evidence + fleet tax (+ --json)
   harvest)  exec python3 "$S/sync_global.py" --harvest "$@" ;;    # capture every node's usage windows into the fleet ledger
   staleness) exec python3 "$S/sync_global.py" --staleness "$@" ;; # absorption lag per node (read-only; beacon Stage A)
+  workflows) exec python3 "$S/sync_global.py" --workflows "$@" ;; # fleet workflow evidence over the W-A distill rows (read-only)
   beacon)   cd "${1:-$PWD}" 2>/dev/null && exec python3 "$S/session_beacon.py" </dev/null ;; # dump the session-beacon line for DIR (debug)
   network)  exec python3 "$S/sync_global.py" --network ;;         # shared-consciousness graph
   render)   exec python3 "$S/render_dashboard.py" "$@" ;;         # cycle.json -> ASCII dashboard
@@ -47,6 +48,7 @@ cm — consolidate-memory
                        the warn-only advisory) — the gc lever's evidence table (v0.1.67, Phase C)
   cm harvest [DIR]        capture every node's organic-read windows into ~/.claude/memory/.fleet-usage.jsonl
   cm staleness [DIR] [--json] absorption lag per node — last dream, missing globals, stale mirrors (read-only)
+  cm workflows [DIR] [--json] fleet-recurring workflow templates/chains + adoption + verdict lineage (read-only)
   cm beacon [DIR]         print the SessionStart beacon line for DIR (empty = silent; debug lens)
   cm network           render the cross-project shared-memory graph
   cm render cycle.json render an ASCII dashboard from a cycle record
