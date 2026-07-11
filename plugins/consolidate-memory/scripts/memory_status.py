@@ -148,6 +148,14 @@ class Usage(TypedDict, total=False):
     # Computed from the UNCAPPED scan tally (never derived from the capped per_fact rows).
     archive_reads: int
     misses: list[str]
+    # v0.1.85 (P3, docs/mention-tier-attribution.spec.md): the HOOK channel — fact stems NAMED in
+    # assistant text WITHOUT a body read (the always-loaded index hook firing; the layer's actual
+    # product, otherwise unmeasured — MEASURED: mentions ≫ reads, stems named-never-read). BINARY per
+    # window (a rumination loop can't inflate); index-dump messages (≥4 distinct stems) dropped; dream-
+    # span excluded. DISPLAY-ONLY in v1 — a SEPARATE channel from per_fact (folding mention-only rows
+    # into per_fact would break the `facts_read == len(per_fact)` probative rule and starve demotion).
+    mentions: int              # distinct stems organically named this window
+    mention_stems: list[str]   # which — capped; corroborative evidence, never sole grounds
 
 
 class Demotion(TypedDict, total=False):
@@ -1319,10 +1327,16 @@ def usage_history(auto_mem: Path) -> dict:
     window_starts: list = []
     acc: dict = {}       # stem -> {"reads": int, "last": iso, "_ep": float|None}
     misses: set = set()
+    mention_stems: set = set()   # v0.1.85 (P3): union of stems organically NAMED across windows —
+    #   positive evidence never discarded (like reads/misses), DISPLAY-ONLY (no veto in v1)
     for rec in iter_cycle_log(auto_mem / ".consolidation-log.jsonl", tail=_LOG_TAIL_CAP):
         u = rec.get("usage") if isinstance(rec, dict) else None
         if not isinstance(u, dict):
             continue
+        _ms = u.get("mention_stems")
+        for stem in (_ms if isinstance(_ms, list) else []):
+            if isinstance(stem, str) and stem:
+                mention_stems.add(stem)
         pf = u.get("per_fact")
         pf = pf if isinstance(pf, list) else []
         for row in pf:                                   # reads merge from EVERY block (see docstring)
@@ -1352,7 +1366,7 @@ def usage_history(auto_mem: Path) -> dict:
         window_starts.append(start.timestamp())
     per_fact = {k: {"reads": v["reads"], "last": v["last"]} for k, v in acc.items()}
     return {"windows_full": windows_full, "window_starts": window_starts,
-            "per_fact": per_fact, "miss_stems": sorted(misses)}
+            "per_fact": per_fact, "miss_stems": sorted(misses), "mention_stems": sorted(mention_stems)}
 
 
 def _demotion_justify(dj: object) -> dict:
@@ -2047,7 +2061,7 @@ def build_context(project_dir: Path) -> dict:
     # scan (the archive/defrag candidate scans already set that cost precedent). DORMANT (eligible 0,
     # empty candidates) until probative windows accrue — see the §Phase C evidence gate.
     usage_hist = usage_history(auto_mem) if auto_mem.exists() else {
-        "windows_full": 0, "window_starts": [], "per_fact": {}, "miss_stems": []}
+        "windows_full": 0, "window_starts": [], "per_fact": {}, "miss_stems": [], "mention_stems": []}
     demotion = demotion_candidates(fact_files, index_names, usage_hist, _index_text,
                                    justify=_demotion_justify(demotion_justify))
 
@@ -2341,6 +2355,12 @@ def validate_cycle_record(record: object) -> list[str]:
             warnings.append("usage.misses is not a list")
         elif len(usage["misses"]) > _USAGE_FACT_CAP:
             warnings.append(f"usage.misses exceeds the scanner cap ({_USAGE_FACT_CAP}) — impossible from a capped scan")
+    # v0.1.85 (P3): usage.mention_stems — same producer, same cap, same backstop shape.
+    if isinstance(usage, dict) and "mention_stems" in usage:
+        if not isinstance(usage["mention_stems"], list):
+            warnings.append("usage.mention_stems is not a list")
+        elif len(usage["mention_stems"]) > _USAGE_FACT_CAP:
+            warnings.append(f"usage.mention_stems exceeds the scanner cap ({_USAGE_FACT_CAP}) — impossible from a capped scan")
 
     # v0.1.67 (Phase C): the demotion block — surfaced is script-seeded and capped at _DEMOTION_BOTTOM_K
     # (producer + validator share THIS module, so no cross-module mirror is needed, unlike _DISTILL_CAPS).

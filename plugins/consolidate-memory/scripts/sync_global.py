@@ -1098,7 +1098,14 @@ def _slug_matches(name: str) -> "list[Path]":
     never match its own store) and match by equality or '-'-suffix. Only dirs that actually HOLD
     a memory store count (a bare transcript dir is not a node). Degenerate token / no projects
     dir → [] with the CALLER deciding conservatively. The ONE resolver — _mind_unresolved and
-    the P4 edge classifier both delegate here (a second copy is how the F1 bug happened)."""
+    the P4 edge classifier both delegate here (a second copy is how the F1 bug happened).
+    REACH LIMIT (PR-#97 review F2, accepted — the lossy slug's cost): the `-`-suffix match
+    over-matches — a ghost token `memory` suffix-collides with a live `…-consolidate-memory`
+    store. This only ADDS matches, so it can NEVER produce a false `unresolved` → never a wrong
+    prune (the safe direction); its sole effect is `fleet_tax_live` crediting a ghost edge as live
+    (advisory, printed beside — never replacing — the upper bound). Tightening it would break the
+    load-bearing lossy inverse (holder `Doc_Flo` → `-…-Doc-Flo` NEEDS the suffix match), so this
+    is left as an accepted reach limit, exactly like the slug's other documented lossy cases."""
     norm = re.sub(r"[^a-z0-9]", "-", name.lower())
     base = Path.home() / ".claude" / "projects"
     if not norm.strip("-.") or not base.is_dir():
@@ -1127,9 +1134,11 @@ def _classify_edge(holder: str, stem: str) -> str:
       'live'       ≥1 matching store holds <stem>.md as a managed MIRROR (it pays the pointer tax);
       'stale'      exactly one match, mirror absent (real project, dropped mirror — NEVER prunable:
                    self-identifying, and _record_provenance re-adds on its next pull anyway);
-      'unresolved' ZERO store matches (deleted/renamed project — the ghost class, measured live at
-                   21% of edges / 20% of fleet tax; the ONLY prunable class, and only via the
-                   confirmed --gc --edges --apply);
+      'unresolved' ZERO store matches — NO live memory STORE resolves (PR-#97 review F3: this means
+                   store-DELETED, not merely project-renamed — a provenance holder had a store BY
+                   CONSTRUCTION since run() mkdir's before _record_provenance, so no-store = deleted =
+                   correctly dead); the ghost class, measured live at 21% of edges / 20% of fleet tax;
+                   the ONLY prunable class, and only via the confirmed --gc --edges --apply;
       'ambiguous'  multiple matches, none holding (can't tell which store was meant), OR a
                    degenerate token (a token we can't even normalize is not PROVABLY a ghost) —
                    conservative, never prunable."""
@@ -1293,6 +1302,19 @@ def _gc_edges(gfacts: list, apply: bool) -> int:
             counts[c] += 1
             if c == "unresolved":
                 ghosts.setdefault(n, []).append(h)
+    # PR-#97 review F1 (the real mass-prune blocker): the is_dir() guard above refuses only on
+    # ABSENCE, but its "mass-delete guard's sibling" claim demands the COUNT parity gc() has — a
+    # present-but-STORELESS projects tree (unmounted/moved store tree, partial restore, transcript-
+    # only dirs) resolves EVERY holder to [] → every edge unresolved → --apply would write
+    # `projects: []` on every canonical. Guard on the FACT that SOMETHING resolves: if edges exist
+    # but NONE are live-or-stale (nothing points at a real store), that is indistinguishable from a
+    # wiped/unmounted store tree — refuse, exactly as gc() refuses an empty global store.
+    if sum(counts.values()) > 0 and counts["live"] + counts["stale"] == 0:
+        print(f"refusing --edges: {counts['unresolved']} edge(s) and NOT ONE resolves to a live store "
+              "under ~/.claude/projects — indistinguishable from an unmounted/moved store tree, not "
+              "proof every project was deleted. (The gc mass-delete guard's true sibling: guard on "
+              "the resolved COUNT, not mere dir existence.)")
+        return 0
     out: list = []
     title = "✦ PROVENANCE EDGES · fleet-wide liveness triage"
     tag = "APPLY" if apply else "REPORT"
@@ -2311,11 +2333,12 @@ def fleet_utility(project_dir: Path) -> dict:
         if isinstance(_lr.get("per_fact"), list):
             ledger_by_node.setdefault(str(_lr.get("node", "")), []).append(_lr)
     per: dict = {n: {"reads": 0, "windows": 0, "last": "", "_ep": None, "shadow": 0, "fallback": 0,
-                     "h_reads": 0, "h_windows": 0} for n in canon}
+                     "h_reads": 0, "h_windows": 0, "mentions": 0} for n in canon}
     for store in stores:
         hist = usage_history(store)
         if hist["windows_full"] >= 1:
             nodes_reporting += 1
+        _mset = set(hist.get("mention_stems") or [])   # v0.1.85 (P3): stems named in this node's windows
         # v0.1.79 (docs/fleet-usage-harvest.spec.md, the v1 rule): harvested ledger rows contribute
         # ONLY for a node with NO own-log usage at all — own-log strictly primary, no interval-overlap
         # math, no double-count risk (mixed-node merging is the consumption release's refinement).
@@ -2349,6 +2372,8 @@ def fleet_utility(project_dir: Path) -> dict:
                 if reads or h_reads:
                     per[stem]["shadow"] += reads + h_reads   # same-stem local — reported, never attributed
                 continue
+            if stem in _mset:   # v0.1.85 (P3): mention attributed only through a MIRROR, like reads —
+                per[stem]["mentions"] += 1   # a node's hook fired for this canonical (display-only, +1/node)
             # Count only the probative windows the MIRROR's content-lineage existed through — the fact-age
             # rule (2026-07-05 review: crediting whole window history to a fresh mirror overstates
             # zero-read evidence). v0.1.78 (docs/evidence-clock-stamps.spec.md): the clock is the mirror's
@@ -2417,6 +2442,8 @@ def fleet_utility(project_dir: Path) -> dict:
         if per[stem]["h_reads"] or per[stem]["h_windows"]:   # v0.1.79: harvested, source-labeled
             e["harvested_reads"] = per[stem]["h_reads"]
             e["windows_harvested"] = per[stem]["h_windows"]
+        if per[stem]["mentions"]:   # v0.1.85 (P3): hook-channel evidence, mirror-attributed nodes
+            e["mentions"] = per[stem]["mentions"]
         if not holders:
             unheld.append(stem)
         entries.append(e)
@@ -2441,7 +2468,8 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
     out.append(_ui.rule())
     out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
     out.append("  " + _ui.c("usage exists only where post-v0.1.63 dreams ran --recalls; holders = "
-                            "provenance UPPER bound (dead edges reported by --gc, never auto-pruned)"
+                            "provenance UPPER bound (dead edges reported by --gc; --edges --apply prunes "
+                            "only the provable ghosts)"
                             + (f" · harvested ledger covers {u['nodes_harvested']} no-own-usage node(s)"
                                if u.get("nodes_harvested") else ""), "dim"))
     out.append(_ui.rule())
@@ -2471,8 +2499,12 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
         shadow = _ui.c(f" · shadow {e['shadow_reads']}", "yellow") if e.get("shadow_reads") else ""
         harv = (_ui.c(f" · +{e.get('harvested_reads', 0)}r/{e.get('windows_harvested', 0)}w harvested", "cyan")
                 if (e.get("harvested_reads") or e.get("windows_harvested")) else "")
+        # v0.1.85 (P3): the HOOK channel — named-without-a-read on N node(s). A canonical unread yet
+        # MENTIONED is used via its always-loaded index hook (the layer's product) — display-only
+        # corroboration; makes a 0-reads row read as "instrumented but hook-active", not dormant.
+        ment = _ui.c(f" · hook×{e['mentions']}", "green") if e.get("mentions") else ""
         out.append(f"    {_ui.lbl(e['name'][:40], 40)} {e['fleet_tax']:>5}t "
-                   + _ui.c(f"({e['pointer_tok']}t × {e['holders']})", "dim") + f"  {ev}{shadow}{harv}")
+                   + _ui.c(f"({e['pointer_tok']}t × {e['holders']})", "dim") + f"  {ev}{shadow}{harv}{ment}")
     if u["unheld"]:
         out.append("    " + _ui.c(f"unheld (0 fleet tax — nobody pays them yet): {', '.join(u['unheld'])}", "dim"))
     out.append("")

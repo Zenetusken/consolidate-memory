@@ -41,7 +41,7 @@ cm — consolidate-memory
   cm sync --list DIR   show which global facts apply to a project
   cm pull [DIR]        replicate relevant global facts into a project (default: .); M1 holds a pull
                        only past the HARD CEILING (~3840t, v0.1.66) — an over-target store receives
-  cm gc [DIR] [--apply] reclaim orphaned mirrors (report-only without --apply)
+  cm gc [DIR] [--edges] [--apply] reclaim orphaned mirrors; --edges = fleet-wide ghost provenance-edge triage (report-only without --apply)
   cm promote DIR FACT [CANON]  hand a local fact up to the global store + mirror the origin
   cm tokens [DIR] [--json] per-node + total token consumption across the network
   cm utility [DIR] [--json] fleet usage evidence per canonical (mirror-attributed reads, fleet tax vs

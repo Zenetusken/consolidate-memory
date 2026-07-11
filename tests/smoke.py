@@ -2881,7 +2881,7 @@ with _tfB.TemporaryDirectory() as _tdC1:
           _hC1["miss_stems"] == ["m1", "m2"])
     check("v0.1.67 usage_history: missing store/log → clean zero-state",
           ms.usage_history(Path(_tdC1) / "nope") == {"windows_full": 0, "window_starts": [],
-                                                     "per_fact": {}, "miss_stems": []})
+                                                     "per_fact": {}, "miss_stems": [], "mention_stems": []})
 
 # (4) _demotion_justify — the guarded reader (malformed does NOT suppress; the _standing_baseline direction)
 check("v0.1.67 _demotion_justify: well-formed kept; non-dict/bool/str-windows entries DROPPED (fail open to surface)",
@@ -4546,10 +4546,15 @@ with _Env73() as _e:
     _gout84 = _io73.StringIO()
     with _ctx73.redirect_stdout(_gout84):
         sg.gc(_e.proj, apply=False, edges=True)
-    check("v0.1.84: --gc --edges REPORTS exactly the ghost class (stale/ambiguous never offered)",
-          "ghost-proj" in _gout84.getvalue() and "would prune" in _gout84.getvalue()
-          and "staleproj" not in _gout84.getvalue().split("EDGES")[1].split("RESULT")[0].replace("1 stale", "")
-          and "16" not in _gout84.getvalue())
+    # PR-#97 review F4: assert the POSITIVE counts line (strictly stronger than the old degenerate
+    # `"16" not in`, which couldn't appear on a 4-edge fixture anyway) + the twin absent from ghosts.
+    _greport84 = _gout84.getvalue()
+    _gzone84 = _greport84.split("EDGES", 1)[1].split("RESULT", 1)[0]
+    check("v0.1.84: --gc --edges REPORTS the exact class breakdown (4 total · 1 live · 1 stale · "
+          "1 unresolved · 1 ambiguous) and lists ONLY the ghost (stale AND ambiguous twin never offered)",
+          "4 total · 1 live · 1 stale · 1 unresolved · 1 ambiguous" in _greport84
+          and "ghost-proj" in _gzone84 and "would prune" in _greport84
+          and "staleproj" not in _gzone84 and "twinproj" not in _gzone84)
     with _ctx73.redirect_stdout(_io73.StringIO()):
         sg.gc(_e.proj, apply=True, edges=True)
     _ct84b = (_e.glob / "canon-x.md").read_text(encoding="utf-8")
@@ -4563,6 +4568,126 @@ with _Env73() as _e:
     sg._record_provenance("canon-x", "ghost-proj")
     check("v0.1.84: a pruned edge SELF-HEALS via _record_provenance on that project's next pull/promote",
           "ghost-proj" in (_e.glob / "canon-x.md").read_text(encoding="utf-8"))
+# PR-#97 review F1 (the mass-prune blocker): a present-but-STORELESS projects tree (unmounted /
+# transcript-only) must REFUSE — every edge resolves to nothing, indistinguishable from a wiped
+# store tree; --apply must NOT write `projects: []` fleet-wide.
+with _Env73() as _e:
+    (_e.glob / "canon-y.md").write_text(
+        "---\nname: canon-y\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n"
+        "  projects: [proj-a, proj-b]\n---\nbody\n", encoding="utf-8")
+    # present but STORELESS: _Env73 makes the trigger's OWN store; delete it so no memory/ store
+    # dir exists anywhere → every holder resolves to nothing (the unmounted-tree degenerate state).
+    import shutil as _sh84
+    _sh84.rmtree(_e.store)
+    (Path(_osB.environ["HOME"]) / ".claude" / "projects").mkdir(parents=True, exist_ok=True)
+    _gy84 = _io73.StringIO()
+    with _ctx73.redirect_stdout(_gy84):
+        _rc = sg.gc(_e.proj, apply=True, edges=True)
+    check("v0.1.84/review-F1: --edges --apply REFUSES when nothing resolves to a live store (guard on "
+          "the resolved COUNT, not dir existence) — provenance survives verbatim, no mass-prune",
+          _rc == 0 and "refusing --edges" in _gy84.getvalue()
+          and "projects: [proj-a, proj-b]" in (_e.glob / "canon-y.md").read_text(encoding="utf-8"))
+# PR-#97 review F3: the tightened predicate — a name-matching slug dir WITHOUT a memory store
+# classifies unresolved (store-deleted = dead), the direction the F1 fixture masks by mkdir'ing memory.
+with _Env73() as _e:
+    (_e.glob / "canon-z.md").write_text(
+        "---\nname: canon-z\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n---\nz\n",
+        encoding="utf-8")
+    (Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-storeless").mkdir(parents=True, exist_ok=True)  # dir, NO memory/
+    check("v0.1.84/review-F3: a slug dir WITHOUT a memory store is unresolved (store-deleted = dead — "
+          "a holder had a store by construction), and _mind_unresolved agrees",
+          sg._classify_edge("storeless", "canon-z") == "unresolved" and sg._mind_unresolved("storeless") is True)
+
+# --- v0.1.85: mention-tier attribution (P3 — docs/mention-tier-attribution.spec.md). The hook
+# channel (fact stems NAMED in assistant text without a body read) is the layer's actual product
+# and was entirely unmeasured; MEASURED live premise: mentions ≫ reads, 13 stems named-never-read.
+import extract_signals as _es85  # noqa: E402
+# split_dream_span now partitions read AND mention items; a mention inside the arc span is excluded.
+_items85 = [{"i": 0, "kind": "read", "stem": "r-out", "ts": "t"},
+            {"i": 5, "kind": "arc", "stem": "", "ts": "t"},
+            {"i": 6, "kind": "mention", "stem": "m-in", "ts": "t"},     # inside span → dream-excluded
+            {"i": 9, "kind": "arc", "stem": "", "ts": "t"},
+            {"i": 12, "kind": "mention", "stem": "m-out", "ts": "t"}]   # outside → organic
+_org85, _exc85 = _es85.split_dream_span(_items85)
+check("v0.1.85: split_dream_span partitions reads AND mentions by the arc span (a mention inside a "
+      "dream is procedure, excluded; outside is organic) — reads-only fixtures unaffected",
+      {(o["kind"], o["stem"]) for o in _org85} == {("read", "r-out"), ("mention", "m-out")}
+      and _exc85 == 1)
+with _tf73.TemporaryDirectory() as _td85:
+    _mh85 = Path(_td85)
+    _proj85 = (_mh85 / "src" / "mproj").resolve(); _proj85.mkdir(parents=True)
+    _st85 = _mh85 / ".claude" / "projects" / ms.slug_for(_proj85) / "memory"; _st85.mkdir(parents=True)
+    for _s in ("gh-pr-edit-broken-in-env", "measure-dont-assert-before-acting",
+               "prefer-typed-stubs-over-ignore", "cli-stdout-stderr-contract", "short"):
+        (_st85 / f"{_s}.md").write_text(f"---\nname: {_s}\n---\nbody\n", encoding="utf-8")
+    (_st85 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+
+    def _amsg(text):
+        return _jsonB.dumps({"timestamp": "2026-07-05T10:00:00Z",
+                             "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}})
+    (_st85.parent / "s1.jsonl").write_text("\n".join([
+        _amsg("per gh-pr-edit-broken-in-env I used the REST fallback"),          # 1 stem → counts
+        _amsg("gh-pr-edit-broken-in-env again and again gh-pr-edit-broken-in-env"),  # same stem, binary
+        _amsg("index dump: gh-pr-edit-broken-in-env measure-dont-assert-before-acting "
+              "prefer-typed-stubs-over-ignore cli-stdout-stderr-contract"),      # ≥4 stems → all dropped
+        _jsonB.dumps({"timestamp": "2026-07-05T10:00:00Z", "message": {"role": "user",
+                     "content": [{"type": "text", "text": "measure-dont-assert-before-acting"}]}}),  # user → excluded
+    ]) + "\n", encoding="utf-8")
+    _oldH85 = _osB.environ.get("HOME"); _osB.environ["HOME"] = str(_mh85)
+    try:
+        _rc85 = _es85.recall_scan(_proj85, "2026-07-01T00:00:00Z")
+    finally:
+        _osB.environ["HOME"] = _oldH85 if _oldH85 else ""
+    check("v0.1.85: the mention detector — binary per window (a stem named twice counts once), the "
+          "≥4-stem index-DUMP message dropped wholesale, USER text excluded, the degenerate 'short' "
+          "stem never matched → exactly {gh-pr-edit-broken-in-env}",
+          _rc85["mentions"] == 1 and _rc85["mention_stems"] == ["gh-pr-edit-broken-in-env"])
+    check("v0.1.85: per_fact stays READS-ONLY — mentions are their own channel (the facts_read == "
+          "len(per_fact) probative-window invariant is untouched; demotion gate unaffected)",
+          _rc85["per_fact"] == [] and _rc85["facts_read"] == 0)
+# usage_history unions mention_stems across windows (positive evidence, like miss_stems); display-only.
+with _tf73.TemporaryDirectory() as _td85b:
+    _st85b = Path(_td85b)
+    (_st85b / ".consolidation-log.jsonl").write_text(
+        _jsonB.dumps({"usage": {"window": "w1", "transcripts": 1, "facts_read": 0, "per_fact": [],
+                                "mention_stems": ["a-fact-stem"]}}) + "\n" +
+        _jsonB.dumps({"usage": {"window": "w2", "transcripts": 1, "facts_read": 0, "per_fact": [],
+                                "mention_stems": ["b-fact-stem"]}}) + "\n", encoding="utf-8")
+    check("v0.1.85: usage_history unions mention_stems across windows (positive hook evidence never "
+          "discarded), and validate_cycle_record backstops an over-cap list",
+          ms.usage_history(_st85b)["mention_stems"] == ["a-fact-stem", "b-fact-stem"]
+          and any("mention_stems exceeds" in w for w in ms.validate_cycle_record(
+              cast(ms.CycleRecord, {"project": "p", "session": "s",
+                                    "usage": {"mention_stems": ["x"] * 41}}))))
+# fleet_utility attributes a mention through a MIRROR only (like reads), display-only column.
+with _Env73() as _e:
+    _ct85 = ("---\nname: canon-m\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n"
+             "  projects: [mnode]\n---\nbody\n")
+    (_e.glob / "canon-m.md").write_text(_ct85, encoding="utf-8")
+    _nm85 = Path(_osB.environ["HOME"]) / ".claude" / "projects" / "-src-mnode" / "memory"; _nm85.mkdir(parents=True)
+    (_nm85 / "canon-m.md").write_text(sg._as_mirror(_ct85, "canon-m", since="2026-01-01T00:00:00Z",
+                                                    body_hash=sg._body_hash(_ct85)), encoding="utf-8")
+    (_nm85 / ".consolidation-log.jsonl").write_text(
+        _jsonB.dumps({"usage": {"window": "w", "transcripts": 1, "facts_read": 0, "per_fact": [],
+                                "mention_stems": ["canon-m"]}}) + "\n", encoding="utf-8")
+    _e85 = {x["name"]: x for x in sg.fleet_utility(_e.proj)["canonicals"]}["canon-m"]
+    check("v0.1.85: fleet_utility attributes a mention through a MIRROR (like reads) — a 0-reads "
+          "canonical reads as hook-active, not dormant; display-only key emitted only when non-zero",
+          _e85.get("mentions") == 1 and _e85["reads"] == 0)
+# PR-#98 review F4: the per-cycle dashboard renders the mentions channel + the corrected
+# dream-procedure-excluded label (was "dream read(s) excluded" — imprecise once mentions joined
+# the span split); a legacy usage block with no mentions renders neither (key-presence gated).
+_mrec85 = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+               "usage": {"reads": 0, "facts_read": 0, "transcripts": 2, "dream_excluded": 3,
+                         "per_fact": [], "mentions": 4, "mention_stems": ["a", "b", "c", "d"]}})
+_mout85 = rd.render(_mrec85)
+check("v0.1.85/review-F4: dashboard renders the hook-mentions count + 'dream-procedure recall(s) "
+      "excluded' (never the stale 'read(s)' label); a legacy no-mentions record shows neither",
+      "4 hook mention(s)" in _mout85 and "dream-procedure recall(s) excluded" in _mout85
+      and "dream read(s) excluded" not in _mout85
+      and "hook mention(s)" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s",
+          "scope": {}, "entries": [], "usage": {"reads": 1, "facts_read": 1, "transcripts": 1,
+          "dream_excluded": 0, "per_fact": [{"name": "x", "reads": 1, "last": "t"}]}})))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

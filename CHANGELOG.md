@@ -5,6 +5,34 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.85] — 2026-07-11
+
+### Added — mention-tier attribution: the hook channel finally measured (P3)
+The eighth enhancement increment (`docs/mention-tier-attribution.spec.md`). The always-loaded
+index HOOK is how memory mostly works — a fact's `description:` steers a session with the body
+never Read — yet body Reads were the ONLY detector and the read volume is near-silent (~1 read
+across 27 canonicals), so the demotion/gc loop could never corroborate that read-silence means
+dormancy. MEASURED premise (read-only): **218 mention occurrences / 28 stems vs 132 reads / 17
+stems — 13 stems mentioned but NEVER read.**
+
+- **A second detector on the same transcripts**: `--recalls` now also counts fact stems NAMED in
+  ASSISTANT text (a compiled word-boundary alternation, longest-first, cheap raw-line pre-filter).
+  Conservative guards, all pinned: BINARY per (message, stem); a ≥4-distinct-stem message is an
+  index dump → dropped; assistant-only (user pastes excluded); archive stems excluded; a
+  degenerate-stem guard (≥12 chars or ≥2 hyphens); dream-span excluded (`split_dream_span`
+  generalized to partition reads AND mentions — reads-only fixtures unaffected).
+- **Its own channel** (additive `usage.mentions`/`mention_stems`), deliberately NOT folded into
+  `per_fact` — that would break the `facts_read == len(per_fact)` probative-window rule and starve
+  the demotion gate; `per_fact` stays reads-only. `usage_history` unions `mention_stems` (positive
+  evidence never discarded, like misses); `fleet_utility` attributes a mention through a MIRROR
+  (same gate as reads) and shows a `hook×N` column — a 0-reads canonical with hook activity reads
+  as instrumented-but-active, not dormant.
+- **DISPLAY-ONLY in v1**: no veto, no demotion consumption — a mention is corroborative evidence,
+  never sole grounds (the pinned undercount bias). Live `--recalls` verified surfacing a mention
+  where reads are 0.
+
+Additive schema keys + additive `--json`/`--utility` surfaces; no existing meaning changes ⇒ patch.
+
 ## [0.1.84] — 2026-07-11
 
 ### Added — provenance liveness: the denominator finally tracks live topology (P4)

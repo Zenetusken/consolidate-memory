@@ -402,9 +402,11 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   (a replica of a live canonical — the next `--pull` re-pulls it if the stack returns).
   Report-only by default; `--apply` deletes the file + its index pointer. **Only** touches
   `global_ref:` mirrors — never a project-authored fact, even on a name collision.
-  Dead-edge provenance (canonical lists a project that no longer holds the mirror) is
-  reported, not auto-pruned (absence-of-mirror is too weak a signal to write global
-  state on — a renamed store also "holds nothing").
+  Dead-edge provenance here = the mirror-absent STALE case (a store that still EXISTS but
+  dropped the mirror) — reported, never auto-pruned (absence-of-mirror is too weak: a renamed
+  store also "holds nothing"). Distinct from the store-ABSENT ghost class the fleet-wide
+  `--gc --edges` lever (v0.1.84, below) prunes — that one keys on the STORE dir being gone, a
+  strong signal.
 - `--promote PROJECT_DIR LOCAL_FACT [CANON_NAME]` — hand a project-authored LOCAL fact
   UP to the canonical global store, then convert the origin's own copy into a managed
   mirror — the local→canonical direction symmetric to `--pull`, driven by the Phase-1
@@ -485,7 +487,7 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   STRIKES just-read stems from the seeded `demotion.surfaced` (current-window blindness, closed
   deterministically). Fleet evidence: `sync_global --utility` (mirror-attributed per-canonical reads
   + `fleet_tax` = pointer × holders vs the warn-only `GLOBAL_FLEET_TAX_ADVISORY`) — the gc lever's
-  evidence table; decisions stay content-gated. Fleet windows are gated on each mirror's
+  evidence table; decisions stay content-gated. **The HOOK channel** (v0.1.85, P3, `docs/mention-tier-attribution.spec.md`): `--recalls` also counts fact stems NAMED in assistant text without a body read (the always-loaded index hook firing — the layer's actual product, MEASURED ≫ reads) into additive `usage.mentions`/`mention_stems`; binary-per-window, index-dump-guarded, dream-span excluded, DISPLAY-ONLY (a mention is corroboration, never a veto in v1). `--utility` shows a `hook×N` column, mirror-attributed. Fleet windows are gated on each mirror's
   **`global_ref_since` evidence-clock stamp** (v0.1.78, `docs/evidence-clock-stamps.spec.md`):
   carried across refreshes when the canonical's BODY is unchanged (a description tweak no longer
   wipes accrued zero-read windows — the starvation an audit measured), reset on a real body change
