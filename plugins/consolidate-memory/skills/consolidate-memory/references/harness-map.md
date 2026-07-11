@@ -485,7 +485,7 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   STRIKES just-read stems from the seeded `demotion.surfaced` (current-window blindness, closed
   deterministically). Fleet evidence: `sync_global --utility` (mirror-attributed per-canonical reads
   + `fleet_tax` = pointer × holders vs the warn-only `GLOBAL_FLEET_TAX_ADVISORY`) — the gc lever's
-  evidence table; decisions stay content-gated. Fleet windows are gated on each mirror's
+  evidence table; decisions stay content-gated. **The HOOK channel** (v0.1.85, P3, `docs/mention-tier-attribution.spec.md`): `--recalls` also counts fact stems NAMED in assistant text without a body read (the always-loaded index hook firing — the layer's actual product, MEASURED ≫ reads) into additive `usage.mentions`/`mention_stems`; binary-per-window, index-dump-guarded, dream-span excluded, DISPLAY-ONLY (a mention is corroboration, never a veto in v1). `--utility` shows a `hook×N` column, mirror-attributed. Fleet windows are gated on each mirror's
   **`global_ref_since` evidence-clock stamp** (v0.1.78, `docs/evidence-clock-stamps.spec.md`):
   carried across refreshes when the canonical's BODY is unchanged (a description tweak no longer
   wipes accrued zero-read windows — the starvation an audit measured), reset on a real body change

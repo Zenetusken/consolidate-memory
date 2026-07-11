@@ -2311,11 +2311,12 @@ def fleet_utility(project_dir: Path) -> dict:
         if isinstance(_lr.get("per_fact"), list):
             ledger_by_node.setdefault(str(_lr.get("node", "")), []).append(_lr)
     per: dict = {n: {"reads": 0, "windows": 0, "last": "", "_ep": None, "shadow": 0, "fallback": 0,
-                     "h_reads": 0, "h_windows": 0} for n in canon}
+                     "h_reads": 0, "h_windows": 0, "mentions": 0} for n in canon}
     for store in stores:
         hist = usage_history(store)
         if hist["windows_full"] >= 1:
             nodes_reporting += 1
+        _mset = set(hist.get("mention_stems") or [])   # v0.1.85 (P3): stems named in this node's windows
         # v0.1.79 (docs/fleet-usage-harvest.spec.md, the v1 rule): harvested ledger rows contribute
         # ONLY for a node with NO own-log usage at all — own-log strictly primary, no interval-overlap
         # math, no double-count risk (mixed-node merging is the consumption release's refinement).
@@ -2349,6 +2350,8 @@ def fleet_utility(project_dir: Path) -> dict:
                 if reads or h_reads:
                     per[stem]["shadow"] += reads + h_reads   # same-stem local — reported, never attributed
                 continue
+            if stem in _mset:   # v0.1.85 (P3): mention attributed only through a MIRROR, like reads —
+                per[stem]["mentions"] += 1   # a node's hook fired for this canonical (display-only, +1/node)
             # Count only the probative windows the MIRROR's content-lineage existed through — the fact-age
             # rule (2026-07-05 review: crediting whole window history to a fresh mirror overstates
             # zero-read evidence). v0.1.78 (docs/evidence-clock-stamps.spec.md): the clock is the mirror's
@@ -2417,6 +2420,8 @@ def fleet_utility(project_dir: Path) -> dict:
         if per[stem]["h_reads"] or per[stem]["h_windows"]:   # v0.1.79: harvested, source-labeled
             e["harvested_reads"] = per[stem]["h_reads"]
             e["windows_harvested"] = per[stem]["h_windows"]
+        if per[stem]["mentions"]:   # v0.1.85 (P3): hook-channel evidence, mirror-attributed nodes
+            e["mentions"] = per[stem]["mentions"]
         if not holders:
             unheld.append(stem)
         entries.append(e)
@@ -2471,8 +2476,12 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
         shadow = _ui.c(f" · shadow {e['shadow_reads']}", "yellow") if e.get("shadow_reads") else ""
         harv = (_ui.c(f" · +{e.get('harvested_reads', 0)}r/{e.get('windows_harvested', 0)}w harvested", "cyan")
                 if (e.get("harvested_reads") or e.get("windows_harvested")) else "")
+        # v0.1.85 (P3): the HOOK channel — named-without-a-read on N node(s). A canonical unread yet
+        # MENTIONED is used via its always-loaded index hook (the layer's product) — display-only
+        # corroboration; makes a 0-reads row read as "instrumented but hook-active", not dormant.
+        ment = _ui.c(f" · hook×{e['mentions']}", "green") if e.get("mentions") else ""
         out.append(f"    {_ui.lbl(e['name'][:40], 40)} {e['fleet_tax']:>5}t "
-                   + _ui.c(f"({e['pointer_tok']}t × {e['holders']})", "dim") + f"  {ev}{shadow}{harv}")
+                   + _ui.c(f"({e['pointer_tok']}t × {e['holders']})", "dim") + f"  {ev}{shadow}{harv}{ment}")
     if u["unheld"]:
         out.append("    " + _ui.c(f"unheld (0 fleet tax — nobody pays them yet): {', '.join(u['unheld'])}", "dim"))
     out.append("")
