@@ -5,6 +5,33 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.83] — 2026-07-10
+
+### Added — the fleet workflows lens: breadth becomes computable (W-B)
+The sixth enhancement increment (`docs/fleet-workflows.spec.md`), consuming W-A's rows. Before
+this, "template X recurs in N nodes" — the strongest workflow-promotion evidence, the analog of
+the cascade's G2.3 witness — was uncomputable, and the distill gate's decline-dedup read only the
+current node's log (the same workflow could be re-proposed fresh from every project).
+
+- **`sync_global.py --workflows [--json]`** (+ `cm workflows`, cued — Phase 5's distill gate now
+  consults it): joins every log-holding node's LATEST W-A rows by exact template string
+  (`memory_status.distill_history`, the `usage_history` twin; latest-record-per-node — the W-A
+  overlapping-window trap honored, pinned with a stale-record fixture). Per template/chain:
+  breadth, summed latest counts, max day-spread, per-node breakdown, `fleet` flag at ≥2 nodes
+  (structural, nothing fitted).
+- **Head-signature families** — near-join HINTS for same-tool-flag-drift; counts never merged
+  (a merged count across distinct templates would be fabricated). Under-joining stays the safe
+  direction.
+- **Cross-node verdict LINEAGE** (a decline anywhere blocks a naive re-propose everywhere — the
+  materially-new-evidence rule, finally fleet-checkable; live first run already renders four
+  real historical dispositions) · **adoption panel** (W-A `used` summed latest-per-node; zero is
+  absence of evidence, never disuse) · **inventory panel** (user-level skill/command names only —
+  coverage judgment stays with the MODEL, content-gated).
+- **Cold-start honesty**: the live first run reads `0/7 nodes reporting` — rows accrue per dream
+  since v0.1.82; fleet absence is never inferred from missing instrumentation.
+
+New read-only mode + a read-only log aggregator; no schema change ⇒ patch.
+
 ## [0.1.82] — 2026-07-10
 
 ### Added — distill-template persistence: the workflow vertical's Phase A (W-A)

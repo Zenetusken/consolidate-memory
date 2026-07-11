@@ -46,6 +46,18 @@ asserted the exact output key set without `used`, and the record block carried n
   must aggregate from the latest record per node; the persisted `window` string proves what
   was aggregated.
 
+## Reach limits (seams-review findings, recorded — not chased)
+
+- The documented weak-password firewall boundary (a short, no-digit, single-case value passes
+  `_looks_secret`) now produces a DURABLE template where it was display-only — durability is the
+  only delta; the boundary itself is the module-doc's pre-existing accepted gap.
+- `used` counts the current dream's OWN Skill invocations (no dream-span exclusion — usage Phase A
+  has one, this v1 does not). Observe-only today; **W-C's adoption denominator must dream-span
+  exclude** before any lifecycle judgment consumes it.
+- Decline-dedup lineage is ARTIFACT-NAME-granular (`proposed`/`created`), not template-granular —
+  the structured template↔artifact link is W-C's registry `templates` field, by design.
+- Longitudinal recurrence reads PRESENCE across records (never sums — the same overlap rule).
+
 ## Staging
 
 Observe-only by construction: nothing reads the new keys yet (renderers ignore unknown keys —

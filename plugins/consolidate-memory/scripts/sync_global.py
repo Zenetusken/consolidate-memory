@@ -43,6 +43,12 @@ each project's store. This is the engine for that:
                        Stage A): per node — last-dream marker age, MISSING relevant globals (never
                        absorbed), content-stale mirrors, usage/harvest coverage. Scope basis honest per
                        node (full relevance only for the trigger; others user-global-only, labeled).
+  --workflows PROJECT_DIR  (v0.1.83, W-B) READ-ONLY fleet workflow evidence: join every node's LATEST
+                       W-A distill rows (top/top_chains/used, persisted since v0.1.82) by exact template
+                       string — breadth (>=2 nodes) is the workflow analog of the cascade's G2.3 witness;
+                       + head-signature near-join hints, the Skill-adoption view, the cross-node verdict
+                       lineage (fleet-wide decline-dedup), and the user-level artifact inventory. Evidence
+                       for the Phase-5 distill gate; judgment stays with the model (report-then-apply).
   --utility PROJECT_DIR  (v0.1.67, Phase C) READ-ONLY fleet usage evidence: per-canonical organic reads
                        aggregated across every node's cycle log (mirror-attributed; same-stem locals
                        report as shadow, never attributed) + fleet_tax = pointer×holders against the
@@ -76,7 +82,7 @@ import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / 
 from memory_status import (_is_archive_index_text, _is_mirror, _parse_ts, _sane, est_tokens, slug_for,
                            _frontmatter, _valid_uuid,
                            INDEX_TOKEN_BUDGET, INDEX_CEILING_TOKENS, HOOK_TOKEN_WARN,
-                           extract_wikilinks, resolve_wikilink, usage_history)
+                           distill_history, extract_wikilinks, resolve_wikilink, usage_history)
 
 GLOBAL = Path.home() / ".claude" / "memory"
 
@@ -1692,6 +1698,189 @@ def token_report(project_dir: Path, as_json: bool) -> int:
     return 0
 
 
+# ── v0.1.83: fleet WORKFLOWS — the --utility twin over the W-A distill rows (W-B) ───────────────
+def _log_nodes() -> "list[Path]":
+    """Node set for the workflow lens: every project store holding a .consolidation-log.jsonl —
+    deliberately NOT _network_nodes() (holding a MIRROR is orthogonal to having DREAMED; a node
+    with distill evidence may hold no mirrors, and vice versa — the same documented-divergence
+    discipline as _network_nodes vs network()'s logical minds)."""
+    base = Path.home() / ".claude" / "projects"
+    out: list = []
+    if base.is_dir():
+        for proj in sorted(base.iterdir()):
+            store = proj / "memory"
+            if (store / ".consolidation-log.jsonl").is_file():
+                out.append(store)
+    return out
+
+
+def fleet_workflows(project_dir: Path) -> dict:
+    """READ-ONLY fleet workflow evidence (docs/fleet-workflows.spec.md — W-B): join each node's
+    LATEST W-A distill rows (distill_history — latest-record-per-node, the overlapping-window
+    consumer trap designed against at W-A) by EXACT template string. Emits:
+      templates/chains — per key: nodes (BREADTH, the workflow analog of the cascade's G2.3
+        named-other-project witness — the first cascade leg with mechanical evidence), total n
+        (sum of latest-window counts), max day-spread, per-node breakdown. `fleet` flag = ≥2
+        distinct nodes (structural, like MIN_RECUR — nothing fitted).
+      families — head-signature (first two template tokens) groupings across ≥2 nodes: a
+        near-join HINT for same-tool-different-flags drift; counts NEVER merged (a merged count
+        across distinct templates would be a fabricated number).
+      used — the Skill-adoption tallies, summed latest-per-node (the W-C quadrant's numerator).
+      verdicts — every node's distill disposition lineage (verdict/proposed/created) — what makes
+        the SKILL's materially-new-evidence DECLINE rule checkable fleet-wide instead of per-node.
+      inventory — the harness artifacts distillation would target: ~/.claude/skills/*/ names +
+        ~/.claude/commands/*.md stems (existence + name only — coverage judgment stays with the
+        MODEL, content-gated: a name match proves nothing about semantic coverage).
+    Cold-start honesty: nodes_reporting counts nodes whose latest block carries rows (v0.1.82+);
+    the report renders the denominator loudly — fleet absence is never inferred from missing
+    instrumentation (the zero-reads bias, transposed). Decisions stay report-then-apply."""
+    project_dir = project_dir.resolve()
+    stores = _log_nodes()
+    trig = project_store(project_dir)
+    if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
+        stores.append(trig)
+    tpl: dict = {}
+    chains: dict = {}
+    used: dict = {}
+    verdicts: list = []
+    nodes_reporting = 0
+    for store in stores:
+        label = _node_label(store)
+        hist = distill_history(store)
+        for v in hist["verdicts"]:
+            verdicts.append({"node": label, **v})
+        latest = hist["latest"]
+        if not isinstance(latest, dict):
+            continue
+        nodes_reporting += 1
+        for r in latest.get("top", []):
+            if not (isinstance(r, dict) and isinstance(r.get("t"), str) and r["t"]):
+                continue
+            e = tpl.setdefault(r["t"], {"nodes": [], "n": 0, "d": 0, "per_node": {}})
+            if label not in e["nodes"]:
+                e["nodes"].append(label)
+            n = r.get("n", 0)
+            n = n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
+            d = r.get("d", 0)
+            d = d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else 0
+            e["n"] += n
+            e["d"] = max(e["d"], d)
+            e["per_node"][label] = n
+        for r in latest.get("top_chains", []) if isinstance(latest.get("top_chains"), list) else []:
+            t = r.get("t") if isinstance(r, dict) else None
+            if not (isinstance(t, list) and len(t) == 2 and all(isinstance(x, str) for x in t)):
+                continue
+            key = " → ".join(t)
+            e = chains.setdefault(key, {"nodes": [], "n": 0, "d": 0})
+            if label not in e["nodes"]:
+                e["nodes"].append(label)
+            n = r.get("n", 0)
+            e["n"] += n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
+            d = r.get("d", 0)
+            e["d"] = max(e["d"], d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else 0)
+        for r in latest.get("used", []) if isinstance(latest.get("used"), list) else []:
+            if isinstance(r, dict) and isinstance(r.get("a"), str) and r["a"]:
+                u = used.setdefault(r["a"], {"nodes": [], "n": 0})
+                if label not in u["nodes"]:
+                    u["nodes"].append(label)
+                n = r.get("n", 0)
+                u["n"] += n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
+    families: dict = {}
+    for t, e in tpl.items():
+        head = " ".join(t.split()[:2])
+        f = families.setdefault(head, {"templates": [], "nodes": set()})
+        f["templates"].append(t)
+        f["nodes"].update(e["nodes"])
+    fam_out = [{"head": h, "templates": sorted(f["templates"]), "nodes": sorted(f["nodes"])}
+               for h, f in families.items()
+               if len(f["templates"]) >= 2 and len(f["nodes"]) >= 2]
+    fam_out.sort(key=lambda f: (-len(f["nodes"]), f["head"]))
+    tpl_out = [{"template": t, "nodes": sorted(e["nodes"]), "n": e["n"], "d": e["d"],
+                "per_node": e["per_node"], "fleet": len(e["nodes"]) >= 2} for t, e in tpl.items()]
+    tpl_out.sort(key=lambda r: (-len(r["nodes"]), -r["d"], -r["n"], r["template"]))
+    chain_out = [{"chain": k, "nodes": sorted(e["nodes"]), "n": e["n"], "d": e["d"],
+                  "fleet": len(e["nodes"]) >= 2} for k, e in chains.items()]
+    chain_out.sort(key=lambda r: (-len(r["nodes"]), -r["d"], -r["n"], r["chain"]))
+    used_out = [{"skill": k, "nodes": sorted(u["nodes"]), "n": u["n"]} for k, u in used.items()]
+    used_out.sort(key=lambda r: (-r["n"], r["skill"]))
+    inv: dict = {"skills": [], "commands": []}
+    _sk_dir = Path.home() / ".claude" / "skills"
+    if _sk_dir.is_dir():
+        inv["skills"] = sorted(d.name for d in _sk_dir.iterdir()
+                               if d.is_dir() and (d / "SKILL.md").is_file())
+    _cmd_dir = Path.home() / ".claude" / "commands"
+    if _cmd_dir.is_dir():
+        inv["commands"] = sorted(f.stem for f in _cmd_dir.glob("*.md"))
+    return {"nodes": len(stores), "nodes_reporting": nodes_reporting,
+            "templates": tpl_out, "chains": chain_out, "families": fam_out,
+            "used": used_out, "verdicts": verdicts, "inventory": inv}
+
+
+def workflows_report(project_dir: Path, as_json: bool) -> int:
+    """Render fleet_workflows — evidence + lineage + inventory; judgment stays with the model."""
+    import json as _json
+    project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
+    w = fleet_workflows(project_dir)
+    if as_json:
+        print(_json.dumps(w, indent=2))
+        return 0
+    out: list = []
+    title = "✦ FLEET WORKFLOWS · recurring templates across nodes"
+    tag = f"{w['nodes_reporting']}/{w['nodes']} nodes reporting"
+    gap = max(2, _ui.W - 2 - len(title) - len(tag))
+    out.append(_ui.rule())
+    out.append("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
+    out.append("  " + _ui.c("evidence rows accrue per dream since v0.1.82 — a low denominator is "
+                            "missing instrumentation, never fleet absence · latest-record-per-node "
+                            "(overlapping windows never summed)", "dim"))
+    out.append(_ui.rule())
+    out.append("")
+    fleet_rows = [r for r in w["templates"] if r["fleet"]]
+    out.append(_ui.kv("FLEET", f"{len(fleet_rows)} template(s) recurring in ≥2 nodes · "
+               f"{len(w['templates'])} distinct across the fleet"))
+    for r in w["templates"][:20]:
+        mark = _ui.c("◆", "cyan") if r["fleet"] else _ui.c("·", "dim")
+        out.append(f"    {mark} {_ui.lbl(r['template'][:44], 44)} "
+                   + _ui.c(f"×{r['n']} · {r['d']}d · {len(r['nodes'])} node(s): {', '.join(r['nodes'])[:40]}", "dim"))
+    if w["chains"]:
+        out.append("")
+        out.append(_ui.kv("CHAINS", _ui.c("adjacent-step bigrams — a fleet chain IS a candidate workflow", "dim")))
+        for r in w["chains"][:10]:
+            mark = _ui.c("◆", "cyan") if r["fleet"] else _ui.c("·", "dim")
+            out.append(f"    {mark} {_ui.lbl(r['chain'][:60], 60)} "
+                       + _ui.c(f"×{r['n']} · {len(r['nodes'])} node(s)", "dim"))
+    if w["families"]:
+        out.append("")
+        out.append(_ui.kv("FAMILIES", _ui.c("head-signature near-join HINTS (same tool, drifting flags) — "
+                                            "counts never merged", "dim")))
+        for f in w["families"][:6]:
+            out.append(f"    ~ {_ui.lbl(f['head'][:40], 40)} "
+                       + _ui.c(f"{len(f['templates'])} variant(s) across {len(f['nodes'])} node(s)", "dim"))
+    if w["used"]:
+        out.append("")
+        out.append(_ui.kv("ADOPTION", _ui.c("Skill invocations, latest window per node — the W-C quadrant's "
+                                            "numerator (0 is absence of evidence, never disuse)", "dim")))
+        for r in w["used"][:10]:
+            out.append(f"    · {_ui.lbl(r['skill'][:40], 40)} "
+                       + _ui.c(f"×{r['n']} across {len(r['nodes'])} node(s)", "dim"))
+    if w["verdicts"]:
+        out.append("")
+        out.append(_ui.kv("LINEAGE", _ui.c("distill dispositions across ALL nodes — a decline in one node "
+                                           "blocks a naive re-propose from another (materially-new-evidence "
+                                           "rule, now fleet-checkable)", "dim")))
+        for v in w["verdicts"][-8:]:
+            out.append("    " + _ui.c(f"[{v['node'][:20]}] ", "dim") + v["verdict"][:96])
+    out.append("")
+    out.append(_ui.kv("INVENTORY", _ui.c(f"user-level artifacts: {len(w['inventory']['skills'])} skill(s) · "
+               f"{len(w['inventory']['commands'])} command(s) — coverage judgment stays with the MODEL "
+               "(a name match proves nothing)", "dim")))
+    print(_ui.ascii_translate("\n".join(out)))
+    return 0
+
+
 # ── v0.1.80: fleet STALENESS — absorption lag, measured per node (beacon Stage A) ────────────────
 def _all_stores() -> "list[Path]":
     """EVERY project store under ~/.claude/projects holding ≥1 *.md — deliberately wider than
@@ -2169,7 +2358,7 @@ def utility_report(project_dir: Path, as_json: bool) -> int:
 # Phase 4's APPLY — the one phase whose contract deliberately excludes dream beats (only the plain
 # proposal + the single SURFACING line) — and --network/--staleness are maintainer/observability
 # utilities outside dream flow, so none of those cue.
-_CUED_MODES = ("--list", "--pull", "--gc", "--tokens", "--utility", "--harvest")
+_CUED_MODES = ("--list", "--pull", "--gc", "--tokens", "--utility", "--harvest", "--workflows")
 
 
 def main() -> int:
@@ -2209,6 +2398,8 @@ def _dispatch() -> int:
         return harvest(project_dir)
     if args and args[0] == "--staleness":   # v0.1.80: READ-ONLY absorption-lag sweep (beacon Stage A)
         return staleness_report(project_dir, "--json" in args)
+    if args and args[0] == "--workflows":   # v0.1.83 (W-B): READ-ONLY fleet workflow evidence lens
+        return workflows_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
         return gc(project_dir, "--apply" in args)
     if args and args[0] == "--promote":
@@ -2221,6 +2412,7 @@ def _dispatch() -> int:
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
               "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --staleness [--json] PROJECT_DIR "
+              "| --workflows [--json] PROJECT_DIR "
               "| --network", file=sys.stderr)
         return 2
     evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)
