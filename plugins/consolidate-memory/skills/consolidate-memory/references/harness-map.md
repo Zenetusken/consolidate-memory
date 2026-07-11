@@ -384,6 +384,15 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   idempotent; reuses the `--recalls` scan machinery (dream-span excluded; only Read file-paths and
   arc-marker presence leave the scan). `--utility` surfaces harvested evidence — source-labeled,
   only for nodes with no own-log usage (own-log strictly primary in v1).
+- `--gc PROJECT_DIR --edges [--apply]` — (v0.1.84, P4, `docs/provenance-liveness.spec.md`) the
+  fleet-wide provenance-edge triage: every `projects:` edge classified **live** (a matching store
+  holds the mirror — it pays the pointer tax) / **stale** (real store, dropped mirror — never
+  prunable, self-identifying) / **unresolved** (ZERO store matches — the ghost class, measured at
+  21% of edges / 20% of fleet tax at ship) / **ambiguous** (multi-match or degenerate — never
+  prunable). `--apply` prunes ONLY unresolved tokens (atomic; a wrong prune self-heals via
+  `_record_provenance` on that project's next pull). `--utility` prints `fleet_tax_live`
+  (pointer × LIVE holders) beside the provenance upper bound, which stays the advisory's
+  denominator. Upgrades, never violates, reported-not-pruned: still nothing automatic.
 - `--gc PROJECT_DIR [--apply]` — reclaim **orphaned mirrors**: `global_ref:` files
   whose canonical was deleted from the global store. `--pull` can never remove these
   (it only iterates live globals), so they accrue forever without GC. v0.1.75 also
