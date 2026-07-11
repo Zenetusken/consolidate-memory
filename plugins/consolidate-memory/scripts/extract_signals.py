@@ -494,29 +494,40 @@ _ARC_MARK = "CM_DREAM_ARC"
 
 def split_dream_span(items: list) -> tuple[list, int]:
     """PURE classifier (smoke-pinned): ONE transcript's ordered items — [{'i': line#, 'kind':
-    'arc'|'read', 'stem': …, 'ts': …}] — → (organic_read_items, dream_excluded_count). A read is
-    DREAM-PROCEDURE iff first_arc ≤ i ≤ last_arc (Phase 1 reads every fact as procedure — counting
-    those as recall would saturate utility); everything outside the span is ORGANIC. Deliberately
-    conservative: a multi-dream session's inter-dream gap is over-excluded (undercount = the safe
-    direction under the pinned bias above). Whole-TRANSCRIPT exclusion was rejected: on a dream-heavy
-    repo every surviving transcript contains a dream, so it measures 0 forever (MEASURED)."""
+    'arc'|'read'|'mention', 'stem': …, 'ts': …}] — → (organic_evidence_items, dream_excluded_count).
+    An evidence item (read OR mention — v0.1.85) is DREAM-PROCEDURE iff first_arc ≤ i ≤ last_arc
+    (Phase 1 reads AND names every fact as procedure — counting those as recall would saturate
+    utility); everything outside the span is ORGANIC. Deliberately conservative: a multi-dream
+    session's inter-dream gap is over-excluded (undercount = the safe direction). Whole-TRANSCRIPT
+    exclusion was rejected: on a dream-heavy repo every surviving transcript contains a dream, so it
+    measures 0 forever (MEASURED). Caller separates organic reads vs mentions by `kind`."""
     arcs = [it["i"] for it in items if it.get("kind") == "arc"]
-    reads = [it for it in items if it.get("kind") == "read"]
+    ev = [it for it in items if it.get("kind") in ("read", "mention")]
     if not arcs:
-        return reads, 0
+        return ev, 0
     lo, hi = min(arcs), max(arcs)
-    organic = [r for r in reads if not (lo <= r["i"] <= hi)]
-    return organic, len(reads) - len(organic)
+    organic = [r for r in ev if not (lo <= r["i"] <= hi)]
+    return organic, len(ev) - len(organic)
 
 
-def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems: frozenset) -> list:
-    """Stream ONE transcript → ordered arc/read items for split_dream_span. Substring pre-filters keep
-    the hot loop cheap on tens-of-MB files (json.loads only lines that can matter). An ARC item is a
-    Bash tool_use whose command carries CM_DREAM_ARC (the dream's scripted invocations — the spec's
-    strict rule: prose mentions of the marker must NOT widen the span); a READ item is a Read tool_use
-    on a fact file directly under the store (MEMORY.md + archive indexes excluded — an archive read is
-    not a fact recall). The per-line `since` compare scopes to the window exactly like extract()
-    (transcripts straddle the marker)."""
+_MENTION_DUMP_GUARD = 4   # a single assistant message naming ≥4 distinct stems is an index-dump /
+#   triage listing, NOT recall — discard ALL its mentions (v0.1.85 / P3, conservative-by-design)
+
+
+def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems: frozenset,
+                  mention_re: "re.Pattern | None" = None) -> list:
+    """Stream ONE transcript → ordered arc/read[/mention] items for split_dream_span. Substring
+    pre-filters keep the hot loop cheap on tens-of-MB files (json.loads only lines that can matter).
+    An ARC item is a Bash tool_use carrying CM_DREAM_ARC (the dream's scripted invocations — prose
+    mentions of the marker must NOT widen the span); a READ item is a Read tool_use on a fact file
+    directly under the store (MEMORY.md + archive indexes excluded). v0.1.85 (P3): when `mention_re`
+    is given (a compiled word-boundary alternation of the mentionable fact stems), a MENTION item is
+    a fact stem named in an ASSISTANT text block — the always-loaded index HOOK firing without a body
+    Read (the layer's actual product, otherwise unmeasured; MEASURED here: mentions ≫ reads, 13 stems
+    named-never-read on the dream repo). BINARY per (message, stem) — a rumination loop can't inflate;
+    a message naming ≥ _MENTION_DUMP_GUARD distinct stems is an index dump → all its mentions dropped;
+    assistant-authored text only (user pastes excluded). The per-line `since` compare scopes exactly
+    like extract()."""
     items: list = []
     since_dt = _parse_ts(since) if since else None   # v0.1.69/A1: instant compare — twin of extract()'s
     try:
@@ -526,7 +537,12 @@ def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems
     with fh as f:
         for i, line in enumerate(f):
             arc_hint = _ARC_MARK in line
-            if not arc_hint and (store_prefix not in line or '"Read"' not in line):
+            read_hint = store_prefix in line and '"Read"' in line
+            # v0.1.85: a cheap RAW-line stem pre-filter — the C-level regex over the whole JSON line
+            # skips the (majority) assistant lines that name no fact, before any json.loads. PR-#98
+            # review note C: `or` short-circuits, so the regex runs ONLY when the line isn't already
+            # an arc/read hit — no wasted scan on the minority of tool-carrying lines.
+            if not (arc_hint or read_hint or (mention_re is not None and mention_re.search(line))):
                 continue
             try:
                 o = json.loads(line)
@@ -539,8 +555,16 @@ def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems
             msg = o.get("message")
             if not isinstance(msg, dict) or not isinstance(msg.get("content"), list):
                 continue
+            msg_mentions: set = set()
+            is_assistant = msg.get("role") == "assistant"
             for p in msg["content"]:
-                if not (isinstance(p, dict) and p.get("type") == "tool_use"):
+                if not isinstance(p, dict):
+                    continue
+                if p.get("type") == "text":
+                    if mention_re is not None and is_assistant:
+                        msg_mentions.update(m for m in mention_re.findall(str(p.get("text", ""))))
+                    continue
+                if p.get("type") != "tool_use":
                     continue
                 inp = p.get("input")
                 if not isinstance(inp, dict):
@@ -553,6 +577,12 @@ def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems
                         stem = fp[len(store_prefix):-3]
                         if stem != "MEMORY" and stem not in archive_stems:
                             items.append({"i": i, "kind": "read", "stem": stem, "ts": ts})
+            # BINARY per message: one mention item per DISTINCT stem, dropped wholesale if the message
+            # is an index dump (≥ guard). archive stems excluded (an archived pointer named ≠ a recall).
+            if msg_mentions and len(msg_mentions) < _MENTION_DUMP_GUARD:
+                for stem in msg_mentions:
+                    if stem not in archive_stems:
+                        items.append({"i": i, "kind": "mention", "stem": stem, "ts": ts})
     return items
 
 
@@ -604,16 +634,35 @@ def recall_scan(project_dir: Path, since: str, before: str = "") -> dict:
     store_prefix = str(auto_mem) + "/"
     archive_stems = (frozenset(f.stem for f in auto_mem.glob("*.md") if _is_archive_index(f))
                      if auto_mem.exists() else frozenset())
+    # v0.1.85 (P3): the mentionable stems — every fact file's stem, MINUS archive indexes and MINUS
+    # degenerate stems (a stem too short / too few hyphens matches too loosely in prose — the
+    # false-positive guard). Compiled ONCE into a word-boundary alternation, longest-first so a stem
+    # that is a prefix of another can't shadow it. None when the store is empty → no mention scan.
+    _mentionable = sorted((f.stem for f in auto_mem.glob("*.md")
+                           if f.stem != "MEMORY" and f.stem not in archive_stems
+                           and (len(f.stem) >= 12 or f.stem.count("-") >= 2)),
+                          key=len, reverse=True) if auto_mem.exists() else []
+    mention_re = (re.compile(r"(?<![\w-])(" + "|".join(re.escape(s) for s in _mentionable) + r")(?![\w-])")
+                  if _mentionable else None)
     transcripts = _window_transcripts(proj_root, since)
     reads: dict = {}     # stem -> {"reads": n, "last": iso} — the UNCAPPED tally
+    mentioned: set = set()   # v0.1.85: BINARY per window — a stem organically NAMED (0/1, never a count)
     excluded = 0
     for tr in transcripts:
-        organic, dream_n = split_dream_span(_recall_items(tr, store_prefix, since, archive_stems))
+        organic, dream_n = split_dream_span(_recall_items(tr, store_prefix, since, archive_stems, mention_re))
         excluded += dream_n
         for r in organic:
+            if r["kind"] == "mention":
+                mentioned.add(r["stem"])
+                continue
             rec = reads.setdefault(r["stem"], {"reads": 0, "last": ""})
             rec["reads"] += 1
             rec["last"] = max(rec["last"], r["ts"] or "")   # CC ISO stamps compare lexicographically
+    # per_fact stays READS-ONLY (v0.1.85): mentions live in their OWN `mention_stems` list, NOT as
+    # per_fact rows — the probative-window rule `facts_read == len(per_fact)` (usage_history) must keep
+    # meaning "reads not cap-truncated"; folding mention-only rows in would make every mentioned-window
+    # non-probative and starve the demotion gate. Mentions are DISPLAY-ONLY in v1 (no veto), so a
+    # separate channel is both correct and honest.
     per_fact = [{"name": k, "reads": v["reads"], "last": v["last"]}
                 for k, v in sorted(reads.items(), key=lambda kv: (-kv[1]["reads"], kv[0]))][:_USAGE_FACT_CAP]
     # v0.1.67 (Phase C): the miss-detector — organic reads of ARCHIVED-tier facts. A miss is a
@@ -637,6 +686,8 @@ def recall_scan(project_dir: Path, since: str, before: str = "") -> dict:
             "transcripts": len(transcripts), "dream_excluded": excluded,
             "reads": sum(v["reads"] for v in reads.values()), "facts_read": len(reads),
             "per_fact": per_fact,
+            "mentions": len(mentioned),   # v0.1.85 (P3): distinct stems organically NAMED this window
+            "mention_stems": sorted(mentioned)[:_USAGE_FACT_CAP],   # DISPLAY-ONLY; its own channel, not per_fact
             "archive_reads": sum(v["reads"] for k, v in reads.items() if k in _archived),
             "misses": misses}
 
