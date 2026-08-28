@@ -2,7 +2,8 @@
 """Zero-dependency smoke tests for the consolidate-memory scripts.
 
 Run:  python3 tests/smoke.py   (exit 0 = all passed). No pytest required.
-Tests pure functions only — no filesystem mutation, no network, no real memory.
+Hermetic by construction: TemporaryDirectory, temp `git init`, HOME overrides, and
+subprocess script runs — never the real `~/.claude` stores, no network calls.
 """
 
 from __future__ import annotations
