@@ -4787,5 +4787,107 @@ with _tf73.TemporaryDirectory() as _td7:
 # Gate 5 -- seed_record() unchanged (no new schema key): covered by the existing cycle-record
 # smoke coverage; this feature adds no seed key by construction (display-only, read-only).
 
+# ── v0.1.8/A1 (SPEC-A §10): cycle-probe teeth · inert seam · canary wiring · tolerance pins ──────
+_bts = ROOT / "plugins" / "dream-beta-tester" / "scripts"
+_bcf = ROOT / "plugins" / "dream-beta-tester" / "fixtures" / "make_fixture.py"
+_bcp = ROOT / "plugins" / "dream-beta-tester" / "fixtures" / "make_cycle_probe.py"
+_bck = ROOT / "plugins" / "dream-beta-tester" / "maintainer" / "ci_check.sh"
+
+
+def _run_home_a1(env_home: str, *args: str) -> "tuple[str, str, int]":
+    env = {**_os53.environ, "HOME": env_home}
+    env.pop("CM_DREAM_ARC", None)
+    env.pop("CLAUDE_PLUGIN_ROOT", None)
+    p = _sp53.run([sys.executable, *args], capture_output=True, text=True, timeout=120, env=env)
+    return p.stdout, p.stderr, p.returncode
+
+
+with _tf43.TemporaryDirectory() as _tdA1:
+    _homeA1 = str(Path(_tdA1) / "home")
+    Path(_homeA1).mkdir()
+    _repoA1 = str(Path(_tdA1) / "gate-repo")
+    _stateA1 = str(Path(_tdA1) / "state")
+    Path(_stateA1).mkdir()
+
+    _oA1, _eA1, _rcA1 = _run_home_a1(_homeA1, str(_bcf), _repoA1)
+    check("v0.1.8/A1 F1: re-baselined fixture generates (mirror present)",
+          _rcA1 == 0 and "1 mirror (trigger node)" in _oA1)
+
+    _envA1 = {**_os53.environ, "DREAM_BETA_STATE": _stateA1}
+    _pA1 = _sp53.run([sys.executable, str(_bcp), "--skill", str(_scripts54),
+                      "--out", str(Path(_stateA1) / "cycle-probe.json")],
+                     capture_output=True, text=True, timeout=120, env=_envA1)
+    check("v0.1.8/A1 F1: probe record generates (contaminated + stamped)",
+          _pA1.returncode == 0 and "after_tokens=9999" in _pA1.stdout)
+    _probeA1 = str(Path(_stateA1) / "cycle-probe.json")
+
+    _oA1, _eA1, _rcA1 = _run_home_a1(_homeA1, str(_bts / "beta_checks.py"),
+                                     "--repo", _repoA1, "--skill", str(_scripts54), "--json")
+    _dA1 = _json43.loads(_oA1)
+    check("v0.1.8/A1 F4: flag absent → no cycle_probe key (inert seam)",
+          "cycle_probe" not in _dA1 and _rcA1 == 0 and _dA1["summary"]["fail"] == 0)
+    check("v0.1.8/A1 F4: re-baselined fixture is 0 FAIL / 0 WARN (the mirror added no noise)",
+          _dA1["summary"]["fail"] == 0 and _dA1["summary"]["warn"] == 0)
+    check("v0.1.8/A1 F1: CHK-CYCLE-BUDGET present on the re-baselined fixture (trigger node exists)",
+          any(r["id"] == "CHK-CYCLE-BUDGET" for r in _dA1["results"]))
+
+    _oA2, _eA2, _rcA2 = _run_home_a1(_homeA1, str(_bts / "beta_checks.py"),
+                                     "--repo", _repoA1, "--skill", str(_scripts54), "--json",
+                                     "--cycle-probe", _probeA1)
+    _dA2 = _json43.loads(_oA2)
+    _cpA2 = _dA2.get("cycle_probe") or {}
+    check("v0.1.8/A1 F1: teeth intact — stamp verified + BOTH expected FAILs detected, exactly",
+          _cpA2.get("stamp_verified") is True and _cpA2.get("ok") is True
+          and set(_cpA2.get("detected_ids", [])) == {"CHK-CYCLE-PROJECT", "CHK-CYCLE-BUDGET"})
+    check("v0.1.8/A1 F1: probe FAILs are partitioned — main summary + results unchanged, exit still 0",
+          _rcA2 == 0 and _dA2["summary"] == _dA1["summary"]
+          and len(_dA2["results"]) == len(_dA1["results"])
+          and _dA2["families_ran"] == _dA1["families_ran"])
+
+    # clean-record leg: the target's OWN seed → both probe checks PASS (no false red)
+    _oA3, _eA3, _rcA3 = _run_home_a1(_homeA1, str(_scripts54 / "memory_status.py"), _repoA1, "--json")
+    _cleanA1 = str(Path(_tdA1) / "clean-seed.json")
+    Path(_cleanA1).write_text(_oA3, encoding="utf-8")
+    _oA4, _eA4, _rcA4 = _run_home_a1(_homeA1, str(_bts / "beta_checks.py"),
+                                     "--repo", _repoA1, "--skill", str(_scripts54), "--json",
+                                     "--cycle-probe", _cleanA1)
+    _cpA4 = (_json43.loads(_oA4).get("cycle_probe") or {})
+    check("v0.1.8/A1 F1: clean record → both probe checks PASS (no false red)",
+          {r.get("id") for r in _cpA4.get("results", [])} == {"CHK-CYCLE-PROJECT", "CHK-CYCLE-BUDGET"}
+          and all(r.get("status") == "PASS" for r in _cpA4.get("results", [])))
+
+    # missing record → teeth-loss, never ok/clean
+    _oA5, _eA5, _rcA5 = _run_home_a1(_homeA1, str(_bts / "beta_checks.py"),
+                                     "--repo", _repoA1, "--skill", str(_scripts54), "--json",
+                                     "--cycle-probe", str(Path(_tdA1) / "nope.json"))
+    _cpA5 = (_json43.loads(_oA5).get("cycle_probe") or {})
+    check("v0.1.8/A1 F4: missing probe file → ok false + error (teeth-loss, never clean)",
+          _cpA5.get("ok") is False and bool(_cpA5.get("error")) and _rcA5 == 0)
+
+    # F6: tolerance margin — contaminant stays ≫ tolerance vs the LIVE trigger node
+    _oA6, _eA6, _rcA6 = _run_home_a1(_homeA1, str(_scripts54 / "sync_global.py"),
+                                     "--tokens", _repoA1, "--json")
+    _trigA6 = [n for n in (_json43.loads(_oA6).get("nodes") or []) if n.get("trigger")]
+    check("v0.1.8/A1 F6: fixture IS a trigger node (mirror present)", len(_trigA6) == 1)
+    if _trigA6:
+        _tokA6 = _trigA6[0].get("always_loaded_tokens")
+        check("v0.1.8/A1 F6: contaminant 9999 ≫ tolerance max(50, 10%×trigger)",
+              isinstance(_tokA6, int) and (9999 - _tokA6) > max(50, int(0.10 * _tokA6)))
+
+# F5: static wiring pin — the probe flag appears ONLY on the MAIN invocation (never run_oracle()/
+# the canary leg), and every emit_result invocation carries --probe-ok explicitly.
+_ckA1 = _bck.read_text(encoding="utf-8")
+_roA1 = _ckA1[_ckA1.index("run_oracle()"):_ckA1.index("SELF-TEST")]
+check("v0.1.8/A1 F5: run_oracle()/canary leg never passes the probe flag",
+      "--cycle-probe" not in _roA1)
+check("v0.1.8/A1 F5: --cycle-probe appears only as the MAIN-invocation array assignment",
+      sum(1 for ln in _ckA1.splitlines() if "--cycle-probe" in ln) == 1
+      and any("PROBE_ARGS=(--cycle-probe" in ln for ln in _ckA1.splitlines()))
+_emitA1 = [i for i, ln in enumerate(_ckA1.splitlines())
+           if 'python3 "$SCRIPTS/emit_result.py"' in ln]
+check("v0.1.8/A1 F5: every emit_result invocation carries --probe-ok (within the call's 4-line window)",
+      len(_emitA1) == 2
+      and all("--probe-ok" in "\n".join(_ckA1.splitlines()[i:i + 4]) for i in _emitA1))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

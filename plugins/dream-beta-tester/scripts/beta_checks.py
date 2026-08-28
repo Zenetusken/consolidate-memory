@@ -71,7 +71,7 @@ import os
 import re
 import subprocess
 import sys
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from types import ModuleType
 from typing import Any, Callable
@@ -1421,12 +1421,72 @@ def _summary(results: list[Result]) -> dict[str, int]:
     }
 
 
+_PROBE_EXPECTED_IDS = ("CHK-CYCLE-PROJECT", "CHK-CYCLE-BUDGET")
+_PROBE_SENTINEL = "cycle-probe-frozen-v1"
+
+
+def _run_cycle_probe(ctx: Ctx, path: str) -> dict[str, Any]:
+    """The cycle-probe self-test leg (SPEC-A §4): feed a FROZEN contaminated cycle record into
+    cycle_identity and report whether the family still FAILs on it BY IDENTITY.
+
+    Teeth-intact = the record's stamp verifies AND BOTH expected checks FAIL — an ABSENT check
+    (e.g. no trigger node) reads as teeth-loss, never as intact. Missing/corrupt/unstamped files
+    degrade the same way (fail toward distrust). The probe ctx keeps the LIVE network (the budget
+    check must compare the foreign record against the real trigger node, not a mocked one).
+    """
+    block: dict[str, Any] = {
+        "expected_ids": list(_PROBE_EXPECTED_IDS),
+        "detected_ids": [],
+        "stamp_verified": False,
+        "ok": False,
+        "error": None,
+        "results": [],
+    }
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+        record = json.loads(text)
+    except (OSError, json.JSONDecodeError) as e:
+        block["error"] = f"{type(e).__name__}: {e}"
+        return block
+    if not isinstance(record, dict):
+        block["error"] = "probe record is not a JSON object"
+        return block
+    # The stamp gates only the TEETH verdict (ok) — the family still runs on any well-formed record,
+    # so a clean/unstamped record reports its PASSes (no false red) while ok stays false (an
+    # unstamped file must never prove teeth — SPEC-A §4.5).
+    stamp = record.get("_probe")
+    block["stamp_verified"] = (isinstance(stamp, dict) and stamp.get("probe") is True
+                               and stamp.get("sentinel") == _PROBE_SENTINEL)
+    if not block["stamp_verified"]:
+        block["error"] = ("not a stamped cycle-probe record (probe:true + sentinel required for the "
+                          "teeth verdict — regenerate with fixtures/make_cycle_probe.py)")
+    try:
+        probe_ctx = replace(ctx, status=record)
+        probe_results = cycle_identity(probe_ctx)
+    except Exception as e:  # noqa: BLE001 — a probe-leg failure must degrade to teeth-loss, never crash the run
+        block["error"] = f"probe leg raised {type(e).__name__}: {e}"
+        return block
+    tagged = [replace(r, basis="probe", site=f"probe:{r.site}") for r in probe_results]
+    block["detected_ids"] = [r.id for r in tagged if r.status == "FAIL"]
+    block["results"] = [asdict(r) for r in tagged]
+    block["ok"] = block["stamp_verified"] and set(block["detected_ids"]) == set(_PROBE_EXPECTED_IDS)
+    return block
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Dream beta-harness invariant oracle for consolidate-memory.")
     ap.add_argument("--repo", default=os.getcwd(), help="repo whose dream is tested (default: cwd)")
     ap.add_argument("--store", default=None, help="memory store dir (default: ~/.claude/projects/<slug>/memory)")
     ap.add_argument("--skill", default=None, help="consolidate-memory scripts dir (default: discovered, version-max)")
     ap.add_argument("--json", action="store_true", help="emit structured JSON (default: human summary)")
+    # v0.1.8/A1 (SPEC-A §D-1/D-2): the cycle-probe self-test leg. When absent, the oracle is
+    # bit-identical to before (inert seam). When present, cycle_identity is re-evaluated against
+    # the FROZEN contaminated record and the result is partitioned into a sibling `cycle_probe`
+    # block — NEVER into results[]/_summary/the exit code (probe FAILs are EXPECTED and must not
+    # gate a push; a missing/corrupt/unstamped record degrades to teeth-loss, never to clean).
+    ap.add_argument("--cycle-probe", default=None,
+                    help="FROZEN contaminated cycle record (JSON) — prove cycle_identity still "
+                         "FAILs on it BY IDENTITY; test-only, partitioned out of the main verdict")
     a = ap.parse_args()
 
     repo = Path(a.repo).expanduser().resolve()
@@ -1467,7 +1527,13 @@ def main() -> int:
             "store-dependent families SKIP"
         ]
 
+    # v0.1.8/A1: the probe leg rides a SIBLING key — never results[] — so the main summary and the
+    # exit code are byte-stable whether or not the flag is present (the inert-seam pin depends on it).
+    cycle_probe = _run_cycle_probe(ctx, a.cycle_probe) if a.cycle_probe else None
+
     if a.json:
+        if cycle_probe is not None:
+            payload["cycle_probe"] = cycle_probe
         print(json.dumps(payload, indent=2))
         return 1 if summary["fail"] else 0
 
@@ -1492,6 +1558,13 @@ def main() -> int:
         print("\n  notes:")
         for n in ctx.notes:
             print(f"    · {n}")
+    if cycle_probe is not None:
+        _cp_line = (f"  cycle-probe: {'TEETH INTACT' if cycle_probe['ok'] else 'TEETH-LOSS'} · "
+                    f"stamp={'ok' if cycle_probe['stamp_verified'] else 'BAD'} · "
+                    f"detected={','.join(cycle_probe['detected_ids']) or '-'}")
+        if cycle_probe["error"]:
+            _cp_line += f" · {cycle_probe['error']}"
+        print(_cp_line)
     print()
     return 1 if summary["fail"] else 0
 

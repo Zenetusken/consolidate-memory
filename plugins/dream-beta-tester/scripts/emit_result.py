@@ -86,6 +86,13 @@ def main() -> int:
     ap.add_argument("--canary-fail", default="?")
     ap.add_argument("--expected-ids", default="")   # v0.1.7/B6: comma-joined, additive — id-match self-test
     ap.add_argument("--detected-ids", default="")   # comma-joined FAIL ids the canary run actually produced
+    # v0.1.8/A1 (SPEC-A §9): the cycle-probe leg. --probe-ok DEFAULTS to false — an emit path that
+    # forgets the flag can never produce `clean` (B2(c) discipline: fail toward distrust). The
+    # probe block is REQUIRED in latest.json; its absence reads as teeth-loss to the orchestrator.
+    ap.add_argument("--probe-ok", default="false")
+    ap.add_argument("--probe-expected-ids", default="")
+    ap.add_argument("--probe-detected-ids", default="")
+    ap.add_argument("--probe-stamp-ok", default="false")
     ap.add_argument("--generated-at", default="")
     ap.add_argument("--out", required=True)
     ap.add_argument("--human-report", default="")
@@ -99,15 +106,42 @@ def main() -> int:
     # toward distrust (selftest_broken), matching the guardrail's intent (fail-open toward "harness
     # broken" is safe; fail-open toward "harness OK" on garbage input is the wrong direction).
     st_ok = a.self_test_ok == "true"
+    p_ok = a.probe_ok == "true"
+    p_expected = [x for x in a.probe_expected_ids.split(",") if x]
+    p_detected = [x for x in a.probe_detected_ids.split(",") if x]
+    p_stamp = a.probe_stamp_ok == "true"
 
+    # Ordering contract (B2(c) first, then the pre-existing empty-stdin contract, then the probe):
+    # an EMPTY oracle run is a harness_error even when the probe leg is absent — the two existing
+    # smoke pins (self-test-ok 'true' + empty stdin → harness_error; st_ok false → selftest_broken)
+    # must both survive the probe's fail-toward-distrust default.
     if not st_ok:
         verdict = "selftest_broken"
+        _probe_meaning = ("the cycle-probe leg did not run (the canary self-test failed first) — "
+                          "its teeth are UNPROVEN in this run")
     elif not raw or not data or not results:
         verdict = "harness_error"
+        _probe_meaning = "the cycle-probe leg's teeth were not evaluated (harness_error — no oracle run)"
+    elif not p_ok:
+        verdict = "selftest_broken"
+        if not p_expected and not p_detected and not p_stamp:
+            _probe_meaning = ("the cycle-probe self-test did not run — the probe record is "
+                              "MISSING/corrupt (teeth UNPROVEN; regenerate with install-gate.sh → "
+                              "make_cycle_probe.py); this verdict is UNTRUSTWORTHY")
+        else:
+            _probe_meaning = ("the cycle-probe self-test found TEETH-LOSS — expected "
+                              f"{p_expected or ['(none)']} ⊆ detected FAIL ids, got {p_detected or ['(none)']} "
+                              f"(stamp_verified={'true' if p_stamp else 'false'}); the oracle no longer FAILs on "
+                              "the frozen contaminated cycle record BY IDENTITY — detection is BROKEN, this "
+                              "verdict is UNTRUSTWORTHY (fix scripts/beta_checks.py)")
     elif summary.get("fail", 0) > 0:
         verdict = "regression"
     else:
         verdict = "clean"
+    if verdict == "clean" and p_ok:
+        _probe_meaning = ("the oracle proved it still DETECTS the frozen contaminated cycle record BY "
+                          "IDENTITY (CHK-CYCLE-PROJECT + CHK-CYCLE-BUDGET ⊆ detected FAIL ids) before "
+                          "this verdict was trusted")
 
     fails = [r for r in results if r.get("status") == "FAIL"]
     warns = [r for r in results if r.get("status") == "WARN"]
@@ -151,6 +185,13 @@ def main() -> int:
             "detected_ids": detected_ids,
             "ok": st_ok,
             "meaning": _self_test_meaning,
+        },
+        "cycle_probe": {
+            "expected_ids": p_expected,
+            "detected_ids": p_detected,
+            "ok": p_ok,
+            "stamp_verified": p_stamp,
+            "meaning": _probe_meaning,
         },
         "summary": summary,
         "actionable": actionable,

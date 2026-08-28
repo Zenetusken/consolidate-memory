@@ -16,8 +16,18 @@ STATE="${DREAM_BETA_STATE:-$HOME/.dream-beta-test}"
 CM_REPO="${1:-$(git -C . rev-parse --show-toplevel 2>/dev/null || echo "$HOME/project/consolidate-memory")}"
 mkdir -p "$STATE"
 
-echo "1/3 fixture store (over-budget + wikilink-orphan → D3/D4) …"
+echo "1/3 fixture store (over-budget + wikilink-orphan + trigger-node mirror → D3/D4 + cycle probe) …"
 python3 "$PLUGIN/fixtures/make_fixture.py" "$STATE/gate-repo"
+# v0.1.8/A1: generate the FROZEN contaminated cycle record ONCE (like the canary graft) — the gate's
+# cycle-probe self-test proves cycle_identity still FAILs on it BY IDENTITY; a missing record makes
+# every gate run report teeth-loss (loud, fail-open). A generation failure aborts (set -e) — a gate
+# installed without its probe is worse than no probe.
+SKILL_TREE="$CM_REPO/plugins/consolidate-memory/scripts"
+if [ -f "$SKILL_TREE/memory_status.py" ]; then
+  python3 "$PLUGIN/fixtures/make_cycle_probe.py" --skill "$SKILL_TREE" --out "$STATE/cycle-probe.json"
+else
+  echo "    WARNING: $SKILL_TREE not found — cycle probe NOT generated (the gate will report teeth-loss)." >&2
+fi
 
 echo "2/3 frozen known-bad canary …"
 CSRC="$(ls -d "$HOME"/.claude/plugins/cache/*/consolidate-memory/0.1.19/scripts 2>/dev/null | head -1)"
