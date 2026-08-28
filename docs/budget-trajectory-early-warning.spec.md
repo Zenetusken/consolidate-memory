@@ -332,7 +332,7 @@ the hard ceiling once already over it (the existing `ceil` line already owns tha
    from fixture (a)'s silence.
    (d) a fixture FROZEN FROM a real historical replay, not a live read of one: the real
    cycle-3/cycle-16 numbers measured against consolidate-memory's own
-   `~/.claude/projects/-home-drei-project-consolidate-memory/memory/.consolidation-log.jsonl`
+   `~/.claude/projects/-home-you-project-consolidate-memory/memory/.consolidation-log.jsonl`
    during this spec's design are transcribed into a synthetic, hand-authored, inline
    `.consolidation-log.jsonl` fixture — written the same way every other `.consolidation-log.jsonl`
    fixture in `tests/smoke.py` already is (roughly 15 existing sites, each a literal JSONL string

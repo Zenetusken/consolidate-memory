@@ -4689,5 +4689,102 @@ check("v0.1.85/review-F4: dashboard renders the hook-mentions count + 'dream-pro
           "scope": {}, "entries": [], "usage": {"reads": 1, "facts_read": 1, "transcripts": 1,
           "dream_excluded": 0, "per_fact": [{"name": "x", "reads": 1, "last": "t"}]}})))
 
+# --- v0.1.86: budget-trajectory early-warning (docs/budget-trajectory-early-warning.spec.md).
+# The index-budget TRAJECTORY read: port the dashboard's lsSlope onto the logged
+# budget.index.after_tokens series, project a rising fit to the next uncrossed threshold, and
+# attach staleness age. Read-only + never-raise (degradation invariant). Synthetic inline logs
+# only (never a live personal store). See the spec's 8 acceptance gates.
+def _traj_log(d: Path, *vals: int) -> None:
+    (d / ".consolidation-log.jsonl").write_text(
+        "\n".join(_jsonB.dumps({"budget": {"index": {"after_tokens": v}}}) for v in vals) + "\n",
+        encoding="utf-8")
+
+_M86 = "2026-08-20T00:00:00Z"   # ~8 days before the 2026-08-28 fixture clock -> a computable age
+
+# Gate 2b -- _ls_slope is a hand-computed numeric port (independent of the JS source).
+check("v0.1.86 2b: _ls_slope hand-computed [1,2,3]=1 [2,4,6,8]=2 [0,10,20]=10 negative=-1",
+      ms._ls_slope([1.0, 2.0, 3.0]) == 1.0 and ms._ls_slope([2.0, 4.0, 6.0, 8.0]) == 2.0
+      and ms._ls_slope([0.0, 10.0, 20.0]) == 10.0 and ms._ls_slope([10.0, 9.0, 8.0, 7.0]) == -1.0)
+check("v0.1.86 2b: _ls_slope degenerate k<2 and zero-denominator both return 0.0",
+      ms._ls_slope([]) == 0.0 and ms._ls_slope([7.0]) == 0.0 and ms._ls_slope([5.0, 5.0, 5.0]) == 0.0)
+
+# Gate 2a -- structural source-text pin on the dashboard's literal lsSlope formula (no JS exec).
+check("v0.1.86 2a: dashboard lsSlope formula still present (structural pin, not executed)",
+      "var d=k*sxx-sx*sx;return d===0?0:(k*sxy-sx*sy)/d" in _tpl54)
+
+# Gate 1a -- shrinking under-target: silent, no new rendering.
+with _tf73.TemporaryDirectory() as _td1a:
+    _s1a = Path(_td1a); _traj_log(_s1a, 1500, 1450, 1400, 1350)
+    check("v0.1.86 1a: shrinking under-target -> (None, None) silent",
+          ms.budget_trajectory_advisory(_s1a, 1350, _M86) == (None, None))
+
+# Gate 1b -- over-target sustained uptrend: suffix (age + ceiling-breach), no new line.
+with _tf73.TemporaryDirectory() as _td1b:
+    _s1b = Path(_td1b); _traj_log(_s1b, 1800, 2000, 2200)
+    _suf, _lin = ms.budget_trajectory_advisory(_s1b, 2200, _M86)
+    check("v0.1.86 1b: over-target uptrend -> suffix (age + ceiling breach), line None",
+          _suf is not None and "hard ceiling" in _suf and "last dream" in _suf and _lin is None)
+
+# Gate 1c -- flat stale over-target: suffix carries ONLY the age (no breach), line None.
+with _tf73.TemporaryDirectory() as _td1c:
+    _s1c = Path(_td1c); _traj_log(_s1c, 2200, 2200, 2200, 2200)
+    _suf, _lin = ms.budget_trajectory_advisory(_s1c, 2200, _M86)
+    check("v0.1.86 1c: flat stale over-target -> suffix age-only (no breach), line None",
+          _suf is not None and "last dream" in _suf and "hard ceiling" not in _suf and _lin is None)
+
+# Gate 1d -- frozen cycle-16 replay (cur=1402, last-4 slope 78) -> suffix None, line breach=1.
+with _tf73.TemporaryDirectory() as _td1d:
+    _s1d = Path(_td1d)
+    _traj_log(_s1d, 856, 934, 1012, 1090, 1168, 1246, 1324, 1402)  # last-4 diffs 78 -> slope 78
+    _suf, _lin = ms.budget_trajectory_advisory(_s1d, 1402, _M86)
+    check("v0.1.86 1d: frozen cycle-16 replay -> suffix None, line carries breach=1 + age",
+          _suf is None and _lin is not None and "in ~1 dream" in _lin and "last dream" in _lin)
+
+# Gate 3 -- live cur_tokens diverges from the logged last point: the over-target suffix fires
+# on the LIVE value even though the logged series' last point is still under target.
+with _tf73.TemporaryDirectory() as _td3:
+    _s3 = Path(_td3); _traj_log(_s3, 1300, 1340, 1380, 1400)
+    _suf, _lin = ms.budget_trajectory_advisory(_s3, 2200, _M86)   # live 2200 > 1500, logged last 1400
+    check("v0.1.86 3: live cur_tokens anchors the over-target suffix (logged last point under)",
+          _suf is not None and "hard ceiling" in _suf and _lin is None)
+
+# Gate 4 -- degradation invariant on a FIRING series (4a non-string marker, 4b out-of-range
+# marker, 4c malformed log line): the line still fires, the age is simply absent, never a crash.
+with _tf73.TemporaryDirectory() as _td4:
+    _s4 = Path(_td4); _traj_log(_s4, 1300, 1340, 1380, 1402)
+    _suf, _lin = ms.budget_trajectory_advisory(_s4, 1402, cast(str, 12345))   # 4a: truthy non-string marker
+    check("v0.1.86 4a: non-string marker -> line fires, age absent, no crash",
+          _lin is not None and "last dream" not in _lin and _suf is None)
+    _suf, _lin = ms.budget_trajectory_advisory(_s4, 1402, "9999-12-31T23:59:59-14:00")  # 4b
+    check("v0.1.86 4b: out-of-range marker -> line fires, age absent, no crash",
+          _lin is not None and "last dream" not in _lin and _suf is None)
+    (_s4 / ".consolidation-log.jsonl").write_text(
+        "\n".join([_jsonB.dumps({"budget": {"index": {"after_tokens": 1300}}}),
+                   "NOT JSON",
+                   _jsonB.dumps({"budget": {"index": {"after_tokens": 1340}}}),
+                   _jsonB.dumps({"budget": {"index": {"after_tokens": 1380}}}),
+                   _jsonB.dumps({"budget": {"index": {"after_tokens": 1402}}})]) + "\n",
+        encoding="utf-8")   # 4c: malformed line skipped by iter_cycle_log
+    _suf, _lin = ms.budget_trajectory_advisory(_s4, 1402, _M86)
+    check("v0.1.86 4c: malformed log line skipped -- series still fires with the breach",
+          _lin is not None and "in ~3 dream" in _lin and _suf is None)
+
+# Gate 6 -- rounding tie (bf=2.5): Python round-half-to-even -> breach 2 (not JS Math.round's 3).
+with _tf73.TemporaryDirectory() as _td6:
+    _s6 = Path(_td6); _traj_log(_s6, 1280, 1320, 1360, 1400)   # slope 40.0, bf=(1500-1400)/40=2.5
+    _suf, _lin = ms.budget_trajectory_advisory(_s6, 1400, _M86)
+    check("v0.1.86 6: bf=2.5 tie rounds to 2 (round-half-to-even), not Math.round's 3",
+          _lin is not None and "in ~2 dream" in _lin)
+
+# Gate 7 -- over target + no marker + n<3: the tightened silence rule collapses to None (no
+# empty decoration), since neither age nor breach is computable.
+with _tf73.TemporaryDirectory() as _td7:
+    _s7 = Path(_td7); _traj_log(_s7, 1600, 1700)
+    check("v0.1.86 7: over target + no marker + n<3 -> (None, None), never an empty suffix",
+          ms.budget_trajectory_advisory(_s7, 1750, "") == (None, None))
+
+# Gate 5 -- seed_record() unchanged (no new schema key): covered by the existing cycle-record
+# smoke coverage; this feature adds no seed key by construction (display-only, read-only).
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

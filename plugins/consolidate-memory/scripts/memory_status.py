@@ -2175,6 +2175,91 @@ def dream_timing_advisory(commits: int, marker_ts: str, has_marker: bool) -> str
             "work already consolidated between dreams — judge whether there's genuinely new signal.)")
 
 
+def _ls_slope(ys: list[float]) -> float:
+    """Least-squares slope over a short series — a direct port of the dashboard's lsSlope
+    (dashboard.template.html:433-434), degenerate-case-identical so the Python advisory and the
+    HTML trajectory chart can never disagree on a drift. Returns 0.0 for k<2 or a zero
+    denominator (a flat/constant series)."""
+    k = len(ys)
+    if k < 2:
+        return 0.0
+    sx = sy = sxx = sxy = 0.0
+    for i, y in enumerate(ys):
+        sx += i
+        sy += y
+        sxx += i * i
+        sxy += i * y
+    d = k * sxx - sx * sx
+    return 0.0 if d == 0 else (k * sxy - sx * sy) / d
+
+
+def budget_trajectory_advisory(auto_mem: Path, cur_tokens: int, marker_ts: str) -> tuple[str | None, str | None]:
+    """v0.1.86 (docs/budget-trajectory-early-warning.spec.md): the index-budget TRAJECTORY
+    read — per-node, read-only, display-only. Ports the dashboard's lsSlope trend onto the
+    logged budget.index.after_tokens series and, on a credible rising fit, projects the cycle
+    count to the next UNCROSSED threshold (the 1500 soft target when under, the 3840 hard
+    ceiling when over). Returns (suffix, line), at most one non-None: suffix is a short
+    annotation folded onto the EXISTING over-target STORES gauge line; line is the ONE new
+    early-warning line (under target, rising, breach projected). Silence rule: fire only on a
+    real signal — suffix non-None IFF over target AND (age OR breach computable); line non-None
+    IFF under target AND breach computed. Never writes, never raises (a malformed / non-string /
+    out-of-range marker_ts only drops the age, via the two guards below)."""
+    s: list[float] = []
+    carry = 0.0
+    for rec in iter_cycle_log(auto_mem / ".consolidation-log.jsonl", tail=_LOG_TAIL_CAP):
+        if not isinstance(rec, dict):
+            continue
+        budget = rec.get("budget")
+        idx = budget.get("index") if isinstance(budget, dict) else None
+        if not isinstance(idx, dict):
+            idx = {}
+        raw = idx.get("after_tokens")
+        if raw is None:
+            raw = idx.get("before_tokens", 0)
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            v = 0.0
+        if v <= 0:
+            v = carry
+        carry = v
+        s.append(v)
+
+    n = len(s)
+    slope = _ls_slope(s[-4:])
+    target = INDEX_CEILING_TOKENS if cur_tokens > INDEX_TOKEN_BUDGET else INDEX_TOKEN_BUDGET
+    breach: int | None = None
+    if n >= 3 and cur_tokens < target and slope > 0.5:
+        bf = (target - cur_tokens) / slope
+        if 0 < bf and round(bf) <= 60:
+            breach = max(1, round(bf))
+
+    age: str | None = None
+    if isinstance(marker_ts, str) and marker_ts:
+        try:
+            dt = _parse_ts(marker_ts)
+        except (OSError, OverflowError, ValueError):
+            dt = None
+        if dt is not None:
+            days = (datetime.now(timezone.utc) - dt).total_seconds() / 86400.0
+            age = "<1d ago" if days < 1 else f"~{round(days)}d ago"
+
+    over_target = cur_tokens > INDEX_TOKEN_BUDGET
+    if over_target:
+        parts = []
+        if age is not None:
+            parts.append(f"last dream {age}")
+        if breach is not None:
+            parts.append(f"~{breach} dream(s) to the hard ceiling")
+        return (" · ".join(parts) if parts else None, None)
+    if breach is not None:
+        bits = f"projected to cross the index budget in ~{breach} dream(s)"
+        if age is not None:
+            bits += f" · last dream {age}"
+        return (None, bits)
+    return (None, None)
+
+
 def seed_record(ctx: dict) -> CycleRecord:
     """The cycle-record SEED — before-values + scope + provisional rigor, for render_dashboard.py.
     Annotated as CycleRecord so mypy enforces this LITERAL against the contract: a drifted,
@@ -2591,8 +2676,12 @@ def print_report(ctx: dict) -> None:
                  if _cp >= int(CLIFF_NEAR_FRACTION * 100) else _ui.c(f" · cliff {_cp}%", "dim"))
         ceil = _ui.c(f"  ⚠ HARD CEILING (>{INDEX_CEILING_TOKENS} tok — M1 holds all new pulls)", "red") \
             if it > INDEX_CEILING_TOKENS else ""
+        _traj_suffix, _traj_line = budget_trajectory_advisory(ctx["auto_mem"], it, ctx["last_ts"])
         add(f"    {_ui.lbl('index', 14)}{_ui.bar(it, INDEX_TOKEN_BUDGET)} {_ui.pct(it, INDEX_TOKEN_BUDGET):>4}  "
-            + _ui.c(f"≈{it}/{INDEX_TOKEN_BUDGET} tok · {il} ln · {ib} by  [ALWAYS-LOADED]", "dim") + over + ceil + cliff)
+            + _ui.c(f"≈{it}/{INDEX_TOKEN_BUDGET} tok · {il} ln · {ib} by  [ALWAYS-LOADED]", "dim") + over + ceil + cliff
+            + (_ui.c(f"  · {_traj_suffix}", "dim") if _traj_suffix else ""))
+        if _traj_line:
+            add("    " + " " * 14 + _ui.c(_traj_line, "yellow"))
         _fh, _hm, _off = ctx.get("index_hooks", (0, 0, []))
         if _fh:
             _tops = " · ".join(f"{n} ≈{t}t" for t, n in _off[:3])
