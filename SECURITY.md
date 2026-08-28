@@ -58,7 +58,9 @@ at the repo root) is **gitignored and never published** — verify with
   (`/plugin marketplace add Zenetusken/consolidate-memory`); a tagged release or pinned
   `sha` gives reproducible installs.
 - Plugins are copied to a local cache on install and run from there; this plugin adds
-  no hooks, no MCP servers, and no background processes — it is skill + scripts only.
+  exactly one hook — a SessionStart beacon (matchers `startup` + `resume`, 2 s timeout)
+  that may inject at most one read-only advisory line — and no MCP servers and no
+  background processes: skill + scripts + that one advisory hook.
 
 ## Reporting a vulnerability
 

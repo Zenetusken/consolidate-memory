@@ -69,11 +69,15 @@ memory/                            GITIGNORED placeholder (.gitkeep only) — th
 
 plugins/dream-beta-tester/         QA companion plugin — beta-tests the dream skill itself
   .claude-plugin/plugin.json       plugin manifest
-  skills/dream-beta-test/SKILL.md  the judgment-lens pass (/dream-beta-test)
+  skills/dream-beta-test/SKILL.md  the judgment-lens pass (/dream-beta-test) + references/lenses.md
+                                   (the 7 judgment lenses)
   scripts/                         the deterministic oracle (beta_checks.py) + snapshot/report/run
-  fixtures/                        the frozen synthetic gate-repo fixture + the canary-v0.1.19 self-test
+  fixtures/                        make_fixture.py (generates the frozen synthetic gate-repo store) —
+                                   the canary-v0.1.19 store is grafted at install time under
+                                   ~/.dream-beta-test/, never committed
   maintainer/                      the continuous-QA pre-push gate (ci_check.sh/install-gate.sh)
   docs/SPEC.md                     design-of-record (STATUS.md hands design off to this file)
+  docs/CONTRACT.md                 reports/latest.json schema + the deterministic self-heal contract
   docs/STATUS.md                   validation matrix + fixed-vs-open defect log
 ```
 
@@ -117,15 +121,16 @@ Only `SECURITY.md` at the repo root is public.
 ## Dev loop
 
 ```
-edit plugins/consolidate-memory/… → python3 tests/smoke.py → mypy --config-file mypy.ini
-→ ./cm <cmd> to spot-check → python3 tests/validate_manifests.py (+ claude plugin validate --strict)
+edit plugins/consolidate-memory/… → python3 tests/smoke.py → python3 tests/simulate_accumulation.py
+→ mypy --config-file mypy.ini → ./cm <cmd> to spot-check → python3 tests/validate_manifests.py
+(portable, no flags — the `--strict` variant is the claude CLI: `claude plugin validate --strict`)
 → (before go-live) run the local DevSecOps pentest harness → git commit && git push
 ```
 
 `mypy --config-file mypy.ini` is a **dev-only** contract check (catches cycle-record
 drift on the producer side — a renamed/extra/wrong-typed key in a seed/demo literal). It
 is NOT a runtime dep and NOT part of the dep-free `smoke.py` gate; the config is pragmatic
-(checks `scripts/` + `tests/`, not `--strict`), and must never disable the TypedDict checks
+(checks both plugins' `scripts/` + dream-beta-tester `fixtures/` + `tests/`, not `--strict`), and must never disable the TypedDict checks
 (`typeddict-item`/`typeddict-unknown-key` ARE the contract).
 
 This tool dogfoods itself: once dev-installed as a plugin (local-marketplace add + `claude plugin install`), run `dream`
