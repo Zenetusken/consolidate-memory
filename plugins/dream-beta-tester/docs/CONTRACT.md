@@ -32,6 +32,7 @@ pre-push git hook runs the same script automatically.
 | `ship_ok` | `true` iff `verdict == "clean"` |
 | `version_under_test` | the working-tree plugin.json version |
 | `self_test` | `{canary, min_fail_expected, actual_fail, expected_ids, detected_ids, ok, meaning}` — detection is now an IDENTITY check (`expected_ids ⊆ detected_ids`, the real D3/D4 defect ids), not a count; `min_fail_expected`/`actual_fail` are reported detail only. `meaning` is a human-readable sentence conditioned on `ok`/whether a comparison ran at all — never trust it over `ok` itself, but it's the fastest way to see WHY. `ok=false` ⇒ the HARNESS is broken, not the release |
+| `cycle_probe` | v0.1.8/A1: `{expected_ids, detected_ids, ok, stamp_verified, meaning}` — the cycle-identity teeth proof (the oracle must FAIL `CHK-CYCLE-PROJECT` + `CHK-CYCLE-BUDGET` on the frozen contaminated record BY IDENTITY). **An ABSENT `cycle_probe` block MUST be treated exactly like `ok:false`** — an old/wrong ci_check that emits no block is teeth-loss, never `clean` (fail toward distrust; regenerate with `install-gate.sh` → `make_cycle_probe.py`) |
 | `summary` | `{fail, warn, pass, skip, total}` |
 | `actionable` | the FAILs to fix, each: `{id, defect_ref, severity, title, expected, actual, evidence, site, basis}` |
 | `findings` | every check (PASS/WARN/FAIL) — full detail |
@@ -61,7 +62,9 @@ loop:
 ### Guardrails the loop must honor
 - **Never patch the skill on `selftest_broken` / `harness_error`.** Those mean the *tester* failed,
   so a "clean" or "regression" reading would be untrustworthy. The `self_test.ok` flag exists so a
-  blind reader can't mistake a broken harness for a clean release.
+  blind reader can't mistake a broken harness for a clean release. v0.1.8/A1: the same rule covers
+  `cycle_probe.ok` and an ABSENT `cycle_probe` block — missing teeth is teeth-loss, never a ship
+  signal.
 - **Bound the loop.** If the same `defect_ref` stays in `actionable` after a patch+re-run, the patch
   didn't take — stop and surface it rather than spin.
 - **`verdict` is the ONLY control signal.** `exit_code` mirrors it (1 only on `regression`), but read
