@@ -4930,5 +4930,71 @@ check("v0.1.8/A2 5b: legacy summary keys intact + phantom count present and addi
                                        "unexpected_store", "marker_advanced"))
       and _dA2e.summary.get("phantom_claims") == 0)
 
+# ── v0.1.8/A3 (SPEC-A §10.2): mutating-pass pins — clean pass, determinism, hermeticity ───────────
+import hashlib as _hlA3
+
+
+def _norm_mutate_tree(root: Path) -> "dict[str, str]":
+    """Content hashes of a kept world, with the promote-minted `global_ref_since:` stamp
+    normalized (it is wall-clock; the rest of the world must be byte-identical — D-7)."""
+    import re as _reA3
+    out: dict[str, str] = {}
+    for p in sorted(root.rglob("*")):
+        if p.is_file():
+            t = p.read_bytes().decode("utf-8", errors="replace")
+            t = _reA3.sub(r"global_ref_since: .*", r"global_ref_since: NORMALIZED", t)
+            out[str(p.relative_to(root))] = _hlA3.sha256(t.encode("utf-8")).hexdigest()[:16]
+    return out
+
+
+with _tf43.TemporaryDirectory() as _tdA3:
+    _homeA3 = str(Path(_tdA3) / "home")
+    Path(_homeA3).mkdir()
+    _repoA3 = str(Path(_tdA3) / "gate-repo")
+    _repA3 = str(Path(_tdA3) / "reports")
+    Path(_repA3).mkdir()
+    _oA3, _eA3, _rcA3 = _run_home_a1(_homeA3, str(_bcf), _repoA3)
+    _fixA3 = _homeA3 + "/.claude"   # hash the whole fixture home tree (store + global absent)
+    _fix_beforeA3 = _norm_mutate_tree(Path(_fixA3))
+    # ambient env during the pass = a THIRD "leak" home: a driver that fails to pin HOME would drop
+    # the promote canonical HERE — provable without ever reading the user's real store.
+    _leakA3 = str(Path(_tdA3) / "leak-home")
+    Path(_leakA3).mkdir()
+
+    # the pass resolves the store from ITS OWN HOME — pass --store explicitly so the fixture
+    # (generated under _homeA3) is found even though the pass's ambient env is the leak home
+    _storeA3 = str(Path(_homeA3) / ".claude" / "projects" / ms.slug_for(Path(_repoA3)) / "memory")
+
+    def _run_mutate_a3(ambient_home: str, keep: bool) -> "tuple[str, str, int]":
+        env = {**_os53.environ, "HOME": ambient_home}
+        env.pop("CLAUDE_PLUGIN_ROOT", None)
+        p = _sp53.run([sys.executable, str(_bts / "run_beta.py"), "--repo", _repoA3,
+                       "--store", _storeA3,
+                       "--skill", str(_scripts54), "--reports-dir", _repA3, "--mutate", "--json"]
+                      + (["--keep"] if keep else []),
+                      capture_output=True, text=True, timeout=180, env=env)
+        return p.stdout, p.stderr, p.returncode
+
+    _soA31, _seA31, _rcA31 = _run_mutate_a3(_leakA3, keep=True)
+    _soA32, _seA32, _rcA32 = _run_mutate_a3(_leakA3, keep=True)
+    _dA31 = _json43.loads(_soA31)
+    _dA32 = _json43.loads(_soA32)
+    check("v0.1.8/A3 1: both passes CLEAN — 0 unexpected, 0 phantom, oob green, marker advanced",
+          _rcA31 == 0 and _rcA32 == 0 and _dA31["pass_clean"] and _dA32["pass_clean"]
+          and _dA31["out_of_band"]["ok"] and _dA31["marker_advanced"]
+          and _dA31["diff_summary"]["unexpected_store"] == 0
+          and _dA31["diff_summary"]["phantom_claims"] == 0)
+    check("v0.1.8/A3 2: hermeticity — the ambient (leak) home was NEVER written (env pinning works)",
+          not (Path(_leakA3) / ".claude").exists())
+    check("v0.1.8/A3 3: the frozen fixture store was NEVER touched (the pass ran on its copy)",
+          _norm_mutate_tree(Path(_fixA3)) == _fix_beforeA3)
+    _keepA3 = sorted(Path(_repA3).glob(".mutate-keep-*"))
+    check("v0.1.8/A3 4: --keep retained both hermetic copies", len(_keepA3) == 2)
+    if len(_keepA3) == 2:
+        _tA31 = _norm_mutate_tree(_keepA3[0] / "home" / ".claude")
+        _tA32 = _norm_mutate_tree(_keepA3[1] / "home" / ".claude")
+        check("v0.1.8/A3 5: cross-run byte-identity modulo the promote-minted since: stamp",
+              _tA31 == _tA32)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
