@@ -4889,5 +4889,46 @@ check("v0.1.8/A1 F5: every emit_result invocation carries --probe-ok (within the
       len(_emitA1) == 2
       and all("--probe-ok" in "\n".join(_ckA1.splitlines()[i:i + 4]) for i in _emitA1))
 
+# ── v0.1.8/A2 (SPEC-A §10.3): claimed-writes seam pins (snapshot.diff pure-function) ─────────────
+def _mfA2(files: "list[tuple[str, str, str, int]]") -> "_snap.Manifest":
+    return _snap.Manifest(
+        manifest_version=_snap.MANIFEST_VERSION, created="2026-08-28T00:00:00Z",
+        repo="/r", store="/r/store", snapshot_dir="/snap", store_present=True,
+        repo_docs_present=[], marker={}, files=[
+            _snap.FileEntry(o, n, f"{o}/{n}", f"/src/{n}", sha, int(sz), n in _snap.DERIVED_SIDE_FILES)
+            for o, n, sha, sz in files])
+
+
+_mA2a = _mfA2([("store", "a.md", "sha1", 10), ("store", "MEMORY.md", "sha2", 20),
+               ("store", ".consolidation-state.json", "sha3", 30)])
+_mA2b = _mfA2([("store", "a.md", "sha9", 12), ("store", "b.md", "sha4", 5),   # a modified, b created
+               ("store", "MEMORY.md", "sha8", 24),                           # index modified
+               ("store", ".consolidation-state.json", "sha3", 30)])          # allowlisted, UNCHANGED
+
+_dA2a = _snap.diff(_mA2a, _mA2b, claimed=frozenset({"a.md", "b.md", "MEMORY.md"}))
+check("v0.1.8/A2 1: fully-claimed pass → nothing unexpected, no phantoms",
+      _dA2a.unexpected_store_mutations == [] and _dA2a.phantom_claims == []
+      and _dA2a.summary["phantom_claims"] == 0)
+_dA2b = _snap.diff(_mA2a, _mA2b, claimed=frozenset({"a.md"}))
+check("v0.1.8/A2 2: unclaimed fact + index changes ARE unexpected (claim set is the contract)",
+      set(_dA2b.unexpected_store_mutations) == {"b.md", "MEMORY.md"} and _dA2b.phantom_claims == [])
+_dA2c = _snap.diff(_mA2a, _mA2b, claimed=frozenset({"a.md", "x.md"}))
+check("v0.1.8/A2 3: a claimed write with no delta is a PHANTOM claim (dishonest report)",
+      "x.md" in _dA2c.phantom_claims and _dA2c.summary["phantom_claims"] == 1)
+_dA2d = _snap.diff(_mA2a, _mA2b,
+                   claimed=frozenset({"a.md", "b.md", "MEMORY.md", ".consolidation-state.json"}))
+check("v0.1.8/A2 4: an allowlisted name never phantoms (unchanged derived file ≠ claim failure)",
+      _dA2d.phantom_claims == [])
+_dA2e = _snap.diff(_mA2a, _mA2b)
+check("v0.1.8/A2 5: claimed=None is pre-A2 behavior (every non-allowlisted store delta unexpected)",
+      set(_dA2e.unexpected_store_mutations) == {"a.md", "b.md", "MEMORY.md"}
+      and _dA2e.phantom_claims == [])
+# (summary gains the phantom_claims key additively; the legacy-callers contract is the unexpected
+# list itself, pinned in 5 — summary is an additive field, not a frozen shape)
+check("v0.1.8/A2 5b: legacy summary keys intact + phantom count present and additive",
+      all(k in _dA2e.summary for k in ("total", "created", "modified", "deleted",
+                                       "unexpected_store", "marker_advanced"))
+      and _dA2e.summary.get("phantom_claims") == 0)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
