@@ -5,6 +5,36 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.86] — 2026-08-28
+
+### Added — budget-trajectory early-warning: the index slope, projected honestly, with staleness attached
+
+The ninth enhancement increment (docs/budget-trajectory-early-warning.spec.md). MEASURED
+premise (read-only, 3-node live fleet probe): one node is 47% over its index target and climbing
++130.5 tok/cycle toward the hard ceiling with nothing surfacing it, while a flat-but-stale node
+reads as healthy on slope alone. The Phase-0 report (memory_status.py) now attaches to the
+existing STORES index gauge:
+
+- A ported OLS slope (_ls_slope, degenerate-case-identical to the dashboard's lsSlope) fit over
+  the last ≤4 logged budget.index.after_tokens cycles (the shared iter_cycle_log reader,
+  carry-forwarded so a legacy/zero record can't fake a dip).
+- Two-regime projection (budget_trajectory_advisory): a rising fit projects the cycle count to
+  the next UNCROSSED threshold — the 1500 soft target when under, the 3840 hard ceiling when
+  over (the dashboard only projects to the soft target, so an over-target climber's
+  ceiling-breach was invisible). Reported as ~N dream(s) within a 60-cycle horizon, anchored on
+  the LIVE index measurement, not the logged last point.
+- Staleness rides alongside slope: a factual "last dream ~Nd ago" suffix distinguishes a flat
+  healthy node from a flat stale one, computed via the pipeline's _parse_ts under a two-guard
+  degradation invariant (a non-string or out-of-range marker drops only the age, never raises).
+- Silence rule (no-nag): an under-target shrinking node renders nothing new; the over-target
+  annotation folds onto the EXISTING gauge line (never a second "over target" sentence); the one
+  new standalone line fires only for the under-target-rising early-warning case.
+
+Additive, read-only, display-only: no new CLI flag, no persisted schema key, no
+CycleRecord/Budget/IndexBudget change — every existing install keeps working ⇒ patch. (Also:
+simplify the versioning-policy precedent in CLAUDE.md to point at this changelog, refresh the
+dream-beta-tester QA note to v0.1.85, and genericize a maintainer path in the new spec.)
+
 ## [0.1.85] — 2026-07-11
 
 ### Added — mention-tier attribution: the hook channel finally measured (P3)
