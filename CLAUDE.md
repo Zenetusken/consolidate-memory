@@ -150,51 +150,10 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
    (`0.N → 0.N+1.0`). (Pre-1.0, breaking changes ride a minor bump.)
 3. Otherwise — additive feature, enhancement, fix, or docs that stays
    **backward-compatible** (legacy cycle records still render, existing installs keep
-   working) → **patch** (`0.N.M → 0.N.M+1`). Precedent (all backward-compatible ⇒ patch):
-   v0.1.1 packaging · v0.1.2 dashboard · v0.1.3 rigor modes · v0.1.4–v0.1.11 (calibration apparatus,
-   orphan/drift detection, TypedDict contract, polish, governance cascade + demotion, dream-timing, docs) ·
-   v0.1.12–v0.1.58 (audit follow-up, completion-driven archiving, the dream-arc CONTRACT [v0.1.54: additive
-   `dream` key], the distill rebuild [v0.1.55: additive `distill` key + `--json` keys], full doc sync [v0.1.56],
-   dashboard coherence + the quiet dream [v0.1.57], the distill HARDENING [v0.1.58: additive
-   `Distill.window`/`secrets_omitted` schema keys + `scanned.secrets_omitted` `--json` key + `--into`/`--from`
-   flags]) · v0.1.59 (full doc sync to the v0.1.58 state) · v0.1.60–61 (HTML dashboard two-column alignment)
-   · v0.1.62 (the dream debrief's double sign-off fix) · v0.1.63 (index-lifecycle Phase A: recall-usage
-   instrumentation, observe-only — additive `usage` block + `budget.index` keys) · v0.1.64 (WAKE is one
-   line, not two — a second SKILL.md sign-off defect adjacent to v0.1.62's) · v0.1.65 (full doc sync to
-   the v0.1.63/v0.1.64 state) · v0.1.66 (index-lifecycle Phase B: the HARD CEILING — a second,
-   independent budget signal) · v0.1.67 (index-lifecycle Phase C: the utility policy — demotion triage ·
-   the miss loop · fleet utility) · v0.1.68 (dashboard HTML: stop the masthead glow from tiling down the
-   page + badge the demotion panel's dormant verdict to match distill's) · v0.1.69 (audit-hygiene
-   remediation: parsed-instant window compares, TTY report sanitization, three unguarded store-scan
-   read_text crashes, a labeled git-failure degradation, genericity scrub + pin, a SKILL `--list`
-   correction, a schema-pin hole closed) · v0.1.70 (DevSecOps pentest remediation across both
-   plugins — evict path-traversal + case-insensitive reserved-index self-clobber + mirror-anchor
-   body injection + git-argv injection, all unified onto shared guards; the secrets firewall bundle
-   single-sourced onto git commit subjects, closing a chunked-secret bypass + four ReDoS instances +
-   several false-positive/false-negative regressions, two residual gaps accepted and documented
-   rather than chased; Track D: CI floor widened to 3.8–3.13 + the v0.1.68 dashboard fixes gained
-   automated regression pins) · v0.1.71 (Track D write atomicity: the 2 global-store write sites
-   made atomic [write-temp + `os.replace`], `promote()`'s canonical create made exclusive
-   [write-temp + `os.link` — the create-create race loser is refused, not silently clobbered], the
-   `_record_provenance` lost-update race accepted + documented, `--seed` routed through
-   `_write_private` 0o600) · **v0.1.73–v0.1.77 (the cross-project-layer AUDIT remediation train:**
-   v0.1.73 evict accounting truth [classify→plan→execute, `_plan_pull`, measured `freed`, gainless-
-   evict refusal] · v0.1.74 `_as_mirror`/`_body` fence-boundary parity [silent mirror-corruption fix] ·
-   v0.1.75 pull-side guards [M4-bypass warning, phantom-store guard, frozen-mirror lifecycle] ·
-   v0.1.76 robustness batch [holder round-trip, no-hardlink clean refusal, mypy/poetry detection,
-   archive-doc token split, minds-liveness `?`, originSessionId warn split] · v0.1.77 doc-drift sync)
-   · **v0.1.78–v0.1.85 (the ENHANCEMENT program, signal-sufficiency + workflow + harness-native
-   lenses, each measure-first + red-first + two-lens-reviewed):** v0.1.78 evidence-clock stamps
-   [`global_ref_since`/`global_ref_body` — zero-read windows survive refreshes] · v0.1.79 fleet usage
-   harvest [`--harvest` → the shared `.fleet-usage.jsonl` ledger] · v0.1.80 fleet staleness
-   [`--staleness` absorption-lag sweep] · v0.1.81 the SessionStart BEACON [the plugin's first HOOK
-   component — `hooks/hooks.json` + `session_beacon.py` + the `--pull`-written stacks cache] ·
-   v0.1.82 distill-template persistence [W-A: additive `Distill.top`/`top_chains`/`used`] · v0.1.83
-   fleet workflows [W-B: `--workflows` + `distill_history`] · v0.1.84 provenance liveness [P4:
-   `_classify_edge`, `--gc --edges`, `fleet_tax_live`] · v0.1.85 mention-tier attribution [P3: the
-   hook channel — additive `usage.mentions`/`mention_stems`, display-only]) — every one an additive
-   `total=False` schema key / additive `--json` key / additive flag / new read-only mode / new plugin
-   component / SKILL prose, never a break.
+   working) → **patch** (`0.N.M → 0.N.M+1`). Every release since v0.1.1 has landed as a
+   patch under this policy — each one additive (a schema key, `--json` key, CLI flag,
+   read-only mode, or plugin component) and never breaking. Full per-version precedent:
+   `CHANGELOG.md`.
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG

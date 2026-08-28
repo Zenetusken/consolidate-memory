@@ -1,10 +1,10 @@
-# Dream Beta-Harness — STATUS (dream-beta-tester v0.1.7 · built 2026-06-21 · refreshed 2026-07-05)
+# Dream Beta-Harness — STATUS (dream-beta-tester v0.1.7 · built 2026-06-21 · refreshed 2026-08-28)
 
 A reusable, any-repo harness that beta-tests the **consolidate-memory "dream" skill**: runs it
 as a faithful consumer, adversarially verifies it, and emits a version-stamped defect report.
 This document IS dream-beta-tester's changelog (the plugin has no separate `CHANGELOG.md` —
 its `plugin.json` version is the source of truth, currently **0.1.7**); this refresh validates
-the **consolidate-memory SKILL** at v0.1.68/v0.1.69 — a different plugin's version, tracked
+the **consolidate-memory SKILL** at v0.1.85 — a different plugin's version, tracked
 separately in *its* `CHANGELOG.md`, which does not mention these dream-beta-tester fixes.
 Consumer/beta-tester tooling — it NEVER patches the skill it tests. Design: [`SPEC.md`](SPEC.md).
 
