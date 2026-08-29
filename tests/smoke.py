@@ -4475,6 +4475,107 @@ check("v0.1.83: distill_history returns latest-row-block + full verdict lineage;
       "empty-honest shape",
       ms.distill_history(Path("/nonexistent")) == {"latest": None, "verdicts": []})
 
+# ── v0.1.87/W-C1 (docs/wc-registrar.spec.md §7): the registrar's Tier-2 gates + D-8 states + D-2.5 anchors ──
+with _Env73() as _e:
+    import io as _ioW, contextlib as _ctxW
+    import hashlib as _hlW
+    _wch = Path(_osB.environ["HOME"])
+    _wca = _wch / ".claude" / "projects" / "-src-alpha" / "memory"
+    _wcb = _wch / ".claude" / "projects" / "-src-beta" / "memory"
+    _wcg = _wch / ".claude" / "projects" / "-src-gamma" / "memory"
+    _wcd = _wch / ".claude" / "projects" / "-src-delta" / "memory"
+    check("v0.1.87/W-C1 0: the fixture-builder guard — the fixture only ever builds under a "
+          "TEMP home (the discovery-scope firewall, D-2a; a non-temp HOME is refused)",
+          "smoke73-" in str(_wch))
+    for _wcp in (_wca, _wcb, _wcg, _wcd):
+        _wcp.mkdir(parents=True)
+    # alpha: a DECLINED older record (the D-2.5 anchor) + ONE latest record carrying everything —
+    #        the shared template, a single-node template, a single-node chain, and (with beta)
+    #        a shared-d=1 day-spread blocker (latest-wins: rows split across records would vanish)
+    (_wca / ".consolidation-log.jsonl").write_text(
+        _wblog("old", [{"t": "gh pr create --title", "n": 8, "d": 5}],
+               chains=[{"t": ["gh pr create --title", "gh pr view"], "n": 2, "d": 1}],
+               verdict="proposed gh-pr-workflow — declined (local-only evidence)") + "\n" +
+        _wblog("new", [{"t": "python3 tests/smoke.py", "n": 4, "d": 3},
+                       {"t": "mypy --config-file mypy.ini", "n": 3, "d": 2},
+                       {"t": "rm -rf .tmp-out", "n": 1, "d": 1},
+                       {"t": "gh pr create --title", "n": 3, "d": 1}],
+               chains=[{"t": ["python3 tests/smoke.py", "mypy --config-file mypy.ini"], "n": 3, "d": 2}],
+               used=[{"a": "code-review", "n": 5}]) + "\n", encoding="utf-8")
+    # beta: the SHARED template again (fleet ✓) + the rm -rf pair (shared across nodes but d=1 → day-spread blocker)
+    (_wcb / ".consolidation-log.jsonl").write_text(
+        _wblog("b0", [{"t": "git log --oneline -1", "n": 1, "d": 1}],
+               verdict="nothing: covered by release.sh") + "\n" +
+        _wblog("b1", [{"t": "python3 tests/smoke.py", "n": 2, "d": 2},
+                      {"t": "rm -rf .tmp-out", "n": 1, "d": 1}],
+               chains=[{"t": ["python3 tests/smoke.py", "mypy --config-file mypy.ini"], "n": 2, "d": 2}]) + "\n",
+        encoding="utf-8")
+    # gamma: LEGACY — a record with NO distill block at all (no top key)
+    (_wcg / ".consolidation-log.jsonl").write_text(
+        _jsonB.dumps({"session": "old", "dream": {"sleep": "*s*", "beats": ["*b*"], "wake": "*w*"}}) + "\n",
+        encoding="utf-8")
+    # delta: INSTRUMENTED-EMPTY — top: [] IS a measurement (counts as reporting; never legacy)
+    (_wcd / ".consolidation-log.jsonl").write_text(
+        _wblog("d1", []) + "\n", encoding="utf-8")
+
+    _bufW = _ioW.StringIO()
+    with _ctxW.redirect_stdout(_bufW):
+        sg.registrar_report(_e.proj, as_json=True)
+    _rcj = _jsonB.loads(_bufW.getvalue())
+    _wcw = sg.fleet_workflows(_e.proj)
+    _wchist = ms.distill_history(_wca)
+
+    check("v0.1.87/W-C1 1: D-8 node_states — legacy (no top key) · instrumented_empty (top: []) · "
+          "reporting (rows) are DISTINCT, and instrumented-empty counts as reporting",
+          {s["node"]: s["state"] for s in _wcw["node_states"] if s["node"].startswith("src-")} ==
+          {"src-alpha": "reporting", "src-beta": "reporting", "src-gamma": "legacy",
+           "src-delta": "instrumented_empty"}
+          and _wcw["nodes_reporting"] == 3)
+    check("v0.1.87/W-C1 2: D-2.5 decline-anchor — the DECLINED record's row snapshot surfaces "
+          "({t,n,d} from decline time, not the latest window)",
+          any(v.get("decline_evidence") and v["decline_evidence"]["top"][0]["t"] == "gh pr create --title"
+              and v["decline_evidence"]["top"][0]["n"] == 8
+              for v in _wchist["verdicts"]))
+    check("v0.1.87/W-C1 3: registrar JSON — mechanical gates evaluated, model legs LISTED never "
+          "evaluated, dispositions correct (fleet-candidate / blocked)",
+          _rcj["nodes"] >= 4 and _rcj["nodes_reporting"] == 3
+          and {c["candidate"]: c["disposition"] for c in _rcj["candidates"]}
+          == {"python3 tests/smoke.py": "fleet-candidate",
+              "python3 tests/smoke.py → mypy --config-file mypy.ini": "fleet-candidate",
+              "rm -rf .tmp-out": "blocked: day-spread",
+              "mypy --config-file mypy.ini": "blocked: fleet-recurrence",
+              "gh pr create --title": "blocked: fleet-recurrence"}
+          and all(c["gates"]["model_judged"] == ["stable_inputs", "coverage", "decline_lineage"]
+                  and "stable_inputs" not in c["gates"]["mechanical"]
+                  for c in _rcj["candidates"])
+          and any(a["node"] == "src-alpha" and a["top"][0]["t"] == "gh pr create --title"
+                  for a in _rcj["decline_anchors"]))
+    check("v0.1.87/W-C1 4: the chain path of the cascade is exercised (the shared chain crosses "
+          "the fleet tier)",
+          any(c["form"] == "chain" and c["disposition"] == "fleet-candidate"
+              for c in _rcj["candidates"]))
+    check("v0.1.87/W-C1 6: a NON-declined verdict carries NO decline_evidence (the canonical "
+          "pattern gate — 'previously declined, now confirmed' must not anchor)",
+          all("decline_evidence" not in v for v in _wchist["verdicts"]
+              if "nothing:" in v["verdict"])
+          and any("decline_evidence" in v and v["decline_evidence"]["top_chains"]
+                  and v["decline_evidence"]["top"][0]["t"] == "gh pr create --title"
+                  for v in _wchist["verdicts"]))
+    check("v0.1.87/W-C1 7: the declined-still-recurring pairing — the anchor's template ALSO sits in "
+          "the current candidate window (the data the model leg compares against)",
+          any(c["candidate"] == "gh pr create --title" and c["disposition"] == "blocked: fleet-recurrence"
+              for c in _rcj["candidates"])
+          and any(a["node"] == "src-alpha" and a["top"][0]["t"] == "gh pr create --title"
+                  for a in _rcj["decline_anchors"]))
+    _preW = {p: _hlW.sha1(p.read_bytes()).hexdigest()
+             for p in _wch.rglob("*") if p.is_file()}
+    _bufW2 = _ioW.StringIO()
+    with _ctxW.redirect_stdout(_bufW2):
+        sg.registrar_report(_e.proj, as_json=True)
+    check("v0.1.87/W-C1 5: the registrar is READ-ONLY over every store",
+          _preW == {p: _hlW.sha1(p.read_bytes()).hexdigest()
+                    for p in _wch.rglob("*") if p.is_file()})
+
 # --- PR-#95 review pins (persistence-core lens — all three findings fire only on the
 # hand-edited / pre-v0.1.82 --from path; the dream path was already clean) ---
 with _tf73.TemporaryDirectory() as _td95:

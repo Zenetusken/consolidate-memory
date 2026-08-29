@@ -1298,10 +1298,29 @@ def distill_history(auto_mem: Path) -> dict:
         if not isinstance(d, dict):
             continue
         if d.get("verdict") or d.get("proposed") or d.get("created"):
-            verdicts.append({"session": str(rec.get("session", "") or ""),
-                             "verdict": str(d.get("verdict", "") or ""),
-                             "proposed": [str(x) for x in d.get("proposed", []) if isinstance(x, str)],
-                             "created": [str(x) for x in d.get("created", []) if isinstance(x, str)]})
+            entry: "dict[str, Any]" = {
+                "session": str(rec.get("session", "") or ""),
+                "verdict": str(d.get("verdict", "") or ""),
+                "proposed": [str(x) for x in d.get("proposed", []) if isinstance(x, str)],
+                "created": [str(x) for x in d.get("created", []) if isinstance(x, str)]}
+            # v0.1.87/W-C1 (D-2.5): the DECLINE-ANCHOR — a declined verdict carries the rows it
+            # declined ON (the same record's top/top_chains snapshot). The shipped lineage alone
+            # can't compute "more nodes/episodes than when declined"; the anchor makes the
+            # materially-new-evidence comparison computable. Attached ONLY to the CANONICAL
+            # "proposed … — declined" phrasing (a substring match false-positives on "previously
+            # declined, now confirmed" — polish-swarm catch); non-declined verdicts stay lean.
+            # Rows are PROJECTED to {t,n,d} / {t:[…],n,d} at attach time — a raw-dict passthrough
+            # would re-open the sample-privacy seam the persist projection exists to close
+            # (polish-swarm catch) and shares references with the record.
+            _vd = str(d.get("verdict", "") or "")
+            _is_declined = "proposed" in _vd.lower() and "declined" in _vd.lower()
+            if _is_declined and isinstance(d.get("top"), list):
+                entry["decline_evidence"] = {
+                    "top": [{"t": r.get("t"), "n": r.get("n"), "d": r.get("d")}
+                            for r in d.get("top", []) if isinstance(r, dict)],
+                    "top_chains": [{"t": r.get("t"), "n": r.get("n"), "d": r.get("d")}
+                                   for r in d.get("top_chains", []) if isinstance(r, dict)]}
+            verdicts.append(entry)
         if isinstance(d.get("top"), list):
             latest = d           # file order — the last row-carrying block wins
     return {"latest": latest, "verdicts": verdicts}

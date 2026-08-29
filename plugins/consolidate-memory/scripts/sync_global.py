@@ -1876,6 +1876,7 @@ def fleet_workflows(project_dir: Path) -> dict:
     used: dict = {}
     verdicts: list = []
     nodes_reporting = 0
+    node_states: list = []   # v0.1.87/W-C1 (D-8): legacy | instrumented_empty | reporting
     for store in stores:
         label = _node_label(store)
         hist = distill_history(store)
@@ -1883,7 +1884,13 @@ def fleet_workflows(project_dir: Path) -> dict:
             verdicts.append({"node": label, **v})
         latest = hist["latest"]
         if not isinstance(latest, dict):
+            node_states.append({"node": label, "state": "legacy"})
             continue
+        _rows = (latest.get("top") or []) or (latest.get("top_chains") or []) or (latest.get("used") or [])
+        if _rows:
+            node_states.append({"node": label, "state": "reporting"})
+        else:
+            node_states.append({"node": label, "state": "instrumented_empty"})
         nodes_reporting += 1
         for r in latest.get("top", []):
             if not (isinstance(r, dict) and isinstance(r.get("t"), str) and r["t"]):
@@ -1943,9 +1950,84 @@ def fleet_workflows(project_dir: Path) -> dict:
     _cmd_dir = Path.home() / ".claude" / "commands"
     if _cmd_dir.is_dir():
         inv["commands"] = sorted(f.stem for f in _cmd_dir.glob("*.md"))
-    return {"nodes": len(stores), "nodes_reporting": nodes_reporting,
+    return {"nodes": len(stores), "nodes_reporting": nodes_reporting, "node_states": node_states,
             "templates": tpl_out, "chains": chain_out, "families": fam_out,
             "used": used_out, "verdicts": verdicts, "inventory": inv}
+
+
+def registrar_report(project_dir: Path, as_json: bool) -> int:
+    """v0.1.87/W-C1 (docs/wc-registrar.spec.md): the registrar's Tier-2 MECHANICAL gate cascade
+    over the W-B join — fleet-wide placement candidates and what blocks them.
+
+    Per candidate (templates AND chains): fleet_recurrence = ≥2 distinct nodes (structural);
+    day_spread = fleet d ≥ 2 (a same-day double-run has d=1 and fails). The MODEL-judged legs
+    (stable inputs · coverage · decline lineage vs the decline-anchors) are LISTED, never
+    evaluated — the engine never fabricates a model-leg verdict (no-failure-masking law).
+    READ-ONLY: proposals stay report-then-apply; nothing here writes an artifact.
+
+    Emits: {nodes, nodes_reporting, node_states (legacy|instrumented_empty|reporting — D-8),
+            candidates: [{candidate, form, evidence:{nodes,d,n},
+                          gates:{mechanical:{fleet_recurrence,day_spread},
+                                 model_judged:[...]}, disposition}],
+            decline_anchors: [{node, verdict, top:[{t,n,d}], top_chains:[...]}] (D-2.5)}."""
+    import json as _json
+    project_dir = project_dir.resolve()
+    if not project_dir.is_dir():
+        print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
+        return 2
+    w = fleet_workflows(project_dir)
+    model_legs = ["stable_inputs", "coverage", "decline_lineage"]
+    candidates: list = []
+
+    def _eval(nodes: list, d: int) -> "tuple[str, bool, bool]":
+        fleet = len(nodes) >= 2
+        spread = d >= 2
+        disp = ("fleet-candidate" if fleet and spread
+                else ("blocked: fleet-recurrence" if not fleet else "blocked: day-spread"))
+        return disp, fleet, spread
+
+    for r in w["templates"]:
+        disp, fleet, spread = _eval(r["nodes"], r["d"])
+        candidates.append({"candidate": r["template"], "form": "command",
+                           "evidence": {"nodes": r["nodes"], "d": r["d"], "n": r["n"]},
+                           "gates": {"mechanical": {"fleet_recurrence": fleet, "day_spread": spread},
+                                     "model_judged": model_legs},
+                           "disposition": disp})
+    for r in w["chains"]:
+        disp, fleet, spread = _eval(r["nodes"], r["d"])
+        candidates.append({"candidate": r["chain"], "form": "chain",
+                           "evidence": {"nodes": r["nodes"], "d": r["d"], "n": r["n"]},
+                           "gates": {"mechanical": {"fleet_recurrence": fleet, "day_spread": spread},
+                                     "model_judged": model_legs},
+                           "disposition": disp})
+    candidates.sort(key=lambda c: (c["disposition"] != "fleet-candidate",
+                                   -len(c["evidence"]["nodes"]), -c["evidence"]["d"],
+                                   -c["evidence"]["n"], c["candidate"]))
+    anchors: list = []
+    for v in w["verdicts"]:
+        ev = v.get("decline_evidence")
+        if isinstance(ev, dict):
+            anchors.append({"node": v["node"], "verdict": v["verdict"],
+                            "top": ev.get("top", []), "top_chains": ev.get("top_chains", [])})
+    out = {"nodes": w["nodes"], "nodes_reporting": w["nodes_reporting"],
+           "node_states": w["node_states"], "candidates": candidates,
+           "decline_anchors": anchors}
+    if as_json:
+        print(_json.dumps(out, indent=2))
+        return 0
+    print("\n  ✦ REGISTRAR · Tier-2 mechanical gates (fleet-wide placement candidates)")
+    print(f"    {out['nodes_reporting']}/{out['nodes']} nodes reporting · "
+          f"{len(candidates)} candidate(s) · {sum(1 for c in candidates if c['disposition'] == 'fleet-candidate')} fleet-candidate(s)")
+    _st = "; ".join(f"{s['node']}:{s['state']}" for s in out["node_states"])
+    print(f"    node states — {_st}")
+    for c in candidates:
+        _mk = "✓" if c["disposition"] == "fleet-candidate" else "✗"
+        print(f"    {_mk} [{c['form']}] {c['candidate'][:64]} · "
+              f"nodes={len(c['evidence']['nodes'])} d={c['evidence']['d']} · {c['disposition']}")
+    for a in anchors:
+        print(f"    ⚓ declined@{a['node']}: {a['verdict'][:50]}")
+    print(f"    model-judged legs (never engine-evaluated): {', '.join(model_legs)}\n")
+    return 0
 
 
 def workflows_report(project_dir: Path, as_json: bool) -> int:
@@ -2560,6 +2642,10 @@ def _dispatch() -> int:
     if args and args[0] == "--staleness":   # v0.1.80: READ-ONLY absorption-lag sweep (beacon Stage A)
         return staleness_report(project_dir, "--json" in args)
     if args and args[0] == "--workflows":   # v0.1.83 (W-B): READ-ONLY fleet workflow evidence lens
+        # v0.1.87/W-C1: --registrar rides the SAME argv[1] cue (a conscious choice — the
+        # cross-project beat fires on the consult too, exactly as for the bare lens)
+        if "--registrar" in args:
+            return registrar_report(project_dir, "--json" in args)
         return workflows_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
         return gc(project_dir, "--apply" in args, edges="--edges" in args)
@@ -2573,7 +2659,7 @@ def _dispatch() -> int:
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--edges] [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
               "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --staleness [--json] PROJECT_DIR "
-              "| --workflows [--json] PROJECT_DIR "
+              "| --workflows [--json] [--registrar] PROJECT_DIR "
               "| --network", file=sys.stderr)
         return 2
     evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)
