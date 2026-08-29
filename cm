@@ -21,6 +21,7 @@ case "$cmd" in
   harvest)  exec python3 "$S/sync_global.py" --harvest "$@" ;;    # capture every node's usage windows into the fleet ledger
   staleness) exec python3 "$S/sync_global.py" --staleness "$@" ;; # absorption lag per node (read-only; beacon Stage A)
   workflows) exec python3 "$S/sync_global.py" --workflows "$@" ;; # fleet workflow evidence over the W-A distill rows (read-only)
+  calibration) exec python3 "$S/calibration_report.py" "$@" ;; # the standing fleet-calibration report + baseline delta (read-only; the refit stays gated)
   beacon)   cd "${1:-$PWD}" 2>/dev/null && exec python3 "$S/session_beacon.py" </dev/null ;; # dump the session-beacon line for DIR (debug)
   network)  exec python3 "$S/sync_global.py" --network ;;         # shared-consciousness graph
   render)   exec python3 "$S/render_dashboard.py" "$@" ;;         # cycle.json -> ASCII dashboard
@@ -49,6 +50,10 @@ cm — consolidate-memory
   cm harvest [DIR]        capture every node's organic-read windows into ~/.claude/memory/.fleet-usage.jsonl
   cm staleness [DIR] [--json] absorption lag per node — last dream, missing globals, stale mirrors (read-only)
   cm workflows [DIR] [--json] fleet-recurring workflow templates/chains + adoption + verdict lineage (read-only)
+  cm calibration [--json]  the standing fleet-calibration report: magnitude/band distribution, index
+                       utilization, usage/miss signal, demotion windows + the DELTA vs the frozen
+                       2026-08-29 baseline — one command decides whether the band/budget refit
+                       evidence gate has accrued data (read-only; the refit itself stays gated)
   cm beacon [DIR]         print the SessionStart beacon line for DIR (empty = silent; debug lens)
   cm network           render the cross-project shared-memory graph
   cm render cycle.json render an ASCII dashboard from a cycle record
@@ -60,7 +65,7 @@ cm — consolidate-memory
                        add --json for the raw cycle records (pipe to jq). The 3rd view of the dream log.
 
 A full pass is best driven by the plugin itself. Dogfood it from this repo:
-  claude plugin marketplace add .
+  claude plugin marketplace add ./
   claude plugin install consolidate-memory@zenetusken-plugins
 then say "dream" in any project. See README.md.
 EOF
