@@ -1,8 +1,9 @@
-# W-C registrar — SPEC v0.2 (adversarially reviewed + curated)
+# W-C registrar — SPEC v0.3 (adversarially reviewed, curated, polish-amended)
 
 **The distill vertical's final stage: the registrar/adoption loop that proposes and places
 fleet-wide workflow artifacts from W-A/W-B evidence.** v0.2 = the curated revision after a
-3-lens adversarial review (mechanics/contracts, safety/blast-radius, scope/economy); every
+3-lens adversarial review; v0.3 = the polish-swarm amendments (declined-leg
+pins as data-presence, cue wording — see the commit history) (mechanics/contracts, safety/blast-radius, scope/economy); every
 accepted finding was re-verified against the live tree. Companion of record:
 `distill-feature-plan` (the vertical's plan + stage-3 inputs) and the SKILL's Phase-5 step 6.
 
