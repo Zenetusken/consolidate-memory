@@ -193,10 +193,13 @@ into the cycle record's `workflow_proposals` block (D-7).
 
 1. **Gate-cascade pins on the fixture** (templates AND chains): shared→passes fleet
    recurrence · single-node→blocked AT THE FLEET TIER (Tier-1 local proposals are
-   unaffected — the two-tier pin) · declined-without-new-evidence→blocked ·
-   declined-WITH-new-evidence→passes (requires the D-2.5 evidence anchor) ·
-   already-covered→blocked (model leg — pinned as not-engine-evaluated, i.e. the
-   engine's disposition leaves it for the model).
+   unaffected — the two-tier pin) · already-covered→blocked (model leg — pinned as
+   not-engine-evaluated, i.e. the engine's disposition leaves it for the model).
+   The DECLINE legs are data-presence pins, not dispositions (decline_lineage is
+   model-judged — an engine "declined→passes" disposition is impossible by design,
+   v0.3 review catch): the fixture carries a declined-still-recurring candidate (its
+   anchor surfaces WITH the current-window rows the model compares against) AND a
+   declined CHAIN case — the anchor/current pairing is what the model leg consumes.
 2. **Shape pin:** the fixture's W-A row shape == the live `distill` block shape the W-B
    reader parses (drift-proof).
 3. **Discovery-scope pin:** the fixture, built under a temp HOME, is outside the live
