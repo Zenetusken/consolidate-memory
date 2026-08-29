@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import tempfile
 from pathlib import Path
@@ -29,7 +30,9 @@ PROBE_SENTINEL = "cycle-probe-frozen-v1"
 
 
 def _discover_skill(skill: str | None) -> Path | None:
-    """Locate the consolidate-memory scripts dir: explicit flag → env → plugin cache (version-max)."""
+    """Locate the consolidate-memory scripts dir: explicit flag → env → plugin cache (version-max).
+
+    Version-ordered, NOT lexicographic — a string sort picks 0.1.9 over 0.1.19."""
     if skill:
         p = Path(skill).expanduser().resolve()
         return p if p.is_dir() else None
@@ -38,8 +41,13 @@ def _discover_skill(skill: str | None) -> Path | None:
         p = Path(env).expanduser().resolve()
         return p if p.is_dir() else None
     cache = Path.home() / ".claude" / "plugins" / "cache"
-    hits = sorted(cache.glob("*/consolidate-memory/*/scripts"))
-    return hits[-1] if hits else None
+
+    def _ver_key(p: Path) -> "tuple[int, ...]":
+        parts = [x for x in p.parent.name.split(".") if x.isdigit()]
+        return tuple(int(x) for x in parts) or (-1,)
+
+    hits = list(cache.glob("*/consolidate-memory/*/scripts"))
+    return max(hits, key=_ver_key) if hits else None
 
 
 def main() -> int:
@@ -70,8 +78,10 @@ def main() -> int:
         (repo / "README.md").write_text(
             "# probe-other\n\nDummy second project — its cycle record is the FROZEN contaminant "
             "the gate's cycle-probe self-test feeds the oracle.\n", encoding="utf-8")
-        # A small honest store: 1 fact + a minimal index + a stamped marker.
-        store = home / ".claude" / "projects" / "-tmp-cm-cycle-probe-probe-other" / "memory"
+        # A small honest store at the REAL slug (the M3 rule over the temp repo's resolved path —
+        # a hardcoded slug names a store memory_status never resolves, making the record
+        # store-absent-shaped; measured by the mechanics review).
+        store = home / ".claude" / "projects" / re.sub(r"[^A-Za-z0-9]", "-", str(repo.resolve())) / "memory"
         store.mkdir(parents=True)
         (store / "probe-other-fact.md").write_text(
             "---\nname: probe-other-fact\ndescription: the foreign project's honest fact\n"

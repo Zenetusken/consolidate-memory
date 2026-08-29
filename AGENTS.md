@@ -79,8 +79,9 @@ plugins/dream-beta-tester/        QA companion plugin
   .claude-plugin/plugin.json      manifest (v0.1.7)
   skills/dream-beta-test/         judgment-lens skill (/dream-beta-test) + references/lenses.md (7 lenses)
   scripts/                        deterministic oracle (beta_checks.py) + run/render/emit helpers
-  fixtures/                       make_fixture.py + README only — gate-repo and the canary-v0.1.19 store
-                                  are GENERATED at install time under ~/.dream-beta-test/, never committed
+  fixtures/                       make_fixture.py + make_cycle_probe.py + canary-v0.1.19/ (VENDORED
+                                  tag-faithful known-bad scripts, SHA256SUMS-manifested) — the generated
+                                  STORES live under ~/.dream-beta-test/, never committed
   maintainer/                     ci_check.sh + install-gate.sh — the pre-push gate
   docs/                           SPEC.md (design-of-record) · STATUS.md (validation matrix + defect log)
                                   · CONTRACT.md (reports/latest.json schema + self-heal contract)

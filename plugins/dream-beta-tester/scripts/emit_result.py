@@ -140,8 +140,8 @@ def main() -> int:
         verdict = "clean"
     if verdict == "clean" and p_ok:
         _probe_meaning = ("the oracle proved it still DETECTS the frozen contaminated cycle record BY "
-                          "IDENTITY (CHK-CYCLE-PROJECT + CHK-CYCLE-BUDGET ⊆ detected FAIL ids) before "
-                          "this verdict was trusted")
+                          "IDENTITY (detected FAIL ids == {CHK-CYCLE-PROJECT, CHK-CYCLE-BUDGET} exactly) "
+                          "before this verdict was trusted")
 
     fails = [r for r in results if r.get("status") == "FAIL"]
     warns = [r for r in results if r.get("status") == "WARN"]

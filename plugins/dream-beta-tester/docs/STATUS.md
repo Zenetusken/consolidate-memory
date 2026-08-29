@@ -91,6 +91,9 @@ Three-lens adversarial spec review, curated v0.2; evidence phase measured hermet
   network trigger node — `CHK-CYCLE-BUDGET` was previously SILENTLY ABSENT from the fixture run
   (no node → check suppressed). Re-baselined: 21 results, 0 FAIL / 0 WARN. The mirror's canonical
   is deliberately FICTIONAL — no synthetic canonical is ever written into a real global store.
+  Known cost, accepted: the fixture now appears as a KNOWN SYNTHETIC node in the maintainer's own
+  fleet scans (`--tokens`/`--network`/`--staleness`) — inert by construction (the fictional
+  canonical never replicates), and `--gc` reclaiming it is self-healed by the gate (A6).
 - **Scripted mutating pass** (`run_beta.py --mutate`): the dream's real write order (snapshot →
   marker stamp → seed → audit `--into` → seed-marker stamp → driver-authored scoped fact →
   persist → promote) on a HERMETIC TEMP-HOME copy, verified against a claimed-writes plan
@@ -134,6 +137,7 @@ values); regenerate an existing on-disk fixture with `install-gate.sh` to pick i
 | **A1 inert seam (measured)** | flag-absent oracle output carries no `cycle_probe` key; main summary/results byte-stable while the probe FAILs; exit code untouched |
 | **A3 mutating pass (measured)** | clean: 0 unexpected, 0 phantom, oob green, marker advanced; two runs byte-identical modulo `global_ref_since:`; leak-home unwritten (env pinning); frozen fixture untouched |
 | **A3 claimed-writes seam** | unclaimed write → unexpected; claimed-without-delta → phantom; allowlisted no-delta → not a phantom; `claimed=None` = pre-A2 behavior |
+| **A6 GC-reclaim self-heal (measured)** | the maintainer's own `--gc --apply` reclaims the fixture's orphan mirror (its canonical is fictional); the gate regenerates the idempotent fixture on the next run and still reaches `clean` with teeth intact — pinned end-to-end |
 
 ## The closed loop (both ends observed)
 My v0.1.19-era defect catalog (`~/consolidate-memory-v0.1.19-defects.md`) → the author's patches

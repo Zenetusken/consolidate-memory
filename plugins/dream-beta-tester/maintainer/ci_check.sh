@@ -30,6 +30,17 @@ if [ ! -f "$SCRIPTS/beta_checks.py" ] || [ ! -f "$SKILL/memory_status.py" ]; the
 if [ ! -f "$TEST_REPO/README.md" ]; then
   echo "$TAG fixture not set up — run $HERE/install-gate.sh first. Gate SKIPPED (fail-open)." >&2; exit 0; fi
 
+# v0.1.8/A6 SELF-HEAL: the fixture's trigger-node mirror is an ORPHAN by construction (its
+# canonical is deliberately fictional) — the maintainer's own `sync_global --gc --apply` reclaims
+# it, un-making the node until CHK-CYCLE-BUDGET silently vanishes from the run (→ probe
+# teeth-loss). Regenerate the idempotent fixture when the mirror is missing, and say so loudly.
+_FIX_SLUG="$(python3 -c "import re,sys; print(re.sub(r'[^A-Za-z0-9]','-',sys.argv[1]))" "$(readlink -f "$TEST_REPO")")"
+_FIX_STORE="$HOME/.claude/projects/$_FIX_SLUG/memory"
+if [ -d "$_FIX_STORE" ] && ! grep -ql "global_ref:" "$_FIX_STORE"/*.md 2>/dev/null; then
+  echo "$TAG ⚠ fixture trigger-node mirror reclaimed (GC'd?) — regenerating the fixture (idempotent)." >&2
+  python3 "$HERE/../fixtures/make_fixture.py" "$TEST_REPO" >/dev/null
+fi
+
 mkdir -p "$REPORTS" 2>/dev/null
 
 # v0.1.7/B8: fixed names in a world-writable /tmp (not $TMPDIR-portable, and a predictable shared
@@ -146,6 +157,11 @@ case "$VERDICT" in
     printf '%s' "$DETAIL" | grep -i '^  FAIL' >&2
     echo "$TAG orchestrator → read $REPORTS/latest.json (verdict=regression · actionable[]) · human → /dream-beta-test · override → git push --no-verify" >&2
     exit 1 ;;
+  selftest_broken)
+    # v0.1.8/A1: the cycle-probe/canary teeth-loss case IS a real verdict (written to latest.json),
+    # not an "unknown" — the loud teeth-loss lines above say WHY; here just route the exit.
+    echo "$TAG ⚠ verdict=selftest_broken — the HARNESS is broken (see latest.json). Push ALLOWED (fail-open); never ship on this run's clean-reading." >&2
+    exit 0 ;;
   *)
     echo "$TAG ⚠ no verdict (verdict='${VERDICT:-none}') — gate SKIPPED (fail-open). Push allowed." >&2
     printf '%s' "$DETAIL" >&2; exit 0 ;;

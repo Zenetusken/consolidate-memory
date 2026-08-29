@@ -5009,17 +5009,19 @@ check("v0.1.8/A5 1: the vendored canary manifest verifies (byte-faithful to the 
 
 
 def _graftA5(canary_scripts: Path, graft: bool) -> bool:
-    """Replicate install-gate.sh's M3-slug graft (or not) on a canary copy; abort loudly on a
-    file that lacks the old pattern (the false-green class the graft exists to prevent)."""
-    ok = True
+    """Replicate install-gate.sh's M3-slug graft (or not) on a canary copy; return True iff at
+    least ONE file carried the old slug pattern (files without it are sed-style no-ops — the
+    total-absence case means the vendored canary no longer matches v0.1.19 and the self-test
+    would false-green)."""
+    applied = 0
     for f in canary_scripts.glob("*.py"):
         t = f.read_text(encoding="utf-8")
         if graft:
-            if 're.sub(r"[/_]"' not in t:
-                ok = False
+            if 're.sub(r"[/_]"' in t:
+                applied += 1
             t = t.replace('re.sub(r"[/_]"', 're.sub(r"[^A-Za-z0-9]"')
             f.write_text(t, encoding="utf-8")
-    return ok
+    return applied >= 1
 
 
 def _run_gateA5(home: str, state: str) -> "tuple[str, str, int]":
@@ -5036,7 +5038,9 @@ def _make_canaryA5(state: str, graft: bool) -> None:
     dst.mkdir(parents=True, exist_ok=True)
     for f in _canA5.glob("*.py"):
         (dst / f.name).write_bytes(f.read_bytes())
-    _graftA5(dst, graft)
+    if graft and not _graftA5(dst, graft):
+        raise RuntimeError("canary graft pattern missing — the vendored canary no longer "
+                           "carries the old slug rule; the self-test would false-green")
 
 
 with _tf43.TemporaryDirectory() as _tdA5:
@@ -5079,6 +5083,39 @@ with _tf43.TemporaryDirectory() as _tdA5:
         check("v0.1.8/A5 3: UNGRAFTED canary on a dot-path → selftest_broken (fail-open, loud) — the B6 false-green class stays closed",
               _srA6 == 0 and _ljA6["verdict"] == "selftest_broken" and _ljA6["self_test"]["ok"] is False
               and not set(_ljA6["self_test"]["expected_ids"]).issubset(set(_ljA6["self_test"]["detected_ids"])))
+
+# ── v0.1.8/A6: GC-reclaim self-heal — the maintainer's own --gc reclaims the orphan mirror;
+#    the gate must regenerate the fixture and still reach a clean verdict with teeth intact ────
+with _tf43.TemporaryDirectory() as _tdA7:
+    _homeA7 = str(Path(_tdA7) / "home")
+    Path(_homeA7).mkdir()
+    _stateA7 = str(Path(_tdA7) / ".dt-state")
+    Path(_stateA7).mkdir()
+    _repoA7 = str(Path(_stateA7) / "gate-repo")
+    _run_home_a1(_homeA7, str(_bcf), _repoA7)
+    # a populated global store — the --gc guard refuses on an absent/empty one (probe G)
+    _gA7 = Path(_homeA7) / ".claude" / "memory"
+    _gA7.mkdir(parents=True)
+    (_gA7 / "real-canonical.md").write_text(
+        "---\nname: real-canonical\ndescription: a real canonical for the GC-reclaim pin\n"
+        "metadata:\n  node_type: memory\n  type: reference\n  projects: [gate-repo]\n---\n\nA real canonical fact.\n",
+        encoding="utf-8")
+    _goA7, _geA7, _grcA7 = _run_home_a1(_homeA7, str(_scripts54 / "sync_global.py"),
+                                        "--gc", _repoA7, "--apply")
+    _storeA7 = Path(_homeA7) / ".claude" / "projects" / ms.slug_for(Path(_repoA7)) / "memory"
+    check("v0.1.8/A6 1: --gc --apply reclaims the fixture's orphan mirror (the trigger-node loss vector)",
+          _grcA7 == 0 and not (_storeA7 / "fixture-mirror-01.md").exists())
+    _envA7 = {**_os53.environ, "DREAM_BETA_STATE": _stateA7}
+    _sp53.run([sys.executable, str(_bcp), "--skill", str(_scripts54),
+               "--out", str(Path(_stateA7) / "cycle-probe.json")],
+              capture_output=True, text=True, timeout=120, env=_envA7)
+    _make_canaryA5(_stateA7, graft=True)
+    _goA7b, _geA7b, _grA7b = _run_gateA5(_homeA7, _stateA7)
+    _ljA7 = _json43.loads((Path(_stateA7) / "reports" / "latest.json").read_text(encoding="utf-8"))
+    check("v0.1.8/A6 2: the gate self-heals (regenerates the mirror) and the verdict stays clean with teeth intact",
+          _grA7b == 0 and _ljA7["verdict"] == "clean" and _ljA7["cycle_probe"]["ok"] is True
+          and (_storeA7 / "fixture-mirror-01.md").exists()
+          and "global_ref:" in (_storeA7 / "fixture-mirror-01.md").read_text(encoding="utf-8"))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

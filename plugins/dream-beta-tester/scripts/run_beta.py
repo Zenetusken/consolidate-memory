@@ -66,10 +66,15 @@ Usage:
       --no-restore     do not restore even in --test (inspect the post-run state); same as --keep.
       --reports-dir D  where reports + snapshots live (default: <this script>/reports).
       --json           emit a structured run summary as JSON (in addition to writing the report).
+      --mutate         scripted mutating pass (SPEC-A P-3): the dream's real write order on a
+                       hermetic temp-home copy, verified against a claimed-writes plan + the
+                       out-of-band global-store channel; --keep retains the copy (never the
+                       frozen fixture).
       -v/--verbose     stream the child tools' human output too.
 
 Exit code: 1 if the run surfaced a CONFIRMED defect (a 2a-VERIFIED finding — the renderer's exit
 code is authoritative), else 0. A pre-flight failure (skill not found / a child tool crash) → 2.
+With --mutate: 1 = the honesty leg FAILED (unexpected/phantom/oob), 0 = clean; 2 = no store.
 """
 
 from __future__ import annotations
@@ -349,6 +354,15 @@ class MutateResult:
     kept_path: str
 
 
+def _failed_mutate(plan: list[dict[str, Any]], reason: str) -> MutateResult:
+    """A structured failure verdict — a broken skill under test is reported loudly with the
+    child's stderr in the plan, NEVER with a raw traceback (the harness's own
+    SKIP-never-crash discipline applied to the driver)."""
+    return MutateResult(plan=plan, claims=[], diff_summary={}, unexpected=[], phantom=[],
+                        out_of_band={"ok": False, "error": reason}, marker_advanced=False,
+                        clean=False, kept=False, kept_path="")
+
+
 def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult:
     """Run the dream's REAL write order on a HERMETIC TEMP-HOME COPY of the store (SPEC-A §5).
 
@@ -366,6 +380,7 @@ def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult
 
     tmp_root = Path(tempfile.mkdtemp(prefix="cm-mutate-"))
     plan: list[dict[str, Any]] = []
+    _disposed = False  # set True only after a successful --keep move (the finally cleanup gate)
 
     def _step(name: str, rc: int, detail: str = "") -> None:
         plan.append({"step": name, "rc": rc, "detail": detail[:200]})
@@ -395,16 +410,25 @@ def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult
 
         # ── marker stamp (Phase 5 step 5, scripted) — allowlisted derived write, exempt from claims ──
         state = tgt_store / ".consolidation-state.json"
-        d = json.loads(state.read_text(encoding="utf-8"))
+        try:
+            d = json.loads(state.read_text(encoding="utf-8"))
+            if not isinstance(d, dict):
+                raise ValueError("state file is not a JSON object")
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            _step("ABORT", 1, f"marker state unreadable: {e}")
+            return _failed_mutate(plan, f"marker state unreadable ({e})")
         d["commit"], d["timestamp"] = _MUTATE_STAMP_COMMIT, _MUTATE_STAMP_TS
         state.write_text(json.dumps(d), encoding="utf-8")
         _step("marker-stamp", 0)
 
         # ── seed → audit --into → seed-marker stamp (the model's job, scripted) ──
         r1 = _child("memory_status.py", repo_arg, "--json")
+        _step("seed", r1[0])
+        if r1[0] != 0:
+            _step("ABORT", 1, f"memory_status --json failed: {(r1[2].strip() or r1[1].strip())[-200:]}")
+            return _failed_mutate(plan, f"seed failed (rc={r1[0]}) — a broken skill is THE finding")
         seed_path = tmp_root / "seed.json"
         seed_path.write_text(r1[1], encoding="utf-8")
-        _step("seed", r1[0])
         r2 = _child("memory_status.py", "--audit", snap_path, "--into", str(seed_path))
         _step("audit", r2[0], r2[2].strip().splitlines()[-1] if r2[2].strip() else "")
         seed = json.loads(seed_path.read_text(encoding="utf-8"))
@@ -463,7 +487,7 @@ def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult
             # would merge the worlds, not clobber)
             kept_path = str(reports_dir / f".mutate-keep-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}")
             shutil.move(str(tmp_root), kept_path)
-            tmp_root = Path(kept_path)  # moved — nothing to clean
+            _disposed = True
 
         return MutateResult(
             plan=plan, claims=sorted(claims), diff_summary=diff_report.summary,
@@ -472,7 +496,9 @@ def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult
             clean=clean, kept=keep, kept_path=kept_path,
         )
     finally:
-        if tmp_root.exists() and not keep:
+        # _disposed covers the keep-move success; a FAILED move (or any non-keep exit) still
+        # cleans the temp world — no /tmp leak on the exotic crash path.
+        if not _disposed and tmp_root.exists():
             shutil.rmtree(tmp_root, ignore_errors=True)
 
 

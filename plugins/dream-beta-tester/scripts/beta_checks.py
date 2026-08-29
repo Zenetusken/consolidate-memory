@@ -1464,7 +1464,8 @@ def _run_cycle_probe(ctx: Ctx, path: str) -> dict[str, Any]:
         probe_ctx = replace(ctx, status=record)
         probe_results = cycle_identity(probe_ctx)
     except Exception as e:  # noqa: BLE001 — a probe-leg failure must degrade to teeth-loss, never crash the run
-        block["error"] = f"probe leg raised {type(e).__name__}: {e}"
+        if not block["error"]:  # preserve the unstamped-record error; it's the more useful diagnosis
+            block["error"] = f"probe leg raised {type(e).__name__}: {e}"
         return block
     tagged = [replace(r, basis="probe", site=f"probe:{r.site}") for r in probe_results]
     block["detected_ids"] = [r.id for r in tagged if r.status == "FAIL"]
