@@ -196,7 +196,7 @@ is available in **every** project. Update later with `/plugin update consolidate
 > over Git.
 
 **Working on the tool itself?** Clone the repo, then register it as a local marketplace
-and install the plugin — `claude plugin marketplace add .` then `claude plugin install
+and install the plugin — `claude plugin marketplace add ./` then `claude plugin install
 consolidate-memory@zenetusken-plugins` — so you dogfood the exact artifact users get
 (the old user-skill symlink model is retired: `SKILL.md` now uses `${CLAUDE_PLUGIN_ROOT}`,
 which is only set when the skill loads as a plugin).
