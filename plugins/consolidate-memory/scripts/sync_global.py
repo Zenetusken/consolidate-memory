@@ -2018,6 +2018,8 @@ def registrar_report(project_dir: Path, as_json: bool) -> int:
     print("\n  ✦ REGISTRAR · Tier-2 mechanical gates (fleet-wide placement candidates)")
     print(f"    {out['nodes_reporting']}/{out['nodes']} nodes reporting · "
           f"{len(candidates)} candidate(s) · {sum(1 for c in candidates if c['disposition'] == 'fleet-candidate')} fleet-candidate(s)")
+    _st = "; ".join(f"{s['node']}:{s['state']}" for s in out["node_states"])
+    print(f"    node states — {_st}")
     for c in candidates:
         _mk = "✓" if c["disposition"] == "fleet-candidate" else "✗"
         print(f"    {_mk} [{c['form']}] {c['candidate'][:64]} · "

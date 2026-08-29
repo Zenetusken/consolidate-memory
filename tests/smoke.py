@@ -4484,6 +4484,9 @@ with _Env73() as _e:
     _wcb = _wch / ".claude" / "projects" / "-src-beta" / "memory"
     _wcg = _wch / ".claude" / "projects" / "-src-gamma" / "memory"
     _wcd = _wch / ".claude" / "projects" / "-src-delta" / "memory"
+    check("v0.1.87/W-C1 0: the fixture-builder guard — the fixture only ever builds under a "
+          "TEMP home (the discovery-scope firewall, D-2a; a non-temp HOME is refused)",
+          "smoke73-" in str(_wch))
     for _wcp in (_wca, _wcb, _wcg, _wcd):
         _wcp.mkdir(parents=True)
     # alpha: a DECLINED older record (the D-2.5 anchor) + ONE latest record carrying everything —
@@ -4491,16 +4494,22 @@ with _Env73() as _e:
     #        a shared-d=1 day-spread blocker (latest-wins: rows split across records would vanish)
     (_wca / ".consolidation-log.jsonl").write_text(
         _wblog("old", [{"t": "gh pr create --title", "n": 8, "d": 5}],
+               chains=[{"t": ["gh pr create --title", "gh pr view"], "n": 2, "d": 1}],
                verdict="proposed gh-pr-workflow — declined (local-only evidence)") + "\n" +
         _wblog("new", [{"t": "python3 tests/smoke.py", "n": 4, "d": 3},
                        {"t": "mypy --config-file mypy.ini", "n": 3, "d": 2},
-                       {"t": "rm -rf .tmp-out", "n": 1, "d": 1}],
+                       {"t": "rm -rf .tmp-out", "n": 1, "d": 1},
+                       {"t": "gh pr create --title", "n": 3, "d": 1}],
                chains=[{"t": ["python3 tests/smoke.py", "mypy --config-file mypy.ini"], "n": 3, "d": 2}],
                used=[{"a": "code-review", "n": 5}]) + "\n", encoding="utf-8")
     # beta: the SHARED template again (fleet ✓) + the rm -rf pair (shared across nodes but d=1 → day-spread blocker)
     (_wcb / ".consolidation-log.jsonl").write_text(
+        _wblog("b0", [{"t": "git log --oneline -1", "n": 1, "d": 1}],
+               verdict="nothing: covered by release.sh") + "\n" +
         _wblog("b1", [{"t": "python3 tests/smoke.py", "n": 2, "d": 2},
-                      {"t": "rm -rf .tmp-out", "n": 1, "d": 1}]) + "\n", encoding="utf-8")
+                      {"t": "rm -rf .tmp-out", "n": 1, "d": 1}],
+               chains=[{"t": ["python3 tests/smoke.py", "mypy --config-file mypy.ini"], "n": 2, "d": 2}]) + "\n",
+        encoding="utf-8")
     # gamma: LEGACY — a record with NO distill block at all (no top key)
     (_wcg / ".consolidation-log.jsonl").write_text(
         _jsonB.dumps({"session": "old", "dream": {"sleep": "*s*", "beats": ["*b*"], "wake": "*w*"}}) + "\n",
@@ -4532,18 +4541,32 @@ with _Env73() as _e:
           _rcj["nodes"] >= 4 and _rcj["nodes_reporting"] == 3
           and {c["candidate"]: c["disposition"] for c in _rcj["candidates"]}
           == {"python3 tests/smoke.py": "fleet-candidate",
+              "python3 tests/smoke.py → mypy --config-file mypy.ini": "fleet-candidate",
               "rm -rf .tmp-out": "blocked: day-spread",
               "mypy --config-file mypy.ini": "blocked: fleet-recurrence",
-              "python3 tests/smoke.py → mypy --config-file mypy.ini": "blocked: fleet-recurrence"}
+              "gh pr create --title": "blocked: fleet-recurrence"}
           and all(c["gates"]["model_judged"] == ["stable_inputs", "coverage", "decline_lineage"]
                   and "stable_inputs" not in c["gates"]["mechanical"]
                   for c in _rcj["candidates"])
           and any(a["node"] == "src-alpha" and a["top"][0]["t"] == "gh pr create --title"
                   for a in _rcj["decline_anchors"]))
-    check("v0.1.87/W-C1 4: the chain path of the cascade is exercised (single-node chain blocked at "
+    check("v0.1.87/W-C1 4: the chain path of the cascade is exercised (the shared chain crosses "
           "the fleet tier)",
-          any(c["form"] == "chain" and c["disposition"] == "blocked: fleet-recurrence"
+          any(c["form"] == "chain" and c["disposition"] == "fleet-candidate"
               for c in _rcj["candidates"]))
+    check("v0.1.87/W-C1 6: a NON-declined verdict carries NO decline_evidence (the canonical "
+          "pattern gate — 'previously declined, now confirmed' must not anchor)",
+          all("decline_evidence" not in v for v in _wchist["verdicts"]
+              if "nothing:" in v["verdict"])
+          and any("decline_evidence" in v and v["decline_evidence"]["top_chains"]
+                  and v["decline_evidence"]["top"][0]["t"] == "gh pr create --title"
+                  for v in _wchist["verdicts"]))
+    check("v0.1.87/W-C1 7: the declined-still-recurring pairing — the anchor's template ALSO sits in "
+          "the current candidate window (the data the model leg compares against)",
+          any(c["candidate"] == "gh pr create --title" and c["disposition"] == "blocked: fleet-recurrence"
+              for c in _rcj["candidates"])
+          and any(a["node"] == "src-alpha" and a["top"][0]["t"] == "gh pr create --title"
+                  for a in _rcj["decline_anchors"]))
     _preW = {p: _hlW.sha1(p.read_bytes()).hexdigest()
              for p in _wch.rglob("*") if p.is_file()}
     _bufW2 = _ioW.StringIO()
