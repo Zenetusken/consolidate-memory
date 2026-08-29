@@ -31,6 +31,19 @@ fi
 
 echo "2/3 frozen known-bad canary …"
 CSRC="$(ls -d "$HOME"/.claude/plugins/cache/*/consolidate-memory/0.1.19/scripts 2>/dev/null | head -1)"
+SRC_NOTE="cache"
+if [ -z "$CSRC" ] && [ -d "$PLUGIN/fixtures/canary-v0.1.19" ]; then
+  # v0.1.8/A5: the canary is VENDORED (fixtures/canary-v0.1.19, byte-faithful to the v0.1.19
+  # tag) — a cache-only canary is lost FOREVER on a fresh machine (v0.1.19 is not installable
+  # today: install always fetches the latest), and the self-test silently degrades to a SKIP.
+  # Prefer the cache when present; fall back to the vendored copy, manifest-verified first — a
+  # tampered known-bad would false-green the watch-the-watcher.
+  if ! (cd "$PLUGIN/fixtures/canary-v0.1.19" && sha256sum -c SHA256SUMS >/dev/null 2>&1); then
+    echo "    ERROR: vendored canary manifest FAILED — aborting (do not install a gate whose known-bad is unverifiable)." >&2
+    exit 1
+  fi
+  CSRC="$PLUGIN/fixtures/canary-v0.1.19"; SRC_NOTE="vendored"
+fi
 if [ -n "$CSRC" ]; then
   rm -rf "$STATE/canary-v0.1.19"; mkdir -p "$STATE/canary-v0.1.19"
   cp -r "$CSRC" "$STATE/canary-v0.1.19/scripts"
@@ -59,11 +72,10 @@ if [ -n "$CSRC" ]; then
       exit 1
     fi
   done
-  echo "    canary ✓  ($CSRC)  [M3-slug grafted]"
+  echo "    canary ✓  ($SRC_NOTE: $CSRC)  [M3-slug grafted]"
 else
-  echo "    NOTE: no cached consolidate-memory 0.1.19 found — the gate's self-test will SKIP."
-  echo "          install a v0.1.19 cache once to enable watch-the-watcher; install-gate grafts the"
-  echo "          M3 slug onto it automatically (v0.1.19 is old-slug, incompatible with v0.1.40's M3 rule)."
+  echo "    ERROR: no canary source — neither the plugin cache nor the vendored fixtures copy exists." >&2
+  echo "           This should be impossible in a shipped plugin; the gate's self-test will SKIP (fail-open)." >&2
 fi
 
 echo "3/3 pre-push hook on $CM_REPO …"

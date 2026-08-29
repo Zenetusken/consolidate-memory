@@ -4996,5 +4996,89 @@ with _tf43.TemporaryDirectory() as _tdA3:
         check("v0.1.8/A3 5: cross-run byte-identity modulo the promote-minted since: stamp",
               _tA31 == _tA32)
 
+# ── v0.1.8/A5: vendored-canary pins — manifest integrity + the LIVE canary leg (caveat closed) ──
+_canA5 = ROOT / "plugins" / "dream-beta-tester" / "fixtures" / "canary-v0.1.19"
+_manifestA5 = {}
+for _lnA5 in (_canA5 / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
+    _hA5, _nA5 = _lnA5.split()
+    _manifestA5[_nA5] = _hA5
+check("v0.1.8/A5 1: the vendored canary manifest verifies (byte-faithful to the v0.1.19 tag)",
+      len(_manifestA5) == 5
+      and all(_hlA3.sha256((_canA5 / n).read_bytes()).hexdigest() == h
+              for n, h in _manifestA5.items()))
+
+
+def _graftA5(canary_scripts: Path, graft: bool) -> bool:
+    """Replicate install-gate.sh's M3-slug graft (or not) on a canary copy; abort loudly on a
+    file that lacks the old pattern (the false-green class the graft exists to prevent)."""
+    ok = True
+    for f in canary_scripts.glob("*.py"):
+        t = f.read_text(encoding="utf-8")
+        if graft:
+            if 're.sub(r"[/_]"' not in t:
+                ok = False
+            t = t.replace('re.sub(r"[/_]"', 're.sub(r"[^A-Za-z0-9]"')
+            f.write_text(t, encoding="utf-8")
+    return ok
+
+
+def _run_gateA5(home: str, state: str) -> "tuple[str, str, int]":
+    env = {**_os53.environ, "HOME": home, "DREAM_BETA_STATE": state,
+           "DBT_GATE_SKILL": str(_scripts54)}
+    env.pop("CLAUDE_PLUGIN_ROOT", None)
+    p = _sp53.run(["bash", str(_bck)], capture_output=True, text=True, timeout=300,
+                  env=env, cwd=str(ROOT))
+    return p.stdout, p.stderr, p.returncode
+
+
+def _make_canaryA5(state: str, graft: bool) -> None:
+    dst = Path(state) / "canary-v0.1.19" / "scripts"
+    dst.mkdir(parents=True, exist_ok=True)
+    for f in _canA5.glob("*.py"):
+        (dst / f.name).write_bytes(f.read_bytes())
+    _graftA5(dst, graft)
+
+
+with _tf43.TemporaryDirectory() as _tdA5:
+    _homeA5 = str(Path(_tdA5) / "home")
+    Path(_homeA5).mkdir()
+    _stateA5 = str(Path(_tdA5) / ".dt-state")   # DOT in the path — the graft's whole reason to exist
+    Path(_stateA5).mkdir()
+    _repoA5 = str(Path(_stateA5) / "gate-repo")
+    _oA5, _eA5, _rcA5 = _run_home_a1(_homeA5, str(_bcf), _repoA5)
+    _envA5 = {**_os53.environ, "DREAM_BETA_STATE": _stateA5}
+    _pA5 = _sp53.run([sys.executable, str(_bcp), "--skill", str(_scripts54),
+                      "--out", str(Path(_stateA5) / "cycle-probe.json")],
+                     capture_output=True, text=True, timeout=120, env=_envA5)
+
+    # grafted leg: the REAL canary self-test fires by identity → clean verdict end-to-end
+    _make_canaryA5(_stateA5, graft=True)
+    _goA5, _geA5, _grA5 = _run_gateA5(_homeA5, _stateA5)
+    _ljA5 = _json43.loads((Path(_stateA5) / "reports" / "latest.json").read_text(encoding="utf-8"))
+    check("v0.1.8/A5 2: grafted canary leg — self-test fires by identity, verdict clean, probe green",
+          _grA5 == 0 and _ljA5["verdict"] == "clean" and _ljA5["self_test"]["ok"] is True
+          and set(_ljA5["self_test"]["expected_ids"]).issubset(set(_ljA5["self_test"]["detected_ids"]))
+          and _ljA5["cycle_probe"]["ok"] is True)
+
+    # B6 sabotage leg: an UNGRAFTED canary on a dot-path resolves the WRONG store → spurious FAILs
+    # with the wrong identity → selftest_broken (the 2026-06-22 false-green class, now pinned)
+    with _tf43.TemporaryDirectory() as _tdA6:
+        _homeA6 = str(Path(_tdA6) / "home")
+        Path(_homeA6).mkdir()
+        _stateA6 = str(Path(_tdA6) / ".dt-state")
+        Path(_stateA6).mkdir()
+        _repoA6 = str(Path(_stateA6) / "gate-repo")
+        _oA6, _eA6, _rcA6 = _run_home_a1(_homeA6, str(_bcf), _repoA6)
+        _envA6 = {**_os53.environ, "DREAM_BETA_STATE": _stateA6}
+        _sp53.run([sys.executable, str(_bcp), "--skill", str(_scripts54),
+                   "--out", str(Path(_stateA6) / "cycle-probe.json")],
+                  capture_output=True, text=True, timeout=120, env=_envA6)
+        _make_canaryA5(_stateA6, graft=False)
+        _soA6, _seA6, _srA6 = _run_gateA5(_homeA6, _stateA6)
+        _ljA6 = _json43.loads((Path(_stateA6) / "reports" / "latest.json").read_text(encoding="utf-8"))
+        check("v0.1.8/A5 3: UNGRAFTED canary on a dot-path → selftest_broken (fail-open, loud) — the B6 false-green class stays closed",
+              _srA6 == 0 and _ljA6["verdict"] == "selftest_broken" and _ljA6["self_test"]["ok"] is False
+              and not set(_ljA6["self_test"]["expected_ids"]).issubset(set(_ljA6["self_test"]["detected_ids"])))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

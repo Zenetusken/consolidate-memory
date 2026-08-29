@@ -218,6 +218,10 @@ Measured order (each step a separate subprocess of the real script, env per D-9)
   must carry no `cycle_probe` block (asserted by a pin), and the canary self-test identity
   set stays exactly `{CHK-GATE-BACKFILL, CHK-EVICT-STAGE}` — a mis-wired shared `run_oracle`
   would otherwise degrade every canary leg to permanent `selftest_broken`.
+- A5 implementation note: the canary is VENDORED (fixtures/canary-v0.1.19, byte-faithful to
+  the v0.1.19 tag, manifest-pinned) — closing the cache-only fragility where a fresh machine
+  permanently lost the self-test; the full canary leg is smoke-pinned hermetically (grafted →
+  identity + clean; ungrafted dot-path → selftest_broken).
 - Shape-guard SKIPs inside the probe leg are teeth-loss (D-2/§4.5), never silent.
 - Acceptance also pins the CANARY leg's summary unchanged (fail=4, `STATUS.md:93` — no new
   ids, no new WARNs).

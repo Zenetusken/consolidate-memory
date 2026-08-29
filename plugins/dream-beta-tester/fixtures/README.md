@@ -16,5 +16,10 @@ memory, so the gate's blocking families always fire regardless of how Doc_Flo ev
   change that touches the cycle-record seed (hermetic; `--skill` selects the scripts under
   test, `--out` defaults to `$DREAM_BETA_STATE/cycle-probe.json`). `install-gate.sh` generates
   both automatically.
+- **Canary (v0.1.8/A5):** `canary-v0.1.19/` is the VENDORED known-bad — five scripts
+  byte-faithful to the `v0.1.19` git tag (`e28c6bd`), manifest-pinned via `SHA256SUMS`
+  (smoke-verified every run). `install-gate.sh` copies it (cache-first) into
+  `$DREAM_BETA_STATE/canary-v0.1.19/scripts` and grafts the M3 slug rule; see the dir's own
+  README for provenance.
 - Note: the fixture store appears as a node in `sync_global` scans (named `…fixtures-gate-repo`);
   that's the cost of the skill's slug-based store resolution. Harmless.

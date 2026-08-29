@@ -100,6 +100,14 @@ Three-lens adversarial spec review, curated v0.2; evidence phase measured hermet
   construction (the temp world is discarded; `--keep` retains the pid-suffixed copy — the frozen
   fixture is never written); frozen stamp constants + fixed repo path → deterministic modulo the
   promote-minted `global_ref_since:` stamp.
+- **Canary VENDORED (A5)** — the frozen known-bad no longer depends on the plugin cache (a
+  cache-only canary is lost forever on a fresh machine — v0.1.19 is not installable today):
+  `fixtures/canary-v0.1.19/` holds the five v0.1.19 scripts byte-faithful to the tag
+  (`e28c6bd`), manifest-pinned (`SHA256SUMS`, smoke-verified), grafted at install time;
+  `install-gate.sh` prefers the cache, falls back to the vendored copy, and ABORTS on a failed
+  manifest (a tampered known-bad would false-green the watch-the-watcher). The full canary leg
+  is now smoke-pinned hermetically — grafted → self-test fires by identity + verdict `clean`;
+  ungrafted on a dot-path → `selftest_broken` (the 2026-06-22 false-green class stays closed).
 
 **Before v0.1.7, the gate fixture had no `.consolidation-log.jsonl`** — `dream_arc_capture`/
 `distill_capture` returned `[]` on the empty-log guard (absent from BOTH `families_ran` and
