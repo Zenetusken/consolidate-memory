@@ -5,6 +5,43 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.87] — 2026-08-29
+
+### Added — W-C: the distill registrar's Tier-2 fleet-placement gates (W-C1 + W-C2)
+
+The distill vertical's final stage ships its first two build stages
+(docs/wc-registrar.spec.md v0.2 — 3-lens adversarially reviewed; the corrected evidence
+census: 2/8 fleet nodes reporting W-A rows, 0 exact cross-node recurrences — the live input
+exists, the join threshold is what's cold). The registrar proposes FLEET-WIDE workflow
+artifacts from the W-A/W-B evidence, with the shipped Tier-1 local proposal path untouched:
+
+- **`sync_global.py --workflows --registrar [--json] [--into SEED]`** — the Tier-2 MECHANICAL
+  gate cascade over the W-B join: per candidate (templates AND chains) `fleet_recurrence`
+  (≥2 real nodes) + `day_spread` (fleet d ≥ 2) → `fleet-candidate | blocked:*`. The
+  model-judged legs (stable inputs · coverage · decline lineage) are LISTED, never
+  engine-evaluated; READ-ONLY (exit 0/2); registered in the dispatch, usage string, and
+  `cm` help.
+- **`fleet_workflows` node_states** — `legacy` (no `top` key) / `instrumented_empty`
+  (`top: []` counts as reporting) / `reporting`, distinct — the D-8 three-case honesty.
+- **`distill_history` decline-anchor** — a DECLINED verdict now carries its own record's row
+  snapshot, making the materially-new-evidence rule computable fleet-wide (D-2.5).
+- **The SKILL Phase-5 registrar consult** (two-tier model): Tier-1 LOCAL proposals unchanged
+  (a 5-episode single-node workflow stays legitimately proposable locally); Tier-2 fleet
+  placement consults the mechanical gates first — a `fleet-candidate` is necessary, never
+  sufficient; dispositions + genericized names are model writes only; the honest cold-join
+  state renders `fleet-candidates: 0`, never invented breadth.
+- **The `workflow_proposals` cycle-record block** (WorkflowProposal/WorkflowProposals
+  TypedDicts, total=False) — evidence SCRIPT-INJECTED via `--registrar --into` (counts never
+  hand-mirrored); the SKILL schema block moved together (the C5 smoke pin held); the runtime
+  validator warns on wrong-container sub-keys.
+- **Fixture + pins**: a hermetic 4-node fixture (shared / single-node / chain /
+  day-spread-blocked / legacy / instrumented-empty / declined-anchor) + 8 pins — 950/950
+  smoke, sim/manifests/mypy green, the 3-leg QA gate clean, the beta engine 0 FAIL on the tree.
+
+Additive: a new read-only flag, an additive total=False record block, and SKILL wording that
+regresses no shipped path — every existing install keeps working ⇒ patch. The live proposal
+path stays inert until ≥1 exact cross-node recurrence (the evidence-pending clause).
+
 ## [0.1.86] — 2026-08-28
 
 ### Added — budget-trajectory early-warning: the index slope, projected honestly, with staleness attached
