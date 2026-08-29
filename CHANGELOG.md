@@ -29,7 +29,7 @@ artifacts from the W-A/W-B evidence, with the shipped Tier-1 local proposal path
   (a 5-episode single-node workflow stays legitimately proposable locally); Tier-2 fleet
   placement consults the mechanical gates first — a `fleet-candidate` is necessary, never
   sufficient; dispositions + genericized names are model writes only; the honest cold-join
-  state renders `fleet-candidates: 0`, never invented breadth.
+  state renders `0 fleet-candidate(s)` (the engine's own wording), never invented breadth.
 - **The `workflow_proposals` cycle-record block** (WorkflowProposal/WorkflowProposals
   TypedDicts, total=False) — evidence SCRIPT-INJECTED via `--registrar --into` (counts never
   hand-mirrored); the SKILL schema block moved together (the C5 smoke pin held); the runtime
