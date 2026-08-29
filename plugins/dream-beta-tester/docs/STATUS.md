@@ -1,12 +1,13 @@
-# Dream Beta-Harness — STATUS (dream-beta-tester v0.1.7 · built 2026-06-21 · refreshed 2026-08-28)
+# Dream Beta-Harness — STATUS (dream-beta-tester v0.1.8 · built 2026-06-21 · refreshed 2026-08-28)
 
 A reusable, any-repo harness that beta-tests the **consolidate-memory "dream" skill**: runs it
 as a faithful consumer, adversarially verifies it, and emits a version-stamped defect report.
 This document IS dream-beta-tester's changelog (the plugin has no separate `CHANGELOG.md` —
-its `plugin.json` version is the source of truth, currently **0.1.7**); this refresh validates
+its `plugin.json` version is the source of truth, currently **0.1.8**); this refresh validates
 the **consolidate-memory SKILL** at v0.1.85 — a different plugin's version, tracked
 separately in *its* `CHANGELOG.md`, which does not mention these dream-beta-tester fixes.
-Consumer/beta-tester tooling — it NEVER patches the skill it tests. Design: [`SPEC.md`](SPEC.md).
+Consumer/beta-tester tooling — it NEVER patches the skill it tests. Design: [`SPEC.md`](SPEC.md);
+harness-teeth design of record: [`SPEC-A.md`](SPEC-A.md).
 
 ## Automation — continuous QA (installed 2026-06-21)
 A **pre-push gate** runs the deterministic oracle on every consolidate-memory push and **blocks
@@ -74,6 +75,43 @@ a WARN — see each row's "carve-out" note below.
 | `usage_capture` | `CHK-USAGE-CAPTURE` | 0.1.63 | `usage.window` non-empty (the injection step ran, regardless of what it found; carve-out: SKIP on a maintenance/bootstrap pivot) |
 | `demotion_capture` | `CHK-DEMOTION-VERDICT` | 0.1.67 | `demotion.verdict` non-empty (dormant is a valid, honest verdict; carve-out: SKIP on a maintenance/bootstrap pivot) |
 
+## v0.1.8 — SPEC-A "harness teeth" (2026-08-28)
+Three-lens adversarial spec review, curated v0.2; evidence phase measured hermetically.
+
+- **Cycle-probe self-test leg** (`beta_checks.py --cycle-probe`): a FROZEN contaminated cycle
+  record (a second project's real seed, `after_tokens=9999`, stamped) is fed into
+  `cycle_identity` on the MAIN gate invocation only — teeth-intact iff BOTH `CHK-CYCLE-PROJECT`
+  + `CHK-CYCLE-BUDGET` FAIL by identity; probe results are partitioned out of the push verdict
+  (never `results[]`/`_summary`/the exit code). Missing/corrupt/unstamped record →
+  `cycle_probe.ok:false` → `selftest_broken`-class (loud, fail-open), NEVER `clean`.
+  `emit_result.py` gained `--probe-ok` (default false — an un-updated emit path cannot emit
+  clean) + the `cycle_probe` latest.json block; `install-gate.sh` generates the record once
+  (`fixtures/make_cycle_probe.py`, hermetic — never touches the real projects dir).
+- **Fixture re-baselined**: ONE `global_ref:` mirror (+ index pointer) makes the fixture store a
+  network trigger node — `CHK-CYCLE-BUDGET` was previously SILENTLY ABSENT from the fixture run
+  (no node → check suppressed). Re-baselined: 21 results, 0 FAIL / 0 WARN. The mirror's canonical
+  is deliberately FICTIONAL — no synthetic canonical is ever written into a real global store.
+  Known cost, accepted: the fixture now appears as a KNOWN SYNTHETIC node in the maintainer's own
+  fleet scans (`--tokens`/`--network`/`--staleness`) — inert by construction (the fictional
+  canonical never replicates), and `--gc` reclaiming it is self-healed by the gate (A6).
+- **Scripted mutating pass** (`run_beta.py --mutate`): the dream's real write order (snapshot →
+  marker stamp → seed → audit `--into` → seed-marker stamp → driver-authored scoped fact →
+  persist → promote) on a HERMETIC TEMP-HOME copy, verified against a claimed-writes plan
+  (`snapshot.diff(claimed=…)` — unclaimed writes and phantom claims both FAIL) plus an
+  out-of-band global-store channel (canonical created, provenance names the repo, origin
+  converted to mirror). Per-subprocess env pinning (leak-home smoke-pinned); restore-by-
+  construction (the temp world is discarded; `--keep` retains the pid-suffixed copy — the frozen
+  fixture is never written); frozen stamp constants + fixed repo path → deterministic modulo the
+  promote-minted `global_ref_since:` stamp.
+- **Canary VENDORED (A5)** — the frozen known-bad no longer depends on the plugin cache (a
+  cache-only canary is lost forever on a fresh machine — v0.1.19 is not installable today):
+  `fixtures/canary-v0.1.19/` holds the five v0.1.19 scripts byte-faithful to the tag
+  (`e28c6bd`), manifest-pinned (`SHA256SUMS`, smoke-verified), grafted at install time;
+  `install-gate.sh` prefers the cache, falls back to the vendored copy, and ABORTS on a failed
+  manifest (a tampered known-bad would false-green the watch-the-watcher). The full canary leg
+  is now smoke-pinned hermetically — grafted → self-test fires by identity + verdict `clean`;
+  ungrafted on a dot-path → `selftest_broken` (the 2026-06-22 false-green class stays closed).
+
 **Before v0.1.7, the gate fixture had no `.consolidation-log.jsonl`** — `dream_arc_capture`/
 `distill_capture` returned `[]` on the empty-log guard (absent from BOTH `families_ran` and
 `families_skipped`, invisible rather than a visible SKIP), and nothing covered the index-lifecycle
@@ -95,6 +133,11 @@ values); regenerate an existing on-disk fixture with `install-gate.sh` to pick i
 | **B7(a) sabotage (measured, both failure modes)** | over the over-budget fixture: (a) helpers renamed CONSISTENTLY (module still runs) → `CHK-EVICT-STAGE` SKIP, "helpers unavailable … despite the store being over budget"; (b) helpers renamed but a stale internal caller crashes `memory_status --json` itself (Gate-2a found this zeroes `ctx.status`, the naive signal's exact blind spot) → SKIP, "memory_status --json itself failed to run cleanly (…NameError…)" — both produce an explicit, cause-labeled SKIP, never silent omission |
 | Self-improving | dynamic lens caught + fixed a flaw in its own oracle (`CHK-BUDGET-CALIBRATION`) |
 | Triggering | direct selector probes: beta-test → `dream-beta-test`; consolidate → `consolidate-memory` |
+| **A1 probe teeth (measured)** | contaminated record → `{CHK-CYCLE-PROJECT, CHK-CYCLE-BUDGET}` FAIL exactly; clean record → both PASS (no false red); missing record → teeth-loss, verdict `selftest_broken`, never `clean` |
+| **A1 inert seam (measured)** | flag-absent oracle output carries no `cycle_probe` key; main summary/results byte-stable while the probe FAILs; exit code untouched |
+| **A3 mutating pass (measured)** | clean: 0 unexpected, 0 phantom, oob green, marker advanced; two runs byte-identical modulo `global_ref_since:`; leak-home unwritten (env pinning); frozen fixture untouched |
+| **A3 claimed-writes seam** | unclaimed write → unexpected; claimed-without-delta → phantom; allowlisted no-delta → not a phantom; `claimed=None` = pre-A2 behavior |
+| **A6 GC-reclaim self-heal (measured)** | the maintainer's own `--gc --apply` reclaims the fixture's orphan mirror (its canonical is fictional); the gate regenerates the idempotent fixture on the next run and still reaches `clean` with teeth intact — pinned end-to-end |
 
 ## The closed loop (both ends observed)
 My v0.1.19-era defect catalog (`~/consolidate-memory-v0.1.19-defects.md`) → the author's patches
@@ -114,13 +157,15 @@ My v0.1.19-era defect catalog (`~/consolidate-memory-v0.1.19-defects.md`) → th
   artifact** (its temp-command mechanism didn't expose a user-global skill from the plugin-cache
   cwd; even the literal invocation name scored 0%). Real triggering confirmed by direct probe.
   To re-run that optimizer, launch it from a project root, not the nested skill-creator cwd.
-- The full **mutating-dream** path (running the dream's real write phases end-to-end) is not
-  wired; the claim-vs-reality apparatus is proven against a synthetic injected mutation instead.
+- The full **mutating-dream** path is now wired SCRIPTED (v0.1.8/A3: `run_beta.py --mutate` runs the
+  real write scripts end-to-end on a hermetic copy, claim-verified); the **agent-driven** full dream
+  (the model performing Phase-4 surfacing) remains `/dream-beta-test` lens-pass territory — not
+  gate-wired, by design (the gate stays deterministic-oracle-fast).
 - **`cycle_identity`'s two checks (`CHK-CYCLE-PROJECT`/`CHK-CYCLE-BUDGET`) are identity-by-construction**
-  in scripts-only mode (v0.1.7/B7, honestly labeled: `basis="identity-by-construction"` in the result,
-  not the default `"structural"`) — they CANNOT fail as shipped, since the seed is built FROM the target
-  with no second project ever in the loop. Real teeth need a synthetic CONTAMINATED-record probe
-  (another project's project/budget spliced into a cycle seed) — a declared non-goal this cycle; roadmap.
+  in the MAIN run (the seed is built from the target, honestly labeled `basis="identity-by-construction"`)
+  — but v0.1.8/A1 gives them TEETH: the cycle-probe leg feeds a frozen contaminated record and the gate
+  reports `selftest_broken`-class teeth-loss unless BOTH checks FAIL on it by identity, every run
+  (measured both ends: contaminated → FAIL pair; clean → both PASS).
 - Layout (v0.1.7 refresh — the plugin layout, not the pre-plugin draft): engine scripts
   (`beta_checks.py`/`snapshot.py`/`render_beta_report.py`/`run_beta.py`/`emit_result.py`) at
   `plugins/dream-beta-tester/scripts/`; the skill at

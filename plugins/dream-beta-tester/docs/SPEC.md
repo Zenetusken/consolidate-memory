@@ -1,5 +1,8 @@
 # Dream Beta-Harness — SPEC v0.1 (draft for review)
 
+**Extension:** the harness-teeth arc (cycle-identity probe + scripted mutating pass) has its own
+design of record — see [`SPEC-A.md`](SPEC-A.md) (shipped as dream-beta-tester v0.1.8).
+
 A reusable, any-repo harness that runs the **consolidate-memory dream** as a faithful
 consumer, adversarially verifies it, and emits one structured report per run = the dream
 dashboard **+** a versioned, severity-ranked defect catalog. The agent analogue of a

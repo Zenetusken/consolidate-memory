@@ -1,11 +1,12 @@
 # Dream Beta-Harness — SPEC-A v0.2 (harness teeth)
 
-**Cycle-identity probe + scripted mutating-pass driver.** v0.2 = the curated revision after a
-3-lens adversarial review (mechanics/contracts, threat/safety, scope/economy); every review
-finding below was re-verified against the live tree before curation. Grounded in the measured
-evidence phase of 2026-08-28 (hermetic runs, HOME=<tmp>). Extends `SPEC.md` §3 (the
-deterministic engine) and §7 (snapshot/restore); the shipped-layout note in SPEC.md:32-33
-applies. Companion of record: `STATUS.md`, `CONTRACT.md`.
+**Cycle-identity probe + scripted mutating-pass driver — IMPLEMENTED (P-1…P-4, dream-beta-tester
+v0.1.8).** v0.2 = the curated revision after a 3-lens adversarial review
+(mechanics/contracts, threat/safety, scope/economy); every review finding below was
+re-verified against the live tree before curation. Grounded in the measured evidence phase of
+2026-08-28 (hermetic runs, HOME=<tmp>). Extends `SPEC.md` §3 (the deterministic engine) and §7
+(snapshot/restore); the shipped-layout note in SPEC.md:32-33 applies. Companion of record:
+`STATUS.md`, `CONTRACT.md`.
 
 ## 1. Goals & non-goals
 
@@ -217,6 +218,10 @@ Measured order (each step a separate subprocess of the real script, env per D-9)
   must carry no `cycle_probe` block (asserted by a pin), and the canary self-test identity
   set stays exactly `{CHK-GATE-BACKFILL, CHK-EVICT-STAGE}` — a mis-wired shared `run_oracle`
   would otherwise degrade every canary leg to permanent `selftest_broken`.
+- A5 implementation note: the canary is VENDORED (fixtures/canary-v0.1.19, byte-faithful to
+  the v0.1.19 tag, manifest-pinned) — closing the cache-only fragility where a fresh machine
+  permanently lost the self-test; the full canary leg is smoke-pinned hermetically (grafted →
+  identity + clean; ungrafted dot-path → selftest_broken).
 - Shape-guard SKIPs inside the probe leg are teeth-loss (D-2/§4.5), never silent.
 - Acceptance also pins the CANARY leg's summary unchanged (fail=4, `STATUS.md:93` — no new
   ids, no new WARNs).
@@ -277,24 +282,25 @@ emit `clean` with no teeth info). Verdict semantics unchanged; `actionable[]` FA
 
 ## 12. Build plan (phased, each gated)
 
-- **P-1 (fixture re-baseline + seam + probe):** mirror added to make_fixture (re-baseline
-  0/0), `--cycle-probe` flag + partition + stamp verification, `make_cycle_probe.py`,
-  `ci_check.sh` wiring (main invocation only, probe-missing → teeth-loss),
-  `emit_result.py --probe-ok` + latest.json `cycle_probe` block, pins 1 + 4 + 5 + 6.
-  Gate: rows 1-3, 5, 8, 9-10.
-- **P-2 (claimed-writes seam):** `snapshot.diff(claimed=…)` with the allowlist-scoped
-  phantom rule, pin 3. Gate: row 9 + existing honesty matrix unchanged (`STATUS.md:86`).
-- **P-3 (driver):** `run_beta.py --mutate` (env discipline D-9, write plan D-6, out-of-band
-  global-store assert, restore-hard-stop, `--keep` copy), pins 2 + 3 end-to-end,
-  `mutating_pass` latest.json block. Gate: rows 4-9.
-- **P-4 (release):** dream-beta-tester `0.1.7 → 0.1.8` (additive patch — policy rule 3, no
-  breaking change to existing installs; main plugin untouched), STATUS.md/Spec-update
-  commit, full gate suite.
-- Each phase independently revertible; P-1 lands first (the probe is the detector-proof the
-  driver's honesty leg rests on). Known cross-plugin coupling, stated for the record: the
-  main plugin's smoke gate will now subprocess the skill's WRITE scripts via the
-  mutating-pass pins — a future legitimate main-plugin behavior change can therefore block
-  a main release through a beta-tester pin; that is intentional (the gate tests the tree).
+- **P-1 (fixture re-baseline + seam + probe):** SHIPPED — mirror added to make_fixture
+  (re-baselined 21 results, 0 FAIL / 0 WARN), `--cycle-probe` flag + partition + stamp
+  verification, `make_cycle_probe.py`, `ci_check.sh` wiring (main invocation only,
+  probe-missing → teeth-loss), `emit_result.py --probe-ok` + latest.json `cycle_probe`
+  block, pins 1 + 4 + 5 + 6. Gate: rows 1-3, 5, 8, 9-10 — all measured green.
+- **P-2 (claimed-writes seam):** SHIPPED — `snapshot.diff(claimed=…)` with the
+  allowlist-scoped phantom rule, pin 3. Gate: row 9 + honesty matrix unchanged.
+- **P-3 (driver):** SHIPPED — `run_beta.py --mutate` (env discipline D-9, write plan D-6,
+  out-of-band global-store channel, restore-by-construction, `--keep` copy), pins 2 + 3
+  end-to-end. Implementation note vs spec: the temp-home-copy design makes the
+  restore-failure class STRUCTURALLY IMPOSSIBLE (the real fixture is never written), which
+  is stronger than the spec's restore-failure hard-stop countermeasure.
+- **P-4 (release):** SHIPPED — dream-beta-tester `0.1.7 → 0.1.8` (additive patch — policy
+  rule 3, no breaking change to existing installs; main plugin untouched), STATUS.md
+  changelog rows + SPEC.md pointer, full gate suite.
+- Known cross-plugin coupling, stated for the record: the main plugin's smoke gate now
+  subprocesses the skill's WRITE scripts via the mutating-pass pins — a future legitimate
+  main-plugin behavior change can therefore block a main release through a beta-tester pin;
+  that is intentional (the gate tests the tree).
 
 ## 13. Open questions
 

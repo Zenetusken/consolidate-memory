@@ -367,6 +367,9 @@ class DiffReport:
     unexpected_store_mutations: list[str]  # names of store *.md / index changes NOT on the allowlist
     summary: dict[str, int]
     notes: list[str] = field(default_factory=list)
+    # v0.1.8/A2 (SPEC-A D-5): claimed writes that produced NO delta — a plan item that claimed a
+    # non-allowlisted write and the store shows none (a phantom claim = a dishonest report).
+    phantom_claims: list[str] = field(default_factory=list)
 
 
 def _index_by_key(manifest: Manifest) -> dict[tuple[str, str], FileEntry]:
@@ -427,7 +430,8 @@ def _classify(origin: str, name: str) -> tuple[str, bool]:
     return "fact", False
 
 
-def diff(before: Manifest, after: Manifest, *, against_live: bool = False) -> DiffReport:
+def diff(before: Manifest, after: Manifest, *, against_live: bool = False,
+         claimed: "frozenset[str] | None" = None) -> DiffReport:
     """The deterministic mutation set between two manifests (BEFORE vs AFTER, or BEFORE vs live).
 
     One delta per (origin, name) whose content hash CHANGED (created / deleted / modified); an
@@ -436,11 +440,20 @@ def diff(before: Manifest, after: Manifest, *, against_live: bool = False) -> Di
     NOT allowlisted derived-file writes — exactly the silent-mutation set the claim-vs-reality family
     escalates to HIGH (dashboard dishonesty). The marker delta (commit/timestamp advance) is surfaced
     separately so the family can assert the dream advanced the marker.
+
+    v0.1.8/A2 (SPEC-A D-5): ``claimed`` = the WRITE PLAN's diff-universe claims (store file names,
+    classes fact|index only — derived side files are exempt by design). With ``claimed`` set:
+      * a store fact/index delta whose name is claimed is ACCOUNTED FOR (not unexpected),
+      * a claimed non-allowlisted name with NO delta is a PHANTOM claim (``phantom_claims``) —
+        a plan item that claimed a write the store shows none of is a dishonest report,
+      * an allowlisted name never phantoms (an unchanged derived file is not a claim failure).
+    ``claimed=None`` (every existing caller) is bit-identical to the pre-A2 behavior.
     """
     bidx = _index_by_key(before)
     aidx = _index_by_key(after)
     deltas: list[FileDelta] = []
     unexpected: list[str] = []
+    _claimed = claimed if claimed is not None else frozenset()
 
     def _d(s: str | None) -> str:  # M5: coerce a recorded-unreadable hash (None) to a display token, so the
         return "(unreadable)" if s is None else s  # str-typed FileDelta fields never carry None
@@ -466,7 +479,9 @@ def diff(before: Manifest, after: Manifest, *, against_live: bool = False) -> Di
             FileDelta(origin=origin, name=name, op=op, before_sha=before_sha, after_sha=after_sha,
                       size_delta=size_delta, classification=classification, expected=expected)
         )
-        if origin == "store" and not expected:
+        # A2: a claimed fact/index write is accounted for — only UNCLAIMED non-allowlisted
+        # store changes are unexpected (claimed=None → empty set → behavior identical to pre-A2).
+        if origin == "store" and not expected and name not in _claimed:
             unexpected.append(name)
 
     before_marker = before.marker or {}
@@ -477,6 +492,11 @@ def diff(before: Manifest, after: Manifest, *, against_live: bool = False) -> Di
     )
     marker = MarkerDelta(advanced=advanced, before=before_marker, after=after_marker)
 
+    # A2: phantom claims — a claimed non-allowlisted store name with NO store-origin delta.
+    # (Allowlisted names are exempt: an unchanged derived file is not a claim failure — D-5.)
+    _store_delta_names = {d.name for d in deltas if d.origin == "store"}
+    phantom = sorted(n for n in _claimed if n not in _store_delta_names and n not in DERIVED_SIDE_FILES)
+
     summary = {
         "total": len(deltas),
         "created": sum(d.op == "created" for d in deltas),
@@ -484,6 +504,7 @@ def diff(before: Manifest, after: Manifest, *, against_live: bool = False) -> Di
         "deleted": sum(d.op == "deleted" for d in deltas),
         "unexpected_store": len(unexpected),
         "marker_advanced": int(advanced),
+        "phantom_claims": len(phantom),
     }
     notes: list[str] = []
     if not before.store_present and after.store_present:
@@ -497,6 +518,7 @@ def diff(before: Manifest, after: Manifest, *, against_live: bool = False) -> Di
         deltas=deltas,
         marker=marker,
         unexpected_store_mutations=unexpected,
+        phantom_claims=phantom,
         summary=summary,
         notes=notes,
     )

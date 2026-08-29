@@ -86,10 +86,35 @@ def main() -> int:
             fm(f"fixture-unindexed-{i:02d}", f"un-indexed fixture fact {i} (backfill/triage set)")
             + f"Un-indexed fact {i}.", encoding="utf-8")
 
-    # DENSE index → over budget. Pointers cover only the 50 indexed facts (NOT the orphan/unindexed).
+    # v0.1.8/A1: ONE managed mirror — makes this store a NETWORK NODE (trigger=True for the gate-repo)
+    # so the oracle's CHK-CYCLE-BUDGET has a trigger node to compare the seed's budget against. WITHOUT
+    # a mirror the store is invisible to `sync_global --tokens` node detection (`has_mirror` scan) and
+    # the budget check is SILENTLY ABSENT from the fixture run (_trigger_node → None). The canonical it
+    # references is deliberately FICTIONAL (`fixture-canonical-01`): writing a synthetic canonical into
+    # the REAL global store would pollute the user's cross-project memory — node detection keys on the
+    # `global_ref:` marker itself, never the canonical's existence. Format pinned to sync_global's
+    # metadata-anchored mirror shape by the smoke mirror round-trip (tests/smoke.py).
+    (store / "fixture-mirror-01.md").write_text(
+        "---\n"
+        "name: fixture-mirror-01\n"
+        "description: synthetic managed mirror (fictional canonical) — makes the fixture store a trigger node\n"
+        "metadata:\n"
+        "  node_type: memory\n"
+        "  type: reference\n"
+        "  global_ref: fixture-canonical-01\n"
+        "---\n\n"
+        "Managed mirror of the FICTIONAL canonical `fixture-canonical-01`. Exists so the fixture\n"
+        "store appears as a network node in `sync_global --tokens` (has_mirror scan) and the\n"
+        "oracle's CHK-CYCLE-BUDGET has a trigger node to compare the seed's budget against.\n"
+        "Never pulled/refreshed against a real canonical — the fixture is hermetic by design.\n",
+        encoding="utf-8")
+
+    # DENSE index → over budget. Pointers cover the 50 indexed facts + the mirror (NOT the
+    # orphan/unindexed facts).
     lines = ["# Fixture memory index (synthetic — dream-beta-test gate fixture; FROZEN)\n"]
     for i in range(1, N_INDEXED + 1):
         lines.append(f"- [Fixture fact {i:02d}](fixture-fact-{i:02d}.md) — **{HOOK.format(i=i)}.**")
+    lines.append("- [Fixture mirror](fixture-mirror-01.md) — synthetic mirror pointer (node-membership marker).")
     (store / "MEMORY.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # Marker (for marker-delta / standing-justify-state reads).
@@ -129,7 +154,7 @@ def main() -> int:
     idx_bytes = (store / "MEMORY.md").stat().st_size
     print(f"fixture repo:  {repo}")
     print(f"fixture store: {store}")
-    print(f"  {N_INDEXED} indexed + {N_UNINDEXED} un-indexed + 1 wikilink-orphan · "
+    print(f"  {N_INDEXED} indexed + {N_UNINDEXED} un-indexed + 1 wikilink-orphan + 1 mirror (trigger node) · "
           f"MEMORY.md {idx_bytes} B (≈{idx_bytes // 4} tok, budget 1200 → over)")
     return 0
 

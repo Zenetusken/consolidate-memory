@@ -66,10 +66,15 @@ Usage:
       --no-restore     do not restore even in --test (inspect the post-run state); same as --keep.
       --reports-dir D  where reports + snapshots live (default: <this script>/reports).
       --json           emit a structured run summary as JSON (in addition to writing the report).
+      --mutate         scripted mutating pass (SPEC-A P-3): the dream's real write order on a
+                       hermetic temp-home copy, verified against a claimed-writes plan + the
+                       out-of-band global-store channel; --keep retains the copy (never the
+                       frozen fixture).
       -v/--verbose     stream the child tools' human output too.
 
 Exit code: 1 if the run surfaced a CONFIRMED defect (a 2a-VERIFIED finding — the renderer's exit
 code is authoritative), else 0. A pre-flight failure (skill not found / a child tool crash) → 2.
+With --mutate: 1 = the honesty leg FAILED (unexpected/phantom/oob), 0 = clean; 2 = no store.
 """
 
 from __future__ import annotations
@@ -77,6 +82,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -147,19 +153,25 @@ def preflight(repo_arg: str, store_arg: str | None, skill_arg: str | None) -> Pr
 # ─────────────────────────────── child-tool drivers ───────────────────────────────
 
 
-def _run(cmd: list[str], *, capture: bool, stream: bool) -> tuple[int, str, str]:
+def _run(cmd: list[str], *, capture: bool, stream: bool,
+         env: dict[str, str] | None = None, cwd: Path | None = None) -> tuple[int, str, str]:
     """Run a child tool. Returns (returncode, stdout, stderr). When ``stream`` and not ``capture``,
     the child's output goes straight to our stdout/stderr (the ``-v`` path); otherwise it is captured.
-    Never raises on a non-zero exit — the caller decides what a failure means."""
+    Never raises on a non-zero exit — the caller decides what a failure means.
+
+    v0.1.8/A3 (SPEC-A D-9): ``env`` pins the child environment (the mutating pass runs hermetically
+    under a temp HOME — an unpinned child would write into the REAL ~/.claude/memory). ``env=None``
+    = ambient (every pre-A3 caller is unchanged).
+    """
     if capture:
-        cap = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        cap = subprocess.run(cmd, capture_output=True, text=True, check=False, env=env, cwd=cwd)
         if stream:
             if cap.stdout:
                 sys.stdout.write(cap.stdout)
             if cap.stderr:
                 sys.stderr.write(cap.stderr)
         return cap.returncode, cap.stdout or "", cap.stderr or ""
-    inherited = subprocess.run(cmd, check=False)  # output goes straight to our stdio
+    inherited = subprocess.run(cmd, check=False, env=env, cwd=cwd)  # output goes straight to our stdio
     return inherited.returncode, "", ""
 
 
@@ -299,6 +311,197 @@ def build_disposition(report: "_snap.DiffReport", restored: bool, restore_skippe
     return {"disposition": note, "changed": changed}
 
 
+# ─────────────────────────────── mutating pass (SPEC-A P-3) ───────────────────────────────
+
+# Frozen stamp constants (D-7): the marker values the pass merges into the state file AND the
+# seed record (the seed-marker stamp is the MODEL's Phase-5 job, scripted — measured: --persist
+# refuses an unstamped seed and --audit does NOT stamp it).
+_MUTATE_STAMP_COMMIT = "evidencecommit0000000000000000000000000"
+_MUTATE_STAMP_TS = "2026-08-28T00:00:00Z"
+# The driver-authored promotable fact (D-8): scope + stacks INSIDE the frontmatter block — the
+# promote guard ladder refuses scopeless / stacks-less / non-_DETECTABLE_STACKS facts (measured),
+# and a body-appended `scope:` is invisible to the frontmatter parser.
+_MUTATE_FACT_NAME = "fixture-mutate-scoped"
+_MUTATE_FACT_FM = (
+    "---\n"
+    f"name: {_MUTATE_FACT_NAME}\n"
+    "description: driver-authored promotable fact (mutating-pass write plan)\n"
+    "metadata:\n"
+    "  node_type: memory\n"
+    "  type: reference\n"
+    "scope: stack-general\n"
+    "stacks: [python]\n"
+    "---\n\n"
+    "Written BY the mutating-pass driver as a claimed plan item, then promoted to the fixture's\n"
+    "hermetic global store — the origin→mirror conversion, the canonical write, and the\n"
+    "provenance append are the pass's real two-store mutation.\n"
+)
+
+
+@dataclass
+class MutateResult:
+    """The structured outcome of a mutating pass (SPEC-A §5/§6)."""
+
+    plan: list[dict[str, Any]]            # one entry per performed step {step, rc, detail}
+    claims: list[str]                     # the diff-universe claim set fed to snapshot.diff
+    diff_summary: dict[str, int]
+    unexpected: list[str]                 # unclaimed store mutations (dishonesty class)
+    phantom: list[str]                    # claimed writes with no delta (dishonesty class)
+    out_of_band: dict[str, Any]           # the global-store verification channel (D-6)
+    marker_advanced: bool
+    clean: bool                           # every channel green
+    kept: bool
+    kept_path: str
+
+
+def _failed_mutate(plan: list[dict[str, Any]], reason: str) -> MutateResult:
+    """A structured failure verdict — a broken skill under test is reported loudly with the
+    child's stderr in the plan, NEVER with a raw traceback (the harness's own
+    SKIP-never-crash discipline applied to the driver)."""
+    return MutateResult(plan=plan, claims=[], diff_summary={}, unexpected=[], phantom=[],
+                        out_of_band={"ok": False, "error": reason}, marker_advanced=False,
+                        clean=False, kept=False, kept_path="")
+
+
+def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult:
+    """Run the dream's REAL write order on a HERMETIC TEMP-HOME COPY of the store (SPEC-A §5).
+
+    The pass NEVER touches the real store by construction: the fixture store is COPIED into a
+    fresh temp home (with its own empty global store), every child runs with ``HOME=<temp>``
+    pinned (D-9 — an unpinned --promote would write a canonical + provenance into the REAL
+    ~/.claude/memory), and the temp world is discarded at the end (restore-by-construction;
+    ``--keep`` retains the copy for inspection — D-4). The repo path stays the FIXED path so
+    ``project_path`` in the state cache is stable across runs (D-7; measured).
+    """
+    if not pf.store.is_dir():
+        print("ERROR: --mutate needs a populated fixture store (run make_fixture.py first).",
+              file=sys.stderr)
+        raise SystemExit(2)
+
+    tmp_root = Path(tempfile.mkdtemp(prefix="cm-mutate-"))
+    plan: list[dict[str, Any]] = []
+    _disposed = False  # set True only after a successful --keep move (the finally cleanup gate)
+
+    def _step(name: str, rc: int, detail: str = "") -> None:
+        plan.append({"step": name, "rc": rc, "detail": detail[:200]})
+
+    try:
+        home = tmp_root / "home"
+        tgt_store = home / ".claude" / "projects" / pf.slug / "memory"
+        tgt_store.parent.mkdir(parents=True)
+        shutil.copytree(pf.store, tgt_store)
+        (home / ".claude" / "memory").mkdir(parents=True)
+        env = dict(os.environ, HOME=str(home), TMPDIR=str(tmp_root))
+        env.pop("CLAUDE_PLUGIN_ROOT", None)
+        env.pop("DREAM_BETA_STATE", None)
+        env.pop("DREAM_BETA_REPORTS", None)
+        py = sys.executable
+        repo_arg = str(pf.repo)
+
+        def _child(*args: str) -> "tuple[int, str, str]":
+            return _run([py, str(pf.skill / args[0]), *args[1:]],
+                        capture=True, stream=False, env=env, cwd=pf.repo)
+
+        # ── BEFORE images (both flavors: harness Manifest for the diff, skill audit-snapshot for --audit) ──
+        before = _snap.snapshot(pf.repo, tgt_store, out=tmp_root / "snap-before")
+        r0 = _child("memory_status.py", repo_arg, "--snapshot")
+        snap_path = (r0[1].strip().splitlines() or [""])[-1].strip()
+        _step("snapshot", r0[0], snap_path)
+
+        # ── marker stamp (Phase 5 step 5, scripted) — allowlisted derived write, exempt from claims ──
+        state = tgt_store / ".consolidation-state.json"
+        try:
+            d = json.loads(state.read_text(encoding="utf-8"))
+            if not isinstance(d, dict):
+                raise ValueError("state file is not a JSON object")
+        except (OSError, json.JSONDecodeError, ValueError) as e:
+            _step("ABORT", 1, f"marker state unreadable: {e}")
+            return _failed_mutate(plan, f"marker state unreadable ({e})")
+        d["commit"], d["timestamp"] = _MUTATE_STAMP_COMMIT, _MUTATE_STAMP_TS
+        state.write_text(json.dumps(d), encoding="utf-8")
+        _step("marker-stamp", 0)
+
+        # ── seed → audit --into → seed-marker stamp (the model's job, scripted) ──
+        r1 = _child("memory_status.py", repo_arg, "--json")
+        _step("seed", r1[0])
+        if r1[0] != 0:
+            _step("ABORT", 1, f"memory_status --json failed: {(r1[2].strip() or r1[1].strip())[-200:]}")
+            return _failed_mutate(plan, f"seed failed (rc={r1[0]}) — a broken skill is THE finding")
+        seed_path = tmp_root / "seed.json"
+        seed_path.write_text(r1[1], encoding="utf-8")
+        r2 = _child("memory_status.py", "--audit", snap_path, "--into", str(seed_path))
+        _step("audit", r2[0], r2[2].strip().splitlines()[-1] if r2[2].strip() else "")
+        seed = json.loads(seed_path.read_text(encoding="utf-8"))
+        seed.setdefault("marker", {}).update({"commit": _MUTATE_STAMP_COMMIT, "timestamp": _MUTATE_STAMP_TS})
+        seed_path.write_text(json.dumps(seed), encoding="utf-8")
+        _step("seed-marker-stamp", 0)
+
+        # ── driver-authored promotable fact (D-8) — a CLAIMED fact write ──
+        fact_path = tgt_store / f"{_MUTATE_FACT_NAME}.md"
+        fact_path.write_text(_MUTATE_FACT_FM, encoding="utf-8")
+        _step("write-fact", 0)
+        claims = frozenset({f"{_MUTATE_FACT_NAME}.md", "MEMORY.md"})  # the fact + the index pointer promote adds
+        # (delta keys are FILE NAMES — the stem claim would phantom and the .md delta would read
+        #  unclaimed; measured on the first driver run)
+
+        # ── persist (the terminal write; appends one log line — allowlisted derived) ──
+        r3 = _child("render_dashboard.py", str(seed_path), "--persist", str(tgt_store))
+        _step("persist", r3[0], r3[2].strip().splitlines()[-1] if r3[2].strip() else "")
+
+        # ── promote (the two-store write: canonical + provenance are OUT-OF-BAND, D-6) ──
+        r4 = _child("sync_global.py", "--promote", repo_arg, _MUTATE_FACT_NAME)
+        _step("promote", r4[0], r4[2].strip().splitlines()[-1] if r4[2].strip() else "")
+
+        # ── out-of-band channel: the global-store verification (the diff cannot see it — D-6) ──
+        # The canonical lands in the temp-home GLOBAL store; the LOCAL copy is converted to the
+        # mirror. Clean requires BOTH sides verified — a silently-refused promote (guard ladder)
+        # must fail this channel, never report a green honesty leg.
+        gstore = home / ".claude" / "memory"
+        canonical = gstore / f"{_MUTATE_FACT_NAME}.md"
+        try:
+            canon_text = canonical.read_text(encoding="utf-8")
+        except OSError:
+            canon_text = ""
+        oob = {
+            "canonical_created": canonical.exists(),
+            # provenance records the repo NAME (projects: [gate-repo]), not the slug — measured
+            "provenance_has_slug": pf.repo.name in canon_text,
+            "local_origin_converted": "global_ref:" in fact_path.read_text(encoding="utf-8"),
+        }
+        oob_ok = all(oob.values())
+        _step("out-of-band", 0 if oob_ok else 1,
+              f"canonical={oob['canonical_created']} provenance={oob['provenance_has_slug']} mirror={oob['local_origin_converted']}")
+
+        # ── diff before→live against the CLAIM SET (the honesty leg) ──
+        live = _snap._live_manifest(pf.repo, tgt_store)
+        diff_report = _snap.diff(before, live, against_live=True, claimed=claims)
+        _step("diff", 0, json.dumps(diff_report.summary))
+
+        clean = (not diff_report.unexpected_store_mutations and not diff_report.phantom_claims
+                 and diff_report.marker.advanced and oob_ok)
+
+        # ── dispose: discard the temp world (restore-by-construction) or retain the copy ──
+        kept_path = ""
+        if keep:
+            # pid-suffixed: same-second runs must not collide (shutil.move onto an existing dir
+            # would merge the worlds, not clobber)
+            kept_path = str(reports_dir / f".mutate-keep-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}-{os.getpid()}")
+            shutil.move(str(tmp_root), kept_path)
+            _disposed = True
+
+        return MutateResult(
+            plan=plan, claims=sorted(claims), diff_summary=diff_report.summary,
+            unexpected=diff_report.unexpected_store_mutations, phantom=diff_report.phantom_claims,
+            out_of_band={**oob, "ok": oob_ok}, marker_advanced=diff_report.marker.advanced,
+            clean=clean, kept=keep, kept_path=kept_path,
+        )
+    finally:
+        # _disposed covers the keep-move success; a FAILED move (or any non-keep exit) still
+        # cleans the temp world — no /tmp leak on the exotic crash path.
+        if not _disposed and tmp_root.exists():
+            shutil.rmtree(tmp_root, ignore_errors=True)
+
+
 # ─────────────────────────────── main ───────────────────────────────
 
 
@@ -335,6 +538,26 @@ def _print_human_summary(
     print(f"  report: {report_path}\n")
 
 
+def _print_mutate_summary(pf: PreFlight, r: MutateResult) -> None:
+    ds = r.diff_summary
+    print(f"\n  MUTATING PASS · {pf.repo.name}  (consolidate-memory v{pf.skill_version})")
+    print(f"  store:  {pf.store}  (hermetic copy — the frozen fixture was NOT touched)")
+    print("  plan:   " + " → ".join(f"{p['step']}({p['rc']})" for p in r.plan))
+    print(f"  diff:   {ds['total']} change(s) · {ds['unexpected_store']} unexpected · "
+          f"{ds['phantom_claims']} phantom · marker {'ADVANCED' if r.marker_advanced else 'unchanged'}")
+    oob = r.out_of_band
+    print(f"  global: canonical={oob.get('canonical_created')} provenance={oob.get('provenance_has_slug')} "
+          f"mirror={oob.get('local_origin_converted')}")
+    if r.unexpected:
+        print(f"  UNEXPECTED store mutations (dishonesty class): {', '.join(r.unexpected)}")
+    if r.phantom:
+        print(f"  PHANTOM claims (dishonesty class): {', '.join(r.phantom)}")
+    print(f"  verdict:{'CLEAN — every write claimed, every channel verified' if r.clean else 'FAILED honesty leg'}")
+    if r.kept:
+        print(f"  kept:   {r.kept_path}")
+    print()
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Thin end-to-end runner for the dream beta-harness (SPEC §5, scripts-only default)."
@@ -349,6 +572,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-restore", action="store_true", help="do not restore even in --test (inspect post-run state)")
     ap.add_argument("--reports-dir", default=None, help="reports + snapshots dir (default: <script dir>/reports)")
     ap.add_argument("--json", action="store_true", help="emit a structured run summary as JSON")
+    # v0.1.8/A3 (SPEC-A P-3): the scripted mutating pass — runs the dream's REAL write order on a
+    # hermetic temp-home COPY of the store and verifies the store delta against a claimed-writes
+    # plan + the out-of-band global-store channel. --keep retains the copy (never the frozen store).
+    ap.add_argument("--mutate", action="store_true",
+                    help="scripted mutating pass (write-plan honesty leg); --keep retains the hermetic copy")
     ap.add_argument("-v", "--verbose", action="store_true", help="stream the child tools' output too")
     a = ap.parse_args(argv)
 
@@ -363,6 +591,25 @@ def main(argv: list[str] | None = None) -> int:
 
     # ── 1. pre-flight ──
     pf = preflight(a.repo, a.store, a.skill)
+
+    # ── 1b. --mutate: the scripted mutating pass (a different run shape; never touches the spine) ──
+    if a.mutate:
+        result = mutate_pass(pf, reports_dir, keep=a.keep)
+        if a.json:
+            print(json.dumps({
+                "mode": "mutate", "repo": str(pf.repo), "slug": pf.slug, "store": str(pf.store),
+                "skill": str(pf.skill), "skill_version": pf.skill_version,
+                "write_plan": result.plan, "claims": result.claims,
+                "diff_summary": result.diff_summary,
+                "unexpected_store_mutations": result.unexpected,
+                "phantom_claims": result.phantom,
+                "out_of_band": result.out_of_band,
+                "marker_advanced": result.marker_advanced,
+                "pass_clean": result.clean, "kept": result.kept, "kept_path": result.kept_path,
+            }, indent=2))
+        else:
+            _print_mutate_summary(pf, result)
+        return 1 if not result.clean else 0
 
     # scratch files: the harness tmpdir (NEVER the project slug dir). Unlinked in finally.
     scratch: list[Path] = []

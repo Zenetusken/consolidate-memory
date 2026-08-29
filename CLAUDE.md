@@ -72,9 +72,11 @@ plugins/dream-beta-tester/         QA companion plugin — beta-tests the dream 
   skills/dream-beta-test/SKILL.md  the judgment-lens pass (/dream-beta-test) + references/lenses.md
                                    (the 7 judgment lenses)
   scripts/                         the deterministic oracle (beta_checks.py) + snapshot/report/run
-  fixtures/                        make_fixture.py (generates the frozen synthetic gate-repo store) —
-                                   the canary-v0.1.19 store is grafted at install time under
-                                   ~/.dream-beta-test/, never committed
+  fixtures/                        make_fixture.py (generates the frozen synthetic gate-repo store) +
+                                   make_cycle_probe.py (the frozen contaminated cycle record) +
+                                   canary-v0.1.19/ (VENDORED known-bad scripts, byte-faithful to the
+                                   v0.1.19 tag, SHA256SUMS-manifested) — the generated STORES are
+                                   grafted at install time under ~/.dream-beta-test/, never committed
   maintainer/                      the continuous-QA pre-push gate (ci_check.sh/install-gate.sh)
   docs/SPEC.md                     design-of-record (STATUS.md hands design off to this file)
   docs/CONTRACT.md                 reports/latest.json schema + the deterministic self-heal contract
