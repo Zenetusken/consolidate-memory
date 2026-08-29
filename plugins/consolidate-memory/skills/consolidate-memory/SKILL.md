@@ -380,7 +380,7 @@ Read fully: both `MEMORY.md`s (repo + auto-memory index), the auto-memory fact
 files, and skim `AGENTS.md`/`CLAUDE.md` for the sections facts would land in — and,
 for `CLAUDE.md`, note its existing structure and voice: you'll treat it as read-mostly
 and conform to it, never restructure it (see Phase 4). Build a mental model of what's
-already recorded so Phase 2 can dedup against it.
+already recorded so Phase 2 can dedup against it. **Large repo docs — search, don't read whole.** A file over the Read tool's cap (~256KB) must be grep'd for the relevant terms and read only in offset/limit portions; a whole read errors and wastes context.
 
 Then **pull relevant global facts** so this project recalls them and Phase 2 can
 dedup against them too (cross-project step; safe + additive). **First `--list` (read-only), then `--pull`**
