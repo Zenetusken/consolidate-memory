@@ -1235,6 +1235,7 @@ this once warned against; the dashboard remains the source of the figures.)
                          "candidates": [{"candidate": "<the normalized template/chain>", "form": "command|chain",
                                         "evidence": {"nodes": ["<node label>"], "d": 0, "n": 0},
                                         "mechanical": {"fleet_recurrence": true, "day_spread": true},
+                                        "name": "<the genericized artifact name — model-written, never the raw template>",
                                         "disposition": "<awaiting-confirmation|confirmed|declined — model-written>"}],
                          "decline_anchors": [{"node": "<label>", "verdict": "<the declined one-liner>",
                                               "top": [{"t": "<template>", "n": 0, "d": 0}]}],

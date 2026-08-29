@@ -82,7 +82,8 @@ import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / 
 from memory_status import (_is_archive_index_text, _is_mirror, _parse_ts, _sane, est_tokens, slug_for,
                            _frontmatter, _valid_uuid,
                            INDEX_TOKEN_BUDGET, INDEX_CEILING_TOKENS, HOOK_TOKEN_WARN,
-                           distill_history, extract_wikilinks, resolve_wikilink, usage_history)
+                           distill_history, extract_wikilinks, resolve_wikilink, usage_history,
+                           _write_private)
 
 GLOBAL = Path.home() / ".claude" / "memory"
 
@@ -2024,15 +2025,31 @@ def registrar_report(project_dir: Path, as_json: bool, into: "str | None" = None
                 return 2
             block = seed.get("workflow_proposals")
             if not isinstance(block, dict):
+                if "workflow_proposals" in seed:
+                    # the validator would have warned on the wrong container — the injection
+                    # pre-empts it; say so rather than silently dropping the old contents
+                    print(f"warning: existing workflow_proposals is not a dict — replacing", file=sys.stderr)
                 block = {}
-            block["candidates"] = [{"candidate": c["candidate"], "form": c["form"],
-                                    "evidence": c["evidence"], "mechanical": c["gates"]["mechanical"]}
-                                   for c in candidates]
+            # MERGE on (candidate, form): a re-consult refreshes the script-truth evidence and
+            # PRESERVES the model-written disposition/name per row (the split-ownership contract —
+            # a wholesale replace would silently destroy confirmed/declined verdicts).
+            _old_rows = {(r.get("candidate"), r.get("form")): r
+                         for r in block.get("candidates", []) if isinstance(r, dict)}
+            _merged = []
+            for c in candidates:
+                _row = {"candidate": c["candidate"], "form": c["form"],
+                        "evidence": c["evidence"], "mechanical": c["gates"]["mechanical"]}
+                _key = (c["candidate"], c["form"])
+                if _key in _old_rows:
+                    _row = dict(_old_rows[_key])
+                    _row.update({"evidence": c["evidence"], "mechanical": c["gates"]["mechanical"]})
+                _merged.append(_row)
+            block["candidates"] = _merged
             block["decline_anchors"] = anchors
             seed["workflow_proposals"] = block
-            Path(into).write_text(_json.dumps(seed, indent=2), encoding="utf-8")
-        except (OSError, _json.JSONDecodeError) as e:
-            print(f"error: registrar --into could not write {into}: {e}", file=sys.stderr)
+            _write_private(Path(into), _json.dumps(seed, indent=2) + "\n")
+        except (OSError, _json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError, KeyError) as e:
+            print(f"error: registrar --into could not read/write {into}: {e}", file=sys.stderr)
             return 2
     if as_json:
         print(_json.dumps(out, indent=2))
@@ -2667,8 +2684,16 @@ def _dispatch() -> int:
         # v0.1.87/W-C1: --registrar rides the SAME argv[1] cue (a conscious choice — the
         # cross-project beat fires on the consult too, exactly as for the bare lens)
         if "--registrar" in args:
-            _into = args[args.index("--into") + 1] if "--into" in args else None
+            _idx = args.index("--into") if "--into" in args else -1
+            if _idx != -1 and _idx + 1 >= len(args):
+                print("error: --into needs a SEED path (usage: --workflows --registrar --into <seed>)",
+                      file=sys.stderr)
+                return 2
+            _into = args[_idx + 1] if _idx != -1 else None
             return registrar_report(project_dir, "--json" in args, into=_into)
+        if "--into" in args:
+            print("warning: --into without --registrar is ignored (the injection rides the registrar consult)",
+                  file=sys.stderr)
         return workflows_report(project_dir, "--json" in args)
     if args and args[0] == "--gc":
         return gc(project_dir, "--apply" in args, edges="--edges" in args)
