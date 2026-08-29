@@ -5117,5 +5117,60 @@ with _tf43.TemporaryDirectory() as _tdA7:
           and (_storeA7 / "fixture-mirror-01.md").exists()
           and "global_ref:" in (_storeA7 / "fixture-mirror-01.md").read_text(encoding="utf-8"))
 
+# ── v0.1.87/ARC-C: the standing calibration report — pure-function + hermetic CLI pins ───────────
+import calibration_report as _crep  # noqa: E402
+
+check("v0.1.87/C1: store-name derivation (slug tail after -project-)",
+      _crep._store_name("-home-you-project-consolidate-memory") == "consolidate-memory"
+      and _crep._store_name("-home-you-project-Doc-Flo") == "Doc-Flo")
+check("v0.1.87/C2: synthetic-store exclusion — fixture/gate/scratch/-tmp-/probe slugs excluded, real slugs not",
+      all(_crep._EXCLUDE_RE.search(s) for s in ("-home-you--dream-beta-test-gate-repo",
+                                              "-tmp-g2test", "x-scratchpad-y", "dbt-repro-repro-repo",
+                                              "-tmp-claude-1000-fixture-test-gate-repo"))
+      and not any(_crep._EXCLUDE_RE.search(s) for s in ("-home-you-project-consolidate-memory",
+                                                      "-home-you-project-Doc-Flo")))
+check("v0.1.87/C3: aggregate shape == baseline shape (the single-shape pin — a new block must update BOTH)",
+      set(_crep.aggregate({})) == set(_crep.BASELINE))
+
+_rec_c3 = [
+    {"scope": {"git_commits": 1, "session_candidates": 0}, "verification": {"confirmed": 2, "corrected": 0, "unverifiable": 0},
+     "budget": {"index": {"after_tokens": 1400}}, "usage": {"window": "w", "reads": 1, "facts_read": 1, "misses": []},
+     "demotion": {"windows_observed": 3, "eligible": 0, "surfaced": [], "struck": []},
+     "distill": {"n_recurring": 0}, "remediation": {}, "rigor": {}},
+    {"scope": {"git_commits": 5, "session_candidates": 5}, "verification": {"confirmed": 0, "corrected": 1, "unverifiable": 1},
+     "budget": {"index": {"after_tokens": 1600}}, "usage": {"window": "w", "reads": 0, "facts_read": 0, "misses": ["x"]},
+     "demotion": {"windows_observed": 1, "eligible": 1, "surfaced": ["s"], "struck": []},
+     "distill": {"n_recurring": 2}, "remediation": {"required": True}, "rigor": {"prune_pressure": True}},
+]
+_agg_c3 = _crep.aggregate({"store-a": _rec_c3})
+check("v0.1.87/C4: aggregate math (bands LIGHT 1/HEAVY 1 · median upper-mid 10 · over_budget 1/2 · misses 1 · miss_by_band)",
+      _agg_c3["records"] == 2 and _agg_c3["magnitude"]["bands"] == {"LIGHT": 1, "SUBSTANTIAL": 0, "HEAVY": 1}
+      and _agg_c3["magnitude"]["median"] == 10 and _agg_c3["index"]["over_budget"] == 1
+      and _agg_c3["index"]["over_ceiling"] == 0 and _agg_c3["usage"]["misses"] == 1
+      and _agg_c3["usage"]["windows"] == 2 and _agg_c3["miss_by_band"]["HEAVY"] == 1
+      and _agg_c3["demotion"]["windows_observed"] == 4 and _agg_c3["pressure"]["remediation_required"] == 1)
+_mut_c3 = dict(_crep.BASELINE)
+_mut_c3["usage"] = dict(_crep.BASELINE["usage"], misses=2)
+_del_c3 = _crep.delta(_mut_c3, _crep.BASELINE)
+check("v0.1.87/C5: baseline delta — only moved keys surface",
+      list(_del_c3) == ["usage"] and _del_c3["usage"] == {"misses": {"baseline": 0, "current": 2}})
+check("v0.1.87/C6: baseline delta — an unchanged fleet reads empty (the standing no-op)",
+      _crep.delta(dict(_crep.BASELINE), _crep.BASELINE) == {})
+
+# hermetic CLI: HOME=<empty tmp> → zero stores, but the JSON shape + exit codes must hold
+with _tf43.TemporaryDirectory() as _tdC:
+    _envC = {**_os53.environ, "HOME": str(_tdC)}
+    _envC.pop("CLAUDE_PLUGIN_ROOT", None)
+    _pC = _sp53.run([sys.executable, str(_scripts54 / "calibration_report.py"), "--json"],
+                    capture_output=True, text=True, timeout=60, env=_envC)
+    _dC = _json43.loads(_pC.stdout)
+    check("v0.1.87/C7: hermetic CLI — JSON carries current/baseline/delta/ledger/refit_gate, exit 0 on an empty fleet",
+          _pC.returncode == 0 and set(_dC) == {"current", "baseline", "delta", "ledger", "refit_gate"}
+          and _dC["current"]["records"] == 0 and _dC["refit_gate"] == "wait")
+    _pC2 = _sp53.run([sys.executable, str(_scripts54 / "calibration_report.py"), "--sicne"],
+                     capture_output=True, text=True, timeout=60, env=_envC)
+    check("v0.1.87/C8: an unknown flag is a usage error (exit 2), never a silent ignore",
+          _pC2.returncode == 2)
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
