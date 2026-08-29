@@ -19,8 +19,9 @@ a version that regresses a known defect** (oracle FAIL); WARN-level findings pri
   **Fail-open** on harness error; logs to `reports/.gate-log.tsv`. Override a block with `git push --no-verify`.
 - Proven both ends: allows v0.1.23 (0 FAIL, 0 WARN — the fixture is noise-free); blocks cached v0.1.19 (D3+D4 FAIL).
 - **Self-test (watch-the-watcher):** before trusting an "allow", the gate proves the oracle still detects a
-  FROZEN known-bad (`~/.dream-beta-test/canary-v0.1.19`, never committed — grafted at
-  install-gate time) BY DEFECT IDENTITY — `{CHK-GATE-BACKFILL, CHK-EVICT-STAGE} ⊆`
+  FROZEN known-bad (source scripts VENDORED in `fixtures/canary-v0.1.19/`, tag-faithful; the
+  grafted runtime copy lives under `~/.dream-beta-test/canary-v0.1.19/` — generated, never
+  committed) BY DEFECT IDENTITY — `{CHK-GATE-BACKFILL, CHK-EVICT-STAGE} ⊆`
   the canary's FAIL ids (v0.1.7/B6 — **CLOSED**, see below; was a `≥2 FAIL` count check). The canary is
   v0.1.19 (real D3/D4 defect) with the
   **M3 slug GRAFTED at install-gate time** — REQUIRED since cm v0.1.40: v0.1.19 is old-slug (`[/_]`), the

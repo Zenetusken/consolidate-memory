@@ -17,7 +17,7 @@ plugin and its marketplace. Two plugins ship from it:
 | Plugin | Version | Role |
 |---|---|---|
 | `consolidate-memory` | 0.1.86 | The product: a 6-phase `dream` workflow, the cross-project canonical store at `~/.claude/memory`, tiered context-budget accounting |
-| `dream-beta-tester` | 0.1.7 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
+| `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
 `/plugin install consolidate-memory@zenetusken-plugins`. The marketplace must be
@@ -76,7 +76,7 @@ plugins/consolidate-memory/       the main plugin (= ${CLAUDE_PLUGIN_ROOT})
                                   render_html.py, render_log.py, _ui.py, session_beacon.py,
                                   dashboard.template.html
 plugins/dream-beta-tester/        QA companion plugin
-  .claude-plugin/plugin.json      manifest (v0.1.7)
+  .claude-plugin/plugin.json      manifest (v0.1.8)
   skills/dream-beta-test/         judgment-lens skill (/dream-beta-test) + references/lenses.md (7 lenses)
   scripts/                        deterministic oracle (beta_checks.py) + run/render/emit helpers
   fixtures/                       make_fixture.py + make_cycle_probe.py + canary-v0.1.19/ (VENDORED
