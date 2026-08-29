@@ -1032,6 +1032,9 @@ for _nm, _obj, _td in [
     ("usage", _skill_schema.get("usage", {}), ms.Usage),                     # v0.1.63 (Phase A)
     ("usage.per_fact[0]", (_skill_schema.get("usage", {}).get("per_fact") or [{}])[0], ms.UsageFact),
     ("demotion", _skill_schema.get("demotion", {}), ms.Demotion),            # v0.1.67 (Phase C)
+    ("workflow_proposals", _skill_schema.get("workflow_proposals", {}), ms.WorkflowProposals),  # v0.1.87 (W-C)
+    ("workflow_proposals.candidates[0]",
+     (_skill_schema.get("workflow_proposals", {}).get("candidates") or [{}])[0], ms.WorkflowProposal),
     # v0.1.69/A7: covered only TRANSITIVELY before (same AuditStoreDelta as audit.memory) — explicit
     # rows make the all-nested-shapes claim literally true.
     ("audit.claude_md", _skill_schema.get("audit", {}).get("claude_md", {}), ms.AuditStoreDelta),
@@ -4575,6 +4578,59 @@ with _Env73() as _e:
     check("v0.1.87/W-C1 5: the registrar is READ-ONLY over every store",
           _preW == {p: _hlW.sha1(p.read_bytes()).hexdigest()
                     for p in _wch.rglob("*") if p.is_file()})
+
+    # W-C2: --into SCRIPT-TRUTH injection (D-7) — mechanical rows land in the seed; model fields absent
+    _seedW = Path(_osB.environ["HOME"]) / "seed.json"
+    _seedW.write_text(_jsonB.dumps({"project": "p", "session": "s"}), encoding="utf-8")
+    _bufI = _ioW.StringIO()
+    with _ctxW.redirect_stdout(_bufI):
+        _rcI = sg.registrar_report(_e.proj, as_json=False, into=str(_seedW))
+    _seedD = _jsonB.loads(_seedW.read_text(encoding="utf-8"))
+    _wp = _seedD.get("workflow_proposals") or {}
+    check("v0.1.87/W-C2 1: --into injects the SCRIPT-TRUTH block (mechanical gates per row; the model's "
+          "disposition/name/verdict fields are ABSENT — never hand-mirrored)",
+          _rcI == 0 and isinstance(_wp.get("candidates"), list)
+          and all({"candidate", "form", "evidence", "mechanical"} <= set(r) for r in _wp["candidates"])
+          and all("disposition" not in r and "name" not in r for r in _wp["candidates"])
+          and any(r["mechanical"]["fleet_recurrence"] is True for r in _wp["candidates"])
+          and isinstance(_wp.get("decline_anchors"), list))
+    _bufI2 = _ioW.StringIO()
+    with _ctxW.redirect_stdout(_bufI2):
+        _rcI2 = sg.registrar_report(_e.proj, as_json=False, into=str(Path(_osB.environ["HOME"]) / "nope" / "x.json"))
+    check("v0.1.87/W-C2 2: an unwritable --into target exits 2 (a typo'd path is caught, never a silent drop)",
+          _rcI2 == 2)
+    # W-C2 polish: seed-key survival + the re-consult MERGE (model fields preserved on re-run)
+    _seedW2 = Path(_osB.environ["HOME"]) / "seed2.json"
+    _seedW2.write_text(_jsonB.dumps({"project": "p", "session": "s", "verdict": "keep-me",
+                                     "workflow_proposals": {"verdict": "keep-too"}}), encoding="utf-8")
+    _bufI3 = _ioW.StringIO()
+    with _ctxW.redirect_stdout(_bufI3):
+        sg.registrar_report(_e.proj, as_json=False, into=str(_seedW2))
+    _seedD2 = _jsonB.loads(_seedW2.read_text(encoding="utf-8"))
+    check("v0.1.87/W-C2 4: pre-existing seed keys SURVIVE the injection (project/session/verdict + a "
+          "pre-existing workflow_proposals.verdict)",
+          _seedD2.get("project") == "p" and _seedD2.get("session") == "s"
+          and _seedD2.get("verdict") == "keep-me"
+          and _seedD2["workflow_proposals"].get("verdict") == "keep-too"
+          and isinstance(_seedD2["workflow_proposals"].get("candidates"), list))
+    # the MODEL writes per-row fields post-injection, then a RE-CONSULT must preserve them
+    _seedD2["workflow_proposals"]["candidates"][0]["disposition"] = "confirmed"
+    _seedD2["workflow_proposals"]["candidates"][0]["name"] = "gate-check-cmd"
+    _seedW2.write_text(_jsonB.dumps(_seedD2), encoding="utf-8")
+    _bufI4 = _ioW.StringIO()
+    with _ctxW.redirect_stdout(_bufI4):
+        sg.registrar_report(_e.proj, as_json=False, into=str(_seedW2))
+    _seedD3 = _jsonB.loads(_seedW2.read_text(encoding="utf-8"))
+    check("v0.1.87/W-C2 5: a RE-CONSULT merges on (candidate, form) — the model-written "
+          "disposition/name SURVIVE the evidence refresh (the split-ownership contract)",
+          _seedD3["workflow_proposals"]["candidates"][0].get("disposition") == "confirmed"
+          and _seedD3["workflow_proposals"]["candidates"][0].get("name") == "gate-check-cmd"
+          and "evidence" in _seedD3["workflow_proposals"]["candidates"][0])
+    _vrW = ms.validate_cycle_record({"project": "p", "workflow_proposals": {"candidates": "not-a-list"}})
+    check("v0.1.87/W-C2 3: validate_cycle_record warns on a wrong-container workflow_proposals sub-key "
+          "(the model-slip class), and is quiet on the correct shape",
+          any("workflow_proposals.candidates is not a list" in wmsg for wmsg in _vrW)
+          and ms.validate_cycle_record({"project": "p", "workflow_proposals": {"candidates": [], "decline_anchors": []}}) == [])
 
 # --- PR-#95 review pins (persistence-core lens — all three findings fire only on the
 # hand-edited / pre-v0.1.82 --from path; the dream path was already clean) ---

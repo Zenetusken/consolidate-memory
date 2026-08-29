@@ -172,6 +172,26 @@ class Demotion(TypedDict, total=False):
     verdict: str            # the one model sentence, filled in Phase 5
 
 
+class WorkflowProposal(TypedDict, total=False):
+    # v0.1.87 (W-C): ONE registrar candidate — the evidence + mechanical gates are SCRIPT-INJECTED
+    # by sync_global.registrar_report --into (counts never hand-mirrored); `disposition` is the
+    # MODEL's write (awaiting-confirmation | confirmed | declined) with the genericized artifact name.
+    candidate: str          # the normalized template / chain (" → "-joined)
+    form: str               # "command" | "chain"
+    evidence: dict[str, Any]   # {"nodes": [...], "d": int, "n": int} — script-truth
+    mechanical: dict[str, Any] # {"fleet_recurrence": bool, "day_spread": bool} — script-truth
+    name: str               # the genericized artifact name (model-written; never the raw template)
+    disposition: str        # model-written: awaiting-confirmation | confirmed | declined
+
+
+class WorkflowProposals(TypedDict, total=False):
+    # v0.1.87 (W-C): the registrar block — ABSENT = the registrar was not consulted this pass
+    # (a visible decision, like the distill absent-vs-empty honesty rule).
+    candidates: list[WorkflowProposal]     # script-injected; the model edits disposition/name per row
+    decline_anchors: list[dict[str, Any]]  # script-injected D-2.5 anchors (declined verdicts + their rows)
+    verdict: str                           # the one model sentence (a none verdict is still a verdict)
+
+
 class ClaudeMdHierarchyFile(TypedDict, total=False):
     path: str          # repo-relative path of a CLAUDE.md
     tokens: int
@@ -392,6 +412,7 @@ class CycleRecord(TypedDict, total=False):
     distill: Distill               # v0.1.55: distill-verdict capture (additive; legacy records render)
     usage: Usage                   # v0.1.63 (Phase A): organic recall telemetry (additive; legacy records render)
     demotion: Demotion             # v0.1.67 (Phase C): demotion triage seed + verdict (additive; legacy records render)
+    workflow_proposals: WorkflowProposals   # v0.1.87 (W-C): Tier-2 fleet-placement evidence (additive; legacy records render)
     marker: Marker
     outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
 
@@ -2408,7 +2429,8 @@ def validate_cycle_record(record: object) -> list[str]:
 
     # Top-level keys that MUST be a dict if present.
     for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health",
-                "audit", "remediation", "maintenance", "dream", "distill", "usage", "demotion"):
+                "audit", "remediation", "maintenance", "dream", "distill", "usage", "demotion",
+                "workflow_proposals"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
@@ -2475,6 +2497,13 @@ def validate_cycle_record(record: object) -> list[str]:
                 warnings.append(f"demotion.{lk} is not a list")
         if isinstance(demotion.get("surfaced"), list) and len(demotion["surfaced"]) > _DEMOTION_BOTTOM_K:
             warnings.append(f"demotion.surfaced exceeds the rank cap ({_DEMOTION_BOTTOM_K}) — impossible from a capped rank")
+
+    # v0.1.87 (W-C): the registrar block's lists (the script-injected container contract).
+    wprops = record.get("workflow_proposals")
+    if isinstance(wprops, dict):
+        for lk in ("candidates", "decline_anchors"):
+            if lk in wprops and not isinstance(wprops[lk], list):
+                warnings.append(f"workflow_proposals.{lk} is not a list")
 
     # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
     # already warned via the top-level tuple above ("health is not a dict"); here we just

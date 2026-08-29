@@ -964,6 +964,22 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      `--verdict`/`--proposed`/`--created` is passed WITHOUT `--into`. This `--into` is the **LAST write to
      the `distill` block** — a later hand-edit of the seed must not touch that block (targeted edits to
      OTHER keys only, same rule as the audit `--into`).
+   **Tier-2 FLEET placement — the registrar consult (v0.1.87/W-C, read-only).** For a candidate you judge
+   ready for FLEET-WIDE placement (the binary rule: an artifact is project-local OR fleet-wide — NEVER
+   stack-general), consult the registrar's MECHANICAL gates FIRST:
+   ```bash
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --workflows . --registrar --into <the --seed path>
+   ```
+   The engine emits per-candidate dispositions — `fleet-candidate` (≥2 real nodes + fleet day-spread d≥2)
+   or `blocked: fleet-recurrence|day-spread` — and injects the script-truth evidence + decline-anchors into
+   the seed's `workflow_proposals` block. The MODEL-judged legs (stable inputs · coverage · decline lineage
+   vs the anchors) are YOURS, never the engine's — a disposition of `fleet-candidate` is necessary, never
+   sufficient. A fleet proposal fires only for a `fleet-candidate` whose model legs you judge green —
+   report-then-apply, ONE artifact per confirmation; the `awaiting-confirmation | confirmed | declined`
+   disposition + the genericized artifact name are YOUR writes into that block (never hand-mirror the
+   counts — they're script-injected). Tier-1 LOCAL proposals are unchanged (the step-6 gate above — a
+   5-episode single-node workflow stays legitimately proposable locally). Until a real cross-node
+   recurrence exists the honest state is `fleet-candidates: 0` — never invent breadth.
    - **REPORT-THEN-APPLY — present the proposal PLAIN / un-styled (never dream-voice an approval) and NEVER
      auto-write an executable artifact.** Show the artifact you would create + the evidence (the counts); the
      user confirms; only then you author it. A single confirmation authorizes **ONE specific named artifact**
@@ -1215,6 +1231,15 @@ this once warned against; the dashboard remains the source of the figures.)
                "verdict": "<one line: dormant — N probative windows | demoted X · justified Y | none: <top candidate> kept because …>"},
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
              "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
+  "workflow_proposals": {"_": "v0.1.87/W-C: the registrar's Tier-2 fleet-placement evidence — SCRIPT-INJECTED by --workflows --registrar --into (candidates + decline_anchors, counts never hand-mirrored); the MODEL writes only per-candidate disposition (awaiting-confirmation|confirmed|declined) + the genericized artifact name + the one-line verdict. Absent = the registrar was not consulted this pass (a visible decision).",
+                         "candidates": [{"candidate": "<the normalized template/chain>", "form": "command|chain",
+                                        "evidence": {"nodes": ["<node label>"], "d": 0, "n": 0},
+                                        "mechanical": {"fleet_recurrence": true, "day_spread": true},
+                                        "name": "<the genericized artifact name — model-written, never the raw template>",
+                                        "disposition": "<awaiting-confirmation|confirmed|declined — model-written>"}],
+                         "decline_anchors": [{"node": "<label>", "verdict": "<the declined one-liner>",
+                                              "top": [{"t": "<template>", "n": 0, "d": 0}]}],
+                         "verdict": "<one line: nothing: 0 fleet-candidates | proposed <X> — awaiting confirmation>"},
   "outcome": ""
 }
 ```
