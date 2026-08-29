@@ -188,7 +188,7 @@ flag it — don't silently keep it.
 - **Symbol/function/flag exists:** `grep -rn "def the_function\|the_flag\|CONST" src/`
 - **Claim matches current code (not stale):** read the cited lines; confirm the
   named behavior is still there (e.g. a memory says "X is headless" — grep the
-  config default / the call site).
+  config default / the call site). For a file over the Read cap (~256KB), grep the claim's terms first and read only the matching lines with offset/limit — never read the whole file.
 - **Decision landed in git:** `git log --oneline -S '<string>'` or
   `git log --oneline <marker>..HEAD -- <path>`
 - **Doc claim self-consistency:** does `AGENTS.md`'s test count match
