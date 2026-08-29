@@ -214,20 +214,22 @@ into the cycle record's `workflow_proposals` block (D-7).
 
 ## 8. Build plan (each phase gated)
 
-- **W-C1 — engine + fixture + pins + the evidence anchor** (buildable NOW, deterministic):
+- **W-C1 — engine + fixture + pins + the evidence anchor** — SHIPPED (merged 2026-08-29):
   the Tier-2 mechanical gates, the D-2.5 decline-evidence anchor (distill_history
   extension), the three-case D-8 reporting, `_CUED_MODES`/usage/`cm` registrations, the
   synthetic fixture (templates + chains), pins 1–5. **Sequencing rationale (review
   catch):** the flag ships before its dream consumer as deliberate test-first — the
   engine is certified against the fixture BEFORE the dream is taught to consume it; W-C2
   is one gated step behind. Gate: smoke/sim/manifests/mypy + the 3-leg QA gate.
-- **W-C2 — the live proposal path:** the SKILL Phase-5 wording (two-tier consumption:
+- **W-C2 — the live proposal path** — SHIPPED (merged 2026-08-29, polish-swarm-fixed): the SKILL Phase-5 wording (two-tier consumption:
   Tier-1 local as today; Tier-2 fleet placement via `--registrar`), the
   `workflow_proposals` TypedDict + the SKILL schema block (the C5 pin forces all three
   legs together), the `--into` injection, docs sync. Gate: full suite + a lens pass
   (`/dream-beta-test`) — a SKILL.md change is a version change.
-- **W-C3 — release:** patch (additive flag + additive record block + SKILL wording; the
-  freeze declaration allows additive keys; legacy records render untouched).
+- **W-C3 — release-prep SHIPPED (the `## [0.1.87]` CHANGELOG section is authored + merged);
+  the release itself runs post-merge via `./release.sh --expect patch --confirm`** — patch (additive
+  flag + additive record block + SKILL wording; the freeze declaration allows additive keys; legacy
+  records render untouched).
 - **The live trigger:** W-C2's FLEET-WIDE path fires only on ≥1 exact cross-node
   recurrence (Tier-2 gate 1); until then it renders the honest "2/N nodes reporting ·
   0 fleet templates" state. Tier-1 local proposals are live immediately.
