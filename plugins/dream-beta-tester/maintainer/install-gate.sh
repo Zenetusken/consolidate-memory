@@ -30,7 +30,10 @@ else
 fi
 
 echo "2/3 frozen known-bad canary …"
-CSRC="$(ls -d "$HOME"/.claude/plugins/cache/*/consolidate-memory/0.1.19/scripts 2>/dev/null | head -1)"
+# `|| true`: under `set -e` + `pipefail`, a no-match glob makes `ls` exit 2 → the assignment
+# itself fails → the script ABORTS before the vendored fallback below ever runs. The no-cache
+# path is exactly the case the fallback exists for — it must be reachable.
+CSRC="$(ls -d "$HOME"/.claude/plugins/cache/*/consolidate-memory/0.1.19/scripts 2>/dev/null | head -1 || true)"
 SRC_NOTE="cache"
 if [ -z "$CSRC" ] && [ -d "$PLUGIN/fixtures/canary-v0.1.19" ]; then
   # v0.1.8/A5: the canary is VENDORED (fixtures/canary-v0.1.19, byte-faithful to the v0.1.19
