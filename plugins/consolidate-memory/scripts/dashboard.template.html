@@ -359,6 +359,14 @@
       <div class="dstl-verdict" id="demo-verdict"></div>
       <div class="cap">Evidence-gated, report-then-apply: 0-read indexed facts over enough probative usage windows; dispositions are entries[] rows. A red MISS badge means an archived fact was read organically — a demotion error to re-promote.</div>
     </div>
+    <!-- v0.1.87/W-C (render-chain audit): the registrar's Tier-2 consult — key-gated like distill/demotion.
+         An ABSENT key on a distill-era record renders the not-consulted line (the SKILL's "absent = a
+         visible decision", which no renderer previously made visible). -->
+    <div class="dstl" id="registrar-blk" style="display:none">
+      <div class="audit-ln head"><span class="s">registrar · Tier-2 fleet placement</span><span class="nums" id="reg-counts"></span></div>
+      <div class="dstl-verdict" id="reg-verdict"></div>
+      <div class="cap">The W-C consult: fleet-candidate or blocked dispositions over the W-A/W-B evidence; proposals stay report-then-apply, one artifact per confirmation.</div>
+    </div>
   </section>
 
   <!-- 04 ledger -->
@@ -376,7 +384,9 @@
 <script>
 "use strict";
 (function(){
-  var DATA={}; try{ DATA=JSON.parse(document.getElementById("cm-data").textContent)||{}; }catch(e){ DATA={}; }
+  var DATA={}, PARSE_ERR=null;
+  try{ DATA=JSON.parse(document.getElementById("cm-data").textContent)||{}; }
+  catch(e){ PARSE_ERR=String(e); DATA={}; }
   // v0.1.29 — the archive embeds ALL cycles; the URL #sel=N selects a dream (else the archive INDEX view).
   var ALL=Array.isArray(DATA.cycles)?DATA.cycles.filter(function(c){return c&&typeof c==="object";}):[];
   if(!ALL.length)ALL=[{}];
@@ -385,9 +395,10 @@
   var CUR=ALL[selIdx]||{};            // the selected dream — the existing render path renders THIS one
   var HIST=ALL.slice(0,selIdx);       // history BEFORE it → CYCLES = HIST+CUR = ALL[0..selIdx] (faithful as-of view)
   var ALLDIFFS=(DATA.diffs&&typeof DATA.diffs==="object")?DATA.diffs:{};   // v0.1.32: cycleKey → its persisted memory diffs
-  function diffKey(m){m=(m&&typeof m==="object")?m:{};   // MUST mirror memory_status.diff_key (the write side)
+  function diffKey(m,s){m=(m&&typeof m==="object")?m:{};   // MUST mirror memory_status.diff_key (the write side)
     var c=String(m.commit||"").replace(/[^0-9A-Za-z]/g,"").slice(0,12)||"nocommit";
-    var t=String(m.timestamp||"").replace(/[^0-9A-Za-z]/g,"-")||"nots"; return c+"__"+t;}
+    var t=String(m.timestamp||"").replace(/[^0-9A-Za-z]/g,"-")||"nots";
+    var key=c+"__"+t; if(s)key+="__"+String(s).replace(/[^0-9A-Za-z]/g,"").slice(0,8); return key;}
   var BUD=(DATA.budgets&&typeof DATA.budgets==="object")?DATA.budgets:{index:1200,claude_md:4000};
   var IDXB=num(BUD.index,1200), CMB=num(BUD.claude_md,4000);
 
@@ -395,17 +406,24 @@
   function num(x,d){var n=typeof x==="number"?x:parseFloat(x);return isFinite(n)?n:(d===undefined?0:d);}
   // attribute-SAFE escape: textContent handles <>&, then quotes too, so esc() is safe in BOTH text and
   // attribute context (an entry name/action with a stray " or ' can never break out — re-audit MED fix).
+  // NOTE (render-chain audit): esc() guards the JS-side injection paths, but the LOAD-BEARING guard for the
+  // embedded cm-data seam is the PYTHON-side _safe_embed in render_html (<, >, & → \uXXXX). A literal
+  // '<\/script>' in the raw JSON would end this script element at HTML-PARSE time, before any JS runs —
+  // esc() cannot guard that path. (This comment itself writes the sequence escaped — the HTML parser ends
+  // the element on a literal '</script' even inside a JS comment, the exact breakage being described.)
+  // Both guards are required; PARSE_ERR below surfaces a bypass as a visible error.
   function esc(s){s=(s==null)?"":String(s);var e=document.createElement("div");e.textContent=s;return e.innerHTML.replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
   function el(id){return document.getElementById(id);}
   function S(t,a){var n=document.createElementNS("http://www.w3.org/2000/svg",t);if(a)for(var k in a)n.setAttribute(k,a[k]);return n;}
   function fmt(n){n=Math.round(num(n));var s=n<0?"-":"";n=Math.abs(n);return s+(n>=1000?(n/1000).toFixed(n>=10000?0:1)+"k":String(n));}
   function pct(a,b){return b>0?Math.round(100*a/b):0;}
-  function idxTok(r){var t=g(r,"budget.index.after_tokens",null);if(t==null)t=g(r,"budget.index.before_tokens",null);return num(t,0);}
-  function recallN(r){var n=g(r,"budget.recall_facts.after",null);if(n==null)n=g(r,"budget.recall_facts.before",null);return num(n,0);}
+  function idxTok(r){var t=g(r,"budget.index.after_tokens",null);if(t==null)t=g(r,"budget.index.before_tokens",null);return t==null?null:num(t,0);}
+  function recallN(r){var n=g(r,"budget.recall_facts.after",null);if(n==null)n=g(r,"budget.recall_facts.before",null);return n==null?null:num(n,0);}
   function magnitude(r){return num(g(r,"scope.git_commits",0))+num(g(r,"scope.session_candidates",0));}
 
   var PROJ=g(CUR,"project","consolidate-memory");
   el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
+  document.title=PROJ+" — dream telemetry";   // render-chain audit: the tab/bookmark used to say 'consolidate-memory' for EVERY repo
   el("h-sess").textContent=String(g(CUR,"session","—")).slice(0,16);
   el("h-scope").textContent=g(CUR,"scope.git_range","—");
   el("h-gen").textContent=String(DATA.generated_at||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
@@ -416,12 +434,15 @@
   // this one array, so they can never disagree on cycle count or identity — the gap/inconsistency guard.
   function sameCycle(a,b){return !!(a&&b&&g(a,"marker.commit","x")===g(b,"marker.commit","y")&&g(a,"marker.timestamp","x")===g(b,"marker.timestamp","y"));}
   var CYCLES=HIST.slice(); if(!CYCLES.length||!sameCycle(CYCLES[CYCLES.length-1],CUR))CYCLES.push(CUR);
-  // carry the last valid value forward over any 0/missing field, so a legacy record can't dip a line to zero.
-  function carryFwd(arr){var p=0;return arr.map(function(v){v=num(v);if(v<=0)v=p;p=v;return v;});}
+  // carry the last valid value forward over a MISSING field only (render-chain audit: a GENUINE 0 —
+  // an emptied index, a zero-read window — is data, not absence; mapping v<=0 to the previous value
+  // silently falsified it). Callers must emit null for absent keys (idxTok/recallN do).
+  function carryFwd(arr){var p=0;return arr.map(function(v){if(v==null)return p;v=num(v);if(v>0)p=v;return v;});}
   // a "nice" round axis step for ~`ticks` divisions (1/2/5×10ⁿ) → round tick labels (0/500/1000), not maxV/4 fractions.
   function niceStep(range,ticks){if(range<=0)return 1;var raw=range/Math.max(1,ticks);var p=Math.pow(10,Math.floor(Math.log(raw)/Math.LN10));var n=raw/p;var s=n<1.5?1:n<3?2:n<7?5:10;return s*p;}
   function niceMax(v,ticks){var st=niceStep(v,ticks);return {step:st,max:Math.ceil(v/st)*st};}
-  (function(){var w=ENT.filter(function(e){return ["added","corrected","deleted"].indexOf(g(e,"action",""))>=0;}).length;
+  (function(){if(PARSE_ERR){el("h-banner").textContent="⚠ archive data corrupted — the embedded record failed to parse; regenerate with render_html (never hand-edit this file)";return;}
+    var w=ENT.filter(function(e){return ["added","corrected","deleted"].indexOf(g(e,"action",""))>=0;}).length;
     var oc=g(CUR,"outcome",""),lab;
     if(oc)lab=oc; else if(magnitude(CUR)===0&&!ENT.length)lab="Nothing to consolidate";
     else if(w===0)lab="No-op pass"; else if(w>=4)lab="Substantial pass"; else lab="Light pass";
@@ -434,7 +455,7 @@
     for(i=0;i<k;i++){sx+=i;sy+=ys[i];sxx+=i*i;sxy+=i*ys[i];}var d=k*sxx-sx*sx;return d===0?0:(k*sxy-sx*sy)/d;}
   var traj=(function(){
     var s=carryFwd(CYCLES.map(idxTok)); if(!s.length)s=[0];
-    var cur=s[s.length-1], n=s.length, slope=0, bf=null, breach=null;
+    var cur=num(s[s.length-1],0), n=s.length, slope=0, bf=null, breach=null;
     if(n>=3 && cur<IDXB){ slope=lsSlope(s.slice(Math.max(0,n-4)));     // fit over the last ≤4 cycles
       if(slope>0.5){ bf=(IDXB-cur)/slope;                              // EXACT (fractional) cycles to the ceiling
         var b=Math.round(bf); if(bf>0 && b<=60){breach=Math.max(1,b);} else {bf=null;} } }
@@ -605,22 +626,37 @@
     // v0.1.66 (Phase B): ceilTxt — an OVERRIDE status line for the index meter when the record carries
     // remediation.over_ceiling (the hard ceiling is a SECOND signal beside the target `over`, never a
     // relabel of it; absent on legacy records → meters render exactly as before).
-    function meter(box,lab,val,max,over,ceilTxt){var f=Math.max(0,Math.min(1,max>0?val/max:0));
-      var col=(ceilTxt||over)?"var(--crit)":f>=.85?"var(--warn)":"var(--data)";
-      box.innerHTML='<div class="top"><span class="lab">'+esc(lab)+'</span><span class="val" style="color:'+col+'">'+pct(val,max)+'% · '+fmt(val)+'/'+fmt(max)+'</span></div>'
+    function meter(box,lab,val,max,over,status){var f=Math.max(0,Math.min(1,max>0?val/max:0));
+      var col=(status==="crit"||(over&&!status))?"var(--crit)":(over||status||f>=.85)?"var(--warn)":"var(--data)";
+      box.innerHTML='<div class="top"><span class="lab">'+esc(lab)+'</span><span class="val" style="color:'+col+'">'+pct(val,max)+'% · '+fmt(val)+'/'+fmt(max)+((max>0&&val>max)?" ⚠":"")+'</span></div>'
         +'<div class="track"><div class="fill"></div><div class="mark" style="left:100%"></div></div>'
-        +'<div class="d">'+(ceilTxt?ceilTxt:over?"over budget — remediation gate active":f>=.85?"approaching budget":"within budget")+'</div>';
+        +'<div class="d">'+(status==="crit"?("over the HARD CEILING ≈"+fmt(num(BUD.index_ceiling,3840))+" — M1 holds new pulls")
+          :(status?status:(over?"over budget — remediation gate active":(f>=.85?"approaching budget":"within budget"))))+'</div>';
       var fill=box.querySelector(".fill");fill.style.background=col;requestAnimationFrame(function(){fill.style.width=(f*100).toFixed(1)+"%";});}
-    var ceilTxt=g(CUR,"remediation.over_ceiling",false)?("over the HARD CEILING ≈"+fmt(num(BUD.index_ceiling,3840))+" — M1 holds new pulls"):null;
-    meter(el("m-index"),"Auto-memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),IDXB,!!g(CUR,"budget.index.over",false),ceilTxt);
-    meter(el("m-cmd"),"CLAUDE.md (root)",num(g(CUR,"budget.claude_md.after_tokens",g(CUR,"budget.claude_md.before_tokens",0))),CMB,!!g(CUR,"budget.claude_md.over",false));
+    // render-chain audit: a standing-justified record must NOT read "gate active" — the meter honors
+    // remediation.standing_justified (suppressed) as an amber status line, never the crit "active" claim.
+    var remObj=g(CUR,"remediation",null);
+    remObj=(remObj&&typeof remObj==="object"&&!Array.isArray(remObj))?remObj:{};
+    var ceil=g(CUR,"remediation.over_ceiling",false);
+    var overFlag=!!g(CUR,"budget.index.over",false);
+    var sj=!!remObj.standing_justified;
+    var status=ceil?"crit":(overFlag&&sj)?("over target · standing-justified at "+num(remObj.baseline_facts)+" fact(s) — gate suppressed until +Δ"):null;
+    meter(el("m-index"),"Auto-memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),IDXB,overFlag,status);
+    meter(el("m-cmd"),"CLAUDE.md (root)",num(g(CUR,"budget.claude_md.after_tokens",g(CUR,"budget.claude_md.before_tokens",0))),CMB,!!g(CUR,"budget.claude_md.over",false),null);
   })();
 
   // ── network ──
   (function(){
-    var net=CUR.network||{},nodes=Array.isArray(net.nodes)?net.nodes:[],svg=el("net");
-    el("net-note").textContent=nodes.length+" node"+(nodes.length!==1?"s":"")+" share memory";
-    if(!nodes.length){var t=S("text",{x:260,y:140,"text-anchor":"middle",class:"axt d"});t.textContent="no shared-memory network yet";svg.appendChild(t);return;}
+    var net=CUR.network||{},allN=Array.isArray(net.nodes)?net.nodes:[],nodes=allN.slice(0,12),svg=el("net");
+    var tot=(net.totals&&typeof net.totals==="object")?net.totals:{};
+    var totAl=num(tot.always_loaded_tokens),totRc=num(tot.recall_tokens);
+    el("net-note").textContent=nodes.length+" node"+(nodes.length!==1?"s":"")+(allN.length>12?" of "+allN.length:"")+" share memory"
+      +((totAl+totRc)>0?(" · fleet ≈"+fmt(totAl)+" always-loaded · ≈"+fmt(totRc)+" recall-pool tok"):"");
+    if(!nodes.length){var t=S("text",{x:260,y:140,"text-anchor":"middle",class:"axt d"});
+      // render-chain audit: the record may carry fleet totals with NO node rows (the model trimmed the
+      // verbatim paste) — "no shared-memory network yet" would assert the fleet doesn't exist. Say what's
+      // true: the detail wasn't captured; the totals are the fleet.
+      t.textContent=((totAl+totRc)>0)?"node rows not captured — fleet totals above":"no shared-memory network yet";svg.appendChild(t);return;}
     var cx=260,cy=94,N=nodes.length,maxF=Math.max.apply(null,nodes.map(function(d){return num(d.facts,1);}))||1;
     var pos=nodes.map(function(d,i){if(N===1)return[cx,cy];var ang=(i/N)*2*Math.PI-Math.PI/2,rad=N===2?52:64;return[cx+rad*Math.cos(ang),cy+rad*Math.sin(ang)];});
     var trig=nodes.findIndex(function(d){return d.trigger;});if(trig<0)trig=0;
@@ -664,6 +700,20 @@
     var INTG=(CUR&&CUR._integrity)?'<div class="flag" style="display:block">⚠ Procedure integrity — '+esc(CUR._integrity.reason)+'</div>':'';
     var pointers=g(h,"index_pointers_ok",true), dang=(g(h,"dangling_links",[])||[]).length, broke=(g(h,"broken",[])||[]).length;
     var conf=num(v.confirmed),corr=num(v.corrected),unv=num(v.unverifiable);
+    // render-chain audit: the usage telemetry (reads/transcripts/mentions — ASCII-only until now) and the
+    // remediation gate state get their HTML rows, so the archive shows what the ASCII dashboard shows.
+    var U0=CUR.usage, uRows="";
+    if(U0&&typeof U0==="object"&&!Array.isArray(U0)&&Object.keys(U0).length){
+      uRows='<div class="audit-ln"><span class="s">usage (this window)</span><span class="nums">'
+        +num(U0.reads)+' read'+(num(U0.reads)!==1?"s":"")+' over '+num(U0.facts_read)+' fact'+(num(U0.facts_read)!==1?"s":"")
+        +' · '+num(U0.transcripts)+' transcript'+(num(U0.transcripts)!==1?"s":"")
+        +(num(U0.mentions)?' · '+num(U0.mentions)+' hook mention(s)':"")+'</span></div>';}
+    var rem=CUR.remediation, remRow="";
+    if(rem&&typeof rem==="object"&&!Array.isArray(rem)&&Object.keys(rem).length){
+      var rtxt=rem.standing_justified?("standing-justified at "+num(rem.baseline_facts)+" facts — gate suppressed until +Δ")
+        :(rem.required?"gate active · lever "+String(rem.lever||"?")+" · "+num(rem.pruned)+" pruned":"clean");
+      var rcol=rem.standing_justified?"var(--warn)":(rem.required?"var(--crit)":"var(--ok)");
+      remRow='<div class="audit-ln"><span class="s">remediation gate</span><span class="nums" style="color:'+rcol+'">'+esc(rtxt)+'</span></div>';}
     vb.innerHTML='<div class="panel-lead">Verification &amp; health</div>'+INTG
       +'<div class="audit-ln head"><span class="s">check</span><span class="nums">result</span></div>'
       +'<div class="audit-ln"><span class="s">claims verified</span><span class="nums">'
@@ -671,6 +721,8 @@
         +(unv>0?'<span style="color:var(--warn)">'+unv+' dropped</span>':'0 dropped')+'</span></div>'
       +'<div class="audit-ln"><span class="s">index pointers</span><span class="nums" style="color:'+(pointers?"var(--ok)":"var(--crit)")+'">'+(pointers?"all resolve":"broken")+(broke?" · "+broke+" broken":"")+'</span></div>'
       +'<div class="audit-ln"><span class="s">dangling wikilinks</span><span class="nums" style="color:'+(dang?"var(--warn)":"var(--ok)")+'">'+(dang?dang+" to review":"none")+'</span></div>'
+      +uRows
+      +remRow
       +'<div class="meta"><div class="cap">Every recorded claim is checked against the live tree before it lands.</div></div>';
     // v0.1.55/57 — the distill verdict (gated on the key; legacy cycles hide the block). The verdict's
     // disposition (created / proposed / nothing) renders as a tag; the explanation reads as a sentence.
@@ -727,11 +779,39 @@
       el("demo-verdict").innerHTML=bits;
       el("demotion-blk").style.display="";
     }
+    // v0.1.87/W-C (render-chain audit): the registrar's Tier-2 consult gets its render surface. Key-present
+    // renders candidates + dispositions; a distill-era record WITHOUT the key renders the not-consulted
+    // line (the SKILL's "absent = a visible decision" — previously invisible in every view).
+    var WP=CUR.workflow_proposals;
+    if(D||(WP&&typeof WP==="object"&&!Array.isArray(WP))){
+      if(WP&&typeof WP==="object"&&!Array.isArray(WP)){
+        var wc=Array.isArray(WP.candidates)?WP.candidates.filter(function(c){return c&&typeof c==="object";}):[];
+        var wan=Array.isArray(WP.decline_anchors)?WP.decline_anchors.length:0;
+        el("reg-counts").textContent=wc.length+" candidate"+(wc.length!==1?"s":"")+(wan?" · "+wan+" decline-anchor(s)":"");
+        var wbits="";
+        wc.forEach(function(c){
+          var ev=(c.evidence&&typeof c.evidence==="object")?c.evidence:{};
+          var nm=String(c.name||c.candidate||"?"), nodes=Array.isArray(ev.nodes)?ev.nodes.join(", "):"";
+          var disp=String(c.disposition||"awaiting-confirmation");
+          var tag=(disp==="confirmed")?"ok":(disp==="declined")?"":(disp==="awaiting-confirmation")?"warn":"";
+          wbits+='<div class="row" style="padding:6px 0"><span class="tag'+tag+'">'+esc(disp)+'</span>'
+            +'<span class="vtx">'+esc(nm)+' <em style="opacity:.6">['+esc(String(c.form||"?"))+']</em>'
+            +(nodes?(" — nodes "+esc(nodes)+" · d="+num(ev.d)+" n="+num(ev.n)):"")+'</span></div>';
+        });
+        if(!wc.length)wbits='<span class="vtx">0 fleet-candidates — the honest cold state (never invented breadth)</span>';
+        if(WP.verdict)wbits+='<span class="vtx" style="opacity:.75"> · '+esc(String(WP.verdict))+'</span>';
+        el("reg-verdict").innerHTML=wbits;
+      }else{
+        el("reg-counts").textContent="not consulted";
+        el("reg-verdict").innerHTML='<span class="vtx" style="color:var(--faint)">the registrar was not consulted this pass (Tier-2 fleet placement)</span>';
+      }
+      el("registrar-blk").style.display="";
+    }
   })();
 
   // ── v0.1.32/v0.1.72 diff-modal: THIS dream's per-file diffs (memory facts + MEMORY.md index + CLAUDE.md +
   // repo docs — every audit_snapshot store); a changed fact's NAME is clickable in the ledger ──
-  var DREAMDIFFS=ALLDIFFS[diffKey((CUR&&CUR.marker)||{})]||{};
+  var DREAMDIFFS=ALLDIFFS[diffKey((CUR&&CUR.marker)||{}, g(CUR,"session",""))]||{};
   var STORE_PREFIXES=[["memory/","memory"],["claude_md/","claude_md"],["repo_doc/","repo doc"]];
   function splitDiffPath(p){p=String(p);
     for(var i=0;i<STORE_PREFIXES.length;i++){var pre=STORE_PREFIXES[i][0];
@@ -848,7 +928,7 @@
     var st={rig:"all", key:"tsRaw", dir:-1};   // default: newest first
     var rigs=["all"].concat(["HEAVY","SUBSTANTIAL","LIGHT"].filter(function(r){return rows.some(function(x){return x.rgRaw===r;});}));
     el("arch-tools").innerHTML=
-      '<label>rigor <select id="f-rig">'+rigs.map(function(r){return '<option value="'+r+'">'+(r==="all"?"all":r.charAt(0)+r.slice(1).toLowerCase())+'</option>';}).join("")+'</select></label>'
+      '<label>rigor <select id="f-rig">'+rigs.map(function(r){return '<option value="'+esc(r)+'">'+(r==="all"?"all":r.charAt(0)+r.slice(1).toLowerCase())+'</option>';}).join("")+'</select></label>'
       +'<label>sort <select id="f-sort"><option value="tsRaw:-1">newest</option><option value="tsRaw:1">oldest</option><option value="ix:-1">index ↓</option><option value="ix:1">index ↑</option><option value="en:-1">writes ↓</option><option value="en:1">writes ↑</option></select></label>'
       +'<span class="f-count" id="f-count"></span>';
     function build(){
@@ -880,6 +960,7 @@
   // keyboard nav (dream view): ← → step dreams · Esc → archive (ignored while typing in a filter control)
   document.addEventListener("keydown", function(e){
     if(e.key==="Escape" && el("dmodal") && el("dmodal").style.display!=="none"){ closeDiff(); return; }   // modal closes first
+    if(el("dmodal") && el("dmodal").style.display!=="none") return;   // ← → must NOT reload a dream while the modal is open (state loss)
     if(/^(INPUT|SELECT|TEXTAREA)$/.test((e.target||{}).tagName||"")) return;
     if(VIEW!=="dream") return;
     if(e.key==="ArrowLeft" && selIdx>0) location.hash="#sel="+(selIdx-1);

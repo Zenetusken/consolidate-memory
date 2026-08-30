@@ -1737,8 +1737,8 @@ def audit_snapshot(project_dir: Path) -> dict:
         snap[label] = entry
 
     if auto_mem.exists():
-        for f in sorted(auto_mem.glob("*.md")):
-            _add(f"memory/{f.name}", f, "memory")
+        for f in sorted(auto_mem.glob("**/*.md")):   # RECURSIVE (render-chain audit): a fact under a nested
+            _add(f"memory/{f.relative_to(auto_mem)}", f, "memory")   # dir was invisible to snapshot/audit/diffs
     _cmd_set = {p.resolve() for p in _claude_md_files(project_dir)}
     for p in _claude_md_files(project_dir):
         try:
@@ -1812,14 +1812,19 @@ def audit_diff(before: dict, after: dict) -> dict:
 _DIFF_LINE_CAP = 80   # per-file diff line cap for the modal — a giant fact rewrite won't bloat the sidecar
 
 
-def diff_key(marker: object) -> str:
-    """The per-dream diff-sidecar key — the (commit, timestamp) `_marker` pair, sanitized to a filename. render_html
-    reconstructs the SAME key from each embedded cycle's marker to find + embed its sidecar (belt-and-suspenders vs
-    a timestamp-only collision when two dreams share a HEAD)."""
+def diff_key(marker: object, session: str = "") -> str:
+    """The per-dream diff-sidecar key — the (commit, timestamp[, session]) triple, sanitized to a filename.
+    render_html reconstructs the SAME key from each embedded cycle's marker to find + embed its sidecar
+    (belt-and-suspenders vs a timestamp-only collision when two dreams share a HEAD). The optional session
+    suffix (render-chain audit): two dreams at the SAME head whose markers share a SECOND would clobber
+    each other's sidecar — the dream's session id disambiguates (unique per run)."""
     m = marker if isinstance(marker, dict) else {}
     commit = re.sub(r"[^0-9A-Za-z]", "", str(m.get("commit", "") or ""))[:12] or "nocommit"
     ts = re.sub(r"[^0-9A-Za-z]", "-", str(m.get("timestamp", "") or "")) or "nots"
-    return f"{commit}__{ts}"
+    key = f"{commit}__{ts}"
+    if session:
+        key += "__" + re.sub(r"[^0-9A-Za-z]", "", str(session))[:8]
+    return key
 
 
 def diffs_dir(project_dir: Path) -> Path:
@@ -1847,8 +1852,10 @@ def _diff_lines(before_text: str, after_text: str, cap: int = _DIFF_LINE_CAP) ->
     """A capped unified diff (stdlib difflib) as structured lines for the modal: {lines:[{t,s}], more:N}. `t` is
     '+'/'-'/'@'/' ' (added/removed/hunk/context); the modal renders each `s` via esc() — the load-bearing XSS guard
     on the highest-volume untrusted-text-into-DOM path in the dashboard."""
-    raw = [ln for ln in difflib.unified_diff(before_text.splitlines(), after_text.splitlines(), lineterm="", n=3)
-           if not ln.startswith("--- ") and not ln.startswith("+++ ")]   # drop the file-header pair
+    _u = list(difflib.unified_diff(before_text.splitlines(), after_text.splitlines(), lineterm="", n=3))
+    raw = _u[2:]   # drop ONLY the two GUARANTEED file-header lines ('--- ' / '+++ ') — a content line that
+                   # merely STARTS with '-- ' or '++ ' is DATA and was silently dropped by the old prefix
+                   # filter, with `more` counting post-filter so the loss was invisible (render-chain audit)
     lines = []
     for ln in raw[:cap]:
         c = ln[:1]
@@ -1867,6 +1874,10 @@ def capture_diffs(before: object, project_dir: Path) -> dict:
     misleadingly one-sided) text diff. One-sided create/delete handled (the empty side). Returns
     {path: {op, lines, more}} or {path: {op, size_capped: True}}. Best-effort (caller guards)."""
     bsnap = before if isinstance(before, dict) else {}
+    if not bsnap:
+        return {}   # no before snapshot → NOTHING to diff against; return empty rather than fabricate every
+                    # change as a whole-file 'created' (the render-chain audit measured exactly that lie, and
+                    # it bypassed the size_capped guard too). The CLI turns this into a visible skip.
     after = audit_snapshot(project_dir)
     diffs: dict = {}
     for op in audit_diff(bsnap, after).get("operations", []):
@@ -2436,6 +2447,10 @@ def validate_cycle_record(record: object) -> list[str]:
     # entries must be a list if present.
     if "entries" in record and not isinstance(record["entries"], list):
         warnings.append("entries is not a list")
+    elif "entries" in record and any(not isinstance(e, dict) for e in record["entries"]):
+        # render-chain audit: a non-dict ITEM crashed the renderers (e.get on a str) while the
+        # container check passed silently — warn per-item, never block.
+        warnings.append("entries contains a non-dict item (renderers filter it; the record is malformed)")
     # dream.beats must be a list if present (mirrors the health.* nested checks: descend only
     # into a well-formed dream — a non-dict dream already warned above).
     dream = record.get("dream")
@@ -2956,10 +2971,31 @@ def main() -> int:
         except (OSError, json.JSONDecodeError):
             before = {}
         diff = audit_diff(before if isinstance(before, dict) else {}, audit_snapshot(project_dir))
+        # The row carries its DREAM identity (render-chain audit: rows were anonymous — the live log held
+        # 24 rows for 26 dreams, the missing two untraceable) and a re-run of --audit (retry / a second
+        # Phase-5 pass) must NOT double-append an indistinguishable duplicate.
+        _mrk: dict = {}
+        if audit_into:
+            try:
+                _cyc_pre = json.loads(Path(audit_into).read_text(encoding="utf-8"))
+                if isinstance(_cyc_pre, dict) and isinstance(_cyc_pre.get("marker"), dict):
+                    _mrk = _cyc_pre["marker"]
+            except (OSError, json.JSONDecodeError):
+                _mrk = {}
         try:                    # the ONLY write in the audit path — an append, mirroring the _persist log pattern
             ctx["auto_mem"].mkdir(parents=True, exist_ok=True)
-            with open(ctx["auto_mem"] / ".mutation-log.jsonl", "a", encoding="utf-8") as fh:
-                fh.write(json.dumps({"window": "phase0..phase5", **diff}) + "\n")
+            _mlog = ctx["auto_mem"] / ".mutation-log.jsonl"
+            _ident = (str(_mrk.get("commit", "") or ""), str(_mrk.get("timestamp", "") or ""))
+            _dup = False
+            if _ident[0] and _mlog.exists():
+                try:
+                    _last = json.loads(_mlog.read_text(encoding="utf-8").strip().rsplit("\n", 1)[-1])
+                    _dup = (_last.get("commit"), _last.get("timestamp")) == _ident
+                except (OSError, json.JSONDecodeError):
+                    _dup = False
+            if not _dup:
+                with open(_mlog, "a", encoding="utf-8") as fh:
+                    fh.write(json.dumps({"window": "phase0..phase5", "commit": _ident[0], "timestamp": _ident[1], **diff}) + "\n")
         except OSError:
             pass
         if audit_into:          # v0.1.53: deterministically inject the audit block INTO the cycle record (no model
@@ -2993,11 +3029,14 @@ def main() -> int:
             return 0
         try:                    # best-effort — a diff-capture failure must NEVER crash a dream (mirrors --audit)
             diffs = capture_diffs(before, project_dir)
-            _d = diffs_dir(project_dir)
-            _d.mkdir(parents=True, exist_ok=True)
-            sp = _d / (diff_key(marker) + ".json")
-            _write_private(sp, json.dumps(diffs) + "\n")   # holds memory fact BODIES (+ CLAUDE.md/repo doc text) → 0o600 atomically
-            print(f"diffs → {sp}  ({len(diffs)} file(s) changed)")
+            if not diffs and not before:
+                print("--diffs: skipped (no before snapshot — Phase 0 --snapshot wasn't run)", file=sys.stderr)
+            else:
+                _d = diffs_dir(project_dir)
+                _d.mkdir(parents=True, exist_ok=True)
+                sp = _d / (diff_key(marker, str(cyc.get("session", ""))) + ".json")
+                _write_private(sp, json.dumps(diffs) + "\n")   # holds memory fact BODIES (+ CLAUDE.md/repo doc text) → 0o600 atomically
+                print(f"diffs → {sp}  ({len(diffs)} file(s) changed)")
         except Exception as e:   # noqa: BLE001 — never crash a dream over a sidecar
             print(f"--diffs: skipped ({e})", file=sys.stderr)
         _ui.dream_cue(_CUE_PHASE5)

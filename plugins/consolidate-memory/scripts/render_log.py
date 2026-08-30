@@ -43,7 +43,8 @@ def _row(rec: dict) -> list:
     rb, ra = _n(_d(rec, "budget", "recall_facts", "before")), _n(_d(rec, "budget", "recall_facts", "after"))
     u = _d(rec, "usage", "reads")                    # v0.1.63 (Phase A): organic recalls (None on legacy)
     reads = "—" if u is None else str(_n(u))
-    ents = [e for e in (rec.get("entries") or []) if isinstance(e, dict)]
+    _ents_raw = rec.get("entries")
+    ents = [e for e in _ents_raw if isinstance(e, dict)] if isinstance(_ents_raw, list) else []
     code = " ".join(f"{n}{a}" for a, n in sorted(Counter(str(e.get("action", "?"))[:1] for e in ents).items())) or "—"
     cr, mo, de = (_n(_d(rec, "audit", "memory", "created")), _n(_d(rec, "audit", "memory", "modified")),
                   _n(_d(rec, "audit", "memory", "deleted")))
@@ -55,11 +56,13 @@ _HEAD = ["WHEN", "MARKER", "RIGOR", "INDEX (Δ)", "RECALL (Δ)", "READS", "ENTRI
 
 def render(recent: list, total: int, project: str) -> str:
     """Pure: a cycle-record list (newest-first) → the table string. Exercised by the smoke test."""
-    rows = [_row(r) for r in recent]
-    w = [max(len(_HEAD[i]), max((len(r[i]) for r in rows), default=0)) for i in range(len(_HEAD))]
+    # render-chain audit: a well-formed non-dict line (e.g. `[]`) crashed _row's rec.get — filter, and pad
+    # by DISPLAY width (an emoji/CJK first char occupies 2 cells but len() counts 1 → the column drifted).
+    rows = [_row(r) for r in recent if isinstance(r, dict)]
+    w = [max(_ui.disp_w(_HEAD[i]), max((_ui.disp_w(r[i]) for r in rows), default=0)) for i in range(len(_HEAD))]
 
     def fmt(cells: list) -> str:
-        return "  ".join(str(c).ljust(w[i]) for i, c in enumerate(cells))
+        return "  ".join(str(c) + " " * max(0, w[i] - _ui.disp_w(str(c))) for i, c in enumerate(cells))
 
     out = [_ui.rule(),
            "  " + _ui.c(f"✦ DREAM LOG · {project} · {len(recent)} of {total} shown", "cyan"),

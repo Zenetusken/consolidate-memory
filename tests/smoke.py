@@ -1820,6 +1820,40 @@ check("v0.1.44: SPARES a SUBSTANTIAL pass with tally>0 (verification recorded)",
       ms.procedure_integrity(_pi(2, 4, 10, 2, 0))[0])
 check("v0.1.44: SPARES a LIGHT pass (magnitude<=2), even at 0/0/0",
       ms.procedure_integrity(_pi(2, 0))[0] and ms.procedure_integrity(_pi(0, 2))[0])
+
+# ── render-chain audit (the 4-reviewer presentation-layer swarm) — the renderers degrade, never lie ──
+_RC_BASE = {"project": "p", "scope": {"git_commits": 1, "session_candidates": 1, "memories_reviewed": 1}}
+_RC1 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, entries=["not-a-dict"], verification={"confirmed": 2})))
+check("RC: a non-dict entries ITEM renders without crashing (the measured AttributeError blocker)",
+      "DREAM" in _RC1)
+_RC2 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, verification={"confirmed": None, "corrected": None, "unverifiable": None},
+                                           marker={"commit": None, "timestamp": None})))
+check("RC: stored JSON-nulls never print as 'None' (verification/marker coalesce)",
+      "0 confirmed" in _RC2 and "None" not in _RC2)
+_RC3 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, budget={"index": {"after_tokens": 2000, "budget_tokens": 1500, "over": "false"}})))
+check("RC: a string-'false' over flag stays OFF (_flag coercion at the flag boundary)",
+      "OVER" not in _RC3)
+_RC4 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, entries=[{"action": "reconciled", "tier": "-", "store": "-", "scope": "-",
+                                                                "name": "x", "reason": "r"}],
+                                           cross_project={"pulled": [{"name": "f", "scope": "user-global"}]})))
+check("RC: no angle-bracket placeholder tokens (<proj>/<global>/<->) reach the page",
+      "<proj>" not in _RC4 and "<->" not in _RC4 and "<global>" not in _RC4)
+_RC5 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, scope={"git_range": "-20", "git_commits": 3, "session_candidates": 1})))
+check("RC: the markerless '-20' lookback sentinel renders as 'recent 20 (no marker)'",
+      "recent 20 (no marker)" in _RC5)
+_RC6 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, network={"totals": {"always_loaded_tokens": 100, "recall_tokens": 500}, "nodes": []})))
+check("RC: totals-with-no-node-rows says 'node rows not captured', never 'no network yet'",
+      "node rows not captured" in _RC6)
+_RC7 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, distill={"verdict": "nothing: x fails"})))
+check("RC: a distill-era record WITHOUT workflow_proposals renders 'registrar not consulted' (the visible decision)",
+      "registrar not consulted" in _RC7)
+_RC8 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, workflow_proposals={
+      "candidates": [{"candidate": "python3 --pull .", "form": "command",
+                      "evidence": {"nodes": ["a", "b"], "d": 2, "n": 4},
+                      "mechanical": {"fleet_recurrence": True, "day_spread": True},
+                      "name": "fleet-pull", "disposition": "awaiting-confirmation"}]})))
+check("RC: the registrar block renders candidates with dispositions (its first render surface)",
+      "REGISTRAR" in _RC8 and "fleet-pull" in _RC8 and "awaiting-confirmation" in _RC8)
 check("v0.1.44: SPARES maintenance/bootstrap (0 commits, 0 candidates, 0/0/0)",
       ms.procedure_integrity(_pi(0, 0))[0])
 # the downgrade dodge: HEAVY magnitude relabeled LIGHT, 0 tally -> still FIRES + surfaces the dodge
@@ -1965,17 +1999,25 @@ check("v0.1.54 validate: SILENT on a well-formed dream block",
 _dr54 = cast(ms.CycleRecord, {"project": "p", "session": "s",
                               "dream": {"sleep": "> *💤 s*", "beats": ["> *🌙 a*", "> *🌙 b*"], "wake": "> *☀️ w*"}})
 _dr54_out = rd.render(_dr54)
-check("v0.1.54 render: DREAM ARC line present when captured (sleep · N beats · wake)",
-      "DREAM ARC" in _dr54_out and "2 beats" in _dr54_out and "sleep" in _dr54_out and "wake" in _dr54_out)
+check("v0.1.54 render: DREAM ARC line present when captured (sleep · N/6 beats · wake)",
+      "DREAM ARC" in _dr54_out and "2/6 beats" in _dr54_out and "sleep" in _dr54_out and "wake" in _dr54_out)
+# render-chain audit: the beats ✓ now GATES on completeness (6 = 5 phase beats + surfacing), and an
+# emoji inside a non-bookend beat is flagged (the arc contract bans it outside the bookends).
+check("v0.1.54 render: incomplete arc shows ✗ N/6 + the emoji-in-beats flag (render-chain audit)",
+      "✗ 2/6 beats" in _dr54_out and "emoji in beat(s)" in _dr54_out)
+_dr54_full = rd.render(cast(ms.CycleRecord, {"project": "p",
+      "dream": {"sleep": "*💤 s*", "beats": ["*a*", "*b*", "*c*", "*d*", "*e*", "*f*"], "wake": "*☀️ w*"}}))
+check("v0.1.54 render: a COMPLETE 6-beat arc green-checks (✓ 6/6 beats)",
+      "✓ 6/6 beats" in _dr54_full)
 _dr54_partial = rd.render(cast(ms.CycleRecord, {"project": "p", "dream": {"beats": ["> *🌙 a*"]}}))
-check("v0.1.54 render: partial arc shows its gaps (✗ sleep / ✗ wake, 1 beat)",
-      "DREAM ARC" in _dr54_partial and "✗ sleep" in _dr54_partial and "✗ wake" in _dr54_partial and "1 beat" in _dr54_partial)
+check("v0.1.54 render: partial arc shows its gaps (✗ sleep / ✗ wake, 1/6 beat)",
+      "DREAM ARC" in _dr54_partial and "✗ sleep" in _dr54_partial and "✗ wake" in _dr54_partial and "1/6 beat" in _dr54_partial)
 check("v0.1.54 render: NO DREAM ARC line without the key (legacy unchanged)",
       "DREAM ARC" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s"})))
 # a JSON-null stanza must read ABSENT (✗), never a truthy str(None) — the null-arc honesty fix.
 _dr54_null = rd.render(cast(ms.CycleRecord, {"project": "p", "dream": {"sleep": None, "beats": ["> *🌙 a*"], "wake": None}}))
 check("v0.1.54 render: null sleep/wake → ✗ gaps (str(None) truthiness fixed)",
-      "✗ sleep" in _dr54_null and "✗ wake" in _dr54_null and "1 beat" in _dr54_null)
+      "✗ sleep" in _dr54_null and "✗ wake" in _dr54_null and "1/6 beat" in _dr54_null)
 
 # (3) the HTML surface: the template ships the gated panel (hidden by default; JS reveals) and
 # build_html embeds the dream data through the XSS-safe embed (round-trip via the escaped JSON).
