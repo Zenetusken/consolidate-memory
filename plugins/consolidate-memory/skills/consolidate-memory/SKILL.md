@@ -1050,6 +1050,9 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    It writes a ZERO-dependency, self-contained `dashboards/index.html` (the whole per-repo
    archive of dreams in one file) and **auto-opens this dream's dashboard** (`--latest` →
    `#sel=<newest>`); headless-safe (no browser → prints the path; `--no-open` suppresses).
+   (v0.1.89: ONE open per archive anchor per ~3 minutes — a back-to-back re-render of the
+   SAME dream — e.g. the post-persist patch/re-render flow — writes the file without popping a
+   second tab; a deliberate later re-open still opens.)
    This is the **post-dream payoff, and it is MANDATORY**: a cleanly completing dream is **not done
    until `render_html … --latest` runs.** Its `webbrowser.open()` auto-open is the whole point —
    **never pass `--no-open` in a normal dream** (headless degrades to printing the path, the only
