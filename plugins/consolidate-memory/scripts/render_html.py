@@ -139,6 +139,31 @@ def read_diffs(store: "Path | None", cycles: list) -> dict:
     return out
 
 
+_OPEN_MARKER_NAME = ".last-open"
+_OPEN_WINDOW_S = 180.0    # one open per (archive, anchor) per 3 minutes — kills the repeated-tab pop, keeps deliberate re-opens
+
+
+def _should_open(out: Path, frag: str, now_ts: float, marker_dir: Path, window_s: float = _OPEN_WINDOW_S) -> bool:
+    """v0.1.89 (render-chain bug): a back-to-back re-render of the SAME archive anchor must NOT re-open a
+    new browser tab — the dream's patch/re-render flow popped the dashboard repeatedly. One open per
+    (archive, anchor) per `window_s`; a deliberate later re-open (cm report) still opens. Pure + testable:
+    reads/writes a tiny JSON marker in marker_dir (best-effort — any failure = open)."""
+    marker = marker_dir / _OPEN_MARKER_NAME
+    key = f"{out.resolve()}::{frag}"
+    try:
+        prev = json.loads(marker.read_text(encoding="utf-8"))
+        if isinstance(prev, dict) and prev.get("key") == key and now_ts - float(prev.get("at", 0)) < window_s:
+            return False
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
+    try:
+        marker_dir.mkdir(parents=True, exist_ok=True)
+        marker.write_text(json.dumps({"key": key, "at": now_ts}), encoding="utf-8")
+    except OSError:
+        pass
+    return True
+
+
 def _default_out(record: dict, store: "Path | None") -> Path:
     """The stable per-repo output: `<store>/../dashboards/index.html` (so the dream AND `cm report` write the SAME
     revisitable file), else a per-project temp file. Never the memory store itself (that's facts only)."""
@@ -211,7 +236,11 @@ def main(argv: list) -> int:
     opened = False
     if not args.no_open:
         try:                          # headless-safe: a missing/loopback browser must NEVER crash a dream
-            opened = webbrowser.open(out.resolve().as_uri() + frag)
+            _now = datetime.now(timezone.utc).timestamp()
+            if _should_open(out, frag, _now, out.parent):
+                opened = webbrowser.open(out.resolve().as_uri() + frag)
+            else:
+                opened = True         # v0.1.89: this archive anchor is ALREADY open (back-to-back re-render) — not a failure
         except Exception:             # noqa: BLE001 - the whole point is don't-crash-on-open
             opened = False
     print(f"dashboard → {out}{frag}" + ("" if opened else "  · open this file in a browser" if not args.no_open else ""))

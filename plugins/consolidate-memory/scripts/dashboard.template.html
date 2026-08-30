@@ -183,6 +183,11 @@
   .dstl-verdict .tag.ok{color:var(--ok);border-color:var(--ok)}
   .dstl-verdict .tag.warn{color:var(--warn);border-color:var(--warn)}
   .dstl-verdict .vtx{font-family:var(--serif);font-size:14px;color:var(--ink2)}
+  /* v0.1.89 (render-chain bug): the registrar's candidate rows must NOT reuse the LEDGER's .row grid
+     (96px 1fr auto) — inside this narrow verdict panel the grid can't shrink and long chain templates
+     pushed the whole row right off the page. Its OWN layout: flex + wrap + anywhere-wrapping. */
+  .reg-row{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--rule);min-width:0}
+  .reg-row .vtx{min-width:0;overflow-wrap:anywhere}
   .flag{margin-top:14px;padding:10px 13px;border-left:3px solid var(--accent);background:rgba(179,71,39,.06);
     font-size:11.5px;color:var(--ink2);display:none}
 
@@ -787,17 +792,23 @@
       if(WP&&typeof WP==="object"&&!Array.isArray(WP)){
         var wc=Array.isArray(WP.candidates)?WP.candidates.filter(function(c){return c&&typeof c==="object";}):[];
         var wan=Array.isArray(WP.decline_anchors)?WP.decline_anchors.length:0;
-        el("reg-counts").textContent=wc.length+" candidate"+(wc.length!==1?"s":"")+(wan?" · "+wan+" decline-anchor(s)":"");
+        var fleet=wc.filter(function(c){var m=c.mechanical||{};return m.fleet_recurrence&&m.day_spread;});
+        var blocked=wc.filter(function(c){var m=c.mechanical||{};return !(m.fleet_recurrence&&m.day_spread);});
+        var BLOCKED_CAP=8, shown=fleet.concat(blocked.slice(0,BLOCKED_CAP));
+        el("reg-counts").textContent=wc.length+" candidate"+(wc.length!==1?"s":"")
+          +" · "+fleet.length+" fleet-candidate"+(fleet.length!==1?"s":"")
+          +(wan?" · "+wan+" decline-anchor(s)":"");
         var wbits="";
-        wc.forEach(function(c){
+        shown.forEach(function(c){
           var ev=(c.evidence&&typeof c.evidence==="object")?c.evidence:{};
           var nm=String(c.name||c.candidate||"?"), nodes=Array.isArray(ev.nodes)?ev.nodes.join(", "):"";
           var disp=String(c.disposition||"awaiting-confirmation");
           var tag=(disp==="confirmed")?"ok":(disp==="declined")?"":(disp==="awaiting-confirmation")?"warn":"";
-          wbits+='<div class="row" style="padding:6px 0"><span class="tag'+tag+'">'+esc(disp)+'</span>'
+          wbits+='<div class="reg-row"><span class="tag'+tag+'">'+esc(disp)+'</span>'
             +'<span class="vtx">'+esc(nm)+' <em style="opacity:.6">['+esc(String(c.form||"?"))+']</em>'
             +(nodes?(" — nodes "+esc(nodes)+" · d="+num(ev.d)+" n="+num(ev.n)):"")+'</span></div>';
         });
+        if(blocked.length>BLOCKED_CAP)wbits+='<span class="vtx" style="opacity:.6">… +'+(blocked.length-BLOCKED_CAP)+' more blocked — see the consult (cm workflows . --registrar)</span>';
         if(!wc.length)wbits='<span class="vtx">0 fleet-candidates — the honest cold state (never invented breadth)</span>';
         if(WP.verdict)wbits+='<span class="vtx" style="opacity:.75"> · '+esc(String(WP.verdict))+'</span>';
         el("reg-verdict").innerHTML=wbits;

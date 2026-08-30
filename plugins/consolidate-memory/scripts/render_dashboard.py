@@ -782,7 +782,13 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         if _wp:
             out.append("  " + _c("REGISTRAR", "bold") + _c("   · Tier-2 fleet placement (the W-C consult)", "dim"))
             _cands = [c for c in _lget(_wp, "candidates") if isinstance(c, dict)]
-            for c in _cands:
+            _fleet = [c for c in _cands if _flag(_dget(c, "mechanical").get("fleet_recurrence"))
+                      and _flag(_dget(c, "mechanical").get("day_spread"))]
+            _blocked = [c for c in _cands if c not in _fleet]
+            _REG_BLOCKED_CAP = 8
+            if _fleet:
+                out.append("    " + _c(f"{len(_fleet)} fleet-candidate(s) first, blocked capped at {_REG_BLOCKED_CAP}:", "dim"))
+            for c in _fleet + _blocked[:_REG_BLOCKED_CAP]:
                 _ev = _dget(c, "evidence")
                 _mech = _dget(c, "mechanical")
                 _nm = _clean(c.get("name") or c.get("candidate") or "?")
@@ -795,6 +801,8 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
                     _l += f" — nodes {_nds} · d={_g(_d)} n={_g(_n)}"
                 _l += f" — {_disp}" + (f" · gates {_gates}" if _gates else "")
                 out.append(_l)
+            if len(_blocked) > _REG_BLOCKED_CAP:
+                out.append("    " + _c(f"… +{len(_blocked) - _REG_BLOCKED_CAP} more blocked — see the consult (cm workflows . --registrar)", "dim"))
             _anch = _lget(_wp, "decline_anchors")
             if _anch:
                 out.append("    " + _c(f"{len(_anch)} decline-anchor(s) — a fleet decline blocks a naive re-propose", "dim"))

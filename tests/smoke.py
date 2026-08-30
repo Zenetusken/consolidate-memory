@@ -1854,6 +1854,34 @@ _RC8 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, workflow_proposals={
                       "name": "fleet-pull", "disposition": "awaiting-confirmation"}]})))
 check("RC: the registrar block renders candidates with dispositions (its first render surface)",
       "REGISTRAR" in _RC8 and "fleet-pull" in _RC8 and "awaiting-confirmation" in _RC8)
+
+# ── v0.1.89 render-chain bugs (the user-reported regressions): the registrar overflow + the repeated
+#    browser pop. The template must use its OWN .reg-row layout (never the ledger's 96px-1fr-auto grid)
+#    and cap blocked rows; the ASCII renderer caps identically; _should_open dedupes same-anchor opens. ──
+_TEMPLATE_SRC = (Path(__file__).resolve().parent.parent / "plugins" / "consolidate-memory" / "scripts"
+                 / "dashboard.template.html").read_text(encoding="utf-8")
+check("RC-89: the registrar panel uses its OWN .reg-row layout, never the ledger .row grid",
+      ".reg-row" in _TEMPLATE_SRC and 'class="reg-row"' in _TEMPLATE_SRC
+      and 'wbits+=\'<div class="row"' not in _TEMPLATE_SRC)
+check("RC-89: registrar blocked rows cap at 8 with a '+N more' tail",
+      "BLOCKED_CAP=8" in _TEMPLATE_SRC and "more blocked" in _TEMPLATE_SRC)
+check("RC-89: .reg-row vtx wraps anywhere (a chain template can never push the grid right)",
+      "overflow-wrap:anywhere" in _TEMPLATE_SRC)
+_RC9_cands = [{"candidate": f"cmd{i}", "form": "command", "evidence": {"nodes": ["a"], "d": 2, "n": 2},
+               "mechanical": {"fleet_recurrence": False, "day_spread": True}, "disposition": "declined"}
+              for i in range(15)]
+_RC9 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, workflow_proposals={"candidates": _RC9_cands})))
+_check_rc9_rows = _RC9.count("◈")
+check("RC-89: the ASCII registrar caps blocked rows at 8 + the '+N more' tail (parity with the HTML)",
+      _check_rc9_rows == 8 and "+7 more blocked" in _RC9)
+_TS = 1000.0
+_tmpd = Path(_tempfile.mkdtemp())
+check("RC-89: _should_open — a same-anchor re-render within the window does NOT re-open",
+      rhtml._should_open(Path("/tmp/x.html"), "#sel=3", _TS, _tmpd) is True
+      and rhtml._should_open(Path("/tmp/x.html"), "#sel=3", _TS + 60, _tmpd) is False)
+check("RC-89: _should_open — a different anchor or a stale window DOES re-open",
+      rhtml._should_open(Path("/tmp/x.html"), "#sel=4", _TS + 60, _tmpd) is True
+      and rhtml._should_open(Path("/tmp/x.html"), "#sel=4", _TS + 3000, _tmpd) is True)
 check("v0.1.44: SPARES maintenance/bootstrap (0 commits, 0 candidates, 0/0/0)",
       ms.procedure_integrity(_pi(0, 0))[0])
 # the downgrade dodge: HEAVY magnitude relabeled LIGHT, 0 tally -> still FIRES + surfaces the dodge
