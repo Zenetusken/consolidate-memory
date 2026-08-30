@@ -5,6 +5,24 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.89] — 2026-08-30
+
+### Fixed — two 0.1.88 render-chain regressions (user-reported, root-caused, pinned)
+
+- **Registrar overflow.** The new registrar panel had reused the LEDGER's `.row` grid
+  (96px 1fr auto) inside the narrow verdict container — the grid can't shrink, so long
+  chain-candidate lines pushed every row right off the page. The panel now uses its OWN
+  `.reg-row` layout (flex + wrap + `overflow-wrap:anywhere`) and caps the blocked rows at
+  8 with a "+N more — see the consult" tail (fleet-candidates always render first). The
+  ASCII renderer caps identically (parity).
+- **Repeated browser pop.** `render_html` opened a new tab on EVERY invocation — the
+  dream's re-render flow (patches, re-renders, `cm report`) popped the dashboard
+  repeatedly mid-pass. A per-store open marker now allows ONE open per (archive, anchor)
+  per 3 minutes; back-to-back re-renders write the file silently, and a deliberate later
+  re-open still opens. (`_should_open` is a pure, smoke-pinned function.)
+
+Backward-compatible throughout (presentation-only; 973/973 smoke, mypy clean, sim holds).
+
 ## [0.1.88] — 2026-08-30
 
 ### Fixed — the render chain, end to end (a 4-reviewer presentation-layer audit)
