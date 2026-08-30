@@ -19,14 +19,14 @@ project tidy automatically; you invoke **`dream`** (or "consolidate my memory") 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
   SCOPE     git a1b2c3d..HEAD · 0 commits · 2 candidates · 8 reviewed
-  VERIFIED  ✓ 1 confirmed · ~ 0 corrected · ⚠ 0 unverifiable   [inline]
+  VERIFIED  ✓ 1 confirmed · 0 corrected   [inline]
   RIGOR     LIGHT · final · magnitude 2 (0 commits + 2 candidates)
 
   CHANGES
     + added      claude-code-memory-is-slug-scoped
-        recall/auto-mem · <global> · recall is slug-scoped; non-obvious · [session]
+        recall/auto-mem · global · recall is slug-scoped; non-obvious · [session]
     · skipped    session-workflow-requests
-        <proj> · control flow, not durable
+        proj · control flow, not durable
 
   ALWAYS-LOADED   · paid every session
     project CLAUDE.md ≈1120/4000   [███░░░░░░░] 28%
@@ -35,7 +35,7 @@ project tidy automatically; you invoke **`dream`** (or "consolidate my memory") 
     recall facts      6            +1
 
   CROSS-PROJECT   · global tier · ~/.claude/memory: 4 fact(s)
-    ↑ promoted  <global> claude-code-memory-is-slug-scoped
+    ↑ promoted  global claude-code-memory-is-slug-scoped
 
   NEURAL NETWORK   · token cost (≈ est., not a tokenizer)
     network total   ≈3200 always-loaded · ≈48000 recall-pool
