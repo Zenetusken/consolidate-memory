@@ -123,15 +123,19 @@ def read_diffs(store: "Path | None", cycles: list) -> dict:
         return {}
     out: dict = {}
     for c in cycles:
-        key = diff_key(c.get("marker") if isinstance(c, dict) else {})
-        if key in out or not (ddir / (key + ".json")).exists():
-            continue
-        try:
-            d = json.loads((ddir / (key + ".json")).read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError, ValueError):
-            continue
-        if isinstance(d, dict):
-            out[key] = d
+        marker = c.get("marker") if isinstance(c, dict) else {}
+        session = str(c.get("session", "")) if isinstance(c, dict) else ""
+        # probe the session-suffixed key (post-fix sidecars) AND the legacy unsuffixed base (pre-fix
+        # sidecars must keep resolving — the alias maps both keys to the same payload).
+        for key in (diff_key(marker, session), diff_key(marker)):
+            if key in out or not (ddir / (key + ".json")).exists():
+                continue
+            try:
+                d = json.loads((ddir / (key + ".json")).read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, ValueError):
+                continue
+            if isinstance(d, dict):
+                out[key] = d
     return out
 
 

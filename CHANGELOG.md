@@ -5,6 +5,66 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.88] — 2026-08-30
+
+### Fixed — the render chain, end to end (a 4-reviewer presentation-layer audit)
+
+The dream's final step (ASCII dashboard · HTML archive · diff sidecars · `cm log`) was
+audited against a real corpus-repo dream; every confirmed finding below was measured
+first, then fixed + smoke-pinned (959 → 967 checks).
+
+- **Blockers.** `render_dashboard` crashed on a non-dict `entries[]` item (the validator
+  checked the container, never its items — both fixed); `render_log` crashed on a
+  well-formed non-dict log line / non-list entries.
+- **The embedded-JSON seam.** The python-side `_safe_embed` escape was already correct —
+  but the template's own comment mis-credited `esc()` as the load-bearing guard, and a
+  parse failure degraded to `DATA={}` with raw JSON leaking onto the page. The comment
+  now names the real guard, and a parse failure surfaces a visible "archive data
+  corrupted" error instead of silent degradation.
+- **The registrar finally renders.** `workflow_proposals` (v0.1.87/W-C) was schema'd,
+  validated, and injected — but had NO render surface in any view. Both renderers now
+  show the Tier-2 consult: candidates + dispositions + decline-anchors, and a
+  distill-era record without the key renders "registrar not consulted" (the SKILL's
+  "absent = a visible decision" contract, actually visible).
+- **HTML parity with the ASCII dashboard.** The archive gained the usage-telemetry row
+  (reads/transcripts/mentions), the remediation-gate row (a standing-justified record no
+  longer reads "gate active" — the meter honors `standing_justified` as an amber status
+  line), fleet totals in the network panel, and the browser tab now titles itself after
+  the dreamed repo, not the plugin.
+- **Honest empty states.** The network panel no longer asserts "no shared-memory network
+  yet" when the record carries fleet totals but no node rows; the ASCII "(no nodes…)"
+  line keys off all-zero totals, not list emptiness.
+- **Model-slip coercion.** JSON-string `"false"` flags no longer flip warnings on
+  (`_flag` at every flag boundary); stored `null`s never print as `None`;
+  `carryFwd` distinguishes a genuine 0 from a missing key (a zero-index line was being
+  silently replaced with the previous cycle's value).
+- **Placeholder-token cleanup.** Scope tags render as `proj`/`global`/`stack`, never
+  `<proj>`/`<->` (the angle brackets read as unrendered template holes); the
+  markerless first-dream `-20` lookback sentinel renders "recent 20 (no marker)";
+  `⚠ 0 unverifiable` and `~ 0 corrected` lose their glyphs on zeros; `1 chains` and the
+  unlabeled recall-facts delta are fixed; long entry reasons now wrap instead of
+  overflowing the grid; the outcome banner wraps when a derived outcome can't fit the
+  line.
+- **Wide-glyph width.** Padding and wrapping measure DISPLAY columns (emoji/CJK = 2),
+  so a 🍀-labelled node can't misalign the network table, the log table, or wrapped
+  prose.
+- **Dream-arc honesty.** The DREAM ARC ✓ now gates on arc completeness (6 = 5 phase
+  beats + the surfacing line; a 4-beat arc shows `✗ 4/6`) and flags emoji inside
+  non-bookend beats — the contract's bans, rendered.
+- **Sidecar integrity.** `--diffs` with no before snapshot skips with a visible note
+  instead of fabricating every change as a whole-file "created"; content lines starting
+  `-- `/`++ ` are no longer dropped as file headers; the sidecar key gains a session
+  suffix (same-HEAD same-second dreams can't clobber each other — legacy sidecars keep
+  resolving via an alias); the mutation log rows carry their dream's identity and a
+  re-run of `--audit` doesn't double-append; the observation glob is recursive (a nested
+  fact dir is no longer invisible to snapshot/audit/diffs).
+- **Template hygiene.** The rigor filter `<option>`s now escape like everything else;
+  arrow keys can't reload a dream while the diff modal is open; the node graph caps at
+  12 with an honest "of N" count; the >100% meter labels its overshoot.
+
+Backward-compatible throughout (additive render paths, presentation-only; legacy
+records render unchanged or better — the diff-sidecar key change is alias-compatible).
+
 ## [0.1.87] — 2026-08-29
 
 ### Added — W-C: the distill registrar's Tier-2 fleet-placement gates (W-C1 + W-C2)

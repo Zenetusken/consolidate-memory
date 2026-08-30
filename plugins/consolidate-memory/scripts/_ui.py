@@ -18,6 +18,7 @@ from __future__ import annotations
 import os
 import re
 import sys
+import unicodedata
 from typing import Any, cast
 
 W = 60  # rule width (mirrors render_dashboard.W)
@@ -160,6 +161,26 @@ def vis(s: str) -> int:
     return len(_ANSI_RE.sub("", s))
 
 
+_WIDE_RE = re.compile("[\U0001F000-\U0001FAFF☀-➿]")
+# The dream-arc contract bans emoji in the NON-bookend beats — the same wide-glyph class, exposed
+# by name so the arc-completeness check and any future content lint share ONE range.
+BEAT_EMOJI_RE = _WIDE_RE
+
+
+def disp_w(s: str) -> int:
+    """DISPLAY column width — ANSI spans occupy no columns AND each wide glyph (emoji,
+    East-Asian W/F) occupies TWO. Codepoint len() under-counts wide glyphs, so padding
+    and wrapping must measure display width or a label like '🍀leaf' misaligns every
+    column to its right (the render-chain audit measured exactly that drift)."""
+    total = 0
+    for ch in _ANSI_RE.sub("", s):
+        if _WIDE_RE.match(ch) or unicodedata.east_asian_width(ch) in ("W", "F"):
+            total += 2
+        else:
+            total += 1
+    return total
+
+
 def _active_sgr(s: str) -> str:
     """ALL SGR codes still OPEN at the end of `s` (concatenated), or '' if the last was a reset.
     Accumulates since the last reset so a STACKED span (e.g. c(x, 'bold', 'green') = TWO codes)
@@ -187,7 +208,7 @@ def wrap(value: str, hang: int = 0, width: int = 0) -> str:
     cur = ""
     for word in value.split():   # split() collapses whitespace runs + strips → clean prose wrap (no empty tokens, no stray trailing space at a break)
         cand = word if not cur else cur + " " + word
-        if cur and vis(cand) > budget:
+        if cur and disp_w(cand) > budget:
             opened = _active_sgr(cur)
             lines.append(cur + (CODES["reset"] if opened else ""))
             cur = opened + word

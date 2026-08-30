@@ -208,7 +208,7 @@ def _over(b: Mapping[str, Any]) -> str:
     Param typed `Mapping[str, Any]` (read-only): a TypedDict IS assignable to a read-only
     Mapping (covariant), so BOTH the ClaudeMdBudget and IndexBudget sub-shapes flow in
     with no Union — which is what dissolves the old dual-budget-shape mypy friction."""
-    if b.get("over"):
+    if _flag(b.get("over")):
         return _c(f"  ⚠ OVER ≈{b.get('budget_tokens', '?')} tok BUDGET", "red")
     return ""
 
@@ -219,7 +219,7 @@ def _outcome(record: Mapping[str, Any]) -> str:
     # json.loads paths work too. We only READ here.
     if record.get("outcome"):
         return str(record["outcome"]).upper()
-    entries = _lget(record, "entries")
+    entries = [e for e in _lget(record, "entries") if isinstance(e, dict)]
     writes = sum(1 for e in entries if e.get("action") in ("added", "corrected", "deleted"))
     scope = _dget(record, "scope")
     candidates = scope.get("session_candidates", 0) or 0
@@ -284,18 +284,22 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
 
     shown = sorted(nodes, key=lambda d: -_num(d.get("always_loaded_tokens", 0)))
     cap = 12
-    namew = min(max((len(_clean(n.get("node", "?"))) for n in shown[:cap]), default=4), 18)
+    namew = min(max((_ui.disp_w(_clean(n.get("node", "?"))) for n in shown[:cap]), default=4), 18)
     for n in shown[:cap]:
         nm = _clean(n.get("node", "?"))[:18]
+        pad = " " * max(0, namew - _ui.disp_w(nm))
         star = _c("*", "cyan") if n.get("trigger") else " "
         mark = _c("  ◀ dream ran here", "cyan") if n.get("trigger") else ""
-        out.append(f"    {star} {nm:<{namew}}  {_lbl('always')} ≈{_g(n.get('always_loaded_tokens', 0)):>5}  "
+        out.append(f"    {star} {nm}{pad}  {_lbl('always')} ≈{_g(n.get('always_loaded_tokens', 0)):>5}  "
                    f"{_lbl('recall')} ≈{_g(n.get('recall_tokens', 0)):>7}  {_g(n.get('facts', 0)):>3} {_lbl('facts')} · "
                    f"{_g(n.get('shared', 0))} {_lbl('shared')}{mark}")
     if len(shown) > cap:
         out.append(f"      … +{len(shown) - cap} more node(s)")
     if not nodes:
-        out.append("      (no nodes hold shared facts yet)")
+        if al or rc:
+            out.append("      (node rows not captured this pass — totals above are the fleet's)")
+        else:
+            out.append("      (no nodes hold shared facts yet)")
 
     # This cycle's lifecycle on the triggering node — derived, not hand-counted.
     entries = _lget(record, "entries")
@@ -347,9 +351,15 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     # Banner — a centered rule with the title left, outcome right. Padding is computed on
     # PLAIN text length, then color is applied, so codes never throw off the alignment.
     title = "✦ DREAM · consolidate-memory"
-    gap = max(2, W - 2 - len(title) - len(oc))
     out.append(_rule())
-    out.append("  " + _c("✦", "cyan") + title[1:] + " " * gap + _outcome_colored(oc))
+    if W - 2 - len(title) - len(oc) < 4:
+        # A long derived outcome (e.g. MAINTENANCE PASS · self-heal / cross-node enrichment) cannot
+        # share the banner line — the gap math floors at 2 and the line would overflow W. Put the
+        # outcome on its own line instead of breaking the grid.
+        out.append("  " + _c("✦", "cyan") + title[1:])
+        out.append("  " + _outcome_colored(oc))
+    else:
+        out.append("  " + _c("✦", "cyan") + title[1:] + " " * max(2, W - 2 - len(title) - len(oc)) + _outcome_colored(oc))
     out.append("  " + _c(f"{proj} · session {ses}", "dim"))
     out.append(_rule())
 
@@ -362,13 +372,22 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     # Scope + Verification (aligned label column)
     s = _dget(record, "scope")
     out.append("")
-    out.append(_kv("SCOPE", f"git {_clean(s.get('git_range', '?'))} · {_g(_num(s.get('git_commits', 0)))} commits · "
+    _gr = s.get("git_range")
+    if isinstance(_gr, str) and _gr.startswith("-") and _gr[1:].isdigit():
+        # memory_status's "-N" = the recent-N lookback a MARKERLESS first dream scopes to — an internal
+        # convention that read like a broken range ("git -20"). Translate, don't leak the sentinel.
+        _gr = f"recent {_gr[1:]} (no marker)"
+    _gr = _clean(_gr or "?")
+    out.append(_kv("SCOPE", f"git {_gr} · {_g(_num(s.get('git_commits', 0)))} commits · "
                             f"{_g(_num(s.get('session_candidates', 0)))} candidates · {_g(_num(s.get('memories_reviewed', 0)))} reviewed"))
     v = _dget(record, "verification")
     method = f"   {_c('[' + _clean(v['method']) + ']', 'dim')}" if v.get("method") else ""
-    out.append(_kv("VERIFIED", f"{_c('✓', 'green')} {v.get('confirmed', 0)} confirmed · "
-                               f"{_c('~', 'yellow')} {v.get('corrected', 0)} corrected · "
-                               f"{_c('⚠', 'yellow')} {v.get('unverifiable', 0)} unverifiable{method}"))
+    _conf, _corr, _unv = _num(v.get("confirmed")), _num(v.get("corrected")), _num(v.get("unverifiable"))
+    bits = [f"{_c('✓', 'green')} {_g(_conf)} confirmed",
+            f"{_c('~', 'yellow')} {_g(_corr)} corrected" if _corr else "0 corrected"]
+    if _unv:
+        bits.append(f"{_c('⚠', 'yellow')} {_g(_unv)} unverifiable")
+    out.append(_kv("VERIFIED", " · ".join(bits) + method))
 
     # Rigor tier (v0.1.3) — the EARLY predicted-effort HINT. BOTH the tier and the magnitude
     # are DERIVED here from `scope` (the tier via the same ms.suggested_tier the scripts use),
@@ -411,7 +430,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     # reason+citation move to a single dim sub-line so nothing floats after the name.
     out.append("")
     out.append("  " + _c("CHANGES", "bold"))
-    entries = _lget(record, "entries")
+    entries = [e for e in _lget(record, "entries") if isinstance(e, dict)]
     if not entries:
         out.append("    (none)")
     else:
@@ -429,12 +448,18 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
                 # non-string tier/store (model slip) would otherwise crash the join.
                 where = "/".join(_clean(p) for p in (e.get("tier"), e.get("store")) if p and p != "-")
                 scope = _clean(_SC.get(e.get("scope", ""), e.get("scope", "")))
+                # Scope renders WITHOUT angle brackets: '<proj>' read like an unrendered template
+                # token (the render-chain audit measured that reading) — and a literal '-' scope must
+                # not wrap itself into '<->' (tier/store filter for '-' above; scope didn't).
+                scope = scope if scope and scope != "-" else ""
                 reason = _clean(e.get("reason") or "")
                 cite = _clean(e.get("citation") or "")
-                parts = [p for p in (where, f"<{scope}>" if scope else "", reason,
+                parts = [p for p in (where, scope, reason,
                                      f"[{cite}]" if cite else "") if p]
                 if parts:
-                    out.append("        " + _c(" · ".join(parts), "dim"))
+                    # Wrapped via _kv (hanging-indent, width-bounded) — the old raw append let a
+                    # ~330-char reason run past W and break the one-column grid.
+                    out.append(_kv("", _c(" · ".join(parts), "dim")))
 
     # Always-loaded budget — ONE grid: label | value | bar/% or descriptor. One unit
     # (estimated tokens) for the gauge; line/fact deltas are a terse trailing note.
@@ -457,7 +482,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         note = (f"  {'+' if dln >= 0 else ''}{_g(dln)} ln" if dln else "")
         _brow("project CLAUDE.md", f"≈{_g(at)}/{_g(bt)}", f"{_bar(at, bt)} {_pct(at, bt)}{note}{_over(cm)}")
     if gcm.get("present"):
-        adv = _c("  ⚠ heavy — loads in every project", "yellow") if gcm.get("over") else ""
+        adv = _c("  ⚠ heavy — loads in every project", "yellow") if _flag(gcm.get("over")) else ""
         _brow("global CLAUDE.md", f"≈{_g(gcm.get('tokens', 0))}", f"read-only · every project{adv}")
     if idx:
         at, bt = idx.get("after_tokens", 0), idx.get("budget_tokens", 0)
@@ -468,7 +493,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         # v0.1.66 (Phase B): the hard-ceiling flag — ADDITIVE beside the target `_over(idx)` flag, never
         # replacing it; sourced from remediation.over_ceiling (absent on legacy records → tail unchanged).
         tail = f"{_bar(at, bt)} {_pct(at, bt)}{note}{_over(idx)}"
-        if _dget(record, "remediation").get("over_ceiling"):
+        if _flag(_dget(record, "remediation").get("over_ceiling")):
             tail += _c(f" ⚠ HARD CEILING ≈{_g(idx.get('ceiling_tokens', 0))}t — M1 holds new pulls", "red")
         _cp = _num(idx.get("cliff_pct", 0))
         if _cp:
@@ -488,7 +513,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
                                        "possible cycle-record collision (check the --seed path)", "red"))
     if rf:
         d = _num(rf.get("after", 0)) - _num(rf.get("before", 0))
-        _brow("recall facts", _g(rf.get("after", 0)), (f"{'+' if d >= 0 else ''}{_g(d)}" if d else ""))
+        _brow("recall facts", _g(rf.get("after", 0)), (f"{'+' if d >= 0 else ''}{_g(d)} fact(s)" if d else ""))
     if not (cm or idx or rf or gcm.get("present")):
         out.append("    (unchanged)")
     # v0.1.22 (read-only): the WHOLE CLAUDE.md hierarchy. CC loads CLAUDE.md hierarchically, so the load-bearing
@@ -639,10 +664,12 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         promoted = xp.get("promoted") or []
         for p in pulled:
             nm, sc = _item(p)
-            out.append(f"    {_c('↓', 'cyan')} {_lbl('pulled', 10)}{('<' + sc + '>') if sc else '':<8} {nm}")
+            sc = sc if sc and sc != "-" else ""
+            out.append(f"    {_c('↓', 'cyan')} {_lbl('pulled', 10)}{sc:<8} {nm}")
         for p in promoted:
             nm, sc = _item(p)
-            out.append(f"    {_c('↑', 'green')} {_lbl('promoted', 10)}{('<' + sc + '>') if sc else '':<8} {nm}")
+            sc = sc if sc and sc != "-" else ""
+            out.append(f"    {_c('↑', 'green')} {_lbl('promoted', 10)}{sc:<8} {nm}")
         moved = []
         if xp.get("refreshed"):
             moved.append(f"⟳ {xp['refreshed']} mirror(s) refreshed")
@@ -665,7 +692,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     # Health
     h = _dget(record, "health")
     if h:
-        ok = h.get("index_pointers_ok", True)
+        ok = _flag(h.get("index_pointers_ok", True))
         ptr = _c("✓ all pointers resolve", "green") if ok else _c("✗ BROKEN pointers", "red")
         broken = h.get("broken") or []
         dangling = h.get("dangling_links") or []
@@ -705,13 +732,21 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     # never a truthy str(None).
     dr = _dget(record, "dream")
     if dr:
-        _nb = len(_lget(dr, "beats"))
+        _beats = _lget(dr, "beats")
+        _nb = len(_beats)
         _have = [bool(str(dr.get("sleep") or "").strip()), bool(str(dr.get("wake") or "").strip())]
-        out.append("")
-        out.append(_kv("DREAM ARC", " · ".join([
+        # The ✓ now GATES on arc completeness, not mere presence: the contract is 5 phase beats +
+        # the surfacing line (6 total) — a 4-beat arc shows its gap honestly instead of a green check.
+        _full = _have[0] and _have[1] and _nb == 6
+        _bits = [
             (_c("✓", "green") if _have[0] else _c("✗", "yellow")) + " sleep",
-            f"{_g(_nb)} beat" + ("" if _nb == 1 else "s"),
-            (_c("✓", "green") if _have[1] else _c("✗", "yellow")) + " wake"])))
+            (_c("✓", "green") if _full else _c("✗", "yellow")) + f" {_g(_nb)}/6 beat" + ("" if _nb == 1 else "s"),
+            (_c("✓", "green") if _have[1] else _c("✗", "yellow")) + " wake",
+        ]
+        if any(_ui.BEAT_EMOJI_RE.search(str(b)) for b in _beats):
+            _bits.append(_c("⚠ emoji in beat(s) — the arc bans them outside the bookends", "yellow"))
+        out.append("")
+        out.append(_kv("DREAM ARC", " · ".join(_bits)))
 
     # v0.1.55: distill-verdict capture presence — gated on the key (legacy/seed records render
     # byte-identically). The verdict is the payload; counts frame it. HTML shows the full verdict.
@@ -728,18 +763,57 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         # v0.1.58: surface the firewall-suppression count — the transparency the secrets_omitted counter
         # exists for (CLAUDE.md: a schema key must reach the renderer, not just the JSON). Gated on > 0.
         _so = _num(di.get("secrets_omitted", 0))
+        _nc = _num(di.get("n_chains", 0))
         out.append("")
         out.append(_kv("DISTILL", f"{_g(_num(di.get('n_recurring', 0)))} recurring · "
-                                  f"{_g(_num(di.get('n_chains', 0)))} chains"
+                                  f"{_g(_nc)} chain" + ("" if _nc == 1 else "s")
                                   + (f" · {_c(_g(_so) + ' secret-shaped', 'yellow')}" if _so else "")
                                   + ("" if _dv else " · " + _c("✗ no verdict", "yellow"))))
         if _dv:
             out.append(_kv("", _c(_dv, "dim")))
 
+    # v0.1.87/W-C (registrar): the Tier-2 consult's evidence gets a RENDER SURFACE (the render-chain
+    # audit measured it had none — "absent = the registrar was not consulted, a visible decision" was
+    # an INVISIBLE one). Key-present renders the injected block; a record whose distill RAN without the
+    # key renders the not-consulted line; legacy records (no distill key at all) stay untouched.
+    _wp = _dget(record, "workflow_proposals")
+    if _wp or "distill" in record:
+        out.append("")
+        if _wp:
+            out.append("  " + _c("REGISTRAR", "bold") + _c("   · Tier-2 fleet placement (the W-C consult)", "dim"))
+            _cands = [c for c in _lget(_wp, "candidates") if isinstance(c, dict)]
+            for c in _cands:
+                _ev = _dget(c, "evidence")
+                _mech = _dget(c, "mechanical")
+                _nm = _clean(c.get("name") or c.get("candidate") or "?")
+                _nds = ", ".join(_clean(x) for x in _lget(_ev, "nodes"))
+                _d = _num(_ev.get("d")); _n = _num(_ev.get("n"))
+                _disp = _clean(c.get("disposition") or "?")
+                _gates = " · ".join(_clean(k).replace("_", "-") for k, gv in _mech.items() if _flag(gv))
+                _l = f"    {_c('◈', 'cyan')} {_nm} [{_clean(c.get('form', '?'))}]"
+                if _nds:
+                    _l += f" — nodes {_nds} · d={_g(_d)} n={_g(_n)}"
+                _l += f" — {_disp}" + (f" · gates {_gates}" if _gates else "")
+                out.append(_l)
+            _anch = _lget(_wp, "decline_anchors")
+            if _anch:
+                out.append("    " + _c(f"{len(_anch)} decline-anchor(s) — a fleet decline blocks a naive re-propose", "dim"))
+            _wv = _clean(str(_wp.get("verdict") or ""))
+            if _wv:
+                out.append(_kv("", _c(_wv, "dim")))
+            if not _cands and not _anch:
+                out.append("    " + _c("0 fleet-candidates — the honest cold state (never invented breadth)", "dim"))
+        else:
+            out.append(_kv("REGISTRAR", _c("registrar not consulted this pass (Tier-2 fleet placement)", "dim")))
+
     # Marker
     m = _dget(record, "marker")
     if m:
-        out.append(_kv("MARKER", _c(f"→ {_clean(str(m.get('commit', '?'))[:12])} @ {_clean(m.get('timestamp', '?'))}", "dim")))
+        _mc = m.get("commit")
+        _mc = "?" if _mc is None else _clean(str(_mc)[:12])
+        _mt = m.get("timestamp")
+        _mt = "?" if _mt is None else _clean(str(_mt))
+        out.append(_kv("MARKER", _c(f"→ {_mc} @ {_mt}", "dim")))
 
     result = "\n".join(out)
     if _ASCII:   # --ascii (LAST step): translate for readability, then encode-replace to GUARANTEE
