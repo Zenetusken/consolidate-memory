@@ -231,12 +231,14 @@ the dense technical reporting (never replacing it). You can also drive the piece
 
 ```bash
 ./cm status            # Phase-0 context: stores, git range, marker, token budget + a no-nag dream-timing nudge
+./cm doctor            # resolved Claude store, source, profile, domain, auto-memory, ambiguity
 ./cm extract           # curated session signal (human turns + error-gotchas, secrets omitted)
 ./cm distill           # recurring Bash-command workflows (templates + compound-command chains) — distill's raw signal
 ./cm pull .            # replicate relevant global facts into this project
 ./cm gc . --apply      # reclaim orphaned mirrors (canonical deleted) — report-only without --apply
 ./cm tokens .          # per-node + total token consumption across the network (≈ chars/4)
 ./cm network           # the cross-project shared-memory graph
+./cm conflicts         # three-way mirror conflict queue (local edits are never silently overwritten)
 ./cm render cycle.json # render ONE cycle record → the ASCII dashboard
 ./cm report            # open the rich self-contained HTML archive (all dreams for this repo)
 ./cm log               # the lean per-dream audit table (all cycles)
@@ -278,14 +280,17 @@ consolidate-memory/                         # repo root = plugin marketplace
 │   │   ├── SKILL.md                         # the 6-phase workflow + loading-tier model
 │   │   └── references/harness-map.md        # paths, schema, verification recipes
 │   └── scripts/
+│       ├── store_context.py                 # sole native/canonical path constructor
 │       ├── memory_status.py                 # Phase 0: locate stores + git scope + seed
 │       ├── extract_signals.py               # Phase 2: curated, secret-safe session signal
 │       ├── sync_global.py                   # cross-project: replicate + GC + tokens + --network
+│       ├── canonical_ingress.py             # sole canonical writer (cm canonical upsert)
 │       ├── distill_scan.py                  # Phase 5: recurring-workflow signal (templates + chains)
 │       ├── render_dashboard.py              # the data-driven ASCII dashboard (one cycle)
 │       ├── render_html.py                   # the rich self-contained HTML archive (all dreams)
 │       ├── dashboard.template.html          # the HTML shell render_html.py fills
 │       ├── render_log.py                    # the lean per-dream audit table
+│       ├── cm_ops.py                        # doctor / conflicts / resolve / migrate / data
 │       └── _ui.py                           # shared visual vocabulary (color/rule/glyphs) the others import
 ├── tests/                                   # zero-dependency smoke + accumulation + manifest checks
 ├── memory/                                  # gitignored placeholder (.gitkeep) — store is ~/.claude/memory
@@ -301,8 +306,9 @@ are **stdlib-only** (uses 3.8+ stdlib; CI validates the full 3.8–3.13 range), 
 network calls**, and the only external process is read-only `git`. The `memory/` store is gitignored and is **not** part of the
 published plugin (only `plugins/consolidate-memory/` ships). The secrets firewall
 applies at *retrieval*, so a credential in a transcript is dropped before it could ever
-reach a fact file. **Portable by construction** — no POSIX-only modules
-(`fcntl`/`pwd`/`grp`/`termios`) — runs natively on Linux and macOS; on Windows, both the
+reach a fact file. **Portable by construction** — no `pwd`/`grp`/`termios`. Control-plane
+locks use `fcntl.flock` on POSIX and import-fallback to unlocked on non-POSIX (ADR 006;
+Phase 6 soak). Runs natively on Linux and macOS; on Windows, both the
 `cm` dev CLI and the skill's own shell invocations use POSIX syntax (`VAR=val` prefixes),
 so run under WSL. Each release is gated by an internal multi-agent white-hat security
 review; see **[SECURITY.md](SECURITY.md)** for the full threat model, the security

@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.1.91** (2026-08-30). `CLAUDE.md` holds the
+verified against the live tree at **v0.1.91** (2026-08-31, post PR #116). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -16,7 +16,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.1.91 | The product: a 6-phase `dream` workflow, the cross-project canonical store at `~/.claude/memory`, tiered context-budget accounting |
+| `consolidate-memory` | 0.1.91 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, domain-scoped canonicals (legacy `~/.claude/memory` dual-read until migrate), SQLite control plane under plugin-data, tiered context-budget accounting |
 | `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -29,9 +29,9 @@ relative source paths only resolve over Git).
 **Dev loop** — after any change to `plugins/consolidate-memory/scripts/`:
 
 ```bash
-python3 tests/smoke.py                          # the zero-dep gate — ~900 assertions over every script's
+python3 tests/smoke.py                          # the zero-dep gate — ~1100 assertions over every script's
                                                 # pure functions + the cross-module pins; exit 1 on any failure
-python3 tests/simulate_accumulation.py          # lifecycle accumulation sim (probes A–W) — the
+python3 tests/simulate_accumulation.py          # lifecycle accumulation sim (probes A–W + X–AF) — the
                                                 # store-mechanics gate; CI runs it too
 mypy --config-file mypy.ini                     # dev-only TypedDict contract check (mypy is NOT a runtime dep)
 ./cm status                                     # spot-check Phase-0 output
@@ -57,7 +57,9 @@ a new session; `plugin.json`/`marketplace.json` edits need
 `~/.claude/projects/<slug>/dashboards/index.html`. Subcommands:
 `status` `seed` `extract` `distill` `sync` `pull` `gc` `promote` `tokens`
 `utility` `harvest` `staleness` `workflows` `calibration` `beacon` `network`
-`render` `report` `log`.
+`render` `report` `log` `doctor` `conflicts` `resolve` `repair-mirror`
+`canonical` `migrate` `data` `forget`. Native paths come from `cm doctor`
+(`StoreContext`); never hand-build `~/.claude/projects/<slug>/memory`.
 
 ## Layout
 
@@ -71,10 +73,15 @@ plugins/consolidate-memory/       the main plugin (= ${CLAUDE_PLUGIN_ROOT})
                                   (smoke-pinned to CycleRecord.__annotations__ — edit together or fail)
     references/harness-map.md     paths, fact schema, verification recipes, cross-project model
   hooks/hooks.json                SessionStart hook (matchers startup+resume, 2s timeout) → session_beacon.py
-  scripts/                        stdlib-only runtime: memory_status.py (contract seed + audit),
-                                  extract_signals.py, sync_global.py, distill_scan.py, render_dashboard.py,
-                                  render_html.py, render_log.py, _ui.py, session_beacon.py,
-                                  dashboard.template.html
+  scripts/                        stdlib-only runtime: store_context.py (sole native/canonical path
+                                  constructor), domain_policy.py, control_plane.py (SQLite + locks +
+                                  journal), canonical_ingress.py (sole canonical writer),
+                                  mirror_conflict.py, index_admission.py, capabilities.py,
+                                  hook_sketches.py, retention.py, cm_ops.py (doctor/conflicts/resolve/
+                                  migrate/data), memory_status.py (contract seed + audit),
+                                  extract_signals.py, sync_global.py, distill_scan.py,
+                                  render_dashboard.py, render_html.py, render_log.py, _ui.py,
+                                  session_beacon.py, dashboard.template.html
 plugins/dream-beta-tester/        QA companion plugin
   .claude-plugin/plugin.json      manifest (v0.1.8)
   skills/dream-beta-test/         judgment-lens skill (/dream-beta-test) + references/lenses.md (7 lenses)
@@ -85,7 +92,11 @@ plugins/dream-beta-tester/        QA companion plugin
   maintainer/                     ci_check.sh + install-gate.sh — the pre-push gate
   docs/                           SPEC.md (design-of-record) · STATUS.md (validation matrix + defect log)
                                   · CONTRACT.md (reports/latest.json schema + self-heal contract)
-cm                                 dev CLI over the scripts (19 subcommands; symlink-safe)
+cm                                 dev CLI over the scripts (doctor/conflicts/canonical/migrate/data
+                                  included; symlink-safe)
+docs/adr/                         001 empty-set judgment · 002 StoreContext · 003 domain isolation ·
+                                  004 stable identity · 005 three-way mirrors · 006 control plane ·
+                                  007 schema v2 / migrate
 tests/                             smoke.py · simulate_accumulation.py · validate_manifests.py
 memory/                            GITIGNORED placeholder (.gitkeep only) — the real global store lives at
                                    ~/.claude/memory (a real dir, decoupled from this repo)
@@ -113,8 +124,14 @@ memory/                            GITIGNORED placeholder (.gitkeep only) — th
    make_fixture — make_fixture drifted in v0.1.40), and single-source identity
    (`sg._frontmatter is ms._frontmatter` etc.). If you reimplement a shared helper
    as a local copy, the gate fails by design — alias it instead.
-5. **Public-repo safety.** Never commit personal memory — the shared store lives at
-   `~/.claude/memory` (outside the repo); repo-root `memory/` is a gitignored
+5. **StoreContext is the only native/canonical path constructor** (ADR 002). Do not
+   build `~/.claude/projects/<slug_for(cwd)>/memory`. Managed settings win over
+   user/project/local/`--settings`. Writes fail closed on disagreement or disabled
+   auto-memory. `cm canonical upsert` is the sole canonical writer. Native 200-line/25KB
+   caps apply only to a project's `MEMORY.md`, not the generated global catalog.
+6. **Public-repo safety.** Never commit personal memory — the shared store lives at
+   `~/.claude/memory` (outside the repo; dual-read with domain dirs until
+   `cm migrate --apply`); repo-root `memory/` is a gitignored
    placeholder. Verify with
    `git ls-tree -r --name-only origin/main | grep memory` (expect only
    `memory/.gitkeep`). Keep the skill generic: placeholders, no real user paths —
@@ -122,13 +139,13 @@ memory/                            GITIGNORED placeholder (.gitkeep only) — th
    Don't weaken the secrets firewall: `extract_signals.py` drops credential-shaped
    turns to `(omitted: …)` labels at retrieval, and the same `_looks_secret` gate
    covers commit subjects and distill emission.
-6. **The only hook is the SessionStart beacon.** `hooks/hooks.json`
+7. **The only hook is the SessionStart beacon.** `hooks/hooks.json`
    (matchers exactly `startup`+`resume`, 2s timeout) runs `session_beacon.py`,
    which injects at most ONE factual line when this store is measurably behind the
    fleet; read-only, advisory-only, never pulls; any failure → empty stdout, exit
    0. It never runs `detect_stacks` — it reads the `stacks` state that
    `sync_global.py --pull` wrote into `.consolidation-state.json`.
-7. **Verification-first is the product.** Phase 3 checks every candidate claim
+8. **Verification-first is the product.** Phase 3 checks every candidate claim
    against the live tree (file/symbol existence via `test -e` / `grep -rn`,
    `git log -S '<string>'`, doc self-consistency); unverifiable → flagged or
    dropped, never silently kept. Apply the same law to your own work in this repo.
