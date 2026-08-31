@@ -48,6 +48,19 @@ def check(name: str, cond: bool) -> None:
         print(f"  ✗ {name}")
 
 
+def _enroll_personal(project_dir: Path) -> None:
+    """ADR 008: --pull/--promote require enrollment. Tests that exercise pull must enroll."""
+    import store_context as _sc_e
+    import control_plane as _cp_e
+    ctx = _sc_e.resolve_store(Path(project_dir))
+    conn = _cp_e.connect(_cp_e.db_path(ctx))
+    try:
+        _cp_e.enroll_project(conn, ctx, "personal")
+    except Exception:
+        pass
+    conn.close()
+
+
 # --- slug rule ---
 check("slug: / -> -", ms.slug_for(Path("/home/you/project/foo")) == "-home-you-project-foo")
 # v0.1.17: CC normalizes BOTH '/' and '_' to '-' (verified on disk: cwd .../Doc_Flo → slug ...-Doc-Flo).
@@ -2943,6 +2956,7 @@ with _tfB.TemporaryDirectory() as _tdB2:
     sg.GLOBAL = _glB2
     try:
         (_stB2 / "MEMORY.md").write_text("# Memory Index\n- [f](f.md) — " + "h" * 6400, encoding="utf-8")
+        _enroll_personal(_projB2)
         _buf1B = _ioB.StringIO()
         with _ctxB.redirect_stdout(_buf1B):
             sg.run(_projB2, pull=True)
@@ -2986,6 +3000,7 @@ with _tfB.TemporaryDirectory() as _tdB3:
     sg.GLOBAL = _glB3
     try:
         (_stB3 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+        _enroll_personal(_projB3)
         _buf3aB = _ioB.StringIO()
         with _ctxB.redirect_stdout(_buf3aB), _ctxB.redirect_stderr(_ioB.StringIO()) as _err3aB:
             sg.run(_projB3, pull=True)
@@ -3874,6 +3889,7 @@ class _Env73:
         self.glob = home / "global-mem"; self.glob.mkdir(parents=True)
         self._home, self._global = _os73.environ.get("HOME"), sg.GLOBAL
         _os73.environ["HOME"] = str(home); sg.GLOBAL = self.glob
+        _enroll_personal(self.proj)
         return self
 
     def __exit__(self, *a):
@@ -4428,11 +4444,22 @@ with _Env73() as _e:
     (_nB80 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
     (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")   # the trigger's own store
     import hashlib as _hl80
-    _pre80 = {p: _hl80.sha1(p.read_bytes()).hexdigest()
-              for p in (Path(_osB.environ["HOME"]) / ".claude").rglob("*") if p.is_file()}
+
+    def _hash80(root: Path) -> dict:
+        """Content hashes of store files. Ignore sqlite sidecars a readonly
+        open of a WAL DB may create (`-wal`/`-shm`) — those are not fact writes."""
+        out = {}
+        for p in root.rglob("*"):
+            if not p.is_file():
+                continue
+            if p.suffix in (".sqlite", ".lock") or p.name.endswith(("-wal", "-shm", ".lock")):
+                continue
+            out[p] = _hl80.sha1(p.read_bytes()).hexdigest()
+        return out
+
+    _pre80 = _hash80(Path(_osB.environ["HOME"]) / ".claude")
     _s80 = sg.fleet_staleness(_e.proj)
-    _post80 = {p: _hl80.sha1(p.read_bytes()).hexdigest()
-               for p in (Path(_osB.environ["HOME"]) / ".claude").rglob("*") if p.is_file()}
+    _post80 = _hash80(Path(_osB.environ["HOME"]) / ".claude")
     _by80 = {d["node"]: d for d in _s80["nodes"]}
     check("v0.1.80: fleet_staleness measures the starved node exactly — never-dreamed (age null-safe), "
           "1 missing user-global, 1 content-stale mirror — and the fresh node reads clean",
@@ -4559,6 +4586,15 @@ with _tf73.TemporaryDirectory() as _td81:
           "dirs must cost zero (discovery is --staleness's job)",
           _r.returncode == 0 and _r.stdout == "")
     (_st81 / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _oldH81e = _osB.environ.get("HOME")
+    _osB.environ["HOME"] = str(_h81)
+    try:
+        _enroll_personal(_p81)
+    finally:
+        if _oldH81e is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldH81e
     _r = _beacon81(_h81, _p81)
     check("v0.1.81: a BEHIND store gets exactly ONE factual line — token-bounded, no-cache basis "
           "labeled, no imperative 'always/never' phrasing (context-injection guidance)",
@@ -4585,6 +4621,7 @@ with _tf73.TemporaryDirectory() as _td81:
     _oldH81, _oldG81 = _osB.environ.get("HOME"), sg.GLOBAL
     _osB.environ["HOME"] = str(_h81); sg.GLOBAL = _g81
     try:
+        _enroll_personal(_p81)
         with _ctx73.redirect_stdout(_io73.StringIO()):
             sg.run(_p81, pull=True)
     finally:
@@ -5709,6 +5746,8 @@ with _tf43.TemporaryDirectory() as _tdA7:
         "---\nname: real-canonical\ndescription: a real canonical for the GC-reclaim pin\n"
         "metadata:\n  node_type: memory\n  type: reference\n  projects: [gate-repo]\n---\n\nA real canonical fact.\n",
         encoding="utf-8")
+    _run_home_a1(_homeA7, str(_scripts54 / "cm_ops.py"),
+                 "project", "enroll", _repoA7, "--domain", "personal")
     _goA7, _geA7, _grcA7 = _run_home_a1(_homeA7, str(_scripts54 / "sync_global.py"),
                                         "--gc", _repoA7, "--apply")
     _storeA7 = Path(_homeA7) / ".claude" / "projects" / ms.slug_for(Path(_repoA7)) / "memory"
@@ -5930,9 +5969,9 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
     # domain / sensitivity (shipped admit_cross_project)
     check("domain: unknown-domain project admits zero domain-tagged facts",
           dp.admit_cross_project("unknown", {"domain": "personal", "scope": "user-global"}) is False)
-    check("domain: unknown+untagged dual-read still admits (legacy; NOT a universal assignment)",
+    check("domain: unknown is local-only (untagged dual-read no longer admits)",
           dp.admit_cross_project("unknown", {"scope": "user-global"},
-                                 migration_mode=dp.MIGRATION_DUAL_READ) is True)
+                                 migration_mode=dp.MIGRATION_DUAL_READ) is False)
     check("domain: unknown+untagged enforced admits zero",
           dp.admit_cross_project("unknown", {"scope": "user-global"},
                                  migration_mode=dp.MIGRATION_ENFORCED) is False)
@@ -5952,6 +5991,15 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
         "---\nname: x\ndescription: key\n---\npassword = hunter2-and-a-long-token\n",
         {"description": "key"}, looks_secret=ms._looks_secret, domain="personal")
     check("domain: secret-shaped body is rejected as a fact", _sec_err is not None)
+
+    import fact_schema as fsch  # noqa: E402
+    check("fact_schema: name must equal stem",
+          fsch.validate_canonical_frontmatter({"name": "other"}, stem="deploy", domain="work")
+          is not None)
+    check("fact_schema: matching name+domain is ok",
+          fsch.validate_canonical_frontmatter(
+              {"name": "deploy", "domain": "work", "scope": "user-global"},
+              stem="deploy", domain="work") is None)
 
     # three-way classifier (shipped)
     _canon = "---\nname: f\ndescription: d1\n---\nbody A\n"
@@ -6124,7 +6172,8 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
     check("doctor_report: twice-run content equality (shipped)",
           _doc1 == _doc2 and "native_memory_dir:" in _doc1 and "resolution_source:" in _doc1
           and "profile_id:" in _doc1 and "domain_id:" in _doc1 and "auto_memory_enabled:" in _doc1
-          and "ambiguity:" in _doc1)
+          and "ambiguity:" in _doc1 and "registry_state:" in _doc1
+          and "unenrolled_share_warning:" in _doc1)
 
     # no sixth slug_for: store_context.slug_for IS memory_status.slug_for
     check("slug_for: store_context aliases memory_status (no sixth reimplementation)",
@@ -6268,12 +6317,14 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
         with _cl_p0.redirect_stdout(_io_p0.StringIO()), _cl_p0.redirect_stderr(_io_p0.StringIO()):
             _rc_v = sg.run(_pv, pull=True)
         _got_v = _ctx_v.native_memory_dir / "share-me.md"
-        check("P0-3: upsert-then-pull on two unenrolled projects shares domains/unknown canonicals",
+        check("P0-3: unenrolled projects cannot create or pull cross-project canonicals",
               _ctx_u.domain_id == "unknown" and _ctx_v.domain_id == "unknown"
-              and _up_u.get("ok") is True
-              and (_ctx_u.canonical_domain_dir / "share-me.md").is_file()
-              and _rc_v == 0 and _got_v.is_file()
-              and "UNENROLLED SHARED BODY" in _got_v.read_text(encoding="utf-8"))
+              and _up_u.get("ok") is False
+              and not (_ctx_u.canonical_domain_dir / "share-me.md").is_file()
+              and not _got_v.is_file())
+        _doc_u = sc.doctor_report(_ctx_u)
+        check("0.2.2: doctor warns UNENROLLED LOCAL-ONLY when unenrolled",
+              "UNENROLLED LOCAL-ONLY" in _doc_u)
 
         _rc_en_bad = cmo.main(["project", "enroll", str(_ph), "--domain", "../employer"])
         _rc_en_a = cmo.main(["project", "enroll", str(_pa), "--domain", "work"])
@@ -6285,6 +6336,9 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
               and _ctx_a.enrolled is True and _ctx_a.domain_id == "work"
               and _ctx_b.enrolled is True and _ctx_b.domain_id == "personal"
               and sc.resolve_store(_ph, environ=_xp_env(_home_p0)).domain_id == "unknown")
+        _rc_en_switch = cmo.main(["project", "enroll", str(_pa), "--domain", "personal"])
+        check("0.2.2: enroll refuses switching domains (use move-domain)",
+              _rc_en_switch == 2)
 
         _rc_res = cmo.main(["resolve", "../passwd", "--project", str(_pa)])
         _rc_rep = cmo.main(["repair-mirror", "../passwd", "--project", str(_pa)])
@@ -6399,6 +6453,31 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
               and "<!-- previous" not in _tomb
               and "deleted_revision_hash:" in _tomb
               and "keep-secret.md" not in _cat)
+        _cat_disk = (_ctx_a.canonical_domain_dir / "MEMORY.md").read_text(encoding="utf-8")
+        check("0.2.2: forget regenerates the domain catalog in the same transact",
+              "keep-secret.md" not in _cat_disk)
+        _doc_a = sc.doctor_report(_ctx_a)
+        check("0.2.2: enrolled doctor does not emit the unenrolled-share warning",
+              "unenrolled_share_warning: (none)" in _doc_a)
+        _up_udep = ci.upsert(
+            _ctx_u, "deploy",
+            "---\nname: deploy\ndescription: unknown deploy\nscope: user-global\n"
+            "---\n\nU-DEPLOY\n")
+        check("0.2.2: unenrolled upsert is refused (local-only sentinel)",
+              _up_udep.get("ok") is False)
+        _up_b2 = ci.upsert(
+            _ctx_b, "deploy",
+            "---\nname: deploy\ndescription: personal deploy\ndomain: personal\n"
+            "scope: user-global\n---\n\nPERSONAL-ONLY BODY\n")
+        _pers_b = _ctx_b.canonical_domain_dir / "deploy.md"
+        _work_tomb = _ctx_a.canonical_domain_dir / "deploy.md"
+        check("0.2.2: same-stem forget in work does not tombstone personal deploy",
+              _up_b2.get("ok") is True
+              and _pers_b.is_file()
+              and "PERSONAL-ONLY BODY" in _pers_b.read_text(encoding="utf-8")
+              and "tombstoned" not in _pers_b.read_text(encoding="utf-8").lower()
+              and (not _work_tomb.exists()
+                   or "tombstoned" in _work_tomb.read_text(encoding="utf-8").lower()))
 
         # admission-refused promote leaves origin
         _p0_nmem_a = _ctx_a.native_memory_dir
@@ -6440,6 +6519,107 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
         else:
             _os_xp.environ["HOME"] = _old_h_p0
 
+# ── 0.2.2 guardrails: read-only sqlite + refuse mutation on a corrupt registry ──
+import sqlite3 as _sql_022  # noqa: E402
+with _tf_xp.TemporaryDirectory() as _td_022:
+    _home_022 = Path(_td_022) / "home"
+    _home_022.mkdir()
+    _proj_022 = Path(_td_022) / "p"
+    _proj_022.mkdir()
+    (_proj_022 / "main.py").write_text("x=1\n", encoding="utf-8")
+    _old_h_022 = _os_xp.environ.get("HOME")
+    _os_xp.environ["HOME"] = str(_home_022)
+    try:
+        _ctx_h022 = sc.resolve_store(_proj_022, environ=_xp_env(_home_022))
+        cmo.main(["project", "enroll", str(_proj_022), "--domain", "personal"])
+        _ctx_h022 = sc.resolve_store(_proj_022, environ=_xp_env(_home_022))
+        _missing_db = Path(_td_022) / "no-control.sqlite"
+        check("0.2.2: connect_if_exists does not mint a missing DB",
+              cp.connect_if_exists(_missing_db) is None and not _missing_db.exists())
+        _st_abs, _err_abs = cp.classify_registry(_missing_db)
+        check("0.2.2: classify_registry reports absent when the file is missing",
+              _st_abs == "absent" and _err_abs == "")
+        # mint a healthy DB via a first upsert, then prove readonly
+        _up_h = ci.upsert(
+            _ctx_h022, "ro-fact",
+            "---\nname: ro-fact\ndescription: d\nscope: user-global\n---\n\nb\n")
+        _db_h = cp.db_path(_ctx_h022)
+        _ro_failed = False
+        _ro_conn = cp.connect_readonly(_db_h)
+        try:
+            _ro_conn.execute(
+                "INSERT INTO migration_state(key, value) VALUES('ro-probe','x')")
+            _ro_conn.commit()
+        except _sql_022.Error:
+            _ro_failed = True
+        finally:
+            _ro_conn.close()
+        check("0.2.2: connect_readonly refuses writes on an existing DB",
+              _up_h.get("ok") is True and _ro_failed is True)
+        _ife = cp.connect_if_exists(_db_h)
+        _ife_failed = False
+        if _ife is None:
+            _ife_failed = False
+        else:
+            try:
+                _ife.execute(
+                    "INSERT INTO migration_state(key, value) VALUES('ife-probe','x')")
+                _ife.commit()
+            except _sql_022.Error:
+                _ife_failed = True
+            finally:
+                _ife.close()
+        check("0.2.2: connect_if_exists is read-only (does not migrate/write)",
+              _ife is not None and _ife_failed is True)
+    finally:
+        if _old_h_022 is None:
+            _os_xp.environ.pop("HOME", None)
+        else:
+            _os_xp.environ["HOME"] = _old_h_022
+
+with _tf_xp.TemporaryDirectory() as _td_cor:
+    _home_cor = Path(_td_cor) / "home"
+    _home_cor.mkdir()
+    _proj_cor = Path(_td_cor) / "p"
+    _proj_cor.mkdir()
+    (_proj_cor / "main.py").write_text("x=1\n", encoding="utf-8")
+    _old_h_cor = _os_xp.environ.get("HOME")
+    _os_xp.environ["HOME"] = str(_home_cor)
+    try:
+        _ctx_cor = sc.resolve_store(_proj_cor, environ=_xp_env(_home_cor))
+        _db_cor = cp.db_path(_ctx_cor)
+        _db_cor.parent.mkdir(parents=True, exist_ok=True)
+        _db_cor.write_bytes(b"this is not a sqlite database")
+        _st_cor, _err_cor = cp.classify_registry(_db_cor)
+        _mut_refused = False
+        try:
+            cp.assert_mutation_allowed(_ctx_cor)
+        except sc.WriteRefused:
+            _mut_refused = True
+        _up_cor = ci.upsert(
+            _ctx_cor, "x",
+            "---\nname: x\ndescription: d\nscope: user-global\n---\n\nb\n")
+        _rc_en_cor = cmo.main(["project", "enroll", str(_proj_cor), "--domain", "work"])
+        _ctx_cor2 = sc.resolve_store(_proj_cor, environ=_xp_env(_home_cor))
+        _doc_cor = sc.doctor_report(_ctx_cor2)
+        check("0.2.2: classify_registry reports corrupt/incompatible for a non-sqlite file",
+              _st_cor in ("corrupt", "incompatible"))
+        check("0.2.2: assert_mutation_allowed refuses a corrupt registry",
+              _mut_refused is True)
+        check("0.2.2: upsert refuses when registry is corrupt (does not fail open to unknown writes)",
+              _up_cor.get("ok") is False)
+        check("0.2.2: enroll refuses when registry is corrupt",
+              _rc_en_cor == 2)
+        check("0.2.2: doctor names registry_state and still emits the unenrolled-share warning",
+              "registry_state:" in _doc_cor
+              and any(s in _doc_cor for s in ("corrupt", "incompatible", _st_cor))
+              and "UNENROLLED LOCAL-ONLY" in _doc_cor)
+    finally:
+        if _old_h_cor is None:
+            _os_xp.environ.pop("HOME", None)
+        else:
+            _os_xp.environ["HOME"] = _old_h_cor
+
 # ── remaining AC pins (docs + shipped fleet/provenance paths) ───────────────
 _hmap_ac = (ROOT / "plugins" / "consolidate-memory" / "skills" / "consolidate-memory"
             / "references" / "harness-map.md").read_text(encoding="utf-8")
@@ -6451,6 +6631,52 @@ check("harness-map harvest writer is plugin-data fleet-usage.jsonl (native lefto
       "plugin-data `fleet-usage.jsonl`" in _hmap_ac
       and "`~/.claude/memory/.fleet-usage.jsonl`, 0o600)" not in _hmap_ac)
 _p5_ac = _skill_md.read_text(encoding="utf-8").split("### Phase 5")[1].split("## Safety rules")[0]
+_pj_022 = (ROOT / "plugins" / "consolidate-memory" / ".claude-plugin" / "plugin.json").read_text(
+    encoding="utf-8")
+check("0.2.2: plugin description does not promise unenrolled whole-fleet sharing",
+      "whole fleet" not in _pj_022.lower())
+_cmd_dir = ROOT / "plugins" / "consolidate-memory" / "commands"
+check("0.2.2: packaged admin commands ship inside the plugin",
+      (_cmd_dir / "cm-doctor.md").is_file()
+      and (_cmd_dir / "cm-domain.md").is_file()
+      and (_cmd_dir / "cm-data.md").is_file())
+_live_docs = "\n".join([
+    _skill_md.read_text(encoding="utf-8"),
+    (ROOT / "README.md").read_text(encoding="utf-8"),
+    (ROOT / "SECURITY.md").read_text(encoding="utf-8"),
+    _pj_022,
+    (_cmd_dir / "cm-doctor.md").read_text(encoding="utf-8"),
+    (ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"),
+])
+check("0.2.2: live docs do not claim unenrolled projects share a compatibility pool",
+      "compatibility pool" not in _live_docs.lower()
+      and "unenrolled projects currently share" not in _live_docs.lower()
+      and "unknown`-pool" not in _live_docs
+      and "whole fleet" not in _pj_022.lower())
+
+# dest-hash mismatch must not delete (ADR 010)
+with _tf_xp.TemporaryDirectory() as _td_hash:
+    _p_hash = Path(_td_hash) / "keep.md"
+    _p_hash.write_text("keep me\n", encoding="utf-8")
+    cp._apply_deletes([{"path": str(_p_hash), "preimage": "0" * 64}])
+    check("0.2.2: dest-hash / preimage mismatch skips the origin delete",
+          _p_hash.exists() and _p_hash.read_text(encoding="utf-8") == "keep me\n")
+
+_saved_fc = sys.modules.get("fcntl")
+sys.modules["fcntl"] = None  # type: ignore[assignment]
+try:
+    _fc_refused = False
+    try:
+        cp.require_interprocess_lock()
+    except sc.WriteRefused:
+        _fc_refused = True
+    check("0.2.2: missing fcntl is WriteRefused (POSIX mutation / Windows fail-closed)",
+          _fc_refused is True)
+finally:
+    if _saved_fc is None:
+        sys.modules.pop("fcntl", None)
+    else:
+        sys.modules["fcntl"] = _saved_fc
 check("SKILL Phase 5 persist/store/marker use native_memory_dir (do not hand-build projects/<slug>/memory)",
       "--persist ~/.claude/projects/<slug>/memory" not in _p5_ac
       and "--store ~/.claude/projects/<slug>/memory" not in _p5_ac
@@ -6631,6 +6857,13 @@ with _tf_xp.TemporaryDirectory() as _td_r:
     except sc.WriteRefused:
         _writable_r = False
     if _writable_r:
+        _conn_r = cp.connect(cp.db_path(_ctx_r))
+        try:
+            cp.enroll_project(_conn_r, _ctx_r, "personal")
+        except Exception:
+            pass
+        _conn_r.close()
+        _ctx_r = sc.resolve_store(_proj_r, environ=_env_r)
         _tiny = ("---\nname: tiny-cat\ndescription: d\nmetadata:\n  node_type: memory\n"
                  "  type: feedback\n  scope: user-global\n---\nbody\n")
         _seen_pi: list = []
@@ -6679,6 +6912,7 @@ with _tf_xp.TemporaryDirectory() as _td_r:
             _rc_list = sg.run(_proj_r, pull=False)
         check("review-3: --list does not mint control.sqlite",
               _rc_list == 0 and not (_ctx_r.plugin_data_dir / "control.sqlite").exists())
+        _enroll_personal(_proj_r)
         # pull once to mint, then a STOP_LOCAL conflict recorded once not twice
         (_glob_r / "ed.md").write_text(
             "---\nname: ed\ndescription: d\nmetadata:\n  scope: user-global\n"
@@ -6837,19 +7071,35 @@ with _tf_xp.TemporaryDirectory() as _td_m:
         check("review-8: migrate --plan is dry and does not mint control.sqlite",
               _rc_dry == 0 and "dry" in _buf_dry.getvalue() and not _db_m.exists())
         _nsm.apply = True
+        _nsm.assign = None
+        _nsm.exclude = None
+        _nsm.domain = None
+        _nsm.finalize = False
+        _nsm.status = False
         _buf_app = _io73.StringIO()
-        with _ctx73.redirect_stdout(_buf_app):
+        _buf_app_err = _io73.StringIO()
+        with _ctx73.redirect_stdout(_buf_app), _ctx73.redirect_stderr(_buf_app_err):
             _rc_app = cmo.cmd_migrate(_nsm)
-        _copy_m = _ctx_m.canonical_domain_dir / "legacy-m.md"
+        check("review-8: migrate --apply refuses while facts are unresolved (no legacy-unassigned)",
+              _rc_app == 2 and "unresolved" in _buf_app_err.getvalue()
+              and not (_ctx_m.canonical_domain_dir / "legacy-m.md").exists())
+        _nsm.apply = False
+        _nsm.assign = "legacy-m"
+        _nsm.domain = "personal"
+        with _ctx73.redirect_stdout(_io73.StringIO()):
+            _rc_as = cmo.cmd_migrate(_nsm)
+        _nsm.assign = None
+        _nsm.apply = True
+        _buf_app2 = _io73.StringIO()
+        with _ctx73.redirect_stdout(_buf_app2):
+            _rc_app2 = cmo.cmd_migrate(_nsm)
+        _copy_m = (_home_m / ".claude" / "consolidate-memory" / "domains"
+                   / "personal" / "facts" / "legacy-m.md")
         _copy_txt = _copy_m.read_text(encoding="utf-8") if _copy_m.exists() else ""
-        _gfs = sg.global_facts()
-        _stems = [n for n, _fm, _t in _gfs]
-        _fm_m = dict(_gfs[0][1]) if _gfs else {}
-        check("review-8: migrate --apply stamps domain: legacy-unassigned and domain copy wins on stem",
-              _rc_app == 0 and _copy_m.exists()
-              and "domain: legacy-unassigned" in _copy_txt
-              and "legacy-m" in _stems
-              and str(_fm_m.get("domain") or "") == "legacy-unassigned")
+        check("review-8: migrate --assign then --apply stamps the assigned domain",
+              _rc_as == 0 and _rc_app2 == 0 and _copy_m.exists()
+              and "domain: personal" in _copy_txt
+              and "legacy-unassigned" not in _copy_txt)
     finally:
         if _old_hm is None:
             _os_xp.environ.pop("HOME", None)

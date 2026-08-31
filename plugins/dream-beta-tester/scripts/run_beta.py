@@ -448,6 +448,10 @@ def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult
         r3 = _child("render_dashboard.py", str(seed_path), "--persist", str(tgt_store))
         _step("persist", r3[0], r3[2].strip().splitlines()[-1] if r3[2].strip() else "")
 
+        # ADR 008: --promote requires enrollment into a named domain.
+        r_en = _child("cm_ops.py", "project", "enroll", repo_arg, "--domain", "personal")
+        _step("enroll", r_en[0], (r_en[2] or r_en[1] or "").strip()[-200:])
+
         # ── promote (the two-store write: canonical + provenance are OUT-OF-BAND, D-6) ──
         r4 = _child("sync_global.py", "--promote", repo_arg, _MUTATE_FACT_NAME)
         _step("promote", r4[0], r4[2].strip().splitlines()[-1] if r4[2].strip() else "")
