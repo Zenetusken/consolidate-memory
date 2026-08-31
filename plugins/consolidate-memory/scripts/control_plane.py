@@ -129,6 +129,33 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def connect_if_exists(path: Path) -> Optional[sqlite3.Connection]:
+    """Open the control plane only when the DB file already exists.
+
+    Read-only entry points (`--list`, `cm conflicts`, migrate --plan) must not
+    mint control.sqlite.
+    """
+    try:
+        if not path.is_file():
+            return None
+    except OSError:
+        return None
+    return connect(path)
+
+
+def migration_mode_readonly(ctx: Optional[StoreContext] = None,
+                            environ: Optional[dict] = None) -> str:
+    """Read migration mode without creating the DB (default dual-read)."""
+    path = db_path(ctx, environ)
+    conn = connect_if_exists(path)
+    if conn is None:
+        return "dual-read"
+    try:
+        return get_migration_mode(conn)
+    finally:
+        conn.close()
+
+
 def _migrate_schema(conn: sqlite3.Connection) -> None:
     """Additive columns for DBs created before session_dir existed."""
     cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(projects)").fetchall()}
@@ -141,7 +168,8 @@ def iter_registered_projects(conn: sqlite3.Connection) -> list:
     try:
         rows = conn.execute(
             "SELECT project_id, display_name, native_memory_dir, "
-            "COALESCE(session_dir, '') AS session_dir, COALESCE(status, '') AS status "
+            "COALESCE(session_dir, '') AS session_dir, COALESCE(status, '') AS status, "
+            "COALESCE(domain_id, '') AS domain_id "
             "FROM projects"
         ).fetchall()
     except sqlite3.OperationalError:
@@ -193,12 +221,18 @@ class FileLock:
     def acquire(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         fd = open(self.path, "a+")
-        self._fd = fd
         try:
             import fcntl
             fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
         except ImportError:
             pass  # non-POSIX: best-effort (Phase 6 soak)
+        except Exception:
+            try:
+                fd.close()
+            except OSError:
+                pass
+            raise
+        self._fd = fd
 
     def release(self) -> None:
         if self._fd is None:
@@ -228,18 +262,22 @@ def lock_dir(ctx: StoreContext) -> Path:
 
 def acquire_mutation_locks(ctx: StoreContext, project_ids: list) -> list:
     """Domain lock, then project locks in sorted ID order. Returns acquired locks."""
-    locks = []
-    dlock = FileLock(lock_dir(ctx) / f"domain-{ctx.domain_id or 'unknown'}.lock")
-    dlock.acquire()
-    locks.append(dlock)
-    glob = FileLock(lock_dir(ctx) / "global.lock")
-    glob.acquire()
-    locks.append(glob)
-    for pid in sorted(set(project_ids)):
-        pl = FileLock(lock_dir(ctx) / f"project-{pid}.lock")
-        pl.acquire()
-        locks.append(pl)
-    return locks
+    locks: list = []
+    try:
+        dlock = FileLock(lock_dir(ctx) / f"domain-{ctx.domain_id or 'unknown'}.lock")
+        dlock.acquire()
+        locks.append(dlock)
+        glob = FileLock(lock_dir(ctx) / "global.lock")
+        glob.acquire()
+        locks.append(glob)
+        for pid in sorted(set(project_ids)):
+            pl = FileLock(lock_dir(ctx) / f"project-{pid}.lock")
+            pl.acquire()
+            locks.append(pl)
+        return locks
+    except Exception:
+        release_locks(locks)
+        raise
 
 
 def release_locks(locks: list) -> None:
@@ -266,7 +304,7 @@ def journal_step(conn: sqlite3.Connection, op_id: str, step: str, status: str = 
 
 def pending_ops(conn: sqlite3.Connection) -> list:
     rows = conn.execute(
-        "SELECT op_id, kind, payload, step, status FROM journal WHERE status!='complete'"
+        "SELECT op_id, kind, payload, step, status FROM journal WHERE status='pending'"
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -300,23 +338,32 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
     """Publish leftover temps (and deletes), then replay incomplete canonical upserts.
 
     Never marks complete until leftover temps have been published (or were already
-    dest-present). A pending op with no temps and no replayable payload is completed
-    only when there is nothing left to land — an early crash before prepare_temps.
+    dest-present). A pending op with no temps that cannot be replayed is marked
+    `abandoned` — not `complete` — so a crashed pull is not acknowledged as done.
     """
     recovered = []
     for op in pending_ops(conn):
         payload = json.loads(op["payload"] or "{}")
         publishes = payload.get("publishes") or []
         deletes = payload.get("deletes") or []
+        kind = str(op["kind"])
+        replayable_upsert = bool(
+            ctx is not None and payload.get("stem") and payload.get("text")
+            and kind == "canonical-upsert")
         if publishes:
             _publish_temps(publishes, deletes)
             missing = [item for item in publishes if not Path(item["dest"]).exists()]
             if missing:
                 continue  # leave pending — dests did not land
+            journal_step(conn, op["op_id"], "journal_complete", "complete")
+            recovered.append(op["op_id"])
+            continue
         if replay is not None:
-            replay(op["kind"], payload, op["step"])
-        elif (ctx is not None and payload.get("stem") and payload.get("text")
-              and str(op["kind"]) == "canonical-upsert"):
+            replay(kind, payload, op["step"])
+            journal_step(conn, op["op_id"], "journal_complete", "complete")
+            recovered.append(op["op_id"])
+            continue
+        if replayable_upsert and ctx is not None:
             from canonical_ingress import upsert
             origin = payload.get("origin") or ""
             origin_del = payload.get("origin_delete") or ""
@@ -326,7 +373,10 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                    preserve_canonical=bool(payload.get("preserve_canonical")),
                    create_only=bool(payload.get("create_only")),
                    skip_recover=True)
-        journal_step(conn, op["op_id"], "journal_complete", "complete")
+            journal_step(conn, op["op_id"], "journal_complete", "complete")
+            recovered.append(op["op_id"])
+            continue
+        journal_step(conn, op["op_id"], op.get("step") or "journal_start", "abandoned")
         recovered.append(op["op_id"])
     conn.commit()
     return recovered
@@ -437,13 +487,35 @@ def record_holder(conn: sqlite3.Connection, fact_id: str, project_id: str,
 
 
 def record_conflict(conn: sqlite3.Connection, stem: str, project_id: str, decision: dict) -> None:
+    """Insert or refresh the open conflict row for (stem, project). Never duplicates."""
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    row = conn.execute(
+        "SELECT id FROM conflicts WHERE fact_stem=? AND project_id=? AND resolved=''",
+        (stem, project_id),
+    ).fetchone()
+    if row:
+        conn.execute(
+            "UPDATE conflicts SET action=?, local_hash=?, canonical_hash=?, created_at=? "
+            "WHERE id=?",
+            (decision.get("action"), decision.get("local"), decision.get("canonical"),
+             now, row["id"]),
+        )
+        return
     conn.execute(
         "INSERT INTO conflicts(fact_stem, project_id, action, local_hash, canonical_hash, "
         "created_at, resolved) VALUES (?,?,?,?,?,?,?)",
         (stem, project_id, decision.get("action"), decision.get("local"),
          decision.get("canonical"), now, ""),
     )
+
+
+def mark_conflict_resolved(conn: sqlite3.Connection, stem: str, project_id: str,
+                           how: str) -> int:
+    cur = conn.execute(
+        "UPDATE conflicts SET resolved=? WHERE fact_stem=? AND project_id=? AND resolved=''",
+        (how, stem, project_id),
+    )
+    return int(cur.rowcount or 0)
 
 
 def list_conflicts(conn: sqlite3.Connection, project_id: Optional[str] = None) -> list:

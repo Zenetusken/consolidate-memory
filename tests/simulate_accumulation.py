@@ -1373,16 +1373,20 @@ def run() -> None:
             import store_context as _scAD
             ctxAD = _scAD.resolve_store(pAD, environ=envAD)
             copied = (ctxAD.canonical_domain_dir / "legacy-ad.md").exists()
+            stamped = False
+            if copied:
+                stamped = "domain: legacy-unassigned" in (
+                    ctxAD.canonical_domain_dir / "legacy-ad.md").read_text(encoding="utf-8")
             rb = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD), "--rollback"],
                                 env=envAD, capture_output=True, text=True, check=False)
             gone = not (ctxAD.canonical_domain_dir / "legacy-ad.md").exists()
             still_legacy = gAD.exists()
             _verdict("AD", "migrate --plan is dry; --apply copies as legacy-unassigned; --rollback restores dual-read and removes copies",
                      dry.returncode == 0 and "dry" in dry.stdout
-                     and app.returncode == 0 and copied
+                     and app.returncode == 0 and copied and stamped
                      and rb.returncode == 0 and gone and still_legacy,
                      f"dry rc={dry.returncode} apply rc={app.returncode} copied={copied} "
-                     f"rollback rc={rb.returncode} gone={gone} legacy={still_legacy}")
+                     f"stamped={stamped} rollback rc={rb.returncode} gone={gone} legacy={still_legacy}")
         finally:
             shutil.rmtree(homeAD, ignore_errors=True)
 

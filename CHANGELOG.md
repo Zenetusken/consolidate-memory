@@ -5,6 +5,33 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [Unreleased]
+
+### Fixed — PR #116 review (managed settings, catalog caps, control plane honesty)
+
+- **Managed settings win.** StoreContext merges user → project → local → `--settings`,
+  then `managed-settings.json` last (Claude's stack). A policy `autoMemoryDirectory`
+  or `autoMemoryEnabled: false` is no longer overwritten by a lower file.
+- **Native 200-line/25KB caps apply only to a project's `MEMORY.md`.** The generated
+  global catalog is not a session-start file and no longer refuses the ~167th
+  `cm canonical upsert` / `--promote`.
+- **`--list` is actually read-only.** It does not mint `control.sqlite`. Conflicts
+  are recorded only on `--pull`, upserted by `(stem, project)` while unresolved.
+  `cm resolve` / `repair-mirror` mark the queue row resolved; keep-canonical is
+  journaled. `--promote-local` strips mirror markup before upsert.
+- **Migrate `--apply` stamps `domain: legacy-unassigned`**, journals the copy, and
+  lets domain dirs win on stem so untagged legacy cannot shadow the copies after
+  `enforced`. `--plan` does not mint the DB.
+- **Phase 0 / beacon / compact follow StoreContext.** `global_store_facts` counts
+  `global_facts()` (config root + domain dirs). The beacon and `--staleness` skip
+  facts `--pull` would deny. Compact/purge key `ops/<slot>/` (and the harvest
+  ledger), not SHA `project_id` / never-written `events.jsonl`.
+- **Locks unwind on acquire failure.** `recover_pending` abandons a non-replayable
+  op with no leftover temps instead of marking it complete. `repair-mirror`
+  `assert_writable`s.
+
+Public 1.0 stays HOLD. Plugin version stays `0.1.91`.
+
 ## [0.1.91] — 2026-08-30
 
 ### Improved — Shared Consciousness draws the sharing topology

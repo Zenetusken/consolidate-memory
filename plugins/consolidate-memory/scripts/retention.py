@@ -292,26 +292,45 @@ def _is_relative_to(path: Path, root: Path) -> bool:
         return False
 
 
-def purge_project(plugin_data: Path, project_id: str) -> dict:
-    d = operational_dir(plugin_data, project_id)
+def _purge_dir(d: Path) -> int:
     n = 0
-    if d.exists():
-        for p in d.rglob("*"):
-            if p.is_file():
-                p.unlink()
-                n += 1
-        try:
-            d.rmdir()
-        except OSError:
-            pass
+    if not d.exists():
+        return 0
+    for p in d.rglob("*"):
+        if p.is_file():
+            p.unlink()
+            n += 1
+    try:
+        d.rmdir()
+    except OSError:
+        pass
+    return n
+
+
+def purge_project(plugin_data: Path, project_id: str,
+                  native_store: Optional[Path] = None) -> dict:
+    """Delete operational logs for a project.
+
+    Persist/audit write `ops/<slot>/` (Claude projects-slot). A leftover SHA
+    `project_id` directory is also removed if present.
+    """
+    n = _purge_dir(operational_dir(plugin_data, project_id))
+    if native_store is not None:
+        slot = _ops_slot(native_store)
+        if slot and slot != project_id:
+            n += _purge_dir(operational_dir(plugin_data, slot))
     return {"ok": True, "purged_files": n, "project_id": project_id}
 
 
 def purge_domain(plugin_data: Path, domain_id: str, conn) -> dict:
-    rows = conn.execute("SELECT project_id FROM projects WHERE domain_id=?", (domain_id,)).fetchall()
+    rows = conn.execute(
+        "SELECT project_id, native_memory_dir FROM projects WHERE domain_id=?",
+        (domain_id,),
+    ).fetchall()
     n = 0
     for r in rows:
-        n += purge_project(plugin_data, r["project_id"])["purged_files"]
+        native = Path(r["native_memory_dir"]) if r["native_memory_dir"] else None
+        n += purge_project(plugin_data, r["project_id"], native)["purged_files"]
     return {"ok": True, "purged_files": n, "domain_id": domain_id}
 
 

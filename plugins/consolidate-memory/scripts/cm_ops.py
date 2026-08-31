@@ -31,11 +31,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_conflicts(args: argparse.Namespace) -> int:
-    from control_plane import connect, db_path, list_conflicts
+    from control_plane import connect_if_exists, db_path, list_conflicts
     ctx = _ctx(args.project)
-    conn = connect(db_path(ctx))
-    rows = list_conflicts(conn, ctx.project_id if not args.all else None)
-    conn.close()
+    conn = connect_if_exists(db_path(ctx))
+    rows = list_conflicts(conn, ctx.project_id if not args.all else None) if conn else []
+    if conn is not None:
+        conn.close()
     if args.json:
         print(json.dumps(rows, indent=2))
     else:
@@ -46,10 +47,41 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_resolve(args: argparse.Namespace) -> int:
-    from control_plane import connect, db_path
-    from canonical_ingress import _atomic_write
+def _canonical_path(ctx: StoreContext, stem: str) -> Path:
+    canon = ctx.canonical_domain_dir / f"{stem}.md"
+    if canon.exists():
+        return canon
+    return ctx.config_root / "memory" / f"{stem}.md"
+
+
+def _restamp_from_canonical(ctx: StoreContext, stem: str, canonical: str, native: Path,
+                            how: str, extra_temps: Optional[dict] = None) -> dict:
+    """Journal a keep-canonical / repair rewrite + mark the conflict resolved."""
+    from control_plane import (mark_conflict_resolved, record_holder, stable_fact_id,
+                               transact)
     from mirror_conflict import semantic_hash, stamp_revisions
+    from sync_global import _as_mirror, _body_hash
+    import time as _t
+    rev = semantic_hash(canonical)
+    want = _as_mirror(canonical, stem, since=_t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime()),
+                      body_hash=_body_hash(canonical))
+    want = stamp_revisions(want, rev, rev)
+    extras = dict(extra_temps or {})
+
+    def mutate(conn, temps):
+        temps[str(native)] = want
+        for dest, text in extras.items():
+            temps[str(dest)] = text
+        fid = stable_fact_id(ctx.domain_id, stem)
+        record_holder(conn, fid, ctx.project_id, rev, rev, rev)
+        mark_conflict_resolved(conn, stem, ctx.project_id, how)
+        return {"stem": stem, "how": how}
+
+    return transact(ctx, "resolve-" + how, {"stem": stem, "how": how}, mutate)
+
+
+def cmd_resolve(args: argparse.Namespace) -> int:
+    from canonical_ingress import demirror_text, insert_frontmatter_key
     from store_context import assert_writable
     ctx = _ctx(args.project)
     try:
@@ -59,9 +91,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         return 2
     stem = args.fact
     native = ctx.native_memory_dir / f"{stem}.md"
-    canon = ctx.canonical_domain_dir / f"{stem}.md"
-    if not canon.exists():
-        canon = ctx.config_root / "memory" / f"{stem}.md"
+    canon = _canonical_path(ctx, stem)
     if not native.exists():
         print(f"resolve: no local file {native}", file=sys.stderr)
         return 1
@@ -71,13 +101,11 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         if not canonical:
             print("resolve: no canonical to keep", file=sys.stderr)
             return 1
-        from sync_global import _as_mirror, _body_hash
-        import time as _t
-        rev = semantic_hash(canonical)
-        want = _as_mirror(canonical, stem, since=_t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime()),
-                          body_hash=_body_hash(canonical))
-        want = stamp_revisions(want, rev, rev)
-        _atomic_write(native, want)
+        try:
+            _restamp_from_canonical(ctx, stem, canonical, native, "keep-canonical")
+        except WriteRefused as e:
+            print(f"resolve: {e}", file=sys.stderr)
+            return 2
         print(f"resolve: kept canonical for {stem}")
         return 0
     if args.fork_local:
@@ -85,14 +113,29 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         if dest.exists():
             print(f"resolve: fork target {args.fork_local} exists", file=sys.stderr)
             return 1
-        # drop global_ref so it becomes project-authored
-        lines = [ln for ln in local.splitlines() if "global_ref" not in ln[:40]]
-        _atomic_write(dest, "\n".join(lines) + "\n")
+        forked = insert_frontmatter_key(demirror_text(local), "name", args.fork_local)
+        extras = {dest: forked if forked.endswith("\n") else forked + "\n"}
+        if not canonical:
+            print("resolve: no canonical to restamp after fork", file=sys.stderr)
+            return 1
+        try:
+            _restamp_from_canonical(ctx, stem, canonical, native, "fork-local", extras)
+        except WriteRefused as e:
+            print(f"resolve: {e}", file=sys.stderr)
+            return 2
         print(f"resolve: forked {stem} → {args.fork_local} (project-local)")
         return 0
     if args.promote_local:
         from canonical_ingress import upsert
-        out = upsert(ctx, stem, local, origin_local=native)
+        from control_plane import connect_if_exists, db_path, mark_conflict_resolved
+        clean = demirror_text(local)
+        out = upsert(ctx, stem, clean, origin_local=native)
+        if out.get("ok"):
+            conn = connect_if_exists(db_path(ctx))
+            if conn is not None:
+                mark_conflict_resolved(conn, stem, ctx.project_id, "promote-local")
+                conn.commit()
+                conn.close()
         print(json.dumps(out) if args.json else (out if out.get("ok") else out.get("error")))
         return 0 if out.get("ok") else 1
     print("resolve: pass --keep-canonical, --fork-local NAME, or --promote-local", file=sys.stderr)
@@ -100,26 +143,26 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
 
 def cmd_repair_mirror(args: argparse.Namespace) -> int:
-    from canonical_ingress import _atomic_write
-    from mirror_conflict import semantic_hash, stamp_revisions
-    from sync_global import _as_mirror, _body_hash
-    import time as _t
+    from store_context import assert_writable
     ctx = _ctx(args.project)
+    try:
+        assert_writable(ctx)
+    except WriteRefused as e:
+        print(f"repair-mirror: {e}", file=sys.stderr)
+        return 2
     stem = args.fact
     native = ctx.native_memory_dir / f"{stem}.md"
-    canon = ctx.canonical_domain_dir / f"{stem}.md"
-    if not canon.exists():
-        canon = ctx.config_root / "memory" / f"{stem}.md"
+    canon = _canonical_path(ctx, stem)
     if not canon.exists():
         print("repair-mirror: no canonical", file=sys.stderr)
         return 1
     canonical = canon.read_text(encoding="utf-8", errors="replace")
-    rev = semantic_hash(canonical)
-    want = _as_mirror(canonical, stem, since=_t.strftime("%Y-%m-%dT%H:%M:%SZ", _t.gmtime()),
-                      body_hash=_body_hash(canonical))
-    want = stamp_revisions(want, rev, rev)
     ctx.native_memory_dir.mkdir(parents=True, exist_ok=True)
-    _atomic_write(native, want)
+    try:
+        _restamp_from_canonical(ctx, stem, canonical, native, "repair-mirror")
+    except WriteRefused as e:
+        print(f"repair-mirror: {e}", file=sys.stderr)
+        return 2
     print(f"repair-mirror: restamped {stem} from canonical")
     return 0
 
@@ -146,10 +189,11 @@ def cmd_canonical(args: argparse.Namespace) -> int:
 
 
 def cmd_migrate(args: argparse.Namespace) -> int:
-    from control_plane import connect, db_path, set_migration_mode, upsert_project
-    from canonical_ingress import generate_catalog, _atomic_write
+    from control_plane import connect, db_path, set_migration_mode, transact
+    from canonical_ingress import insert_frontmatter_key
+    from domain_policy import fact_domain
+    from memory_status import _frontmatter
     ctx = _ctx(args.project)
-    conn = connect(db_path(ctx))
     legacy = ctx.config_root / "memory"
     facts = []
     if legacy.is_dir():
@@ -169,23 +213,62 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         print("  assignment: legacy-unassigned (review required; not a universal domain)")
         print("  dual-read remains until --apply")
     if args.apply:
-        ctx.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
-        copied: list = []
+        copied_holder: list = []
+
+        def mutate(conn, temps):
+            facts_dir = ctx.canonical_domain_dir
+            facts_dir.mkdir(parents=True, exist_ok=True)
+            copied: list = []
+            for p in facts:
+                dest = facts_dir / p.name
+                if dest.exists():
+                    continue
+                raw = p.read_text(encoding="utf-8", errors="replace")
+                body = raw
+                if not fact_domain(_frontmatter(raw)):
+                    body = insert_frontmatter_key(raw, "domain", "legacy-unassigned")
+                temps[str(dest)] = body if body.endswith("\n") else body + "\n"
+                copied.append(str(dest))
+            lines = ["# Memory Index", "",
+                     "<!-- generated by cm canonical upsert; do not hand-edit -->", ""]
+            stems: dict = {}
+            if facts_dir.is_dir():
+                for f in facts_dir.glob("*.md"):
+                    if f.name != "MEMORY.md":
+                        stems[f.stem] = f
+            for dest_s in list(temps):
+                dp = Path(dest_s)
+                if dp.name != "MEMORY.md":
+                    stems[dp.stem] = dp
+            for stem in sorted(stems):
+                text = temps.get(str(facts_dir / f"{stem}.md"))
+                if text is None:
+                    try:
+                        text = (facts_dir / f"{stem}.md").read_text(
+                            encoding="utf-8", errors="replace")
+                    except OSError:
+                        text = ""
+                desc = ""
+                for ln in (text or "").splitlines():
+                    if ln.strip().startswith("description:"):
+                        desc = ln.split(":", 1)[1].strip()
+                        break
+                lines.append(f"- [{stem}]({stem}.md) — {desc}".rstrip(" —"))
+            temps[str(facts_dir / "MEMORY.md")] = "\n".join(lines) + "\n"
+            set_migration_mode(conn, "enforced")
+            copied_holder.extend(copied)
+            return {"copied": copied}
+
+        try:
+            transact(ctx, "migrate-apply", {"n": len(facts)}, mutate)
+        except WriteRefused as e:
+            print(f"migrate apply: {e}", file=sys.stderr)
+            return 2
         rb = {
             "mode_before": "dual-read",
-            "copied": copied,
+            "copied": list(copied_holder),
             "domain_dir": str(ctx.canonical_domain_dir),
         }
-        for p in facts:
-            dest = ctx.canonical_domain_dir / p.name
-            if not dest.exists():
-                dest.write_text(p.read_text(encoding="utf-8", errors="replace"), encoding="utf-8")
-                copied.append(str(dest))
-        _atomic_write(ctx.canonical_domain_dir / "MEMORY.md",
-                      generate_catalog(ctx.canonical_domain_dir))
-        set_migration_mode(conn, "enforced")
-        upsert_project(conn, ctx)
-        conn.commit()
         rb_path = ctx.plugin_data_dir / "migrate-rollback.json"
         rb_path.parent.mkdir(parents=True, exist_ok=True)
         rb_path.write_text(json.dumps(rb, indent=2) + "\n", encoding="utf-8")
@@ -195,24 +278,24 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         rb_path = ctx.plugin_data_dir / "migrate-rollback.json"
         if not rb_path.exists():
             print("migrate rollback: no rollback file", file=sys.stderr)
-            conn.close()
             return 1
+        conn = connect(db_path(ctx))
         rb = json.loads(rb_path.read_text(encoding="utf-8"))
         for p in rb.get("copied") or []:
             Path(p).unlink(missing_ok=True)
         set_migration_mode(conn, str(rb.get("mode_before") or "dual-read"))
         conn.commit()
+        conn.close()
         print("migrate rollback: restored dual-read; copied facts removed")
     else:
         print("migrate: dry (pass --apply to copy + close dual-read)")
-    conn.close()
     return 0
 
 
 def cmd_data(args: argparse.Namespace) -> int:
     from control_plane import connect, db_path
     from retention import (compact_jsonl, CYCLE_CAP, EVENT_RETENTION_DAYS, export_ops,
-                           inventory, operational_dir, purge_domain, purge_project,
+                           inventory, purge_domain, purge_project,
                            retention_show)
     ctx = _ctx(args.project)
     if args.data_cmd == "inventory":
@@ -228,23 +311,37 @@ def cmd_data(args: argparse.Namespace) -> int:
         print(json.dumps(retention_show(), indent=2))
         return 0
     if args.data_cmd == "compact":
-        ops = operational_dir(ctx.plugin_data_dir, ctx.project_id)
-        log = ops / "events.jsonl"
-        plan = {"path": str(log), "keep": CYCLE_CAP, "older_than_days": EVENT_RETENTION_DAYS}
+        from retention import (cycle_log_write_path, fleet_ledger_write_path,
+                               mutation_log_write_path)
+        cycle = cycle_log_write_path(ctx.native_memory_dir, plugin_data=ctx.plugin_data_dir)
+        mut = mutation_log_write_path(ctx.native_memory_dir, plugin_data=ctx.plugin_data_dir)
+        fleet = fleet_ledger_write_path(plugin_data=ctx.plugin_data_dir)
+        plan = {
+            "cycle_log": str(cycle),
+            "mutation_log": str(mut),
+            "fleet_ledger": str(fleet),
+            "keep": CYCLE_CAP,
+            "older_than_days": EVENT_RETENTION_DAYS,
+        }
         if args.json:
             print(json.dumps(plan, indent=2))
         else:
-            print(f"compact plan: tail {CYCLE_CAP} of {log} (drop events > {EVENT_RETENTION_DAYS}d)")
+            print(f"compact plan: tail {CYCLE_CAP} of cycle/mutation/fleet logs "
+                  f"(drop events > {EVENT_RETENTION_DAYS}d)")
+            print(f"  cycle:    {cycle}")
+            print(f"  mutation: {mut}")
+            print(f"  fleet:    {fleet}")
         if args.apply:
             from retention import relocate_native_operational
-            ops.mkdir(parents=True, exist_ok=True)
             relocated = relocate_native_operational(
                 ctx.native_memory_dir, ctx.plugin_data_dir, ctx.project_id)
-            if not log.exists():
-                log.write_text("", encoding="utf-8")
-            r = compact_jsonl(log, keep=CYCLE_CAP, older_than_days=EVENT_RETENTION_DAYS)
-            r["relocated_from_native"] = relocated
-            print(json.dumps(r))
+            results = []
+            for p in (cycle, mut, fleet):
+                if p.is_file():
+                    results.append(compact_jsonl(p, keep=CYCLE_CAP,
+                                                 older_than_days=EVENT_RETENTION_DAYS))
+            print(json.dumps({"ok": True, "relocated_from_native": relocated,
+                              "compacted": results}))
         return 0
     if args.data_cmd == "export":
         dest = Path(args.dest or (ctx.plugin_data_dir / "export.json"))
@@ -253,7 +350,13 @@ def cmd_data(args: argparse.Namespace) -> int:
     if args.data_cmd == "purge":
         conn = connect(db_path(ctx))
         if args.purge_project:
-            print(json.dumps(purge_project(ctx.plugin_data_dir, args.purge_project)))
+            row = conn.execute(
+                "SELECT native_memory_dir FROM projects WHERE project_id=?",
+                (args.purge_project,),
+            ).fetchone()
+            native = Path(row["native_memory_dir"]) if row and row["native_memory_dir"] else (
+                ctx.native_memory_dir if args.purge_project == ctx.project_id else None)
+            print(json.dumps(purge_project(ctx.plugin_data_dir, args.purge_project, native)))
         elif args.purge_domain:
             print(json.dumps(purge_domain(ctx.plugin_data_dir, args.purge_domain, conn)))
         else:

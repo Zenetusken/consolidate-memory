@@ -254,10 +254,8 @@ def _merge_settings(cfg: Path, project_root: Path, environ: dict,
         merged.update(data)
         sources.append(label)
 
-    _apply("policy", cfg / "managed-settings.json")
-    etc = Path("/etc/claude-code/managed-settings.json")
-    if etc.is_file():
-        _apply("policy-etc", etc)
+    # Lowest → highest, matching Claude Code: user, project, local, --settings,
+    # then managed policy (highest; not overridden by any of the above).
     _apply("user", cfg / "settings.json")
     _apply("project", project_root / ".claude" / "settings.json")
     _apply("local", project_root / ".claude" / "settings.local.json")
@@ -272,6 +270,10 @@ def _merge_settings(cfg: Path, project_root: Path, environ: dict,
         else:
             ephemeral_unreadable = True
             sources.append("settings-flag-missing")
+    _apply("policy", cfg / "managed-settings.json")
+    etc = Path("/etc/claude-code/managed-settings.json")
+    if etc.is_file():
+        _apply("policy-etc", etc)
     return merged, tuple(sources), ephemeral_unreadable
 
 

@@ -37,9 +37,12 @@ scripted native or canonical path:
 4. The projects slot is `CLAUDE_CODE_PROJECT_DIR_NAME` when set, else
    `slug_for(git_root or project_root)` — the existing slug rule, aliased,
    never reimplemented.
-5. Effective `autoMemoryDirectory` is merged from policy → user → project →
-   local → reconstructed `--settings` (`CLAUDE_CODE_SETTINGS`). The value
-   must be absolute or `~/`.
+5. Effective `autoMemoryDirectory` is merged **lowest → highest** to match
+   Claude Code: user → project → local → reconstructed `--settings`
+   (`CLAUDE_CODE_SETTINGS`) → **managed policy last** (`managed-settings.json`,
+   then `/etc/claude-code/managed-settings.json`). Managed keys cannot be
+   overwritten by user/project/local/`--settings`. The value must be absolute
+   or `~/`.
 6. `autoMemoryEnabled` / `CLAUDE_CODE_DISABLE_AUTO_MEMORY` disable writes and
    mirror injection; absence is not drift.
 7. Hook `session_id` / `transcript_path` / `cwd` are session observations,

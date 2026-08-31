@@ -346,7 +346,8 @@ compaction. Advisory only (never auto-fires; explicit-trigger-only); prospective
 canonical home for facts with `scope: stack-general` or `user-global`. Each global
 fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
 (relevance matching), `projects: [...]` (provenance). `sync_global.py`:
-- `--list PROJECT_DIR` — show relevant/present/missing (read-only).
+- `--list PROJECT_DIR` — show relevant/present/missing (read-only; does not
+  mint `control.sqlite` or append conflict rows — those happen on `--pull`).
 - `--pull PROJECT_DIR` — replicate missing relevant global facts into that project's
   store (additive, marked `global_ref:` so they re-sync), AND refresh stale mirrors +
   **upsert** the always-loaded index pointer so its hook tracks the canonical's

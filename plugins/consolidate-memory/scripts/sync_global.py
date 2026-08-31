@@ -523,20 +523,49 @@ def detect_stacks(project_dir: Path) -> set[str]:
 
 
 def _canonical_dirs() -> list:
-    """Legacy GLOBAL plus domain-scoped fact dirs (dual-read, ADR 007). GLOBAL is
-    still the module global so hermetic tests that assign `sg.GLOBAL` keep working."""
-    dirs = [global_store()]
+    """Domain-scoped fact dirs plus legacy GLOBAL (dual-read, ADR 007).
+
+    Domain dirs come FIRST so `global_facts` de-dupe-by-stem lets a domain copy
+    win. After migrate --apply (enforced + live domain facts), legacy is omitted
+    so untagged leftovers cannot shadow stamped copies. GLOBAL is still the
+    module global so hermetic tests that assign `sg.GLOBAL` keep working.
+    """
+    domain_dirs: list = []
     try:
         from store_context import config_root
         droot = config_root() / "consolidate-memory" / "domains"
         if droot.is_dir():
+            seen: set = set()
             for d in sorted(droot.iterdir()):
                 fd = d / "facts"
-                if fd.is_dir() and fd.resolve() not in {p.resolve() for p in dirs if p.exists()}:
-                    dirs.append(fd)
+                try:
+                    if not fd.is_dir():
+                        continue
+                    key = str(fd.resolve())
+                except OSError:
+                    continue
+                if key in seen:
+                    continue
+                seen.add(key)
+                domain_dirs.append(fd)
     except OSError:
         pass
-    return dirs
+    live_domain = []
+    for d in domain_dirs:
+        try:
+            if any(p.name != "MEMORY.md" and p.suffix == ".md" for p in d.glob("*.md")):
+                live_domain.append(d)
+        except OSError:
+            continue
+    mode = "dual-read"
+    try:
+        from control_plane import migration_mode_readonly
+        mode = migration_mode_readonly()
+    except Exception:
+        mode = "dual-read"
+    if mode == "enforced" and live_domain:
+        return live_domain
+    return live_domain + [global_store()]
 
 
 def global_facts() -> list[tuple[str, dict, str]]:
@@ -875,8 +904,10 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         return {"pulled": pulled, "refreshed": refreshed, "fat": fat, "deletes": deletes}
 
     try:
-        out = transact(ctx, "pull", {"project_id": ctx.project_id, "n": len(jobs)}, mutate,
-                       expected_revisions=expected)
+        out = transact(ctx, "pull", {
+            "project_id": ctx.project_id, "n": len(jobs),
+            "stems": [j[0] for j in jobs],
+        }, mutate, expected_revisions=expected)
         r = out.get("result") or {}
         return {"pulled": int(r.get("pulled") or 0), "refreshed": int(r.get("refreshed") or 0),
                 "fat": int(r.get("fat") or 0)}
@@ -1040,12 +1071,14 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     mode = "dual-read"
     _tomb_stems: set = set()
     try:
-        from control_plane import connect, db_path, get_migration_mode, is_tombstoned
-        _cp = connect(db_path(ctx))
-        mode = get_migration_mode(_cp)
-        for _row in _cp.execute("SELECT stem FROM tombstones").fetchall():
-            _tomb_stems.add(_row["stem"])
-        _cp.close()
+        from control_plane import connect, connect_if_exists, db_path, get_migration_mode
+        dbp = db_path(ctx)
+        _cp = connect(dbp) if pull else connect_if_exists(dbp)
+        if _cp is not None:
+            mode = get_migration_mode(_cp)
+            for _row in _cp.execute("SELECT stem FROM tombstones").fetchall():
+                _tomb_stems.add(_row["stem"])
+            _cp.close()
     except Exception:
         pass
     stacks = detect_stacks(project_dir)
@@ -1186,7 +1219,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                 status = "quarantine"
             else:
                 status = "CONFLICT"
-            if _act in (_MC_STOP, _MC_CONFLICT, _MC_QUAR):
+            if pull and _act in (_MC_STOP, _MC_CONFLICT, _MC_QUAR):
                 try:
                     from control_plane import connect as _cconn, db_path as _cdp, record_conflict
                     _cc = _cconn(_cdp(ctx))
@@ -2696,15 +2729,25 @@ def _all_stores() -> "list[Path]":
     return out
 
 
-def _store_gaps(store: Path, stacks: "set | None", gfacts: list, body_hashes: dict) -> "tuple[int, int]":
+def _store_gaps(store: Path, stacks: "set | None", gfacts: list, body_hashes: dict,
+                *, domain_id: "str | None" = None,
+                migration_mode: str = "dual-read") -> "tuple[int, int]":
     """(missing, content_stale) for ONE store against the given relevance basis — the SINGLE gap
     predicate shared by fleet_staleness (per node) and the SessionStart beacon (its own store);
     v0.1.81, factored so the two can never diverge. `stacks=None` → user-global-only (the honest
     no-cache basis). Same review-hardened edges as the staleness sweep: a PRESENT-but-unreadable
-    file is neither missing nor stale (under-report, the pinned bias)."""
+    file is neither missing nor stale (under-report, the pinned bias).
+
+    When `domain_id` is set, facts `--pull` would deny (`admit_cross_project`) do not
+    count as missing/stale — the beacon must not nag for unreplicable facts.
+    """
+    from domain_policy import admit_cross_project
     missing = stale = 0
     for n, fm, _text in gfacts:
         if not is_relevant(fm, stacks if stacks is not None else set()):
+            continue
+        if domain_id is not None and not admit_cross_project(
+                domain_id, fm, migration_mode=migration_mode):
             continue
         p = store / f"{n}.md"
         if not p.exists():
@@ -2728,10 +2771,19 @@ def fleet_staleness(project_dir: Path) -> dict:
     not invertible to a project path, so other nodes are assessed on user-global canonicals
     only, labeled, never guessed (Stage B's state-file stacks cache upgrades this)."""
     import json as _json
+    from store_context import resolve_store as _rs_stale
+    from control_plane import migration_mode_readonly as _mm_stale
     project_dir = project_dir.resolve()
     gfacts = global_facts()
     trig_store = project_store(project_dir)
+    trig_ctx = _rs_stale(project_dir)
     trig_stacks = detect_stacks(project_dir)
+    mode = _mm_stale(trig_ctx)
+    domain_by_store: dict = {}
+    for _row in _registry_project_rows():
+        nd = str(_row.get("native_memory_dir") or "")
+        if nd:
+            domain_by_store[_path_key(Path(nd))] = str(_row.get("domain_id") or "unknown")
     ledger_nodes = {str(r.get("node", "")) for r in _ledger_rows()}
     now_ep = datetime.now(timezone.utc).timestamp()
     body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts}
@@ -2764,7 +2816,11 @@ def fleet_staleness(project_dir: Path) -> dict:
         # review F4 + v0.1.81: ONE gap predicate (_store_gaps — shared with the session beacon so
         # they can never diverge). Trigger → live stacks; non-trigger → the --pull-written cache
         # when present, else None (user-global-only, labeled — never guessed).
-        missing, stale = _store_gaps(store, trig_stacks if is_trig else cached_stacks, gfacts, body_hashes)
+        _dom = (trig_ctx.domain_id if is_trig
+                else domain_by_store.get(_path_key(store), "unknown"))
+        missing, stale = _store_gaps(
+            store, trig_stacks if is_trig else cached_stacks, gfacts, body_hashes,
+            domain_id=_dom, migration_mode=mode)
         m = _node_tokens(store) if store.is_dir() else {"facts": 0, "shared": 0}
         hist = usage_history(store)
         nodes.append({"node": _sane(project_dir.name) if is_trig else _node_label(store),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+import sys
 import time
 from pathlib import Path
 from typing import Optional
@@ -47,6 +48,72 @@ def generate_catalog(facts_dir: Path) -> str:
                 break
         lines.append(f"- [{f.stem}]({f.name}) — {desc}".rstrip(" —"))
     return "\n".join(lines) + "\n"
+
+
+_MIRROR_KEYS = (
+    "global_ref:", "global_ref_since:", "global_ref_body:",
+    "base_revision:", "canonical_revision:", "mirrored_at:",
+)
+
+
+def demirror_text(text: str) -> str:
+    """Strip managed-mirror markup so a local edit can become a canonical body.
+
+    Frontmatter-scoped (same fence rule as `_as_mirror`). Pure.
+    """
+    if not text.startswith("---"):
+        return text
+    out: list = []
+    dashes = 0
+    for i, ln in enumerate(text.splitlines()):
+        s = ln.strip()
+        if dashes == 0:
+            if i == 0 and ln == "---":
+                dashes = 1
+                out.append(ln)
+            else:
+                out.append(ln)
+            continue
+        if dashes == 1 and ln.startswith("---"):
+            dashes = 2
+            out.append(ln)
+            continue
+        if dashes == 1 and s.startswith(_MIRROR_KEYS):
+            continue
+        out.append(ln)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
+
+
+def insert_frontmatter_key(text: str, key: str, value: str) -> str:
+    """Set `key: value` in the opening frontmatter; preserve unknown keys. Pure."""
+    k = (key or "").strip()
+    if not k:
+        return text
+    line = f"{k}: {value}"
+    if not text.startswith("---"):
+        body = text if text.endswith("\n") or not text else text + "\n"
+        return f"---\n{line}\n---\n\n{body}"
+    out: list = []
+    dashes = 0
+    seen = False
+    for i, ln in enumerate(text.splitlines()):
+        s = ln.strip()
+        if dashes == 0 and i == 0 and ln == "---":
+            dashes = 1
+            out.append(ln)
+            continue
+        if dashes == 1 and ln.startswith("---"):
+            if not seen:
+                out.append(line)
+            dashes = 2
+            out.append(ln)
+            continue
+        if dashes == 1 and s.startswith(k + ":"):
+            out.append(line)
+            seen = True
+            continue
+        out.append(ln)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
 def link_targets(text: str) -> list:
@@ -202,9 +269,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
             catalog = generate_catalog(facts_dir)
             pointer = f"- [{stem}]({stem}.md) — {str(fm.get('description') or stem)}"
             future = apply_pointer(catalog, pointer, stem)
-            decision = project_index(future)
-            if not decision["admitted"]:
-                raise WriteRefused("index admission refused: " + decision["reason"])
+            # Native 200-line/25KB caps apply only to a project's MEMORY.md (Claude's
+            # session-start cliff). The generated global catalog is not that file.
             temps[str(dest)] = provenanced
             temps[str(facts_dir / "MEMORY.md")] = future
             if not same_dir:

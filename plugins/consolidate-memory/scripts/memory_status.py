@@ -603,9 +603,8 @@ HOOK_TOKEN_WARN = 60            # est tok per index POINTER line above which the
 INDEX_CEILING_FRACTION = 0.6
 INDEX_CEILING_TOKENS = round(INDEX_CEILING_FRACTION * NATIVE_INDEX_CAP_BYTES / 4)   # = 3840 est tok
 
-# The cross-project canonical store (the global tier). ONE named constant (cf. sync_global.GLOBAL)
-# so the dangling cross-store resolver, the `global_store_facts` seed, and the network display can't
-# drift on the path. READ-only here (it's the replication source); decoupled from this repo (v0.1.52).
+# Import-time default only. Call-time canonicals go through sync_global.global_facts /
+# _canonical_dirs (CLAUDE_CONFIG_DIR + domain dirs). Do not use this Path for counts.
 GLOBAL_STORE = Path.home() / ".claude" / "memory"
 
 # ── v0.1.67 (Phase C): the demotion rank's evidence-gate constants ────────────────────────────────
@@ -840,7 +839,8 @@ def extract_wikilinks(text: str) -> list[str]:
     return [m.strip() for m in re.findall(r"\[\[([^\]]+)\]\]", text)]
 
 
-def dangling_links(auto_mem: Path, global_dir: Path | None = None) -> list[str]:
+def dangling_links(auto_mem: Path, global_dir: Path | None = None,
+                   global_dirs: list | None = None) -> list[str]:
     """v0.1.37 (+v0.1.52 cross-store): the SINGLE-SOURCE dangling-[[wikilink]] list for a store — every
     `[[target]]` in a fact body resolving to NO valid target (resolve_wikilink against valid_link_targets),
     code spans stripped first — fenced (```...```) AND inline (`...`) — so a `[[x]]` inside a code block
@@ -856,8 +856,13 @@ def dangling_links(auto_mem: Path, global_dir: Path | None = None) -> list[str]:
     if not auto_mem.exists():
         return []
     targets = valid_link_targets(auto_mem)
+    dirs = []
     if global_dir is not None:
-        targets = targets | valid_link_targets(global_dir)   # cross-store: a pending-pull up-link ≠ dangling
+        dirs.append(global_dir)
+    if global_dirs:
+        dirs.extend(global_dirs)
+    for d in dirs:
+        targets = targets | valid_link_targets(d)   # cross-store: a pending-pull up-link ≠ dangling
     out: set[str] = set()
     for f in auto_mem.glob("*.md"):
         if f.name == "MEMORY.md":              # the index holds pointer links, not [[wikilinks]]
@@ -2306,7 +2311,10 @@ def build_context(project_dir: Path) -> dict:
     # REUSES the dual-axis suppression result (`remediation.required`), NOT a fresh budget compare — so a
     # standing-justified store reads False (no perpetual pivot). `remediation` is {} on the healthy path,
     # hence `.get`, not subscript (would KeyError). No `stale_since_marker` (it re-fires every run).
-    _dangling = dangling_links(auto_mem, global_dir=GLOBAL_STORE)
+    from sync_global import _canonical_dirs as _canon_dirs, global_facts as _gfacts
+    _gdirs = _canon_dirs()
+    _dangling = dangling_links(auto_mem, global_dirs=_gdirs)
+    _global_fact_count = len(_gfacts())
     _obnj = bool((remediation or {}).get("required"))
     maintenance: dict = {"dangling": len(_dangling), "over_budget_not_justified": _obnj,
                          "work": bool(_dangling) or _obnj}
@@ -2349,6 +2357,7 @@ def build_context(project_dir: Path) -> dict:
         "maintenance": maintenance,
         "usage_hist": usage_hist,   # v0.1.67 (Phase C)
         "demotion": demotion,       # v0.1.67 (Phase C)
+        "global_store_facts": _global_fact_count,
     }
 
 
@@ -2582,8 +2591,7 @@ def seed_record(ctx: dict) -> CycleRecord:
                         "over_budget_not_justified": ctx["maintenance"]["over_budget_not_justified"],
                         "work": ctx["maintenance"]["work"]},
         "cross_project": {
-            "global_store_facts": len(list(GLOBAL_STORE.glob("*.md")))
-            - (1 if (GLOBAL_STORE / "MEMORY.md").exists() else 0),
+            "global_store_facts": int(ctx.get("global_store_facts") or 0),
             "pulled": [],     # fill in Phase 1 (sync_global --pull): global → here
             "promoted": [],   # fill in Phase 4: here → global (new cross-project facts)
             "refreshed": 0,   # stale mirrors refreshed on pull
@@ -3122,9 +3130,8 @@ def print_report(ctx: dict) -> None:
 
     # ── GLOBAL + SESSION ──
     add("")
-    g = GLOBAL_STORE
-    gn = len([f for f in g.glob("*.md") if f.name != "MEMORY.md"]) if g.exists() else 0
-    add(_ui.kv("GLOBAL", f"{gn} cross-project fact(s) in ~/.claude/memory  " + _ui.c("(sync_global.py --list . for fit here)", "dim")))
+    gn = int(ctx.get("global_store_facts") or 0)
+    add(_ui.kv("GLOBAL", f"{gn} cross-project fact(s)  " + _ui.c("(sync_global.py --list . for fit here)", "dim")))
     if ctx["transcripts"]:
         add(_ui.kv("SESSION", _ui.c("trajectory — the extractor streams it; never bulk-read", "dim")))
         for t in ctx["transcripts"][-5:]:
