@@ -786,7 +786,9 @@ def cmd_data(args: argparse.Namespace) -> int:
                       file=sys.stderr)
                 conn.close()
                 return 2
-            print(json.dumps(purge_domain(ctx.plugin_data_dir, ctx.domain_id, conn)))
+            print(json.dumps(purge_domain(
+                ctx.plugin_data_dir, ctx.domain_id, conn,
+                facts_dir=ctx.canonical_domain_dir)))
             conn.close()
             return 0
         if scope == "all-plugin-data":

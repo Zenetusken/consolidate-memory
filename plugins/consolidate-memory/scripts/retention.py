@@ -328,7 +328,10 @@ def purge_project(plugin_data: Path, project_id: str,
     return {"ok": True, "purged_files": n, "project_id": project_id}
 
 
-def purge_domain(plugin_data: Path, domain_id: str, conn) -> dict:
+def purge_domain(plugin_data: Path, domain_id: str, conn,
+                 facts_dir: Optional[Path] = None) -> dict:
+    """Remove that domain's canonicals + registry rows. Does not touch other domains
+    or native Auto Memory."""
     from identifiers import validate_domain_id
     domain_id = validate_domain_id(domain_id)
     rows = conn.execute(
@@ -339,6 +342,17 @@ def purge_domain(plugin_data: Path, domain_id: str, conn) -> dict:
     for r in rows:
         native = Path(r["native_memory_dir"]) if r["native_memory_dir"] else None
         n += purge_project(plugin_data, r["project_id"], native)["purged_files"]
+    conn.execute(
+        "DELETE FROM holders WHERE fact_id IN (SELECT fact_id FROM facts WHERE domain_id=?)",
+        (domain_id,))
+    conn.execute("DELETE FROM facts WHERE domain_id=?", (domain_id,))
+    conn.execute("DELETE FROM tombstones WHERE domain_id=?", (domain_id,))
+    conn.commit()
+    if facts_dir is not None and facts_dir.is_dir():
+        n += _purge_dir(facts_dir)
+        parent = facts_dir.parent
+        if parent.name == domain_id:
+            n += _purge_dir(parent)
     return {"ok": True, "purged_files": n, "domain_id": domain_id}
 
 

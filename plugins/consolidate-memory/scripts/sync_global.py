@@ -1935,15 +1935,22 @@ def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> i
             print("gc --edges: no project context — refusing apply", file=sys.stderr)
             return 1
         expected_e: dict = {}
+
+        def _canon_path(stem: str) -> "Path":
+            p = ctx_e.canonical_domain_dir / f"{stem}.md"
+            if p.exists():
+                return p
+            return global_store() / f"{stem}.md"
+
         for n in ghosts:
-            p = global_store() / f"{n}.md"
+            p = _canon_path(n)
             if p.exists():
                 expected_e[str(p)] = hashlib.sha256(p.read_bytes()).hexdigest()
 
         def _mutate_edges(conn, temps):
             removed = 0
             for n, hs in ghosts.items():
-                p = global_store() / f"{n}.md"
+                p = _canon_path(n)
                 text = _safe_read_text(p)
                 if text is None:
                     continue
@@ -2025,13 +2032,34 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
         gfacts = iter_admissible_facts(_ctx_gc)
     else:
         gfacts = []
+    store = project_store(project_dir)
     if not gfacts:
-        why = ("no admissible canonicals" if getattr(_ctx_gc, "cross_project_allowed", False)
-               else ("absent" if not global_store().exists()
-                     else "present but empty (no canonical facts)"))
-        print(f"gc: {why} — refusing to GC "
-              "(cannot distinguish that from all-canonicals-deleted).")
-        return 0
+        # Empty live canonicals + leftover managed mirrors = forget-then-GC (ADR 013).
+        # Missing domain dir AND no mirrors = unmounted/absent, not "all deleted".
+        has_mirrors = False
+        if store.is_dir():
+            for _mf in store.glob("*.md"):
+                if _mf.name == "MEMORY.md" or _is_reserved_stem(_mf.stem):
+                    continue
+                _mt = _safe_read_text(_mf)
+                if _mt is not None and _is_mirror(_mt):
+                    has_mirrors = True
+                    break
+        def _has_canon_files(root: Path) -> bool:
+            if not root.is_dir():
+                return False
+            return any(p.suffix == ".md" and p.name != "MEMORY.md" for p in root.glob("*.md"))
+        live_canon = (_has_canon_files(_ctx_gc.canonical_domain_dir)
+                      or _has_canon_files(global_store()))
+        # Unmounted/empty source + leftover mirrors = mass-wipe risk (Probe G).
+        # Tombstones still sit as .md files, so forget-then-GC still proceeds.
+        if not live_canon:
+            why = ("no admissible canonicals" if getattr(_ctx_gc, "cross_project_allowed", False)
+                   else ("absent" if not global_store().exists()
+                         else "present but empty (no canonical facts)"))
+            print(f"gc: {why} — refusing to GC "
+                  "(cannot distinguish that from all-canonicals-deleted).")
+            return 0
     if apply:
         from control_plane import assert_mutation_allowed
         try:
@@ -2041,7 +2069,6 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             return 2
     if edges:   # v0.1.84 (P4): fleet-wide edge triage — project_dir-independent, same snapshot
         return _gc_edges(gfacts, apply, project_dir)
-    store = project_store(project_dir)
     orphans = _orphans(store, canon={n for n, _, _ in gfacts})
     # v0.1.75 (audit F6): FROZEN mirrors — see the docstring. Detected against the SAME snapshot.
     stacks = detect_stacks(project_dir)
