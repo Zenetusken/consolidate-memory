@@ -1035,6 +1035,8 @@ for _nm, _obj, _td in [
     ("workflow_proposals", _skill_schema.get("workflow_proposals", {}), ms.WorkflowProposals),  # v0.1.87 (W-C)
     ("workflow_proposals.candidates[0]",
      (_skill_schema.get("workflow_proposals", {}).get("candidates") or [{}])[0], ms.WorkflowProposal),
+    ("workflow_proposals.decline_anchors[0]",
+     (_skill_schema.get("workflow_proposals", {}).get("decline_anchors") or [{}])[0], ms.DeclineAnchor),
     # v0.1.69/A7: covered only TRANSITIVELY before (same AuditStoreDelta as audit.memory) — explicit
     # rows make the all-nested-shapes claim literally true.
     ("audit.claude_md", _skill_schema.get("audit", {}).get("claude_md", {}), ms.AuditStoreDelta),
@@ -1855,18 +1857,82 @@ _RC8 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, workflow_proposals={
 check("RC: the registrar block renders candidates with dispositions (its first render surface)",
       "REGISTRAR" in _RC8 and "fleet-pull" in _RC8 and "awaiting-confirmation" in _RC8)
 
-# ── v0.1.89 render-chain bugs (the user-reported regressions): the registrar overflow + the repeated
-#    browser pop. The template must use its OWN .reg-row layout (never the ledger's 96px-1fr-auto grid)
-#    and cap blocked rows; the ASCII renderer caps identically; _should_open dedupes same-anchor opens. ──
+# ── v0.1.89/v0.1.90 render-chain bugs: registrar overflow + repeated browser pop.
+#    0.1.89 switched off the ledger .row grid but left cards as flex children of .dstl-verdict
+#    (nowrap) with min-width:0 — 50 candidates shrank into unreadable columns. The panel is now
+#    a COLUMN of .reg-card dockets; the verdict is a block sentence; missing disposition is
+#    inferred from mechanical gates (never defaulted to awaiting-confirmation). ──
 _TEMPLATE_SRC = (Path(__file__).resolve().parent.parent / "plugins" / "consolidate-memory" / "scripts"
                  / "dashboard.template.html").read_text(encoding="utf-8")
-check("RC-89: the registrar panel uses its OWN .reg-row layout, never the ledger .row grid",
-      ".reg-row" in _TEMPLATE_SRC and 'class="reg-row"' in _TEMPLATE_SRC
-      and 'wbits+=\'<div class="row"' not in _TEMPLATE_SRC)
-check("RC-89: registrar blocked rows cap at 8 with a '+N more' tail",
-      "BLOCKED_CAP=8" in _TEMPLATE_SRC and "more blocked" in _TEMPLATE_SRC)
-check("RC-89: .reg-row vtx wraps anywhere (a chain template can never push the grid right)",
+check("RC-90: registrar candidates are .reg-card dockets, never the ledger .row grid",
+      ".reg-card" in _TEMPLATE_SRC and 'class="reg-card"' in _TEMPLATE_SRC
+      and 'id="reg-board"' in _TEMPLATE_SRC
+      and 'wbits+=\'<div class="row"' not in _TEMPLATE_SRC
+      and 'class="reg-row"' not in _TEMPLATE_SRC)
+check("RC-90: registrar board is a column (never a nowrap flex row of 50 cards)",
+      ".reg-board{display:flex;flex-direction:column" in _TEMPLATE_SRC.replace(" ", ""))
+check("RC-90: #reg-verdict is a sentence (flex-wrap tag+prose), never a nowrap card row",
+      'class="reg-verdict" id="reg-verdict"' in _TEMPLATE_SRC
+      and ".reg-verdict{display:flex;flex-wrap:wrap" in _TEMPLATE_SRC.replace(" ", "")
+      and 'id="reg-board"' in _TEMPLATE_SRC
+      and 'class="cmd-inline"' in _TEMPLATE_SRC)
+check("RC-90: registrar does not default missing disposition to awaiting-confirmation",
+      'disposition||"awaiting-confirmation"' not in _TEMPLATE_SRC
+      and 'c.disposition||"awaiting-confirmation"' not in _TEMPLATE_SRC
+      and "if(fleetG&&spreadG)" not in _TEMPLATE_SRC)
+check("RC-91: HTML registrar cards MODEL decisions only — unnamed fleet co-occurrence is not a card",
+      "BLOCKED_CAP" not in _TEMPLATE_SRC
+      and "cm workflows" not in _TEMPLATE_SRC
+      and "shared workflows" not in _TEMPLATE_SRC
+      and "named.map(cardHtml)" in _TEMPLATE_SRC
+      and "only showed up on one project or one day" not in _TEMPLATE_SRC
+      and "single day each" in _TEMPLATE_SRC
+      and 'stats.push(num(ev.d)+"d")' in _TEMPLATE_SRC
+      and "across projects" in _TEMPLATE_SRC)
+check("RC-90: registrar cards wrap long templates (a chain can never push the grid off-page)",
       "overflow-wrap:anywhere" in _TEMPLATE_SRC)
+check("RC-90: carryFwd treats genuine 0 as data (p=v; a later null does not skip an emptied index)",
+      "if(v==null)return p;v=num(v);p=v;return v" in _TEMPLATE_SRC)
+check("RC-90: HTML traj uses the two-regime target (soft IDXB, then CEIL when over)",
+      "var target=(cur>IDXB)?CEIL:IDXB" in _TEMPLATE_SRC)
+check("RC-90: missing DATA.budgets falls back to 1500/3840, never the retired 1200 target",
+      "num(BUD.index,1500)" in _TEMPLATE_SRC and "num(BUD.index,1200)" not in _TEMPLATE_SRC)
+check("RC-90: hero axis labels the 1500 rung 'target' (not 'budget' — two-rung honesty)",
+      'bl.textContent="target "' in _TEMPLATE_SRC)
+check("RC-90: closeDiff is IIFE-scoped so Escape can close the diff modal",
+      _TEMPLATE_SRC.count("function closeDiff") == 1
+      and "Escape (keydown, outside paintDream)" in _TEMPLATE_SRC)
+check("RC-90: over-target is cur>IDXB (parity with Python) and SJ is not the 'over budget' alarm",
+      "over:cur>IDXB" in _TEMPLATE_SRC.replace(" ", "")
+      and "just past the" in _TEMPLATE_SRC
+      and "standing-justified" in _TEMPLATE_SRC
+      and 'is <span class="hot">over budget</span>' not in _TEMPLATE_SRC)
+check("RC-90: traj breach marker sits on t.target (ceiling when over-target), not the 1500 budget line",
+      "var xCross=bx((n-1)+t.bf), ty=by(t.target)" in _TEMPLATE_SRC
+      and "cx:xCross,cy:ty" in _TEMPLATE_SRC.replace(" ", "")
+      and "cx:xCross,cy:ry" not in _TEMPLATE_SRC.replace(" ", "")
+      and "if(t.bf<=ex)" in _TEMPLATE_SRC.replace(" ", ""))
+check("RC-90: hashchange re-routes without location.reload()",
+      "addEventListener(\"hashchange\", route)" in _TEMPLATE_SRC
+      and "location.reload()" not in _TEMPLATE_SRC)
+check("RC-90: hash-route resets scroll (reload used to land at top; in-page nav must too)",
+      "window.scrollTo(0,0)" in _TEMPLATE_SRC.replace(" ", ""))
+check("RC-90: light/dark --faint/--ghost are the WCAG-AA tokens (ghost passes on paper2/card too)",
+      "--faint:#6a6356; --ghost:#6e675b" in _TEMPLATE_SRC
+      and _TEMPLATE_SRC.count("--faint:#9a8d74; --ghost:#8e816a") == 2)
+check("RC-90: audit head COUNTS are not uppercased (labels stay tracked small-caps)",
+      ".audit-ln.head>.nums" in _TEMPLATE_SRC.replace(" ", "")
+      and "text-transform:none" in _TEMPLATE_SRC)
+check("RC-90: longitudinal rigor is a categorical strip — no interpolating connectors, no LIGHT default",
+      "x1:bx(i-1),y1:ty[pk],x2:bx(i),y2:ty[k]" not in _TEMPLATE_SRC.replace(" ", "")
+      and 'if(!ty[k])k="LIGHT"' not in _TEMPLATE_SRC.replace(" ", "")
+      and "chart-kicker" in _TEMPLATE_SRC
+      and 'ht.textContent="writes"' not in _TEMPLATE_SRC
+      and "function graphLabel" in _TEMPLATE_SRC
+      and "this project</span>" in _TEMPLATE_SRC
+      and "trigger node</span>" not in _TEMPLATE_SRC)
+check("v0.1.90: registrar blocked persist cap is 8 (HTML no longer samples blocked cards)",
+      ms._REGISTRAR_BLOCKED_CAP == 8)
 _RC9_cands = [{"candidate": f"cmd{i}", "form": "command", "evidence": {"nodes": ["a"], "d": 2, "n": 2},
                "mechanical": {"fleet_recurrence": False, "day_spread": True}, "disposition": "declined"}
               for i in range(15)]
@@ -1874,6 +1940,20 @@ _RC9 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, workflow_proposals={"candid
 _check_rc9_rows = _RC9.count("◈")
 check("RC-89: the ASCII registrar caps blocked rows at 8 + the '+N more' tail (parity with the HTML)",
       _check_rc9_rows == 8 and "+7 more blocked" in _RC9)
+_RC10_cands = [{"candidate": f"cmd{i}", "form": "command",
+                "evidence": {"nodes": ["a"], "d": 1, "n": 2},
+                "mechanical": {"fleet_recurrence": True, "day_spread": False}}
+               for i in range(3)]
+_RC10 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, workflow_proposals={"candidates": _RC10_cands})))
+check("RC-90: ASCII registrar infers blocked: day-spread when model disposition is missing (never awaiting)",
+      "blocked: day-spread" in _RC10 and "awaiting-confirmation" not in _RC10)
+_RC11 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, workflow_proposals={"candidates": [
+      {"candidate": "python3 tests/foo.py", "form": "command",
+       "evidence": {"nodes": ["a", "b"], "d": 2, "n": 4},
+       "mechanical": {"fleet_recurrence": True, "day_spread": True, "distinctive": True}}]})))
+check("RC-91: ASCII missing model disposition on a distinctive fleet row is fleet-candidate, never awaiting",
+      "fleet-candidate" in _RC11 and "awaiting-confirmation" not in _RC11
+      and "python3 tests/foo.py" in _RC11)
 _TS = 1000.0
 _tmpd = Path(_tempfile.mkdtemp())
 check("RC-89: _should_open — a same-anchor re-render within the window does NOT re-open",
@@ -4546,7 +4626,8 @@ with _Env73() as _e:
           and isinstance(_jsonB.dumps(_w83), str))
 check("v0.1.83: distill_history returns latest-row-block + full verdict lineage; absent log → "
       "empty-honest shape",
-      ms.distill_history(Path("/nonexistent")) == {"latest": None, "verdicts": []})
+      ms.distill_history(Path("/nonexistent")) ==
+      {"latest": None, "verdicts": [], "proposal_declines": []})
 
 # ── v0.1.87/W-C1 (docs/wc-registrar.spec.md §7): the registrar's Tier-2 gates + D-8 states + D-2.5 anchors ──
 with _Env73() as _e:
@@ -4565,22 +4646,37 @@ with _Env73() as _e:
     # alpha: a DECLINED older record (the D-2.5 anchor) + ONE latest record carrying everything —
     #        the shared template, a single-node template, a single-node chain, and (with beta)
     #        a shared-d=1 day-spread blocker (latest-wins: rows split across records would vanish)
+    _alpha_new = _jsonB.loads(_wblog(
+        "new", [{"t": "python3 tests/smoke.py", "n": 4, "d": 3},
+                {"t": "mypy --config-file mypy.ini", "n": 3, "d": 2},
+                {"t": "rm -rf .tmp-out", "n": 1, "d": 1},
+                {"t": "gh pr create --title", "n": 3, "d": 1},
+                {"t": "git add", "n": 4, "d": 2},
+                {"t": "python3 tests/validate_manifests.py", "n": 5, "d": 3}],
+        chains=[{"t": ["python3 tests/smoke.py", "mypy --config-file mypy.ini"], "n": 3, "d": 2}],
+        used=[{"a": "code-review", "n": 5}]))
+    _alpha_new["workflow_proposals"] = {
+        "verdict": "declined python3 tests/smoke.py — already covered",
+        "candidates": [
+            {"candidate": "python3 tests/smoke.py", "form": "command", "disposition": "declined",
+             "evidence": {"nodes": ["src-alpha", "src-beta"], "d": 2, "n": 6}},
+            {"candidate": "git add", "form": "command", "disposition": "declined",
+             "evidence": {"nodes": ["src-alpha", "src-beta"], "d": 2, "n": 6}},
+        ]}
     (_wca / ".consolidation-log.jsonl").write_text(
         _wblog("old", [{"t": "gh pr create --title", "n": 8, "d": 5}],
                chains=[{"t": ["gh pr create --title", "gh pr view"], "n": 2, "d": 1}],
                verdict="proposed gh-pr-workflow — declined (local-only evidence)") + "\n" +
-        _wblog("new", [{"t": "python3 tests/smoke.py", "n": 4, "d": 3},
-                       {"t": "mypy --config-file mypy.ini", "n": 3, "d": 2},
-                       {"t": "rm -rf .tmp-out", "n": 1, "d": 1},
-                       {"t": "gh pr create --title", "n": 3, "d": 1}],
-               chains=[{"t": ["python3 tests/smoke.py", "mypy --config-file mypy.ini"], "n": 3, "d": 2}],
-               used=[{"a": "code-review", "n": 5}]) + "\n", encoding="utf-8")
+        _jsonB.dumps(_alpha_new) + "\n", encoding="utf-8")
     # beta: the SHARED template again (fleet ✓) + the rm -rf pair (shared across nodes but d=1 → day-spread blocker)
+    # + git add (generic-cli) + validate_manifests d=1 (min(3,1)=1 → day-spread, not max-infection)
     (_wcb / ".consolidation-log.jsonl").write_text(
         _wblog("b0", [{"t": "git log --oneline -1", "n": 1, "d": 1}],
                verdict="nothing: covered by release.sh") + "\n" +
         _wblog("b1", [{"t": "python3 tests/smoke.py", "n": 2, "d": 2},
-                      {"t": "rm -rf .tmp-out", "n": 1, "d": 1}],
+                      {"t": "rm -rf .tmp-out", "n": 1, "d": 1},
+                      {"t": "git add", "n": 2, "d": 2},
+                      {"t": "python3 tests/validate_manifests.py", "n": 1, "d": 1}],
                chains=[{"t": ["python3 tests/smoke.py", "mypy --config-file mypy.ini"], "n": 2, "d": 2}]) + "\n",
         encoding="utf-8")
     # gamma: LEGACY — a record with NO distill block at all (no top key)
@@ -4609,6 +4705,7 @@ with _Env73() as _e:
           any(v.get("decline_evidence") and v["decline_evidence"]["top"][0]["t"] == "gh pr create --title"
               and v["decline_evidence"]["top"][0]["n"] == 8
               for v in _wchist["verdicts"]))
+    _rc_by = {c["candidate"]: c for c in _rcj["candidates"]}
     check("v0.1.87/W-C1 3: registrar JSON — mechanical gates evaluated, model legs LISTED never "
           "evaluated, dispositions correct (fleet-candidate / blocked)",
           _rcj["nodes"] >= 4 and _rcj["nodes_reporting"] == 3
@@ -4616,12 +4713,28 @@ with _Env73() as _e:
           == {"python3 tests/smoke.py": "fleet-candidate",
               "python3 tests/smoke.py → mypy --config-file mypy.ini": "fleet-candidate",
               "rm -rf .tmp-out": "blocked: day-spread",
+              "python3 tests/validate_manifests.py": "blocked: day-spread",
               "mypy --config-file mypy.ini": "blocked: fleet-recurrence",
-              "gh pr create --title": "blocked: fleet-recurrence"}
+              "gh pr create --title": "blocked: generic-cli",
+              "git add": "blocked: generic-cli"}
           and all(c["gates"]["model_judged"] == ["stable_inputs", "coverage", "decline_lineage"]
                   and "stable_inputs" not in c["gates"]["mechanical"]
                   for c in _rcj["candidates"])
           and any(a["node"] == "src-alpha" and a["top"][0]["t"] == "gh pr create --title"
+                  for a in _rcj["decline_anchors"]))
+    check("v0.1.90: fleet d is MIN of per-node d (loudest-node infection is day-spread, not a pass)",
+          _rc_by["python3 tests/smoke.py"]["evidence"]["d"] == 2
+          and _rc_by["python3 tests/validate_manifests.py"]["evidence"]["d"] == 1
+          and _rc_by["python3 tests/validate_manifests.py"]["disposition"] == "blocked: day-spread")
+    check("v0.1.90: distinctive mechanical flag — git add is generic-cli; smoke.py is distinctive",
+          _rc_by["git add"]["gates"]["mechanical"]["distinctive"] is False
+          and _rc_by["python3 tests/smoke.py"]["gates"]["mechanical"]["distinctive"] is True
+          and _rc_by["python3 tests/smoke.py → mypy --config-file mypy.ini"]["gates"]["mechanical"]["distinctive"] is True)
+    check("v0.1.90: WP disposition=declined attaches a decline-anchor (the production channel); "
+          "generic git add declined does NOT",
+          any(a.get("top") and a["top"][0].get("t") == "python3 tests/smoke.py"
+              for a in _rcj["decline_anchors"])
+          and all(not (a.get("top") and a["top"][0].get("t") == "git add")
                   for a in _rcj["decline_anchors"]))
     check("v0.1.87/W-C1 4: the chain path of the cascade is exercised (the shared chain crosses "
           "the fleet tier)",
@@ -4634,9 +4747,23 @@ with _Env73() as _e:
           and any("decline_evidence" in v and v["decline_evidence"]["top_chains"]
                   and v["decline_evidence"]["top"][0]["t"] == "gh pr create --title"
                   for v in _wchist["verdicts"]))
+    _tmpDec = Path(_osB.environ["HOME"]) / "dec-hist"; _tmpDec.mkdir()
+    (_tmpDec / ".consolidation-log.jsonl").write_text(
+        _jsonB.dumps({"distill": {"verdict": "proposed X — previously declined, now confirmed",
+                                  "top": [{"t": "x", "n": 1, "d": 1}]}}) + "\n", encoding="utf-8")
+    check("v0.1.90: 'proposed X — previously declined, now confirmed' does NOT attach a decline-anchor",
+          all("decline_evidence" not in v for v in ms.distill_history(_tmpDec)["verdicts"]))
+    _tmpCh = Path(_osB.environ["HOME"]) / "dec-hist-chain"; _tmpCh.mkdir()
+    (_tmpCh / ".consolidation-log.jsonl").write_text(
+        _jsonB.dumps({"distill": {"verdict": "proposed the gate-chain — declined",
+                                  "top_chains": [{"t": ["a", "b"], "n": 3, "d": 2}]}}) + "\n",
+        encoding="utf-8")
+    check("v0.1.90: a chain-only declined verdict (no top[]) still attaches a decline-anchor",
+          any(v.get("decline_evidence") and v["decline_evidence"].get("top_chains")
+              for v in ms.distill_history(_tmpCh)["verdicts"]))
     check("v0.1.87/W-C1 7: the declined-still-recurring pairing — the anchor's template ALSO sits in "
           "the current candidate window (the data the model leg compares against)",
-          any(c["candidate"] == "gh pr create --title" and c["disposition"] == "blocked: fleet-recurrence"
+          any(c["candidate"] == "gh pr create --title" and c["disposition"] == "blocked: generic-cli"
               for c in _rcj["candidates"])
           and any(a["node"] == "src-alpha" and a["top"][0]["t"] == "gh pr create --title"
                   for a in _rcj["decline_anchors"]))
@@ -4664,11 +4791,33 @@ with _Env73() as _e:
           and all("disposition" not in r and "name" not in r for r in _wp["candidates"])
           and any(r["mechanical"]["fleet_recurrence"] is True for r in _wp["candidates"])
           and isinstance(_wp.get("decline_anchors"), list))
+    _n_f = int(_wp.get("n_fleet") or 0); _n_b = int(_wp.get("n_blocked") or 0)
+    check("v0.1.90: --into writes full n_* counts and caps blocked persist (fleet-candidates kept)",
+          _wp.get("n_candidates") == _n_f + _n_b
+          and _n_f + _n_b >= len(_wp["candidates"])
+          and len(_wp["candidates"]) <= _n_f + ms._REGISTRAR_BLOCKED_CAP
+          and int(_wp.get("n_generic") or 0) + int(_wp.get("n_day_spread") or 0) <= _n_b)
     _bufI2 = _ioW.StringIO()
     with _ctxW.redirect_stdout(_bufI2):
         _rcI2 = sg.registrar_report(_e.proj, as_json=False, into=str(Path(_osB.environ["HOME"]) / "nope" / "x.json"))
     check("v0.1.87/W-C2 2: an unwritable --into target exits 2 (a typo'd path is caught, never a silent drop)",
           _rcI2 == 2)
+    # --into SEED must not be collected as PROJECT_DIR when DIR is omitted (or last).
+    _seedPos = Path(_osB.environ["HOME"]) / "seed-pos.json"
+    _seedPos.write_text("{}", encoding="utf-8")
+    _oldArgv = sys.argv[:]
+    _errPos = _ioW.StringIO()
+    try:
+        sys.argv = ["sync_global.py", "--workflows", "--registrar", "--into", str(_seedPos)]
+        with _ctxW.redirect_stdout(_ioW.StringIO()), _ctxW.redirect_stderr(_errPos):
+            _rcPos = sg._dispatch()
+    finally:
+        sys.argv = _oldArgv
+    _seedPosD = _jsonB.loads(_seedPos.read_text(encoding="utf-8")) if _seedPos.exists() else {}
+    check("v0.1.90: --into SEED is not stolen as PROJECT_DIR when DIR is omitted",
+          "PROJECT_DIR" not in _errPos.getvalue()
+          and _rcPos == 0
+          and isinstance((_seedPosD.get("workflow_proposals") or {}).get("candidates"), list))
     # W-C2 polish: seed-key survival + the re-consult MERGE (model fields preserved on re-run)
     _seedW2 = Path(_osB.environ["HOME"]) / "seed2.json"
     _seedW2.write_text(_jsonB.dumps({"project": "p", "session": "s", "verdict": "keep-me",
@@ -4696,11 +4845,45 @@ with _Env73() as _e:
           _seedD3["workflow_proposals"]["candidates"][0].get("disposition") == "confirmed"
           and _seedD3["workflow_proposals"]["candidates"][0].get("name") == "gate-check-cmd"
           and "evidence" in _seedD3["workflow_proposals"]["candidates"][0])
+    _seedD3["workflow_proposals"]["candidates"].append(
+        {"candidate": "out-of-window-cmd", "form": "command", "disposition": "confirmed",
+         "name": "kept-artifact", "evidence": {"nodes": ["gone"], "d": 2, "n": 2},
+         "mechanical": {"fleet_recurrence": True, "day_spread": True}})
+    _seedD3["workflow_proposals"]["candidates"].append(
+        {"candidate": "stale-awaiting", "form": "command",
+         "disposition": "awaiting-confirmation",
+         "evidence": {"nodes": ["gone"], "d": 1, "n": 1},
+         "mechanical": {"fleet_recurrence": False, "day_spread": False}})
+    _seedW2.write_text(_jsonB.dumps(_seedD3), encoding="utf-8")
+    with _ctxW.redirect_stdout(_ioW.StringIO()):
+        sg.registrar_report(_e.proj, as_json=False, into=str(_seedW2))
+    _kept_cands = _jsonB.loads(_seedW2.read_text(encoding="utf-8"))["workflow_proposals"]["candidates"]
+    check("v0.1.90: a confirmed row that left the window SURVIVES a re-consult; awaiting does not",
+          any(r.get("candidate") == "out-of-window-cmd" and r.get("disposition") == "confirmed"
+              for r in _kept_cands)
+          and all(r.get("candidate") != "stale-awaiting" for r in _kept_cands))
     _vrW = ms.validate_cycle_record({"project": "p", "workflow_proposals": {"candidates": "not-a-list"}})
     check("v0.1.87/W-C2 3: validate_cycle_record warns on a wrong-container workflow_proposals sub-key "
           "(the model-slip class), and is quiet on the correct shape",
           any("workflow_proposals.candidates is not a list" in wmsg for wmsg in _vrW)
           and ms.validate_cycle_record({"project": "p", "workflow_proposals": {"candidates": [], "decline_anchors": []}}) == [])
+    check("v0.1.90: validate_cycle_record warns on an unknown WP disposition",
+          any("disposition is not a known value" in w for w in
+              ms.validate_cycle_record({"project": "p", "workflow_proposals": {
+                  "candidates": [{"candidate": "x", "disposition": "maybe"}]}})))
+
+# v0.1.90: distinctive-template gate — unit cases (the registrar's generic-cli stoplist)
+check("v0.1.90: distinctive — git/gh never; bare python3 --flag never; script path yes; chain any-side",
+      ms._is_distinctive_template("git add", "command") is False
+      and ms._is_distinctive_template("git commit -q -m", "command") is False
+      and ms._is_distinctive_template("gh pr create --title", "command") is False
+      and ms._is_distinctive_template("python3 --json", "command") is False
+      and ms._is_distinctive_template("python3 --pull .", "command") is False
+      and ms._is_distinctive_template("python3 tests/smoke.py", "command") is True
+      and ms._is_distinctive_template("mypy --config-file mypy.ini", "command") is True
+      and ms._is_distinctive_template("git add → git commit -q -m", "chain") is False
+      and ms._is_distinctive_template(
+          "python3 tests/smoke.py → mypy --config-file mypy.ini", "chain") is True)
 
 # --- PR-#95 review pins (persistence-core lens — all three findings fire only on the
 # hand-edited / pre-v0.1.82 --from path; the dream path was already clean) ---
@@ -5010,6 +5193,16 @@ with _tf73.TemporaryDirectory() as _td7:
     _s7 = Path(_td7); _traj_log(_s7, 1600, 1700)
     check("v0.1.86 7: over target + no marker + n<3 -> (None, None), never an empty suffix",
           ms.budget_trajectory_advisory(_s7, 1750, "") == (None, None))
+
+with _tf73.TemporaryDirectory() as _td0:
+    _s0 = Path(_td0); _traj_log(_s0, 1900, 2000, 2100, 0)
+    check("v0.1.90: genuine after_tokens=0 is data — emptied index does NOT fire a false early-warning",
+          ms.budget_trajectory_advisory(_s0, 0, _M86) == (None, None))
+with _tf73.TemporaryDirectory() as _td13:
+    _s13 = Path(_td13); _traj_log(_s13, 1808, 1939, 2070, 2200)   # last-4 slope ≈130.7, bf≈12.55 → ~13
+    _suf13, _lin13 = ms.budget_trajectory_advisory(_s13, 2200, _M86)
+    check("v0.1.90: live over-target climber (~130 tok/cycle) projects ~13 dreams to the hard ceiling",
+          _suf13 is not None and "hard ceiling" in _suf13 and "~13 dream" in _suf13 and _lin13 is None)
 
 # Gate 5 -- seed_record() unchanged (no new schema key): covered by the existing cycle-record
 # smoke coverage; this feature adds no seed key by construction (display-only, read-only).

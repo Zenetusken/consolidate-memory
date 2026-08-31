@@ -49,9 +49,10 @@ cm — consolidate-memory
                        the warn-only advisory) — the gc lever's evidence table (v0.1.67, Phase C)
   cm harvest [DIR]        capture every node's organic-read windows into ~/.claude/memory/.fleet-usage.jsonl
   cm staleness [DIR] [--json] absorption lag per node — last dream, missing globals, stale mirrors (read-only)
-  cm workflows [DIR] [--json] [--registrar] fleet-recurring workflow templates/chains + adoption + verdict
+  cm workflows [DIR] [--json] [--registrar] [--into SEED] fleet-recurring workflow templates/chains + adoption + verdict
                        lineage (read-only); --registrar adds the Tier-2 mechanical gate cascade
-                       (fleet-candidates vs blocked, decline anchors) — proposals stay report-then-apply
+                       (fleet-candidates vs blocked, decline anchors); --into injects that evidence
+                       into the cycle seed — proposals stay report-then-apply
   cm calibration [--json]  the standing fleet-calibration report: magnitude/band distribution, index
                        utilization, usage/miss signal, demotion windows + the DELTA vs the frozen
                        2026-08-29 baseline — one command decides whether the band/budget refit

@@ -330,7 +330,11 @@ store AND empty-or-all-irrelevant network — is the only case that ends at Phas
 **prune-pressure** flag — see *Rigor modes* above — and (when commits have accrued since the last
 dream) a **dream-timing advisory**: a no-nag nudge that this is a good consolidation boundary. It's
 advisory only (the skill never auto-fires — see *Why this is its own ritual*); its prospective use is
-via `cm status` *outside* a dream.
+via `cm status` *outside* a dream. The STORES index gauge may also carry a **budget-trajectory**
+suffix or line (v0.1.86): a rising under-target node projects ~N dreams to the 1500 target; an
+over-target climber projects ~N dreams to the 3840 hard ceiling, with a last-dream age so a
+flat-but-stale node is not read as healthy. Silence is the no-nag rule (a shrinking under-target
+node prints nothing new). The HTML archive chart uses the same two-regime target.
 
 **The first dream beat lands here.** The SLEEP block already opened the pass — it precedes the
 first tool call (see *The dream arc*); if you reached this read without it, emit it now, before
@@ -970,16 +974,24 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    ```bash
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --workflows . --registrar --into <the --seed path>
    ```
-   The engine emits per-candidate dispositions — `fleet-candidate` (≥2 real nodes + fleet day-spread d≥2)
-   or `blocked: fleet-recurrence|day-spread` — and injects the script-truth evidence + decline-anchors into
-   the seed's `workflow_proposals` block. The MODEL-judged legs (stable inputs · coverage · decline lineage
+   The engine emits per-candidate dispositions — `fleet-candidate` (a **distinctive** command/chain
+   on ≥2 real nodes whose **every** node's own day-spread is d≥2 — fleet `d` is the MIN across nodes,
+   never the max of the loudest) or `blocked: generic-cli|fleet-recurrence|day-spread` — and injects
+   the script-truth evidence + decline-anchors into the seed's `workflow_proposals` block.
+   Ordinary `git`/`gh` and a bare `python3 --flag` (no script path) are `blocked: generic-cli` —
+   they are not workflows; do not re-litigate them. A 3d+1d pair is `blocked: day-spread`
+   (`min(3,1)=1`). The MODEL-judged legs (stable inputs · coverage · decline lineage
    vs the anchors) are YOURS, never the engine's — a disposition of `fleet-candidate` is necessary, never
    sufficient. A fleet proposal fires only for a `fleet-candidate` whose model legs you judge green —
    report-then-apply, ONE artifact per confirmation; the `awaiting-confirmation | confirmed | declined`
    disposition + the genericized artifact name are YOUR writes into that block (never hand-mirror the
-   counts — they're script-injected). Tier-1 LOCAL proposals are unchanged (the step-6 gate above — a
-   5-episode single-node workflow stays legitimately proposable locally). Until a real cross-node
-   recurrence exists the honest state is `fleet-candidates: 0` — never invent breadth.
+   counts — they're script-injected; never leave engine `fleet-candidate`/`blocked:*` as the
+   persisted disposition). Decline-anchors attach from (1) distill `proposed … declined` AND
+   (2) `workflow_proposals.candidates[].disposition == declined` on a distinctive template —
+   the production channel. `nothing:` does not attach. Tier-1 LOCAL proposals are unchanged
+   (the step-6 gate above — a 5-episode single-node workflow stays legitimately proposable locally).
+   Until a **distinctive** cross-node recurrence exists the honest state is `fleet-candidates: 0`
+   even if `git add` recurs on every node — never invent breadth, never treat generic CLI as a miss.
    - **REPORT-THEN-APPLY — present the proposal PLAIN / un-styled (never dream-voice an approval) and NEVER
      auto-write an executable artifact.** Show the artifact you would create + the evidence (the counts); the
      user confirms; only then you author it. A single confirmation authorizes **ONE specific named artifact**
@@ -1234,14 +1246,16 @@ this once warned against; the dashboard remains the source of the figures.)
                "verdict": "<one line: dormant — N probative windows | demoted X · justified Y | none: <top candidate> kept because …>"},
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
              "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
-  "workflow_proposals": {"_": "v0.1.87/W-C: the registrar's Tier-2 fleet-placement evidence — SCRIPT-INJECTED by --workflows --registrar --into (candidates + decline_anchors, counts never hand-mirrored); the MODEL writes only per-candidate disposition (awaiting-confirmation|confirmed|declined) + the genericized artifact name + the one-line verdict. Absent = the registrar was not consulted this pass (a visible decision).",
+  "workflow_proposals": {"_": "v0.1.87/W-C: the registrar's Tier-2 fleet-placement evidence — SCRIPT-INJECTED by --workflows --registrar --into (candidates + decline_anchors, counts never hand-mirrored); the MODEL writes only per-candidate disposition (awaiting-confirmation|confirmed|declined) + the genericized artifact name + the one-line verdict. Absent = the registrar was not consulted this pass (a visible decision). v0.1.90: n_* are the FULL join sizes; candidates[] persists every distinctive fleet-candidate + a capped blocked sample; mechanical.distinctive + n_generic/n_day_spread; fleet d is MIN of per-node d; decline_anchors also attach from declined WP rows.",
                          "candidates": [{"candidate": "<the normalized template/chain>", "form": "command|chain",
                                         "evidence": {"nodes": ["<node label>"], "d": 0, "n": 0},
-                                        "mechanical": {"fleet_recurrence": true, "day_spread": true},
+                                        "mechanical": {"fleet_recurrence": true, "day_spread": true, "distinctive": true},
                                         "name": "<the genericized artifact name — model-written, never the raw template>",
                                         "disposition": "<awaiting-confirmation|confirmed|declined — model-written>"}],
                          "decline_anchors": [{"node": "<label>", "verdict": "<the declined one-liner>",
-                                              "top": [{"t": "<template>", "n": 0, "d": 0}]}],
+                                              "top": [{"t": "<template>", "n": 0, "d": 0}],
+                                              "top_chains": [{"t": ["<a>", "<b>"], "n": 0, "d": 0}]}],
+                         "n_candidates": 0, "n_fleet": 0, "n_blocked": 0, "n_generic": 0, "n_day_spread": 0,
                          "verdict": "<one line: nothing: 0 fleet-candidates | proposed <X> — awaiting confirmation>"},
   "outcome": ""
 }

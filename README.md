@@ -245,7 +245,9 @@ the dense technical reporting (never replacing it). You can also drive the piece
 chains (`&&`/newline/`;`-glued sub-steps, with a
 day-spread so a genuine multi-day workflow outranks a one-hour retry loop), and the pass proposes
 packaging a high-confidence one into a durable command/skill — **report-then-apply, never
-auto-written**. "Create nothing" is a frequent, honorable verdict; every distill step ends with a
+auto-written**. Across the fleet, `--workflows --registrar` only proposes **distinctive**
+command classes that actually recur on more than one project over more than one day
+(ordinary `git add` is not a workflow). "Create nothing" is a frequent, honorable verdict; every distill step ends with a
 one-line disposition (what it proposed/created, or which gate leg killed the top candidate) captured
 on the cycle record.
 

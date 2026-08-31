@@ -5,6 +5,52 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.90] — 2026-08-30
+
+### Improved — the registrar recognizes real fleet workflows
+
+W-C shipped a working join. This release teaches it the difference between *command-class
+co-occurrence* and a *workflow worth packaging* — so a fleet-wide proposal is something a
+future session would actually want as a command or skill.
+
+- **Distinctive gate.** Ordinary `git`/`gh` never clear fleet placement. Interpreters
+  (`python3`, `bash`, …) only count with a script path (`python3 tests/smoke.py` yes;
+  `python3 --json` no). A chain is distinctive if any side is. Live fleet (8 of 12 nodes
+  reporting): **0 fleet-candidates** — the honest cold-distinctive state, not a miss.
+  `blocked: generic-cli` is the frequent, correct disposition.
+- **Shared over days, not the loudest node.** Fleet `d` is the **min** of per-node
+  day-spreads. A 3-day node can no longer carry a one-day partner (`min(3,1)=1` →
+  `blocked: day-spread`). Both sides must themselves have `d ≥ 2`.
+- **Decline lineage closes.** Anchors attach from
+  `workflow_proposals.candidates[].disposition == declined` (the channel the dream
+  actually writes) as well as distill `proposed … declined`. Generic CLI declines do
+  not pollute the set, so the next dream will not re-ask about `git add`.
+- **Script-truth counts.** `--into` records `n_generic` / `n_day_spread` beside the
+  existing n_*; blocked persist prefers the interesting near-join. Mechanical
+  `distinctive` is additive on every row. Missing model disposition stays
+  `fleet-candidate` / `blocked:*` — never inferred as `awaiting-confirmation`.
+
+The HTML archive matches that honesty: the section is **across projects**, cards are
+**named proposals only** (`awaiting` / `confirmed` / declined-with-a-name), evidence
+shows `on A and B · 3d · ×44`, day-spread is its own line, and “nothing is created
+until you confirm” appears only when the dream actually left something awaiting.
+Mechanical co-occurrence of `git add` is not a docket.
+
+`docs/wc-registrar.spec.md` v0.4. SKILL Phase-5 consult + schema block moved with the
+TypedDicts (C5 pin). `cm workflows --registrar --into` documents the injection.
+
+### Improved — the archive’s two-rung budget, end to end
+
+The always-loaded index has two rungs (1500 target · 3840 ceiling). The archive now
+says so: lead and KPI print exact tokens, the axis labels `target` / `ceiling`,
+standing-justified over-target is not an “over budget” alarm, and trajectory projects
+to the right rung. Genuine `after_tokens=0` is data (an emptied index is not a missing
+key). Escape closes the diff modal. In-page hash changes re-route without reload.
+
+1004/1004 smoke, mypy clean. Additive throughout (`mechanical.distinctive`,
+`n_generic`, `n_day_spread`; `d=min` is a gate tightening, not a schema break; legacy
+records render). Existing installs keep working ⇒ patch.
+
 ## [0.1.89] — 2026-08-30
 
 ### Fixed — two 0.1.88 render-chain regressions (user-reported, root-caused, pinned)

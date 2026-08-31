@@ -1,10 +1,12 @@
-# W-C registrar — SPEC v0.3 (adversarially reviewed, curated, polish-amended)
+# W-C registrar — SPEC v0.4 (engine-honesty amendment)
 
 **The distill vertical's final stage: the registrar/adoption loop that proposes and places
 fleet-wide workflow artifacts from W-A/W-B evidence.** v0.2 = the curated revision after a
 3-lens adversarial review; v0.3 = the polish-swarm amendments (declined-leg
-pins as data-presence, cue wording — see the commit history) (mechanics/contracts, safety/blast-radius, scope/economy); every
-accepted finding was re-verified against the live tree. Companion of record:
+pins as data-presence, cue wording); **v0.4 = the distinctive-fleet engine** (generic-CLI
+stoplist, fleet `d` = min of per-node day-spreads, decline-anchors from the
+`workflow_proposals` dispositions the dream actually writes, archive cards for named
+proposals only). Companion of record:
 `distill-feature-plan` (the vertical's plan + stage-3 inputs) and the SKILL's Phase-5 step 6.
 
 ## 1. Goals & non-goals
@@ -65,25 +67,36 @@ script = evidence, model = workflow recognition + proposal).
   is legitimately proposable TODAY under this tier, for project-local placement — W-C
   does NOT regress that path.
 - **Tier 2 (NEW, governs FLEET-WIDE placement only):** the additional gates —
-  1. **Fleet recurrence:** the same normalized template/chain appears in W-A rows of
+  1. **Distinctive (v0.4):** ordinary `git`/`gh` never clear fleet placement.
+     Interpreters (`python3`, `bash`, …) only count with a script path
+     (`python3 tests/smoke.py` yes; `python3 --json` no). A chain is distinctive if
+     ANY side is. Failures are `blocked: generic-cli` — they are not workflows.
+     Mechanical flags stay independent (a 2-node 3d `git add` still reports
+     `fleet_recurrence` + `day_spread`; disposition is generic-cli).
+  2. **Fleet recurrence:** the same normalized template/chain appears in W-A rows of
      **≥2 real nodes**, where "real" means organic discovery scope (§D-2a — there is NO
      provenance check; the mechanism is home-scoping).
-  2. **Day-spread:** fleet `d ≥ 2` (the W-B join's per-node-max `d`; a same-day
-     double-run has d=1 and fails). Episode arithmetic is PINNED: per-node `n`, fleet
-     `d` = max over nodes — a 1-episode-each 2-node pair passes gate 1 and gate 2 with
-     d≥2; that is intended (two independent nodes, two distinct days).
-  3. **Stable inputs + repeatable procedure + clear stopping condition** — model-judged
+  3. **Day-spread:** fleet `d ≥ 2` where fleet `d` is the **MIN of per-node day-spreads**
+     (a same-day double-run has d=1 and fails). Episode arithmetic is PINNED: per-node
+     `n`, fleet `d` = min over nodes. W-A rows do not persist dates, so a union-of-days
+     `d` is uncomputable — a 1-episode-each 2-node pair with per-node `d=1` is `blocked:
+     day-spread` (`min(1,1)=1`). A loud node's `d=3` cannot carry a 1-day partner
+     (`min(3,1)=1` — also day-spread). Both nodes must themselves have `d ≥ 2`.
+     Do not substitute `sum` or `max` (max was the v0.3 arithmetic; it over-claimed
+     sharing).
+  4. **Stable inputs + repeatable procedure + clear stopping condition** — model-judged
      (the engine NEVER fabricates a model-leg verdict — §4 splits mechanical vs
      model-judged legs; no-failure-masking law).
-  4. **Not already covered:** the engine's inventory panel is USER-LEVEL
+  5. **Not already covered:** the engine's inventory panel is USER-LEVEL
      (`~/.claude/skills` + commands); "the repo, the plugin" is the MODEL's checklist
      leg (the shipped step-6 wording), not an engine claim.
-  5. **Not previously declined with an EVIDENCE ANCHOR:** decline-time evidence is
-     computable — W-C1 extends `distill_history` to surface the decline record's own row
-     snapshot (the rows ARE in the log; the shipped aggregation drops them — a small,
-     natural extension). "More nodes/episodes than when declined" compares against that
-     anchor; the shipped lineage `{session, verdict, proposed, created}` alone cannot
-     compute it (review catch — pin 1's declined leg depends on this).
+  6. **Not previously declined with an EVIDENCE ANCHOR:** decline-time evidence is
+     computable. Distill `proposed … declined` still attaches that record's
+     `top`/`top_chains` snapshot. **Production channel (v0.1.90):** live fleet declines
+     are written on `workflow_proposals.candidates[].disposition == declined` (distill
+     verdicts are `nothing: … already covered`) — those rows ALSO attach, distinctive
+     templates only. `nothing:` does not attach (it names a local coverage miss).
+     "More nodes/episodes than when declined" compares against that anchor.
 
 **D-2a — Provenance is discovery scope, honestly stated.** Every fleet reader is
 `Path.home()`-anchored (`_log_nodes`/`_network_nodes`/`_all_stores`); the engine CANNOT
@@ -163,7 +176,7 @@ A maintenance-pivot distill skip is a legitimate skip, never mislabeled legacy.
 `sync_global.py --workflows --registrar [--json]`: the W-B join + the Tier-2 gate
 cascade per candidate, emitting
 `{candidate, form, evidence: {nodes, d, n}, gates: {mechanical: {fleet_recurrence,
-day_spread}, model_judged: [stable_inputs, coverage, decline_lineage]}, disposition}`.
+day_spread, distinctive}, model_judged: [stable_inputs, coverage, decline_lineage]}, disposition}`.
 The mechanical legs are engine-computed; the model-judged legs are explicitly NOT
 evaluated by the engine (never fabricate a gate verdict). Read-only — the engine NEVER
 writes an artifact. Exit 0 clean · 2 usage error (the W-B convention). Registered in
@@ -230,9 +243,13 @@ into the cycle record's `workflow_proposals` block (D-7).
   the release itself runs post-merge via `./release.sh --expect patch --confirm`** — patch (additive
   flag + additive record block + SKILL wording; the freeze declaration allows additive keys; legacy
   records render untouched).
-- **The live trigger:** W-C2's FLEET-WIDE path fires only on ≥1 exact cross-node
-  recurrence (Tier-2 gate 1); until then it renders the honest "2/N nodes reporting ·
-  0 fleet templates" state. Tier-1 local proposals are live immediately.
+- **W-C4 — distinctive-fleet engine (v0.4 / v0.1.90) SHIPPED:** generic-CLI stoplist,
+  fleet `d` = min, decline-anchors from WP dispositions, archive cards for named
+  proposals only. The live join is warm; the proposal path is honest.
+- **The live trigger:** W-C2's FLEET-WIDE path fires only on ≥1 **distinctive** exact
+  cross-node recurrence (Tier-2: distinctive + ≥2 nodes + min-d ≥ 2). Ordinary git/python
+  flags recurring on every node are `blocked: generic-cli`, not a miss. Tier-1 local
+  proposals are live immediately.
 
 ## 9. Open questions (genuinely)
 
@@ -247,6 +264,8 @@ into the cycle record's `workflow_proposals` block (D-7).
 
 Design-complete, not build-justified: W-C1 ships because a gate cascade is deterministic
 logic, certifiable against the fixture regardless of fleet temperature (W-B's own 0/7
-cold-start is the precedent). W-C2's fleet-wide path stays inert until the measured
-trigger — ≥1 exact cross-node recurrence — arrives. The corrected census (2/8 nodes
-reporting, 0 fleet templates) is the standing reference; nothing here invents data.
+cold-start is the precedent). Exact cross-node recurrences have arrived (v0.4 census:
+8/12 nodes reporting). They are ordinary git/python flags, now `blocked: generic-cli`.
+The fleet-wide **proposal** path fires on ≥1 **distinctive** exact cross-node
+recurrence with min-d ≥ 2; until then the honest state is `fleet-candidates: 0`.
+The standing reference (2026-08-30): 0 distinctive fleet-candidates. Nothing here invents data.

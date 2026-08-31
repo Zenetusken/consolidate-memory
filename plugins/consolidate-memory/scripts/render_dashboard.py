@@ -782,27 +782,66 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         if _wp:
             out.append("  " + _c("REGISTRAR", "bold") + _c("   · Tier-2 fleet placement (the W-C consult)", "dim"))
             _cands = [c for c in _lget(_wp, "candidates") if isinstance(c, dict)]
-            _fleet = [c for c in _cands if _flag(_dget(c, "mechanical").get("fleet_recurrence"))
+
+            def _distinctive_row(c: dict) -> bool:
+                m = _dget(c, "mechanical")
+                if "distinctive" in m:
+                    return _flag(m.get("distinctive"))
+                return ms._is_distinctive_template(
+                    str(c.get("candidate") or ""), str(c.get("form") or "command"))
+
+            def _engine_disp(c: dict) -> str:
+                raw = _clean(c.get("disposition") or "")
+                if raw in ("awaiting-confirmation", "confirmed", "declined"):
+                    return raw
+                if raw.startswith("blocked") or raw == "fleet-candidate":
+                    return raw
+                m = _dget(c, "mechanical")
+                fleet = _flag(m.get("fleet_recurrence"))
+                spread = _flag(m.get("day_spread"))
+                if not _distinctive_row(c):
+                    return "blocked: generic-cli"
+                if fleet and spread:
+                    return "fleet-candidate"
+                if not fleet:
+                    return "blocked: fleet-recurrence"
+                return "blocked: day-spread"
+
+            def _blocked_pri(c: dict) -> int:
+                d = _engine_disp(c)
+                if d == "blocked: day-spread":
+                    return 0
+                if d == "blocked: fleet-recurrence":
+                    return 1
+                return 2
+
+            _fleet = [c for c in _cands
+                      if _distinctive_row(c)
+                      and _flag(_dget(c, "mechanical").get("fleet_recurrence"))
                       and _flag(_dget(c, "mechanical").get("day_spread"))]
             _blocked = [c for c in _cands if c not in _fleet]
-            _REG_BLOCKED_CAP = 8
+            _blocked.sort(key=_blocked_pri)
+            _REG_BLOCKED_CAP = ms._REGISTRAR_BLOCKED_CAP
+            _n_fleet = _num(_wp["n_fleet"]) if _wp.get("n_fleet") is not None else len(_fleet)
+            _n_blocked = _num(_wp["n_blocked"]) if _wp.get("n_blocked") is not None else len(_blocked)
             if _fleet:
-                out.append("    " + _c(f"{len(_fleet)} fleet-candidate(s) first, blocked capped at {_REG_BLOCKED_CAP}:", "dim"))
+                out.append("    " + _c(f"{_g(_n_fleet)} fleet-candidate(s) first, blocked capped at {_REG_BLOCKED_CAP}:", "dim"))
             for c in _fleet + _blocked[:_REG_BLOCKED_CAP]:
                 _ev = _dget(c, "evidence")
                 _mech = _dget(c, "mechanical")
                 _nm = _clean(c.get("name") or c.get("candidate") or "?")
                 _nds = ", ".join(_clean(x) for x in _lget(_ev, "nodes"))
                 _d = _num(_ev.get("d")); _n = _num(_ev.get("n"))
-                _disp = _clean(c.get("disposition") or "?")
+                _disp = _engine_disp(c)
                 _gates = " · ".join(_clean(k).replace("_", "-") for k, gv in _mech.items() if _flag(gv))
                 _l = f"    {_c('◈', 'cyan')} {_nm} [{_clean(c.get('form', '?'))}]"
                 if _nds:
                     _l += f" — nodes {_nds} · d={_g(_d)} n={_g(_n)}"
                 _l += f" — {_disp}" + (f" · gates {_gates}" if _gates else "")
                 out.append(_l)
-            if len(_blocked) > _REG_BLOCKED_CAP:
-                out.append("    " + _c(f"… +{len(_blocked) - _REG_BLOCKED_CAP} more blocked — see the consult (cm workflows . --registrar)", "dim"))
+            _shown_b = min(len(_blocked), _REG_BLOCKED_CAP)
+            if _n_blocked > _shown_b:
+                out.append("    " + _c(f"… +{_g(_n_blocked - _shown_b)} more blocked — see the consult (cm workflows . --registrar)", "dim"))
             _anch = _lget(_wp, "decline_anchors")
             if _anch:
                 out.append("    " + _c(f"{len(_anch)} decline-anchor(s) — a fleet decline blocks a naive re-propose", "dim"))

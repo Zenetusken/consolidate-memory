@@ -82,6 +82,7 @@ import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / 
 from memory_status import (_is_archive_index_text, _is_mirror, _parse_ts, _sane, est_tokens, slug_for,
                            _frontmatter, _valid_uuid,
                            INDEX_TOKEN_BUDGET, INDEX_CEILING_TOKENS, HOOK_TOKEN_WARN,
+                           _REGISTRAR_BLOCKED_CAP, _is_distinctive_template,
                            distill_history, extract_wikilinks, resolve_wikilink, usage_history,
                            _write_private)
 
@@ -1853,8 +1854,10 @@ def fleet_workflows(project_dir: Path) -> dict:
     consumer trap designed against at W-A) by EXACT template string. Emits:
       templates/chains — per key: nodes (BREADTH, the workflow analog of the cascade's G2.3
         named-other-project witness — the first cascade leg with mechanical evidence), total n
-        (sum of latest-window counts), max day-spread, per-node breakdown. `fleet` flag = ≥2
-        distinct nodes (structural, like MIN_RECUR — nothing fitted).
+        (sum of latest-window counts), fleet d = MIN of per-node day-spreads (a 3d+1d pair is
+        1d — both sides must have spread; max would let the loudest node infect a one-shot
+        partner), per-node breakdown. `fleet` flag = ≥2 distinct nodes (structural, like
+        MIN_RECUR — nothing fitted).
       families — head-signature (first two template tokens) groupings across ≥2 nodes: a
         near-join HINT for same-tool-different-flags drift; counts NEVER merged (a merged count
         across distinct templates would be a fabricated number).
@@ -1876,6 +1879,7 @@ def fleet_workflows(project_dir: Path) -> dict:
     chains: dict = {}
     used: dict = {}
     verdicts: list = []
+    proposal_declines: list = []
     nodes_reporting = 0
     node_states: list = []   # v0.1.87/W-C1 (D-8): legacy | instrumented_empty | reporting
     for store in stores:
@@ -1883,6 +1887,8 @@ def fleet_workflows(project_dir: Path) -> dict:
         hist = distill_history(store)
         for v in hist["verdicts"]:
             verdicts.append({"node": label, **v})
+        for v in hist.get("proposal_declines") or []:
+            proposal_declines.append({"node": label, **v})
         latest = hist["latest"]
         if not isinstance(latest, dict):
             node_states.append({"node": label, "state": "legacy"})
@@ -1896,7 +1902,7 @@ def fleet_workflows(project_dir: Path) -> dict:
         for r in latest.get("top", []):
             if not (isinstance(r, dict) and isinstance(r.get("t"), str) and r["t"]):
                 continue
-            e = tpl.setdefault(r["t"], {"nodes": [], "n": 0, "d": 0, "per_node": {}})
+            e = tpl.setdefault(r["t"], {"nodes": [], "n": 0, "per_node": {}, "per_node_d": {}})
             if label not in e["nodes"]:
                 e["nodes"].append(label)
             n = r.get("n", 0)
@@ -1904,20 +1910,21 @@ def fleet_workflows(project_dir: Path) -> dict:
             d = r.get("d", 0)
             d = d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else 0
             e["n"] += n
-            e["d"] = max(e["d"], d)
             e["per_node"][label] = n
+            e["per_node_d"][label] = d
         for r in latest.get("top_chains", []) if isinstance(latest.get("top_chains"), list) else []:
             t = r.get("t") if isinstance(r, dict) else None
             if not (isinstance(t, list) and len(t) == 2 and all(isinstance(x, str) for x in t)):
                 continue
             key = " → ".join(t)
-            e = chains.setdefault(key, {"nodes": [], "n": 0, "d": 0})
+            e = chains.setdefault(key, {"nodes": [], "n": 0, "per_node_d": {}})
             if label not in e["nodes"]:
                 e["nodes"].append(label)
             n = r.get("n", 0)
             e["n"] += n if isinstance(n, int) and not isinstance(n, bool) and n > 0 else 0
             d = r.get("d", 0)
-            e["d"] = max(e["d"], d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else 0)
+            d = d if isinstance(d, int) and not isinstance(d, bool) and d > 0 else 0
+            e["per_node_d"][label] = d
         for r in latest.get("used", []) if isinstance(latest.get("used"), list) else []:
             if isinstance(r, dict) and isinstance(r.get("a"), str) and r["a"]:
                 u = used.setdefault(r["a"], {"nodes": [], "n": 0})
@@ -1935,10 +1942,18 @@ def fleet_workflows(project_dir: Path) -> dict:
                for h, f in families.items()
                if len(f["templates"]) >= 2 and len(f["nodes"]) >= 2]
     fam_out.sort(key=lambda f: (-len(f["nodes"]), f["head"]))
-    tpl_out = [{"template": t, "nodes": sorted(e["nodes"]), "n": e["n"], "d": e["d"],
-                "per_node": e["per_node"], "fleet": len(e["nodes"]) >= 2} for t, e in tpl.items()]
+
+    def _min_d(per_node_d: dict) -> int:
+        ds = [v for v in per_node_d.values()
+              if isinstance(v, int) and not isinstance(v, bool) and v > 0]
+        return min(ds) if ds else 0
+
+    tpl_out = [{"template": t, "nodes": sorted(e["nodes"]), "n": e["n"], "d": _min_d(e["per_node_d"]),
+                "per_node": e["per_node"], "per_node_d": e["per_node_d"],
+                "fleet": len(e["nodes"]) >= 2} for t, e in tpl.items()]
     tpl_out.sort(key=lambda r: (-len(r["nodes"]), -r["d"], -r["n"], r["template"]))
-    chain_out = [{"chain": k, "nodes": sorted(e["nodes"]), "n": e["n"], "d": e["d"],
+    chain_out = [{"chain": k, "nodes": sorted(e["nodes"]), "n": e["n"], "d": _min_d(e["per_node_d"]),
+                  "per_node_d": e["per_node_d"],
                   "fleet": len(e["nodes"]) >= 2} for k, e in chains.items()]
     chain_out.sort(key=lambda r: (-len(r["nodes"]), -r["d"], -r["n"], r["chain"]))
     used_out = [{"skill": k, "nodes": sorted(u["nodes"]), "n": u["n"]} for k, u in used.items()]
@@ -1953,22 +1968,25 @@ def fleet_workflows(project_dir: Path) -> dict:
         inv["commands"] = sorted(f.stem for f in _cmd_dir.glob("*.md"))
     return {"nodes": len(stores), "nodes_reporting": nodes_reporting, "node_states": node_states,
             "templates": tpl_out, "chains": chain_out, "families": fam_out,
-            "used": used_out, "verdicts": verdicts, "inventory": inv}
+            "used": used_out, "verdicts": verdicts, "proposal_declines": proposal_declines,
+            "inventory": inv}
 
 
 def registrar_report(project_dir: Path, as_json: bool, into: "str | None" = None) -> int:
     """v0.1.87/W-C1 (docs/wc-registrar.spec.md): the registrar's Tier-2 MECHANICAL gate cascade
     over the W-B join — fleet-wide placement candidates and what blocks them.
 
-    Per candidate (templates AND chains): fleet_recurrence = ≥2 distinct nodes (structural);
-    day_spread = fleet d ≥ 2 (a same-day double-run has d=1 and fails). The MODEL-judged legs
+    Per candidate (templates AND chains): distinctive = not ordinary git/gh / not a bare
+    interpreter --flag; fleet_recurrence = ≥2 distinct nodes (structural); day_spread =
+    fleet d ≥ 2 where fleet d is the MIN of per-node day-spreads (a 3d+1d pair is 1d —
+    the loudest node cannot infect a one-shot partner). The MODEL-judged legs
     (stable inputs · coverage · decline lineage vs the decline-anchors) are LISTED, never
     evaluated — the engine never fabricates a model-leg verdict (no-failure-masking law).
     READ-ONLY: proposals stay report-then-apply; nothing here writes an artifact.
 
     Emits: {nodes, nodes_reporting, node_states (legacy|instrumented_empty|reporting — D-8),
             candidates: [{candidate, form, evidence:{nodes,d,n},
-                          gates:{mechanical:{fleet_recurrence,day_spread},
+                          gates:{mechanical:{fleet_recurrence,day_spread,distinctive},
                                  model_judged:[...]}, disposition}],
             decline_anchors: [{node, verdict, top:[{t,n,d}], top_chains:[...]}] (D-2.5)}."""
     import json as _json
@@ -1980,36 +1998,57 @@ def registrar_report(project_dir: Path, as_json: bool, into: "str | None" = None
     model_legs = ["stable_inputs", "coverage", "decline_lineage"]
     candidates: list = []
 
-    def _eval(nodes: list, d: int) -> "tuple[str, bool, bool]":
+    def _eval(nodes: list, d: int, candidate: str, form: str) -> "tuple[str, bool, bool, bool]":
         fleet = len(nodes) >= 2
         spread = d >= 2
-        disp = ("fleet-candidate" if fleet and spread
-                else ("blocked: fleet-recurrence" if not fleet else "blocked: day-spread"))
-        return disp, fleet, spread
+        distinctive = _is_distinctive_template(candidate, form)
+        # Mechanical flags stay independent (no-failure-masking). Disposition is the
+        # first failing gate: generic-cli, then fleet-recurrence, then day-spread.
+        if not distinctive:
+            disp = "blocked: generic-cli"
+        elif fleet and spread:
+            disp = "fleet-candidate"
+        elif not fleet:
+            disp = "blocked: fleet-recurrence"
+        else:
+            disp = "blocked: day-spread"
+        return disp, fleet, spread, distinctive
 
     for r in w["templates"]:
-        disp, fleet, spread = _eval(r["nodes"], r["d"])
+        disp, fleet, spread, distinctive = _eval(r["nodes"], r["d"], r["template"], "command")
         candidates.append({"candidate": r["template"], "form": "command",
                            "evidence": {"nodes": r["nodes"], "d": r["d"], "n": r["n"]},
-                           "gates": {"mechanical": {"fleet_recurrence": fleet, "day_spread": spread},
+                           "gates": {"mechanical": {"fleet_recurrence": fleet, "day_spread": spread,
+                                                    "distinctive": distinctive},
                                      "model_judged": model_legs},
                            "disposition": disp})
     for r in w["chains"]:
-        disp, fleet, spread = _eval(r["nodes"], r["d"])
+        disp, fleet, spread, distinctive = _eval(r["nodes"], r["d"], r["chain"], "chain")
         candidates.append({"candidate": r["chain"], "form": "chain",
                            "evidence": {"nodes": r["nodes"], "d": r["d"], "n": r["n"]},
-                           "gates": {"mechanical": {"fleet_recurrence": fleet, "day_spread": spread},
+                           "gates": {"mechanical": {"fleet_recurrence": fleet, "day_spread": spread,
+                                                    "distinctive": distinctive},
                                      "model_judged": model_legs},
                            "disposition": disp})
     candidates.sort(key=lambda c: (c["disposition"] != "fleet-candidate",
                                    -len(c["evidence"]["nodes"]), -c["evidence"]["d"],
                                    -c["evidence"]["n"], c["candidate"]))
     anchors: list = []
-    for v in w["verdicts"]:
+    seen_anch: set = set()
+    for v in list(w["verdicts"]) + list(w.get("proposal_declines") or []):
         ev = v.get("decline_evidence")
-        if isinstance(ev, dict):
-            anchors.append({"node": v["node"], "verdict": v["verdict"],
-                            "top": ev.get("top", []), "top_chains": ev.get("top_chains", [])})
+        if not isinstance(ev, dict):
+            continue
+        def _row_t(r: object) -> object:
+            t = r.get("t") if isinstance(r, dict) else r
+            return tuple(t) if isinstance(t, list) else t
+        key = (v.get("node"), v.get("verdict"),
+               tuple(_row_t(r) for r in (ev.get("top") or []) + (ev.get("top_chains") or [])))
+        if key in seen_anch:
+            continue
+        seen_anch.add(key)
+        anchors.append({"node": v["node"], "verdict": v["verdict"],
+                        "top": ev.get("top", []), "top_chains": ev.get("top_chains", [])})
     out = {"nodes": w["nodes"], "nodes_reporting": w["nodes_reporting"],
            "node_states": w["node_states"], "candidates": candidates,
            "decline_anchors": anchors}
@@ -2033,10 +2072,26 @@ def registrar_report(project_dir: Path, as_json: bool, into: "str | None" = None
             # MERGE on (candidate, form): a re-consult refreshes the script-truth evidence and
             # PRESERVES the model-written disposition/name per row (the split-ownership contract —
             # a wholesale replace would silently destroy confirmed/declined verdicts).
+            # Persist ALL fleet-candidates + a capped blocked sample (the join is unbounded;
+            # n_candidates/n_fleet/n_blocked carry the full counts so the header stays honest).
             _old_rows = {(r.get("candidate"), r.get("form")): r
                          for r in block.get("candidates", []) if isinstance(r, dict)}
+            _fleet_src = [c for c in candidates if c.get("disposition") == "fleet-candidate"]
+            def _blocked_rank(c: dict) -> tuple:
+                disp = str(c.get("disposition") or "")
+                # Persist the interesting near-join first; generic git last.
+                pri = 0 if disp == "blocked: day-spread" else (
+                    1 if disp == "blocked: fleet-recurrence" else 2)
+                ev = c.get("evidence") or {}
+                return (pri, -len(ev.get("nodes") or []), -int(ev.get("d") or 0),
+                        -int(ev.get("n") or 0), str(c.get("candidate") or ""))
+            _blocked_src = sorted(
+                [c for c in candidates if c.get("disposition") != "fleet-candidate"],
+                key=_blocked_rank)
+            _persist = _fleet_src + _blocked_src[:_REGISTRAR_BLOCKED_CAP]
             _merged = []
-            for c in candidates:
+            _kept = set()
+            for c in _persist:
                 _row = {"candidate": c["candidate"], "form": c["form"],
                         "evidence": c["evidence"], "mechanical": c["gates"]["mechanical"]}
                 _key = (c["candidate"], c["form"])
@@ -2044,8 +2099,23 @@ def registrar_report(project_dir: Path, as_json: bool, into: "str | None" = None
                     _row = dict(_old_rows[_key])
                     _row.update({"evidence": c["evidence"], "mechanical": c["gates"]["mechanical"]})
                 _merged.append(_row)
+                _kept.add(_key)
+            # Keep model-finalized rows that left this window (a confirmed/declined artifact
+            # must not vanish just because its template dropped out of the latest W-A top).
+            for _key, _old in _old_rows.items():
+                if _key in _kept:
+                    continue
+                if str(_old.get("disposition") or "") in ("confirmed", "declined"):
+                    _merged.append(dict(_old))
             block["candidates"] = _merged
             block["decline_anchors"] = anchors
+            block["n_candidates"] = len(candidates)
+            block["n_fleet"] = len(_fleet_src)
+            block["n_blocked"] = len(_blocked_src)
+            block["n_generic"] = sum(1 for c in candidates
+                                     if c.get("disposition") == "blocked: generic-cli")
+            block["n_day_spread"] = sum(1 for c in candidates
+                                        if c.get("disposition") == "blocked: day-spread")
             seed["workflow_proposals"] = block
             _write_private(Path(into), _json.dumps(seed, indent=2) + "\n")
         except (OSError, _json.JSONDecodeError, UnicodeDecodeError, ValueError, TypeError, KeyError) as e:
@@ -2658,7 +2728,20 @@ def _dispatch() -> int:
     _ui.set_modes(color=_ui.color_enabled(args, sys.stdout), ascii="--ascii" in args, width=_ui.resolve_width(args, sys.stdout))
     # positional PROJECT_DIR — flags (--json/--apply/--color/--ascii/--no-color) excluded so a
     # bare visual flag is NEVER mis-read as the project dir (which --pull would replicate INTO).
-    pos = [a for a in args[1:] if not a.startswith("-")]
+    # Value-taking flags (--into SEED) must skip THEIR argument too — otherwise
+    # `--workflows --registrar --into /tmp/seed.json` treats the seed path as PROJECT_DIR.
+    _VALUE_FLAGS = {"--into"}
+    pos = []
+    _skip_val = False
+    for a in args[1:]:
+        if _skip_val:
+            _skip_val = False
+            continue
+        if a in _VALUE_FLAGS:
+            _skip_val = True
+            continue
+        if not a.startswith("-"):
+            pos.append(a)
     project_dir = Path(pos[0]) if pos else Path.cwd()
     if args and args[0] == "--network":
         return network()
@@ -2707,7 +2790,7 @@ def _dispatch() -> int:
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--edges] [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
               "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --staleness [--json] PROJECT_DIR "
-              "| --workflows [--json] [--registrar] PROJECT_DIR "
+              "| --workflows [--json] [--registrar] [--into SEED] PROJECT_DIR "
               "| --network", file=sys.stderr)
         return 2
     evict = next((a.split("=", 1)[1] for a in args if a.startswith("--evict=")), None)

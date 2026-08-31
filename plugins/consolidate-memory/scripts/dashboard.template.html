@@ -9,7 +9,7 @@
      Zero-dep: system serif (display) + system mono (data); precise ink-on-paper charts; one accent. */
   :root{
     --paper:#f3efe6; --paper2:#ece7da; --card:#f7f4ed; --rule:#ddd5c5; --rule2:#cabfa9;
-    --ink:#211e18; --ink2:#544d40; --faint:#938b79; --ghost:#b7af9c;
+    --ink:#211e18; --ink2:#544d40; --faint:#6a6356; --ghost:#6e675b;
     --accent:#b34727;          /* rust — emphasis + the critical/budget line, used SPARINGLY */
     --data:#2f5d55;            /* deep muted teal — primary data lines (calm, not neon) */
     --ok:#46703f; --warn:#9a6b1c; --crit:#b34727; --glow:#f7f4ec;
@@ -20,12 +20,12 @@
      unless manually set to light; the manual data-theme override wins. Same palette in both dark blocks. */
   @media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
     --paper:#15120d; --paper2:#1e1913; --card:#1c1711; --rule:#332c22; --rule2:#493f30;
-    --ink:#ece4d2; --ink2:#b4a98e; --faint:#7f755f; --ghost:#564d3e;
+    --ink:#ece4d2; --ink2:#b4a98e; --faint:#9a8d74; --ghost:#8e816a;
     --accent:#d96a3f; --data:#5fa996; --ok:#7cae65; --warn:#d4a24d; --crit:#d96a3f; --glow:#221b13;
   } }
   :root[data-theme="dark"]{
     --paper:#15120d; --paper2:#1e1913; --card:#1c1711; --rule:#332c22; --rule2:#493f30;
-    --ink:#ece4d2; --ink2:#b4a98e; --faint:#7f755f; --ghost:#564d3e;
+    --ink:#ece4d2; --ink2:#b4a98e; --faint:#9a8d74; --ghost:#8e816a;
     --accent:#d96a3f; --data:#5fa996; --ok:#7cae65; --warn:#d4a24d; --crit:#d96a3f; --glow:#221b13;
   }
   *{box-sizing:border-box;margin:0;padding:0}
@@ -42,7 +42,14 @@
   /* very faint paper tooth */
   body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.45;z-index:0;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.025'/%3E%3C/svg%3E")}
-  .wrap{max-width:1180px;margin:0 auto;padding:0 40px 80px;position:relative;z-index:1}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 clamp(16px,4vw,40px) 80px;position:relative;z-index:1}
+  /* skip + chrome: the theme/density controls used to be position:fixed over the dream-nav's
+     prev/next (and over the registrar on a 390px viewport). They live in a top chrome row now. */
+  .skip{position:absolute;left:-999px;top:10px;z-index:70;background:var(--ink);color:var(--paper);
+    padding:7px 11px;font-family:var(--mono);font-size:11px;text-decoration:none}
+  .skip:focus{left:12px}
+  .chrome{position:relative;z-index:45;display:flex;justify-content:flex-end;gap:8px;
+    padding:10px clamp(16px,4vw,40px) 8px;pointer-events:none}
 
   /* ── masthead ─────────────────────────────────────────────────────────── */
   .mast{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;
@@ -50,7 +57,7 @@
   .mast .over{font-size:10.5px;letter-spacing:.42em;text-transform:uppercase;color:var(--accent);margin-bottom:10px;font-weight:600}
   .mast .repo-tag{font-size:10px;letter-spacing:.26em;text-transform:uppercase;color:var(--faint);margin:9px 0 3px;display:flex;align-items:center;gap:7px}
   .mast .repo-tag::before{content:"";width:7px;height:7px;border:1.5px solid var(--accent);transform:rotate(45deg);flex:none}
-  .mast h1{font-family:var(--serif);font-size:46px;line-height:.96;letter-spacing:-.015em;font-weight:600}
+  .mast h1{font-family:var(--serif);font-size:clamp(28px,5vw,46px);line-height:.96;letter-spacing:-.015em;font-weight:600}
   .mast h1 em{font-style:italic;color:var(--ink2);font-weight:500}
   .mast .meta{text-align:right;font-size:11px;color:var(--faint);line-height:2;letter-spacing:.03em}
   .mast .meta b{color:var(--ink2);font-weight:400}
@@ -59,7 +66,7 @@
   /* ── lead / hero ──────────────────────────────────────────────────────── */
   .lead{padding:34px 0 12px;display:grid;grid-template-columns:1fr;gap:6px}
   .lead .kicker{font-size:10.5px;letter-spacing:.3em;text-transform:uppercase;color:var(--faint)}
-  .lead h2{font-family:var(--serif);font-size:29px;line-height:1.25;letter-spacing:-.01em;font-weight:500;max-width:44ch}
+  .lead h2{font-family:var(--serif);font-size:clamp(22px,3.2vw,29px);line-height:1.25;letter-spacing:-.01em;font-weight:500;max-width:44ch}
   .lead h2 .hot{color:var(--accent);font-style:italic}
   .lead .sub{color:var(--ink2);font-size:12.5px;margin-top:4px}
   .hero-chart{margin:18px 0 6px}
@@ -88,6 +95,7 @@
   .shead h3{font-family:var(--serif);font-size:20px;font-weight:600;letter-spacing:-.01em}
   .shead .ln{flex:1;height:1px;background:var(--rule);align-self:center}
   .shead .note{font-size:10.5px;letter-spacing:.04em;color:var(--faint)}
+  .chart-kicker{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:0 0 10px}
   .cols{display:grid;gap:38px}
   .c2{grid-template-columns:1.15fr .85fr}.c2b{grid-template-columns:.85fr 1.15fr}
   @media(max-width:760px){.cols{grid-template-columns:1fr!important}}
@@ -118,7 +126,7 @@
   /* the network graph is fixed-height + auto-width (overrides svg{width:100%}) and its viewBox is fitted to
      the drawn content in JS — so the graph frames tightly for ANY node count and the legend/caption sit
      directly beneath it (coherent with the left chart's caption), not detached below a tall dead-space box. */
-  #net{width:auto;height:154px;max-width:100%;margin:0 auto}
+  #net{width:auto;height:240px;max-width:100%;margin:0 auto}
   .legend i{display:inline-block;width:18px;height:2px;margin-right:6px;vertical-align:3px}
   .legend i.dot{width:8px;height:8px;border-radius:50%;vertical-align:0}
 
@@ -130,7 +138,7 @@
   .meter .track{height:8px;background:var(--paper2);border:1px solid var(--rule);position:relative;overflow:hidden}
   .meter .fill{position:absolute;inset:0 auto 0 0;width:0;background:var(--data);transition:width 1s .2s cubic-bezier(.3,.7,.3,1)}
   .meter .mark{position:absolute;top:-3px;bottom:-3px;width:1.5px;background:var(--accent)}
-  .meter .d{font-size:10.5px;color:var(--faint);margin-top:5px}
+  .meter .d{font-size:10.5px;color:var(--faint);margin-top:5px;line-height:1.45;text-wrap:pretty}
 
   /* entries — a clean ledger */
   .ledger{border-top:1px solid var(--ink)}
@@ -172,34 +180,56 @@
   .audit-row>span:not(.s){text-align:right;font-variant-numeric:tabular-nums}
   .audit-row .tk{color:var(--faint)}
   .audit-row.head,.audit-ln.head{border-bottom-color:var(--rule2)}
-  .audit-row.head>span,.audit-ln.head>span{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-style:normal}
+  .audit-row.head>span,.audit-ln.head>.s{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-style:normal}
+  .audit-ln.head>.nums{font-family:var(--mono);font-size:10.5px;letter-spacing:.02em;text-transform:none;
+    font-variant-numeric:tabular-nums;color:var(--faint);font-style:normal}
   /* panel lead line (03) — one shared style for “Script-observed mutations” / “Verification & health” */
   .panel-lead{font-family:var(--serif);font-style:italic;color:var(--ink2);margin-bottom:8px}
   /* v0.1.57 — the distill verdict as a readable full-width block (was a crammed table cell) */
   .dstl{margin-top:30px}
-  .dstl-verdict{display:flex;gap:12px;align-items:baseline;padding:13px 0 2px;font-size:13px;line-height:1.6;color:var(--ink)}
-  .dstl-verdict .tag{flex:none;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
-    padding:3px 8px;border:1px solid var(--rule2);color:var(--ink2);border-radius:2px;position:relative;top:-2px}
-  .dstl-verdict .tag.ok{color:var(--ok);border-color:var(--ok)}
-  .dstl-verdict .tag.warn{color:var(--warn);border-color:var(--warn)}
-  .dstl-verdict .vtx{font-family:var(--serif);font-size:14px;color:var(--ink2)}
-  /* v0.1.89 (render-chain bug): the registrar's candidate rows must NOT reuse the LEDGER's .row grid
-     (96px 1fr auto) — inside this narrow verdict panel the grid can't shrink and long chain templates
-     pushed the whole row right off the page. Its OWN layout: flex + wrap + anywhere-wrapping. */
-  .reg-row{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline;padding:7px 0;border-bottom:1px solid var(--rule);min-width:0}
-  .reg-row .vtx{min-width:0;overflow-wrap:anywhere}
+  .dstl-verdict{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:baseline;padding:13px 0 2px;font-size:13px;line-height:1.6;color:var(--ink);min-width:0}
+  .tag{flex:none;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
+    padding:3px 8px;border:1px solid var(--rule2);color:var(--ink2);border-radius:2px;line-height:1.2;width:max-content}
+  .dstl-verdict .tag{position:relative;top:-2px}
+  .tag.ok{color:var(--ok);border-color:var(--ok)}
+  .tag.warn{color:var(--warn);border-color:var(--warn)}
+  .dstl-verdict .vtx{font-family:var(--serif);font-size:14px;color:var(--ink2);min-width:0;flex:1 1 16em;overflow-wrap:anywhere}
+  /* Registrar docket (not the ledger .row grid, not a horizontal flex of 50 cards). 0.1.88 dumped
+     candidates into .dstl-verdict{display:flex}; 0.1.89 made each card min-width:0 so they SHRANK
+     into unreadable columns. The list is its own column; the verdict is a sentence above it. */
+  .reg-verdict{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:baseline;
+    padding:12px 0 4px;overflow-wrap:anywhere}
+  .reg-verdict .vtx{font-family:var(--serif);font-size:15px;line-height:1.55;color:var(--ink2);
+    min-width:0;flex:1 1 12em;overflow-wrap:anywhere}
+  .cmd-inline{font-family:var(--mono);font-size:.88em;font-style:normal;letter-spacing:0;color:var(--ink);white-space:nowrap}
+  .reg-board{display:flex;flex-direction:column;gap:22px;margin-top:10px;min-width:0}
+  .reg-group{min-width:0}
+  .reg-group .gh{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);padding:0 0 6px;border-bottom:1px solid var(--rule2);margin-bottom:2px}
+  .reg-card{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 16px;padding:11px 0;
+    border-bottom:1px solid var(--rule);align-items:start;min-width:0}
+  .reg-card .stamp{display:flex;flex-direction:column;gap:5px;padding-top:2px;align-items:flex-start}
+  .reg-card .cmd{font-size:13px;overflow-wrap:anywhere;word-break:break-word}
+  .reg-card .cmd em{font-family:var(--serif);font-size:11px;color:var(--faint);font-style:italic;letter-spacing:0;margin-left:6px}
+  .reg-card .ev{font-size:11px;color:var(--faint);margin-top:4px;line-height:1.45;overflow-wrap:anywhere}
+  .reg-more{display:block;padding:10px 0 2px;font-size:12px;color:var(--faint);font-family:var(--serif);font-style:italic}
+  @media(max-width:640px){.reg-card{grid-template-columns:1fr;gap:6px}}
   .flag{margin-top:14px;padding:10px 13px;border-left:3px solid var(--accent);background:rgba(179,71,39,.06);
     font-size:11.5px;color:var(--ink2);display:none}
 
-  .theme-tog{position:fixed;top:15px;right:16px;z-index:45;background:var(--card);border:1px solid var(--rule2);
+  .theme-tog{pointer-events:auto;position:static;background:var(--card);border:1px solid var(--rule2);
     color:var(--ink2);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
     padding:5px 11px;border-radius:2px;cursor:pointer;transition:color .15s,border-color .15s}
   .theme-tog:hover{border-color:var(--accent);color:var(--accent)}
-  #dens-tog{right:92px}                       /* density toggle, left of the theme toggle */
+  .theme-tog:focus-visible,.nm-diff:focus-visible,a:focus-visible,.modal-x:focus-visible,
+  .arch-tools select:focus-visible,#app .blk>.shead:focus-visible{
+    outline:2px solid var(--accent);outline-offset:2px}
   body.compact section.blk{margin-top:24px}
   body.compact .lead{padding:16px 0 6px}
   body.compact .mast{padding:24px 0 12px}
   body.compact .row{padding-top:9px;padding-bottom:9px}
+  body.compact .dstl{margin-top:16px}
+  body.compact .reg-card,body.compact .audit-ln,body.compact .audit-row{padding-top:7px;padding-bottom:7px}
   .tip{position:fixed;z-index:30;pointer-events:none;background:var(--ink);color:var(--paper);border-radius:2px;
     padding:5px 9px;font-size:11px;opacity:0;transition:opacity .12s;white-space:nowrap;font-variant-numeric:tabular-nums}
   footer{margin-top:60px;padding-top:16px;border-top:2px solid var(--ink);display:flex;justify-content:space-between;
@@ -243,13 +273,21 @@
     .draw{animation:none;stroke-dashoffset:0}.meter .fill{transition:none}
     #boot .bl i{animation:none;width:100%}
   }
+  @media print{
+    .chrome,#boot,.theme-tog,.skip{display:none!important}
+    body{background:#fff}
+    .wrap{padding:0}
+  }
 </style>
 <script>/* no-flash: apply a saved manual theme before first paint (auto = follow prefers-color-scheme) */
 (function(){try{var m=localStorage.getItem("cm-theme");if(m==="light"||m==="dark")document.documentElement.setAttribute("data-theme",m);}catch(e){}})();</script>
 </head>
 <body>
-<button id="theme-tog" class="theme-tog" aria-label="toggle color theme">◐ auto</button>
-<button id="dens-tog" class="theme-tog" aria-label="toggle density">⊟ compact</button>
+<a class="skip" href="#app">Skip to report</a>
+<div class="chrome" role="toolbar" aria-label="display">
+  <button id="dens-tog" class="theme-tog" type="button" aria-label="toggle density">⊟ compact</button>
+  <button id="theme-tog" class="theme-tog" type="button" aria-label="toggle color theme">◐ auto</button>
+</div>
 <div id="boot"><div class="bt">compiling field report</div><div class="bl"><i></i></div><div class="bn" id="boot-proj">consolidate-memory</div></div>
 <div class="tip" id="tip"></div>
 <div class="modal" id="dmodal" style="display:none"><div class="modal-bg" id="dmodal-bg"></div>
@@ -318,14 +356,16 @@
   <!-- 01 longitudinal -->
   <section class="blk"><div class="shead"><span class="no">01</span><h3>Longitudinal</h3><span class="ln"></span><span class="note" id="hist-note"></span></div>
     <div class="cols c2">
-      <div><svg id="trend" viewBox="0 0 660 240" style="height:240px"></svg>
+      <div>
+        <div class="chart-kicker">Facts &amp; writes</div>
+        <svg id="trend" viewBox="0 0 660 240" style="height:240px"></svg>
         <div class="meta">
-          <div class="legend"><span><i class="dot" style="background:var(--data)"></i>recall facts</span><span><i style="background:var(--ok)"></i>added</span><span><i style="background:var(--warn)"></i>corrected / reconciled</span><span><i style="background:var(--crit)"></i>deleted</span></div>
-          <div class="cap">Store growth and per-cycle churn. Bars are write volume; the line is the live fact count.</div>
+          <div class="legend"><span><i class="dot" style="background:var(--data)"></i>facts</span><span><i style="background:var(--ok)"></i>added</span><span><i style="background:var(--warn)"></i>edited</span><span><i style="background:var(--crit)"></i>deleted</span></div>
         </div>
       </div>
-      <div><svg id="rigor" viewBox="0 0 460 240" style="height:240px"></svg>
-        <div class="meta"><div class="cap">Applied rigor tier per cycle, with the interval since the previous dream.</div></div>
+      <div>
+        <div class="chart-kicker">Effort</div>
+        <svg id="rigor" viewBox="0 0 460 240" style="height:240px"></svg>
       </div>
     </div>
   </section>
@@ -336,12 +376,10 @@
       <div>
         <div class="meter" id="m-index"></div>
         <div class="meter" id="m-cmd"></div>
-        <div class="meta"><div class="cap">Always-loaded budgets, this pass. The marker is the budget; fill is current consumption.</div></div>
       </div>
       <div><svg id="net" viewBox="0 0 520 170"></svg>
         <div class="meta">
-          <div class="legend center"><span><i class="dot" style="background:var(--accent)"></i>trigger node</span><span><i class="dot" style="background:var(--ink2)"></i>peer · sized by facts</span></div>
-          <div class="cap center">The shared-memory network — this pass ran on the trigger node; edge weight is shared facts.</div>
+          <div class="legend center"><span><i class="dot" style="background:var(--accent)"></i>this project</span><span><i class="dot" style="background:var(--ink2)"></i>others</span></div>
         </div>
       </div>
     </div>
@@ -354,23 +392,24 @@
       <div id="verify"></div>
     </div>
     <div class="dstl" id="distill-blk" style="display:none">
-      <div class="audit-ln head"><span class="s">distill · recurring workflows</span><span class="nums" id="dstl-counts"></span></div>
+      <div class="audit-ln head"><span class="s">recurring workflows</span><span class="nums" id="dstl-counts"></span></div>
       <div class="dstl-verdict" id="dstl-verdict"></div>
-      <div class="cap">Recurring command templates and their &amp;&amp;-chains over a ~30-day window — broader than this dream's git scope by design.</div>
+      <div class="cap">Patterns from the last ~30 days — including work before this dream.</div>
     </div>
     <!-- v0.1.67 (Phase C): the demotion triage — same lead/verdict rhythm as distill; key-gated (legacy cycles hide it) -->
     <div class="dstl" id="demotion-blk" style="display:none">
-      <div class="audit-ln head"><span class="s">demotion · rank-under-budget triage</span><span class="nums" id="demo-counts"></span></div>
+      <div class="audit-ln head"><span class="s">rarely used facts</span><span class="nums" id="demo-counts"></span></div>
       <div class="dstl-verdict" id="demo-verdict"></div>
-      <div class="cap">Evidence-gated, report-then-apply: 0-read indexed facts over enough probative usage windows; dispositions are entries[] rows. A red MISS badge means an archived fact was read organically — a demotion error to re-promote.</div>
+      <div class="cap">Indexed facts that haven’t been opened in a while. A red miss means one of those was needed again — put it back.</div>
     </div>
     <!-- v0.1.87/W-C (render-chain audit): the registrar's Tier-2 consult — key-gated like distill/demotion.
          An ABSENT key on a distill-era record renders the not-consulted line (the SKILL's "absent = a
          visible decision", which no renderer previously made visible). -->
     <div class="dstl" id="registrar-blk" style="display:none">
-      <div class="audit-ln head"><span class="s">registrar · Tier-2 fleet placement</span><span class="nums" id="reg-counts"></span></div>
-      <div class="dstl-verdict" id="reg-verdict"></div>
-      <div class="cap">The W-C consult: fleet-candidate or blocked dispositions over the W-A/W-B evidence; proposals stay report-then-apply, one artifact per confirmation.</div>
+      <div class="audit-ln head"><span class="s">across projects</span><span class="nums" id="reg-counts"></span></div>
+      <div class="reg-verdict" id="reg-verdict"></div>
+      <div class="reg-board" id="reg-board"></div>
+      <div class="cap" id="reg-cap" style="display:none"></div>
     </div>
   </section>
 
@@ -396,19 +435,33 @@
   var ALL=Array.isArray(DATA.cycles)?DATA.cycles.filter(function(c){return c&&typeof c==="object";}):[];
   if(!ALL.length)ALL=[{}];
   function _readSel(){var m=(location.hash+" "+location.search).match(/sel=(\d+)/);if(!m)return null;var i=+m[1];return (i>=0&&i<ALL.length)?i:null;}
-  var SEL=_readSel(), VIEW=(SEL===null)?"archive":"dream", selIdx=(SEL===null)?ALL.length-1:SEL;
-  var CUR=ALL[selIdx]||{};            // the selected dream — the existing render path renders THIS one
-  var HIST=ALL.slice(0,selIdx);       // history BEFORE it → CYCLES = HIST+CUR = ALL[0..selIdx] (faithful as-of view)
+  var SEL, VIEW, selIdx, CUR, HIST, ENT, CYCLES, DREAMDIFFS, traj, PROJ;
+  var lastSel=ALL.length-1;
   var ALLDIFFS=(DATA.diffs&&typeof DATA.diffs==="object")?DATA.diffs:{};   // v0.1.32: cycleKey → its persisted memory diffs
   function diffKey(m,s){m=(m&&typeof m==="object")?m:{};   // MUST mirror memory_status.diff_key (the write side)
     var c=String(m.commit||"").replace(/[^0-9A-Za-z]/g,"").slice(0,12)||"nocommit";
     var t=String(m.timestamp||"").replace(/[^0-9A-Za-z]/g,"-")||"nots";
     var key=c+"__"+t; if(s)key+="__"+String(s).replace(/[^0-9A-Za-z]/g,"").slice(0,8); return key;}
-  var BUD=(DATA.budgets&&typeof DATA.budgets==="object")?DATA.budgets:{index:1200,claude_md:4000};
-  var IDXB=num(BUD.index,1200), CMB=num(BUD.claude_md,4000);
+  var BUD=(DATA.budgets&&typeof DATA.budgets==="object")?DATA.budgets:{index:1500,claude_md:4000,index_ceiling:3840};
+  var IDXB=num(BUD.index,1500), CMB=num(BUD.claude_md,4000), CEIL=num(BUD.index_ceiling,3840);
 
   function g(o,p,d){var c=o,a=p.split(".");for(var i=0;i<a.length;i++){if(c==null||typeof c!=="object")return d;c=c[a[i]];}return c==null?d:c;}
   function num(x,d){var n=typeof x==="number"?x:parseFloat(x);return isFinite(n)?n:(d===undefined?0:d);}
+  function truthy(x){if(typeof x==="string")return /^(true|1|yes)$/i.test(x.trim());return !!x;}
+  function prettyNode(s){
+    s=String(s||"").replace(/^…/,"").replace(/^[-/]+/,"").replace(/^home-drei-(project-)?/i,"");
+    var p=s.split(/[-_/]/).filter(Boolean);
+    if(p.length>=2) s=p.slice(-2).join("-");
+    return s||"?";
+  }
+  // graph-only: last-two segments, but a 14+ char pair is truncated to a 4-char prefix + last
+  // token so radial labels don't collide (hover still shows prettyNode).
+  function graphLabel(s){
+    var n=prettyNode(s); if(n.length<=11) return n;
+    var p=n.split("-").filter(Boolean), last=p[p.length-1]||n;
+    if(p.length>=2){ var two=p[p.length-2].slice(0,4)+"-"+last; if(two.length<=12) return two; }
+    return last.slice(0,12);
+  }
   // attribute-SAFE escape: textContent handles <>&, then quotes too, so esc() is safe in BOTH text and
   // attribute context (an entry name/action with a stray " or ' can never break out — re-audit MED fix).
   // NOTE (render-chain audit): esc() guards the JS-side injection paths, but the LOAD-BEARING guard for the
@@ -418,65 +471,141 @@
   // the element on a literal '</script' even inside a JS comment, the exact breakage being described.)
   // Both guards are required; PARSE_ERR below surfaces a bypass as a visible error.
   function esc(s){s=(s==null)?"":String(s);var e=document.createElement("div");e.textContent=s;return e.innerHTML.replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
+  // wrap CLI crumbs in a model sentence so they read as commands, not serif prose.
+  // Walk each git|python3|cm hit and take only flag/path-shaped tokens (a greedy
+  // \s+\S+ rest would swallow the whole sentence and skip later commands).
+  function wrapCmds(s){
+    var e=esc(s), out="", i=0, stop=/^(and|are|is|stays|not|the|a|an|to|of|for|as|or|but)$/i;
+    var re=/\b(git|python3|cm)\b/g, m;
+    while((m=re.exec(e))){
+      out+=e.slice(i,m.index);
+      var pos=m.index+m[0].length, chunk=m[0], took=false, sp, after, w, bare;
+      while(true){
+        sp=e.slice(pos).match(/^\s+/); if(!sp) break;
+        after=e.slice(pos+sp[0].length).match(/^[^\s]+/); if(!after) break;
+        w=after[0].replace(/[,;]+$/,"");
+        if(stop.test(w)||!/^(--[\w-]+|-\w|\.|[\w./-]+)$/.test(w)) break;
+        bare=w;
+        chunk+=sp[0]+bare; pos+=sp[0].length+bare.length; took=true;
+      }
+      out+=took?('<code class="cmd-inline">'+chunk+'</code>'):m[0];
+      i=took?pos:m.index+m[0].length; re.lastIndex=i;
+    }
+    return out+e.slice(i);
+  }
+  function verdictHtml(raw, tags){
+    var s=String(raw||""), m=s.match(new RegExp("^\\s*("+tags+")\\b[:\\s\\u2014-]*","i"));
+    var tag=m?m[1].toLowerCase():"", rest=m?s.slice(m[0].length):s;
+    return (tag?'<span class="tag">'+esc(tag)+'</span>':"")
+      +(rest?'<span class="vtx">'+wrapCmds(rest)+'</span>':(tag?"":'<span class="vtx">'+wrapCmds(s)+'</span>'));
+  }
   function el(id){return document.getElementById(id);}
   function S(t,a){var n=document.createElementNS("http://www.w3.org/2000/svg",t);if(a)for(var k in a)n.setAttribute(k,a[k]);return n;}
   function fmt(n){n=Math.round(num(n));var s=n<0?"-":"";n=Math.abs(n);return s+(n>=1000?(n/1000).toFixed(n>=10000?0:1)+"k":String(n));}
+  function tok(n){n=Math.round(num(n));return n>=10000?fmt(n):String(n);}
   function pct(a,b){return b>0?Math.round(100*a/b):0;}
   function idxTok(r){var t=g(r,"budget.index.after_tokens",null);if(t==null)t=g(r,"budget.index.before_tokens",null);return t==null?null:num(t,0);}
   function recallN(r){var n=g(r,"budget.recall_facts.after",null);if(n==null)n=g(r,"budget.recall_facts.before",null);return n==null?null:num(n,0);}
   function magnitude(r){return num(g(r,"scope.git_commits",0))+num(g(r,"scope.session_candidates",0));}
-
-  var PROJ=g(CUR,"project","consolidate-memory");
-  el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
-  document.title=PROJ+" — dream telemetry";   // render-chain audit: the tab/bookmark used to say 'consolidate-memory' for EVERY repo
-  el("h-sess").textContent=String(g(CUR,"session","—")).slice(0,16);
-  el("h-scope").textContent=g(CUR,"scope.git_range","—");
-  el("h-gen").textContent=String(DATA.generated_at||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
-  var ENT=Array.isArray(CUR.entries)?CUR.entries:[];
-
-  // ── canonical cycle series ── HIST plus the CURRENT pass IF it isn't already the last logged record
-  // (dedup by MARKER, not value). EVERY longitudinal chart (trajectory · fact growth · churn · rigor) reads
-  // this one array, so they can never disagree on cycle count or identity — the gap/inconsistency guard.
   function sameCycle(a,b){return !!(a&&b&&g(a,"marker.commit","x")===g(b,"marker.commit","y")&&g(a,"marker.timestamp","x")===g(b,"marker.timestamp","y"));}
-  var CYCLES=HIST.slice(); if(!CYCLES.length||!sameCycle(CYCLES[CYCLES.length-1],CUR))CYCLES.push(CUR);
-  // carry the last valid value forward over a MISSING field only (render-chain audit: a GENUINE 0 —
-  // an emptied index, a zero-read window — is data, not absence; mapping v<=0 to the previous value
-  // silently falsified it). Callers must emit null for absent keys (idxTok/recallN do).
-  function carryFwd(arr){var p=0;return arr.map(function(v){if(v==null)return p;v=num(v);if(v>0)p=v;return v;});}
+  function selectFromHash(){
+    SEL=_readSel(); VIEW=(SEL===null)?"archive":"dream"; selIdx=(SEL===null)?ALL.length-1:SEL;
+    if(SEL!==null) lastSel=SEL;
+    CUR=ALL[selIdx]||{}; HIST=ALL.slice(0,selIdx);
+    ENT=Array.isArray(CUR.entries)?CUR.entries:[];
+    CYCLES=HIST.slice(); if(!CYCLES.length||!sameCycle(CYCLES[CYCLES.length-1],CUR))CYCLES.push(CUR);
+    DREAMDIFFS=ALLDIFFS[diffKey((CUR&&CUR.marker)||{}, g(CUR,"session",""))]||ALLDIFFS[diffKey((CUR&&CUR.marker)||{})]||{};
+  }
+  function clearEl(id){var n=el(id); if(!n)return; while(n.firstChild)n.removeChild(n.firstChild);}
+  // carry the last valid value forward over a MISSING field only (a GENUINE 0 is data and
+  // updates the carry, so a later null doesn't skip over an emptied index).
+  function carryFwd(arr){var p=0;return arr.map(function(v){if(v==null)return p;v=num(v);p=v;return v;});}
   // a "nice" round axis step for ~`ticks` divisions (1/2/5×10ⁿ) → round tick labels (0/500/1000), not maxV/4 fractions.
   function niceStep(range,ticks){if(range<=0)return 1;var raw=range/Math.max(1,ticks);var p=Math.pow(10,Math.floor(Math.log(raw)/Math.LN10));var n=raw/p;var s=n<1.5?1:n<3?2:n<7?5:10;return s*p;}
   function niceMax(v,ticks){var st=niceStep(v,ticks);return {step:st,max:Math.ceil(v/st)*st};}
-  (function(){if(PARSE_ERR){el("h-banner").textContent="⚠ archive data corrupted — the embedded record failed to parse; regenerate with render_html (never hand-edit this file)";return;}
-    var w=ENT.filter(function(e){return ["added","corrected","deleted"].indexOf(g(e,"action",""))>=0;}).length;
-    var oc=g(CUR,"outcome",""),lab;
-    if(oc)lab=oc; else if(magnitude(CUR)===0&&!ENT.length)lab="Nothing to consolidate";
-    else if(w===0)lab="No-op pass"; else if(w>=4)lab="Substantial pass"; else lab="Light pass";
-    if(CUR&&CUR._integrity)lab+=" · ⚠ procedure integrity";
-    el("h-banner").textContent=lab;})();
-
-  // ── compute the lead trajectory once (shared by headline + hero chart) ──
   // least-squares slope over a short window — a robust per-cycle drift, not a noisy 2-point endpoint slope.
   function lsSlope(ys){var k=ys.length;if(k<2)return 0;var sx=0,sy=0,sxx=0,sxy=0,i;
     for(i=0;i<k;i++){sx+=i;sy+=ys[i];sxx+=i*i;sxy+=i*ys[i];}var d=k*sxx-sx*sx;return d===0?0:(k*sxy-sx*sy)/d;}
-  var traj=(function(){
+  // Diff modal lives at IIFE scope so Escape (keydown, outside paintDream) can close it.
+  // DREAMDIFFS is the same outer var selectFromHash updates — openDiff always reads the current dream.
+  var STORE_PREFIXES=[["memory/","memory"],["claude_md/","claude_md"],["repo_doc/","repo doc"]];
+  function splitDiffPath(p){p=String(p);
+    for(var i=0;i<STORE_PREFIXES.length;i++){var pre=STORE_PREFIXES[i][0];
+      if(p.indexOf(pre)===0)return {rel:p.slice(pre.length), store:STORE_PREFIXES[i][1]};}
+    return {rel:p, store:""};}
+  function diffDisplayName(p){var sp=splitDiffPath(p);return sp.store==="memory"?sp.rel.replace(/\.md$/,""):sp.rel;}
+  function openDiff(p){
+    var d=DREAMDIFFS[p]; if(!d)return;
+    var sp=splitDiffPath(p);
+    el("dmodal-title").textContent=diffDisplayName(p)+(sp.store?"  ·  "+sp.store:"")+"  ·  "+(d.op||"modified");
+    if(d.size_capped){
+      el("dmodal-body").innerHTML='<div class="dl-more">diff not available — file too large to snapshot (this dream still recorded that it changed)</div>';
+      el("dmodal").style.display="flex"; return;
+    }
+    var html=(d.lines||[]).map(function(l){
+      var t=l.t, cls=t==="+"?"dl-plus":t==="-"?"dl-minus":t==="@"?"dl-at":"dl-ctx";
+      var pre=t==="+"?"+ ":t==="-"?"- ":t==="@"?"":"  ";
+      return '<div class="dl '+cls+'">'+esc(pre+(l.s==null?"":l.s))+'</div>';
+    }).join("");
+    if(d.more>0)html+='<div class="dl-more">+ '+(d.more|0)+' more line'+(d.more!==1?"s":"")+' (capped)</div>';
+    el("dmodal-body").innerHTML=html||'<div class="dl-more">no textual diff</div>';
+    el("dmodal").style.display="flex";
+  }
+  function closeDiff(){el("dmodal").style.display="none";}
+  el("dmodal-x").onclick=closeDiff;
+  el("dmodal-bg").onclick=closeDiff;
+
+  function paintDream(){
+    clearEl("traj"); clearEl("trend"); clearEl("rigor"); clearEl("net");
+    var tw=el("traj-warn"); if(tw){tw.style.display="none"; tw.innerHTML="";}
+    ["dream-blk","distill-blk","demotion-blk","registrar-blk"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
+    PROJ=g(CUR,"project",DATA.project||"consolidate-memory");
+    el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
+    document.title=PROJ+" — dream telemetry";
+    el("h-sess").textContent=String(g(CUR,"session","—")).slice(0,16);
+    el("h-scope").textContent=g(CUR,"scope.git_range","—");
+    el("h-gen").textContent=String(DATA.generated_at||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
+    (function(){if(PARSE_ERR){el("h-banner").textContent="⚠ archive data corrupted — the embedded record failed to parse; regenerate with render_html (never hand-edit this file)";return;}
+      var w=ENT.filter(function(e){return ["added","corrected","deleted"].indexOf(g(e,"action",""))>=0;}).length;
+      var oc=g(CUR,"outcome",""),lab;
+      if(oc)lab=oc; else if(magnitude(CUR)===0&&!ENT.length)lab="Nothing to consolidate";
+      else if(w===0)lab="No-op pass"; else if(w>=4)lab="Substantial pass"; else lab="Light pass";
+      if(CUR&&CUR._integrity)lab+=" · ⚠ procedure integrity";
+      el("h-banner").textContent=lab;})();
+  traj=(function(){
     var s=carryFwd(CYCLES.map(idxTok)); if(!s.length)s=[0];
     var cur=num(s[s.length-1],0), n=s.length, slope=0, bf=null, breach=null;
-    if(n>=3 && cur<IDXB){ slope=lsSlope(s.slice(Math.max(0,n-4)));     // fit over the last ≤4 cycles
-      if(slope>0.5){ bf=(IDXB-cur)/slope;                              // EXACT (fractional) cycles to the ceiling
+    var target=(cur>IDXB)?CEIL:IDXB;                                 // two-regime: soft target, then hard ceiling
+    if(n>=3 && cur<target){ slope=lsSlope(s.slice(Math.max(0,n-4))); // fit over the last ≤4 cycles
+      if(slope>0.5){ bf=(target-cur)/slope;
         var b=Math.round(bf); if(bf>0 && b<=60){breach=Math.max(1,b);} else {bf=null;} } }
-    return {s:s,n:n,cur:cur,slope:slope,bf:bf,breach:breach,over:cur>=IDXB};
+    return {s:s,n:n,cur:cur,slope:slope,bf:bf,breach:breach,over:cur>IDXB,target:target};
   })();
 
   // ── LEAD headline (takeaway-first) ──
+  // Two rungs, same as memory_status: 1500 is the TARGET (standing-justifiable); 3840 is the
+  // HARD CEILING (M1 holds, SJ does not apply). "over budget" as an alarm is only honest when
+  // the target gate is actually ON. Exact token counts near the line (1557 vs "1.6k of 1.5k").
   (function(){
     var t=traj, h=el("lead-head"), sub=el("lead-sub"), p=pct(t.cur,IDXB);
-    if(t.over){ h.innerHTML="The always-loaded index is <span class=\"hot\">over budget</span> at "+fmt(t.cur)+" of "+fmt(IDXB)+" tokens.";
-      sub.textContent="Remediation gate applies — prune, archive, or standing-justify before net growth."; }
-    else if(t.breach!=null){ h.innerHTML="The index sits at "+p+"% of budget and is <span class=\"hot\">trending toward a breach in ~"+t.breach+" dreams</span>.";
-      sub.textContent="Climbing ≈"+Math.round(t.slope)+" tokens per cycle. Begin archiving completed arcs before the ceiling forces a prune."; }
-    else if(t.n<3){ h.innerHTML="The index holds at "+p+"% of budget; the trajectory is still forming.";
-      sub.textContent="Only "+t.n+" cycle"+(t.n!==1?"s":"")+" logged — the breach projection sharpens as more dreams accrue."; }
-    else { h.innerHTML="The index is holding at <span class=\"hot\">"+p+"% of budget</span>, with no breach in sight.";
+    var remLead=g(CUR,"remediation",null);
+    remLead=(remLead&&typeof remLead==="object"&&!Array.isArray(remLead))?remLead:{};
+    var sj=truthy(remLead.standing_justified), ceil=truthy(remLead.over_ceiling)||t.cur>CEIL;
+    if(ceil){ h.innerHTML="The index is past the <span class=\"hot\">hard ceiling</span> at "+tok(t.cur)+" of "+tok(CEIL)+" tokens.";
+      sub.textContent="New shares are held until this index shrinks. Standing-justify does not apply to the ceiling."; }
+    else if(t.over&&sj){ h.innerHTML="The index sits at "+tok(t.cur)+" tokens — just past the "+tok(IDXB)+" target, and that’s <span class=\"hot\">standing-justified</span>.";
+      sub.textContent=t.breach!=null
+        ?("The prune gate stays off until the store grows. At the current rate it would reach the "+tok(CEIL)+" ceiling in ~"+t.breach+" dreams.")
+        :("The prune gate stays off until the store grows."); }
+    else if(t.over){ h.innerHTML="The index is <span class=\"hot\">past its "+tok(IDXB)+" target</span> at "+tok(t.cur)+" tokens.";
+      sub.textContent=t.breach!=null
+        ?("Climbing ≈"+Math.round(t.slope)+" tokens per cycle toward the "+tok(CEIL)+" ceiling in ~"+t.breach+" dreams. Prune, archive, or standing-justify before adding more.")
+        :"Prune, archive, or standing-justify before adding more."; }
+    else if(t.breach!=null){ h.innerHTML="The index sits at "+p+"% of its "+tok(IDXB)+" target and is <span class=\"hot\">trending toward it in ~"+t.breach+" dreams</span>.";
+      sub.textContent="Climbing ≈"+Math.round(t.slope)+" tokens per cycle. Archive finished work before the target forces a prune."; }
+    else if(t.n<3){ h.innerHTML="The index holds at "+p+"% of its "+tok(IDXB)+" target; the trajectory is still forming.";
+      sub.textContent="Only "+t.n+" cycle"+(t.n!==1?"s":"")+" logged — the projection sharpens as more dreams accrue."; }
+    else { h.innerHTML="The index is holding at <span class=\"hot\">"+p+"% of its "+tok(IDXB)+" target</span>, with no breach in sight.";
       sub.textContent="Consumption is flat across recent cycles — the store is mature and well-bounded."; }
   })();
 
@@ -485,7 +614,7 @@
     var W=1100,H=300,pL=58,pR=120,pT=24,pB=34, svg=el("traj"), t=traj, s=t.s, n=t.n;
     var ex = (t.bf!=null) ? Math.min(Math.ceil(t.bf)+1, 18) : 0;    // cycles of projection drawn past the last point
     var projPeak = (t.bf!=null) ? t.cur + t.slope*ex : 0;
-    var _nm=niceMax(Math.max(IDXB*1.08, Math.max.apply(null,s)*1.12, projPeak*1.02, 100), 4), maxV=_nm.max;
+    var _nm=niceMax(Math.max(IDXB*1.08, (t.target>IDXB?CEIL*1.02:0), Math.max.apply(null,s)*1.12, projPeak*1.02, 100), 4), maxV=_nm.max;
     var totD=(n-1)+ex;
     var bx=function(i){return pL+(totD<=0?(W-pL-pR)/2:i*(W-pL-pR)/totD);};
     var by=function(v){return H-pB-(v/maxV)*(H-pT-pB);};
@@ -494,15 +623,20 @@
       var tx=S("text",{x:pL-9,y:gy+3,class:"axt","text-anchor":"end"});tx.textContent=fmt(gv);svg.appendChild(tx);}
     // budget ceiling
     var ry=by(IDXB); svg.appendChild(S("line",{x1:pL,y1:ry,x2:W-pR+10,y2:ry,stroke:"var(--accent)","stroke-width":1.3,"stroke-dasharray":"2 5"}));
-    var bl=S("text",{x:W-pR+14,y:ry+3,class:"axt r"});bl.textContent="budget "+fmt(IDXB);svg.appendChild(bl);
-    // projection — the line reaches the budget at EXACTLY (n-1)+bf cycles; the marker sits on that crossing, so
-    // the dashed projection, the budget rule, and the breach dot all meet at one precise point.
+    var bl=S("text",{x:W-pR+14,y:ry+3,class:"axt r"});bl.textContent="target "+fmt(IDXB);svg.appendChild(bl);
+    if(t.target>IDXB){ var cy=by(CEIL);
+      svg.appendChild(S("line",{x1:pL,y1:cy,x2:W-pR+10,y2:cy,stroke:"var(--crit)","stroke-width":1.3,"stroke-dasharray":"1 4"}));
+      var cl=S("text",{x:W-pR+14,y:cy+3,class:"axt r"});cl.textContent="ceiling "+fmt(CEIL);svg.appendChild(cl);}
+    // projection — the line reaches t.target (1500 budget, or the 3840 ceiling when over-target) at
+    // EXACTLY (n-1)+bf cycles; the marker sits on that crossing, so the dashed projection, the
+    // target rule, and the breach dot all meet at one precise point.
     if(t.bf!=null){
       var xCur=bx(n-1), yCur=by(t.cur), xEnd=bx(totD), yEnd=by(Math.min(maxV,projPeak));
       svg.appendChild(S("line",{x1:xCur,y1:yCur,x2:xEnd,y2:yEnd,stroke:"var(--accent)","stroke-width":1.3,"stroke-dasharray":"4 4",opacity:.75}));
-      var xCross=bx((n-1)+t.bf);
-      svg.appendChild(S("circle",{cx:xCross,cy:ry,r:4,fill:"var(--accent)"}));
-      var bt=S("text",{x:xCross,y:ry-10,class:"axt r","text-anchor":"middle"});bt.textContent="~"+t.breach+" dream"+(t.breach!==1?"s":"");svg.appendChild(bt);}
+      if(t.bf<=ex){   // crossing is in the drawn window; a 50-dream ceiling projection must not dump the marker off-chart
+        var xCross=bx((n-1)+t.bf), ty=by(t.target);
+        svg.appendChild(S("circle",{cx:xCross,cy:ty,r:4,fill:"var(--accent)"}));
+        var bt=S("text",{x:xCross,y:ty-10,class:"axt r","text-anchor":"middle"});bt.textContent="~"+t.breach+" dream"+(t.breach!==1?"s":"");svg.appendChild(bt);}}
     // area + line
     var pts=s.map(function(v,i){return[bx(i),by(v)];});
     var dl=pts.map(function(p,i){return(i?"L":"M")+p[0].toFixed(1)+" "+p[1].toFixed(1);}).join(" ");
@@ -516,17 +650,22 @@
     pts.forEach(function(p,i){var last=i===pts.length-1;
       var c=S("circle",{cx:p[0],cy:p[1],r:last?5:3,fill:last?"var(--accent)":"var(--paper)",stroke:last?"var(--accent)":"var(--data)","stroke-width":1.8});
       c.style.cursor="pointer";c.addEventListener("click",function(){location.hash="#sel="+i;});c.addEventListener("mousemove",tip(fmt(s[i])+" tok · cycle "+(i+1)+" — click to open"));c.addEventListener("mouseleave",untip);svg.appendChild(c);});
-    if(t.breach!=null){var w=el("traj-warn");w.style.display="block";
-      w.innerHTML="<b>Heads-up.</b> At the current rate the always-loaded index breaches its "+fmt(IDXB)+"-token budget in roughly "+t.breach+" dreams.";}
+    if(t.breach!=null && !(truthy(g(CUR,"remediation.standing_justified",false)) && t.cur<=CEIL)){
+      var w=el("traj-warn");w.style.display="block";
+      w.innerHTML=t.over
+        ?("<b>Heads-up.</b> At the current rate the index hits the "+fmt(CEIL)+"-token hard ceiling in roughly "+t.breach+" dreams.")
+        :("<b>Heads-up.</b> At the current rate the index hits its "+fmt(IDXB)+"-token target in roughly "+t.breach+" dreams.");}
   })();
 
   // ── KEY INDICATORS ──
   (function(){
-    var v=CUR.verification||{}, ix=g(CUR,"budget.index.after_tokens",traj.cur), io=!!g(CUR,"budget.index.over",false);
+    var v=CUR.verification||{}, ix=g(CUR,"budget.index.after_tokens",traj.cur);
+    var io=num(ix)>IDXB, ceilK=truthy(g(CUR,"remediation.over_ceiling",false)), sjK=truthy(g(CUR,"remediation.standing_justified",false));
     var rg=g(CUR,"rigor.applied","—");
     function kpi(n,k,d,cls){return '<div class="kpi"><div class="n'+(cls?" ":"")+'" '+(cls?'style="color:'+cls+'"':'')+'>'+n+'</div><div class="k">'+esc(k)+'</div><div class="d">'+esc(d)+'</div></div>';}
     el("kpis").innerHTML=
-      kpi(pct(num(ix),IDXB)+'<small>%</small>', "index budget", fmt(num(ix))+" / "+fmt(IDXB)+" tok", io?"var(--crit)":null)
+      kpi(pct(num(ix),IDXB)+'<small>%</small>', "index vs target", tok(num(ix))+" / "+tok(IDXB),
+          ceilK?"var(--crit)":(io&&!sjK)?"var(--crit)":(io?"var(--warn)":null))
      +kpi(recallN(CUR), "recall facts", "in the private store", null)
      +kpi(num(v.confirmed)+'<small> ✓</small>', "verified", num(v.corrected)+" corrected · "+num(v.unverifiable)+" unverifiable", num(v.unverifiable)>0?"var(--warn)":null)
      +kpi(esc(rg).charAt(0)+esc(rg).slice(1).toLowerCase(), "rigor", "via "+g(CUR,"verification.method","—"), null);
@@ -562,10 +701,11 @@
     el("dream-blk").style.display="";
   })();
 
-  // ── trend: facts + churn ── (v0.1.57: anatomy shared with the rigor strip — same pT/pB, so the two
-  // panels' plot frames align; the churn band's right axis is recessive and collision-free.)
+  // ── trend: facts + churn ── two bands, one quantitative question each. No second y-axis
+  // (a right-spine "writes / 15 / 0" read as stray caption). Cycle numerals share the rigor
+  // panel's skip rule so the two charts can be cross-read by index.
   (function(){
-    var svg=el("trend"),W=660,H=240,pL=42,pR=56,pT=18,pB=30;   // pR leaves room for the churn (right) axis
+    var svg=el("trend"),W=660,H=240,pL=42,pR=12,pT=18,pB=30;
     var rows=CYCLES,n=rows.length; el("hist-note").textContent=n+" cycle"+(n!==1?"s":"")+" logged";
     var facts=carryFwd(rows.map(recallN));
     var fm=niceMax(Math.max(Math.max.apply(null,facts)*1.1,4),3),maxF=fm.max;
@@ -574,19 +714,12 @@
       c:e.filter(function(x){return x.action==="corrected"||x.action==="reconciled";}).length,
       d:e.filter(function(x){return x.action==="deleted";}).length};});
     var cm2=niceMax(Math.max(1,Math.max.apply(null,churn.map(function(c){return c.a+c.c+c.d;}))),2),maxCh=cm2.max;
-    // TWO non-overlapping bands: the fact line up top, the churn bars in a labelled band below a divider.
     var split=pT+(H-pT-pB)*0.58, chBase=H-pB, chTop=split+18;
     var bx=function(i){return pL+(n<=1?(W-pL-pR)/2:i*(W-pL-pR)/(n-1));},fy=function(v){return split-(v/maxF)*(split-pT);};
-    // facts LEFT axis (round) within the top band
     for(var fv=0;fv<=maxF+fm.step*.01;fv+=fm.step){var fyy=fy(fv);svg.appendChild(S("line",{x1:pL,y1:fyy,x2:W-pR,y2:fyy,class:"grid"+(fv===0?"":" f")}));
       var t=S("text",{x:pL-7,y:fyy+3,class:"axt","text-anchor":"end"});t.textContent=fv;svg.appendChild(t);}
-    // churn band: a faint top rule closes the band; the right axis reads writes ↓ 0 top-to-bottom,
-    // one label style (.axt, faint), stacked with fixed clearances so nothing collides.
     svg.appendChild(S("line",{x1:pL,y1:chTop-6,x2:W-pR,y2:chTop-6,class:"grid f"}));
     svg.appendChild(S("line",{x1:pL,y1:chBase,x2:W-pR,y2:chBase,class:"grid"}));
-    svg.appendChild(S("text",{x:W-pR+8,y:chTop-9,class:"axt"})).textContent="writes";
-    svg.appendChild(S("text",{x:W-pR+8,y:chTop+6,class:"axt"})).textContent=fmt(maxCh);
-    svg.appendChild(S("text",{x:W-pR+8,y:chBase+3,class:"axt"})).textContent="0";
     var bw=Math.max(4,Math.min(22,(W-pL-pR)/(n*2.0)));
     churn.forEach(function(c,i){var x=bx(i)-bw/2,base=chBase;[["a","var(--ok)"],["c","var(--warn)"],["d","var(--crit)"]].forEach(function(sg){
       var val=c[sg[0]];if(val<=0)return;var h=(val/maxCh)*(chBase-chTop);base-=h;svg.appendChild(S("rect",{x:x,y:base,width:bw,height:h,fill:sg[1],opacity:.6}));});});
@@ -595,35 +728,52 @@
       var ln=S("path",{d:d,fill:"none",stroke:"var(--data)","stroke-width":2,"stroke-linejoin":"round"});svg.appendChild(ln);
       try{var L=ln.getTotalLength();ln.style.setProperty("--len",L);ln.classList.add("draw");}catch(e){}
       pts.forEach(function(p,i){var c=S("circle",{cx:p[0],cy:p[1],r:i===pts.length-1?4:2.4,fill:i===pts.length-1?"var(--data)":"var(--paper)",stroke:"var(--data)","stroke-width":1.6});
-        c.style.cursor="pointer";c.addEventListener("click",function(){location.hash="#sel="+i;});c.addEventListener("mousemove",tip(facts[i]+" facts · +"+churn[i].a+" ~"+churn[i].c+" -"+churn[i].d+" — click to open"));c.addEventListener("mouseleave",untip);svg.appendChild(c);});}
-    if(n<2){var t=S("text",{x:(pL+W-pR)/2,y:split/2,"text-anchor":"middle",class:"axt d"});t.textContent="trends accrue across dreams — "+n+" logged so far";svg.appendChild(t);}
+        c.style.cursor="pointer";c.addEventListener("click",function(){location.hash="#sel="+i;});c.addEventListener("mousemove",tip(facts[i]+" facts — click to open"));c.addEventListener("mouseleave",untip);svg.appendChild(c);});}
+    var skip=Math.max(1,Math.ceil(n/12));
+    if(n>=2){for(var i=0;i<n;i++){ if(i===n-1||i%skip===0){var lt=S("text",{x:bx(i),y:H-10,"text-anchor":"middle",class:"axt"});lt.textContent=i+1;svg.appendChild(lt);} }}
+    if(n<2){var t2=S("text",{x:(pL+W-pR)/2,y:split/2,"text-anchor":"middle",class:"axt d"});t2.textContent="Not enough dreams yet";svg.appendChild(t2);}
   })();
 
-  // ── rigor + cadence ── (v0.1.57: same pT/pB frame as the trend chart; gap + cycle labels thin
-  // themselves by a shared skip factor when segments get narrow, so a long history stays legible.)
+  // ── rigor + cadence ── categorical STRIP, not a time-series of a quantity. Connecting ordinal
+  // lanes with diagonals invented a "rigor crashed" slope; missing `applied` used to default to
+  // LIGHT and join the floor into a fake second series. Dots sit on their lane; unlabeled
+  // cycles are omitted (no hollow-O). Cadence lives in a ribbon UNDER the lanes, never on the peaks.
   (function(){
-    var svg=el("rigor"),W=460,H=240,pL=66,pR=22,pT=18,pB=30;
+    var svg=el("rigor"),W=460,H=240,pL=70,pR=16,pT=22,pB=50;
     var rows=CYCLES,n=rows.length;
-    var base=H-pB, span=H-pT-pB;
-    var ty={LIGHT:base-Math.round(span*.08),SUBSTANTIAL:base-Math.round(span*.46),HEAVY:base-Math.round(span*.84)};
+    var plotB=H-pB, span=plotB-pT;
+    var ty={HEAVY:pT+Math.round(span*.12),SUBSTANTIAL:pT+Math.round(span*.45),LIGHT:pT+Math.round(span*.78)};
     var tc={LIGHT:"var(--faint)",SUBSTANTIAL:"var(--data)",HEAVY:"var(--accent)"};
+    var cadY=plotB+14;
     ["HEAVY","SUBSTANTIAL","LIGHT"].forEach(function(k){
       var y=ty[k];svg.appendChild(S("line",{x1:pL-6,y1:y,x2:W-pR,y2:y,class:"grid f"}));
       var t=S("text",{x:pL-12,y:y+3,class:"axt","text-anchor":"end"});t.textContent=k.charAt(0)+k.slice(1).toLowerCase();svg.appendChild(t);});
+    svg.appendChild(S("line",{x1:pL,y1:plotB,x2:W-pR,y2:plotB,class:"grid"}));
+    if(n<2){var t2=S("text",{x:(pL+W-pR)/2,y:(pT+plotB)/2,"text-anchor":"middle",class:"axt d"});
+      t2.textContent="Not enough dreams yet";svg.appendChild(t2);return;}
     var times=rows.map(function(r){var d=Date.parse(g(r,"marker.timestamp",""));return isFinite(d)?d:null;});
-    var bx=function(i){return pL+(n<=1?(W-pL-pR)/2:i*(W-pL-pR)/(n-1));};   // UNIFORM spacing — readable; cadence shown as gap labels
-    var seg=n>1?(W-pL-pR)/(n-1):W;                     // px per segment
-    var skip=Math.max(1,Math.ceil(30/seg));            // label every k-th gap/cycle when crowded
-    rows.forEach(function(r,i){var k=String(g(r,"rigor.applied","")).toUpperCase();if(!ty[k])k="LIGHT";
-      if(i>0){var pk=String(g(rows[i-1],"rigor.applied","LIGHT")).toUpperCase();if(!ty[pk])pk="LIGHT";
-        svg.appendChild(S("line",{x1:bx(i-1),y1:ty[pk],x2:bx(i),y2:ty[k],stroke:"var(--rule2)","stroke-width":1}));
-        if(times[i]!=null&&times[i-1]!=null&&((i-1)%skip===0)){var hh=(times[i]-times[i-1])/3.6e6,gl=hh<48?Math.round(hh)+"h":Math.round(hh/24)+"d";
-          var gt=S("text",{x:(bx(i-1)+bx(i))/2,y:Math.min(ty[pk],ty[k])-9,"text-anchor":"middle",class:"axt"});gt.setAttribute("style","font-size:8.5px;fill:var(--ghost)");gt.textContent=gl;svg.appendChild(gt);}}
-      var c=S("circle",{cx:bx(i),cy:ty[k],r:4.5,fill:tc[k],stroke:"var(--paper)","stroke-width":1.5});
-      c.style.cursor="pointer";c.addEventListener("click",function(){location.hash="#sel="+i;});c.addEventListener("mousemove",tip("cycle "+(i+1)+" · "+k+" — click to open"));c.addEventListener("mouseleave",untip);svg.appendChild(c);
-      // the LAST cycle numeral always draws; a skip-multiple suppresses itself within 18px of it
-      // (two ~12px numerals one narrow segment apart would smear — the collision the thinning exists to prevent)
-      if(i===n-1||(i%skip===0&&(n-1-i)*seg>=18)){var lt=S("text",{x:bx(i),y:H-12,"text-anchor":"middle",class:"axt"});lt.textContent=i+1;svg.appendChild(lt);}});
+    var bx=function(i){return pL+i*(W-pL-pR)/(n-1);};
+    var skip=Math.max(1,Math.ceil(n/12)), seg=(W-pL-pR)/(n-1);
+    rows.forEach(function(r,i){
+      var raw=String(g(r,"rigor.applied","")).toUpperCase(), known=!!ty[raw];
+      var gapTip="", gl=null, hh=null;
+      if(i>0&&times[i]!=null&&times[i-1]!=null){
+        hh=(times[i]-times[i-1])/3.6e6; gl=hh<48?Math.round(hh)+"h":Math.round(hh/24)+"d";
+        gapTip=" · "+gl+" since prior";
+        if((i-1)%skip===0 && hh>=12){
+          var gt=S("text",{x:(bx(i-1)+bx(i))/2,y:cadY,"text-anchor":"middle",class:"axt"});
+          gt.setAttribute("style","font-size:8.5px");gt.textContent=gl;svg.appendChild(gt);}
+      }
+      if(known){
+        var c=S("circle",{cx:bx(i),cy:ty[raw],r:4.5,fill:tc[raw],stroke:"var(--paper)","stroke-width":1.5});
+        c.style.cursor="pointer";
+        c.addEventListener("click",function(){location.hash="#sel="+i;});
+        c.addEventListener("mousemove",tip("Dream "+(i+1)+" · "+raw.charAt(0)+raw.slice(1).toLowerCase()+gapTip+" — click to open"));
+        c.addEventListener("mouseleave",untip);svg.appendChild(c);
+      }
+      if(i===n-1||(i%skip===0&&(n-1-i)*seg>=18)){
+        var lt=S("text",{x:bx(i),y:H-10,"text-anchor":"middle",class:"axt"});lt.textContent=i+1;svg.appendChild(lt);}
+    });
   })();
 
   // ── budget meters ──
@@ -635,19 +785,19 @@
       var col=(status==="crit"||(over&&!status))?"var(--crit)":(over||status||f>=.85)?"var(--warn)":"var(--data)";
       box.innerHTML='<div class="top"><span class="lab">'+esc(lab)+'</span><span class="val" style="color:'+col+'">'+pct(val,max)+'% · '+fmt(val)+'/'+fmt(max)+((max>0&&val>max)?" ⚠":"")+'</span></div>'
         +'<div class="track"><div class="fill"></div><div class="mark" style="left:100%"></div></div>'
-        +'<div class="d">'+(status==="crit"?("over the HARD CEILING ≈"+fmt(num(BUD.index_ceiling,3840))+" — M1 holds new pulls")
-          :(status?status:(over?"over budget — remediation gate active":(f>=.85?"approaching budget":"within budget"))))+'</div>';
+        +'<div class="d">'+(status==="crit"?("Over the ceiling — new shares are held until this index shrinks")
+          :(status?status:(over?"Over budget — prune before adding more":(f>=.85?"Near the budget":"Within budget"))))+'</div>';
       var fill=box.querySelector(".fill");fill.style.background=col;requestAnimationFrame(function(){fill.style.width=(f*100).toFixed(1)+"%";});}
     // render-chain audit: a standing-justified record must NOT read "gate active" — the meter honors
     // remediation.standing_justified (suppressed) as an amber status line, never the crit "active" claim.
     var remObj=g(CUR,"remediation",null);
     remObj=(remObj&&typeof remObj==="object"&&!Array.isArray(remObj))?remObj:{};
-    var ceil=g(CUR,"remediation.over_ceiling",false);
-    var overFlag=!!g(CUR,"budget.index.over",false);
-    var sj=!!remObj.standing_justified;
-    var status=ceil?"crit":(overFlag&&sj)?("over target · standing-justified at "+num(remObj.baseline_facts)+" fact(s) — gate suppressed until +Δ"):null;
-    meter(el("m-index"),"Auto-memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),IDXB,overFlag,status);
-    meter(el("m-cmd"),"CLAUDE.md (root)",num(g(CUR,"budget.claude_md.after_tokens",g(CUR,"budget.claude_md.before_tokens",0))),CMB,!!g(CUR,"budget.claude_md.over",false),null);
+    var ceil=truthy(g(CUR,"remediation.over_ceiling",false));
+    var overFlag=truthy(g(CUR,"budget.index.over",false));
+    var sj=truthy(remObj.standing_justified);
+    var status=ceil?"crit":(overFlag&&sj)?("Just past the target · prune gate off"):null;
+    meter(el("m-index"),"Memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),IDXB,overFlag,status);
+    meter(el("m-cmd"),"CLAUDE.md",num(g(CUR,"budget.claude_md.after_tokens",g(CUR,"budget.claude_md.before_tokens",0))),CMB,truthy(g(CUR,"budget.claude_md.over",false)),null);
   })();
 
   // ── network ──
@@ -655,50 +805,67 @@
     var net=CUR.network||{},allN=Array.isArray(net.nodes)?net.nodes:[],nodes=allN.slice(0,12),svg=el("net");
     var tot=(net.totals&&typeof net.totals==="object")?net.totals:{};
     var totAl=num(tot.always_loaded_tokens),totRc=num(tot.recall_tokens);
-    el("net-note").textContent=nodes.length+" node"+(nodes.length!==1?"s":"")+(allN.length>12?" of "+allN.length:"")+" share memory"
-      +((totAl+totRc)>0?(" · fleet ≈"+fmt(totAl)+" always-loaded · ≈"+fmt(totRc)+" recall-pool tok"):"");
+    el("net-note").textContent=nodes.length+" project"+(nodes.length!==1?"s":"")+(allN.length>12?" of "+allN.length:"");
     if(!nodes.length){var t=S("text",{x:260,y:140,"text-anchor":"middle",class:"axt d"});
       // render-chain audit: the record may carry fleet totals with NO node rows (the model trimmed the
       // verbatim paste) — "no shared-memory network yet" would assert the fleet doesn't exist. Say what's
       // true: the detail wasn't captured; the totals are the fleet.
-      t.textContent=((totAl+totRc)>0)?"node rows not captured — fleet totals above":"no shared-memory network yet";svg.appendChild(t);return;}
-    var cx=260,cy=94,N=nodes.length,maxF=Math.max.apply(null,nodes.map(function(d){return num(d.facts,1);}))||1;
-    var pos=nodes.map(function(d,i){if(N===1)return[cx,cy];var ang=(i/N)*2*Math.PI-Math.PI/2,rad=N===2?52:64;return[cx+rad*Math.cos(ang),cy+rad*Math.sin(ang)];});
-    var trig=nodes.findIndex(function(d){return d.trigger;});if(trig<0)trig=0;
+      t.textContent=((totAl+totRc)>0)?"project list wasn’t captured this pass":"no other projects sharing memory yet";svg.appendChild(t);return;}
+    var cx=260,cy=118,N=nodes.length,maxF=Math.max.apply(null,nodes.map(function(d){return num(d.facts,1);}))||1;
+    var rad=N<=2?70:(N<6?92:118);
+    var trig=nodes.findIndex(function(d){return truthy(d.trigger);});if(trig<0)trig=0;
+    var nRing=Math.max(1,N-1);
+    var pos=nodes.map(function(d,i){
+      if(N===1||i===trig) return [cx,cy];
+      var k=i-(i>trig?1:0), ang=(k/nRing)*2*Math.PI-Math.PI/2;
+      return [cx+rad*Math.cos(ang),cy+rad*Math.sin(ang)];
+    });
     nodes.forEach(function(d,i){if(i===trig)return;var sh=num(d.shared,0);if(sh<=0)return;
       svg.appendChild(S("line",{x1:pos[trig][0],y1:pos[trig][1],x2:pos[i][0],y2:pos[i][1],stroke:"var(--rule2)","stroke-width":Math.max(.8,Math.min(3,sh/3))}));});
+    var labelAt=[];
     nodes.forEach(function(d,i){var r=7+11*Math.sqrt(num(d.facts,1)/maxF),isT=i===trig;
       var c=S("circle",{cx:pos[i][0],cy:pos[i][1],r:r,fill:isT?"rgba(179,71,39,.1)":"var(--card)",stroke:isT?"var(--accent)":"var(--ink2)","stroke-width":isT?2:1.3});
-      var nm=String(d.node||"?").replace(/^.*[-/]/,"").slice(0,18);
-      c.addEventListener("mousemove",tip(esc(d.node)+" · "+num(d.facts)+" facts · "+fmt(num(d.always_loaded_tokens))+" tok always-loaded"));c.addEventListener("mouseleave",untip);svg.appendChild(c);
-      var lt=S("text",{x:pos[i][0],y:pos[i][1]+r+14,"text-anchor":"middle",class:"axt"+(isT?" r":"")});lt.textContent=nm;svg.appendChild(lt);
-      var ft=S("text",{x:pos[i][0],y:pos[i][1]+4,"text-anchor":"middle",class:"axt d",style:"font-size:11px"});ft.textContent=num(d.facts);svg.appendChild(ft);});
-    // fit the viewBox to the drawn content (+pad) so #net's fixed-height/auto-width box frames the graph
-    // tightly for ANY node count — the legend/caption then sit directly beneath it, not below dead space.
-    // Computed from the known node geometry (NOT getBBox — which throws/returns empty on a not-yet-visible
-    // archived dream section, leaving the fallback viewBox and the old detached gap).
+      var nm=graphLabel(d.node);
+      c.addEventListener("mousemove",tip(prettyNode(d.node)+" · "+num(d.facts)+" facts"));c.addEventListener("mouseleave",untip);svg.appendChild(c);
+      var ft=S("text",{x:pos[i][0],y:pos[i][1]+4,"text-anchor":"middle",class:"axt d",style:"font-size:11px"});ft.textContent=num(d.facts);svg.appendChild(ft);
+      var lx,ly,anchor;
+      if(isT){ lx=pos[i][0]; ly=pos[i][1]+r+26; anchor="middle"; }
+      else {
+        var dx=pos[i][0]-cx, dy=pos[i][1]-cy, len=Math.sqrt(dx*dx+dy*dy)||1, ux=dx/len, uy=dy/len;
+        lx=pos[i][0]+ux*(r+8); ly=pos[i][1]+uy*(r+8)+(uy>0.25?3:(uy<-0.25?-1:0));
+        anchor=Math.abs(ux)<0.38?"middle":(ux<0?"end":"start");
+      }
+      var lt=S("text",{x:lx,y:ly,"text-anchor":anchor,class:"axt"+(isT?" r":"")});
+      lt.setAttribute("style","font-size:9px");lt.textContent=nm;svg.appendChild(lt);
+      labelAt.push({x:lx,y:ly,w:nm.length*5.2,anchor:anchor,r:r});
+    });
     var minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
     nodes.forEach(function(d,i){var r=7+11*Math.sqrt(num(d.facts,1)/maxF);
-      var nm=String(d.node||"?").replace(/^.*[-/]/,"").slice(0,18),hw=Math.max(r,nm.length*2.7);
-      minX=Math.min(minX,pos[i][0]-hw);maxX=Math.max(maxX,pos[i][0]+hw);
-      minY=Math.min(minY,pos[i][1]-r);maxY=Math.max(maxY,pos[i][1]+r+20);});   // +20: the label sits at +r+14 (~6px tall)
-    var pad=8;
+      minX=Math.min(minX,pos[i][0]-r);maxX=Math.max(maxX,pos[i][0]+r);
+      minY=Math.min(minY,pos[i][1]-r);maxY=Math.max(maxY,pos[i][1]+r);});
+    labelAt.forEach(function(L){
+      var left=L.anchor==="end"?L.x-L.w:(L.anchor==="start"?L.x:L.x-L.w/2);
+      var right=left+L.w;
+      minX=Math.min(minX,left);maxX=Math.max(maxX,right);
+      minY=Math.min(minY,L.y-8);maxY=Math.max(maxY,L.y+4);
+    });
+    var pad=12;
     svg.setAttribute("viewBox",(minX-pad)+" "+(minY-pad)+" "+(maxX-minX+2*pad)+" "+(maxY-minY+2*pad));
   })();
 
   // ── audit + verification + distill (this pass) ── (v0.1.57: the two panels share one lead/head/cap
   // rhythm, and the distill verdict is its own readable full-width block instead of a crammed cell.)
   (function(){
-    var a=CUR.audit||{},box=el("audit");el("pass-note").textContent="phase 0 → phase 5";
+    var a=CUR.audit||{},box=el("audit");el("pass-note").textContent="";
     function ln(s,d){d=d||{};var td=num(d.token_delta);
       return '<div class="audit-row"><span class="s">'+esc(s)+'</span><span class="a-added">+'+num(d.created)+'</span><span class="a-corrected">~'+num(d.modified)+'</span><span class="a-deleted">−'+num(d.deleted)+'</span><span class="tk">'+(td>=0?"+":"")+fmt(td)+'</span></div>';}
     var any=["memory","claude_md","repo_doc"].some(function(s){var d=a[s]||{};return num(d.created)+num(d.modified)+num(d.deleted)!==0;});
-    var head='<div class="panel-lead">Script-observed mutations</div>'
-      +'<div class="audit-row head"><span class="s">store</span><span>new</span><span>mod</span><span>del</span><span>Δtok</span></div>';
+    var head='<div class="panel-lead">What changed</div>'
+      +'<div class="audit-row head"><span class="s">store</span><span>new</span><span>mod</span><span>del</span><span>tokens</span></div>';
     if(!any){box.innerHTML=head+'<div class="meta"><div class="cap">No file mutations detected between phase 0 and phase 5.</div></div>';}
     else{var h=head+ln("memory",a.memory)+ln("CLAUDE.md",a.claude_md)+ln("repo docs",a.repo_doc);
       var cons=a.conservation||{};if(cons.possible_loss)h+='<div class="flag" style="display:block">⚠ Possible lost relocate — CLAUDE.md −'+fmt(num(cons.claude_md_drop))+' tok but targets only +'+fmt(num(cons.repo_doc_growth))+'. Verify it was intended.</div>';
-      h+='<div class="meta"><div class="cap">Content-hash diff of the stores across the pass — the script-observed counterpart to the ledger below.</div></div>';
+      h+='<div class="meta"><div class="cap">Files this pass actually changed.</div></div>';
       box.innerHTML=h;}
     // verification & health — same head style; each check reads label → plain-english result.
     var v=CUR.verification||{},h=CUR.health||{},vb=el("verify");
@@ -715,10 +882,10 @@
         +(num(U0.mentions)?' · '+num(U0.mentions)+' hook mention(s)':"")+'</span></div>';}
     var rem=CUR.remediation, remRow="";
     if(rem&&typeof rem==="object"&&!Array.isArray(rem)&&Object.keys(rem).length){
-      var rtxt=rem.standing_justified?("standing-justified at "+num(rem.baseline_facts)+" facts — gate suppressed until +Δ")
-        :(rem.required?"gate active · lever "+String(rem.lever||"?")+" · "+num(rem.pruned)+" pruned":"clean");
-      var rcol=rem.standing_justified?"var(--warn)":(rem.required?"var(--crit)":"var(--ok)");
-      remRow='<div class="audit-ln"><span class="s">remediation gate</span><span class="nums" style="color:'+rcol+'">'+esc(rtxt)+'</span></div>';}
+      var rtxt=truthy(rem.standing_justified)?"standing-justified · prune gate off"
+        :(truthy(rem.required)?"needs prune":"clear");
+      var rcol=truthy(rem.standing_justified)?"var(--warn)":(truthy(rem.required)?"var(--crit)":"var(--ok)");
+      remRow='<div class="audit-ln"><span class="s">index pressure</span><span class="nums" style="color:'+rcol+'">'+esc(rtxt)+'</span></div>';}
     vb.innerHTML='<div class="panel-lead">Verification &amp; health</div>'+INTG
       +'<div class="audit-ln head"><span class="s">check</span><span class="nums">result</span></div>'
       +'<div class="audit-ln"><span class="s">claims verified</span><span class="nums">'
@@ -747,7 +914,7 @@
       // a disposition-only verdict ('nothing:') IS a recorded verdict — show the tag alone; the
       // incomplete-step fallback fires only when the verdict string is entirely empty.
       el("dstl-verdict").innerHTML=(tag?'<span class="tag'+cls+'">'+esc(tag)+'</span>':"")
-        +(rest?'<span class="vtx">'+esc(rest)+'</span>'
+        +(rest?'<span class="vtx">'+wrapCmds(rest)+'</span>'
           :(tag?"":'<span class="vtx" style="color:var(--faint)">no verdict recorded — a distill step without one is incomplete</span>'));
       el("distill-blk").style.display="";
     }
@@ -758,8 +925,8 @@
     var missN=(U&&typeof U==="object"&&Array.isArray(U.misses))?U.misses.length:0;
     if((DM&&typeof DM==="object"&&!Array.isArray(DM))||missN>0){
       DM=(DM&&typeof DM==="object"&&!Array.isArray(DM))?DM:{};
-      var dmc=[num(DM.windows_observed)+" probative window"+(num(DM.windows_observed)!==1?"s":""),
-               num(DM.eligible)+" eligible"];
+      var dmc=[num(DM.windows_observed)+" window"+(num(DM.windows_observed)!==1?"s":""),
+               num(DM.eligible)+" unused"];
       var surf=Array.isArray(DM.surfaced)?DM.surfaced:[], stk=Array.isArray(DM.struck)?DM.struck:[];
       if(surf.length)dmc.push(surf.length+" surfaced");
       if(stk.length)dmc.push(stk.length+" struck (read this window)");
@@ -772,7 +939,7 @@
       // demoted/justified/none) becomes the bordered tag, same as distill's created/proposed/nothing —
       // so a dormant triage reads as a badge + sentence, not bare italic text beside a badged sibling.
       var dvd=String(DM.verdict==null?"":DM.verdict);
-      if(!dvd&&missN===0&&num(DM.eligible)===0)dvd="dormant — evidence accrues per-dream via --recalls";
+      if(!dvd&&missN===0&&num(DM.eligible)===0)dvd="dormant — not enough evidence yet";
       if(dvd){
         var dm2=dvd.match(/^\s*(dormant|demoted|justified|none)\b[:\s—-]*/i);
         var dtag=dm2?dm2[1].toLowerCase():"", drest=dm2?dvd.slice(dm2[0].length):dvd;
@@ -784,71 +951,105 @@
       el("demo-verdict").innerHTML=bits;
       el("demotion-blk").style.display="";
     }
-    // v0.1.87/W-C (render-chain audit): the registrar's Tier-2 consult gets its render surface. Key-present
-    // renders candidates + dispositions; a distill-era record WITHOUT the key renders the not-consulted
-    // line (the SKILL's "absent = a visible decision" — previously invisible in every view).
+    // v0.1.87/W-C: registrar render surface. Cards are MODEL decisions only
+    // (awaiting / confirmed / declined-with-a-name). Mechanical co-occurrence of
+    // git add is not a workflow — never inferred as awaiting, never a card.
     var WP=CUR.workflow_proposals;
     if(D||(WP&&typeof WP==="object"&&!Array.isArray(WP))){
+      var capN=el("reg-cap");
+      if(capN){capN.textContent="";capN.style.display="none";}
       if(WP&&typeof WP==="object"&&!Array.isArray(WP)){
         var wc=Array.isArray(WP.candidates)?WP.candidates.filter(function(c){return c&&typeof c==="object";}):[];
-        var wan=Array.isArray(WP.decline_anchors)?WP.decline_anchors.length:0;
-        var fleet=wc.filter(function(c){var m=c.mechanical||{};return m.fleet_recurrence&&m.day_spread;});
-        var blocked=wc.filter(function(c){var m=c.mechanical||{};return !(m.fleet_recurrence&&m.day_spread);});
-        var BLOCKED_CAP=8, shown=fleet.concat(blocked.slice(0,BLOCKED_CAP));
-        el("reg-counts").textContent=wc.length+" candidate"+(wc.length!==1?"s":"")
-          +" · "+fleet.length+" fleet-candidate"+(fleet.length!==1?"s":"")
-          +(wan?" · "+wan+" decline-anchor(s)":"");
-        var wbits="";
-        shown.forEach(function(c){
-          var ev=(c.evidence&&typeof c.evidence==="object")?c.evidence:{};
-          var nm=String(c.name||c.candidate||"?"), nodes=Array.isArray(ev.nodes)?ev.nodes.join(", "):"";
-          var disp=String(c.disposition||"awaiting-confirmation");
-          var tag=(disp==="confirmed")?"ok":(disp==="declined")?"":(disp==="awaiting-confirmation")?"warn":"";
-          wbits+='<div class="reg-row"><span class="tag'+tag+'">'+esc(disp)+'</span>'
-            +'<span class="vtx">'+esc(nm)+' <em style="opacity:.6">['+esc(String(c.form||"?"))+']</em>'
-            +(nodes?(" — nodes "+esc(nodes)+" · d="+num(ev.d)+" n="+num(ev.n)):"")+'</span></div>';
+        function distinctiveGuess(cand, form){
+          function one(s){
+            var toks=String(s||"").split(/\s+/).filter(Boolean);
+            if(!toks.length) return false;
+            var head=toks[0].replace(/^.*\//,"");
+            if(head==="git"||head==="gh") return false;
+            if(/^(python3?|pypy3?|bash|sh|zsh|node|ruby|perl)$/.test(head)){
+              for(var i=1;i<toks.length;i++){
+                var t=toks[i];
+                if(t.charAt(0)==="-"||t==="."||t==="..") continue;
+                if(t.indexOf("/")>=0||t.indexOf("\\")>=0) return true;
+                if(/\.(py|sh|bash|rb|js|mjs|ts|rs|go|rhai)$/i.test(t)) return true;
+              }
+              return false;
+            }
+            return true;
+          }
+          if(form==="chain"||/\s*→\s*/.test(cand)){
+            var sides=String(cand).split(/\s*→\s*/).filter(Boolean);
+            if(sides.length>=2) return sides.some(one);
+          }
+          return one(cand);
+        }
+        function isDistinct(c){
+          var d=(c.mechanical||{}).distinctive;
+          if(d===false||d==="false"||d===0||d==="0") return false;
+          if(d===true||d==="true"||d===1||d==="1") return true;
+          return distinctiveGuess(String(c.candidate||""), String(c.form||"command"));
+        }
+        function isFleetRec(c){return truthy((c.mechanical||{}).fleet_recurrence);}
+        function isSpread(c){return truthy((c.mechanical||{}).day_spread);}
+        var named=wc.filter(function(c){
+          var raw=String(c.disposition||"").trim();
+          if(raw==="awaiting-confirmation"||raw==="confirmed") return true;
+          return raw==="declined" && String(c.name||"").trim();
         });
-        if(blocked.length>BLOCKED_CAP)wbits+='<span class="vtx" style="opacity:.6">… +'+(blocked.length-BLOCKED_CAP)+' more blocked — see the consult (cm workflows . --registrar)</span>';
-        if(!wc.length)wbits='<span class="vtx">0 fleet-candidates — the honest cold state (never invented breadth)</span>';
-        if(WP.verdict)wbits+='<span class="vtx" style="opacity:.75"> · '+esc(String(WP.verdict))+'</span>';
-        el("reg-verdict").innerHTML=wbits;
+        var nAwait=named.filter(function(c){return String(c.disposition)==="awaiting-confirmation";}).length;
+        var nConf=named.filter(function(c){return String(c.disposition)==="confirmed";}).length;
+        var nFleet=num(WP.n_fleet, wc.filter(function(c){return isFleetRec(c)&&isSpread(c)&&isDistinct(c);}).length);
+        var nSpread=num(WP.n_day_spread, wc.filter(function(c){return isFleetRec(c)&&!isSpread(c)&&isDistinct(c);}).length);
+        el("reg-counts").textContent=nConf?(nConf+" placed"):(nAwait?(nAwait+" proposed"):(nFleet?"none proposed":"none this pass"));
+        var vd=String(WP.verdict||"");
+        if(vd) el("reg-verdict").innerHTML=verdictHtml(vd,"declined|confirmed|awaiting|nothing|blocked");
+        else if(nFleet && !named.length) el("reg-verdict").innerHTML='<span class="vtx" style="color:var(--faint)">'+nFleet+" distinctive command"+(nFleet!==1?"s":"")+" crossed projects; none proposed as an artifact.</span>";
+        else if(!named.length) el("reg-verdict").innerHTML='<span class="vtx" style="color:var(--faint)">Nothing distinctive showed up on more than one project this pass.</span>';
+        else el("reg-verdict").innerHTML="";
+        function regStatus(c){
+          var raw=String(c.disposition||"").trim();
+          if(raw==="confirmed") return {tag:"confirmed", cls:"ok"};
+          if(raw==="declined") return {tag:"declined", cls:""};
+          if(raw==="awaiting-confirmation") return {tag:"awaiting", cls:"warn"};
+          return {tag:raw||"unjudged", cls:""};
+        }
+        function andList(arr){
+          arr=arr.filter(Boolean);
+          if(!arr.length) return "";
+          if(arr.length===1) return arr[0];
+          if(arr.length===2) return arr[0]+" and "+arr[1];
+          if(arr.length>4) return arr.length+" projects";
+          return arr.slice(0,-1).join(", ")+" and "+arr[arr.length-1];
+        }
+        function cardHtml(c){
+          var ev=(c.evidence&&typeof c.evidence==="object")?c.evidence:{};
+          var st=regStatus(c);
+          var nm=String(c.name||c.candidate||"?");
+          var nodes=Array.isArray(ev.nodes)?ev.nodes.map(prettyNode):[];
+          var seen=nodes.length?(nodes.length>4?("on "+nodes.length+" projects"):("on "+andList(nodes))):"";
+          var stats=[];
+          if(seen) stats.push(seen);
+          if(ev.d!=null && isFinite(num(ev.d))) stats.push(num(ev.d)+"d");
+          if(ev.n!=null && isFinite(num(ev.n))) stats.push("×"+num(ev.n));
+          return '<div class="reg-card"><div class="stamp"><span class="tag '+st.cls+'">'+esc(st.tag)+'</span></div>'
+            +'<div><div class="cmd">'+esc(nm)+'</div>'
+            +(stats.length?'<div class="ev">'+esc(stats.join(" · "))+'</div>':"")+'</div></div>';
+        }
+        var board=named.map(cardHtml).join("");
+        if(nSpread) board+='<div class="reg-more">'+nSpread+" showed up on more than one project but only a single day each.</div>";
+        el("reg-board").innerHTML=board;
+        if(capN && nAwait){
+          capN.textContent="Proposed during the dream — nothing is created until you confirm there.";
+          capN.style.display="";
+        }
       }else{
-        el("reg-counts").textContent="not consulted";
-        el("reg-verdict").innerHTML='<span class="vtx" style="color:var(--faint)">the registrar was not consulted this pass (Tier-2 fleet placement)</span>';
+        el("reg-counts").textContent="skipped";
+        el("reg-verdict").innerHTML='<span class="vtx" style="color:var(--faint)">Fleet placement wasn’t reviewed this pass.</span>';
+        el("reg-board").innerHTML="";
       }
       el("registrar-blk").style.display="";
     }
   })();
-
-  // ── v0.1.32/v0.1.72 diff-modal: THIS dream's per-file diffs (memory facts + MEMORY.md index + CLAUDE.md +
-  // repo docs — every audit_snapshot store); a changed fact's NAME is clickable in the ledger ──
-  var DREAMDIFFS=ALLDIFFS[diffKey((CUR&&CUR.marker)||{}, g(CUR,"session",""))]||{};
-  var STORE_PREFIXES=[["memory/","memory"],["claude_md/","claude_md"],["repo_doc/","repo doc"]];
-  function splitDiffPath(p){p=String(p);
-    for(var i=0;i<STORE_PREFIXES.length;i++){var pre=STORE_PREFIXES[i][0];
-      if(p.indexOf(pre)===0)return {rel:p.slice(pre.length), store:STORE_PREFIXES[i][1]};}
-    return {rel:p, store:""};}
-  function diffDisplayName(p){var sp=splitDiffPath(p);return sp.store==="memory"?sp.rel.replace(/\.md$/,""):sp.rel;}
-  function openDiff(p){
-    var d=DREAMDIFFS[p]; if(!d)return;
-    var sp=splitDiffPath(p);
-    el("dmodal-title").textContent=diffDisplayName(p)+(sp.store?"  ·  "+sp.store:"")+"  ·  "+(d.op||"modified");
-    if(d.size_capped){
-      el("dmodal-body").innerHTML='<div class="dl-more">diff not available — file too large to snapshot (this dream still recorded that it changed)</div>';
-      el("dmodal").style.display="flex"; return;
-    }
-    var html=(d.lines||[]).map(function(l){
-      var t=l.t, cls=t==="+"?"dl-plus":t==="-"?"dl-minus":t==="@"?"dl-at":"dl-ctx";
-      var pre=t==="+"?"+ ":t==="-"?"- ":t==="@"?"":"  ";
-      return '<div class="dl '+cls+'">'+esc(pre+(l.s==null?"":l.s))+'</div>';   // esc() = the load-bearing XSS guard
-    }).join("");
-    if(d.more>0)html+='<div class="dl-more">+ '+(d.more|0)+' more line'+(d.more!==1?"s":"")+' (capped)</div>';
-    el("dmodal-body").innerHTML=html||'<div class="dl-more">no textual diff</div>';
-    el("dmodal").style.display="flex";
-  }
-  function closeDiff(){el("dmodal").style.display="none";}
-  el("dmodal-x").addEventListener("click",closeDiff);
-  el("dmodal-bg").addEventListener("click",closeDiff);
 
   // ── ledger: the narrated entries; a changed-memory-fact's NAME links to its diff (ONE list, no separate section) ──
   (function(){
@@ -903,6 +1104,7 @@
   })();
 
   el("f-marker").textContent="marker → "+String(g(CUR,"marker.commit","—")).slice(0,12)+" @ "+String(g(CUR,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"");
+  } // paintDream
 
   // ── theme toggle · auto (follow system) → light → dark ──
   (function(){
@@ -947,7 +1149,7 @@
       fr.sort(function(a,b){var d=(a[st.key]>b[st.key]?1:a[st.key]<b[st.key]?-1:0)*st.dir; return d|| (b.i-a.i);});
       el("f-count").textContent=fr.length+(fr.length!==rows.length?" of "+rows.length:"")+" shown";
       el("arch-list").innerHTML=fr.map(function(x){
-        return '<a class="arch-row'+(x.i===ALL.length-1?" cur":"")+'" href="#sel='+x.i+'">'
+        return '<a class="arch-row'+(x.i===lastSel?" cur":"")+'" href="#sel='+x.i+'">'
           +'<span class="dt">'+esc(x.ts)+'</span><span class="oc">'+esc(x.oc)+(x.intg?' <span style="color:var(--crit)" title="procedure integrity: verification skipped on a substantial pass">⚠</span>':'')+'</span><span class="rg">'+esc(x.rg)+'</span>'
           +'<span class="ix">'+fmt(x.ix)+'</span><span class="en">'+x.en+'</span><span class="hh">'+esc(x.hh)+'</span></a>';
       }).join("") || '<div class="cap" style="padding:14px 0">no dreams match this filter</div>';
@@ -964,10 +1166,26 @@
       +'<span><a class="'+(prev<0?"off":"")+'" href="#sel='+Math.max(0,prev)+'">‹ prev</a> &nbsp; <a class="'+(next>=n?"off":"")+'" href="#sel='+Math.min(n-1,next)+'">next ›</a></span>';
   }
 
-  // route the view, wire navigation (reload-with-param: every link is a fresh load on this one render path)
-  if(VIEW==="archive"){ el("app").style.display="none"; el("archive").style.display=""; showArchive(); }
-  else { showDreamNav(); }
-  window.addEventListener("hashchange", function(){ location.reload(); });
+  // route the view without a full reload (hashchange used to location.reload and flash a blank page)
+  var _routed=false;
+  function route(){
+    selectFromHash();
+    if(el("dmodal")) el("dmodal").style.display="none";   // a mid-modal hashchange must not leave the overlay stuck
+    if(VIEW==="archive"){
+      el("app").style.display="none"; el("archive").style.display="";
+      if(_routed) el("archive").style.visibility="visible";
+      showArchive();
+    } else {
+      el("archive").style.display="none"; el("app").style.display="";
+      if(_routed) el("app").style.visibility="visible";
+      showDreamNav();
+      paintDream();
+    }
+    if(_routed) try{window.scrollTo(0,0);}catch(e){}     // hash-route used to reload, which always landed at top
+    _routed=true;
+  }
+  route();
+  window.addEventListener("hashchange", route);
   // keyboard nav (dream view): ← → step dreams · Esc → archive (ignored while typing in a filter control)
   document.addEventListener("keydown", function(e){
     if(e.key==="Escape" && el("dmodal") && el("dmodal").style.display!=="none"){ closeDiff(); return; }   // modal closes first
@@ -985,11 +1203,20 @@
     if(!Array.isArray(COLL))COLL=[];   // tolerate a tampered non-array localStorage value (else .indexOf throws)
     [].slice.call(document.querySelectorAll("#app .blk>.shead")).forEach(function(h){
       var key=((h.querySelector("h3")||{}).textContent||"").trim();
-      if(COLL.indexOf(key)>=0) h.parentNode.classList.add("collapsed");
-      h.addEventListener("click",function(){
-        var on=h.parentNode.classList.toggle("collapsed"), j=COLL.indexOf(key);
-        if(on && j<0) COLL.push(key); else if(!on && j>=0) COLL.splice(j,1);
+      var on=COLL.indexOf(key)>=0;
+      if(on) h.parentNode.classList.add("collapsed");
+      h.setAttribute("tabindex","0");
+      h.setAttribute("role","button");
+      h.setAttribute("aria-expanded", on?"false":"true");
+      function toggle(){
+        var now=h.parentNode.classList.toggle("collapsed"), j=COLL.indexOf(key);
+        if(now && j<0) COLL.push(key); else if(!now && j>=0) COLL.splice(j,1);
+        h.setAttribute("aria-expanded", now?"false":"true");
         try{localStorage.setItem("cm-collapsed",JSON.stringify(COLL));}catch(e){}
+      }
+      h.addEventListener("click",toggle);
+      h.addEventListener("keydown",function(e){
+        if(e.key==="Enter"||e.key===" "){e.preventDefault();toggle();}
       });
     });
   })();

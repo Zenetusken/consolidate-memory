@@ -1,6 +1,6 @@
 # Fleet workflows — the `--utility` twin over the W-A distill rows (W-B)
 
-**Status:** shipped (this PR). **Scope:** `sync_global.py --workflows [--json]` (+ `cm workflows`,
+**Status:** shipped (v0.1.83; fleet `d` = min of per-node day-spreads as of v0.1.90). **Scope:** `sync_global.py --workflows [--json]` (+ `cm workflows`,
 + a SKILL Phase-5 distill-gate sub-step) and `memory_status.distill_history` (the `usage_history`
 twin). The sixth increment of the audit's enhancement program — W-B of the W-A/W-B/W-C ladder;
 consumes the rows W-A (`docs/distill-template-persistence.spec.md`, v0.1.82) persists.
@@ -25,7 +25,9 @@ re-proposed fresh from every project.
   `_network_nodes()` (holding a mirror is orthogonal to having dreamed; the documented-divergence
   discipline).
 - **The join**: exact template-string equality across nodes' latest rows. Per template/chain:
-  breadth (`nodes`), summed latest-window counts, max day-spread, per-node breakdown; `fleet` =
+  breadth (`nodes`), summed latest-window counts, fleet day-spread = **min of per-node d**
+  (a 3d+1d pair is 1d — both sides must have spread; max would let the loudest node infect
+  a one-shot partner), per-node breakdown; `fleet` =
   ≥2 distinct nodes — structural like `MIN_RECUR`, nothing fitted (no measured base rate exists
   to fit against). Under-joining from cross-node template drift is the safe direction (missed
   candidates, never fabricated ones); the **head-signature families** panel is the mitigation —

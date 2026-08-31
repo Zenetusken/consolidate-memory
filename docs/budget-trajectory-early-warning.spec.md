@@ -1,6 +1,7 @@
 # Budget-trajectory early-warning — the index slope, projected honestly, with staleness attached
 
-**Status:** proposed — not yet implemented; this spec is the gate for that PR. **Scope:**
+**Status:** shipped (v0.1.86; carry-forward 0-vs-missing parity + HTML ceiling
+projection aligned v0.1.90). **Scope:**
 `memory_status.py` only (new `_ls_slope` + `budget_trajectory_advisory` functions, one call site
 in `print_report`'s STORES section — a single invocation whose `(suffix, line)` output lands in
 one of two places, never both: `suffix` folds into the EXISTING index gauge line, `line` is a new

@@ -92,7 +92,8 @@ def main(argv: list) -> int:
         return 0
 
     _ui.set_modes(color=_ui.color_enabled(argv, sys.stdout), ascii="--ascii" in argv, width=_ui.resolve_width(argv, sys.stdout))
-    project = str(recent[0].get("project") or (store.parent.name if store else "?"))
+    _head = next((r for r in recent if isinstance(r, dict)), {})
+    project = str(_head.get("project") or (store.parent.name if store else "?"))
     print(_ui.ascii_translate(render(recent, len(hist), project)))
     return 0
 

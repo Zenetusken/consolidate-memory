@@ -172,6 +172,14 @@ class Demotion(TypedDict, total=False):
     verdict: str            # the one model sentence, filled in Phase 5
 
 
+class DeclineAnchor(TypedDict, total=False):
+    # v0.1.87/W-C D-2.5: a declined distill verdict's own row snapshot (top AND top_chains).
+    node: str
+    verdict: str
+    top: list
+    top_chains: list
+
+
 class WorkflowProposal(TypedDict, total=False):
     # v0.1.87 (W-C): ONE registrar candidate — the evidence + mechanical gates are SCRIPT-INJECTED
     # by sync_global.registrar_report --into (counts never hand-mirrored); `disposition` is the
@@ -179,7 +187,7 @@ class WorkflowProposal(TypedDict, total=False):
     candidate: str          # the normalized template / chain (" → "-joined)
     form: str               # "command" | "chain"
     evidence: dict[str, Any]   # {"nodes": [...], "d": int, "n": int} — script-truth
-    mechanical: dict[str, Any] # {"fleet_recurrence": bool, "day_spread": bool} — script-truth
+    mechanical: dict[str, Any] # {fleet_recurrence, day_spread, distinctive} — script-truth
     name: str               # the genericized artifact name (model-written; never the raw template)
     disposition: str        # model-written: awaiting-confirmation | confirmed | declined
 
@@ -188,8 +196,13 @@ class WorkflowProposals(TypedDict, total=False):
     # v0.1.87 (W-C): the registrar block — ABSENT = the registrar was not consulted this pass
     # (a visible decision, like the distill absent-vs-empty honesty rule).
     candidates: list[WorkflowProposal]     # script-injected; the model edits disposition/name per row
-    decline_anchors: list[dict[str, Any]]  # script-injected D-2.5 anchors (declined verdicts + their rows)
+    decline_anchors: list[DeclineAnchor]   # script-injected D-2.5 anchors (declined verdicts + their rows)
     verdict: str                           # the one model sentence (a none verdict is still a verdict)
+    n_candidates: int                      # full join size (script-injected; candidates[] may be capped)
+    n_fleet: int                           # distinctive fleet-candidate count in the full join
+    n_blocked: int                         # blocked count in the full join (persist keeps a capped sample)
+    n_generic: int                         # blocked: generic-cli count (git/gh / bare interpreter)
+    n_day_spread: int                      # blocked: day-spread count (2+ nodes, some node's d=1)
 
 
 class ClaudeMdHierarchyFile(TypedDict, total=False):
@@ -382,6 +395,69 @@ _DISTILL_CAPS = (40, 20)
 # Used by validate_cycle_record's impossible-length backstop on distill.top/top_chains/used.
 _DISTILL_PERSIST_CAP = (12, 8)
 _DISTILL_USED_CAP = 12
+# v0.1.90: registrar --into persist cap on BLOCKED rows (fleet-candidates always kept).
+# Mirrored into sync_global.registrar_report + the HTML/ASCII BLOCKED_CAP=8 display; smoke-pinned.
+_REGISTRAR_BLOCKED_CAP = 8
+
+# v0.1.90: distinctive-template gate — ordinary git/gh and a bare interpreter --flag
+# (no script path) are not fleet workflows. Chains are distinctive iff ANY side is.
+# Renderers reuse this for legacy rows that predate mechanical.distinctive.
+_GENERIC_ALWAYS_HEADS = frozenset({"git", "gh"})
+_GENERIC_UNLESS_PATH_HEADS = frozenset({
+    "python", "python3", "pypy", "pypy3", "bash", "sh", "zsh", "node", "ruby", "perl",
+})
+_SCRIPT_EXT_RE = re.compile(r"\.(py|sh|bash|rb|js|mjs|ts|rs|go|rhai)$", re.I)
+_CHAIN_SPLIT_RE = re.compile(r"\s*→\s*")
+_WP_MODEL_DISPOSITIONS = ("awaiting-confirmation", "confirmed", "declined")
+_WP_ENGINE_DISPOSITIONS = (
+    "fleet-candidate", "blocked: generic-cli", "blocked: fleet-recurrence", "blocked: day-spread",
+)
+
+
+def _script_path_token(tok: str) -> bool:
+    if not tok or tok.startswith("-") or tok in (".", ".."):
+        return False
+    if "/" in tok or "\\" in tok:
+        return True
+    return bool(_SCRIPT_EXT_RE.search(tok))
+
+
+def _is_distinctive_template(candidate: str, form: str = "command") -> bool:
+    """True iff this normalized template/chain is proposable as a fleet artifact.
+
+    git/gh are never distinctive (ubiquitous CLI). python3/bash/… are distinctive
+    only with a relative script path (`tests/smoke.py`, not `--json` / `.`).
+    Any other head (mypy, pytest, ruff, cm, …) is distinctive. A chain is
+    distinctive if ANY side is — `git add → git commit` is not; a gate-chain is."""
+    cand = (candidate or "").strip()
+    if not cand:
+        return False
+    if form == "chain" or "→" in cand:
+        sides = [s.strip() for s in _CHAIN_SPLIT_RE.split(cand) if s.strip()]
+        if len(sides) >= 2:
+            return any(_is_distinctive_template(s, "command") for s in sides)
+    toks = cand.split()
+    head = toks[0].rsplit("/", 1)[-1]
+    if head in _GENERIC_ALWAYS_HEADS:
+        return False
+    if head in _GENERIC_UNLESS_PATH_HEADS:
+        return any(_script_path_token(t) for t in toks[1:])
+    return True
+
+
+def _proposal_decline_rows(c: Mapping[str, Any]) -> dict:
+    """Project one declined workflow_proposals candidate to a D-2.5 {top, top_chains} snapshot."""
+    raw_ev = c.get("evidence")
+    ev: dict[str, Any] = raw_ev if isinstance(raw_ev, dict) else {}
+    n = ev.get("n") if isinstance(ev.get("n"), int) and not isinstance(ev.get("n"), bool) else 0
+    d = ev.get("d") if isinstance(ev.get("d"), int) and not isinstance(ev.get("d"), bool) else 0
+    cand = str(c.get("candidate") or "")
+    form = str(c.get("form") or "command")
+    if form == "chain" or "→" in cand:
+        parts = [p.strip() for p in _CHAIN_SPLIT_RE.split(cand) if p.strip()]
+        t: Any = parts if len(parts) >= 2 else cand
+        return {"top": [], "top_chains": [{"t": t, "n": n, "d": d}]}
+    return {"top": [{"t": cand, "n": n, "d": d}], "top_chains": []}
 
 # v0.1.63 (Phase A): mirrors extract_signals._USAGE_FACT_CAP (the --recalls per_fact emission cap;
 # smoke-pinned so the mirror cannot drift) — validate_cycle_record's impossible-count backstop for
@@ -1303,48 +1379,76 @@ def distill_history(auto_mem: Path) -> dict:
     """v0.1.83 (W-B, docs/fleet-workflows.spec.md): aggregate the cycle log's `distill` blocks —
     the usage_history TWIN (same iter_cycle_log reader, same tail cap, same guarded-skip posture) →
     {"latest": <the newest distill block CARRYING evidence rows (a `top` list — v0.1.82+)> | None,
-     "verdicts": [{"session", "verdict", "proposed", "created"}, …]  (full lineage, file order)}.
+     "verdicts": [{"session", "verdict", "proposed", "created"}, …]  (full lineage, file order),
+     "proposal_declines": [declined workflow_proposals rows with a D-2.5 snapshot]}.
 
     LATEST-record-only for the evidence rows, by design (the W-A consumer trap, recorded when the
     rows shipped): consecutive dreams scan OVERLAPPING ~30-day windows, so SUMMING a node's rows
     across records double-counts; the block's persisted `window` string proves what was aggregated.
     The verdict lineage keeps EVERY record (dispositions don't overlap — they accumulate), which is
-    what makes the SKILL's materially-new-evidence decline rule checkable fleet-wide. READ-ONLY."""
+    what makes the SKILL's materially-new-evidence decline rule checkable fleet-wide. READ-ONLY.
+
+    Decline-anchors (v0.1.87/D-2.5, v0.1.90 production channel): distill `proposed … declined`
+    still attaches the same record's top/top_chains. Live fleet declines are written on
+    `workflow_proposals.candidates[].disposition == declined` (distill verdicts are `nothing:`),
+    so those rows ALSO attach — distinctive templates only (generic git/python is not a
+    workflow and must not pollute the anchor set). `nothing:` does not attach (it names a
+    local coverage miss, not a fleet decline)."""
     latest: "dict | None" = None
     verdicts: list = []
+    proposal_declines: list = []
+    seen_pd: set = set()
     for rec in iter_cycle_log(auto_mem / ".consolidation-log.jsonl", tail=_LOG_TAIL_CAP):
         if not isinstance(rec, dict):
             continue
+        session = str(rec.get("session", "") or "")
         d = rec.get("distill")
-        if not isinstance(d, dict):
+        if isinstance(d, dict):
+            if d.get("verdict") or d.get("proposed") or d.get("created"):
+                entry: "dict[str, Any]" = {
+                    "session": session,
+                    "verdict": str(d.get("verdict", "") or ""),
+                    "proposed": [str(x) for x in d.get("proposed", []) if isinstance(x, str)],
+                    "created": [str(x) for x in d.get("created", []) if isinstance(x, str)]}
+                # Canonical `proposed <X> — declined`. Reject `awaiting confirmation` and
+                # `previously declined, now confirmed` (even when "proposed" is restored).
+                _vd = str(d.get("verdict", "") or "")
+                _vl = _vd.lower()
+                _is_declined = (bool(re.search(r"proposed\b.+\bdeclined\b", _vl))
+                                and not re.search(r"\b(confirmed|awaiting)\b", _vl))
+                if _is_declined and (isinstance(d.get("top"), list) or isinstance(d.get("top_chains"), list)):
+                    entry["decline_evidence"] = {
+                        "top": [{"t": r.get("t"), "n": r.get("n"), "d": r.get("d")}
+                                for r in d.get("top", []) if isinstance(r, dict)],
+                        "top_chains": [{"t": r.get("t"), "n": r.get("n"), "d": r.get("d")}
+                                       for r in d.get("top_chains", []) if isinstance(r, dict)]}
+                verdicts.append(entry)
+            if isinstance(d.get("top"), list):
+                latest = d           # file order — the last row-carrying block wins
+        wp = rec.get("workflow_proposals")
+        if not isinstance(wp, dict):
             continue
-        if d.get("verdict") or d.get("proposed") or d.get("created"):
-            entry: "dict[str, Any]" = {
-                "session": str(rec.get("session", "") or ""),
-                "verdict": str(d.get("verdict", "") or ""),
-                "proposed": [str(x) for x in d.get("proposed", []) if isinstance(x, str)],
-                "created": [str(x) for x in d.get("created", []) if isinstance(x, str)]}
-            # v0.1.87/W-C1 (D-2.5): the DECLINE-ANCHOR — a declined verdict carries the rows it
-            # declined ON (the same record's top/top_chains snapshot). The shipped lineage alone
-            # can't compute "more nodes/episodes than when declined"; the anchor makes the
-            # materially-new-evidence comparison computable. Attached ONLY to the CANONICAL
-            # "proposed … — declined" phrasing (a substring match false-positives on "previously
-            # declined, now confirmed" — polish-swarm catch); non-declined verdicts stay lean.
-            # Rows are PROJECTED to {t,n,d} / {t:[…],n,d} at attach time — a raw-dict passthrough
-            # would re-open the sample-privacy seam the persist projection exists to close
-            # (polish-swarm catch) and shares references with the record.
-            _vd = str(d.get("verdict", "") or "")
-            _is_declined = "proposed" in _vd.lower() and "declined" in _vd.lower()
-            if _is_declined and isinstance(d.get("top"), list):
-                entry["decline_evidence"] = {
-                    "top": [{"t": r.get("t"), "n": r.get("n"), "d": r.get("d")}
-                            for r in d.get("top", []) if isinstance(r, dict)],
-                    "top_chains": [{"t": r.get("t"), "n": r.get("n"), "d": r.get("d")}
-                                   for r in d.get("top_chains", []) if isinstance(r, dict)]}
-            verdicts.append(entry)
-        if isinstance(d.get("top"), list):
-            latest = d           # file order — the last row-carrying block wins
-    return {"latest": latest, "verdicts": verdicts}
+        wp_verdict = str(wp.get("verdict") or "")
+        for c in wp.get("candidates") or []:
+            if not isinstance(c, dict):
+                continue
+            if str(c.get("disposition") or "") != "declined":
+                continue
+            cand = str(c.get("candidate") or "")
+            form = str(c.get("form") or "command")
+            if not cand or not _is_distinctive_template(cand, form):
+                continue
+            key = (session, form, cand)
+            if key in seen_pd:
+                continue
+            seen_pd.add(key)
+            proposal_declines.append({
+                "session": session,
+                "verdict": wp_verdict if cand in wp_verdict else f"declined {cand}",
+                "candidate": cand,
+                "form": form,
+                "decline_evidence": _proposal_decline_rows(c)})
+    return {"latest": latest, "verdicts": verdicts, "proposal_declines": proposal_declines}
 
 
 def usage_history(auto_mem: Path) -> dict:
@@ -2227,10 +2331,11 @@ def dream_timing_advisory(commits: int, marker_ts: str, has_marker: bool) -> str
 
 
 def _ls_slope(ys: list[float]) -> float:
-    """Least-squares slope over a short series — a direct port of the dashboard's lsSlope
-    (dashboard.template.html:433-434), degenerate-case-identical so the Python advisory and the
-    HTML trajectory chart can never disagree on a drift. Returns 0.0 for k<2 or a zero
-    denominator (a flat/constant series)."""
+    """Least-squares slope over a short series — a direct port of the dashboard's lsSlope,
+    degenerate-case-identical so the Python advisory and the HTML trajectory chart agree on
+    a fitted drift (k<2 → 0; a constant series → 0 via a zero numerator, not a zero
+    denominator). The two-regime TARGET (soft 1500 vs hard 3840) is a separate choice
+    each surface makes; this function is only the slope."""
     k = len(ys)
     if k < 2:
         return 0.0
@@ -2266,14 +2371,16 @@ def budget_trajectory_advisory(auto_mem: Path, cur_tokens: int, marker_ts: str) 
             idx = {}
         raw = idx.get("after_tokens")
         if raw is None:
-            raw = idx.get("before_tokens", 0)
+            raw = idx.get("before_tokens")
+        if raw is None:
+            s.append(carry)          # missing key → carry; a genuine 0 is data
+            continue
         try:
             v = float(raw)
         except (TypeError, ValueError):
-            v = 0.0
-        if v <= 0:
-            v = carry
-        carry = v
+            s.append(carry)
+            continue
+        carry = v                    # even 0 updates the carry (HTML carryFwd parity)
         s.append(v)
 
     n = len(s)
@@ -2293,7 +2400,12 @@ def budget_trajectory_advisory(auto_mem: Path, cur_tokens: int, marker_ts: str) 
             dt = None
         if dt is not None:
             days = (datetime.now(timezone.utc) - dt).total_seconds() / 86400.0
-            age = "<1d ago" if days < 1 else f"~{round(days)}d ago"
+            if days < 0:
+                age = None           # future/clock-skew stamp: omit, don't claim "<1d ago"
+            elif days < 1:
+                age = "<1d ago"
+            else:
+                age = f"~{round(days)}d ago"
 
     over_target = cur_tokens > INDEX_TOKEN_BUDGET
     if over_target:
@@ -2519,6 +2631,17 @@ def validate_cycle_record(record: object) -> list[str]:
         for lk in ("candidates", "decline_anchors"):
             if lk in wprops and not isinstance(wprops[lk], list):
                 warnings.append(f"workflow_proposals.{lk} is not a list")
+            elif lk in wprops and any(not isinstance(x, dict) for x in wprops[lk]):
+                warnings.append(f"workflow_proposals.{lk} contains a non-dict item")
+        for i, c in enumerate(wprops.get("candidates") or []):
+            if not isinstance(c, dict):
+                continue
+            disp = c.get("disposition")
+            if disp in (None, ""):
+                continue
+            if disp not in _WP_MODEL_DISPOSITIONS and disp not in _WP_ENGINE_DISPOSITIONS:
+                warnings.append(
+                    f"workflow_proposals.candidates[{i}].disposition is not a known value")
 
     # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
     # already warned via the top-level tuple above ("health is not a dict"); here we just
