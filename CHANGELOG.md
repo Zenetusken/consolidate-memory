@@ -5,32 +5,89 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
-## [Unreleased]
+## [0.2.0] — 2026-08-31
 
-### Fixed — PR #116 review (managed settings, catalog caps, control plane honesty)
+Cross-project hardening: StoreContext, domain isolation, a SQLite control plane,
+and a sole canonical writer. This is the first **minor** bump since v0.1.1 —
+install-breaking on purpose (pre-1.0). Public 1.0 stays HOLD.
 
-- **Managed settings win.** StoreContext merges user → project → local → `--settings`,
-  then `managed-settings.json` last (Claude's stack). A policy `autoMemoryDirectory`
+### Added — StoreContext, domains, control plane, canonical writer (PR #116)
+
+- **`StoreContext` is the only native/canonical path constructor** (ADR 002).
+  Profiles, worktrees, nested git dirs, `CLAUDE_CONFIG_DIR`,
+  `CLAUDE_CODE_PROJECT_DIR_NAME`, `autoMemoryDirectory`, and disabled auto-memory
+  resolve in one place. `cm doctor` prints the resolved native, canonical,
+  control-plane, profile, domain, and project identities (twice-run equal).
+- **Trust domains.** Canonical facts live under
+  `<config>/consolidate-memory/domains/<domain>/facts`. `user-global` is
+  domain-global, not installation-global. ADRs 001–007 freeze the contract.
+- **Operator enrollment is the grant.** `cm project enroll --domain NAME` /
+  `show` / `unenroll` maps a stable project id to a validated domain. Repository
+  `.claude/settings.json` may *request* a domain; it never grants one. Unknown /
+  unenrolled projects receive zero domain-tagged facts (untagged legacy still
+  dual-reads).
+- **SQLite control plane** under plugin-data: project registry, holders,
+  tombstones, conflicts, and a durable **journal** (`journal.sqlite` separate from
+  `control.sqlite`). Cross-store writes take domain then project locks, prepare
+  temps, verify, publish, then COMMIT the registry.
+- **Three-way mirrors** classify refresh / stop-local / restamp / conflict /
+  quarantine and never silently overwrite a local edit.
+- **`cm canonical upsert` is the sole canonical writer** (schema, domain policy,
+  links, generated catalog, tombstones). `--promote` delegates to it.
+- **Exact native 200-line / 25KB admission** on a project's `MEMORY.md` (not the
+  generated global catalog).
+- **Maintainer CLI:** `cm doctor` / `conflicts` / `resolve` / `repair-mirror` /
+  `canonical` / `migrate` / `data` / `forget` / `project`. Operational logs live
+  in plugin-data; the native plane stays facts-only.
+- **Empty-set judgment** (ADR 001): an empty scripted set emits the one-liner
+  verdict and does not open a content walk; scans still run.
+
+### Changed — identity, admission, legacy store
+
+- **Project id omits domain** so enroll does not mint a new id. Domain is a
+  registry attribute.
+- **Facts are `(domain_id, stem)`**, not a global bare stem. Same-name facts in
+  two domains stay distinct and pull only into the matching domain.
+- **Legacy `~/.claude/memory` is a read-only migration source**, not a second live
+  canonical namespace. Upsert / promote write the domain dir only.
+- **`--pull` enumerates `iter_admissible_facts(ctx)`** and rescans the canonical
+  body for policy (including nested `domain` / `sensitivity`).
+- **`confidential` never replicates except same-domain.** No dual-read exception.
+  Untagged confidential is denied.
+
+### Fixed — PR #116 review + remaining P0 blockers
+
+- **Managed settings win.** StoreContext merges user → project → local →
+  `--settings`, then `managed-settings.json` last. A policy `autoMemoryDirectory`
   or `autoMemoryEnabled: false` is no longer overwritten by a lower file.
-- **Native 200-line/25KB caps apply only to a project's `MEMORY.md`.** The generated
-  global catalog is not a session-start file and no longer refuses the ~167th
-  `cm canonical upsert` / `--promote`.
-- **`--list` is actually read-only.** It does not mint `control.sqlite`. Conflicts
-  are recorded only on `--pull`, upserted by `(stem, project)` while unresolved.
-  `cm resolve` / `repair-mirror` mark the queue row resolved; keep-canonical is
-  journaled. `--promote-local` strips mirror markup before upsert.
+- **`--list` is actually read-only.** It does not mint `control.sqlite`.
 - **Migrate `--apply` stamps `domain: legacy-unassigned`**, journals the copy, and
-  lets domain dirs win on stem so untagged legacy cannot shadow the copies after
-  `enforced`. `--plan` does not mint the DB.
-- **Phase 0 / beacon / compact follow StoreContext.** `global_store_facts` counts
-  `global_facts()` (config root + domain dirs). The beacon and `--staleness` skip
-  facts `--pull` would deny. Compact/purge key `ops/<slot>/` (and the harvest
-  ledger), not SHA `project_id` / never-written `events.jsonl`.
-- **Locks unwind on acquire failure.** `recover_pending` abandons a non-replayable
-  op with no leftover temps instead of marking it complete. `repair-mirror`
-  `assert_writable`s.
+  lets domain dirs win on stem. `--plan` does not mint the DB.
+- **Phase 0 / beacon / compact follow StoreContext.** Compact/purge key
+  `ops/<slot>/`, not SHA `project_id`.
+- **Identifiers cannot escape managed roots.** `validate_domain_id` /
+  `validate_fact_stem` / `validate_project_id` / `safe_child` on enroll, resolve,
+  repair-mirror, forget, and purge. `../` and absolute ids are refused.
+- **Journal is crash-consistent.** Locks then recover; origin profile/domain/project
+  stored on every op; dest **sha256** is the success predicate (existence is not);
+  registry COMMIT only after dest hashes publish; source-verify failure rolls back
+  the registry. Recover of a domain-A op from a domain-B command does not complete
+  against B and does not abandon A's pending row. Missing POSIX flock refuses
+  mutation instead of locking as a no-op.
+- **Promote / evict do not delete origin unless the exact future native index
+  (line AND byte) is admitted.** Admission-refused upsert/evict leaves the origin
+  file.
+- **Forget tombstones omit the previous body** (`deleted_revision_hash` only).
+  Generated catalogs skip `status: tombstoned`.
+- **Locks unwind on acquire failure.** `repair-mirror` `assert_writable`s.
 
-Public 1.0 stays HOLD. Plugin version stays `0.1.91`.
+Public 1.0 stays HOLD. Cycle-record TypedDicts and the SKILL schema JSON block are
+unchanged. Schema-v2 codec, nested `applies`, migrate review/assign, capability
+registry, workflow-sketch consumption, real export, and a Windows flock backend
+remain deferred (fail-closed flock is enough).
+
+Existing 0.1.x cycle records still render. Domain isolation, enrollment, and the
+legacy store becoming read-only are the install break ⇒ **minor**.
 
 ## [0.1.91] — 2026-08-30
 

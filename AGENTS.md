@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.1.91** (2026-08-31, post PR #116). `CLAUDE.md` holds the
+verified against the live tree at **v0.2.0** (2026-08-31). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -16,7 +16,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.1.91 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, domain-scoped canonicals (legacy `~/.claude/memory` dual-read until migrate), SQLite control plane under plugin-data, tiered context-budget accounting |
+| `consolidate-memory` | 0.2.0 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal, sole canonical writer, tiered context-budget accounting |
 | `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -58,7 +58,7 @@ a new session; `plugin.json`/`marketplace.json` edits need
 `status` `seed` `extract` `distill` `sync` `pull` `gc` `promote` `tokens`
 `utility` `harvest` `staleness` `workflows` `calibration` `beacon` `network`
 `render` `report` `log` `doctor` `conflicts` `resolve` `repair-mirror`
-`canonical` `migrate` `data` `forget`. Native paths come from `cm doctor`
+`canonical` `migrate` `data` `forget` `project`. Native paths come from `cm doctor`
 (`StoreContext`); never hand-build `~/.claude/projects/<slug>/memory`.
 
 ## Layout
@@ -74,11 +74,12 @@ plugins/consolidate-memory/       the main plugin (= ${CLAUDE_PLUGIN_ROOT})
     references/harness-map.md     paths, fact schema, verification recipes, cross-project model
   hooks/hooks.json                SessionStart hook (matchers startup+resume, 2s timeout) → session_beacon.py
   scripts/                        stdlib-only runtime: store_context.py (sole native/canonical path
-                                  constructor), domain_policy.py, control_plane.py (SQLite + locks +
+                                  constructor), identifiers.py (contained domain/stem/project ids),
+                                  domain_policy.py, control_plane.py (SQLite + locks +
                                   journal), canonical_ingress.py (sole canonical writer),
                                   mirror_conflict.py, index_admission.py, capabilities.py,
                                   hook_sketches.py, retention.py, cm_ops.py (doctor/conflicts/resolve/
-                                  migrate/data), memory_status.py (contract seed + audit),
+                                  migrate/data/project enroll), memory_status.py (contract seed + audit),
                                   extract_signals.py, sync_global.py, distill_scan.py,
                                   render_dashboard.py, render_html.py, render_log.py, _ui.py,
                                   session_beacon.py, dashboard.template.html
@@ -93,7 +94,7 @@ plugins/dream-beta-tester/        QA companion plugin
   docs/                           SPEC.md (design-of-record) · STATUS.md (validation matrix + defect log)
                                   · CONTRACT.md (reports/latest.json schema + self-heal contract)
 cm                                 dev CLI over the scripts (doctor/conflicts/canonical/migrate/data
-                                  included; symlink-safe)
+                                  /project enroll included; symlink-safe)
 docs/adr/                         001 empty-set judgment · 002 StoreContext · 003 domain isolation ·
                                   004 stable identity · 005 three-way mirrors · 006 control plane ·
                                   007 schema v2 / migrate

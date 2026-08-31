@@ -18,7 +18,15 @@ def _now_epoch() -> float:
 
 
 def operational_dir(plugin_data: Path, project_id: str) -> Path:
-    return plugin_data / "ops" / project_id
+    from identifiers import IdentifierRefused, safe_child, validate_project_id
+    try:
+        pid = validate_project_id(project_id)
+    except IdentifierRefused:
+        # slot-keyed logs use the Claude projects-slot, not p_<sha>
+        pid = project_id
+        if not pid or "/" in pid or "\\" in pid or pid in (".", "..") or "\x00" in pid:
+            raise
+    return safe_child(plugin_data / "ops", pid)
 
 
 CYCLE_LOG_NAME = ".consolidation-log.jsonl"
@@ -323,6 +331,8 @@ def purge_project(plugin_data: Path, project_id: str,
 
 
 def purge_domain(plugin_data: Path, domain_id: str, conn) -> dict:
+    from identifiers import validate_domain_id
+    domain_id = validate_domain_id(domain_id)
     rows = conn.execute(
         "SELECT project_id, native_memory_dir FROM projects WHERE domain_id=?",
         (domain_id,),

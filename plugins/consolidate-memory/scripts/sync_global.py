@@ -569,6 +569,8 @@ def _canonical_dirs() -> list:
 
 
 def global_facts() -> list[tuple[str, dict, str]]:
+    """Enumerate canonicals keyed by (domain, stem) — never a global stem namespace."""
+    from domain_policy import fact_domain
     facts: list[tuple[str, dict, str]] = []
     seen: set = set()
     for gdir in _canonical_dirs():
@@ -579,14 +581,67 @@ def global_facts() -> list[tuple[str, dict, str]]:
                 continue
             if not _safe_stem(f.stem):
                 continue
-            if f.stem in seen:
-                continue
             text = _safe_read_text(f)
             if text is None:
                 continue
-            seen.add(f.stem)
-            facts.append((f.stem, _frontmatter(text), text))
+            fm = _frontmatter(text)
+            if str(fm.get("status") or "") == "tombstoned":
+                continue
+            key = (fact_domain(fm) or "legacy", f.stem)
+            if key in seen:
+                continue
+            seen.add(key)
+            facts.append((f.stem, fm, text))
     return facts
+
+
+def iter_admissible_facts(ctx) -> list:
+    """Facts this StoreContext may pull. Domain-dir first; legacy is untagged dual-read only."""
+    from domain_policy import admit_cross_project, fact_domain
+    from memory_status import _looks_secret
+    mode = "dual-read"
+    try:
+        from control_plane import migration_mode_readonly
+        mode = migration_mode_readonly(ctx)
+    except Exception:
+        mode = "dual-read"
+    out: list = []
+    seen: set = set()
+
+    def _consider(path: Path, *, untagged_only: bool) -> None:
+        if path.name == "MEMORY.md" or _is_reserved_stem(path.stem) or not _safe_stem(path.stem):
+            return
+        text = _safe_read_text(path)
+        if text is None:
+            return
+        fm = _frontmatter(text)
+        if str(fm.get("status") or "") == "tombstoned":
+            return
+        if untagged_only and fact_domain(fm):
+            return
+        if _looks_secret(text):
+            return
+        adm = dict(fm)
+        adm["body"] = text
+        if not admit_cross_project(ctx.domain_id, adm, migration_mode=mode,
+                                   looks_secret=_looks_secret):
+            return
+        key = (fact_domain(fm) or "legacy", path.stem)
+        if key in seen:
+            return
+        seen.add(key)
+        out.append((path.stem, fm, text))
+
+    if ctx.domain_id and ctx.domain_id != "unknown":
+        ddir = ctx.canonical_domain_dir
+        if ddir.is_dir():
+            for f in sorted(ddir.glob("*.md")):
+                _consider(f, untagged_only=False)
+    g = global_store()
+    if g.is_dir():
+        for f in sorted(g.glob("*.md")):
+            _consider(f, untagged_only=True)
+    return out
 
 
 def _fact_stacks(fm: dict) -> set[str]:
@@ -844,6 +899,17 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         deletes: list = []
         pulled = refreshed = fat = 0
         recorded: list = []
+        planned = idx_text
+        if evict_stem:
+            planned = "\n".join(
+                ln for ln in planned.splitlines() if f"]({evict_stem}.md)" not in ln
+            ) + "\n"
+        for name, fm, status, path, want in jobs:
+            planned = apply_pointer(planned, _pointer_line(name, fm), name)
+        plan_adm = project_index(planned)
+        if evict_stem and not plan_adm["admitted"]:
+            raise WriteRefused(
+                "exact index admission refused; evict aborted: " + plan_adm["reason"])
         if evict_stem:
             idx_text = "\n".join(
                 ln for ln in idx_text.splitlines() if f"]({evict_stem}.md)" not in ln
@@ -888,20 +954,18 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         for n in in_sync_names:
             if n not in hold_set:
                 hold_set.append(n)
-        token = holder_token or ctx.display_name
+        holders = []
         for name in hold_set:
-            cp = global_store() / f"{name}.md"
-            ctext = temps.get(str(cp)) or _safe_read_text(cp)
+            dpath = ctx.canonical_domain_dir / f"{name}.md"
+            ctext = _safe_read_text(dpath) or _safe_read_text(global_store() / f"{name}.md")
             if ctext is None:
                 continue
-            new_c = apply_provenance(ctext, token)
-            if new_c != ctext:
-                temps[str(cp)] = new_c
-                ctext = new_c
             rev = _sem_hold(ctext)
             fid = stable_fact_id(ctx.domain_id, name)
             record_holder(conn, fid, ctx.project_id, rev, rev, rev)
-        return {"pulled": pulled, "refreshed": refreshed, "fat": fat, "deletes": deletes}
+            holders.append((fid, ctx.project_id, rev, rev, rev))
+        return {"pulled": pulled, "refreshed": refreshed, "fat": fat, "deletes": deletes,
+                "holders": holders}
 
     try:
         out = transact(ctx, "pull", {
@@ -1093,13 +1157,30 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             return True
         def parse_applies(fm):  # type: ignore
             return {}
-    facts = global_facts()
+    facts = iter_admissible_facts(ctx)
     _plocks: list = []
     if pull:
         try:
-            from control_plane import recover_pending
-            from control_plane import connect as _cpc, db_path as _cpd
-            recover_pending(_cpc(_cpd(ctx)), ctx=ctx)
+            from control_plane import (JOURNAL_ONLY_SQL, acquire_mutation_locks,
+                                       connect as _cpc, db_path as _cpd,
+                                       journal_db_path as _jdp, recover_pending,
+                                       release_locks)
+            _locks = acquire_mutation_locks(ctx, [ctx.project_id])
+            _jc = _reg = None
+            try:
+                _jc = _cpc(_jdp(ctx))
+                _jc.executescript(JOURNAL_ONLY_SQL)
+                _reg = _cpc(_cpd(ctx))
+                recover_pending(_jc, ctx=ctx, registry_conn=_reg)
+            finally:
+                if _jc is not None:
+                    _jc.close()
+                if _reg is not None:
+                    _reg.close()
+                release_locks(_locks)
+        except WriteRefused as e:
+            print(f"pull: {e}", file=sys.stderr)
+            return 2
         except Exception:
             pass
 
@@ -1974,7 +2055,9 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
               file=sys.stderr)
         return 1
 
-    gdir = global_store()
+    from store_context import resolve_store as _rs_prom
+    _sctx = _rs_prom(project_dir)
+    gdir = _sctx.canonical_domain_dir
     gdir.mkdir(parents=True, exist_ok=True)
     canon_path = gdir / f"{canon_name}.md"
     reconcile = canon_path.exists()  # an existing canonical is authoritative — never clobber it
@@ -2042,9 +2125,7 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
     # the existing canonical body; origin conversion + record_holder still journaled).
     # Origin mirror, index pointer, and rename deletes happen INSIDE that transact — never
     # dest.write_text / _record_provenance after locks drop.
-    from store_context import resolve_store as _rs
     from canonical_ingress import upsert as _upsert
-    _sctx = _rs(project_dir)
     origin_delete = None
     renamed = canon_name != local_fact
     if renamed:

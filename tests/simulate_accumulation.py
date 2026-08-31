@@ -187,6 +187,8 @@ def _assert_hermetic(home: Path) -> None:
     a real ~/.claude exists distinct from it (proving we're not aliasing it)."""
     g = (home / ".claude" / "memory").resolve()
     assert str(g).startswith(str(home.resolve())), f"GLOBAL would escape tmp: {g}"
+    d = (home / ".claude" / "consolidate-memory").resolve()
+    assert str(d).startswith(str(home.resolve())), f"domain root would escape tmp: {d}"
     real = (Path.home() / ".claude" / "memory").resolve()
     assert g != real, "tmp GLOBAL aliases the REAL ~/.claude/memory — refusing"
 
@@ -530,7 +532,12 @@ def run() -> None:
         promo = projects[1]                       # beta: a lancedb dep → detect_stacks includes 'rag'
         pstore = _store(home, promo)
         pstore.mkdir(parents=True, exist_ok=True)
-        g = home / ".claude" / "memory"
+        import store_context as _scK
+        envK = dict(os.environ, HOME=str(home))
+        for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+                  "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS", "CM_DOMAIN"):
+            envK.pop(k, None)
+        g = _scK.resolve_store(promo, environ=envK).canonical_domain_dir
 
         def _local_fact(stem: str, scope: str, stacks: str = "") -> None:
             """Write a project-AUTHORED local fact (NO global_ref) + its index pointer into beta's store."""
@@ -1228,7 +1235,7 @@ def run() -> None:
             except _cpY.CrashSimulated:
                 crashed = True
             after_crash = destY.exists() and "probe-y landed" in destY.read_text(encoding="utf-8")
-            connY = _cpY.connect(_cpY.db_path(ctxY))
+            connY = _cpY.connect_journal(ctxY)
             pending_y = _cpY.pending_ops(connY)
             rec_y1 = _cpY.recover_pending(connY)
             rec_y2 = _cpY.recover_pending(connY)
@@ -1286,6 +1293,14 @@ def run() -> None:
             fg = subprocess.run([sys.executable, str(OPS), "canonical", "forget", "aa-fact",
                                  "--project", str(pAA), "--json"],
                                 env=envAA, capture_output=True, text=True, check=False)
+            import store_context as _scAApre
+            import canonical_ingress as _ciAA
+            _ctxAApre = _scAApre.resolve_store(pAA, environ=envAA)
+            _tombAA = _ctxAApre.canonical_domain_dir / "aa-fact.md"
+            _tomb_txt = _tombAA.read_text(encoding="utf-8") if _tombAA.exists() else ""
+            no_previous_body = "<!-- previous" not in _tomb_txt and "The body." not in _tomb_txt
+            cat_aa = _ciAA.generate_catalog(_ctxAApre.canonical_domain_dir)
+            cat_omits_tomb = "aa-fact.md" not in cat_aa
             _write_global(homeAA, "aa-fact", "user-global")  # attempt resurrection via legacy write
             _pull(homeAA, pAA)
             storeAA = _store(homeAA, pAA)
@@ -1302,13 +1317,15 @@ def run() -> None:
                                  env=envAA, capture_output=True, text=True, check=False)
             inv = subprocess.run([sys.executable, str(OPS), "data", "inventory", "--project", str(pAA)],
                                  env=envAA, capture_output=True, text=True, check=False)
-            _verdict("AA", "canonical upsert is the writer; tombstone blocks resurrection on pull; migrate --plan is dry; inventory lists three planes",
+            _verdict("AA", "canonical upsert is the writer; tombstone blocks resurrection on pull; migrate --plan is dry; inventory lists three planes; forget omits previous body; catalog omits tombstones",
                      up.returncode == 0 and "ok" in up.stdout
                      and fg.returncode == 0 and tombed and not resurrected
+                     and no_previous_body and cat_omits_tomb
                      and mig.returncode == 0 and "dry" in mig.stdout
                      and inv.returncode == 0 and "control_plane" in inv.stdout and "canonical" in inv.stdout
                      and "native" in inv.stdout,
                      f"upsert rc={up.returncode} forget rc={fg.returncode} tomb={tombed} resurrected={resurrected} "
+                     f"no_prev={no_previous_body} cat_omit={cat_omits_tomb} "
                      f"migrate rc={mig.returncode} inv rc={inv.returncode} stdout_up={up.stdout[:120]!r} err={up.stderr[:200]!r}")
         finally:
             shutil.rmtree(homeAA, ignore_errors=True)
@@ -1421,7 +1438,7 @@ def run() -> None:
                 except _cpAE.CrashSimulated:
                     crashed = True
                 exists_crash = destAE.exists()
-                connAE = _cpAE.connect(_cpAE.db_path(ctxAE))
+                connAE = _cpAE.connect_journal(ctxAE)
                 rec = _cpAE.recover_pending(connAE, ctx=ctxAE)
                 connAE.close()
                 exists_rec = destAE.exists()
@@ -1467,7 +1484,8 @@ def run() -> None:
             if "(local-af.md)" not in headAF:
                 idxAF.write_text(headAF.rstrip() + "\n- [local-af](local-af.md) — local\n", encoding="utf-8")
             promoAF = _promote(homeAF, pAF, "local-af")
-            gAF = homeAF / ".claude" / "memory" / "local-af.md"
+            import store_context as _scAF
+            gAF = _scAF.resolve_store(pAF, environ=envAF2).canonical_domain_dir / "local-af.md"
             promo_ok = promoAF.returncode == 0 and gAF.exists()
             pull2 = subprocess.run([sys.executable, str(SYNC), "--pull", str(pAF)],
                                    env=envAF2, capture_output=True, text=True, check=False)
@@ -1478,6 +1496,125 @@ def run() -> None:
                      f"canon={gAF.exists()} pull2 rc={pull2.returncode} shared={recovered_shared}")
         finally:
             shutil.rmtree(homeAF, ignore_errors=True)
+
+        # ── Probe AG: P0 enrollment, two-domain stems, confidential, crash hashes ──
+        print("\n── Probe AG: P0 domain isolation + journal hashes + admission ──")
+        homeAG = Path(tempfile.mkdtemp(prefix="cm-ag-"))
+        OPS = ROOT / "plugins" / "consolidate-memory" / "scripts" / "cm_ops.py"
+        try:
+            _assert_hermetic(homeAG)
+            pA = _make_project(homeAG, "ag-work")
+            pB = _make_project(homeAG, "ag-personal")
+            pH = _make_project(homeAG, "ag-hostile")
+            (pH / ".claude").mkdir(exist_ok=True)
+            (pH / ".claude" / "settings.json").write_text(
+                json.dumps({"consolidateMemory": {"domain": "employer"}}), encoding="utf-8")
+            envAG = dict(os.environ, HOME=str(homeAG))
+            for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+                      "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS",
+                      "CM_DOMAIN", "CM_CRASH_AFTER"):
+                envAG.pop(k, None)
+            import store_context as _scAG
+            import canonical_ingress as _ciAG
+            import control_plane as _cpAG
+            import hashlib as _hlAG
+            ctxH = _scAG.resolve_store(pH, environ=envAG)
+            hostile_ok = ctxH.domain_id == "unknown" and ctxH.requested_domain == "employer"
+            en_bad = subprocess.run([sys.executable, str(OPS), "project", "enroll",
+                                     str(pH), "--domain", "../employer"],
+                                    env=envAG, capture_output=True, text=True, check=False)
+            en_a = subprocess.run([sys.executable, str(OPS), "project", "enroll",
+                                   str(pA), "--domain", "work"],
+                                  env=envAG, capture_output=True, text=True, check=False)
+            en_b = subprocess.run([sys.executable, str(OPS), "project", "enroll",
+                                   str(pB), "--domain", "personal"],
+                                  env=envAG, capture_output=True, text=True, check=False)
+            ctxA = _scAG.resolve_store(pA, environ=envAG)
+            ctxB = _scAG.resolve_store(pB, environ=envAG)
+            enrolled_ok = (en_bad.returncode != 0 and en_a.returncode == 0 and en_b.returncode == 0
+                           and ctxA.domain_id == "work" and ctxA.enrolled
+                           and ctxB.domain_id == "personal" and ctxB.enrolled)
+            trav = subprocess.run([sys.executable, str(OPS), "canonical", "forget",
+                                   "../x", "--project", str(pA)],
+                                  env=envAG, capture_output=True, text=True, check=False)
+            pur = subprocess.run([sys.executable, str(OPS), "data", "purge",
+                                  "--project-id", "../oops", "--project", str(pA)],
+                                 env=envAG, capture_output=True, text=True, check=False)
+            trav_ok = trav.returncode != 0 and pur.returncode != 0
+            wa = ("---\nname: deploy\ndescription: work deploy\ndomain: work\n"
+                  "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
+                  "---\n\nWORK-ONLY BODY\n")
+            pbod = ("---\nname: deploy\ndescription: personal deploy\ndomain: personal\n"
+                    "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
+                    "---\n\nPERSONAL-ONLY BODY\n")
+            ctxA.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
+            ctxB.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
+            (ctxA.canonical_domain_dir / "deploy.md").write_text(wa, encoding="utf-8")
+            (ctxB.canonical_domain_dir / "deploy.md").write_text(pbod, encoding="utf-8")
+            gleg = homeAG / ".claude" / "memory"
+            gleg.mkdir(parents=True, exist_ok=True)
+            (gleg / "conf.md").write_text(
+                "---\nname: conf\ndescription: untagged confidential\nsensitivity: confidential\n"
+                "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
+                "---\n\nCONFIDENTIAL LEGACY\n", encoding="utf-8")
+            subprocess.run([sys.executable, str(SYNC), "--pull", str(pA)],
+                           env=envAG, capture_output=True, text=True, check=False)
+            subprocess.run([sys.executable, str(SYNC), "--pull", str(pB)],
+                           env=envAG, capture_output=True, text=True, check=False)
+            sa = ctxA.native_memory_dir / "deploy.md"
+            sb = ctxB.native_memory_dir / "deploy.md"
+            stems_ok = (sa.is_file() and "WORK-ONLY BODY" in sa.read_text(encoding="utf-8")
+                        and sb.is_file() and "PERSONAL-ONLY BODY" in sb.read_text(encoding="utf-8")
+                        and "PERSONAL-ONLY BODY" not in sa.read_text(encoding="utf-8")
+                        and "WORK-ONLY BODY" not in sb.read_text(encoding="utf-8"))
+            conf_denied = (not (ctxA.native_memory_dir / "conf.md").exists()
+                           and not (ctxB.native_memory_dir / "conf.md").exists())
+            body_cp = ("---\nname: ag-crash\ndescription: crash publish\nscope: user-global\n"
+                       "---\n\npublish body\n")
+            up_cp = _ciAG.upsert(ctxA, "ag-crash", body_cp, crash_after="publish")
+            dest_cp = ctxA.canonical_domain_dir / "ag-crash.md"
+            jconn = _cpAG.connect_journal(ctxA)
+            pending = _cpAG.pending_ops(jconn)
+            want = ""
+            for op in pending:
+                pl = json.loads(op["payload"] or "{}")
+                for item in pl.get("publishes") or []:
+                    if str(item.get("dest") or "").endswith("ag-crash.md"):
+                        want = str(item.get("sha256") or "")
+            got = _hlAG.sha256(dest_cp.read_bytes()).hexdigest() if dest_cp.exists() else ""
+            rconn = _cpAG.connect(_cpAG.db_path(ctxA))
+            rec_b = _cpAG.recover_pending(jconn, ctx=ctxB, registry_conn=rconn)
+            dest_b = ctxB.canonical_domain_dir / "ag-crash.md"
+            still = _cpAG.pending_ops(jconn)
+            rec_a = _cpAG.recover_pending(jconn, ctx=ctxA, registry_conn=rconn)
+            n_fact = int(rconn.execute(
+                "SELECT count(*) AS n FROM facts WHERE stem='ag-crash'").fetchone()["n"])
+            rconn.close()
+            jconn.close()
+            crash_ok = (not up_cp.get("ok") and dest_cp.exists() and bool(want) and got == want
+                        and not dest_b.exists() and len(still) >= 1 and len(rec_b) == 0
+                        and len(rec_a) >= 1 and n_fact >= 1)
+            nat = ctxA.native_memory_dir
+            nat.mkdir(parents=True, exist_ok=True)
+            idx_lines = ["# Memory Index", ""] + [f"- [pad{i}](pad{i}.md) — x" for i in range(210)]
+            (nat / "MEMORY.md").write_text("\n".join(idx_lines) + "\n", encoding="utf-8")
+            orig = nat / "overcap.md"
+            orig.write_text("---\nname: overcap\ndescription: d\nmetadata:\n  node_type: memory\n"
+                            "  type: feedback\n  scope: user-global\n---\n\norigin body\n",
+                            encoding="utf-8")
+            up_ad = _ciAG.upsert(ctxA, "overcap", orig.read_text(encoding="utf-8"),
+                                 origin_local=orig)
+            admit_ok = (not up_ad.get("ok") and orig.exists()
+                        and "global_ref:" not in orig.read_text(encoding="utf-8")
+                        and "admission" in str(up_ad.get("error") or "").lower())
+            _verdict("AG", "P0: enroll-only domain grant; same-stem domains stay distinct; confidential denied dual-read; crash dest-hash+DB; B cannot complete A's op; admission-refused upsert leaves origin; traversal refused",
+                     hostile_ok and enrolled_ok and trav_ok and stems_ok and conf_denied
+                     and crash_ok and admit_ok,
+                     f"hostile={hostile_ok} enroll={enrolled_ok} trav={trav_ok} stems={stems_ok} "
+                     f"conf={conf_denied} crash={crash_ok} admit={admit_ok} "
+                     f"en_a={en_a.returncode} en_b={en_b.returncode} err={en_a.stderr[:120]!r}")
+        finally:
+            shutil.rmtree(homeAG, ignore_errors=True)
 
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")

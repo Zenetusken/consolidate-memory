@@ -1132,7 +1132,7 @@ def _frontmatter(text: str) -> dict:
             # through THIS one parser, docs/evidence-clock-stamps.spec.md).
             m2 = re.match(r"\s+(scope|stacks|type|projects|node_type|originSessionId"
                           r"|global_ref_since|global_ref_body|mirrored_at"
-                          r"|base_revision|canonical_revision):\s*(.+)", line)
+                          r"|base_revision|canonical_revision|domain|sensitivity):\s*(.+)", line)
             if m2:
                 out[m2.group(1)] = m2.group(2).strip()
         i += 1

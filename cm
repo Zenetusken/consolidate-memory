@@ -34,6 +34,7 @@ case "$cmd" in
   canonical) exec python3 "$S/cm_ops.py" canonical "$@" ;;
   migrate)  exec python3 "$S/cm_ops.py" migrate "$@" ;;
   data)     exec python3 "$S/cm_ops.py" data "$@" ;;
+  project)  exec python3 "$S/cm_ops.py" project "$@" ;;
   forget)   exec python3 "$S/cm_ops.py" canonical forget "$@" ;;
   help|*)
     cat <<EOF
@@ -83,6 +84,9 @@ cm — consolidate-memory
   cm migrate [--plan|--apply]
   cm data inventory|compact|export|purge|retention
   cm forget STEM       tombstone a canonical (does not resurrect on pull)
+  cm project enroll --domain NAME [DIR]
+  cm project show [DIR]
+  cm project unenroll [DIR]
 
 A full pass is best driven by the plugin itself. Dogfood it from this repo:
   claude plugin marketplace add ./

@@ -456,7 +456,12 @@ def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult
         # The canonical lands in the temp-home GLOBAL store; the LOCAL copy is converted to the
         # mirror. Clean requires BOTH sides verified — a silently-refused promote (guard ladder)
         # must fail this channel, never report a green honesty leg.
-        gstore = home / ".claude" / "memory"
+        _scripts = Path(pf.skill)
+        if str(_scripts) not in sys.path:
+            sys.path.insert(0, str(_scripts))
+        from store_context import resolve_store as _rs_oob
+        _ctx_oob = _rs_oob(Path(repo_arg), environ=env)
+        gstore = _ctx_oob.canonical_domain_dir
         canonical = gstore / f"{_MUTATE_FACT_NAME}.md"
         try:
             canon_text = canonical.read_text(encoding="utf-8")

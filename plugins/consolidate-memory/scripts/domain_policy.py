@@ -86,6 +86,9 @@ def admit_cross_project(project_domain: str, fm: dict, *,
         blob = str(fm.get("description") or "") + "\n" + str(fm.get("body") or "")
         if blob.strip() and looks_secret(blob):
             return False
+    # Confidential never rides a migration exception (P0-4).
+    if sens == "confidential":
+        return bool(fdom) and fdom == pdom and pdom != "unknown"
     auth = authorized_pairs or set()
 
     if pdom == "unknown":
@@ -98,7 +101,7 @@ def admit_cross_project(project_domain: str, fm: dict, *,
 
     if fdom != pdom:
         if (fdom, pdom) in auth:
-            return sens != "confidential" and sens != "secret"
+            return True
         return False
     return True
 

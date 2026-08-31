@@ -82,6 +82,7 @@ def _restamp_from_canonical(ctx: StoreContext, stem: str, canonical: str, native
 
 def cmd_resolve(args: argparse.Namespace) -> int:
     from canonical_ingress import demirror_text, insert_frontmatter_key
+    from identifiers import IdentifierRefused, safe_child, validate_fact_stem
     from store_context import assert_writable
     ctx = _ctx(args.project)
     try:
@@ -89,8 +90,14 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     except WriteRefused as e:
         print(f"resolve: {e}", file=sys.stderr)
         return 2
-    stem = args.fact
-    native = ctx.native_memory_dir / f"{stem}.md"
+    try:
+        stem = validate_fact_stem(args.fact)
+        native = safe_child(ctx.native_memory_dir, f"{stem}.md")
+        if args.fork_local:
+            validate_fact_stem(args.fork_local)
+    except IdentifierRefused as e:
+        print(f"resolve: {e}", file=sys.stderr)
+        return 2
     canon = _canonical_path(ctx, stem)
     if not native.exists():
         print(f"resolve: no local file {native}", file=sys.stderr)
@@ -109,7 +116,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         print(f"resolve: kept canonical for {stem}")
         return 0
     if args.fork_local:
-        dest = ctx.native_memory_dir / f"{args.fork_local}.md"
+        dest = safe_child(ctx.native_memory_dir, f"{args.fork_local}.md")
         if dest.exists():
             print(f"resolve: fork target {args.fork_local} exists", file=sys.stderr)
             return 1
@@ -143,6 +150,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
 
 
 def cmd_repair_mirror(args: argparse.Namespace) -> int:
+    from identifiers import IdentifierRefused, safe_child, validate_fact_stem
     from store_context import assert_writable
     ctx = _ctx(args.project)
     try:
@@ -150,8 +158,12 @@ def cmd_repair_mirror(args: argparse.Namespace) -> int:
     except WriteRefused as e:
         print(f"repair-mirror: {e}", file=sys.stderr)
         return 2
-    stem = args.fact
-    native = ctx.native_memory_dir / f"{stem}.md"
+    try:
+        stem = validate_fact_stem(args.fact)
+        native = safe_child(ctx.native_memory_dir, f"{stem}.md")
+    except IdentifierRefused as e:
+        print(f"repair-mirror: {e}", file=sys.stderr)
+        return 2
     canon = _canonical_path(ctx, stem)
     if not canon.exists():
         print("repair-mirror: no canonical", file=sys.stderr)
@@ -348,8 +360,15 @@ def cmd_data(args: argparse.Namespace) -> int:
         print(json.dumps(export_ops(ctx.plugin_data_dir, dest), indent=2))
         return 0
     if args.data_cmd == "purge":
+        from identifiers import IdentifierRefused, validate_domain_id, validate_project_id
         conn = connect(db_path(ctx))
         if args.purge_project:
+            try:
+                args.purge_project = validate_project_id(args.purge_project)
+            except IdentifierRefused as e:
+                print(f"data purge: {e}", file=sys.stderr)
+                conn.close()
+                return 2
             row = conn.execute(
                 "SELECT native_memory_dir FROM projects WHERE project_id=?",
                 (args.purge_project,),
@@ -358,6 +377,12 @@ def cmd_data(args: argparse.Namespace) -> int:
                 ctx.native_memory_dir if args.purge_project == ctx.project_id else None)
             print(json.dumps(purge_project(ctx.plugin_data_dir, args.purge_project, native)))
         elif args.purge_domain:
+            try:
+                args.purge_domain = validate_domain_id(args.purge_domain)
+            except IdentifierRefused as e:
+                print(f"data purge: {e}", file=sys.stderr)
+                conn.close()
+                return 2
             print(json.dumps(purge_domain(ctx.plugin_data_dir, args.purge_domain, conn)))
         else:
             print("data purge: pass --project-id or --domain", file=sys.stderr)
@@ -365,6 +390,47 @@ def cmd_data(args: argparse.Namespace) -> int:
             return 2
         conn.close()
         return 0
+    return 2
+
+
+def cmd_project(args: argparse.Namespace) -> int:
+    from control_plane import connect, db_path, enroll_project, enrolled_domain, unenroll_project
+    from identifiers import IdentifierRefused, validate_domain_id
+    ctx = _ctx(args.project)
+    conn = connect(db_path(ctx))
+    try:
+        if args.project_cmd == "show":
+            got = enrolled_domain(conn, ctx.project_id)
+            payload = {
+                "project_id": ctx.project_id,
+                "domain_id": ctx.domain_id,
+                "requested_domain": ctx.requested_domain,
+                "enrolled": bool(got) or ctx.enrolled,
+                "enrolled_domain": got,
+            }
+            print(json.dumps(payload, indent=2) if args.json else
+                  f"project {ctx.display_name}\n  project_id: {ctx.project_id}\n"
+                  f"  domain_id: {ctx.domain_id}\n  enrolled: {payload['enrolled']}\n"
+                  f"  requested_domain: {ctx.requested_domain}")
+            return 0
+        if args.project_cmd == "enroll":
+            if not args.domain:
+                print("project enroll: pass --domain", file=sys.stderr)
+                return 2
+            try:
+                d = validate_domain_id(args.domain)
+            except IdentifierRefused as e:
+                print(f"project enroll: {e}", file=sys.stderr)
+                return 2
+            enroll_project(conn, ctx, d)
+            print(f"enrolled {ctx.project_id} → domain {d}")
+            return 0
+        if args.project_cmd == "unenroll":
+            unenroll_project(conn, ctx.project_id)
+            print(f"unenrolled {ctx.project_id}")
+            return 0
+    finally:
+        conn.close()
     return 2
 
 
@@ -420,6 +486,12 @@ def build_parser() -> argparse.ArgumentParser:
     da.add_argument("--dest")
     da.add_argument("--project-id", dest="purge_project")
     da.add_argument("--domain", dest="purge_domain")
+
+    pr = sub.add_parser("project")
+    pr.add_argument("project_cmd", choices=["enroll", "show", "unenroll"])
+    pr.add_argument("project", nargs="?", default=".")
+    pr.add_argument("--domain")
+    pr.add_argument("--json", action="store_true")
     return p
 
 
@@ -444,6 +516,8 @@ def main(argv: Optional[list] = None) -> int:
             return cmd_migrate(args)
         if args.cmd == "data":
             return cmd_data(args)
+        if args.cmd == "project":
+            return cmd_project(args)
     except WriteRefused as e:
         print(f"cm: {e}", file=sys.stderr)
         return 2

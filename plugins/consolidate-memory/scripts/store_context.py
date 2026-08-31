@@ -56,6 +56,8 @@ class StoreContext:
     remote_fingerprint: str
     project_slot: str
     store_override: Optional[Path]
+    requested_domain: str = "unknown"
+    enrolled: bool = False
 
 
 def slug_for(project_dir: Path) -> str:
@@ -217,12 +219,17 @@ def remote_fingerprint(common: Optional[Path]) -> str:
 
 def project_id_for(profile: str, domain: str, git_common: Optional[Path],
                    root: Path, remote_fp: str = "") -> str:
+    """Stable id. Domain is a registry attribute (enroll), not part of identity —
+    otherwise `cm project enroll` would mint a new project.
+    `domain` is accepted for call-site compatibility and ignored in the hash.
+    """
+    del domain
     if git_common is not None:
         payload = "\n".join([
-            SCHEMA_VERSION, profile, domain, _norm_path(git_common), remote_fp or "",
+            SCHEMA_VERSION, profile, _norm_path(git_common), remote_fp or "",
         ])
         return "p_" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
-    key = f"cm:{SCHEMA_VERSION}:{profile}:{domain}:{_norm_path(root)}"
+    key = f"cm:{SCHEMA_VERSION}:{profile}:{_norm_path(root)}"
     return "p_" + uuid.uuid5(uuid.NAMESPACE_URL, key).hex
 
 
@@ -277,19 +284,48 @@ def _merge_settings(cfg: Path, project_root: Path, environ: dict,
     return merged, tuple(sources), ephemeral_unreadable
 
 
-def _domain_from(settings: dict, cfg: Path, environ: dict) -> str:
-    env_d = str(environ.get("CM_DOMAIN") or "").strip()
-    if env_d:
-        return env_d
-    cm = settings.get("consolidateMemory")
-    if isinstance(cm, dict) and str(cm.get("domain") or "").strip():
-        return str(cm.get("domain")).strip()
-    if str(settings.get("domain") or "").strip() and "consolidateMemory" in settings:
-        return str(settings.get("domain")).strip()
-    dj = _load_json(cfg / "consolidate-memory" / "domain.json")
-    if str(dj.get("domain") or "").strip():
-        return str(dj.get("domain")).strip()
-    return "unknown"
+def _operator_domain(settings: dict, cfg: Path, environ: dict,
+                     setting_sources: tuple) -> str:
+    """Trust-domain GRANT. Never from repository project/local settings (P0-1).
+
+    Operator sources: CM_DOMAIN, managed-settings, user settings, config-root
+    domain.json. `settings` / `setting_sources` are accepted for call-site
+    compatibility and are not a grant (they include repo files).
+    """
+    del settings, setting_sources
+    from identifiers import IdentifierRefused, validate_domain_id
+
+    def _from(data: dict) -> str:
+        cm = data.get("consolidateMemory")
+        if isinstance(cm, dict) and str(cm.get("domain") or "").strip():
+            return str(cm.get("domain")).strip()
+        return ""
+
+    raw = str(environ.get("CM_DOMAIN") or "").strip()
+    if not raw:
+        raw = _from(_load_json(cfg / "managed-settings.json"))
+    if not raw:
+        raw = _from(_load_json(Path("/etc/claude-code/managed-settings.json")))
+    if not raw:
+        raw = _from(_load_json(cfg / "settings.json"))
+    if not raw:
+        raw = str(_load_json(cfg / "consolidate-memory" / "domain.json").get("domain") or "").strip()
+    if not raw:
+        return "unknown"
+    try:
+        return validate_domain_id(raw)
+    except IdentifierRefused:
+        return "unknown"
+
+
+def _requested_domain_from_repo(project_root: Path) -> str:
+    """Suggestion only — never a grant."""
+    for name in ("settings.json", "settings.local.json"):
+        data = _load_json(project_root / ".claude" / name)
+        cm = data.get("consolidateMemory")
+        if isinstance(cm, dict) and str(cm.get("domain") or "").strip():
+            return str(cm.get("domain")).strip()
+    return ""
 
 
 def _auto_memory_enabled(settings: dict, environ: dict) -> bool:
@@ -329,7 +365,8 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
 
     settings, setting_sources, ephemeral_unreadable = _merge_settings(
         cfg, root, env, settings_path)
-    domain = _domain_from(settings, cfg, env)
+    requested_domain = _requested_domain_from_repo(root)
+    domain = _operator_domain(settings, cfg, env, setting_sources)
     enabled = _auto_memory_enabled(settings, env)
 
     slot_env = str(env.get("CLAUDE_CODE_PROJECT_DIR_NAME") or "").strip()
@@ -401,8 +438,30 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         write_allowed = enabled  # explicit override wins disagreement
 
     pid = project_id_for(profile, domain, common, root, remote_fp)
-    canon = cfg / "consolidate-memory" / "domains" / domain / "facts"
+    enrolled = False
     pdata = plugin_data_dir(cfg, env)
+    try:
+        from control_plane import connect_if_exists, enrolled_domain
+        _db = pdata / "control.sqlite"
+        _c = connect_if_exists(_db)
+        if _c is not None:
+            try:
+                got = enrolled_domain(_c, pid)
+                if got:
+                    domain = got
+                    enrolled = True
+            finally:
+                _c.close()
+    except Exception:
+        pass
+    from identifiers import IdentifierRefused, safe_child, validate_domain_id
+    try:
+        dname = validate_domain_id(domain, allow_unknown=True)
+        droot = (cfg / "consolidate-memory" / "domains")
+        canon = safe_child(droot, dname) / "facts"
+    except IdentifierRefused:
+        domain = "unknown"
+        canon = cfg / "consolidate-memory" / "domains" / "unknown" / "facts"
 
     return StoreContext(
         config_root=cfg,
@@ -424,6 +483,8 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         remote_fingerprint=remote_fp,
         project_slot=project_slot,
         store_override=override,
+        requested_domain=requested_domain or "unknown",
+        enrolled=enrolled,
     )
 
 
@@ -449,6 +510,8 @@ def doctor_report(ctx: StoreContext) -> str:
         ("project_id", ctx.project_id),
         ("profile_id", ctx.profile_id),
         ("domain_id", ctx.domain_id),
+        ("requested_domain", ctx.requested_domain),
+        ("enrolled", "true" if ctx.enrolled else "false"),
         ("auto_memory_enabled", "true" if ctx.auto_memory_enabled else "false"),
         ("resolution_source", ctx.resolution_source),
         ("write_allowed", "true" if ctx.write_allowed else "false"),
@@ -471,6 +534,8 @@ def doctor_dict(ctx: StoreContext) -> dict:
         "project_id": ctx.project_id,
         "profile_id": ctx.profile_id,
         "domain_id": ctx.domain_id,
+        "requested_domain": ctx.requested_domain,
+        "enrolled": ctx.enrolled,
         "auto_memory_enabled": ctx.auto_memory_enabled,
         "resolution_source": ctx.resolution_source,
         "write_allowed": ctx.write_allowed,

@@ -62,8 +62,9 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     canonical_ingress.py           sole canonical writer (`cm canonical upsert`)
     mirror_conflict.py             three-way classifier (never silently overwrite a local edit)
     index_admission.py             native MEMORY.md 200-line/25KB admission (not the global catalog)
+    identifiers.py                 contained domain / fact-stem / project-id joins
     capabilities.py / hook_sketches.py / retention.py / cm_ops.py
-                                   doctor, conflicts, resolve, repair-mirror, migrate, data inventory/compact
+                                   doctor, conflicts, resolve, repair-mirror, migrate, data, project enroll
     _ui.py                         shared visual vocabulary (color/rule/kv/bar/glyphs + the CM_DREAM_ARC dream-cue);
                                    render_dashboard keeps its OWN copies of this vocabulary, behaviorally
                                    drift-pinned against it by a smoke test (output equality, not literal source bytes)

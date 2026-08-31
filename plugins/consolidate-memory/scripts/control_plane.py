@@ -119,11 +119,40 @@ def db_path(ctx: Optional[StoreContext] = None, environ: Optional[dict] = None) 
     return plugin_data_dir(environ=environ) / "control.sqlite"
 
 
+def connect_journal(ctx: Optional[StoreContext] = None,
+                    environ: Optional[dict] = None) -> sqlite3.Connection:
+    conn = connect(journal_db_path(ctx, environ))
+    conn.executescript(JOURNAL_ONLY_SQL)
+    return conn
+
+
+def journal_db_path(ctx: Optional[StoreContext] = None, environ: Optional[dict] = None) -> Path:
+    if ctx is not None:
+        return ctx.plugin_data_dir / "journal.sqlite"
+    return plugin_data_dir(environ=environ) / "journal.sqlite"
+
+
+JOURNAL_ONLY_SQL = """
+CREATE TABLE IF NOT EXISTS journal (
+    op_id TEXT PRIMARY KEY,
+    kind TEXT,
+    payload TEXT,
+    step TEXT,
+    status TEXT,
+    created_at TEXT
+);
+"""
+
+
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.Error:
+        pass
     conn.executescript(SCHEMA_SQL)
     _migrate_schema(conn)
     return conn
@@ -204,13 +233,55 @@ def upsert_project(conn: sqlite3.Connection, ctx: StoreContext, capabilities: Op
         "current_root=excluded.current_root, git_common_dir=excluded.git_common_dir, "
         "native_memory_dir=excluded.native_memory_dir, session_dir=excluded.session_dir, "
         "last_seen=excluded.last_seen, "
-        "capabilities=excluded.capabilities, domain_id=excluded.domain_id, "
+        "capabilities=excluded.capabilities, "
+        "domain_id=CASE WHEN projects.status='enrolled' THEN projects.domain_id "
+        "ELSE excluded.domain_id END, "
         "profile_id=excluded.profile_id, remote_fingerprint=excluded.remote_fingerprint",
         (ctx.project_id, ctx.display_name, str(ctx.project_root),
          str(ctx.git_common_dir) if ctx.git_common_dir else "",
          ctx.remote_fingerprint, ctx.profile_id, ctx.domain_id,
          str(ctx.native_memory_dir), str(ctx.session_dir), now, caps, "active"),
     )
+
+
+def enrolled_domain(conn: sqlite3.Connection, project_id: str) -> Optional[str]:
+    row = conn.execute(
+        "SELECT domain_id FROM projects WHERE project_id=? AND status='enrolled'",
+        (project_id,),
+    ).fetchone()
+    if row and str(row["domain_id"] or "").strip() and str(row["domain_id"]) != "unknown":
+        return str(row["domain_id"])
+    return None
+
+
+def enroll_project(conn: sqlite3.Connection, ctx: StoreContext, domain: str) -> None:
+    from identifiers import validate_domain_id
+    d = validate_domain_id(domain)
+    upsert_project(conn, ctx)
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    conn.execute(
+        "UPDATE projects SET domain_id=?, status='enrolled', last_seen=? WHERE project_id=?",
+        (d, now, ctx.project_id),
+    )
+    conn.commit()
+
+
+def unenroll_project(conn: sqlite3.Connection, project_id: str) -> None:
+    conn.execute(
+        "UPDATE projects SET status='active', domain_id='unknown' WHERE project_id=?",
+        (project_id,),
+    )
+    conn.commit()
+
+
+def require_interprocess_lock() -> None:
+    try:
+        import fcntl  # noqa: F401
+    except ImportError:
+        from store_context import WriteRefused
+        raise WriteRefused(
+            "cross-project mutation requires POSIX flock (fcntl); "
+            "refusing rather than locking as a no-op")
 
 
 class FileLock:
@@ -225,7 +296,8 @@ class FileLock:
             import fcntl
             fcntl.flock(fd.fileno(), fcntl.LOCK_EX)
         except ImportError:
-            pass  # non-POSIX: best-effort (Phase 6 soak)
+            fd.close()
+            require_interprocess_lock()
         except Exception:
             try:
                 fd.close()
@@ -262,16 +334,23 @@ def lock_dir(ctx: StoreContext) -> Path:
 
 def acquire_mutation_locks(ctx: StoreContext, project_ids: list) -> list:
     """Domain lock, then project locks in sorted ID order. Returns acquired locks."""
+    from identifiers import IdentifierRefused, safe_child, validate_domain_id, validate_project_id
+    require_interprocess_lock()
     locks: list = []
     try:
-        dlock = FileLock(lock_dir(ctx) / f"domain-{ctx.domain_id or 'unknown'}.lock")
+        dname = validate_domain_id(ctx.domain_id or "unknown", allow_unknown=True)
+        dlock = FileLock(safe_child(lock_dir(ctx), f"domain-{dname}.lock"))
         dlock.acquire()
         locks.append(dlock)
         glob = FileLock(lock_dir(ctx) / "global.lock")
         glob.acquire()
         locks.append(glob)
         for pid in sorted(set(project_ids)):
-            pl = FileLock(lock_dir(ctx) / f"project-{pid}.lock")
+            try:
+                validate_project_id(str(pid))
+            except IdentifierRefused:
+                raise
+            pl = FileLock(safe_child(lock_dir(ctx), f"project-{pid}.lock"))
             pl.acquire()
             locks.append(pl)
         return locks
@@ -318,68 +397,124 @@ def _file_hash(path: Path) -> Optional[str]:
 
 
 def _publish_temps(publishes: list, deletes: Optional[list] = None) -> int:
-    """os.replace leftover same-directory temps, then apply deletes. Idempotent."""
+    """os.replace leftover same-directory temps, then apply deletes. Idempotent.
+
+    Destination existence is not success: when `sha256` is recorded, the dest
+    bytes must match or the item is left unpublished.
+    """
     n = 0
     for item in publishes:
         tmp, dest = Path(item["tmp"]), Path(item["dest"])
+        want = str(item.get("sha256") or "")
         if tmp.exists():
             dest.parent.mkdir(parents=True, exist_ok=True)
             os.replace(str(tmp), str(dest))
+            if want and _file_hash(dest) != want:
+                continue
             n += 1
         elif dest.exists():
-            n += 1  # already published
+            if want and _file_hash(dest) != want:
+                continue
+            n += 1
     for d in deletes or []:
         Path(d).unlink(missing_ok=True)
     return n
 
 
 def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
-                    ctx: Optional[StoreContext] = None) -> list:
-    """Publish leftover temps (and deletes), then replay incomplete canonical upserts.
+                    ctx: Optional[StoreContext] = None,
+                    registry_conn: Optional[sqlite3.Connection] = None) -> list:
+    """Publish leftover temps, verify dest hashes, apply recorded registry rows.
 
-    Never marks complete until leftover temps have been published (or were already
-    dest-present). A pending op with no temps that cannot be replayed is marked
-    `abandoned` — not `complete` — so a crashed pull is not acknowledged as done.
+    Replays a canonical-upsert only when the current StoreContext matches the
+    operation's stored origin domain/project. A pending op with no temps that
+    cannot be replayed is marked `abandoned`. A pending op whose origin does
+    not match the current ctx is left pending (never completed against another
+    store, never abandoned by a bystander command).
     """
     recovered = []
-    for op in pending_ops(conn):
-        payload = json.loads(op["payload"] or "{}")
-        publishes = payload.get("publishes") or []
-        deletes = payload.get("deletes") or []
-        kind = str(op["kind"])
-        replayable_upsert = bool(
-            ctx is not None and payload.get("stem") and payload.get("text")
-            and kind == "canonical-upsert")
-        if publishes:
-            _publish_temps(publishes, deletes)
-            missing = [item for item in publishes if not Path(item["dest"]).exists()]
-            if missing:
-                continue  # leave pending — dests did not land
-            journal_step(conn, op["op_id"], "journal_complete", "complete")
+    own_rconn = False
+    if registry_conn is not None:
+        rconn = registry_conn
+    elif ctx is not None:
+        rconn = connect(db_path(ctx))
+        own_rconn = True
+    else:
+        rconn = conn
+    try:
+        for op in pending_ops(conn):
+            payload = json.loads(op["payload"] or "{}")
+            publishes = payload.get("publishes") or []
+            deletes = payload.get("deletes") or []
+            kind = str(op["kind"])
+            origin_dom = str(payload.get("origin_domain_id") or "")
+            origin_pid = str(payload.get("origin_project_id") or "")
+            ctx_matches = (
+                ctx is not None
+                and (not origin_dom or origin_dom == ctx.domain_id)
+                and (not origin_pid or origin_pid == ctx.project_id)
+            )
+            if ctx is not None and (origin_dom or origin_pid) and not ctx_matches:
+                continue
+            if publishes:
+                _publish_temps(publishes, deletes)
+                bad = []
+                for item in publishes:
+                    dest = Path(item["dest"])
+                    want = str(item.get("sha256") or "")
+                    if not dest.exists() or (want and _file_hash(dest) != want):
+                        bad.append(item)
+                if bad:
+                    continue
+                for h in payload.get("holders") or []:
+                    record_holder(rconn, h[0], h[1], h[2], h[3], h[4])
+                for f in payload.get("facts") or []:
+                    rconn.execute(
+                        "INSERT INTO facts(fact_id, stem, domain_id, canonical_path, revision, "
+                        "status, sensitivity) VALUES (?,?,?,?,?,?,?) "
+                        "ON CONFLICT(fact_id) DO UPDATE SET revision=excluded.revision, "
+                        "canonical_path=excluded.canonical_path, status=excluded.status, "
+                        "sensitivity=excluded.sensitivity",
+                        tuple(f),
+                    )
+                journal_step(conn, op["op_id"], "journal_complete", "complete")
+                recovered.append(op["op_id"])
+                continue
+            if replay is not None:
+                replay(kind, payload, op["step"])
+                journal_step(conn, op["op_id"], "journal_complete", "complete")
+                recovered.append(op["op_id"])
+                continue
+            replayable_upsert = bool(
+                ctx_matches and payload.get("stem") and payload.get("text")
+                and kind == "canonical-upsert")
+            if replayable_upsert and ctx is not None:
+                from canonical_ingress import upsert
+                origin = payload.get("origin") or ""
+                origin_del = payload.get("origin_delete") or ""
+                upsert(ctx, payload["stem"], payload["text"],
+                       origin_local=Path(origin) if origin else None,
+                       origin_delete=Path(origin_del) if origin_del else None,
+                       preserve_canonical=bool(payload.get("preserve_canonical")),
+                       create_only=bool(payload.get("create_only")),
+                       skip_recover=True)
+                journal_step(conn, op["op_id"], "journal_complete", "complete")
+                recovered.append(op["op_id"])
+                continue
+            journal_step(conn, op["op_id"], op.get("step") or "journal_start", "abandoned")
             recovered.append(op["op_id"])
-            continue
-        if replay is not None:
-            replay(kind, payload, op["step"])
-            journal_step(conn, op["op_id"], "journal_complete", "complete")
-            recovered.append(op["op_id"])
-            continue
-        if replayable_upsert and ctx is not None:
-            from canonical_ingress import upsert
-            origin = payload.get("origin") or ""
-            origin_del = payload.get("origin_delete") or ""
-            upsert(ctx, payload["stem"], payload["text"],
-                   origin_local=Path(origin) if origin else None,
-                   origin_delete=Path(origin_del) if origin_del else None,
-                   preserve_canonical=bool(payload.get("preserve_canonical")),
-                   create_only=bool(payload.get("create_only")),
-                   skip_recover=True)
-            journal_step(conn, op["op_id"], "journal_complete", "complete")
-            recovered.append(op["op_id"])
-            continue
-        journal_step(conn, op["op_id"], op.get("step") or "journal_start", "abandoned")
-        recovered.append(op["op_id"])
-    conn.commit()
-    return recovered
+        try:
+            rconn.commit()
+        except sqlite3.Error:
+            pass
+        conn.commit()
+        return recovered
+    finally:
+        if own_rconn:
+            try:
+                rconn.close()
+            except sqlite3.Error:
+                pass
 
 
 def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
@@ -389,22 +524,26 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
              skip_recover: bool = False) -> dict:
     """JOURNAL_STEPS mutation. `crash_after=NAME` means the named step completed, then stop.
 
-    `mutate(conn, temps)` fills temps[dest_path] = text and may return {"deletes": [path]}.
-    This function writes same-directory temps, verifies expected_revisions hashes, os.replace,
-    then applies deletes.
+    Registry writes live on a second connection and COMMIT only after dest hashes
+    are published. Journal rows (origin context + dest sha256) commit earlier so
+    crash recovery can roll forward files without trusting dest existence.
     """
+    import hashlib
     from store_context import WriteRefused, assert_writable
     assert_writable(ctx)
+    require_interprocess_lock()
     crash = crash_after or os.environ.get("CM_CRASH_AFTER") or ""
     dbp = db_path(ctx)
-    conn = connect(dbp)
+    conn = connect(journal_db_path(ctx))
+    conn.executescript(JOURNAL_ONLY_SQL)
+    rconn = connect(dbp)
+    rconn.isolation_level = None
     recovered: list = []
-    if not skip_recover:
-        recovered = recover_pending(conn, ctx=ctx)
     pids = [ctx.project_id] + list(extra_project_ids or [])
     locks = acquire_mutation_locks(ctx, pids)
     op_id: Optional[str] = None
     temps: dict = {}
+    registry_committed = False
     try:
         def _maybe_crash(step: str) -> None:
             if crash == step:
@@ -412,16 +551,24 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
                     journal_step(conn, op_id, step, "pending")
                 raise CrashSimulated(step)
 
+        if not skip_recover:
+            recovered = recover_pending(conn, ctx=ctx, registry_conn=rconn)
         _maybe_crash("lock_domain")
         _maybe_crash("lock_projects")
         snaps = {}
-        for p in (expected_revisions or {}):
-            snaps[p] = _file_hash(Path(p))
+        for p, h in (expected_revisions or {}).items():
+            snaps[p] = h if isinstance(h, str) and h else _file_hash(Path(p))
         _maybe_crash("record_revisions")
+        payload = dict(payload)
+        payload.setdefault("origin_profile_id", ctx.profile_id)
+        payload.setdefault("origin_domain_id", ctx.domain_id)
+        payload.setdefault("origin_project_id", ctx.project_id)
+        payload.setdefault("op_version", 2)
         op_id = journal_insert(conn, kind, payload, "journal_start")
         _maybe_crash("journal_start")
-        upsert_project(conn, ctx)
-        result = mutate(conn, temps)
+        rconn.execute("BEGIN")
+        upsert_project(rconn, ctx)
+        result = mutate(rconn, temps)
         if not isinstance(result, dict):
             result = {"value": result}
         deletes = list(result.get("deletes") or [])
@@ -429,12 +576,17 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         for dest_s, content in temps.items():
             dest = Path(dest_s)
             dest.parent.mkdir(parents=True, exist_ok=True)
+            text = content if content.endswith("\n") else content + "\n"
             tmp = dest.with_suffix(dest.suffix + f".tmp{os.getpid()}")
-            tmp.write_text(content if content.endswith("\n") else content + "\n", encoding="utf-8")
-            publishes.append({"tmp": str(tmp), "dest": str(dest)})
-        payload = dict(payload)
+            tmp.write_text(text, encoding="utf-8")
+            publishes.append({
+                "tmp": str(tmp), "dest": str(dest),
+                "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            })
         payload["publishes"] = publishes
         payload["deletes"] = deletes
+        payload["holders"] = list(result.get("holders") or [])
+        payload["facts"] = list(result.get("facts") or [])
         conn.execute("UPDATE journal SET payload=?, step=? WHERE op_id=?",
                      (json.dumps(payload, sort_keys=True), "prepare_temps", op_id))
         conn.commit()
@@ -443,21 +595,31 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
             if _file_hash(Path(p)) != h:
                 for item in publishes:
                     Path(item["tmp"]).unlink(missing_ok=True)
+                rconn.execute("ROLLBACK")
                 raise WriteRefused("source changed during transaction: " + p)
         journal_step(conn, op_id, "verify_unchanged", "pending")
         _maybe_crash("verify_unchanged")
         _publish_temps(publishes, deletes)
         journal_step(conn, op_id, "publish", "pending")
         _maybe_crash("publish")
-        conn.commit()
+        rconn.execute("COMMIT")
+        registry_committed = True
         _maybe_crash("commit_registry")
         journal_step(conn, op_id, "journal_complete", "complete")
         _maybe_crash("journal_complete")
         return {"ok": True, "op_id": op_id, "recovered": recovered, "result": result,
                 "expected_revisions": snaps}
+    except Exception:
+        if not registry_committed:
+            try:
+                rconn.execute("ROLLBACK")
+            except sqlite3.Error:
+                pass
+        raise
     finally:
         release_locks(locks)
         conn.close()
+        rconn.close()
 
 
 class CrashSimulated(RuntimeError):

@@ -41,11 +41,16 @@ def generate_catalog(facts_dir: Path) -> str:
             text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
+        status = ""
         desc = ""
         for ln in text.splitlines():
-            if ln.strip().startswith("description:"):
-                desc = ln.split(":", 1)[1].strip()
-                break
+            s = ln.strip()
+            if s.startswith("status:"):
+                status = s.split(":", 1)[1].strip()
+            elif s.startswith("description:"):
+                desc = s.split(":", 1)[1].strip()
+        if status == "tombstoned":
+            continue
         lines.append(f"- [{f.stem}]({f.name}) — {desc}".rstrip(" —"))
     return "\n".join(lines) + "\n"
 
@@ -218,7 +223,10 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
                                stable_fact_id, transact)
     from memory_status import _frontmatter
 
-    if not _SAFE_NAME.fullmatch(stem or "") or stem.upper() == "MEMORY":
+    from identifiers import IdentifierRefused, validate_fact_stem
+    try:
+        stem = validate_fact_stem(stem or "")
+    except IdentifierRefused:
         return {"ok": False, "error": "unsafe or reserved stem"}
     assert_writable(ctx)
     fm = _frontmatter(text)
@@ -249,7 +257,7 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
             same_dir = dest.resolve().parent == legacy.resolve()
         except OSError:
             same_dir = dest.parent == legacy
-        if create_only and (dest.exists() or (legacy / f"{stem}.md").exists()):
+        if create_only and dest.exists():
             raise WriteRefused(
                 "canonical already exists (created concurrently); retry to reconcile")
         deletes: list = []
@@ -261,22 +269,16 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
             provenanced = apply_provenance(existing_body, ctx.display_name)
             if provenanced != existing_body:
                 temps[str(dest)] = provenanced
-                if not same_dir:
-                    temps[str(legacy / f"{stem}.md")] = provenanced
             canon_body = provenanced
         else:
             provenanced = apply_provenance(body, ctx.display_name)
             catalog = generate_catalog(facts_dir)
             pointer = f"- [{stem}]({stem}.md) — {str(fm.get('description') or stem)}"
             future = apply_pointer(catalog, pointer, stem)
-            # Native 200-line/25KB caps apply only to a project's MEMORY.md (Claude's
-            # session-start cliff). The generated global catalog is not that file.
+            # Native 200-line/25KB caps apply only to a project's MEMORY.md.
+            # Legacy <config>/memory is a read-only migration source (P0-3).
             temps[str(dest)] = provenanced
             temps[str(facts_dir / "MEMORY.md")] = future
-            if not same_dir:
-                temps[str(legacy / f"{stem}.md")] = provenanced
-                temps[str(legacy / "MEMORY.md")] = apply_pointer(
-                    generate_catalog(legacy), pointer, stem)
             canon_body = provenanced
         rev = semantic_hash(canon_body)
         fid = stable_fact_id(ctx.domain_id, stem)
@@ -309,13 +311,13 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
             lint = _fat_hook_warning(ptr, stem)
             future_idx = apply_pointer(idx_text, ptr, stem)
             adm = project_index(future_idx)
-            if adm["admitted"]:
-                temps[str(idxp)] = future_idx if future_idx.endswith("\n") else future_idx + "\n"
-                if lint:
-                    print(f"  {lint}", file=sys.stderr)
-            else:
-                print(f"  ⚠ index admission refused for '{stem}': {adm['reason']}",
-                      file=sys.stderr)
+            if not adm["admitted"]:
+                raise WriteRefused(
+                    "index admission refused; origin not converted or deleted: "
+                    + adm["reason"])
+            temps[str(idxp)] = future_idx if future_idx.endswith("\n") else future_idx + "\n"
+            if lint:
+                print(f"  {lint}", file=sys.stderr)
             if origin_delete is not None:
                 try:
                     same_origin = origin_local.resolve() == origin_delete.resolve()
@@ -323,8 +325,13 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
                     same_origin = origin_local == origin_delete
                 if not same_origin:
                     deletes.append(str(origin_delete))
-        return {"stem": stem, "fact_id": fid, "revision": rev, "catalog_admitted": True,
-                "deletes": deletes}
+        return {
+            "stem": stem, "fact_id": fid, "revision": rev, "catalog_admitted": True,
+            "deletes": deletes,
+            "holders": [(fid, ctx.project_id, rev, rev, rev)],
+            "facts": [(fid, stem, ctx.domain_id, str(dest), rev, "active",
+                       fact_sensitivity(fm))],
+        }
 
     payload = {"stem": stem, "text": text,
                "origin": str(origin_local) if origin_local else "",
@@ -343,25 +350,21 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
 
 def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
            replacement_id: str = "", grace_until: str = "") -> dict:
+    from identifiers import IdentifierRefused, validate_fact_stem
     from control_plane import stable_fact_id, transact, write_tombstone
-    from sync_global import global_store as _gstore
+    try:
+        stem = validate_fact_stem(stem)
+    except IdentifierRefused as e:
+        return {"ok": False, "error": str(e)}
 
     def mutate(conn, temps):
         fid = stable_fact_id(ctx.domain_id, stem)
         write_tombstone(conn, fid, stem, ctx.domain_id, reason, replacement_id, grace_until)
-        seen = set()
-        for base in (ctx.canonical_domain_dir, ctx.config_root / "memory", _gstore()):
-            p = base / f"{stem}.md"
-            try:
-                key = str(p.resolve())
-            except OSError:
-                key = str(p)
-            if key in seen:
-                continue
-            seen.add(key)
-            if p.exists():
-                prev = p.read_text(encoding="utf-8", errors="replace")
-                temps[str(p)] = _tombstone_markdown(stem, reason, replacement_id, grace_until, prev)
+        p = ctx.canonical_domain_dir / f"{stem}.md"
+        prev = ""
+        if p.exists():
+            prev = p.read_text(encoding="utf-8", errors="replace")
+        temps[str(p)] = _tombstone_markdown(stem, reason, replacement_id, grace_until, prev)
         return {"stem": stem, "tombstoned": True}
 
     try:
@@ -373,12 +376,18 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
 
 def _tombstone_markdown(stem: str, reason: str, replacement_id: str,
                         grace_until: str, previous: str) -> str:
+    import hashlib
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    def _esc(s: str) -> str:
+        return str(s or "").replace("\n", " ").replace("\r", " ")[:200]
+
+    rev = hashlib.sha256((previous or "").encode("utf-8")).hexdigest()[:16]
     return (
         f"---\nname: {stem}\nstatus: tombstoned\ndeleted_at: {now}\n"
-        f"reason: {reason}\nreplacement_id: {replacement_id}\ngrace_until: {grace_until}\n---\n\n"
-        f"Tombstone. Previous body retained below the cut for recovery.\n\n"
-        f"<!-- previous\n{previous}\n-->\n"
+        f"reason: {_esc(reason)}\nreplacement_id: {_esc(replacement_id)}\n"
+        f"grace_until: {_esc(grace_until)}\ndeleted_revision_hash: {rev}\n---\n\n"
+        f"Tombstone. Previous body is not retained.\n"
     )
 
 

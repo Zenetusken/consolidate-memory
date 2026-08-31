@@ -232,6 +232,7 @@ the dense technical reporting (never replacing it). You can also drive the piece
 ```bash
 ./cm status            # Phase-0 context: stores, git range, marker, token budget + a no-nag dream-timing nudge
 ./cm doctor            # resolved Claude store, source, profile, domain, auto-memory, ambiguity
+./cm project enroll --domain NAME   # operator grant: this project may receive that domain's facts
 ./cm extract           # curated session signal (human turns + error-gotchas, secrets omitted)
 ./cm distill           # recurring Bash-command workflows (templates + compound-command chains) — distill's raw signal
 ./cm pull .            # replicate relevant global facts into this project

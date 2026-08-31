@@ -77,8 +77,11 @@ just its store.
 preferences, environment gotchas, stack-general patterns (e.g. a `gh pr edit` env
 bug, a typed-stubs preference, RAG/GPU lessons reusable across same-stack
 projects). Those get a **`scope`**: `project-local`, `stack-general`, or
-`user-global`. Cross-scope facts live canonically in a **global store**
-`~/.claude/memory/`. But recall is **slug-scoped** — a project only auto-recalls its
+`user-global`. Cross-scope facts live canonically in a **domain-scoped store**
+(`<config>/consolidate-memory/domains/<domain>/facts`; legacy `~/.claude/memory/` is a
+read-only migration source). A repository cannot grant itself a domain — `cm project
+enroll --domain NAME` is the operator grant (`cm doctor` prints the resolved store).
+But recall is **slug-scoped** — a project only auto-recalls its
 *own* store — so global facts must be **replicated** into each project's store to
 surface there (they don't auto-cross). `sync_global.py` does that replication; the
 phases below call it. (Renaming a project dir changes its slug and **orphans** its

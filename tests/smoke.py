@@ -4225,11 +4225,13 @@ with _Env73() as _e:
             _rc76 = sg.promote(_e.proj, "loc", "loc")
     finally:
         _os73.link = _orig_link76
+    import store_context as _sc76
+    _canon76 = _sc76.resolve_store(_e.proj).canonical_domain_dir / "loc.md"
     check("v0.1.76/b: promote on a no-hardlink filesystem still CREATES via upsert/os.replace "
           "(hardlink is no longer the ingress; local is converted to a mirror)",
-          _rc76 == 0 and (_e.glob / "loc.md").exists()
+          _rc76 == 0 and _canon76.exists()
           and (_e.store / "loc.md").exists() and "global_ref:" in (_e.store / "loc.md").read_text(encoding="utf-8")
-          and list(_e.glob.glob("*.tmp*")) == [])
+          and list(_canon76.parent.glob("*.tmp*")) == [])
 
 # --- v0.1.78: evidence-clock stamps (docs/evidence-clock-stamps.spec.md — audit F9's starvation fix).
 # RED pre-fix (measured): one probative window accrued, one DESCRIPTION-only canonical edit + --pull,
@@ -5941,6 +5943,11 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
     check("domain: confidential stays inside its domain",
           dp.admit_cross_project("personal", {"domain": "employer", "sensitivity": "confidential"},
                                  authorized_pairs={("employer", "personal")}) is False)
+    check("domain: untagged confidential is denied under dual-read (no migration exception)",
+          dp.admit_cross_project("work", {"sensitivity": "confidential", "scope": "user-global"},
+                                 migration_mode=dp.MIGRATION_DUAL_READ) is False
+          and dp.admit_cross_project("unknown", {"sensitivity": "confidential"},
+                                     migration_mode=dp.MIGRATION_DUAL_READ) is False)
     _sec_err = dp.validate_write_policy(
         "---\nname: x\ndescription: key\n---\npassword = hunter2-and-a-long-token\n",
         {"description": "key"}, looks_secret=ms._looks_secret, domain="personal")
@@ -6099,7 +6106,7 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
             _crashed = True
         check("journal: crash_after=publish raises CrashSimulated AFTER dest landed, pending op remains",
               _crashed is True and _jdest.exists())
-        _conn = cp.connect(cp.db_path(sc.resolve_store(_proj, environ=envj)))
+        _conn = cp.connect_journal(sc.resolve_store(_proj, environ=envj))
         _pending_xp = cp.pending_ops(_conn)
         check("journal: pending op is recoverable",
               len(_pending_xp) >= 1)
@@ -6150,6 +6157,250 @@ for _k, _v in (("CLAUDE_CONFIG_DIR", _xp_cfg0), ("CLAUDE_CODE_PROJECT_DIR_NAME",
     else:
         _os_xp.environ[_k] = _v
 
+# ── P0: enrollment, identifier containment, journal hashes, forget/catalog ──
+import hashlib as _hl_p0
+import identifiers as ident  # noqa: E402
+
+_id_ok = True
+for _p0_raw in ("../work", "/etc/passwd", "unknown", "Work", "has space", "a" * 80, ""):
+    try:
+        ident.validate_domain_id(_p0_raw)
+        _id_ok = False
+    except ident.IdentifierRefused:
+        pass
+try:
+    ident.validate_domain_id("work")
+    ident.validate_domain_id("unknown", allow_unknown=True)
+except ident.IdentifierRefused:
+    _id_ok = False
+check("identifiers: validate_domain_id accepts work, refuses traversal/absolute/reserved/case", _id_ok)
+
+_st_ok = True
+for _p0_stem in ("../x", "/tmp/x", "MEMORY", "a/b", ".."):
+    try:
+        ident.validate_fact_stem(_p0_stem)
+        _st_ok = False
+    except ident.IdentifierRefused:
+        pass
+try:
+    ident.validate_fact_stem("ok-stem_1.md".replace(".md", ""))
+except ident.IdentifierRefused:
+    _st_ok = False
+check("identifiers: validate_fact_stem refuses traversal/absolute/MEMORY", _st_ok)
+
+_pid_ok = True
+try:
+    ident.validate_project_id("not-a-pid")
+    _pid_ok = False
+except ident.IdentifierRefused:
+    pass
+try:
+    ident.validate_project_id("p_" + "ab" * 16)
+except ident.IdentifierRefused:
+    _pid_ok = False
+check("identifiers: validate_project_id requires p_ + 32 hex", _pid_ok)
+
+with _tf_xp.TemporaryDirectory() as _td_sc:
+    _root = Path(_td_sc) / "root"
+    _root.mkdir()
+    try:
+        ident.safe_child(_root, "../outside")
+        _sc_ok = False
+    except ident.IdentifierRefused:
+        _sc_ok = True
+    try:
+        ident.safe_child(_root, "/tmp/abs")
+        _sc_ok = False
+    except ident.IdentifierRefused:
+        pass
+    _inside = ident.safe_child(_root, "ok.md")
+    check("identifiers: safe_child stays inside root",
+          _sc_ok and _inside.parent == _root)
+
+with _tf_xp.TemporaryDirectory() as _td_p0:
+    _home_p0 = Path(_td_p0) / "home"
+    _home_p0.mkdir()
+    _pa = Path(_td_p0) / "alpha"
+    _pb = Path(_td_p0) / "beta"
+    _ph = Path(_td_p0) / "hostile"
+    for _p0_proj in (_pa, _pb, _ph):
+        _p0_proj.mkdir()
+        (_p0_proj / "main.py").write_text("x=1\n", encoding="utf-8")
+    (_ph / ".claude").mkdir()
+    (_ph / ".claude" / "settings.json").write_text(
+        _json_xp.dumps({"consolidateMemory": {"domain": "employer"}}), encoding="utf-8")
+    _env_p0 = _xp_env(_home_p0)
+    _ctx_h = sc.resolve_store(_ph, environ=_env_p0)
+    check("P0-1: hostile project settings cannot enroll a protected domain",
+          _ctx_h.domain_id == "unknown" and _ctx_h.requested_domain == "employer"
+          and _ctx_h.enrolled is False)
+
+    _old_h_p0 = _os_xp.environ.get("HOME")
+    _os_xp.environ["HOME"] = str(_home_p0)
+    for _k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+               "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS",
+               "CM_DOMAIN", "CM_STORE_OVERRIDE", "CM_CRASH_AFTER"):
+        _os_xp.environ.pop(_k, None)
+    try:
+        _rc_en_bad = cmo.main(["project", "enroll", str(_ph), "--domain", "../employer"])
+        _rc_en_a = cmo.main(["project", "enroll", str(_pa), "--domain", "work"])
+        _rc_en_b = cmo.main(["project", "enroll", str(_pb), "--domain", "personal"])
+        _ctx_a = sc.resolve_store(_pa, environ=_xp_env(_home_p0))
+        _ctx_b = sc.resolve_store(_pb, environ=_xp_env(_home_p0))
+        check("P0-1: cm project enroll is the operator grant; ../domain is refused",
+              _rc_en_bad == 2 and _rc_en_a == 0 and _rc_en_b == 0
+              and _ctx_a.enrolled is True and _ctx_a.domain_id == "work"
+              and _ctx_b.enrolled is True and _ctx_b.domain_id == "personal"
+              and sc.resolve_store(_ph, environ=_xp_env(_home_p0)).domain_id == "unknown")
+
+        _rc_res = cmo.main(["resolve", "../passwd", "--project", str(_pa)])
+        _rc_rep = cmo.main(["repair-mirror", "../passwd", "--project", str(_pa)])
+        _rc_fg = cmo.main(["canonical", "forget", "../x", "--project", str(_pa)])
+        _rc_pu = cmo.main(["data", "purge", "--project-id", "../oops", "--project", str(_pa)])
+        _rc_pud = cmo.main(["data", "purge", "--domain", "/tmp/x", "--project", str(_pa)])
+        check("P0-2/P0-6: resolve/repair/forget/purge refuse traversal and unsafe ids",
+              _rc_res == 2 and _rc_rep == 2 and _rc_fg == 1 and _rc_pu == 2 and _rc_pud == 2)
+
+        _wa = ("---\nname: deploy\ndescription: work deploy\ndomain: work\n"
+               "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
+               "---\n\nWORK-ONLY BODY\n")
+        _pbod = ("---\nname: deploy\ndescription: personal deploy\ndomain: personal\n"
+                 "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
+                 "---\n\nPERSONAL-ONLY BODY\n")
+        _p0_cdir_a = _ctx_a.canonical_domain_dir
+        _p0_cdir_b = _ctx_b.canonical_domain_dir
+        _p0_cdir_a.mkdir(parents=True, exist_ok=True)
+        _p0_cdir_b.mkdir(parents=True, exist_ok=True)
+        (_p0_cdir_a / "deploy.md").write_text(_wa, encoding="utf-8")
+        (_p0_cdir_b / "deploy.md").write_text(_pbod, encoding="utf-8")
+        _p0_legacy = _home_p0 / ".claude" / "memory"
+        _p0_legacy.mkdir(parents=True, exist_ok=True)
+        (_p0_legacy / "conf.md").write_text(
+            "---\nname: conf\ndescription: untagged confidential\nsensitivity: confidential\n"
+            "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
+            "---\n\nCONFIDENTIAL LEGACY\n", encoding="utf-8")
+        import io as _io_p0
+        import contextlib as _cl_p0
+        _o1, _e1 = _io_p0.StringIO(), _io_p0.StringIO()
+        with _cl_p0.redirect_stdout(_o1), _cl_p0.redirect_stderr(_e1):
+            _rc_pa = sg.run(_pa, pull=True)
+        _o2, _e2 = _io_p0.StringIO(), _io_p0.StringIO()
+        with _cl_p0.redirect_stdout(_o2), _cl_p0.redirect_stderr(_e2):
+            _rc_pb = sg.run(_pb, pull=True)
+        _sa = _ctx_a.native_memory_dir / "deploy.md"
+        _sb = _ctx_b.native_memory_dir / "deploy.md"
+        _sconf_a = _ctx_a.native_memory_dir / "conf.md"
+        _sconf_b = _ctx_b.native_memory_dir / "conf.md"
+        check("P0-3: same-stem facts in two domains stay distinct and domain-bound",
+              _rc_pa == 0 and _rc_pb == 0
+              and _sa.is_file() and "WORK-ONLY BODY" in _sa.read_text(encoding="utf-8")
+              and _sb.is_file() and "PERSONAL-ONLY BODY" in _sb.read_text(encoding="utf-8")
+              and "PERSONAL-ONLY BODY" not in _sa.read_text(encoding="utf-8")
+              and "WORK-ONLY BODY" not in _sb.read_text(encoding="utf-8"))
+        check("P0-4: untagged confidential is not pulled under dual-read",
+              not _sconf_a.exists() and not _sconf_b.exists())
+
+        # journal: crash-after-verify rolls back registry; crash-after-publish recovers hash+DB
+        _body_cv = ("---\nname: crash-v\ndescription: crash verify\nscope: user-global\n"
+                    "---\n\nverify body\n")
+        _up_cv = ci.upsert(_ctx_a, "crash-v", _body_cv, crash_after="verify_unchanged")
+        _dest_cv = _ctx_a.canonical_domain_dir / "crash-v.md"
+        _rconn_cv = cp.connect(cp.db_path(_ctx_a))
+        _n_cv = int(_rconn_cv.execute(
+            "SELECT count(*) AS n FROM facts WHERE stem='crash-v'").fetchone()["n"])
+        _n_hold = int(_rconn_cv.execute("SELECT count(*) AS n FROM holders").fetchone()["n"])
+        _rconn_cv.close()
+        check("P0-5: crash-after-verify rolls back registry (no dest bytes, no fact row)",
+              _up_cv.get("ok") is False and "crash-after" in str(_up_cv.get("error") or "")
+              and not _dest_cv.exists() and _n_cv == 0)
+
+        _body_cp = ("---\nname: crash-p\ndescription: crash publish\nscope: user-global\n"
+                    "---\n\npublish body\n")
+        _up_cp = ci.upsert(_ctx_a, "crash-p", _body_cp, crash_after="publish")
+        _dest_cp = _ctx_a.canonical_domain_dir / "crash-p.md"
+        _jconn = cp.connect_journal(_ctx_a)
+        _pending = cp.pending_ops(_jconn)
+        _want_hash = ""
+        for _op in _pending:
+            _pl = _json_xp.loads(_op["payload"] or "{}")
+            for _item in _pl.get("publishes") or []:
+                if str(_item.get("dest") or "").endswith("crash-p.md"):
+                    _want_hash = str(_item.get("sha256") or "")
+        _got_hash = _hl_p0.sha256(_dest_cp.read_bytes()).hexdigest() if _dest_cp.exists() else ""
+        _rconn_cp = cp.connect(cp.db_path(_ctx_a))
+        _n_cp_before = int(_rconn_cp.execute(
+            "SELECT count(*) AS n FROM facts WHERE stem='crash-p'").fetchone()["n"])
+        # wrong-context recover from domain B must not complete against B
+        _jrec_b = cp.recover_pending(_jconn, ctx=_ctx_b, registry_conn=_rconn_cp)
+        _dest_b = _ctx_b.canonical_domain_dir / "crash-p.md"
+        _still = cp.pending_ops(_jconn)
+        _jrec_a = cp.recover_pending(_jconn, ctx=_ctx_a, registry_conn=_rconn_cp)
+        _n_cp_after = int(_rconn_cp.execute(
+            "SELECT count(*) AS n FROM facts WHERE stem='crash-p'").fetchone()["n"])
+        _got_after = _hl_p0.sha256(_dest_cp.read_bytes()).hexdigest() if _dest_cp.exists() else ""
+        _rconn_cp.close()
+        _jconn.close()
+        check("P0-5: crash-after-publish dest hash matches journal; recover applies matching DB",
+              _up_cp.get("ok") is False and _dest_cp.exists()
+              and bool(_want_hash) and _got_hash == _want_hash
+              and _n_cp_before == 0 and _n_cp_after >= 1 and _got_after == _want_hash)
+        check("P0-5: recover of domain-A op from domain-B command does not complete against B",
+              not _dest_b.exists() and len(_still) >= 1 and len(_jrec_b) == 0
+              and len(_jrec_a) >= 1)
+
+        _body_fg = ("---\nname: keep-secret\ndescription: to forget\nscope: user-global\n"
+                    "---\n\nPREVIOUS SECRET BODY\n")
+        _up_fg = ci.upsert(_ctx_a, "keep-secret", _body_fg)
+        _fg = ci.forget(_ctx_a, "keep-secret", reason="p0-test")
+        _tomb = (_ctx_a.canonical_domain_dir / "keep-secret.md").read_text(encoding="utf-8")
+        _cat = ci.generate_catalog(_ctx_a.canonical_domain_dir)
+        check("P0-8: forget tombstone omits previous body; catalog omits tombstones",
+              _up_fg.get("ok") is True and _fg.get("ok") is True
+              and "PREVIOUS SECRET BODY" not in _tomb
+              and "<!-- previous" not in _tomb
+              and "deleted_revision_hash:" in _tomb
+              and "keep-secret.md" not in _cat)
+
+        # admission-refused promote leaves origin
+        _p0_nmem_a = _ctx_a.native_memory_dir
+        _p0_nmem_a.mkdir(parents=True, exist_ok=True)
+        _idx_lines = ["# Memory Index", ""] + [
+            f"- [pad{i}](pad{i}.md) — x" for i in range(ia.NATIVE_INDEX_CAP_LINES + 2)]
+        (_p0_nmem_a / "MEMORY.md").write_text("\n".join(_idx_lines) + "\n", encoding="utf-8")
+        _orig = _p0_nmem_a / "overcap.md"
+        _orig.write_text("---\nname: overcap\ndescription: d\nmetadata:\n  node_type: memory\n"
+                         "  type: feedback\n  scope: user-global\n---\n\norigin body\n",
+                         encoding="utf-8")
+        _up_ad = ci.upsert(_ctx_a, "overcap", _orig.read_text(encoding="utf-8"),
+                           origin_local=_orig)
+        check("P0-7: admission-refused upsert leaves the origin file unconverted",
+              _up_ad.get("ok") is False and "admission" in str(_up_ad.get("error") or "").lower()
+              and _orig.exists() and "global_ref:" not in _orig.read_text(encoding="utf-8"))
+
+        # admission-refused evict leaves origin
+        _p0_nmem_b = _ctx_b.native_memory_dir
+        _p0_nmem_b.mkdir(parents=True, exist_ok=True)
+        _ev = _p0_nmem_b / "evict-me.md"
+        _ev.write_text("---\nname: evict-me\ndescription: local\n---\nlocal\n", encoding="utf-8")
+        _cap_idx = ["# Memory Index", ""] + [
+            f"- [z{i}](z{i}.md) — x" for i in range(ia.NATIVE_INDEX_CAP_LINES - 1)]
+        _cap_idx.append("- [evict-me](evict-me.md) — local")
+        (_p0_nmem_b / "MEMORY.md").write_text("\n".join(_cap_idx) + "\n", encoding="utf-8")
+        _job_fm = {"name": "n1", "description": "d", "scope": "user-global"}
+        _jobs = [
+            ("n1", _job_fm, "MISSING", _p0_nmem_b / "n1.md", "---\nname: n1\n---\nb\n"),
+            ("n2", dict(_job_fm, name="n2"), "MISSING", _p0_nmem_b / "n2.md", "---\nname: n2\n---\nb\n"),
+        ]
+        _ev_out = sg._execute_pull_writes(_ctx_b, _p0_nmem_b, _jobs, "evict-me", _ev)
+        _ev_refused = "admission" in str(_ev_out.get("error") or "").lower()
+        check("P0-7: admission-refused evict leaves the origin file",
+              _ev.exists() and _ev_refused and int(_ev_out.get("pulled") or 0) == 0)
+    finally:
+        if _old_h_p0 is None:
+            _os_xp.environ.pop("HOME", None)
+        else:
+            _os_xp.environ["HOME"] = _old_h_p0
+
 # ── remaining AC pins (docs + shipped fleet/provenance paths) ───────────────
 _hmap_ac = (ROOT / "plugins" / "consolidate-memory" / "skills" / "consolidate-memory"
             / "references" / "harness-map.md").read_text(encoding="utf-8")
@@ -6188,7 +6439,6 @@ with _Env73() as _e_h:
     _conn_h.close()
     check("pull records holders on the control plane and does not call _record_provenance after locks drop",
           _rc_h == 0 and int(_nhold) >= 1 and _prov_calls == []
-          and "proj73" in (_e_h.glob / "ug-hold.md").read_text(encoding="utf-8")
           and (_e_h.store / "ug-hold.md").is_file())
 
 with _Env73() as _e_p:
@@ -6612,7 +6862,7 @@ with _tf_xp.TemporaryDirectory() as _td_l:
         check("review-s2: acquire_mutation_locks releases already-held locks when a later acquire fails",
               _boom is True and _released["n"] >= 1)
 
-        _conn_l = cp.connect(cp.db_path(_ctx_l))
+        _conn_l = cp.connect_journal(_ctx_l)
         _op_ab = cp.journal_insert(_conn_l, "pull", {"project_id": "x", "n": 0}, "journal_start")
         _rec_ab = cp.recover_pending(_conn_l, ctx=_ctx_l)
         _row_ab = _conn_l.execute("SELECT status FROM journal WHERE op_id=?", (_op_ab,)).fetchone()

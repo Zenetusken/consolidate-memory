@@ -55,7 +55,10 @@ with both `/` AND `_` replaced by `-`, case preserved (e.g. `/home/you/project/D
 Git worktrees and nested subdirectories of one repository share that store.
 `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME`, and `autoMemoryDirectory`
 (user/project/local/policy/`--settings`) remap it. `user-global` is **domain-global**
-(ADR 003), not installation-global. `cm doctor` prints the resolved store.
+(ADR 003), not installation-global. Canonical facts live under
+`<config>/consolidate-memory/domains/<domain>/facts`. `cm project enroll --domain NAME`
+is the operator grant; a repo `.claude/settings.json` cannot enroll. `cm doctor` prints
+the resolved store. Legacy `~/.claude/memory/` is a read-only migration source.
 The slug encoding remains:
 The rule is verified ONLY for `/`+`_` (no other-char example exists); a `.`/space could
 diverge further and would NOT be caught by `near_duplicate_slugs` (collapses only `_`/case)
