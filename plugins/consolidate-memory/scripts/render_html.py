@@ -53,7 +53,7 @@ def read_history(store: Path | None) -> list:
     tail=None: render surfaces read ALL cycles, unchanged (_ARCHIVE_CAP bounds the embed downstream)."""
     if store is None:
         return []
-    return ms.iter_cycle_log(Path(store) / ".consolidation-log.jsonl", tail=None)
+    return ms.iter_store_cycle_log(Path(store), tail=None)
 
 
 _ARCHIVE_CAP = 120   # embed at most the latest N cycles (bounded HTML size); a VISIBLE note flags any truncation
@@ -182,8 +182,8 @@ def _store_for(store: str | None, project: str | None) -> Path | None:
     if store:
         return Path(store)
     if project:
-        from memory_status import slug_for   # DRY: the single slug rule
-        return Path.home() / ".claude" / "projects" / slug_for(Path(project)) / "memory"
+        from memory_status import project_memory_dir   # DRY: StoreContext, not a hard-coded slug path
+        return project_memory_dir(Path(project))
     return None
 
 

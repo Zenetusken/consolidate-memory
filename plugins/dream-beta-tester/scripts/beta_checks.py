@@ -85,12 +85,9 @@ _VER_SEG_RE = re.compile(r"(?:^|[^0-9])(\d+)\.(\d+)\.(\d+)(?:[^0-9]|$)")
 
 
 def slug_for(repo: Path) -> str:
-    """Claude Code project slug: the absolute path with EVERY non-alphanumeric char → '-' (case kept).
+    """Claude Code project slug. Value-pinned to memory_status.slug_for (smoke 5-way).
 
-    Mirrors the skill's own `memory_status.slug_for` rule (v0.1.40 M3: re.sub(r'[^A-Za-z0-9]', '-', ...))
-    so the oracle resolves the SAME store the skill does (see claude-code-memory-is-slug-scoped). We
-    re-implement it (rather than import) only so discovery can run before the skill is found; once found,
-    the skill's identical rule governs everything downstream. MUST stay in lockstep with the skill's rule.
+    Must NOT import memory_status: this oracle also drives the vendored canary.
     """
     return re.sub(r"[^A-Za-z0-9]", "-", str(repo.resolve()))
 

@@ -42,11 +42,13 @@ hand-edited index line under an in-sync mirror counts a phantom delta (conservat
 advertised as absorbable); `beacon_snooze_until` must be ISO-8601 and fails OPEN (a garbled
 suppressor never silently defeats the signal). The gap counts come from `_store_gaps` — the SAME
 predicate `fleet_staleness` uses (factored shared, so the beacon and the report cannot disagree).
+Facts `--pull` would deny (`admit_cross_project` / domain / enforced-migration) do not count
+as missing or stale — the beacon must not nag for unreplicable facts.
 
 **Silence rules (no-nag, all deliberate):** global store absent/empty · this store holds no
 `*.md` (never-participated dirs must cost zero — the plugin is user-wide; discovery is
 `--staleness`'s job) · `beacon_snooze_until` in the future (set per-store on explicit user ask —
-report-then-apply applies to snoozing too) · 0 missing and 0 stale.
+report-then-apply applies to snoozing too) · 0 missing and 0 stale among domain-admitted facts.
 
 **Failure posture:** any unexpected error → empty stdout, diagnostic on stderr (hook debug only),
 exit 0 — a best-effort advisory must never inject a traceback into every session start nor render

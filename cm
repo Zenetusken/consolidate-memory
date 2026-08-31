@@ -27,6 +27,14 @@ case "$cmd" in
   render)   exec python3 "$S/render_dashboard.py" "$@" ;;         # cycle.json -> ASCII dashboard
   report)   if [ -d "${1:-}" ]; then exec python3 "$S/render_html.py" --project "$1"; elif echo "${1:-}" | grep -qE '^[0-9a-f]{4,40}$'; then exec python3 "$S/render_html.py" --select "$1" --project "${2:-.}"; else exec python3 "$S/render_html.py" --project "${1:-.}"; fi ;;  # existing dir → its archive · hex → a dream by hash · else cwd archive
   log)      if [ -d "${1:-}" ]; then D="$1"; shift; else D="."; fi; exec python3 "$S/render_log.py" --project "$D" "$@" ;;  # lean per-dream audit table ([-n N] / --json pass through)
+  doctor)   exec python3 "$S/cm_ops.py" doctor "$@" ;;
+  conflicts) exec python3 "$S/cm_ops.py" conflicts "$@" ;;
+  resolve)  exec python3 "$S/cm_ops.py" resolve "$@" ;;
+  repair-mirror) exec python3 "$S/cm_ops.py" repair-mirror "$@" ;;
+  canonical) exec python3 "$S/cm_ops.py" canonical "$@" ;;
+  migrate)  exec python3 "$S/cm_ops.py" migrate "$@" ;;
+  data)     exec python3 "$S/cm_ops.py" data "$@" ;;
+  forget)   exec python3 "$S/cm_ops.py" canonical forget "$@" ;;
   help|*)
     cat <<EOF
 cm — consolidate-memory
@@ -47,7 +55,8 @@ cm — consolidate-memory
   cm tokens [DIR] [--json] per-node + total token consumption across the network
   cm utility [DIR] [--json] fleet usage evidence per canonical (mirror-attributed reads, fleet tax vs
                        the warn-only advisory) — the gc lever's evidence table (v0.1.67, Phase C)
-  cm harvest [DIR]        capture every node's organic-read windows into ~/.claude/memory/.fleet-usage.jsonl
+  cm harvest [DIR]        capture every node's organic-read windows into plugin-data fleet-usage.jsonl
+                       (never the canonical Markdown plane; leftover ~/.claude/memory/.fleet-usage.jsonl is read-only)
   cm staleness [DIR] [--json] absorption lag per node — last dream, missing globals, stale mirrors (read-only)
   cm workflows [DIR] [--json] [--registrar] [--into SEED] fleet-recurring workflow templates/chains + adoption + verdict
                        lineage (read-only); --registrar adds the Tier-2 mechanical gate cascade
@@ -66,6 +75,14 @@ cm — consolidate-memory
   cm report HASH [DIR] re-open a specific dream's dashboard by its commit-hash prefix
   cm log [DIR] [-n N]  dense per-dream audit TABLE over DIR's .consolidation-log.jsonl (DEFAULT: THIS repo);
                        add --json for the raw cycle records (pipe to jq). The 3rd view of the dream log.
+  cm doctor [DIR]      resolved Claude store, source, profile, domain, auto-memory, ambiguity
+  cm conflicts [DIR]   three-way mirror conflict queue
+  cm resolve FACT      --keep-canonical | --fork-local NAME | --promote-local
+  cm repair-mirror FACT
+  cm canonical upsert STEM [--file PATH] [--origin]
+  cm migrate [--plan|--apply]
+  cm data inventory|compact|export|purge|retention
+  cm forget STEM       tombstone a canonical (does not resurrect on pull)
 
 A full pass is best driven by the plugin itself. Dogfood it from this repo:
   claude plugin marketplace add ./

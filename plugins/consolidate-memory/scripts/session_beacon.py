@@ -40,25 +40,47 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from memory_status import _parse_ts, est_tokens, slug_for, INDEX_CEILING_TOKENS  # noqa: E402
-from sync_global import (GLOBAL, _body_hash, _plan_pull, _pointer_line,  # noqa: E402
+from memory_status import _parse_ts, est_tokens, INDEX_CEILING_TOKENS  # noqa: E402
+from store_context import resolve_store  # noqa: E402 — native path via StoreContext (no subprocess)
+from domain_policy import admit_cross_project  # noqa: E402
+from sync_global import (_body_hash, _plan_pull, _pointer_line,  # noqa: E402
                          _safe_read_text, _store_gaps, global_facts, is_relevant)
+
+
+_HOOK_CACHE: dict | None = None
+
+
+def _hook_from_stdin() -> dict:
+    """SessionStart stdin JSON: cwd / session_id / transcript_path. Fail empty on error.
+
+    Cached: stdin is a one-shot stream and both cwd + StoreContext need the same payload.
+    """
+    global _HOOK_CACHE
+    if _HOOK_CACHE is not None:
+        return _HOOK_CACHE
+    try:
+        if not sys.stdin.isatty():
+            data = json.load(sys.stdin)
+            if isinstance(data, dict):
+                _HOOK_CACHE = data
+                return _HOOK_CACHE
+    except (ValueError, OSError):
+        pass
+    _HOOK_CACHE = {}
+    return _HOOK_CACHE
 
 
 def _cwd_from_stdin() -> str:
     """The hook's stdin JSON carries `cwd`; fall back to the process cwd (same value in the
     documented flow — the fallback covers a manual/debug invocation with no stdin)."""
-    try:
-        if not sys.stdin.isatty():
-            data = json.load(sys.stdin)
-            if isinstance(data, dict) and isinstance(data.get("cwd"), str) and data["cwd"]:
-                return data["cwd"]
-    except (ValueError, OSError):
-        pass
+    data = _hook_from_stdin()
+    if isinstance(data.get("cwd"), str) and data["cwd"]:
+        return data["cwd"]
     return os.getcwd()
 
 
-def beacon_line(store: Path) -> str:
+def beacon_line(store: Path, *, domain_id: str = "unknown",
+                migration_mode: str = "dual-read") -> str:
     """The at-most-one advisory line for `store` — '' when silent. PURE given the filesystem
     (smoke-pinned through both the silent and behind states)."""
     gfacts = global_facts()
@@ -81,7 +103,9 @@ def beacon_line(store: Path) -> str:
     cached = st.get("stacks")
     stacks = {str(x) for x in cached} if isinstance(cached, list) else None
     body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts}
-    missing, stale = _store_gaps(store, stacks, gfacts, body_hashes)
+    missing, stale = _store_gaps(
+        store, stacks, gfacts, body_hashes,
+        domain_id=domain_id, migration_mode=migration_mode)
     if not missing and not stale:
         return ""
     # The M1 projection: how many of the missing would the HARD CEILING hold on a pull?
@@ -105,6 +129,8 @@ def beacon_line(store: Path) -> str:
     items = []
     for n, fm, _t in gfacts:
         if not is_relevant(fm, stacks if stacks is not None else set()):
+            continue
+        if not admit_cross_project(domain_id, fm, migration_mode=migration_mode):
             continue
         cost_new = est_tokens(_pointer_line(n, fm))
         cost_old = line_cost.get(n, 0)
@@ -132,7 +158,18 @@ def beacon_line(store: Path) -> str:
 
 def main() -> int:
     try:
-        line = beacon_line(Path.home() / ".claude" / "projects" / slug_for(Path(_cwd_from_stdin()).resolve()) / "memory")
+        hook = _hook_from_stdin()
+        _cwd = hook.get("cwd")
+        cwd = _cwd if isinstance(_cwd, str) and _cwd else os.getcwd()
+        ctx = resolve_store(Path(str(cwd)).resolve(), hook=hook)
+        if not ctx.auto_memory_enabled:
+            return 0  # disabled auto-memory: absence is not drift (ADR 002)
+        from control_plane import migration_mode_readonly
+        line = beacon_line(
+            ctx.native_memory_dir,
+            domain_id=ctx.domain_id,
+            migration_mode=migration_mode_readonly(ctx),
+        )
         if line:
             print(line)
         return 0

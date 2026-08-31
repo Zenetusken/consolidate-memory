@@ -931,14 +931,35 @@ def _demo_record() -> ms.CycleRecord:
     }
 
 
+def _already_logged(path: str, commit: str, ts: str) -> bool:
+    """True if `path` already has this (commit, timestamp). Junk lines skipped, never raise."""
+    if not os.path.exists(path):
+        return False
+    try:
+        with open(path, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    prev = json.loads(line)
+                    pm = prev.get("marker") or {}
+                    if (str(pm.get("commit", "")) == commit
+                            and str(pm.get("timestamp", "")) == ts):
+                        return True
+                except (ValueError, AttributeError):
+                    continue
+    except OSError:
+        return False
+    return False
+
+
 def _persist(record: Mapping[str, Any], dirpath: str) -> None:
-    """Append the cycle record (one JSON line) to <dir>/.consolidation-log.jsonl so
-    magnitude→(applied, outcome) data accrues for future band calibration (v0.1.4). The
-    record's own `marker` stamps it — no wall-clock call here. Defensive at the model→file
-    boundary (mirrors _num/_clean/_flag never-crash): skip if `dir` is absent (never create a
-    stray dir); REFUSE on an empty marker.timestamp (an unstamped cycle would let two distinct
-    passes at the same HEAD collide on a `(commit, '')` dedup key); IDEMPOTENT on
-    (marker.commit, marker.timestamp), tolerating blank/unparseable lines in an existing log."""
+    """Append the cycle record to the plugin-data cycle log (NOT the native memory dir).
+
+    Native `MEMORY.md` / facts / mirrors stay facts-only (ADR 006). Skip if `dir` is
+    absent; refuse an empty marker.timestamp; idempotent on (commit, timestamp).
+    """
     if not os.path.isdir(dirpath):
         print(f"render_dashboard: --persist dir not found, skipping log: {dirpath}", file=sys.stderr)
         return
@@ -947,31 +968,15 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> None:
     if not ts:
         print("render_dashboard: marker.timestamp empty (unstamped cycle), skipping persist", file=sys.stderr)
         return
-    logpath = os.path.join(dirpath, ".consolidation-log.jsonl")
-    if os.path.exists(logpath):
-        try:
-            # errors="replace": a non-UTF-8 byte (e.g. a partial write from a killed process)
-            # must NOT raise UnicodeDecodeError mid-scan — it's a ValueError, not an OSError.
-            with open(logpath, encoding="utf-8", errors="replace") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        prev = json.loads(line)
-                        pm = prev.get("marker") or {}
-                        already = (str(pm.get("commit", "")) == commit
-                                   and str(pm.get("timestamp", "")) == ts)
-                    except (ValueError, AttributeError):
-                        # tolerate ANY junk line — bad JSON (ValueError), or valid-JSON-but-
-                        # non-object / non-dict marker (.get → AttributeError). Never block logging.
-                        continue
-                    if already:
-                        return  # already logged this cycle — idempotent
-        except OSError as exc:
-            print(f"render_dashboard: cannot read log, skipping persist: {exc}", file=sys.stderr)
+    from pathlib import Path as _P
+    from retention import cycle_log_read_paths, cycle_log_write_path
+    store = _P(dirpath)
+    for p in cycle_log_read_paths(store):
+        if _already_logged(str(p), commit, ts):
             return
+    logpath = cycle_log_write_path(store)
     try:
+        logpath.parent.mkdir(parents=True, exist_ok=True)
         with open(logpath, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
     except OSError as exc:
