@@ -104,6 +104,20 @@ Work the phases in order. Phases 0–3 are read-only investigation; Phase 4 is t
 first write, and you **show the user the proposed consolidation before writing it**
 (report-then-apply) so a consolidation pass never silently churns committed docs.
 
+**Empty-set rule (judgment, not scans).** Thoroughness is that every detector *runs*,
+not that you re-derive an empty result. When a scripted set is empty — `archive? 0`,
+`defrag? 0`, `promote?` seed empty, no `user-global` canonicals, `demotion.eligible == 0`
+with nothing surfaced, distill `n_recurring == 0` and `n_chains == 0`, registrar
+`fleet-candidates: 0` — the decision is determined. Emit the required one-liner
+verdict from those counts, `--into` it where the phase says to, and proceed. Do
+**not** open a judgment pass over that set, do not re-read the empty list, do not
+invent a nearest-miss, do not walk `blocked: generic-cli` rows as a docket. A
+non-empty set gets the full content judgment written in its phase (report-then-apply,
+never auto). **Never skip the scan** to save a turn: harvest, `--recalls`, distill
+`--json`, `--workflows`, `--gc` report, and the Phase-0 detectors still run. Empty
+is a result, not a skip. Dream-arc beats still fire (presence doesn't scale; see
+below) — they stay one short line on an empty set.
+
 ### Rigor modes — scale ceremony to pass magnitude
 
 Not every pass deserves the same machinery. `memory_status.py` computes a **suggested
@@ -380,11 +394,27 @@ detect-and-report — a heavy nested CLAUDE.md is a v0.1.23 optimization target,
 
 ### Phase 1 — Orient
 
-Read fully: both `MEMORY.md`s (repo + auto-memory index), the auto-memory fact
-files, and skim `AGENTS.md`/`CLAUDE.md` for the sections facts would land in — and,
-for `CLAUDE.md`, note its existing structure and voice: you'll treat it as read-mostly
-and conform to it, never restructure it (see Phase 4). Build a mental model of what's
-already recorded so Phase 2 can dedup against it. **Large repo docs — search, don't read whole.** A file over the Read tool's cap (~256KB) must be grep'd for the relevant terms and read only in offset/limit portions; a whole read errors and wastes context.
+Read both `MEMORY.md`s (repo + auto-memory **index**) and skim `AGENTS.md`/`CLAUDE.md`
+for the sections facts would land in — and, for `CLAUDE.md`, note its existing
+structure and voice: you'll treat it as read-mostly and conform to it, never
+restructure it (see Phase 4). The indexes are the inventory for Phase-2 dedup.
+**Large repo docs — search, don't read whole.** A file over the Read tool's cap
+(~256KB) must be grep'd for the relevant terms and read only in offset/limit
+portions; a whole read errors and wastes context.
+
+**Fact bodies — targeted, not a store-wide preload.** Do not sequentially Read every
+auto-memory fact file to "orient." Body reads still happen wherever CONTENT is the
+input (this is not a skip of the re-audits below):
+
+- **Demotion:** every `user-global` canonical **body** in `~/.claude/memory/` (re-walk
+  the cascade by content). Empty-set rule only if there are no such canonicals.
+- **Promotion:** every Phase-0 `promote?` seed body (already capped). Empty-set rule
+  if the seed is empty.
+- **Phase 0 named lists** (`archive?`, `defrag?`, re-verification candidates): Read
+  those files when the count is > 0.
+- **Phase 2 dedup:** grep the memory dir and repo docs for each candidate's
+  distinctive nouns; Read the hits. A body-level duplicate with a weak description is
+  a grep hit, not something you catch by preloading the store.
 
 Then **pull relevant global facts** so this project recalls them and Phase 2 can
 dedup against them too (cross-project step; safe + additive). **First `--list` (read-only), then `--pull`**
@@ -418,7 +448,7 @@ withheld to protect a past-the-ceiling index; the dashboard renders it as the `�
 receive` lever) in the cycle record. If nothing is missing/stale/held, no-op.
 
 Then **re-audit the existing `user-global` facts — the backstop for the promotion cascade's weak
-applicability gate (G2.3 — see Phase 2).** Read each canonical's **body** in `~/.claude/memory/` and
+applicability gate (G2.3 — see Phase 2).** Empty-set rule if there are none. Otherwise read each canonical's **body** in `~/.claude/memory/` and
 **re-walk the cascade by CONTENT**; any fact that would NOW route lower — e.g. its content carries a
 *fleet-VARYING* precondition (`mypy`, "only when cutting a release") rather than the user's
 *fleet-CONSTANT* substrate — is a **demotion candidate**. Judge by content, **NOT `holders`/adoption**
@@ -432,7 +462,7 @@ entry; a declined candidate stays `reconciled`. Never auto-demote.
 Then re-audit **this project's own local store for PROMOTION — the symmetric, HIGHER-STAKES counterpart**
 to the demotion pass. `memory_status.py` (Phase 0) surfaces a **"promote?"** signal listing **authored,
 non-mirror, unscoped** facts whose `type` leans cross-project (feedback/reference) — a **weak seed, judged
-by CONTENT, not the tag.** For each, **re-walk the Phase-2 cascade by content**: a fact gated only by the
+by CONTENT, not the tag.** Empty-set rule if that seed is empty. For each seeded candidate, **re-walk the Phase-2 cascade by content**: a fact gated only by the
 user's *fleet-CONSTANT* substrate routes to `user-global`; one reusable on a *specific, narrow* same-stack
 (a RAG/GPU technique lesson) routes to `stack-general`; anything project-specific stays put. **Promotion is
 the higher-blast-radius direction** — a wrong/stale promotion replicates an always-loaded pointer into
@@ -533,7 +563,9 @@ promoting later is cheap; un-promoting means a global delete + fleet-wide GC (Ph
 
 For each candidate, decide its **tier** (always-loaded / recall / on-demand — the
 model above) and therefore its store and shape, and check whether it's already
-recorded (dedup against Phase 1 — including across the two stores). Drop anything
+recorded (dedup against the Phase-1 indexes, then grep the memory dir / repo docs
+for each candidate's distinctive nouns and Read the hits — including across the two
+stores). Drop anything
 the repo already records as code or git history; keep the non-obvious *why*. Be
 especially stingy about proposing anything for the always-loaded tier — it must
 earn its per-session cost.
@@ -719,7 +751,7 @@ reaction.** Curating completed/stale content out of the active tier is the defau
 
 **Completion-driven archive (runs EVERY dream, decoupled from budget — v0.1.x).** Phase 0 surfaces **`archive? N`**
 candidates — indexed pointers with a dated `_YYYY_MM_DD` stem, already KEEP-vetoed for live lessons
-(`archive_candidates`). Review them EVERY pass and PROACTIVELY archive the genuinely-completed ones — don't wait for
+(`archive_candidates`). Empty-set rule when N=0 (the detector ran; there is nothing to judge). When N>0, review them EVERY pass and PROACTIVELY archive the genuinely-completed ones — don't wait for
 budget pressure to accumulate them: the always-loaded index should equal the **active / lesson-bearing set**, so a
 completed/merged arc's pointer belongs in the on-demand archive the moment its durable lessons are extracted into kept
 facts. Apply the SAME keep-vs-archive JUDGMENT, propose-then-apply, and `reconciled` `entries[]` recording as step 0's
@@ -730,7 +762,7 @@ defragmentation that keeps the index lean; the over-budget gate below is what ca
 
 **Body-defragmentation (runs EVERY dream — v0.1.x, Cycle 2).** Phase 0 also surfaces **`defrag? N`** bloated ACTIVE
 files — indexed, non-mirror, NON-dated facts whose BODY is a size outlier (≫ the store median; `defrag_candidates`).
-These are long-lived status/roadmap docs that have ACCRETED completed/stale items over time. Curate the BODY **in
+Empty-set rule when N=0. When N>0, these are long-lived status/roadmap docs that have ACCRETED completed/stale items over time. Curate the BODY **in
 place** (the index pointer STAYS — distinct from archiving a whole dated fact): **COLLAPSE** completed detail that is
 redundant with git/CHANGELOG — but **READ the CHANGELOG/git and CONFIRM the detail is actually present there BEFORE
 collapsing** (verified, not assumed; else KEEP or relocate); **RELOCATE** still-useful-completed detail to an archive
@@ -847,7 +879,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    surfaced, hook-cost ranked) and the `--recalls --into` you just ran STRUCK any surfaced stem read
    THIS window (`demotion.struck` — never demote those). While `eligible: 0` the policy is DORMANT
    (the evidence gate: a fact needs ≥3 probative zero-read windows + corroboration before it even
-   surfaces) — record `verdict: "dormant — N probative windows"` and move on. When candidates
+   surfaces) — record `verdict: "dormant — N probative windows"` and move on (empty-set rule:
+   that one-liner IS the judgment; do not re-rank a dormant policy). When candidates
    remain: **judge each by CONTENT** — the keep-vs-archive judgment has a SILENT failure mode
    (an archived live lesson stops being recalled with nothing to flag it), so keep-on-doubt —
    then apply per-item dispositions, **report-then-apply, recorded as `entries[]` rows** (never
@@ -919,7 +952,10 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    dream's scope). Ranking is by day-spread then count — rank is a HINT, not truth (a same-day high-count
    workflow can still be real). Credential-shaped commands COUNT into their class but their `sample` is an
    omission label (`scanned.secrets_omitted` says how many) — never a raw secret. The script only COUNTS —
-   you do the judgment:
+   you do the judgment. **Empty-set rule:** if `recurring` and `chains` are both empty, the GATE has
+   already produced the verdict (`nothing: 0 recurring · 0 chains`) — capture it with `--from/--into`
+   (and still RUN `--workflows` / `--registrar --into` so the record is complete); do not walk the
+   bullets below and do not judge blocked rows. Otherwise:
    - **READ THE CHAINS FIRST — a chain IS a candidate workflow** (e.g. `smoke → mypy → sim` = a gate-check
      pipeline). Then **RECOGNIZE the multi-command arcs** from co-ranked rows (e.g. a release cycle =
      `release.sh`+`gh pr`+`git checkout -b`/`push` recurring across the same days) — chains capture the
@@ -994,7 +1030,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    channel. `nothing:` does not attach. Tier-1 LOCAL proposals are unchanged
    (the step-6 gate above — a 5-episode single-node workflow stays legitimately proposable locally).
    Until a **distinctive** cross-node recurrence exists the honest state is `fleet-candidates: 0`
-   even if `git add` recurs on every node — never invent breadth, never treat generic CLI as a miss.
+   even if `git add` recurs on every node — never invent breadth, never treat generic CLI as a miss
+   (empty-set rule: write `verdict: "nothing: 0 fleet-candidates"` and do not walk `blocked:*` rows).
    - **REPORT-THEN-APPLY — present the proposal PLAIN / un-styled (never dream-voice an approval) and NEVER
      auto-write an executable artifact.** Show the artifact you would create + the evidence (the counts); the
      user confirms; only then you author it. A single confirmation authorizes **ONE specific named artifact**

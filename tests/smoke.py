@@ -2465,6 +2465,16 @@ check("v0.1.58 SKILL pin: the hand-mirror count language is DELETED (counts are 
       "n_recurring = len(" not in _sk55 and "--into <the --seed path>" in _sk55)
 check("v0.1.58 SKILL pin: gate leg 6 (previously DECLINED) present",
       "previously DECLINED" in _sk55 and ".consolidation-log.jsonl" in _sk55)
+# Empty-set rule: judgment gated on scripted-empty, scans still mandatory; no store-wide
+# fact-body preload (the index is the inventory; content reads stay targeted).
+check("empty-set rule lives in SKILL (judgment, not scans)",
+      "Empty-set rule (judgment, not scans)" in _sk55
+      and "Never skip the scan" in _sk55
+      and "nothing: 0 recurring · 0 chains" in _sk55)
+check("Phase 1 no longer preloads every auto-memory fact body",
+      "Read fully:" not in _sk55
+      and "the auto-memory fact files" not in _sk55
+      and "Fact bodies — targeted, not a store-wide preload" in _sk55)
 
 # ── v0.1.58: distill hardening — closed POSIX noise classes, structural interpreter rule,
 # firewall-at-emission, --into deterministic capture, per-line window, CLI honesty ───────────────
