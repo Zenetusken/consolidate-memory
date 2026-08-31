@@ -41,6 +41,7 @@ Usage: extract_signals.py [PROJECT_DIR] [--since ISO_TS] [--max N] [--json]
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 import unicodedata
@@ -476,11 +477,12 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                                 signal_type="omitted", score=-1, scope_hint="-"))  # synthetic row → sessionId/ts default ""
     signals = surfaced + errors
     counts["surfaced"] = len(signals)
-    try:
-        from hook_sketches import persist_sketches
-        persist_sketches(_ctx.plugin_data_dir, _ctx.project_id, sketches)
-    except Exception:
-        pass
+    if str(os.environ.get("CM_HOOK_SKETCHES") or "") == "1":
+        try:
+            from hook_sketches import persist_sketches
+            persist_sketches(_ctx.plugin_data_dir, _ctx.project_id, sketches)
+        except Exception:
+            pass
     return {"transcripts": [t.name for t in transcripts], "since": since or "(none — first pass)",
             "counts": counts, "signals": signals}
 

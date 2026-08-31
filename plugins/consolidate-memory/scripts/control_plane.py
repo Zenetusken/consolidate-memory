@@ -14,7 +14,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Callable, Iterator, Optional
+from typing import Any, Callable, Iterator, Optional, Tuple
 
 from store_context import StoreContext, plugin_data_dir, config_root
 
@@ -146,7 +146,15 @@ CREATE TABLE IF NOT EXISTS journal (
 
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(str(path.parent), 0o700)
+    except OSError:
+        pass
     conn = sqlite3.connect(str(path))
+    try:
+        os.chmod(str(path), 0o600)
+    except OSError:
+        pass
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     try:
@@ -158,18 +166,94 @@ def connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
-def connect_if_exists(path: Path) -> Optional[sqlite3.Connection]:
-    """Open the control plane only when the DB file already exists.
+def connect_readonly(path: Path) -> sqlite3.Connection:
+    """Open an existing control DB read-only. Never creates, never migrates.
 
-    Read-only entry points (`--list`, `cm conflicts`, migrate --plan) must not
-    mint control.sqlite.
+    URI `mode=ro` is the actual guarantee — `connect_if_exists` used to call
+    `connect()`, which mkdir'd, ran SCHEMA_SQL, and enabled WAL.
+    """
+    resolved = path.resolve()
+    conn = sqlite3.connect(resolved.as_uri() + "?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def connect_if_exists(path: Path) -> Optional[sqlite3.Connection]:
+    """Open the control plane only when the DB file already exists, read-only.
+
+    Read-only entry points (`--list`, `cm conflicts`, migrate --plan, doctor)
+    must not mint or migrate control.sqlite.
     """
     try:
         if not path.is_file():
             return None
     except OSError:
         return None
-    return connect(path)
+    try:
+        return connect_readonly(path)
+    except (sqlite3.Error, OSError):
+        return None
+
+
+def classify_registry(path: Path) -> Tuple[str, str]:
+    """Return (state, error) without creating or migrating the file.
+
+    States: absent | healthy | locked | corrupt | permission-denied | incompatible.
+    """
+    try:
+        if not path.is_file():
+            return "absent", ""
+    except OSError as e:
+        return "permission-denied", str(e)
+    try:
+        if not os.access(str(path), os.R_OK):
+            return "permission-denied", "not readable"
+    except OSError as e:
+        return "permission-denied", str(e)
+    try:
+        conn = connect_readonly(path)
+    except sqlite3.OperationalError as e:
+        msg = str(e).lower()
+        if "locked" in msg:
+            return "locked", str(e)
+        if "unable to open" in msg or "authorization" in msg or "denied" in msg:
+            return "permission-denied", str(e)
+        return "corrupt", str(e)
+    except sqlite3.DatabaseError as e:
+        return "corrupt", str(e)
+    except OSError as e:
+        err = getattr(e, "errno", None)
+        if err in (13, 1):
+            return "permission-denied", str(e)
+        return "corrupt", str(e)
+    try:
+        tables = {str(r[0]) for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        conn.close()
+    except sqlite3.Error as e:
+        return "corrupt", str(e)
+    needed = {"projects", "facts", "holders", "tombstones", "migration_state"}
+    missing = needed - tables
+    if missing:
+        return "incompatible", "missing tables: " + ",".join(sorted(missing))
+    return "healthy", ""
+
+
+def assert_mutation_allowed(ctx: "StoreContext") -> None:
+    """Refuse destructive ops when StoreContext is ambiguous or the registry is unhealthy.
+
+    An absent registry is fine (first enroll/upsert will create it). A present but
+    locked/corrupt/unreadable/incompatible control.sqlite is not a security decision
+    we fail open on.
+    """
+    from store_context import WriteRefused, assert_writable
+    assert_writable(ctx)
+    path = db_path(ctx)
+    state, err = classify_registry(path)
+    if state in ("absent", "healthy"):
+        return
+    detail = f" ({err})" if err else ""
+    raise WriteRefused(f"refusing mutation: registry is {state}{detail}")
 
 
 def migration_mode_readonly(ctx: Optional[StoreContext] = None,
@@ -233,7 +317,8 @@ def upsert_project(conn: sqlite3.Connection, ctx: StoreContext, capabilities: Op
         "current_root=excluded.current_root, git_common_dir=excluded.git_common_dir, "
         "native_memory_dir=excluded.native_memory_dir, session_dir=excluded.session_dir, "
         "last_seen=excluded.last_seen, "
-        "capabilities=excluded.capabilities, "
+        "capabilities=CASE WHEN excluded.capabilities IN ('[]', '', 'null') "
+        "THEN projects.capabilities ELSE excluded.capabilities END, "
         "domain_id=CASE WHEN projects.status='enrolled' THEN projects.domain_id "
         "ELSE excluded.domain_id END, "
         "profile_id=excluded.profile_id, remote_fingerprint=excluded.remote_fingerprint",
@@ -256,7 +341,12 @@ def enrolled_domain(conn: sqlite3.Connection, project_id: str) -> Optional[str]:
 
 def enroll_project(conn: sqlite3.Connection, ctx: StoreContext, domain: str) -> None:
     from identifiers import validate_domain_id
+    from store_context import WriteRefused
     d = validate_domain_id(domain)
+    current = enrolled_domain(conn, ctx.project_id)
+    if current and current != d:
+        raise WriteRefused(
+            f"already enrolled in {current}; use `cm project move-domain --to {d}`")
     upsert_project(conn, ctx)
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     conn.execute(
@@ -396,28 +486,56 @@ def _file_hash(path: Path) -> Optional[str]:
         return None
 
 
-def _publish_temps(publishes: list, deletes: Optional[list] = None) -> int:
-    """os.replace leftover same-directory temps, then apply deletes. Idempotent.
+def _publish_destinations(publishes: list) -> Tuple[int, list]:
+    """os.replace leftover same-directory temps. Does NOT delete. Idempotent.
 
-    Destination existence is not success: when `sha256` is recorded, the dest
-    bytes must match or the item is left unpublished.
+    Returns (n_ok, bad_items). Destination existence is not success: when
+    `sha256` is recorded, the dest bytes must match.
     """
     n = 0
+    bad: list = []
     for item in publishes:
         tmp, dest = Path(item["tmp"]), Path(item["dest"])
         want = str(item.get("sha256") or "")
         if tmp.exists():
             dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                os.chmod(str(tmp), 0o600)
+            except OSError:
+                pass
             os.replace(str(tmp), str(dest))
-            if want and _file_hash(dest) != want:
-                continue
-            n += 1
-        elif dest.exists():
-            if want and _file_hash(dest) != want:
-                continue
-            n += 1
+        if not dest.exists() or (want and _file_hash(dest) != want):
+            bad.append(item)
+            continue
+        try:
+            os.chmod(str(dest), 0o600)
+        except OSError:
+            pass
+        n += 1
+    return n, bad
+
+
+def _apply_deletes(deletes: Optional[list]) -> None:
+    """Delete only when a recorded preimage still matches (or no preimage given)."""
     for d in deletes or []:
-        Path(d).unlink(missing_ok=True)
+        if isinstance(d, dict):
+            path = Path(str(d.get("path") or ""))
+            pre = str(d.get("preimage") or d.get("sha256") or "")
+            if not path or str(path) in (".", "/"):
+                continue
+            if pre and _file_hash(path) not in (pre, None):
+                continue
+            path.unlink(missing_ok=True)
+        else:
+            Path(d).unlink(missing_ok=True)
+
+
+def _publish_temps(publishes: list, deletes: Optional[list] = None) -> int:
+    """Publish destinations, then delete only if every dest verified (ADR 010)."""
+    n, bad = _publish_destinations(publishes)
+    if bad:
+        return n
+    _apply_deletes(deletes)
     return n
 
 
@@ -457,15 +575,11 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
             if ctx is not None and (origin_dom or origin_pid) and not ctx_matches:
                 continue
             if publishes:
-                _publish_temps(publishes, deletes)
-                bad = []
-                for item in publishes:
-                    dest = Path(item["dest"])
-                    want = str(item.get("sha256") or "")
-                    if not dest.exists() or (want and _file_hash(dest) != want):
-                        bad.append(item)
+                _n, bad = _publish_destinations(publishes)
+                del _n
                 if bad:
                     continue
+                _apply_deletes(deletes)
                 for h in payload.get("holders") or []:
                     record_holder(rconn, h[0], h[1], h[2], h[3], h[4])
                 for f in payload.get("facts") or []:
@@ -477,11 +591,21 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                         "sensitivity=excluded.sensitivity",
                         tuple(f),
                     )
+                for ts in payload.get("tombstones") or []:
+                    write_tombstone(rconn, *ts)
+                try:
+                    rconn.commit()
+                except sqlite3.Error:
+                    continue
                 journal_step(conn, op["op_id"], "journal_complete", "complete")
                 recovered.append(op["op_id"])
                 continue
             if replay is not None:
                 replay(kind, payload, op["step"])
+                try:
+                    rconn.commit()
+                except sqlite3.Error:
+                    continue
                 journal_step(conn, op["op_id"], "journal_complete", "complete")
                 recovered.append(op["op_id"])
                 continue
@@ -489,24 +613,13 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                 ctx_matches and payload.get("stem") and payload.get("text")
                 and kind == "canonical-upsert")
             if replayable_upsert and ctx is not None:
-                from canonical_ingress import upsert
-                origin = payload.get("origin") or ""
-                origin_del = payload.get("origin_delete") or ""
-                upsert(ctx, payload["stem"], payload["text"],
-                       origin_local=Path(origin) if origin else None,
-                       origin_delete=Path(origin_del) if origin_del else None,
-                       preserve_canonical=bool(payload.get("preserve_canonical")),
-                       create_only=bool(payload.get("create_only")),
-                       skip_recover=True)
-                journal_step(conn, op["op_id"], "journal_complete", "complete")
-                recovered.append(op["op_id"])
+                # Nested transact() would deadlock on flock (recover runs while
+                # the caller may already hold mutation locks). Replay only via
+                # leftover temps (publishes path above). Pre-temp crashes stay
+                # pending → complete-old.
                 continue
             journal_step(conn, op["op_id"], op.get("step") or "journal_start", "abandoned")
             recovered.append(op["op_id"])
-        try:
-            rconn.commit()
-        except sqlite3.Error:
-            pass
         conn.commit()
         return recovered
     finally:
@@ -529,8 +642,8 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
     crash recovery can roll forward files without trusting dest existence.
     """
     import hashlib
-    from store_context import WriteRefused, assert_writable
-    assert_writable(ctx)
+    from store_context import WriteRefused
+    assert_mutation_allowed(ctx)
     require_interprocess_lock()
     crash = crash_after or os.environ.get("CM_CRASH_AFTER") or ""
     dbp = db_path(ctx)
@@ -557,13 +670,17 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         _maybe_crash("lock_projects")
         snaps = {}
         for p, h in (expected_revisions or {}).items():
-            snaps[p] = h if isinstance(h, str) and h else _file_hash(Path(p))
+            if not (isinstance(h, str) and len(h) >= 16):
+                from store_context import WriteRefused as _WRHash
+                raise _WRHash("expected hash required (None is illegal after classify): " + p)
+            snaps[p] = h
         _maybe_crash("record_revisions")
         payload = dict(payload)
         payload.setdefault("origin_profile_id", ctx.profile_id)
         payload.setdefault("origin_domain_id", ctx.domain_id)
         payload.setdefault("origin_project_id", ctx.project_id)
-        payload.setdefault("op_version", 2)
+        payload.setdefault("op_version", 3)
+        payload.setdefault("origin_registry_state", getattr(ctx, "registry_state", ""))
         op_id = journal_insert(conn, kind, payload, "journal_start")
         _maybe_crash("journal_start")
         rconn.execute("BEGIN")
@@ -584,9 +701,13 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
                 "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
             })
         payload["publishes"] = publishes
-        payload["deletes"] = deletes
+        payload["deletes"] = [
+            {"path": d, "preimage": _file_hash(Path(d))} if isinstance(d, str) else d
+            for d in deletes
+        ]
         payload["holders"] = list(result.get("holders") or [])
         payload["facts"] = list(result.get("facts") or [])
+        payload["tombstones"] = list(result.get("tombstones") or [])
         conn.execute("UPDATE journal SET payload=?, step=? WHERE op_id=?",
                      (json.dumps(payload, sort_keys=True), "prepare_temps", op_id))
         conn.commit()
@@ -599,7 +720,13 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
                 raise WriteRefused("source changed during transaction: " + p)
         journal_step(conn, op_id, "verify_unchanged", "pending")
         _maybe_crash("verify_unchanged")
-        _publish_temps(publishes, deletes)
+        _n_ok, bad = _publish_destinations(publishes)
+        del _n_ok
+        if bad:
+            rconn.execute("ROLLBACK")
+            raise WriteRefused("destination hash mismatch; deletes skipped: "
+                               + ", ".join(str(b.get("dest")) for b in bad))
+        _apply_deletes(payload["deletes"])
         journal_step(conn, op_id, "publish", "pending")
         _maybe_crash("publish")
         rconn.execute("COMMIT")

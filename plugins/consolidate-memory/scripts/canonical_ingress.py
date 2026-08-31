@@ -12,7 +12,8 @@ from typing import Optional
 from domain_policy import admit_cross_project, fact_domain, fact_sensitivity, validate_write_policy
 from index_admission import admit_write, project_index
 from mirror_conflict import semantic_hash, stamp_revisions
-from store_context import StoreContext, WriteRefused, assert_writable, config_root
+from store_context import (StoreContext, WriteRefused, assert_writable, config_root,
+                           warn_unenrolled_share)
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 _LINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
@@ -229,7 +230,19 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
     except IdentifierRefused:
         return {"ok": False, "error": "unsafe or reserved stem"}
     assert_writable(ctx)
+    warn_unenrolled_share(ctx)
+    if not getattr(ctx, "cross_project_allowed", False):
+        return {"ok": False, "error":
+                "cross-project writes require enrollment into a named domain "
+                "(cm project enroll --domain NAME)"}
+    text = insert_frontmatter_key(text if text.endswith("\n") else text + "\n", "name", stem)
+    if ctx.domain_id and ctx.domain_id != "unknown":
+        text = insert_frontmatter_key(text, "domain", ctx.domain_id)
     fm = _frontmatter(text)
+    from fact_schema import validate_canonical_frontmatter
+    schema_err = validate_canonical_frontmatter(fm, stem=stem, domain=ctx.domain_id)
+    if schema_err:
+        return {"ok": False, "error": schema_err}
     err = validate_write_policy(text, fm, looks_secret=_looks_secret_fn(), domain=ctx.domain_id)
     if err:
         return {"ok": False, "error": err}
@@ -250,7 +263,7 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         from index_admission import apply_pointer, project_index
         from sync_global import (_as_mirror, _body_hash, _fat_hook_warning,
                                  _pointer_line, apply_provenance)
-        if is_tombstoned(conn, stem, ctx.domain_id if ctx.domain_id != "unknown" else ""):
+        if is_tombstoned(conn, stem, ctx.domain_id or "unknown"):
             raise WriteRefused(f"tombstoned: {stem} (will not resurrect)")
         dest = facts_dir / f"{stem}.md"
         try:
@@ -356,6 +369,11 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
         stem = validate_fact_stem(stem)
     except IdentifierRefused as e:
         return {"ok": False, "error": str(e)}
+    warn_unenrolled_share(ctx)
+    if not getattr(ctx, "cross_project_allowed", False):
+        return {"ok": False, "error":
+                "cross-project writes require enrollment into a named domain "
+                "(cm project enroll --domain NAME)"}
 
     def mutate(conn, temps):
         fid = stable_fact_id(ctx.domain_id, stem)
@@ -365,7 +383,14 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
         if p.exists():
             prev = p.read_text(encoding="utf-8", errors="replace")
         temps[str(p)] = _tombstone_markdown(stem, reason, replacement_id, grace_until, prev)
-        return {"stem": stem, "tombstoned": True}
+        # Overlay: generate_catalog still reads the live file on disk; strip this
+        # stem's pointer so the catalog published in the same transact omits it.
+        cat = generate_catalog(ctx.canonical_domain_dir)
+        lines = [ln for ln in cat.splitlines() if f"]({stem}.md)" not in ln]
+        temps[str(ctx.canonical_domain_dir / "MEMORY.md")] = "\n".join(lines) + "\n"
+        conn.execute("DELETE FROM holders WHERE fact_id=?", (fid,))
+        return {"stem": stem, "tombstoned": True,
+                "tombstones": [(fid, stem, ctx.domain_id, reason, replacement_id, grace_until)]}
 
     try:
         out = transact(ctx, "forget", {"stem": stem, "reason": reason}, mutate)

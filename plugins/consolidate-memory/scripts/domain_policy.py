@@ -70,13 +70,12 @@ def admit_cross_project(project_domain: str, fm: dict, *,
                         looks_secret=None) -> bool:
     """May this project receive this canonical fact?
 
-    Dual-read: untagged fact + unknown project → True (legacy probes).
-    Tagged fact + unknown project → False.
-    Cross-domain → False unless (src, dst) in authorized_pairs.
-    Secret → False (never replicate a secret body).
-    Confidential → only same domain.
-    Enforced: untagged facts are not admitted (legacy-unassigned until reviewed).
+    Unknown is local-only (ADR 008): never admits. Cross-domain is always
+    denied (`authorized_pairs` is ignored / unsupported). Confidential only
+    same named domain. Dual-read of untagged legacy is for enrolled projects
+    until migrate finalize.
     """
+    del authorized_pairs  # ADR 008: cross-domain authorization is unsupported
     pdom = (project_domain or "unknown").strip() or "unknown"
     fdom = fact_domain(fm)
     sens = fact_sensitivity(fm)
@@ -86,24 +85,13 @@ def admit_cross_project(project_domain: str, fm: dict, *,
         blob = str(fm.get("description") or "") + "\n" + str(fm.get("body") or "")
         if blob.strip() and looks_secret(blob):
             return False
-    # Confidential never rides a migration exception (P0-4).
-    if sens == "confidential":
-        return bool(fdom) and fdom == pdom and pdom != "unknown"
-    auth = authorized_pairs or set()
-
     if pdom == "unknown":
-        if fdom:
-            return False
-        return migration_mode != MIGRATION_ENFORCED
-
+        return False
+    if sens == "confidential":
+        return bool(fdom) and fdom == pdom
     if not fdom:
         return migration_mode != MIGRATION_ENFORCED
-
-    if fdom != pdom:
-        if (fdom, pdom) in auth:
-            return True
-        return False
-    return True
+    return fdom == pdom
 
 
 def secret_safe_pointer(description: str) -> str:

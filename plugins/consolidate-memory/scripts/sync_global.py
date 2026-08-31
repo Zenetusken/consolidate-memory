@@ -133,11 +133,10 @@ def _registry_project_rows() -> list:
     Does not CREATE the DB (fleet readers must not mint control.sqlite).
     """
     try:
-        from control_plane import connect, db_path, iter_registered_projects
-        path = db_path()
-        if not path.is_file():
+        from control_plane import connect_if_exists, db_path, iter_registered_projects
+        conn = connect_if_exists(db_path())
+        if conn is None:
             return []
-        conn = connect(path)
         try:
             return iter_registered_projects(conn)
         finally:
@@ -596,7 +595,12 @@ def global_facts() -> list[tuple[str, dict, str]]:
 
 
 def iter_admissible_facts(ctx) -> list:
-    """Facts this StoreContext may pull. Domain-dir first; legacy is untagged dual-read only."""
+    """Facts this StoreContext may pull. Domain-dir first; legacy is untagged dual-read only.
+
+    Unenrolled / unhealthy registry → empty (ADR 008 / 009).
+    """
+    if not getattr(ctx, "cross_project_allowed", False):
+        return []
     from domain_policy import admit_cross_project, fact_domain
     from memory_status import _looks_secret
     mode = "dual-read"
@@ -878,20 +882,26 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         return {"pulled": 0, "refreshed": 0, "fat": 0}
     idxp = store / "MEMORY.md"
     expected: dict = {}
+
+    def _sha(p: Path) -> str:
+        return hashlib.sha256(p.read_bytes()).hexdigest()
+
     if jobs or evict_stem:
         if idxp.exists():
-            expected[str(idxp)] = None
+            expected[str(idxp)] = _sha(idxp)
         for _n, _f, _s, path, _w in jobs:
             if path.exists():
-                expected[str(path)] = None
+                expected[str(path)] = _sha(path)
     landed: set = set()
     for name, _f, _s, _p, _w in jobs:
         landed.add(name)
     holder_names = [n for n in landed] + [n for n in in_sync_names if n not in landed]
     for name in holder_names:
-        cp = global_store() / f"{name}.md"
+        cp = ctx.canonical_domain_dir / f"{name}.md"
+        if not cp.exists():
+            cp = global_store() / f"{name}.md"
         if cp.exists():
-            expected[str(cp)] = None
+            expected[str(cp)] = _sha(cp)
 
     def mutate(conn, temps):
         idx_text = _safe_read_text(idxp) or "# Memory Index\n\n"
@@ -1118,12 +1128,13 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         # the same refusal (a phantom store + bogus provenance must be unmintable from any entry point).
         print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
         return 2
-    from store_context import resolve_store, WriteRefused
+    from store_context import resolve_store, warn_unenrolled_share, WriteRefused
     from domain_policy import admit_cross_project, fact_domain
     from mirror_conflict import (CONFLICT as _MC_CONFLICT, QUARANTINE as _MC_QUAR,
                                  REFRESH as _MC_REFRESH, RESTAMP as _MC_RESTAMP,
                                  STOP_LOCAL as _MC_STOP, classify_mirror)
     ctx = resolve_store(project_dir)
+    warn_unenrolled_share(ctx)
     if pull and not ctx.auto_memory_enabled:
         print("pull: auto-memory is disabled — refusing writes (absence is not drift)", file=sys.stderr)
         return 2
@@ -1834,7 +1845,7 @@ def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> i
         for n in ghosts:
             p = global_store() / f"{n}.md"
             if p.exists():
-                expected_e[str(p)] = None
+                expected_e[str(p)] = hashlib.sha256(p.read_bytes()).hexdigest()
 
         def _mutate_edges(conn, temps):
             removed = 0
@@ -1910,12 +1921,31 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     # dead-edge report all see the SAME store state (the audit's guard-TOCTOU: a store emptying
     # between the guard's read and a second scan read would have made every mirror look orphaned —
     # the exact mass-wipe the guard exists to prevent).
-    gfacts = global_facts() if global_store().exists() else []
+    from store_context import resolve_store as _rs_gc
+    from store_context import WriteRefused as _WRGc
+    _ctx_gc = _rs_gc(project_dir)
+    if apply and not getattr(_ctx_gc, "cross_project_allowed", False):
+        print("gc: --apply requires enrollment into a named domain "
+              "(cm project enroll --domain NAME)", file=sys.stderr)
+        return 2
+    if getattr(_ctx_gc, "cross_project_allowed", False):
+        gfacts = iter_admissible_facts(_ctx_gc)
+    else:
+        gfacts = global_facts() if global_store().exists() else []
     if not gfacts:
-        why = "absent" if not global_store().exists() else "present but empty (no canonical facts)"
-        print(f"global store {global_store()} is {why} — refusing to GC "
+        why = ("no admissible canonicals" if getattr(_ctx_gc, "cross_project_allowed", False)
+               else ("absent" if not global_store().exists()
+                     else "present but empty (no canonical facts)"))
+        print(f"gc: {why} — refusing to GC "
               "(cannot distinguish that from all-canonicals-deleted).")
         return 0
+    if apply:
+        from control_plane import assert_mutation_allowed
+        try:
+            assert_mutation_allowed(_ctx_gc)
+        except _WRGc as e:
+            print(f"gc: {e}", file=sys.stderr)
+            return 2
     if edges:   # v0.1.84 (P4): fleet-wide edge triage — project_dir-independent, same snapshot
         return _gc_edges(gfacts, apply, project_dir)
     store = project_store(project_dir)
@@ -1943,22 +1973,58 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     out.append(_ui.kv("ORPHANS", f"{len(orphans)} mirror(s) whose canonical is gone"
                + ("" if orphans else "  " + _ui.c("· nothing to reclaim", "dim"))))
     removed = 0
+    removed_frozen = 0
+    if apply and (orphans or frozen):
+        from control_plane import transact, _file_hash as _fh_gc
+        idxp = store / "MEMORY.md"
+        names = list(orphans) + list(frozen)
+        expected: dict = {}
+        if idxp.is_file():
+            h = _fh_gc(idxp)
+            if h:
+                expected[str(idxp)] = h
+        for name in names:
+            p = store / f"{name}.md"
+            if p.is_file():
+                h = _fh_gc(p)
+                if h:
+                    expected[str(p)] = h
+
+        def mutate(conn, temps):
+            idx = idxp.read_text(encoding="utf-8", errors="replace") if idxp.exists() else (
+                "# Memory Index\n")
+            deletes = []
+            for name in names:
+                p = store / f"{name}.md"
+                if p.exists():
+                    deletes.append(str(p))
+                idx = "\n".join(
+                    ln for ln in idx.splitlines() if f"]({name}.md)" not in ln)
+                conn.execute(
+                    "DELETE FROM holders WHERE project_id=? AND fact_id IN "
+                    "(SELECT fact_id FROM facts WHERE stem=? AND domain_id=?)",
+                    (_ctx_gc.project_id, name, _ctx_gc.domain_id))
+            temps[str(idxp)] = idx.rstrip() + "\n"
+            return {"deletes": deletes, "removed": len(deletes)}
+
+        try:
+            transact(_ctx_gc, "gc-apply",
+                     {"orphans": list(orphans), "frozen": list(frozen)},
+                     mutate, expected_revisions=expected)
+            removed = len(orphans)
+            removed_frozen = len(frozen)
+        except _WRGc as e:
+            print(f"gc: {e}", file=sys.stderr)
+            return 2
     for name in orphans:
         if apply:
-            (store / f"{name}.md").unlink(missing_ok=True)
-            _remove_index_pointer(store, name)
-            removed += 1
             out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(file + index pointer)", "dim"))
         else:
             out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer)", "dim"))
     out.append(_ui.kv("FROZEN", f"{len(frozen)} mirror(s) whose canonical is ALIVE but irrelevant here (dropped stack)"
                + ("" if frozen else "  " + _ui.c("· none", "dim"))))
-    removed_frozen = 0
     for name in frozen:
         if apply:
-            (store / f"{name}.md").unlink(missing_ok=True)
-            _remove_index_pointer(store, name)
-            removed_frozen += 1
             out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(re-pullable if the stack returns)", "dim"))
         else:
             out.append("    " + _ui.c("✻", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer; re-pullable — canonical stays)", "dim"))
@@ -2055,8 +2121,9 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
               file=sys.stderr)
         return 1
 
-    from store_context import resolve_store as _rs_prom
+    from store_context import resolve_store as _rs_prom, warn_unenrolled_share as _warn_prom
     _sctx = _rs_prom(project_dir)
+    _warn_prom(_sctx)
     gdir = _sctx.canonical_domain_dir
     gdir.mkdir(parents=True, exist_ok=True)
     canon_path = gdir / f"{canon_name}.md"
@@ -2897,8 +2964,17 @@ def fleet_staleness(project_dir: Path) -> dict:
         # review F4 + v0.1.81: ONE gap predicate (_store_gaps — shared with the session beacon so
         # they can never diverge). Trigger → live stacks; non-trigger → the --pull-written cache
         # when present, else None (user-global-only, labeled — never guessed).
-        _dom = (trig_ctx.domain_id if is_trig
-                else domain_by_store.get(_path_key(store), "unknown"))
+        if is_trig:
+            _dom = trig_ctx.domain_id
+        else:
+            _dom = domain_by_store.get(_path_key(store)) or ""
+            if not _dom or _dom == "unknown":
+                # Unregistered stores are measured against THIS domain's
+                # canonicals (absorption lag), not as unknown/local-only —
+                # that filter would under-report every gap (admit_cross_project
+                # never admits unknown).
+                _dom = trig_ctx.domain_id if getattr(
+                    trig_ctx, "cross_project_allowed", False) else "unknown"
         missing, stale = _store_gaps(
             store, trig_stacks if is_trig else cached_stacks, gfacts, body_hashes,
             domain_id=_dom, migration_mode=mode)
@@ -3075,6 +3151,12 @@ def harvest(project_dir: Path) -> int:
     if not project_dir.is_dir():
         print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
         return 2
+    from store_context import resolve_store as _rs_h
+    _hctx = _rs_h(project_dir)
+    if not getattr(_hctx, "cross_project_allowed", False):
+        print("harvest: local-only (unenrolled or unhealthy registry) — skipping",
+              file=sys.stderr)
+        return 0
     stores = _network_nodes()
     trig = project_store(project_dir)
     if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:

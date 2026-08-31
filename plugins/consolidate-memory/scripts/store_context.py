@@ -17,10 +17,11 @@ import hashlib
 import json
 import os
 import re
+import sys
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, TextIO
 
 SCHEMA_VERSION = "2"
 PLUGIN_ID = "consolidate-memory"
@@ -33,6 +34,27 @@ VOLATILE_FRONTMATTER = (
 
 class WriteRefused(RuntimeError):
     """Raised when a mutation is refused (disagreement, disabled auto-memory, no override)."""
+
+
+# 0.2.2: unknown is a local-only sentinel (ADR 008). Do not soften the wording.
+UNENROLLED_SHARE_WARNING = (
+    "UNENROLLED LOCAL-ONLY: this project cannot create or pull cross-project "
+    "canonicals until it is enrolled in a named domain "
+    "(cm project enroll --domain personal). Enrollment does not revoke mirrors "
+    "already pulled. Do not run migrate apply/rollback or domain switches on "
+    "irreplaceable stores. 1.0 remains HOLD."
+)
+
+
+def is_unenrolled_share(ctx: "StoreContext") -> bool:
+    return (not ctx.enrolled) or ctx.domain_id == "unknown"
+
+
+def warn_unenrolled_share(ctx: "StoreContext", stream: Optional[TextIO] = None) -> None:
+    """Loud, deterministic warning for doctor/pull/promote/upsert/dashboards."""
+    if not is_unenrolled_share(ctx):
+        return
+    print(UNENROLLED_SHARE_WARNING, file=stream if stream is not None else sys.stderr)
 
 
 @dataclass(frozen=True)
@@ -58,6 +80,9 @@ class StoreContext:
     store_override: Optional[Path]
     requested_domain: str = "unknown"
     enrolled: bool = False
+    registry_state: str = "absent"
+    cross_project_allowed: bool = False
+    registry_error: str = ""
 
 
 def slug_for(project_dir: Path) -> str:
@@ -450,9 +475,10 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     pid = project_id_for(profile, domain, common, root, remote_fp)
     enrolled = False
     pdata = plugin_data_dir(cfg, env)
-    try:
-        from control_plane import connect_if_exists, enrolled_domain
-        _db = pdata / "control.sqlite"
+    from control_plane import classify_registry, connect_if_exists, enrolled_domain
+    _db = pdata / "control.sqlite"
+    reg_state, reg_err = classify_registry(_db)
+    if reg_state == "healthy":
         _c = connect_if_exists(_db)
         if _c is not None:
             try:
@@ -462,8 +488,6 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
                     enrolled = True
             finally:
                 _c.close()
-    except Exception:
-        pass
     from identifiers import IdentifierRefused, safe_child, validate_domain_id
     try:
         dname = validate_domain_id(domain, allow_unknown=True)
@@ -472,6 +496,9 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     except IdentifierRefused:
         domain = "unknown"
         canon = cfg / "consolidate-memory" / "domains" / "unknown" / "facts"
+    cross_project_allowed = (
+        reg_state == "healthy" and enrolled and domain != "unknown"
+    )
 
     return StoreContext(
         config_root=cfg,
@@ -495,6 +522,9 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         store_override=override,
         requested_domain=requested_domain or "unknown",
         enrolled=enrolled,
+        registry_state=reg_state,
+        cross_project_allowed=cross_project_allowed,
+        registry_error=reg_err,
     )
 
 
@@ -504,6 +534,12 @@ def assert_writable(ctx: StoreContext) -> None:
     if not ctx.write_allowed:
         raise WriteRefused("resolution sources disagree: " + "; ".join(ctx.ambiguity)
                            + " — pass an explicit store override")
+
+
+def _registry_state_line(ctx: StoreContext) -> str:
+    err = getattr(ctx, "registry_error", "") or ""
+    state = getattr(ctx, "registry_state", "absent") or "absent"
+    return state if not err else f"{state}: {err}"
 
 
 def doctor_report(ctx: StoreContext) -> str:
@@ -522,6 +558,8 @@ def doctor_report(ctx: StoreContext) -> str:
         ("domain_id", ctx.domain_id),
         ("requested_domain", ctx.requested_domain),
         ("enrolled", "true" if ctx.enrolled else "false"),
+        ("registry_state", _registry_state_line(ctx)),
+        ("cross_project_allowed", "true" if getattr(ctx, "cross_project_allowed", False) else "false"),
         ("auto_memory_enabled", "true" if ctx.auto_memory_enabled else "false"),
         ("resolution_source", ctx.resolution_source),
         ("write_allowed", "true" if ctx.write_allowed else "false"),
@@ -530,6 +568,8 @@ def doctor_report(ctx: StoreContext) -> str:
         ("project_slot", ctx.project_slot),
         ("remote_fingerprint", ctx.remote_fingerprint or "(none)"),
         ("settings_sources", ",".join(ctx.settings_sources) if ctx.settings_sources else "(none)"),
+        ("unenrolled_share_warning",
+         UNENROLLED_SHARE_WARNING if is_unenrolled_share(ctx) else "(none)"),
     ]
     return "\n".join(f"{k}: {v}" for k, v in rows) + "\n"
 
@@ -546,12 +586,16 @@ def doctor_dict(ctx: StoreContext) -> dict:
         "domain_id": ctx.domain_id,
         "requested_domain": ctx.requested_domain,
         "enrolled": ctx.enrolled,
+        "registry_state": _registry_state_line(ctx),
+        "cross_project_allowed": getattr(ctx, "cross_project_allowed", False),
         "auto_memory_enabled": ctx.auto_memory_enabled,
         "resolution_source": ctx.resolution_source,
         "write_allowed": ctx.write_allowed,
         "ambiguity": list(ctx.ambiguity),
         "display_name": ctx.display_name,
         "project_slot": ctx.project_slot,
+        "unenrolled_share_warning": (
+            UNENROLLED_SHARE_WARNING if is_unenrolled_share(ctx) else None),
     }
 
 

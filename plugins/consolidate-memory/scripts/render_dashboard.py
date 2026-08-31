@@ -1037,6 +1037,13 @@ def main() -> int:
     judged = persist_dir is not None
     print(render(record, judged=judged))
     if persist_dir:
+        try:
+            from pathlib import Path as _P
+            from store_context import resolve_store as _rs_dash, warn_unenrolled_share as _w_dash
+            _w_dash(_rs_dash(_P.cwd()))
+        except Exception:
+            pass
+    if persist_dir:
         # Strict order print → persist → exit (v0.1.44): the firing record MUST be logged (it accrues
         # for calibration + surfaces in the archive's longitudinal ⚠), THEN the terminal --persist
         # render exits 3 on a procedure-integrity violation — the lazy-skip teeth at the one boundary a
