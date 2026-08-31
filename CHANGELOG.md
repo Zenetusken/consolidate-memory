@@ -5,6 +5,75 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.2.2] — 2026-08-31
+
+### Breaking — unenrolled is local-only (ADR 008)
+
+- **`unknown` is a local-only sentinel.** Unenrolled projects cannot create or
+  pull cross-project canonicals. Enroll into a named domain (`personal`
+  recommended). `domains/unknown/facts` and legacy `~/.claude/memory` are
+  migration inputs. v0.2.1 unenrolled A→B sharing is gone.
+- **`enroll` refuses a silent domain switch.** Use `cm project move-domain --to`.
+  Enroll / move / unenroll revoke managed mirrors not admitted in the destination.
+- **Cross-domain `authorized_pairs` is unsupported** (ignored).
+- **Public 1.0 remains HOLD.**
+
+### Added — ADRs 008–016, identity types, admin commands
+
+- ADRs 008–016 freeze the 0.2.2 contract (local-only unknown, registry health,
+  journal v3 dest-verify-before-delete, schema v3 codec, domain transition,
+  staged migration, Phase-1 sync exception, current-domain reports, POSIX mutation).
+- `identity.CanonicalRef` + `StoreContext.registry_state` /
+  `cross_project_allowed`.
+- Packaged `/cm-doctor`, `/cm-domain`, `/cm-data`.
+- `fact_schema.py` restricted codec (name==stem, domain match, enums).
+- Staged migrate (ADR 013): inventory → assign/exclude → apply (named domains only;
+  refuses unresolved facts; no `legacy-unassigned` stamp) → rollback (hash-aware) →
+  finalize (sets `enforced`). Dual-read remains until finalize.
+- `cm data export` writes a tar.gz + sha256 manifest. `cm data purge --scope`
+  (`managed-mirrors` | `project-ops` | `domain-canonicals` | `all-plugin-data`)
+  never deletes Claude's native Auto Memory.
+
+### Added — unenrolled-share warning, registry classification
+
+- Loud `UNENROLLED LOCAL-ONLY` warning on `cm doctor`, `--list` /
+  `--pull` / `--promote`, `canonical upsert` / `forget`, and dashboard persist/HTML
+  renders when the project is not enrolled.
+- `classify_registry()` / `assert_mutation_allowed()`: a present but
+  locked / corrupt / unreadable / incompatible `control.sqlite` refuses enroll,
+  unenroll, migrate apply/rollback, forget, upsert, resolve, repair-mirror, GC
+  `--apply`, and purge. An *absent* registry still allows first write (it will be
+  created). `cm doctor` prints `registry_state`.
+
+### Fixed — read-only SQLite, unknown tombstones, catalog-on-forget
+
+- **`connect_if_exists` is actually read-only.** It no longer calls `connect()`
+  (which mkdir'd, ran `SCHEMA_SQL`, and enabled WAL). URI `mode=ro`; schema
+  upgrades stay on the writable `connect()` path. `--list`, `cm conflicts`,
+  migrate `--plan`, and doctor cannot mint or migrate the DB.
+- **Unknown-domain tombstone lookup uses `domain_id="unknown"`.** A forget in
+  `work` no longer blocks an unenrolled upsert of the same stem (and an unenrolled
+  forget now actually prevents resurrection).
+- **`forget` regenerates the domain catalog in the same `transact`**, so a
+  tombstoned fact's pointer does not linger in `MEMORY.md`.
+- **Journal dest-verify-before-delete (ADR 010).** `_publish_temps` no longer
+  unlinks origins when a dest hash mismatches. `expected_revisions` may not be
+  `None` for a file that influenced the plan (pull records plan-time hashes).
+  Recovery COMMITs the registry before marking the journal complete, and
+  refuses to complete a replay whose `upsert` returned `ok: false`.
+- **Hook-sketch persistence is off by default** (`CM_HOOK_SKETCHES=1` to enable).
+- **`upsert_project` no longer clobbers stored capabilities with `[]`.**
+- **`--gc --apply` journals through v3** (dest-verify-before-delete) and requires
+  enrollment. `forget` deletes holder rows in the same transact.
+- **Canonical upsert injects `name:`/`domain:`** from the stem and StoreContext
+  before schema validation (promote rename no longer hard-refuses).
+
+Docs (README, SECURITY, SKILL, harness-map, CLAUDE, AGENTS, preflight, `cm` help)
+now describe **0.2.2 behavior**: unenrolled is local-only, Phase-1 `--pull` is the
+documented enrolled-domain exception to "Phases 0–3 are read-only", `/cm-*` for
+marketplace users, `./cm` maintainer-only. Behavior break vs v0.2.1 unenrolled
+sharing; operator-chosen **patch** vehicle (0.2.2, not 0.3.0). Public 1.0 HOLD.
+
 ## [0.2.1] — 2026-08-31
 
 ### Fixed — unenrolled sharing, tombstone domain keys, enroll-only grant

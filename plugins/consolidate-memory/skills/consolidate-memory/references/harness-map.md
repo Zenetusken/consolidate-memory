@@ -1,7 +1,13 @@
 # Harness map — data sources, memory formats, verification recipes
 
-**v0.2.0.** Read this when you need the exact paths, file formats, or grep/git recipes for a
+**v0.2.2.** Read this when you need the exact paths, file formats, or grep/git recipes for a
 consolidation pass. The SKILL.md body covers the workflow; this is the lookup table.
+
+**Unenrolled is local-only (ADR 008):** a project that is not enrolled cannot
+create or pull cross-project canonicals. `domains/unknown/facts` and legacy
+`~/.claude/memory` are migration inputs only. Enroll with
+`cm project enroll --domain NAME` (or `/cm-domain`). `move-domain` / `unenroll`
+revoke managed mirrors that the destination does not admit.
 
 ## The substrate at a glance
 
@@ -524,8 +530,9 @@ auto-participate — they'd need a separate adapter; deferred.
 
 ### Scope is a fleet-wide cost multiplier — and the lever for relieving it
 
-Each replicated fact adds an **always-loaded** index pointer to *every* project it
-reaches. So global-scope facts are a per-session tax paid across the whole fleet:
+Each replicated fact adds an **always-loaded** index pointer to *every enrolled
+same-domain* project it reaches. Unenrolled projects are local-only and do not
+share. So global-scope facts are a per-session tax paid across that domain:
 - `user-global` → every project (G facts × P projects pointers fleet-wide).
 - `stack-general` on a **common** stack → nearly as wide while *looking* scoped. The
   `claude-code` stack (a real `.claude/` dir or a `SKILL.md` file — the only two markers

@@ -9,7 +9,7 @@
     {
       "name": "consolidate-memory",
       "source": "./plugins/consolidate-memory",
-      "description": "Cross-project, verification-first memory beyond Auto Dream: shares fact-checked memory across your whole fleet (a governed global store) and verifies facts against the live code, dropping what it can't confirm, with tiered context-budget + network token observability.",
+      "description": "Cross-project, verification-first memory beyond Auto Dream: shares fact-checked memory across enrolled projects in the same trust domain (a governed store) and verifies facts against the live code, dropping what it can't confirm, with tiered context-budget + network token observability. Unenrolled projects are local-only until enrolled.",
       "category": "productivity",
       "keywords": ["memory", "consolidation", "dream", "cross-project", "context-management"]
     },

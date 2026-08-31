@@ -17,8 +17,14 @@ description: >-
 
 # Consolidate Memory
 
-**v0.2.0** — domain-isolated canonicals, StoreContext, operator enrollment
+**v0.2.2** — domain-isolated canonicals, StoreContext, operator enrollment
 (`cm project enroll --domain NAME`), SQLite control plane. Public 1.0 stays HOLD.
+
+**Unenrolled is local-only:** a project that is not enrolled cannot create or pull
+cross-project canonicals. Enroll with `cm project enroll --domain personal`.
+Enrollment does not revoke mirrors already pulled; use `move-domain` / `unenroll`
+to strip unauthorized managed mirrors. `cm doctor` prints `UNENROLLED LOCAL-ONLY`
+when this applies.
 
 A deliberate pass that turns the fluid experience of a work session into **verified,
 durable facts** — and keeps the project's two memory stores accurate and
@@ -106,9 +112,15 @@ skill**, and why facts that load deterministically get the harshest scrutiny.
 
 ## Workflow
 
-Work the phases in order. Phases 0–3 are read-only investigation; Phase 4 is the
-first write, and you **show the user the proposed consolidation before writing it**
-(report-then-apply) so a consolidation pass never silently churns committed docs.
+Work the phases in order. Phases 0, 2, and 3 are read-only investigation. **Phase 1
+managed sync is the documented exception:** `--list` (read-only) then `--pull` (and
+`--harvest`) may write already-approved **same enrolled-domain** mirrors, index
+pointers, and plugin-data usage ledgers *before* Phase 4 (unenrolled projects are
+local-only and `--pull` is a no-op). Those writes
+must appear in the Phase-5 mutation audit. Phase 4 remains the approval gate for
+authoring, deletion, promotion, enrollment changes, migration, and committed-doc
+edits — **show the user the proposed consolidation before writing those**
+(report-then-apply) so a pass never silently churns committed docs.
 
 **Empty-set rule (judgment, not scans).** Thoroughness is that every detector *runs*,
 not that you re-derive an empty result. When a scripted set is empty — `archive? 0`,

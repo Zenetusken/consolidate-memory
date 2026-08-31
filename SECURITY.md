@@ -7,13 +7,18 @@ does, what it never does, and how to report a problem.
 ## What it touches
 
 - **Reads (local only):** the current project's git log, the repo memory docs
-  (`MEMORY.md`/`AGENTS.md`/`CLAUDE.md`), Claude Code's per-project auto-memory under
-  `~/.claude/projects/<slug>/memory/`, the cross-project store `~/.claude/memory/`, and
-  — via the bundled `extract_signals.py` — the *tail signal* of the active session
-  transcript (it streams the `.jsonl`; it never bulk-loads or copies it).
-- **Writes (local only):** memory fact files + index in the two memory stores, and the
-  operational marker `~/.claude/projects/<slug>/memory/.consolidation-state.json`. All
-  writes are surfaced to you in the Phase-4 report before they happen.
+  (`MEMORY.md`/`AGENTS.md`/`CLAUDE.md`), Claude Code's per-project auto-memory
+  (resolved by StoreContext — default `~/.claude/projects/<slug>/memory/`), domain
+  canonicals under `~/.claude/consolidate-memory/domains/<domain>/facts/` (legacy
+  `~/.claude/memory/` is a read-only migration source), and — via the bundled
+  `extract_signals.py` — the *tail signal* of the active session transcript (it
+  streams the `.jsonl`; it never bulk-loads or copies it).
+- **Writes (local only):** memory fact files + index in the native store and the
+  project's enrolled domain (unenrolled projects cannot write canonicals), plus
+  operational state under plugin-data. **Not all writes wait for Phase 4:** Phase 1
+  `--pull` / `--harvest` replicate already-approved canonicals and usage ledgers
+  before the Phase-4 proposal. Authoring, deletion, promotion, migration, and
+  committed-doc edits stay report-then-apply.
 - **Never:** makes network calls, sends telemetry, or transmits any of your data
   anywhere. Every script is **Python 3 stdlib only** — no third-party packages, no
   `pip install`.
@@ -61,6 +66,16 @@ at the repo root) is **gitignored and never published** — verify with
   exactly one hook — a SessionStart beacon (matchers `startup` + `resume`, 2 s timeout)
   that may inject at most one read-only advisory line — and no MCP servers and no
   background processes: skill + scripts + that one advisory hook.
+
+## Known limitations (v0.2.2)
+
+- Unenrolled projects are **local-only** (ADR 008). They cannot create or pull
+  cross-project canonicals. Enroll into a named domain to share.
+- `move-domain` / `unenroll` revoke managed mirrors not admitted in the destination;
+  `enroll` itself refuses a silent domain switch.
+- A corrupt/locked `control.sqlite` **refuses mutations and cross-project reads**.
+  The SessionStart beacon stays silent on registry failure.
+- Public 1.0 remains HOLD.
 
 ## Reporting a vulnerability
 

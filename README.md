@@ -3,8 +3,8 @@
 **Cross-project, verification-first memory for Claude Code — the layer beyond Auto Dream.**
 
 Claude Code is rolling out a built-in **Auto Dream** that consolidates each project's memory in place. `consolidate-memory`
-goes further, on the two axes Auto Dream doesn't cover: it **shares memory across your whole fleet** —
-a governed global store (a promotion/demotion cascade) replicated into every project — and **verifies
+goes further, on the two axes Auto Dream doesn't cover: it **shares memory across enrolled
+projects in the same trust domain** (a governed store, replicated into those projects) — and **verifies
 facts against the live code** (grep / file & symbol existence / `git log`), dropping any it can't
 confirm. Fact-checked, fleet-wide memory — not a per-project transcript-merge.
 
@@ -34,7 +34,7 @@ project tidy automatically; you invoke **`dream`** (or "consolidate my memory") 
     auto-mem index    ≈275/1500    [██░░░░░░░░] 18%  +1 ln
     recall facts      6            +1
 
-  CROSS-PROJECT   · global tier · ~/.claude/memory: 4 fact(s)
+  CROSS-PROJECT   · domain tier · domains/<domain>/facts: 4 fact(s)
     ↑ promoted  global claude-code-memory-is-slug-scoped
 
   NEURAL NETWORK   · token cost (≈ est., not a tokenizer)
@@ -182,7 +182,7 @@ normal plugin auto-update — if the line appears after an update, that's this f
 
 ## Install
 
-**v0.2.0** (domain isolation + StoreContext + `cm project enroll`). This ships as a
+**v0.2.2** (domain isolation + StoreContext + `cm project enroll`). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
 ```text
@@ -207,11 +207,27 @@ which is only set when the skill loads as a plugin).
 ### Uninstall / purge your data
 
 `/plugin uninstall consolidate-memory` removes the code. Your consolidated memory is
-**separate and untouched by uninstall** — that split is the whole privacy posture. To
-also purge the data itself: remove `~/.claude/memory/` (the global, cross-project store)
-and/or `~/.claude/projects/<slug>/memory/` per project (that project's own store) — both
-are plain directories of markdown, safe to `rm -rf` by hand. This is **not recoverable**
-once removed.
+**separate and untouched by uninstall** — that split is the whole privacy posture.
+
+Do **not** `rm -rf ~/.claude/projects/<slug>/memory/` to "uninstall this plugin": that
+directory is also Claude Code's native Auto Memory, and blanket deletion removes
+memory this plugin does not own. Domain canonicals live under
+`~/.claude/consolidate-memory/domains/<domain>/facts/`; the control plane lives under
+`~/.claude/plugins/data/consolidate-memory/`. Legacy `~/.claude/memory/` is a
+read-only migration source. Scoped purge commands are the right tool; hand-deleting
+the native store is **not recoverable** and can destroy unrelated Auto Memory.
+
+### Known limitations (v0.2.2)
+
+- **Unenrolled projects are local-only.** They cannot create or pull cross-project
+  canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain
+  personal` (this checkout). `cm doctor` prints `UNENROLLED LOCAL-ONLY` when this
+  applies.
+- Use `move-domain` / `unenroll` to revoke managed mirrors that the destination
+  does not admit. Do not run `cm migrate --apply` / `--rollback` or domain switches
+  on irreplaceable stores without a reviewed assignment plan.
+- Public **1.0 remains HOLD.** `./cm` is a **maintainer** wrapper in this checkout;
+  marketplace users invoke the skill (`dream`) and the packaged `/cm-*` commands.
 
 ### The QA companion plugin
 
@@ -233,7 +249,7 @@ the dense technical reporting (never replacing it). You can also drive the piece
 ```bash
 ./cm status            # Phase-0 context: stores, git range, marker, token budget + a no-nag dream-timing nudge
 ./cm doctor            # resolved Claude store, source, profile, domain, auto-memory, ambiguity
-./cm project enroll --domain NAME   # operator grant: this project may receive that domain's facts
+./cm project enroll --domain NAME   # maintainer CLI: operator grant (marketplace users: ask the skill)
 ./cm extract           # curated session signal (human turns + error-gotchas, secrets omitted)
 ./cm distill           # recurring Bash-command workflows (templates + compound-command chains) — distill's raw signal
 ./cm pull .            # replicate relevant global facts into this project
