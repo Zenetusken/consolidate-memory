@@ -75,20 +75,8 @@ def discover_stores(base: Path) -> dict[str, list[dict[str, Any]]]:
         slug = proj.parent.name
         if _EXCLUDE_RE.search(slug):
             continue
-        log = proj / ".consolidation-log.jsonl"
-        if not log.exists():
-            continue
-        recs: list[dict[str, Any]] = []
-        for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                r = json.loads(line)
-            except json.JSONDecodeError:
-                continue  # one malformed row must not abort the batch
-            if isinstance(r, dict):
-                recs.append(r)
+        from memory_status import iter_store_cycle_log
+        recs = [r for r in iter_store_cycle_log(proj) if isinstance(r, dict)]
         if recs:
             out[_store_name(slug)] = recs
     return out
@@ -170,10 +158,30 @@ def aggregate(stores: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
 
 
 def ledger_stat(base: Path) -> dict[str, Any]:
-    lp = base / ".fleet-usage.jsonl"
-    if not lp.exists():
+    """Prefer the plugin-data ledger; fall back to a leftover canonical-plane copy (read-only)."""
+    from store_context import plugin_data_dir
+    paths = [plugin_data_dir() / "fleet-usage.jsonl"]
+    if base.name == "memory":
+        paths.append(base.parent / "plugins" / "data" / "consolidate-memory" / "fleet-usage.jsonl")
+    paths.append(base / ".fleet-usage.jsonl")  # legacy read only
+    seen: set = set()
+    lines = 0
+    found = False
+    for lp in paths:
+        try:
+            key = str(lp.resolve())
+        except OSError:
+            key = str(lp)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not lp.exists():
+            continue
+        found = True
+        lines += sum(1 for _ in lp.read_text(encoding="utf-8", errors="replace").splitlines())
+        break  # first existing path wins — do not double-count dual-read leftovers
+    if not found:
         return {"lines": 0, "stale_since": "(absent)"}
-    lines = sum(1 for _ in lp.read_text(encoding="utf-8", errors="replace").splitlines())
     return {"lines": lines, "stale_since": "(on disk)"}
 
 
@@ -228,10 +236,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json", action="store_true", help="emit structured JSON (current + baseline + delta)")
     a = ap.parse_args(argv)
 
-    base = Path.home() / ".claude" / "projects"
+    from store_context import config_root as _cfg_root
+    _cr = _cfg_root()
+    base = _cr / "projects"
     stores = discover_stores(base)
     cur = aggregate(stores)
-    ledger = ledger_stat(Path.home() / ".claude" / "memory")
+    ledger = ledger_stat(_cr / "memory")
     d = delta(cur, BASELINE)
 
     if a.json:

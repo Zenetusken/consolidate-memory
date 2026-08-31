@@ -99,11 +99,10 @@ _SLUG_SUB = re.compile(r"[^A-Za-z0-9]")  # v0.1.40 (M3): match the skill's gener
 
 
 def slug_for(repo: Path) -> str:
-    """Claude Code project slug: the absolute path with EVERY non-alphanumeric char → ``-`` (case kept).
+    """Claude Code project slug. Value-pinned to memory_status.slug_for (smoke 5-way).
 
-    Mirrors the skill's ``memory_status.slug_for`` (v0.1.40 M3: ``re.sub(r'[^A-Za-z0-9]', '-', ...)``) so the snapshot
-    targets the SAME store the skill manages (see claude-code-memory-is-slug-scoped). Re-implemented
-    rather than imported to keep this module skill-discovery-free.
+    Must NOT import memory_status: this oracle also drives the vendored canary, and a
+    live `sys.modules['memory_status']` would hide the canary's known-bad module.
     """
     return _SLUG_SUB.sub("-", str(repo.resolve()))
 

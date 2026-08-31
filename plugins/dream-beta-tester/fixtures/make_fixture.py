@@ -32,8 +32,8 @@ HOOK = ("a deliberately dense, information-rich pointer hook written to push the
 
 
 def slug_for(repo: Path) -> str:
-    # v0.1.40 (M3): match the skill's generalized slug rule (ALL non-alnum → '-'), not just [/_]; else the
-    # fixture store lands at a different slug than the skill/oracle resolve → the gate sees an empty store.
+    # Value-pinned to memory_status.slug_for (smoke 5-way). Must not import that
+    # module — make_fixture runs inside the canary self-test path.
     return re.sub(r"[^A-Za-z0-9]", "-", str(repo.resolve()))
 
 

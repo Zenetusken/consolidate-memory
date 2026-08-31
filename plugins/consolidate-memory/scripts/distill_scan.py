@@ -293,7 +293,8 @@ def scan(project_dir: Path, since: str) -> dict:
     command-level `_looks_secret(_norm(cmd))` hit gates the SAMPLE and counts into `secrets_omitted` —
     the command's templates still count, each screened at emission by `_seg_template` (see module doc)."""
     project_dir = project_dir.resolve()
-    proj_root = Path.home() / ".claude" / "projects" / slug_for(project_dir)
+    from store_context import resolve_store as _resolve_store
+    proj_root = _resolve_store(project_dir).session_dir
     transcripts = _window_transcripts(proj_root, since)
     since_dt = _parse_ts(since) if since else None   # compare INSTANTS, not raw strings (code-review [2])
     counts = {"sessions": len(transcripts), "commands": 0, "days": 0, "secrets_omitted": 0}
