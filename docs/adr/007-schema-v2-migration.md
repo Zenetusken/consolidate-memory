@@ -1,6 +1,6 @@
 # 007. Schema v2 and migration
 
-Status: Accepted
+Status: Accepted — superseded in part by ADR 011 (schema v3) and ADR 013 (staged migration)
 
 ## Context
 

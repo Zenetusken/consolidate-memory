@@ -1,6 +1,6 @@
 # 003. Domain isolation (trust ≠ applicability)
 
-Status: Accepted
+Status: Accepted — superseded in part by ADR 008 (unknown is local-only; no cross-domain authorization)
 
 ## Context
 

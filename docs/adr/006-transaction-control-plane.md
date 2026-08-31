@@ -1,6 +1,6 @@
 # 006. Transactional control plane
 
-Status: Accepted
+Status: Accepted — superseded in part by ADR 010 (journal v3) and ADR 016 (POSIX mutation contract)
 
 ## Context
 
