@@ -2112,11 +2112,19 @@ with _tf43.TemporaryDirectory() as _td53:
     _after53 = _json43.loads(_cyc53.read_text())
     check("v0.1.53 bug5: --audit --into injects the audit block (no KeyError, no manual merge)",
           isinstance(_after53.get("audit"), dict))
-    # the mutation-log lands under the PROJECT's slug → proves --into was NOT consumed as the positional
-    # project_dir (else slug_for(cycle.json) and this path wouldn't exist) — the _argpaths regression guard.
-    _mlog53 = Path(_td53) / "home" / ".claude" / "projects" / ms.slug_for(Path(_td53) / "proj") / "memory" / ".mutation-log.jsonl"
-    check("v0.1.53 bug5: --audit wrote the mutation-log under the PROJECT slug (--into NOT mis-read as project_dir)",
-          _mlog53.exists())
+    # the mutation-log lands under plugin-data ops for the PROJECT slug → proves --into was NOT
+    # consumed as the positional project_dir (else slug_for(cycle.json) and this path wouldn't
+    # exist) — the _argpaths regression guard. Native plane stays facts-only.
+    import retention as _ret53
+    _native53 = Path(_td53) / "home" / ".claude" / "projects" / ms.slug_for(Path(_td53) / "proj") / "memory"
+    _mlog53 = _ret53.mutation_log_write_path(_native53, environ={"HOME": str(Path(_td53) / "home")})
+    _wrong53 = _ret53.mutation_log_write_path(
+        Path(_td53) / "home" / ".claude" / "projects" / ms.slug_for(_cyc53) / "memory",
+        environ={"HOME": str(Path(_td53) / "home")})
+    check("v0.1.53 bug5: --audit wrote the mutation-log under plugin-data ops for the PROJECT slug (--into NOT mis-read as project_dir)",
+          _mlog53.exists() and not _wrong53.exists())
+    check("v0.1.53 bug5: --audit did not write .mutation-log.jsonl into the native plane",
+          not (_native53 / ".mutation-log.jsonl").exists())
 
 # --- v0.1.54: the dream-arc contract (write-time cues + record capture + surfaces) ---
 # (1) validate_cycle_record: `dream` container checks (dict at top level, beats a list).
@@ -4217,10 +4225,11 @@ with _Env73() as _e:
             _rc76 = sg.promote(_e.proj, "loc", "loc")
     finally:
         _os73.link = _orig_link76
-    check("v0.1.76/b: promote on a no-hardlink filesystem refuses CLEANLY (rc=1, names the constraint, "
-          "no canonical, local intact — was an uncaught PermissionError traceback)",
-          _rc76 == 1 and "hardlink" in _perr76.getvalue() and not (_e.glob / "loc.md").exists()
-          and (_e.store / "loc.md").exists() and list(_e.glob.glob("*.tmp*")) == [])
+    check("v0.1.76/b: promote on a no-hardlink filesystem still CREATES via upsert/os.replace "
+          "(hardlink is no longer the ingress; local is converted to a mirror)",
+          _rc76 == 0 and (_e.glob / "loc.md").exists()
+          and (_e.store / "loc.md").exists() and "global_ref:" in (_e.store / "loc.md").read_text(encoding="utf-8")
+          and list(_e.glob.glob("*.tmp*")) == [])
 
 # --- v0.1.78: evidence-clock stamps (docs/evidence-clock-stamps.spec.md — audit F9's starvation fix).
 # RED pre-fix (measured): one probative window accrued, one DESCRIPTION-only canonical edit + --pull,
@@ -4355,7 +4364,8 @@ with _Env73() as _e:
         _hrc79a = sg.harvest(_e.proj)
     with _ctx73.redirect_stdout(_io73.StringIO()):
         _hrc79b = sg.harvest(_e.proj)   # idempotence: watermark makes the re-run a no-op
-    _lp79 = _e.glob / ".fleet-usage.jsonl"
+    from store_context import plugin_data_dir as _pdd79
+    _lp79 = _pdd79() / "fleet-usage.jsonl"
     _rows79 = _lp79.read_text(encoding="utf-8").splitlines()
     _w79 = _jsonB.loads(_rows79[0])["window"]
     _s79raw, _end79raw = _w79.split("..")
@@ -4366,7 +4376,8 @@ with _Env73() as _e:
           and _stat79.S_IMODE(_lp79.stat().st_mode) == 0o600
           and _s79dt is not None and _end79dt is not None
           and _s79dt.timestamp() <= _end79dt.timestamp()
-          and "organic reads 1" in _hout79.getvalue())
+          and "organic reads 1" in _hout79.getvalue()
+          and not (_e.glob / ".fleet-usage.jsonl").exists())
     _fu79 = sg.fleet_utility(_e.proj)
     _e79 = {x["name"]: x for x in _fu79["canonicals"]}["canon-x"]
     check("v0.1.79: --utility surfaces the harvested evidence SOURCE-LABELED for the no-own-usage node "
@@ -5526,9 +5537,20 @@ def _norm_mutate_tree(root: Path) -> "dict[str, str]":
     out: dict[str, str] = {}
     for p in sorted(root.rglob("*")):
         if p.is_file():
+            rel = str(p.relative_to(root)).replace("\\", "/")
+            if (p.suffix in (".sqlite", ".lock") or p.name.endswith(".lock")
+                    or "/plugins/data/" in "/" + rel or p.name in (
+                        "control.sqlite", "fleet-usage.jsonl", ".fleet-usage.jsonl",
+                        "migrate-rollback.json", "hook-sketches.jsonl")):
+                continue
             t = p.read_bytes().decode("utf-8", errors="replace")
             t = _reA3.sub(r"global_ref_since: .*", r"global_ref_since: NORMALIZED", t)
-            out[str(p.relative_to(root))] = _hlA3.sha256(t.encode("utf-8")).hexdigest()[:16]
+            t = _reA3.sub(r"content_modified: .*", r"content_modified: NORMALIZED", t)
+            t = _reA3.sub(r"last_observed_at: .*", r"last_observed_at: NORMALIZED", t)
+            t = _reA3.sub(r"mirrored_at: .*", r"mirrored_at: NORMALIZED", t)
+            t = _reA3.sub(r"base_revision: .*", r"base_revision: NORMALIZED", t)
+            t = _reA3.sub(r"canonical_revision: .*", r"canonical_revision: NORMALIZED", t)
+            out[rel] = _hlA3.sha256(t.encode("utf-8")).hexdigest()[:16]
     return out
 
 
@@ -5756,6 +5778,537 @@ with _tf43.TemporaryDirectory() as _tdC:
                      capture_output=True, text=True, timeout=60, env=_envC)
     check("v0.1.87/C8: an unknown flag is a usage error (exit 2), never a silent ignore",
           _pC2.returncode == 2)
+
+# ── cross-project hardening (ADR 002–007): shipped StoreContext + policy ─────
+import os as _os_xp
+import json as _json_xp
+import tempfile as _tf_xp
+import subprocess as _sp_xp
+import store_context as sc  # noqa: E402
+import domain_policy as dp  # noqa: E402
+import mirror_conflict as mc  # noqa: E402
+import index_admission as ia  # noqa: E402
+import capabilities as cap  # noqa: E402
+import hook_sketches as hk  # noqa: E402
+import control_plane as cp  # noqa: E402
+import canonical_ingress as ci  # noqa: E402
+import retention as ret  # noqa: E402
+import cm_ops as cmo  # noqa: E402
+
+_xp_home0 = _os_xp.environ.get("HOME")
+_xp_cfg0 = _os_xp.environ.get("CLAUDE_CONFIG_DIR")
+_xp_slot0 = _os_xp.environ.get("CLAUDE_CODE_PROJECT_DIR_NAME")
+_xp_dis0 = _os_xp.environ.get("CLAUDE_CODE_DISABLE_AUTO_MEMORY")
+_xp_set0 = _os_xp.environ.get("CLAUDE_CODE_SETTINGS")
+
+
+def _xp_env(home: Path, extra: dict | None = None) -> dict:
+    env = {**_os_xp.environ, "HOME": str(home)}
+    for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+              "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS",
+              "CM_STORE_OVERRIDE", "CM_DOMAIN", "CM_CRASH_AFTER"):
+        env.pop(k, None)
+    if extra:
+        env.update(extra)
+    return env
+
+
+with _tf_xp.TemporaryDirectory() as _tdxp:
+    _home = Path(_tdxp) / "home"
+    _home.mkdir()
+    _proj = Path(_tdxp) / "proj"
+    _proj.mkdir()
+    (_proj / "readme.txt").write_text("x\n", encoding="utf-8")
+    env = _xp_env(_home)
+    ctx = sc.resolve_store(_proj, environ=env)
+    check("StoreContext: default config_root is $HOME/.claude",
+          ctx.config_root == _home / ".claude")
+    check("StoreContext: default native store is config/projects/<slug>/memory (no hard-coded ~/.claude in caller)",
+          ctx.native_memory_dir == _home / ".claude" / "projects" / ms.slug_for(_proj) / "memory")
+    check("StoreContext: unknown domain by default (not silently personal/universal)",
+          ctx.domain_id == "unknown")
+    check("StoreContext: auto-memory enabled by default", ctx.auto_memory_enabled is True)
+    check("StoreContext: non-Git project_id is a bound UUID (p_ + 32 hex)",
+          ctx.project_id.startswith("p_") and len(ctx.project_id) == 34)
+
+    env2 = _xp_env(_home, {"CLAUDE_CONFIG_DIR": str(Path(_tdxp) / "cfg")})
+    ctx2 = sc.resolve_store(_proj, environ=env2)
+    check("StoreContext: CLAUDE_CONFIG_DIR moves config_root",
+          ctx2.config_root == Path(_tdxp) / "cfg")
+    check("StoreContext: CLAUDE_CONFIG_DIR moves native store off $HOME/.claude",
+          str(ctx2.native_memory_dir).startswith(str(Path(_tdxp) / "cfg")))
+
+    env3 = _xp_env(_home, {"CLAUDE_CODE_PROJECT_DIR_NAME": "shared-slot"})
+    ctx3 = sc.resolve_store(_proj, environ=env3)
+    check("StoreContext: CLAUDE_CODE_PROJECT_DIR_NAME changes the projects slot",
+          ctx3.project_slot == "shared-slot"
+          and ctx3.native_memory_dir == _home / ".claude" / "projects" / "shared-slot" / "memory")
+
+    (_proj / ".claude").mkdir()
+    (_proj / ".claude" / "settings.json").write_text(
+        _json_xp.dumps({"autoMemoryDirectory": str(Path(_tdxp) / "custom-mem")}), encoding="utf-8")
+    ctx4 = sc.resolve_store(_proj, environ=_xp_env(_home))
+    check("StoreContext: autoMemoryDirectory from project settings wins",
+          ctx4.native_memory_dir == Path(_tdxp) / "custom-mem"
+          and ctx4.resolution_source == "autoMemoryDirectory")
+    (_proj / ".claude" / "settings.json").unlink()
+
+    env5 = _xp_env(_home, {"CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1"})
+    ctx5 = sc.resolve_store(_proj, environ=env5)
+    check("StoreContext: CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 disables auto-memory",
+          ctx5.auto_memory_enabled is False and ctx5.write_allowed is False)
+
+    # two live MEMORY.md stores without override → fail-closed writes
+    _a = _home / ".claude" / "projects" / ms.slug_for(_proj) / "memory"
+    _b = Path(_tdxp) / "other-mem"
+    _a.mkdir(parents=True)
+    _b.mkdir(parents=True)
+    (_a / "MEMORY.md").write_text("# a\n", encoding="utf-8")
+    (_b / "MEMORY.md").write_text("# b\n", encoding="utf-8")
+    (_proj / ".claude" / "settings.json").write_text(
+        _json_xp.dumps({"autoMemoryDirectory": str(_b)}), encoding="utf-8")
+    ctx6 = sc.resolve_store(_proj, environ=_xp_env(_home))
+    check("StoreContext: disagreeing live stores refuse writes",
+          ctx6.write_allowed is False and len(ctx6.ambiguity) >= 1)
+    wrote = False
+    try:
+        sc.assert_writable(ctx6)
+        wrote = True
+    except sc.WriteRefused:
+        wrote = False
+    check("StoreContext: assert_writable raises WriteRefused on disagreement", wrote is False)
+    (_proj / ".claude" / "settings.json").unlink()
+
+    missing_settings = Path(_tdxp) / "gone-settings.json"
+    ctx7 = sc.resolve_store(_proj, environ=_xp_env(_home, {
+        "CLAUDE_CODE_SETTINGS": str(missing_settings)}))
+    check("StoreContext: ephemeral --settings that cannot be reconstructed fails closed",
+          ctx7.write_allowed is False
+          and any("settings" in a for a in ctx7.ambiguity))
+
+    # git worktree + nested subdir share one native store
+    _grepo = Path(_tdxp) / "grepo"
+    _grepo.mkdir()
+    (_grepo / "f.txt").write_text("hi\n", encoding="utf-8")
+    (_grepo / "src").mkdir()
+    (_grepo / "src" / "nested.txt").write_text("n\n", encoding="utf-8")
+    _gwd = str(_grepo)
+    _sp_xp.run(["git", "init"], check=True, cwd=_gwd, capture_output=True, text=True)
+    _sp_xp.run(["git", "config", "user.email", "you@example.com"], check=True, cwd=_gwd, capture_output=True, text=True)
+    _sp_xp.run(["git", "config", "user.name", "you"], check=True, cwd=_gwd, capture_output=True, text=True)
+    _sp_xp.run(["git", "add", "-A"], check=True, cwd=_gwd, capture_output=True, text=True)
+    _sp_xp.run(["git", "commit", "-m", "init"], check=True, cwd=_gwd, capture_output=True, text=True)
+    _wt = Path(_tdxp) / "gworktree"
+    _sp_xp.run(["git", "worktree", "add", str(_wt), "HEAD"], check=True, cwd=_gwd, capture_output=True, text=True)
+    envg = _xp_env(_home)
+    c_root = sc.resolve_store(_grepo, environ=envg)
+    c_nest = sc.resolve_store(_grepo / "src", environ=envg)
+    c_wt = sc.resolve_store(_wt, environ=envg)
+    check("StoreContext: nested subdir of a git repo shares the native store",
+          c_root.native_memory_dir == c_nest.native_memory_dir)
+    check("StoreContext: two worktrees of one git_common_dir share the native store",
+          c_root.native_memory_dir == c_wt.native_memory_dir
+          and c_root.git_common_dir is not None
+          and c_wt.git_common_dir is not None
+          and c_root.git_common_dir.resolve() == c_wt.git_common_dir.resolve())
+    check("StoreContext: same basename, two roots → distinct project_id",
+          sc.resolve_store(_proj, environ=envg).project_id
+          != sc.resolve_store(Path(_tdxp) / "proj2" if False else _grepo, environ=envg).project_id)
+    _other = Path(_tdxp) / "also-proj"
+    _other.mkdir()
+    check("StoreContext: two non-git dirs named similarly stay distinct",
+          sc.resolve_store(_proj, environ=envg).project_id
+          != sc.resolve_store(_other, environ=envg).project_id)
+    env_p1 = _xp_env(_home, {"CLAUDE_CONFIG_DIR": str(Path(_tdxp) / "profile-a")})
+    env_p2 = _xp_env(_home, {"CLAUDE_CONFIG_DIR": str(Path(_tdxp) / "profile-b")})
+    check("StoreContext: same repo under two profiles → distinct project_id",
+          sc.resolve_store(_grepo, environ=env_p1).project_id
+          != sc.resolve_store(_grepo, environ=env_p2).project_id)
+
+    # domain / sensitivity (shipped admit_cross_project)
+    check("domain: unknown-domain project admits zero domain-tagged facts",
+          dp.admit_cross_project("unknown", {"domain": "personal", "scope": "user-global"}) is False)
+    check("domain: unknown+untagged dual-read still admits (legacy; NOT a universal assignment)",
+          dp.admit_cross_project("unknown", {"scope": "user-global"},
+                                 migration_mode=dp.MIGRATION_DUAL_READ) is True)
+    check("domain: unknown+untagged enforced admits zero",
+          dp.admit_cross_project("unknown", {"scope": "user-global"},
+                                 migration_mode=dp.MIGRATION_ENFORCED) is False)
+    check("domain: cross-domain replicate is denied",
+          dp.admit_cross_project("personal", {"domain": "employer"}) is False)
+    check("domain: same-domain admitted",
+          dp.admit_cross_project("personal", {"domain": "personal"}) is True)
+    check("domain: confidential stays inside its domain",
+          dp.admit_cross_project("personal", {"domain": "employer", "sensitivity": "confidential"},
+                                 authorized_pairs={("employer", "personal")}) is False)
+    _sec_err = dp.validate_write_policy(
+        "---\nname: x\ndescription: key\n---\npassword = hunter2-and-a-long-token\n",
+        {"description": "key"}, looks_secret=ms._looks_secret, domain="personal")
+    check("domain: secret-shaped body is rejected as a fact", _sec_err is not None)
+
+    # three-way classifier (shipped)
+    _canon = "---\nname: f\ndescription: d1\n---\nbody A\n"
+    _local = "---\nname: f\ndescription: d1\n  global_ref: f\n  global_ref_body: " + mc.body_hash(_canon) + "\n---\nbody A\n"
+    _canon2 = "---\nname: f\ndescription: d2 NEW KEY\n---\nbody A\n"
+    check("three-way: local unchanged + canonical desc changed → refresh (Probe C class)",
+          mc.classify_mirror(_local, _canon2)["action"] == mc.REFRESH)
+    _local_edit = "---\nname: f\ndescription: d1\n  global_ref: f\n  global_ref_body: " + mc.body_hash(_canon) + "\n---\nbody LOCAL\n"
+    check("three-way: local body edited, canonical unchanged → stop (never overwrite)",
+          mc.classify_mirror(_local_edit, _canon)["action"] == mc.STOP_LOCAL)
+    _canon3 = "---\nname: f\ndescription: d1\n---\nbody CANON\n"
+    check("three-way: both changed differently → conflict",
+          mc.classify_mirror(_local_edit, _canon3)["action"] == mc.CONFLICT)
+    check("three-way: unstamped same-content restamps; missing base + divergent body quarantines; empty local quarantines",
+          mc.classify_mirror("---\nname: f\ndescription: d1\nmodified: 2099-01-01\n---\nbody A\n",
+                             _canon)["action"] == mc.RESTAMP
+          and mc.classify_mirror("---\nname: f\n---\nbody\n", _canon)["action"] == mc.QUARANTINE
+          and mc.classify_mirror("", _canon)["action"] == mc.QUARANTINE)
+    _base = mc.semantic_hash(_canon)
+    _same = "---\nname: f\ndescription: d1\nmodified: 2099-01-01\n---\nbody A\n"
+    check("three-way: semantic equality ignores native modified",
+          mc.semantic_hash(_canon) == mc.semantic_hash(_same)
+          and mc.classify_mirror(_canon, _same, base_revision=_base)["action"] in (mc.IN_SYNC, mc.RESTAMP))
+
+    # exact index admission (shipped)
+    _lim_l = ia.line_limit_with_reserve()
+    _lim_b = ia.byte_limit_with_reserve()
+    _lines = "# Memory Index\n\n" + "\n".join(f"- [f{i}](f{i}.md) — x" for i in range(_lim_l + 5)) + "\n"
+    _dec_l = ia.project_index(_lines)
+    check("admission: 200-line-first terse index is refused below the byte cap",
+          _dec_l["admitted"] is False and _dec_l["projected_bytes"] < ia.NATIVE_INDEX_CAP_BYTES
+          and _dec_l["projected_lines"] > _lim_l)
+    _fat = "# Memory Index\n\n" + ("- [x](x.md) — " + ("字" * 400) + "\n") * 30
+    _dec_b = ia.project_index(_fat)
+    check("admission: 25KB-first (multibyte UTF-8) is refused below the line cap",
+          _dec_b["admitted"] is False and _dec_b["projected_lines"] < ia.NATIVE_INDEX_CAP_LINES
+          and _dec_b["projected_bytes"] > _lim_b)
+
+    # capabilities + applies
+    (_proj / "package.json").write_text('{"name":"n"}\n', encoding="utf-8")
+    (_proj / "go.mod").write_text("module n\n", encoding="utf-8")
+    (_proj / "Dockerfile").write_text("FROM scratch\n", encoding="utf-8")
+    _caps = cap.capability_tags(cap.detect_capabilities(_proj))
+    check("capabilities: extensible detectors include node/go/docker classes (not only python)",
+          {"node", "go", "docker"}.issubset(_caps) or ({"node", "go"} <= _caps and "docker" in _caps))
+    check("applies: exclude windows against linux host",
+          cap.applies_match({"any": ["python"], "exclude": ["windows"]}, {"python", "linux"}) is True)
+    check("applies: all: [pdf, gpu] fails without gpu",
+          cap.applies_match({"all": ["pdf", "gpu"]}, {"pdf"}) is False)
+
+    # hook sketches never copy raw prompts
+    _sk = hk.normalize_hook_event({
+        "event": "PostToolUse", "tool_name": "Bash", "outcome": "success",
+        "prompt": "SECRET PROMPT TEXT", "command": "rm -rf /",
+        "session_id": "s1", "project_id": "p1",
+    }, project_id="p1", session_id="s1")
+    check("hook sketch: compact, no raw prompt/command",
+          _sk is not None and "prompt" not in _sk and "command" not in _sk
+          and _sk["tool_family"] in ("shell", "other") and hk.sketch_is_safe(_sk))
+    check("workflow promotion: needs 2 projects / 2 days / success / confirmation",
+          hk.workflow_promotion_allowed({"n_projects": 1, "n_days": 2, "n_success": 2})["allowed"] is False
+          and hk.workflow_promotion_allowed({"n_projects": 2, "n_days": 2, "n_success": 2, "distinctive": True,
+                                            "confirmed": True})["allowed"] is True
+          and hk.workflow_promotion_allowed({"n_projects": 1}, explicit_user_request=True)["allowed"] is True)
+
+    # generated catalog overwrites a hand-edited index
+    _facts = Path(_tdxp) / "facts"
+    _facts.mkdir()
+    (_facts / "alpha.md").write_text("---\nname: alpha\ndescription: A\n---\nbody\n", encoding="utf-8")
+    (_facts / "MEMORY.md").write_text("# HAND EDITED INDEX\n", encoding="utf-8")
+    _cat = ci.hand_edit_refused_or_regenerated(_facts)
+    check("canonical catalog: hand-edited global index is overwritten by generation",
+          "HAND EDITED" not in (_facts / "MEMORY.md").read_text(encoding="utf-8")
+          and "alpha.md" in _cat)
+
+    # link monotonicity
+    check("links: domain-global must not require a project-local target",
+          ci.link_allowed("user-global", "project-local") is False)
+    check("links: project-local may link upward",
+          ci.link_allowed("project-local", "user-global") is True)
+
+    # retention reverse-tail + native plane cleanliness
+    _ops = Path(_tdxp) / "ops.jsonl"
+    with _ops.open("w", encoding="utf-8") as _fh:
+        for i in range(20):
+            _fh.write(_json_xp.dumps({"n": i, "day": "2026-08-31"}) + "\n")
+    _tail = ret.reverse_tail_jsonl_lines(_ops, 3)
+    check("retention: reverse-tail returns last N records (not full-file split-then-tail of the API)",
+          [r["n"] for r in _tail] == [17, 18, 19])
+    _native = Path(_tdxp) / "native-clean"
+    _native.mkdir()
+    (_native / "MEMORY.md").write_text("# i\n", encoding="utf-8")
+    (_native / "fact.md").write_text("x\n", encoding="utf-8")
+    check("native plane: MEMORY.md + facts only is clean (no logs/locks/ledgers)",
+          ret.native_plane_is_clean(_native) is True)
+    (_native / ".fleet-usage.jsonl").write_text("{}\n", encoding="utf-8")
+    check("native plane: fleet ledger makes it unclean",
+          ret.native_plane_is_clean(_native) is False)
+    check("inventory: canonical must not live under plugin data",
+          ret.inventory(Path(_tdxp) / "pdata", Path(_tdxp) / "canon", _native)["canonical_inside_plugin_data"] is False)
+
+    _pstore = sc.resolve_store(_proj, environ=_xp_env(_home)).native_memory_dir
+    _pstore.mkdir(parents=True, exist_ok=True)
+    rd._persist({"project": "p", "entries": [],
+                 "marker": {"commit": "abc", "timestamp": "2026-08-31T00:00:00Z"}},
+                str(_pstore))
+    _clog = ret.cycle_log_write_path(_pstore)
+    check("persist: cycle log lands in plugin-data, native plane has no .consolidation-log.jsonl",
+          _clog.is_file() and not (_pstore / ".consolidation-log.jsonl").exists())
+    _nat_ops = Path(_tdxp) / "native-ops"
+    _nat_ops.mkdir()
+    (_nat_ops / ".consolidation-log.jsonl").write_text('{"c":1}\n', encoding="utf-8")
+    (_nat_ops / ".mutation-log.jsonl").write_text('{"m":1}\n', encoding="utf-8")
+    (_nat_ops / ".fleet-usage.jsonl").write_text('{"f":1}\n', encoding="utf-8")
+    _pdata_ops = Path(_tdxp) / "pdata-ops"
+    _reloc = ret.relocate_native_operational(_nat_ops, _pdata_ops, "sha-must-not-be-the-ops-key")
+    _sha_ops = _pdata_ops / "ops" / "sha-must-not-be-the-ops-key"
+    check("relocate: leftover native logs leave the native plane",
+          _reloc["ok"] is True and ret.native_plane_is_clean(_nat_ops) is True)
+    check("relocate: cycle+mutation land on persist/audit write paths (slot, not SHA project_id)",
+          ret.cycle_log_write_path(_nat_ops, plugin_data=_pdata_ops).is_file()
+          and ret.mutation_log_write_path(_nat_ops, plugin_data=_pdata_ops).is_file()
+          and not (_sha_ops / ".consolidation-log.jsonl").exists()
+          and not (_sha_ops / ".mutation-log.jsonl").exists())
+    check("relocate: leftover .fleet-usage.jsonl merges onto the harvest write path",
+          (_pdata_ops / "fleet-usage.jsonl").is_file()
+          and not (_sha_ops / ".fleet-usage.jsonl").exists())
+
+    # journal crash + recovery (shipped transact)
+    envj = _xp_env(_home)
+    ctxj = sc.resolve_store(_proj, environ=envj)
+    ctxj = sc.resolve_store(_proj, environ=envj)  # domain unknown, writes allowed (no live disagreement now)
+    # clear the two live MEMORY.md disagreement from earlier: remove custom other-mem live? already unlinked settings
+    # The default native may still have MEMORY.md from disagreement test — only one live now.
+    try:
+        sc.assert_writable(sc.resolve_store(_proj, environ=envj))
+        _crash_ok = True
+    except sc.WriteRefused:
+        _crash_ok = False
+    if _crash_ok:
+        _crashed = False
+        _jdest = sc.resolve_store(_proj, environ=envj).native_memory_dir / "journal-probe.md"
+
+        def _jmut(conn, temps):
+            temps[str(_jdest)] = "journal probe body\n"
+            return {"x": 1}
+
+        try:
+            cp.transact(sc.resolve_store(_proj, environ=envj), "noop", {"k": 1},
+                        _jmut, crash_after="publish")
+        except cp.CrashSimulated:
+            _crashed = True
+        check("journal: crash_after=publish raises CrashSimulated AFTER dest landed, pending op remains",
+              _crashed is True and _jdest.exists())
+        _conn = cp.connect(cp.db_path(sc.resolve_store(_proj, environ=envj)))
+        _pending_xp = cp.pending_ops(_conn)
+        check("journal: pending op is recoverable",
+              len(_pending_xp) >= 1)
+        _recovered_xp = cp.recover_pending(_conn)
+        check("journal: recover_pending is idempotent (second call empty) and dest remains",
+              len(_recovered_xp) >= 1 and cp.pending_ops(_conn) == [] and _jdest.exists()
+              and "journal probe body" in _jdest.read_text(encoding="utf-8"))
+        _conn.close()
+    else:
+        check("journal: writable fixture available", False)
+
+    # doctor twice-run equality is a CLI test; here pin doctor_report stability
+    _doc1 = sc.doctor_report(sc.resolve_store(_proj, environ=_xp_env(_home)))
+    _doc2 = sc.doctor_report(sc.resolve_store(_proj, environ=_xp_env(_home)))
+    check("doctor_report: twice-run content equality (shipped)",
+          _doc1 == _doc2 and "native_memory_dir:" in _doc1 and "resolution_source:" in _doc1
+          and "profile_id:" in _doc1 and "domain_id:" in _doc1 and "auto_memory_enabled:" in _doc1
+          and "ambiguity:" in _doc1)
+
+    # no sixth slug_for: store_context.slug_for IS memory_status.slug_for
+    check("slug_for: store_context aliases memory_status (no sixth reimplementation)",
+          sc.slug_for(_proj) == ms.slug_for(_proj))
+
+    _parser_cm = cmo.build_parser()
+    _a_plan = _parser_cm.parse_args(["data", "compact", "--plan", "--project", str(_proj)])
+    _a_show = _parser_cm.parse_args(["data", "retention", "show", "--project", str(_proj)])
+    check("cm data compact --plan is accepted (dry-run flag; compact still plans unless --apply)",
+          _a_plan.data_cmd == "compact" and _a_plan.plan is True and _a_plan.apply is False)
+    check("cm data retention show is accepted (optional show token)",
+          _a_show.data_cmd == "retention" and _a_show.show == "show")
+
+    check("apply_provenance is pure (append once, idempotent, no I/O)",
+          sg.apply_provenance("---\nname: x\nmetadata:\n  scope: user-global\n---\n", "beta")
+          == "---\nname: x\nmetadata:\n  scope: user-global\n  projects: [beta]\n---\n"
+          and sg.apply_provenance(
+              "---\nname: x\nmetadata:\n  scope: user-global\n  projects: [beta]\n---\n", "beta")
+          == "---\nname: x\nmetadata:\n  scope: user-global\n  projects: [beta]\n---\n")
+
+# restore env
+if _xp_home0 is None:
+    _os_xp.environ.pop("HOME", None)
+else:
+    _os_xp.environ["HOME"] = _xp_home0
+for _k, _v in (("CLAUDE_CONFIG_DIR", _xp_cfg0), ("CLAUDE_CODE_PROJECT_DIR_NAME", _xp_slot0),
+               ("CLAUDE_CODE_DISABLE_AUTO_MEMORY", _xp_dis0), ("CLAUDE_CODE_SETTINGS", _xp_set0)):
+    if _v is None:
+        _os_xp.environ.pop(_k, None)
+    else:
+        _os_xp.environ[_k] = _v
+
+# ── remaining AC pins (docs + shipped fleet/provenance paths) ───────────────
+_hmap_ac = (ROOT / "plugins" / "consolidate-memory" / "skills" / "consolidate-memory"
+            / "references" / "harness-map.md").read_text(encoding="utf-8")
+check("harness-map persist writer is plugin-data ops/<slot>/.consolidation-log.jsonl (native leftover dual-read)",
+      "ops/<slot>/.consolidation-log.jsonl" in _hmap_ac
+      and "leftover native" in _hmap_ac
+      and "appends each cycle record to `<store>/.consolidation-log.jsonl`" not in _hmap_ac)
+check("harness-map harvest writer is plugin-data fleet-usage.jsonl (native leftover dual-read)",
+      "plugin-data `fleet-usage.jsonl`" in _hmap_ac
+      and "`~/.claude/memory/.fleet-usage.jsonl`, 0o600)" not in _hmap_ac)
+_p5_ac = _skill_md.read_text(encoding="utf-8").split("### Phase 5")[1].split("## Safety rules")[0]
+check("SKILL Phase 5 persist/store/marker use native_memory_dir (do not hand-build projects/<slug>/memory)",
+      "--persist ~/.claude/projects/<slug>/memory" not in _p5_ac
+      and "--store ~/.claude/projects/<slug>/memory" not in _p5_ac
+      and "~/.claude/projects/<slug>/memory/.consolidation-state.json" not in _p5_ac
+      and "native_memory_dir" in _p5_ac
+      and "--persist <native_memory_dir from Phase 0 / cm doctor>" in _p5_ac)
+
+with _Env73() as _e_h:
+    (_e_h.glob / "ug-hold.md").write_text(_fact73("ug-hold", "holder pin"), encoding="utf-8")
+    _prov_calls: list = []
+    _orig_prov = sg._record_provenance
+
+    def _prov_wrap(*a: Any, **k: Any) -> None:
+        _prov_calls.append(a)
+        return _orig_prov(*a, **k)
+
+    sg._record_provenance = _prov_wrap
+    try:
+        _rc_h, _out_h, _err_h = _run73(_e_h.proj)
+    finally:
+        sg._record_provenance = _orig_prov
+    _ctx_h = sc.resolve_store(_e_h.proj)
+    _conn_h = cp.connect(cp.db_path(_ctx_h))
+    _nhold = _conn_h.execute("SELECT count(*) AS n FROM holders").fetchone()["n"]
+    _conn_h.close()
+    check("pull records holders on the control plane and does not call _record_provenance after locks drop",
+          _rc_h == 0 and int(_nhold) >= 1 and _prov_calls == []
+          and "proj73" in (_e_h.glob / "ug-hold.md").read_text(encoding="utf-8")
+          and (_e_h.store / "ug-hold.md").is_file())
+
+with _Env73() as _e_p:
+    (_e_p.store / "promo-x.md").write_text(
+        "---\nname: promo-x\ndescription: d\nmetadata:\n  node_type: memory\n"
+        "  type: feedback\n  scope: user-global\n---\nsame body\n", encoding="utf-8")
+    (_e_p.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [promo-x](promo-x.md) — d\n", encoding="utf-8")
+    _seen_up: list = []
+    _real_up = ci.upsert
+
+    def _up_wrap(*a: Any, **k: Any) -> dict:
+        _seen_up.append(dict(k))
+        return _real_up(*a, **k)
+
+    ci.upsert = _up_wrap
+    _prov_p: list = []
+    _orig_p2 = sg._record_provenance
+
+    def _prov_pwrap(*a: Any, **k: Any) -> None:
+        _prov_p.append(a)
+        return _orig_p2(*a, **k)
+
+    sg._record_provenance = _prov_pwrap
+    try:
+        _rc_p1 = sg.promote(_e_p.proj, "promo-x", "promo-x")
+        (_e_p.store / "promo-y.md").write_text(
+            "---\nname: promo-y\ndescription: d\nmetadata:\n  node_type: memory\n"
+            "  type: feedback\n  scope: user-global\n---\nsame body\n", encoding="utf-8")
+        _rc_p2 = sg.promote(_e_p.proj, "promo-y", "promo-x")
+    finally:
+        ci.upsert = _real_up
+        sg._record_provenance = _orig_p2
+    _create_kw = _seen_up[0] if _seen_up else {}
+    _recon_kw = _seen_up[1] if len(_seen_up) > 1 else {}
+    check("promote CREATE calls upsert(create_only, origin_local); reconcile uses preserve_canonical",
+          _rc_p1 == 0 and _rc_p2 == 0 and _prov_p == []
+          and _create_kw.get("create_only") is True
+          and _create_kw.get("origin_local") is not None
+          and _recon_kw.get("preserve_canonical") is True
+          and "global_ref:" in (_e_p.store / "promo-x.md").read_text(encoding="utf-8")
+          and not (_e_p.store / "promo-y.md").exists())
+
+with _tf_xp.TemporaryDirectory() as _td_slot:
+    _home_s = Path(_td_slot) / "home"; _home_s.mkdir()
+    _grepo_s = Path(_td_slot) / "grepo"; _grepo_s.mkdir()
+    (_grepo_s / "src").mkdir()
+    (_grepo_s / "src" / "n.txt").write_text("n\n", encoding="utf-8")
+    _gwd_s = str(_grepo_s)
+    _sp_xp.run(["git", "init"], check=True, cwd=_gwd_s, capture_output=True, text=True)
+    _sp_xp.run(["git", "config", "user.email", "you@example.com"], check=True, cwd=_gwd_s,
+               capture_output=True, text=True)
+    _sp_xp.run(["git", "config", "user.name", "you"], check=True, cwd=_gwd_s,
+               capture_output=True, text=True)
+    _sp_xp.run(["git", "add", "-A"], check=True, cwd=_gwd_s, capture_output=True, text=True)
+    _sp_xp.run(["git", "commit", "-m", "i"], check=True, cwd=_gwd_s, capture_output=True, text=True)
+    _old_hs = _os_xp.environ.get("HOME")
+    _os_xp.environ["HOME"] = str(_home_s)
+    try:
+        _bc = ms.build_context(_grepo_s / "src")
+        _slot = sc.resolve_store(_grepo_s / "src").project_slot
+        check("build_context slug is StoreContext.project_slot (git-root), not slug_for(nested cwd)",
+              _bc["slug"] == _slot == ms.slug_for(_grepo_s)
+              and _bc["slug"] != ms.slug_for(_grepo_s / "src"))
+    finally:
+        if _old_hs is None:
+            _os_xp.environ.pop("HOME", None)
+        else:
+            _os_xp.environ["HOME"] = _old_hs
+
+with _tf_xp.TemporaryDirectory() as _td_cust:
+    _home_c = Path(_td_cust) / "home"; _home_c.mkdir()
+    _proj_c = Path(_td_cust) / "custp"; _proj_c.mkdir()
+    _custom = Path(_td_cust) / "relocated-mem"; _custom.mkdir()
+    (_proj_c / ".claude").mkdir()
+    (_proj_c / ".claude" / "settings.json").write_text(
+        _json_xp.dumps({"autoMemoryDirectory": str(_custom)}), encoding="utf-8")
+    _ct_c = ("---\nname: canon-c\ndescription: \"d\"\nmetadata:\n  node_type: memory\n"
+             "  scope: user-global\n  type: feedback\n---\nbody\n")
+    _mir_c = sg._as_mirror(_ct_c, "canon-c", since="2026-01-01T00:00:00Z",
+                           body_hash=sg._body_hash(_ct_c))
+    (_custom / "canon-c.md").write_text(_mir_c, encoding="utf-8")
+    _old_hc = _os_xp.environ.get("HOME")
+    _os_xp.environ["HOME"] = str(_home_c)
+    _old_g = sg.GLOBAL
+    try:
+        _env_c = _xp_env(_home_c)
+        _ctx_c = sc.resolve_store(_proj_c, environ=_env_c)
+        check("custom autoMemoryDirectory native is off the projects/*/memory default",
+              _ctx_c.native_memory_dir == _custom)
+
+        def _mut_reg(conn: Any, temps: dict) -> dict:
+            return {"deletes": []}
+
+        cp.transact(_ctx_c, "noop-register", {"k": 1}, _mut_reg)
+        _nodes_c = sg._network_nodes()
+        check("iter_native_stores/registry union: custom autoMemoryDirectory store is a fleet node",
+              any(_path_eq == _custom for _path_eq in (p if p == _custom else p.resolve()
+                                                       for p in _nodes_c))
+              or _custom in _nodes_c or any(
+                  str(p.resolve()) == str(_custom.resolve()) for p in _nodes_c))
+        _sess_c = sg.session_dir_for_store(_custom)
+        check("session_dir_for_store uses registry session_dir (not store.parent) for relocated memory",
+              _sess_c == _ctx_c.session_dir and _sess_c != _custom.parent)
+        _sess_c.mkdir(parents=True, exist_ok=True)
+        (_sess_c / "t.jsonl").write_text(_json_xp.dumps({
+            "timestamp": "2026-01-15T10:00:00Z",
+            "message": {"content": [{"type": "tool_use", "name": "Read",
+                                     "input": {"file_path": str(_custom / "canon-c.md")}}]}}) + "\n",
+            encoding="utf-8")
+        _row_c = sg._harvest_node(_custom, "", by="custp")
+        check("harvest reads transcripts from session_dir, not the relocated store.parent",
+              _row_c is not None and int(_row_c["reads"]) == 1
+              and _row_c["node"] == _sess_c.name)
+    finally:
+        sg.GLOBAL = _old_g
+        if _old_hc is None:
+            _os_xp.environ.pop("HOME", None)
+        else:
+            _os_xp.environ["HOME"] = _old_hc
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

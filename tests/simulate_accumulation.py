@@ -392,9 +392,11 @@ def run() -> None:
         # JSON line; a re-render of the same cycle is a no-op; an unstamped cycle is refused;
         # a malformed pre-existing line is tolerated; an absent dir is skipped (never crash).
         print("\n── Probe I: --persist cycle-log accrual (idempotent, defensive) (v0.1.4) ──")
-        logdir = home / "persist-probe"
-        logdir.mkdir()
-        logpath = logdir / ".consolidation-log.jsonl"
+        import retention as _retI
+        logdir = home / ".claude" / "projects" / "-tmp-persist-probe" / "memory"
+        logdir.mkdir(parents=True)
+        logpath = _retI.cycle_log_write_path(logdir)
+        native_log = logdir / ".consolidation-log.jsonl"
 
         def _records() -> list:
             """Record-shaped log lines (a dict with a dict `marker` carrying a commit); junk skipped.
@@ -448,10 +450,12 @@ def run() -> None:
         print(f"  2 distinct + idempotent={two_distinct} · round-trip JSON={round_trip} · "
               f"unstamped refused={refused_unstamped} · all-malformed-classes tolerated={tolerated} · "
               f"absent-dir no-crash+skip={no_crash and absent_skipped}")
+        native_clean = not native_log.exists()
         _verdict("I", "--persist accrues a per-project cycle log idempotently + defensively",
-                 two_distinct and round_trip and refused_unstamped and tolerated and no_crash and absent_skipped,
-                 "cycles accrue for a future band refit; self-reported applied/override is the "
-                 "over-rigor signal — longitudinal miss-detection (under-rigor) remains future work")
+                 two_distinct and round_trip and refused_unstamped and tolerated and no_crash
+                 and absent_skipped and native_clean,
+                 "cycles accrue in plugin-data (native plane stays facts-only); self-reported "
+                 "applied/override is the over-rigor signal — longitudinal miss-detection remains future work")
 
         # ── Probe J: slug-orphan + schema-drift detection on real tmp stores (v0.1.5) ──
         # smoke.py covers the PURE string/dict helpers; THIS exercises the FS-touching path:
@@ -1159,6 +1163,317 @@ def run() -> None:
                  procW.returncode == 2 and procW2.returncode == 2 and not phantomW.exists()
                  and _prov_cleanW and "does not exist" in procW.stderr,
                  "the guard is the only thing between a one-character typo and fleet-wide provenance pollution")
+
+        OPS = ROOT / "plugins" / "consolidate-memory" / "scripts" / "cm_ops.py"
+
+        # ── Probe X: stable identity (SHA-256 / UUID5) ──────────────────────
+        print("\n── Probe X: project identity ──")
+        import store_context as _scX
+        import control_plane as _cpX
+        homeX = Path(tempfile.mkdtemp(prefix="cm-id-"))
+        try:
+            _assert_hermetic(homeX)
+            a = _make_project(homeX, "api")
+            b = Path(homeX / "other" / "api")
+            b.mkdir(parents=True)
+            (b / "main.py").write_text("x=1\n", encoding="utf-8")
+            envX = dict(os.environ, HOME=str(homeX))
+            for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+                      "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS", "CM_DOMAIN"):
+                envX.pop(k, None)
+            id_a = _scX.resolve_store(a, environ=envX).project_id
+            id_b = _scX.resolve_store(b, environ=envX).project_id
+            envXp = dict(envX, CLAUDE_CONFIG_DIR=str(homeX / "profile-work"))
+            id_a2 = _scX.resolve_store(a, environ=envXp).project_id
+            ctx = _scX.resolve_store(a, environ=envX)
+            conn = _cpX.connect(_cpX.db_path(ctx))
+            _cpX.upsert_project(conn, ctx)
+            conn.commit()
+            # rename: registry metadata changes, same primary key
+            ctx2 = _scX.resolve_store(a, environ=envX)
+            _cpX.upsert_project(conn, ctx2)
+            conn.commit()
+            row = conn.execute("SELECT project_id FROM projects").fetchone()
+            n_ids = conn.execute("SELECT COUNT(DISTINCT project_id) FROM projects").fetchone()[0]
+            conn.close()
+            _verdict("X", "same basename two roots differ; two profiles differ; registry rename keeps id",
+                     id_a != id_b and id_a != id_a2 and row["project_id"] == id_a and n_ids == 1,
+                     f"id_a={id_a[:12]}… id_b={id_b[:12]}… profile={id_a2[:12]}… registry={n_ids}")
+        finally:
+            shutil.rmtree(homeX, ignore_errors=True)
+
+        # ── Probe Y: journal crash after publish, then recovery idempotence ─
+        print("\n── Probe Y: crash recovery ──")
+        homeY = Path(tempfile.mkdtemp(prefix="cm-jr-"))
+        try:
+            _assert_hermetic(homeY)
+            pY = _make_project(homeY, "yproj")
+            envY = dict(os.environ, HOME=str(homeY))
+            for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+                      "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS", "CM_CRASH_AFTER"):
+                envY.pop(k, None)
+            import store_context as _scY
+            import control_plane as _cpY
+            ctxY = _scY.resolve_store(pY, environ=envY)
+            destY = ctxY.native_memory_dir / "probe-y.md"
+            destY.parent.mkdir(parents=True, exist_ok=True)
+
+            def _mutY(conn, temps):
+                temps[str(destY)] = "probe-y landed\n"
+                return {"ok": True}
+
+            crashed = False
+            try:
+                _cpY.transact(ctxY, "probe", {"k": 1}, _mutY, crash_after="publish")
+            except _cpY.CrashSimulated:
+                crashed = True
+            after_crash = destY.exists() and "probe-y landed" in destY.read_text(encoding="utf-8")
+            connY = _cpY.connect(_cpY.db_path(ctxY))
+            pending_y = _cpY.pending_ops(connY)
+            rec_y1 = _cpY.recover_pending(connY)
+            rec_y2 = _cpY.recover_pending(connY)
+            connY.close()
+            after_rec = destY.exists() and "probe-y landed" in destY.read_text(encoding="utf-8")
+            _verdict("Y", "kill after publish leaves dest + a pending journal; recover is idempotent; dest stays",
+                     crashed and after_crash and after_rec
+                     and len(pending_y) >= 1 and len(rec_y1) >= 1 and rec_y2 == [],
+                     f"pending={len(pending_y)} recovered={len(rec_y1)} second={len(rec_y2)} dest={after_rec}")
+        finally:
+            shutil.rmtree(homeY, ignore_errors=True)
+
+        # ── Probe Z: three-way pull never overwrites a divergent local body ─
+        print("\n── Probe Z: mirror conflict (no silent overwrite) ──")
+        homeZ = Path(tempfile.mkdtemp(prefix="cm-cf-"))
+        try:
+            _assert_hermetic(homeZ)
+            pZ = _make_project(homeZ, "zproj")
+            _write_global(homeZ, "shared-z", "user-global", desc="original recall key")
+            _pull(homeZ, pZ)
+            storeZ = _store(homeZ, pZ)
+            localZ = storeZ / "shared-z.md"
+            assert localZ.exists()
+            bodyZ = localZ.read_text(encoding="utf-8")
+            localZ.write_text(bodyZ.replace("The durable fact named shared-z.",
+                                            "LOCAL EDIT MUST SURVIVE PULL."), encoding="utf-8")
+            _write_global(homeZ, "shared-z", "user-global", desc="canonical also changed")
+            outZ = _sync(homeZ, "--pull", str(pZ))
+            afterZ = localZ.read_text(encoding="utf-8")
+            _verdict("Z", "divergent local body is still present after pull (never silently overwritten)",
+                     "LOCAL EDIT MUST SURVIVE PULL." in afterZ,
+                     "pull classified conflict/stop-local and left the local body")
+        finally:
+            shutil.rmtree(homeZ, ignore_errors=True)
+
+        # ── Probe AA: canonical upsert + tombstone + migrate + data inventory ─
+        print("\n── Probe AA: canonical upsert / tombstone / migrate / data ──")
+        homeAA = Path(tempfile.mkdtemp(prefix="cm-aa-"))
+        OPS = ROOT / "plugins" / "consolidate-memory" / "scripts" / "cm_ops.py"
+        try:
+            _assert_hermetic(homeAA)
+            pAA = _make_project(homeAA, "aaproj")
+            envAA = dict(os.environ, HOME=str(homeAA))
+            for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+                      "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS"):
+                envAA.pop(k, None)
+            factAA = Path(homeAA / "newfact.md")
+            factAA.write_text("---\nname: aa-fact\ndescription: a durable preference\n"
+                              "scope: user-global\ndomain: testdom\n---\n\nThe body.\n",
+                              encoding="utf-8")
+            envAA["CM_DOMAIN"] = "testdom"
+            up = subprocess.run([sys.executable, str(OPS), "canonical", "upsert", "aa-fact",
+                                 "--file", str(factAA), "--project", str(pAA), "--json"],
+                                env=envAA, capture_output=True, text=True, check=False)
+            fg = subprocess.run([sys.executable, str(OPS), "canonical", "forget", "aa-fact",
+                                 "--project", str(pAA), "--json"],
+                                env=envAA, capture_output=True, text=True, check=False)
+            _write_global(homeAA, "aa-fact", "user-global")  # attempt resurrection via legacy write
+            _pull(homeAA, pAA)
+            storeAA = _store(homeAA, pAA)
+            resurrected = (storeAA / "aa-fact.md").exists() and "tombstoned" not in (
+                (storeAA / "aa-fact.md").read_text(encoding="utf-8") if (storeAA / "aa-fact.md").exists() else "")
+            # if tombstone in registry, pull should not create a live mirror from the legacy rewrite
+            import control_plane as _cpAA
+            import store_context as _scAA
+            ctxAA = _scAA.resolve_store(pAA, environ=envAA)
+            connAA = _cpAA.connect(_cpAA.db_path(ctxAA))
+            tombed = _cpAA.is_tombstoned(connAA, "aa-fact")
+            connAA.close()
+            mig = subprocess.run([sys.executable, str(OPS), "migrate", str(pAA)],
+                                 env=envAA, capture_output=True, text=True, check=False)
+            inv = subprocess.run([sys.executable, str(OPS), "data", "inventory", "--project", str(pAA)],
+                                 env=envAA, capture_output=True, text=True, check=False)
+            _verdict("AA", "canonical upsert is the writer; tombstone blocks resurrection on pull; migrate --plan is dry; inventory lists three planes",
+                     up.returncode == 0 and "ok" in up.stdout
+                     and fg.returncode == 0 and tombed and not resurrected
+                     and mig.returncode == 0 and "dry" in mig.stdout
+                     and inv.returncode == 0 and "control_plane" in inv.stdout and "canonical" in inv.stdout
+                     and "native" in inv.stdout,
+                     f"upsert rc={up.returncode} forget rc={fg.returncode} tomb={tombed} resurrected={resurrected} "
+                     f"migrate rc={mig.returncode} inv rc={inv.returncode} stdout_up={up.stdout[:120]!r} err={up.stderr[:200]!r}")
+        finally:
+            shutil.rmtree(homeAA, ignore_errors=True)
+
+        # ── Probe AB: invalid wider→narrower link refused at upsert ────────
+        print("\n── Probe AB: link monotonicity at canonical upsert ──")
+        homeAB = Path(tempfile.mkdtemp(prefix="cm-ab-"))
+        try:
+            _assert_hermetic(homeAB)
+            pAB = _make_project(homeAB, "abproj")
+            envAB = dict(os.environ, HOME=str(homeAB), CM_DOMAIN="testdom")
+            for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+                      "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS"):
+                envAB.pop(k, None)
+            bad = Path(homeAB / "bad.md")
+            bad.write_text("---\nname: wide-fact\ndescription: a global fact\nscope: user-global\n"
+                           "domain: testdom\n---\n\nSee [[local-only-thing]].\n", encoding="utf-8")
+            badp = subprocess.run([sys.executable, str(OPS), "canonical", "upsert", "wide-fact",
+                                   "--file", str(bad), "--project", str(pAB), "--json"],
+                                  env=envAB, capture_output=True, text=True, check=False)
+            _verdict("AB", "invalid wider→narrower / non-canonical link is refused by cm canonical upsert",
+                     badp.returncode != 0 and ("invalid link" in badp.stdout or "invalid link" in badp.stderr
+                                               or "error" in badp.stdout),
+                     f"rc={badp.returncode} out={badp.stdout[:180]!r} err={badp.stderr[:180]!r}")
+        finally:
+            shutil.rmtree(homeAB, ignore_errors=True)
+
+        # ── Probe AC: exact 200-line-first refusal via shipped admit_write ──
+        print("\n── Probe AC: native line+byte admission ──")
+        import index_admission as _ia
+        _header = "# Memory Index\n\n"
+        _line = "- [n](n.md) — k\n"
+        # fill to just over the reserved line limit with short lines (byte cap not hit)
+        nlines = _ia.line_limit_with_reserve() + 2
+        textL = _header + _line * nlines
+        decL = _ia.project_index(textL)
+        textB = _header + ("- [n](n.md) — " + (" inflação" * 80) + "\n") * 40
+        decB = _ia.project_index(textB)
+        _verdict("AC", "exact future-index 200-line hit refused below byte cap; 25KB hit refused below line cap (multibyte)",
+                 decL["admitted"] is False and decL["projected_bytes"] < _ia.NATIVE_INDEX_CAP_BYTES
+                 and decB["admitted"] is False and decB["projected_lines"] < _ia.NATIVE_INDEX_CAP_LINES,
+                 f"lines {decL['projected_lines']}/{decL['line_limit']} bytes={decL['projected_bytes']}; "
+                 f"fat lines={decB['projected_lines']} bytes={decB['projected_bytes']}")
+
+        # ── Probe AD: migrate --apply is reversible via --rollback ──────────
+        print("\n── Probe AD: migrate apply + rollback ──")
+        homeAD = Path(tempfile.mkdtemp(prefix="cm-ad-"))
+        try:
+            _assert_hermetic(homeAD)
+            pAD = _make_project(homeAD, "adproj")
+            envAD = dict(os.environ, HOME=str(homeAD), CM_DOMAIN="testdom")
+            for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+                      "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS"):
+                envAD.pop(k, None)
+            _write_global(homeAD, "legacy-ad", "user-global")
+            gAD = homeAD / ".claude" / "memory" / "legacy-ad.md"
+            assert gAD.exists()
+            dry = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD)],
+                                 env=envAD, capture_output=True, text=True, check=False)
+            app = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD), "--apply"],
+                                 env=envAD, capture_output=True, text=True, check=False)
+            import store_context as _scAD
+            ctxAD = _scAD.resolve_store(pAD, environ=envAD)
+            copied = (ctxAD.canonical_domain_dir / "legacy-ad.md").exists()
+            rb = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD), "--rollback"],
+                                env=envAD, capture_output=True, text=True, check=False)
+            gone = not (ctxAD.canonical_domain_dir / "legacy-ad.md").exists()
+            still_legacy = gAD.exists()
+            _verdict("AD", "migrate --plan is dry; --apply copies as legacy-unassigned; --rollback restores dual-read and removes copies",
+                     dry.returncode == 0 and "dry" in dry.stdout
+                     and app.returncode == 0 and copied
+                     and rb.returncode == 0 and gone and still_legacy,
+                     f"dry rc={dry.returncode} apply rc={app.returncode} copied={copied} "
+                     f"rollback rc={rb.returncode} gone={gone} legacy={still_legacy}")
+        finally:
+            shutil.rmtree(homeAD, ignore_errors=True)
+
+        # ── Probe AE: kill after every JOURNAL_STEP then recover ────────────
+        print("\n── Probe AE: kill after every journal step ──")
+        import store_context as _scAE
+        import control_plane as _cpAE
+        homeAE = Path(tempfile.mkdtemp(prefix="cm-ae-"))
+        try:
+            _assert_hermetic(homeAE)
+            pAE = _make_project(homeAE, "aeproj")
+            envAE = dict(os.environ, HOME=str(homeAE))
+            for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+                      "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS", "CM_CRASH_AFTER"):
+                envAE.pop(k, None)
+            ctxAE = _scAE.resolve_store(pAE, environ=envAE)
+            destAE = ctxAE.native_memory_dir / "probe-ae.md"
+            destAE.parent.mkdir(parents=True, exist_ok=True)
+            after_temps = {"prepare_temps", "verify_unchanged"}
+            after_publish = {"publish", "commit_registry", "journal_complete"}
+            step_ok = True
+            detail_ae = []
+            for step in _cpAE.JOURNAL_STEPS:
+                if destAE.exists():
+                    destAE.unlink()
+                crashed = False
+                try:
+                    _cpAE.transact(
+                        ctxAE, "probe-ae", {"step": step},
+                        lambda c, t: t.__setitem__(str(destAE), "ae-body\n") or {"ok": True},
+                        crash_after=step)
+                except _cpAE.CrashSimulated:
+                    crashed = True
+                exists_crash = destAE.exists()
+                connAE = _cpAE.connect(_cpAE.db_path(ctxAE))
+                rec = _cpAE.recover_pending(connAE, ctx=ctxAE)
+                connAE.close()
+                exists_rec = destAE.exists()
+                if step in after_publish:
+                    ok_step = crashed and exists_crash and exists_rec
+                elif step in after_temps:
+                    ok_step = crashed and (not exists_crash) and exists_rec
+                else:
+                    ok_step = crashed and (not exists_crash) and (not exists_rec)
+                detail_ae.append(f"{step}:crash={exists_crash}/rec={exists_rec}")
+                if not ok_step:
+                    step_ok = False
+            _verdict("AE", "kill after every JOURNAL_STEP: dest lands only once temps exist (recover) or after publish; recover is safe",
+                     step_ok, " · ".join(detail_ae))
+        finally:
+            shutil.rmtree(homeAE, ignore_errors=True)
+
+        # ── Probe AF: pull crash then promote then recover pull ─────────────
+        print("\n── Probe AF: pull vs promote interleave ──")
+        homeAF = Path(tempfile.mkdtemp(prefix="cm-af-"))
+        try:
+            _assert_hermetic(homeAF)
+            pAF = _make_project(homeAF, "afproj")
+            envAF = dict(os.environ, HOME=str(homeAF), CM_CRASH_AFTER="prepare_temps")
+            for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
+                      "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS"):
+                envAF.pop(k, None)
+            _write_global(homeAF, "shared-af", "user-global")
+            pull1 = subprocess.run([sys.executable, str(SYNC), "--pull", str(pAF)],
+                                   env=envAF, capture_output=True, text=True, check=False)
+            storeAF = _store(homeAF, pAF)
+            crashed_pull = pull1.returncode != 0
+            envAF2 = dict(envAF)
+            envAF2.pop("CM_CRASH_AFTER", None)
+            # promote a local fact while the crashed pull's journal is pending
+            storeAF.mkdir(parents=True, exist_ok=True)
+            (storeAF / "local-af.md").write_text(
+                "---\nname: local-af\ndescription: a local lesson\nmetadata:\n"
+                "  node_type: memory\n  type: feedback\n  scope: user-global\n---\n\nLocal AF body.\n",
+                encoding="utf-8")
+            idxAF = storeAF / "MEMORY.md"
+            headAF = idxAF.read_text(encoding="utf-8") if idxAF.exists() else "# Memory Index\n\n"
+            if "(local-af.md)" not in headAF:
+                idxAF.write_text(headAF.rstrip() + "\n- [local-af](local-af.md) — local\n", encoding="utf-8")
+            promoAF = _promote(homeAF, pAF, "local-af")
+            gAF = homeAF / ".claude" / "memory" / "local-af.md"
+            promo_ok = promoAF.returncode == 0 and gAF.exists()
+            pull2 = subprocess.run([sys.executable, str(SYNC), "--pull", str(pAF)],
+                                   env=envAF2, capture_output=True, text=True, check=False)
+            recovered_shared = (storeAF / "shared-af.md").exists()
+            _verdict("AF", "crashed pull leaves a pending journal; promote still creates a canonical; next pull recovers the shared mirror",
+                     crashed_pull and promo_ok and pull2.returncode == 0 and recovered_shared,
+                     f"pull1 rc={pull1.returncode} promote rc={promoAF.returncode} "
+                     f"canon={gAF.exists()} pull2 rc={pull2.returncode} shared={recovered_shared}")
+        finally:
+            shutil.rmtree(homeAF, ignore_errors=True)
 
         # ── Summary curve, for the audit ──────────────────────────────────────
         print("\n── Headline metric: always-loaded per-session tax (project: alpha) ──")
