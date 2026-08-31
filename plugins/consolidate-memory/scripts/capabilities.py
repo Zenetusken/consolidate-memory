@@ -23,6 +23,30 @@ def _exists(root: Path, *rel) -> bool:
     return (root.joinpath(*rel)).exists()
 
 
+def load_capability_overrides(plugin_data: Path, project_id: str) -> dict:
+    """User overrides for detectors. File is opt-in; missing → {} (no clobber).
+
+    Shape: ``{"add": [...], "remove": [...]}`` at the top level, or keyed by
+    ``project_id`` for per-project overrides.
+    """
+    import json
+    path = Path(plugin_data) / "capability-overrides.json"
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict):
+        return {}
+    scoped = data.get(project_id)
+    if isinstance(scoped, dict):
+        return scoped
+    if "add" in data or "remove" in data or "include" in data or "exclude" in data:
+        return data
+    return {}
+
+
 def detect_capabilities(project_dir: Path, *, overrides: Optional[dict] = None,
                         observation_time: Optional[str] = None) -> list:
     """Return a list of {tag, evidence, confidence, detector_version, observed_at}."""

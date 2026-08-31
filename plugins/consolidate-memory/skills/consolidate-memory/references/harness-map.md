@@ -305,8 +305,9 @@ cross-project model:
   slug-independent.
 - **Global facts don't auto-cross** — they must be replicated into each project's
   store to surface there.
-- **Concurrent writes to the shared global store (v0.1.71, Track D).** Two different
-  projects dreaming around the same time can both write to `~/.claude/memory`. Every
+- **Concurrent writes to the shared domain store (v0.1.71, Track D).** Two different
+  projects in the same enrolled domain dreaming around the same time can both write
+  to `<config>/consolidate-memory/domains/<domain>/facts`. Every
   individual write there is atomic (write-temp + `os.replace`/`os.link` — never a torn
   file visible mid-write), and `promote()`'s canonical CREATE is exclusive (two projects
   racing to promote onto the same new name: the loser is refused and told to retry, not
@@ -575,7 +576,8 @@ re-walks this cascade over existing `user-global` facts by content and offers de
 cost first: `--tokens` and the dashboard report `mirror_index_tokens` (the share driven
 by replicated mirrors). If the overflow is **mirror-dominated**, *local* pruning is
 futile — `--pull` re-creates a deleted mirror next cycle. The only effective fix is to
-**demote/delete the canonical in `~/.claude/memory/`** (it stops replicating), then
+**demote/delete the canonical in the enrolled domain facts dir** (`cm doctor` →
+`canonical_domain_dir`; never live `~/.claude/memory/`) (it stops replicating), then
 `--gc --apply` to reclaim the orphans (here, and in every other project on its next
 pass). Local pruning works only on **project-authored** index lines.
 

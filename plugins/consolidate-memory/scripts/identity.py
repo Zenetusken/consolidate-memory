@@ -2,7 +2,8 @@
 """Typed identity for domains, projects, facts, and canonical refs.
 
 Bare stems are not a trust boundary. Ordinary fleet operations take a
-StoreContext and enumerate CanonicalRef objects (ADR 008 / 015).
+StoreContext and enumerate CanonicalRef objects via
+``sync_global.iter_canonicals`` (ADR 008 / 015).
 """
 from __future__ import annotations
 

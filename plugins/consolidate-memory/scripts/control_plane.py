@@ -351,7 +351,14 @@ def enroll_project(conn: sqlite3.Connection, ctx: StoreContext, domain: str) -> 
     if current and current != d:
         raise WriteRefused(
             f"already enrolled in {current}; use `cm project move-domain --to {d}`")
-    upsert_project(conn, ctx)
+    caps = None
+    try:
+        from capabilities import detect_capabilities, load_capability_overrides
+        ov = load_capability_overrides(ctx.plugin_data_dir, ctx.project_id)
+        caps = detect_capabilities(ctx.project_root, overrides=ov)
+    except Exception:
+        caps = None
+    upsert_project(conn, ctx, capabilities=caps)
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     conn.execute(
         "UPDATE projects SET domain_id=?, status='enrolled', last_seen=? WHERE project_id=?",
@@ -641,11 +648,15 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
             )
             if ctx is not None and (origin_dom or origin_pid) and not ctx_matches:
                 continue
-            if publishes:
-                _n, bad = _publish_destinations(publishes)
-                del _n
-                if bad:
-                    continue
+            has_reg = bool(payload.get("registry_ops") or payload.get("holders")
+                           or payload.get("facts") or payload.get("tombstones")
+                           or deletes)
+            if publishes or has_reg:
+                if publishes:
+                    _n, bad = _publish_destinations(publishes)
+                    del _n
+                    if bad:
+                        continue
                 _apply_deletes(deletes)
                 for h in payload.get("holders") or []:
                     record_holder(rconn, h[0], h[1], h[2], h[3], h[4])

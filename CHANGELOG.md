@@ -83,6 +83,15 @@ version changes on `main`.
 - **Forget revokes this project's managed mirror** in the same transact.
   Migrate `--validate` / `--resolve-collision` exist; rollback journals through
   v3. Retention no longer advertises an unimplemented 12-month aggregate window.
+- Unenrolled `--pull` is a no-op before `connect()`; unenrolled `--promote`
+  refuses before `domains/unknown/facts` is created. `iter_canonicals` is the
+  typed enumerator. Harvest rows carry `domain_id` + `fact_id`. Journal recovery
+  applies `registry_ops` even when there are no dest temps. Capability user
+  overrides (`capability-overrides.json`) are honored on pull. `cm project show`
+  is read-only (does not mint sqlite). `cm data purge` is plan-first (`--apply`
+  + confirmation phrase). Export tar members match the sha256 manifest. SKILL /
+  harness-map no longer instruct writing live `~/.claude/memory/` as the canonical
+  plane.
 
 Docs (README, SECURITY, SKILL, harness-map, CLAUDE, AGENTS, preflight, `cm` help)
 now describe **0.2.2 behavior**: unenrolled is local-only, Phase-1 `--pull` is the

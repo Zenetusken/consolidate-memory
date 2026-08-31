@@ -10,9 +10,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data inventory --project .
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data export --project . --dest /tmp/cm-export
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data compact --project .
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope managed-mirrors --project .
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope project-ops --project .
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope domain-canonicals --project .
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope all-plugin-data --project .
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope managed-mirrors --apply --confirm purge-managed-mirrors --project .
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope project-ops --apply --confirm purge-project-ops --project .
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope domain-canonicals --apply --confirm purge-domain-canonicals --project .
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope all-plugin-data --apply --confirm purge-all-plugin-data --project .
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data retention --project .
 ```
 

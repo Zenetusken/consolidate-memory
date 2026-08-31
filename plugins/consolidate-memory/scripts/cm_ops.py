@@ -21,7 +21,8 @@ def _mirror_plan_for_dest(ctx: StoreContext, dest_domain: str) -> dict:
     Unenroll (dest unknown) plans every managed mirror. Local edits are never
     deleted — they land under native/quarantine/.
     """
-    from control_plane import migration_mode_readonly, stable_fact_id
+    from control_plane import (connect_if_exists, db_path, holder_base_revision,
+                               migration_mode_readonly, stable_fact_id)
     from domain_policy import admit_cross_project
     from memory_status import _frontmatter
     from mirror_conflict import body_hash as _bh, classify_mirror
@@ -36,42 +37,49 @@ def _mirror_plan_for_dest(ctx: StoreContext, dest_domain: str) -> dict:
     except Exception:
         mode = "dual-read"
     droot = ctx.config_root / "consolidate-memory" / "domains"
-    for f in sorted(native.glob("*.md")):
-        if f.name == "MEMORY.md":
-            continue
-        text = _safe_read_text(f)
-        if text is None or not _is_mirror(text):
-            continue
-        fm = _frontmatter(text)
-        cdom = str(fm.get("canonical_domain") or fm.get("domain") or "").strip()
-        if dest_domain != "unknown" and admit_cross_project(
-                dest_domain, fm, migration_mode=mode):
-            continue
-        fid = str(fm.get("canonical_fact_id") or "").strip()
-        if not fid:
-            fid = stable_fact_id(cdom or ctx.domain_id or "unknown", f.stem)
-        plan["holders"].append({"op": "holder_delete", "fact_id": fid,
-                                "project_id": ctx.project_id})
-        canon_text = None
-        if cdom and cdom != "unknown":
-            from identifiers import IdentifierRefused, safe_child, validate_domain_id
-            try:
-                cp = safe_child(droot, validate_domain_id(cdom)) / "facts" / f.name
-                canon_text = _safe_read_text(cp)
-            except IdentifierRefused:
-                canon_text = None
-        if canon_text is None:
-            canon_text = _safe_read_text(global_store() / f.name)
-        local_edit = False
-        if canon_text:
-            dec = classify_mirror(text, canon_text)
-            local_edit = dec["action"] in ("stop-local", "conflict", "quarantine")
-            if not local_edit and _bh(text) != _bh(canon_text):
-                local_edit = True
-        if local_edit:
-            plan["quarantine"].append((str(f), text))
-        else:
-            plan["deletes"].append(str(f))
+    _hconn = connect_if_exists(db_path(ctx))
+    try:
+        for f in sorted(native.glob("*.md")):
+            if f.name == "MEMORY.md":
+                continue
+            text = _safe_read_text(f)
+            if text is None or not _is_mirror(text):
+                continue
+            fm = _frontmatter(text)
+            cdom = str(fm.get("canonical_domain") or fm.get("domain") or "").strip()
+            if dest_domain != "unknown" and admit_cross_project(
+                    dest_domain, fm, migration_mode=mode):
+                continue
+            fid = str(fm.get("canonical_fact_id") or "").strip()
+            if not fid:
+                fid = stable_fact_id(cdom or ctx.domain_id or "unknown", f.stem)
+            plan["holders"].append({"op": "holder_delete", "fact_id": fid,
+                                    "project_id": ctx.project_id})
+            canon_text = None
+            if cdom and cdom != "unknown":
+                from identifiers import IdentifierRefused, safe_child, validate_domain_id
+                try:
+                    cp = safe_child(droot, validate_domain_id(cdom)) / "facts" / f.name
+                    canon_text = _safe_read_text(cp)
+                except IdentifierRefused:
+                    canon_text = None
+            if canon_text is None:
+                canon_text = _safe_read_text(global_store() / f.name)
+            local_edit = False
+            if canon_text:
+                _hb = (holder_base_revision(_hconn, fid, ctx.project_id)
+                       if _hconn is not None else None)
+                dec = classify_mirror(text, canon_text, base_revision=_hb)
+                local_edit = dec["action"] in ("stop-local", "conflict", "quarantine")
+                if not local_edit and _bh(text) != _bh(canon_text):
+                    local_edit = True
+            if local_edit:
+                plan["quarantine"].append((str(f), text))
+            else:
+                plan["deletes"].append(str(f))
+    finally:
+        if _hconn is not None:
+            _hconn.close()
     return plan
 
 
@@ -767,74 +775,83 @@ def cmd_data(args: argparse.Namespace) -> int:
         except WriteRefused as e:
             print(f"data purge: {e}", file=sys.stderr)
             return 2
-        conn = connect(db_path(ctx))
-        scope = getattr(args, "purge_scope", None)
-        if scope == "managed-mirrors":
-            n = _revoke_unadmitted_mirrors(ctx, "unknown")
-            print(json.dumps({"ok": True, "scope": scope, "revoked": n,
-                              "native_untouched": True}))
-            conn.close()
-            return 0
-        if scope == "project-ops":
-            print(json.dumps(purge_project(
-                ctx.plugin_data_dir, ctx.project_id, ctx.native_memory_dir)))
-            conn.close()
-            return 0
-        if scope == "domain-canonicals":
-            if not ctx.enrolled or ctx.domain_id == "unknown":
-                print("data purge: domain-canonicals requires enrollment",
-                      file=sys.stderr)
-                conn.close()
-                return 2
-            print(json.dumps(purge_domain(
-                ctx.plugin_data_dir, ctx.domain_id, conn,
-                facts_dir=ctx.canonical_domain_dir)))
-            conn.close()
-            return 0
-        if scope == "all-plugin-data":
-            conn.close()
-            import shutil
-            pdata = ctx.plugin_data_dir
-            droot = ctx.config_root / "consolidate-memory" / "domains"
-            n = 0
-            if pdata.is_dir():
-                n += sum(1 for _ in pdata.rglob("*") if _.is_file())
-                shutil.rmtree(pdata, ignore_errors=True)
-            if droot.is_dir():
-                n += sum(1 for _ in droot.rglob("*") if _.is_file())
-                shutil.rmtree(droot, ignore_errors=True)
-            print(json.dumps({"ok": True, "scope": scope, "purged_files": n,
-                              "native_untouched": True,
-                              "native": str(ctx.native_memory_dir)}))
-            return 0
         if args.purge_project:
             try:
                 args.purge_project = validate_project_id(args.purge_project)
             except IdentifierRefused as e:
                 print(f"data purge: {e}", file=sys.stderr)
-                conn.close()
                 return 2
-            row = conn.execute(
-                "SELECT native_memory_dir FROM projects WHERE project_id=?",
-                (args.purge_project,),
-            ).fetchone()
-            native = Path(row["native_memory_dir"]) if row and row["native_memory_dir"] else (
-                ctx.native_memory_dir if args.purge_project == ctx.project_id else None)
-            print(json.dumps(purge_project(ctx.plugin_data_dir, args.purge_project, native)))
-        elif args.purge_domain:
+        if args.purge_domain:
             try:
                 args.purge_domain = validate_domain_id(args.purge_domain)
             except IdentifierRefused as e:
                 print(f"data purge: {e}", file=sys.stderr)
-                conn.close()
                 return 2
-            print(json.dumps(purge_domain(ctx.plugin_data_dir, args.purge_domain, conn)))
-        else:
-            print("data purge: pass --project-id or --domain", file=sys.stderr)
-            conn.close()
+        scope = getattr(args, "purge_scope", None)
+        if not scope:
+            if args.purge_project:
+                scope = "project-ops"
+            elif args.purge_domain:
+                scope = "domain-canonicals"
+        if not scope:
+            print("data purge: pass --scope or --project-id/--domain", file=sys.stderr)
             return 2
-        conn.close()
-        return 0
+        phrase = f"purge-{scope}"
+        need = _want_confirm(args, phrase)
+        if need == "dry":
+            print(f"purge plan: scope={scope} (pass --apply --confirm {phrase})")
+            return 0
+        if need:
+            print(f"data purge: {need}", file=sys.stderr)
+            return 2
+        conn = connect(db_path(ctx))
+        try:
+            if scope == "managed-mirrors":
+                n = _revoke_unadmitted_mirrors(ctx, "unknown")
+                print(json.dumps({"ok": True, "scope": scope, "revoked": n,
+                                  "native_untouched": True}))
+                return 0
+            if scope == "project-ops":
+                pid = args.purge_project or ctx.project_id
+                native: Optional[Path] = ctx.native_memory_dir
+                if args.purge_project and args.purge_project != ctx.project_id:
+                    row = conn.execute(
+                        "SELECT native_memory_dir FROM projects WHERE project_id=?",
+                        (pid,)).fetchone()
+                    native = (Path(row["native_memory_dir"])
+                              if row and row["native_memory_dir"] else None)
+                print(json.dumps(purge_project(ctx.plugin_data_dir, pid, native)))
+                return 0
+            if scope == "domain-canonicals":
+                did = args.purge_domain or ctx.domain_id
+                if did == "unknown" or not did:
+                    print("data purge: domain-canonicals requires a named domain",
+                          file=sys.stderr)
+                    return 2
+                facts = (ctx.canonical_domain_dir
+                         if did == ctx.domain_id else None)
+                print(json.dumps(purge_domain(
+                    ctx.plugin_data_dir, did, conn, facts_dir=facts)))
+                return 0
+            if scope == "all-plugin-data":
+                import shutil
+                pdata = ctx.plugin_data_dir
+                droot = ctx.config_root / "consolidate-memory" / "domains"
+                n = 0
+                if pdata.is_dir():
+                    n += sum(1 for _ in pdata.rglob("*") if _.is_file())
+                    shutil.rmtree(pdata, ignore_errors=True)
+                if droot.is_dir():
+                    n += sum(1 for _ in droot.rglob("*") if _.is_file())
+                    shutil.rmtree(droot, ignore_errors=True)
+                print(json.dumps({"ok": True, "scope": scope, "purged_files": n,
+                                  "native_untouched": True,
+                                  "native": str(ctx.native_memory_dir)}))
+                return 0
+            print("data purge: unknown scope", file=sys.stderr)
+            return 2
+        finally:
+            conn.close()
     return 2
 
 
@@ -849,21 +866,16 @@ def _want_confirm(args: argparse.Namespace, phrase: str) -> Optional[str]:
 
 
 def cmd_project(args: argparse.Namespace) -> int:
-    from control_plane import (assert_mutation_allowed, connect, db_path,
-                               enroll_project, enrolled_domain, record_project_alias,
-                               transact, unenroll_project, upsert_project)
+    from control_plane import (assert_mutation_allowed, connect, connect_if_exists,
+                               db_path, enroll_project, enrolled_domain,
+                               record_project_alias, transact, unenroll_project,
+                               upsert_project)
     from identifiers import IdentifierRefused, validate_domain_id
     ctx = _ctx(args.project)
-    if args.project_cmd in ("enroll", "unenroll", "move-domain", "rebind"):
+    if args.project_cmd == "show":
+        conn_ro = connect_if_exists(db_path(ctx))
         try:
-            assert_mutation_allowed(ctx)
-        except WriteRefused as e:
-            print(f"project {args.project_cmd}: {e}", file=sys.stderr)
-            return 2
-    conn = connect(db_path(ctx))
-    try:
-        if args.project_cmd == "show":
-            got = enrolled_domain(conn, ctx.project_id)
+            got = enrolled_domain(conn_ro, ctx.project_id) if conn_ro else None
             payload = {
                 "project_id": ctx.project_id,
                 "domain_id": ctx.domain_id,
@@ -876,6 +888,17 @@ def cmd_project(args: argparse.Namespace) -> int:
                   f"  domain_id: {ctx.domain_id}\n  enrolled: {payload['enrolled']}\n"
                   f"  requested_domain: {ctx.requested_domain}")
             return 0
+        finally:
+            if conn_ro is not None:
+                conn_ro.close()
+    if args.project_cmd in ("enroll", "unenroll", "move-domain", "rebind"):
+        try:
+            assert_mutation_allowed(ctx)
+        except WriteRefused as e:
+            print(f"project {args.project_cmd}: {e}", file=sys.stderr)
+            return 2
+    conn = connect(db_path(ctx))
+    try:
         if args.project_cmd == "enroll":
             if not args.domain:
                 print("project enroll: pass --domain", file=sys.stderr)
@@ -1104,6 +1127,7 @@ def build_parser() -> argparse.ArgumentParser:
     da.add_argument("--scope", dest="purge_scope",
                     choices=["managed-mirrors", "project-ops",
                              "domain-canonicals", "all-plugin-data"])
+    da.add_argument("--confirm", metavar="PHRASE")
 
     pr = sub.add_parser("project")
     pr.add_argument("project_cmd", choices=["enroll", "show", "unenroll", "move-domain", "rebind"])

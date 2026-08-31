@@ -671,6 +671,25 @@ def facts_for_context(ctx, *, all_domains: bool = False) -> list:
     return []
 
 
+def iter_canonicals(ctx, *, all_domains: bool = False) -> list:
+    """Typed enumerator (ADR 008/015). Bare stems are not a trust boundary."""
+    from identity import ref_from_path
+    refs: list = []
+    seen: set = set()
+    for stem, fm, _text in facts_for_context(ctx, all_domains=all_domains):
+        path = getattr(ctx, "canonical_domain_dir", global_store()) / f"{stem}.md"
+        if not path.exists():
+            path = global_store() / f"{stem}.md"
+        ref = ref_from_path(path, fm,
+                            fact_id=str(fm.get("fact_id") or ""),
+                            revision=str(fm.get("canonical_revision") or ""))
+        if ref.key in seen:
+            continue
+        seen.add(ref.key)
+        refs.append(ref)
+    return refs
+
+
 def _same_domain_stores(ctx) -> list:
     """Native stores of projects enrolled in ctx.domain_id. Empty if local-only."""
     if not getattr(ctx, "cross_project_allowed", False):
@@ -1200,6 +1219,15 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         # the same refusal (a phantom store + bogus provenance must be unmintable from any entry point).
         print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
         return 2
+    if pull and evict is not None:
+        if not _safe_stem(evict):
+            print(f"evict: {evict!r} is not a safe fact name (must match {_SAFE_NAME!r}, no path separators) "
+                  "— refusing", file=sys.stderr)
+            return 1
+        if _is_reserved_stem(evict):
+            print(f"evict: '{'/'.join(_RESERVED_STEMS)}' is a reserved index name, not a fact — refusing "
+                  "(it would clobber the store's own always-loaded MEMORY.md index)", file=sys.stderr)
+            return 1
     from store_context import resolve_store, warn_unenrolled_share, WriteRefused
     from domain_policy import admit_cross_project, fact_domain
     from mirror_conflict import (CONFLICT as _MC_CONFLICT, QUARANTINE as _MC_QUAR,
@@ -1207,6 +1235,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                                  STOP_LOCAL as _MC_STOP, classify_mirror)
     ctx = resolve_store(project_dir)
     warn_unenrolled_share(ctx)
+    if pull and not getattr(ctx, "cross_project_allowed", False):
+        print("pull: local-only (unenrolled or unhealthy registry) — skipping",
+              file=sys.stderr)
+        return 0
     if pull and not ctx.auto_memory_enabled:
         print("pull: auto-memory is disabled — refusing writes (absence is not drift)", file=sys.stderr)
         return 2
@@ -1229,8 +1261,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         pass
     stacks = detect_stacks(project_dir)
     try:
-        from capabilities import detect_capabilities, capability_tags, applies_match, parse_applies
-        _cap_tags = capability_tags(detect_capabilities(project_dir))
+        from capabilities import (detect_capabilities, capability_tags, applies_match,
+                                  parse_applies, load_capability_overrides)
+        _ov = load_capability_overrides(ctx.plugin_data_dir, ctx.project_id)
+        _cap_tags = capability_tags(detect_capabilities(project_dir, overrides=_ov))
         _rel_tags = stacks | _cap_tags
     except Exception:
         _cap_tags = set()
@@ -2244,6 +2278,10 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
     from store_context import resolve_store as _rs_prom, warn_unenrolled_share as _warn_prom
     _sctx = _rs_prom(project_dir)
     _warn_prom(_sctx)
+    if not getattr(_sctx, "cross_project_allowed", False):
+        print("promote: cross-project writes require enrollment into a named domain "
+              "(cm project enroll --domain NAME --apply)", file=sys.stderr)
+        return 2
     gdir = _sctx.canonical_domain_dir
     gdir.mkdir(parents=True, exist_ok=True)
     canon_path = gdir / f"{canon_name}.md"
@@ -3282,6 +3320,27 @@ def _harvest_node(store: Path, watermark: str, by: str) -> "dict | None":
             "facts_read": len(reads), "per_fact": per_fact, "harvested_at": now, "by": by}
 
 
+def _stamp_harvest_identity(row: dict, domain_id: str) -> dict:
+    """Add domain_id + fact_id to harvest per_fact rows (ADR 015; stem remains)."""
+    if not isinstance(row, dict):
+        return row
+    from control_plane import stable_fact_id
+    dom = str(domain_id or "")
+    row["domain_id"] = dom
+    stamped = []
+    for item in list(row.get("per_fact") or []):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "")
+        item = dict(item)
+        item["domain_id"] = dom
+        if name and dom:
+            item["fact_id"] = stable_fact_id(dom, name)
+        stamped.append(item)
+    row["per_fact"] = stamped
+    return row
+
+
 def harvest(project_dir: Path) -> int:
     """--harvest: for EVERY node (mirror-holding stores ∪ the trigger), capture organic fact-read
     windows from its transcripts into the shared ledger — closing the dream-gated capture hole
@@ -3327,6 +3386,8 @@ def harvest(project_dir: Path) -> int:
         label = _node_label(store)
         row = _harvest_node(store, marks.get(session_dir_for_store(store).name, (0.0, ""))[1],
                             by=_sane(project_dir.name))
+        if row is not None:
+            row = _stamp_harvest_identity(row, _hctx.domain_id)
         if row is None:
             out.append("    " + _ui.c("·", "dim") + f" {label:<28} "
                        + _ui.c("up to date (no transcripts past the watermark)", "dim"))

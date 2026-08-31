@@ -6323,6 +6323,21 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
               and _up_u.get("ok") is False
               and not (_ctx_u.canonical_domain_dir / "share-me.md").is_file()
               and not _got_v.is_file())
+        _err_pull = _io_p0.StringIO()
+        with _cl_p0.redirect_stdout(_io_p0.StringIO()), _cl_p0.redirect_stderr(_err_pull):
+            _rc_skip = sg.run(_pv, pull=True)
+        check("0.2.2: unenrolled --pull skips before connect() (local-only)",
+              _rc_skip == 0 and "local-only" in _err_pull.getvalue())
+        _ctx_v.native_memory_dir.mkdir(parents=True, exist_ok=True)
+        (_ctx_v.native_memory_dir / "promo-local.md").write_text(
+            "---\nname: promo-local\ndescription: d\nmetadata:\n  node_type: memory\n"
+            "  type: feedback\n  scope: user-global\n---\nbody\n", encoding="utf-8")
+        _err_pr = _io_p0.StringIO()
+        with _cl_p0.redirect_stdout(_io_p0.StringIO()), _cl_p0.redirect_stderr(_err_pr):
+            _rc_pr = sg.promote(_pv, "promo-local", "promo-local")
+        _unk = _ctx_v.config_root / "consolidate-memory" / "domains" / "unknown" / "facts"
+        check("0.2.2: unenrolled --promote refuses before mkdir domains/unknown/facts",
+              _rc_pr == 2 and "enrollment" in _err_pr.getvalue() and not _unk.exists())
         _doc_u = sc.doctor_report(_ctx_u)
         check("0.2.2: doctor warns UNENROLLED LOCAL-ONLY when unenrolled",
               "UNENROLLED LOCAL-ONLY" in _doc_u)
@@ -6676,6 +6691,12 @@ check("0.2.2: live docs do not claim unenrolled projects share a compatibility p
       and "unknown`-pool" not in _live_docs
       and "UNENROLLED SHARED COMPATIBILITY DOMAIN" not in _live_docs
       and "whole fleet" not in _pj_022.lower())
+_skill_now = _skill_md.read_text(encoding="utf-8")
+check("0.2.2: SKILL/harness-map do not instruct writing live ~/.claude/memory as the canonical plane",
+      "demote/delete the canonical in `~/.claude/memory/`" not in _skill_now
+      and "body** in `~/.claude/memory/`" not in _skill_now
+      and "both write to `~/.claude/memory`" not in _hmap_ac
+      and "canonical_domain_dir" in _skill_now)
 check("0.2.2: README does not claim an unlocked non-POSIX flock fallback",
       "import-fallback to unlocked" not in (ROOT / "README.md").read_text(encoding="utf-8"))
 import fact_schema as _fsch_022  # noqa: E402
@@ -6685,6 +6706,80 @@ check("0.2.2: fact_schema refuses nested applies.any",
           stem="deploy", domain="work") is not None)
 check("0.2.2: retention_show does not advertise unimplemented aggregate months",
       "daily_aggregates_months" not in ret.retention_show())
+
+with _Env73() as _e_ic:
+    (_e_ic.glob / "canon-r.md").write_text(_fact73("canon-r", "ref"), encoding="utf-8")
+    import identity as _id_022
+    _refs_ic = sg.iter_canonicals(sc.resolve_store(_e_ic.proj))
+    check("0.2.2: iter_canonicals yields CanonicalRef keyed by (domain, stem)",
+          all(isinstance(r, _id_022.CanonicalRef) for r in _refs_ic)
+          and any(r.stem == "canon-r" and r.domain_id for r in _refs_ic))
+
+_stamped = sg._stamp_harvest_identity(
+    {"per_fact": [{"name": "deploy", "reads": 1, "last": "t"}]}, "personal")
+check("0.2.2: harvest per_fact rows carry domain_id + fact_id",
+      _stamped["domain_id"] == "personal"
+      and _stamped["per_fact"][0]["domain_id"] == "personal"
+      and str(_stamped["per_fact"][0].get("fact_id") or "").startswith("f_"))
+
+with _Env73() as _e_ov:
+    import capabilities as _cap_ov
+    (_e_ov.proj / "x.py").write_text("x=1\n", encoding="utf-8")
+    _ov_dir = sc.resolve_store(_e_ov.proj).plugin_data_dir
+    _ov_dir.mkdir(parents=True, exist_ok=True)
+    (_ov_dir / "capability-overrides.json").write_text(
+        _json_xp.dumps({"add": ["gpu-override"], "remove": ["python"]}) + "\n",
+        encoding="utf-8")
+    _ov = _cap_ov.load_capability_overrides(_ov_dir, "unused")
+    _plain = _cap_ov.capability_tags(_cap_ov.detect_capabilities(_e_ov.proj))
+    _honored = _cap_ov.capability_tags(
+        _cap_ov.detect_capabilities(_e_ov.proj, overrides=_ov))
+    check("0.2.2: capability user overrides add/remove on the detector path",
+          "python" in _plain and "python" not in _honored
+          and "gpu-override" in _honored)
+
+with _Env73() as _e_ex:
+    import tarfile as _tar_ex
+    _pdata_ex = sc.resolve_store(_e_ex.proj).plugin_data_dir
+    _pdata_ex.mkdir(parents=True, exist_ok=True)
+    (_pdata_ex / "note.json").write_text("{}\n", encoding="utf-8")
+    (_pdata_ex / "secret.bin").write_bytes(b"\x00\x01")
+    _ex = ret.export_ops(_pdata_ex, _pdata_ex / "bundle.tar.gz")
+    _tnames = _tar_ex.open(_ex["path"]).getnames()
+    check("0.2.2: export tar members match the sha256 manifest (no unlisted bytes)",
+          _ex.get("ok") is True
+          and any(n.endswith("note.json") for n in _tnames)
+          and not any(n.endswith("secret.bin") for n in _tnames)
+          and "manifest.json" in _tnames)
+
+with _Env73() as _e_pg:
+    _buf_pg = _io73.StringIO()
+    with _ctx73.redirect_stdout(_buf_pg), _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_pg = cmo.main(["data", "purge", "--scope", "managed-mirrors",
+                           "--project", str(_e_pg.proj)])
+    check("0.2.2: data purge without --apply is dry-run (confirmation phrase)",
+          _rc_pg == 0 and "purge plan" in _buf_pg.getvalue()
+          and "purge-managed-mirrors" in _buf_pg.getvalue())
+
+with _Env73() as _e_rec:
+    _ctx_rec = sc.resolve_store(_e_rec.proj)
+    _j_rec = cp.connect_journal(_ctx_rec)
+    _j_rec.executescript(cp.JOURNAL_ONLY_SQL)
+    _r_rec = cp.connect(cp.db_path(_ctx_rec))
+    _payload_rec = {
+        "origin_domain_id": _ctx_rec.domain_id,
+        "origin_project_id": _ctx_rec.project_id,
+        "publishes": [],
+        "deletes": [],
+        "registry_ops": [{"op": "migration_state_set", "mode": "dual-read"}],
+    }
+    _oid_rec = cp.journal_insert(_j_rec, "domain-transition", _payload_rec, "prepare_temps")
+    _got_rec = cp.recover_pending(_j_rec, ctx=_ctx_rec, registry_conn=_r_rec)
+    _st_rec = _j_rec.execute(
+        "SELECT status FROM journal WHERE op_id=?", (_oid_rec,)).fetchone()["status"]
+    _j_rec.close(); _r_rec.close()
+    check("0.2.2: recover_pending applies registry_ops when publishes is empty",
+          _oid_rec in _got_rec and _st_rec == "complete")
 
 # dest-hash mismatch must not delete (ADR 010)
 with _tf_xp.TemporaryDirectory() as _td_hash:

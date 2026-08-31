@@ -399,8 +399,10 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
     except OSError:
         pass
     with tarfile.open(dest, "w:gz") as tar:
-        if plugin_data.exists():
-            tar.add(str(plugin_data), arcname="plugin-data")
+        for item in files:
+            src = plugin_data / item["path"]
+            if src.is_file():
+                tar.add(str(src), arcname="plugin-data/" + item["path"])
         tar.add(str(man_path), arcname="manifest.json")
     try:
         os.chmod(str(dest), 0o600)

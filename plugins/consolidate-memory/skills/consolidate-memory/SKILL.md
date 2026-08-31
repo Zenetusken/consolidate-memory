@@ -469,7 +469,7 @@ withheld to protect a past-the-ceiling index; the dashboard renders it as the `�
 receive` lever) in the cycle record. If nothing is missing/stale/held, no-op.
 
 Then **re-audit the existing `user-global` facts — the backstop for the promotion cascade's weak
-applicability gate (G2.3 — see Phase 2).** Empty-set rule if there are none. Otherwise read each canonical's **body** in `~/.claude/memory/` and
+applicability gate (G2.3 — see Phase 2).** Empty-set rule if there are none. Otherwise read each canonical's **body** in the enrolled domain facts dir (`cm doctor` → `canonical_domain_dir`; legacy `~/.claude/memory/` only while dual-read) and
 **re-walk the cascade by CONTENT**; any fact that would NOW route lower — e.g. its content carries a
 *fleet-VARYING* precondition (`mypy`, "only when cutting a release") rather than the user's
 *fleet-CONSTANT* substrate — is a **demotion candidate**. Judge by content, **NOT `holders`/adoption**
@@ -655,7 +655,8 @@ placing each fact in its tier and optimizing it for how that tier loads:
     mirror-vs-local (`mirror_index_tokens`). If it's **mirror-dominated** (replicated
     `global_ref:` cross-project facts), local pruning is *futile* — Phase 1's `--pull`
     re-creates a deleted mirror next cycle; the only effective lever is to
-    **demote/delete the canonical in `~/.claude/memory/`**, then GC the orphans
+    **demote/delete the canonical in the enrolled domain facts dir** (`cm doctor` →
+    `canonical_domain_dir`; never live `~/.claude/memory/`), then GC the orphans
     fleet-wide (Phase 5). Local pruning works only on **project-authored** pointers.
     The index holds *pointers only* (`- [Title](file.md) — hook`), never fact bodies.
   - **Repo `CLAUDE.md`** (user hand-authored, committed, team-shared — you are a **guest WITH permission to
@@ -832,7 +833,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    from the canonical global store leaves dead mirrors in every project that pulled it
    — `--pull` can't reclaim them (it only iterates *live* globals). This is also the
    **budget-relief lever**: when an index is over budget because of replicated mirrors
-   (Phase 4), the fix is to delete the *canonical* in `~/.claude/memory/` and then GC
+   (Phase 4), the fix is to delete the *canonical* in the enrolled domain facts dir
+   (`cm doctor` → `canonical_domain_dir`) and then GC
    here (and the orphan clears in every other project on its next pass too). Report
    them, then apply (surface deletions per the safety rule before applying):
    ```bash
