@@ -983,12 +983,15 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    (`min(3,1)=1`). The MODEL-judged legs (stable inputs · coverage · decline lineage
    vs the anchors) are YOURS, never the engine's — a disposition of `fleet-candidate` is necessary, never
    sufficient. A fleet proposal fires only for a `fleet-candidate` whose model legs you judge green —
-   report-then-apply, ONE artifact per confirmation; the `awaiting-confirmation | confirmed | declined`
-   disposition + the genericized artifact name are YOUR writes into that block (never hand-mirror the
+   report-then-apply, ONE artifact per confirmation. Write `awaiting-confirmation | confirmed | declined`
+   + the genericized artifact name **ONLY on `fleet-candidate` rows** (never hand-mirror the
    counts — they're script-injected; never leave engine `fleet-candidate`/`blocked:*` as the
-   persisted disposition). Decline-anchors attach from (1) distill `proposed … declined` AND
-   (2) `workflow_proposals.candidates[].disposition == declined` on a distinctive template —
-   the production channel. `nothing:` does not attach. Tier-1 LOCAL proposals are unchanged
+   persisted disposition). **Do not stamp declined/awaiting on `blocked:*` rows** — the blocked
+   sample is evidence, not a docket; a mass-decline of single-node distinctive commands
+   poisons the next consult's decline-anchors. Decline-anchors attach from (1) distill
+   `proposed … declined` AND (2) `workflow_proposals.candidates[].disposition == declined`
+   on a row that cleared Tier-2 (distinctive + ≥2 nodes + min-d ≥ 2) — the production
+   channel. `nothing:` does not attach. Tier-1 LOCAL proposals are unchanged
    (the step-6 gate above — a 5-episode single-node workflow stays legitimately proposable locally).
    Until a **distinctive** cross-node recurrence exists the honest state is `fleet-candidates: 0`
    even if `git add` recurs on every node — never invent breadth, never treat generic CLI as a miss.
@@ -1193,14 +1196,17 @@ this once warned against; the dashboard remains the source of the figures.)
     "gc_removed": 0,   "_gc": "Phase 5: orphan mirrors reclaimed by sync_global --gc --apply"
   },
   "network": {
-    "_": "Phase 5: paste sync_global.py --tokens . --json verbatim here (per-node token cost)",
+    "_": "Phase 5: paste sync_global.py --tokens . --json verbatim here (per-node token cost + the stack-vs-universal split). shared = all mirrors; universal/stack split that mix; stack_edges = pairwise this-stack intersections the HTML graph draws. Pre-split records omit the new keys — renderers fall back without inventing topology.",
     "basis": "≈ chars/4 (heuristic estimate, not a tokenizer)",
     "node_def": "project stores holding ≥1 shared fact",
     "trigger": "<this project>",
     "nodes": [{"node": "...", "trigger": false, "always_loaded_tokens": 0,
-               "mirror_index_tokens": 0, "recall_tokens": 0, "facts": 0, "shared": 0}],
+               "mirror_index_tokens": 0, "recall_tokens": 0, "facts": 0, "shared": 0,
+               "universal": 0, "stack": 0}],
+    "stack_edges": [{"a": "...", "b": "...", "n": 0}],
     "totals": {"nodes": 0, "always_loaded_tokens": 0,
-               "mirror_index_tokens": 0, "recall_tokens": 0}
+               "mirror_index_tokens": 0, "recall_tokens": 0,
+               "universal": 0, "stack": 0}
   },
   "remediation": {
     "_": "v0.1.18: present ONLY when the index is OVER budget (the GATE); absent on a healthy store. v0.1.21: when standing_justified the gate is SUPPRESSED (required=false) until fact-count grows by Δ. v0.1.66: over_ceiling is a SIBLING signal (the hard ceiling, SJ-independent) — never a re-key of required. Seeded by Phase 0; pruned/achieved_* filled in Phase 5.",
@@ -1246,7 +1252,7 @@ this once warned against; the dashboard remains the source of the figures.)
                "verdict": "<one line: dormant — N probative windows | demoted X · justified Y | none: <top candidate> kept because …>"},
   "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
              "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
-  "workflow_proposals": {"_": "v0.1.87/W-C: the registrar's Tier-2 fleet-placement evidence — SCRIPT-INJECTED by --workflows --registrar --into (candidates + decline_anchors, counts never hand-mirrored); the MODEL writes only per-candidate disposition (awaiting-confirmation|confirmed|declined) + the genericized artifact name + the one-line verdict. Absent = the registrar was not consulted this pass (a visible decision). v0.1.90: n_* are the FULL join sizes; candidates[] persists every distinctive fleet-candidate + a capped blocked sample; mechanical.distinctive + n_generic/n_day_spread; fleet d is MIN of per-node d; decline_anchors also attach from declined WP rows.",
+  "workflow_proposals": {"_": "v0.1.87/W-C: the registrar's Tier-2 fleet-placement evidence — SCRIPT-INJECTED by --workflows --registrar --into (candidates + decline_anchors, counts never hand-mirrored); the MODEL writes disposition (awaiting-confirmation|confirmed|declined) + the genericized artifact name ONLY on fleet-candidate rows + the one-line verdict. Absent = the registrar was not consulted this pass (a visible decision). v0.1.90: n_* are the FULL join sizes; candidates[] persists every distinctive fleet-candidate + a capped distinctive day-spread sample (generic-cli / single-node are counts only); mechanical.distinctive + n_generic/n_day_spread; fleet d is MIN of per-node d; decline_anchors attach from declined fleet-candidate WP rows.",
                          "candidates": [{"candidate": "<the normalized template/chain>", "form": "command|chain",
                                         "evidence": {"nodes": ["<node label>"], "d": 0, "n": 0},
                                         "mechanical": {"fleet_recurrence": true, "day_spread": true, "distinctive": true},

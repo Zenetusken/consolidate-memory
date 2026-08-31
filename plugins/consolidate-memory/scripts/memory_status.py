@@ -294,6 +294,8 @@ class NetworkNode(TypedDict, total=False):
     recall_tokens: int
     facts: int
     shared: int
+    universal: int          # mirrors whose canonical is user-global (everyone-holds baseline)
+    stack: int              # mirrors whose canonical is stack-general (this-stack / subset)
 
 
 class NetworkTotals(TypedDict, total=False):
@@ -301,6 +303,14 @@ class NetworkTotals(TypedDict, total=False):
     always_loaded_tokens: int
     mirror_index_tokens: int
     recall_tokens: int
+    universal: int          # unique user-global stems held on ≥1 physical node
+    stack: int              # unique stack-general stems held on ≥1 physical node
+
+
+class StackEdge(TypedDict, total=False):
+    a: str
+    b: str
+    n: int                  # |stack-general mirrors on a ∩ stack-general mirrors on b|
 
 
 class Network(TypedDict, total=False):
@@ -308,6 +318,7 @@ class Network(TypedDict, total=False):
     node_def: str
     trigger: str
     nodes: list[NetworkNode]
+    stack_edges: list[StackEdge]   # pairwise this-stack intersections (HTML draws these, not mixed `shared`)
     totals: NetworkTotals
 
 
@@ -395,8 +406,9 @@ _DISTILL_CAPS = (40, 20)
 # Used by validate_cycle_record's impossible-length backstop on distill.top/top_chains/used.
 _DISTILL_PERSIST_CAP = (12, 8)
 _DISTILL_USED_CAP = 12
-# v0.1.90: registrar --into persist cap on BLOCKED rows (fleet-candidates always kept).
-# Mirrored into sync_global.registrar_report + the HTML/ASCII BLOCKED_CAP=8 display; smoke-pinned.
+# v0.1.90: registrar --into persist cap on DISTINCTIVE day-spread near-joins
+# (fleet-candidates always kept; generic-cli / single-node are counts only).
+# Mirrored into sync_global.registrar_report; smoke-pinned.
 _REGISTRAR_BLOCKED_CAP = 8
 
 # v0.1.90: distinctive-template gate — ordinary git/gh and a bare interpreter --flag
@@ -443,6 +455,45 @@ def _is_distinctive_template(candidate: str, form: str = "command") -> bool:
     if head in _GENERIC_UNLESS_PATH_HEADS:
         return any(_script_path_token(t) for t in toks[1:])
     return True
+
+
+def _truthy_gate(v: object) -> bool:
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)) and not isinstance(v, bool):
+        return v != 0
+    if isinstance(v, str):
+        return v.strip().lower() in ("true", "1", "yes")
+    return False
+
+
+def _is_fleet_proposal_row(c: Mapping[str, Any]) -> bool:
+    """True iff this registrar row cleared Tier-2: distinctive + ≥2 nodes + min-d ≥ 2.
+
+    Model awaiting/declined belongs ONLY on these rows. A declined single-node
+    distinctive command is not a fleet decline-anchor."""
+    raw_m = c.get("mechanical")
+    m: dict[str, Any] = raw_m if isinstance(raw_m, dict) else {}
+    raw_ev = c.get("evidence")
+    ev: dict[str, Any] = raw_ev if isinstance(raw_ev, dict) else {}
+    cand = str(c.get("candidate") or "")
+    form = str(c.get("form") or "command")
+    if "distinctive" in m:
+        distinctive = _truthy_gate(m.get("distinctive"))
+    else:
+        distinctive = _is_distinctive_template(cand, form)
+    if "fleet_recurrence" in m:
+        fleet = _truthy_gate(m.get("fleet_recurrence"))
+    else:
+        raw_nodes = ev.get("nodes")
+        nodes: list[Any] = raw_nodes if isinstance(raw_nodes, list) else []
+        fleet = len(nodes) >= 2
+    if "day_spread" in m:
+        spread = _truthy_gate(m.get("day_spread"))
+    else:
+        d = ev.get("d")
+        spread = isinstance(d, int) and not isinstance(d, bool) and d >= 2
+    return bool(distinctive and fleet and spread)
 
 
 def _proposal_decline_rows(c: Mapping[str, Any]) -> dict:
@@ -1391,9 +1442,9 @@ def distill_history(auto_mem: Path) -> dict:
     Decline-anchors (v0.1.87/D-2.5, v0.1.90 production channel): distill `proposed … declined`
     still attaches the same record's top/top_chains. Live fleet declines are written on
     `workflow_proposals.candidates[].disposition == declined` (distill verdicts are `nothing:`),
-    so those rows ALSO attach — distinctive templates only (generic git/python is not a
-    workflow and must not pollute the anchor set). `nothing:` does not attach (it names a
-    local coverage miss, not a fleet decline)."""
+    so those rows ALSO attach — but ONLY when the declined row cleared Tier-2
+    (distinctive + ≥2 nodes + min-d ≥ 2). A declined single-node distinctive command
+    or a generic-cli row is not a fleet decline-anchor. `nothing:` does not attach."""
     latest: "dict | None" = None
     verdicts: list = []
     proposal_declines: list = []
@@ -1436,7 +1487,10 @@ def distill_history(auto_mem: Path) -> dict:
                 continue
             cand = str(c.get("candidate") or "")
             form = str(c.get("form") or "command")
-            if not cand or not _is_distinctive_template(cand, form):
+            # Production channel: only a declined FLEET-CANDIDATE is an anchor.
+            # A model that stamps declined on the blocked sample (single-node
+            # distinctive, generic-cli) must not poison the next consult.
+            if not cand or not _is_fleet_proposal_row(c):
                 continue
             key = (session, form, cand)
             if key in seen_pd:
@@ -2642,6 +2696,24 @@ def validate_cycle_record(record: object) -> list[str]:
             if disp not in _WP_MODEL_DISPOSITIONS and disp not in _WP_ENGINE_DISPOSITIONS:
                 warnings.append(
                     f"workflow_proposals.candidates[{i}].disposition is not a known value")
+            elif disp in ("awaiting-confirmation", "declined") and not _is_fleet_proposal_row(c):
+                warnings.append(
+                    f"workflow_proposals.candidates[{i}].disposition is {disp} on a "
+                    "non-fleet-candidate — write awaiting/declined only on fleet-candidates")
+
+    # network.nodes / network.stack_edges — same descend-only-into-dict rule (a non-dict
+    # `network` already warned via the top-level tuple). stack_edges is the this-stack
+    # topology the HTML graph draws; a string here would oversell or crash the painter.
+    net = record.get("network")
+    if isinstance(net, dict):
+        if "nodes" in net and not isinstance(net["nodes"], list):
+            warnings.append("network.nodes is not a list")
+        elif "nodes" in net and any(not isinstance(n, dict) for n in net["nodes"]):
+            warnings.append("network.nodes contains a non-dict item")
+        if "stack_edges" in net and not isinstance(net["stack_edges"], list):
+            warnings.append("network.stack_edges is not a list")
+        elif "stack_edges" in net and any(not isinstance(e, dict) for e in net["stack_edges"]):
+            warnings.append("network.stack_edges contains a non-dict item")
 
     # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
     # already warned via the top-level tuple above ("health is not a dict"); here we just

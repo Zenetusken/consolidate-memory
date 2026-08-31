@@ -95,7 +95,9 @@ script = evidence, model = workflow recognition + proposal).
      `top`/`top_chains` snapshot. **Production channel (v0.1.90):** live fleet declines
      are written on `workflow_proposals.candidates[].disposition == declined` (distill
      verdicts are `nothing: … already covered`) — those rows ALSO attach, distinctive
-     templates only. `nothing:` does not attach (it names a local coverage miss).
+     templates that cleared Tier-2 (distinctive + ≥2 nodes + min-d ≥ 2). A declined
+     single-node distinctive command is not a fleet decline-anchor. `nothing:` does not
+     attach (it names a local coverage miss).
      "More nodes/episodes than when declined" compares against that anchor.
 
 **D-2a — Provenance is discovery scope, honestly stated.** Every fleet reader is
@@ -156,9 +158,12 @@ so the companion doc can be updated on the next pass.)
 **D-7 — The proposal record, script-truth evidence.** The `workflow_proposals` block
 carries the evidence INJECTED BY THE ENGINE — `--registrar … --into <seed>` (the
 distill_scan `--from/--into` pattern; the model NEVER hand-mirrors counts — review
-catch). The model writes only the disposition + the GENERICIZED artifact name (never the
-raw template — a path-laden template persisted into the record or the debrief is the
-genericize blind spot; review catch). Disposition enum completes the loop:
+catch). `--into` persists every fleet-candidate plus a capped distinctive day-spread
+near-join sample; generic-cli and single-node rows are counts only (`n_*`). The model
+writes the disposition + the GENERICIZED artifact name **only on `fleet-candidate`
+rows** (never the raw template; never awaiting/declined on a `blocked:*` row — a
+mass-decline of the blocked sample poisons the next consult's decline-anchors).
+Disposition enum completes the loop:
 `awaiting-confirmation | confirmed | declined` (the shipped Distill block already
 carries `proposed`/`created`; the record must close the placement loop for the adoption
 numerator). The artifact itself lands OUTSIDE the audit trail — the debrief names it

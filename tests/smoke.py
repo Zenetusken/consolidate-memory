@@ -1024,6 +1024,7 @@ for _nm, _obj, _td in [
     ("cross_project", _skill_schema.get("cross_project", {}), ms.CrossProject),
     ("network", _sk_n, ms.Network),
     ("network.nodes[0]", (_sk_n.get("nodes") or [{}])[0], ms.NetworkNode),
+    ("network.stack_edges[0]", (_sk_n.get("stack_edges") or [{}])[0], ms.StackEdge),
     ("network.totals", _sk_n.get("totals", {}), ms.NetworkTotals),
     ("remediation", _skill_schema.get("remediation", {}), ms.Remediation),   # v0.1.18
     ("maintenance", _skill_schema.get("maintenance", {}), ms.Maintenance),   # v0.1.37
@@ -1931,6 +1932,30 @@ check("RC-90: longitudinal rigor is a categorical strip — no interpolating con
       and "function graphLabel" in _TEMPLATE_SRC
       and "this project</span>" in _TEMPLATE_SRC
       and "trigger node</span>" not in _TEMPLATE_SRC)
+check("graph: Shared Consciousness caption + this-stack legend exist (split vs fallback)",
+      'id="net-cap"' in _TEMPLATE_SRC
+      and 'id="net-leg-stack"' in _TEMPLATE_SRC
+      and "Numbers are this-stack facts; lines are what some share." in _TEMPLATE_SRC
+      and "Older record — a line just means this project holds at least one shared fact." in _TEMPLATE_SRC)
+check("graph: split records size by shared, number by stack; legacy keeps facts + shared/3 spokes",
+      'sizeKey=split?"shared":"facts"' in _TEMPLATE_SRC.replace(" ", "")
+      and "Math.max(.8,Math.min(3,n/3))" in _TEMPLATE_SRC.replace(" ", "")
+      and "pn<=Math.max(spokeN[i],spokeN[j])" in _TEMPLATE_SRC.replace(" ", "")
+      and 'split?"shared":"facts"' in _TEMPLATE_SRC)
+check("graph: does not invent live topology at render (edges come from the cycle record)",
+      "stack_edges" in _TEMPLATE_SRC
+      and "global_facts" not in _TEMPLATE_SRC
+      and "function edgeN" in _TEMPLATE_SRC)
+check("graph: circle numbers don't steal hover (pointer-events none on the count text)",
+      "font-size:11px;pointer-events:none" in _TEMPLATE_SRC)
+check("graph: ring is seriated by this-stack affinity; baseline-only satellites trail + dim",
+      "ringOrder" in _TEMPLATE_SRC
+      and "function isBaseline" in _TEMPLATE_SRC
+      and "function bowCtrl" in _TEMPLATE_SRC
+      and 'S("path"' in _TEMPLATE_SRC
+      and 'opacity:base?".5"' in _TEMPLATE_SRC)
+check("graph: prettyNode keeps a trailing version tail (Qwen-3-6, not 3-6)",
+      "/^[0-9]+$/.test(p[i])" in _TEMPLATE_SRC)
 check("v0.1.90: registrar blocked persist cap is 8 (HTML no longer samples blocked cards)",
       ms._REGISTRAR_BLOCKED_CAP == 8)
 _RC9_cands = [{"candidate": f"cmd{i}", "form": "command", "evidence": {"nodes": ["a"], "d": 2, "n": 2},
@@ -4068,6 +4093,82 @@ with _tf73.TemporaryDirectory() as _td76c:
     check("v0.1.76/g: _node_tokens excludes an archive-index doc from recall facts/tokens "
           "(memory_status's own C1 split, applied to --tokens — a live SHIPPED.md inflated both)",
           _nt76["facts"] == 1 and _nt76["recall_tokens"] == ms.est_tokens("---\nname: f\n---\nbody\n"))
+    check("graph-split: a local-only store reports 0 universal / 0 stack / 0 shared (keys present)",
+          _nt76.get("universal") == 0 and _nt76.get("stack") == 0 and _nt76.get("shared") == 0)
+
+# --- Shared-consciousness split: everyone-holds vs this-stack (HTML graph data) ---
+_ug_body = ("---\nname: ug\ndescription: \"d\"\nmetadata:\n  node_type: memory\n"
+            "  scope: user-global\n---\nug-body\n")
+_st_body = ("---\nname: st\ndescription: \"d\"\nmetadata:\n  node_type: memory\n"
+            "  scope: stack-general\n  stacks: [python]\n---\nst-body\n")
+with _tf73.TemporaryDirectory() as _td_share:
+    _st_share = Path(_td_share)
+    (_st_share / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_st_share / "ug.md").write_text(sg._as_mirror(_ug_body, "ug"), encoding="utf-8")
+    (_st_share / "st.md").write_text(sg._as_mirror(_st_body, "st"), encoding="utf-8")
+    (_st_share / "local.md").write_text("---\nname: local\n---\nonly here\n", encoding="utf-8")
+    _nt_share = sg._node_tokens(_st_share)
+    check("graph-split: _node_tokens splits mixed shared into universal + stack (local stays in facts)",
+          _nt_share["facts"] == 3 and _nt_share["shared"] == 2
+          and _nt_share["universal"] == 1 and _nt_share["stack"] == 1)
+# canon fallback: a scope-less mirror still classifies when the canonical map is passed
+with _tf73.TemporaryDirectory() as _td_fb:
+    _st_fb = Path(_td_fb)
+    (_st_fb / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    (_st_fb / "st.md").write_text("---\nname: st\nmetadata:\n  global_ref: st\n---\nbody\n", encoding="utf-8")
+    _nt_bare = sg._node_tokens(_st_fb)
+    _nt_fb = sg._node_tokens(_st_fb, {"st": "stack-general"})
+    check("graph-split: a scope-less mirror is unclassified without the canonical, stack with it",
+          _nt_bare["shared"] == 1 and _nt_bare["stack"] == 0 and _nt_bare["universal"] == 0
+          and _nt_fb["stack"] == 1 and _nt_fb["universal"] == 0)
+check("graph-split: _pairwise_stack_edges emits only n>0 pairs, stable (weight desc, then names)",
+      sg._pairwise_stack_edges({"A": {"x", "y"}, "B": {"y", "z"}, "C": {"x"}})
+      == [{"a": "A", "b": "B", "n": 1}, {"a": "A", "b": "C", "n": 1}])
+with _Env73() as _e:
+    (_e.glob / "ug.md").write_text(_ug_body, encoding="utf-8")
+    (_e.glob / "st.md").write_text(_st_body, encoding="utf-8")
+    (_e.store / "ug.md").write_text(sg._as_mirror(_ug_body, "ug"), encoding="utf-8")
+    (_e.store / "st.md").write_text(sg._as_mirror(_st_body, "st"), encoding="utf-8")
+    (_e.store / "local.md").write_text("---\nname: local\n---\nonly here\n", encoding="utf-8")
+    (_e.store / "MEMORY.md").write_text("# Memory\n", encoding="utf-8")
+    _sib = Path(_os73.environ["HOME"]) / ".claude" / "projects" / "-sib-proj" / "memory"
+    _sib.mkdir(parents=True)
+    (_sib / "ug.md").write_text(sg._as_mirror(_ug_body, "ug"), encoding="utf-8")
+    (_sib / "st.md").write_text(sg._as_mirror(_st_body, "st"), encoding="utf-8")
+    (_sib / "MEMORY.md").write_text("# Memory\n", encoding="utf-8")
+    _net_share = sg.token_network(_e.proj)
+    _edges = _net_share.get("stack_edges") or []
+    _nodes_by = {n["node"]: n for n in _net_share["nodes"]}
+    _trig = _nodes_by.get("proj73") or next(n for n in _net_share["nodes"] if n.get("trigger"))
+    check("graph-split: token_network emits unique totals + one this-stack edge (not mixed shared)",
+          _net_share["totals"].get("universal") == 1
+          and _net_share["totals"].get("stack") == 1
+          and _trig["facts"] == 3 and _trig["shared"] == 2
+          and _trig["universal"] == 1 and _trig["stack"] == 1
+          and len(_net_share["nodes"]) == 2
+          and len(_edges) == 1 and _edges[0]["n"] == 1)
+check("graph-split: validate_cycle_record warns on a non-list stack_edges (never crashes)",
+      any("stack_edges is not a list" in w for w in
+          ms.validate_cycle_record({"network": {"stack_edges": "nope"}})))
+_split_ascii = rd.render(cast(ms.CycleRecord, {
+    "project": "p", "session": "s", "scope": {}, "entries": [],
+    "network": {"basis": "x", "trigger": "p",
+                "nodes": [{"node": "p", "trigger": True, "always_loaded_tokens": 10,
+                           "recall_tokens": 20, "facts": 3, "shared": 2,
+                           "universal": 1, "stack": 1}],
+                "stack_edges": [{"a": "p", "b": "q", "n": 1}],
+                "totals": {"nodes": 1, "always_loaded_tokens": 10, "recall_tokens": 20,
+                           "universal": 1, "stack": 1}}}))
+check("graph-split: ASCII dashboard names the baseline / this-stack split when the keys are present",
+      "baseline" in _split_ascii and "this-stack" in _split_ascii)
+_legacy_ascii = rd.render(cast(ms.CycleRecord, {
+    "project": "p", "session": "s", "scope": {}, "entries": [],
+    "network": {"basis": "x", "trigger": "p",
+                "nodes": [{"node": "p", "trigger": True, "always_loaded_tokens": 10,
+                           "recall_tokens": 20, "facts": 2, "shared": 1}],
+                "totals": {"nodes": 1, "always_loaded_tokens": 10, "recall_tokens": 20}}}))
+check("graph-split: ASCII dashboard stays silent on the split for a pre-split (legacy) record",
+      "this-stack" not in _legacy_ascii and "NEURAL NETWORK" in _legacy_ascii)
 with _Env73() as _e:
     (_e.glob / "gfact.md").write_text(
         "---\nname: gfact\ndescription: \"d\"\nmetadata:\n  scope: user-global\n"
@@ -4662,6 +4763,9 @@ with _Env73() as _e:
              "evidence": {"nodes": ["src-alpha", "src-beta"], "d": 2, "n": 6}},
             {"candidate": "git add", "form": "command", "disposition": "declined",
              "evidence": {"nodes": ["src-alpha", "src-beta"], "d": 2, "n": 6}},
+            {"candidate": "mypy --config-file mypy.ini", "form": "command", "disposition": "declined",
+             "evidence": {"nodes": ["src-alpha"], "d": 2, "n": 3},
+             "mechanical": {"fleet_recurrence": False, "day_spread": True, "distinctive": True}},
         ]}
     (_wca / ".consolidation-log.jsonl").write_text(
         _wblog("old", [{"t": "gh pr create --title", "n": 8, "d": 5}],
@@ -4736,6 +4840,9 @@ with _Env73() as _e:
               for a in _rcj["decline_anchors"])
           and all(not (a.get("top") and a["top"][0].get("t") == "git add")
                   for a in _rcj["decline_anchors"]))
+    check("v0.1.90: declined single-node distinctive (mypy) is NOT a fleet decline-anchor",
+          all(not (a.get("top") and a["top"][0].get("t") == "mypy --config-file mypy.ini")
+              for a in _rcj["decline_anchors"]))
     check("v0.1.87/W-C1 4: the chain path of the cascade is exercised (the shared chain crosses "
           "the fleet tier)",
           any(c["form"] == "chain" and c["disposition"] == "fleet-candidate"
@@ -4797,6 +4904,25 @@ with _Env73() as _e:
           and _n_f + _n_b >= len(_wp["candidates"])
           and len(_wp["candidates"]) <= _n_f + ms._REGISTRAR_BLOCKED_CAP
           and int(_wp.get("n_generic") or 0) + int(_wp.get("n_day_spread") or 0) <= _n_b)
+    check("v0.1.90: --into persists fleet-candidates + distinctive day-spread only "
+          "(generic-cli / single-node are counts, not rows)",
+          all(r["candidate"] not in ("git add", "mypy --config-file mypy.ini",
+                                     "gh pr create --title")
+              for r in _wp["candidates"])
+          and any(r["candidate"] == "python3 tests/smoke.py" for r in _wp["candidates"])
+          and any(r["candidate"] == "rm -rf .tmp-out" for r in _wp["candidates"])
+          and all((r.get("mechanical") or {}).get("distinctive") is True
+                  for r in _wp["candidates"]))
+    _spread_row = next(r for r in _wp["candidates"] if r["candidate"] == "rm -rf .tmp-out")
+    _spread_row["disposition"] = "declined"
+    _seedW.write_text(_jsonB.dumps(_seedD), encoding="utf-8")
+    with _ctxW.redirect_stdout(_ioW.StringIO()):
+        sg.registrar_report(_e.proj, as_json=False, into=str(_seedW))
+    _re_spread = _jsonB.loads(_seedW.read_text(encoding="utf-8"))["workflow_proposals"]["candidates"]
+    check("v0.1.90: re-consult strips declined from a day-spread (non-fleet) row",
+          any(r["candidate"] == "rm -rf .tmp-out"
+              and r.get("disposition") not in ("declined", "awaiting-confirmation")
+              for r in _re_spread))
     _bufI2 = _ioW.StringIO()
     with _ctxW.redirect_stdout(_bufI2):
         _rcI2 = sg.registrar_report(_e.proj, as_json=False, into=str(Path(_osB.environ["HOME"]) / "nope" / "x.json"))
@@ -4854,6 +4980,14 @@ with _Env73() as _e:
          "disposition": "awaiting-confirmation",
          "evidence": {"nodes": ["gone"], "d": 1, "n": 1},
          "mechanical": {"fleet_recurrence": False, "day_spread": False}})
+    _seedD3["workflow_proposals"]["candidates"].append(
+        {"candidate": "stale-declined-blocked", "form": "command", "disposition": "declined",
+         "evidence": {"nodes": ["a"], "d": 2, "n": 2},
+         "mechanical": {"fleet_recurrence": False, "day_spread": True, "distinctive": True}})
+    _seedD3["workflow_proposals"]["candidates"].append(
+        {"candidate": "stale-declined-fleet", "form": "command", "disposition": "declined",
+         "evidence": {"nodes": ["a", "b"], "d": 2, "n": 2},
+         "mechanical": {"fleet_recurrence": True, "day_spread": True, "distinctive": True}})
     _seedW2.write_text(_jsonB.dumps(_seedD3), encoding="utf-8")
     with _ctxW.redirect_stdout(_ioW.StringIO()):
         sg.registrar_report(_e.proj, as_json=False, into=str(_seedW2))
@@ -4862,6 +4996,10 @@ with _Env73() as _e:
           any(r.get("candidate") == "out-of-window-cmd" and r.get("disposition") == "confirmed"
               for r in _kept_cands)
           and all(r.get("candidate") != "stale-awaiting" for r in _kept_cands))
+    check("v0.1.90: out-of-window declined fleet-candidate is kept; declined blocked is dropped",
+          any(r.get("candidate") == "stale-declined-fleet" and r.get("disposition") == "declined"
+              for r in _kept_cands)
+          and all(r.get("candidate") != "stale-declined-blocked" for r in _kept_cands))
     _vrW = ms.validate_cycle_record({"project": "p", "workflow_proposals": {"candidates": "not-a-list"}})
     check("v0.1.87/W-C2 3: validate_cycle_record warns on a wrong-container workflow_proposals sub-key "
           "(the model-slip class), and is quiet on the correct shape",
@@ -4871,6 +5009,13 @@ with _Env73() as _e:
           any("disposition is not a known value" in w for w in
               ms.validate_cycle_record({"project": "p", "workflow_proposals": {
                   "candidates": [{"candidate": "x", "disposition": "maybe"}]}})))
+    check("v0.1.90: validate_cycle_record warns on declined/awaiting on a non-fleet-candidate",
+          any("non-fleet-candidate" in w for w in
+              ms.validate_cycle_record({"project": "p", "workflow_proposals": {
+                  "candidates": [{"candidate": "mypy --config-file mypy.ini",
+                                  "disposition": "declined",
+                                  "mechanical": {"fleet_recurrence": False, "day_spread": True,
+                                                 "distinctive": True}}]}})))
 
 # v0.1.90: distinctive-template gate — unit cases (the registrar's generic-cli stoplist)
 check("v0.1.90: distinctive — git/gh never; bare python3 --flag never; script path yes; chain any-side",
@@ -4884,6 +5029,16 @@ check("v0.1.90: distinctive — git/gh never; bare python3 --flag never; script 
       and ms._is_distinctive_template("git add → git commit -q -m", "chain") is False
       and ms._is_distinctive_template(
           "python3 tests/smoke.py → mypy --config-file mypy.ini", "chain") is True)
+check("v0.1.90: fleet-proposal row — distinctive+≥2 nodes+d≥2 only",
+      ms._is_fleet_proposal_row({"candidate": "python3 tests/smoke.py", "form": "command",
+                                 "mechanical": {"fleet_recurrence": True, "day_spread": True,
+                                                "distinctive": True}}) is True
+      and ms._is_fleet_proposal_row({"candidate": "mypy --config-file mypy.ini", "form": "command",
+                                    "mechanical": {"fleet_recurrence": False, "day_spread": True,
+                                                   "distinctive": True}}) is False
+      and ms._is_fleet_proposal_row({"candidate": "git add", "form": "command",
+                                    "mechanical": {"fleet_recurrence": True, "day_spread": True,
+                                                   "distinctive": False}}) is False)
 
 # --- PR-#95 review pins (persistence-core lens — all three findings fire only on the
 # hand-edited / pre-v0.1.82 --from path; the dream path was already clean) ---

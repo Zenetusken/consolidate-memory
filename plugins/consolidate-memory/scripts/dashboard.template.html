@@ -379,7 +379,12 @@
       </div>
       <div><svg id="net" viewBox="0 0 520 170"></svg>
         <div class="meta">
-          <div class="legend center"><span><i class="dot" style="background:var(--accent)"></i>this project</span><span><i class="dot" style="background:var(--ink2)"></i>others</span></div>
+          <div class="legend center" id="net-legend">
+            <span><i class="dot" style="background:var(--accent)"></i>this project</span>
+            <span><i class="dot" style="background:var(--ink2)"></i>others</span>
+            <span id="net-leg-stack" hidden><i style="background:var(--data)"></i>this stack</span>
+          </div>
+          <div class="cap center" id="net-cap"></div>
         </div>
       </div>
     </div>
@@ -451,7 +456,12 @@
   function prettyNode(s){
     s=String(s||"").replace(/^…/,"").replace(/^[-/]+/,"").replace(/^home-drei-(project-)?/i,"");
     var p=s.split(/[-_/]/).filter(Boolean);
-    if(p.length>=2) s=p.slice(-2).join("-");
+    if(p.length>=2){
+      // Keep a trailing version tail with its name (Qwen-3-6), not the last two tokens (3-6).
+      var i=p.length-1;
+      while(i>0 && /^[0-9]+$/.test(p[i])) i--;
+      s=(i<p.length-1)?p.slice(i).join("-"):p.slice(-2).join("-");
+    }
     return s||"?";
   }
   // graph-only: last-two segments, but a 14+ char pair is truncated to a 4-char prefix + last
@@ -801,33 +811,175 @@
   })();
 
   // ── network ──
+  // Shared consciousness has three layers. This graph is dream-centric (this project
+  // at the center, rust) and draws only the DIFFERENTIAL layer: stack-general facts
+  // some projects share and others don't. The everyone-holds baseline is named in the
+  // caption, never drawn as an all-to-all star (that star is what mixed `shared` was).
+  // Pre-split cycle records keep the old "has any mirror" star + an honest fallback caption
+  // — we do not invent live topology at render time.
   (function(){
     var net=CUR.network||{},allN=Array.isArray(net.nodes)?net.nodes:[],nodes=allN.slice(0,12),svg=el("net");
-    var tot=(net.totals&&typeof net.totals==="object")?net.totals:{};
+    var tot=(net.totals&&typeof net.totals==="object"&&!Array.isArray(net.totals))?net.totals:{};
     var totAl=num(tot.always_loaded_tokens),totRc=num(tot.recall_tokens);
-    el("net-note").textContent=nodes.length+" project"+(nodes.length!==1?"s":"")+(allN.length>12?" of "+allN.length:"");
-    if(!nodes.length){var t=S("text",{x:260,y:140,"text-anchor":"middle",class:"axt d"});
+    var split=Array.isArray(net.stack_edges)||nodes.some(function(d){return d.stack!=null||d.universal!=null;});
+    var note=nodes.length+" project"+(nodes.length!==1?"s":"")+(allN.length>12?" of "+allN.length:"");
+    if(split&&("universal" in tot||"stack" in tot)) note+=" · "+num(tot.universal)+" baseline · "+num(tot.stack)+" this-stack";
+    el("net-note").textContent=note;
+    var cap=el("net-cap"), legS=el("net-leg-stack");
+    if(legS) legS.hidden=!split;
+    if(!nodes.length){if(cap) cap.textContent="";
+      var t=S("text",{x:260,y:140,"text-anchor":"middle",class:"axt d"});
       // render-chain audit: the record may carry fleet totals with NO node rows (the model trimmed the
       // verbatim paste) — "no shared-memory network yet" would assert the fleet doesn't exist. Say what's
       // true: the detail wasn't captured; the totals are the fleet.
       t.textContent=((totAl+totRc)>0)?"project list wasn’t captured this pass":"no other projects sharing memory yet";svg.appendChild(t);return;}
-    var cx=260,cy=118,N=nodes.length,maxF=Math.max.apply(null,nodes.map(function(d){return num(d.facts,1);}))||1;
+    if(cap){
+      if(!split) cap.textContent="Older record — a line just means this project holds at least one shared fact.";
+      else {
+        var hasDiff=(Array.isArray(net.stack_edges)&&net.stack_edges.some(function(e){return num(e.n)>0;}))
+          ||nodes.some(function(d){return num(d.stack)>0;});
+        cap.textContent=hasDiff
+          ?"Everyone holds the same baseline. Numbers are this-stack facts; lines are what some share."
+          :"Everyone holds the same baseline. No facts here are shared by only some projects yet.";
+      }
+    }
+    var sizeKey=split?"shared":"facts";
+    var cx=260,cy=118,N=nodes.length,maxF=Math.max.apply(null,nodes.map(function(d){return num(d[sizeKey],1);}))||1;
     var rad=N<=2?70:(N<6?92:118);
     var trig=nodes.findIndex(function(d){return truthy(d.trigger);});if(trig<0)trig=0;
-    var nRing=Math.max(1,N-1);
-    var pos=nodes.map(function(d,i){
-      if(N===1||i===trig) return [cx,cy];
-      var k=i-(i>trig?1:0), ang=(k/nRing)*2*Math.PI-Math.PI/2;
-      return [cx+rad*Math.cos(ang),cy+rad*Math.sin(ang)];
+    var drawn={}; nodes.forEach(function(d){drawn[String(d.node||"")]=true;});
+    function edgeN(a,b){
+      var E=Array.isArray(net.stack_edges)?net.stack_edges:[];
+      for(var ei=0;ei<E.length;ei++){
+        var e=E[ei], ea=String(e.a||""), eb=String(e.b||"");
+        if(!drawn[ea]||!drawn[eb]) continue;
+        if((ea===a&&eb===b)||(ea===b&&eb===a)) return num(e.n);
+      }
+      return 0;
+    }
+    var trigName=String(nodes[trig].node||"");
+    var spokeN=nodes.map(function(d,i){
+      if(i===trig) return 0;
+      return split?edgeN(trigName,String(d.node||"")):num(d.shared,0);
     });
-    nodes.forEach(function(d,i){if(i===trig)return;var sh=num(d.shared,0);if(sh<=0)return;
-      svg.appendChild(S("line",{x1:pos[trig][0],y1:pos[trig][1],x2:pos[i][0],y2:pos[i][1],stroke:"var(--rule2)","stroke-width":Math.max(.8,Math.min(3,sh/3))}));});
+    function isBaseline(i){ return split && spokeN[i]<=0 && num(nodes[i].stack)<=0; }
+    // Ring order: filesystem order on a legacy record; on a split record, seriate by
+    // this-stack affinity so a cluster sits as a contiguous arc (not opposite, with a
+    // diameter through the hub). Baseline-only satellites trail the arc.
+    var ringIdx=[];
+    for(var ri=0;ri<N;ri++) if(ri!==trig) ringIdx.push(ri);
+    var ringOrder;
+    if(!split || ringIdx.length<=1){ ringOrder=ringIdx; }
+    else {
+      var active=[], base=[];
+      ringIdx.forEach(function(i){ (isBaseline(i)?base:active).push(i); });
+      active.sort(function(a,b){
+        var d=spokeN[b]-spokeN[a]; if(d) return d;
+        d=num(nodes[b].stack)-num(nodes[a].stack); if(d) return d;
+        return String(nodes[a].node||"").localeCompare(String(nodes[b].node||""));
+      });
+      var path=[], used={};
+      if(active.length){ path.push(active[0]); used[active[0]]=1; }
+      while(path.length<active.length){
+        var head=path[0], tail=path[path.length-1], best=-1, bestScore=-1, atHead=false;
+        for(var ak=0;ak<active.length;ak++){
+          var ix=active[ak]; if(used[ix]) continue;
+          var sH=edgeN(String(nodes[head].node||""),String(nodes[ix].node||""));
+          var sT=edgeN(String(nodes[tail].node||""),String(nodes[ix].node||""));
+          if(sH>bestScore){ bestScore=sH; best=ix; atHead=true; }
+          if(sT>bestScore){ bestScore=sT; best=ix; atHead=false; }
+        }
+        if(best<0){ for(ak=0;ak<active.length;ak++) if(!used[active[ak]]){ best=active[ak]; atHead=false; break; } }
+        if(best<0) break;
+        used[best]=1;
+        if(atHead) path.unshift(best); else path.push(best);
+      }
+      base.sort(function(a,b){ return String(nodes[a].node||"").localeCompare(String(nodes[b].node||"")); });
+      // Rotate the seriated ACTIVE ring so the strongest this-stack node sits at the
+      // top (k=0, -π/2). Baseline-only satellites stay at the end of the arc.
+      if(path.length){
+        var top=0, topScore=-1;
+        for(var ti=0;ti<path.length;ti++){
+          var sc=spokeN[path[ti]]*1000+num(nodes[path[ti]].stack);
+          if(sc>topScore){ topScore=sc; top=ti; }
+        }
+        if(top) path=path.slice(top).concat(path.slice(0,top));
+      }
+      ringOrder=path.concat(base);
+    }
+    var nRing=Math.max(1, ringOrder.length);
+    var pos=nodes.map(function(){ return [cx,cy]; });
+    pos[trig]=[cx,cy];
+    ringOrder.forEach(function(i,k){
+      var ang=(k/nRing)*2*Math.PI-Math.PI/2;
+      pos[i]=[cx+rad*Math.cos(ang), cy+rad*Math.sin(ang)];
+    });
+    function nodeR(i){
+      var r=7+11*Math.sqrt(num(nodes[i][sizeKey],1)/maxF);
+      if(isBaseline(i)) r=Math.min(r, 7.5);
+      return r;
+    }
+    var extraPts=[];
+    function bowCtrl(x1,y1,x2,y2){
+      // Quadratic control: push the chord OUT from the hub so a long peer edge never
+      // reads as a diameter through this project.
+      var mx=(x1+x2)/2, my=(y1+y2)/2;
+      var vx=mx-cx, vy=my-cy, vlen=Math.sqrt(vx*vx+vy*vy);
+      var dx=x2-x1, dy=y2-y1, chord=Math.sqrt(dx*dx+dy*dy);
+      var bulge=Math.min(0.5, 0.16+chord/(Math.max(rad,1)*3.4));
+      var cpx, cpy;
+      if(vlen<rad*0.4){
+        var px=-dy, py=dx, plen=Math.sqrt(px*px+py*py)||1;
+        cpx=mx+px/plen*rad*(0.72+bulge);
+        cpy=my+py/plen*rad*(0.72+bulge);
+      } else {
+        var target=rad*(1+bulge);
+        cpx=cx+vx/vlen*target; cpy=cy+vy/vlen*target;
+      }
+      extraPts.push([cpx,cpy]);
+      return [cpx,cpy];
+    }
+    // Peer chords first (under the spokes): only when two others share MORE this-stack
+    // with each other than either shares with this project — the cluster, not the floor.
+    if(split){
+      for(var i=0;i<N;i++){
+        if(i===trig) continue;
+        for(var j=i+1;j<N;j++){
+          if(j===trig) continue;
+          var pn=edgeN(String(nodes[i].node||""),String(nodes[j].node||""));
+          if(pn<=Math.max(spokeN[i],spokeN[j])) continue;
+          var b=bowCtrl(pos[i][0],pos[i][1],pos[j][0],pos[j][1]);
+          svg.appendChild(S("path",{d:"M "+pos[i][0]+" "+pos[i][1]+" Q "+b[0]+" "+b[1]+" "+pos[j][0]+" "+pos[j][1],
+            fill:"none",stroke:"var(--data)","stroke-width":Math.max(.7,Math.min(2.6,pn*0.28)),
+            "stroke-opacity":".4","stroke-linecap":"round"}));
+        }
+      }
+    }
+    nodes.forEach(function(d,i){if(i===trig)return;var n=spokeN[i];if(n<=0)return;
+      var w=split?Math.max(.8,Math.min(3.4,n*0.38)):Math.max(.8,Math.min(3,n/3));
+      svg.appendChild(S("line",{x1:pos[trig][0],y1:pos[trig][1],x2:pos[i][0],y2:pos[i][1],
+        stroke:split?"var(--data)":"var(--rule2)","stroke-width":w,
+        "stroke-opacity":split?".78":"1","stroke-linecap":"round"}));});
     var labelAt=[];
-    nodes.forEach(function(d,i){var r=7+11*Math.sqrt(num(d.facts,1)/maxF),isT=i===trig;
-      var c=S("circle",{cx:pos[i][0],cy:pos[i][1],r:r,fill:isT?"rgba(179,71,39,.1)":"var(--card)",stroke:isT?"var(--accent)":"var(--ink2)","stroke-width":isT?2:1.3});
+    nodes.forEach(function(d,i){
+      var r=nodeR(i), isT=i===trig, base=isBaseline(i);
+      var c=S("circle",{cx:pos[i][0],cy:pos[i][1],r:r,
+        fill:isT?"rgba(179,71,39,.1)":"var(--card)",
+        stroke:isT?"var(--accent)":(base?"var(--rule2)":"var(--ink2)"),
+        "stroke-width":isT?2:(base?1:1.3),
+        "stroke-opacity":base?".5":"1",
+        opacity:base?".5":"1"});
       var nm=graphLabel(d.node);
-      c.addEventListener("mousemove",tip(prettyNode(d.node)+" · "+num(d.facts)+" facts"));c.addEventListener("mouseleave",untip);svg.appendChild(c);
-      var ft=S("text",{x:pos[i][0],y:pos[i][1]+4,"text-anchor":"middle",class:"axt d",style:"font-size:11px"});ft.textContent=num(d.facts);svg.appendChild(ft);
+      var hover=prettyNode(d.node);
+      if(split) hover+=base
+        ?(" · in the fleet · "+num(d.facts)+" in this store")
+        :(" · "+num(d.stack)+" this-stack · "+num(d.universal)+" baseline · "+num(d.facts)+" in this store");
+      else hover+=" · "+num(d.facts)+" facts";
+      c.addEventListener("mousemove",tip(hover));c.addEventListener("mouseleave",untip);svg.appendChild(c);
+      var shown=split?num(d.stack):num(d.facts);
+      var ft=S("text",{x:pos[i][0],y:pos[i][1]+4,"text-anchor":"middle",class:"axt d",
+        style:"font-size:11px;pointer-events:none"+(base?";fill:var(--ghost)":"")});
+      ft.textContent=base?"·":((split&&shown===0)?"":String(shown));svg.appendChild(ft);
       var lx,ly,anchor;
       if(isT){ lx=pos[i][0]; ly=pos[i][1]+r+26; anchor="middle"; }
       else {
@@ -836,13 +988,16 @@
         anchor=Math.abs(ux)<0.38?"middle":(ux<0?"end":"start");
       }
       var lt=S("text",{x:lx,y:ly,"text-anchor":anchor,class:"axt"+(isT?" r":"")});
-      lt.setAttribute("style","font-size:9px");lt.textContent=nm;svg.appendChild(lt);
+      lt.setAttribute("style","font-size:9px;pointer-events:none"+(base?";fill:var(--ghost)":""));lt.textContent=nm;svg.appendChild(lt);
       labelAt.push({x:lx,y:ly,w:nm.length*5.2,anchor:anchor,r:r});
     });
     var minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
-    nodes.forEach(function(d,i){var r=7+11*Math.sqrt(num(d.facts,1)/maxF);
+    nodes.forEach(function(d,i){var r=nodeR(i);
       minX=Math.min(minX,pos[i][0]-r);maxX=Math.max(maxX,pos[i][0]+r);
       minY=Math.min(minY,pos[i][1]-r);maxY=Math.max(maxY,pos[i][1]+r);});
+    extraPts.forEach(function(p){
+      minX=Math.min(minX,p[0]);maxX=Math.max(maxX,p[0]);
+      minY=Math.min(minY,p[1]);maxY=Math.max(maxY,p[1]);});
     labelAt.forEach(function(L){
       var left=L.anchor==="end"?L.x-L.w:(L.anchor==="start"?L.x:L.x-L.w/2);
       var right=left+L.w;

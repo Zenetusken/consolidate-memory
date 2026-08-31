@@ -83,6 +83,7 @@ from memory_status import (_is_archive_index_text, _is_mirror, _parse_ts, _sane,
                            _frontmatter, _valid_uuid,
                            INDEX_TOKEN_BUDGET, INDEX_CEILING_TOKENS, HOOK_TOKEN_WARN,
                            _REGISTRAR_BLOCKED_CAP, _is_distinctive_template,
+                           _is_fleet_proposal_row,
                            distill_history, extract_wikilinks, resolve_wikilink, usage_history,
                            _write_private)
 
@@ -1691,16 +1692,38 @@ def _node_label(store: Path) -> str:
     return _label_from_slug(store.parent.name)
 
 
-def _node_tokens(store: Path) -> dict:
-    """ESTIMATED token cost of one node's auto-memory: the always-loaded index plus the
-    recall-fact pool. Tokens are ≈ chars/4 (est_tokens) — an estimate, not exact.
+def _mirror_scope(stem: str, body: str, canon_scope: "dict[str, str] | None") -> str:
+    """Scope of one managed mirror: the copy's own frontmatter first, then the canonical
+    (a pre-scope mirror still classifies if the global store has the fact). Empty if
+    neither is user-global/stack-general — counted in `shared` but not in the split."""
+    sc = str(_frontmatter(body).get("scope") or "").strip().strip("\"'")
+    if sc not in ("user-global", "stack-general"):
+        sc = str((canon_scope or {}).get(stem) or "").strip().strip("\"'")
+    return sc if sc in ("user-global", "stack-general") else ""
 
-    Also ATTRIBUTES the always-loaded index cost to mirror-vs-local pointers
-    (`mirror_index_tokens`): the share of the per-session tax driven by replicated
-    cross-project facts (`global_ref:` mirrors). This is the load-bearing signal when an
-    index goes over budget — a mirror-dominated overflow's only effective lever is the
-    canonical in the GLOBAL store (demote/delete + GC fleet-wide); LOCAL pruning is
-    futile because `run()` re-pulls the mirror next cycle."""
+
+def _pairwise_stack_edges(by_node: dict) -> list:
+    """Compact pairwise stack-general intersections among physical --tokens nodes.
+    Labels are the same strings as `nodes[].node`. n=0 pairs are omitted; order is
+    stable (weight desc, then names) so a cycle record diffs cleanly."""
+    labels = sorted(by_node)
+    out: list = []
+    for i, a in enumerate(labels):
+        sa = by_node.get(a) or set()
+        for b in labels[i + 1:]:
+            n = len(sa & (by_node.get(b) or set()))
+            if n:
+                out.append({"a": a, "b": b, "n": n})
+    out.sort(key=lambda e: (-int(e["n"]), str(e["a"]), str(e["b"])))
+    return out
+
+
+def _classify_node(store: Path, canon_scope: "dict[str, str] | None" = None
+                   ) -> "tuple[dict, set[str], set[str]]":
+    """Per-node token cost + the stem sets that split `shared` into everyone-holds vs this-stack.
+
+    Returns `(token_dict, universal_stems, stack_stems)`. The stem sets stay off the JSON
+    (they're the input to `_pairwise_stack_edges`); the dict is what `--tokens` emits."""
     idx = store / "MEMORY.md"
     idx_text = _safe_read_text(idx) or ""    # store-scan convention: a vanished index reads as absent
     bodies: dict[str, str] = {}
@@ -1716,6 +1739,14 @@ def _node_tokens(store: Path) -> dict:
         if body is not None and not _is_archive_index_text(body):
             bodies[f.stem] = body
     mirror_stems = {stem for stem, b in bodies.items() if _is_mirror(b)}
+    uni_stems: set[str] = set()
+    stk_stems: set[str] = set()
+    for stem in mirror_stems:
+        sc = _mirror_scope(stem, bodies[stem], canon_scope)
+        if sc == "user-global":
+            uni_stems.add(stem)
+        elif sc == "stack-general":
+            stk_stems.add(stem)
     # Attribute the index pointer lines whose target fact (`](<stem>.md)`) is a mirror.
     # That is the fraction of the always-loaded tax the global store controls — what the
     # over-budget remedy must actually target. Estimate the matched lines as ONE blob (the
@@ -1725,13 +1756,32 @@ def _node_tokens(store: Path) -> dict:
     mirror_lines = [ln for ln in idx_text.splitlines()
                     if (m := re.search(r"\]\(([^)]+)\.md\)", ln)) and m.group(1) in mirror_stems]
     mirror_index_tokens = est_tokens("\n".join(mirror_lines))
-    return {
+    return ({
         "always_loaded_tokens": est_tokens(idx_text),
         "mirror_index_tokens": mirror_index_tokens,
         "recall_tokens": sum(est_tokens(b) for b in bodies.values()),
         "facts": len(bodies),                 # readable facts only — a vanished file is not counted
         "shared": len(mirror_stems),
-    }
+        "universal": len(uni_stems),
+        "stack": len(stk_stems),
+    }, uni_stems, stk_stems)
+
+
+def _node_tokens(store: Path, canon_scope: "dict[str, str] | None" = None) -> dict:
+    """ESTIMATED token cost of one node's auto-memory: the always-loaded index plus the
+    recall-fact pool. Tokens are ≈ chars/4 (est_tokens) — an estimate, not exact.
+
+    Also ATTRIBUTES the always-loaded index cost to mirror-vs-local pointers
+    (`mirror_index_tokens`): the share of the per-session tax driven by replicated
+    cross-project facts (`global_ref:` mirrors). This is the load-bearing signal when an
+    index goes over budget — a mirror-dominated overflow's only effective lever is the
+    canonical in the GLOBAL store (demote/delete + GC fleet-wide); LOCAL pruning is
+    futile because `run()` re-pulls the mirror next cycle.
+
+    `universal` / `stack` split `shared` by the mirror's scope (copy first, canonical
+    fallback): everyone-holds vs this-stack. Project-local facts stay in `facts` only."""
+    d, _, _ = _classify_node(store, canon_scope)
+    return d
 
 
 def _network_nodes() -> list[Path]:
@@ -1764,20 +1814,34 @@ def _network_nodes() -> list[Path]:
 
 def token_network(project_dir: Path) -> dict:
     """Build the `network` block of the cycle record: per-node ESTIMATED token cost
-    across every node in the shared-memory network, with the triggering node flagged."""
+    across every node in the shared-memory network, with the triggering node flagged.
+
+    Also splits mixed `shared` into everyone-holds (`universal`) vs this-stack (`stack`)
+    and emits compact `stack_edges` (pairwise stack-general intersections among these
+    physical nodes). The HTML graph draws those edges; it does not invent topology
+    from live disk at render time. `--network` remains the logical-provenance view
+    (documented divergence: minds vs stores-with-mirrors)."""
     project_dir = project_dir.resolve()
     trigger_store = project_store(project_dir)
+    canon_scope = {n: str(fm.get("scope") or "") for n, fm, _ in global_facts()}
     nodes = []
     al_total = rc_total = mir_total = 0
+    stack_by: dict = {}
+    uni_all: set = set()
+    stk_all: set = set()
     for store in _network_nodes():
-        m = _node_tokens(store)
+        m, uni_stems, stk_stems = _classify_node(store, canon_scope)
         is_trigger = store.resolve() == trigger_store.resolve()
+        label = _sane(project_dir.name) if is_trigger else _node_label(store)
         nodes.append({
             # _sane the trigger label too — it's the argv-supplied project_dir.name
-            "node": _sane(project_dir.name) if is_trigger else _node_label(store),
+            "node": label,
             "trigger": is_trigger,
             **m,
         })
+        stack_by[label] = stk_stems
+        uni_all |= uni_stems
+        stk_all |= stk_stems
         al_total += m["always_loaded_tokens"]
         rc_total += m["recall_tokens"]
         mir_total += m["mirror_index_tokens"]
@@ -1786,10 +1850,14 @@ def token_network(project_dir: Path) -> dict:
         "node_def": "project stores holding ≥1 shared fact",
         "trigger": _sane(project_dir.name),
         "nodes": nodes,
+        "stack_edges": _pairwise_stack_edges(stack_by),
         # mirror_index_tokens: the share of the always-loaded total controlled by the
         # GLOBAL store (replicated mirrors) — the lever for a mirror-dominated overflow.
+        # universal/stack here are UNIQUE stems across the physical node set (not a sum —
+        # summing would count the same baseline fact once per holder).
         "totals": {"nodes": len(nodes), "always_loaded_tokens": al_total,
-                   "mirror_index_tokens": mir_total, "recall_tokens": rc_total},
+                   "mirror_index_tokens": mir_total, "recall_tokens": rc_total,
+                   "universal": len(uni_all), "stack": len(stk_all)},
     }
 
 
@@ -1815,13 +1883,20 @@ def token_report(project_dir: Path, as_json: bool) -> int:
     if mir:
         pct = round(100 * mir / t["always_loaded_tokens"]) if t["always_loaded_tokens"] else 0
         out.append("    " + _ui.c(f"of which ≈{mir} ({pct}%) mirror-driven — lever is the GLOBAL store (demote/GC), NOT local prune", "dim"))
+    if t.get("universal") is not None or t.get("stack") is not None:
+        out.append("    " + _ui.c(f"{t.get('universal', 0)} baseline · {t.get('stack', 0)} this-stack "
+                                 "(everyone-holds vs facts only some share — topology is --network)", "dim"))
     out.append("")
     out.append(_ui.kv("NODES", _ui.c("per-project always-loaded + recall-pool cost", "dim")))
     for n in sorted(net["nodes"], key=lambda d: -d["always_loaded_tokens"]):
+        share = f"({n['shared']} shared"
+        if n.get("universal") is not None or n.get("stack") is not None:
+            share += f" · {n.get('universal', 0)} baseline · {n.get('stack', 0)} this-stack"
+        share += ")"
         base = (f"    {_ui.lbl(n['node'][:24], 24)} always ≈{n['always_loaded_tokens']:>5} "
                 + _ui.c(f"(≈{n.get('mirror_index_tokens', 0)} mirror)", "dim")
                 + f" · recall ≈{n['recall_tokens']:>6} · {n['facts']:>2} facts "
-                + _ui.c(f"({n['shared']} shared)", "dim"))
+                + _ui.c(share, "dim"))
         if n["trigger"]:  # keep the dense node columns intact — drop the mark to a hanging line only if it would overflow
             mk = _ui.c("◀ trigger", "cyan")
             base += "  " + mk if _ui.vis(base) + 11 <= _ui.W else "\n" + " " * 29 + mk
@@ -2072,23 +2147,17 @@ def registrar_report(project_dir: Path, as_json: bool, into: "str | None" = None
             # MERGE on (candidate, form): a re-consult refreshes the script-truth evidence and
             # PRESERVES the model-written disposition/name per row (the split-ownership contract —
             # a wholesale replace would silently destroy confirmed/declined verdicts).
-            # Persist ALL fleet-candidates + a capped blocked sample (the join is unbounded;
-            # n_candidates/n_fleet/n_blocked carry the full counts so the header stays honest).
+            # Persist ALL fleet-candidates + a capped DISTINCTIVE day-spread sample
+            # (the near-join). Generic-cli and single-node rows are counts only —
+            # persisting them invited the model to stamp declined on smoke.py.
+            # n_* carry the full join sizes so the header stays honest.
             _old_rows = {(r.get("candidate"), r.get("form")): r
                          for r in block.get("candidates", []) if isinstance(r, dict)}
             _fleet_src = [c for c in candidates if c.get("disposition") == "fleet-candidate"]
-            def _blocked_rank(c: dict) -> tuple:
-                disp = str(c.get("disposition") or "")
-                # Persist the interesting near-join first; generic git last.
-                pri = 0 if disp == "blocked: day-spread" else (
-                    1 if disp == "blocked: fleet-recurrence" else 2)
-                ev = c.get("evidence") or {}
-                return (pri, -len(ev.get("nodes") or []), -int(ev.get("d") or 0),
-                        -int(ev.get("n") or 0), str(c.get("candidate") or ""))
-            _blocked_src = sorted(
-                [c for c in candidates if c.get("disposition") != "fleet-candidate"],
-                key=_blocked_rank)
-            _persist = _fleet_src + _blocked_src[:_REGISTRAR_BLOCKED_CAP]
+            _spread_src = [c for c in candidates
+                           if c.get("disposition") == "blocked: day-spread"
+                           and (c.get("gates") or {}).get("mechanical", {}).get("distinctive") is True]
+            _persist = _fleet_src + _spread_src[:_REGISTRAR_BLOCKED_CAP]
             _merged = []
             _kept = set()
             for c in _persist:
@@ -2098,20 +2167,27 @@ def registrar_report(project_dir: Path, as_json: bool, into: "str | None" = None
                 if _key in _old_rows:
                     _row = dict(_old_rows[_key])
                     _row.update({"evidence": c["evidence"], "mechanical": c["gates"]["mechanical"]})
+                    # awaiting/declined belong only on a current fleet-candidate.
+                    if c.get("disposition") != "fleet-candidate":
+                        if str(_row.get("disposition") or "") in ("declined", "awaiting-confirmation"):
+                            _row.pop("disposition", None)
+                            if not str(_row.get("name") or "").strip():
+                                _row.pop("name", None)
                 _merged.append(_row)
                 _kept.add(_key)
-            # Keep model-finalized rows that left this window (a confirmed/declined artifact
-            # must not vanish just because its template dropped out of the latest W-A top).
+            # Keep model-finalized rows that left this window. confirmed always
+            # (an artifact exists). declined only if it was a fleet-candidate.
             for _key, _old in _old_rows.items():
                 if _key in _kept:
                     continue
-                if str(_old.get("disposition") or "") in ("confirmed", "declined"):
+                _od = str(_old.get("disposition") or "")
+                if _od == "confirmed" or (_od == "declined" and _is_fleet_proposal_row(_old)):
                     _merged.append(dict(_old))
             block["candidates"] = _merged
             block["decline_anchors"] = anchors
             block["n_candidates"] = len(candidates)
             block["n_fleet"] = len(_fleet_src)
-            block["n_blocked"] = len(_blocked_src)
+            block["n_blocked"] = sum(1 for c in candidates if c.get("disposition") != "fleet-candidate")
             block["n_generic"] = sum(1 for c in candidates
                                      if c.get("disposition") == "blocked: generic-cli")
             block["n_day_spread"] = sum(1 for c in candidates

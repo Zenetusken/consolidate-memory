@@ -5,6 +5,55 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.1.91] — 2026-08-30
+
+### Improved — Shared Consciousness draws the sharing topology
+
+The archive graph used to be a cost star: a spoke if a project held *any* shared
+mirror, a number equal to *every* fact in that store. That read as a complete
+fleet of equals. Shared consciousness has three layers, and the graph now says so.
+
+- **Everyone-holds vs this-stack.** `--tokens` splits mixed `shared` into
+  `universal` (user-global, the baseline every project is meant to absorb) and
+  `stack` (stack-general, facts only some repos share), plus compact
+  `stack_edges` (pairwise this-stack intersections). `shared` is unchanged for
+  older records.
+- **The HTML graph is dream-centric and differential.** Rust center is this
+  project. Lines are this-stack overlap — the baseline is named, never drawn as
+  an all-to-all star. Peer chords appear only when two others share *more with
+  each other than with you*, bowed around the rim so they never cut the hub.
+  Same-stack minds sit in a contiguous arc. A baseline-only satellite is dim,
+  not a blank circle. Hover splits the count
+  (`9 this-stack · 21 baseline · 125 in this store`). Caption: *Numbers are
+  this-stack facts; lines are what some share.*
+- **Older cycles stay honest.** Pre-split records keep the old star and say so
+  — renderers do not invent live topology at paint time.
+
+`--network` (logical provenance minds) was already this split; the archive now
+matches it on the physical `--tokens` node set. Schema trio moved together
+(TypedDicts + SKILL block + C5 pin).
+
+### Improved — registrar decline-anchors stay fleet-scoped
+
+A fleet proposal is a distinctive command that actually recurs on ≥2 nodes with
+min-d ≥ 2. The blocked sample (generic CLI, single-node distinctive, day-spread)
+is evidence, not a docket.
+
+- Decline-anchors attach only from declined **fleet-candidate** rows (plus
+  distill `proposed … declined`). A declined `mypy` or `python3 tests/smoke.py`
+  on one node does not poison the next consult.
+- `--into` persists fleet-candidates and a capped distinctive day-spread
+  sample; generic-cli / single-node stay as `n_*` counts. Re-consult strips
+  awaiting/declined from a non-fleet row; out-of-window declined fleet-candidates
+  are kept.
+- The model writes `awaiting-confirmation | confirmed | declined` only on
+  fleet-candidate rows. `validate_cycle_record` warns otherwise. Spec D-7 /
+  SKILL Phase-5 consult match.
+
+1025/1025 smoke, mypy clean. Additive throughout (`universal` / `stack` /
+`stack_edges` on `network`; `_is_fleet_proposal_row`). Legacy cycle records
+render. Existing installs keep working ⇒ patch.
+
 ## [0.1.90] — 2026-08-30
 
 ### Improved — the registrar recognizes real fleet workflows

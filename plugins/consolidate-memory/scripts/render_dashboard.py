@@ -281,6 +281,9 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
         pct = round(100 * mir / al) if al else 0
         out.append("    " + _c(f"of which ≈{_g(mir)} ({pct}%) mirror-driven "
                                 "(lever: global store demote/GC, not local prune)", "dim"))
+    if "universal" in t or "stack" in t:
+        out.append("    " + _c(f"{_g(t.get('universal', 0))} baseline · {_g(t.get('stack', 0))} this-stack "
+                               "(everyone-holds vs facts only some share)", "dim"))
 
     shown = sorted(nodes, key=lambda d: -_num(d.get("always_loaded_tokens", 0)))
     cap = 12
@@ -290,9 +293,13 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
         pad = " " * max(0, namew - _ui.disp_w(nm))
         star = _c("*", "cyan") if n.get("trigger") else " "
         mark = _c("  ◀ dream ran here", "cyan") if n.get("trigger") else ""
+        share = f"{_g(n.get('shared', 0))} {_lbl('shared')}"
+        if "universal" in n or "stack" in n:
+            share += (f" · {_g(n.get('universal', 0))} {_lbl('baseline')} · "
+                      f"{_g(n.get('stack', 0))} {_lbl('this-stack')}")
         out.append(f"    {star} {nm}{pad}  {_lbl('always')} ≈{_g(n.get('always_loaded_tokens', 0)):>5}  "
                    f"{_lbl('recall')} ≈{_g(n.get('recall_tokens', 0)):>7}  {_g(n.get('facts', 0)):>3} {_lbl('facts')} · "
-                   f"{_g(n.get('shared', 0))} {_lbl('shared')}{mark}")
+                   f"{share}{mark}")
     if len(shown) > cap:
         out.append(f"      … +{len(shown) - cap} more node(s)")
     if not nodes:
@@ -911,11 +918,15 @@ def _demo_record() -> ms.CycleRecord:
         "network": {"basis": "≈ chars/4", "node_def": "stores", "trigger": "acme-api",
                     "nodes": [
                         {"node": "acme-api", "trigger": True, "always_loaded_tokens": 278,
-                         "mirror_index_tokens": 150, "recall_tokens": 1775, "facts": 12, "shared": 6},
+                         "mirror_index_tokens": 150, "recall_tokens": 1775, "facts": 12, "shared": 6,
+                         "universal": 4, "stack": 2},
                         {"node": "Doc_Flo", "trigger": False, "always_loaded_tokens": 6183,
-                         "mirror_index_tokens": 176, "recall_tokens": 207220, "facts": 104, "shared": 4}],
+                         "mirror_index_tokens": 176, "recall_tokens": 207220, "facts": 104, "shared": 4,
+                         "universal": 4, "stack": 2}],
+                    "stack_edges": [{"a": "acme-api", "b": "Doc_Flo", "n": 2}],
                     "totals": {"nodes": 2, "always_loaded_tokens": 6461,
-                               "mirror_index_tokens": 326, "recall_tokens": 208995}},
+                               "mirror_index_tokens": 326, "recall_tokens": 208995,
+                               "universal": 4, "stack": 2}},
         "marker": {"commit": "b6d37b6e9f01", "timestamp": "2026-06-16T11:40:00Z"},
     }
 

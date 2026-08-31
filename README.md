@@ -132,6 +132,8 @@ baseline). The **edges** are the stack-specific bindings: the RAG projects
 (`rag-pipeline` / `doc-search` / `ml-trainer`) cluster tightly, the web projects
 (`web-scraper` / `api-gateway`) form their own pair, and nothing RAG-specific ever
 leaks to the web projects. Edge weight = how many stack-general facts the pair shares.
+The HTML archive's Shared Consciousness graph is the same split: the baseline is
+named, not drawn as a complete star; lines are facts only some projects share.
 
 ### How insights propagate (the honest model)
 
