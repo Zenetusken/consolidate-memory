@@ -21,10 +21,11 @@ description: >-
 (`cm project enroll --domain NAME`), SQLite control plane. Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
-cross-project canonicals. Enroll with `cm project enroll --domain personal`.
-Enrollment does not revoke mirrors already pulled; use `move-domain` / `unenroll`
-to strip unauthorized managed mirrors. `cm doctor` prints `UNENROLLED LOCAL-ONLY`
-when this applies.
+cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
+`cm project enroll --domain personal --apply` (this checkout). First enroll
+grants the domain and revokes managed mirrors the destination does not admit;
+use `move-domain` to switch and `unenroll` to go local-only. `cm doctor` prints
+`UNENROLLED LOCAL-ONLY` when this applies.
 
 A deliberate pass that turns the fluid experience of a work session into **verified,
 durable facts** — and keeps the project's two memory stores accurate and
@@ -424,8 +425,9 @@ portions; a whole read errors and wastes context.
 auto-memory fact file to "orient." Body reads still happen wherever CONTENT is the
 input (this is not a skip of the re-audits below):
 
-- **Demotion:** every `user-global` canonical **body** in `~/.claude/memory/` (re-walk
-  the cascade by content). Empty-set rule only if there are no such canonicals.
+- **Demotion:** every `user-global` canonical **body** in the enrolled domain
+  facts dir from Phase 0 / `cm doctor` (legacy `~/.claude/memory/` only while
+  dual-read). Empty-set rule only if there are no such canonicals.
 - **Promotion:** every Phase-0 `promote?` seed body (already capped). Empty-set rule
   if the seed is empty.
 - **Phase 0 named lists** (`archive?`, `defrag?`, re-verification candidates): Read
@@ -454,7 +456,8 @@ idempotent (re-runs are cheap no-ops); reads-only; no message content leaves the
 evidence surfaces in Phase 5's `--utility`, source-labeled (`harvested`).
 
 This replicates any `user-global` (and stack-matching `stack-general`) facts from
-`~/.claude/memory/` that are missing here, and **refreshes any stale mirrors** whose
+the enrolled domain canonical dir (legacy `~/.claude/memory/` dual-read until
+finalize) that are missing here, and **refreshes any stale mirrors** whose
 canonical changed (the script writes both the fact file and its index pointer). It also **AUTO-HOLDS**
 (M1) any new-global pull that would push the always-loaded index past the **HARD CEILING**
 (`INDEX_CEILING_TOKENS` ≈3840 est tok — v0.1.66; an over-TARGET amber store now receives freely, since

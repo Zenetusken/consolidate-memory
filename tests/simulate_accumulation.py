@@ -135,7 +135,8 @@ def _enroll(home: Path, project_dir: Path, domain: str = "personal") -> None:
     """Named-domain grant so --pull/--promote are allowed (ADR 008: unenrolled is local-only)."""
     env = dict(os.environ, HOME=str(home))
     subprocess.run(
-        [sys.executable, str(OPS), "project", "enroll", str(project_dir), "--domain", domain],
+        [sys.executable, str(OPS), "project", "enroll", str(project_dir),
+         "--domain", domain, "--apply"],
         env=env, capture_output=True, text=True, check=False)
 
 
@@ -1299,7 +1300,7 @@ def run() -> None:
                               "scope: user-global\ndomain: testdom\n---\n\nThe body.\n",
                               encoding="utf-8")
             subprocess.run([sys.executable, str(OPS), "project", "enroll",
-                            str(pAA), "--domain", "testdom"],
+                            str(pAA), "--domain", "testdom", "--apply"],
                            env=envAA, capture_output=True, text=True, check=False)
             up = subprocess.run([sys.executable, str(OPS), "canonical", "upsert", "aa-fact",
                                  "--file", str(factAA), "--project", str(pAA), "--json"],
@@ -1358,7 +1359,7 @@ def run() -> None:
             bad.write_text("---\nname: wide-fact\ndescription: a global fact\nscope: user-global\n"
                            "domain: testdom\n---\n\nSee [[local-only-thing]].\n", encoding="utf-8")
             subprocess.run([sys.executable, str(OPS), "project", "enroll",
-                            str(pAB), "--domain", "testdom"],
+                            str(pAB), "--domain", "testdom", "--apply"],
                            env=envAB, capture_output=True, text=True, check=False)
             badp = subprocess.run([sys.executable, str(OPS), "canonical", "upsert", "wide-fact",
                                    "--file", str(bad), "--project", str(pAB), "--json"],
@@ -1569,10 +1570,10 @@ def run() -> None:
                                      str(pH), "--domain", "../employer"],
                                     env=envAG, capture_output=True, text=True, check=False)
             en_a = subprocess.run([sys.executable, str(OPS), "project", "enroll",
-                                   str(pA), "--domain", "work"],
+                                   str(pA), "--domain", "work", "--apply"],
                                   env=envAG, capture_output=True, text=True, check=False)
             en_b = subprocess.run([sys.executable, str(OPS), "project", "enroll",
-                                   str(pB), "--domain", "personal"],
+                                   str(pB), "--domain", "personal", "--apply"],
                                   env=envAG, capture_output=True, text=True, check=False)
             ctxA = _scAG.resolve_store(pA, environ=envAG)
             ctxB = _scAG.resolve_store(pB, environ=envAG)

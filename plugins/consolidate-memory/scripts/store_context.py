@@ -28,7 +28,8 @@ PLUGIN_ID = "consolidate-memory"
 VOLATILE_FRONTMATTER = (
     "modified", "mirrored_at", "projects", "last_used", "last_read",
     "usage", "global_ref_since", "content_modified", "verified_at",
-    "last_observed_at",
+    "last_observed_at", "canonical_fact_id", "canonical_domain",
+    "base_revision", "canonical_revision",
 )
 
 
@@ -40,9 +41,10 @@ class WriteRefused(RuntimeError):
 UNENROLLED_SHARE_WARNING = (
     "UNENROLLED LOCAL-ONLY: this project cannot create or pull cross-project "
     "canonicals until it is enrolled in a named domain "
-    "(cm project enroll --domain personal). Enrollment does not revoke mirrors "
-    "already pulled. Do not run migrate apply/rollback or domain switches on "
-    "irreplaceable stores. 1.0 remains HOLD."
+    "(cm project enroll --domain personal --apply). First enroll grants the "
+    "domain and revokes managed mirrors the destination does not admit. Use "
+    "move-domain to switch; unenroll to go local-only. Do not run migrate "
+    "apply/rollback or domain switches on irreplaceable stores. 1.0 remains HOLD."
 )
 
 
@@ -475,13 +477,17 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     pid = project_id_for(profile, domain, common, root, remote_fp)
     enrolled = False
     pdata = plugin_data_dir(cfg, env)
-    from control_plane import classify_registry, connect_if_exists, enrolled_domain
+    from control_plane import (classify_registry, connect_if_exists, enrolled_domain,
+                               resolve_project_alias)
     _db = pdata / "control.sqlite"
     reg_state, reg_err = classify_registry(_db)
     if reg_state == "healthy":
         _c = connect_if_exists(_db)
         if _c is not None:
             try:
+                aliased = resolve_project_alias(_c, pid)
+                if aliased:
+                    pid = aliased
                 got = enrolled_domain(_c, pid)
                 if got:
                     domain = got
@@ -597,6 +603,42 @@ def doctor_dict(ctx: StoreContext) -> dict:
         "unenrolled_share_warning": (
             UNENROLLED_SHARE_WARNING if is_unenrolled_share(ctx) else None),
     }
+
+
+def repair_permissions(ctx: StoreContext) -> dict:
+    """chmod 0700 on plugin-data/domain dirs and 0600 on files written there."""
+    n_dirs = n_files = 0
+    roots = [ctx.plugin_data_dir]
+    droot = ctx.config_root / "consolidate-memory" / "domains"
+    if droot.exists():
+        roots.append(droot)
+    if ctx.canonical_domain_dir.parent.exists():
+        roots.append(ctx.canonical_domain_dir.parent)
+    seen: set = set()
+    for root in roots:
+        try:
+            key = str(root.resolve())
+        except OSError:
+            key = str(root)
+        if key in seen or not root.exists():
+            continue
+        seen.add(key)
+        try:
+            os.chmod(str(root), 0o700)
+            n_dirs += 1
+        except OSError:
+            pass
+        for p in root.rglob("*"):
+            try:
+                if p.is_dir():
+                    os.chmod(str(p), 0o700)
+                    n_dirs += 1
+                elif p.is_file():
+                    os.chmod(str(p), 0o600)
+                    n_files += 1
+            except OSError:
+                continue
+    return {"ok": True, "dirs": n_dirs, "files": n_files}
 
 
 # Identity helper used by tests that must not go through resolve_store's settings I/O.

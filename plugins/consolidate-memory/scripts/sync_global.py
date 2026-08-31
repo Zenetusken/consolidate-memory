@@ -647,6 +647,58 @@ def iter_admissible_facts(ctx) -> list:
     return out
 
 
+def _global_is_fixture() -> bool:
+    """True when tests patched `GLOBAL` away from Path.home()/.claude/memory."""
+    g = globals().get("GLOBAL")
+    if not isinstance(g, Path):
+        return False
+    live = Path.home() / ".claude" / "memory"
+    try:
+        return g.resolve() != live.resolve()
+    except OSError:
+        return g != live
+
+
+def facts_for_context(ctx, *, all_domains: bool = False) -> list:
+    """Ordinary fleet readers: current-domain Canonicals only (ADR 015)."""
+    if all_domains:
+        return global_facts()
+    if getattr(ctx, "cross_project_allowed", False):
+        return iter_admissible_facts(ctx)
+    # Hermetic tests patch GLOBAL. Production unenrolled → empty.
+    if _global_is_fixture():
+        return global_facts()
+    return []
+
+
+def _same_domain_stores(ctx) -> list:
+    """Native stores of projects enrolled in ctx.domain_id. Empty if local-only."""
+    if not getattr(ctx, "cross_project_allowed", False):
+        return []
+    from control_plane import connect_if_exists, db_path, iter_registered_projects
+    conn = connect_if_exists(db_path(ctx))
+    if conn is None:
+        return []
+    out: list = []
+    seen: set = set()
+    try:
+        for r in iter_registered_projects(conn):
+            if str(r.get("domain_id") or "") != ctx.domain_id:
+                continue
+            nd = Path(str(r.get("native_memory_dir") or ""))
+            try:
+                key = str(nd.resolve())
+            except OSError:
+                key = str(nd)
+            if key in seen or not nd.is_dir():
+                continue
+            seen.add(key)
+            out.append(nd)
+    finally:
+        conn.close()
+    return out
+
+
 def _fact_stacks(fm: dict) -> set[str]:
     """A fact's declared `stacks:` tags as a lowercased-token set. Shared by relevance matching
     AND the promotion stacks-guard so the two parse `stacks:` identically (a stack-general fact is
@@ -695,7 +747,8 @@ def _mtime_iso(path: Path) -> str:
         return _now_iso()
 
 
-def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "") -> str:
+def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
+               fact_id: str = "", domain: str = "") -> str:
     """Return the global fact stamped as a managed mirror (`global_ref: <name>`),
     robustly — drop any existing global_ref, then insert one after `metadata:`.
 
@@ -741,7 +794,8 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "") -> st
         # e.g. a note explaining the mirror mechanism itself). Both of THIS function's own legitimate
         # stamps (the metadata-child form and the post-opening-'---' fallback) land strictly within
         # dashes == 1, so scoping the strip the same way loses no correctness.
-        if dashes == 1 and s.startswith(("global_ref:", "global_ref_since:", "global_ref_body:")):
+        if dashes == 1 and s.startswith(("global_ref:", "global_ref_since:", "global_ref_body:",
+                                         "canonical_fact_id:", "canonical_domain:")):
             # drop any existing global_ref + stamp lines (re-stamped below). EXACT three keys, not the
             # bare "global_ref" prefix (PR-#91 adversarial review): the wide prefix re-ate what the
             # v0.1.70 narrowing protects — e.g. a folded-scalar description continuation line that
@@ -761,6 +815,10 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "") -> st
         # un-refreshable, GC-immune mirror (never reclaimed, never updated).
         if not injected and dashes == 1 and not ln[:1].isspace() and s.rstrip(":") == "metadata":
             out.append(f"  global_ref: {name}")
+            if fact_id:
+                out.append(f"  canonical_fact_id: {fact_id}")
+            if domain and domain != "unknown":
+                out.append(f"  canonical_domain: {domain}")
             if since:   # v0.1.78: the content-lineage clock (see docstring; caller computes the carry)
                 out.append(f"  global_ref_since: {since}")
                 out.append(f"  global_ref_body: {body_hash}")
@@ -946,6 +1004,20 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                     print(f"  {lint}", file=sys.stderr)
                     fat += 1
             else:
+                # Re-classify under lock: a local edit between pre-lock classify
+                # and publication must never be overwritten (P0-4).
+                cur_now = _safe_read_text(path) or ""
+                if cur_now and _is_mirror(cur_now):
+                    from mirror_conflict import (CONFLICT as _CFL, QUARANTINE as _QAR,
+                                                 STOP_LOCAL as _STP, classify_mirror as _cml)
+                    from control_plane import holder_base_revision as _hbr2, stable_fact_id as _sf2
+                    _hb = _hbr2(conn, _sf2(ctx.domain_id, name), ctx.project_id)
+                    _ct = (_safe_read_text(ctx.canonical_domain_dir / f"{name}.md")
+                           or _safe_read_text(global_store() / f"{name}.md")
+                           or "")
+                    _act2 = _cml(cur_now, _ct, base_revision=_hb)["action"]
+                    if _act2 in (_STP, _CFL, _QAR):
+                        continue
                 temps[str(path)] = want
                 refreshed += 1
                 recorded.append(name)
@@ -1264,7 +1336,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         else:
             cur_fm = {}
             since = _now_iso()
-        want = _as_mirror(text, name, since=since, body_hash=new_hash)
+        from control_plane import stable_fact_id as _sfid_w
+        _fid_w = _sfid_w(ctx.domain_id, name)
+        want = _as_mirror(text, name, since=since, body_hash=new_hash,
+                          fact_id=_fid_w, domain=ctx.domain_id)
         from mirror_conflict import semantic_hash as _semh_w, stamp_revisions as _stamp_w
         _rev_w = _semh_w(text)
         want = _stamp_w(want, _rev_w, _rev_w)
@@ -1300,8 +1375,22 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         elif cur == want:
             status = "in-sync"
         else:
-            # Three-way (ADR 005): a local edit is NEVER silently overwritten.
-            _dec = classify_mirror(cur, text)
+            # Three-way (ADR 005/011): holder-table base under lock is authoritative.
+            # Mirror frontmatter base_revision is not trusted.
+            _hold_base = None
+            try:
+                from control_plane import (connect_if_exists as _cife_h,
+                                           db_path as _dbp_h,
+                                           holder_base_revision as _hbr)
+                _hc = _cife_h(_dbp_h(ctx))
+                if _hc is not None:
+                    try:
+                        _hold_base = _hbr(_hc, _fid_w, ctx.project_id)
+                    finally:
+                        _hc.close()
+            except Exception:
+                _hold_base = None
+            _dec = classify_mirror(cur, text, base_revision=_hold_base)
             _act = _dec["action"]
             if _act in (_MC_REFRESH, _MC_RESTAMP):
                 status = "STALE-mirror"
@@ -1663,7 +1752,7 @@ def _classify_edge(holder: str, stem: str) -> str:
     return "stale" if len(stores) == 1 else "ambiguous"
 
 
-def network() -> int:
+def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> int:
     """Render the cross-project memory network — the 'shared consciousness' graph.
 
     Distinguishes the UNIVERSAL baseline (`user-global` facts every mind holds — a
@@ -1676,7 +1765,11 @@ def network() -> int:
     (deleted test projects measured live in this fleet) — every count here silently
     included them. A mind with no plausible on-disk store now renders with a `?` and a
     footnote; the flag is display-only (see _mind_unresolved — report, never prune)."""
-    facts = global_facts()
+    if all_domains or project_dir is None:
+        facts = global_facts()
+    else:
+        from store_context import resolve_store as _rs_net
+        facts = facts_for_context(_rs_net(Path(project_dir)))
     minds = sorted({p for _, fm, _ in facts for p in _holders(fm)})
     universal = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "user-global"]
     differential = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "stack-general"]
@@ -1931,7 +2024,7 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     if getattr(_ctx_gc, "cross_project_allowed", False):
         gfacts = iter_admissible_facts(_ctx_gc)
     else:
-        gfacts = global_facts() if global_store().exists() else []
+        gfacts = []
     if not gfacts:
         why = ("no admissible canonicals" if getattr(_ctx_gc, "cross_project_allowed", False)
                else ("absent" if not global_store().exists()
@@ -2231,7 +2324,8 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
     # v0.1.67 (Phase C): the fleet-tax ADVISORY — post-write script truth, WARN-only (never a block; a
     # hard fleet gate needs its own oracle-grade review). Each canonical's pointer taxes every holder
     # node's always-loaded index every session; surface when the fleet total crosses the advisory.
-    _tot = sum(est_tokens(_pointer_line(n, f)) * len(_holders(f)) for n, f, _ in global_facts())
+    _tot = sum(est_tokens(_pointer_line(n, f)) * len(_holders(f))
+               for n, f, _ in facts_for_context(_sctx))
     if _tot > GLOBAL_FLEET_TAX_ADVISORY:
         _mine = est_tokens(_pointer_line(canon_name, fm)) * max(1, len(_holders(fm)))
         print(f"  ⚠ fleet-tax advisory: Σ pointer×holders ≈{_tot} tok > {GLOBAL_FLEET_TAX_ADVISORY} "
@@ -2254,7 +2348,7 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
                + ("  · old-named file + index pointer removed (rename)" if renamed else "")))
     out.append(_ui.kv("PROVENANCE", f"{project_dir.name} recorded as a holder"))
     out.append("")
-    out.append(_ui.kv("NEXT", _ui.c("add the canonical's line to ~/.claude/memory/MEMORY.md; same-scope "
+    out.append(_ui.kv("NEXT", _ui.c("catalog is generated by upsert; same-domain "
                "projects pick it up on their next --pull", "dim")))
     print(_ui.ascii_translate("\n".join(out)))
     return 0
@@ -2406,13 +2500,33 @@ def token_network(project_dir: Path) -> dict:
     (documented divergence: minds vs stores-with-mirrors)."""
     project_dir = project_dir.resolve()
     trigger_store = project_store(project_dir)
-    canon_scope = {n: str(fm.get("scope") or "") for n, fm, _ in global_facts()}
+    from store_context import resolve_store as _rs_tok
+    _ctx_tok = _rs_tok(project_dir)
+    canon_scope = {n: str(fm.get("scope") or "") for n, fm, _ in facts_for_context(_ctx_tok)}
+    domain_stores = _same_domain_stores(_ctx_tok)
     nodes = []
     al_total = rc_total = mir_total = 0
     stack_by: dict = {}
     uni_all: set = set()
     stk_all: set = set()
-    for store in _network_nodes():
+    if _global_is_fixture():
+        _tok_nodes = list(_network_nodes())
+    else:
+        _tok_nodes = list(domain_stores)
+    if trigger_store.is_dir():
+        try:
+            _trig_k = str(trigger_store.resolve())
+        except OSError:
+            _trig_k = str(trigger_store)
+        _have = set()
+        for _s in _tok_nodes:
+            try:
+                _have.add(str(_s.resolve()))
+            except OSError:
+                _have.add(str(_s))
+        if _trig_k not in _have:
+            _tok_nodes.append(trigger_store)
+    for store in _tok_nodes:
         m, uni_stems, stk_stems = _classify_node(store, canon_scope)
         is_trigger = store.resolve() == trigger_store.resolve()
         label = _sane(project_dir.name) if is_trigger else _node_label(store)
@@ -2922,9 +3036,9 @@ def fleet_staleness(project_dir: Path) -> dict:
     from store_context import resolve_store as _rs_stale
     from control_plane import migration_mode_readonly as _mm_stale
     project_dir = project_dir.resolve()
-    gfacts = global_facts()
-    trig_store = project_store(project_dir)
     trig_ctx = _rs_stale(project_dir)
+    gfacts = facts_for_context(trig_ctx)
+    trig_store = project_store(project_dir)
     trig_stacks = detect_stacks(project_dir)
     mode = _mm_stale(trig_ctx)
     domain_by_store: dict = {}
@@ -3157,7 +3271,10 @@ def harvest(project_dir: Path) -> int:
         print("harvest: local-only (unenrolled or unhealthy registry) — skipping",
               file=sys.stderr)
         return 0
-    stores = _network_nodes()
+    if _global_is_fixture():
+        stores = _network_nodes()
+    else:
+        stores = _same_domain_stores(_hctx)
     trig = project_store(project_dir)
     if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
         stores.append(trig)
@@ -3217,11 +3334,19 @@ def fleet_utility(project_dir: Path) -> dict:
     input: scope/keep decisions stay CONTENT-gated (holders/adoption ≠ fit). JSON-safe (lists, never
     sets). docs/index-usage-and-budget-ladder.spec.md §Phase C4."""
     project_dir = project_dir.resolve()
-    canon = {n: fm for n, fm, _ in global_facts()}
-    stores = _network_nodes()
+    from store_context import resolve_store as _rs_util
+    _ctx_util = _rs_util(project_dir)
+    canon = {n: fm for n, fm, _ in facts_for_context(_ctx_util)}
+    if _global_is_fixture():
+        stores = _network_nodes()
+    elif getattr(_ctx_util, "cross_project_allowed", False):
+        stores = _same_domain_stores(_ctx_util)
+    else:
+        stores = []
     trig = project_store(project_dir)
     if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
-        stores.append(trig)
+        if getattr(_ctx_util, "cross_project_allowed", False) or _global_is_fixture():
+            stores.append(trig)
     nodes_reporting = nodes_harvested = 0
     ledger_by_node: dict = {}
     for _lr in _ledger_rows():
@@ -3448,7 +3573,13 @@ def _dispatch() -> int:
             pos.append(a)
     project_dir = Path(pos[0]) if pos else Path.cwd()
     if args and args[0] == "--network":
-        return network()
+        if "--all-domains" in args:
+            return network(all_domains=True)
+        if not project_dir.is_dir():
+            print(f"error: PROJECT_DIR {project_dir} does not exist / is not a directory — refusing",
+                  file=sys.stderr)
+            return 2
+        return network(project_dir)
     # v0.1.75 (audit F5): a TYPO'D PROJECT_DIR must never mint a phantom store. resolve() is non-strict,
     # os.walk on a missing dir is silently empty, and --pull's store.mkdir would then create a store under
     # the bogus slug AND write the bogus basename into every shared canonical's `projects:` provenance —

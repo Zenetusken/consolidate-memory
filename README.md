@@ -94,7 +94,9 @@ anywhere. The fix:
   `user-global`) or **fleet-varying** (a per-project stack like `mypy`/release-cutting → at most
   `stack-general`)? Each pass also re-audits existing `user-global` facts by content and **offers**
   demotion for any that drifted over-promoted (never auto-applied).
-- Cross-scope facts live canonically in a **global store** `~/.claude/memory/`.
+- Cross-scope facts live canonically under
+  `<config>/consolidate-memory/domains/<domain>/facts` (legacy `~/.claude/memory/`
+  is a read-only migration source until `cm migrate --finalize`).
 - They're **replicated** into each project's store (so they actually recall there),
   and each fact's `projects:` provenance grows as it spreads — that provenance is the
   network's edge set.
@@ -140,8 +142,9 @@ named, not drawn as a complete star; lines are facts only some projects share.
 It's a **shared bloodstream, not telepathy** — and you never hand-edit another
 project. When project **A** dreams and learns something cross-cutting:
 
-1. **Deposit — instant.** The fact is written to the shared global store
-   (`~/.claude/memory/`) and into A's own store. Done, zero friction.
+1. **Deposit — instant.** The fact is written to the enrolled domain's
+   canonical dir (`<config>/consolidate-memory/domains/<domain>/facts`) and into
+   A's own store. Done, zero friction.
 2. **Absorb — lazy.** Other projects pick it up on **their** next dream (every
    dream's first step is a `pull` that ingests new facts and refreshes changed
    ones). Until B next dreams, B's memory doesn't have A's new insight.
@@ -311,7 +314,7 @@ consolidate-memory/                         # repo root = plugin marketplace
 │       ├── cm_ops.py                        # doctor / conflicts / resolve / migrate / data
 │       └── _ui.py                           # shared visual vocabulary (color/rule/glyphs) the others import
 ├── tests/                                   # zero-dependency smoke + accumulation + manifest checks
-├── memory/                                  # gitignored placeholder (.gitkeep) — store is ~/.claude/memory
+├── memory/                                  # gitignored placeholder (.gitkeep) — live canonicals are domain dirs
 ├── cm                                       # dev CLI over the scripts
 ├── SECURITY.md · CHANGELOG.md
 └── README.md · CLAUDE.md · LICENSE
@@ -325,8 +328,9 @@ network calls**, and the only external process is read-only `git`. The `memory/`
 published plugin (only `plugins/consolidate-memory/` ships). The secrets firewall
 applies at *retrieval*, so a credential in a transcript is dropped before it could ever
 reach a fact file. **Portable by construction** — no `pwd`/`grp`/`termios`. Control-plane
-locks use `fcntl.flock` on POSIX and import-fallback to unlocked on non-POSIX (ADR 006;
-Phase 6 soak). Runs natively on Linux and macOS; on Windows, both the
+locks use `fcntl.flock` on POSIX. Missing `fcntl` (native Windows) is
+**WriteRefused** — fail-closed, not an unlocked fallback (ADR 016). Runs natively
+on Linux and macOS; on Windows, both the
 `cm` dev CLI and the skill's own shell invocations use POSIX syntax (`VAR=val` prefixes),
 so run under WSL. Each release is gated by an internal multi-agent white-hat security
 review; see **[SECURITY.md](SECURITY.md)** for the full threat model, the security

@@ -15,27 +15,27 @@ from store_context import (StoreContext, WriteRefused, assert_writable, doctor_d
                            doctor_report, resolve_store)
 
 
-def _revoke_unadmitted_mirrors(ctx: StoreContext, dest_domain: str) -> int:
-    """Remove managed mirrors (and their index pointers) not admitted in dest_domain.
+def _mirror_plan_for_dest(ctx: StoreContext, dest_domain: str) -> dict:
+    """Inventory managed mirrors: clean deletes vs locally-edited quarantine.
 
-    Unenroll (dest unknown) removes every managed mirror. Locally edited mirrors
-    (body differs from canonical) are quarantined, not deleted. Journals through
-    transact when write_allowed.
+    Unenroll (dest unknown) plans every managed mirror. Local edits are never
+    deleted — they land under native/quarantine/.
     """
-    from control_plane import migration_mode_readonly, transact
+    from control_plane import migration_mode_readonly, stable_fact_id
     from domain_policy import admit_cross_project
     from memory_status import _frontmatter
-    from sync_global import _is_mirror, _safe_read_text
+    from mirror_conflict import body_hash as _bh, classify_mirror
+    from sync_global import _is_mirror, _safe_read_text, global_store
     native = ctx.native_memory_dir
+    plan: dict = {"deletes": [], "quarantine": [], "holders": []}
     if not native.is_dir():
-        return 0
-    idxp = native / "MEMORY.md"
+        return plan
     mode = "dual-read"
     try:
         mode = migration_mode_readonly(ctx)
     except Exception:
         mode = "dual-read"
-    doomed: list = []
+    droot = ctx.config_root / "consolidate-memory" / "domains"
     for f in sorted(native.glob("*.md")):
         if f.name == "MEMORY.md":
             continue
@@ -43,40 +43,85 @@ def _revoke_unadmitted_mirrors(ctx: StoreContext, dest_domain: str) -> int:
         if text is None or not _is_mirror(text):
             continue
         fm = _frontmatter(text)
-        if dest_domain == "unknown" or not admit_cross_project(
+        cdom = str(fm.get("canonical_domain") or fm.get("domain") or "").strip()
+        if dest_domain != "unknown" and admit_cross_project(
                 dest_domain, fm, migration_mode=mode):
-            doomed.append(f)
-    if not doomed:
+            continue
+        fid = str(fm.get("canonical_fact_id") or "").strip()
+        if not fid:
+            fid = stable_fact_id(cdom or ctx.domain_id or "unknown", f.stem)
+        plan["holders"].append({"op": "holder_delete", "fact_id": fid,
+                                "project_id": ctx.project_id})
+        canon_text = None
+        if cdom and cdom != "unknown":
+            from identifiers import IdentifierRefused, safe_child, validate_domain_id
+            try:
+                cp = safe_child(droot, validate_domain_id(cdom)) / "facts" / f.name
+                canon_text = _safe_read_text(cp)
+            except IdentifierRefused:
+                canon_text = None
+        if canon_text is None:
+            canon_text = _safe_read_text(global_store() / f.name)
+        local_edit = False
+        if canon_text:
+            dec = classify_mirror(text, canon_text)
+            local_edit = dec["action"] in ("stop-local", "conflict", "quarantine")
+            if not local_edit and _bh(text) != _bh(canon_text):
+                local_edit = True
+        if local_edit:
+            plan["quarantine"].append((str(f), text))
+        else:
+            plan["deletes"].append(str(f))
+    return plan
+
+
+def _revoke_unadmitted_mirrors(ctx: StoreContext, dest_domain: str,
+                               extra_registry_ops: Optional[list] = None,
+                               extra_domains: Optional[list] = None,
+                               prepare=None) -> int:
+    """Journal v3 revoke of unadmitted mirrors. Returns n files moved/deleted.
+
+    Fail-closed: no direct unlink fallback. Quarantined bodies go to
+    native/quarantine/<stem>.md (not MEMORY.md). `prepare(conn)` runs inside
+    the same transact (enroll/move/unenroll registry writes).
+    """
+    from control_plane import transact
+    from sync_global import _safe_read_text
+    native = ctx.native_memory_dir
+    idxp = native / "MEMORY.md"
+    qdir = native / "quarantine"
+    plan = _mirror_plan_for_dest(ctx, dest_domain)
+    doomed_names = [Path(p).name for p in plan["deletes"]]
+    doomed_names += [Path(p).name for p, _t in plan["quarantine"]]
+    if not doomed_names and not extra_registry_ops and prepare is None:
         return 0
 
     def mutate(conn, temps):
+        if prepare is not None:
+            prepare(conn)
         idx = _safe_read_text(idxp) or ""
-        deletes = []
-        for f in doomed:
-            deletes.append(str(f))
-            idx = "\n".join(ln for ln in idx.splitlines() if f"]({f.name})" not in ln) + "\n"
+        deletes = list(plan["deletes"])
+        for path_s, body in plan["quarantine"]:
+            qdest = qdir / Path(path_s).name
+            temps[str(qdest)] = body if body.endswith("\n") else body + "\n"
+            deletes.append(path_s)
+        for name in doomed_names:
+            idx = "\n".join(ln for ln in idx.splitlines() if f"]({name})" not in ln)
+        if doomed_names:
+            temps[str(idxp)] = (idx.rstrip() + "\n") if idx.strip() else "# Memory Index\n"
+        ops = list(plan["holders"]) + list(extra_registry_ops or [])
+        for op in plan["holders"]:
             conn.execute(
-                "DELETE FROM holders WHERE project_id=? AND fact_id IN "
-                "(SELECT fact_id FROM facts WHERE stem=?)",
-                (ctx.project_id, f.stem))
-        temps[str(idxp)] = idx if idx.endswith("\n") else idx + "\n"
-        return {"deletes": deletes, "revoked": len(deletes)}
+                "DELETE FROM holders WHERE fact_id=? AND project_id=?",
+                (op["fact_id"], op["project_id"]))
+        return {"deletes": deletes, "revoked": len(deletes),
+                "quarantined": len(plan["quarantine"]),
+                "registry_ops": ops}
 
-    try:
-        out = transact(ctx, "domain-transition-revoke",
-                       {"dest": dest_domain, "n": len(doomed)}, mutate)
-        return int((out.get("result") or {}).get("revoked") or len(doomed))
-    except WriteRefused:
-        for f in doomed:
-            f.unlink(missing_ok=True)
-        if idxp.exists():
-            idx = idxp.read_text(encoding="utf-8", errors="replace")
-            idx = "\n".join(
-                ln for ln in idx.splitlines()
-                if not any(f"]({f.name})" in ln for f in doomed)
-            ) + "\n"
-            idxp.write_text(idx, encoding="utf-8")
-        return len(doomed)
+    out = transact(ctx, "domain-transition",
+                   {"dest": dest_domain, "n": len(doomed_names)}, mutate,
+                   extra_domains=extra_domains)
+    return int((out.get("result") or {}).get("revoked") or 0)
 
 
 def _ctx(project: str, extra_env=None) -> StoreContext:
@@ -105,21 +150,27 @@ def _migrate_sources(ctx: StoreContext) -> list:
          / "unknown" / "facts"),
     ]
     out: list = []
-    seen: set = set()
+    by_stem: dict = {}
     for label, root in roots:
         if not root.is_dir():
             continue
         for p in sorted(root.glob("*.md")):
-            if p.name == "MEMORY.md" or p.stem in seen:
+            if p.name == "MEMORY.md":
                 continue
-            seen.add(p.stem)
-            out.append({
+            row: dict = {
                 "stem": p.stem,
                 "source": str(p),
                 "origin": label,
                 "sha256": _sha256_file(p),
                 "assignment": None,
-            })
+                "collisions": [],
+            }
+            if p.stem in by_stem:
+                by_stem[p.stem]["collisions"].append({
+                    "origin": label, "source": str(p), "sha256": row["sha256"]})
+                continue
+            by_stem[p.stem] = row
+            out.append(row)
     return out
 
 
@@ -151,8 +202,14 @@ def _save_migrate_plan(ctx: StoreContext, plan: dict) -> None:
 
 
 def _unresolved_migrate(plan: dict) -> list:
-    return [stem for stem, row in sorted((plan.get("facts") or {}).items())
-            if not (row or {}).get("assignment")]
+    out = []
+    for stem, row in sorted((plan.get("facts") or {}).items()):
+        row = row or {}
+        if row.get("collisions"):
+            out.append(stem)
+        elif not row.get("assignment"):
+            out.append(stem)
+    return out
 
 
 def _contained_under(path: Path, roots: list) -> bool:
@@ -170,7 +227,11 @@ def _contained_under(path: Path, roots: list) -> bool:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
+    from store_context import repair_permissions
     ctx = _ctx(args.project)
+    if getattr(args, "repair_permissions", False):
+        print(json.dumps(repair_permissions(ctx)))
+        return 0
     if args.json:
         print(json.dumps(doctor_dict(ctx), indent=2, sort_keys=True))
     else:
@@ -366,6 +427,10 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         stage = "assign"
     if getattr(args, "exclude", None):
         stage = "exclude"
+    if getattr(args, "validate", False):
+        stage = "validate"
+    if getattr(args, "resolve_collision", None):
+        stage = "resolve-collision"
 
     plan = _load_migrate_plan(ctx)
     # Refresh inventory of newly appeared sources without clobbering assignments.
@@ -445,6 +510,31 @@ def cmd_migrate(args: argparse.Namespace) -> int:
             facts[stem]["assignment"] = "excluded"
         _save_migrate_plan(ctx, plan)
         print(f"migrate exclude: {stem}")
+        return 0
+
+    if stage == "resolve-collision":
+        stem = getattr(args, "resolve_collision", None)
+        keep = str(getattr(args, "keep", None) or "")
+        if not stem or keep not in ("legacy", "unknown-pool"):
+            print("migrate resolve-collision: --resolve-collision STEM --keep legacy|unknown-pool",
+                  file=sys.stderr)
+            return 2
+        facts = plan.setdefault("facts", {})
+        row = facts.get(stem)
+        if not row:
+            print(f"migrate resolve-collision: unknown stem {stem}", file=sys.stderr)
+            return 2
+        extras = list(row.get("collisions") or [])
+        # Re-resolve the kept origin as the source; extras are excluded.
+        for extra in extras:
+            if str(extra.get("origin") or "") == keep:
+                row["source"] = extra.get("source") or row.get("source")
+                row["origin"] = keep
+                row["sha256"] = extra.get("sha256") or row.get("sha256")
+        row["collisions"] = [c for c in extras if str(c.get("origin") or "") != keep]
+        facts[stem] = row
+        _save_migrate_plan(ctx, plan)
+        print(f"migrate resolve-collision: {stem} kept {keep}")
         return 0
 
     if stage == "validate":
@@ -554,7 +644,7 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         if not allowed:
             allowed = [ctx.config_root / "consolidate-memory" / "domains"]
         conflicts = []
-        removed = 0
+        to_delete: list = []
         for item in rb.get("copied") or []:
             if isinstance(item, str):
                 path = Path(item)
@@ -568,16 +658,21 @@ def cmd_migrate(args: argparse.Namespace) -> int:
             if path.exists() and want and _sha256_file(path) not in (want, ""):
                 conflicts.append(str(path))
                 continue
-            path.unlink(missing_ok=True)
-            removed += 1
-        conn = connect(db_path(ctx))
-        set_migration_mode(conn, str(rb.get("mode_before") or "dual-read"))
-        conn.commit()
-        conn.close()
+            to_delete.append(str(path))
+        def mutate(conn, temps):
+            set_migration_mode(conn, str(rb.get("mode_before") or "dual-read"))
+            return {"deletes": to_delete, "registry_ops": [
+                {"op": "migration_state_set",
+                 "value": str(rb.get("mode_before") or "dual-read")}]}
+        try:
+            transact(ctx, "migrate-rollback", {"n": len(to_delete)}, mutate)
+        except WriteRefused as e:
+            print(f"migrate rollback: {e}", file=sys.stderr)
+            return 2
         plan["applied"] = False
         plan["finalized"] = False
         _save_migrate_plan(ctx, plan)
-        print(f"migrate rollback: restored dual-read; removed {removed} copied file(s)")
+        print(f"migrate rollback: restored dual-read; removed {len(to_delete)} copied file(s)")
         if conflicts:
             print("  conflicts (edited after apply, not deleted): "
                   + ", ".join(conflicts[:8]), file=sys.stderr)
@@ -741,9 +836,20 @@ def cmd_data(args: argparse.Namespace) -> int:
     return 2
 
 
+def _want_confirm(args: argparse.Namespace, phrase: str) -> Optional[str]:
+    """TTY operators must pass --confirm PHRASE. Non-TTY --apply is enough (tests)."""
+    if not getattr(args, "apply", False):
+        return "dry"
+    got = str(getattr(args, "confirm", None) or "")
+    if sys.stderr.isatty() and got != phrase:
+        return (f"pass --apply --confirm {phrase}")
+    return None
+
+
 def cmd_project(args: argparse.Namespace) -> int:
     from control_plane import (assert_mutation_allowed, connect, db_path,
-                               enroll_project, enrolled_domain, unenroll_project)
+                               enroll_project, enrolled_domain, record_project_alias,
+                               transact, unenroll_project, upsert_project)
     from identifiers import IdentifierRefused, validate_domain_id
     ctx = _ctx(args.project)
     if args.project_cmd in ("enroll", "unenroll", "move-domain", "rebind"):
@@ -777,13 +883,33 @@ def cmd_project(args: argparse.Namespace) -> int:
             except IdentifierRefused as e:
                 print(f"project enroll: {e}", file=sys.stderr)
                 return 2
+            current = enrolled_domain(conn, ctx.project_id)
+            if current and current != d:
+                print(f"project enroll: already enrolled in {current}; "
+                      f"use `cm project move-domain --to {d}`", file=sys.stderr)
+                return 2
+            plan = _mirror_plan_for_dest(ctx, d)
+            n_plan = len(plan["deletes"]) + len(plan["quarantine"])
+            print(f"enroll plan: {ctx.project_id} → domain {d} "
+                  f"(revoke {n_plan} unadmitted mirror(s), "
+                  f"quarantine {len(plan['quarantine'])})")
+            need = _want_confirm(args, f"enroll-{d}")
+            if need == "dry":
+                print("  dry (pass --apply --confirm enroll-<domain>)")
+                return 0
+            if need:
+                print(f"project enroll: {need}", file=sys.stderr)
+                return 2
+            ops = [{"op": "project_domain_change", "project_id": ctx.project_id,
+                    "domain_id": d, "status": "enrolled"}]
             try:
-                enroll_project(conn, ctx, d)
+                n = _revoke_unadmitted_mirrors(
+                    ctx, d, extra_registry_ops=ops, extra_domains=[d],
+                    prepare=lambda c: enroll_project(c, ctx, d))
             except WriteRefused as e:
                 print(f"project enroll: {e}", file=sys.stderr)
                 return 2
-            _revoke_unadmitted_mirrors(ctx, d)
-            print(f"enrolled {ctx.project_id} → domain {d}")
+            print(f"enrolled {ctx.project_id} → domain {d}; revoked {n} unauthorized mirror(s)")
             return 0
         if args.project_cmd == "move-domain":
             dest = args.to_domain or args.domain
@@ -802,21 +928,107 @@ def cmd_project(args: argparse.Namespace) -> int:
             if current == dest:
                 print(f"project move-domain: already in {dest}")
                 return 0
-            conn.execute(
-                "UPDATE projects SET domain_id=?, status='enrolled' WHERE project_id=?",
-                (dest, ctx.project_id))
-            conn.commit()
-            ctx2 = resolve_store(Path(args.project).resolve())
-            n = _revoke_unadmitted_mirrors(ctx2, dest)
+            plan = _mirror_plan_for_dest(ctx, dest)
+            n_plan = len(plan["deletes"]) + len(plan["quarantine"])
+            print(f"move-domain plan: {current} → {dest} "
+                  f"(revoke {n_plan}, quarantine {len(plan['quarantine'])})")
+            need = _want_confirm(args, f"move-{current}-to-{dest}")
+            if need == "dry":
+                print("  dry (pass --apply --confirm move-<from>-to-<to>)")
+                return 0
+            if need:
+                print(f"project move-domain: {need}", file=sys.stderr)
+                return 2
+
+            def _prep_move(c):
+                c.execute(
+                    "UPDATE projects SET domain_id=?, status='enrolled' WHERE project_id=?",
+                    (dest, ctx.project_id))
+            ops = [{"op": "project_domain_change", "project_id": ctx.project_id,
+                    "domain_id": dest, "status": "enrolled"}]
+            n = _revoke_unadmitted_mirrors(
+                ctx, dest, extra_registry_ops=ops,
+                extra_domains=[current, dest], prepare=_prep_move)
             print(f"moved {ctx.project_id} {current} → {dest}; revoked {n} unauthorized mirror(s)")
             return 0
         if args.project_cmd == "unenroll":
-            unenroll_project(conn, ctx.project_id)
-            n = _revoke_unadmitted_mirrors(ctx, "unknown")
+            current = enrolled_domain(conn, ctx.project_id) or ctx.domain_id
+            if not enrolled_domain(conn, ctx.project_id):
+                print("project unenroll: not enrolled")
+                return 2
+            plan = _mirror_plan_for_dest(ctx, "unknown")
+            n_plan = len(plan["deletes"]) + len(plan["quarantine"])
+            print(f"unenroll plan: leave {current} (revoke {n_plan} managed mirror(s), "
+                  f"quarantine {len(plan['quarantine'])})")
+            need = _want_confirm(args, f"unenroll-{current}")
+            if need == "dry":
+                print("  dry (pass --apply --confirm unenroll-<domain>)")
+                return 0
+            if need:
+                print(f"project unenroll: {need}", file=sys.stderr)
+                return 2
+            ops = [{"op": "project_domain_change", "project_id": ctx.project_id,
+                    "domain_id": "unknown", "status": "active"}]
+            n = _revoke_unadmitted_mirrors(
+                ctx, "unknown", extra_registry_ops=ops,
+                extra_domains=[current],
+                prepare=lambda c: unenroll_project(c, ctx.project_id))
             print(f"unenrolled {ctx.project_id}; revoked {n} managed mirror(s)")
             return 0
         if args.project_cmd == "rebind":
-            upsert_project = __import__("control_plane", fromlist=["upsert_project"]).upsert_project
+            computed = ctx.project_id
+            rows = conn.execute(
+                "SELECT project_id, current_root, git_common_dir, remote_fingerprint, "
+                "profile_id, status FROM projects WHERE status='enrolled' "
+                "AND profile_id=?",
+                (ctx.profile_id,),
+            ).fetchall()
+            candidates = []
+            for r in rows:
+                pid = str(r["project_id"])
+                if pid == computed:
+                    continue
+                fp = str(r["remote_fingerprint"] or "")
+                if ctx.remote_fingerprint and fp == ctx.remote_fingerprint:
+                    candidates.append(pid)
+            print(f"rebind plan: computed {computed}; candidates {candidates or '(none)'}")
+            need = _want_confirm(args, "rebind")
+            if need == "dry":
+                print("  dry (pass --apply --confirm rebind)")
+                return 0
+            if need:
+                print(f"project rebind: {need}", file=sys.stderr)
+                return 2
+            if len(candidates) > 1:
+                print("project rebind: multiple enrolled matches — refuse", file=sys.stderr)
+                return 2
+            if len(candidates) == 1:
+                old = candidates[0]
+                collide = conn.execute(
+                    "SELECT project_id FROM projects WHERE current_root=? AND project_id!=?",
+                    (str(ctx.project_root), old)).fetchone()
+                if collide:
+                    print("project rebind: would collide with another project_id",
+                          file=sys.stderr)
+                    return 2
+
+                def _prep_rebind(c):
+                    record_project_alias(c, computed, old)
+                    upsert_project(c, ctx)
+                    c.execute(
+                        "UPDATE projects SET current_root=?, git_common_dir=?, "
+                        "native_memory_dir=?, session_dir=?, display_name=?, "
+                        "remote_fingerprint=? WHERE project_id=?",
+                        (str(ctx.project_root),
+                         str(ctx.git_common_dir) if ctx.git_common_dir else "",
+                         str(ctx.native_memory_dir), str(ctx.session_dir),
+                         ctx.display_name, ctx.remote_fingerprint, old))
+                ops = [{"op": "project_alias", "alias_id": computed, "project_id": old}]
+                transact(ctx, "project-rebind", {"old": old, "alias": computed},
+                         lambda c, temps: (ops and _prep_rebind(c)) or {
+                             "registry_ops": ops, "rebound": old})
+                print(f"rebind: {old} now at {ctx.project_root} (alias {computed})")
+                return 0
             upsert_project(conn, ctx)
             conn.commit()
             print(f"rebind: updated root/native for {ctx.project_id}")
@@ -833,6 +1045,7 @@ def build_parser() -> argparse.ArgumentParser:
     d = sub.add_parser("doctor")
     d.add_argument("project", nargs="?", default=".")
     d.add_argument("--json", action="store_true")
+    d.add_argument("--repair-permissions", action="store_true")
 
     c = sub.add_parser("conflicts")
     c.add_argument("project", nargs="?", default=".")
@@ -868,8 +1081,11 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--rollback", action="store_true")
     m.add_argument("--finalize", action="store_true")
     m.add_argument("--status", action="store_true")
+    m.add_argument("--validate", action="store_true")
     m.add_argument("--assign", metavar="STEM")
     m.add_argument("--exclude", metavar="STEM")
+    m.add_argument("--resolve-collision", metavar="STEM", dest="resolve_collision")
+    m.add_argument("--keep", metavar="ORIGIN", help="legacy|unknown-pool")
     m.add_argument("--domain")
     m.add_argument("--json", action="store_true")
 
@@ -892,6 +1108,8 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("project", nargs="?", default=".")
     pr.add_argument("--domain")
     pr.add_argument("--to", dest="to_domain")
+    pr.add_argument("--apply", action="store_true")
+    pr.add_argument("--confirm", metavar="PHRASE")
     pr.add_argument("--json", action="store_true")
     return p
 

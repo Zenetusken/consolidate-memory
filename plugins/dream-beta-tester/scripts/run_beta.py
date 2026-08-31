@@ -449,7 +449,7 @@ def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult
         _step("persist", r3[0], r3[2].strip().splitlines()[-1] if r3[2].strip() else "")
 
         # ADR 008: --promote requires enrollment into a named domain.
-        r_en = _child("cm_ops.py", "project", "enroll", repo_arg, "--domain", "personal")
+        r_en = _child("cm_ops.py", "project", "enroll", repo_arg, "--domain", "personal", "--apply")
         _step("enroll", r_en[0], (r_en[2] or r_en[1] or "").strip()[-200:])
 
         # ── promote (the two-store write: canonical + provenance are OUT-OF-BAND, D-6) ──

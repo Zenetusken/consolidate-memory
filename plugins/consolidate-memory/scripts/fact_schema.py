@@ -10,6 +10,10 @@ SENSITIVITY = ("public", "internal", "confidential", "secret")
 SCOPES = ("project-local", "stack-general", "user-global")
 STATUSES = ("active", "superseded", "tombstoned", "expired")
 _LIST_RE = re.compile(r"^\[(.*)\]$")
+# Nested YAML applies.any is not representable in the flat frontmatter parser.
+# Those keys must be migrated to applies_any / applies_all / applies_exclude
+# (flow lists) or refused — never silently flattened.
+_NESTED_APPLIES = ("applies.any", "applies.all", "applies.exclude")
 
 
 def _parse_flow_list(raw: str) -> list:
@@ -25,13 +29,22 @@ def _parse_flow_list(raw: str) -> list:
     return [p.strip().strip("\"'") for p in inner.split(",") if p.strip()]
 
 
+def format_flow_list(items: list) -> str:
+    vals = [str(x).strip() for x in (items or []) if str(x).strip()]
+    return "[" + ", ".join(vals) + "]"
+
+
 def validate_canonical_frontmatter(fm: dict, *, stem: str, domain: str) -> Optional[str]:
     """Return an error string if a canonical is refused, else None.
 
     Writer-injected domain/name are checked against the path/context. Missing
     optional v3 fields are tolerated on read (migrate fills them); contradictory
-    name/domain/stem is not.
+    name/domain/stem, unknown enums, and nested applies.* keys are not.
     """
+    for nested in _NESTED_APPLIES:
+        if nested in fm and str(fm.get(nested) or "").strip():
+            return (f"nested {nested} is refused (use applies_any/applies_all/"
+                    "applies_exclude flow lists)")
     name = str(fm.get("name") or "").strip()
     if name and name != stem:
         return f"name {name!r} does not match stem {stem!r}"
@@ -51,9 +64,13 @@ def validate_canonical_frontmatter(fm: dict, *, stem: str, domain: str) -> Optio
 
 
 def applies_from_fm(fm: dict) -> dict:
-    """One-representation applies: any/all/exclude lists."""
+    """One-representation applies: flow-list any/all/exclude. Nested keys are errors."""
+    for nested in _NESTED_APPLIES:
+        if nested in fm and str(fm.get(nested) or "").strip():
+            return {"any": [], "all": [], "exclude": [],
+                    "error": f"nested {nested} refused"}
     return {
-        "any": _parse_flow_list(str(fm.get("applies_any") or fm.get("applies.any") or "")),
-        "all": _parse_flow_list(str(fm.get("applies_all") or fm.get("applies.all") or "")),
-        "exclude": _parse_flow_list(str(fm.get("applies_exclude") or fm.get("applies.exclude") or "")),
+        "any": _parse_flow_list(str(fm.get("applies_any") or "")),
+        "all": _parse_flow_list(str(fm.get("applies_all") or "")),
+        "exclude": _parse_flow_list(str(fm.get("applies_exclude") or "")),
     }

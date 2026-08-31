@@ -48,8 +48,8 @@ Never create or reorganize one; propose (don't perform) any trim of its lines.
   "global · every project · read-only" line so the always-loaded total isn't
   understated — but the skill **never writes it**. Its ⚠ is *advisory* (it loads
   everywhere), not a prune instruction. It is NOT the same as a `user-global`-*scope*
-  fact: that's a recall-tier fact replicated via `~/.claude/memory/`; this is the
-  always-loaded global instruction file, which the skill does not manage.
+  fact: that's a recall-tier fact replicated via the enrolled domain canonical
+  dir; this is the always-loaded global instruction file, which the skill does not manage.
 
 **2. Claude's private auto-memory (per-user, NOT in git):**
 resolved exclusively by `store_context.resolve_store` (ADR 002) — never by
@@ -351,8 +351,11 @@ cross the SUBSTANTIAL band (and a marker exists) — flagging a good consolidati
 compaction. Advisory only (never auto-fires; explicit-trigger-only); prospective use is via
 `cm status`. Sibling to the provisional rigor tier + prune-pressure (the other Phase-0 report signals).
 
-**Model:** a global store `~/.claude/memory/` (same fact-file + index format) is the
-canonical home for facts with `scope: stack-general` or `user-global`. Each global
+**Model:** the enrolled-domain store
+`<config>/consolidate-memory/domains/<domain>/facts` (same fact-file + index
+format) is the canonical home for facts with `scope: stack-general` or
+`user-global`. Legacy `~/.claude/memory/` is a dual-read migration source until
+`cm migrate --finalize`. Each global
 fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
 (relevance matching), `projects: [...]` (provenance). `sync_global.py`:
 - `--list PROJECT_DIR` — show relevant/present/missing (read-only; does not

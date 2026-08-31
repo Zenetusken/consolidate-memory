@@ -83,10 +83,9 @@ CREATE TABLE IF NOT EXISTS migration_state (
     key TEXT PRIMARY KEY,
     value TEXT
 );
-CREATE TABLE IF NOT EXISTS authorized_pairs (
-    src_domain TEXT,
-    dst_domain TEXT,
-    PRIMARY KEY (src_domain, dst_domain)
+CREATE TABLE IF NOT EXISTS project_aliases (
+    alias_id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS conflicts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -275,6 +274,10 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     if "session_dir" not in cols:
         conn.execute("ALTER TABLE projects ADD COLUMN session_dir TEXT")
         conn.commit()
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_aliases ("
+        "alias_id TEXT PRIMARY KEY, project_id TEXT NOT NULL)")
+    conn.commit()
 
 
 def iter_registered_projects(conn: sqlite3.Connection) -> list:
@@ -340,6 +343,7 @@ def enrolled_domain(conn: sqlite3.Connection, project_id: str) -> Optional[str]:
 
 
 def enroll_project(conn: sqlite3.Connection, ctx: StoreContext, domain: str) -> None:
+    """Grant enrollment. Does not commit — the caller (transact or a test helper) does."""
     from identifiers import validate_domain_id
     from store_context import WriteRefused
     d = validate_domain_id(domain)
@@ -353,15 +357,72 @@ def enroll_project(conn: sqlite3.Connection, ctx: StoreContext, domain: str) -> 
         "UPDATE projects SET domain_id=?, status='enrolled', last_seen=? WHERE project_id=?",
         (d, now, ctx.project_id),
     )
-    conn.commit()
 
 
 def unenroll_project(conn: sqlite3.Connection, project_id: str) -> None:
+    """Revoke enrollment. Does not commit — the caller does."""
     conn.execute(
         "UPDATE projects SET status='active', domain_id='unknown' WHERE project_id=?",
         (project_id,),
     )
-    conn.commit()
+
+
+def holder_base_revision(conn: sqlite3.Connection, fact_id: str, project_id: str) -> Optional[str]:
+    """Authoritative three-way base (ADR 011). None if no holder row."""
+    row = conn.execute(
+        "SELECT base_revision FROM holders WHERE fact_id=? AND project_id=?",
+        (fact_id, project_id),
+    ).fetchone()
+    if row and str(row["base_revision"] or "").strip():
+        return str(row["base_revision"])
+    return None
+
+
+def record_project_alias(conn: sqlite3.Connection, alias_id: str, project_id: str) -> None:
+    conn.execute(
+        "INSERT INTO project_aliases(alias_id, project_id) VALUES (?,?) "
+        "ON CONFLICT(alias_id) DO UPDATE SET project_id=excluded.project_id",
+        (alias_id, project_id),
+    )
+
+
+def resolve_project_alias(conn: sqlite3.Connection, alias_id: str) -> Optional[str]:
+    try:
+        row = conn.execute(
+            "SELECT project_id FROM project_aliases WHERE alias_id=?", (alias_id,)
+        ).fetchone()
+    except sqlite3.OperationalError:
+        return None
+    if row and str(row["project_id"] or "").strip():
+        return str(row["project_id"])
+    return None
+
+
+def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
+    """Replay typed journal v3 registry_ops (ADR 010). Each op is a dict with `op`."""
+    for op in ops or []:
+        if not isinstance(op, dict):
+            continue
+        kind = str(op.get("op") or "")
+        if kind == "project_domain_change":
+            conn.execute(
+                "UPDATE projects SET domain_id=?, status=? WHERE project_id=?",
+                (str(op.get("domain_id") or "unknown"),
+                 str(op.get("status") or "enrolled"),
+                 str(op.get("project_id") or "")))
+        elif kind == "holder_delete":
+            fid = str(op.get("fact_id") or "")
+            pid = str(op.get("project_id") or "")
+            if fid and pid:
+                conn.execute("DELETE FROM holders WHERE fact_id=? AND project_id=?",
+                             (fid, pid))
+        elif kind == "project_alias":
+            aid = str(op.get("alias_id") or "")
+            pid = str(op.get("project_id") or "")
+            if aid and pid:
+                record_project_alias(conn, aid, pid)
+        elif kind == "migration_state_set":
+            set_migration_mode(conn, str(op.get("value") or op.get("mode") or "dual-read"))
 
 
 def require_interprocess_lock() -> None:
@@ -422,16 +483,22 @@ def lock_dir(ctx: StoreContext) -> Path:
     return ctx.plugin_data_dir / "locks"
 
 
-def acquire_mutation_locks(ctx: StoreContext, project_ids: list) -> list:
-    """Domain lock, then project locks in sorted ID order. Returns acquired locks."""
+def acquire_mutation_locks(ctx: StoreContext, project_ids: list,
+                           extra_domains: Optional[list] = None) -> list:
+    """Domain lock(s) in sorted name order, then global, then project locks."""
     from identifiers import IdentifierRefused, safe_child, validate_domain_id, validate_project_id
     require_interprocess_lock()
     locks: list = []
     try:
-        dname = validate_domain_id(ctx.domain_id or "unknown", allow_unknown=True)
-        dlock = FileLock(safe_child(lock_dir(ctx), f"domain-{dname}.lock"))
-        dlock.acquire()
-        locks.append(dlock)
+        names = [ctx.domain_id or "unknown"]
+        for extra in extra_domains or []:
+            if extra and str(extra) not in names:
+                names.append(str(extra))
+        for raw in sorted(set(names)):
+            dname = validate_domain_id(raw, allow_unknown=True)
+            dlock = FileLock(safe_child(lock_dir(ctx), f"domain-{dname}.lock"))
+            dlock.acquire()
+            locks.append(dlock)
         glob = FileLock(lock_dir(ctx) / "global.lock")
         glob.acquire()
         locks.append(glob)
@@ -593,6 +660,7 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                     )
                 for ts in payload.get("tombstones") or []:
                     write_tombstone(rconn, *ts)
+                apply_registry_ops(rconn, payload.get("registry_ops") or [])
                 try:
                     rconn.commit()
                 except sqlite3.Error:
@@ -632,6 +700,7 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
 
 def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
              *, extra_project_ids: Optional[list] = None,
+             extra_domains: Optional[list] = None,
              crash_after: Optional[str] = None,
              expected_revisions: Optional[dict] = None,
              skip_recover: bool = False) -> dict:
@@ -653,7 +722,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
     rconn.isolation_level = None
     recovered: list = []
     pids = [ctx.project_id] + list(extra_project_ids or [])
-    locks = acquire_mutation_locks(ctx, pids)
+    locks = acquire_mutation_locks(ctx, pids, extra_domains=extra_domains)
     op_id: Optional[str] = None
     temps: dict = {}
     registry_committed = False
@@ -708,6 +777,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         payload["holders"] = list(result.get("holders") or [])
         payload["facts"] = list(result.get("facts") or [])
         payload["tombstones"] = list(result.get("tombstones") or [])
+        payload["registry_ops"] = list(result.get("registry_ops") or [])
         conn.execute("UPDATE journal SET payload=?, step=? WHERE op_id=?",
                      (json.dumps(payload, sort_keys=True), "prepare_temps", op_id))
         conn.commit()

@@ -10,6 +10,7 @@ VOLATILE_KEYS = (
     "modified", "mirrored_at", "projects", "last_used", "last_read", "usage",
     "global_ref_since", "content_modified", "verified_at", "last_observed_at",
     "mirrored_at", "holder", "base_revision", "canonical_revision",
+    "canonical_fact_id", "canonical_domain",
 )
 
 REFRESH = "refresh"

@@ -3,7 +3,7 @@
 
 `user-global` is domain-global, not installation-global. Unknown-domain projects
 receive no domain-tagged cross-project facts. Cross-domain replication is denied
-unless an explicit authorization pair exists. Secret bodies are never retained.
+(authorized_pairs is unsupported). Secret bodies are never retained.
 """
 from __future__ import annotations
 

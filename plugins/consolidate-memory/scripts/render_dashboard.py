@@ -665,7 +665,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         gtotal = xp.get("global_store_facts")
         head = "  " + _c("CROSS-PROJECT", "bold") + _c("   · global tier", "dim")
         if gtotal is not None:
-            head += _c(f" · ~/.claude/memory: {gtotal} fact(s)", "dim")
+            head += _c(f" · domain canonicals: {gtotal} fact(s)", "dim")
         out.append(head)
         pulled = xp.get("pulled") or []
         promoted = xp.get("promoted") or []

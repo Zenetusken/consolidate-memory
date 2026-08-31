@@ -10,7 +10,6 @@ from typing import Optional
 
 EVENT_RETENTION_DAYS = 90
 CYCLE_CAP = 500
-AGGREGATE_MONTHS = 12
 
 
 def _now_epoch() -> float:
@@ -287,7 +286,6 @@ def inventory(plugin_data: Path, canonical_root: Path, native_dir: Path) -> dict
         "retention": {
             "events_days": EVENT_RETENTION_DAYS,
             "cycle_cap": CYCLE_CAP,
-            "aggregate_months": AGGREGATE_MONTHS,
         },
     }
 
@@ -402,7 +400,7 @@ def retention_show() -> dict:
     return {
         "events_days": EVENT_RETENTION_DAYS,
         "cycle_records_per_project": CYCLE_CAP,
-        "daily_aggregates_months": AGGREGATE_MONTHS,
         "permanent": ["confirmed facts", "explicit user decisions", "tombstones", "migration summaries"],
         "never": ["raw transcript text"],
+        "note": "compact keeps the last CYCLE_CAP records and drops events older than EVENT_RETENTION_DAYS; no unimplemented monthly-aggregate window is advertised",
     }

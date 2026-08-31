@@ -68,11 +68,35 @@ version changes on `main`.
 - **Canonical upsert injects `name:`/`domain:`** from the stem and StoreContext
   before schema validation (promote rename no longer hard-refuses).
 
+- **Domain transitions are one journal v3 transact** (enroll / move-domain /
+  unenroll): registry change + revoke of unadmitted mirrors. Locally edited
+  mirrors are quarantined under `native/quarantine/`, never deleted. CLI is
+  dry-run unless `--apply` (TTY also requires `--confirm enroll-<domain>` /
+  `move-<from>-to-<to>` / `unenroll-<domain>`). `rebind` aliases a moved
+  git-common-dir onto the enrolled `project_id`.
+- **Ordinary fleet reports are current-domain only** (`--list`/`--tokens`/
+  `--network`/`--utility`/`--staleness`/`--workflows`/`--harvest`/`--gc`).
+  `--network --all-domains` is the admin view.
+- **Holder-table `base_revision` is the three-way base** (mirror frontmatter is
+  not trusted). Pull re-classifies under lock. Mirrors stamp `canonical_fact_id`
+  + `canonical_domain`. Nested `applies.any` is refused.
+- **Forget revokes this project's managed mirror** in the same transact.
+  Migrate `--validate` / `--resolve-collision` exist; rollback journals through
+  v3. Retention no longer advertises an unimplemented 12-month aggregate window.
+
 Docs (README, SECURITY, SKILL, harness-map, CLAUDE, AGENTS, preflight, `cm` help)
 now describe **0.2.2 behavior**: unenrolled is local-only, Phase-1 `--pull` is the
 documented enrolled-domain exception to "Phases 0–3 are read-only", `/cm-*` for
-marketplace users, `./cm` maintainer-only. Behavior break vs v0.2.1 unenrolled
-sharing; operator-chosen **patch** vehicle (0.2.2, not 0.3.0). Public 1.0 HOLD.
+marketplace users, `./cm` maintainer-only. POSIX mutation is fail-closed (no
+unlocked Windows fallback). Behavior break vs v0.2.1 unenrolled sharing;
+operator-chosen **patch** vehicle (0.2.2, not 0.3.0). Public 1.0 HOLD.
+
+**Still HOLD after this PR (Stage 11b/12):** signed tag + SBOM/provenance
+publisher (committed `release.yml` is the verify gate; `./release.sh --confirm`
+still cuts the GitHub Release); native-Windows CI job; two-process barrier
+classify/lock race in CI; upgrade-fixture job; GitHub `main` ruleset (ops);
+`0.2.2-rc.1` matrix on a real 0.2.1 unknown-sharing fleet. `plugin.json` stays
+**0.2.1** until `./release.sh`.
 
 ## [0.2.1] — 2026-08-31
 

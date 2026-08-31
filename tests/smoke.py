@@ -56,6 +56,7 @@ def _enroll_personal(project_dir: Path) -> None:
     conn = _cp_e.connect(_cp_e.db_path(ctx))
     try:
         _cp_e.enroll_project(conn, ctx, "personal")
+        conn.commit()
     except Exception:
         pass
     conn.close()
@@ -5747,7 +5748,7 @@ with _tf43.TemporaryDirectory() as _tdA7:
         "metadata:\n  node_type: memory\n  type: reference\n  projects: [gate-repo]\n---\n\nA real canonical fact.\n",
         encoding="utf-8")
     _run_home_a1(_homeA7, str(_scripts54 / "cm_ops.py"),
-                 "project", "enroll", _repoA7, "--domain", "personal")
+                 "project", "enroll", _repoA7, "--domain", "personal", "--apply")
     _goA7, _geA7, _grcA7 = _run_home_a1(_homeA7, str(_scripts54 / "sync_global.py"),
                                         "--gc", _repoA7, "--apply")
     _storeA7 = Path(_homeA7) / ".claude" / "projects" / ms.slug_for(Path(_repoA7)) / "memory"
@@ -6327,8 +6328,8 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
               "UNENROLLED LOCAL-ONLY" in _doc_u)
 
         _rc_en_bad = cmo.main(["project", "enroll", str(_ph), "--domain", "../employer"])
-        _rc_en_a = cmo.main(["project", "enroll", str(_pa), "--domain", "work"])
-        _rc_en_b = cmo.main(["project", "enroll", str(_pb), "--domain", "personal"])
+        _rc_en_a = cmo.main(["project", "enroll", str(_pa), "--domain", "work", "--apply"])
+        _rc_en_b = cmo.main(["project", "enroll", str(_pb), "--domain", "personal", "--apply"])
         _ctx_a = sc.resolve_store(_pa, environ=_xp_env(_home_p0))
         _ctx_b = sc.resolve_store(_pb, environ=_xp_env(_home_p0))
         check("P0-1: cm project enroll is the operator grant; ../domain is refused",
@@ -6339,6 +6340,10 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
         _rc_en_switch = cmo.main(["project", "enroll", str(_pa), "--domain", "personal"])
         check("0.2.2: enroll refuses switching domains (use move-domain)",
               _rc_en_switch == 2)
+        _rc_en_dry = cmo.main(["project", "enroll", str(_pv), "--domain", "personal"])
+        check("0.2.2: enroll without --apply is dry-run (does not grant)",
+              _rc_en_dry == 0
+              and sc.resolve_store(_pv, environ=_xp_env(_home_p0)).enrolled is False)
 
         _rc_res = cmo.main(["resolve", "../passwd", "--project", str(_pa)])
         _rc_rep = cmo.main(["repair-mirror", "../passwd", "--project", str(_pa)])
@@ -6377,6 +6382,22 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
               and _sb.is_file() and "PERSONAL-ONLY BODY" in _sb.read_text(encoding="utf-8")
               and "PERSONAL-ONLY BODY" not in _sa.read_text(encoding="utf-8")
               and "WORK-ONLY BODY" not in _sb.read_text(encoding="utf-8"))
+        _t_m = _sa.read_text(encoding="utf-8")
+        _sa.write_text(_t_m.replace("WORK-ONLY BODY", "LOCAL EDIT BODY"), encoding="utf-8")
+        _rc_un = cmo.main(["project", "unenroll", str(_pa), "--apply"])
+        _q = _ctx_a.native_memory_dir / "quarantine" / "deploy.md"
+        check("0.2.2: unenroll quarantines a locally edited mirror (does not delete the body)",
+              _rc_un == 0 and _q.is_file() and "LOCAL EDIT BODY" in _q.read_text(encoding="utf-8")
+              and not _sa.exists())
+        # re-enroll work so later crash/forget pins still have a domain
+        cmo.main(["project", "enroll", str(_pa), "--domain", "work", "--apply"])
+        _ctx_a = sc.resolve_store(_pa, environ=_xp_env(_home_p0))
+        _rc_mv = cmo.main(["project", "move-domain", str(_pb), "--to", "client-x", "--apply"])
+        _ctx_b2 = sc.resolve_store(_pb, environ=_xp_env(_home_p0))
+        check("0.2.2: move-domain grants the dest domain",
+              _rc_mv == 0 and _ctx_b2.domain_id == "client-x")
+        cmo.main(["project", "move-domain", str(_pb), "--to", "personal", "--apply"])
+        _ctx_b = sc.resolve_store(_pb, environ=_xp_env(_home_p0))
         check("P0-4: untagged confidential is not pulled under dual-read",
               not _sconf_a.exists() and not _sconf_b.exists())
         _fg_a = ci.forget(_ctx_a, "deploy", reason="p0-cross-domain")
@@ -6531,7 +6552,7 @@ with _tf_xp.TemporaryDirectory() as _td_022:
     _os_xp.environ["HOME"] = str(_home_022)
     try:
         _ctx_h022 = sc.resolve_store(_proj_022, environ=_xp_env(_home_022))
-        cmo.main(["project", "enroll", str(_proj_022), "--domain", "personal"])
+        cmo.main(["project", "enroll", str(_proj_022), "--domain", "personal", "--apply"])
         _ctx_h022 = sc.resolve_store(_proj_022, environ=_xp_env(_home_022))
         _missing_db = Path(_td_022) / "no-control.sqlite"
         check("0.2.2: connect_if_exists does not mint a missing DB",
@@ -6647,12 +6668,23 @@ _live_docs = "\n".join([
     _pj_022,
     (_cmd_dir / "cm-doctor.md").read_text(encoding="utf-8"),
     (ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"),
+    (ROOT / "cm").read_text(encoding="utf-8"),
 ])
 check("0.2.2: live docs do not claim unenrolled projects share a compatibility pool",
       "compatibility pool" not in _live_docs.lower()
       and "unenrolled projects currently share" not in _live_docs.lower()
       and "unknown`-pool" not in _live_docs
+      and "UNENROLLED SHARED COMPATIBILITY DOMAIN" not in _live_docs
       and "whole fleet" not in _pj_022.lower())
+check("0.2.2: README does not claim an unlocked non-POSIX flock fallback",
+      "import-fallback to unlocked" not in (ROOT / "README.md").read_text(encoding="utf-8"))
+import fact_schema as _fsch_022  # noqa: E402
+check("0.2.2: fact_schema refuses nested applies.any",
+      _fsch_022.validate_canonical_frontmatter(
+          {"name": "deploy", "domain": "work", "applies.any": "[python]"},
+          stem="deploy", domain="work") is not None)
+check("0.2.2: retention_show does not advertise unimplemented aggregate months",
+      "daily_aggregates_months" not in ret.retention_show())
 
 # dest-hash mismatch must not delete (ADR 010)
 with _tf_xp.TemporaryDirectory() as _td_hash:
@@ -6860,6 +6892,7 @@ with _tf_xp.TemporaryDirectory() as _td_r:
         _conn_r = cp.connect(cp.db_path(_ctx_r))
         try:
             cp.enroll_project(_conn_r, _ctx_r, "personal")
+            _conn_r.commit()
         except Exception:
             pass
         _conn_r.close()

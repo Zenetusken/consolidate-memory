@@ -173,8 +173,11 @@ def _looks_secret_fn():
     return _looks_secret
 
 
-def _with_timestamps(text: str, now: str) -> str:
-    """Preserve unknown frontmatter; add content_modified / last_observed_at."""
+def _with_timestamps(text: str, now: str, *, body_changed: bool = True) -> str:
+    """Preserve unknown frontmatter; add content_modified / last_observed_at.
+
+    Metadata-only restamps keep content_modified (ADR 011).
+    """
     if not text.startswith("---"):
         return text
     lines = text.splitlines()
@@ -188,7 +191,7 @@ def _with_timestamps(text: str, now: str) -> str:
             out.append(ln)
             continue
         if dashes == 1 and ln.startswith("---"):
-            if "content_modified" not in seen:
+            if "content_modified" not in seen and body_changed:
                 out.append(f"content_modified: {now}")
             if "last_observed_at" not in seen:
                 out.append(f"last_observed_at: {now}")
@@ -196,7 +199,7 @@ def _with_timestamps(text: str, now: str) -> str:
             out.append(ln)
             continue
         if dashes == 1 and s.startswith("content_modified:"):
-            out.append(f"content_modified: {now}")
+            out.append(f"content_modified: {now}" if body_changed else ln)
             seen.add("content_modified")
             continue
         if dashes == 1 and s.startswith("last_observed_at:"):
@@ -238,6 +241,9 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
     text = insert_frontmatter_key(text if text.endswith("\n") else text + "\n", "name", stem)
     if ctx.domain_id and ctx.domain_id != "unknown":
         text = insert_frontmatter_key(text, "domain", ctx.domain_id)
+    text = insert_frontmatter_key(text, "schema_version", "3")
+    _fid_up = stable_fact_id(ctx.domain_id, stem)
+    text = insert_frontmatter_key(text, "fact_id", _fid_up)
     fm = _frontmatter(text)
     from fact_schema import validate_canonical_frontmatter
     schema_err = validate_canonical_frontmatter(fm, stem=stem, domain=ctx.domain_id)
@@ -254,10 +260,14 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         return {"ok": False, "error": "unknown-domain writer cannot create a domain-tagged canonical"}
 
     facts_dir = ctx.canonical_domain_dir
-    from sync_global import global_store as _gstore
+    from sync_global import global_store as _gstore, _body as _body_up
     legacy = _gstore()
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    body = _with_timestamps(text if text.endswith("\n") else text + "\n", now)
+    dest_existing = facts_dir / f"{stem}.md"
+    prev_text = dest_existing.read_text(encoding="utf-8", errors="replace") if dest_existing.exists() else ""
+    body_changed = (not prev_text) or (_body_up(prev_text) != _body_up(text))
+    body = _with_timestamps(text if text.endswith("\n") else text + "\n", now,
+                            body_changed=body_changed)
 
     def mutate(conn, temps):
         from index_admission import apply_pointer, project_index
@@ -304,7 +314,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         record_holder(conn, fid, ctx.project_id, rev, rev, rev)
         if origin_local is not None:
             bh = _body_hash(canon_body)
-            mirror = _as_mirror(canon_body, stem, since=now, body_hash=bh)
+            mirror = _as_mirror(canon_body, stem, since=now, body_hash=bh,
+                                fact_id=fid, domain=ctx.domain_id)
             mirror = stamp_revisions(mirror, rev, rev)
             if "mirrored_at:" not in mirror and "  global_ref:" in mirror:
                 mirror = mirror.replace(
@@ -389,7 +400,18 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
         lines = [ln for ln in cat.splitlines() if f"]({stem}.md)" not in ln]
         temps[str(ctx.canonical_domain_dir / "MEMORY.md")] = "\n".join(lines) + "\n"
         conn.execute("DELETE FROM holders WHERE fact_id=?", (fid,))
-        return {"stem": stem, "tombstoned": True,
+        # Revoke this project's managed mirror of the forgotten stem (same transact).
+        deletes: list = []
+        origin = ctx.native_memory_dir / f"{stem}.md"
+        from sync_global import _is_mirror, _safe_read_text as _srt_fg
+        ot = _srt_fg(origin)
+        if ot is not None and _is_mirror(ot):
+            deletes.append(str(origin))
+            idxp = ctx.native_memory_dir / "MEMORY.md"
+            idx = _srt_fg(idxp) or ""
+            idx = "\n".join(ln for ln in idx.splitlines() if f"]({stem}.md)" not in ln)
+            temps[str(idxp)] = idx.rstrip() + "\n"
+        return {"stem": stem, "tombstoned": True, "deletes": deletes,
                 "tombstones": [(fid, stem, ctx.domain_id, reason, replacement_id, grace_until)]}
 
     try:

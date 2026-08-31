@@ -67,6 +67,25 @@ at the repo root) is **gitignored and never published** — verify with
   that may inject at most one read-only advisory line — and no MCP servers and no
   background processes: skill + scripts + that one advisory hook.
 
+## Threat model (v0.2.2)
+
+These attacker stories are what ADRs 008–016 close. They are not a pentest
+report; they are the stories `cm doctor` / mutating commands must fail closed on.
+
+- **Newly cloned / malicious unenrolled repo.** Must not create or pull
+  cross-project canonicals. `unknown` is local-only.
+- **Corrupt `control.sqlite`.** Mutations and cross-project reads refuse;
+  the SessionStart beacon stays silent; `cm doctor` names `registry_state`.
+- **Enroll switch leaving always-loaded pointers.** `enroll` refuses a silent
+  domain switch. `move-domain` / `unenroll` journal a revoke (clean mirrors
+  deleted, local edits quarantined under `native/quarantine/`).
+- **Classify/lock race.** Pull records plan-time hashes; dest-verify-before-delete;
+  a local edit under lock re-classifies to stop/conflict/quarantine, never overwrite.
+- **Crash mid-publish.** Journal v3: no origin delete until every dest hash
+  matches; registry COMMIT precedes journal complete.
+- **Migrate rollback of an edited file.** Hash-aware: edited-after-apply files
+  are conflicts, never deleted.
+
 ## Known limitations (v0.2.2)
 
 - Unenrolled projects are **local-only** (ADR 008). They cannot create or pull
