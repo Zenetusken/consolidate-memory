@@ -688,32 +688,24 @@ placing each fact in its tier and optimizing it for how that tier loads:
   accuracy and completeness; these don't tax every session.
 - **No cross-store duplication**: if a fact lives in the repo docs, an auto-memory
   entry should point at it, not restate it.
-- **Global-scope facts** (`scope: stack-general` or `user-global`) — two paths:
-  - **A NET-NEW fact discovered this session:** write the canonical copy to
-    `~/.claude/memory/` with `scope`, `stacks: [...]`, and `projects: [...]` (provenance)
-    in the frontmatter, add a line to `~/.claude/memory/MEMORY.md`, AND keep a project-store
-    copy so it recalls *here* (recall is slug-scoped). **Validate a `stack-general` fact's
-    `stacks:` against the detectable set FIRST** — the same M4 rule `--promote` enforces
-    mechanically, which this hand-write path bypasses (the 2026-07-10 audit's F7): a tag
-    `detect_stacks` can never emit — a typo (`gpuu`) or a real-but-undetectable stack
-    (`release`, `ci-cd`) — makes the canonical **fleet-dead** (matches no project, ever,
-    silently). Every later dream's Phase-1 `--list`/`--pull` now warns `⚠ fleet-dead
-    canonical` on such a tag, but write it right the first time.
-  - **PROMOTING a fact that already exists in this project's local store** (the Phase-1
-    promotion re-audit): **don't hand-copy it** — first set `scope`/`stacks` on the local
-    fact, then run the scripted hand-off, which writes the canonical, converts this project's
-    local copy into a managed mirror, records provenance, and (on a rename) removes the
-    old-named local file + its index pointer — so the promotion can never leave a
-    duplicate/orphan:
+- **Global-scope facts** (`scope: stack-general` or `user-global`) — **one writer**:
+  `cm canonical upsert` (schema, secret/domain policy, link rules, exact index
+  projection, transactional canonical + catalog + registry). Do **not** hand-write
+  `~/.claude/memory/` or its `MEMORY.md` — the catalog is generated. Domain is a
+  trust boundary (`user-global` is domain-global, not installation-global).
+  - **A NET-NEW fact:** author the Markdown, then:
+    ```bash
+    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py canonical upsert STEM --file PATH --origin --project .
+    ```
+    **Validate a `stack-general` fact's `stacks:` against the detectable set FIRST.**
+  - **PROMOTING a local fact:** set `scope`/`stacks` on the local file, then:
     ```bash
     CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --promote . LOCAL_FACT [CANON_NAME]
     ```
-    Pass `CANON_NAME` to normalize the name (`_`→`-`, drop a date) or to **dedup** onto an
-    existing canonical (never overwritten). You still **add the `~/.claude/memory/MEMORY.md`
-    line** (the op leaves the global index to you — the single writer). v0.1.67 (Phase C): the
-    op prints a **fleet-tax advisory** (warn-only, never a block) when the fleet's total
-    Σ pointer×holders crosses `GLOBAL_FLEET_TAX_ADVISORY` — every canonical taxes every holder
-    node's always-loaded index every session; `--utility` has the per-canonical evidence table.
+    `--promote` calls the same upsert (not a second ingress). Pass `CANON_NAME` to
+    rename or dedup onto an existing canonical (never overwritten). v0.1.67 (Phase C): the
+    op prints a **fleet-tax advisory** (warn-only) when Σ pointer×holders crosses
+    `GLOBAL_FLEET_TAX_ADVISORY`.
   Either way: other projects pick it up when they next run their own Phase-1 `--pull`; don't
   move a fact out of a project store that currently recalls it (the global copy is additive).
   Record each promotion in `cross_project.promoted` (name + scope), and in that entry's
@@ -898,9 +890,10 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    and proposed nothing" must be distinguishable from "never ran").
    Finally set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
    so the always-loaded gauge and ⚠ reflect the post-write state (AFTER any dispositions above).
-5. **Update the high-water mark**: write `commit` (current `HEAD`) + ISO
-   `timestamp` to `~/.claude/projects/<slug>/memory/.consolidation-state.json` so
-   the next pass scopes correctly (stamp the timestamp at write time), and mirror
+5. **Update the high-water mark**: MERGE `commit` (current `HEAD`) + ISO
+   `timestamp` into the native store's `.consolidation-state.json` (the
+   `native_memory_dir` Phase 0 / `cm doctor` printed — never hand-build a
+   `projects/<slug>/memory` path). Stamp the timestamp at write time, and mirror
    that `timestamp` into the cycle record's `marker.timestamp`. **MERGE into the existing
    JSON — never rewrite it wholesale** (v0.1.81): the file also carries SCRIPT-OWNED keys —
    `stacks`/`project_path` (the `--pull`-written cache the SessionStart beacon and `--staleness`
@@ -922,8 +915,9 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    ```bash
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --audit <the --snapshot path> --into <the --seed path>
    ```
-   It appends a per-operation record to `~/.claude/projects/<slug>/memory/.mutation-log.jsonl` (the durable,
-   script-emitted trail) AND `--into <the --seed path>` **injects the audit block straight into the cycle record**
+   It appends a per-operation record to plugin-data
+   `~/.claude/plugins/data/consolidate-memory/ops/<slot>/.mutation-log.jsonl` (the durable,
+   script-emitted trail; leftover native `<store>/.mutation-log.jsonl` is dual-read only) AND `--into <the --seed path>` **injects the audit block straight into the cycle record**
    (v0.1.53 — deterministic; do NOT hand-merge the printed JSON into `d["audit"]`, which KeyErrors on a seed that
    lacks the key). **Run this LAST in step 5** — after stamping `marker.timestamp` above — since `--into`
    read-modify-writes the seed (a later seed write would clobber the injected audit). It also prints the summary;
@@ -963,7 +957,9 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    - **GATE (all must hold):** it occurred **≥2×** AND has stable inputs AND a repeatable procedure AND a clear
      output/stopping condition AND is **NOT already covered** — inventory existing skills/commands first (the
      repo, the plugin, `~/.claude`) so you EXTEND/REUSE, never duplicate — AND is **NOT previously DECLINED**:
-     read the last few `distill` verdicts from `<store>/.consolidation-log.jsonl` (tail the log; each record's
+     read the last few `distill` verdicts from the cycle log (plugin-data
+     `~/.claude/plugins/data/consolidate-memory/ops/<slot>/.consolidation-log.jsonl`; leftover
+     native `<store>/.consolidation-log.jsonl` is dual-read only — tail the log; each record's
      `distill.verdict` encodes the disposition) — a previously-declined artifact needs materially NEW evidence
      (more episodes/days than when it was declined), never a re-ask.
    - **PROPOSE the SMALLEST form** (prefer a command over a skill over a subagent; on-demand over always-loaded
@@ -1047,10 +1043,12 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
 7. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py <the --seed path> \
-       --persist ~/.claude/projects/<slug>/memory
+       --persist <native_memory_dir from Phase 0 / cm doctor>
    ```
-   `--persist <store dir>` appends the rendered record (one JSON line) to
-   `<store>/.consolidation-log.jsonl` — the per-project cycle log that accrues
+   `--persist <store dir>` identifies the native store; the rendered record (one
+   JSON line) is appended under plugin data (`ops/<slot>/.consolidation-log.jsonl`)
+   so the native plane stays facts-only. Dual-read still sees a leftover native
+   `<store>/.consolidation-log.jsonl`. The log accrues
    magnitude→(applied, outcome) data for a future band calibration. It is idempotent and
    **skips persisting an unstamped cycle** (the render still succeeds), so run it AFTER
    step 5 stamps `marker.timestamp`.
@@ -1097,7 +1095,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    index-budget trajectory, rendered into the per-repo archive mini-site.
    ```bash
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/render_html.py <the --seed path> \
-       --store ~/.claude/projects/<slug>/memory --latest
+       --store <native_memory_dir from Phase 0 / cm doctor> --latest
    ```
    It writes a ZERO-dependency, self-contained `dashboards/index.html` (the whole per-repo
    archive of dreams in one file) and **auto-opens this dream's dashboard** (`--latest` →
@@ -1127,8 +1125,9 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    non-obvious WHY + what was KEPT / PRUNED / verified — and the **distill outcome**: any workflow artifact
    proposed / created, or nothing) rather than re-tabulate the dashboard's gauges,
    **scaled to the outcome banner** (a no-op / maintenance / light pass gets one or two lines + the path,
-   NOT the full debrief). The debrief **ends on the 📊 dashboard path** — the self-contained file at the
-   STABLE per-repo path `~/.claude/projects/<slug>/dashboards/index.html` — and tells the user they can
+   NOT the full debrief). The debrief **ends on the 📊 dashboard path** — the self-contained file
+   `render_html` wrote at `<native_memory_dir>/../dashboards/index.html` (Phase 0 / `cm doctor`) —
+   and tells the user they can
    **re-open it any time by opening that file** (it holds the whole archive; navigate dreams in-page via
    the ledger/filenames; it IS the fleet-wide re-open — works from any repo). Do **NOT** tell an end-user
    to run `cm report`: that is a MAINTAINER dev CLI living only in the consolidate-memory repo (not on a

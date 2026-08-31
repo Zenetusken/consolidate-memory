@@ -1126,7 +1126,8 @@ def _frontmatter(text: str) -> dict:
             # mirror metadata; sync_global's carry logic and fleet_utility's window clock read them back
             # through THIS one parser, docs/evidence-clock-stamps.spec.md).
             m2 = re.match(r"\s+(scope|stacks|type|projects|node_type|originSessionId"
-                          r"|global_ref_since|global_ref_body):\s*(.+)", line)
+                          r"|global_ref_since|global_ref_body|mirrored_at"
+                          r"|base_revision|canonical_revision):\s*(.+)", line)
             if m2:
                 out[m2.group(1)] = m2.group(2).strip()
         i += 1
@@ -1426,6 +1427,38 @@ def iter_cycle_log(log: Path, tail: "int | None" = None) -> list:
     return out
 
 
+def iter_store_cycle_log(auto_mem: Path, tail: "int | None" = None) -> list:
+    """Cycle records for a native store: plugin-data write plane + legacy native (read-only).
+
+    Later path wins on (marker.commit, marker.timestamp). Non-dict lines keep their
+    identity so read_history's smoke pin still sees them from a native-only fixture.
+    """
+    try:
+        from retention import cycle_log_read_paths
+        paths = cycle_log_read_paths(auto_mem)
+    except Exception:
+        paths = [auto_mem / ".consolidation-log.jsonl"]
+    by_key: dict = {}
+    order: list = []
+    for path in paths:
+        for rec in iter_cycle_log(path, tail=None):
+            if isinstance(rec, dict):
+                marker_obj = rec.get("marker")
+                m = marker_obj if isinstance(marker_obj, dict) else {}
+                key: object = (str(m.get("commit", "")), str(m.get("timestamp", "")))
+                if key == ("", ""):
+                    key = ("anon", id(rec))
+            else:
+                key = ("nondict", id(rec))
+            if key not in by_key:
+                order.append(key)
+            by_key[key] = rec
+    out = [by_key[k] for k in order]
+    if tail is not None:
+        return out[-tail:]
+    return out
+
+
 def distill_history(auto_mem: Path) -> dict:
     """v0.1.83 (W-B, docs/fleet-workflows.spec.md): aggregate the cycle log's `distill` blocks —
     the usage_history TWIN (same iter_cycle_log reader, same tail cap, same guarded-skip posture) →
@@ -1449,7 +1482,7 @@ def distill_history(auto_mem: Path) -> dict:
     verdicts: list = []
     proposal_declines: list = []
     seen_pd: set = set()
-    for rec in iter_cycle_log(auto_mem / ".consolidation-log.jsonl", tail=_LOG_TAIL_CAP):
+    for rec in iter_store_cycle_log(auto_mem, tail=_LOG_TAIL_CAP):
         if not isinstance(rec, dict):
             continue
         session = str(rec.get("session", "") or "")
@@ -1527,7 +1560,7 @@ def usage_history(auto_mem: Path) -> dict:
     misses: set = set()
     mention_stems: set = set()   # v0.1.85 (P3): union of stems organically NAMED across windows —
     #   positive evidence never discarded (like reads/misses), DISPLAY-ONLY (no veto in v1)
-    for rec in iter_cycle_log(auto_mem / ".consolidation-log.jsonl", tail=_LOG_TAIL_CAP):
+    for rec in iter_store_cycle_log(auto_mem, tail=_LOG_TAIL_CAP):
         u = rec.get("usage") if isinstance(rec, dict) else None
         if not isinstance(u, dict):
             continue
@@ -1859,6 +1892,17 @@ _DIFF_CONTENT_CAP_TOKENS = 8000
 _DIFF_CONTENT_AGGREGATE_CAP_TOKENS = 40000
 
 
+def project_memory_dir(project_dir: Path) -> Path:
+    """Native auto-memory directory via StoreContext (ADR 002). Call-time Path.home()/config."""
+    from store_context import resolve_store
+    return resolve_store(project_dir).native_memory_dir
+
+
+def project_session_dir(project_dir: Path) -> Path:
+    from store_context import resolve_store
+    return resolve_store(project_dir).session_dir
+
+
 def audit_snapshot(project_dir: Path) -> dict:
     """v0.1.22: a deterministic content-hash snapshot of everything a dream may mutate — the private memory store
     (`*.md`: fact files + MEMORY.md + any archive index), the CLAUDE.md hierarchy, and relocate-target repo docs.
@@ -1868,7 +1912,7 @@ def audit_snapshot(project_dir: Path) -> dict:
     index-only diff as expected). READ-ONLY; a content hash the model can't fake. Pairs with audit_diff for the
     Phase0→Phase5 mutation trail."""
     project_dir = project_dir.resolve()
-    auto_mem = Path.home() / ".claude" / "projects" / slug_for(project_dir) / "memory"
+    auto_mem = project_memory_dir(project_dir)
     snap: dict = {}
     stashed_tokens = 0   # running total for claude_md/repo_doc (the aggregate cap; memory facts don't count)
 
@@ -1987,7 +2031,7 @@ def diff_key(marker: object, session: str = "") -> str:
 
 def diffs_dir(project_dir: Path) -> Path:
     """The PRIVATE per-repo diff-sidecar dir: <store>/../dashboards/diffs (never the repo)."""
-    auto_mem = Path.home() / ".claude" / "projects" / slug_for(project_dir.resolve()) / "memory"
+    auto_mem = project_memory_dir(project_dir.resolve())
     return auto_mem.parent / "dashboards" / "diffs"
 
 
@@ -2088,9 +2132,11 @@ def _scrub_commit_log(log: str) -> list:
 def build_context(project_dir: Path) -> dict:
     """Gather all Phase-0 facts into one dict (basis for both report and --json seed)."""
     project_dir = project_dir.resolve()
-    slug = slug_for(project_dir)
-    proj_root = Path.home() / ".claude" / "projects" / slug
-    auto_mem = proj_root / "memory"
+    from store_context import resolve_store, config_root as _cfg_root
+    _ctx = resolve_store(project_dir)
+    slug = _ctx.project_slot
+    proj_root = _ctx.session_dir
+    auto_mem = _ctx.native_memory_dir
 
     repo = {name: _measure(project_dir / name) for name in REPO_DOCS}
 
@@ -2098,7 +2144,7 @@ def build_context(project_dir: Path) -> dict:
     # project, so it's part of THIS session's always-loaded tax even though it's neither a
     # repo doc nor an auto-memory file. Measured READ-ONLY (the skill never edits it) so
     # the per-session cost the dashboard reports is honest, not understated.
-    global_claude_md = _measure(Path.home() / ".claude" / "CLAUDE.md")
+    global_claude_md = _measure(_cfg_root() / "CLAUDE.md")
 
     index_path = auto_mem / "MEMORY.md"
     index_lb = _measure(index_path)
@@ -2168,7 +2214,7 @@ def build_context(project_dir: Path) -> dict:
     # build_context's auto_mem guard / sync_global's _network_nodes); enumerate sibling
     # slugs, then gather the liveness signal (newest transcript + fact mtime) LAZILY —
     # only for the matched twins, never every sibling. Read-only.
-    projects_root = Path.home() / ".claude" / "projects"
+    projects_root = _cfg_root() / "projects"
     try:
         siblings = [p.name for p in projects_root.iterdir() if p.is_dir()] if projects_root.exists() else []
     except OSError:
@@ -2416,7 +2462,7 @@ def budget_trajectory_advisory(auto_mem: Path, cur_tokens: int, marker_ts: str) 
     out-of-range marker_ts only drops the age, via the two guards below)."""
     s: list[float] = []
     carry = 0.0
-    for rec in iter_cycle_log(auto_mem / ".consolidation-log.jsonl", tail=_LOG_TAIL_CAP):
+    for rec in iter_store_cycle_log(auto_mem, tail=_LOG_TAIL_CAP):
         if not isinstance(rec, dict):
             continue
         budget = rec.get("budget")
@@ -3177,18 +3223,24 @@ def main() -> int:
                     _mrk = _cyc_pre["marker"]
             except (OSError, json.JSONDecodeError):
                 _mrk = {}
-        try:                    # the ONLY write in the audit path — an append, mirroring the _persist log pattern
-            ctx["auto_mem"].mkdir(parents=True, exist_ok=True)
-            _mlog = ctx["auto_mem"] / ".mutation-log.jsonl"
+        try:                    # the ONLY write in the audit path — plugin-data, never the native plane
+            from retention import mutation_log_read_paths, mutation_log_write_path
             _ident = (str(_mrk.get("commit", "") or ""), str(_mrk.get("timestamp", "") or ""))
             _dup = False
-            if _ident[0] and _mlog.exists():
-                try:
-                    _last = json.loads(_mlog.read_text(encoding="utf-8").strip().rsplit("\n", 1)[-1])
-                    _dup = (_last.get("commit"), _last.get("timestamp")) == _ident
-                except (OSError, json.JSONDecodeError):
-                    _dup = False
+            if _ident[0]:
+                for _cand in mutation_log_read_paths(ctx["auto_mem"]):
+                    if not _cand.is_file():
+                        continue
+                    try:
+                        _last = json.loads(_cand.read_text(encoding="utf-8").strip().rsplit("\n", 1)[-1])
+                        if (_last.get("commit"), _last.get("timestamp")) == _ident:
+                            _dup = True
+                            break
+                    except (OSError, json.JSONDecodeError, IndexError):
+                        continue
             if not _dup:
+                _mlog = mutation_log_write_path(ctx["auto_mem"])
+                _mlog.parent.mkdir(parents=True, exist_ok=True)
                 with open(_mlog, "a", encoding="utf-8") as fh:
                     fh.write(json.dumps({"window": "phase0..phase5", "commit": _ident[0], "timestamp": _ident[1], **diff}) + "\n")
         except OSError:

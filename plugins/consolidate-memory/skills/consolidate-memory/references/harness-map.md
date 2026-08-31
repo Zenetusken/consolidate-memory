@@ -46,9 +46,17 @@ Never create or reorganize one; propose (don't perform) any trim of its lines.
   always-loaded global instruction file, which the skill does not manage.
 
 **2. Claude's private auto-memory (per-user, NOT in git):**
+resolved exclusively by `store_context.resolve_store` (ADR 002) — never by
+hand-building `~/.claude/projects/<slug>/memory`. The default *output* of that
+resolver on an unset layout is still
 `~/.claude/projects/<slug>/memory/` where `<slug>` is the project's absolute path
 with both `/` AND `_` replaced by `-`, case preserved (e.g. `/home/you/project/Doc_Flo`
 → `-home-you-project-Doc-Flo`; v0.1.17 — CC normalizes underscores too, verified on disk).
+Git worktrees and nested subdirectories of one repository share that store.
+`CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME`, and `autoMemoryDirectory`
+(user/project/local/policy/`--settings`) remap it. `user-global` is **domain-global**
+(ADR 003), not installation-global. `cm doctor` prints the resolved store.
+The slug encoding remains:
 The rule is verified ONLY for `/`+`_` (no other-char example exists); a `.`/space could
 diverge further and would NOT be caught by `near_duplicate_slugs` (collapses only `_`/case)
 — an accepted residual risk. Verify a concrete slug with `ls ~/.claude/projects/` (a
@@ -168,8 +176,9 @@ finalizes it in Phase 2 and may override with rationale.
   so the EARLY magnitude proxy isn't precision-tunable; `(2,7)` is kept, with `prune_pressure`
   + the 2-source rule covering the blind spots. To enable a *data-grounded* future
   calibration, the model records the realized `rigor.applied`/`override_reason` and Phase-5
-  `--persist DIR` appends each cycle record to `<store>/.consolidation-log.jsonl` (idempotent;
-  skips persisting an unstamped cycle). LEVER NOTE: `INDEX_TOKEN_BUDGET` is the binding prune lever
+  `--persist DIR` identifies the native store; the record is appended under plugin-data
+  `ops/<slot>/.consolidation-log.jsonl` (idempotent; leftover native
+  `<store>/.consolidation-log.jsonl` is dual-read only; skips persisting an unstamped cycle). LEVER NOTE: `INDEX_TOKEN_BUDGET` is the binding prune lever
   (~20–27 real facts); `PRUNE_PRESSURE_FACTS` is a terse-pointer backstop. CAVEAT: `applied`
   is self-reported (catches over-rigor only); the LAZY-SKIP under-rigor case (SUBSTANTIAL+
   magnitude with 0/0/0 verification) is now caught by the v0.1.44 `procedure_integrity` detector at
@@ -384,7 +393,8 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   session-beacon track — never auto-pulls (a node absorbs on ITS next dream).
 - `--harvest PROJECT_DIR` — (v0.1.79, `docs/fleet-usage-harvest.spec.md`) capture EVERY node's
   organic fact-read windows from its transcripts into the shared append-only ledger
-  (`~/.claude/memory/.fleet-usage.jsonl`, 0o600) before rotation destroys them. Usage capture was
+  (plugin-data `fleet-usage.jsonl`, 0o600; leftover native `~/.claude/memory/.fleet-usage.jsonl`
+  is dual-read only) before rotation destroys them. Usage capture was
   dream-gated per node (measured: 1/3 nodes reporting, the rest unobserved). Watermarked per node,
   idempotent; reuses the `--recalls` scan machinery (dream-span excluded; only Read file-paths and
   arc-marker presence leave the scan). `--utility` surfaces harvested evidence — source-labeled,
