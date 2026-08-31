@@ -1,0 +1,43 @@
+name: Release gate
+
+# Stage 11: a committed publisher path (not gitignored release.sh alone).
+# This workflow verifies the candidate; it does not create the GitHub Release.
+# Cut the tag with the local `./release.sh --confirm` after this gate is green
+# on the exact commit.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  verify:
+    name: changelog matches plugin.json
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: plugin.json version equals CHANGELOG top heading
+        run: |
+          python3 - <<'PY'
+          import json, re, sys
+          from pathlib import Path
+          pj = json.loads(Path("plugins/consolidate-memory/.claude-plugin/plugin.json").read_text())
+          ver = pj["version"]
+          text = Path("CHANGELOG.md").read_text(encoding="utf-8")
+          m = re.search(r"^## \[(\d+\.\d+\.\d+)\]", text, re.M)
+          if not m:
+              sys.exit("CHANGELOG.md has no top ## [X.Y.Z] heading")
+          top = m.group(1)
+          if top != ver:
+              sys.exit(f"plugin.json version {ver} != CHANGELOG top {top}")
+          print(f"ok: {ver}")
+          PY
+      - name: smoke + sim + manifests
+        run: |
+          python3 tests/smoke.py
+          python3 tests/simulate_accumulation.py
+          python3 tests/validate_manifests.py
