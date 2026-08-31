@@ -1286,7 +1286,9 @@ def run() -> None:
             factAA.write_text("---\nname: aa-fact\ndescription: a durable preference\n"
                               "scope: user-global\ndomain: testdom\n---\n\nThe body.\n",
                               encoding="utf-8")
-            envAA["CM_DOMAIN"] = "testdom"
+            subprocess.run([sys.executable, str(OPS), "project", "enroll",
+                            str(pAA), "--domain", "testdom"],
+                           env=envAA, capture_output=True, text=True, check=False)
             up = subprocess.run([sys.executable, str(OPS), "canonical", "upsert", "aa-fact",
                                  "--file", str(factAA), "--project", str(pAA), "--json"],
                                 env=envAA, capture_output=True, text=True, check=False)
@@ -1336,13 +1338,16 @@ def run() -> None:
         try:
             _assert_hermetic(homeAB)
             pAB = _make_project(homeAB, "abproj")
-            envAB = dict(os.environ, HOME=str(homeAB), CM_DOMAIN="testdom")
+            envAB = dict(os.environ, HOME=str(homeAB))
             for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
-                      "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS"):
+                      "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS", "CM_DOMAIN"):
                 envAB.pop(k, None)
             bad = Path(homeAB / "bad.md")
             bad.write_text("---\nname: wide-fact\ndescription: a global fact\nscope: user-global\n"
                            "domain: testdom\n---\n\nSee [[local-only-thing]].\n", encoding="utf-8")
+            subprocess.run([sys.executable, str(OPS), "project", "enroll",
+                            str(pAB), "--domain", "testdom"],
+                           env=envAB, capture_output=True, text=True, check=False)
             badp = subprocess.run([sys.executable, str(OPS), "canonical", "upsert", "wide-fact",
                                    "--file", str(bad), "--project", str(pAB), "--json"],
                                   env=envAB, capture_output=True, text=True, check=False)
@@ -1376,7 +1381,7 @@ def run() -> None:
         try:
             _assert_hermetic(homeAD)
             pAD = _make_project(homeAD, "adproj")
-            envAD = dict(os.environ, HOME=str(homeAD), CM_DOMAIN="testdom")
+            envAD = dict(os.environ, HOME=str(homeAD))
             for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
                       "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS"):
                 envAD.pop(k, None)
@@ -1520,6 +1525,23 @@ def run() -> None:
             import hashlib as _hlAG
             ctxH = _scAG.resolve_store(pH, environ=envAG)
             hostile_ok = ctxH.domain_id == "unknown" and ctxH.requested_domain == "employer"
+            pU = _make_project(homeAG, "ag-unena")
+            pV = _make_project(homeAG, "ag-unenb")
+            ctxU = _scAG.resolve_store(pU, environ=envAG)
+            share = ("---\nname: share-me\ndescription: unenrolled fleet share\n"
+                     "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
+                     "---\n\nUNENROLLED SHARED BODY\n")
+            up_u = _ciAG.upsert(ctxU, "share-me", share)
+            subprocess.run([sys.executable, str(SYNC), "--pull", str(pV)],
+                           env=envAG, capture_output=True, text=True, check=False)
+            ctxV = _scAG.resolve_store(pV, environ=envAG)
+            got_v = ctxV.native_memory_dir / "share-me.md"
+            unenrolled_share = (
+                ctxU.domain_id == "unknown" and ctxV.domain_id == "unknown"
+                and up_u.get("ok") is True
+                and (ctxU.canonical_domain_dir / "share-me.md").is_file()
+                and got_v.is_file()
+                and "UNENROLLED SHARED BODY" in got_v.read_text(encoding="utf-8"))
             en_bad = subprocess.run([sys.executable, str(OPS), "project", "enroll",
                                      str(pH), "--domain", "../employer"],
                                     env=envAG, capture_output=True, text=True, check=False)
@@ -1547,10 +1569,8 @@ def run() -> None:
             pbod = ("---\nname: deploy\ndescription: personal deploy\ndomain: personal\n"
                     "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
                     "---\n\nPERSONAL-ONLY BODY\n")
-            ctxA.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
-            ctxB.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
-            (ctxA.canonical_domain_dir / "deploy.md").write_text(wa, encoding="utf-8")
-            (ctxB.canonical_domain_dir / "deploy.md").write_text(pbod, encoding="utf-8")
+            up_wa = _ciAG.upsert(ctxA, "deploy", wa)
+            up_pbod = _ciAG.upsert(ctxB, "deploy", pbod)
             gleg = homeAG / ".claude" / "memory"
             gleg.mkdir(parents=True, exist_ok=True)
             (gleg / "conf.md").write_text(
@@ -1563,12 +1583,24 @@ def run() -> None:
                            env=envAG, capture_output=True, text=True, check=False)
             sa = ctxA.native_memory_dir / "deploy.md"
             sb = ctxB.native_memory_dir / "deploy.md"
-            stems_ok = (sa.is_file() and "WORK-ONLY BODY" in sa.read_text(encoding="utf-8")
+            stems_ok = (up_wa.get("ok") is True and up_pbod.get("ok") is True
+                        and sa.is_file() and "WORK-ONLY BODY" in sa.read_text(encoding="utf-8")
                         and sb.is_file() and "PERSONAL-ONLY BODY" in sb.read_text(encoding="utf-8")
                         and "PERSONAL-ONLY BODY" not in sa.read_text(encoding="utf-8")
                         and "WORK-ONLY BODY" not in sb.read_text(encoding="utf-8"))
             conf_denied = (not (ctxA.native_memory_dir / "conf.md").exists()
                            and not (ctxB.native_memory_dir / "conf.md").exists())
+            _ciAG.forget(ctxA, "deploy", reason="ag-cross-domain")
+            if sb.exists():
+                sb.unlink()
+            bidx = ctxB.native_memory_dir / "MEMORY.md"
+            if bidx.exists():
+                bidx.write_text(
+                    "\n".join(ln for ln in bidx.read_text(encoding="utf-8").splitlines()
+                              if "deploy.md" not in ln) + "\n", encoding="utf-8")
+            subprocess.run([sys.executable, str(SYNC), "--pull", str(pB)],
+                           env=envAG, capture_output=True, text=True, check=False)
+            forget_cross = (sb.is_file() and "PERSONAL-ONLY BODY" in sb.read_text(encoding="utf-8"))
             body_cp = ("---\nname: ag-crash\ndescription: crash publish\nscope: user-global\n"
                        "---\n\npublish body\n")
             up_cp = _ciAG.upsert(ctxA, "ag-crash", body_cp, crash_after="publish")
@@ -1607,11 +1639,12 @@ def run() -> None:
             admit_ok = (not up_ad.get("ok") and orig.exists()
                         and "global_ref:" not in orig.read_text(encoding="utf-8")
                         and "admission" in str(up_ad.get("error") or "").lower())
-            _verdict("AG", "P0: enroll-only domain grant; same-stem domains stay distinct; confidential denied dual-read; crash dest-hash+DB; B cannot complete A's op; admission-refused upsert leaves origin; traversal refused",
+            _verdict("AG", "P0: enroll-only domain grant; same-stem domains stay distinct; confidential denied dual-read; crash dest-hash+DB; B cannot complete A's op; admission-refused upsert leaves origin; traversal refused; unenrolled upsert-then-pull; forget-A pull-B same stem",
                      hostile_ok and enrolled_ok and trav_ok and stems_ok and conf_denied
-                     and crash_ok and admit_ok,
+                     and crash_ok and admit_ok and unenrolled_share and forget_cross,
                      f"hostile={hostile_ok} enroll={enrolled_ok} trav={trav_ok} stems={stems_ok} "
                      f"conf={conf_denied} crash={crash_ok} admit={admit_ok} "
+                     f"unenrolled={unenrolled_share} forget_cross={forget_cross} "
                      f"en_a={en_a.returncode} en_b={en_b.returncode} err={en_a.stderr[:120]!r}")
         finally:
             shutil.rmtree(homeAG, ignore_errors=True)

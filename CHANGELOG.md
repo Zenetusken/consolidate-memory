@@ -5,6 +5,23 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.2.1] — 2026-08-31
+
+### Fixed — unenrolled sharing, tombstone domain keys, enroll-only grant
+
+- **Unenrolled A→B sharing.** `iter_admissible_facts` always scans
+  `ctx.canonical_domain_dir` (including `domains/unknown/facts`). Upsert/promote of
+  an unenrolled project now pull into other unenrolled projects; tests drive
+  upsert-then-pull, not a planted `~/.claude/memory` file.
+- **Tombstones are `(domain_id, stem)`.** Forgetting `deploy` in `work` no longer
+  makes `personal` `deploy` irrelevant on pull.
+- **Admission domain is enroll-only.** `CM_DOMAIN`, managed-settings, user
+  `settings.json`, and `domain.json` request a domain; they do not grant one.
+  `domain_id` comes only from registry `status=enrolled`.
+
+Docs name **v0.2.0** (SKILL / CLAUDE / README / harness-map). Public 1.0 stays HOLD.
+Backward-compatible with v0.2.0 installs ⇒ **patch**.
+
 ## [0.2.0] — 2026-08-31
 
 Cross-project hardening: StoreContext, domain isolation, a SQLite control plane,

@@ -182,7 +182,8 @@ normal plugin auto-update — if the line appears after an update, that's this f
 
 ## Install
 
-This ships as a **Claude Code plugin** — no clone, no symlinks. In Claude Code:
+**v0.2.0** (domain isolation + StoreContext + `cm project enroll`). This ships as a
+**Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
 ```text
 /plugin marketplace add Zenetusken/consolidate-memory

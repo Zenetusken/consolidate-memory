@@ -284,15 +284,13 @@ def _merge_settings(cfg: Path, project_root: Path, environ: dict,
     return merged, tuple(sources), ephemeral_unreadable
 
 
-def _operator_domain(settings: dict, cfg: Path, environ: dict,
-                     setting_sources: tuple) -> str:
-    """Trust-domain GRANT. Never from repository project/local settings (P0-1).
+def _requested_domain(project_root: Path, cfg: Path, environ: dict) -> str:
+    """Suggestion only — never a grant.
 
-    Operator sources: CM_DOMAIN, managed-settings, user settings, config-root
-    domain.json. `settings` / `setting_sources` are accepted for call-site
-    compatibility and are not a grant (they include repo files).
+    CM_DOMAIN, managed-settings, user settings, domain.json, and repo
+    project/local settings may *request* a domain. Admission `domain_id`
+    comes only from registry `status=enrolled` (`enrolled_domain`).
     """
-    del settings, setting_sources
     from identifiers import IdentifierRefused, validate_domain_id
 
     def _from(data: dict) -> str:
@@ -301,30 +299,42 @@ def _operator_domain(settings: dict, cfg: Path, environ: dict,
             return str(cm.get("domain")).strip()
         return ""
 
-    raw = str(environ.get("CM_DOMAIN") or "").strip()
-    if not raw:
-        raw = _from(_load_json(cfg / "managed-settings.json"))
-    if not raw:
-        raw = _from(_load_json(Path("/etc/claude-code/managed-settings.json")))
-    if not raw:
-        raw = _from(_load_json(cfg / "settings.json"))
-    if not raw:
-        raw = str(_load_json(cfg / "consolidate-memory" / "domain.json").get("domain") or "").strip()
-    if not raw:
-        return "unknown"
-    try:
-        return validate_domain_id(raw)
-    except IdentifierRefused:
-        return "unknown"
+    candidates = [
+        str(environ.get("CM_DOMAIN") or "").strip(),
+        _from(_load_json(cfg / "managed-settings.json")),
+        _from(_load_json(Path("/etc/claude-code/managed-settings.json"))),
+        _from(_load_json(cfg / "settings.json")),
+        str(_load_json(cfg / "consolidate-memory" / "domain.json").get("domain") or "").strip(),
+        _from(_load_json(project_root / ".claude" / "settings.json")),
+        _from(_load_json(project_root / ".claude" / "settings.local.json")),
+    ]
+    for raw in candidates:
+        if not raw:
+            continue
+        try:
+            return validate_domain_id(raw)
+        except IdentifierRefused:
+            continue
+    return "unknown"
+
+
+def _operator_domain(settings: dict, cfg: Path, environ: dict,
+                     setting_sources: tuple) -> str:
+    """Deprecated alias: operator files are requests, not grants."""
+    del settings, setting_sources
+    return "unknown"
 
 
 def _requested_domain_from_repo(project_root: Path) -> str:
     """Suggestion only — never a grant."""
-    for name in ("settings.json", "settings.local.json"):
-        data = _load_json(project_root / ".claude" / name)
-        cm = data.get("consolidateMemory")
-        if isinstance(cm, dict) and str(cm.get("domain") or "").strip():
-            return str(cm.get("domain")).strip()
+    data = _load_json(project_root / ".claude" / "settings.json")
+    cm = data.get("consolidateMemory")
+    if isinstance(cm, dict) and str(cm.get("domain") or "").strip():
+        return str(cm.get("domain")).strip()
+    data = _load_json(project_root / ".claude" / "settings.local.json")
+    cm = data.get("consolidateMemory")
+    if isinstance(cm, dict) and str(cm.get("domain") or "").strip():
+        return str(cm.get("domain")).strip()
     return ""
 
 
@@ -365,8 +375,8 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
 
     settings, setting_sources, ephemeral_unreadable = _merge_settings(
         cfg, root, env, settings_path)
-    requested_domain = _requested_domain_from_repo(root)
-    domain = _operator_domain(settings, cfg, env, setting_sources)
+    requested_domain = _requested_domain(root, cfg, env)
+    domain = "unknown"
     enabled = _auto_memory_enabled(settings, env)
 
     slot_env = str(env.get("CLAUDE_CODE_PROJECT_DIR_NAME") or "").strip()

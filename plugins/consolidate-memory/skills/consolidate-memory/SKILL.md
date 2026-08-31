@@ -17,6 +17,9 @@ description: >-
 
 # Consolidate Memory
 
+**v0.2.0** — domain-isolated canonicals, StoreContext, operator enrollment
+(`cm project enroll --domain NAME`), SQLite control plane. Public 1.0 stays HOLD.
+
 A deliberate pass that turns the fluid experience of a work session into **verified,
 durable facts** — and keeps the project's two memory stores accurate and
 non-contradictory. It's the agent analogue of what sleep does to memory: replay

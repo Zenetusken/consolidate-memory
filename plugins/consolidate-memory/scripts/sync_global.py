@@ -632,11 +632,10 @@ def iter_admissible_facts(ctx) -> list:
         seen.add(key)
         out.append((path.stem, fm, text))
 
-    if ctx.domain_id and ctx.domain_id != "unknown":
-        ddir = ctx.canonical_domain_dir
-        if ddir.is_dir():
-            for f in sorted(ddir.glob("*.md")):
-                _consider(f, untagged_only=False)
+    ddir = ctx.canonical_domain_dir
+    if ddir.is_dir():
+        for f in sorted(ddir.glob("*.md")):
+            _consider(f, untagged_only=False)
     g = global_store()
     if g.is_dir():
         for f in sorted(g.glob("*.md")):
@@ -1120,7 +1119,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
         return 2
     from store_context import resolve_store, WriteRefused
-    from domain_policy import admit_cross_project
+    from domain_policy import admit_cross_project, fact_domain
     from mirror_conflict import (CONFLICT as _MC_CONFLICT, QUARANTINE as _MC_QUAR,
                                  REFRESH as _MC_REFRESH, RESTAMP as _MC_RESTAMP,
                                  STOP_LOCAL as _MC_STOP, classify_mirror)
@@ -1133,15 +1132,15 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         return 2
     store = ctx.native_memory_dir
     mode = "dual-read"
-    _tomb_stems: set = set()
+    _tomb_keys: set = set()  # (domain_id, stem) — never a global stem set
     try:
         from control_plane import connect, connect_if_exists, db_path, get_migration_mode
         dbp = db_path(ctx)
         _cp = connect(dbp) if pull else connect_if_exists(dbp)
         if _cp is not None:
             mode = get_migration_mode(_cp)
-            for _row in _cp.execute("SELECT stem FROM tombstones").fetchall():
-                _tomb_stems.add(_row["stem"])
+            for _row in _cp.execute("SELECT stem, domain_id FROM tombstones").fetchall():
+                _tomb_keys.add((str(_row["domain_id"] or ""), str(_row["stem"])))
             _cp.close()
     except Exception:
         pass
@@ -1271,7 +1270,8 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             # "restamped 1" forever while global_ref_since stayed absent. A migration that didn't
             # happen must not be reported as one; the mirror stays on the documented mtime fallback.
             _migrated = False
-        if str(fm.get("status") or "") == "tombstoned" or name in _tomb_stems:
+        _fdom = fact_domain(fm) or (ctx.domain_id or "")
+        if str(fm.get("status") or "") == "tombstoned" or (_fdom, name) in _tomb_keys:
             rel = False
         elif rel and not admit_cross_project(ctx.domain_id, fm, migration_mode=mode):
             rel = False

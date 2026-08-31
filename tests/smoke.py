@@ -6223,7 +6223,9 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
     _pa = Path(_td_p0) / "alpha"
     _pb = Path(_td_p0) / "beta"
     _ph = Path(_td_p0) / "hostile"
-    for _p0_proj in (_pa, _pb, _ph):
+    _pu = Path(_td_p0) / "unena"
+    _pv = Path(_td_p0) / "unenb"
+    for _p0_proj in (_pa, _pb, _ph, _pu, _pv):
         _p0_proj.mkdir()
         (_p0_proj / "main.py").write_text("x=1\n", encoding="utf-8")
     (_ph / ".claude").mkdir()
@@ -6242,6 +6244,37 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
                "CM_DOMAIN", "CM_STORE_OVERRIDE", "CM_CRASH_AFTER"):
         _os_xp.environ.pop(_k, None)
     try:
+        import io as _io_p0
+        import contextlib as _cl_p0
+        _env_cm = _xp_env(_home_p0, {"CM_DOMAIN": "employer"})
+        _ctx_cm = sc.resolve_store(_pa, environ=_env_cm)
+        check("P0-1: CM_DOMAIN requests a domain but does not grant without enroll",
+              _ctx_cm.domain_id == "unknown" and _ctx_cm.requested_domain == "employer"
+              and _ctx_cm.enrolled is False)
+        (_home_p0 / ".claude").mkdir(parents=True, exist_ok=True)
+        (_home_p0 / ".claude" / "settings.json").write_text(
+            _json_xp.dumps({"consolidateMemory": {"domain": "personal"}}), encoding="utf-8")
+        _ctx_us = sc.resolve_store(_pa, environ=_xp_env(_home_p0))
+        check("P0-1: user settings.json requests a domain but does not grant without enroll",
+              _ctx_us.domain_id == "unknown" and _ctx_us.requested_domain == "personal"
+              and _ctx_us.enrolled is False)
+
+        _ctx_u = sc.resolve_store(_pu, environ=_xp_env(_home_p0))
+        _ctx_v = sc.resolve_store(_pv, environ=_xp_env(_home_p0))
+        _share = ("---\nname: share-me\ndescription: unenrolled fleet share\n"
+                  "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
+                  "---\n\nUNENROLLED SHARED BODY\n")
+        _up_u = ci.upsert(_ctx_u, "share-me", _share)
+        with _cl_p0.redirect_stdout(_io_p0.StringIO()), _cl_p0.redirect_stderr(_io_p0.StringIO()):
+            _rc_v = sg.run(_pv, pull=True)
+        _got_v = _ctx_v.native_memory_dir / "share-me.md"
+        check("P0-3: upsert-then-pull on two unenrolled projects shares domains/unknown canonicals",
+              _ctx_u.domain_id == "unknown" and _ctx_v.domain_id == "unknown"
+              and _up_u.get("ok") is True
+              and (_ctx_u.canonical_domain_dir / "share-me.md").is_file()
+              and _rc_v == 0 and _got_v.is_file()
+              and "UNENROLLED SHARED BODY" in _got_v.read_text(encoding="utf-8"))
+
         _rc_en_bad = cmo.main(["project", "enroll", str(_ph), "--domain", "../employer"])
         _rc_en_a = cmo.main(["project", "enroll", str(_pa), "--domain", "work"])
         _rc_en_b = cmo.main(["project", "enroll", str(_pb), "--domain", "personal"])
@@ -6267,38 +6300,44 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
         _pbod = ("---\nname: deploy\ndescription: personal deploy\ndomain: personal\n"
                  "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
                  "---\n\nPERSONAL-ONLY BODY\n")
-        _p0_cdir_a = _ctx_a.canonical_domain_dir
-        _p0_cdir_b = _ctx_b.canonical_domain_dir
-        _p0_cdir_a.mkdir(parents=True, exist_ok=True)
-        _p0_cdir_b.mkdir(parents=True, exist_ok=True)
-        (_p0_cdir_a / "deploy.md").write_text(_wa, encoding="utf-8")
-        (_p0_cdir_b / "deploy.md").write_text(_pbod, encoding="utf-8")
+        _up_wa = ci.upsert(_ctx_a, "deploy", _wa)
+        _up_pbod = ci.upsert(_ctx_b, "deploy", _pbod)
         _p0_legacy = _home_p0 / ".claude" / "memory"
         _p0_legacy.mkdir(parents=True, exist_ok=True)
         (_p0_legacy / "conf.md").write_text(
             "---\nname: conf\ndescription: untagged confidential\nsensitivity: confidential\n"
             "metadata:\n  node_type: memory\n  type: reference\n  scope: user-global\n"
             "---\n\nCONFIDENTIAL LEGACY\n", encoding="utf-8")
-        import io as _io_p0
-        import contextlib as _cl_p0
-        _o1, _e1 = _io_p0.StringIO(), _io_p0.StringIO()
-        with _cl_p0.redirect_stdout(_o1), _cl_p0.redirect_stderr(_e1):
+        with _cl_p0.redirect_stdout(_io_p0.StringIO()), _cl_p0.redirect_stderr(_io_p0.StringIO()):
             _rc_pa = sg.run(_pa, pull=True)
-        _o2, _e2 = _io_p0.StringIO(), _io_p0.StringIO()
-        with _cl_p0.redirect_stdout(_o2), _cl_p0.redirect_stderr(_e2):
+        with _cl_p0.redirect_stdout(_io_p0.StringIO()), _cl_p0.redirect_stderr(_io_p0.StringIO()):
             _rc_pb = sg.run(_pb, pull=True)
         _sa = _ctx_a.native_memory_dir / "deploy.md"
         _sb = _ctx_b.native_memory_dir / "deploy.md"
         _sconf_a = _ctx_a.native_memory_dir / "conf.md"
         _sconf_b = _ctx_b.native_memory_dir / "conf.md"
         check("P0-3: same-stem facts in two domains stay distinct and domain-bound",
-              _rc_pa == 0 and _rc_pb == 0
+              _up_wa.get("ok") is True and _up_pbod.get("ok") is True
+              and _rc_pa == 0 and _rc_pb == 0
               and _sa.is_file() and "WORK-ONLY BODY" in _sa.read_text(encoding="utf-8")
               and _sb.is_file() and "PERSONAL-ONLY BODY" in _sb.read_text(encoding="utf-8")
               and "PERSONAL-ONLY BODY" not in _sa.read_text(encoding="utf-8")
               and "WORK-ONLY BODY" not in _sb.read_text(encoding="utf-8"))
         check("P0-4: untagged confidential is not pulled under dual-read",
               not _sconf_a.exists() and not _sconf_b.exists())
+        _fg_a = ci.forget(_ctx_a, "deploy", reason="p0-cross-domain")
+        if _sb.exists():
+            _sb.unlink()
+        _bidx = _ctx_b.native_memory_dir / "MEMORY.md"
+        if _bidx.exists():
+            _bidx.write_text(
+                "\n".join(ln for ln in _bidx.read_text(encoding="utf-8").splitlines()
+                          if "deploy.md" not in ln) + "\n", encoding="utf-8")
+        with _cl_p0.redirect_stdout(_io_p0.StringIO()), _cl_p0.redirect_stderr(_io_p0.StringIO()):
+            _rc_pb_fg = sg.run(_pb, pull=True)
+        check("P0-8: forget deploy in work does not make personal deploy inadmissible",
+              _fg_a.get("ok") is True and _rc_pb_fg == 0 and _sb.is_file()
+              and "PERSONAL-ONLY BODY" in _sb.read_text(encoding="utf-8"))
 
         # journal: crash-after-verify rolls back registry; crash-after-publish recovers hash+DB
         _body_cv = ("---\nname: crash-v\ndescription: crash verify\nscope: user-global\n"
@@ -6787,21 +6826,13 @@ with _tf_xp.TemporaryDirectory() as _td_m:
     _old_hm = _os_xp.environ.get("HOME")
     _os_xp.environ["HOME"] = str(_home_m)
     try:
-        _env_m = _xp_env(_home_m, {"CM_DOMAIN": "testdom"})
-        _ctx_m = sc.resolve_store(_proj_m, environ=_env_m)
+        _ctx_m = sc.resolve_store(_proj_m, environ=_xp_env(_home_m))
         import argparse as _ap_m
         _nsm = _ap_m.Namespace(project=str(_proj_m), apply=False, rollback=False,
                                json=False, plan=True)
         _buf_dry = _io73.StringIO()
         with _ctx73.redirect_stdout(_buf_dry):
-            # cmd_migrate uses os.environ via _ctx; HOME already set. CM_DOMAIN via extra?
-            # _ctx() reads os.environ, so set CM_DOMAIN on os.environ too.
-            _old_dom = _os_xp.environ.get("CM_DOMAIN")
-            _os_xp.environ["CM_DOMAIN"] = "testdom"
-            try:
-                _rc_dry = cmo.cmd_migrate(_nsm)
-            finally:
-                pass
+            _rc_dry = cmo.cmd_migrate(_nsm)
         _db_m = _ctx_m.plugin_data_dir / "control.sqlite"
         check("review-8: migrate --plan is dry and does not mint control.sqlite",
               _rc_dry == 0 and "dry" in _buf_dry.getvalue() and not _db_m.exists())
@@ -6819,10 +6850,6 @@ with _tf_xp.TemporaryDirectory() as _td_m:
               and "domain: legacy-unassigned" in _copy_txt
               and "legacy-m" in _stems
               and str(_fm_m.get("domain") or "") == "legacy-unassigned")
-        if _old_dom is None:
-            _os_xp.environ.pop("CM_DOMAIN", None)
-        else:
-            _os_xp.environ["CM_DOMAIN"] = _old_dom
     finally:
         if _old_hm is None:
             _os_xp.environ.pop("HOME", None)
