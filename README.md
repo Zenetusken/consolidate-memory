@@ -249,10 +249,16 @@ domain purge is fleet-atomic. Canonical upsert is active
 active v3; SQLite holders are topology; `cm local` is the native
 fact+pointer writer.
 
+**v0.3.6** is the dogfood patch on that writer: `cm local` reuses
+`_pointer_line` (sanitize + 88-char truncate + fat-hook lint) so a long
+`description:` cannot land verbatim as a ~190-tok always-loaded hook, and
+`link_targets` uses `extract_wikilinks` so a backticked `[[link]]`
+format-example is not a dangling refusal.
+
 ## Install
 
-**v0.3.5** (domain isolation + StoreContext + `cm project enroll`; dashboard
-identity). This ships as a
+**v0.3.6** (domain isolation + StoreContext + `cm project enroll`; dashboard
+identity; `cm local` hook-lint + link-strip parity). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
 ```text
@@ -287,7 +293,7 @@ memory this plugin does not own. Domain canonicals live under
 read-only migration source. Scoped purge commands are the right tool; hand-deleting
 the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
-### Known limitations (v0.3.5)
+### Known limitations (v0.3.6)
 
 - **Unenrolled projects are local-only.** They cannot create or pull cross-project
   canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain
