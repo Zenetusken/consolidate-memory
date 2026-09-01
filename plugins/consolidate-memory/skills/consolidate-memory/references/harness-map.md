@@ -1,6 +1,6 @@
 # Harness map — data sources, memory formats, verification recipes
 
-**v0.3.4.** Read this when you need the exact paths, file formats, or grep/git recipes for a
+**v0.3.5.** Read this when you need the exact paths, file formats, or grep/git recipes for a
 consolidation pass. The SKILL.md body covers the workflow; this is the lookup table.
 
 **Unenrolled is local-only (ADR 008):** a project that is not enrolled cannot
@@ -356,7 +356,8 @@ format) is the canonical home for facts with `scope: stack-general` or
 (ADR 008); `cm migrate --inventory` lists it until `--finalize` sets `enforced`.
 Each global
 fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
-(relevance matching), `projects: [...]` (provenance). `sync_global.py`:
+(relevance matching). Holder/topology provenance lives in SQLite (`holders`);
+Markdown `projects:` is leftover-only. `sync_global.py`:
 - `--list PROJECT_DIR` — show relevant/present/missing (read-only; does not
   mint `control.sqlite` or append conflict rows — those happen on `--pull`).
 - `--pull PROJECT_DIR` — replicate missing relevant global facts into that project's
@@ -414,7 +415,8 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   arc-marker presence leave the scan). `--utility` surfaces harvested evidence — source-labeled,
   only for nodes with no own-log usage (own-log strictly primary in v1).
 - `--gc PROJECT_DIR --edges [--apply]` — (v0.1.84, P4, `docs/provenance-liveness.spec.md`) the
-  fleet-wide provenance-edge triage: every `projects:` edge classified **live** (a matching store
+  fleet-wide provenance-edge triage: every holder edge (SQLite first, leftover Markdown
+  `projects:` as fallback) classified **live** (a matching store
   holds the mirror — it pays the pointer tax) / **stale** (real store, dropped mirror — never
   prunable, self-identifying) / **unresolved** (ZERO store matches — the ghost class, measured at
   21% of edges / 20% of fleet tax at ship) / **ambiguous** (multi-match or degenerate — never
@@ -449,8 +451,8 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   canonical).
   `CANON_NAME` defaults to `LOCAL_FACT`; pass it to RENAME (`_`→`-` / drop a date) or to
   DEDUP onto an existing canonical (whose CONTENT is **never overwritten** — only the
-  origin side is reconciled, plus the origin is appended to the canonical's `projects:`
-  provenance). It also refuses to clobber a DISTINCT project-authored fact already sitting
+  origin side is reconciled, plus the origin is recorded as a SQLite holder).
+  It also refuses to clobber a DISTINCT project-authored fact already sitting
   at `CANON_NAME`, and the reserved index name `MEMORY`. Refuses a fact that is already a mirror, a non-replicable scope
   (must be `stack-general`/`user-global`), or a `stack-general` fact with no `stacks:`
   (it could match no project). The **model** owns the re-scope (sets `scope`/`stacks` on
