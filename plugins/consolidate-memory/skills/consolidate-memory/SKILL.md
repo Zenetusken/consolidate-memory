@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.3.2** — domain-isolated canonicals, StoreContext, operator enrollment
+**v0.3.3** — domain-isolated canonicals, StoreContext, operator enrollment
 (`cm project enroll --domain NAME`), SQLite control plane. Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
@@ -856,7 +856,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
 3. Re-confirm every file path / function name you referenced still exists.
    → **Cycle record:** fill `health` — `index_pointers_ok`, any `broken` pointers,
    any `dangling_links` (`[[name]]` wikilinks pointing at no target file). **Use the SINGLE-SOURCE
-   helper — `memory_status.dangling_links(auto_mem, global_dir=<canonical dir from Phase 0 / sync_global.global_store()>)`** (v0.1.37;
+   helper — `memory_status.dangling_links(auto_mem, global_dir=<canonical_domain_dir from Phase 0 / cm doctor / iter_canonicals>)`** (v0.1.37;
    v0.1.52 cross-store): it resolves every `[[name]]` against the FULL valid-target set (`valid_link_targets`
    — facts + archive-index docs like `SHIPPED.md` / `MEMORY`, so `[[SHIPPED]]`/`[[MEMORY]]` are REAL targets,
    NOT dangling — D10) across **local ∪ the global canonical**, with inline code spans stripped (`[[...]]` in

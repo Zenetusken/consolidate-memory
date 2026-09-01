@@ -50,6 +50,9 @@ def validate_canonical_frontmatter(fm: dict, *, stem: str, domain: str) -> Optio
     after inject. Nested applies.*, name/domain/stem contradictions, unknown
     enums, and missing required fields all refuse.
     """
+    if "applies" in fm:
+        return ("nested applies: mapping refused (use applies_any/applies_all/"
+                "applies_exclude flow lists)")
     for nested in _NESTED_APPLIES:
         if nested in fm and str(fm.get(nested) or "").strip():
             return (f"nested {nested} is refused (use applies_any/applies_all/"

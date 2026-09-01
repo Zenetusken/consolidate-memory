@@ -5,6 +5,81 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.3.3] — 2026-09-01
+
+Patch on the 0.3.0 secure-default (plus 0.3.1 recover/UI and 0.3.2 health-row).
+Adversarial review of v0.1.91→v0.3.2 found remaining P0–P2 holes in dual-read
+pull, enroll keep-path, journal crash windows, the migrate stage machine,
+StoreContext git identity, and dashboard honesty. Public **1.0 stays HOLD**.
+
+### Fixed — dual-read pull, enroll keep-path, dry-run sqlite
+
+- **Ordinary `--pull` / `--list` / beacon never live-read `~/.claude/memory`.**
+  `_admissible_records` walks that tree only when tests patched `GLOBAL` to a
+  fixture dir. Tagged leftovers (`domain: personal`) are migrate-inventory, not
+  fleet share. `_canonical_dirs` comment matches `--finalize` (not `--apply`).
+- **Enroll/move-domain keep-path does not trust mirror `domain:`.** Keep only
+  when a dest-domain canonical exists on disk and three-way says in-sync.
+  Spoofed `domain:` is revoked/quarantined.
+- **Dry-run enroll does not mint `control.sqlite`.** Plan/show uses
+  `connect_if_exists`; `connect()` runs only after `--apply --confirm`.
+
+### Fixed — journal crash windows + temps
+
+- **Dest publish then delete mismatch is complete-old.** `transact` snapshots
+  dest preimages, restores them on delete mismatch, and marks the journal
+  `failed` (not `pending`). Recover of `failed` is a no-op. Crash step
+  `after_dests` covers the window Probe AE hid.
+- **`recover_pending` never uses the journal DB as the registry.** Missing
+  `ctx` / `registry_conn` with `registry_ops` leaves the op pending.
+- **Pull recover failures are rc≠0.** Empty v3 source hashes are illegal.
+- **Create-mode `after_create` empty dest retries.** Size-0 dest + live tmp
+  unlinks and re-`O_EXCL`s; foreign bytes stay `bad`.
+- **Temps are 0600 + fsync** at `prepare_temps` (`O_EXCL`, fail-closed fsync).
+
+### Fixed — migrate stage machine
+
+- **Finalize is terminal.** Apply after `enforced` / `finalized` is rc=2 and
+  does not reset `finalized`. Rollback after finalize is refused and needs
+  `--confirm migrate-rollback`. `--apply` and `--rollback` together refuse.
+- **`--keep unknown-pool` survives inventory refresh.** Resolved collisions
+  keep the chosen origin; apply copies that body. Reviewed sha256 is not
+  clobbered by a later live hash.
+- **Finalize requires dest existence + digest.** Missing dest is rc=2, mode
+  stays dual-read. Rollback file is deleted inside the finalize transact.
+- **Migrate apply refuses a tombstoned dest stem** unless `--resurrect`.
+
+### Fixed — StoreContext, schema, GC, STALE, harvest, export, HTML
+
+- **`gitdir:` / `commondir` are contained.** A nested `.git` file pointing at
+  another project's `.git` does not steal its native store. Submodule gitfiles
+  (`super/.git/modules/<name>`) use the working tree, not `super`. Worktrees
+  still share the main-repo store.
+- **Empty `autoMemoryDirectory` vs a live default slug store is disagreement**
+  (`write_allowed` false). Candidates always include `slug_for(git_root)/memory`.
+- **Project/local `autoMemoryDirectory` must stay under `config_root` or the
+  project tree.** An escaped path is not native (`write_allowed` false). User
+  and managed settings may still name an explicit absolute dir.
+- **Pull / GC / holder lookups never fall back to leftover `~/.claude/memory`.**
+  Same-stem leftovers are migrate-inventory, not canonical truth. `--gc --edges`
+  liveness is `(domain, stem)`.
+- **`git remote add origin` keeps enrollment.** Lookup by
+  `(profile_id, git_common_dir)` + `project_aliases`; hash formula unchanged.
+- **Nested YAML `applies:` is refused** (column-0 `applies` and `applies.any`).
+- **Invalid v3 canonicals are not GC-orphaned.** Pull still skips them.
+- **STALE does not clobber a non-mirror.** Harvest/`--utility` join by
+  `fact_id` or `(domain_id, stem)`, never bare stem across domains. Export
+  archives the same bytes it hashed (`TarInfo` + `BytesIO`).
+- **HTML honesty:** rigor derives `suggested_tier` when `applied` is empty;
+  unverifiable/eligible (not dropped/unused); `prettyNode` has no `home-drei`;
+  git_range `-N` → `recent N (no marker)`; meters use the cycle's
+  `budget_tokens`; dream view does not invent identity from live; over-budget
+  unindexed is not ⚠ schema drift; caption gates on tally>0.
+- **SKILL Phase 5 dangling** uses `canonical_domain_dir`, not
+  `sync_global.global_store()`.
+
+Existing 0.3.2 installs keep working. Backward-compatible ⇒ **patch**.
+
 ## [0.3.2] — 2026-09-01
 
 ### Fixed — HTML Verification & health row

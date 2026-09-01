@@ -77,9 +77,15 @@ def _fact(name: str, scope: str, stacks: str = "", desc: str = "") -> str:
     return "\n".join(fm)
 
 
+def _domain_facts(home: Path) -> Path:
+    """Enrolled-domain canonical dir (ADR 008). Ordinary pull never live-reads ~/.claude/memory."""
+    d = home / ".claude" / "consolidate-memory" / "domains" / "personal" / "facts"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def _write_global(home: Path, name: str, scope: str, stacks: str = "", desc: str = "") -> None:
-    g = home / ".claude" / "memory"
-    g.mkdir(parents=True, exist_ok=True)
+    g = _domain_facts(home)
     (g / f"{name}.md").write_text(_fact(name, scope, stacks, desc), encoding="utf-8")
     idx = g / "MEMORY.md"
     head = idx.read_text(encoding="utf-8") if idx.exists() else "# Memory Index\n\n"
@@ -118,8 +124,8 @@ def _measure(home: Path, project_dir: Path) -> dict:
         il, ib = len(t.splitlines()), len(t.encode())
     else:
         il = ib = 0
-    # orphan = a mirror whose canonical no longer exists in the global store
-    g = home / ".claude" / "memory"
+    # orphan = a mirror whose canonical no longer exists in the domain facts dir
+    g = home / ".claude" / "consolidate-memory" / "domains" / "personal" / "facts"
     canon = {f.stem for f in g.glob("*.md") if f.name != "MEMORY.md"} if g.exists() else set()
     orphans = [f.stem for f in facts if "global_ref:" in f.read_text(encoding="utf-8")
                and f.stem not in canon]
@@ -258,7 +264,7 @@ def run() -> None:
         # now finds and removes them + their index pointers.
         print("\n── Probe B: orphan GC after canonical deletion (FIX B) ──")
         victim = "ug-pref-1"
-        (home / ".claude" / "memory" / f"{victim}.md").unlink()
+        (_domain_facts(home) / f"{victim}.md").unlink()
         for p in projects:
             _pull(home, p)
         before = {p.name: _measure(home, p)["orphans"] for p in projects}
@@ -359,21 +365,22 @@ def run() -> None:
         print("\n── Probe G: --gc refuses when the global store is absent (data-loss guard) ──")
         gp = projects[0]
         before_mirrors = [f for f in _store(home, gp).glob("*.md") if f.name != "MEMORY.md"]
-        shutil.move(str(home / ".claude" / "memory"), str(home / ".claude" / "memory.bak"))
+        ddir = _domain_facts(home)
+        shutil.move(str(ddir), str(ddir.parent / "facts.bak"))
         out = _gc(home, gp, apply=True)
         after_mirrors = [f for f in _store(home, gp).glob("*.md") if f.name != "MEMORY.md"]
-        shutil.move(str(home / ".claude" / "memory.bak"), str(home / ".claude" / "memory"))  # restore
+        shutil.move(str(ddir.parent / "facts.bak"), str(ddir))  # restore
         refused_absent = "refusing to GC" in out and len(after_mirrors) == len(before_mirrors)
-        # also the EMPTY-but-present case: store dir exists with only the index, no facts
-        empty = home / ".claude" / "memory-empty"
+        # EMPTY-but-present domain dir: exists with only the catalog, no facts
+        empty = ddir.parent / "facts-empty"
         empty.mkdir(parents=True, exist_ok=True)
         (empty / "MEMORY.md").write_text("# idx\n")
-        shutil.move(str(home / ".claude" / "memory"), str(home / ".claude" / "memory.bak2"))
-        shutil.move(str(empty), str(home / ".claude" / "memory"))
+        shutil.move(str(ddir), str(ddir.parent / "facts.bak2"))
+        shutil.move(str(empty), str(ddir))
         out2 = _gc(home, gp, apply=True)
         after_empty = [f for f in _store(home, gp).glob("*.md") if f.name != "MEMORY.md"]
-        shutil.rmtree(str(home / ".claude" / "memory"))
-        shutil.move(str(home / ".claude" / "memory.bak2"), str(home / ".claude" / "memory"))  # restore
+        shutil.rmtree(str(ddir))
+        shutil.move(str(ddir.parent / "facts.bak2"), str(ddir))  # restore
         refused_empty = "refusing to GC" in out2 and len(after_empty) == len(before_mirrors)
         print(f"  absent-store refused: {refused_absent} · empty-store refused: {refused_empty} · "
               f"mirrors preserved both times (from {len(before_mirrors)})")
@@ -1251,8 +1258,10 @@ def run() -> None:
             after_crash = destY.exists() and "probe-y landed" in destY.read_text(encoding="utf-8")
             connY = _cpY.connect_journal(ctxY)
             pending_y = _cpY.pending_ops(connY)
-            rec_y1 = _cpY.recover_pending(connY)
-            rec_y2 = _cpY.recover_pending(connY)
+            rconnY = _cpY.connect(_cpY.db_path(ctxY))
+            rec_y1 = _cpY.recover_pending(connY, ctx=ctxY, registry_conn=rconnY)
+            rec_y2 = _cpY.recover_pending(connY, ctx=ctxY, registry_conn=rconnY)
+            rconnY.close()
             connY.close()
             after_rec = destY.exists() and "probe-y landed" in destY.read_text(encoding="utf-8")
             _verdict("Y", "kill after publish leaves dest + a pending journal; recover is idempotent; dest stays",
@@ -1399,8 +1408,11 @@ def run() -> None:
             for k in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_PROJECT_DIR_NAME",
                       "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS"):
                 envAD.pop(k, None)
-            _write_global(homeAD, "legacy-ad", "user-global")
-            gAD = homeAD / ".claude" / "memory" / "legacy-ad.md"
+            gAD = homeAD / ".claude" / "memory"
+            gAD.mkdir(parents=True, exist_ok=True)
+            (gAD / "legacy-ad.md").write_text(
+                _fact("legacy-ad", "user-global"), encoding="utf-8")
+            gAD = gAD / "legacy-ad.md"
             assert gAD.exists()
             dry = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD)],
                                  env=envAD, capture_output=True, text=True, check=False)
@@ -1425,7 +1437,8 @@ def run() -> None:
             stamped = False
             if copied:
                 stamped = "domain: personal" in destAD.read_text(encoding="utf-8")
-            rb = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD), "--rollback"],
+            rb = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD), "--rollback",
+                                 "--confirm", "migrate-rollback"],
                                 env=envAD, capture_output=True, text=True, check=False)
             gone = not destAD.exists()
             still_legacy = gAD.exists()
@@ -1459,7 +1472,7 @@ def run() -> None:
             destAE = ctxAE.native_memory_dir / "probe-ae.md"
             destAE.parent.mkdir(parents=True, exist_ok=True)
             after_temps = {"prepare_temps", "verify_unchanged"}
-            after_publish = {"publish", "commit_registry", "journal_complete"}
+            after_publish = {"after_dests", "publish", "commit_registry", "journal_complete"}
             step_ok = True
             detail_ae = []
             for step in _cpAE.JOURNAL_STEPS:

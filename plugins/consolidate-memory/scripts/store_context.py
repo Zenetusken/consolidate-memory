@@ -170,6 +170,35 @@ def _load_json(path: Path) -> dict:
         return {}
 
 
+def _path_contained(child: Path, parent: Path) -> bool:
+    try:
+        child.resolve().relative_to(parent.resolve())
+        return True
+    except (ValueError, OSError):
+        return False
+
+
+def _gitdir_layout_ok(worktree: Path, gitfile: Path, gitdir: Path) -> bool:
+    """Accept only in-tree .git, registered worktrees, or submodule gitdirs."""
+    try:
+        gd = gitdir.resolve()
+        wt = worktree.resolve()
+    except OSError:
+        return False
+    if gd == wt / ".git" or _path_contained(gd, wt / ".git"):
+        return True
+    # linked worktree: <repo>/.git/worktrees/<name>
+    if gd.parent.name == "worktrees" and gd.parent.parent.name == ".git":
+        return True
+    # submodule: <super>/.git/modules/<name>
+    cur = gd
+    while cur != cur.parent:
+        if cur.name == "modules" and cur.parent.name == ".git":
+            return True
+        cur = cur.parent
+    return False
+
+
 def _read_gitdir_pointer(gitfile: Path) -> Optional[Path]:
     try:
         for line in gitfile.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -228,18 +257,42 @@ def find_git_common_dir(start: Path) -> Optional[Path]:
                 gitdir = _read_gitdir_pointer(git)
                 if gitdir is None:
                     continue
+                if not _gitdir_layout_ok(p, git, gitdir):
+                    continue
                 common = _common_from_gitdir(gitdir)
-                if _is_junk_git_root(git_working_tree_root(common)):
+                if _is_junk_git_root(discover_git_working_tree(p, git, gitdir, common)):
                     continue
                 return common
             if git.is_dir():
                 common = _common_from_gitdir(git)
+                if not _gitdir_layout_ok(p, git, git):
+                    continue
                 if _is_junk_git_root(git_working_tree_root(common)):
                     continue
                 return common
         except OSError:
             continue
     return None
+
+
+def discover_git_working_tree(worktree: Path, gitfile: Path, gitdir: Path,
+                              common: Path) -> Path:
+    """Working tree for a gitfile. Submodule gitdirs are NOT super/.git.parent.
+
+    Linked worktrees keep the main-repo working tree so they share the native
+    store (project_id hashes git_common_dir; slug follows the main tree).
+    """
+    del gitfile
+    try:
+        gd = gitdir.resolve()
+    except OSError:
+        gd = gitdir
+    cur = gd
+    while cur != cur.parent:
+        if cur.name == "modules" and cur.parent.name == ".git":
+            return worktree
+        cur = cur.parent
+    return git_working_tree_root(common)
 
 
 def git_working_tree_root(common: Path) -> Path:
@@ -299,12 +352,19 @@ def _expand_mem_dir(raw: str) -> Optional[Path]:
 
 def _merge_settings(cfg: Path, project_root: Path, environ: dict,
                     settings_path: Optional[Path]) -> tuple:
-    """Return (merged dict, source names in order, ephemeral_unreadable)."""
+    """Return (merged dict, source names, ephemeral_unreadable, mem_dir_source).
+
+    `mem_dir_source` is the last settings scope that set `autoMemoryDirectory`
+    (empty if none did). Project/local paths must stay contained; user/managed
+    may name an explicit absolute dir.
+    """
     sources: list = []
     merged: dict = {}
     ephemeral_unreadable = False
+    mem_dir_source = ""
 
     def _apply(label: str, path: Path) -> None:
+        nonlocal mem_dir_source
         if not path.is_file():
             return
         data = _load_json(path)
@@ -312,6 +372,8 @@ def _merge_settings(cfg: Path, project_root: Path, environ: dict,
             return
         merged.update(data)
         sources.append(label)
+        if "autoMemoryDirectory" in data:
+            mem_dir_source = label
 
     # Lowest → highest, matching Claude Code: user, project, local, --settings,
     # then managed policy (highest; not overridden by any of the above).
@@ -333,7 +395,7 @@ def _merge_settings(cfg: Path, project_root: Path, environ: dict,
     etc = Path("/etc/claude-code/managed-settings.json")
     if etc.is_file():
         _apply("policy-etc", etc)
-    return merged, tuple(sources), ephemeral_unreadable
+    return merged, tuple(sources), ephemeral_unreadable, mem_dir_source
 
 
 def _requested_domain(project_root: Path, cfg: Path, environ: dict) -> str:
@@ -420,12 +482,33 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     profile = profile_id_for(cfg, env)
     common = find_git_common_dir(start)
     if common is not None:
-        root = git_working_tree_root(common)
+        git = None
+        try:
+            cur = start.resolve()
+        except OSError:
+            cur = start
+        for p in [cur, *list(cur.parents)]:
+            gf = p / ".git"
+            try:
+                if gf.is_file():
+                    gitdir = _read_gitdir_pointer(gf)
+                    if gitdir is not None and _gitdir_layout_ok(p, gf, gitdir):
+                        root = discover_git_working_tree(p, gf, gitdir, common)
+                        git = gf
+                        break
+                if gf.is_dir() and _gitdir_layout_ok(p, gf, gf):
+                    root = git_working_tree_root(common)
+                    git = gf
+                    break
+            except OSError:
+                continue
+        if git is None:
+            root = git_working_tree_root(common)
     else:
         root = start
     remote_fp = remote_fingerprint(common)
 
-    settings, setting_sources, ephemeral_unreadable = _merge_settings(
+    settings, setting_sources, ephemeral_unreadable, mem_dir_source = _merge_settings(
         cfg, root, env, settings_path)
     requested_domain = _requested_domain(root, cfg, env)
     domain = "unknown"
@@ -462,6 +545,18 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     if custom is not None:
         source = "autoMemoryDirectory"
         native = custom
+        if mem_dir_source in ("project", "local"):
+            if not (_path_contained(custom, cfg) or _path_contained(custom, root)):
+                ambiguity.append(
+                    "project/local autoMemoryDirectory escapes config_root and "
+                    "project tree: " + str(custom))
+                native = default_native
+                if slot_env:
+                    source = "CLAUDE_CODE_PROJECT_DIR_NAME"
+                elif common is not None:
+                    source = "default-git-root"
+                else:
+                    source = "default-path"
     if override is not None:
         source = "store-override"
         native = override
@@ -472,7 +567,8 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         except OSError:
             return False
 
-    candidates = [default_native]
+    git_slot_native = cfg / "projects" / default_slot / "memory"
+    candidates = [default_native, git_slot_native]
     if custom is not None:
         candidates.append(custom)
     if cwd_slot_dir is not None:
@@ -489,9 +585,13 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         seen.add(key)
         if _live(c):
             live.append(c)
-    if len(live) > 1 and override is None:
-        ambiguity.append(
-            "multiple live MEMORY.md stores: " + ", ".join(str(x) for x in live))
+    chosen_key = _norm_path(native)
+    if override is None:
+        for c in live:
+            if _norm_path(c) != chosen_key:
+                ambiguity.append(
+                    "live MEMORY.md at " + str(c) + " is not the chosen native " + str(native))
+                break
     if ephemeral_unreadable and override is None:
         ambiguity.append("ephemeral --settings path cannot be reconstructed")
 
@@ -502,7 +602,8 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     pid = project_id_for(profile, domain, common, root, remote_fp)
     enrolled = False
     pdata = plugin_data_dir(cfg, env)
-    from control_plane import (classify_registry, connect_if_exists, enrolled_domain,
+    from control_plane import (classify_registry, connect, connect_if_exists,
+                               enrolled_domain, record_project_alias,
                                resolve_project_alias)
     _db = pdata / "control.sqlite"
     reg_state, reg_err = classify_registry(_db)
@@ -514,6 +615,27 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
                 if aliased:
                     pid = aliased
                 got = enrolled_domain(_c, pid)
+                if not got and common is not None:
+                    rows = _c.execute(
+                        "SELECT project_id FROM projects WHERE status='enrolled' "
+                        "AND profile_id=? AND git_common_dir=?",
+                        (profile, str(common))).fetchall()
+                    if len(rows) == 1:
+                        old_pid = str(rows[0]["project_id"] or "")
+                        if old_pid and old_pid != pid:
+                            try:
+                                wc = connect(_db)
+                                try:
+                                    record_project_alias(wc, pid, old_pid)
+                                    wc.commit()
+                                finally:
+                                    wc.close()
+                            except Exception:
+                                pass
+                            pid = old_pid
+                        elif old_pid:
+                            pid = old_pid
+                        got = enrolled_domain(_c, pid)
                 if got:
                     domain = got
                     enrolled = True
@@ -602,6 +724,11 @@ def doctor_report(ctx: StoreContext) -> str:
         ("unenrolled_share_warning",
          UNENROLLED_SHARE_WARNING if is_unenrolled_share(ctx) else "(none)"),
     ]
+    computed = project_id_for(ctx.profile_id, ctx.domain_id, ctx.git_common_dir,
+                              ctx.project_root, ctx.remote_fingerprint)
+    if computed != ctx.project_id:
+        rows.append(("computed_project_id", computed))
+        rows.append(("enrolled_project_id", ctx.project_id))
     return "\n".join(f"{k}: {v}" for k, v in rows) + "\n"
 
 

@@ -1138,6 +1138,13 @@ def _frontmatter(text: str) -> dict:
                 i = j
                 continue
             out[k.strip()] = v
+            if k.strip() == "applies":
+                j = i + 1
+                while j < len(lines) and lines[j].startswith((" ", "\t")):
+                    m_ap = re.match(r"\s+(any|all|exclude):\s*(.*)", lines[j])
+                    if m_ap:
+                        out["applies." + m_ap.group(1)] = m_ap.group(2).strip()
+                    j += 1
         else:
             # v0.1.78: + the evidence-clock stamps (global_ref_since/global_ref_body — script-owned
             # mirror metadata; sync_global's carry logic and fleet_utility's window clock read them back

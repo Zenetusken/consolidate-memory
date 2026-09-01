@@ -484,7 +484,7 @@
   function num(x,d){var n=typeof x==="number"?x:parseFloat(x);return isFinite(n)?n:(d===undefined?0:d);}
   function truthy(x){if(typeof x==="string")return /^(true|1|yes)$/i.test(x.trim());return !!x;}
   function prettyNode(s){
-    s=String(s||"").replace(/^…/,"").replace(/^[-/]+/,"").replace(/^home-drei-(project-)?/i,"");
+    s=String(s||"").replace(/^…/,"").replace(/^[-/]+/,"");
     var p=s.split(/[-_/]/).filter(Boolean);
     if(p.length>=2){
       // Keep a trailing version tail with its name (Qwen-3-6), not the last two tokens (3-6).
@@ -557,13 +557,19 @@
     if(!(hasRec||hasLive))
       return {missing:true, domain_id:"", enrolled:false, cross_project_allowed:false,
         registry_state:"", conflicts:0, unenrolled:false};
-    var snap=live?(hasLive?LIVEID:rec):(hasRec?rec:LIVEID);
+    var snap=live?(hasLive?LIVEID:null):(hasRec?rec:null);
+    if(!snap)
+      return {missing:true, domain_id:"", enrolled:false, cross_project_allowed:false,
+        registry_state:"", conflicts:0, unenrolled:false};
     var domain=String(snap.domain_id!=null?snap.domain_id:"unknown")||"unknown";
     var enrolled=snap.enrolled!=null?truthy(snap.enrolled):false;
     var xpa=snap.cross_project_allowed!=null?truthy(snap.cross_project_allowed):false;
-    var unenrolled=snap.unenrolled!=null?truthy(snap.unenrolled):(!enrolled||domain==="unknown");
+    var rs=String(snap.registry_state||"");
+    var unenrolled=snap.unenrolled!=null?truthy(snap.unenrolled):(!enrolled||domain==="unknown"||!xpa);
+    if(enrolled && domain!=="unknown" && (rs==="healthy"||rs==="") && xpa)
+      unenrolled=false;
     return {missing:false, domain_id:domain, enrolled:enrolled, cross_project_allowed:xpa,
-      registry_state:String(snap.registry_state||""),
+      registry_state:rs,
       conflicts:num(snap.conflicts,0),
       unenrolled:unenrolled};
   }
@@ -584,9 +590,13 @@
   }
   function identLine(id){
     if(!id||id.missing) return "";
-    if(id.unenrolled)
-      return '<span class="loc">local-only</span>'+(id.domain_id&&id.domain_id!=="unknown"?' · domain '+esc(id.domain_id):"");
-    return 'domain <b>'+esc(id.domain_id||"personal")+'</b> · enrolled';
+    var rs=id.registry_state&&id.registry_state!=="healthy"&&id.registry_state!=="absent"
+      ? " · registry "+esc(id.registry_state):"";
+    if(id.unenrolled || !id.cross_project_allowed)
+      return '<span class="loc">local-only</span>'
+        +(id.enrolled&&id.domain_id&&id.domain_id!=="unknown"?' · enrolled '+esc(id.domain_id):"")
+        +rs;
+    return 'domain <b>'+esc(id.domain_id||"personal")+'</b> · enrolled'+rs;
   }
   function paintBanners(boxId, id){
     var box=el(boxId); if(!box) return;
@@ -656,7 +666,8 @@
     el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
     document.title=PROJ+" — dream telemetry";
     el("h-sess").textContent=String(g(CUR,"session","—")).slice(0,16);
-    el("h-scope").textContent=g(CUR,"scope.git_range","—");
+    (function(){var gr=String(g(CUR,"scope.git_range","—")); var m=/^-(\d+)$/.exec(gr);
+      el("h-scope").textContent=m?("recent "+m[1]+" (no marker)"):gr;})();
     el("h-gen").textContent=String(DATA.generated_at||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
     (function(){if(PARSE_ERR){el("h-banner").textContent="⚠ archive data corrupted — the embedded record failed to parse; regenerate with render_html (never hand-edit this file)";return;}
       var lab=outcomeOf(CUR);
@@ -756,12 +767,16 @@
   // ── KEY INDICATORS ──
   (function(){
     var v=CUR.verification||{}, ix=g(CUR,"budget.index.after_tokens",traj.cur);
-    var io=num(ix)>IDXB, ceilK=truthy(g(CUR,"remediation.over_ceiling",false)), sjK=truthy(g(CUR,"remediation.standing_justified",false));
-    var rg=g(CUR,"rigor.applied","—");
+    var mag=magnitude(CUR);
+    var suggested=mag<=2?"LIGHT":(mag<=7?"SUBSTANTIAL":"HEAVY");
+    var applied=String(g(CUR,"rigor.applied","")).trim().toUpperCase();
+    var rg=(applied==="LIGHT"||applied==="SUBSTANTIAL"||applied==="HEAVY")?applied:suggested;
+    var idxb=num(g(CUR,"budget.index.budget_tokens"), IDXB);
+    var io=num(ix)>idxb, ceilK=truthy(g(CUR,"remediation.over_ceiling",false)), sjK=truthy(g(CUR,"remediation.standing_justified",false));
     var pp=truthy(g(CUR,"rigor.prune_pressure",false));
     function kpi(n,k,d,cls){return '<div class="kpi"><div class="n'+(cls?" ":"")+'" '+(cls?'style="color:'+cls+'"':'')+'>'+n+'</div><div class="k">'+esc(k)+'</div><div class="d">'+d+'</div></div>';}
     el("kpis").innerHTML=
-      kpi(pct(num(ix),IDXB)+'<small>%</small>', "index vs target", tok(num(ix))+" / "+tok(IDXB),
+      kpi(pct(num(ix),idxb)+'<small>%</small>', "index vs target", tok(num(ix))+" / "+tok(idxb),
           ceilK?"var(--crit)":(io&&!sjK)?"var(--crit)":(io?"var(--warn)":null))
      +kpi(recallN(CUR), "recall facts", "in the private store", null)
      +kpi(num(v.confirmed)+'<small> ✓</small>', "verified", num(v.corrected)+" corrected · "+num(v.unverifiable)+" unverifiable", num(v.unverifiable)>0?"var(--warn)":null)
@@ -854,7 +869,11 @@
     var bx=function(i){return pL+i*(W-pL-pR)/(n-1);};
     var skip=Math.max(1,Math.ceil(n/12)), seg=(W-pL-pR)/(n-1);
     rows.forEach(function(r,i){
-      var raw=String(g(r,"rigor.applied","")).toUpperCase(), known=!!ty[raw];
+      var magR=num(g(r,"scope.git_commits",0))+num(g(r,"scope.session_candidates",0));
+      var sug=magR<=2?"LIGHT":(magR<=7?"SUBSTANTIAL":"HEAVY");
+      var raw=String(g(r,"rigor.applied","")).trim().toUpperCase();
+      if(!(raw==="LIGHT"||raw==="SUBSTANTIAL"||raw==="HEAVY")) raw=sug;
+      var known=!!ty[raw];
       var gapTip="", gl=null, hh=null;
       if(i>0&&times[i]!=null&&times[i-1]!=null){
         hh=(times[i]-times[i-1])/3.6e6; gl=hh<48?Math.round(hh)+"h":Math.round(hh/24)+"d";
@@ -906,7 +925,8 @@
       else if(overFlag) status="Over budget — prune before adding more · "+extra.join(" · ");
       else status=extra.join(" · ");
     }
-    meter(el("m-index"),"Memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),IDXB,overFlag,status);
+    var idxbM=num(g(CUR,"budget.index.budget_tokens"), IDXB);
+    meter(el("m-index"),"Memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),idxbM,overFlag,status);
     var hier=g(CUR,"budget.claude_md_hierarchy",null);
     hier=(hier&&typeof hier==="object"&&!Array.isArray(hier))?hier:{};
     var worst=num(hier.worst_path_tokens), nfiles=num(hier.total_files);
@@ -1229,7 +1249,8 @@
     if(num(sd.malformed_scope)) driftBits.push(num(sd.malformed_scope)+" bad scope");
     if(num(sd.malformed_origin)) driftBits.push(num(sd.malformed_origin)+" bad origin");
     // pointers-ok + mismatch = unindexed files, not broken pointers (those are the row above).
-    if(num(sd.index_mismatch)) driftBits.push(num(sd.index_mismatch)+(pointers?" not in the index":" index↔file"));
+    var overIdx=truthy(g(CUR,"budget.index.over",false))||truthy(g(CUR,"remediation.standing_justified",false));
+    if(num(sd.index_mismatch) && !overIdx) driftBits.push(num(sd.index_mismatch)+(pointers?" not in the index":" index↔file"));
     var driftRow=driftBits.length?'<div class="audit-ln"><span class="s">schema drift</span><span class="nums" style="color:var(--warn)">'+esc(driftBits.join(" · "))+'</span></div>':"";
     var brokenNames=Array.isArray(h.broken)?h.broken:[];
     var brokeList=clipNames(brokenNames, 8);
@@ -1246,13 +1267,15 @@
       +'<div class="audit-ln head"><span class="s">check</span><span class="nums">result</span></div>'
       +'<div class="audit-ln"><span class="s">claims verified</span><span class="nums">'
         +(conf>0?'<span style="color:var(--ok)">'+conf+' confirmed</span>':conf+' confirmed')+' · '+corr+' corrected · '
-        +(unv>0?'<span style="color:var(--warn)">'+unv+' dropped</span>':'0 dropped')+'</span></div>'
+        +(unv>0?'<span style="color:var(--warn)">'+unv+' unverifiable</span>':'0 unverifiable')+'</span></div>'
       +'<div class="audit-ln"><span class="s">index pointers</span><span class="nums" style="color:'+(pointers?"var(--ok)":"var(--crit)")+'">'+brokeTxt+'</span></div>'
       +'<div class="audit-ln"><span class="s">dangling wikilinks</span><span class="nums" style="color:'+(dang?"var(--warn)":"var(--ok)")+'">'+esc(dangTxt)+'</span></div>'
       +soRow+driftRow+maintRow
       +uRows
       +remRow
-      +'<div class="meta"><div class="cap">Every recorded claim is checked against the live tree before it lands.</div></div>';
+      +((conf+corr+unv)>0 && !CUR._integrity
+        ?'<div class="meta"><div class="cap">Every recorded claim is checked against the live tree before it lands.</div></div>'
+        :"");
     // v0.1.55/57 — the distill verdict (gated on the key; legacy cycles hide the block). The verdict's
     // disposition (created / proposed / nothing) renders as a tag; the explanation reads as a sentence.
     var D=CUR.distill;
@@ -1283,7 +1306,7 @@
     if((DM&&typeof DM==="object"&&!Array.isArray(DM))||missN>0){
       DM=(DM&&typeof DM==="object"&&!Array.isArray(DM))?DM:{};
       var dmc=[num(DM.windows_observed)+" window"+(num(DM.windows_observed)!==1?"s":""),
-               num(DM.eligible)+" unused"];
+               num(DM.eligible)+" eligible"];
       var surf=Array.isArray(DM.surfaced)?DM.surfaced:[], stk=Array.isArray(DM.struck)?DM.struck:[];
       if(surf.length)dmc.push(surf.length+" surfaced"+(surf.filter(function(s){return typeof s==="string";}).length?": "+surf.filter(function(s){return typeof s==="string";}).slice(0,3).join(", "):""));
       if(stk.length)dmc.push(stk.length+" struck (read this window)");
@@ -1493,9 +1516,13 @@
       paintBanners("a-banners", id);
     })();
     // per-cycle row data — raw values for filter/sort (READ-ONLY; never mutates ALL)
-    var rows=ALL.map(function(c,i){var rg=String(g(c,"rigor.applied","—"));
+    var rows=ALL.map(function(c,i){
+      var magR=num(g(c,"scope.git_commits",0))+num(g(c,"scope.session_candidates",0));
+      var sug=magR<=2?"LIGHT":(magR<=7?"SUBSTANTIAL":"HEAVY");
+      var rg=String(g(c,"rigor.applied","")).trim().toUpperCase();
+      if(!(rg==="LIGHT"||rg==="SUBSTANTIAL"||rg==="HEAVY")) rg=sug;
       return {i:i, intg:!!(c&&c._integrity), oc:outcomeOf(c),
-        rgRaw:rg.toUpperCase(), rg:rg.charAt(0)+rg.slice(1).toLowerCase(),
+        rgRaw:rg, rg:rg.charAt(0)+rg.slice(1).toLowerCase(),
         ts:String(g(c,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"").slice(0,16), tsRaw:String(g(c,"marker.timestamp","")),
         ix:num(g(c,"budget.index.after_tokens",g(c,"budget.index.before_tokens",0))),
         en:(Array.isArray(c.entries)?c.entries:[]).filter(function(e){return ["added","corrected","deleted","reconciled"].indexOf(g(e,"action",""))>=0;}).length,
