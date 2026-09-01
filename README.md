@@ -233,9 +233,16 @@ enrollment, registry health, and open conflicts.
 labels no longer wrap under a long dangling-name list, names are not silently
 truncated, and usage is labeled organic (dream-procedure reads excluded).
 
+**v0.3.3** closes the post-0.3.2 adversarial P0–P2 docket: ordinary pull never
+live-reads leftover `~/.claude/memory` (enumerator *or* STALE/holder lookup),
+enroll keep-path does not trust mirror `domain:`, project/local
+`autoMemoryDirectory` cannot escape the tree, journal dest-publish + delete
+mismatch is complete-old, finalize is terminal, and the HTML no longer invents
+identity or labels unverifiable as dropped.
+
 ## Install
 
-**v0.3.2** (domain isolation + StoreContext + `cm project enroll`; dashboard
+**v0.3.3** (domain isolation + StoreContext + `cm project enroll`; dashboard
 identity). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
@@ -271,7 +278,7 @@ memory this plugin does not own. Domain canonicals live under
 read-only migration source. Scoped purge commands are the right tool; hand-deleting
 the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
-### Known limitations (v0.3.2)
+### Known limitations (v0.3.3)
 
 - **Unenrolled projects are local-only.** They cannot create or pull cross-project
   canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain

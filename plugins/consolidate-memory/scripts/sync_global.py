@@ -526,8 +526,8 @@ def _canonical_dirs() -> list:
     """Domain-scoped fact dirs plus legacy GLOBAL (dual-read, ADR 007).
 
     Domain dirs come FIRST so `global_facts` de-dupe-by-stem lets a domain copy
-    win. After migrate --apply (enforced + live domain facts), legacy is omitted
-    so untagged leftovers cannot shadow stamped copies. GLOBAL is still the
+    win. After migrate --finalize (enforced + live domain facts), legacy is omitted
+    so leftovers cannot shadow stamped copies. GLOBAL is still the
     module global so hermetic tests that assign `sg.GLOBAL` keep working.
     """
     domain_dirs: list = []
@@ -661,11 +661,45 @@ def _admissible_records(ctx) -> list:
     if ddir.is_dir():
         for f in sorted(ddir.glob("*.md")):
             _consider(f, untagged_only=False)
-    g = global_store()
-    if g.is_dir():
-        for f in sorted(g.glob("*.md")):
-            _consider(f, untagged_only=False)
+    # Production: ~/.claude/memory is migrate-inventory only (ADR 008/013).
+    # Ordinary --pull/--list/beacon never live-read it — tagged leftovers
+    # would otherwise absorb into every enrolled same-domain project.
+    # Tests that assign sg.GLOBAL to a fixture dir still enumerate it.
+    if _global_is_fixture():
+        g = global_store()
+        try:
+            same = ddir.is_dir() and g.resolve() == ddir.resolve()
+        except OSError:
+            same = False
+        if g.is_dir() and not same:
+            for f in sorted(g.glob("*.md")):
+                _consider(f, untagged_only=False)
     return recs
+
+
+def iter_canonical_stems_for_gc(ctx) -> set:
+    """On-disk canonical stems in this domain (and fixture GLOBAL). Invalid v3
+    files still count as live so their mirrors are not GC-orphaned."""
+    stems: set = set()
+
+    def _add(root: Path) -> None:
+        if not root.is_dir():
+            return
+        for f in root.glob("*.md"):
+            if f.name == "MEMORY.md" or _is_reserved_stem(f.stem) or not _safe_stem(f.stem):
+                continue
+            stems.add(f.stem)
+
+    _add(ctx.canonical_domain_dir)
+    if _global_is_fixture():
+        g = global_store()
+        try:
+            same = ctx.canonical_domain_dir.is_dir() and g.resolve() == ctx.canonical_domain_dir.resolve()
+        except OSError:
+            same = False
+        if not same:
+            _add(g)
+    return stems
 
 
 def _hermetic_home() -> bool:
@@ -686,6 +720,25 @@ def _global_is_fixture() -> bool:
         return g.resolve() != live.resolve()
     except OSError:
         return g != live
+
+
+def _canonical_path(ctx, name: str) -> Path:
+    """Current-domain canonical file. Leftover ~/.claude/memory is never a
+    production lookup (ADR 008/013); tests that patched GLOBAL still resolve."""
+    p = Path(ctx.canonical_domain_dir) / f"{name}.md"
+    try:
+        if p.exists():
+            return p
+    except OSError:
+        pass
+    if _global_is_fixture():
+        g = global_store() / f"{name}.md"
+        try:
+            if g.exists():
+                return g
+        except OSError:
+            pass
+    return p
 
 
 def facts_for_context(ctx, *, all_domains: bool = False) -> list:
@@ -1013,9 +1066,7 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         landed.add(name)
     holder_names = [n for n in landed] + [n for n in in_sync_names if n not in landed]
     for name in holder_names:
-        cp = ctx.canonical_domain_dir / f"{name}.md"
-        if not cp.exists():
-            cp = global_store() / f"{name}.md"
+        cp = _canonical_path(ctx, name)
         if cp.exists():
             expected[str(cp)] = _sha(cp)
 
@@ -1075,14 +1126,15 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                 # Re-classify under lock: a local edit between pre-lock classify
                 # and publication must never be overwritten (P0-4).
                 cur_now = _safe_read_text(path) or ""
+                if not cur_now or not _is_mirror(cur_now):
+                    # Non-mirror / local body — STALE must not clobber.
+                    continue
                 if cur_now and _is_mirror(cur_now):
                     from mirror_conflict import (CONFLICT as _CFL, QUARANTINE as _QAR,
                                                  STOP_LOCAL as _STP, classify_mirror as _cml)
                     from control_plane import holder_base_revision as _hbr2, stable_fact_id as _sf2
                     _hb = _hbr2(conn, _sf2(ctx.domain_id, name), ctx.project_id)
-                    _ct = (_safe_read_text(ctx.canonical_domain_dir / f"{name}.md")
-                           or _safe_read_text(global_store() / f"{name}.md")
-                           or "")
+                    _ct = _safe_read_text(_canonical_path(ctx, name)) or ""
                     _cfm = _frontmatter(cur_now)
                     _v3lock = bool(_cfm.get("canonical_fact_id") or _cfm.get("schema_version"))
                     _act2 = _cml(cur_now, _ct, base_revision=_hb,
@@ -1108,8 +1160,7 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                 hold_set.append(n)
         holders = []
         for name in hold_set:
-            dpath = ctx.canonical_domain_dir / f"{name}.md"
-            ctext = _safe_read_text(dpath) or _safe_read_text(global_store() / f"{name}.md")
+            ctext = _safe_read_text(_canonical_path(ctx, name))
             if ctext is None:
                 continue
             rev = _sem_hold(ctext)
@@ -1355,8 +1406,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         except WriteRefused as e:
             print(f"pull: {e}", file=sys.stderr)
             return 2
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"pull: recover failed: {type(e).__name__}: {e}", file=sys.stderr)
+            return 2
 
     def _done(rc: int) -> int:
         if _plocks:
@@ -1736,11 +1788,14 @@ def _record_provenance(name: str, project: str) -> None:
     Production pull/promote do NOT call this after transact drops locks — they
     apply_provenance via temps and record_holder on the control plane. Kept as the
     self-heal helper (`--gc --edges` a wrong prune re-adds on the next pull) and
-    for tests that exercise the Markdown dual-read directly.
+    for tests that exercise the Markdown dual-read directly. Production leftover
+    `~/.claude/memory` is never written (fixture GLOBAL only).
 
     v0.1.71 (Track D-2, accepted gap): this read-modify-write is NOT mutually exclusive
     across processes when used as a standalone helper. See
     docs/track-d-write-atomicity-seed-hardening.spec.md D-2."""
+    if not _global_is_fixture():
+        return
     p = global_store() / f"{name}.md"
     text = _safe_read_text(p)   # v0.1.69 Gate-2b: TOCTOU-tightened — a vanished canonical is
     if text is None:            # nothing to record provenance for (same as the old not-exists early-return)
@@ -1826,7 +1881,7 @@ def _mind_unresolved(name: str) -> bool:
     return not _slug_matches(name)
 
 
-def _classify_edge(holder: str, stem: str) -> str:
+def _classify_edge(holder: str, stem: str, domain_id: str = "") -> str:
     """v0.1.84 (P4): classify ONE provenance edge (holder token × canonical stem) —
       'live'       ≥1 matching store holds <stem>.md as a managed MIRROR (it pays the pointer tax);
       'stale'      exactly one match, mirror absent (real project, dropped mirror — NEVER prunable:
@@ -1838,14 +1893,26 @@ def _classify_edge(holder: str, stem: str) -> str:
                    the ONLY prunable class, and only via the confirmed --gc --edges --apply;
       'ambiguous'  multiple matches, none holding (can't tell which store was meant), OR a
                    degenerate token (a token we can't even normalize is not PROVABLY a ghost) —
-                   conservative, never prunable."""
+                   conservative, never prunable.
+    `domain_id` scopes liveness to that domain's mirrors (same stem in another
+    domain is not live for this canonical)."""
     if not re.sub(r"[^a-z0-9]", "-", holder.lower()).strip("-."):
         return "ambiguous"
     stores = _slug_matches(holder)
     if not stores:
         return "unresolved"
-    holding = [s for s in stores
-               if (t := _safe_read_text(s / f"{stem}.md")) is not None and _is_mirror(t)]
+    holding = []
+    want = str(domain_id or "").strip()
+    for s in stores:
+        t = _safe_read_text(s / f"{stem}.md")
+        if t is None or not _is_mirror(t):
+            continue
+        if want:
+            fm = _frontmatter(t)
+            d = str(fm.get("canonical_domain") or fm.get("domain") or "").strip()
+            if d and d != want:
+                continue
+        holding.append(s)
     if holding:
         return "live"
     return "stale" if len(stores) == 1 else "ambiguous"
@@ -1998,9 +2065,11 @@ def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> i
         return 0
     counts = {"live": 0, "stale": 0, "unresolved": 0, "ambiguous": 0}
     ghosts: dict = {}   # canonical stem -> [ghost holder tokens]
+    from domain_policy import fact_domain as _fd_edges
     for n, fm, _t in gfacts:
+        _edom = _fd_edges(fm) or str(fm.get("domain") or "")
         for h in _holders(fm):
-            c = _classify_edge(h, n)
+            c = _classify_edge(h, n, _edom)
             counts[c] += 1
             if c == "unresolved":
                 ghosts.setdefault(n, []).append(h)
@@ -2041,10 +2110,7 @@ def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> i
         expected_e: dict = {}
 
         def _canon_path(stem: str) -> "Path":
-            p = ctx_e.canonical_domain_dir / f"{stem}.md"
-            if p.exists():
-                return p
-            return global_store() / f"{stem}.md"
+            return _canonical_path(ctx_e, stem)
 
         for n in ghosts:
             p = _canon_path(n)
@@ -2153,8 +2219,9 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             if not root.is_dir():
                 return False
             return any(p.suffix == ".md" and p.name != "MEMORY.md" for p in root.glob("*.md"))
-        live_canon = (_has_canon_files(_ctx_gc.canonical_domain_dir)
-                      or _has_canon_files(global_store()))
+        live_canon = _has_canon_files(_ctx_gc.canonical_domain_dir)
+        if not live_canon and _global_is_fixture():
+            live_canon = _has_canon_files(global_store())
         # Unmounted/empty source + leftover mirrors = mass-wipe risk (Probe G).
         # Tombstones still sit as .md files, so forget-then-GC still proceeds.
         if not live_canon:
@@ -2173,7 +2240,10 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             return 2
     if edges:   # v0.1.84 (P4): fleet-wide edge triage — project_dir-independent, same snapshot
         return _gc_edges(gfacts, apply, project_dir)
-    orphans = _orphans(store, canon={n for n, _, _ in gfacts})
+    live_stems = iter_canonical_stems_for_gc(_ctx_gc)
+    if _global_is_fixture() and not live_stems:
+        live_stems = {n for n, _, _ in gfacts}
+    orphans = _orphans(store, canon=live_stems or {n for n, _, _ in gfacts})
     # v0.1.75 (audit F6): FROZEN mirrors — see the docstring. Detected against the SAME snapshot.
     stacks = detect_stacks(project_dir)
     canon_fm = {n: fm for n, fm, _ in gfacts}
@@ -3552,11 +3622,24 @@ def fleet_utility(project_dir: Path) -> dict:
             h_last = ""
             for hr in hrows:
                 for pf in hr.get("per_fact", []):
-                    if isinstance(pf, dict) and pf.get("name") == stem:
-                        _hr = pf.get("reads", 0)
-                        if isinstance(_hr, int) and not isinstance(_hr, bool) and _hr > 0:
-                            h_reads += _hr
-                            h_last = max(h_last, str(pf.get("last", "") or ""))
+                    if not isinstance(pf, dict):
+                        continue
+                    _fid_want = ""
+                    try:
+                        from control_plane import stable_fact_id as _sf_ut
+                        _fid_want = _sf_ut(_ctx_util.domain_id, stem)
+                    except Exception:
+                        _fid_want = ""
+                    same = bool(_fid_want) and str(pf.get("fact_id") or "") == _fid_want
+                    same = same or (
+                        str(pf.get("domain_id") or "") == str(_ctx_util.domain_id or "")
+                        and pf.get("name") == stem)
+                    if not same:
+                        continue
+                    _hr = pf.get("reads", 0)
+                    if isinstance(_hr, int) and not isinstance(_hr, bool) and _hr > 0:
+                        h_reads += _hr
+                        h_last = max(h_last, str(pf.get("last", "") or ""))
             p = store / f"{stem}.md"
             if not p.exists():
                 continue

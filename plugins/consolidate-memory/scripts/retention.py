@@ -364,6 +364,7 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
     Memory is never included.
     """
     import hashlib
+    import io
     import tarfile
     dest = Path(dest)
     suffixes = list(dest.suffixes)
@@ -373,9 +374,10 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
             dest.name + ".tar.gz")
     dest.parent.mkdir(parents=True, exist_ok=True)
     files: list = []
+    blobs: list = []
     if plugin_data.exists():
         for p in plugin_data.rglob("*"):
-            if not p.is_file():
+            if p.is_symlink() or not p.is_file():
                 continue
             if p.suffix not in (".jsonl", ".json", ".sqlite", ".md"):
                 continue
@@ -386,6 +388,7 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
                 "bytes": len(raw),
                 "sha256": hashlib.sha256(raw).hexdigest(),
             })
+            blobs.append(raw)
     manifest = {
         "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "schema_version": 3,
@@ -399,11 +402,14 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
     except OSError:
         pass
     with tarfile.open(dest, "w:gz") as tar:
-        for item in files:
-            src = plugin_data / item["path"]
-            if src.is_file():
-                tar.add(str(src), arcname="plugin-data/" + item["path"])
-        tar.add(str(man_path), arcname="manifest.json")
+        for item, blob in zip(files, blobs):
+            info = tarfile.TarInfo(name="plugin-data/" + item["path"])
+            info.size = len(blob)
+            tar.addfile(info, io.BytesIO(blob))
+        man_raw = man_path.read_bytes()
+        minfo = tarfile.TarInfo(name="manifest.json")
+        minfo.size = len(man_raw)
+        tar.addfile(minfo, io.BytesIO(man_raw))
     try:
         os.chmod(str(dest), 0o600)
     except OSError:

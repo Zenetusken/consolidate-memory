@@ -7,6 +7,7 @@ journal, aggregates, migration. Stdlib sqlite3 only.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sqlite3
@@ -108,6 +109,7 @@ JOURNAL_STEPS = (
     "journal_start",
     "prepare_temps",
     "verify_unchanged",
+    "after_dests",
     "publish",
     "commit_registry",
     "journal_complete",
@@ -754,7 +756,6 @@ def pending_ops(conn: sqlite3.Connection) -> list:
 
 
 def _file_hash(path: Path) -> Optional[str]:
-    import hashlib
     try:
         return hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError:
@@ -762,7 +763,7 @@ def _file_hash(path: Path) -> Optional[str]:
 
 
 def _write_fully(fd: int, data: bytes) -> None:
-    """Write every byte; fsync. One os.write() can be short."""
+    """Write every byte; fsync fail-closed. One os.write() can be short."""
     view = memoryview(data)
     sent = 0
     while sent < len(view):
@@ -770,10 +771,115 @@ def _write_fully(fd: int, data: bytes) -> None:
         if n <= 0:
             raise OSError("short write")
         sent += n
+    os.fsync(fd)
+
+
+def _b64(data: bytes) -> str:
+    import base64
+    return base64.b64encode(data).decode("ascii")
+
+
+def _unb64(s: str) -> Optional[bytes]:
+    import base64
+    if not s:
+        return None
     try:
-        os.fsync(fd)
-    except OSError:
-        pass
+        return base64.b64decode(s.encode("ascii"), validate=True)
+    except (ValueError, TypeError):
+        return None
+
+
+def _write_exclusive(path: Path, data: bytes) -> None:
+    """Create `path` 0600 exclusive, write+fsync. Caller unlinks a leftover tmp."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    try:
+        _write_fully(fd, data)
+    finally:
+        os.close(fd)
+
+
+def _snapshot_dest_preimages(publishes: list) -> list:
+    """Bytes of each dest before publish — complete-old restore (ADR 010)."""
+    out: list = []
+    for item in publishes:
+        dest = Path(item.get("dest") or "")
+        mode = str(item.get("mode") or "replace")
+        if not dest or str(dest) in (".", "/"):
+            continue
+        if dest.exists():
+            try:
+                raw = dest.read_bytes()
+            except OSError:
+                raw = b""
+            out.append({
+                "dest": str(dest),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+                "bytes_b64": _b64(raw), "absent": False, "mode": mode,
+            })
+        else:
+            out.append({
+                "dest": str(dest), "sha256": ABSENT, "bytes_b64": "",
+                "absent": True, "mode": mode,
+            })
+    return out
+
+
+def _restore_dest_preimages(preimages: list) -> None:
+    """Restore dests to the pre-publish snapshot (complete-old)."""
+    for item in preimages or []:
+        dest = Path(str(item.get("dest") or ""))
+        if not dest or str(dest) in (".", "/"):
+            continue
+        if item.get("absent") or str(item.get("sha256") or "") == ABSENT:
+            dest.unlink(missing_ok=True)
+            continue
+        raw = _unb64(str(item.get("bytes_b64") or ""))
+        if raw is None:
+            continue
+        tmp = dest.with_suffix(dest.suffix + f".restore{os.getpid()}")
+        tmp.unlink(missing_ok=True)
+        _write_exclusive(tmp, raw)
+        os.replace(str(tmp), str(dest))
+        try:
+            os.chmod(str(dest), 0o600)
+        except OSError:
+            pass
+
+
+def _failed_owned_dests(conn: sqlite3.Connection) -> set:
+    owned: set = set()
+    try:
+        rows = conn.execute(
+            "SELECT payload FROM journal WHERE status='failed'").fetchall()
+    except sqlite3.Error:
+        return owned
+    for row in rows:
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except (ValueError, TypeError):
+            continue
+        if not payload.get("dests_mutated"):
+            continue
+        for item in payload.get("publishes") or []:
+            d = str(item.get("dest") or "")
+            if d:
+                owned.add(d)
+    return owned
+
+
+def abandon_failed(conn: sqlite3.Connection, op_id: Optional[str] = None) -> int:
+    """Mark failed journal rows abandoned so a new overlapping transact may proceed."""
+    if op_id:
+        journal_step(conn, op_id, "abandoned", "abandoned")
+        return 1
+    rows = conn.execute(
+        "SELECT op_id FROM journal WHERE status='failed'").fetchall()
+    n = 0
+    for row in rows:
+        journal_step(conn, row["op_id"], "abandoned", "abandoned")
+        n += 1
+    return n
 
 
 def _crash_publish(step: str) -> None:
@@ -811,21 +917,39 @@ def _publish_destinations(publishes: list) -> Tuple[int, list]:
                 pass
             if mode == "create":
                 data = tmp.read_bytes()
-                try:
-                    fd = os.open(str(dest), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-                except FileExistsError:
-                    if want and _file_hash(dest) == want:
-                        tmp.unlink(missing_ok=True)
-                        n += 1
-                        continue
+
+                def _excl_create() -> str:
+                    try:
+                        fd = os.open(str(dest), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                    except FileExistsError:
+                        if want and _file_hash(dest) == want:
+                            return "match"
+                        try:
+                            empty = dest.stat().st_size == 0
+                        except OSError:
+                            empty = False
+                        if empty and tmp.exists():
+                            return "empty"
+                        return "foreign"
+                    try:
+                        _crash_publish("after_create")
+                        _write_fully(fd, data)
+                        _crash_publish("after_write")
+                    finally:
+                        os.close(fd)
+                    return "ok"
+
+                status = _excl_create()
+                if status == "empty":
+                    dest.unlink(missing_ok=True)
+                    status = _excl_create()
+                if status == "match":
+                    tmp.unlink(missing_ok=True)
+                    n += 1
+                    continue
+                if status != "ok":
                     bad.append(item)
                     continue
-                try:
-                    _crash_publish("after_create")
-                    _write_fully(fd, data)
-                    _crash_publish("after_write")
-                finally:
-                    os.close(fd)
                 _crash_publish("after_close")
                 _crash_publish("before_unlink")
                 tmp.unlink(missing_ok=True)
@@ -911,11 +1035,18 @@ def _journal_sources_ok(payload: dict) -> bool:
             checks = [(str(p), str(h)) for p, h in expected.items()]
     for path_s, want in checks:
         if want == ABSENT:
-            if Path(path_s).exists():
+            p = Path(path_s)
+            if p.exists():
+                try:
+                    empty = p.stat().st_size == 0
+                except OSError:
+                    empty = False
+                if empty:
+                    continue
                 return False
             continue
         if not want:
-            continue
+            return False
         actual = _file_hash(Path(path_s))
         if actual != want:
             return False
@@ -1008,7 +1139,9 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
         rconn = connect(db_path(ctx))
         own_rconn = True
     else:
-        rconn = conn
+        # Never use the journal DB as the registry (SCHEMA_SQL would mint
+        # dummy facts/holders in journal.sqlite and mark complete).
+        rconn = None
     try:
         for op in pending_ops(conn):
             payload = json.loads(op["payload"] or "{}")
@@ -1033,7 +1166,7 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                 )
             elif kind == "project-rebind":
                 ids = {i for i in (origin_pid, old_id, alias_id) if i}
-                if ctx is not None and ctx.project_id not in ids:
+                if ctx is not None and ctx.project_id not in ids and rconn is not None:
                     row = rconn.execute(
                         "SELECT project_id FROM project_aliases WHERE alias_id=?",
                         (origin_pid or alias_id,),
@@ -1047,12 +1180,15 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                     and (not origin_dom or origin_dom == ctx.domain_id)
                     and (not origin_pid or origin_pid == ctx.project_id)
                 )
+            if (origin_dom or origin_pid) and ctx is None:
+                continue
             if ctx is not None and (origin_dom or origin_pid) and not ctx_matches:
                 continue
             has_reg = bool(payload.get("registry_ops") or payload.get("holders")
-                           or payload.get("facts") or payload.get("tombstones")
-                           or deletes)
-            if publishes or has_reg:
+                           or payload.get("facts") or payload.get("tombstones"))
+            if has_reg and rconn is None:
+                continue
+            if publishes or has_reg or deletes:
                 try:
                     prevalidate_registry_ops(payload.get("registry_ops") or [])
                 except WriteRefused:
@@ -1066,25 +1202,29 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                         continue
                 del_out = _apply_deletes(deletes)
                 if del_out["preimage_mismatch"] or del_out["errors"]:
+                    _restore_dest_preimages(payload.get("dest_preimages") or [])
+                    journal_step(conn, op["op_id"], "failed", "failed")
                     continue
-                how = _begin_registry(rconn)
-                try:
-                    _apply_legacy_registry_rows(rconn, payload)
-                    apply_registry_ops(rconn, payload.get("registry_ops") or [])
-                    _assert_registry_postconditions(rconn, payload)
-                    _commit_registry(rconn, how)
-                except (WriteRefused, sqlite3.Error):
-                    _rollback_registry(rconn, how)
-                    continue
+                if rconn is not None:
+                    how = _begin_registry(rconn)
+                    try:
+                        _apply_legacy_registry_rows(rconn, payload)
+                        apply_registry_ops(rconn, payload.get("registry_ops") or [])
+                        _assert_registry_postconditions(rconn, payload)
+                        _commit_registry(rconn, how)
+                    except (WriteRefused, sqlite3.Error):
+                        _rollback_registry(rconn, how)
+                        continue
                 journal_step(conn, op["op_id"], "journal_complete", "complete")
                 recovered.append(op["op_id"])
                 continue
             if replay is not None:
                 replay(kind, payload, op["step"])
-                try:
-                    rconn.commit()
-                except sqlite3.Error:
-                    continue
+                if rconn is not None:
+                    try:
+                        rconn.commit()
+                    except sqlite3.Error:
+                        continue
                 journal_step(conn, op["op_id"], "journal_complete", "complete")
                 recovered.append(op["op_id"])
                 continue
@@ -1102,7 +1242,7 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
         conn.commit()
         return recovered
     finally:
-        if own_rconn:
+        if own_rconn and rconn is not None:
             try:
                 rconn.close()
             except sqlite3.Error:
@@ -1187,7 +1327,8 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
                 text = content if str(content).endswith("\n") else str(content) + "\n"
                 data = text.encode("utf-8")
             tmp = dest.with_suffix(dest.suffix + f".tmp{os.getpid()}")
-            tmp.write_bytes(data)
+            tmp.unlink(missing_ok=True)
+            _write_exclusive(tmp, data)
             publishes.append({
                 "tmp": str(tmp), "dest": str(dest),
                 "sha256": hashlib.sha256(data).hexdigest(),
@@ -1223,6 +1364,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         payload["registry_ops"] = list(result.get("registry_ops") or [])
         payload["sources"] = [{"path": p, "sha256": h} for p, h in snaps.items()]
         payload["expected_revisions"] = snaps
+        payload["dest_preimages"] = _snapshot_dest_preimages(publishes)
         try:
             prevalidate_registry_ops(payload.get("registry_ops") or [])
             apply_registry_ops(rconn, payload.get("registry_ops") or [])
@@ -1232,48 +1374,69 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
                 Path(item["tmp"]).unlink(missing_ok=True)
             rconn.execute("ROLLBACK")
             raise
+        dest_set = {str(item["dest"]) for item in publishes}
+        overlap = dest_set & _failed_owned_dests(conn)
+        if overlap:
+            for item in publishes:
+                Path(item["tmp"]).unlink(missing_ok=True)
+            rconn.execute("ROLLBACK")
+            journal_step(conn, op_id, "abandoned", "abandoned")
+            raise WriteRefused(
+                "failed journal op owns dests; abandon_failed first: "
+                + ", ".join(sorted(overlap)[:8]))
         conn.execute("UPDATE journal SET payload=?, step=? WHERE op_id=?",
                      (json.dumps(payload, sort_keys=True), "prepare_temps", op_id))
         conn.commit()
         _maybe_crash("prepare_temps")
+
+        def _fail_after_persist(msg: str, *, restore: bool) -> None:
+            if restore:
+                payload["dests_mutated"] = True
+                conn.execute("UPDATE journal SET payload=? WHERE op_id=?",
+                             (json.dumps(payload, sort_keys=True), op_id))
+                conn.commit()
+                _restore_dest_preimages(payload.get("dest_preimages") or [])
+            journal_step(conn, op_id, "failed", "failed")
+            rconn.execute("ROLLBACK")
+            raise WriteRefused(msg)
+
         for p, h in snaps.items():
             if h == ABSENT:
                 if Path(p).exists():
-                    for item in publishes:
-                        Path(item["tmp"]).unlink(missing_ok=True)
-                    rconn.execute("ROLLBACK")
-                    raise WriteRefused("expected absent: " + p)
+                    _fail_after_persist("expected absent: " + p, restore=False)
                 continue
             if _file_hash(Path(p)) != h:
-                for item in publishes:
-                    Path(item["tmp"]).unlink(missing_ok=True)
-                rconn.execute("ROLLBACK")
-                raise WriteRefused("source changed during transaction: " + p)
+                _fail_after_persist("source changed during transaction: " + p,
+                                    restore=False)
         journal_step(conn, op_id, "verify_unchanged", "pending")
         _maybe_crash("verify_unchanged")
         _n_ok, bad = _publish_destinations(publishes)
         del _n_ok
+        journal_step(conn, op_id, "after_dests", "pending")
+        _maybe_crash("after_dests")
         if bad:
-            rconn.execute("ROLLBACK")
-            raise WriteRefused("destination hash mismatch; deletes skipped: "
-                               + ", ".join(str(b.get("dest")) for b in bad))
+            _fail_after_persist(
+                "destination hash mismatch; deletes skipped: "
+                + ", ".join(str(b.get("dest")) for b in bad), restore=True)
         del_out = _apply_deletes(payload["deletes"])
         if del_out["preimage_mismatch"] or del_out["errors"]:
-            rconn.execute("ROLLBACK")
-            raise WriteRefused(
+            _fail_after_persist(
                 "delete preimage mismatch; registry not committed: "
-                + ", ".join(del_out["preimage_mismatch"] + del_out["errors"]))
+                + ", ".join(del_out["preimage_mismatch"] + del_out["errors"]),
+                restore=True)
         for item in publishes:
             dest = Path(item["dest"])
             want = str(item.get("sha256") or "")
             if want and _file_hash(dest) != want:
-                rconn.execute("ROLLBACK")
-                raise WriteRefused("file postcondition dest hash mismatch: " + str(dest))
+                _fail_after_persist(
+                    "file postcondition dest hash mismatch: " + str(dest),
+                    restore=True)
         for d in payload["deletes"]:
             dp = Path(str(d.get("path") if isinstance(d, dict) else d))
             if dp.exists():
-                rconn.execute("ROLLBACK")
-                raise WriteRefused("file postcondition delete still present: " + str(dp))
+                _fail_after_persist(
+                    "file postcondition delete still present: " + str(dp),
+                    restore=True)
         journal_step(conn, op_id, "publish", "pending")
         _maybe_crash("publish")
         rconn.execute("COMMIT")

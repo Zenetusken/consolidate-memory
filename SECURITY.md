@@ -86,7 +86,7 @@ report; they are the stories `cm doctor` / mutating commands must fail closed on
 - **Migrate rollback of an edited file.** Hash-aware: edited-after-apply files
   are conflicts, never deleted.
 
-## Known limitations (v0.3.0)
+## Known limitations (v0.3.3)
 
 - Unenrolled projects are **local-only** (ADR 008). They cannot create or pull
   cross-project canonicals. Enroll into a named domain to share.

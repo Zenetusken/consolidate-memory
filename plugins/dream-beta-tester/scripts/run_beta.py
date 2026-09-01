@@ -449,6 +449,26 @@ def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult
         _step("persist", r3[0], r3[2].strip().splitlines()[-1] if r3[2].strip() else "")
 
         # ADR 008: --promote requires enrollment into a named domain.
+        # ADR 012: enroll keep-path requires a dest-domain canonical on disk —
+        # mirror `domain:` is not an admission grant. The fixture trigger-node
+        # mirror (fictional canonical) would otherwise be revoked as unexpected.
+        _mir_keep = tgt_store / "fixture-mirror-01.md"
+        if _mir_keep.is_file():
+            _ddir_keep = (home / ".claude" / "consolidate-memory" / "domains"
+                          / "personal" / "facts")
+            _ddir_keep.mkdir(parents=True, exist_ok=True)
+            _mt_keep = _mir_keep.read_text(encoding="utf-8")
+            _canon_keep: list = []
+            for _ln_k in _mt_keep.splitlines(True):
+                _sk = _ln_k.strip()
+                if _sk.startswith(("global_ref:", "global_ref_since:", "global_ref_body:",
+                                   "canonical_fact_id:", "canonical_domain:",
+                                   "mirrored_at:", "base_revision:",
+                                   "canonical_revision:")):
+                    continue
+                _canon_keep.append(_ln_k)
+            (_ddir_keep / "fixture-mirror-01.md").write_text(
+                "".join(_canon_keep), encoding="utf-8")
         r_en = _child("cm_ops.py", "project", "enroll", repo_arg, "--domain", "personal",
                       "--apply", "--confirm", "enroll-personal")
         _step("enroll", r_en[0], (r_en[2] or r_en[1] or "").strip()[-200:])

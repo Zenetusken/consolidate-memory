@@ -42,7 +42,9 @@ scripted native or canonical path:
    (`CLAUDE_CODE_SETTINGS`) → **managed policy last** (`managed-settings.json`,
    then `/etc/claude-code/managed-settings.json`). Managed keys cannot be
    overwritten by user/project/local/`--settings`. The value must be absolute
-   or `~/`.
+   or `~/`. Project/local values must be contained under `config_root` or the
+   project tree; an escaped path is not native (`write_allowed` false). User
+   and managed settings may still name an explicit absolute dir.
 6. `autoMemoryEnabled` / `CLAUDE_CODE_DISABLE_AUTO_MEMORY` disable writes and
    mirror injection; absence is not drift.
 7. Hook `session_id` / `transcript_path` / `cwd` are session observations,
