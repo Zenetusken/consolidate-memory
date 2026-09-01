@@ -5,6 +5,26 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.3.2] — 2026-09-01
+
+### Fixed — HTML Verification & health row
+
+Dogfood of the 0.3.1 archive: a pass with 8 dangling wikilinks rendered as two
+rows (`dangling` / `wikilinks`) with only three names listed.
+
+- Health-row labels are `max-content` + nowrap so a long name list cannot
+  squeeze `dangling wikilinks` onto a second line. Names wrap in the result
+  column.
+- `clipNames` lists up to 8 stems and always emits `+N more` when truncated
+  (the silent `slice(0,3)` is gone).
+- Usage reads **organic** and names dream-procedure exclusions, so `0 reads`
+  next to `8 confirmed` is not a contradiction (verification is grep/git;
+  usage is transcript body-reads).
+- Index mismatch with pointers-ok reads **not in the index** (not
+  `index↔file`, which looked like broken pointers).
+
+Existing 0.3.1 installs keep working. Backward-compatible ⇒ **patch**.
+
 ## [0.3.1] — 2026-09-01
 
 Patch on the 0.3.0 secure-default. The trust boundary does not change

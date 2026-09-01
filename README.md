@@ -229,9 +229,13 @@ after the crash; deletes refuse an empty or unreadable preimage; migrate/repair
 stay in the current domain. The HTML archive and ASCII dashboard show domain,
 enrollment, registry health, and open conflicts.
 
+**v0.3.2** is a presentation patch on that dashboard: Verification & health
+labels no longer wrap under a long dangling-name list, names are not silently
+truncated, and usage is labeled organic (dream-procedure reads excluded).
+
 ## Install
 
-**v0.3.1** (domain isolation + StoreContext + `cm project enroll`; dashboard
+**v0.3.2** (domain isolation + StoreContext + `cm project enroll`; dashboard
 identity). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
@@ -267,7 +271,7 @@ memory this plugin does not own. Domain canonicals live under
 read-only migration source. Scoped purge commands are the right tool; hand-deleting
 the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
-### Known limitations (v0.3.1)
+### Known limitations (v0.3.2)
 
 - **Unenrolled projects are local-only.** They cannot create or pull cross-project
   canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain
