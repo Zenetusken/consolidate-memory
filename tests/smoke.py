@@ -63,13 +63,19 @@ def _enroll_personal(project_dir: Path) -> None:
 
 
 # --- slug rule ---
-check("slug: / -> -", ms.slug_for(Path("/home/you/project/foo")) == "-home-you-project-foo")
+# Synthetic absolute prefix: `/home` is a symlink/autofs/firmlink on macOS, so
+# Path.resolve() rewrites `/home/you/...` (GH macos-latest) and a frozen
+# `-home-you-…` expectation fails. CC still slugs the *resolved* path; a
+# non-existent top-level dir is stable on Linux and Darwin. The on-disk CC
+# example remains `/home/you/project/Doc_Flo` → `-home-you-project-Doc-Flo`.
+_SLUG_ROOT = "/cm-slug-fixture"
+check("slug: / -> -", ms.slug_for(Path(_SLUG_ROOT + "/project/foo")) == "-cm-slug-fixture-project-foo")
 # v0.1.17: CC normalizes BOTH '/' and '_' to '-' (verified on disk: cwd .../Doc_Flo → slug ...-Doc-Flo).
 # The pre-fix '/'-only slug sent cross-project facts to a slug an underscore-named project never recalls.
 check("v0.1.17: slug maps '_'→'-' too (underscore project reaches its real CC store), case PRESERVED",
-      ms.slug_for(Path("/home/you/project/Doc_Flo")) == "-home-you-project-Doc-Flo")
+      ms.slug_for(Path(_SLUG_ROOT + "/project/Doc_Flo")) == "-cm-slug-fixture-project-Doc-Flo")
 check("v0.1.17: slug regression-free for a no-underscore path (≡ old replace('/','-'))",
-      ms.slug_for(Path("/home/you/project/foo-bar")) == "-home-you-project-foo-bar")
+      ms.slug_for(Path(_SLUG_ROOT + "/project/foo-bar")) == "-cm-slug-fixture-project-foo-bar")
 # v0.1.20: the cycle-record temp path is PER-SLUG (fixes the shared-/tmp/cycle.json concurrent-dream collision).
 check("v0.1.20: cycle_seed_path is per-slug + deterministic (no shared-path collision across projects)",
       ms.cycle_seed_path("-a-proj1") != ms.cycle_seed_path("-a-proj2")
@@ -359,9 +365,9 @@ check("v0.1.39/M4: an undetectable stack is NOT in the vocab ([release]/[ci-cd] 
 # v0.1.40 (M3) — slug_for generalizes to ALL non-alphanumerics (CC's rule), fixing the '.'-segment split-brain;
 # regression-IDENTICAL for the fleet; near_duplicate_slugs uses the same rule so a '.'-vs-'-' twin is detected.
 check("v0.1.40/M3: slug_for maps '.' (a dotfile-dir path) → '-', matching CC (was split-brain)",
-      ms.slug_for(Path("/home/u/.claude/app")) == "-home-u--claude-app")
+      ms.slug_for(Path(_SLUG_ROOT + "/u/.claude/app")) == "-cm-slug-fixture-u--claude-app")
 check("v0.1.40/M3: slug_for is regression-IDENTICAL for the fleet (paths with only / _ -)",
-      ms.slug_for(Path("/home/you/project/Doc_Flo")) == "-home-you-project-Doc-Flo")
+      ms.slug_for(Path(_SLUG_ROOT + "/project/Doc_Flo")) == "-cm-slug-fixture-project-Doc-Flo")
 check("v0.1.40/M3: near_duplicate_slugs catches a '.'-vs-'-' twin (the split-brain detector, was '_'/case-only)",
       ms.near_duplicate_slugs("-home-u-.claude-app", ["-home-u--claude-app", "-unrelated"]) == ["-home-u--claude-app"])
 _eq_line = next((ln for ln in rd.render({"project": "p", "session": "s",

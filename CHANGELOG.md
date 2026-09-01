@@ -97,6 +97,8 @@ version changes on `main`.
   later enrollment). Forget/GC journal `holder_delete`. `resolve` / `repair-mirror`
   / migrate `--apply` require enrollment. `--workflows` / `--staleness` / `--network`
   without `--all-domains` stay current-domain.
+- macOS smoke slug pins no longer assume `/home/...` survives `Path.resolve()`
+  (symlink/autofs on GH `macos-latest`).
 
 Docs (README, SECURITY, SKILL, harness-map, CLAUDE, AGENTS, preflight, `cm` help)
 now describe **0.2.2 behavior**: unenrolled is local-only, Phase-1 `--pull` is the
