@@ -183,6 +183,42 @@ snoozed (just ask Claude to "snooze the memory beacon for this project" — it s
 nothing rather than guessing. Note for existing installs: the hook arrives with the
 normal plugin auto-update — if the line appears after an update, that's this feature.
 
+## Upgrading from v0.1.x → v0.3.0
+
+**v0.3.0 moved the trust boundary.** Pre-0.3.0, any project could read or write the
+shared global store (`~/.claude/memory/`). v0.3.0 replaces that with **domain-scoped
+canonicals + enrollment** (ADR 008) — the big change in one sentence: **unenrolled is
+local-only.** A project that has not been enrolled cannot create or pull cross-project
+canonicals; `cm doctor` prints `UNENROLLED LOCAL-ONLY` when this applies.
+
+**What the architecture now looks like:**
+
+| Was (≤ v0.1.91) | Is (v0.3.0) |
+|---|---|
+| One global store at `~/.claude/memory/`, open to every project | Domain-scoped canonicals at `<config>/consolidate-memory/domains/<domain>/facts` |
+| Any dream could write or pull anything | Enrollment (`cm project enroll --domain NAME`) is an **operator grant**, per project — `user-global` is *domain*-global, not installation-global |
+| Mirrors replicated everywhere by default | First-enroll **revokes managed mirrors the destination does not admit** |
+| Files + a hand-written index were the record | A **SQLite control plane** (`~/.claude/plugins/data/consolidate-memory/control.sqlite`) journals every op; `cm canonical upsert` is the **sole** canonical writer |
+| `~/.claude/memory/` was live | It is now a **read-only migration source** |
+
+**Migrate an existing fleet in this order (order matters):**
+
+1. **Update the plugin** (`/plugin update consolidate-memory`). Everything old keeps
+   working; unenrolled projects simply stop sharing until enrolled.
+2. **Populate the domain FIRST.** `cm migrate --plan` inventories the legacy facts and
+   stages an assignment plan — review it, then `cm migrate --apply`, then `--finalize`.
+   This carries the legacy canonicals into the domain.
+3. **Then enroll each project** that should share: `cm project enroll --domain personal
+   --apply --confirm enroll-personal` (marketplace users: `/cm-domain`).
+4. **Enroll after migrating, not before.** A first-enroll revokes unadmitted mirrors —
+   enrolling into a still-empty domain strips every mirror with nothing to replace
+   them. Populate first, then enroll.
+5. Projects you leave unenrolled stay fully functional **locally** (dreams, memory,
+   archive) — they just don't share, and they drop out of the cross-project fleet view.
+
+`cm doctor` in any project prints the resolved StoreContext (domain, enrollment,
+paths, registry health) — the one command that answers "what is my memory setup?"
+
 ## Install
 
 **v0.3.0** (domain isolation + StoreContext + `cm project enroll`). This ships as a
