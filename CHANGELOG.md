@@ -5,6 +5,52 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.3.7] — 2026-09-01
+
+Patch on 0.3.6. First dogfood of v0.3.6: counter-justify never quieted the
+cadence fact (model stamped the displayed `Nw`, not store `windows_full`),
+and `cm local` reused the global 88-char `[]()` sanitizer as the always-loaded
+hook. Public **1.0 stays HOLD**.
+
+### Fixed — demotion counter-justify (O1)
+
+- **`--justify-demotion STEM` script-writes the stamp.** Phase 5 no longer
+  hand-merges a model-chosen integer. The writer records current
+  `windows_full` (not the fact's zero-read count). Re-justifying a still-
+  suppressed stem is a no-op so a daily re-stamp cannot reset the clock.
+- **Dual-read `at`.** A zrw-trap stamp (`windows` + 5 ≤ `windows_full`) still
+  suppresses until 5 probative `window_starts` land after `at`. The live
+  11-vs-16 cadence stamp quiets without migrating the marker. Malformed
+  entries still fail open toward surfacing.
+- **Phase 0 `justified: stem (re-fires at Nw · K to go)`.** Eligible stems
+  and veto tallies are separate lines, so a justified fact is not readable
+  as "this eligible row is already justified."
+
+### Fixed — local pointer is a recall key (I1, I2)
+
+- **`cm local` no longer aliases `_pointer_line`.** Globals keep the
+  injection sanitizer (strip `[]()`, 88-char). Local pointers keep `()`,
+  strip `[]`, word-boundary truncate so the **whole line** is ≤
+  `HOOK_TOKEN_WARN`, and pass frontmatter `scope` so `[project-local]`
+  appears. Rebuild uses `_pointer_line` for mirrors and `_pointer` for
+  locals. The fact body's `description:` stays the full recall key.
+
+### Fixed — KEEP vs justify (I3)
+
+- Standing ops policy without KEEP tokens is the counter-justify path.
+  `_KEEP_RE` is unchanged (sufficient-not-necessary; widening it over-vetoes).
+
+### Fixed — UX noise
+
+- **GC copy:** empty canonicals and no leftover mirrors → "nothing to
+  reclaim", not Probe G's mass-wipe wording. Leftover mirrors with no live
+  canonicals still refuse.
+- **Stale-all:** when every fact is stale and the last dream is <24h, Phase 0
+  prints count + age instead of dumping every stem. `_stale_since` is
+  unchanged (Phase 3 still gets the list).
+- **Bare `[[link]]`:** placeholder targets (`link`/`name`/`wikilink`/…) hint
+  that format examples belong in backticks.
+
 ## [0.3.6] — 2026-09-01
 
 Patch on 0.3.5. First dogfood of `cm local upsert` on the v0.3.5 dream: hook-lint

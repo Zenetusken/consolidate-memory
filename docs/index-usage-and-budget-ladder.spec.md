@@ -539,10 +539,14 @@ existing conventions — the record block does NOT re-tally them; see C6):**
   pointer to the archive (a `reconciled` row). **No deletion under this policy** (gate finding: the
   draft's `deleted` row contradicted pin 4, which it itself quoted); removing the stub later remains
   the EXISTING user-confirmed prune path, untouched.
-- **counter-justify** — the fact stays as-is with a recorded reason (a `skipped` row), AND the Phase-5
-  marker write adds `demotion_justify: {"<stem>": {"windows": <windows_full>, "at": "<iso>"}}` to
-  `.consolidation-state.json` (the `standing_justify` write precedent) so the same candidate doesn't
-  re-nag every dream (re-fires at +`_DEMOTION_JUSTIFY_REFIRE` windows).
+- **counter-justify** — the fact stays as-is with a recorded reason (a `skipped` row), AND
+  `memory_status.py --justify-demotion STEM` MERGES
+  `demotion_justify: {"<stem>": {"windows": <windows_full>, "at": "<iso>"}}` into
+  `.consolidation-state.json` (script-written — the model must not pick the integer; the
+  displayed `Nw` is per-fact zero-read count). Re-justifying a still-suppressed stem is a
+  no-op. A zrw-trap stamp (`windows` + REFIRE ≤ `windows_full`) still suppresses while
+  fewer than REFIRE `window_starts` land after `at`. Re-fires at +`_DEMOTION_JUSTIFY_REFIRE`
+  windows.
 
 ### C3. The miss-detector — `--recalls` tier classification (extract_signals.py)
 
@@ -641,7 +645,8 @@ fleet-tax view is a report.
   the top-level dict-check tuple; `demotion.surfaced`/`struck` list-checks + the surfaced cap backstop
   (`_DEMOTION_BOTTOM_K` — producer and validator share this module, so no cross-module mirror is
   needed, unlike `_DISTILL_CAPS`/`_USAGE_FACT_CAP`).
-- State file: `demotion_justify` (model-written in the Phase-5 marker write; read by a
+- State file: `demotion_justify` (script-written by `--justify-demotion` as current
+  `windows_full`; dual-read `at` covers a zrw-trap stamp; read by a
   `_standing_baseline`-style guarded reader — malformed does not suppress, the same
   err-toward-visibility direction).
 - SKILL.md schema block updated in the same change (the smoke pin forces it).
@@ -702,8 +707,10 @@ fragile-live-pin shape in the draft's own gates)
   of three probative windows counts only the one it predates; ≥3 ⇒ eligible iff indexed ∧ non-mirror ∧
   0 merged reads ∧ no description KEEP-marker ∧ not missed ∧ not justify-suppressed; each veto
   exercised independently; a read recorded ONLY in a cap-truncated window still vetoes (the C1 merge
-  fix, pinned); the justify suppression re-fires at exactly +`_DEMOTION_JUSTIFY_REFIRE`; a malformed
-  justify entry does NOT suppress.
+  fix, pinned); the justify suppression re-fires at exactly +`_DEMOTION_JUSTIFY_REFIRE`
+  (integer `jw+REFIRE > wf`, or `at` + REFIRE window_starts when the integer leg
+  would not suppress); a malformed justify entry does NOT suppress;
+  `--justify-demotion` stamps `windows_full` and no-ops a still-quiet stem.
 - **G-C3 (rank + cap + strike):** eligible sorted by `hook_tokens` desc; ≤ `_DEMOTION_BOTTOM_K`
   surfaced; the validator backstop warns above the cap; `inject_usage` on a seed whose
   `demotion.surfaced` intersects the injected block's read stems moves exactly those to `struck`.

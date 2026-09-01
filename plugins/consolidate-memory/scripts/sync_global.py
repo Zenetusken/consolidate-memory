@@ -2206,7 +2206,16 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             live_canon = _has_canon_files(global_store())
         # Unmounted/empty source + leftover mirrors = mass-wipe risk (Probe G).
         # Tombstones still sit as .md files, so forget-then-GC still proceeds.
+        # Empty canonicals AND no leftover mirrors = nothing to reclaim (enrolled
+        # empty-domain steady state) — fail-closed is right, mass-wipe wording is not.
         if not live_canon:
+            if not has_mirrors:
+                if getattr(_ctx_gc, "cross_project_allowed", False):
+                    print(f"gc: domain {_ctx_gc.domain_id} has no canonicals and no leftover "
+                          "mirrors — nothing to reclaim")
+                else:
+                    print("gc: no live canonicals and no leftover mirrors — nothing to reclaim")
+                return 0
             why = ("no admissible canonicals" if getattr(_ctx_gc, "cross_project_allowed", False)
                    else ("absent" if not global_store().exists()
                          else "present but empty (no canonical facts)"))

@@ -6,11 +6,15 @@ admission, and journaled fact+pointer publication as the canonical writer.
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Optional
 
 from store_context import StoreContext, WriteRefused, assert_writable
+
+# Placeholder [[wikilink]] targets that almost always mean "I wrote a format example".
+_PLACEHOLDER_LINK_TARGETS = frozenset({"link", "name", "wikilink", "stem", "target"})
 
 
 def _looks_secret_fn():
@@ -18,15 +22,47 @@ def _looks_secret_fn():
     return _looks_secret
 
 
-def _pointer(stem: str, description: str) -> str:
-    """Always-loaded index line. Same constructor as `--pull` / canonical origin mirrors.
+def _fit_hook(prefix: str, desc: str, suffix: str, budget: int) -> str:
+    """Word-boundary truncate so est_tokens(prefix + hook + suffix) ≤ budget."""
+    from memory_status import est_tokens
+    if est_tokens(prefix + desc + suffix) <= budget:
+        return desc
+    lo, hi = 0, len(desc)
+    best_n = 0
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        if est_tokens(prefix + desc[:mid] + "…" + suffix) <= budget:
+            best_n = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    if best_n <= 0:
+        return "…"
+    chunk = desc[:best_n].rstrip()
+    sp = max(chunk.rfind(" "), chunk.rfind("\t"))
+    if sp >= 1:
+        chunk = chunk[:sp].rstrip()
+    if not chunk:
+        chunk = desc[:best_n].rstrip()
+    return chunk + "…"
 
-    A verbatim description copy landed a ~190-tok fat hook on the first v0.3.5
-    `cm local upsert` (dogfood D1). `_pointer_line` sanitizes + 88-char truncates;
-    `_fat_hook_warning` still fires on an extreme stem.
+
+def _pointer(stem: str, description: str, scope: str = "") -> str:
+    """Always-loaded index line for a project-authored local fact.
+
+    Not `_pointer_line`: that constructor is the global injection sanitizer
+    (strips `[]()` and 88-char truncates, mid-token). Locals keep `()` so a
+    recall cue like `(OPEN: 1.0 HOLD)` survives, strip `[]` (spoof `](url)`),
+    word-boundary truncate so the WHOLE line is ≤ HOOK_TOKEN_WARN, and attach
+    the frontmatter scope tag when present.
     """
-    from sync_global import _pointer_line
-    return _pointer_line(stem, {"description": description})
+    from memory_status import HOOK_TOKEN_WARN
+    desc = (description or "").strip().strip('"')
+    desc = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]]", " ", desc).split())
+    suffix = f" [{scope}]" if scope else ""
+    prefix = f"- [{stem}]({stem}.md) — "
+    hook = _fit_hook(prefix, desc, suffix, HOOK_TOKEN_WARN)
+    return prefix + hook + suffix
 
 
 def _warn_fat_hook(ptr: str, stem: str) -> None:
@@ -61,7 +97,10 @@ def _local_link_err(ctx: StoreContext, stem: str, text: str) -> Optional[str]:
         if target == stem:
             continue
         if not (native / f"{target}.md").is_file():
-            return f"dangling link [[{target}]]"
+            err = f"dangling link [[{target}]]"
+            if target.lower() in _PLACEHOLDER_LINK_TARGETS:
+                err += " — format examples belong in backticks (`[[link]]`)"
+            return err
     return None
 
 
@@ -98,7 +137,7 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
         return {"ok": False, "error": "local fact already exists"}
     idxp = ctx.native_memory_dir / "MEMORY.md"
     fm = _frontmatter(text)
-    ptr = _pointer(stem, str(fm.get("description") or stem))
+    ptr = _pointer(stem, str(fm.get("description") or stem), str(fm.get("scope") or "").strip().strip('"'))
     _warn_fat_hook(ptr, stem)
     expected = {}
     from control_plane import _file_hash
@@ -211,7 +250,7 @@ def local_archive(ctx: StoreContext, stem: str) -> dict:
     arch = ctx.native_memory_dir / "SHIPPED.md"
     text = dest.read_text(encoding="utf-8", errors="replace")
     fm = _frontmatter(text)
-    ptr = _pointer(stem, str(fm.get("description") or stem))
+    ptr = _pointer(stem, str(fm.get("description") or stem), str(fm.get("scope") or "").strip().strip('"'))
     _warn_fat_hook(ptr, stem)
     expected = {}
     for p in (idxp, arch):
@@ -276,8 +315,9 @@ def local_rebuild_index(ctx: StoreContext) -> dict:
                 except OSError:
                     continue
                 if _is_mirror(text):
+                    from sync_global import _pointer_line
                     fm = _frontmatter(text)
-                    ptr = _pointer(f.stem, str(fm.get("description") or f.stem))
+                    ptr = _pointer_line(f.stem, fm)
                     _warn_fat_hook(ptr, f.stem)
                     lines.append(ptr)
                     continue
@@ -285,7 +325,8 @@ def local_rebuild_index(ctx: StoreContext) -> dict:
                 if err:
                     continue
                 fm = _frontmatter(text)
-                ptr = _pointer(f.stem, str(fm.get("description") or f.stem))
+                ptr = _pointer(f.stem, str(fm.get("description") or f.stem),
+                               str(fm.get("scope") or "").strip().strip('"'))
                 _warn_fat_hook(ptr, f.stem)
                 lines.append(ptr)
         future = "\n".join(lines) + "\n"

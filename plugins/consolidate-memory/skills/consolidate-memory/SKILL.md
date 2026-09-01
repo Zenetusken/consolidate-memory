@@ -67,11 +67,13 @@ one that fits how often it's needed:
    *body* is NOT auto-injected by relevance — Claude Code has no ambient "surface it
    when it matches" mechanism (the official docs: topic-file bodies "are not loaded at
    startup; Claude reads them on demand"). What loads every session is the fact's
-   one-line **index entry**, built from its `description:`. So the `description:` is a
-   **recall key, not a summary** — write it as the cue that, sitting in the
-   always-loaded index, makes a future session decide to *read* this fact. A weak
-   description hook leaves a true, useful fact invisible: nothing tells the agent to
-   open it. This lever has no equivalent in a single-store, per-project consolidator like Auto Dream; use it well.
+   one-line **index entry**, *derived from* its `description:` (local writer: parens
+   kept, `[]` stripped, word-boundary, whole line ≤ `HOOK_TOKEN_WARN`, plus a
+   `[project-local]` tag when frontmatter has `scope`). So the `description:` is the
+   **full recall key in the fact body**, and the index line is a distilled cue — write
+   the description as the cue that should make a future session *read* this fact. A
+   weak description leaves a true, useful fact invisible. This lever has no equivalent
+   in a single-store, per-project consolidator like Auto Dream; use it well.
 
 3. **On-demand (you read them when relevant):** repo `AGENTS.md` / `MEMORY.md` and
    the fact-file *bodies*. These are not auto-injected, so they don't tax every
@@ -698,17 +700,17 @@ placing each fact in its tier and optimizing it for how that tier loads:
       compress/prune too, by design — confirm, don't dismiss). Don't introduce drift-prone derived stats
       (test/module counts); update an existing such line only if you verified it here.
 - **Recall tier** (auto-memory fact files): one fact per file with the frontmatter
-  schema, and **invest in the `description:` as a recall key** — it becomes the
-  always-loaded index hook, so phrase it as the task-context that should cue a future
-  session to read this fact, not a terse summary, or the agent won't know to open it.
-  Link related facts with `[[name]]`; pick the right `type`. Publish the fact **and**
-  its index pointer through `cm local upsert` (below) — **keep the pointer's hook a
-  distilled cue ≤ ~60 est tok (`HOOK_TOKEN_WARN`, v0.1.66)**: the `description:` stays
-  the full recall key, but the index LINE written from it must not restate body content
-  (a fat hook taxes every session). `cm local` reuses `_pointer_line` (sanitize +
-  88-char truncate) and `_fat_hook_warning` — the same constructor as `--pull` /
-  canonical origin mirrors; a long description cannot land verbatim as a 190-tok
-  always-loaded hook (v0.3.5 dogfood). **Stamp
+  schema, and **invest in the `description:` as a recall key** — the always-loaded
+  index line is *derived from* it, so phrase it as the task-context that should cue a
+  future session to read this fact, not a terse summary, or the agent won't know to
+  open it. Link related facts with `[[name]]`; pick the right `type`. Publish the fact
+  **and** its index pointer through `cm local upsert` (below) — **keep the pointer's
+  hook a distilled cue ≤ ~60 est tok (`HOOK_TOKEN_WARN`, v0.1.66)**: the `description:`
+  stays the full recall key in the body; the index LINE is a distilled cue (parens
+  kept, `[]` stripped, word-boundary, whole line ≤ `HOOK_TOKEN_WARN`, scope tag from
+  frontmatter). That is **not** `_pointer_line` (the global injection sanitizer: strip
+  `[]()`, 88-char, mid-token) — v0.3.5 dogfood aliased them and chopped recall cues.
+  A long description cannot land verbatim as a 190-tok always-loaded hook. **Stamp
   `originSessionId` (v0.1.43) for a SESSION-DERIVED fact** — from the `sessionId`
   that `extract_signals` (Phase 2) now attaches to the signal this fact came from (the session that MOTIVATED it,
   which on a multi-session window may be a PRIOR session, NOT the active dream). OMIT it for a git/commit-derived
@@ -742,11 +744,13 @@ placing each fact in its tier and optimizing it for how that tier loads:
   (the promotion cascade — Phase 2), so the scope decision is auditable.
 - **Project-local facts** — one writer: `cm local upsert` / `update` / `archive` /
   `forget` / `rebuild-index`. Same codec, secret check, exact native 200-line/25KB
-  admission, and journaled fact+pointer as the canonical writer. Pointers use
-  `_pointer_line` (not a verbatim `description:` copy). Link checks use
+  admission, and journaled fact+pointer as the canonical writer. Pointers use the
+  local recall-key constructor (not a verbatim `description:` copy, and not the
+  global `_pointer_line` 88-char `[]()` sanitizer). Link checks use
   `extract_wikilinks` — a backticked `[[link]]` format-example is not dangling
-  (same strip as `dangling_links`). Do **not** hand-edit a fact file and its
-  `MEMORY.md` pointer as two untracked steps.
+  (same strip as `dangling_links`); a bare placeholder `[[link]]` is refused with
+  a backticks hint. Do **not** hand-edit a fact file and its `MEMORY.md` pointer
+  as two untracked steps.
   ```bash
   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py local upsert STEM --file PATH --project .
   ```
@@ -924,8 +928,11 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      rewrite the merged-out fact as a one-line `[[neighbor]]` redirect stub and demote its pointer
      (a `reconciled` row). NO deletion under this policy — removing the stub later is the normal
      confirmed-prune path.
-   - **counter-justify**: the fact stays, with a `skipped` row recording why, AND step 5's marker
-     write gains `demotion_justify` (below) so it doesn't re-nag every dream.
+   - **counter-justify**: the fact stays, with a `skipped` row recording why, AND run
+     `--justify-demotion` (below) so it doesn't re-nag every dream. Do **not** copy the
+     `Nw` next to the stem — that is per-fact zero-read count, not store `windows_full`.
+     Phase 0 `justified: stem (re-fires at Nw · K to go)` means a re-stamp is unnecessary
+     (a still-quiet stem is a no-op).
    Fill `demotion.verdict` — ONE sentence, always (a dormant/none verdict is still a verdict; "ran
    and proposed nothing" must be distinguishable from "never ran").
    Finally set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
@@ -945,11 +952,19 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    was JUSTIFIED this pass** (lever `justify` or prune-then-justify, step 0), ALSO write
    `standing_justify: {"facts": <current fact-count>, "index_tokens": <current>, "at": "<iso>"}`
    to the marker — the next pass SUPPRESSES the gate until the store grows by Δ (D6/D7, v0.1.21).
-   **If any demotion candidate was COUNTER-JUSTIFIED this pass** (step 4's triage, v0.1.67), ALSO
-   merge into the marker's `demotion_justify` map:
-   `demotion_justify: {"<stem>": {"windows": <demotion.windows_observed>, "at": "<iso>"}}` — the
-   per-item delta-detector: that candidate stays suppressed until the store accrues 5 more probative
-   usage windows (a malformed entry does NOT suppress — candidates fail open toward re-surfacing).
+   **If any demotion candidate was COUNTER-JUSTIFIED this pass** (step 4's triage, v0.1.67), run
+   the scripted stamp — do **not** hand-merge a windows integer (the model stamping the
+   displayed `Nw` is the O1 loop: that number is per-fact zero-read windows, and
+   `Nw + 5 > windows_full` never accumulates):
+   ```bash
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --justify-demotion <stem> [<stem>…]
+   ```
+   It MERGES `demotion_justify: {"<stem>": {"windows": <current windows_full>, "at": "<iso>"}}`
+   into `.consolidation-state.json` (preserves `commit`/`timestamp`/`stacks`/`beacon_snooze_until`
+   /`standing_justify`). Re-justifying a still-suppressed stem is a no-op. The candidate stays
+   quiet until the store accrues 5 more probative usage windows (a zrw-trap stamp with a
+   parseable `at` still counts windows after that timestamp; a malformed entry does NOT
+   suppress — candidates fail open toward re-surfacing).
    Then **emit the deterministic mutation audit** (v0.1.22) — diff the post-write state against the Phase-0
    `--snapshot`:
    ```bash

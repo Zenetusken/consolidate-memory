@@ -249,11 +249,12 @@ domain purge is fleet-atomic. Canonical upsert is active
 active v3; SQLite holders are topology; `cm local` is the native
 fact+pointer writer.
 
-**v0.3.6** is the dogfood patch on that writer: `cm local` reuses
-`_pointer_line` (sanitize + 88-char truncate + fat-hook lint) so a long
-`description:` cannot land verbatim as a ~190-tok always-loaded hook, and
+**v0.3.6** is the dogfood patch on that writer: `cm local` stopped copying a
+long `description:` verbatim as a ~190-tok always-loaded hook, and
 `link_targets` uses `extract_wikilinks` so a backticked `[[link]]`
-format-example is not a dangling refusal.
+format-example is not a dangling refusal. **v0.3.7** gives locals their own
+recall-key constructor (keep `()`, word-boundary, scope tag) and
+script-writes `demotion_justify` as current `windows_full`.
 
 ## Install
 
