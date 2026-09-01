@@ -665,7 +665,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         gtotal = xp.get("global_store_facts")
         head = "  " + _c("CROSS-PROJECT", "bold") + _c("   · global tier", "dim")
         if gtotal is not None:
-            head += _c(f" · ~/.claude/memory: {gtotal} fact(s)", "dim")
+            head += _c(f" · domain canonicals: {gtotal} fact(s)", "dim")
         out.append(head)
         pulled = xp.get("pulled") or []
         promoted = xp.get("promoted") or []
@@ -1036,6 +1036,13 @@ def main() -> int:
     # construction) and must NOT be flagged. So the panel is gated here, matching the exit below.
     judged = persist_dir is not None
     print(render(record, judged=judged))
+    if persist_dir:
+        try:
+            from pathlib import Path as _P
+            from store_context import resolve_store as _rs_dash, warn_unenrolled_share as _w_dash
+            _w_dash(_rs_dash(_P.cwd()))
+        except Exception:
+            pass
     if persist_dir:
         # Strict order print → persist → exit (v0.1.44): the firing record MUST be logged (it accrues
         # for calibration + surfaces in the archive's longitudinal ⚠), THEN the terminal --persist

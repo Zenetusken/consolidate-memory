@@ -10,7 +10,6 @@ from typing import Optional
 
 EVENT_RETENTION_DAYS = 90
 CYCLE_CAP = 500
-AGGREGATE_MONTHS = 12
 
 
 def _now_epoch() -> float:
@@ -287,7 +286,6 @@ def inventory(plugin_data: Path, canonical_root: Path, native_dir: Path) -> dict
         "retention": {
             "events_days": EVENT_RETENTION_DAYS,
             "cycle_cap": CYCLE_CAP,
-            "aggregate_months": AGGREGATE_MONTHS,
         },
     }
 
@@ -330,7 +328,10 @@ def purge_project(plugin_data: Path, project_id: str,
     return {"ok": True, "purged_files": n, "project_id": project_id}
 
 
-def purge_domain(plugin_data: Path, domain_id: str, conn) -> dict:
+def purge_domain(plugin_data: Path, domain_id: str, conn,
+                 facts_dir: Optional[Path] = None) -> dict:
+    """Remove that domain's canonicals + registry rows. Does not touch other domains
+    or native Auto Memory."""
     from identifiers import validate_domain_id
     domain_id = validate_domain_id(domain_id)
     rows = conn.execute(
@@ -341,25 +342,81 @@ def purge_domain(plugin_data: Path, domain_id: str, conn) -> dict:
     for r in rows:
         native = Path(r["native_memory_dir"]) if r["native_memory_dir"] else None
         n += purge_project(plugin_data, r["project_id"], native)["purged_files"]
+    conn.execute(
+        "DELETE FROM holders WHERE fact_id IN (SELECT fact_id FROM facts WHERE domain_id=?)",
+        (domain_id,))
+    conn.execute("DELETE FROM facts WHERE domain_id=?", (domain_id,))
+    conn.execute("DELETE FROM tombstones WHERE domain_id=?", (domain_id,))
+    conn.commit()
+    if facts_dir is not None and facts_dir.is_dir():
+        n += _purge_dir(facts_dir)
+        parent = facts_dir.parent
+        if parent.name == domain_id:
+            n += _purge_dir(parent)
     return {"ok": True, "purged_files": n, "domain_id": domain_id}
 
 
 def export_ops(plugin_data: Path, dest: Path) -> dict:
+    """Write a tar.gz of plugin-data plus a sha256 manifest (ADR 008/Stage 8).
+
+    `dest` is the archive path (``.tar.gz`` appended if missing). The manifest
+    lists relative path, size, and sha256 of every included file. Native Auto
+    Memory is never included.
+    """
+    import hashlib
+    import tarfile
+    dest = Path(dest)
+    suffixes = list(dest.suffixes)
+    is_tar = dest.suffix == ".tgz" or suffixes[-2:] == [".tar", ".gz"]
+    if not is_tar:
+        dest = dest.with_name(dest.stem + ".tar.gz") if dest.suffix else dest.with_name(
+            dest.name + ".tar.gz")
     dest.parent.mkdir(parents=True, exist_ok=True)
-    payload: dict = {"exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "files": []}
+    files: list = []
     if plugin_data.exists():
         for p in plugin_data.rglob("*"):
-            if p.is_file() and p.suffix in (".jsonl", ".json", ".sqlite"):
-                payload["files"].append(str(p.relative_to(plugin_data)))
-    dest.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    return {"ok": True, "path": str(dest), "n_files": len(payload["files"])}
+            if not p.is_file():
+                continue
+            if p.suffix not in (".jsonl", ".json", ".sqlite", ".md"):
+                continue
+            rel = str(p.relative_to(plugin_data)).replace("\\", "/")
+            raw = p.read_bytes()
+            files.append({
+                "path": rel,
+                "bytes": len(raw),
+                "sha256": hashlib.sha256(raw).hexdigest(),
+            })
+    manifest = {
+        "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "schema_version": 3,
+        "plugin_data": str(plugin_data),
+        "files": files,
+    }
+    man_path = dest.parent / (dest.name + ".manifest.json")
+    man_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    try:
+        os.chmod(str(man_path), 0o600)
+    except OSError:
+        pass
+    with tarfile.open(dest, "w:gz") as tar:
+        for item in files:
+            src = plugin_data / item["path"]
+            if src.is_file():
+                tar.add(str(src), arcname="plugin-data/" + item["path"])
+        tar.add(str(man_path), arcname="manifest.json")
+    try:
+        os.chmod(str(dest), 0o600)
+    except OSError:
+        pass
+    return {"ok": True, "path": str(dest), "manifest": str(man_path),
+            "n_files": len(files)}
 
 
 def retention_show() -> dict:
     return {
         "events_days": EVENT_RETENTION_DAYS,
         "cycle_records_per_project": CYCLE_CAP,
-        "daily_aggregates_months": AGGREGATE_MONTHS,
         "permanent": ["confirmed facts", "explicit user decisions", "tombstones", "migration summaries"],
         "never": ["raw transcript text"],
+        "note": "compact keeps the last CYCLE_CAP records and drops events older than EVENT_RETENTION_DAYS; no unimplemented monthly-aggregate window is advertised",
     }

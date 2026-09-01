@@ -46,6 +46,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 SYNC = ROOT / "plugins" / "consolidate-memory" / "scripts" / "sync_global.py"
+OPS = ROOT / "plugins" / "consolidate-memory" / "scripts" / "cm_ops.py"
 sys.path.insert(0, str(ROOT / "plugins" / "consolidate-memory" / "scripts"))
 import memory_status as ms  # noqa: E402  (pure rigor functions — Probe H)
 import render_dashboard as rd  # noqa: E402  (_persist — Probe I)
@@ -59,6 +60,7 @@ def _fact(name: str, scope: str, stacks: str = "", desc: str = "") -> str:
         "---",
         f"name: {name}",
         f"description: {desc}",
+        "domain: personal",
         "metadata:",
         "  node_type: memory",
         "  type: reference",
@@ -130,7 +132,17 @@ def _sync(home: Path, *cli_args: str) -> str:
                           env=env, capture_output=True, text=True, check=False).stdout
 
 
+def _enroll(home: Path, project_dir: Path, domain: str = "personal") -> None:
+    """Named-domain grant so --pull/--promote are allowed (ADR 008: unenrolled is local-only)."""
+    env = dict(os.environ, HOME=str(home))
+    subprocess.run(
+        [sys.executable, str(OPS), "project", "enroll", str(project_dir),
+         "--domain", domain, "--apply", "--confirm", f"enroll-{domain}"],
+        env=env, capture_output=True, text=True, check=False)
+
+
 def _pull(home: Path, project_dir: Path) -> None:
+    _enroll(home, project_dir)
     _sync(home, "--pull", str(project_dir))
 
 
@@ -141,6 +153,7 @@ def _gc(home: Path, project_dir: Path, apply: bool) -> str:
 def _promote(home: Path, project_dir: Path, *rest: str) -> subprocess.CompletedProcess:
     """Run --promote and return the FULL result — Probe K asserts on returncode + stderr (the
     refusal guards) as well as the filesystem side effects."""
+    _enroll(home, project_dir)
     return subprocess.run([sys.executable, str(SYNC), "--promote", str(project_dir), *rest],
                           env=dict(os.environ, HOME=str(home)), capture_output=True, text=True, check=False)
 
@@ -1127,6 +1140,7 @@ def run() -> None:
         _ceilV = ms.INDEX_CEILING_TOKENS
         _baseV = "# Memory Index\n" + _junk_line + "\n- [vpad](vpad.md) — "
         (storeV / "MEMORY.md").write_text(_baseV + "p" * (_ceilV * 4 - len(_baseV) - 1) + "\n", encoding="utf-8")
+        _enroll(homeV, projV)
         outV1 = _sync(homeV, "--pull", str(projV))
         _held_not_landed = not (storeV / "vvv-wanted.md").exists()   # captured BEFORE the evict lands it
         procV = subprocess.run([sys.executable, str(SYNC), "--pull", "--evict=junk-pointer", str(projV)],
@@ -1287,7 +1301,7 @@ def run() -> None:
                               "scope: user-global\ndomain: testdom\n---\n\nThe body.\n",
                               encoding="utf-8")
             subprocess.run([sys.executable, str(OPS), "project", "enroll",
-                            str(pAA), "--domain", "testdom"],
+                            str(pAA), "--domain", "testdom", "--apply", "--confirm", "enroll-testdom"],
                            env=envAA, capture_output=True, text=True, check=False)
             up = subprocess.run([sys.executable, str(OPS), "canonical", "upsert", "aa-fact",
                                  "--file", str(factAA), "--project", str(pAA), "--json"],
@@ -1346,7 +1360,7 @@ def run() -> None:
             bad.write_text("---\nname: wide-fact\ndescription: a global fact\nscope: user-global\n"
                            "domain: testdom\n---\n\nSee [[local-only-thing]].\n", encoding="utf-8")
             subprocess.run([sys.executable, str(OPS), "project", "enroll",
-                            str(pAB), "--domain", "testdom"],
+                            str(pAB), "--domain", "testdom", "--apply", "--confirm", "enroll-testdom"],
                            env=envAB, capture_output=True, text=True, check=False)
             badp = subprocess.run([sys.executable, str(OPS), "canonical", "upsert", "wide-fact",
                                    "--file", str(bad), "--project", str(pAB), "--json"],
@@ -1390,25 +1404,42 @@ def run() -> None:
             assert gAD.exists()
             dry = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD)],
                                  env=envAD, capture_output=True, text=True, check=False)
-            app = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD), "--apply"],
+            refused = subprocess.run(
+                [sys.executable, str(OPS), "migrate", str(pAD), "--apply",
+                 "--confirm", "migrate-apply"],
+                env=envAD, capture_output=True, text=True, check=False)
+            assigned = subprocess.run(
+                [sys.executable, str(OPS), "migrate", str(pAD),
+                 "--assign", "legacy-ad", "--domain", "personal"],
+                env=envAD, capture_output=True, text=True, check=False)
+            subprocess.run([sys.executable, str(OPS), "project", "enroll",
+                            str(pAD), "--domain", "personal", "--apply",
+                            "--confirm", "enroll-personal"],
+                           env=envAD, capture_output=True, text=True, check=False)
+            app = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD), "--apply",
+                                 "--confirm", "migrate-apply"],
                                  env=envAD, capture_output=True, text=True, check=False)
-            import store_context as _scAD
-            ctxAD = _scAD.resolve_store(pAD, environ=envAD)
-            copied = (ctxAD.canonical_domain_dir / "legacy-ad.md").exists()
+            destAD = (homeAD / ".claude" / "consolidate-memory" / "domains"
+                      / "personal" / "facts" / "legacy-ad.md")
+            copied = destAD.exists()
             stamped = False
             if copied:
-                stamped = "domain: legacy-unassigned" in (
-                    ctxAD.canonical_domain_dir / "legacy-ad.md").read_text(encoding="utf-8")
+                stamped = "domain: personal" in destAD.read_text(encoding="utf-8")
             rb = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD), "--rollback"],
                                 env=envAD, capture_output=True, text=True, check=False)
-            gone = not (ctxAD.canonical_domain_dir / "legacy-ad.md").exists()
+            gone = not destAD.exists()
             still_legacy = gAD.exists()
-            _verdict("AD", "migrate --plan is dry; --apply copies as legacy-unassigned; --rollback restores dual-read and removes copies",
+            _verdict("AD", "migrate --plan is dry; --apply refuses unresolved; "
+                     "assign+apply copies as the named domain; --rollback restores dual-read",
                      dry.returncode == 0 and "dry" in dry.stdout
-                     and app.returncode == 0 and copied and stamped
+                     and refused.returncode == 2 and "unresolved" in refused.stderr
+                     and assigned.returncode == 0 and app.returncode == 0
+                     and copied and stamped
                      and rb.returncode == 0 and gone and still_legacy,
-                     f"dry rc={dry.returncode} apply rc={app.returncode} copied={copied} "
-                     f"stamped={stamped} rollback rc={rb.returncode} gone={gone} legacy={still_legacy}")
+                     f"dry rc={dry.returncode} refuse rc={refused.returncode} "
+                     f"assign rc={assigned.returncode} apply rc={app.returncode} "
+                     f"copied={copied} stamped={stamped} rollback rc={rb.returncode} "
+                     f"gone={gone} legacy={still_legacy}")
         finally:
             shutil.rmtree(homeAD, ignore_errors=True)
 
@@ -1472,6 +1503,7 @@ def run() -> None:
                       "CLAUDE_CODE_DISABLE_AUTO_MEMORY", "CLAUDE_CODE_SETTINGS"):
                 envAF.pop(k, None)
             _write_global(homeAF, "shared-af", "user-global")
+            _enroll(homeAF, pAF)
             pull1 = subprocess.run([sys.executable, str(SYNC), "--pull", str(pAF)],
                                    env=envAF, capture_output=True, text=True, check=False)
             storeAF = _store(homeAF, pAF)
@@ -1538,18 +1570,19 @@ def run() -> None:
             got_v = ctxV.native_memory_dir / "share-me.md"
             unenrolled_share = (
                 ctxU.domain_id == "unknown" and ctxV.domain_id == "unknown"
-                and up_u.get("ok") is True
-                and (ctxU.canonical_domain_dir / "share-me.md").is_file()
-                and got_v.is_file()
-                and "UNENROLLED SHARED BODY" in got_v.read_text(encoding="utf-8"))
+                and up_u.get("ok") is False
+                and not (ctxU.canonical_domain_dir / "share-me.md").is_file()
+                and not got_v.is_file())
             en_bad = subprocess.run([sys.executable, str(OPS), "project", "enroll",
                                      str(pH), "--domain", "../employer"],
                                     env=envAG, capture_output=True, text=True, check=False)
             en_a = subprocess.run([sys.executable, str(OPS), "project", "enroll",
-                                   str(pA), "--domain", "work"],
+                                   str(pA), "--domain", "work", "--apply",
+                                   "--confirm", "enroll-work"],
                                   env=envAG, capture_output=True, text=True, check=False)
             en_b = subprocess.run([sys.executable, str(OPS), "project", "enroll",
-                                   str(pB), "--domain", "personal"],
+                                   str(pB), "--domain", "personal", "--apply",
+                                   "--confirm", "enroll-personal"],
                                   env=envAG, capture_output=True, text=True, check=False)
             ctxA = _scAG.resolve_store(pA, environ=envAG)
             ctxB = _scAG.resolve_store(pB, environ=envAG)
@@ -1639,7 +1672,7 @@ def run() -> None:
             admit_ok = (not up_ad.get("ok") and orig.exists()
                         and "global_ref:" not in orig.read_text(encoding="utf-8")
                         and "admission" in str(up_ad.get("error") or "").lower())
-            _verdict("AG", "P0: enroll-only domain grant; same-stem domains stay distinct; confidential denied dual-read; crash dest-hash+DB; B cannot complete A's op; admission-refused upsert leaves origin; traversal refused; unenrolled upsert-then-pull; forget-A pull-B same stem",
+            _verdict("AG", "P0: enroll-only domain grant; same-stem domains stay distinct; confidential denied dual-read; crash dest-hash+DB; B cannot complete A's op; admission-refused upsert leaves origin; traversal refused; unenrolled is local-only; forget-A pull-B same stem",
                      hostile_ok and enrolled_ok and trav_ok and stems_ok and conf_denied
                      and crash_ok and admit_ok and unenrolled_share and forget_cross,
                      f"hostile={hostile_ok} enroll={enrolled_ok} trav={trav_ok} stems={stems_ok} "

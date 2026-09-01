@@ -91,6 +91,7 @@ from memory_status import (_is_archive_index_text, _is_mirror, _parse_ts, _sane,
 # Production always uses config_root()/memory so CLAUDE_CONFIG_DIR cannot leak a
 # personal canonical into a work profile (ADR 002).
 GLOBAL = Path.home() / ".claude" / "memory"
+_IMPORT_HOME = Path.home()
 
 
 def global_store() -> Path:
@@ -133,11 +134,10 @@ def _registry_project_rows() -> list:
     Does not CREATE the DB (fleet readers must not mint control.sqlite).
     """
     try:
-        from control_plane import connect, db_path, iter_registered_projects
-        path = db_path()
-        if not path.is_file():
+        from control_plane import connect_if_exists, db_path, iter_registered_projects
+        conn = connect_if_exists(db_path())
+        if conn is None:
             return []
-        conn = connect(path)
         try:
             return iter_registered_projects(conn)
         finally:
@@ -570,8 +570,13 @@ def _canonical_dirs() -> list:
 
 def global_facts() -> list[tuple[str, dict, str]]:
     """Enumerate canonicals keyed by (domain, stem) — never a global stem namespace."""
+    return [(s, fm, t) for s, fm, t, _p in _global_fact_records()]
+
+
+def _global_fact_records() -> list:
+    """Like global_facts but includes the on-disk path (never reconstruct from stem)."""
     from domain_policy import fact_domain
-    facts: list[tuple[str, dict, str]] = []
+    recs: list = []
     seen: set = set()
     for gdir in _canonical_dirs():
         if not gdir.exists():
@@ -591,12 +596,23 @@ def global_facts() -> list[tuple[str, dict, str]]:
             if key in seen:
                 continue
             seen.add(key)
-            facts.append((f.stem, fm, text))
-    return facts
+            recs.append((f.stem, fm, text, f))
+    return recs
 
 
 def iter_admissible_facts(ctx) -> list:
-    """Facts this StoreContext may pull. Domain-dir first; legacy is untagged dual-read only."""
+    """Facts this StoreContext may pull. Named-domain files only (ADR 008).
+
+    Unenrolled / unhealthy registry → empty. Untagged legacy is not pullable.
+    Hermetic tests that patch GLOBAL treat that dir as the current domain store.
+    """
+    return [(s, fm, t) for s, fm, t, _p in _admissible_records(ctx)]
+
+
+def _admissible_records(ctx) -> list:
+    """iter_admissible_facts plus the actual source path."""
+    if not getattr(ctx, "cross_project_allowed", False):
+        return []
     from domain_policy import admit_cross_project, fact_domain
     from memory_status import _looks_secret
     mode = "dual-read"
@@ -605,7 +621,7 @@ def iter_admissible_facts(ctx) -> list:
         mode = migration_mode_readonly(ctx)
     except Exception:
         mode = "dual-read"
-    out: list = []
+    recs: list = []
     seen: set = set()
 
     def _consider(path: Path, *, untagged_only: bool) -> None:
@@ -623,6 +639,8 @@ def iter_admissible_facts(ctx) -> list:
             return
         adm = dict(fm)
         adm["body"] = text
+        if (_global_is_fixture() or _hermetic_home()) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
+            adm["domain"] = ctx.domain_id
         if not admit_cross_project(ctx.domain_id, adm, migration_mode=mode,
                                    looks_secret=_looks_secret):
             return
@@ -630,7 +648,7 @@ def iter_admissible_facts(ctx) -> list:
         if key in seen:
             return
         seen.add(key)
-        out.append((path.stem, fm, text))
+        recs.append((path.stem, fm, text, path))
 
     ddir = ctx.canonical_domain_dir
     if ddir.is_dir():
@@ -639,7 +657,86 @@ def iter_admissible_facts(ctx) -> list:
     g = global_store()
     if g.is_dir():
         for f in sorted(g.glob("*.md")):
-            _consider(f, untagged_only=True)
+            _consider(f, untagged_only=False)
+    return recs
+
+
+def _hermetic_home() -> bool:
+    """True when tests redirected HOME away from the import-time home."""
+    try:
+        return Path.home().resolve() != _IMPORT_HOME.resolve()
+    except OSError:
+        return Path.home() != _IMPORT_HOME
+
+
+def _global_is_fixture() -> bool:
+    """True when tests patched GLOBAL away from Path.home()/.claude/memory."""
+    g = globals().get("GLOBAL")
+    if not isinstance(g, Path):
+        return False
+    live = Path.home() / ".claude" / "memory"
+    try:
+        return g.resolve() != live.resolve()
+    except OSError:
+        return g != live
+
+
+def facts_for_context(ctx, *, all_domains: bool = False) -> list:
+    """Ordinary fleet readers: current-domain Canonicals only (ADR 015)."""
+    if all_domains:
+        return global_facts()
+    if getattr(ctx, "cross_project_allowed", False):
+        return iter_admissible_facts(ctx)
+    # Hermetic tests patch GLOBAL. Production unenrolled → empty.
+    if _global_is_fixture() or _hermetic_home():
+        return global_facts()
+    return []
+
+
+def iter_canonicals(ctx, *, all_domains: bool = False) -> list:
+    """Typed enumerator (ADR 008/015). Bare stems are not a trust boundary."""
+    from identity import ref_from_path
+    refs: list = []
+    seen: set = set()
+    recs = _global_fact_records() if all_domains else _admissible_records(ctx)
+    if not all_domains and not recs and _global_is_fixture():
+        recs = _global_fact_records()
+    for stem, fm, _text, path in recs:
+        ref = ref_from_path(path, fm,
+                            fact_id=str(fm.get("fact_id") or ""),
+                            revision=str(fm.get("canonical_revision") or ""))
+        if ref.key in seen:
+            continue
+        seen.add(ref.key)
+        refs.append(ref)
+    return refs
+
+
+def _same_domain_stores(ctx) -> list:
+    """Native stores of projects enrolled in ctx.domain_id. Empty if local-only."""
+    if not getattr(ctx, "cross_project_allowed", False):
+        return []
+    from control_plane import connect_if_exists, db_path, iter_registered_projects
+    conn = connect_if_exists(db_path(ctx))
+    if conn is None:
+        return []
+    out: list = []
+    seen: set = set()
+    try:
+        for r in iter_registered_projects(conn):
+            if str(r.get("domain_id") or "") != ctx.domain_id:
+                continue
+            nd = Path(str(r.get("native_memory_dir") or ""))
+            try:
+                key = str(nd.resolve())
+            except OSError:
+                key = str(nd)
+            if key in seen or not nd.is_dir():
+                continue
+            seen.add(key)
+            out.append(nd)
+    finally:
+        conn.close()
     return out
 
 
@@ -691,7 +788,8 @@ def _mtime_iso(path: Path) -> str:
         return _now_iso()
 
 
-def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "") -> str:
+def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
+               fact_id: str = "", domain: str = "") -> str:
     """Return the global fact stamped as a managed mirror (`global_ref: <name>`),
     robustly — drop any existing global_ref, then insert one after `metadata:`.
 
@@ -701,8 +799,8 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "") -> st
     bare calls (tests, legacy paths) emit no stamps. The frontmatter-scoped strip covers the
     whole `global_ref` prefix so re-stamping stays idempotent; `_is_mirror` keys on
     `global_ref:` only, so the smoke-pinned round-trip is untouched. REACH LIMIT: the
-    no-metadata-block fallback form (`# global_ref:` comment) carries no stamps — such a
-    mirror stays on the consumer's mtime fallback clock.
+    no-metadata-block fallback inserts a real `metadata:` block (never a `# global_ref:`
+    first-line comment) so lineage stamps have a home.
 
     The metadata anchor must be a COLUMN-0 top-level key (mirroring `_is_mirror`'s
     `not ln[:1].isspace()` test). An INDENTED `  metadata:` is NOT a valid anchor: if it
@@ -737,7 +835,8 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "") -> st
         # e.g. a note explaining the mirror mechanism itself). Both of THIS function's own legitimate
         # stamps (the metadata-child form and the post-opening-'---' fallback) land strictly within
         # dashes == 1, so scoping the strip the same way loses no correctness.
-        if dashes == 1 and s.startswith(("global_ref:", "global_ref_since:", "global_ref_body:")):
+        if dashes == 1 and s.startswith(("global_ref:", "global_ref_since:", "global_ref_body:",
+                                         "canonical_fact_id:", "canonical_domain:")):
             # drop any existing global_ref + stamp lines (re-stamped below). EXACT three keys, not the
             # bare "global_ref" prefix (PR-#91 adversarial review): the wide prefix re-ate what the
             # v0.1.70 narrowing protects — e.g. a folded-scalar description continuation line that
@@ -757,14 +856,27 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "") -> st
         # un-refreshable, GC-immune mirror (never reclaimed, never updated).
         if not injected and dashes == 1 and not ln[:1].isspace() and s.rstrip(":") == "metadata":
             out.append(f"  global_ref: {name}")
+            if fact_id:
+                out.append(f"  canonical_fact_id: {fact_id}")
+            if domain and domain != "unknown":
+                out.append(f"  canonical_domain: {domain}")
             if since:   # v0.1.78: the content-lineage clock (see docstring; caller computes the carry)
                 out.append(f"  global_ref_since: {since}")
                 out.append(f"  global_ref_body: {body_hash}")
             injected = True
-    if not injected:  # no metadata block — stamp just inside the frontmatter
+    if not injected:  # no metadata block — insert one so lineage stamps have a home
         for i, ln in enumerate(out):
             if ln.strip() == "---":
-                out.insert(i + 1, f"# global_ref: {name}")
+                block = ["metadata:", f"  global_ref: {name}"]
+                if fact_id:
+                    block.append(f"  canonical_fact_id: {fact_id}")
+                if domain and domain != "unknown":
+                    block.append(f"  canonical_domain: {domain}")
+                if since:
+                    block.append(f"  global_ref_since: {since}")
+                    block.append(f"  global_ref_body: {body_hash}")
+                for j, b in enumerate(block):
+                    out.insert(i + 1 + j, b)
                 break
     return "\n".join(out) + "\n"
 
@@ -868,7 +980,8 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
     transact (registry-authoritative); Markdown `projects:` is updated via temps so
     it is never rewritten after locks drop.
     """
-    from control_plane import CrashSimulated, record_holder, stable_fact_id, transact
+    from control_plane import (ABSENT as _ABS_PULL, CrashSimulated, record_holder,
+                               stable_fact_id, transact)
     from index_admission import apply_pointer, project_index
     from mirror_conflict import semantic_hash as _sem_hold
     from store_context import WriteRefused
@@ -878,26 +991,37 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         return {"pulled": 0, "refreshed": 0, "fat": 0}
     idxp = store / "MEMORY.md"
     expected: dict = {}
+
+    def _sha(p: Path) -> str:
+        return hashlib.sha256(p.read_bytes()).hexdigest()
+
     if jobs or evict_stem:
         if idxp.exists():
-            expected[str(idxp)] = None
+            expected[str(idxp)] = _sha(idxp)
         for _n, _f, _s, path, _w in jobs:
             if path.exists():
-                expected[str(path)] = None
+                expected[str(path)] = _sha(path)
     landed: set = set()
     for name, _f, _s, _p, _w in jobs:
         landed.add(name)
     holder_names = [n for n in landed] + [n for n in in_sync_names if n not in landed]
     for name in holder_names:
-        cp = global_store() / f"{name}.md"
+        cp = ctx.canonical_domain_dir / f"{name}.md"
+        if not cp.exists():
+            cp = global_store() / f"{name}.md"
         if cp.exists():
-            expected[str(cp)] = None
+            expected[str(cp)] = _sha(cp)
 
     def mutate(conn, temps):
         idx_text = _safe_read_text(idxp) or "# Memory Index\n\n"
         deletes: list = []
+        dest_modes: dict = {}
+        expected_m: dict = {}
         pulled = refreshed = fat = 0
         recorded: list = []
+        if not idxp.exists():
+            dest_modes[str(idxp)] = "create"
+            expected_m[str(idxp)] = _ABS_PULL
         planned = idx_text
         if evict_stem:
             planned = "\n".join(
@@ -924,18 +1048,40 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
             future = apply_pointer(idx_text, ptr, name)
             adm = project_index(future)
             if status == "MISSING":
+                if path.exists():
+                    # Appeared after pre-lock classify — never clobber a local file (P0-4).
+                    continue
                 if not adm["admitted"]:
                     print(f"  ⚠ index admission refused for '{name}': {adm['reason']}",
                           file=sys.stderr)
                     continue
                 idx_text = future
                 temps[str(path)] = want
+                dest_modes[str(path)] = "create"
+                expected_m[str(path)] = _ABS_PULL
                 pulled += 1
                 recorded.append(name)
                 if lint:
                     print(f"  {lint}", file=sys.stderr)
                     fat += 1
             else:
+                # Re-classify under lock: a local edit between pre-lock classify
+                # and publication must never be overwritten (P0-4).
+                cur_now = _safe_read_text(path) or ""
+                if cur_now and _is_mirror(cur_now):
+                    from mirror_conflict import (CONFLICT as _CFL, QUARANTINE as _QAR,
+                                                 STOP_LOCAL as _STP, classify_mirror as _cml)
+                    from control_plane import holder_base_revision as _hbr2, stable_fact_id as _sf2
+                    _hb = _hbr2(conn, _sf2(ctx.domain_id, name), ctx.project_id)
+                    _ct = (_safe_read_text(ctx.canonical_domain_dir / f"{name}.md")
+                           or _safe_read_text(global_store() / f"{name}.md")
+                           or "")
+                    _cfm = _frontmatter(cur_now)
+                    _v3lock = bool(_cfm.get("canonical_fact_id") or _cfm.get("schema_version"))
+                    _act2 = _cml(cur_now, _ct, base_revision=_hb,
+                                 allow_legacy_fallback=not _v3lock)["action"]
+                    if _act2 in (_STP, _CFL, _QAR):
+                        continue
                 temps[str(path)] = want
                 refreshed += 1
                 recorded.append(name)
@@ -963,8 +1109,14 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
             fid = stable_fact_id(ctx.domain_id, name)
             record_holder(conn, fid, ctx.project_id, rev, rev, rev)
             holders.append((fid, ctx.project_id, rev, rev, rev))
+        hold_ops = [
+            {"op": "holder_upsert", "fact_id": h[0], "project_id": h[1],
+             "base_revision": h[2], "canonical_revision": h[3], "semantic_hash": h[4]}
+            for h in holders
+        ]
         return {"pulled": pulled, "refreshed": refreshed, "fat": fat, "deletes": deletes,
-                "holders": holders}
+                "holders": holders, "dest_modes": dest_modes,
+                "expected_revisions": expected_m, "registry_ops": hold_ops}
 
     try:
         out = transact(ctx, "pull", {
@@ -1118,12 +1270,26 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         # the same refusal (a phantom store + bogus provenance must be unmintable from any entry point).
         print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
         return 2
-    from store_context import resolve_store, WriteRefused
+    if pull and evict is not None:
+        if not _safe_stem(evict):
+            print(f"evict: {evict!r} is not a safe fact name (must match {_SAFE_NAME!r}, no path separators) "
+                  "— refusing", file=sys.stderr)
+            return 1
+        if _is_reserved_stem(evict):
+            print(f"evict: '{'/'.join(_RESERVED_STEMS)}' is a reserved index name, not a fact — refusing "
+                  "(it would clobber the store's own always-loaded MEMORY.md index)", file=sys.stderr)
+            return 1
+    from store_context import resolve_store, warn_unenrolled_share, WriteRefused
     from domain_policy import admit_cross_project, fact_domain
     from mirror_conflict import (CONFLICT as _MC_CONFLICT, QUARANTINE as _MC_QUAR,
                                  REFRESH as _MC_REFRESH, RESTAMP as _MC_RESTAMP,
                                  STOP_LOCAL as _MC_STOP, classify_mirror)
     ctx = resolve_store(project_dir)
+    warn_unenrolled_share(ctx)
+    if pull and not getattr(ctx, "cross_project_allowed", False):
+        print("pull: local-only (unenrolled or unhealthy registry) — skipping",
+              file=sys.stderr)
+        return 0
     if pull and not ctx.auto_memory_enabled:
         print("pull: auto-memory is disabled — refusing writes (absence is not drift)", file=sys.stderr)
         return 2
@@ -1146,8 +1312,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         pass
     stacks = detect_stacks(project_dir)
     try:
-        from capabilities import detect_capabilities, capability_tags, applies_match, parse_applies
-        _cap_tags = capability_tags(detect_capabilities(project_dir))
+        from capabilities import (detect_capabilities, capability_tags, applies_match,
+                                  parse_applies, load_capability_overrides)
+        _ov = load_capability_overrides(ctx.plugin_data_dir, ctx.project_id)
+        _cap_tags = capability_tags(detect_capabilities(project_dir, overrides=_ov))
         _rel_tags = stacks | _cap_tags
     except Exception:
         _cap_tags = set()
@@ -1222,12 +1390,13 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     for name, fm, text in facts:
         rel = is_relevant(fm, _rel_tags)
         _appl = parse_applies(fm)
+        if _appl.get("error"):
+            rel = False
         _has_applies = bool(_appl.get("any") or _appl.get("all") or _appl.get("exclude"))
-        if _has_applies:
-            if rel:
-                rel = applies_match(_appl, _rel_tags)
-            elif fm.get("scope") == "stack-general":
-                rel = applies_match(_appl, _rel_tags)
+        if rel and _has_applies:
+            rel = applies_match(_appl, _rel_tags)
+        elif (not rel) and fm.get("scope") == "stack-general" and _has_applies and not _appl.get("error"):
+            rel = applies_match(_appl, _rel_tags)
         path = store / f"{name}.md"
         present = path.exists()
         cur = (_safe_read_text(path) or "") if present else ""   # store-scan convention (v0.1.69 Gate-2b)
@@ -1253,7 +1422,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         else:
             cur_fm = {}
             since = _now_iso()
-        want = _as_mirror(text, name, since=since, body_hash=new_hash)
+        from control_plane import stable_fact_id as _sfid_w
+        _fid_w = _sfid_w(ctx.domain_id, name)
+        want = _as_mirror(text, name, since=since, body_hash=new_hash,
+                          fact_id=_fid_w, domain=ctx.domain_id)
         from mirror_conflict import semantic_hash as _semh_w, stamp_revisions as _stamp_w
         _rev_w = _semh_w(text)
         want = _stamp_w(want, _rev_w, _rev_w)
@@ -1271,9 +1443,12 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             # happen must not be reported as one; the mirror stays on the documented mtime fallback.
             _migrated = False
         _fdom = fact_domain(fm) or (ctx.domain_id or "")
+        _adm_fm = dict(fm)
+        if (_global_is_fixture() or _hermetic_home()) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
+            _adm_fm["domain"] = ctx.domain_id
         if str(fm.get("status") or "") == "tombstoned" or (_fdom, name) in _tomb_keys:
             rel = False
-        elif rel and not admit_cross_project(ctx.domain_id, fm, migration_mode=mode):
+        elif rel and not admit_cross_project(ctx.domain_id, _adm_fm, migration_mode=mode):
             rel = False
         if not rel:
             # v0.1.75 (audit F6): a PRESENT mirror whose canonical is alive but no longer relevant here
@@ -1289,8 +1464,24 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         elif cur == want:
             status = "in-sync"
         else:
-            # Three-way (ADR 005): a local edit is NEVER silently overwritten.
-            _dec = classify_mirror(cur, text)
+            # Three-way (ADR 005/011): holder-table base under lock is authoritative.
+            # Mirror frontmatter base_revision is not trusted.
+            _hold_base = None
+            try:
+                from control_plane import (connect_if_exists as _cife_h,
+                                           db_path as _dbp_h,
+                                           holder_base_revision as _hbr)
+                _hc = _cife_h(_dbp_h(ctx))
+                if _hc is not None:
+                    try:
+                        _hold_base = _hbr(_hc, _fid_w, ctx.project_id)
+                    finally:
+                        _hc.close()
+            except Exception:
+                _hold_base = None
+            _v3m = bool(cur_fm.get("canonical_fact_id") or cur_fm.get("schema_version"))
+            _dec = classify_mirror(cur, text, base_revision=_hold_base,
+                                   allow_legacy_fallback=not _v3m)
             _act = _dec["action"]
             if _act in (_MC_REFRESH, _MC_RESTAMP):
                 status = "STALE-mirror"
@@ -1652,7 +1843,7 @@ def _classify_edge(holder: str, stem: str) -> str:
     return "stale" if len(stores) == 1 else "ambiguous"
 
 
-def network() -> int:
+def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> int:
     """Render the cross-project memory network — the 'shared consciousness' graph.
 
     Distinguishes the UNIVERSAL baseline (`user-global` facts every mind holds — a
@@ -1665,7 +1856,16 @@ def network() -> int:
     (deleted test projects measured live in this fleet) — every count here silently
     included them. A mind with no plausible on-disk store now renders with a `?` and a
     footnote; the flag is display-only (see _mind_unresolved — report, never prune)."""
-    facts = global_facts()
+    if all_domains:
+        facts = global_facts()
+    elif project_dir is None:
+        # CLI always passes a dir (or --all-domains). A no-arg call against a
+        # patched GLOBAL still enumerates that fixture; production no-dir
+        # must not dump every domain.
+        facts = global_facts() if _global_is_fixture() else []
+    else:
+        from store_context import resolve_store as _rs_net
+        facts = facts_for_context(_rs_net(Path(project_dir)))
     minds = sorted({p for _, fm, _ in facts for p in _holders(fm)})
     universal = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "user-global"]
     differential = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "stack-general"]
@@ -1831,15 +2031,22 @@ def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> i
             print("gc --edges: no project context — refusing apply", file=sys.stderr)
             return 1
         expected_e: dict = {}
-        for n in ghosts:
-            p = global_store() / f"{n}.md"
+
+        def _canon_path(stem: str) -> "Path":
+            p = ctx_e.canonical_domain_dir / f"{stem}.md"
             if p.exists():
-                expected_e[str(p)] = None
+                return p
+            return global_store() / f"{stem}.md"
+
+        for n in ghosts:
+            p = _canon_path(n)
+            if p.exists():
+                expected_e[str(p)] = hashlib.sha256(p.read_bytes()).hexdigest()
 
         def _mutate_edges(conn, temps):
             removed = 0
             for n, hs in ghosts.items():
-                p = global_store() / f"{n}.md"
+                p = _canon_path(n)
                 text = _safe_read_text(p)
                 if text is None:
                     continue
@@ -1910,15 +2117,54 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     # dead-edge report all see the SAME store state (the audit's guard-TOCTOU: a store emptying
     # between the guard's read and a second scan read would have made every mirror look orphaned —
     # the exact mass-wipe the guard exists to prevent).
-    gfacts = global_facts() if global_store().exists() else []
+    from store_context import resolve_store as _rs_gc
+    from store_context import WriteRefused as _WRGc
+    _ctx_gc = _rs_gc(project_dir)
+    if apply and not getattr(_ctx_gc, "cross_project_allowed", False):
+        print("gc: --apply requires enrollment into a named domain "
+              "(cm project enroll --domain NAME)", file=sys.stderr)
+        return 2
+    if getattr(_ctx_gc, "cross_project_allowed", False):
+        gfacts = iter_admissible_facts(_ctx_gc)
+    else:
+        gfacts = []
+    store = project_store(project_dir)
     if not gfacts:
-        why = "absent" if not global_store().exists() else "present but empty (no canonical facts)"
-        print(f"global store {global_store()} is {why} — refusing to GC "
-              "(cannot distinguish that from all-canonicals-deleted).")
-        return 0
+        # Empty live canonicals + leftover managed mirrors = forget-then-GC (ADR 013).
+        # Missing domain dir AND no mirrors = unmounted/absent, not "all deleted".
+        has_mirrors = False
+        if store.is_dir():
+            for _mf in store.glob("*.md"):
+                if _mf.name == "MEMORY.md" or _is_reserved_stem(_mf.stem):
+                    continue
+                _mt = _safe_read_text(_mf)
+                if _mt is not None and _is_mirror(_mt):
+                    has_mirrors = True
+                    break
+        def _has_canon_files(root: Path) -> bool:
+            if not root.is_dir():
+                return False
+            return any(p.suffix == ".md" and p.name != "MEMORY.md" for p in root.glob("*.md"))
+        live_canon = (_has_canon_files(_ctx_gc.canonical_domain_dir)
+                      or _has_canon_files(global_store()))
+        # Unmounted/empty source + leftover mirrors = mass-wipe risk (Probe G).
+        # Tombstones still sit as .md files, so forget-then-GC still proceeds.
+        if not live_canon:
+            why = ("no admissible canonicals" if getattr(_ctx_gc, "cross_project_allowed", False)
+                   else ("absent" if not global_store().exists()
+                         else "present but empty (no canonical facts)"))
+            print(f"gc: {why} — refusing to GC "
+                  "(cannot distinguish that from all-canonicals-deleted).")
+            return 0
+    if apply:
+        from control_plane import assert_mutation_allowed
+        try:
+            assert_mutation_allowed(_ctx_gc)
+        except _WRGc as e:
+            print(f"gc: {e}", file=sys.stderr)
+            return 2
     if edges:   # v0.1.84 (P4): fleet-wide edge triage — project_dir-independent, same snapshot
         return _gc_edges(gfacts, apply, project_dir)
-    store = project_store(project_dir)
     orphans = _orphans(store, canon={n for n, _, _ in gfacts})
     # v0.1.75 (audit F6): FROZEN mirrors — see the docstring. Detected against the SAME snapshot.
     stacks = detect_stacks(project_dir)
@@ -1943,22 +2189,61 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     out.append(_ui.kv("ORPHANS", f"{len(orphans)} mirror(s) whose canonical is gone"
                + ("" if orphans else "  " + _ui.c("· nothing to reclaim", "dim"))))
     removed = 0
+    removed_frozen = 0
+    if apply and (orphans or frozen):
+        from control_plane import transact, _file_hash as _fh_gc, stable_fact_id as _sf_gc
+        idxp = store / "MEMORY.md"
+        names = list(orphans) + list(frozen)
+        expected: dict = {}
+        if idxp.is_file():
+            h = _fh_gc(idxp)
+            if h:
+                expected[str(idxp)] = h
+        for name in names:
+            p = store / f"{name}.md"
+            if p.is_file():
+                h = _fh_gc(p)
+                if h:
+                    expected[str(p)] = h
+
+        def mutate(conn, temps):
+            idx = idxp.read_text(encoding="utf-8", errors="replace") if idxp.exists() else (
+                "# Memory Index\n")
+            deletes = []
+            ops = []
+            for name in names:
+                p = store / f"{name}.md"
+                if p.exists():
+                    deletes.append(str(p))
+                idx = "\n".join(
+                    ln for ln in idx.splitlines() if f"]({name}.md)" not in ln)
+                fid = _sf_gc(_ctx_gc.domain_id, name)
+                conn.execute(
+                    "DELETE FROM holders WHERE project_id=? AND fact_id=?",
+                    (_ctx_gc.project_id, fid))
+                ops.append({"op": "holder_delete", "fact_id": fid,
+                            "project_id": _ctx_gc.project_id})
+            temps[str(idxp)] = idx.rstrip() + "\n"
+            return {"deletes": deletes, "removed": len(deletes), "registry_ops": ops}
+
+        try:
+            transact(_ctx_gc, "gc-apply",
+                     {"orphans": list(orphans), "frozen": list(frozen)},
+                     mutate, expected_revisions=expected)
+            removed = len(orphans)
+            removed_frozen = len(frozen)
+        except _WRGc as e:
+            print(f"gc: {e}", file=sys.stderr)
+            return 2
     for name in orphans:
         if apply:
-            (store / f"{name}.md").unlink(missing_ok=True)
-            _remove_index_pointer(store, name)
-            removed += 1
             out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(file + index pointer)", "dim"))
         else:
             out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer)", "dim"))
     out.append(_ui.kv("FROZEN", f"{len(frozen)} mirror(s) whose canonical is ALIVE but irrelevant here (dropped stack)"
                + ("" if frozen else "  " + _ui.c("· none", "dim"))))
-    removed_frozen = 0
     for name in frozen:
         if apply:
-            (store / f"{name}.md").unlink(missing_ok=True)
-            _remove_index_pointer(store, name)
-            removed_frozen += 1
             out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(re-pullable if the stack returns)", "dim"))
         else:
             out.append("    " + _ui.c("✻", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer; re-pullable — canonical stays)", "dim"))
@@ -2055,8 +2340,13 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
               file=sys.stderr)
         return 1
 
-    from store_context import resolve_store as _rs_prom
+    from store_context import resolve_store as _rs_prom, warn_unenrolled_share as _warn_prom
     _sctx = _rs_prom(project_dir)
+    _warn_prom(_sctx)
+    if not getattr(_sctx, "cross_project_allowed", False):
+        print("promote: cross-project writes require enrollment into a named domain "
+              "(cm project enroll --domain NAME --apply)", file=sys.stderr)
+        return 2
     gdir = _sctx.canonical_domain_dir
     gdir.mkdir(parents=True, exist_ok=True)
     canon_path = gdir / f"{canon_name}.md"
@@ -2164,7 +2454,8 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
     # v0.1.67 (Phase C): the fleet-tax ADVISORY — post-write script truth, WARN-only (never a block; a
     # hard fleet gate needs its own oracle-grade review). Each canonical's pointer taxes every holder
     # node's always-loaded index every session; surface when the fleet total crosses the advisory.
-    _tot = sum(est_tokens(_pointer_line(n, f)) * len(_holders(f)) for n, f, _ in global_facts())
+    _tot = sum(est_tokens(_pointer_line(n, f)) * len(_holders(f))
+               for n, f, _ in facts_for_context(_sctx))
     if _tot > GLOBAL_FLEET_TAX_ADVISORY:
         _mine = est_tokens(_pointer_line(canon_name, fm)) * max(1, len(_holders(fm)))
         print(f"  ⚠ fleet-tax advisory: Σ pointer×holders ≈{_tot} tok > {GLOBAL_FLEET_TAX_ADVISORY} "
@@ -2187,7 +2478,7 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
                + ("  · old-named file + index pointer removed (rename)" if renamed else "")))
     out.append(_ui.kv("PROVENANCE", f"{project_dir.name} recorded as a holder"))
     out.append("")
-    out.append(_ui.kv("NEXT", _ui.c("add the canonical's line to ~/.claude/memory/MEMORY.md; same-scope "
+    out.append(_ui.kv("NEXT", _ui.c("catalog is generated by upsert; same-domain "
                "projects pick it up on their next --pull", "dim")))
     print(_ui.ascii_translate("\n".join(out)))
     return 0
@@ -2339,13 +2630,33 @@ def token_network(project_dir: Path) -> dict:
     (documented divergence: minds vs stores-with-mirrors)."""
     project_dir = project_dir.resolve()
     trigger_store = project_store(project_dir)
-    canon_scope = {n: str(fm.get("scope") or "") for n, fm, _ in global_facts()}
+    from store_context import resolve_store as _rs_tok
+    _ctx_tok = _rs_tok(project_dir)
+    canon_scope = {n: str(fm.get("scope") or "") for n, fm, _ in facts_for_context(_ctx_tok)}
+    domain_stores = _same_domain_stores(_ctx_tok)
     nodes = []
     al_total = rc_total = mir_total = 0
     stack_by: dict = {}
     uni_all: set = set()
     stk_all: set = set()
-    for store in _network_nodes():
+    if _global_is_fixture():
+        _tok_nodes = list(_network_nodes())
+    else:
+        _tok_nodes = list(domain_stores)
+    if trigger_store.is_dir():
+        try:
+            _trig_k = str(trigger_store.resolve())
+        except OSError:
+            _trig_k = str(trigger_store)
+        _have = set()
+        for _s in _tok_nodes:
+            try:
+                _have.add(str(_s.resolve()))
+            except OSError:
+                _have.add(str(_s))
+        if _trig_k not in _have:
+            _tok_nodes.append(trigger_store)
+    for store in _tok_nodes:
         m, uni_stems, stk_stems = _classify_node(store, canon_scope)
         is_trigger = store.resolve() == trigger_store.resolve()
         label = _sane(project_dir.name) if is_trigger else _node_label(store)
@@ -2461,7 +2772,15 @@ def fleet_workflows(project_dir: Path) -> dict:
     the report renders the denominator loudly — fleet absence is never inferred from missing
     instrumentation (the zero-reads bias, transposed). Decisions stay report-then-apply."""
     project_dir = project_dir.resolve()
-    stores = _log_nodes()
+    from store_context import resolve_store as _rs_wf
+    _ctx_wf = _rs_wf(project_dir)
+    if _global_is_fixture():
+        stores = _log_nodes()
+    elif getattr(_ctx_wf, "cross_project_allowed", False):
+        allowed = {s.resolve() for s in _same_domain_stores(_ctx_wf)}
+        stores = [s for s in _log_nodes() if s.resolve() in allowed]
+    else:
+        stores = []
     trig = project_store(project_dir)
     if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
         stores.append(trig)
@@ -2827,9 +3146,12 @@ def _store_gaps(store: Path, stacks: "set | None", gfacts: list, body_hashes: di
     for n, fm, _text in gfacts:
         if not is_relevant(fm, stacks if stacks is not None else set()):
             continue
-        if domain_id is not None and not admit_cross_project(
-                domain_id, fm, migration_mode=migration_mode):
-            continue
+        if domain_id is not None:
+            _adm = dict(fm)
+            if (_global_is_fixture() or _hermetic_home()) and not _adm.get("domain") and domain_id not in ("", "unknown"):
+                _adm["domain"] = domain_id
+            if not admit_cross_project(domain_id, _adm, migration_mode=migration_mode):
+                continue
         p = store / f"{n}.md"
         if not p.exists():
             missing += 1
@@ -2855,9 +3177,9 @@ def fleet_staleness(project_dir: Path) -> dict:
     from store_context import resolve_store as _rs_stale
     from control_plane import migration_mode_readonly as _mm_stale
     project_dir = project_dir.resolve()
-    gfacts = global_facts()
-    trig_store = project_store(project_dir)
     trig_ctx = _rs_stale(project_dir)
+    gfacts = facts_for_context(trig_ctx)
+    trig_store = project_store(project_dir)
     trig_stacks = detect_stacks(project_dir)
     mode = _mm_stale(trig_ctx)
     domain_by_store: dict = {}
@@ -2868,7 +3190,12 @@ def fleet_staleness(project_dir: Path) -> dict:
     ledger_nodes = {str(r.get("node", "")) for r in _ledger_rows()}
     now_ep = datetime.now(timezone.utc).timestamp()
     body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts}
-    stores = _all_stores()
+    if _global_is_fixture():
+        stores = _all_stores()
+    elif getattr(trig_ctx, "cross_project_allowed", False):
+        stores = _same_domain_stores(trig_ctx)
+    else:
+        stores = []
     if trig_store.resolve() not in {s.resolve() for s in stores}:
         # PR-#93 review F1 (two reviewers, convergent): the TRIGGER appears UNCONDITIONALLY — an
         # absent/empty trigger store is the maximally-starved row (never dreamed, absorbed nothing),
@@ -2897,8 +3224,17 @@ def fleet_staleness(project_dir: Path) -> dict:
         # review F4 + v0.1.81: ONE gap predicate (_store_gaps — shared with the session beacon so
         # they can never diverge). Trigger → live stacks; non-trigger → the --pull-written cache
         # when present, else None (user-global-only, labeled — never guessed).
-        _dom = (trig_ctx.domain_id if is_trig
-                else domain_by_store.get(_path_key(store), "unknown"))
+        if is_trig:
+            _dom = trig_ctx.domain_id
+        else:
+            _dom = domain_by_store.get(_path_key(store)) or ""
+            if not _dom or _dom == "unknown":
+                # Unregistered stores are measured against THIS domain's
+                # canonicals (absorption lag), not as unknown/local-only —
+                # that filter would under-report every gap (admit_cross_project
+                # never admits unknown).
+                _dom = trig_ctx.domain_id if getattr(
+                    trig_ctx, "cross_project_allowed", False) else "unknown"
         missing, stale = _store_gaps(
             store, trig_stacks if is_trig else cached_stacks, gfacts, body_hashes,
             domain_id=_dom, migration_mode=mode)
@@ -3065,6 +3401,27 @@ def _harvest_node(store: Path, watermark: str, by: str) -> "dict | None":
             "facts_read": len(reads), "per_fact": per_fact, "harvested_at": now, "by": by}
 
 
+def _stamp_harvest_identity(row: dict, domain_id: str) -> dict:
+    """Add domain_id + fact_id to harvest per_fact rows (ADR 015; stem remains)."""
+    if not isinstance(row, dict):
+        return row
+    from control_plane import stable_fact_id
+    dom = str(domain_id or "")
+    row["domain_id"] = dom
+    stamped = []
+    for item in list(row.get("per_fact") or []):
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "")
+        item = dict(item)
+        item["domain_id"] = dom
+        if name and dom:
+            item["fact_id"] = stable_fact_id(dom, name)
+        stamped.append(item)
+    row["per_fact"] = stamped
+    return row
+
+
 def harvest(project_dir: Path) -> int:
     """--harvest: for EVERY node (mirror-holding stores ∪ the trigger), capture organic fact-read
     windows from its transcripts into the shared ledger — closing the dream-gated capture hole
@@ -3075,7 +3432,16 @@ def harvest(project_dir: Path) -> int:
     if not project_dir.is_dir():
         print(f"error: project dir {project_dir} does not exist — refusing (phantom-store guard)", file=sys.stderr)
         return 2
-    stores = _network_nodes()
+    from store_context import resolve_store as _rs_h
+    _hctx = _rs_h(project_dir)
+    if not getattr(_hctx, "cross_project_allowed", False):
+        print("harvest: local-only (unenrolled or unhealthy registry) — skipping",
+              file=sys.stderr)
+        return 0
+    if _global_is_fixture():
+        stores = _network_nodes()
+    else:
+        stores = _same_domain_stores(_hctx)
     trig = project_store(project_dir)
     if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
         stores.append(trig)
@@ -3101,6 +3467,8 @@ def harvest(project_dir: Path) -> int:
         label = _node_label(store)
         row = _harvest_node(store, marks.get(session_dir_for_store(store).name, (0.0, ""))[1],
                             by=_sane(project_dir.name))
+        if row is not None:
+            row = _stamp_harvest_identity(row, _hctx.domain_id)
         if row is None:
             out.append("    " + _ui.c("·", "dim") + f" {label:<28} "
                        + _ui.c("up to date (no transcripts past the watermark)", "dim"))
@@ -3135,11 +3503,19 @@ def fleet_utility(project_dir: Path) -> dict:
     input: scope/keep decisions stay CONTENT-gated (holders/adoption ≠ fit). JSON-safe (lists, never
     sets). docs/index-usage-and-budget-ladder.spec.md §Phase C4."""
     project_dir = project_dir.resolve()
-    canon = {n: fm for n, fm, _ in global_facts()}
-    stores = _network_nodes()
+    from store_context import resolve_store as _rs_util
+    _ctx_util = _rs_util(project_dir)
+    canon = {n: fm for n, fm, _ in facts_for_context(_ctx_util)}
+    if _global_is_fixture():
+        stores = _network_nodes()
+    elif getattr(_ctx_util, "cross_project_allowed", False):
+        stores = _same_domain_stores(_ctx_util)
+    else:
+        stores = []
     trig = project_store(project_dir)
     if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
-        stores.append(trig)
+        if getattr(_ctx_util, "cross_project_allowed", False) or _global_is_fixture():
+            stores.append(trig)
     nodes_reporting = nodes_harvested = 0
     ledger_by_node: dict = {}
     for _lr in _ledger_rows():
@@ -3366,7 +3742,13 @@ def _dispatch() -> int:
             pos.append(a)
     project_dir = Path(pos[0]) if pos else Path.cwd()
     if args and args[0] == "--network":
-        return network()
+        if "--all-domains" in args:
+            return network(all_domains=True)
+        if not project_dir.is_dir():
+            print(f"error: PROJECT_DIR {project_dir} does not exist / is not a directory — refusing",
+                  file=sys.stderr)
+            return 2
+        return network(project_dir)
     # v0.1.75 (audit F5): a TYPO'D PROJECT_DIR must never mint a phantom store. resolve() is non-strict,
     # os.walk on a missing dir is silently empty, and --pull's store.mkdir would then create a store under
     # the bogus slug AND write the bogus basename into every shared canonical's `projects:` provenance —

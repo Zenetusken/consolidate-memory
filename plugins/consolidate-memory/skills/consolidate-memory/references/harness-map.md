@@ -1,7 +1,13 @@
 # Harness map — data sources, memory formats, verification recipes
 
-**v0.2.0.** Read this when you need the exact paths, file formats, or grep/git recipes for a
+**v0.3.0.** Read this when you need the exact paths, file formats, or grep/git recipes for a
 consolidation pass. The SKILL.md body covers the workflow; this is the lookup table.
+
+**Unenrolled is local-only (ADR 008):** a project that is not enrolled cannot
+create or pull cross-project canonicals. `domains/unknown/facts` and legacy
+`~/.claude/memory` are migration inputs only. Enroll with
+`cm project enroll --domain NAME` (or `/cm-domain`). `move-domain` / `unenroll`
+revoke managed mirrors that the destination does not admit.
 
 ## The substrate at a glance
 
@@ -42,8 +48,8 @@ Never create or reorganize one; propose (don't perform) any trim of its lines.
   "global · every project · read-only" line so the always-loaded total isn't
   understated — but the skill **never writes it**. Its ⚠ is *advisory* (it loads
   everywhere), not a prune instruction. It is NOT the same as a `user-global`-*scope*
-  fact: that's a recall-tier fact replicated via `~/.claude/memory/`; this is the
-  always-loaded global instruction file, which the skill does not manage.
+  fact: that's a recall-tier fact replicated via the enrolled domain canonical
+  dir; this is the always-loaded global instruction file, which the skill does not manage.
 
 **2. Claude's private auto-memory (per-user, NOT in git):**
 resolved exclusively by `store_context.resolve_store` (ADR 002) — never by
@@ -299,8 +305,9 @@ cross-project model:
   slug-independent.
 - **Global facts don't auto-cross** — they must be replicated into each project's
   store to surface there.
-- **Concurrent writes to the shared global store (v0.1.71, Track D).** Two different
-  projects dreaming around the same time can both write to `~/.claude/memory`. Every
+- **Concurrent writes to the shared domain store (v0.1.71, Track D).** Two different
+  projects in the same enrolled domain dreaming around the same time can both write
+  to `<config>/consolidate-memory/domains/<domain>/facts`. Every
   individual write there is atomic (write-temp + `os.replace`/`os.link` — never a torn
   file visible mid-write), and `promote()`'s canonical CREATE is exclusive (two projects
   racing to promote onto the same new name: the loser is refused and told to retry, not
@@ -345,8 +352,12 @@ cross the SUBSTANTIAL band (and a marker exists) — flagging a good consolidati
 compaction. Advisory only (never auto-fires; explicit-trigger-only); prospective use is via
 `cm status`. Sibling to the provisional rigor tier + prune-pressure (the other Phase-0 report signals).
 
-**Model:** a global store `~/.claude/memory/` (same fact-file + index format) is the
-canonical home for facts with `scope: stack-general` or `user-global`. Each global
+**Model:** the enrolled-domain store
+`<config>/consolidate-memory/domains/<domain>/facts` (same fact-file + index
+format) is the canonical home for facts with `scope: stack-general` or
+`user-global`. Untagged legacy `~/.claude/memory/` is not ordinarily pullable
+(ADR 008); `cm migrate --inventory` lists it until `--finalize` sets `enforced`.
+Each global
 fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
 (relevance matching), `projects: [...]` (provenance). `sync_global.py`:
 - `--list PROJECT_DIR` — show relevant/present/missing (read-only; does not
@@ -524,8 +535,9 @@ auto-participate — they'd need a separate adapter; deferred.
 
 ### Scope is a fleet-wide cost multiplier — and the lever for relieving it
 
-Each replicated fact adds an **always-loaded** index pointer to *every* project it
-reaches. So global-scope facts are a per-session tax paid across the whole fleet:
+Each replicated fact adds an **always-loaded** index pointer to *every enrolled
+same-domain* project it reaches. Unenrolled projects are local-only and do not
+share. So global-scope facts are a per-session tax paid across that domain:
 - `user-global` → every project (G facts × P projects pointers fleet-wide).
 - `stack-general` on a **common** stack → nearly as wide while *looking* scoped. The
   `claude-code` stack (a real `.claude/` dir or a `SKILL.md` file — the only two markers
@@ -565,7 +577,8 @@ re-walks this cascade over existing `user-global` facts by content and offers de
 cost first: `--tokens` and the dashboard report `mirror_index_tokens` (the share driven
 by replicated mirrors). If the overflow is **mirror-dominated**, *local* pruning is
 futile — `--pull` re-creates a deleted mirror next cycle. The only effective fix is to
-**demote/delete the canonical in `~/.claude/memory/`** (it stops replicating), then
+**demote/delete the canonical in the enrolled domain facts dir** (`cm doctor` →
+`canonical_domain_dir`; never live `~/.claude/memory/`) (it stops replicating), then
 `--gc --apply` to reclaim the orphans (here, and in every other project on its next
 pass). Local pruning works only on **project-authored** index lines.
 

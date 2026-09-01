@@ -1,6 +1,6 @@
 # consolidate-memory — project conventions
 
-**v0.2.0.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
+**v0.3.0.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
 Claude Code's built-in Auto Dream (per-project consolidation), adding a governed cross-project store +
 verification against the live code. This repo is both the plugin and its marketplace —
 end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -166,10 +166,9 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
    (`0.N → 0.N+1.0`). (Pre-1.0, breaking changes ride a minor bump.)
 3. Otherwise — additive feature, enhancement, fix, or docs that stays
    **backward-compatible** (legacy cycle records still render, existing installs keep
-   working) → **patch** (`0.N.M → 0.N.M+1`). Every release since v0.1.1 has landed as a
-   patch under this policy — each one additive (a schema key, `--json` key, CLI flag,
-   read-only mode, or plugin component) and never breaking. Full per-version precedent:
-   `CHANGELOG.md`.
+   working) → **patch** (`0.N.M → 0.N.M+1`). Releases v0.1.1–v0.2.1 were patches
+   under this policy. **v0.3.0 is the first minor:** it removes v0.2.1 unenrolled
+   A→B sharing. Full per-version precedent: `CHANGELOG.md`.
 
 **The release harness (local, gitignored `./release.sh`) is deterministic by
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG
@@ -178,9 +177,11 @@ keyword — then computes the bump TYPE from the delta and enforces the policy. 
 the `## [X.Y.Z]` CHANGELOG entry first (using the policy above), then:
 - `./release.sh` — **dry-run**: prints current→target, the computed bump type, the tag,
   and the notes. No writes.
-- `./release.sh --confirm` — sets `plugin.json` to the CHANGELOG version, validates
-  (manifests + smoke + sim), commits `release: vX.Y.Z`, pushes `main`, tags, cuts the GH
-  Release.
+- `./release.sh --confirm` — if `plugin.json` already equals the CHANGELOG
+  version (pre-bumped on the release branch, as for v0.3.0), skip the bump
+  commit and tag that exact HEAD; otherwise set `plugin.json`, validate
+  (manifests + smoke + sim), commit `release: vX.Y.Z`, push `main`, tag, cut
+  the GH Release.
 - `./release.sh --expect patch|minor|major [--confirm]` — also **asserts** the computed
   bump matches your intent (a second guard; aborts on mismatch).
 

@@ -3,8 +3,8 @@
 **Cross-project, verification-first memory for Claude Code — the layer beyond Auto Dream.**
 
 Claude Code is rolling out a built-in **Auto Dream** that consolidates each project's memory in place. `consolidate-memory`
-goes further, on the two axes Auto Dream doesn't cover: it **shares memory across your whole fleet** —
-a governed global store (a promotion/demotion cascade) replicated into every project — and **verifies
+goes further, on the two axes Auto Dream doesn't cover: it **shares memory across enrolled
+projects in the same trust domain** (a governed store, replicated into those projects) — and **verifies
 facts against the live code** (grep / file & symbol existence / `git log`), dropping any it can't
 confirm. Fact-checked, fleet-wide memory — not a per-project transcript-merge.
 
@@ -34,7 +34,7 @@ project tidy automatically; you invoke **`dream`** (or "consolidate my memory") 
     auto-mem index    ≈275/1500    [██░░░░░░░░] 18%  +1 ln
     recall facts      6            +1
 
-  CROSS-PROJECT   · global tier · ~/.claude/memory: 4 fact(s)
+  CROSS-PROJECT   · domain tier · domains/<domain>/facts: 4 fact(s)
     ↑ promoted  global claude-code-memory-is-slug-scoped
 
   NEURAL NETWORK   · token cost (≈ est., not a tokenizer)
@@ -94,7 +94,9 @@ anywhere. The fix:
   `user-global`) or **fleet-varying** (a per-project stack like `mypy`/release-cutting → at most
   `stack-general`)? Each pass also re-audits existing `user-global` facts by content and **offers**
   demotion for any that drifted over-promoted (never auto-applied).
-- Cross-scope facts live canonically in a **global store** `~/.claude/memory/`.
+- Cross-scope facts live canonically under
+  `<config>/consolidate-memory/domains/<domain>/facts` (legacy `~/.claude/memory/`
+  is a read-only migration source until `cm migrate --finalize`).
 - They're **replicated** into each project's store (so they actually recall there),
   and each fact's `projects:` provenance grows as it spreads — that provenance is the
   network's edge set.
@@ -140,8 +142,9 @@ named, not drawn as a complete star; lines are facts only some projects share.
 It's a **shared bloodstream, not telepathy** — and you never hand-edit another
 project. When project **A** dreams and learns something cross-cutting:
 
-1. **Deposit — instant.** The fact is written to the shared global store
-   (`~/.claude/memory/`) and into A's own store. Done, zero friction.
+1. **Deposit — instant.** The fact is written to the enrolled domain's
+   canonical dir (`<config>/consolidate-memory/domains/<domain>/facts`) and into
+   A's own store. Done, zero friction.
 2. **Absorb — lazy.** Other projects pick it up on **their** next dream (every
    dream's first step is a `pull` that ingests new facts and refreshes changed
    ones). Until B next dreams, B's memory doesn't have A's new insight.
@@ -182,7 +185,7 @@ normal plugin auto-update — if the line appears after an update, that's this f
 
 ## Install
 
-**v0.2.0** (domain isolation + StoreContext + `cm project enroll`). This ships as a
+**v0.3.0** (domain isolation + StoreContext + `cm project enroll`). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
 ```text
@@ -207,11 +210,27 @@ which is only set when the skill loads as a plugin).
 ### Uninstall / purge your data
 
 `/plugin uninstall consolidate-memory` removes the code. Your consolidated memory is
-**separate and untouched by uninstall** — that split is the whole privacy posture. To
-also purge the data itself: remove `~/.claude/memory/` (the global, cross-project store)
-and/or `~/.claude/projects/<slug>/memory/` per project (that project's own store) — both
-are plain directories of markdown, safe to `rm -rf` by hand. This is **not recoverable**
-once removed.
+**separate and untouched by uninstall** — that split is the whole privacy posture.
+
+Do **not** `rm -rf ~/.claude/projects/<slug>/memory/` to "uninstall this plugin": that
+directory is also Claude Code's native Auto Memory, and blanket deletion removes
+memory this plugin does not own. Domain canonicals live under
+`~/.claude/consolidate-memory/domains/<domain>/facts/`; the control plane lives under
+`~/.claude/plugins/data/consolidate-memory/`. Legacy `~/.claude/memory/` is a
+read-only migration source. Scoped purge commands are the right tool; hand-deleting
+the native store is **not recoverable** and can destroy unrelated Auto Memory.
+
+### Known limitations (v0.3.0)
+
+- **Unenrolled projects are local-only.** They cannot create or pull cross-project
+  canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain
+  personal` (this checkout). `cm doctor` prints `UNENROLLED LOCAL-ONLY` when this
+  applies.
+- Use `move-domain` / `unenroll` to revoke managed mirrors that the destination
+  does not admit. Do not run `cm migrate --apply` / `--rollback` or domain switches
+  on irreplaceable stores without a reviewed assignment plan.
+- Public **1.0 remains HOLD.** `./cm` is a **maintainer** wrapper in this checkout;
+  marketplace users invoke the skill (`dream`) and the packaged `/cm-*` commands.
 
 ### The QA companion plugin
 
@@ -233,7 +252,7 @@ the dense technical reporting (never replacing it). You can also drive the piece
 ```bash
 ./cm status            # Phase-0 context: stores, git range, marker, token budget + a no-nag dream-timing nudge
 ./cm doctor            # resolved Claude store, source, profile, domain, auto-memory, ambiguity
-./cm project enroll --domain NAME   # operator grant: this project may receive that domain's facts
+./cm project enroll --domain NAME   # maintainer CLI: operator grant (marketplace users: ask the skill)
 ./cm extract           # curated session signal (human turns + error-gotchas, secrets omitted)
 ./cm distill           # recurring Bash-command workflows (templates + compound-command chains) — distill's raw signal
 ./cm pull .            # replicate relevant global facts into this project
@@ -295,7 +314,7 @@ consolidate-memory/                         # repo root = plugin marketplace
 │       ├── cm_ops.py                        # doctor / conflicts / resolve / migrate / data
 │       └── _ui.py                           # shared visual vocabulary (color/rule/glyphs) the others import
 ├── tests/                                   # zero-dependency smoke + accumulation + manifest checks
-├── memory/                                  # gitignored placeholder (.gitkeep) — store is ~/.claude/memory
+├── memory/                                  # gitignored placeholder (.gitkeep) — live canonicals are domain dirs
 ├── cm                                       # dev CLI over the scripts
 ├── SECURITY.md · CHANGELOG.md
 └── README.md · CLAUDE.md · LICENSE
@@ -309,8 +328,9 @@ network calls**, and the only external process is read-only `git`. The `memory/`
 published plugin (only `plugins/consolidate-memory/` ships). The secrets firewall
 applies at *retrieval*, so a credential in a transcript is dropped before it could ever
 reach a fact file. **Portable by construction** — no `pwd`/`grp`/`termios`. Control-plane
-locks use `fcntl.flock` on POSIX and import-fallback to unlocked on non-POSIX (ADR 006;
-Phase 6 soak). Runs natively on Linux and macOS; on Windows, both the
+locks use `fcntl.flock` on POSIX. Missing `fcntl` (native Windows) is
+**WriteRefused** — fail-closed, not an unlocked fallback (ADR 016). Runs natively
+on Linux and macOS; on Windows, both the
 `cm` dev CLI and the skill's own shell invocations use POSIX syntax (`VAR=val` prefixes),
 so run under WSL. Each release is gated by an internal multi-agent white-hat security
 review; see **[SECURITY.md](SECURITY.md)** for the full threat model, the security

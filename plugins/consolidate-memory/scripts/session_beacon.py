@@ -80,10 +80,12 @@ def _cwd_from_stdin() -> str:
 
 
 def beacon_line(store: Path, *, domain_id: str = "unknown",
-                migration_mode: str = "dual-read") -> str:
+                migration_mode: str = "dual-read",
+                gfacts: list | None = None) -> str:
     """The at-most-one advisory line for `store` — '' when silent. PURE given the filesystem
     (smoke-pinned through both the silent and behind states)."""
-    gfacts = global_facts()
+    if gfacts is None:
+        gfacts = global_facts()
     if not gfacts:
         return ""
     if not store.is_dir() or not any(store.glob("*.md")):
@@ -164,11 +166,15 @@ def main() -> int:
         ctx = resolve_store(Path(str(cwd)).resolve(), hook=hook)
         if not ctx.auto_memory_enabled:
             return 0  # disabled auto-memory: absence is not drift (ADR 002)
+        if not getattr(ctx, "cross_project_allowed", False):
+            return 0  # unenrolled / unhealthy registry: local-only (ADR 008/009)
         from control_plane import migration_mode_readonly
+        from sync_global import iter_admissible_facts
         line = beacon_line(
             ctx.native_memory_dir,
             domain_id=ctx.domain_id,
             migration_mode=migration_mode_readonly(ctx),
+            gfacts=iter_admissible_facts(ctx),
         )
         if line:
             print(line)

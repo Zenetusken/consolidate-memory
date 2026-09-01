@@ -10,6 +10,7 @@ VOLATILE_KEYS = (
     "modified", "mirrored_at", "projects", "last_used", "last_read", "usage",
     "global_ref_since", "content_modified", "verified_at", "last_observed_at",
     "mirrored_at", "holder", "base_revision", "canonical_revision",
+    "canonical_fact_id", "canonical_domain",
 )
 
 REFRESH = "refresh"
@@ -51,12 +52,13 @@ def body_hash(text: str) -> str:
 
 
 def classify_mirror(local_text: str, canonical_text: str,
-                    base_revision: Optional[str] = None) -> dict:
+                    base_revision: Optional[str] = None,
+                    allow_legacy_fallback: bool = True) -> dict:
     """Three-way decision. Never overwrite a divergent local body.
 
-    Legacy mirrors (no semantic base_revision) fall back to global_ref_body:
-    unchanged body still refreshes (Probe C description drift); changed local
-    body with unchanged canonical body stops; both changed differently conflict.
+    Holder-table `base_revision` is authoritative (ADR 011). When
+    `allow_legacy_fallback` is False, a missing holder base quarantines
+    instead of trusting editable mirror frontmatter.
     """
     fm, _ = _frontmatter_span(local_text)
     local_sem = semantic_hash(local_text)
@@ -64,8 +66,11 @@ def classify_mirror(local_text: str, canonical_text: str,
     local_body = body_hash(local_text)
     canon_body = body_hash(canonical_text)
     base = (base_revision or "").strip() or None
-    if base is None:
+    if base is None and allow_legacy_fallback:
         base = str(fm.get("base_revision") or "").strip() or None
+    if base is None and not allow_legacy_fallback:
+        return {"action": QUARANTINE, "reason": "missing holder lineage",
+                "local": local_sem, "canonical": canon_sem, "base": None}
     ref_body = str(fm.get("global_ref_body") or "").strip() or None
 
     if not local_text.strip():

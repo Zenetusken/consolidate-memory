@@ -5,6 +5,143 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.3.0] — 2026-09-01
+
+### Breaking — unenrolled is local-only (ADR 008)
+
+- **`unknown` is a local-only sentinel.** Unenrolled projects cannot create or
+  pull cross-project canonicals. Enroll into a named domain (`personal`
+  recommended). `domains/unknown/facts` and legacy `~/.claude/memory` are
+  migration inputs. v0.2.1 unenrolled A→B sharing is gone.
+- **`enroll` refuses a silent domain switch.** Use `cm project move-domain --to`.
+  Enroll / move / unenroll revoke managed mirrors not admitted in the destination.
+- **Cross-domain `authorized_pairs` is unsupported** (ignored).
+- **Public 1.0 remains HOLD.**
+
+### Added — ADRs 008–016, identity types, admin commands
+
+- ADRs 008–016 freeze the 0.3.0 contract (local-only unknown, registry health,
+  journal v3 dest-verify-before-delete, schema v3 codec, domain transition,
+  staged migration, Phase-1 sync exception, current-domain reports, POSIX mutation).
+- `identity.CanonicalRef` + `StoreContext.registry_state` /
+  `cross_project_allowed`.
+- Packaged `/cm-doctor`, `/cm-domain`, `/cm-data`.
+- `fact_schema.py` restricted codec (name==stem, domain match, enums).
+- Staged migrate (ADR 013): inventory → assign/exclude → apply (named domains only;
+  refuses unresolved facts; no `legacy-unassigned` stamp) → rollback (hash-aware) →
+  finalize (sets `enforced`). Dual-read remains until finalize.
+- `cm data export` writes a tar.gz + sha256 manifest. `cm data purge --scope`
+  (`managed-mirrors` | `project-ops` | `domain-canonicals` | `all-plugin-data`)
+  never deletes Claude's native Auto Memory.
+
+### Added — unenrolled-share warning, registry classification
+
+- Loud `UNENROLLED LOCAL-ONLY` warning on `cm doctor`, `--list` /
+  `--pull` / `--promote`, `canonical upsert` / `forget`, and dashboard persist/HTML
+  renders when the project is not enrolled.
+- `classify_registry()` / `assert_mutation_allowed()`: a present but
+  locked / corrupt / unreadable / incompatible `control.sqlite` refuses enroll,
+  unenroll, migrate apply/rollback, forget, upsert, resolve, repair-mirror, GC
+  `--apply`, and purge. An *absent* registry still allows first write (it will be
+  created). `cm doctor` prints `registry_state`.
+
+### Fixed — read-only SQLite, unknown tombstones, catalog-on-forget
+
+- **`connect_if_exists` is actually read-only.** It no longer calls `connect()`
+  (which mkdir'd, ran `SCHEMA_SQL`, and enabled WAL). URI `mode=ro`; schema
+  upgrades stay on the writable `connect()` path. `--list`, `cm conflicts`,
+  migrate `--plan`, and doctor cannot mint or migrate the DB.
+- **Unknown-domain tombstone lookup uses `domain_id="unknown"`.** A forget in
+  `work` no longer blocks an unenrolled upsert of the same stem (and an unenrolled
+  forget now actually prevents resurrection).
+- **`forget` regenerates the domain catalog in the same `transact`**, so a
+  tombstoned fact's pointer does not linger in `MEMORY.md`.
+- **Journal dest-verify-before-delete (ADR 010).** `_publish_temps` no longer
+  unlinks origins when a dest hash mismatches. `expected_revisions` may not be
+  `None` for a file that influenced the plan (pull records plan-time hashes).
+  Recovery COMMITs the registry before marking the journal complete, and
+  refuses to complete a replay whose `upsert` returned `ok: false`.
+- **Hook-sketch persistence is off by default** (`CM_HOOK_SKETCHES=1` to enable).
+- **`upsert_project` no longer clobbers stored capabilities with `[]`.**
+- **`--gc --apply` journals through v3** (dest-verify-before-delete) and requires
+  enrollment. `forget` deletes holder rows in the same transact.
+- **Canonical upsert injects `name:`/`domain:`** from the stem and StoreContext
+  before schema validation (promote rename no longer hard-refuses).
+
+- **Domain transitions are one journal v3 transact** (enroll / move-domain /
+  unenroll): registry change + revoke of unadmitted mirrors. Locally edited
+  mirrors are quarantined under `native/quarantine/`, never deleted. CLI is
+  dry-run unless `--apply` (TTY also requires `--confirm enroll-<domain>` /
+  `move-<from>-to-<to>` / `unenroll-<domain>`). `rebind` aliases a moved
+  git-common-dir onto the enrolled `project_id`.
+- **Ordinary fleet reports are current-domain only** (`--list`/`--tokens`/
+  `--network`/`--utility`/`--staleness`/`--workflows`/`--harvest`/`--gc`).
+  `--network --all-domains` is the admin view.
+- **Holder-table `base_revision` is the three-way base** (mirror frontmatter is
+  not trusted). Pull re-classifies under lock. Mirrors stamp `canonical_fact_id`
+  + `canonical_domain`. Nested `applies.any` is refused.
+- **Forget revokes this project's managed mirror** in the same transact.
+  Migrate `--validate` / `--resolve-collision` exist; rollback journals through
+  v3. Retention no longer advertises an unimplemented 12-month aggregate window.
+- Unenrolled `--pull` is a no-op before `connect()`; unenrolled `--promote`
+  refuses before `domains/unknown/facts` is created. `iter_canonicals` is the
+  typed enumerator. Harvest rows carry `domain_id` + `fact_id`. Journal recovery
+  applies `registry_ops` even when there are no dest temps. Capability user
+  overrides (`capability-overrides.json`) are honored on pull. `cm project show`
+  is read-only (does not mint sqlite). `cm data purge` is plan-first (`--apply`
+  + confirmation phrase). Export tar members match the sha256 manifest. SKILL /
+  harness-map no longer instruct writing live `~/.claude/memory/` as the canonical
+  plane.
+- Pull `MISSING` will not overwrite a local file that appeared after classify.
+  Domain-transition recovery matches this project plus origin/dest domain (not a
+  later enrollment). Forget/GC journal `holder_delete`. `resolve` / `repair-mirror`
+  / migrate `--apply` require enrollment. `--workflows` / `--staleness` / `--network`
+  without `--all-domains` stay current-domain.
+- macOS smoke slug pins no longer assume `/home/...` survives `Path.resolve()`
+  (symlink/autofs on GH `macos-latest`).
+- **Journal v3 typed ops fail closed** (unknown `op` is `WriteRefused`;
+  `project_upsert` / `project_rebind` are first-class). Delete preimage mismatch
+  aborts the journal (not `complete`). `mode=create` uses exclusive create.
+  First-enroll crash recovery recreates the project row.
+- **Domain-transition classify is under the lock** (ADR 012). Dry-run is
+  advisory; `--apply` rereads + three-way classifies with the holder table.
+  Collision-safe quarantine names: `native/quarantine/<stem>.<utc>.md`.
+- **Migrate dest collision / rollback bytes.** Existing dest refuses unless
+  `--on-existing keep-existing|replace-with-migrated|exclude`. `--keep legacy`
+  clears collisions when the primary origin is kept. Rollback restores prior
+  dest bytes, catalogs, and fact rows. Apply uses the same schema codec as
+  upsert (ADR 011 required fields). Catalog `generate_catalog(..., overlay=)`
+  sees staged temps.
+- **Untagged legacy is not ordinarily pullable** into a named domain. Pull
+  uses `applies_from_fm` (`applies_any` / `applies_all` / `applies_exclude`);
+  nested `applies.*` refuses that fact. Schema-v3 mirrors with a missing
+  holder row quarantine (no frontmatter fallback).
+- **Forget** three-way classifies this project's mirror (quarantine a local
+  edit; no `holder_delete *` while other stores still have files). Domain /
+  all-plugin-data purge revokes managed mirrors first. `--apply` always
+  requires `--confirm PHRASE` (TTY or not), including `cm data compact`.
+- **Recovery is per-op atomic.** A failing registry op rolls back earlier
+  ops in that pending entry. `mode=create` treats a dest that already has the
+  expected hash as published (crash-idempotent). MISSING pull uses `ABSENT` +
+  `create`. Migrate apply pins reviewed source hashes; rollback restores
+  catalogs and fact rows under lock. Domain purge aborts if any revoke fails
+  and journals canonical deletion. Resolve/repair emit `holder_upsert` +
+  `conflict_resolve`. Schema v3 writer requires the ADR 011 key set.
+
+Docs (README, SECURITY, SKILL, harness-map, CLAUDE, AGENTS, preflight, `cm` help)
+describe **0.3.0 behavior**: unenrolled is local-only, Phase-1 `--pull` is the
+documented enrolled-domain exception to "Phases 0–3 are read-only", `/cm-*` for
+marketplace users, `./cm` maintainer-only. POSIX mutation is fail-closed (no
+unlocked Windows fallback). Behavior break vs v0.2.1 unenrolled sharing is a
+**minor** bump under the pre-1.0 policy (`0.2.1 → 0.3.0`). Public 1.0 HOLD.
+`plugin.json` is **0.3.0**. Installed plugins auto-update at next Claude Code
+startup once this version is on `main`.
+
+**Residual HOLD (not this release):** signed SBOM/provenance publisher
+(committed `release.yml` is the verify-on-tag gate); native-Windows mutation
+(POSIX fail-closed is the contract); soak of a **copy** of a real 0.2.1
+unknown-sharing fleet.
+
 ## [0.2.1] — 2026-08-31
 
 ### Fixed — unenrolled sharing, tombstone domain keys, enroll-only grant

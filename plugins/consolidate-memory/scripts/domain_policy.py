@@ -3,7 +3,7 @@
 
 `user-global` is domain-global, not installation-global. Unknown-domain projects
 receive no domain-tagged cross-project facts. Cross-domain replication is denied
-unless an explicit authorization pair exists. Secret bodies are never retained.
+(authorized_pairs is unsupported). Secret bodies are never retained.
 """
 from __future__ import annotations
 
@@ -13,8 +13,7 @@ from typing import Any, Optional
 SENSITIVITY = ("public", "internal", "confidential", "secret")
 SAFE_POINTER_RE = re.compile(r"^(see|ref|pointer):\s+\S+", re.I)
 
-# Dual-read: untagged legacy facts may still flow to unknown-domain projects.
-# That is NOT an assignment to a universal domain (ADR 003 / 007).
+# Untagged legacy is inventory/migration-only. Ordinary pull never admits it.
 MIGRATION_DUAL_READ = "dual-read"
 MIGRATION_ENFORCED = "enforced"
 
@@ -70,13 +69,11 @@ def admit_cross_project(project_domain: str, fm: dict, *,
                         looks_secret=None) -> bool:
     """May this project receive this canonical fact?
 
-    Dual-read: untagged fact + unknown project → True (legacy probes).
-    Tagged fact + unknown project → False.
-    Cross-domain → False unless (src, dst) in authorized_pairs.
-    Secret → False (never replicate a secret body).
-    Confidential → only same domain.
-    Enforced: untagged facts are not admitted (legacy-unassigned until reviewed).
+    Unknown is local-only (ADR 008): never admits. Cross-domain is always
+    denied (`authorized_pairs` is ignored / unsupported). Confidential only
+    same named domain. Untagged legacy is not ordinarily pullable.
     """
+    del authorized_pairs  # ADR 008: cross-domain authorization is unsupported
     pdom = (project_domain or "unknown").strip() or "unknown"
     fdom = fact_domain(fm)
     sens = fact_sensitivity(fm)
@@ -86,24 +83,16 @@ def admit_cross_project(project_domain: str, fm: dict, *,
         blob = str(fm.get("description") or "") + "\n" + str(fm.get("body") or "")
         if blob.strip() and looks_secret(blob):
             return False
-    # Confidential never rides a migration exception (P0-4).
-    if sens == "confidential":
-        return bool(fdom) and fdom == pdom and pdom != "unknown"
-    auth = authorized_pairs or set()
-
     if pdom == "unknown":
-        if fdom:
-            return False
-        return migration_mode != MIGRATION_ENFORCED
-
-    if not fdom:
-        return migration_mode != MIGRATION_ENFORCED
-
-    if fdom != pdom:
-        if (fdom, pdom) in auth:
-            return True
         return False
-    return True
+    if sens == "confidential":
+        return bool(fdom) and fdom == pdom
+    if not fdom:
+        # Untagged legacy is inventory/migration-only, not ordinary pull
+        # (ADR 008 secure-default). Dual-read does not replicate into named domains.
+        del migration_mode
+        return False
+    return fdom == pdom
 
 
 def secret_safe_pointer(description: str) -> str:

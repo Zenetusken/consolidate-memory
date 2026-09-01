@@ -2311,10 +2311,16 @@ def build_context(project_dir: Path) -> dict:
     # REUSES the dual-axis suppression result (`remediation.required`), NOT a fresh budget compare — so a
     # standing-justified store reads False (no perpetual pivot). `remediation` is {} on the healthy path,
     # hence `.get`, not subscript (would KeyError). No `stale_since_marker` (it re-fires every run).
-    from sync_global import _canonical_dirs as _canon_dirs, global_facts as _gfacts
-    _gdirs = _canon_dirs()
+    from sync_global import facts_for_context as _ffacts, iter_canonicals as _ic_dangle
+    _gdirs = []
+    try:
+        for _ref in _ic_dangle(_ctx):
+            _gdirs.append(_ref.canonical_path.parent)
+    except Exception:
+        _gdirs = []
+    _gdirs = list(dict.fromkeys(_gdirs))
     _dangling = dangling_links(auto_mem, global_dirs=_gdirs)
-    _global_fact_count = len(_gfacts())
+    _global_fact_count = len(_ffacts(_ctx))
     _obnj = bool((remediation or {}).get("required"))
     maintenance: dict = {"dangling": len(_dangling), "over_budget_not_justified": _obnj,
                          "work": bool(_dangling) or _obnj}

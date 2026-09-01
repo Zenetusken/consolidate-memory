@@ -203,6 +203,12 @@ def main(argv: list) -> int:
         return 1
 
     store = _store_for(args.store, args.project)
+    try:
+        from store_context import resolve_store as _rs_html, warn_unenrolled_share as _w_html
+        _proj = Path(args.project).resolve() if args.project else Path.cwd()
+        _w_html(_rs_html(_proj))
+    except Exception:
+        pass
     history = read_history(store)
     record: dict = {}
     if args.cycle:

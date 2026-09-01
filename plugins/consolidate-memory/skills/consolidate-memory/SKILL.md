@@ -17,8 +17,15 @@ description: >-
 
 # Consolidate Memory
 
-**v0.2.0** — domain-isolated canonicals, StoreContext, operator enrollment
+**v0.3.0** — domain-isolated canonicals, StoreContext, operator enrollment
 (`cm project enroll --domain NAME`), SQLite control plane. Public 1.0 stays HOLD.
+
+**Unenrolled is local-only:** a project that is not enrolled cannot create or pull
+cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
+`cm project enroll --domain personal --apply` (this checkout). First enroll
+grants the domain and revokes managed mirrors the destination does not admit;
+use `move-domain` to switch and `unenroll` to go local-only. `cm doctor` prints
+`UNENROLLED LOCAL-ONLY` when this applies.
 
 A deliberate pass that turns the fluid experience of a work session into **verified,
 durable facts** — and keeps the project's two memory stores accurate and
@@ -106,9 +113,15 @@ skill**, and why facts that load deterministically get the harshest scrutiny.
 
 ## Workflow
 
-Work the phases in order. Phases 0–3 are read-only investigation; Phase 4 is the
-first write, and you **show the user the proposed consolidation before writing it**
-(report-then-apply) so a consolidation pass never silently churns committed docs.
+Work the phases in order. Phases 0, 2, and 3 are read-only investigation. **Phase 1
+managed sync is the documented exception:** `--list` (read-only) then `--pull` (and
+`--harvest`) may write already-approved **same enrolled-domain** mirrors, index
+pointers, and plugin-data usage ledgers *before* Phase 4 (unenrolled projects are
+local-only and `--pull` is a no-op). Those writes
+must appear in the Phase-5 mutation audit. Phase 4 remains the approval gate for
+authoring, deletion, promotion, enrollment changes, migration, and committed-doc
+edits — **show the user the proposed consolidation before writing those**
+(report-then-apply) so a pass never silently churns committed docs.
 
 **Empty-set rule (judgment, not scans).** Thoroughness is that every detector *runs*,
 not that you re-derive an empty result. When a scripted set is empty — `archive? 0`,
@@ -412,8 +425,10 @@ portions; a whole read errors and wastes context.
 auto-memory fact file to "orient." Body reads still happen wherever CONTENT is the
 input (this is not a skip of the re-audits below):
 
-- **Demotion:** every `user-global` canonical **body** in `~/.claude/memory/` (re-walk
-  the cascade by content). Empty-set rule only if there are no such canonicals.
+- **Demotion:** every `user-global` canonical **body** in the enrolled domain
+  facts dir from Phase 0 / `cm doctor` (legacy `~/.claude/memory/` is
+  inventory-only — untagged facts are not pulled). Empty-set rule only if there
+  are no such canonicals.
 - **Promotion:** every Phase-0 `promote?` seed body (already capped). Empty-set rule
   if the seed is empty.
 - **Phase 0 named lists** (`archive?`, `defrag?`, re-verification candidates): Read
@@ -442,7 +457,9 @@ idempotent (re-runs are cheap no-ops); reads-only; no message content leaves the
 evidence surfaces in Phase 5's `--utility`, source-labeled (`harvested`).
 
 This replicates any `user-global` (and stack-matching `stack-general`) facts from
-`~/.claude/memory/` that are missing here, and **refreshes any stale mirrors** whose
+the enrolled domain canonical dir (untagged legacy `~/.claude/memory/` is not
+ordinarily pullable; `cm migrate --inventory` lists it until `--finalize`) that
+are missing here, and **refreshes any stale mirrors** whose
 canonical changed (the script writes both the fact file and its index pointer). It also **AUTO-HOLDS**
 (M1) any new-global pull that would push the always-loaded index past the **HARD CEILING**
 (`INDEX_CEILING_TOKENS` ≈3840 est tok — v0.1.66; an over-TARGET amber store now receives freely, since
@@ -454,7 +471,7 @@ withheld to protect a past-the-ceiling index; the dashboard renders it as the `�
 receive` lever) in the cycle record. If nothing is missing/stale/held, no-op.
 
 Then **re-audit the existing `user-global` facts — the backstop for the promotion cascade's weak
-applicability gate (G2.3 — see Phase 2).** Empty-set rule if there are none. Otherwise read each canonical's **body** in `~/.claude/memory/` and
+applicability gate (G2.3 — see Phase 2).** Empty-set rule if there are none. Otherwise read each canonical's **body** in the enrolled domain facts dir (`cm doctor` → `canonical_domain_dir`; untagged legacy is inventory-only) and
 **re-walk the cascade by CONTENT**; any fact that would NOW route lower — e.g. its content carries a
 *fleet-VARYING* precondition (`mypy`, "only when cutting a release") rather than the user's
 *fleet-CONSTANT* substrate — is a **demotion candidate**. Judge by content, **NOT `holders`/adoption**
@@ -640,7 +657,8 @@ placing each fact in its tier and optimizing it for how that tier loads:
     mirror-vs-local (`mirror_index_tokens`). If it's **mirror-dominated** (replicated
     `global_ref:` cross-project facts), local pruning is *futile* — Phase 1's `--pull`
     re-creates a deleted mirror next cycle; the only effective lever is to
-    **demote/delete the canonical in `~/.claude/memory/`**, then GC the orphans
+    **demote/delete the canonical in the enrolled domain facts dir** (`cm doctor` →
+    `canonical_domain_dir`; never live `~/.claude/memory/`), then GC the orphans
     fleet-wide (Phase 5). Local pruning works only on **project-authored** pointers.
     The index holds *pointers only* (`- [Title](file.md) — hook`), never fact bodies.
   - **Repo `CLAUDE.md`** (user hand-authored, committed, team-shared — you are a **guest WITH permission to
@@ -817,7 +835,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    from the canonical global store leaves dead mirrors in every project that pulled it
    — `--pull` can't reclaim them (it only iterates *live* globals). This is also the
    **budget-relief lever**: when an index is over budget because of replicated mirrors
-   (Phase 4), the fix is to delete the *canonical* in `~/.claude/memory/` and then GC
+   (Phase 4), the fix is to delete the *canonical* in the enrolled domain facts dir
+   (`cm doctor` → `canonical_domain_dir`) and then GC
    here (and the orphan clears in every other project on its next pass too). Report
    them, then apply (surface deletions per the safety rule before applying):
    ```bash
