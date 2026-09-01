@@ -171,9 +171,12 @@
   .a-added{color:var(--ok)} .a-corrected{color:var(--data)} .a-deleted{color:var(--crit)}
   .a-reconciled{color:var(--warn)} .a-skipped{color:var(--faint)}
 
-  .audit-ln{display:grid;grid-template-columns:1fr auto;gap:12px;padding:11px 0;border-bottom:1px solid var(--rule);font-size:12px;align-items:baseline}
-  .audit-ln .s{font-family:var(--serif);font-style:italic;color:var(--ink2)}
-  .audit-ln .nums{font-variant-numeric:tabular-nums;color:var(--ink2)}
+  /* Label is max-content so "dangling wikilinks" never wraps onto a second row
+     while a long name list squeezes it (the 1fr/auto grid did that). Result
+     column takes the rest and wraps. */
+  .audit-ln{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:12px 16px;padding:11px 0;border-bottom:1px solid var(--rule);font-size:12px;align-items:baseline}
+  .audit-ln .s{font-family:var(--serif);font-style:italic;color:var(--ink2);white-space:nowrap}
+  .audit-ln .nums{font-variant-numeric:tabular-nums;color:var(--ink2);min-width:0;text-align:right;overflow-wrap:anywhere}
   /* audit STORE rows: fixed right-aligned number columns so new/mod/del/Δtok line up across rows regardless of width */
   .audit-row{display:grid;grid-template-columns:1fr 2.7em 2.7em 2.7em 4.4em;gap:8px;padding:11px 0;border-bottom:1px solid var(--rule);font-size:12px;align-items:baseline}
   .audit-row .s{font-family:var(--serif);font-style:italic;color:var(--ink2)}
@@ -1189,10 +1192,13 @@
     if(U0&&typeof U0==="object"&&!Array.isArray(U0)&&Object.keys(U0).length){
       var utop=(Array.isArray(U0.per_fact)?U0.per_fact:[]).filter(function(f){return f&&typeof f==="object";}).slice(0,3)
         .map(function(f){return esc(String(f.name||"?"))+" ×"+num(f.reads);}).join(" · ");
+      // "organic" + dream-excluded: 0 reads next to N confirmed claims is not a contradiction
+      // (verification is grep/git; usage is transcript body-reads, dream-procedure excluded).
       uRows='<div class="audit-ln"><span class="s">usage</span><span class="nums">'
-        +num(U0.reads)+' read'+(num(U0.reads)!==1?"s":"")+' · '+num(U0.facts_read)+' fact'+(num(U0.facts_read)!==1?"s":"")
+        +num(U0.reads)+' organic read'+(num(U0.reads)!==1?"s":"")+' · '+num(U0.facts_read)+' fact'+(num(U0.facts_read)!==1?"s":"")
         +' · '+num(U0.transcripts)+' transcript'+(num(U0.transcripts)!==1?"s":"")
         +(num(U0.mentions)?' · '+num(U0.mentions)+' mention'+(num(U0.mentions)!==1?"s":""):"")
+        +(num(U0.dream_excluded)?' · '+num(U0.dream_excluded)+' dream-procedure excluded':"")
         +'</span></div>'
         +(utop?'<div class="audit-ln"><span class="s">top recalls</span><span class="nums">'+utop+'</span></div>':"");}
     var rem=CUR.remediation, remRow="";
@@ -1207,21 +1213,32 @@
         if(rem.reaches_budget===false) rbits.push("prune cannot reach budget");
       }
       remRow='<div class="audit-ln"><span class="s">index pressure</span><span class="nums" style="color:'+rcol+'">'+esc(rtxt)+(rbits.length?" · "+esc(rbits.join(" · ")):"")+'</span></div>';}
-    var so=Array.isArray(h.slug_orphans)?h.slug_orphans.filter(function(x){return typeof x==="string"&&x;}):[];
-    var soRow=so.length?'<div class="audit-ln"><span class="s">slug orphans</span><span class="nums" style="color:var(--warn)">'+esc(so.slice(0,4).join(", "))+(so.length>4?" +"+ (so.length-4):"")+'</span></div>':"";
+    function clipNames(arr, cap){
+      var names=(arr||[]).filter(function(x){return typeof x==="string"&&x;});
+      if(!names.length) return "";
+      cap=cap||8;
+      var shown=names.slice(0,cap);
+      return shown.join(", ")+(names.length>cap?" · +"+(names.length-cap)+" more":"");
+    }
+    var so=Array.isArray(h.slug_orphans)?h.slug_orphans:[];
+    var soList=clipNames(so, 4);
+    var soRow=soList?'<div class="audit-ln"><span class="s">slug orphans</span><span class="nums" style="color:var(--warn)">'+esc(soList)+'</span></div>':"";
     var sd=(h.schema_drift&&typeof h.schema_drift==="object"&&!Array.isArray(h.schema_drift))?h.schema_drift:{};
     var driftBits=[];
     if(num(sd.missing_node_type)) driftBits.push(num(sd.missing_node_type)+" missing type");
     if(num(sd.malformed_scope)) driftBits.push(num(sd.malformed_scope)+" bad scope");
     if(num(sd.malformed_origin)) driftBits.push(num(sd.malformed_origin)+" bad origin");
-    if(num(sd.index_mismatch)) driftBits.push(num(sd.index_mismatch)+" index↔file");
+    // pointers-ok + mismatch = unindexed files, not broken pointers (those are the row above).
+    if(num(sd.index_mismatch)) driftBits.push(num(sd.index_mismatch)+(pointers?" not in the index":" index↔file"));
     var driftRow=driftBits.length?'<div class="audit-ln"><span class="s">schema drift</span><span class="nums" style="color:var(--warn)">'+esc(driftBits.join(" · "))+'</span></div>':"";
-    var brokenNames=Array.isArray(h.broken)?h.broken.filter(function(x){return typeof x==="string"&&x;}):[];
+    var brokenNames=Array.isArray(h.broken)?h.broken:[];
+    var brokeList=clipNames(brokenNames, 8);
     var brokeTxt=pointers?"all resolve":"broken";
-    if(broke&&brokenNames.length) brokeTxt+=" · "+esc(brokenNames.slice(0,3).join(", "));
+    if(broke&&brokeList) brokeTxt+=" · "+esc(brokeList);
     else if(broke) brokeTxt+=" · "+broke+" broken";
-    var dangNames=Array.isArray(h.dangling_links)?h.dangling_links.filter(function(x){return typeof x==="string"&&x;}):[];
-    var dangTxt=dang?(dang+" to review"+(dangNames.length?" · "+dangNames.slice(0,3).join(", "):"")):"none";
+    var dangNames=Array.isArray(h.dangling_links)?h.dangling_links:[];
+    var dangList=clipNames(dangNames, 8);
+    var dangTxt=dang?(dang+" to review"+(dangList?" · "+dangList:"")):"none";
     var maint=CUR.maintenance, maintRow="";
     if(maint&&typeof maint==="object"&&!Array.isArray(maint)&&truthy(maint.pivoted))
       maintRow='<div class="audit-ln"><span class="s">maintenance</span><span class="nums" style="color:var(--data)">pivoted — self-heal / cross-node enrichment</span></div>';
