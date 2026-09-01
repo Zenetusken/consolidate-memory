@@ -1221,14 +1221,6 @@ this once warned against; the dashboard remains the source of the figures.)
 {
   "project": "repo-name",
   "session": "<active session id>",
-  "identity": {
-    "_": "v0.3.0: StoreContext snapshot at seed (domain / enrollment). Absent on pre-0.3 records — HTML falls back to live identity at render. No filesystem paths.",
-    "domain_id": "personal",
-    "enrolled": false,
-    "registry_state": "absent",
-    "cross_project_allowed": false,
-    "conflicts": 0
-  },
   "scope": {"git_range": "abc..HEAD", "git_commits": 0,
             "session_candidates": 0, "memories_reviewed": 0},
   "rigor": {"phase": "provisional|final", "prune_pressure": false, "prune_reason": "",
