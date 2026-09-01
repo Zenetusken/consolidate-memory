@@ -980,7 +980,8 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
     transact (registry-authoritative); Markdown `projects:` is updated via temps so
     it is never rewritten after locks drop.
     """
-    from control_plane import CrashSimulated, record_holder, stable_fact_id, transact
+    from control_plane import (ABSENT as _ABS_PULL, CrashSimulated, record_holder,
+                               stable_fact_id, transact)
     from index_admission import apply_pointer, project_index
     from mirror_conflict import semantic_hash as _sem_hold
     from store_context import WriteRefused
@@ -1014,8 +1015,13 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
     def mutate(conn, temps):
         idx_text = _safe_read_text(idxp) or "# Memory Index\n\n"
         deletes: list = []
+        dest_modes: dict = {}
+        expected_m: dict = {}
         pulled = refreshed = fat = 0
         recorded: list = []
+        if not idxp.exists():
+            dest_modes[str(idxp)] = "create"
+            expected_m[str(idxp)] = _ABS_PULL
         planned = idx_text
         if evict_stem:
             planned = "\n".join(
@@ -1051,6 +1057,8 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                     continue
                 idx_text = future
                 temps[str(path)] = want
+                dest_modes[str(path)] = "create"
+                expected_m[str(path)] = _ABS_PULL
                 pulled += 1
                 recorded.append(name)
                 if lint:
@@ -1068,7 +1076,10 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                     _ct = (_safe_read_text(ctx.canonical_domain_dir / f"{name}.md")
                            or _safe_read_text(global_store() / f"{name}.md")
                            or "")
-                    _act2 = _cml(cur_now, _ct, base_revision=_hb)["action"]
+                    _cfm = _frontmatter(cur_now)
+                    _v3lock = bool(_cfm.get("canonical_fact_id") or _cfm.get("schema_version"))
+                    _act2 = _cml(cur_now, _ct, base_revision=_hb,
+                                 allow_legacy_fallback=not _v3lock)["action"]
                     if _act2 in (_STP, _CFL, _QAR):
                         continue
                 temps[str(path)] = want
@@ -1098,8 +1109,14 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
             fid = stable_fact_id(ctx.domain_id, name)
             record_holder(conn, fid, ctx.project_id, rev, rev, rev)
             holders.append((fid, ctx.project_id, rev, rev, rev))
+        hold_ops = [
+            {"op": "holder_upsert", "fact_id": h[0], "project_id": h[1],
+             "base_revision": h[2], "canonical_revision": h[3], "semantic_hash": h[4]}
+            for h in holders
+        ]
         return {"pulled": pulled, "refreshed": refreshed, "fat": fat, "deletes": deletes,
-                "holders": holders}
+                "holders": holders, "dest_modes": dest_modes,
+                "expected_revisions": expected_m, "registry_ops": hold_ops}
 
     try:
         out = transact(ctx, "pull", {

@@ -9,6 +9,15 @@ SCHEMA_VERSION = 3
 SENSITIVITY = ("public", "internal", "confidential", "secret")
 SCOPES = ("project-local", "stack-general", "user-global")
 STATUSES = ("active", "superseded", "tombstoned", "expired")
+REQUIRED_V3 = (
+    "schema_version", "fact_id", "name", "description", "domain",
+    "sensitivity", "scope", "status",
+    "applies_any", "applies_all", "applies_exclude",
+    "content_modified", "last_observed_at",
+)
+_FACT_ID_RE = re.compile(r"^f_[0-9a-f]{24}$")
+_RFC3339_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$")
 _LIST_RE = re.compile(r"^\[(.*)\]$")
 # Nested YAML applies.any is not representable in the flat frontmatter parser.
 # Those keys must be migrated to applies_any / applies_all / applies_exclude
@@ -37,9 +46,9 @@ def format_flow_list(items: list) -> str:
 def validate_canonical_frontmatter(fm: dict, *, stem: str, domain: str) -> Optional[str]:
     """Return an error string if a canonical is refused, else None.
 
-    Writer-injected domain/name are checked against the path/context. Missing
-    optional v3 fields are tolerated on read (migrate fills them); contradictory
-    name/domain/stem, unknown enums, and nested applies.* keys are not.
+    Writer path (upsert / migrate apply) must present the full ADR 011 key set
+    after inject. Nested applies.*, name/domain/stem contradictions, unknown
+    enums, and missing required fields all refuse.
     """
     for nested in _NESTED_APPLIES:
         if nested in fm and str(fm.get(nested) or "").strip():
@@ -51,15 +60,29 @@ def validate_canonical_frontmatter(fm: dict, *, stem: str, domain: str) -> Optio
     fdom = str(fm.get("domain") or "").strip()
     if fdom and domain and domain != "unknown" and fdom != domain:
         return f"fact domain {fdom!r} does not match writer domain {domain!r}"
-    sens = str(fm.get("sensitivity") or "internal").strip().lower()
-    if fm.get("sensitivity") and sens not in SENSITIVITY:
+    for key in REQUIRED_V3:
+        raw = fm.get(key)
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            return f"missing required field {key}"
+    sv = str(fm.get("schema_version") or "").strip()
+    if sv not in ("3", "v3"):
+        return f"invalid schema_version {sv!r}"
+    fid = str(fm.get("fact_id") or "").strip()
+    if not _FACT_ID_RE.match(fid):
+        return f"invalid fact_id {fid!r}"
+    sens = str(fm.get("sensitivity") or "").strip().lower()
+    if sens not in SENSITIVITY:
         return f"invalid sensitivity {sens!r}"
     scope = str(fm.get("scope") or "").strip()
-    if scope and scope not in SCOPES:
+    if scope not in SCOPES:
         return f"invalid scope {scope!r}"
-    status = str(fm.get("status") or "active").strip()
-    if fm.get("status") and status not in STATUSES:
+    status = str(fm.get("status") or "").strip()
+    if status not in STATUSES:
         return f"invalid status {status!r}"
+    for ts_key in ("content_modified", "last_observed_at"):
+        ts = str(fm.get(ts_key) or "").strip()
+        if not _RFC3339_RE.match(ts):
+            return f"invalid {ts_key} {ts!r}"
     return None
 
 

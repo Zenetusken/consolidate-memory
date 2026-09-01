@@ -14,8 +14,9 @@ mirror. Canonical `projects:` lists were rewritten as if authoritative
 
 ## Decision
 
-A restricted stdlib codec (`fact_schema.py`), not a YAML parser. Required
-fields:
+A restricted stdlib codec (`fact_schema.py`), not a YAML parser. The writer
+path (canonical upsert and migrate apply) injects defaults then **refuses**
+if any required field is still missing. Required fields:
 
 ```yaml
 schema_version: 3

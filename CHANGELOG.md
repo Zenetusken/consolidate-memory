@@ -118,7 +118,14 @@ version changes on `main`.
 - **Forget** three-way classifies this project's mirror (quarantine a local
   edit; no `holder_delete *` while other stores still have files). Domain /
   all-plugin-data purge revokes managed mirrors first. `--apply` always
-  requires `--confirm PHRASE` (TTY or not).
+  requires `--confirm PHRASE` (TTY or not), including `cm data compact`.
+- **Recovery is per-op atomic.** A failing registry op rolls back earlier
+  ops in that pending entry. `mode=create` treats a dest that already has the
+  expected hash as published (crash-idempotent). MISSING pull uses `ABSENT` +
+  `create`. Migrate apply pins reviewed source hashes; rollback restores
+  catalogs and fact rows under lock. Domain purge aborts if any revoke fails
+  and journals canonical deletion. Resolve/repair emit `holder_upsert` +
+  `conflict_resolve`. Schema v3 writer requires the ADR 011 key set.
 
 Docs (README, SECURITY, SKILL, harness-map, CLAUDE, AGENTS, preflight, `cm` help)
 now describe **0.3.0 behavior**: unenrolled is local-only, Phase-1 `--pull` is the

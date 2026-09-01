@@ -2,6 +2,7 @@
 """Sole canonical writer: cm canonical upsert, generated catalog, tombstones, link rules."""
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import sys
@@ -204,7 +205,7 @@ def _with_timestamps(text: str, now: str, *, body_changed: bool = True) -> str:
             out.append(ln)
             continue
         if dashes == 1 and ln.startswith("---"):
-            if "content_modified" not in seen and body_changed:
+            if "content_modified" not in seen:
                 out.append(f"content_modified: {now}")
             if "last_observed_at" not in seen:
                 out.append(f"last_observed_at: {now}")
@@ -223,11 +224,12 @@ def _with_timestamps(text: str, now: str, *, body_changed: bool = True) -> str:
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
-def prepare_migrated_canonical(text: str, *, stem: str, domain: str) -> tuple:
-    """Same inject + validate path upsert uses, without requiring scope.
+def prepare_migrated_canonical(text: str, *, stem: str, domain: str,
+                               facts_dir: Optional[Path] = None) -> tuple:
+    """Same inject + validate + policy path as upsert. Returns (body, error).
 
-    Missing scope stays not-pullable until assigned (ADR 008 / Step 5).
-    Returns (body, error).
+    A legacy fact that cannot pass (missing scope/description, secret body,
+    invalid links) is refused — it must not become a partial schema-v3 canonical.
     """
     from control_plane import stable_fact_id
     from fact_schema import validate_canonical_frontmatter
@@ -242,12 +244,28 @@ def prepare_migrated_canonical(text: str, *, stem: str, domain: str) -> tuple:
         body = insert_frontmatter_key(body, "sensitivity", "internal")
     if not str(fm.get("status") or "").strip():
         body = insert_frontmatter_key(body, "status", "active")
+    for k in ("applies_any", "applies_all", "applies_exclude"):
+        if not str(fm.get(k) or "").strip():
+            body = insert_frontmatter_key(body, k, "[]")
+    if not str(fm.get("scope") or "").strip():
+        return body, "scope is required (project-local|stack-general|user-global)"
+    if not str(fm.get("description") or "").strip():
+        return body, "description is required"
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     body = _with_timestamps(body if body.endswith("\n") else body + "\n", now,
                             body_changed=True)
     fm = _frontmatter(body)
     err = validate_canonical_frontmatter(fm, stem=stem, domain=domain)
-    return body, err
+    if err:
+        return body, err
+    err = validate_write_policy(body, fm, looks_secret=_looks_secret_fn(), domain=domain)
+    if err:
+        return body, err
+    if facts_dir is not None:
+        err = validate_links(body, str(fm.get("scope") or ""), facts_dir)
+        if err:
+            return body, err
+    return body, None
 
 
 def upsert(ctx: StoreContext, stem: str, text: str, *,
@@ -256,7 +274,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
            crash_after: Optional[str] = None,
            skip_recover: bool = False,
            create_only: bool = False,
-           preserve_canonical: bool = False) -> dict:
+           preserve_canonical: bool = False,
+           extra_registry_ops: Optional[list] = None) -> dict:
     """Sole path that creates/updates a canonical. Transactional.
 
     `origin_local` may not exist yet (promote rename: write the origin mirror at the
@@ -289,24 +308,15 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         text = insert_frontmatter_key(text, "sensitivity", "internal")
     if not str(fm.get("status") or "").strip():
         text = insert_frontmatter_key(text, "status", "active")
+    for _ak in ("applies_any", "applies_all", "applies_exclude"):
+        if not str(fm.get(_ak) or "").strip():
+            text = insert_frontmatter_key(text, _ak, "[]")
     fm = _frontmatter(text)
     if not str(fm.get("scope") or "").strip():
         return {"ok": False, "error":
                 "scope is required (project-local|stack-general|user-global)"}
-    from fact_schema import validate_canonical_frontmatter
-    schema_err = validate_canonical_frontmatter(fm, stem=stem, domain=ctx.domain_id)
-    if schema_err:
-        return {"ok": False, "error": schema_err}
-    err = validate_write_policy(text, fm, looks_secret=_looks_secret_fn(), domain=ctx.domain_id)
-    if err:
-        return {"ok": False, "error": err}
-    scope = str(fm.get("scope") or "user-global")
-    link_err = validate_links(text, scope, ctx.canonical_domain_dir)
-    if link_err:
-        return {"ok": False, "error": link_err}
-    if ctx.domain_id == "unknown" and fact_domain(fm):
-        return {"ok": False, "error": "unknown-domain writer cannot create a domain-tagged canonical"}
-
+    if not str(fm.get("description") or "").strip():
+        return {"ok": False, "error": "description is required"}
     facts_dir = ctx.canonical_domain_dir
     from sync_global import global_store as _gstore, _body as _body_up
     legacy = _gstore()
@@ -316,6 +326,25 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
     body_changed = (not prev_text) or (_body_up(prev_text) != _body_up(text))
     body = _with_timestamps(text if text.endswith("\n") else text + "\n", now,
                             body_changed=body_changed)
+    fm = _frontmatter(body)
+    if not str(fm.get("content_modified") or "").strip():
+        body = insert_frontmatter_key(body, "content_modified", now)
+    if not str(fm.get("last_observed_at") or "").strip():
+        body = insert_frontmatter_key(body, "last_observed_at", now)
+    fm = _frontmatter(body)
+    from fact_schema import validate_canonical_frontmatter
+    schema_err = validate_canonical_frontmatter(fm, stem=stem, domain=ctx.domain_id)
+    if schema_err:
+        return {"ok": False, "error": schema_err}
+    err = validate_write_policy(body, fm, looks_secret=_looks_secret_fn(), domain=ctx.domain_id)
+    if err:
+        return {"ok": False, "error": err}
+    scope = str(fm.get("scope") or "user-global")
+    link_err = validate_links(body, scope, ctx.canonical_domain_dir)
+    if link_err:
+        return {"ok": False, "error": link_err}
+    if ctx.domain_id == "unknown" and fact_domain(fm):
+        return {"ok": False, "error": "unknown-domain writer cannot create a domain-tagged canonical"}
 
     def mutate(conn, temps):
         from index_admission import apply_pointer, project_index
@@ -398,8 +427,22 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
                 if not same_origin:
                     deletes.append(str(origin_delete))
         modes = {}
+        extra_expected: dict = {}
         if create_only:
             modes[str(dest)] = "create"
+        if origin_local is not None and not origin_local.exists() and str(origin_local) in temps:
+            modes[str(origin_local)] = "create"
+            extra_expected[str(origin_local)] = _ABS
+        ops = [
+            {"op": "fact_upsert", "fact_id": fid, "stem": stem,
+             "domain_id": ctx.domain_id, "canonical_path": str(dest),
+             "revision": rev, "status": "active",
+             "sensitivity": fact_sensitivity(fm)},
+            {"op": "holder_upsert", "fact_id": fid, "project_id": ctx.project_id,
+             "base_revision": rev, "canonical_revision": rev, "semantic_hash": rev},
+        ]
+        if extra_registry_ops:
+            ops.extend(list(extra_registry_ops))
         return {
             "stem": stem, "fact_id": fid, "revision": rev, "catalog_admitted": True,
             "deletes": deletes,
@@ -407,14 +450,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
             "facts": [(fid, stem, ctx.domain_id, str(dest), rev, "active",
                        fact_sensitivity(fm))],
             "dest_modes": modes,
-            "registry_ops": [
-                {"op": "fact_upsert", "fact_id": fid, "stem": stem,
-                 "domain_id": ctx.domain_id, "canonical_path": str(dest),
-                 "revision": rev, "status": "active",
-                 "sensitivity": fact_sensitivity(fm)},
-                {"op": "holder_upsert", "fact_id": fid, "project_id": ctx.project_id,
-                 "base_revision": rev, "canonical_revision": rev, "semantic_hash": rev},
-            ],
+            "expected_revisions": extra_expected,
+            "registry_ops": ops,
         }
 
     payload = {"stem": stem, "text": text,
@@ -435,6 +472,12 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         h = _fh_up(origin_local)
         if h:
             expected[str(origin_local)] = h
+    elif origin_local is not None and not origin_local.exists():
+        expected[str(origin_local)] = _ABS
+    if origin_delete is not None and origin_delete.exists():
+        h = _fh_up(origin_delete)
+        if h:
+            expected[str(origin_delete)] = h
     try:
         out = transact(ctx, "canonical-upsert", payload, mutate,
                        crash_after=crash_after, skip_recover=skip_recover,
@@ -481,11 +524,18 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
         from control_plane import holder_base_revision as _hbr_fg
         ot = _srt_fg(origin)
         hb = _hbr_fg(conn, fid, ctx.project_id)
+        expected_fg: dict = {}
+        if p.exists() and prev:
+            expected_fg[str(p)] = hashlib.sha256(prev.encode("utf-8")).hexdigest()
+        if ot is not None:
+            expected_fg[str(origin)] = hashlib.sha256(ot.encode("utf-8")).hexdigest()
         conn.execute("DELETE FROM holders WHERE fact_id=? AND project_id=?",
                      (fid, ctx.project_id))
         if ot is not None and _is_mirror(ot):
             idxp = ctx.native_memory_dir / "MEMORY.md"
             idx = _srt_fg(idxp) or ""
+            if idx:
+                expected_fg[str(idxp)] = hashlib.sha256(idx.encode("utf-8")).hexdigest()
             idx = "\n".join(ln for ln in idx.splitlines() if f"]({stem}.md)" not in ln)
             temps[str(idxp)] = idx.rstrip() + "\n"
             if not prev:
@@ -509,6 +559,7 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
         return {"stem": stem, "tombstoned": True, "deletes": deletes,
                 "tombstones": [(fid, stem, ctx.domain_id, reason, replacement_id, grace_until)],
                 "dest_modes": dest_modes,
+                "expected_revisions": expected_fg,
                 "registry_ops": [
                     {"op": "tombstone_upsert", "fact_id": fid, "stem": stem,
                      "domain_id": ctx.domain_id, "reason": reason,

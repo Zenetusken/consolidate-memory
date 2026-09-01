@@ -25,9 +25,11 @@ postconditions: dest hashes + registry assertions
 ```
 
 Typed `registry_ops`: `project_upsert`, `project_domain_change`, `fact_upsert`,
-`fact_status_change`, `holder_upsert`, `holder_delete`, `tombstone_upsert`,
-`conflict_upsert`, `conflict_resolve`, `migration_state_set`, `project_alias`,
-`project_rebind`. Unknown `op` is `WriteRefused`.
+`fact_status_change`, `fact_delete`, `holder_upsert`, `holder_delete`,
+`tombstone_upsert`, `conflict_upsert`, `conflict_resolve`, `migration_state_set`,
+`project_alias`, `project_rebind`. Unknown `op` is `WriteRefused`. Recovery
+applies each pending op inside one registry transaction and rolls back on any
+failure (never a half-applied registry).
 
 Publication sequence:
 

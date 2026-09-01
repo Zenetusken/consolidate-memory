@@ -6010,8 +6010,17 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
           is not None)
     check("fact_schema: matching name+domain is ok",
           fsch.validate_canonical_frontmatter(
-              {"name": "deploy", "domain": "work", "scope": "user-global"},
+              {"name": "deploy", "domain": "work", "scope": "user-global",
+               "schema_version": "3", "fact_id": "f_" + ("ab" * 12),
+               "description": "d", "sensitivity": "internal", "status": "active",
+               "applies_any": "[]", "applies_all": "[]", "applies_exclude": "[]",
+               "content_modified": "2026-01-01T00:00:00Z",
+               "last_observed_at": "2026-01-01T00:00:00Z"},
               stem="deploy", domain="work") is None)
+    check("fact_schema: missing required v3 field is refused",
+          fsch.validate_canonical_frontmatter(
+              {"name": "deploy", "domain": "work", "scope": "user-global"},
+              stem="deploy", domain="work") is not None)
 
     # three-way classifier (shipped)
     _canon = "---\nname: f\ndescription: d1\n---\nbody A\n"
@@ -7639,7 +7648,7 @@ with _Env73() as _e_mg:
           and (_pdir_mg / "already.md").read_text(encoding="utf-8") == _dest_before
           and (_pdir_mg / "plain.md").is_file()
           and "LEGACY copy" in (_pdir_mg / "dup.md").read_text(encoding="utf-8")
-          and "scope:" not in (_pdir_mg / "plain.md").read_text(encoding="utf-8").split("---")[1])
+          and "scope: user-global" in (_pdir_mg / "plain.md").read_text(encoding="utf-8"))
     (_pdir_mg / "plain.md").write_text(
         (_pdir_mg / "plain.md").read_text(encoding="utf-8").replace(
             "Legacy-only body", "EDITED AFTER APPLY"), encoding="utf-8")
@@ -7702,6 +7711,127 @@ check("0.3.0: SKILL/harness-map do not claim untagged dual-read pull",
       and "is a dual-read migration source until" not in (
           ROOT / "plugins" / "consolidate-memory" / "skills" / "consolidate-memory"
           / "references" / "harness-map.md").read_text(encoding="utf-8"))
+
+with _Env73() as _e_pr:
+    _ctx_pr = sc.resolve_store(_e_pr.proj)
+    _j_pr = cp.connect_journal(_ctx_pr)
+    _r_pr = cp.connect(cp.db_path(_ctx_pr))
+    _r_pr.isolation_level = None
+    _fid_pr = "f_" + ("ab" * 12)
+    _oid_pr = cp.journal_insert(_j_pr, "test-partial", {
+        "origin_domain_id": _ctx_pr.domain_id,
+        "origin_project_id": _ctx_pr.project_id,
+        "registry_ops": [
+            {"op": "fact_upsert", "fact_id": _fid_pr, "stem": "partial",
+             "domain_id": _ctx_pr.domain_id, "canonical_path": "/x",
+             "revision": "r", "status": "active", "sensitivity": "internal"},
+            {"op": "not-a-real-op"},
+        ],
+    }, "publish")
+    _got_pr = cp.recover_pending(_j_pr, ctx=_ctx_pr, registry_conn=_r_pr)
+    _row_pr = _r_pr.execute("SELECT 1 FROM facts WHERE fact_id=?", (_fid_pr,)).fetchone()
+    _st_pr = _j_pr.execute("SELECT status FROM journal WHERE op_id=?", (_oid_pr,)).fetchone()
+    _j_pr.close(); _r_pr.close()
+    check("0.3.0: recover_pending rolls back a partial registry replay",
+          _row_pr is None and len(_got_pr) == 0
+          and str(_st_pr["status"] or "") == "pending")
+
+with _Env73() as _e_id:
+    _ctx_id = sc.resolve_store(_e_id.proj)
+    _dest_id = _ctx_id.canonical_domain_dir / "already-ok.md"
+    _dest_id.parent.mkdir(parents=True, exist_ok=True)
+    _body_id = "ALREADY PUBLISHED\n"
+    _dest_id.write_text(_body_id, encoding="utf-8")
+    _tmp_id = _dest_id.with_suffix(".md.tmpid")
+    _tmp_id.write_text(_body_id, encoding="utf-8")
+    _want_id = _hlA3.sha256(_body_id.encode("utf-8")).hexdigest()
+    _n_id, _bad_id = cp._publish_destinations([{
+        "tmp": str(_tmp_id), "dest": str(_dest_id), "sha256": _want_id, "mode": "create",
+    }])
+    check("0.3.0: create-mode dest with matching hash is already-published (not pending)",
+          _n_id == 1 and not _bad_id and not _tmp_id.exists()
+          and _dest_id.read_text(encoding="utf-8") == _body_id)
+
+with _Env73() as _e_mp:
+    _ctx_mp = sc.resolve_store(_e_mp.proj)
+    (_e_mp.store / "MEMORY.md").write_text("# Memory Index\n\n", encoding="utf-8")
+    _path_mp = _e_mp.store / "miss-race.md"
+    _want_mp = (
+        "---\nname: miss-race\ndescription: d\nmetadata:\n  node_type: memory\n"
+        "  type: reference\n  global_ref: miss-race\nscope: user-global\n"
+        "domain: personal\n---\nmirror body\n"
+    )
+    _fm_mp = sg._frontmatter(_want_mp)
+    _old_ca = _os_xp.environ.get("CM_CRASH_AFTER")
+    _os_xp.environ["CM_CRASH_AFTER"] = "verify_unchanged"
+    _crash_mp = False
+    try:
+        sg._execute_pull_writes(
+            _ctx_mp, _e_mp.store, [("miss-race", _fm_mp, "MISSING", _path_mp, _want_mp)],
+            None, None)
+    except cp.CrashSimulated:
+        _crash_mp = True
+    finally:
+        if _old_ca is None:
+            _os_xp.environ.pop("CM_CRASH_AFTER", None)
+        else:
+            _os_xp.environ["CM_CRASH_AFTER"] = _old_ca
+    _path_mp.write_text("LOCAL APPEARED\n", encoding="utf-8")
+    _j_mp = cp.connect_journal(_ctx_mp)
+    _r_mp = cp.connect(cp.db_path(_ctx_mp))
+    _got_mp = cp.recover_pending(_j_mp, ctx=_ctx_mp, registry_conn=_r_mp)
+    _hold_mp = _r_mp.execute(
+        "SELECT 1 FROM holders WHERE project_id=?", (_ctx_mp.project_id,)).fetchall()
+    _j_mp.close(); _r_mp.close()
+    check("0.3.0: MISSING pull does not clobber a file that appeared after classify",
+          _crash_mp and _path_mp.read_text(encoding="utf-8") == "LOCAL APPEARED\n"
+          and "global_ref:" not in _path_mp.read_text(encoding="utf-8")
+          and len(_got_mp) == 0)
+
+with _Env73() as _e_src:
+    _ctx_src = sc.resolve_store(_e_src.proj)
+    _leg_src = _ctx_src.config_root / "memory"
+    _leg_src.mkdir(parents=True, exist_ok=True)
+    _src_p = _leg_src / "chg.md"
+    _src_p.write_text(
+        "---\nname: chg\ndescription: reviewed\nscope: user-global\n"
+        "metadata:\n  node_type: memory\n  type: reference\n---\nV1\n",
+        encoding="utf-8")
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        cmo.main(["migrate", str(_e_src.proj)])
+        cmo.main(["migrate", str(_e_src.proj), "--assign", "chg", "--domain", "personal"])
+    _src_p.write_text(_src_p.read_text(encoding="utf-8").replace("V1", "V2"), encoding="utf-8")
+    _e_src_err = _io73.StringIO()
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_e_src_err):
+        _rc_src = cmo.main(["migrate", str(_e_src.proj), "--apply",
+                            "--confirm", "migrate-apply"])
+    check("0.3.0: migrate apply refuses when reviewed source bytes changed",
+          _rc_src == 2 and "source changed" in _e_src_err.getvalue())
+
+check("0.3.0: migrate CLI does not advertise unimplemented fork-migrated-as",
+      "fork-migrated-as" not in (ROOT / "plugins" / "consolidate-memory"
+                                 / "scripts" / "cm_ops.py").read_text(encoding="utf-8"))
+
+with _Env73() as _e_pg:
+    _ctx_pg = sc.resolve_store(_e_pg.proj)
+    _canon_pg = _ctx_pg.canonical_domain_dir / "keep-me.md"
+    _canon_pg.parent.mkdir(parents=True, exist_ok=True)
+    _canon_pg.write_text("STAY\n", encoding="utf-8")
+    _conn_pg = cp.connect(cp.db_path(_ctx_pg))
+    _conn_pg.execute(
+        "INSERT INTO projects(project_id, profile_id, domain_id, status, current_root, "
+        "native_memory_dir) VALUES (?,?,?,?,?,?)",
+        ("p_" + ("ee" * 16), _ctx_pg.profile_id, "personal", "enrolled", "", ""))
+    _conn_pg.commit()
+    _conn_pg.close()
+    _pg_err = _io73.StringIO()
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_pg_err):
+        _rc_pg = cmo.main(["data", "purge", "--project", str(_e_pg.proj),
+                           "--scope", "domain-canonicals",
+                           "--apply", "--confirm", "purge-domain-canonicals"])
+    check("0.3.0: domain purge aborts when a project's revoke cannot run",
+          _rc_pg == 2 and "revoke" in _pg_err.getvalue().lower()
+          and _canon_pg.exists() and _canon_pg.read_text(encoding="utf-8") == "STAY\n")
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

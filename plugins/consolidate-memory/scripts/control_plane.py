@@ -111,11 +111,16 @@ JOURNAL_STEPS = (
     "journal_complete",
 )
 
+class CrashSimulated(RuntimeError):
+    """Test-only: mutation stopped after a named journal step."""
+
+
 ABSENT = "ABSENT"
 REGISTRY_OP_KINDS = frozenset({
     "project_upsert", "project_domain_change", "fact_upsert", "fact_status_change",
-    "holder_upsert", "holder_delete", "tombstone_upsert", "conflict_upsert",
-    "conflict_resolve", "migration_state_set", "project_alias", "project_rebind",
+    "fact_delete", "holder_upsert", "holder_delete", "tombstone_upsert",
+    "conflict_upsert", "conflict_resolve", "migration_state_set", "project_alias",
+    "project_rebind",
 })
 
 
@@ -490,6 +495,11 @@ def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
         elif kind == "fact_status_change":
             conn.execute("UPDATE facts SET status=? WHERE fact_id=?",
                          (str(op.get("status") or ""), str(op.get("fact_id") or "")))
+        elif kind == "fact_delete":
+            fid = str(op.get("fact_id") or "")
+            if fid:
+                conn.execute("DELETE FROM facts WHERE fact_id=?", (fid,))
+                conn.execute("DELETE FROM holders WHERE fact_id=?", (fid,))
         elif kind == "holder_upsert":
             record_holder(conn, str(op.get("fact_id") or ""),
                           str(op.get("project_id") or ""),
@@ -543,6 +553,34 @@ def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
             if retire and retire != old:
                 conn.execute("DELETE FROM projects WHERE project_id=?", (retire,))
                 record_project_alias(conn, retire, old)
+
+
+def assert_rebind_invariant(conn: sqlite3.Connection, old_id: str, retire_id: str) -> None:
+    """Exactly one authoritative enrolled row; alias computed → old; computed gone."""
+    if not old_id:
+        raise WriteRefused("postcondition: rebind missing project_id")
+    old = conn.execute(
+        "SELECT status FROM projects WHERE project_id=?", (old_id,)
+    ).fetchone()
+    if old is None:
+        raise WriteRefused("postcondition: rebind target row missing: " + old_id)
+    if retire_id and retire_id != old_id:
+        gone = conn.execute(
+            "SELECT project_id FROM projects WHERE project_id=?", (retire_id,)
+        ).fetchone()
+        if gone is not None:
+            raise WriteRefused("postcondition: rebind computed id still present")
+        alias = conn.execute(
+            "SELECT project_id FROM project_aliases WHERE alias_id=?", (retire_id,)
+        ).fetchone()
+        if alias is None or str(alias["project_id"] or "") != old_id:
+            raise WriteRefused("postcondition: rebind alias missing or wrong")
+    n = conn.execute(
+        "SELECT COUNT(*) AS n FROM projects WHERE project_id IN (?, ?)",
+        (old_id, retire_id or old_id),
+    ).fetchone()["n"]
+    if int(n) != 1:
+        raise WriteRefused("postcondition: rebind must leave exactly one project row")
 
 
 def assert_enrolled(conn: sqlite3.Connection, project_id: str, domain_id: str) -> None:
@@ -685,11 +723,33 @@ def _file_hash(path: Path) -> Optional[str]:
         return None
 
 
+def _write_fully(fd: int, data: bytes) -> None:
+    """Write every byte; fsync. One os.write() can be short."""
+    view = memoryview(data)
+    sent = 0
+    while sent < len(view):
+        n = os.write(fd, view[sent:])
+        if n <= 0:
+            raise OSError("short write")
+        sent += n
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+
+
+def _crash_publish(step: str) -> None:
+    if os.environ.get("CM_CRASH_PUBLISH") == step:
+        raise CrashSimulated(step)
+
+
 def _publish_destinations(publishes: list) -> Tuple[int, list]:
     """Publish temps. `mode=create` is exclusive (no clobber). Idempotent.
 
     Returns (n_ok, bad_items). Destination existence is not success: when
-    `sha256` is recorded, the dest bytes must match.
+    `sha256` is recorded, the dest bytes must match. A create dest that
+    already has the expected hash is treated as already published (crash
+    after O_EXCL write, before temp unlink).
     """
     n = 0
     bad: list = []
@@ -698,6 +758,14 @@ def _publish_destinations(publishes: list) -> Tuple[int, list]:
         want = str(item.get("sha256") or "")
         mode = str(item.get("mode") or "replace")
         dest.parent.mkdir(parents=True, exist_ok=True)
+        if mode == "create" and dest.exists() and want and _file_hash(dest) == want:
+            tmp.unlink(missing_ok=True)
+            try:
+                os.chmod(str(dest), 0o600)
+            except OSError:
+                pass
+            n += 1
+            continue
         if tmp.exists():
             try:
                 os.chmod(str(tmp), 0o600)
@@ -708,12 +776,20 @@ def _publish_destinations(publishes: list) -> Tuple[int, list]:
                 try:
                     fd = os.open(str(dest), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
                 except FileExistsError:
+                    if want and _file_hash(dest) == want:
+                        tmp.unlink(missing_ok=True)
+                        n += 1
+                        continue
                     bad.append(item)
                     continue
                 try:
-                    os.write(fd, data)
+                    _crash_publish("after_create")
+                    _write_fully(fd, data)
+                    _crash_publish("after_write")
                 finally:
                     os.close(fd)
+                _crash_publish("after_close")
+                _crash_publish("before_unlink")
                 tmp.unlink(missing_ok=True)
             else:
                 os.replace(str(tmp), str(dest))
@@ -775,6 +851,64 @@ def _publish_temps(publishes: list, deletes: Optional[list] = None) -> int:
     return n
 
 
+def _begin_registry(rconn: sqlite3.Connection) -> str:
+    """Start a per-op registry transaction. Returns 'begin' or 'savepoint'."""
+    try:
+        rconn.execute("BEGIN IMMEDIATE")
+        return "begin"
+    except sqlite3.OperationalError:
+        rconn.execute("SAVEPOINT cm_recover")
+        return "savepoint"
+
+
+def _commit_registry(rconn: sqlite3.Connection, how: str) -> None:
+    if how == "savepoint":
+        rconn.execute("RELEASE SAVEPOINT cm_recover")
+    else:
+        rconn.execute("COMMIT")
+
+
+def _rollback_registry(rconn: sqlite3.Connection, how: str) -> None:
+    try:
+        if how == "savepoint":
+            rconn.execute("ROLLBACK TO SAVEPOINT cm_recover")
+            rconn.execute("RELEASE SAVEPOINT cm_recover")
+        else:
+            rconn.execute("ROLLBACK")
+    except sqlite3.Error:
+        pass
+
+
+def _apply_legacy_registry_rows(rconn: sqlite3.Connection, payload: dict) -> None:
+    for h in payload.get("holders") or []:
+        record_holder(rconn, h[0], h[1], h[2], h[3], h[4])
+    for f in payload.get("facts") or []:
+        rconn.execute(
+            "INSERT INTO facts(fact_id, stem, domain_id, canonical_path, revision, "
+            "status, sensitivity) VALUES (?,?,?,?,?,?,?) "
+            "ON CONFLICT(fact_id) DO UPDATE SET revision=excluded.revision, "
+            "canonical_path=excluded.canonical_path, status=excluded.status, "
+            "sensitivity=excluded.sensitivity",
+            tuple(f),
+        )
+    for ts in payload.get("tombstones") or []:
+        write_tombstone(rconn, *ts)
+
+
+def _assert_registry_postconditions(rconn: sqlite3.Connection, payload: dict) -> None:
+    for rop in payload.get("registry_ops") or []:
+        if not isinstance(rop, dict):
+            continue
+        if (rop.get("op") in ("project_upsert", "project_domain_change")
+                and str(rop.get("status") or "") == "enrolled"):
+            assert_enrolled(rconn, str(rop.get("project_id") or ""),
+                            str(rop.get("domain_id") or ""))
+        if rop.get("op") == "project_rebind":
+            assert_rebind_invariant(
+                rconn, str(rop.get("project_id") or ""),
+                str(rop.get("retire_id") or rop.get("alias_id") or ""))
+
+
 def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                     ctx: Optional[StoreContext] = None,
                     registry_conn: Optional[sqlite3.Connection] = None) -> list:
@@ -804,6 +938,8 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
             origin_dom = str(payload.get("origin_domain_id") or "")
             origin_pid = str(payload.get("origin_project_id") or "")
             dest_dom = str(payload.get("dest") or "")
+            alias_id = str(payload.get("alias") or "")
+            old_id = str(payload.get("old") or "")
             if kind == "domain-transition":
                 # Domain is the thing this op changes. Match this project and
                 # either the origin or destination domain — never a foreign
@@ -815,6 +951,16 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                     and bool(origin_pid) and origin_pid == ctx.project_id
                     and ctx.domain_id in domains
                 )
+            elif kind == "project-rebind":
+                ids = {i for i in (origin_pid, old_id, alias_id) if i}
+                if ctx is not None and ctx.project_id not in ids:
+                    row = rconn.execute(
+                        "SELECT project_id FROM project_aliases WHERE alias_id=?",
+                        (origin_pid or alias_id,),
+                    ).fetchone()
+                    if row is not None:
+                        ids.add(str(row["project_id"] or ""))
+                ctx_matches = ctx is not None and ctx.project_id in ids
             else:
                 ctx_matches = (
                     ctx is not None
@@ -835,33 +981,14 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                 del_out = _apply_deletes(deletes)
                 if del_out["preimage_mismatch"] or del_out["errors"]:
                     continue
-                for h in payload.get("holders") or []:
-                    record_holder(rconn, h[0], h[1], h[2], h[3], h[4])
-                for f in payload.get("facts") or []:
-                    rconn.execute(
-                        "INSERT INTO facts(fact_id, stem, domain_id, canonical_path, revision, "
-                        "status, sensitivity) VALUES (?,?,?,?,?,?,?) "
-                        "ON CONFLICT(fact_id) DO UPDATE SET revision=excluded.revision, "
-                        "canonical_path=excluded.canonical_path, status=excluded.status, "
-                        "sensitivity=excluded.sensitivity",
-                        tuple(f),
-                    )
-                for ts in payload.get("tombstones") or []:
-                    write_tombstone(rconn, *ts)
+                how = _begin_registry(rconn)
                 try:
+                    _apply_legacy_registry_rows(rconn, payload)
                     apply_registry_ops(rconn, payload.get("registry_ops") or [])
-                    for rop in payload.get("registry_ops") or []:
-                        if not isinstance(rop, dict):
-                            continue
-                        if (rop.get("op") in ("project_upsert", "project_domain_change")
-                                and str(rop.get("status") or "") == "enrolled"):
-                            assert_enrolled(rconn, str(rop.get("project_id") or ""),
-                                            str(rop.get("domain_id") or ""))
-                except WriteRefused:
-                    continue
-                try:
-                    rconn.commit()
-                except sqlite3.Error:
+                    _assert_registry_postconditions(rconn, payload)
+                    _commit_registry(rconn, how)
+                except (WriteRefused, sqlite3.Error):
+                    _rollback_registry(rconn, how)
                     continue
                 journal_step(conn, op["op_id"], "journal_complete", "complete")
                 recovered.append(op["op_id"])
@@ -1031,12 +1158,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
                 raise WriteRefused("file postcondition delete still present: " + str(dp))
         try:
             apply_registry_ops(rconn, payload.get("registry_ops") or [])
-            for rop in payload.get("registry_ops") or []:
-                if (isinstance(rop, dict)
-                        and rop.get("op") in ("project_upsert", "project_domain_change")
-                        and str(rop.get("status") or "") == "enrolled"):
-                    assert_enrolled(rconn, str(rop.get("project_id") or ""),
-                                    str(rop.get("domain_id") or ""))
+            _assert_registry_postconditions(rconn, payload)
         except WriteRefused:
             rconn.execute("ROLLBACK")
             raise
@@ -1060,10 +1182,6 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         release_locks(locks)
         conn.close()
         rconn.close()
-
-
-class CrashSimulated(RuntimeError):
-    """Test-only: mutation stopped after a named journal step."""
 
 
 def fact_id_for(domain: str, stem: str) -> str:

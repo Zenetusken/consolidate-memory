@@ -1,6 +1,7 @@
 ---
 name: plain
 description: untagged legacy fact (upgrade fixture)
+scope: user-global
 metadata:
   node_type: memory
   type: reference
