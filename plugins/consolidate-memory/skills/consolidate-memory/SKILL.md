@@ -705,8 +705,10 @@ placing each fact in its tier and optimizing it for how that tier loads:
   its index pointer through `cm local upsert` (below) — **keep the pointer's hook a
   distilled cue ≤ ~60 est tok (`HOOK_TOKEN_WARN`, v0.1.66)**: the `description:` stays
   the full recall key, but the index LINE written from it must not restate body content
-  (a fat hook taxes every session; `sync_global` lints its own written pointers the same
-  way — the measured offenders were 116/141-tok status-paragraphs-as-hooks). **Stamp
+  (a fat hook taxes every session). `cm local` reuses `_pointer_line` (sanitize +
+  88-char truncate) and `_fat_hook_warning` — the same constructor as `--pull` /
+  canonical origin mirrors; a long description cannot land verbatim as a 190-tok
+  always-loaded hook (v0.3.5 dogfood). **Stamp
   `originSessionId` (v0.1.43) for a SESSION-DERIVED fact** — from the `sessionId`
   that `extract_signals` (Phase 2) now attaches to the signal this fact came from (the session that MOTIVATED it,
   which on a multi-session window may be a PRIOR session, NOT the active dream). OMIT it for a git/commit-derived
@@ -740,8 +742,11 @@ placing each fact in its tier and optimizing it for how that tier loads:
   (the promotion cascade — Phase 2), so the scope decision is auditable.
 - **Project-local facts** — one writer: `cm local upsert` / `update` / `archive` /
   `forget` / `rebuild-index`. Same codec, secret check, exact native 200-line/25KB
-  admission, and journaled fact+pointer as the canonical writer. Do **not** hand-edit
-  a fact file and its `MEMORY.md` pointer as two untracked steps.
+  admission, and journaled fact+pointer as the canonical writer. Pointers use
+  `_pointer_line` (not a verbatim `description:` copy). Link checks use
+  `extract_wikilinks` — a backticked `[[link]]` format-example is not dangling
+  (same strip as `dangling_links`). Do **not** hand-edit a fact file and its
+  `MEMORY.md` pointer as two untracked steps.
   ```bash
   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py local upsert STEM --file PATH --project .
   ```

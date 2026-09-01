@@ -9673,6 +9673,39 @@ with _Env73() as _e_ll:
         "---\nname: has-link\ndescription: d\n---\nsee [[missing-target]]\n")
     check("P1-10: cm local upsert refuses a dangling wikilink",
           _bad_ll.get("ok") is False and "dangling" in str(_bad_ll.get("error") or ""))
+    _ok_code = _li_ll.local_upsert(
+        _ctx_ll, "has-example",
+        "---\nname: has-example\ndescription: d\n---\n"
+        "format `[[link]]` is a placeholder\n```\n[[fenced]]\n```\n")
+    check("dogfood D2: cm local upsert admits backticked/fenced [[link]] "
+          "(same strip as dangling_links)",
+          _ok_code.get("ok") is True
+          and (_e_ll.store / "has-example.md").is_file())
+    _long_desc = "x" * 400
+    _ok_fat = _li_ll.local_upsert(
+        _ctx_ll, "fat-hook",
+        f"---\nname: fat-hook\ndescription: {_long_desc}\n---\nbody keeps the full key\n")
+    _idx_fat = (_e_ll.store / "MEMORY.md").read_text(encoding="utf-8")
+    _ptr_fat = next((ln for ln in _idx_fat.splitlines() if "](fat-hook.md)" in ln), "")
+    _body_fat = (_e_ll.store / "fat-hook.md").read_text(encoding="utf-8")
+    check("dogfood D1: cm local pointer truncates a long description (not a fat hook)",
+          _ok_fat.get("ok") is True
+          and "…" in _ptr_fat
+          and _long_desc not in _ptr_fat
+          and _long_desc in _body_fat
+          and ms.est_tokens(_ptr_fat) <= ms.HOOK_TOKEN_WARN)
+
+import local_ingress as _li_ptr
+_sample_wl = "a [[real]] b `[[inline]]` c\n```\n[[fenced]]\n```\n[[tool.mypy.overrides]]"
+check("dogfood D2: link_targets uses extract_wikilinks (inline/fenced stripped; dotted dropped)",
+      ci.link_targets(_sample_wl) == ["real"]
+      and ci.link_targets(_sample_wl)
+      == [m for m in ms.extract_wikilinks(_sample_wl) if "." not in m])
+check("dogfood D1: local _pointer is _pointer_line (same sanitization + 88-char truncate)",
+      _li_ptr._pointer("foo", "x" * 200)
+      == sg._pointer_line("foo", {"description": "x" * 200})
+      and "…" in _li_ptr._pointer("foo", "x" * 200)
+      and "\n" not in _li_ptr._pointer("foo", "a\nb\x1b[31mc"))
 
 with _Env73() as _e_mir:
     _ctx_mir = sc.resolve_store(_e_mir.proj)

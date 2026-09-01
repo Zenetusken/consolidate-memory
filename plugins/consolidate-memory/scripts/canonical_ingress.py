@@ -17,7 +17,6 @@ from store_context import (StoreContext, WriteRefused, assert_writable, config_r
                            warn_unenrolled_share)
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
-_LINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 SCOPE_RANK = {"project-local": 0, "stack-general": 1, "user-global": 2}
 
 
@@ -133,7 +132,15 @@ def insert_frontmatter_key(text: str, key: str, value: str) -> str:
 
 
 def link_targets(text: str) -> list:
-    return [m for m in _LINK_RE.findall(text) if "." not in m]
+    """Wikilink stems in `text` that a writer must resolve.
+
+    Uses `extract_wikilinks` (the single `[[...]]` extractor: fenced then inline
+    code spans stripped first). A format-example `[[link]]` inside backticks is
+    not a link — the v0.3.5 dogfood `cm local upsert` refusal. The `.` filter
+    still drops dotted leftovers (TOML table names that escaped the strip).
+    """
+    from memory_status import extract_wikilinks
+    return [m for m in extract_wikilinks(text) if "." not in m]
 
 
 def link_allowed(src_scope: str, dst_scope: str, *, dst_exists_global: bool = False,
