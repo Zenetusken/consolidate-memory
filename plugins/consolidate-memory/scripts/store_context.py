@@ -59,6 +59,31 @@ def warn_unenrolled_share(ctx: "StoreContext", stream: Optional[TextIO] = None) 
     print(UNENROLLED_SHARE_WARNING, file=stream if stream is not None else sys.stderr)
 
 
+def identity_snapshot(ctx: "StoreContext") -> dict:
+    """Path-free identity for cycle records and the HTML archive (v0.3.0).
+
+    The HTML file is often shared; this never embeds filesystem paths. `conflicts`
+    is best-effort (omitted when the registry cannot be read — absent ≠ zero).
+    """
+    out: dict = {
+        "domain_id": ctx.domain_id or "unknown",
+        "enrolled": bool(ctx.enrolled),
+        "registry_state": getattr(ctx, "registry_state", "absent") or "absent",
+        "cross_project_allowed": bool(getattr(ctx, "cross_project_allowed", False)),
+    }
+    try:
+        from control_plane import connect_if_exists, list_conflicts
+        conn = connect_if_exists(ctx.plugin_data_dir / "control.sqlite")
+        if conn is not None:
+            try:
+                out["conflicts"] = len(list_conflicts(conn, ctx.project_id))
+            finally:
+                conn.close()
+    except Exception:
+        pass
+    return out
+
+
 @dataclass(frozen=True)
 class StoreContext:
     config_root: Path

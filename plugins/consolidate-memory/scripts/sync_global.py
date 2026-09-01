@@ -631,12 +631,19 @@ def _admissible_records(ctx) -> list:
         if text is None:
             return
         fm = _frontmatter(text)
-        if str(fm.get("status") or "") == "tombstoned":
+        st = str(fm.get("status") or "").strip()
+        if st in ("tombstoned", "superseded", "expired"):
             return
         if untagged_only and fact_domain(fm):
             return
         if _looks_secret(text):
             return
+        if str(fm.get("schema_version") or "").strip() in ("3", "v3"):
+            from fact_schema import validate_canonical_frontmatter
+            serr = validate_canonical_frontmatter(
+                fm, stem=path.stem, domain=str(fm.get("domain") or ctx.domain_id))
+            if serr:
+                return
         adm = dict(fm)
         adm["body"] = text
         if (_global_is_fixture() or _hermetic_home()) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
@@ -1495,7 +1502,8 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                 try:
                     from control_plane import connect as _cconn, db_path as _cdp, record_conflict
                     _cc = _cconn(_cdp(ctx))
-                    record_conflict(_cc, name, ctx.project_id, _dec)
+                    record_conflict(_cc, name, ctx.project_id, _dec,
+                                    domain_id=getattr(ctx, "domain_id", "") or "")
                     _cc.commit()
                     _cc.close()
                 except Exception:

@@ -18,6 +18,8 @@ project tidy automatically; you invoke **`dream`** (or "consolidate my memory") 
   my-project · session a1b2c3d
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+  IDENTITY  domain personal · enrolled
+
   SCOPE     git a1b2c3d..HEAD · 0 commits · 2 candidates · 8 reviewed
   VERIFIED  ✓ 1 confirmed · 0 corrected   [inline]
   RIGOR     LIGHT · final · magnitude 2 (0 commits + 2 candidates)
@@ -65,7 +67,9 @@ around these:
 - **Honest, data-driven output.** A no-op pass and a heavy pass look different; the
   dashboard is rendered from a structured record of what the pass actually did — including
   a **rigor tier** that scales verification ceremony to the pass's magnitude (a 1-fact pass
-  stays light; a 20-fact pass fans out and adds a completeness critic).
+  stays light; a 20-fact pass fans out and adds a completeness critic). The HTML archive
+  and ASCII dashboard also show **domain / enrollment / registry health / open
+  conflicts** (no filesystem paths) so a local-only project is a banner, not a footnote.
 
 ## The model: three context-loading tiers
 
@@ -219,9 +223,16 @@ canonicals; `cm doctor` prints `UNENROLLED LOCAL-ONLY` when this applies.
 `cm doctor` in any project prints the resolved StoreContext (domain, enrollment,
 paths, registry health) — the one command that answers "what is my memory setup?"
 
+**v0.3.1** is a patch on that architecture, not another trust-boundary change.
+Journal recover re-verifies sources and will not overwrite a dest that changed
+after the crash; deletes refuse an empty or unreadable preimage; migrate/repair
+stay in the current domain. The HTML archive and ASCII dashboard show domain,
+enrollment, registry health, and open conflicts.
+
 ## Install
 
-**v0.3.0** (domain isolation + StoreContext + `cm project enroll`). This ships as a
+**v0.3.1** (domain isolation + StoreContext + `cm project enroll`; dashboard
+identity). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
 ```text
@@ -256,7 +267,7 @@ memory this plugin does not own. Domain canonicals live under
 read-only migration source. Scoped purge commands are the right tool; hand-deleting
 the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
-### Known limitations (v0.3.0)
+### Known limitations (v0.3.1)
 
 - **Unenrolled projects are local-only.** They cannot create or pull cross-project
   canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain

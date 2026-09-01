@@ -25,7 +25,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, TypedDict
+from typing import Any, Mapping, TypedDict, cast
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / bar / glyphs)
 
@@ -521,9 +521,21 @@ def _proposal_decline_rows(c: Mapping[str, Any]) -> dict:
 _USAGE_FACT_CAP = 40
 
 
+class Identity(TypedDict, total=False):
+    # v0.3.0: StoreContext snapshot at seed (domain isolation / enrollment).
+    # Absent on pre-0.3 records — HTML falls back to live identity at render.
+    # Never stores filesystem paths (the HTML archive is often shared).
+    domain_id: str
+    enrolled: bool
+    registry_state: str      # absent | healthy | locked | corrupt | permission-denied | incompatible
+    cross_project_allowed: bool
+    conflicts: int           # open three-way mirror conflicts for this project (omitted if unread)
+
+
 class CycleRecord(TypedDict, total=False):
     project: str
     session: str
+    identity: Identity         # v0.3.0: domain / enrollment snapshot (additive; legacy records render)
     scope: Scope
     rigor: Rigor
     verification: Verification
@@ -2137,7 +2149,7 @@ def _scrub_commit_log(log: str) -> list:
 def build_context(project_dir: Path) -> dict:
     """Gather all Phase-0 facts into one dict (basis for both report and --json seed)."""
     project_dir = project_dir.resolve()
-    from store_context import resolve_store, config_root as _cfg_root
+    from store_context import resolve_store, config_root as _cfg_root, identity_snapshot
     _ctx = resolve_store(project_dir)
     slug = _ctx.project_slot
     proj_root = _ctx.session_dir
@@ -2364,6 +2376,7 @@ def build_context(project_dir: Path) -> dict:
         "usage_hist": usage_hist,   # v0.1.67 (Phase C)
         "demotion": demotion,       # v0.1.67 (Phase C)
         "global_store_facts": _global_fact_count,
+        "identity": identity_snapshot(_ctx),
     }
 
 
@@ -2640,6 +2653,9 @@ def seed_record(ctx: dict) -> CycleRecord:
         record["demotion"] = {"windows_observed": _pi_int(demo.get("windows_full")),
                               "eligible": _pi_int(demo.get("eligible")),
                               "surfaced": [c["stem"] for c in demo.get("candidates", []) if isinstance(c, dict)]}
+    raw_ident = ctx.get("identity")
+    if isinstance(raw_ident, dict) and raw_ident:
+        record["identity"] = cast(Identity, dict(raw_ident))
     return record
 
 
@@ -2667,7 +2683,7 @@ def validate_cycle_record(record: object) -> list[str]:
     # Top-level keys that MUST be a dict if present.
     for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health",
                 "audit", "remediation", "maintenance", "dream", "distill", "usage", "demotion",
-                "workflow_proposals"):
+                "workflow_proposals", "identity"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.

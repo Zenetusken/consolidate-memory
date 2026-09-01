@@ -170,11 +170,11 @@ def _revoke_one_for_purge(row) -> int:
     root = Path(root_s) if root_s else None
     native = Path(native_s) if native_s else None
     try:
-        if root is not None and root.is_dir():
+        if native is not None and native.is_dir():
+            start = root if (root is not None and root.is_dir()) else native
+            pctx = resolve_store(start, store_override=native)
+        elif root is not None and root.is_dir():
             pctx = resolve_store(root)
-        elif native is not None and native.is_dir():
-            guess = native.parent.parent if native.name == "memory" else native.parent
-            pctx = resolve_store(guess)
         else:
             raise WriteRefused(
                 f"cannot revoke project {pid}: missing current_root and native_memory_dir")
@@ -200,7 +200,7 @@ def _revoke_enrolled_for_purge(conn, domain_id: str) -> int:
 def _journaled_purge_domain(ctx: StoreContext, domain_id: str, facts_dir: Path) -> dict:
     """Delete domain canonicals + registry rows in one recoverable transact."""
     from control_plane import transact
-    from retention import purge_project
+    from retention import operational_dir, _ops_slot
 
     def mutate(conn, temps):
         del temps
@@ -210,6 +210,8 @@ def _journaled_purge_domain(ctx: StoreContext, domain_id: str, facts_dir: Path) 
         if facts_dir.is_dir():
             for f in sorted(facts_dir.glob("*.md")):
                 h = _sha256_file(f)
+                if f.exists() and not h:
+                    raise WriteRefused("cannot hash purge target: " + str(f))
                 deletes.append({"path": str(f), "preimage": h})
                 if h:
                     expected[str(f)] = h
@@ -218,13 +220,28 @@ def _journaled_purge_domain(ctx: StoreContext, domain_id: str, facts_dir: Path) 
         for fid in fids:
             ops.append({"op": "fact_delete", "fact_id": fid})
             ops.append({"op": "holder_delete", "fact_id": fid, "project_id": "*"})
-        conn.execute("DELETE FROM tombstones WHERE domain_id=?", (domain_id,))
+        ops.append({"op": "tombstone_delete", "domain_id": domain_id})
         n_ops = 0
         for r in conn.execute(
                 "SELECT project_id, native_memory_dir FROM projects WHERE domain_id=?",
                 (domain_id,)).fetchall():
             native = Path(r["native_memory_dir"]) if r["native_memory_dir"] else None
-            n_ops += purge_project(ctx.plugin_data_dir, r["project_id"], native)["purged_files"]
+            dirs = [operational_dir(ctx.plugin_data_dir, r["project_id"])]
+            if native is not None:
+                slot = _ops_slot(native)
+                if slot and slot != r["project_id"]:
+                    dirs.append(operational_dir(ctx.plugin_data_dir, slot))
+            for d in dirs:
+                if not d.is_dir():
+                    continue
+                for f in sorted(p for p in d.rglob("*") if p.is_file()):
+                    h = _sha256_file(f)
+                    if f.exists() and not h:
+                        raise WriteRefused("cannot hash ops file: " + str(f))
+                    deletes.append({"path": str(f), "preimage": h})
+                    if h:
+                        expected[str(f)] = h
+                    n_ops += 1
         return {"deletes": deletes, "expected_revisions": expected,
                 "registry_ops": ops, "purged_ops": n_ops}
 
@@ -237,7 +254,10 @@ def _journaled_purge_domain(ctx: StoreContext, domain_id: str, facts_dir: Path) 
         parent = facts_dir.parent
         if parent.name == domain_id and not leftover:
             import shutil
-            shutil.rmtree(parent, ignore_errors=True)
+            try:
+                shutil.rmtree(parent)
+            except OSError:
+                pass
     return {"ok": True, "purged_files": n, "domain_id": domain_id}
 
 
@@ -343,6 +363,28 @@ def _contained_under(path: Path, roots: list) -> bool:
     return False
 
 
+def _migrate_source_roots(ctx: StoreContext) -> list:
+    return [
+        ctx.config_root / "memory",
+        ctx.config_root / "consolidate-memory" / "domains" / "unknown" / "facts",
+    ]
+
+
+def _b64(data: bytes) -> str:
+    import base64
+    return base64.b64encode(data).decode("ascii")
+
+
+def _unb64(s: str) -> Optional[bytes]:
+    import base64
+    if not s:
+        return None
+    try:
+        return base64.b64decode(s.encode("ascii"), validate=True)
+    except (ValueError, TypeError):
+        return None
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     from store_context import repair_permissions
     ctx = _ctx(args.project)
@@ -373,16 +415,36 @@ def cmd_conflicts(args: argparse.Namespace) -> int:
     return 0
 
 
-def _canonical_path(ctx: StoreContext, stem: str) -> Path:
+def _canonical_for_repair(ctx: StoreContext, stem: str) -> Optional[str]:
+    """Current-domain CanonicalRef only. Legacy files are migrate inputs, not repair sources."""
+    from fact_schema import validate_canonical_frontmatter
+    from memory_status import _frontmatter
+    from domain_policy import fact_domain
     canon = ctx.canonical_domain_dir / f"{stem}.md"
-    if canon.exists():
-        return canon
-    return ctx.config_root / "memory" / f"{stem}.md"
+    if not canon.is_file():
+        return None
+    try:
+        text = canon.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    fm = _frontmatter(text)
+    fdom = fact_domain(fm)
+    if fdom and fdom != ctx.domain_id:
+        return None
+    st = str(fm.get("status") or "active").strip() or "active"
+    if st != "active":
+        return None
+    if str(fm.get("schema_version") or "").strip() in ("3", "v3"):
+        err = validate_canonical_frontmatter(fm, stem=stem, domain=ctx.domain_id)
+        if err:
+            return None
+    return text
 
 
 def _restamp_from_canonical(ctx: StoreContext, stem: str, canonical: str, native: Path,
                             how: str, extra_temps: Optional[dict] = None,
-                            create_paths: Optional[list] = None) -> dict:
+                            create_paths: Optional[list] = None,
+                            canonical_path: Optional[Path] = None) -> dict:
     """Journal a keep-canonical / repair rewrite + mark the conflict resolved."""
     from control_plane import ABSENT as _ABS, stable_fact_id, transact, _file_hash
     from mirror_conflict import semantic_hash, stamp_revisions
@@ -397,10 +459,19 @@ def _restamp_from_canonical(ctx: StoreContext, stem: str, canonical: str, native
     extras = dict(extra_temps or {})
     creates = {str(p) for p in (create_paths or [])}
     expected: dict = {}
+    dest_modes_pre: dict = {}
+    if canonical_path is not None and canonical_path.exists():
+        ch = _file_hash(canonical_path)
+        if ch:
+            expected[str(canonical_path)] = ch
     if native.exists():
         h = _file_hash(native)
         if h:
             expected[str(native)] = h
+    else:
+        expected[str(native)] = _ABS
+        dest_modes_pre[str(native)] = "create"
+        creates.add(str(native))
     for dest in extras:
         if dest in creates:
             expected[dest] = _ABS
@@ -414,8 +485,11 @@ def _restamp_from_canonical(ctx: StoreContext, stem: str, canonical: str, native
     def mutate(conn, temps):
         del conn
         temps[str(native)] = want
-        dest_modes: dict = {}
+        dest_modes: dict = dict(dest_modes_pre)
         extra_expected: dict = {}
+        if str(native) in creates:
+            dest_modes[str(native)] = "create"
+            extra_expected[str(native)] = _ABS
         for dest, text in extras.items():
             temps[dest] = text
             if dest in creates:
@@ -425,12 +499,13 @@ def _restamp_from_canonical(ctx: StoreContext, stem: str, canonical: str, native
             {"op": "holder_upsert", "fact_id": fid, "project_id": ctx.project_id,
              "base_revision": rev, "canonical_revision": rev, "semantic_hash": rev},
             {"op": "conflict_resolve", "stem": stem, "project_id": ctx.project_id,
-             "resolved": how},
+             "resolved": how, "domain_id": ctx.domain_id, "fact_id": fid},
         ]
         return {"stem": stem, "how": how, "registry_ops": ops,
                 "dest_modes": dest_modes, "expected_revisions": extra_expected}
 
-    return transact(ctx, "resolve-" + how, {"stem": stem, "how": how}, mutate,
+    return transact(ctx, "resolve-" + how, {"stem": stem, "how": how,
+                                            "domain_id": ctx.domain_id}, mutate,
                     expected_revisions=expected or None)
 
 
@@ -456,18 +531,19 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     except IdentifierRefused as e:
         print(f"resolve: {e}", file=sys.stderr)
         return 2
-    canon = _canonical_path(ctx, stem)
+    canonical = _canonical_for_repair(ctx, stem)
+    canon_path = ctx.canonical_domain_dir / f"{stem}.md"
     if not native.exists():
         print(f"resolve: no local file {native}", file=sys.stderr)
         return 1
     local = native.read_text(encoding="utf-8", errors="replace")
-    canonical = canon.read_text(encoding="utf-8", errors="replace") if canon.exists() else ""
     if args.keep_canonical:
         if not canonical:
-            print("resolve: no canonical to keep", file=sys.stderr)
+            print("resolve: no current-domain canonical to keep", file=sys.stderr)
             return 1
         try:
-            _restamp_from_canonical(ctx, stem, canonical, native, "keep-canonical")
+            _restamp_from_canonical(ctx, stem, canonical, native, "keep-canonical",
+                                    canonical_path=canon_path)
         except WriteRefused as e:
             print(f"resolve: {e}", file=sys.stderr)
             return 2
@@ -479,13 +555,13 @@ def cmd_resolve(args: argparse.Namespace) -> int:
             print(f"resolve: fork target {args.fork_local} exists", file=sys.stderr)
             return 1
         forked = insert_frontmatter_key(demirror_text(local), "name", args.fork_local)
-        extras = {dest: forked if forked.endswith("\n") else forked + "\n"}
+        extras = {str(dest): forked if forked.endswith("\n") else forked + "\n"}
         if not canonical:
-            print("resolve: no canonical to restamp after fork", file=sys.stderr)
+            print("resolve: no current-domain canonical to restamp after fork", file=sys.stderr)
             return 1
         try:
             _restamp_from_canonical(ctx, stem, canonical, native, "fork-local", extras,
-                                    create_paths=[dest])
+                                    create_paths=[dest], canonical_path=canon_path)
         except WriteRefused as e:
             print(f"resolve: {e}", file=sys.stderr)
             return 2
@@ -496,7 +572,7 @@ def cmd_resolve(args: argparse.Namespace) -> int:
         clean = demirror_text(local)
         out = upsert(ctx, stem, clean, origin_local=native, extra_registry_ops=[{
             "op": "conflict_resolve", "stem": stem, "project_id": ctx.project_id,
-            "resolved": "promote-local",
+            "resolved": "promote-local", "domain_id": ctx.domain_id,
         }])
         print(json.dumps(out) if args.json else (out if out.get("ok") else out.get("error")))
         return 0 if out.get("ok") else 1
@@ -523,14 +599,14 @@ def cmd_repair_mirror(args: argparse.Namespace) -> int:
     except IdentifierRefused as e:
         print(f"repair-mirror: {e}", file=sys.stderr)
         return 2
-    canon = _canonical_path(ctx, stem)
-    if not canon.exists():
-        print("repair-mirror: no canonical", file=sys.stderr)
+    canonical = _canonical_for_repair(ctx, stem)
+    if not canonical:
+        print("repair-mirror: no current-domain canonical", file=sys.stderr)
         return 1
-    canonical = canon.read_text(encoding="utf-8", errors="replace")
     ctx.native_memory_dir.mkdir(parents=True, exist_ok=True)
     try:
-        _restamp_from_canonical(ctx, stem, canonical, native, "repair-mirror")
+        _restamp_from_canonical(ctx, stem, canonical, native, "repair-mirror",
+                                canonical_path=ctx.canonical_domain_dir / f"{stem}.md")
     except WriteRefused as e:
         print(f"repair-mirror: {e}", file=sys.stderr)
         return 2
@@ -716,6 +792,9 @@ def cmd_migrate(args: argparse.Namespace) -> int:
             print("migrate apply: cross-project writes require enrollment into a named domain "
                   "(cm project enroll --domain NAME --apply)", file=sys.stderr)
             return 2
+        if plan.get("applied") and not plan.get("finalized"):
+            print("migrate apply: already applied; rollback or finalize first", file=sys.stderr)
+            return 2
         need_m = _want_confirm(args, "migrate-apply")
         if need_m == "dry":
             print("migrate apply: dry (pass --apply --confirm migrate-apply)")
@@ -725,13 +804,24 @@ def cmd_migrate(args: argparse.Namespace) -> int:
             return 2
         on_existing = str(getattr(args, "on_existing", None) or "")
         to_copy = []
+        src_roots = _migrate_source_roots(ctx)
+        from identifiers import IdentifierRefused, validate_fact_stem as _vfs
         for stem, row in sorted((plan.get("facts") or {}).items()):
             dest_dom = str((row or {}).get("assignment") or "")
             if dest_dom in ("", "excluded"):
                 continue
+            try:
+                stem = _vfs(stem)
+            except IdentifierRefused as e:
+                print(f"migrate apply: {e}", file=sys.stderr)
+                return 2
             src = Path(str((row or {}).get("source") or ""))
             if not src.is_file():
                 print(f"migrate apply: missing source for {stem}", file=sys.stderr)
+                return 2
+            if not _contained_under(src, src_roots):
+                print(f"migrate apply: source for {stem} is outside approved roots",
+                      file=sys.stderr)
                 return 2
             to_copy.append((stem, src, dest_dom, row))
         copied_holder: list = []
@@ -739,11 +829,12 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         droot = ctx.config_root / "consolidate-memory" / "domains"
 
         def mutate(conn, temps):
-            from canonical_ingress import generate_catalog, prepare_migrated_canonical
+            from canonical_ingress import generate_catalog, prepare_migrated_canonical, validate_links
             from control_plane import ABSENT as _ABS, stable_fact_id as _sf_m
             from domain_policy import fact_sensitivity as _fs_m
             from memory_status import _frontmatter as _fm_m
             copied: list = []
+            staged: list = []
             catalogs: dict = {}
             dest_modes: dict = {}
             expected: dict = {}
@@ -766,12 +857,22 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                 src_hash = str((row or {}).get("sha256") or _sha256_file(src))
                 if src_hash:
                     expected[str(src)] = src_hash
-                old_text = dest.read_text(encoding="utf-8", errors="replace") if dest.exists() else None
-                raw = src.read_text(encoding="utf-8", errors="replace")
+                old_bytes = dest.read_bytes() if dest.exists() else None
+                raw = src.read_text(encoding="utf-8")
                 body, serr = prepare_migrated_canonical(
-                    raw, stem=stem, domain=dest_dom, facts_dir=facts_dir)
+                    raw, stem=stem, domain=dest_dom, facts_dir=None)
                 if serr:
                     raise WriteRefused("migrate apply schema: " + serr)
+                staged.append((stem, src, dest_dom, dest, body, src_hash, old_bytes, facts_dir))
+            overlay_by_dir: dict = {}
+            for stem, src, dest_dom, dest, body, src_hash, old_bytes, facts_dir in staged:
+                overlay_by_dir.setdefault(str(facts_dir), {})[stem] = body
+            for stem, src, dest_dom, dest, body, src_hash, old_bytes, facts_dir in staged:
+                fm_m = _fm_m(body)
+                lerr = validate_links(body, str(fm_m.get("scope") or ""), facts_dir,
+                                      overlay=overlay_by_dir.get(str(facts_dir)) or {})
+                if lerr:
+                    raise WriteRefused("migrate apply links: " + lerr)
                 temps[str(dest)] = body
                 if dest.exists():
                     dest_modes[str(dest)] = "replace"
@@ -780,7 +881,6 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                     dest_modes[str(dest)] = "create"
                     expected[str(dest)] = _ABS
                 fid = _sf_m(dest_dom, stem)
-                fm_m = _fm_m(body)
                 old_row = conn.execute(
                     "SELECT fact_id, stem, domain_id, canonical_path, revision, status, "
                     "sensitivity FROM facts WHERE fact_id=?", (fid,)).fetchone()
@@ -794,8 +894,8 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                 copied.append({
                     "path": str(dest),
                     "new_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
-                    "old_sha256": None if old_text is None else _sha256_file(dest),
-                    "old_text": old_text,
+                    "old_sha256": None if old_bytes is None else hashlib.sha256(old_bytes).hexdigest(),
+                    "old_bytes_b64": None if old_bytes is None else _b64(old_bytes),
                     "source": str(src),
                     "source_sha256": src_hash,
                     "domain": dest_dom,
@@ -810,13 +910,13 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                 stem_overlay = {Path(p).name: t for p, t in overlay.items()
                                 if Path(p).parent == facts_dir}
                 catp = facts_dir / "MEMORY.md"
-                old_cat = catp.read_text(encoding="utf-8", errors="replace") if catp.exists() else None
+                old_cat_b = catp.read_bytes() if catp.exists() else None
                 cat = generate_catalog(facts_dir, overlay=stem_overlay)
                 new_cat = cat if cat.endswith("\n") else cat + "\n"
                 catalog_snaps.append({
                     "path": str(catp),
-                    "old_text": old_cat,
-                    "old_sha256": None if old_cat is None else _sha256_file(catp),
+                    "old_bytes_b64": None if old_cat_b is None else _b64(old_cat_b),
+                    "old_sha256": None if old_cat_b is None else hashlib.sha256(old_cat_b).hexdigest(),
                     "new_sha256": hashlib.sha256(new_cat.encode("utf-8")).hexdigest(),
                 })
                 temps[str(catp)] = new_cat
@@ -835,6 +935,16 @@ def cmd_migrate(args: argparse.Namespace) -> int:
             }
             rb_path = ctx.plugin_data_dir / "migrate-rollback.json"
             temps[str(rb_path)] = json.dumps(rb, indent=2) + "\n"
+            plan_next = dict(plan)
+            plan_next["applied"] = True
+            plan_next["finalized"] = False
+            plan_path = ctx.plugin_data_dir / "migrate-plan.json"
+            temps[str(plan_path)] = json.dumps(plan_next, indent=2) + "\n"
+            if plan_path.exists():
+                expected[str(plan_path)] = _sha256_file(plan_path)
+            dest_modes[str(plan_path)] = "replace" if plan_path.exists() else "create"
+            if not plan_path.exists():
+                expected[str(plan_path)] = _ABS
             ops.append({"op": "migration_state_set", "value": "dual-read"})
             return {"copied": [c["path"] for c in copied],
                     "dest_modes": dest_modes, "expected_revisions": expected,
@@ -846,20 +956,9 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         except WriteRefused as e:
             print(f"migrate apply: {e}", file=sys.stderr)
             return 2
-        plan["applied"] = True
-        _save_migrate_plan(ctx, plan)
-        rb = {
-            "mode_before": "dual-read",
-            "copied": list(copied_holder),
-            "catalogs": list(catalog_holder),
-            "allowed_roots": [str(droot)],
-        }
-        rb_path = ctx.plugin_data_dir / "migrate-rollback.json"
-        rb_path.parent.mkdir(parents=True, exist_ok=True)
-        rb_path.write_text(json.dumps(rb, indent=2) + "\n", encoding="utf-8")
         print(f"migrate apply: copied {len(copied_holder)} fact(s) into assigned domains")
         print("  dual-read remains until --finalize")
-        print(f"  rollback file: {rb_path}")
+        print(f"  rollback file: {ctx.plugin_data_dir / 'migrate-rollback.json'}")
         return 0
 
     if stage == "rollback":
@@ -876,7 +975,6 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         allowed = [Path(p) for p in (rb.get("allowed_roots") or [])]
         if not allowed:
             allowed = [ctx.config_root / "consolidate-memory" / "domains"]
-        conflicts_holder: list = []
 
         def mutate(conn, temps):
             from control_plane import ABSENT as _ABS_RB
@@ -887,8 +985,9 @@ def cmd_migrate(args: argparse.Namespace) -> int:
             ops: list = [{"op": "migration_state_set",
                           "value": str(rb.get("mode_before") or "dual-read")}]
             conflicts: list = []
+            planned: list = []
 
-            def _one(path: Path, want: str, old_text, old_fact, fact_id: str) -> None:
+            def _classify(path: Path, want: str, old_b64, old_fact, fact_id: str) -> None:
                 if not path or not _contained_under(path, allowed):
                     conflicts.append(str(path))
                     return
@@ -896,10 +995,37 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                 if path.exists() and want and live not in (want, ""):
                     conflicts.append(str(path))
                     return
+                planned.append((path, want, old_b64, old_fact, fact_id, live))
+
+            for item in rb.get("copied") or []:
+                if isinstance(item, str):
+                    _classify(Path(item), "", None, None, "")
+                else:
+                    _classify(Path(str(item.get("path") or "")),
+                              str(item.get("new_sha256") or ""),
+                              item.get("old_bytes_b64") or item.get("old_text"),
+                              item.get("old_fact"),
+                              str(item.get("fact_id") or ""))
+            for cat in rb.get("catalogs") or []:
+                _classify(Path(str(cat.get("path") or "")),
+                          str(cat.get("new_sha256") or ""),
+                          cat.get("old_bytes_b64") if "old_bytes_b64" in cat else cat.get("old_text"),
+                          None, "")
+            if conflicts:
+                raise WriteRefused(
+                    "rollback conflicted (no files changed): " + ", ".join(conflicts[:8]))
+            for path, want, old_b64, old_fact, fact_id, live in planned:
                 if want:
                     expected[str(path)] = want
-                if old_text is not None:
-                    temps[str(path)] = old_text if str(old_text).endswith("\n") else str(old_text) + "\n"
+                old_bytes = None
+                if isinstance(old_b64, (bytes, bytearray)):
+                    old_bytes = bytes(old_b64)
+                elif isinstance(old_b64, str) and old_b64:
+                    old_bytes = _unb64(old_b64)
+                    if old_bytes is None:
+                        old_bytes = old_b64.encode("utf-8")
+                if old_bytes is not None:
+                    temps[str(path)] = old_bytes
                     dest_modes[str(path)] = "replace" if path.exists() else "create"
                     if not path.exists():
                         expected[str(path)] = _ABS_RB
@@ -921,21 +1047,16 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                         deletes.append({"path": str(path), "preimage": want or live})
                     if fact_id:
                         ops.append({"op": "fact_delete", "fact_id": fact_id})
-
-            for item in rb.get("copied") or []:
-                if isinstance(item, str):
-                    _one(Path(item), "", None, None, "")
-                else:
-                    _one(Path(str(item.get("path") or "")),
-                         str(item.get("new_sha256") or ""),
-                         item.get("old_text"),
-                         item.get("old_fact"),
-                         str(item.get("fact_id") or ""))
-            for cat in rb.get("catalogs") or []:
-                _one(Path(str(cat.get("path") or "")),
-                     str(cat.get("new_sha256") or ""),
-                     cat.get("old_text"), None, "")
-            conflicts_holder.extend(conflicts)
+            plan_next = dict(plan)
+            plan_next["applied"] = False
+            plan_next["finalized"] = False
+            plan_path = ctx.plugin_data_dir / "migrate-plan.json"
+            temps[str(plan_path)] = json.dumps(plan_next, indent=2) + "\n"
+            dest_modes[str(plan_path)] = "replace" if plan_path.exists() else "create"
+            if plan_path.exists():
+                expected[str(plan_path)] = _sha256_file(plan_path)
+            else:
+                expected[str(plan_path)] = _ABS_RB
             return {"deletes": deletes, "dest_modes": dest_modes,
                     "expected_revisions": expected, "registry_ops": ops}
 
@@ -944,14 +1065,7 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         except WriteRefused as e:
             print(f"migrate rollback: {e}", file=sys.stderr)
             return 2
-        plan["applied"] = False
-        plan["finalized"] = False
-        _save_migrate_plan(ctx, plan)
         print("migrate rollback: restored dual-read, catalogs, and fact rows")
-        if conflicts_holder:
-            print("  conflicts (edited after apply, not deleted): "
-                  + ", ".join(conflicts_holder[:8]), file=sys.stderr)
-            return 1
         return 0
 
     if stage == "finalize":
@@ -966,6 +1080,20 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         if not plan.get("applied"):
             print("migrate finalize: apply first", file=sys.stderr)
             return 2
+        rb_fin = ctx.plugin_data_dir / "migrate-rollback.json"
+        if rb_fin.exists():
+            try:
+                rbv = json.loads(rb_fin.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError, ValueError):
+                rbv = {}
+            for item in list(rbv.get("copied") or []) + list(rbv.get("catalogs") or []):
+                if not isinstance(item, dict):
+                    continue
+                p = Path(str(item.get("path") or ""))
+                want = str(item.get("new_sha256") or "")
+                if p.is_file() and want and _sha256_file(p) != want:
+                    print(f"migrate finalize: dest hash mismatch {p}", file=sys.stderr)
+                    return 2
         def mutate(conn, temps):
             del temps
             set_migration_mode(conn, "enforced")
@@ -1136,12 +1264,23 @@ def cmd_data(args: argparse.Namespace) -> int:
                 pdata = ctx.plugin_data_dir
                 droot = ctx.config_root / "consolidate-memory" / "domains"
                 n = 0
-                if pdata.is_dir():
-                    n += sum(1 for _ in pdata.rglob("*") if _.is_file())
-                    shutil.rmtree(pdata, ignore_errors=True)
-                if droot.is_dir():
-                    n += sum(1 for _ in droot.rglob("*") if _.is_file())
-                    shutil.rmtree(droot, ignore_errors=True)
+                failed: list = []
+                for target in (pdata, droot):
+                    if not target.is_dir():
+                        continue
+                    n += sum(1 for _ in target.rglob("*") if _.is_file())
+                    try:
+                        shutil.rmtree(target)
+                    except OSError as e:
+                        failed.append(f"{target}: {e}")
+                    if target.exists():
+                        leftover = [str(p) for p in target.rglob("*") if p.is_file()]
+                        if leftover:
+                            failed.extend(leftover[:8])
+                if failed:
+                    print(json.dumps({"ok": False, "scope": scope, "error": failed,
+                                      "purged_files": n}), file=sys.stderr)
+                    return 2
                 print(json.dumps({"ok": True, "scope": scope, "purged_files": n,
                                   "managed_mirrors_revoked": True,
                                   "native": str(ctx.native_memory_dir)}))

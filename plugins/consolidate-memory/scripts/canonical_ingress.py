@@ -64,7 +64,7 @@ def generate_catalog(facts_dir: Path, overlay: Optional[dict] = None) -> str:
                 status = s.split(":", 1)[1].strip()
             elif s.startswith("description:"):
                 desc = s.split(":", 1)[1].strip()
-        if status == "tombstoned":
+        if status and status != "active":
             continue
         lines.append(f"- [{stem}]({stem}.md) — {desc}".rstrip(" —"))
     return "\n".join(lines) + "\n"
@@ -155,12 +155,18 @@ def link_allowed(src_scope: str, dst_scope: str, *, dst_exists_global: bool = Fa
 
 
 def validate_links(text: str, src_scope: str, facts_dir: Path,
-                   scope_of: Optional[dict] = None) -> Optional[str]:
+                   scope_of: Optional[dict] = None,
+                   overlay: Optional[dict] = None) -> Optional[str]:
     scopes = scope_of or {}
+    overlay = overlay or {}
     for target in link_targets(text):
+        over = overlay.get(target) or overlay.get(target + ".md")
         dest = facts_dir / f"{target}.md"
-        if dest.exists():
-            dst_scope = scopes.get(target) or _scope_of(dest)
+        if over is not None or dest.exists():
+            if over is not None:
+                dst_scope = scopes.get(target) or _scope_of_text(over)
+            else:
+                dst_scope = scopes.get(target) or _scope_of(dest)
             if not link_allowed(src_scope, dst_scope, dst_exists_global=True):
                 return f"invalid link [[{target}]]: {src_scope} must not require {dst_scope}"
             continue
@@ -170,16 +176,20 @@ def validate_links(text: str, src_scope: str, facts_dir: Path,
     return None
 
 
+def _scope_of_text(text: str) -> str:
+    for ln in str(text or "").splitlines():
+        s = ln.strip()
+        if s.startswith("scope:"):
+            return s.split(":", 1)[1].strip()
+    return "project-local"
+
+
 def _scope_of(path: Path) -> str:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return "project-local"
-    for ln in text.splitlines():
-        s = ln.strip()
-        if s.startswith("scope:"):
-            return s.split(":", 1)[1].strip()
-    return "project-local"
+    return _scope_of_text(text)
 
 
 def _looks_secret_fn():
@@ -345,6 +355,10 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         return {"ok": False, "error": link_err}
     if ctx.domain_id == "unknown" and fact_domain(fm):
         return {"ok": False, "error": "unknown-domain writer cannot create a domain-tagged canonical"}
+    from control_plane import _file_hash as _fh_origin
+    origin_delete_hash = ""
+    if origin_delete is not None and origin_delete.exists():
+        origin_delete_hash = _fh_origin(origin_delete) or ""
 
     def mutate(conn, temps):
         from index_admission import apply_pointer, project_index
@@ -361,6 +375,7 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
             raise WriteRefused(
                 "canonical already exists (created concurrently); retry to reconcile")
         deletes: list = []
+        extra_expected: dict = {}
         if preserve_canonical:
             live = dest if dest.exists() else (legacy / f"{stem}.md")
             if not live.exists():
@@ -385,8 +400,9 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         conn.execute(
             "INSERT INTO facts(fact_id, stem, domain_id, canonical_path, revision, status, sensitivity) "
             "VALUES (?,?,?,?,?,?,?) ON CONFLICT(fact_id) DO UPDATE SET revision=excluded.revision, "
-            "canonical_path=excluded.canonical_path, status='active', sensitivity=excluded.sensitivity",
-            (fid, stem, ctx.domain_id, str(dest), rev, "active", fact_sensitivity(fm)),
+            "canonical_path=excluded.canonical_path, status=excluded.status, sensitivity=excluded.sensitivity",
+            (fid, stem, ctx.domain_id, str(dest), rev, str(fm.get("status") or "active"),
+             fact_sensitivity(fm)),
         )
         record_holder(conn, fid, ctx.project_id, rev, rev, rev)
         if origin_local is not None:
@@ -425,9 +441,11 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
                 except OSError:
                     same_origin = origin_local == origin_delete
                 if not same_origin:
-                    deletes.append(str(origin_delete))
+                    deletes.append({"path": str(origin_delete),
+                                    "preimage": origin_delete_hash})
+                    if origin_delete_hash:
+                        extra_expected[str(origin_delete)] = origin_delete_hash
         modes = {}
-        extra_expected: dict = {}
         if create_only:
             modes[str(dest)] = "create"
         if origin_local is not None and not origin_local.exists() and str(origin_local) in temps:
@@ -436,7 +454,7 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         ops = [
             {"op": "fact_upsert", "fact_id": fid, "stem": stem,
              "domain_id": ctx.domain_id, "canonical_path": str(dest),
-             "revision": rev, "status": "active",
+             "revision": rev, "status": str(fm.get("status") or "active"),
              "sensitivity": fact_sensitivity(fm)},
             {"op": "holder_upsert", "fact_id": fid, "project_id": ctx.project_id,
              "base_revision": rev, "canonical_revision": rev, "semantic_hash": rev},
@@ -447,7 +465,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
             "stem": stem, "fact_id": fid, "revision": rev, "catalog_admitted": True,
             "deletes": deletes,
             "holders": [(fid, ctx.project_id, rev, rev, rev)],
-            "facts": [(fid, stem, ctx.domain_id, str(dest), rev, "active",
+            "facts": [(fid, stem, ctx.domain_id, str(dest), rev,
+                       str(fm.get("status") or "active"),
                        fact_sensitivity(fm))],
             "dest_modes": modes,
             "expected_revisions": extra_expected,
@@ -583,9 +602,21 @@ def _tombstone_markdown(stem: str, reason: str, replacement_id: str,
         return str(s or "").replace("\n", " ").replace("\r", " ")[:200]
 
     rev = hashlib.sha256((previous or "").encode("utf-8")).hexdigest()[:16]
+    from control_plane import stable_fact_id
+    from memory_status import _frontmatter
+    fm = _frontmatter(previous or "")
+    domain = str(fm.get("domain") or "").strip() or "unknown"
+    fid = str(fm.get("fact_id") or "").strip() or stable_fact_id(domain, stem)
+    scope = str(fm.get("scope") or "project-local").strip() or "project-local"
+    sens = str(fm.get("sensitivity") or "internal").strip() or "internal"
     return (
-        f"---\nname: {stem}\nstatus: tombstoned\ndeleted_at: {now}\n"
-        f"reason: {_esc(reason)}\nreplacement_id: {_esc(replacement_id)}\n"
+        f"---\nschema_version: 3\nfact_id: {fid}\nname: {stem}\n"
+        f"description: tombstone\ndomain: {domain}\nsensitivity: {sens}\n"
+        f"scope: {scope}\nstatus: tombstoned\n"
+        f"applies_any: []\napplies_all: []\napplies_exclude: []\n"
+        f"content_modified: {now}\nlast_observed_at: {now}\n"
+        f"deleted_at: {now}\nreason: {_esc(reason)}\n"
+        f"replacement_id: {_esc(replacement_id)}\n"
         f"grace_until: {_esc(grace_until)}\ndeleted_revision_hash: {rev}\n---\n\n"
         f"Tombstone. Previous body is not retained.\n"
     )
