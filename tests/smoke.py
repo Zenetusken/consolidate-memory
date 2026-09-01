@@ -3501,6 +3501,7 @@ with _tfB.TemporaryDirectory() as _tdC6:
     _oldGlobalC6 = sg.GLOBAL
     sg.GLOBAL = _glC6
     try:
+        _enroll_personal(_projC6)
         _fuC6 = sg.fleet_utility(_projC6)
         _byC6 = {e["name"]: e for e in _fuC6["canonicals"]}
         check("v0.1.67 --utility: reads attribute ONLY through a mirror (nodeA 3); a same-stem local is shadow (7)",
@@ -3874,10 +3875,10 @@ with _tf70g.TemporaryDirectory() as _td70g:
     _oldGlobal70g = sg.GLOBAL
     sg.GLOBAL = _glob70g
     try:
-        _stems70g = {n for n, _fm, _t in sg.global_facts()}
+        _stems70g = {n for n, _fm, _t, _p in sg._all_domain_records()}
     finally:
         sg.GLOBAL = _oldGlobal70g
-check("global_facts() excludes a case-variant 'memory.md' global fact (not just exact 'MEMORY.md')",
+check("enumerator excludes a case-variant 'memory.md' global fact (not just exact 'MEMORY.md')",
       "memory" not in _stems70g and "real-fact" in _stems70g)
 
 # v0.1.70 Gate-2a (4th pass): _orphans() (which feeds gc(..., apply=True)'s destructive unlink())
@@ -4030,10 +4031,14 @@ class _Env73:
         self.proj = (home / "src" / "proj73").resolve(); self.proj.mkdir(parents=True)
         self.store = home / ".claude" / "projects" / ms.slug_for(self.proj) / "memory"
         self.store.mkdir(parents=True)
-        self.glob = home / "global-mem"; self.glob.mkdir(parents=True)
         self._home, self._global = _os73.environ.get("HOME"), sg.GLOBAL
-        _os73.environ["HOME"] = str(home); sg.GLOBAL = self.glob
+        _os73.environ["HOME"] = str(home)
         _enroll_personal(self.proj)
+        import store_context as _sc73
+        _ctx73e = _sc73.resolve_store(self.proj)
+        _ctx73e.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
+        self.glob = _ctx73e.canonical_domain_dir
+        sg.GLOBAL = self.glob
         return self
 
     def __exit__(self, *a):
@@ -5339,9 +5344,11 @@ with _Env73() as _e:
           and _ct84b.endswith("body\n"))
     # the self-heal: a pull from a live project re-adds ITS OWN edge (a wrong prune is a
     # temporary undercount, never a loss)
-    sg._record_provenance("canon-x", "ghost-proj")
-    check("v0.1.84: a pruned edge SELF-HEALS via _record_provenance on that project's next pull/promote",
-          "ghost-proj" in (_e.glob / "canon-x.md").read_text(encoding="utf-8"))
+    _p84 = _e.glob / "canon-x.md"
+    _t84 = _p84.read_text(encoding="utf-8")
+    _p84.write_text(sg.apply_provenance(_t84, "ghost-proj"), encoding="utf-8")
+    check("v0.1.84: a pruned edge SELF-HEALS via apply_provenance on that project's next pull/promote",
+          "ghost-proj" in _p84.read_text(encoding="utf-8"))
 # PR-#97 review F1 (the mass-prune blocker): a present-but-STORELESS projects tree (unmounted /
 # transcript-only) must REFUSE — every edge resolves to nothing, indistinguishable from a wiped
 # store tree; --apply must NOT write `projects: []` fleet-wide.
@@ -7144,24 +7151,13 @@ check("SKILL Phase 5 persist/store/marker use native_memory_dir (do not hand-bui
 
 with _Env73() as _e_h:
     (_e_h.glob / "ug-hold.md").write_text(_fact73("ug-hold", "holder pin"), encoding="utf-8")
-    _prov_calls: list = []
-    _orig_prov = sg._record_provenance
-
-    def _prov_wrap(*a: Any, **k: Any) -> None:
-        _prov_calls.append(a)
-        return _orig_prov(*a, **k)
-
-    sg._record_provenance = _prov_wrap
-    try:
-        _rc_h, _out_h, _err_h = _run73(_e_h.proj)
-    finally:
-        sg._record_provenance = _orig_prov
+    _rc_h, _out_h, _err_h = _run73(_e_h.proj)
     _ctx_h = sc.resolve_store(_e_h.proj)
     _conn_h = cp.connect(cp.db_path(_ctx_h))
     _nhold = _conn_h.execute("SELECT count(*) AS n FROM holders").fetchone()["n"]
     _conn_h.close()
-    check("pull records holders on the control plane and does not call _record_provenance after locks drop",
-          _rc_h == 0 and int(_nhold) >= 1 and _prov_calls == []
+    check("pull records holders on the control plane (no post-lock GLOBAL rewrite)",
+          _rc_h == 0 and int(_nhold) >= 1
           and (_e_h.store / "ug-hold.md").is_file())
 
 with _Env73() as _e_p:
@@ -7178,14 +7174,6 @@ with _Env73() as _e_p:
         return _real_up(*a, **k)
 
     ci.upsert = _up_wrap
-    _prov_p: list = []
-    _orig_p2 = sg._record_provenance
-
-    def _prov_pwrap(*a: Any, **k: Any) -> None:
-        _prov_p.append(a)
-        return _orig_p2(*a, **k)
-
-    sg._record_provenance = _prov_pwrap
     try:
         _rc_p1 = sg.promote(_e_p.proj, "promo-x", "promo-x")
         (_e_p.store / "promo-y.md").write_text(
@@ -7194,11 +7182,10 @@ with _Env73() as _e_p:
         _rc_p2 = sg.promote(_e_p.proj, "promo-y", "promo-x")
     finally:
         ci.upsert = _real_up
-        sg._record_provenance = _orig_p2
     _create_kw = _seen_up[0] if _seen_up else {}
     _recon_kw = _seen_up[1] if len(_seen_up) > 1 else {}
     check("promote CREATE calls upsert(create_only, origin_local); reconcile uses preserve_canonical",
-          _rc_p1 == 0 and _rc_p2 == 0 and _prov_p == []
+          _rc_p1 == 0 and _rc_p2 == 0
           and _create_kw.get("create_only") is True
           and _create_kw.get("origin_local") is not None
           and _recon_kw.get("preserve_canonical") is True
@@ -7458,12 +7445,19 @@ with _tf_xp.TemporaryDirectory() as _td_g:
     _old_gg = sg.GLOBAL
     _os_xp.environ["HOME"] = str(_home_g)
     _os_xp.environ["CLAUDE_CONFIG_DIR"] = str(_cfg_g)
-    sg.GLOBAL = _gdir
+    sg.GLOBAL = _cfg_g / "unused-fixture-global"
+    sg.GLOBAL.mkdir(parents=True)
     try:
+        _enroll_personal(_proj_g)
+        _ctx_g = sc.resolve_store(_proj_g)
+        _ctx_g.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
+        (_ctx_g.canonical_domain_dir / "keep.md").write_text(
+            "---\nname: keep\ndescription: d\ndomain: personal\nmetadata:\n"
+            "  scope: user-global\n  type: feedback\n---\nKEEP\n", encoding="utf-8")
         _bc_g = ms.build_context(_proj_g)
-        check("review-6: Phase-0 global_store_facts counts config_root/memory, not Path.home()/.claude/memory",
+        check("review-6: Phase-0 global_store_facts counts domain canonicals, not leftover memory",
               int(_bc_g.get("global_store_facts") or 0) == 1
-              and not (_home_g / ".claude" / "memory" / "net-fact.md").exists())
+              and (_gdir / "net-fact.md").is_file())
         _seed_g = ms.seed_record(_bc_g)
         check("review-6: cycle-record seed global_store_facts matches build_context count",
               int(_seed_g["cross_project"]["global_store_facts"]) == 1)
@@ -7496,10 +7490,11 @@ with _tf_xp.TemporaryDirectory() as _td_b:
                                  migration_mode=dp.MIGRATION_ENFORCED)
         check("review-7: beacon is silent for domain-tagged facts this project cannot pull",
               _line_b == "")
+        _gf_b = [(s, fm, t) for s, fm, t, _p in sg._all_domain_records()]
         _miss, _stale = sg._store_gaps(
             _store_b, None,
-            sg.global_facts(),
-            {n: sg._body_hash(t) for n, _fm, t in sg.global_facts()},
+            _gf_b,
+            {n: sg._body_hash(t) for n, _fm, t in _gf_b},
             domain_id="unknown", migration_mode=dp.MIGRATION_ENFORCED)
         check("review-7: _store_gaps admits none of a tagged-only fleet for unknown+enforced",
               _miss == 0 and _stale == 0)
@@ -8270,20 +8265,52 @@ with _Env73() as _e_co:
             crash_after="after_dests")
     except cp.CrashSimulated:
         _crash_co = True
-    check("0.3.3: after_dests crash leaves dest published before deletes",
+    check("0.3.3: after_dests crash leaves dest published and origin already trashed",
           _crash_co and _dest_co.read_text(encoding="utf-8") == "NEW-DEST\n"
-          and _origin_co.exists())
-    _origin_co.write_text("MUTATED-ORIGIN\n", encoding="utf-8")
+          and not _origin_co.exists())
     _j_co = cp.connect_journal(_ctx_co)
     _r_co = cp.connect(cp.db_path(_ctx_co))
     _got_co = cp.recover_pending(_j_co, ctx=_ctx_co, registry_conn=_r_co)
     _st_co = _j_co.execute(
         "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()["status"]
     _j_co.close(); _r_co.close()
-    check("0.3.3: dest publish + delete mismatch restores dests (complete-old)",
-          _dest_co.read_text(encoding="utf-8") == "OLD-DEST\n"
-          and _origin_co.read_text(encoding="utf-8") == "MUTATED-ORIGIN\n"
-          and _st_co == "failed" and _got_co == [])
+    check("0.3.4: after_dests recover completes (trash already done)",
+          _dest_co.read_text(encoding="utf-8") == "NEW-DEST\n"
+          and not _origin_co.exists()
+          and _st_co == "complete" and bool(_got_co))
+
+with _Env73() as _e_at:
+    _ctx_at = sc.resolve_store(_e_at.proj)
+    _dest_at = _ctx_at.native_memory_dir / "d-at.md"
+    _dest_at.parent.mkdir(parents=True, exist_ok=True)
+    _dest_at.write_text("OLD-AT\n", encoding="utf-8")
+    _origin_at = _ctx_at.native_memory_dir / "o-at.md"
+    _origin_at.write_text("ORIGIN-AT\n", encoding="utf-8")
+    _h_origin_at = cp._file_hash(_origin_at)
+    _crash_at = False
+    try:
+        cp.transact(
+            _ctx_at, "after-trash-del", {"k": 1},
+            lambda _c, _t: (_t.__setitem__(str(_dest_at), "NEW-AT\n") or {
+                "deletes": [{"path": str(_origin_at), "preimage": _h_origin_at}],
+                "expected_revisions": {str(_origin_at): _h_origin_at},
+            }),
+            crash_after="after_trash")
+    except cp.CrashSimulated:
+        _crash_at = True
+    check("0.3.4: after_trash crash leaves dest unpublished and origin trashed",
+          _crash_at and _dest_at.read_text(encoding="utf-8") == "OLD-AT\n"
+          and not _origin_at.exists())
+    _j_at = cp.connect_journal(_ctx_at)
+    _r_at = cp.connect(cp.db_path(_ctx_at))
+    _got_at = cp.recover_pending(_j_at, ctx=_ctx_at, registry_conn=_r_at)
+    _st_at = _j_at.execute(
+        "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()["status"]
+    _j_at.close(); _r_at.close()
+    check("0.3.4: after_trash recover completes a delete+publish op",
+          _dest_at.read_text(encoding="utf-8") == "NEW-AT\n"
+          and not _origin_at.exists()
+          and _st_at == "complete" and bool(_got_at))
 
 with _Env73() as _e_nr:
     _ctx_nr = sc.resolve_store(_e_nr.proj)
@@ -8347,7 +8374,7 @@ with _Env73() as _e_ac:
     _dest_ac = _ctx_ac.canonical_domain_dir / "created.md"
     _dest_ac.parent.mkdir(parents=True, exist_ok=True)
     _old_cp = _osB.environ.get("CM_CRASH_PUBLISH")
-    _osB.environ["CM_CRASH_PUBLISH"] = "after_create"
+    _osB.environ["CM_CRASH_PUBLISH"] = "after_link"
     _crash_ac = False
     try:
         cp.transact(
@@ -8364,16 +8391,20 @@ with _Env73() as _e_ac:
             _osB.environ.pop("CM_CRASH_PUBLISH", None)
         else:
             _osB.environ["CM_CRASH_PUBLISH"] = _old_cp
-    check("0.3.3: after_create crash leaves empty dest + tmp",
-          _crash_ac and _dest_ac.exists() and _dest_ac.stat().st_size == 0)
+    _tmp_ac = _dest_ac.with_suffix(_dest_ac.suffix + f".tmp{_osB.getpid()}")
+    check("0.3.4: after_link crash leaves full dest + tmp (no empty inode)",
+          _crash_ac and _dest_ac.exists()
+          and _dest_ac.read_text(encoding="utf-8") == "NEW-CREATE\n"
+          and _tmp_ac.exists())
     _j_ac = cp.connect_journal(_ctx_ac)
     _r_ac = cp.connect(cp.db_path(_ctx_ac))
     _got_ac = cp.recover_pending(_j_ac, ctx=_ctx_ac, registry_conn=_r_ac)
     _st_ac = _j_ac.execute(
         "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()["status"]
     _j_ac.close(); _r_ac.close()
-    check("0.3.3: create after_create empty dest recovers",
+    check("0.3.4: create after_link dest recovers",
           bool(_dest_ac.read_text(encoding="utf-8") == "NEW-CREATE\n"
+               and not _tmp_ac.exists()
                and _st_ac == "complete" and _got_ac))
 
 with _Env73() as _e_tm:
@@ -8392,6 +8423,237 @@ with _Env73() as _e_tm:
     _mode_tm = _tmp_tm.stat().st_mode & 0o777 if _tmp_tm.exists() else 0
     check("0.3.3: prepare_temps tmp is 0o600",
           _crash_tm and _tmp_tm.exists() and _mode_tm == 0o600)
+
+# ── 0.3.4: journal complete-old (trash, compensation, link create) ───────────
+with _tf73.TemporaryDirectory() as _td_md:
+    _a_md = Path(_td_md) / "a.md"
+    _b_md = Path(_td_md) / "b.md"
+    _a_md.write_text("A-BODY\n", encoding="utf-8")
+    _b_md.write_text("B-BODY\n", encoding="utf-8")
+    _ha_md = cp._file_hash(_a_md)
+    _hb_md = cp._file_hash(_b_md)
+    _blocked = Path(_td_md) / ".cm-trash-t35-1"
+    _blocked.mkdir()
+    _del_md = cp._apply_deletes(
+        [{"path": str(_a_md), "preimage": _ha_md},
+         {"path": str(_b_md), "preimage": _hb_md}],
+        op_id="t35")
+    check("0.3.4: multi-delete rolls back trash when a later rename fails",
+          _a_md.read_text(encoding="utf-8") == "A-BODY\n"
+          and _b_md.read_text(encoding="utf-8") == "B-BODY\n"
+          and str(_b_md) in _del_md["errors"]
+          and str(_a_md) not in _del_md["deleted"])
+
+with _tf73.TemporaryDirectory() as _td_zb:
+    _dest_zb = Path(_td_zb) / "empty.md"
+    _dest_zb.write_bytes(b"")
+    _tmp_zb = Path(_td_zb) / "empty.md.tmpx"
+    _tmp_zb.write_text("NEW-CREATE\n", encoding="utf-8")
+    _want_zb = __import__("hashlib").sha256(b"NEW-CREATE\n").hexdigest()
+    _n_zb, _bad_zb = cp._publish_destinations([{
+        "tmp": str(_tmp_zb), "dest": str(_dest_zb),
+        "sha256": _want_zb, "mode": "create",
+    }])
+    check("0.3.4: create-mode does not unlink a legitimate empty dest",
+          _n_zb == 0 and bool(_bad_zb)
+          and _dest_zb.exists() and _dest_zb.stat().st_size == 0
+          and _tmp_zb.exists())
+
+with _Env73() as _e_ed:
+    _ctx_ed = sc.resolve_store(_e_ed.proj)
+    _dest_ed = _ctx_ed.native_memory_dir / "edit.md"
+    _dest_ed.parent.mkdir(parents=True, exist_ok=True)
+    _dest_ed.write_text("OLD-EDIT\n", encoding="utf-8")
+    try:
+        cp.transact(
+            _ctx_ed, "dest-edit", {"k": 1},
+            lambda _c, _t: (_t.__setitem__(str(_dest_ed), "NEW-EDIT\n") or {"ok": True}),
+            crash_after="after_dests")
+    except cp.CrashSimulated:
+        pass
+    _dest_ed.write_text("USER-EDIT\n", encoding="utf-8")
+    _j_ed = cp.connect_journal(_ctx_ed)
+    _r_ed = cp.connect(cp.db_path(_ctx_ed))
+    _got_ed = cp.recover_pending(_j_ed, ctx=_ctx_ed, registry_conn=_r_ed)
+    _st_ed = _j_ed.execute(
+        "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()["status"]
+    _j_ed.close(); _r_ed.close()
+    _q_ed = list((_ctx_ed.native_memory_dir / "quarantine").glob("edit.md.*")) \
+        if (_ctx_ed.native_memory_dir / "quarantine").is_dir() else []
+    check("0.3.4: dest edited after publish is quarantined, not overwritten",
+          _st_ed == "failed" and _got_ed == []
+          and _dest_ed.read_text(encoding="utf-8") == "OLD-EDIT\n"
+          and len(_q_ed) == 1
+          and "USER-EDIT" in _q_ed[0].read_text(encoding="utf-8"))
+
+with _tf73.TemporaryDirectory() as _td_qf:
+    _dest_qf = Path(_td_qf) / "edit.md"
+    _dest_qf.write_text("USER-EDIT\n", encoding="utf-8")
+    (Path(_td_qf) / "quarantine").write_text("not-a-dir\n", encoding="utf-8")
+    _rec_qf = Path(_td_qf) / "rec"
+    _rec_qf.mkdir()
+    _orig_qf = b"OLD-EDIT\n"
+    _blob_qf = _rec_qf / "dest-0.bin"
+    _blob_qf.write_bytes(_orig_qf)
+    _pub_qf = _hlA3.sha256(b"NEW-EDIT\n").hexdigest()
+    _raised_qf = False
+    try:
+        cp._restore_dest_preimages([{
+            "dest": str(_dest_qf),
+            "sha256": _hlA3.sha256(_orig_qf).hexdigest(),
+            "absent": False,
+            "blob": str(_blob_qf),
+            "published_sha256": _pub_qf,
+            "mode": "replace",
+        }])
+    except sc.WriteRefused:
+        _raised_qf = True
+    check("0.3.4: dest restore refuses to clobber when quarantine cannot move the occupant",
+          _raised_qf and _dest_qf.read_text(encoding="utf-8") == "USER-EDIT\n")
+
+with _Env73() as _e_pc:
+    _ctx_pc = sc.resolve_store(_e_pc.proj)
+    _dest_pc = _ctx_pc.native_memory_dir / "postc.md"
+    _dest_pc.parent.mkdir(parents=True, exist_ok=True)
+    _dest_pc.write_text("OLD-POST\n", encoding="utf-8")
+    _old_pc = _osB.environ.get("CM_FAIL_POSTCONDITION")
+    _osB.environ["CM_FAIL_POSTCONDITION"] = "post"
+    _raised_pc = False
+    try:
+        cp.transact(
+            _ctx_pc, "post-fail", {"k": 1},
+            lambda _c, _t: (_t.__setitem__(str(_dest_pc), "NEW-POST\n") or {"ok": True}),
+            skip_recover=True)
+    except sc.WriteRefused:
+        _raised_pc = True
+    finally:
+        if _old_pc is None:
+            _osB.environ.pop("CM_FAIL_POSTCONDITION", None)
+        else:
+            _osB.environ["CM_FAIL_POSTCONDITION"] = _old_pc
+    _j_pc = cp.connect_journal(_ctx_pc)
+    _st_pc = _j_pc.execute(
+        "SELECT status, payload FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
+    _j_pc.close()
+    _pl_pc = __import__("json").loads(_st_pc["payload"] or "{}") if _st_pc else {}
+    check("0.3.4: registry postcondition failure after publish restores dests",
+          _raised_pc and _st_pc is not None
+          and str(_st_pc["status"] or "") == "conflicted"
+          and _dest_pc.read_text(encoding="utf-8") == "OLD-POST\n"
+          and "bytes_b64" not in _pl_pc
+          and not any("bytes_b64" in (x or {}) for x in (_pl_pc.get("dest_preimages") or [])))
+
+with _Env73() as _e_occ:
+    _ctx_occ = sc.resolve_store(_e_occ.proj)
+    _dest_occ = _ctx_occ.native_memory_dir / "d3.md"
+    _dest_occ.parent.mkdir(parents=True, exist_ok=True)
+    _dest_occ.write_text("OLD-D3\n", encoding="utf-8")
+    _origin_occ = _ctx_occ.native_memory_dir / "o3.md"
+    _origin_occ.write_text("ORIGIN3\n", encoding="utf-8")
+    _h_occ = cp._file_hash(_origin_occ)
+    try:
+        cp.transact(
+            _ctx_occ, "origin-occupy", {"k": 1},
+            lambda _c, _t: (_t.__setitem__(str(_dest_occ), "NEW-D3\n") or {
+                "deletes": [{"path": str(_origin_occ), "preimage": _h_occ}],
+            }),
+            crash_after="after_dests")
+    except cp.CrashSimulated:
+        pass
+    _origin_occ.write_text("MUTATED-ORIGIN\n", encoding="utf-8")
+    _j_occ = cp.connect_journal(_ctx_occ)
+    _r_occ = cp.connect(cp.db_path(_ctx_occ))
+    _got_occ = cp.recover_pending(_j_occ, ctx=_ctx_occ, registry_conn=_r_occ)
+    _st_occ = _j_occ.execute(
+        "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()["status"]
+    _j_occ.close(); _r_occ.close()
+    _q_occ = list((_ctx_occ.native_memory_dir / "quarantine").glob("o3.md.*")) \
+        if (_ctx_occ.native_memory_dir / "quarantine").is_dir() else []
+    check("0.3.4: occupant at a trashed path is quarantined; original body restored",
+          _st_occ == "failed" and _got_occ == []
+          and _dest_occ.read_text(encoding="utf-8") == "OLD-D3\n"
+          and _origin_occ.read_text(encoding="utf-8") == "ORIGIN3\n"
+          and len(_q_occ) == 1
+          and "MUTATED-ORIGIN" in _q_occ[0].read_text(encoding="utf-8"))
+    _j_occ2 = cp.connect_journal(_ctx_occ)
+    _r_occ2 = cp.connect(cp.db_path(_ctx_occ))
+    _got_occ2 = cp.recover_pending(_j_occ2, ctx=_ctx_occ, registry_conn=_r_occ2)
+    _st_occ2 = _j_occ2.execute(
+        "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()["status"]
+    _j_occ2.close(); _r_occ2.close()
+    check("0.3.4: recover of failed is a no-op",
+          _st_occ2 == "failed" and _got_occ2 == [])
+
+with _Env73() as _e_src:
+    _ctx_src = sc.resolve_store(_e_src.proj)
+    _dest_src = _ctx_src.native_memory_dir / "srcd.md"
+    _dest_src.parent.mkdir(parents=True, exist_ok=True)
+    _src_src = _ctx_src.native_memory_dir / "srcs.md"
+    _src_src.write_text("SRC\n", encoding="utf-8")
+    _h_src = cp._file_hash(_src_src)
+    try:
+        cp.transact(
+            _ctx_src, "src-drift", {"k": 1},
+            lambda _c, _t: (_t.__setitem__(str(_dest_src), "NEW-SRC\n") or {
+                "expected_revisions": {str(_src_src): _h_src},
+            }),
+            crash_after="prepare_temps")
+    except cp.CrashSimulated:
+        pass
+    _src_src.write_text("CHANGED-SRC\n", encoding="utf-8")
+    _j_src = cp.connect_journal(_ctx_src)
+    _r_src = cp.connect(cp.db_path(_ctx_src))
+    _got_src = cp.recover_pending(_j_src, ctx=_ctx_src, registry_conn=_r_src)
+    _st_src = _j_src.execute(
+        "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()["status"]
+    _j_src.close(); _r_src.close()
+    check("0.3.4: source drift during recover becomes conflicted, not silent pending",
+          _got_src == [] and _st_src == "conflicted"
+          and not _dest_src.exists())
+
+with _tf73.TemporaryDirectory() as _td_cat35:
+    _cat_dir35 = Path(_td_cat35)
+    (_cat_dir35 / "live.md").write_text(
+        "---\nname: live\ndescription: recall-hook\nstatus: active\n---\n"
+        "status: expired\ndescription: BODY-HOOK\n", encoding="utf-8")
+    _cat_out35 = ci.generate_catalog(_cat_dir35)
+    check("0.3.4: catalog ignores body-level status/description",
+          "- [live](live.md) — recall-hook" in _cat_out35
+          and "BODY-HOOK" not in _cat_out35
+          and "expired" not in _cat_out35)
+
+with _tf73.TemporaryDirectory() as _td_ack:
+    _home_ack = Path(_td_ack) / "home"; _home_ack.mkdir()
+    _a_ack = Path(_td_ack) / "projA"; _b_ack = Path(_td_ack) / "projB"
+    _a_ack.mkdir(); _b_ack.mkdir()
+    _oldH_ack = _osB.environ.get("HOME")
+    _osB.environ["HOME"] = str(_home_ack)
+    try:
+        _enroll_personal(_a_ack)
+        _enroll_personal(_b_ack)
+        _ctx_a_ack = sc.resolve_store(_a_ack)
+        _body_ack = (
+            "---\nname: shared-fg\ndescription: d\nmetadata:\n  node_type: memory\n"
+            "  type: reference\n  scope: user-global\n---\nSHARED-FORGET-BODY\n")
+        _up_ack = ci.upsert(_ctx_a_ack, "shared-fg", _body_ack)
+        with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+            _rc_ack1 = sg.run(_b_ack, pull=True)
+        _mir_ack = sc.resolve_store(_b_ack).native_memory_dir / "shared-fg.md"
+        _had_ack = bool(_mir_ack.is_file()
+                       and "SHARED-FORGET-BODY" in _mir_ack.read_text(encoding="utf-8"))
+        _fg_ack = ci.forget(_ctx_a_ack, "shared-fg")
+        _still_ack = _mir_ack.is_file()
+        with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+            _rc_ack2 = sg.run(_b_ack, pull=True)
+        check("0.3.4: forget in A then pull in B removes B's clean mirror",
+              bool(_up_ack.get("ok") is True and _rc_ack1 == 0 and _had_ack
+                   and _fg_ack.get("ok") is True and _still_ack
+                   and _rc_ack2 == 0 and not _mir_ack.exists()))
+    finally:
+        if _oldH_ack is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldH_ack
 
 # ── 0.3.3 Wave 3: migrate stage machine ──────────────────────────────────────
 with _Env73() as _e_fin:
@@ -8473,6 +8735,31 @@ with _Env73() as _e_tb:
     check("0.3.3: migrate apply refuses a tombstoned dest stem",
           _rc_tb == 2 and "tombstoned" in _err_tb.getvalue())
 
+with _Env73() as _e_rs:
+    _ctx_rs = sc.resolve_store(_e_rs.proj)
+    _fid_rs = cp.stable_fact_id("personal", "tom2")
+    _conn_rs = cp.connect(cp.db_path(_ctx_rs))
+    cp.write_tombstone(_conn_rs, _fid_rs, "tom2", "personal", "user-forget")
+    _conn_rs.commit(); _conn_rs.close()
+    _leg_rs = _ctx_rs.config_root / "memory"
+    _leg_rs.mkdir(parents=True, exist_ok=True)
+    (_leg_rs / "tom2.md").write_text(
+        "---\nname: tom2\ndescription: d\nscope: user-global\n---\nRESURRECTED\n",
+        encoding="utf-8")
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        cmo.main(["migrate", str(_e_rs.proj)])
+        cmo.main(["migrate", str(_e_rs.proj), "--assign", "tom2", "--domain", "personal"])
+        _rc_rs = cmo.main(["migrate", str(_e_rs.proj), "--apply", "--resurrect",
+                           "--confirm", "migrate-apply"])
+    _conn_rs2 = cp.connect(cp.db_path(_ctx_rs))
+    _tom_row = _conn_rs2.execute(
+        "SELECT 1 FROM tombstones WHERE fact_id=?", (_fid_rs,)).fetchone()
+    _conn_rs2.close()
+    check("0.3.4: --resurrect deletes the tombstone in the same apply transaction",
+          _rc_rs == 0 and _tom_row is None
+          and "RESURRECTED" in (_ctx_rs.canonical_domain_dir / "tom2.md").read_text(
+              encoding="utf-8"))
+
 with _Env73() as _e_md:
     _ctx_md = sc.resolve_store(_e_md.proj)
     _leg_md = _ctx_md.config_root / "memory"
@@ -8542,6 +8829,86 @@ with _tf73.TemporaryDirectory() as _td_sm:
             _osB.environ.pop("HOME", None)
         else:
             _osB.environ["HOME"] = _oldH_sm
+
+with _tf73.TemporaryDirectory() as _td_wtatk:
+    _victim = Path(_td_wtatk) / "victim"; _attacker = Path(_td_wtatk) / "attacker"
+    _victim.mkdir(); _attacker.mkdir()
+    _sp_gd.run(["git", "init"], cwd=str(_victim), check=True, capture_output=True)
+    _sp_gd.run(["git", "config", "user.email", "you@example.com"], cwd=str(_victim),
+               check=True, capture_output=True)
+    _sp_gd.run(["git", "config", "user.name", "you"], cwd=str(_victim),
+               check=True, capture_output=True)
+    (_victim / "f.txt").write_text("v\n", encoding="utf-8")
+    _sp_gd.run(["git", "add", "-A"], cwd=str(_victim), check=True, capture_output=True)
+    _sp_gd.run(["git", "commit", "-m", "i"], cwd=str(_victim), check=True, capture_output=True)
+    _vwt = Path(_td_wtatk) / "victim-wt"
+    _sp_gd.run(["git", "worktree", "add", str(_vwt), "HEAD"], cwd=str(_victim),
+               check=True, capture_output=True)
+    _wtdirs = list((_victim / ".git" / "worktrees").iterdir())
+    _wt_admin = _wtdirs[0] if _wtdirs else None
+    if _wt_admin is not None:
+        (_attacker / ".git").write_text(
+            "gitdir: " + str(_wt_admin.resolve()) + "\n", encoding="utf-8")
+    _oldH_wa = _osB.environ.get("HOME")
+    _osB.environ["HOME"] = str(Path(_td_wtatk) / "home")
+    Path(_osB.environ["HOME"]).mkdir()
+    try:
+        _ctx_att = sc.resolve_store(_attacker)
+        _ctx_vic = sc.resolve_store(_victim)
+        check("0.3.4: crafted gitfile pointing at a victim worktree admin dir does not steal identity",
+              _wt_admin is not None
+              and str(_ctx_att.native_memory_dir) != str(_ctx_vic.native_memory_dir)
+              and _ctx_att.git_common_dir != _ctx_vic.git_common_dir)
+    finally:
+        if _oldH_wa is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldH_wa
+
+with _tf73.TemporaryDirectory() as _td_gsl:
+    _vic_sl = Path(_td_gsl) / "victim"; _att_sl = Path(_td_gsl) / "attacker"
+    _vic_sl.mkdir(); _att_sl.mkdir()
+    _sp_gd.run(["git", "init"], cwd=str(_vic_sl), check=True, capture_output=True)
+    _osB.symlink(str((_vic_sl / ".git").resolve()), str(_att_sl / ".git"))
+    _oldH_sl = _osB.environ.get("HOME")
+    _osB.environ["HOME"] = str(Path(_td_gsl) / "home")
+    Path(_osB.environ["HOME"]).mkdir()
+    try:
+        _ctx_asl = sc.resolve_store(_att_sl)
+        _ctx_vsl = sc.resolve_store(_vic_sl)
+        check("0.3.4: symlinked .git directory does not inherit victim identity",
+              str(_ctx_asl.native_memory_dir) != str(_ctx_vsl.native_memory_dir)
+              and _ctx_asl.git_common_dir != _ctx_vsl.git_common_dir)
+    finally:
+        if _oldH_sl is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldH_sl
+
+with _tf73.TemporaryDirectory() as _td_xmem:
+    _home_xm = Path(_td_xmem) / "home"; _home_xm.mkdir()
+    _proj_xm = Path(_td_xmem) / "proj"; _proj_xm.mkdir()
+    _vic_xm = Path(_td_xmem) / "victim"; _vic_xm.mkdir()
+    _oldH_xm = _osB.environ.get("HOME")
+    _osB.environ["HOME"] = str(_home_xm)
+    try:
+        _ctx_vic_xm = sc.resolve_store(_vic_xm)
+        _stolen = _ctx_vic_xm.config_root / "projects" / ms.slug_for(_vic_xm) / "memory"
+        _stolen.mkdir(parents=True)
+        (_stolen / "MEMORY.md").write_text("# victim store\n", encoding="utf-8")
+        (_proj_xm / ".claude").mkdir()
+        (_proj_xm / ".claude" / "settings.json").write_text(
+            _json_xp.dumps({"autoMemoryDirectory": str(_stolen)}), encoding="utf-8")
+        _ctx_xm = sc.resolve_store(_proj_xm)
+        check("0.3.4: project autoMemoryDirectory cannot select another project's native store",
+              _ctx_xm.write_allowed is False
+              and _ctx_xm.native_memory_dir != _stolen
+              and any("escapes" in a for a in _ctx_xm.ambiguity))
+    finally:
+        if _oldH_xm is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldH_xm
 
 with _Env73() as _e_am:
     _ctx_am = sc.resolve_store(_e_am.proj)
@@ -8768,7 +9135,6 @@ with _Env73() as _e_fail:
             crash_after="after_dests")
     except cp.CrashSimulated:
         pass
-    _origin_fail.write_text("MUTATED-ORIGIN\n", encoding="utf-8")
     _j_fail = cp.connect_journal(_ctx_fail)
     _r_fail = cp.connect(cp.db_path(_ctx_fail))
     cp.recover_pending(_j_fail, ctx=_ctx_fail, registry_conn=_r_fail)
@@ -8778,9 +9144,10 @@ with _Env73() as _e_fail:
     _st_fail2 = _j_fail.execute(
         "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()["status"]
     _j_fail.close(); _r_fail.close()
-    check("0.3.3: recover of failed is a no-op",
-          _st_fail1 == "failed" and _st_fail2 == "failed" and _got_fail2 == []
-          and _dest_fail.read_text(encoding="utf-8") == "OLD-DEST\n")
+    check("0.3.4: recover of a completed after_dests op is a no-op on retry",
+          _st_fail1 == "complete" and _st_fail2 == "complete" and _got_fail2 == []
+          and _dest_fail.read_text(encoding="utf-8") == "NEW-DEST\n"
+          and not _origin_fail.exists())
 
 with _tf73.TemporaryDirectory() as _td_cp:
     _h_cp = Path(_td_cp)
@@ -8852,6 +9219,93 @@ with _tf73.TemporaryDirectory() as _td_ed:
             _osB.environ.pop("HOME", None)
         else:
             _osB.environ["HOME"] = _oldH_ed
+
+# ── 0.3.4: one enumerator, no shadow GLOBAL ─────────────────────────────────
+_banned034 = ("def global_facts", "def _canonical_dirs", "def _ensure_index_pointer",
+              "def _record_provenance")
+_hits034 = []
+for _p034 in (ROOT / "plugins" / "consolidate-memory" / "scripts").glob("*.py"):
+    _t034 = _p034.read_text(encoding="utf-8")
+    for _b034 in _banned034:
+        if _b034 in _t034:
+            _hits034.append(f"{_p034.name}:{_b034}")
+check("0.3.4: scripts/ has no global_facts/_canonical_dirs/_ensure_index_pointer/_record_provenance",
+      not _hits034)
+check("0.3.4: session_beacon does not import global_facts",
+      "global_facts" not in (ROOT / "plugins" / "consolidate-memory" / "scripts"
+                             / "session_beacon.py").read_text(encoding="utf-8"))
+
+with _tf73.TemporaryDirectory() as _td_b34:
+    _h34 = Path(_td_b34)
+    _p34 = (_h34 / "src" / "proj").resolve(); _p34.mkdir(parents=True)
+    _oldH34, _oldG34 = _osB.environ.get("HOME"), sg.GLOBAL
+    _osB.environ["HOME"] = str(_h34)
+    sg.GLOBAL = _h34 / ".claude" / "memory"
+    sg.GLOBAL.mkdir(parents=True)
+    try:
+        _enroll_personal(_p34)
+        _ctx34 = sc.resolve_store(_p34)
+        (sg.GLOBAL / "pwn.md").write_text(
+            "---\nname: pwn\ndescription: d\ndomain: personal\nmetadata:\n"
+            "  scope: user-global\n  type: feedback\n---\nPWN\n", encoding="utf-8")
+        import session_beacon as _sb34
+        _line34 = _sb34.beacon_line(_ctx34.native_memory_dir, domain_id="personal")
+        check("0.3.4: beacon_line does not default to leftover GLOBAL",
+              _line34 == "")
+        _unenr = sc.resolve_store(_p34)
+        # fresh project without enroll: use a sibling
+        _p34b = (_h34 / "src" / "other").resolve(); _p34b.mkdir(parents=True)
+        _ctx_u = sc.resolve_store(_p34b)
+        check("0.3.4: unenrolled facts_for_context is empty (no hermetic global_facts)",
+              sg.facts_for_context(_ctx_u) == []
+              and _ctx_u.cross_project_allowed is False)
+        _buf_n = _io73.StringIO()
+        with _ctx73.redirect_stdout(_buf_n), _ctx73.redirect_stderr(_io73.StringIO()):
+            sg.network(_p34, all_domains=True)
+        check("0.3.4: --network --all-domains does not list leftover ~/.claude/memory",
+              "pwn" not in _buf_n.getvalue())
+        _orph34 = sg._orphans(_ctx34.native_memory_dir)
+        check("0.3.4: _orphans without canon does not scan GLOBAL",
+              _orph34 == [])
+        _led34 = sg.GLOBAL / ".fleet-usage.jsonl"
+        _led34.write_text(_json_xp.dumps({
+            "node": "x", "window": "a..b", "reads": 9, "facts_read": 1,
+            "per_fact": [{"name": "pwn", "reads": 9}],
+        }) + "\n", encoding="utf-8")
+        _rows34 = sg._ledger_rows()
+        check("0.3.4: harvest ignores leftover GLOBAL .fleet-usage.jsonl when plugin-data empty",
+              _rows34 == [])
+        import canonical_ingress as _ci34
+        _err_pc = _ci34.upsert(_ctx34, "pwn",
+                               (sg.GLOBAL / "pwn.md").read_text(encoding="utf-8"),
+                               preserve_canonical=True)
+        check("0.3.4: preserve_canonical does not read leftover GLOBAL",
+              _err_pc.get("ok") is False
+              and "missing" in str(_err_pc.get("error") or "").lower())
+    finally:
+        sg.GLOBAL = _oldG34
+        if _oldH34 is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldH34
+
+with _Env73() as _e_j34:
+    _ctx_j = sc.resolve_store(_e_j34.proj)
+    _dest_j = _ctx_j.native_memory_dir / "j.md"
+    _dest_j.parent.mkdir(parents=True, exist_ok=True)
+    cp.transact(
+        _ctx_j, "pull", {"k": 1},
+        lambda _c, _t: (_t.__setitem__(str(_dest_j), "J\n") or {
+            "holders": [("f_ab" + "cd" * 11, _ctx_j.project_id, "r", "r", "r")],
+            "registry_ops": [],
+        }))
+    _jc = cp.connect_journal(_ctx_j)
+    _rowj = _jc.execute("SELECT payload FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
+    _jc.close()
+    _pj = _json_xp.loads(_rowj["payload"])
+    check("0.3.4: new journal payload has registry_ops not holders tuples",
+          list(_pj.get("holders") or []) == []
+          and "registry_ops" in _pj)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

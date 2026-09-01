@@ -240,9 +240,16 @@ enroll keep-path does not trust mirror `domain:`, project/local
 mismatch is complete-old, finalize is terminal, and the HTML no longer invents
 identity or labels unverifiable as dropped.
 
+**v0.3.4** is one enumerator plus journal complete-old: ordinary
+`--pull`/`--list`/beacon/`--network` walk domain canonicals only (leftover
+`~/.claude/memory` is `cm migrate --inventory`, not a second fleet API);
+deletes rename to same-dir trash before dest publish; forget is lazy
+tombstone-ack on the next `--pull`/`--gc --apply`; worktree Git identity
+requires a gitdir backlink.
+
 ## Install
 
-**v0.3.3** (domain isolation + StoreContext + `cm project enroll`; dashboard
+**v0.3.4** (domain isolation + StoreContext + `cm project enroll`; dashboard
 identity). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
@@ -278,7 +285,7 @@ memory this plugin does not own. Domain canonicals live under
 read-only migration source. Scoped purge commands are the right tool; hand-deleting
 the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
-### Known limitations (v0.3.3)
+### Known limitations (v0.3.4)
 
 - **Unenrolled projects are local-only.** They cannot create or pull cross-project
   canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain
@@ -287,6 +294,10 @@ the native store is **not recoverable** and can destroy unrelated Auto Memory.
 - Use `move-domain` / `unenroll` to revoke managed mirrors that the destination
   does not admit. Do not run `cm migrate --apply` / `--rollback` or domain switches
   on irreplaceable stores without a reviewed assignment plan.
+- `forget` is **lazy acknowledgment**: other projects drop the mirror on their
+  next `--pull` / `--gc --apply`. Offline clones keep bytes until they run.
+- Completed `journal.sqlite` rows from before 0.3.4 may still contain fact
+  bodies. New operations do not.
 - Public **1.0 remains HOLD.** `./cm` is a **maintainer** wrapper in this checkout;
   marketplace users invoke the skill (`dream`) and the packaged `/cm-*` commands.
 

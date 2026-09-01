@@ -522,14 +522,8 @@ def detect_stacks(project_dir: Path) -> set[str]:
     return found
 
 
-def _canonical_dirs() -> list:
-    """Domain-scoped fact dirs plus legacy GLOBAL (dual-read, ADR 007).
-
-    Domain dirs come FIRST so `global_facts` de-dupe-by-stem lets a domain copy
-    win. After migrate --finalize (enforced + live domain facts), legacy is omitted
-    so leftovers cannot shadow stamped copies. GLOBAL is still the
-    module global so hermetic tests that assign `sg.GLOBAL` keep working.
-    """
+def _domain_fact_dirs() -> list:
+    """Named-domain fact dirs only. Leftover ~/.claude/memory is migrate-inventory."""
     domain_dirs: list = []
     try:
         from store_context import config_root
@@ -550,53 +544,51 @@ def _canonical_dirs() -> list:
                 domain_dirs.append(fd)
     except OSError:
         pass
-    live_domain = []
-    for d in domain_dirs:
-        try:
-            if any(p.name != "MEMORY.md" and p.suffix == ".md" for p in d.glob("*.md")):
-                live_domain.append(d)
-        except OSError:
-            continue
-    mode = "dual-read"
-    try:
-        from control_plane import migration_mode_readonly
-        mode = migration_mode_readonly()
-    except Exception:
-        mode = "dual-read"
-    if mode == "enforced" and live_domain:
-        return live_domain
-    return live_domain + [global_store()]
+    return domain_dirs
 
 
-def global_facts() -> list[tuple[str, dict, str]]:
-    """Enumerate canonicals keyed by (domain, stem) — never a global stem namespace."""
-    return [(s, fm, t) for s, fm, t, _p in _global_fact_records()]
-
-
-def _global_fact_records() -> list:
-    """Like global_facts but includes the on-disk path (never reconstruct from stem)."""
+def _records_from_dir(gdir: Path, recs: list, seen: set) -> None:
+    """Append (stem, fm, text, path) for one facts dir. Reserved stems skipped."""
     from domain_policy import fact_domain
+    if not gdir.exists():
+        return
+    for f in sorted(gdir.glob("*.md")):
+        if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
+            continue
+        if not _safe_stem(f.stem):
+            continue
+        text = _safe_read_text(f)
+        if text is None:
+            continue
+        fm = _frontmatter(text)
+        if str(fm.get("status") or "") == "tombstoned":
+            continue
+        key = (fact_domain(fm) or "legacy", f.stem)
+        if key in seen:
+            continue
+        seen.add(key)
+        recs.append((f.stem, fm, text, f))
+
+
+def _all_domain_records() -> list:
+    """Admin enumerator (ADR 015 --all-domains): every named domain dir.
+
+    Never leftover ~/.claude/memory. Tests that patched GLOBAL still see that dir.
+    """
     recs: list = []
     seen: set = set()
-    for gdir in _canonical_dirs():
-        if not gdir.exists():
-            continue
-        for f in sorted(gdir.glob("*.md")):
-            if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
-                continue
-            if not _safe_stem(f.stem):
-                continue
-            text = _safe_read_text(f)
-            if text is None:
-                continue
-            fm = _frontmatter(text)
-            if str(fm.get("status") or "") == "tombstoned":
-                continue
-            key = (fact_domain(fm) or "legacy", f.stem)
-            if key in seen:
-                continue
-            seen.add(key)
-            recs.append((f.stem, fm, text, f))
+    dirs = _domain_fact_dirs()
+    for d in dirs:
+        _records_from_dir(d, recs, seen)
+    if _global_is_fixture():
+        g = global_store()
+        try:
+            keys = {str(d.resolve()) for d in dirs}
+            same = str(g.resolve()) in keys
+        except OSError:
+            same = False
+        if not same:
+            _records_from_dir(g, recs, seen)
     return recs
 
 
@@ -688,6 +680,12 @@ def iter_canonical_stems_for_gc(ctx) -> set:
         for f in root.glob("*.md"):
             if f.name == "MEMORY.md" or _is_reserved_stem(f.stem) or not _safe_stem(f.stem):
                 continue
+            text = _safe_read_text(f)
+            if text is None:
+                stems.add(f.stem)
+                continue
+            if str(_frontmatter(text).get("status") or "").strip() == "tombstoned":
+                continue
             stems.add(f.stem)
 
     _add(ctx.canonical_domain_dir)
@@ -744,12 +742,9 @@ def _canonical_path(ctx, name: str) -> Path:
 def facts_for_context(ctx, *, all_domains: bool = False) -> list:
     """Ordinary fleet readers: current-domain Canonicals only (ADR 015)."""
     if all_domains:
-        return global_facts()
+        return [(s, fm, t) for s, fm, t, _p in _all_domain_records()]
     if getattr(ctx, "cross_project_allowed", False):
         return iter_admissible_facts(ctx)
-    # Hermetic tests patch GLOBAL. Production unenrolled → empty.
-    if _global_is_fixture() or _hermetic_home():
-        return global_facts()
     return []
 
 
@@ -758,9 +753,7 @@ def iter_canonicals(ctx, *, all_domains: bool = False) -> list:
     from identity import ref_from_path
     refs: list = []
     seen: set = set()
-    recs = _global_fact_records() if all_domains else _admissible_records(ctx)
-    if not all_domains and not recs and _global_is_fixture():
-        recs = _global_fact_records()
+    recs = _all_domain_records() if all_domains else _admissible_records(ctx)
     for stem, fm, _text, path in recs:
         ref = ref_from_path(path, fm,
                             fact_id=str(fm.get("fact_id") or ""),
@@ -976,58 +969,6 @@ def _fat_hook_warning(pointer_line: str, name: str) -> str | None:
     return None
 
 
-def _ensure_index_pointer(store: Path, name: str, fm: dict) -> tuple[bool, bool]:
-    """UPSERT the pointer line in the project's MEMORY.md index (Fix C).
-
-    The script owns this so a replicated fact is never left half-installed (file but no
-    pointer) — AND so the ALWAYS-LOADED index hook never drifts from the canonical. The
-    old version early-returned when any line for `name` existed, so a STALE refresh that
-    changed the fact's `description` updated the body but left the index hook stale. Now:
-    insert if absent, REWRITE if present-but-different, no-op if already correct.
-    v0.1.66: every WRITE (insert or rewrite — the single choke point for --pull, refresh,
-    AND --promote pointers) is fat-hook-linted to stderr; a no-op is not (nothing written).
-
-    Returns `(wrote, is_fat)` — a CALLER that counts/reports fat hooks (e.g. run()'s RESULT
-    line) MUST use `is_fat`, never re-derive it via a second `_pointer_line`/`_fat_hook_warning`
-    call: this function already computes both internally to decide the stderr print, and a
-    max-effort code-review workflow (2026-07-04) found the original discard-then-recompute
-    shape at the ONE caller that needed it is exactly how a real accounting bug (a no-op
-    refresh double-counted as a fresh "written" fat hook) got in — a second, independent
-    computation of the same fact is a single-source-of-truth violation waiting to drift, not
-    just here but at the NEXT caller that copies the old pattern instead of using this return."""
-    idx = store / "MEMORY.md"
-    content = _safe_read_text(idx) or "# Memory Index\n\n"   # store-scan convention (v0.1.69 Gate-2b)
-    want = _pointer_line(name, fm)
-    lint = _fat_hook_warning(want, name)
-    lines = content.splitlines()
-    anchor = f"]({name}.md)"  # the LINK TARGET, not a bare substring a description could spoof
-    for i, ln in enumerate(lines):
-        if anchor in ln:
-            if ln.strip() == want.strip():
-                return False, False  # already correct — no-op
-            lines[i] = want  # refresh a drifted hook
-            future = "\n".join(lines).rstrip() + "\n"
-            from index_admission import project_index
-            _adm = project_index(future)
-            if not _adm["admitted"]:
-                print(f"  ⚠ index admission refused for '{name}': {_adm['reason']}", file=sys.stderr)
-                return False, False
-            if lint:
-                print(f"  {lint}", file=sys.stderr)
-            idx.write_text(future, encoding="utf-8")
-            return True, bool(lint)
-    future = content.rstrip() + "\n" + want + "\n"
-    from index_admission import project_index
-    _adm = project_index(future)
-    if not _adm["admitted"]:
-        print(f"  ⚠ index admission refused for '{name}': {_adm['reason']}", file=sys.stderr)
-        return False, False
-    if lint:
-        print(f"  {lint}", file=sys.stderr)
-    idx.write_text(future, encoding="utf-8")  # absent — append
-    return True, bool(lint)
-
-
 def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                          evict_path: "Path | None",
                          holder_token: str = "",
@@ -1228,7 +1169,7 @@ def _inbound_links(store: Path, target: str) -> list[str]:
 
 def _index_line_cost(index_text: str, stem: str) -> int:
     """est-token cost of the REAL index line for `stem` — matched by its `](stem.md)` link anchor
-    (the same spoof-resistant rule _ensure_index_pointer/_remove_index_pointer use) — 0 when absent.
+    (the same spoof-resistant `](stem.md)` link-target rule apply_pointer uses) — 0 when absent.
     The evict valve's `freed` MUST come from here, never from a derived _pointer_line estimate
     (docs/evict-accounting-truth.spec.md F2, measured): a pointer-LESS fact once "freed" a phantom
     ~33t and the pull then breached the hard ceiling by real bytes, while a fat HAND-WRITTEN line
@@ -1354,6 +1295,13 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     if pull and not ctx.write_allowed:
         print("pull: StoreContext writes fail closed: " + "; ".join(ctx.ambiguity), file=sys.stderr)
         return 2
+    if pull:
+        try:
+            from control_plane import assert_domain_writable
+            assert_domain_writable(ctx)
+        except WriteRefused as e:
+            print(f"pull: {e}", file=sys.stderr)
+            return 2
     store = ctx.native_memory_dir
     mode = "dual-read"
     _tomb_keys: set = set()  # (domain_id, stem) — never a global stem set
@@ -1369,19 +1317,19 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     except Exception:
         pass
     stacks = detect_stacks(project_dir)
+    from capabilities import (detect_capabilities, capability_tags, applies_match,
+                              parse_applies, load_capability_overrides)
+    _cap_degraded = False
     try:
-        from capabilities import (detect_capabilities, capability_tags, applies_match,
-                                  parse_applies, load_capability_overrides)
         _ov = load_capability_overrides(ctx.plugin_data_dir, ctx.project_id)
         _cap_tags = capability_tags(detect_capabilities(project_dir, overrides=_ov))
         _rel_tags = stacks | _cap_tags
     except Exception:
+        _cap_degraded = True
         _cap_tags = set()
         _rel_tags = stacks
-        def applies_match(a, b):  # type: ignore
-            return True
-        def parse_applies(fm):  # type: ignore
-            return {}
+        print("pull: capability detection failed; holding applicability-gated facts",
+              file=sys.stderr)
     facts = iter_admissible_facts(ctx)
     _plocks: list = []
     if pull:
@@ -1408,6 +1356,12 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             return 2
         except Exception as e:
             print(f"pull: recover failed: {type(e).__name__}: {e}", file=sys.stderr)
+            return 2
+        from canonical_ingress import ack_tombstoned_mirrors
+        _ack = ack_tombstoned_mirrors(ctx)
+        if not _ack.get("ok"):
+            print("pull: forget-ack refused: " + str(_ack.get("error") or ""),
+                  file=sys.stderr)
             return 2
 
     def _done(rc: int) -> int:
@@ -1452,7 +1406,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         if _appl.get("error"):
             rel = False
         _has_applies = bool(_appl.get("any") or _appl.get("all") or _appl.get("exclude"))
-        if rel and _has_applies:
+        if _cap_degraded and _has_applies:
+            rel = False
+        elif rel and _has_applies:
             rel = applies_match(_appl, _rel_tags)
         elif (not rel) and fm.get("scope") == "stack-general" and _has_applies and not _appl.get("error"):
             rel = applies_match(_appl, _rel_tags)
@@ -1755,7 +1711,7 @@ def apply_provenance(text: str, project: str) -> str:
     """Pure: return `text` with `project` appended to `projects:` (or a new line).
 
     Pull/promote call this FROM INSIDE transact (temps), never via a post-lock
-    Markdown rewrite. `_record_provenance` remains for the self-heal test helper.
+    Markdown rewrite.
     """
     project = _sanitize_token(project)
     m = re.search(r"^(\s*projects:\s*)\[([^\]]*)\]\s*$", text, re.M)
@@ -1780,29 +1736,6 @@ def drop_holders_text(text: str, drop: set) -> "tuple[str, int]":
     if not removed:
         return text, 0
     return text[:m.start()] + f"{m.group(1)}[{', '.join(kept)}]" + text[m.end():], removed
-
-
-def _record_provenance(name: str, project: str) -> None:
-    """Add `project` to the canonical fact's `projects:` list — the synapse record.
-
-    Production pull/promote do NOT call this after transact drops locks — they
-    apply_provenance via temps and record_holder on the control plane. Kept as the
-    self-heal helper (`--gc --edges` a wrong prune re-adds on the next pull) and
-    for tests that exercise the Markdown dual-read directly. Production leftover
-    `~/.claude/memory` is never written (fixture GLOBAL only).
-
-    v0.1.71 (Track D-2, accepted gap): this read-modify-write is NOT mutually exclusive
-    across processes when used as a standalone helper. See
-    docs/track-d-write-atomicity-seed-hardening.spec.md D-2."""
-    if not _global_is_fixture():
-        return
-    p = global_store() / f"{name}.md"
-    text = _safe_read_text(p)   # v0.1.69 Gate-2b: TOCTOU-tightened — a vanished canonical is
-    if text is None:            # nothing to record provenance for (same as the old not-exists early-return)
-        return
-    new = apply_provenance(text, project)
-    if new != text:
-        _atomic_write_text(p, new)
 
 
 def _holders(fm: dict) -> list[str]:
@@ -1932,12 +1865,9 @@ def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> 
     included them. A mind with no plausible on-disk store now renders with a `?` and a
     footnote; the flag is display-only (see _mind_unresolved — report, never prune)."""
     if all_domains:
-        facts = global_facts()
+        facts = [(s, fm, t) for s, fm, t, _p in _all_domain_records()]
     elif project_dir is None:
-        # CLI always passes a dir (or --all-domains). A no-arg call against a
-        # patched GLOBAL still enumerates that fixture; production no-dir
-        # must not dump every domain.
-        facts = global_facts() if _global_is_fixture() else []
+        facts = []
     else:
         from store_context import resolve_store as _rs_net
         facts = facts_for_context(_rs_net(Path(project_dir)))
@@ -1996,31 +1926,15 @@ def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> 
 
 
 # ── garbage collection: orphaned mirrors (Fix B) ───────────────────────────────
-def _remove_index_pointer(store: Path, name: str) -> bool:
-    """Drop the pointer line for `name` from the project index. Returns True if removed."""
-    idx = store / "MEMORY.md"
-    _idx_text = _safe_read_text(idx)   # v0.1.69 Gate-2b: TOCTOU-tightened (was exists()-then-read)
-    if _idx_text is None:
-        return False
-    lines = _idx_text.splitlines()
-    kept = [ln for ln in lines if f"]({name}.md)" not in ln]  # match the link target, not a spoofable substring
-    if len(kept) == len(lines):
-        return False
-    idx.write_text("\n".join(kept).rstrip() + "\n", encoding="utf-8")
-    return True
-
-
 def _orphans(store: Path, canon: "set[str] | None" = None) -> list[str]:
     """Mirror files (`global_ref:`) in this store whose CANONICAL no longer exists in
     the global store. These are the dead memory --pull can never reclaim (it only
     iterates LIVE globals), so they accrue forever — the leak Fix B closes.
-    v0.1.75: gc() passes `canon` from its ONE global_facts() snapshot, so the mass-delete
-    safety guard and this scan can never see different store states (the audit's guard-TOCTOU:
-    a store emptying between the guard's read and a second read here would have made EVERY
-    mirror look orphaned — the exact wipe the guard exists to prevent). Default None
-    self-computes (direct/test callers keep working)."""
+    v0.1.75: gc() passes `canon` from iter_canonical_stems_for_gc, so the mass-delete
+    safety guard and this scan see the SAME live-stem set. `canon=None` is empty
+    (never leftover ~/.claude/memory)."""
     if canon is None:
-        canon = {n for n, _, _ in global_facts()}
+        canon = set()
     out: list[str] = []
     if not store.exists():
         return out
@@ -2187,7 +2101,7 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     # moved, not yet synced, or only the MEMORY.md index left) is NOT the same as "all
     # canonicals were deliberately deleted". Refuse in either case rather than risk wiping
     # re-pullable / last-surviving memory. (Guard on the FACT COUNT, not mere existence.)
-    # v0.1.75: ONE global_facts() snapshot — the guard, the orphan scan, the frozen scan, and the
+    # v0.1.75: ONE live-stem snapshot — the guard, the orphan scan, the frozen scan, and the
     # dead-edge report all see the SAME store state (the audit's guard-TOCTOU: a store emptying
     # between the guard's read and a second scan read would have made every mirror look orphaned —
     # the exact mass-wipe the guard exists to prevent).
@@ -2237,6 +2151,12 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             assert_mutation_allowed(_ctx_gc)
         except _WRGc as e:
             print(f"gc: {e}", file=sys.stderr)
+            return 2
+        from canonical_ingress import ack_tombstoned_mirrors as _ack_gc
+        _acked = _ack_gc(_ctx_gc)
+        if not _acked.get("ok"):
+            print("gc: forget-ack refused: " + str(_acked.get("error") or ""),
+                  file=sys.stderr)
             return 2
     if edges:   # v0.1.84 (P4): fleet-wide edge triage — project_dir-independent, same snapshot
         return _gc_edges(gfacts, apply, project_dir)
@@ -3391,20 +3311,13 @@ def _ledger_path() -> Path:
     return fleet_ledger_write_path()
 
 
-def _legacy_ledger_path() -> Path:
-    """Read-only fallback for pre-migration installs. Writers must not create this file."""
-    return global_store() / ".fleet-usage.jsonl"
-
-
 def _ledger_rows() -> list:
     """Guarded tail read of the shared harvest ledger (docs/fleet-usage-harvest.spec.md) —
-    malformed lines skipped, never fatal. Prefers plugin-data; falls back to a leftover
-    canonical-plane copy (read-only — harvest no longer writes there)."""
+    malformed lines skipped, never fatal. Plugin-data only (leftover
+    ~/.claude/memory/.fleet-usage.jsonl is migrate-inventory, not a standing dual-read)."""
     import json
     rows: list = []
     text = _safe_read_text(_ledger_path())
-    if text is None:
-        text = _safe_read_text(_legacy_ledger_path())
     if text is None:
         return rows
     for ln in text.splitlines()[-_LEDGER_TAIL_CAP:]:

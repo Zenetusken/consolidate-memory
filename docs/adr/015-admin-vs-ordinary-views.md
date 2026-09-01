@@ -7,7 +7,8 @@ Status: Accepted
 `global_facts()` returned `(stem, fm, text)` and consumers keyed by bare stem.
 Two facts named `deploy` in `personal` and `work` collided in beacon, network,
 tokens, utility, staleness, GC, and workflows. Ordinary dream output could
-enumerate another domain.
+enumerate another domain. v0.3.4 deleted `global_facts` / `_canonical_dirs`;
+ordinary ops use `iter_canonicals` / `_admissible_records` only.
 
 ## Decision
 
@@ -16,7 +17,8 @@ admissible `CanonicalRef` objects (ADR 008/009). Ordinary reports
 (`--list`, `--tokens`, `--network`, `--utility`, `--staleness`,
 `--workflows`, beacon, dashboards) never mention another domain's fact names.
 
-An explicit administrative `--all-domains` view may exist. It is never
+An explicit administrative `--all-domains` view may exist. It walks **named
+domain dirs only** (never leftover `~/.claude/memory`). It is never
 invoked from SKILL.md, never implicit in a dream, and redacts bodies by
 default.
 

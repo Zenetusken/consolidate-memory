@@ -44,7 +44,7 @@ from memory_status import _parse_ts, est_tokens, INDEX_CEILING_TOKENS  # noqa: E
 from store_context import resolve_store  # noqa: E402 — native path via StoreContext (no subprocess)
 from domain_policy import admit_cross_project  # noqa: E402
 from sync_global import (_body_hash, _plan_pull, _pointer_line,  # noqa: E402
-                         _safe_read_text, _store_gaps, global_facts, is_relevant)
+                         _safe_read_text, _store_gaps, is_relevant)
 
 
 _HOOK_CACHE: dict | None = None
@@ -84,8 +84,6 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
                 gfacts: list | None = None) -> str:
     """The at-most-one advisory line for `store` — '' when silent. PURE given the filesystem
     (smoke-pinned through both the silent and behind states)."""
-    if gfacts is None:
-        gfacts = global_facts()
     if not gfacts:
         return ""
     if not store.is_dir() or not any(store.glob("*.md")):

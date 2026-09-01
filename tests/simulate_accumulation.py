@@ -359,7 +359,7 @@ def run() -> None:
                  "tok is mirror-driven — the share a global demote/GC (not local prune) would reclaim")
 
         # ── Probe G: GC refuses when the global store is ABSENT (data-loss guard) ──
-        # Run-3 finding: with ~/.claude/memory missing, global_facts() returns [] →
+        # Run-3 finding: with no domain canonicals, the enumerator returns [] →
         # empty canon → every mirror looks orphaned → gc --apply would delete them all.
         # The guard must REFUSE rather than wipe re-pullable / last-surviving memory.
         print("\n── Probe G: --gc refuses when the global store is absent (data-loss guard) ──")
@@ -1471,7 +1471,7 @@ def run() -> None:
             ctxAE = _scAE.resolve_store(pAE, environ=envAE)
             destAE = ctxAE.native_memory_dir / "probe-ae.md"
             destAE.parent.mkdir(parents=True, exist_ok=True)
-            after_temps = {"prepare_temps", "verify_unchanged"}
+            after_temps = {"prepare_temps", "verify_unchanged", "after_trash"}
             after_publish = {"after_dests", "publish", "commit_registry", "journal_complete"}
             step_ok = True
             detail_ae = []

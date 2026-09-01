@@ -86,12 +86,16 @@ report; they are the stories `cm doctor` / mutating commands must fail closed on
 - **Migrate rollback of an edited file.** Hash-aware: edited-after-apply files
   are conflicts, never deleted.
 
-## Known limitations (v0.3.3)
+## Known limitations (v0.3.4)
 
 - Unenrolled projects are **local-only** (ADR 008). They cannot create or pull
   cross-project canonicals. Enroll into a named domain to share.
-- `move-domain` / `unenroll` revoke managed mirrors not admitted in the destination;
-  `enroll` itself refuses a silent domain switch.
+- `forget` is **lazy acknowledgment**: other projects drop the mirror on their
+  next `--pull` / `--gc --apply`. Offline clones keep bytes until they run.
+- Completed `journal.sqlite` rows from before 0.3.4 may still contain fact
+  bodies (`bytes_b64`). New operations do not.
+- A crafted project/local `autoMemoryDirectory` cannot select another project's
+  store; user/managed settings may still name an absolute dir.
 - A corrupt/locked `control.sqlite` **refuses mutations and cross-project reads**.
   The SessionStart beacon stays silent on registry failure.
 - Public 1.0 remains HOLD.
