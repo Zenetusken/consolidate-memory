@@ -2013,6 +2013,24 @@ check("RC-90: light/dark --faint/--ghost are the WCAG-AA tokens (ghost passes on
 check("RC-90: audit head COUNTS are not uppercased (labels stay tracked small-caps)",
       ".audit-ln.head>.nums" in _TEMPLATE_SRC.replace(" ", "")
       and "text-transform:none" in _TEMPLATE_SRC)
+# Dogfood 0.3.1: a 8-dangling health row wrapped "dangling wikilinks" onto two lines
+# and silently dropped 5 names (slice(0,3) with no +N). Label column is now max-content
+# + nowrap; names wrap in the result column; clipNames always emits +N when truncated.
+check("0.3.1 html: health-row labels do not wrap when names are long",
+      "grid-template-columns:max-content minmax(0,1fr)" in _TEMPLATE_SRC
+      and "white-space:nowrap" in _TEMPLATE_SRC
+      and ".audit-ln .nums" in _TEMPLATE_SRC
+      and "overflow-wrap:anywhere" in _TEMPLATE_SRC
+      and ".audit-ln{display:grid;grid-template-columns:1fr auto" not in _TEMPLATE_SRC)
+check("0.3.1 html: dangling/orphan names clip with +N more, never a silent slice(0,3)",
+      "function clipNames" in _TEMPLATE_SRC
+      and "dangNames.slice(0,3)" not in _TEMPLATE_SRC
+      and '" · +"+(names.length-cap)+" more"' in _TEMPLATE_SRC
+      and "clipNames(dangNames, 8)" in _TEMPLATE_SRC)
+check("0.3.1 html: usage is organic + dream-procedure excluded (not 0-reads vs N-confirmed)",
+      "organic read" in _TEMPLATE_SRC
+      and "dream-procedure excluded" in _TEMPLATE_SRC
+      and "not in the index" in _TEMPLATE_SRC)
 check("RC-90: longitudinal rigor is a categorical strip — no interpolating connectors, no LIGHT default",
       "x1:bx(i-1),y1:ty[pk],x2:bx(i),y2:ty[k]" not in _TEMPLATE_SRC.replace(" ", "")
       and 'if(!ty[k])k="LIGHT"' not in _TEMPLATE_SRC.replace(" ", "")

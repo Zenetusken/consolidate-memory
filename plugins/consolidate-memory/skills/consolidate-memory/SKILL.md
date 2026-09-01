@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.3.1** — domain-isolated canonicals, StoreContext, operator enrollment
+**v0.3.2** — domain-isolated canonicals, StoreContext, operator enrollment
 (`cm project enroll --domain NAME`), SQLite control plane. Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
