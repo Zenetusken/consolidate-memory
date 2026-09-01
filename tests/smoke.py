@@ -1058,6 +1058,7 @@ for _nm, _obj, _td in [
      (_skill_schema.get("workflow_proposals", {}).get("candidates") or [{}])[0], ms.WorkflowProposal),
     ("workflow_proposals.decline_anchors[0]",
      (_skill_schema.get("workflow_proposals", {}).get("decline_anchors") or [{}])[0], ms.DeclineAnchor),
+    ("identity", _skill_schema.get("identity", {}), ms.Identity),  # v0.3.0 domain/enrollment snapshot
     # v0.1.69/A7: covered only TRANSITIVELY before (same AuditStoreDelta as audit.memory) — explicit
     # rows make the all-nested-shapes claim literally true.
     ("audit.claude_md", _skill_schema.get("audit", {}).get("claude_md", {}), ms.AuditStoreDelta),
@@ -1358,6 +1359,74 @@ check("v0.1.72 Gate-2: an entry with declared-but-UNRESOLVED files (empty after 
       "typo/omission) falls through to the legacy heuristic instead of trusting a possibly-wrong negative "
       "declaration and silently dropping a real, observed diff",
       _html.index("if(declared.length){") < _html.index('var p="memory/"+nm+".md";'))
+
+# ── v0.3.0: HTML observability — identity / cross-project movement / budget extras ──────────────
+# Presentation-only wiring of 0.1.91→0.3.0 surfaces the ASCII dashboard already showed (or the
+# StoreContext snapshot the ASCII IDENTITY line now shows). Legacy records without `identity`
+# must NOT invent a local-only banner (identOf.missing).
+check("v0.3.0 html: template carries identity + movement + extra-meter hooks",
+      all(s in _html for s in [
+          "function identOf", "function outcomeOf", "function paintBanners", "function identLine",
+          'id="h-ident"', 'id="a-ident"', 'id="h-banners"', 'id="a-banners"',
+          'id="xp-strip"', 'id="m-global"', "This pass across the domain",
+          "local-only", "/cm-domain", "schema drift", "slug orphans"]))
+check("v0.3.0 html: outcomeOf matches ASCII write bands (≤2 light, else substantial) + maintenance pivot",
+      "if(w<=2) return \"Light pass\"" in _html
+      and "return \"Substantial pass\"" in _html
+      and "Maintenance pass" in _html
+      and "w>=4" not in _html)
+check("v0.3.0 html: identOf does not invent local-only when identity is absent (legacy-safe)",
+      "missing:true" in _html and "if(!id||id.missing)" in _html)
+_id_html = rhtml.build_html(
+    {"project": "p", "identity": {"domain_id": "personal", "enrolled": True,
+                                  "registry_state": "healthy", "cross_project_allowed": True,
+                                  "conflicts": 0},
+     "cross_project": {"global_store_facts": 4,
+                       "pulled": [{"name": "gh-pr-edit-broken-in-env", "scope": "user-global"}],
+                       "promoted": [], "refreshed": 1, "held": 2, "gc_removed": 0},
+     "budget": {"index": {"after_tokens": 900, "cliff_pct": 40, "fat_hooks": 1, "hook_max_tokens": 90},
+                "global_claude_md": {"present": True, "tokens": 800, "budget_tokens": 4000, "over": False},
+                "claude_md_hierarchy": {"total_files": 2, "worst_path": "src", "worst_path_tokens": 500}}},
+    [], "t", identity={"domain_id": "personal", "enrolled": True, "registry_state": "healthy",
+                       "cross_project_allowed": True, "conflicts": 1})
+_id_m = _re.search(r'id="cm-data">(.*?)</script>', _id_html, _re.S)
+_id_embed = _json.loads(_id_m.group(1).replace("\\u003c", "<").replace("\\u003e", ">").replace("\\u0026", "&")) if _id_m else {}
+check("v0.3.0 html: build_html embeds live identity + hook/cliff budgets (round-trip)",
+      _id_embed.get("identity", {}).get("domain_id") == "personal"
+      and _id_embed.get("identity", {}).get("conflicts") == 1
+      and _id_embed.get("budgets", {}).get("hook_warn") == ms.HOOK_TOKEN_WARN
+      and _id_embed.get("budgets", {}).get("cliff_near") == int(ms.CLIFF_NEAR_FRACTION * 100)
+      and (_id_embed.get("cycles") or [{}])[-1].get("cross_project", {}).get("held") == 2)
+_evil_id = rhtml.build_html({"project": "x", "identity": {"domain_id": "</script><img src=x>"}},
+                            [], "t", identity={"domain_id": "</script>"})
+check("v0.3.0 html: identity domain is </script>-break-out-safe (XSS)",
+      "</script><img" not in _evil_id and "\\u003c/script" in _evil_id)
+check("v0.3.0 ascii: IDENTITY line on a seeded enrolled record; absent on legacy",
+      "IDENTITY" in rd.render(rd._demo_record()) and "domain personal" in rd.render(rd._demo_record())
+      and "IDENTITY" not in rd.render(cast(_R, {"project": "p", "session": "s", "scope": {}, "entries": []})))
+check("v0.3.0 ascii: LOCAL-ONLY when identity says unenrolled",
+      "LOCAL-ONLY" in rd.render(cast(_R, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                                          "identity": {"domain_id": "unknown", "enrolled": False,
+                                                       "registry_state": "absent",
+                                                       "cross_project_allowed": False}})))
+with _tempfile.TemporaryDirectory() as _tdI:
+    _homeI = Path(_tdI) / "home"; _homeI.mkdir()
+    _projI = Path(_tdI) / "proj"; _projI.mkdir()
+    _oldI = __import__("os").environ.get("HOME")
+    __import__("os").environ["HOME"] = str(_homeI)
+    try:
+        _seedI = ms.seed_record(ms.build_context(_projI))
+        _identI = _seedI.get("identity") or {}
+        check("v0.3.0 seed: identity snapshot is path-free and unenrolled-by-default",
+              _identI.get("domain_id") == "unknown"
+              and _identI.get("enrolled") is False
+              and _identI.get("cross_project_allowed") is False
+              and not any(isinstance(v, str) and ("/" in v or "\\" in v) for v in _identI.values()))
+    finally:
+        if _oldI is None:
+            __import__("os").environ.pop("HOME", None)
+        else:
+            __import__("os").environ["HOME"] = _oldI
 check("Entry.files is list[str] (not bare list) in the CycleRecord contract (TypedDict), and the SKILL.md "
       "schema-block pin (the top-level entries[0]==Entry.__annotations__ loop) catches key drift",
       "files" in ms.Entry.__annotations__)
@@ -7228,6 +7297,10 @@ with _tf_xp.TemporaryDirectory() as _td_r:
         (_glob_r / "ed.md").write_text(
             "---\nname: ed\ndescription: d\nmetadata:\n  scope: user-global\n"
             "  type: feedback\n---\ncanon body\n", encoding="utf-8")
+        _canon_ed = _ctx_r.canonical_domain_dir
+        _canon_ed.mkdir(parents=True, exist_ok=True)
+        (_canon_ed / "ed.md").write_text((_glob_r / "ed.md").read_text(encoding="utf-8"),
+                                         encoding="utf-8")
         _mir_ed = sg._as_mirror((_glob_r / "ed.md").read_text(encoding="utf-8"), "ed",
                                 since="2026-01-01T00:00:00Z",
                                 body_hash=sg._body_hash((_glob_r / "ed.md").read_text(encoding="utf-8")))
@@ -7655,8 +7728,8 @@ with _Env73() as _e_mg:
     _rb_u, _rb_e = _io73.StringIO(), _io73.StringIO()
     with _ctx73.redirect_stdout(_rb_u), _ctx73.redirect_stderr(_rb_e):
         _rc_rb = cmo.main(["migrate", str(_e_mg.proj), "--rollback"])
-    check("0.3.0: migrate rollback restores prior dest bytes and does not delete an edit",
-          _rc_rb == 1 and "conflicts" in _rb_e.getvalue().lower() + _rb_u.getvalue().lower()
+    check("0.3.0: migrate rollback is all-or-nothing on an edited dest (no partial restore)",
+          _rc_rb == 2 and "conflict" in _rb_e.getvalue().lower() + _rb_u.getvalue().lower()
           and "EDITED AFTER APPLY" in (_pdir_mg / "plain.md").read_text(encoding="utf-8")
           and (_pdir_mg / "already.md").read_text(encoding="utf-8") == _dest_before)
 
@@ -7832,6 +7905,147 @@ with _Env73() as _e_pg:
     check("0.3.0: domain purge aborts when a project's revoke cannot run",
           _rc_pg == 2 and "revoke" in _pg_err.getvalue().lower()
           and _canon_pg.exists() and _canon_pg.read_text(encoding="utf-8") == "STAY\n")
+
+# ── post-cadc9fb: recovery source re-verify, fail-closed delete, repair isolation ──
+with _Env73() as _e_rs:
+    _ctx_rs = sc.resolve_store(_e_rs.proj)
+    _dest_rs = _ctx_rs.native_memory_dir / "refresh.md"
+    _dest_rs.parent.mkdir(parents=True, exist_ok=True)
+    _dest_rs.write_text("ORIGINAL\n", encoding="utf-8")
+    _h_orig = cp._file_hash(_dest_rs)
+    _crashed = False
+    try:
+        cp.transact(
+            _ctx_rs, "pull-refresh", {"stem": "refresh"},
+            lambda _c, _t: (_t.__setitem__(str(_dest_rs), "REPLACEMENT\n") or {
+                "expected_revisions": {str(_dest_rs): _h_orig},
+            }),
+            expected_revisions={str(_dest_rs): _h_orig},
+            crash_after="prepare_temps", skip_recover=True)
+    except cp.CrashSimulated:
+        _crashed = True
+    _dest_rs.write_text("USER EDIT\n", encoding="utf-8")
+    _j_rs = cp.connect_journal(_ctx_rs)
+    _r_rs = cp.connect(cp.db_path(_ctx_rs))
+    _got_rs = cp.recover_pending(_j_rs, ctx=_ctx_rs, registry_conn=_r_rs)
+    _st_rs = _j_rs.execute(
+        "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
+    _j_rs.close(); _r_rs.close()
+    check("0.3.1: recover refuses a replace-mode dest that changed after prepare_temps",
+          _crashed and _dest_rs.read_text(encoding="utf-8") == "USER EDIT\n"
+          and (_st_rs is None or str(_st_rs["status"] or "") != "complete")
+          and len(_got_rs) == 0)
+
+with _Env73() as _e_regf:
+    _ctx_rf = sc.resolve_store(_e_regf.proj)
+    _dest_rf = _ctx_rf.canonical_domain_dir / "no-pub.md"
+    _dest_rf.parent.mkdir(parents=True, exist_ok=True)
+    _raised_rf = False
+    try:
+        cp.transact(
+            _ctx_rf, "bad-reg", {"stem": "no-pub"},
+            lambda _c, _t: (_t.__setitem__(str(_dest_rf), "SHOULD NOT LAND\n") or {
+                "registry_ops": [{"op": "not-a-real-op"}],
+            }),
+            skip_recover=True)
+    except sc.WriteRefused as _e_rf:
+        _raised_rf = "unknown registry_op" in str(_e_rf)
+    check("0.3.1: malformed registry_op is refused before dest publish",
+          _raised_rf and (not _dest_rf.exists()
+                          or "SHOULD NOT LAND" not in _dest_rf.read_text(encoding="utf-8")))
+
+with _tempfile.TemporaryDirectory() as _td_ud:
+    _dir_ud = Path(_td_ud) / "not-a-file"
+    _dir_ud.mkdir()
+    _del_ud = cp._apply_deletes([{"path": str(_dir_ud), "preimage": "a" * 64}])
+    check("0.3.1: unreadable delete preimage is an error (not a delete)",
+          _dir_ud.exists() and str(_dir_ud) in _del_ud["errors"]
+          and str(_dir_ud) not in _del_ud["deleted"])
+    _file_ud = Path(_td_ud) / "live.md"
+    _file_ud.write_text("x\n", encoding="utf-8")
+    _del_np = cp._apply_deletes([{"path": str(_file_ud), "preimage": ""}])
+    check("0.3.1: existing file with empty preimage is not deleted",
+          _file_ud.exists() and str(_file_ud) in _del_np["errors"])
+
+with _Env73() as _e_leg:
+    _ctx_leg = sc.resolve_store(_e_leg.proj)
+    _enroll_personal(_e_leg.proj)
+    _ctx_leg = sc.resolve_store(_e_leg.proj)
+    _legf = _ctx_leg.config_root / "memory"
+    _legf.mkdir(parents=True, exist_ok=True)
+    (_legf / "deploy.md").write_text(
+        "---\nname: deploy\ndescription: d\ndomain: work\nscope: user-global\n---\nLEGACY WORK\n",
+        encoding="utf-8")
+    _ns_rm = __import__("argparse").Namespace(project=str(_e_leg.proj), fact="deploy")
+    _rc_rm = cmo.cmd_repair_mirror(_ns_rm)
+    check("0.3.1: repair-mirror does not restamp a personal project from a legacy work-tagged file",
+          _rc_rm == 1 and not (_ctx_leg.native_memory_dir / "deploy.md").exists())
+
+with _Env73() as _e_v3:
+    _bad_v3 = (
+        "---\nschema_version: 3\nname: bad-v3\ndescription: d\n"
+        "domain: personal\nscope: user-global\n---\nbody\n"
+    )
+    (_e_v3.glob / "bad-v3.md").write_text(_bad_v3, encoding="utf-8")
+    _ctx_v3 = sc.resolve_store(_e_v3.proj)
+    _enroll_personal(_e_v3.proj)
+    _ctx_v3 = sc.resolve_store(_e_v3.proj)
+    _ctx_v3.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
+    (_ctx_v3.canonical_domain_dir / "bad-v3.md").write_text(_bad_v3, encoding="utf-8")
+    _rc_v3, _out_v3, _err_v3 = _run73(_e_v3.proj)
+    check("0.3.1: invalid schema-v3 canonical is not pulled",
+          _rc_v3 == 0 and not (_e_v3.store / "bad-v3.md").exists())
+
+with _tempfile.TemporaryDirectory() as _td_cat:
+    _fd = Path(_td_cat)
+    (_fd / "live.md").write_text("---\nstatus: active\ndescription: keep\n---\n", encoding="utf-8")
+    (_fd / "old.md").write_text("---\nstatus: superseded\ndescription: drop\n---\n", encoding="utf-8")
+    (_fd / "dead.md").write_text("---\nstatus: tombstoned\ndescription: drop\n---\n", encoding="utf-8")
+    _cat = ci.generate_catalog(_fd)
+    check("0.3.1: catalog lists only status=active facts",
+          "live.md" in _cat and "old.md" not in _cat and "dead.md" not in _cat)
+
+from fact_schema import validate_canonical_frontmatter as _vcf
+check("0.3.1: applies_any scalar is refused (flow-list required)",
+      _vcf({"schema_version": "3", "fact_id": "f_" + "ab" * 12, "name": "x",
+            "description": "d", "domain": "personal", "sensitivity": "internal",
+            "scope": "user-global", "status": "active",
+            "applies_any": "python", "applies_all": "[]", "applies_exclude": "[]",
+            "content_modified": "2026-09-01T00:00:00Z",
+            "last_observed_at": "2026-09-01T00:00:00Z"},
+           stem="x", domain="personal") is not None)
+
+with _Env73() as _e_esc:
+    _ctx_esc = sc.resolve_store(_e_esc.proj)
+    _outside = Path(_e_esc._td.name) / "outside.md"
+    _outside.write_text(
+        "---\nname: outside\ndescription: d\nscope: user-global\n---\nX\n", encoding="utf-8")
+    _plan_esc = {"facts": {"outside": {"stem": "outside", "source": str(_outside),
+                                       "assignment": "personal", "sha256": "00"}}}
+    (_ctx_esc.plugin_data_dir).mkdir(parents=True, exist_ok=True)
+    (_ctx_esc.plugin_data_dir / "migrate-plan.json").write_text(
+        __import__("json").dumps(_plan_esc), encoding="utf-8")
+    _esc_e = _io73.StringIO()
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_esc_e):
+        _rc_esc = cmo.main(["migrate", str(_e_esc.proj), "--apply",
+                            "--confirm", "migrate-apply"])
+    check("0.3.1: migrate apply refuses a source outside approved roots",
+          _rc_esc == 2 and "outside approved" in _esc_e.getvalue().lower())
+
+with _Env73() as _e_re:
+    _ctx_re = sc.resolve_store(_e_re.proj)
+    _enroll_personal(_e_re.proj)
+    _leg = _ctx_re.config_root / "memory"
+    _leg.mkdir(parents=True, exist_ok=True)
+    (_leg / "plain2.md").write_text(
+        "---\nname: plain2\ndescription: d\nscope: user-global\n---\nbody\n", encoding="utf-8")
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        cmo.main(["migrate", str(_e_re.proj)])
+        cmo.main(["migrate", str(_e_re.proj), "--assign", "plain2", "--domain", "personal"])
+        _rc_a1 = cmo.main(["migrate", str(_e_re.proj), "--apply", "--confirm", "migrate-apply"])
+        _rc_a2 = cmo.main(["migrate", str(_e_re.proj), "--apply", "--confirm", "migrate-apply"])
+    check("0.3.1: second migrate apply refuses until rollback or finalize",
+          _rc_a1 == 0 and _rc_a2 == 2)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

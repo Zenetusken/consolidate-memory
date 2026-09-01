@@ -83,6 +83,10 @@ def validate_canonical_frontmatter(fm: dict, *, stem: str, domain: str) -> Optio
         ts = str(fm.get(ts_key) or "").strip()
         if not _RFC3339_RE.match(ts):
             return f"invalid {ts_key} {ts!r}"
+    for k in ("applies_any", "applies_all", "applies_exclude"):
+        raw = str(fm.get(k) or "").strip()
+        if raw and not _LIST_RE.match(raw):
+            return f"{k} must be a bracketed flow list"
     return None
 
 

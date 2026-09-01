@@ -95,7 +95,9 @@ CREATE TABLE IF NOT EXISTS conflicts (
     local_hash TEXT,
     canonical_hash TEXT,
     created_at TEXT,
-    resolved TEXT
+    resolved TEXT,
+    domain_id TEXT DEFAULT '',
+    fact_id TEXT DEFAULT ''
 );
 """
 
@@ -119,8 +121,8 @@ ABSENT = "ABSENT"
 REGISTRY_OP_KINDS = frozenset({
     "project_upsert", "project_domain_change", "fact_upsert", "fact_status_change",
     "fact_delete", "holder_upsert", "holder_delete", "tombstone_upsert",
-    "conflict_upsert", "conflict_resolve", "migration_state_set", "project_alias",
-    "project_rebind",
+    "tombstone_delete", "conflict_upsert", "conflict_resolve", "migration_state_set",
+    "project_alias", "project_rebind",
 })
 
 
@@ -290,6 +292,12 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "CREATE TABLE IF NOT EXISTS project_aliases ("
         "alias_id TEXT PRIMARY KEY, project_id TEXT NOT NULL)")
     conn.commit()
+    ccols = {str(r[1]) for r in conn.execute("PRAGMA table_info(conflicts)").fetchall()}
+    if "domain_id" not in ccols:
+        conn.execute("ALTER TABLE conflicts ADD COLUMN domain_id TEXT DEFAULT ''")
+    if "fact_id" not in ccols:
+        conn.execute("ALTER TABLE conflicts ADD COLUMN fact_id TEXT DEFAULT ''")
+    conn.commit()
 
 
 def iter_registered_projects(conn: sqlite3.Connection) -> list:
@@ -436,8 +444,28 @@ def project_upsert_op(ctx: StoreContext, *, domain_id: str, status: str,
     }
 
 
+def prevalidate_registry_ops(ops: list) -> None:
+    """Refuse unknown/malformed typed ops before any irreversible file change."""
+    for op in ops or []:
+        if not isinstance(op, dict):
+            raise WriteRefused("registry_ops entry is not an object")
+        kind = str(op.get("op") or "")
+        if kind not in REGISTRY_OP_KINDS:
+            raise WriteRefused("unknown registry_op: " + kind)
+        if kind == "project_upsert" and not str(op.get("project_id") or ""):
+            raise WriteRefused("project_upsert missing project_id")
+        if kind == "project_rebind" and not str(op.get("project_id") or ""):
+            raise WriteRefused("project_rebind missing project_id")
+        if kind == "fact_upsert" and not str(op.get("fact_id") or ""):
+            raise WriteRefused("fact_upsert missing fact_id")
+        if kind == "tombstone_delete" and not (
+                str(op.get("fact_id") or "") or str(op.get("domain_id") or "")):
+            raise WriteRefused("tombstone_delete missing fact_id/domain_id")
+
+
 def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
     """Replay typed journal v3 registry_ops (ADR 010). Unknown kinds refuse."""
+    prevalidate_registry_ops(ops)
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     for op in ops or []:
         if not isinstance(op, dict):
@@ -519,18 +547,28 @@ def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
                             str(op.get("domain_id") or ""), str(op.get("reason") or ""),
                             str(op.get("replacement_id") or ""),
                             str(op.get("grace_until") or ""))
+        elif kind == "tombstone_delete":
+            fid = str(op.get("fact_id") or "")
+            did = str(op.get("domain_id") or "")
+            if fid:
+                conn.execute("DELETE FROM tombstones WHERE fact_id=?", (fid,))
+            elif did:
+                conn.execute("DELETE FROM tombstones WHERE domain_id=?", (did,))
+            else:
+                raise WriteRefused("tombstone_delete missing fact_id/domain_id")
         elif kind == "conflict_upsert":
             record_conflict(conn, str(op.get("stem") or op.get("fact_stem") or ""),
                             str(op.get("project_id") or ""),
                             {"action": op.get("action"), "local": op.get("local_hash"),
-                             "canonical": op.get("canonical_hash")})
+                             "canonical": op.get("canonical_hash")},
+                            domain_id=str(op.get("domain_id") or ""),
+                            fact_id=str(op.get("fact_id") or ""))
         elif kind == "conflict_resolve":
-            conn.execute(
-                "UPDATE conflicts SET resolved=? WHERE fact_stem=? AND project_id=? "
-                "AND resolved=''",
-                (str(op.get("resolved") or "resolved"),
-                 str(op.get("stem") or op.get("fact_stem") or ""),
-                 str(op.get("project_id") or "")))
+            mark_conflict_resolved(
+                conn, str(op.get("stem") or op.get("fact_stem") or ""),
+                str(op.get("project_id") or ""),
+                str(op.get("resolved") or "resolved"),
+                domain_id=str(op.get("domain_id") or ""))
         elif kind == "project_alias":
             aid = str(op.get("alias_id") or "")
             pid = str(op.get("project_id") or "")
@@ -807,39 +845,81 @@ def _publish_destinations(publishes: list) -> Tuple[int, list]:
 def _apply_deletes(deletes: Optional[list]) -> dict:
     """Delete only when a recorded preimage still matches.
 
-    A preimage mismatch does NOT delete and is reported so the caller can
-    refuse to complete the journal (ADR 010).
+    Unreadable hashes and missing preimages on an existing file are errors
+    (fail closed). A preimage mismatch does NOT delete.
     """
     out: dict = {"deleted": [], "already_absent": [], "preimage_mismatch": [], "errors": []}
     for d in deletes or []:
         if isinstance(d, dict):
             path = Path(str(d.get("path") or ""))
             pre = str(d.get("preimage") or d.get("sha256") or "")
-            if not path or str(path) in (".", "/"):
-                out["errors"].append(str(path))
-                continue
-            if not path.exists():
-                out["already_absent"].append(str(path))
-                continue
-            if pre and _file_hash(path) not in (pre, None):
-                out["preimage_mismatch"].append(str(path))
-                continue
-            try:
-                path.unlink()
-                out["deleted"].append(str(path))
-            except OSError:
-                out["errors"].append(str(path))
         else:
             path = Path(d)
-            if not path.exists():
-                out["already_absent"].append(str(path))
-                continue
-            try:
-                path.unlink()
-                out["deleted"].append(str(path))
-            except OSError:
-                out["errors"].append(str(path))
+            pre = ""
+        if not path or str(path) in (".", "/"):
+            out["errors"].append(str(path))
+            continue
+        if not path.exists():
+            out["already_absent"].append(str(path))
+            continue
+        actual = _file_hash(path)
+        if actual is None:
+            out["errors"].append(str(path))
+            continue
+        if not pre:
+            out["errors"].append(str(path))
+            continue
+        if actual != pre:
+            out["preimage_mismatch"].append(str(path))
+            continue
+        try:
+            path.unlink()
+            out["deleted"].append(str(path))
+        except OSError:
+            out["errors"].append(str(path))
     return out
+
+
+def _dest_already_published(publishes: list) -> bool:
+    """True when every journaled dest already has the recorded sha256."""
+    if not publishes:
+        return True
+    for item in publishes:
+        dest = Path(item.get("dest") or "")
+        want = str(item.get("sha256") or "")
+        if not want or not dest.exists() or _file_hash(dest) != want:
+            return False
+    return True
+
+
+def _journal_sources_ok(payload: dict) -> bool:
+    """Re-check journaled source hashes before recovery publication.
+
+    If every destination already has the expected hash, publication completed
+    before the crash and a replaced source is not a conflict.
+    """
+    publishes = payload.get("publishes") or []
+    if _dest_already_published(publishes):
+        return True
+    checks: list = []
+    for s in payload.get("sources") or []:
+        if isinstance(s, dict) and s.get("path"):
+            checks.append((str(s["path"]), str(s.get("sha256") or "")))
+    if not checks:
+        expected = payload.get("expected_revisions") or {}
+        if isinstance(expected, dict):
+            checks = [(str(p), str(h)) for p, h in expected.items()]
+    for path_s, want in checks:
+        if want == ABSENT:
+            if Path(path_s).exists():
+                return False
+            continue
+        if not want:
+            continue
+        actual = _file_hash(Path(path_s))
+        if actual != want:
+            return False
+    return True
 
 
 def _publish_temps(publishes: list, deletes: Optional[list] = None) -> int:
@@ -973,6 +1053,12 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                            or payload.get("facts") or payload.get("tombstones")
                            or deletes)
             if publishes or has_reg:
+                try:
+                    prevalidate_registry_ops(payload.get("registry_ops") or [])
+                except WriteRefused:
+                    continue
+                if not _journal_sources_ok(payload):
+                    continue
                 if publishes:
                     _n, bad = _publish_destinations(publishes)
                     del _n
@@ -1095,25 +1181,57 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         for dest_s, content in temps.items():
             dest = Path(dest_s)
             dest.parent.mkdir(parents=True, exist_ok=True)
-            text = content if content.endswith("\n") else content + "\n"
+            if isinstance(content, (bytes, bytearray)):
+                data = bytes(content)
+            else:
+                text = content if str(content).endswith("\n") else str(content) + "\n"
+                data = text.encode("utf-8")
             tmp = dest.with_suffix(dest.suffix + f".tmp{os.getpid()}")
-            tmp.write_text(text, encoding="utf-8")
+            tmp.write_bytes(data)
             publishes.append({
                 "tmp": str(tmp), "dest": str(dest),
-                "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                "sha256": hashlib.sha256(data).hexdigest(),
                 "mode": str((result.get("dest_modes") or {}).get(dest_s) or "replace"),
             })
         payload["publishes"] = publishes
-        payload["deletes"] = [
-            {"path": d, "preimage": _file_hash(Path(d))} if isinstance(d, str) else d
-            for d in deletes
-        ]
+        norm_deletes: list = []
+        for d in deletes:
+            if isinstance(d, dict):
+                path_s = str(d.get("path") or "")
+                pre = str(d.get("preimage") or d.get("sha256") or "")
+                if Path(path_s).exists() and not pre:
+                    h = _file_hash(Path(path_s))
+                    if not h:
+                        rconn.execute("ROLLBACK")
+                        raise WriteRefused("cannot hash delete preimage: " + path_s)
+                    pre = h
+                norm_deletes.append({"path": path_s, "preimage": pre})
+            else:
+                path_s = str(d)
+                if Path(path_s).exists():
+                    h = _file_hash(Path(path_s))
+                    if not h:
+                        rconn.execute("ROLLBACK")
+                        raise WriteRefused("cannot hash delete preimage: " + path_s)
+                    norm_deletes.append({"path": path_s, "preimage": h})
+                else:
+                    norm_deletes.append({"path": path_s, "preimage": ""})
+        payload["deletes"] = norm_deletes
         payload["holders"] = list(result.get("holders") or [])
         payload["facts"] = list(result.get("facts") or [])
         payload["tombstones"] = list(result.get("tombstones") or [])
         payload["registry_ops"] = list(result.get("registry_ops") or [])
         payload["sources"] = [{"path": p, "sha256": h} for p, h in snaps.items()]
         payload["expected_revisions"] = snaps
+        try:
+            prevalidate_registry_ops(payload.get("registry_ops") or [])
+            apply_registry_ops(rconn, payload.get("registry_ops") or [])
+            _assert_registry_postconditions(rconn, payload)
+        except WriteRefused:
+            for item in publishes:
+                Path(item["tmp"]).unlink(missing_ok=True)
+            rconn.execute("ROLLBACK")
+            raise
         conn.execute("UPDATE journal SET payload=?, step=? WHERE op_id=?",
                      (json.dumps(payload, sort_keys=True), "prepare_temps", op_id))
         conn.commit()
@@ -1156,12 +1274,6 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
             if dp.exists():
                 rconn.execute("ROLLBACK")
                 raise WriteRefused("file postcondition delete still present: " + str(dp))
-        try:
-            apply_registry_ops(rconn, payload.get("registry_ops") or [])
-            _assert_registry_postconditions(rconn, payload)
-        except WriteRefused:
-            rconn.execute("ROLLBACK")
-            raise
         journal_step(conn, op_id, "publish", "pending")
         _maybe_crash("publish")
         rconn.execute("COMMIT")
@@ -1206,35 +1318,51 @@ def record_holder(conn: sqlite3.Connection, fact_id: str, project_id: str,
     )
 
 
-def record_conflict(conn: sqlite3.Connection, stem: str, project_id: str, decision: dict) -> None:
-    """Insert or refresh the open conflict row for (stem, project). Never duplicates."""
+def record_conflict(conn: sqlite3.Connection, stem: str, project_id: str, decision: dict,
+                    domain_id: str = "", fact_id: str = "") -> None:
+    """Insert or refresh the open conflict row for (stem, project, domain). Never duplicates."""
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    row = conn.execute(
-        "SELECT id FROM conflicts WHERE fact_stem=? AND project_id=? AND resolved=''",
-        (stem, project_id),
-    ).fetchone()
+    did = domain_id or ""
+    if did:
+        row = conn.execute(
+            "SELECT id FROM conflicts WHERE fact_stem=? AND project_id=? AND resolved='' "
+            "AND COALESCE(domain_id,'') IN ('', ?)",
+            (stem, project_id, did),
+        ).fetchone()
+    else:
+        row = conn.execute(
+            "SELECT id FROM conflicts WHERE fact_stem=? AND project_id=? AND resolved=''",
+            (stem, project_id),
+        ).fetchone()
     if row:
         conn.execute(
-            "UPDATE conflicts SET action=?, local_hash=?, canonical_hash=?, created_at=? "
-            "WHERE id=?",
+            "UPDATE conflicts SET action=?, local_hash=?, canonical_hash=?, created_at=?, "
+            "domain_id=?, fact_id=? WHERE id=?",
             (decision.get("action"), decision.get("local"), decision.get("canonical"),
-             now, row["id"]),
+             now, did, fact_id or "", row["id"]),
         )
         return
     conn.execute(
         "INSERT INTO conflicts(fact_stem, project_id, action, local_hash, canonical_hash, "
-        "created_at, resolved) VALUES (?,?,?,?,?,?,?)",
+        "created_at, resolved, domain_id, fact_id) VALUES (?,?,?,?,?,?,?,?,?)",
         (stem, project_id, decision.get("action"), decision.get("local"),
-         decision.get("canonical"), now, ""),
+         decision.get("canonical"), now, "", did, fact_id or ""),
     )
 
 
 def mark_conflict_resolved(conn: sqlite3.Connection, stem: str, project_id: str,
-                           how: str) -> int:
-    cur = conn.execute(
-        "UPDATE conflicts SET resolved=? WHERE fact_stem=? AND project_id=? AND resolved=''",
-        (how, stem, project_id),
-    )
+                           how: str, domain_id: str = "") -> int:
+    if domain_id:
+        cur = conn.execute(
+            "UPDATE conflicts SET resolved=? WHERE fact_stem=? AND project_id=? "
+            "AND resolved='' AND COALESCE(domain_id,'') IN ('', ?)",
+            (how, stem, project_id, domain_id),
+        )
+    else:
+        cur = conn.execute(
+            "UPDATE conflicts SET resolved=? WHERE fact_stem=? AND project_id=? AND resolved=''",
+            (how, stem, project_id),
+        )
     return int(cur.rowcount or 0)
 
 

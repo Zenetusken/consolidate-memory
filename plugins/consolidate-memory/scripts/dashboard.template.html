@@ -216,6 +216,23 @@
   @media(max-width:640px){.reg-card{grid-template-columns:1fr;gap:6px}}
   .flag{margin-top:14px;padding:10px 13px;border-left:3px solid var(--accent);background:rgba(179,71,39,.06);
     font-size:11.5px;color:var(--ink2);display:none}
+  .flag.warn{border-left-color:var(--warn);background:rgba(154,107,28,.07)}
+  .banner-stack{display:flex;flex-direction:column;gap:8px;margin:18px 0 0}
+  .banner-stack .flag{margin-top:0}
+  .ident{font-size:11px;color:var(--faint);letter-spacing:.02em;margin-top:2px}
+  .ident b{color:var(--ink2);font-weight:500}
+  .ident .loc{color:var(--warn)}
+  .ident .reg{color:var(--crit)}
+  .xp-strip{margin-top:28px;padding-top:4px}
+  .xp-move{display:flex;flex-wrap:wrap;gap:6px 8px;padding:8px 0 2px}
+  .chip{font-size:11.5px;border:1px solid var(--rule2);padding:3px 8px;border-radius:2px;
+    color:var(--ink2);line-height:1.3;max-width:100%;overflow-wrap:anywhere}
+  .chip .dir{font-family:var(--mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--faint);margin-right:6px}
+  .chip.held{border-color:var(--warn);color:var(--warn)}
+  .chip.down{border-color:var(--data);color:var(--data)}
+  .chip.up{border-color:var(--ok);color:var(--ok)}
+  .xp-meta{font-size:10.5px;color:var(--faint);margin-top:4px;letter-spacing:.02em}
 
   .theme-tog{pointer-events:auto;position:static;background:var(--card);border:1px solid var(--rule2);
     color:var(--ink2);font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;
@@ -229,6 +246,8 @@
   body.compact .mast{padding:24px 0 12px}
   body.compact .row{padding-top:9px;padding-bottom:9px}
   body.compact .dstl{margin-top:16px}
+  body.compact .xp-strip{margin-top:14px}
+  body.compact .banner-stack{margin-top:10px}
   body.compact .reg-card,body.compact .audit-ln,body.compact .audit-row{padding-top:7px;padding-bottom:7px}
   .tip{position:fixed;z-index:30;pointer-events:none;background:var(--ink);color:var(--paper);border-radius:2px;
     padding:5px 9px;font-size:11px;opacity:0;transition:opacity .12s;white-space:nowrap;font-variant-numeric:tabular-nums}
@@ -304,6 +323,7 @@
     </div>
     <div class="meta">
       <div><span class="lab">dreams logged</span> <b id="a-count">—</b></div>
+      <div id="a-ident" class="ident"></div>
       <div id="a-gen">—</div>
     </div>
   </div>
@@ -312,6 +332,7 @@
     <h2 id="a-head">—</h2>
     <div class="sub" id="a-sub"></div>
   </div>
+  <div class="banner-stack" id="a-banners"></div>
   <section class="blk"><div class="shead"><span class="no">◆</span><h3>Dream Sequences</h3><span class="ln"></span><span class="note" id="a-note"></span></div>
     <div class="arch-tools" id="arch-tools"></div>
     <div class="arch-head"><span>when</span><span>outcome</span><span>rigor</span><span>index&nbsp;tok</span><span>writes</span><span>commit</span></div>
@@ -330,11 +351,13 @@
     </div>
     <div class="meta">
       <div><b id="h-banner">—</b></div>
+      <div id="h-ident" class="ident"></div>
       <div>session <span id="h-sess">—</span></div>
       <div>scope <span id="h-scope">—</span></div>
       <div id="h-gen">—</div>
     </div>
   </div>
+  <div class="banner-stack" id="h-banners"></div>
 
   <!-- LEAD: the takeaway-first headline + the hero chart -->
   <div class="lead">
@@ -376,6 +399,7 @@
       <div>
         <div class="meter" id="m-index"></div>
         <div class="meter" id="m-cmd"></div>
+        <div class="meter" id="m-global" style="display:none"></div>
       </div>
       <div><svg id="net" viewBox="0 0 520 170"></svg>
         <div class="meta">
@@ -388,6 +412,7 @@
         </div>
       </div>
     </div>
+    <div class="xp-strip" id="xp-strip" style="display:none"></div>
   </section>
 
   <!-- 03 this pass: audit + verification + the distill verdict -->
@@ -449,6 +474,8 @@
     var key=c+"__"+t; if(s)key+="__"+String(s).replace(/[^0-9A-Za-z]/g,"").slice(0,8); return key;}
   var BUD=(DATA.budgets&&typeof DATA.budgets==="object")?DATA.budgets:{index:1500,claude_md:4000,index_ceiling:3840};
   var IDXB=num(BUD.index,1500), CMB=num(BUD.claude_md,4000), CEIL=num(BUD.index_ceiling,3840);
+  var HOOKW=num(BUD.hook_warn,60), CLIFFN=num(BUD.cliff_near,80);
+  var LIVEID=(DATA.identity&&typeof DATA.identity==="object"&&!Array.isArray(DATA.identity))?DATA.identity:{};
 
   function g(o,p,d){var c=o,a=p.split(".");for(var i=0;i<a.length;i++){if(c==null||typeof c!=="object")return d;c=c[a[i]];}return c==null?d:c;}
   function num(x,d){var n=typeof x==="number"?x:parseFloat(x);return isFinite(n)?n:(d===undefined?0:d);}
@@ -518,6 +545,59 @@
   function recallN(r){var n=g(r,"budget.recall_facts.after",null);if(n==null)n=g(r,"budget.recall_facts.before",null);return n==null?null:num(n,0);}
   function magnitude(r){return num(g(r,"scope.git_commits",0))+num(g(r,"scope.session_candidates",0));}
   function sameCycle(a,b){return !!(a&&b&&g(a,"marker.commit","x")===g(b,"marker.commit","y")&&g(a,"marker.timestamp","x")===g(b,"marker.timestamp","y"));}
+  // v0.3.0: path-free identity. Dream view prefers the cycle snapshot (this-pass);
+  // archive masthead prefers LIVE identity (this repo, now). Unenrolled is derived
+  // from enrolled + domain_id unless the live snapshot already computed it.
+  function identOf(c, live){
+    var rec=(c&&c.identity&&typeof c.identity==="object"&&!Array.isArray(c.identity))?c.identity:{};
+    var hasRec=Object.keys(rec).length>0, hasLive=Object.keys(LIVEID).length>0;
+    if(!(hasRec||hasLive))
+      return {missing:true, domain_id:"", enrolled:false, cross_project_allowed:false,
+        registry_state:"", conflicts:0, unenrolled:false};
+    var snap=live?(hasLive?LIVEID:rec):(hasRec?rec:LIVEID);
+    var domain=String(snap.domain_id!=null?snap.domain_id:"unknown")||"unknown";
+    var enrolled=snap.enrolled!=null?truthy(snap.enrolled):false;
+    var xpa=snap.cross_project_allowed!=null?truthy(snap.cross_project_allowed):false;
+    var unenrolled=snap.unenrolled!=null?truthy(snap.unenrolled):(!enrolled||domain==="unknown");
+    return {missing:false, domain_id:domain, enrolled:enrolled, cross_project_allowed:xpa,
+      registry_state:String(snap.registry_state||""),
+      conflicts:num(snap.conflicts,0),
+      unenrolled:unenrolled};
+  }
+  // Align with render_dashboard._outcome: writes<=2 LIGHT, else SUBSTANTIAL;
+  // a pivoted no-write pass is Maintenance, not No-op.
+  function writeCount(c){
+    var ents=Array.isArray(c&&c.entries)?c.entries:[];
+    return ents.filter(function(e){return ["added","corrected","deleted"].indexOf(g(e,"action",""))>=0;}).length;
+  }
+  function outcomeOf(c){
+    var oc=g(c,"outcome",""); if(oc) return oc;
+    var w=writeCount(c), ents=Array.isArray(c&&c.entries)?c.entries:[];
+    if(truthy(g(c,"maintenance.pivoted",false))&&w===0) return "Maintenance pass";
+    if(magnitude(c)===0&&!ents.length&&num(g(c,"scope.memories_reviewed",0))===0) return "Nothing to consolidate";
+    if(w===0) return "No-op pass";
+    if(w<=2) return "Light pass";
+    return "Substantial pass";
+  }
+  function identLine(id){
+    if(!id||id.missing) return "";
+    if(id.unenrolled)
+      return '<span class="loc">local-only</span>'+(id.domain_id&&id.domain_id!=="unknown"?' · domain '+esc(id.domain_id):"");
+    return 'domain <b>'+esc(id.domain_id||"personal")+'</b> · enrolled';
+  }
+  function paintBanners(boxId, id){
+    var box=el(boxId); if(!box) return;
+    if(!id||id.missing){ box.innerHTML=""; return; }
+    var bits=[];
+    if(id.unenrolled)
+      bits.push('<div class="flag" style="display:block">This project is <b>local-only</b>. Other repositories will not receive its facts, and it will not pull theirs, until it is enrolled in a named domain (<code class="cmd-inline">/cm-domain</code>).</div>');
+    var rs=String(id.registry_state||"");
+    if(rs&&rs!=="absent"&&rs!=="healthy")
+      bits.push('<div class="flag" style="display:block">Control-plane registry is <b>'+esc(rs)+'</b> — writes are refused until it is repaired (<code class="cmd-inline">cm doctor</code>).</div>');
+    if(id.conflicts>0)
+      bits.push('<div class="flag warn" style="display:block">'+id.conflicts+' open mirror conflict'+(id.conflicts!==1?"s":"")+' — classify with <code class="cmd-inline">cm conflicts</code> before the next pull.</div>');
+    box.innerHTML=bits.join("");
+  }
   function selectFromHash(){
     SEL=_readSel(); VIEW=(SEL===null)?"archive":"dream"; selIdx=(SEL===null)?ALL.length-1:SEL;
     if(SEL!==null) lastSel=SEL;
@@ -568,7 +648,7 @@
   function paintDream(){
     clearEl("traj"); clearEl("trend"); clearEl("rigor"); clearEl("net");
     var tw=el("traj-warn"); if(tw){tw.style.display="none"; tw.innerHTML="";}
-    ["dream-blk","distill-blk","demotion-blk","registrar-blk"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
+    ["dream-blk","distill-blk","demotion-blk","registrar-blk","xp-strip","m-global"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
     PROJ=g(CUR,"project",DATA.project||"consolidate-memory");
     el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
     document.title=PROJ+" — dream telemetry";
@@ -576,12 +656,15 @@
     el("h-scope").textContent=g(CUR,"scope.git_range","—");
     el("h-gen").textContent=String(DATA.generated_at||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
     (function(){if(PARSE_ERR){el("h-banner").textContent="⚠ archive data corrupted — the embedded record failed to parse; regenerate with render_html (never hand-edit this file)";return;}
-      var w=ENT.filter(function(e){return ["added","corrected","deleted"].indexOf(g(e,"action",""))>=0;}).length;
-      var oc=g(CUR,"outcome",""),lab;
-      if(oc)lab=oc; else if(magnitude(CUR)===0&&!ENT.length)lab="Nothing to consolidate";
-      else if(w===0)lab="No-op pass"; else if(w>=4)lab="Substantial pass"; else lab="Light pass";
+      var lab=outcomeOf(CUR);
       if(CUR&&CUR._integrity)lab+=" · ⚠ procedure integrity";
       el("h-banner").textContent=lab;})();
+    (function(){
+      var id=identOf(CUR,false);
+      var line=identLine(id);
+      var hi=el("h-ident"); if(hi) hi.innerHTML=line||"";
+      paintBanners("h-banners", id);
+    })();
   traj=(function(){
     var s=carryFwd(CYCLES.map(idxTok)); if(!s.length)s=[0];
     var cur=num(s[s.length-1],0), n=s.length, slope=0, bf=null, breach=null;
@@ -672,13 +755,16 @@
     var v=CUR.verification||{}, ix=g(CUR,"budget.index.after_tokens",traj.cur);
     var io=num(ix)>IDXB, ceilK=truthy(g(CUR,"remediation.over_ceiling",false)), sjK=truthy(g(CUR,"remediation.standing_justified",false));
     var rg=g(CUR,"rigor.applied","—");
-    function kpi(n,k,d,cls){return '<div class="kpi"><div class="n'+(cls?" ":"")+'" '+(cls?'style="color:'+cls+'"':'')+'>'+n+'</div><div class="k">'+esc(k)+'</div><div class="d">'+esc(d)+'</div></div>';}
+    var pp=truthy(g(CUR,"rigor.prune_pressure",false));
+    function kpi(n,k,d,cls){return '<div class="kpi"><div class="n'+(cls?" ":"")+'" '+(cls?'style="color:'+cls+'"':'')+'>'+n+'</div><div class="k">'+esc(k)+'</div><div class="d">'+d+'</div></div>';}
     el("kpis").innerHTML=
       kpi(pct(num(ix),IDXB)+'<small>%</small>', "index vs target", tok(num(ix))+" / "+tok(IDXB),
           ceilK?"var(--crit)":(io&&!sjK)?"var(--crit)":(io?"var(--warn)":null))
      +kpi(recallN(CUR), "recall facts", "in the private store", null)
      +kpi(num(v.confirmed)+'<small> ✓</small>', "verified", num(v.corrected)+" corrected · "+num(v.unverifiable)+" unverifiable", num(v.unverifiable)>0?"var(--warn)":null)
-     +kpi(esc(rg).charAt(0)+esc(rg).slice(1).toLowerCase(), "rigor", "via "+g(CUR,"verification.method","—"), null);
+     +kpi(esc(rg).charAt(0)+esc(rg).slice(1).toLowerCase(), "rigor",
+          esc("via "+g(CUR,"verification.method","—"))+(pp?' · <span style="color:var(--warn)">prune pressure</span>':""),
+          pp?"var(--warn)":null);
   })();
 
   // ── v0.1.54 the dream as dreamt — captured dream-arc stanzas (sleep · beats · wake). The record
@@ -796,7 +882,7 @@
       box.innerHTML='<div class="top"><span class="lab">'+esc(lab)+'</span><span class="val" style="color:'+col+'">'+pct(val,max)+'% · '+fmt(val)+'/'+fmt(max)+((max>0&&val>max)?" ⚠":"")+'</span></div>'
         +'<div class="track"><div class="fill"></div><div class="mark" style="left:100%"></div></div>'
         +'<div class="d">'+(status==="crit"?("Over the ceiling — new shares are held until this index shrinks")
-          :(status?status:(over?"Over budget — prune before adding more":(f>=.85?"Near the budget":"Within budget"))))+'</div>';
+          :(status?esc(status):(over?"Over budget — prune before adding more":(f>=.85?"Near the budget":"Within budget"))))+'</div>';
       var fill=box.querySelector(".fill");fill.style.background=col;requestAnimationFrame(function(){fill.style.width=(f*100).toFixed(1)+"%";});}
     // render-chain audit: a standing-justified record must NOT read "gate active" — the meter honors
     // remediation.standing_justified (suppressed) as an amber status line, never the crit "active" claim.
@@ -805,9 +891,33 @@
     var ceil=truthy(g(CUR,"remediation.over_ceiling",false));
     var overFlag=truthy(g(CUR,"budget.index.over",false));
     var sj=truthy(remObj.standing_justified);
-    var status=ceil?"crit":(overFlag&&sj)?("Just past the target · prune gate off"):null;
+    var idx=g(CUR,"budget.index",{})||{};
+    var cliff=num(idx.cliff_pct,0), fat=num(idx.fat_hooks,0);
+    var extra=[];
+    if(cliff) extra.push(cliff>=CLIFFN?("cliff "+cliff+"% — silent truncation is near"):("cliff "+cliff+"%"));
+    if(fat) extra.push(fat+" fat hook"+(fat!==1?"s":"")+" over "+HOOKW+" tok (max "+fmt(idx.hook_max_tokens)+")");
+    var status=ceil?"crit":(overFlag&&sj)?"Just past the target · prune gate off":null;
+    if(extra.length){
+      if(status==="crit") {/* ceiling copy stays the lead; extras would compete */}
+      else if(status) status+=" · "+extra.join(" · ");
+      else if(overFlag) status="Over budget — prune before adding more · "+extra.join(" · ");
+      else status=extra.join(" · ");
+    }
     meter(el("m-index"),"Memory index",num(g(CUR,"budget.index.after_tokens",traj.cur)),IDXB,overFlag,status);
-    meter(el("m-cmd"),"CLAUDE.md",num(g(CUR,"budget.claude_md.after_tokens",g(CUR,"budget.claude_md.before_tokens",0))),CMB,truthy(g(CUR,"budget.claude_md.over",false)),null);
+    var hier=g(CUR,"budget.claude_md_hierarchy",null);
+    hier=(hier&&typeof hier==="object"&&!Array.isArray(hier))?hier:{};
+    var worst=num(hier.worst_path_tokens), nfiles=num(hier.total_files);
+    var cmStatus=null;
+    if(nfiles>1||worst>CMB)
+      cmStatus=(nfiles||0)+" files · a session in "+(hier.worst_path||".")+" pays "+fmt(worst)+" tok/turn"+(worst>CMB?" — heavy":"");
+    meter(el("m-cmd"),"CLAUDE.md",num(g(CUR,"budget.claude_md.after_tokens",g(CUR,"budget.claude_md.before_tokens",0))),CMB,truthy(g(CUR,"budget.claude_md.over",false)),cmStatus);
+    var gcm=g(CUR,"budget.global_claude_md",null);
+    var mg=el("m-global");
+    if(mg&&gcm&&typeof gcm==="object"&&!Array.isArray(gcm)&&truthy(gcm.present)){
+      mg.style.display="";
+      meter(mg,"Global CLAUDE.md",num(gcm.tokens),num(gcm.budget_tokens,CMB),truthy(gcm.over),
+            "Read-only · loads in every project"+(truthy(gcm.over)?" — heavy":""));
+    }
   })();
 
   // ── network ──
@@ -1008,6 +1118,52 @@
     svg.setAttribute("viewBox",(minX-pad)+" "+(minY-pad)+" "+(maxX-minX+2*pad)+" "+(maxY-minY+2*pad));
   })();
 
+  // ── v0.3.0: this-pass cross-project movement (ASCII CROSS-PROJECT). Folded into 02 so
+  // the fleet graph and the movement it produced share one section. Key-gated: unenrolled
+  // with nothing moved gets one quiet line; enrolled silence stays collapsed.
+  (function(){
+    var box=el("xp-strip"); if(!box) return;
+    var xp=CUR.cross_project;
+    xp=(xp&&typeof xp==="object"&&!Array.isArray(xp))?xp:null;
+    var id=identOf(CUR,false);
+    function items(arr){
+      if(!Array.isArray(arr)) return [];
+      return arr.map(function(p){
+        if(p&&typeof p==="object") return {name:String(p.name||p.stem||"?"), scope:String(p.scope||"")};
+        return {name:String(p||"?"), scope:""};
+      }).filter(function(x){return x.name&&x.name!=="?";});
+    }
+    var pulled=items(xp&&xp.pulled), promo=items(xp&&xp.promoted);
+    var held=num(xp&&xp.held), refn=num(xp&&xp.refreshed), gc=num(xp&&xp.gc_removed);
+    var gtot=xp&&xp.global_store_facts!=null?num(xp.global_store_facts):null;
+    var moved=pulled.length+promo.length+held+refn+gc;
+    if(!moved) return;   // enrolled silence stays collapsed; the unenrolled banner already spoke
+    var chips=[], cap=[];
+    if(held) chips.push('<span class="chip held"><span class="dir">held</span>'+held+' new share'+(held!==1?"s":"")+' — shrink the index to receive</span>');
+    pulled.slice(0,8).forEach(function(p){
+      chips.push('<span class="chip down"><span class="dir">pulled</span>'+esc(p.name)+(p.scope?' · '+esc(p.scope):"")+'</span>');
+    });
+    promo.slice(0,8).forEach(function(p){
+      chips.push('<span class="chip up"><span class="dir">promoted</span>'+esc(p.name)+(p.scope?' · '+esc(p.scope):"")+'</span>');
+    });
+    var more=(pulled.length>8?pulled.length-8:0)+(promo.length>8?promo.length-8:0);
+    if(more) chips.push('<span class="chip">+'+more+' more</span>');
+    if(refn){
+      if(pulled.length||promo.length||held) cap.push(refn+" mirror"+(refn!==1?"s":"")+" refreshed");
+      else chips.push('<span class="chip"><span class="dir">refresh</span>'+refn+' mirror'+(refn!==1?"s":"")+'</span>');
+    }
+    if(gc){
+      if(pulled.length||promo.length||held) cap.push(gc+" orphan"+(gc!==1?"s":"")+" reclaimed");
+      else chips.push('<span class="chip"><span class="dir">gc</span>'+gc+' orphan'+(gc!==1?"s":"")+'</span>');
+    }
+    if(gtot!=null) cap.push(gtot+" canonical"+(gtot!==1?"s":"")+" in this domain");
+    var lead=id.unenrolled?"Local-only this pass":"This pass across the domain";
+    box.innerHTML='<div class="panel-lead">'+lead+'</div>'
+      +'<div class="xp-move">'+chips.join("")+'</div>'
+      +(cap.length?'<div class="xp-meta">'+esc(cap.join(" · "))+'</div>':"");
+    box.style.display="";
+  })();
+
   // ── audit + verification + distill (this pass) ── (v0.1.57: the two panels share one lead/head/cap
   // rhythm, and the distill verdict is its own readable full-width block instead of a crammed cell.)
   (function(){
@@ -1031,23 +1187,52 @@
     // remediation gate state get their HTML rows, so the archive shows what the ASCII dashboard shows.
     var U0=CUR.usage, uRows="";
     if(U0&&typeof U0==="object"&&!Array.isArray(U0)&&Object.keys(U0).length){
-      uRows='<div class="audit-ln"><span class="s">usage (this window)</span><span class="nums">'
-        +num(U0.reads)+' read'+(num(U0.reads)!==1?"s":"")+' over '+num(U0.facts_read)+' fact'+(num(U0.facts_read)!==1?"s":"")
+      var utop=(Array.isArray(U0.per_fact)?U0.per_fact:[]).filter(function(f){return f&&typeof f==="object";}).slice(0,3)
+        .map(function(f){return esc(String(f.name||"?"))+" ×"+num(f.reads);}).join(" · ");
+      uRows='<div class="audit-ln"><span class="s">usage</span><span class="nums">'
+        +num(U0.reads)+' read'+(num(U0.reads)!==1?"s":"")+' · '+num(U0.facts_read)+' fact'+(num(U0.facts_read)!==1?"s":"")
         +' · '+num(U0.transcripts)+' transcript'+(num(U0.transcripts)!==1?"s":"")
-        +(num(U0.mentions)?' · '+num(U0.mentions)+' hook mention(s)':"")+'</span></div>';}
+        +(num(U0.mentions)?' · '+num(U0.mentions)+' mention'+(num(U0.mentions)!==1?"s":""):"")
+        +'</span></div>'
+        +(utop?'<div class="audit-ln"><span class="s">top recalls</span><span class="nums">'+utop+'</span></div>':"");}
     var rem=CUR.remediation, remRow="";
     if(rem&&typeof rem==="object"&&!Array.isArray(rem)&&Object.keys(rem).length){
       var rtxt=truthy(rem.standing_justified)?"standing-justified · prune gate off"
-        :(truthy(rem.required)?"needs prune":"clear");
+        :(truthy(rem.required)?("needs "+(rem.lever||"prune")):"clear");
       var rcol=truthy(rem.standing_justified)?"var(--warn)":(truthy(rem.required)?"var(--crit)":"var(--ok)");
-      remRow='<div class="audit-ln"><span class="s">index pressure</span><span class="nums" style="color:'+rcol+'">'+esc(rtxt)+'</span></div>';}
+      var rbits=[];
+      if(truthy(rem.required)){
+        if(num(rem.candidates_surfaced)) rbits.push(num(rem.candidates_surfaced)+" candidate"+(num(rem.candidates_surfaced)!==1?"s":""));
+        if("pruned" in rem) rbits.push(num(rem.pruned)+" pruned");
+        if(rem.reaches_budget===false) rbits.push("prune cannot reach budget");
+      }
+      remRow='<div class="audit-ln"><span class="s">index pressure</span><span class="nums" style="color:'+rcol+'">'+esc(rtxt)+(rbits.length?" · "+esc(rbits.join(" · ")):"")+'</span></div>';}
+    var so=Array.isArray(h.slug_orphans)?h.slug_orphans.filter(function(x){return typeof x==="string"&&x;}):[];
+    var soRow=so.length?'<div class="audit-ln"><span class="s">slug orphans</span><span class="nums" style="color:var(--warn)">'+esc(so.slice(0,4).join(", "))+(so.length>4?" +"+ (so.length-4):"")+'</span></div>':"";
+    var sd=(h.schema_drift&&typeof h.schema_drift==="object"&&!Array.isArray(h.schema_drift))?h.schema_drift:{};
+    var driftBits=[];
+    if(num(sd.missing_node_type)) driftBits.push(num(sd.missing_node_type)+" missing type");
+    if(num(sd.malformed_scope)) driftBits.push(num(sd.malformed_scope)+" bad scope");
+    if(num(sd.malformed_origin)) driftBits.push(num(sd.malformed_origin)+" bad origin");
+    if(num(sd.index_mismatch)) driftBits.push(num(sd.index_mismatch)+" index↔file");
+    var driftRow=driftBits.length?'<div class="audit-ln"><span class="s">schema drift</span><span class="nums" style="color:var(--warn)">'+esc(driftBits.join(" · "))+'</span></div>':"";
+    var brokenNames=Array.isArray(h.broken)?h.broken.filter(function(x){return typeof x==="string"&&x;}):[];
+    var brokeTxt=pointers?"all resolve":"broken";
+    if(broke&&brokenNames.length) brokeTxt+=" · "+esc(brokenNames.slice(0,3).join(", "));
+    else if(broke) brokeTxt+=" · "+broke+" broken";
+    var dangNames=Array.isArray(h.dangling_links)?h.dangling_links.filter(function(x){return typeof x==="string"&&x;}):[];
+    var dangTxt=dang?(dang+" to review"+(dangNames.length?" · "+dangNames.slice(0,3).join(", "):"")):"none";
+    var maint=CUR.maintenance, maintRow="";
+    if(maint&&typeof maint==="object"&&!Array.isArray(maint)&&truthy(maint.pivoted))
+      maintRow='<div class="audit-ln"><span class="s">maintenance</span><span class="nums" style="color:var(--data)">pivoted — self-heal / cross-node enrichment</span></div>';
     vb.innerHTML='<div class="panel-lead">Verification &amp; health</div>'+INTG
       +'<div class="audit-ln head"><span class="s">check</span><span class="nums">result</span></div>'
       +'<div class="audit-ln"><span class="s">claims verified</span><span class="nums">'
         +(conf>0?'<span style="color:var(--ok)">'+conf+' confirmed</span>':conf+' confirmed')+' · '+corr+' corrected · '
         +(unv>0?'<span style="color:var(--warn)">'+unv+' dropped</span>':'0 dropped')+'</span></div>'
-      +'<div class="audit-ln"><span class="s">index pointers</span><span class="nums" style="color:'+(pointers?"var(--ok)":"var(--crit)")+'">'+(pointers?"all resolve":"broken")+(broke?" · "+broke+" broken":"")+'</span></div>'
-      +'<div class="audit-ln"><span class="s">dangling wikilinks</span><span class="nums" style="color:'+(dang?"var(--warn)":"var(--ok)")+'">'+(dang?dang+" to review":"none")+'</span></div>'
+      +'<div class="audit-ln"><span class="s">index pointers</span><span class="nums" style="color:'+(pointers?"var(--ok)":"var(--crit)")+'">'+brokeTxt+'</span></div>'
+      +'<div class="audit-ln"><span class="s">dangling wikilinks</span><span class="nums" style="color:'+(dang?"var(--warn)":"var(--ok)")+'">'+esc(dangTxt)+'</span></div>'
+      +soRow+driftRow+maintRow
       +uRows
       +remRow
       +'<div class="meta"><div class="cap">Every recorded claim is checked against the live tree before it lands.</div></div>';
@@ -1083,7 +1268,7 @@
       var dmc=[num(DM.windows_observed)+" window"+(num(DM.windows_observed)!==1?"s":""),
                num(DM.eligible)+" unused"];
       var surf=Array.isArray(DM.surfaced)?DM.surfaced:[], stk=Array.isArray(DM.struck)?DM.struck:[];
-      if(surf.length)dmc.push(surf.length+" surfaced");
+      if(surf.length)dmc.push(surf.length+" surfaced"+(surf.filter(function(s){return typeof s==="string";}).length?": "+surf.filter(function(s){return typeof s==="string";}).slice(0,3).join(", "):""));
       if(stk.length)dmc.push(stk.length+" struck (read this window)");
       el("demo-counts").textContent=dmc.join(" · ");
       var bits="";
@@ -1285,9 +1470,14 @@
     el("a-sub").textContent="Every consolidation pass, revisitable — click any row to open its full dashboard.";
     el("a-note").textContent=ALL.length+" sequence"+(ALL.length!==1?"s":"")+" logged";
     el("a-foot").textContent=(DATA.project||PROJ)+" · dream telemetry";
+    (function(){
+      var id=identOf(null,true);
+      var ai=el("a-ident"); if(ai) ai.innerHTML=identLine(id)||"";
+      paintBanners("a-banners", id);
+    })();
     // per-cycle row data — raw values for filter/sort (READ-ONLY; never mutates ALL)
     var rows=ALL.map(function(c,i){var rg=String(g(c,"rigor.applied","—"));
-      return {i:i, intg:!!(c&&c._integrity), oc:g(c,"outcome","")||(magnitude(c)===0&&!(Array.isArray(c.entries)&&c.entries.length)?"nothing to consolidate":"pass"),
+      return {i:i, intg:!!(c&&c._integrity), oc:outcomeOf(c),
         rgRaw:rg.toUpperCase(), rg:rg.charAt(0)+rg.slice(1).toLowerCase(),
         ts:String(g(c,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"").slice(0,16), tsRaw:String(g(c,"marker.timestamp","")),
         ix:num(g(c,"budget.index.after_tokens",g(c,"budget.index.before_tokens",0))),

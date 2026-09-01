@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.3.0** — domain-isolated canonicals, StoreContext, operator enrollment
+**v0.3.1** — domain-isolated canonicals, StoreContext, operator enrollment
 (`cm project enroll --domain NAME`), SQLite control plane. Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
@@ -1154,7 +1154,10 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    `render_html` wrote at `<native_memory_dir>/../dashboards/index.html` (Phase 0 / `cm doctor`) —
    and tells the user they can
    **re-open it any time by opening that file** (it holds the whole archive; navigate dreams in-page via
-   the ledger/filenames; it IS the fleet-wide re-open — works from any repo). Do **NOT** tell an end-user
+   the ledger/filenames; it IS the fleet-wide re-open — works from any repo). (Give the `file://` URI when
+   asked — users ask for a link, not a path; the optional http variant is a local
+   `python3 -m http.server` in the dashboards dir, and the archive is NEVER published to a hosted URL — it
+   holds the private store.) Do **NOT** tell an end-user
    to run `cm report`: that is a MAINTAINER dev CLI living only in the consolidate-memory repo (not on a
    plugin user's PATH, and it CWD-defaults), useful only when dogfooding this plugin from its own checkout.
 
@@ -1218,6 +1221,14 @@ this once warned against; the dashboard remains the source of the figures.)
 {
   "project": "repo-name",
   "session": "<active session id>",
+  "identity": {
+    "_": "v0.3.0: StoreContext snapshot at seed (domain / enrollment). Absent on pre-0.3 records — HTML falls back to live identity at render. No filesystem paths.",
+    "domain_id": "personal",
+    "enrolled": false,
+    "registry_state": "absent",
+    "cross_project_allowed": false,
+    "conflicts": 0
+  },
   "scope": {"git_range": "abc..HEAD", "git_commits": 0,
             "session_candidates": 0, "memories_reviewed": 0},
   "rigor": {"phase": "provisional|final", "prune_pressure": false, "prune_reason": "",

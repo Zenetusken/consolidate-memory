@@ -376,6 +376,25 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     if judged:
         out += _procedure_integrity_section(record)
 
+    # v0.3.0: domain / enrollment — the trust-boundary line the HTML masthead also
+    # carries. Absent on pre-0.3 records (legacy render is byte-identical).
+    ident = _dget(record, "identity")
+    if ident:
+        dom = _clean(ident.get("domain_id", "unknown")) or "unknown"
+        enrolled = _flag(ident.get("enrolled"))
+        xpa = _flag(ident.get("cross_project_allowed"))
+        if enrolled and xpa and dom != "unknown":
+            id_bits = [f"domain {dom}", "enrolled"]
+        else:
+            id_bits = [_c("LOCAL-ONLY", "yellow")]
+        rs = _clean(ident.get("registry_state", ""))
+        if rs and rs not in ("absent", "healthy"):
+            id_bits.append(_c(f"registry {rs}", "red"))
+        nconf = _num(ident.get("conflicts", 0))
+        if nconf:
+            id_bits.append(_c(f"{_g(nconf)} open conflict(s)", "yellow"))
+        out.append(_kv("IDENTITY", " · ".join(id_bits)))
+
     # Scope + Verification (aligned label column)
     s = _dget(record, "scope")
     out.append("")
@@ -883,6 +902,9 @@ def _demo_record() -> ms.CycleRecord:
     pass: an add, a correction, and a SKIPPED decision (so the skipped-row UI is visible)."""
     return {
         "project": "acme-api", "session": "a1b2c3d4",
+        "identity": {"domain_id": "personal", "enrolled": True,
+                     "registry_state": "healthy", "cross_project_allowed": True,
+                     "conflicts": 0},
         "scope": {"git_range": "9ed8d5c..HEAD", "git_commits": 7,
                   "session_candidates": 5, "memories_reviewed": 12},
         "rigor": {"phase": "final", "prune_pressure": False, "prune_reason": "",
@@ -914,7 +936,7 @@ def _demo_record() -> ms.CycleRecord:
         "cross_project": {"global_store_facts": 9,
                           "pulled": [{"name": "gh-pr-edit-broken-in-env", "scope": "user-global"}],
                           "promoted": [{"name": "gh-pr-edit-broken-in-env", "scope": "user-global"}],
-                          "refreshed": 1, "gc_removed": 2},
+                          "refreshed": 1, "held": 0, "gc_removed": 2},
         "network": {"basis": "≈ chars/4", "node_def": "stores", "trigger": "acme-api",
                     "nodes": [
                         {"node": "acme-api", "trigger": True, "always_loaded_tokens": 278,

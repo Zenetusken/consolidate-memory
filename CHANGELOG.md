@@ -5,6 +5,69 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.3.1] — 2026-09-01
+
+Patch on the 0.3.0 secure-default. The trust boundary does not change
+(unenrolled is still local-only). Recover and the secondary mutation paths
+fail closed, and the HTML/ASCII dashboards finally show domain, enrollment,
+registry health, and open conflicts.
+
+### Fixed — journal recover, delete fail-closed, migrate/repair isolation
+
+- **Recover re-verifies sources.** `recover_pending` re-checks journaled
+  source hashes before publishing a replace-mode dest. A dest that changed
+  after `prepare_temps` (a concurrent local edit) is refused; the journal is
+  not marked `complete`. Destinations that already match the recorded sha256
+  are treated as published (crash-idempotent).
+- **Deletes fail closed.** `_apply_deletes` errors (does not unlink) when the
+  preimage is empty or the live file is unreadable. A mismatch still does not
+  delete.
+- **Registry ops before dest publish.** `prevalidate_registry_ops` refuses
+  unknown or malformed typed ops before any file change. `transact` applies
+  registry ops, then verifies sources, then publishes, then deletes, then
+  COMMITs. `tombstone_delete` is a first-class journal op. Conflict rows
+  carry `domain_id` / `fact_id`.
+- **Repair-mirror stays in the current domain.** No fallback to
+  `<config>/memory`. Schema-v3 canonicals are validated; a work-tagged
+  legacy file cannot restamp a personal project's native store.
+- **Migrate apply is contained and one-shot.** Sources must sit under the
+  approved roots (`<config>/memory` and `domains/unknown/facts`); a second
+  `--apply` refuses until rollback or finalize. Rollback is all-or-nothing
+  (no partial restore of an edited dest). Plan and rollback files are
+  journal destinations. Finalize checks dest hashes against the rollback
+  record.
+- **Purge uses the saved native path** (`store_override=native`) instead of
+  guessing `native.parent.parent`. All-plugin-data `rmtree` no longer uses
+  `ignore_errors=True`.
+- **Catalogs list only `status: active`.** Tombstoned, superseded, and
+  expired facts are omitted. Schema-v3 files are validated on pull.
+  `applies_*` must be flow-lists (`[...]`), not scalars. Tombstone markdown
+  emits the ADR 011 key set.
+
+### Added — cycle-record identity, HTML/ASCII enrollment observability
+
+- **`identity` on the cycle record** (additive TypedDict). Phase-0 seed
+  snapshots `domain_id`, `enrolled`, `registry_state`,
+  `cross_project_allowed`, and the open-conflict count. No filesystem
+  paths — the HTML archive is often shared. Pre-0.3 records omit the key;
+  HTML falls back to live identity at render. SKILL schema block is pinned.
+- **ASCII dashboard** prints an `IDENTITY` line (domain · enrolled, or
+  `LOCAL-ONLY`; registry health and open conflicts when they fire).
+- **HTML archive** masthead shows the same identity. Unenrolled / registry /
+  conflict banners sit at the top. Cross-project movement (pulled /
+  promoted / refreshed / held / gc) is a chip strip in the Shared
+  Consciousness section — enrolled silence stays collapsed; unenrolled
+  with no movement is one quiet line.
+
+### Docs
+
+README: upgrading from v0.1.x → v0.3.0 (trust-boundary table +
+migrate-then-enroll order) and the v0.3.1 install / dashboard identity
+line. Public 1.0 stays HOLD.
+
+Existing 0.3.0 installs keep working (additive cycle-record key,
+fail-closed fixes). Backward-compatible ⇒ **patch**.
+
 ## [0.3.0] — 2026-09-01
 
 ### Breaking — unenrolled is local-only (ADR 008)

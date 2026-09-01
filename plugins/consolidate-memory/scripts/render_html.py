@@ -80,11 +80,14 @@ def assemble_cycles(record: dict, history: list) -> tuple:
     return (cycles[-_ARCHIVE_CAP:] if total > _ARCHIVE_CAP else cycles), total
 
 
-def build_html(record: dict, history: list, generated_at: str, diffs: "dict | None" = None) -> str:
+def build_html(record: dict, history: list, generated_at: str, diffs: "dict | None" = None,
+               identity: "dict | None" = None) -> str:
     """Embed the ARCHIVE (all logged cycles, capped) + the repo identity into the bundled template; the JS reads
-    `cycles`/`project`/`budgets`/`diffs` and renders either the archive index or a single dream selected by URL
+    `cycles`/`project`/`budgets`/`diffs`/`identity` and renders either the archive index or a single dream selected by URL
     `#sel=`. `diffs` (v0.1.32) maps a cycle's diff_key → its persisted memory diffs (the diff-modal); read by
-    main() so build_html stays PURE w.r.t. inputs (a smoke test exercises it + asserts the embedded round-trip)."""
+    main() so build_html stays PURE w.r.t. inputs (a smoke test exercises it + asserts the embedded round-trip).
+    `identity` (v0.3.0) is the LIVE StoreContext snapshot at render — the archive masthead; per-cycle
+    `identity` on a record (seeded Phase 0) is this-pass truth when present."""
     template = _TEMPLATE.read_text(encoding="utf-8")
     cycles, total = assemble_cycles(record, history)
     rec = record if isinstance(record, dict) else {}
@@ -103,10 +106,13 @@ def build_html(record: dict, history: list, generated_at: str, diffs: "dict | No
         "project": project,
         "generated_at": generated_at,
         "budgets": {"index": INDEX_TOKEN_BUDGET, "claude_md": CLAUDE_MD_TOKEN_BUDGET,
-                    "index_ceiling": INDEX_CEILING_TOKENS},   # v0.1.66 (Phase B): the hard ceiling, for the meter
+                    "index_ceiling": INDEX_CEILING_TOKENS,   # v0.1.66 (Phase B): the hard ceiling, for the meter
+                    "hook_warn": ms.HOOK_TOKEN_WARN,        # v0.3.0: fat-hook threshold, live (not a hardcoded copy)
+                    "cliff_near": int(ms.CLIFF_NEAR_FRACTION * 100)},
         "total": total,
         "cap": _ARCHIVE_CAP,
         "diffs": diffs if isinstance(diffs, dict) else {},
+        "identity": identity if isinstance(identity, dict) else {},
     }
     return template.replace(_PLACEHOLDER, _safe_embed(data))
 
@@ -203,10 +209,15 @@ def main(argv: list) -> int:
         return 1
 
     store = _store_for(args.store, args.project)
+    live_identity: dict = {}
     try:
-        from store_context import resolve_store as _rs_html, warn_unenrolled_share as _w_html
+        from store_context import (identity_snapshot as _id_html,
+                                   resolve_store as _rs_html,
+                                   warn_unenrolled_share as _w_html)
         _proj = Path(args.project).resolve() if args.project else Path.cwd()
-        _w_html(_rs_html(_proj))
+        _ctx_html = _rs_html(_proj)
+        _w_html(_ctx_html)
+        live_identity = _id_html(_ctx_html)
     except Exception:
         pass
     history = read_history(store)
@@ -235,7 +246,8 @@ def main(argv: list) -> int:
         frag = f"#sel={len(cycles) - 1}"
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    html = build_html(record, history, generated_at, read_diffs(store, cycles))
+    html = build_html(record, history, generated_at, read_diffs(store, cycles),
+                      identity=live_identity)
     out = Path(args.out) if args.out else _default_out(record, store)
     out.write_text(html, encoding="utf-8")
 
