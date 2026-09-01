@@ -238,8 +238,7 @@ live-reads leftover `~/.claude/memory` (enumerator *or* STALE/holder lookup),
 enroll keep-path does not trust mirror `domain:`, project/local
 `autoMemoryDirectory` cannot escape the tree, journal dest-publish + delete
 mismatch is complete-old, finalize is terminal, and the HTML no longer invents
-identity or labels unverifiable as dropped. `plugin.json` stays 0.3.2 until
-the release commit.
+identity or labels unverifiable as dropped.
 
 ## Install
 

@@ -1,6 +1,6 @@
 # Harness map — data sources, memory formats, verification recipes
 
-**v0.3.0.** Read this when you need the exact paths, file formats, or grep/git recipes for a
+**v0.3.3.** Read this when you need the exact paths, file formats, or grep/git recipes for a
 consolidation pass. The SKILL.md body covers the workflow; this is the lookup table.
 
 **Unenrolled is local-only (ADR 008):** a project that is not enrolled cannot
@@ -60,7 +60,8 @@ with both `/` AND `_` replaced by `-`, case preserved (e.g. `/home/you/project/D
 → `-home-you-project-Doc-Flo`; v0.1.17 — CC normalizes underscores too, verified on disk).
 Git worktrees and nested subdirectories of one repository share that store.
 `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME`, and `autoMemoryDirectory`
-(user/project/local/policy/`--settings`) remap it. `user-global` is **domain-global**
+(user/managed may name an explicit absolute dir; project/local must stay under
+`config_root` or the project tree) remap it. `user-global` is **domain-global**
 (ADR 003), not installation-global. Canonical facts live under
 `<config>/consolidate-memory/domains/<domain>/facts`. `cm project enroll --domain NAME`
 is the operator grant; a repo `.claude/settings.json` cannot enroll. `cm doctor` prints
