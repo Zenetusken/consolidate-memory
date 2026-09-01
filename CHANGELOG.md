@@ -107,10 +107,11 @@ version changes on `main`.
   advisory; `--apply` rereads + three-way classifies with the holder table.
   Collision-safe quarantine names: `native/quarantine/<stem>.<utc>.md`.
 - **Migrate dest collision / rollback bytes.** Existing dest refuses unless
-  `--on-existing keep-existing|replace-with-migrated`. `--keep legacy` clears
-  collisions when the primary origin is kept. Rollback restores prior dest
-  bytes. Apply uses the same schema codec as upsert (missing `scope` stays
-  not-pullable). Catalog `generate_catalog(..., overlay=)` sees staged temps.
+  `--on-existing keep-existing|replace-with-migrated|exclude`. `--keep legacy`
+  clears collisions when the primary origin is kept. Rollback restores prior
+  dest bytes, catalogs, and fact rows. Apply uses the same schema codec as
+  upsert (ADR 011 required fields). Catalog `generate_catalog(..., overlay=)`
+  sees staged temps.
 - **Untagged legacy is not ordinarily pullable** into a named domain. Pull
   uses `applies_from_fm` (`applies_any` / `applies_all` / `applies_exclude`);
   nested `applies.*` refuses that fact. Schema-v3 mirrors with a missing
@@ -128,20 +129,18 @@ version changes on `main`.
   `conflict_resolve`. Schema v3 writer requires the ADR 011 key set.
 
 Docs (README, SECURITY, SKILL, harness-map, CLAUDE, AGENTS, preflight, `cm` help)
-now describe **0.3.0 behavior**: unenrolled is local-only, Phase-1 `--pull` is the
+describe **0.3.0 behavior**: unenrolled is local-only, Phase-1 `--pull` is the
 documented enrolled-domain exception to "Phases 0–3 are read-only", `/cm-*` for
 marketplace users, `./cm` maintainer-only. POSIX mutation is fail-closed (no
 unlocked Windows fallback). Behavior break vs v0.2.1 unenrolled sharing is a
 **minor** bump under the pre-1.0 policy (`0.2.1 → 0.3.0`). Public 1.0 HOLD.
-`plugin.json` is **0.3.0** on this branch so a merge to `main` auto-updates
-installed plugins; `./release.sh --confirm` may tag an already-bumped version.
+`plugin.json` is **0.3.0**. Installed plugins auto-update at next Claude Code
+startup once this version is on `main`.
 
-**Still HOLD after merge (ops / ship):** signed tag + SBOM/provenance publisher
-(committed `release.yml` is the verify gate; `./release.sh --confirm` still
-cuts the GitHub Release); native-Windows mutation (POSIX fail-closed is the
-contract); GitHub `main` ruleset (ops); `0.3.0-rc.1` soak on a **copy** of a
-real 0.2.1 unknown-sharing fleet. Two-process barrier tests and vendored
-upgrade fixtures are in-scope for the remaining 0.3.0 code on this PR, not HOLD.
+**Residual HOLD (not this release):** signed SBOM/provenance publisher
+(committed `release.yml` is the verify-on-tag gate); native-Windows mutation
+(POSIX fail-closed is the contract); soak of a **copy** of a real 0.2.1
+unknown-sharing fleet.
 
 ## [0.2.1] — 2026-08-31
 
