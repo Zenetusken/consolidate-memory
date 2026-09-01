@@ -420,7 +420,9 @@ def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
         elif kind == "holder_delete":
             fid = str(op.get("fact_id") or "")
             pid = str(op.get("project_id") or "")
-            if fid and pid:
+            if fid and pid == "*":
+                conn.execute("DELETE FROM holders WHERE fact_id=?", (fid,))
+            elif fid and pid:
                 conn.execute("DELETE FROM holders WHERE fact_id=? AND project_id=?",
                              (fid, pid))
         elif kind == "project_alias":
@@ -641,11 +643,24 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
             kind = str(op["kind"])
             origin_dom = str(payload.get("origin_domain_id") or "")
             origin_pid = str(payload.get("origin_project_id") or "")
-            ctx_matches = (
-                ctx is not None
-                and (not origin_dom or origin_dom == ctx.domain_id)
-                and (not origin_pid or origin_pid == ctx.project_id)
-            )
+            dest_dom = str(payload.get("dest") or "")
+            if kind == "domain-transition":
+                # Domain is the thing this op changes. Match this project and
+                # either the origin or destination domain — never a foreign
+                # project's pending enroll, and never an unenroll after the
+                # operator has already enrolled elsewhere.
+                domains = {d for d in (origin_dom, dest_dom) if d}
+                ctx_matches = (
+                    ctx is not None
+                    and bool(origin_pid) and origin_pid == ctx.project_id
+                    and ctx.domain_id in domains
+                )
+            else:
+                ctx_matches = (
+                    ctx is not None
+                    and (not origin_dom or origin_dom == ctx.domain_id)
+                    and (not origin_pid or origin_pid == ctx.project_id)
+                )
             if ctx is not None and (origin_dom or origin_pid) and not ctx_matches:
                 continue
             has_reg = bool(payload.get("registry_ops") or payload.get("holders")

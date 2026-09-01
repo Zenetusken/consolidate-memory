@@ -1011,6 +1011,9 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
             future = apply_pointer(idx_text, ptr, name)
             adm = project_index(future)
             if status == "MISSING":
+                if path.exists():
+                    # Appeared after pre-lock classify — never clobber a local file (P0-4).
+                    continue
                 if not adm["admitted"]:
                     print(f"  ⚠ index admission refused for '{name}': {adm['reason']}",
                           file=sys.stderr)
@@ -1799,8 +1802,13 @@ def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> 
     (deleted test projects measured live in this fleet) — every count here silently
     included them. A mind with no plausible on-disk store now renders with a `?` and a
     footnote; the flag is display-only (see _mind_unresolved — report, never prune)."""
-    if all_domains or project_dir is None:
+    if all_domains:
         facts = global_facts()
+    elif project_dir is None:
+        # CLI always passes a dir (or --all-domains). A no-arg call against a
+        # patched GLOBAL still enumerates that fixture; production no-dir
+        # must not dump every domain.
+        facts = global_facts() if _global_is_fixture() else []
     else:
         from store_context import resolve_store as _rs_net
         facts = facts_for_context(_rs_net(Path(project_dir)))
@@ -2129,7 +2137,7 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     removed = 0
     removed_frozen = 0
     if apply and (orphans or frozen):
-        from control_plane import transact, _file_hash as _fh_gc
+        from control_plane import transact, _file_hash as _fh_gc, stable_fact_id as _sf_gc
         idxp = store / "MEMORY.md"
         names = list(orphans) + list(frozen)
         expected: dict = {}
@@ -2148,18 +2156,21 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             idx = idxp.read_text(encoding="utf-8", errors="replace") if idxp.exists() else (
                 "# Memory Index\n")
             deletes = []
+            ops = []
             for name in names:
                 p = store / f"{name}.md"
                 if p.exists():
                     deletes.append(str(p))
                 idx = "\n".join(
                     ln for ln in idx.splitlines() if f"]({name}.md)" not in ln)
+                fid = _sf_gc(_ctx_gc.domain_id, name)
                 conn.execute(
-                    "DELETE FROM holders WHERE project_id=? AND fact_id IN "
-                    "(SELECT fact_id FROM facts WHERE stem=? AND domain_id=?)",
-                    (_ctx_gc.project_id, name, _ctx_gc.domain_id))
+                    "DELETE FROM holders WHERE project_id=? AND fact_id=?",
+                    (_ctx_gc.project_id, fid))
+                ops.append({"op": "holder_delete", "fact_id": fid,
+                            "project_id": _ctx_gc.project_id})
             temps[str(idxp)] = idx.rstrip() + "\n"
-            return {"deletes": deletes, "removed": len(deletes)}
+            return {"deletes": deletes, "removed": len(deletes), "registry_ops": ops}
 
         try:
             transact(_ctx_gc, "gc-apply",
@@ -2707,7 +2718,15 @@ def fleet_workflows(project_dir: Path) -> dict:
     the report renders the denominator loudly — fleet absence is never inferred from missing
     instrumentation (the zero-reads bias, transposed). Decisions stay report-then-apply."""
     project_dir = project_dir.resolve()
-    stores = _log_nodes()
+    from store_context import resolve_store as _rs_wf
+    _ctx_wf = _rs_wf(project_dir)
+    if _global_is_fixture():
+        stores = _log_nodes()
+    elif getattr(_ctx_wf, "cross_project_allowed", False):
+        allowed = {s.resolve() for s in _same_domain_stores(_ctx_wf)}
+        stores = [s for s in _log_nodes() if s.resolve() in allowed]
+    else:
+        stores = []
     trig = project_store(project_dir)
     if trig.is_dir() and trig.resolve() not in {s.resolve() for s in stores}:
         stores.append(trig)
@@ -3114,7 +3133,12 @@ def fleet_staleness(project_dir: Path) -> dict:
     ledger_nodes = {str(r.get("node", "")) for r in _ledger_rows()}
     now_ep = datetime.now(timezone.utc).timestamp()
     body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts}
-    stores = _all_stores()
+    if _global_is_fixture():
+        stores = _all_stores()
+    elif getattr(trig_ctx, "cross_project_allowed", False):
+        stores = _same_domain_stores(trig_ctx)
+    else:
+        stores = []
     if trig_store.resolve() not in {s.resolve() for s in stores}:
         # PR-#93 review F1 (two reviewers, convergent): the TRIGGER appears UNCONDITIONALLY — an
         # absent/empty trigger store is the maximally-starved row (never dreamed, absorbed nothing),

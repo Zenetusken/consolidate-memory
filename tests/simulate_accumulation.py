@@ -1410,6 +1410,9 @@ def run() -> None:
                 [sys.executable, str(OPS), "migrate", str(pAD),
                  "--assign", "legacy-ad", "--domain", "personal"],
                 env=envAD, capture_output=True, text=True, check=False)
+            subprocess.run([sys.executable, str(OPS), "project", "enroll",
+                            str(pAD), "--domain", "personal", "--apply"],
+                           env=envAD, capture_output=True, text=True, check=False)
             app = subprocess.run([sys.executable, str(OPS), "migrate", str(pAD), "--apply"],
                                  env=envAD, capture_output=True, text=True, check=False)
             destAD = (homeAD / ".claude" / "consolidate-memory" / "domains"

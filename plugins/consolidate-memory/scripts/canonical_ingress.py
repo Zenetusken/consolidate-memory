@@ -412,7 +412,8 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
             idx = "\n".join(ln for ln in idx.splitlines() if f"]({stem}.md)" not in ln)
             temps[str(idxp)] = idx.rstrip() + "\n"
         return {"stem": stem, "tombstoned": True, "deletes": deletes,
-                "tombstones": [(fid, stem, ctx.domain_id, reason, replacement_id, grace_until)]}
+                "tombstones": [(fid, stem, ctx.domain_id, reason, replacement_id, grace_until)],
+                "registry_ops": [{"op": "holder_delete", "fact_id": fid, "project_id": "*"}]}
 
     try:
         out = transact(ctx, "forget", {"stem": stem, "reason": reason}, mutate)

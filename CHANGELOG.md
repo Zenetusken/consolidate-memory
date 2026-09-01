@@ -92,6 +92,11 @@ version changes on `main`.
   + confirmation phrase). Export tar members match the sha256 manifest. SKILL /
   harness-map no longer instruct writing live `~/.claude/memory/` as the canonical
   plane.
+- Pull `MISSING` will not overwrite a local file that appeared after classify.
+  Domain-transition recovery matches this project plus origin/dest domain (not a
+  later enrollment). Forget/GC journal `holder_delete`. `resolve` / `repair-mirror`
+  / migrate `--apply` require enrollment. `--workflows` / `--staleness` / `--network`
+  without `--all-domains` stay current-domain.
 
 Docs (README, SECURITY, SKILL, harness-map, CLAUDE, AGENTS, preflight, `cm` help)
 now describe **0.2.2 behavior**: unenrolled is local-only, Phase-1 `--pull` is the

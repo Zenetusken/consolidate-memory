@@ -4210,7 +4210,7 @@ with _Env73() as _e:
         "  projects: [ghost-proj, proj73]\n  type: feedback\n---\nbody\n", encoding="utf-8")
     _nout = _io73.StringIO()
     with _ctx73.redirect_stdout(_nout):
-        sg.network()
+        sg.network(_e.proj)
     _no = _nout.getvalue()
     check("v0.1.76/h: network() flags a DEAD provenance mind with '?' + footnote (display-only; the "
           "live mind — whose slug store exists — is unflagged)",
@@ -4637,6 +4637,10 @@ with _tf73.TemporaryDirectory() as _td81:
     _oldH81b, _oldG81b = _osB.environ.get("HOME"), sg.GLOBAL
     _osB.environ["HOME"] = str(_h81); sg.GLOBAL = _g81
     try:
+        _stale81u = {d["node"]: d for d in sg.fleet_staleness(_trig81)["nodes"]}
+        check("0.2.2: unenrolled --staleness is local-only (sibling enrolled stores stay off the fleet)",
+              not any(k.endswith("src-proj") for k in _stale81u))
+        _enroll_personal(_trig81)
         _stale81 = {d["node"]: d for d in sg.fleet_staleness(_trig81)["nodes"]}
     finally:
         sg.GLOBAL = _oldG81b
@@ -6781,6 +6785,72 @@ with _Env73() as _e_rec:
     check("0.2.2: recover_pending applies registry_ops when publishes is empty",
           _oid_rec in _got_rec and _st_rec == "complete")
 
+with _Env73() as _e_miss:
+    _ctx_miss = sc.resolve_store(_e_miss.proj)
+    _dest_miss = _ctx_miss.native_memory_dir / "appeared.md"
+    _dest_miss.write_text(
+        "---\nname: appeared\ndescription: local\nmetadata:\n  node_type: memory\n"
+        "  type: project\n---\nKEEP LOCAL\n", encoding="utf-8")
+    _want_miss = _fact73("appeared", "from canon")
+    _jobs_miss = [("appeared", sg._frontmatter(_want_miss), "MISSING",
+                   _dest_miss, _want_miss)]
+    sg._execute_pull_writes(_ctx_miss, _ctx_miss.native_memory_dir,
+                            _jobs_miss, None, None)
+    check("0.2.2: pull MISSING does not overwrite a local file that appeared after classify",
+          "KEEP LOCAL" in _dest_miss.read_text(encoding="utf-8")
+          and "global_ref:" not in _dest_miss.read_text(encoding="utf-8"))
+
+with _tf_xp.TemporaryDirectory() as _td_resu:
+    _home_resu = Path(_td_resu) / "home"; _home_resu.mkdir()
+    _proj_resu = Path(_td_resu) / "proj"; _proj_resu.mkdir()
+    (_proj_resu / "a.py").write_text("x=1\n", encoding="utf-8")
+    _old_resu = _os_xp.environ.get("HOME")
+    _os_xp.environ["HOME"] = str(_home_resu)
+    try:
+        _err_resu = _io73.StringIO()
+        with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_err_resu):
+            _rc_resu = cmo.main(["resolve", "x", "--keep-canonical",
+                                 "--project", str(_proj_resu)])
+        _err_rmu = _io73.StringIO()
+        with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_err_rmu):
+            _rc_rmu = cmo.main(["repair-mirror", "x", "--project", str(_proj_resu)])
+        check("0.2.2: resolve/repair-mirror refuse when unenrolled",
+              _rc_resu == 2 and "enrollment" in _err_resu.getvalue()
+              and _rc_rmu == 2 and "enrollment" in _err_rmu.getvalue())
+    finally:
+        if _old_resu is None:
+            _os_xp.environ.pop("HOME", None)
+        else:
+            _os_xp.environ["HOME"] = _old_resu
+
+with _Env73() as _e_dt:
+    _ctx_dt = sc.resolve_store(_e_dt.proj)
+    _j_dt = cp.connect_journal(_ctx_dt)
+    _j_dt.executescript(cp.JOURNAL_ONLY_SQL)
+    _r_dt = cp.connect(cp.db_path(_ctx_dt))
+    _payload_dt = {
+        "origin_domain_id": "unknown",
+        "origin_project_id": _ctx_dt.project_id,
+        "dest": _ctx_dt.domain_id,
+        "publishes": [],
+        "deletes": [],
+        "registry_ops": [{"op": "migration_state_set", "mode": "dual-read"}],
+    }
+    _oid_dt = cp.journal_insert(_j_dt, "domain-transition", _payload_dt, "prepare_temps")
+    _got_dt = cp.recover_pending(_j_dt, ctx=_ctx_dt, registry_conn=_r_dt)
+    _st_dt = _j_dt.execute(
+        "SELECT status FROM journal WHERE op_id=?", (_oid_dt,)).fetchone()["status"]
+    _payload_fx = dict(_payload_dt)
+    _payload_fx["origin_project_id"] = "p_" + ("ab" * 16)
+    _oid_fx = cp.journal_insert(_j_dt, "domain-transition", _payload_fx, "prepare_temps")
+    _got_fx = cp.recover_pending(_j_dt, ctx=_ctx_dt, registry_conn=_r_dt)
+    _st_fx = _j_dt.execute(
+        "SELECT status FROM journal WHERE op_id=?", (_oid_fx,)).fetchone()["status"]
+    _j_dt.close(); _r_dt.close()
+    check("0.2.2: domain-transition recover matches dest domain; foreign project stays pending",
+          _oid_dt in _got_dt and _st_dt == "complete"
+          and _oid_fx not in _got_fx and _st_fx == "pending")
+
 # dest-hash mismatch must not delete (ADR 010)
 with _tf_xp.TemporaryDirectory() as _td_hash:
     _p_hash = Path(_td_hash) / "keep.md"
@@ -7218,6 +7288,8 @@ with _tf_xp.TemporaryDirectory() as _td_m:
             _rc_as = cmo.cmd_migrate(_nsm)
         _nsm.assign = None
         _nsm.apply = True
+        with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+            cmo.main(["project", "enroll", str(_proj_m), "--domain", "personal", "--apply"])
         _buf_app2 = _io73.StringIO()
         with _ctx73.redirect_stdout(_buf_app2):
             _rc_app2 = cmo.cmd_migrate(_nsm)

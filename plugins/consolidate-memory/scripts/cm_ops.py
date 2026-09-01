@@ -307,6 +307,10 @@ def cmd_resolve(args: argparse.Namespace) -> int:
     except WriteRefused as e:
         print(f"resolve: {e}", file=sys.stderr)
         return 2
+    if not getattr(ctx, "cross_project_allowed", False):
+        print("resolve: cross-project writes require enrollment into a named domain "
+              "(cm project enroll --domain NAME --apply)", file=sys.stderr)
+        return 2
     try:
         stem = validate_fact_stem(args.fact)
         native = safe_child(ctx.native_memory_dir, f"{stem}.md")
@@ -373,6 +377,10 @@ def cmd_repair_mirror(args: argparse.Namespace) -> int:
         assert_writable(ctx)
     except WriteRefused as e:
         print(f"repair-mirror: {e}", file=sys.stderr)
+        return 2
+    if not getattr(ctx, "cross_project_allowed", False):
+        print("repair-mirror: cross-project writes require enrollment into a named domain "
+              "(cm project enroll --domain NAME --apply)", file=sys.stderr)
         return 2
     try:
         stem = validate_fact_stem(args.fact)
@@ -566,6 +574,10 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                   f"({len(unresolved)}). Assign or exclude each first "
                   "(ADR 013; no silent legacy-unassigned).", file=sys.stderr)
             return 2
+        if not getattr(ctx, "cross_project_allowed", False):
+            print("migrate apply: cross-project writes require enrollment into a named domain "
+                  "(cm project enroll --domain NAME --apply)", file=sys.stderr)
+            return 2
         to_copy = []
         for stem, row in sorted((plan.get("facts") or {}).items()):
             dest_dom = str((row or {}).get("assignment") or "")
@@ -618,7 +630,8 @@ def cmd_migrate(args: argparse.Namespace) -> int:
             return {"copied": [c["path"] for c in copied]}
 
         try:
-            transact(ctx, "migrate-apply", {"n": len(to_copy)}, mutate)
+            transact(ctx, "migrate-apply", {"n": len(to_copy)}, mutate,
+                     extra_domains=sorted({d for _, _, d, _ in to_copy}))
         except WriteRefused as e:
             print(f"migrate apply: {e}", file=sys.stderr)
             return 2
