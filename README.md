@@ -185,7 +185,7 @@ normal plugin auto-update — if the line appears after an update, that's this f
 
 ## Install
 
-**v0.2.2** (domain isolation + StoreContext + `cm project enroll`). This ships as a
+**v0.3.0** (domain isolation + StoreContext + `cm project enroll`). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
 ```text
@@ -220,7 +220,7 @@ memory this plugin does not own. Domain canonicals live under
 read-only migration source. Scoped purge commands are the right tool; hand-deleting
 the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
-### Known limitations (v0.2.2)
+### Known limitations (v0.3.0)
 
 - **Unenrolled projects are local-only.** They cannot create or pull cross-project
   canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain

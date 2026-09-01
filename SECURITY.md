@@ -67,7 +67,7 @@ at the repo root) is **gitignored and never published** — verify with
   that may inject at most one read-only advisory line — and no MCP servers and no
   background processes: skill + scripts + that one advisory hook.
 
-## Threat model (v0.2.2)
+## Threat model (v0.3.0)
 
 These attacker stories are what ADRs 008–016 close. They are not a pentest
 report; they are the stories `cm doctor` / mutating commands must fail closed on.
@@ -86,7 +86,7 @@ report; they are the stories `cm doctor` / mutating commands must fail closed on
 - **Migrate rollback of an edited file.** Hash-aware: edited-after-apply files
   are conflicts, never deleted.
 
-## Known limitations (v0.2.2)
+## Known limitations (v0.3.0)
 
 - Unenrolled projects are **local-only** (ADR 008). They cannot create or pull
   cross-project canonicals. Enroll into a named domain to share.

@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.2.2** (2026-08-31). `CLAUDE.md` holds the
+verified against the live tree at **v0.3.0** (2026-09-01). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -16,7 +16,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.2.1 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal, sole canonical writer, tiered context-budget accounting. Unenrolled projects are local-only. |
+| `consolidate-memory` | 0.3.0 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal, sole canonical writer, tiered context-budget accounting. Unenrolled projects are local-only. |
 | `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -40,13 +40,13 @@ python3 tests/validate_manifests.py             # portable manifest checker (it 
 claude plugin validate ./plugins/consolidate-memory --strict   # when iterating on the published artifact
 ```
 
-CI (`.github/workflows/ci.yml`, one workflow, 3 jobs) runs the same gates: `test`
+CI (`.github/workflows/ci.yml`, one workflow, **4** jobs) runs the same gates: `test`
 (smoke + manifests + sim on Python **3.8–3.13**, with 3.8/3.9 pinned to
-ubuntu-22.04, **no pip install — that IS the stdlib-only proof**), `typecheck`
-(mypy, dev-only label), `manifest` (`claude plugin validate --strict`, a real
-blocking gate — no continue-on-error).
+ubuntu-22.04, **no pip install — that IS the stdlib-only proof**), `test-macos`
+(Python 3.12), `typecheck` (mypy, dev-only label), `manifest` (`claude plugin
+validate --strict`, a real blocking gate — no continue-on-error).
 
-**Dogfood / dev install**: `claude plugin marketplace add .` then
+**Dogfood / dev install**: `claude plugin marketplace add ./` then
 `claude plugin install consolidate-memory@zenetusken-plugins`. Script edits are
 live on the next run (exec'd fresh); SKILL.md body edits need `/reload-plugins` or
 a new session; `plugin.json`/`marketplace.json` edits need
@@ -200,11 +200,13 @@ design.
   stable/committed-API release → major (→ 1.0.0); (2) breaks an existing install
   (incompatible cycle-record schema, removed/renamed script or CLI flag, changed
   manifest/marketplace contract) → minor; (3) otherwise backward-compatible
-  additive change → patch. Every release since v0.1.1 has been a patch.
+  additive change → patch. Releases v0.1.1–v0.2.1 were patches. **v0.3.0 is the
+  first minor** (removes v0.2.1 unenrolled A→B sharing).
 - **Author the CHANGELOG `## [X.Y.Z]` section first** — it is the single source of
-  truth. Then `./release.sh` (dry-run) → `./release.sh --confirm` (sets
-  plugin.json from the CHANGELOG, validates, commits `release: vX.Y.Z`, pushes,
-  tags, cuts the GH Release). `--expect patch|minor|major` asserts the computed
+  truth. Then `./release.sh` (dry-run) → `./release.sh --confirm` (if
+  plugin.json already matches CHANGELOG, tags that HEAD; otherwise sets
+  plugin.json, validates, commits `release: vX.Y.Z`, pushes, tags, cuts the
+  GH Release). `--expect patch|minor|major` asserts the computed
   bump matches intent. It refuses a non-forward/multi-step version, an unfilled
   CHANGELOG stub, or a dirty/out-of-sync tree. (`release.sh` is a local,
   gitignored maintainer artifact — never published.)

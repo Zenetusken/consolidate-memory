@@ -5,7 +5,7 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
-## [0.2.2] — 2026-08-31
+## [0.3.0] — 2026-09-01
 
 ### Breaking — unenrolled is local-only (ADR 008)
 
@@ -20,7 +20,7 @@ version changes on `main`.
 
 ### Added — ADRs 008–016, identity types, admin commands
 
-- ADRs 008–016 freeze the 0.2.2 contract (local-only unknown, registry health,
+- ADRs 008–016 freeze the 0.3.0 contract (local-only unknown, registry health,
   journal v3 dest-verify-before-delete, schema v3 codec, domain transition,
   staged migration, Phase-1 sync exception, current-domain reports, POSIX mutation).
 - `identity.CanonicalRef` + `StoreContext.registry_state` /
@@ -101,18 +101,20 @@ version changes on `main`.
   (symlink/autofs on GH `macos-latest`).
 
 Docs (README, SECURITY, SKILL, harness-map, CLAUDE, AGENTS, preflight, `cm` help)
-now describe **0.2.2 behavior**: unenrolled is local-only, Phase-1 `--pull` is the
+now describe **0.3.0 behavior**: unenrolled is local-only, Phase-1 `--pull` is the
 documented enrolled-domain exception to "Phases 0–3 are read-only", `/cm-*` for
 marketplace users, `./cm` maintainer-only. POSIX mutation is fail-closed (no
-unlocked Windows fallback). Behavior break vs v0.2.1 unenrolled sharing;
-operator-chosen **patch** vehicle (0.2.2, not 0.3.0). Public 1.0 HOLD.
+unlocked Windows fallback). Behavior break vs v0.2.1 unenrolled sharing is a
+**minor** bump under the pre-1.0 policy (`0.2.1 → 0.3.0`). Public 1.0 HOLD.
+`plugin.json` is **0.3.0** on this branch so a merge to `main` auto-updates
+installed plugins; `./release.sh --confirm` may tag an already-bumped version.
 
-**Still HOLD after this PR (Stage 11b/12):** signed tag + SBOM/provenance
-publisher (committed `release.yml` is the verify gate; `./release.sh --confirm`
-still cuts the GitHub Release); native-Windows CI job; two-process barrier
-classify/lock race in CI; upgrade-fixture job; GitHub `main` ruleset (ops);
-`0.2.2-rc.1` matrix on a real 0.2.1 unknown-sharing fleet. `plugin.json` stays
-**0.2.1** until `./release.sh`.
+**Still HOLD after merge (ops / ship):** signed tag + SBOM/provenance publisher
+(committed `release.yml` is the verify gate; `./release.sh --confirm` still
+cuts the GitHub Release); native-Windows mutation (POSIX fail-closed is the
+contract); GitHub `main` ruleset (ops); `0.3.0-rc.1` soak on a **copy** of a
+real 0.2.1 unknown-sharing fleet. Two-process barrier tests and vendored
+upgrade fixtures are in-scope for the remaining 0.3.0 code on this PR, not HOLD.
 
 ## [0.2.1] — 2026-08-31
 
