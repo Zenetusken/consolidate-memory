@@ -54,21 +54,32 @@ import render_dashboard as rd  # noqa: E402  (_persist — Probe I)
 
 # ── fact synthesis ────────────────────────────────────────────────────────────
 def _fact(name: str, scope: str, stacks: str = "", desc: str = "") -> str:
-    """A global-store fact file, in the live frontmatter schema."""
+    """A global-store fact file, in the live schema-v3 envelope."""
+    from fact_schema import stable_fact_id
     desc = desc or f"recall key for {name} — surfaces when a task mentions {name.replace('-', ' ')}"
+    now = "2026-09-01T00:00:00Z"
+    applies = f"[{stacks}]" if stacks else "[]"
     fm = [
         "---",
+        "schema_version: 3",
+        f"fact_id: {stable_fact_id('personal', name)}",
         f"name: {name}",
         f"description: {desc}",
         "domain: personal",
+        "sensitivity: internal",
+        f"scope: {scope}",
+        "status: active",
+        f"applies_any: {applies}",
+        "applies_all: []",
+        "applies_exclude: []",
+        f"content_modified: {now}",
+        f"last_observed_at: {now}",
         "metadata:",
         "  node_type: memory",
         "  type: reference",
-        f"  scope: {scope}",
     ]
     if stacks:
-        fm.append(f"  stacks: [{stacks}]")
-    fm.append("  projects: []")
+        fm.append(f"stacks: [{stacks}]")
     fm.append("---")
     fm.append("")
     # Pad the body so byte growth is realistic (a real fact is a paragraph, not a word).
@@ -562,9 +573,10 @@ def run() -> None:
         def _local_fact(stem: str, scope: str, stacks: str = "") -> None:
             """Write a project-AUTHORED local fact (NO global_ref) + its index pointer into beta's store."""
             lines = ["---", f"name: {stem}", f"description: a local lesson about {stem}",
-                     "metadata:", "  node_type: memory", "  type: feedback", f"  scope: {scope}"]
+                     f"scope: {scope}",
+                     "metadata:", "  node_type: memory", "  type: feedback"]
             if stacks:
-                lines.append(f"  stacks: [{stacks}]")
+                lines.append(f"stacks: [{stacks}]")
             lines += ["---", "", f"The durable local fact {stem}.", ""]
             (pstore / f"{stem}.md").write_text("\n".join(lines), encoding="utf-8")
             idx = pstore / "MEMORY.md"
@@ -580,7 +592,15 @@ def run() -> None:
         _promote(home, promo, "rag-chunk-overlap")
         created = (g / "rag-chunk-overlap.md").exists()
         origin_is_mirror = "global_ref:" in _bytes("rag-chunk-overlap")
-        prov_has_beta = "beta" in ms._frontmatter((g / "rag-chunk-overlap.md").read_text(encoding="utf-8")).get("projects", "")
+        import control_plane as _cpK
+        _connK = _cpK.connect(_cpK.db_path(_scK.resolve_store(promo, environ=envK)))
+        try:
+            _fidK = _cpK.stable_fact_id("personal", "rag-chunk-overlap")
+            prov_has_beta = _connK.execute(
+                "SELECT 1 FROM holders WHERE fact_id=?", (_fidK,)
+            ).fetchone() is not None
+        finally:
+            _connK.close()
         before_pull = _bytes("rag-chunk-overlap")   # the load-bearing invariant: a follow-up --pull is …
         _pull(home, promo)
         after_pull = _bytes("rag-chunk-overlap")     # … in-sync — the post-provenance mirror is NOT rewritten

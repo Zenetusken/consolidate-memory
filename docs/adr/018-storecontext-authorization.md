@@ -23,29 +23,34 @@ project's `projects/<slot>/memory`, domain canonicals, and plugin-data.
 2. Linked worktree: the administrative directory's `gitdir` file must resolve
    to this worktree's `.git` gitfile. `commondir` must resolve inside the
    owning repository's main `.git`.
-3. Submodule: `gitdir` is contained in `<super>/.git/modules/` and the
-   worktree is contained in the super's working tree. A `gitdir` backlink,
-   when present, must match this gitfile.
+3. Submodule: `gitdir` is `<super>/.git/modules/<rel>` where `<rel>` is the
+   worktree path relative to the super. A `gitdir` backlink, when present,
+   must match this gitfile.
 4. Disagreement ⇒ skip this `.git` (continue the walk). Do not inherit the
    victim identity.
 
 For `mem_dir_source in ("project", "local")`:
 
 ```text
-allow:  inside the project tree, or exactly this project's default native
+allow:  exact current-project native, in-tree directory that is not a
+        protected config-root path, or operator grant
+        (plugin-data/store-grants.json via cm project grant-native)
 deny:   other projects/<slot>/memory, domain canonicals, plugin-data,
         any other config-root path
 ```
 
-User and managed settings may still name an absolute directory.
+User and managed settings may still name an absolute directory. When the git
+root is `$HOME`, `~/.claude/settings.json` is not treated as project settings.
+
+Submodule gitdirs must match the worktree's modules-relative path. A `.git`
+symlink (file or directory) is never Git.
 
 ## Alternatives
 
-- Operator-grant store for cross-project `autoMemoryDirectory`. Deferred to
-  0.4.0; this slice closes the repository-controlled attack without new
-  storage.
 - Keep path-shape Git checks. Rejected: the worktree-shaped pointer was the
   remaining steal.
+- Allow any in-tree path even when it resolves into config-root. Rejected:
+  `$HOME` as a git repo would authorize every `projects/<slot>/memory`.
 
 ## Consequences
 
@@ -57,6 +62,5 @@ another config-root slot fail closed (`write_allowed` false).
 
 ## Revisit trigger
 
-Reopen when an operator-enrolled per-project namespace is required, or if
-Claude documents a Git identity we should adopt instead of filesystem
-discovery.
+Reopen if Claude documents a Git identity we should adopt instead of
+filesystem discovery.

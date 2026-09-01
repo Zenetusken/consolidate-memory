@@ -92,10 +92,12 @@ report; they are the stories `cm doctor` / mutating commands must fail closed on
   cross-project canonicals. Enroll into a named domain to share.
 - `forget` is **lazy acknowledgment**: other projects drop the mirror on their
   next `--pull` / `--gc --apply`. Offline clones keep bytes until they run.
-- Completed `journal.sqlite` rows from before 0.3.4 may still contain fact
-  bodies (`bytes_b64`). New operations do not.
+- Completed `journal.sqlite` rows from before 0.3.5 may still contain fact
+  bodies (`bytes_b64` / `text`) until `cm journal compact` (also run from
+  `cm data compact`). New operations do not. Export archives a redacted copy.
 - A crafted project/local `autoMemoryDirectory` cannot select another project's
-  store; user/managed settings may still name an absolute dir.
+  store; a dedicated namespace requires `cm project grant-native`. User/managed
+  settings may still name an absolute dir.
 - A corrupt/locked `control.sqlite` **refuses mutations and cross-project reads**.
   The SessionStart beacon stays silent on registry failure.
 - Public 1.0 remains HOLD.

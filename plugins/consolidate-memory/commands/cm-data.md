@@ -9,6 +9,8 @@ Operational data lives under plugin-data. Native `~/.claude/projects/<slug>/memo
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data inventory --project .
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data export --project . --dest /tmp/cm-export
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data compact --project .
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py journal inventory --project .
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py journal compact --project . --apply --confirm journal-compact
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope managed-mirrors --project .
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope managed-mirrors --apply --confirm purge-managed-mirrors --project .
 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py data purge --scope project-ops --apply --confirm purge-project-ops --project .

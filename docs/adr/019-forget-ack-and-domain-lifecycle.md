@@ -34,10 +34,12 @@ parses opening frontmatter only.
 transaction as `fact_upsert`.
 
 Domains have a lifecycle row: `active | deleting | deleted` (missing =
-active). Domain purge and all-plugin-data purge set `deleting` first; pull,
-canonical upsert, and forget refuse while `deleting` or `deleted`. Revoke
-uses the recorded `project_id` even when `resolve_store` would hash a
-different identity. Mark `deleted` only after the purge transact succeeds.
+active). Domain purge and all-plugin-data purge set `deleting` first under
+every enrolled project lock; pull, canonical upsert, forget, and `transact`
+refuse while `deleting` or `deleted`. Revoke builds StoreContexts from
+registry rows (recorded `project_id` + native store; never native-as-root).
+Mirrors are revoked or quarantined and native pointers verified gone in the
+same coordinator transact that deletes canonicals and marks `deleted`.
 
 Capability detection failure **holds** applicability-gated facts (does not
 treat `applies_match` as true).

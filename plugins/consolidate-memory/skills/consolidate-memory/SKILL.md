@@ -701,12 +701,13 @@ placing each fact in its tier and optimizing it for how that tier loads:
   schema, and **invest in the `description:` as a recall key** — it becomes the
   always-loaded index hook, so phrase it as the task-context that should cue a future
   session to read this fact, not a terse summary, or the agent won't know to open it.
-  Link related facts with `[[name]]`; pick the right `type`. Then add its one-line
-  pointer to the index — **keep the pointer's hook a distilled cue ≤ ~60 est tok
-  (`HOOK_TOKEN_WARN`, v0.1.66)**: the `description:` stays the full recall key, but the
-  index LINE you write from it must not restate body content (a fat hook taxes every
-  session; `sync_global` lints its own written pointers the same way — the measured
-  offenders were 116/141-tok status-paragraphs-as-hooks). **Stamp `originSessionId` (v0.1.43) for a SESSION-DERIVED fact** — from the `sessionId`
+  Link related facts with `[[name]]`; pick the right `type`. Publish the fact **and**
+  its index pointer through `cm local upsert` (below) — **keep the pointer's hook a
+  distilled cue ≤ ~60 est tok (`HOOK_TOKEN_WARN`, v0.1.66)**: the `description:` stays
+  the full recall key, but the index LINE written from it must not restate body content
+  (a fat hook taxes every session; `sync_global` lints its own written pointers the same
+  way — the measured offenders were 116/141-tok status-paragraphs-as-hooks). **Stamp
+  `originSessionId` (v0.1.43) for a SESSION-DERIVED fact** — from the `sessionId`
   that `extract_signals` (Phase 2) now attaches to the signal this fact came from (the session that MOTIVATED it,
   which on a multi-session window may be a PRIOR session, NOT the active dream). OMIT it for a git/commit-derived
   project fact (no motivating session). This is the producer the schema always assumed but never had.
@@ -737,6 +738,13 @@ placing each fact in its tier and optimizing it for how that tier loads:
   Record each promotion in `cross_project.promoted` (name + scope), and in that entry's
   **`reason`** capture the **deciding gate + the concrete other project named for G2.3**
   (the promotion cascade — Phase 2), so the scope decision is auditable.
+- **Project-local facts** — one writer: `cm local upsert` / `update` / `archive` /
+  `forget` / `rebuild-index`. Same codec, secret check, exact native 200-line/25KB
+  admission, and journaled fact+pointer as the canonical writer. Do **not** hand-edit
+  a fact file and its `MEMORY.md` pointer as two untracked steps.
+  ```bash
+  CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py local upsert STEM --file PATH --project .
+  ```
 - **Cite** each new/changed entry with the commit SHA or session basename it came
   from, so a future pass can trace it.
 

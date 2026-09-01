@@ -48,6 +48,23 @@ def check(name: str, cond: bool) -> None:
         print(f"  ✗ {name}")
 
 
+def _v3_canon(stem: str, domain: str = "personal", body: str = "body\n",
+              scope: str = "user-global", description: str = "d") -> str:
+    """Valid active schema-v3 canonical body for production-shaped fixtures."""
+    from fact_schema import stable_fact_id
+    fid = stable_fact_id(domain, stem)
+    now = "2026-09-01T00:00:00Z"
+    if not str(body).endswith("\n"):
+        body = str(body) + "\n"
+    return (
+        f"---\nschema_version: 3\nfact_id: {fid}\nname: {stem}\n"
+        f"description: {description}\ndomain: {domain}\nsensitivity: internal\n"
+        f"scope: {scope}\nstatus: active\n"
+        f"applies_any: []\napplies_all: []\napplies_exclude: []\n"
+        f"content_modified: {now}\nlast_observed_at: {now}\n---\n{body}"
+    )
+
+
 def _enroll_personal(project_dir: Path) -> None:
     """ADR 008: --pull/--promote require enrollment. Tests that exercise pull must enroll."""
     import store_context as _sc_e
@@ -4741,8 +4758,7 @@ with _tf73.TemporaryDirectory() as _td81:
             _osB.environ["HOME"] = _oldH81e
     _df81.mkdir(parents=True, exist_ok=True)
     for _n81 in ("g-one", "g-two"):
-        (_df81 / f"{_n81}.md").write_text(f"---\nname: {_n81}\ndescription: \"d\"\ndomain: personal\nmetadata:\n"
-                                          f"  scope: user-global\n  type: feedback\n---\nbody\n", encoding="utf-8")
+        (_df81 / f"{_n81}.md").write_text(_v3_canon(_n81), encoding="utf-8")
     _r = _beacon81(_h81, _p81)
     check("v0.1.81: a BEHIND store gets exactly ONE factual line — token-bounded, no-cache basis "
           "labeled, no imperative 'always/never' phrasing (context-injection guidance)",
@@ -4804,16 +4820,14 @@ with _tf73.TemporaryDirectory() as _td81:
     # near-ceiling MISSING fact consumes the headroom; the first draft's MISSING-only loop said
     # held=0 while run() held 1. The beacon now calls _plan_pull (one accounting replay).
     (_df81 / "aaa-drift.md").write_text(
-        "---\nname: aaa-drift\ndescription: \"" + "g" * 80 + "\"\ndomain: personal\nmetadata:\n  scope: user-global\n"
-        "  type: feedback\n---\ndrift body\n", encoding="utf-8")
+        _v3_canon("aaa-drift", description="g" * 80, body="drift body\n"),
+        encoding="utf-8")
     _adm81 = sg._as_mirror((_df81 / "aaa-drift.md").read_text(encoding="utf-8"), "aaa-drift",
                            since="2026-01-01T00:00:00Z",
                            body_hash=sg._body_hash((_df81 / "aaa-drift.md").read_text(encoding="utf-8")))
     (_st81 / "aaa-drift.md").write_text(_adm81, encoding="utf-8")
     (_df81 / "zzz-miss.md").write_text(
-        "---\nname: zzz-miss\ndescription: \"m\"\ndomain: personal\nmetadata:\n  scope: user-global\n"
-        "  type: feedback\n---\nmb\n",
-        encoding="utf-8")
+        _v3_canon("zzz-miss", description="m", body="mb\n"), encoding="utf-8")
     _short81 = "- [aaa-drift](aaa-drift.md) — old"   # real line much leaner than the derived pointer
     _drift81 = ms.est_tokens(sg._pointer_line("aaa-drift", sg._frontmatter(_adm81))) - ms.est_tokens(_short81)
     _cz81 = ms.est_tokens(sg._pointer_line("zzz-miss", sg._frontmatter((_df81 / "zzz-miss.md").read_text(encoding="utf-8"))))
@@ -5347,8 +5361,9 @@ with _Env73() as _e:
     _p84 = _e.glob / "canon-x.md"
     _t84 = _p84.read_text(encoding="utf-8")
     _p84.write_text(sg.apply_provenance(_t84, "ghost-proj"), encoding="utf-8")
-    check("v0.1.84: a pruned edge SELF-HEALS via apply_provenance on that project's next pull/promote",
-          "ghost-proj" in _p84.read_text(encoding="utf-8"))
+    check("P1-6: apply_provenance strips Markdown projects: (SQLite holders are authoritative)",
+          "ghost-proj" not in _p84.read_text(encoding="utf-8")
+          or "projects:" not in _p84.read_text(encoding="utf-8"))
 # PR-#97 review F1 (the mass-prune blocker): a present-but-STORELESS projects tree (unmounted /
 # transcript-only) must REFUSE — every edge resolves to nothing, indistinguishable from a wiped
 # store tree; --apply must NOT write `projects: []` fleet-wide.
@@ -6163,7 +6178,7 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
     check("fact_schema: matching name+domain is ok",
           fsch.validate_canonical_frontmatter(
               {"name": "deploy", "domain": "work", "scope": "user-global",
-               "schema_version": "3", "fact_id": "f_" + ("ab" * 12),
+               "schema_version": "3", "fact_id": fsch.stable_fact_id("work", "deploy"),
                "description": "d", "sensitivity": "internal", "status": "active",
                "applies_any": "[]", "applies_all": "[]", "applies_exclude": "[]",
                "content_modified": "2026-01-01T00:00:00Z",
@@ -6241,7 +6256,7 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
     # generated catalog overwrites a hand-edited index
     _facts = Path(_tdxp) / "facts"
     _facts.mkdir()
-    (_facts / "alpha.md").write_text("---\nname: alpha\ndescription: A\n---\nbody\n", encoding="utf-8")
+    (_facts / "alpha.md").write_text(_v3_canon("alpha", description="A"), encoding="utf-8")
     (_facts / "MEMORY.md").write_text("# HAND EDITED INDEX\n", encoding="utf-8")
     _cat = ci.hand_edit_refused_or_regenerated(_facts)
     check("canonical catalog: hand-edited global index is overwritten by generation",
@@ -6363,12 +6378,12 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
     check("cm data retention show is accepted (optional show token)",
           _a_show.data_cmd == "retention" and _a_show.show == "show")
 
-    check("apply_provenance is pure (append once, idempotent, no I/O)",
+    check("apply_provenance is pure (strips projects:, idempotent, no I/O)",
           sg.apply_provenance("---\nname: x\nmetadata:\n  scope: user-global\n---\n", "beta")
-          == "---\nname: x\nmetadata:\n  scope: user-global\n  projects: [beta]\n---\n"
+          == "---\nname: x\nmetadata:\n  scope: user-global\n---\n"
           and sg.apply_provenance(
               "---\nname: x\nmetadata:\n  scope: user-global\n  projects: [beta]\n---\n", "beta")
-          == "---\nname: x\nmetadata:\n  scope: user-global\n  projects: [beta]\n---\n")
+          == "---\nname: x\nmetadata:\n  scope: user-global\n---\n")
 
 # restore env
 if _xp_home0 is None:
@@ -7361,9 +7376,7 @@ with _tf_xp.TemporaryDirectory() as _td_r:
               _rc_list == 0 and not (_ctx_r.plugin_data_dir / "control.sqlite").exists())
         _enroll_personal(_proj_r)
         # pull once to mint, then a STOP_LOCAL conflict recorded once not twice
-        (_glob_r / "ed.md").write_text(
-            "---\nname: ed\ndescription: d\nmetadata:\n  scope: user-global\n"
-            "  type: feedback\n---\ncanon body\n", encoding="utf-8")
+        (_glob_r / "ed.md").write_text(_v3_canon("ed", body="canon body\n"), encoding="utf-8")
         _canon_ed = _ctx_r.canonical_domain_dir
         _canon_ed.mkdir(parents=True, exist_ok=True)
         (_canon_ed / "ed.md").write_text((_glob_r / "ed.md").read_text(encoding="utf-8"),
@@ -7416,9 +7429,10 @@ with _tf_xp.TemporaryDirectory() as _td_r:
             cmo.cmd_data(_nsd)
         _plan_c = _json_xp.loads(_buf_c.getvalue())
         _sha_events = _ctx_r.plugin_data_dir / "ops" / _ctx_r.project_id / "events.jsonl"
-        check("review-5: compact plan keys cycle_log on ops/<slot>/ not SHA events.jsonl",
+        check("review-5: compact plan keys cycle_log on ops/<slot or project_id>/ not events.jsonl",
               str(_clog) == _plan_c.get("cycle_log")
-              and _slot in _plan_c.get("cycle_log", "")
+              and (_slot in _plan_c.get("cycle_log", "")
+                   or _ctx_r.project_id in _plan_c.get("cycle_log", ""))
               and "events.jsonl" not in _plan_c.get("cycle_log", "")
               and not _sha_events.exists())
         _purged = ret.purge_project(_ctx_r.plugin_data_dir, _ctx_r.project_id, _store_r)
@@ -7769,6 +7783,12 @@ with _Env73() as _e_mg:
     _sh_mg.copy2(_fix021 / "unknown-pool" / "dup.md", _unk / "dup.md")
     _sh_mg.copy2(_fix021 / "legacy" / "already.md", _leg_mg / "already.md")
     _sh_mg.copy2(_fix021 / "personal" / "already.md", _pdir_mg / "already.md")
+    # P1-2: keep-existing requires a valid v3 dest. The vendored 0.2.1 dest
+    # declares schema 3 without the full key set (CLASS_INVALID).
+    (_pdir_mg / "already.md").write_text(
+        _v3_canon("already",
+                  body="Pre-existing dest body — migrate must not overwrite.\n"),
+        encoding="utf-8")
     _dest_before = (_pdir_mg / "already.md").read_text(encoding="utf-8")
     with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
         cmo.main(["migrate", str(_e_mg.proj)])
@@ -8074,9 +8094,13 @@ with _Env73() as _e_v3:
 
 with _tempfile.TemporaryDirectory() as _td_cat:
     _fd = Path(_td_cat)
-    (_fd / "live.md").write_text("---\nstatus: active\ndescription: keep\n---\n", encoding="utf-8")
-    (_fd / "old.md").write_text("---\nstatus: superseded\ndescription: drop\n---\n", encoding="utf-8")
-    (_fd / "dead.md").write_text("---\nstatus: tombstoned\ndescription: drop\n---\n", encoding="utf-8")
+    (_fd / "live.md").write_text(_v3_canon("live", description="keep"), encoding="utf-8")
+    (_fd / "old.md").write_text(
+        _v3_canon("old", description="drop").replace("status: active", "status: superseded"),
+        encoding="utf-8")
+    (_fd / "dead.md").write_text(
+        _v3_canon("dead", description="drop").replace("status: active", "status: tombstoned"),
+        encoding="utf-8")
     _cat = ci.generate_catalog(_fd)
     check("0.3.1: catalog lists only status=active facts",
           "live.md" in _cat and "old.md" not in _cat and "dead.md" not in _cat)
@@ -8148,8 +8172,7 @@ with _tf73.TemporaryDirectory() as _td_w1:
         _ddir_w1 = _ctx_w1.canonical_domain_dir
         _ddir_w1.mkdir(parents=True, exist_ok=True)
         (_ddir_w1 / "keep.md").write_text(
-            "---\nname: keep\ndescription: d\ndomain: personal\nmetadata:\n"
-            "  scope: user-global\n  type: feedback\n---\nKEEP\n", encoding="utf-8")
+            _v3_canon("keep", body="KEEP\n"), encoding="utf-8")
         (sg.GLOBAL / "pwn.md").write_text(
             "---\nname: pwn\ndescription: d\ndomain: personal\nmetadata:\n"
             "  scope: user-global\n  type: feedback\n---\nPWN\n", encoding="utf-8")
@@ -8536,11 +8559,12 @@ with _Env73() as _e_pc:
         "SELECT status, payload FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
     _j_pc.close()
     _pl_pc = __import__("json").loads(_st_pc["payload"] or "{}") if _st_pc else {}
-    check("0.3.4: registry postcondition failure after publish restores dests",
+    check("0.3.5: registry postcondition failure does not publish dests",
           _raised_pc and _st_pc is not None
           and str(_st_pc["status"] or "") == "conflicted"
           and _dest_pc.read_text(encoding="utf-8") == "OLD-POST\n"
           and "bytes_b64" not in _pl_pc
+          and "text" not in _pl_pc
           and not any("bytes_b64" in (x or {}) for x in (_pl_pc.get("dest_preimages") or [])))
 
 with _Env73() as _e_occ:
@@ -8614,8 +8638,9 @@ with _Env73() as _e_src:
 with _tf73.TemporaryDirectory() as _td_cat35:
     _cat_dir35 = Path(_td_cat35)
     (_cat_dir35 / "live.md").write_text(
-        "---\nname: live\ndescription: recall-hook\nstatus: active\n---\n"
-        "status: expired\ndescription: BODY-HOOK\n", encoding="utf-8")
+        _v3_canon("live", description="recall-hook",
+                  body="status: expired\ndescription: BODY-HOOK\n"),
+        encoding="utf-8")
     _cat_out35 = ci.generate_catalog(_cat_dir35)
     check("0.3.4: catalog ignores body-level status/description",
           "- [live](live.md) — recall-hook" in _cat_out35
@@ -9306,6 +9331,380 @@ with _Env73() as _e_j34:
     check("0.3.4: new journal payload has registry_ops not holders tuples",
           list(_pj.get("holders") or []) == []
           and "registry_ops" in _pj)
+
+# ── remaining P0 gaps (0.3.5) ────────────────────────────────────────────────
+with _tf73.TemporaryDirectory() as _td_sm2:
+    _vic2 = Path(_td_sm2) / "victim"
+    _vic2.mkdir()
+    _sp_gd.run(["git", "init"], cwd=str(_vic2), check=True, capture_output=True)
+    _mod2 = _vic2 / ".git" / "modules" / "lib"
+    _mod2.mkdir(parents=True)
+    (_mod2 / "HEAD").write_text("ref: refs/heads/main\n", encoding="utf-8")
+    _nested2 = _vic2 / "docs" / "evil"
+    _nested2.mkdir(parents=True)
+    (_nested2 / ".git").write_text("gitdir: " + str(_mod2.resolve()) + "\n", encoding="utf-8")
+    _sib2 = Path(_td_sm2) / "attacker"
+    _sib2.mkdir()
+    (_sib2 / ".git").write_text("gitdir: " + str(_mod2.resolve()) + "\n", encoding="utf-8")
+    _oldH_sm2 = _osB.environ.get("HOME")
+    _osB.environ["HOME"] = str(Path(_td_sm2) / "home")
+    Path(_osB.environ["HOME"]).mkdir()
+    try:
+        _ctx_n2 = sc.resolve_store(_nested2)
+        _ctx_s2 = sc.resolve_store(_sib2)
+        _ctx_v2 = sc.resolve_store(_vic2)
+        check("0.3.5: nested crafted gitfile does not adopt victim submodule gitdir",
+              _ctx_n2.git_common_dir != _mod2.resolve()
+              and (_ctx_n2.git_common_dir is None
+                   or str(_ctx_n2.git_common_dir) == str((_vic2 / ".git").resolve())
+                   or str(_ctx_n2.git_common_dir) == str(_ctx_v2.git_common_dir)))
+        check("0.3.5: sibling crafted gitfile at victim modules/lib does not steal identity",
+              _ctx_s2.git_common_dir != _ctx_v2.git_common_dir
+              and str(_ctx_s2.native_memory_dir) != str(_ctx_v2.native_memory_dir))
+    finally:
+        if _oldH_sm2 is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldH_sm2
+
+with _tf73.TemporaryDirectory() as _td_hg:
+    _home_hg = Path(_td_hg) / "home"
+    _home_hg.mkdir()
+    _sp_gd.run(["git", "init"], cwd=str(_home_hg), check=True, capture_output=True)
+    _att_hg = _home_hg / "code" / "attacker"
+    _att_hg.mkdir(parents=True)
+    _vic_hg = _home_hg / "code" / "victim"
+    _vic_hg.mkdir()
+    _oldH_hg = _osB.environ.get("HOME")
+    _osB.environ["HOME"] = str(_home_hg)
+    try:
+        _ctx_vhg = sc.resolve_store(_vic_hg)
+        _stolen_hg = (_ctx_vhg.config_root / "projects" / ms.slug_for(_vic_hg) / "memory")
+        _stolen_hg.mkdir(parents=True)
+        (_stolen_hg / "MEMORY.md").write_text("# victim\n", encoding="utf-8")
+        (_home_hg / ".claude").mkdir(exist_ok=True)
+        (_home_hg / ".claude" / "settings.json").write_text(
+            _json_xp.dumps({"autoMemoryDirectory": str(_stolen_hg)}), encoding="utf-8")
+        _ctx_ahg = sc.resolve_store(_att_hg)
+        check("0.3.5: HOME git-root ~/.claude/settings.json stays user-scoped",
+              _ctx_ahg.resolution_source == "autoMemoryDirectory"
+              and "project" not in _ctx_ahg.settings_sources
+              and str(_ctx_ahg.native_memory_dir) == str(_stolen_hg))
+        (_att_hg / ".claude").mkdir()
+        (_att_hg / ".claude" / "settings.json").write_text(
+            _json_xp.dumps({"autoMemoryDirectory": str(_stolen_hg)}), encoding="utf-8")
+        _sp_gd.run(["git", "init"], cwd=str(_att_hg), check=True, capture_output=True)
+        _ctx_ahg2 = sc.resolve_store(_att_hg)
+        check("0.3.5: nested-repo project settings cannot select another project's store",
+              _ctx_ahg2.write_allowed is False
+              and str(_ctx_ahg2.native_memory_dir) != str(_stolen_hg)
+              and any("escapes" in a for a in _ctx_ahg2.ambiguity))
+    finally:
+        if _oldH_hg is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldH_hg
+
+with _tf73.TemporaryDirectory() as _td_gr:
+    _home_gr = Path(_td_gr) / "home"
+    _home_gr.mkdir()
+    _proj_gr = Path(_td_gr) / "proj"
+    _proj_gr.mkdir()
+    _ns_gr = Path(_td_gr) / "dedicated-ns"
+    _ns_gr.mkdir()
+    (_ns_gr / "MEMORY.md").write_text("# dedicated\n", encoding="utf-8")
+    _oldH_gr = _osB.environ.get("HOME")
+    _osB.environ["HOME"] = str(_home_gr)
+    try:
+        _ctx_gr0 = sc.resolve_store(_proj_gr)
+        (_proj_gr / ".claude").mkdir()
+        (_proj_gr / ".claude" / "settings.json").write_text(
+            _json_xp.dumps({"autoMemoryDirectory": str(_ns_gr)}), encoding="utf-8")
+        _ctx_gr1 = sc.resolve_store(_proj_gr)
+        sc.write_store_grant(_ctx_gr0.plugin_data_dir, _ctx_gr0.project_id, _ns_gr)
+        _ctx_gr2 = sc.resolve_store(_proj_gr)
+        _pdata_gr = _ctx_gr0.plugin_data_dir
+        _canon_gr = _ctx_gr0.canonical_domain_dir
+        (_proj_gr / ".claude" / "settings.json").write_text(
+            _json_xp.dumps({"autoMemoryDirectory": str(_pdata_gr)}), encoding="utf-8")
+        _ctx_gr3 = sc.resolve_store(_proj_gr)
+        check("0.3.5: project autoMemoryDirectory denied without operator grant",
+              _ctx_gr1.write_allowed is False
+              and str(_ctx_gr1.native_memory_dir) != str(_ns_gr))
+        check("0.3.5: operator grant allows a dedicated per-project namespace",
+              _ctx_gr2.write_allowed is True
+              and str(_ctx_gr2.native_memory_dir.resolve()) == str(_ns_gr.resolve()))
+        check("0.3.5: project autoMemoryDirectory cannot select plugin-data",
+              _ctx_gr3.write_allowed is False
+              and str(_ctx_gr3.native_memory_dir) != str(_pdata_gr))
+        del _canon_gr
+    finally:
+        if _oldH_gr is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldH_gr
+
+with _tf73.TemporaryDirectory() as _td_md2:
+    _dest_md = Path(_td_md2) / "mode.md"
+    _dest_md.write_text("OLD-MODE\n", encoding="utf-8")
+    _osB.chmod(str(_dest_md), 0o640)
+    _rec_md = Path(_td_md2) / "rec"
+    _rec_md.mkdir()
+    _sn_md = cp._snapshot_dest_preimages(
+        [{"dest": str(_dest_md), "mode": "replace",
+          "sha256": __import__("hashlib").sha256(b"NEW-MODE\n").hexdigest()}],
+        recovery=_rec_md)
+    _dest_md.write_text("NEW-MODE\n", encoding="utf-8")
+    _osB.chmod(str(_dest_md), 0o600)
+    cp._restore_dest_preimages(_sn_md, [{"dest": str(_dest_md),
+                                         "sha256": _sn_md[0]["published_sha256"]}])
+    check("0.3.5: dest restore verifies original mode",
+          _dest_md.read_text(encoding="utf-8") == "OLD-MODE\n"
+          and (_dest_md.stat().st_mode & 0o777) == 0o640)
+
+with _Env73() as _e_jc:
+    _ctx_jc = sc.resolve_store(_e_jc.proj)
+    _j_jc = cp.connect_journal(_ctx_jc)
+    _oid_jc = "op_legacybody0001"
+    _j_jc.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (_oid_jc, "canonical-upsert",
+         _json_xp.dumps({"stem": "secret", "text": "CONFIDENTIAL-BODY\n",
+                         "dest_preimages": [{"dest": "x.md",
+                                             "bytes_b64": "Q09ORklERU5USUFM",
+                                             "sha256": "ab" * 32,
+                                             "absent": False}]}),
+         "journal_complete", "complete", "2026-01-01T00:00:00Z"))
+    _j_jc.commit()
+    _j_jc.close()
+    _cout = cp.compact_journal(_ctx_jc)
+    _j_jc2 = cp.connect_journal(_ctx_jc)
+    _shown = cp.journal_show(_j_jc2, _oid_jc)
+    _inv = cp.journal_inventory(_j_jc2)
+    _j_jc2.close()
+    _pl_jc = (_shown or {}).get("payload") or {}
+    check("0.3.5: journal compact redacts fact bodies from completed rows",
+          _cout.get("ok") is True
+          and "text" not in _pl_jc
+          and "bytes_b64" not in _pl_jc
+          and "CONFIDENTIAL" not in _json_xp.dumps(_pl_jc)
+          and any(r["op_id"] == _oid_jc and r["has_body"] is False for r in _inv))
+
+with _Env73() as _e_upj:
+    _ctx_upj = sc.resolve_store(_e_upj.proj)
+    _body_upj = (
+        "---\nname: no-body-log\ndescription: d\nmetadata:\n  node_type: memory\n"
+        "  type: reference\n  scope: user-global\n---\nSECRET-FACT-BODY\n")
+    _upj = ci.upsert(_ctx_upj, "no-body-log", _body_upj)
+    _j_upj = cp.connect_journal(_ctx_upj)
+    _row_upj = _j_upj.execute(
+        "SELECT payload FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
+    _j_upj.close()
+    _pl_upj = _json_xp.loads(_row_upj["payload"] or "{}")
+    check("0.3.5: completed canonical-upsert journal has no fact text",
+          _upj.get("ok") is True
+          and "text" not in _pl_upj
+          and "SECRET-FACT-BODY" not in _json_xp.dumps(_pl_upj)
+          and "text_sha256" in _pl_upj)
+
+with _tf73.TemporaryDirectory() as _td_fgp:
+    _home_fgp = Path(_td_fgp) / "home"
+    _home_fgp.mkdir()
+    _a_fgp = Path(_td_fgp) / "projA"
+    _b_fgp = Path(_td_fgp) / "projB"
+    _a_fgp.mkdir()
+    _b_fgp.mkdir()
+    _oldH_fgp = _osB.environ.get("HOME")
+    _osB.environ["HOME"] = str(_home_fgp)
+    try:
+        _enroll_personal(_a_fgp)
+        _enroll_personal(_b_fgp)
+        _ctx_af = sc.resolve_store(_a_fgp)
+        _body_fgp = (
+            "---\nname: fleet-purge\ndescription: d\nmetadata:\n  node_type: memory\n"
+            "  type: reference\n  scope: user-global\n---\nFLEET-PURGE-BODY\n")
+        ci.upsert(_ctx_af, "fleet-purge", _body_fgp)
+        with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+            sg.run(_b_fgp, pull=True)
+        _mir_fgp = sc.resolve_store(_b_fgp).native_memory_dir / "fleet-purge.md"
+        _had_fgp = _mir_fgp.is_file()
+        _conn_del = cp.connect(cp.db_path(_ctx_af))
+        _conn_del.execute(
+            "INSERT INTO domains(domain_id, status, updated_at) VALUES (?,?,?)",
+            ("personal", "deleting", "2026-09-01T00:00:00Z"))
+        _conn_del.commit()
+        _conn_del.close()
+        _err_del = _io73.StringIO()
+        with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_err_del):
+            _rc_del = sg.run(_b_fgp, pull=True)
+        check("0.3.5: pull refuses while domain is deleting",
+              _rc_del != 0 and "deleting" in _err_del.getvalue())
+        _ctx_bf = sc.resolve_store(_b_fgp)
+        _root_b = _ctx_bf.project_root
+        _nat_b = _ctx_bf.native_memory_dir
+        _pid_b = _ctx_bf.project_id
+        import shutil as _sh_fgp
+        _sh_fgp.rmtree(_root_b)
+        _conn_row = cp.connect(cp.db_path(_ctx_af))
+        _row_b = _conn_row.execute(
+            "SELECT project_id, display_name, current_root, git_common_dir, "
+            "remote_fingerprint, profile_id, domain_id, native_memory_dir, "
+            "session_dir, status FROM projects WHERE project_id=?",
+            (_pid_b,)).fetchone()
+        _conn_row.close()
+        _from_reg = sc.store_context_from_registry(_row_b, template=_ctx_af)
+        check("0.3.5: registry StoreContext keeps recorded project_id and native",
+              _from_reg.project_id == _pid_b
+              and str(_from_reg.native_memory_dir) == str(_nat_b)
+              and _from_reg.resolution_source == "registry-row")
+        del _had_fgp
+    finally:
+        if _oldH_fgp is None:
+            _osB.environ.pop("HOME", None)
+        else:
+            _osB.environ["HOME"] = _oldH_fgp
+
+with _Env73() as _e_cli:
+    with _ctx73.redirect_stdout(_io73.StringIO()) as _o_cli, \
+            _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_cli = cmo.main(["journal", "inventory", "--project", str(_e_cli.proj), "--json"])
+    check("0.3.5: cm journal inventory exits 0",
+          _rc_cli == 0)
+
+import fact_schema as _fs_p1
+check("P1-3: fact_id must match stable id",
+      _fs_p1.validate_canonical_frontmatter(
+          {"name": "deploy", "domain": "work", "scope": "user-global",
+           "schema_version": "3", "fact_id": "f_" + ("ab" * 12),
+           "description": "d", "sensitivity": "internal", "status": "active",
+           "applies_any": "[]", "applies_all": "[]", "applies_exclude": "[]",
+           "content_modified": "2026-01-01T00:00:00Z",
+           "last_observed_at": "2026-01-01T00:00:00Z"},
+          stem="deploy", domain="work") is not None)
+check("P1-3: impossible timestamp is refused",
+      _fs_p1.validate_canonical_frontmatter(
+          {"name": "deploy", "domain": "work", "scope": "user-global",
+           "schema_version": "3", "fact_id": _fs_p1.stable_fact_id("work", "deploy"),
+           "description": "d", "sensitivity": "internal", "status": "active",
+           "applies_any": "[]", "applies_all": "[]", "applies_exclude": "[]",
+           "content_modified": "2026-02-30T00:00:00Z",
+           "last_observed_at": "2026-01-01T00:00:00Z"},
+          stem="deploy", domain="work") is not None)
+check("P1-3: classify unversioned as legacy-migration",
+      _fs_p1.classify_canonical("---\nname: x\ndescription: d\n---\n", stem="x")["class"]
+      == _fs_p1.CLASS_LEGACY)
+check("P1-9: degraded gated applies is unknown (hold)",
+      _fs_p1.applies_decision({"any": ["python"]}, set(), degraded=True) == "unknown"
+      and _fs_p1.applies_decision({"any": ["python"]}, {"python"}) == "match"
+      and _fs_p1.applies_decision({"any": ["python"]}, {"go"}) == "no-match")
+
+with _Env73() as _e_p1s:
+    _ctx_p1s = sc.resolve_store(_e_p1s.proj)
+    _pl_p1 = ci.upsert(_ctx_p1s, "local-only",
+                       "---\nname: local-only\ndescription: d\nmetadata:\n"
+                       "  scope: project-local\n  type: reference\n---\nL\n")
+    check("P1-5: canonical upsert refuses project-local scope",
+          _pl_p1.get("ok") is False and "stack-general|user-global" in str(_pl_p1.get("error") or ""))
+    _in_p1 = ci.upsert(_ctx_p1s, "expired-x",
+                       "---\nname: expired-x\ndescription: d\nstatus: expired\nmetadata:\n"
+                       "  scope: user-global\n  type: reference\n---\nE\n")
+    check("P1-5: canonical upsert refuses non-active status",
+          _in_p1.get("ok") is False and "status: active" in str(_in_p1.get("error") or ""))
+
+with _Env73() as _e_loc:
+    _ctx_loc = sc.resolve_store(_e_loc.proj)
+    _lf = _e_loc.store / "local-a.md"
+    _lf.write_text("---\nname: local-a\ndescription: a local fact\n---\nBODY\n", encoding="utf-8")
+    import local_ingress as li
+    _upl = li.local_upsert(_ctx_loc, "local-a", _lf.read_text(encoding="utf-8"))
+    check("P1-10: cm local upsert writes fact + index pointer",
+          _upl.get("ok") is True
+          and (_e_loc.store / "local-a.md").is_file()
+          and "](local-a.md)" in (_e_loc.store / "MEMORY.md").read_text(encoding="utf-8"))
+    _fgl = li.local_forget(_ctx_loc, "local-a")
+    check("P1-10: cm local forget removes fact and pointer",
+          _fgl.get("ok") is True
+          and not (_e_loc.store / "local-a.md").exists()
+          and "](local-a.md)" not in (_e_loc.store / "MEMORY.md").read_text(encoding="utf-8"))
+
+check("P1-8: project_id_for ignores remote fingerprint",
+      sc.project_id_for("default", "unknown", Path("/tmp/x/.git"), Path("/tmp/x"), "aaaa")
+      == sc.project_id_for("default", "unknown", Path("/tmp/x/.git"), Path("/tmp/x"), "bbbb"))
+
+check("P1-4: link scope uses opening frontmatter not body",
+      ci._scope_of_text("---\nscope: user-global\n---\nscope: project-local\n")
+      == "user-global")
+
+with _Env73() as _e_exp:
+    _ctx_exp = sc.resolve_store(_e_exp.proj)
+    _conn_exp = cp.connect(cp.db_path(_ctx_exp))
+    _nproj_exp = _conn_exp.execute("SELECT count(*) AS n FROM projects").fetchone()["n"]
+    _conn_exp.close()
+    _tar_exp = Path(_e_exp._td.name) / "exp.tar.gz"
+    _ex_out = ret.export_ops(_ctx_exp.plugin_data_dir, _tar_exp)
+    import sqlite3 as _sq_exp
+    import tarfile as _tf_exp
+    _restored_ok = False
+    if _ex_out.get("ok") and Path(_ex_out["path"]).is_file():
+        with _tf_exp.open(_ex_out["path"], "r:gz") as _tar:
+            _mem = None
+            for _n in _tar.getnames():
+                if _n.endswith("control.sqlite"):
+                    _mem = _tar.extractfile(_n)
+                    break
+            if _mem is not None:
+                _db_exp = Path(_e_exp._td.name) / "restored.sqlite"
+                _db_exp.write_bytes(_mem.read())
+                _c2 = _sq_exp.connect(str(_db_exp))
+                try:
+                    _n2 = _c2.execute("SELECT count(*) AS n FROM projects").fetchone()[0]
+                    _restored_ok = int(_n2) == int(_nproj_exp) and int(_n2) >= 1
+                finally:
+                    _c2.close()
+    check("P1-12: export restoration opens a usable SQLite snapshot",
+          _restored_ok)
+
+with _Env73() as _e_ll:
+    _ctx_ll = sc.resolve_store(_e_ll.proj)
+    import local_ingress as _li_ll
+    _bad_ll = _li_ll.local_upsert(
+        _ctx_ll, "has-link",
+        "---\nname: has-link\ndescription: d\n---\nsee [[missing-target]]\n")
+    check("P1-10: cm local upsert refuses a dangling wikilink",
+          _bad_ll.get("ok") is False and "dangling" in str(_bad_ll.get("error") or ""))
+
+with _Env73() as _e_mir:
+    _ctx_mir = sc.resolve_store(_e_mir.proj)
+    _mir_body = sg._as_mirror(_v3_canon("mir-loc"), "mir-loc",
+                             since="2026-01-01T00:00:00Z",
+                             body_hash="abc")
+    (_e_mir.store / "mir-loc.md").write_text(_mir_body, encoding="utf-8")
+    import local_ingress as _li_mir
+    _up_mir = _li_mir.local_upsert(_ctx_mir, "mir-loc",
+                                  "---\nname: mir-loc\ndescription: d\n---\nX\n")
+    check("review: cm local upsert refuses a managed mirror",
+          _up_mir.get("ok") is False and "managed mirror" in str(_up_mir.get("error") or ""))
+
+with _Env73() as _e_gr:
+    _ctx_gr = sc.resolve_store(_e_gr.proj)
+    _raised_gr = False
+    try:
+        sc.write_store_grant(_ctx_gr.plugin_data_dir, _ctx_gr.project_id,
+                             _ctx_gr.plugin_data_dir / "inside",
+                             config_root=_ctx_gr.config_root)
+    except sc.WriteRefused:
+        _raised_gr = True
+    check("review: grant-native refuses plugin-data",
+          _raised_gr)
+
+with _tf73.TemporaryDirectory() as _td_legcat:
+    _ld = Path(_td_legcat)
+    (_ld / "legacy.md").write_text(
+        "---\nname: legacy\ndescription: d\nstatus: active\n---\nbody\n",
+        encoding="utf-8")
+    check("review: catalog omits CLASS_LEGACY even if status=active",
+          "legacy.md" not in ci.generate_catalog(_ld))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
