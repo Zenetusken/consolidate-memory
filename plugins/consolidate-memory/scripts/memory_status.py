@@ -615,8 +615,8 @@ HOOK_TOKEN_WARN = 60            # est tok per index POINTER line above which the
 INDEX_CEILING_FRACTION = 0.6
 INDEX_CEILING_TOKENS = round(INDEX_CEILING_FRACTION * NATIVE_INDEX_CAP_BYTES / 4)   # = 3840 est tok
 
-# Import-time default only. Call-time canonicals go through sync_global.global_facts /
-# _canonical_dirs (CLAUDE_CONFIG_DIR + domain dirs). Do not use this Path for counts.
+# Import-time default only. Call-time canonicals go through iter_canonicals /
+# _admissible_records (domain dirs). Do not use this Path for counts.
 GLOBAL_STORE = Path.home() / ".claude" / "memory"
 
 # ── v0.1.67 (Phase C): the demotion rank's evidence-gate constants ────────────────────────────────

@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.3.3** (2026-09-01). `CLAUDE.md` holds the
+verified against the live tree at **v0.3.4** (2026-09-01). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -16,7 +16,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.3.3 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal, sole canonical writer, tiered context-budget accounting. Unenrolled projects are local-only. |
+| `consolidate-memory` | 0.3.4 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal, sole canonical writer, tiered context-budget accounting. Unenrolled projects are local-only. |
 | `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -97,7 +97,9 @@ cm                                 dev CLI over the scripts (doctor/conflicts/ca
                                   /project enroll included; symlink-safe)
 docs/adr/                         001 empty-set judgment · 002 StoreContext · 003 domain isolation ·
                                   004 stable identity · 005 three-way mirrors · 006 control plane ·
-                                  007 schema v2 / migrate
+                                  007 schema v2 / migrate · 008–016 0.3.0 hardening ·
+                                  017 journal complete-old · 018 StoreContext authorization ·
+                                  019 forget-ack / domain lifecycle
 tests/                             smoke.py · simulate_accumulation.py · validate_manifests.py
 memory/                            GITIGNORED placeholder (.gitkeep only) — the real global store lives at
                                    ~/.claude/memory (a real dir, decoupled from this repo)

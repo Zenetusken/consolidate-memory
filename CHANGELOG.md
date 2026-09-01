@@ -5,6 +5,70 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.3.4] — 2026-09-01
+
+Patch on 0.3.3. One enumerator for ordinary fleet ops, journal complete-old,
+StoreContext identity, fleet forget-ack, and domain purge maintenance.
+Public **1.0 stays HOLD**.
+
+### Fixed — one enumerator
+
+- **Ordinary ops use `_admissible_records` / `iter_canonicals` only.**
+  `global_facts` / `_canonical_dirs` are gone. `--all-domains` walks named domain
+  dirs, never leftover `~/.claude/memory`. Unenrolled `facts_for_context` is empty.
+  `beacon_line` does not default to leftover GLOBAL. `_orphans` does not scan
+  GLOBAL when `canon` is omitted.
+- **Dead writers removed.** `_ensure_index_pointer`, `_remove_index_pointer`, and
+  `_record_provenance` are gone. Pull/promote already journal through `transact`.
+- **`preserve_canonical` reads only the domain dest.** Missing dest is refused;
+  leftover GLOBAL is not a stand-in. Enroll lookup does not fall through unknown-pool
+  or leftover memory.
+- **Harvest ledger is plugin-data only.** Leftover `~/.claude/memory/.fleet-usage.jsonl`
+  is not a standing dual-read.
+- **New journal payloads carry `registry_ops` only** (empty holders/facts/tombstones
+  tuples). Recover still applies an old pending payload that has tuples.
+
+### Fixed — journal complete-old (ADR 017)
+
+- **Deletes rename to same-dir trash**, then dests publish, then registry
+  COMMIT, then trash is unlinked. A later delete failure restores earlier
+  trash. `EXDEV` fails closed.
+- **Dest snapshots are recovery files**, not `bytes_b64` in new journal
+  rows. Restore only when the dest still has the published hash; a
+  concurrent edit is quarantined. If quarantine cannot move the occupant,
+  restore refuses rather than `os.replace` over user bytes.
+- **Create-mode uses `os.link`** (no empty visible inode). No-hardlink FS
+  falls back to in-process `O_EXCL`+write without the empty-unlink recover
+  heuristic.
+- **`recover_pending` applies registry ops before file publication** and
+  COMMITs after. Source drift becomes `conflicted`. A matching trash file
+  for a journaled delete is not treated as source drift. Historical
+  `bytes_b64` rows still restore.
+
+### Fixed — StoreContext identity (ADR 018)
+
+- Worktree/submodule Git dirs require a **gitdir backlink** and commondir
+  containment. A `.git` symlink is not Git.
+- Project/local `autoMemoryDirectory` may be inside the project tree or
+  exactly this project's default native store — not another
+  `projects/<slot>/memory`.
+
+### Fixed — forget ack, resurrect, purge (ADR 019)
+
+- Forget is **lazy tombstone-acknowledgment**: the next `--pull` or
+  `--gc --apply` in another project deletes a clean mirror or quarantines
+  an edited one. GC no longer treats tombstone Markdown as a live stem.
+- `--resurrect` issues `tombstone_delete` in the same apply transaction.
+- Domain purge sets `deleting` first; pull/upsert/forget refuse. Revoke
+  keeps the recorded `project_id` when `resolve_store` would disagree.
+- Catalog generation reads **opening frontmatter only**. Capability
+  detection failure holds gated facts.
+
+`cm migrate --inventory` remains the only reader of leftover `~/.claude/memory`
+(ADR 013). Existing 0.3.3 installs keep working. Old `journal.sqlite` rows may
+still contain forgotten bodies until a later compact. Backward-compatible ⇒
+**patch**.
+
 ## [0.3.3] — 2026-09-01
 
 Patch on the 0.3.0 secure-default (plus 0.3.1 recover/UI and 0.3.2 health-row).

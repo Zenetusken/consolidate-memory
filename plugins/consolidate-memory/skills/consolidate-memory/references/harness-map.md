@@ -1,6 +1,6 @@
 # Harness map — data sources, memory formats, verification recipes
 
-**v0.3.3.** Read this when you need the exact paths, file formats, or grep/git recipes for a
+**v0.3.4.** Read this when you need the exact paths, file formats, or grep/git recipes for a
 consolidation pass. The SKILL.md body covers the workflow; this is the lookup table.
 
 **Unenrolled is local-only (ADR 008):** a project that is not enrolled cannot
@@ -60,8 +60,8 @@ with both `/` AND `_` replaced by `-`, case preserved (e.g. `/home/you/project/D
 → `-home-you-project-Doc-Flo`; v0.1.17 — CC normalizes underscores too, verified on disk).
 Git worktrees and nested subdirectories of one repository share that store.
 `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_PROJECT_DIR_NAME`, and `autoMemoryDirectory`
-(user/managed may name an explicit absolute dir; project/local must stay under
-`config_root` or the project tree) remap it. `user-global` is **domain-global**
+(user/managed may name an explicit absolute dir; project/local must be inside
+the project tree or exactly this project's default native store) remap it. `user-global` is **domain-global**
 (ADR 003), not installation-global. Canonical facts live under
 `<config>/consolidate-memory/domains/<domain>/facts`. `cm project enroll --domain NAME`
 is the operator grant; a repo `.claude/settings.json` cannot enroll. `cm doctor` prints
@@ -312,13 +312,9 @@ cross-project model:
   individual write there is atomic (write-temp + `os.replace`/`os.link` — never a torn
   file visible mid-write), and `promote()`'s canonical CREATE is exclusive (two projects
   racing to promote onto the same new name: the loser is refused and told to retry, not
-  silently clobbered). One narrower gap is accepted, not fixed: two concurrent
-  `_record_provenance()` calls on the SAME existing canonical can still race their
-  read-modify-write of its `projects:` list — a lost update is possible (one project's
-  provenance entry silently dropped), self-healing the next time that project's own
-  dream promotes/pulls again. See
-  `docs/track-d-write-atomicity-seed-hardening.spec.md` for the full design + why a
-  lock wasn't built for that residual case.
+  silently clobbered). Provenance `projects:` updates run inside `transact`
+  (`apply_provenance` via temps), not a post-lock helper. See
+  `docs/track-d-write-atomicity-seed-hardening.spec.md`.
 
 **Phase-0 detection (slug-orphans + schema drift) — detect/report/OFFER only, never
 auto-mutated:**
@@ -367,6 +363,9 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   store (additive, marked `global_ref:` so they re-sync), AND refresh stale mirrors +
   **upsert** the always-loaded index pointer so its hook tracks the canonical's
   `description` (a changed description rewrites the index line, not just the body).
+  Also **acks forgotten facts**: a tombstoned canonical's remaining mirror here is
+  deleted if clean, quarantined if locally edited (ADR 019). `--gc --apply` does the
+  same ack before orphan reclaim.
   user-global → every project; stack-general → only if `stacks` intersect the
   project's detected stacks. Stacks are detected from **REAL USAGE** (v0.1.16) — declared
   dependencies in `pyproject.toml` (PEP 621 / PEP 735 / poetry, matched as EXACT dep-name
@@ -409,8 +408,7 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   session-beacon track — never auto-pulls (a node absorbs on ITS next dream).
 - `--harvest PROJECT_DIR` — (v0.1.79, `docs/fleet-usage-harvest.spec.md`) capture EVERY node's
   organic fact-read windows from its transcripts into the shared append-only ledger
-  (plugin-data `fleet-usage.jsonl`, 0o600; leftover native `~/.claude/memory/.fleet-usage.jsonl`
-  is dual-read only) before rotation destroys them. Usage capture was
+  (plugin-data `fleet-usage.jsonl`, 0o600) before rotation destroys them. Usage capture was
   dream-gated per node (measured: 1/3 nodes reporting, the rest unobserved). Watermarked per node,
   idempotent; reuses the `--recalls` scan machinery (dream-span excluded; only Read file-paths and
   arc-marker presence leave the scan). `--utility` surfaces harvested evidence — source-labeled,
@@ -421,7 +419,7 @@ fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
   prunable, self-identifying) / **unresolved** (ZERO store matches — the ghost class, measured at
   21% of edges / 20% of fleet tax at ship) / **ambiguous** (multi-match or degenerate — never
   prunable). `--apply` prunes ONLY unresolved tokens (atomic; a wrong prune self-heals via
-  `_record_provenance` on that project's next pull). `--utility` prints `fleet_tax_live`
+  `apply_provenance` inside the next pull transact). `--utility` prints `fleet_tax_live`
   (pointer × LIVE holders) beside the provenance upper bound, which stays the advisory's
   denominator. Upgrades, never violates, reported-not-pruned: still nothing automatic.
 - `--gc PROJECT_DIR [--apply]` — reclaim **orphaned mirrors**: `global_ref:` files

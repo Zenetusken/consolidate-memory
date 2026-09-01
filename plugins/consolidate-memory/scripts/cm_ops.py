@@ -17,9 +17,9 @@ from store_context import (StoreContext, WriteRefused, assert_writable, doctor_d
 
 
 def _lookup_canonical_text(ctx: StoreContext, fm: dict, fname: str) -> Optional[str]:
-    """canonical_domain/fact_id dir → named domain → unknown pool → legacy."""
+    """Named-domain canonical only (never leftover ~/.claude/memory)."""
     from identifiers import IdentifierRefused, safe_child, validate_domain_id
-    from sync_global import _global_is_fixture, _safe_read_text, global_store
+    from sync_global import _safe_read_text
     droot = ctx.config_root / "consolidate-memory" / "domains"
     cdom = str(fm.get("canonical_domain") or fm.get("domain") or "").strip()
     if cdom and cdom != "unknown":
@@ -30,12 +30,6 @@ def _lookup_canonical_text(ctx: StoreContext, fm: dict, fname: str) -> Optional[
                 return text
         except IdentifierRefused:
             pass
-    unk = droot / "unknown" / "facts" / fname
-    text = _safe_read_text(unk)
-    if text is not None:
-        return text
-    if _global_is_fixture():
-        return _safe_read_text(global_store() / fname)
     return None
 
 
@@ -195,6 +189,9 @@ def _revoke_one_for_purge(row) -> int:
         else:
             raise WriteRefused(
                 f"cannot revoke project {pid}: missing current_root and native_memory_dir")
+        if pctx.project_id != pid:
+            from dataclasses import replace
+            pctx = replace(pctx, project_id=pid)
         return _revoke_unadmitted_mirrors(pctx, "unknown")
     except WriteRefused:
         raise
@@ -948,6 +945,8 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                     "status": str(fm_m.get("status") or "active"),
                     "sensitivity": _fs_m(fm_m),
                 })
+                if getattr(args, "resurrect", False):
+                    ops.append({"op": "tombstone_delete", "fact_id": fid})
                 copied.append({
                     "path": str(dest),
                     "new_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
@@ -1323,6 +1322,17 @@ def cmd_data(args: argparse.Namespace) -> int:
                     print("data purge: domain-canonicals requires a named domain",
                           file=sys.stderr)
                     return 2
+                from control_plane import transact as _tx_del
+                def _mark_deleting(_c, _t):
+                    del _c, _t
+                    return {"registry_ops": [
+                        {"op": "domain_status_set", "domain_id": did,
+                         "status": "deleting"}]}
+                try:
+                    _tx_del(ctx, "domain-deleting", {"domain_id": did}, _mark_deleting)
+                except WriteRefused as e:
+                    print(f"data purge: {e}", file=sys.stderr)
+                    return 2
                 try:
                     revoked = _revoke_enrolled_for_purge(conn, did)
                 except WriteRefused as e:
@@ -1335,14 +1345,39 @@ def cmd_data(args: argparse.Namespace) -> int:
                     print(f"data purge: {e}", file=sys.stderr)
                     return 2
                 out["revoked_mirrors"] = revoked
+                def _mark_deleted(_c, _t):
+                    del _c, _t
+                    return {"registry_ops": [
+                        {"op": "domain_status_set", "domain_id": did,
+                         "status": "deleted"}]}
+                try:
+                    _tx_del(ctx, "domain-deleted", {"domain_id": did}, _mark_deleted)
+                except WriteRefused:
+                    pass
                 print(json.dumps(out))
                 return 0
             if scope == "all-plugin-data":
                 import shutil
+                from control_plane import transact as _tx_all
                 rows = conn.execute(
                     "SELECT current_root, native_memory_dir, project_id, domain_id "
                     "FROM projects WHERE status='enrolled'"
                 ).fetchall()
+                seen_dom: set = set()
+                for r in rows:
+                    did_r = str(r["domain_id"] or "")
+                    if did_r and did_r != "unknown" and did_r not in seen_dom:
+                        seen_dom.add(did_r)
+                        def _mark_d(_c, _t, _d=did_r):
+                            del _c, _t
+                            return {"registry_ops": [
+                                {"op": "domain_status_set", "domain_id": _d,
+                                 "status": "deleting"}]}
+                        try:
+                            _tx_all(ctx, "domain-deleting", {"domain_id": did_r}, _mark_d)
+                        except WriteRefused as e:
+                            print(f"data purge: {e}", file=sys.stderr)
+                            return 2
                 for r in rows:
                     try:
                         _revoke_one_for_purge(r)

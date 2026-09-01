@@ -178,23 +178,74 @@ def _path_contained(child: Path, parent: Path) -> bool:
         return False
 
 
+def _read_plain_path_file(path: Path) -> Optional[Path]:
+    """Read a Git `gitdir`/`commondir` file that stores a raw path (not `gitdir:`)."""
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return None
+    if not raw:
+        return None
+    p = Path(raw)
+    if not p.is_absolute():
+        p = path.parent / p
+    try:
+        return p.resolve()
+    except OSError:
+        return p
+
+
 def _gitdir_layout_ok(worktree: Path, gitfile: Path, gitdir: Path) -> bool:
-    """Accept only in-tree .git, registered worktrees, or submodule gitdirs."""
+    """Accept only in-tree .git, registered worktrees, or submodule gitdirs.
+
+    Path *shape* is not enough: a crafted gitfile can point at another
+    repository's worktrees/ or modules/ directory. Require the administrative
+    dir's gitdir backlink (when present) and commondir containment.
+    """
     try:
         gd = gitdir.resolve()
         wt = worktree.resolve()
+        gf = gitfile.resolve()
     except OSError:
         return False
-    if gd == wt / ".git" or _path_contained(gd, wt / ".git"):
-        return True
+    try:
+        in_tree = gd == (wt / ".git").resolve() or _path_contained(gd, wt / ".git")
+    except OSError:
+        in_tree = gd == wt / ".git" or _path_contained(gd, wt / ".git")
+    if in_tree:
+        common = _common_from_gitdir(gd)
+        return common == gd or _path_contained(common, gd)
+
+    def _backlink_ok() -> bool:
+        back = gd / "gitdir"
+        if not back.is_file():
+            return False
+        pointed = _read_plain_path_file(back)
+        return pointed is not None and pointed == gf
+
     # linked worktree: <repo>/.git/worktrees/<name>
     if gd.parent.name == "worktrees" and gd.parent.parent.name == ".git":
-        return True
+        if not _backlink_ok():
+            return False
+        admin = gd.parent.parent
+        common = _common_from_gitdir(gd)
+        return common == admin or _path_contained(common, admin)
+
     # submodule: <super>/.git/modules/<name>
     cur = gd
     while cur != cur.parent:
         if cur.name == "modules" and cur.parent.name == ".git":
-            return True
+            super_git = cur.parent
+            super_wt = super_git.parent
+            if not (wt == super_wt or _path_contained(wt, super_wt)):
+                return False
+            if not _path_contained(gd, cur):
+                return False
+            if (gd / "gitdir").is_file() and not _backlink_ok():
+                return False
+            common = _common_from_gitdir(gd)
+            return (common == gd or common == super_git
+                    or _path_contained(common, super_git))
         cur = cur.parent
     return False
 
@@ -253,6 +304,8 @@ def find_git_common_dir(start: Path) -> Optional[Path]:
     for p in chain:
         git = p / ".git"
         try:
+            if git.is_symlink():
+                continue
             if git.is_file():
                 gitdir = _read_gitdir_pointer(git)
                 if gitdir is None:
@@ -336,6 +389,18 @@ def project_id_for(profile: str, domain: str, git_common: Optional[Path],
         return "p_" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
     key = f"cm:{SCHEMA_VERSION}:{profile}:{_norm_path(root)}"
     return "p_" + uuid.uuid5(uuid.NAMESPACE_URL, key).hex
+
+
+def _project_local_mem_ok(custom: Path, cfg: Path, root: Path,
+                          default_native: Path) -> bool:
+    """Project/local autoMemoryDirectory may not select another config-root store."""
+    del cfg
+    if _path_contained(custom, root):
+        return True
+    try:
+        return custom.resolve() == default_native.resolve()
+    except OSError:
+        return False
 
 
 def _expand_mem_dir(raw: str) -> Optional[Path]:
@@ -546,10 +611,10 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         source = "autoMemoryDirectory"
         native = custom
         if mem_dir_source in ("project", "local"):
-            if not (_path_contained(custom, cfg) or _path_contained(custom, root)):
+            if not _project_local_mem_ok(custom, cfg, root, default_native):
                 ambiguity.append(
-                    "project/local autoMemoryDirectory escapes config_root and "
-                    "project tree: " + str(custom))
+                    "project/local autoMemoryDirectory escapes this project's "
+                    "native store and project tree: " + str(custom))
                 native = default_native
                 if slot_env:
                     source = "CLAUDE_CODE_PROJECT_DIR_NAME"

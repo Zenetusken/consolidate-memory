@@ -52,18 +52,14 @@ def generate_catalog(facts_dir: Path, overlay: Optional[dict] = None) -> str:
         if stem == "MEMORY":
             continue
         stems[stem] = text
+    from memory_status import _frontmatter
     for stem in sorted(stems):
         text = stems[stem]
         if not text:
             continue
-        status = ""
-        desc = ""
-        for ln in text.splitlines():
-            s = ln.strip()
-            if s.startswith("status:"):
-                status = s.split(":", 1)[1].strip()
-            elif s.startswith("description:"):
-                desc = s.split(":", 1)[1].strip()
+        fm = _frontmatter(text)
+        status = str(fm.get("status") or "").strip()
+        desc = str(fm.get("description") or "").strip()
         if status and status != "active":
             continue
         lines.append(f"- [{stem}]({stem}.md) — {desc}".rstrip(" —"))
@@ -292,8 +288,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
     new stem). `preserve_canonical` is the reconcile path: never overwrite an existing
     canonical body; still record the holder and convert the origin.
     """
-    from control_plane import (CrashSimulated, is_tombstoned, record_holder,
-                               stable_fact_id, transact)
+    from control_plane import (CrashSimulated, assert_domain_writable, is_tombstoned,
+                               record_holder, stable_fact_id, transact)
     from memory_status import _frontmatter
 
     from identifiers import IdentifierRefused, validate_fact_stem
@@ -307,6 +303,10 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         return {"ok": False, "error":
                 "cross-project writes require enrollment into a named domain "
                 "(cm project enroll --domain NAME)"}
+    try:
+        assert_domain_writable(ctx)
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e)}
     text = insert_frontmatter_key(text if text.endswith("\n") else text + "\n", "name", stem)
     if ctx.domain_id and ctx.domain_id != "unknown":
         text = insert_frontmatter_key(text, "domain", ctx.domain_id)
@@ -328,8 +328,7 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
     if not str(fm.get("description") or "").strip():
         return {"ok": False, "error": "description is required"}
     facts_dir = ctx.canonical_domain_dir
-    from sync_global import global_store as _gstore, _body as _body_up
-    legacy = _gstore()
+    from sync_global import _body as _body_up
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     dest_existing = facts_dir / f"{stem}.md"
     prev_text = dest_existing.read_text(encoding="utf-8", errors="replace") if dest_existing.exists() else ""
@@ -367,17 +366,13 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         if is_tombstoned(conn, stem, ctx.domain_id or "unknown"):
             raise WriteRefused(f"tombstoned: {stem} (will not resurrect)")
         dest = facts_dir / f"{stem}.md"
-        try:
-            same_dir = dest.resolve().parent == legacy.resolve()
-        except OSError:
-            same_dir = dest.parent == legacy
         if create_only and dest.exists():
             raise WriteRefused(
                 "canonical already exists (created concurrently); retry to reconcile")
         deletes: list = []
         extra_expected: dict = {}
         if preserve_canonical:
-            live = dest if dest.exists() else (legacy / f"{stem}.md")
+            live = dest
             if not live.exists():
                 raise WriteRefused("preserve_canonical but canonical missing")
             existing_body = live.read_text(encoding="utf-8", errors="replace")
@@ -511,7 +506,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
 def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
            replacement_id: str = "", grace_until: str = "") -> dict:
     from identifiers import IdentifierRefused, validate_fact_stem
-    from control_plane import stable_fact_id, transact, write_tombstone
+    from control_plane import (assert_domain_writable, stable_fact_id, transact,
+                               write_tombstone)
     try:
         stem = validate_fact_stem(stem)
     except IdentifierRefused as e:
@@ -521,6 +517,10 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
         return {"ok": False, "error":
                 "cross-project writes require enrollment into a named domain "
                 "(cm project enroll --domain NAME)"}
+    try:
+        assert_domain_writable(ctx)
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e)}
 
     def mutate(conn, temps):
         fid = stable_fact_id(ctx.domain_id, stem)
@@ -584,10 +584,103 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
                      "domain_id": ctx.domain_id, "reason": reason,
                      "replacement_id": replacement_id, "grace_until": grace_until},
                     {"op": "holder_delete", "fact_id": fid, "project_id": ctx.project_id},
+                    {"op": "fact_status_change", "fact_id": fid, "status": "tombstoned"},
                 ]}
 
     try:
         out = transact(ctx, "forget", {"stem": stem, "reason": reason}, mutate)
+        return {"ok": True, **(out.get("result") or {})}
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e)}
+
+
+def ack_tombstoned_mirrors(ctx: StoreContext) -> dict:
+    """Revoke this project's mirrors of domain-tombstoned facts (lazy forget ack)."""
+    from control_plane import (connect_if_exists, db_path, holder_base_revision,
+                               stable_fact_id, transact)
+    from sync_global import _is_mirror, _safe_read_text
+    from mirror_conflict import classify_mirror
+    warn_unenrolled_share(ctx)
+    if not getattr(ctx, "cross_project_allowed", False):
+        return {"ok": True, "acked": 0}
+    conn = connect_if_exists(db_path(ctx))
+    held: set = set()
+    tomb_stems: set = set()
+    if conn is not None:
+        try:
+            tomb_stems = {str(r["stem"]) for r in conn.execute(
+                "SELECT stem FROM tombstones WHERE domain_id=?",
+                (ctx.domain_id,)).fetchall()}
+            held = {str(r["stem"]) for r in conn.execute(
+                "SELECT t.stem FROM tombstones t "
+                "JOIN holders h ON h.fact_id = t.fact_id "
+                "WHERE t.domain_id=? AND h.project_id=?",
+                (ctx.domain_id, ctx.project_id)).fetchall()}
+        finally:
+            conn.close()
+    store = ctx.native_memory_dir
+    mirrored: set = set()
+    for stem in tomb_stems:
+        ot = _safe_read_text(store / f"{stem}.md")
+        if ot is not None and _is_mirror(ot):
+            mirrored.add(stem)
+    todo = sorted(held | mirrored)
+    if not todo:
+        return {"ok": True, "acked": 0}
+
+    def mutate(conn, temps):
+        deletes: list = []
+        dest_modes: dict = {}
+        expected_fg: dict = {}
+        ops: list = []
+        acked = 0
+        idxp = store / "MEMORY.md"
+        idx = _safe_read_text(idxp)
+        idx_orig = idx
+        idx_changed = False
+        for stem in todo:
+            fid = stable_fact_id(ctx.domain_id, stem)
+            ops.append({"op": "holder_delete", "fact_id": fid,
+                        "project_id": ctx.project_id})
+            origin = store / f"{stem}.md"
+            ot = _safe_read_text(origin)
+            canon_p = ctx.canonical_domain_dir / f"{stem}.md"
+            prev = _safe_read_text(canon_p) or ""
+            if ot is None:
+                acked += 1
+                continue
+            if not _is_mirror(ot):
+                continue
+            expected_fg[str(origin)] = hashlib.sha256(ot.encode("utf-8")).hexdigest()
+            hb = holder_base_revision(conn, fid, ctx.project_id)
+            dec = classify_mirror(ot, prev, base_revision=hb, allow_legacy_fallback=False)
+            if idx is not None and f"]({stem}.md)" in idx:
+                idx = "\n".join(
+                    ln for ln in idx.splitlines() if f"]({stem}.md)" not in ln)
+                idx_changed = True
+            if dec["action"] in ("stop-local", "conflict", "quarantine"):
+                qdir = store / "quarantine"
+                qdir.mkdir(parents=True, exist_ok=True)
+                ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+                qdest = qdir / f"{stem}.{ts}.md"
+                n = 0
+                while qdest.exists() or str(qdest) in temps:
+                    n += 1
+                    qdest = qdir / f"{stem}.{ts}.{n}.md"
+                temps[str(qdest)] = ot if ot.endswith("\n") else ot + "\n"
+                dest_modes[str(qdest)] = "create"
+            deletes.append(str(origin))
+            acked += 1
+        if idx_changed and idx is not None:
+            if idx_orig:
+                expected_fg[str(idxp)] = hashlib.sha256(
+                    idx_orig.encode("utf-8")).hexdigest()
+            temps[str(idxp)] = idx.rstrip() + "\n"
+        return {"acked": acked, "deletes": deletes, "dest_modes": dest_modes,
+                "expected_revisions": expected_fg, "registry_ops": ops}
+
+    try:
+        out = transact(ctx, "forget-ack", {"stems": todo}, mutate)
         return {"ok": True, **(out.get("result") or {})}
     except WriteRefused as e:
         return {"ok": False, "error": str(e)}
