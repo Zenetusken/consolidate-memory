@@ -844,8 +844,11 @@ def valid_link_targets(auto_mem: Path) -> set:
 def extract_wikilinks(text: str) -> list[str]:
     """Every `[[target]]` in `text`, code spans stripped FIRST — fenced (```...```) THEN inline (`...`) — so a
     `[[x]]` inside a code block (e.g. TOML `[[tool.mypy.overrides]]`) is NOT counted. The SINGLE `[[...]]`
-    extractor: `dangling_links` AND sync_global's evict inbound-link scan both call THIS (a 4th wikilink regex
-    is the reimplementation-drift the v0.1.40 slug-agreement guard exists to prevent). Targets are `.strip()`ed."""
+    extractor: `dangling_links`, sync_global's evict inbound-link scan, AND
+    `canonical_ingress.link_targets` (local/canonical writers) all call THIS (a 4th
+    wikilink regex is the reimplementation-drift the v0.1.40 slug-agreement guard
+    exists to prevent — the v0.3.5 dogfood `cm local` refusal of a backticked
+    `[[link]]` format-example was that class). Targets are `.strip()`ed."""
     text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)   # fenced code blocks
     text = re.sub(r"`[^`]*`", "", text)                       # inline code spans
     return [m.strip() for m in re.findall(r"\[\[([^\]]+)\]\]", text)]

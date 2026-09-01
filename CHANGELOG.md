@@ -5,6 +5,23 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.3.6] — 2026-09-01
+
+Patch on 0.3.5. First dogfood of `cm local upsert` on the v0.3.5 dream: hook-lint
+parity and inline-code link-strip parity with the health helper. Public **1.0 stays HOLD**.
+
+### Fixed — local writer dogfood (D1, D2)
+
+- **`cm local` index pointers use `_pointer_line`.** A long `description:` is no
+  longer copied verbatim into `MEMORY.md` (the first v0.3.5 dogfood upsert wrote a
+  ~190-tok fat hook into the always-loaded index). Same 88-char sanitizing truncate
+  + `_fat_hook_warning` as `--pull` and canonical origin mirrors. The fact body
+  keeps the full recall key.
+- **`link_targets` uses `extract_wikilinks`.** Backticked / fenced `[[…]]`
+  (format-example placeholders, TOML `[[tool.mypy.overrides]]`) are not dangling
+  links. The writer's validator matches `dangling_links` (D10). A real
+  `[[missing]]` still refuses.
+
 ## [0.3.5] — 2026-09-01
 
 Patch on 0.3.4. Remaining P0 authorization, journal-retention, and fleet-purge

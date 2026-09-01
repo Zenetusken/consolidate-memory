@@ -6,6 +6,7 @@ admission, and journaled fact+pointer publication as the canonical writer.
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -18,8 +19,21 @@ def _looks_secret_fn():
 
 
 def _pointer(stem: str, description: str) -> str:
-    hook = (description or stem).strip() or stem
-    return f"- [{stem}]({stem}.md) — {hook}"
+    """Always-loaded index line. Same constructor as `--pull` / canonical origin mirrors.
+
+    A verbatim description copy landed a ~190-tok fat hook on the first v0.3.5
+    `cm local upsert` (dogfood D1). `_pointer_line` sanitizes + 88-char truncates;
+    `_fat_hook_warning` still fires on an extreme stem.
+    """
+    from sync_global import _pointer_line
+    return _pointer_line(stem, {"description": description})
+
+
+def _warn_fat_hook(ptr: str, stem: str) -> None:
+    from sync_global import _fat_hook_warning
+    lint = _fat_hook_warning(ptr, stem)
+    if lint:
+        print(f"  {lint}", file=sys.stderr)
 
 
 def _validate_local(stem: str, text: str) -> Optional[str]:
@@ -85,6 +99,7 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
     idxp = ctx.native_memory_dir / "MEMORY.md"
     fm = _frontmatter(text)
     ptr = _pointer(stem, str(fm.get("description") or stem))
+    _warn_fat_hook(ptr, stem)
     expected = {}
     from control_plane import _file_hash
     if dest.exists():
@@ -197,6 +212,7 @@ def local_archive(ctx: StoreContext, stem: str) -> dict:
     text = dest.read_text(encoding="utf-8", errors="replace")
     fm = _frontmatter(text)
     ptr = _pointer(stem, str(fm.get("description") or stem))
+    _warn_fat_hook(ptr, stem)
     expected = {}
     for p in (idxp, arch):
         if p.exists():
@@ -261,13 +277,17 @@ def local_rebuild_index(ctx: StoreContext) -> dict:
                     continue
                 if _is_mirror(text):
                     fm = _frontmatter(text)
-                    lines.append(_pointer(f.stem, str(fm.get("description") or f.stem)))
+                    ptr = _pointer(f.stem, str(fm.get("description") or f.stem))
+                    _warn_fat_hook(ptr, f.stem)
+                    lines.append(ptr)
                     continue
                 err = _validate_local(f.stem, text)
                 if err:
                     continue
                 fm = _frontmatter(text)
-                lines.append(_pointer(f.stem, str(fm.get("description") or f.stem)))
+                ptr = _pointer(f.stem, str(fm.get("description") or f.stem))
+                _warn_fat_hook(ptr, f.stem)
+                lines.append(ptr)
         future = "\n".join(lines) + "\n"
         adm = project_index(future)
         if not adm["admitted"]:

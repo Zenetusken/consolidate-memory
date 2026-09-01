@@ -500,7 +500,10 @@ Markdown `projects:` is leftover-only. `sync_global.py`:
   standing-justify-independent** — the comparison never reads `standing_justify`, so suppression
   can't hide it and there is no justify escape. Write-time fat-hook lint rides the same release
   (`_fat_hook_warning` in `sync_global` — every written pointer > `HOOK_TOKEN_WARN` warns on stderr,
-  naming the canonical's description; never truncates). No real fleet store is near the ceiling
+  naming the description; the lint never truncates further). `_pointer_line` already
+  sanitizes and 88-char-truncates the hook; `cm local` reuses that constructor (v0.3.6
+  dogfood: a verbatim local description copy had landed a ~190-tok always-loaded
+  line). No real fleet store is near the ceiling
   today — it is a backstop, exercised by synthetic fixtures.
 - **The DEMOTION TRIAGE + the miss loop (v0.1.67, Phase C)** — the policy leg that consumes Phase A's
   accrued data. `memory_status.usage_history` aggregates the cycle log's `usage` blocks (reads merge
