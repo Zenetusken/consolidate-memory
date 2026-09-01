@@ -1,6 +1,6 @@
 # consolidate-memory — project conventions
 
-**v0.3.4.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
+**v0.3.5.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
 Claude Code's built-in Auto Dream (per-project consolidation), adding a governed cross-project store +
 verification against the live code. This repo is both the plugin and its marketplace —
 end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +

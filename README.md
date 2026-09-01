@@ -240,16 +240,18 @@ enroll keep-path does not trust mirror `domain:`, project/local
 mismatch is complete-old, finalize is terminal, and the HTML no longer invents
 identity or labels unverifiable as dropped.
 
-**v0.3.4** is one enumerator plus journal complete-old: ordinary
-`--pull`/`--list`/beacon/`--network` walk domain canonicals only (leftover
-`~/.claude/memory` is `cm migrate --inventory`, not a second fleet API);
-deletes rename to same-dir trash before dest publish; forget is lazy
-tombstone-ack on the next `--pull`/`--gc --apply`; worktree Git identity
-requires a gitdir backlink.
+**v0.3.5** closes remaining P0 authorization/journal/fleet-purge gaps and
+P1 correctness: project/local `autoMemoryDirectory` cannot select another
+project's store without `cm project grant-native`; Git identity is a
+relationship not a path shape; new journal rows keep hashes not fact text;
+domain purge is fleet-atomic. Canonical upsert is active
+`stack-general|user-global` only; ordinary pull replicates only valid
+active v3; SQLite holders are topology; `cm local` is the native
+fact+pointer writer.
 
 ## Install
 
-**v0.3.4** (domain isolation + StoreContext + `cm project enroll`; dashboard
+**v0.3.5** (domain isolation + StoreContext + `cm project enroll`; dashboard
 identity). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
@@ -285,7 +287,7 @@ memory this plugin does not own. Domain canonicals live under
 read-only migration source. Scoped purge commands are the right tool; hand-deleting
 the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
-### Known limitations (v0.3.4)
+### Known limitations (v0.3.5)
 
 - **Unenrolled projects are local-only.** They cannot create or pull cross-project
   canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain

@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.3.4** — domain-isolated canonicals, StoreContext, operator enrollment
+**v0.3.5** — domain-isolated canonicals, StoreContext, operator enrollment
 (`cm project enroll --domain NAME`), SQLite control plane, one enumerator
 (ordinary ops never dual-read leftover `~/.claude/memory`), journal
 complete-old. Public 1.0 stays HOLD.
