@@ -50,10 +50,9 @@ and publishes, then COMMITs. Source drift becomes `conflicted` (not silent
 Positive: multi-delete, dest-edit, and recover match ADR 010's promise for
 new operations.
 
-Negative: short-lived `.cm-trash-*` siblings; historical completed rows may
-still contain `bytes_b64` until a later compact.
+Negative: short-lived `.cm-trash-*` siblings. Historical completed rows are
+redacted by `cm journal compact` (also run from `cm data compact`).
 
 ## Revisit trigger
 
-Reopen when `cm journal compact` redacts old rows, or when a native-Windows
-exclusive-create primitive is required.
+Reopen when a native-Windows exclusive-create primitive is required.

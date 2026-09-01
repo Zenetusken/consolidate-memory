@@ -18,8 +18,9 @@ import json
 import os
 import re
 import sys
+import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Optional, TextIO
 
@@ -200,16 +201,22 @@ def _gitdir_layout_ok(worktree: Path, gitfile: Path, gitdir: Path) -> bool:
 
     Path *shape* is not enough: a crafted gitfile can point at another
     repository's worktrees/ or modules/ directory. Require the administrative
-    dir's gitdir backlink (when present) and commondir containment.
+    dir's gitdir backlink (when present), modules-relative path match, and
+    commondir containment. A symlinked `.git` is never Git (P0-2).
     """
     try:
+        if gitfile.is_symlink() or gitdir.is_symlink():
+            return False
         gd = gitdir.resolve()
         wt = worktree.resolve()
         gf = gitfile.resolve()
     except OSError:
         return False
     try:
-        in_tree = gd == (wt / ".git").resolve() or _path_contained(gd, wt / ".git")
+        dotgit = wt / ".git"
+        if dotgit.is_symlink():
+            return False
+        in_tree = gd == dotgit.resolve() or _path_contained(gd, wt / ".git")
     except OSError:
         in_tree = gd == wt / ".git" or _path_contained(gd, wt / ".git")
     if in_tree:
@@ -231,15 +238,18 @@ def _gitdir_layout_ok(worktree: Path, gitfile: Path, gitdir: Path) -> bool:
         common = _common_from_gitdir(gd)
         return common == admin or _path_contained(common, admin)
 
-    # submodule: <super>/.git/modules/<name>
+    # submodule: <super>/.git/modules/<rel> must match worktree relpath
     cur = gd
     while cur != cur.parent:
         if cur.name == "modules" and cur.parent.name == ".git":
             super_git = cur.parent
             super_wt = super_git.parent
-            if not (wt == super_wt or _path_contained(wt, super_wt)):
+            try:
+                wt_rel = wt.relative_to(super_wt)
+                gd_rel = gd.relative_to(cur)
+            except ValueError:
                 return False
-            if not _path_contained(gd, cur):
+            if wt_rel.parts != gd_rel.parts:
                 return False
             if (gd / "gitdir").is_file() and not _backlink_ok():
                 return False
@@ -382,25 +392,144 @@ def project_id_for(profile: str, domain: str, git_common: Optional[Path],
     `domain` is accepted for call-site compatibility and ignored in the hash.
     """
     del domain
+    del remote_fp  # descriptive metadata only (P1-8); not part of identity
     if git_common is not None:
         payload = "\n".join([
-            SCHEMA_VERSION, profile, _norm_path(git_common), remote_fp or "",
+            SCHEMA_VERSION, profile, _norm_path(git_common),
         ])
         return "p_" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:32]
     key = f"cm:{SCHEMA_VERSION}:{profile}:{_norm_path(root)}"
     return "p_" + uuid.uuid5(uuid.NAMESPACE_URL, key).hex
 
 
-def _project_local_mem_ok(custom: Path, cfg: Path, root: Path,
-                          default_native: Path) -> bool:
-    """Project/local autoMemoryDirectory may not select another config-root store."""
-    del cfg
-    if _path_contained(custom, root):
-        return True
+STORE_GRANTS_NAME = "store-grants.json"
+
+
+def store_grants_path(pdata: Path) -> Path:
+    return pdata / STORE_GRANTS_NAME
+
+
+def load_store_grants(pdata: Path) -> list:
+    """Operator-enrolled native-store grants (not repository configuration)."""
+    data = _load_json(store_grants_path(pdata))
+    grants = data.get("grants") if isinstance(data, dict) else None
+    if not isinstance(grants, list):
+        return []
+    out: list = []
+    for g in grants:
+        if isinstance(g, dict) and str(g.get("project_id") or "").strip() and str(
+                g.get("path") or "").strip():
+            out.append(g)
+    return out
+
+
+def _grant_path_key(path: Path) -> str:
     try:
-        return custom.resolve() == default_native.resolve()
+        return str(path.resolve())
     except OSError:
-        return False
+        return str(path)
+
+
+def grant_covers(grants: list, project_id: str, custom: Path) -> bool:
+    want = _grant_path_key(custom)
+    for g in grants:
+        if str(g.get("project_id") or "") != project_id:
+            continue
+        raw = str(g.get("path") or "").strip()
+        if not raw:
+            continue
+        if _grant_path_key(Path(raw)) == want:
+            return True
+    return False
+
+
+def write_store_grant(pdata: Path, project_id: str, path: Path) -> dict:
+    """Record an operator grant for a dedicated per-project native namespace."""
+    pdata.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(str(pdata), 0o700)
+    except OSError:
+        pass
+    resolved = _grant_path_key(path)
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    grants = [g for g in load_store_grants(pdata)
+              if not (str(g.get("project_id") or "") == project_id
+                      and _grant_path_key(Path(str(g.get("path") or ""))) == resolved)]
+    grants.append({"project_id": project_id, "path": resolved, "created_at": now})
+    dest = store_grants_path(pdata)
+    tmp = dest.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps({"grants": grants}, indent=2) + "\n", encoding="utf-8")
+    try:
+        os.chmod(str(tmp), 0o600)
+    except OSError:
+        pass
+    os.replace(str(tmp), str(dest))
+    try:
+        os.chmod(str(dest), 0o600)
+    except OSError:
+        pass
+    return {"ok": True, "project_id": project_id, "path": resolved}
+
+
+def revoke_store_grant(pdata: Path, project_id: str, path: Path) -> dict:
+    resolved = _grant_path_key(path)
+    before = load_store_grants(pdata)
+    grants = [g for g in before
+              if not (str(g.get("project_id") or "") == project_id
+                      and _grant_path_key(Path(str(g.get("path") or ""))) == resolved)]
+    dest = store_grants_path(pdata)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps({"grants": grants}, indent=2) + "\n", encoding="utf-8")
+    try:
+        os.chmod(str(dest), 0o600)
+    except OSError:
+        pass
+    return {"ok": True, "project_id": project_id, "path": resolved,
+            "removed": len(before) - len(grants)}
+
+
+def _protected_config_target(custom: Path, cfg: Path, default_native: Path,
+                             pdata: Path) -> bool:
+    """True if custom is another config-root store, a canonical dir, or plugin-data.
+
+    Exact current-project default native is not protected (it is the allow).
+    """
+    try:
+        c = custom.resolve()
+        if c == default_native.resolve():
+            return False
+    except OSError:
+        return True
+    if _path_contained(custom, pdata):
+        return True
+    if _path_contained(custom, cfg / "consolidate-memory"):
+        return True
+    if _path_contained(custom, cfg / "projects"):
+        return True
+    if _path_contained(custom, cfg):
+        return True
+    return False
+
+
+def _project_local_mem_ok(custom: Path, cfg: Path, root: Path,
+                          default_native: Path, *, pdata: Path,
+                          project_id: str) -> bool:
+    """Project/local autoMemoryDirectory may not select another config-root store.
+
+    Allow: exact current-project native, an in-tree directory that is not a
+    protected config-root path, or a separately stored operator grant.
+    """
+    try:
+        if custom.resolve() == default_native.resolve():
+            return True
+    except OSError:
+        pass
+    if grant_covers(load_store_grants(pdata), project_id, custom):
+        return True
+    if _path_contained(custom, root) and not _protected_config_target(
+            custom, cfg, default_native, pdata):
+        return True
+    return False
 
 
 def _expand_mem_dir(raw: str) -> Optional[Path]:
@@ -442,9 +571,24 @@ def _merge_settings(cfg: Path, project_root: Path, environ: dict,
 
     # Lowest → highest, matching Claude Code: user, project, local, --settings,
     # then managed policy (highest; not overridden by any of the above).
-    _apply("user", cfg / "settings.json")
-    _apply("project", project_root / ".claude" / "settings.json")
-    _apply("local", project_root / ".claude" / "settings.local.json")
+    # If the git root is $HOME, project `.claude/settings.json` IS the user
+    # file — do not treat that operator file as repository-controlled.
+    user_settings = cfg / "settings.json"
+    project_settings = project_root / ".claude" / "settings.json"
+    local_settings = project_root / ".claude" / "settings.local.json"
+    _apply("user", user_settings)
+    try:
+        same_project = project_settings.resolve() == user_settings.resolve()
+    except OSError:
+        same_project = False
+    if not same_project:
+        _apply("project", project_settings)
+    try:
+        same_local = local_settings.resolve() == user_settings.resolve()
+    except OSError:
+        same_local = False
+    if not same_local:
+        _apply("local", local_settings)
 
     cli = settings_path
     env_settings = str(environ.get("CLAUDE_CODE_SETTINGS") or "").strip()
@@ -555,6 +699,8 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         for p in [cur, *list(cur.parents)]:
             gf = p / ".git"
             try:
+                if gf.is_symlink():
+                    continue
                 if gf.is_file():
                     gitdir = _read_gitdir_pointer(gf)
                     if gitdir is not None and _gitdir_layout_ok(p, gf, gitdir):
@@ -584,6 +730,36 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     project_slot = slot_env or default_slot
     session_dir = cfg / "projects" / project_slot
     default_native = session_dir / "memory"
+    pdata = plugin_data_dir(cfg, env)
+    pid = project_id_for(profile, domain, common, root, remote_fp)
+    enrolled = False
+    from control_plane import (classify_registry, connect_if_exists,
+                               enrolled_domain, resolve_project_alias)
+    _db = pdata / "control.sqlite"
+    reg_state, reg_err = classify_registry(_db)
+    if reg_state == "healthy":
+        _c = connect_if_exists(_db)
+        if _c is not None:
+            try:
+                aliased = resolve_project_alias(_c, pid)
+                if aliased:
+                    pid = aliased
+                got = enrolled_domain(_c, pid)
+                if not got and common is not None:
+                    rows = _c.execute(
+                        "SELECT project_id FROM projects WHERE status='enrolled' "
+                        "AND profile_id=? AND git_common_dir=?",
+                        (profile, str(common))).fetchall()
+                    if len(rows) == 1:
+                        old_pid = str(rows[0]["project_id"] or "")
+                        if old_pid:
+                            pid = old_pid
+                        got = enrolled_domain(_c, pid)
+                if got:
+                    domain = got
+                    enrolled = True
+            finally:
+                _c.close()
 
     custom = _expand_mem_dir(str(settings.get("autoMemoryDirectory") or ""))
     override = store_override
@@ -611,7 +787,8 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         source = "autoMemoryDirectory"
         native = custom
         if mem_dir_source in ("project", "local"):
-            if not _project_local_mem_ok(custom, cfg, root, default_native):
+            if not _project_local_mem_ok(
+                    custom, cfg, root, default_native, pdata=pdata, project_id=pid):
                 ambiguity.append(
                     "project/local autoMemoryDirectory escapes this project's "
                     "native store and project tree: " + str(custom))
@@ -663,49 +840,6 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     write_allowed = enabled and not ambiguity
     if override is not None:
         write_allowed = enabled  # explicit override wins disagreement
-
-    pid = project_id_for(profile, domain, common, root, remote_fp)
-    enrolled = False
-    pdata = plugin_data_dir(cfg, env)
-    from control_plane import (classify_registry, connect, connect_if_exists,
-                               enrolled_domain, record_project_alias,
-                               resolve_project_alias)
-    _db = pdata / "control.sqlite"
-    reg_state, reg_err = classify_registry(_db)
-    if reg_state == "healthy":
-        _c = connect_if_exists(_db)
-        if _c is not None:
-            try:
-                aliased = resolve_project_alias(_c, pid)
-                if aliased:
-                    pid = aliased
-                got = enrolled_domain(_c, pid)
-                if not got and common is not None:
-                    rows = _c.execute(
-                        "SELECT project_id FROM projects WHERE status='enrolled' "
-                        "AND profile_id=? AND git_common_dir=?",
-                        (profile, str(common))).fetchall()
-                    if len(rows) == 1:
-                        old_pid = str(rows[0]["project_id"] or "")
-                        if old_pid and old_pid != pid:
-                            try:
-                                wc = connect(_db)
-                                try:
-                                    record_project_alias(wc, pid, old_pid)
-                                    wc.commit()
-                                finally:
-                                    wc.close()
-                            except Exception:
-                                pass
-                            pid = old_pid
-                        elif old_pid:
-                            pid = old_pid
-                        got = enrolled_domain(_c, pid)
-                if got:
-                    domain = got
-                    enrolled = True
-            finally:
-                _c.close()
     from identifiers import IdentifierRefused, safe_child, validate_domain_id
     try:
         dname = validate_domain_id(domain, allow_unknown=True)
@@ -743,6 +877,63 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         registry_state=reg_state,
         cross_project_allowed=cross_project_allowed,
         registry_error=reg_err,
+    )
+
+
+def store_context_from_registry(row: Any, *, template: StoreContext) -> StoreContext:
+    """Build a StoreContext from a registry projects row (P0-9).
+
+    Uses the recorded project_id, native store, root, and domain. Never treats
+    native_memory_dir as a project root (that minted a different project id).
+    """
+    from identifiers import IdentifierRefused, safe_child, validate_domain_id
+
+    def _col(name: str, default: str = "") -> str:
+        if hasattr(row, "keys"):
+            try:
+                val = row[name]
+            except (KeyError, IndexError):
+                return default
+            return str(val or "").strip()
+        return default
+
+    pid = _col("project_id")
+    native_s = _col("native_memory_dir")
+    root_s = _col("current_root")
+    git_s = _col("git_common_dir")
+    did = _col("domain_id") or "unknown"
+    sess_s = _col("session_dir")
+    display = _col("display_name")
+    status = _col("status")
+    native = Path(native_s) if native_s else template.native_memory_dir
+    root = Path(root_s) if root_s else template.project_root
+    git: Optional[Path] = Path(git_s) if git_s else None
+    session = Path(sess_s) if sess_s else template.session_dir
+    try:
+        dname = validate_domain_id(did, allow_unknown=True)
+        canon = safe_child(
+            template.config_root / "consolidate-memory" / "domains", dname) / "facts"
+    except IdentifierRefused:
+        dname = "unknown"
+        canon = (template.config_root / "consolidate-memory" / "domains"
+                 / "unknown" / "facts")
+    enrolled = status == "enrolled"
+    return replace(
+        template,
+        native_memory_dir=native,
+        canonical_domain_dir=canon,
+        git_common_dir=git,
+        project_id=pid or template.project_id,
+        domain_id=dname,
+        project_root=root,
+        session_dir=session,
+        display_name=display or template.display_name,
+        enrolled=enrolled,
+        cross_project_allowed=(
+            template.registry_state == "healthy" and enrolled and dname != "unknown"
+        ),
+        resolution_source="registry-row",
+        store_override=native,
     )
 
 

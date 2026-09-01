@@ -488,15 +488,28 @@ def mutate_pass(pf: PreFlight, reports_dir: Path, *, keep: bool) -> MutateResult
         _ctx_oob = _rs_oob(Path(repo_arg), environ=env)
         gstore = _ctx_oob.canonical_domain_dir
         canonical = gstore / f"{_MUTATE_FACT_NAME}.md"
+        _hold_oob = False
         try:
-            canon_text = canonical.read_text(encoding="utf-8")
-        except OSError:
-            canon_text = ""
+            from control_plane import connect as _c_oob, db_path as _db_oob
+            from control_plane import stable_fact_id as _sf_oob
+            _conn_oob = _c_oob(_db_oob(_ctx_oob))
+            try:
+                _fid_oob = _sf_oob(_ctx_oob.domain_id, _MUTATE_FACT_NAME)
+                _hold_oob = _conn_oob.execute(
+                    "SELECT 1 FROM holders WHERE fact_id=? AND project_id=?",
+                    (_fid_oob, _ctx_oob.project_id),
+                ).fetchone() is not None
+            finally:
+                _conn_oob.close()
+        except Exception:
+            _hold_oob = False
         oob = {
             "canonical_created": canonical.exists(),
-            # provenance records the repo NAME (projects: [gate-repo]), not the slug — measured
-            "provenance_has_slug": pf.repo.name in canon_text,
-            "local_origin_converted": "global_ref:" in fact_path.read_text(encoding="utf-8"),
+            # P1-6: SQLite holders are authoritative (Markdown projects: is stripped).
+            "provenance_has_slug": _hold_oob,
+            "local_origin_converted": (
+                fact_path.is_file()
+                and "global_ref:" in fact_path.read_text(encoding="utf-8")),
         }
         oob_ok = all(oob.values())
         _step("out-of-band", 0 if oob_ok else 1,

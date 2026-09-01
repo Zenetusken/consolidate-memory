@@ -32,9 +32,11 @@ case "$cmd" in
   resolve)  exec python3 "$S/cm_ops.py" resolve "$@" ;;
   repair-mirror) exec python3 "$S/cm_ops.py" repair-mirror "$@" ;;
   canonical) exec python3 "$S/cm_ops.py" canonical "$@" ;;
+  local)    exec python3 "$S/cm_ops.py" local "$@" ;;
   migrate)  exec python3 "$S/cm_ops.py" migrate "$@" ;;
   data)     exec python3 "$S/cm_ops.py" data "$@" ;;
   project)  exec python3 "$S/cm_ops.py" project "$@" ;;
+  journal)  exec python3 "$S/cm_ops.py" journal "$@" ;;
   forget)   exec python3 "$S/cm_ops.py" canonical forget "$@" ;;
   help|*)
     cat <<EOF
@@ -86,10 +88,15 @@ users run the skill — they do not have ./cm on PATH)
   cm resolve FACT      --keep-canonical | --fork-local NAME | --promote-local
   cm repair-mirror FACT
   cm canonical upsert STEM [--file PATH] [--origin]
+  cm canonical forget|supersede|expire|reactivate STEM
+  cm local upsert|update|archive|forget STEM [--file PATH]
+  cm local rebuild-index
   cm migrate [--plan|--assign STEM --domain NAME|--exclude STEM|--apply|--rollback|--finalize|--status]
   cm data inventory|compact|export|purge|retention [--scope SCOPE]
+  cm journal inventory|show|retry|rollback|abandon|compact [OP-ID]
   cm forget STEM       tombstone a canonical (does not resurrect on pull)
   cm project enroll --domain NAME [DIR]
+  cm project grant-native --path PATH [DIR]   operator grant for a dedicated native store
   cm project move-domain --to NAME [DIR]
   cm project rebind [DIR]
   cm project show [DIR]

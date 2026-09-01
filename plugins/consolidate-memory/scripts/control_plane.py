@@ -8,6 +8,7 @@ paths, not fact bodies (ADR 017). Stdlib sqlite3 only.
 """
 from __future__ import annotations
 
+import calendar
 import errno
 import hashlib
 import json
@@ -123,6 +124,11 @@ JOURNAL_STEPS = (
     "journal_complete",
 )
 JOURNAL_BLOCKING = frozenset({"failed", "conflicted"})
+DOMAIN_LIFECYCLE_KINDS = frozenset({
+    "domain-deleting", "domain-deleted", "purge-domain", "purge-all-plugin-data",
+})
+JOURNAL_BODY_KEYS = ("text", "body", "old_text", "bytes_b64", "old_bytes_b64")
+RECOVERY_TTL_SEC = 24 * 60 * 60
 
 class CrashSimulated(RuntimeError):
     """Test-only: mutation stopped after a named journal step."""
@@ -313,6 +319,13 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     if "fact_id" not in ccols:
         conn.execute("ALTER TABLE conflicts ADD COLUMN fact_id TEXT DEFAULT ''")
     conn.commit()
+    try:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_conflicts_open "
+            "ON conflicts(fact_stem, project_id, domain_id) WHERE resolved=''")
+        conn.commit()
+    except sqlite3.Error:
+        pass
 
 
 def iter_registered_projects(conn: sqlite3.Connection) -> list:
@@ -787,13 +800,69 @@ def release_locks(locks: list) -> None:
         lk.release()
 
 
+def sanitize_journal_payload(payload: dict) -> dict:
+    """Strip fact bodies from a journal payload. Hashes and paths remain."""
+    if not isinstance(payload, dict):
+        return {}
+    out = dict(payload)
+    for k in JOURNAL_BODY_KEYS:
+        if k not in out:
+            continue
+        val = out.pop(k)
+        if k == "text" and "text_sha256" not in out:
+            if isinstance(val, str):
+                out["text_sha256"] = hashlib.sha256(val.encode("utf-8")).hexdigest()
+            elif isinstance(val, (bytes, bytearray)):
+                out["text_sha256"] = hashlib.sha256(bytes(val)).hexdigest()
+    pre: list = []
+    for item in out.get("dest_preimages") or []:
+        if not isinstance(item, dict):
+            continue
+        pre.append({
+            "dest": item.get("dest"),
+            "sha256": item.get("sha256"),
+            "absent": item.get("absent"),
+            "mode": item.get("mode"),
+            "orig_mode": item.get("orig_mode"),
+            "published_sha256": item.get("published_sha256"),
+            "blob": item.get("blob") or "",
+        })
+    if "dest_preimages" in out:
+        out["dest_preimages"] = pre
+    pubs: list = []
+    for item in out.get("publishes") or []:
+        if not isinstance(item, dict):
+            continue
+        pubs.append({
+            "tmp": item.get("tmp"),
+            "dest": item.get("dest"),
+            "sha256": item.get("sha256"),
+            "mode": item.get("mode"),
+        })
+    if "publishes" in out:
+        out["publishes"] = pubs
+    return out
+
+
+def _journal_put_payload(conn: sqlite3.Connection, op_id: str, payload: dict,
+                         *, step: Optional[str] = None) -> None:
+    blob = json.dumps(sanitize_journal_payload(payload), sort_keys=True)
+    if step is not None:
+        conn.execute("UPDATE journal SET payload=?, step=? WHERE op_id=?",
+                     (blob, step, op_id))
+    else:
+        conn.execute("UPDATE journal SET payload=? WHERE op_id=?", (blob, op_id))
+    conn.commit()
+
+
 def journal_insert(conn: sqlite3.Connection, kind: str, payload: dict, step: str) -> str:
     op_id = "op_" + uuid.uuid4().hex[:16]
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     conn.execute(
         "INSERT INTO journal(op_id, kind, payload, step, status, created_at) "
         "VALUES (?,?,?,?,?,?)",
-        (op_id, kind, json.dumps(payload, sort_keys=True), step, "pending", now),
+        (op_id, kind, json.dumps(sanitize_journal_payload(payload), sort_keys=True),
+         step, "pending", now),
     )
     conn.commit()
     return op_id
@@ -855,12 +924,50 @@ def _write_exclusive(path: Path, data: bytes) -> None:
         os.close(fd)
 
 
+def _secure_unlink(path: Path) -> None:
+    """Overwrite then unlink a recovery blob so forgotten bodies do not linger."""
+    try:
+        size = path.stat().st_size
+        fd = os.open(str(path), os.O_WRONLY)
+        try:
+            remaining = size
+            chunk = b"\x00" * min(65536, size if size > 0 else 1)
+            while remaining > 0:
+                n = os.write(fd, chunk if remaining >= len(chunk) else b"\x00" * remaining)
+                if n <= 0:
+                    break
+                remaining -= n
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        path.unlink()
+    except OSError:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
 def _recovery_dir(ctx: Optional[StoreContext], op_id: str) -> Path:
     root = ctx.plugin_data_dir if ctx is not None else plugin_data_dir()
     d = root / "recovery" / op_id
     d.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(str(d), 0o700)
+    except OSError:
+        pass
+    now = time.time()
+    meta = {
+        "op_id": op_id,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
+        "expires_at": time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                    time.gmtime(now + RECOVERY_TTL_SEC)),
+    }
+    mp = d / "meta.json"
+    try:
+        if not mp.is_file():
+            mp.write_text(json.dumps(meta) + "\n", encoding="utf-8")
+            os.chmod(str(mp), 0o600)
     except OSError:
         pass
     return d
@@ -873,10 +980,8 @@ def _cleanup_recovery(ctx: Optional[StoreContext], op_id: str) -> None:
         return
     try:
         for p in d.iterdir():
-            try:
-                p.unlink()
-            except OSError:
-                pass
+            if p.is_file():
+                _secure_unlink(p)
         d.rmdir()
     except OSError:
         pass
@@ -942,6 +1047,7 @@ def _snapshot_dest_preimages(publishes: list, *, recovery: Path) -> list:
         if dest.exists():
             try:
                 raw = dest.read_bytes()
+                orig_mode = dest.stat().st_mode & 0o777
             except OSError:
                 raise WriteRefused("cannot snapshot dest (unreadable): " + str(dest))
             blob = recovery / f"dest-{i}.bin"
@@ -956,11 +1062,13 @@ def _snapshot_dest_preimages(publishes: list, *, recovery: Path) -> list:
                 "sha256": hashlib.sha256(raw).hexdigest(),
                 "absent": False, "mode": mode, "blob": str(blob),
                 "published_sha256": published,
+                "orig_mode": orig_mode,
             })
         else:
             out.append({
                 "dest": str(dest), "sha256": ABSENT, "absent": True,
                 "mode": mode, "blob": "", "published_sha256": published,
+                "orig_mode": 0,
             })
     return out
 
@@ -1000,14 +1108,21 @@ def _restore_dest_preimages(preimages: list,
             tmp.unlink(missing_ok=True)
             _write_exclusive(tmp, raw)
             os.replace(str(tmp), str(dest))
-            try:
-                os.chmod(str(dest), 0o600)
-            except OSError:
-                pass
+            want_mode = int(item.get("orig_mode") or 0o600)
+            if want_mode:
+                try:
+                    os.chmod(str(dest), want_mode)
+                except OSError:
+                    pass
+                got_mode = dest.stat().st_mode & 0o777
+                if got_mode != want_mode:
+                    raise WriteRefused("restored dest mode mismatch: " + str(dest))
             if orig and orig != ABSENT and _file_hash(dest) != orig:
                 raise WriteRefused("restored dest hash mismatch: " + str(dest))
             if not _dest_contained(dest, parent):
                 raise WriteRefused("restored dest escaped parent: " + str(dest))
+            if not dest.exists():
+                raise WriteRefused("restored dest missing: " + str(dest))
 
         if absent:
             if current is None:
@@ -1015,11 +1130,16 @@ def _restore_dest_preimages(preimages: list,
                 continue
             if published and current == published:
                 dest.unlink(missing_ok=True)
+                if dest.exists():
+                    raise WriteRefused("absent dest still present after restore: " + str(dest))
                 restored.append(str(dest))
                 continue
             q = _quarantine_dest(dest)
             if q is not None:
                 quarantined.append(str(q))
+            if dest.exists():
+                raise WriteRefused(
+                    "cannot restore dest (occupant not quarantined): " + str(dest))
             continue
         if current == orig:
             skipped.append(str(dest))
@@ -1071,6 +1191,199 @@ def abandon_failed(conn: sqlite3.Connection, op_id: Optional[str] = None) -> int
         journal_step(conn, row["op_id"], "abandoned", "abandoned")
         n += 1
     return n
+
+
+def journal_row(conn: sqlite3.Connection, op_id: str) -> Optional[dict]:
+    row = conn.execute(
+        "SELECT op_id, kind, payload, step, status, created_at FROM journal WHERE op_id=?",
+        (op_id,),
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def journal_inventory(conn: sqlite3.Connection) -> list:
+    rows = conn.execute(
+        "SELECT op_id, kind, step, status, created_at, payload FROM journal "
+        "ORDER BY created_at, op_id"
+    ).fetchall()
+    out: list = []
+    for r in rows:
+        try:
+            payload = json.loads(r["payload"] or "{}")
+        except (ValueError, TypeError):
+            payload = {}
+        has_body = any(k in payload for k in JOURNAL_BODY_KEYS)
+        for item in payload.get("dest_preimages") or []:
+            if isinstance(item, dict) and item.get("bytes_b64"):
+                has_body = True
+        out.append({
+            "op_id": r["op_id"], "kind": r["kind"], "step": r["step"],
+            "status": r["status"], "created_at": r["created_at"],
+            "has_body": has_body,
+            "publishes": len(payload.get("publishes") or []),
+            "deletes": len(payload.get("deletes") or []),
+        })
+    return out
+
+
+def journal_show(conn: sqlite3.Connection, op_id: str) -> Optional[dict]:
+    row = journal_row(conn, op_id)
+    if row is None:
+        return None
+    try:
+        payload = json.loads(row["payload"] or "{}")
+    except (ValueError, TypeError):
+        payload = {}
+    row["payload"] = sanitize_journal_payload(payload)
+    return row
+
+
+def redact_journal_payloads(conn: sqlite3.Connection) -> int:
+    """Replace durable fact bodies in completed/abandoned rows with hashes."""
+    n = 0
+    rows = conn.execute(
+        "SELECT op_id, payload, status FROM journal"
+    ).fetchall()
+    for row in rows:
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except (ValueError, TypeError):
+            continue
+        cleaned = sanitize_journal_payload(payload)
+        status = str(row["status"] or "")
+        if status in ("complete", "abandoned"):
+            for item in cleaned.get("dest_preimages") or []:
+                if isinstance(item, dict):
+                    item["blob"] = ""
+        before = json.dumps(payload, sort_keys=True)
+        after = json.dumps(cleaned, sort_keys=True)
+        if after != before:
+            conn.execute("UPDATE journal SET payload=? WHERE op_id=?",
+                         (after, row["op_id"]))
+            n += 1
+    conn.commit()
+    return n
+
+
+def expire_recovery(ctx: Optional[StoreContext], conn: sqlite3.Connection) -> int:
+    if ctx is None:
+        return 0
+    root = ctx.plugin_data_dir / "recovery"
+    if not root.is_dir():
+        return 0
+    live = {str(r["op_id"]): str(r["status"] or "")
+            for r in conn.execute("SELECT op_id, status FROM journal").fetchall()}
+    n = 0
+    now = time.time()
+    for d in list(root.iterdir()):
+        if not d.is_dir():
+            continue
+        oid = d.name
+        st = live.get(oid)
+        expired = False
+        meta_p = d / "meta.json"
+        if meta_p.is_file():
+            try:
+                meta = json.loads(meta_p.read_text(encoding="utf-8"))
+                exp = str((meta or {}).get("expires_at") or "")
+                if exp:
+                    expired = calendar.timegm(
+                        time.strptime(exp, "%Y-%m-%dT%H:%M:%SZ")) < now
+            except (ValueError, TypeError, OSError, OverflowError):
+                expired = False
+        keep_pending = st in ("pending", "failed", "conflicted")
+        if keep_pending and not expired:
+            continue
+        if st in ("complete", "abandoned") or st is None or (expired and not keep_pending):
+            _cleanup_recovery(ctx, oid)
+            n += 1
+    return n
+
+
+def compact_journal(ctx: StoreContext) -> dict:
+    conn = connect_journal(ctx)
+    try:
+        n = redact_journal_payloads(conn)
+        n_rec = expire_recovery(ctx, conn)
+        try:
+            conn.execute("VACUUM")
+        except sqlite3.Error:
+            pass
+        return {"ok": True, "redacted": n, "recovery_expired": n_rec}
+    finally:
+        conn.close()
+
+
+def journal_rollback(ctx: StoreContext, op_id: str) -> dict:
+    """Restore dests + trash for a non-complete op and mark abandoned."""
+    require_interprocess_lock()
+    locks = acquire_mutation_locks(ctx, [ctx.project_id])
+    conn = connect_journal(ctx)
+    try:
+        row = journal_row(conn, op_id)
+        if row is None:
+            raise WriteRefused("unknown journal op: " + op_id)
+        status = str(row["status"] or "")
+        if status == "complete":
+            raise WriteRefused("cannot rollback a complete journal op: " + op_id)
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except (ValueError, TypeError):
+            payload = {}
+        _restore_dest_preimages(
+            payload.get("dest_preimages") or [], payload.get("publishes") or [])
+        _restore_trash(payload.get("deletes") or [])
+        journal_step(conn, op_id, "abandoned", "abandoned")
+        _cleanup_recovery(ctx, op_id)
+        return {"ok": True, "op_id": op_id, "status": "abandoned"}
+    finally:
+        conn.close()
+        release_locks(locks)
+
+
+def journal_retry(ctx: StoreContext, op_id: str) -> dict:
+    """Re-run recover for one pending/conflicted/failed op."""
+    require_interprocess_lock()
+    locks = acquire_mutation_locks(ctx, [ctx.project_id])
+    jconn = connect_journal(ctx)
+    rconn = connect(db_path(ctx))
+    rconn.isolation_level = None
+    try:
+        row = journal_row(jconn, op_id)
+        if row is None:
+            raise WriteRefused("unknown journal op: " + op_id)
+        status = str(row["status"] or "")
+        if status == "complete":
+            return {"ok": True, "op_id": op_id, "status": "complete", "recovered": []}
+        if status == "abandoned":
+            raise WriteRefused("cannot retry an abandoned journal op: " + op_id)
+        if status in ("failed", "conflicted"):
+            journal_step(jconn, op_id, row.get("step") or "pending", "pending")
+        recovered = recover_pending(jconn, ctx=ctx, registry_conn=rconn, op_id=op_id)
+        row2 = journal_row(jconn, op_id)
+        return {"ok": True, "op_id": op_id,
+                "status": str((row2 or {}).get("status") or ""),
+                "recovered": recovered}
+    finally:
+        jconn.close()
+        rconn.close()
+        release_locks(locks)
+
+
+def journal_abandon(ctx: StoreContext, op_id: str) -> dict:
+    """Mark abandoned without restoring files (operator accepts current FS)."""
+    conn = connect_journal(ctx)
+    try:
+        row = journal_row(conn, op_id)
+        if row is None:
+            raise WriteRefused("unknown journal op: " + op_id)
+        if str(row["status"] or "") == "complete":
+            raise WriteRefused("cannot abandon a complete journal op: " + op_id)
+        journal_step(conn, op_id, "abandoned", "abandoned")
+        _cleanup_recovery(ctx, op_id)
+        return {"ok": True, "op_id": op_id, "status": "abandoned"}
+    finally:
+        conn.close()
 
 
 def _crash_publish(step: str) -> None:
@@ -1367,21 +1680,6 @@ def _journal_sources_ok(payload: dict, op_id: str = "") -> bool:
     return True
 
 
-def _publish_temps(publishes: list, deletes: Optional[list] = None,
-                   op_id: str = "") -> int:
-    """Trash deletes, then publish destinations (ADR 017)."""
-    del_out = _apply_deletes(deletes, op_id=op_id)
-    if del_out["preimage_mismatch"] or del_out["errors"]:
-        _restore_trash(del_out.get("deletes") or deletes)
-        return 0
-    n, bad = _publish_destinations(publishes)
-    if bad:
-        _restore_dest_preimages([], publishes)
-        _restore_trash(del_out.get("deletes") or deletes)
-        return n
-    return n
-
-
 def _begin_registry(rconn: sqlite3.Connection) -> str:
     """Start a per-op registry transaction. Returns 'begin' or 'savepoint'."""
     try:
@@ -1445,7 +1743,8 @@ def _assert_registry_postconditions(rconn: sqlite3.Connection, payload: dict,
 
 def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                     ctx: Optional[StoreContext] = None,
-                    registry_conn: Optional[sqlite3.Connection] = None) -> list:
+                    registry_conn: Optional[sqlite3.Connection] = None,
+                    op_id: Optional[str] = None) -> list:
     """Publish leftover temps, verify dest hashes, apply recorded registry rows.
 
     Replays a canonical-upsert only when the current StoreContext matches the
@@ -1467,6 +1766,8 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
         rconn = None
     try:
         for op in pending_ops(conn):
+            if op_id and op["op_id"] != op_id:
+                continue
             payload = json.loads(op["payload"] or "{}")
             publishes = payload.get("publishes") or []
             deletes = payload.get("deletes") or []
@@ -1530,6 +1831,7 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                         _apply_journaled_tuples(rconn, payload)
                         apply_registry_ops(rconn, payload.get("registry_ops") or [])
                         _assert_registry_postconditions(rconn, payload, stage="pre")
+                        _assert_registry_postconditions(rconn, payload, stage="post")
                     del_out = _apply_deletes(deletes, op_id=op["op_id"])
                     live_deletes = del_out.get("deletes") or deletes
                     if del_out["deleted"]:
@@ -1554,12 +1856,7 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                                 _rollback_registry(rconn, how)
                             journal_step(conn, op["op_id"], "failed", "failed")
                             continue
-                    if rconn is not None and has_reg and how is not None:
-                        _assert_registry_postconditions(
-                            rconn, payload, stage="post")
-                        _commit_registry(rconn, how)
-                        how = None
-                    elif rconn is not None and how is not None:
+                    if rconn is not None and how is not None:
                         _commit_registry(rconn, how)
                         how = None
                     journal_step(conn, op["op_id"], "journal_complete", "complete")
@@ -1574,7 +1871,7 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                             _restore_trash(live_deletes)
                         except WriteRefused:
                             pass
-                        journal_step(conn, op["op_id"], "conflicted", "conflicted")
+                    journal_step(conn, op["op_id"], "conflicted", "conflicted")
                     if how is not None and rconn is not None:
                         _rollback_registry(rconn, how)
                     continue
@@ -1625,6 +1922,8 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
     import hashlib
     from store_context import WriteRefused
     assert_mutation_allowed(ctx)
+    if kind not in DOMAIN_LIFECYCLE_KINDS:
+        assert_domain_writable(ctx)
     require_interprocess_lock()
     crash = crash_after or os.environ.get("CM_CRASH_AFTER") or ""
     dbp = db_path(ctx)
@@ -1738,10 +2037,12 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
             prevalidate_registry_ops(payload.get("registry_ops") or [])
             apply_registry_ops(rconn, payload.get("registry_ops") or [])
             _assert_registry_postconditions(rconn, payload, stage="pre")
+            _assert_registry_postconditions(rconn, payload, stage="post")
         except WriteRefused:
             for item in publishes:
                 Path(item["tmp"]).unlink(missing_ok=True)
             rconn.execute("ROLLBACK")
+            journal_step(conn, op_id, "conflicted", "conflicted")
             raise
         dest_set = {str(item["dest"]) for item in publishes}
         overlap = dest_set & _failed_owned_dests(conn)
@@ -1753,9 +2054,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
             raise WriteRefused(
                 "failed journal op owns dests; abandon_failed first: "
                 + ", ".join(sorted(overlap)[:8]))
-        conn.execute("UPDATE journal SET payload=?, step=? WHERE op_id=?",
-                     (json.dumps(payload, sort_keys=True), "prepare_temps", op_id))
-        conn.commit()
+        _journal_put_payload(conn, op_id, payload, step="prepare_temps")
         _maybe_crash("prepare_temps")
 
         def _fail_after_persist(msg: str, *, restore: bool,
@@ -1763,9 +2062,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
             _restore_trash(payload.get("deletes") or [])
             if restore:
                 payload["dests_mutated"] = True
-                conn.execute("UPDATE journal SET payload=? WHERE op_id=?",
-                             (json.dumps(payload, sort_keys=True), op_id))
-                conn.commit()
+                _journal_put_payload(conn, op_id, payload)
                 _restore_dest_preimages(
                     payload.get("dest_preimages") or [], publishes)
             journal_step(conn, op_id, status, status)
@@ -1789,9 +2086,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
                 + ", ".join(del_out["preimage_mismatch"] + del_out["errors"]),
                 restore=False)
         payload["deletes"] = del_out.get("deletes") or payload["deletes"]
-        conn.execute("UPDATE journal SET payload=?, step=? WHERE op_id=?",
-                     (json.dumps(payload, sort_keys=True), "after_trash", op_id))
-        conn.commit()
+        _journal_put_payload(conn, op_id, payload, step="after_trash")
         _maybe_crash("after_trash")
         _n_ok, bad = _publish_destinations(publishes)
         del _n_ok
@@ -1817,9 +2112,8 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         journal_step(conn, op_id, "publish", "pending")
         _maybe_crash("publish")
         try:
-            _assert_registry_postconditions(rconn, payload, stage="post")
             rconn.execute("COMMIT")
-        except (WriteRefused, sqlite3.Error) as e:
+        except sqlite3.Error as e:
             _fail_after_persist(
                 "registry commit failed: " + str(e), restore=True,
                 status="conflicted")
@@ -1851,8 +2145,8 @@ def fact_id_for(domain: str, stem: str) -> str:
 
 # Stable fact IDs shouldn't depend on SCHEMA_SQL snippet — use schema version.
 def stable_fact_id(domain: str, stem: str, schema_version: str = "2") -> str:
-    import hashlib
-    return "f_" + hashlib.sha256(f"{schema_version}|{domain}|{stem}".encode("utf-8")).hexdigest()[:24]
+    from fact_schema import stable_fact_id as _sf
+    return _sf(domain, stem, schema_version)
 
 
 def record_holder(conn: sqlite3.Connection, fact_id: str, project_id: str,
@@ -1871,31 +2165,35 @@ def record_conflict(conn: sqlite3.Connection, stem: str, project_id: str, decisi
     """Insert or refresh the open conflict row for (stem, project, domain). Never duplicates."""
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     did = domain_id or ""
-    if did:
-        row = conn.execute(
-            "SELECT id FROM conflicts WHERE fact_stem=? AND project_id=? AND resolved='' "
-            "AND COALESCE(domain_id,'') IN ('', ?)",
-            (stem, project_id, did),
-        ).fetchone()
-    else:
-        row = conn.execute(
-            "SELECT id FROM conflicts WHERE fact_stem=? AND project_id=? AND resolved=''",
-            (stem, project_id),
-        ).fetchone()
+    fid = fact_id or ""
+    row = conn.execute(
+        "SELECT id FROM conflicts WHERE fact_stem=? AND project_id=? AND resolved='' "
+        "AND COALESCE(domain_id,'')=?",
+        (stem, project_id, did),
+    ).fetchone()
     if row:
         conn.execute(
             "UPDATE conflicts SET action=?, local_hash=?, canonical_hash=?, created_at=?, "
             "domain_id=?, fact_id=? WHERE id=?",
             (decision.get("action"), decision.get("local"), decision.get("canonical"),
-             now, did, fact_id or "", row["id"]),
+             now, did, fid, row["id"]),
         )
         return
-    conn.execute(
-        "INSERT INTO conflicts(fact_stem, project_id, action, local_hash, canonical_hash, "
-        "created_at, resolved, domain_id, fact_id) VALUES (?,?,?,?,?,?,?,?,?)",
-        (stem, project_id, decision.get("action"), decision.get("local"),
-         decision.get("canonical"), now, "", did, fact_id or ""),
-    )
+    try:
+        conn.execute(
+            "INSERT INTO conflicts(fact_stem, project_id, action, local_hash, canonical_hash, "
+            "created_at, resolved, domain_id, fact_id) VALUES (?,?,?,?,?,?,?,?,?)",
+            (stem, project_id, decision.get("action"), decision.get("local"),
+             decision.get("canonical"), now, "", did, fid),
+        )
+    except sqlite3.IntegrityError:
+        conn.execute(
+            "UPDATE conflicts SET action=?, local_hash=?, canonical_hash=?, created_at=?, "
+            "fact_id=? WHERE fact_stem=? AND project_id=? AND resolved='' "
+            "AND COALESCE(domain_id,'')=?",
+            (decision.get("action"), decision.get("local"), decision.get("canonical"),
+             now, fid, stem, project_id, did),
+        )
 
 
 def mark_conflict_resolved(conn: sqlite3.Connection, stem: str, project_id: str,

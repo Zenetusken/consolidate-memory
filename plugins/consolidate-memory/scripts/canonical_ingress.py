@@ -52,16 +52,21 @@ def generate_catalog(facts_dir: Path, overlay: Optional[dict] = None) -> str:
         if stem == "MEMORY":
             continue
         stems[stem] = text
-    from memory_status import _frontmatter
+    from fact_schema import CLASS_ACTIVE, CLASS_LEGACY, classify_canonical
     for stem in sorted(stems):
         text = stems[stem]
         if not text:
             continue
-        fm = _frontmatter(text)
+        cls = classify_canonical(text, stem=stem)
+        fm = cls.get("fm") or {}
         status = str(fm.get("status") or "").strip()
-        desc = str(fm.get("description") or "").strip()
-        if status and status != "active":
+        if cls["class"] == CLASS_ACTIVE:
+            pass
+        elif cls["class"] == CLASS_LEGACY and status in ("", "active"):
+            pass
+        else:
             continue
+        desc = str(fm.get("description") or "").strip()
         lines.append(f"- [{stem}]({stem}.md) — {desc}".rstrip(" —"))
     return "\n".join(lines) + "\n"
 
@@ -153,16 +158,24 @@ def link_allowed(src_scope: str, dst_scope: str, *, dst_exists_global: bool = Fa
 def validate_links(text: str, src_scope: str, facts_dir: Path,
                    scope_of: Optional[dict] = None,
                    overlay: Optional[dict] = None) -> Optional[str]:
+    from fact_schema import CLASS_ACTIVE, classify_canonical
     scopes = scope_of or {}
     overlay = overlay or {}
     for target in link_targets(text):
         over = overlay.get(target) or overlay.get(target + ".md")
         dest = facts_dir / f"{target}.md"
-        if over is not None or dest.exists():
-            if over is not None:
-                dst_scope = scopes.get(target) or _scope_of_text(over)
-            else:
-                dst_scope = scopes.get(target) or _scope_of(dest)
+        body = over
+        if body is None and dest.exists():
+            try:
+                body = dest.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                body = None
+        if body is not None:
+            cls = classify_canonical(body, stem=target)
+            if cls["class"] != CLASS_ACTIVE and str((cls.get("fm") or {}).get(
+                    "schema_version") or "").strip() in ("3", "v3"):
+                return f"invalid link [[{target}]]: target is not a valid active canonical"
+            dst_scope = scopes.get(target) or _scope_of_text(body)
             if not link_allowed(src_scope, dst_scope, dst_exists_global=True):
                 return f"invalid link [[{target}]]: {src_scope} must not require {dst_scope}"
             continue
@@ -173,11 +186,9 @@ def validate_links(text: str, src_scope: str, facts_dir: Path,
 
 
 def _scope_of_text(text: str) -> str:
-    for ln in str(text or "").splitlines():
-        s = ln.strip()
-        if s.startswith("scope:"):
-            return s.split(":", 1)[1].strip()
-    return "project-local"
+    from memory_status import _frontmatter
+    fm = _frontmatter(text or "")
+    return str(fm.get("scope") or "project-local").strip() or "project-local"
 
 
 def _scope_of(path: Path) -> str:
@@ -348,7 +359,26 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
     err = validate_write_policy(body, fm, looks_secret=_looks_secret_fn(), domain=ctx.domain_id)
     if err:
         return {"ok": False, "error": err}
-    scope = str(fm.get("scope") or "user-global")
+    scope = str(fm.get("scope") or "").strip()
+    if scope not in ("stack-general", "user-global"):
+        return {"ok": False, "error":
+                "canonical scope must be stack-general|user-global "
+                "(project-local facts use cm local upsert)"}
+    status = str(fm.get("status") or "").strip() or "active"
+    if status != "active":
+        return {"ok": False, "error":
+                "canonical upsert accepts only status: active "
+                "(use cm canonical forget|supersede|expire)"}
+    if scope == "stack-general":
+        from capabilities import parse_applies as _pa_up
+        from sync_global import _DETECTABLE_STACKS, _fact_stacks
+        _appl_up = _pa_up(fm)
+        _st_up = _fact_stacks(fm)
+        if not (_appl_up.get("any") or _appl_up.get("all")
+                or (_st_up & _DETECTABLE_STACKS)):
+            return {"ok": False, "error":
+                    "stack-general requires applies_any/applies_all or a "
+                    "detectable stacks: tag"}
     link_err = validate_links(body, scope, ctx.canonical_domain_dir)
     if link_err:
         return {"ok": False, "error": link_err}
@@ -468,7 +498,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
             "registry_ops": ops,
         }
 
-    payload = {"stem": stem, "text": text,
+    payload = {"stem": stem,
+               "text_sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
                "origin": str(origin_local) if origin_local else "",
                "origin_delete": str(origin_delete) if origin_delete else "",
                "preserve_canonical": bool(preserve_canonical),
@@ -589,6 +620,69 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
 
     try:
         out = transact(ctx, "forget", {"stem": stem, "reason": reason}, mutate)
+        return {"ok": True, **(out.get("result") or {})}
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e)}
+
+
+def set_canonical_status(ctx: StoreContext, stem: str, status: str,
+                         replacement_id: str = "") -> dict:
+    """Lifecycle command: superseded | expired | active (reactivate)."""
+    from control_plane import (assert_domain_writable, is_tombstoned, stable_fact_id,
+                               transact)
+    from identifiers import IdentifierRefused, validate_fact_stem
+    from memory_status import _frontmatter
+    if status not in ("superseded", "expired", "active"):
+        return {"ok": False, "error": "status must be superseded|expired|active"}
+    try:
+        stem = validate_fact_stem(stem)
+    except IdentifierRefused as e:
+        return {"ok": False, "error": str(e)}
+    warn_unenrolled_share(ctx)
+    if not getattr(ctx, "cross_project_allowed", False):
+        return {"ok": False, "error":
+                "cross-project writes require enrollment into a named domain"}
+    try:
+        assert_domain_writable(ctx)
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e)}
+    path = ctx.canonical_domain_dir / f"{stem}.md"
+    if not path.exists():
+        return {"ok": False, "error": "no such canonical"}
+
+    def mutate(conn, temps):
+        prev = path.read_text(encoding="utf-8", errors="replace")
+        if status == "active" and is_tombstoned(conn, stem, ctx.domain_id):
+            pass
+        text = insert_frontmatter_key(prev, "status", status)
+        if replacement_id:
+            text = insert_frontmatter_key(text, "replacement_id", replacement_id)
+        temps[str(path)] = text
+        cat = generate_catalog(ctx.canonical_domain_dir, overlay={stem: text})
+        temps[str(ctx.canonical_domain_dir / "MEMORY.md")] = cat
+        fid = stable_fact_id(ctx.domain_id, stem)
+        ops = [{"op": "fact_status_change", "fact_id": fid, "status": status}]
+        if status == "active":
+            ops.append({"op": "tombstone_delete", "fact_id": fid})
+            fm = _frontmatter(text)
+            ops.append({
+                "op": "fact_upsert", "fact_id": fid, "stem": stem,
+                "domain_id": ctx.domain_id, "canonical_path": str(path),
+                "revision": semantic_hash(text),
+                "status": "active",
+                "sensitivity": fact_sensitivity(fm),
+            })
+        expected = {}
+        from control_plane import _file_hash as _fh
+        h = _fh(path)
+        if h:
+            expected[str(path)] = h
+        return {"stem": stem, "status": status, "registry_ops": ops,
+                "expected_revisions": expected}
+
+    try:
+        out = transact(ctx, "canonical-status",
+                       {"stem": stem, "status": status}, mutate)
         return {"ok": True, **(out.get("result") or {})}
     except WriteRefused as e:
         return {"ok": False, "error": str(e)}

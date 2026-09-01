@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Compact normalized hook sketches. Never store raw prompts or full tool results."""
+"""EXPERIMENTAL / out of product contract.
+
+Opt-in (`CM_HOOK_SKETCHES=1`) transcript-derived sketches. Not part of the
+installed hook manifest, registrar, or retention path. Never store raw
+prompts, commands, results, or diffs.
+"""
 from __future__ import annotations
 
 import json

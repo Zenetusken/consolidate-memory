@@ -58,7 +58,7 @@ a new session; `plugin.json`/`marketplace.json` edits need
 `status` `seed` `extract` `distill` `sync` `pull` `gc` `promote` `tokens`
 `utility` `harvest` `staleness` `workflows` `calibration` `beacon` `network`
 `render` `report` `log` `doctor` `conflicts` `resolve` `repair-mirror`
-`canonical` `migrate` `data` `forget` `project`. Native paths come from `cm doctor`
+`canonical` `migrate` `data` `journal` `forget` `project`. Native paths come from `cm doctor`
 (`StoreContext`); never hand-build `~/.claude/projects/<slug>/memory`.
 
 ## Layout

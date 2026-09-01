@@ -630,11 +630,16 @@ def _admissible_records(ctx) -> list:
             return
         if _looks_secret(text):
             return
-        if str(fm.get("schema_version") or "").strip() in ("3", "v3"):
-            from fact_schema import validate_canonical_frontmatter
-            serr = validate_canonical_frontmatter(
-                fm, stem=path.stem, domain=str(fm.get("domain") or ctx.domain_id))
-            if serr:
+        from fact_schema import CLASS_ACTIVE, CLASS_INVALID, CLASS_LEGACY, classify_canonical
+        _cls = classify_canonical(
+            text, stem=path.stem, domain=str(fm.get("domain") or ctx.domain_id))
+        if _cls["class"] != CLASS_ACTIVE:
+            # Production: only valid active v3 replicates. Hermetic tests that
+            # patch GLOBAL still admit unversioned fixture facts.
+            if _cls["class"] == CLASS_INVALID and not _global_is_fixture():
+                print(f"  ⚠ invalid canonical skipped: {path.stem} "
+                      f"({_cls.get('error')})", file=sys.stderr)
+            if not (_global_is_fixture() and _cls["class"] == CLASS_LEGACY):
                 return
         adm = dict(fm)
         adm["body"] = text
@@ -684,7 +689,12 @@ def iter_canonical_stems_for_gc(ctx) -> set:
             if text is None:
                 stems.add(f.stem)
                 continue
-            if str(_frontmatter(text).get("status") or "").strip() == "tombstoned":
+            from fact_schema import CLASS_LEGACY, classify_canonical
+            _gcls = classify_canonical(text, stem=f.stem)
+            if str((_gcls.get("fm") or {}).get("status") or "").strip() == "tombstoned":
+                continue
+            if _gcls["class"] == CLASS_LEGACY and not _global_is_fixture():
+                stems.add(f.stem)
                 continue
             stems.add(f.stem)
 
@@ -972,14 +982,14 @@ def _fat_hook_warning(pointer_line: str, name: str) -> str | None:
 def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                          evict_path: "Path | None",
                          holder_token: str = "",
-                         in_sync_names: "list | None" = None) -> dict:
+                         in_sync_names: "list | None" = None,
+                         conflict_ops: "list | None" = None) -> dict:
     """Publish pull bodies + index through transact (pointer-before-body for MISSING).
 
     `jobs` is [(name, fm, status, path, want), ...] already stamped. Evict unlinks
     AFTER dests publish so a crash-before-publish does not destroy the authored fact
     without landing the swap. Holders are recorded on the control plane INSIDE this
-    transact (registry-authoritative); Markdown `projects:` is updated via temps so
-    it is never rewritten after locks drop.
+    transact (registry-authoritative). Markdown `projects:` is not rewritten.
     """
     from control_plane import (ABSENT as _ABS_PULL, CrashSimulated, record_holder,
                                stable_fact_id, transact)
@@ -988,7 +998,8 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
     from store_context import WriteRefused
 
     in_sync_names = list(in_sync_names or [])
-    if not jobs and not evict_stem and not in_sync_names:
+    conflict_ops = list(conflict_ops or [])
+    if not jobs and not evict_stem and not in_sync_names and not conflict_ops:
         return {"pulled": 0, "refreshed": 0, "fat": 0}
     idxp = store / "MEMORY.md"
     expected: dict = {}
@@ -1018,7 +1029,7 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         expected_m: dict = {}
         pulled = refreshed = fat = 0
         recorded: list = []
-        if not idxp.exists():
+        if (jobs or evict_stem) and not idxp.exists():
             dest_modes[str(idxp)] = "create"
             expected_m[str(idxp)] = _ABS_PULL
         planned = idx_text
@@ -1112,7 +1123,7 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
             {"op": "holder_upsert", "fact_id": h[0], "project_id": h[1],
              "base_revision": h[2], "canonical_revision": h[3], "semantic_hash": h[4]}
             for h in holders
-        ]
+        ] + list(conflict_ops)
         return {"pulled": pulled, "refreshed": refreshed, "fat": fat, "deletes": deletes,
                 "holders": holders, "dest_modes": dest_modes,
                 "expected_revisions": expected_m, "registry_ops": hold_ops}
@@ -1317,7 +1328,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     except Exception:
         pass
     stacks = detect_stacks(project_dir)
-    from capabilities import (detect_capabilities, capability_tags, applies_match,
+    from capabilities import (detect_capabilities, capability_tags,
                               parse_applies, load_capability_overrides)
     _cap_degraded = False
     try:
@@ -1400,18 +1411,19 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     idx_text = _safe_read_text(_idxp) or "# Memory Index\n\n"
     seed_idx = est_tokens(idx_text)
     classified: list = []   # (name, fm, text, status, path, want, rel) — statuses FROZEN at scan time
+    conflict_ops: list = []
     for name, fm, text in facts:
         rel = is_relevant(fm, _rel_tags)
         _appl = parse_applies(fm)
-        if _appl.get("error"):
+        from fact_schema import applies_decision as _appl_dec
+        _dec_ap = _appl_dec(_appl, _rel_tags, degraded=_cap_degraded)
+        if _dec_ap == "unknown":
             rel = False
-        _has_applies = bool(_appl.get("any") or _appl.get("all") or _appl.get("exclude"))
-        if _cap_degraded and _has_applies:
+        elif _dec_ap == "no-match":
             rel = False
-        elif rel and _has_applies:
-            rel = applies_match(_appl, _rel_tags)
-        elif (not rel) and fm.get("scope") == "stack-general" and _has_applies and not _appl.get("error"):
-            rel = applies_match(_appl, _rel_tags)
+        elif _dec_ap == "match" and fm.get("scope") == "stack-general" and (
+                _appl.get("any") or _appl.get("all") or _appl.get("exclude")):
+            rel = True
         path = store / f"{name}.md"
         present = path.exists()
         cur = (_safe_read_text(path) or "") if present else ""   # store-scan convention (v0.1.69 Gate-2b)
@@ -1507,15 +1519,16 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             else:
                 status = "CONFLICT"
             if pull and _act in (_MC_STOP, _MC_CONFLICT, _MC_QUAR):
-                try:
-                    from control_plane import connect as _cconn, db_path as _cdp, record_conflict
-                    _cc = _cconn(_cdp(ctx))
-                    record_conflict(_cc, name, ctx.project_id, _dec,
-                                    domain_id=getattr(ctx, "domain_id", "") or "")
-                    _cc.commit()
-                    _cc.close()
-                except Exception:
-                    pass
+                conflict_ops.append({
+                    "op": "conflict_upsert",
+                    "stem": name, "fact_stem": name,
+                    "project_id": ctx.project_id,
+                    "action": _act,
+                    "local_hash": _dec.get("local"),
+                    "canonical_hash": _dec.get("canonical"),
+                    "domain_id": getattr(ctx, "domain_id", "") or "",
+                    "fact_id": _fid_w,
+                })
         if pull and status == "STALE-mirror" and _migrated:
             # counts ONLY the mtime-seeded migrations (PR-#91 review: the old not-yet-stamped gate also
             # counted a legacy mirror whose canonical BODY changed this same pass — branch 3, seeded from
@@ -1649,12 +1662,13 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             pull_jobs.append((name, fm, status, path, want))
         if pull and rel and status == "in-sync" and not held_this:
             in_sync_names.append(name)
-    if pull and (pull_jobs or _evict_stem or in_sync_names):
+    if pull and (pull_jobs or _evict_stem or in_sync_names or conflict_ops):
         from control_plane import CrashSimulated as _CrashPull
         try:
             _w = _execute_pull_writes(ctx, store, pull_jobs, _evict_stem, _evict_path,
                                       holder_token=project_dir.name,
-                                      in_sync_names=in_sync_names)
+                                      in_sync_names=in_sync_names,
+                                      conflict_ops=conflict_ops)
         except _CrashPull:
             print("pull: crash-after journal step (pending op left for recover)", file=sys.stderr)
             return _done(1)
@@ -1708,21 +1722,30 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
 
 
 def apply_provenance(text: str, project: str) -> str:
-    """Pure: return `text` with `project` appended to `projects:` (or a new line).
+    """Strip canonical `projects:` (SQLite holders are authoritative, P1-6).
 
-    Pull/promote call this FROM INSIDE transact (temps), never via a post-lock
-    Markdown rewrite.
+    `project` is accepted for call-site compatibility and ignored. Pull/promote
+    still call this inside transact so leftover Markdown lists are removed.
     """
-    project = _sanitize_token(project)
-    m = re.search(r"^(\s*projects:\s*)\[([^\]]*)\]\s*$", text, re.M)
-    if m:
-        items = [x.strip() for x in m.group(2).split(",") if x.strip()]
-        if project in items:
-            return text
-        items.append(project)
-        return text[: m.start()] + f"{m.group(1)}[{', '.join(items)}]" + text[m.end():]
-    return re.sub(r"(\n\s*(?:scope|node_type):.*\n)",
-                  lambda mm: f"{mm.group(1)}  projects: [{project}]\n", text, count=1)
+    del project
+    if not str(text or "").startswith("---"):
+        return text
+    out: list = []
+    dashes = 0
+    for i, ln in enumerate(text.splitlines()):
+        s = ln.strip()
+        if dashes == 0 and i == 0 and ln == "---":
+            dashes = 1
+            out.append(ln)
+            continue
+        if dashes == 1 and ln.startswith("---"):
+            dashes = 2
+            out.append(ln)
+            continue
+        if dashes == 1 and s.startswith("projects:"):
+            continue
+        out.append(ln)
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
 def drop_holders_text(text: str, drop: set) -> "tuple[str, int]":
@@ -1736,6 +1759,45 @@ def drop_holders_text(text: str, drop: set) -> "tuple[str, int]":
     if not removed:
         return text, 0
     return text[:m.start()] + f"{m.group(1)}[{', '.join(kept)}]" + text[m.end():], removed
+
+
+def _registry_holder_labels(ctx, stem: str) -> list:
+    """SQLite holders for (ctx.domain, stem). Empty if the registry is absent."""
+    if ctx is None or not stem:
+        return []
+    try:
+        from control_plane import connect_if_exists, db_path, stable_fact_id
+        conn = connect_if_exists(db_path(ctx))
+        if conn is None:
+            return []
+        try:
+            fid = stable_fact_id(getattr(ctx, "domain_id", "") or "unknown", stem)
+            rows = conn.execute(
+                "SELECT COALESCE(p.display_name, h.project_id) AS label "
+                "FROM holders h LEFT JOIN projects p ON p.project_id = h.project_id "
+                "WHERE h.fact_id=?",
+                (fid,),
+            ).fetchall()
+            out: list = []
+            seen: set = set()
+            for r in rows:
+                lab = str(r["label"] or "").strip()
+                if lab and lab not in seen:
+                    seen.add(lab)
+                    out.append(lab)
+            return out
+        finally:
+            conn.close()
+    except Exception:
+        return []
+
+
+def _holder_labels(fm: dict, *, stem: str = "", ctx=None) -> list:
+    """SQLite holders when present; leftover Markdown `projects:` otherwise."""
+    got = _registry_holder_labels(ctx, stem)
+    if got:
+        return got
+    return _holders(fm)
 
 
 def _holders(fm: dict) -> list[str]:
@@ -1870,8 +1932,10 @@ def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> 
         facts = []
     else:
         from store_context import resolve_store as _rs_net
-        facts = facts_for_context(_rs_net(Path(project_dir)))
-    minds = sorted({p for _, fm, _ in facts for p in _holders(fm)})
+        _ctx_net = _rs_net(Path(project_dir))
+        facts = facts_for_context(_ctx_net)
+    _ctx_h = locals().get("_ctx_net")
+    minds = sorted({p for n, fm, _ in facts for p in _holder_labels(fm, stem=n, ctx=_ctx_h)})
     universal = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "user-global"]
     differential = [(n, fm) for n, fm, _ in facts if fm.get("scope") == "stack-general"]
     other = [(n, fm) for n, fm, _ in facts if fm.get("scope") not in ("user-global", "stack-general")]
@@ -1897,7 +1961,7 @@ def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> 
     out.append(_ui.kv("UNIVERSAL", _ui.c("user-global — every mind holds these (the shared substrate)", "dim")))
     if universal:
         for n, fm in universal:
-            held = len(_holders(fm))
+            held = len(_holder_labels(fm, stem=n, ctx=_ctx_h))
             flag = "" if held == len(minds) else f"  (only {held}/{len(minds)} so far)"
             out.append("    " + _ui.c("•", "cyan") + f" {n}" + _ui.c(flag, "dim"))
     else:
@@ -1908,7 +1972,7 @@ def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> 
     out.append(_ui.kv("EDGES", _ui.c("stack-general — the bindings that carry real signal", "dim")))
     proj_diff: dict[str, set[str]] = {}
     for n, fm in differential:
-        for pr in _holders(fm):
+        for pr in _holder_labels(fm, stem=n, ctx=_ctx_h):
             proj_diff.setdefault(pr, set()).add(n)
     edges = []
     for i, a in enumerate(minds):
@@ -3609,7 +3673,7 @@ def fleet_utility(project_dir: Path) -> dict:
     unheld: list = []
     for stem, fm in canon.items():
         pt = est_tokens(_pointer_line(stem, fm))
-        holders = _holders(fm)
+        holders = _holder_labels(fm, stem=stem, ctx=_ctx_util)
         tax = pt * len(holders)
         total_tax += tax
         # v0.1.84 (P4): classify every edge — the provenance UPPER BOUND stays the advisory's

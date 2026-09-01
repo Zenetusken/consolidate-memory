@@ -60,34 +60,100 @@ def _ops_slot(native_store: Path) -> str:
     return native_store.parent.name if native_store.name == "memory" else native_store.name
 
 
+def _project_id_for_native(native_store: Path, plugin_data: Optional[Path] = None) -> str:
+    """Registry project_id for this native store, else empty."""
+    try:
+        from control_plane import connect_if_exists
+        pdata = plugin_data
+        if pdata is None:
+            from store_context import plugin_data_dir
+            pdata = plugin_data_dir()
+        conn = connect_if_exists(pdata / "control.sqlite")
+        if conn is None:
+            return ""
+        try:
+            want = str(native_store)
+            try:
+                want_r = str(native_store.resolve())
+            except OSError:
+                want_r = want
+            rows = conn.execute(
+                "SELECT project_id, native_memory_dir FROM projects"
+            ).fetchall()
+            for r in rows:
+                got = str(r["native_memory_dir"] or "")
+                if got in (want, want_r):
+                    return str(r["project_id"] or "")
+                try:
+                    if str(Path(got).resolve()) == want_r:
+                        return str(r["project_id"] or "")
+                except OSError:
+                    continue
+            return ""
+        finally:
+            conn.close()
+    except Exception:
+        return ""
+
+
+def _ops_key(native_store: Path, plugin_data: Optional[Path] = None,
+             project_id: Optional[str] = None) -> str:
+    pid = (project_id or "").strip() or _project_id_for_native(native_store, plugin_data)
+    if pid:
+        from identifiers import IdentifierRefused, validate_project_id
+        try:
+            return validate_project_id(pid)
+        except IdentifierRefused:
+            pass
+    return _ops_slot(native_store)
+
+
 def cycle_log_write_path(
     native_store: Path,
     environ: Optional[dict] = None,
     plugin_data: Optional[Path] = None,
+    project_id: Optional[str] = None,
 ) -> Path:
-    """Control-plane cycle log. The native plane must not receive this file."""
+    """Control-plane cycle log keyed by stable project_id when known."""
     pdata = _plugin_data_for_native(native_store, environ, plugin_data)
-    return operational_dir(pdata, _ops_slot(native_store)) / CYCLE_LOG_NAME
+    return operational_dir(pdata, _ops_key(native_store, pdata, project_id)) / CYCLE_LOG_NAME
 
 
-def cycle_log_read_paths(native_store: Path, environ: Optional[dict] = None) -> list:
-    """Legacy native first, plugin-data last (plugin-data wins on the same cycle key)."""
-    return [native_store / CYCLE_LOG_NAME, cycle_log_write_path(native_store, environ)]
+def cycle_log_read_paths(native_store: Path, environ: Optional[dict] = None,
+                         plugin_data: Optional[Path] = None,
+                         project_id: Optional[str] = None) -> list:
+    """Legacy native, slot-keyed plugin-data, then project-id-keyed (last wins)."""
+    pdata = _plugin_data_for_native(native_store, environ, plugin_data)
+    slot_path = operational_dir(pdata, _ops_slot(native_store)) / CYCLE_LOG_NAME
+    pid_path = cycle_log_write_path(native_store, environ, pdata, project_id)
+    paths = [native_store / CYCLE_LOG_NAME, slot_path]
+    if pid_path != slot_path:
+        paths.append(pid_path)
+    return paths
 
 
 def mutation_log_write_path(
     native_store: Path,
     environ: Optional[dict] = None,
     plugin_data: Optional[Path] = None,
+    project_id: Optional[str] = None,
 ) -> Path:
-    """Control-plane mutation log. The native plane must not receive this file."""
+    """Control-plane mutation log keyed by stable project_id when known."""
     pdata = _plugin_data_for_native(native_store, environ, plugin_data)
-    return operational_dir(pdata, _ops_slot(native_store)) / MUTATION_LOG_NAME
+    return operational_dir(pdata, _ops_key(native_store, pdata, project_id)) / MUTATION_LOG_NAME
 
 
-def mutation_log_read_paths(native_store: Path, environ: Optional[dict] = None) -> list:
-    """Legacy native first, plugin-data last."""
-    return [native_store / MUTATION_LOG_NAME, mutation_log_write_path(native_store, environ)]
+def mutation_log_read_paths(native_store: Path, environ: Optional[dict] = None,
+                            plugin_data: Optional[Path] = None,
+                            project_id: Optional[str] = None) -> list:
+    """Legacy native, slot-keyed plugin-data, then project-id-keyed (last wins)."""
+    pdata = _plugin_data_for_native(native_store, environ, plugin_data)
+    slot_path = operational_dir(pdata, _ops_slot(native_store)) / MUTATION_LOG_NAME
+    pid_path = mutation_log_write_path(native_store, environ, pdata, project_id)
+    paths = [native_store / MUTATION_LOG_NAME, slot_path]
+    if pid_path != slot_path:
+        paths.append(pid_path)
+    return paths
 
 
 def fleet_ledger_write_path(
@@ -208,13 +274,13 @@ def reverse_tail_jsonl_lines(path: Path, limit: int) -> list:
 def relocate_native_operational(native_dir: Path, plugin_data: Path, project_id: str) -> dict:
     """Move leftover plugin logs out of the native plane onto the control-plane write paths.
 
-    `project_id` is accepted for call-site compatibility; cycle/mutation logs key off the
-    native slot (same as persist / --audit), and the fleet ledger is plugin-data root.
+    Cycle/mutation logs key off the stable project_id when known.
     """
-    del project_id
     dest_map = {
-        ".consolidation-log.jsonl": cycle_log_write_path(native_dir, plugin_data=plugin_data),
-        ".mutation-log.jsonl": mutation_log_write_path(native_dir, plugin_data=plugin_data),
+        ".consolidation-log.jsonl": cycle_log_write_path(
+            native_dir, plugin_data=plugin_data, project_id=project_id),
+        ".mutation-log.jsonl": mutation_log_write_path(
+            native_dir, plugin_data=plugin_data, project_id=project_id),
         ".fleet-usage.jsonl": fleet_ledger_write_path(plugin_data=plugin_data),
     }
     moved: list = []
@@ -234,6 +300,13 @@ def relocate_native_operational(native_dir: Path, plugin_data: Path, project_id:
         except OSError:
             continue
     return {"ok": True, "moved": moved, "dest": dests[0] if dests else str(plugin_data)}
+
+
+def _with_ops_lock(plugin_data: Path):
+    from control_plane import FileLock
+    lock = FileLock(Path(plugin_data) / "locks" / "ops.lock")
+    lock.acquire()
+    return lock
 
 
 def compact_jsonl(path: Path, *, keep: int, older_than_days: Optional[int] = None) -> dict:
@@ -356,16 +429,62 @@ def purge_domain(plugin_data: Path, domain_id: str, conn,
     return {"ok": True, "purged_files": n, "domain_id": domain_id}
 
 
+def _sha256_file(path: Path) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with path.open("rb") as fh:
+        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _sqlite_snapshot_to(path: Path, dest: Path, *, redact_journal: bool = False) -> None:
+    """Checkpointed SQLite backup (includes committed WAL state) written to dest."""
+    import sqlite3
+    src = sqlite3.connect(str(path))
+    try:
+        try:
+            src.execute("PRAGMA wal_checkpoint(FULL)")
+        except sqlite3.Error:
+            pass
+        dst = sqlite3.connect(str(dest))
+        try:
+            src.backup(dst)
+            if redact_journal:
+                dst.row_factory = sqlite3.Row
+                from control_plane import redact_journal_payloads
+                redact_journal_payloads(dst)
+        finally:
+            dst.close()
+    finally:
+        src.close()
+
+
+def _sqlite_snapshot_bytes(path: Path, *, redact_journal: bool = False) -> bytes:
+    """Checkpointed SQLite backup (includes committed WAL state)."""
+    import tempfile
+    fd, tmp = tempfile.mkstemp(suffix=".sqlite")
+    os.close(fd)
+    try:
+        _sqlite_snapshot_to(path, Path(tmp), redact_journal=redact_journal)
+        return Path(tmp).read_bytes()
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+
+
 def export_ops(plugin_data: Path, dest: Path) -> dict:
     """Write a tar.gz of plugin-data plus a sha256 manifest (ADR 008/Stage 8).
 
-    `dest` is the archive path (``.tar.gz`` appended if missing). The manifest
-    lists relative path, size, and sha256 of every included file. Native Auto
-    Memory is never included.
+    SQLite members are checkpointed backups (WAL-safe). Members are streamed
+    into the archive. Native Auto Memory is never included.
     """
     import hashlib
     import io
     import tarfile
+    import tempfile
     dest = Path(dest)
     suffixes = list(dest.suffixes)
     is_tar = dest.suffix == ".tgz" or suffixes[-2:] == [".tar", ".gz"]
@@ -374,48 +493,71 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
             dest.name + ".tar.gz")
     dest.parent.mkdir(parents=True, exist_ok=True)
     files: list = []
-    blobs: list = []
-    if plugin_data.exists():
-        for p in plugin_data.rglob("*"):
-            if p.is_symlink() or not p.is_file():
-                continue
-            if p.suffix not in (".jsonl", ".json", ".sqlite", ".md"):
-                continue
-            rel = str(p.relative_to(plugin_data)).replace("\\", "/")
-            raw = p.read_bytes()
-            files.append({
-                "path": rel,
-                "bytes": len(raw),
-                "sha256": hashlib.sha256(raw).hexdigest(),
-            })
-            blobs.append(raw)
-    manifest = {
-        "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        "schema_version": 3,
-        "plugin_data": str(plugin_data),
-        "files": files,
-    }
-    man_path = dest.parent / (dest.name + ".manifest.json")
-    man_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    lock = None
     try:
-        os.chmod(str(man_path), 0o600)
-    except OSError:
-        pass
-    with tarfile.open(dest, "w:gz") as tar:
-        for item, blob in zip(files, blobs):
-            info = tarfile.TarInfo(name="plugin-data/" + item["path"])
-            info.size = len(blob)
-            tar.addfile(info, io.BytesIO(blob))
-        man_raw = man_path.read_bytes()
-        minfo = tarfile.TarInfo(name="manifest.json")
-        minfo.size = len(man_raw)
-        tar.addfile(minfo, io.BytesIO(man_raw))
+        lock = _with_ops_lock(plugin_data)
+    except Exception:
+        lock = None
+    snap_tmps: list = []
     try:
-        os.chmod(str(dest), 0o600)
-    except OSError:
-        pass
-    return {"ok": True, "path": str(dest), "manifest": str(man_path),
-            "n_files": len(files)}
+        staged: list = []  # (rel, path_to_read, nbytes, sha)
+        if plugin_data.exists():
+            for p in plugin_data.rglob("*"):
+                if p.is_symlink() or not p.is_file():
+                    continue
+                if p.suffix not in (".jsonl", ".json", ".sqlite", ".md"):
+                    continue
+                rel = str(p.relative_to(plugin_data)).replace("\\", "/")
+                if p.suffix == ".sqlite":
+                    fd, tmp = tempfile.mkstemp(suffix=".sqlite")
+                    os.close(fd)
+                    tmp_p = Path(tmp)
+                    snap_tmps.append(tmp_p)
+                    _sqlite_snapshot_to(
+                        p, tmp_p, redact_journal=(p.name == "journal.sqlite"))
+                    src = tmp_p
+                else:
+                    src = p
+                sha = _sha256_file(src)
+                nbytes = src.stat().st_size
+                files.append({"path": rel, "bytes": nbytes, "sha256": sha})
+                staged.append((rel, src, nbytes, sha))
+        manifest = {
+            "exported_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "schema_version": 3,
+            "plugin_data": str(plugin_data),
+            "files": files,
+        }
+        man_path = dest.parent / (dest.name + ".manifest.json")
+        man_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+        try:
+            os.chmod(str(man_path), 0o600)
+        except OSError:
+            pass
+        with tarfile.open(dest, "w:gz") as tar:
+            for rel, src, nbytes, _sha in staged:
+                info = tarfile.TarInfo(name="plugin-data/" + rel)
+                info.size = nbytes
+                with src.open("rb") as fh:
+                    tar.addfile(info, fh)
+            man_raw = man_path.read_bytes()
+            minfo = tarfile.TarInfo(name="manifest.json")
+            minfo.size = len(man_raw)
+            tar.addfile(minfo, io.BytesIO(man_raw))
+        try:
+            os.chmod(str(dest), 0o600)
+        except OSError:
+            pass
+        return {"ok": True, "path": str(dest), "manifest": str(man_path),
+                "n_files": len(files)}
+    finally:
+        for tmp_p in snap_tmps:
+            try:
+                tmp_p.unlink()
+            except OSError:
+                pass
+        if lock is not None:
+            lock.release()
 
 
 def retention_show() -> dict:

@@ -5,6 +5,82 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.3.5] — 2026-09-01
+
+Patch on 0.3.4. Remaining P0 authorization, journal-retention, and fleet-purge
+gaps. Public **1.0 stays HOLD**.
+
+### Fixed — StoreContext authorization (P0-1, P0-2)
+
+- Project/local `autoMemoryDirectory` may be the exact current-project native
+  store, a directory inside the current project tree that is not a protected
+  config-root path, or a dedicated namespace recorded by
+  `cm project grant-native --path PATH`. Another project's
+  `projects/<slot>/memory`, domain canonicals, plugin-data, and any other
+  config-root path are refused without that operator grant.
+- `$HOME` as a git root no longer treats `~/.claude/settings.json` as
+  repository-controlled project settings.
+- Linked-worktree and submodule Git dirs require a relationship, not a path
+  shape: no `.git` symlink, worktree `gitdir` backlink, commondir containment,
+  and submodule modules-relative path match. Attacker/victim fixtures cover
+  worktree admin dirs, `.git` symlinks, and nested `modules/` pointers.
+
+### Fixed — journal bodies and complete-old (P0-3–P0-7)
+
+- New journal rows never store fact text. `cm journal compact` redacts
+  historical `text` / `bytes_b64` from completed rows and expires recovery
+  blobs (`0600`, TTL, overwrite-then-unlink). `cm data export` archives a
+  redacted journal copy. CLI: `cm journal inventory|show|retry|rollback|abandon|compact`.
+- Destination snapshots record original mode; restore verifies hash, mode,
+  containment, and existence/absence. Registry postconditions are proven
+  before file publication; a failure is `conflicted`, not a mixed FS+DB state.
+
+### Fixed — P1 correctness and architectural drift
+
+- **`--resurrect` includes `tombstone_delete` + `fact_status_change`** in the
+  same migrate-apply transaction (only when the stem is actually tombstoned).
+- **Migration finalize** verifies every disposition (`migrated` /
+  `kept-existing` / `excluded` / `replaced`) from an immutable
+  `migrate-manifest.json` (frozen `migration_id`): path, hash, v3 class,
+  domain, registry row, and catalog pointer for active facts. `keep-existing`
+  validates a real v3 canonical. Revisions use `semantic_hash`.
+- **Read-time v3 classification:** valid-active-v3 | valid-inactive-v3 |
+  legacy-migration | invalid. Ordinary pull replicates only valid active v3
+  (`fact_id` must match the stable id; timestamps must be real calendar
+  datetimes; applies tokens are grammar-limited). Unversioned fixture GLOBAL
+  facts remain test-only.
+- **Catalog and link lookup** use the opening-frontmatter codec. Links to
+  invalid/inactive v3 targets are refused.
+- **Canonical upsert** accepts only `scope: stack-general|user-global` and
+  `status: active`, with detectable applies/stacks for stack-general.
+  Lifecycle: `cm canonical forget|supersede|expire|reactivate`.
+- **SQLite holders** are the topology/fleet-tax source. `apply_provenance`
+  strips Markdown `projects:` instead of appending display names.
+- **Conflict rows** upsert inside the pull transact; unique open
+  `(fact_stem, project_id, domain_id)`.
+- **`resolve_store` is read-only.** Remote URL is not part of `project_id`.
+  Alias writes happen only via `cm project rebind`.
+- **Applicability is three-state** (match / no-match / unknown). Detector
+  failure holds gated facts.
+- **`cm local upsert|update|archive|forget|rebuild-index`** journals
+  fact+pointer writes with the same secret, admission, and codec checks.
+- **Hook sketches** are documented as experimental / out of contract.
+- **Ops logs key off project_id** when known; export uses the SQLite backup
+  API (WAL-safe) and streams members under an ops lock; `cm data compact`
+  holds that lock around relocate + JSONL compact + journal compact. Export
+  restoration (open restored SQLite) is smoke-tested.
+
+### Fixed — forget ack and fleet purge (P0-8, P0-9)
+
+- Domain purge marks `deleting` under every enrolled project's lock, builds
+  StoreContexts from registry rows (recorded `project_id` + native store, never
+  native-as-root), revokes or quarantines every mirror, verifies pointers are
+  gone, then deletes canonicals and marks `deleted` in the same coordinator
+  transact. `all-plugin-data` does the same revoke pass before `rmtree`.
+  Pull/upsert/forget already refuse a deleting domain; `transact` now does too.
+
+Existing 0.3.4 installs keep working. Backward-compatible ⇒ **patch**.
+
 ## [0.3.4] — 2026-09-01
 
 Patch on 0.3.3. One enumerator for ordinary fleet ops, journal complete-old,
