@@ -71,6 +71,15 @@ def local_upsert(ctx: StoreContext, stem: str, text: str, *,
     if lerr:
         return {"ok": False, "error": lerr}
     dest = ctx.native_memory_dir / f"{stem}.md"
+    if dest.exists():
+        from sync_global import _is_mirror
+        try:
+            cur = dest.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            cur = ""
+        if _is_mirror(cur):
+            return {"ok": False, "error":
+                    "managed mirror; use cm resolve / demote, not cm local"}
     if create_only and dest.exists():
         return {"ok": False, "error": "local fact already exists"}
     idxp = ctx.native_memory_dir / "MEMORY.md"
@@ -129,6 +138,13 @@ def local_forget(ctx: StoreContext, stem: str) -> dict:
     idxp = ctx.native_memory_dir / "MEMORY.md"
     if not dest.exists():
         return {"ok": False, "error": "no such local fact"}
+    from sync_global import _is_mirror
+    try:
+        if _is_mirror(dest.read_text(encoding="utf-8", errors="replace")):
+            return {"ok": False, "error":
+                    "managed mirror; use cm resolve / demote, not cm local"}
+    except OSError:
+        pass
     expected = {}
     h = _file_hash(dest)
     if h:
@@ -169,6 +185,13 @@ def local_archive(ctx: StoreContext, stem: str) -> dict:
     dest = ctx.native_memory_dir / f"{stem}.md"
     if not dest.exists():
         return {"ok": False, "error": "no such local fact"}
+    from sync_global import _is_mirror
+    try:
+        if _is_mirror(dest.read_text(encoding="utf-8", errors="replace")):
+            return {"ok": False, "error":
+                    "managed mirror; use cm resolve / demote, not cm local"}
+    except OSError:
+        pass
     idxp = ctx.native_memory_dir / "MEMORY.md"
     arch = ctx.native_memory_dir / "SHIPPED.md"
     text = dest.read_text(encoding="utf-8", errors="replace")

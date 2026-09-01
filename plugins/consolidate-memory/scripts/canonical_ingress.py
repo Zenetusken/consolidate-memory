@@ -52,19 +52,14 @@ def generate_catalog(facts_dir: Path, overlay: Optional[dict] = None) -> str:
         if stem == "MEMORY":
             continue
         stems[stem] = text
-    from fact_schema import CLASS_ACTIVE, CLASS_LEGACY, classify_canonical
+    from fact_schema import CLASS_ACTIVE, classify_canonical
     for stem in sorted(stems):
         text = stems[stem]
         if not text:
             continue
         cls = classify_canonical(text, stem=stem)
         fm = cls.get("fm") or {}
-        status = str(fm.get("status") or "").strip()
-        if cls["class"] == CLASS_ACTIVE:
-            pass
-        elif cls["class"] == CLASS_LEGACY and status in ("", "active"):
-            pass
-        else:
+        if cls["class"] != CLASS_ACTIVE:
             continue
         desc = str(fm.get("description") or "").strip()
         lines.append(f"- [{stem}]({stem}.md) — {desc}".rstrip(" —"))
@@ -370,15 +365,16 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
                 "canonical upsert accepts only status: active "
                 "(use cm canonical forget|supersede|expire)"}
     if scope == "stack-general":
-        from capabilities import parse_applies as _pa_up
         from sync_global import _DETECTABLE_STACKS, _fact_stacks
-        _appl_up = _pa_up(fm)
         _st_up = _fact_stacks(fm)
-        if not (_appl_up.get("any") or _appl_up.get("all")
-                or (_st_up & _DETECTABLE_STACKS)):
+        if not _st_up:
             return {"ok": False, "error":
-                    "stack-general requires applies_any/applies_all or a "
-                    "detectable stacks: tag"}
+                    "stack-general requires stacks: [...]"}
+        _undet = _st_up - _DETECTABLE_STACKS
+        if _undet:
+            return {"ok": False, "error":
+                    "stack-general declares undetectable stack(s) "
+                    + str(sorted(_undet))}
     link_err = validate_links(body, scope, ctx.canonical_domain_dir)
     if link_err:
         return {"ok": False, "error": link_err}
@@ -628,8 +624,7 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
 def set_canonical_status(ctx: StoreContext, stem: str, status: str,
                          replacement_id: str = "") -> dict:
     """Lifecycle command: superseded | expired | active (reactivate)."""
-    from control_plane import (assert_domain_writable, is_tombstoned, stable_fact_id,
-                               transact)
+    from control_plane import assert_domain_writable, stable_fact_id, transact
     from identifiers import IdentifierRefused, validate_fact_stem
     from memory_status import _frontmatter
     if status not in ("superseded", "expired", "active"):
@@ -652,8 +647,6 @@ def set_canonical_status(ctx: StoreContext, stem: str, status: str,
 
     def mutate(conn, temps):
         prev = path.read_text(encoding="utf-8", errors="replace")
-        if status == "active" and is_tombstoned(conn, stem, ctx.domain_id):
-            pass
         text = insert_frontmatter_key(prev, "status", status)
         if replacement_id:
             text = insert_frontmatter_key(text, "replacement_id", replacement_id)

@@ -319,13 +319,17 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     if "fact_id" not in ccols:
         conn.execute("ALTER TABLE conflicts ADD COLUMN fact_id TEXT DEFAULT ''")
     conn.commit()
-    try:
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_conflicts_open "
-            "ON conflicts(fact_stem, project_id, domain_id) WHERE resolved=''")
-        conn.commit()
-    except sqlite3.Error:
-        pass
+    conn.execute("UPDATE conflicts SET domain_id='' WHERE domain_id IS NULL")
+    conn.execute(
+        "DELETE FROM conflicts WHERE resolved='' AND id NOT IN ("
+        "SELECT id FROM (SELECT MAX(id) AS id FROM conflicts "
+        "WHERE resolved='' GROUP BY fact_stem, project_id, "
+        "COALESCE(domain_id,'')))")
+    conn.commit()
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_conflicts_open "
+        "ON conflicts(fact_stem, project_id, domain_id) WHERE resolved=''")
+    conn.commit()
 
 
 def iter_registered_projects(conn: sqlite3.Connection) -> list:
@@ -1245,16 +1249,17 @@ def redact_journal_payloads(conn: sqlite3.Connection) -> int:
         "SELECT op_id, payload, status FROM journal"
     ).fetchall()
     for row in rows:
+        status = str(row["status"] or "")
+        if status not in ("complete", "abandoned"):
+            continue
         try:
             payload = json.loads(row["payload"] or "{}")
         except (ValueError, TypeError):
             continue
         cleaned = sanitize_journal_payload(payload)
-        status = str(row["status"] or "")
-        if status in ("complete", "abandoned"):
-            for item in cleaned.get("dest_preimages") or []:
-                if isinstance(item, dict):
-                    item["blob"] = ""
+        for item in cleaned.get("dest_preimages") or []:
+            if isinstance(item, dict):
+                item["blob"] = ""
         before = json.dumps(payload, sort_keys=True)
         after = json.dumps(cleaned, sort_keys=True)
         if after != before:
@@ -1301,6 +1306,8 @@ def expire_recovery(ctx: Optional[StoreContext], conn: sqlite3.Connection) -> in
 
 
 def compact_journal(ctx: StoreContext) -> dict:
+    require_interprocess_lock()
+    locks = acquire_mutation_locks(ctx, [ctx.project_id])
     conn = connect_journal(ctx)
     try:
         n = redact_journal_payloads(conn)
@@ -1312,6 +1319,7 @@ def compact_journal(ctx: StoreContext) -> dict:
         return {"ok": True, "redacted": n, "recovery_expired": n_rec}
     finally:
         conn.close()
+        release_locks(locks)
 
 
 def journal_rollback(ctx: StoreContext, op_id: str) -> dict:
@@ -1326,6 +1334,11 @@ def journal_rollback(ctx: StoreContext, op_id: str) -> dict:
         status = str(row["status"] or "")
         if status == "complete":
             raise WriteRefused("cannot rollback a complete journal op: " + op_id)
+        step = str(row.get("step") or "")
+        if step in ("after_dests", "publish", "commit_registry", "journal_complete"):
+            raise WriteRefused(
+                "cannot rollback after dests published; use journal retry: "
+                + op_id)
         try:
             payload = json.loads(row["payload"] or "{}")
         except (ValueError, TypeError):
@@ -1372,6 +1385,8 @@ def journal_retry(ctx: StoreContext, op_id: str) -> dict:
 
 def journal_abandon(ctx: StoreContext, op_id: str) -> dict:
     """Mark abandoned without restoring files (operator accepts current FS)."""
+    require_interprocess_lock()
+    locks = acquire_mutation_locks(ctx, [ctx.project_id])
     conn = connect_journal(ctx)
     try:
         row = journal_row(conn, op_id)
@@ -1384,6 +1399,7 @@ def journal_abandon(ctx: StoreContext, op_id: str) -> dict:
         return {"ok": True, "op_id": op_id, "status": "abandoned"}
     finally:
         conn.close()
+        release_locks(locks)
 
 
 def _crash_publish(step: str) -> None:

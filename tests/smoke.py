@@ -6256,7 +6256,7 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
     # generated catalog overwrites a hand-edited index
     _facts = Path(_tdxp) / "facts"
     _facts.mkdir()
-    (_facts / "alpha.md").write_text("---\nname: alpha\ndescription: A\n---\nbody\n", encoding="utf-8")
+    (_facts / "alpha.md").write_text(_v3_canon("alpha", description="A"), encoding="utf-8")
     (_facts / "MEMORY.md").write_text("# HAND EDITED INDEX\n", encoding="utf-8")
     _cat = ci.hand_edit_refused_or_regenerated(_facts)
     check("canonical catalog: hand-edited global index is overwritten by generation",
@@ -8094,9 +8094,13 @@ with _Env73() as _e_v3:
 
 with _tempfile.TemporaryDirectory() as _td_cat:
     _fd = Path(_td_cat)
-    (_fd / "live.md").write_text("---\nstatus: active\ndescription: keep\n---\n", encoding="utf-8")
-    (_fd / "old.md").write_text("---\nstatus: superseded\ndescription: drop\n---\n", encoding="utf-8")
-    (_fd / "dead.md").write_text("---\nstatus: tombstoned\ndescription: drop\n---\n", encoding="utf-8")
+    (_fd / "live.md").write_text(_v3_canon("live", description="keep"), encoding="utf-8")
+    (_fd / "old.md").write_text(
+        _v3_canon("old", description="drop").replace("status: active", "status: superseded"),
+        encoding="utf-8")
+    (_fd / "dead.md").write_text(
+        _v3_canon("dead", description="drop").replace("status: active", "status: tombstoned"),
+        encoding="utf-8")
     _cat = ci.generate_catalog(_fd)
     check("0.3.1: catalog lists only status=active facts",
           "live.md" in _cat and "old.md" not in _cat and "dead.md" not in _cat)
@@ -8634,8 +8638,9 @@ with _Env73() as _e_src:
 with _tf73.TemporaryDirectory() as _td_cat35:
     _cat_dir35 = Path(_td_cat35)
     (_cat_dir35 / "live.md").write_text(
-        "---\nname: live\ndescription: recall-hook\nstatus: active\n---\n"
-        "status: expired\ndescription: BODY-HOOK\n", encoding="utf-8")
+        _v3_canon("live", description="recall-hook",
+                  body="status: expired\ndescription: BODY-HOOK\n"),
+        encoding="utf-8")
     _cat_out35 = ci.generate_catalog(_cat_dir35)
     check("0.3.4: catalog ignores body-level status/description",
           "- [live](live.md) — recall-hook" in _cat_out35
@@ -9668,6 +9673,38 @@ with _Env73() as _e_ll:
         "---\nname: has-link\ndescription: d\n---\nsee [[missing-target]]\n")
     check("P1-10: cm local upsert refuses a dangling wikilink",
           _bad_ll.get("ok") is False and "dangling" in str(_bad_ll.get("error") or ""))
+
+with _Env73() as _e_mir:
+    _ctx_mir = sc.resolve_store(_e_mir.proj)
+    _mir_body = sg._as_mirror(_v3_canon("mir-loc"), "mir-loc",
+                             since="2026-01-01T00:00:00Z",
+                             body_hash="abc")
+    (_e_mir.store / "mir-loc.md").write_text(_mir_body, encoding="utf-8")
+    import local_ingress as _li_mir
+    _up_mir = _li_mir.local_upsert(_ctx_mir, "mir-loc",
+                                  "---\nname: mir-loc\ndescription: d\n---\nX\n")
+    check("review: cm local upsert refuses a managed mirror",
+          _up_mir.get("ok") is False and "managed mirror" in str(_up_mir.get("error") or ""))
+
+with _Env73() as _e_gr:
+    _ctx_gr = sc.resolve_store(_e_gr.proj)
+    _raised_gr = False
+    try:
+        sc.write_store_grant(_ctx_gr.plugin_data_dir, _ctx_gr.project_id,
+                             _ctx_gr.plugin_data_dir / "inside",
+                             config_root=_ctx_gr.config_root)
+    except sc.WriteRefused:
+        _raised_gr = True
+    check("review: grant-native refuses plugin-data",
+          _raised_gr)
+
+with _tf73.TemporaryDirectory() as _td_legcat:
+    _ld = Path(_td_legcat)
+    (_ld / "legacy.md").write_text(
+        "---\nname: legacy\ndescription: d\nstatus: active\n---\nbody\n",
+        encoding="utf-8")
+    check("review: catalog omits CLASS_LEGACY even if status=active",
+          "legacy.md" not in ci.generate_catalog(_ld))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

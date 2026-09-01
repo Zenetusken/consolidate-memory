@@ -2044,9 +2044,13 @@ def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> i
     counts = {"live": 0, "stale": 0, "unresolved": 0, "ambiguous": 0}
     ghosts: dict = {}   # canonical stem -> [ghost holder tokens]
     from domain_policy import fact_domain as _fd_edges
+    ctx_labels = None
+    if project_dir is not None:
+        from store_context import resolve_store as _rs_lab
+        ctx_labels = _rs_lab(project_dir)
     for n, fm, _t in gfacts:
         _edom = _fd_edges(fm) or str(fm.get("domain") or "")
-        for h in _holders(fm):
+        for h in _holder_labels(fm, stem=n, ctx=ctx_labels):
             c = _classify_edge(h, n, _edom)
             counts[c] += 1
             if c == "unresolved":

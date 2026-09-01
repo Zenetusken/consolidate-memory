@@ -493,11 +493,10 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
             dest.name + ".tar.gz")
     dest.parent.mkdir(parents=True, exist_ok=True)
     files: list = []
-    lock = None
     try:
         lock = _with_ops_lock(plugin_data)
-    except Exception:
-        lock = None
+    except Exception as e:
+        return {"ok": False, "error": "ops lock: " + str(e)}
     snap_tmps: list = []
     try:
         staged: list = []  # (rel, path_to_read, nbytes, sha)

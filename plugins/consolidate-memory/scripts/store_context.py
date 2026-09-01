@@ -443,8 +443,17 @@ def grant_covers(grants: list, project_id: str, custom: Path) -> bool:
     return False
 
 
-def write_store_grant(pdata: Path, project_id: str, path: Path) -> dict:
+def write_store_grant(pdata: Path, project_id: str, path: Path,
+                      *, config_root: Optional[Path] = None) -> dict:
     """Record an operator grant for a dedicated per-project native namespace."""
+    resolved_check = Path(_grant_path_key(path))
+    if _path_contained(resolved_check, pdata):
+        raise WriteRefused("grant cannot target plugin-data")
+    if config_root is not None:
+        if _path_contained(resolved_check, config_root / "consolidate-memory"):
+            raise WriteRefused("grant cannot target domain canonicals")
+        if _path_contained(resolved_check, config_root / "memory"):
+            raise WriteRefused("grant cannot target leftover global memory")
     pdata.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(str(pdata), 0o700)
@@ -905,7 +914,9 @@ def store_context_from_registry(row: Any, *, template: StoreContext) -> StoreCon
     sess_s = _col("session_dir")
     display = _col("display_name")
     status = _col("status")
-    native = Path(native_s) if native_s else template.native_memory_dir
+    if not native_s:
+        raise WriteRefused("registry row missing native_memory_dir")
+    native = Path(native_s)
     root = Path(root_s) if root_s else template.project_root
     git: Optional[Path] = Path(git_s) if git_s else None
     session = Path(sess_s) if sess_s else template.session_dir

@@ -56,8 +56,14 @@ def _mirror_plan_for_dest(ctx: StoreContext, dest_domain: str, conn=None) -> dic
         for f in sorted(native.glob("*.md")):
             if f.name == "MEMORY.md":
                 continue
-            text = _safe_read_text(f)
-            if text is None or not _is_mirror(text):
+            try:
+                text = f.read_text(encoding="utf-8", errors="replace")
+            except FileNotFoundError:
+                continue
+            except OSError:
+                from store_context import WriteRefused as _WRPlan
+                raise _WRPlan(f"unreadable native pointer: {f.name}")
+            if not _is_mirror(text):
                 continue
             fm = _frontmatter(text)
             fid = str(fm.get("canonical_fact_id") or "").strip()
@@ -295,8 +301,14 @@ def _fleet_purge_domain(ctx: StoreContext, domain_id: str, facts_dir: Path,
                 for f in native.glob("*.md"):
                     if f.name == "MEMORY.md":
                         continue
-                    text = _safe_read_text(f)
-                    if text is None or not _is_mirror(text):
+                    try:
+                        text = f.read_text(encoding="utf-8", errors="replace")
+                    except FileNotFoundError:
+                        continue
+                    except OSError:
+                        raise WriteRefused(
+                            f"unreadable native pointer: {f.name}")
+                    if not _is_mirror(text):
                         continue
                     fm = _frontmatter(text)
                     cdom = str(fm.get("canonical_domain") or fm.get("domain") or "").strip()
@@ -1034,24 +1046,34 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                             "SELECT fact_id FROM facts WHERE fact_id=?", (fid,)
                         ).fetchone()
                         fm_k = cls.get("fm") or {}
-                        if have is None:
-                            ops.append({
-                                "op": "fact_upsert", "fact_id": fid, "stem": stem,
-                                "domain_id": dest_dom, "canonical_path": str(dest),
-                                "revision": _sem_m(live),
-                                "status": str(fm_k.get("status") or "active"),
-                                "sensitivity": _fs_m(fm_k),
-                            })
                         if tomb:
+                            if cls["class"] != CLASS_ACTIVE:
+                                from canonical_ingress import insert_frontmatter_key
+                                live = insert_frontmatter_key(live, "status", "active")
+                                temps[str(dest)] = live
+                                dest_modes[str(dest)] = "replace"
+                                expected[str(dest)] = _sha256_file(dest)
+                                cls = classify_canonical(
+                                    live, stem=stem, domain=dest_dom)
+                                fm_k = cls.get("fm") or {}
+                            catalogs.setdefault(str(facts_dir), set()).add(stem)
                             ops.append({"op": "tombstone_delete", "fact_id": fid})
-                            ops.append({"op": "fact_status_change", "fact_id": fid,
-                                        "status": "active"})
+                        ops.append({
+                            "op": "fact_upsert", "fact_id": fid, "stem": stem,
+                            "domain_id": dest_dom, "canonical_path": str(dest),
+                            "revision": _sem_m(live),
+                            "status": str(fm_k.get("status") or "active"),
+                            "sensitivity": _fs_m(fm_k),
+                        })
                         dispositions.append({
                             "stem": stem, "disposition": "kept-existing",
-                            "path": str(dest), "sha256": _sha256_file(dest),
+                            "path": str(dest),
+                            "sha256": hashlib.sha256(
+                                live.encode("utf-8")).hexdigest(),
                             "fact_id": fid, "domain": dest_dom,
                             "status": str(fm_k.get("status") or ""),
                             "class": cls["class"],
+                            "revision": _sem_m(live),
                         })
                     continue
                 src_hash = str((row or {}).get("sha256") or _sha256_file(src))
@@ -1117,6 +1139,9 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                 })
                 catalogs.setdefault(str(facts_dir), set()).add(stem)
             overlay = {c["path"]: temps.get(c["path"], "") for c in copied}
+            for pth, txt in temps.items():
+                if str(pth).endswith(".md") and Path(pth).name != "MEMORY.md":
+                    overlay.setdefault(pth, txt)
             catalog_snaps: list = []
             for facts_dir_s, stems in catalogs.items():
                 facts_dir = Path(facts_dir_s)
@@ -1334,9 +1359,9 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         except (OSError, json.JSONDecodeError, ValueError):
             print("migrate finalize: unreadable migrate-manifest.json", file=sys.stderr)
             return 2
-        if str(plan.get("migration_id") or "") and str(
-                manifest.get("migration_id") or "") not in (
-                    "", str(plan.get("migration_id") or "")):
+        plan_mid = str(plan.get("migration_id") or "")
+        man_mid = str(manifest.get("migration_id") or "")
+        if not plan_mid or not man_mid or plan_mid != man_mid:
             print("migrate finalize: migration_id mismatch", file=sys.stderr)
             return 2
         by_stem = {str(d.get("stem") or ""): d
@@ -1387,6 +1412,25 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                     (fid,)).fetchone() if fid else None
                 if rowf is None:
                     print(f"migrate finalize: missing registry row for {stem}",
+                          file=sys.stderr)
+                    return 2
+                if str(rowf["status"] or "") != str(fm.get("status") or ""):
+                    print(f"migrate finalize: {stem} registry status mismatch",
+                          file=sys.stderr)
+                    return 2
+                if str(rowf["domain_id"] or "") != str(disp.get("domain") or ""):
+                    print(f"migrate finalize: {stem} registry domain mismatch",
+                          file=sys.stderr)
+                    return 2
+                want_rev = str(disp.get("revision") or "")
+                if want_rev:
+                    from mirror_conflict import semantic_hash as _sem_fin
+                    if _sem_fin(live) != want_rev:
+                        print(f"migrate finalize: {stem} revision mismatch",
+                              file=sys.stderr)
+                        return 2
+                if str(rowf["status"] or "") == "active" and cls["class"] != CLASS_ACTIVE:
+                    print(f"migrate finalize: {stem} registry active but file is not",
                           file=sys.stderr)
                     return 2
                 if cls["class"] == CLASS_ACTIVE:
@@ -1495,8 +1539,9 @@ def cmd_data(args: argparse.Namespace) -> int:
             lock = None
             try:
                 lock = _with_ops_lock(ctx.plugin_data_dir)
-            except Exception:
-                lock = None
+            except Exception as e:
+                print(f"data compact: ops lock: {e}", file=sys.stderr)
+                return 2
             try:
                 relocated = relocate_native_operational(
                     ctx.native_memory_dir, ctx.plugin_data_dir, ctx.project_id)
@@ -1799,7 +1844,13 @@ def cmd_project(args: argparse.Namespace) -> int:
             print(f"project {args.project_cmd}: {need}", file=sys.stderr)
             return 2
         if args.project_cmd == "grant-native":
-            print(json.dumps(write_store_grant(ctx.plugin_data_dir, ctx.project_id, path)))
+            try:
+                print(json.dumps(write_store_grant(
+                    ctx.plugin_data_dir, ctx.project_id, path,
+                    config_root=ctx.config_root)))
+            except WriteRefused as e:
+                print(f"project grant-native: {e}", file=sys.stderr)
+                return 2
         else:
             print(json.dumps(revoke_store_grant(ctx.plugin_data_dir, ctx.project_id, path)))
         return 0
