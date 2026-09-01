@@ -6861,9 +6861,73 @@ with _Env73() as _e_dt:
 with _tf_xp.TemporaryDirectory() as _td_hash:
     _p_hash = Path(_td_hash) / "keep.md"
     _p_hash.write_text("keep me\n", encoding="utf-8")
-    cp._apply_deletes([{"path": str(_p_hash), "preimage": "0" * 64}])
+    _del_out = cp._apply_deletes([{"path": str(_p_hash), "preimage": "0" * 64}])
     check("0.2.2: dest-hash / preimage mismatch skips the origin delete",
-          _p_hash.exists() and _p_hash.read_text(encoding="utf-8") == "keep me\n")
+          _p_hash.exists() and _p_hash.read_text(encoding="utf-8") == "keep me\n"
+          and _del_out["preimage_mismatch"] == [str(_p_hash)])
+
+_unk_raised = False
+try:
+    with _Env73() as _e_unk:
+        _cu = cp.connect(cp.db_path(sc.resolve_store(_e_unk.proj)))
+        try:
+            cp.apply_registry_ops(_cu, [{"op": "not-a-real-op"}])
+        finally:
+            _cu.close()
+except sc.WriteRefused as _e_unk_wr:
+    _unk_raised = "unknown registry_op" in str(_e_unk_wr)
+check("0.3.0: unknown registry_op is WriteRefused (not silently ignored)", _unk_raised)
+
+with _tf_xp.TemporaryDirectory() as _td_fe:
+    _home_fe = Path(_td_fe) / "home"; _home_fe.mkdir()
+    _proj_fe = Path(_td_fe) / "src" / "firstenroll"; _proj_fe.mkdir(parents=True)
+    (_proj_fe / "a.py").write_text("x=1\n", encoding="utf-8")
+    _old_fe = _os_xp.environ.get("HOME")
+    _os_xp.environ["HOME"] = str(_home_fe)
+    try:
+        _ctx_fe = sc.resolve_store(_proj_fe)
+        _ops_fe = [
+            cp.project_upsert_op(_ctx_fe, domain_id="personal", status="enrolled"),
+            {"op": "project_domain_change", "project_id": _ctx_fe.project_id,
+             "domain_id": "personal", "status": "enrolled"},
+        ]
+        _crash_fe = False
+        try:
+            cp.transact(_ctx_fe, "enroll-first", {"dest": "personal"},
+                        lambda _c, _t: {"registry_ops": _ops_fe},
+                        crash_after="publish")
+        except cp.CrashSimulated:
+            _crash_fe = True
+        _r_fe = cp.connect(cp.db_path(_ctx_fe))
+        _pre_fe = _r_fe.execute(
+            "SELECT status, domain_id FROM projects WHERE project_id=?",
+            (_ctx_fe.project_id,)).fetchone()
+        _j_fe = cp.connect_journal(_ctx_fe)
+        _got_fe = cp.recover_pending(_j_fe, ctx=_ctx_fe, registry_conn=_r_fe)
+        cp.assert_enrolled(_r_fe, _ctx_fe.project_id, "personal")
+        _j_fe.close(); _r_fe.close()
+        check("0.3.0: first-enroll crash-before-commit recovers the project row",
+              _crash_fe and _pre_fe is None and len(_got_fe) >= 1)
+    finally:
+        if _old_fe is None:
+            _os_xp.environ.pop("HOME", None)
+        else:
+            _os_xp.environ["HOME"] = _old_fe
+
+with _Env73() as _e_dm:
+    _ctx_dm = sc.resolve_store(_e_dm.proj)
+    _victim = _ctx_dm.native_memory_dir / "edited.md"
+    _victim.write_text("LOCAL EDIT\n", encoding="utf-8")
+    _refused_dm = False
+    try:
+        cp.transact(_ctx_dm, "gc-apply", {"n": 1},
+                    lambda _c, _t: {"deletes": [
+                        {"path": str(_victim), "preimage": "ab" * 32}]})
+    except sc.WriteRefused as _wr_dm:
+        _refused_dm = "preimage mismatch" in str(_wr_dm)
+    check("0.3.0: delete preimage mismatch refuses transact (journal not complete)",
+          _refused_dm and _victim.exists()
+          and _victim.read_text(encoding="utf-8") == "LOCAL EDIT\n")
 
 _saved_fc = sys.modules.get("fcntl")
 sys.modules["fcntl"] = None  # type: ignore[assignment]

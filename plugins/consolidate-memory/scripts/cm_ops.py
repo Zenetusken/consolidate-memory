@@ -881,8 +881,8 @@ def _want_confirm(args: argparse.Namespace, phrase: str) -> Optional[str]:
 def cmd_project(args: argparse.Namespace) -> int:
     from control_plane import (assert_mutation_allowed, connect, connect_if_exists,
                                db_path, enroll_project, enrolled_domain,
-                               record_project_alias, transact, unenroll_project,
-                               upsert_project)
+                               project_upsert_op, record_project_alias, transact,
+                               unenroll_project, upsert_project)
     from identifiers import IdentifierRefused, validate_domain_id
     ctx = _ctx(args.project)
     if args.project_cmd == "show":
@@ -938,8 +938,11 @@ def cmd_project(args: argparse.Namespace) -> int:
             if need:
                 print(f"project enroll: {need}", file=sys.stderr)
                 return 2
-            ops = [{"op": "project_domain_change", "project_id": ctx.project_id,
-                    "domain_id": d, "status": "enrolled"}]
+            ops = [
+                project_upsert_op(ctx, domain_id=d, status="enrolled"),
+                {"op": "project_domain_change", "project_id": ctx.project_id,
+                 "domain_id": d, "status": "enrolled"},
+            ]
             try:
                 n = _revoke_unadmitted_mirrors(
                     ctx, d, extra_registry_ops=ops, extra_domains=[d],

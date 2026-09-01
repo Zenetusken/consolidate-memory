@@ -16,7 +16,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional, Tuple
 
-from store_context import StoreContext, plugin_data_dir, config_root
+from store_context import StoreContext, WriteRefused, plugin_data_dir, config_root
 
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS projects (
@@ -110,6 +110,13 @@ JOURNAL_STEPS = (
     "commit_registry",
     "journal_complete",
 )
+
+ABSENT = "ABSENT"
+REGISTRY_OP_KINDS = frozenset({
+    "project_upsert", "project_domain_change", "fact_upsert", "fact_status_change",
+    "holder_upsert", "holder_delete", "tombstone_upsert", "conflict_upsert",
+    "conflict_resolve", "migration_state_set", "project_alias", "project_rebind",
+})
 
 
 def db_path(ctx: Optional[StoreContext] = None, environ: Optional[dict] = None) -> Path:
@@ -405,18 +412,90 @@ def resolve_project_alias(conn: sqlite3.Connection, alias_id: str) -> Optional[s
     return None
 
 
+def project_upsert_op(ctx: StoreContext, *, domain_id: str, status: str,
+                      capabilities: Optional[list] = None) -> dict:
+    """Typed journal op that can recreate the full projects row on recover."""
+    return {
+        "op": "project_upsert",
+        "project_id": ctx.project_id,
+        "profile_id": ctx.profile_id,
+        "current_root": str(ctx.project_root),
+        "git_common_dir": str(ctx.git_common_dir) if ctx.git_common_dir else "",
+        "remote_fingerprint": ctx.remote_fingerprint,
+        "native_memory_dir": str(ctx.native_memory_dir),
+        "session_dir": str(ctx.session_dir),
+        "display_name": ctx.display_name,
+        "capabilities": list(capabilities or []),
+        "domain_id": domain_id,
+        "status": status,
+    }
+
+
 def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
-    """Replay typed journal v3 registry_ops (ADR 010). Each op is a dict with `op`."""
+    """Replay typed journal v3 registry_ops (ADR 010). Unknown kinds refuse."""
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     for op in ops or []:
         if not isinstance(op, dict):
-            continue
+            raise WriteRefused("registry_ops entry is not an object")
         kind = str(op.get("op") or "")
-        if kind == "project_domain_change":
+        if kind not in REGISTRY_OP_KINDS:
+            raise WriteRefused("unknown registry_op: " + kind)
+        if kind == "project_upsert":
+            pid = str(op.get("project_id") or "")
+            if not pid:
+                raise WriteRefused("project_upsert missing project_id")
+            caps = op.get("capabilities")
+            if isinstance(caps, list):
+                caps_s = json.dumps(caps)
+            else:
+                caps_s = str(caps or "[]")
             conn.execute(
+                "INSERT INTO projects(project_id, display_name, current_root, git_common_dir, "
+                "remote_fingerprint, profile_id, domain_id, native_memory_dir, session_dir, "
+                "last_seen, capabilities, status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) "
+                "ON CONFLICT(project_id) DO UPDATE SET display_name=excluded.display_name, "
+                "current_root=excluded.current_root, git_common_dir=excluded.git_common_dir, "
+                "remote_fingerprint=excluded.remote_fingerprint, profile_id=excluded.profile_id, "
+                "domain_id=excluded.domain_id, native_memory_dir=excluded.native_memory_dir, "
+                "session_dir=excluded.session_dir, last_seen=excluded.last_seen, "
+                "capabilities=excluded.capabilities, status=excluded.status",
+                (pid, str(op.get("display_name") or ""),
+                 str(op.get("current_root") or ""), str(op.get("git_common_dir") or ""),
+                 str(op.get("remote_fingerprint") or ""), str(op.get("profile_id") or ""),
+                 str(op.get("domain_id") or "unknown"),
+                 str(op.get("native_memory_dir") or ""), str(op.get("session_dir") or ""),
+                 now, caps_s, str(op.get("status") or "active")))
+        elif kind == "project_domain_change":
+            pid = str(op.get("project_id") or "")
+            cur = conn.execute(
                 "UPDATE projects SET domain_id=?, status=? WHERE project_id=?",
                 (str(op.get("domain_id") or "unknown"),
-                 str(op.get("status") or "enrolled"),
-                 str(op.get("project_id") or "")))
+                 str(op.get("status") or "enrolled"), pid))
+            if cur.rowcount != 1:
+                raise WriteRefused(
+                    "project_domain_change affected %s rows (need project_upsert first)"
+                    % cur.rowcount)
+        elif kind == "fact_upsert":
+            conn.execute(
+                "INSERT INTO facts(fact_id, stem, domain_id, canonical_path, revision, "
+                "status, sensitivity) VALUES (?,?,?,?,?,?,?) "
+                "ON CONFLICT(fact_id) DO UPDATE SET revision=excluded.revision, "
+                "canonical_path=excluded.canonical_path, status=excluded.status, "
+                "sensitivity=excluded.sensitivity, stem=excluded.stem, "
+                "domain_id=excluded.domain_id",
+                (str(op.get("fact_id") or ""), str(op.get("stem") or ""),
+                 str(op.get("domain_id") or ""), str(op.get("canonical_path") or ""),
+                 str(op.get("revision") or ""), str(op.get("status") or "active"),
+                 str(op.get("sensitivity") or "internal")))
+        elif kind == "fact_status_change":
+            conn.execute("UPDATE facts SET status=? WHERE fact_id=?",
+                         (str(op.get("status") or ""), str(op.get("fact_id") or "")))
+        elif kind == "holder_upsert":
+            record_holder(conn, str(op.get("fact_id") or ""),
+                          str(op.get("project_id") or ""),
+                          str(op.get("base_revision") or ""),
+                          str(op.get("canonical_revision") or ""),
+                          str(op.get("semantic_hash") or ""))
         elif kind == "holder_delete":
             fid = str(op.get("fact_id") or "")
             pid = str(op.get("project_id") or "")
@@ -425,6 +504,23 @@ def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
             elif fid and pid:
                 conn.execute("DELETE FROM holders WHERE fact_id=? AND project_id=?",
                              (fid, pid))
+        elif kind == "tombstone_upsert":
+            write_tombstone(conn, str(op.get("fact_id") or ""), str(op.get("stem") or ""),
+                            str(op.get("domain_id") or ""), str(op.get("reason") or ""),
+                            str(op.get("replacement_id") or ""),
+                            str(op.get("grace_until") or ""))
+        elif kind == "conflict_upsert":
+            record_conflict(conn, str(op.get("stem") or op.get("fact_stem") or ""),
+                            str(op.get("project_id") or ""),
+                            {"action": op.get("action"), "local": op.get("local_hash"),
+                             "canonical": op.get("canonical_hash")})
+        elif kind == "conflict_resolve":
+            conn.execute(
+                "UPDATE conflicts SET resolved=? WHERE fact_stem=? AND project_id=? "
+                "AND resolved=''",
+                (str(op.get("resolved") or "resolved"),
+                 str(op.get("stem") or op.get("fact_stem") or ""),
+                 str(op.get("project_id") or "")))
         elif kind == "project_alias":
             aid = str(op.get("alias_id") or "")
             pid = str(op.get("project_id") or "")
@@ -432,6 +528,33 @@ def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
                 record_project_alias(conn, aid, pid)
         elif kind == "migration_state_set":
             set_migration_mode(conn, str(op.get("value") or op.get("mode") or "dual-read"))
+        elif kind == "project_rebind":
+            old = str(op.get("project_id") or "")
+            retire = str(op.get("retire_id") or op.get("alias_id") or "")
+            if not old:
+                raise WriteRefused("project_rebind missing project_id")
+            conn.execute(
+                "UPDATE projects SET current_root=?, git_common_dir=?, "
+                "native_memory_dir=?, session_dir=?, display_name=?, last_seen=? "
+                "WHERE project_id=?",
+                (str(op.get("current_root") or ""), str(op.get("git_common_dir") or ""),
+                 str(op.get("native_memory_dir") or ""), str(op.get("session_dir") or ""),
+                 str(op.get("display_name") or ""), now, old))
+            if retire and retire != old:
+                conn.execute("DELETE FROM projects WHERE project_id=?", (retire,))
+                record_project_alias(conn, retire, old)
+
+
+def assert_enrolled(conn: sqlite3.Connection, project_id: str, domain_id: str) -> None:
+    row = conn.execute(
+        "SELECT status, domain_id FROM projects WHERE project_id=?", (project_id,)
+    ).fetchone()
+    if row is None:
+        raise WriteRefused("postcondition: project row missing: " + project_id)
+    if str(row["status"] or "") != "enrolled" or str(row["domain_id"] or "") != domain_id:
+        raise WriteRefused(
+            "postcondition: want enrolled/%s, have %s/%s"
+            % (domain_id, row["status"], row["domain_id"]))
 
 
 def require_interprocess_lock() -> None:
@@ -563,7 +686,7 @@ def _file_hash(path: Path) -> Optional[str]:
 
 
 def _publish_destinations(publishes: list) -> Tuple[int, list]:
-    """os.replace leftover same-directory temps. Does NOT delete. Idempotent.
+    """Publish temps. `mode=create` is exclusive (no clobber). Idempotent.
 
     Returns (n_ok, bad_items). Destination existence is not success: when
     `sha256` is recorded, the dest bytes must match.
@@ -573,13 +696,27 @@ def _publish_destinations(publishes: list) -> Tuple[int, list]:
     for item in publishes:
         tmp, dest = Path(item["tmp"]), Path(item["dest"])
         want = str(item.get("sha256") or "")
+        mode = str(item.get("mode") or "replace")
+        dest.parent.mkdir(parents=True, exist_ok=True)
         if tmp.exists():
-            dest.parent.mkdir(parents=True, exist_ok=True)
             try:
                 os.chmod(str(tmp), 0o600)
             except OSError:
                 pass
-            os.replace(str(tmp), str(dest))
+            if mode == "create":
+                data = tmp.read_bytes()
+                try:
+                    fd = os.open(str(dest), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+                except FileExistsError:
+                    bad.append(item)
+                    continue
+                try:
+                    os.write(fd, data)
+                finally:
+                    os.close(fd)
+                tmp.unlink(missing_ok=True)
+            else:
+                os.replace(str(tmp), str(dest))
         if not dest.exists() or (want and _file_hash(dest) != want):
             bad.append(item)
             continue
@@ -591,19 +728,42 @@ def _publish_destinations(publishes: list) -> Tuple[int, list]:
     return n, bad
 
 
-def _apply_deletes(deletes: Optional[list]) -> None:
-    """Delete only when a recorded preimage still matches (or no preimage given)."""
+def _apply_deletes(deletes: Optional[list]) -> dict:
+    """Delete only when a recorded preimage still matches.
+
+    A preimage mismatch does NOT delete and is reported so the caller can
+    refuse to complete the journal (ADR 010).
+    """
+    out: dict = {"deleted": [], "already_absent": [], "preimage_mismatch": [], "errors": []}
     for d in deletes or []:
         if isinstance(d, dict):
             path = Path(str(d.get("path") or ""))
             pre = str(d.get("preimage") or d.get("sha256") or "")
             if not path or str(path) in (".", "/"):
+                out["errors"].append(str(path))
+                continue
+            if not path.exists():
+                out["already_absent"].append(str(path))
                 continue
             if pre and _file_hash(path) not in (pre, None):
+                out["preimage_mismatch"].append(str(path))
                 continue
-            path.unlink(missing_ok=True)
+            try:
+                path.unlink()
+                out["deleted"].append(str(path))
+            except OSError:
+                out["errors"].append(str(path))
         else:
-            Path(d).unlink(missing_ok=True)
+            path = Path(d)
+            if not path.exists():
+                out["already_absent"].append(str(path))
+                continue
+            try:
+                path.unlink()
+                out["deleted"].append(str(path))
+            except OSError:
+                out["errors"].append(str(path))
+    return out
 
 
 def _publish_temps(publishes: list, deletes: Optional[list] = None) -> int:
@@ -672,7 +832,9 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                     del _n
                     if bad:
                         continue
-                _apply_deletes(deletes)
+                del_out = _apply_deletes(deletes)
+                if del_out["preimage_mismatch"] or del_out["errors"]:
+                    continue
                 for h in payload.get("holders") or []:
                     record_holder(rconn, h[0], h[1], h[2], h[3], h[4])
                 for f in payload.get("facts") or []:
@@ -686,7 +848,17 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                     )
                 for ts in payload.get("tombstones") or []:
                     write_tombstone(rconn, *ts)
-                apply_registry_ops(rconn, payload.get("registry_ops") or [])
+                try:
+                    apply_registry_ops(rconn, payload.get("registry_ops") or [])
+                    for rop in payload.get("registry_ops") or []:
+                        if not isinstance(rop, dict):
+                            continue
+                        if (rop.get("op") in ("project_upsert", "project_domain_change")
+                                and str(rop.get("status") or "") == "enrolled"):
+                            assert_enrolled(rconn, str(rop.get("project_id") or ""),
+                                            str(rop.get("domain_id") or ""))
+                except WriteRefused:
+                    continue
                 try:
                     rconn.commit()
                 except sqlite3.Error:
@@ -765,9 +937,12 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         _maybe_crash("lock_projects")
         snaps = {}
         for p, h in (expected_revisions or {}).items():
+            if h == ABSENT:
+                snaps[p] = ABSENT
+                continue
             if not (isinstance(h, str) and len(h) >= 16):
-                from store_context import WriteRefused as _WRHash
-                raise _WRHash("expected hash required (None is illegal after classify): " + p)
+                raise WriteRefused(
+                    "expected hash required (None is illegal after classify): " + p)
             snaps[p] = h
         _maybe_crash("record_revisions")
         payload = dict(payload)
@@ -794,6 +969,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
             publishes.append({
                 "tmp": str(tmp), "dest": str(dest),
                 "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+                "mode": str((result.get("dest_modes") or {}).get(dest_s) or "replace"),
             })
         payload["publishes"] = publishes
         payload["deletes"] = [
@@ -804,11 +980,20 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         payload["facts"] = list(result.get("facts") or [])
         payload["tombstones"] = list(result.get("tombstones") or [])
         payload["registry_ops"] = list(result.get("registry_ops") or [])
+        payload["sources"] = [{"path": p, "sha256": h} for p, h in snaps.items()]
+        payload["expected_revisions"] = snaps
         conn.execute("UPDATE journal SET payload=?, step=? WHERE op_id=?",
                      (json.dumps(payload, sort_keys=True), "prepare_temps", op_id))
         conn.commit()
         _maybe_crash("prepare_temps")
         for p, h in snaps.items():
+            if h == ABSENT:
+                if Path(p).exists():
+                    for item in publishes:
+                        Path(item["tmp"]).unlink(missing_ok=True)
+                    rconn.execute("ROLLBACK")
+                    raise WriteRefused("expected absent: " + p)
+                continue
             if _file_hash(Path(p)) != h:
                 for item in publishes:
                     Path(item["tmp"]).unlink(missing_ok=True)
@@ -822,7 +1007,34 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
             rconn.execute("ROLLBACK")
             raise WriteRefused("destination hash mismatch; deletes skipped: "
                                + ", ".join(str(b.get("dest")) for b in bad))
-        _apply_deletes(payload["deletes"])
+        del_out = _apply_deletes(payload["deletes"])
+        if del_out["preimage_mismatch"] or del_out["errors"]:
+            rconn.execute("ROLLBACK")
+            raise WriteRefused(
+                "delete preimage mismatch; registry not committed: "
+                + ", ".join(del_out["preimage_mismatch"] + del_out["errors"]))
+        for item in publishes:
+            dest = Path(item["dest"])
+            want = str(item.get("sha256") or "")
+            if want and _file_hash(dest) != want:
+                rconn.execute("ROLLBACK")
+                raise WriteRefused("file postcondition dest hash mismatch: " + str(dest))
+        for d in payload["deletes"]:
+            dp = Path(str(d.get("path") if isinstance(d, dict) else d))
+            if dp.exists():
+                rconn.execute("ROLLBACK")
+                raise WriteRefused("file postcondition delete still present: " + str(dp))
+        try:
+            apply_registry_ops(rconn, payload.get("registry_ops") or [])
+            for rop in payload.get("registry_ops") or []:
+                if (isinstance(rop, dict)
+                        and rop.get("op") in ("project_upsert", "project_domain_change")
+                        and str(rop.get("status") or "") == "enrolled"):
+                    assert_enrolled(rconn, str(rop.get("project_id") or ""),
+                                    str(rop.get("domain_id") or ""))
+        except WriteRefused:
+            rconn.execute("ROLLBACK")
+            raise
         journal_step(conn, op_id, "publish", "pending")
         _maybe_crash("publish")
         rconn.execute("COMMIT")
