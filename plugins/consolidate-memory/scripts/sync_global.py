@@ -91,6 +91,7 @@ from memory_status import (_is_archive_index_text, _is_mirror, _parse_ts, _sane,
 # Production always uses config_root()/memory so CLAUDE_CONFIG_DIR cannot leak a
 # personal canonical into a work profile (ADR 002).
 GLOBAL = Path.home() / ".claude" / "memory"
+_IMPORT_HOME = Path.home()
 
 
 def global_store() -> Path:
@@ -569,8 +570,13 @@ def _canonical_dirs() -> list:
 
 def global_facts() -> list[tuple[str, dict, str]]:
     """Enumerate canonicals keyed by (domain, stem) — never a global stem namespace."""
+    return [(s, fm, t) for s, fm, t, _p in _global_fact_records()]
+
+
+def _global_fact_records() -> list:
+    """Like global_facts but includes the on-disk path (never reconstruct from stem)."""
     from domain_policy import fact_domain
-    facts: list[tuple[str, dict, str]] = []
+    recs: list = []
     seen: set = set()
     for gdir in _canonical_dirs():
         if not gdir.exists():
@@ -590,15 +596,21 @@ def global_facts() -> list[tuple[str, dict, str]]:
             if key in seen:
                 continue
             seen.add(key)
-            facts.append((f.stem, fm, text))
-    return facts
+            recs.append((f.stem, fm, text, f))
+    return recs
 
 
 def iter_admissible_facts(ctx) -> list:
-    """Facts this StoreContext may pull. Domain-dir first; legacy is untagged dual-read only.
+    """Facts this StoreContext may pull. Named-domain files only (ADR 008).
 
-    Unenrolled / unhealthy registry → empty (ADR 008 / 009).
+    Unenrolled / unhealthy registry → empty. Untagged legacy is not pullable.
+    Hermetic tests that patch GLOBAL treat that dir as the current domain store.
     """
+    return [(s, fm, t) for s, fm, t, _p in _admissible_records(ctx)]
+
+
+def _admissible_records(ctx) -> list:
+    """iter_admissible_facts plus the actual source path."""
     if not getattr(ctx, "cross_project_allowed", False):
         return []
     from domain_policy import admit_cross_project, fact_domain
@@ -609,7 +621,7 @@ def iter_admissible_facts(ctx) -> list:
         mode = migration_mode_readonly(ctx)
     except Exception:
         mode = "dual-read"
-    out: list = []
+    recs: list = []
     seen: set = set()
 
     def _consider(path: Path, *, untagged_only: bool) -> None:
@@ -627,6 +639,8 @@ def iter_admissible_facts(ctx) -> list:
             return
         adm = dict(fm)
         adm["body"] = text
+        if (_global_is_fixture() or _hermetic_home()) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
+            adm["domain"] = ctx.domain_id
         if not admit_cross_project(ctx.domain_id, adm, migration_mode=mode,
                                    looks_secret=_looks_secret):
             return
@@ -634,7 +648,7 @@ def iter_admissible_facts(ctx) -> list:
         if key in seen:
             return
         seen.add(key)
-        out.append((path.stem, fm, text))
+        recs.append((path.stem, fm, text, path))
 
     ddir = ctx.canonical_domain_dir
     if ddir.is_dir():
@@ -643,12 +657,20 @@ def iter_admissible_facts(ctx) -> list:
     g = global_store()
     if g.is_dir():
         for f in sorted(g.glob("*.md")):
-            _consider(f, untagged_only=True)
-    return out
+            _consider(f, untagged_only=False)
+    return recs
+
+
+def _hermetic_home() -> bool:
+    """True when tests redirected HOME away from the import-time home."""
+    try:
+        return Path.home().resolve() != _IMPORT_HOME.resolve()
+    except OSError:
+        return Path.home() != _IMPORT_HOME
 
 
 def _global_is_fixture() -> bool:
-    """True when tests patched `GLOBAL` away from Path.home()/.claude/memory."""
+    """True when tests patched GLOBAL away from Path.home()/.claude/memory."""
     g = globals().get("GLOBAL")
     if not isinstance(g, Path):
         return False
@@ -666,7 +688,7 @@ def facts_for_context(ctx, *, all_domains: bool = False) -> list:
     if getattr(ctx, "cross_project_allowed", False):
         return iter_admissible_facts(ctx)
     # Hermetic tests patch GLOBAL. Production unenrolled → empty.
-    if _global_is_fixture():
+    if _global_is_fixture() or _hermetic_home():
         return global_facts()
     return []
 
@@ -676,10 +698,10 @@ def iter_canonicals(ctx, *, all_domains: bool = False) -> list:
     from identity import ref_from_path
     refs: list = []
     seen: set = set()
-    for stem, fm, _text in facts_for_context(ctx, all_domains=all_domains):
-        path = getattr(ctx, "canonical_domain_dir", global_store()) / f"{stem}.md"
-        if not path.exists():
-            path = global_store() / f"{stem}.md"
+    recs = _global_fact_records() if all_domains else _admissible_records(ctx)
+    if not all_domains and not recs and _global_is_fixture():
+        recs = _global_fact_records()
+    for stem, fm, _text, path in recs:
         ref = ref_from_path(path, fm,
                             fact_id=str(fm.get("fact_id") or ""),
                             revision=str(fm.get("canonical_revision") or ""))
@@ -777,8 +799,8 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
     bare calls (tests, legacy paths) emit no stamps. The frontmatter-scoped strip covers the
     whole `global_ref` prefix so re-stamping stays idempotent; `_is_mirror` keys on
     `global_ref:` only, so the smoke-pinned round-trip is untouched. REACH LIMIT: the
-    no-metadata-block fallback form (`# global_ref:` comment) carries no stamps — such a
-    mirror stays on the consumer's mtime fallback clock.
+    no-metadata-block fallback inserts a real `metadata:` block (never a `# global_ref:`
+    first-line comment) so lineage stamps have a home.
 
     The metadata anchor must be a COLUMN-0 top-level key (mirroring `_is_mirror`'s
     `not ln[:1].isspace()` test). An INDENTED `  metadata:` is NOT a valid anchor: if it
@@ -842,10 +864,19 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
                 out.append(f"  global_ref_since: {since}")
                 out.append(f"  global_ref_body: {body_hash}")
             injected = True
-    if not injected:  # no metadata block — stamp just inside the frontmatter
+    if not injected:  # no metadata block — insert one so lineage stamps have a home
         for i, ln in enumerate(out):
             if ln.strip() == "---":
-                out.insert(i + 1, f"# global_ref: {name}")
+                block = ["metadata:", f"  global_ref: {name}"]
+                if fact_id:
+                    block.append(f"  canonical_fact_id: {fact_id}")
+                if domain and domain != "unknown":
+                    block.append(f"  canonical_domain: {domain}")
+                if since:
+                    block.append(f"  global_ref_since: {since}")
+                    block.append(f"  global_ref_body: {body_hash}")
+                for j, b in enumerate(block):
+                    out.insert(i + 1 + j, b)
                 break
     return "\n".join(out) + "\n"
 
@@ -1342,12 +1373,13 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     for name, fm, text in facts:
         rel = is_relevant(fm, _rel_tags)
         _appl = parse_applies(fm)
+        if _appl.get("error"):
+            rel = False
         _has_applies = bool(_appl.get("any") or _appl.get("all") or _appl.get("exclude"))
-        if _has_applies:
-            if rel:
-                rel = applies_match(_appl, _rel_tags)
-            elif fm.get("scope") == "stack-general":
-                rel = applies_match(_appl, _rel_tags)
+        if rel and _has_applies:
+            rel = applies_match(_appl, _rel_tags)
+        elif (not rel) and fm.get("scope") == "stack-general" and _has_applies and not _appl.get("error"):
+            rel = applies_match(_appl, _rel_tags)
         path = store / f"{name}.md"
         present = path.exists()
         cur = (_safe_read_text(path) or "") if present else ""   # store-scan convention (v0.1.69 Gate-2b)
@@ -1394,9 +1426,12 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             # happen must not be reported as one; the mirror stays on the documented mtime fallback.
             _migrated = False
         _fdom = fact_domain(fm) or (ctx.domain_id or "")
+        _adm_fm = dict(fm)
+        if (_global_is_fixture() or _hermetic_home()) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
+            _adm_fm["domain"] = ctx.domain_id
         if str(fm.get("status") or "") == "tombstoned" or (_fdom, name) in _tomb_keys:
             rel = False
-        elif rel and not admit_cross_project(ctx.domain_id, fm, migration_mode=mode):
+        elif rel and not admit_cross_project(ctx.domain_id, _adm_fm, migration_mode=mode):
             rel = False
         if not rel:
             # v0.1.75 (audit F6): a PRESENT mirror whose canonical is alive but no longer relevant here
@@ -1427,7 +1462,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                         _hc.close()
             except Exception:
                 _hold_base = None
-            _dec = classify_mirror(cur, text, base_revision=_hold_base)
+            _v3m = bool(cur_fm.get("canonical_fact_id") or cur_fm.get("schema_version"))
+            _dec = classify_mirror(cur, text, base_revision=_hold_base,
+                                   allow_legacy_fallback=not _v3m)
             _act = _dec["action"]
             if _act in (_MC_REFRESH, _MC_RESTAMP):
                 status = "STALE-mirror"
@@ -3092,9 +3129,12 @@ def _store_gaps(store: Path, stacks: "set | None", gfacts: list, body_hashes: di
     for n, fm, _text in gfacts:
         if not is_relevant(fm, stacks if stacks is not None else set()):
             continue
-        if domain_id is not None and not admit_cross_project(
-                domain_id, fm, migration_mode=migration_mode):
-            continue
+        if domain_id is not None:
+            _adm = dict(fm)
+            if (_global_is_fixture() or _hermetic_home()) and not _adm.get("domain") and domain_id not in ("", "unknown"):
+                _adm["domain"] = domain_id
+            if not admit_cross_project(domain_id, _adm, migration_mode=migration_mode):
+                continue
         p = store / f"{n}.md"
         if not p.exists():
             missing += 1

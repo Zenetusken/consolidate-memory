@@ -426,8 +426,9 @@ auto-memory fact file to "orient." Body reads still happen wherever CONTENT is t
 input (this is not a skip of the re-audits below):
 
 - **Demotion:** every `user-global` canonical **body** in the enrolled domain
-  facts dir from Phase 0 / `cm doctor` (legacy `~/.claude/memory/` only while
-  dual-read). Empty-set rule only if there are no such canonicals.
+  facts dir from Phase 0 / `cm doctor` (legacy `~/.claude/memory/` is
+  inventory-only — untagged facts are not pulled). Empty-set rule only if there
+  are no such canonicals.
 - **Promotion:** every Phase-0 `promote?` seed body (already capped). Empty-set rule
   if the seed is empty.
 - **Phase 0 named lists** (`archive?`, `defrag?`, re-verification candidates): Read
@@ -456,8 +457,9 @@ idempotent (re-runs are cheap no-ops); reads-only; no message content leaves the
 evidence surfaces in Phase 5's `--utility`, source-labeled (`harvested`).
 
 This replicates any `user-global` (and stack-matching `stack-general`) facts from
-the enrolled domain canonical dir (legacy `~/.claude/memory/` dual-read until
-finalize) that are missing here, and **refreshes any stale mirrors** whose
+the enrolled domain canonical dir (untagged legacy `~/.claude/memory/` is not
+ordinarily pullable; `cm migrate --inventory` lists it until `--finalize`) that
+are missing here, and **refreshes any stale mirrors** whose
 canonical changed (the script writes both the fact file and its index pointer). It also **AUTO-HOLDS**
 (M1) any new-global pull that would push the always-loaded index past the **HARD CEILING**
 (`INDEX_CEILING_TOKENS` ≈3840 est tok — v0.1.66; an over-TARGET amber store now receives freely, since
@@ -469,7 +471,7 @@ withheld to protect a past-the-ceiling index; the dashboard renders it as the `�
 receive` lever) in the cycle record. If nothing is missing/stale/held, no-op.
 
 Then **re-audit the existing `user-global` facts — the backstop for the promotion cascade's weak
-applicability gate (G2.3 — see Phase 2).** Empty-set rule if there are none. Otherwise read each canonical's **body** in the enrolled domain facts dir (`cm doctor` → `canonical_domain_dir`; legacy `~/.claude/memory/` only while dual-read) and
+applicability gate (G2.3 — see Phase 2).** Empty-set rule if there are none. Otherwise read each canonical's **body** in the enrolled domain facts dir (`cm doctor` → `canonical_domain_dir`; untagged legacy is inventory-only) and
 **re-walk the cascade by CONTENT**; any fact that would NOW route lower — e.g. its content carries a
 *fleet-VARYING* precondition (`mypy`, "only when cutting a release") rather than the user's
 *fleet-CONSTANT* substrate — is a **demotion candidate**. Judge by content, **NOT `holders`/adoption**

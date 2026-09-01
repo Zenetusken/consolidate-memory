@@ -355,8 +355,9 @@ compaction. Advisory only (never auto-fires; explicit-trigger-only); prospective
 **Model:** the enrolled-domain store
 `<config>/consolidate-memory/domains/<domain>/facts` (same fact-file + index
 format) is the canonical home for facts with `scope: stack-general` or
-`user-global`. Legacy `~/.claude/memory/` is a dual-read migration source until
-`cm migrate --finalize`. Each global
+`user-global`. Untagged legacy `~/.claude/memory/` is not ordinarily pullable
+(ADR 008); `cm migrate --inventory` lists it until `--finalize` sets `enforced`.
+Each global
 fact carries extra frontmatter: `scope`, `stacks: [python, rag, gpu, mypy, …]`
 (relevance matching), `projects: [...]` (provenance). `sync_global.py`:
 - `--list PROJECT_DIR` — show relevant/present/missing (read-only; does not

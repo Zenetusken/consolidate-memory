@@ -4348,19 +4348,13 @@ check("v0.1.78/review-F3: stamp seconds are CEILED, never floored — a floored 
       "window starting inside [floor(t), t) against the pinned undercount bias",
       sg._ceil_iso(100.2) == "1970-01-01T00:01:41Z" and sg._ceil_iso(100.0) == "1970-01-01T00:01:40Z")
 with _Env73() as _e:
-    # review-F2a: a no-metadata-block canonical mirrors via the `# global_ref:` fallback form — the
-    # stamp can never land, so its refreshes must NOT report a migration that didn't happen.
     (_e.glob / "nm.md").write_text("---\nname: nm\ndescription: \"v1\"\nscope: user-global\n---\nbody\n",
                                    encoding="utf-8")
     (_e.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
     _run73(_e.proj)
-    (_e.glob / "nm.md").write_text("---\nname: nm\ndescription: \"v2 edited\"\nscope: user-global\n---\nbody\n",
-                                   encoding="utf-8")
-    _rc, _out, _err = _run73(_e.proj)
-    check("v0.1.78/review-F2a: a fallback-form (no-metadata) mirror refresh reports plain 'refreshed', "
-          "never 'restamped' (the stamp cannot land there — it stays on the documented mtime fallback)",
-          "refreshed 1" in _out and "restamped" not in _out
-          and "global_ref_since" not in (_e.store / "nm.md").read_text(encoding="utf-8"))
+    _nm = (_e.store / "nm.md").read_text(encoding="utf-8") if (_e.store / "nm.md").exists() else ""
+    check("v0.1.78/review-F2a: a no-metadata canonical still receives a metadata mirror block",
+          "canonical_fact_id:" in _nm and "  global_ref:" in _nm and "canonical_domain:" in _nm)
 
 # --- v0.1.79: fleet usage HARVEST (docs/fleet-usage-harvest.spec.md — audit enhancement P1).
 # RED baseline (measured): a node holding a mirror, a real organic Read in its transcript, NO cycle
@@ -4586,7 +4580,7 @@ with _tf73.TemporaryDirectory() as _td81:
     _st81 = _h81 / ".claude" / "projects" / ms.slug_for(_p81) / "memory"; _st81.mkdir(parents=True)
     _g81 = _h81 / ".claude" / "memory"; _g81.mkdir(parents=True)
     for _n81 in ("g-one", "g-two"):
-        (_g81 / f"{_n81}.md").write_text(f"---\nname: {_n81}\ndescription: \"d\"\nmetadata:\n"
+        (_g81 / f"{_n81}.md").write_text(f"---\nname: {_n81}\ndescription: \"d\"\ndomain: personal\nmetadata:\n"
                                          f"  scope: user-global\n  type: feedback\n---\nbody\n", encoding="utf-8")
     _r = _beacon81(_h81, _p81)
     check("v0.1.81: a NEVER-PARTICIPATED store (no *.md) is silent — the plugin is user-wide, random "
@@ -4663,14 +4657,15 @@ with _tf73.TemporaryDirectory() as _td81:
     # near-ceiling MISSING fact consumes the headroom; the first draft's MISSING-only loop said
     # held=0 while run() held 1. The beacon now calls _plan_pull (one accounting replay).
     (_g81 / "aaa-drift.md").write_text(
-        "---\nname: aaa-drift\ndescription: \"" + "g" * 80 + "\"\nmetadata:\n  scope: user-global\n"
+        "---\nname: aaa-drift\ndescription: \"" + "g" * 80 + "\"\ndomain: personal\nmetadata:\n  scope: user-global\n"
         "  type: feedback\n---\ndrift body\n", encoding="utf-8")
     _adm81 = sg._as_mirror((_g81 / "aaa-drift.md").read_text(encoding="utf-8"), "aaa-drift",
                            since="2026-01-01T00:00:00Z",
                            body_hash=sg._body_hash((_g81 / "aaa-drift.md").read_text(encoding="utf-8")))
     (_st81 / "aaa-drift.md").write_text(_adm81, encoding="utf-8")
     (_g81 / "zzz-miss.md").write_text(
-        "---\nname: zzz-miss\ndescription: \"m\"\nmetadata:\n  scope: user-global\n  type: feedback\n---\nmb\n",
+        "---\nname: zzz-miss\ndescription: \"m\"\ndomain: personal\nmetadata:\n  scope: user-global\n"
+        "  type: feedback\n---\nmb\n",
         encoding="utf-8")
     _short81 = "- [aaa-drift](aaa-drift.md) — old"   # real line much leaner than the derived pointer
     _drift81 = ms.est_tokens(sg._pointer_line("aaa-drift", sg._frontmatter(_adm81))) - ms.est_tokens(_short81)
@@ -5593,6 +5588,11 @@ def _norm_mutate_tree(root: Path) -> "dict[str, str]":
                         "control.sqlite", "fleet-usage.jsonl", ".fleet-usage.jsonl",
                         "migrate-rollback.json", "hook-sketches.jsonl")):
                 continue
+            if "/quarantine/" in "/" + rel and rel.endswith(".md"):
+                parts = rel.split("/")
+                stem = parts[-1][:-3].split(".")[0]
+                parts[-1] = stem + ".NORMALIZED.md"
+                rel = "/".join(parts)
             t = p.read_bytes().decode("utf-8", errors="replace")
             t = _reA3.sub(r"global_ref_since: .*", r"global_ref_since: NORMALIZED", t)
             t = _reA3.sub(r"content_modified: .*", r"content_modified: NORMALIZED", t)
@@ -5758,7 +5758,8 @@ with _tf43.TemporaryDirectory() as _tdA7:
         "metadata:\n  node_type: memory\n  type: reference\n  projects: [gate-repo]\n---\n\nA real canonical fact.\n",
         encoding="utf-8")
     _run_home_a1(_homeA7, str(_scripts54 / "cm_ops.py"),
-                 "project", "enroll", _repoA7, "--domain", "personal", "--apply")
+                 "project", "enroll", _repoA7, "--domain", "personal", "--apply",
+                 "--confirm", "enroll-personal")
     _goA7, _geA7, _grcA7 = _run_home_a1(_homeA7, str(_scripts54 / "sync_global.py"),
                                         "--gc", _repoA7, "--apply")
     _storeA7 = Path(_homeA7) / ".claude" / "projects" / ms.slug_for(Path(_repoA7)) / "memory"
@@ -6353,8 +6354,10 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
               "UNENROLLED LOCAL-ONLY" in _doc_u)
 
         _rc_en_bad = cmo.main(["project", "enroll", str(_ph), "--domain", "../employer"])
-        _rc_en_a = cmo.main(["project", "enroll", str(_pa), "--domain", "work", "--apply"])
-        _rc_en_b = cmo.main(["project", "enroll", str(_pb), "--domain", "personal", "--apply"])
+        _rc_en_a = cmo.main(["project", "enroll", str(_pa), "--domain", "work", "--apply",
+                             "--confirm", "enroll-work"])
+        _rc_en_b = cmo.main(["project", "enroll", str(_pb), "--domain", "personal", "--apply",
+                             "--confirm", "enroll-personal"])
         _ctx_a = sc.resolve_store(_pa, environ=_xp_env(_home_p0))
         _ctx_b = sc.resolve_store(_pb, environ=_xp_env(_home_p0))
         check("P0-1: cm project enroll is the operator grant; ../domain is refused",
@@ -6409,19 +6412,25 @@ with _tf_xp.TemporaryDirectory() as _td_p0:
               and "WORK-ONLY BODY" not in _sb.read_text(encoding="utf-8"))
         _t_m = _sa.read_text(encoding="utf-8")
         _sa.write_text(_t_m.replace("WORK-ONLY BODY", "LOCAL EDIT BODY"), encoding="utf-8")
-        _rc_un = cmo.main(["project", "unenroll", str(_pa), "--apply"])
-        _q = _ctx_a.native_memory_dir / "quarantine" / "deploy.md"
+        _rc_un = cmo.main(["project", "unenroll", str(_pa), "--apply",
+                           "--confirm", "unenroll-work"])
+        _qdir = _ctx_a.native_memory_dir / "quarantine"
+        _qs = list(_qdir.glob("deploy*.md")) if _qdir.is_dir() else []
         check("0.2.2: unenroll quarantines a locally edited mirror (does not delete the body)",
-              _rc_un == 0 and _q.is_file() and "LOCAL EDIT BODY" in _q.read_text(encoding="utf-8")
+              _rc_un == 0 and len(_qs) == 1
+              and "LOCAL EDIT BODY" in _qs[0].read_text(encoding="utf-8")
               and not _sa.exists())
         # re-enroll work so later crash/forget pins still have a domain
-        cmo.main(["project", "enroll", str(_pa), "--domain", "work", "--apply"])
+        cmo.main(["project", "enroll", str(_pa), "--domain", "work", "--apply",
+                  "--confirm", "enroll-work"])
         _ctx_a = sc.resolve_store(_pa, environ=_xp_env(_home_p0))
-        _rc_mv = cmo.main(["project", "move-domain", str(_pb), "--to", "client-x", "--apply"])
+        _rc_mv = cmo.main(["project", "move-domain", str(_pb), "--to", "client-x", "--apply",
+                           "--confirm", "move-personal-to-client-x"])
         _ctx_b2 = sc.resolve_store(_pb, environ=_xp_env(_home_p0))
         check("0.2.2: move-domain grants the dest domain",
               _rc_mv == 0 and _ctx_b2.domain_id == "client-x")
-        cmo.main(["project", "move-domain", str(_pb), "--to", "personal", "--apply"])
+        cmo.main(["project", "move-domain", str(_pb), "--to", "personal", "--apply",
+                  "--confirm", "move-client-x-to-personal"])
         _ctx_b = sc.resolve_store(_pb, environ=_xp_env(_home_p0))
         check("P0-4: untagged confidential is not pulled under dual-read",
               not _sconf_a.exists() and not _sconf_b.exists())
@@ -6577,7 +6586,8 @@ with _tf_xp.TemporaryDirectory() as _td_022:
     _os_xp.environ["HOME"] = str(_home_022)
     try:
         _ctx_h022 = sc.resolve_store(_proj_022, environ=_xp_env(_home_022))
-        cmo.main(["project", "enroll", str(_proj_022), "--domain", "personal", "--apply"])
+        cmo.main(["project", "enroll", str(_proj_022), "--domain", "personal", "--apply",
+                  "--confirm", "enroll-personal"])
         _ctx_h022 = sc.resolve_store(_proj_022, environ=_xp_env(_home_022))
         _missing_db = Path(_td_022) / "no-control.sqlite"
         check("0.2.2: connect_if_exists does not mint a missing DB",
@@ -6928,6 +6938,30 @@ with _Env73() as _e_dm:
     check("0.3.0: delete preimage mismatch refuses transact (journal not complete)",
           _refused_dm and _victim.exists()
           and _victim.read_text(encoding="utf-8") == "LOCAL EDIT\n")
+
+check("0.3.0: untagged legacy is not admitted to a named domain",
+      dp.admit_cross_project("personal", {"scope": "user-global"},
+                             migration_mode=dp.MIGRATION_DUAL_READ) is False)
+check("0.3.0: applies_from_fm reads applies_exclude (production pull path)",
+      _fsch_022.applies_from_fm({"applies_exclude": "[windows]"}).get("exclude") == ["windows"])
+_rc_noconfirm = None
+with _tf_xp.TemporaryDirectory() as _td_nc:
+    _h_nc = Path(_td_nc) / "h"; _h_nc.mkdir()
+    _p_nc = Path(_td_nc) / "p"; _p_nc.mkdir()
+    _old_nc = _os_xp.environ.get("HOME")
+    _os_xp.environ["HOME"] = str(_h_nc)
+    try:
+        _err_nc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_err_nc):
+            _rc_noconfirm = cmo.main(["project", "enroll", str(_p_nc),
+                                      "--domain", "personal", "--apply"])
+        check("0.3.0: --apply without --confirm is refused (non-TTY included)",
+              _rc_noconfirm == 2 and "confirm" in _err_nc.getvalue())
+    finally:
+        if _old_nc is None:
+            _os_xp.environ.pop("HOME", None)
+        else:
+            _os_xp.environ["HOME"] = _old_nc
 
 _saved_fc = sys.modules.get("fcntl")
 sys.modules["fcntl"] = None  # type: ignore[assignment]
@@ -7358,8 +7392,10 @@ with _tf_xp.TemporaryDirectory() as _td_m:
             _rc_as = cmo.cmd_migrate(_nsm)
         _nsm.assign = None
         _nsm.apply = True
+        _nsm.confirm = "migrate-apply"
         with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
-            cmo.main(["project", "enroll", str(_proj_m), "--domain", "personal", "--apply"])
+            cmo.main(["project", "enroll", str(_proj_m), "--domain", "personal", "--apply",
+                      "--confirm", "enroll-personal"])
         _buf_app2 = _io73.StringIO()
         with _ctx73.redirect_stdout(_buf_app2):
             _rc_app2 = cmo.cmd_migrate(_nsm)
@@ -7443,6 +7479,229 @@ with _tf_xp.TemporaryDirectory() as _td_l:
             _os_xp.environ.pop("HOME", None)
         else:
             _os_xp.environ["HOME"] = _old_hl
+
+# ── 0.3.0 remaining substrate pins (classify-under-lock, migrate, forget, races) ──
+_fix021 = ROOT / "tests" / "fixtures" / "upgrade-0.2.1"
+check("0.3.0: vendored 0.2.1 upgrade fixture is present",
+      (_fix021 / "legacy" / "plain.md").is_file()
+      and (_fix021 / "legacy" / "dup.md").is_file()
+      and (_fix021 / "unknown-pool" / "dup.md").is_file()
+      and (_fix021 / "personal" / "already.md").is_file())
+
+_canon_ug = (
+    "---\nname: lock-m\ndescription: \"classify under lock\"\n"
+    "metadata:\n  node_type: memory\n  type: reference\n"
+    "scope: user-global\ndomain: personal\n---\ncanon body lock-m\n"
+)
+
+with _Env73() as _e_lock:
+    _ctx_lock = sc.resolve_store(_e_lock.proj)
+    _origin_lock = _e_lock.store / "lock-m.md"
+    _origin_lock.write_text(_canon_ug, encoding="utf-8")
+    _up_lock = ci.upsert(_ctx_lock, "lock-m", _canon_ug, origin_local=_origin_lock)
+    _dry_u, _dry_e = _io73.StringIO(), _io73.StringIO()
+    with _ctx73.redirect_stdout(_dry_u), _ctx73.redirect_stderr(_dry_e):
+        _rc_dry = cmo.main(["project", "unenroll", str(_e_lock.proj)])
+    _edited = _origin_lock.read_text(encoding="utf-8").replace("canon body lock-m",
+                                                               "LOCAL EDIT AFTER DRY PLAN")
+    _origin_lock.write_text(_edited, encoding="utf-8")
+    _app_u, _app_e = _io73.StringIO(), _io73.StringIO()
+    with _ctx73.redirect_stdout(_app_u), _ctx73.redirect_stderr(_app_e):
+        _rc_app = cmo.main(["project", "unenroll", str(_e_lock.proj),
+                            "--apply", "--confirm", "unenroll-personal"])
+    _qdir = _e_lock.store / "quarantine"
+    _qhits = list(_qdir.glob("lock-m*.md")) if _qdir.is_dir() else []
+    check("0.3.0: classify-under-lock quarantines an edit after dry-plan delete",
+          _up_lock.get("ok") is True and _rc_dry == 0 and "revoke" in _dry_u.getvalue()
+          and _rc_app == 0 and not _origin_lock.exists()
+          and len(_qhits) == 1
+          and "LOCAL EDIT AFTER DRY PLAN" in _qhits[0].read_text(encoding="utf-8"))
+
+with _Env73() as _e_fg:
+    _ctx_fg = sc.resolve_store(_e_fg.proj)
+    _orig_fg = _e_fg.store / "fg-edit.md"
+    _body_fg = (
+        "---\nname: fg-edit\ndescription: \"forget local edit\"\n"
+        "metadata:\n  node_type: memory\n  type: reference\n"
+        "scope: user-global\ndomain: personal\n---\nforget canon\n"
+    )
+    _orig_fg.write_text(_body_fg, encoding="utf-8")
+    ci.upsert(_ctx_fg, "fg-edit", _body_fg, origin_local=_orig_fg)
+    _orig_fg.write_text(_orig_fg.read_text(encoding="utf-8").replace(
+        "forget canon", "KEEP THIS LOCAL EDIT"), encoding="utf-8")
+    _fg_out = ci.forget(_ctx_fg, "fg-edit")
+    _qfg = list((_e_fg.store / "quarantine").glob("fg-edit*.md"))
+    check("0.3.0: forget quarantines a locally edited mirror (does not destroy the body)",
+          _fg_out.get("ok") is True and len(_qfg) == 1
+          and "KEEP THIS LOCAL EDIT" in _qfg[0].read_text(encoding="utf-8")
+          and not _orig_fg.exists())
+
+with _Env73() as _e_rb:
+    _ctx_rb = sc.resolve_store(_e_rb.proj)
+    _conn_rb = cp.connect(cp.db_path(_ctx_rb))
+    try:
+        _old_rb = "p_" + ("ab" * 16)
+        _conn_rb.execute(
+            "INSERT INTO projects(project_id, profile_id, domain_id, status, current_root, "
+            "git_common_dir, native_memory_dir, session_dir, display_name, last_seen) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (_old_rb, _ctx_rb.profile_id, "personal", "enrolled", str(_ctx_rb.project_root),
+             "", str(_ctx_rb.native_memory_dir), str(_ctx_rb.session_dir),
+             "old", "t"))
+        _computed_rb = "p_" + ("cd" * 16)
+        _conn_rb.execute(
+            "INSERT INTO projects(project_id, profile_id, domain_id, status, current_root) "
+            "VALUES (?,?,?,?,?)",
+            (_computed_rb, _ctx_rb.profile_id, "personal", "enrolled", "/tmp/other"))
+        _conn_rb.commit()
+        cp.apply_registry_ops(_conn_rb, [{
+            "op": "project_rebind", "project_id": _old_rb, "retire_id": _computed_rb,
+            "alias_id": _computed_rb, "current_root": str(_ctx_rb.project_root),
+            "git_common_dir": "", "native_memory_dir": str(_ctx_rb.native_memory_dir),
+            "session_dir": str(_ctx_rb.session_dir), "display_name": "rebound",
+        }])
+        _kept = _conn_rb.execute(
+            "SELECT project_id FROM projects WHERE project_id=?", (_old_rb,)
+        ).fetchone()
+        _gone = _conn_rb.execute(
+            "SELECT project_id FROM projects WHERE project_id=?", (_computed_rb,)
+        ).fetchone()
+        check("0.3.0: project_rebind leaves one enrolled row and deletes the computed id",
+              _kept is not None and _gone is None)
+    finally:
+        _conn_rb.close()
+
+with _Env73() as _e_ap:
+    (_e_ap.proj / "mod.py").write_text("x = 1\n", encoding="utf-8")
+    _excl = (
+        "---\nname: no-py\ndescription: \"exclude python\"\n"
+        "metadata:\n  node_type: memory\n  type: reference\n"
+        "scope: user-global\ndomain: personal\napplies_exclude: [python]\n---\nbody\n"
+    )
+    _anyf = (
+        "---\nname: yes-py\ndescription: \"any python\"\n"
+        "metadata:\n  node_type: memory\n  type: reference\n"
+        "scope: stack-general\nstacks: [python]\ndomain: personal\n"
+        "applies_any: [python]\n---\nbody\n"
+    )
+    _nest = (
+        "---\nname: nest-ap\ndescription: \"nested applies refused\"\n"
+        "metadata:\n  node_type: memory\n  type: reference\n"
+        "scope: user-global\ndomain: personal\napplies.any: [python]\n---\nbody\n"
+    )
+    (_e_ap.glob / "no-py.md").write_text(_excl, encoding="utf-8")
+    (_e_ap.glob / "yes-py.md").write_text(_anyf, encoding="utf-8")
+    (_e_ap.glob / "nest-ap.md").write_text(_nest, encoding="utf-8")
+    _rc_ap, _out_ap, _err_ap = _run73(_e_ap.proj)
+    check("0.3.0: pull honors applies_exclude / applies_any and refuses nested applies.*",
+          _rc_ap == 0 and not (_e_ap.store / "no-py.md").exists()
+          and (_e_ap.store / "yes-py.md").exists()
+          and not (_e_ap.store / "nest-ap.md").exists())
+
+with _Env73() as _e_mg:
+    _ctx_mg = sc.resolve_store(_e_mg.proj)
+    _leg_mg = _ctx_mg.config_root / "memory"
+    _unk = _ctx_mg.config_root / "consolidate-memory" / "domains" / "unknown" / "facts"
+    _pdir_mg = _ctx_mg.canonical_domain_dir
+    _leg_mg.mkdir(parents=True, exist_ok=True)
+    _unk.mkdir(parents=True, exist_ok=True)
+    _pdir_mg.mkdir(parents=True, exist_ok=True)
+    import shutil as _sh_mg
+    _sh_mg.copy2(_fix021 / "legacy" / "plain.md", _leg_mg / "plain.md")
+    _sh_mg.copy2(_fix021 / "legacy" / "dup.md", _leg_mg / "dup.md")
+    _sh_mg.copy2(_fix021 / "unknown-pool" / "dup.md", _unk / "dup.md")
+    _sh_mg.copy2(_fix021 / "legacy" / "already.md", _leg_mg / "already.md")
+    _sh_mg.copy2(_fix021 / "personal" / "already.md", _pdir_mg / "already.md")
+    _dest_before = (_pdir_mg / "already.md").read_text(encoding="utf-8")
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        cmo.main(["migrate", str(_e_mg.proj)])
+        cmo.main(["migrate", str(_e_mg.proj), "--resolve-collision", "dup", "--keep", "legacy"])
+        cmo.main(["migrate", str(_e_mg.proj), "--assign", "plain", "--domain", "personal"])
+        cmo.main(["migrate", str(_e_mg.proj), "--assign", "dup", "--domain", "personal"])
+        cmo.main(["migrate", str(_e_mg.proj), "--assign", "already", "--domain", "personal"])
+    _plan_mg = _json_xp.loads((_ctx_mg.plugin_data_dir / "migrate-plan.json").read_text(
+        encoding="utf-8"))
+    check("0.3.0: --keep legacy clears collisions when the primary origin is kept",
+          not (_plan_mg.get("facts") or {}).get("dup", {}).get("collisions"))
+    _ref_u, _ref_e = _io73.StringIO(), _io73.StringIO()
+    with _ctx73.redirect_stdout(_ref_u), _ctx73.redirect_stderr(_ref_e):
+        _rc_ref = cmo.main(["migrate", str(_e_mg.proj), "--apply",
+                            "--confirm", "migrate-apply"])
+    check("0.3.0: migrate apply refuses an existing dest without --on-existing",
+          _rc_ref == 2 and "dest exists" in _ref_e.getvalue()
+          and (_pdir_mg / "already.md").read_text(encoding="utf-8") == _dest_before)
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_keep = cmo.main(["migrate", str(_e_mg.proj), "--apply",
+                             "--confirm", "migrate-apply",
+                             "--on-existing", "keep-existing"])
+    check("0.3.0: migrate --on-existing keep-existing leaves dest bytes and copies the rest",
+          _rc_keep == 0
+          and (_pdir_mg / "already.md").read_text(encoding="utf-8") == _dest_before
+          and (_pdir_mg / "plain.md").is_file()
+          and "LEGACY copy" in (_pdir_mg / "dup.md").read_text(encoding="utf-8")
+          and "scope:" not in (_pdir_mg / "plain.md").read_text(encoding="utf-8").split("---")[1])
+    (_pdir_mg / "plain.md").write_text(
+        (_pdir_mg / "plain.md").read_text(encoding="utf-8").replace(
+            "Legacy-only body", "EDITED AFTER APPLY"), encoding="utf-8")
+    _rb_u, _rb_e = _io73.StringIO(), _io73.StringIO()
+    with _ctx73.redirect_stdout(_rb_u), _ctx73.redirect_stderr(_rb_e):
+        _rc_rb = cmo.main(["migrate", str(_e_mg.proj), "--rollback"])
+    check("0.3.0: migrate rollback restores prior dest bytes and does not delete an edit",
+          _rc_rb == 1 and "conflicts" in _rb_e.getvalue().lower() + _rb_u.getvalue().lower()
+          and "EDITED AFTER APPLY" in (_pdir_mg / "plain.md").read_text(encoding="utf-8")
+          and (_pdir_mg / "already.md").read_text(encoding="utf-8") == _dest_before)
+
+with _Env73() as _e_cr:
+    _ctx_cr = sc.resolve_store(_e_cr.proj)
+    _dest_cr = _ctx_cr.canonical_domain_dir / "race-create.md"
+    _dest_cr.parent.mkdir(parents=True, exist_ok=True)
+    _appeared = "APPEARED BEFORE PUBLISH\n"
+    _crash_cr = False
+    try:
+        cp.transact(
+            _ctx_cr, "race-create", {"stem": "race-create"},
+            lambda _c, _t: (
+                _t.__setitem__(str(_dest_cr), "NEW CANON\n") or {
+                    "dest_modes": {str(_dest_cr): "create"},
+                    "expected_revisions": {str(_dest_cr): cp.ABSENT},
+                }
+            ),
+            crash_after="verify_unchanged", skip_recover=True)
+    except cp.CrashSimulated:
+        _crash_cr = True
+    _dest_cr.write_text(_appeared, encoding="utf-8")
+    _j_cr = cp.connect_journal(_ctx_cr)
+    _r_cr = cp.connect(cp.db_path(_ctx_cr))
+    _got_cr = cp.recover_pending(_j_cr, ctx=_ctx_cr, registry_conn=_r_cr)
+    _st_cr = _j_cr.execute(
+        "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
+    _j_cr.close(); _r_cr.close()
+    check("0.3.0: create dest that appears after verify is not clobbered (journal not complete)",
+          _crash_cr and _dest_cr.read_text(encoding="utf-8") == _appeared
+          and (_st_cr is None or str(_st_cr["status"] or "") != "complete")
+          and len(_got_cr) == 0)
+
+with _Env73() as _e_co:
+    _ctx_co = sc.resolve_store(_e_co.proj)
+    _d_co = _ctx_co.canonical_domain_dir / "exists.md"
+    _d_co.parent.mkdir(parents=True, exist_ok=True)
+    _d_co.write_text("ALREADY\n", encoding="utf-8")
+    _up_co = ci.upsert(_ctx_co, "exists",
+                       "---\nname: exists\ndescription: x\n"
+                       "metadata:\n  node_type: memory\n  type: reference\n"
+                       "scope: user-global\n---\nnew\n",
+                       create_only=True)
+    check("0.3.0: upsert create_only refuses when dest already exists",
+          _up_co.get("ok") is False
+          and "already exists" in str(_up_co.get("error") or "")
+          and _d_co.read_text(encoding="utf-8") == "ALREADY\n")
+
+check("0.3.0: SKILL/harness-map do not claim untagged dual-read pull",
+      "legacy `~/.claude/memory/` dual-read until" not in _skill_md.read_text(encoding="utf-8")
+      and "only while dual-read" not in _skill_md.read_text(encoding="utf-8")
+      and "is a dual-read migration source until" not in (
+          ROOT / "plugins" / "consolidate-memory" / "skills" / "consolidate-memory"
+          / "references" / "harness-map.md").read_text(encoding="utf-8"))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

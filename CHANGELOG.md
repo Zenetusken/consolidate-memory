@@ -99,6 +99,26 @@ version changes on `main`.
   without `--all-domains` stay current-domain.
 - macOS smoke slug pins no longer assume `/home/...` survives `Path.resolve()`
   (symlink/autofs on GH `macos-latest`).
+- **Journal v3 typed ops fail closed** (unknown `op` is `WriteRefused`;
+  `project_upsert` / `project_rebind` are first-class). Delete preimage mismatch
+  aborts the journal (not `complete`). `mode=create` uses exclusive create.
+  First-enroll crash recovery recreates the project row.
+- **Domain-transition classify is under the lock** (ADR 012). Dry-run is
+  advisory; `--apply` rereads + three-way classifies with the holder table.
+  Collision-safe quarantine names: `native/quarantine/<stem>.<utc>.md`.
+- **Migrate dest collision / rollback bytes.** Existing dest refuses unless
+  `--on-existing keep-existing|replace-with-migrated`. `--keep legacy` clears
+  collisions when the primary origin is kept. Rollback restores prior dest
+  bytes. Apply uses the same schema codec as upsert (missing `scope` stays
+  not-pullable). Catalog `generate_catalog(..., overlay=)` sees staged temps.
+- **Untagged legacy is not ordinarily pullable** into a named domain. Pull
+  uses `applies_from_fm` (`applies_any` / `applies_all` / `applies_exclude`);
+  nested `applies.*` refuses that fact. Schema-v3 mirrors with a missing
+  holder row quarantine (no frontmatter fallback).
+- **Forget** three-way classifies this project's mirror (quarantine a local
+  edit; no `holder_delete *` while other stores still have files). Domain /
+  all-plugin-data purge revokes managed mirrors first. `--apply` always
+  requires `--confirm PHRASE` (TTY or not).
 
 Docs (README, SECURITY, SKILL, harness-map, CLAUDE, AGENTS, preflight, `cm` help)
 now describe **0.3.0 behavior**: unenrolled is local-only, Phase-1 `--pull` is the

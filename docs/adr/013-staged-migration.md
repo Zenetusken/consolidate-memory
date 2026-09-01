@@ -21,14 +21,22 @@ inventory → review → assign FACT --domain DOMAIN | exclude FACT
          → rollback | finalize
 ```
 
-Inputs: legacy `~/.claude/memory`, `domains/unknown/facts`, enrolled domain
-dirs, unstamped native mirrors, old control/journal schemas.
+**0.3.0 inventory (operator default):** legacy `~/.claude/memory` and
+`domains/unknown/facts` only.
+
+**HOLD (not copied by 0.3.0 apply):** enrolled domain dirs (already
+domain-tagged), unstamped native mirrors (not canonicals), old
+control/journal schemas (journal v3 recover is the path). Dual-read of
+untagged bodies is inspect-only (`cm migrate --inventory`); ordinary
+`--pull` does not replicate them.
 
 No silent `personal`/`default` assignment. Assignment writes the plan, not
 live files, until `apply`. `apply` journals through v3 and stamps real
 destination domains. Dual-read remains until `finalize` sets `enforced`.
-Rollback records allowed roots + old/new hashes. Edited-after-migration
-files are conflicts, never deleted.
+If the destination already exists, apply refuses unless the operator chose
+`keep-existing` or `replace-with-migrated`. Rollback restores prior dest
+bytes (or unlinks a newly created dest); edited-after-migration files are
+conflicts, never deleted.
 
 Post-apply tests must pull, forget, GC, restart, and recover — file existence
 is not success.

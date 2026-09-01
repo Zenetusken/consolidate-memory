@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -15,20 +16,42 @@ from store_context import (StoreContext, WriteRefused, assert_writable, doctor_d
                            doctor_report, resolve_store)
 
 
-def _mirror_plan_for_dest(ctx: StoreContext, dest_domain: str) -> dict:
+def _lookup_canonical_text(ctx: StoreContext, fm: dict, fname: str) -> Optional[str]:
+    """canonical_domain/fact_id dir → named domain → unknown pool → legacy."""
+    from identifiers import IdentifierRefused, safe_child, validate_domain_id
+    from sync_global import _safe_read_text, global_store
+    droot = ctx.config_root / "consolidate-memory" / "domains"
+    cdom = str(fm.get("canonical_domain") or fm.get("domain") or "").strip()
+    if cdom and cdom != "unknown":
+        try:
+            cp = safe_child(droot, validate_domain_id(cdom)) / "facts" / fname
+            text = _safe_read_text(cp)
+            if text is not None:
+                return text
+        except IdentifierRefused:
+            pass
+    unk = droot / "unknown" / "facts" / fname
+    text = _safe_read_text(unk)
+    if text is not None:
+        return text
+    return _safe_read_text(global_store() / fname)
+
+
+def _mirror_plan_for_dest(ctx: StoreContext, dest_domain: str, conn=None) -> dict:
     """Inventory managed mirrors: clean deletes vs locally-edited quarantine.
 
     Unenroll (dest unknown) plans every managed mirror. Local edits are never
-    deleted — they land under native/quarantine/.
+    deleted — they land under native/quarantine/. When `conn` is provided the
+    holder table is read from that connection (under lock).
     """
     from control_plane import (connect_if_exists, db_path, holder_base_revision,
                                migration_mode_readonly, stable_fact_id)
     from domain_policy import admit_cross_project
     from memory_status import _frontmatter
     from mirror_conflict import body_hash as _bh, classify_mirror
-    from sync_global import _is_mirror, _safe_read_text, global_store
+    from sync_global import _is_mirror, _safe_read_text
     native = ctx.native_memory_dir
-    plan: dict = {"deletes": [], "quarantine": [], "holders": []}
+    plan: dict = {"deletes": [], "quarantine": [], "holders": [], "source_hashes": {}}
     if not native.is_dir():
         return plan
     mode = "dual-read"
@@ -36,8 +59,8 @@ def _mirror_plan_for_dest(ctx: StoreContext, dest_domain: str) -> dict:
         mode = migration_mode_readonly(ctx)
     except Exception:
         mode = "dual-read"
-    droot = ctx.config_root / "consolidate-memory" / "domains"
-    _hconn = connect_if_exists(db_path(ctx))
+    own = conn is None
+    _hconn = conn if conn is not None else connect_if_exists(db_path(ctx))
     try:
         for f in sorted(native.glob("*.md")):
             if f.name == "MEMORY.md":
@@ -46,30 +69,27 @@ def _mirror_plan_for_dest(ctx: StoreContext, dest_domain: str) -> dict:
             if text is None or not _is_mirror(text):
                 continue
             fm = _frontmatter(text)
-            cdom = str(fm.get("canonical_domain") or fm.get("domain") or "").strip()
             if dest_domain != "unknown" and admit_cross_project(
                     dest_domain, fm, migration_mode=mode):
                 continue
             fid = str(fm.get("canonical_fact_id") or "").strip()
+            cdom = str(fm.get("canonical_domain") or fm.get("domain") or "").strip()
             if not fid:
                 fid = stable_fact_id(cdom or ctx.domain_id or "unknown", f.stem)
             plan["holders"].append({"op": "holder_delete", "fact_id": fid,
                                     "project_id": ctx.project_id})
-            canon_text = None
-            if cdom and cdom != "unknown":
-                from identifiers import IdentifierRefused, safe_child, validate_domain_id
-                try:
-                    cp = safe_child(droot, validate_domain_id(cdom)) / "facts" / f.name
-                    canon_text = _safe_read_text(cp)
-                except IdentifierRefused:
-                    canon_text = None
-            if canon_text is None:
-                canon_text = _safe_read_text(global_store() / f.name)
+            plan["source_hashes"][str(f)] = hashlib.sha256(
+                text.encode("utf-8")).hexdigest()
+            canon_text = _lookup_canonical_text(ctx, fm, f.name)
+            v3 = bool(fm.get("canonical_fact_id") or fm.get("schema_version"))
             local_edit = False
-            if canon_text:
+            if canon_text is None:
+                local_edit = True
+            else:
                 _hb = (holder_base_revision(_hconn, fid, ctx.project_id)
                        if _hconn is not None else None)
-                dec = classify_mirror(text, canon_text, base_revision=_hb)
+                dec = classify_mirror(text, canon_text, base_revision=_hb,
+                                      allow_legacy_fallback=not v3)
                 local_edit = dec["action"] in ("stop-local", "conflict", "quarantine")
                 if not local_edit and _bh(text) != _bh(canon_text):
                     local_edit = True
@@ -78,40 +98,49 @@ def _mirror_plan_for_dest(ctx: StoreContext, dest_domain: str) -> dict:
             else:
                 plan["deletes"].append(str(f))
     finally:
-        if _hconn is not None:
+        if own and _hconn is not None:
             _hconn.close()
     return plan
+
+
+def _quarantine_dest(qdir: Path, stem: str, temps: dict) -> Path:
+    """Collision-safe quarantine path: never overwrite an existing copy."""
+    ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    dest = qdir / f"{stem}.{ts}.md"
+    n = 0
+    while dest.exists() or str(dest) in temps:
+        n += 1
+        dest = qdir / f"{stem}.{ts}.{n}.md"
+    return dest
 
 
 def _revoke_unadmitted_mirrors(ctx: StoreContext, dest_domain: str,
                                extra_registry_ops: Optional[list] = None,
                                extra_domains: Optional[list] = None,
                                prepare=None) -> int:
-    """Journal v3 revoke of unadmitted mirrors. Returns n files moved/deleted.
-
-    Fail-closed: no direct unlink fallback. Quarantined bodies go to
-    native/quarantine/<stem>.md (not MEMORY.md). `prepare(conn)` runs inside
-    the same transact (enroll/move/unenroll registry writes).
-    """
+    """Journal v3 revoke. Classify UNDER the lock (ADR 012). Returns n files."""
     from control_plane import transact
     from sync_global import _safe_read_text
     native = ctx.native_memory_dir
     idxp = native / "MEMORY.md"
     qdir = native / "quarantine"
-    plan = _mirror_plan_for_dest(ctx, dest_domain)
-    doomed_names = [Path(p).name for p in plan["deletes"]]
-    doomed_names += [Path(p).name for p, _t in plan["quarantine"]]
-    if not doomed_names and not extra_registry_ops and prepare is None:
+    if not native.is_dir() and not extra_registry_ops and prepare is None:
         return 0
 
     def mutate(conn, temps):
         if prepare is not None:
             prepare(conn)
+        plan = _mirror_plan_for_dest(ctx, dest_domain, conn=conn)
+        doomed_names = [Path(p).name for p in plan["deletes"]]
+        doomed_names += [Path(p).name for p, _t in plan["quarantine"]]
         idx = _safe_read_text(idxp) or ""
         deletes = list(plan["deletes"])
+        dest_modes: dict = {}
+        qdir.mkdir(parents=True, exist_ok=True)
         for path_s, body in plan["quarantine"]:
-            qdest = qdir / Path(path_s).name
+            qdest = _quarantine_dest(qdir, Path(path_s).stem, temps)
             temps[str(qdest)] = body if body.endswith("\n") else body + "\n"
+            dest_modes[str(qdest)] = "create"
             deletes.append(path_s)
         for name in doomed_names:
             idx = "\n".join(ln for ln in idx.splitlines() if f"]({name})" not in ln)
@@ -124,10 +153,11 @@ def _revoke_unadmitted_mirrors(ctx: StoreContext, dest_domain: str,
                 (op["fact_id"], op["project_id"]))
         return {"deletes": deletes, "revoked": len(deletes),
                 "quarantined": len(plan["quarantine"]),
-                "registry_ops": ops}
+                "registry_ops": ops, "dest_modes": dest_modes,
+                "expected_revisions": plan.get("source_hashes") or {}}
 
     out = transact(ctx, "domain-transition",
-                   {"dest": dest_domain, "n": len(doomed_names)}, mutate,
+                   {"dest": dest_domain}, mutate,
                    extra_domains=extra_domains)
     return int((out.get("result") or {}).get("revoked") or 0)
 
@@ -427,7 +457,6 @@ def cmd_canonical(args: argparse.Namespace) -> int:
 def cmd_migrate(args: argparse.Namespace) -> int:
     from control_plane import (assert_mutation_allowed, connect, db_path,
                                set_migration_mode, transact)
-    from canonical_ingress import insert_frontmatter_key
     from identifiers import IdentifierRefused, safe_child, validate_domain_id
     ctx = _ctx(args.project)
     stage = getattr(args, "migrate_cmd", None) or "inventory"
@@ -541,13 +570,15 @@ def cmd_migrate(args: argparse.Namespace) -> int:
             print(f"migrate resolve-collision: unknown stem {stem}", file=sys.stderr)
             return 2
         extras = list(row.get("collisions") or [])
-        # Re-resolve the kept origin as the source; extras are excluded.
-        for extra in extras:
-            if str(extra.get("origin") or "") == keep:
-                row["source"] = extra.get("source") or row.get("source")
-                row["origin"] = keep
-                row["sha256"] = extra.get("sha256") or row.get("sha256")
-        row["collisions"] = [c for c in extras if str(c.get("origin") or "") != keep]
+        if keep == str(row.get("origin") or ""):
+            row["collisions"] = []
+        else:
+            for extra in extras:
+                if str(extra.get("origin") or "") == keep:
+                    row["source"] = extra.get("source") or row.get("source")
+                    row["origin"] = keep
+                    row["sha256"] = extra.get("sha256") or row.get("sha256")
+            row["collisions"] = [c for c in extras if str(c.get("origin") or "") != keep]
         facts[stem] = row
         _save_migrate_plan(ctx, plan)
         print(f"migrate resolve-collision: {stem} kept {keep}")
@@ -578,6 +609,14 @@ def cmd_migrate(args: argparse.Namespace) -> int:
             print("migrate apply: cross-project writes require enrollment into a named domain "
                   "(cm project enroll --domain NAME --apply)", file=sys.stderr)
             return 2
+        need_m = _want_confirm(args, "migrate-apply")
+        if need_m == "dry":
+            print("migrate apply: dry (pass --apply --confirm migrate-apply)")
+            return 0
+        if need_m:
+            print(f"migrate apply: {need_m}", file=sys.stderr)
+            return 2
+        on_existing = str(getattr(args, "on_existing", None) or "")
         to_copy = []
         for stem, row in sorted((plan.get("facts") or {}).items()):
             dest_dom = str((row or {}).get("assignment") or "")
@@ -592,8 +631,15 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         droot = ctx.config_root / "consolidate-memory" / "domains"
 
         def mutate(conn, temps):
+            from canonical_ingress import generate_catalog, prepare_migrated_canonical
+            from control_plane import ABSENT as _ABS, stable_fact_id as _sf_m
+            from domain_policy import fact_sensitivity as _fs_m
+            from memory_status import _frontmatter as _fm_m
             copied: list = []
             catalogs: dict = {}
+            dest_modes: dict = {}
+            expected: dict = {}
+            ops: list = []
             for stem, src, dest_dom, row in to_copy:
                 facts_dir = safe_child(droot, dest_dom) / "facts"
                 facts_dir.mkdir(parents=True, exist_ok=True)
@@ -602,32 +648,65 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                 except OSError:
                     pass
                 dest = facts_dir / f"{stem}.md"
+                if dest.exists() and on_existing not in (
+                        "replace-with-migrated", "keep-existing"):
+                    raise WriteRefused(
+                        f"migrate apply: dest exists for {stem}; pass "
+                        "--on-existing keep-existing|replace-with-migrated")
+                if dest.exists() and on_existing == "keep-existing":
+                    continue
+                old_text = dest.read_text(encoding="utf-8", errors="replace") if dest.exists() else None
                 raw = src.read_text(encoding="utf-8", errors="replace")
-                body = insert_frontmatter_key(raw, "domain", dest_dom)
-                body = insert_frontmatter_key(body, "name", stem)
-                if not body.endswith("\n"):
-                    body += "\n"
+                body, serr = prepare_migrated_canonical(raw, stem=stem, domain=dest_dom)
+                if serr:
+                    raise WriteRefused("migrate apply schema: " + serr)
                 temps[str(dest)] = body
+                if dest.exists():
+                    dest_modes[str(dest)] = "replace"
+                    expected[str(dest)] = _sha256_file(dest)
+                else:
+                    dest_modes[str(dest)] = "create"
+                    expected[str(dest)] = _ABS
+                fid = _sf_m(dest_dom, stem)
+                fm_m = _fm_m(body)
+                ops.append({
+                    "op": "fact_upsert", "fact_id": fid, "stem": stem,
+                    "domain_id": dest_dom, "canonical_path": str(dest),
+                    "revision": hashlib.sha256(body.encode("utf-8")).hexdigest()[:16],
+                    "status": str(fm_m.get("status") or "active"),
+                    "sensitivity": _fs_m(fm_m),
+                })
                 copied.append({
                     "path": str(dest),
                     "new_sha256": hashlib.sha256(body.encode("utf-8")).hexdigest(),
-                    "old_sha256": None if not dest.exists() else _sha256_file(dest),
+                    "old_sha256": None if old_text is None else _sha256_file(dest),
+                    "old_text": old_text,
                     "source": str(src),
                     "source_sha256": str((row or {}).get("sha256") or _sha256_file(src)),
                     "domain": dest_dom,
                 })
                 catalogs.setdefault(str(facts_dir), set()).add(stem)
-            from canonical_ingress import generate_catalog
+            overlay = {c["path"]: temps.get(c["path"], "") for c in copied}
             for facts_dir_s, stems in catalogs.items():
                 facts_dir = Path(facts_dir_s)
-                # Overlay: generate_catalog still reads live files; include temps.
-                cat = generate_catalog(facts_dir)
-                for stem in stems:
-                    if f"]({stem}.md)" not in cat:
-                        cat = cat.rstrip() + f"\n- [{stem}]({stem}.md)\n"
-                temps[str(facts_dir / "MEMORY.md")] = cat if cat.endswith("\n") else cat + "\n"
+                stem_overlay = {Path(p).name: t for p, t in overlay.items()
+                                if Path(p).parent == facts_dir}
+                cat = generate_catalog(facts_dir, overlay=stem_overlay)
+                catp = facts_dir / "MEMORY.md"
+                temps[str(catp)] = cat if cat.endswith("\n") else cat + "\n"
+                dest_modes[str(catp)] = "replace" if catp.exists() else "create"
             copied_holder.extend(copied)
-            return {"copied": [c["path"] for c in copied]}
+            rb = {
+                "mode_before": "dual-read",
+                "copied": list(copied),
+                "allowed_roots": [str(droot)],
+            }
+            rb_path = ctx.plugin_data_dir / "migrate-rollback.json"
+            temps[str(rb_path)] = json.dumps(rb, indent=2) + "\n"
+            ops.append({"op": "migration_state_set", "value": "dual-read"})
+            return {"copied": [c["path"] for c in copied],
+                    "dest_modes": dest_modes, "expected_revisions": expected,
+                    "registry_ops": ops}
 
         try:
             transact(ctx, "migrate-apply", {"n": len(to_copy)}, mutate,
@@ -666,22 +745,30 @@ def cmd_migrate(args: argparse.Namespace) -> int:
             allowed = [ctx.config_root / "consolidate-memory" / "domains"]
         conflicts = []
         to_delete: list = []
+        to_restore: list = []
         for item in rb.get("copied") or []:
             if isinstance(item, str):
                 path = Path(item)
                 want = ""
+                old_text = None
             else:
                 path = Path(str(item.get("path") or ""))
                 want = str(item.get("new_sha256") or "")
+                old_text = item.get("old_text")
             if not path or not _contained_under(path, allowed):
                 conflicts.append(str(path))
                 continue
             if path.exists() and want and _sha256_file(path) not in (want, ""):
                 conflicts.append(str(path))
                 continue
-            to_delete.append(str(path))
+            if old_text:
+                to_restore.append((str(path), old_text))
+            else:
+                to_delete.append(str(path))
         def mutate(conn, temps):
             set_migration_mode(conn, str(rb.get("mode_before") or "dual-read"))
+            for p, text in to_restore:
+                temps[p] = text if text.endswith("\n") else text + "\n"
             return {"deletes": to_delete, "registry_ops": [
                 {"op": "migration_state_set",
                  "value": str(rb.get("mode_before") or "dual-read")}]}
@@ -693,7 +780,8 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         plan["applied"] = False
         plan["finalized"] = False
         _save_migrate_plan(ctx, plan)
-        print(f"migrate rollback: restored dual-read; removed {len(to_delete)} copied file(s)")
+        print(f"migrate rollback: restored dual-read; removed {len(to_delete)} "
+              f"copied file(s); restored {len(to_restore)} prior dest(s)")
         if conflicts:
             print("  conflicts (edited after apply, not deleted): "
                   + ", ".join(conflicts[:8]), file=sys.stderr)
@@ -712,10 +800,15 @@ def cmd_migrate(args: argparse.Namespace) -> int:
         if not plan.get("applied"):
             print("migrate finalize: apply first", file=sys.stderr)
             return 2
-        conn = connect(db_path(ctx))
-        set_migration_mode(conn, "enforced")
-        conn.commit()
-        conn.close()
+        def mutate(conn, temps):
+            del temps
+            set_migration_mode(conn, "enforced")
+            return {"registry_ops": [{"op": "migration_state_set", "value": "enforced"}]}
+        try:
+            transact(ctx, "migrate-finalize", {"applied": True}, mutate)
+        except WriteRefused as e:
+            print(f"migrate finalize: {e}", file=sys.stderr)
+            return 2
         plan["finalized"] = True
         _save_migrate_plan(ctx, plan)
         print("migrate finalize: dual-read closed (mode=enforced)")
@@ -841,13 +934,36 @@ def cmd_data(args: argparse.Namespace) -> int:
                     print("data purge: domain-canonicals requires a named domain",
                           file=sys.stderr)
                     return 2
-                facts = (ctx.canonical_domain_dir
-                         if did == ctx.domain_id else None)
-                print(json.dumps(purge_domain(
-                    ctx.plugin_data_dir, did, conn, facts_dir=facts)))
+                rows = conn.execute(
+                    "SELECT current_root FROM projects WHERE domain_id=? AND status='enrolled'",
+                    (did,)).fetchall()
+                revoked = 0
+                for r in rows:
+                    root = Path(str(r["current_root"] or ""))
+                    if root.is_dir():
+                        try:
+                            pctx = resolve_store(root)
+                            revoked += _revoke_unadmitted_mirrors(pctx, "unknown")
+                        except Exception:
+                            continue
+                facts = (ctx.config_root / "consolidate-memory" / "domains" / did / "facts")
+                out = purge_domain(ctx.plugin_data_dir, did, conn, facts_dir=facts)
+                out["revoked_mirrors"] = revoked
+                print(json.dumps(out))
                 return 0
             if scope == "all-plugin-data":
                 import shutil
+                rows = conn.execute(
+                    "SELECT current_root, domain_id FROM projects WHERE status='enrolled'"
+                ).fetchall()
+                for r in rows:
+                    root = Path(str(r["current_root"] or ""))
+                    if root.is_dir():
+                        try:
+                            pctx = resolve_store(root)
+                            _revoke_unadmitted_mirrors(pctx, "unknown")
+                        except Exception:
+                            continue
                 pdata = ctx.plugin_data_dir
                 droot = ctx.config_root / "consolidate-memory" / "domains"
                 n = 0
@@ -858,7 +974,7 @@ def cmd_data(args: argparse.Namespace) -> int:
                     n += sum(1 for _ in droot.rglob("*") if _.is_file())
                     shutil.rmtree(droot, ignore_errors=True)
                 print(json.dumps({"ok": True, "scope": scope, "purged_files": n,
-                                  "native_untouched": True,
+                                  "managed_mirrors_revoked": True,
                                   "native": str(ctx.native_memory_dir)}))
                 return 0
             print("data purge: unknown scope", file=sys.stderr)
@@ -869,11 +985,11 @@ def cmd_data(args: argparse.Namespace) -> int:
 
 
 def _want_confirm(args: argparse.Namespace, phrase: str) -> Optional[str]:
-    """TTY operators must pass --confirm PHRASE. Non-TTY --apply is enough (tests)."""
+    """`--apply` always requires the exact confirmation phrase (TTY or not)."""
     if not getattr(args, "apply", False):
         return "dry"
     got = str(getattr(args, "confirm", None) or "")
-    if sys.stderr.isatty() and got != phrase:
+    if got != phrase:
         return (f"pass --apply --confirm {phrase}")
     return None
 
@@ -1055,7 +1171,6 @@ def cmd_project(args: argparse.Namespace) -> int:
 
                 def _prep_rebind(c):
                     record_project_alias(c, computed, old)
-                    upsert_project(c, ctx)
                     c.execute(
                         "UPDATE projects SET current_root=?, git_common_dir=?, "
                         "native_memory_dir=?, session_dir=?, display_name=?, "
@@ -1064,9 +1179,16 @@ def cmd_project(args: argparse.Namespace) -> int:
                          str(ctx.git_common_dir) if ctx.git_common_dir else "",
                          str(ctx.native_memory_dir), str(ctx.session_dir),
                          ctx.display_name, ctx.remote_fingerprint, old))
-                ops = [{"op": "project_alias", "alias_id": computed, "project_id": old}]
+                    c.execute("DELETE FROM projects WHERE project_id=?", (computed,))
+                ops = [{"op": "project_rebind", "project_id": old,
+                        "retire_id": computed, "alias_id": computed,
+                        "current_root": str(ctx.project_root),
+                        "git_common_dir": str(ctx.git_common_dir) if ctx.git_common_dir else "",
+                        "native_memory_dir": str(ctx.native_memory_dir),
+                        "session_dir": str(ctx.session_dir),
+                        "display_name": ctx.display_name}]
                 transact(ctx, "project-rebind", {"old": old, "alias": computed},
-                         lambda c, temps: (ops and _prep_rebind(c)) or {
+                         lambda c, temps: (_prep_rebind(c) or True) and {
                              "registry_ops": ops, "rebound": old})
                 print(f"rebind: {old} now at {ctx.project_root} (alias {computed})")
                 return 0
@@ -1127,8 +1249,12 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--exclude", metavar="STEM")
     m.add_argument("--resolve-collision", metavar="STEM", dest="resolve_collision")
     m.add_argument("--keep", metavar="ORIGIN", help="legacy|unknown-pool")
+    m.add_argument("--on-existing", dest="on_existing",
+                   choices=["keep-existing", "replace-with-migrated",
+                            "fork-migrated-as", "exclude"])
     m.add_argument("--domain")
     m.add_argument("--json", action="store_true")
+    m.add_argument("--confirm", metavar="PHRASE")
 
     da = sub.add_parser("data")
     da.add_argument("data_cmd", choices=["inventory", "compact", "export", "purge", "retention"])

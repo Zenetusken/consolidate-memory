@@ -27,7 +27,7 @@ We will:
    inputs only** (ADR 013).
 4. Restate: `user-global` means domain-global, not installation-global.
 5. **Drop cross-domain authorization.** Remove the `authorized_pairs` table
-   and API. Cross-domain replication is unsupported in 0.2.2.
+   and API. Cross-domain replication is unsupported in 0.3.0.
 
 `cross_project_allowed` is true iff `registry_state == healthy` AND the project
 is enrolled AND `domain_id != "unknown"`.

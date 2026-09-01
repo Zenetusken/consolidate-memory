@@ -11,11 +11,11 @@ Linux-only.
 
 ## Decision
 
-POSIX and WSL are the mutation support contract for 0.2.2. Native Windows
-without `fcntl` refuses mutation. CI adds a Windows (or `fcntl`-missing)
-job that **asserts the refusal**, not a lock implementation.
+POSIX and WSL are the mutation support contract for 0.3.0. Native Windows
+without `fcntl` refuses mutation. CI pins a `fcntl`-missing refusal test;
+a native Windows mutation job remains HOLD.
 
-A real native-Windows lock backend is out of 0.2.2.
+A real native-Windows lock backend is out of 0.3.0.
 
 ## Alternatives
 

@@ -958,6 +958,11 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         result = mutate(rconn, temps)
         if not isinstance(result, dict):
             result = {"value": result}
+        for p, h in (result.get("expected_revisions") or {}).items():
+            if h == ABSENT:
+                snaps[str(p)] = ABSENT
+            elif isinstance(h, str) and (h == ABSENT or len(h) >= 16):
+                snaps[str(p)] = h
         deletes = list(result.get("deletes") or [])
         publishes = []
         for dest_s, content in temps.items():

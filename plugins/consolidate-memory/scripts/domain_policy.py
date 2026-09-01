@@ -13,8 +13,7 @@ from typing import Any, Optional
 SENSITIVITY = ("public", "internal", "confidential", "secret")
 SAFE_POINTER_RE = re.compile(r"^(see|ref|pointer):\s+\S+", re.I)
 
-# Dual-read: untagged legacy facts may still flow to unknown-domain projects.
-# That is NOT an assignment to a universal domain (ADR 003 / 007).
+# Untagged legacy is inventory/migration-only. Ordinary pull never admits it.
 MIGRATION_DUAL_READ = "dual-read"
 MIGRATION_ENFORCED = "enforced"
 
@@ -72,8 +71,7 @@ def admit_cross_project(project_domain: str, fm: dict, *,
 
     Unknown is local-only (ADR 008): never admits. Cross-domain is always
     denied (`authorized_pairs` is ignored / unsupported). Confidential only
-    same named domain. Dual-read of untagged legacy is for enrolled projects
-    until migrate finalize.
+    same named domain. Untagged legacy is not ordinarily pullable.
     """
     del authorized_pairs  # ADR 008: cross-domain authorization is unsupported
     pdom = (project_domain or "unknown").strip() or "unknown"
@@ -90,7 +88,10 @@ def admit_cross_project(project_domain: str, fm: dict, *,
     if sens == "confidential":
         return bool(fdom) and fdom == pdom
     if not fdom:
-        return migration_mode != MIGRATION_ENFORCED
+        # Untagged legacy is inventory/migration-only, not ordinary pull
+        # (ADR 008 secure-default). Dual-read does not replicate into named domains.
+        del migration_mode
+        return False
     return fdom == pdom
 
 

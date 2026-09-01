@@ -23,11 +23,12 @@ Distinct commands, dry-run by default, confirmation phrase required for
 | `cm project rebind` | git-common-dir / root moved | would collide with another `project_id` |
 
 Transaction (journal v3, ADR 010): lock old-domain, new-domain, global,
-project; inventory managed mirrors by canonical fact id/domain; quarantine
-locally edited mirrors; remove clean mirrors not admitted in the destination
-(unenroll removes all managed mirrors); remove exact index pointers;
-`holder_delete` old edges; `project_domain_change`; commit; pull the new
-domain only afterward.
+project; **reread and classify managed mirrors under the lock** (the printed
+dry-run is advisory — `--apply` ignores it). Holder-table base; missing
+canonical or local-edit → quarantine (`native/quarantine/<stem>.<utc>.md`,
+never overwrite). Delete only clean unadmitted mirrors; strip exact index
+pointers; `holder_delete` this project's edges; `project_upsert` (first
+enroll) + `project_domain_change`; commit; pull the new domain only afterward.
 
 `unknown` is a sentinel: still take project + global locks; take the old
 named-domain lock when leaving one.
