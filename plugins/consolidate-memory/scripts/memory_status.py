@@ -1163,6 +1163,22 @@ def index_fact_names(index_path: Path) -> set:
         return set()
 
 
+def placed_fact_names(index_path: Path, archive_docs: list | None = None) -> set:
+    """Stems that have a pointer in MEMORY.md OR an on-demand archive index (SHIPPED.md).
+
+    Completing an arc relocates the pointer MEMORY.md → SHIPPED.md and keeps the body
+    (the always-loaded index = the active set). That is not index↔file drift. True
+    mismatch is a body with no pointer in either index, or a pointer whose file is gone.
+    Archive-index stems themselves (SHIPPED, MEMORY) are never facts.
+    """
+    docs = [Path(d) for d in (archive_docs or [])]
+    archive_stems = {d.stem for d in docs}
+    placed = index_fact_names(index_path) - archive_stems
+    for adoc in docs:
+        placed |= index_fact_names(adoc)
+    return placed - archive_stems
+
+
 def near_duplicate_slugs(slug: str, sibling_slugs: list) -> list:
     """Sibling project slugs differing from `slug` only by '-'/'_'/case — the rename-orphan
     signature (`…-Doc-Flo` vs `…-Doc_Flo`). EXCLUDES `slug` itself (a project never flags
@@ -2223,8 +2239,10 @@ def build_context(project_dir: Path) -> dict:
     # An indexed archive (MEMORY.md links to SHIPPED.md) is NOT a fact pointer — drop archive stems from
     # index_names so schema_drift's stems^index_names doesn't count it as a phantom mismatch (Gate-2 #2), and
     # so the triage never reads an archive as "indexed".
+    # A body whose pointer lives in SHIPPED.md (relocated off MEMORY.md) is archived-by-design,
+    # not index↔file drift — placed_fact_names unions the archive indexes.
     index_names = index_fact_names(index_path) - {f.stem for f in archive_docs}
-    drift = schema_drift(fact_files, index_names)
+    drift = schema_drift(fact_files, placed_fact_names(index_path, archive_docs))
 
     # Slug-orphan / near-duplicate-store detection (C1): a renamed project dir orphans
     # its slug-scoped memory under the OLD slug. Guard the projects-root scan (mirrors

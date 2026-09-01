@@ -511,6 +511,52 @@ check("drift_findings: all-zero drift → 0 (defines 'clean' for AC#1)",
       ms.drift_findings({"missing_node_type": 0, "malformed_scope": 0, "malformed_origin": 0,
                          "index_mismatch": 0, "advisory_no_scope": 5, "advisory_no_origin": 5}) == 0)
 check("drift_findings: tolerant of missing keys (.get default 0)", ms.drift_findings({}) == 0)
+# Archived-by-design is not index↔file drift: SHIPPED.md holds the pointer, the body stays.
+# Dogfood of v0.3.2 showed "3 not in the index" for facts the dream had correctly skipped
+# as archive-index hits. schema_drift still xor's stems vs the placed set; the call site
+# must pass placed_fact_names (MEMORY.md ∪ archive indexes), not MEMORY.md alone.
+import tempfile as _tf_arch  # noqa: E402
+_td_arch = _tf_arch.TemporaryDirectory()
+try:
+    _mem_arch = Path(_td_arch.name) / "memory"
+    _mem_arch.mkdir()
+    def _fact_arch(stem: str) -> None:
+        (_mem_arch / f"{stem}.md").write_text(
+            f"---\nname: {stem}\nmetadata:\n  node_type: memory\n  scope: project-local\n---\nbody\n",
+            encoding="utf-8")
+    _fact_arch("live")
+    _fact_arch("old-one")
+    _fact_arch("old-two")
+    _fact_arch("old-three")
+    (_mem_arch / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [live](live.md) — hook\n", encoding="utf-8")
+    (_mem_arch / "SHIPPED.md").write_text(
+        "# SHIPPED\n\n- [old-one](old-one.md) — done\n"
+        "- [old-two](old-two.md) — done\n- [old-three](old-three.md) — done\n",
+        encoding="utf-8")
+    _arch_docs = [p for p in _mem_arch.glob("*.md")
+                  if p.name != "MEMORY.md" and ms._is_archive_index(p)]
+    _arch_facts = [p for p in _mem_arch.glob("*.md")
+                   if p.name != "MEMORY.md" and p not in _arch_docs]
+    _placed = ms.placed_fact_names(_mem_arch / "MEMORY.md", _arch_docs)
+    _sd_arch = ms.schema_drift(_arch_facts, _placed)
+    check("schema_drift: SHIPPED.md-indexed bodies are not index_mismatch",
+          _sd_arch["index_mismatch"] == 0 and _sd_arch["missing_node_type"] == 0
+          and ms.drift_findings(_sd_arch) == 0
+          and _placed == {"live", "old-one", "old-two", "old-three"})
+    _fact_arch("stray")
+    _arch_facts2 = [p for p in _mem_arch.glob("*.md")
+                    if p.name != "MEMORY.md" and not ms._is_archive_index(p)]
+    _sd_stray = ms.schema_drift(_arch_facts2, ms.placed_fact_names(_mem_arch / "MEMORY.md", _arch_docs))
+    check("schema_drift: a body in neither MEMORY.md nor SHIPPED.md is still mismatch",
+          _sd_stray["index_mismatch"] == 1)
+    check("schema_drift: MEMORY.md-only xor still flags an unarchived body (legacy call)",
+          ms.schema_drift(_arch_facts, ms.index_fact_names(_mem_arch / "MEMORY.md"))["index_mismatch"] == 3)
+finally:
+    _td_arch.cleanup()
+check("build_context schema_drift uses placed_fact_names (archive-indexed bodies are not drift)",
+      "placed_fact_names(index_path, archive_docs)" in Path(__file__).resolve().parent.parent.joinpath(
+          "plugins/consolidate-memory/scripts/memory_status.py").read_text(encoding="utf-8"))
 # render: HEALTH surfaces slug-orphan + schema-drift findings (presence-checked) ...
 _h_orphan = rd.render({"project": "p", "session": "s", "scope": {}, "entries": [],
                        "health": {"index_pointers_ok": True, "slug_orphans": ["-home-x-Doc_Flo"],
