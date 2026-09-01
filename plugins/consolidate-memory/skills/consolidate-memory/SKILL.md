@@ -17,10 +17,10 @@ description: >-
 
 # Consolidate Memory
 
-**v0.3.5** — domain-isolated canonicals, StoreContext, operator enrollment
+**v0.3.6** — domain-isolated canonicals, StoreContext, operator enrollment
 (`cm project enroll --domain NAME`), SQLite control plane, one enumerator
 (ordinary ops never dual-read leftover `~/.claude/memory`), journal
-complete-old. Public 1.0 stays HOLD.
+complete-old, `cm local` pointer+link parity with pull. Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
