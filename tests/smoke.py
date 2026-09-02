@@ -11165,6 +11165,94 @@ with _Env73() as _e_fm:
         sg._global_is_fixture = _old_gif
 
 
+# ── v0.4.2 P3: warm-pull margin (sync_global.py) ───────────────────────────────
+# the payload fix: a mirror's synthesized `metadata:` anchor (empty parent key) no longer
+# enters the semantic payload — so sem(mirror) == sem(canonical) when content matches,
+# the equality the manifest fast path depends on (pre-fix the anchor made them differ by
+# exactly one payload line and the fast path could NEVER fire)
+_canon_p3 = _v3_canon("p0", scope="stack-general").replace(
+    "applies_any: []", "stacks: mypy\napplies_any: []", 1)
+_mirr_p3 = sg._as_mirror(_canon_p3, "p0", since="2026-01-01T00:00:00Z",
+                         body_hash=sg._body_hash(_canon_p3))
+check("v0.4.2 P3: the mirror's synthesized metadata anchor is not content — "
+      "sem(mirror) == sem(canonical) (the fast-path equality)",
+      mc.semantic_hash(_mirr_p3) == mc.semantic_hash(_canon_p3)
+      and sg._body_hash(_mirr_p3) == sg._body_hash(_canon_p3))
+with _Env73() as _e_p3:
+    _d_p3 = _e_p3.glob
+    (_e_p3.proj / "pyproject.toml").write_text("[tool.mypy]\nstrict = true\n", encoding="utf-8")
+    # three stack-general canonicals SHARING a stacks line (the memo's shape: identical raw
+    # strings) — relevance needs the project's detect_stacks to see mypy
+    for _i in range(3):
+        (_d_p3 / f"p{_i}.md").write_text(
+            _v3_canon(f"p{_i}", scope="stack-general").replace(
+                "applies_any: []", "stacks: mypy\napplies_any: []", 1), encoding="utf-8")
+    _old_gif3 = sg._global_is_fixture
+    sg._global_is_fixture = lambda: False   # activate the manifest path in-process
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()):
+            sg.run(_e_p3.proj, pull=True)   # first pull: mirrors land, manifest builds
+        # counting wrappers — both rebound at call time (`from control_plane import ...`
+        # inside the hot loop re-reads the module attr; _as_mirror is a module-global call)
+        _con_calls = [0]
+        _orig_cife = cp.connect_if_exists
+        def _counting_cife(*a, **k):
+            _con_calls[0] += 1
+            return _orig_cife(*a, **k)
+        cp.connect_if_exists = _counting_cife
+        _asm_calls = [0]
+        _orig_asm = sg._as_mirror
+        def _counting_asm(*a, **k):
+            _asm_calls[0] += 1
+            return _orig_asm(*a, **k)
+        sg._as_mirror = _counting_asm
+        try:
+            with _ctx73.redirect_stdout(_io73.StringIO()) as _s_p3:
+                sg.run(_e_p3.proj, pull=True)   # no-change: all in-sync via the manifest fast path
+            check("v0.4.2 P3: a no-change pull computes ZERO _as_mirror wants (manifest fast path) "
+                  "and renders all three in-sync",
+                  _asm_calls[0] == 0 and _s_p3.getvalue().count("in-sync") == 3)
+            _con_base = _con_calls[0]   # migration_mode_readonly's per-run connect — the unrelated baseline
+            # a SIBLING project edits p1/p2 through the SOLE canonical writer (ci.upsert — the
+            # transact choke point unlinks the facts manifest, the production invalidation path).
+            # The sibling authors, so THIS project's holder base stays at the old revision → the
+            # mirrors classify STALE (an author's own upsert bumps its OWN base and would STOP —
+            # the author-protection case, not the stale case). Then the loop must share ONE conn.
+            _projB_p3 = _e_p3.proj.parent.parent / "src" / "projB73"
+            _projB_p3.mkdir(parents=True)
+            _enroll_personal(_projB_p3)
+            _ctxB_p3 = sc.resolve_store(_projB_p3)
+            for _stem_p3, _body_p3 in (("p1", "edited one\n"), ("p2", "edited two\n")):
+                _up_p3 = ci.upsert(_ctxB_p3, _stem_p3,
+                                   _v3_canon(_stem_p3, scope="stack-general",
+                                             body=_body_p3).replace(
+                                       "applies_any: []", "stacks: mypy\napplies_any: []", 1))
+                assert _up_p3.get("ok") is True, _up_p3
+            _asm_calls[0] = 0
+            _con_calls[0] = 0
+            with _ctx73.redirect_stdout(_io73.StringIO()) as _s_p3b:
+                sg.run(_e_p3.proj, pull=True)
+            check("v0.4.2 P3: N=2 stale mirrors share ONE holder-base conn (a connect each before)",
+                  _con_calls[0] - _con_base == 1)
+            check("v0.4.2 P3: the stale pull refreshes exactly the two edited mirrors",
+                  "refreshed 2" in _s_p3b.getvalue())
+            # the carry fix: an in-sync fact pairs with its OWN manifest row — the leftover-local
+            # bug fed the last stale item's semantic hash into every earlier in-sync holder record,
+            # and the poisoned holder base classified REFRESH on the very next pull (churn)
+            _asm_calls[0] = 0
+            with _ctx73.redirect_stdout(_io73.StringIO()) as _s_p3c:
+                sg.run(_e_p3.proj, pull=True)
+            check("v0.4.2 P3: the carry fix holds — the post-refresh pull is in-sync again, "
+                  "zero wants (a poisoned holder base would show refresh churn)",
+                  "refreshed 0" in _s_p3c.getvalue() and _s_p3c.getvalue().count("in-sync") == 3
+                  and _asm_calls[0] == 0)
+        finally:
+            cp.connect_if_exists = _orig_cife
+            sg._as_mirror = _orig_asm
+    finally:
+        sg._global_is_fixture = _old_gif3
+
+
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
 with _Env73() as _e_jp:
     _ctx_jp = sc.resolve_store(_e_jp.proj)
