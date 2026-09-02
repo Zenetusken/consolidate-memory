@@ -98,8 +98,10 @@ transcript's recorded `cwd` → its on-disk slug dir is ground truth). Layout:
 
   **`description:` is a recall key, not a summary.** A fact's body is NOT auto-surfaced
   by relevance — Claude Code reads topic-file bodies on demand, not by matching. What
-  is always-loaded is the fact's one-line index entry (its `description:`). So phrase
-  the description as the *cue you'd want sitting in the always-loaded index* when a
+  is always-loaded is the fact's one-line index entry, *derived from* its
+  `description:` (local: parens kept, `[]` stripped, word-boundary, whole line ≤
+  `HOOK_TOKEN_WARN`, plus `[project-local]` when `scope` is set). So phrase the
+  description as the *cue you'd want sitting in the always-loaded index* when a
   future task arises — include the concrete nouns that task would mention, so the agent
   knows to open the fact. A vague description hook leaves a true, useful fact unread.
 
@@ -113,8 +115,9 @@ context. Place each fact by its tier, then optimize it for that tier:
    block (currently these two; NOT repo `AGENTS.md`/`MEMORY.md`). Most expensive —
    keep ruthlessly lean; only whole-project-framing facts earn a slot.
 2. **Recall key (always-loaded index hook → on-demand read):** a fact body isn't
-   auto-surfaced; its `description:` is the always-loaded index line that cues the
-   agent to read it on demand. Invest in the description (recall key) and `[[links]]`.
+   auto-surfaced; its `description:` is the full recall key in the body, and the
+   always-loaded index line is a distilled cue derived from it. Invest in the
+   description (recall key) and `[[links]]`.
 3. **On-demand (the agent reads them):** repo `AGENTS.md`/`MEMORY.md` + fact bodies.
    Not auto-injected — optimize for completeness, not per-session leanness.
 
@@ -501,9 +504,10 @@ Markdown `projects:` is leftover-only. `sync_global.py`:
   can't hide it and there is no justify escape. Write-time fat-hook lint rides the same release
   (`_fat_hook_warning` in `sync_global` — every written pointer > `HOOK_TOKEN_WARN` warns on stderr,
   naming the description; the lint never truncates further). `_pointer_line` already
-  sanitizes and 88-char-truncates the hook; `cm local` reuses that constructor (v0.3.6
-  dogfood: a verbatim local description copy had landed a ~190-tok always-loaded
-  line). No real fleet store is near the ceiling
+  sanitizes and 88-char-truncates **global** hooks; `cm local` uses a separate
+  recall-key constructor (keep `()`, strip `[]`, word-boundary, whole line ≤
+  `HOOK_TOKEN_WARN`, pass `scope`) — v0.3.6 aliased them and chopped local cues.
+  No real fleet store is near the ceiling
   today — it is a backstop, exercised by synthetic fixtures.
 - **The DEMOTION TRIAGE + the miss loop (v0.1.67, Phase C)** — the policy leg that consumes Phase A's
   accrued data. `memory_status.usage_history` aggregates the cycle log's `usage` blocks (reads merge
@@ -511,8 +515,10 @@ Markdown `projects:` is leftover-only. `sync_global.py`:
   PROBATIVE for zero-read evidence); `demotion_candidates` is the `*_candidates`-family rank —
   eligible iff a fact has ≥ `_DEMOTION_MIN_WINDOWS` (3) per-fact zero-read probative windows AND is
   indexed, non-mirror, 0-reads-ever, non-KEEP-description, never-missed, and not counter-justified
-  (`demotion_justify` in the state file, a per-item delta-detector re-firing at
-  +`_DEMOTION_JUSTIFY_REFIRE` windows). Ranked by hook cost, capped at `_DEMOTION_BOTTOM_K`; seeded
+  (`demotion_justify` in the state file, script-written by `--justify-demotion` as
+  the monotonic usage-window `sequence`; a legacy `{windows, at}` stamp still quiets
+  via `at` + 5 window_starts; compaction cannot prolong it. Default candidate-gated.
+  re-fires at +`_DEMOTION_JUSTIFY_REFIRE` windows). Ranked by hook cost, capped at `_DEMOTION_BOTTOM_K`; seeded
   as the record's `demotion` block; DORMANT on every real node today. Dispositions
   (demote-to-archive / compress / merge-to-stub / counter-justify) are report-then-apply `entries[]`
   rows — NO deletion under this policy. The **miss-detector** closes the loop: `--recalls --before

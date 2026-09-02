@@ -3042,6 +3042,12 @@ check("v0.1.66 M1: --allow-net-grow still overrides at the ceiling",
 check("v0.1.66 hook lint: a fat pointer warns naming the CANONICAL's description; a lean one is silent",
       "tighten the CANONICAL" in (sg._fat_hook_warning("- [fat](fat.md) — " + "x" * 300, "fat") or "")
       and sg._fat_hook_warning("- [ok](ok.md) — lean", "ok") is None)
+check("R128-8: local fat-hook names the native fact, not ~/.claude/memory/",
+      "LOCAL" in (sg._fat_hook_warning("- [fat](fat.md) — " + "x" * 300, "fat",
+                                       source_kind="local",
+                                       source_path="native/fat.md") or "")
+      and "~/.claude/memory/" not in (sg._fat_hook_warning("- [fat](fat.md) — " + "x" * 300, "fat",
+                                                           source_kind="local") or ""))
 
 # (4) seeding — over_ceiling is a SIBLING of required; standing-justify NEVER hides it
 with _tfB.TemporaryDirectory() as _tdB:
@@ -3258,8 +3264,12 @@ with _tfB.TemporaryDirectory() as _tdC1:
 # (4) _demotion_justify — the guarded reader (malformed does NOT suppress; the _standing_baseline direction)
 check("v0.1.67 _demotion_justify: well-formed kept; non-dict/bool/str-windows entries DROPPED (fail open to surface)",
       ms._demotion_justify({"good": {"windows": 3}, "b1": "junk", "b2": {"windows": True},
-                            "b3": {"windows": "3"}, "b4": None}) == {"good": 3}
+                            "b3": {"windows": "3"}, "b4": None})
+      == {"good": {"windows": 3, "at": None}}
       and ms._demotion_justify("garbage") == {} and ms._demotion_justify(None) == {})
+check("O1: _demotion_justify keeps parseable at (dual-read input)",
+      ms._demotion_justify({"g": {"windows": 11, "at": "2026-09-01T21:23:45.446Z"}})
+      == {"g": {"windows": 11, "at": "2026-09-01T21:23:45.446Z"}})
 
 # (5) demotion_candidates — every evidence-gate leg, the rank, the cap
 _epC = [ms._parse_ts(t) for t in ("2026-01-01T00:00:00Z", "2026-02-01T00:00:00Z", "2026-03-01T00:00:00Z")]
@@ -3320,7 +3330,8 @@ with _tfB.TemporaryDirectory() as _tdC2:
     check("v0.1.67 dormant short-circuit: < 3 probative windows ⇒ eligible 0, no candidates, no vetoes",
           ms.demotion_candidates(_ffC, _idxC, {**_histC, "windows_full": 2}, _itxC)
           == {"windows_full": 2, "eligible": 0, "candidates": [],
-              "vetoed_read": 0, "vetoed_keep": 0, "vetoed_justified": 0, "vetoed_missed": 0})
+              "vetoed_read": 0, "vetoed_keep": 0, "vetoed_justified": 0, "vetoed_missed": 0,
+              "justified_live": []})
     _h8C = {**_histC, "windows_full": 8, "window_starts": [_e1C] * 8, "miss_stems": []}
     check("v0.1.67 justify re-fire boundary: suppressed while jw+REFIRE > wf, re-surfaces at exactly +REFIRE",
           "justified-fact" in [c["stem"] for c in
@@ -3339,6 +3350,111 @@ with _tfB.TemporaryDirectory() as _tdC2:
     check("v0.1.67 cap: 7 eligible → 5 surfaced (bottom-K), eligible reports the true count",
           _mrkC["eligible"] == 7 and len(_mrkC["candidates"]) == ms._DEMOTION_BOTTOM_K
           and _mrkC["candidates"][0]["stem"] == "bulk-6")
+
+    # O1 — script-truth stamp + dual-read zrw trap (dogfood 11-vs-16)
+    _app16 = ms.apply_demotion_justify(
+        {"commit": "abc", "stacks": ["python"], "beacon_snooze_until": "x",
+         "standing_justify": {"facts": 9}},
+        ["justified-fact"], wf=16, window_starts=[_e1C] * 16,
+        now_iso="2026-09-01T21:23:45.446Z")
+    check("O1: writer stamps sequence (and mirrors it as windows) not a caller/zrw integer",
+          _app16["stamped"][0]["windows"] == 16
+          and _app16["stamped"][0]["sequence"] == 16
+          and _app16["stamped"][0]["until"] == 21
+          and _app16["state"]["stacks"] == ["python"]
+          and _app16["state"]["beacon_snooze_until"] == "x"
+          and _app16["state"]["standing_justify"] == {"facts": 9}
+          and _app16["state"]["commit"] == "abc"
+          and _app16["state"]["demotion_justify"]["justified-fact"]["sequence"] == 16)
+    _noop = ms.apply_demotion_justify(
+        _app16["state"], ["justified-fact"], wf=16, window_starts=[_e1C] * 16,
+        now_iso="2026-09-01T22:00:00.000Z")
+    check("O1: re-stamp of a still-suppressed stem is a no-op (clock not reset)",
+          _noop["stamped"] == []
+          and _noop["skipped"] == [{"stem": "justified-fact", "reason": "already-justified"}]
+          and _noop["state"]["demotion_justify"]["justified-fact"]["at"]
+          == "2026-09-01T21:23:45.446Z"
+          and _noop["state"]["demotion_justify"]["justified-fact"]["windows"] == 16)
+    _expired_state = {"demotion_justify": {
+        "justified-fact": {"windows": 3, "at": "2026-01-01T00:00:00Z"}}}
+    _starts_after = []
+    for _mo in range(2, 7):  # Feb..Jun = 5 windows after Jan 1
+        _dtm = ms._parse_ts(f"2026-0{_mo}-01T00:00:00Z")
+        assert _dtm is not None
+        _starts_after.append(_dtm.timestamp())
+    _re2 = ms.apply_demotion_justify(
+        _expired_state, ["justified-fact"], wf=16, window_starts=_starts_after,
+        now_iso="2026-09-01T21:23:45.446Z")
+    check("O1: re-stamp after expiry writes a new sequence / at",
+          _re2["stamped"][0]["windows"] == 16
+          and _re2["stamped"][0]["sequence"] == 16
+          and _re2["stamped"][0]["at"] == "2026-09-01T21:23:45.446Z"
+          and _re2["state"]["demotion_justify"]["justified-fact"]["sequence"] == 16)
+
+    _at_now = "2026-09-01T21:23:45.446Z"
+    _at_ep = ms._parse_ts(_at_now)
+    assert _at_ep is not None
+    _starts_before = [_e1C] * 16  # all 2026-01-01, before at
+    _zrw_just = {"justified-fact": {"windows": 11, "at": _at_now}}
+    _h16 = {**_histC, "windows_full": 16, "window_starts": _starts_before, "miss_stems": []}
+    _dc_zrw = ms.demotion_candidates(_ffC, _idxC, _h16, _itxC, justify=_zrw_just)
+    check("O1: dual-read zrw trap (jw=11, wf=16, at=now) still suppresses",
+          "justified-fact" not in [c["stem"] for c in _dc_zrw["candidates"]]
+          and _dc_zrw["vetoed_justified"] >= 1
+          and any(j["stem"] == "justified-fact" and j["remaining"] == 5
+                  for j in _dc_zrw["justified_live"]))
+    _starts_5_after = [(_at_ep.timestamp() + 86400 * (i + 1)) for i in range(5)]
+    _h16b = {**_histC, "windows_full": 16, "window_starts": _starts_5_after, "miss_stems": []}
+    _dc_exp = ms.demotion_candidates(_ffC, _idxC, _h16b, _itxC, justify=_zrw_just)
+    check("O1: dual-read expires after 5 window_starts after at",
+          "justified-fact" in [c["stem"] for c in _dc_exp["candidates"]])
+
+    _dlines_el = ms.demotion_signal_lines({
+        "windows_full": 16, "eligible": 1,
+        "candidates": [{"stem": "cadence", "hook_tokens": 58, "zero_read_windows": 11}],
+        "vetoed_keep": 2, "vetoed_read": 3, "vetoed_justified": 1, "vetoed_missed": 0,
+        "justified_live": [{"stem": "governance-signal", "windows": 13, "refire_at": 18, "remaining": 2}],
+    })
+    check("O1: Phase 0 eligible stems are not on the same line as justified tally",
+          any(ln.startswith("demote?") and "cadence" in ln and "justified" not in ln for ln in _dlines_el)
+          and any(ln.startswith("vetoed:") and "keep-signal" in ln and "justified" not in ln for ln in _dlines_el)
+          and any("justified: governance-signal (re-fires at 18w · 2 to go)" in ln for ln in _dlines_el))
+    _dlines_j = ms.demotion_signal_lines({
+        "windows_full": 16, "eligible": 0, "candidates": [],
+        "justified_live": [{"stem": "cadence", "windows": 16, "refire_at": 21, "remaining": 5}],
+    })
+    check("O1: Phase 0 justified-until line even when eligible=0",
+          any("justified: cadence (re-fires at 21w · 5 to go)" in ln for ln in _dlines_j)
+          and not any(ln.startswith("demote?") for ln in _dlines_j))
+
+    check("I3: _KEEP_RE pattern frozen (do not widen for standing-ops policy)",
+          ms._KEEP_RE.pattern == (
+              r"(?i)\b(?:never|don['’]?t|do not|avoid|gotcha|footgun|always|must|shall|"
+              r"prefer|should|shouldn['’]?t|cannot|can['’]?t|won['’]?t|caveat)\b"))
+    check("I3: cadence-like description is not KEEP (counter-justify is the path)",
+          not ms._KEEP_RE.search(
+              "Phase C ops: NO burst-seeding — dream cadence at real arc boundaries "
+              "IS the seeding; first triage + misses = the calibration events."))
+
+_now_stale = ms._parse_ts("2026-09-01T21:42:00Z")
+assert _now_stale is not None
+_stale_all = ms.stale_signal_text(
+    ["a", "b", "c"], 3, "2026-09-01T21:23:00Z", now_ts=_now_stale.timestamp())
+check("stale-all: all facts stale + last dream 19m ago collapses (no stem dump)",
+      _stale_all is not None
+      and "3 stale fact(s)" in _stale_all
+      and "stems omitted" in _stale_all
+      and "a, b, c" not in _stale_all)
+_stale_mix = ms.stale_signal_text(
+    ["a"], 3, "2026-09-01T21:23:00Z", now_ts=_now_stale.timestamp())
+check("stale-all: mixed stale still lists stems",
+      _stale_mix is not None and "a" in _stale_mix and "stems omitted" not in _stale_mix)
+_old = ms._parse_ts("2026-09-04T21:23:00Z")
+assert _old is not None
+_stale_old = ms.stale_signal_text(
+    ["a", "b", "c"], 3, "2026-09-01T21:23:00Z", now_ts=_old.timestamp())
+check("stale-all: all stale but last dream ≥24h still lists stems",
+      _stale_old is not None and "a, b, c" in _stale_old and "stems omitted" not in _stale_old)
 
 # (6) validator backstops — additive; a clean/legacy record stays quiet
 check("v0.1.67 validate: usage.misses non-list + over-cap both warn; capped list is quiet",
@@ -9697,15 +9813,138 @@ with _Env73() as _e_ll:
 
 import local_ingress as _li_ptr
 _sample_wl = "a [[real]] b `[[inline]]` c\n```\n[[fenced]]\n```\n[[tool.mypy.overrides]]"
-check("dogfood D2: link_targets uses extract_wikilinks (inline/fenced stripped; dotted dropped)",
-      ci.link_targets(_sample_wl) == ["real"]
-      and ci.link_targets(_sample_wl)
-      == [m for m in ms.extract_wikilinks(_sample_wl) if "." not in m])
-check("dogfood D1: local _pointer is _pointer_line (same sanitization + 88-char truncate)",
-      _li_ptr._pointer("foo", "x" * 200)
-      == sg._pointer_line("foo", {"description": "x" * 200})
-      and "…" in _li_ptr._pointer("foo", "x" * 200)
-      and "\n" not in _li_ptr._pointer("foo", "a\nb\x1b[31mc"))
+check("dogfood D2: link_targets uses extract_wikilinks (inline/fenced stripped; dotted stems kept)",
+      ci.link_targets(_sample_wl) == ["real", "tool.mypy.overrides"])
+check("R128-7: every valid stem is a valid link target (periods kept)",
+      ci.link_targets("see [[foo.bar]] and [[ok-stem_1]]") == ["foo.bar", "ok-stem_1"]
+      and ident.validate_fact_stem("foo.bar") == "foo.bar")
+_dot_bad = 0
+for _dstem in ("x.", ".x", "a..b", "..x"):
+    try:
+        ident.validate_fact_stem(_dstem)
+    except ident.IdentifierRefused:
+        _dot_bad += 1
+check("R128-7b: leading/trailing/consecutive dots are refused (Windows-path hazard)",
+      _dot_bad == 4)
+_local_parens = _li_ptr._pointer("foo", "keep (OPEN: 1.0 HOLD) in the cue", "project-local")
+_glob_parens = sg._pointer_line("foo", {"description": "keep (OPEN: 1.0 HOLD) in the cue",
+                                       "scope": "project-local"})
+check("I1: local _pointer is not _pointer_line (keeps parens; global strips them)",
+      _li_ptr._pointer is not sg._pointer_line
+      and _local_parens != _glob_parens
+      and "(OPEN: 1.0 HOLD)" in _local_parens
+      and "(" not in _glob_parens.split("—", 1)[1].rsplit("[", 1)[0])
+check("I1: local _pointer strips [] and control/newlines (no index injection)",
+      "](http://x)" not in _li_ptr._pointer("foo", "evil](http://x) link")
+      and "\n" not in _li_ptr._pointer("foo", "a\nb\x1b[31mc")
+      and "\x1b" not in _li_ptr._pointer("foo", "a\nb\x1b[31mc"))
+_long_tok = "supercalifragilisticexpialidocious"
+_wb_desc = ("word " * 80) + _long_tok
+_wb_line = _li_ptr._pointer("foo", _wb_desc, "project-local")
+_wb_hook = _wb_line.split(" — ", 1)[1]
+check("I1: word-boundary truncate; whole line ≤ HOOK_TOKEN_WARN",
+      ms.est_tokens(_wb_line) <= ms.HOOK_TOKEN_WARN
+      and "…" in _wb_line
+      and (_long_tok in _wb_hook or _long_tok[:20] not in _wb_hook))
+check("I2: local _pointer attaches [project-local] when scope is passed",
+      _local_parens.endswith(" [project-local]"))
+
+with _Env73() as _e_i1:
+    _ctx_i1 = sc.resolve_store(_e_i1.proj)
+    _desc_i1 = ("Roadmap + dev status — SHIPPED through v0.3.6 secure-default + identity "
+                "+ dogfood/drift (OPEN: 1.0 HOLD)")
+    _up_i1 = _li_ptr.local_upsert(
+        _ctx_i1, "consolidate-memory-roadmap",
+        "---\nname: consolidate-memory-roadmap\n"
+        f"description: {_desc_i1}\n"
+        "metadata:\n  scope: project-local\n  type: reference\n---\nbody keeps the key\n")
+    _idx_i1 = (_e_i1.store / "MEMORY.md").read_text(encoding="utf-8")
+    _ptr_i1 = next((ln for ln in _idx_i1.splitlines()
+                    if "](consolidate-memory-roadmap.md)" in ln), "")
+    _body_i1 = (_e_i1.store / "consolidate-memory-roadmap.md").read_text(encoding="utf-8")
+    check("I1/I2: upsert keeps parens in hook when they fit, tags [project-local], body untouched",
+          _up_i1.get("ok") is True
+          and "(OPEN: 1.0 HOLD)" in _ptr_i1
+          and _ptr_i1.endswith(" [project-local]")
+          and ms.est_tokens(_ptr_i1) <= ms.HOOK_TOKEN_WARN
+          and _desc_i1 in _body_i1)
+    _ph_up = _li_ptr.local_upsert(
+        _ctx_i1, "lesson-clause",
+        "---\nname: lesson-clause\ndescription: d\n---\nsee [[link]] in the lesson\n")
+    check("bare-[[link]]: placeholder target hints backticks",
+          _ph_up.get("ok") is False
+          and "dangling link [[link]]" in str(_ph_up.get("error") or "")
+          and "backticks" in str(_ph_up.get("error") or ""))
+    _real_miss = _li_ptr.local_upsert(
+        _ctx_i1, "other-fact",
+        "---\nname: other-fact\ndescription: d\n---\nsee [[missing-real-fact]]\n")
+    check("bare-[[link]]: real missing stem has no format-examples clause",
+          _real_miss.get("ok") is False
+          and str(_real_miss.get("error") or "") == "dangling link [[missing-real-fact]]")
+
+with _Env73() as _e_rb:
+    _ctx_rb = sc.resolve_store(_e_rb.proj)
+    (_e_rb.store / "local-rb.md").write_text(
+        "---\nname: local-rb\ndescription: keep (parens) please\n"
+        "metadata:\n  scope: project-local\n  type: reference\n---\nL\n",
+        encoding="utf-8")
+    _mir_rb = sg._as_mirror(_v3_canon("mir-rb", description="keep (parens) please"),
+                            "mir-rb", since="2026-01-01T00:00:00Z", body_hash="abc")
+    (_e_rb.store / "mir-rb.md").write_text(_mir_rb, encoding="utf-8")
+    _rb = _li_ptr.local_rebuild_index(_ctx_rb, apply=True, confirm="rebuild-local-index")
+    _idx_rb = (_e_rb.store / "MEMORY.md").read_text(encoding="utf-8")
+    _loc_ln = next((ln for ln in _idx_rb.splitlines() if "](local-rb.md)" in ln), "")
+    _mir_ln = next((ln for ln in _idx_rb.splitlines() if "](mir-rb.md)" in ln), "")
+    check("I1: rebuild uses local _pointer (keeps parens) for locals and _pointer_line for mirrors",
+          _rb.get("ok") is True
+          and "(parens)" in _loc_ln
+          and "(parens)" not in _mir_ln)
+
+with _Env73() as _e_jd:
+    _ctx_jd = sc.resolve_store(_e_jd.proj)
+    _no_mk = ms.run_justify_demotion(_e_jd.proj, ["cadence-fact"])
+    check("O1 CLI: does not mint a marker when none exists",
+          _no_mk.get("ok") is False
+          and "no .consolidation-state.json" in str(_no_mk.get("error") or "")
+          and not (_e_jd.store / ".consolidation-state.json").exists())
+    (_e_jd.store / ".consolidation-state.json").write_text(
+        '{"commit": "deadbeef", "timestamp": "2026-09-01T00:00:00Z",'
+        ' "stacks": ["python"], "beacon_snooze_until": "snooze",'
+        ' "standing_justify": {"facts": 4}}\n', encoding="utf-8")
+    _stamped = ms.run_justify_demotion(
+        _e_jd.proj, ["cadence-fact"], now_iso="2026-09-01T21:23:45.446Z",
+        force=True)
+    _mk = _jsonB.loads((_e_jd.store / ".consolidation-state.json").read_text(encoding="utf-8"))
+    check("O1 CLI: MERGE preserves stacks/snooze/standing_justify and stamps windows_full",
+          _stamped.get("ok") is True
+          and _mk.get("commit") == "deadbeef"
+          and _mk.get("stacks") == ["python"]
+          and _mk.get("beacon_snooze_until") == "snooze"
+          and _mk.get("standing_justify") == {"facts": 4}
+          and _mk["demotion_justify"]["cadence-fact"]["windows"] == _stamped["windows_full"]
+          and _mk["demotion_justify"]["cadence-fact"]["at"] == "2026-09-01T21:23:45.446Z")
+
+with _Env73() as _e_gc0:
+    import io as _io_gc0, contextlib as _cl_gc0
+    _buf0, _err0 = _io_gc0.StringIO(), _io_gc0.StringIO()
+    with _cl_gc0.redirect_stdout(_buf0), _cl_gc0.redirect_stderr(_err0):
+        _rc_gc0 = sg.gc(_e_gc0.proj, apply=False)
+    check("GC: enrolled empty domain, no leftover mirrors → nothing to reclaim",
+          _rc_gc0 == 0
+          and "nothing to reclaim" in _buf0.getvalue()
+          and "cannot distinguish that from all-canonicals-deleted" not in _buf0.getvalue())
+
+with _Env73() as _e_gc1:
+    _mir_gc = sg._as_mirror(_v3_canon("orphan-m"), "orphan-m",
+                            since="2026-01-01T00:00:00Z", body_hash="abc")
+    (_e_gc1.store / "orphan-m.md").write_text(_mir_gc, encoding="utf-8")
+    import io as _io_gc1, contextlib as _cl_gc1
+    _buf1, _err1 = _io_gc1.StringIO(), _io_gc1.StringIO()
+    with _cl_gc1.redirect_stdout(_buf1), _cl_gc1.redirect_stderr(_err1):
+        _rc_gc1 = sg.gc(_e_gc1.proj, apply=False)
+    check("GC: leftover mirrors + no live canonicals still refuse (Probe G copy)",
+          _rc_gc1 == 0
+          and "cannot distinguish that from all-canonicals-deleted" in _buf1.getvalue())
 
 with _Env73() as _e_mir:
     _ctx_mir = sc.resolve_store(_e_mir.proj)
@@ -9738,6 +9977,134 @@ with _tf73.TemporaryDirectory() as _td_legcat:
         encoding="utf-8")
     check("review: catalog omits CLASS_LEGACY even if status=active",
           "legacy.md" not in ci.generate_catalog(_ld))
+
+# ── R128 Phase-1 acceptance ──
+_long_stem = "a" * 97
+_stem_len_ok = False
+try:
+    ident.validate_fact_stem(_long_stem)
+except ident.IdentifierRefused:
+    _stem_len_ok = True
+check("R128-7: stem longer than 96 chars is refused",
+      _stem_len_ok and ident.validate_fact_stem("gh-pr-edit-broken_v2.1") == "gh-pr-edit-broken_v2.1")
+
+with _Env73() as _e_v1:
+    _ctx_v1 = sc.resolve_store(_e_v1.proj)
+    import local_ingress as _li_v1
+    _up_v1 = _li_v1.local_upsert(
+        _ctx_v1, "local-v1",
+        "---\nname: local-v1\ndescription: a v1 fact\n---\nBODY\n")
+    _body_v1 = (_e_v1.store / "local-v1.md").read_text(encoding="utf-8")
+    check("R128-3: local upsert injects LocalFactV1 and forces project-local",
+          _up_v1.get("ok") is True
+          and "local_schema_version: 1" in _body_v1
+          and "scope: project-local" in _body_v1
+          and "status: active" in _body_v1
+          and "sensitivity: internal" in _body_v1
+          and "](local-v1.md)" in (_e_v1.store / "MEMORY.md").read_text(encoding="utf-8")
+          and (_e_v1.store / "MEMORY.md").read_text(encoding="utf-8").count("[project-local]"))
+    _bad_sc = _li_v1.local_upsert(
+        _ctx_v1, "wide-scope",
+        "---\nname: wide-scope\ndescription: d\nscope: user-global\n---\nX\n")
+    check("R128-3: local upsert refuses non-project-local scope",
+          _bad_sc.get("ok") is False and "project-local" in str(_bad_sc.get("error") or ""))
+    _dup_k = _li_v1.local_upsert(
+        _ctx_v1, "dup-key",
+        "---\nname: dup-key\ndescription: d\nscope: project-local\nscope: project-local\n---\nX\n")
+    check("R128-3: duplicate reserved key refused",
+          _dup_k.get("ok") is False and "duplicate" in str(_dup_k.get("error") or ""))
+
+with _Env73() as _e_abs:
+    _ctx_abs = sc.resolve_store(_e_abs.proj)
+    from control_plane import ABSENT as _ABSENT, transact as _tx_abs
+    _ghost = _e_abs.store / "created-during.md"
+    def _mut_abs(conn, temps):
+        del conn
+        temps[str(_ghost)] = "stolen\n"
+        return {"dest_modes": {str(_ghost): "create"},
+                "expected_revisions": {str(_ghost): _ABSENT}}
+    _ghost.write_text("external\n", encoding="utf-8")
+    _refused_abs = False
+    try:
+        _tx_abs(_ctx_abs, "local-upsert", {"stem": "created-during"}, _mut_abs,
+                expected_revisions={str(_ghost): _ABSENT})
+    except sc.WriteRefused:
+        _refused_abs = True
+    check("R128-4: ABSENT dest that appears before publish is refused, not overwritten",
+          _refused_abs and _ghost.read_text(encoding="utf-8") == "external\n")
+
+with _Env73() as _e_ar:
+    _ctx_ar = sc.resolve_store(_e_ar.proj)
+    import local_ingress as _li_ar
+    import index_admission as _ia_ar
+    _ship = ["# Shipped", ""] + [
+        f"- [arch-{i}](arch-{i}.md) — done" for i in range(1000)]
+    (_e_ar.store / "SHIPPED.md").write_text("\n".join(_ship) + "\n", encoding="utf-8")
+    (_e_ar.store / "arch-new.md").write_text(
+        "---\nname: arch-new\ndescription: freshly shipped\n---\nB\n", encoding="utf-8")
+    (_e_ar.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [arch-new](arch-new.md) — freshly shipped [project-local]\n",
+        encoding="utf-8")
+    _adm_ar = _ia_ar.archive_index((_e_ar.store / "SHIPPED.md").read_text(encoding="utf-8"))
+    _adm_mem = _ia_ar.project_index("\n".join(_ship) + "\n")
+    _up_ar = _li_ar.local_archive(_ctx_ar, "arch-new")
+    check("R128-5: 1000 archived pointers do not hit the native MEMORY.md cliff",
+          _adm_ar["admitted"] is True
+          and _adm_mem["admitted"] is False
+          and _up_ar.get("ok") is True
+          and "](arch-new.md)" in (_e_ar.store / "SHIPPED.md").read_text(encoding="utf-8")
+          and "](arch-new.md)" not in (_e_ar.store / "MEMORY.md").read_text(encoding="utf-8"))
+
+with _Env73() as _e_rb2:
+    _ctx_rb2 = sc.resolve_store(_e_rb2.proj)
+    import local_ingress as _li_rb2
+    (_e_rb2.store / "good-rb.md").write_text(
+        "---\nname: good-rb\ndescription: keep me\n---\nG\n", encoding="utf-8")
+    (_e_rb2.store / "bad-rb.md").write_text("not a fact\n", encoding="utf-8")
+    (_e_rb2.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [good-rb](good-rb.md) — keep me\n"
+        "- [bad-rb](bad-rb.md) — was indexed\n", encoding="utf-8")
+    _plan_rb = _li_rb2.local_rebuild_index(_ctx_rb2)
+    _apply_rb = _li_rb2.local_rebuild_index(_ctx_rb2, apply=True,
+                                           confirm="rebuild-local-index")
+    _idx_rb2 = (_e_rb2.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("R128-6: invalid facts fail closed; index unchanged without --skip-invalid",
+          _plan_rb.get("ok") is False
+          and any(r.get("stem") == "bad-rb" for r in _plan_rb.get("invalid") or [])
+          and _apply_rb.get("ok") is False
+          and "](bad-rb.md)" in _idx_rb2
+          and "](good-rb.md)" in _idx_rb2)
+    _skip_rb = _li_rb2.local_rebuild_index(
+        _ctx_rb2, apply=True, skip_invalid=True, confirm="rebuild-local-index")
+    _idx_skip = (_e_rb2.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("R128-6: --skip-invalid enumerates omitted stems and drops only those pointers",
+          _skip_rb.get("ok") is True
+          and "bad-rb" in (_skip_rb.get("omitted") or [])
+          and "](good-rb.md)" in _idx_skip
+          and "](bad-rb.md)" not in _idx_skip)
+
+with _Env73() as _e_clk:
+    _ctx_clk = sc.resolve_store(_e_clk.proj)
+    from control_plane import count_probative_after as _cpa, record_usage_window as _ruw
+    (_e_clk.store / ".consolidation-state.json").write_text(
+        '{"commit": "aa", "timestamp": "2026-01-01T00:00:00Z"}\n', encoding="utf-8")
+    _ruw(_ctx_clk, cycle_id="c|0", started_at="2026-01-01T00:00:00Z", probative=True)
+    _st_hi = ms.run_justify_demotion(_e_clk.proj, ["cadence-fact"], force=True,
+                                     now_iso="2026-01-01T00:00:00Z")
+    seq0 = int((_st_hi.get("stamped") or [{}])[0].get("sequence") or 0)
+    for _i in range(1, 6):
+        _ruw(_ctx_clk, cycle_id=f"c|{_i}",
+             started_at=f"2026-02-0{_i}T00:00:00Z", probative=True)
+    check("R128-1: exactly five later probative windows expire a sequence stamp",
+          _st_hi.get("ok") is True
+          and _cpa(_ctx_clk, seq0) == 5
+          and ms._justify_remaining(
+              seq0, None, 1, [], sequence=seq0, n_after_seq=_cpa(_ctx_clk, seq0)) is None)
+    check("R128-1: four later windows still suppress (compaction-proof clock)",
+          ms._justify_remaining(seq0, None, 1, [], sequence=seq0, n_after_seq=4) is not None)
+    _nogo = ms.run_justify_demotion(_e_clk.proj, ["not-a-candidate"])
+    check("R128-2: default justify-demotion refuses a non-candidate stem",
+          _nogo.get("ok") is False and "not a current demotion candidate" in str(_nogo.get("error") or ""))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

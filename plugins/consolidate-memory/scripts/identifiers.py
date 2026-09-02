@@ -13,7 +13,12 @@ from typing import Optional
 
 # Operator-chosen domain names. "unknown" is the unenrolled sentinel, not a grant.
 DOMAIN_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
-FACT_STEM_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+# v0.4.0 review (R128-7): no leading/trailing dots and no consecutive dots —
+# `..x` / `x.` / `a..b` were legal-per-contract yet filesystem-hazardous
+# (trailing dots break Windows paths; `..`-like stems read as traversal).
+FACT_STEM_RE = re.compile(r"^(?!.*\.\.)[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
+FACT_STEM_MAX_CHARS = 96
+FACT_STEM_MAX_BYTES = 180
 PROJECT_ID_RE = re.compile(r"^p_[0-9a-f]{32}$")
 RESERVED_DOMAINS = frozenset({
     "unknown", ".", "..", "memory", "locks", "ops", "journal", "con", "prn", "aux",
@@ -46,6 +51,9 @@ def validate_fact_stem(raw: str) -> str:
         raise IdentifierRefused(f"unsafe or reserved stem {raw!r}")
     if "/" in s or "\\" in s or s in (".", ".."):
         raise IdentifierRefused(f"stem must not be a path {raw!r}")
+    if len(s) > FACT_STEM_MAX_CHARS or len(s.encode("utf-8")) > FACT_STEM_MAX_BYTES:
+        raise IdentifierRefused(
+            f"stem exceeds {FACT_STEM_MAX_CHARS} chars / {FACT_STEM_MAX_BYTES} bytes")
     return s
 
 

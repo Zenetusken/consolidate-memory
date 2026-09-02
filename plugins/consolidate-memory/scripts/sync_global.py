@@ -284,7 +284,10 @@ def _is_reserved_stem(name: str) -> bool:
 def _safe_stem(stem: str) -> bool:
     """True iff a fact stem is safe to use as a filename AND to interpolate into the
     always-loaded index. Rejects markdown/link-injection payloads in a crafted name."""
-    return bool(re.fullmatch(_SAFE_NAME, stem or ""))
+    from identifiers import FACT_STEM_MAX_BYTES, FACT_STEM_MAX_CHARS
+    if not re.fullmatch(_SAFE_NAME, stem or ""):
+        return False
+    return len(stem) <= FACT_STEM_MAX_CHARS and len(stem.encode("utf-8")) <= FACT_STEM_MAX_BYTES
 
 
 def _sanitize_token(s: str) -> str:
@@ -959,24 +962,26 @@ def _pointer_line(name: str, fm: dict) -> str:
     return f"- [{name}]({name}.md) — {hook}" + (f" [{scope}]" if scope else "")
 
 
-def _fat_hook_warning(pointer_line: str, name: str) -> str | None:
+def _fat_hook_warning(pointer_line: str, name: str, *,
+                      source_kind: str = "canonical",
+                      source_path: "str | None" = None) -> str | None:
     """v0.1.66 (Phase B): the write-time fat-hook LINT — a warning string when a pointer line exceeds
-    HOOK_TOKEN_WARN est tok, else None. PURE (smoke-pinned). Detection names the CANONICAL's description
-    as the fix site (the pointer is derived from it, so a fat mirror hook taxes every node on every
-    session); the line is NEVER truncated — a recall cue silently shortened is a recall cue silently
-    broken (report-then-apply: the human tightens the canonical).
+    HOOK_TOKEN_WARN est tok, else None. PURE (smoke-pinned). The line is NEVER truncated — a recall
+    cue silently shortened is a recall cue silently broken (report-then-apply).
 
-    HONEST REACH LIMIT: `_pointer_line`'s own 88-char description truncation caps its output well under
-    HOOK_TOKEN_WARN for any realistic fact name (measured: a name needs to run ~65+ chars before the line
-    crosses 60 est tok) — this lint mostly guards an extreme-name edge case for GLOBAL/mirror pointers.
-    The fat hooks actually measured this session (116/141 tok) were project-authored LOCAL pointers the
-    model hand-writes in Phase 4, a path this script never touches — SKILL.md's Phase-4 prose is the
-    only guard there (the "≤ ~60 est tok" rule), not this function."""
+    `source_kind` is `canonical` (tighten the domain canonical) or `local` (tighten this
+    project's native fact). Do not name `~/.claude/memory/` for a local pointer.
+    """
     t = est_tokens(pointer_line)
-    if t > HOOK_TOKEN_WARN:
-        return (f"⚠ fat hook: '{name}' pointer ≈{t} tok > {HOOK_TOKEN_WARN} — tighten the CANONICAL's "
-                f"description (~/.claude/memory/{name}.md); this line taxes every session on every node")
-    return None
+    if t <= HOOK_TOKEN_WARN:
+        return None
+    if source_kind == "local":
+        loc = source_path or (name + ".md")
+        return (f"⚠ fat hook: '{name}' pointer ≈{t} tok > {HOOK_TOKEN_WARN} — tighten the LOCAL "
+                f"fact's description ({loc})")
+    loc = source_path or ("canonical " + name + ".md")
+    return (f"⚠ fat hook: '{name}' pointer ≈{t} tok > {HOOK_TOKEN_WARN} — tighten the CANONICAL's "
+            f"description ({loc}); this line taxes every session on every node")
 
 
 def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
@@ -1235,25 +1240,20 @@ def _write_stacks_cache(store: Path, project_dir: Path, stacks: set) -> None:
     it back). MERGE-write — every model-written key (timestamp/commit/standing_justify/
     demotion_justify) is preserved verbatim; best-effort: a failure degrades the beacon and
     --staleness to user-global-only (labeled), never fails the pull."""
-    import json
-    sp = store / ".consolidation-state.json"
+    from control_plane import update_project_state
+    from store_context import WriteRefused, resolve_store
     try:
-        st: dict = {}
-        raw = _safe_read_text(sp)
-        if raw:
-            try:
-                _parsed = json.loads(raw)
-                if isinstance(_parsed, dict):
-                    st = _parsed
-            except (ValueError, TypeError):
-                st = {}   # unreadable state: still cache (readers tolerate the extra keys)
-        st["stacks"] = sorted(stacks)
-        st["project_path"] = str(project_dir)
-        store.mkdir(parents=True, exist_ok=True)
-        # PR-#94 review F3: atomic per the Track-D convention — a concurrently-starting session's
-        # beacon must never read a torn state file (it would degrade the basis needlessly).
-        _atomic_write_text(sp, json.dumps(st, indent=2) + "\n")
-    except OSError as e:
+        ctx = resolve_store(project_dir)
+
+        def mutator(state: dict, snap: object) -> dict:
+            del snap
+            st = dict(state)
+            st["stacks"] = sorted(stacks)
+            st["project_path"] = str(project_dir)
+            return st
+
+        update_project_state(ctx, mutator)
+    except (OSError, WriteRefused) as e:
         print(f"  ⚠ stacks-cache write skipped ({e.__class__.__name__}) — the session beacon "
               "degrades to user-global-only until the next pull", file=sys.stderr)
 
@@ -2206,7 +2206,16 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             live_canon = _has_canon_files(global_store())
         # Unmounted/empty source + leftover mirrors = mass-wipe risk (Probe G).
         # Tombstones still sit as .md files, so forget-then-GC still proceeds.
+        # Empty canonicals AND no leftover mirrors = nothing to reclaim (enrolled
+        # empty-domain steady state) — fail-closed is right, mass-wipe wording is not.
         if not live_canon:
+            if not has_mirrors:
+                if getattr(_ctx_gc, "cross_project_allowed", False):
+                    print(f"gc: domain {_ctx_gc.domain_id} has no canonicals and no leftover "
+                          "mirrors — nothing to reclaim")
+                else:
+                    print("gc: no live canonicals and no leftover mirrors — nothing to reclaim")
+                return 0
             why = ("no admissible canonicals" if getattr(_ctx_gc, "cross_project_allowed", False)
                    else ("absent" if not global_store().exists()
                          else "present but empty (no canonical facts)"))

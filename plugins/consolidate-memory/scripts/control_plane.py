@@ -17,6 +17,7 @@ import sqlite3
 import time
 import uuid
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterator, Optional, Tuple
 
@@ -108,6 +109,15 @@ CREATE TABLE IF NOT EXISTS domains (
     status TEXT NOT NULL,
     updated_at TEXT
 );
+CREATE TABLE IF NOT EXISTS project_usage_windows (
+    project_id TEXT NOT NULL,
+    cycle_id TEXT NOT NULL,
+    sequence INTEGER NOT NULL,
+    started_at TEXT NOT NULL,
+    probative INTEGER NOT NULL,
+    PRIMARY KEY (project_id, cycle_id),
+    UNIQUE (project_id, sequence)
+);
 """
 
 JOURNAL_STEPS = (
@@ -135,6 +145,226 @@ class CrashSimulated(RuntimeError):
 
 
 ABSENT = "ABSENT"
+MARKER_FILE = ".consolidation-state.json"
+
+
+@dataclass(frozen=True)
+class FileSnapshot:
+    """Plan-time bytes of one path. Missing paths are ABSENT, never inferred later."""
+
+    path: Path
+    exists: bool
+    data: Optional[bytes]
+    sha256: str
+    mode: Optional[int]
+
+
+def read_snapshot(path: Path) -> FileSnapshot:
+    """Read path once. Missing → exists=False, sha256=ABSENT. Unreadable → WriteRefused."""
+    try:
+        data = path.read_bytes()
+        mode = path.stat().st_mode & 0o7777
+    except FileNotFoundError:
+        return FileSnapshot(path=path, exists=False, data=None, sha256=ABSENT, mode=None)
+    except OSError as e:
+        raise WriteRefused("cannot snapshot %s: %s" % (path, e.__class__.__name__))
+    return FileSnapshot(
+        path=path,
+        exists=True,
+        data=data,
+        sha256=hashlib.sha256(data).hexdigest(),
+        mode=mode,
+    )
+
+
+def fsync_dir(path: Path) -> None:
+    """fsync a directory so the rename/unlink is durable across a process crash."""
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    try:
+        fd = os.open(str(path), flags)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
+
+
+def atomic_write_bytes(path: Path, data: bytes, *, mode: int = 0o600) -> str:
+    """Write `data` via tmp+replace, fsync file and parent dir. Returns sha256."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256(data).hexdigest()
+    tmp = path.with_name(path.name + ".tmp-" + uuid.uuid4().hex[:12])
+    fd = os.open(str(tmp), os.O_CREAT | os.O_EXCL | os.O_WRONLY, mode)
+    try:
+        try:
+            _write_fully(fd, data)
+        finally:
+            os.close(fd)
+        try:
+            os.chmod(str(tmp), mode)
+        except OSError:
+            pass
+        os.replace(str(tmp), str(path))
+        fsync_dir(path.parent)
+    except Exception:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+    return digest
+
+
+def update_project_state(ctx: StoreContext, mutator: Callable) -> dict:
+    """Merge native `.consolidation-state.json` under the project lock.
+
+    `mutator(state: dict, snap: FileSnapshot) -> dict`. Missing marker → empty
+    object (callers that require an existing marker raise WriteRefused).
+    Returns {status: changed|noop, revision, state, changed}.
+
+    v0.4.0 review: the hash-CAS `expected_revision` branch was dead (no caller
+    ever passed it) — serialization under the flock is the actual safety, so
+    the dead param is removed rather than left as an untested promise.
+    """
+    marker = ctx.native_memory_dir / MARKER_FILE
+    require_interprocess_lock()
+    locks = acquire_mutation_locks(ctx, [ctx.project_id])
+    try:
+        snap = read_snapshot(marker)
+        if snap.exists:
+            try:
+                parsed = json.loads((snap.data or b"").decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError):
+                raise WriteRefused("unreadable marker")
+            if not isinstance(parsed, dict):
+                raise WriteRefused("marker is not an object")
+            state = parsed
+        else:
+            state = {}
+        new_state = mutator(dict(state), snap)
+        if not isinstance(new_state, dict):
+            raise WriteRefused("marker mutator must return an object")
+        text = json.dumps(new_state, indent=2) + "\n"
+        data = text.encode("utf-8")
+        new_hash = hashlib.sha256(data).hexdigest()
+        if snap.exists and snap.data == data:
+            return {"status": "noop", "revision": snap.sha256,
+                    "state": new_state, "changed": False}
+        ctx.native_memory_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            os.chmod(str(ctx.native_memory_dir), 0o700)
+        except OSError:
+            pass
+        atomic_write_bytes(marker, data)
+        return {"status": "changed", "revision": new_hash,
+                "state": new_state, "changed": True}
+    finally:
+        release_locks(locks)
+
+
+def record_usage_window(ctx: StoreContext, *, cycle_id: str, started_at: str,
+                        probative: bool) -> dict:
+    """Idempotent insert of one persisted cycle's usage window. Returns sequence."""
+    cid = str(cycle_id or "").strip()
+    if not cid:
+        raise WriteRefused("usage window requires a cycle_id")
+    started = str(started_at or "").strip() or cid
+    conn = connect(db_path(ctx))
+    try:
+        row = conn.execute(
+            "SELECT sequence FROM project_usage_windows "
+            "WHERE project_id=? AND cycle_id=?",
+            (ctx.project_id, cid),
+        ).fetchone()
+        if row is not None:
+            return {"sequence": int(row["sequence"]), "inserted": False,
+                    "cycle_id": cid}
+        # v0.4.0 review (R128 concurrency): SELECT-MAX-then-INSERT raced two
+        # concurrent recorders (both read the same MAX → UNIQUE(project_id,
+        # sequence) violated → the loser's window silently dropped, delaying
+        # refire past five). Retry on contention instead of dropping the window.
+        for _attempt in range(5):
+            cur = conn.execute(
+                "SELECT COALESCE(MAX(sequence), 0) AS m FROM project_usage_windows "
+                "WHERE project_id=?",
+                (ctx.project_id,),
+            ).fetchone()
+            seq = int(cur["m"] if cur is not None else 0) + 1
+            try:
+                conn.execute(
+                    "INSERT INTO project_usage_windows("
+                    "project_id, cycle_id, sequence, started_at, probative) "
+                    "VALUES (?,?,?,?,?)",
+                    (ctx.project_id, cid, seq, started, 1 if probative else 0),
+                )
+                conn.commit()
+                return {"sequence": seq, "inserted": True, "cycle_id": cid}
+            except sqlite3.IntegrityError:
+                conn.rollback()
+        raise WriteRefused("usage-window sequence contention (5 attempts)")
+    finally:
+        conn.close()
+
+
+def usage_window_clock(ctx: StoreContext) -> dict:
+    """Monotonic usage-window clock for this project. Empty if no registry."""
+    empty: dict = {"sequence": 0, "probative": 0, "starts": [], "rows": []}
+    conn = connect_if_exists(db_path(ctx))
+    if conn is None:
+        return empty
+    try:
+        try:
+            rows = conn.execute(
+                "SELECT sequence, started_at, probative FROM project_usage_windows "
+                "WHERE project_id=? ORDER BY sequence",
+                (ctx.project_id,),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return empty
+        out_rows = [dict(r) for r in rows]
+        seq = max((int(r["sequence"]) for r in out_rows), default=0)
+        starts: list = []
+        n_prob = 0
+        for r in out_rows:
+            if int(r.get("probative") or 0):
+                n_prob += 1
+                ts = str(r.get("started_at") or "")
+                try:
+                    from memory_status import _parse_ts
+                    dt = _parse_ts(ts)
+                    if dt is not None:
+                        starts.append(dt.timestamp())
+                except Exception:
+                    pass
+        return {"sequence": seq, "probative": n_prob, "starts": starts,
+                "rows": out_rows}
+    finally:
+        conn.close()
+
+
+def count_probative_after(ctx: StoreContext, sequence: int) -> int:
+    conn = connect_if_exists(db_path(ctx))
+    if conn is None:
+        return 0
+    try:
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM project_usage_windows "
+                "WHERE project_id=? AND sequence>? AND probative=1",
+                (ctx.project_id, int(sequence)),
+            ).fetchone()
+        except sqlite3.OperationalError:
+            return 0
+        return int(row["n"] if row is not None else 0)
+    finally:
+        conn.close()
+
+
 REGISTRY_OP_KINDS = frozenset({
     "project_upsert", "project_domain_change", "fact_upsert", "fact_status_change",
     "fact_delete", "holder_upsert", "holder_delete", "tombstone_upsert",
@@ -329,6 +559,14 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_conflicts_open "
         "ON conflicts(fact_stem, project_id, domain_id) WHERE resolved=''")
+    conn.commit()
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS project_usage_windows ("
+        "project_id TEXT NOT NULL, cycle_id TEXT NOT NULL, "
+        "sequence INTEGER NOT NULL, started_at TEXT NOT NULL, "
+        "probative INTEGER NOT NULL, "
+        "PRIMARY KEY (project_id, cycle_id), "
+        "UNIQUE (project_id, sequence))")
     conn.commit()
 
 

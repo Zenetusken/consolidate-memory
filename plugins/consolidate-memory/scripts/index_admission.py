@@ -7,9 +7,14 @@ plugin/native metadata from landing on the cliff.
 """
 from __future__ import annotations
 
+import re
+
 NATIVE_INDEX_CAP_BYTES = 25 * 1024
 NATIVE_INDEX_CAP_LINES = 200
 RESERVE = 0.15
+ARCHIVE_INDEX_CAP_BYTES = 1024 * 1024
+ARCHIVE_INDEX_CAP_LINES = 10000
+_POINTER_TARGET_RE = re.compile(r"\]\(([^)]+)\)")
 
 
 def line_limit_with_reserve(reserve: float = RESERVE) -> int:
@@ -51,6 +56,53 @@ def project_index(future_text: str, reserve: float = RESERVE) -> dict:
         "projected_bytes": nbytes,
         "line_limit": lim_l,
         "byte_limit": lim_b,
+        "admitted": not reasons,
+        "reason": "; ".join(reasons),
+    }
+
+
+def archive_index(future_text: str) -> dict:
+    """On-demand archive (SHIPPED.md) admission. Not the always-loaded cliff.
+
+    Enforces pointer syntax, unique contained stems, and a generous operational
+    size cap. Does not apply INDEX_TOKEN_BUDGET or the 200-line/25KB native cliff.
+    """
+    from identifiers import IdentifierRefused, validate_fact_stem
+    lines = count_lines(future_text)
+    nbytes = count_bytes(future_text)
+    reasons: list = []
+    if lines > ARCHIVE_INDEX_CAP_LINES:
+        reasons.append(
+            f"projected_lines {lines} > archive line cap {ARCHIVE_INDEX_CAP_LINES}")
+    if nbytes > ARCHIVE_INDEX_CAP_BYTES:
+        reasons.append(
+            f"projected_bytes {nbytes} > archive byte cap {ARCHIVE_INDEX_CAP_BYTES}")
+    seen: set = set()
+    targets: list = []
+    for ln in (future_text or "").splitlines():
+        s = ln.strip()
+        if not s.startswith("- ["):
+            continue
+        m = _POINTER_TARGET_RE.search(s)
+        if not m:
+            reasons.append("invalid pointer syntax: " + s[:80])
+            continue
+        raw = m.group(1).strip()
+        stem = raw[:-3] if raw.endswith(".md") else raw
+        try:
+            stem = validate_fact_stem(stem)
+        except IdentifierRefused as e:
+            reasons.append("unsafe archive target: " + str(e))
+            continue
+        if stem in seen:
+            reasons.append("duplicate archive target " + stem)
+            continue
+        seen.add(stem)
+        targets.append(stem)
+    return {
+        "projected_lines": lines,
+        "projected_bytes": nbytes,
+        "targets": targets,
         "admitted": not reasons,
         "reason": "; ".join(reasons),
     }

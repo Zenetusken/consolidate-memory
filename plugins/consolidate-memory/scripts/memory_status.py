@@ -10,6 +10,7 @@ from measured values, not guesses — the workflow fills in the rest (entries,
 verification, after-budget, health) and renders with render_dashboard.py.
 
 Usage: python3 memory_status.py [PROJECT_DIR] [--json]
+       python3 memory_status.py --justify-demotion STEM [STEM…] [PROJECT_DIR]
 """
 
 from __future__ import annotations
@@ -592,6 +593,10 @@ NATIVE_INDEX_CAP_BYTES = 25 * 1024
 NATIVE_INDEX_CAP_LINES = 200
 CLIFF_NEAR_FRACTION = 0.8       # ≥ this share of either native cap → red (silent data loss imminent)
 HOOK_TOKEN_WARN = 60            # est tok per index POINTER line above which the hook is flagged FAT.
+# v0.4.0 review (R128 fat-hook split): the LOCAL and canonical diagnostics are separate
+# diagnostics (distinct messages, distinct call sites) but shared one knob — split it so
+# the two can diverge without re-naming the canonical constant everywhere.
+LOCAL_HOOK_TOKEN_WARN = HOOK_TOKEN_WARN
                                 # Measured (2026-07-04): fleet median ≈48-57 tok/line, the triage's
                                 # lean model 30; the offenders (116/141 tok) were status-content-in-
                                 # the-hook — 2 lines = 17% of the whole budget. Detected here (report
@@ -626,6 +631,7 @@ GLOBAL_STORE = Path.home() / ".claude" / "memory"
 _DEMOTION_MIN_WINDOWS = 3     # per-fact zero-read PROBATIVE windows before a fact is even eligible
 _DEMOTION_BOTTOM_K = 5        # candidates surfaced per pass (also the validator's impossible-count cap)
 _DEMOTION_JUSTIFY_REFIRE = 5  # a per-item counter-justify suppresses until windows_full grows by this
+_STALE_ALL_RECENT_HOURS = 24  # Phase-0 display: collapse a full-store stale dump when last dream is newer than this
 _DEMOTION_SIMILAR = 0.6       # SequenceMatcher ratio ≥ this → the nearest-description merge evidence
 _LOG_TAIL_CAP = 500           # iter_cycle_log's Phase-0 tail bound (an append-only log; ~1 line/dream)
 
@@ -1643,23 +1649,264 @@ def usage_history(auto_mem: Path) -> dict:
             "per_fact": per_fact, "miss_stems": sorted(misses), "mention_stems": sorted(mention_stems)}
 
 
+def _justify_entry(v: object) -> "tuple[int | None, int | None, str | None]":
+    """Normalize a demotion_justify value → (sequence, windows, at).
+
+    New stamps carry `sequence` (monotonic SQLite clock). Legacy ints / `{windows, at}`
+    remain readable. Bool is not an int. Malformed → (None, None, None) — fail open.
+    """
+    if isinstance(v, int) and not isinstance(v, bool):
+        return None, v, None
+    if isinstance(v, dict):
+        seq = v.get("sequence")
+        seq_i = seq if isinstance(seq, int) and not isinstance(seq, bool) else None
+        w = v.get("windows")
+        w_i = w if isinstance(w, int) and not isinstance(w, bool) else None
+        at = v.get("at")
+        at_s = at if isinstance(at, str) and at else None
+        if seq_i is None and w_i is None:
+            return None, None, None
+        return seq_i, w_i, at_s
+    return None, None, None
+
+
+def _justify_remaining(jw: "int | None", at: "str | None", wf: int,
+                       window_starts: list, *,
+                       sequence: "int | None" = None,
+                       n_after_seq: "int | None" = None) -> "tuple[int, int] | None":
+    """If the stamp currently suppresses, (refire_at, remaining); else None.
+
+    Production clock (sequence + n_after_seq): suppress while fewer than REFIRE
+    later *probative* sequences have committed. JSONL `windows_full` is never
+    consulted — compaction cannot prolong a stamp.
+
+    Legacy `{windows, at}` (no sequence): count window_starts with epoch > at.
+
+    Legacy integer / windows-only, and only when no sqlite clock was supplied
+    (`n_after_seq is None`): the original jw+REFIRE>wf test, so unit tests
+    without a registry still work. When a clock IS supplied, windows-only
+    without `at` fails open (a compacted tail must not suppress forever).
+    """
+    if sequence is not None and n_after_seq is not None:
+        if n_after_seq < _DEMOTION_JUSTIFY_REFIRE:
+            remaining = _DEMOTION_JUSTIFY_REFIRE - n_after_seq
+            return sequence + _DEMOTION_JUSTIFY_REFIRE, remaining
+        return None
+    if at:
+        dt = _parse_ts(at)
+        if dt is not None:
+            at_ep = dt.timestamp()
+            n_after = sum(1 for s in window_starts
+                          if isinstance(s, (int, float)) and s > at_ep)
+            if n_after < _DEMOTION_JUSTIFY_REFIRE:
+                remaining = _DEMOTION_JUSTIFY_REFIRE - n_after
+                return wf + remaining, remaining
+            return None
+        if sequence is not None:
+            return None
+    if jw is None:
+        return None
+    if n_after_seq is not None:
+        return None
+    if jw + _DEMOTION_JUSTIFY_REFIRE > wf:
+        remaining = jw + _DEMOTION_JUSTIFY_REFIRE - wf
+        return jw + _DEMOTION_JUSTIFY_REFIRE, remaining
+    return None
+
+
+def _justify_suppresses(jw: "int | None", at: "str | None", wf: int,
+                        window_starts: list, *,
+                        sequence: "int | None" = None,
+                        n_after_seq: "int | None" = None) -> bool:
+    return _justify_remaining(jw, at, wf, window_starts, sequence=sequence,
+                              n_after_seq=n_after_seq) is not None
+
+
+def apply_demotion_justify(state: dict, stems: list, *, wf: int,
+                           window_starts: list, now_iso: str,
+                           seq: "int | None" = None,
+                           n_after_fn: "object | None" = None) -> dict:
+    """MERGE demotion_justify stamps. The caller NEVER supplies a windows integer — this
+    writes the monotonic usage-window `sequence` (falling back to `windows_full` only
+    for display of legacy stamps). Re-justifying a still-suppressed stem is a no-op
+    (daily re-stamp must not reset the clock). Returns {state, stamped, skipped}."""
+    out_state = dict(state)
+    raw_dj = state.get("demotion_justify")
+    if isinstance(raw_dj, dict):
+        dj: dict = {k: (dict(v) if isinstance(v, dict) else v) for k, v in raw_dj.items()}
+    else:
+        dj = {}
+    stamped: list = []
+    skipped: list = []
+    clock_seq = wf if seq is None else int(seq)
+    for stem in stems:
+        if not isinstance(stem, str) or not stem:
+            skipped.append({"stem": stem, "reason": "empty"})
+            continue
+        jseq, jw, at = _justify_entry(dj.get(stem))
+        n_after: "int | None" = None
+        if jseq is not None and callable(n_after_fn):
+            n_after = int(n_after_fn(jseq))
+        elif seq is not None and jseq is not None:
+            n_after = 0
+        if _justify_suppresses(jw, at, wf, window_starts, sequence=jseq,
+                               n_after_seq=n_after):
+            skipped.append({"stem": stem, "reason": "already-justified"})
+            continue
+        entry: dict = {"sequence": clock_seq, "windows": clock_seq, "at": now_iso}
+        dj[stem] = entry
+        stamped.append({"stem": stem, "sequence": clock_seq, "windows": clock_seq,
+                        "at": now_iso, "until": clock_seq + _DEMOTION_JUSTIFY_REFIRE})
+    out_state["demotion_justify"] = dj
+    return {"state": out_state, "stamped": stamped, "skipped": skipped}
+
+
+def _utc_iso_now() -> str:
+    dt = datetime.now(timezone.utc)
+    return dt.strftime("%Y-%m-%dT%H:%M:%S") + f".{dt.microsecond // 1000:03d}Z"
+
+
+def stamp_project_marker(project_dir: Path, *, commit: "str | None" = None,
+                         timestamp: "str | None" = None,
+                         standing_justify: "dict | None" = None,
+                         snooze_until: "str | None" = None) -> dict:
+    """Locked CAS merge of dream-marker keys. Does not mint a missing marker unless commit is set."""
+    from control_plane import update_project_state
+    from store_context import WriteRefused, resolve_store
+    ctx = resolve_store(project_dir)
+    iso = timestamp or _utc_iso_now()
+
+    def mutator(state: dict, snap: object) -> dict:
+        if not getattr(snap, "exists", False) and not commit:
+            raise WriteRefused("no .consolidation-state.json — run a dream's marker write first")
+        out = dict(state)
+        if commit is not None:
+            out["commit"] = str(commit)
+            out["timestamp"] = iso
+        if standing_justify is not None:
+            out["standing_justify"] = standing_justify
+        if snooze_until is not None:
+            out["beacon_snooze_until"] = str(snooze_until)
+        return out
+
+    try:
+        result = update_project_state(ctx, mutator)
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "error": "", **result}
+
+
+def run_justify_demotion(project_dir: Path, stems: list, *,
+                         now_iso: "str | None" = None,
+                         force: bool = False) -> dict:
+    """CLI core: MERGE demotion_justify into the native marker via the locked CAS writer.
+    Does not mint a marker. Default: only current demotion candidates (or already-quiet
+    stems, which no-op). `--force` is administrative repair."""
+    from control_plane import (count_probative_after, update_project_state,
+                               usage_window_clock)
+    from identifiers import IdentifierRefused, validate_fact_stem
+    from store_context import WriteRefused, resolve_store
+    if not stems:
+        return {"ok": False, "error": "pass one or more STEM arguments",
+                "stamped": [], "skipped": [], "windows_full": 0, "sequence": 0}
+    valid: list = []
+    for s in stems:
+        try:
+            valid.append(validate_fact_stem(str(s)))
+        except IdentifierRefused as e:
+            return {"ok": False, "error": str(e), "stamped": [], "skipped": [],
+                    "windows_full": 0, "sequence": 0}
+    ctx = resolve_store(project_dir)
+    marker = ctx.native_memory_dir / STATE_FILE
+    if not marker.is_file():
+        return {"ok": False,
+                "error": "no .consolidation-state.json — run a dream's marker write first",
+                "stamped": [], "skipped": [], "windows_full": 0, "sequence": 0}
+    hist = usage_history(ctx.native_memory_dir)
+    wf = _pi_int(hist.get("windows_full"))
+    clock = usage_window_clock(ctx)
+    seq = int(clock.get("sequence") or 0)
+    starts = list(clock.get("starts") or [])
+    if not starts:
+        starts = [s for s in (hist.get("window_starts") or []) if isinstance(s, (int, float))]
+    iso = now_iso or _utc_iso_now()
+    if not force:
+        try:
+            raw_pre = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            return {"ok": False, "error": "unreadable marker", "stamped": [],
+                    "skipped": [], "windows_full": wf, "sequence": seq}
+        if not isinstance(raw_pre, dict):
+            return {"ok": False, "error": "marker is not an object", "stamped": [],
+                    "skipped": [], "windows_full": wf, "sequence": seq}
+        facts = sorted(p for p in ctx.native_memory_dir.glob("*.md")
+                       if p.name not in ("MEMORY.md", "SHIPPED.md"))
+        idx_text = ""
+        idxp = ctx.native_memory_dir / "MEMORY.md"
+        if idxp.is_file():
+            try:
+                idx_text = idxp.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                idx_text = ""
+        idx_names = {p.stem for p in facts}
+        demo = demotion_candidates(
+            facts, idx_names, hist, idx_text,
+            justify=_demotion_justify(raw_pre.get("demotion_justify")))
+        allowed = {c["stem"] for c in demo.get("candidates") or [] if isinstance(c, dict)}
+        quiet = {j["stem"] for j in demo.get("justified_live") or [] if isinstance(j, dict)}
+        refused = [s for s in valid if s not in allowed and s not in quiet]
+        if refused:
+            return {"ok": False,
+                    "error": ("not a current demotion candidate: "
+                              + ", ".join(refused) + " (pass --force)"),
+                    "stamped": [], "skipped": [], "windows_full": wf, "sequence": seq}
+    box: dict = {"stamped": [], "skipped": []}
+
+    def mutator(state: dict, snap: object) -> dict:
+        if not getattr(snap, "exists", False):
+            raise WriteRefused("no .consolidation-state.json — run a dream's marker write first")
+        result = apply_demotion_justify(
+            state, valid, wf=wf, window_starts=starts, now_iso=iso, seq=seq,
+            n_after_fn=lambda s: count_probative_after(ctx, int(s)))
+        box["stamped"] = result["stamped"]
+        box["skipped"] = result["skipped"]
+        return result["state"]
+
+    try:
+        update_project_state(ctx, mutator)
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e), "stamped": [], "skipped": [],
+                "windows_full": wf, "sequence": seq}
+    except OSError as e:
+        return {"ok": False, "error": f"marker write failed ({e.__class__.__name__})",
+                "stamped": [], "skipped": [], "windows_full": wf, "sequence": seq}
+    return {"ok": True, "error": "", "stamped": box["stamped"],
+            "skipped": box["skipped"], "windows_full": wf, "sequence": seq}
+
+
 def _demotion_justify(dj: object) -> dict:
     """v0.1.67 (Phase C): the per-item counter-justify map from a marker's `demotion_justify` state →
-    {stem: windows_at_justify}. WELL-FORMED entries only — a malformed entry (non-dict, non-int windows,
+    {stem: {windows, at}}. WELL-FORMED entries only — a malformed entry (non-dict/non-int windows,
     bool) is DROPPED, i.e. does NOT suppress: the SAME fail direction as _standing_baseline (malformed ⇒
     the gate fires / the candidate surfaces — err toward the human seeing it; here the output is
-    report-only, so surfacing is the safe direction)."""
+    report-only, so surfacing is the safe direction). `at` is kept when it is a non-empty string so
+    the dual-read zrw-trap path can count window_starts after the stamp."""
     out: dict = {}
     if isinstance(dj, dict):
         for k, v in dj.items():
-            if (isinstance(k, str) and isinstance(v, dict)
-                    and isinstance(v.get("windows"), int) and not isinstance(v.get("windows"), bool)):
-                out[k] = v["windows"]
+            if not isinstance(k, str):
+                continue
+            jseq, jw, at = _justify_entry(v)
+            if jseq is not None or jw is not None:
+                rec: dict = {"windows": jw, "at": at}
+                if jseq is not None:
+                    rec["sequence"] = jseq
+                out[k] = rec
     return out
 
 
 def demotion_candidates(fact_files: list, index_names: set, hist: Mapping[str, Any],
-                        index_text: str, justify: "Mapping[str, int] | None" = None) -> dict:
+                        index_text: str, justify: "Mapping[str, Any] | None" = None) -> dict:
     """v0.1.67 (Phase C): the rank-under-budget demotion triage — the `*_candidates` family contract:
     PURE(ish — reads the given fact files), RANKS only, the model judges content + the user confirms;
     NO write path. docs/index-usage-and-budget-ladder.spec.md §Phase C2.
@@ -1673,6 +1920,9 @@ def demotion_candidates(fact_files: list, index_names: set, hist: Mapping[str, A
     rank finds dead reference/status weight — sufficient-not-necessary, the archive_candidates caveat) ·
     not in miss_stems (a fact once read from the archive proved live — scarred, never re-surfaced) · not
     suppressed by a live per-item counter-justify (re-fires at +_DEMOTION_JUSTIFY_REFIRE windows).
+    KEEP is sufficient-not-necessary and description-only: standing ops policy without KEEP tokens
+    is the counter-justify path (script-stamped windows_full), not a KEEP_RE miss — do not widen
+    _KEEP_RE to catch it.
 
     Ranked by hook_tokens desc (the measurable always-loaded relief a demotion frees — the
     remediation_triage sort-by-cost shape), capped at _DEMOTION_BOTTOM_K. Deliberately NOT an ACT-R
@@ -1685,7 +1935,8 @@ def demotion_candidates(fact_files: list, index_names: set, hist: Mapping[str, A
     justify = justify or {}
     wf = _pi_int(hist.get("windows_full"))
     out: dict = {"windows_full": wf, "eligible": 0, "candidates": [],
-                 "vetoed_read": 0, "vetoed_keep": 0, "vetoed_justified": 0, "vetoed_missed": 0}
+                 "vetoed_read": 0, "vetoed_keep": 0, "vetoed_justified": 0, "vetoed_missed": 0,
+                 "justified_live": []}
     if wf < _DEMOTION_MIN_WINDOWS:
         return out                                       # DORMANT — no fact can out-count the store
     starts = [s for s in (hist.get("window_starts") or []) if isinstance(s, (int, float))]
@@ -1716,15 +1967,28 @@ def demotion_candidates(fact_files: list, index_names: set, hist: Mapping[str, A
         if stem in miss_stems:
             out["vetoed_missed"] += 1                    # proved live from the archive once — scarred
             continue
-        jw = justify.get(stem)
-        if isinstance(jw, int) and not isinstance(jw, bool) and jw + _DEMOTION_JUSTIFY_REFIRE > wf:
+        jseq, jw, jat = _justify_entry(justify.get(stem))
+        n_after = None
+        if jseq is not None and isinstance(hist.get("n_after_seq"), dict):
+            raw_n = hist["n_after_seq"].get(stem)
+            if isinstance(raw_n, int) and not isinstance(raw_n, bool):
+                n_after = raw_n
+        elif jseq is not None and isinstance(hist.get("probative_after"), int):
+            n_after = int(hist["probative_after"])
+        live = _justify_remaining(jw, jat, wf, starts, sequence=jseq,
+                                  n_after_seq=n_after)
+        if live is not None:
             out["vetoed_justified"] += 1                 # counter-justified; re-fires on +REFIRE windows
+            refire_at, remaining = live
+            out["justified_live"].append(
+                {"stem": stem, "windows": jw, "refire_at": refire_at, "remaining": remaining})
             continue
         if _KEEP_RE.search(descs[stem]):
             out["vetoed_keep"] += 1                      # lesson/negative/directive — stays, by design
             continue
         hook = next((est_tokens(ln) for ln in index_text.splitlines() if f"]({stem}.md)" in ln), 0)
         eligible.append({"stem": stem, "hook_tokens": hook, "zero_read_windows": zrw})
+    out["justified_live"].sort(key=lambda r: str(r.get("stem") or ""))
     out["eligible"] = len(eligible)
     eligible.sort(key=lambda c: (-c["hook_tokens"], c["stem"]))
     surfaced = eligible[:_DEMOTION_BOTTOM_K]
@@ -2371,6 +2635,22 @@ def build_context(project_dir: Path) -> dict:
     # empty candidates) until probative windows accrue — see the §Phase C evidence gate.
     usage_hist = usage_history(auto_mem) if auto_mem.exists() else {
         "windows_full": 0, "window_starts": [], "per_fact": {}, "miss_stems": [], "mention_stems": []}
+    try:
+        from control_plane import count_probative_after, usage_window_clock
+        _clock = usage_window_clock(_ctx)
+        usage_hist = dict(usage_hist)
+        usage_hist["sequence"] = int(_clock.get("sequence") or 0)
+        if _clock.get("rows"):
+            usage_hist["windows_full"] = int(_clock.get("probative") or 0)
+            if _clock.get("starts"):
+                usage_hist["window_starts"] = list(_clock["starts"])
+        _n_map: dict = {}
+        for _stem, _rec in _demotion_justify(demotion_justify).items():
+            if isinstance(_rec, dict) and isinstance(_rec.get("sequence"), int):
+                _n_map[_stem] = count_probative_after(_ctx, int(_rec["sequence"]))
+        usage_hist["n_after_seq"] = _n_map
+    except Exception:
+        pass
     demotion = demotion_candidates(fact_files, index_names, usage_hist, _index_text,
                                    justify=_demotion_justify(demotion_justify))
 
@@ -2971,6 +3251,79 @@ def _remediation_section(rem: dict) -> list:
     return out
 
 
+def _format_age_short(hours: float) -> str:
+    if hours < 1:
+        mins = max(1, int(round(hours * 60)))
+        return f"~{mins}m ago"
+    if hours < 48:
+        return f"~{int(round(hours))}h ago"
+    return f"~{int(round(hours / 24))}d ago"
+
+
+def stale_signal_text(stale_facts: list, n_facts: int, marker_ts: str,
+                      now_ts: "float | None" = None) -> "str | None":
+    """Phase-0 stale line. Collapse a full-store dump when the last dream is recent
+    (high-cadence mtime≤marker is every untouched fact). Detector `_stale_since` is unchanged."""
+    if not stale_facts:
+        return None
+    hours: "float | None" = None
+    if isinstance(marker_ts, str) and marker_ts:
+        dt = _parse_ts(marker_ts)
+        if dt is not None:
+            now = now_ts if now_ts is not None else datetime.now(timezone.utc).timestamp()
+            hours = max(0.0, (now - dt.timestamp()) / 3600.0)
+    collapse = (n_facts >= 1 and len(stale_facts) == n_facts
+                and hours is not None and hours < _STALE_ALL_RECENT_HOURS)
+    if collapse:
+        assert hours is not None
+        return (f"re-verify {len(stale_facts)} stale fact(s) (mtime ≤ marker, last dream "
+                f"{_format_age_short(hours)}) — high-cadence; stems omitted")
+    return (f"re-verify {len(stale_facts)} stale fact(s) (mtime ≤ marker): "
+            + ", ".join(str(s) for s in stale_facts))
+
+
+def demotion_signal_lines(demo: dict) -> list:
+    """Plain SIGNALS texts for demotion (no color). Eligible stems, veto tallies, and
+    live justifies are SEPARATE lines so '1 justified' cannot be read as the eligible fact."""
+    lines: list = []
+    eligible = _pi_int(demo.get("eligible"))
+    wf = _pi_int(demo.get("windows_full"))
+    cands = demo.get("candidates") or []
+    live = demo.get("justified_live") or []
+    if eligible:
+        dtop = ", ".join(
+            f"{c.get('stem')}(≈{c.get('hook_tokens')}t·{c.get('zero_read_windows')}w)"
+            for c in cands if isinstance(c, dict))
+        lines.append(
+            f"demote? {eligible} eligible 0-read indexed fact(s) over ≥{_DEMOTION_MIN_WINDOWS} "
+            f"probative window(s) → demote-to-archive / compress / merge / counter-justify "
+            f"(report-then-apply — YOU judge content, keep-on-doubt): {dtop}")
+        vk = _pi_int(demo.get("vetoed_keep"))
+        vr = _pi_int(demo.get("vetoed_read"))
+        vm = _pi_int(demo.get("vetoed_missed"))
+        if vk or vr or vm:
+            parts = [f"{vk} keep-signal", f"{vr} read"]
+            if vm:
+                parts.append(f"{vm} missed")
+            lines.append("vetoed: " + " · ".join(parts))
+    elif wf < _DEMOTION_MIN_WINDOWS:
+        lines.append(
+            f"usage evidence {wf}/{_DEMOTION_MIN_WINDOWS} probative windows — "
+            "demotion policy DORMANT (accrues per-dream via --recalls)")
+    if live:
+        bits = []
+        for j in live:
+            if not isinstance(j, dict):
+                continue
+            stem = j.get("stem") or ""
+            refire = _pi_int(j.get("refire_at"))
+            rem = _pi_int(j.get("remaining"))
+            bits.append(f"{stem} (re-fires at {refire}w · {rem} to go)")
+        if bits:
+            lines.append("justified: " + " · ".join(bits))
+    return lines
+
+
 def print_report(ctx: dict) -> None:
     out: list = []
     add = out.append
@@ -3111,8 +3464,10 @@ def print_report(ctx: dict) -> None:
                           "cross-project — re-scope by content + re-verify in Phase 1: "
                           + _ui.c(", ".join(ctx["promotion_candidates"]), "dim"), bullet="↑", bullet_color="cyan"))
     if ctx["stale_facts"]:
-        sig.append(_ui.li(f"re-verify {len(ctx['stale_facts'])} stale fact(s) (mtime ≤ marker): "
-                          + _ui.c(", ".join(ctx["stale_facts"]), "dim"), bullet="·"))
+        _stale_txt = stale_signal_text(ctx["stale_facts"], len(ctx["fact_files"]),
+                                       str(ctx.get("last_ts") or ""))
+        if _stale_txt:
+            sig.append(_ui.li(_stale_txt, bullet="·"))
     _idxn = index_fact_names(ctx["auto_mem"] / "MEMORY.md")
     _arch = archive_candidates(ctx["fact_files"], _idxn)
     if _arch:
@@ -3129,24 +3484,17 @@ def print_report(ctx: dict) -> None:
                           + _ui.c(", ".join(f"{c['stem']}({c['ratio']}×)" for c in _defrag[:6]) + ("…" if len(_defrag) > 6 else ""), "dim"),
                           bullet="↓", bullet_color="cyan"))
     # v0.1.67 (Phase C): the demotion triage — `demote?` when eligible; the dim DORMANT accrual line while
-    # the evidence gate hasn't opened (so the accrual is visible, not mysterious). Veto tallies show what
-    # the gate withheld — information for the human, never policy.
+    # the evidence gate hasn't opened (so the accrual is visible, not mysterious). Eligible stems, veto
+    # tallies, and live justifies are SEPARATE lines (a shared line read as "this fact is justified").
     _demo = ctx.get("demotion") or {}
-    if _demo.get("eligible"):
-        _dtop = ", ".join(f"{c['stem']}(≈{c['hook_tokens']}t·{c['zero_read_windows']}w)"
-                          for c in _demo.get("candidates", []))
-        _vet = (f"vetoed: {_demo.get('vetoed_keep', 0)} keep-signal · {_demo.get('vetoed_read', 0)} read · "
-                f"{_demo.get('vetoed_justified', 0)} justified"
-                + (f" · {_demo['vetoed_missed']} missed" if _demo.get("vetoed_missed") else ""))
-        sig.append(_ui.li(f"demote? {_demo['eligible']} eligible 0-read indexed fact(s) over ≥{_DEMOTION_MIN_WINDOWS} "
-                          "probative window(s) → demote-to-archive / compress / merge / counter-justify "
-                          "(report-then-apply — YOU judge content, keep-on-doubt): "
-                          + _ui.c(_dtop, "dim") + "  " + _ui.c(_vet, "dim"),
-                          bullet="↓", bullet_color="yellow"))
-    elif ctx["auto_mem"].exists() and _demo.get("windows_full", 0) < _DEMOTION_MIN_WINDOWS:
-        sig.append(_ui.li(_ui.c(f"usage evidence {_demo.get('windows_full', 0)}/{_DEMOTION_MIN_WINDOWS} probative "
-                                "windows — demotion policy DORMANT (accrues per-dream via --recalls)", "dim"),
-                          bullet="·"))
+    _dlines = demotion_signal_lines(_demo)
+    if not ctx["auto_mem"].exists():
+        _dlines = [ln for ln in _dlines if "DORMANT" not in ln]
+    for _dl in _dlines:
+        _is_demote = _dl.startswith("demote?")
+        sig.append(_ui.li(_ui.c(_dl, "dim") if not _is_demote else _dl,
+                          bullet="↓" if _is_demote else "·",
+                          bullet_color="yellow" if _is_demote else "dim"))
     if ctx["slug_orphans"]:
         cur_live = max(_newest_mtime(ctx["proj_root"], "*.jsonl"), _newest_mtime(ctx["auto_mem"], "*.md"))
         for o in ctx["slug_orphans"]:
@@ -3224,10 +3572,68 @@ def main() -> int:
                     diffs_before = argv[_fi + 1]
                 else:
                     audit_into = argv[_fi + 1]
+    justify_stems: list = []
+    if "--justify-demotion" in argv:
+        _ji = argv.index("--justify-demotion")
+        _j = _ji + 1
+        while _j < len(argv) and not argv[_j].startswith("-"):
+            justify_stems.append(argv[_j])
+            _j += 1
     as_json = "--json" in argv
     _argpaths = {audit_before, diffs_cycle, diffs_before, audit_into} - {""}   # v0.1.53: --into value is NOT the positional project_dir
+    _argpaths.update(justify_stems)
+    for _flag in ("--stamp-marker", "--standing-justify-facts",
+                  "--standing-justify-tokens", "--snooze-until"):
+        if _flag in argv:
+            _fi = argv.index(_flag)
+            if _fi + 1 < len(argv) and not argv[_fi + 1].startswith("-"):
+                _argpaths.add(argv[_fi + 1])
     pos = [a for a in argv if not a.startswith("-") and a not in _argpaths]   # positional = the project dir
     project_dir = Path(pos[0]) if pos else Path.cwd()
+    if "--justify-demotion" in argv:
+        out = run_justify_demotion(project_dir, justify_stems, force="--force" in argv)
+        if not out.get("ok"):
+            print("justify-demotion: " + str(out.get("error") or "failed"), file=sys.stderr)
+            return 2
+        print(json.dumps({"ok": True, "windows_full": out.get("windows_full"),
+                          "sequence": out.get("sequence"),
+                          "stamped": out.get("stamped"), "skipped": out.get("skipped")}))
+        return 0
+    if "--stamp-marker" in argv:
+        commit = ""
+        _si = argv.index("--stamp-marker")
+        if _si + 1 < len(argv) and not argv[_si + 1].startswith("-"):
+            commit = argv[_si + 1]
+        if not commit:
+            print("stamp-marker: pass --stamp-marker COMMIT", file=sys.stderr)
+            return 2
+        sj = None
+        if "--standing-justify-facts" in argv:
+            try:
+                _fi = argv.index("--standing-justify-facts")
+                facts_n = int(argv[_fi + 1])
+                tok_n = 0
+                if "--standing-justify-tokens" in argv:
+                    _ti = argv.index("--standing-justify-tokens")
+                    tok_n = int(argv[_ti + 1])
+                sj = {"facts": facts_n, "index_tokens": tok_n, "at": _utc_iso_now()}
+            except (IndexError, ValueError):
+                print("stamp-marker: --standing-justify-facts N [--standing-justify-tokens N]",
+                      file=sys.stderr)
+                return 2
+        snooze = None
+        if "--snooze-until" in argv:
+            _zi = argv.index("--snooze-until")
+            if _zi + 1 < len(argv) and not argv[_zi + 1].startswith("-"):
+                snooze = argv[_zi + 1]
+        out = stamp_project_marker(project_dir, commit=commit, standing_justify=sj,
+                                   snooze_until=snooze)
+        if not out.get("ok"):
+            print("stamp-marker: " + str(out.get("error") or "failed"), file=sys.stderr)
+            return 2
+        print(json.dumps({"ok": True, "revision": out.get("revision"),
+                          "status": out.get("status")}))
+        return 0
     ctx = build_context(project_dir)
     if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)
         _ui.set_modes(color=_ui.color_enabled(argv, sys.stdout), ascii="--ascii" in argv, width=_ui.resolve_width(argv, sys.stdout))
