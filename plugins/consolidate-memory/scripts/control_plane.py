@@ -720,6 +720,14 @@ def _ingest_json_grants(conn: sqlite3.Connection, plugin_data: Path) -> None:
             "created_at, adopted_nonempty) VALUES (?,?,?,?)",
             (key, pid, str(g.get("created_at") or ""), 0))
     conn.commit()
+    # v0.4.0 review: "one-shot" was not enforced — every later grant mutation
+    # re-ingested the JSON and RESURRECTED a revoked row (revoke → unrelated
+    # grant → "path already granted"). Consume the source so the SQLite table
+    # is the only grant authority after the first ingest.
+    try:
+        src.rename(src.with_suffix(".json.ingested"))
+    except OSError:
+        pass
 
 
 def iter_registered_projects(conn: sqlite3.Connection) -> list:

@@ -441,9 +441,13 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
                 temps[str(dest)] = provenanced
             canon_body = provenanced
         else:
+            from sync_global import _pointer_line
             provenanced = apply_provenance(body, ctx.display_name)
             catalog = generate_catalog(facts_dir, overlay={stem: provenanced})
-            pointer = f"- [{stem}]({stem}.md) — {str(fm.get('description') or stem)}"
+            # v0.4.0 review: the hand-built pointer bypassed _pointer_line's
+            # sanitize/truncate (a crafted description could inject through the
+            # catalog) — the typed renderer is the single constructor.
+            pointer = _pointer_line(stem, fm)
             future = apply_pointer(catalog, pointer, stem)
             # Native 200-line/25KB caps apply only to a project's MEMORY.md.
             # Legacy <config>/memory is a read-only migration source (P0-3).

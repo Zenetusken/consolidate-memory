@@ -6444,6 +6444,12 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
                                     "user-global", _fdir40)
         check("P1-10 (#149): a legacy (non-ACTIVE) target is not a valid dependency",
               isinstance(_lerr40, str) and "not a valid active canonical" in _lerr40)
+        # P1-10 (#149): the CANONICAL writer refuses duplicate reserved keys too
+        # (the local path is pinned by R128-3; this pins the canonical codec).
+        _dup40 = ci.upsert(_ctx40, "new", (  # type: ignore[arg-type]
+            "---\nname: new\nname: new\nmetadata:\n  scope: user-global\n  type: feedback\n---\nbody\n"))
+        check("P1-10 (#149): canonical upsert refuses a duplicate reserved frontmatter key",
+              _dup40.get("ok") is False and "duplicate reserved key" in str(_dup40.get("error") or ""))
         # (#8): capability cache — a sig hit returns the cached rows; a marker
         # change (go.mod appears) re-detects instead of serving the stale cache.
         _proj40 = Path(_td40) / "caproj"; _proj40.mkdir()
@@ -6485,6 +6491,43 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
         check("v0.4.0 (#12): import refuses a path-escape member",
               not _imp_evil.get("ok")
               and str(_imp_evil.get("error", "")).startswith("import path escape"))
+        # a tampered member must FAIL the import (the export's sha256 manifest
+        # is now CHECKED, not skipped).
+        _tampered40 = Path(_td40) / "tampered.tar.gz"
+        with _tar40.open(str(_bundle40), "r:gz") as _src_t:
+            _mems40 = []
+            for _m40s in _src_t.getmembers():
+                _f40s = _src_t.extractfile(_m40s)
+                _d40s = _f40s.read() if (_m40s.isfile() and _f40s is not None) else b""
+                _mems40.append((_m40s, _d40s))
+        with _tar40.open(str(_tampered40), "w:gz") as _t40b:
+            for _m40, _d40 in _mems40:
+                if not _m40.isfile():
+                    continue
+                if _m40.name == "plugin-data/control.sqlite" and _d40:
+                    _d40 = _d40[:-1] + (b"X" if _d40[-1:] != b"X" else b"Y")
+                _info40 = _tar40.TarInfo(name=_m40.name)
+                _info40.size = len(_d40)
+                _t40b.addfile(_info40, __import__("io").BytesIO(_d40))
+        _imp_tam40 = ret.import_ops(_tampered40, Path(_td40) / "dsttampered")
+        check("v0.4.0 (#12): a tampered member fails the import (manifest sha256 checked)",
+              not _imp_tam40.get("ok")
+              and "sha256 mismatch" in str(_imp_tam40.get("error") or ""))
+        # (#9): the registry indexes exist in a FRESH DB and cm doctor reports
+        # the integrity check.
+        _reg40 = Path(_td40) / "regproj"; _reg40.mkdir()
+        _enroll_personal(_reg40)
+        _ctx40r = sc.resolve_store(_reg40)
+        _conn40r = cp.connect(cp.db_path(_ctx40r))
+        try:
+            _inames40 = {r[0] for r in _conn40r.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+        finally:
+            _conn40r.close()
+        check("v0.4.0 (#9): registry indexes exist in a fresh DB + doctor reports integrity",
+              {"idx_facts_domain_stem", "idx_holders_project",
+               "idx_tombstones_domain"} <= _inames40
+              and isinstance(sc.doctor_dict(_ctx40r).get("integrity_check"), str))
         # (#11): CLI error envelope — a refused grant with --json emits
         # {ok:false, error, code:2} and exits 2.
         _env40_u, _env40_e = _io73.StringIO(), _io73.StringIO()

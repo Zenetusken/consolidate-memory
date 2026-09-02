@@ -37,7 +37,11 @@ project marker      → one locked state API
   mutations under `locks/global.lock`; JSON is dual-read migration inventory
   with a one-shot ingest (single ingester in `control_plane`).
 - **Migration:** every active kept-existing disposition enters the catalog
-  overlay; finalize postconditions per disposition.
+  overlay; finalize postconditions per disposition. Full single-source
+  migration control state (plan/rollback/manifest JSONs folded into one
+  journaled row) remains a follow-up — the shipped consolidation is the
+  catalog-overlay repair plus the migration_id cross-check against the
+  control.sqlite `migration_state` row.
 - **Catalog/links/pointers:** every pointer/catalog line is generated through a
   typed renderer (`_pointer_line` / the local `_pointer` constructor); a
   canonical dependency target must be `CLASS_ACTIVE`; duplicate reserved
@@ -47,8 +51,11 @@ project marker      → one locked state API
 ## Consequences
 
 - Reads never resurrect Markdown provenance against an authoritative zero.
-- Grant-vs-grant and grant-vs-revoke races are serialized by the lock; revoke
-  is a row delete, not a file rewrite.
+- Grant-vs-grant and grant-vs-revoke MUTATIONS are serialized by the lock;
+  revoke is a row delete, not a file rewrite. Reads (`resolve_store`'s grant
+  check, `cm project grants`) take no lock: they are tolerant snapshots — a
+  concurrent revoke takes effect at the next mutation, and the write-time
+  checks are the enforcement point.
 - Display paths (`network()`, `fleet_utility`, `--gc --edges`) classify from
   SQLite; the Markdown line is provenance history only.
 - Dead compatibility surface removed: `fact_id_for`, `_prune_holders` /

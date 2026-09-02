@@ -1876,9 +1876,16 @@ def cmd_data(args: argparse.Namespace) -> int:
     if args.data_cmd == "import":
         from retention import import_ops as _import_ops
         src = Path(getattr(args, "file", None) or "")
-        if not src or not str(src):
-            print("data import: pass --file ARCHIVE.tar.gz", file=sys.stderr)
+        # v0.4.0 review: this command's --json success path emitted an envelope
+        # while its error paths printed bare stderr — standardize both.
+        def _imp_err(msg: str) -> int:
+            if getattr(args, "json", False):
+                print(json.dumps({"ok": False, "error": msg, "code": 2}))
+            else:
+                print("data import: " + msg, file=sys.stderr)
             return 2
+        if not src or not str(src):
+            return _imp_err("pass --file ARCHIVE.tar.gz")
         dest = Path(args.dest) if args.dest else ctx.plugin_data_dir
         need = _want_confirm(args, "data-import")
         if need == "dry":
@@ -1886,8 +1893,7 @@ def cmd_data(args: argparse.Namespace) -> int:
                   % (src, dest))
             return 0
         if need:
-            print(f"data import: {need}", file=sys.stderr)
-            return 2
+            return _imp_err(need)
         out = _import_ops(src, dest)
         print(json.dumps(out, indent=2 if args.json else None, default=str))
         return 0 if out.get("ok") else 2
@@ -2162,14 +2168,19 @@ def cmd_project(args: argparse.Namespace) -> int:
         return 0
     if args.project_cmd in ("grant-native", "revoke-native", "transfer-native"):
         from store_context import revoke_store_grant, transfer_store_grant, write_store_grant
+        # v0.4.0 review (#11): every error exit in the grant family emits the
+        # machine-readable envelope under --json (not just the WriteRefused).
+        def _grant_err(msg: str) -> int:
+            if getattr(args, "json", False):
+                print(json.dumps({"ok": False, "error": msg, "code": 2}))
+            else:
+                print(f"project {args.project_cmd}: {msg}", file=sys.stderr)
+            return 2
         path_s = str(getattr(args, "grant_path", None) or "").strip()
         if not path_s:
-            print(f"project {args.project_cmd}: pass --path", file=sys.stderr)
-            return 2
+            return _grant_err("pass --path")
         if not (path_s.startswith("~/") or path_s.startswith("/")):
-            print(f"project {args.project_cmd}: path must be absolute or ~/",
-                  file=sys.stderr)
-            return 2
+            return _grant_err("path must be absolute or ~/")
         path = Path(path_s).expanduser()
         phrase = args.project_cmd
         need = _want_confirm(args, phrase)
@@ -2178,8 +2189,7 @@ def cmd_project(args: argparse.Namespace) -> int:
                   f"(pass --apply --confirm {phrase})")
             return 0
         if need:
-            print(f"project {args.project_cmd}: {need}", file=sys.stderr)
-            return 2
+            return _grant_err(need)
         try:
             if args.project_cmd == "grant-native":
                 out = write_store_grant(
@@ -2189,8 +2199,7 @@ def cmd_project(args: argparse.Namespace) -> int:
             elif args.project_cmd == "transfer-native":
                 to_pid = str(getattr(args, "to_domain", None) or "")
                 if not to_pid:
-                    print("project transfer-native: pass --to PROJECT_ID", file=sys.stderr)
-                    return 2
+                    return _grant_err("pass --to PROJECT_ID")
                 out = transfer_store_grant(ctx.plugin_data_dir, path, to_pid)
             else:
                 out = revoke_store_grant(ctx.plugin_data_dir, ctx.project_id, path)

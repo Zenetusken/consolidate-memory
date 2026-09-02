@@ -63,6 +63,27 @@ def _detector_sig(root: Path) -> str:
             parts.append("%s:%s" % (name, int(p.stat().st_mtime) if p.is_file() else 0))
         except OSError:
             parts.append("%s:0" % name)
+    # v0.4.0 review: monorepo CHILD markers are part of the detection surface
+    # (the workspace scan reads children's package.json/go.mod/…) but were not
+    # part of the signature — a child marker change served a stale cache. Fold
+    # the scanned children's markers into the sig.
+    ws = next((n for n in ("pnpm-workspace.yaml", "go.work", "lerna.json", "nx.json")
+               if (root / n).is_file()), None)
+    if ws is not None:
+        try:
+            kids = sorted(p for p in root.iterdir()
+                          if p.is_dir() and not p.name.startswith("."))
+        except OSError:
+            kids = []
+        for child in kids[:32]:
+            for cname in ("package.json", "go.mod", "pyproject.toml"):
+                cp = child / cname
+                try:
+                    parts.append("%s/%s:%s" % (
+                        child.name, cname,
+                        int(cp.stat().st_mtime) if cp.is_file() else 0))
+                except OSError:
+                    parts.append("%s/%s:0" % (child.name, cname))
     return "|".join(parts)
 
 
