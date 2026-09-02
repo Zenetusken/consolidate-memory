@@ -100,7 +100,9 @@ users run the skill — they do not have ./cm on PATH)
   cm justify-demotion STEM [STEM…] [--force]  stamp demotion_justify at the monotonic usage-window sequence (candidate-gated; --force for repair)
   cm migrate [--plan|--assign STEM --domain NAME|--exclude STEM|--apply|--rollback|--finalize|--status]
   cm data inventory|compact|export|purge|retention [--scope SCOPE]
-  cm journal inventory|show|retry|rollback|abandon|compact [OP-ID]
+  cm journal inventory|show|retry|rollback|abandon|compact|cleanup [OP-ID]
+                       cleanup [--scan-all-stores] [--apply --confirm journal-cleanup]
+                       abandon --accept-fs after verifying leftover trash/recovery
   cm forget STEM       tombstone a canonical (does not resurrect on pull)
   cm project enroll --domain NAME [DIR]
   cm project grant-native --path PATH [DIR]   operator grant for a dedicated native store

@@ -1492,7 +1492,8 @@ def run() -> None:
             destAE = ctxAE.native_memory_dir / "probe-ae.md"
             destAE.parent.mkdir(parents=True, exist_ok=True)
             after_temps = {"prepare_temps", "verify_unchanged", "after_trash"}
-            after_publish = {"after_dests", "publish", "commit_registry", "journal_complete"}
+            after_publish = {"after_dests", "publish", "commit_registry",
+                             "cleanup_pending", "journal_complete"}
             step_ok = True
             detail_ae = []
             for step in _cpAE.JOURNAL_STEPS:

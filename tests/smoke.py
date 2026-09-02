@@ -3128,7 +3128,7 @@ with _tfB.TemporaryDirectory() as _tdB2:
             sg.run(_projB2, pull=True)
         check("v0.1.66 run(): an over-TARGET (amber ≈1600t) store RECEIVES the pull — THE Phase-B behavior change",
               "pulled 1 new" in _buf1B.getvalue() and (_stB2 / "gfact.md").exists())
-        (_stB2 / "gfact.md").unlink()
+        (_stB2 / "gfact.md").unlink(missing_ok=True)
         (_stB2 / "MEMORY.md").write_text("# Memory Index\n- [f](f.md) — " + "h" * 15600, encoding="utf-8")
         _buf2B = _ioB.StringIO()
         with _ctxB.redirect_stdout(_buf2B):
@@ -8530,11 +8530,12 @@ with _Env73() as _e_ac:
             _osB.environ.pop("CM_CRASH_PUBLISH", None)
         else:
             _osB.environ["CM_CRASH_PUBLISH"] = _old_cp
-    _tmp_ac = _dest_ac.with_suffix(_dest_ac.suffix + f".tmp{_osB.getpid()}")
+    _tmps_ac = list(_dest_ac.parent.glob(_dest_ac.name + ".tmp-*"))
     check("0.3.4: after_link crash leaves full dest + tmp (no empty inode)",
           _crash_ac and _dest_ac.exists()
           and _dest_ac.read_text(encoding="utf-8") == "NEW-CREATE\n"
-          and _tmp_ac.exists())
+          and len(_tmps_ac) == 1
+          and str(_osB.getpid()) not in _tmps_ac[0].name)
     _j_ac = cp.connect_journal(_ctx_ac)
     _r_ac = cp.connect(cp.db_path(_ctx_ac))
     _got_ac = cp.recover_pending(_j_ac, ctx=_ctx_ac, registry_conn=_r_ac)
@@ -8543,7 +8544,7 @@ with _Env73() as _e_ac:
     _j_ac.close(); _r_ac.close()
     check("0.3.4: create after_link dest recovers",
           bool(_dest_ac.read_text(encoding="utf-8") == "NEW-CREATE\n"
-               and not _tmp_ac.exists()
+               and list(_dest_ac.parent.glob(_dest_ac.name + ".tmp-*")) == []
                and _st_ac == "complete" and _got_ac))
 
 with _Env73() as _e_tm:
@@ -8558,10 +8559,11 @@ with _Env73() as _e_tm:
             crash_after="prepare_temps")
     except cp.CrashSimulated:
         _crash_tm = True
-    _tmp_tm = _dest_tm.with_suffix(_dest_tm.suffix + f".tmp{_osB.getpid()}")
-    _mode_tm = _tmp_tm.stat().st_mode & 0o777 if _tmp_tm.exists() else 0
+    _tmps_tm = list(_dest_tm.parent.glob(_dest_tm.name + ".tmp-*"))
+    _mode_tm = _tmps_tm[0].stat().st_mode & 0o777 if _tmps_tm else 0
     check("0.3.3: prepare_temps tmp is 0o600",
-          _crash_tm and _tmp_tm.exists() and _mode_tm == 0o600)
+          _crash_tm and len(_tmps_tm) == 1 and _mode_tm == 0o600
+          and ".tmp-op_" in _tmps_tm[0].name)
 
 # ── 0.3.4: journal complete-old (trash, compensation, link create) ───────────
 with _tf73.TemporaryDirectory() as _td_md:
@@ -10105,6 +10107,259 @@ with _Env73() as _e_clk:
     _nogo = ms.run_justify_demotion(_e_clk.proj, ["not-a-candidate"])
     check("R128-2: default justify-demotion refuses a non-candidate stem",
           _nogo.get("ok") is False and "not a current demotion candidate" in str(_nogo.get("error") or ""))
+
+# ── Phase 2: journal terminal cleanup / schema split ──
+with _Env73() as _e_js:
+    _ctx_js = sc.resolve_store(_e_js.proj)
+    _j_js = cp.connect_journal(_ctx_js)
+    _names_js = cp.journal_table_names(_j_js)
+    _j_js.close()
+    _r_js = cp.connect(cp.db_path(_ctx_js))
+    _rnames = {str(r[0]) for r in _r_js.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'"
+    ).fetchall()}
+    _ver_r = int(_r_js.execute("PRAGMA user_version").fetchone()[0])
+    _r_js.close()
+    check("P0-2/P1-4: fresh journal.sqlite has only journal schema",
+          _names_js <= cp.JOURNAL_TABLES
+          and "projects" not in _names_js and "facts" not in _names_js)
+    check("P1-5: control.sqlite has PRAGMA user_version and no journal table",
+          _ver_r == cp.REGISTRY_USER_VERSION
+          and "journal" not in _rnames)
+
+with _Env73() as _e_cu:
+    _ctx_cu = sc.resolve_store(_e_cu.proj)
+    _dest_cu = _e_cu.store / "cleanup-body.md"
+    _old_ca = _osB.environ.get("CM_CLEANUP_FAIL")
+    _osB.environ["CM_CLEANUP_FAIL"] = "1"
+    _cu_err = ""
+    try:
+        cp.transact(_ctx_cu, "probe-cleanup", {"k": 1},
+                    lambda c, t: t.__setitem__(str(_dest_cu), "SECRET-FORGET\n") or {})
+    except cp.WriteRefused as e:
+        _cu_err = str(e)
+    except cp.CrashSimulated:
+        pass
+    finally:
+        if _old_ca is None:
+            _osB.environ.pop("CM_CLEANUP_FAIL", None)
+        else:
+            _osB.environ["CM_CLEANUP_FAIL"] = _old_ca
+    _j_cu = cp.connect_journal(_ctx_cu)
+    _row_cu = _j_cu.execute(
+        "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
+    _st_cu = str(_row_cu["status"] if _row_cu is not None else "")
+    _oid_cu = str((_j_cu.execute(
+        "SELECT op_id FROM journal ORDER BY rowid DESC LIMIT 1").fetchone() or {"op_id": ""})["op_id"])
+    _j_cu.close()
+    check("P0-2: cleanup failure is never recorded as complete",
+          "committed cleanup pending" in _cu_err
+          and _st_cu == cp.JOURNAL_CLEANUP_PENDING)
+    _j_cu2 = cp.connect_journal(_ctx_cu)
+    _rec_cu = cp.recover_pending(_j_cu2, ctx=_ctx_cu)
+    _row_cu2 = cp.journal_row(_j_cu2, _oid_cu)
+    _j_cu2.close()
+    check("P0-2: recover finishes committed-cleanup-pending to complete",
+          _oid_cu in _rec_cu
+          and str((_row_cu2 or {}).get("status") or "") == "complete")
+
+with _Env73() as _e_fg:
+    _ctx_fg = sc.resolve_store(_e_fg.proj)
+    import local_ingress as _li_fg
+    _up_fg = _li_fg.local_upsert(
+        _ctx_fg, "forget-me",
+        "---\nname: forget-me\ndescription: secret body\n---\nPREVIOUS-BODY\n")
+    _fg = _li_fg.local_forget(_ctx_fg, "forget-me")
+    _trash_fg = list(_e_fg.store.glob(".cm-trash-*"))
+    _rec_fg = _ctx_fg.plugin_data_dir / "recovery"
+    _rec_left = []
+    if _rec_fg.is_dir():
+        _rec_left = [p for p in _rec_fg.rglob("*") if p.is_file()]
+    check("P0-2: successful forget leaves no original body in trash or recovery",
+          _up_fg.get("ok") is True and _fg.get("ok") is True
+          and not (_e_fg.store / "forget-me.md").exists()
+          and _trash_fg == []
+          and not any("PREVIOUS-BODY" in p.read_text(encoding="utf-8", errors="replace")
+                      for p in _rec_left))
+
+with _Env73() as _e_ab:
+    _ctx_ab = sc.resolve_store(_e_ab.proj)
+    _j_ab = cp.connect_journal(_ctx_ab)
+    _oid_ab = "op_abandontrash01"
+    _trash_ab = _e_ab.store / ".cm-trash-op_abandontrash01-0"
+    _e_ab.store.mkdir(parents=True, exist_ok=True)
+    _trash_ab.write_text("STILL-HERE\n", encoding="utf-8")
+    _j_ab.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (_oid_ab, "local-forget",
+         _json_xp.dumps({"deletes": [{"path": str(_e_ab.store / "x.md"),
+                                      "trash": str(_trash_ab),
+                                      "preimage": "ab" * 32}]}),
+         "after_trash", "pending", "2026-09-01T00:00:00Z"))
+    _j_ab.commit()
+    _j_ab.close()
+    _ab_err = ""
+    try:
+        cp.journal_abandon(_ctx_ab, _oid_ab)
+    except sc.WriteRefused as e:
+        _ab_err = str(e)
+    check("P0-2: journal abandon refuses while trash is present",
+          "trash/recovery still present" in _ab_err
+          and _trash_ab.is_file())
+    _ab_ok = cp.journal_abandon(_ctx_ab, _oid_ab, accept_fs=True)
+    check("P0-2: journal abandon --accept-fs records the operator verification",
+          _ab_ok.get("ok") is True and _ab_ok.get("accepted_fs") is True)
+
+with _Env73() as _e_rbk:
+    _ctx_rbk = sc.resolve_store(_e_rbk.proj)
+    _j_rbk = cp.connect_journal(_ctx_rbk)
+    _oid_rbk = "op_restorefail01"
+    _j_rbk.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (_oid_rbk, "probe", _json_xp.dumps({"deletes": []}),
+         "cleanup_pending", cp.JOURNAL_CLEANUP_PENDING, "2026-09-01T00:00:00Z"))
+    _j_rbk.commit()
+    _j_rbk.close()
+    _rbk_err = ""
+    try:
+        cp.journal_rollback(_ctx_rbk, _oid_rbk)
+    except sc.WriteRefused as e:
+        _rbk_err = str(e)
+    _j_rbk2 = cp.connect_journal(_ctx_rbk)
+    _st_rbk = str((cp.journal_row(_j_rbk2, _oid_rbk) or {}).get("status") or "")
+    _j_rbk2.close()
+    check("P0-2: failed restoration is not silently abandoned",
+          "cannot rollback after registry commit" in _rbk_err
+          and _st_rbk == cp.JOURNAL_CLEANUP_PENDING)
+
+with _Env73() as _e_st:
+    _ctx_st = sc.resolve_store(_e_st.proj)
+    _p_st = _ctx_st.canonical_domain_dir / "status-race.md"
+    _p_st.parent.mkdir(parents=True, exist_ok=True)
+    _p_st.write_text(
+        "---\nname: status-race\ndescription: d\nstatus: active\n"
+        "schema_version: 3\n---\nOLD\n", encoding="utf-8")
+    _snap_st = cp.read_snapshot(_p_st)
+    _p_st.write_text(
+        "---\nname: status-race\ndescription: d\nstatus: active\n"
+        "schema_version: 3\n---\nCONCURRENT\n", encoding="utf-8")
+    _st_err = ""
+    try:
+        cp.transact(
+            _ctx_st, "canonical-status", {"stem": "status-race"},
+            lambda c, t: t.__setitem__(str(_p_st), "FROM-OLD\n") or {},
+            expected_revisions={str(_p_st): _snap_st.sha256})
+    except sc.WriteRefused as e:
+        _st_err = str(e)
+    check("P0-3: snapshot hash refuses a concurrent dest edit (no bless-new-hash)",
+          "source changed" in _st_err
+          and "CONCURRENT" in _p_st.read_text(encoding="utf-8"))
+
+with _Env73() as _e_rc:
+    _ctx_rc = sc.resolve_store(_e_rc.proj)
+    _old_rc = _osB.environ.get("CM_CRASH_AFTER")
+    _osB.environ["CM_CRASH_AFTER"] = "cleanup_pending"
+    try:
+        cp.transact(_ctx_rc, "probe-crash-cu", {"k": 1},
+                    lambda c, t: t.__setitem__(
+                        str(_e_rc.store / "c.md"), "body\n") or {})
+        _crashed_rc = False
+    except cp.CrashSimulated:
+        _crashed_rc = True
+    finally:
+        if _old_rc is None:
+            _osB.environ.pop("CM_CRASH_AFTER", None)
+        else:
+            _osB.environ["CM_CRASH_AFTER"] = _old_rc
+    _j_rc = cp.connect_journal(_ctx_rc)
+    _row_rc = _j_rc.execute(
+        "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
+    _j_rc.close()
+    check("P0-2: crash after cleanup_pending leaves committed-cleanup-pending",
+          _crashed_rc and str(_row_rc["status"] if _row_rc else "") == cp.JOURNAL_CLEANUP_PENDING)
+
+with _Env73() as _e_crg:
+    _ctx_crg = sc.resolve_store(_e_crg.proj)
+    _old_crg = _osB.environ.get("CM_CRASH_AFTER")
+    _osB.environ["CM_CRASH_AFTER"] = "commit_registry"
+    try:
+        cp.transact(_ctx_crg, "probe-crash-cr", {"k": 1},
+                    lambda c, t: t.__setitem__(
+                        str(_e_crg.store / "cr.md"), "body\n") or {})
+        _crashed_crg = False
+    except cp.CrashSimulated:
+        _crashed_crg = True
+    finally:
+        if _old_crg is None:
+            _osB.environ.pop("CM_CRASH_AFTER", None)
+        else:
+            _osB.environ["CM_CRASH_AFTER"] = _old_crg
+    _j_crg = cp.connect_journal(_ctx_crg)
+    _row_crg = _j_crg.execute(
+        "SELECT status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
+    _j_crg.close()
+    check("P0-2: crash after registry COMMIT is committed-cleanup-pending (no republish)",
+          _crashed_crg
+          and str(_row_crg["status"] if _row_crg else "") == cp.JOURNAL_CLEANUP_PENDING)
+
+with _Env73() as _e_rcpt:
+    _ctx_rcpt = sc.resolve_store(_e_rcpt.proj)
+    _j_rcpt = cp.connect_journal(_ctx_rcpt)
+    _oid_rcpt = "op_oldcomplete0001"
+    _j_rcpt.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        (_oid_rcpt, "local-forget",
+         _json_xp.dumps({"publishes": [{"dest": "x.md", "sha256": "ab" * 32}]}),
+         "journal_complete", "complete",
+         "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z"))
+    _j_rcpt.commit()
+    _j_rcpt.close()
+    _cout_r = cp.compact_journal(_ctx_rcpt)
+    _j_rcpt2 = cp.connect_journal(_ctx_rcpt)
+    _shown_r = cp.journal_show(_j_rcpt2, _oid_rcpt)
+    _j_rcpt2.close()
+    _pl_r = (_shown_r or {}).get("payload") or {}
+    check("P1-9: complete rows older than 90 days collapse to a receipt",
+          _cout_r.get("ok") is True
+          and int(_cout_r.get("receipts") or 0) >= 1
+          and _pl_r.get("receipt") is True
+          and "publishes" not in _pl_r)
+
+with _Env73() as _e_or:
+    _ctx_or = sc.resolve_store(_e_or.proj)
+    _j_or = cp.connect_journal(_ctx_or)
+    _oid_hold = "op_pendingtrash01"
+    _trash_hold = _e_or.store / (".cm-trash-%s-0" % _oid_hold)
+    _trash_hold.write_text("COMPLETE-OLD-BODY\n", encoding="utf-8")
+    _orphan = _e_or.store / ".cm-trash-op_orphan00000001-0"
+    _orphan.write_text("ORPHAN-BODY\n", encoding="utf-8")
+    _j_or.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        (_oid_hold, "local-forget",
+         _json_xp.dumps({"origin_project_id": "p_other",
+                         "origin_domain_id": "other",
+                         "deletes": [{"path": str(_e_or.store / "gone.md"),
+                                      "trash": str(_trash_hold),
+                                      "preimage": "ab" * 32}]}),
+         "after_trash", "pending", "2026-09-01T00:00:00Z"))
+    _j_or.commit()
+    _j_or.close()
+    _plan_or = cp.journal_cleanup(_ctx_or, apply=False)
+    check("P0-2: journal cleanup plan omits pending complete-old trash",
+          str(_trash_hold) not in (_plan_or.get("trash") or [])
+          and str(_orphan) in (_plan_or.get("trash") or []))
+    _app_or = cp.journal_cleanup(_ctx_or, apply=True)
+    check("P0-2: journal cleanup apply does not unlink pending trash",
+          _app_or.get("ok") is True
+          and _trash_hold.is_file()
+          and _trash_hold.read_text(encoding="utf-8") == "COMPLETE-OLD-BODY\n"
+          and not _orphan.exists())
+    check("P0-2: journal cleanup apply scavenges true orphan trash",
+          not _orphan.exists())
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

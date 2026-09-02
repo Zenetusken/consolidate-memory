@@ -2,6 +2,7 @@
 """Bounded operational history in ${CLAUDE_PLUGIN_DATA}. Native plane stays facts-only."""
 from __future__ import annotations
 
+import uuid
 import json
 import os
 import time
@@ -331,7 +332,7 @@ def compact_jsonl(path: Path, *, keep: int, older_than_days: Optional[int] = Non
             except (ValueError, OverflowError):
                 pass
         kept.append(row)
-    tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+    tmp = path.with_suffix(path.suffix + f".tmp-{uuid.uuid4().hex[:12]}")
     with tmp.open("w", encoding="utf-8") as fh:
         for row in kept:
             fh.write(json.dumps(row, sort_keys=True) + "\n")

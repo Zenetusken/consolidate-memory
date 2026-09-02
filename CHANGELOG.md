@@ -12,6 +12,21 @@ cadence fact (model stamped the displayed `Nw`, not store `windows_full`),
 and `cm local` reused the global 88-char `[]()` sanitizer as the always-loaded
 hook. Public **1.0 stays HOLD**.
 
+### Fixed — journal terminal cleanup (Phase 2 / P0-2, P0-3, P1-4, P1-5, P1-9)
+
+- **`committed-cleanup-pending`.** After registry COMMIT the journal is not
+  `complete` until trash, recovery blobs, and temps are deleted and verified
+  gone. Cleanup returns `{deleted, missing, errors}` and never swallows
+  `OSError`. `cm journal cleanup` retries leftovers and scavenges only
+  orphan/terminal artifacts — never pending/failed/conflicted trash.
+- **`journal.sqlite` is journal-only.** `connect_base` / `connect_registry` /
+  `connect_journal`; `locks/schema.lock` + `PRAGMA user_version`. Temps are
+  `{name}.tmp-{op_id}`, never PID.
+- **Abandon/rollback.** Abandon refuses while trash/recovery remains unless
+  `--accept-fs`. Rollback of a post-commit op is refused. Compact collapses
+  90-day-old complete/abandoned rows to receipts.
+- **Snapshot-then-transform** for canonical status (no bless-new-hash).
+
 ### Fixed — demotion counter-justify (O1, R128-1, R128-2)
 
 - **`--justify-demotion STEM` script-writes the stamp** under the project

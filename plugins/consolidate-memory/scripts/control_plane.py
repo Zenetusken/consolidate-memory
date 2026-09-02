@@ -64,14 +64,6 @@ CREATE TABLE IF NOT EXISTS tombstones (
     replacement_id TEXT,
     grace_until TEXT
 );
-CREATE TABLE IF NOT EXISTS journal (
-    op_id TEXT PRIMARY KEY,
-    kind TEXT,
-    payload TEXT,
-    step TEXT,
-    status TEXT,
-    created_at TEXT
-);
 CREATE TABLE IF NOT EXISTS usage_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     project_id TEXT,
@@ -131,9 +123,22 @@ JOURNAL_STEPS = (
     "after_dests",
     "publish",
     "commit_registry",
+    "cleanup_pending",
     "journal_complete",
 )
+JOURNAL_CLEANUP_PENDING = "committed-cleanup-pending"
+REGISTRY_USER_VERSION = 2
+JOURNAL_USER_VERSION = 1
+JOURNAL_RECEIPT_DAYS = 90
+# v0.4.0 review: receipt-collapse bounds PAYLOAD size, never ROW count — a row
+# cap deletes the oldest terminal (complete/abandoned) rows when exceeded, run
+# from journal_cleanup (the one locked place both DBs are open).
+JOURNAL_MAX_ROWS = 50_000
+JOURNAL_TABLES = frozenset({"journal", "journal_metadata"})
 JOURNAL_BLOCKING = frozenset({"failed", "conflicted"})
+# Filesystem preimages for these statuses are live complete-old state.
+# cm journal cleanup must not unlink them.
+JOURNAL_HOLD_FS = frozenset({"pending", "failed", "conflicted"})
 DOMAIN_LIFECYCLE_KINDS = frozenset({
     "domain-deleting", "domain-deleted", "purge-domain", "purge-all-plugin-data",
 })
@@ -379,13 +384,6 @@ def db_path(ctx: Optional[StoreContext] = None, environ: Optional[dict] = None) 
     return plugin_data_dir(environ=environ) / "control.sqlite"
 
 
-def connect_journal(ctx: Optional[StoreContext] = None,
-                    environ: Optional[dict] = None) -> sqlite3.Connection:
-    conn = connect(journal_db_path(ctx, environ))
-    conn.executescript(JOURNAL_ONLY_SQL)
-    return conn
-
-
 def journal_db_path(ctx: Optional[StoreContext] = None, environ: Optional[dict] = None) -> Path:
     if ctx is not None:
         return ctx.plugin_data_dir / "journal.sqlite"
@@ -399,12 +397,18 @@ CREATE TABLE IF NOT EXISTS journal (
     payload TEXT,
     step TEXT,
     status TEXT,
-    created_at TEXT
+    created_at TEXT,
+    completed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS journal_metadata (
+    key TEXT PRIMARY KEY,
+    value TEXT
 );
 """
 
 
-def connect(path: Path) -> sqlite3.Connection:
+def connect_base(path: Path) -> sqlite3.Connection:
+    """Open SQLite with WAL/FK/chmod. No DDL, no schema lock."""
     path.parent.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(str(path.parent), 0o700)
@@ -421,9 +425,95 @@ def connect(path: Path) -> sqlite3.Connection:
         conn.execute("PRAGMA journal_mode=WAL")
     except sqlite3.Error:
         pass
-    conn.executescript(SCHEMA_SQL)
-    _migrate_schema(conn)
     return conn
+
+
+def _schema_lock_for(db_path: Path) -> "FileLock":
+    return FileLock(db_path.parent / "locks" / "schema.lock")
+
+
+def _sqlite_user_version(conn: sqlite3.Connection) -> int:
+    row = conn.execute("PRAGMA user_version").fetchone()
+    return int(row[0] if row is not None else 0)
+
+
+def _set_user_version(conn: sqlite3.Connection, n: int) -> None:
+    conn.execute("PRAGMA user_version = %d" % int(n))
+    conn.commit()
+
+
+def _has_registry_tables(conn: sqlite3.Connection) -> bool:
+    names = {str(r[0]) for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table'")}
+    return "projects" in names and "facts" in names and "holders" in names
+
+
+def connect_registry(path: Path) -> sqlite3.Connection:
+    """Writable control.sqlite: schema lock → user_version → one migration."""
+    path = Path(path)
+    lock = _schema_lock_for(path)
+    lock.acquire()
+    try:
+        conn = connect_base(path)
+        ver = _sqlite_user_version(conn)
+        if ver > REGISTRY_USER_VERSION:
+            conn.close()
+            raise WriteRefused(
+                "control.sqlite schema version %s is newer than this plugin (%s)"
+                % (ver, REGISTRY_USER_VERSION))
+        if ver < REGISTRY_USER_VERSION:
+            if ver == 0 and not _has_registry_tables(conn):
+                conn.executescript(SCHEMA_SQL)
+            _migrate_schema(conn)
+            _set_user_version(conn, REGISTRY_USER_VERSION)
+        return conn
+    finally:
+        lock.release()
+
+
+def connect(path: Path) -> sqlite3.Connection:
+    """Registry connection (backward-compatible name)."""
+    return connect_registry(path)
+
+
+def connect_journal(ctx: Optional[StoreContext] = None,
+                    environ: Optional[dict] = None) -> sqlite3.Connection:
+    """journal.sqlite: journal + journal_metadata only. Never registry DDL."""
+    path = journal_db_path(ctx, environ)
+    lock = _schema_lock_for(path)
+    lock.acquire()
+    try:
+        conn = connect_base(path)
+        conn.executescript(JOURNAL_ONLY_SQL)
+        _migrate_journal_schema(conn)
+        ver = _sqlite_user_version(conn)
+        if ver > JOURNAL_USER_VERSION:
+            # Pre-split code ran connect() (registry DDL + user_version) on this
+            # file. Ignore leftover registry tables; keep serving the journal.
+            if "journal" not in journal_table_names(conn):
+                conn.close()
+                raise WriteRefused(
+                    "journal.sqlite schema version %s is newer than this plugin (%s)"
+                    % (ver, JOURNAL_USER_VERSION))
+            return conn
+        if ver < JOURNAL_USER_VERSION:
+            _set_user_version(conn, JOURNAL_USER_VERSION)
+        return conn
+    finally:
+        lock.release()
+
+
+def journal_table_names(conn: sqlite3.Connection) -> set:
+    return {str(r[0]) for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' "
+        "AND name NOT LIKE 'sqlite_%'")}
+
+
+def _migrate_journal_schema(conn: sqlite3.Connection) -> None:
+    cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(journal)").fetchall()}
+    if cols and "completed_at" not in cols:
+        conn.execute("ALTER TABLE journal ADD COLUMN completed_at TEXT")
+        conn.commit()
 
 
 def connect_readonly(path: Path) -> sqlite3.Connection:
@@ -1111,13 +1201,24 @@ def journal_insert(conn: sqlite3.Connection, kind: str, payload: dict, step: str
 
 
 def journal_step(conn: sqlite3.Connection, op_id: str, step: str, status: str = "pending") -> None:
-    conn.execute("UPDATE journal SET step=?, status=? WHERE op_id=?", (step, status, op_id))
+    now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(journal)").fetchall()}
+    if status in ("complete", "abandoned") and "completed_at" in cols:
+        conn.execute(
+            "UPDATE journal SET step=?, status=?, completed_at=COALESCE(completed_at, ?) "
+            "WHERE op_id=?",
+            (step, status, now, op_id))
+    else:
+        conn.execute("UPDATE journal SET step=?, status=? WHERE op_id=?",
+                     (step, status, op_id))
     conn.commit()
 
 
 def pending_ops(conn: sqlite3.Connection) -> list:
     rows = conn.execute(
-        "SELECT op_id, kind, payload, step, status FROM journal WHERE status='pending'"
+        "SELECT op_id, kind, payload, step, status FROM journal "
+        "WHERE status IN ('pending', ?)",
+        (JOURNAL_CLEANUP_PENDING,),
     ).fetchall()
     return [dict(r) for r in rows]
 
@@ -1166,8 +1267,9 @@ def _write_exclusive(path: Path, data: bytes) -> None:
         os.close(fd)
 
 
-def _secure_unlink(path: Path) -> None:
-    """Overwrite then unlink a recovery blob so forgotten bodies do not linger."""
+def _secure_unlink(path: Path) -> dict:
+    """Overwrite then unlink a recovery blob. Never swallows the terminal error."""
+    out: dict = {"path": str(path), "deleted": False, "error": ""}
     try:
         size = path.stat().st_size
         fd = os.open(str(path), os.O_WRONLY)
@@ -1183,11 +1285,20 @@ def _secure_unlink(path: Path) -> None:
         finally:
             os.close(fd)
         path.unlink()
-    except OSError:
         try:
-            path.unlink()
+            fsync_dir(path.parent)
         except OSError:
             pass
+        out["deleted"] = True
+        return out
+    except OSError as e:
+        try:
+            path.unlink()
+            out["deleted"] = True
+            return out
+        except OSError as e2:
+            out["error"] = e2.__class__.__name__ or e.__class__.__name__
+            return out
 
 
 def _recovery_dir(ctx: Optional[StoreContext], op_id: str) -> Path:
@@ -1215,18 +1326,34 @@ def _recovery_dir(ctx: Optional[StoreContext], op_id: str) -> Path:
     return d
 
 
-def _cleanup_recovery(ctx: Optional[StoreContext], op_id: str) -> None:
+def _cleanup_recovery(ctx: Optional[StoreContext], op_id: str) -> dict:
+    """Remove recovery/<op-id>/. Structured result; never silent-success on error."""
+    out: dict = {"deleted": [], "missing": [], "errors": []}
     root = ctx.plugin_data_dir if ctx is not None else plugin_data_dir()
     d = root / "recovery" / op_id
     if not d.is_dir():
-        return
+        out["missing"].append(str(d))
+        return out
     try:
-        for p in d.iterdir():
+        for p in list(d.iterdir()):
             if p.is_file():
-                _secure_unlink(p)
-        d.rmdir()
-    except OSError:
-        pass
+                r = _secure_unlink(p)
+                if r.get("deleted"):
+                    out["deleted"].append(str(p))
+                elif r.get("error"):
+                    out["errors"].append({"path": str(p), "error": r["error"]})
+                elif p.exists():
+                    out["errors"].append({"path": str(p), "error": "still-present"})
+        if not out["errors"]:
+            try:
+                d.rmdir()
+                fsync_dir(d.parent)
+            except OSError as e:
+                if d.is_dir() and any(d.iterdir()):
+                    out["errors"].append({"path": str(d), "error": e.__class__.__name__})
+    except OSError as e:
+        out["errors"].append({"path": str(d), "error": e.__class__.__name__})
+    return out
 
 
 def _dest_contained(dest: Path, parent: Path) -> bool:
@@ -1277,7 +1404,8 @@ def _load_preimage_bytes(item: dict) -> Optional[bytes]:
     return None
 
 
-def _snapshot_dest_preimages(publishes: list, *, recovery: Path) -> list:
+def _snapshot_dest_preimages(publishes: list, *, recovery: Path,
+                             op_id: str = "") -> list:
     """Snapshot dest bytes to recovery files — never into the journal payload."""
     out: list = []
     for i, item in enumerate(publishes):
@@ -1305,12 +1433,14 @@ def _snapshot_dest_preimages(publishes: list, *, recovery: Path) -> list:
                 "absent": False, "mode": mode, "blob": str(blob),
                 "published_sha256": published,
                 "orig_mode": orig_mode,
+                "op_id": op_id,
             })
         else:
             out.append({
                 "dest": str(dest), "sha256": ABSENT, "absent": True,
                 "mode": mode, "blob": "", "published_sha256": published,
                 "orig_mode": 0,
+                "op_id": op_id,
             })
     return out
 
@@ -1346,10 +1476,14 @@ def _restore_dest_preimages(preimages: list,
             raw = _load_preimage_bytes(item)
             if raw is None:
                 raise WriteRefused("cannot restore dest (missing preimage): " + str(dest))
-            tmp = dest.with_suffix(dest.suffix + f".restore{os.getpid()}")
+            tmp = _op_sidecar(dest, str(item.get("op_id") or "restore"), "restore")
             tmp.unlink(missing_ok=True)
             _write_exclusive(tmp, raw)
             os.replace(str(tmp), str(dest))
+            try:
+                fsync_dir(dest.parent)
+            except OSError:
+                pass
             want_mode = int(item.get("orig_mode") or 0o600)
             if want_mode:
                 try:
@@ -1523,6 +1657,10 @@ def expire_recovery(ctx: Optional[StoreContext], conn: sqlite3.Connection) -> in
             continue
         oid = d.name
         st = live.get(oid)
+        if st in ("failed", "conflicted"):
+            # v0.4.0 review: recovery material for a retryable op must not expire
+            # while `journal retry` still offers restoration — keep it.
+            continue
         expired = False
         meta_p = d / "meta.json"
         if meta_p.is_file():
@@ -1534,12 +1672,88 @@ def expire_recovery(ctx: Optional[StoreContext], conn: sqlite3.Connection) -> in
                         time.strptime(exp, "%Y-%m-%dT%H:%M:%SZ")) < now
             except (ValueError, TypeError, OSError, OverflowError):
                 expired = False
-        keep_pending = st in ("pending", "failed", "conflicted")
+        keep_pending = st in ("pending", "failed", "conflicted", JOURNAL_CLEANUP_PENDING)
         if keep_pending and not expired:
             continue
         if st in ("complete", "abandoned") or st is None or (expired and not keep_pending):
-            _cleanup_recovery(ctx, oid)
+            rec = _cleanup_recovery(ctx, oid)
+            if not rec.get("errors"):
+                n += 1
+    return n
+
+
+def _journal_age_days(row: dict) -> float:
+    ts = str(row.get("completed_at") or row.get("created_at") or "")
+    if not ts:
+        return 0.0
+    try:
+        epoch = calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
+    except (ValueError, TypeError, OverflowError):
+        return 0.0
+    return max(0.0, (time.time() - epoch) / 86400.0)
+
+
+def _receipt_payload(row: dict, payload: dict) -> dict:
+    ops = payload.get("registry_ops") or []
+    digest = hashlib.sha256(
+        json.dumps(ops, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
+    sources = []
+    for s in payload.get("sources") or payload.get("expected_revisions") or []:
+        if isinstance(s, dict):
+            sources.append(str(s.get("sha256") or ""))
+        elif isinstance(s, str):
+            sources.append(s)
+    dests = [str(p.get("sha256") or "") for p in (payload.get("publishes") or [])
+             if isinstance(p, dict)]
+    return {
+        "receipt": True,
+        "kind": row.get("kind"),
+        "terminal_status": row.get("status"),
+        "created_at": row.get("created_at"),
+        "completed_at": row.get("completed_at") or "",
+        "source_hashes": [h for h in sources if h],
+        "dest_hashes": [h for h in dests if h],
+        "registry_ops_digest": digest,
+    }
+
+
+def bound_journal_rows(conn: sqlite3.Connection, *, days: int = JOURNAL_RECEIPT_DAYS,
+                       max_rows: int = 0) -> int:
+    """Collapse old complete/abandoned rows to receipts; with max_rows, DELETE the
+    oldest terminal rows beyond the cap. Never touch pending/failed/conflicted."""
+    n = 0
+    rows = conn.execute(
+        "SELECT op_id, kind, payload, status, created_at, "
+        "COALESCE(completed_at, '') AS completed_at FROM journal"
+    ).fetchall()
+    for row in rows:
+        status = str(row["status"] or "")
+        if status not in ("complete", "abandoned"):
+            continue
+        if _journal_age_days(dict(row)) < days:
+            continue
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except (ValueError, TypeError):
+            payload = {}
+        if isinstance(payload, dict) and payload.get("receipt"):
+            continue
+        receipt = _receipt_payload(dict(row), payload if isinstance(payload, dict) else {})
+        conn.execute("UPDATE journal SET payload=? WHERE op_id=?",
+                     (json.dumps(receipt, sort_keys=True), row["op_id"]))
+        n += 1
+    if max_rows and max_rows > 0:
+        cur = conn.execute("SELECT COUNT(*) AS n FROM journal").fetchone()
+        total = int(cur["n"] or 0) if cur is not None else 0
+        if total > max_rows:
+            conn.execute(
+                "DELETE FROM journal WHERE op_id IN ("
+                "SELECT op_id FROM journal WHERE status IN ('complete','abandoned') "
+                "ORDER BY created_at LIMIT ?)",
+                (total - max_rows,))
             n += 1
+    if n:
+        conn.commit()
     return n
 
 
@@ -1549,14 +1763,189 @@ def compact_journal(ctx: StoreContext) -> dict:
     conn = connect_journal(ctx)
     try:
         n = redact_journal_payloads(conn)
+        n_bound = bound_journal_rows(conn)
         n_rec = expire_recovery(ctx, conn)
         try:
             conn.execute("VACUUM")
         except sqlite3.Error:
             pass
-        return {"ok": True, "redacted": n, "recovery_expired": n_rec}
+        return {"ok": True, "redacted": n, "receipts": n_bound,
+                "recovery_expired": n_rec}
     finally:
         conn.close()
+        release_locks(locks)
+
+
+def _artifact_op_id(name: str) -> Optional[str]:
+    """Best-effort op_id from `.cm-trash-OP-N` / `name.tmp-OP` / `name.restore-OP`."""
+    if name.startswith(".cm-trash-"):
+        rest = name[len(".cm-trash-"):]
+        if not rest:
+            return None
+        op, sep, idx = rest.rpartition("-")
+        if sep and idx.isdigit() and op:
+            return op
+        return rest
+    for kind in (".tmp-", ".restore-"):
+        if kind in name:
+            tail = name.rsplit(kind, 1)[-1]
+            return tail or None
+    return None
+
+
+def _iter_store_roots(ctx: StoreContext, *, all_stores: bool) -> list:
+    roots = [ctx.native_memory_dir, ctx.canonical_domain_dir, ctx.plugin_data_dir]
+    if all_stores:
+        conn = connect_if_exists(db_path(ctx))
+        if conn is not None:
+            try:
+                for r in conn.execute(
+                        "SELECT native_memory_dir FROM projects").fetchall():
+                    p = Path(str(r["native_memory_dir"] or ""))
+                    if p:
+                        roots.append(p)
+            finally:
+                conn.close()
+        droot = ctx.config_root / "consolidate-memory" / "domains"
+        if droot.is_dir():
+            for d in droot.iterdir():
+                facts = d / "facts"
+                if facts.is_dir():
+                    roots.append(facts)
+    out: list = []
+    seen: set = set()
+    for p in roots:
+        try:
+            key = str(p.resolve())
+        except OSError:
+            key = str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(p)
+    return out
+
+
+def _scavenge_artifact(name: str, live: dict) -> bool:
+    """True when this sidecar is orphan/terminal. Never pending/failed/conflicted."""
+    oid = _artifact_op_id(name)
+    if not oid:
+        return False
+    st = live.get(oid)
+    if st in JOURNAL_HOLD_FS:
+        return False
+    if st is None and not oid.startswith("op_") and not name.startswith(".cm-trash-"):
+        return False
+    return True
+
+
+def scan_orphan_artifacts(ctx: StoreContext, *, all_stores: bool = False) -> dict:
+    """Find leftover .cm-trash-*, recovery dirs, and op-id temps.
+
+    Pending/failed/conflicted preimages are live complete-old state and are
+    omitted — `cm journal cleanup` must not unlink them.
+    """
+    conn = connect_journal(ctx)
+    try:
+        live = {str(r["op_id"]): str(r["status"] or "")
+                for r in conn.execute("SELECT op_id, status FROM journal").fetchall()}
+        cleanup_pending = [
+            oid for oid, st in live.items() if st == JOURNAL_CLEANUP_PENDING]
+    finally:
+        conn.close()
+    trash: list = []
+    temps: list = []
+    recovery: list = []
+    for root in _iter_store_roots(ctx, all_stores=all_stores):
+        if not root.is_dir():
+            continue
+        try:
+            for p in root.rglob("*"):
+                name = p.name
+                if not p.is_file():
+                    continue
+                if name.startswith(".cm-trash-"):
+                    if _scavenge_artifact(name, live):
+                        trash.append(str(p))
+                elif ".tmp-" in name or ".restore-" in name:
+                    if _scavenge_artifact(name, live):
+                        temps.append(str(p))
+        except OSError:
+            continue
+    rec_root = ctx.plugin_data_dir / "recovery"
+    if rec_root.is_dir():
+        for d in rec_root.iterdir():
+            if d.is_dir():
+                st = live.get(d.name)
+                if st in ("complete", "abandoned") or st is None:
+                    recovery.append(str(d))
+    return {
+        "cleanup_pending": cleanup_pending,
+        "trash": trash,
+        "temps": temps,
+        "recovery": recovery,
+    }
+
+
+def journal_cleanup(ctx: StoreContext, *, apply: bool = False,
+                    all_stores: bool = False) -> dict:
+    """Retry committed-cleanup-pending and scavenge orphan trash/recovery."""
+    require_interprocess_lock()
+    if not apply:
+        scan = scan_orphan_artifacts(ctx, all_stores=all_stores)
+        return {"ok": True, "apply": False, **scan}
+    locks = acquire_mutation_locks(ctx, [ctx.project_id])
+    recovered: list = []
+    errors: list = []
+    jconn = connect_journal(ctx)
+    rconn = connect(db_path(ctx))
+    rconn.isolation_level = None
+    try:
+        recovered = recover_pending(jconn, ctx=ctx, registry_conn=rconn)
+        # Re-scan under the mutation locks so we never unlink a concurrent
+        # transact's complete-old trash from the pre-lock plan snapshot.
+        scan2 = scan_orphan_artifacts(ctx, all_stores=all_stores)
+        for path_s in scan2.get("trash") or []:
+            p = Path(path_s)
+            if not p.exists():
+                continue
+            try:
+                p.unlink()
+                fsync_dir(p.parent)
+            except OSError as e:
+                errors.append({"path": path_s, "error": e.__class__.__name__})
+        for path_s in scan2.get("temps") or []:
+            p = Path(path_s)
+            if not p.exists():
+                continue
+            try:
+                p.unlink()
+                fsync_dir(p.parent)
+            except OSError as e:
+                errors.append({"path": path_s, "error": e.__class__.__name__})
+        rec_root = ctx.plugin_data_dir / "recovery"
+        if rec_root.is_dir():
+            live = {str(r["op_id"]): str(r["status"] or "")
+                    for r in jconn.execute("SELECT op_id, status FROM journal").fetchall()}
+            for d in list(rec_root.iterdir()):
+                if not d.is_dir():
+                    continue
+                st = live.get(d.name)
+                if st in JOURNAL_HOLD_FS or st == JOURNAL_CLEANUP_PENDING:
+                    continue
+                rec = _cleanup_recovery(ctx, d.name)
+                errors.extend(rec.get("errors") or [])
+        remaining = scan_orphan_artifacts(ctx, all_stores=all_stores)
+        # v0.4.0 review: a still-cleanup-pending op means a retry failed — `ok`
+        # must say so (the old `not errors` silently reported success with work
+        # left on the journal).
+        cp_left = remaining.get("cleanup_pending") or []
+        bound_journal_rows(jconn, max_rows=JOURNAL_MAX_ROWS)
+        return {"ok": bool(not errors and not cp_left), "apply": True,
+                "recovered": recovered, "errors": errors, "remaining": remaining}
+    finally:
+        jconn.close()
+        rconn.close()
         release_locks(locks)
 
 
@@ -1572,8 +1961,13 @@ def journal_rollback(ctx: StoreContext, op_id: str) -> dict:
         status = str(row["status"] or "")
         if status == "complete":
             raise WriteRefused("cannot rollback a complete journal op: " + op_id)
+        if status == JOURNAL_CLEANUP_PENDING:
+            raise WriteRefused(
+                "cannot rollback after registry commit; use journal retry: "
+                + op_id)
         step = str(row.get("step") or "")
-        if step in ("after_dests", "publish", "commit_registry", "journal_complete"):
+        if step in ("after_dests", "publish", "commit_registry", "cleanup_pending",
+                    "journal_complete"):
             raise WriteRefused(
                 "cannot rollback after dests published; use journal retry: "
                 + op_id)
@@ -1581,12 +1975,23 @@ def journal_rollback(ctx: StoreContext, op_id: str) -> dict:
             payload = json.loads(row["payload"] or "{}")
         except (ValueError, TypeError):
             payload = {}
-        _restore_dest_preimages(
+        dest_out = _restore_dest_preimages(
             payload.get("dest_preimages") or [], payload.get("publishes") or [])
-        _restore_trash(payload.get("deletes") or [])
+        trash_out = _restore_trash(payload.get("deletes") or [])
+        if trash_out.get("errors"):
+            raise WriteRefused(
+                "restore failed; not abandoned: "
+                + ", ".join(str(e.get("path") or e) for e in trash_out["errors"][:8]))
+        leftover = [str(d.get("trash")) for d in (payload.get("deletes") or [])
+                    if isinstance(d, dict) and d.get("trash")
+                    and Path(str(d.get("trash"))).exists()]
+        if leftover:
+            raise WriteRefused(
+                "restore left trash in place; not abandoned: " + leftover[0])
         journal_step(conn, op_id, "abandoned", "abandoned")
-        _cleanup_recovery(ctx, op_id)
-        return {"ok": True, "op_id": op_id, "status": "abandoned"}
+        _finish_sensitive_cleanup(ctx, op_id, payload)
+        return {"ok": True, "op_id": op_id, "status": "abandoned",
+                "restored": dest_out}
     finally:
         conn.close()
         release_locks(locks)
@@ -1621,8 +2026,12 @@ def journal_retry(ctx: StoreContext, op_id: str) -> dict:
         release_locks(locks)
 
 
-def journal_abandon(ctx: StoreContext, op_id: str) -> dict:
-    """Mark abandoned without restoring files (operator accepts current FS)."""
+def journal_abandon(ctx: StoreContext, op_id: str, *, accept_fs: bool = False) -> dict:
+    """Mark abandoned without restoring files (operator accepts current FS).
+
+    Refuses while transaction trash or recovery blobs are still present unless
+    `--accept-fs` records that the operator verified the filesystem.
+    """
     require_interprocess_lock()
     locks = acquire_mutation_locks(ctx, [ctx.project_id])
     conn = connect_journal(ctx)
@@ -1630,11 +2039,34 @@ def journal_abandon(ctx: StoreContext, op_id: str) -> dict:
         row = journal_row(conn, op_id)
         if row is None:
             raise WriteRefused("unknown journal op: " + op_id)
-        if str(row["status"] or "") == "complete":
+        status = str(row["status"] or "")
+        if status == "complete":
             raise WriteRefused("cannot abandon a complete journal op: " + op_id)
+        if status == JOURNAL_CLEANUP_PENDING:
+            # v0.4.0 review: rollback refuses cleanup-pending; abandon must too —
+            # the cleanup still owes work (trash/temps), so abandoning would record
+            # a terminal status over an unfinished transaction.
+            raise WriteRefused(
+                "cannot abandon a cleanup-pending op — run journal retry first: "
+                + op_id)
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except (ValueError, TypeError):
+            payload = {}
+        trash_present = [
+            str(d.get("trash")) for d in (payload.get("deletes") or [])
+            if isinstance(d, dict) and d.get("trash")
+            and Path(str(d.get("trash"))).exists()]
+        rec_dir = ctx.plugin_data_dir / "recovery" / op_id
+        rec_present = rec_dir.is_dir() and any(rec_dir.iterdir())
+        if (trash_present or rec_present) and not accept_fs:
+            raise WriteRefused(
+                "trash/recovery still present; pass --accept-fs after verifying FS: "
+                + (trash_present[0] if trash_present else str(rec_dir)))
         journal_step(conn, op_id, "abandoned", "abandoned")
-        _cleanup_recovery(ctx, op_id)
-        return {"ok": True, "op_id": op_id, "status": "abandoned"}
+        _finish_sensitive_cleanup(ctx, op_id, payload)
+        return {"ok": True, "op_id": op_id, "status": "abandoned",
+                "accepted_fs": accept_fs}
     finally:
         conn.close()
         release_locks(locks)
@@ -1719,6 +2151,7 @@ def _publish_destinations(publishes: list) -> Tuple[int, list]:
                 tmp.unlink(missing_ok=True)
             else:
                 os.replace(str(tmp), str(dest))
+                fsync_dir(dest.parent)
         if not dest.exists() or (want and _file_hash(dest) != want):
             bad.append(item)
             continue
@@ -1730,42 +2163,123 @@ def _publish_destinations(publishes: list) -> Tuple[int, list]:
     return n, bad
 
 
+def _op_id_safe(op_id: str) -> str:
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in (op_id or "anon"))[:48]
+
+
+def _op_sidecar(path: Path, op_id: str, kind: str) -> Path:
+    """Same-directory sidecar named by op-id, never PID (PID reuse is a collision)."""
+    return path.with_name(path.name + ".%s-%s" % (kind, _op_id_safe(op_id)))
+
+
 def _trash_name(path: Path, op_id: str, i: int) -> Path:
-    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in op_id)[:48]
-    return path.parent / f".cm-trash-{safe}-{i}"
+    return path.parent / (".cm-trash-%s-%d" % (_op_id_safe(op_id), i))
 
 
-def _restore_trash_records(records: list) -> None:
+def _restore_trash_records(records: list) -> dict:
+    """Restore trash → dest. Structured; rename errors are not silent."""
+    out: dict = {"restored": [], "missing": [], "errors": []}
     for rec in reversed(records):
         path = Path(str(rec.get("path") or ""))
         trash = Path(str(rec.get("trash") or ""))
-        if not path or not trash or not trash.exists():
+        if not path or not trash:
+            continue
+        if not trash.exists():
+            out["missing"].append(str(trash))
             continue
         if path.exists():
             q = _quarantine_dest(path)
             if q is None and path.exists():
+                out["errors"].append({"path": str(path), "error": "occupied"})
                 continue
         try:
             os.rename(str(trash), str(path))
-        except OSError:
-            pass
+            fsync_dir(path.parent)
+            out["restored"].append(str(path))
+        except OSError as e:
+            out["errors"].append({"path": str(trash), "error": e.__class__.__name__})
+    return out
 
 
-def _restore_trash(deletes: Optional[list]) -> None:
+def _restore_trash(deletes: Optional[list]) -> dict:
     recs = [d for d in (deletes or []) if isinstance(d, dict) and d.get("trash")]
-    _restore_trash_records(recs)
+    return _restore_trash_records(recs)
 
 
-def _commit_trash(deletes: Optional[list]) -> None:
+def _commit_trash(deletes: Optional[list]) -> dict:
+    """Unlink transaction trash. Missing is ok; OSError is an error, never complete."""
+    out: dict = {"deleted": [], "missing": [], "errors": []}
     for d in deletes or []:
         if not isinstance(d, dict):
             continue
         trash = Path(str(d.get("trash") or ""))
-        if trash.exists():
-            try:
-                trash.unlink()
-            except OSError:
-                pass
+        if not trash:
+            continue
+        if not trash.exists():
+            out["missing"].append(str(trash))
+            continue
+        try:
+            trash.unlink()
+            fsync_dir(trash.parent)
+            if trash.exists():
+                out["errors"].append({"path": str(trash), "error": "still-present"})
+            else:
+                out["deleted"].append(str(trash))
+        except OSError as e:
+            out["errors"].append({"path": str(trash), "error": e.__class__.__name__})
+    return out
+
+
+def _cleanup_temps(publishes: Optional[list]) -> dict:
+    out: dict = {"deleted": [], "missing": [], "errors": []}
+    for item in publishes or []:
+        tmp = Path(str((item or {}).get("tmp") or ""))
+        if not tmp:
+            continue
+        if not tmp.exists():
+            out["missing"].append(str(tmp))
+            continue
+        try:
+            tmp.unlink()
+            fsync_dir(tmp.parent)
+            out["deleted"].append(str(tmp))
+        except OSError as e:
+            out["errors"].append({"path": str(tmp), "error": e.__class__.__name__})
+    return out
+
+
+def _finish_sensitive_cleanup(ctx: Optional[StoreContext], op_id: str,
+                              payload: dict) -> dict:
+    """Delete trash, recovery blobs, and temps. Verify they are gone."""
+    if os.environ.get("CM_CLEANUP_FAIL") == "1":
+        return {"deleted": [], "missing": [], "errors": [
+            {"path": "<injected>", "error": "EACCES"}]}
+    trash = _commit_trash(payload.get("deletes") or [])
+    if ctx is not None:
+        rec = _cleanup_recovery(ctx, op_id)
+    else:
+        # v0.4.0 review: a missing StoreContext silently skipped recovery
+        # cleanup (no error recorded → a caller could mark the row complete
+        # with recovery blobs still on disk). Fail loud instead.
+        rec = {"deleted": [], "missing": [], "errors": [
+            {"path": "<recovery:" + str(op_id) + ">",
+             "error": "no StoreContext — recovery cleanup skipped"}]}
+    temps = _cleanup_temps(payload.get("publishes") or [])
+    errors = list(trash.get("errors") or []) + list(rec.get("errors") or []) + list(
+        temps.get("errors") or [])
+    for d in payload.get("deletes") or []:
+        if not isinstance(d, dict):
+            continue
+        p = Path(str(d.get("trash") or ""))
+        if p and p.exists():
+            errors.append({"path": str(p), "error": "still-present"})
+    return {
+        "deleted": list(trash.get("deleted") or []) + list(rec.get("deleted") or [])
+        + list(temps.get("deleted") or []),
+        "missing": list(trash.get("missing") or []) + list(rec.get("missing") or [])
+        + list(temps.get("missing") or []),
+        "errors": errors,
+    }
 
 
 def _apply_deletes(deletes: Optional[list], *, op_id: str = "") -> dict:
@@ -1776,7 +2290,12 @@ def _apply_deletes(deletes: Optional[list], *, op_id: str = "") -> dict:
     (fail closed). A preimage mismatch does NOT trash. Partial rename rolls
     already-trashed entries back.
     """
-    oid = op_id or ("anon%d" % os.getpid())
+    # v0.4.0 review: PID-based names are the exact convention this phase removed
+    # (two processes can collide and an orphan is unattributable) — use a hash
+    # name instead of resurrecting the PID fallback.
+    oid = op_id or ("anon-" + hashlib.sha256(
+        (os.getpid().to_bytes(4, "big") + int(time.time()).to_bytes(8, "big"))
+    ).hexdigest()[:12])
     out: dict = {
         "deleted": [], "already_absent": [], "preimage_mismatch": [],
         "errors": [], "deletes": [],
@@ -1845,6 +2364,7 @@ def _apply_deletes(deletes: Optional[list], *, op_id: str = "") -> dict:
                 os.chmod(str(trash), 0o600)
             except OSError:
                 pass
+            fsync_dir(path.parent)
             renamed.append(rec)
             out["deleted"].append(str(path))
         except OSError:
@@ -2022,6 +2542,17 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
         for op in pending_ops(conn):
             if op_id and op["op_id"] != op_id:
                 continue
+            if str(op.get("status") or "") == JOURNAL_CLEANUP_PENDING:
+                try:
+                    payload_cp = json.loads(op["payload"] or "{}")
+                except (ValueError, TypeError):
+                    payload_cp = {}
+                cleaned = _finish_sensitive_cleanup(ctx, str(op["op_id"]), payload_cp)
+                if cleaned.get("errors"):
+                    continue
+                journal_step(conn, op["op_id"], "journal_complete", "complete")
+                recovered.append(op["op_id"])
+                continue
             payload = json.loads(op["payload"] or "{}")
             publishes = payload.get("publishes") or []
             deletes = payload.get("deletes") or []
@@ -2113,9 +2644,16 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                     if rconn is not None and how is not None:
                         _commit_registry(rconn, how)
                         how = None
+                    payload["deletes"] = live_deletes
+                    _journal_put_payload(conn, op["op_id"], payload,
+                                         step="cleanup_pending")
+                    journal_step(conn, op["op_id"], "cleanup_pending",
+                                 JOURNAL_CLEANUP_PENDING)
+                    cleaned = _finish_sensitive_cleanup(
+                        ctx, str(op["op_id"]), payload)
+                    if cleaned.get("errors"):
+                        continue
                     journal_step(conn, op["op_id"], "journal_complete", "complete")
-                    _commit_trash(live_deletes)
-                    _cleanup_recovery(ctx, op["op_id"])
                     recovered.append(op["op_id"])
                 except (WriteRefused, sqlite3.Error):
                     if files_mutated:
@@ -2137,6 +2675,12 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                         rconn.commit()
                     except sqlite3.Error:
                         continue
+                journal_step(conn, op["op_id"], "cleanup_pending",
+                             JOURNAL_CLEANUP_PENDING)
+                cleaned = _finish_sensitive_cleanup(
+                    ctx, str(op["op_id"]), payload)
+                if cleaned.get("errors"):
+                    continue
                 journal_step(conn, op["op_id"], "journal_complete", "complete")
                 recovered.append(op["op_id"])
                 continue
@@ -2181,8 +2725,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
     require_interprocess_lock()
     crash = crash_after or os.environ.get("CM_CRASH_AFTER") or ""
     dbp = db_path(ctx)
-    conn = connect(journal_db_path(ctx))
-    conn.executescript(JOURNAL_ONLY_SQL)
+    conn = connect_journal(ctx)
     rconn = connect(dbp)
     rconn.isolation_level = None
     recovered: list = []
@@ -2194,7 +2737,9 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
     try:
         def _maybe_crash(step: str) -> None:
             if crash == step:
-                if op_id:
+                # After registry COMMIT the row is committed-cleanup-pending.
+                # Do not clobber it back to pending or recovery would republish.
+                if op_id and not registry_committed:
                     journal_step(conn, op_id, step, "pending")
                 raise CrashSimulated(step)
 
@@ -2240,7 +2785,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
             else:
                 text = content if str(content).endswith("\n") else str(content) + "\n"
                 data = text.encode("utf-8")
-            tmp = dest.with_suffix(dest.suffix + f".tmp{os.getpid()}")
+            tmp = _op_sidecar(dest, op_id or "anon", "tmp")
             tmp.unlink(missing_ok=True)
             _write_exclusive(tmp, data)
             publishes.append({
@@ -2281,7 +2826,7 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         rec_dir = _recovery_dir(ctx, op_id)
         try:
             payload["dest_preimages"] = _snapshot_dest_preimages(
-                publishes, recovery=rec_dir)
+                publishes, recovery=rec_dir, op_id=op_id or "")
         except WriteRefused:
             for item in publishes:
                 Path(item["tmp"]).unlink(missing_ok=True)
@@ -2372,13 +2917,18 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
                 "registry commit failed: " + str(e), restore=True,
                 status="conflicted")
         registry_committed = True
+        journal_step(conn, op_id, "cleanup_pending", JOURNAL_CLEANUP_PENDING)
         _maybe_crash("commit_registry")
+        _maybe_crash("cleanup_pending")
+        cleaned = _finish_sensitive_cleanup(ctx, op_id, payload)
+        if cleaned.get("errors"):
+            raise WriteRefused(
+                "committed cleanup pending: "
+                + ", ".join(str(e.get("path") or e) for e in cleaned["errors"][:8]))
         journal_step(conn, op_id, "journal_complete", "complete")
-        _commit_trash(payload.get("deletes") or [])
-        _cleanup_recovery(ctx, op_id)
         _maybe_crash("journal_complete")
         return {"ok": True, "op_id": op_id, "recovered": recovered, "result": result,
-                "expected_revisions": snaps}
+                "expected_revisions": snaps, "cleanup": cleaned}
     except Exception:
         if not registry_committed:
             try:
