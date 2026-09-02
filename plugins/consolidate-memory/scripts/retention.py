@@ -560,6 +560,76 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
             lock.release()
 
 
+def import_ops(archive: Path, dest_plugin_data: Path) -> dict:
+    """Extract an export_ops tar.gz into dest plugin-data. Path-escape refused.
+
+    v0.4.0 review: the export's sha256 manifest was never CHECKED on import —
+    a tampered/corrupt archive extracted as ok. When a manifest.json member
+    exists, every extracted file is hashed against it; any mismatch (or an
+    unlisted member) fails the import.
+    """
+    import hashlib as _hl
+    import tarfile
+    archive = Path(archive)
+    dest_plugin_data = Path(dest_plugin_data)
+    if not archive.is_file():
+        return {"ok": False, "error": "archive not found"}
+    n = 0
+    dest_plugin_data.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(str(dest_plugin_data), 0o700)
+    except OSError:
+        pass
+    want: dict = {}
+    with tarfile.open(str(archive), "r:gz") as tar:
+        man_m = None
+        for m in tar.getmembers():
+            if m.isfile() and str(m.name or "").replace("\\", "/") == "manifest.json":
+                man_m = m
+                break
+        if man_m is not None:
+            fh = tar.extractfile(man_m)
+            try:
+                man = json.loads(fh.read().decode("utf-8", "replace")) if fh else {}
+            except (ValueError, TypeError):
+                man = {}
+            if not isinstance(man, dict):
+                man = {}
+            for f in man.get("files") or []:
+                if isinstance(f, dict) and f.get("path") and f.get("sha256"):
+                    want[str(f["path"])] = str(f["sha256"])
+        for m in tar.getmembers():
+            if not m.isfile():
+                continue
+            name = str(m.name or "").replace("\\", "/")
+            if name == "manifest.json":
+                continue
+            if not name.startswith("plugin-data/"):
+                continue
+            rel = name[len("plugin-data/"):]
+            parts = Path(rel).parts
+            if not rel or ".." in parts or Path(rel).is_absolute():
+                return {"ok": False, "error": "import path escape: " + name}
+            dest = dest_plugin_data / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            fh = tar.extractfile(m)
+            if fh is None:
+                continue
+            data = fh.read()
+            if want and rel not in want:
+                return {"ok": False, "error": "unlisted member in manifest: " + rel}
+            if rel in want and _hl.sha256(data).hexdigest() != want[rel]:
+                return {"ok": False, "error": "sha256 mismatch for " + rel}
+            dest.write_bytes(data)
+            try:
+                os.chmod(str(dest), 0o600)
+            except OSError:
+                pass
+            n += 1
+    return {"ok": True, "n_files": n, "dest": str(dest_plugin_data),
+            "verified_sha256": bool(want)}
+
+
 def retention_show() -> dict:
     return {
         "events_days": EVENT_RETENTION_DAYS,

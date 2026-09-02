@@ -26,7 +26,7 @@ import sys
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, TypedDict, cast
+from typing import Any, Mapping, Optional, TypedDict, cast
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / bar / glyphs)
 
@@ -1116,6 +1116,35 @@ def _is_mirror(text: str) -> bool:
         if top == "metadata" and re.match(r" {2}global_ref:\s*\S", ln):
             return True
     return False
+
+
+_CANONICAL_RESERVED_KEYS = (
+    "schema_version", "fact_id", "name", "description", "domain",
+    "sensitivity", "scope", "status",
+    "applies_any", "applies_all", "applies_exclude",
+    "content_modified", "last_observed_at", "replacement_id",
+)
+
+
+def frontmatter_duplicate_reserved(text: str, reserved: tuple = _CANONICAL_RESERVED_KEYS) -> Optional[str]:
+    """Refuse duplicate reserved keys in the opening frontmatter (last-wins is not a codec)."""
+    raw = text or ""
+    if raw.startswith("\ufeff"):
+        raw = raw[1:]
+    raw = raw.replace("\r\n", "\n").replace("\r", "\n")
+    m = re.search(r"^---\n(.*?)\n---", raw, re.S)
+    if not m:
+        return None
+    seen: set = set()
+    reserved_set = set(reserved)
+    for line in m.group(1).splitlines():
+        if ":" in line and not line.startswith((" ", "\t")):
+            k = line.partition(":")[0].strip()
+            if k in reserved_set:
+                if k in seen:
+                    return "duplicate reserved key %r" % k
+                seen.add(k)
+    return None
 
 
 def _frontmatter(text: str) -> dict:

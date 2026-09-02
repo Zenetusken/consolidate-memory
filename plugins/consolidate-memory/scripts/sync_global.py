@@ -1342,7 +1342,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     _cap_degraded = False
     try:
         _ov = load_capability_overrides(ctx.plugin_data_dir, ctx.project_id)
-        _cap_tags = capability_tags(detect_capabilities(project_dir, overrides=_ov))
+        _cap_tags = capability_tags(detect_capabilities(
+            project_dir, overrides=_ov, cache_dir=ctx.plugin_data_dir,
+            project_id=ctx.project_id))
         _rel_tags = stacks | _cap_tags
     except Exception:
         _cap_degraded = True
@@ -1755,28 +1757,15 @@ def apply_provenance(text: str, project: str) -> str:
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
-def drop_holders_text(text: str, drop: set) -> "tuple[str, int]":
-    """Pure: remove `drop` tokens from `projects:`. Returns (new_text, n_removed)."""
-    m = re.search(r"^(\s*projects:\s*)\[([^\]]*)\]\s*$", text, re.M)
-    if not m:
-        return text, 0
-    items = [x.strip() for x in m.group(2).split(",") if x.strip()]
-    kept = [x for x in items if x not in drop]
-    removed = len(items) - len(kept)
-    if not removed:
-        return text, 0
-    return text[:m.start()] + f"{m.group(1)}[{', '.join(kept)}]" + text[m.end():], removed
-
-
-def _registry_holder_labels(ctx, stem: str) -> list:
-    """SQLite holders for (ctx.domain, stem). Empty if the registry is absent."""
+def _registry_holder_labels(ctx, stem: str):
+    """Tri-state: None = registry unavailable, [] = authoritative zero, [..] = labels."""
     if ctx is None or not stem:
-        return []
+        return None
     try:
         from control_plane import connect_if_exists, db_path, stable_fact_id
         conn = connect_if_exists(db_path(ctx))
         if conn is None:
-            return []
+            return None
         try:
             fid = stable_fact_id(getattr(ctx, "domain_id", "") or "unknown", stem)
             rows = conn.execute(
@@ -1796,15 +1785,19 @@ def _registry_holder_labels(ctx, stem: str) -> list:
         finally:
             conn.close()
     except Exception:
-        return []
+        return None
 
 
 def _holder_labels(fm: dict, *, stem: str = "", ctx=None) -> list:
-    """SQLite holders when present; leftover Markdown `projects:` otherwise."""
+    """SQLite is the sole operational holder authority (ADR 023).
+
+    Unavailable registry → Markdown `projects:` as migration input only.
+    Authoritative zero (`[]`) does not fall through to Markdown.
+    """
     got = _registry_holder_labels(ctx, stem)
-    if got:
-        return got
-    return _holders(fm)
+    if got is None:
+        return _holders(fm)
+    return got
 
 
 def _holders(fm: dict) -> list[str]:
@@ -2020,21 +2013,6 @@ def _orphans(store: Path, canon: "set[str] | None" = None) -> list[str]:
     return out
 
 
-def _prune_holders(p: Path, drop: set) -> int:
-    """v0.1.84 (P4): remove `drop` tokens from ONE canonical's `projects:` list.
-
-    Production `--gc --edges --apply` journals this via transact (never after locks
-    drop). This helper remains for the self-heal / direct-call path.
-    """
-    text = _safe_read_text(p)
-    if text is None:
-        return 0
-    new, removed = drop_holders_text(text, drop)
-    if removed:
-        _atomic_write_text(p, new)
-    return removed
-
-
 def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> int:
     """v0.1.84 (P4, docs/provenance-liveness.spec.md): the fleet-wide provenance-edge triage —
     the lever the single-project dead-edge report never had. Classifies EVERY edge; reports the
@@ -2107,23 +2085,23 @@ def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> i
                 expected_e[str(p)] = hashlib.sha256(p.read_bytes()).hexdigest()
 
         def _mutate_edges(conn, temps):
+            del temps
             removed = 0
             for n, hs in ghosts.items():
-                p = _canon_path(n)
-                text = _safe_read_text(p)
-                if text is None:
-                    continue
-                new, nrem = drop_holders_text(text, set(hs))
-                if nrem:
-                    temps[str(p)] = new
-                    removed += nrem
                 fid = _fid_edges(ctx_e.domain_id, n)
                 for h in hs:
-                    conn.execute(
-                        "DELETE FROM holders WHERE fact_id=? AND project_id IN "
-                        "(SELECT project_id FROM projects WHERE display_name=?)",
-                        (fid, h),
+                    # Delete by EITHER resolution shape: a registered project's
+                    # display_name, or a raw project_id label (registry rows whose
+                    # project row is gone — the ghost class itself). Markdown
+                    # `projects:` is display/migration input only (ADR 023) — the
+                    # canonical body is NEVER rewritten here.
+                    cur = conn.execute(
+                        "DELETE FROM holders WHERE fact_id=? AND (project_id=? "
+                        "OR project_id IN (SELECT project_id FROM projects "
+                        "WHERE display_name=?))",
+                        (fid, h, h),
                     )
+                    removed += int(cur.rowcount or 0)
             return {"removed": removed, "deletes": []}
 
         try:
@@ -2139,7 +2117,7 @@ def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> i
         hs = sorted(set(ghosts[n]))
         if apply:
             out.append("    " + _ui.c("✓", "green") + f" {n}  " + _ui.c(f"pruned {', '.join(hs)} "
-                       f"(body untouched; holders table + projects: journaled)", "dim"))
+                       f"(holders table journaled; canonical body byte-verbatim)", "dim"))
         else:
             out.append("    " + _ui.c("⌀", "yellow") + f" {n}  " + _ui.c(f"ghost holder(s) {', '.join(hs)} "
                        "— 0 store matches under ~/.claude/projects (would prune)", "dim"))
@@ -2339,7 +2317,7 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
         return 0
     dead = []
     for name, fm, _ in gfacts:
-        for holder in _holders(fm):
+        for holder in _holder_labels(fm, stem=name, ctx=_ctx_gc):
             # we only know THIS project's store path; report if it's listed but absent.
             # v0.1.76: compare in the SANITIZED token space provenance is written in — a basename
             # _sanitize_token rewrites ('@scope' → '-scope') never equalled its raw self here.

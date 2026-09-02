@@ -79,6 +79,30 @@ def _enroll_personal(project_dir: Path) -> None:
     conn.close()
 
 
+def _seed_holders(project_dir: Path, stem: str, labels: list) -> None:
+    """v0.4.0 (#142): seed SQLite holder rows — the sole holder authority — for a fixture fact.
+
+    Raw project_id labels (no `projects` row): `_registry_holder_labels` resolves them via
+    COALESCE(display_name, project_id) to the same token the old Markdown `projects:` used,
+    so the classification/display paths see identical minds.
+    """
+    import store_context as _sc_seed
+    import control_plane as _cp_seed
+    ctx = _sc_seed.resolve_store(Path(project_dir))
+    conn = _cp_seed.connect(_cp_seed.db_path(ctx))
+    try:
+        fid = _cp_seed.stable_fact_id(getattr(ctx, "domain_id", "") or "personal", stem)
+        for lab in labels:
+            conn.execute(
+                "INSERT INTO holders(fact_id, project_id, base_revision, canonical_revision, "
+                "semantic_hash) VALUES (?,?,?,?,?) ON CONFLICT(fact_id, project_id) DO UPDATE "
+                "SET semantic_hash=excluded.semantic_hash",
+                (fid, lab, "r1", "r1", "s1"))
+        conn.commit()
+    finally:
+        conn.close()
+
+
 # --- slug rule ---
 # Synthetic absolute prefix: `/home` is a symlink/autofs/firmlink on macOS, so
 # Path.resolve() rewrites `/home/you/...` (GH macos-latest) and a frozen
@@ -3635,6 +3659,7 @@ with _tfB.TemporaryDirectory() as _tdC6:
     sg.GLOBAL = _glC6
     try:
         _enroll_personal(_projC6)
+        _seed_holders(_projC6, "canon-x", ["nodeA"])
         _fuC6 = sg.fleet_utility(_projC6)
         _byC6 = {e["name"]: e for e in _fuC6["canonicals"]}
         check("v0.1.67 --utility: reads attribute ONLY through a mirror (nodeA 3); a same-stem local is shadow (7)",
@@ -4489,6 +4514,7 @@ with _Env73() as _e:
     (_e.glob / "gfact.md").write_text(
         "---\nname: gfact\ndescription: \"d\"\nmetadata:\n  scope: user-global\n"
         "  projects: [ghost-proj, proj73]\n  type: feedback\n---\nbody\n", encoding="utf-8")
+    _seed_holders(_e.proj, "gfact", ["ghost-proj", "proj73"])
     _nout = _io73.StringIO()
     with _ctx73.redirect_stdout(_nout):
         sg.network(_e.proj)
@@ -5436,6 +5462,7 @@ with _Env73() as _e:
     (_e.glob / "canon-x.md").write_text(_ct84, encoding="utf-8")
     (_live84 / "canon-x.md").write_text(sg._as_mirror(_ct84, "canon-x", since="2026-01-01T00:00:00Z",
                                                       body_hash=sg._body_hash(_ct84)), encoding="utf-8")
+    _seed_holders(_e.proj, "canon-x", ["liveproj", "staleproj", "ghost-proj", "twinproj"])
     check("v0.1.84: _classify_edge — all four classes (live=mirror-holding store; stale=one match no "
           "mirror; unresolved=zero matches; ambiguous=multi-match none holding); degenerate token is "
           "ambiguous (not provably ghost), never unresolved",
@@ -5467,11 +5494,22 @@ with _Env73() as _e:
     with _ctx73.redirect_stdout(_io73.StringIO()):
         sg.gc(_e.proj, apply=True, edges=True)
     _ct84b = (_e.glob / "canon-x.md").read_text(encoding="utf-8")
-    check("v0.1.84: --edges --apply prunes ONLY the unresolved token — live/stale/ambiguous holders "
-          "byte-verbatim, canonical body untouched",
-          "ghost-proj" not in _ct84b
-          and "projects: [liveproj, staleproj, twinproj]" in _ct84b
-          and _ct84b.endswith("body\n"))
+    # ADR 023 (#142): --apply writes the SQLite authority ONLY — the Markdown body is
+    # byte-verbatim (projects: is migration input / frozen display, never rewritten).
+    import control_plane as _cp84
+    import store_context as _sc84
+    _conn84 = _cp84.connect(_cp84.db_path(_sc84.resolve_store(_e.proj)))
+    try:
+        _rows84 = [str(r["project_id"]) for r in _conn84.execute(
+            "SELECT project_id FROM holders WHERE fact_id=?",
+            (_cp84.stable_fact_id("personal", "canon-x"),)).fetchall()]
+    finally:
+        _conn84.close()
+    check("v0.1.84: --edges --apply prunes ONLY the unresolved token from SQLITE holders — "
+          "live/stale/ambiguous rows intact, canonical body byte-verbatim",
+          _ct84b == _ct84
+          and "ghost-proj" not in _rows84
+          and {"liveproj", "staleproj", "twinproj"} <= set(_rows84))
     # the self-heal: a pull from a live project re-adds ITS OWN edge (a wrong prune is a
     # temporary undercount, never a loss)
     _p84 = _e.glob / "canon-x.md"
@@ -5487,6 +5525,7 @@ with _Env73() as _e:
     (_e.glob / "canon-y.md").write_text(
         "---\nname: canon-y\ndescription: \"d\"\nmetadata:\n  scope: user-global\n  type: feedback\n"
         "  projects: [proj-a, proj-b]\n---\nbody\n", encoding="utf-8")
+    _seed_holders(_e.proj, "canon-y", ["proj-a", "proj-b"])
     # present but STORELESS: _Env73 makes the trigger's OWN store; delete it so no memory/ store
     # dir exists anywhere → every holder resolves to nothing (the unmounted-tree degenerate state).
     import shutil as _sh84
@@ -6124,7 +6163,6 @@ import domain_policy as dp  # noqa: E402
 import mirror_conflict as mc  # noqa: E402
 import index_admission as ia  # noqa: E402
 import capabilities as cap  # noqa: E402
-import hook_sketches as hk  # noqa: E402
 import control_plane as cp  # noqa: E402
 import canonical_ingress as ci  # noqa: E402
 import retention as ret  # noqa: E402
@@ -6354,20 +6392,152 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
     check("applies: all: [pdf, gpu] fails without gpu",
           cap.applies_match({"all": ["pdf", "gpu"]}, {"pdf"}) is False)
 
-    # hook sketches never copy raw prompts
-    _sk = hk.normalize_hook_event({
-        "event": "PostToolUse", "tool_name": "Bash", "outcome": "success",
-        "prompt": "SECRET PROMPT TEXT", "command": "rm -rf /",
-        "session_id": "s1", "project_id": "p1",
-    }, project_id="p1", session_id="s1")
-    check("hook sketch: compact, no raw prompt/command",
-          _sk is not None and "prompt" not in _sk and "command" not in _sk
-          and _sk["tool_family"] in ("shell", "other") and hk.sketch_is_safe(_sk))
-    check("workflow promotion: needs 2 projects / 2 days / success / confirmation",
-          hk.workflow_promotion_allowed({"n_projects": 1, "n_days": 2, "n_success": 2})["allowed"] is False
-          and hk.workflow_promotion_allowed({"n_projects": 2, "n_days": 2, "n_success": 2, "distinctive": True,
-                                            "confirmed": True})["allowed"] is True
-          and hk.workflow_promotion_allowed({"n_projects": 1}, explicit_user_request=True)["allowed"] is True)
+    # v0.4.0: dormant hook-sketch infra REMOVED — the module must be gone.
+    try:
+        import hook_sketches  # type: ignore[import-not-found]  # noqa: F401
+        _hk_gone = False
+    except ImportError:
+        _hk_gone = True
+    check("v0.4.0: hook-sketch infra removed — hook_sketches module is gone", _hk_gone)
+
+    # ── v0.4.0 Phase-4 authority pins (#145 grants, #149 replacement cycles,
+    #    #8 capability cache, #12 export/import round-trip, #11 CLI envelope) ──
+    with _tf_xp.TemporaryDirectory() as _td40:
+        import types as _ty40
+        _pdata40 = Path(_td40) / "pdata"; _pdata40.mkdir(parents=True)
+        _ns40a = Path(_td40) / "ns-a"
+        # P1-6 (#145): ONE owner per normalized path in SQLite — grant-vs-grant
+        # refused, revoke frees the path, transfer moves the owner.
+        _g140 = sc.write_store_grant(_pdata40, "proj-a", _ns40a)
+        _refused40 = False
+        try:
+            sc.write_store_grant(_pdata40, "proj-b", _ns40a)
+        except sc.WriteRefused:
+            _refused40 = True
+        _rev40 = sc.revoke_store_grant(_pdata40, "proj-a", _ns40a)
+        _g240 = sc.write_store_grant(_pdata40, "proj-b", _ns40a)
+        _tr40 = sc.transfer_store_grant(_pdata40, _ns40a, "proj-c")
+        _rows40 = sc.load_store_grants(_pdata40)
+        _own40 = [g for g in _rows40 if g["path"] == str(_ns40a.resolve())]
+        check("P1-6 (#145): one owner per normalized path — grant-vs-grant refused, "
+              "revoke frees it, transfer moves it (SQLite, not store-grants.json)",
+              bool(_g140.get("ok") and _refused40 and _rev40.get("removed") == 1
+                   and _g240.get("ok") and _tr40.get("ok") and _tr40.get("to") == "proj-c"
+                   and len(_own40) == 1 and _own40[0]["project_id"] == "proj-c"))
+        # P1-10 (#149): replacement cycles + self-replacement refused.
+        _fdir40 = Path(_td40) / "facts"; _fdir40.mkdir()
+        _ctx40 = _ty40.SimpleNamespace(domain_id="personal", canonical_domain_dir=_fdir40)
+        (_fdir40 / "a.md").write_text(
+            "---\nname: a\nstatus: active\nreplacement_id: b\n---\nbody\n", encoding="utf-8")
+        (_fdir40 / "b.md").write_text(
+            "---\nname: b\nstatus: active\nreplacement_id: a\n---\nbody\n", encoding="utf-8")
+        check("P1-10 (#149): replacement cycle refused (a→b→a) and self-replacement refused",
+              "cycle" in str(ci._validate_replacement_id(_ctx40, "a", "b"))  # type: ignore[arg-type]
+              and "same fact" in str(ci._validate_replacement_id(_ctx40, "a", "a")))  # type: ignore[arg-type]
+        # P1-10 (#149): a legacy (non-ACTIVE) target is not a valid dependency.
+        (_fdir40 / "old.md").write_text(
+            "---\nname: old\nmetadata:\n  node_type: memory\n---\nlegacy body\n", encoding="utf-8")
+        (_fdir40 / "new.md").write_text(
+            "---\nname: new\nmetadata:\n  scope: user-global\n  type: feedback\n---\nsee [[old]]\n",
+            encoding="utf-8")
+        _lerr40 = ci.validate_links((_fdir40 / "new.md").read_text(encoding="utf-8"),
+                                    "user-global", _fdir40)
+        check("P1-10 (#149): a legacy (non-ACTIVE) target is not a valid dependency",
+              isinstance(_lerr40, str) and "not a valid active canonical" in _lerr40)
+        # P1-10 (#149): the CANONICAL writer refuses duplicate reserved keys too
+        # (the local path is pinned by R128-3; this pins the canonical codec).
+        _dup40 = ci.upsert(_ctx40, "new", (  # type: ignore[arg-type]
+            "---\nname: new\nname: new\nmetadata:\n  scope: user-global\n  type: feedback\n---\nbody\n"))
+        check("P1-10 (#149): canonical upsert refuses a duplicate reserved frontmatter key",
+              _dup40.get("ok") is False and "duplicate reserved key" in str(_dup40.get("error") or ""))
+        # (#8): capability cache — a sig hit returns the cached rows; a marker
+        # change (go.mod appears) re-detects instead of serving the stale cache.
+        _proj40 = Path(_td40) / "caproj"; _proj40.mkdir()
+        (_proj40 / "package.json").write_text("{}\n", encoding="utf-8")
+        _capcache40 = Path(_td40) / "cache"
+        _r140 = cap.detect_capabilities(_proj40, cache_dir=_capcache40, project_id="p40")
+        _r240 = cap.detect_capabilities(_proj40, cache_dir=_capcache40, project_id="p40")
+        (_proj40 / "go.mod").write_text("module x\n", encoding="utf-8")
+        _r340 = cap.detect_capabilities(_proj40, cache_dir=_capcache40, project_id="p40")
+        check("v0.4.0 (#8): capability cache — sig-hit returns cached rows, a marker "
+              "change re-detects (monorepo/go detected only after go.mod lands)",
+              _r140 == _r240 and any(x["tag"] == "go" for x in _r340))
+        # (#12): export→import round-trips plugin-data; a path-escape member refused.
+        import sqlite3 as _sq40
+        _src40 = Path(_td40) / "srcdata"; _src40.mkdir()
+        _conn40 = _sq40.connect(str(_src40 / "control.sqlite"))
+        _conn40.execute("CREATE TABLE t (k TEXT)")
+        _conn40.execute("INSERT INTO t VALUES ('v1')")
+        _conn40.commit(); _conn40.close()
+        (_src40 / "ops" / "slot").mkdir(parents=True)
+        (_src40 / "ops" / "slot" / ".consolidation-log.jsonl").write_text("{}\n", encoding="utf-8")
+        _bundle40 = Path(_td40) / "bundle.tar.gz"
+        ret.export_ops(_src40, _bundle40)
+        _dst40 = Path(_td40) / "dstdata"
+        _out40 = ret.import_ops(_bundle40, _dst40)
+        _conn40b = _sq40.connect(str(_dst40 / "control.sqlite"))
+        _v40 = _conn40b.execute("SELECT k FROM t").fetchone()
+        _conn40b.close()
+        check("v0.4.0 (#12): export→import restores plugin-data (round-trip, DB queryable)",
+              bool(_out40.get("ok") and _v40 is not None and _v40[0] == "v1"
+                   and (_dst40 / "ops" / "slot" / ".consolidation-log.jsonl").is_file()))
+        import tarfile as _tar40
+        _evil40 = Path(_td40) / "evil.tar.gz"
+        with _tar40.open(str(_evil40), "w:gz") as _t40:
+            _info40 = _tar40.TarInfo("plugin-data/../../evil.md")
+            _info40.size = 4
+            _t40.addfile(_info40, __import__("io").BytesIO(b"evil"))
+        _imp_evil = ret.import_ops(_evil40, _dst40)
+        check("v0.4.0 (#12): import refuses a path-escape member",
+              not _imp_evil.get("ok")
+              and str(_imp_evil.get("error", "")).startswith("import path escape"))
+        # a tampered member must FAIL the import (the export's sha256 manifest
+        # is now CHECKED, not skipped).
+        _tampered40 = Path(_td40) / "tampered.tar.gz"
+        with _tar40.open(str(_bundle40), "r:gz") as _src_t:
+            _mems40 = []
+            for _m40s in _src_t.getmembers():
+                _f40s = _src_t.extractfile(_m40s)
+                _d40s = _f40s.read() if (_m40s.isfile() and _f40s is not None) else b""
+                _mems40.append((_m40s, _d40s))
+        with _tar40.open(str(_tampered40), "w:gz") as _t40b:
+            for _m40, _d40 in _mems40:
+                if not _m40.isfile():
+                    continue
+                if _m40.name == "plugin-data/control.sqlite" and _d40:
+                    _d40 = _d40[:-1] + (b"X" if _d40[-1:] != b"X" else b"Y")
+                _info40 = _tar40.TarInfo(name=_m40.name)
+                _info40.size = len(_d40)
+                _t40b.addfile(_info40, __import__("io").BytesIO(_d40))
+        _imp_tam40 = ret.import_ops(_tampered40, Path(_td40) / "dsttampered")
+        check("v0.4.0 (#12): a tampered member fails the import (manifest sha256 checked)",
+              not _imp_tam40.get("ok")
+              and "sha256 mismatch" in str(_imp_tam40.get("error") or ""))
+        # (#9): the registry indexes exist in a FRESH DB and cm doctor reports
+        # the integrity check.
+        _reg40 = Path(_td40) / "regproj"; _reg40.mkdir()
+        _enroll_personal(_reg40)
+        _ctx40r = sc.resolve_store(_reg40)
+        _conn40r = cp.connect(cp.db_path(_ctx40r))
+        try:
+            _inames40 = {r[0] for r in _conn40r.execute(
+                "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+        finally:
+            _conn40r.close()
+        check("v0.4.0 (#9): registry indexes exist in a fresh DB + doctor reports integrity",
+              {"idx_facts_domain_stem", "idx_holders_project",
+               "idx_tombstones_domain"} <= _inames40
+              and isinstance(sc.doctor_dict(_ctx40r).get("integrity_check"), str))
+        # (#11): CLI error envelope — a refused grant with --json emits
+        # {ok:false, error, code:2} and exits 2.
+        _env40_u, _env40_e = _io73.StringIO(), _io73.StringIO()
+        with _ctx73.redirect_stdout(_env40_u), _ctx73.redirect_stderr(_env40_e):
+            _rc40_env = cmo.main(["project", "grant-native", "--path", str(_pdata40),
+                                  "--apply", "--confirm", "grant-native", "--json"])
+        _env40_j = _json_xp.loads(_env40_u.getvalue().strip() or "{}")
+        check("v0.4.0 (#11): CLI error envelope — {ok, error, code} on --json with exit 2",
+              _rc40_env == 2 and _env40_j.get("ok") is False and _env40_j.get("code") == 2
+              and isinstance(_env40_j.get("error"), str) and bool(_env40_j["error"]))
 
     # generated catalog overwrites a hand-edited index
     _facts = Path(_tdxp) / "facts"
@@ -7923,6 +8093,13 @@ with _Env73() as _e_mg:
     check("0.3.0: migrate apply refuses an existing dest without --on-existing",
           _rc_ref == 2 and "dest exists" in _ref_e.getvalue()
           and (_pdir_mg / "already.md").read_text(encoding="utf-8") == _dest_before)
+    # P1-7 (#146): mangle the domain catalog so the kept-existing stem is MISSING —
+    # the apply must REPAIR the projection (every active kept-existing gets a pointer).
+    _cat_mg = _pdir_mg / "MEMORY.md"
+    if _cat_mg.is_file():
+        _cat_mg.write_text(
+            "\n".join(ln for ln in _cat_mg.read_text(encoding="utf-8").splitlines()
+                      if "already" not in ln) + "\n", encoding="utf-8")
     with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
         _rc_keep = cmo.main(["migrate", str(_e_mg.proj), "--apply",
                              "--confirm", "migrate-apply",
@@ -7933,6 +8110,8 @@ with _Env73() as _e_mg:
           and (_pdir_mg / "plain.md").is_file()
           and "LEGACY copy" in (_pdir_mg / "dup.md").read_text(encoding="utf-8")
           and "scope: user-global" in (_pdir_mg / "plain.md").read_text(encoding="utf-8"))
+    check("P1-7: keep-existing active dest with a stale/missing catalog pointer is REPAIRED",
+          "already" in (_pdir_mg / "MEMORY.md").read_text(encoding="utf-8"))
     (_pdir_mg / "plain.md").write_text(
         (_pdir_mg / "plain.md").read_text(encoding="utf-8").replace(
             "Legacy-only body", "EDITED AFTER APPLY"), encoding="utf-8")
@@ -9539,7 +9718,8 @@ with _tf73.TemporaryDirectory() as _td_gr:
         (_proj_gr / ".claude" / "settings.json").write_text(
             _json_xp.dumps({"autoMemoryDirectory": str(_ns_gr)}), encoding="utf-8")
         _ctx_gr1 = sc.resolve_store(_proj_gr)
-        sc.write_store_grant(_ctx_gr0.plugin_data_dir, _ctx_gr0.project_id, _ns_gr)
+        sc.write_store_grant(_ctx_gr0.plugin_data_dir, _ctx_gr0.project_id, _ns_gr,
+                             adopt=True)
         _ctx_gr2 = sc.resolve_store(_proj_gr)
         _pdata_gr = _ctx_gr0.plugin_data_dir
         _canon_gr = _ctx_gr0.canonical_domain_dir

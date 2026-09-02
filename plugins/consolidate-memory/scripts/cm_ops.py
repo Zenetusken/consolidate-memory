@@ -1356,6 +1356,8 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                             "SELECT fact_id FROM facts WHERE fact_id=?", (fid,)
                         ).fetchone()
                         fm_k = cls.get("fm") or {}
+                        if cls["class"] == CLASS_ACTIVE:
+                            catalogs.setdefault(str(facts_dir), set()).add(stem)
                         if tomb:
                             if cls["class"] != CLASS_ACTIVE:
                                 from canonical_ingress import insert_frontmatter_key
@@ -1871,6 +1873,30 @@ def cmd_data(args: argparse.Namespace) -> int:
         dest = Path(args.dest or (ctx.plugin_data_dir / "export.json"))
         print(json.dumps(export_ops(ctx.plugin_data_dir, dest), indent=2))
         return 0
+    if args.data_cmd == "import":
+        from retention import import_ops as _import_ops
+        src = Path(getattr(args, "file", None) or "")
+        # v0.4.0 review: this command's --json success path emitted an envelope
+        # while its error paths printed bare stderr — standardize both.
+        def _imp_err(msg: str) -> int:
+            if getattr(args, "json", False):
+                print(json.dumps({"ok": False, "error": msg, "code": 2}))
+            else:
+                print("data import: " + msg, file=sys.stderr)
+            return 2
+        if not src or not str(src):
+            return _imp_err("pass --file ARCHIVE.tar.gz")
+        dest = Path(args.dest) if args.dest else ctx.plugin_data_dir
+        need = _want_confirm(args, "data-import")
+        if need == "dry":
+            print("data import plan: %s → %s (pass --apply --confirm data-import)"
+                  % (src, dest))
+            return 0
+        if need:
+            return _imp_err(need)
+        out = _import_ops(src, dest)
+        print(json.dumps(out, indent=2 if args.json else None, default=str))
+        return 0 if out.get("ok") else 2
     if args.data_cmd in ("purge-status", "purge-resume", "purge-cancel"):
         from identifiers import IdentifierRefused, validate_domain_id
         did = getattr(args, "purge_domain", None) or ctx.domain_id
@@ -2135,16 +2161,26 @@ def cmd_project(args: argparse.Namespace) -> int:
                                unenroll_project, upsert_project)
     from identifiers import IdentifierRefused, validate_domain_id
     ctx = _ctx(args.project)
-    if args.project_cmd in ("grant-native", "revoke-native"):
-        from store_context import revoke_store_grant, write_store_grant
+    if args.project_cmd == "grants":
+        from store_context import load_store_grants
+        rows = load_store_grants(ctx.plugin_data_dir)
+        print(json.dumps({"ok": True, "grants": rows}, indent=2 if args.json else None))
+        return 0
+    if args.project_cmd in ("grant-native", "revoke-native", "transfer-native"):
+        from store_context import revoke_store_grant, transfer_store_grant, write_store_grant
+        # v0.4.0 review (#11): every error exit in the grant family emits the
+        # machine-readable envelope under --json (not just the WriteRefused).
+        def _grant_err(msg: str) -> int:
+            if getattr(args, "json", False):
+                print(json.dumps({"ok": False, "error": msg, "code": 2}))
+            else:
+                print(f"project {args.project_cmd}: {msg}", file=sys.stderr)
+            return 2
         path_s = str(getattr(args, "grant_path", None) or "").strip()
         if not path_s:
-            print(f"project {args.project_cmd}: pass --path", file=sys.stderr)
-            return 2
+            return _grant_err("pass --path")
         if not (path_s.startswith("~/") or path_s.startswith("/")):
-            print(f"project {args.project_cmd}: path must be absolute or ~/",
-                  file=sys.stderr)
-            return 2
+            return _grant_err("path must be absolute or ~/")
         path = Path(path_s).expanduser()
         phrase = args.project_cmd
         need = _want_confirm(args, phrase)
@@ -2153,18 +2189,27 @@ def cmd_project(args: argparse.Namespace) -> int:
                   f"(pass --apply --confirm {phrase})")
             return 0
         if need:
-            print(f"project {args.project_cmd}: {need}", file=sys.stderr)
-            return 2
-        if args.project_cmd == "grant-native":
-            try:
-                print(json.dumps(write_store_grant(
+            return _grant_err(need)
+        try:
+            if args.project_cmd == "grant-native":
+                out = write_store_grant(
                     ctx.plugin_data_dir, ctx.project_id, path,
-                    config_root=ctx.config_root)))
-            except WriteRefused as e:
-                print(f"project grant-native: {e}", file=sys.stderr)
-                return 2
-        else:
-            print(json.dumps(revoke_store_grant(ctx.plugin_data_dir, ctx.project_id, path)))
+                    config_root=ctx.config_root,
+                    adopt=bool(getattr(args, "adopt", False)))
+            elif args.project_cmd == "transfer-native":
+                to_pid = str(getattr(args, "to_domain", None) or "")
+                if not to_pid:
+                    return _grant_err("pass --to PROJECT_ID")
+                out = transfer_store_grant(ctx.plugin_data_dir, path, to_pid)
+            else:
+                out = revoke_store_grant(ctx.plugin_data_dir, ctx.project_id, path)
+        except WriteRefused as e:
+            if getattr(args, "json", False):
+                print(json.dumps({"ok": False, "error": str(e), "code": 2}))
+            else:
+                print(f"project {args.project_cmd}: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps(out))
         return 0
     if args.project_cmd == "show":
         conn_ro = connect_if_exists(db_path(ctx))
@@ -2189,7 +2234,10 @@ def cmd_project(args: argparse.Namespace) -> int:
         try:
             assert_mutation_allowed(ctx)
         except WriteRefused as e:
-            print(f"project {args.project_cmd}: {e}", file=sys.stderr)
+            if getattr(args, "json", False):
+                print(json.dumps({"ok": False, "error": str(e), "code": 2}))
+            else:
+                print(f"project {args.project_cmd}: {e}", file=sys.stderr)
             return 2
         # Dry-run / plan must not mint control.sqlite (connect() runs SCHEMA_SQL).
         ro = connect_if_exists(db_path(ctx))
@@ -2450,15 +2498,16 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--confirm", metavar="PHRASE")
 
     da = sub.add_parser("data")
-    da.add_argument("data_cmd", choices=["inventory", "compact", "export", "purge",
-                                         "purge-status", "purge-resume", "purge-cancel",
-                                         "retention"])
+    da.add_argument("data_cmd", choices=["inventory", "compact", "export", "import",
+                                         "purge", "purge-status", "purge-resume",
+                                         "purge-cancel", "retention"])
     da.add_argument("show", nargs="?", help="optional 'show' after retention (cm data retention show)")
     da.add_argument("--project", default=".")
     da.add_argument("--json", action="store_true")
     da.add_argument("--plan", action="store_true", help="explicit dry-run for compact (default is already a plan)")
     da.add_argument("--apply", action="store_true")
     da.add_argument("--dest")
+    da.add_argument("--file")
     da.add_argument("--project-id", dest="purge_project")
     da.add_argument("--domain", dest="purge_domain")
     da.add_argument("--scope", dest="purge_scope",
@@ -2470,7 +2519,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     pr = sub.add_parser("project")
     pr.add_argument("project_cmd", choices=["enroll", "show", "unenroll", "move-domain",
-                                            "rebind", "grant-native", "revoke-native"])
+                                            "rebind", "grant-native", "revoke-native",
+                                            "transfer-native", "grants"])
     pr.add_argument("project", nargs="?", default=".")
     pr.add_argument("--domain")
     pr.add_argument("--to", dest="to_domain")
@@ -2479,6 +2529,8 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--apply", action="store_true")
     pr.add_argument("--confirm", metavar="PHRASE")
     pr.add_argument("--json", action="store_true")
+    pr.add_argument("--adopt", action="store_true",
+                    help="grant-native of a nonempty destination")
 
     mk = sub.add_parser("marker")
     mk.add_argument("marker_cmd", choices=["stamp", "standing-justify", "snooze"])
@@ -2546,7 +2598,11 @@ def main(argv: Optional[list] = None) -> int:
         if args.cmd == "project":
             return cmd_project(args)
     except WriteRefused as e:
-        print(f"cm: {e}", file=sys.stderr)
+        payload = {"ok": False, "error": str(e), "code": 2}
+        if getattr(args, "json", False):
+            print(json.dumps(payload))
+        else:
+            print(f"cm: {e}", file=sys.stderr)
         return 2
     return 2
 

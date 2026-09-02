@@ -47,11 +47,64 @@ def load_capability_overrides(plugin_data: Path, project_id: str) -> dict:
     return {}
 
 
+_CACHE_FILES = (
+    "pyproject.toml", "setup.py", "mypy.ini", ".mypy.ini", "package.json",
+    "tsconfig.json", "go.mod", "go.work", "Cargo.toml", "pom.xml",
+    "Dockerfile", "docker-compose.yml", "pnpm-workspace.yaml",
+    "lerna.json", "nx.json", "Gemfile", "composer.json",
+)
+
+
+def _detector_sig(root: Path) -> str:
+    parts: list = []
+    for name in _CACHE_FILES:
+        p = root / name
+        try:
+            parts.append("%s:%s" % (name, int(p.stat().st_mtime) if p.is_file() else 0))
+        except OSError:
+            parts.append("%s:0" % name)
+    # v0.4.0 review: monorepo CHILD markers are part of the detection surface
+    # (the workspace scan reads children's package.json/go.mod/…) but were not
+    # part of the signature — a child marker change served a stale cache. Fold
+    # the scanned children's markers into the sig.
+    ws = next((n for n in ("pnpm-workspace.yaml", "go.work", "lerna.json", "nx.json")
+               if (root / n).is_file()), None)
+    if ws is not None:
+        try:
+            kids = sorted(p for p in root.iterdir()
+                          if p.is_dir() and not p.name.startswith("."))
+        except OSError:
+            kids = []
+        for child in kids[:32]:
+            for cname in ("package.json", "go.mod", "pyproject.toml"):
+                cp = child / cname
+                try:
+                    parts.append("%s/%s:%s" % (
+                        child.name, cname,
+                        int(cp.stat().st_mtime) if cp.is_file() else 0))
+                except OSError:
+                    parts.append("%s/%s:0" % (child.name, cname))
+    return "|".join(parts)
+
+
 def detect_capabilities(project_dir: Path, *, overrides: Optional[dict] = None,
-                        observation_time: Optional[str] = None) -> list:
+                        observation_time: Optional[str] = None,
+                        cache_dir: Optional[Path] = None,
+                        project_id: str = "") -> list:
     """Return a list of {tag, evidence, confidence, detector_version, observed_at}."""
     root = Path(project_dir)
     observed = observation_time or _now()
+    sig = _detector_sig(root)
+    if cache_dir is not None and project_id:
+        import json
+        cp = Path(cache_dir) / "capability-cache.json"
+        try:
+            cached = json.loads(cp.read_text(encoding="utf-8")) if cp.is_file() else {}
+        except (OSError, ValueError, TypeError):
+            cached = {}
+        hit = cached.get(project_id) if isinstance(cached, dict) else None
+        if isinstance(hit, dict) and hit.get("sig") == sig and isinstance(hit.get("rows"), list):
+            return list(hit["rows"])
     found: list = []
 
     def add(tag: str, evidence: str, confidence: float = 0.9) -> None:
@@ -129,6 +182,26 @@ def detect_capabilities(project_dir: Path, *, overrides: Optional[dict] = None,
     if _exists(root, ".claude"):
         add("claude-code", ".claude/")
 
+    ws = None
+    for name in ("pnpm-workspace.yaml", "go.work", "lerna.json", "nx.json"):
+        if _exists(root, name):
+            ws = name
+            add("workspace", name)
+            break
+    if ws is not None:
+        try:
+            kids = sorted(p for p in root.iterdir()
+                          if p.is_dir() and not p.name.startswith("."))
+        except OSError:
+            kids = []
+        for child in kids[:32]:
+            if _exists(child, "package.json") and not any(x["tag"] == "node" for x in found):
+                add("node", str(child.name) + "/package.json")
+            if _exists(child, "go.mod") and not any(x["tag"] == "go" for x in found):
+                add("go", str(child.name) + "/go.mod")
+            if list(child.glob("*.py")) and not any(x["tag"] == "python" for x in found):
+                add("python", str(child.name) + "/python")
+
     ov = overrides or {}
     extra = ov.get("add") or ov.get("include") or []
     for tag in extra:
@@ -137,6 +210,22 @@ def detect_capabilities(project_dir: Path, *, overrides: Optional[dict] = None,
     drop = set(ov.get("remove") or ov.get("exclude") or [])
     if drop:
         found = [x for x in found if x["tag"] not in drop]
+    if cache_dir is not None and project_id:
+        import json
+        cp = Path(cache_dir) / "capability-cache.json"
+        try:
+            cached = json.loads(cp.read_text(encoding="utf-8")) if cp.is_file() else {}
+        except (OSError, ValueError, TypeError):
+            cached = {}
+        if not isinstance(cached, dict):
+            cached = {}
+        cached[project_id] = {"sig": sig, "rows": found}
+        try:
+            cp.parent.mkdir(parents=True, exist_ok=True)
+            cp.write_text(json.dumps(cached) + "\n", encoding="utf-8")
+            os.chmod(str(cp), 0o600)
+        except OSError:
+            pass
     return found
 
 
