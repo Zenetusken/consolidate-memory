@@ -13,6 +13,7 @@
     --accent:#b34727;          /* rust — emphasis + the critical/budget line, used SPARINGLY */
     --data:#2f5d55;            /* deep muted teal — primary data lines (calm, not neon) */
     --ok:#46703f; --warn:#9a6b1c; --crit:#b34727; --glow:#f7f4ec;
+    --tint-ok:rgba(95,169,150,.13); --tint-crit:rgba(179,71,39,.11); --tint-accent:rgba(179,71,39,.06); --tint-warn:rgba(154,107,28,.07);
     --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,ui-serif,serif;
     --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Code",Menlo,Consolas,monospace;
   }
@@ -22,11 +23,13 @@
     --paper:#15120d; --paper2:#1e1913; --card:#1c1711; --rule:#332c22; --rule2:#493f30;
     --ink:#ece4d2; --ink2:#b4a98e; --faint:#9a8d74; --ghost:#8e816a;
     --accent:#d96a3f; --data:#5fa996; --ok:#7cae65; --warn:#d4a24d; --crit:#d96a3f; --glow:#221b13;
+    --tint-ok:rgba(95,169,150,.16); --tint-crit:rgba(217,106,63,.12); --tint-accent:rgba(217,106,63,.09); --tint-warn:rgba(212,162,77,.10);
   } }
   :root[data-theme="dark"]{
     --paper:#15120d; --paper2:#1e1913; --card:#1c1711; --rule:#332c22; --rule2:#493f30;
     --ink:#ece4d2; --ink2:#b4a98e; --faint:#9a8d74; --ghost:#8e816a;
     --accent:#d96a3f; --data:#5fa996; --ok:#7cae65; --warn:#d4a24d; --crit:#d96a3f; --glow:#221b13;
+    --tint-ok:rgba(95,169,150,.16); --tint-crit:rgba(217,106,63,.12); --tint-accent:rgba(217,106,63,.09); --tint-warn:rgba(212,162,77,.10);
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html{height:100%}
@@ -81,7 +84,7 @@
   @media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}.kpi{border-bottom:1px solid var(--rule)}}
   /* v0.1.54 — the dream as dreamt: the captured dream-arc stanzas, serif-italic like the panel leads */
   .dream-stanza{margin:11px 0}
-  .dream-stanza div{font-family:var(--serif);font-style:italic;color:var(--ink2);font-size:14.5px;line-height:1.6}
+  .dream-stanza div{font-family:var(--serif);font-style:italic;color:var(--ink2);font-size:14.5px;line-height:1.6;overflow-wrap:anywhere}
 
   /* ── sections ─────────────────────────────────────────────────────────── */
   section.blk{margin-top:46px}
@@ -142,10 +145,10 @@
 
   /* entries — a clean ledger */
   .ledger{border-top:1px solid var(--ink)}
-  .row{display:grid;grid-template-columns:96px 1fr auto;gap:18px;padding:13px 0;border-bottom:1px solid var(--rule);align-items:baseline}
+  .row{display:grid;grid-template-columns:96px minmax(0,1fr) auto;gap:18px;padding:13px 0;border-bottom:1px solid var(--rule);align-items:baseline}
   .row .act{font-size:10px;letter-spacing:.1em;text-transform:uppercase;font-family:var(--mono)}
   .row .nm{font-size:13px}.row .nm em{font-family:var(--serif);font-size:11px;color:var(--faint);font-style:italic;letter-spacing:0}
-  .row .rs{font-size:11.5px;color:var(--ink2);line-height:1.55;margin-top:3px}   /* fill the column — no early width cap */
+  .row .rs{font-size:11.5px;color:var(--ink2);line-height:1.55;margin-top:3px;overflow-wrap:anywhere}   /* fill the column — no early width cap */
   /* ── v0.1.32 diff-modal: clickable changed-fact filename (in the ledger) + the diff overlay ── */
   .nm-diff{background:none;border:0;padding:0;font:inherit;color:var(--accent);cursor:pointer;
     border-bottom:1px dotted var(--accent);transition:opacity .12s}
@@ -162,8 +165,8 @@
   .modal-x:hover{color:var(--accent)}
   .modal-body{overflow:auto;padding:9px 0;font-family:var(--mono);font-size:11.5px;line-height:1.55}
   .dl{padding:0 18px;white-space:pre-wrap;word-break:break-word}
-  .dl-plus{background:rgba(95,169,150,.13);color:var(--data)}
-  .dl-minus{background:rgba(179,71,39,.11);color:var(--accent)}
+  .dl-plus{background:var(--tint-ok);color:var(--data)}
+  .dl-minus{background:var(--tint-crit);color:var(--accent)}
   .dl-at{color:var(--faint);font-style:italic;margin:5px 0;letter-spacing:.04em}
   .dl-ctx{color:var(--ink2)}
   .dl-more{padding:9px 18px;color:var(--faint);font-style:italic;border-top:1px solid var(--rule);margin-top:6px}
@@ -217,9 +220,9 @@
   .reg-card .ev{font-size:11px;color:var(--faint);margin-top:4px;line-height:1.45;overflow-wrap:anywhere}
   .reg-more{display:block;padding:10px 0 2px;font-size:12px;color:var(--faint);font-family:var(--serif);font-style:italic}
   @media(max-width:640px){.reg-card{grid-template-columns:1fr;gap:6px}}
-  .flag{margin-top:14px;padding:10px 13px;border-left:3px solid var(--accent);background:rgba(179,71,39,.06);
+  .flag{margin-top:14px;padding:10px 13px;border-left:3px solid var(--accent);background:var(--tint-accent);
     font-size:11.5px;color:var(--ink2);display:none}
-  .flag.warn{border-left-color:var(--warn);background:rgba(154,107,28,.07)}
+  .flag.warn{border-left-color:var(--warn);background:var(--tint-warn)}
   .banner-stack{display:flex;flex-direction:column;gap:8px;margin:18px 0 0}
   .banner-stack .flag{margin-top:0}
   .ident{font-size:11px;color:var(--faint);letter-spacing:.02em;margin-top:2px}
@@ -779,7 +782,7 @@
       kpi(pct(num(ix),idxb)+'<small>%</small>', "index vs target", tok(num(ix))+" / "+tok(idxb),
           ceilK?"var(--crit)":(io&&!sjK)?"var(--crit)":(io?"var(--warn)":null))
      +kpi(recallN(CUR), "recall facts", "in the private store", null)
-     +kpi(num(v.confirmed)+'<small> ✓</small>', "verified", num(v.corrected)+" corrected · "+num(v.unverifiable)+" unverifiable", num(v.unverifiable)>0?"var(--warn)":null)
+     +kpi(num(v.confirmed), "verified", num(v.corrected)+" corrected · "+num(v.unverifiable)+" unverifiable", num(v.unverifiable)>0?"var(--warn)":null)
      +kpi(esc(rg).charAt(0)+esc(rg).slice(1).toLowerCase(), "rigor",
           esc("via "+g(CUR,"verification.method","—"))+(pp?' · <span style="color:var(--warn)">prune pressure</span>':""),
           pp?"var(--warn)":null);
@@ -865,7 +868,7 @@
     svg.appendChild(S("line",{x1:pL,y1:plotB,x2:W-pR,y2:plotB,class:"grid"}));
     if(n<2){var t2=S("text",{x:(pL+W-pR)/2,y:(pT+plotB)/2,"text-anchor":"middle",class:"axt d"});
       t2.textContent="Not enough dreams yet";svg.appendChild(t2);return;}
-    var times=rows.map(function(r){var d=Date.parse(g(r,"marker.timestamp",""));return isFinite(d)?d:null;});
+    var times=rows.map(function(r){var d=Date.parse(String(g(r,"marker.timestamp","")||""));return isFinite(d)?d:null;});
     var bx=function(i){return pL+i*(W-pL-pR)/(n-1);};
     var skip=Math.max(1,Math.ceil(n/12)), seg=(W-pL-pR)/(n-1);
     rows.forEach(function(r,i){
@@ -951,11 +954,13 @@
   // Pre-split cycle records keep the old "has any mirror" star + an honest fallback caption
   // — we do not invent live topology at render time.
   (function(){
-    var net=CUR.network||{},allN=Array.isArray(net.nodes)?net.nodes:[],nodes=allN.slice(0,12),svg=el("net");
+    var net0=g(CUR,"network",null);
+    var hasNet=!!(net0&&typeof net0==="object"&&!Array.isArray(net0));
+    var net=hasNet?net0:{},allN=Array.isArray(net.nodes)?net.nodes:[],nodes=allN.slice(0,12),svg=el("net");
     var tot=(net.totals&&typeof net.totals==="object"&&!Array.isArray(net.totals))?net.totals:{};
     var totAl=num(tot.always_loaded_tokens),totRc=num(tot.recall_tokens);
     var split=Array.isArray(net.stack_edges)||nodes.some(function(d){return d.stack!=null||d.universal!=null;});
-    var note=nodes.length+" project"+(nodes.length!==1?"s":"")+(allN.length>12?" of "+allN.length:"");
+    var note=hasNet?(nodes.length+" project"+(nodes.length!==1?"s":"")+(allN.length>12?" of "+allN.length:"")):"project list wasn’t captured this pass";
     if(split&&("universal" in tot||"stack" in tot)) note+=" · "+num(tot.universal)+" baseline · "+num(tot.stack)+" this-stack";
     el("net-note").textContent=note;
     var cap=el("net-cap"), legS=el("net-leg-stack");
@@ -965,7 +970,7 @@
       // render-chain audit: the record may carry fleet totals with NO node rows (the model trimmed the
       // verbatim paste) — "no shared-memory network yet" would assert the fleet doesn't exist. Say what's
       // true: the detail wasn't captured; the totals are the fleet.
-      t.textContent=((totAl+totRc)>0)?"project list wasn’t captured this pass":"no other projects sharing memory yet";svg.appendChild(t);return;}
+      t.textContent=(!hasNet||(totAl+totRc)>0)?"project list wasn’t captured this pass":"no other projects sharing memory yet";svg.appendChild(t);return;}
     if(cap){
       if(!split) cap.textContent="Older record — a line just means this project holds at least one shared fact.";
       else {
@@ -1192,13 +1197,18 @@
   (function(){
     var a=CUR.audit||{},box=el("audit");el("pass-note").textContent="";
     function ln(s,d){d=d||{};var td=num(d.token_delta);
-      return '<div class="audit-row"><span class="s">'+esc(s)+'</span><span class="a-added">+'+num(d.created)+'</span><span class="a-corrected">~'+num(d.modified)+'</span><span class="a-deleted">−'+num(d.deleted)+'</span><span class="tk">'+(td>=0?"+":"")+fmt(td)+'</span></div>';}
+      return '<div class="audit-row"><span class="s">'+esc(s)+'</span><span class="a-added">'+num(d.created)+'</span><span class="a-corrected">'+num(d.modified)+'</span><span class="a-deleted">'+num(d.deleted)+'</span><span class="tk">'+(td>=0?"+":"")+fmt(td)+'</span></div>';}
     var any=["memory","claude_md","repo_doc"].some(function(s){var d=a[s]||{};return num(d.created)+num(d.modified)+num(d.deleted)!==0;});
     var head='<div class="panel-lead">What changed</div>'
       +'<div class="audit-row head"><span class="s">store</span><span>new</span><span>mod</span><span>del</span><span>tokens</span></div>';
     if(!any){box.innerHTML=head+'<div class="meta"><div class="cap">No file mutations detected between phase 0 and phase 5.</div></div>';}
     else{var h=head+ln("memory",a.memory)+ln("CLAUDE.md",a.claude_md)+ln("repo docs",a.repo_doc);
       var cons=a.conservation||{};if(cons.possible_loss)h+='<div class="flag" style="display:block">⚠ Possible lost relocate — CLAUDE.md −'+fmt(num(cons.claude_md_drop))+' tok but targets only +'+fmt(num(cons.repo_doc_growth))+'. Verify it was intended.</div>';
+      var ops=Array.isArray(a.operations)?a.operations.filter(function(o){return o&&typeof o==="object";}):[];
+      if(ops.length){h+='<div class="audit-ln head"><span class="s">per-file</span><span class="nums">op · Δ tokens</span></div>'
+        +ops.slice(0,8).map(function(o){var d=num(o.token_delta);var lab=String(o.path||"?");if(lab.length>34)lab=lab.slice(0,31)+"…";
+          return '<div class="audit-ln"><span class="s" title="'+esc(o.path||"")+'">'+esc(lab)+'</span><span class="nums">'+esc(o.op||"modified")+' · '+(d>=0?"+":"")+fmt(d)+' tok</span></div>';}).join("")
+        +(ops.length>8?'<div class="audit-ln"><span class="s"></span><span class="nums">+ '+(ops.length-8)+' more files</span></div>':"");}
       h+='<div class="meta"><div class="cap">Files this pass actually changed.</div></div>';
       box.innerHTML=h;}
     // verification & health — same head style; each check reads label → plain-english result.
@@ -1210,8 +1220,9 @@
     // remediation gate state get their HTML rows, so the archive shows what the ASCII dashboard shows.
     var U0=CUR.usage, uRows="";
     if(U0&&typeof U0==="object"&&!Array.isArray(U0)&&Object.keys(U0).length){
-      var utop=(Array.isArray(U0.per_fact)?U0.per_fact:[]).filter(function(f){return f&&typeof f==="object";}).slice(0,3)
-        .map(function(f){return esc(String(f.name||"?"))+" ×"+num(f.reads);}).join(" · ");
+      var ufact=(Array.isArray(U0.per_fact)?U0.per_fact:[]).filter(function(f){return f&&typeof f==="object";});
+      var utop=ufact.slice(0,3)
+        .map(function(f){return esc(String(f.name||"?"))+" ×"+num(f.reads);}).join(" · ")+(ufact.length>3?" · +"+(ufact.length-3)+" more":"");
       // "organic" + dream-excluded: 0 reads next to N confirmed claims is not a contradiction
       // (verification is grep/git; usage is transcript body-reads, dream-procedure excluded).
       uRows='<div class="audit-ln"><span class="s">usage</span><span class="nums">'
@@ -1219,6 +1230,7 @@
         +' · '+num(U0.transcripts)+' transcript'+(num(U0.transcripts)!==1?"s":"")
         +(num(U0.mentions)?' · '+num(U0.mentions)+' mention'+(num(U0.mentions)!==1?"s":""):"")
         +(num(U0.dream_excluded)?' · '+num(U0.dream_excluded)+' dream-procedure excluded':"")
+        +(U0.archive_reads!=null?' · '+num(U0.archive_reads)+' archive read'+(num(U0.archive_reads)!==1?"s":""):"")
         +'</span></div>'
         +(utop?'<div class="audit-ln"><span class="s">top recalls</span><span class="nums">'+utop+'</span></div>':"");}
     var rem=CUR.remediation, remRow="";
@@ -1308,7 +1320,8 @@
       var dmc=[num(DM.windows_observed)+" window"+(num(DM.windows_observed)!==1?"s":""),
                num(DM.eligible)+" eligible"];
       var surf=Array.isArray(DM.surfaced)?DM.surfaced:[], stk=Array.isArray(DM.struck)?DM.struck:[];
-      if(surf.length)dmc.push(surf.length+" surfaced"+(surf.filter(function(s){return typeof s==="string";}).length?": "+surf.filter(function(s){return typeof s==="string";}).slice(0,3).join(", "):""));
+      var surfStr=surf.filter(function(s){return typeof s==="string";});
+      if(surf.length)dmc.push(surf.length+" surfaced"+(surfStr.length?": "+surfStr.slice(0,3).join(", ")+(surfStr.length>3?" · +"+(surfStr.length-3)+" more":""):""));
       if(stk.length)dmc.push(stk.length+" struck (read this window)");
       el("demo-counts").textContent=dmc.join(" · ");
       var bits="";
@@ -1321,9 +1334,10 @@
       var dvd=String(DM.verdict==null?"":DM.verdict);
       if(!dvd&&missN===0&&num(DM.eligible)===0)dvd="dormant — not enough evidence yet";
       if(dvd){
-        var dm2=dvd.match(/^\s*(dormant|demoted|justified|none)\b[:\s—-]*/i);
-        var dtag=dm2?dm2[1].toLowerCase():"", drest=dm2?dvd.slice(dm2[0].length):dvd;
-        var dcls=(dtag==="demoted"||dtag==="justified")?" ok":"";
+        var dvd2=dvd.replace(/^\s*eligible\s+\d+\s*(?:→|—|-)?\s*/i,"");
+        var dm2=dvd2.match(/^\s*(dormant|demoted|justified|none|counter-justified)\b[:\s—-]*/i);
+        var dtag=dm2?dm2[1].toLowerCase():"", drest=dm2?dvd2.slice(dm2[0].length):dvd2;
+        var dcls=(dtag==="demoted"||dtag==="justified"||dtag==="counter-justified")?" ok":"";
         bits+=(bits?'<span class="vtx"> · </span>':"")
           +(dtag?'<span class="tag'+dcls+'">'+esc(dtag)+'</span>':"")+'<span class="vtx">'+esc(drest)+'</span>';
       }
@@ -1380,7 +1394,7 @@
         var nConf=named.filter(function(c){return String(c.disposition)==="confirmed";}).length;
         var nFleet=num(WP.n_fleet, wc.filter(function(c){return isFleetRec(c)&&isSpread(c)&&isDistinct(c);}).length);
         var nSpread=num(WP.n_day_spread, wc.filter(function(c){return isFleetRec(c)&&!isSpread(c)&&isDistinct(c);}).length);
-        el("reg-counts").textContent=nConf?(nConf+" placed"):(nAwait?(nAwait+" proposed"):(nFleet?"none proposed":"none this pass"));
+        el("reg-counts").textContent=nConf?(nConf+" placed"):(nAwait?(nAwait+" proposed"):(nFleet?"none proposed":"none this pass"))+(num(WP.n_blocked,0)>0?" · "+num(WP.n_blocked,0)+" blocked":"");
         var vd=String(WP.verdict||"");
         if(vd) el("reg-verdict").innerHTML=verdictHtml(vd,"declined|confirmed|awaiting|nothing|blocked");
         else if(nFleet && !named.length) el("reg-verdict").innerHTML='<span class="vtx" style="color:var(--faint)">'+nFleet+" distinctive command"+(nFleet!==1?"s":"")+" crossed projects; none proposed as an artifact.</span>";
@@ -1440,35 +1454,41 @@
     // whenever at least one resolves to a real diff. Otherwise — no `files` field at all (pre-v0.1.72), OR
     // an empty/unresolved `files` the model got wrong — fall through to the legacy heuristics below rather
     // than trusting a possibly-mistaken negative declaration and silently dropping a real, observed change.
+    function fileLabel(rawFiles){
+      if(!Array.isArray(rawFiles)||!rawFiles.length)return "";
+      var shown=rawFiles.slice(0,3).map(function(p){return esc(String(p));});
+      return ' <em>'+shown.join(" · ")+(rawFiles.length>3?" · +"+(rawFiles.length-3)+" more":"")+'</em>';
+    }
     function nameCell(e){
-      var nm=g(e,"name","—"), rawFiles=g(e,"files",null), declared=[], seen={};
+      var nm=g(e,"name","—"), rawFiles=g(e,"files",null), declared=[], seen={}, fl=fileLabel(rawFiles);
       if(Array.isArray(rawFiles))rawFiles.forEach(function(p){p=String(p);
         if(DREAMDIFFS[p]&&!seen[p]){seen[p]=1;declared.push(p);}});
       if(declared.length){
         var primary=link(declared[0],nm), extra=declared.slice(1).map(function(p){return link(p,diffDisplayName(p));});
-        return extra.length?primary+' <em>+</em> '+extra.join(' '):primary;
+        return (extra.length?primary+' <em>+</em> '+extra.join(' '):primary)+fl;
       }
       // legacy/fallback heuristic: an entry's OWN file may carry no diff even though something real changed
       // FOR it — an index-line-only compression touches memory/MEMORY.md, not memory/<name>.md; a
       // claude_md/repo_doc entry has no per-entry filename convention to begin with.
       var p="memory/"+nm+".md";   // a memory fact's entry name == its slug → match the sidecar key
-      if(DREAMDIFFS[p])return link(p,nm);
+      if(DREAMDIFFS[p])return link(p,nm)+fl;
       var store=g(e,"store","");
-      if(store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"])return link("memory/MEMORY.md",nm);   // index-only edit
+      if(store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"])return link("memory/MEMORY.md",nm)+fl;   // index-only edit
       if(store==="repo"){
         var cmKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("claude_md/")===0;});
         var rdKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("repo_doc/")===0;});
         // only auto-link when JOINTLY unambiguous (exactly one candidate across BOTH stores combined) — one
         // claude_md file AND one repo_doc file changed in the same pass is still two real candidates, not one
         var repoKeys=cmKeys.concat(rdKeys);
-        if(repoKeys.length===1)return link(repoKeys[0],nm);
+        if(repoKeys.length===1)return link(repoKeys[0],nm)+fl;
       }
-      return esc(nm);}
+      return esc(nm)+fl;}
     var rows=ENT.map(function(e){var act=g(e,"action","-"),tier=g(e,"tier","");tier=(tier===""||tier==="-")?"":tier;var sc=g(e,"scope","");
+      var cit=g(e,"citation","");
       return '<div class="row"><div class="act a-'+esc(act)+'">'+esc(act)+'</div>'
         +'<div><div class="nm">'+nameCell(e)+(tier||sc?' <em>'+esc([tier,sc].filter(Boolean).join(" · "))+'</em>':'')+'</div>'
         +(g(e,"reason","")?'<div class="rs">'+esc(g(e,"reason",""))+'</div>':'')+'</div>'
-        +'<div class="ci">'+(g(e,"citation","")?esc(g(e,"citation","")):'')+'</div></div>';});
+        +'<div class="ci"'+(cit?' title="'+esc(cit)+'"':"")+'>'+(cit?esc(String(cit).slice(0,10)):"")+'</div></div>';});
     // a changed file with no narrated entry → appended (e.g. an index-line-only compression, or a CLAUDE.md/repo-doc
     // edit — those stores have no per-entry name convention to match). Every DREAMDIFFS key lands SOMEWHERE in the
     // ledger, narrated or not — no observed file change is ever silently dropped.
@@ -1483,7 +1503,7 @@
     [].slice.call(box.querySelectorAll(".nm-diff")).forEach(function(b){b.addEventListener("click",function(){openDiff(b.getAttribute("data-p"));});});
   })();
 
-  el("f-marker").textContent="marker → "+String(g(CUR,"marker.commit","—")).slice(0,12)+" @ "+String(g(CUR,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"");
+  el("f-marker").textContent="marker → "+String(g(CUR,"marker.commit","—")).slice(0,12)+" @ "+String(g(CUR,"marker.timestamp","")||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
   } // paintDream
 
   // ── theme toggle · auto (follow system) → light → dark ──
@@ -1523,7 +1543,7 @@
       if(!(rg==="LIGHT"||rg==="SUBSTANTIAL"||rg==="HEAVY")) rg=sug;
       return {i:i, intg:!!(c&&c._integrity), oc:outcomeOf(c),
         rgRaw:rg, rg:rg.charAt(0)+rg.slice(1).toLowerCase(),
-        ts:String(g(c,"marker.timestamp","—")).replace("T"," ").replace(/(\+.*|Z)$/,"").slice(0,16), tsRaw:String(g(c,"marker.timestamp","")),
+        ts:String(g(c,"marker.timestamp","")||"—").replace("T"," ").replace(/(\+.*|Z)$/,"").slice(0,16), tsRaw:String(g(c,"marker.timestamp","")||""),
         ix:num(g(c,"budget.index.after_tokens",g(c,"budget.index.before_tokens",0))),
         en:(Array.isArray(c.entries)?c.entries:[]).filter(function(e){return ["added","corrected","deleted","reconciled"].indexOf(g(e,"action",""))>=0;}).length,
         hh:String(g(c,"marker.commit","")).slice(0,9)||"—"};});
@@ -1535,7 +1555,9 @@
       +'<span class="f-count" id="f-count"></span>';
     function build(){
       var fr=rows.filter(function(x){return st.rig==="all"||x.rgRaw===st.rig;});
-      fr.sort(function(a,b){var d=(a[st.key]>b[st.key]?1:a[st.key]<b[st.key]?-1:0)*st.dir; return d|| (b.i-a.i);});
+      fr.sort(function(a,b){var ea=a[st.key]==="", eb=b[st.key]==="";
+      if(ea||eb)return ea&&eb?0:(ea?1:-1);
+      var d=(a[st.key]>b[st.key]?1:a[st.key]<b[st.key]?-1:0)*st.dir; return d|| (b.i-a.i);});
       el("f-count").textContent=fr.length+(fr.length!==rows.length?" of "+rows.length:"")+" shown";
       el("arch-list").innerHTML=fr.map(function(x){
         return '<a class="arch-row'+(x.i===lastSel?" cur":"")+'" href="#sel='+x.i+'">'

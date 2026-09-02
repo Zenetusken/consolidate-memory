@@ -582,14 +582,18 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         _ment = usage.get("mentions", 0)
         _ment_s = (_c(f" · {_g(_ment)} hook mention(s)", "dim")) if _ment else ""
         out.append(f"    {_g(usage.get('reads', 0))} read(s) over {_g(usage.get('facts_read', 0))} fact(s)" + _ment_s
+                   + (("  " + _c(f"· {_g(usage.get('archive_reads', 0))} archive read(s)", "dim"))
+                      if usage.get("archive_reads") not in (None, "", 0) else "")
                    + "  " + _c(f"{_g(usage.get('transcripts', 0))} transcript(s) · "
                               # PR-#98 review F4: dream_excluded now counts reads AND mentions — the label
                               # must not say "read(s)" (was imprecise once mentions joined the span split).
                               f"{_g(usage.get('dream_excluded', 0))} dream-procedure recall(s) excluded", "dim"))
-        _utop = [f for f in _lget(usage, "per_fact") if isinstance(f, dict)][:3]
+        _ufact = [f for f in _lget(usage, "per_fact") if isinstance(f, dict)]
+        _utop = _ufact[:3]
         if _utop:
             out.append("    " + _c("top:", "dim") + " " + " · ".join(
-                f"{_clean(f.get('name', '?'))} ×{_g(f.get('reads', 0))}" for f in _utop))
+                f"{_clean(f.get('name', '?'))} ×{_g(f.get('reads', 0))}" for f in _utop)
+                + (_c(f"  +{len(_ufact) - 3} more", "dim") if len(_ufact) > 3 else ""))
         # v0.1.67 (Phase C): the MISS-DETECTOR line — an archived-tier fact read organically is a
         # demotion error, rendered LOUD (it is the policy's own error signal). Key-presence gated:
         # a legacy/miss-free record (no `misses` key / empty) renders byte-identically.
@@ -622,6 +626,8 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
             out.append("    " + _c(f"dormant — {_g(_dw)} probative usage window(s) accrued (wakes per-fact as evidence accrues)", "dim"))
         _dv = _clean(demo.get("verdict", ""))
         if _dv:
+            import re as _re41
+            _dv = _re41.sub(r"^\s*eligible\s+\d+\s*(?:→|—|-)?\s*", "", _dv)
             out.append("    " + _c("verdict: ", "dim") + _dv)
 
     # Remediation gate (v0.1.18) — present ONLY when the index was over budget. Shows whether the gate was
