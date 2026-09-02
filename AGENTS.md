@@ -212,6 +212,10 @@ design.
   bump matches intent. It refuses a non-forward/multi-step version, an unfilled
   CHANGELOG stub, or a dirty/out-of-sync tree. (`release.sh` is a local,
   gitignored maintainer artifact — never published.)
+- **Stacked PR chains merge oldest-first:** retarget each PR's base to `main`
+  (`gh pr edit N --base main`), wait on checks, then `gh pr merge N --merge`
+  (merge commits — the repo convention). The v0.4.0 chain (#128→#154→…→#160)
+  merged this way under the user's delegation.
 
 ## The QA companion (dream-beta-tester)
 

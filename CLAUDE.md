@@ -186,6 +186,8 @@ the `## [X.Y.Z]` CHANGELOG entry first (using the policy above), then:
   bump matches your intent (a second guard; aborts on mismatch).
 
 It refuses a non-forward or multi-step version, an unfilled CHANGELOG stub, or a
-dirty/out-of-sync tree / existing tag. (This replaced a keyword-driven flow after a
+dirty/out-of-sync tree / existing tag — and the clean-tree guard counts UNTRACKED
+files too, so move any session exports out of the repo before `--confirm`.
+(This replaced a keyword-driven flow after a
 `minor`-vs-`patch` slip mis-shipped a version: the version is now structurally tied to the
 reviewed CHANGELOG, not a release-time judgment.)
