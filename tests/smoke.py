@@ -5905,7 +5905,7 @@ def _norm_mutate_tree(root: Path) -> "dict[str, str]":
             if (p.suffix in (".sqlite", ".lock") or p.name.endswith(".lock")
                     or "/plugins/data/" in "/" + rel or p.name in (
                         "control.sqlite", "fleet-usage.jsonl", ".fleet-usage.jsonl",
-                        "migrate-rollback.json", "hook-sketches.jsonl")):
+                        "migrate-rollback.json")):
                 continue
             if "/quarantine/" in "/" + rel and rel.endswith(".md"):
                 parts = rel.split("/")
@@ -6399,6 +6399,12 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
     except ImportError:
         _hk_gone = True
     check("v0.4.0: hook-sketch infra removed — hook_sketches module is gone", _hk_gone)
+    # …and the doc inventories must not resurrect the name (the CHANGELOG
+    # legitimately keeps it — history is the record, not a live inventory).
+    _hk_docs = (ROOT / "CLAUDE.md").read_text(encoding="utf-8") \
+        + (ROOT / "AGENTS.md").read_text(encoding="utf-8")
+    check("v0.4.0: hook_sketches absent from the CLAUDE.md and AGENTS.md inventories",
+          "hook_sketches" not in _hk_docs)
 
     # ── v0.4.0 Phase-4 authority pins (#145 grants, #149 replacement cycles,
     #    #8 capability cache, #12 export/import round-trip, #11 CLI envelope) ──
@@ -6528,6 +6534,56 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
               {"idx_facts_domain_stem", "idx_holders_project",
                "idx_tombstones_domain"} <= _inames40
               and isinstance(sc.doctor_dict(_ctx40r).get("integrity_check"), str))
+        # (#9b): the dormant sketch tables are GONE from a FRESH registry too —
+        # the removal is complete at the schema level, not just the module.
+        _conn40t = cp.connect(cp.db_path(_ctx40r))
+        try:
+            _tnames40 = {r[0] for r in _conn40t.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        finally:
+            _conn40t.close()
+        check("v0.4.0 (#9): fresh control.sqlite has NEITHER usage_events NOR workflow_sketches",
+              {"usage_events", "workflow_sketches"} & _tnames40 == set()
+              and {"projects", "facts", "holders"} <= _tnames40)
+        # (#9c): the v3→v4 migration DROPs the dormant tables on an EXISTING
+        # install — simulate a pre-drop v3 registry (full current schema + the
+        # old literal DDL + sentinel rows + user_version 3) and reopen it.
+        _dbp40 = cp.db_path(_ctx40r)
+        _c40m = _sq40.connect(str(_dbp40))
+        try:
+            _c40m.executescript(cp.SCHEMA_SQL)
+            _c40m.executescript(
+                "CREATE TABLE IF NOT EXISTS usage_events ("
+                " id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, day TEXT, sketch TEXT);"
+                "CREATE TABLE IF NOT EXISTS workflow_sketches ("
+                " id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, day TEXT, sketch TEXT);")
+            _c40m.execute("INSERT INTO usage_events (project_id, day, sketch) "
+                          "VALUES ('probe','2026-08-31','x')")
+            _c40m.execute("INSERT INTO workflow_sketches (project_id, day, sketch) "
+                          "VALUES ('probe','2026-08-31','x')")
+            _c40m.execute("PRAGMA user_version = 3")
+            _c40m.commit()
+            # pre-reopen self-check: the tables + sentinels must exist BEFORE
+            # the migration runs, or the pin would pass vacuously.
+            _pre40 = {r[0] for r in _c40m.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            _npre40 = _c40m.execute(
+                "SELECT COUNT(*) AS n FROM usage_events").fetchone()[0]
+        finally:
+            _c40m.close()
+        _conn40m = cp.connect(_dbp40)   # ver 3 < REGISTRY_USER_VERSION → migration runs
+        try:
+            _t40m = {r[0] for r in _conn40m.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            _ver40m = int(_conn40m.execute("PRAGMA user_version").fetchone()[0])
+        finally:
+            _conn40m.close()
+        check("v0.4.0 (#9): reopening a v3 registry with sketch tables drops them and "
+              "lands user_version == REGISTRY_USER_VERSION",
+              {"usage_events", "workflow_sketches"} <= _pre40 and _npre40 == 1
+              and {"usage_events", "workflow_sketches"} & _t40m == set()
+              and {"projects", "facts", "holders"} <= _t40m
+              and _ver40m == cp.REGISTRY_USER_VERSION)
         # (#11): CLI error envelope — a refused grant with --json emits
         # {ok:false, error, code:2} and exits 2.
         _env40_u, _env40_e = _io73.StringIO(), _io73.StringIO()

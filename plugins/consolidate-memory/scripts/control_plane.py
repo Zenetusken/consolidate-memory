@@ -64,18 +64,6 @@ CREATE TABLE IF NOT EXISTS tombstones (
     replacement_id TEXT,
     grace_until TEXT
 );
-CREATE TABLE IF NOT EXISTS usage_events (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id TEXT,
-    day TEXT,
-    sketch TEXT
-);
-CREATE TABLE IF NOT EXISTS workflow_sketches (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    project_id TEXT,
-    day TEXT,
-    sketch TEXT
-);
 CREATE TABLE IF NOT EXISTS migration_state (
     key TEXT PRIMARY KEY,
     value TEXT
@@ -136,7 +124,8 @@ JOURNAL_STEPS = (
     "journal_complete",
 )
 JOURNAL_CLEANUP_PENDING = "committed-cleanup-pending"
-REGISTRY_USER_VERSION = 3
+# v4: drop the dormant hook-sketch tables (usage_events/workflow_sketches).
+REGISTRY_USER_VERSION = 4
 JOURNAL_USER_VERSION = 1
 JOURNAL_RECEIPT_DAYS = 90
 # v0.4.0 review: receipt-collapse bounds PAYLOAD size, never ROW count — a row
@@ -522,6 +511,11 @@ def journal_table_names(conn: sqlite3.Connection) -> set:
 
 
 def _migrate_journal_schema(conn: sqlite3.Connection) -> None:
+    # v0.4.0 (v3→v4): pre-split journal.sqlite files ran the full registry DDL
+    # and may physically carry the dormant hook-sketch tables — drop them here
+    # too (idempotent; this runs on every journal open).
+    conn.execute("DROP TABLE IF EXISTS usage_events")
+    conn.execute("DROP TABLE IF EXISTS workflow_sketches")
     cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(journal)").fetchall()}
     if cols and "completed_at" not in cols:
         conn.execute("ALTER TABLE journal ADD COLUMN completed_at TEXT")
@@ -639,7 +633,18 @@ def migration_mode_readonly(ctx: Optional[StoreContext] = None,
 
 
 def _migrate_schema(conn: sqlite3.Connection) -> None:
-    """Additive columns for DBs created before session_dir existed."""
+    """v3→v4 drops the dormant hook-sketch tables; earlier steps add columns.
+
+    The DROP pair runs for every `ver < REGISTRY_USER_VERSION` DB — an existing
+    install loses its empty `usage_events`/`workflow_sketches` tables, and a
+    fresh DB never had them (SCHEMA_SQL no longer creates them), so the DROPs
+    are no-ops there.
+    """
+    # v0.4.0 (v3→v4): the hook-sketch feature was removed — drop its dormant
+    # tables on every existing install.
+    conn.execute("DROP TABLE IF EXISTS usage_events")
+    conn.execute("DROP TABLE IF EXISTS workflow_sketches")
+    conn.commit()
     cols = {str(r[1]) for r in conn.execute("PRAGMA table_info(projects)").fetchall()}
     if "session_dir" not in cols:
         conn.execute("ALTER TABLE projects ADD COLUMN session_dir TEXT")
