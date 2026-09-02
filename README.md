@@ -256,11 +256,18 @@ format-example is not a dangling refusal. **v0.3.7** gives locals their own
 recall-key constructor (keep `()`, word-boundary, scope tag) and
 script-writes `demotion_justify` as the monotonic usage-window sequence.
 
+**v0.4.0** is the sole-authority release (ADR 023): holders/topology, grants,
+and migration state live in SQLite with one authority per kind of state; the
+canonical writer and the catalog/link pipeline are consolidated under typed
+renderers; the beacon and pull hot paths read a derived facts-manifest cache
+(O(C) canonical reads); journal inventory is keyset-paginated; and the dormant
+hook-sketch infrastructure is fully removed.
+
 ## Install
 
-**v0.3.7** (domain isolation + StoreContext + `cm project enroll`; dashboard
-identity; `cm local` hook-lint + link-strip parity; journal terminal cleanup
-and domain lifecycle). This ships as a
+**v0.4.0** (sole-authority topology and SQLite grants; consolidated canonical
+writer; facts-manifest beacon/pull cache; journal pagination; hook-sketch
+infrastructure removed). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
 ```text
@@ -295,7 +302,7 @@ memory this plugin does not own. Domain canonicals live under
 read-only migration source. Scoped purge commands are the right tool; hand-deleting
 the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
-### Known limitations (v0.3.7)
+### Known limitations (v0.4.0)
 
 - **Unenrolled projects are local-only.** They cannot create or pull cross-project
   canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain
