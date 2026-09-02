@@ -2088,13 +2088,22 @@ def cmd_journal(args: argparse.Namespace) -> int:
     ctx = _ctx(args.project)
     cmd = args.journal_cmd
     if cmd == "inventory":
+        # Phase-5 SLO: keyset-paged — a 1M-row journal prints ONE bounded page
+        # (default 200), never a 1M-line dump. `--after` continues from the
+        # cursor the previous page printed.
+        from control_plane import journal_count
         conn = connect_journal(ctx)
         try:
-            rows = journal_inventory(conn)
+            rows, next_after = journal_inventory(
+                conn, limit=getattr(args, "limit", 200) or 200,
+                after=str(getattr(args, "after", None) or ""))
+            total = journal_count(conn)
         finally:
             conn.close()
         if args.json:
-            print(json.dumps(rows, indent=2))
+            print(json.dumps({"ok": True, "rows": rows,
+                              "next_after": next_after, "total": total},
+                             indent=2))
         elif not rows:
             print("(empty journal)")
         else:
@@ -2102,6 +2111,9 @@ def cmd_journal(args: argparse.Namespace) -> int:
                 body = " body" if r.get("has_body") else ""
                 print(f"{r['op_id']}  {r['status']:12}  {r['kind']}  "
                       f"p={r['publishes']} d={r['deletes']}{body}")
+            if next_after is not None:
+                print(f"(showing {len(rows)} of {total} — pass "
+                      f"--after {next_after} for the next page)")
         return 0
     if cmd == "show":
         if not args.op_id:
@@ -2579,6 +2591,10 @@ def build_parser() -> argparse.ArgumentParser:
     j.add_argument("--confirm", metavar="PHRASE")
     j.add_argument("--accept-fs", action="store_true")
     j.add_argument("--scan-all-stores", action="store_true")
+    j.add_argument("--limit", type=int, default=200,
+                   help="journal inventory page size (default 200)")
+    j.add_argument("--after", default="",
+                   help="journal inventory keyset cursor (from the prior page)")
     return p
 
 
