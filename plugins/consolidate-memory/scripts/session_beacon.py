@@ -81,7 +81,8 @@ def _cwd_from_stdin() -> str:
 
 def beacon_line(store: Path, *, domain_id: str = "unknown",
                 migration_mode: str = "dual-read",
-                gfacts: list | None = None) -> str:
+                gfacts: list | None = None,
+                body_hashes: "dict | None" = None) -> str:
     """The at-most-one advisory line for `store` — '' when silent. PURE given the filesystem
     (smoke-pinned through both the silent and behind states)."""
     if not gfacts:
@@ -102,7 +103,11 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
         return ""
     cached = st.get("stacks")
     stacks = {str(x) for x in cached} if isinstance(cached, list) else None
-    body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts}
+    if body_hashes is None:
+        body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts if t}
+    for _n, _fm, _t in gfacts:
+        if not _t:
+            body_hashes.setdefault(_n, "")
     missing, stale = _store_gaps(
         store, stacks, gfacts, body_hashes,
         domain_id=domain_id, migration_mode=migration_mode)
@@ -168,11 +173,29 @@ def main() -> int:
             return 0  # unenrolled / unhealthy registry: local-only (ADR 008/009)
         from control_plane import migration_mode_readonly
         from sync_global import iter_admissible_facts
+        _bh: "dict | None" = None
+        try:
+            from facts_manifest import ensure as _fm_ens_b
+            _man_rows_b, _ = _fm_ens_b(ctx.canonical_domain_dir,
+                                       ctx.plugin_data_dir)
+            if _man_rows_b:
+                _bh = {n: (r.get("body_hash") or "")
+                       for n, r in _man_rows_b.items()}
+        except Exception:
+            _bh = None
+        _gf_b = iter_admissible_facts(ctx)
+        if _bh is not None:
+            # facts NEW since the manifest build are served by the full path
+            # (text present) — fill their hashes so _store_gaps never KeyErrors.
+            for _n_b, _fm_b, _t_b in _gf_b:
+                if _n_b not in _bh and _t_b:
+                    _bh[_n_b] = _body_hash(_t_b)
         line = beacon_line(
             ctx.native_memory_dir,
             domain_id=ctx.domain_id,
             migration_mode=migration_mode_readonly(ctx),
-            gfacts=iter_admissible_facts(ctx),
+            gfacts=_gf_b,
+            body_hashes=_bh,
         )
         if line:
             print(line)

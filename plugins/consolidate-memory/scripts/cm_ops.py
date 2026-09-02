@@ -334,6 +334,13 @@ def _fleet_purge_domain(ctx: StoreContext, domain_id: str, facts_dir: Path,
                    extra_domains=[domain_id], extra_project_ids=pids)
     n = int((out.get("result") or {}).get("purged_ops") or 0)
     n += _rmtree_empty_domain_dir(facts_dir, domain_id)
+    # Phase-5 closeout: the domain dir rmtree is non-transact — unlink the
+    # manifest explicitly (the transact hook only sees the file deletes).
+    try:
+        from facts_manifest import manifest_path
+        manifest_path(ctx.plugin_data_dir, domain_id).unlink(missing_ok=True)
+    except Exception:
+        pass
     return {"ok": True, "purged_files": n, "domain_id": domain_id,
             "revoked_mirrors": int((out.get("result") or {}).get("revoked") or 0),
             "unenrolled": len(rows)}
@@ -563,6 +570,13 @@ def run_all_plugin_data_purge(ctx: StoreContext, *, rows: list,
             n += sum(1 for _ in droot.rglob("*") if _.is_file())
         errors.extend(_rmtree_target(droot))
         if not errors:
+            # Phase-5 closeout: the domains-root rmtree is non-transact and may
+            # precede plugin-data deletion — unlink every manifest explicitly.
+            try:
+                from facts_manifest import invalidate_all
+                invalidate_all(ctx.plugin_data_dir)
+            except Exception:
+                pass
             fence["state"] = "verified"
             _write_purge_fence(fence_path, fence)
             state = "verified"

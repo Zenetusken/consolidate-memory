@@ -606,10 +606,17 @@ def iter_admissible_facts(ctx) -> list:
 
 
 def _admissible_records(ctx) -> list:
-    """iter_admissible_facts plus the actual source path."""
+    """iter_admissible_facts plus the actual source path.
+
+    Phase-5 closeout: the facts manifest (facts_manifest.py) serves fresh rows'
+    fm/class/secret WITHOUT reading the body — `text` is None for those records
+    (consumers that need the body/hash must consult the manifest or the fallback
+    read). The manifest fails open: any anomaly → today's full enumeration.
+    """
     if not getattr(ctx, "cross_project_allowed", False):
         return []
     from domain_policy import admit_cross_project, fact_domain
+    from fact_schema import CLASS_ACTIVE, CLASS_INVALID, CLASS_LEGACY, classify_canonical
     from memory_status import _looks_secret
     mode = "dual-read"
     try:
@@ -619,6 +626,19 @@ def _admissible_records(ctx) -> list:
         mode = "dual-read"
     recs: list = []
     seen: set = set()
+    ddir = ctx.canonical_domain_dir
+    man_rows = None
+    # Phase-5 closeout: _global_is_fixture/_hermetic_home hit Path.home() +
+    # resolve() — 41% of a 10k-canonical pull when called per fact. Both are
+    # env-derived and stable within one run: hoist them.
+    _is_fixture_now = _global_is_fixture()
+    _hermetic_now = _hermetic_home()
+    if ddir.is_dir() and not _is_fixture_now:
+        try:
+            from facts_manifest import ensure as _fm_ensure
+            man_rows, _man_reason = _fm_ensure(ddir, ctx.plugin_data_dir)
+        except Exception:
+            man_rows = None
 
     def _consider(path: Path, *, untagged_only: bool) -> None:
         if path.name == "MEMORY.md" or _is_reserved_stem(path.stem) or not _safe_stem(path.stem):
@@ -634,7 +654,6 @@ def _admissible_records(ctx) -> list:
             return
         if _looks_secret(text):
             return
-        from fact_schema import CLASS_ACTIVE, CLASS_INVALID, CLASS_LEGACY, classify_canonical
         _cls = classify_canonical(
             text, stem=path.stem, domain=str(fm.get("domain") or ctx.domain_id))
         if _cls["class"] != CLASS_ACTIVE:
@@ -647,7 +666,7 @@ def _admissible_records(ctx) -> list:
                 return
         adm = dict(fm)
         adm["body"] = text
-        if (_global_is_fixture() or _hermetic_home()) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
+        if (_is_fixture_now or _hermetic_now) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
             adm["domain"] = ctx.domain_id
         if not admit_cross_project(ctx.domain_id, adm, migration_mode=mode,
                                    looks_secret=_looks_secret):
@@ -658,10 +677,64 @@ def _admissible_records(ctx) -> list:
         seen.add(key)
         recs.append((path.stem, fm, text, path))
 
-    ddir = ctx.canonical_domain_dir
+    def _consider_fast(path: Path, *, untagged_only: bool,
+                       ent_stat: "os.stat_result | None" = None) -> None:
+        """Manifest-served record: stat freshness gates the cached row; any
+        mismatch/new file falls back to the full read. `ent_stat` is the
+        scandir DirEntry's CACHED stat (no second syscall, no Path churn —
+        Phase-5 closeout: the 10k-file fast loop was ~35% of a warm pull)."""
+        if (man_rows is None
+                or path.name == "MEMORY.md" or _is_reserved_stem(path.stem)
+                or not _safe_stem(path.stem)):
+            _consider(path, untagged_only=untagged_only)
+            return
+        r = man_rows.get(path.stem)
+        fresh = False
+        if r is not None:
+            try:
+                st = ent_stat if ent_stat is not None else path.stat()
+                fresh = (st.st_mtime_ns == int(r.get("mtime_ns") or -1)
+                         and st.st_size == int(r.get("size") or -1)
+                         and st.st_ctime_ns == int(r.get("ctime_ns") or -1))
+            except OSError:
+                fresh = False
+        if r is None or not fresh:
+            _consider(path, untagged_only=untagged_only)
+            return
+        fm = dict(r.get("fm") or {})
+        if str(fm.get("status") or "").strip() in ("tombstoned", "superseded", "expired"):
+            return
+        if untagged_only and fact_domain(fm):
+            return
+        if r.get("secret"):
+            return
+        if r.get("class") != CLASS_ACTIVE:
+            if r.get("class") == CLASS_INVALID:
+                print(f"  ⚠ invalid canonical skipped: {path.stem} "
+                      f"({(r.get('fm') or {}).get('error')})", file=sys.stderr)
+            return
+        adm = dict(fm)
+        adm["body"] = None
+        if not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
+            adm["domain"] = ctx.domain_id
+        if not admit_cross_project(ctx.domain_id, adm, migration_mode=mode,
+                                   looks_secret=_looks_secret):
+            return
+        key = (fact_domain(fm) or "legacy", path.stem)
+        if key in seen:
+            return
+        seen.add(key)
+        recs.append((path.stem, fm, None, path))
+
     if ddir.is_dir():
-        for f in sorted(ddir.glob("*.md")):
-            _consider(f, untagged_only=False)
+        try:
+            _entries = list(os.scandir(ddir))
+        except OSError:
+            _entries = []
+        for _ent in sorted(_entries, key=lambda e: e.name):
+            _consider_fast(Path(_ent.path), untagged_only=False,
+                           ent_stat=_ent.stat(follow_symlinks=False))
+        del _entries
     # Production: ~/.claude/memory is migrate-inventory only (ADR 008/013).
     # Ordinary --pull/--list/beacon never live-read it — tagged leftovers
     # would otherwise absorb into every enrolled same-domain project.
@@ -990,7 +1063,8 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                          evict_path: "Path | None",
                          holder_token: str = "",
                          in_sync_names: "list | None" = None,
-                         conflict_ops: "list | None" = None) -> dict:
+                         conflict_ops: "list | None" = None,
+                         sem_by_name: "dict | None" = None) -> dict:
     """Publish pull bodies + index through transact (pointer-before-body for MISSING).
 
     `jobs` is [(name, fm, status, path, want), ...] already stamped. Evict unlinks
@@ -1025,6 +1099,12 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         landed.add(name)
     holder_names = [n for n in landed] + [n for n in in_sync_names if n not in landed]
     for name in holder_names:
+        # Phase-5 closeout: a manifest-fresh canonical skips the full _sha
+        # pre-read — the mutate below re-checks freshness under the lock and
+        # degrades to a re-read on any change (a racing hand-write then yields
+        # a one-edit-stale holder base, which classifies REFRESH next run).
+        if (sem_by_name or {}).get(name, {}).get("mtime_ns") is not None:
+            continue
         cp = _canonical_path(ctx, name)
         if cp.exists():
             expected[str(cp)] = _sha(cp)
@@ -1119,10 +1199,26 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                 hold_set.append(n)
         holders = []
         for name in hold_set:
-            ctext = _safe_read_text(_canonical_path(ctx, name))
+            row = (sem_by_name or {}).get(name) or {}
+            ctext: "str | None" = None
+            if isinstance(row, dict) and row.get("mtime_ns") is not None:
+                cp = _canonical_path(ctx, name)
+                try:
+                    stc = cp.stat()
+                    if (stc.st_mtime_ns == int(row.get("mtime_ns") or -1)
+                            and stc.st_size == int(row.get("size") or -1)
+                            and stc.st_ctime_ns == int(row.get("ctime_ns") or -1)):
+                        ctext = ""   # sentinel: manifest row still fresh → cached sem
+                except OSError:
+                    pass
             if ctext is None:
-                continue
-            rev = _sem_hold(ctext)
+                ctext = _safe_read_text(_canonical_path(ctx, name))
+                if ctext is None:
+                    continue
+            if ctext == "":
+                rev = str(row.get("sem") or "")
+            else:
+                rev = _sem_hold(ctext)
             fid = stable_fact_id(ctx.domain_id, name)
             record_holder(conn, fid, ctx.project_id, rev, rev, rev)
             holders.append((fid, ctx.project_id, rev, rev, rev))
@@ -1353,6 +1449,14 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         print("pull: capability detection failed; holding applicability-gated facts",
               file=sys.stderr)
     facts = iter_admissible_facts(ctx)
+    man_rows = None
+    if ctx.canonical_domain_dir.is_dir() and not _global_is_fixture():
+        try:
+            from facts_manifest import ensure as _fm_ensure_r
+            man_rows, _man_reason_r = _fm_ensure_r(
+                ctx.canonical_domain_dir, ctx.plugin_data_dir)
+        except Exception:
+            man_rows = None
     _plocks: list = []
     if pull:
         try:
@@ -1418,6 +1522,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # delta and a line-without-file drift state both net honestly instead of slipping the ceiling.
     _idxp = store / "MEMORY.md"
     idx_text = _safe_read_text(_idxp) or "# Memory Index\n\n"
+    _is_fixture_run = _global_is_fixture()
+    _hermetic_run = _hermetic_home()
+    _ddir_s = str(ctx.canonical_domain_dir)
     seed_idx = est_tokens(idx_text)
     classified: list = []   # (name, fm, text, status, path, want, rel) — statuses FROZEN at scan time
     conflict_ops: list = []
@@ -1437,50 +1544,96 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         present = path.exists()
         cur = (_safe_read_text(path) or "") if present else ""   # store-scan convention (v0.1.69 Gate-2b)
         is_mirror = present and _is_mirror(cur)
-        # v0.1.78 evidence-clock carry (docs/evidence-clock-stamps.spec.md): same body as the current
-        # mirror → CARRY its since (a description/stacks/provenance tweak refreshes the text without
-        # wiping the fleet's accrued zero-read windows — the audit's F9 starvation, measured 1→0 on a
-        # description-only edit); legacy/garbled stamps but same body → seed from the file's mtime
-        # (the migration wave — never restart the fleet's evidence from zero); body genuinely changed
-        # (or a fresh pull) → NEW lineage (old zero-reads don't indict new content).
-        new_hash = _body_hash(text)
-        _migrated = False   # took the mtime-seeded branch (the honest referent of `restamped` — review #91)
-        if is_mirror:
+        # Phase-5 closeout: the manifest-served in-sync fast path. `text is None`
+        # means _admissible_records served a fresh manifest row — decide in-sync
+        # from the mirror's stamps + the cached semantic hash (the SAME equality
+        # classify_mirror trusts: semantic_payload equality). Any miss re-reads
+        # the body and runs today's path verbatim (statuses bit-identical).
+        _fast = False
+        if text is None:
+            _r_man = (man_rows or {}).get(name) if man_rows is not None else None
+            if _r_man is not None and is_mirror:
+                _rfresh = False
+                try:
+                    _stc_man = os.stat(os.path.join(
+                        str(ctx.canonical_domain_dir), name + ".md"))
+                    _rfresh = (_stc_man.st_mtime_ns == int(_r_man.get("mtime_ns") or -1)
+                               and _stc_man.st_size == int(_r_man.get("size") or -1)
+                               and _stc_man.st_ctime_ns == int(_r_man.get("ctime_ns") or -1))
+                except OSError:
+                    _rfresh = False
+                if _rfresh:
+                    from mirror_conflict import semantic_hash as _semh_fast
+                    _cur_fm_f = _frontmatter(cur)
+                    if (_cur_fm_f.get("global_ref_body") == _r_man.get("body_hash")
+                            and str(_cur_fm_f.get("global_ref_since") or "")
+                            and _parse_ts(str(_cur_fm_f.get("global_ref_since") or "")) is not None
+                            and _semh_fast(cur) == _r_man.get("sem")):
+                        _fast = True
+            if not _fast and present:
+                # a present mirror's body is needed NOW (in-sync/want compare)
+                text = _safe_read_text(ctx.canonical_domain_dir / f"{name}.md")
+                if text is None:
+                    rel = False
+                    text = ""
+            elif not _fast and not present:
+                # Phase-5 closeout: a MISSING fact's body is needed only if the
+                # PLAN actually pulls it — at 10k canonicals ~9.9k are held by
+                # the index cap, and reading them all was the 5.8s pull. Defer
+                # the read to the pull_jobs construction (below).
+                _defer = True
+        if _fast or (not text):
+            new_hash = ""
+            _rev_w = ""
+            want = None if not _fast else ""
             cur_fm = _frontmatter(cur)
-            cur_since = str(cur_fm.get("global_ref_since", "") or "")
-            if cur_fm.get("global_ref_body", "") == new_hash and cur_since and _parse_ts(cur_since) is not None:
-                since = cur_since
-            elif _body_hash(cur) == new_hash:
-                since = _mtime_iso(path)
-                _migrated = True
-            else:
-                since = _now_iso()
-        else:
-            cur_fm = {}
-            since = _now_iso()
-        from control_plane import stable_fact_id as _sfid_w
-        _fid_w = _sfid_w(ctx.domain_id, name)
-        want = _as_mirror(text, name, since=since, body_hash=new_hash,
-                          fact_id=_fid_w, domain=ctx.domain_id)
-        from mirror_conflict import semantic_hash as _semh_w, stamp_revisions as _stamp_w
-        _rev_w = _semh_w(text)
-        want = _stamp_w(want, _rev_w, _rev_w)
-        if is_mirror:
-            _m_at = re.search(r"(?m)^[ \t]*mirrored_at:\s*(\S+)", cur)
-            _cur_m = _m_at.group(1) if _m_at else str(cur_fm.get("mirrored_at") or "")
-            if _cur_m and "mirrored_at:" not in want and "  global_ref:" in want:
-                want = want.replace("  global_ref:", f"  mirrored_at: {_cur_m}\n  global_ref:", 1)
-        if "mirrored_at:" not in want and "  global_ref:" in want:
-            want = want.replace("  global_ref:", f"  mirrored_at: {_now_iso()}\n  global_ref:", 1)
-        if _migrated and not _frontmatter(want).get("global_ref_since"):
-            # PR-#91 adversarial F2a: a no-metadata-block mirror (the `# global_ref:` fallback form)
-            # can never receive the stamp — without this, EVERY refresh of such a mirror reported
-            # "restamped 1" forever while global_ref_since stayed absent. A migration that didn't
-            # happen must not be reported as one; the mirror stays on the documented mtime fallback.
+            since = ""
             _migrated = False
+        else:
+            # v0.1.78 evidence-clock carry (docs/evidence-clock-stamps.spec.md): same body as the current
+            # mirror → CARRY its since (a description/stacks/provenance tweak refreshes the text without
+            # wiping the fleet's accrued zero-read windows — the audit's F9 starvation, measured 1→0 on a
+            # description-only edit); legacy/garbled stamps but same body → seed from the file's mtime
+            # (the migration wave — never restart the fleet's evidence from zero); body genuinely changed
+            # (or a fresh pull) → NEW lineage (old zero-reads don't indict new content).
+            new_hash = _body_hash(text)
+            _migrated = False   # took the mtime-seeded branch (the honest referent of `restamped` — review #91)
+            if is_mirror:
+                cur_fm = _frontmatter(cur)
+                cur_since = str(cur_fm.get("global_ref_since", "") or "")
+                if cur_fm.get("global_ref_body", "") == new_hash and cur_since and _parse_ts(cur_since) is not None:
+                    since = cur_since
+                elif _body_hash(cur) == new_hash:
+                    since = _mtime_iso(path)
+                    _migrated = True
+                else:
+                    since = _now_iso()
+            else:
+                cur_fm = {}
+                since = _now_iso()
+            from control_plane import stable_fact_id as _sfid_w
+            _fid_w = _sfid_w(ctx.domain_id, name)
+            want = _as_mirror(text, name, since=since, body_hash=new_hash,
+                              fact_id=_fid_w, domain=ctx.domain_id)
+            from mirror_conflict import semantic_hash as _semh_w, stamp_revisions as _stamp_w
+            _rev_w = _semh_w(text)
+            want = _stamp_w(want, _rev_w, _rev_w)
+            if is_mirror:
+                _m_at = re.search(r"(?m)^[ \t]*mirrored_at:\s*(\S+)", cur)
+                _cur_m = _m_at.group(1) if _m_at else str(cur_fm.get("mirrored_at") or "")
+                if _cur_m and "mirrored_at:" not in want and "  global_ref:" in want:
+                    want = want.replace("  global_ref:", f"  mirrored_at: {_cur_m}\n  global_ref:", 1)
+            if "mirrored_at:" not in want and "  global_ref:" in want:
+                want = want.replace("  global_ref:", f"  mirrored_at: {_now_iso()}\n  global_ref:", 1)
+            if _migrated and not _frontmatter(want).get("global_ref_since"):
+                # PR-#91 adversarial F2a: a no-metadata-block mirror (the `# global_ref:` fallback form)
+                # can never receive the stamp — without this, EVERY refresh of such a mirror reported
+                # "restamped 1" forever while global_ref_since stayed absent. A migration that didn't
+                # happen must not be reported as one; the mirror stays on the documented mtime fallback.
+                _migrated = False
         _fdom = fact_domain(fm) or (ctx.domain_id or "")
         _adm_fm = dict(fm)
-        if (_global_is_fixture() or _hermetic_home()) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
+        if (_is_fixture_run or _hermetic_run) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
             _adm_fm["domain"] = ctx.domain_id
         if str(fm.get("status") or "") in ("tombstoned", "superseded", "expired") or (_fdom, name) in _tomb_keys:
             rel = False
@@ -1497,6 +1650,8 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             status = "MISSING"
         elif not is_mirror:
             status = "present(local)"  # project-authored — never clobber
+        elif _fast:
+            status = "in-sync"
         elif cur == want:
             status = "in-sync"
         else:
@@ -1545,6 +1700,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             # a body-changed legacy mirror is a genuine content refresh, reported as plain `refreshed`).
             restamped += 1
         classified.append((name, fm, text, status, path, want, rel))
+        _defer = False
     # v0.1.75 (audit F7 — the M4-bypass SURFACE): promote() refuses an undetectable `stacks:` tag, but the
     # SKILL's documented Phase-4 NET-NEW path hand-writes canonicals directly — a typo'd ('gpuu') or
     # real-but-undetectable ('release') tag lands unvalidated, and the canonical is FLEET-DEAD:
@@ -1568,7 +1724,15 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                 print(f"  ⚠ undetectable stack tag(s) {_bad} on '{_fn}' — dead weight (the fact still "
                       f"matches via {sorted(_fs & _DETECTABLE_STACKS)}); clean the tags "
                       f"(~/.claude/memory/{_fn}.md).", file=sys.stderr)
-    items = [(name, status, est_tokens(_pointer_line(name, fm)), _index_line_cost(idx_text, name))
+    # Phase-5 closeout: hoist the anchor→cost map ONCE (the per-stem
+    # _index_line_cost re-split the whole index every call — O(relevant ×
+    # index_bytes); the beacon already hoists the same map).
+    _line_cost_run: dict = {}
+    for _ln in idx_text.splitlines():
+        _m = re.search(r"\]\(([^)]+)\.md\)", _ln)
+        if _m and _m.group(1) not in _line_cost_run:
+            _line_cost_run[_m.group(1)] = est_tokens(_ln)
+    items = [(name, status, est_tokens(_pointer_line(name, fm)), _line_cost_run.get(name, 0))
              for name, fm, _t, status, _p, _w, rel in classified if rel and status in ("MISSING", "STALE-mirror")]
     plan = _plan_pull(items, seed_idx, allow_net_grow, budget=INDEX_CEILING_TOKENS)
     # v0.1.41 → v0.1.73: --evict <fact> — the EVICT-TO-RECEIVE valve (the release for M1's hold),
@@ -1645,6 +1809,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     held_facts: list = plan["held"]   # (name, cost) — drives the RESULT line + the evict-to-receive offer
     pull_jobs: list = []
     in_sync_names: list = []
+    _sem_map: dict = {}
     for name, fm, text, status, path, want, rel in classified:
         g, col = glyphs.get(status, ("·", "dim"))
         rows.append(f"    {_ui.c(g, col)} {_ui.lbl(f'{status:<14}')}{name}  " + _ui.c(f"({fm.get('scope', '?')})", "dim"))
@@ -1658,6 +1823,22 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         if held_this:
             held += 1  # past-the-ceiling net-grow → hold (shrink to receive, or --allow-net-grow) — v0.1.66
         elif pull and rel and status in ("MISSING", "STALE-mirror"):
+            if want is None:
+                # deferred MISSING body — read it now that the plan pulled it
+                text = _safe_read_text(ctx.canonical_domain_dir / f"{name}.md")
+                if text is None:
+                    rows.append(f"    {_ui.c('↓', 'yellow')} {_ui.lbl(f'{status:<14}')}{name}  "
+                                f"{_ui.c('(unreadable — skipped)', 'dim')}")
+                    continue
+                from control_plane import stable_fact_id as _sfid_d
+                from mirror_conflict import semantic_hash as _semh_d, stamp_revisions as _stamp_d
+                _rev_d = _semh_d(text)
+                want = _stamp_d(_as_mirror(
+                    text, name, since=_now_iso(), body_hash=_body_hash(text),
+                    fact_id=_sfid_d(ctx.domain_id, name), domain=ctx.domain_id),
+                    _rev_d, _rev_d)
+                if "mirrored_at:" not in want and "  global_ref:" in want:
+                    want = want.replace("  global_ref:", f"  mirrored_at: {_now_iso()}\n  global_ref:", 1)
             # C3: a canonical with an INVALID originSessionId fans its gap out to every mirror this
             # replication creates. WARN (don't block — the fact is still useful); reuses the in-hand
             # `fm`, no extra I/O. v0.1.76 (audit): ABSENCE no longer warns — harness-map's schema
@@ -1671,13 +1852,15 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             pull_jobs.append((name, fm, status, path, want))
         if pull and rel and status == "in-sync" and not held_this:
             in_sync_names.append(name)
+            _sem_map.setdefault(name, _r_man if _fast else {"sem": _rev_w or ""})
     if pull and (pull_jobs or _evict_stem or in_sync_names or conflict_ops):
         from control_plane import CrashSimulated as _CrashPull
         try:
             _w = _execute_pull_writes(ctx, store, pull_jobs, _evict_stem, _evict_path,
                                       holder_token=project_dir.name,
                                       in_sync_names=in_sync_names,
-                                      conflict_ops=conflict_ops)
+                                      conflict_ops=conflict_ops,
+                                      sem_by_name=_sem_map)
         except _CrashPull:
             print("pull: crash-after journal step (pending op left for recover)", file=sys.stderr)
             return _done(1)
@@ -3249,7 +3432,20 @@ def fleet_staleness(project_dir: Path) -> dict:
             domain_by_store[_path_key(Path(nd))] = str(_row.get("domain_id") or "unknown")
     ledger_nodes = {str(r.get("node", "")) for r in _ledger_rows()}
     now_ep = datetime.now(timezone.utc).timestamp()
-    body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts}
+    body_hashes = {n: _body_hash(t) for n, _fm, t in gfacts if t}
+    if any(not _t for _n, _fm, _t in gfacts):
+        try:
+            from facts_manifest import ensure as _fm_ens_s
+            _man_rows_s, _ = _fm_ens_s(trig_ctx.canonical_domain_dir,
+                                       trig_ctx.plugin_data_dir)
+            for _n, _fm, _t in gfacts:
+                if not _t and _man_rows_s and _n in _man_rows_s:
+                    body_hashes[_n] = _man_rows_s[_n].get("body_hash") or ""
+        except Exception:
+            pass
+    for _n, _fm, _t in gfacts:
+        if not _t and _n not in body_hashes:
+            body_hashes[_n] = ""
     if _global_is_fixture():
         stores = _all_stores()
     elif getattr(trig_ctx, "cross_project_allowed", False):

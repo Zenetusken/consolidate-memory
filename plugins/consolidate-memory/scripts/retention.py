@@ -424,6 +424,13 @@ def purge_domain(plugin_data: Path, domain_id: str, conn,
     conn.commit()
     if facts_dir is not None and facts_dir.is_dir():
         n += _purge_dir(facts_dir)
+        # Phase-5 closeout: non-transact purge of the facts dir — unlink the
+        # manifest explicitly.
+        try:
+            from facts_manifest import manifest_path
+            manifest_path(plugin_data, domain_id).unlink(missing_ok=True)
+        except Exception:
+            pass
         parent = facts_dir.parent
         if parent.name == domain_id:
             n += _purge_dir(parent)

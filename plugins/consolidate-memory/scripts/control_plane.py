@@ -2744,6 +2744,20 @@ def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,
                         continue
                     journal_step(conn, op["op_id"], "journal_complete", "complete")
                     recovered.append(op["op_id"])
+                    if ctx is not None:
+                        # Phase-5 closeout: crash-recovery republishes can write
+                        # canonical files — invalidate like transact does.
+                        try:
+                            from facts_manifest import invalidate_for_paths
+                            invalidate_for_paths(
+                                ctx.plugin_data_dir,
+                                [d.get("path") for d in
+                                 (payload.get("deletes") or [])
+                                 if isinstance(d, dict)] + [
+                                    p.get("path") for p in publishes
+                                    if isinstance(p, dict)])
+                        except Exception:
+                            pass
                 except (WriteRefused, sqlite3.Error):
                     if files_mutated:
                         try:
@@ -3016,6 +3030,19 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
                 + ", ".join(str(e.get("path") or e) for e in cleaned["errors"][:8]))
         journal_step(conn, op_id, "journal_complete", "complete")
         _maybe_crash("journal_complete")
+        # Phase-5 closeout: canonical writes invalidate the facts manifest here —
+        # after publish + COMMIT, still under the mutation locks, so a concurrent
+        # rebuild cannot repersist pre-edit rows. Best-effort (a missed unlink
+        # only costs one spurious full read — per-row freshness is the net).
+        try:
+            from facts_manifest import invalidate_for_paths
+            invalidate_for_paths(
+                ctx.plugin_data_dir,
+                list((payload.get("publishes") or []) if isinstance(payload, dict)
+                     else []) + [d.get("path") for d in (payload.get("deletes") or [])
+                                 if isinstance(d, dict)])
+        except Exception:
+            pass
         return {"ok": True, "op_id": op_id, "recovered": recovered, "result": result,
                 "expected_revisions": snaps, "cleanup": cleaned}
     except Exception:
