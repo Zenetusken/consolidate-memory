@@ -149,7 +149,9 @@ weaker than v0.1.53's `--into`, which writes the data itself — claimed accordi
 | `distill_scan` (Phase 5.6) | `distill beat due — recurring gestures condensing (> *🌙 …*) above the plain scan results` |
 | `render_dashboard --persist`, **clean (exit-0)** — NOT a wake: two mandatory steps remain (cluster A) | `persist clean — Phase 5 continues (--diffs, then render_html opens the archive); WAKE comes after that, not now` |
 | `render_dashboard --persist`, **procedure-integrity exit-3** | `NOT over — the dream pulls you back: narrate the return to Phase-3 verification dreamily; WAKE only on the clean re-run` |
-| `render_html` (success) — **the WAKE cue**, at the SKILL's pinned wake point ("after the terminal clean render + archive open") | `the archive is open — WAKE now: > *☀️ 2–5 italic lines*, then '☀️ **Awake.**', then the plain debrief, 📊 path last` |
+| `render_dashboard --persist`, **arc-incomplete exit-4** (v0.4.1) | `NOT over — arc incomplete: backfill the missing beats (SLEEP · 5 phase beats + surfacing · WAKE) and re-render` |
+| `render_dashboard --persist`, **unstamped exit-5** (v0.4.1) | `NOT persisted — the cycle is unstamped: run --stamp-marker <HEAD> and fill marker.timestamp before re-rendering; WAKE only after the clean re-run` |
+| `render_html` (success) — **the WAKE cue**, at the SKILL's pinned wake point ("after the terminal clean render + archive open"); v0.4.1: gated on arc completeness — an incomplete arc gets the backfill cue, never a WAKE | `the archive is open — WAKE now: > *☀️ 2–5 italic lines*, then '☀️ **Awake.**', then the plain debrief, 📊 path last` |
 
   The exit-3 split is round-1 finding 2 (BLOCK-grade defect in draft 1): a wake signal must
   never fire on the lazy-skip path — it would instruct waking exactly where the SKILL
@@ -210,6 +212,13 @@ weaker than v0.1.53's `--into`, which writes the data itself — claimed accordi
     the family catches the fully-skipped arc; filled-record-without-narration stays a
     judgment-lens check. Deliberately not FAIL and not wired into
     `procedure_integrity`/exit-3: a style miss must never fail a dream.
+    **REVERSED in v0.4.1 (2026-09-02 dogfood):** a real 4/6-beat arc persisted with
+    exit 0 and cued "persist clean" — the advisory WARN never fires in-flow, so the
+    only same-pass detector is the terminal boundary itself. `render_dashboard
+    --persist` now exits **4** (after persisting — the record accrues, the integrity
+    precedent) on a PRESENT-but-incomplete arc; a record with no `dream` block at all
+    still exits 0 (legacy/preview). The beta family stays ADVISORY, tightened to the
+    `== 6` count.
 
 ### 3.4 Alternatives rejected
 
@@ -224,7 +233,12 @@ weaker than v0.1.53's `--into`, which writes the data itself — claimed accordi
   self-re-arming residual risk in one context. See §3.2.
 - **Exit-3 enforcement (procedure integrity) on a missing dream block** — style is not
   procedure; a voice failure must not abort/flag a correct consolidation. The beta WARN
-  family is the proportionate detector.
+  family is the proportionate detector. **REVERSED in v0.4.1, narrowed:** exit-4 (a
+  distinct code, so 3's return-to-Phase-3 meaning is untouched) fires on a
+  PRESENT-but-incomplete arc at `--persist`, persist-then-exit so the firing record
+  accrues; a MISSING/emptied block still does not fail (the missing-block posture here
+  survives — the beta WARN covers that case post-hoc). Precedence: both-violating → 3
+  (re-verify first), arc+unstamped → 4, then 5 on the re-render.
 
 ## 4 · Compatibility & versioning
 

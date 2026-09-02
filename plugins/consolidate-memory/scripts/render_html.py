@@ -69,15 +69,81 @@ def _marker(r: dict) -> tuple:
     return (m.get("commit"), m.get("timestamp"))
 
 
+def _same_dream(a: dict, b: dict) -> bool:
+    """C2: dream identity for dedup. Same commit AND: both timestamps non-empty → equal stamps;
+    EITHER timestamp empty → session equality when both carry a session (the same HEAD can hold
+    two dreams, one unstamped — the archive already shows same-commit collisions, they must NOT
+    collapse); either side lacks a session → raw _marker equality (an empty ts never equals a
+    stamped one → keep both rows, conservative)."""
+    ca, ta = _marker(a)
+    cb, tb = _marker(b)
+    if ca != cb:
+        return False
+    if str(ta or "").strip() and str(tb or "").strip():
+        return ta == tb
+    sa = str(a.get("session") or "").strip() if isinstance(a, dict) else ""
+    sb = str(b.get("session") or "").strip() if isinstance(b, dict) else ""
+    if sa and sb:
+        return sa == sb
+    return ta == tb
+
+
+def _fill_timestamp(rec: dict, by_commit: dict, prev_ts: str) -> dict:
+    """C1: an empty marker.timestamp must not embed (blank archive date, inverted 'newest' sort,
+    dangling footer, `__nots` sidecar keys). Fill from (1) a same-commit history stamp whose SESSION
+    matches, else (2) `prev_ts` — the chain-walk carrying the nearest earlier non-empty stamp so
+    adjacent empty rows both fill. Returns a COPY when it fills — the embedded series never mutates
+    caller dicts. No fill source → unchanged (the JS renders '—' and sorts the row last)."""
+    m = rec.get("marker") if isinstance(rec, dict) else None
+    if not isinstance(m, dict):
+        return rec
+    if str(m.get("timestamp") or "").strip():
+        return rec
+    ses = str(rec.get("session") or "").strip()
+    fill = by_commit.get((str(m.get("commit") or "").strip(), ses), "") \
+        or str(m.get("before_timestamp") or "").strip() or prev_ts
+    if not fill:
+        return rec
+    return {**rec, "marker": {**m, "timestamp": fill}}
+
+
 def assemble_cycles(record: dict, history: list) -> tuple:
     """The archive series: all logged cycles (oldest-first) + the current `record` dedup-appended if it is newer
-    than the last logged entry (so the latest dream shows even before --persist). Returns (capped_cycles, total)."""
+    than the last logged entry (so the latest dream shows even before --persist). Returns (capped_cycles, total).
+    v0.4.1-fix (C1/C2): DEDUP FIRST on RAW markers (a fill-then-dedup cascade could make a filled legacy row
+    marker-identical to its neighbor and collapse two dreams), then fill empty timestamps for the survivors;
+    `_same_dream` treats commit-match with either-empty-ts + matching session as the same dream (the stale
+    unstamped --cycle file vs the repaired log line must never double-embed), preferring the stamped copy."""
     cycles = [c for c in history if isinstance(c, dict)] if isinstance(history, list) else []
     rec = record if isinstance(record, dict) else {}
-    if rec and (not cycles or _marker(cycles[-1]) != _marker(rec)):
+    if rec and (not cycles or not _same_dream(cycles[-1], rec)):
         cycles.append(rec)
-    total = len(cycles)
-    return (cycles[-_ARCHIVE_CAP:] if total > _ARCHIVE_CAP else cycles), total
+    elif rec and cycles:
+        _lts = str(_marker(cycles[-1])[1] or "").strip()
+        _rts = str(_marker(rec)[1] or "").strip()
+        if _lts and _lts == _rts:
+            cycles[-1] = rec    # same dream, same stamp — the current file is the fresher expression
+                                # (a post-persist enrichment like the injected network block surfaces)
+        elif not _lts and _rts:
+            cycles[-1] = rec    # same dream: the stamped copy wins
+    by_commit: dict = {}
+    for c in cycles:
+        m = c.get("marker") if isinstance(c, dict) else None
+        if isinstance(m, dict):
+            ts = str(m.get("timestamp") or "").strip()
+            cm = str(m.get("commit") or "").strip()
+            if ts and cm and (cm, str(c.get("session") or "").strip()) not in by_commit:
+                by_commit[(cm, str(c.get("session") or "").strip())] = ts
+    out: list = []
+    prev_ts = ""
+    for c in cycles:
+        filled = _fill_timestamp(c, by_commit, prev_ts)
+        out.append(filled)
+        _m_out = filled.get("marker")
+        if isinstance(_m_out, dict):    # a string marker (corrupted entry) never advances the walk
+            prev_ts = str(_m_out.get("timestamp") or "").strip() or prev_ts
+    total = len(out)
+    return (out[-_ARCHIVE_CAP:] if total > _ARCHIVE_CAP else out), total
 
 
 def build_html(record: dict, history: list, generated_at: str, diffs: "dict | None" = None,
@@ -132,8 +198,15 @@ def read_diffs(store: "Path | None", cycles: list) -> dict:
         marker = c.get("marker") if isinstance(c, dict) else {}
         session = str(c.get("session", "")) if isinstance(c, dict) else ""
         # probe the session-suffixed key (post-fix sidecars) AND the legacy unsuffixed base (pre-fix
-        # sidecars must keep resolving — the alias maps both keys to the same payload).
-        for key in (diff_key(marker, session), diff_key(marker)):
+        # sidecars must keep resolving — the alias maps both keys to the same payload). v0.4.1-fix:
+        # filled cycles flip legacy UNSTAMPED keys (`__nots`) to the filled stamp — probe the raw
+        # `commit__nots` forms too and register the payload under EVERY probed key, or an old
+        # unstamped sidecar's modal silently orphans.
+        keys = [diff_key(marker, session), diff_key(marker)]
+        if isinstance(marker, dict) and str(marker.get("commit") or "").strip():
+            _raw = {"commit": marker.get("commit"), "timestamp": ""}
+            keys += [diff_key(_raw, session), diff_key(_raw)]
+        for key in keys:
             if key in out or not (ddir / (key + ".json")).exists():
                 continue
             try:
@@ -141,7 +214,9 @@ def read_diffs(store: "Path | None", cycles: list) -> dict:
             except (OSError, json.JSONDecodeError, ValueError):
                 continue
             if isinstance(d, dict):
-                out[key] = d
+                for alias in keys:    # register under EVERY probed key — the JS lookup computes the
+                    out[alias] = d    # filled key while legacy lookups use the raw __nots form
+                break
     return out
 
 
@@ -149,25 +224,30 @@ _OPEN_MARKER_NAME = ".last-open"
 _OPEN_WINDOW_S = 180.0    # one open per (archive, anchor) per 3 minutes — kills the repeated-tab pop, keeps deliberate re-opens
 
 
-def _should_open(out: Path, frag: str, now_ts: float, marker_dir: Path, window_s: float = _OPEN_WINDOW_S) -> bool:
-    """v0.1.89 (render-chain bug): a back-to-back re-render of the SAME archive anchor must NOT re-open a
-    new browser tab — the dream's patch/re-render flow popped the dashboard repeatedly. One open per
-    (archive, anchor) per `window_s`; a deliberate later re-open (cm report) still opens. Pure + testable:
-    reads/writes a tiny JSON marker in marker_dir (best-effort — any failure = open)."""
+def _open_recent(out: Path, frag: str, now_ts: float, marker_dir: Path,
+                 window_s: float = _OPEN_WINDOW_S) -> bool:
+    """RC-89/n4: was this (archive, anchor) opened within the window? PURE READ — a FAILED
+    webbrowser.open must never have written the marker, or the next attempt is suppressed."""
     marker = marker_dir / _OPEN_MARKER_NAME
     key = f"{out.resolve()}::{frag}"
     try:
         prev = json.loads(marker.read_text(encoding="utf-8"))
         if isinstance(prev, dict) and prev.get("key") == key and now_ts - float(prev.get("at", 0)) < window_s:
-            return False
+            return True
     except (OSError, json.JSONDecodeError, ValueError):
         pass
+    return False
+
+
+def _mark_open(out: Path, frag: str, now_ts: float, marker_dir: Path) -> None:
+    """RC-89/n4: record a SUCCESSFUL open (called only after webbrowser.open returned truthy).
+    Best-effort — any failure = the next render just tries again."""
     try:
         marker_dir.mkdir(parents=True, exist_ok=True)
-        marker.write_text(json.dumps({"key": key, "at": now_ts}), encoding="utf-8")
+        (marker_dir / _OPEN_MARKER_NAME).write_text(
+            json.dumps({"key": f"{out.resolve()}::{frag}", "at": now_ts}), encoding="utf-8")
     except OSError:
         pass
-    return True
 
 
 def _default_out(record: dict, store: "Path | None") -> Path:
@@ -255,17 +335,26 @@ def main(argv: list) -> int:
     if not args.no_open:
         try:                          # headless-safe: a missing/loopback browser must NEVER crash a dream
             _now = datetime.now(timezone.utc).timestamp()
-            if _should_open(out, frag, _now, out.parent):
-                opened = webbrowser.open(out.resolve().as_uri() + frag)
-            else:
+            if _open_recent(out, frag, _now, out.parent):
                 opened = True         # v0.1.89: this archive anchor is ALREADY open (back-to-back re-render) — not a failure
+            else:
+                opened = bool(webbrowser.open(out.resolve().as_uri() + frag))
+                if opened:            # n4: mark AFTER a successful open — a failed headless open must
+                    _mark_open(out, frag, _now, out.parent)   # never suppress the next attempt for the window
         except Exception:             # noqa: BLE001 - the whole point is don't-crash-on-open
             opened = False
     print(f"dashboard → {out}{frag}" + ("" if opened else "  · open this file in a browser" if not args.no_open else ""))
     # v0.1.54: the WAKE cue — this archive render/open is the SKILL's pinned wake point ("after the
     # terminal clean render + archive open"), the LAST scripted step of a completing dream.
-    _ui.dream_cue("the archive is open — WAKE now: *☀️ 2–5 italic lines*, full stop (v0.1.64: no "
-                  "trailing 'Awake.' line), then the plain debrief, 📊 path last")
+    # v0.4.1 (D1): gated on arc completeness — waking over a short arc would perform the bookend
+    # the gate just refused; backfill the beats first, then this cue says WAKE.
+    arc_ok, arc_reason = ms.arc_completeness(record)
+    if arc_ok:
+        _ui.dream_cue("the archive is open — WAKE now: *☀️ 2–5 italic lines*, full stop (v0.1.64: no "
+                      "trailing 'Awake.' line), then the plain debrief, 📊 path last")
+    else:
+        _ui.dream_cue(f"the archive is open but the arc is incomplete ({arc_reason}) — backfill "
+                      "the missing beats and re-render before waking")
     return 0
 
 

@@ -1238,16 +1238,22 @@ def schema_drift(fact_files: list, index_names: set) -> SchemaDrift:
     """DRIFT (always reported) + optional backfill ADVISORY (absence). DRIFT = documented field
     `node_type` MISSING, a present-but-MALFORMED `scope`/`originSessionId`, or an index<->file
     mismatch. Advisory = facts merely LACKING scope/originSessionId (injected/optional → absence
-    is noise, not drift). Pure; never raises."""
+    is noise, not drift). v0.4.1 (D3): MANAGED MIRRORS are exempt — their metadata block is the
+    mirror-stamp block (mirrored_at/global_ref/…, no node_type), never a drift finding; their
+    stems stay counted (the mirror pointer line lives in MEMORY.md, so the index-symmetric diff
+    must keep them). Pure; never raises."""
     missing_node_type = malformed_scope = malformed_origin = 0
     advisory_no_scope = advisory_no_origin = 0
     stems = set()
     for f in fact_files:
         stems.add(f.stem)
         try:
-            fm = _frontmatter(f.read_text(encoding="utf-8", errors="replace"))
+            text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
-            fm = {}
+            text = ""
+        if _is_mirror(text):
+            continue    # managed mirror — the authored side is the drift surface
+        fm = _frontmatter(text)
         if "node_type" not in fm:
             missing_node_type += 1
         if "scope" in fm:
@@ -1823,6 +1829,28 @@ def stamp_project_marker(project_dir: Path, *, commit: "str | None" = None,
     except WriteRefused as e:
         return {"ok": False, "error": str(e)}
     return {"ok": True, "error": "", **result}
+
+
+def reconcile_marker(marker: object, store_dir: Path) -> dict:
+    """v0.4.1 (D2): fill EMPTY commit/timestamp from the stamped marker FILE —
+    the single source. `--stamp-marker` writes only the file; mirroring into the
+    cycle record was a model hand-edit that silently lost the persist (exit 0, no
+    log line, stalled usage clock). A NON-empty value stands (a hand-filled stamp
+    wins). NEVER raises — junk/non-dict markers, a missing or garbage state file
+    all degrade to the input unchanged."""
+    out = dict(marker) if isinstance(marker, dict) else {}
+    state: dict = {}
+    try:
+        raw = (store_dir / STATE_FILE).read_text(encoding="utf-8")
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            state = parsed
+    except (OSError, json.JSONDecodeError, ValueError):
+        state = {}
+    for k in ("commit", "timestamp"):
+        if not str(out.get(k) or "").strip() and str(state.get(k) or "").strip():
+            out[k] = state[k]
+    return out
 
 
 def run_justify_demotion(project_dir: Path, stems: list, *,
@@ -3035,6 +3063,13 @@ def validate_cycle_record(record: object) -> list[str]:
     dream = record.get("dream")
     if isinstance(dream, dict) and "beats" in dream and not isinstance(dream["beats"], list):
         warnings.append("dream.beats is not a list")
+    # v0.4.1 (D1): a PRESENT-but-incomplete arc warns here (stderr, never blocks) — the same
+    # single predicate the persist gate and the WAKE cue use. A missing/empty block stays quiet
+    # (legacy/preview records; the gate's documented scope escape).
+    if isinstance(dream, dict):
+        ok_arc, arc_reason = arc_completeness(record)
+        if not ok_arc:
+            warnings.append(f"dream arc incomplete: {arc_reason}")
     # distill.proposed / distill.created must be lists if present (same descend-only-into-dict rule).
     distill = record.get("distill")
     if isinstance(distill, dict):
@@ -3176,6 +3211,38 @@ def _pi_int(x: object) -> int:
             return 0
         return int(f) if math.isfinite(f) else 0    # "inf"/"nan" parse to a non-finite float → 0 (not a crash)
     return 0
+
+
+def arc_completeness(record: object) -> "tuple[bool, str]":
+    """v0.4.1 (D1): the SINGLE dream-arc completeness predicate — consumed by the
+    render panel's ✓/✗ line, the persist gate (exit 4), the validate warning, and
+    render_html's WAKE cue (one definition, or the dashboard could green-check while
+    the gate exits 4). (True, "") when COMPLETE or not evaluable — a missing/empty
+    `dream` block is a legacy or preview record (the gate must not fail it; the beta
+    oracle's WARN covers a missing block post-hoc). Incomplete = a PRESENT dream
+    block whose sleep or wake is empty, or whose beats list is not 6 (5 phase beats
+    + the surfacing line). JSON-null stanzas read absent (the str(None) rule).
+    PURE; never raises."""
+    if not isinstance(record, dict) or "dream" not in record:
+        return (True, "")
+    dream = record["dream"]
+    if not isinstance(dream, dict):
+        return (False, "dream block malformed (not a dict)")
+    beats = dream.get("beats")
+    beats = beats if isinstance(beats, list) else []
+    have_sleep = bool(str(dream.get("sleep") or "").strip())
+    have_wake = bool(str(dream.get("wake") or "").strip())
+    n = len(beats)
+    if have_sleep and have_wake and n == 6:
+        return (True, "")
+    bits: list = []
+    if not have_sleep:
+        bits.append("sleep missing")
+    if not have_wake:
+        bits.append("wake missing")
+    if n != 6:
+        bits.append(f"{n}/6 beats")
+    return (False, "; ".join(bits))
 
 
 def procedure_integrity(record: object) -> tuple[bool, str, str]:
@@ -3715,6 +3782,9 @@ def main() -> int:
                     _mrk = _cyc_pre["marker"]
             except (OSError, json.JSONDecodeError):
                 _mrk = {}
+        # v0.4.1 (D2): the mutation-log row carries its dream identity even when the cycle
+        # record's marker was left blank — reconcile from the stamped state file.
+        _mrk = reconcile_marker(_mrk, ctx["auto_mem"])
         try:                    # the ONLY write in the audit path — plugin-data, never the native plane
             from retention import mutation_log_read_paths, mutation_log_write_path
             _ident = (str(_mrk.get("commit", "") or ""), str(_mrk.get("timestamp", "") or ""))
@@ -3763,8 +3833,11 @@ def main() -> int:
         marker = cyc.get("marker") if isinstance(cyc, dict) else None
         if not isinstance(marker, dict):
             marker = {}
-        if not str(marker.get("timestamp", "")).strip():   # mirror _persist's refusal — never key a sidecar on a blank ts
-            print("--diffs: skipped (cycle has no marker.timestamp — unstamped)", file=sys.stderr)
+        # v0.4.1 (D2): reconcile an empty stamp from the state file (the single source) —
+        # the hand-mirror step that was silently losing the persist no longer gates this.
+        marker = reconcile_marker(marker, ctx["auto_mem"])
+        if not str(marker.get("timestamp", "")).strip():
+            print("--diffs: skipped (cycle unstamped and no state-file stamp — run --stamp-marker first)", file=sys.stderr)
             return 0
         try:                    # best-effort — a diff-capture failure must NEVER crash a dream (mirrors --audit)
             diffs = capture_diffs(before, project_dir)

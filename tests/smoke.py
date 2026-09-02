@@ -2178,12 +2178,118 @@ check("RC-91: ASCII missing model disposition on a distinctive fleet row is flee
       and "python3 tests/foo.py" in _RC11)
 _TS = 1000.0
 _tmpd = Path(_tempfile.mkdtemp())
-check("RC-89: _should_open — a same-anchor re-render within the window does NOT re-open",
-      rhtml._should_open(Path("/tmp/x.html"), "#sel=3", _TS, _tmpd) is True
-      and rhtml._should_open(Path("/tmp/x.html"), "#sel=3", _TS + 60, _tmpd) is False)
-check("RC-89: _should_open — a different anchor or a stale window DOES re-open",
-      rhtml._should_open(Path("/tmp/x.html"), "#sel=4", _TS + 60, _tmpd) is True
-      and rhtml._should_open(Path("/tmp/x.html"), "#sel=4", _TS + 3000, _tmpd) is True)
+check("RC-89: _open_recent is a PURE read (same-anchor within the window reports open; never writes)",
+      rhtml._open_recent(Path("/tmp/x.html"), "#sel=3", _TS, _tmpd) is False
+      and not (Path(_tmpd) / rhtml._OPEN_MARKER_NAME).exists())
+rhtml._mark_open(Path("/tmp/x.html"), "#sel=3", _TS, _tmpd)
+check("RC-89: _mark_open then _open_recent — one open per (archive, anchor) per window",
+      rhtml._open_recent(Path("/tmp/x.html"), "#sel=3", _TS + 60, _tmpd) is True
+      and rhtml._open_recent(Path("/tmp/x.html"), "#sel=4", _TS + 60, _tmpd) is False
+      and rhtml._open_recent(Path("/tmp/x.html"), "#sel=3", _TS + 3000, _tmpd) is False)
+with _tempfile.TemporaryDirectory() as _tdn4:
+    _cyc_n4 = Path(_tdn4) / "c.json"
+    _cyc_n4.write_text(_json43.dumps({"project": "p", "marker": {"commit": "c", "timestamp": "t"}}), encoding="utf-8")
+    _store_n4 = Path(_tdn4) / "memory"; _store_n4.mkdir()
+    (_store_n4 / ".consolidation-log.jsonl").write_text("", encoding="utf-8")
+    _out_n4 = Path(_tdn4) / "index.html"
+    _real_open_n4 = rhtml.webbrowser.open
+    rhtml.webbrowser.open = cast(Any, lambda url: False)
+    try:
+        _rc_n4 = rhtml.main([str(_cyc_n4), "--store", str(_store_n4), "--out", str(_out_n4)])
+    finally:
+        rhtml.webbrowser.open = _real_open_n4
+    check("RC-89/n4: a FAILED webbrowser.open writes no .last-open marker (the next attempt is never suppressed)",
+          _rc_n4 == 0 and not (Path(_tdn4) / rhtml._OPEN_MARKER_NAME).exists())
+
+# ── v0.4.1 archive-renderer repairs (C1/C2 embed-side + read_diffs aliasing) ──
+_rhC1 = [{"marker": {"commit": "c", "timestamp": "t1"}, "session": "s", "project": "p"}]
+_rrecC1: dict = {"marker": {"commit": "c", "timestamp": ""}, "session": "s", "project": "p"}
+def _arc_first_ts(cy: Any) -> str:
+    if isinstance(cy, list) and len(cy) and isinstance(cy[0], dict):
+        m = cy[0].get("marker")
+        if isinstance(m, dict):
+            return str(m.get("timestamp"))
+    return ""
+_rcyC1, _rtC1 = cast(Any, rhtml.assemble_cycles(_rrecC1, _rhC1))
+check("C1: assemble_cycles fills an empty marker.timestamp from a same-commit same-session history stamp (ONE row, stamped, source unmutated)",
+      _rtC1 == 1 and _arc_first_ts(_rcyC1) == "t1" and _rrecC1["marker"]["timestamp"] == "")
+_rcyC1b, _rtC1b = cast(Any, rhtml.assemble_cycles({"marker": {"commit": "c2", "timestamp": "", "before_timestamp": "t0"}}, []))
+check("C1: no same-commit history → before_timestamp fills the empty stamp",
+      _rtC1b == 1 and _arc_first_ts(_rcyC1b) == "t0")
+_rcyC1c, _rtC1c = cast(Any, rhtml.assemble_cycles({"marker": {"commit": "c3", "timestamp": ""}}, []))
+check("C1: no fill source → the stamp stays empty (the JS renders '—' and sorts the row last)",
+      _rtC1c == 1 and _arc_first_ts(_rcyC1c) == "")
+_rcw = cast(Any, rhtml.assemble_cycles({"marker": {"commit": "c2", "timestamp": ""}, "session": "x"},
+                             [{"marker": {"commit": "c0", "timestamp": "tA"}, "session": "x"},
+                              {"marker": {"commit": "c1", "timestamp": ""}, "session": "x"}]))
+_rcw_row: object = _rcw[0][2] if isinstance(_rcw[0], list) and len(_rcw[0]) > 2 else {}
+_rcw_ts = (_rcw_row or {}).get("marker", {}).get("timestamp") if isinstance(_rcw_row, dict) else ""
+check("C1: the chain-walk fills adjacent empty rows from the nearest earlier stamp", _rcw_ts == "tA")
+check("C2: a stale unstamped log tail vs a stamped current record dedup to ONE row (the stamped copy wins)",
+      rhtml.assemble_cycles({"marker": {"commit": "c", "timestamp": "t9"}, "session": "s"},
+                            [{"marker": {"commit": "c", "timestamp": ""}, "session": "s"}])
+      == ([{"marker": {"commit": "c", "timestamp": "t9"}, "session": "s"}], 1))
+check("C2: a same-marker log tail is REPLACED by the current record (a post-persist enrichment surfaces)",
+      rhtml.assemble_cycles({"marker": {"commit": "c", "timestamp": "t9"}, "session": "s", "network": {"nodes": []}},
+                            [{"marker": {"commit": "c", "timestamp": "t9"}, "session": "s"}])[0][-1].get("network") is not None)
+check("C2: a stamped log tail vs an unstamped current record dedup to ONE row (the record is filled from history)",
+      rhtml.assemble_cycles({"marker": {"commit": "c", "timestamp": ""}, "session": "s"},
+                            [{"marker": {"commit": "c", "timestamp": "t9"}, "session": "s"}])
+      == ([{"marker": {"commit": "c", "timestamp": "t9"}, "session": "s"}], 1))
+check("C2 SESSION GUARD: same commit, different session, either empty → TWO rows (same-HEAD dreams never collapse)",
+      rhtml.assemble_cycles({"marker": {"commit": "c", "timestamp": ""}, "session": "s2"},
+                            [{"marker": {"commit": "c", "timestamp": "t1"}, "session": "s1"}])[1] == 2)
+check("C2: same commit + DIFFERENT non-empty stamps still append (two dreams at one HEAD stay distinct)",
+      rhtml.assemble_cycles({"marker": {"commit": "c", "timestamp": "t8"}},
+                            [{"marker": {"commit": "c", "timestamp": "t9"}}])[1] == 2)
+with _tempfile.TemporaryDirectory() as _td41r:
+    _d41d = Path(_td41r) / "dashboards" / "diffs"; _d41d.mkdir(parents=True)
+    (_d41d / "c41__nots__s41.json").write_text(_json43.dumps({"memory": {"modified": 1}}), encoding="utf-8")
+    _rdf41 = rhtml.read_diffs(Path(_td41r) / "memory", [{"marker": {"commit": "c41", "timestamp": "t41"}, "session": "s41"}])
+    check("C1 read_diffs alias: a legacy __nots sidecar resolves for a FILLED cycle under every probed key",
+          _rdf41.get("c41__t41__s41") == {"memory": {"modified": 1}}
+          and _rdf41.get("c41__nots__s41") == {"memory": {"modified": 1}})
+
+# ── v0.4.1 template repairs — exact-fragment pins (the template must carry them verbatim) ──
+check("C1: archive row + footer treat an empty timestamp as missing ('—', never a blank cell)",
+      'String(g(c,"marker.timestamp","")||"—")' in _TEMPLATE_SRC
+      and 'String(g(CUR,"marker.timestamp","")||"—")' in _TEMPLATE_SRC)
+check("C1: empty-ts rows sort last under EITHER direction (unknown recency is never 'newest')",
+      'var ea=a[st.key]==="", eb=b[st.key]==="";' in _TEMPLATE_SRC
+      and "if(ea||eb)return ea&&eb?0:(ea?1:-1)" in _TEMPLATE_SRC)
+check("M1: an ABSENT network block renders the honest not-captured fallback (never the false empty claim)",
+      'g(CUR,"network",null)' in _TEMPLATE_SRC and "hasNet" in _TEMPLATE_SRC
+      and _TEMPLATE_SRC.count("project list wasn’t captured this pass") >= 2
+      and '"no other projects sharing memory yet"' in _TEMPLATE_SRC)
+check("M2: files[] renders as a dim label even with no diff sidecar (capped +N more)",
+      "function fileLabel" in _TEMPLATE_SRC and "return esc(nm)+fl;" in _TEMPLATE_SRC
+      and "rawFiles.length>3" in _TEMPLATE_SRC)
+check("M3: ledger middle column is minmax(0,1fr), reasons wrap, citations truncate + tooltip",
+      "grid-template-columns:96px minmax(0,1fr) auto" in _TEMPLATE_SRC
+      and "grid-template-columns:96px 1fr auto" not in _TEMPLATE_SRC
+      and "String(cit).slice(0,10)" in _TEMPLATE_SRC and 'title="\'+esc(cit)+\'"' in _TEMPLATE_SRC)
+check("m1: reg-counts appends the blocked tally (N blocked no longer hides under 'none this pass')",
+      "num(WP.n_blocked" in _TEMPLATE_SRC and '" blocked"' in _TEMPLATE_SRC)
+check("m2: audit per-file operations + usage archive_reads render",
+      "a.operations" in _TEMPLATE_SRC and "per-file" in _TEMPLATE_SRC and "archive read" in _TEMPLATE_SRC)
+check("m3: per_fact and demotion-surfaced truncation carry the +N more counter",
+      "ufact.length>3" in _TEMPLATE_SRC and "surfStr.length>3" in _TEMPLATE_SRC)
+check("m4: the demotion verdict strips a duplicated 'eligible N' lead and tags counter-justified",
+      r"/^\s*eligible\s+\d+" in _TEMPLATE_SRC and "counter-justified" in _TEMPLATE_SRC)
+check("n1: dream stanzas wrap instead of overflowing",
+      ".dream-stanza div{font-family:var(--serif);font-style:italic;color:var(--ink2);font-size:14.5px;line-height:1.6;overflow-wrap:anywhere}" in _TEMPLATE_SRC)
+check("n2: flag/dl tints are theme tokens in all three theme blocks (no hardcoded rgba rules)",
+      "--tint-ok:rgba(95,169,150,.13)" in _TEMPLATE_SRC
+      and _TEMPLATE_SRC.count("--tint-ok:rgba(95,169,150,.16)") == 2
+      and "background:var(--tint-ok)" in _TEMPLATE_SRC and "background:var(--tint-crit)" in _TEMPLATE_SRC
+      and "background:var(--tint-accent)" in _TEMPLATE_SRC and "background:var(--tint-warn)" in _TEMPLATE_SRC
+      and ".dl-plus{background:rgba" not in _TEMPLATE_SRC and ".flag{background:rgba" not in _TEMPLATE_SRC)
+check("n3: verification is glyph-free colored counts (no ✓ KPI, no +/~/− audit cells)",
+      "'<small> ✓</small>'" not in _TEMPLATE_SRC
+      and "'+'+num(d.created)" not in _TEMPLATE_SRC
+      and "'~'+num(d.modified)" not in _TEMPLATE_SRC
+      and "'−'+num(d.deleted)" not in _TEMPLATE_SRC
+      and "class=\"a-added\">'+num(d.created)" in _TEMPLATE_SRC)
 check("v0.1.44: SPARES maintenance/bootstrap (0 commits, 0 candidates, 0/0/0)",
       ms.procedure_integrity(_pi(0, 0))[0])
 # the downgrade dodge: HEAVY magnitude relabeled LIGHT, 0 tally -> still FIRES + surfaces the dodge
@@ -2330,7 +2436,14 @@ check("v0.1.54 validate: warns on non-dict dream", "dream is not a dict" in
 check("v0.1.54 validate: warns on non-list dream.beats", "dream.beats is not a list" in
       ms.validate_cycle_record({"dream": {"beats": "x"}}))
 check("v0.1.54 validate: SILENT on a well-formed dream block",
-      ms.validate_cycle_record({"dream": {"sleep": "> *💤 s*", "beats": ["> *🌙 b*"], "wake": "> *☀️ w*"}}) == [])
+      ms.validate_cycle_record({"dream": {"sleep": "> *💤 s*", "beats": ["> *🌙 b*"] * 6, "wake": "> *☀️ w*"}}) == [])
+# v0.4.1 (D1): a PRESENT-but-short arc warns too (the same single predicate the persist gate uses).
+check("v0.4.1 validate: warns on a present-but-short arc",
+      "dream arc incomplete: 4/6 beats" in ms.validate_cycle_record(
+          {"dream": {"sleep": "s", "beats": ["a"] * 4, "wake": "w"}}))
+check("v0.4.1 validate: warns on a missing sleep with 6 beats",
+      "dream arc incomplete: sleep missing" in ms.validate_cycle_record(
+          {"dream": {"beats": ["a"] * 6, "wake": "w"}}))
 
 # (2) dashboard presence line — gated on the key: with `dream` → DREAM ARC line (beats counted,
 # missing halves flagged ✗); without → not rendered (legacy byte-path untouched).
@@ -2426,6 +2539,110 @@ with _tf43.TemporaryDirectory() as _td54:
           and "then '☀️ **Awake.**'" not in _se54)
     _so54, _se54, _rc54 = _run54("render_html.py", str(_clean54), "--no-open", "--out", _out54, cue=False)
     check("v0.1.54 render_html cue: env absent → silent", _rc54 == 0 and "[dream-arc]" not in _se54)
+
+    # --- v0.4.1: dream-arc gate (exit 4), unstamped teeth (exit 5), marker auto-mirror, D3 ---
+    import retention as _ret41  # local: the module-level `ret` alias lands later in this file
+    # --- v0.4.1: dream-arc gate (exit 4), unstamped teeth (exit 5), marker auto-mirror, D3 ---
+    # arc_completeness — the SINGLE completeness predicate (the panel ✓/✗, the gate, and the
+    # WAKE cue all consume it — one definition, no reimplementation drift).
+    check("v0.4.1 arc: dreamless record is complete (legacy/preview carve-out)",
+          ms.arc_completeness({}) == (True, ""))
+    check("v0.4.1 arc: a complete 6-beat arc", ms.arc_completeness(
+          {"dream": {"sleep": "s", "beats": ["a"] * 6, "wake": "w"}}) == (True, ""))
+    check("v0.4.1 arc: a 4-beat arc is incomplete", ms.arc_completeness(
+          {"dream": {"sleep": "s", "beats": ["a"] * 4, "wake": "w"}}) == (False, "4/6 beats"))
+    check("v0.4.1 arc: missing sleep with 6 beats is incomplete", ms.arc_completeness(
+          {"dream": {"beats": ["a"] * 6, "wake": "w"}})[0] is False)
+    check("v0.4.1 arc: non-dict dream / junk record never raise",
+          ms.arc_completeness({"dream": "x"}) == (False, "dream block malformed (not a dict)")
+          and ms.arc_completeness("junk") == (True, ""))
+    # reconcile_marker — fills empty fields from the stamped state file (single source), a
+    # non-empty value stands, junk/missing input never raises.
+    _st41 = Path(_td54) / "v041-store"; _st41.mkdir(parents=True, exist_ok=True)
+    (_st41 / ".consolidation-state.json").write_text(
+        _json43.dumps({"commit": "abc1234", "timestamp": "2026-07-02T00:00:00Z"}))
+    check("v0.4.1 reconcile: fills empty commit+timestamp from the state file",
+          ms.reconcile_marker({"commit": "", "timestamp": ""}, _st41)
+          == {"commit": "abc1234", "timestamp": "2026-07-02T00:00:00Z"})
+    check("v0.4.1 reconcile: a non-empty value stands; junk degrades + fills; missing file never raises",
+          ms.reconcile_marker({"commit": "mine", "timestamp": ""}, _st41)
+          == {"commit": "mine", "timestamp": "2026-07-02T00:00:00Z"}
+          and ms.reconcile_marker("junk", _st41)
+          == {"commit": "abc1234", "timestamp": "2026-07-02T00:00:00Z"}
+          and ms.reconcile_marker(None, Path(_td54) / "nope") == {})
+    # D3: a managed mirror is EXEMPT from the drift field checks (its stamp block has no
+    # node_type) while its stem stays in the index-symmetric diff.
+    _f41 = Path(_td54) / "v041-facts"; _f41.mkdir(parents=True, exist_ok=True)
+    (_f41 / "local-x.md").write_text("body\n", encoding="utf-8")   # node_type-less authored → drift
+    (_f41 / "mirror-y.md").write_text(
+        "---\nmetadata:\n  mirrored_at: 2026-07-02T00:00:00Z\n  global_ref: mirror-y\n"
+        "  canonical_fact_id: f_abababababababababababab\n  canonical_domain: personal\n"
+        "  global_ref_since: 2026-07-02T00:00:00Z\n  global_ref_body: ab12cd34ef56\n"
+        "name: mirror-y\nscope: user-global\n---\nbody\n", encoding="utf-8")
+    _sd41 = ms.schema_drift([_f41 / "local-x.md", _f41 / "mirror-y.md"], {"local-x", "mirror-y"})
+    check("v0.4.1 D3: a managed mirror is exempt from drift checks, its stem still counted",
+          _sd41["missing_node_type"] == 1 and _sd41["index_mismatch"] == 0)
+    _sd41b = ms.schema_drift([_f41 / "mirror-y.md"], {"mirror-y"})
+    check("v0.4.1 D3: a mirror-only store has zero drift findings",
+          _sd41b["missing_node_type"] == 0)
+    # terminal gate subprocess pins — fresh records, shared persist dir.
+    _p41 = Path(_td54) / "v041-persist"; _p41.mkdir(parents=True, exist_ok=True)
+    _base41 = {"project": "p", "scope": {"git_commits": 9, "session_candidates": 3},
+               "verification": {"confirmed": 3, "corrected": 0, "unverifiable": 0}}
+    def _wr41(name: str, extra: dict) -> str:
+        p = Path(_td54) / name
+        p.write_text(_json43.dumps({**_base41, **extra}))
+        return str(p)
+    _short41p = _wr41("v041-short.json", {"marker": {"timestamp": "2026-07-02T00:00:01Z"},
+                                          "dream": {"sleep": "s", "beats": ["a"] * 4, "wake": "w"}})
+    _so41, _se41, _rc41 = _run54("render_dashboard.py", _short41p, "--persist", str(_p41), cue=True)
+    check("v0.4.1 gate: a 4/6 arc at --persist exits 4 with the loud panel + the NOT-over cue",
+          _rc41 == 4 and "DREAM ARC INCOMPLETE" in _so41 and "4/6 beats" in _so41
+          and "arc incomplete" in _se41)
+    _log41 = _ret41.cycle_log_write_path(_p41, environ={**_os53.environ, "HOME": _home54})
+    _last41 = _json43.loads(_log41.read_text(encoding="utf-8").strip().splitlines()[-1])
+    check("v0.4.1 gate: the firing 4/6 record accrued to the log (persist-then-exit)",
+          _log41.is_file() and len((_last41.get("dream") or {}).get("beats") or []) == 4)
+    _smp41 = _wr41("v041-sleepmissing.json", {"marker": {"timestamp": "2026-07-02T00:00:02Z"},
+                                              "dream": {"beats": ["a"] * 6, "wake": "w"}})
+    _so41, _se41, _rc41 = _run54("render_dashboard.py", _smp41, "--persist", str(_p41), cue=True)
+    check("v0.4.1 gate: missing sleep with 6 beats exits 4 too", _rc41 == 4 and "sleep missing" in _so41)
+    _full41p = _wr41("v041-full.json", {"marker": {"timestamp": "2026-07-02T00:00:03Z"},
+                                        "dream": {"sleep": "s", "beats": ["a"] * 6, "wake": "w"}})
+    _so41, _se41, _rc41 = _run54("render_dashboard.py", _full41p, "--persist", str(_p41), cue=True)
+    check("v0.4.1 gate: a complete 6/6 arc exits 0, prints the appended path, cues persist clean",
+          _rc41 == 0 and "persist clean" in _se41 and "persist →" in _so41)
+    _dr41 = _wr41("v041-dreamless.json", {"marker": {"timestamp": "2026-07-02T00:00:04Z"}})
+    _so41, _se41, _rc41 = _run54("render_dashboard.py", _dr41, "--persist", str(_p41), cue=True)
+    check("v0.4.1 gate: a dreamless record keeps exit 0 (the legacy carve-out)",
+          _rc41 == 0 and "persist clean" in _se41)
+    # auto-mirror: an empty record stamp reconciles from the stamped state file — BOTH the
+    # log line and the cycle file carry it (the split-brain heal).
+    (_p41 / ".consolidation-state.json").write_text(
+        _json43.dumps({"commit": "stamp41", "timestamp": "2026-07-02T00:10:00Z"}))
+    _am41p = _wr41("v041-automirror.json", {"marker": {"commit": "", "timestamp": ""}})
+    _so41, _se41, _rc41 = _run54("render_dashboard.py", _am41p, "--persist", str(_p41), cue=True)
+    _last41 = _json43.loads(_log41.read_text(encoding="utf-8").strip().splitlines()[-1])
+    _cycle41 = _json43.loads(Path(_am41p).read_text(encoding="utf-8"))
+    check("v0.4.1 auto-mirror: the empty stamp reconciles — log line AND cycle file carry it",
+          _rc41 == 0 and "persist →" in _so41
+          and _last41.get("marker", {}).get("timestamp") == "2026-07-02T00:10:00Z"
+          and _cycle41.get("marker", {}).get("timestamp") == "2026-07-02T00:10:00Z")
+    # duplicate: the idempotent re-render (the exit-4 loop-back) appends nothing and never
+    # fakes a "persist clean" cue.
+    _n41 = len(_log41.read_text(encoding="utf-8").strip().splitlines())
+    _so41, _se41, _rc41 = _run54("render_dashboard.py", _am41p, "--persist", str(_p41), cue=True)
+    check("v0.4.1 duplicate: the idempotent re-render adds no line and no 'persist clean' cue",
+          _rc41 == 0 and "persist clean" not in _se41
+          and len(_log41.read_text(encoding="utf-8").strip().splitlines()) == _n41)
+    # still-unstamped: no state file → exit 5, loud stderr, nothing appended.
+    _p41b = Path(_td54) / "v041-persist-b"; _p41b.mkdir(parents=True, exist_ok=True)
+    _us41p = _wr41("v041-unstamped.json", {"marker": {"commit": "", "timestamp": ""}})
+    _so41, _se41, _rc41 = _run54("render_dashboard.py", _us41p, "--persist", str(_p41b), cue=True)
+    _log41b = _ret41.cycle_log_write_path(_p41b, environ={**_os53.environ, "HOME": _home54})
+    check("v0.4.1 unstamped: exit 5, loud UNSTAMPED panel, no append, no 'persist clean'",
+          _rc41 == 5 and "UNSTAMPED" in _se41 and "persist clean" not in _se41
+          and not _log41b.is_file())
     # cue-mode gating in sync_global: --network is outside dream flow → NO cue even with env set.
     _so54, _se54, _rc54 = _run54("sync_global.py", "--network", cue=True)
     check("v0.1.54 sync_global cue-mode gate: --network (non-dream mode) stays silent",
@@ -2467,8 +2684,12 @@ class _FakeCtx54:
 _r54 = _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54()))
 check("v0.1.54 beta family: dreamless latest record → LOW/WARN with the pre-feature caveat",
       len(_r54) == 1 and _r54[0].status == "WARN" and _r54[0].severity == "LOW" and "pre-v0.1.54" in _r54[0].actual)
-_FakeCtx54.log_records = [{"dream": {"sleep": "s", "beats": ["b"], "wake": "w"}, "marker": {"timestamp": "t2"}}]
+_FakeCtx54.log_records = [{"dream": {"sleep": "s", "beats": ["b"] * 6, "wake": "w"}, "marker": {"timestamp": "t2"}}]
 check("v0.1.54 beta family: complete arc → PASS", _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54()))[0].status == "PASS")
+_FakeCtx54.log_records = [{"dream": {"sleep": "s", "beats": ["b"] * 4, "wake": "w"}, "marker": {"timestamp": "t2b"}}]
+_r541 = _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54()))
+check("v0.4.1 beta family: a 4-beat arc → WARN (the == 6 count, v0.4.1 boundary named)",
+      _r541[0].status == "WARN" and "beats=4" in _r541[0].actual and "v0.4.1" in _r541[0].actual)
 _FakeCtx54.log_records = [{"dream": {"sleep": None, "beats": ["b"], "wake": None}, "marker": {"timestamp": "t3"}}]
 check("v0.1.54 beta family: JSON-null stanzas count as MISSING → WARN (str(None) truthiness fixed)",
       _bc54.dream_arc_capture(cast(_bc54.Ctx, _FakeCtx54()))[0].status == "WARN")
@@ -4077,14 +4298,15 @@ check("v0.1.68 CSS pin: the masthead's radial-gradient is immediately followed b
       _re.search(r"background-image:radial-gradient\([^)]*var\(--glow\)[^)]*\);\s*"
                  r"background-repeat:no-repeat;", _tpl54) is not None)
 
-check("v0.1.68 JS pin: the demotion-verdict classifier still parses a leading dormant/demoted/"
-      "justified/none disposition word into the badge tag (the tag+prose split the fix introduced, "
-      "mirroring the distill panel's grammar)",
-      'dvd.match(/^\\s*(dormant|demoted|justified|none)\\b[:\\s—-]*/i)' in _tpl54)
+check("v0.1.68 JS pin: the demotion-verdict classifier parses a leading dormant/demoted/"
+      "justified/none/counter-justified disposition word into the badge tag — v0.4.1 strips a "
+      "duplicated 'eligible N' lead first (the tag+prose split, mirroring the distill panel's grammar)",
+      'dvd2=dvd.replace(/^\\s*eligible\\s+\\d+\\s*(?:→|—|-)?\\s*/i,"")' in _tpl54
+      and 'dvd2.match(/^\\s*(dormant|demoted|justified|none|counter-justified)\\b[:\\s—-]*/i)' in _tpl54)
 
-check("v0.1.68 JS pin: demoted/justified verdicts still get the 'ok' (positive) badge class, not the "
-      "neutral default (dormant/none stay neutral — only a resolved-favorably verdict reads as OK)",
-      'dcls=(dtag==="demoted"||dtag==="justified")?" ok":""' in _tpl54)
+check("v0.1.68 JS pin: demoted/justified/counter-justified verdicts get the 'ok' (positive) badge class, "
+      "not the neutral default (dormant/none stay neutral — only a resolved-favorably verdict reads as OK)",
+      'dcls=(dtag==="demoted"||dtag==="justified"||dtag==="counter-justified")?" ok":""' in _tpl54)
 
 # --- v0.1.71 Track D-1: _atomic_write_text — write-temp+os.replace, no torn write visible ---
 import tempfile as _tf71  # noqa: E402

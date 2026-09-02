@@ -5,6 +5,34 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.1] — 2026-09-02
+
+**Patch** — the dream-arc and marker contracts gained teeth at the terminal boundary
+(the 2026-09-02 dogfood self-healed a 4/6-beat arc that persisted with exit 0 and an
+unstamped cycle that silently skipped its persist); the schema-drift detector stops
+counting managed mirrors as drift.
+
+### Fixed —
+
+- **Dream-arc completeness gate.** `render_dashboard --persist` now exits **4** after
+  persisting on a PRESENT-but-incomplete arc (sleep/wake empty or ≠ 6 beats) with a
+  loud ⚠ DREAM ARC INCOMPLETE panel — the single `memory_status.arc_completeness`
+  predicate also drives the dashboard's ✓/✗ presence line, the validator warning, and
+  the render_html WAKE-cue gate ("backfill before waking"). A record with no `dream`
+  block keeps exit 0 (legacy/preview). The beta oracle's CHK-DREAM-ARC tightens to
+  `== 6` (stays ADVISORY; the 0.4.1 boundary is named). Reverses the spec's
+  "style never fails a dream" choice — recorded in dream-arc-contract.spec.md.
+- **Unstamped-cycle teeth.** `--persist`/`--diffs`/`--audit` auto-mirror an empty
+  `marker.commit`/`timestamp` from the stamped state file (`reconcile_marker` —
+  a non-empty value stands, junk never raises); the reconciled payload lands in the
+  log AND the cycle file (the split-brain heal — the archive no longer embeds the
+  dream twice). A still-unstamped terminal persist exits **5** with a loud panel;
+  "persist clean" now fires only on a real append, and the render prints the exact
+  `persist → <path>` line.
+- **Drift mirror exclusion.** `schema_drift` skips managed mirrors (their stamp
+  block replaces `node_type`), keeping mirror stems in the index-symmetric diff —
+  the first pulled mirror in the dogfood store no longer reads as drift.
+
 ## [0.4.0] — 2026-09-01
 
 **Minor** — the sole-authority release (ADR 023): SQLite is the single authority for

@@ -191,7 +191,10 @@ finalizes it in Phase 2 and may override with rationale.
   calibration, the model records the realized `rigor.applied`/`override_reason` and Phase-5
   `--persist DIR` identifies the native store; the record is appended under plugin-data
   `ops/<slot>/.consolidation-log.jsonl` (idempotent; leftover native
-  `<store>/.consolidation-log.jsonl` is dual-read only; skips persisting an unstamped cycle). LEVER NOTE: `INDEX_TOKEN_BUDGET` is the binding prune lever
+  `<store>/.consolidation-log.jsonl` is dual-read only; v0.4.1 auto-mirrors an empty stamp from the
+  state file and exits 5 on a still-unstamped cycle — the persist exit-key: 0 clean · 3
+  procedure-integrity (re-verify) · 4 dream-arc incomplete (backfill beats) · 5 unstamped (re-stamp)).
+  LEVER NOTE: `INDEX_TOKEN_BUDGET` is the binding prune lever
   (~20–27 real facts); `PRUNE_PRESSURE_FACTS` is a terse-pointer backstop. CAVEAT: `applied`
   is self-reported (catches over-rigor only); the LAZY-SKIP under-rigor case (SUBSTANTIAL+
   magnitude with 0/0/0 verification) is now caught by the v0.1.44 `procedure_integrity` detector at

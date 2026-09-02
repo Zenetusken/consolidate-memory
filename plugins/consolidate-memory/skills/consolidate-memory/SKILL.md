@@ -259,7 +259,9 @@ template-filled sentence. Vivid but grounded: the dream is ABOUT the work.
 **Conversation first, record second.** The conversational dream blocks are the feature.
 Mirror them into the cycle record's `dream` block as a cheap secondary echo — `dream.sleep`,
 `dream.beats[]` in order (the surfacing line included), `dream.wake` — so the HTML archive
-keeps each dream and the beta harness can detect a skipped arc. Compose `dream.wake` at the
+keeps each dream and the beta harness can detect a skipped arc. The terminal `--persist`
+gate counts 6 (5 phase beats + the surfacing line) and exits 4 on a short arc, so mirror
+every beat as it happens. Compose `dream.wake` at the
 final record-fill (before `--persist`), then perform it after the render. Filling the
 record INSTEAD of narrating is a defect, not compliance.
 
@@ -951,8 +953,10 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --stamp-marker <HEAD> \
        [--standing-justify-facts N --standing-justify-tokens N] [--snooze-until <iso>]
    ```
-   Stamp the timestamp at write time, and mirror that `timestamp` into the cycle
-   record's `marker.timestamp`. The file also carries SCRIPT-OWNED keys —
+   Stamp the timestamp at write time; the scripts auto-mirror an EMPTY
+   `marker.timestamp` from this file at `--persist`/`--diffs`/`--audit` (v0.4.1) — a
+   value you wrote stands (never overridden), so keep it consistent with the file.
+   The file also carries SCRIPT-OWNED keys —
    `stacks`/`project_path` (the `--pull`-written cache the SessionStart beacon and `--staleness`
    read; recomputing stacks costs ~2s on a big repo, which is why it is cached) and
    `beacon_snooze_until` (set ONLY on an explicit user ask to quiet the beacon for this store;
@@ -1111,12 +1115,28 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
        --persist <native_memory_dir from Phase 0 / cm doctor>
    ```
    `--persist <store dir>` identifies the native store; the rendered record (one
-   JSON line) is appended under plugin data (`ops/<slot>/.consolidation-log.jsonl`)
-   so the native plane stays facts-only. Dual-read still sees a leftover native
-   `<store>/.consolidation-log.jsonl`. The log accrues
-   magnitude→(applied, outcome) data for a future band calibration. It is idempotent and
-   **skips persisting an unstamped cycle** (the render still succeeds), so run it AFTER
-   step 5 stamps `marker.timestamp`.
+   JSON line) is appended under plugin data (the project-id-keyed ops dir, or
+   `ops/<slot>/` when no project_id exists — see `retention.py`; the render prints
+   the exact `persist → <path>` line) so the native plane stays facts-only.
+   Dual-read still sees a leftover native `<store>/.consolidation-log.jsonl`. The log
+   accrues magnitude→(applied, outcome) data for a future band calibration. It is
+   idempotent on (commit, timestamp), and v0.4.1 auto-mirrors an empty stamp from the
+   state file before refusing — an UNSTAMPED cycle (no state-file stamp either)
+   prints a loud panel and **exits 5**; re-stamp, re-render. So run it AFTER step 5
+   stamps the marker.
+
+   **The persist exit-code key (v0.4.1): 0 clean · 3 procedure-integrity (re-verify) ·
+   4 dream-arc incomplete (backfill beats) · 5 unstamped (re-stamp).** Gate
+   precedence: both-violating → 3; arc+unstamped → 4, then 5 on the re-render.
+
+   **Dream-arc completeness gate (v0.4.1).** The same terminal `--persist` judges the
+   arc: a PRESENT-but-incomplete dream block (sleep or wake empty, or ≠ 6 beats —
+   5 phase beats + the surfacing line) prints a loud **DREAM ARC INCOMPLETE ⚠**
+   panel, persists the record (it accrues — the log keeps the short-arc record even
+   after you backfill, the integrity precedent), and **exits 4**. Backfill the
+   missing beats, re-render (exit 0 on a complete arc — or on a record with no
+   `dream` block at all, the legacy carve-out). A missing block escapes the gate by
+   design (the beta WARN covers it next pass).
 
    **Procedure-integrity gate (v0.1.44).** Because this terminal `--persist` is the one step
    every finishing dream runs, the render also JUDGES the completed dream here: if a
@@ -1173,10 +1193,12 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    **never pass `--no-open` in a normal dream** (headless degrades to printing the path, the only
    non-open path). Reaching a clean (exit-0) `--persist` and stopping *without* `render_html` means you
    have NOT finished. **Two carve-outs:** (1) it is mandatory only on the clean **exit-0** pass —
-   **never run it right after an exit-3** `--persist` (that would paper over the very lazy-skip the
-   integrity gate exists to catch; go re-verify and re-render to exit 0 FIRST — see the procedure-integrity
-   gate above); (2) a **true Phase-0 no-op** never reaches Phase 5, so it has no dashboard and no path
-   (see *The dream arc* → Proportionality).
+   **never run it right after an exit-3 / exit-4 / exit-5** `--persist` (that would paper over the
+   very lazy-skip / short arc / unstamped cycle the gates exist to catch; re-verify, backfill the
+   beats, or re-stamp the marker, then re-render to exit 0 FIRST — see the gates above); (2) a
+   **true Phase-0 no-op** never reaches Phase 5, so it has no dashboard and no path
+   (see *The dream arc* → Proportionality). A maintenance/bootstrap pivot skips the distill/usage
+   steps, never the arc — the beat contract and the gates apply on every pass that renders.
 
    **Then WAKE — and only then debrief.** With the ASCII dashboard already printed in-terminal (the
    clean exit-0 `render_dashboard --persist` above) and the HTML auto-opened, emit the **WAKE block**

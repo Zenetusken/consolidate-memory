@@ -1277,12 +1277,17 @@ def dream_arc_capture(ctx: Ctx) -> list[Result]:
         # `or ""` — a JSON-null stanza must read ABSENT (str(None) == "None" is truthy).
         have_sleep = bool(str(dream.get("sleep") or "").strip())
         have_wake = bool(str(dream.get("wake") or "").strip())
-        complete = have_sleep and have_wake and len(beats) > 0
+        complete = have_sleep and have_wake and len(beats) == 6
+        if not dream:
+            tail = (" — expected on pre-v0.1.54 records (the block is absent); a defect on any dream "
+                    "run with v0.1.54+ (check the record's recency before promoting)")
+        else:
+            tail = (" — a 1–5-beat arc was compliant on v0.1.54–v0.4.0 records; since v0.4.1 the "
+                    "contract is 6 beats (5 phase beats + surfacing) and the render's --persist "
+                    "gate exits 4 on a short arc (check the record's recency before promoting)")
         return complete, (f"sleep={'present' if have_sleep else 'MISSING'} · beats={len(beats)} · "
                           f"wake={'present' if have_wake else 'MISSING'}"
-                          + ("" if complete else
-                             " — expected on pre-v0.1.54 records; a defect on any dream run with v0.1.54+ "
-                               "(check the record's recency before promoting)"))
+                          + ("" if complete else tail))
     return _latest_capture_check(
         ctx, block_key="dream", family_name="dream_arc_capture", min_version=(0, 1, 54),
         check_id="CHK-DREAM-ARC",
