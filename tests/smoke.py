@@ -10361,5 +10361,148 @@ with _Env73() as _e_or:
     check("P0-2: journal cleanup apply scavenges true orphan trash",
           not _orphan.exists())
 
+# ── Phase 3: domain lifecycle / inactive ack / resurrect / purge fence ──
+with _Env73() as _e_p3:
+    _ctx_p3 = sc.resolve_store(_e_p3.proj)
+    _up_p3 = ci.upsert(_ctx_p3, "keep-p3", _v3_canon("keep-p3", description="live"))
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_pg3 = cmo.main(["data", "purge", "--project", str(_e_p3.proj),
+                            "--scope", "domain-canonicals", "--domain", "personal",
+                            "--apply", "--confirm", "purge-domain-canonicals"])
+    _ctx_p3b = sc.resolve_store(_e_p3.proj)
+    _st_p3 = cmo.domain_purge_status(_ctx_p3b, "personal")
+    check("P0-1: after domain purge former members are local-only",
+          _up_p3.get("ok") is True and _rc_pg3 == 0
+          and _ctx_p3b.enrolled is False
+          and _ctx_p3b.cross_project_allowed is False
+          and _st_p3.get("lifecycle") == "deleted"
+          and _st_p3.get("enrolled_projects") == [])
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_en_w = cmo.main(["project", "enroll", str(_e_p3.proj), "--domain", "work",
+                             "--apply", "--confirm", "enroll-work"])
+    _ctx_p3c = sc.resolve_store(_e_p3.proj)
+    check("P0-1: former member can enroll in another domain",
+          _rc_en_w == 0 and _ctx_p3c.enrolled is True
+          and _ctx_p3c.domain_id == "work"
+          and _ctx_p3c.cross_project_allowed is True)
+    _en_del = _io73.StringIO()
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_en_del):
+        _rc_en_dead = cmo.main(["project", "enroll", str(_e_p3.proj), "--domain", "personal",
+                                "--apply", "--confirm", "enroll-personal"])
+    check("P0-1: enroll into a deleted domain is refused",
+          _rc_en_dead == 2 and "deleted" in _en_del.getvalue())
+
+with _Env73() as _e_can:
+    _ctx_can = sc.resolve_store(_e_can.proj)
+    ci.upsert(_ctx_can, "still-here", _v3_canon("still-here"))
+    def _mark_del(_c, _t):
+        del _c, _t
+        return {"registry_ops": [
+            {"op": "domain_status_set", "domain_id": "personal", "status": "deleting"}]}
+    cp.transact(_ctx_can, "domain-deleting", {"domain_id": "personal"}, _mark_del,
+                extra_domains=["personal"])
+    _st_can = cmo.domain_purge_status(_ctx_can, "personal")
+    _can_out = cmo.domain_purge_cancel(_ctx_can, "personal")
+    _st_can2 = cmo.domain_purge_status(sc.resolve_store(_e_can.proj), "personal")
+    check("P0-1: interrupted purge can be cancelled back to active",
+          _st_can.get("lifecycle") == "deleting"
+          and _can_out.get("ok") is True
+          and _st_can2.get("lifecycle") == "active")
+
+with _Env73() as _e_rsu:
+    _ctx_rsu = sc.resolve_store(_e_rsu.proj)
+    ci.upsert(_ctx_rsu, "rsu-fact", _v3_canon("rsu-fact"))
+    def _mark_rsu(_c, _t):
+        del _c, _t
+        return {"registry_ops": [
+            {"op": "domain_status_set", "domain_id": "personal", "status": "deleting"}]}
+    cp.transact(_ctx_rsu, "domain-deleting", {"domain_id": "personal"}, _mark_rsu,
+                extra_domains=["personal"])
+    _rsu = cmo.domain_purge_resume(_ctx_rsu, "personal")
+    _st_rsu = cmo.domain_purge_status(sc.resolve_store(_e_rsu.proj), "personal")
+    check("P0-1: interrupted purge can be resumed to deleted with zero enrolled",
+          _rsu.get("ok") is True
+          and _st_rsu.get("lifecycle") == "deleted"
+          and _st_rsu.get("enrolled_projects") == [])
+
+with _Env73() as _e_tb:
+    _ctx_tb = sc.resolve_store(_e_tb.proj)
+    ci.upsert(_ctx_tb, "gone-body", _v3_canon("gone-body", description="secret"))
+    _fg_tb = ci.forget(_ctx_tb, "gone-body")
+    _rx_tb = ci.set_canonical_status(_ctx_tb, "gone-body", "active")
+    check("P1-2: reactivate of a tombstone stub is refused",
+          _fg_tb.get("ok") is True
+          and _rx_tb.get("ok") is False
+          and "tombstone stub" in str(_rx_tb.get("error") or ""))
+    _new_tb = _v3_canon("gone-body", description="new-life", body="RESURRECTED\n")
+    _rs_tb = ci.resurrect(_ctx_tb, "gone-body", _new_tb)
+    _live_tb = (_ctx_tb.canonical_domain_dir / "gone-body.md").read_text(encoding="utf-8")
+    check("P1-2: resurrect --file writes a real active body",
+          _rs_tb.get("ok") is True
+          and "RESURRECTED" in _live_tb
+          and "status: active" in _live_tb
+          and "Previous body is not retained" not in _live_tb)
+
+with _Env73() as _e_ex:
+    _ctx_ex = sc.resolve_store(_e_ex.proj)
+    ci.upsert(_ctx_ex, "will-expire", _v3_canon("will-expire", description="temp"))
+    ci.upsert(_ctx_ex, "will-keep", _v3_canon("will-keep", description="keep"))
+    _proj_b = Path(_e_ex._td.name) / "src" / "other"
+    _proj_b.mkdir(parents=True)
+    _enroll_personal(_proj_b)
+    _ctx_bex = sc.resolve_store(_proj_b)
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_b1 = sg.run(_proj_b, pull=True)
+    ci.set_canonical_status(_ctx_ex, "will-expire", "expired")
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_b2 = sg.run(_proj_b, pull=True)
+    _idx_b = (_ctx_bex.native_memory_dir / "MEMORY.md").read_text(encoding="utf-8")
+    check("P1-1: expired facts disappear from receiving indexes on the next pull",
+          _rc_b1 == 0 and _rc_b2 == 0
+          and "will-keep.md" in _idx_b
+          and "will-expire.md" not in _idx_b
+          and not (_ctx_bex.native_memory_dir / "will-expire.md").exists())
+
+with _Env73() as _e_su:
+    _ctx_su = sc.resolve_store(_e_su.proj)
+    ci.upsert(_ctx_su, "old-name", _v3_canon("old-name", description="old"))
+    ci.upsert(_ctx_su, "new-name", _v3_canon("new-name", description="new"))
+    _proj_s = Path(_e_su._td.name) / "src" / "sib"
+    _proj_s.mkdir(parents=True)
+    _enroll_personal(_proj_s)
+    _ctx_sib = sc.resolve_store(_proj_s)
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        sg.run(_proj_s, pull=True)
+    ci.set_canonical_status(_ctx_su, "old-name", "superseded", replacement_id="new-name")
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_su = sg.run(_proj_s, pull=True)
+    _idx_su = (_ctx_sib.native_memory_dir / "MEMORY.md").read_text(encoding="utf-8")
+    check("P1-1: supersede installs replacement then drops the old pointer on pull",
+          _rc_su == 0
+          and "new-name.md" in _idx_su
+          and "old-name.md" not in _idx_su
+          and (_ctx_sib.native_memory_dir / "new-name.md").is_file()
+          and not (_ctx_sib.native_memory_dir / "old-name.md").exists())
+
+with _Env73() as _e_fn:
+    _ctx_fn = sc.resolve_store(_e_fn.proj)
+    _pdata = _ctx_fn.plugin_data_dir
+    _droot = _ctx_fn.config_root / "consolidate-memory" / "domains"
+    (_pdata / "leftover.txt").write_text("STILL-HERE\n", encoding="utf-8")
+    _fid = "all-resume0001"
+    _fp = _ctx_fn.config_root / "consolidate-memory-purge" / (_fid + ".json")
+    _fp.parent.mkdir(parents=True, exist_ok=True)
+    _fp.write_text(_json_xp.dumps({
+        "purge_id": _fid, "state": "plugin-data-deleting",
+        "targets": {"plugin_data": str(_pdata), "domains": str(_droot / "_none_")},
+        "domains": [], "projects": [],
+    }), encoding="utf-8")
+    _fn_out = cmo.run_all_plugin_data_purge(_ctx_fn, rows=[], seen_dom=[], pids=[])
+    _fence = _json_xp.loads(_fp.read_text(encoding="utf-8"))
+    check("P1-8: interrupted all-plugin-data purge resumes until paths are absent",
+          _fn_out.get("ok") is True
+          and _fence.get("state") == "complete"
+          and not (_pdata / "leftover.txt").exists())
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

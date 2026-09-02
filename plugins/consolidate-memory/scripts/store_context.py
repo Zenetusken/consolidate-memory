@@ -71,6 +71,7 @@ def identity_snapshot(ctx: "StoreContext") -> dict:
         "enrolled": bool(ctx.enrolled),
         "registry_state": getattr(ctx, "registry_state", "absent") or "absent",
         "cross_project_allowed": bool(getattr(ctx, "cross_project_allowed", False)),
+        "domain_lifecycle": str(getattr(ctx, "domain_lifecycle", "active") or "active"),
     }
     try:
         from control_plane import connect_if_exists, list_conflicts
@@ -111,6 +112,7 @@ class StoreContext:
     registry_state: str = "absent"
     cross_project_allowed: bool = False
     registry_error: str = ""
+    domain_lifecycle: str = "active"
 
 
 def slug_for(project_dir: Path) -> str:
@@ -742,7 +744,9 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
     pdata = plugin_data_dir(cfg, env)
     pid = project_id_for(profile, domain, common, root, remote_fp)
     enrolled = False
+    life = "active"
     from control_plane import (classify_registry, connect_if_exists,
+                               domain_lifecycle as _domain_lifecycle,
                                enrolled_domain, resolve_project_alias)
     _db = pdata / "control.sqlite"
     reg_state, reg_err = classify_registry(_db)
@@ -767,6 +771,8 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
                 if got:
                     domain = got
                     enrolled = True
+                if domain and domain != "unknown":
+                    life = _domain_lifecycle(_c, domain)
             finally:
                 _c.close()
 
@@ -859,6 +865,7 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         canon = cfg / "consolidate-memory" / "domains" / "unknown" / "facts"
     cross_project_allowed = (
         reg_state == "healthy" and enrolled and domain != "unknown"
+        and life == "active"
     )
 
     return StoreContext(
@@ -886,6 +893,7 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
         registry_state=reg_state,
         cross_project_allowed=cross_project_allowed,
         registry_error=reg_err,
+        domain_lifecycle=life,
     )
 
 
@@ -929,6 +937,15 @@ def store_context_from_registry(row: Any, *, template: StoreContext) -> StoreCon
         canon = (template.config_root / "consolidate-memory" / "domains"
                  / "unknown" / "facts")
     enrolled = status == "enrolled"
+    life = "active"
+    if dname and dname != "unknown":
+        from control_plane import connect_if_exists as _cie, domain_lifecycle as _dlife
+        _c = _cie(template.plugin_data_dir / "control.sqlite")
+        if _c is not None:
+            try:
+                life = _dlife(_c, dname)
+            finally:
+                _c.close()
     return replace(
         template,
         native_memory_dir=native,
@@ -940,8 +957,10 @@ def store_context_from_registry(row: Any, *, template: StoreContext) -> StoreCon
         session_dir=session,
         display_name=display or template.display_name,
         enrolled=enrolled,
+        domain_lifecycle=life,
         cross_project_allowed=(
             template.registry_state == "healthy" and enrolled and dname != "unknown"
+            and life == "active"
         ),
         resolution_source="registry-row",
         store_override=native,
@@ -978,6 +997,7 @@ def doctor_report(ctx: StoreContext) -> str:
         ("domain_id", ctx.domain_id),
         ("requested_domain", ctx.requested_domain),
         ("enrolled", "true" if ctx.enrolled else "false"),
+        ("domain_lifecycle", str(getattr(ctx, "domain_lifecycle", "active") or "active")),
         ("registry_state", _registry_state_line(ctx)),
         ("cross_project_allowed", "true" if getattr(ctx, "cross_project_allowed", False) else "false"),
         ("auto_memory_enabled", "true" if ctx.auto_memory_enabled else "false"),
@@ -1011,6 +1031,7 @@ def doctor_dict(ctx: StoreContext) -> dict:
         "domain_id": ctx.domain_id,
         "requested_domain": ctx.requested_domain,
         "enrolled": ctx.enrolled,
+        "domain_lifecycle": str(getattr(ctx, "domain_lifecycle", "active") or "active"),
         "registry_state": _registry_state_line(ctx),
         "cross_project_allowed": getattr(ctx, "cross_project_allowed", False),
         "auto_memory_enabled": ctx.auto_memory_enabled,

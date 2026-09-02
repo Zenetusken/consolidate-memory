@@ -141,6 +141,7 @@ JOURNAL_BLOCKING = frozenset({"failed", "conflicted"})
 JOURNAL_HOLD_FS = frozenset({"pending", "failed", "conflicted"})
 DOMAIN_LIFECYCLE_KINDS = frozenset({
     "domain-deleting", "domain-deleted", "purge-domain", "purge-all-plugin-data",
+    "domain-transition", "purge-resume", "purge-cancel",
 })
 JOURNAL_BODY_KEYS = ("text", "body", "old_text", "bytes_b64", "old_bytes_b64")
 RECOVERY_TTL_SEC = 24 * 60 * 60
@@ -727,6 +728,10 @@ def enroll_project(conn: sqlite3.Connection, ctx: StoreContext, domain: str) -> 
     from identifiers import validate_domain_id
     from store_context import WriteRefused
     d = validate_domain_id(domain)
+    life = domain_lifecycle(conn, d)
+    if life in ("deleting", "deleted"):
+        raise WriteRefused(
+            "domain %s is %s; enroll in an active domain" % (d, life))
     current = enrolled_domain(conn, ctx.project_id)
     if current and current != d:
         raise WriteRefused(
@@ -1022,6 +1027,18 @@ def assert_rebind_invariant(conn: sqlite3.Connection, old_id: str, retire_id: st
     ).fetchone()["n"]
     if int(n) != 1:
         raise WriteRefused("postcondition: rebind must leave exactly one project row")
+
+
+def assert_domain_has_no_enrolled(conn: sqlite3.Connection, domain_id: str) -> None:
+    """domain.status==deleted ⇒ zero enrolled members (P0-1)."""
+    n = conn.execute(
+        "SELECT COUNT(*) AS n FROM projects WHERE domain_id=? AND status='enrolled'",
+        (domain_id,),
+    ).fetchone()["n"]
+    if int(n) != 0:
+        raise WriteRefused(
+            "postcondition: domain %s is deleted but still has %s enrolled project(s)"
+            % (domain_id, n))
 
 
 def assert_enrolled(conn: sqlite3.Connection, project_id: str, domain_id: str) -> None:
@@ -2513,6 +2530,9 @@ def _assert_registry_postconditions(rconn: sqlite3.Connection, payload: dict,
             assert_rebind_invariant(
                 rconn, str(rop.get("project_id") or ""),
                 str(rop.get("retire_id") or rop.get("alias_id") or ""))
+        if (rop.get("op") == "domain_status_set"
+                and str(rop.get("status") or "") == "deleted"):
+            assert_domain_has_no_enrolled(rconn, str(rop.get("domain_id") or ""))
 
 
 def recover_pending(conn: sqlite3.Connection, replay: Optional[Callable] = None,

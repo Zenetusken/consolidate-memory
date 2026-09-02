@@ -258,8 +258,9 @@ script-writes `demotion_justify` as the monotonic usage-window sequence.
 
 ## Install
 
-**v0.3.6** (domain isolation + StoreContext + `cm project enroll`; dashboard
-identity; `cm local` hook-lint + link-strip parity). This ships as a
+**v0.3.7** (domain isolation + StoreContext + `cm project enroll`; dashboard
+identity; `cm local` hook-lint + link-strip parity; journal terminal cleanup
+and domain lifecycle). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
 ```text
@@ -294,7 +295,7 @@ memory this plugin does not own. Domain canonicals live under
 read-only migration source. Scoped purge commands are the right tool; hand-deleting
 the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
-### Known limitations (v0.3.6)
+### Known limitations (v0.3.7)
 
 - **Unenrolled projects are local-only.** They cannot create or pull cross-project
   canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain

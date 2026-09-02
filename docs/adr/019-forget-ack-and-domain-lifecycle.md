@@ -60,6 +60,10 @@ fact. Purge no longer races with pull on the same domain.
 Negative: forgotten bytes remain on an offline clone until its next
 pull/GC. That is the documented ack lag, not fleet-atomic erasure.
 
+Superseded in part by ADR 022: purge unenrolls in the same transact that
+marks `deleted`; inactive ack covers superseded/expired; tombstone stubs
+cannot be reactivated.
+
 ## Revisit trigger
 
 Reopen for eager `cm forget --propagate`, or if a second independent user

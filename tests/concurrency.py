@@ -264,6 +264,139 @@ def test_cleanup_pending_crash() -> None:
         td.cleanup()
 
 
+def _purge_child(home: str, proj: str, barrier, q) -> None:
+    os.environ["HOME"] = home
+    import cm_ops as cmo
+    barrier.wait()
+    rc = cmo.main(["data", "purge", "--project", proj, "--scope", "domain-canonicals",
+                   "--domain", "personal", "--apply",
+                   "--confirm", "purge-domain-canonicals"])
+    q.put(("purge", rc, ""))
+
+
+def _pull_child(home: str, proj: str, barrier, q) -> None:
+    os.environ["HOME"] = home
+    from pathlib import Path
+    import sync_global as sg
+    barrier.wait()
+    try:
+        rc = sg.run(Path(proj), pull=True)
+        q.put(("pull", rc, ""))
+    except Exception as e:
+        q.put(("pull", 99, e.__class__.__name__))
+
+
+def test_pull_vs_domain_purge() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import canonical_ingress as ci
+        import store_context as sc
+        ctx = sc.resolve_store(proj)
+        body = (
+            "---\nschema_version: 3\nfact_id: f_" + "ab" * 12 + "\n"
+            "name: live-p\ndescription: d\ndomain: personal\nsensitivity: internal\n"
+            "scope: user-global\nstatus: active\napplies_any: []\napplies_all: []\n"
+            "applies_exclude: []\ncontent_modified: 2026-09-01T00:00:00Z\n"
+            "last_observed_at: 2026-09-01T00:00:00Z\n---\nBODY\n")
+        ci.upsert(ctx, "live-p", body)
+        ctxm = mp.get_context("fork")
+        barrier = ctxm.Barrier(2)
+        q: mp.Queue = ctxm.Queue()
+        p1 = ctxm.Process(target=_purge_child, args=(str(home), str(proj), barrier, q))
+        p2 = ctxm.Process(target=_pull_child, args=(str(home), str(proj), barrier, q))
+        p1.start(); p2.start()
+        p1.join(60); p2.join(60)
+        got = [q.get(timeout=1), q.get(timeout=1)]
+        ctx2 = sc.resolve_store(proj)
+        st = __import__("cm_ops").domain_purge_status(ctx2, "personal")
+        check("concurrency: pull vs domain purge leaves no enrolled member of a deleted domain",
+              p1.exitcode == 0 and p2.exitcode == 0
+              and len(got) == 2
+              and st.get("lifecycle") == "deleted"
+              and st.get("enrolled_projects") == []
+              and ctx2.enrolled is False)
+    finally:
+        td.cleanup()
+
+
+def _move_child(home: str, proj: str, barrier, q) -> None:
+    os.environ["HOME"] = home
+    import cm_ops as cmo
+    barrier.wait()
+    rc = cmo.main(["project", "move-domain", proj, "--to", "work",
+                   "--apply", "--confirm", "move-personal-to-work"])
+    q.put(("move", rc, ""))
+
+
+def test_move_vs_deleting() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import cm_ops as cmo
+        import store_context as sc
+        ctxm = mp.get_context("fork")
+        barrier = ctxm.Barrier(2)
+        q: mp.Queue = ctxm.Queue()
+        p1 = ctxm.Process(target=_purge_child, args=(str(home), str(proj), barrier, q))
+        p2 = ctxm.Process(target=_move_child, args=(str(home), str(proj), barrier, q))
+        p1.start(); p2.start()
+        p1.join(60); p2.join(60)
+        got = [q.get(timeout=1), q.get(timeout=1)]
+        ctx2 = sc.resolve_store(proj)
+        st = cmo.domain_purge_status(ctx2, "personal")
+        enrolled_dead = ctx2.enrolled and ctx2.domain_id == "personal" and st.get("lifecycle") == "deleted"
+        check("concurrency: move-domain vs deleting never leaves a member enrolled in deleted",
+              p1.exitcode == 0 and p2.exitcode == 0
+              and len(got) == 2
+              and not enrolled_dead
+              and (st.get("lifecycle") != "deleted" or ctx2.domain_id != "personal"
+                   or ctx2.enrolled is False))
+    finally:
+        td.cleanup()
+
+
+def _supersede_child(home: str, proj: str, barrier, q) -> None:
+    os.environ["HOME"] = home
+    from pathlib import Path
+    import canonical_ingress as ci
+    import store_context as sc
+    barrier.wait()
+    ctx = sc.resolve_store(Path(proj))
+    out = ci.set_canonical_status(ctx, "old-name", "superseded", replacement_id="new-name")
+    q.put(("supersede", out.get("ok"), str(out.get("error") or "")))
+
+
+def test_supersede_vs_pull() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import canonical_ingress as ci
+        import store_context as sc
+        import sync_global as sg
+        ctx = sc.resolve_store(proj)
+        def _canon(stem: str) -> str:
+            return ("---\nname: %s\ndescription: d\nscope: user-global\n---\n%s\n"
+                    % (stem, stem))
+        ci.upsert(ctx, "old-name", _canon("old-name"))
+        ci.upsert(ctx, "new-name", _canon("new-name"))
+        sg.run(proj, pull=True)
+        ctxm = mp.get_context("fork")
+        barrier = ctxm.Barrier(2)
+        q: mp.Queue = ctxm.Queue()
+        p1 = ctxm.Process(target=_supersede_child, args=(str(home), str(proj), barrier, q))
+        p2 = ctxm.Process(target=_pull_child, args=(str(home), str(proj), barrier, q))
+        p1.start(); p2.start()
+        p1.join(60); p2.join(60)
+        got = [q.get(timeout=1), q.get(timeout=1)]
+        sg.run(proj, pull=True)
+        idx = (store / "MEMORY.md").read_text(encoding="utf-8") if (store / "MEMORY.md").is_file() else ""
+        check("concurrency: supersede then pull drops the old pointer",
+              p1.exitcode == 0 and p2.exitcode == 0
+              and len(got) == 2
+              and "old-name.md" not in idx
+              and "new-name.md" in idx)
+    finally:
+        td.cleanup()
+
+
 def main() -> int:
     if os.name == "nt":
         print("concurrency: skipped on Windows (POSIX flock)")
@@ -273,6 +406,9 @@ def main() -> int:
     test_rebuild_vs_edit()
     test_schema_race()
     test_cleanup_pending_crash()
+    test_pull_vs_domain_purge()
+    test_move_vs_deleting()
+    test_supersede_vs_pull()
     print(f"\n{passed} passed, {failed} failed")
     return 1 if failed else 0
 

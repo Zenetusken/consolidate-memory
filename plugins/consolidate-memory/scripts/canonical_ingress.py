@@ -19,6 +19,20 @@ from store_context import (StoreContext, WriteRefused, assert_writable, config_r
 
 _SAFE_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 SCOPE_RANK = {"project-local": 0, "stack-general": 1, "user-global": 2}
+_TOMBSTONE_STUB_MARK = "Previous body is not retained."
+
+
+def _is_tombstone_stub(text: str) -> bool:
+    """Forget stub: tombstoned status and no retained body (P1-2)."""
+    from memory_status import _frontmatter
+    from sync_global import _body
+    raw = text or ""
+    if _TOMBSTONE_STUB_MARK in raw:
+        return True
+    fm = _frontmatter(raw)
+    if str(fm.get("status") or "").strip() != "tombstoned":
+        return False
+    return not (_body(raw) or "").strip()
 
 
 def _atomic_write(path: Path, text: str) -> None:
@@ -303,7 +317,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
            skip_recover: bool = False,
            create_only: bool = False,
            preserve_canonical: bool = False,
-           extra_registry_ops: Optional[list] = None) -> dict:
+           extra_registry_ops: Optional[list] = None,
+           allow_resurrect: bool = False) -> dict:
     """Sole path that creates/updates a canonical. Transactional.
 
     `origin_local` may not exist yet (promote rename: write the origin mirror at the
@@ -405,7 +420,7 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         from index_admission import apply_pointer, project_index
         from sync_global import (_as_mirror, _body_hash, _fat_hook_warning,
                                  _pointer_line, apply_provenance)
-        if is_tombstoned(conn, stem, ctx.domain_id or "unknown"):
+        if is_tombstoned(conn, stem, ctx.domain_id or "unknown") and not allow_resurrect:
             raise WriteRefused(f"tombstoned: {stem} (will not resurrect)")
         dest = facts_dir / f"{stem}.md"
         if create_only and dest.exists():
@@ -498,6 +513,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         ]
         if extra_registry_ops:
             ops.extend(list(extra_registry_ops))
+        if allow_resurrect:
+            ops.append({"op": "tombstone_delete", "fact_id": fid})
         return {
             "stem": stem, "fact_id": fid, "revision": rev, "catalog_admitted": True,
             "deletes": deletes,
@@ -663,6 +680,16 @@ def set_canonical_status(ctx: StoreContext, stem: str, status: str,
     if not snap.exists:
         return {"ok": False, "error": "no such canonical"}
     prev = (snap.data or b"").decode("utf-8", errors="replace")
+    if status == "active":
+        from fact_schema import CLASS_INACTIVE, classify_canonical
+        if _is_tombstone_stub(prev):
+            return {"ok": False, "error":
+                    "tombstone stub cannot be reactivated; use cm canonical resurrect --file"}
+        cls = classify_canonical(prev, stem=stem, domain=ctx.domain_id)
+        st_now = str((cls.get("fm") or {}).get("status") or "").strip()
+        if cls["class"] != CLASS_INACTIVE or st_now not in ("expired", "superseded"):
+            return {"ok": False, "error":
+                    "reactivate only from expired or superseded v3 with a real body"}
 
     def mutate(conn, temps):
         text = insert_frontmatter_key(prev, "status", status)
@@ -695,37 +722,157 @@ def set_canonical_status(ctx: StoreContext, stem: str, status: str,
         return {"ok": False, "error": str(e)}
 
 
+def resurrect(ctx: StoreContext, stem: str, text: str) -> dict:
+    """Replace a tombstone stub with a new active body through the full upsert pipeline."""
+    from identifiers import IdentifierRefused, validate_fact_stem
+    from control_plane import assert_domain_writable, is_tombstoned, stable_fact_id
+    try:
+        stem = validate_fact_stem(stem)
+    except IdentifierRefused as e:
+        return {"ok": False, "error": str(e)}
+    warn_unenrolled_share(ctx)
+    if not getattr(ctx, "cross_project_allowed", False):
+        return {"ok": False, "error":
+                "cross-project writes require enrollment into a named domain"}
+    try:
+        assert_domain_writable(ctx)
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e)}
+    path = ctx.canonical_domain_dir / f"{stem}.md"
+    prev = path.read_text(encoding="utf-8", errors="replace") if path.exists() else ""
+    from control_plane import connect_if_exists, db_path
+    conn = connect_if_exists(db_path(ctx))
+    tombed = False
+    if conn is not None:
+        try:
+            tombed = is_tombstoned(conn, stem, ctx.domain_id)
+        finally:
+            conn.close()
+    if not tombed and not _is_tombstone_stub(prev):
+        return {"ok": False, "error":
+                "resurrect requires a tombstone stub (use reactivate for expired/superseded)"}
+    if prev and not _is_tombstone_stub(prev) and not tombed:
+        return {"ok": False, "error": "canonical is not a tombstone"}
+    body = insert_frontmatter_key(text if text.endswith("\n") else text + "\n",
+                                  "status", "active")
+    fid = stable_fact_id(ctx.domain_id, stem)
+    out = upsert(ctx, stem, body, allow_resurrect=True,
+                 extra_registry_ops=[{"op": "tombstone_delete", "fact_id": fid}])
+    if out.get("ok"):
+        out["resurrected"] = True
+    return out
+
+
 def ack_tombstoned_mirrors(ctx: StoreContext) -> dict:
-    """Revoke this project's mirrors of domain-tombstoned facts (lazy forget ack)."""
+    """Backward-compatible name. Inactive ack is reconcile_inactive_mirrors."""
+    return reconcile_inactive_mirrors(ctx)
+
+
+def _inactive_reason(text: str, reg_status: str) -> str:
+    from memory_status import _frontmatter
+    st = str(_frontmatter(text or "").get("status") or "").strip()
+    if st in ("tombstoned", "superseded", "expired"):
+        return st
+    if _is_tombstone_stub(text or ""):
+        return "tombstoned"
+    if reg_status in ("tombstoned", "superseded", "expired"):
+        return reg_status
+    return ""
+
+
+def _replacement_path(ctx: StoreContext, replacement_id: str) -> Optional[Path]:
+    rid = (replacement_id or "").strip()
+    if not rid:
+        return None
+    facts = ctx.canonical_domain_dir
+    if not facts.is_dir():
+        return None
+    direct = facts / f"{rid}.md"
+    if direct.is_file() and not _is_tombstone_stub(
+            direct.read_text(encoding="utf-8", errors="replace")):
+        return direct
+    from memory_status import _frontmatter
+    for f in facts.glob("*.md"):
+        if f.name == "MEMORY.md":
+            continue
+        try:
+            fm = _frontmatter(f.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        if str(fm.get("fact_id") or "").strip() == rid:
+            if str(fm.get("status") or "").strip() == "active":
+                return f
+    return None
+
+
+def reconcile_inactive_mirrors(ctx: StoreContext) -> dict:
+    """Revoke mirrors of tombstoned/superseded/expired/missing-inactive canonicals.
+
+    Supersession installs the replacement mirror first, then drops the old
+    pointer (P1-1).
+    """
     from control_plane import (connect_if_exists, db_path, holder_base_revision,
                                stable_fact_id, transact)
-    from sync_global import _is_mirror, _safe_read_text
-    from mirror_conflict import classify_mirror
+    from index_admission import apply_pointer, project_index
+    from memory_status import _frontmatter
+    from mirror_conflict import classify_mirror, semantic_hash as _semh, stamp_revisions
+    from sync_global import (_as_mirror, _body_hash, _is_mirror, _now_iso,
+                             _pointer_line, _safe_read_text)
     warn_unenrolled_share(ctx)
     if not getattr(ctx, "cross_project_allowed", False):
         return {"ok": True, "acked": 0}
+    store = ctx.native_memory_dir
     conn = connect_if_exists(db_path(ctx))
+    reg_status: dict = {}
+    replacements: dict = {}
     held: set = set()
-    tomb_stems: set = set()
     if conn is not None:
         try:
-            tomb_stems = {str(r["stem"]) for r in conn.execute(
-                "SELECT stem FROM tombstones WHERE domain_id=?",
-                (ctx.domain_id,)).fetchall()}
-            held = {str(r["stem"]) for r in conn.execute(
-                "SELECT t.stem FROM tombstones t "
-                "JOIN holders h ON h.fact_id = t.fact_id "
-                "WHERE t.domain_id=? AND h.project_id=?",
-                (ctx.domain_id, ctx.project_id)).fetchall()}
+            for r in conn.execute(
+                    "SELECT stem, status FROM facts WHERE domain_id=?",
+                    (ctx.domain_id,)).fetchall():
+                reg_status[str(r["stem"])] = str(r["status"] or "")
+            for r in conn.execute(
+                    "SELECT stem FROM tombstones WHERE domain_id=?",
+                    (ctx.domain_id,)).fetchall():
+                reg_status[str(r["stem"])] = "tombstoned"
+            for r in conn.execute(
+                    "SELECT f.stem FROM facts f JOIN holders h ON h.fact_id=f.fact_id "
+                    "WHERE f.domain_id=? AND h.project_id=? "
+                    "AND f.status IN ('tombstoned','superseded','expired')",
+                    (ctx.domain_id, ctx.project_id)).fetchall():
+                held.add(str(r["stem"]))
+            for r in conn.execute(
+                    "SELECT t.stem FROM tombstones t JOIN holders h ON h.fact_id=t.fact_id "
+                    "WHERE t.domain_id=? AND h.project_id=?",
+                    (ctx.domain_id, ctx.project_id)).fetchall():
+                held.add(str(r["stem"]))
         finally:
             conn.close()
-    store = ctx.native_memory_dir
-    mirrored: set = set()
-    for stem in tomb_stems:
-        ot = _safe_read_text(store / f"{stem}.md")
-        if ot is not None and _is_mirror(ot):
-            mirrored.add(stem)
-    todo = sorted(held | mirrored)
+    todo: list = []
+    if store.is_dir():
+        for f in sorted(store.glob("*.md")):
+            if f.name == "MEMORY.md":
+                continue
+            ot = _safe_read_text(f)
+            if ot is None or not _is_mirror(ot):
+                continue
+            canon_p = ctx.canonical_domain_dir / f"{f.stem}.md"
+            prev = _safe_read_text(canon_p) or ""
+            reason = _inactive_reason(prev, reg_status.get(f.stem, ""))
+            missing_inactive = (not prev) and reg_status.get(f.stem, "") in (
+                "tombstoned", "superseded", "expired")
+            if reason or missing_inactive:
+                fm = _frontmatter(prev)
+                replacements[f.stem] = str(fm.get("replacement_id") or "")
+                todo.append(f.stem)
+    for stem in held:
+        if stem not in todo:
+            todo.append(stem)
+            canon_p = ctx.canonical_domain_dir / f"{stem}.md"
+            prev = _safe_read_text(canon_p) or ""
+            replacements[stem] = str(_frontmatter(prev).get("replacement_id") or "")
+    todo = sorted(set(todo))
     if not todo:
         return {"ok": True, "acked": 0}
 
@@ -735,11 +882,50 @@ def ack_tombstoned_mirrors(ctx: StoreContext) -> dict:
         expected_fg: dict = {}
         ops: list = []
         acked = 0
+        installed = 0
         idxp = store / "MEMORY.md"
         idx = _safe_read_text(idxp)
         idx_orig = idx
         idx_changed = False
+        now = _now_iso()
         for stem in todo:
+            rid = replacements.get(stem) or ""
+            rpath = _replacement_path(ctx, rid) if rid else None
+            if rpath is not None:
+                rstem = rpath.stem
+                rtext = _safe_read_text(rpath) or ""
+                rdest = store / f"{rstem}.md"
+                if rstem != stem and rtext:
+                    from fact_schema import CLASS_ACTIVE, classify_canonical
+                    rcls = classify_canonical(rtext, stem=rstem, domain=ctx.domain_id)
+                    if rcls["class"] == CLASS_ACTIVE:
+                        rfid = stable_fact_id(ctx.domain_id, rstem)
+                        rev = _semh(rtext)
+                        bh = _body_hash(rtext)
+                        want = _as_mirror(rtext, rstem, since=now, body_hash=bh,
+                                          fact_id=rfid, domain=ctx.domain_id)
+                        want = stamp_revisions(want, rev, rev)
+                        if rdest.exists():
+                            cur = _safe_read_text(rdest) or ""
+                            expected_fg[str(rdest)] = hashlib.sha256(
+                                cur.encode("utf-8")).hexdigest()
+                        else:
+                            dest_modes[str(rdest)] = "create"
+                        temps[str(rdest)] = want
+                        ptr = _pointer_line(rstem, _frontmatter(rtext))
+                        if idx is None:
+                            idx = "# Memory Index\n"
+                            idx_orig = idx
+                        if f"]({rstem}.md)" not in idx:
+                            idx = apply_pointer(idx, ptr, rstem)
+                            idx_changed = True
+                        ops.append({
+                            "op": "holder_upsert", "fact_id": rfid,
+                            "project_id": ctx.project_id,
+                            "base_revision": rev, "canonical_revision": rev,
+                            "semantic_hash": rev,
+                        })
+                        installed += 1
             fid = stable_fact_id(ctx.domain_id, stem)
             ops.append({"op": "holder_delete", "fact_id": fid,
                         "project_id": ctx.project_id})
@@ -776,9 +962,14 @@ def ack_tombstoned_mirrors(ctx: StoreContext) -> dict:
             if idx_orig:
                 expected_fg[str(idxp)] = hashlib.sha256(
                     idx_orig.encode("utf-8")).hexdigest()
+            adm = project_index(idx if idx.endswith("\n") else idx + "\n")
+            if not adm["admitted"]:
+                raise WriteRefused("index admission refused during inactive ack: "
+                                   + str(adm.get("reason") or ""))
             temps[str(idxp)] = idx.rstrip() + "\n"
-        return {"acked": acked, "deletes": deletes, "dest_modes": dest_modes,
-                "expected_revisions": expected_fg, "registry_ops": ops}
+        return {"acked": acked, "installed": installed, "deletes": deletes,
+                "dest_modes": dest_modes, "expected_revisions": expected_fg,
+                "registry_ops": ops}
 
     try:
         out = transact(ctx, "forget-ack", {"stems": todo}, mutate)
