@@ -33,7 +33,8 @@ Markdown `projects:` is migration input / frozen display, never an operational a
   `PRAGMA integrity_check`.
 - **Removed dead compatibility:** `fact_id_for`, `_prune_holders`/`drop_holders_text`,
   and the dormant hook-sketch infrastructure (`hook_sketches.py` deleted; the extractor
-  no longer sketches).
+  no longer sketches; the dormant `usage_events`/`workflow_sketches` registry tables are
+  dropped by a user_version 3→4 migration — see ADR 024).
 - **`cm data import`** (tar.gz restore from `cm data export`, path-escape refused) with
   a round-trip pin.
 - **CLI errors** under `--json` emit a machine-readable envelope

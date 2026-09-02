@@ -59,4 +59,6 @@ project marker      → one locked state API
 - Display paths (`network()`, `fleet_utility`, `--gc --edges`) classify from
   SQLite; the Markdown line is provenance history only.
 - Dead compatibility surface removed: `fact_id_for`, `_prune_holders` /
-  `drop_holders_text`, and the dormant hook-sketch infrastructure.
+  `drop_holders_text`, and the dormant hook-sketch infrastructure — including
+  its `usage_events`/`workflow_sketches` registry tables, dropped by the v4
+  schema migration (see ADR 024).

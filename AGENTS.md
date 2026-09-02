@@ -78,7 +78,7 @@ plugins/consolidate-memory/       the main plugin (= ${CLAUDE_PLUGIN_ROOT})
                                   domain_policy.py, control_plane.py (SQLite + locks +
                                   journal), canonical_ingress.py (sole canonical writer),
                                   mirror_conflict.py, index_admission.py, capabilities.py,
-                                  hook_sketches.py, retention.py, local_ingress.py, cm_ops.py (doctor/conflicts/resolve/
+                                  retention.py, local_ingress.py, cm_ops.py (doctor/conflicts/resolve/
                                   migrate/data/project enroll/journal/local), memory_status.py (contract seed + audit),
                                   extract_signals.py, sync_global.py, distill_scan.py,
                                   render_dashboard.py, render_html.py, render_log.py, _ui.py,
