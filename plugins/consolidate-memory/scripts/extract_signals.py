@@ -314,23 +314,6 @@ def _signal(source: str, text: str, *, signal_type: str, score: int,
 _CANONICAL_KEYS = frozenset(_signal("", "", signal_type="", score=0))
 
 
-def _hook_sketch(part: dict, sid: str, ts: str, project_id: str, outcome: str = "") -> "dict | None":
-    """Compact hook sketch — never copies prompt/result/command keys."""
-    try:
-        from hook_sketches import normalize_hook_event
-    except ImportError:
-        return None
-    kind = str(part.get("type") or "")
-    return normalize_hook_event({
-        "event": "PostToolUse" if kind == "tool_result" else "PreToolUse",
-        "tool_name": str(part.get("name") or part.get("tool_name") or kind or "tool"),
-        "outcome": outcome or ("failure" if part.get("is_error") else "success"),
-        "session_id": sid,
-        "timestamp": ts,
-        "is_error": part.get("is_error"),
-    }, project_id=project_id, session_id=sid)
-
-
 def extract(project_dir: Path, since: str, max_n: int) -> dict:
     """The `--json` CONTRACT (beta finding H; v0.1.43 multi-session): the top-level shape is
     `{"transcripts": [<name>, ...], "since": <iso|"">, "counts": {human_seen, noise, secrets_omitted, errors,
@@ -357,7 +340,6 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
     counts = {"human_seen": 0, "noise": 0, "secrets_omitted": 0, "errors": 0}
     human: list[dict] = []
     errors: list[dict] = []
-    sketches: list = []
     if not transcripts:
         return {"transcripts": [], "since": since, "counts": counts, "signals": []}
 
@@ -388,25 +370,12 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                     continue
                 role = msg.get("role")
                 if role == "assistant":
-                    c = msg.get("content")
-                    if isinstance(c, list):
-                        for p in c:
-                            if isinstance(p, dict) and p.get("type") == "tool_use":
-                                sk = _hook_sketch(p, sid, ts, _ctx.project_id, outcome="invocation")
-                                if sk:
-                                    sketches.append(sk)
                     continue
                 if role == "user":
                     # error tool-results (gotcha source)
                     c = msg.get("content")
                     if isinstance(c, list):
                         for p in c:
-                            if isinstance(p, dict) and p.get("type") == "tool_result":
-                                sk = _hook_sketch(
-                                    p, sid, ts, _ctx.project_id,
-                                    outcome="failure" if p.get("is_error") else "success")
-                                if sk:
-                                    sketches.append(sk)
                             if isinstance(p, dict) and p.get("type") == "tool_result" and p.get("is_error"):
                                 counts["errors"] += 1
                                 t = p.get("content")
@@ -477,12 +446,6 @@ def extract(project_dir: Path, since: str, max_n: int) -> dict:
                                 signal_type="omitted", score=-1, scope_hint="-"))  # synthetic row → sessionId/ts default ""
     signals = surfaced + errors
     counts["surfaced"] = len(signals)
-    if str(os.environ.get("CM_HOOK_SKETCHES") or "") == "1":
-        try:
-            from hook_sketches import persist_sketches
-            persist_sketches(_ctx.plugin_data_dir, _ctx.project_id, sketches)
-        except Exception:
-            pass
     return {"transcripts": [t.name for t in transcripts], "since": since or "(none — first pass)",
             "counts": counts, "signals": signals}
 

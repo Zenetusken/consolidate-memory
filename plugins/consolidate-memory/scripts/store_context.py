@@ -411,8 +411,7 @@ def store_grants_path(pdata: Path) -> Path:
     return pdata / STORE_GRANTS_NAME
 
 
-def load_store_grants(pdata: Path) -> list:
-    """Operator-enrolled native-store grants (not repository configuration)."""
+def _grants_from_json(pdata: Path) -> list:
     data = _load_json(store_grants_path(pdata))
     grants = data.get("grants") if isinstance(data, dict) else None
     if not isinstance(grants, list):
@@ -423,6 +422,28 @@ def load_store_grants(pdata: Path) -> list:
                 g.get("path") or "").strip():
             out.append(g)
     return out
+
+
+def load_store_grants(pdata: Path) -> list:
+    """Operator-enrolled native-store grants. SQLite is authority; JSON is dual-read."""
+    from control_plane import connect_if_exists
+    conn = connect_if_exists(pdata / "control.sqlite")
+    if conn is not None:
+        try:
+            rows = conn.execute(
+                "SELECT normalized_path, project_id, created_at, adopted_nonempty "
+                "FROM native_store_grants").fetchall()
+            return [{
+                "project_id": str(r["project_id"] or ""),
+                "path": str(r["normalized_path"] or ""),
+                "created_at": str(r["created_at"] or ""),
+                "adopted_nonempty": int(r["adopted_nonempty"] or 0),
+            } for r in rows]
+        except Exception:
+            pass
+        finally:
+            conn.close()
+    return _grants_from_json(pdata)
 
 
 def _grant_path_key(path: Path) -> str:
@@ -445,9 +466,22 @@ def grant_covers(grants: list, project_id: str, custom: Path) -> bool:
     return False
 
 
+def _grant_lock(pdata: Path):
+    from control_plane import FileLock
+    return FileLock(pdata / "locks" / "global.lock")
+
+
+def _migrate_json_grants(conn, pdata: Path) -> None:
+    """One-shot JSON → SQLite ingest — delegates to the registry's single ingester
+    (the v0.4.0 single-enumerator rule applied to grant ingestion: one reader)."""
+    from control_plane import _ingest_json_grants
+    _ingest_json_grants(conn, pdata)
+
+
 def write_store_grant(pdata: Path, project_id: str, path: Path,
-                      *, config_root: Optional[Path] = None) -> dict:
-    """Record an operator grant for a dedicated per-project native namespace."""
+                      *, config_root: Optional[Path] = None,
+                      adopt: bool = False) -> dict:
+    """Record an operator grant. One owner per normalized path (SQLite)."""
     resolved_check = Path(_grant_path_key(path))
     if _path_contained(resolved_check, pdata):
         raise WriteRefused("grant cannot target plugin-data")
@@ -456,6 +490,13 @@ def write_store_grant(pdata: Path, project_id: str, path: Path,
             raise WriteRefused("grant cannot target domain canonicals")
         if _path_contained(resolved_check, config_root / "memory"):
             raise WriteRefused("grant cannot target leftover global memory")
+    nonempty = False
+    try:
+        nonempty = resolved_check.is_dir() and any(resolved_check.iterdir())
+    except OSError:
+        nonempty = False
+    if nonempty and not adopt:
+        raise WriteRefused("grant of nonempty path requires --adopt")
     pdata.mkdir(parents=True, exist_ok=True)
     try:
         os.chmod(str(pdata), 0o700)
@@ -463,40 +504,87 @@ def write_store_grant(pdata: Path, project_id: str, path: Path,
         pass
     resolved = _grant_path_key(path)
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    grants = [g for g in load_store_grants(pdata)
-              if not (str(g.get("project_id") or "") == project_id
-                      and _grant_path_key(Path(str(g.get("path") or ""))) == resolved)]
-    grants.append({"project_id": project_id, "path": resolved, "created_at": now})
-    dest = store_grants_path(pdata)
-    tmp = dest.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps({"grants": grants}, indent=2) + "\n", encoding="utf-8")
+    from control_plane import connect
+    lock = _grant_lock(pdata)
+    lock.acquire()
     try:
-        os.chmod(str(tmp), 0o600)
+        conn = connect(pdata / "control.sqlite")
+        try:
+            _migrate_json_grants(conn, pdata)
+            row = conn.execute(
+                "SELECT project_id FROM native_store_grants WHERE normalized_path=?",
+                (resolved,)).fetchone()
+            if row is not None and str(row["project_id"] or "") != project_id:
+                raise WriteRefused(
+                    "path already granted to " + str(row["project_id"]))
+            conn.execute(
+                "INSERT INTO native_store_grants(normalized_path, project_id, "
+                "created_at, adopted_nonempty) VALUES (?,?,?,?) "
+                "ON CONFLICT(normalized_path) DO UPDATE SET "
+                "project_id=excluded.project_id, "
+                "adopted_nonempty=excluded.adopted_nonempty",
+                (resolved, project_id, now, 1 if (nonempty and adopt) else 0))
+            conn.commit()
+        finally:
+            conn.close()
+    finally:
+        lock.release()
+    try:
+        resolved_check.mkdir(parents=True, exist_ok=True)
+        os.chmod(str(resolved_check), 0o700)
     except OSError:
         pass
-    os.replace(str(tmp), str(dest))
-    try:
-        os.chmod(str(dest), 0o600)
-    except OSError:
-        pass
-    return {"ok": True, "project_id": project_id, "path": resolved}
+    return {"ok": True, "project_id": project_id, "path": resolved,
+            "adopted_nonempty": bool(nonempty and adopt)}
 
 
 def revoke_store_grant(pdata: Path, project_id: str, path: Path) -> dict:
     resolved = _grant_path_key(path)
-    before = load_store_grants(pdata)
-    grants = [g for g in before
-              if not (str(g.get("project_id") or "") == project_id
-                      and _grant_path_key(Path(str(g.get("path") or ""))) == resolved)]
-    dest = store_grants_path(pdata)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    dest.write_text(json.dumps({"grants": grants}, indent=2) + "\n", encoding="utf-8")
+    from control_plane import connect
+    lock = _grant_lock(pdata)
+    lock.acquire()
+    removed = 0
     try:
-        os.chmod(str(dest), 0o600)
-    except OSError:
-        pass
+        conn = connect(pdata / "control.sqlite")
+        try:
+            _migrate_json_grants(conn, pdata)
+            cur = conn.execute(
+                "DELETE FROM native_store_grants WHERE normalized_path=? "
+                "AND project_id=?",
+                (resolved, project_id))
+            removed = int(cur.rowcount or 0)
+            conn.commit()
+        finally:
+            conn.close()
+    finally:
+        lock.release()
     return {"ok": True, "project_id": project_id, "path": resolved,
-            "removed": len(before) - len(grants)}
+            "removed": removed}
+
+
+def transfer_store_grant(pdata: Path, path: Path, to_project_id: str) -> dict:
+    resolved = _grant_path_key(path)
+    from control_plane import connect
+    lock = _grant_lock(pdata)
+    lock.acquire()
+    try:
+        conn = connect(pdata / "control.sqlite")
+        try:
+            row = conn.execute(
+                "SELECT project_id FROM native_store_grants WHERE normalized_path=?",
+                (resolved,)).fetchone()
+            if row is None:
+                raise WriteRefused("no grant for " + resolved)
+            conn.execute(
+                "UPDATE native_store_grants SET project_id=? WHERE normalized_path=?",
+                (to_project_id, resolved))
+            conn.commit()
+            return {"ok": True, "path": resolved, "from": str(row["project_id"] or ""),
+                    "to": to_project_id}
+        finally:
+            conn.close()
+    finally:
+        lock.release()
 
 
 def _protected_config_target(custom: Path, cfg: Path, default_native: Path,
@@ -981,6 +1069,20 @@ def _registry_state_line(ctx: StoreContext) -> str:
     return state if not err else f"{state}: {err}"
 
 
+def _integrity_check(ctx: StoreContext) -> str:
+    from control_plane import connect_if_exists
+    conn = connect_if_exists(ctx.plugin_data_dir / "control.sqlite")
+    if conn is None:
+        return "absent"
+    try:
+        row = conn.execute("PRAGMA integrity_check").fetchone()
+        return str(row[0] if row is not None else "unknown")
+    except Exception:
+        return "error"
+    finally:
+        conn.close()
+
+
 def doctor_report(ctx: StoreContext) -> str:
     """Stable key: value lines (twice-run equality)."""
     amb = "; ".join(ctx.ambiguity) if ctx.ambiguity else "(none)"
@@ -1010,6 +1112,7 @@ def doctor_report(ctx: StoreContext) -> str:
         ("settings_sources", ",".join(ctx.settings_sources) if ctx.settings_sources else "(none)"),
         ("unenrolled_share_warning",
          UNENROLLED_SHARE_WARNING if is_unenrolled_share(ctx) else "(none)"),
+        ("integrity_check", _integrity_check(ctx)),
     ]
     computed = project_id_for(ctx.profile_id, ctx.domain_id, ctx.git_common_dir,
                               ctx.project_root, ctx.remote_fingerprint)
@@ -1042,6 +1145,7 @@ def doctor_dict(ctx: StoreContext) -> dict:
         "project_slot": ctx.project_slot,
         "unenrolled_share_warning": (
             UNENROLLED_SHARE_WARNING if is_unenrolled_share(ctx) else None),
+        "integrity_check": _integrity_check(ctx),
     }
 
 

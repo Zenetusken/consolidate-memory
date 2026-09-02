@@ -560,6 +560,46 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
             lock.release()
 
 
+def import_ops(archive: Path, dest_plugin_data: Path) -> dict:
+    """Extract an export_ops tar.gz into dest plugin-data. Path-escape refused."""
+    import tarfile
+    archive = Path(archive)
+    dest_plugin_data = Path(dest_plugin_data)
+    if not archive.is_file():
+        return {"ok": False, "error": "archive not found"}
+    n = 0
+    dest_plugin_data.mkdir(parents=True, exist_ok=True)
+    try:
+        os.chmod(str(dest_plugin_data), 0o700)
+    except OSError:
+        pass
+    with tarfile.open(str(archive), "r:gz") as tar:
+        for m in tar.getmembers():
+            if not m.isfile():
+                continue
+            name = str(m.name or "").replace("\\", "/")
+            if name == "manifest.json":
+                continue
+            if not name.startswith("plugin-data/"):
+                continue
+            rel = name[len("plugin-data/"):]
+            parts = Path(rel).parts
+            if not rel or ".." in parts or Path(rel).is_absolute():
+                return {"ok": False, "error": "import path escape: " + name}
+            dest = dest_plugin_data / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            fh = tar.extractfile(m)
+            if fh is None:
+                continue
+            dest.write_bytes(fh.read())
+            try:
+                os.chmod(str(dest), 0o600)
+            except OSError:
+                pass
+            n += 1
+    return {"ok": True, "n_files": n, "dest": str(dest_plugin_data)}
+
+
 def retention_show() -> dict:
     return {
         "events_days": EVENT_RETENTION_DAYS,

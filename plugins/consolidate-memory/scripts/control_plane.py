@@ -110,6 +110,15 @@ CREATE TABLE IF NOT EXISTS project_usage_windows (
     PRIMARY KEY (project_id, cycle_id),
     UNIQUE (project_id, sequence)
 );
+CREATE TABLE IF NOT EXISTS native_store_grants (
+    normalized_path TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    adopted_nonempty INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_facts_domain_stem ON facts(domain_id, stem);
+CREATE INDEX IF NOT EXISTS idx_holders_project ON holders(project_id);
+CREATE INDEX IF NOT EXISTS idx_tombstones_domain ON tombstones(domain_id);
 """
 
 JOURNAL_STEPS = (
@@ -127,7 +136,7 @@ JOURNAL_STEPS = (
     "journal_complete",
 )
 JOURNAL_CLEANUP_PENDING = "committed-cleanup-pending"
-REGISTRY_USER_VERSION = 2
+REGISTRY_USER_VERSION = 3
 JOURNAL_USER_VERSION = 1
 JOURNAL_RECEIPT_DAYS = 90
 # v0.4.0 review: receipt-collapse bounds PAYLOAD size, never ROW count — a row
@@ -466,6 +475,7 @@ def connect_registry(path: Path) -> sqlite3.Connection:
             if ver == 0 and not _has_registry_tables(conn):
                 conn.executescript(SCHEMA_SQL)
             _migrate_schema(conn)
+            _ingest_json_grants(conn, path.parent)
             _set_user_version(conn, REGISTRY_USER_VERSION)
         return conn
     finally:
@@ -515,6 +525,10 @@ def _migrate_journal_schema(conn: sqlite3.Connection) -> None:
     if cols and "completed_at" not in cols:
         conn.execute("ALTER TABLE journal ADD COLUMN completed_at TEXT")
         conn.commit()
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_journal_status_created "
+        "ON journal(status, created_at)")
+    conn.commit()
 
 
 def connect_readonly(path: Path) -> sqlite3.Connection:
@@ -658,6 +672,53 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "probative INTEGER NOT NULL, "
         "PRIMARY KEY (project_id, cycle_id), "
         "UNIQUE (project_id, sequence))")
+    conn.commit()
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS native_store_grants ("
+        "normalized_path TEXT PRIMARY KEY, project_id TEXT NOT NULL, "
+        "created_at TEXT NOT NULL, adopted_nonempty INTEGER NOT NULL)")
+    conn.commit()
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_facts_domain_stem ON facts(domain_id, stem)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_holders_project ON holders(project_id)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tombstones_domain ON tombstones(domain_id)")
+    conn.commit()
+
+
+def _ingest_json_grants(conn: sqlite3.Connection, plugin_data: Path) -> None:
+    """One-shot JSON → SQLite for native_store_grants (ADR 023)."""
+    src = plugin_data / "store-grants.json"
+    if not src.is_file():
+        return
+    try:
+        data = json.loads(src.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return
+    grants = data.get("grants") if isinstance(data, dict) else None
+    if not isinstance(grants, list):
+        return
+    for g in grants:
+        if not isinstance(g, dict):
+            continue
+        pid = str(g.get("project_id") or "").strip()
+        raw = str(g.get("path") or "").strip()
+        if not pid or not raw:
+            continue
+        try:
+            key = str(Path(raw).resolve())
+        except OSError:
+            key = raw
+        row = conn.execute(
+            "SELECT project_id FROM native_store_grants WHERE normalized_path=?",
+            (key,)).fetchone()
+        if row is not None:
+            continue
+        conn.execute(
+            "INSERT INTO native_store_grants(normalized_path, project_id, "
+            "created_at, adopted_nonempty) VALUES (?,?,?,?)",
+            (key, pid, str(g.get("created_at") or ""), 0))
     conn.commit()
 
 
@@ -2962,12 +3023,6 @@ def transact(ctx: StoreContext, kind: str, payload: dict, mutate: Callable,
         rconn.close()
 
 
-def fact_id_for(domain: str, stem: str) -> str:
-    import hashlib
-    return "f_" + hashlib.sha256(f"{SCHEMA_SQL[:1]}2|{domain}|{stem}".encode()).hexdigest()[:24]
-
-
-# Stable fact IDs shouldn't depend on SCHEMA_SQL snippet — use schema version.
 def stable_fact_id(domain: str, stem: str, schema_version: str = "2") -> str:
     from fact_schema import stable_fact_id as _sf
     return _sf(domain, stem, schema_version)

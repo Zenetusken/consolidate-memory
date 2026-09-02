@@ -5,6 +5,40 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.0] — 2026-09-01
+
+**Minor** — the sole-authority release (ADR 023): SQLite is the single authority for
+holders/topology, grants, and migration state; the frontmatter/link/catalog pipeline is
+consolidated; dormant infrastructure is removed. Behavioral contracts change —
+Markdown `projects:` is migration input / frozen display, never an operational authority.
+
+- **SQLite-only holder/topology (#142).** `_holder_labels` is tri-state: registry
+  unavailable → Markdown fallback (migration input); authoritative zero never
+  resurrects Markdown provenance; `--gc --edges --apply` prunes the `holders` table
+  only — canonical bodies stay byte-verbatim.
+- **Grants in SQLite (#145).** `native_store_grants` (one owner per normalized path,
+  `--adopt` for a nonempty destination, mutations under `locks/global.lock`, 0700);
+  `cm project grants|grant-native|revoke-native|transfer-native`; `store-grants.json`
+  is dual-read migration inventory with a one-shot ingest.
+- **Migration state consolidation (#146).** Every active kept-existing disposition
+  enters the catalog overlay — a stale/missing pointer is repaired on apply.
+- **Parser/catalog/link consolidation (#149).** Canonical dependency targets must be
+  `CLASS_ACTIVE`; every pointer/catalog line is generated through a typed renderer;
+  duplicate reserved frontmatter keys are refused; `replacement_id` is validated
+  (self and cycles refused).
+- **Capabilities:** marker-file signature caching (`capability-cache.json`, 0600) +
+  monorepo workspace detection (pnpm-workspace/go.work/lerna/nx).
+- **Databases:** `holders(project_id)`, `facts(domain_id, stem)`,
+  `tombstones(domain_id)`, `journal(status, created_at)` indexes; `cm doctor` surfaces
+  `PRAGMA integrity_check`.
+- **Removed dead compatibility:** `fact_id_for`, `_prune_holders`/`drop_holders_text`,
+  and the dormant hook-sketch infrastructure (`hook_sketches.py` deleted; the extractor
+  no longer sketches).
+- **`cm data import`** (tar.gz restore from `cm data export`, path-escape refused) with
+  a round-trip pin.
+- **CLI errors** under `--json` emit a machine-readable envelope
+  `{"ok": false, "error": … , "code": 2}` with exit 2.
+
 ## [0.3.7] — 2026-09-01
 
 Patch on 0.3.6. First dogfood of v0.3.6: counter-justify never quieted the

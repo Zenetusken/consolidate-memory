@@ -75,8 +75,8 @@ def generate_catalog(facts_dir: Path, overlay: Optional[dict] = None) -> str:
         fm = cls.get("fm") or {}
         if cls["class"] != CLASS_ACTIVE:
             continue
-        desc = str(fm.get("description") or "").strip()
-        lines.append(f"- [{stem}]({stem}.md) — {desc}".rstrip(" —"))
+        from sync_global import _pointer_line
+        lines.append(_pointer_line(stem, fm))
     return "\n".join(lines) + "\n"
 
 
@@ -197,8 +197,7 @@ def validate_links(text: str, src_scope: str, facts_dir: Path,
                 body = None
         if body is not None:
             cls = classify_canonical(body, stem=target)
-            if cls["class"] != CLASS_ACTIVE and str((cls.get("fm") or {}).get(
-                    "schema_version") or "").strip() in ("3", "v3"):
+            if cls["class"] != CLASS_ACTIVE:
                 return f"invalid link [[{target}]]: target is not a valid active canonical"
             dst_scope = scopes.get(target) or _scope_of_text(body)
             if not link_allowed(src_scope, dst_scope, dst_exists_global=True):
@@ -334,6 +333,10 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         stem = validate_fact_stem(stem or "")
     except IdentifierRefused:
         return {"ok": False, "error": "unsafe or reserved stem"}
+    from memory_status import frontmatter_duplicate_reserved
+    dup = frontmatter_duplicate_reserved(text)
+    if dup:
+        return {"ok": False, "error": dup}
     assert_writable(ctx)
     warn_unenrolled_share(ctx)
     if not getattr(ctx, "cross_project_allowed", False):
@@ -680,6 +683,10 @@ def set_canonical_status(ctx: StoreContext, stem: str, status: str,
     if not snap.exists:
         return {"ok": False, "error": "no such canonical"}
     prev = (snap.data or b"").decode("utf-8", errors="replace")
+    if replacement_id:
+        rerr = _validate_replacement_id(ctx, stem, replacement_id)
+        if rerr:
+            return {"ok": False, "error": rerr}
     if status == "active":
         from fact_schema import CLASS_INACTIVE, classify_canonical
         if _is_tombstone_stub(prev):
@@ -778,6 +785,50 @@ def _inactive_reason(text: str, reg_status: str) -> str:
     if reg_status in ("tombstoned", "superseded", "expired"):
         return reg_status
     return ""
+
+
+def _validate_replacement_id(ctx: StoreContext, stem: str, replacement_id: str) -> Optional[str]:
+    """replacement_id is a same-domain stem or exact fact_id; refuse self and cycles."""
+    rid = (replacement_id or "").strip()
+    if not rid:
+        return None
+    from fact_schema import _FACT_ID_RE, stable_fact_id as _sf
+    from identifiers import IdentifierRefused, validate_fact_stem
+    from memory_status import _frontmatter
+    self_id = _sf(ctx.domain_id, stem)
+    if rid == stem or rid == self_id:
+        return "replacement_id cannot be the same fact"
+    if _FACT_ID_RE.match(rid):
+        p = _replacement_path(ctx, rid)
+        if p is None:
+            return "replacement_id is not a same-domain fact"
+        if p.stem == stem:
+            return "replacement_id cannot be the same fact"
+    else:
+        try:
+            validate_fact_stem(rid)
+        except IdentifierRefused as e:
+            return str(e)
+    seen = {stem, self_id, rid}
+    cur = rid
+    for _ in range(32):
+        p = _replacement_path(ctx, cur)
+        if p is None:
+            return None
+        if p.stem == stem:
+            return "replacement_id cycle"
+        try:
+            nxt = str(_frontmatter(p.read_text(encoding="utf-8", errors="replace")).get(
+                "replacement_id") or "").strip()
+        except OSError:
+            return None
+        if not nxt:
+            return None
+        if nxt in seen:
+            return "replacement_id cycle"
+        seen.add(nxt)
+        cur = nxt
+    return "replacement_id cycle"
 
 
 def _replacement_path(ctx: StoreContext, replacement_id: str) -> Optional[Path]:
