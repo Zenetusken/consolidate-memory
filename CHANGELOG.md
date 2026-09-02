@@ -31,6 +31,16 @@ Markdown `projects:` is migration input / frozen display, never an operational a
 - **Databases:** `holders(project_id)`, `facts(domain_id, stem)`,
   `tombstones(domain_id)`, `journal(status, created_at)` indexes; `cm doctor` surfaces
   `PRAGMA integrity_check`.
+- **Performance (Phase 5):** a derived facts-manifest cache takes canonical
+  reads off the beacon/pull hot paths (per-domain JSON rows; invalidation at the
+  transact choke point; `CM_FACTS_MANIFEST=0` kill-switch) — SessionStart beacon
+  4,989→1,024 ms and no-change pull 5,828→531 ms at C=10k. Journal inventory is
+  keyset-paginated (`--limit`/`--after`, bounded default 200) — a 1M-row journal
+  renders one page, never a 1M-line dump.
+- **Testing gaps:** a dedicated `tests/concurrency.py` suite (fork + barrier
+  harness) and crash-injection pins close the 15-scenario concurrency/crash
+  audit (editor races, grant races, rollback faults, reactivation propagation,
+  compaction-proof justification clock).
 - **Removed dead compatibility:** `fact_id_for`, `_prune_holders`/`drop_holders_text`,
   and the dormant hook-sketch infrastructure (`hook_sketches.py` deleted; the extractor
   no longer sketches; the dormant `usage_events`/`workflow_sketches` registry tables are
