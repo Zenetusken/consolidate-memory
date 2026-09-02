@@ -10664,6 +10664,132 @@ with _Env73() as _e_su:
           and (_ctx_sib.native_memory_dir / "new-name.md").is_file()
           and not (_ctx_sib.native_memory_dir / "old-name.md").exists())
 
+# ── Phase-5 testing-gaps closeout: the audit's PARTIAL scenarios in smoke ──────
+# S12: reactivate-after-expire propagation (expire + supersede were covered; the
+# reactivation return trip was not). S10: a failed trash restoration inside
+# journal rollback (the pre-commit refusal was pinned; the mid-rollback
+# _restore_trash error branch was not). S14: compaction after a high
+# windows_full baseline, end-to-end — the justify verdict must follow the
+# SQLite usage-window clock, never the compactable JSONL tail.
+
+with _Env73() as _e_ra:
+    _ctx_ra = sc.resolve_store(_e_ra.proj)
+    ci.upsert(_ctx_ra, "reactivate-me", _v3_canon("reactivate-me", description="temp"))
+    _proj_ra = Path(_e_ra._td.name) / "src" / "recv-ra"
+    _proj_ra.mkdir(parents=True)
+    _enroll_personal(_proj_ra)
+    _ctx_bra = sc.resolve_store(_proj_ra)
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_ra1 = sg.run(_proj_ra, pull=True)
+    ci.set_canonical_status(_ctx_ra, "reactivate-me", "expired")
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_ra2 = sg.run(_proj_ra, pull=True)
+    _idx_ra2 = (_ctx_bra.native_memory_dir / "MEMORY.md").read_text(encoding="utf-8")
+    _mirror_ra_gone = not (_ctx_bra.native_memory_dir / "reactivate-me.md").exists()
+    _react_ra = ci.set_canonical_status(_ctx_ra, "reactivate-me", "active")
+    with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+        _rc_ra3 = sg.run(_proj_ra, pull=True)
+    _idx_ra3 = (_ctx_bra.native_memory_dir / "MEMORY.md").read_text(encoding="utf-8")
+    check("P1-1: reactivated facts reappear in receiving indexes on the next pull",
+          _rc_ra1 == 0 and _rc_ra2 == 0 and _rc_ra3 == 0
+          and _react_ra.get("ok") is True
+          and "reactivate-me.md" not in _idx_ra2
+          and _mirror_ra_gone
+          and "reactivate-me.md" in _idx_ra3
+          and (_ctx_bra.native_memory_dir / "reactivate-me.md").is_file())
+
+with _Env73() as _e_rb:
+    _ctx_rb = sc.resolve_store(_e_rb.proj)
+    _store_rb = _ctx_rb.native_memory_dir
+    _dest_rb = _store_rb / "rollback-probe.md"
+    _dest_rb.write_text("preimage body\n", encoding="utf-8")
+
+    def _mut_rb(conn, temps):
+        del conn, temps
+        return {"deletes": [str(_dest_rb)]}
+
+    if _os73.name != "nt" and (not hasattr(_os73, "geteuid") or _os73.geteuid() != 0):
+        _crashed_rb = False
+        try:
+            cp.transact(_ctx_rb, "probe-rb", {"k": 1}, _mut_rb, crash_after="after_trash")
+        except cp.CrashSimulated:
+            _crashed_rb = True
+        _jconn_rb = cp.connect_journal(_ctx_rb)
+        _row_rb = _jconn_rb.execute(
+            "SELECT op_id FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
+        _oid_rb = str(_row_rb["op_id"] if _row_rb else "")
+        _jconn_rb.close()
+        _roll_rb = None
+        _old_mode_rb = _os73.stat(_store_rb).st_mode
+        try:
+            _os73.chmod(_store_rb, 0o500)  # real EACCES for the trash→dest rename
+            try:
+                cp.journal_rollback(_ctx_rb, _oid_rb)
+            except sc.WriteRefused as e:
+                _roll_rb = str(e)
+        finally:
+            _os73.chmod(_store_rb, _old_mode_rb)
+        _jconn_rb2 = cp.connect_journal(_ctx_rb)
+        _row_rb2 = _jconn_rb2.execute(
+            "SELECT status FROM journal WHERE op_id=?", (_oid_rb,)).fetchone()
+        _jconn_rb2.close()
+        check("S10: a failed trash restore refuses the rollback — never abandoned, trash intact",
+              _crashed_rb
+              and _roll_rb is not None and "restore failed; not abandoned" in _roll_rb
+              and str(_row_rb2["status"] or "") == "pending"
+              and not _dest_rb.exists()
+              and any(_store_rb.glob(".cm-trash-*")))
+
+with _Env73() as _e_cp:
+    import json as _json_s14
+    _ctx_cp = sc.resolve_store(_e_cp.proj)
+    _store_cp = _ctx_cp.native_memory_dir
+    _fact_cp = _store_cp / "comp-fact.md"
+    _fact_cp.write_text(
+        "---\nname: comp-fact\ndescription: old hook\nmetadata:\n"
+        "  node_type: memory\n  scope: project-local\n  type: project\n---\nbody\n",
+        encoding="utf-8")
+    # backdate to 2000-01-01 so every seeded window start post-dates the fact
+    _os73.utime(_fact_cp, (946684800, 946684800))
+    (_store_cp / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [comp-fact](comp-fact.md) — old hook\n", encoding="utf-8")
+    # a sequence stamp on a fresh registry clock, then 5 later probative windows
+    (_store_cp / ".consolidation-state.json").write_text(
+        '{"demotion_justify": {"comp-fact": {"sequence": 0, "windows": 0, '
+        '"at": "2026-01-01T00:00:00Z"}}}\n', encoding="utf-8")
+    for _i in range(5):
+        cp.record_usage_window(_ctx_cp, cycle_id="s14-w%d" % _i,
+                               started_at="2026-02-01T00:%02d:00Z" % _i, probative=True)
+    # a HIGH JSONL tail — the legacy windows-only clock's evidence — then justify:
+    # the sequence stamp must see its rows and refire.
+    _log_cp = _store_cp / ".consolidation-log.jsonl"
+    _rec_cp = {"usage": {
+        "transcripts": 2, "facts_read": 1,
+        "per_fact": [{"name": "comp-fact", "reads": 0, "last": "2026-01-01T00:00:00Z"}],
+        "window": "2026-01-01T00:00:00Z..2026-01-01T00:10:00Z",
+        "misses": [], "mention_stems": []}}
+    with _log_cp.open("w", encoding="utf-8") as _fh_cp:
+        for _i in range(12):
+            _fh_cp.write(_json_s14.dumps(_rec_cp) + "\n")
+    _j1_s14 = ms.run_justify_demotion(_e_cp.proj, ["comp-fact"], force=True)
+    # 5 MORE probative rows (SQLite ONLY), then compact the JSONL to 4 records:
+    # windows_full collapses below REFIRE, so a JSONL-reading clock would now
+    # suppress — the sequence clock must still see the rows and refire again.
+    for _i in range(5, 10):
+        cp.record_usage_window(_ctx_cp, cycle_id="s14-w%d" % _i,
+                               started_at="2026-02-01T00:%02d:00Z" % _i, probative=True)
+    _comp_cp = ret.compact_jsonl(_log_cp, keep=4)
+    _wf_after = int((ms.usage_history(_store_cp) or {}).get("windows_full") or 0)
+    _j2_s14 = ms.run_justify_demotion(_e_cp.proj, ["comp-fact"], force=True)
+    check("S14: compaction cannot prolong or shorten a sequence justify stamp",
+          _j1_s14.get("ok") is True
+          and any(_s.get("stem") == "comp-fact" for _s in (_j1_s14.get("stamped") or []))
+          and _comp_cp.get("kept") == 4
+          and _wf_after < 5
+          and _j2_s14.get("ok") is True
+          and any(_s.get("stem") == "comp-fact" for _s in (_j2_s14.get("stamped") or []))
+          and not (_j2_s14.get("skipped") or []))
+
 with _Env73() as _e_fn:
     _ctx_fn = sc.resolve_store(_e_fn.proj)
     _pdata = _ctx_fn.plugin_data_dir

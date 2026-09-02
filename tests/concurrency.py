@@ -397,6 +397,295 @@ def test_supersede_vs_pull() -> None:
         td.cleanup()
 
 
+# ── Phase-5 testing-gaps closeout: the audit's PARTIAL scenarios ───────────────
+# S3: a REAL second-process editor vs the canonical writer — (a) create_only
+# refusal when the editor landed first, (b) a mid-flight write forced inside the
+# transaction window by holding the global mutation lock (the editor's write is
+# then strictly between the writer's plan snapshot and its verify), and (c) the
+# sequential writer-lands outcome. S4: concurrent grant/grant and grant/revoke.
+# S13: distinct-stem local upserts racing the shared MEMORY.md snapshot.
+
+_EDITOR_BODY = "---\nname: edit-race\ndescription: d-editor\n---\nEDITOR\n"
+
+
+def _editor_write_child(home: str, dest: str, barrier, q) -> None:
+    """One write, then confirm — the plain external editor."""
+    os.environ["HOME"] = home
+    p = Path(dest)
+    barrier.wait()
+    try:
+        p.write_text(_EDITOR_BODY, encoding="utf-8")
+        q.put(("edited", True, ""))
+    except OSError as e:
+        q.put(("edited", False, str(e)))
+
+
+def _editor_hold_child(home: str, proj: str, dest: str, barrier, q) -> None:
+    """Write editor bytes while HOLDING the global mutation lock. The writer's
+    transact blocks on that same lock, so the write lands strictly after its
+    plan snapshot and strictly before its verify — the mid-flight race made
+    deterministic by the lock, not by the hold duration (the 2s hold only
+    bounds the writer's millisecond-scale plan phase)."""
+    os.environ["HOME"] = home
+    import time as _tm
+    import control_plane as _cp
+    import store_context as _sc
+    ctx = _sc.resolve_store(Path(proj))
+    lock = _cp.FileLock(ctx.plugin_data_dir / "locks" / "global.lock")
+    barrier.wait()
+    lock.acquire()
+    q.put(("holding", True, ""))
+    _tm.sleep(2.0)
+    try:
+        Path(dest).write_text(_EDITOR_BODY, encoding="utf-8")
+        q.put(("edited", True, ""))
+    except OSError as e:
+        q.put(("edited", False, str(e)))
+    finally:
+        lock.release()
+
+
+def test_editor_race_create_only() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import canonical_ingress as ci
+        import store_context as sc
+        ctx = sc.resolve_store(proj)
+        ctx.canonical_domain_dir.mkdir(parents=True, exist_ok=True)  # the editor writes directly
+        dest = ctx.canonical_domain_dir / "edit-race.md"
+        catp = ctx.canonical_domain_dir / "MEMORY.md"
+        v1 = "---\nname: edit-race\ndescription: d-original\nscope: user-global\n---\nV1\n"
+        ctxm = mp.get_context("fork")
+        barrier = ctxm.Barrier(2)
+        q: mp.Queue = ctxm.Queue()
+        p1 = ctxm.Process(target=_editor_write_child, args=(str(home), str(dest), barrier, q))
+        p1.start()
+        barrier.wait()
+        p1.join(30)
+        got = q.get(timeout=1)
+        out = ci.upsert(ctx, "edit-race", v1, create_only=True)
+        cat = catp.read_text(encoding="utf-8") if catp.is_file() else ""
+        check("concurrency: create_only upsert refuses a concurrently-created canonical, editor bytes intact",
+              p1.exitcode == 0 and got[1]
+              and out.get("ok") is False
+              and "created concurrently" in str(out.get("error") or "")
+              and dest.read_text(encoding="utf-8") == _EDITOR_BODY
+              and "edit-race.md" not in cat)
+    finally:
+        td.cleanup()
+
+
+def test_editor_race_midflight() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import canonical_ingress as ci
+        import store_context as sc
+        ctx = sc.resolve_store(proj)
+        dest = ctx.canonical_domain_dir / "edit-race.md"
+        catp = ctx.canonical_domain_dir / "MEMORY.md"
+        v1 = "---\nname: edit-race\ndescription: d-original\nscope: user-global\n---\nV1\n"
+        v2 = "---\nname: edit-race\ndescription: d-CHANGED\nscope: user-global\n---\nV2\n"
+        ci.upsert(ctx, "edit-race", v1)          # seed: plan will hash these bytes
+        ctxm = mp.get_context("fork")
+        barrier = ctxm.Barrier(2)
+        q: mp.Queue = ctxm.Queue()
+        p2 = ctxm.Process(target=_editor_hold_child,
+                          args=(str(home), str(proj), str(dest), barrier, q))
+        p2.start()
+        barrier.wait()
+        held = q.get(timeout=1)                  # editor holds the mutation lock now
+        out = ci.upsert(ctx, "edit-race", v2)    # blocks on that lock until released
+        p2.join(30)
+        edited = q.get(timeout=1)
+        cat = catp.read_text(encoding="utf-8")
+        check("concurrency: mid-flight editor write refuses a replace upsert, no mixed state",
+              p2.exitcode == 0 and held[1] and edited[1]
+              and out.get("ok") is False
+              and "source changed during transaction" in str(out.get("error") or "")
+              and dest.read_text(encoding="utf-8") == _EDITOR_BODY
+              and "d-original" in cat and "d-CHANGED" not in cat)
+    finally:
+        td.cleanup()
+
+
+def test_editor_lands_sequential() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import canonical_ingress as ci
+        import store_context as sc
+        ctx = sc.resolve_store(proj)
+        ctx.canonical_domain_dir.mkdir(parents=True, exist_ok=True)  # the editor writes directly
+        dest = ctx.canonical_domain_dir / "edit-race.md"
+        catp = ctx.canonical_domain_dir / "MEMORY.md"
+        v2 = "---\nname: edit-race\ndescription: d-CHANGED\nscope: user-global\n---\nV2\n"
+        ctxm = mp.get_context("fork")
+        barrier = ctxm.Barrier(2)
+        q: mp.Queue = ctxm.Queue()
+        p3 = ctxm.Process(target=_editor_write_child, args=(str(home), str(dest), barrier, q))
+        p3.start()
+        barrier.wait()
+        p3.join(30)
+        got = q.get(timeout=1)
+        out = ci.upsert(ctx, "edit-race", v2)    # replace is legitimate post-write
+        cat = catp.read_text(encoding="utf-8")
+        check("concurrency: sequential editor-write-then-upsert lands the writer's bytes and pointer",
+              p3.exitcode == 0 and got[1]
+              and out.get("ok") is True
+              and "V2" in dest.read_text(encoding="utf-8")
+              and "d-CHANGED" in cat)
+    finally:
+        td.cleanup()
+
+
+def _grant_child(home: str, proj: str, target: str, barrier, q) -> None:
+    os.environ["HOME"] = home
+    import contextlib as _cl
+    import io as _io
+    import cm_ops as _cmo
+    barrier.wait()
+    buf = _io.StringIO()
+    with _cl.redirect_stdout(buf), _cl.redirect_stderr(buf):
+        rc = _cmo.main(["project", "grant-native", proj, "--path", target,
+                        "--apply", "--confirm", "grant-native", "--json"])
+    q.put(("grant", rc, buf.getvalue()))
+
+
+def _revoke_child(home: str, proj: str, target: str, barrier, q) -> None:
+    os.environ["HOME"] = home
+    import contextlib as _cl
+    import io as _io
+    import cm_ops as _cmo
+    barrier.wait()
+    buf = _io.StringIO()
+    with _cl.redirect_stdout(buf), _cl.redirect_stderr(buf):
+        rc = _cmo.main(["project", "revoke-native", proj, "--path", target,
+                        "--apply", "--confirm", "revoke-native", "--json"])
+    q.put(("revoke", rc, buf.getvalue()))
+
+
+def test_grant_vs_grant() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import stat as _stat
+        import control_plane as _cp
+        import store_context as _sc
+        proj_b = (home / "src" / "grant-other").resolve()
+        proj_b.mkdir(parents=True)
+        _enroll(proj_b)
+        target = (home / "grant-target").resolve()
+        ctxm = mp.get_context("fork")
+        barrier = ctxm.Barrier(2)
+        q: mp.Queue = ctxm.Queue()
+        p1 = ctxm.Process(target=_grant_child, args=(str(home), str(proj), str(target), barrier, q))
+        p2 = ctxm.Process(target=_grant_child, args=(str(home), str(proj_b), str(target), barrier, q))
+        p1.start(); p2.start()
+        p1.join(30); p2.join(30)
+        got = [q.get(timeout=1), q.get(timeout=1)]
+        rcs = sorted(r[1] for r in got)
+        loser = next((r for r in got if r[1] == 2), None)
+        ctx_a = _sc.resolve_store(proj)
+        ctx_b = _sc.resolve_store(proj_b)
+        conn = _cp.connect(_cp.db_path(ctx_a))
+        rows = conn.execute(
+            "SELECT project_id FROM native_store_grants WHERE normalized_path=?",
+            (_sc._grant_path_key(target),)).fetchall()
+        conn.close()
+        mode = _stat.S_IMODE(os.stat(str(target)).st_mode)
+        check("concurrency: two concurrent grants of one path: one owner, one refused",
+              p1.exitcode == 0 and p2.exitcode == 0
+              and rcs == [0, 2]
+              and loser is not None and "already granted" in loser[2]
+              and len(rows) == 1
+              and rows[0]["project_id"] in (ctx_a.project_id, ctx_b.project_id)
+              and mode == 0o700)
+    finally:
+        td.cleanup()
+
+
+def test_grant_vs_revoke() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import stat as _stat
+        import control_plane as _cp
+        import store_context as _sc
+        target = (home / "grant-revoke-target").resolve()
+        ctxm = mp.get_context("fork")
+        barrier = ctxm.Barrier(2)
+        q: mp.Queue = ctxm.Queue()
+        p1 = ctxm.Process(target=_grant_child, args=(str(home), str(proj), str(target), barrier, q))
+        p2 = ctxm.Process(target=_revoke_child, args=(str(home), str(proj), str(target), barrier, q))
+        p1.start(); p2.start()
+        p1.join(30); p2.join(30)
+        got = [q.get(timeout=1), q.get(timeout=1)]
+        ctx_a = _sc.resolve_store(proj)
+        conn = _cp.connect(_cp.db_path(ctx_a))
+        rows = conn.execute(
+            "SELECT project_id FROM native_store_grants WHERE normalized_path=?",
+            (_sc._grant_path_key(target),)).fetchall()
+        conn.close()
+        mode = _stat.S_IMODE(os.stat(str(target)).st_mode)
+        check("concurrency: grant vs revoke of one path ends granted-or-revoked, never half",
+              p1.exitcode == 0 and p2.exitcode == 0
+              and all(r[1] == 0 for r in got)
+              and len(rows) <= 1
+              and (not rows or rows[0]["project_id"] == ctx_a.project_id)
+              and mode == 0o700)
+    finally:
+        td.cleanup()
+
+
+def _upsert_stem_child(home: str, proj: str, stem: str, body: str, barrier, q) -> None:
+    os.environ["HOME"] = home
+    import local_ingress as li
+    import store_context as sc
+    barrier.wait()
+    ctx = sc.resolve_store(Path(proj))
+    out = li.local_upsert(ctx, stem, body)
+    q.put((stem, bool(out.get("ok")), str(out.get("error") or "")))
+
+
+def test_two_upserts_distinct_stems() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import control_plane as _cp
+        import store_context as _sc
+        bodies = {
+            "conc-a": "---\nname: conc-a\ndescription: writer A\n---\nA\n",
+            "conc-b": "---\nname: conc-b\ndescription: writer B\n---\nB\n",
+        }
+        ctxm = mp.get_context("fork")
+        barrier = ctxm.Barrier(2)
+        q: mp.Queue = ctxm.Queue()
+        p1 = ctxm.Process(target=_upsert_stem_child,
+                          args=(str(home), str(proj), "conc-a", bodies["conc-a"], barrier, q))
+        p2 = ctxm.Process(target=_upsert_stem_child,
+                          args=(str(home), str(proj), "conc-b", bodies["conc-b"], barrier, q))
+        p1.start(); p2.start()
+        p1.join(30); p2.join(30)
+        results = [q.get(timeout=1), q.get(timeout=1)]
+        oks = {r[0] for r in results if r[1]}
+        fails = [r for r in results if not r[1]]
+        idx = (store / "MEMORY.md").read_text(encoding="utf-8") if (store / "MEMORY.md").is_file() else ""
+        ctx_a = _sc.resolve_store(proj)
+        jconn = _cp.connect_journal(ctx_a)
+        failed_rows = [str(r["payload"] or "") for r in
+                       jconn.execute("SELECT payload FROM journal WHERE status='failed'").fetchall()]
+        jconn.close()
+        check("concurrency: distinct-stem upserts race only the shared index: winners land, a loser refuses on MEMORY.md",
+              p1.exitcode == 0 and p2.exitcode == 0
+              and len(oks) >= 1
+              and all("MEMORY.md" in r[2] for r in fails)
+              and all(f"]({s}.md)" in idx for s in oks)
+              and all(f"]({s}.md)" not in idx for s, _ok, _err in fails)
+              and all(f"writer {'A' if s == 'conc-a' else 'B'}"
+                      in (store / f"{s}.md").read_text(encoding="utf-8") for s in oks)
+              and (not fails or len(failed_rows) >= 1)
+              and (bool(fails) or (not list(store.glob("*.tmp*"))
+                                   and not list(store.glob(".cm-trash-*")))))
+    finally:
+        td.cleanup()
+
+
 def main() -> int:
     if os.name == "nt":
         print("concurrency: skipped on Windows (POSIX flock)")
@@ -409,6 +698,12 @@ def main() -> int:
     test_pull_vs_domain_purge()
     test_move_vs_deleting()
     test_supersede_vs_pull()
+    test_editor_race_create_only()
+    test_editor_race_midflight()
+    test_editor_lands_sequential()
+    test_grant_vs_grant()
+    test_grant_vs_revoke()
+    test_two_upserts_distinct_stems()
     print(f"\n{passed} passed, {failed} failed")
     return 1 if failed else 0
 
