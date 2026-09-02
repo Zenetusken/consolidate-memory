@@ -1,9 +1,9 @@
 name: Release gate
 
 # Stage 11: a committed publisher path (not gitignored release.sh alone).
-# This workflow verifies the candidate; it does not create the GitHub Release.
-# Cut the tag with the local `./release.sh --confirm` after this gate is green
-# on the exact commit.
+# This workflow verifies the tagged SHA after `./release.sh --finalize` tags it (the
+# two-phase flow: --stage opens the release PR, a human merges it, --finalize tags
+# the merge commit). It does not create the GitHub Release.
 
 on:
   workflow_dispatch:
