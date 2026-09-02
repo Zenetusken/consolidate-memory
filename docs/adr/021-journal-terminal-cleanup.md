@@ -18,7 +18,8 @@ transforming earlier bytes.
 
 1. **Terminal phase.** After registry COMMIT the journal becomes
    `committed-cleanup-pending`. Trash, recovery blobs, and temps are deleted
-   and verified gone (parent dirs fsynced). Only then `complete`. Cleanup
+   and verified gone (the delete/replace parent dirs are fsynced — best-effort,
+   process-crash durability, not power-loss). Only then `complete`. Cleanup
    helpers return `{deleted, missing, errors}` and never swallow `OSError`.
    Recovery retries `committed-cleanup-pending` without republishing.
 2. **Split connections.** `connect_base` (no DDL). `connect_registry` takes
@@ -45,8 +46,10 @@ never unlinks pending, failed, or conflicted complete-old preimages.
 - Keep unlink-after-complete (ADR 017). Rejected: the privacy window is P0.
 - Drop leftover registry tables in journal.sqlite. Rejected: a swapped file
   would lose data; ignore is safer.
-- Power-loss durability on every FS. Rejected: we fsync file + parent dir and
-  document POSIX process-crash durability (ADR 016).
+- Power-loss durability on every FS. Rejected: we fsync file + parent dir at the
+  load-bearing sites (commit-trash, secure-unlink, restore, publish, delete-rename)
+  and document POSIX process-crash durability as the narrow guarantee (the WSL/
+  Windows mutation contract is ADR 016; the durability claim itself lives here).
 
 ## Consequences
 

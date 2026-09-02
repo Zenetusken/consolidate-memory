@@ -130,6 +130,10 @@ JOURNAL_CLEANUP_PENDING = "committed-cleanup-pending"
 REGISTRY_USER_VERSION = 2
 JOURNAL_USER_VERSION = 1
 JOURNAL_RECEIPT_DAYS = 90
+# v0.4.0 review: receipt-collapse bounds PAYLOAD size, never ROW count — a row
+# cap deletes the oldest terminal (complete/abandoned) rows when exceeded, run
+# from journal_cleanup (the one locked place both DBs are open).
+JOURNAL_MAX_ROWS = 50_000
 JOURNAL_TABLES = frozenset({"journal", "journal_metadata"})
 JOURNAL_BLOCKING = frozenset({"failed", "conflicted"})
 # Filesystem preimages for these statuses are live complete-old state.
@@ -1653,6 +1657,10 @@ def expire_recovery(ctx: Optional[StoreContext], conn: sqlite3.Connection) -> in
             continue
         oid = d.name
         st = live.get(oid)
+        if st in ("failed", "conflicted"):
+            # v0.4.0 review: recovery material for a retryable op must not expire
+            # while `journal retry` still offers restoration — keep it.
+            continue
         expired = False
         meta_p = d / "meta.json"
         if meta_p.is_file():
@@ -1709,8 +1717,10 @@ def _receipt_payload(row: dict, payload: dict) -> dict:
     }
 
 
-def bound_journal_rows(conn: sqlite3.Connection, *, days: int = JOURNAL_RECEIPT_DAYS) -> int:
-    """Collapse old complete/abandoned rows to receipts. Never touch pending/failed."""
+def bound_journal_rows(conn: sqlite3.Connection, *, days: int = JOURNAL_RECEIPT_DAYS,
+                       max_rows: int = 0) -> int:
+    """Collapse old complete/abandoned rows to receipts; with max_rows, DELETE the
+    oldest terminal rows beyond the cap. Never touch pending/failed/conflicted."""
     n = 0
     rows = conn.execute(
         "SELECT op_id, kind, payload, status, created_at, "
@@ -1732,6 +1742,16 @@ def bound_journal_rows(conn: sqlite3.Connection, *, days: int = JOURNAL_RECEIPT_
         conn.execute("UPDATE journal SET payload=? WHERE op_id=?",
                      (json.dumps(receipt, sort_keys=True), row["op_id"]))
         n += 1
+    if max_rows and max_rows > 0:
+        cur = conn.execute("SELECT COUNT(*) AS n FROM journal").fetchone()
+        total = int(cur["n"] or 0) if cur is not None else 0
+        if total > max_rows:
+            conn.execute(
+                "DELETE FROM journal WHERE op_id IN ("
+                "SELECT op_id FROM journal WHERE status IN ('complete','abandoned') "
+                "ORDER BY created_at LIMIT ?)",
+                (total - max_rows,))
+            n += 1
     if n:
         conn.commit()
     return n
@@ -1916,8 +1936,13 @@ def journal_cleanup(ctx: StoreContext, *, apply: bool = False,
                 rec = _cleanup_recovery(ctx, d.name)
                 errors.extend(rec.get("errors") or [])
         remaining = scan_orphan_artifacts(ctx, all_stores=all_stores)
-        return {"ok": not errors, "apply": True, "recovered": recovered,
-                "errors": errors, "remaining": remaining}
+        # v0.4.0 review: a still-cleanup-pending op means a retry failed — `ok`
+        # must say so (the old `not errors` silently reported success with work
+        # left on the journal).
+        cp_left = remaining.get("cleanup_pending") or []
+        bound_journal_rows(jconn, max_rows=JOURNAL_MAX_ROWS)
+        return {"ok": bool(not errors and not cp_left), "apply": True,
+                "recovered": recovered, "errors": errors, "remaining": remaining}
     finally:
         jconn.close()
         rconn.close()
@@ -2017,6 +2042,13 @@ def journal_abandon(ctx: StoreContext, op_id: str, *, accept_fs: bool = False) -
         status = str(row["status"] or "")
         if status == "complete":
             raise WriteRefused("cannot abandon a complete journal op: " + op_id)
+        if status == JOURNAL_CLEANUP_PENDING:
+            # v0.4.0 review: rollback refuses cleanup-pending; abandon must too —
+            # the cleanup still owes work (trash/temps), so abandoning would record
+            # a terminal status over an unfinished transaction.
+            raise WriteRefused(
+                "cannot abandon a cleanup-pending op — run journal retry first: "
+                + op_id)
         try:
             payload = json.loads(row["payload"] or "{}")
         except (ValueError, TypeError):
@@ -2119,6 +2151,7 @@ def _publish_destinations(publishes: list) -> Tuple[int, list]:
                 tmp.unlink(missing_ok=True)
             else:
                 os.replace(str(tmp), str(dest))
+                fsync_dir(dest.parent)
         if not dest.exists() or (want and _file_hash(dest) != want):
             bad.append(item)
             continue
@@ -2222,8 +2255,15 @@ def _finish_sensitive_cleanup(ctx: Optional[StoreContext], op_id: str,
         return {"deleted": [], "missing": [], "errors": [
             {"path": "<injected>", "error": "EACCES"}]}
     trash = _commit_trash(payload.get("deletes") or [])
-    rec = _cleanup_recovery(ctx, op_id) if ctx is not None else {
-        "deleted": [], "missing": [], "errors": []}
+    if ctx is not None:
+        rec = _cleanup_recovery(ctx, op_id)
+    else:
+        # v0.4.0 review: a missing StoreContext silently skipped recovery
+        # cleanup (no error recorded → a caller could mark the row complete
+        # with recovery blobs still on disk). Fail loud instead.
+        rec = {"deleted": [], "missing": [], "errors": [
+            {"path": "<recovery:" + str(op_id) + ">",
+             "error": "no StoreContext — recovery cleanup skipped"}]}
     temps = _cleanup_temps(payload.get("publishes") or [])
     errors = list(trash.get("errors") or []) + list(rec.get("errors") or []) + list(
         temps.get("errors") or [])
@@ -2250,7 +2290,12 @@ def _apply_deletes(deletes: Optional[list], *, op_id: str = "") -> dict:
     (fail closed). A preimage mismatch does NOT trash. Partial rename rolls
     already-trashed entries back.
     """
-    oid = op_id or ("anon%d" % os.getpid())
+    # v0.4.0 review: PID-based names are the exact convention this phase removed
+    # (two processes can collide and an orphan is unattributable) — use a hash
+    # name instead of resurrecting the PID fallback.
+    oid = op_id or ("anon-" + hashlib.sha256(
+        (os.getpid().to_bytes(4, "big") + int(time.time()).to_bytes(8, "big"))
+    ).hexdigest()[:12])
     out: dict = {
         "deleted": [], "already_absent": [], "preimage_mismatch": [],
         "errors": [], "deletes": [],
@@ -2319,6 +2364,7 @@ def _apply_deletes(deletes: Optional[list], *, op_id: str = "") -> dict:
                 os.chmod(str(trash), 0o600)
             except OSError:
                 pass
+            fsync_dir(path.parent)
             renamed.append(rec)
             out["deleted"].append(str(path))
         except OSError:

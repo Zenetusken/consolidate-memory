@@ -2,6 +2,7 @@
 """Sole canonical writer: cm canonical upsert, generated catalog, tombstones, link rules."""
 from __future__ import annotations
 
+import uuid
 import hashlib
 import os
 import re
@@ -22,7 +23,7 @@ SCOPE_RANK = {"project-local": 0, "stack-general": 1, "user-global": 2}
 
 def _atomic_write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+    tmp = path.with_suffix(path.suffix + f".tmp-{uuid.uuid4().hex[:12]}")
     try:
         tmp.write_text(text, encoding="utf-8")
         os.replace(tmp, path)

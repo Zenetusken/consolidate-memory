@@ -66,6 +66,7 @@ writes new global-scope facts up to the global store in Phase 4.
 
 from __future__ import annotations
 
+import uuid
 import ast
 import hashlib
 import math
@@ -313,7 +314,7 @@ def _atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
     `os.link`'s exclusivity instead (see `_create_exclusive` / `promote()`). Like
     `_create_exclusive`, never leaks its temp sibling — a failed write/replace still
     propagates (no masking), but cleans up the partial temp first."""
-    tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+    tmp = path.with_suffix(path.suffix + f".tmp-{uuid.uuid4().hex[:12]}")
     try:
         tmp.write_text(text, encoding=encoding)
         os.replace(tmp, path)   # on success this consumes tmp — the finally's unlink no-ops
@@ -331,7 +332,7 @@ def _create_exclusive(path: Path, text: str, encoding: str = "utf-8") -> bool:
     could observe a torn (empty) file in between — exactly the window `_atomic_write_text`
     exists to close, reopened here if that primitive were used instead. Always cleans up
     its own temp file (success or collision), never leaks one."""
-    tmp = path.with_suffix(path.suffix + f".tmp{os.getpid()}")
+    tmp = path.with_suffix(path.suffix + f".tmp-{uuid.uuid4().hex[:12]}")
     try:
         tmp.write_text(text, encoding=encoding)  # v0.1.71 Gate-2a: moved INSIDE try — a failure
         os.link(str(tmp), str(path))             # here (disk-full etc.) used to skip the finally,
