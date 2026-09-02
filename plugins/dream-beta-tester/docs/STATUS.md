@@ -71,7 +71,7 @@ a WARN — see each row's "carve-out" note below.
 
 | Family | `check_id` | `min_version` | Completeness signal |
 |---|---|---|---|
-| `dream_arc_capture` | `CHK-DREAM-ARC` | 0.1.54 | `dream.sleep`+`dream.wake` non-empty AND `dream.beats` non-empty |
+| `dream_arc_capture` | `CHK-DREAM-ARC` | 0.1.54 | `dream.sleep`+`dream.wake` non-empty AND `dream.beats` == 6 (the == 6 count since v0.4.1; 1–5 beats compliant on pre-0.4.1 records) |
 | `distill_capture` | `CHK-DISTILL-VERDICT` | 0.1.55 | `distill.verdict` non-empty (carve-out: SKIP on a maintenance/bootstrap pivot) |
 | `usage_capture` | `CHK-USAGE-CAPTURE` | 0.1.63 | `usage.window` non-empty (the injection step ran, regardless of what it found; carve-out: SKIP on a maintenance/bootstrap pivot) |
 | `demotion_capture` | `CHK-DEMOTION-VERDICT` | 0.1.67 | `demotion.verdict` non-empty (dormant is a valid, honest verdict; carve-out: SKIP on a maintenance/bootstrap pivot) |

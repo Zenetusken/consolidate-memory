@@ -133,7 +133,16 @@ def main() -> int:
         "marker": {"commit": "fixturedreamcommit000000000000000000000", "timestamp": "2026-06-21T01:00:00Z"},
         "dream": {
             "sleep": "*💤 drifting into the fixture repo's memory...*",
-            "beats": ["*🌙 Phase 0 — orienting to the fixture store...*"],
+            # v0.4.1 (D1): the contract is 6 beats (5 phase beats + surfacing) — the oracle
+            # counts them; a 1-beat fixture would WARN against its own gate baseline.
+            "beats": [
+                "*Phase 0 — the fixture store surfaces, dormant and synthetic.*",
+                "*Phase 1 — the network answers with silence.*",
+                "*Phase 2 — no claims rise from the noise.*",
+                "*Phase 3 — nothing to verify; the scouts idle.*",
+                "*The dream surfaces — nothing to propose.*",
+                "*Phase 5 — the sweep passes over an empty house.*",
+            ],
             "wake": "*☀️ waking — the fixture dream is complete.*",
         },
         "distill": {

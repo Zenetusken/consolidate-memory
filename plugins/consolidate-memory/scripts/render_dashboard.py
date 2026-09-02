@@ -347,6 +347,24 @@ def _procedure_integrity_section(record: Mapping[str, Any]) -> list:
     return out
 
 
+def _arc_gate_section(record: Mapping[str, Any]) -> list:
+    """v0.4.1 (D1): the dream-arc gate's user-visible teeth — a PRESENT-but-incomplete arc
+    (sleep/wake empty or != 6 beats) is loud here and exits 4 at the terminal --persist.
+    Empty (no panel) when the arc is complete OR the record is dreamless (legacy/preview).
+    The CALLER gates this on --persist, like the integrity panel."""
+    arc_ok, arc_reason = ms.arc_completeness(record)
+    if arc_ok:
+        return []
+    out = ["", _rule()]
+    out.append("  " + _c("⚠ DREAM ARC INCOMPLETE", "bold", "yellow")
+               + _c("   · a present dream block must carry sleep + 6 beats + wake", "dim"))
+    out.append(_rule())
+    out.append("    " + _ui.wrap(_clean(arc_reason), hang=4))
+    out.append("    " + _c("→ backfill the missing beats (SLEEP · 5 phase beats + surfacing · WAKE), then re-render"
+                          " — a complete arc clears this ⚠ + exits 0", "dim"))
+    return out
+
+
 def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     if not isinstance(record, dict):
         record = {}  # a non-dict record (JSON list/scalar from stdin) degrades — this is the runtime boundary
@@ -375,6 +393,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     # is judged — a seed/preview render (no --persist) is the BEFORE state and is never flagged.
     if judged:
         out += _procedure_integrity_section(record)
+        out += _arc_gate_section(record)
 
     # v0.3.0: domain / enrollment — the trust-boundary line the HTML masthead also
     # carries. Absent on pre-0.3 records (legacy render is byte-identical).
@@ -761,9 +780,10 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         _beats = _lget(dr, "beats")
         _nb = len(_beats)
         _have = [bool(str(dr.get("sleep") or "").strip()), bool(str(dr.get("wake") or "").strip())]
-        # The ✓ now GATES on arc completeness, not mere presence: the contract is 5 phase beats +
-        # the surfacing line (6 total) — a 4-beat arc shows its gap honestly instead of a green check.
-        _full = _have[0] and _have[1] and _nb == 6
+        # v0.4.1 (D1): the ✓ now gates on the SINGLE arc-completeness predicate (the same one the
+        # persist gate + WAKE cue consume) — one definition, or the dashboard could green-check
+        # while the gate exits 4. The contract is 5 phase beats + the surfacing line (6 total).
+        _full = ms.arc_completeness(record)[0]
         _bits = [
             (_c("✓", "green") if _have[0] else _c("✗", "yellow")) + " sleep",
             (_c("✓", "green") if _full else _c("✗", "yellow")) + f" {_g(_nb)}/6 beat" + ("" if _nb == 1 else "s"),
@@ -976,34 +996,43 @@ def _already_logged(path: str, commit: str, ts: str) -> bool:
     return False
 
 
-def _persist(record: Mapping[str, Any], dirpath: str) -> None:
+def _persist(record: Mapping[str, Any], dirpath: str) -> str:
     """Append the cycle record to the plugin-data cycle log (NOT the native memory dir).
 
-    Native `MEMORY.md` / facts / mirrors stay facts-only (ADR 006). Skip if `dir` is
-    absent; refuse an empty marker.timestamp; idempotent on (commit, timestamp).
-    """
+    Native `MEMORY.md` / facts / mirrors stay facts-only (ADR 006). v0.4.1 (D2):
+    reconciles an empty marker stamp from the stamped state file (the single source)
+    BEFORE the unstamped refusal, appends the RECONCILED payload, and returns a
+    status — "ok" (appended) | "duplicate" (already logged — the exit-4 loop-back
+    re-render) | "unstamped" (empty timestamp even after reconcile) | "no-dir" |
+    "io-error". Idempotent on (commit, timestamp)."""
     if not os.path.isdir(dirpath):
         print(f"render_dashboard: --persist dir not found, skipping log: {dirpath}", file=sys.stderr)
-        return
+        return "no-dir"
     marker = _dget(record, "marker")  # tolerate a truthy non-dict marker (model slip) — never .get() on a str
+    from pathlib import Path as _P
+    from memory_status import reconcile_marker as _reconcile_marker
+    marker = _reconcile_marker(marker, _P(dirpath))
+    payload = dict(record)
+    payload["marker"] = marker
     commit, ts = str(marker.get("commit", "")), str(marker.get("timestamp", ""))
     if not ts:
-        print("render_dashboard: marker.timestamp empty (unstamped cycle), skipping persist", file=sys.stderr)
-        return
-    from pathlib import Path as _P
+        print("render_dashboard: marker.timestamp empty after reconcile (unstamped cycle), "
+              "skipping persist", file=sys.stderr)
+        return "unstamped"
     from retention import cycle_log_read_paths, cycle_log_write_path
     store = _P(dirpath)
     for p in cycle_log_read_paths(store):
         if _already_logged(str(p), commit, ts):
-            return
+            return "duplicate"
     logpath = cycle_log_write_path(store)
     try:
         logpath.parent.mkdir(parents=True, exist_ok=True)
         with open(logpath, "a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+            fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        print(f"persist → {logpath}")
     except OSError as exc:
         print(f"render_dashboard: cannot append to log: {exc}", file=sys.stderr)
-        return
+        return "io-error"
     try:
         from control_plane import record_usage_window
         from store_context import resolve_store
@@ -1025,7 +1054,7 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> None:
             except (OSError, ValueError, TypeError):
                 alt = None
             if alt is None:
-                return
+                return "ok"    # appended; the clock path is skipped (cross-cwd, no fallback)
             ctx = alt
         raw_usage = record.get("usage")
         usage = raw_usage if isinstance(raw_usage, dict) else {}
@@ -1052,6 +1081,7 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> None:
     except Exception as exc:
         print(f"render_dashboard: usage-window clock skipped ({exc.__class__.__name__})",
               file=sys.stderr)
+    return "ok"
 
 
 def main() -> int:
@@ -1115,24 +1145,59 @@ def main() -> int:
         except Exception:
             pass
     if persist_dir:
-        # Strict order print → persist → exit (v0.1.44): the firing record MUST be logged (it accrues
-        # for calibration + surfaces in the archive's longitudinal ⚠), THEN the terminal --persist
-        # render exits 3 on a procedure-integrity violation — the lazy-skip teeth at the one boundary a
-        # finishing dream always hits. DETECT, not enforce: the dashboard (incl. the ⚠ panel) already
-        # printed; exit 3 is the nonzero SIGNAL the orchestrator must act on (Exit 1/2 stay read/arg).
-        _persist(record, persist_dir)
+        # Strict order print → persist → exit (v0.1.44; extended v0.4.1): the firing record MUST
+        # be logged (it accrues for calibration + the archive), THEN the terminal --persist render
+        # exits nonzero on a gate violation — the detector teeth at the one boundary a finishing
+        # dream always hits. Exit codes: 0 clean · 3 procedure-integrity (re-verify) · 4 dream-arc
+        # incomplete (backfill beats) · 5 unstamped (re-stamp the marker); 1/2 stay read/arg.
+        status = _persist(record, persist_dir)
+        if status == "unstamped":
+            print("⚠ UNSTAMPED CYCLE · no marker.timestamp in the record and no stamp in "
+                  ".consolidation-state.json", file=sys.stderr)
+            print("  → run memory_status.py --stamp-marker <HEAD> (SKILL step 5), fill "
+                  "marker.timestamp, then re-render", file=sys.stderr)
+            _ui.dream_cue("NOT persisted — the cycle is unstamped: run --stamp-marker <HEAD> and "
+                          "fill marker.timestamp before re-rendering; WAKE only after the clean re-run")
+            return 5
+        if status in ("no-dir", "io-error"):
+            # keep their stderr diagnostics (exit 0, no cue)
+            return 0
+        if status == "ok":
+            # Split-brain heal (v0.4.1): the log now carries the RECONCILED marker — write the same
+            # payload back to the cycle file, or the archive embeds the dream twice (reconciled log
+            # line vs unstamped cycle copy never dedup).
+            if paths:
+                try:
+                    from memory_status import reconcile_marker as _reconcile_wb
+                    _wb = dict(record)
+                    _wb["marker"] = _reconcile_wb(_dget(record, "marker"),
+                                                  __import__("pathlib").Path(persist_dir))
+                    with open(paths[0], "w", encoding="utf-8") as _fh:
+                        _fh.write(json.dumps(_wb, ensure_ascii=False) + "\n")
+                except OSError:
+                    pass
+        # "ok" OR "duplicate": the record IS in the log (freshly, or already) — the gates judge it
+        # either way (the exit-3/exit-4 re-render must re-exit its code, never a silent 0).
         ok, _reason, _sev = ms.procedure_integrity(record)
-        # v0.1.54: the dream-arc cue SPLITS on the integrity outcome. The exit-3 path keeps the
+        arc_ok, _arc_reason = ms.arc_completeness(record)
+        # v0.1.54/v0.4.1: the dream-arc cue SPLITS on the gate outcome. The exit-3 path keeps the
         # model IN the dream through the Phase-3 loop-back (waking here would contradict SKILL's
-        # re-verify rule). The clean path does NOT cue a wake — two mandatory SKILL steps remain
-        # (--diffs, then the render_html archive open); the WAKE cue fires there (render_html),
-        # at the arc's true terminal boundary.
+        # re-verify rule); exit-4 keeps it in the dream through the backfill loop; the clean path
+        # does NOT cue a wake — two mandatory SKILL steps remain (--diffs, then the render_html
+        # archive open); the WAKE cue fires there (render_html), at the arc's true terminal boundary.
         if not ok:
             _ui.dream_cue("NOT over — the dream pulls you back: narrate the return to Phase-3 "
                           "verification dreamily; WAKE only on the clean re-run")
             return 3
-        _ui.dream_cue("persist clean — Phase 5 continues (--diffs, then render_html opens the "
-                      "archive); WAKE comes after that, not now")
+        if not arc_ok:
+            _ui.dream_cue("NOT over — arc incomplete: backfill the missing beats "
+                          "(SLEEP · 5 phase beats + surfacing · WAKE) and re-render")
+            return 4
+        if status == "ok":
+            _ui.dream_cue("persist clean — Phase 5 continues (--diffs, then render_html opens the "
+                          "archive); WAKE comes after that, not now")
+        # duplicate of a clean record: silent — the idempotent re-render must never fake a
+        # "persist clean" for an append that did not happen.
     return 0
 
 
