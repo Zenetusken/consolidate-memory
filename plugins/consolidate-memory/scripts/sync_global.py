@@ -565,7 +565,7 @@ def _records_from_dir(gdir: Path, recs: list, seen: set) -> None:
         if text is None:
             continue
         fm = _frontmatter(text)
-        if str(fm.get("status") or "") == "tombstoned":
+        if str(fm.get("status") or "") in ("tombstoned", "superseded", "expired"):
             continue
         key = (fact_domain(fm) or "legacy", f.stem)
         if key in seen:
@@ -695,7 +695,8 @@ def iter_canonical_stems_for_gc(ctx) -> set:
                 continue
             from fact_schema import CLASS_LEGACY, classify_canonical
             _gcls = classify_canonical(text, stem=f.stem)
-            if str((_gcls.get("fm") or {}).get("status") or "").strip() == "tombstoned":
+            if str((_gcls.get("fm") or {}).get("status") or "").strip() in (
+                    "tombstoned", "superseded", "expired"):
                 continue
             if _gcls["class"] == CLASS_LEGACY and not _global_is_fixture():
                 stems.add(f.stem)
@@ -1297,6 +1298,13 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                                  STOP_LOCAL as _MC_STOP, classify_mirror)
     ctx = resolve_store(project_dir)
     warn_unenrolled_share(ctx)
+    if pull:
+        life = str(getattr(ctx, "domain_lifecycle", "active") or "active")
+        if (ctx.enrolled and ctx.domain_id not in ("", "unknown")
+                and life in ("deleting", "deleted")):
+            print("pull: domain %s is %s; pull/promote/canonical writes are refused"
+                  % (ctx.domain_id, life), file=sys.stderr)
+            return 2
     if pull and not getattr(ctx, "cross_project_allowed", False):
         print("pull: local-only (unenrolled or unhealthy registry) — skipping",
               file=sys.stderr)
@@ -1472,7 +1480,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         _adm_fm = dict(fm)
         if (_global_is_fixture() or _hermetic_home()) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
             _adm_fm["domain"] = ctx.domain_id
-        if str(fm.get("status") or "") == "tombstoned" or (_fdom, name) in _tomb_keys:
+        if str(fm.get("status") or "") in ("tombstoned", "superseded", "expired") or (_fdom, name) in _tomb_keys:
             rel = False
         elif rel and not admit_cross_project(ctx.domain_id, _adm_fm, migration_mode=mode):
             rel = False

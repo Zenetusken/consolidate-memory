@@ -91,6 +91,7 @@ users run the skill — they do not have ./cm on PATH)
   cm repair-mirror FACT
   cm canonical upsert STEM [--file PATH] [--origin]
   cm canonical forget|supersede|expire|reactivate STEM
+  cm canonical resurrect STEM --file PATH   replace a tombstone stub with a new body
   cm local upsert|update|archive|forget STEM [--file PATH]
   cm local rebuild-index [--plan|--apply --confirm rebuild-local-index] [--skip-invalid]
   cm local migrate-schema [--apply --confirm migrate-local-schema]
@@ -99,7 +100,10 @@ users run the skill — they do not have ./cm on PATH)
   cm marker snooze --until ISO
   cm justify-demotion STEM [STEM…] [--force]  stamp demotion_justify at the monotonic usage-window sequence (candidate-gated; --force for repair)
   cm migrate [--plan|--assign STEM --domain NAME|--exclude STEM|--apply|--rollback|--finalize|--status]
-  cm data inventory|compact|export|purge|retention [--scope SCOPE]
+  cm data inventory|compact|export|purge|purge-status|purge-resume|purge-cancel|retention
+                       purge --scope domain-canonicals|all-plugin-data
+                       purge-status|resume|cancel --domain NAME
+                       cancel --accept-partial when canonicals already gone
   cm journal inventory|show|retry|rollback|abandon|compact|cleanup [OP-ID]
                        cleanup [--scan-all-stores] [--apply --confirm journal-cleanup]
                        abandon --accept-fs after verifying leftover trash/recovery

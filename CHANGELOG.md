@@ -12,6 +12,19 @@ cadence fact (model stamped the displayed `Nw`, not store `windows_full`),
 and `cm local` reused the global 88-char `[]()` sanitizer as the always-loaded
 hook. Public **1.0 stays HOLD**.
 
+### Fixed — domain and canonical lifecycle (Phase 3 / P0-1, P1-1, P1-2, P1-8)
+
+- **Domain purge unenrolls in the same transact** that marks `deleted`. Former
+  members are local-only and can enroll elsewhere. `StoreContext.domain_lifecycle`
+  gates `cross_project_allowed`. `cm data purge-status|purge-resume|purge-cancel`.
+- **`reconcile_inactive_mirrors`.** Tombstoned, superseded, expired, and
+  missing-inactive canonicals leave receiving indexes on the next pull.
+  Supersession installs the replacement first.
+- **Tombstone stubs cannot be reactivated.** `cm canonical resurrect STEM --file`
+  runs the full upsert pipeline. Reactivate is expired/superseded with a real body.
+- **All-plugin-data purge** uses an external fence under
+  `consolidate-memory-purge/` and resumes until every intended path is absent.
+
 ### Fixed — journal terminal cleanup (Phase 2 / P0-2, P0-3, P1-4, P1-5, P1-9)
 
 - **`committed-cleanup-pending`.** After registry COMMIT the journal is not

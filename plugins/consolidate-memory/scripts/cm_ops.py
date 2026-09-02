@@ -293,6 +293,8 @@ def _fleet_purge_domain(ctx: StoreContext, domain_id: str, facts_dir: Path,
             dest_modes.update(staged["dest_modes"])
             expected.update(staged["expected_revisions"])
             ops.extend(staged["registry_ops"])
+            ops.append({"op": "project_domain_change", "project_id": pid,
+                        "domain_id": "unknown", "status": "inactive"})
             revoked += int(staged["revoked"])
             native = pctx.native_memory_dir
             doomed = {str(d) for d in staged["deletes"]}
@@ -333,7 +335,259 @@ def _fleet_purge_domain(ctx: StoreContext, domain_id: str, facts_dir: Path,
     n = int((out.get("result") or {}).get("purged_ops") or 0)
     n += _rmtree_empty_domain_dir(facts_dir, domain_id)
     return {"ok": True, "purged_files": n, "domain_id": domain_id,
-            "revoked_mirrors": int((out.get("result") or {}).get("revoked") or 0)}
+            "revoked_mirrors": int((out.get("result") or {}).get("revoked") or 0),
+            "unenrolled": len(rows)}
+
+
+def _purge_fence_root(ctx: StoreContext) -> Path:
+    return ctx.config_root / "consolidate-memory-purge"
+
+
+def _write_purge_fence(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    os.replace(str(tmp), str(path))
+    try:
+        os.chmod(str(path), 0o600)
+    except OSError:
+        pass
+
+
+def _read_purge_fence(path: Path) -> Optional[dict]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def _incomplete_purge_fences(ctx: StoreContext) -> list:
+    root = _purge_fence_root(ctx)
+    if not root.is_dir():
+        return []
+    out: list = []
+    for p in sorted(root.glob("*.json")):
+        data = _read_purge_fence(p)
+        if data and str(data.get("state") or "") not in ("complete", ""):
+            out.append((p, data))
+    return out
+
+
+def domain_purge_status(ctx: StoreContext, domain_id: str) -> dict:
+    from control_plane import connect_if_exists, db_path, domain_lifecycle
+    conn = connect_if_exists(db_path(ctx))
+    life = "active"
+    enrolled: list = []
+    if conn is not None:
+        try:
+            life = domain_lifecycle(conn, domain_id)
+            enrolled = [str(r["project_id"]) for r in _enrolled_rows(conn, domain_id)]
+        finally:
+            conn.close()
+    facts = ctx.config_root / "consolidate-memory" / "domains" / domain_id / "facts"
+    remaining = 0
+    if facts.is_dir():
+        remaining = sum(1 for p in facts.glob("*.md") if p.name != "MEMORY.md")
+    return {
+        "domain_id": domain_id,
+        "lifecycle": life,
+        "enrolled_projects": enrolled,
+        "canonicals_remaining": remaining,
+        "resumable": life == "deleting",
+        "cancellable": life == "deleting",
+    }
+
+
+def _run_domain_purge(ctx: StoreContext, domain_id: str) -> dict:
+    from control_plane import connect, db_path, transact as _tx_del
+    conn = connect(db_path(ctx))
+    try:
+        rows = _enrolled_rows(conn, domain_id)
+        pids = [str(r["project_id"]) for r in rows]
+        if ctx.project_id not in pids:
+            pids.append(ctx.project_id)
+
+        def _mark_deleting(_c, _t):
+            del _c, _t
+            return {"registry_ops": [
+                {"op": "domain_status_set", "domain_id": domain_id,
+                 "status": "deleting"}]}
+        _tx_del(ctx, "domain-deleting", {"domain_id": domain_id}, _mark_deleting,
+                extra_domains=[domain_id], extra_project_ids=pids)
+        facts = (ctx.config_root / "consolidate-memory" / "domains" / domain_id / "facts")
+        return _fleet_purge_domain(ctx, domain_id, facts, rows)
+    finally:
+        conn.close()
+
+
+def domain_purge_resume(ctx: StoreContext, domain_id: str) -> dict:
+    st = domain_purge_status(ctx, domain_id)
+    if st["lifecycle"] == "deleted":
+        return {"ok": True, "resumed": False, "already": "deleted", **st}
+    if st["lifecycle"] != "deleting":
+        raise WriteRefused(
+            "purge-resume: domain %s is %s (need deleting)"
+            % (domain_id, st["lifecycle"]))
+    out = _run_domain_purge(ctx, domain_id)
+    return {"ok": True, "resumed": True, **out}
+
+
+def domain_purge_cancel(ctx: StoreContext, domain_id: str, *,
+                        accept_partial: bool = False) -> dict:
+    from control_plane import transact
+    st = domain_purge_status(ctx, domain_id)
+    if st["lifecycle"] != "deleting":
+        raise WriteRefused(
+            "purge-cancel: domain %s is %s (need deleting)"
+            % (domain_id, st["lifecycle"]))
+    if int(st["canonicals_remaining"] or 0) == 0 and not accept_partial:
+        raise WriteRefused(
+            "purge-cancel: canonicals already gone; pass --accept-partial "
+            "to unstick deleting (does not restore facts)")
+
+    def mutate(_c, _t):
+        del _c, _t
+        return {"registry_ops": [
+            {"op": "domain_status_set", "domain_id": domain_id, "status": "active"}]}
+
+    transact(ctx, "purge-cancel", {"domain_id": domain_id}, mutate,
+             extra_domains=[domain_id])
+    return {"ok": True, "cancelled": True, "domain_id": domain_id,
+            "accept_partial": accept_partial}
+
+
+def _rmtree_target(target: Path) -> list:
+    """Delete a tree. Returns leftover file paths (empty means gone)."""
+    import shutil
+    failed: list = []
+    if not target.exists():
+        return failed
+    try:
+        shutil.rmtree(target)
+    except OSError as e:
+        failed.append("%s: %s" % (target, e))
+    if target.exists():
+        try:
+            leftover = [str(p) for p in target.rglob("*") if p.is_file()]
+        except OSError:
+            leftover = [str(target)]
+        failed.extend(leftover[:16])
+    return failed
+
+
+def _all_plugin_data_targets(ctx: StoreContext) -> dict:
+    pdata = ctx.plugin_data_dir
+    droot = ctx.config_root / "consolidate-memory" / "domains"
+    return {"plugin_data": str(pdata), "domains": str(droot)}
+
+
+def run_all_plugin_data_purge(ctx: StoreContext, *, rows: list,
+                              seen_dom: list, pids: list) -> dict:
+    """Journaled revoke then fenced rmtree. Resume from the external fence (P1-8)."""
+    from control_plane import transact as _tx_all
+    from store_context import store_context_from_registry
+    fence_root = _purge_fence_root(ctx)
+    existing = _incomplete_purge_fences(ctx)
+    if existing:
+        fence_path, fence = existing[0]
+        purge_id = str(fence.get("purge_id") or fence_path.stem)
+    else:
+        purge_id = "all-" + uuid.uuid4().hex[:12]
+        fence_path = fence_root / (purge_id + ".json")
+        fence = {
+            "purge_id": purge_id,
+            "state": "planned",
+            "targets": _all_plugin_data_targets(ctx),
+            "domains": list(seen_dom),
+            "projects": list(pids),
+        }
+        _write_purge_fence(fence_path, fence)
+
+    state = str(fence.get("state") or "planned")
+    targets = fence.get("targets") or _all_plugin_data_targets(ctx)
+    pdata = Path(str(targets.get("plugin_data") or ctx.plugin_data_dir))
+    droot = Path(str(targets.get("domains") or (
+        ctx.config_root / "consolidate-memory" / "domains")))
+
+    if state in ("planned",):
+        if pdata.is_dir() and (pdata / "control.sqlite").is_file():
+            def _revoke_all(conn2, temps):
+                deletes: list = []
+                expected: dict = {}
+                dest_modes: dict = {}
+                ops: list = []
+                for r in rows:
+                    pid = str(r["project_id"])
+                    native_s = str(r["native_memory_dir"] or "").strip()
+                    root_s = str(r["current_root"] or "").strip()
+                    if not native_s and not root_s:
+                        raise WriteRefused(
+                            f"cannot revoke project {pid}: missing current_root "
+                            "and native_memory_dir")
+                    pctx = store_context_from_registry(r, template=ctx)
+                    staged = _stage_revoke_plan(pctx, "unknown", conn2, temps)
+                    deletes.extend(staged["deletes"])
+                    dest_modes.update(staged["dest_modes"])
+                    expected.update(staged["expected_revisions"])
+                    ops.extend(staged["registry_ops"])
+                    ops.append({"op": "project_domain_change", "project_id": pid,
+                                "domain_id": "unknown", "status": "inactive"})
+                for d in seen_dom:
+                    ops.append({"op": "domain_status_set", "domain_id": d,
+                                "status": "deleted"})
+                return {"deletes": deletes, "expected_revisions": expected,
+                        "registry_ops": ops, "dest_modes": dest_modes,
+                        "revoked": len(deletes)}
+            _tx_all(ctx, "purge-all-plugin-data", {"scope": "all"}, _revoke_all,
+                    extra_domains=seen_dom, extra_project_ids=pids)
+        fence["state"] = "mirrors-revoked"
+        _write_purge_fence(fence_path, fence)
+        state = "mirrors-revoked"
+
+    errors: list = []
+    n = 0
+    if state in ("mirrors-revoked", "plugin-data-deleting"):
+        fence["state"] = "plugin-data-deleting"
+        _write_purge_fence(fence_path, fence)
+        if pdata.is_dir():
+            n += sum(1 for _ in pdata.rglob("*") if _.is_file())
+        errors.extend(_rmtree_target(pdata))
+        if not errors:
+            fence["state"] = "canonical-data-deleting"
+            _write_purge_fence(fence_path, fence)
+            state = "canonical-data-deleting"
+
+    if state in ("canonical-data-deleting",):
+        if droot.is_dir():
+            n += sum(1 for _ in droot.rglob("*") if _.is_file())
+        errors.extend(_rmtree_target(droot))
+        if not errors:
+            fence["state"] = "verified"
+            _write_purge_fence(fence_path, fence)
+            state = "verified"
+
+    if state == "verified":
+        leftover: list = []
+        for t in (pdata, droot):
+            if t.exists():
+                try:
+                    leftover.extend(str(p) for p in t.rglob("*") if p.is_file())
+                except OSError:
+                    leftover.append(str(t))
+        if leftover:
+            errors.extend(leftover[:16])
+        else:
+            fence["state"] = "complete"
+            _write_purge_fence(fence_path, fence)
+            state = "complete"
+
+    if errors or state != "complete":
+        raise WriteRefused("all-plugin-data purge incomplete: " + "; ".join(errors[:8])
+                           if errors else "state=" + state)
+    return {"ok": True, "scope": "all-plugin-data", "purged_files": n,
+            "managed_mirrors_revoked": True, "purge_id": purge_id,
+            "native": str(ctx.native_memory_dir)}
 
 
 def _ctx(project: str, extra_env=None) -> StoreContext:
@@ -713,8 +967,21 @@ def cmd_canonical(args: argparse.Namespace) -> int:
     if args.canonical_cmd in ("supersede", "expire", "reactivate"):
         st = {"supersede": "superseded", "expire": "expired",
               "reactivate": "active"}[args.canonical_cmd]
-        out = set_canonical_status(ctx, args.stem or "", st)
+        out = set_canonical_status(ctx, args.stem or "", st,
+                                   replacement_id=getattr(args, "replacement", None) or "")
         print(json.dumps(out) if args.json else out)
+        return 0 if out.get("ok") else 1
+    if args.canonical_cmd == "resurrect":
+        from canonical_ingress import resurrect as _resurrect
+        if not args.stem:
+            print("canonical resurrect: pass STEM --file PATH", file=sys.stderr)
+            return 2
+        if not args.file:
+            print("canonical resurrect: pass --file PATH", file=sys.stderr)
+            return 2
+        text = Path(args.file).read_text(encoding="utf-8")
+        out = _resurrect(ctx, args.stem, text)
+        print(json.dumps(out, indent=2) if args.json else out)
         return 0 if out.get("ok") else 1
     return 2
 
@@ -1531,7 +1798,7 @@ def cmd_migrate(args: argparse.Namespace) -> int:
 
 
 def cmd_data(args: argparse.Namespace) -> int:
-    from control_plane import connect, db_path
+    from control_plane import connect, connect_if_exists, db_path
     from retention import (compact_jsonl, CYCLE_CAP, EVENT_RETENTION_DAYS, export_ops,
                            inventory, purge_domain, purge_project,
                            retention_show)
@@ -1604,6 +1871,47 @@ def cmd_data(args: argparse.Namespace) -> int:
         dest = Path(args.dest or (ctx.plugin_data_dir / "export.json"))
         print(json.dumps(export_ops(ctx.plugin_data_dir, dest), indent=2))
         return 0
+    if args.data_cmd in ("purge-status", "purge-resume", "purge-cancel"):
+        from identifiers import IdentifierRefused, validate_domain_id
+        did = getattr(args, "purge_domain", None) or ctx.domain_id
+        if not did or did == "unknown":
+            print(f"data {args.data_cmd}: pass --domain NAME", file=sys.stderr)
+            return 2
+        try:
+            did = validate_domain_id(did)
+        except IdentifierRefused as e:
+            print(f"data {args.data_cmd}: {e}", file=sys.stderr)
+            return 2
+        if args.data_cmd == "purge-status":
+            print(json.dumps(domain_purge_status(ctx, did), indent=2 if args.json else None,
+                             default=str))
+            return 0
+        from control_plane import assert_mutation_allowed
+        try:
+            assert_mutation_allowed(ctx)
+        except WriteRefused as e:
+            print(f"data {args.data_cmd}: {e}", file=sys.stderr)
+            return 2
+        phrase = f"{args.data_cmd}-{did}"
+        need = _want_confirm(args, phrase)
+        if need == "dry":
+            print(f"{args.data_cmd} plan: domain={did} "
+                  f"(pass --apply --confirm {phrase})")
+            return 0
+        if need:
+            print(f"data {args.data_cmd}: {need}", file=sys.stderr)
+            return 2
+        try:
+            if args.data_cmd == "purge-resume":
+                out = domain_purge_resume(ctx, did)
+            else:
+                out = domain_purge_cancel(
+                    ctx, did, accept_partial=bool(getattr(args, "accept_partial", False)))
+        except WriteRefused as e:
+            print(f"data {args.data_cmd}: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps(out, default=str))
+        return 0
     if args.data_cmd == "purge":
         from control_plane import assert_mutation_allowed
         from identifiers import IdentifierRefused, validate_domain_id, validate_project_id
@@ -1641,7 +1949,13 @@ def cmd_data(args: argparse.Namespace) -> int:
         if need:
             print(f"data purge: {need}", file=sys.stderr)
             return 2
-        conn = connect(db_path(ctx))
+        # v0.4.0 review: resuming an all-plugin-data purge after plugin-data was
+        # already deleted must not MINT a fresh control.sqlite (connect() creates
+        # the dir/DB the state machine then re-deletes) — read-only if absent.
+        conn = connect_if_exists(db_path(ctx))
+        if conn is None and scope != "all-plugin-data":
+            print(f"data purge: control.sqlite absent (scope={scope})", file=sys.stderr)
+            return 2
         try:
             if scope == "managed-mirrors":
                 n = _revoke_unadmitted_mirrors(ctx, "unknown")
@@ -1651,6 +1965,8 @@ def cmd_data(args: argparse.Namespace) -> int:
             if scope == "project-ops":
                 pid = args.purge_project or ctx.project_id
                 native: Optional[Path] = ctx.native_memory_dir
+                if conn is None:  # reachable only via the type — scopes that need the DB refuse above
+                    return 2
                 if args.purge_project and args.purge_project != ctx.project_id:
                     row = conn.execute(
                         "SELECT native_memory_dir FROM projects WHERE project_id=?",
@@ -1665,35 +1981,21 @@ def cmd_data(args: argparse.Namespace) -> int:
                     print("data purge: domain-canonicals requires a named domain",
                           file=sys.stderr)
                     return 2
-                from control_plane import transact as _tx_del
-                rows = _enrolled_rows(conn, did)
-                pids = [str(r["project_id"]) for r in rows]
-                if ctx.project_id not in pids:
-                    pids.append(ctx.project_id)
-                def _mark_deleting(_c, _t):
-                    del _c, _t
-                    return {"registry_ops": [
-                        {"op": "domain_status_set", "domain_id": did,
-                         "status": "deleting"}]}
                 try:
-                    _tx_del(ctx, "domain-deleting", {"domain_id": did}, _mark_deleting,
-                            extra_domains=[did], extra_project_ids=pids)
-                except WriteRefused as e:
-                    print(f"data purge: {e}", file=sys.stderr)
-                    return 2
-                facts = (ctx.config_root / "consolidate-memory" / "domains" / did / "facts")
-                try:
-                    out = _fleet_purge_domain(ctx, did, facts, rows)
+                    out = _run_domain_purge(ctx, did)
                 except WriteRefused as e:
                     print(f"data purge: {e}", file=sys.stderr)
                     return 2
                 print(json.dumps(out))
                 return 0
             if scope == "all-plugin-data":
-                import shutil
                 from control_plane import transact as _tx_all
-                from store_context import store_context_from_registry
-                rows = _enrolled_rows(conn)
+                if conn is not None:
+                    rows = _enrolled_rows(conn)
+                else:
+                    # plugin-data (and its DB) already deleted by the interrupted
+                    # purge — the remaining stages are fence-driven FS work.
+                    rows = []
                 pids = [str(r["project_id"]) for r in rows]
                 if ctx.project_id not in pids:
                     pids.append(ctx.project_id)
@@ -1702,76 +2004,28 @@ def cmd_data(args: argparse.Namespace) -> int:
                     did_r = str(r["domain_id"] or "")
                     if did_r and did_r != "unknown" and did_r not in seen_dom:
                         seen_dom.append(did_r)
-                def _mark_all(_c, _t):
-                    del _c, _t
-                    return {"registry_ops": [
-                        {"op": "domain_status_set", "domain_id": d,
-                         "status": "deleting"} for d in seen_dom]}
                 try:
-                    _tx_all(ctx, "domain-deleting", {"domains": seen_dom}, _mark_all,
-                            extra_domains=seen_dom, extra_project_ids=pids)
+                    if conn is not None and not _incomplete_purge_fences(ctx) and seen_dom:
+                        def _mark_all(_c, _t):
+                            del _c, _t
+                            return {"registry_ops": [
+                                {"op": "domain_status_set", "domain_id": d,
+                                 "status": "deleting"} for d in seen_dom]}
+                        _tx_all(ctx, "domain-deleting", {"domains": seen_dom}, _mark_all,
+                                extra_domains=seen_dom, extra_project_ids=pids)
+                    out = run_all_plugin_data_purge(
+                        ctx, rows=rows, seen_dom=seen_dom, pids=pids)
                 except WriteRefused as e:
                     print(f"data purge: {e}", file=sys.stderr)
                     return 2
-
-                def _revoke_all(conn2, temps):
-                    deletes: list = []
-                    expected: dict = {}
-                    dest_modes: dict = {}
-                    ops: list = []
-                    for r in rows:
-                        pid = str(r["project_id"])
-                        native_s = str(r["native_memory_dir"] or "").strip()
-                        root_s = str(r["current_root"] or "").strip()
-                        if not native_s and not root_s:
-                            raise WriteRefused(
-                                f"cannot revoke project {pid}: missing current_root "
-                                "and native_memory_dir")
-                        pctx = store_context_from_registry(r, template=ctx)
-                        staged = _stage_revoke_plan(pctx, "unknown", conn2, temps)
-                        deletes.extend(staged["deletes"])
-                        dest_modes.update(staged["dest_modes"])
-                        expected.update(staged["expected_revisions"])
-                        ops.extend(staged["registry_ops"])
-                    return {"deletes": deletes, "expected_revisions": expected,
-                            "registry_ops": ops, "dest_modes": dest_modes,
-                            "revoked": len(deletes)}
-                try:
-                    _tx_all(ctx, "purge-all-plugin-data", {"scope": "all"}, _revoke_all,
-                            extra_domains=seen_dom, extra_project_ids=pids)
-                except WriteRefused as e:
-                    print(f"data purge: {e}", file=sys.stderr)
-                    return 2
-                conn.close()
-                pdata = ctx.plugin_data_dir
-                droot = ctx.config_root / "consolidate-memory" / "domains"
-                n = 0
-                failed: list = []
-                for target in (pdata, droot):
-                    if not target.is_dir():
-                        continue
-                    n += sum(1 for _ in target.rglob("*") if _.is_file())
-                    try:
-                        shutil.rmtree(target)
-                    except OSError as e:
-                        failed.append(f"{target}: {e}")
-                    if target.exists():
-                        leftover = [str(p) for p in target.rglob("*") if p.is_file()]
-                        if leftover:
-                            failed.extend(leftover[:8])
-                if failed:
-                    print(json.dumps({"ok": False, "scope": scope, "error": failed,
-                                      "purged_files": n}), file=sys.stderr)
-                    return 2
-                print(json.dumps({"ok": True, "scope": scope, "purged_files": n,
-                                  "managed_mirrors_revoked": True,
-                                  "native": str(ctx.native_memory_dir)}))
-                return 0
+                print(json.dumps(out, default=str))
+                return 0 if out.get("ok") else 2
             print("data purge: unknown scope", file=sys.stderr)
             return 2
         finally:
             try:
-                conn.close()
+                if conn is not None:
+                    conn.close()
             except Exception:
                 pass
     return 2
@@ -1950,6 +2204,11 @@ def cmd_project(args: argparse.Namespace) -> int:
                     print(f"project enroll: {e}", file=sys.stderr)
                     return 2
                 current = enrolled_domain(ro, ctx.project_id) if ro else None
+                from control_plane import domain_lifecycle as _dlife
+                dest_life = _dlife(ro, d) if ro is not None else "active"
+                if dest_life in ("deleting", "deleted"):
+                    print(f"project enroll: domain {d} is {dest_life}", file=sys.stderr)
+                    return 2
                 if current and current != d:
                     print(f"project enroll: already enrolled in {current}; "
                           f"use `cm project move-domain --to {d}`", file=sys.stderr)
@@ -1994,6 +2253,12 @@ def cmd_project(args: argparse.Namespace) -> int:
                     print(f"project move-domain: {e}", file=sys.stderr)
                     return 2
                 current = enrolled_domain(ro, ctx.project_id) if ro else None
+                from control_plane import domain_lifecycle as _dlife_m
+                dest_life = _dlife_m(ro, dest) if ro is not None else "active"
+                if dest_life in ("deleting", "deleted"):
+                    print(f"project move-domain: domain {dest} is {dest_life}",
+                          file=sys.stderr)
+                    return 2
                 if not current:
                     print("project move-domain: not enrolled; use enroll", file=sys.stderr)
                     return 2
@@ -2153,11 +2418,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     ca = sub.add_parser("canonical")
     ca.add_argument("canonical_cmd", choices=["upsert", "catalog", "forget",
-                                              "supersede", "expire", "reactivate"])
+                                              "supersede", "expire", "reactivate",
+                                              "resurrect"])
     ca.add_argument("stem", nargs="?")
     ca.add_argument("--file")
     ca.add_argument("--origin", action="store_true")
     ca.add_argument("--reason")
+    ca.add_argument("--replacement", help="replacement stem or fact_id for supersede")
     ca.add_argument("--project", default=".")
     ca.add_argument("--json", action="store_true")
     ca.add_argument("--crash-after")
@@ -2183,7 +2450,9 @@ def build_parser() -> argparse.ArgumentParser:
     m.add_argument("--confirm", metavar="PHRASE")
 
     da = sub.add_parser("data")
-    da.add_argument("data_cmd", choices=["inventory", "compact", "export", "purge", "retention"])
+    da.add_argument("data_cmd", choices=["inventory", "compact", "export", "purge",
+                                         "purge-status", "purge-resume", "purge-cancel",
+                                         "retention"])
     da.add_argument("show", nargs="?", help="optional 'show' after retention (cm data retention show)")
     da.add_argument("--project", default=".")
     da.add_argument("--json", action="store_true")
@@ -2196,6 +2465,8 @@ def build_parser() -> argparse.ArgumentParser:
                     choices=["managed-mirrors", "project-ops",
                              "domain-canonicals", "all-plugin-data"])
     da.add_argument("--confirm", metavar="PHRASE")
+    da.add_argument("--accept-partial", action="store_true",
+                    help="purge-cancel when canonicals are already gone")
 
     pr = sub.add_parser("project")
     pr.add_argument("project_cmd", choices=["enroll", "show", "unenroll", "move-domain",
