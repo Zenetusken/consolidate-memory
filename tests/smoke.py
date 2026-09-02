@@ -10696,5 +10696,69 @@ with _Env73() as _e_ps:
           _rc_ps == 0 and _ps_j.get("lifecycle") in ("active", "absent")
           and isinstance(_ps_j.get("enrolled_projects"), list))
 
+
+# ── v0.4.0 Phase-5: facts-manifest cache pins (facts_manifest.py) ─────────────────
+with _Env73() as _e_fm:
+    import facts_manifest as _fmx
+    _d_fm = _e_fm.glob
+    for _i in range(3):
+        (_d_fm / f"m{_i}.md").write_text(_v3_canon(f"m{_i}"), encoding="utf-8")
+    _old_gif = sg._global_is_fixture
+    sg._global_is_fixture = lambda: False   # activate the manifest path in-process
+    try:
+        _ctx_fm = sc.resolve_store(_e_fm.proj)
+        _recs = sg._admissible_records(_ctx_fm)
+        _mp = _fmx.manifest_path(_ctx_fm.plugin_data_dir, "personal")
+        check("facts-manifest: first enumeration builds the manifest and serves rows (text None)",
+              len(_recs) == 3 and all(_t is None for _n, _fx, _t, _px in _recs)
+              and _mp.is_file())
+        check("facts-manifest: 0600 + schema_version 1 + row count",
+              _mp.stat().st_mode & 0o777 == 0o600
+              and _json_xp.loads(_mp.read_text(encoding="utf-8")).get("schema_version") == 1)
+        # the no-read sentinel: fresh rows are served with ZERO canonical body reads
+        _orig_srt = sg._safe_read_text
+        def _boom_fm(pth):
+            if "facts" in str(pth):
+                raise AssertionError("canonical body read during fresh-row serve")
+            return _orig_srt(pth)
+        sg._safe_read_text = _boom_fm
+        try:
+            _recs2 = sg._admissible_records(_ctx_fm)
+            check("facts-manifest: fresh rows served with zero canonical body reads",
+                  len(_recs2) == 3)
+        finally:
+            sg._safe_read_text = _orig_srt
+        # a same-size rewrite with restored mtime is DETECTED (ctime bumps) → re-read
+        _t1 = (_d_fm / "m1.md").read_text(encoding="utf-8")
+        _st1 = (_d_fm / "m1.md").stat()
+        (_d_fm / "m1.md").write_text(_t1.replace("description: d",
+                                                 "description: d EDITED"), encoding="utf-8")
+        import os as _os_fm
+        _os_fm.utime(_d_fm / "m1.md", (_st1.st_atime, _st1.st_mtime))
+        _fm2 = {n: f for n, f, _t, _p in sg._admissible_records(_ctx_fm)}
+        check("facts-manifest: a mtime-restoring rewrite is detected (ctime) and re-read",
+              "EDITED" in str(_fm2.get("m1", {}).get("description") or ""))
+        # corrupt manifest → fail-open / self-heal rebuild: the SERVED SET is
+        # identical either way (a corrupt cache can slow you down, never serve
+        # wrong facts).
+        _mp.write_text("{not json", encoding="utf-8")
+        _recs3 = sg._admissible_records(_ctx_fm)
+        check("facts-manifest: corrupt manifest fails open (identical served set)",
+              sorted(n for n, _f, _t, _p in _recs3) == ["m0", "m1", "m2"]
+              and all(str(_f.get("description") or "") for _n, _f, _t, _p in _recs3))
+        # per-domain isolation: a second domain's manifest is separate
+        _wdir = _ctx_fm.config_root / "consolidate-memory" / "domains" / "work" / "facts"
+        _wdir.mkdir(parents=True, exist_ok=True)
+        (_wdir / "w0.md").write_text(_v3_canon("w0", domain="work"), encoding="utf-8")
+        _rows_w, _ = _fmx.ensure(_wdir, _ctx_fm.plugin_data_dir)
+        check("facts-manifest: per-domain isolation (personal rows never serve work stems)",
+              _rows_w is not None and "w0" in _rows_w and "m0" not in _rows_w)
+        # canonical upsert invalidates through the transact choke point
+        _up_fm = ci.upsert(_ctx_fm, "m2", _v3_canon("m2", body="edited body\n"))
+        check("facts-manifest: a canonical upsert unlinks the manifest (transact choke point)",
+              _up_fm.get("ok") is True and not _mp.exists())
+    finally:
+        sg._global_is_fixture = _old_gif
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
