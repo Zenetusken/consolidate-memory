@@ -414,6 +414,7 @@ CREATE TABLE IF NOT EXISTS journal_metadata (
     key TEXT PRIMARY KEY,
     value TEXT
 );
+CREATE INDEX IF NOT EXISTS idx_journal_created_op ON journal(created_at, op_id);
 """
 
 
@@ -528,6 +529,9 @@ def _migrate_journal_schema(conn: sqlite3.Connection) -> None:
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_journal_status_created "
         "ON journal(status, created_at)")
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_journal_created_op "
+        "ON journal(created_at, op_id)")
     conn.commit()
 
 
@@ -1663,13 +1667,34 @@ def journal_row(conn: sqlite3.Connection, op_id: str) -> Optional[dict]:
     return dict(row) if row is not None else None
 
 
-def journal_inventory(conn: sqlite3.Connection) -> list:
-    rows = conn.execute(
-        "SELECT op_id, kind, step, status, created_at, payload FROM journal "
-        "ORDER BY created_at, op_id"
-    ).fetchall()
+def journal_inventory(conn: sqlite3.Connection, *, limit: int = 200,
+                      after: str = "") -> "tuple[list, str | None]":
+    """Keyset-paged journal listing (Phase-5 SLO: bounded at 1M rows).
+
+    The sort key is `(created_at, op_id)` — second-resolution created_at, never
+    updated after write, tie-broken by the immutable PK — so the keyset is
+    stable across pages. `after` is the opaque cursor "<created_at>|<op_id>";
+    returns (rows, next_after) with next_after None on the last page. Row dict
+    shape is unchanged (op_id/kind/step/status/created_at/has_body/
+    publishes/deletes).
+    """
+    limit = max(1, int(limit))
+    after = str(after or "").strip()
+    q = ("SELECT op_id, kind, step, status, created_at, payload FROM journal "
+         "ORDER BY created_at, op_id LIMIT ?")
+    params: list = [limit + 1]   # fetch one extra to detect a next page
+    if after:
+        parts = after.split("|", 1)
+        if len(parts) == 2 and parts[0] and parts[1]:
+            q = ("SELECT op_id, kind, step, status, created_at, payload FROM journal "
+                 "WHERE (created_at, op_id) > (?, ?) "
+                 "ORDER BY created_at, op_id LIMIT ?")
+            params = [parts[0], parts[1], limit + 1]
+    rows = conn.execute(q, params).fetchall()
     out: list = []
-    for r in rows:
+    for i, r in enumerate(rows):
+        if i >= limit:
+            break
         try:
             payload = json.loads(r["payload"] or "{}")
         except (ValueError, TypeError):
@@ -1685,7 +1710,19 @@ def journal_inventory(conn: sqlite3.Connection) -> list:
             "publishes": len(payload.get("publishes") or []),
             "deletes": len(payload.get("deletes") or []),
         })
-    return out
+    # cursor = the LAST RETURNED row's key (the `>` predicate resumes after it —
+    # the extra fetched row is never dropped).
+    next_after: "str | None" = None
+    if len(rows) > limit and out:
+        _last = out[-1]
+        next_after = f"{_last['created_at']}|{_last['op_id']}"
+    return out, next_after
+
+
+def journal_count(conn: sqlite3.Connection) -> int:
+    """Total journal rows (for the inventory footer / --json total)."""
+    cur = conn.execute("SELECT COUNT(*) AS n FROM journal").fetchone()
+    return int(cur["n"] or 0) if cur is not None else 0
 
 
 def journal_show(conn: sqlite3.Connection, op_id: str) -> Optional[dict]:

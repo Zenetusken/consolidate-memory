@@ -9779,7 +9779,7 @@ with _Env73() as _e_jc:
     _cout = cp.compact_journal(_ctx_jc)
     _j_jc2 = cp.connect_journal(_ctx_jc)
     _shown = cp.journal_show(_j_jc2, _oid_jc)
-    _inv = cp.journal_inventory(_j_jc2)
+    _inv, _nxt_jc = cp.journal_inventory(_j_jc2)
     _j_jc2.close()
     _pl_jc = (_shown or {}).get("payload") or {}
     check("0.3.5: journal compact redacts fact bodies from completed rows",
@@ -10759,6 +10759,57 @@ with _Env73() as _e_fm:
               _up_fm.get("ok") is True and not _mp.exists())
     finally:
         sg._global_is_fixture = _old_gif
+
+
+# ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
+with _Env73() as _e_jp:
+    _ctx_jp = sc.resolve_store(_e_jp.proj)
+    _jconn_jp = cp.connect_journal(_ctx_jp)
+    # 300 rows, 5 per second, op ids in insertion order (created_at second-resolution)
+    _ids_jp = []
+    for _i in range(300):
+        _oid_jp = "op_%04d" % _i
+        _ids_jp.append(_oid_jp)
+        _ts_jp = "2026-01-01T00:%02d:%02dZ" % (_i // 5, _i % 5)
+        _jconn_jp.execute(
+            "INSERT INTO journal(op_id, kind, payload, step, status, created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (_oid_jp, "bench", '{"receipt":1}', "complete", "complete", _ts_jp))
+    _jconn_jp.commit()
+    # default page bounded + cursor
+    _page1, _cur1 = cp.journal_inventory(_jconn_jp, limit=200)
+    check("journal paging: default page bounded + next cursor when more remain",
+          len(_page1) == 200 and _cur1 is not None)
+    # --after continuation: full enumeration equals the complete ordered list
+    _page2, _cur2 = cp.journal_inventory(_jconn_jp, limit=200,
+                                            after=str(_cur1 or ""))
+    _all_ids = [r["op_id"] for r in _page1] + [r["op_id"] for r in _page2]
+    check("journal paging: cursor continuation has no dup and no gap (order preserved)",
+          _all_ids == sorted(_all_ids)
+          and len(set(_all_ids)) == len(_all_ids)
+          and len(_page2) == 100 and _cur2 is None)
+    check("journal paging: journal_count matches the full row count",
+          cp.journal_count(_jconn_jp) == 300)
+    _jconn_jp.close()
+    # CLI: --json envelope + bounded default via the real parser
+    _jp_u = _io73.StringIO()
+    with _ctx73.redirect_stdout(_jp_u):
+        _rc_jp = cmo.main(["journal", "inventory", "--project", str(_e_jp.proj),
+                           "--limit", "5", "--json"])
+    _jp_j = _json_xp.loads(_jp_u.getvalue().strip())
+    check("journal paging: CLI --json envelope {ok, rows, next_after, total} + bounded page",
+          _rc_jp == 0 and _jp_j.get("ok") is True
+          and len(_jp_j.get("rows") or []) == 5
+          and isinstance(_jp_j.get("next_after"), str) and bool(_jp_j["next_after"])
+          and _jp_j.get("total") == 300)
+    # CLI plain: the footer names the cursor for the next page
+    _jp2_u = _io73.StringIO()
+    with _ctx73.redirect_stdout(_jp2_u):
+        _rc_jp2 = cmo.main(["journal", "inventory", "--project", str(_e_jp.proj),
+                            "--limit", "5"])
+    check("journal paging: CLI plain footer prints the next-page cursor",
+          _rc_jp2 == 0 and "for the next page" in _jp2_u.getvalue()
+          and _jp_j["next_after"] in _jp2_u.getvalue())
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
