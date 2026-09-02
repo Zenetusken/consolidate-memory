@@ -9818,6 +9818,14 @@ check("dogfood D2: link_targets uses extract_wikilinks (inline/fenced stripped; 
 check("R128-7: every valid stem is a valid link target (periods kept)",
       ci.link_targets("see [[foo.bar]] and [[ok-stem_1]]") == ["foo.bar", "ok-stem_1"]
       and ident.validate_fact_stem("foo.bar") == "foo.bar")
+_dot_bad = 0
+for _dstem in ("x.", ".x", "a..b", "..x"):
+    try:
+        ident.validate_fact_stem(_dstem)
+    except ident.IdentifierRefused:
+        _dot_bad += 1
+check("R128-7b: leading/trailing/consecutive dots are refused (Windows-path hazard)",
+      _dot_bad == 4)
 _local_parens = _li_ptr._pointer("foo", "keep (OPEN: 1.0 HOLD) in the cue", "project-local")
 _glob_parens = sg._pointer_line("foo", {"description": "keep (OPEN: 1.0 HOLD) in the cue",
                                        "scope": "project-local"})

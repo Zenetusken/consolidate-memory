@@ -1009,7 +1009,24 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> None:
         from store_context import resolve_store
         ctx = resolve_store(_P.cwd())
         if ctx.native_memory_dir.resolve() != store.resolve():
-            return
+            # v0.4.0 review (R128 clock liveness): a dream can render from a
+            # different cwd — silently skipping would stall the usage-window
+            # clock and freeze a justification at "suppressed forever". Fall
+            # back to the marker's script-owned project_path instead.
+            marker_p = store / ".consolidation-state.json"
+            alt = None
+            try:
+                st = json.loads(marker_p.read_text(encoding="utf-8"))
+                if isinstance(st, dict) and str(st.get("project_path") or ""):
+                    from store_context import resolve_store as _rs_alt
+                    alt_ctx = _rs_alt(_P(str(st["project_path"])))
+                    if alt_ctx.native_memory_dir.resolve() == store.resolve():
+                        alt = alt_ctx
+            except (OSError, ValueError, TypeError):
+                alt = None
+            if alt is None:
+                return
+            ctx = alt
         raw_usage = record.get("usage")
         usage = raw_usage if isinstance(raw_usage, dict) else {}
         cycle_id = f"{commit}|{ts}"

@@ -13,7 +13,10 @@ from typing import Optional
 
 # Operator-chosen domain names. "unknown" is the unenrolled sentinel, not a grant.
 DOMAIN_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
-FACT_STEM_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+# v0.4.0 review (R128-7): no leading/trailing dots and no consecutive dots —
+# `..x` / `x.` / `a..b` were legal-per-contract yet filesystem-hazardous
+# (trailing dots break Windows paths; `..`-like stems read as traversal).
+FACT_STEM_RE = re.compile(r"^(?!.*\.\.)[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$")
 FACT_STEM_MAX_CHARS = 96
 FACT_STEM_MAX_BYTES = 180
 PROJECT_ID_RE = re.compile(r"^p_[0-9a-f]{32}$")

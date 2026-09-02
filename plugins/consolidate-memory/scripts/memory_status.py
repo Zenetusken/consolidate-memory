@@ -593,6 +593,10 @@ NATIVE_INDEX_CAP_BYTES = 25 * 1024
 NATIVE_INDEX_CAP_LINES = 200
 CLIFF_NEAR_FRACTION = 0.8       # ≥ this share of either native cap → red (silent data loss imminent)
 HOOK_TOKEN_WARN = 60            # est tok per index POINTER line above which the hook is flagged FAT.
+# v0.4.0 review (R128 fat-hook split): the LOCAL and canonical diagnostics are separate
+# diagnostics (distinct messages, distinct call sites) but shared one knob — split it so
+# the two can diverge without re-naming the canonical constant everywhere.
+LOCAL_HOOK_TOKEN_WARN = HOOK_TOKEN_WARN
                                 # Measured (2026-07-04): fleet median ≈48-57 tok/line, the triage's
                                 # lean model 30; the offenders (116/141 tok) were status-content-in-
                                 # the-hook — 2 lines = 17% of the whole budget. Detected here (report

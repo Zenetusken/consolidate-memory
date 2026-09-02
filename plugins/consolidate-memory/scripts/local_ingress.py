@@ -74,13 +74,13 @@ def _pointer(stem: str, description: str, scope: str = "") -> str:
     word-boundary truncate so the WHOLE line is ≤ HOOK_TOKEN_WARN, and attach
     `[project-local]` when the fact is in-contract.
     """
-    from memory_status import HOOK_TOKEN_WARN
+    from memory_status import LOCAL_HOOK_TOKEN_WARN
     desc = (description or "").strip().strip('"')
     desc = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]]", " ", desc).split())
     tag = "project-local" if (scope or "").strip().strip('"') in ("", "project-local") else ""
     suffix = f" [{tag}]" if tag else ""
     prefix = f"- [{stem}]({stem}.md) — "
-    hook = _fit_hook(prefix, desc, suffix, HOOK_TOKEN_WARN)
+    hook = _fit_hook(prefix, desc, suffix, LOCAL_HOOK_TOKEN_WARN)
     return prefix + hook + suffix
 
 

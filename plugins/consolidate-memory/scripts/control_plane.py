@@ -220,22 +220,22 @@ def atomic_write_bytes(path: Path, data: bytes, *, mode: int = 0o600) -> str:
     return digest
 
 
-def update_project_state(ctx: StoreContext, mutator: Callable,
-                         expected_revision: Optional[str] = None) -> dict:
-    """CAS-merge native `.consolidation-state.json` under the project lock.
+def update_project_state(ctx: StoreContext, mutator: Callable) -> dict:
+    """Merge native `.consolidation-state.json` under the project lock.
 
     `mutator(state: dict, snap: FileSnapshot) -> dict`. Missing marker → empty
     object (callers that require an existing marker raise WriteRefused).
-    Returns {status: changed|noop|conflict, revision, state, changed}.
+    Returns {status: changed|noop, revision, state, changed}.
+
+    v0.4.0 review: the hash-CAS `expected_revision` branch was dead (no caller
+    ever passed it) — serialization under the flock is the actual safety, so
+    the dead param is removed rather than left as an untested promise.
     """
     marker = ctx.native_memory_dir / MARKER_FILE
     require_interprocess_lock()
     locks = acquire_mutation_locks(ctx, [ctx.project_id])
     try:
         snap = read_snapshot(marker)
-        if expected_revision is not None and snap.sha256 != expected_revision:
-            return {"status": "conflict", "revision": snap.sha256,
-                    "state": None, "changed": False}
         if snap.exists:
             try:
                 parsed = json.loads((snap.data or b"").decode("utf-8"))
@@ -284,20 +284,29 @@ def record_usage_window(ctx: StoreContext, *, cycle_id: str, started_at: str,
         if row is not None:
             return {"sequence": int(row["sequence"]), "inserted": False,
                     "cycle_id": cid}
-        cur = conn.execute(
-            "SELECT COALESCE(MAX(sequence), 0) AS m FROM project_usage_windows "
-            "WHERE project_id=?",
-            (ctx.project_id,),
-        ).fetchone()
-        seq = int(cur["m"] if cur is not None else 0) + 1
-        conn.execute(
-            "INSERT INTO project_usage_windows("
-            "project_id, cycle_id, sequence, started_at, probative) "
-            "VALUES (?,?,?,?,?)",
-            (ctx.project_id, cid, seq, started, 1 if probative else 0),
-        )
-        conn.commit()
-        return {"sequence": seq, "inserted": True, "cycle_id": cid}
+        # v0.4.0 review (R128 concurrency): SELECT-MAX-then-INSERT raced two
+        # concurrent recorders (both read the same MAX → UNIQUE(project_id,
+        # sequence) violated → the loser's window silently dropped, delaying
+        # refire past five). Retry on contention instead of dropping the window.
+        for _attempt in range(5):
+            cur = conn.execute(
+                "SELECT COALESCE(MAX(sequence), 0) AS m FROM project_usage_windows "
+                "WHERE project_id=?",
+                (ctx.project_id,),
+            ).fetchone()
+            seq = int(cur["m"] if cur is not None else 0) + 1
+            try:
+                conn.execute(
+                    "INSERT INTO project_usage_windows("
+                    "project_id, cycle_id, sequence, started_at, probative) "
+                    "VALUES (?,?,?,?,?)",
+                    (ctx.project_id, cid, seq, started, 1 if probative else 0),
+                )
+                conn.commit()
+                return {"sequence": seq, "inserted": True, "cycle_id": cid}
+            except sqlite3.IntegrityError:
+                conn.rollback()
+        raise WriteRefused("usage-window sequence contention (5 attempts)")
     finally:
         conn.close()
 
