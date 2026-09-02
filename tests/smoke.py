@@ -10504,5 +10504,17 @@ with _Env73() as _e_fn:
           and _fence.get("state") == "complete"
           and not (_pdata / "leftover.txt").exists())
 
+# v0.4.0 review: the purge lifecycle must be CLI-reachable (the acceptance pins
+# above call the Python API directly) — pin data purge-status end-to-end.
+with _Env73() as _e_ps:
+    _ps_u = _io73.StringIO()
+    with _ctx73.redirect_stdout(_ps_u):
+        _rc_ps = cmo.main(["data", "purge-status", "--domain", "personal",
+                           "--json", "--project", str(_e_ps.proj)])
+    _ps_j = _json_xp.loads(_ps_u.getvalue().strip() or "{}")
+    check("P0-3: data purge-status is CLI-reachable and reports the lifecycle",
+          _rc_ps == 0 and _ps_j.get("lifecycle") in ("active", "absent")
+          and isinstance(_ps_j.get("enrolled_projects"), list))
+
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

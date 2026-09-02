@@ -808,8 +808,11 @@ def _replacement_path(ctx: StoreContext, replacement_id: str) -> Optional[Path]:
 def reconcile_inactive_mirrors(ctx: StoreContext) -> dict:
     """Revoke mirrors of tombstoned/superseded/expired/missing-inactive canonicals.
 
-    Supersession installs the replacement mirror first, then drops the old
-    pointer (P1-1).
+    The INDEX pointer swap is atomic (one MEMORY.md rewrite — P1-1's contract:
+    no window where a receiving index lacks the pointer). The FILE swap inside
+    the journaled transact is delete-then-publish (transact applies deletes
+    before dest publishes), so a filesystem-level listing may briefly observe
+    neither mirror file — the index, not the file listing, is the contract.
     """
     from control_plane import (connect_if_exists, db_path, holder_base_revision,
                                stable_fact_id, transact)
@@ -934,6 +937,13 @@ def reconcile_inactive_mirrors(ctx: StoreContext) -> dict:
             canon_p = ctx.canonical_domain_dir / f"{stem}.md"
             prev = _safe_read_text(canon_p) or ""
             if ot is None:
+                # v0.4.0 review: a fileless held stem must still lose its index
+                # pointer — the old skip left a dangling `](stem.md)` line
+                # forever in the crash-recovery edge (mirror deleted, pointer
+                # never reaped).
+                if idx is not None and f"]({stem}.md)" in idx:
+                    idx = "\n".join(ln for ln in idx.splitlines()
+                                    if f"]({stem}.md)" not in ln)
                 acked += 1
                 continue
             if not _is_mirror(ot):

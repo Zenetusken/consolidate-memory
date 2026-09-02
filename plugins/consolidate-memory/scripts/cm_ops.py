@@ -294,7 +294,7 @@ def _fleet_purge_domain(ctx: StoreContext, domain_id: str, facts_dir: Path,
             expected.update(staged["expected_revisions"])
             ops.extend(staged["registry_ops"])
             ops.append({"op": "project_domain_change", "project_id": pid,
-                        "domain_id": "unknown", "status": "active"})
+                        "domain_id": "unknown", "status": "inactive"})
             revoked += int(staged["revoked"])
             native = pctx.native_memory_dir
             doomed = {str(d) for d in staged["deletes"]}
@@ -370,8 +370,7 @@ def _incomplete_purge_fences(ctx: StoreContext) -> list:
     for p in sorted(root.glob("*.json")):
         data = _read_purge_fence(p)
         if data and str(data.get("state") or "") not in ("complete", ""):
-            if str(data.get("state") or "") != "complete":
-                out.append((p, data))
+            out.append((p, data))
     return out
 
 
@@ -533,7 +532,7 @@ def run_all_plugin_data_purge(ctx: StoreContext, *, rows: list,
                     expected.update(staged["expected_revisions"])
                     ops.extend(staged["registry_ops"])
                     ops.append({"op": "project_domain_change", "project_id": pid,
-                                "domain_id": "unknown", "status": "active"})
+                                "domain_id": "unknown", "status": "inactive"})
                 for d in seen_dom:
                     ops.append({"op": "domain_status_set", "domain_id": d,
                                 "status": "deleted"})
@@ -1799,7 +1798,7 @@ def cmd_migrate(args: argparse.Namespace) -> int:
 
 
 def cmd_data(args: argparse.Namespace) -> int:
-    from control_plane import connect, db_path
+    from control_plane import connect, connect_if_exists, db_path
     from retention import (compact_jsonl, CYCLE_CAP, EVENT_RETENTION_DAYS, export_ops,
                            inventory, purge_domain, purge_project,
                            retention_show)
@@ -1950,7 +1949,13 @@ def cmd_data(args: argparse.Namespace) -> int:
         if need:
             print(f"data purge: {need}", file=sys.stderr)
             return 2
-        conn = connect(db_path(ctx))
+        # v0.4.0 review: resuming an all-plugin-data purge after plugin-data was
+        # already deleted must not MINT a fresh control.sqlite (connect() creates
+        # the dir/DB the state machine then re-deletes) — read-only if absent.
+        conn = connect_if_exists(db_path(ctx))
+        if conn is None and scope != "all-plugin-data":
+            print(f"data purge: control.sqlite absent (scope={scope})", file=sys.stderr)
+            return 2
         try:
             if scope == "managed-mirrors":
                 n = _revoke_unadmitted_mirrors(ctx, "unknown")
@@ -1960,6 +1965,8 @@ def cmd_data(args: argparse.Namespace) -> int:
             if scope == "project-ops":
                 pid = args.purge_project or ctx.project_id
                 native: Optional[Path] = ctx.native_memory_dir
+                if conn is None:  # reachable only via the type — scopes that need the DB refuse above
+                    return 2
                 if args.purge_project and args.purge_project != ctx.project_id:
                     row = conn.execute(
                         "SELECT native_memory_dir FROM projects WHERE project_id=?",
@@ -1983,7 +1990,12 @@ def cmd_data(args: argparse.Namespace) -> int:
                 return 0
             if scope == "all-plugin-data":
                 from control_plane import transact as _tx_all
-                rows = _enrolled_rows(conn)
+                if conn is not None:
+                    rows = _enrolled_rows(conn)
+                else:
+                    # plugin-data (and its DB) already deleted by the interrupted
+                    # purge — the remaining stages are fence-driven FS work.
+                    rows = []
                 pids = [str(r["project_id"]) for r in rows]
                 if ctx.project_id not in pids:
                     pids.append(ctx.project_id)
@@ -1993,7 +2005,7 @@ def cmd_data(args: argparse.Namespace) -> int:
                     if did_r and did_r != "unknown" and did_r not in seen_dom:
                         seen_dom.append(did_r)
                 try:
-                    if not _incomplete_purge_fences(ctx) and seen_dom:
+                    if conn is not None and not _incomplete_purge_fences(ctx) and seen_dom:
                         def _mark_all(_c, _t):
                             del _c, _t
                             return {"registry_ops": [
@@ -2012,7 +2024,8 @@ def cmd_data(args: argparse.Namespace) -> int:
             return 2
         finally:
             try:
-                conn.close()
+                if conn is not None:
+                    conn.close()
             except Exception:
                 pass
     return 2
