@@ -3042,6 +3042,12 @@ check("v0.1.66 M1: --allow-net-grow still overrides at the ceiling",
 check("v0.1.66 hook lint: a fat pointer warns naming the CANONICAL's description; a lean one is silent",
       "tighten the CANONICAL" in (sg._fat_hook_warning("- [fat](fat.md) — " + "x" * 300, "fat") or "")
       and sg._fat_hook_warning("- [ok](ok.md) — lean", "ok") is None)
+check("R128-8: local fat-hook names the native fact, not ~/.claude/memory/",
+      "LOCAL" in (sg._fat_hook_warning("- [fat](fat.md) — " + "x" * 300, "fat",
+                                       source_kind="local",
+                                       source_path="native/fat.md") or "")
+      and "~/.claude/memory/" not in (sg._fat_hook_warning("- [fat](fat.md) — " + "x" * 300, "fat",
+                                                           source_kind="local") or ""))
 
 # (4) seeding — over_ceiling is a SIBLING of required; standing-justify NEVER hides it
 with _tfB.TemporaryDirectory() as _tdB:
@@ -3351,13 +3357,15 @@ with _tfB.TemporaryDirectory() as _tdC2:
          "standing_justify": {"facts": 9}},
         ["justified-fact"], wf=16, window_starts=[_e1C] * 16,
         now_iso="2026-09-01T21:23:45.446Z")
-    check("O1: writer stamps windows_full not a caller/zrw integer",
-          _app16["stamped"] == [{"stem": "justified-fact", "windows": 16,
-                                 "at": "2026-09-01T21:23:45.446Z", "until": 21}]
+    check("O1: writer stamps sequence (and mirrors it as windows) not a caller/zrw integer",
+          _app16["stamped"][0]["windows"] == 16
+          and _app16["stamped"][0]["sequence"] == 16
+          and _app16["stamped"][0]["until"] == 21
           and _app16["state"]["stacks"] == ["python"]
           and _app16["state"]["beacon_snooze_until"] == "x"
           and _app16["state"]["standing_justify"] == {"facts": 9}
-          and _app16["state"]["commit"] == "abc")
+          and _app16["state"]["commit"] == "abc"
+          and _app16["state"]["demotion_justify"]["justified-fact"]["sequence"] == 16)
     _noop = ms.apply_demotion_justify(
         _app16["state"], ["justified-fact"], wf=16, window_starts=[_e1C] * 16,
         now_iso="2026-09-01T22:00:00.000Z")
@@ -3377,10 +3385,11 @@ with _tfB.TemporaryDirectory() as _tdC2:
     _re2 = ms.apply_demotion_justify(
         _expired_state, ["justified-fact"], wf=16, window_starts=_starts_after,
         now_iso="2026-09-01T21:23:45.446Z")
-    check("O1: re-stamp after expiry writes a new windows_full / at",
+    check("O1: re-stamp after expiry writes a new sequence / at",
           _re2["stamped"][0]["windows"] == 16
+          and _re2["stamped"][0]["sequence"] == 16
           and _re2["stamped"][0]["at"] == "2026-09-01T21:23:45.446Z"
-          and _re2["state"]["demotion_justify"]["justified-fact"]["windows"] == 16)
+          and _re2["state"]["demotion_justify"]["justified-fact"]["sequence"] == 16)
 
     _at_now = "2026-09-01T21:23:45.446Z"
     _at_ep = ms._parse_ts(_at_now)
@@ -9804,10 +9813,11 @@ with _Env73() as _e_ll:
 
 import local_ingress as _li_ptr
 _sample_wl = "a [[real]] b `[[inline]]` c\n```\n[[fenced]]\n```\n[[tool.mypy.overrides]]"
-check("dogfood D2: link_targets uses extract_wikilinks (inline/fenced stripped; dotted dropped)",
-      ci.link_targets(_sample_wl) == ["real"]
-      and ci.link_targets(_sample_wl)
-      == [m for m in ms.extract_wikilinks(_sample_wl) if "." not in m])
+check("dogfood D2: link_targets uses extract_wikilinks (inline/fenced stripped; dotted stems kept)",
+      ci.link_targets(_sample_wl) == ["real", "tool.mypy.overrides"])
+check("R128-7: every valid stem is a valid link target (periods kept)",
+      ci.link_targets("see [[foo.bar]] and [[ok-stem_1]]") == ["foo.bar", "ok-stem_1"]
+      and ident.validate_fact_stem("foo.bar") == "foo.bar")
 _local_parens = _li_ptr._pointer("foo", "keep (OPEN: 1.0 HOLD) in the cue", "project-local")
 _glob_parens = sg._pointer_line("foo", {"description": "keep (OPEN: 1.0 HOLD) in the cue",
                                        "scope": "project-local"})
@@ -9873,7 +9883,7 @@ with _Env73() as _e_rb:
     _mir_rb = sg._as_mirror(_v3_canon("mir-rb", description="keep (parens) please"),
                             "mir-rb", since="2026-01-01T00:00:00Z", body_hash="abc")
     (_e_rb.store / "mir-rb.md").write_text(_mir_rb, encoding="utf-8")
-    _rb = _li_ptr.local_rebuild_index(_ctx_rb)
+    _rb = _li_ptr.local_rebuild_index(_ctx_rb, apply=True, confirm="rebuild-local-index")
     _idx_rb = (_e_rb.store / "MEMORY.md").read_text(encoding="utf-8")
     _loc_ln = next((ln for ln in _idx_rb.splitlines() if "](local-rb.md)" in ln), "")
     _mir_ln = next((ln for ln in _idx_rb.splitlines() if "](mir-rb.md)" in ln), "")
@@ -9894,7 +9904,8 @@ with _Env73() as _e_jd:
         ' "stacks": ["python"], "beacon_snooze_until": "snooze",'
         ' "standing_justify": {"facts": 4}}\n', encoding="utf-8")
     _stamped = ms.run_justify_demotion(
-        _e_jd.proj, ["cadence-fact"], now_iso="2026-09-01T21:23:45.446Z")
+        _e_jd.proj, ["cadence-fact"], now_iso="2026-09-01T21:23:45.446Z",
+        force=True)
     _mk = _jsonB.loads((_e_jd.store / ".consolidation-state.json").read_text(encoding="utf-8"))
     check("O1 CLI: MERGE preserves stacks/snooze/standing_justify and stamps windows_full",
           _stamped.get("ok") is True
@@ -9958,6 +9969,134 @@ with _tf73.TemporaryDirectory() as _td_legcat:
         encoding="utf-8")
     check("review: catalog omits CLASS_LEGACY even if status=active",
           "legacy.md" not in ci.generate_catalog(_ld))
+
+# ── R128 Phase-1 acceptance ──
+_long_stem = "a" * 97
+_stem_len_ok = False
+try:
+    ident.validate_fact_stem(_long_stem)
+except ident.IdentifierRefused:
+    _stem_len_ok = True
+check("R128-7: stem longer than 96 chars is refused",
+      _stem_len_ok and ident.validate_fact_stem("gh-pr-edit-broken_v2.1") == "gh-pr-edit-broken_v2.1")
+
+with _Env73() as _e_v1:
+    _ctx_v1 = sc.resolve_store(_e_v1.proj)
+    import local_ingress as _li_v1
+    _up_v1 = _li_v1.local_upsert(
+        _ctx_v1, "local-v1",
+        "---\nname: local-v1\ndescription: a v1 fact\n---\nBODY\n")
+    _body_v1 = (_e_v1.store / "local-v1.md").read_text(encoding="utf-8")
+    check("R128-3: local upsert injects LocalFactV1 and forces project-local",
+          _up_v1.get("ok") is True
+          and "local_schema_version: 1" in _body_v1
+          and "scope: project-local" in _body_v1
+          and "status: active" in _body_v1
+          and "sensitivity: internal" in _body_v1
+          and "](local-v1.md)" in (_e_v1.store / "MEMORY.md").read_text(encoding="utf-8")
+          and (_e_v1.store / "MEMORY.md").read_text(encoding="utf-8").count("[project-local]"))
+    _bad_sc = _li_v1.local_upsert(
+        _ctx_v1, "wide-scope",
+        "---\nname: wide-scope\ndescription: d\nscope: user-global\n---\nX\n")
+    check("R128-3: local upsert refuses non-project-local scope",
+          _bad_sc.get("ok") is False and "project-local" in str(_bad_sc.get("error") or ""))
+    _dup_k = _li_v1.local_upsert(
+        _ctx_v1, "dup-key",
+        "---\nname: dup-key\ndescription: d\nscope: project-local\nscope: project-local\n---\nX\n")
+    check("R128-3: duplicate reserved key refused",
+          _dup_k.get("ok") is False and "duplicate" in str(_dup_k.get("error") or ""))
+
+with _Env73() as _e_abs:
+    _ctx_abs = sc.resolve_store(_e_abs.proj)
+    from control_plane import ABSENT as _ABSENT, transact as _tx_abs
+    _ghost = _e_abs.store / "created-during.md"
+    def _mut_abs(conn, temps):
+        del conn
+        temps[str(_ghost)] = "stolen\n"
+        return {"dest_modes": {str(_ghost): "create"},
+                "expected_revisions": {str(_ghost): _ABSENT}}
+    _ghost.write_text("external\n", encoding="utf-8")
+    _refused_abs = False
+    try:
+        _tx_abs(_ctx_abs, "local-upsert", {"stem": "created-during"}, _mut_abs,
+                expected_revisions={str(_ghost): _ABSENT})
+    except sc.WriteRefused:
+        _refused_abs = True
+    check("R128-4: ABSENT dest that appears before publish is refused, not overwritten",
+          _refused_abs and _ghost.read_text(encoding="utf-8") == "external\n")
+
+with _Env73() as _e_ar:
+    _ctx_ar = sc.resolve_store(_e_ar.proj)
+    import local_ingress as _li_ar
+    import index_admission as _ia_ar
+    _ship = ["# Shipped", ""] + [
+        f"- [arch-{i}](arch-{i}.md) — done" for i in range(1000)]
+    (_e_ar.store / "SHIPPED.md").write_text("\n".join(_ship) + "\n", encoding="utf-8")
+    (_e_ar.store / "arch-new.md").write_text(
+        "---\nname: arch-new\ndescription: freshly shipped\n---\nB\n", encoding="utf-8")
+    (_e_ar.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [arch-new](arch-new.md) — freshly shipped [project-local]\n",
+        encoding="utf-8")
+    _adm_ar = _ia_ar.archive_index((_e_ar.store / "SHIPPED.md").read_text(encoding="utf-8"))
+    _adm_mem = _ia_ar.project_index("\n".join(_ship) + "\n")
+    _up_ar = _li_ar.local_archive(_ctx_ar, "arch-new")
+    check("R128-5: 1000 archived pointers do not hit the native MEMORY.md cliff",
+          _adm_ar["admitted"] is True
+          and _adm_mem["admitted"] is False
+          and _up_ar.get("ok") is True
+          and "](arch-new.md)" in (_e_ar.store / "SHIPPED.md").read_text(encoding="utf-8")
+          and "](arch-new.md)" not in (_e_ar.store / "MEMORY.md").read_text(encoding="utf-8"))
+
+with _Env73() as _e_rb2:
+    _ctx_rb2 = sc.resolve_store(_e_rb2.proj)
+    import local_ingress as _li_rb2
+    (_e_rb2.store / "good-rb.md").write_text(
+        "---\nname: good-rb\ndescription: keep me\n---\nG\n", encoding="utf-8")
+    (_e_rb2.store / "bad-rb.md").write_text("not a fact\n", encoding="utf-8")
+    (_e_rb2.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [good-rb](good-rb.md) — keep me\n"
+        "- [bad-rb](bad-rb.md) — was indexed\n", encoding="utf-8")
+    _plan_rb = _li_rb2.local_rebuild_index(_ctx_rb2)
+    _apply_rb = _li_rb2.local_rebuild_index(_ctx_rb2, apply=True,
+                                           confirm="rebuild-local-index")
+    _idx_rb2 = (_e_rb2.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("R128-6: invalid facts fail closed; index unchanged without --skip-invalid",
+          _plan_rb.get("ok") is False
+          and any(r.get("stem") == "bad-rb" for r in _plan_rb.get("invalid") or [])
+          and _apply_rb.get("ok") is False
+          and "](bad-rb.md)" in _idx_rb2
+          and "](good-rb.md)" in _idx_rb2)
+    _skip_rb = _li_rb2.local_rebuild_index(
+        _ctx_rb2, apply=True, skip_invalid=True, confirm="rebuild-local-index")
+    _idx_skip = (_e_rb2.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("R128-6: --skip-invalid enumerates omitted stems and drops only those pointers",
+          _skip_rb.get("ok") is True
+          and "bad-rb" in (_skip_rb.get("omitted") or [])
+          and "](good-rb.md)" in _idx_skip
+          and "](bad-rb.md)" not in _idx_skip)
+
+with _Env73() as _e_clk:
+    _ctx_clk = sc.resolve_store(_e_clk.proj)
+    from control_plane import count_probative_after as _cpa, record_usage_window as _ruw
+    (_e_clk.store / ".consolidation-state.json").write_text(
+        '{"commit": "aa", "timestamp": "2026-01-01T00:00:00Z"}\n', encoding="utf-8")
+    _ruw(_ctx_clk, cycle_id="c|0", started_at="2026-01-01T00:00:00Z", probative=True)
+    _st_hi = ms.run_justify_demotion(_e_clk.proj, ["cadence-fact"], force=True,
+                                     now_iso="2026-01-01T00:00:00Z")
+    seq0 = int((_st_hi.get("stamped") or [{}])[0].get("sequence") or 0)
+    for _i in range(1, 6):
+        _ruw(_ctx_clk, cycle_id=f"c|{_i}",
+             started_at=f"2026-02-0{_i}T00:00:00Z", probative=True)
+    check("R128-1: exactly five later probative windows expire a sequence stamp",
+          _st_hi.get("ok") is True
+          and _cpa(_ctx_clk, seq0) == 5
+          and ms._justify_remaining(
+              seq0, None, 1, [], sequence=seq0, n_after_seq=_cpa(_ctx_clk, seq0)) is None)
+    check("R128-1: four later windows still suppress (compaction-proof clock)",
+          ms._justify_remaining(seq0, None, 1, [], sequence=seq0, n_after_seq=4) is not None)
+    _nogo = ms.run_justify_demotion(_e_clk.proj, ["not-a-candidate"])
+    check("R128-2: default justify-demotion refuses a non-candidate stem",
+          _nogo.get("ok") is False and "not a current demotion candidate" in str(_nogo.get("error") or ""))
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

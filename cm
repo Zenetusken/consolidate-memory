@@ -33,6 +33,7 @@ case "$cmd" in
   repair-mirror) exec python3 "$S/cm_ops.py" repair-mirror "$@" ;;
   canonical) exec python3 "$S/cm_ops.py" canonical "$@" ;;
   local)    exec python3 "$S/cm_ops.py" local "$@" ;;
+  marker)   exec python3 "$S/cm_ops.py" marker "$@" ;;
   justify-demotion) exec python3 "$S/memory_status.py" --justify-demotion "$@" ;;
   migrate)  exec python3 "$S/cm_ops.py" migrate "$@" ;;
   data)     exec python3 "$S/cm_ops.py" data "$@" ;;
@@ -91,8 +92,12 @@ users run the skill — they do not have ./cm on PATH)
   cm canonical upsert STEM [--file PATH] [--origin]
   cm canonical forget|supersede|expire|reactivate STEM
   cm local upsert|update|archive|forget STEM [--file PATH]
-  cm local rebuild-index
-  cm justify-demotion STEM [STEM…]  stamp demotion_justify at current windows_full (MERGE; no-op if still quiet)
+  cm local rebuild-index [--plan|--apply --confirm rebuild-local-index] [--skip-invalid]
+  cm local migrate-schema [--apply --confirm migrate-local-schema]
+  cm marker stamp --commit SHA [--timestamp ISO]
+  cm marker standing-justify --facts N [--index-tokens N]
+  cm marker snooze --until ISO
+  cm justify-demotion STEM [STEM…] [--force]  stamp demotion_justify at the monotonic usage-window sequence (candidate-gated; --force for repair)
   cm migrate [--plan|--assign STEM --domain NAME|--exclude STEM|--apply|--rollback|--finalize|--status]
   cm data inventory|compact|export|purge|retention [--scope SCOPE]
   cm journal inventory|show|retry|rollback|abandon|compact [OP-ID]

@@ -12,19 +12,39 @@ cadence fact (model stamped the displayed `Nw`, not store `windows_full`),
 and `cm local` reused the global 88-char `[]()` sanitizer as the always-loaded
 hook. Public **1.0 stays HOLD**.
 
-### Fixed — demotion counter-justify (O1)
+### Fixed — demotion counter-justify (O1, R128-1, R128-2)
 
-- **`--justify-demotion STEM` script-writes the stamp.** Phase 5 no longer
-  hand-merges a model-chosen integer. The writer records current
-  `windows_full` (not the fact's zero-read count). Re-justifying a still-
-  suppressed stem is a no-op so a daily re-stamp cannot reset the clock.
-- **Dual-read `at`.** A zrw-trap stamp (`windows` + 5 ≤ `windows_full`) still
-  suppresses until 5 probative `window_starts` land after `at`. The live
-  11-vs-16 cadence stamp quiets without migrating the marker. Malformed
-  entries still fail open toward surfacing.
+- **`--justify-demotion STEM` script-writes the stamp** under the project
+  lock (`update_project_state` CAS). Phase 5 no longer hand-merges JSON.
+  The writer records the monotonic SQLite `sequence` (not rolling
+  `windows_full`). Re-justifying a still-suppressed stem is a no-op so a
+  daily re-stamp cannot reset the clock. Default: only current demotion
+  candidates (`--force` is repair).
+- **JSONL compaction cannot prolong a stamp.** `project_usage_windows` is
+  the clock; refire after five later *probative* sequences. Legacy
+  `{windows, at}` still counts window_starts after `at`.
+- **All marker writers share the CAS API:** `cm marker stamp|standing-justify|snooze`,
+  stacks-cache, demotion justify. Concurrent writers preserve both changes.
 - **Phase 0 `justified: stem (re-fires at Nw · K to go)`.** Eligible stems
   and veto tallies are separate lines, so a justified fact is not readable
   as "this eligible row is already justified."
+
+### Fixed — LocalFactV1 and local writer invariants (R128-3–R128-8)
+
+- **LocalFactV1:** `cm local upsert` injects `local_schema_version`,
+  `scope: project-local`, status, sensitivity, timestamps; refuses any other
+  scope and duplicate reserved keys. `cm local migrate-schema` normalizes
+  legacy files.
+- **Plan-time snapshots:** missing dest/index is `ABSENT`; a file created
+  during the operation is refused, not overwritten.
+- **`SHIPPED.md` uses `archive_index`** (10k lines / 1 MiB), not the
+  always-loaded 200-line/25KB cliff.
+- **`rebuild-index` is plan-first and fail-closed.** Invalid/unreadable
+  facts leave MEMORY.md unchanged unless `--skip-invalid` enumerates them.
+- **Dotted stems are link targets** (periods kept; 96-char / 180-byte cap).
+  Code-span stripping remains the TOML defense.
+- **Local fat-hook diagnostics** name the native fact path, not
+  `~/.claude/memory/`.
 
 ### Fixed — local pointer is a recall key (I1, I2)
 

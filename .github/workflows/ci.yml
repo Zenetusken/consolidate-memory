@@ -55,6 +55,17 @@ jobs:
       - name: lifecycle accumulation simulation
         run: python3 tests/simulate_accumulation.py
 
+  concurrency:
+    name: concurrency (linux python 3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: process-level races (Phase 1 subset)
+        run: python3 tests/concurrency.py
+
   typecheck:
     name: typecheck (mypy, dev-only contract check)
     runs-on: ubuntu-latest

@@ -719,13 +719,54 @@ def cmd_canonical(args: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_marker(args: argparse.Namespace) -> int:
+    from memory_status import stamp_project_marker
+    cmd = args.marker_cmd
+    if cmd == "stamp":
+        if not args.commit:
+            print("marker stamp: pass --commit SHA", file=sys.stderr)
+            return 2
+        out = stamp_project_marker(Path(args.project), commit=args.commit,
+                                   timestamp=args.timestamp)
+        print(json.dumps(out) if args.json else out)
+        return 0 if out.get("ok") else 1
+    if cmd == "standing-justify":
+        if args.facts is None:
+            print("marker standing-justify: pass --facts N", file=sys.stderr)
+            return 2
+        sj = {"facts": int(args.facts),
+              "index_tokens": int(args.index_tokens or 0),
+              "at": args.timestamp or ""}
+        if not sj["at"]:
+            from memory_status import _utc_iso_now
+            sj["at"] = _utc_iso_now()
+        out = stamp_project_marker(Path(args.project), standing_justify=sj)
+        print(json.dumps(out) if args.json else out)
+        return 0 if out.get("ok") else 1
+    if cmd == "snooze":
+        if not args.until:
+            print("marker snooze: pass --until ISO", file=sys.stderr)
+            return 2
+        out = stamp_project_marker(Path(args.project), snooze_until=args.until)
+        print(json.dumps(out) if args.json else out)
+        return 0 if out.get("ok") else 1
+    return 2
+
+
 def cmd_local(args: argparse.Namespace) -> int:
-    from local_ingress import (local_archive, local_forget, local_rebuild_index,
-                               local_upsert)
+    from local_ingress import (local_archive, local_forget, local_migrate_schema,
+                               local_rebuild_index, local_upsert)
     ctx = _ctx(args.project)
     cmd = args.local_cmd
     if cmd == "rebuild-index":
-        out = local_rebuild_index(ctx)
+        out = local_rebuild_index(
+            ctx, apply=bool(args.apply), skip_invalid=bool(args.skip_invalid),
+            confirm=str(args.confirm or ""))
+        print(json.dumps(out) if args.json else out)
+        return 0 if out.get("ok") else 1
+    if cmd == "migrate-schema":
+        out = local_migrate_schema(
+            ctx, apply=bool(args.apply), confirm=str(args.confirm or ""))
         print(json.dumps(out) if args.json else out)
         return 0 if out.get("ok") else 1
     if not args.stem:
@@ -2151,13 +2192,27 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--confirm", metavar="PHRASE")
     pr.add_argument("--json", action="store_true")
 
+    mk = sub.add_parser("marker")
+    mk.add_argument("marker_cmd", choices=["stamp", "standing-justify", "snooze"])
+    mk.add_argument("--commit")
+    mk.add_argument("--timestamp")
+    mk.add_argument("--facts", type=int)
+    mk.add_argument("--index-tokens", type=int, dest="index_tokens")
+    mk.add_argument("--until")
+    mk.add_argument("--project", default=".")
+    mk.add_argument("--json", action="store_true")
+
     loc = sub.add_parser("local")
     loc.add_argument("local_cmd", choices=["upsert", "update", "archive",
-                                           "forget", "rebuild-index"])
+                                           "forget", "rebuild-index",
+                                           "migrate-schema"])
     loc.add_argument("stem", nargs="?")
     loc.add_argument("--file")
     loc.add_argument("--project", default=".")
     loc.add_argument("--json", action="store_true")
+    loc.add_argument("--apply", action="store_true")
+    loc.add_argument("--skip-invalid", action="store_true")
+    loc.add_argument("--confirm", metavar="PHRASE")
 
     j = sub.add_parser("journal")
     j.add_argument("journal_cmd", choices=["inventory", "show", "retry",
@@ -2189,6 +2244,8 @@ def main(argv: Optional[list] = None) -> int:
             return cmd_canonical(args)
         if args.cmd == "local":
             return cmd_local(args)
+        if args.cmd == "marker":
+            return cmd_marker(args)
         if args.cmd == "migrate":
             return cmd_migrate(args)
         if args.cmd == "data":

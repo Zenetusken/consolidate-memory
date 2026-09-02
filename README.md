@@ -254,7 +254,7 @@ long `description:` verbatim as a ~190-tok always-loaded hook, and
 `link_targets` uses `extract_wikilinks` so a backticked `[[link]]`
 format-example is not a dangling refusal. **v0.3.7** gives locals their own
 recall-key constructor (keep `()`, word-boundary, scope tag) and
-script-writes `demotion_justify` as current `windows_full`.
+script-writes `demotion_justify` as the monotonic usage-window sequence.
 
 ## Install
 

@@ -1003,6 +1003,38 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> None:
             fh.write(json.dumps(record, ensure_ascii=False) + "\n")
     except OSError as exc:
         print(f"render_dashboard: cannot append to log: {exc}", file=sys.stderr)
+        return
+    try:
+        from control_plane import record_usage_window
+        from store_context import resolve_store
+        ctx = resolve_store(_P.cwd())
+        if ctx.native_memory_dir.resolve() != store.resolve():
+            return
+        raw_usage = record.get("usage")
+        usage = raw_usage if isinstance(raw_usage, dict) else {}
+        cycle_id = f"{commit}|{ts}"
+        window = str(usage.get("window") or "")
+        started = window.split("..", 1)[0].strip() or ts
+        pf_raw = usage.get("per_fact")
+        pf = pf_raw if isinstance(pf_raw, list) else []
+        transcripts = 0
+        facts_read = 0
+        try:
+            transcripts = int(usage.get("transcripts") or 0)
+        except (TypeError, ValueError):
+            transcripts = 0
+        try:
+            facts_read = int(usage.get("facts_read") or 0)
+        except (TypeError, ValueError):
+            facts_read = 0
+        from memory_status import _parse_ts
+        probative = (transcripts >= 1 and facts_read == len(pf)
+                     and _parse_ts(started) is not None)
+        record_usage_window(ctx, cycle_id=cycle_id, started_at=started,
+                            probative=probative)
+    except Exception as exc:
+        print(f"render_dashboard: usage-window clock skipped ({exc.__class__.__name__})",
+              file=sys.stderr)
 
 
 def main() -> int:

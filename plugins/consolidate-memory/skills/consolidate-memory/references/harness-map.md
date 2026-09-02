@@ -516,7 +516,8 @@ Markdown `projects:` is leftover-only. `sync_global.py`:
   eligible iff a fact has ≥ `_DEMOTION_MIN_WINDOWS` (3) per-fact zero-read probative windows AND is
   indexed, non-mirror, 0-reads-ever, non-KEEP-description, never-missed, and not counter-justified
   (`demotion_justify` in the state file, script-written by `--justify-demotion` as
-  current `windows_full`; a zrw-trap stamp still quiets via `at` + 5 window_starts;
+  the monotonic usage-window `sequence`; a legacy `{windows, at}` stamp still quiets
+  via `at` + 5 window_starts; compaction cannot prolong it. Default candidate-gated.
   re-fires at +`_DEMOTION_JUSTIFY_REFIRE` windows). Ranked by hook cost, capped at `_DEMOTION_BOTTOM_K`; seeded
   as the record's `demotion` block; DORMANT on every real node today. Dispositions
   (demote-to-archive / compress / merge-to-stub / counter-justify) are report-then-apply `entries[]`

@@ -1645,54 +1645,86 @@ def usage_history(auto_mem: Path) -> dict:
             "per_fact": per_fact, "miss_stems": sorted(misses), "mention_stems": sorted(mention_stems)}
 
 
-def _justify_entry(v: object) -> "tuple[int | None, str | None]":
-    """Normalize a demotion_justify value → (windows, at). Ints (test fixtures / legacy) have no `at`.
-    Bool is not an int. Malformed → (None, None) — fail open toward surfacing."""
+def _justify_entry(v: object) -> "tuple[int | None, int | None, str | None]":
+    """Normalize a demotion_justify value → (sequence, windows, at).
+
+    New stamps carry `sequence` (monotonic SQLite clock). Legacy ints / `{windows, at}`
+    remain readable. Bool is not an int. Malformed → (None, None, None) — fail open.
+    """
     if isinstance(v, int) and not isinstance(v, bool):
-        return v, None
+        return None, v, None
     if isinstance(v, dict):
+        seq = v.get("sequence")
+        seq_i = seq if isinstance(seq, int) and not isinstance(seq, bool) else None
         w = v.get("windows")
-        if isinstance(w, int) and not isinstance(w, bool):
-            at = v.get("at")
-            return w, (at if isinstance(at, str) and at else None)
-    return None, None
+        w_i = w if isinstance(w, int) and not isinstance(w, bool) else None
+        at = v.get("at")
+        at_s = at if isinstance(at, str) and at else None
+        if seq_i is None and w_i is None:
+            return None, None, None
+        return seq_i, w_i, at_s
+    return None, None, None
 
 
 def _justify_remaining(jw: "int | None", at: "str | None", wf: int,
-                       window_starts: list) -> "tuple[int, int] | None":
-    """If the stamp currently suppresses, (refire_at_windows, remaining_windows); else None.
+                       window_starts: list, *,
+                       sequence: "int | None" = None,
+                       n_after_seq: "int | None" = None) -> "tuple[int, int] | None":
+    """If the stamp currently suppresses, (refire_at, remaining); else None.
 
-    Primary (documented): jw + REFIRE > wf — works when the stamp is store windows_full.
-    Dual-read (zrw trap): integer leg would not suppress, but `at` is parseable → count
-    probative window_starts with epoch > at; suppress while that count < REFIRE. Malformed
-    / missing `at` fails open (does not suppress)."""
+    Production clock (sequence + n_after_seq): suppress while fewer than REFIRE
+    later *probative* sequences have committed. JSONL `windows_full` is never
+    consulted — compaction cannot prolong a stamp.
+
+    Legacy `{windows, at}` (no sequence): count window_starts with epoch > at.
+
+    Legacy integer / windows-only, and only when no sqlite clock was supplied
+    (`n_after_seq is None`): the original jw+REFIRE>wf test, so unit tests
+    without a registry still work. When a clock IS supplied, windows-only
+    without `at` fails open (a compacted tail must not suppress forever).
+    """
+    if sequence is not None and n_after_seq is not None:
+        if n_after_seq < _DEMOTION_JUSTIFY_REFIRE:
+            remaining = _DEMOTION_JUSTIFY_REFIRE - n_after_seq
+            return sequence + _DEMOTION_JUSTIFY_REFIRE, remaining
+        return None
+    if at:
+        dt = _parse_ts(at)
+        if dt is not None:
+            at_ep = dt.timestamp()
+            n_after = sum(1 for s in window_starts
+                          if isinstance(s, (int, float)) and s > at_ep)
+            if n_after < _DEMOTION_JUSTIFY_REFIRE:
+                remaining = _DEMOTION_JUSTIFY_REFIRE - n_after
+                return wf + remaining, remaining
+            return None
+        if sequence is not None:
+            return None
     if jw is None:
+        return None
+    if n_after_seq is not None:
         return None
     if jw + _DEMOTION_JUSTIFY_REFIRE > wf:
         remaining = jw + _DEMOTION_JUSTIFY_REFIRE - wf
         return jw + _DEMOTION_JUSTIFY_REFIRE, remaining
-    if not at:
-        return None
-    dt = _parse_ts(at)
-    if dt is None:
-        return None
-    at_ep = dt.timestamp()
-    n_after = sum(1 for s in window_starts if isinstance(s, (int, float)) and s > at_ep)
-    if n_after < _DEMOTION_JUSTIFY_REFIRE:
-        remaining = _DEMOTION_JUSTIFY_REFIRE - n_after
-        return wf + remaining, remaining
     return None
 
 
 def _justify_suppresses(jw: "int | None", at: "str | None", wf: int,
-                        window_starts: list) -> bool:
-    return _justify_remaining(jw, at, wf, window_starts) is not None
+                        window_starts: list, *,
+                        sequence: "int | None" = None,
+                        n_after_seq: "int | None" = None) -> bool:
+    return _justify_remaining(jw, at, wf, window_starts, sequence=sequence,
+                              n_after_seq=n_after_seq) is not None
 
 
 def apply_demotion_justify(state: dict, stems: list, *, wf: int,
-                           window_starts: list, now_iso: str) -> dict:
+                           window_starts: list, now_iso: str,
+                           seq: "int | None" = None,
+                           n_after_fn: "object | None" = None) -> dict:
     """MERGE demotion_justify stamps. The caller NEVER supplies a windows integer — this
-    writes current `windows_full`. Re-justifying a still-suppressed stem is a no-op
+    writes the monotonic usage-window `sequence` (falling back to `windows_full` only
+    for display of legacy stamps). Re-justifying a still-suppressed stem is a no-op
     (daily re-stamp must not reset the clock). Returns {state, stamped, skipped}."""
     out_state = dict(state)
     raw_dj = state.get("demotion_justify")
@@ -1702,17 +1734,25 @@ def apply_demotion_justify(state: dict, stems: list, *, wf: int,
         dj = {}
     stamped: list = []
     skipped: list = []
+    clock_seq = wf if seq is None else int(seq)
     for stem in stems:
         if not isinstance(stem, str) or not stem:
             skipped.append({"stem": stem, "reason": "empty"})
             continue
-        jw, at = _justify_entry(dj.get(stem))
-        if _justify_suppresses(jw, at, wf, window_starts):
+        jseq, jw, at = _justify_entry(dj.get(stem))
+        n_after: "int | None" = None
+        if jseq is not None and callable(n_after_fn):
+            n_after = int(n_after_fn(jseq))
+        elif seq is not None and jseq is not None:
+            n_after = 0
+        if _justify_suppresses(jw, at, wf, window_starts, sequence=jseq,
+                               n_after_seq=n_after):
             skipped.append({"stem": stem, "reason": "already-justified"})
             continue
-        dj[stem] = {"windows": wf, "at": now_iso}
-        stamped.append({"stem": stem, "windows": wf, "at": now_iso,
-                        "until": wf + _DEMOTION_JUSTIFY_REFIRE})
+        entry: dict = {"sequence": clock_seq, "windows": clock_seq, "at": now_iso}
+        dj[stem] = entry
+        stamped.append({"stem": stem, "sequence": clock_seq, "windows": clock_seq,
+                        "at": now_iso, "until": clock_seq + _DEMOTION_JUSTIFY_REFIRE})
     out_state["demotion_justify"] = dj
     return {"state": out_state, "stamped": stamped, "skipped": skipped}
 
@@ -1722,49 +1762,122 @@ def _utc_iso_now() -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S") + f".{dt.microsecond // 1000:03d}Z"
 
 
+def stamp_project_marker(project_dir: Path, *, commit: "str | None" = None,
+                         timestamp: "str | None" = None,
+                         standing_justify: "dict | None" = None,
+                         snooze_until: "str | None" = None) -> dict:
+    """Locked CAS merge of dream-marker keys. Does not mint a missing marker unless commit is set."""
+    from control_plane import update_project_state
+    from store_context import WriteRefused, resolve_store
+    ctx = resolve_store(project_dir)
+    iso = timestamp or _utc_iso_now()
+
+    def mutator(state: dict, snap: object) -> dict:
+        if not getattr(snap, "exists", False) and not commit:
+            raise WriteRefused("no .consolidation-state.json — run a dream's marker write first")
+        out = dict(state)
+        if commit is not None:
+            out["commit"] = str(commit)
+            out["timestamp"] = iso
+        if standing_justify is not None:
+            out["standing_justify"] = standing_justify
+        if snooze_until is not None:
+            out["beacon_snooze_until"] = str(snooze_until)
+        return out
+
+    try:
+        result = update_project_state(ctx, mutator)
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e)}
+    return {"ok": True, "error": "", **result}
+
+
 def run_justify_demotion(project_dir: Path, stems: list, *,
-                         now_iso: "str | None" = None) -> dict:
-    """CLI core: MERGE demotion_justify into the native marker. Does not mint a marker.
-    Returns {ok, error, stamped, skipped, windows_full} — ok False means do not write."""
+                         now_iso: "str | None" = None,
+                         force: bool = False) -> dict:
+    """CLI core: MERGE demotion_justify into the native marker via the locked CAS writer.
+    Does not mint a marker. Default: only current demotion candidates (or already-quiet
+    stems, which no-op). `--force` is administrative repair."""
+    from control_plane import (count_probative_after, update_project_state,
+                               usage_window_clock)
     from identifiers import IdentifierRefused, validate_fact_stem
-    from store_context import resolve_store
+    from store_context import WriteRefused, resolve_store
     if not stems:
         return {"ok": False, "error": "pass one or more STEM arguments",
-                "stamped": [], "skipped": [], "windows_full": 0}
+                "stamped": [], "skipped": [], "windows_full": 0, "sequence": 0}
     valid: list = []
     for s in stems:
         try:
             valid.append(validate_fact_stem(str(s)))
         except IdentifierRefused as e:
             return {"ok": False, "error": str(e), "stamped": [], "skipped": [],
-                    "windows_full": 0}
+                    "windows_full": 0, "sequence": 0}
     ctx = resolve_store(project_dir)
     marker = ctx.native_memory_dir / STATE_FILE
     if not marker.is_file():
         return {"ok": False,
                 "error": "no .consolidation-state.json — run a dream's marker write first",
-                "stamped": [], "skipped": [], "windows_full": 0}
-    try:
-        raw = json.loads(marker.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError, TypeError, ValueError):
-        return {"ok": False, "error": "unreadable marker", "stamped": [], "skipped": [],
-                "windows_full": 0}
-    if not isinstance(raw, dict):
-        return {"ok": False, "error": "marker is not an object", "stamped": [],
-                "skipped": [], "windows_full": 0}
+                "stamped": [], "skipped": [], "windows_full": 0, "sequence": 0}
     hist = usage_history(ctx.native_memory_dir)
     wf = _pi_int(hist.get("windows_full"))
-    starts = [s for s in (hist.get("window_starts") or []) if isinstance(s, (int, float))]
+    clock = usage_window_clock(ctx)
+    seq = int(clock.get("sequence") or 0)
+    starts = list(clock.get("starts") or [])
+    if not starts:
+        starts = [s for s in (hist.get("window_starts") or []) if isinstance(s, (int, float))]
     iso = now_iso or _utc_iso_now()
-    result = apply_demotion_justify(raw, valid, wf=wf, window_starts=starts, now_iso=iso)
-    from sync_global import _atomic_write_text
+    if not force:
+        try:
+            raw_pre = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            return {"ok": False, "error": "unreadable marker", "stamped": [],
+                    "skipped": [], "windows_full": wf, "sequence": seq}
+        if not isinstance(raw_pre, dict):
+            return {"ok": False, "error": "marker is not an object", "stamped": [],
+                    "skipped": [], "windows_full": wf, "sequence": seq}
+        facts = sorted(p for p in ctx.native_memory_dir.glob("*.md")
+                       if p.name not in ("MEMORY.md", "SHIPPED.md"))
+        idx_text = ""
+        idxp = ctx.native_memory_dir / "MEMORY.md"
+        if idxp.is_file():
+            try:
+                idx_text = idxp.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                idx_text = ""
+        idx_names = {p.stem for p in facts}
+        demo = demotion_candidates(
+            facts, idx_names, hist, idx_text,
+            justify=_demotion_justify(raw_pre.get("demotion_justify")))
+        allowed = {c["stem"] for c in demo.get("candidates") or [] if isinstance(c, dict)}
+        quiet = {j["stem"] for j in demo.get("justified_live") or [] if isinstance(j, dict)}
+        refused = [s for s in valid if s not in allowed and s not in quiet]
+        if refused:
+            return {"ok": False,
+                    "error": ("not a current demotion candidate: "
+                              + ", ".join(refused) + " (pass --force)"),
+                    "stamped": [], "skipped": [], "windows_full": wf, "sequence": seq}
+    box: dict = {"stamped": [], "skipped": []}
+
+    def mutator(state: dict, snap: object) -> dict:
+        if not getattr(snap, "exists", False):
+            raise WriteRefused("no .consolidation-state.json — run a dream's marker write first")
+        result = apply_demotion_justify(
+            state, valid, wf=wf, window_starts=starts, now_iso=iso, seq=seq,
+            n_after_fn=lambda s: count_probative_after(ctx, int(s)))
+        box["stamped"] = result["stamped"]
+        box["skipped"] = result["skipped"]
+        return result["state"]
+
     try:
-        _atomic_write_text(marker, json.dumps(result["state"], indent=2) + "\n")
+        update_project_state(ctx, mutator)
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e), "stamped": [], "skipped": [],
+                "windows_full": wf, "sequence": seq}
     except OSError as e:
         return {"ok": False, "error": f"marker write failed ({e.__class__.__name__})",
-                "stamped": [], "skipped": [], "windows_full": wf}
-    return {"ok": True, "error": "", "stamped": result["stamped"],
-            "skipped": result["skipped"], "windows_full": wf}
+                "stamped": [], "skipped": [], "windows_full": wf, "sequence": seq}
+    return {"ok": True, "error": "", "stamped": box["stamped"],
+            "skipped": box["skipped"], "windows_full": wf, "sequence": seq}
 
 
 def _demotion_justify(dj: object) -> dict:
@@ -1779,9 +1892,12 @@ def _demotion_justify(dj: object) -> dict:
         for k, v in dj.items():
             if not isinstance(k, str):
                 continue
-            jw, at = _justify_entry(v)
-            if jw is not None:
-                out[k] = {"windows": jw, "at": at}
+            jseq, jw, at = _justify_entry(v)
+            if jseq is not None or jw is not None:
+                rec: dict = {"windows": jw, "at": at}
+                if jseq is not None:
+                    rec["sequence"] = jseq
+                out[k] = rec
     return out
 
 
@@ -1847,8 +1963,16 @@ def demotion_candidates(fact_files: list, index_names: set, hist: Mapping[str, A
         if stem in miss_stems:
             out["vetoed_missed"] += 1                    # proved live from the archive once — scarred
             continue
-        jw, jat = _justify_entry(justify.get(stem))
-        live = _justify_remaining(jw, jat, wf, starts)
+        jseq, jw, jat = _justify_entry(justify.get(stem))
+        n_after = None
+        if jseq is not None and isinstance(hist.get("n_after_seq"), dict):
+            raw_n = hist["n_after_seq"].get(stem)
+            if isinstance(raw_n, int) and not isinstance(raw_n, bool):
+                n_after = raw_n
+        elif jseq is not None and isinstance(hist.get("probative_after"), int):
+            n_after = int(hist["probative_after"])
+        live = _justify_remaining(jw, jat, wf, starts, sequence=jseq,
+                                  n_after_seq=n_after)
         if live is not None:
             out["vetoed_justified"] += 1                 # counter-justified; re-fires on +REFIRE windows
             refire_at, remaining = live
@@ -2507,6 +2631,22 @@ def build_context(project_dir: Path) -> dict:
     # empty candidates) until probative windows accrue — see the §Phase C evidence gate.
     usage_hist = usage_history(auto_mem) if auto_mem.exists() else {
         "windows_full": 0, "window_starts": [], "per_fact": {}, "miss_stems": [], "mention_stems": []}
+    try:
+        from control_plane import count_probative_after, usage_window_clock
+        _clock = usage_window_clock(_ctx)
+        usage_hist = dict(usage_hist)
+        usage_hist["sequence"] = int(_clock.get("sequence") or 0)
+        if _clock.get("rows"):
+            usage_hist["windows_full"] = int(_clock.get("probative") or 0)
+            if _clock.get("starts"):
+                usage_hist["window_starts"] = list(_clock["starts"])
+        _n_map: dict = {}
+        for _stem, _rec in _demotion_justify(demotion_justify).items():
+            if isinstance(_rec, dict) and isinstance(_rec.get("sequence"), int):
+                _n_map[_stem] = count_probative_after(_ctx, int(_rec["sequence"]))
+        usage_hist["n_after_seq"] = _n_map
+    except Exception:
+        pass
     demotion = demotion_candidates(fact_files, index_names, usage_hist, _index_text,
                                    justify=_demotion_justify(demotion_justify))
 
@@ -3438,15 +3578,57 @@ def main() -> int:
     as_json = "--json" in argv
     _argpaths = {audit_before, diffs_cycle, diffs_before, audit_into} - {""}   # v0.1.53: --into value is NOT the positional project_dir
     _argpaths.update(justify_stems)
+    for _flag in ("--stamp-marker", "--standing-justify-facts",
+                  "--standing-justify-tokens", "--snooze-until"):
+        if _flag in argv:
+            _fi = argv.index(_flag)
+            if _fi + 1 < len(argv) and not argv[_fi + 1].startswith("-"):
+                _argpaths.add(argv[_fi + 1])
     pos = [a for a in argv if not a.startswith("-") and a not in _argpaths]   # positional = the project dir
     project_dir = Path(pos[0]) if pos else Path.cwd()
     if "--justify-demotion" in argv:
-        out = run_justify_demotion(project_dir, justify_stems)
+        out = run_justify_demotion(project_dir, justify_stems, force="--force" in argv)
         if not out.get("ok"):
             print("justify-demotion: " + str(out.get("error") or "failed"), file=sys.stderr)
             return 2
         print(json.dumps({"ok": True, "windows_full": out.get("windows_full"),
+                          "sequence": out.get("sequence"),
                           "stamped": out.get("stamped"), "skipped": out.get("skipped")}))
+        return 0
+    if "--stamp-marker" in argv:
+        commit = ""
+        _si = argv.index("--stamp-marker")
+        if _si + 1 < len(argv) and not argv[_si + 1].startswith("-"):
+            commit = argv[_si + 1]
+        if not commit:
+            print("stamp-marker: pass --stamp-marker COMMIT", file=sys.stderr)
+            return 2
+        sj = None
+        if "--standing-justify-facts" in argv:
+            try:
+                _fi = argv.index("--standing-justify-facts")
+                facts_n = int(argv[_fi + 1])
+                tok_n = 0
+                if "--standing-justify-tokens" in argv:
+                    _ti = argv.index("--standing-justify-tokens")
+                    tok_n = int(argv[_ti + 1])
+                sj = {"facts": facts_n, "index_tokens": tok_n, "at": _utc_iso_now()}
+            except (IndexError, ValueError):
+                print("stamp-marker: --standing-justify-facts N [--standing-justify-tokens N]",
+                      file=sys.stderr)
+                return 2
+        snooze = None
+        if "--snooze-until" in argv:
+            _zi = argv.index("--snooze-until")
+            if _zi + 1 < len(argv) and not argv[_zi + 1].startswith("-"):
+                snooze = argv[_zi + 1]
+        out = stamp_project_marker(project_dir, commit=commit, standing_justify=sj,
+                                   snooze_until=snooze)
+        if not out.get("ok"):
+            print("stamp-marker: " + str(out.get("error") or "failed"), file=sys.stderr)
+            return 2
+        print(json.dumps({"ok": True, "revision": out.get("revision"),
+                          "status": out.get("status")}))
         return 0
     ctx = build_context(project_dir)
     if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)

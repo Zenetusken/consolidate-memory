@@ -743,14 +743,18 @@ placing each fact in its tier and optimizing it for how that tier loads:
   **`reason`** capture the **deciding gate + the concrete other project named for G2.3**
   (the promotion cascade — Phase 2), so the scope decision is auditable.
 - **Project-local facts** — one writer: `cm local upsert` / `update` / `archive` /
-  `forget` / `rebuild-index`. Same codec, secret check, exact native 200-line/25KB
-  admission, and journaled fact+pointer as the canonical writer. Pointers use the
-  local recall-key constructor (not a verbatim `description:` copy, and not the
-  global `_pointer_line` 88-char `[]()` sanitizer). Link checks use
+  `forget` / `rebuild-index`. **LocalFactV1** (not the canonical v3 codec): the
+  writer injects `local_schema_version: 1`, `scope: project-local`, `status`,
+  `sensitivity`, and timestamps; any other scope is refused. Secret check, exact
+  native 200-line/25KB admission on MEMORY.md (SHIPPED.md uses a separate archive
+  cap), and journaled fact+pointer. Pointers use the local recall-key constructor
+  (not a verbatim `description:` copy, and not the global `_pointer_line` 88-char
+  `[]()` sanitizer) and always tag `[project-local]`. Link checks use
   `extract_wikilinks` — a backticked `[[link]]` format-example is not dangling
-  (same strip as `dangling_links`); a bare placeholder `[[link]]` is refused with
-  a backticks hint. Do **not** hand-edit a fact file and its `MEMORY.md` pointer
-  as two untracked steps.
+  (same strip as `dangling_links`); a real `[[foo.bar]]` is a link to stem
+  `foo.bar`. Do **not** hand-edit a fact file and its `MEMORY.md` pointer
+  as two untracked steps. Rebuild is plan-first:
+  `cm local rebuild-index` then `--apply --confirm rebuild-local-index`.
   ```bash
   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py local upsert STEM --file PATH --project .
   ```
@@ -937,34 +941,39 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    and proposed nothing" must be distinguishable from "never ran").
    Finally set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
    so the always-loaded gauge and ⚠ reflect the post-write state (AFTER any dispositions above).
-5. **Update the high-water mark**: MERGE `commit` (current `HEAD`) + ISO
+5. **Update the high-water mark**: script-write `commit` (current `HEAD`) + ISO
    `timestamp` into the native store's `.consolidation-state.json` (the
    `native_memory_dir` Phase 0 / `cm doctor` printed — never hand-build a
-   `projects/<slug>/memory` path). Stamp the timestamp at write time, and mirror
-   that `timestamp` into the cycle record's `marker.timestamp`. **MERGE into the existing
-   JSON — never rewrite it wholesale** (v0.1.81): the file also carries SCRIPT-OWNED keys —
+   `projects/<slug>/memory` path). **Do not hand-MERGE the JSON** — concurrent
+   stacks-cache / snooze / justify writers share one locked CAS API:
+   ```bash
+   CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --stamp-marker <HEAD> \
+       [--standing-justify-facts N --standing-justify-tokens N] [--snooze-until <iso>]
+   ```
+   Stamp the timestamp at write time, and mirror that `timestamp` into the cycle
+   record's `marker.timestamp`. The file also carries SCRIPT-OWNED keys —
    `stacks`/`project_path` (the `--pull`-written cache the SessionStart beacon and `--staleness`
    read; recomputing stacks costs ~2s on a big repo, which is why it is cached) and
    `beacon_snooze_until` (set ONLY on an explicit user ask to quiet the beacon for this store;
    MUST be ISO-8601 — a non-ISO value fails OPEN, i.e. the beacon resumes, deliberately: a
-   garbled suppressor must never silently defeat the absorption signal) — a wholesale rewrite
-   would wipe them until the next pull. **If the over-budget gate
-   was JUSTIFIED this pass** (lever `justify` or prune-then-justify, step 0), ALSO write
-   `standing_justify: {"facts": <current fact-count>, "index_tokens": <current>, "at": "<iso>"}`
-   to the marker — the next pass SUPPRESSES the gate until the store grows by Δ (D6/D7, v0.1.21).
+   garbled suppressor must never silently defeat the absorption signal). **If the over-budget gate
+   was JUSTIFIED this pass** (lever `justify` or prune-then-justify, step 0), pass
+   `--standing-justify-facts` / `--standing-justify-tokens` so the next pass SUPPRESSES the
+   gate until the store grows by Δ (D6/D7, v0.1.21).
    **If any demotion candidate was COUNTER-JUSTIFIED this pass** (step 4's triage, v0.1.67), run
    the scripted stamp — do **not** hand-merge a windows integer (the model stamping the
-   displayed `Nw` is the O1 loop: that number is per-fact zero-read windows, and
-   `Nw + 5 > windows_full` never accumulates):
+   displayed `Nw` is the O1 loop: that number is per-fact zero-read windows, and a
+   compacted `windows_full` can suppress forever):
    ```bash
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --justify-demotion <stem> [<stem>…]
    ```
-   It MERGES `demotion_justify: {"<stem>": {"windows": <current windows_full>, "at": "<iso>"}}`
-   into `.consolidation-state.json` (preserves `commit`/`timestamp`/`stacks`/`beacon_snooze_until`
-   /`standing_justify`). Re-justifying a still-suppressed stem is a no-op. The candidate stays
-   quiet until the store accrues 5 more probative usage windows (a zrw-trap stamp with a
-   parseable `at` still counts windows after that timestamp; a malformed entry does NOT
-   suppress — candidates fail open toward re-surfacing).
+   It stamps `demotion_justify: {"<stem>": {"sequence": <monotonic usage-window seq>, "at": "<iso>"}}`
+   under the project lock (preserves `commit`/`timestamp`/`stacks`/`beacon_snooze_until`
+   /`standing_justify`). Default: only current demotion candidates (`--force` is repair).
+   Re-justifying a still-suppressed stem is a no-op. The candidate stays quiet until
+   **five later probative sequences** have committed. A legacy `{windows, at}` stamp
+   still counts windows after `at`; a malformed entry does NOT suppress — candidates
+   fail open toward re-surfacing.
    Then **emit the deterministic mutation audit** (v0.1.22) — diff the post-write state against the Phase-0
    `--snapshot`:
    ```bash

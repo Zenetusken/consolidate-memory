@@ -136,11 +136,19 @@ def link_targets(text: str) -> list:
 
     Uses `extract_wikilinks` (the single `[[...]]` extractor: fenced then inline
     code spans stripped first). A format-example `[[link]]` inside backticks is
-    not a link — the v0.3.5 dogfood `cm local upsert` refusal. The `.` filter
-    still drops dotted leftovers (TOML table names that escaped the strip).
+    not a link — the v0.3.5 dogfood `cm local upsert` refusal. Dotted stems
+    (`foo.bar`) are valid link targets; TOML `[[tool.mypy.overrides]]` is
+    ignored only when it sits in a code span.
     """
+    from identifiers import IdentifierRefused, validate_fact_stem
     from memory_status import extract_wikilinks
-    return [m for m in extract_wikilinks(text) if "." not in m]
+    out: list = []
+    for m in extract_wikilinks(text):
+        try:
+            out.append(validate_fact_stem(m))
+        except IdentifierRefused:
+            continue
+    return out
 
 
 def link_allowed(src_scope: str, dst_scope: str, *, dst_exists_global: bool = False,
