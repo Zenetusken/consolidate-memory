@@ -1071,7 +1071,9 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                             "domain": dest_dom, "status": "",
                         })
                     else:
-                        live = dest.read_text(encoding="utf-8", errors="replace")
+                        from control_plane import read_snapshot as _rs_ke
+                        _snap_ke = _rs_ke(dest)
+                        live = (_snap_ke.data or b"").decode("utf-8", errors="replace")
                         cls = classify_canonical(live, stem=stem, domain=dest_dom)
                         if cls["class"] not in (CLASS_ACTIVE, CLASS_INACTIVE):
                             raise WriteRefused(
@@ -1093,7 +1095,7 @@ def cmd_migrate(args: argparse.Namespace) -> int:
                                 live = insert_frontmatter_key(live, "status", "active")
                                 temps[str(dest)] = live
                                 dest_modes[str(dest)] = "replace"
-                                expected[str(dest)] = _sha256_file(dest)
+                                expected[str(dest)] = _snap_ke.sha256
                                 cls = classify_canonical(
                                     live, stem=stem, domain=dest_dom)
                                 fm_k = cls.get("fm") or {}
@@ -1787,8 +1789,8 @@ def _want_confirm(args: argparse.Namespace, phrase: str) -> Optional[str]:
 
 def cmd_journal(args: argparse.Namespace) -> int:
     from control_plane import (compact_journal, connect_journal, journal_abandon,
-                               journal_inventory, journal_retry, journal_rollback,
-                               journal_show)
+                               journal_cleanup, journal_inventory, journal_retry,
+                               journal_rollback, journal_show)
     ctx = _ctx(args.project)
     cmd = args.journal_cmd
     if cmd == "inventory":
@@ -1824,7 +1826,8 @@ def cmd_journal(args: argparse.Namespace) -> int:
     if cmd == "compact":
         need = _want_confirm(args, "journal-compact")
         if need == "dry":
-            print("journal compact: redact completed payloads + expire recovery "
+            print("journal compact: redact completed payloads, collapse 90-day "
+                  "receipts, expire recovery "
                   "(pass --apply --confirm journal-compact)")
             return 0
         if need:
@@ -1832,6 +1835,19 @@ def cmd_journal(args: argparse.Namespace) -> int:
             return 2
         print(json.dumps(compact_journal(ctx)))
         return 0
+    if cmd == "cleanup":
+        all_stores = bool(getattr(args, "scan_all_stores", False))
+        if not args.apply:
+            out = journal_cleanup(ctx, apply=False, all_stores=all_stores)
+            print(json.dumps(out, indent=2, default=str))
+            return 0
+        need = _want_confirm(args, "journal-cleanup")
+        if need:
+            print(f"journal cleanup: {need}", file=sys.stderr)
+            return 2
+        out = journal_cleanup(ctx, apply=True, all_stores=all_stores)
+        print(json.dumps(out, default=str))
+        return 0 if out.get("ok") else 2
     if not args.op_id:
         print(f"journal {cmd}: pass OP-ID", file=sys.stderr)
         return 2
@@ -1849,7 +1865,8 @@ def cmd_journal(args: argparse.Namespace) -> int:
         elif cmd == "rollback":
             out = journal_rollback(ctx, args.op_id)
         else:
-            out = journal_abandon(ctx, args.op_id)
+            out = journal_abandon(ctx, args.op_id,
+                                  accept_fs=bool(getattr(args, "accept_fs", False)))
     except WriteRefused as e:
         print(f"journal {cmd}: {e}", file=sys.stderr)
         return 2
@@ -2216,12 +2233,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     j = sub.add_parser("journal")
     j.add_argument("journal_cmd", choices=["inventory", "show", "retry",
-                                           "rollback", "abandon", "compact"])
+                                           "rollback", "abandon", "compact",
+                                           "cleanup"])
     j.add_argument("op_id", nargs="?")
     j.add_argument("--project", default=".")
     j.add_argument("--json", action="store_true")
     j.add_argument("--apply", action="store_true")
     j.add_argument("--confirm", metavar="PHRASE")
+    j.add_argument("--accept-fs", action="store_true")
+    j.add_argument("--scan-all-stores", action="store_true")
     return p
 
 

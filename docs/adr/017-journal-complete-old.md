@@ -53,6 +53,10 @@ new operations.
 Negative: short-lived `.cm-trash-*` siblings. Historical completed rows are
 redacted by `cm journal compact` (also run from `cm data compact`).
 
+Superseded in part by ADR 021: unlink now happens in `committed-cleanup-pending`
+*before* journal `complete`, so a crash cannot leave forgotten bodies on a
+completed op.
+
 ## Revisit trigger
 
 Reopen when a native-Windows exclusive-create primitive is required.

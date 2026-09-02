@@ -186,6 +186,84 @@ def test_rebuild_vs_edit() -> None:
         td.cleanup()
 
 
+def _connect_child(home: str, proj: str, barrier, q) -> None:
+    os.environ["HOME"] = home
+    import control_plane as cp
+    import store_context as sc
+    barrier.wait()
+    try:
+        ctx = sc.resolve_store(Path(proj))
+        conn = cp.connect(cp.db_path(ctx))
+        ver = int(conn.execute("PRAGMA user_version").fetchone()[0])
+        nproj = conn.execute("SELECT count(*) AS n FROM projects").fetchone()["n"]
+        conn.close()
+        q.put(("ok", ver, int(nproj)))
+    except Exception as e:
+        q.put(("err", e.__class__.__name__, str(e)))
+
+
+def test_schema_race() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import control_plane as cp
+        import store_context as sc
+        ctx = sc.resolve_store(proj)
+        dbp = cp.db_path(ctx)
+        if dbp.is_file():
+            dbp.unlink()
+        wal = Path(str(dbp) + "-wal")
+        shm = Path(str(dbp) + "-shm")
+        for p in (wal, shm):
+            if p.exists():
+                p.unlink()
+        ctxm = mp.get_context("fork")
+        barrier = ctxm.Barrier(2)
+        q: mp.Queue = ctxm.Queue()
+        p1 = ctxm.Process(target=_connect_child, args=(str(home), str(proj), barrier, q))
+        p2 = ctxm.Process(target=_connect_child, args=(str(home), str(proj), barrier, q))
+        p1.start(); p2.start()
+        p1.join(30); p2.join(30)
+        got = [q.get(timeout=1), q.get(timeout=1)]
+        check("concurrency: two first-run processes cannot race schema migration",
+              p1.exitcode == 0 and p2.exitcode == 0
+              and all(r[0] == "ok" and r[1] == cp.REGISTRY_USER_VERSION for r in got))
+    finally:
+        td.cleanup()
+
+
+def test_cleanup_pending_crash() -> None:
+    td, home, proj, store = _setup()
+    try:
+        import control_plane as cp
+        import store_context as sc
+        ctx = sc.resolve_store(proj)
+        dest = store / "cu.md"
+        os.environ["CM_CRASH_AFTER"] = "cleanup_pending"
+        crashed = False
+        try:
+            cp.transact(ctx, "probe-cu", {"k": 1},
+                        lambda c, t: t.__setitem__(str(dest), "body\n") or {})
+        except cp.CrashSimulated:
+            crashed = True
+        finally:
+            os.environ.pop("CM_CRASH_AFTER", None)
+        jconn = cp.connect_journal(ctx)
+        row = jconn.execute(
+            "SELECT op_id, status FROM journal ORDER BY rowid DESC LIMIT 1").fetchone()
+        status = str(row["status"] if row else "")
+        oid = str(row["op_id"] if row else "")
+        rec = cp.recover_pending(jconn, ctx=ctx)
+        row2 = cp.journal_row(jconn, oid)
+        jconn.close()
+        check("concurrency: crash after cleanup_pending recovers to complete",
+              crashed and status == cp.JOURNAL_CLEANUP_PENDING
+              and oid in rec
+              and str((row2 or {}).get("status") or "") == "complete"
+              and dest.is_file())
+    finally:
+        td.cleanup()
+
+
 def main() -> int:
     if os.name == "nt":
         print("concurrency: skipped on Windows (POSIX flock)")
@@ -193,6 +271,8 @@ def main() -> int:
     test_justify_vs_stacks()
     test_two_upserts()
     test_rebuild_vs_edit()
+    test_schema_race()
+    test_cleanup_pending_crash()
     print(f"\n{passed} passed, {failed} failed")
     return 1 if failed else 0
 

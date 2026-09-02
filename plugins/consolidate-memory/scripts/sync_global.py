@@ -1345,15 +1345,13 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     _plocks: list = []
     if pull:
         try:
-            from control_plane import (JOURNAL_ONLY_SQL, acquire_mutation_locks,
-                                       connect as _cpc, db_path as _cpd,
-                                       journal_db_path as _jdp, recover_pending,
-                                       release_locks)
+            from control_plane import (acquire_mutation_locks, connect as _cpc,
+                                       connect_journal as _cj, db_path as _cpd,
+                                       recover_pending, release_locks)
             _locks = acquire_mutation_locks(ctx, [ctx.project_id])
             _jc = _reg = None
             try:
-                _jc = _cpc(_jdp(ctx))
-                _jc.executescript(JOURNAL_ONLY_SQL)
+                _jc = _cj(ctx)
                 _reg = _cpc(_cpd(ctx))
                 recover_pending(_jc, ctx=ctx, registry_conn=_reg)
             finally:

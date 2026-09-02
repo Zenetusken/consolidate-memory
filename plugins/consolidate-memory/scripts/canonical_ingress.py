@@ -657,11 +657,13 @@ def set_canonical_status(ctx: StoreContext, stem: str, status: str,
     except WriteRefused as e:
         return {"ok": False, "error": str(e)}
     path = ctx.canonical_domain_dir / f"{stem}.md"
-    if not path.exists():
+    from control_plane import read_snapshot
+    snap = read_snapshot(path)
+    if not snap.exists:
         return {"ok": False, "error": "no such canonical"}
+    prev = (snap.data or b"").decode("utf-8", errors="replace")
 
     def mutate(conn, temps):
-        prev = path.read_text(encoding="utf-8", errors="replace")
         text = insert_frontmatter_key(prev, "status", status)
         if replacement_id:
             text = insert_frontmatter_key(text, "replacement_id", replacement_id)
@@ -680,17 +682,13 @@ def set_canonical_status(ctx: StoreContext, stem: str, status: str,
                 "status": "active",
                 "sensitivity": fact_sensitivity(fm),
             })
-        expected = {}
-        from control_plane import _file_hash as _fh
-        h = _fh(path)
-        if h:
-            expected[str(path)] = h
         return {"stem": stem, "status": status, "registry_ops": ops,
-                "expected_revisions": expected}
+                "expected_revisions": {str(path): snap.sha256}}
 
     try:
         out = transact(ctx, "canonical-status",
-                       {"stem": stem, "status": status}, mutate)
+                       {"stem": stem, "status": status}, mutate,
+                       expected_revisions={str(path): snap.sha256})
         return {"ok": True, **(out.get("result") or {})}
     except WriteRefused as e:
         return {"ok": False, "error": str(e)}
