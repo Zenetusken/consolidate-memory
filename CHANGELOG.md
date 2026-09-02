@@ -5,6 +5,70 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.2] — 2026-09-XX
+
+**Patch** — the production-readiness + polish + performance pass: the stacks cache moves
+onto every sync path, the journal scale stack collapses to single passes, the warm-pull
+margin widens at 10k canonicals, and the archive embed gets a budget — plus two store-honesty
+fixes (stranded globals, fixture stores), the QA oracle's persist-gate teeth, the release
+workflow's provenance/validate/signed-tag coverage, and a help/docs/renderer coherence sweep.
+
+### Performance —
+
+- **Stacks cache on the pull path.** `run`/`--gc`/`--promote`/`--staleness` consult the
+  beacon's state-file stacks cache before re-running `detect_stacks` — the full-project walk
+  re-paid on every sync path measured 337ms here (2003ms documented worst). A
+  `(mtime_ns, size)` stamp over the marker files `detect_stacks` actually reads invalidates
+  on change; a 7-day TTL bounds the stamp's blind spot (`.py`-content changes are not
+  statted); `CM_RESCAN_STACKS=1` forces a rescan; the trigger node's `--staleness` row stays
+  live. A no-change pull now skips the cache write entirely.
+- **Journal scale.** `redact_journal_payloads` dirty-flags each row (one dump per changed
+  row, not two per row — the sort_keys equality check was ~14s of pure waste at 1M);
+  `compact_journal` runs one merged pass (age hoisted, one UPDATE per changed row, VACUUM
+  only when anything was rewritten); `journal_cleanup` reuses the under-lock orphan scan.
+  `cm data export` prints a progress line and reports the redacted row count.
+- **Warm-pull margin.** Run-local relevance/admit memoization, one read-only connection for
+  holder-base lookups per pull, and an in-sync fast path that skips rebuilding the mirror
+  text when the stamps and semantic hash already match (the same conditions the
+  facts-manifest fast path trusts). C=10k no-change pull 523-673ms → ~350ms measured.
+- **Archive embed budget.** `render_html` assembles the cycle series once per render,
+  embeds only the newest 20 dreams' diff sidecars, and trims embedded records to the keys
+  the dashboard reads — the worst-case archive at the 120-cycle cap drops ~12MB → <4MB.
+
+### Fixed —
+
+- **Stranded-global advisory:** an authored (non-mirror) `user-global`/`stack-general` fact
+  with no canonical counterpart now surfaces as a schema-drift advisory with the remediation
+  wording ("re-scope / demote, or promote to a canonical") — advisory, never counted as drift.
+- **Fixture-store exclusion:** known beta-fixture stores (marker-file `.cm-fixture` or a
+  pinned stale-slug match) are excluded from the native-store enumeration with a visible
+  "skipped N fixture store(s)" line — fleet analytics no longer count synthetic stores as
+  live nodes.
+- **Oracle persist-gate family (`CHK-PERSIST-GATE`):** the QA oracle now DRIVES the v0.4.1
+  terminal gates — a short-arc seed + `--persist` must exit 4 with exactly one log line,
+  the re-render must re-fire exit 4 without a second line, and an unstamped seed must exit 5.
+- **Journal cap wired:** `compact_journal` now enforces `JOURNAL_MAX_ROWS` (it previously
+  passed `max_rows=0` — the advertised cap was dormant on the compact path).
+- **Release teeth:** the tag-triggered workflow verifies the tag signature (committed public
+  key), re-runs the strict plugin/marketplace validates, and publishes build provenance +
+  an SPDX SBOM to the GitHub Release; `release.sh --finalize` signs tags and refuses without
+  `user.signingkey`.
+- **Help/docs sweep:** `cm` help gained the missing subcommands and the required
+  `--confirm` phrases (following the documented enroll/migrate/purge/import commands
+  verbatim previously only dry-ran); the SKILL/harness-map/warning texts carry the confirm
+  phrases; version headers swept to 0.4.1+; the SKILL banner names the exit-3/4/5 terminal
+  contract.
+- **`--diffs` mandatory before WAKE:** the archive now surfaces an honest "no diffs
+  captured" row for a dream whose `--diffs` step was missed; the unenrolled warning prints
+  once per store (first-seen flag) instead of on every dream/archive/pull — `cm doctor`
+  stays loud.
+- **Top-commands render:** the persisted `distill.top` evidence rows render in BOTH
+  dashboards (top-3 `template ×N Nd`) — the capture has existed since v0.1.82 but no
+  renderer consumed it.
+- **Outcome vocabulary:** one shared `outcome_of` across the ASCII dashboard, the HTML
+  archive (injected at embed time), and a new OUTCOME column in `cm log` — the three views
+  no longer drift on maintenance/light wording.
+
 ## [0.4.1] — 2026-09-02
 
 **Patch** — the dream-arc and marker contracts gained teeth at the terminal boundary

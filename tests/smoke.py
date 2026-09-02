@@ -5176,6 +5176,39 @@ with _tf73.TemporaryDirectory() as _td81:
     check("v0.1.81: --staleness assesses a NON-trigger node at 'cached stacks (as of last pull)' once "
           "the cache exists (the honest basis ladder: live → cached → user-global-only)",
           _prow81["scope_basis"] == "cached stacks (as of last pull)")
+    # v0.4.2 (P1): the stacks cache on the sync paths — cache hit skips the rescan, marker-file
+    # changes invalidate the stamp, the TTL bounds the .py blind spot, the kill-switch forces a rescan.
+    check("v0.4.2 P1: stacks_with_cache HITS the pull-written cache (from_cache, no rescan)",
+          sg.stacks_with_cache(_st81, _p81) == (set(_st81j["stacks"]), True))
+    _old_sc_env = _osB.environ.get("CM_RESCAN_STACKS")
+    _osB.environ["CM_RESCAN_STACKS"] = "1"
+    _sc_forced, _sc_fc = sg.stacks_with_cache(_st81, _p81)
+    _osB.environ.pop("CM_RESCAN_STACKS", None)
+    if _old_sc_env:
+        _osB.environ["CM_RESCAN_STACKS"] = _old_sc_env
+    check("v0.4.2 P1: CM_RESCAN_STACKS=1 forces a rescan (from_cache False)",
+          _sc_fc is False and _sc_forced == sg.detect_stacks(_p81))
+    (_p81 / "pyproject.toml").write_text("[tool.mypy]\nstrict = true\n", encoding="utf-8")
+    check("v0.4.2 P1: a marker-file change invalidates the stamp (rescan)",
+          sg.stacks_with_cache(_st81, _p81)[1] is False)
+    # re-write the cache for the new signature, then prove the unchanged write is a no-op
+    with _ctx73.redirect_stdout(_io73.StringIO()):
+        sg.run(_p81, pull=True)
+    _m81 = (_st81 / ".consolidation-state.json").stat().st_mtime_ns
+    with _ctx73.redirect_stdout(_io73.StringIO()):
+        sg.run(_p81, pull=True)
+    _m81b = (_st81 / ".consolidation-state.json").stat().st_mtime_ns
+    check("v0.4.2 P1: a no-change pull skips the stacks-cache write entirely (state-file mtime stable)",
+          _m81b == _m81)
+    # TTL: an old stacks_at re-detects even with a matching stamp
+    _st81j2 = _jsonB.loads((_st81 / ".consolidation-state.json").read_text(encoding="utf-8"))
+    _st81j2["stacks_at"] = 0.0
+    (_st81 / ".consolidation-state.json").write_text(_jsonB.dumps(_st81j2), encoding="utf-8")
+    check("v0.4.2 P1: an expired TTL re-detects (from_cache False)",
+          sg.stacks_with_cache(_st81, _p81)[1] is False)
+    # restore the fresh stamp for the pins that follow
+    with _ctx73.redirect_stdout(_io73.StringIO()):
+        sg.run(_p81, pull=True)
     check("v0.1.81: after the pull the store is in-sync and the beacon returns to SILENT (the common "
           "case stays free)",
           _beacon81(_h81, _p81).stdout == "")
