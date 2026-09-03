@@ -11698,19 +11698,21 @@ with _tf73.TemporaryDirectory() as _td_r5:
 
 # ── v0.4.5 (#152 code leg): SHA256SUMS in the release pipeline ─────────────────
 _wf_cs = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
-check("v0.4.5 #152: the release workflow generates + uploads SHA256SUMS beside the SBOM",
-      "make_checksums.py" in _wf_cs and "SHA256SUMS" in _wf_cs)
+check("v0.4.5 #152: the release workflow generates + self-verifies + uploads SHA256SUMS beside the SBOM",
+      "make_checksums.py --out SHA256SUMS" in _wf_cs
+      and "sha256sum -c SHA256SUMS" in _wf_cs
+      and 'gh release upload "$TAG" sbom.spdx.json SHA256SUMS --clobber' in _wf_cs)
 with _tf73.TemporaryDirectory() as _td_cs:
     _cs_tmp = Path(_td_cs)
     (_cs_tmp / "a.txt").write_text("alpha\n", encoding="utf-8")
     (_cs_tmp / "sub").mkdir()
     (_cs_tmp / "sub" / "b.bin").write_bytes(b"\x00\x01\x02")
-    # a symlink + a dir entry must never enter the manifest (make_sbom walk parity)
+    # a symlink + a dir entry must never enter the manifest (make_sbom walk parity);
+    # a platform without symlink permission degrades to the file-set assertion
     try:
         (_cs_tmp / "link.txt").symlink_to(_cs_tmp / "a.txt")
-        _have_link_cs = True
     except OSError:
-        _have_link_cs = False
+        pass
     (_cs_tmp / "empty").mkdir()
     _cs_out = _cs_tmp / "SHA256SUMS"
     _pr_cs = _sp_r5.run(

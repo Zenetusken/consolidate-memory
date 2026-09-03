@@ -35,6 +35,7 @@ def main() -> int:
 
     root = Path.cwd()
     lines: list[str] = []
+    seen: set[str] = set()
     for d in a.dirs:
         subj = Path(d)
         if not subj.is_dir():
@@ -43,11 +44,16 @@ def main() -> int:
         for p in sorted(subj.rglob("*")):
             if p.is_symlink() or not p.is_file():
                 continue
-            try:
-                rel = os.path.relpath(p, root)
-            except ValueError:
-                # different drive on Windows — the subjects are always under CWD
-                rel = p.as_posix()
+            # review fixes: POSIX separators (sha256sum -c reads `\` literally), no
+            # out-of-tree subjects (a `..`-relative manifest can never self-verify from
+            # the repo root), and no duplicate lines for overlapping dir args
+            rel = os.path.relpath(p, root).replace(os.sep, "/")
+            if rel.startswith("../"):
+                print(f"make_checksums: subject outside the repo root: {subj}", file=sys.stderr)
+                return 2
+            if rel in seen:
+                continue
+            seen.add(rel)
             lines.append(f"{_sha256(p)}  {rel}")
 
     out = Path(a.out)
