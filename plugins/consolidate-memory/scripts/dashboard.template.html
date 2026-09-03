@@ -1303,7 +1303,7 @@
       // idiom (`template ×N Nd`), capped at 3; a legacy record without `top` is unchanged
       var dtop=(Array.isArray(D.top)?D.top:[]).filter(function(t){return t&&typeof t==="object";});
       el("dstl-counts").textContent=counts.join(" · ")
-        +(dtop.length?" · top: "+dtop.slice(0,3).map(function(t){return esc(String(t.template||"?"))+" ×"+num(t.n)+" "+num(t.d)+"d";}).join(" · ")
+        +(dtop.length?" · top: "+dtop.slice(0,3).map(function(t){return esc(String(t.t||"?"))+" ×"+num(t.n)+" "+num(t.d)+"d";}).join(" · ")
           +(dtop.length>3?" · +"+(dtop.length-3)+" more":""):"");
       var vd=String(D.verdict==null?"":D.verdict), m=vd.match(/^\s*(created|proposed|nothing)\b[:\s]*/i);
       var tag=m?m[1].toLowerCase():"", rest=m?vd.slice(m[0].length):vd;

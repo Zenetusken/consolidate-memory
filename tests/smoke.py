@@ -11188,7 +11188,7 @@ check("v0.4.2 L4: the template prefers the embedded single-source label (the JS 
 # L2: top-3 distill.top rows in the USAGE top: idiom (ASCII + template); legacy no-top unchanged
 _rec_l2 = {"project": "p", "session": "s", "scope": {}, "entries": [],
            "distill": {"n_recurring": 4, "n_chains": 1,
-                       "top": [{"template": f"cmd{i}", "n": 5 - i, "d": 2} for i in range(4)]}}
+                       "top": [{"t": f"cmd{i}", "n": 5 - i, "d": 2} for i in range(4)]}}
 _out_l2 = rd.render(cast(ms.CycleRecord, _rec_l2))
 check("v0.4.2 L2: the DISTILL top-3 render in the USAGE top: idiom (capped at 3, +1 more)",
       "cmd0 ×5 2d" in _out_l2 and "cmd2 ×3 2d" in _out_l2

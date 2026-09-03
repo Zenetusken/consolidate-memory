@@ -811,7 +811,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
         _dtop = _dtop_all[:3]
         if _dtop:
             out.append("    " + _c("top:", "dim") + " " + " · ".join(
-                f"{_clean(t.get('template', '?'))} ×{_g(t.get('n', 0))} "
+                f"{_clean(t.get('t', '?'))} ×{_g(t.get('n', 0))} "
                 f"{_g(t.get('d', 0))}d" for t in _dtop)
                 + (_c(f"  +{len(_dtop_all) - 3} more", "dim") if len(_dtop_all) > 3 else ""))
 
