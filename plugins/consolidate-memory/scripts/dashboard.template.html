@@ -202,6 +202,8 @@
     overflow-wrap:anywhere;word-break:break-word}
   .dstl-row .ev{font-size:11px;color:var(--faint);white-space:nowrap;margin-left:auto;padding-left:8px}
   .dstl-more{display:block;padding:10px 0 2px;font-size:12px;color:var(--faint);font-family:var(--serif);font-style:italic}
+  body.compact .dstl-row{padding:7px 0}
+  body.compact .dstl-top .gh{padding-bottom:4px}
   .dstl-verdict{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:baseline;padding:13px 0 2px;font-size:13px;line-height:1.6;color:var(--ink);min-width:0}
   .tag{flex:none;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
     padding:3px 8px;border:1px solid var(--rule2);color:var(--ink2);border-radius:2px;line-height:1.2;width:max-content}
@@ -682,7 +684,7 @@
   function paintDream(){
     clearEl("traj"); clearEl("trend"); clearEl("rigor"); clearEl("net");
     var tw=el("traj-warn"); if(tw){tw.style.display="none"; tw.innerHTML="";}
-    ["dream-blk","distill-blk","demotion-blk","registrar-blk","xp-strip","m-global"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
+    ["dream-blk","distill-blk","demotion-blk","registrar-blk","xp-strip","m-global","dstl-top"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
     PROJ=g(CUR,"project",DATA.project||"consolidate-memory");
     el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
     document.title=PROJ+" — dream telemetry";
