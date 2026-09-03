@@ -11839,6 +11839,20 @@ check("v0.4.2 L2: the template renders the top commands in the BODY list, never 
       "dstl-top-list" in _tpl_l2 and "dtop.slice(0,3)" in _tpl_l2
       and 'el("dstl-counts").textContent=counts.join(" · ")' in _tpl_l2
       and '" · top: "' not in _tpl_l2)
+check("v0.4.5 exposure: the template renders the contract's OTHER distill evidence (chains + skill usage) "
+      "and the registrar's unjudged-evidence board (cards OR the split-naming counts-only note) + the "
+      "decline lineage (the anchors the materially-new-evidence gate consults)",
+      "dstl-chains-list" in _tpl_l2 and "dstl-used-list" in _tpl_l2
+      and "D.top_chains" in _tpl_l2 and "D.used" in _tpl_l2
+      and "unjudged — evidence, not a docket" in _tpl_l2
+      and "counts-only by design" in _tpl_l2
+      and "WP.decline_anchors" in _tpl_l2
+      and "decline lineage — other nodes declined these" in _tpl_l2)
+check("v0.4.5 header coherence: every section header's note carries its tallies — This Pass names the "
+      "derived outcome + decision count (it was cleared-and-never-set)",
+      'el("pass-note").textContent=outcomeOf(CUR)' in _tpl_l2
+      and 'el("hist-note").textContent' in _tpl_l2 and 'el("ent-note").textContent' in _tpl_l2
+      and 'el("net-note").textContent' in _tpl_l2 and 'el("a-note").textContent' in _tpl_l2)
 
 
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
