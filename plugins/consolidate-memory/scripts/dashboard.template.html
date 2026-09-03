@@ -193,6 +193,15 @@
   .panel-lead{font-family:var(--serif);font-style:italic;color:var(--ink2);margin-bottom:8px}
   /* v0.1.57 — the distill verdict as a readable full-width block (was a crammed table cell) */
   .dstl{margin-top:30px}
+  .dstl-top{margin-top:8px;min-width:0}
+  .dstl-top .gh{font-family:var(--mono);font-size:9px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--faint);padding:0 0 6px;border-bottom:1px solid var(--rule2);margin-bottom:2px}
+  .dstl-row{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:baseline;padding:8px 0;
+    border-bottom:1px solid var(--rule);min-width:0}
+  .dstl-row .cmd{font-family:var(--mono);font-size:12px;min-width:0;flex:0 1 auto;
+    overflow-wrap:anywhere;word-break:break-word}
+  .dstl-row .ev{font-size:11px;color:var(--faint);white-space:nowrap;margin-left:auto;padding-left:8px}
+  .dstl-more{display:block;padding:10px 0 2px;font-size:12px;color:var(--faint);font-family:var(--serif);font-style:italic}
   .dstl-verdict{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:baseline;padding:13px 0 2px;font-size:13px;line-height:1.6;color:var(--ink);min-width:0}
   .tag{flex:none;font-family:var(--mono);font-size:9px;letter-spacing:.12em;text-transform:uppercase;
     padding:3px 8px;border:1px solid var(--rule2);color:var(--ink2);border-radius:2px;line-height:1.2;width:max-content}
@@ -430,6 +439,12 @@
     <div class="dstl" id="distill-blk" style="display:none">
       <div class="audit-ln head"><span class="s">recurring workflows</span><span class="nums" id="dstl-counts"></span></div>
       <div class="dstl-verdict" id="dstl-verdict"></div>
+      <!-- L2 (v0.4.2) top commands: the template list lives in the BODY (its own layout), never the
+           header's counts line — long command names wrapped the two-column header across rows -->
+      <div class="dstl-top" id="dstl-top" style="display:none">
+        <div class="gh">top recurring</div>
+        <div id="dstl-top-list"></div>
+      </div>
       <div class="cap">Patterns from the last ~30 days — including work before this dream.</div>
     </div>
     <!-- v0.1.67 (Phase C): the demotion triage — same lead/verdict rhythm as distill; key-gated (legacy cycles hide it) -->
@@ -1299,12 +1314,20 @@
       if(num(D.commands)>0)counts.push(fmt(num(D.commands))+" commands / "+num(D.sessions)+" session"+(num(D.sessions)!==1?"s":""));
       // v0.1.58 — the firewall-suppression count, so the transparency counter reaches the human view.
       if(num(D.secrets_omitted)>0)counts.push(num(D.secrets_omitted)+" secret-shaped");
-      // L2 (v0.4.2): the top recurring commands ride the counts line — the USAGE top:
-      // idiom (`template ×N Nd`), capped at 3; a legacy record without `top` is unchanged
+      // L2 (v0.4.2): the top recurring commands — the BODY list below the verdict, never the
+      // header's counts line (long template names wrapped the two-column header across rows).
+      // Idiom (`template ×N Nd`), capped at 3 with an explicit +N more (a legacy record without
+      // `top` is unchanged — the list stays hidden).
       var dtop=(Array.isArray(D.top)?D.top:[]).filter(function(t){return t&&typeof t==="object";});
-      el("dstl-counts").textContent=counts.join(" · ")
-        +(dtop.length?" · top: "+dtop.slice(0,3).map(function(t){return esc(String(t.t||"?"))+" ×"+num(t.n)+" "+num(t.d)+"d";}).join(" · ")
-          +(dtop.length>3?" · +"+(dtop.length-3)+" more":""):"");
+      el("dstl-counts").textContent=counts.join(" · ");
+      if(dtop.length){
+        el("dstl-top-list").innerHTML=dtop.slice(0,3).map(function(t){
+          return '<div class="dstl-row"><span class="cmd">'+esc(String(t.t||"?"))+'</span>'
+            +'<span class="ev">×'+num(t.n)+' · '+num(t.d)+'d</span></div>';
+        }).join("")
+          +(dtop.length>3?'<span class="dstl-more">+ '+(dtop.length-3)+' more</span>':"");
+        el("dstl-top").style.display="";
+      }
       var vd=String(D.verdict==null?"":D.verdict), m=vd.match(/^\s*(created|proposed|nothing)\b[:\s]*/i);
       var tag=m?m[1].toLowerCase():"", rest=m?vd.slice(m[0].length):vd;
       // a DECLINED proposal is a resolved state — neutral tag, never the pending-amber (the at-a-glance
