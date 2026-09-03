@@ -15,13 +15,14 @@ workflow's provenance/validate/signed-tag coverage, and a help/docs/renderer coh
 
 ### Performance —
 
-- **Stacks cache on the pull path.** `run`/`--gc`/`--promote`/`--staleness` consult the
-  beacon's state-file stacks cache before re-running `detect_stacks` — the full-project walk
-  re-paid on every sync path measured 337ms here (2003ms documented worst). A
-  `(mtime_ns, size)` stamp over the marker files `detect_stacks` actually reads invalidates
-  on change; a 7-day TTL bounds the stamp's blind spot (`.py`-content changes are not
-  statted); `CM_RESCAN_STACKS=1` forces a rescan; the trigger node's `--staleness` row stays
-  live. A no-change pull now skips the cache write entirely.
+- **Stacks cache on the pull path.** `run`/`--gc`/`--promote` consult the beacon's
+  state-file stacks cache before re-running `detect_stacks` — the full-project walk re-paid
+  on every sync path measured 337ms here (2003ms documented worst). The `--staleness`
+  non-trigger rows already read the state-file cache directly (v0.1.81); the trigger row's
+  `detect_stacks` stays live. A `(mtime_ns, size)` stamp over the marker files
+  `detect_stacks` actually reads invalidates on change; a 7-day TTL bounds the stamp's blind
+  spot (`.py`-content changes are not statted) and an expired cache re-arms on the next pull;
+  `CM_RESCAN_STACKS=1` forces a rescan. A fresh no-change pull skips the cache write entirely.
 - **Journal scale.** `redact_journal_payloads` dirty-flags each row (one dump per changed
   row, not two per row — the sort_keys equality check was ~14s of pure waste at 1M);
   `compact_journal` runs one merged pass (age hoisted, one UPDATE per changed row, VACUUM

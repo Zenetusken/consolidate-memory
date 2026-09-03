@@ -1341,6 +1341,7 @@ def _write_stacks_cache(store: Path, project_dir: Path, stacks: set) -> None:
     v0.4.2 (P1): gains the `stacks_stamp`/`stacks_at` cache identity + an unchanged-value
     early return (a no-change pull re-pays nothing)."""
     import json as _json_wsc
+    import time as _t_wsc
     from control_plane import update_project_state
     from store_context import WriteRefused, resolve_store
     try:
@@ -1349,11 +1350,16 @@ def _write_stacks_cache(store: Path, project_dir: Path, stacks: set) -> None:
         try:
             _prev = _json_wsc.loads(
                 (ctx.native_memory_dir / ".consolidation-state.json").read_text(encoding="utf-8"))
+            # P1 review fix: the early return ALSO requires the cache to be FRESH — without
+            # the TTL check, a stable project whose cache crossed the 7-day window never
+            # re-armed (every sync path re-paid detect_stacks forever). A non-numeric
+            # stacks_at raises ValueError → the write path below refreshes it.
             if isinstance(_prev, dict) \
                     and [str(s) for s in (_prev.get("stacks") or [])] == sorted(stacks) \
                     and _prev.get("stacks_stamp") == _sig \
-                    and str(_prev.get("project_path") or "") == str(project_dir):
-                return    # byte-identical cache — skip the locked write entirely
+                    and str(_prev.get("project_path") or "") == str(project_dir) \
+                    and _t_wsc.time() - float(_prev.get("stacks_at") or 0) < _STACKS_TTL_S:
+                return    # byte-identical AND fresh cache — skip the locked write entirely
         except (OSError, ValueError):
             pass
 
@@ -1362,7 +1368,6 @@ def _write_stacks_cache(store: Path, project_dir: Path, stacks: set) -> None:
             st = dict(state)
             st["stacks"] = sorted(stacks)
             st["stacks_stamp"] = _sig
-            import time as _t_wsc
             st["stacks_at"] = _t_wsc.time()
             st["project_path"] = str(project_dir)
             return st
@@ -1395,11 +1400,13 @@ def _stacks_signature(project_dir: Path) -> list:
 
 def stacks_with_cache(store: Path, project_dir: Path) -> "tuple[set[str], bool]":
     """v0.4.2 (P1): consult the beacon's stacks cache before re-running detect_stacks — the
-    full-project walk + ast-parse re-paid on EVERY --pull/--list/--gc/--promote/--staleness
+    full-project walk + ast-parse re-paid on EVERY --pull/--list/--gc/--promote path
     measured 337ms here (2003ms documented worst), all of it wasted when the marker files
-    haven't changed. Returns (stacks, from_cache). Re-detects when: the cache is absent or
-    not a list, the stamp differs, the TTL elapsed, CM_RESCAN_STACKS=1 is set, or the
-    recorded project_path doesn't resolve here. A cache miss NEVER guesses — full rescan."""
+    haven't changed. (The --staleness NON-trigger rows already read the state-file cache
+    directly since v0.1.81; the trigger row's detect_stacks stays live.) Returns
+    (stacks, from_cache). Re-detects when: the cache is absent or not a list, the stamp
+    differs, the TTL elapsed, CM_RESCAN_STACKS=1 is set, or the recorded project_path
+    doesn't resolve here. A cache miss NEVER guesses — full rescan."""
     import json as _json_sc
     import time as _time_sc
     if os.environ.get("CM_RESCAN_STACKS") == "1":
