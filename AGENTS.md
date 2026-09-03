@@ -224,9 +224,12 @@ design.
   (merge commits — the repo convention). The v0.4.0 chain (#128→#154→…→#160)
   merged this way under the user's delegation.
 - **Required checks on `main` (the #152 operator leg):** the `protect-main`
-  ruleset should require `test (python 3.8)`–`test (python 3.13)`, `test-macos`,
-  `concurrency`, `typecheck`, `manifest`, `bench` with a review count ≥ 1 — the
-  CI job list in the Commands section is the authoritative enumeration.
+  ruleset should require the check-run **display names** (GitHub matches those,
+  never job keys) with a review count ≥ 1: `test (python 3.8)`–`test (python
+  3.13)`, `test (macos python 3.12)`, `concurrency (linux python 3.12)`,
+  `typecheck (mypy, dev-only contract check)`, `plugin manifest validation
+  (claude CLI)`, and `bench (linux python 3.12)` (after PR #180 lands). The CI
+  job list in the Commands section is the authoritative enumeration.
 
 ## The QA companion (dream-beta-tester)
 

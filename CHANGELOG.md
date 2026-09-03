@@ -7,15 +7,17 @@ version changes on `main`.
 
 ## [0.4.5] — 2026-09-03
 
-**Patch** — the issue-closeout release: the 25-issue board closes (22 verified
-fixed by shipped commits; #151 and the remaining code/doc legs of #152/#153
-land here). Changes: the HTML archive's distill top-commands move from the
-header into a proper body list (the L2 renderer hotfix), CI gains the capacity
-bench corner (measured, not gated) and the missing 15th concurrency scenario
-(compaction under a high baseline never drops a racing writer), the release
-pipeline gains SHA256SUMS beside the SBOM (self-verified via `sha256sum -c`),
-and the 1.0 preflight declares POSIX-only (ADR 016). No memory-plane behavior
-changes.
+**Patch** — the issue-closeout release: of the 25-issue board, 22 were verified
+fixed by shipped commits; **#151 closes here**, and the remaining code/doc legs
+of **#152** (SHA256SUMS + the required-checks doc bullet) and **#153** (the
+POSIX-only declaration) land here — their operator legs (ruleset settings,
+1.0 qualification evidence) are what actually close those two. Changes: the
+HTML archive's distill top-commands move from the header into a proper body
+list (the L2 renderer hotfix), CI gains the capacity bench corner (measured,
+not gated) and the missing 15th concurrency scenario (compaction under a high
+baseline never drops a racing writer's row), the release pipeline gains
+SHA256SUMS beside the SBOM (self-verified via `sha256sum -c`), and the 1.0
+preflight declares POSIX-only (ADR 016). No memory-plane behavior changes.
 
 ## [0.4.4] — 2026-09-03
 
