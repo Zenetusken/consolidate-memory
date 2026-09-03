@@ -10940,6 +10940,32 @@ with _Env73() as _e_cap:
           "the cap-delete counts 1 — the documented operation-count convention)",
           int(_b_cap or 0) == 1 and _n_cap == 3)
 
+# R4 (v0.4.2): compact_journal enforces the advertised JOURNAL_MAX_ROWS cap (it used to pass
+# max_rows=0 — the cap was dormant on the compact path). Patched to a small value to prove the wiring.
+with _Env73() as _e_r4:
+    _ctx_r4 = sc.resolve_store(_e_r4.proj)
+    _j_r4 = cp.connect_journal(_ctx_r4)
+    for _i in range(6):
+        _j_r4.execute(
+            "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            ("op_r4%d" % _i, "bench", _json_xp.dumps({"receipt": True}),
+             "journal_complete", "complete",
+             "2026-01-01T00:%02d:00Z" % _i, "2026-01-01T00:%02d:00Z" % _i))
+    _j_r4.commit()
+    _j_r4.close()
+    _old_cap_r4 = cp.JOURNAL_MAX_ROWS
+    cp.JOURNAL_MAX_ROWS = 3
+    try:
+        cp.compact_journal(_ctx_r4)
+    finally:
+        cp.JOURNAL_MAX_ROWS = _old_cap_r4
+    _j_r4b = cp.connect_journal(_ctx_r4)
+    _n_r4 = cp.journal_count(_j_r4b)
+    _j_r4b.close()
+    check("v0.4.2 R4: compact_journal enforces JOURNAL_MAX_ROWS (6 rows, patched cap 3 → 3 remain)",
+          int(_n_r4) == 3)
+
 # --apply runs exactly TWO orphan scans (pre-lock plan + under-lock rescan)
 with _Env73() as _e_sc:
     _ctx_sc = sc.resolve_store(_e_sc.proj)

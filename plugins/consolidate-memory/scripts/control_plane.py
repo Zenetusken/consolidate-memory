@@ -1990,7 +1990,9 @@ def compact_journal(ctx: StoreContext) -> dict:
     locks = acquire_mutation_locks(ctx, [ctx.project_id])
     conn = connect_journal(ctx)
     try:
-        pass_r = _compact_pass(conn, max_rows=0)
+        # R4 (v0.4.2): the advertised cap is LIVE on the compact path — it used to pass
+        # max_rows=0 (the cap was dormant: compact never deleted beyond-cap terminal rows).
+        pass_r = _compact_pass(conn, max_rows=JOURNAL_MAX_ROWS)
         n_rec = expire_recovery(ctx, conn)
         # v0.4.2 P2: VACUUM only when the journal was actually rewritten (the old
         # unconditional VACUUM paid a full-file rebuild on every compact, even a no-op).
