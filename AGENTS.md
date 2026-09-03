@@ -234,6 +234,17 @@ design.
   (claude CLI)`, and `bench (linux python 3.12)` (after PR #180 lands). The CI
   job list in the Commands section is the authoritative enumeration.
 
+- **The review-count gate vs the solo maintainer.** GitHub refuses self-approval,
+  so the maintainer's own PRs cannot satisfy `review count ≥ 1`. The coherent
+  configuration (live since 0.4.6): the maintainer's account is a
+  **`pull_request` bypass actor** on `protect-main` — the review rule is skipped
+  only for their own PRs (their judgment is the approval, recorded in the PR
+  thread via the per-PR adversarial review agents), while the 11 required
+  checks and the deletion rules still gate everything. An external
+  contributor's PR still needs the maintainer's approval. The PR state may
+  show REVIEW_REQUIRED on the maintainer's own PRs — expected display noise;
+  the bypass applies at merge time.
+
 ## The QA companion (dream-beta-tester)
 
 - **Two co-equal detectors.** The deterministic oracle (`beta_checks.py`) runs the
