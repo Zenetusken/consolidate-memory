@@ -5,6 +5,13 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.3] — 2026-09-03
+
+**Patch** — post-0.4.2 documentation sync: the current-engineering-release
+statements (CLAUDE.md/AGENTS.md headers, the SKILL banner, harness-map, README's
+release blurbs + known-limitations header, and the 1.0-preflight STATUS line) are
+swept to 0.4.2. No behavior changes.
+
 ## [0.4.2] — 2026-09-03
 
 **Patch** — the production-readiness + polish + performance pass: the stacks cache moves
