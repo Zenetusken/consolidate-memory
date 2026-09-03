@@ -11641,6 +11641,21 @@ with _tf73.TemporaryDirectory() as _td_r2:
           _keys_r2 == {sg._path_key(_real_slug_r2)}
           and "skipped 3 fixture store(s)" in _err_r2.getvalue())
 
+# ── v0.4.2 R3: the oracle persist-gate family (beta_checks.py) ─────────────────
+class _FakeCtxGate:
+    skill_version = "0.4.1"
+    skill = ROOT / "plugins" / "consolidate-memory" / "scripts"
+_r_gate = _bc54.persist_gate(cast(_bc54.Ctx, _FakeCtxGate()))
+check("v0.4.2 R3 beta family: the terminal gates fire on synthetic seeds "
+      "(short arc → exit 4 ×1 line, duplicate re-fire, unstamped → exit 5)",
+      len(_r_gate) == 1 and _r_gate[0].status == "PASS"
+      and _r_gate[0].id == "CHK-PERSIST-GATE")
+class _FakeCtxGateOld:
+    skill_version = "0.4.0"
+    skill = ROOT / "plugins" / "consolidate-memory" / "scripts"
+check("v0.4.2 R3 beta family: pre-gate skill → SKIP-by-version (the vendored canary is covered)",
+      _bc54.persist_gate(cast(_bc54.Ctx, _FakeCtxGateOld())) == [])
+
 
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
 with _Env73() as _e_jp:
