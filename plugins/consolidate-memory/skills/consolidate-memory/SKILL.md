@@ -17,18 +17,20 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.0** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.1** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
-`cm local` pointer+link parity with pull, hook-sketch infrastructure removed.
+`cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
+terminal persist gates (exit 3 = procedure integrity, exit 4 = incomplete dream
+arc, exit 5 = unstamped cycle — the WAKE renders only through a clean exit 0).
 Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
-`cm project enroll --domain personal --apply` (this checkout). First enroll
-grants the domain and revokes managed mirrors the destination does not admit;
-use `move-domain` to switch and `unenroll` to go local-only. `cm doctor` prints
-`UNENROLLED LOCAL-ONLY` when this applies.
+`cm project enroll --domain personal --apply --confirm enroll-<domain>` (this
+checkout). First enroll grants the domain and revokes managed mirrors the
+destination does not admit; use `move-domain` to switch and `unenroll` to go
+local-only. `cm doctor` prints `UNENROLLED LOCAL-ONLY` when this applies.
 
 A deliberate pass that turns the fluid experience of a work session into **verified,
 durable facts** — and keeps the project's two memory stores accurate and
@@ -1159,8 +1161,11 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
 
    Then **capture the per-file diffs** (v0.1.32; every `audit_snapshot` store as of v0.1.72) for
    the dashboard's diff-modal — the before/after of each changed memory fact, the `MEMORY.md`
-   index, the CLAUDE.md hierarchy, and relocate-target repo docs. This MUST run AFTER `--persist`
-   (so `marker.timestamp` is stamped) and BEFORE `render_html` (so the dashboard embeds it):
+   index, the CLAUDE.md hierarchy, and relocate-target repo docs. **MANDATORY before WAKE
+   (v0.4.2)**: the dream view shows an honest "no diffs captured" row when the sidecar is
+   missing — a pass that wakes without this capture renders as incomplete. This MUST run AFTER
+   `--persist` (so `marker.timestamp` is stamped) and BEFORE `render_html` (so the dashboard
+   embeds it):
    ```bash
    CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --diffs <the --seed path> \
        --before <the --snapshot path>
