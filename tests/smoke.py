@@ -11252,6 +11252,27 @@ with _Env73() as _e_p3:
     finally:
         sg._global_is_fixture = _old_gif3
 
+# P3 review fix: the fleet-dead shape — stack-general, the writer-normal EMPTY applies
+# lists (raw "[]" literals), NO stacks — must stay IRRELEVANT (the explicit-applies
+# guard tests the PARSED forms; raw-presence testing replicated these into every
+# same-domain index)
+with _Env73() as _e_p3d:
+    _d_p3d = _e_p3d.glob
+    (_e_p3d.proj / "pyproject.toml").write_text("[tool.mypy]\nstrict = true\n", encoding="utf-8")
+    (_d_p3d / "zzfleet.md").write_text(
+        _v3_canon("zzfleet", scope="stack-general"), encoding="utf-8")
+    _old_gif3d = sg._global_is_fixture
+    sg._global_is_fixture = lambda: False
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()) as _s_p3d:
+            sg.run(_e_p3d.proj, pull=True)
+        check("v0.4.2 P3: the fleet-dead shape stays IRRELEVANT (empty applies lists are "
+              "not explicit gating — no mirror, no pull)",
+              "zzfleet" in _s_p3d.getvalue() and "irrelevant" in _s_p3d.getvalue()
+              and not (_e_p3d.store / "zzfleet.md").exists())
+    finally:
+        sg._global_is_fixture = _old_gif3d
+
 
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
 with _Env73() as _e_jp:

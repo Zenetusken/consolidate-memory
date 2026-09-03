@@ -1621,26 +1621,35 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             rel = is_relevant(fm, _rel_tags, stacks_memo=_stacks_memo)
             # P3: the applies-decision memo — keyed on the raw fields parse_applies reads
             # (including the nested-error keys and the stacks fallback); _rel_tags and
-            # _cap_degraded are run-constants. The _raw_* fields double as the "explicit
-            # applies" test below (parse_applies' any/all/exclude are exactly their
-            # non-empty parsed forms; a non-empty nested key errors → "unknown", so the
-            # "match" guard already excludes it).
+            # _cap_degraded are run-constants. The memo carries (decision, explicit-applies)
+            # where the explicit flag tests the PARSED forms (the raw strings are the KEY
+            # only — the schema-default `applies_any: []` literal parses EMPTY and must
+            # not read as explicit gating).
             _raw_aa = str(fm.get("applies_any") or "")
             _raw_al = str(fm.get("applies_all") or "")
             _raw_ax = str(fm.get("applies_exclude") or "")
             _dec_key = (_raw_aa, _raw_al, _raw_ax,
                         str(fm.get("applies.any") or ""), str(fm.get("applies.all") or ""),
                         str(fm.get("applies.exclude") or ""), str(fm.get("stacks") or ""))
-            _dec_ap = _appl_memo.get(_dec_key)
-            if _dec_ap is None:
-                _dec_ap = _appl_dec(parse_applies(fm), _rel_tags, degraded=_cap_degraded)
-                _appl_memo[_dec_key] = _dec_ap
+            _dec_hit = _appl_memo.get(_dec_key)
+            if _dec_hit is None:
+                _appl_parsed = parse_applies(fm)
+                _dec_ap = _appl_dec(_appl_parsed, _rel_tags, degraded=_cap_degraded)
+                # the EXPLICIT-applies flag tests the PARSED forms — the schema-default
+                # literal `applies_any: []` is the raw string "[]" (non-empty raw, EMPTY
+                # parsed): raw-presence testing made an ungated fleet-dead canonical read
+                # as explicitly gated and replicate into every same-domain index (P3
+                # review, MED).
+                _expl = bool(_appl_parsed.get("any") or _appl_parsed.get("all")
+                             or _appl_parsed.get("exclude"))
+                _appl_memo[_dec_key] = (_dec_ap, _expl)
+            else:
+                _dec_ap, _expl = _dec_hit
             if _dec_ap == "unknown":
                 rel = False
             elif _dec_ap == "no-match":
                 rel = False
-            elif _dec_ap == "match" and fm.get("scope") == "stack-general" and (
-                    _raw_aa.strip() or _raw_al.strip() or _raw_ax.strip()):
+            elif _dec_ap == "match" and fm.get("scope") == "stack-general" and _expl:
                 rel = True
             path = store / f"{name}.md"
             present = path.exists()
