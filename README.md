@@ -256,7 +256,7 @@ format-example is not a dangling refusal. **v0.3.7** gives locals their own
 recall-key constructor (keep `()`, word-boundary, scope tag) and
 script-writes `demotion_justify` as the monotonic usage-window sequence.
 
-**v0.4.6** is the current engineering release — the v0.4.0 sole-authority topology (ADR 023) plus the terminal persist gates (exit 3/4/5), the archive fixes, the 0.4.2 production/polish/performance pass (stacks cache on the sync paths, warm-pull margin, journal scale, archive embed budget, store-honesty fixes, the oracle's persist-gate teeth, release provenance + signed tags, and the renderer coherence sweep), the v0.4.5 issue-closeout pass, and the v0.4.6 archive-display pass: holders/topology, grants,
+**v0.4.6** is the current engineering release — the v0.4.0 sole-authority topology (ADR 023) plus the terminal persist gates (exit 3/4/5), the archive fixes, the 0.4.2 production/polish/performance pass (stacks cache on the sync paths, warm-pull margin, journal scale, archive embed budget, store-honesty fixes, the oracle's persist-gate teeth, release provenance + signed tags, and the renderer coherence sweep), the v0.4.5 issue-closeout pass, and the v0.4.6 archive-display pass. Holders/topology, grants,
 and migration state live in SQLite with one authority per kind of state; the
 canonical writer and the catalog/link pipeline are consolidated under typed
 renderers; the beacon and pull hot paths read a derived facts-manifest cache

@@ -688,7 +688,7 @@
   function paintDream(){
     clearEl("traj"); clearEl("trend"); clearEl("rigor"); clearEl("net");
     var tw=el("traj-warn"); if(tw){tw.style.display="none"; tw.innerHTML="";}
-    ["dream-blk","distill-blk","demotion-blk","registrar-blk","xp-strip","m-global","dstl-top"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
+    ["dream-blk","distill-blk","demotion-blk","registrar-blk","xp-strip","m-global","dstl-top","dstl-chains-head","dstl-chains-list","dstl-used-head","dstl-used-list"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
     PROJ=g(CUR,"project",DATA.project||"consolidate-memory");
     el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
     document.title=PROJ+" — dream telemetry";
@@ -1500,7 +1500,7 @@
         // stamped; when only counts exist (generic-cli rows are counts-only by design), an
         // honest note naming the real split says so instead of an empty board under a
         // non-zero header count
-        var evRows=wc.filter(function(c){return named.indexOf(c)<0;});
+        var evRows=wc.filter(function(c){return named.indexOf(c)<0&&String(c.disposition||"").trim()!=="declined";});
         if(evRows.length){
           board+='<div class="reg-group"><div class="gh">unjudged — evidence, not a docket</div>'
             +evRows.slice(0,5).map(cardHtml).join("")
@@ -1511,7 +1511,7 @@
           var bParts=[];
           if(num(WP.n_generic,0)>0) bParts.push(num(WP.n_generic,0)+" generic-cli");
           if(num(WP.n_day_spread,0)>0) bParts.push(num(WP.n_day_spread,0)+" single-day");
-          var bRest=num(WP.n_blocked,0)-num(WP.n_generic,0)-num(WP.n_day_spread,0);
+          var bRest=Math.max(0,num(WP.n_blocked,0)-num(WP.n_generic,0)-num(WP.n_day_spread,0));
           if(bRest>0) bParts.push(bRest+" single-node");
           board='<div class="reg-group"><div class="gh">blocked rows</div><span class="reg-more">'
             +num(WP.n_blocked,0)+" blocked"+(bParts.length?" — "+bParts.join(" · "):"")
