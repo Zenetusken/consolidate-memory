@@ -11780,7 +11780,7 @@ check("v0.4.2 L4: the template prefers the embedded single-source label (the JS 
       "stays as the legacy fallback)",
       'g(c,"_outcome","")' in (ROOT / "plugins" / "consolidate-memory" / "scripts"
                                / "dashboard.template.html").read_text(encoding="utf-8"))
-# L2: top-3 distill.top rows in the USAGE top: idiom (ASCII + template); legacy no-top unchanged
+# L2: top-3 distill.top rows in the USAGE top: idiom (ASCII + template BODY list); legacy no-top unchanged
 _rec_l2 = {"project": "p", "session": "s", "scope": {}, "entries": [],
            "distill": {"n_recurring": 4, "n_chains": 1,
                        "top": [{"t": f"cmd{i}", "n": 5 - i, "d": 2} for i in range(4)]}}
@@ -11792,11 +11792,15 @@ check("v0.4.2 L2: a legacy distill record without `top` renders byte-identically
       "top:" not in rd.render(cast(ms.CycleRecord,
                                    {"project": "p", "session": "s", "scope": {}, "entries": [],
                                     "distill": {"n_recurring": 1, "n_chains": 0}})))
-check("v0.4.2 L2: the template renders the top commands after the DISTILL counts",
-      "top: " in (ROOT / "plugins" / "consolidate-memory" / "scripts"
-                  / "dashboard.template.html").read_text(encoding="utf-8")
-      and "dtop.slice(0,3)" in (ROOT / "plugins" / "consolidate-memory" / "scripts"
-                                / "dashboard.template.html").read_text(encoding="utf-8"))
+# L2 (2026-09-03 hotfix): the template list moved from the header's counts line into the BODY
+# (dstl-top-list) — long command names were wrapping the two-column header across rows. The pin
+# holds BOTH directions: the body list exists AND the header no longer appends a top: appendix.
+_tpl_l2 = (ROOT / "plugins" / "consolidate-memory" / "scripts"
+           / "dashboard.template.html").read_text(encoding="utf-8")
+check("v0.4.2 L2: the template renders the top commands in the BODY list, never the header counts line",
+      "dstl-top-list" in _tpl_l2 and "dtop.slice(0,3)" in _tpl_l2
+      and 'el("dstl-counts").textContent=counts.join(" · ")' in _tpl_l2
+      and '" · top: "' not in _tpl_l2)
 
 
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
