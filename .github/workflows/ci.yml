@@ -66,6 +66,22 @@ jobs:
       - name: process-level races (Phase 1 subset)
         run: python3 tests/concurrency.py
 
+  bench:
+    name: bench (linux python 3.12)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: capacity SLO corner (measured, not gated)
+        run: python3 tests/bench_phase5.py --quick --json bench-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bench-report
+          path: bench-report.json
+
   typecheck:
     name: typecheck (mypy, dev-only contract check)
     runs-on: ubuntu-latest

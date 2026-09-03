@@ -686,6 +686,72 @@ def test_two_upserts_distinct_stems() -> None:
         td.cleanup()
 
 
+def _compact_child(home: str, proj: str, barrier, q) -> None:
+    os.environ["HOME"] = home
+    import control_plane as cp
+    import store_context as sc
+    barrier.wait()
+    ctx = sc.resolve_store(Path(proj))
+    out = cp.compact_journal(ctx)
+    q.put(("compact", bool(out.get("ok", True)), str(out.get("error") or "")))
+
+
+def test_compact_vs_writer() -> None:
+    """The missing 15th scenario (issue #150): compaction after a high baseline must
+    never drop the racing writer's row — the cap-delete targets only the OLDEST
+    terminal rows, and a concurrent transact's row is never mid-flight-dropped."""
+    td, home, proj, store = _setup()
+    try:
+        import control_plane as _cp
+        import store_context as _sc
+        ctx = _sc.resolve_store(proj)
+        jconn = _cp.connect_journal(ctx)
+        # high baseline: six seeded terminal rows vs a patched cap of 3 (the same
+        # patched-cap approach the smoke R4 pin uses — the cap-delete engages without
+        # 50k-row inserts)
+        for i in range(6):
+            jconn.execute(
+                "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (f"op_cw{i}", "bench", '{"receipt": true}', "journal_complete", "complete",
+                 f"2026-01-01T00:{i:02d}:00Z", f"2026-01-01T00:{i:02d}:00Z"))
+        jconn.commit()
+        jconn.close()
+        _old_cap = _cp.JOURNAL_MAX_ROWS
+        _cp.JOURNAL_MAX_ROWS = 3
+        try:
+            ctxm = mp.get_context("fork")
+            barrier = ctxm.Barrier(2)
+            q: mp.Queue = ctxm.Queue()
+            body = "---\nname: compact-live\ndescription: writer under compaction\n---\nW\n"
+            p1 = ctxm.Process(target=_compact_child,
+                              args=(str(home), str(proj), barrier, q))
+            p2 = ctxm.Process(target=_upsert_child,
+                              args=(str(home), str(proj), "compact-live", body, barrier, q))
+            p1.start(); p2.start()
+            p1.join(60); p2.join(60)
+            results = [q.get(timeout=1), q.get(timeout=1)]
+        finally:
+            _cp.JOURNAL_MAX_ROWS = _old_cap
+        oks = {r[0] for r in results if r[1]}
+        jconn2 = _cp.connect_journal(ctx)
+        n_rows = int(jconn2.execute("SELECT COUNT(*) FROM journal").fetchone()[0])
+        writer_rows = [dict(r) for r in jconn2.execute(
+            "SELECT op_id, status FROM journal WHERE op_id LIKE 'op_%' AND op_id NOT LIKE 'op_cw%'"
+            " AND status NOT IN ('complete','abandoned','committed-cleanup-pending')").fetchall()]
+        jconn2.close()
+        fact_ok = (store / "compact-live.md").is_file()
+        idx = (store / "MEMORY.md").read_text(encoding="utf-8") if (store / "MEMORY.md").is_file() else ""
+        check("concurrency: compaction under a high baseline never drops the racing writer's row",
+              p1.exitcode == 0 and p2.exitcode == 0
+              and "compact" in oks and "---\nname" in oks  # both children succeeded
+              and fact_ok and "](compact-live.md)" in idx  # the writer's fact + pointer landed
+              and not writer_rows  # the writer's row reached a terminal status
+              and n_rows <= 4)  # cap-delete kept ≤ cap (3) + the writer's row (1)
+    finally:
+        td.cleanup()
+
+
 def main() -> int:
     if os.name == "nt":
         print("concurrency: skipped on Windows (POSIX flock)")
@@ -704,6 +770,7 @@ def main() -> int:
     test_grant_vs_grant()
     test_grant_vs_revoke()
     test_two_upserts_distinct_stems()
+    test_compact_vs_writer()
     print(f"\n{passed} passed, {failed} failed")
     return 1 if failed else 0
 
