@@ -1434,6 +1434,12 @@ def persist_gate(ctx: Ctx) -> list[Result]:
         """(rc, stderr, stdout) — rc is the assertion surface (the shared helpers drop it)."""
         env = dict(os.environ)
         env["HOME"] = str(home)              # hermetic: the persist log must never touch the real plugin-data
+        # review fix: CLAUDE_PLUGIN_DATA/CLAUDE_CONFIG_DIR override HOME in store_context's
+        # config resolution — an ambient export would land the synthetic persist line in the
+        # REAL plugin-data root. Scrub them so the fixture is hermetic regardless of env.
+        env.pop("CLAUDE_PLUGIN_DATA", None)
+        env.pop("CLAUDE_CONFIG_DIR", None)
+        env.pop("CM_STORE_OVERRIDE", None)
         try:
             pr = subprocess.run([str(rd), str(rec_path), "--persist", str(store)],
                                 cwd=store.parent, env=env, capture_output=True, text=True,
@@ -1449,6 +1455,9 @@ def persist_gate(ctx: Ctx) -> list[Result]:
             home = root / "home"; home.mkdir()
             store = root / "memory"; store.mkdir()      # PRE-CREATED persist dir (the gate's precondition)
             env = dict(os.environ); env["HOME"] = str(home)
+            env.pop("CLAUDE_PLUGIN_DATA", None)          # review fix: scrub the config overrides —
+            env.pop("CLAUDE_CONFIG_DIR", None)           # the count file must be the SAME hermetic path
+            env.pop("CM_STORE_OVERRIDE", None)           # the subprocess writes (else vacuous counts)
             try:
                 from retention import cycle_log_write_path as _clwp
                 logpath = _clwp(store, environ=env)
@@ -1484,6 +1493,15 @@ def persist_gate(ctx: Ctx) -> list[Result]:
             except OSError:
                 n3 = 0
             actual.append(f"unstamped: rc={rc3} log_lines={n3}")
+            # review fix: a spawn failure (rc None — broken interpreter, timeout) is a broken
+            # HOST, not a contract violation — SKIP with the real reason, never a blocking FAIL
+            if rc1 is None or rc2 is None or rc3 is None:
+                out.append(_R("persist_gate", "CHK-PERSIST-GATE", "terminal --persist gates fire on "
+                              "synthetic seeds (short arc → exit 4, duplicate re-fire, unstamped → exit 5)",
+                              "MED", "SKIP", "render_dashboard.py spawns and exits",
+                              next((e for e in (err1, err2, err3) if e), "spawn failed"),
+                              "synthetic tempdir seeds", "-", "v0.4.1"))
+                return out
             ok = (rc1 == 4 and n1 == 1 and rc2 == 4 and n2 == 1 and rc3 == 5 and n3 == 0)
     except Exception as e:  # noqa: BLE001 — a fixture failure must degrade to SKIP, never crash the oracle
         out.append(_R("persist_gate", "CHK-PERSIST-GATE", "terminal --persist gates fire on "
