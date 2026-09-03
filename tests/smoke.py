@@ -11696,6 +11696,42 @@ with _tf73.TemporaryDirectory() as _td_r5:
           and len({f.get("fileName") for f in _files_r5}) == len(_files_r5)
           and all(f.get("SPDXID") in _hasfiles_r5 for f in _files_r5))
 
+# ── v0.4.5 (#152 code leg): SHA256SUMS in the release pipeline ─────────────────
+_wf_cs = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+check("v0.4.5 #152: the release workflow generates + uploads SHA256SUMS beside the SBOM",
+      "make_checksums.py" in _wf_cs and "SHA256SUMS" in _wf_cs)
+with _tf73.TemporaryDirectory() as _td_cs:
+    _cs_tmp = Path(_td_cs)
+    (_cs_tmp / "a.txt").write_text("alpha\n", encoding="utf-8")
+    (_cs_tmp / "sub").mkdir()
+    (_cs_tmp / "sub" / "b.bin").write_bytes(b"\x00\x01\x02")
+    # a symlink + a dir entry must never enter the manifest (make_sbom walk parity)
+    try:
+        (_cs_tmp / "link.txt").symlink_to(_cs_tmp / "a.txt")
+        _have_link_cs = True
+    except OSError:
+        _have_link_cs = False
+    (_cs_tmp / "empty").mkdir()
+    _cs_out = _cs_tmp / "SHA256SUMS"
+    _pr_cs = _sp_r5.run(
+        [sys.executable, str(ROOT / "tools" / "make_checksums.py"), "--out", str(_cs_out), "."],
+        capture_output=True, text=True, timeout=60, cwd=str(_cs_tmp))
+    _lines_cs = _cs_out.read_text(encoding="utf-8").splitlines() if _cs_out.is_file() else []
+    import hashlib as _hl_cs  # noqa: E402
+    _parsed_cs = []
+    for _ln in _lines_cs:
+        _hex_cs, _sep_cs, _rel_cs = _ln.partition("  ")
+        if _sep_cs and _hex_cs:
+            _parsed_cs.append((_hex_cs, _rel_cs))
+    _verified_cs = all(
+        _hl_cs.sha256((_cs_tmp / _rel_cs).read_bytes()).hexdigest() == _hex_cs
+        for _hex_cs, _rel_cs in _parsed_cs)
+    check("v0.4.5 #152: the stdlib checksum generator emits a sha256sum-verifiable manifest "
+          "(every file listed, hashes match, the symlink and empty dir excluded)",
+          _pr_cs.returncode == 0
+          and {_rel_cs for _, _rel_cs in _parsed_cs} == {"a.txt", "sub/b.bin"}
+          and _verified_cs)
+
 # ── v0.4.2 L1/L3: help sweep + the first-seen nag + the honest no-diffs row ─────
 import subprocess as _sp_l1  # noqa: E402
 _h_l1 = _sp_l1.run([str(ROOT / "cm"), "help"], capture_output=True, text=True, timeout=60)
