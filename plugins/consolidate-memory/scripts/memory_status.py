@@ -705,6 +705,35 @@ def _provisional_rigor(ctx: dict) -> Rigor:
             "applied": "", "override_reason": ""}
 
 
+def outcome_of(record: Mapping[str, Any]) -> str:
+    """The SINGLE-SOURCE outcome vocabulary (L4, v0.4.2) — render_dashboard's banner,
+    render_log's OUTCOME column, and the HTML archive's embedded `_outcome` all derive
+    from HERE (the template's JS ladder remains as a legacy fallback for un-injected
+    views). Cycle-free: reads dicts only, so render_log and the embed both consume it.
+    The ladder: an explicit `outcome` override wins; else a pivoted no-write
+    maintenance pass; else NOTHING / NO-OP / LIGHT (≤2 writes) / SUBSTANTIAL."""
+    if record.get("outcome"):
+        return str(record["outcome"]).upper()
+    entries = [e for e in (record.get("entries") or []) if isinstance(e, dict)]
+    writes = sum(1 for e in entries if e.get("action") in ("added", "corrected", "deleted"))
+    _scope_raw = record.get("scope")
+    scope: dict = _scope_raw if isinstance(_scope_raw, dict) else {}
+    candidates = scope.get("session_candidates", 0) or 0
+    git = scope.get("git_commits", 0) or 0
+    reviewed = scope.get("memories_reviewed", 0) or 0
+    _maint_raw = record.get("maintenance")
+    maint: dict = _maint_raw if isinstance(_maint_raw, dict) else {}
+    if maint.get("pivoted") and writes == 0:
+        return "MAINTENANCE PASS · self-heal / cross-node enrichment"
+    if writes == 0 and candidates == 0 and git == 0 and reviewed == 0:
+        return "NOTHING TO CONSOLIDATE"
+    if writes == 0:
+        return "NO-OP PASS · reviewed, nothing changed"
+    if writes <= 2:
+        return "LIGHT PASS"
+    return "SUBSTANTIAL PASS"
+
+
 def est_tokens(text: str) -> int:
     """Estimate tokens as ceil(chars/4). NOT a real tokenizer — the zero-dependency
     constraint rules one out — so it slightly over-counts prose and under-counts dense
