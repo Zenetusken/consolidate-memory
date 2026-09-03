@@ -9,8 +9,9 @@ name: Release gate
 #          a valid SSH signature from the committed public key (.github/release-tag.pub).
 #          Threat model: main is PR-only (branch ruleset) and the pubkey is committed —
 #          a tag the key didn't sign cannot pass.
-# provenance:  builds SLSA provenance + an SPDX SBOM and attaches both to the GitHub
-#          Release (create-if-missing — `--finalize`'s `gh release create` may race it).
+# provenance:  builds SLSA provenance, an SPDX SBOM, and SHA256SUMS and attaches all
+#          three to the GitHub Release (create-if-missing — `--finalize`'s
+#          `gh release create` may race it).
 
 on:
   workflow_dispatch:
@@ -98,6 +99,11 @@ jobs:
           print(m.group(1) if m else '')")"
           python3 tools/make_sbom.py --version "${VER:-${GITHUB_REF_NAME#v}}" --out sbom.spdx.json \
             plugins/consolidate-memory plugins/dream-beta-tester
+      - name: SHA256SUMS (stdlib generator, v0.4.5 #152)
+        run: |
+          python3 tools/make_checksums.py --out SHA256SUMS \
+            plugins/consolidate-memory plugins/dream-beta-tester
+          sha256sum -c SHA256SUMS >/dev/null && echo "SHA256SUMS verifies"
       - name: upload to the GitHub Release (tag must exist)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -114,4 +120,4 @@ jobs:
             || { echo "tag $TAG does not exist — skipping the release upload (dispatch run?)"; exit 0; }
           gh release view "$TAG" >/dev/null 2>&1 \
             || gh release create "$TAG" --title "$TAG" --notes "consolidate-memory $TAG"
-          gh release upload "$TAG" sbom.spdx.json --clobber
+          gh release upload "$TAG" sbom.spdx.json SHA256SUMS --clobber
