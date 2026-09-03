@@ -11165,6 +11165,22 @@ with _Env73() as _e_fm:
         sg._global_is_fixture = _old_gif
 
 
+# ── v0.4.2 R3: the oracle persist-gate family (beta_checks.py) ─────────────────
+class _FakeCtxGate:
+    skill_version = "0.4.1"
+    skill = ROOT / "plugins" / "consolidate-memory" / "scripts"
+_r_gate = _bc54.persist_gate(cast(_bc54.Ctx, _FakeCtxGate()))
+check("v0.4.2 R3 beta family: the terminal gates fire on synthetic seeds "
+      "(short arc → exit 4 ×1 line, duplicate re-fire, unstamped → exit 5)",
+      len(_r_gate) == 1 and _r_gate[0].status == "PASS"
+      and _r_gate[0].id == "CHK-PERSIST-GATE")
+class _FakeCtxGateOld:
+    skill_version = "0.4.0"
+    skill = ROOT / "plugins" / "consolidate-memory" / "scripts"
+check("v0.4.2 R3 beta family: pre-gate skill → SKIP-by-version (the vendored canary is covered)",
+      _bc54.persist_gate(cast(_bc54.Ctx, _FakeCtxGateOld())) == [])
+
+
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
 with _Env73() as _e_jp:
     _ctx_jp = sc.resolve_store(_e_jp.proj)

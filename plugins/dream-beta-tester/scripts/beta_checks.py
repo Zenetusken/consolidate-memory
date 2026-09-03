@@ -1398,6 +1398,110 @@ def demotion_capture(ctx: Ctx) -> list[Result]:
         defect_ref="v0.1.67", is_complete=is_complete)
 
 
+@family
+def persist_gate(ctx: Ctx) -> list[Result]:
+    """v0.4.2 (R3): DRIVE the v0.4.1 terminal --persist gates on synthetic seeds — a hermetic
+    tempdir fixture, never the store under test. The gates: a short-arc record (5 beats, no wake)
+    must PERSIST exactly one log line and exit 4 (backfill-then-persist); the re-run of the SAME
+    record must re-fire exit 4 WITHOUT a second line (the duplicate is judged too); an unstamped
+    record must exit 5 and log nothing. MED / FAIL on any mismatch (a silent skip or a doubled
+    line is a contract regression, not style). Pre-v0.4.1 skills have no gates → SKIP-by-version
+    (the vendored canary is covered by the gate). The frozen gate fixture store is never touched."""
+    out: list[Result] = []
+    if _version_tuple(ctx.skill_version or "") < (0, 4, 1):
+        return out                              # pre-gate skill (the canary) → not applicable
+    rd = ctx.skill / "render_dashboard.py"
+    if not rd.is_file():
+        out.append(_R("persist_gate", "CHK-PERSIST-GATE", "terminal --persist gates fire on "
+                      "synthetic seeds (short arc → exit 4, duplicate re-fire, unstamped → exit 5)",
+                      "MED", "SKIP", "render_dashboard.py at the discovered skill",
+                      "not found", "synthetic tempdir seeds", "-", "v0.4.1"))
+        return out
+    import tempfile as _tf
+
+    def _seed(commit: str, ts: str) -> dict[str, Any]:
+        return {
+            "marker": {"commit": commit, "timestamp": ts},
+            "project": "gate-fixture", "session": "sess-gate",
+            "dream": {"sleep": "*sleep*", "beats": [f"*beat{i}*" for i in range(5)],
+                      "wake": ""},          # 5 beats, NO wake → structurally short
+            "rigor": {"applied": "LIGHT", "override_reason": "synthetic"},
+            "verification": {"trips": 0, "confirmed": 0, "total": 0},
+            "entries": [], "usage": {"transcripts": 0, "facts_read": 0},
+        }
+
+    def _run_gate(rec_path: "Path", store: "Path", home: "Path"):
+        """(rc, stderr, stdout) — rc is the assertion surface (the shared helpers drop it)."""
+        env = dict(os.environ)
+        env["HOME"] = str(home)              # hermetic: the persist log must never touch the real plugin-data
+        try:
+            pr = subprocess.run([str(rd), str(rec_path), "--persist", str(store)],
+                                cwd=store.parent, env=env, capture_output=True, text=True,
+                                timeout=120, check=False)
+        except (OSError, subprocess.SubprocessError) as e:
+            return None, f"{type(e).__name__}: {e}", ""
+        return pr.returncode, (pr.stderr or "").strip(), (pr.stdout or "").strip()
+
+    actual: list[str] = []
+    try:
+        with _tf.TemporaryDirectory(prefix="persist-gate-") as _tdn:
+            root = Path(_tdn)
+            home = root / "home"; home.mkdir()
+            store = root / "memory"; store.mkdir()      # PRE-CREATED persist dir (the gate's precondition)
+            env = dict(os.environ); env["HOME"] = str(home)
+            try:
+                from retention import cycle_log_write_path as _clwp
+                logpath = _clwp(store, environ=env)
+            except Exception as _e:                      # noqa: BLE001 — retention import failure → SKIP honestly
+                out.append(_R("persist_gate", "CHK-PERSIST-GATE", "terminal --persist gates fire on "
+                              "synthetic seeds (short arc → exit 4, duplicate re-fire, unstamped → exit 5)",
+                              "MED", "SKIP", "the skill's retention module", f"{type(_e).__name__}: {_e}",
+                              "synthetic tempdir seeds", "-", "v0.4.1"))
+                return out
+
+            def _lines() -> int:
+                try:
+                    return sum(1 for _ in open(logpath, encoding="utf-8"))
+                except OSError:
+                    return 0
+
+            rec1 = root / "short.json"
+            rec1.write_text(json.dumps(_seed("aaa111bbb222", "2026-09-01T00:00:00Z")),
+                            encoding="utf-8")
+            rc1, err1, _ = _run_gate(rec1, store, home)
+            n1 = _lines()
+            actual.append(f"short-arc run 1: rc={rc1} log_lines={n1}")
+            rc2, err2, _ = _run_gate(rec1, store, home)
+            n2 = _lines()
+            actual.append(f"duplicate re-fire: rc={rc2} log_lines={n2}")
+            rec2 = root / "unstamped.json"
+            rec2.write_text(json.dumps(_seed("ccc333ddd444", "")), encoding="utf-8")
+            store2 = root / "memory2"; store2.mkdir()
+            rc3, err3, _ = _run_gate(rec2, store2, home)
+            n3 = 0
+            try:
+                n3 = sum(1 for _ in open(_clwp(store2, environ=env), encoding="utf-8"))
+            except OSError:
+                n3 = 0
+            actual.append(f"unstamped: rc={rc3} log_lines={n3}")
+            ok = (rc1 == 4 and n1 == 1 and rc2 == 4 and n2 == 1 and rc3 == 5 and n3 == 0)
+    except Exception as e:  # noqa: BLE001 — a fixture failure must degrade to SKIP, never crash the oracle
+        out.append(_R("persist_gate", "CHK-PERSIST-GATE", "terminal --persist gates fire on "
+                      "synthetic seeds (short arc → exit 4, duplicate re-fire, unstamped → exit 5)",
+                      "MED", "SKIP", "the synthetic fixture runs", f"raised {type(e).__name__}: {e}",
+                      "synthetic tempdir seeds", "-", "v0.4.1"))
+        return out
+    out.append(_R("persist_gate", "CHK-PERSIST-GATE",
+                  "terminal --persist gates fire on synthetic seeds (short arc → exit 4, "
+                  "duplicate re-fire, unstamped → exit 5)",
+                  "MED", "PASS" if ok else "FAIL",
+                  "rc=4 with exactly 1 line · re-run rc=4 still 1 line · unstamped rc=5 with 0 lines",
+                  " · ".join(actual),
+                  "synthetic tempdir seeds (hermetic HOME; the store under test is untouched)",
+                  "-", "v0.4.1"))
+    return out
+
+
 # ─────────────────────────────── run + report ───────────────────────────────
 
 
