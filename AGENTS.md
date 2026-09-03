@@ -234,17 +234,15 @@ design.
   (claude CLI)`, and `bench (linux python 3.12)` (after PR #180 lands). The CI
   job list in the Commands section is the authoritative enumeration.
 
-- **The review-count gate vs the solo maintainer.** GitHub refuses self-approval,
-  so the maintainer's own PRs cannot satisfy `review count ≥ 1`. The coherent
-  configuration (live since 0.4.6): the maintainer's account is a
-  **`always` bypass actor** on `protect-main` — their own merges bypass the
-  ruleset (self-approval is structurally impossible on GitHub; their judgment
-  is the approval, recorded in the PR thread via the per-PR adversarial review
-  agents), while the 11 required checks still RUN in CI and the merge flow
-  waits for green — the bypass covers only what cannot be satisfied. An
-  external contributor's PR still needs the maintainer's approval. The PR
-  state may show REVIEW_REQUIRED on the maintainer's own PRs — expected
-  display noise; the bypass applies at merge time.
+- **The review gate vs the solo maintainer.** GitHub refuses self-approval —
+  and self-approval protection overrides bypass actors — so a solo account can
+  NEVER merge its own PRs under `review count ≥ 1`, in any ruleset
+  configuration (verified empirically, 0.4.6). The coherent model: the
+  ruleset requires **0 approvals** and the **11 required checks gate every
+  merge**; the review process is the per-PR adversarial review agent, whose
+  findings are recorded in the PR thread — that is what actually caught every
+  bug this session. An external contributor's PR still gets the maintainer's
+  manual review before merge.
 
 ## The QA companion (dream-beta-tester)
 
