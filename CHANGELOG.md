@@ -5,6 +5,16 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.4] — 2026-09-03
+
+**Patch** — docs sync: the current-engineering-release statements (CLAUDE.md/AGENTS.md
+headers, the SKILL banner, harness-map, README's release blurbs + known-limitations
+header, the 1.0-preflight STATUS line) are swept to 0.4.4 — fixing the one-behind
+state 0.4.3 shipped (its sweep landed pre-bump at 0.4.2). Also: the preflight ops-HOLD
+residual list is de-staled (signed tags · SBOM/provenance publisher · the PR-only main
+ruleset — three of the five named blockers, shipped), and AGENTS.md's smoke-assertion
+count is corrected to the live gate (≈1505). No behavior changes.
+
 ## [0.4.3] — 2026-09-03
 
 **Patch** — post-0.4.2 documentation sync: the current-engineering-release

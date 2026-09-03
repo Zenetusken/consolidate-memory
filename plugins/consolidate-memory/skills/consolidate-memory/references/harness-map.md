@@ -1,6 +1,6 @@
 # Harness map — data sources, memory formats, verification recipes
 
-**v0.4.2.** Read this when you need the exact paths, file formats, or grep/git recipes for a
+**v0.4.4.** Read this when you need the exact paths, file formats, or grep/git recipes for a
 consolidation pass. The SKILL.md body covers the workflow; this is the lookup table.
 
 **Unenrolled is local-only (ADR 008):** a project that is not enrolled cannot
