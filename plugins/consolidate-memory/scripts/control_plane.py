@@ -3105,15 +3105,24 @@ def stable_fact_id(domain: str, stem: str, schema_version: str = "2") -> str:
     return _sf(domain, stem, schema_version)
 
 
+_RECORD_HOLDER_SQL = (
+    "INSERT INTO holders(fact_id, project_id, base_revision, canonical_revision, semantic_hash) "
+    "VALUES (?,?,?,?,?) ON CONFLICT(fact_id, project_id) DO UPDATE SET "
+    "base_revision=excluded.base_revision, canonical_revision=excluded.canonical_revision, "
+    "semantic_hash=excluded.semantic_hash"
+)
+
+
+def record_holders(conn: sqlite3.Connection, rows: "list[tuple]") -> None:
+    """executemany form of record_holder — one statement for N rows. A 10k-canonical
+    warm pull re-records every in-sync holder; N statements cost ~50ms of the pull
+    (v0.4.2 P3 measured). `rows` is [(fact_id, project_id, base_rev, canon_rev, sem)]."""
+    conn.executemany(_RECORD_HOLDER_SQL, rows)
+
+
 def record_holder(conn: sqlite3.Connection, fact_id: str, project_id: str,
                   base_rev: str, canon_rev: str, sem: str) -> None:
-    conn.execute(
-        "INSERT INTO holders(fact_id, project_id, base_revision, canonical_revision, semantic_hash) "
-        "VALUES (?,?,?,?,?) ON CONFLICT(fact_id, project_id) DO UPDATE SET "
-        "base_revision=excluded.base_revision, canonical_revision=excluded.canonical_revision, "
-        "semantic_hash=excluded.semantic_hash",
-        (fact_id, project_id, base_rev, canon_rev, sem),
-    )
+    record_holders(conn, [(fact_id, project_id, base_rev, canon_rev, sem)])
 
 
 def record_conflict(conn: sqlite3.Connection, stem: str, project_id: str, decision: dict,
