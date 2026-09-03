@@ -11207,6 +11207,11 @@ with _tf73.TemporaryDirectory() as _td_r2:
     # excluded by the pinned slug pattern alone (the registry-union path)
     _reg_r2 = _root_r2 / "elsewhere" / "-tmp-bench-x" / "memory"
     _reg_r2.mkdir(parents=True)
+    # review fix: the CURRENT-shape dash-slug fixture pattern (slug_for strips dots) — the
+    # dot-bearing patterns alone missed the real pre-0.4.2 gate fixture dirs
+    _dash_r2 = _root_r2 / "elsewhere2" / "-home-u--dream-beta-test-gate-repo" / "memory"
+    _dash_r2.mkdir(parents=True)
+    (_dash_r2 / "g.md").write_text("---\nname: g\n---\nbody\n", encoding="utf-8")
     _old_pr_r2 = sg._projects_root
     _old_rows_r2 = sg._registry_project_rows
     sg._projects_root = lambda: _root_r2 / ".claude" / "projects"
@@ -11219,10 +11224,11 @@ with _tf73.TemporaryDirectory() as _td_r2:
         sg._projects_root = _old_pr_r2
         sg._registry_project_rows = _old_rows_r2
     _keys_r2 = {sg._path_key(p) for p in _stores_r2}
-    check("v0.4.2 R2: mixed tree — the marker AND the slug-pattern fixture stores are excluded, "
-          "only the real store enumerates + the dim skip line keeps it visible",
+    check("v0.4.2 R2: mixed tree — the marker, the -tmp- pattern, AND the dash-slug fixture "
+          "pattern stores are all excluded; only the real store enumerates + the dim skip "
+          "line keeps it visible",
           _keys_r2 == {sg._path_key(_real_slug_r2)}
-          and "skipped 2 fixture store(s)" in _err_r2.getvalue())
+          and "skipped 3 fixture store(s)" in _err_r2.getvalue())
 
 
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────

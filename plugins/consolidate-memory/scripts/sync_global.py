@@ -150,11 +150,17 @@ def _registry_project_rows() -> list:
 _FIXTURE_MARKER = ".cm-fixture"
 # R2 (v0.4.2): PINNED known-stale slug patterns — machine-independent substrings (never paths,
 # never usernames): the tmpdir-derived slug family (`-tmp-…`, every bench/hermetic fixture) and
-# the two dream-beta-tester fixture repo paths (`.claude/dream-beta-tester/fixtures/gate-repo`
+# the dream-beta-tester fixture repo paths (`.claude/dream-beta-tester/fixtures/gate-repo`
 # and `.dream-beta-test/gate-repo`, wherever the home dir lives). The PRIMARY mechanism is the
 # .cm-fixture marker (ancestor walk); this list covers pre-existing unmarked dirs.
-_FIXTURE_SLUG_PATTERNS = ("-tmp-", ".claude-dream-beta-tester-fixtures-gate-repo",
-                          ".dream-beta-test-gate-repo")
+# Review fix: slug_for (M3+) replaces dots with dashes, so the CURRENT-shape legacy
+# fixture dirs are dash-slugs — the dot-bearing patterns only match obsolete pre-M3
+# dirs. Both forms are listed.
+_FIXTURE_SLUG_PATTERNS = ("-tmp-",
+                          ".claude-dream-beta-tester-fixtures-gate-repo",
+                          ".dream-beta-test-gate-repo",
+                          "-dream-beta-tester-fixtures-gate-repo",
+                          "-dream-beta-test-gate-repo")
 
 
 def _is_fixture_store(p: Path) -> bool:
