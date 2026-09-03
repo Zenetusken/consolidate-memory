@@ -11165,6 +11165,66 @@ with _Env73() as _e_fm:
         sg._global_is_fixture = _old_gif
 
 
+# ── v0.4.2 R1: stranded-global advisory (memory_status.py) ─────────────────────
+with _tf73.TemporaryDirectory() as _td_r1:
+    def _fact_r1(name, scope):
+        return (f"---\nname: {name}\nscope: {scope}\nmetadata:\n  node_type: memory\n"
+                f"  type: user\noriginSessionId: 00000000-0000-4000-8000-000000000001\n"
+                f"---\nbody {name}\n")
+    _m1_r1 = Path(_td_r1) / "g1.md"; _m1_r1.write_text(_fact_r1("g1", "user-global"), encoding="utf-8")
+    _m2_r1 = Path(_td_r1) / "g2.md"; _m2_r1.write_text(_fact_r1("g2", "stack-general"), encoding="utf-8")
+    _m3_r1 = Path(_td_r1) / "l1.md"; _m3_r1.write_text(_fact_r1("l1", "project-local"), encoding="utf-8")
+    _m4_r1 = Path(_td_r1) / "gm.md"
+    _m4_r1.write_text(sg._as_mirror(_fact_r1("gm", "user-global"), "gm"), encoding="utf-8")
+    _files_r1 = [_m1_r1, _m2_r1, _m3_r1, _m4_r1]
+    _d1_r1 = ms.schema_drift(_files_r1, {"g1", "g2", "l1", "gm"},
+                             canonical_stems={"g2", "l1"})
+    check("v0.4.2 R1: stranded-global advisory counts authored globals with no canonical "
+          "(1 stranded — g1; the mirror exempt; drift_findings unchanged)",
+          int(_d1_r1.get("advisory_stranded_globals") or 0) == 1
+          and ms.drift_findings(_d1_r1) == 0)
+    _d2_r1 = ms.schema_drift(_files_r1, {"g1", "g2", "l1", "gm"},
+                             canonical_stems={"g1", "g2", "l1"})
+    check("v0.4.2 R1: with a canonical for every stem the advisory is 0",
+          int(_d2_r1.get("advisory_stranded_globals") or 0) == 0)
+
+
+# ── v0.4.2 R2: fixture-store exclusion (sync_global.py) ────────────────────────
+with _tf73.TemporaryDirectory() as _td_r2:
+    _root_r2 = Path(_td_r2)
+    (_root_r2 / ".claude" / "projects").mkdir(parents=True)
+    _real_slug_r2 = _root_r2 / ".claude" / "projects" / "realproj" / "memory"
+    _real_slug_r2.mkdir(parents=True)
+    (_real_slug_r2 / "f.md").write_text("---\nname: f\nscope: project-local\n---\nbody\n",
+                                        encoding="utf-8")
+    # the marker sits at the SYNTH SLUG dir (make_fixture's production placement) — the
+    # ancestor walk from the store finds it one hop up; the real store shares no marker
+    _marked_r2 = _root_r2 / ".claude" / "projects" / "synth" / "memory"
+    _marked_r2.mkdir(parents=True)
+    (_marked_r2 / "g.md").write_text("---\nname: g\n---\nbody\n", encoding="utf-8")
+    (_marked_r2.parent / ".cm-fixture").write_text("fixture\n", encoding="utf-8")
+    # a registry-union row OUTSIDE the projects tree (and outside the marker's ancestry) —
+    # excluded by the pinned slug pattern alone (the registry-union path)
+    _reg_r2 = _root_r2 / "elsewhere" / "-tmp-bench-x" / "memory"
+    _reg_r2.mkdir(parents=True)
+    _old_pr_r2 = sg._projects_root
+    _old_rows_r2 = sg._registry_project_rows
+    sg._projects_root = lambda: _root_r2 / ".claude" / "projects"
+    sg._registry_project_rows = lambda: [{"native_memory_dir": str(_reg_r2)}]
+    _err_r2 = _io73.StringIO()
+    try:
+        with _ctx73.redirect_stderr(_err_r2):
+            _stores_r2 = sg.iter_native_stores()
+    finally:
+        sg._projects_root = _old_pr_r2
+        sg._registry_project_rows = _old_rows_r2
+    _keys_r2 = {sg._path_key(p) for p in _stores_r2}
+    check("v0.4.2 R2: mixed tree — the marker AND the slug-pattern fixture stores are excluded, "
+          "only the real store enumerates + the dim skip line keeps it visible",
+          _keys_r2 == {sg._path_key(_real_slug_r2)}
+          and "skipped 2 fixture store(s)" in _err_r2.getvalue())
+
+
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
 with _Env73() as _e_jp:
     _ctx_jp = sc.resolve_store(_e_jp.proj)
