@@ -268,6 +268,7 @@ class SchemaDrift(TypedDict, total=False):
     index_mismatch: int
     advisory_no_scope: int
     advisory_no_origin: int
+    advisory_stranded_globals: int
 
 
 class Health(TypedDict, total=False):
@@ -1234,16 +1235,25 @@ def near_duplicate_slugs(slug: str, sibling_slugs: list) -> list:
     return sorted(s for s in sibling_slugs if s != slug and norm(s) == target)
 
 
-def schema_drift(fact_files: list, index_names: set) -> SchemaDrift:
+def schema_drift(fact_files: list, index_names: set,
+                 canonical_stems: "set | None" = None) -> SchemaDrift:
     """DRIFT (always reported) + optional backfill ADVISORY (absence). DRIFT = documented field
     `node_type` MISSING, a present-but-MALFORMED `scope`/`originSessionId`, or an index<->file
     mismatch. Advisory = facts merely LACKING scope/originSessionId (injected/optional → absence
     is noise, not drift). v0.4.1 (D3): MANAGED MIRRORS are exempt — their metadata block is the
     mirror-stamp block (mirrored_at/global_ref/…, no node_type), never a drift finding; their
     stems stay counted (the mirror pointer line lives in MEMORY.md, so the index-symmetric diff
-    must keep them). Pure; never raises."""
+    must keep them). Pure; never raises.
+
+    `canonical_stems` (R1, v0.4.2): when given, counts AUTHORED user-global/stack-general facts
+    whose stem has no canonical — STRANDED globals (the upstream fact was demoted, renamed, or
+    never promoted): `--pull` can never refresh them and no other project can see them. Advisory
+    (absence is not drift) — the remediation is re-promotion or a demote to project-local.
+    Mirrors are exempt (skipped above); an unenrolled project's empty canonical set honestly
+    counts every authored global as stranded."""
     missing_node_type = malformed_scope = malformed_origin = 0
     advisory_no_scope = advisory_no_origin = 0
+    advisory_stranded_globals = 0
     stems = set()
     for f in fact_files:
         stems.add(f.stem)
@@ -1254,6 +1264,10 @@ def schema_drift(fact_files: list, index_names: set) -> SchemaDrift:
         if _is_mirror(text):
             continue    # managed mirror — the authored side is the drift surface
         fm = _frontmatter(text)
+        if (canonical_stems is not None
+                and str(fm.get("scope") or "") in ("user-global", "stack-general")
+                and f.stem not in canonical_stems):
+            advisory_stranded_globals += 1
         if "node_type" not in fm:
             missing_node_type += 1
         if "scope" in fm:
@@ -1268,7 +1282,8 @@ def schema_drift(fact_files: list, index_names: set) -> SchemaDrift:
             advisory_no_origin += 1
     return {"missing_node_type": missing_node_type, "malformed_scope": malformed_scope,
             "malformed_origin": malformed_origin, "index_mismatch": len(stems ^ index_names),
-            "advisory_no_scope": advisory_no_scope, "advisory_no_origin": advisory_no_origin}
+            "advisory_no_scope": advisory_no_scope, "advisory_no_origin": advisory_no_origin,
+            "advisory_stranded_globals": advisory_stranded_globals}
 
 
 def drift_findings(d: Mapping[str, Any]) -> int:
@@ -2573,7 +2588,16 @@ def build_context(project_dir: Path) -> dict:
     # A body whose pointer lives in SHIPPED.md (relocated off MEMORY.md) is archived-by-design,
     # not index↔file drift — placed_fact_names unions the archive indexes.
     index_names = index_fact_names(index_path) - {f.stem for f in archive_docs}
-    drift = schema_drift(fact_files, placed_fact_names(index_path, archive_docs))
+    # R1 (v0.4.2): the domain store's canonical stems — the stranded-global advisory's reference
+    # set (an unenrolled project has none, so every authored global counts stranded — honest: no
+    # puller can ever reach it).
+    try:
+        _canon_stems = {f.stem for f in _ctx.canonical_domain_dir.glob("*.md")} \
+            if _ctx.canonical_domain_dir.is_dir() else set()
+    except OSError:
+        _canon_stems = set()
+    drift = schema_drift(fact_files, placed_fact_names(index_path, archive_docs),
+                         canonical_stems=_canon_stems)
 
     # Slug-orphan / near-duplicate-store detection (C1): a renamed project dir orphans
     # its slug-scoped memory under the OLD slug. Guard the projects-root scan (mirrors
@@ -3611,6 +3635,13 @@ def print_report(ctx: dict) -> None:
                           bullet="⚠", bullet_color="yellow"))
     if d["advisory_no_scope"] or d["advisory_no_origin"]:
         sig.append(_ui.li(_ui.c(f"backfill (optional, NOT drift): {d['advisory_no_scope']} lack scope · {d['advisory_no_origin']} lack originSessionId", "dim"), bullet="·"))
+    # R1 (v0.4.2): the stranded-global advisory — a global fact with no canonical is
+    # unreachable by every pull; the remediation is re-promotion or a demote.
+    if d["advisory_stranded_globals"]:
+        sig.append(_ui.li(_ui.c(
+            f"stranded globals (optional, NOT drift): {d['advisory_stranded_globals']} "
+            f"user-global/stack-general fact(s) with no canonical — no pull can reach them; "
+            f"re-promote (cm canonical upsert) or demote to project-local", "dim"), bullet="·"))
     if sig:
         add("")
         add(_ui.kv("SIGNALS", _ui.c("detect-and-offer — Phase 0 never mutates a store", "dim")))

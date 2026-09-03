@@ -102,6 +102,17 @@ report; they are the stories `cm doctor` / mutating commands must fail closed on
   The SessionStart beacon stays silent on registry failure.
 - Public 1.0 remains HOLD.
 
+## Release integrity (R5, v0.4.2)
+
+- Every release tag is **SSH-signed** (`release.sh --finalize` refuses without
+  `user.signingkey`); the committed public key (`.github/release-tag.pub`) is
+  the trust anchor — the CI `verify` job runs `git verify-tag` on every pushed
+  tag. Threat model: `main` is PR-only (branch ruleset) and the pubkey is
+  committed, so a tag the key did not sign cannot pass the gate.
+- The tag-triggered workflow also re-runs the strict plugin validates
+  (marketplace + both plugins) and publishes **SLSA build provenance** plus a
+  **stdlib-generated SPDX SBOM** to the GitHub Release.
+
 ## Reporting a vulnerability
 
 Please open a GitHub security advisory or a private issue at
