@@ -172,3 +172,9 @@ My v0.1.19-era defect catalog (`~/consolidate-memory-v0.1.19-defects.md`) → th
   `plugins/dream-beta-tester/scripts/`; the skill at
   `plugins/dream-beta-tester/skills/dream-beta-test/SKILL.md`; maintainer runtime state
   (fixture/canary/`reports/`) at `~/.dream-beta-test/` (overridable via `$DREAM_BETA_STATE`).
+- **v0.4.2 renderer coherence (L2/L4):** the outcome vocabulary has ONE definition
+  (`memory_status.outcome_of` — the dashboard banner, the `cm log` OUTCOME column, and the
+  HTML archive's embedded `_outcome` all derive from it; the template's JS ladder remains as a
+  legacy fallback), and both renderers show the DISTILL top-3 recurring commands in the USAGE
+  `top:` idiom. Pinned by the mirrored-matrix smoke checks (every ladder rung agrees across
+  all three surfaces).

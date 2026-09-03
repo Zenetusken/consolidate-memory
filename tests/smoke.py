@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Mapping, cast
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "plugins" / "consolidate-memory" / "scripts"))
@@ -11163,6 +11163,45 @@ with _Env73() as _e_fm:
               _up_fm.get("ok") is True and not _mp.exists())
     finally:
         sg._global_is_fixture = _old_gif
+
+
+# ── v0.4.2 L2/L4: renderer coherence (top commands + one outcome vocabulary) ────
+# L4: the single source — the dashboard banner and the log column agree on EVERY ladder rung
+_l4_matrix = [
+    ({}, "NOTHING TO CONSOLIDATE"),
+    ({"entries": [{"action": "added"}]}, "LIGHT PASS"),
+    ({"entries": [{"action": "added"} for _ in range(3)]}, "SUBSTANTIAL PASS"),
+    ({"scope": {"git_commits": 4}, "entries": []}, "NO-OP PASS · reviewed, nothing changed"),
+    ({"maintenance": {"pivoted": True}, "entries": []}, "MAINTENANCE PASS · self-heal / cross-node enrichment"),
+    ({"outcome": "heavy", "entries": []}, "HEAVY"),
+]
+check("v0.4.2 L4: the outcome ladder has ONE definition — ms.outcome_of == rd._outcome == "
+      "rlog's OUTCOME column across the full matrix (override + pivoted included)",
+      all(ms.outcome_of(cast(ms.CycleRecord, _r)) == _lbl
+          and rd._outcome(cast(Mapping[str, Any], _r)) == _lbl
+          and rlog._row(cast(dict, _r))[-1] == _lbl and rlog._HEAD[-1] == "OUTCOME"
+          for _r, _lbl in _l4_matrix))
+check("v0.4.2 L4: the template prefers the embedded single-source label (the JS ladder "
+      "stays as the legacy fallback)",
+      'g(c,"_outcome","")' in (ROOT / "plugins" / "consolidate-memory" / "scripts"
+                               / "dashboard.template.html").read_text(encoding="utf-8"))
+# L2: top-3 distill.top rows in the USAGE top: idiom (ASCII + template); legacy no-top unchanged
+_rec_l2 = {"project": "p", "session": "s", "scope": {}, "entries": [],
+           "distill": {"n_recurring": 4, "n_chains": 1,
+                       "top": [{"template": f"cmd{i}", "n": 5 - i, "d": 2} for i in range(4)]}}
+_out_l2 = rd.render(cast(ms.CycleRecord, _rec_l2))
+check("v0.4.2 L2: the DISTILL top-3 render in the USAGE top: idiom (capped at 3, +1 more)",
+      "cmd0 ×5 2d" in _out_l2 and "cmd2 ×3 2d" in _out_l2
+      and "cmd3" not in _out_l2 and "+1 more" in _out_l2)
+check("v0.4.2 L2: a legacy distill record without `top` renders byte-identically (no top: line)",
+      "top:" not in rd.render(cast(ms.CycleRecord,
+                                   {"project": "p", "session": "s", "scope": {}, "entries": [],
+                                    "distill": {"n_recurring": 1, "n_chains": 0}})))
+check("v0.4.2 L2: the template renders the top commands after the DISTILL counts",
+      "top: " in (ROOT / "plugins" / "consolidate-memory" / "scripts"
+                  / "dashboard.template.html").read_text(encoding="utf-8")
+      and "dtop.slice(0,3)" in (ROOT / "plugins" / "consolidate-memory" / "scripts"
+                                / "dashboard.template.html").read_text(encoding="utf-8"))
 
 
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────

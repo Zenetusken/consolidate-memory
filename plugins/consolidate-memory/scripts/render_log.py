@@ -48,10 +48,13 @@ def _row(rec: dict) -> list:
     code = " ".join(f"{n}{a}" for a, n in sorted(Counter(str(e.get("action", "?"))[:1] for e in ents).items())) or "—"
     cr, mo, de = (_n(_d(rec, "audit", "memory", "created")), _n(_d(rec, "audit", "memory", "modified")),
                   _n(_d(rec, "audit", "memory", "deleted")))
-    return [when, commit, rigor, f"{ia} ({ia - ib:+d})", f"{ra} ({ra - rb:+d})", reads, code, f"+{cr} ~{mo} -{de}"]
+    # L4 (v0.4.2): the OUTCOME column derives from the SINGLE source (memory_status.outcome_of)
+    from memory_status import outcome_of
+    return [when, commit, rigor, f"{ia} ({ia - ib:+d})", f"{ra} ({ra - rb:+d})", reads, code,
+            f"+{cr} ~{mo} -{de}", outcome_of(rec)]
 
 
-_HEAD = ["WHEN", "MARKER", "RIGOR", "INDEX (Δ)", "RECALL (Δ)", "READS", "ENTRIES", "AUDIT"]
+_HEAD = ["WHEN", "MARKER", "RIGOR", "INDEX (Δ)", "RECALL (Δ)", "READS", "ENTRIES", "AUDIT", "OUTCOME"]
 
 
 def render(recent: list, total: int, project: str) -> str:

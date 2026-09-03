@@ -583,7 +583,10 @@
     return ents.filter(function(e){return ["added","corrected","deleted"].indexOf(g(e,"action",""))>=0;}).length;
   }
   function outcomeOf(c){
-    var oc=g(c,"outcome",""); if(oc) return oc;
+    // L4 (v0.4.2): the embedded single-source label wins; the ladder below is the
+    // legacy fallback for records embedded before the injection existed.
+    var oc=g(c,"_outcome",""); if(oc) return oc;
+    var oc0=g(c,"outcome",""); if(oc0) return oc0;
     var w=writeCount(c), ents=Array.isArray(c&&c.entries)?c.entries:[];
     if(truthy(g(c,"maintenance.pivoted",false))&&w===0) return "Maintenance pass";
     if(magnitude(c)===0&&!ents.length&&num(g(c,"scope.memories_reviewed",0))===0) return "Nothing to consolidate";
@@ -1296,7 +1299,12 @@
       if(num(D.commands)>0)counts.push(fmt(num(D.commands))+" commands / "+num(D.sessions)+" session"+(num(D.sessions)!==1?"s":""));
       // v0.1.58 — the firewall-suppression count, so the transparency counter reaches the human view.
       if(num(D.secrets_omitted)>0)counts.push(num(D.secrets_omitted)+" secret-shaped");
-      el("dstl-counts").textContent=counts.join(" · ");
+      // L2 (v0.4.2): the top recurring commands ride the counts line — the USAGE top:
+      // idiom (`template ×N Nd`), capped at 3; a legacy record without `top` is unchanged
+      var dtop=(Array.isArray(D.top)?D.top:[]).filter(function(t){return t&&typeof t==="object";});
+      el("dstl-counts").textContent=counts.join(" · ")
+        +(dtop.length?" · top: "+dtop.slice(0,3).map(function(t){return esc(String(t.template||"?"))+" ×"+num(t.n)+" "+num(t.d)+"d";}).join(" · ")
+          +(dtop.length>3?" · +"+(dtop.length-3)+" more":""):"");
       var vd=String(D.verdict==null?"":D.verdict), m=vd.match(/^\s*(created|proposed|nothing)\b[:\s]*/i);
       var tag=m?m[1].toLowerCase():"", rest=m?vd.slice(m[0].length):vd;
       // a DECLINED proposal is a resolved state — neutral tag, never the pending-amber (the at-a-glance

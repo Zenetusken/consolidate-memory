@@ -214,29 +214,10 @@ def _over(b: Mapping[str, Any]) -> str:
 
 
 def _outcome(record: Mapping[str, Any]) -> str:
-    # Read-only Mapping[str, Any]: a CycleRecord IS assignable to it (covariant), so the
-    # render(record: CycleRecord) caller passes through with no error, and the demo /
-    # json.loads paths work too. We only READ here.
-    if record.get("outcome"):
-        return str(record["outcome"]).upper()
-    entries = [e for e in _lget(record, "entries") if isinstance(e, dict)]
-    writes = sum(1 for e in entries if e.get("action") in ("added", "corrected", "deleted"))
-    scope = _dget(record, "scope")
-    candidates = scope.get("session_candidates", 0) or 0
-    git = scope.get("git_commits", 0) or 0
-    reviewed = scope.get("memories_reviewed", 0) or 0
-    # v0.1.37: a maintenance pass that PIVOTED on a no-op (self-heal / cross-node enrichment) but made no
-    # new-fact writes must NOT read as NOTHING/NO-OP (the misleading banner the no-op bug produced). After
-    # the explicit `outcome` override (above), before the write-count fallbacks.
-    if _dget(record, "maintenance").get("pivoted") and writes == 0:
-        return "MAINTENANCE PASS · self-heal / cross-node enrichment"
-    if writes == 0 and candidates == 0 and git == 0 and reviewed == 0:
-        return "NOTHING TO CONSOLIDATE"  # nothing even to examine
-    if writes == 0:
-        return "NO-OP PASS · reviewed, nothing changed"
-    if writes <= 2:
-        return "LIGHT PASS"
-    return "SUBSTANTIAL PASS"
+    # L4 (v0.4.2): the single source lives in memory_status.outcome_of — the banner, the log
+    # column, and the HTML embed share ONE vocabulary (the v0.1.37 pivoted-maintenance carve-out
+    # and the explicit `outcome` override are both inside it).
+    return ms.outcome_of(record)
 
 
 def _outcome_colored(oc: str) -> str:
@@ -823,6 +804,16 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
                                   + ("" if _dv else " · " + _c("✗ no verdict", "yellow"))))
         if _dv:
             out.append(_kv("", _c(_dv, "dim")))
+        # L2 (v0.4.2): the top recurring commands — the same USAGE `top:` idiom, capped at 3
+        # (`template ×N Nd`). Key-presence gated: a legacy record without `top` renders
+        # byte-identically.
+        _dtop_all = [t for t in _lget(di, "top") if isinstance(t, dict)]
+        _dtop = _dtop_all[:3]
+        if _dtop:
+            out.append("    " + _c("top:", "dim") + " " + " · ".join(
+                f"{_clean(t.get('template', '?'))} ×{_g(t.get('n', 0))} "
+                f"{_g(t.get('d', 0))}d" for t in _dtop)
+                + (_c(f"  +{len(_dtop_all) - 3} more", "dim") if len(_dtop_all) > 3 else ""))
 
     # v0.1.87/W-C (registrar): the Tier-2 consult's evidence gets a RENDER SURFACE (the render-chain
     # audit measured it had none — "absent = the registrar was not consulted, a visible decision" was

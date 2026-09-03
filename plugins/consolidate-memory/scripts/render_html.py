@@ -164,6 +164,9 @@ def build_html(record: dict, history: list, generated_at: str, diffs: "dict | No
     def _embed_integrity(c: object) -> object:
         if not isinstance(c, dict):
             return c
+        # L4 (v0.4.2): the single-source outcome label rides the embed (the template's
+        # outcomeOf prefers it; the JS ladder stays as the legacy fallback)
+        c = {**c, "_outcome": ms.outcome_of(c)}
         ok, reason, severity = ms.procedure_integrity(c)
         return c if ok else {**c, "_integrity": {"severity": severity, "reason": reason}}
     cycles = [_embed_integrity(c) for c in cycles]
