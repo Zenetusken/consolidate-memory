@@ -61,6 +61,12 @@ def main() -> int:
         encoding="utf-8")
     store = Path.home() / ".claude" / "projects" / slug_for(repo) / "memory"
     store.mkdir(parents=True, exist_ok=True)
+    # R2 (v0.4.2): mark the store's slug dir so fleet analytics skip this synthetic store —
+    # sync_global.iter_native_stores' ancestor walk finds the marker (name kept in lockstep
+    # with sync_global._FIXTURE_MARKER; make_fixture must not import that module).
+    (store.parent / ".cm-fixture").write_text(
+        "synthetic dream-beta-tester gate fixture — excluded from fleet analytics (R2, v0.4.2)\n",
+        encoding="utf-8")
     for f in store.glob("*.md"):
         f.unlink()
 
