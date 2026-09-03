@@ -1885,7 +1885,13 @@ def cmd_data(args: argparse.Namespace) -> int:
         return 0
     if args.data_cmd == "export":
         dest = Path(args.dest or (ctx.plugin_data_dir / "export.json"))
-        print(json.dumps(export_ops(ctx.plugin_data_dir, dest), indent=2))
+        _exp = export_ops(ctx.plugin_data_dir, dest)
+        # v0.4.2 P2: the export redacts journal bodies in the snapshot — surface the
+        # count as a stderr progress line (stdout stays a clean JSON envelope)
+        if _exp.get("journal_redacted"):
+            print(f"export: journal redacted {_exp['journal_redacted']} row(s)",
+                  file=sys.stderr)
+        print(json.dumps(_exp, indent=2))
         return 0
     if args.data_cmd == "import":
         from retention import import_ops as _import_ops

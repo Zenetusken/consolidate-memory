@@ -5176,6 +5176,59 @@ with _tf73.TemporaryDirectory() as _td81:
     check("v0.1.81: --staleness assesses a NON-trigger node at 'cached stacks (as of last pull)' once "
           "the cache exists (the honest basis ladder: live → cached → user-global-only)",
           _prow81["scope_basis"] == "cached stacks (as of last pull)")
+    # v0.4.2 (P1): the stacks cache on the sync paths — cache hit skips the rescan, marker-file
+    # changes invalidate the stamp, the TTL bounds the .py blind spot, the kill-switch forces a rescan.
+    check("v0.4.2 P1: stacks_with_cache HITS the pull-written cache (from_cache, no rescan)",
+          sg.stacks_with_cache(_st81, _p81) == (set(_st81j["stacks"]), True))
+    _old_sc_env = _osB.environ.get("CM_RESCAN_STACKS")
+    _osB.environ["CM_RESCAN_STACKS"] = "1"
+    _sc_forced, _sc_fc = sg.stacks_with_cache(_st81, _p81)
+    _osB.environ.pop("CM_RESCAN_STACKS", None)
+    if _old_sc_env:
+        _osB.environ["CM_RESCAN_STACKS"] = _old_sc_env
+    check("v0.4.2 P1: CM_RESCAN_STACKS=1 forces a rescan (from_cache False)",
+          _sc_fc is False and _sc_forced == sg.detect_stacks(_p81))
+    (_p81 / "pyproject.toml").write_text("[tool.mypy]\nstrict = true\n", encoding="utf-8")
+    check("v0.4.2 P1: a marker-file change invalidates the stamp (rescan)",
+          sg.stacks_with_cache(_st81, _p81)[1] is False)
+    # re-write the cache for the new signature, then prove the unchanged write is a no-op.
+    # The runs are HOME/GLOBAL-patched (the fixture store must be the one written — a bare
+    # run resolves against the REAL home and the mtime pin would pass vacuously).
+    _oldH81r, _oldG81r = _osB.environ.get("HOME"), sg.GLOBAL
+    _osB.environ["HOME"] = str(_h81); sg.GLOBAL = _g81
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()):
+            sg.run(_p81, pull=True)
+        _m81 = (_st81 / ".consolidation-state.json").stat().st_mtime_ns
+        with _ctx73.redirect_stdout(_io73.StringIO()):
+            sg.run(_p81, pull=True)
+        _m81b = (_st81 / ".consolidation-state.json").stat().st_mtime_ns
+    finally:
+        sg.GLOBAL = _oldG81r
+        _osB.environ["HOME"] = _oldH81r if _oldH81r else ""
+    check("v0.4.2 P1: a no-change pull skips the stacks-cache write entirely (state-file mtime stable)",
+          _m81b == _m81)
+    # TTL: an old stacks_at re-detects even with a matching stamp
+    _st81j2 = _jsonB.loads((_st81 / ".consolidation-state.json").read_text(encoding="utf-8"))
+    _st81j2["stacks_at"] = 0.0
+    (_st81 / ".consolidation-state.json").write_text(_jsonB.dumps(_st81j2), encoding="utf-8")
+    check("v0.4.2 P1: an expired TTL re-detects (from_cache False)",
+          sg.stacks_with_cache(_st81, _p81)[1] is False)
+    # P1 review fix: an expired cache with an UNCHANGED value must RE-ARM on the pull (the
+    # early return used to skip the write forever once the TTL elapsed — the cache stayed
+    # dead for exactly the stable projects it exists for)
+    _oldH81t, _oldG81t = _osB.environ.get("HOME"), sg.GLOBAL
+    _osB.environ["HOME"] = str(_h81); sg.GLOBAL = _g81
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()):
+            sg.run(_p81, pull=True)
+    finally:
+        sg.GLOBAL = _oldG81t
+        _osB.environ["HOME"] = _oldH81t if _oldH81t else ""
+    _st81j2b = _jsonB.loads((_st81 / ".consolidation-state.json").read_text(encoding="utf-8"))
+    _age81b = __import__("time").time() - float(_st81j2b.get("stacks_at") or 0)
+    check("v0.4.2 P1: an expired cache RE-ARMS on the pull (the early return honors the TTL)",
+          _age81b < 60 and sg.stacks_with_cache(_st81, _p81)[1] is True)
     check("v0.1.81: after the pull the store is in-sync and the beacon returns to SILENT (the common "
           "case stays free)",
           _beacon81(_h81, _p81).stdout == "")
@@ -10819,6 +10872,181 @@ with _Env73() as _e_or:
     check("P0-2: journal cleanup apply scavenges true orphan trash",
           not _orphan.exists())
 
+# ── v0.4.2 P2: journal scale (merged compact pass + scan reuse + export leg) ────
+with _Env73() as _e_p2:
+    _ctx_p2 = sc.resolve_store(_e_p2.proj)
+    _j_p2 = cp.connect_journal(_ctx_p2)
+    # one RECENT row with a body (redact-only) + one OLD row (receipt-collapse;
+    # its under-whitelisted publishes item is also a redact-change)
+    _j_p2.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("op_legacy_p2", "canonical-upsert",
+         _json_xp.dumps({"stem": "x", "text": "BODY-P2\n",
+                         "dest_preimages": [{"dest": "x.md", "bytes_b64": "Qk9EWQ==",
+                                             "sha256": "ab" * 32, "absent": False}]}),
+         "journal_complete", "complete", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z"))
+    _j_p2.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("op_old_p2", "local-forget",
+         _json_xp.dumps({"publishes": [{"dest": "y.md", "sha256": "cd" * 32}]}),
+         "journal_complete", "complete", "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z"))
+    _j_p2.commit()
+    _j_p2.close()
+    _cout1_p2 = cp.compact_journal(_ctx_p2)
+    _j_p2b = cp.connect_journal(_ctx_p2)
+    _shown_legacy = cp.journal_show(_j_p2b, "op_legacy_p2")
+    _shown_old = cp.journal_show(_j_p2b, "op_old_p2")
+    _j_p2b.close()
+    check("v0.4.2 P2: the merged pass redacts bodies AND collapses old rows in one walk",
+          int(_cout1_p2.get("redacted") or 0) == 2
+          and int(_cout1_p2.get("receipts") or 0) == 1
+          and "text" not in ((_shown_legacy or {}).get("payload") or {})
+          and ((_shown_old or {}).get("payload") or {}).get("receipt") is True)
+    _cout2_p2 = cp.compact_journal(_ctx_p2)
+    check("v0.4.2 P2: a second compact reports 0 redacted + 0 receipts (dirty-flag idempotence)",
+          int(_cout2_p2.get("redacted") or 0) == 0
+          and int(_cout2_p2.get("receipts") or 0) == 0)
+
+# the merged pass on a twin journal == the old three-pass result, counts AND bytes
+with _Env73() as _e_tw:
+    _ctx_tw = sc.resolve_store(_e_tw.proj)
+    _seed_rows_tw = [
+        ("op_legacy_tw", "canonical-upsert",
+         {"stem": "x", "text": "BODY-TW\n",
+          "dest_preimages": [{"dest": "x.md", "bytes_b64": "Qk9EWQ==",
+                              "sha256": "ab" * 32, "absent": False}]},
+         "complete", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z"),
+        ("op_old_tw", "local-forget",
+         {"publishes": [{"dest": "y.md", "sha256": "cd" * 32}]},
+         "complete", "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z"),
+        ("op_pend_tw", "local-forget", {"deletes": []},
+         "pending", "2026-01-01T00:00:00Z", ""),
+    ]
+    def _seed_tw(conn):
+        for _r in _seed_rows_tw:
+            conn.execute(
+                "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (_r[0], _r[1], _json_xp.dumps(_r[2]), "journal_complete",
+                 _r[3], _r[4], _r[5]))
+        conn.commit()
+    _jA_tw = cp.connect_journal(_ctx_tw)
+    _seed_tw(_jA_tw)
+    _passA_tw = cp._compact_pass(_jA_tw, max_rows=0)
+    _payA_tw = {r["op_id"]: r["payload"]
+                for r in _jA_tw.execute("SELECT op_id, payload FROM journal").fetchall()}
+    _jA_tw.close()
+    _jB_tw = cp.connect_journal(_ctx_tw)
+    _jB_tw.execute("DELETE FROM journal")
+    _seed_tw(_jB_tw)
+    _redB_tw = cp.redact_journal_payloads(_jB_tw)
+    _recB_tw = cp.bound_journal_rows(_jB_tw)
+    _payB_tw = {r["op_id"]: r["payload"]
+                for r in _jB_tw.execute("SELECT op_id, payload FROM journal").fetchall()}
+    _jB_tw.close()
+    check("v0.4.2 P2: the merged pass result == the old three-pass result (counts AND payload bytes)",
+          int(_passA_tw.get("redacted") or 0) == int(_redB_tw or 0)
+          and int(_passA_tw.get("receipts") or 0) == int(_recB_tw or 0)
+          and _payA_tw == _payB_tw)
+
+# the export leg: the snapshot's redaction is reported + the CLI prints the progress line
+with _Env73() as _e_ex:
+    _ctx_ex = sc.resolve_store(_e_ex.proj)
+    _j_ex = cp.connect_journal(_ctx_ex)
+    _j_ex.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("op_export_ex", "canonical-upsert",
+         _json_xp.dumps({"stem": "x", "text": "EXPORT-BODY\n"}),
+         "journal_complete", "complete", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z"))
+    _j_ex.commit()
+    _j_ex.close()
+    _dest_ex = _e_ex.proj / "export-test.tgz"
+    _out_ex, _err_ex = _io73.StringIO(), _io73.StringIO()
+    with _ctx73.redirect_stdout(_out_ex), _ctx73.redirect_stderr(_err_ex):
+        _rc_ex = cmo.main(["data", "export", "--dest", str(_dest_ex),
+                           "--project", str(_e_ex.proj)])
+    _exp_res_ex = _json_xp.loads(_out_ex.getvalue() or "{}")
+    check("v0.4.2 P2: the export reports the snapshot's journal redaction + the CLI "
+          "prints the progress line on stderr",
+          _rc_ex == 0 and int(_exp_res_ex.get("journal_redacted") or 0) == 1
+          and "journal redacted 1 row(s)" in _err_ex.getvalue())
+
+# the row cap is shrinkable (bound_journal_rows max_rows is the live knob)
+with _Env73() as _e_cap:
+    _ctx_cap = sc.resolve_store(_e_cap.proj)
+    _j_cap = cp.connect_journal(_ctx_cap)
+    for _i in range(5):
+        _j_cap.execute(
+            "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (f"op_cap{_i}", "bench", _json_xp.dumps({"receipt": True}),
+             "journal_complete", "complete",
+             "2026-01-01T00:%02d:00Z" % _i, "2026-01-01T00:%02d:00Z" % _i))
+    _j_cap.commit()
+    _b_cap = cp.bound_journal_rows(_j_cap, max_rows=3)
+    _n_cap = cp.journal_count(_j_cap)
+    _j_cap.close()
+    check("v0.4.2 P2: the row cap is shrinkable (max_rows=3 deletes the 2 oldest terminal rows; "
+          "the cap-delete counts 1 — the documented operation-count convention)",
+          int(_b_cap or 0) == 1 and _n_cap == 3)
+
+# R4 (v0.4.2): compact_journal enforces the advertised JOURNAL_MAX_ROWS cap (it used to pass
+# max_rows=0 — the cap was dormant on the compact path). Patched to a small value to prove the wiring.
+with _Env73() as _e_r4:
+    _ctx_r4 = sc.resolve_store(_e_r4.proj)
+    _j_r4 = cp.connect_journal(_ctx_r4)
+    for _i in range(6):
+        _j_r4.execute(
+            "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            ("op_r4%d" % _i, "bench", _json_xp.dumps({"receipt": True}),
+             "journal_complete", "complete",
+             "2026-01-01T00:%02d:00Z" % _i, "2026-01-01T00:%02d:00Z" % _i))
+    _j_r4.commit()
+    _j_r4.close()
+    _old_cap_r4 = cp.JOURNAL_MAX_ROWS
+    cp.JOURNAL_MAX_ROWS = 3
+    try:
+        cp.compact_journal(_ctx_r4)
+    finally:
+        cp.JOURNAL_MAX_ROWS = _old_cap_r4
+    _j_r4b = cp.connect_journal(_ctx_r4)
+    _n_r4 = cp.journal_count(_j_r4b)
+    _j_r4b.close()
+    check("v0.4.2 R4: compact_journal enforces JOURNAL_MAX_ROWS (6 rows, patched cap 3 → 3 remain)",
+          int(_n_r4) == 3)
+
+# --apply runs exactly TWO orphan scans (pre-lock plan + under-lock rescan)
+with _Env73() as _e_sc:
+    _ctx_sc = sc.resolve_store(_e_sc.proj)
+    _j_sc = cp.connect_journal(_ctx_sc)
+    _trash_sc = _e_sc.store / ".cm-trash-op_orphan_sc01-0"
+    _trash_sc.write_text("ORPHAN\n", encoding="utf-8")
+    _j_sc.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        ("op_orphan_sc01", "local-forget", _json_xp.dumps({"deletes": []}),
+         "journal_complete", "complete", "2026-01-01T00:00:00Z"))
+    _j_sc.commit()
+    _j_sc.close()
+    _scans_p2 = [0]
+    _orig_scan_p2 = cp.scan_orphan_artifacts
+    def _counting_scan_p2(*a, **k):
+        _scans_p2[0] += 1
+        return _orig_scan_p2(*a, **k)
+    cp.scan_orphan_artifacts = _counting_scan_p2
+    try:
+        _app_sc = cp.journal_cleanup(_ctx_sc, apply=True)
+    finally:
+        cp.scan_orphan_artifacts = _orig_scan_p2
+    check("v0.4.2 P2: --apply runs exactly ONE orphan scan (the under-lock scan2; the "
+          "post-cleanup rescan is gone — remaining is scan2 minus the unlinked) and the "
+          "orphan is unlinked",
+          _scans_p2[0] == 1 and _app_sc.get("ok") is True and not _trash_sc.exists())
+
 # ── Phase 3: domain lifecycle / inactive ack / resurrect / purge fence ──
 with _Env73() as _e_p3:
     _ctx_p3 = sc.resolve_store(_e_p3.proj)
@@ -11164,6 +11392,269 @@ with _Env73() as _e_fm:
     finally:
         sg._global_is_fixture = _old_gif
 
+
+# ── v0.4.2 P3: warm-pull margin (sync_global.py) ───────────────────────────────
+# the payload fix: a mirror's synthesized `metadata:` anchor (empty parent key) no longer
+# enters the semantic payload — so sem(mirror) == sem(canonical) when content matches,
+# the equality the manifest fast path depends on (pre-fix the anchor made them differ by
+# exactly one payload line and the fast path could NEVER fire)
+_canon_p3 = _v3_canon("p0", scope="stack-general").replace(
+    "applies_any: []", "stacks: mypy\napplies_any: []", 1)
+_mirr_p3 = sg._as_mirror(_canon_p3, "p0", since="2026-01-01T00:00:00Z",
+                         body_hash=sg._body_hash(_canon_p3))
+check("v0.4.2 P3: the mirror's synthesized metadata anchor is not content — "
+      "sem(mirror) == sem(canonical) (the fast-path equality)",
+      mc.semantic_hash(_mirr_p3) == mc.semantic_hash(_canon_p3)
+      and sg._body_hash(_mirr_p3) == sg._body_hash(_canon_p3))
+with _Env73() as _e_p3:
+    _d_p3 = _e_p3.glob
+    (_e_p3.proj / "pyproject.toml").write_text("[tool.mypy]\nstrict = true\n", encoding="utf-8")
+    # three stack-general canonicals SHARING a stacks line (the memo's shape: identical raw
+    # strings) — relevance needs the project's detect_stacks to see mypy
+    for _i in range(3):
+        (_d_p3 / f"p{_i}.md").write_text(
+            _v3_canon(f"p{_i}", scope="stack-general").replace(
+                "applies_any: []", "stacks: mypy\napplies_any: []", 1), encoding="utf-8")
+    _old_gif3 = sg._global_is_fixture
+    sg._global_is_fixture = lambda: False   # activate the manifest path in-process
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()):
+            sg.run(_e_p3.proj, pull=True)   # first pull: mirrors land, manifest builds
+        # counting wrappers — both rebound at call time (`from control_plane import ...`
+        # inside the hot loop re-reads the module attr; _as_mirror is a module-global call)
+        _con_calls = [0]
+        _orig_cife = cp.connect_if_exists
+        def _counting_cife(*a, **k):
+            _con_calls[0] += 1
+            return _orig_cife(*a, **k)
+        cp.connect_if_exists = _counting_cife
+        _asm_calls = [0]
+        _orig_asm = sg._as_mirror
+        def _counting_asm(*a, **k):
+            _asm_calls[0] += 1
+            return _orig_asm(*a, **k)
+        sg._as_mirror = _counting_asm
+        try:
+            with _ctx73.redirect_stdout(_io73.StringIO()) as _s_p3:
+                sg.run(_e_p3.proj, pull=True)   # no-change: all in-sync via the manifest fast path
+            check("v0.4.2 P3: a no-change pull computes ZERO _as_mirror wants (manifest fast path) "
+                  "and renders all three in-sync",
+                  _asm_calls[0] == 0 and _s_p3.getvalue().count("in-sync") == 3)
+            _con_base = _con_calls[0]   # migration_mode_readonly's per-run connect — the unrelated baseline
+            # a SIBLING project edits p1/p2 through the SOLE canonical writer (ci.upsert — the
+            # transact choke point unlinks the facts manifest, the production invalidation path).
+            # The sibling authors, so THIS project's holder base stays at the old revision → the
+            # mirrors classify STALE (an author's own upsert bumps its OWN base and would STOP —
+            # the author-protection case, not the stale case). Then the loop must share ONE conn.
+            _projB_p3 = _e_p3.proj.parent.parent / "src" / "projB73"
+            _projB_p3.mkdir(parents=True)
+            _enroll_personal(_projB_p3)
+            _ctxB_p3 = sc.resolve_store(_projB_p3)
+            for _stem_p3, _body_p3 in (("p1", "edited one\n"), ("p2", "edited two\n")):
+                _up_p3 = ci.upsert(_ctxB_p3, _stem_p3,
+                                   _v3_canon(_stem_p3, scope="stack-general",
+                                             body=_body_p3).replace(
+                                       "applies_any: []", "stacks: mypy\napplies_any: []", 1))
+                assert _up_p3.get("ok") is True, _up_p3
+            _asm_calls[0] = 0
+            _con_calls[0] = 0
+            with _ctx73.redirect_stdout(_io73.StringIO()) as _s_p3b:
+                sg.run(_e_p3.proj, pull=True)
+            check("v0.4.2 P3: N=2 stale mirrors share ONE holder-base conn (a connect each before)",
+                  _con_calls[0] - _con_base == 1)
+            check("v0.4.2 P3: the stale pull refreshes exactly the two edited mirrors",
+                  "refreshed 2" in _s_p3b.getvalue())
+            # the carry fix: an in-sync fact pairs with its OWN manifest row — the leftover-local
+            # bug fed the last stale item's semantic hash into every earlier in-sync holder record,
+            # and the poisoned holder base classified REFRESH on the very next pull (churn)
+            _asm_calls[0] = 0
+            with _ctx73.redirect_stdout(_io73.StringIO()) as _s_p3c:
+                sg.run(_e_p3.proj, pull=True)
+            check("v0.4.2 P3: the carry fix holds — the post-refresh pull is in-sync again, "
+                  "zero wants (a poisoned holder base would show refresh churn)",
+                  "refreshed 0" in _s_p3c.getvalue() and _s_p3c.getvalue().count("in-sync") == 3
+                  and _asm_calls[0] == 0)
+        finally:
+            cp.connect_if_exists = _orig_cife
+            sg._as_mirror = _orig_asm
+    finally:
+        sg._global_is_fixture = _old_gif3
+
+# P3 review fix: the fleet-dead shape — stack-general, the writer-normal EMPTY applies
+# lists (raw "[]" literals), NO stacks — must stay IRRELEVANT (the explicit-applies
+# guard tests the PARSED forms; raw-presence testing replicated these into every
+# same-domain index)
+with _Env73() as _e_p3d:
+    _d_p3d = _e_p3d.glob
+    (_e_p3d.proj / "pyproject.toml").write_text("[tool.mypy]\nstrict = true\n", encoding="utf-8")
+    (_d_p3d / "zzfleet.md").write_text(
+        _v3_canon("zzfleet", scope="stack-general"), encoding="utf-8")
+    _old_gif3d = sg._global_is_fixture
+    sg._global_is_fixture = lambda: False
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()) as _s_p3d:
+            sg.run(_e_p3d.proj, pull=True)
+        check("v0.4.2 P3: the fleet-dead shape stays IRRELEVANT (empty applies lists are "
+              "not explicit gating — no mirror, no pull)",
+              "zzfleet" in _s_p3d.getvalue() and "irrelevant" in _s_p3d.getvalue()
+              and not (_e_p3d.store / "zzfleet.md").exists())
+    finally:
+        sg._global_is_fixture = _old_gif3d
+
+# ── v0.4.2 P4: archive embed budget (render_html.py) ───────────────────────────
+with _tf73.TemporaryDirectory() as _td_p4:
+    _store_p4 = Path(_td_p4) / "memory"
+    _store_p4.mkdir()
+    _ddir_p4 = _store_p4.parent / "dashboards" / "diffs"
+    _ddir_p4.mkdir(parents=True)
+    _hist_p4 = []
+    for _i in range(120):
+        _hist_p4.append({
+            "marker": {"commit": "c%03d" % _i,
+                       "timestamp": "2026-01-01T%02d:%02d:00Z" % (_i // 60, _i % 60)},
+            "session": "s%03d" % _i,
+            "project": "p",
+            "budget": {"index": {"before_tokens": 100, "after_tokens": 110,
+                                 "budget_tokens": 1500, "over": False},
+                       "recall_facts": {"before": 1, "after": 2},
+                       "claude_md": {"before_tokens": 1000, "after_tokens": 1010,
+                                     "over": False}},
+            "rigor": {"applied": "LIGHT", "prune_pressure": False},
+            "scope": {"git_commits": 1, "memories_reviewed": 1, "session_candidates": 1},
+            "entries": [{"action": "added", "name": "x", "reason": "r",
+                         "tier": "always-loaded"}],
+            "verification": {"confirmed": 1, "method": "inline"},
+            "usage": {"archive_reads": 1},
+            "dream": {"sleep": "*s*", "beats": ["*b*"], "wake": "*w*"},
+            "audit": {"mutations": 0},
+            "junk_never_read": {"payload": "x" * 2000},
+            "registrar_working": {"candidates": [{"raw": "y" * 400}]},
+        })
+    # 30 sidecars for the NEWEST 30 cycles — only the newest 20 embed; each payload
+    # carries the cycle index so the distinct-payload count is meaningful
+    for _i in range(90, 120):
+        _key_p4 = ms.diff_key(_hist_p4[_i]["marker"], "s%03d" % _i)
+        (_ddir_p4 / (_key_p4 + ".json")).write_text(
+            _json_xp.dumps({"verdict": "created", "commands": [{"t": "cmd%d" % _i}]}),
+            encoding="utf-8")
+    _cyc_p4, _tot_p4 = rhtml.assemble_cycles({}, _hist_p4)
+    _html_p4 = rhtml.build_html({}, _hist_p4, "2026-09-02T00:00:00Z",
+                                rhtml.read_diffs(_store_p4, _cyc_p4),
+                                cycles=_cyc_p4, total=_tot_p4)
+    _m_p4 = _re.search(r'<script type="application/json" id="cm-data">(.*?)</script>',
+                       _html_p4, _re.S)
+    _embed_p4 = _json_xp.loads(_m_p4.group(1).replace("\\u003c", "<")
+                               .replace("\\u003e", ">").replace("\\u0026", "&")) if _m_p4 else {}
+    _cyc_e_p4 = _embed_p4.get("cycles") or []
+    _diffs_p4 = _embed_p4.get("diffs") or {}
+    check("v0.4.2 P4: the embed trims every cycle to the template's read-whitelist "
+          "(junk keys gone; budget.recall_facts.after survives — full subtree)",
+          len(_cyc_e_p4) == 120
+          and all(set(_c) <= set(rhtml._EMBED_KEYS) for _c in _cyc_e_p4)
+          and _cyc_e_p4[-1].get("budget", {}).get("recall_facts", {}).get("after") == 2
+          and "junk_never_read" not in _html_p4)
+    # the guard-strength pin (review finding): the whitelist comment promises the template
+    # "must not grow an unlisted read" — this makes it true. Every RECORD-LEVEL read the JS
+    # makes (g(CUR,..)/g(c,..)/g(r,..) first segments + direct CUR.* reads) must root in
+    # _EMBED_KEYS or the injected _integrity/_outcome stamps (nested reads like e.action /
+    # D.verdict / h.broken legitimately root elsewhere — they hang off whitelisted subtrees).
+    _tpl_p4 = (ROOT / "plugins" / "consolidate-memory" / "scripts"
+               / "dashboard.template.html").read_text(encoding="utf-8")
+    _roots_p4 = {_mm.rsplit('"', 2)[1].split(".")[0]
+                 for _mm in _re.findall(r'g\((?:CUR|c|r),"(?:[a-z_]+)\.', _tpl_p4)}
+    _roots_p4 |= {_mm for _mm in _re.findall(r'\bCUR\.([a-z_]+)', _tpl_p4)}
+    check("v0.4.2 P4: the whitelist guard has TEETH — every record-level template read roots "
+          "in _EMBED_KEYS (or the injected _integrity/_outcome stamps)",
+          bool(_roots_p4) and _roots_p4 <= set(rhtml._EMBED_KEYS) | {"_integrity", "_outcome"})
+    check("v0.4.2 P4: only the newest 20 diff sidecars embed (30 written, 20 kept; "
+          "counted as distinct SERIALIZED payloads — the aliased keys share one payload)",
+          len({_json_xp.dumps(_v, sort_keys=True) for _v in _diffs_p4.values()}) == 20
+          and any("c119__" in _k for _k in _diffs_p4)
+          and not any("c099__" in _k for _k in _diffs_p4))
+    check("v0.4.2 P4: the trimmed archive stays under the size bound (the fixture embeds "
+          "~400KB untrimmed)",
+          len(_html_p4) < 300 * 1024)
+
+# ── v0.4.2 R1: stranded-global advisory (memory_status.py) ─────────────────────
+with _tf73.TemporaryDirectory() as _td_r1:
+    def _fact_r1(name, scope):
+        return (f"---\nname: {name}\nscope: {scope}\nmetadata:\n  node_type: memory\n"
+                f"  type: user\noriginSessionId: 00000000-0000-4000-8000-000000000001\n"
+                f"---\nbody {name}\n")
+    _m1_r1 = Path(_td_r1) / "g1.md"; _m1_r1.write_text(_fact_r1("g1", "user-global"), encoding="utf-8")
+    _m2_r1 = Path(_td_r1) / "g2.md"; _m2_r1.write_text(_fact_r1("g2", "stack-general"), encoding="utf-8")
+    _m3_r1 = Path(_td_r1) / "l1.md"; _m3_r1.write_text(_fact_r1("l1", "project-local"), encoding="utf-8")
+    _m4_r1 = Path(_td_r1) / "gm.md"
+    _m4_r1.write_text(sg._as_mirror(_fact_r1("gm", "user-global"), "gm"), encoding="utf-8")
+    _files_r1 = [_m1_r1, _m2_r1, _m3_r1, _m4_r1]
+    _d1_r1 = ms.schema_drift(_files_r1, {"g1", "g2", "l1", "gm"},
+                             canonical_stems={"g2", "l1"})
+    check("v0.4.2 R1: stranded-global advisory counts authored globals with no canonical "
+          "(1 stranded — g1; the mirror exempt; drift_findings unchanged)",
+          int(_d1_r1.get("advisory_stranded_globals") or 0) == 1
+          and ms.drift_findings(_d1_r1) == 0)
+    _d2_r1 = ms.schema_drift(_files_r1, {"g1", "g2", "l1", "gm"},
+                             canonical_stems={"g1", "g2", "l1"})
+    check("v0.4.2 R1: with a canonical for every stem the advisory is 0",
+          int(_d2_r1.get("advisory_stranded_globals") or 0) == 0)
+
+
+# ── v0.4.2 R2: fixture-store exclusion (sync_global.py) ────────────────────────
+with _tf73.TemporaryDirectory() as _td_r2:
+    _root_r2 = Path(_td_r2)
+    (_root_r2 / ".claude" / "projects").mkdir(parents=True)
+    _real_slug_r2 = _root_r2 / ".claude" / "projects" / "realproj" / "memory"
+    _real_slug_r2.mkdir(parents=True)
+    (_real_slug_r2 / "f.md").write_text("---\nname: f\nscope: project-local\n---\nbody\n",
+                                        encoding="utf-8")
+    # the marker sits at the SYNTH SLUG dir (make_fixture's production placement) — the
+    # ancestor walk from the store finds it one hop up; the real store shares no marker
+    _marked_r2 = _root_r2 / ".claude" / "projects" / "synth" / "memory"
+    _marked_r2.mkdir(parents=True)
+    (_marked_r2 / "g.md").write_text("---\nname: g\n---\nbody\n", encoding="utf-8")
+    (_marked_r2.parent / ".cm-fixture").write_text("fixture\n", encoding="utf-8")
+    # a registry-union row OUTSIDE the projects tree (and outside the marker's ancestry) —
+    # excluded by the pinned slug pattern alone (the registry-union path)
+    _reg_r2 = _root_r2 / "elsewhere" / "-tmp-bench-x" / "memory"
+    _reg_r2.mkdir(parents=True)
+    # review fix: the CURRENT-shape dash-slug fixture pattern (slug_for strips dots) — the
+    # dot-bearing patterns alone missed the real pre-0.4.2 gate fixture dirs
+    _dash_r2 = _root_r2 / "elsewhere2" / "-home-u--dream-beta-test-gate-repo" / "memory"
+    _dash_r2.mkdir(parents=True)
+    (_dash_r2 / "g.md").write_text("---\nname: g\n---\nbody\n", encoding="utf-8")
+    _old_pr_r2 = sg._projects_root
+    _old_rows_r2 = sg._registry_project_rows
+    sg._projects_root = lambda: _root_r2 / ".claude" / "projects"
+    sg._registry_project_rows = lambda: [{"native_memory_dir": str(_reg_r2)},
+                                         {"native_memory_dir": str(_dash_r2)}]
+    _err_r2 = _io73.StringIO()
+    try:
+        with _ctx73.redirect_stderr(_err_r2):
+            _stores_r2 = sg.iter_native_stores()
+    finally:
+        sg._projects_root = _old_pr_r2
+        sg._registry_project_rows = _old_rows_r2
+    _keys_r2 = {sg._path_key(p) for p in _stores_r2}
+    check("v0.4.2 R2: mixed tree — the marker, the -tmp- pattern, AND the dash-slug fixture "
+          "pattern stores are all excluded; only the real store enumerates + the dim skip "
+          "line keeps it visible",
+          _keys_r2 == {sg._path_key(_real_slug_r2)}
+          and "skipped 3 fixture store(s)" in _err_r2.getvalue())
+
+# ── v0.4.2 R3: the oracle persist-gate family (beta_checks.py) ─────────────────
+class _FakeCtxGate:
+    skill_version = "0.4.1"
+    skill = ROOT / "plugins" / "consolidate-memory" / "scripts"
+_r_gate = _bc54.persist_gate(cast(_bc54.Ctx, _FakeCtxGate()))
+check("v0.4.2 R3 beta family: the terminal gates fire on synthetic seeds "
+      "(short arc → exit 4 ×1 line, duplicate re-fire, unstamped → exit 5)",
+      len(_r_gate) == 1 and _r_gate[0].status == "PASS"
+      and _r_gate[0].id == "CHK-PERSIST-GATE")
+class _FakeCtxGateOld:
+    skill_version = "0.4.0"
+    skill = ROOT / "plugins" / "consolidate-memory" / "scripts"
+check("v0.4.2 R3 beta family: pre-gate skill → SKIP-by-version (the vendored canary is covered)",
+      _bc54.persist_gate(cast(_bc54.Ctx, _FakeCtxGateOld())) == [])
 
 # ── v0.4.2 R5: release teeth (workflow + SBOM + committed pubkey) ──────────────
 _wf_r5 = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
