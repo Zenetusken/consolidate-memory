@@ -1,12 +1,12 @@
 # Harness map — data sources, memory formats, verification recipes
 
-**v0.4.0.** Read this when you need the exact paths, file formats, or grep/git recipes for a
+**v0.4.1.** Read this when you need the exact paths, file formats, or grep/git recipes for a
 consolidation pass. The SKILL.md body covers the workflow; this is the lookup table.
 
 **Unenrolled is local-only (ADR 008):** a project that is not enrolled cannot
 create or pull cross-project canonicals. `domains/unknown/facts` and legacy
 `~/.claude/memory` are migration inputs only. Enroll with
-`cm project enroll --domain NAME` (or `/cm-domain`). `move-domain` / `unenroll`
+`cm project enroll --domain NAME --apply --confirm enroll-<domain>` (or `/cm-domain`). `move-domain` / `unenroll`
 revoke managed mirrors that the destination does not admit.
 
 ## The substrate at a glance
@@ -63,8 +63,8 @@ Git worktrees and nested subdirectories of one repository share that store.
 (user/managed may name an explicit absolute dir; project/local must be inside
 the project tree or exactly this project's default native store) remap it. `user-global` is **domain-global**
 (ADR 003), not installation-global. Canonical facts live under
-`<config>/consolidate-memory/domains/<domain>/facts`. `cm project enroll --domain NAME`
-is the operator grant; a repo `.claude/settings.json` cannot enroll. `cm doctor` prints
+`<config>/consolidate-memory/domains/<domain>/facts`. `cm project enroll --domain NAME
+--apply --confirm enroll-<domain>` is the operator grant; a repo `.claude/settings.json` cannot enroll. `cm doctor` prints
 the resolved store. Legacy `~/.claude/memory/` is a read-only migration source.
 The slug encoding remains:
 The rule is verified ONLY for `/`+`_` (no other-char example exists); a `.`/space could

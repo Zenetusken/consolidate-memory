@@ -224,11 +224,16 @@ def atomic_write_bytes(path: Path, data: bytes, *, mode: int = 0o600) -> str:
     return digest
 
 
-def update_project_state(ctx: StoreContext, mutator: Callable) -> dict:
+def update_project_state(ctx: StoreContext, mutator: Callable,
+                         no_mint: bool = False) -> dict:
     """Merge native `.consolidation-state.json` under the project lock.
 
     `mutator(state: dict, snap: FileSnapshot) -> dict`. Missing marker → empty
     object (callers that require an existing marker raise WriteRefused).
+    `no_mint` (v0.4.2 L3 review): a missing marker is a NO-OP instead of a
+    fresh write — the check and the snapshot read share the same locked
+    section, closing the TOCTOU where an absent store got minted between a
+    caller's is_file() guard and this function's write.
     Returns {status: changed|noop, revision, state, changed}.
 
     v0.4.0 review: the hash-CAS `expected_revision` branch was dead (no caller
@@ -248,6 +253,8 @@ def update_project_state(ctx: StoreContext, mutator: Callable) -> dict:
             if not isinstance(parsed, dict):
                 raise WriteRefused("marker is not an object")
             state = parsed
+        elif no_mint:
+            return {"status": "noop", "revision": "", "state": {}, "changed": False}
         else:
             state = {}
         new_state = mutator(dict(state), snap)

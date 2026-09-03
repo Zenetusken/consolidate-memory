@@ -1498,7 +1498,10 @@
         +'<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>'
         +' <em>'+esc(sp.store||"file")+' · diff</em></div></div><div class="ci"></div></div>');});
     var nd=Object.keys(DREAMDIFFS).length;
-    el("ent-note").textContent=ENT.length+" entr"+(ENT.length!==1?"ies":"y")+(nd?" · "+nd+" diff"+(nd!==1?"s":""):"");
+    // L3 (v0.4.2): the honest no-capture row — a dream that woke without its --diffs
+    // sidecar says so (the skill's Phase-5 --diffs is MANDATORY before WAKE)
+    el("ent-note").textContent=ENT.length+" entr"+(ENT.length!==1?"ies":"y")
+      +(nd?" · "+nd+" diff"+(nd!==1?"s":""):" · no diffs captured");
     box.innerHTML=rows.length?rows.join(""):'<div class="cap" style="padding:16px 0">No recorded decisions this pass.</div>';
     [].slice.call(box.querySelectorAll(".nm-diff")).forEach(function(b){b.addEventListener("click",function(){openDiff(b.getAttribute("data-p"));});});
   })();

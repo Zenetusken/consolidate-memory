@@ -11696,6 +11696,70 @@ with _tf73.TemporaryDirectory() as _td_r5:
           and len({f.get("fileName") for f in _files_r5}) == len(_files_r5)
           and all(f.get("SPDXID") in _hasfiles_r5 for f in _files_r5))
 
+# ── v0.4.2 L1/L3: help sweep + the first-seen nag + the honest no-diffs row ─────
+import subprocess as _sp_l1  # noqa: E402
+_h_l1 = _sp_l1.run([str(ROOT / "cm"), "help"], capture_output=True, text=True, timeout=60)
+check("v0.4.2 L1: cm help lists the missing subcommands + the required --confirm phrases "
+      "(data import · canonical catalog · project grants/grant-native/revoke-native/transfer-native "
+      "· the M1 sentence completes)",
+      "inventory|compact|export|import" in _h_l1.stdout
+      and "canonical catalog" in _h_l1.stdout
+      and "project grants [DIR]" in _h_l1.stdout
+      and "revoke-native" in _h_l1.stdout and "transfer-native" in _h_l1.stdout
+      and "--apply --confirm data-import" in _h_l1.stdout
+      and "--confirm migrate-apply" in _h_l1.stdout
+      and "--confirm enroll-<domain>" in _h_l1.stdout
+      and "verified knowledge freely" in _h_l1.stdout
+      and "command not found" not in _h_l1.stderr)   # the heredoc is quoted — no backtick exec
+check("v0.4.2 L1: the SKILL Phase-5 --diffs step is MANDATORY before WAKE + the template "
+      "renders the honest no-capture row",
+      "MANDATORY before WAKE" in (ROOT / "plugins" / "consolidate-memory" / "skills"
+                                  / "consolidate-memory" / "SKILL.md").read_text(encoding="utf-8")
+      and "no diffs captured" in (ROOT / "plugins" / "consolidate-memory" / "scripts"
+                                  / "dashboard.template.html").read_text(encoding="utf-8"))
+with _tf73.TemporaryDirectory() as _td_l3:
+    _home_l3 = Path(_td_l3) / "home"; _home_l3.mkdir()
+    _proj_l3 = Path(_td_l3) / "proj"; _proj_l3.mkdir()
+    _old_h_l3 = _os73.environ.get("HOME")
+    _os73.environ["HOME"] = str(_home_l3)
+    try:
+        _ctx_l3 = sc.resolve_store(_proj_l3)   # never enrolled → local-only
+        _ctx_l3.native_memory_dir.mkdir(parents=True, exist_ok=True)
+        (_ctx_l3.native_memory_dir / ".consolidation-state.json").write_text(
+            _json_xp.dumps({"commit": "abc", "timestamp": "2026-07-01T00:00:00Z"}),
+            encoding="utf-8")
+        _e1_l3 = _io73.StringIO()
+        with _ctx73.redirect_stderr(_e1_l3):
+            sc.warn_unenrolled_share(_ctx_l3)   # first: prints + writes the flag
+        _st_l3 = _json_xp.loads(
+            (_ctx_l3.native_memory_dir / ".consolidation-state.json").read_text(encoding="utf-8"))
+        _e2_l3 = _io73.StringIO()
+        with _ctx73.redirect_stderr(_e2_l3):
+            sc.warn_unenrolled_share(_ctx_l3)   # second: silent
+        check("v0.4.2 L3: the unenrolled nag prints ONCE + persists the first-seen flag "
+              "(the second call is silent; the enroll phrase carries --confirm)",
+              "UNENROLLED LOCAL-ONLY" in _e1_l3.getvalue()
+              and "--apply --confirm enroll-<domain>" in _e1_l3.getvalue()
+              and _st_l3.get("_warned_unenrolled") is True
+              and _e2_l3.getvalue() == "")
+        _proj2_l3 = Path(_td_l3) / "proj2"; _proj2_l3.mkdir()
+        _ctx2_l3 = sc.resolve_store(_proj2_l3)
+        _e3_l3 = _io73.StringIO()
+        with _ctx73.redirect_stderr(_e3_l3):
+            sc.warn_unenrolled_share(_ctx2_l3)
+        check("v0.4.2 L3: the nag never mints a state file on an absent store (the O1 pin) "
+              "and still prints",
+              "UNENROLLED LOCAL-ONLY" in _e3_l3.getvalue()
+              and not (_ctx2_l3.native_memory_dir / ".consolidation-state.json").exists())
+        _doc_l3 = sc.doctor_report(_ctx_l3)
+        check("v0.4.2 L3: doctor stays loud (its own UNENROLLED LOCAL-ONLY line, un-gated)",
+              "UNENROLLED LOCAL-ONLY" in _doc_l3)
+    finally:
+        if _old_h_l3 is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _old_h_l3
+
 
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
 with _Env73() as _e_jp:
