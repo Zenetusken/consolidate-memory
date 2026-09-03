@@ -11215,7 +11215,8 @@ with _tf73.TemporaryDirectory() as _td_r2:
     _old_pr_r2 = sg._projects_root
     _old_rows_r2 = sg._registry_project_rows
     sg._projects_root = lambda: _root_r2 / ".claude" / "projects"
-    sg._registry_project_rows = lambda: [{"native_memory_dir": str(_reg_r2)}]
+    sg._registry_project_rows = lambda: [{"native_memory_dir": str(_reg_r2)},
+                                         {"native_memory_dir": str(_dash_r2)}]
     _err_r2 = _io73.StringIO()
     try:
         with _ctx73.redirect_stderr(_err_r2):
