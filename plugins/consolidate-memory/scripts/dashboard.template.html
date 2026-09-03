@@ -446,6 +446,10 @@
       <div class="dstl-top" id="dstl-top" style="display:none">
         <div class="gh">top recurring</div>
         <div id="dstl-top-list"></div>
+        <div class="gh" id="dstl-chains-head" style="display:none">top chains</div>
+        <div id="dstl-chains-list"></div>
+        <div class="gh" id="dstl-used-head" style="display:none">skill usage</div>
+        <div id="dstl-used-list"></div>
       </div>
       <div class="cap">Patterns from the last ~30 days — including work before this dream.</div>
     </div>
@@ -684,7 +688,7 @@
   function paintDream(){
     clearEl("traj"); clearEl("trend"); clearEl("rigor"); clearEl("net");
     var tw=el("traj-warn"); if(tw){tw.style.display="none"; tw.innerHTML="";}
-    ["dream-blk","distill-blk","demotion-blk","registrar-blk","xp-strip","m-global","dstl-top"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
+    ["dream-blk","distill-blk","demotion-blk","registrar-blk","xp-strip","m-global","dstl-top","dstl-chains-head","dstl-chains-list","dstl-used-head","dstl-used-list"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
     PROJ=g(CUR,"project",DATA.project||"consolidate-memory");
     el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
     document.title=PROJ+" — dream telemetry";
@@ -1215,7 +1219,11 @@
   // ── audit + verification + distill (this pass) ── (v0.1.57: the two panels share one lead/head/cap
   // rhythm, and the distill verdict is its own readable full-width block instead of a crammed cell.)
   (function(){
-    var a=CUR.audit||{},box=el("audit");el("pass-note").textContent="";
+    var a=CUR.audit||{},box=el("audit");
+    // the header note names the section's own tallies — the derived outcome banner + the
+    // decision count (the same idiom as the other section notes; it was cleared-and-never-set)
+    el("pass-note").textContent=outcomeOf(CUR)+" · "
+      +(Array.isArray(CUR.entries)?CUR.entries.length:0)+" decision"+((Array.isArray(CUR.entries)&&CUR.entries.length!==1)?"s":"");
     function ln(s,d){d=d||{};var td=num(d.token_delta);
       return '<div class="audit-row"><span class="s">'+esc(s)+'</span><span class="a-added">'+num(d.created)+'</span><span class="a-corrected">'+num(d.modified)+'</span><span class="a-deleted">'+num(d.deleted)+'</span><span class="tk">'+(td>=0?"+":"")+fmt(td)+'</span></div>';}
     var any=["memory","claude_md","repo_doc"].some(function(s){var d=a[s]||{};return num(d.created)+num(d.modified)+num(d.deleted)!==0;});
@@ -1328,6 +1336,29 @@
             +'<span class="ev">×'+num(t.n)+' · '+num(t.d)+'d</span></div>';
         }).join("")
           +(dtop.length>3?'<span class="dstl-more">+ '+(dtop.length-3)+' more</span>':"");
+        el("dstl-top").style.display="";
+      }
+      // the contract's other distill evidence — chains (the workflow glue the gate reads
+      // FIRST) and the skill-adoption tally; same row idiom + explicit +N more caps
+      var dchains=(Array.isArray(D.top_chains)?D.top_chains:[]).filter(function(t){return t&&typeof t==="object";});
+      if(dchains.length){
+        el("dstl-chains-head").style.display="";
+        el("dstl-chains-list").innerHTML=dchains.slice(0,4).map(function(t){
+          var seg=(Array.isArray(t.t)?t.t:[]).map(function(x){return esc(String(x));}).join(" → ");
+          return '<div class="dstl-row"><span class="cmd">'+seg+'</span>'
+            +'<span class="ev">×'+num(t.n)+' · '+num(t.d)+'d</span></div>';
+        }).join("")
+          +(dchains.length>4?'<span class="dstl-more">+ '+(dchains.length-4)+' more</span>':"");
+        el("dstl-top").style.display="";
+      }
+      var dused=(Array.isArray(D.used)?D.used:[]).filter(function(t){return t&&typeof t==="object"&&String(t.a||"").trim();});
+      if(dused.length){
+        el("dstl-used-head").style.display="";
+        el("dstl-used-list").innerHTML=dused.slice(0,4).map(function(t){
+          return '<div class="dstl-row"><span class="cmd">'+esc(String(t.a))+'</span>'
+            +'<span class="ev">×'+num(t.n)+'</span></div>';
+        }).join("")
+          +(dused.length>4?'<span class="dstl-more">+ '+(dused.length-4)+' more</span>':"");
         el("dstl-top").style.display="";
       }
       var vd=String(D.verdict==null?"":D.verdict), m=vd.match(/^\s*(created|proposed|nothing)\b[:\s]*/i);
@@ -1464,6 +1495,42 @@
         }
         var board=named.map(cardHtml).join("");
         if(nSpread) board+='<div class="reg-more">'+nSpread+" showed up on more than one project but only a single day each.</div>";
+        // the unjudged evidence: persisted sample rows (disposition-less candidates — e.g. the
+        // day-spread sample or an unjudged fleet-candidate) render as UNJUDGED cards, never
+        // stamped; when only counts exist (generic-cli rows are counts-only by design), an
+        // honest note naming the real split says so instead of an empty board under a
+        // non-zero header count
+        var evRows=wc.filter(function(c){return named.indexOf(c)<0&&String(c.disposition||"").trim()!=="declined";});
+        if(evRows.length){
+          board+='<div class="reg-group"><div class="gh">unjudged — evidence, not a docket</div>'
+            +evRows.slice(0,5).map(cardHtml).join("")
+            +(evRows.length>5?'<span class="reg-more">+ '+(evRows.length-5)+' more</span>':"")
+            +'</div>';
+        }
+        if(!board && num(WP.n_blocked,0)>0){
+          var bParts=[];
+          if(num(WP.n_generic,0)>0) bParts.push(num(WP.n_generic,0)+" generic-cli");
+          if(num(WP.n_day_spread,0)>0) bParts.push(num(WP.n_day_spread,0)+" single-day");
+          var bRest=Math.max(0,num(WP.n_blocked,0)-num(WP.n_generic,0)-num(WP.n_day_spread,0));
+          if(bRest>0) bParts.push(bRest+" single-node");
+          board='<div class="reg-group"><div class="gh">blocked rows</div><span class="reg-more">'
+            +num(WP.n_blocked,0)+" blocked"+(bParts.length?" — "+bParts.join(" · "):"")
+            +" — counts-only by design (samples are not persisted in the archive; the terminal consult shows them).</span></div>";
+        }
+        // the fleet's decline lineage — the anchors the gate consults for the
+        // materially-new-evidence rule; rendered as the registrar's own card shape
+        var anchors=Array.isArray(WP.decline_anchors)?WP.decline_anchors:[];
+        if(anchors.length){
+          board+='<div class="reg-group"><div class="gh">decline lineage — other nodes declined these</div>'
+            +anchors.slice(0,3).map(function(an){
+              var aTops=(Array.isArray(an.top)?an.top:[]).slice(0,3).map(function(t){return esc(String(t.t||"?"));}).join(" · ");
+              return '<div class="reg-card"><span class="stamp">'+esc(String(an.node||"?"))+'</span>'
+                +'<span class="cmd">'+esc(String(an.verdict||""))
+                +(aTops?'<em>'+aTops+'</em>':'')+'</span></div>';
+            }).join("")
+            +(anchors.length>3?'<span class="reg-more">+ '+(anchors.length-3)+' more</span>':"")
+            +'</div>';
+        }
         el("reg-board").innerHTML=board;
         if(capN && nAwait){
           capN.textContent="Proposed during the dream — nothing is created until you confirm there.";
