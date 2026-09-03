@@ -5,7 +5,7 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
-## [0.4.2] — 2026-09-XX
+## [0.4.2] — 2026-09-03
 
 **Patch** — the production-readiness + polish + performance pass: the stacks cache moves
 onto every sync path, the journal scale stack collapses to single passes, the warm-pull
