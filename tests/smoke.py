@@ -5176,6 +5176,59 @@ with _tf73.TemporaryDirectory() as _td81:
     check("v0.1.81: --staleness assesses a NON-trigger node at 'cached stacks (as of last pull)' once "
           "the cache exists (the honest basis ladder: live → cached → user-global-only)",
           _prow81["scope_basis"] == "cached stacks (as of last pull)")
+    # v0.4.2 (P1): the stacks cache on the sync paths — cache hit skips the rescan, marker-file
+    # changes invalidate the stamp, the TTL bounds the .py blind spot, the kill-switch forces a rescan.
+    check("v0.4.2 P1: stacks_with_cache HITS the pull-written cache (from_cache, no rescan)",
+          sg.stacks_with_cache(_st81, _p81) == (set(_st81j["stacks"]), True))
+    _old_sc_env = _osB.environ.get("CM_RESCAN_STACKS")
+    _osB.environ["CM_RESCAN_STACKS"] = "1"
+    _sc_forced, _sc_fc = sg.stacks_with_cache(_st81, _p81)
+    _osB.environ.pop("CM_RESCAN_STACKS", None)
+    if _old_sc_env:
+        _osB.environ["CM_RESCAN_STACKS"] = _old_sc_env
+    check("v0.4.2 P1: CM_RESCAN_STACKS=1 forces a rescan (from_cache False)",
+          _sc_fc is False and _sc_forced == sg.detect_stacks(_p81))
+    (_p81 / "pyproject.toml").write_text("[tool.mypy]\nstrict = true\n", encoding="utf-8")
+    check("v0.4.2 P1: a marker-file change invalidates the stamp (rescan)",
+          sg.stacks_with_cache(_st81, _p81)[1] is False)
+    # re-write the cache for the new signature, then prove the unchanged write is a no-op.
+    # The runs are HOME/GLOBAL-patched (the fixture store must be the one written — a bare
+    # run resolves against the REAL home and the mtime pin would pass vacuously).
+    _oldH81r, _oldG81r = _osB.environ.get("HOME"), sg.GLOBAL
+    _osB.environ["HOME"] = str(_h81); sg.GLOBAL = _g81
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()):
+            sg.run(_p81, pull=True)
+        _m81 = (_st81 / ".consolidation-state.json").stat().st_mtime_ns
+        with _ctx73.redirect_stdout(_io73.StringIO()):
+            sg.run(_p81, pull=True)
+        _m81b = (_st81 / ".consolidation-state.json").stat().st_mtime_ns
+    finally:
+        sg.GLOBAL = _oldG81r
+        _osB.environ["HOME"] = _oldH81r if _oldH81r else ""
+    check("v0.4.2 P1: a no-change pull skips the stacks-cache write entirely (state-file mtime stable)",
+          _m81b == _m81)
+    # TTL: an old stacks_at re-detects even with a matching stamp
+    _st81j2 = _jsonB.loads((_st81 / ".consolidation-state.json").read_text(encoding="utf-8"))
+    _st81j2["stacks_at"] = 0.0
+    (_st81 / ".consolidation-state.json").write_text(_jsonB.dumps(_st81j2), encoding="utf-8")
+    check("v0.4.2 P1: an expired TTL re-detects (from_cache False)",
+          sg.stacks_with_cache(_st81, _p81)[1] is False)
+    # P1 review fix: an expired cache with an UNCHANGED value must RE-ARM on the pull (the
+    # early return used to skip the write forever once the TTL elapsed — the cache stayed
+    # dead for exactly the stable projects it exists for)
+    _oldH81t, _oldG81t = _osB.environ.get("HOME"), sg.GLOBAL
+    _osB.environ["HOME"] = str(_h81); sg.GLOBAL = _g81
+    try:
+        with _ctx73.redirect_stdout(_io73.StringIO()):
+            sg.run(_p81, pull=True)
+    finally:
+        sg.GLOBAL = _oldG81t
+        _osB.environ["HOME"] = _oldH81t if _oldH81t else ""
+    _st81j2b = _jsonB.loads((_st81 / ".consolidation-state.json").read_text(encoding="utf-8"))
+    _age81b = __import__("time").time() - float(_st81j2b.get("stacks_at") or 0)
+    check("v0.4.2 P1: an expired cache RE-ARMS on the pull (the early return honors the TTL)",
+          _age81b < 60 and sg.stacks_with_cache(_st81, _p81)[1] is True)
     check("v0.1.81: after the pull the store is in-sync and the beacon returns to SILENT (the common "
           "case stays free)",
           _beacon81(_h81, _p81).stdout == "")

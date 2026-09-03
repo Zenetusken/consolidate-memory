@@ -1337,16 +1337,38 @@ def _write_stacks_cache(store: Path, project_dir: Path, stacks: set) -> None:
     recorded at the one moment it is authoritatively known (the lossy-slug rule: never guess
     it back). MERGE-write — every model-written key (timestamp/commit/standing_justify/
     demotion_justify) is preserved verbatim; best-effort: a failure degrades the beacon and
-    --staleness to user-global-only (labeled), never fails the pull."""
+    --staleness to user-global-only (labeled), never fails the pull.
+    v0.4.2 (P1): gains the `stacks_stamp`/`stacks_at` cache identity + an unchanged-value
+    early return (a no-change pull re-pays nothing)."""
+    import json as _json_wsc
+    import time as _t_wsc
     from control_plane import update_project_state
     from store_context import WriteRefused, resolve_store
     try:
         ctx = resolve_store(project_dir)
+        _sig = _stacks_signature(project_dir)
+        try:
+            _prev = _json_wsc.loads(
+                (ctx.native_memory_dir / ".consolidation-state.json").read_text(encoding="utf-8"))
+            # P1 review fix: the early return ALSO requires the cache to be FRESH — without
+            # the TTL check, a stable project whose cache crossed the 7-day window never
+            # re-armed (every sync path re-paid detect_stacks forever). A non-numeric
+            # stacks_at raises ValueError → the write path below refreshes it.
+            if isinstance(_prev, dict) \
+                    and [str(s) for s in (_prev.get("stacks") or [])] == sorted(stacks) \
+                    and _prev.get("stacks_stamp") == _sig \
+                    and str(_prev.get("project_path") or "") == str(project_dir) \
+                    and _t_wsc.time() - float(_prev.get("stacks_at") or 0) < _STACKS_TTL_S:
+                return    # byte-identical AND fresh cache — skip the locked write entirely
+        except (OSError, ValueError):
+            pass
 
         def mutator(state: dict, snap: object) -> dict:
             del snap
             st = dict(state)
             st["stacks"] = sorted(stacks)
+            st["stacks_stamp"] = _sig
+            st["stacks_at"] = _t_wsc.time()
             st["project_path"] = str(project_dir)
             return st
 
@@ -1354,6 +1376,65 @@ def _write_stacks_cache(store: Path, project_dir: Path, stacks: set) -> None:
     except (OSError, WriteRefused) as e:
         print(f"  ⚠ stacks-cache write skipped ({e.__class__.__name__}) — the session beacon "
               "degrades to user-global-only until the next pull", file=sys.stderr)
+
+
+_STACKS_MARKER_FILES = ("pyproject.toml", "mypy.ini", ".mypy.ini", "setup.cfg", "SKILL.md")
+_STACKS_TTL_S = 7 * 86400    # the stamp cannot see .py-content changes — bound the staleness
+
+
+def _stacks_signature(project_dir: Path) -> list:
+    """v0.4.2 (P1): the invalidation stamp — (name, mtime_ns, size) of the marker files
+    detect_stacks actually reads (pyproject deps, the four mypy configs, SKILL.md). The
+    .py-import walk and the .claude/ detection are deliberately NOT statted here (that
+    would re-pay the scan) — the TTL bounds their staleness."""
+    out = []
+    for name in _STACKS_MARKER_FILES:
+        p = project_dir / name
+        try:
+            st = p.stat()
+            out.append([name, int(st.st_mtime_ns), int(st.st_size)])
+        except OSError:
+            continue
+    return out
+
+
+def stacks_with_cache(store: Path, project_dir: Path) -> "tuple[set[str], bool]":
+    """v0.4.2 (P1): consult the beacon's stacks cache before re-running detect_stacks — the
+    full-project walk + ast-parse re-paid on EVERY --pull/--list/--gc/--promote path
+    measured 337ms here (2003ms documented worst), all of it wasted when the marker files
+    haven't changed. (The --staleness NON-trigger rows already read the state-file cache
+    directly since v0.1.81; the trigger row's detect_stacks stays live.) Returns
+    (stacks, from_cache). Re-detects when: the cache is absent or not a list, the stamp
+    differs, the TTL elapsed, CM_RESCAN_STACKS=1 is set, or the recorded project_path
+    doesn't resolve here. A cache miss NEVER guesses — full rescan."""
+    import json as _json_sc
+    import time as _time_sc
+    if os.environ.get("CM_RESCAN_STACKS") == "1":
+        return detect_stacks(project_dir), False
+    cached: "list | None" = None
+    stamp: "list | None" = None
+    at = 0.0
+    path_ok = False
+    try:
+        raw = _safe_read_text(store / ".consolidation-state.json")
+        if raw:
+            st = _json_sc.loads(raw)
+            if isinstance(st, dict):
+                if isinstance(st.get("stacks"), list):
+                    cached = [str(s) for s in st["stacks"]]
+                if isinstance(st.get("stacks_stamp"), list):
+                    stamp = st["stacks_stamp"]
+                try:
+                    at = float(st.get("stacks_at") or 0)
+                except (TypeError, ValueError):
+                    at = 0.0
+                path_ok = str(st.get("project_path") or "").strip() == str(project_dir)
+    except (OSError, ValueError):
+        cached = stamp = None
+    if cached is not None and path_ok and stamp == _stacks_signature(project_dir) \
+            and (_time_sc.time() - at) < _STACKS_TTL_S:
+        return set(cached), True
+    return detect_stacks(project_dir), False
 
 
 def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str | None = None) -> int:
@@ -1432,7 +1513,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
             _cp.close()
     except Exception:
         pass
-    stacks = detect_stacks(project_dir)
+    stacks, _ = stacks_with_cache(store, project_dir)   # v0.4.2 (P1): cached unless markers moved
     from capabilities import (detect_capabilities, capability_tags,
                               parse_applies, load_capability_overrides)
     _cap_degraded = False
@@ -2410,7 +2491,7 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
         live_stems = {n for n, _, _ in gfacts}
     orphans = _orphans(store, canon=live_stems or {n for n, _, _ in gfacts})
     # v0.1.75 (audit F6): FROZEN mirrors — see the docstring. Detected against the SAME snapshot.
-    stacks = detect_stacks(project_dir)
+    stacks, _ = stacks_with_cache(store, project_dir)   # v0.4.2 (P1)
     canon_fm = {n: fm for n, fm, _ in gfacts}
     frozen: list = []
     if store.exists():
@@ -2688,7 +2769,7 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
     # always a mis-tag. WARN (the local recall still works + other matching projects pull the live
     # copy); don't refuse.
     if scope == "stack-general":
-        origin_stacks = detect_stacks(project_dir)
+        origin_stacks, _ = stacks_with_cache(store, project_dir)   # v0.4.2 (P1): the advisory goes stale-tolerant
         if not (_fact_stacks(fm) & origin_stacks):
             print(f"  ⚠ origin {project_dir.name} does not detect stack(s) {sorted(_fact_stacks(fm))} "
                   f"(detected: {sorted(origin_stacks) or '∅'}) — its own mirror will read irrelevant "
