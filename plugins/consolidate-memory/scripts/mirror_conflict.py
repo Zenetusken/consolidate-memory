@@ -38,6 +38,14 @@ def semantic_payload(text: str) -> str:
             continue
         if kl in VOLATILE_KEYS or kl.startswith("global_ref"):
             continue
+        # v0.4.2 P3: `_frontmatter` parses a `metadata:` BLOCK as an empty parent key with its
+        # children flattened to top level (real content — e.g. `type:`) hashes via those children.
+        # The bare anchor is not content, and hashing it made every mirror's semantic payload
+        # differ from its canonical's by exactly that line — which structurally disabled the
+        # manifest fast path (sem(mirror) could never equal sem(canonical)). Skip ONLY the empty
+        # anchor; a scalar `metadata: <value>` still hashes.
+        if kl == "metadata" and not str(fm[k] or ""):
+            continue
         keep.append(f"{k}:{fm[k]}")
     return "\n".join(keep) + "\n--\n" + body
 
