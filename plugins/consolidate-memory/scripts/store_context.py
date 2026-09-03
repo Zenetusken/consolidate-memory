@@ -80,7 +80,10 @@ def warn_unenrolled_share(ctx: "StoreContext", stream: Optional[TextIO] = None,
                     return {**st, "_warned_unenrolled": True}
 
                 from control_plane import update_project_state
-                update_project_state(ctx, _mut)
+                # review fix: no_mint closes the TOCTOU between the is_file() guard above
+                # and the locked write — a concurrent marker delete mid-warning can no
+                # longer mint a flag-only state file (the no-mint rule is atomic now)
+                update_project_state(ctx, _mut, no_mint=True)
                 if already:
                     return
             except Exception:
