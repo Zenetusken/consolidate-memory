@@ -40,11 +40,14 @@ python3 tests/validate_manifests.py             # portable manifest checker (it 
 claude plugin validate ./plugins/consolidate-memory --strict   # when iterating on the published artifact
 ```
 
-CI (`.github/workflows/ci.yml`, one workflow, **4** jobs) runs the same gates: `test`
+CI (`.github/workflows/ci.yml`, one workflow, **6** jobs) runs the same gates: `test`
 (smoke + manifests + sim on Python **3.8–3.13**, with 3.8/3.9 pinned to
 ubuntu-22.04, **no pip install — that IS the stdlib-only proof**), `test-macos`
-(Python 3.12), `typecheck` (mypy, dev-only label), `manifest` (`claude plugin
-validate --strict`, a real blocking gate — no continue-on-error).
+(Python 3.12), `concurrency` (process-level races, Python 3.12), `typecheck` (mypy,
+dev-only label), `manifest` (`claude plugin
+validate --strict`, a real blocking gate — no continue-on-error), `bench` (the
+capacity SLO corner: `bench_phase5.py --quick`, measured — not gated — with the
+report stored as a run artifact).
 
 **Dogfood / dev install**: `claude plugin marketplace add ./` then
 `claude plugin install consolidate-memory@zenetusken-plugins`. Script edits are
