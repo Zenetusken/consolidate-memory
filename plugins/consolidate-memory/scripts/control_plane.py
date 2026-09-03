@@ -1284,14 +1284,21 @@ def _sanitize_journal_changed(payload: dict) -> "tuple[dict, bool]":
     key, a preimage/publish item that gains the whitelist keys or drops a non-dict
     item, or a non-empty preimage blob (the redact walk clears those). Receipt-only
     rows are unchanged → skipped."""
+    # P2 review fix: a NON-DICT payload was normalized to {} and COUNTED by the old
+    # dumps-equality test (sanitize maps it to {}) — the flag must match.
     if not isinstance(payload, dict):
-        return {}, False
+        return {}, True
     cleaned = sanitize_journal_payload(payload)
     changed = any(k in payload for k in JOURNAL_BODY_KEYS)
     if not changed:
         for item in payload.get("dest_preimages") or []:
+            # a truthy blob is cleared by the redact walk; a FALSY-but-non-str blob
+            # (null/0/false/[]) is mapped to "" by sanitize — both are changes; only
+            # a falsy STR blob ("") is a no-op (review fix: the bare truthiness test
+            # missed the second class).
             if (not isinstance(item, dict)
-                    or set(item) != set(_PREIMAGE_KEYS) or item.get("blob")):
+                    or set(item) != set(_PREIMAGE_KEYS)
+                    or bool(item.get("blob")) or not isinstance(item.get("blob"), str)):
                 changed = True
                 break
     if not changed:
