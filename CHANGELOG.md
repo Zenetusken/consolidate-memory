@@ -5,6 +5,15 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.6] — 2026-09-03
+
+**Patch** — the archive display pass: the HTML archive now exposes its own
+contract data — the distill block renders the top chains and the skill-usage
+tally beside the top commands, the registrar board renders the unjudged
+evidence cards, a split-naming counts-only note, and the decline lineage, and
+the This Pass header carries the outcome + decision count like the other five
+section headers. No memory-plane behavior changes.
+
 ## [0.4.5] — 2026-09-03
 
 **Patch** — the issue-closeout release: of the 25-issue board, 22 were verified
