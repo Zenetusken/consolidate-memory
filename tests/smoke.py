@@ -11217,6 +11217,19 @@ with _tf73.TemporaryDirectory() as _td_p4:
           and all(set(_c) <= set(rhtml._EMBED_KEYS) for _c in _cyc_e_p4)
           and _cyc_e_p4[-1].get("budget", {}).get("recall_facts", {}).get("after") == 2
           and "junk_never_read" not in _html_p4)
+    # the guard-strength pin (review finding): the whitelist comment promises the template
+    # "must not grow an unlisted read" — this makes it true. Every RECORD-LEVEL read the JS
+    # makes (g(CUR,..)/g(c,..)/g(r,..) first segments + direct CUR.* reads) must root in
+    # _EMBED_KEYS or the injected _integrity/_outcome stamps (nested reads like e.action /
+    # D.verdict / h.broken legitimately root elsewhere — they hang off whitelisted subtrees).
+    _tpl_p4 = (ROOT / "plugins" / "consolidate-memory" / "scripts"
+               / "dashboard.template.html").read_text(encoding="utf-8")
+    _roots_p4 = {_mm.rsplit('"', 2)[1].split(".")[0]
+                 for _mm in _re.findall(r'g\((?:CUR|c|r),"(?:[a-z_]+)\.', _tpl_p4)}
+    _roots_p4 |= {_mm for _mm in _re.findall(r'\bCUR\.([a-z_]+)', _tpl_p4)}
+    check("v0.4.2 P4: the whitelist guard has TEETH — every record-level template read roots "
+          "in _EMBED_KEYS (or the injected _integrity/_outcome stamps)",
+          bool(_roots_p4) and _roots_p4 <= set(rhtml._EMBED_KEYS) | {"_integrity", "_outcome"})
     check("v0.4.2 P4: only the newest 20 diff sidecars embed (30 written, 20 kept; "
           "counted as distinct SERIALIZED payloads — the aliased keys share one payload)",
           len({_json_xp.dumps(_v, sort_keys=True) for _v in _diffs_p4.values()}) == 20
