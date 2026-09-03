@@ -697,9 +697,10 @@ def _compact_child(home: str, proj: str, barrier, q) -> None:
 
 
 def test_compact_vs_writer() -> None:
-    """The missing 15th scenario (issue #150): compaction after a high baseline must
-    never drop the racing writer's row — the cap-delete targets only the OLDEST
-    terminal rows, and a concurrent transact's row is never mid-flight-dropped."""
+    """The missing 15th scenario (issue #150): compaction after a high baseline vs a
+    racing writer. Both sides hold the full mutation flock, so the race is which
+    child wins the lock first — the invariant the test pins is the OUTCOME: the
+    cap-delete (oldest terminal rows only) can never drop the writer's row."""
     td, home, proj, store = _setup()
     try:
         import control_plane as _cp
@@ -736,17 +737,24 @@ def test_compact_vs_writer() -> None:
         oks = {r[0] for r in results if r[1]}
         jconn2 = _cp.connect_journal(ctx)
         n_rows = int(jconn2.execute("SELECT COUNT(*) FROM journal").fetchone()[0])
-        writer_rows = [dict(r) for r in jconn2.execute(
+        writer_terminal = int(jconn2.execute(
+            "SELECT COUNT(*) FROM journal WHERE op_id LIKE 'op_%' AND op_id NOT LIKE 'op_cw%'"
+            " AND status IN ('complete','abandoned','committed-cleanup-pending')").fetchone()[0])
+        writer_dropped = [dict(r) for r in jconn2.execute(
             "SELECT op_id, status FROM journal WHERE op_id LIKE 'op_%' AND op_id NOT LIKE 'op_cw%'"
             " AND status NOT IN ('complete','abandoned','committed-cleanup-pending')").fetchall()]
         jconn2.close()
         fact_ok = (store / "compact-live.md").is_file()
         idx = (store / "MEMORY.md").read_text(encoding="utf-8") if (store / "MEMORY.md").is_file() else ""
+        # review fix: the oracle must assert the writer's row is PRESENT and terminal —
+        # a cap-delete that dropped a completed row would leave writer_terminal == 0 and
+        # n_rows == 3 (≤ 4), so the old check passed vacuously under the exact
+        # regression this scenario exists to catch.
         check("concurrency: compaction under a high baseline never drops the racing writer's row",
               p1.exitcode == 0 and p2.exitcode == 0
               and "compact" in oks and "---\nname" in oks  # both children succeeded
               and fact_ok and "](compact-live.md)" in idx  # the writer's fact + pointer landed
-              and not writer_rows  # the writer's row reached a terminal status
+              and writer_terminal == 1 and not writer_dropped  # the writer's row: present + terminal
               and n_rows <= 4)  # cap-delete kept ≤ cap (3) + the writer's row (1)
     finally:
         td.cleanup()
