@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.4.4** (2026-09-03). `CLAUDE.md` holds the
+verified against the live tree at **v0.4.5** (2026-09-03). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -16,7 +16,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.4.4 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
+| `consolidate-memory` | 0.4.5 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
 | `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -223,6 +223,10 @@ design.
   (`gh pr edit N --base main`), wait on checks, then `gh pr merge N --merge`
   (merge commits — the repo convention). The v0.4.0 chain (#128→#154→…→#160)
   merged this way under the user's delegation.
+- **Required checks on `main` (the #152 operator leg):** the `protect-main`
+  ruleset should require `test (python 3.8)`–`test (python 3.13)`, `test-macos`,
+  `concurrency`, `typecheck`, `manifest`, `bench` with a review count ≥ 1 — the
+  CI job list in the Commands section is the authoritative enumeration.
 
 ## The QA companion (dream-beta-tester)
 
