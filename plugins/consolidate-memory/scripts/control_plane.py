@@ -1271,6 +1271,47 @@ def sanitize_journal_payload(payload: dict) -> dict:
     return out
 
 
+_PREIMAGE_KEYS = ("dest", "sha256", "absent", "mode", "orig_mode",
+                  "published_sha256", "blob")
+_PUBLISH_KEYS = ("tmp", "dest", "sha256", "mode")
+
+
+def _sanitize_journal_changed(payload: dict) -> "tuple[dict, bool]":
+    """sanitize_journal_payload + a dirty flag, computed in the construction pass
+    (v0.4.2 P2): redact_journal_payloads used to re-serialize every row twice
+    (json.dumps before and after) to test for a change — 2M dumps over a 1M-row
+    journal. `changed` is True exactly when cleaning alters anything: a popped body
+    key, a preimage/publish item that gains the whitelist keys or drops a non-dict
+    item, or a non-empty preimage blob (the redact walk clears those). Receipt-only
+    rows are unchanged → skipped."""
+    # P2 review fix: a NON-DICT payload was normalized to {} and COUNTED by the old
+    # dumps-equality test (sanitize maps it to {}) — the flag must match.
+    if not isinstance(payload, dict):
+        return {}, True
+    cleaned = sanitize_journal_payload(payload)
+    changed = any(k in payload for k in JOURNAL_BODY_KEYS)
+    if not changed:
+        for item in payload.get("dest_preimages") or []:
+            # a truthy blob is cleared by the redact walk; a FALSY-but-non-str blob
+            # (null/0/false/[]) is mapped to "" by sanitize — both are changes; only
+            # a falsy STR blob ("") is a no-op (review fix: the bare truthiness test
+            # missed the second class).
+            if (not isinstance(item, dict)
+                    or set(item) != set(_PREIMAGE_KEYS)
+                    or bool(item.get("blob")) or not isinstance(item.get("blob"), str)):
+                changed = True
+                break
+    if not changed:
+        for item in payload.get("publishes") or []:
+            if not isinstance(item, dict) or set(item) != set(_PUBLISH_KEYS):
+                changed = True
+                break
+    for item in cleaned.get("dest_preimages") or []:
+        if isinstance(item, dict):
+            item["blob"] = ""
+    return cleaned, changed
+
+
 def _journal_put_payload(conn: sqlite3.Connection, op_id: str, payload: dict,
                          *, step: Optional[str] = None) -> None:
     blob = json.dumps(sanitize_journal_payload(payload), sort_keys=True)
@@ -1756,16 +1797,13 @@ def redact_journal_payloads(conn: sqlite3.Connection) -> int:
             payload = json.loads(row["payload"] or "{}")
         except (ValueError, TypeError):
             continue
-        cleaned = sanitize_journal_payload(payload)
-        for item in cleaned.get("dest_preimages") or []:
-            if isinstance(item, dict):
-                item["blob"] = ""
-        before = json.dumps(payload, sort_keys=True)
-        after = json.dumps(cleaned, sort_keys=True)
-        if after != before:
-            conn.execute("UPDATE journal SET payload=? WHERE op_id=?",
-                         (after, row["op_id"]))
-            n += 1
+        # v0.4.2 P2: the dirty flag replaces the per-row double json.dumps equality.
+        cleaned, changed = _sanitize_journal_changed(payload)
+        if not changed:
+            continue
+        conn.execute("UPDATE journal SET payload=? WHERE op_id=?",
+                     (json.dumps(cleaned, sort_keys=True), row["op_id"]))
+        n += 1
     conn.commit()
     return n
 
@@ -1848,7 +1886,11 @@ def _receipt_payload(row: dict, payload: dict) -> dict:
 def bound_journal_rows(conn: sqlite3.Connection, *, days: int = JOURNAL_RECEIPT_DAYS,
                        max_rows: int = 0) -> int:
     """Collapse old complete/abandoned rows to receipts; with max_rows, DELETE the
-    oldest terminal rows beyond the cap. Never touch pending/failed/conflicted."""
+    oldest terminal rows beyond the cap. Never touch pending/failed/conflicted.
+
+    The cap-delete counts 1 toward the return value (an operation count, not a
+    deleted-row count) — a deliberate convention shared with _compact_pass (v0.4.2
+    P2) so the compact result stays comparable across versions."""
     n = 0
     rows = conn.execute(
         "SELECT op_id, kind, payload, status, created_at, "
@@ -1885,20 +1927,89 @@ def bound_journal_rows(conn: sqlite3.Connection, *, days: int = JOURNAL_RECEIPT_
     return n
 
 
+def _compact_pass(conn: sqlite3.Connection, *, max_rows: int = 0) -> dict:
+    """ONE merged walk over the journal (v0.4.2 P2): per terminal row, redact body
+    content (dirty-flag) AND collapse age-eligible rows to receipts. The old
+    compact_journal made two full scans (redact then bound) and each re-parsed the
+    row's timestamps; age is hoisted into a per-row epoch computed in this single
+    walk. One UPDATE per changed row. Counts match the old three-pass result
+    exactly: a row that is BOTH redactable and receipt-collapsed counts in both.
+
+    `max_rows` (the same cap bound_journal_rows applies): DELETE the oldest terminal
+    rows beyond the cap — and count 1 toward `receipts` when the deletion ran (the
+    historical bound_journal_rows convention: the cap-delete is one operation, not a
+    deleted-row count — kept deliberately so the compact result stays comparable
+    across versions)."""
+    now_epoch = time.time()
+    n_red = 0
+    n_rec = 0
+    total = 0
+    rows = conn.execute(
+        "SELECT op_id, kind, payload, status, created_at, "
+        "COALESCE(completed_at, '') AS completed_at FROM journal"
+    ).fetchall()
+    for row in rows:
+        total += 1
+        status = str(row["status"] or "")
+        if status not in ("complete", "abandoned"):
+            continue
+        try:
+            payload = json.loads(row["payload"] or "{}")
+        except (ValueError, TypeError):
+            payload = {}
+        if isinstance(payload, dict) and payload.get("receipt"):
+            continue
+        d = dict(row)
+        ts = str(d.get("completed_at") or d.get("created_at") or "")
+        age_days = 0.0
+        if ts:
+            try:
+                age_days = max(0.0, (now_epoch - calendar.timegm(
+                    time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))) / 86400.0)
+            except (ValueError, TypeError, OverflowError):
+                age_days = 0.0
+        cleaned, changed = _sanitize_journal_changed(payload)
+        if age_days >= JOURNAL_RECEIPT_DAYS:
+            conn.execute("UPDATE journal SET payload=? WHERE op_id=?",
+                         (json.dumps(_receipt_payload(d, cleaned), sort_keys=True),
+                          row["op_id"]))
+            n_rec += 1
+            if changed:
+                n_red += 1
+        elif changed:
+            conn.execute("UPDATE journal SET payload=? WHERE op_id=?",
+                         (json.dumps(cleaned, sort_keys=True), row["op_id"]))
+            n_red += 1
+    if max_rows and max_rows > 0 and total > max_rows:
+        conn.execute(
+            "DELETE FROM journal WHERE op_id IN ("
+            "SELECT op_id FROM journal WHERE status IN ('complete','abandoned') "
+            "ORDER BY created_at LIMIT ?)",
+            (total - max_rows,))
+        n_rec += 1
+    if n_red or n_rec:
+        conn.commit()
+    return {"redacted": n_red, "receipts": n_rec}
+
+
 def compact_journal(ctx: StoreContext) -> dict:
     require_interprocess_lock()
     locks = acquire_mutation_locks(ctx, [ctx.project_id])
     conn = connect_journal(ctx)
     try:
-        n = redact_journal_payloads(conn)
-        n_bound = bound_journal_rows(conn)
+        # R4 (v0.4.2): the advertised cap is LIVE on the compact path — it used to pass
+        # max_rows=0 (the cap was dormant: compact never deleted beyond-cap terminal rows).
+        pass_r = _compact_pass(conn, max_rows=JOURNAL_MAX_ROWS)
         n_rec = expire_recovery(ctx, conn)
-        try:
-            conn.execute("VACUUM")
-        except sqlite3.Error:
-            pass
-        return {"ok": True, "redacted": n, "receipts": n_bound,
-                "recovery_expired": n_rec}
+        # v0.4.2 P2: VACUUM only when the journal was actually rewritten (the old
+        # unconditional VACUUM paid a full-file rebuild on every compact, even a no-op).
+        if pass_r["redacted"] or pass_r["receipts"]:
+            try:
+                conn.execute("VACUUM")
+            except sqlite3.Error:
+                pass
+        return {"ok": True, "redacted": pass_r["redacted"],
+                "receipts": pass_r["receipts"], "recovery_expired": n_rec}
     finally:
         conn.close()
         release_locks(locks)
@@ -2033,25 +2144,31 @@ def journal_cleanup(ctx: StoreContext, *, apply: bool = False,
         # Re-scan under the mutation locks so we never unlink a concurrent
         # transact's complete-old trash from the pre-lock plan snapshot.
         scan2 = scan_orphan_artifacts(ctx, all_stores=all_stores)
+        gone: set = set()   # paths that left the disk (unlinked, or already gone) — excluded from `remaining`
         for path_s in scan2.get("trash") or []:
             p = Path(path_s)
             if not p.exists():
+                gone.add(path_s)
                 continue
             try:
                 p.unlink()
                 fsync_dir(p.parent)
+                gone.add(path_s)
             except OSError as e:
                 errors.append({"path": path_s, "error": e.__class__.__name__})
         for path_s in scan2.get("temps") or []:
             p = Path(path_s)
             if not p.exists():
+                gone.add(path_s)
                 continue
             try:
                 p.unlink()
                 fsync_dir(p.parent)
+                gone.add(path_s)
             except OSError as e:
                 errors.append({"path": path_s, "error": e.__class__.__name__})
         rec_root = ctx.plugin_data_dir / "recovery"
+        live: dict = {}
         if rec_root.is_dir():
             live = {str(r["op_id"]): str(r["status"] or "")
                     for r in jconn.execute("SELECT op_id, status FROM journal").fetchall()}
@@ -2063,7 +2180,21 @@ def journal_cleanup(ctx: StoreContext, *, apply: bool = False,
                     continue
                 rec = _cleanup_recovery(ctx, d.name)
                 errors.extend(rec.get("errors") or [])
-        remaining = scan_orphan_artifacts(ctx, all_stores=all_stores)
+        # v0.4.2 P2: `remaining` is scan2 MINUS the paths that left the disk — the
+        # old code ran a THIRD full orphan scan here (an rglob over every store).
+        # Under the mutation locks nothing new can appear, so a failed unlink is the
+        # only path that can survive into `remaining` (the honest post-cleanup
+        # snapshot). Recovery dirs are re-listed directly (one iterdir — cheap — and
+        # it must reflect the cleanups just performed).
+        remaining = {
+            "cleanup_pending": scan2.get("cleanup_pending") or [],
+            "trash": [p for p in scan2.get("trash") or [] if p not in gone],
+            "temps": [p for p in scan2.get("temps") or [] if p not in gone],
+            "recovery": [str(d) for d in rec_root.iterdir()
+                         if d.is_dir() and (live.get(d.name) in ("complete", "abandoned")
+                                            or live.get(d.name) is None)]
+            if rec_root.is_dir() else [],
+        }
         # v0.4.0 review: a still-cleanup-pending op means a retry failed — `ok`
         # must say so (the old `not errors` silently reported success with work
         # left on the journal).

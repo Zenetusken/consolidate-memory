@@ -10872,6 +10872,181 @@ with _Env73() as _e_or:
     check("P0-2: journal cleanup apply scavenges true orphan trash",
           not _orphan.exists())
 
+# ── v0.4.2 P2: journal scale (merged compact pass + scan reuse + export leg) ────
+with _Env73() as _e_p2:
+    _ctx_p2 = sc.resolve_store(_e_p2.proj)
+    _j_p2 = cp.connect_journal(_ctx_p2)
+    # one RECENT row with a body (redact-only) + one OLD row (receipt-collapse;
+    # its under-whitelisted publishes item is also a redact-change)
+    _j_p2.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("op_legacy_p2", "canonical-upsert",
+         _json_xp.dumps({"stem": "x", "text": "BODY-P2\n",
+                         "dest_preimages": [{"dest": "x.md", "bytes_b64": "Qk9EWQ==",
+                                             "sha256": "ab" * 32, "absent": False}]}),
+         "journal_complete", "complete", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z"))
+    _j_p2.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("op_old_p2", "local-forget",
+         _json_xp.dumps({"publishes": [{"dest": "y.md", "sha256": "cd" * 32}]}),
+         "journal_complete", "complete", "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z"))
+    _j_p2.commit()
+    _j_p2.close()
+    _cout1_p2 = cp.compact_journal(_ctx_p2)
+    _j_p2b = cp.connect_journal(_ctx_p2)
+    _shown_legacy = cp.journal_show(_j_p2b, "op_legacy_p2")
+    _shown_old = cp.journal_show(_j_p2b, "op_old_p2")
+    _j_p2b.close()
+    check("v0.4.2 P2: the merged pass redacts bodies AND collapses old rows in one walk",
+          int(_cout1_p2.get("redacted") or 0) == 2
+          and int(_cout1_p2.get("receipts") or 0) == 1
+          and "text" not in ((_shown_legacy or {}).get("payload") or {})
+          and ((_shown_old or {}).get("payload") or {}).get("receipt") is True)
+    _cout2_p2 = cp.compact_journal(_ctx_p2)
+    check("v0.4.2 P2: a second compact reports 0 redacted + 0 receipts (dirty-flag idempotence)",
+          int(_cout2_p2.get("redacted") or 0) == 0
+          and int(_cout2_p2.get("receipts") or 0) == 0)
+
+# the merged pass on a twin journal == the old three-pass result, counts AND bytes
+with _Env73() as _e_tw:
+    _ctx_tw = sc.resolve_store(_e_tw.proj)
+    _seed_rows_tw = [
+        ("op_legacy_tw", "canonical-upsert",
+         {"stem": "x", "text": "BODY-TW\n",
+          "dest_preimages": [{"dest": "x.md", "bytes_b64": "Qk9EWQ==",
+                              "sha256": "ab" * 32, "absent": False}]},
+         "complete", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z"),
+        ("op_old_tw", "local-forget",
+         {"publishes": [{"dest": "y.md", "sha256": "cd" * 32}]},
+         "complete", "2025-01-01T00:00:00Z", "2025-01-01T00:00:00Z"),
+        ("op_pend_tw", "local-forget", {"deletes": []},
+         "pending", "2026-01-01T00:00:00Z", ""),
+    ]
+    def _seed_tw(conn):
+        for _r in _seed_rows_tw:
+            conn.execute(
+                "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+                "VALUES (?,?,?,?,?,?,?)",
+                (_r[0], _r[1], _json_xp.dumps(_r[2]), "journal_complete",
+                 _r[3], _r[4], _r[5]))
+        conn.commit()
+    _jA_tw = cp.connect_journal(_ctx_tw)
+    _seed_tw(_jA_tw)
+    _passA_tw = cp._compact_pass(_jA_tw, max_rows=0)
+    _payA_tw = {r["op_id"]: r["payload"]
+                for r in _jA_tw.execute("SELECT op_id, payload FROM journal").fetchall()}
+    _jA_tw.close()
+    _jB_tw = cp.connect_journal(_ctx_tw)
+    _jB_tw.execute("DELETE FROM journal")
+    _seed_tw(_jB_tw)
+    _redB_tw = cp.redact_journal_payloads(_jB_tw)
+    _recB_tw = cp.bound_journal_rows(_jB_tw)
+    _payB_tw = {r["op_id"]: r["payload"]
+                for r in _jB_tw.execute("SELECT op_id, payload FROM journal").fetchall()}
+    _jB_tw.close()
+    check("v0.4.2 P2: the merged pass result == the old three-pass result (counts AND payload bytes)",
+          int(_passA_tw.get("redacted") or 0) == int(_redB_tw or 0)
+          and int(_passA_tw.get("receipts") or 0) == int(_recB_tw or 0)
+          and _payA_tw == _payB_tw)
+
+# the export leg: the snapshot's redaction is reported + the CLI prints the progress line
+with _Env73() as _e_ex:
+    _ctx_ex = sc.resolve_store(_e_ex.proj)
+    _j_ex = cp.connect_journal(_ctx_ex)
+    _j_ex.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+        "VALUES (?,?,?,?,?,?,?)",
+        ("op_export_ex", "canonical-upsert",
+         _json_xp.dumps({"stem": "x", "text": "EXPORT-BODY\n"}),
+         "journal_complete", "complete", "2026-08-01T00:00:00Z", "2026-08-01T00:00:00Z"))
+    _j_ex.commit()
+    _j_ex.close()
+    _dest_ex = _e_ex.proj / "export-test.tgz"
+    _out_ex, _err_ex = _io73.StringIO(), _io73.StringIO()
+    with _ctx73.redirect_stdout(_out_ex), _ctx73.redirect_stderr(_err_ex):
+        _rc_ex = cmo.main(["data", "export", "--dest", str(_dest_ex),
+                           "--project", str(_e_ex.proj)])
+    _exp_res_ex = _json_xp.loads(_out_ex.getvalue() or "{}")
+    check("v0.4.2 P2: the export reports the snapshot's journal redaction + the CLI "
+          "prints the progress line on stderr",
+          _rc_ex == 0 and int(_exp_res_ex.get("journal_redacted") or 0) == 1
+          and "journal redacted 1 row(s)" in _err_ex.getvalue())
+
+# the row cap is shrinkable (bound_journal_rows max_rows is the live knob)
+with _Env73() as _e_cap:
+    _ctx_cap = sc.resolve_store(_e_cap.proj)
+    _j_cap = cp.connect_journal(_ctx_cap)
+    for _i in range(5):
+        _j_cap.execute(
+            "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            (f"op_cap{_i}", "bench", _json_xp.dumps({"receipt": True}),
+             "journal_complete", "complete",
+             "2026-01-01T00:%02d:00Z" % _i, "2026-01-01T00:%02d:00Z" % _i))
+    _j_cap.commit()
+    _b_cap = cp.bound_journal_rows(_j_cap, max_rows=3)
+    _n_cap = cp.journal_count(_j_cap)
+    _j_cap.close()
+    check("v0.4.2 P2: the row cap is shrinkable (max_rows=3 deletes the 2 oldest terminal rows; "
+          "the cap-delete counts 1 — the documented operation-count convention)",
+          int(_b_cap or 0) == 1 and _n_cap == 3)
+
+# R4 (v0.4.2): compact_journal enforces the advertised JOURNAL_MAX_ROWS cap (it used to pass
+# max_rows=0 — the cap was dormant on the compact path). Patched to a small value to prove the wiring.
+with _Env73() as _e_r4:
+    _ctx_r4 = sc.resolve_store(_e_r4.proj)
+    _j_r4 = cp.connect_journal(_ctx_r4)
+    for _i in range(6):
+        _j_r4.execute(
+            "INSERT INTO journal(op_id, kind, payload, step, status, created_at, completed_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            ("op_r4%d" % _i, "bench", _json_xp.dumps({"receipt": True}),
+             "journal_complete", "complete",
+             "2026-01-01T00:%02d:00Z" % _i, "2026-01-01T00:%02d:00Z" % _i))
+    _j_r4.commit()
+    _j_r4.close()
+    _old_cap_r4 = cp.JOURNAL_MAX_ROWS
+    cp.JOURNAL_MAX_ROWS = 3
+    try:
+        cp.compact_journal(_ctx_r4)
+    finally:
+        cp.JOURNAL_MAX_ROWS = _old_cap_r4
+    _j_r4b = cp.connect_journal(_ctx_r4)
+    _n_r4 = cp.journal_count(_j_r4b)
+    _j_r4b.close()
+    check("v0.4.2 R4: compact_journal enforces JOURNAL_MAX_ROWS (6 rows, patched cap 3 → 3 remain)",
+          int(_n_r4) == 3)
+
+# --apply runs exactly TWO orphan scans (pre-lock plan + under-lock rescan)
+with _Env73() as _e_sc:
+    _ctx_sc = sc.resolve_store(_e_sc.proj)
+    _j_sc = cp.connect_journal(_ctx_sc)
+    _trash_sc = _e_sc.store / ".cm-trash-op_orphan_sc01-0"
+    _trash_sc.write_text("ORPHAN\n", encoding="utf-8")
+    _j_sc.execute(
+        "INSERT INTO journal(op_id, kind, payload, step, status, created_at) "
+        "VALUES (?,?,?,?,?,?)",
+        ("op_orphan_sc01", "local-forget", _json_xp.dumps({"deletes": []}),
+         "journal_complete", "complete", "2026-01-01T00:00:00Z"))
+    _j_sc.commit()
+    _j_sc.close()
+    _scans_p2 = [0]
+    _orig_scan_p2 = cp.scan_orphan_artifacts
+    def _counting_scan_p2(*a, **k):
+        _scans_p2[0] += 1
+        return _orig_scan_p2(*a, **k)
+    cp.scan_orphan_artifacts = _counting_scan_p2
+    try:
+        _app_sc = cp.journal_cleanup(_ctx_sc, apply=True)
+    finally:
+        cp.scan_orphan_artifacts = _orig_scan_p2
+    check("v0.4.2 P2: --apply runs exactly ONE orphan scan (the under-lock scan2; the "
+          "post-cleanup rescan is gone — remaining is scan2 minus the unlinked) and the "
+          "orphan is unlinked",
+          _scans_p2[0] == 1 and _app_sc.get("ok") is True and not _trash_sc.exists())
+
 # ── Phase 3: domain lifecycle / inactive ack / resurrect / purge fence ──
 with _Env73() as _e_p3:
     _ctx_p3 = sc.resolve_store(_e_p3.proj)
