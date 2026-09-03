@@ -256,7 +256,7 @@ format-example is not a dangling refusal. **v0.3.7** gives locals their own
 recall-key constructor (keep `()`, word-boundary, scope tag) and
 script-writes `demotion_justify` as the monotonic usage-window sequence.
 
-**v0.4.1** is the current engineering release — the v0.4.0 sole-authority topology (ADR 023) plus the terminal persist gates (exit 3/4/5) and the archive fixes: holders/topology, grants,
+**v0.4.2** is the current engineering release — the v0.4.0 sole-authority topology (ADR 023) plus the terminal persist gates (exit 3/4/5), the archive fixes, and the 0.4.2 production/polish/performance pass (stacks cache on the sync paths, warm-pull margin, journal scale, archive embed budget, store-honesty fixes, the oracle's persist-gate teeth, release provenance + signed tags, and the renderer coherence sweep): holders/topology, grants,
 and migration state live in SQLite with one authority per kind of state; the
 canonical writer and the catalog/link pipeline are consolidated under typed
 renderers; the beacon and pull hot paths read a derived facts-manifest cache
@@ -265,9 +265,10 @@ hook-sketch infrastructure is fully removed.
 
 ## Install
 
-**v0.4.1** (v0.4.0's sole-authority topology and SQLite grants; consolidated
+**v0.4.2** (v0.4.0's sole-authority topology and SQLite grants; consolidated
 canonical writer; facts-manifest beacon/pull cache; journal pagination;
-hook-sketch infrastructure removed; terminal persist gates). This ships as a
+hook-sketch infrastructure removed; terminal persist gates; the 0.4.2
+production/polish/performance pass). This ships as a
 **Claude Code plugin** — no clone, no symlinks. In Claude Code:
 
 ```text
@@ -302,7 +303,7 @@ memory this plugin does not own. Domain canonicals live under
 read-only migration source. Scoped purge commands are the right tool; hand-deleting
 the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
-### Known limitations (v0.4.1)
+### Known limitations (v0.4.2)
 
 - **Unenrolled projects are local-only.** They cannot create or pull cross-project
   canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain
