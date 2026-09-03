@@ -1,6 +1,6 @@
 # consolidate-memory — project conventions
 
-**v0.4.0.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
+**v0.4.1.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
 Claude Code's built-in Auto Dream (per-project consolidation), adding a governed cross-project store +
 verification against the live code. This repo is both the plugin and its marketplace —
 end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -174,20 +174,26 @@ marketplace, no token needed). So a release = a bumped version landing on `main`
 construction:** it reads the target version from the **top `## [X.Y.Z]` CHANGELOG
 section** — the single source of truth you author + review during the cycle, NOT a bump
 keyword — then computes the bump TYPE from the delta and enforces the policy. So author
-the `## [X.Y.Z]` CHANGELOG entry first (using the policy above), then:
+the `## [X.Y.Z]` CHANGELOG entry first (using the policy above), then release in two
+phases with a human merge between them (GitHub requires PRs to `main`):
 - `./release.sh` — **dry-run**: prints current→target, the computed bump type, the tag,
   and the notes. No writes.
-- `./release.sh --confirm` — if `plugin.json` already equals the CHANGELOG
-  version (pre-bumped on the release branch, as for v0.3.0), skip the bump
-  commit and tag that exact HEAD; otherwise set `plugin.json`, validate
-  (manifests + smoke + sim), commit `release: vX.Y.Z`, push `main`, tag, cut
-  the GH Release.
-- `./release.sh --expect patch|minor|major [--confirm]` — also **asserts** the computed
-  bump matches your intent (a second guard; aborts on mismatch).
+- `./release.sh --stage` — guards (clean tree, tag free), bumps `plugin.json` if needed
+  (`release: vX.Y.Z`), validates (manifests + smoke + sim), pushes
+  `release/vX.Y.Z`, and opens the release PR. Re-running reuses the branch/PR.
+- `./release.sh --finalize` — fetches, verifies `main`'s `plugin.json` equals the
+  CHANGELOG version (the merge must have landed the bump), tags the release PR's merge
+  commit, pushes the tag, and cuts the GH Release. Re-running reports already-done.
+- **Pre-bump preferred:** if `plugin.json` already equals the CHANGELOG version
+  (pre-bumped on the feature branch, as for v0.3.0), `--stage` is a no-op that says so,
+  and `--finalize` alone tags the merged HEAD — the bump rides your feature PR, zero
+  release PRs. The release-PR path is the fallback for a last-minute bump.
+- `./release.sh --expect patch|minor|major [--stage|--finalize]` — also **asserts** the
+  computed bump matches your intent (a second guard; aborts on mismatch).
 
-It refuses a non-forward or multi-step version, an unfilled CHANGELOG stub, or a
-dirty/out-of-sync tree / existing tag — and the clean-tree guard counts UNTRACKED
-files too, so move any session exports out of the repo before `--confirm`.
-(This replaced a keyword-driven flow after a
+It refuses a non-forward or multi-step version, an unfilled CHANGELOG stub, a dirty
+tree (untracked files count — move session exports out first), or an existing tag —
+and `--finalize` refuses when `main`'s version doesn't match the CHANGELOG or the
+release PR isn't merged. (This replaced a keyword-driven flow after a
 `minor`-vs-`patch` slip mis-shipped a version: the version is now structurally tied to the
 reviewed CHANGELOG, not a release-time judgment.)

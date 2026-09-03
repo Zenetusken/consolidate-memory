@@ -41,13 +41,14 @@ case "$cmd" in
   journal)  exec python3 "$S/cm_ops.py" journal "$@" ;;
   forget)   exec python3 "$S/cm_ops.py" canonical forget "$@" ;;
   help|*)
-    cat <<EOF
+    cat <<'EOF'
 cm — consolidate-memory (MAINTAINER CLI for this checkout; marketplace
 users run the skill — they do not have ./cm on PATH)
 
   Unenrolled projects are local-only. cm doctor prints UNENROLLED LOCAL-ONLY.
-  Enroll with `cm project enroll --domain NAME --apply`. Marketplace users:
-  /cm-domain. Canonicals live under domains/<domain>/facts, not ~/.claude/memory.
+  Enroll with `cm project enroll --domain NAME --apply --confirm enroll-<domain>`.
+  Marketplace users: /cm-domain. Canonicals live under domains/<domain>/facts,
+  not ~/.claude/memory.
 
   cm status [DIR]      Phase-0 context (stores, git range, marker)
   cm extract [--json]  curated session signal (human turns + error gotchas); --recalls [--into SEED]
@@ -60,6 +61,8 @@ users run the skill — they do not have ./cm on PATH)
   cm sync --list DIR   show which global facts apply to a project
   cm pull [DIR]        replicate relevant global facts into a project (default: .); M1 holds a pull
                        only past the HARD CEILING (~3840t, v0.1.66) — an over-target store receives
+                       verified knowledge freely (the amber band); past the ceiling only shrinking
+                       satisfies (--evict=<fact> to free one pointer, or --allow-net-grow)
   cm gc [DIR] [--edges] [--apply] reclaim orphaned mirrors; --edges = fleet-wide ghost provenance-edge triage (report-only without --apply)
   cm promote DIR FACT [CANON]  hand a local fact up to the global store + mirror the origin
   cm tokens [DIR] [--json] per-node + total token consumption across the network
@@ -90,6 +93,7 @@ users run the skill — they do not have ./cm on PATH)
   cm resolve FACT      --keep-canonical | --fork-local NAME | --promote-local
   cm repair-mirror FACT
   cm canonical upsert STEM [--file PATH] [--origin]
+  cm canonical catalog the domain's catalog (facts manifest: stems × classes × secret flags)
   cm canonical forget|supersede|expire|reactivate STEM
   cm canonical resurrect STEM --file PATH   replace a tombstone stub with a new body
   cm local upsert|update|archive|forget STEM [--file PATH]
@@ -100,16 +104,22 @@ users run the skill — they do not have ./cm on PATH)
   cm marker snooze --until ISO
   cm justify-demotion STEM [STEM…] [--force]  stamp demotion_justify at the monotonic usage-window sequence (candidate-gated; --force for repair)
   cm migrate [--plan|--assign STEM --domain NAME|--exclude STEM|--apply|--rollback|--finalize|--status]
-  cm data inventory|compact|export|purge|purge-status|purge-resume|purge-cancel|retention
+                       (--apply --confirm migrate-apply · --rollback --confirm migrate-rollback)
+  cm data inventory|compact|export|import|purge|purge-status|purge-resume|purge-cancel|retention
+                       import --file ARCHIVE [--apply --confirm data-import]
                        purge --scope domain-canonicals|all-plugin-data
+                       [--apply --confirm purge-domain-canonicals|purge-all-plugin-data]
                        purge-status|resume|cancel --domain NAME
                        cancel --accept-partial when canonicals already gone
   cm journal inventory|show|retry|rollback|abandon|compact|cleanup [OP-ID]
                        cleanup [--scan-all-stores] [--apply --confirm journal-cleanup]
                        abandon --accept-fs after verifying leftover trash/recovery
   cm forget STEM       tombstone a canonical (does not resurrect on pull)
-  cm project enroll --domain NAME [DIR]
-  cm project grant-native --path PATH [DIR]   operator grant for a dedicated native store
+  cm project enroll --domain NAME [DIR] [--apply --confirm enroll-<domain>]
+  cm project grants [DIR]                    list the operator's granted stores
+  cm project grant-native --path PATH [DIR]  operator grant for a dedicated native store
+  cm project revoke-native --path PATH [DIR] revoke a dedicated native store
+  cm project transfer-native --path PATH [DIR]  transfer native-store ownership
   cm project move-domain --to NAME [DIR]
   cm project rebind [DIR]
   cm project show [DIR]

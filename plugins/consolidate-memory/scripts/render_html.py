@@ -57,6 +57,28 @@ def read_history(store: Path | None) -> list:
 
 
 _ARCHIVE_CAP = 120   # embed at most the latest N cycles (bounded HTML size); a VISIBLE note flags any truncation
+_DIFF_EMBED_CAP = 20   # P4 (v0.4.2): embed diff sidecars for only the newest N cycles — the modal
+                       # is reachable from the newest dreams; the oldest 100 sidecars were pure weight
+
+# P4 (v0.4.2 archive embed budget): the TOP-LEVEL record keys the bundled template's JS reads
+# (audited against every CUR.* / g(CUR, ...) / g(c, ...) / loop-var read in dashboard.template.html).
+# Full subtrees are kept — the v0.1.28 round-trip pin asserts budget.recall_facts.after survives
+# embedding even though the JS never reads it. Everything else (registrar payloads, per-phase
+# working data) is rendered nowhere and was most of a 120-cycle archive's weight. A smoke pin
+# enforces this whitelist — the template must not grow an unlisted read.
+_EMBED_KEYS = (
+    "audit", "budget", "cross_project", "demotion", "distill", "dream",
+    "entries", "health", "identity", "maintenance", "marker", "network",
+    "outcome", "project", "remediation", "rigor", "scope", "session",
+    "usage", "verification", "workflow_proposals",
+)
+
+
+def _embed_cycle(c: object) -> object:
+    """Trim a cycle record to _EMBED_KEYS (full subtrees). Non-dict entries pass through."""
+    if not isinstance(c, dict):
+        return c
+    return {k: v for k, v in c.items() if k in _EMBED_KEYS}
 
 
 def _marker(r: dict) -> tuple:
@@ -147,15 +169,21 @@ def assemble_cycles(record: dict, history: list) -> tuple:
 
 
 def build_html(record: dict, history: list, generated_at: str, diffs: "dict | None" = None,
-               identity: "dict | None" = None) -> str:
+               identity: "dict | None" = None,
+               cycles: "list | None" = None, total: "int | None" = None) -> str:
     """Embed the ARCHIVE (all logged cycles, capped) + the repo identity into the bundled template; the JS reads
     `cycles`/`project`/`budgets`/`diffs`/`identity` and renders either the archive index or a single dream selected by URL
     `#sel=`. `diffs` (v0.1.32) maps a cycle's diff_key → its persisted memory diffs (the diff-modal); read by
     main() so build_html stays PURE w.r.t. inputs (a smoke test exercises it + asserts the embedded round-trip).
     `identity` (v0.3.0) is the LIVE StoreContext snapshot at render — the archive masthead; per-cycle
-    `identity` on a record (seeded Phase 0) is this-pass truth when present."""
+    `identity` on a record (seeded Phase 0) is this-pass truth when present.
+    `cycles`/`total` (P4, v0.4.2): main() assembles the series ONCE (it needs the same list for
+    read_diffs + #sel) — pass it in to skip the re-assembly; omitted, this assembles as before."""
     template = _TEMPLATE.read_text(encoding="utf-8")
-    cycles, total = assemble_cycles(record, history)
+    if cycles is None:
+        cycles, total = assemble_cycles(record, history)
+    else:
+        total = len(cycles) if total is None else total
     rec = record if isinstance(record, dict) else {}
     project = (rec.get("project") or (cycles[-1].get("project") if cycles else "")) or "dream"
     # v0.1.44: attach the procedure-integrity verdict per cycle (single-source ms.procedure_integrity),
@@ -169,7 +197,8 @@ def build_html(record: dict, history: list, generated_at: str, diffs: "dict | No
         c = {**c, "_outcome": ms.outcome_of(c)}
         ok, reason, severity = ms.procedure_integrity(c)
         return c if ok else {**c, "_integrity": {"severity": severity, "reason": reason}}
-    cycles = [_embed_integrity(c) for c in cycles]
+    # P4: trim to the template's read-whitelist FIRST, then stamp integrity (which is itself rendered).
+    cycles = [_embed_integrity(_embed_cycle(c)) for c in cycles]
     data = {
         "cycles": cycles,
         "project": project,
@@ -189,13 +218,17 @@ def build_html(record: dict, history: list, generated_at: str, diffs: "dict | No
 def read_diffs(store: "Path | None", cycles: list) -> dict:
     """v0.1.32: load each embedded cycle's persisted diff sidecar (`dashboards/diffs/<diff_key>.json`), keyed by the
     SAME `diff_key` the capture used → the diff-modal payload. Best-effort: a missing/corrupt sidecar is skipped
-    (legacy / pre-feature cycles simply have none, so their facts just aren't clickable)."""
+    (legacy / pre-feature cycles simply have none, so their facts just aren't clickable).
+    P4 (v0.4.2): capped to the newest _DIFF_EMBED_CAP cycles — the oldest sidecars were embedded
+    but only reachable from dreams at the archive's tail."""
     if store is None:
         return {}
     from memory_status import diff_key
     ddir = Path(store).parent / "dashboards" / "diffs"
     if not ddir.exists():
         return {}
+    if len(cycles) > _DIFF_EMBED_CAP:
+        cycles = cycles[-_DIFF_EMBED_CAP:]
     out: dict = {}
     for c in cycles:
         marker = c.get("marker") if isinstance(c, dict) else {}
@@ -329,8 +362,10 @@ def main(argv: list) -> int:
         frag = f"#sel={len(cycles) - 1}"
 
     generated_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    # P4: the series is assembled ONCE here and passed through (build_html and read_diffs
+    # both consume the same list — no re-assembly, no re-dedup).
     html = build_html(record, history, generated_at, read_diffs(store, cycles),
-                      identity=live_identity)
+                      identity=live_identity, cycles=cycles, total=_total)
     out = Path(args.out) if args.out else _default_out(record, store)
     out.write_text(html, encoding="utf-8")
 

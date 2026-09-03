@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.4.0** (2026-09-02). `CLAUDE.md` holds the
+verified against the live tree at **v0.4.1** (2026-09-02). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -16,7 +16,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.4.0 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
+| `consolidate-memory` | 0.4.1 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
 | `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -205,13 +205,20 @@ design.
   additive change → patch. Releases v0.1.1–v0.2.1 were patches. **v0.3.0 is the
   first minor** (removes v0.2.1 unenrolled A→B sharing).
 - **Author the CHANGELOG `## [X.Y.Z]` section first** — it is the single source of
-  truth. Then `./release.sh` (dry-run) → `./release.sh --confirm` (if
-  plugin.json already matches CHANGELOG, tags that HEAD; otherwise sets
-  plugin.json, validates, commits `release: vX.Y.Z`, pushes, tags, cuts the
-  GH Release). `--expect patch|minor|major` asserts the computed
-  bump matches intent. It refuses a non-forward/multi-step version, an unfilled
-  CHANGELOG stub, or a dirty/out-of-sync tree. (`release.sh` is a local,
-  gitignored maintainer artifact — never published.)
+  truth. Then release in two phases with a human merge between them (`main` requires
+  PRs): `./release.sh --stage` (guards, bumps `plugin.json` if needed, commits
+  `release: vX.Y.Z`, pushes `release/vX.Y.Z`, opens the release PR — re-runnable, it
+  reuses the branch/PR) → **YOU merge the release PR** → `./release.sh --finalize`
+  (verifies `main`'s `plugin.json` == the CHANGELOG version, tags the PR's merge
+  commit, pushes the tag, cuts the GH Release — re-runnable, reports already-done).
+  **Pre-bump preferred:** if `plugin.json` already equals the CHANGELOG version,
+  `--stage` is a no-op that says so and `--finalize` alone tags the merged HEAD (the
+  bump rides the feature PR — zero release PRs); the release PR is the fallback for a
+  last-minute bump. `--expect patch|minor|major` asserts the computed bump matches
+  intent. The harness refuses a non-forward/multi-step version, an unfilled CHANGELOG
+  stub, a dirty tree (untracked files count) or existing tag, and `--finalize` refuses
+  a `main` whose version didn't land or an unmerged release PR. (`release.sh` is a
+  local, gitignored maintainer artifact — never published.)
 - **Stacked PR chains merge oldest-first:** retarget each PR's base to `main`
   (`gh pr edit N --base main`), wait on checks, then `gh pr merge N --merge`
   (merge commits — the repo convention). The v0.4.0 chain (#128→#154→…→#160)

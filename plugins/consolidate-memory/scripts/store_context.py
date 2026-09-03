@@ -42,10 +42,11 @@ class WriteRefused(RuntimeError):
 UNENROLLED_SHARE_WARNING = (
     "UNENROLLED LOCAL-ONLY: this project cannot create or pull cross-project "
     "canonicals until it is enrolled in a named domain "
-    "(cm project enroll --domain personal --apply). First enroll grants the "
-    "domain and revokes managed mirrors the destination does not admit. Use "
-    "move-domain to switch; unenroll to go local-only. Do not run migrate "
-    "apply/rollback or domain switches on irreplaceable stores. 1.0 remains HOLD."
+    "(cm project enroll --domain personal --apply --confirm enroll-<domain>). "
+    "First enroll grants the domain and revokes managed mirrors the destination "
+    "does not admit. Use move-domain to switch; unenroll to go local-only. Do not "
+    "run migrate apply/rollback or domain switches on irreplaceable stores. "
+    "1.0 remains HOLD."
 )
 
 
@@ -53,10 +54,43 @@ def is_unenrolled_share(ctx: "StoreContext") -> bool:
     return (not ctx.enrolled) or ctx.domain_id == "unknown"
 
 
-def warn_unenrolled_share(ctx: "StoreContext", stream: Optional[TextIO] = None) -> None:
-    """Loud, deterministic warning for doctor/pull/promote/upsert/dashboards."""
+def warn_unenrolled_share(ctx: "StoreContext", stream: Optional[TextIO] = None,
+                          once: bool = True) -> None:
+    """Loud, deterministic warning for doctor/pull/promote/upsert/dashboards.
+
+    L3 (v0.4.2): `once=True` (the default) prints ONCE per store — a
+    `_warned_unenrolled` flag in the native state file gates re-prints. The flag
+    write NOOPs when no state file exists (an absent store must never be minted —
+    the O1 pin); a write failure degrades to print-again (the safe direction: the
+    warning is never silently swallowed). `cm doctor` stays loud (once=False)."""
     if not is_unenrolled_share(ctx):
         return
+    if once:
+        from control_plane import MARKER_FILE
+        marker = ctx.native_memory_dir / MARKER_FILE
+        if marker.is_file():
+            try:
+                already = False
+
+                def _mut(st: dict, snap) -> dict:
+                    nonlocal already
+                    if st.get("_warned_unenrolled"):
+                        already = True
+                        return st
+                    return {**st, "_warned_unenrolled": True}
+
+                from control_plane import update_project_state
+                # review fix: no_mint closes the TOCTOU between the is_file() guard above
+                # and the locked write — a concurrent marker delete mid-warning can no
+                # longer mint a flag-only state file (the no-mint rule is atomic now)
+                update_project_state(ctx, _mut, no_mint=True)
+                if already:
+                    return
+            except Exception:
+                pass    # a flag-write failure → print again (never swallow the warning)
+        else:
+            print(UNENROLLED_SHARE_WARNING, file=stream if stream is not None else sys.stderr)
+            return
     print(UNENROLLED_SHARE_WARNING, file=stream if stream is not None else sys.stderr)
 
 

@@ -446,9 +446,12 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _sqlite_snapshot_to(path: Path, dest: Path, *, redact_journal: bool = False) -> None:
-    """Checkpointed SQLite backup (includes committed WAL state) written to dest."""
+def _sqlite_snapshot_to(path: Path, dest: Path, *, redact_journal: bool = False) -> int:
+    """Checkpointed SQLite backup (includes committed WAL state) written to dest.
+    Returns the journal redaction count (0 when not redacting) — v0.4.2 P2: the
+    export result reports it so `cm data export` can print the progress line."""
     import sqlite3
+    n = 0
     src = sqlite3.connect(str(path))
     try:
         try:
@@ -461,11 +464,12 @@ def _sqlite_snapshot_to(path: Path, dest: Path, *, redact_journal: bool = False)
             if redact_journal:
                 dst.row_factory = sqlite3.Row
                 from control_plane import redact_journal_payloads
-                redact_journal_payloads(dst)
+                n = redact_journal_payloads(dst)
         finally:
             dst.close()
     finally:
         src.close()
+    return n
 
 
 def _sqlite_snapshot_bytes(path: Path, *, redact_journal: bool = False) -> bytes:
@@ -508,6 +512,7 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
     snap_tmps: list = []
     try:
         staged: list = []  # (rel, path_to_read, nbytes, sha)
+        journal_redacted = 0
         if plugin_data.exists():
             for p in plugin_data.rglob("*"):
                 if p.is_symlink() or not p.is_file():
@@ -520,7 +525,7 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
                     os.close(fd)
                     tmp_p = Path(tmp)
                     snap_tmps.append(tmp_p)
-                    _sqlite_snapshot_to(
+                    journal_redacted += _sqlite_snapshot_to(
                         p, tmp_p, redact_journal=(p.name == "journal.sqlite"))
                     src = tmp_p
                 else:
@@ -556,7 +561,7 @@ def export_ops(plugin_data: Path, dest: Path) -> dict:
         except OSError:
             pass
         return {"ok": True, "path": str(dest), "manifest": str(man_path),
-                "n_files": len(files)}
+                "n_files": len(files), "journal_redacted": journal_redacted}
     finally:
         for tmp_p in snap_tmps:
             try:
