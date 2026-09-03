@@ -147,23 +147,68 @@ def _registry_project_rows() -> list:
         return []
 
 
+_FIXTURE_MARKER = ".cm-fixture"
+# R2 (v0.4.2): PINNED known-stale slug patterns — machine-independent substrings (never paths,
+# never usernames): the tmpdir-derived slug family (`-tmp-…`, every bench/hermetic fixture) and
+# the dream-beta-tester fixture repo paths (`.claude/dream-beta-tester/fixtures/gate-repo`
+# and `.dream-beta-test/gate-repo`, wherever the home dir lives). The PRIMARY mechanism is the
+# .cm-fixture marker (ancestor walk); this list covers pre-existing unmarked dirs.
+# Review fix: slug_for (M3+) replaces dots with dashes, so the CURRENT-shape legacy
+# fixture dirs are dash-slugs — the dot-bearing patterns only match obsolete pre-M3
+# dirs. Both forms are listed.
+_FIXTURE_SLUG_PATTERNS = ("-tmp-",
+                          ".claude-dream-beta-tester-fixtures-gate-repo",
+                          ".dream-beta-test-gate-repo",
+                          "-dream-beta-tester-fixtures-gate-repo",
+                          "-dream-beta-test-gate-repo")
+
+
+def _is_fixture_store(p: Path) -> bool:
+    """R2 (v0.4.2): a synthetic fixture store pollutes fleet analytics (holder/staleness/
+    network counts) — detect and skip. Primary: a `.cm-fixture` marker in ANY ancestor
+    (fixture generators write it at the fake-home root or the slug dir). Fallback: the
+    pinned slug patterns. Read-only; an OSError anywhere degrades to the pattern check."""
+    try:
+        cur: "Path | None" = p
+        hops = 0
+        while cur is not None and hops < 6:
+            if (cur / _FIXTURE_MARKER).is_file():
+                return True
+            if cur.parent == cur:
+                break
+            cur = cur.parent
+            hops += 1
+    except OSError:
+        pass
+    name = p.parent.name   # the slug dir
+    return any(_pat in name for _pat in _FIXTURE_SLUG_PATTERNS)
+
+
 def iter_native_stores() -> "list[Path]":
     """Default `projects/*/memory` UNION registry `native_memory_dir`.
 
     Custom autoMemoryDirectory stores are invisible to a projects-tree walk;
     they appear here once a project has transacted (upsert_project persisted
     native_memory_dir + session_dir).
+
+    R2 (v0.4.2): fixture stores are EXCLUDED (marker or pinned slug patterns) —
+    a dim stderr line keeps the exclusion visible in the consumer's output.
     """
     seen: set = set()
     out: list = []
+    skipped = 0
 
     def add(p: Path) -> None:
+        nonlocal skipped
         if not p.is_dir():
             return
         key = _path_key(p)
         if key in seen:
             return
         seen.add(key)
+        if _is_fixture_store(p):
+            skipped += 1
+            return
         out.append(p)
 
     base = _projects_root()
@@ -178,6 +223,10 @@ def iter_native_stores() -> "list[Path]":
         raw = rec.get("native_memory_dir") or ""
         if raw:
             add(Path(raw))
+    if skipped:
+        print(_ui.c(f"  ⏭ skipped {skipped} fixture store(s) (.cm-fixture marker / "
+                    f"known fixture slug) — excluded from fleet analytics", "dim"),
+              file=sys.stderr)
     return out
 
 
