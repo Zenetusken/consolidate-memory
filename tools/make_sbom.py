@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 SPDX_VERSION = "SPDX-2.3"
@@ -62,10 +63,13 @@ def main() -> int:
                 rel = p.relative_to(root).as_posix()
             except ValueError:
                 continue
-            fname = "SPDXRef-File-" + _spdx_id(rel)
+            # review fix: the file id + fileName are PACKAGE-scoped — a per-root relative
+            # path collides across roots (both plugin trees ship .claude-plugin/plugin.json,
+            # which produced duplicate SPDXIDs with different checksums on every release)
+            fname = "SPDXRef-File-" + _spdx_id(root.name) + "-" + _spdx_id(rel)
             files_this.append(fname)
             files.append({
-                "fileName": f"./{rel}",
+                "fileName": f"./{root.name}/{rel}",
                 "SPDXID": fname,
                 "checksums": [
                     {"algorithm": "SHA1", "checksumValue": _sha1(p)},
@@ -92,7 +96,7 @@ def main() -> int:
         "name": "consolidate-memory plugins",
         "documentNamespace": f"{DOC_NAMESPACE_BASE}/sbom/{a.version}",
         "creationInfo": {
-            "created": "NOASSERTION",
+            "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
             "creators": ["Tool: tools/make_sbom.py"],
         },
         "packages": packages,

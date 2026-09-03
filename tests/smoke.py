@@ -11190,15 +11190,20 @@ with _tf73.TemporaryDirectory() as _td_r5:
     _doc_r5 = _json_xp.loads(_sbom_r5.read_text(encoding="utf-8")) if _sbom_r5.is_file() else {}
     _pkgs_r5 = _doc_r5.get("packages") or []
     _files_r5 = _doc_r5.get("files") or []
+    _hasfiles_r5 = [h for p in _pkgs_r5 for h in (p.get("hasFiles") or [])]
     check("v0.4.2 R5: the stdlib SBOM generator emits a valid SPDX-2.3 doc "
-          "(both plugins, sha1+sha256 per file, version stamped)",
+          "(both plugins, sha1+sha256 per file, version stamped, UNIQUE package-scoped "
+          "SPDXIDs — the review's duplicate-plugin.json collision is structurally gone)",
           _pr_r5.returncode == 0
           and _doc_r5.get("spdxVersion") == "SPDX-2.3"
           and len(_pkgs_r5) == 2
           and (_pkgs_r5[0].get("versionInfo") if _pkgs_r5 else "") == "0.4.2"
           and all("SHA1" in {c.get("algorithm") for c in f.get("checksums") or []}
                   and "SHA256" in {c.get("algorithm") for c in f.get("checksums") or []}
-                  for f in _files_r5))
+                  for f in _files_r5)
+          and len({f.get("SPDXID") for f in _files_r5}) == len(_files_r5)
+          and len({f.get("fileName") for f in _files_r5}) == len(_files_r5)
+          and all(f.get("SPDXID") in _hasfiles_r5 for f in _files_r5))
 
 
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
