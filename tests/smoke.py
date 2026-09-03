@@ -11501,6 +11501,80 @@ with _Env73() as _e_p3d:
     finally:
         sg._global_is_fixture = _old_gif3d
 
+# ── v0.4.2 P4: archive embed budget (render_html.py) ───────────────────────────
+with _tf73.TemporaryDirectory() as _td_p4:
+    _store_p4 = Path(_td_p4) / "memory"
+    _store_p4.mkdir()
+    _ddir_p4 = _store_p4.parent / "dashboards" / "diffs"
+    _ddir_p4.mkdir(parents=True)
+    _hist_p4 = []
+    for _i in range(120):
+        _hist_p4.append({
+            "marker": {"commit": "c%03d" % _i,
+                       "timestamp": "2026-01-01T%02d:%02d:00Z" % (_i // 60, _i % 60)},
+            "session": "s%03d" % _i,
+            "project": "p",
+            "budget": {"index": {"before_tokens": 100, "after_tokens": 110,
+                                 "budget_tokens": 1500, "over": False},
+                       "recall_facts": {"before": 1, "after": 2},
+                       "claude_md": {"before_tokens": 1000, "after_tokens": 1010,
+                                     "over": False}},
+            "rigor": {"applied": "LIGHT", "prune_pressure": False},
+            "scope": {"git_commits": 1, "memories_reviewed": 1, "session_candidates": 1},
+            "entries": [{"action": "added", "name": "x", "reason": "r",
+                         "tier": "always-loaded"}],
+            "verification": {"confirmed": 1, "method": "inline"},
+            "usage": {"archive_reads": 1},
+            "dream": {"sleep": "*s*", "beats": ["*b*"], "wake": "*w*"},
+            "audit": {"mutations": 0},
+            "junk_never_read": {"payload": "x" * 2000},
+            "registrar_working": {"candidates": [{"raw": "y" * 400}]},
+        })
+    # 30 sidecars for the NEWEST 30 cycles — only the newest 20 embed; each payload
+    # carries the cycle index so the distinct-payload count is meaningful
+    for _i in range(90, 120):
+        _key_p4 = ms.diff_key(_hist_p4[_i]["marker"], "s%03d" % _i)
+        (_ddir_p4 / (_key_p4 + ".json")).write_text(
+            _json_xp.dumps({"verdict": "created", "commands": [{"t": "cmd%d" % _i}]}),
+            encoding="utf-8")
+    _cyc_p4, _tot_p4 = rhtml.assemble_cycles({}, _hist_p4)
+    _html_p4 = rhtml.build_html({}, _hist_p4, "2026-09-02T00:00:00Z",
+                                rhtml.read_diffs(_store_p4, _cyc_p4),
+                                cycles=_cyc_p4, total=_tot_p4)
+    _m_p4 = _re.search(r'<script type="application/json" id="cm-data">(.*?)</script>',
+                       _html_p4, _re.S)
+    _embed_p4 = _json_xp.loads(_m_p4.group(1).replace("\\u003c", "<")
+                               .replace("\\u003e", ">").replace("\\u0026", "&")) if _m_p4 else {}
+    _cyc_e_p4 = _embed_p4.get("cycles") or []
+    _diffs_p4 = _embed_p4.get("diffs") or {}
+    check("v0.4.2 P4: the embed trims every cycle to the template's read-whitelist "
+          "(junk keys gone; budget.recall_facts.after survives — full subtree)",
+          len(_cyc_e_p4) == 120
+          and all(set(_c) <= set(rhtml._EMBED_KEYS) for _c in _cyc_e_p4)
+          and _cyc_e_p4[-1].get("budget", {}).get("recall_facts", {}).get("after") == 2
+          and "junk_never_read" not in _html_p4)
+    # the guard-strength pin (review finding): the whitelist comment promises the template
+    # "must not grow an unlisted read" — this makes it true. Every RECORD-LEVEL read the JS
+    # makes (g(CUR,..)/g(c,..)/g(r,..) first segments + direct CUR.* reads) must root in
+    # _EMBED_KEYS or the injected _integrity/_outcome stamps (nested reads like e.action /
+    # D.verdict / h.broken legitimately root elsewhere — they hang off whitelisted subtrees).
+    _tpl_p4 = (ROOT / "plugins" / "consolidate-memory" / "scripts"
+               / "dashboard.template.html").read_text(encoding="utf-8")
+    _roots_p4 = {_mm.rsplit('"', 2)[1].split(".")[0]
+                 for _mm in _re.findall(r'g\((?:CUR|c|r),"(?:[a-z_]+)\.', _tpl_p4)}
+    _roots_p4 |= {_mm for _mm in _re.findall(r'\bCUR\.([a-z_]+)', _tpl_p4)}
+    check("v0.4.2 P4: the whitelist guard has TEETH — every record-level template read roots "
+          "in _EMBED_KEYS (or the injected _integrity/_outcome stamps)",
+          bool(_roots_p4) and _roots_p4 <= set(rhtml._EMBED_KEYS) | {"_integrity", "_outcome"})
+    check("v0.4.2 P4: only the newest 20 diff sidecars embed (30 written, 20 kept; "
+          "counted as distinct SERIALIZED payloads — the aliased keys share one payload)",
+          len({_json_xp.dumps(_v, sort_keys=True) for _v in _diffs_p4.values()}) == 20
+          and any("c119__" in _k for _k in _diffs_p4)
+          and not any("c099__" in _k for _k in _diffs_p4))
+    check("v0.4.2 P4: the trimmed archive stays under the size bound (the fixture embeds "
+          "~400KB untrimmed)",
+          len(_html_p4) < 300 * 1024)
+
 
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
 with _Env73() as _e_jp:
