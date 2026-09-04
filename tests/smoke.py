@@ -12275,6 +12275,17 @@ with _tf73.TemporaryDirectory() as _td_gs:
             _os73.environ["HOME"] = _home_prev_gs
         sg.GLOBAL = _global_prev_gs
 
+# v0.4.10 dogfood: a foreign-domain record OVERWRITES a stale local manifest hash
+_bhf_gs = {"dup": "a" * 12}
+_fillf_gs = __import__("session_beacon")._fill_body_hashes(
+    _bhf_gs,
+    [("dup", {"domain": "tools"}, "---\nname: dup\n---\nbody\n"),
+     ("fresh", {"domain": "personal"}, "---\nname: fresh\n---\nbody2\n")],
+    "personal")
+check("v0.4.10 groups: the beacon's hash fill overwrites a foreign-domain record's "
+      "hash (the stale local manifest row never phantom-stales the mirror)",
+      _fillf_gs["dup"] != "a" * 12 and "fresh" in _fillf_gs)
+
 _cmdg_gs = (ROOT / "plugins" / "consolidate-memory" / "commands" / "cm-group.md")
 _ctg_gs = _cmdg_gs.read_text(encoding="utf-8") if _cmdg_gs.is_file() else ""
 check("v0.4.10 groups: /cm-group exists with the confirm-phrase surface",
