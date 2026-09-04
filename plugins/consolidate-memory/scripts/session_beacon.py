@@ -26,6 +26,9 @@ Silence rules (no-nag, all deliberate):
   - the global store is absent/empty            → silent (nothing to absorb)
   - this project's store holds no *.md          → silent (never-participated dirs must cost 0 —
     the plugin is installed user-wide; discovery is --staleness's job, not every session's)
+  - unenrolled + store never participated       → silent (v0.4.8: the unenrolled advisory
+    shares the never-participated gate above — a store that holds no fact pays nothing;
+    a PARTICIPATING unenrolled store hears it until enrolled or snoozed)
   - state-file `beacon_snooze_until` in future  → silent (set on explicit user ask, per-store)
   - 0 missing AND 0 content-stale               → silent (in sync — the common case stays free)
 """
@@ -77,6 +80,54 @@ def _cwd_from_stdin() -> str:
     if isinstance(data.get("cwd"), str) and data["cwd"]:
         return data["cwd"]
     return os.getcwd()
+
+
+def _unenrolled_advisory(ctx) -> int:
+    """The unenrolled form of the behind-advisory (v0.4.8 cm-commands spec §3): an
+    unenrolled project is the strongest case of "behind" — the user's enrolled
+    domain(s) hold facts the store cannot reach. Fires only for a PARTICIPATING
+    store (holds ≥1 *.md — beacon_line's own never-participated definition: the
+    snooze stamp refuses a store with no state file, so an unparticipating store
+    could never quiet the line) and derives N by pure SQL from the REGISTRY (an
+    unenrolled ctx resolves domain_id='unknown', so its canonical_domain_dir is
+    the wrong dir — no filesystem walk, no DB-name-to-path surface). Repeats
+    until enrolled (the behind-advisory's semantics); beacon_snooze_until quiets
+    it; silent on any failure (the no-failure-masking posture)."""
+    store = ctx.native_memory_dir
+    if not store.is_dir() or not any(store.glob("*.md")):
+        return 0
+    try:
+        raw = _safe_read_text(store / ".consolidation-state.json")
+        if raw:
+            _st = json.loads(raw)
+            if isinstance(_st, dict):
+                snooze = _parse_ts(str(_st.get("beacon_snooze_until", "") or ""))
+                if snooze is not None and snooze.timestamp() > datetime.now(timezone.utc).timestamp():
+                    return 0
+    except (ValueError, OSError):
+        pass
+    n = 0
+    try:
+        from control_plane import connect_if_exists, db_path
+        conn = connect_if_exists(db_path(ctx))
+        if conn is None:
+            return 0
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM facts WHERE domain_id IN "
+                "(SELECT DISTINCT domain_id FROM projects "
+                " WHERE status='enrolled' AND domain_id!='unknown') "
+                "AND status='active'").fetchone()
+        finally:
+            conn.close()
+        n = int(row["n"]) if row is not None else 0
+    except Exception:
+        return 0
+    if n <= 0:
+        return 0
+    print(f"Cross-project memory: {n} shared fact(s) not reachable here — "
+          "this project is unenrolled; /cm-domain can enroll it.")
+    return 0
 
 
 def beacon_line(store: Path, *, domain_id: str = "unknown",
@@ -170,7 +221,10 @@ def main() -> int:
         if not ctx.auto_memory_enabled:
             return 0  # disabled auto-memory: absence is not drift (ADR 002)
         if not getattr(ctx, "cross_project_allowed", False):
-            return 0  # unenrolled / unhealthy registry: local-only (ADR 008/009)
+            # v0.4.8 (cm-commands spec §3): unenrolled no longer means silent —
+            # a participating store hears the unenrolled advisory while the
+            # user's domain holds facts it cannot reach.
+            return _unenrolled_advisory(ctx)
         from control_plane import migration_mode_readonly
         from sync_global import iter_admissible_facts
         _bh: "dict | None" = None

@@ -11882,6 +11882,87 @@ with _Env73() as _e_jc:
           _out_jc.get("ok") is True and [tuple(r) for r in _rows_jc] == [("c-open", "")]
           and not _qf_jc.exists() and _out_jc.get("quarantine_swept") == 1)
 
+# ── v0.4.8 cm-commands: the unenrolled beacon advisory (spec §3) ───────────────
+with _tf73.TemporaryDirectory() as _td_bq:
+    _home_bq = Path(_td_bq)
+    _projA_bq = (_home_bq / "src" / "enrolled").resolve(); _projA_bq.mkdir(parents=True)
+    _projB_bq = (_home_bq / "src" / "unenrolled").resolve(); _projB_bq.mkdir(parents=True)
+    (_home_bq / ".claude" / "projects" / ms.slug_for(_projA_bq) / "memory").mkdir(parents=True)
+    _storeB_bq = _home_bq / ".claude" / "projects" / ms.slug_for(_projB_bq) / "memory"
+    _storeB_bq.mkdir(parents=True)
+    _home_prev_bq = _os73.environ.get("HOME")
+    _os73.environ["HOME"] = str(_home_bq)
+    try:
+        import session_beacon as _sb_bq
+        # enroll A (grants personal + mints the registry); seed 2 active + 1 superseded facts
+        _ctxA_bq = sc.resolve_store(_projA_bq)
+        _cpA_bq = cp.connect(cp.db_path(_ctxA_bq))
+        try:
+            cp.enroll_project(_cpA_bq, _ctxA_bq, "personal")
+            for _s_bq, _st_bq in (("one", "active"), ("two", "active"), ("old", "superseded")):
+                _cpA_bq.execute(
+                    "INSERT INTO facts(fact_id, stem, domain_id, canonical_path, "
+                    "revision, status, sensitivity) VALUES (?,?,?,?,?,?,?)",
+                    (cp.stable_fact_id("personal", _s_bq), _s_bq, "personal",
+                     f"/tmp/f/{_s_bq}.md", "r1", _st_bq, "internal"))
+            _cpA_bq.commit()
+        finally:
+            _cpA_bq.close()
+        _ctxB_bq = sc.resolve_store(_projB_bq)
+        _ioA_bq = _io73.StringIO()
+        with _ctx73.redirect_stdout(_ioA_bq):
+            _sb_bq._unenrolled_advisory(_ctxB_bq)
+        check("v0.4.8 beacon: a never-participated unenrolled store stays silent (cost 0) "
+              "even when the domain holds facts",
+              _ioA_bq.getvalue() == "")
+        (_storeB_bq / "local.md").write_text("---\nname: local\n---\nbody\n", encoding="utf-8")
+        _ioB_bq = _io73.StringIO()
+        with _ctx73.redirect_stdout(_ioB_bq):
+            _sb_bq._unenrolled_advisory(_ctxB_bq)
+        _line_bq = _ioB_bq.getvalue().strip()
+        check("v0.4.8 beacon: the unenrolled advisory counts ACTIVE registry facts only "
+              "(2 — the superseded 3rd never counts) and states the remedy, no imperative",
+              "2 shared fact(s) not reachable here" in _line_bq
+              and "/cm-domain can enroll it." in _line_bq
+              and "enrolls it" not in _line_bq)
+        _cpA2_bq = cp.connect(cp.db_path(_ctxA_bq))
+        try:
+            _cpA2_bq.execute("DELETE FROM facts")
+            _cpA2_bq.commit()
+        finally:
+            _cpA2_bq.close()
+        _ioC_bq = _io73.StringIO()
+        with _ctx73.redirect_stdout(_ioC_bq):
+            _sb_bq._unenrolled_advisory(_ctxB_bq)
+        check("v0.4.8 beacon: silent again when the domain holds no active facts",
+              _ioC_bq.getvalue() == "")
+    finally:
+        if _home_prev_bq is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_prev_bq
+
+# v0.4.8 cm-commands: the onboarding command files exist + invoke the canonical paths
+_cmds_bq = ROOT / "plugins" / "consolidate-memory" / "commands"
+for _n_bq in ("cm-connect", "cm-share", "cm-sync", "cm-network"):
+    _cf_bq = _cmds_bq / f"{_n_bq}.md"
+    _ct_bq = _cf_bq.read_text(encoding="utf-8") if _cf_bq.is_file() else ""
+    check(f"v0.4.8 cm-commands: {_n_bq}.md exists with frontmatter + plugin-root script paths",
+          _ct_bq.startswith("---\nname: " + _n_bq) and "${CLAUDE_PLUGIN_ROOT}/scripts/" in _ct_bq)
+_share_bq = (_cmds_bq / "cm-share.md").read_text(encoding="utf-8")
+check("v0.4.8 cm-commands: cm-share names the EXACT single-source read paths (a wrong path fails)",
+      "${CLAUDE_PLUGIN_ROOT}/skills/consolidate-memory/references/harness-map.md" in _share_bq
+      and "${CLAUDE_PLUGIN_ROOT}/skills/consolidate-memory/SKILL.md" in _share_bq)
+_domain_bq = (_cmds_bq / "cm-domain.md").read_text(encoding="utf-8")
+check("v0.4.8 cm-commands: cm-domain.md enroll forms are positional-first (the shipped "
+      "flags-first form failed argparse)",
+      "project enroll . --domain personal" in _domain_bq
+      and "project enroll --domain personal ." not in _domain_bq)
+_conn_bq = (_cmds_bq / "cm-connect.md").read_text(encoding="utf-8")
+check("v0.4.8 cm-commands: cm-connect sequences positional-first enrolls for both repos",
+      "project enroll . --domain personal --apply --confirm enroll-personal" in _conn_bq
+      and "project enroll <other-repo> --domain personal --apply --confirm enroll-personal" in _conn_bq)
+
 # ── v0.4.5 (#152 code leg): SHA256SUMS in the release pipeline ─────────────────
 _wf_cs = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
 check("v0.4.5 #152: the release workflow generates + self-verifies + uploads SHA256SUMS beside the SBOM",
