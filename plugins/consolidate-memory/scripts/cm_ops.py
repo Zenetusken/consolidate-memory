@@ -2239,10 +2239,13 @@ def cmd_group(args: argparse.Namespace) -> int:
             from memory_status import _frontmatter as _fm_del
             from fact_schema import _parse_flow_list as _pfl_del
             _cited = []
-            _d0 = ctx.canonical_domain_dir
+            # resolve() EVERY candidate: on macOS /var → /private/var, so a
+            # mixed resolved/unresolved set holds two spellings of the SAME
+            # dir and counts every file twice (the macOS-job catch).
+            _d0 = ctx.canonical_domain_dir.resolve()
             _dirs_del = {str(_d0)}
             try:
-                _dirs_del |= {str(p) for p in _d0.resolve().parents[1].glob("*/facts")}
+                _dirs_del |= {str(p.resolve()) for p in _d0.parents[1].glob("*/facts")}
             except OSError:
                 pass
             for _dd in sorted(_dirs_del):
