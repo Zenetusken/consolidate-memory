@@ -3178,6 +3178,21 @@ with _tfA.TemporaryDirectory() as _tdA:
     # per-line since filter: everything stamped ≤ since drops (transcripts straddle the marker).
     check("v0.1.63 _recall_items: per-line since filter drops in-marker lines",
           es._recall_items(_trA, _storeA, "2026-07-05T00:00:00Z", frozenset()) == [])
+    # cross-project audit: a dream's scripted Bash line that LOST the env prefix must still
+    # open the arc span — the raw-line pre-filter now admits the plugin-scripts signature, so
+    # the dream-procedure Read after it is excluded, not counted as organic evidence.
+    _trW = Path(_tdA) / "widened.jsonl"
+    _trW.write_text("\n".join([
+        _evA("Read", {"file_path": _storeA + "alpha.md"}),                     # organic
+        _evA("Bash", {"command": "python3 /home/u/plugins/consolidate-memory/scripts/memory_status.py --json"}),  # arc (no env prefix)
+        _evA("Read", {"file_path": _storeA + "beta.md"}),                      # dream-procedure
+        _evA("Bash", {"command": "CM_DREAM_ARC=1 python3 y.py"}),              # arc end
+        _evA("Read", {"file_path": _storeA + "gamma.md"}),                     # organic (after arc)
+    ]) + "\n")
+    _orgW, _exclW = es.split_dream_span(es._recall_items(_trW, _storeA, "", frozenset({"SHIPPED"})))
+    check("cross-project audit: a prefix-less dream Bash call still opens the arc span "
+          "(organic={alpha,gamma}, beta excluded)",
+          sorted(r["stem"] for r in _orgW) == ["alpha", "gamma"] and _exclW == 1)
     # (3b) inject_usage — wholesale script-truth assignment; a bad seed FAILS LOUD (False), never silent.
     _seedA = Path(_tdA) / "seed.json"
     _seedA.write_text(_jsonA.dumps({"project": "p"}))
@@ -11728,9 +11743,37 @@ with _Env73() as _e_cpa:
           "replacement stem (P0-4 — the authored content survives, no mirror installed)",
           _out_cpa.get("ok") is True and "authored locally" in _newer_after
           and "global_ref:" not in _newer_after)
-    check("cross-project audit: the fileless-held-stem pointer reap PUBLISHES (idx_changed)",
-          not (_store_cpa / "MEMORY.md").exists() or "](old.md)" not in
-          ((_store_cpa / "MEMORY.md").read_text(encoding="utf-8") if (_store_cpa / "MEMORY.md").exists() else ""))
+
+# fileless held stem — the crash-recovery edge (mirror deleted, pointer never reaped).
+# The ack must strip the dangling pointer AND publish the index rewrite: pre-fix the strip
+# happened in-memory but idx_changed stayed False, so MEMORY.md kept the dangling pointer
+# forever. The surviving keep.md line proves the published file is the same index, rewritten.
+with _Env73() as _e_fl:
+    _ctx_fl = sc.resolve_store(_e_fl.proj)
+    _cp_fl = cp.connect(cp.db_path(_ctx_fl))
+    try:
+        cp.enroll_project(_cp_fl, _ctx_fl, "personal")
+        _cp_fl.commit()
+    finally:
+        _cp_fl.close()
+    _d_fl = _ctx_fl.canonical_domain_dir
+    _d_fl.mkdir(parents=True, exist_ok=True)
+    (_d_fl / "old.md").write_text(_v3_canon("old"), encoding="utf-8")
+    import canonical_ingress as _ci_fl
+    _up_fl = _ci_fl.upsert(_ctx_fl, "old",
+                           (_d_fl / "old.md").read_text(encoding="utf-8"))
+    _st_fl = _ci_fl.set_canonical_status(_ctx_fl, "old", "superseded")
+    _store_fl = _ctx_fl.native_memory_dir
+    (_store_fl / "MEMORY.md").write_text(
+        "- [old](old.md) — d [user-global]\n- [keep](keep.md) — d [user-global]\n",
+        encoding="utf-8")
+    _out_fl = _ci_fl.reconcile_inactive_mirrors(_ctx_fl)
+    _idx_after_fl = (_store_fl / "MEMORY.md").read_text(encoding="utf-8")
+    check("cross-project audit: the fileless-held-stem pointer reap PUBLISHES "
+          "(idx_changed — the strip is discarded unless the flag is set)",
+          _up_fl.get("ok") is True and _st_fl.get("ok") is True
+          and _out_fl.get("ok") is True and "](old.md)" not in _idx_after_fl
+          and "](keep.md)" in _idx_after_fl)
 
 # holder base: a canonical upsert WITHOUT --origin must not advance the holder's own mirror base
 with _Env73() as _e_hb:
@@ -11799,6 +11842,45 @@ with _tf73.TemporaryDirectory() as _td_np:
             _os73.environ.pop("HOME", None)
         else:
             _os73.environ["HOME"] = _home_prev_np
+
+# journal_cleanup ages out RESOLVED conflicts by created_at (the decision label never
+# compares against a cutoff) and sweeps the quarantine pen — one cutoff, both sweeps.
+# Pre-fix, the predicate keyed on `resolved` deleted nothing: the label rows all survive.
+with _Env73() as _e_jc:
+    _ctx_jc = sc.resolve_store(_e_jc.proj)
+    _cp_jc = cp.connect(cp.db_path(_ctx_jc))
+    try:
+        cp.record_conflict(_cp_jc, "c-old", _ctx_jc.project_id,
+                           {"action": "conflict"}, domain_id="personal")
+        _cp_jc.execute(
+            "UPDATE conflicts SET created_at=?, resolved='keep-canonical' "
+            "WHERE fact_stem='c-old'",
+            ("2026-08-01T00:00:00Z",))
+        cp.record_conflict(_cp_jc, "c-open", _ctx_jc.project_id,
+                           {"action": "conflict"}, domain_id="personal")
+        _cp_jc.execute(
+            "UPDATE conflicts SET created_at=? WHERE fact_stem='c-open'",
+            ("2026-08-01T00:00:00Z",))
+        _cp_jc.commit()
+    finally:
+        _cp_jc.close()
+    _qdir_jc = _ctx_jc.native_memory_dir / "quarantine"
+    _qdir_jc.mkdir(parents=True, exist_ok=True)
+    _qf_jc = _qdir_jc / "held.md"
+    _qf_jc.write_text("x\n", encoding="utf-8")
+    _old_jc = _time70.time() - 2 * cp.RECOVERY_TTL_SEC
+    _os72.utime(_qf_jc, (_old_jc, _old_jc))
+    _out_jc = cp.journal_cleanup(_ctx_jc, apply=True)
+    _cp_jc2 = cp.connect(cp.db_path(_ctx_jc))
+    try:
+        _rows_jc = _cp_jc2.execute(
+            "SELECT fact_stem, resolved FROM conflicts ORDER BY fact_stem").fetchall()
+    finally:
+        _cp_jc2.close()
+    check("cross-project audit: journal_cleanup ages out resolved conflicts by created_at, "
+          "leaves open ones, and sweeps the quarantine pen",
+          _out_jc.get("ok") is True and [tuple(r) for r in _rows_jc] == [("c-open", "")]
+          and not _qf_jc.exists() and _out_jc.get("quarantine_swept") == 1)
 
 # ── v0.4.5 (#152 code leg): SHA256SUMS in the release pipeline ─────────────────
 _wf_cs = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")

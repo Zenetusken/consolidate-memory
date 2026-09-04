@@ -2232,31 +2232,35 @@ def journal_cleanup(ctx: StoreContext, *, apply: bool = False,
         bound_journal_rows(jconn, max_rows=JOURNAL_MAX_ROWS)
         # review fix: quarantine/ (the mirror-conflict + failed-restore holding pen)
         # had no GC anywhere — unbounded pile-up. Age-cap it with the same TTL the
-        # recovery dirs use; resolved conflicts also age out of the conflicts table.
-        q_swept = _sweep_quarantine(ctx)
-        if q_swept:
-            rconn.execute(
-                "DELETE FROM conflicts WHERE resolved != '' AND resolved < ?",
-                (q_swept,))
-            rconn.commit()
+        # recovery dirs use; resolved conflicts also age out of the conflicts table
+        # (independent of quarantine activity — one cutoff, both sweeps). Keyed on
+        # created_at (the ISO detection timestamp record_conflict writes/refreshes):
+        # `resolved` holds the human decision label (keep-canonical/fork-local/…),
+        # which never compares against a cutoff.
+        cutoff = time.time() - RECOVERY_TTL_SEC
+        cutoff_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(cutoff))
+        q_swept = _sweep_quarantine(ctx, cutoff)
+        rconn.execute(
+            "DELETE FROM conflicts WHERE resolved != '' AND created_at < ?",
+            (cutoff_iso,))
+        rconn.commit()
         return {"ok": bool(not errors and not cp_left), "apply": True,
                 "recovered": recovered, "errors": errors,
-                "remaining": remaining, "quarantine_swept": q_swept or 0}
+                "remaining": remaining, "quarantine_swept": q_swept}
     finally:
         jconn.close()
         rconn.close()
         release_locks(locks)
 
 
-def _sweep_quarantine(ctx: StoreContext) -> str:
+def _sweep_quarantine(ctx: StoreContext, cutoff: float) -> int:
     """Age-cap the native quarantine/ holding pen (mirror-conflict + failed-restore
-    files) and return the cutoff ISO ('' when the dir does not exist). No code ever
-    deleted from quarantine/ before this — unbounded pile-up (2026-09-03 audit)."""
+    files) — returns the number of files swept (0 when the dir does not exist). No
+    code ever deleted from quarantine/ before this — unbounded pile-up
+    (2026-09-03 audit)."""
     qdir = ctx.native_memory_dir / "quarantine"
     if not qdir.is_dir():
-        return ""
-    cutoff = time.time() - RECOVERY_TTL_SEC
-    cutoff_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(cutoff))
+        return 0
     n = 0
     for p in qdir.iterdir():
         if not p.is_file():
@@ -2272,7 +2276,7 @@ def _sweep_quarantine(ctx: StoreContext) -> str:
             qdir.rmdir()
         except OSError:
             pass
-    return cutoff_iso if n else ""
+    return n
 
 
 def journal_rollback(ctx: StoreContext, op_id: str) -> dict:

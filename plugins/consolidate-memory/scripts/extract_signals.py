@@ -541,7 +541,12 @@ def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems
         return items                      # concurrent gc/chmod must not abort the scan (store-scan convention)
     with fh as f:
         for i, line in enumerate(f):
-            arc_hint = _ARC_MARK in line
+            # review fix: the raw-line pre-filter below used to drop a dream's scripted
+            # Bash line that LOST the env prefix (or never carried it) before the parsed
+            # Bash check could see the plugin-scripts signature — the dream-procedure
+            # Reads then counted as organic evidence. Widening the raw hint lets those
+            # lines through; the parsed clause (below) still owns the arc verdict.
+            arc_hint = _ARC_MARK in line or "consolidate-memory/scripts/" in line
             read_hint = store_prefix in line and '"Read"' in line
             # v0.1.85: a cheap RAW-line stem pre-filter — the C-level regex over the whole JSON line
             # skips the (majority) assistant lines that name no fact, before any json.loads. PR-#98

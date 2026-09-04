@@ -2303,16 +2303,20 @@ def cmd_project(args: argparse.Namespace) -> int:
                 if current == d:
                     print(f"project enroll: already in {d}")
                     return 0
-                # review fix: a directory rename changes the computed project id and
-                # mints a SECOND enrolled row for the same physical repo. Refuse the
-                # collision and point at rebind (the rebind-style check, on enroll).
+                # review fix (backstop): two enrolled rows sharing one repo root would
+                # double-count the same physical repo. A plain directory rename can't
+                # hit this — root and computed project id change together, and that flow
+                # is rebind's (the alias lookup resolves it before this point) — so this
+                # fires only for an exotic same-root duplicate (e.g. an in-place slug
+                # recomputation). Refuse it; the operator resolves the stale row.
                 if ro is not None:
                     _dup = ro.execute(
                         "SELECT project_id FROM projects WHERE current_root=? AND project_id!=?",
                         (str(ctx.project_root), ctx.project_id)).fetchone()
                     if _dup:
                         print(f"project enroll: this repo root is already enrolled as "
-                              f"{_dup['project_id']} — use `cm project rebind`", file=sys.stderr)
+                              f"{_dup['project_id']} — resolve that stale project row "
+                              f"(`cm project list`) before enrolling again", file=sys.stderr)
                         return 2
                 plan = _mirror_plan_for_dest(ctx, d)
                 n_plan = len(plan["deletes"]) + len(plan["quarantine"])

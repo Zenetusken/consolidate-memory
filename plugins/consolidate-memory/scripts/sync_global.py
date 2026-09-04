@@ -2672,6 +2672,7 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
                + ("" if orphans else "  " + _ui.c("· nothing to reclaim", "dim"))))
     removed = 0
     removed_frozen = 0
+    _deleted_gc: set = set()
     if apply and (orphans or frozen):
         from control_plane import transact, _file_hash as _fh_gc, stable_fact_id as _sf_gc
         idxp = store / "MEMORY.md"
@@ -2716,24 +2717,35 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             return {"deletes": deletes, "removed": len(deletes), "registry_ops": ops}
 
         try:
-            transact(_ctx_gc, "gc-apply",
-                     {"orphans": list(orphans), "frozen": list(frozen)},
-                     mutate, expected_revisions=expected)
-            removed = len(orphans)
-            removed_frozen = len(frozen)
+            # the in-lock re-verification may skip a name that changed between scan and
+            # lock — the RESULT must report what the transact actually deleted, not the
+            # scan lists (review fix: a skipped name over-stated the removal counts)
+            _t_out = transact(_ctx_gc, "gc-apply",
+                              {"orphans": list(orphans), "frozen": list(frozen)},
+                              mutate, expected_revisions=expected)
+            _res_gc = _t_out.get("result") or {}
+            _deleted_gc = {Path(str(p)).stem for p in (_res_gc.get("deletes") or [])}
+            removed = sum(1 for n in orphans if n in _deleted_gc)
+            removed_frozen = sum(1 for n in frozen if n in _deleted_gc)
         except _WRGc as e:
             print(f"gc: {e}", file=sys.stderr)
             return 2
     for name in orphans:
         if apply:
-            out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(file + index pointer)", "dim"))
+            if name in _deleted_gc:
+                out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(file + index pointer)", "dim"))
+            else:
+                out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(changed under lock — left in place)", "dim"))
         else:
             out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer)", "dim"))
     out.append(_ui.kv("FROZEN", f"{len(frozen)} mirror(s) whose canonical is ALIVE but irrelevant here (dropped stack)"
                + ("" if frozen else "  " + _ui.c("· none", "dim"))))
     for name in frozen:
         if apply:
-            out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(re-pullable if the stack returns)", "dim"))
+            if name in _deleted_gc:
+                out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(re-pullable if the stack returns)", "dim"))
+            else:
+                out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(changed under lock — left in place)", "dim"))
         else:
             out.append("    " + _ui.c("✻", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer; re-pullable — canonical stays)", "dim"))
     tail = (f"removed {removed} orphan(s) + {removed_frozen} frozen" if apply
