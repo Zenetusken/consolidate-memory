@@ -1121,7 +1121,7 @@ def _pointer_line(name: str, fm: dict) -> str:
     # Strip control bytes (line-break/ESC injection) AND markdown link/bracket chars so a
     # crafted description can't inject a link or a spoofed `](name.md)` target into the
     # always-loaded index line.
-    desc = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]()]", " ", desc).split())
+    desc = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]()<>]", " ", desc).split())
     hook = (desc[:88] + "…") if len(desc) > 88 else desc
     scope = fm.get("scope", "")
     return f"- [{name}]({name}.md) — {hook}" + (f" [{scope}]" if scope else "")
@@ -2646,7 +2646,10 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
         live_stems = {n for n, _, _ in gfacts}
     orphans = _orphans(store, canon=live_stems or {n for n, _, _ in gfacts})
     # v0.1.75 (audit F6): FROZEN mirrors — see the docstring. Detected against the SAME snapshot.
-    stacks, _ = stacks_with_cache(store, project_dir)   # v0.4.2 (P1)
+    # 2026-09-03 audit: the frozen verdict DELETES files, so it must not trust the cached
+    # stacks (a stale cache can classify a newly-relevant mirror as frozen and delete live
+    # recall for up to the TTL). GC is rare — a fresh detect runs here, never the cache.
+    stacks = detect_stacks(project_dir)
     canon_fm = {n: fm for n, fm, _ in gfacts}
     frozen: list = []
     if store.exists():
@@ -2669,6 +2672,7 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
                + ("" if orphans else "  " + _ui.c("· nothing to reclaim", "dim"))))
     removed = 0
     removed_frozen = 0
+    _deleted_gc: set = set()
     if apply and (orphans or frozen):
         from control_plane import transact, _file_hash as _fh_gc, stable_fact_id as _sf_gc
         idxp = store / "MEMORY.md"
@@ -2686,14 +2690,21 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
                     expected[str(p)] = h
 
         def mutate(conn, temps):
-            idx = idxp.read_text(encoding="utf-8", errors="replace") if idxp.exists() else (
-                "# Memory Index\n")
+            _idx_gc = _safe_read_text(idxp)
+            idx = _idx_gc if _idx_gc is not None else "# Memory Index\n"
             deletes = []
             ops = []
             for name in names:
                 p = store / f"{name}.md"
-                if p.exists():
-                    deletes.append(str(p))
+                _t_gc = _safe_read_text(p)
+                if _t_gc is None:
+                    continue
+                if name in frozen:
+                    # in-lock re-verification: never delete a file that stopped being a
+                    # mirror, or a mirror whose stack came back, between scan and lock
+                    if not _is_mirror(_t_gc) or is_relevant(canon_fm[name], stacks):
+                        continue
+                deletes.append(str(p))
                 idx = "\n".join(
                     ln for ln in idx.splitlines() if f"]({name}.md)" not in ln)
                 fid = _sf_gc(_ctx_gc.domain_id, name)
@@ -2706,24 +2717,35 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             return {"deletes": deletes, "removed": len(deletes), "registry_ops": ops}
 
         try:
-            transact(_ctx_gc, "gc-apply",
-                     {"orphans": list(orphans), "frozen": list(frozen)},
-                     mutate, expected_revisions=expected)
-            removed = len(orphans)
-            removed_frozen = len(frozen)
+            # the in-lock re-verification may skip a name that changed between scan and
+            # lock — the RESULT must report what the transact actually deleted, not the
+            # scan lists (review fix: a skipped name over-stated the removal counts)
+            _t_out = transact(_ctx_gc, "gc-apply",
+                              {"orphans": list(orphans), "frozen": list(frozen)},
+                              mutate, expected_revisions=expected)
+            _res_gc = _t_out.get("result") or {}
+            _deleted_gc = {Path(str(p)).stem for p in (_res_gc.get("deletes") or [])}
+            removed = sum(1 for n in orphans if n in _deleted_gc)
+            removed_frozen = sum(1 for n in frozen if n in _deleted_gc)
         except _WRGc as e:
             print(f"gc: {e}", file=sys.stderr)
             return 2
     for name in orphans:
         if apply:
-            out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(file + index pointer)", "dim"))
+            if name in _deleted_gc:
+                out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(file + index pointer)", "dim"))
+            else:
+                out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(changed under lock — left in place)", "dim"))
         else:
             out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer)", "dim"))
     out.append(_ui.kv("FROZEN", f"{len(frozen)} mirror(s) whose canonical is ALIVE but irrelevant here (dropped stack)"
                + ("" if frozen else "  " + _ui.c("· none", "dim"))))
     for name in frozen:
         if apply:
-            out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(re-pullable if the stack returns)", "dim"))
+            if name in _deleted_gc:
+                out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(re-pullable if the stack returns)", "dim"))
+            else:
+                out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(changed under lock — left in place)", "dim"))
         else:
             out.append("    " + _ui.c("✻", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer; re-pullable — canonical stays)", "dim"))
     tail = (f"removed {removed} orphan(s) + {removed_frozen} frozen" if apply
@@ -4019,6 +4041,18 @@ def fleet_utility(project_dir: Path) -> dict:
         hrows: list = []
         if hist["windows_full"] == 0 and not hist["per_fact"]:
             hrows = ledger_by_node.get(store.parent.name, [])
+            # 2026-09-03 audit: concurrent harvests can append duplicate rows for the
+            # same (node, window) — dedup by window-start before aggregation so the
+            # probative evidence never double-counts
+            _seen_win: set = set()
+            _hrows_dedup = []
+            for _hr in hrows:
+                _wkey = str(_hr.get("window", "")).split("..")[0]
+                if _wkey in _seen_win:
+                    continue
+                _seen_win.add(_wkey)
+                _hrows_dedup.append(_hr)
+            hrows = _hrows_dedup
         if hrows:
             nodes_harvested += 1
         for stem in canon:
@@ -4269,12 +4303,18 @@ def _dispatch() -> int:
         # v0.1.87/W-C1: --registrar rides the SAME argv[1] cue (a conscious choice — the
         # cross-project beat fires on the consult too, exactly as for the bare lens)
         if "--registrar" in args:
-            _idx = args.index("--into") if "--into" in args else -1
-            if _idx != -1 and _idx + 1 >= len(args):
-                print("error: --into needs a SEED path (usage: --workflows --registrar --into <seed>)",
-                      file=sys.stderr)
-                return 2
-            _into = args[_idx + 1] if _idx != -1 else None
+            _into = None
+            for _i2, _a in enumerate(args):
+                if _a == "--into":
+                    if _i2 + 1 >= len(args):
+                        print("error: --into needs a SEED path (usage: --workflows --registrar --into <seed>)",
+                              file=sys.stderr)
+                        return 2
+                    _into = args[_i2 + 1]
+                    break
+                if _a.startswith("--into="):   # review fix: the equals form was silently ignored
+                    _into = _a.split("=", 1)[1]
+                    break
             return registrar_report(project_dir, "--json" in args, into=_into)
         if "--into" in args:
             print("warning: --into without --registrar is ignored (the injection rides the registrar consult)",

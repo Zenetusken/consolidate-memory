@@ -189,46 +189,6 @@ def native_plane_is_clean(native_dir: Path) -> bool:
     return True
 
 
-def reverse_tail_jsonl(path: Path, limit: int) -> list:
-    """Streaming reverse-tail of a JSONL file. Does not split the whole file first."""
-    if not path.is_file() or limit <= 0:
-        return []
-    rows: list = []
-    try:
-        size = path.stat().st_size
-    except OSError:
-        return []
-    if size == 0:
-        return []
-    buf = b""
-    chunk = 8192
-    with path.open("rb") as fh:
-        pos = size
-        while pos > 0 and len(rows) < limit:
-            read = min(chunk, pos)
-            pos -= read
-            fh.seek(pos)
-            buf = fh.read(read) + buf
-            while b"\n" in buf and len(rows) < limit:
-                rest, _, buf = buf.rpartition(b"\n")
-                line = rest if pos == 0 and not buf else rest
-                # When rpartition, `rest` is before last nl of current buf... handle below
-                parts = (buf + b"\n" + rest if False else None)
-                if line.strip():
-                    try:
-                        rows.append(json.loads(line.decode("utf-8", "replace")))
-                    except ValueError:
-                        continue
-                buf = rest
-        if pos == 0 and buf.strip() and len(rows) < limit:
-            try:
-                rows.append(json.loads(buf.decode("utf-8", "replace")))
-            except ValueError:
-                pass
-    rows.reverse()
-    return rows[-limit:]
-
-
 def _reverse_tail_lines(path: Path, limit: int) -> list:
     """Return last `limit` non-empty lines without loading the whole file as splitlines()."""
     if not path.is_file() or limit <= 0:
@@ -336,7 +296,22 @@ def compact_jsonl(path: Path, *, keep: int, older_than_days: Optional[int] = Non
     with tmp.open("w", encoding="utf-8") as fh:
         for row in kept:
             fh.write(json.dumps(row, sort_keys=True) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
     os.replace(tmp, path)
+    # review fix: the rewrite dropped the file's 0o600 (tmp created 0o644 under the
+    # umask; O_CREAT-only re-chmod never fixes an existing file) — the fleet ledger's
+    # "append-only, 0o600" contract broke on every compact. Restore the mode and make
+    # the replace durable (the atomic_write_bytes standard).
+    try:
+        os.chmod(path, 0o600)
+        _dfd = os.open(str(path.parent), os.O_RDONLY)
+        try:
+            os.fsync(_dfd)
+        finally:
+            os.close(_dfd)
+    except OSError:
+        pass
     return {"ok": True, "kept": len(kept), "dropped": max(0, len(kept_rows) - len(kept))}
 
 

@@ -3178,6 +3178,21 @@ with _tfA.TemporaryDirectory() as _tdA:
     # per-line since filter: everything stamped ≤ since drops (transcripts straddle the marker).
     check("v0.1.63 _recall_items: per-line since filter drops in-marker lines",
           es._recall_items(_trA, _storeA, "2026-07-05T00:00:00Z", frozenset()) == [])
+    # cross-project audit: a dream's scripted Bash line that LOST the env prefix must still
+    # open the arc span — the raw-line pre-filter now admits the plugin-scripts signature, so
+    # the dream-procedure Read after it is excluded, not counted as organic evidence.
+    _trW = Path(_tdA) / "widened.jsonl"
+    _trW.write_text("\n".join([
+        _evA("Read", {"file_path": _storeA + "alpha.md"}),                     # organic
+        _evA("Bash", {"command": "python3 /home/u/plugins/consolidate-memory/scripts/memory_status.py --json"}),  # arc (no env prefix)
+        _evA("Read", {"file_path": _storeA + "beta.md"}),                      # dream-procedure
+        _evA("Bash", {"command": "CM_DREAM_ARC=1 python3 y.py"}),              # arc end
+        _evA("Read", {"file_path": _storeA + "gamma.md"}),                     # organic (after arc)
+    ]) + "\n")
+    _orgW, _exclW = es.split_dream_span(es._recall_items(_trW, _storeA, "", frozenset({"SHIPPED"})))
+    check("cross-project audit: a prefix-less dream Bash call still opens the arc span "
+          "(organic={alpha,gamma}, beta excluded)",
+          sorted(r["stem"] for r in _orgW) == ["alpha", "gamma"] and _exclW == 1)
     # (3b) inject_usage — wholesale script-truth assignment; a bad seed FAILS LOUD (False), never silent.
     _seedA = Path(_tdA) / "seed.json"
     _seedA.write_text(_jsonA.dumps({"project": "p"}))
@@ -11695,6 +11710,177 @@ with _tf73.TemporaryDirectory() as _td_r5:
           and len({f.get("SPDXID") for f in _files_r5}) == len(_files_r5)
           and len({f.get("fileName") for f in _files_r5}) == len(_files_r5)
           and all(f.get("SPDXID") in _hasfiles_r5 for f in _files_r5))
+
+
+# ── 2026-09-03 cross-project audit (4 agents): the HIGH-fix pins ──────────────────────
+# replacement-install clobber guard: a project-authored file at the replacement stem SURVIVES
+# the inactive ack (P0-4 — pull and promote refuse this; reconcile must too)
+with _Env73() as _e_cpa:
+    _ctx_cpa = sc.resolve_store(_e_cpa.proj)
+    _cp_cpa = cp.connect(cp.db_path(_ctx_cpa))
+    try:
+        cp.enroll_project(_cp_cpa, _ctx_cpa, "personal")
+        _cp_cpa.commit()
+    finally:
+        _cp_cpa.close()
+    _d_cpa = _ctx_cpa.canonical_domain_dir
+    _d_cpa.mkdir(parents=True, exist_ok=True)
+    (_d_cpa / "old.md").write_text(_v3_canon("old").replace(
+        "status: active", "status: superseded\nreplacement_id: newer"), encoding="utf-8")
+    (_d_cpa / "newer.md").write_text(_v3_canon("newer"), encoding="utf-8")
+    _canon_ing = __import__("canonical_ingress")
+    import sync_global as _sg_cpa
+    _mirr_old = _sg_cpa._as_mirror((_d_cpa / "old.md").read_text(encoding="utf-8"),
+                                    "old", since="2026-01-01T00:00:00Z",
+                                    body_hash=_sg_cpa._body_hash((_d_cpa / "old.md").read_text(encoding="utf-8")))
+    _store_cpa = _ctx_cpa.native_memory_dir
+    (_store_cpa / "old.md").write_text(_mirr_old, encoding="utf-8")
+    (_store_cpa / "newer.md").write_text("---\nname: newer\ndescription: authored locally\n---\nlocal\n",
+                                         encoding="utf-8")
+    _out_cpa = _canon_ing.reconcile_inactive_mirrors(_ctx_cpa)
+    _newer_after = (_store_cpa / "newer.md").read_text(encoding="utf-8")
+    check("cross-project audit: the inactive ack never clobbers a project-authored file at the "
+          "replacement stem (P0-4 — the authored content survives, no mirror installed)",
+          _out_cpa.get("ok") is True and "authored locally" in _newer_after
+          and "global_ref:" not in _newer_after)
+
+# fileless held stem — the crash-recovery edge (mirror deleted, pointer never reaped).
+# The ack must strip the dangling pointer AND publish the index rewrite: pre-fix the strip
+# happened in-memory but idx_changed stayed False, so MEMORY.md kept the dangling pointer
+# forever. The surviving keep.md line proves the published file is the same index, rewritten.
+with _Env73() as _e_fl:
+    _ctx_fl = sc.resolve_store(_e_fl.proj)
+    _cp_fl = cp.connect(cp.db_path(_ctx_fl))
+    try:
+        cp.enroll_project(_cp_fl, _ctx_fl, "personal")
+        _cp_fl.commit()
+    finally:
+        _cp_fl.close()
+    _d_fl = _ctx_fl.canonical_domain_dir
+    _d_fl.mkdir(parents=True, exist_ok=True)
+    (_d_fl / "old.md").write_text(_v3_canon("old"), encoding="utf-8")
+    import canonical_ingress as _ci_fl
+    _up_fl = _ci_fl.upsert(_ctx_fl, "old",
+                           (_d_fl / "old.md").read_text(encoding="utf-8"))
+    _st_fl = _ci_fl.set_canonical_status(_ctx_fl, "old", "superseded")
+    _store_fl = _ctx_fl.native_memory_dir
+    (_store_fl / "MEMORY.md").write_text(
+        "- [old](old.md) — d [user-global]\n- [keep](keep.md) — d [user-global]\n",
+        encoding="utf-8")
+    _out_fl = _ci_fl.reconcile_inactive_mirrors(_ctx_fl)
+    _idx_after_fl = (_store_fl / "MEMORY.md").read_text(encoding="utf-8")
+    check("cross-project audit: the fileless-held-stem pointer reap PUBLISHES "
+          "(idx_changed — the strip is discarded unless the flag is set)",
+          _up_fl.get("ok") is True and _st_fl.get("ok") is True
+          and _out_fl.get("ok") is True and "](old.md)" not in _idx_after_fl
+          and "](keep.md)" in _idx_after_fl)
+
+# holder base: a canonical upsert WITHOUT --origin must not advance the holder's own mirror base
+with _Env73() as _e_hb:
+    _ctx_hb = sc.resolve_store(_e_hb.proj)
+    _cp_hb = cp.connect(cp.db_path(_ctx_hb))
+    try:
+        cp.enroll_project(_cp_hb, _ctx_hb, "personal")
+        _cp_hb.commit()
+    finally:
+        _cp_hb.close()
+    _d_hb = _ctx_hb.canonical_domain_dir
+    _d_hb.mkdir(parents=True, exist_ok=True)
+    (_d_hb / "hb.md").write_text(_v3_canon("hb"), encoding="utf-8")
+    import canonical_ingress as _ci_hb
+    _ci_hb.upsert(_ctx_hb, "hb", _v3_canon("hb"))
+    from control_plane import holder_base_revision as _hbr_hb, stable_fact_id as _sfid_hb
+    _conn_hb = cp.connect(cp.db_path(_ctx_hb))
+    try:
+        _base1 = _hbr_hb(_conn_hb, _sfid_hb("personal", "hb"), _ctx_hb.project_id)
+        _conn_hb.close()
+        # second upsert (no --origin) with a changed body: the holder's base must stay
+        _ci_hb.upsert(_ctx_hb, "hb", _v3_canon("hb", body="changed body\n"))
+        _conn_hb = cp.connect(cp.db_path(_ctx_hb))
+        _base2 = _hbr_hb(_conn_hb, _sfid_hb("personal", "hb"), _ctx_hb.project_id)
+    finally:
+        _conn_hb.close()
+    check("cross-project audit: upsert without --origin keeps the holder's three-way base "
+          "(advancing it would classify the holder's own untouched mirror as a local edit)",
+          _base1 == _base2)
+
+# semantic_payload sees UNKNOWN metadata keys (a local edit there is never silently discarded)
+_md_cp = """---\nschema_version: 3\nname: m\ndescription: d\ndomain: personal\nscope: user-global\nstatus: active\nmetadata:\n  node_type: memory\n  mynote: hello\n---\nbody\n"""
+_md_cp2 = _md_cp.replace("mynote: hello", "mynote: CHANGED")
+check("cross-project audit: a local edit to an UNKNOWN metadata key changes the semantic payload",
+      mc.semantic_hash(_md_cp) != mc.semantic_hash(_md_cp2))
+
+# compact_jsonl preserves the ledger's 0o600
+with _tf72.TemporaryDirectory() as _td_cm:
+    _lj = Path(_td_cm) / "ledger.jsonl"
+    _lj.write_text(_json.dumps({"a": 1}) + "\n", encoding="utf-8")
+    _os72.chmod(_lj, 0o600)
+    from retention import compact_jsonl as _cj_cm
+    _cj_cm(_lj, keep=1)
+    _mode_cm = _os72.stat(_lj).st_mode & 0o777
+    check("cross-project audit: compact_jsonl preserves the ledger's 0o600 mode",
+          _mode_cm == 0o600)
+
+# count_probative_after returns None on a registry-less store (never a suppress-forever 0).
+# Deliberately NOT _Env73: that fixture enrolls and CREATES the registry DB, so the
+# registry-less path would never run. A bare HOME-redirected project dir is the real shape.
+with _tf73.TemporaryDirectory() as _td_np:
+    _home_np = Path(_td_np)
+    _proj_np = (_home_np / "src" / "proj-np").resolve()
+    _proj_np.mkdir(parents=True)
+    (_home_np / ".claude" / "projects" / ms.slug_for(_proj_np) / "memory").mkdir(parents=True)
+    _home_prev_np = _os73.environ.get("HOME")
+    _os73.environ["HOME"] = str(_home_np)
+    try:
+        _ctx_np = sc.resolve_store(_proj_np)
+        check("cross-project audit: count_probative_after is None (not 0) with no registry",
+              cp.count_probative_after(_ctx_np, 0) is None)
+        check("cross-project audit: that None came from a genuinely missing DB (fixture honesty)",
+              not cp.db_path(_ctx_np).exists())
+    finally:
+        if _home_prev_np is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_prev_np
+
+# journal_cleanup ages out RESOLVED conflicts by created_at (the decision label never
+# compares against a cutoff) and sweeps the quarantine pen — one cutoff, both sweeps.
+# Pre-fix, the predicate keyed on `resolved` deleted nothing: the label rows all survive.
+with _Env73() as _e_jc:
+    _ctx_jc = sc.resolve_store(_e_jc.proj)
+    _cp_jc = cp.connect(cp.db_path(_ctx_jc))
+    try:
+        cp.record_conflict(_cp_jc, "c-old", _ctx_jc.project_id,
+                           {"action": "conflict"}, domain_id="personal")
+        _cp_jc.execute(
+            "UPDATE conflicts SET created_at=?, resolved='keep-canonical' "
+            "WHERE fact_stem='c-old'",
+            ("2026-08-01T00:00:00Z",))
+        cp.record_conflict(_cp_jc, "c-open", _ctx_jc.project_id,
+                           {"action": "conflict"}, domain_id="personal")
+        _cp_jc.execute(
+            "UPDATE conflicts SET created_at=? WHERE fact_stem='c-open'",
+            ("2026-08-01T00:00:00Z",))
+        _cp_jc.commit()
+    finally:
+        _cp_jc.close()
+    _qdir_jc = _ctx_jc.native_memory_dir / "quarantine"
+    _qdir_jc.mkdir(parents=True, exist_ok=True)
+    _qf_jc = _qdir_jc / "held.md"
+    _qf_jc.write_text("x\n", encoding="utf-8")
+    _old_jc = _time70.time() - 2 * cp.RECOVERY_TTL_SEC
+    _os72.utime(_qf_jc, (_old_jc, _old_jc))
+    _out_jc = cp.journal_cleanup(_ctx_jc, apply=True)
+    _cp_jc2 = cp.connect(cp.db_path(_ctx_jc))
+    try:
+        _rows_jc = _cp_jc2.execute(
+            "SELECT fact_stem, resolved FROM conflicts ORDER BY fact_stem").fetchall()
+    finally:
+        _cp_jc2.close()
+    check("cross-project audit: journal_cleanup ages out resolved conflicts by created_at, "
+          "leaves open ones, and sweeps the quarantine pen",
+          _out_jc.get("ok") is True and [tuple(r) for r in _rows_jc] == [("c-open", "")]
+          and not _qf_jc.exists() and _out_jc.get("quarantine_swept") == 1)
 
 # ── v0.4.5 (#152 code leg): SHA256SUMS in the release pipeline ─────────────────
 _wf_cs = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")

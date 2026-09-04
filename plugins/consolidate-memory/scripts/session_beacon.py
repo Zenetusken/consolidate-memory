@@ -175,9 +175,13 @@ def main() -> int:
         from sync_global import iter_admissible_facts
         _bh: "dict | None" = None
         try:
-            from facts_manifest import ensure as _fm_ens_b
-            _man_rows_b, _ = _fm_ens_b(ctx.canonical_domain_dir,
-                                       ctx.plugin_data_dir)
+            # review fix: ensure() REBUILDS + WRITES the manifest when absent or
+            # unparseable — inside the 2s hook budget, against the beacon's own
+            # "never writes" contract. load() is the read-only form; a missing or
+            # corrupt manifest degrades to the full-read fallback below, never a write.
+            from facts_manifest import load as _fm_load_b
+            _man_rows_b, _ = _fm_load_b(ctx.canonical_domain_dir,
+                                        ctx.plugin_data_dir)
             if _man_rows_b:
                 _bh = {n: (r.get("body_hash") or "")
                        for n, r in _man_rows_b.items()}

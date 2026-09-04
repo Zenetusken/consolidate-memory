@@ -251,12 +251,14 @@ def _rmtree_empty_domain_dir(facts_dir: Path, domain_id: str) -> int:
     n = 0
     if facts_dir.is_dir():
         leftover = [p for p in facts_dir.rglob("*") if p.is_file()]
-        n += len(leftover)
+        # review fix: the count claimed leftover files as purged while never
+        # removing them — n counts only what the rmtree actually removed
         parent = facts_dir.parent
         if parent.name == domain_id and not leftover:
             import shutil
             try:
                 shutil.rmtree(parent)
+                n = 1
             except OSError:
                 pass
     return n
@@ -431,6 +433,11 @@ def _run_domain_purge(ctx: StoreContext, domain_id: str) -> dict:
 def domain_purge_resume(ctx: StoreContext, domain_id: str) -> dict:
     st = domain_purge_status(ctx, domain_id)
     if st["lifecycle"] == "deleted":
+        # review fix: a crash between the fleet transact's commit and the final
+        # rmtree left the (now empty) domain dir on disk — the resume path never
+        # re-ran the rmtree. Re-run the cleanup even when already deleted.
+        facts = (ctx.config_root / "consolidate-memory" / "domains" / domain_id / "facts")
+        _rmtree_empty_domain_dir(facts, domain_id)
         return {"ok": True, "resumed": False, "already": "deleted", **st}
     if st["lifecycle"] != "deleting":
         raise WriteRefused(
@@ -2296,6 +2303,21 @@ def cmd_project(args: argparse.Namespace) -> int:
                 if current == d:
                     print(f"project enroll: already in {d}")
                     return 0
+                # review fix (backstop): two enrolled rows sharing one repo root would
+                # double-count the same physical repo. A plain directory rename can't
+                # hit this — root and computed project id change together, and that flow
+                # is rebind's (the alias lookup resolves it before this point) — so this
+                # fires only for an exotic same-root duplicate (e.g. an in-place slug
+                # recomputation). Refuse it; the operator resolves the stale row.
+                if ro is not None:
+                    _dup = ro.execute(
+                        "SELECT project_id FROM projects WHERE current_root=? AND project_id!=?",
+                        (str(ctx.project_root), ctx.project_id)).fetchone()
+                    if _dup:
+                        print(f"project enroll: this repo root is already enrolled as "
+                              f"{_dup['project_id']} — resolve that stale project row "
+                              f"(`cm project list`) before enrolling again", file=sys.stderr)
+                        return 2
                 plan = _mirror_plan_for_dest(ctx, d)
                 n_plan = len(plan["deletes"]) + len(plan["quarantine"])
                 print(f"enroll plan: {ctx.project_id} → domain {d} "
@@ -2358,6 +2380,14 @@ def cmd_project(args: argparse.Namespace) -> int:
                     return 2
 
                 def _prep_move(c):
+                    # review fix: the pre-check ran on a read-only conn OUTSIDE the
+                    # mutation locks — a domain marked deleting between the check and
+                    # this transact would commit a project enrolled in a deleting
+                    # domain. Re-check inside the transaction (enroll_project's pattern).
+                    from control_plane import domain_lifecycle as _dl_mv
+                    from control_plane import WriteRefused as _WR_mv
+                    if _dl_mv(c, dest) in ("deleting", "deleted"):
+                        raise _WR_mv(f"destination domain {dest} is deleting/deleted — move refused")
                     c.execute(
                         "UPDATE projects SET domain_id=?, status='enrolled' WHERE project_id=?",
                         (dest, ctx.project_id))
