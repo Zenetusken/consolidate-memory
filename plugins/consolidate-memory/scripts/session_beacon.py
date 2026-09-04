@@ -145,6 +145,18 @@ def _unenrolled_advisory(ctx) -> int:
     return 0
 
 
+def _fill_body_hashes(bh: dict, gfacts: list, local_domain: str) -> dict:
+    """Fill body hashes for facts the manifest does not cover — and OVERWRITE a
+    foreign-domain record's hash even when a local manifest row exists: the row
+    may carry a same-stem RETIRED copy's hash (group-scopes, the fleet-dogfood
+    phantom-stale). PURE given its inputs (smoke-pinned)."""
+    for _n_b, _fm_b, _t_b in gfacts:
+        if _t_b and (_n_b not in bh or str(_fm_b.get("domain") or "")
+                     != (local_domain or "")):
+            bh[_n_b] = _body_hash(_t_b)
+    return bh
+
+
 def beacon_line(store: Path, *, domain_id: str = "unknown",
                 migration_mode: str = "dual-read",
                 gfacts: list | None = None,
@@ -264,11 +276,7 @@ def main() -> int:
             _bh = None
         _gf_b = iter_admissible_facts(ctx)
         if _bh is not None:
-            # facts NEW since the manifest build are served by the full path
-            # (text present) — fill their hashes so _store_gaps never KeyErrors.
-            for _n_b, _fm_b, _t_b in _gf_b:
-                if _n_b not in _bh and _t_b:
-                    _bh[_n_b] = _body_hash(_t_b)
+            _bh = _fill_body_hashes(_bh, _gf_b, ctx.domain_id or "")
         line = beacon_line(
             ctx.native_memory_dir,
             domain_id=ctx.domain_id,
