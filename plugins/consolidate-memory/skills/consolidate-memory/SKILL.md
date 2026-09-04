@@ -107,7 +107,10 @@ But recall is **slug-scoped** — a project only auto-recalls its
 surface there (they don't auto-cross). `sync_global.py` does that replication; the
 phases below call it. A fact's optional `recipients:` (v0.4.10 group-scopes)
 **narrows** delivery to an operator-granted group — possibly across domains —
-instead of the whole domain; the pull/beacon/GC paths are membership-aware.
+instead of the whole domain; the pull/beacon/GC paths are membership-aware. A
+fact predating a recreated group is withheld **per-recipient** on pull unless
+re-confirmed with `--repoint`, and `--gc` reclaims its stranded FROZEN mirrors
+(clean deleted, locally-edited quarantined).
 (Renaming a project dir changes its slug and **orphans** its
 old auto-memory — another reason the canonical copy lives in the slug-independent
 global store.) See `references/harness-map.md` § "cross-project". **Phase 2 decides each
@@ -868,7 +871,12 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    broken file/symbol references, drop entries no longer relevant.
 2. **Garbage-collect orphaned mirrors.** A `user-global`/`stack-general` fact deleted
    from the canonical global store leaves dead mirrors in every project that pulled it
-   — `--pull` can't reclaim them (it only iterates *live* globals). This is also the
+   — `--pull` can't reclaim them (it only iterates *live* globals). The report's
+   **FROZEN** section lists mirrors whose canonical is ALIVE but withheld here — a
+   dropped stack, or a group the fact predates (`guard-stale`): for a guard-stale
+   mirror, re-point or re-confirm the fact (`--repoint`) rather than deleting the
+   mirror — the canonical is alive, and the reclaim is what keeps the index honest.
+   This is also the
    **budget-relief lever**: when an index is over budget because of replicated mirrors
    (Phase 4), the fix is to delete the *canonical* in the enrolled domain facts dir
    (`cm doctor` → `canonical_domain_dir`) and then GC

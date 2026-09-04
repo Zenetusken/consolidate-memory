@@ -49,7 +49,7 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     memory_status.py               Phase 0: locate stores + git scope + `--json` cycle-record seed
     extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
     sync_global.py                 cross-project: --list/--pull [--evict=F | --allow-net-grow]/--promote/
-                                   --gc [--edges] [--apply]/--tokens/--utility/--harvest/--staleness/
+                                   --gc [--edges] [--apply] (FROZEN reason tokens; clean-vs-edited reclaim)/--tokens/--utility/--harvest/--staleness/
                                    --workflows/--network + provenance
     distill_scan.py                Phase 5 distill: recurring Bash-command templates + compound-command chains (workflow signal); `--into`/`--from` inject script-truth counts into a cycle record
     render_dashboard.py            the data-driven ASCII dashboard (renders ONE cycle record)
@@ -64,7 +64,8 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
     index_admission.py             native MEMORY.md 200-line/25KB admission (not the global catalog)
     identifiers.py                 contained domain / fact-stem / project-id joins
     capabilities.py / retention.py / cm_ops.py
-                                   doctor, conflicts, resolve, repair-mirror, migrate, data, project enroll
+                                   doctor, conflicts, resolve, repair-mirror, migrate, data, project enroll,
+                                   group create/add/remove/delete/list/show
     _ui.py                         shared visual vocabulary (color/rule/kv/bar/glyphs + the CM_DREAM_ARC dream-cue);
                                    render_dashboard keeps its OWN copies of this vocabulary, behaviorally
                                    drift-pinned against it by a smoke test (output equality, not literal source bytes)

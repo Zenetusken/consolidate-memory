@@ -454,11 +454,16 @@ Markdown `projects:` is leftover-only. `sync_global.py`:
 - `--gc PROJECT_DIR [--apply]` — reclaim **orphaned mirrors**: `global_ref:` files
   whose canonical was deleted from the global store. `--pull` can never remove these
   (it only iterates live globals), so they accrue forever without GC. v0.1.75 also
-  reports/reclaims **frozen mirrors** — a mirror whose canonical is ALIVE but no longer
-  relevant here (a dropped stack): `--pull` can't refresh it (irrelevant short-circuits)
-  and the orphan scan can't see it (the canonical exists); reclaim is safe by construction
-  (a replica of a live canonical — the next `--pull` re-pulls it if the stack returns).
-  Report-only by default; `--apply` deletes the file + its index pointer. **Only** touches
+  reports/reclaims **frozen mirrors** — a mirror whose canonical is ALIVE but not
+  delivered here. v0.4.11 re-sources the frozen scan with a carried **reason token**
+  (`dropped-stack` / `guard-stale` — the fact predates a recreated group: re-point or
+  re-confirm it, don't just delete — / `not-entitled`); orphan yields to frozen whenever
+  the canonical file is disk-alive, and the orphan branch is clean-vs-edited via the
+  mirror's own `global_ref_body` lineage stamp (matching → delete, diverging →
+  quarantine). `--pull` can't refresh a frozen mirror and the orphan scan can't see it
+  (the canonical exists); reclaim is safe by construction (a replica of a live
+  canonical — the next `--pull` re-pulls it if the cause clears).
+  Report-only by default; `--apply` deletes/quarantines the file + its index pointer. **Only** touches
   `global_ref:` mirrors — never a project-authored fact, even on a name collision.
   Dead-edge provenance here = the mirror-absent STALE case (a store that still EXISTS but
   dropped the mirror) — reported, never auto-pruned (absence-of-mirror is too weak: a renamed

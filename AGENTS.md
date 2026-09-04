@@ -61,7 +61,7 @@ a new session; `plugin.json`/`marketplace.json` edits need
 `status` `seed` `extract` `distill` `sync` `pull` `gc` `promote` `tokens`
 `utility` `harvest` `staleness` `workflows` `calibration` `beacon` `network`
 `render` `report` `log` `doctor` `conflicts` `resolve` `repair-mirror`
-`canonical` `migrate` `data` `journal` `forget` `project`. Native paths come from `cm doctor`
+`canonical` `migrate` `data` `journal` `forget` `project` `group`. Native paths come from `cm doctor`
 (`StoreContext`); never hand-build `~/.claude/projects/<slug>/memory`.
 
 ## Layout
@@ -180,7 +180,8 @@ Six phases, 0–5 (there is no phase 6), driven from SKILL.md:
   gate for irreversible writes; place by tier; every decision → one `entries[]`
   row.
 - **Phase 5 — prune/GC/measure/render**: remediation gate (always-on staleness
-  sweep); `--gc [--apply]` orphan mirrors; health + dangling links; `--tokens` +
+  sweep); `--gc [--apply]` orphaned + FROZEN mirrors (reason tokens,
+  clean-vs-edited); health + dangling links; `--tokens` +
   `--recalls` usage capture; marker merge; distill scan (`--from/--into --verdict`);
   `render_dashboard.py --persist` (procedure-integrity gate — exit 3 on a
   measured lazy-skip); `--diffs` sidecar; mandatory `render_html.py --latest`

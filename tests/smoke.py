@@ -12662,19 +12662,23 @@ with _tf73.TemporaryDirectory() as _td_lc:
             _out_del4_lc = _io73.StringIO()
             with _ctx73.redirect_stdout(_out_del4_lc), _ctx73.redirect_stderr(_io73.StringIO()):
                 _rc_del4_lc = _co_lc.main(["group", "delete", "empty"])
+            _ok_del4_lc = (_rc_del4_lc == 0 and "dry" in _out_del4_lc.getvalue()
+                           and "3 fact(s) cite it" in _out_del4_lc.getvalue())
+            if not _ok_del4_lc:   # captured-output diagnostics (prints only on failure)
+                print(f"DEBUG del4: rc={_rc_del4_lc} out={_out_del4_lc.getvalue()!r}")
             check("v0.4.11 lifecycle: the PLAN run prints the citation count FIRST "
                   "(the legacy cross-domain AND mid-list citations counted — the "
-                  "operator sees them before deciding to confirm)",
-                  _rc_del4_lc == 0 and "dry" in _out_del4_lc.getvalue()
-                  and "3 fact(s) cite it" in _out_del4_lc.getvalue())
+                  "operator sees them before deciding to confirm)", _ok_del4_lc)
             _out_del2_lc = _io73.StringIO()
             with _ctx73.redirect_stdout(_out_del2_lc), _ctx73.redirect_stderr(_io73.StringIO()):
                 _rc_del2_lc = _co_lc.main(["group", "delete", "empty", "--apply",
                                            "--confirm", "delete-group-empty"])
+            _ok_del2_lc = (_rc_del2_lc == 0 and "3 fact(s) cite it" in _out_del2_lc.getvalue()
+                           and "group deleted: empty" in _out_del2_lc.getvalue())
+            if not _ok_del2_lc:   # captured-output diagnostics (prints only on failure)
+                print(f"DEBUG del2: rc={_rc_del2_lc} out={_out_del2_lc.getvalue()!r}")
             check("v0.4.11 lifecycle: cm group delete prints the citation count "
-                  "and deletes the empty group",
-                  _rc_del2_lc == 0 and "3 fact(s) cite it" in _out_del2_lc.getvalue()
-                  and "group deleted: empty" in _out_del2_lc.getvalue())
+                  "and deletes the empty group", _ok_del2_lc)
         finally:
             _os73.chdir(_cwd_prev2_lc)
         _conn_chk_lc = cp.connect(cp.db_path(_ctxa_lc))
