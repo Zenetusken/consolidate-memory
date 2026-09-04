@@ -11696,6 +11696,110 @@ with _tf73.TemporaryDirectory() as _td_r5:
           and len({f.get("fileName") for f in _files_r5}) == len(_files_r5)
           and all(f.get("SPDXID") in _hasfiles_r5 for f in _files_r5))
 
+
+# ── 2026-09-03 cross-project audit (4 agents): the HIGH-fix pins ──────────────────────
+# replacement-install clobber guard: a project-authored file at the replacement stem SURVIVES
+# the inactive ack (P0-4 — pull and promote refuse this; reconcile must too)
+with _Env73() as _e_cpa:
+    _ctx_cpa = sc.resolve_store(_e_cpa.proj)
+    _cp_cpa = cp.connect(cp.db_path(_ctx_cpa))
+    try:
+        cp.enroll_project(_cp_cpa, _ctx_cpa, "personal")
+        _cp_cpa.commit()
+    finally:
+        _cp_cpa.close()
+    _d_cpa = _ctx_cpa.canonical_domain_dir
+    _d_cpa.mkdir(parents=True, exist_ok=True)
+    (_d_cpa / "old.md").write_text(_v3_canon("old").replace(
+        "status: active", "status: superseded\nreplacement_id: newer"), encoding="utf-8")
+    (_d_cpa / "newer.md").write_text(_v3_canon("newer"), encoding="utf-8")
+    _canon_ing = __import__("canonical_ingress")
+    import sync_global as _sg_cpa
+    _mirr_old = _sg_cpa._as_mirror((_d_cpa / "old.md").read_text(encoding="utf-8"),
+                                    "old", since="2026-01-01T00:00:00Z",
+                                    body_hash=_sg_cpa._body_hash((_d_cpa / "old.md").read_text(encoding="utf-8")))
+    _store_cpa = _ctx_cpa.native_memory_dir
+    (_store_cpa / "old.md").write_text(_mirr_old, encoding="utf-8")
+    (_store_cpa / "newer.md").write_text("---\nname: newer\ndescription: authored locally\n---\nlocal\n",
+                                         encoding="utf-8")
+    _out_cpa = _canon_ing.reconcile_inactive_mirrors(_ctx_cpa)
+    _newer_after = (_store_cpa / "newer.md").read_text(encoding="utf-8")
+    check("cross-project audit: the inactive ack never clobbers a project-authored file at the "
+          "replacement stem (P0-4 — the authored content survives, no mirror installed)",
+          _out_cpa.get("ok") is True and "authored locally" in _newer_after
+          and "global_ref:" not in _newer_after)
+    check("cross-project audit: the fileless-held-stem pointer reap PUBLISHES (idx_changed)",
+          not (_store_cpa / "MEMORY.md").exists() or "](old.md)" not in
+          ((_store_cpa / "MEMORY.md").read_text(encoding="utf-8") if (_store_cpa / "MEMORY.md").exists() else ""))
+
+# holder base: a canonical upsert WITHOUT --origin must not advance the holder's own mirror base
+with _Env73() as _e_hb:
+    _ctx_hb = sc.resolve_store(_e_hb.proj)
+    _cp_hb = cp.connect(cp.db_path(_ctx_hb))
+    try:
+        cp.enroll_project(_cp_hb, _ctx_hb, "personal")
+        _cp_hb.commit()
+    finally:
+        _cp_hb.close()
+    _d_hb = _ctx_hb.canonical_domain_dir
+    _d_hb.mkdir(parents=True, exist_ok=True)
+    (_d_hb / "hb.md").write_text(_v3_canon("hb"), encoding="utf-8")
+    import canonical_ingress as _ci_hb
+    _ci_hb.upsert(_ctx_hb, "hb", _v3_canon("hb"))
+    from control_plane import holder_base_revision as _hbr_hb, stable_fact_id as _sfid_hb
+    _conn_hb = cp.connect(cp.db_path(_ctx_hb))
+    try:
+        _base1 = _hbr_hb(_conn_hb, _sfid_hb("personal", "hb"), _ctx_hb.project_id)
+        _conn_hb.close()
+        # second upsert (no --origin) with a changed body: the holder's base must stay
+        _ci_hb.upsert(_ctx_hb, "hb", _v3_canon("hb", body="changed body\n"))
+        _conn_hb = cp.connect(cp.db_path(_ctx_hb))
+        _base2 = _hbr_hb(_conn_hb, _sfid_hb("personal", "hb"), _ctx_hb.project_id)
+    finally:
+        _conn_hb.close()
+    check("cross-project audit: upsert without --origin keeps the holder's three-way base "
+          "(advancing it would classify the holder's own untouched mirror as a local edit)",
+          _base1 == _base2)
+
+# semantic_payload sees UNKNOWN metadata keys (a local edit there is never silently discarded)
+_md_cp = """---\nschema_version: 3\nname: m\ndescription: d\ndomain: personal\nscope: user-global\nstatus: active\nmetadata:\n  node_type: memory\n  mynote: hello\n---\nbody\n"""
+_md_cp2 = _md_cp.replace("mynote: hello", "mynote: CHANGED")
+check("cross-project audit: a local edit to an UNKNOWN metadata key changes the semantic payload",
+      mc.semantic_hash(_md_cp) != mc.semantic_hash(_md_cp2))
+
+# compact_jsonl preserves the ledger's 0o600
+with _tf72.TemporaryDirectory() as _td_cm:
+    _lj = Path(_td_cm) / "ledger.jsonl"
+    _lj.write_text(_json.dumps({"a": 1}) + "\n", encoding="utf-8")
+    _os72.chmod(_lj, 0o600)
+    from retention import compact_jsonl as _cj_cm
+    _cj_cm(_lj, keep=1)
+    _mode_cm = _os72.stat(_lj).st_mode & 0o777
+    check("cross-project audit: compact_jsonl preserves the ledger's 0o600 mode",
+          _mode_cm == 0o600)
+
+# count_probative_after returns None on a registry-less store (never a suppress-forever 0).
+# Deliberately NOT _Env73: that fixture enrolls and CREATES the registry DB, so the
+# registry-less path would never run. A bare HOME-redirected project dir is the real shape.
+with _tf73.TemporaryDirectory() as _td_np:
+    _home_np = Path(_td_np)
+    _proj_np = (_home_np / "src" / "proj-np").resolve()
+    _proj_np.mkdir(parents=True)
+    (_home_np / ".claude" / "projects" / ms.slug_for(_proj_np) / "memory").mkdir(parents=True)
+    _home_prev_np = _os73.environ.get("HOME")
+    _os73.environ["HOME"] = str(_home_np)
+    try:
+        _ctx_np = sc.resolve_store(_proj_np)
+        check("cross-project audit: count_probative_after is None (not 0) with no registry",
+              cp.count_probative_after(_ctx_np, 0) is None)
+        check("cross-project audit: that None came from a genuinely missing DB (fixture honesty)",
+              not cp.db_path(_ctx_np).exists())
+    finally:
+        if _home_prev_np is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_prev_np
+
 # ── v0.4.5 (#152 code leg): SHA256SUMS in the release pipeline ─────────────────
 _wf_cs = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
 check("v0.4.5 #152: the release workflow generates + self-verifies + uploads SHA256SUMS beside the SBOM",
