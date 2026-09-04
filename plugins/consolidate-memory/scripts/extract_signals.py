@@ -574,7 +574,14 @@ def _recall_items(transcript: Path, store_prefix: str, since: str, archive_stems
                 inp = p.get("input")
                 if not isinstance(inp, dict):
                     inp = {}
-                if arc_hint and p.get("name") == "Bash" and _ARC_MARK in str(inp.get("command", "")):
+                if arc_hint and p.get("name") == "Bash" and (
+                        _ARC_MARK in str(inp.get("command", ""))
+                        # review fix: a dream's scripted invocation WITHOUT the env prefix
+                        # (or a corrupted line that lost it) let dream-procedure Reads
+                        # count as organic evidence — the plugin-scripts signature marks
+                        # the same span conservatively (over-exclusion = undercount,
+                        # the safe direction)
+                        or ("consolidate-memory/scripts/" in str(inp.get("command", "")))):
                     items.append({"i": i, "kind": "arc", "stem": "", "ts": ts})
                 elif p.get("name") == "Read":
                     fp = str(inp.get("file_path", ""))
@@ -602,16 +609,23 @@ def _tier_sets(auto_mem: Path, snapshot: "dict | None") -> tuple:
     if isinstance(snapshot, dict):
         idx_content = ""
         arch_targets: set = set()
+        saw_memory_label = False
         for label, entry in snapshot.items():
             if not (isinstance(label, str) and label.startswith("memory/") and isinstance(entry, dict)):
                 continue
+            saw_memory_label = True
             content = str(entry.get("content", "") or "")
             if label == "memory/MEMORY.md":
                 idx_content = content
             elif _is_archive_index_text(content):
                 arch_targets.update(_LINK_RE.findall(content))
-        indexed = frozenset(_LINK_RE.findall(idx_content))
-        return indexed, frozenset(arch_targets - indexed)
+        if saw_memory_label:
+            # review fix: a wrong-shape object at the --before path (e.g. a cycle-
+            # record seed) used to yield (empty indexed, all archive) — every
+            # archived-tier read became a permanent "miss". A dict WITHOUT memory/*
+            # labels now falls back to the live store like the absent-snapshot case.
+            indexed = frozenset(_LINK_RE.findall(idx_content))
+            return indexed, frozenset(arch_targets - indexed)
     indexed = frozenset(index_fact_names(auto_mem / "MEMORY.md"))
     arch: set = set()
     if auto_mem.exists():

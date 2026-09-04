@@ -1788,6 +1788,11 @@ def _justify_remaining(jw: "int | None", at: "str | None", wf: int,
     if n_after_seq is not None:
         return None
     if jw + _DEMOTION_JUSTIFY_REFIRE > wf:
+        if wf >= _LOG_TAIL_CAP:
+            # review fix: a saturated tail freezes wf at ~the cap and can never
+            # reach jw+REFIRE — a stamp written near the cap suppressed forever
+            # (the O1 loop). Fail OPEN (no suppression) instead.
+            return None
         remaining = jw + _DEMOTION_JUSTIFY_REFIRE - wf
         return jw + _DEMOTION_JUSTIFY_REFIRE, remaining
     return None
