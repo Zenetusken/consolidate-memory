@@ -524,7 +524,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
              "revision": rev, "status": str(fm.get("status") or "active"),
              "sensitivity": fact_sensitivity(fm)},
             {"op": "holder_upsert", "fact_id": fid, "project_id": ctx.project_id,
-             "base_revision": rev, "canonical_revision": rev, "semantic_hash": rev},
+             "base_revision": _hb_up or rev, "canonical_revision": rev,
+             "semantic_hash": rev},
         ]
         if extra_registry_ops:
             ops.extend(list(extra_registry_ops))
@@ -533,7 +534,7 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         return {
             "stem": stem, "fact_id": fid, "revision": rev, "catalog_admitted": True,
             "deletes": deletes,
-            "holders": [(fid, ctx.project_id, rev, rev, rev)],
+            "holders": [(fid, ctx.project_id, _hb_up or rev, rev, rev)],
             "facts": [(fid, stem, ctx.domain_id, str(dest), rev,
                        str(fm.get("status") or "active"),
                        fact_sensitivity(fm))],
