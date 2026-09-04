@@ -11995,6 +11995,11 @@ with _tf73.TemporaryDirectory() as _td_bq:
                 "status, sensitivity) VALUES (?,?,?,?,?,?,?)",
                 (cp.stable_fact_id("work", "w1"), "w1", "work",
                  "/tmp/f/w1.md", "r1", "active", "internal"))
+            # the healthy domain needs an ENROLLED MEMBER or w1 never enters the
+            # count subquery and the pin would not discriminate the gate
+            _cpA5_bq.execute(
+                "INSERT INTO projects(project_id, current_root, domain_id, status) "
+                "VALUES ('p_work1', '/tmp/w', 'work', 'enrolled')")
             _cpA5_bq.commit()
         finally:
             _cpA5_bq.close()
