@@ -36,7 +36,7 @@ must survive verification before it may exist. NO VERIFY, NO WRITE.
    (canonical + catalog + registry + this project's mirror + pointer):
 
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py canonical upsert <stem> --file <draft-file> --origin --project .
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py canonical upsert <stem> --file <draft-file> --origin --project .
    ```
 
    If the writer refuses with "recipients predate the current group —

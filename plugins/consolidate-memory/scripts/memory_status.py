@@ -24,6 +24,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional, TypedDict, cast
@@ -813,8 +814,10 @@ def _sane(s: str) -> str:
 def _valid_sha(s: str) -> bool:
     """True iff `s` is a plausible git commit SHA (hex, 7–40 chars). Used to reject a
     tampered/garbage `commit` from the on-disk state file before it reaches `git` argv
-    (argument-injection guard — a value like '--output=…' must never be trusted)."""
-    return bool(re.fullmatch(r"[0-9a-fA-F]{7,40}", s or ""))
+    (argument-injection guard — a value like '--output=…' must never be trusted).
+    Non-strings (a tampered JSON scalar/list/dict) are invalid, NOT a crash — the
+    guard must degrade to no-marker, never take the whole run down (pentest)."""
+    return isinstance(s, str) and bool(re.fullmatch(r"[0-9a-fA-F]{7,40}", s))
 
 
 def slug_for(project_dir: Path) -> str:
@@ -885,6 +888,8 @@ def extract_wikilinks(text: str) -> list[str]:
     wikilink regex is the reimplementation-drift the v0.1.40 slug-agreement guard
     exists to prevent — the v0.3.5 dogfood `cm local` refusal of a backticked
     `[[link]]` format-example was that class). Targets are `.strip()`ed."""
+    if len(text) > _WIKI_SCAN_CAP:   # pentest: the quadratic unterminated-run scan — skip, degrade to no-links
+        return []
     text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)   # fenced code blocks
     text = re.sub(r"`[^`]*`", "", text)                       # inline code spans
     return [m.strip() for m in re.findall(r"\[\[([^\]]+)\]\]", text)]
@@ -1026,6 +1031,10 @@ _SECRET = re.compile(
       | AIza[0-9A-Za-z_-]{35}                                        # Google API key
       | AC[0-9a-f]{32}                                               # Twilio account SID
       | eyJ[A-Za-z0-9_-]{8,2000}\.[A-Za-z0-9_-]{8,4000}\.[A-Za-z0-9_-]{6,200}  # JWT (header.payload.sig)
+      | glpat-[0-9A-Za-z_-]{20,100}                                 # GitLab personal access token (legacy prefix)
+      | hf_[A-Za-z0-9]{25,80}                                      # HuggingFace token
+      | \d{6,20}:[A-Za-z0-9_-]{25,200}                             # Telegram bot token (id:secret)
+      | [A-Za-z0-9_-]{20,200}\.[A-Za-z0-9_-]{6,80}\.[A-Za-z0-9_-]{20,400}  # dotted 3-segment token (Discord bot & kin)
                                                                      # v0.1.70 SECURITY: each segment's unbounded `{n,}`
                                                                      # is now `{n,MAX}` — the charset a JWT segment
                                                                      # matches (`[A-Za-z0-9_-]`) includes the literal
@@ -1045,10 +1054,23 @@ _SECRET = re.compile(
 # A contiguous run of base64-ish chars (incl. '/' and '+' so slash-bearing AWS secret
 # access keys are caught). Case-SENSITIVE on purpose (see _entropy_blob).
 _BLOB = re.compile(r"[A-Za-z0-9+/=_-]{40,}")
+_WIKI_SCAN_CAP = 64000   # pentest: extract_wikilinks/pointer finditer are O(n²) on unterminated
+                         # bracket runs (measured 15s at 80KB, 4× per doubling) — bodies over this
+                         # cap skip the scan (degrade to no-links; a fact body this large is already
+                         # a defrag candidate). _COMMIT_SUBJECT_CAP shows the same gate pattern.
 _ENTROPY_SEG_FLOOR = 8   # v0.1.70: minimum PER-SEGMENT length before judging mixed-case/digit (below this,
                          # a real path component too often coincidentally looks token-like — e.g. "User1")
 _COMMIT_SUBJECT_CAP = 4000   # v0.1.70 Gate-2a: bounds _scrub_commit_log's firewall call — git enforces no
                              # length limit on a commit subject; mirrors extract_signals.py's _PROBE_CAP.
+
+
+def _strip_cf(text: str) -> str:
+    """Drop Unicode format/zero-width (Cf) chars — the SAME normalization extract_signals'
+    _norm applies before its firewall scans (that module imports THIS one, so the strip is
+    redefined here, one line, aligned by a smoke pin). A ZWSP inside a credential splits it
+    past every regex arm yet persists verbatim — _scrub_commit_log was the one call site
+    that scanned the RAW subject (pentest)."""
+    return "".join(c for c in text if unicodedata.category(c) != "Cf")
 
 
 def _entropy_blob(text: str) -> bool:
@@ -2150,8 +2172,13 @@ def _run(cmd: list[str], cwd: Path) -> str:
     global _GIT_WARNED
     try:
         out = subprocess.run(  # noqa: S603 - fixed args
-            cmd, cwd=cwd, capture_output=True, text=True, timeout=15, check=False
+            cmd, cwd=cwd, capture_output=True, text=True, errors="replace",
+            timeout=15, check=False
         )
+        # pentest: errors="replace" — git enforces no encoding on commit messages, so a
+        # non-UTF-8 subject byte must degrade to a replacement char, never raise
+        # UnicodeDecodeError (a ValueError that escapes the OSError/SubprocessError
+        # handler and kills every Phase-0 run in that repo).
         return out.stdout.strip()
     except (OSError, subprocess.SubprocessError) as e:
         # v0.1.69/A4: LABEL the degraded path — a missing/broken/timed-out git must be distinguishable
@@ -2453,15 +2480,23 @@ def diffs_dir(project_dir: Path) -> Path:
 def _write_private(path: Path, text: str) -> None:
     """v0.1.32: write owner-only (0o600) ATOMICALLY — these files hold memory fact BODIES. os.open WITH the mode
     avoids the write_text-then-chmod TOCTOU (content never lands in a world-readable 0o644 window); the trailing
-    chmod also tightens a pre-existing file from before this fix."""
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    chmod also tightens a pre-existing file from before this fix.
+
+    pentest: write-temp + os.replace — the O_TRUNC open FOLLOWED a pre-planted symlink at the
+    deterministic /tmp/cm-*-<slug> path (write-through to an attacker target); os.replace
+    swaps the SYMLINK ITSELF for a real 0o600 file, never its referent."""
     try:
-        os.write(fd, text.encode("utf-8"))
-    finally:
-        os.close(fd)
-    try:
-        os.chmod(str(path), 0o600)
+        tmp = path.with_name(path.name + f".tmp{os.getpid()}")
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, text.encode("utf-8"))
+        finally:
+            os.close(fd)
+        os.chmod(str(tmp), 0o600)
+        os.replace(str(tmp), str(path))
     except OSError:
+        # a hostile/unwritable target dir must not abort the dream — the artifact is
+        # best-effort; the private-store property is held on every SUCCESSFUL write.
         pass
 
 
@@ -2537,7 +2572,10 @@ def _scrub_commit_log(log: str) -> list:
         if not ln.strip():
             continue
         sha, sep, subject = ln.partition(" ")
-        if sep and _looks_secret(subject[:_COMMIT_SUBJECT_CAP]):
+        # pentest: the Cf-strip — zero-width chars inside a credential split it past every
+        # regex arm yet persist verbatim, so scan the _norm'd subject (the SAME aligned
+        # input extract_signals' call sites scan — this was the one raw-input exception).
+        if sep and _looks_secret(_strip_cf(subject)[:_COMMIT_SUBJECT_CAP]):
             out.append(f"{sha} (omitted: commit subject contained a credential-shaped value)")
         else:
             out.append(ln)
@@ -2684,7 +2722,9 @@ def build_context(project_dir: Path) -> dict:
         ref_stems: set = set()
         for _adoc in archive_docs:                       # store archive indexes (SHIPPED.md et al.) — link targets
             try:
-                ref_stems.update(m.group(1) for m in _LINK_RE.finditer(_adoc.read_text(encoding="utf-8", errors="replace")))
+                _adoc_t = _adoc.read_text(encoding="utf-8", errors="replace")
+                if len(_adoc_t) <= _WIKI_SCAN_CAP:   # pentest: gate the quadratic ]( run
+                    ref_stems.update(m.group(1) for m in _LINK_RE.finditer(_adoc_t))
             except OSError:
                 continue
         _cmd_text = ""
@@ -2709,7 +2749,10 @@ def build_context(project_dir: Path) -> dict:
         _stems = {f.stem for f in fact_files}
         for _f in fact_files:
             try:
-                for _m in re.finditer(r"\[\[([^\]]+)\]\]", _f.read_text(encoding="utf-8", errors="replace")):
+                _f_t = _f.read_text(encoding="utf-8", errors="replace")
+                if len(_f_t) > _WIKI_SCAN_CAP:   # pentest: gate the quadratic [[ run
+                    continue
+                for _m in re.finditer(r"\[\[([^\]]+)\]\]", _f_t):
                     _tgt = resolve_wikilink(_m.group(1).strip(), _stems)
                     if _tgt:
                         ref_stems.add(_tgt)

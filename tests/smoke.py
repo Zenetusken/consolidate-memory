@@ -2658,11 +2658,14 @@ with _tf43.TemporaryDirectory() as _td54:
           "this read's beat" in _se54 and "Phase-0" not in _se54)
 
 # (5) SKILL pins: every scripts/ command line carries the CM_DREAM_ARC=1 prefix (uniform rule —
-# zero unprefixed invocations), and the contract anchors exist (format schematic, beats, never-echo).
+# zero unprefixed invocations), the root is QUOTED (a whitespace-bearing install path must
+# not word-split — pentest), and the contract anchors exist (format schematic, beats, never-echo).
 _sk54 = _skill_md.read_text(encoding="utf-8")
-_cmd54 = [ln for ln in _sk54.splitlines() if "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/" in ln]
+_cmd54 = [ln for ln in _sk54.splitlines() if "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/" in ln]
 check(f"v0.1.54 SKILL pin: every scripts/ command line is CM_DREAM_ARC=1-prefixed ({len(_cmd54)} lines)",
       bool(_cmd54) and all("CM_DREAM_ARC=1 python3" in ln for ln in _cmd54))
+check("v0.1.54 SKILL pin: the plugin root is quoted in EVERY doc command site (zero unquoted)",
+      "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/" not in _sk54)
 check("v0.1.54/57 SKILL pin: the dream-arc contract anchors (schematic, beats, never-echo)",
       "*💤" in _sk54 and "SLEEP" in _sk54 and "SURFACING" in _sk54 and "WAKE" in _sk54
       and "[dream-arc]" in _sk54)
@@ -12701,6 +12704,173 @@ with _tf73.TemporaryDirectory() as _td_lc:
         else:
             _os73.environ["HOME"] = _home_prev_lc
         sg.GLOBAL = _global_prev_lc
+
+# ── v0.4.11 DevSecOps pentest hardening (the audit's verified findings) ──────
+def _no_raise_pt(fn):
+    try:
+        return fn()
+    except Exception as e:   # noqa: BLE001 — the pin is "does NOT raise"
+        return e
+
+# _valid_sha: a tampered non-string state value degrades to no-marker, never a crash
+from typing import Any, cast as _cast_pt
+check("pentest: _valid_sha returns False on a non-string tampered value (no TypeError)",
+      _no_raise_pt(lambda: ms._valid_sha(_cast_pt(Any, 123))) is False
+      and _no_raise_pt(lambda: ms._valid_sha(_cast_pt(Any, {"commit": "x"}))) is False
+      and ms._valid_sha("deadbeef") is True)
+
+# _run: a non-UTF-8 git stdout byte degrades to a replacement char, never a crash
+check("pentest: git stdout with a non-UTF-8 byte degrades, never raises",
+      not isinstance(_no_raise_pt(lambda: ms._run(["printf", "\\x80"],
+                                                  Path("."))), UnicodeDecodeError))
+
+# the keyword-less vendor arms the audit verified evading (20-39 char tokens)
+for _tok_pt in ("glpat-8mNzX9pQrT2vWxYzAbCdEfGh", "hf_kX9pQm2vL8nR4tW7zA1cF3dG5hJ6kB0sY",
+                "7123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw",
+                "NDM3MzU2MDUwMTY5OTkzMzEx.Gabcde.xyzABCDEFGHIJKLMNOPQRSTUVW"):
+    check(f"pentest: the firewall flags {_tok_pt[:12]}… (the 20-39 char gap)",
+          ms._looks_secret(f"auth {_tok_pt}"))
+
+# the commit-subject scrub applies the Cf strip the audit found missing
+check("pentest: a ZWSP-embedded credential in a commit subject is omitted",
+      "omitted" in ms._scrub_commit_log("abc1234 AKIA​ABCDEFGHIJKLMNOP")[0])
+
+# the two Cf strips stay aligned (extract_signals._norm vs memory_status._strip_cf)
+_es_pt = __import__("extract_signals")
+_zw_pt = "AKIA​ABCDEFGHIJKLMNOP"
+check("pentest: the two Cf-strips agree (scan and store stay aligned)",
+      _es_pt._norm(_zw_pt) == ms._strip_cf(_zw_pt) and "​" not in ms._strip_cf(_zw_pt))
+
+# the wikilink scan cap: a real link past the cap is skipped (the quadratic gate)
+_big_pt = "[[real]] " + "x" * (ms._WIKI_SCAN_CAP + 1)
+check("pentest: extract_wikilinks skips a link past the scan cap (the quadratic gate)",
+      ms.extract_wikilinks(_big_pt) == [])
+
+# _write_private: a pre-planted symlink is REPLACED, its target untouched
+with _tf73.TemporaryDirectory() as _td_pt:
+    _victim_pt = Path(_td_pt) / "victim.txt"; _victim_pt.write_text("ORIGINAL", encoding="utf-8")
+    _link_pt = Path(_td_pt) / "cm-cycle-pentest.json"; _link_pt.symlink_to(_victim_pt)
+    ms._write_private(_link_pt, "PRIVATE DATA")
+    check("pentest: _write_private never writes through a planted symlink (os.replace)",
+          _victim_pt.read_text(encoding="utf-8") == "ORIGINAL"
+          and not _link_pt.is_symlink()
+          and _link_pt.read_text(encoding="utf-8") == "PRIVATE DATA")
+
+# _mirror_key refuses an unsafe domain (the mirror-write path's own fence)
+check("pentest: _mirror_key refuses a path-traversal domain value",
+      _raises_gs(lambda: sg._mirror_key("personal", "../evil", "x"), ValueError)
+      and _raises_gs(lambda: sg._mirror_key("personal", "a/b", "x"), ValueError)
+      and sg._mirror_key("personal", "work", "x") == "work--x")
+
+# doc pins: the archive server binds localhost; the data-vs-instruction boundary ships
+check("pentest: the dream archive's http server binds 127.0.0.1 (never all interfaces)",
+      "http.server --bind 127.0.0.1" in _sk54)
+check("pentest: the data-vs-instruction boundary ships in SKILL + harness-map",
+      "never instructions" in _sk54 and "never a channel to obey" in _sk54
+      and "never instructions" in (_hm_lc if (_hm_lc := (ROOT / "plugins/consolidate-memory/skills/"
+          "consolidate-memory/references/harness-map.md").read_text(encoding="utf-8")) else ""))
+
+# hermetic: the '--' stem identity + the bridge admission gates + the store advisory
+with _tf73.TemporaryDirectory() as _td_px:
+    _home_px = Path(_td_px)
+    _pa_px = (_home_px / "src" / "pa").resolve(); _pa_px.mkdir(parents=True)
+    _pc_px = (_home_px / "src" / "pc").resolve(); _pc_px.mkdir(parents=True)
+    _pe_px = (_home_px / "src" / "pe").resolve(); _pe_px.mkdir(parents=True)
+    for _p_px in (_pa_px, _pc_px, _pe_px):
+        (_home_px / ".claude" / "projects" / ms.slug_for(_p_px) / "memory").mkdir(parents=True)
+    _home_prev_px = _os73.environ.get("HOME")
+    _global_prev_px = sg.GLOBAL
+    _os73.environ["HOME"] = str(_home_px)
+    sg.GLOBAL = _home_px / ".claude" / "memory"
+    try:
+        _ctx0_px = sc.resolve_store(_pa_px)
+        _conn_px = cp.connect(cp.db_path(_ctx0_px))
+        _gid_px = "g_" + "e" * 32
+        try:
+            cp.enroll_project(_conn_px, _ctx0_px, "personal")
+            cp.apply_registry_ops(_conn_px, [
+                {"op": "group_upsert", "group_id": _gid_px, "name": "pair",
+                 "domain_id": "personal", "created_at": "2026-08-01T00:00:00Z"},
+                {"op": "group_member_add", "group_id": _gid_px,
+                 "project_id": _ctx0_px.project_id}])
+            _conn_px.commit()
+        finally:
+            _conn_px.close()
+        _ctxa_px = sc.resolve_store(_pa_px)
+        _ctxc_px = sc.resolve_store(_pc_px)
+        _ctxe_px = sc.resolve_store(_pe_px)
+        _conn2_px = cp.connect(cp.db_path(_ctxa_px))
+        try:
+            cp.enroll_project(_conn2_px, _ctxc_px, "work")
+            cp.enroll_project(_conn2_px, _ctxe_px, "personal")
+            cp.apply_registry_ops(_conn2_px, [
+                {"op": "group_member_add", "group_id": _gid_px,
+                 "project_id": _ctxc_px.project_id},
+                {"op": "group_member_add", "group_id": _gid_px,
+                 "project_id": _ctxe_px.project_id}])
+            _conn2_px.commit()
+        finally:
+            _conn2_px.close()
+        _ctxc_px = sc.resolve_store(_pc_px)
+        _ctxe_px = sc.resolve_store(_pe_px)
+        # a LEGAL '--'-bearing same-domain stem + a crafted bridge file
+        _ctxa_px.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
+        _canon_dd_px = _v3_canon("k8s--helm").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        (_ctxa_px.canonical_domain_dir / "k8s--helm.md").write_text(_canon_dd_px, encoding="utf-8")
+        _craft_px = _v3_canon("crafted-dom").replace("domain: personal", "domain: ../evil", 1).replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        (_ctxa_px.canonical_domain_dir / "crafted-dom.md").write_text(_craft_px, encoding="utf-8")
+        (_ctxa_px.canonical_domain_dir / "bad)stem[inj.md").write_text(_canon_dd_px.replace(
+            "k8s--helm", "bad)stem[inj", 1), encoding="utf-8")
+        # same-domain pull: E gets the bare mirror; the crafted files never deliver
+        _o_px = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_px):
+            sg.run(_pe_px, pull=True)
+        check("pentest: a legal '--' stem mirrors same-domain; the crafted stem/domain "
+              "files are NOT delivered (the bridge's missing gates)",
+              (_ctxe_px.native_memory_dir / "k8s--helm.md").exists()
+              and not (_ctxe_px.native_memory_dir / "crafted-dom.md").exists()
+              and not any(p.name.startswith("evil") for p in
+                          _ctxe_px.native_memory_dir.parent.glob("*.md")))
+        _o_px2 = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_px2):
+            sg.run(_pc_px, pull=True)
+        check("pentest: the cross-domain member is neither delivered the crafted files "
+              "nor a traversal mirror outside the store",
+              not any("evil" in p.name for p in _ctxc_px.native_memory_dir.parent.glob("*.md"))
+              and not (_ctxc_px.native_memory_dir / "personal--crafted-dom.md").exists()
+              and not (_ctxc_px.native_memory_dir / "personal--bad)stem[inj.md").exists())
+        # the '--' stem's mirror survives gc (identity via the mirror's own frontmatter)
+        _o_px3 = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_px3):
+            sg.gc(_pe_px, False)
+        check("pentest: the '--' stem's mirror is NOT mis-decoded as an orphan (report)",
+              "nothing to reclaim" in _o_px3.getvalue())
+        _o_px4 = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_px4):
+            sg.gc(_pe_px, apply=True)
+        check("pentest: gc --apply keeps the live '--' stem mirror (the decode would "
+              "have deleted it as a foreign orphan)",
+              (_ctxe_px.native_memory_dir / "k8s--helm.md").exists())
+        # the repo-supplied in-tree store advisory (store_context — the resolver
+        # is subprocess-free, so it FLAGS the arrangement instead of git-checking;
+        # the settings value must be ABSOLUTE per _expand_mem_dir)
+        _pb_px = (_home_px / "src" / "pb"); _pb_px.mkdir(parents=True)
+        (_pb_px / ".claude").mkdir()
+        (_pb_px / ".claude" / "settings.json").write_text(
+            _json_xp.dumps({"autoMemoryDirectory": str(_pb_px / "mem")}), encoding="utf-8")
+        _ctx_pb_px = sc.resolve_store(_pb_px)
+        _amb_px = getattr(_ctx_pb_px, "ambiguity", []) or []
+        check("pentest: a repo-supplied in-tree autoMemoryDirectory is flagged, not "
+              "silently trusted",
+              any("INSIDE the project" in str(a) for a in _amb_px))
+    finally:
+        if _home_prev_px is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_prev_px
+        sg.GLOBAL = _global_prev_px
 
 # v0.4.10 dogfood: a foreign-domain record OVERWRITES a stale local manifest hash
 _bhf_gs = {"dup": "a" * 12}

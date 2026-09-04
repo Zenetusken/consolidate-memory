@@ -6,12 +6,12 @@ description: Show, enroll, move, or unenroll this project's trust domain (plan-f
 Domain membership is the operator grant (ADR 008 / 012). Distinct intents:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project show .
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project enroll . --domain personal
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project enroll . --domain personal --apply --confirm enroll-personal
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project move-domain . --to work --apply --confirm move-personal-to-work
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project unenroll . --apply --confirm unenroll-personal
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project rebind . --apply --confirm rebind
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project show .
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project enroll . --domain personal
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project enroll . --domain personal --apply --confirm enroll-personal
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project move-domain . --to work --apply --confirm move-personal-to-work
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project unenroll . --apply --confirm unenroll-personal
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project rebind . --apply --confirm rebind
 ```
 
 The project path is the POSITIONAL (after the subcommand, before the flags) — a

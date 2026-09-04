@@ -936,6 +936,16 @@ def resolve_store(project_dir: Path, *, cwd: Optional[Path] = None,
                     source = "default-git-root"
                 else:
                     source = "default-path"
+            elif mem_dir_source == "project" and _path_contained(custom, root):
+                # pentest (Low 19): a REPO-SUPPLIED settings.json can relocate the
+                # "private, NOT in git" store into the working tree and pre-seed
+                # content — the resolver cannot read git-trackedness (it is
+                # deliberately subprocess-free), so it flags the arrangement for
+                # the operator instead of silently trusting it.
+                ambiguity.append(
+                    "repo-supplied autoMemoryDirectory points INSIDE the project "
+                    "tree — ensure it is gitignored (a committed store is not "
+                    "private): " + str(custom))
     if override is not None:
         source = "store-override"
         native = override

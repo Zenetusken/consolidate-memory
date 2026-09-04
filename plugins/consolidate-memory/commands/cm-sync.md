@@ -8,9 +8,9 @@ without the consolidation pass. An unenrolled project is local-only and `--pull`
 is a no-op by design: say so honestly and point at `/cm-domain`.
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest .
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest .
 ```
 
 Run `--list` first (read-only) and report which globals are relevant +

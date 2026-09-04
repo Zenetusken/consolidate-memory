@@ -12,8 +12,8 @@ never self-grants; every enrollment is planned and confirmed.
    would quarantine; quarantine is recoverable, never delete):
 
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py doctor .
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py doctor <other-repo>
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py doctor .
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py doctor <other-repo>
    ```
 
 2. **Grants.** For each unenrolled repo, show its plan and ask the user for ONE
@@ -21,8 +21,8 @@ never self-grants; every enrollment is planned and confirmed.
    confirmation is the grant):
 
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project enroll . --domain personal --apply --confirm enroll-personal
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project enroll <other-repo> --domain personal --apply --confirm enroll-personal
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project enroll . --domain personal --apply --confirm enroll-personal
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py project enroll <other-repo> --domain personal --apply --confirm enroll-personal
    ```
 
    A repo enrolled in a DIFFERENT domain is never auto-switched — point at
@@ -36,16 +36,16 @@ never self-grants; every enrollment is planned and confirmed.
    was missing:
 
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest .
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull <other-repo>
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest <other-repo>
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest .
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull <other-repo>
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest <other-repo>
    ```
 
 5. **Payoff.** Show the network view — the links made:
 
    ```bash
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --tokens .
-   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --network .
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --tokens .
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --network .
    ```

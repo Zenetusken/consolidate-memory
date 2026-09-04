@@ -807,8 +807,11 @@ def _admissible_records(ctx) -> list:
             return
         if _looks_secret(text):
             return
-        _cls = classify_canonical(
-            text, stem=path.stem, domain=str(fm.get("domain") or ctx.domain_id))
+        # pentest: validate against the ENUMERATION's home domain, never the file's
+        # self-declared value — a crafted `domain:` in the frontmatter must not be
+        # its own validator (self-consistent '../evil' would pass and reach the
+        # mirror-write path). A misfiled fact fails closed, as it should.
+        _cls = classify_canonical(text, stem=path.stem, domain=(ctx.domain_id or "unknown"))
         if _cls["class"] != CLASS_ACTIVE:
             # Production: only valid active v3 replicates. Hermetic tests that
             # patch GLOBAL still admit unversioned fixture facts.
@@ -865,6 +868,13 @@ def _admissible_records(ctx) -> list:
             _consider(Path(ddir, ent_name), untagged_only=untagged_only)
             return
         fm = dict(r.get("fm") or {})
+        # pentest: the manifest row's class was computed against the file's
+        # self-declared domain — a crafted value is its own validator. A row whose
+        # declared domain doesn't match the enumeration home falls back to the FULL
+        # read path (whose classify now validates against the home).
+        if fact_domain(fm) and fact_domain(fm) != (ctx.domain_id or ""):
+            _consider(Path(ddir, ent_name), untagged_only=untagged_only)
+            return
         if str(fm.get("status") or "").strip() in ("tombstoned", "superseded", "expired"):
             return
         if untagged_only and fact_domain(fm):
@@ -947,14 +957,28 @@ def _admissible_records(ctx) -> list:
             for _f in sorted(_fdir.glob("*.md")):
                 if _f.name == "MEMORY.md":
                     continue
+                # pentest HIGH: the bridge was the ONE enumeration arm with no
+                # name/domain path-safety admission — a crafted stem (index
+                # markdown injection) or a crafted `domain:` (mirror write outside
+                # the store) sailed through. Same gates as _consider, home = _sdom.
+                if _is_reserved_stem(_f.stem) or not _safe_stem(_f.stem):
+                    continue
                 _ft = _safe_read_text(_f)
                 if _ft is None:
                     continue
                 _fm_f = _frontmatter(_ft)
+                if str(_fm_f.get("status") or "").strip() in ("tombstoned", "superseded", "expired"):
+                    continue
                 _recips_f = set(_parse_flow_list(str(_fm_f.get("recipients") or "")))
                 if not (_recips_f & memberships):
                     continue
                 if _recipients_stale_for(_fm_f, memberships, g_created):
+                    continue
+                _cls_f = classify_canonical(_ft, stem=_f.stem, domain=_sdom)
+                if _cls_f["class"] != CLASS_ACTIVE and not (
+                        _global_is_fixture() and _cls_f["class"] == CLASS_LEGACY):
+                    continue
+                if _looks_secret(_ft):
                     continue
                 _key_f = (_sdom, _f.stem)
                 if _key_f in seen:
@@ -1181,8 +1205,17 @@ def _mirror_key(ctx_domain: str, fact_dom: str, stem: str) -> str:
     same-domain (unchanged, backward-compatible), `{domain}--{stem}` when the
     canonical lives in another domain (group-scopes spec §5-A). Refuses the
     ambiguous encoding — if either part contains `--`, the namespaced form
-    would collide with another split, so the operator must rename."""
+    would collide with another split, so the operator must rename.
+
+    pentest: also refuses an unsafe DOMAIN value (path separators / '..' / a
+    leading dot) — a crafted frontmatter `domain:` would otherwise escape the
+    store via Path normalization on the mirror write. Admission normally keeps
+    such values out; this is the write-path's own fence."""
     fdom = fact_dom or ctx_domain or ""
+    if fdom and fdom != (ctx_domain or "") and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", fdom):
+        raise ValueError(
+            f"unsafe domain in mirror key: {fdom!r} — the canonical's domain "
+            "field must be a plain slug (no /, .., or leading dot)")
     if fdom == (ctx_domain or "") or not fdom:
         return stem
     if "--" in fdom or "--" in stem:
@@ -1412,6 +1445,16 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
             raise WriteRefused(
                 "exact index admission refused; evict aborted: " + plan_adm["reason"])
         if evict_stem:
+            # pentest (P0-4 parity): the in-lock re-verification every other
+            # destructive arm performs — re-check the target under the lock and
+            # pin its preimage, so a file that changed (or became a mirror)
+            # between pre-lock validation and publication refuses the write.
+            if evict_path is None or not evict_path.exists():
+                raise WriteRefused("evict target vanished before the lock")
+            _evt_now = _safe_read_text(evict_path)
+            if _evt_now is None or _is_mirror(_evt_now):
+                raise WriteRefused("evict target changed before the lock")
+            expected_m[str(evict_path)] = _sha(evict_path)
             idx_text = "\n".join(
                 ln for ln in idx_text.splitlines() if f"]({evict_stem}.md)" not in ln
             ) + "\n"
@@ -2655,10 +2698,20 @@ def _orphans(store: Path, canon: "set | None" = None,
         _eff_o: "str | tuple"
         if decode_names:
             _d_o, _s_o = decode_key(f.stem)
+            # pentest: the mirror's own frontmatter carries the canonical's domain
+            # + name — the decode fallback misreads a LEGAL '--'-bearing stem as
+            # a namespaced key (live mirror → false orphan → deleted).
+            try:
+                _fm_o = _frontmatter(text)
+                _cd_o = str(_fm_o.get("canonical_domain") or _fm_o.get("domain") or "").strip()
+                _nm_o = str(_fm_o.get("name") or "").strip()
+            except Exception:
+                _cd_o = _nm_o = ""
             if pair_keys:
-                _eff_o = (_d_o or local_domain, _s_o)
+                _eff_o = ((_cd_o, _nm_o) if _cd_o and _nm_o
+                          else (_d_o or local_domain, _s_o))
             else:
-                _eff_o = _s_o
+                _eff_o = _nm_o or _s_o
         else:
             _eff_o = f.stem
         if _is_mirror(text) and _eff_o not in canon:  # ONLY managed mirrors (frontmatter key)
@@ -2782,14 +2835,33 @@ def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> i
     return 0
 
 
-def _mirror_canonical_path(ctx, name: str) -> "Path | None":
-    """The disk path of a mirror's canonical for the DECODED home domain, or
+def _mirror_identity(ctx, name: str, mirror_text: "str | None" = None) -> tuple:
+    """(home_domain, fact_stem) for a mirror file — from the mirror's OWN
+    frontmatter when readable (the writer stamps the canonical's domain + name;
+    the decode fallback covers pre-stamp mirrors). The frontmatter reading
+    resolves the '--' ambiguity: a LEGAL same-domain stem containing '--'
+    (identifiers blesses it) decodes as a namespaced key, which made gc
+    mis-classify its live mirror as an orphan (pentest Med 5/6)."""
+    if mirror_text:
+        try:
+            _fm_i = _frontmatter(mirror_text)
+            _cd = str(_fm_i.get("canonical_domain") or _fm_i.get("domain") or "").strip()
+            _nm = str(_fm_i.get("name") or "").strip()
+            if _cd and _nm and _safe_stem(_nm):
+                return (_cd, _nm)
+        except Exception:
+            pass
+    _d_i, _s_i = decode_key(name)
+    return (_d_i or getattr(ctx, "domain_id", "") or "", _s_i)
+
+
+def _mirror_canonical_path(ctx, name: str, mirror_text: "str | None" = None) -> "Path | None":
+    """The disk path of a mirror's canonical for its IDENTITY home domain, or
     None when it is gone/tombstoned (group-lifecycle spec §2.3 — the re-source
     reads the canonical file itself, never the admitted-only gfacts snapshot).
     A tombstone holds no re-pullable content, so its mirror is orphaned."""
-    _d_mc, _s_mc = decode_key(name)
-    canon_p = _source_facts_dir(ctx, _d_mc or getattr(ctx, "domain_id", "") or "") \
-        / f"{_s_mc}.md"
+    _home_mc, _stem_mc = _mirror_identity(ctx, name, mirror_text)
+    canon_p = _source_facts_dir(ctx, _home_mc) / f"{_stem_mc}.md"
     ctext = _safe_read_text(canon_p)
     if ctext is None:
         return None
@@ -2800,7 +2872,8 @@ def _mirror_canonical_path(ctx, name: str) -> "Path | None":
 
 
 def _classify_frozen(ctx, name: str, *, stacks: set, memberships: set,
-                     g_created: dict, canon_p: "Path | None" = None) -> "tuple | None":
+                     g_created: dict, canon_p: "Path | None" = None,
+                     mirror_text: "str | None" = None) -> "tuple | None":
     """(reason, canonical_path) when a mirror is FROZEN, else None. The re-sourced
     classifier (group-lifecycle spec §2.3): decode → disk-liveness → the
     enumeration's FULL predicate (admissibility + the recreation guard +
@@ -2814,7 +2887,7 @@ def _classify_frozen(ctx, name: str, *, stacks: set, memberships: set,
     again (nothing to reclaim). The reason token drives the gc render copy —
     the hardcoded "dropped stack" label must not lie (review 5)."""
     if canon_p is None:
-        canon_p = _mirror_canonical_path(ctx, name)
+        canon_p = _mirror_canonical_path(ctx, name, mirror_text)
     if canon_p is None:
         return None
     ctext = _safe_read_text(canon_p)
@@ -2828,10 +2901,10 @@ def _classify_frozen(ctx, name: str, *, stacks: set, memberships: set,
         from domain_policy import admit_cross_project, fact_domain
         from memory_status import _looks_secret
         from control_plane import migration_mode_readonly
-        _d_cf, _s_cf = decode_key(name)
-        home = _d_cf or getattr(ctx, "domain_id", "") or ""
-        _cls_cf = classify_canonical(ctext, stem=_s_cf,
-                                     domain=str(c_fm.get("domain") or home))
+        home, _s_cf = _mirror_identity(ctx, name, mirror_text)
+        # pentest: classify against the IDENTITY home, never the canonical's
+        # self-declared domain (its own validator would pass a crafted value).
+        _cls_cf = classify_canonical(ctext, stem=_s_cf, domain=home)
         _ok_cls = (_cls_cf["class"] == CLASS_ACTIVE
                    or (_global_is_fixture() and _cls_cf["class"] == CLASS_LEGACY))
         if not _ok_cls:
@@ -2991,7 +3064,7 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
                 continue
             _ver_fz = _classify_frozen(_ctx_gc, f.stem, stacks=stacks,
                                        memberships=_memberships_gc,
-                                       g_created=_g_created_gc)
+                                       g_created=_g_created_gc, mirror_text=t)
             if _ver_fz is not None:
                 frozen.append((f.stem, _ver_fz[0]))
     # orphan yields to frozen whenever the canonical is disk-alive (spec §2.3): the
@@ -3057,12 +3130,12 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
                 # name whose cause cleared (an owner's --repoint landed between
                 # scan and lock) is skipped; a name whose canonical died under
                 # the lock falls to the orphan arm.
-                _cp_now = _mirror_canonical_path(_ctx_gc, name)
+                _cp_now = _mirror_canonical_path(_ctx_gc, name, _t_gc)
                 _ver_gc = _classify_frozen(
                     _ctx_gc, name, stacks=stacks,
                     memberships=_memberships_lk,
                     g_created=_g_created_lk,
-                    canon_p=_cp_now)
+                    canon_p=_cp_now, mirror_text=_t_gc)
                 if _ver_gc is None:
                     if _cp_now is not None:
                         continue      # admitted + relevant again — nothing to reclaim
@@ -3099,8 +3172,8 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
                 deletes.append(str(p))
                 idx = "\n".join(
                     ln for ln in idx.splitlines() if f"]({name}.md)" not in ln)
-                _d_gc, _s_gc = decode_key(name)
-                fid = _sf_gc(_d_gc or _ctx_gc.domain_id, _s_gc)
+                _home_gc, _s_gc = _mirror_identity(_ctx_gc, name, _t_gc)
+                fid = _sf_gc(_home_gc, _s_gc)
                 conn.execute(
                     "DELETE FROM holders WHERE project_id=? AND fact_id=?",
                     (_ctx_gc.project_id, fid))
