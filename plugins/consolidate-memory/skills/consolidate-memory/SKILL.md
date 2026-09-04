@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.7** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.8** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -26,7 +26,8 @@ arc, exit 5 = unstamped cycle — the WAKE renders only through a clean exit 0),
 plus the production/polish/performance pass (stacks cache on the sync paths,
 warm-pull margin, journal scale, archive embed budget, store-honesty advisories,
 and the renderer coherence sweep, plus the v0.4.6 archive-display pass, plus the
-v0.4.7 cross-project audit pass). Public 1.0 stays HOLD.
+v0.4.7 cross-project audit pass, plus the v0.4.8 onboarding-command pass).
+Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
