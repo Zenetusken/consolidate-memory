@@ -5,6 +5,26 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.7] — 2026-09-03
+
+**Patch** — the cross-project audit release: a four-agent audit of the
+cross-project layer plus an adversarial PR review, every finding fixed and
+smoke-pinned. The inactive-mirror ack never clobbers a project-authored file
+at a replacement stem; a canonical upsert without `--origin` keeps the
+holder's three-way base through the journal replay (the holder's own untouched
+mirror is no longer misclassified as a local edit on the next pull); edits to
+unknown metadata keys enter the conflict classifier's semantic payload; GC
+re-verifies frozen mirrors under the mutation lock and reports what it
+actually deleted; the harvest ledger dedups concurrent window rows; resolved
+conflicts and the quarantine pen age out on the recovery TTL (quarantine had
+no GC at all); a demotion stamp near a saturated log tail fails open instead
+of suppressing forever; `compact_jsonl` preserves the fleet ledger's 0o600;
+the SessionStart beacon reads the facts manifest without writing; a
+prefix-less dream Bash call still opens the dream-arc span. The README is
+restructured for the approaching 1.0 — onboarding-first with a cross-project
+quick-start, version archaeology moved here. 1518 smoke assertions. No
+memory-plane behavior changes.
+
 ## [0.4.6] — 2026-09-03
 
 **Patch** — the archive display pass: the HTML archive now exposes its own
