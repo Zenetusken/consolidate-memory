@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.9** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.10** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -26,8 +26,8 @@ arc, exit 5 = unstamped cycle — the WAKE renders only through a clean exit 0),
 plus the production/polish/performance pass (stacks cache on the sync paths,
 warm-pull margin, journal scale, archive embed budget, store-honesty advisories,
 and the renderer coherence sweep, plus the v0.4.6 archive-display pass, plus the
-v0.4.7 cross-project audit pass, plus the v0.4.8 onboarding-command pass).
-Public 1.0 stays HOLD.
+v0.4.7 cross-project audit pass, plus the v0.4.8 onboarding-command pass, plus
+the v0.4.10 group-scopes pass). Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
@@ -105,7 +105,10 @@ enroll --domain NAME` is the operator grant (`cm doctor` prints the resolved sto
 But recall is **slug-scoped** — a project only auto-recalls its
 *own* store — so global facts must be **replicated** into each project's store to
 surface there (they don't auto-cross). `sync_global.py` does that replication; the
-phases below call it. (Renaming a project dir changes its slug and **orphans** its
+phases below call it. A fact's optional `recipients:` (v0.4.10 group-scopes)
+**narrows** delivery to an operator-granted group — possibly across domains —
+instead of the whole domain; the pull/beacon/GC paths are membership-aware.
+(Renaming a project dir changes its slug and **orphans** its
 old auto-memory — another reason the canonical copy lives in the slug-independent
 global store.) See `references/harness-map.md` § "cross-project". **Phase 2 decides each
 fact's scope by a hard cascade** (Gate 0 → `project-local` · Gate 1 → `stack-general` ·

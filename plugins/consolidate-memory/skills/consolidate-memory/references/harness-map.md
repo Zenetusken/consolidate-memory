@@ -1,6 +1,6 @@
 # Harness map — data sources, memory formats, verification recipes
 
-**v0.4.9.** Read this when you need the exact paths, file formats, or grep/git recipes for a
+**v0.4.10.** Read this when you need the exact paths, file formats, or grep/git recipes for a
 consolidation pass. The SKILL.md body covers the workflow; this is the lookup table.
 
 **Unenrolled is local-only (ADR 008):** a project that is not enrolled cannot
@@ -312,6 +312,14 @@ cross-project model:
   slug-independent.
 - **Global facts don't auto-cross** — they must be replicated into each project's
   store to surface there.
+- **Groups (v0.4.10) narrow delivery.** `recipients: [g]` on a canonical delivers
+  to the operator-granted group's members instead of the whole domain — the
+  group may span domains (the bridge); cross-domain mirrors get `{domain}--{stem}`
+  file keys + `group:` volatile stamps; the writer refuses unknown groups and
+  recipients predating a recreated group; `cm group remove` withdraws the
+  member's mirrors (clean deleted, edited quarantined). Groups are governed
+  `authorized_pairs` — the v0.2.1 A→B layer with grants, journaling, and
+  revocation.
 - **Concurrent writes to the shared domain store (v0.1.71, Track D).** Two different
   projects in the same enrolled domain dreaming around the same time can both write
   to `<config>/consolidate-memory/domains/<domain>/facts`. Every
