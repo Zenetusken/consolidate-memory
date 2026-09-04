@@ -12083,7 +12083,7 @@ with _tf73.TemporaryDirectory() as _td_gs:
         try:
             cp.apply_registry_ops(_ca2_gs, [
                 {"op": "group_upsert", "group_id": _gid_gs, "name": "pair",
-                 "domain_id": "personal", "created_at": "2026-09-04T00:00:00Z"},
+                 "domain_id": "personal", "created_at": "2026-08-01T00:00:00Z"},
                 {"op": "group_member_add", "group_id": _gid_gs,
                  "project_id": _ctxa0_gs.project_id},
             ])
@@ -12216,6 +12216,35 @@ with _tf73.TemporaryDirectory() as _td_gs:
         check("v0.4.10 groups: a foreign ORPHAN is reclaimed even under a same-stem "
               "local canonical (pair-keyed GC — F2)",
               not (_storec_gs / "personal--grp-fact.md").exists())
+        # recreation guard (spec §4): recipients predating a recreated group refuse
+        _conn4_gs = cp.connect(cp.db_path(_ctxa_gs))
+        try:
+            cp.apply_registry_ops(_conn4_gs, [{"op": "group_delete", "group_id": _gid_gs}])
+            cp.apply_registry_ops(_conn4_gs, [{"op": "group_upsert", "group_id": _gid_gs,
+                                               "name": "pair", "domain_id": "personal",
+                                               "created_at": "2026-09-04T12:00:00Z"}])
+            _conn4_gs.commit()
+        finally:
+            _conn4_gs.close()
+        _canon_old_gs = _v3_canon("old-recip").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        # stamp the fact OLDER than the recreated group → the guard fires
+        _canon_old_gs = _canon_old_gs.replace("content_modified: 2026-09-01T00:00:00Z",
+                                              "content_modified: 2026-09-03T00:00:00Z")
+        _up4_gs = _ci2_gs.upsert(_ctxa_gs, "old-recip", _canon_old_gs)
+        check("v0.4.10 groups: recipients predating a recreated group refuse "
+              "(the silent re-grant guard — spec §4)",
+              _up4_gs.get("ok") is False and "predates" in str(_up4_gs.get("error") or ""))
+        # confidential + foreign recipients lands for a member (F5: both equality legs)
+        _canon_conf_gs = _v3_canon("conf-grp").replace(
+            "sensitivity: internal", "sensitivity: confidential", 1).replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1).replace(
+            "content_modified: 2026-09-01T00:00:00Z",
+            "content_modified: 2026-09-06T00:00:00Z")
+        _up5_gs = _ci2_gs.upsert(_ctxa_gs, "conf-grp", _canon_conf_gs)
+        check("v0.4.10 groups: a confidential fact with recipients is writable "
+              "(the bridge carries it — F5)",
+              _up5_gs.get("ok") is True)
         # F3 (review): the beacon counts a missing group mirror through main()
         _bline_gs = None
         try:

@@ -446,10 +446,14 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
                             "(a fact targets only groups born in its own domain)"}
                 # recreation guard (spec §4): recipients that predate the current
                 # group refuse — a recreated name is a fresh identity, and old
-                # text must not silently re-point at the new membership.
+                # text must not silently re-point at the new membership. The
+                # comparison uses the INPUT text's own stamp (the writer
+                # re-stamps content_modified on every upsert, so the stamped
+                # fm can never predate anything); an input without a stamp is
+                # a fresh authoring and passes.
                 _g_created = str(_grow["created_at"] or "")
-                _f_modified = str(fm.get("content_modified") or "")
-                if (_g_created and _f_modified and _f_modified < _g_created
+                _in_cm = str(_frontmatter(text).get("content_modified") or "")
+                if (_g_created and _in_cm and _in_cm < _g_created
                         and "recipients" in (text or "")):
                     return {"ok": False, "error":
                             f"recipients: [{_slug}] predates the current group "
