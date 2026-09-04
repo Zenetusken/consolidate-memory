@@ -93,6 +93,12 @@ def _unenrolled_advisory(ctx) -> int:
     the wrong dir — no filesystem walk, no DB-name-to-path surface). Repeats
     until enrolled (the behind-advisory's semantics); beacon_snooze_until quiets
     it; silent on any failure (the no-failure-masking posture)."""
+    if str(getattr(ctx, "domain_id", "") or "") != "unknown":
+        # cross_project_allowed=False is also the deleting-domain member state
+        # (lifecycle != active) and the unhealthy-registry state — neither is
+        # "unenrolled", and /cm-domain is not their remedy (purge-resume/cancel,
+        # doctor). The advisory belongs to genuinely-unenrolled stores only.
+        return 0
     store = ctx.native_memory_dir
     if not store.is_dir() or not any(store.glob("*.md")):
         return 0

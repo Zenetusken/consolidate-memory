@@ -11979,6 +11979,32 @@ with _tf73.TemporaryDirectory() as _td_bq:
               "line fails this)",
               "2 shared fact(s) not reachable here" in _proc_bq.stdout
               and "can enroll it" in _proc_bq.stdout and _proc_bq.returncode == 0)
+        # the INFO sliver: an enrolled member of a deleting domain whose fleet also
+        # has a healthy domain — cross_project_allowed=False but NOT "unenrolled";
+        # the ctx.domain_id gate silences the mislabel (pre-gate the healthy
+        # domain's fact leaked through as 'you are unenrolled')
+        _cpA5_bq = cp.connect(cp.db_path(_ctxA_bq))
+        try:
+            cp.enroll_project(_cpA5_bq, _ctxB_bq, "personal")
+            _cpA5_bq.execute("DELETE FROM domains")
+            _cpA5_bq.execute(
+                "INSERT INTO domains(domain_id, status, updated_at) "
+                "VALUES ('personal', 'deleting', '')")
+            _cpA5_bq.execute(
+                "INSERT INTO facts(fact_id, stem, domain_id, canonical_path, revision, "
+                "status, sensitivity) VALUES (?,?,?,?,?,?,?)",
+                (cp.stable_fact_id("work", "w1"), "w1", "work",
+                 "/tmp/f/w1.md", "r1", "active", "internal"))
+            _cpA5_bq.commit()
+        finally:
+            _cpA5_bq.close()
+        _ctxB2_bq = sc.resolve_store(_projB_bq)
+        _ioE_bq = _io73.StringIO()
+        with _ctx73.redirect_stdout(_ioE_bq):
+            _sb_bq._unenrolled_advisory(_ctxB2_bq)
+        check("v0.4.8 beacon: a deleting-domain member is NOT 'unenrolled' — silent even "
+              "when another domain holds facts (purge-resume is the remedy)",
+              _ioE_bq.getvalue() == "")
     finally:
         if _home_prev_bq is None:
             _os73.environ.pop("HOME", None)
