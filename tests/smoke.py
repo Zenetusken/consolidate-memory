@@ -12068,7 +12068,11 @@ with _tf73.TemporaryDirectory() as _td_gs:
     for _p_gs in (_pa_gs, _pb_gs, _pc_gs):
         (_home_gs / ".claude" / "projects" / ms.slug_for(_p_gs) / "memory").mkdir(parents=True)
     _home_prev_gs = _os73.environ.get("HOME")
+    _global_prev_gs = sg.GLOBAL
     _os73.environ["HOME"] = str(_home_gs)
+    # hermeticity: an absent GLOBAL dir (CI parity) — the REAL ~/.claude/memory
+    # must never leak legacy facts into these fixtures
+    sg.GLOBAL = _home_gs / ".claude" / "memory"
     try:
         _ctxa0_gs = sc.resolve_store(_pa_gs)
         _ca_gs = cp.connect(cp.db_path(_ctxa0_gs))
@@ -12208,7 +12212,8 @@ with _tf73.TemporaryDirectory() as _td_gs:
             _sg2_gs._as_mirror(_v3_canon("grp-fact"), "grp-fact",
                                fact_id=cp.stable_fact_id("personal", "grp-fact"),
                                domain="personal"), encoding="utf-8")
-        _ci2_gs.upsert(_ctxc_gs, "grp-fact", _v3_canon("grp-fact").replace(
+        _ctxc_gs = sc.resolve_store(_pc_gs)   # fresh resolve — the cached ctx predates later registry state
+        _upw_gs = _ci2_gs.upsert(_ctxc_gs, "grp-fact", _v3_canon("grp-fact").replace(
             "domain: personal", "domain: work", 1))
         _o7_gs = _io_gs.StringIO()
         with _ctx73.redirect_stdout(_o7_gs):
@@ -12246,6 +12251,10 @@ with _tf73.TemporaryDirectory() as _td_gs:
               "(the bridge carries it — F5)",
               _up5_gs.get("ok") is True)
         # F3 (review): the beacon counts a missing group mirror through main()
+        # (a local fact keeps the store PARTICIPATING past the never-participated
+        # silence gate)
+        (_storec_gs / "local.md").write_text("---\nname: local\n---\nbody\n",
+                                             encoding="utf-8")
         _bline_gs = None
         try:
             _bline_gs = __import__("session_beacon").beacon_line(
@@ -12264,6 +12273,7 @@ with _tf73.TemporaryDirectory() as _td_gs:
             _os73.environ.pop("HOME", None)
         else:
             _os73.environ["HOME"] = _home_prev_gs
+        sg.GLOBAL = _global_prev_gs
 
 _cmdg_gs = (ROOT / "plugins" / "consolidate-memory" / "commands" / "cm-group.md")
 _ctg_gs = _cmdg_gs.read_text(encoding="utf-8") if _cmdg_gs.is_file() else ""
