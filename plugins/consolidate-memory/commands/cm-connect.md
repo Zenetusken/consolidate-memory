@@ -40,6 +40,7 @@ never self-grants; every enrollment is planned and confirmed.
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest .
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull <other-repo>
+   python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest <other-repo>
    ```
 
 5. **Payoff.** Show the network view — the links made:
