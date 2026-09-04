@@ -5,6 +5,15 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.9] — 2026-09-04
+
+**Patch** — the fleet-dogfood hotfix: `/cm-connect`'s absorb step now harvests
+usage windows from BOTH repos (the shipped wizard pulled the other repo but
+harvested only the invoking one — harvest is idempotent and its purpose is
+fleet-wide evidence before transcript rotation, so the omission was a real
+evidence gap). The full 0.4.8 fleet dogfood connected 11 nodes with 0
+out-of-sync holders. Backward-compatible → patch.
+
 ## [0.4.8] — 2026-09-04
 
 **Patch** — the onboarding command surface: a fresh-user dogfood measured the
