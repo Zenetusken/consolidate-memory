@@ -132,7 +132,12 @@ one line pointing at `/cm-domain` (pull is a no-op by design — say so, honestl
   `SELECT COUNT(*) FROM facts WHERE domain_id IN (SELECT DISTINCT domain_id FROM
   projects WHERE status='enrolled' AND domain_id!='unknown') AND status='active'`
   (sub-ms; the `domains` table is lifecycle-only — purges write it via
-  `domain_status_set`; `projects` is the membership source). Silent when the
+  `domain_status_set`; `projects` is the membership source) — **excluding
+  domains marked deleting/deleted** (review F1: an interrupted purge leaves
+  enrolled members with `cross_project_allowed=False`; telling them "you are
+  unenrolled" misfires — enroll refuses inside a deleting domain — so the
+  purge window is silent, and `purge-resume`/`purge-cancel` is their remedy,
+  not `/cm-domain`). Silent when the
   registry is absent, no enrolled domain has active facts, or the store has never
   participated (F1: the snooze stamp REFUSES a store with no state file —
   memory_status.py:1864-1865 — so a never-participated store could never quiet

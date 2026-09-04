@@ -113,10 +113,17 @@ def _unenrolled_advisory(ctx) -> int:
         if conn is None:
             return 0
         try:
+            # the domains table is the lifecycle source (purges write it): a
+            # domain mid-purge (deleting) still has enrolled members + active
+            # facts, but its members get cross_project_allowed=False — telling
+            # them "you are unenrolled; /cm-domain enrolls" would misfire (enroll
+            # refuses inside a deleting domain). Exclude the purge window.
             row = conn.execute(
                 "SELECT COUNT(*) AS n FROM facts WHERE domain_id IN "
                 "(SELECT DISTINCT domain_id FROM projects "
                 " WHERE status='enrolled' AND domain_id!='unknown') "
+                "AND domain_id NOT IN "
+                "(SELECT domain_id FROM domains WHERE status IN ('deleting','deleted')) "
                 "AND status='active'").fetchone()
         finally:
             conn.close()

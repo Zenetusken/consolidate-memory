@@ -11936,6 +11936,49 @@ with _tf73.TemporaryDirectory() as _td_bq:
             _sb_bq._unenrolled_advisory(_ctxB_bq)
         check("v0.4.8 beacon: silent again when the domain holds no active facts",
               _ioC_bq.getvalue() == "")
+        # F1: a domain mid-purge (deleting) silences the advisory — its members get
+        # cross_project_allowed=False but the remedy is purge-resume, not /cm-domain
+        _cpA3_bq = cp.connect(cp.db_path(_ctxA_bq))
+        try:
+            _cpA3_bq.execute(
+                "INSERT INTO facts(fact_id, stem, domain_id, canonical_path, revision, "
+                "status, sensitivity) VALUES (?,?,?,?,?,?,?)",
+                (cp.stable_fact_id("personal", "one"), "one", "personal",
+                 "/tmp/f/one.md", "r1", "active", "internal"))
+            _cpA3_bq.execute(
+                "INSERT INTO domains(domain_id, status, updated_at) "
+                "VALUES ('personal', 'deleting', '')")
+            _cpA3_bq.commit()
+        finally:
+            _cpA3_bq.close()
+        _ioD_bq = _io73.StringIO()
+        with _ctx73.redirect_stdout(_ioD_bq):
+            _sb_bq._unenrolled_advisory(_ctxB_bq)
+        check("v0.4.8 beacon: silent inside a deleting domain (the purge window's "
+              "remedy is purge-resume, not /cm-domain)",
+              _ioD_bq.getvalue() == "")
+        # F2: the main() wiring line itself — e2e subprocess with real hook stdin
+        _cpA4_bq = cp.connect(cp.db_path(_ctxA_bq))
+        try:
+            _cpA4_bq.execute("DELETE FROM domains WHERE domain_id='personal'")
+            _cpA4_bq.execute(
+                "INSERT INTO facts(fact_id, stem, domain_id, canonical_path, revision, "
+                "status, sensitivity) VALUES (?,?,?,?,?,?,?)",
+                (cp.stable_fact_id("personal", "two"), "two", "personal",
+                 "/tmp/f/two.md", "r1", "active", "internal"))
+            _cpA4_bq.commit()
+        finally:
+            _cpA4_bq.close()
+        _env_bq = dict(_os73.environ)
+        _env_bq["HOME"] = str(_home_bq)
+        _proc_bq = _sp53.run(
+            [sys.executable, str(_BEACON81)],
+            input='{"cwd": "%s", "session_id": "e2e", "transcript_path": ""}' % _projB_bq,
+            capture_output=True, text=True, env=_env_bq)
+        check("v0.4.8 beacon: main() wires the advisory end-to-end (a reverted wiring "
+              "line fails this)",
+              "2 shared fact(s) not reachable here" in _proc_bq.stdout
+              and "can enroll it" in _proc_bq.stdout and _proc_bq.returncode == 0)
     finally:
         if _home_prev_bq is None:
             _os73.environ.pop("HOME", None)
