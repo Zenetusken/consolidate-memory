@@ -5,6 +5,23 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.8] — 2026-09-04
+
+**Patch** — the onboarding command surface: a fresh-user dogfood measured the
+cross-project setup friction (five CLI incantations for what should be three
+words), so the marketplace gains four commands — `/cm-connect` (the two-repo
+wizard: surveyed, operator-confirmed grants, an optional first shared fact,
+absorption both ways, the network payoff), `/cm-share` (one verified fact from
+one sentence, report-then-apply, no-verify-no-write), `/cm-sync` (absorb now),
+`/cm-network` (read-only fleet views) — and the SessionStart beacon gains an
+unenrolled advisory (participating stores only; the count is registry truth,
+excluding purge-window domains; a statement, never a directive). The README's
+cross-project section consolidates to the single workflow, and the shipped
+`cm-domain.md` examples are fixed (the flags-first forms failed argparse —
+`/cm-domain` now works verbatim). Design-of-record:
+`docs/cm-commands-onboarding.spec.md` (advisor + adversarial review-to-zero).
+Backward-compatible → patch.
+
 ## [0.4.7] — 2026-09-03
 
 **Patch** — the cross-project audit release: a four-agent audit of the
