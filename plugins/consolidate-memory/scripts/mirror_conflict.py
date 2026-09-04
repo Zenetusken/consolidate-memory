@@ -28,6 +28,40 @@ def _frontmatter_span(text: str) -> tuple:
     return _frontmatter(text), _body(text)
 
 
+def _metadata_block_payload(text: str) -> str:
+    """The metadata: block's non-volatile key/value pairs, indentation-normalized.
+
+    `_frontmatter`'s indented-child flattening recognizes a FIXED key list, so a local
+    edit to an UNKNOWN key inside `metadata:` never reached the semantic payload and
+    the next pull silently discarded it. This captures every INDENTED `key: value`
+    line of the raw block (volatile keys stripped) so sem(mirror) reflects the whole
+    user-writable metadata block — indentation-insensitive, so writer-normalized
+    mirrors still equal their canonical.
+
+    The block ends at the first de-indented line (YAML) or the frontmatter-closing
+    `---` — the writer's SYNTHESIZED anchor on a no-metadata canonical sits at the
+    top with unindented keys after it, which must not read as block children.
+    """
+    pairs = []
+    in_meta = False
+    for ln in text.splitlines():
+        s = ln.strip()
+        if in_meta:
+            if s.startswith("---") or (s and not ln.startswith((" ", "\t"))):
+                break
+            mm = re.match(r"^[ \t]*([A-Za-z0-9_.-]+):[ \t]*(.*)$", ln)
+            if not mm:
+                continue
+            key, val = mm.group(1), mm.group(2).strip()
+            kl = key.lower()
+            if kl in VOLATILE_KEYS or kl.startswith("global_ref"):
+                continue
+            pairs.append(f"{kl}={val}")
+        elif re.match(r"^metadata:[ \t]*$", ln):
+            in_meta = True
+    return "".join(p + "\n" for p in sorted(pairs))
+
+
 def semantic_payload(text: str) -> str:
     """Fact content that participates in revision equality (volatile metadata stripped)."""
     fm, body = _frontmatter_span(text)
@@ -47,7 +81,7 @@ def semantic_payload(text: str) -> str:
         if kl == "metadata" and not str(fm[k] or ""):
             continue
         keep.append(f"{k}:{fm[k]}")
-    return "\n".join(keep) + "\n--\n" + body
+    return "\n".join(keep) + "\n--\n" + _metadata_block_payload(text) + body
 
 
 def semantic_hash(text: str) -> str:

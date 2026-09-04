@@ -324,8 +324,9 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
     new stem). `preserve_canonical` is the reconcile path: never overwrite an existing
     canonical body; still record the holder and convert the origin.
     """
-    from control_plane import (CrashSimulated, assert_domain_writable, is_tombstoned,
-                               record_holder, stable_fact_id, transact)
+    from control_plane import (CrashSimulated, assert_domain_writable,
+                               holder_base_revision, is_tombstoned, record_holder,
+                               stable_fact_id, transact)
     from memory_status import _frontmatter
 
     from identifiers import IdentifierRefused, validate_fact_stem
@@ -463,7 +464,14 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
             (fid, stem, ctx.domain_id, str(dest), rev, str(fm.get("status") or "active"),
              fact_sensitivity(fm)),
         )
-        record_holder(conn, fid, ctx.project_id, rev, rev, rev)
+        # review fix: the three-way base must be the revision the holder's own mirror
+        # actually sits at (ADR 005/011). With no origin rewrite, the local mirror (if
+        # any) stays at its previous revision — advancing the base here classified the
+        # holder's own untouched mirror as STOP_LOCAL ("local edit") on its next pull
+        # and froze it forever. Keep the prior base; a project with no mirror yet gets
+        # base=rev (its first pull creates the mirror AT rev).
+        _hb_up = holder_base_revision(conn, fid, ctx.project_id)
+        record_holder(conn, fid, ctx.project_id, _hb_up or rev, rev, rev)
         if origin_local is not None:
             bh = _body_hash(canon_body)
             mirror = _as_mirror(canon_body, stem, since=now, body_hash=bh,
@@ -579,6 +587,13 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
         stem = validate_fact_stem(stem)
     except IdentifierRefused as e:
         return {"ok": False, "error": str(e)}
+    # review fix: forget's replacement_id was written into the tombstone row unvalidated
+    # (set_canonical_status validates; forget must too — a bogus replacement breaks the
+    # supersede hand-off in every project's next pull)
+    if replacement_id:
+        _rid_err = _validate_replacement_id(ctx, stem, replacement_id)
+        if _rid_err:
+            return {"ok": False, "error": _rid_err}
     warn_unenrolled_share(ctx)
     if not getattr(ctx, "cross_project_allowed", False):
         return {"ok": False, "error":
@@ -619,11 +634,15 @@ def forget(ctx: StoreContext, stem: str, reason: str = "user-forget",
                      (fid, ctx.project_id))
         if ot is not None and _is_mirror(ot):
             idxp = ctx.native_memory_dir / "MEMORY.md"
-            idx = _srt_fg(idxp) or ""
-            if idx:
+            idx = _srt_fg(idxp)
+            if idx is None:
+                # review fix: no MEMORY.md existed — publishing a synthesized
+                # newline-only index minted a headerless file where none was
+                idx = ""
+            else:
                 expected_fg[str(idxp)] = hashlib.sha256(idx.encode("utf-8")).hexdigest()
-            idx = "\n".join(ln for ln in idx.splitlines() if f"]({stem}.md)" not in ln)
-            temps[str(idxp)] = idx.rstrip() + "\n"
+                idx = "\n".join(ln for ln in idx.splitlines() if f"]({stem}.md)" not in ln)
+                temps[str(idxp)] = idx.rstrip() + "\n"
             if not prev:
                 dec = {"action": "quarantine"}
             else:
@@ -832,7 +851,10 @@ def _validate_replacement_id(ctx: StoreContext, stem: str, replacement_id: str) 
             return "replacement_id cycle"
         seen.add(nxt)
         cur = nxt
-    return "replacement_id cycle"
+    # review fix: the hop bound was read as "cycle" — a >32-length ACYCLIC chain is not
+    # one (real cycles repeat within a few hops). Accept; the walk's repeat-detection
+    # already caught every actual cycle it could reach.
+    return None
 
 
 def _replacement_path(ctx: StoreContext, replacement_id: str) -> Optional[Path]:
@@ -869,7 +891,7 @@ def reconcile_inactive_mirrors(ctx: StoreContext) -> dict:
     before dest publishes), so a filesystem-level listing may briefly observe
     neither mirror file — the index, not the file listing, is the contract.
     """
-    from control_plane import (connect_if_exists, db_path, holder_base_revision,
+    from control_plane import (ABSENT, connect_if_exists, db_path, holder_base_revision,
                                stable_fact_id, transact)
     from index_admission import apply_pointer, project_index
     from memory_status import _frontmatter
@@ -944,6 +966,7 @@ def reconcile_inactive_mirrors(ctx: StoreContext) -> dict:
         idxp = store / "MEMORY.md"
         idx = _safe_read_text(idxp)
         idx_orig = idx
+        idx_absent = idx is None
         idx_changed = False
         now = _now_iso()
         for stem in todo:
@@ -960,30 +983,44 @@ def reconcile_inactive_mirrors(ctx: StoreContext) -> dict:
                         rfid = stable_fact_id(ctx.domain_id, rstem)
                         rev = _semh(rtext)
                         bh = _body_hash(rtext)
-                        want = _as_mirror(rtext, rstem, since=now, body_hash=bh,
-                                          fact_id=rfid, domain=ctx.domain_id)
-                        want = stamp_revisions(want, rev, rev)
+                        cur = None
+                        skip_install = False
                         if rdest.exists():
                             cur = _safe_read_text(rdest) or ""
-                            expected_fg[str(rdest)] = hashlib.sha256(
-                                cur.encode("utf-8")).hexdigest()
+                            if not _is_mirror(cur):
+                                # P0-4: never clobber a project-authored file — skip the
+                                # replacement install; the dying stem's mirror still goes
+                                skip_install = True
+                            else:
+                                expected_fg[str(rdest)] = hashlib.sha256(
+                                    cur.encode("utf-8")).hexdigest()
                         else:
                             dest_modes[str(rdest)] = "create"
-                        temps[str(rdest)] = want
-                        ptr = _pointer_line(rstem, _frontmatter(rtext))
-                        if idx is None:
-                            idx = "# Memory Index\n"
-                            idx_orig = idx
-                        if f"]({rstem}.md)" not in idx:
-                            idx = apply_pointer(idx, ptr, rstem)
-                            idx_changed = True
-                        ops.append({
-                            "op": "holder_upsert", "fact_id": rfid,
-                            "project_id": ctx.project_id,
-                            "base_revision": rev, "canonical_revision": rev,
-                            "semantic_hash": rev,
-                        })
-                        installed += 1
+                        if not skip_install:
+                            # evidence-clock carry: an existing in-sync mirror of the
+                            # replacement keeps its accrued usage windows (the F9 class)
+                            _cur_since = now
+                            if cur is not None:
+                                _cur_since = str(
+                                    _frontmatter(cur).get("global_ref_since") or now)
+                            want = _as_mirror(rtext, rstem, since=_cur_since,
+                                              body_hash=bh, fact_id=rfid,
+                                              domain=ctx.domain_id)
+                            want = stamp_revisions(want, rev, rev)
+                            temps[str(rdest)] = want
+                            ptr = _pointer_line(rstem, _frontmatter(rtext))
+                            if idx is None:
+                                idx = "# Memory Index\n"
+                            if f"]({rstem}.md)" not in idx:
+                                idx = apply_pointer(idx, ptr, rstem)
+                                idx_changed = True
+                            ops.append({
+                                "op": "holder_upsert", "fact_id": rfid,
+                                "project_id": ctx.project_id,
+                                "base_revision": rev, "canonical_revision": rev,
+                                "semantic_hash": rev,
+                            })
+                            installed += 1
             fid = stable_fact_id(ctx.domain_id, stem)
             ops.append({"op": "holder_delete", "fact_id": fid,
                         "project_id": ctx.project_id})
@@ -999,6 +1036,10 @@ def reconcile_inactive_mirrors(ctx: StoreContext) -> dict:
                 if idx is not None and f"]({stem}.md)" in idx:
                     idx = "\n".join(ln for ln in idx.splitlines()
                                     if f"]({stem}.md)" not in ln)
+                    # review fix: the publish gate is idx_changed-gated — the strip above
+                    # was discarded (and the holder row deleted, so the stem was never
+                    # retried) unless some OTHER stem set the flag. Pin it here.
+                    idx_changed = True
                 acked += 1
                 continue
             if not _is_mirror(ot):
@@ -1027,6 +1068,11 @@ def reconcile_inactive_mirrors(ctx: StoreContext) -> dict:
             if idx_orig:
                 expected_fg[str(idxp)] = hashlib.sha256(
                     idx_orig.encode("utf-8")).hexdigest()
+            elif idx_absent:
+                # the store had no MEMORY.md when the replacement installed — pin
+                # ABSENT, never a hash of the synthesized header (which hashed a
+                # nonexistent file and refused the ack forever)
+                expected_fg[str(idxp)] = ABSENT
             adm = project_index(idx if idx.endswith("\n") else idx + "\n")
             if not adm["admitted"]:
                 raise WriteRefused("index admission refused during inactive ack: "
