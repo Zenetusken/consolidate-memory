@@ -51,7 +51,7 @@ consolidate-memory@zenetusken-plugins` — so you dogfood the exact artifact use
 **The QA companion.** This repo also ships an optional second plugin, **`dream-beta-tester`** —
 a deterministic regression oracle plus an agent-driven judgment-lens pass that beta-tests
 consolidate-memory *itself* (`/dream-beta-test`). For maintainers/contributors validating a
-change, not day-to-day `dream` use; install it the same way if you want to help QA new versions.
+change, not day-to-day `dream` use; install it the same way (`/plugin install dream-beta-tester@zenetusken-plugins`) if you want to help QA new versions.
 
 ### Uninstall / purge your data
 
@@ -176,7 +176,7 @@ in one project has to be **replicated** into the others to surface there. The mo
 `./cm network` shows the topology — the **universal baseline** (facts every project holds)
 listed separately from the **differential edges** that carry real signal
 (`stack-general` facts binding only the matching-stack projects). Early on, with only
-universal facts, it honestly reads `N universal · 0 differential`. As stack-general facts
+universal facts, it honestly reads `N shared · N universal · 0 differential`. As stack-general facts
 accumulate, a graph emerges — the same split the HTML archive's Shared Consciousness view draws.
 
 ### How insights propagate (the honest model)
@@ -232,7 +232,8 @@ enrollment** (ADR 008) — the big change in one sentence: **unenrolled is local
 1. **Update the plugin** (`/plugin update consolidate-memory`). Everything old keeps
    working; unenrolled projects simply stop sharing until enrolled.
 2. **Populate the domain FIRST.** `cm migrate --plan` inventories the legacy facts and
-   stages an assignment plan — review it, then `cm migrate --apply`, then `--finalize`.
+   stages an assignment plan — review it, then `cm migrate --apply --confirm migrate-apply`, then `--finalize`
+  (rollback: `cm migrate --rollback --confirm migrate-rollback`).
 3. **Then enroll each project** that should share: `cm project enroll --domain personal
    --apply --confirm enroll-personal` (marketplace users: `/cm-domain`).
 4. **Enroll after migrating, not before.** A first-enroll revokes unadmitted mirrors —
@@ -247,7 +248,8 @@ registry health) — the one command that answers "what is my memory setup?"
 
 Your consolidated memory is personal and **never leaves your machine** — the scripts are
 **stdlib-only** (uses 3.8+ stdlib; CI validates the full 3.8–3.13 range), make **no
-network calls**, and the only external process is read-only `git`. The `memory/` store is
+network calls**, and the pipeline’s only external process is read-only `git` — the
+HTML archive’s render opens your local browser, the one other process it ever spawns. The `memory/` store is
 gitignored and is **not** part of the published plugin (only `plugins/consolidate-memory/`
 ships). The secrets firewall applies at *retrieval*: a credential-shaped turn in a
 transcript is dropped before it could ever reach a fact file. Control-plane locks use
