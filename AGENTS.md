@@ -29,7 +29,7 @@ relative source paths only resolve over Git).
 **Dev loop** — after any change to `plugins/consolidate-memory/scripts/`:
 
 ```bash
-python3 tests/smoke.py                          # the zero-dep gate — ~1516 assertions over every script's
+python3 tests/smoke.py                          # the zero-dep gate — ~1518 assertions over every script's
                                                 # pure functions + the cross-module pins; exit 1 on any failure
 python3 tests/simulate_accumulation.py          # lifecycle accumulation sim (probes A–W + X–AF) — the
                                                 # store-mechanics gate; CI runs it too
