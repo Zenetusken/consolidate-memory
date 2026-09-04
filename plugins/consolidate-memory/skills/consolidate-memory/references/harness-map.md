@@ -1,6 +1,6 @@
 # Harness map — data sources, memory formats, verification recipes
 
-**v0.4.10.** Read this when you need the exact paths, file formats, or grep/git recipes for a
+**v0.4.11.** Read this when you need the exact paths, file formats, or grep/git recipes for a
 consolidation pass. The SKILL.md body covers the workflow; this is the lookup table.
 
 **Unenrolled is local-only (ADR 008):** a project that is not enrolled cannot
@@ -320,6 +320,19 @@ cross-project model:
   member's mirrors (clean deleted, edited quarantined). Groups are governed
   `authorized_pairs` — the v0.2.1 A→B layer with grants, journaling, and
   revocation.
+- **Group lifecycle (v0.4.11).** `cm group delete <name>` refuses a populated
+  group (naming the member project ids) and prints the citation count before
+  deleting — facts naming the group will deliver to nobody. A fact whose
+  `recipients:` predate a recreated group is refused by the writer unless
+  re-confirmed with `--repoint` (`cm canonical upsert` / `--promote`; the flag
+  force-restamps `content_modified` to now — the re-confirmation becomes
+  durable text). On pull, the guard withholds **per-recipient**: a member whose
+  OWN cited groups all postdate the fact's stamp doesn't receive it, while a
+  member of a fresh cited group still does. A withheld fact's stranded mirror
+  renders **FROZEN** in `--gc` with a reason token (dropped-stack /
+  guard-stale / not-entitled); `gc --apply` deletes it clean or quarantines a
+  locally-edited copy — and an orphan (canonical gone) is deleted only when
+  its own `global_ref_body` lineage stamp matches its current body.
 - **Concurrent writes to the shared domain store (v0.1.71, Track D).** Two different
   projects in the same enrolled domain dreaming around the same time can both write
   to `<config>/consolidate-memory/domains/<domain>/facts`. Every

@@ -38,6 +38,7 @@ case "$cmd" in
   migrate)  exec python3 "$S/cm_ops.py" migrate "$@" ;;
   data)     exec python3 "$S/cm_ops.py" data "$@" ;;
   project)  exec python3 "$S/cm_ops.py" project "$@" ;;
+  group)    exec python3 "$S/cm_ops.py" group "$@" ;;    # v0.4.11: create|add|remove|delete|list|show
   journal)  exec python3 "$S/cm_ops.py" journal "$@" ;;
   forget)   exec python3 "$S/cm_ops.py" canonical forget "$@" ;;
   help|*)
@@ -64,7 +65,7 @@ users run the skill — they do not have ./cm on PATH)
                        verified knowledge freely (the amber band); past the ceiling only shrinking
                        satisfies (--evict=<fact> to free one pointer, or --allow-net-grow)
   cm gc [DIR] [--edges] [--apply] reclaim orphaned mirrors; --edges = fleet-wide ghost provenance-edge triage (report-only without --apply)
-  cm promote DIR FACT [CANON]  hand a local fact up to the global store + mirror the origin
+  cm promote DIR FACT [CANON] [--repoint] hand a local fact up to the global store + mirror the origin
   cm tokens [DIR] [--json] per-node + total token consumption across the network
   cm utility [DIR] [--json] fleet usage evidence per canonical (mirror-attributed reads, fleet tax vs
                        the warn-only advisory) — the gc lever's evidence table (v0.1.67, Phase C)
@@ -92,7 +93,7 @@ users run the skill — they do not have ./cm on PATH)
   cm conflicts [DIR]   three-way mirror conflict queue
   cm resolve FACT      --keep-canonical | --fork-local NAME | --promote-local
   cm repair-mirror FACT
-  cm canonical upsert STEM [--file PATH] [--origin]
+  cm canonical upsert STEM [--file PATH] [--origin] [--repoint]
   cm canonical catalog the domain's catalog (facts manifest: stems × classes × secret flags)
   cm canonical forget|supersede|expire|reactivate STEM
   cm canonical resurrect STEM --file PATH   replace a tombstone stub with a new body
@@ -124,6 +125,11 @@ users run the skill — they do not have ./cm on PATH)
   cm project rebind [DIR]
   cm project show [DIR]
   cm project unenroll [DIR]
+  cm group create|add|remove|delete|list|show  operator-granted recipient sets (the routed-link tier)
+                       create <name> --domain <home> [--apply --confirm create-group-<name>]
+                       add|remove <name> <project-path> [--apply --confirm add|remove-group-<name>]
+                       delete <name> [--apply --confirm delete-group-<name>]  (refuses a populated
+                       group; prints the citation count — facts naming it will deliver to nobody)
 
 A full pass is best driven by the plugin itself. Dogfood it from this repo:
   claude plugin marketplace add ./

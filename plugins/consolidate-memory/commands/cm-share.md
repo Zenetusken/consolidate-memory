@@ -39,6 +39,14 @@ must survive verification before it may exist. NO VERIFY, NO WRITE.
    python3 ${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py canonical upsert <stem> --file <draft-file> --origin --project .
    ```
 
+   If the writer refuses with "recipients predate the current group —
+   re-confirm (--repoint) or re-point": the draft's `recipients:` cite a group
+   RECREATED after the draft's `content_modified` — the group's identity is
+   fresh and the citation is stale. When the user confirms the narrowing
+   against the CURRENT group (step 5's confirmation IS the re-confirmation),
+   re-run with `--repoint` appended — the writer re-stamps the fact to now and
+   accepts. Never hand-bump `content_modified`.
+
 Enrolled projects only (the writer refuses otherwise). A secret-shaped draft is
 refused by the firewall — rephrase, never weaken it. A `stack-general` fact's
 `stacks:` must be detectable; the writer's own error names the undetectable set.

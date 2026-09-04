@@ -27,7 +27,7 @@ each project's store. This is the engine for that:
                        an unindexed evict (no real index line — frees nothing), and a GAINLESS one (the replayed
                        plan lands no additional held global). A plain `--pull` with anything held prints the
                        authored candidates.
-  --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical]
+  --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] [--repoint]
                        hand a project-authored local fact UP to the canonical global store and
                        convert the origin's copy into a managed mirror (the local→canonical
                        promotion hand-off; never leaves a dup/orphan — see promote()). A RECONCILE
@@ -663,15 +663,17 @@ re-ensure after iter_admissible_facts and parse the 10k-row JSON a second time).
 _PROJECT_MEMBERSHIPS_CACHE: dict = {}
 
 
-def _project_memberships(ctx) -> set:
+def _project_memberships(ctx, *, refresh: bool = False) -> set:
     """The group slugs ctx.project_id belongs to (group-scopes spec §5-C).
     Read-only registry lookup; degrade-to-empty on a missing/unmigrated
-    registry (the spec's one-cycle skew bound). Cached per project+registry."""
+    registry (the spec's one-cycle skew bound). Cached per project+registry;
+    `refresh=True` bypasses the cache — the gc mutate's in-lock re-verify must
+    see a membership re-grant that landed between scan and lock (review 3)."""
     try:
         from control_plane import connect_if_exists as _cife_m, db_path as _dbp_m
         _rp = _dbp_m(ctx)
         _ck = (str(_rp), ctx.project_id)
-        if _ck in _PROJECT_MEMBERSHIPS_CACHE:
+        if not refresh and _ck in _PROJECT_MEMBERSHIPS_CACHE:
             return set(_PROJECT_MEMBERSHIPS_CACHE[_ck])
         out: set = set()
         _mc = _cife_m(_rp)
@@ -686,10 +688,62 @@ def _project_memberships(ctx) -> set:
                 out = set()   # pre-migration schema: degrade-to-empty
             finally:
                 _mc.close()
-        _PROJECT_MEMBERSHIPS_CACHE[_ck] = frozenset(out)
+        if not refresh:
+            _PROJECT_MEMBERSHIPS_CACHE[_ck] = frozenset(out)
         return out
     except Exception:
         return set()
+
+
+_GROUP_CREATED_CACHE: dict = {}
+
+
+def _group_created_at(ctx, *, refresh: bool = False) -> dict:
+    """name → created_at for every group (group-lifecycle spec §2.3). Degrade-
+    to-empty on a missing registry; cached keyed by the registry path + a
+    groups-table fingerprint (count+max-created) so hermetic recreations
+    never serve stale rows. `refresh=True` bypasses the cache — the gc
+    mutate's in-lock re-verify must see a recreated group (review 3)."""
+    try:
+        from control_plane import connect_if_exists as _cife_gc, db_path as _dbp_gc
+        _rp = _dbp_gc(ctx)
+        _cc = _cife_gc(_rp)
+        if _cc is None:
+            return {}
+        try:
+            _fp = _cc.execute("SELECT COUNT(*) AS n, COALESCE(MAX(created_at),'') AS m "
+                              "FROM groups").fetchone()
+            _ck = (str(_rp), int(_fp["n"]), str(_fp["m"]))
+            if not refresh and _ck in _GROUP_CREATED_CACHE:
+                return dict(_GROUP_CREATED_CACHE[_ck])
+            out = {str(r["name"]): str(r["created_at"] or "")
+                   for r in _cc.execute("SELECT name, created_at FROM groups").fetchall()}
+            if not refresh:
+                _GROUP_CREATED_CACHE[_ck] = dict(out)
+            return out
+        except Exception:
+            return {}
+        finally:
+            _cc.close()
+    except Exception:
+        return {}
+
+
+def _recipients_stale_for(fm: dict, memberships: set, g_created: dict) -> bool:
+    """The per-recipient recreation guard (group-lifecycle spec §2.3): True when
+    the fact cites recipients this member belongs to, and EVERY one of those
+    groups was created AFTER the fact's own content_modified (the stale-identity
+    signal). A stamp-less fact passes; a fact with no intersecting recipients
+    passes (delivery is not theirs)."""
+    from fact_schema import _parse_flow_list  # noqa: F401 — deferred, like _admissible_records
+    recips = set(_parse_flow_list(str(fm.get("recipients") or "")))
+    inter = recips & memberships
+    if not inter:
+        return False
+    stamp = str(fm.get("content_modified") or "")
+    if not stamp:
+        return False
+    return all((g_created.get(g) or "") > stamp for g in inter)
 
 
 def _admissible_records(ctx) -> list:
@@ -737,6 +791,7 @@ def _admissible_records(ctx) -> list:
             man_rows = None
 
     memberships = _project_memberships(ctx)
+    g_created = _group_created_at(ctx)
 
     def _consider(path: Path, *, untagged_only: bool) -> None:
         if path.name == "MEMORY.md" or _is_reserved_stem(path.stem) or not _safe_stem(path.stem):
@@ -771,6 +826,8 @@ def _admissible_records(ctx) -> list:
                                    memberships=memberships,
                                    group_recips=set(_parse_flow_list(
                                        str(fm.get("recipients") or "")))):
+            return
+        if _recipients_stale_for(fm, memberships, g_created):
             return
         key = (fact_domain(fm) or "legacy", path.stem)
         if key in seen:
@@ -833,6 +890,8 @@ def _admissible_records(ctx) -> list:
                                    group_recips=set(_parse_flow_list(
                                        str(fm.get("recipients") or "")))):
             return
+        if _recipients_stale_for(fm, memberships, g_created):
+            return
         key = (fact_domain(fm) or "legacy", _stem)
         if key in seen:
             return
@@ -894,6 +953,8 @@ def _admissible_records(ctx) -> list:
                 _fm_f = _frontmatter(_ft)
                 _recips_f = set(_parse_flow_list(str(_fm_f.get("recipients") or "")))
                 if not (_recips_f & memberships):
+                    continue
+                if _recipients_stale_for(_fm_f, memberships, g_created):
                     continue
                 _key_f = (_sdom, _f.stem)
                 if _key_f in seen:
@@ -2721,6 +2782,91 @@ def _gc_edges(gfacts: list, apply: bool, project_dir: "Path | None" = None) -> i
     return 0
 
 
+def _mirror_canonical_path(ctx, name: str) -> "Path | None":
+    """The disk path of a mirror's canonical for the DECODED home domain, or
+    None when it is gone/tombstoned (group-lifecycle spec §2.3 — the re-source
+    reads the canonical file itself, never the admitted-only gfacts snapshot).
+    A tombstone holds no re-pullable content, so its mirror is orphaned."""
+    _d_mc, _s_mc = decode_key(name)
+    canon_p = _source_facts_dir(ctx, _d_mc or getattr(ctx, "domain_id", "") or "") \
+        / f"{_s_mc}.md"
+    ctext = _safe_read_text(canon_p)
+    if ctext is None:
+        return None
+    _c_fm_mc = _frontmatter(ctext)
+    if str(_c_fm_mc.get("status") or "").strip() in ("tombstoned", "superseded", "expired"):
+        return None
+    return canon_p
+
+
+def _classify_frozen(ctx, name: str, *, stacks: set, memberships: set,
+                     g_created: dict, canon_p: "Path | None" = None) -> "tuple | None":
+    """(reason, canonical_path) when a mirror is FROZEN, else None. The re-sourced
+    classifier (group-lifecycle spec §2.3): decode → disk-liveness → the
+    enumeration's FULL predicate (admissibility + the recreation guard +
+    relevance), with a carried reason token —
+      dropped-stack  canonical alive, admitted, but irrelevant here
+      guard-stale    canonical alive, the fact predates the group (the guard
+                     withholds it — on the admitted path TOO: the bridge admits
+                     a member of the recreated group, then the guard skips it)
+      not-entitled   canonical alive, not admitted otherwise (member removed …)
+    None = canonical gone (the ORPHAN branch owns it) or admitted-and-relevant
+    again (nothing to reclaim). The reason token drives the gc render copy —
+    the hardcoded "dropped stack" label must not lie (review 5)."""
+    if canon_p is None:
+        canon_p = _mirror_canonical_path(ctx, name)
+    if canon_p is None:
+        return None
+    ctext = _safe_read_text(canon_p)
+    if ctext is None:
+        return None
+    c_fm = _frontmatter(ctext)
+    admitted = False
+    try:
+        from fact_schema import (CLASS_ACTIVE, CLASS_LEGACY, _parse_flow_list as _pfl_cf,
+                                 classify_canonical)
+        from domain_policy import admit_cross_project, fact_domain
+        from memory_status import _looks_secret
+        from control_plane import migration_mode_readonly
+        _d_cf, _s_cf = decode_key(name)
+        home = _d_cf or getattr(ctx, "domain_id", "") or ""
+        _cls_cf = classify_canonical(ctext, stem=_s_cf,
+                                     domain=str(c_fm.get("domain") or home))
+        _ok_cls = (_cls_cf["class"] == CLASS_ACTIVE
+                   or (_global_is_fixture() and _cls_cf["class"] == CLASS_LEGACY))
+        if not _ok_cls:
+            # an invalid/legacy canonical stays LIVE by the stem-snapshot rule
+            # (0.3.3): its mirror is neither orphaned nor frozen — the file
+            # might be repaired, and the frozen mechanism is about DELIVERY
+            # revocation, not content validity.
+            return None
+        if not _looks_secret(ctext):
+            adm = dict(c_fm)
+            adm["body"] = ctext
+            if (_global_is_fixture() or _hermetic_home()) and not fact_domain(c_fm) \
+                    and getattr(ctx, "domain_id", "") not in ("", "unknown"):
+                adm["domain"] = ctx.domain_id
+            try:
+                _mode_cf = migration_mode_readonly(ctx)
+            except Exception:
+                _mode_cf = "dual-read"
+            admitted = admit_cross_project(
+                ctx.domain_id, adm, migration_mode=_mode_cf,
+                looks_secret=_looks_secret, memberships=memberships,
+                group_recips=set(_pfl_cf(str(c_fm.get("recipients") or ""))))
+    except Exception:
+        admitted = False
+    if admitted:
+        if _recipients_stale_for(c_fm, memberships, g_created):
+            return ("guard-stale", canon_p)
+        if is_relevant(c_fm, stacks):
+            return None
+        return ("dropped-stack", canon_p)
+    if _recipients_stale_for(c_fm, memberships, g_created):
+        return ("guard-stale", canon_p)
+    return ("not-entitled", canon_p)
+
+
 def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     """Reclaim orphaned mirrors. Report-by-default; delete only with --apply, and
     NEVER touch a project-authored (non-`global_ref:`) fact, even on a name collision.
@@ -2735,7 +2881,15 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     Dead-edge provenance (a canonical that still exists but lists a project no longer
     holding it) is REPORTED only, not auto-pruned: absence-of-mirror is a weak signal
     (a renamed/moved store also 'holds nothing'), and stripping global state on it
-    risks erasing real edges. The proven win is removing the orphan files."""
+    risks erasing real edges. The proven win is removing the orphan files.
+
+    v0.4.11 (group-lifecycle §2.3): the frozen scan is RE-SOURCED — a mirror whose
+    canonical is NOT in the admitted set is decoded, its canonical tested for DISK
+    liveness, and classified with a carried reason token (dropped-stack / guard-stale
+    / not-entitled). Orphan yields to frozen whenever the canonical file is disk-alive.
+    The orphan branch no longer blind-deletes: the mirror's own global_ref_body
+    lineage stamp vs its body hash decides clean-delete vs quarantine (edited work is
+    kept under quarantine/)."""
     project_dir = project_dir.resolve()
     if not project_dir.is_dir():
         # v0.1.75 defense-in-depth (audit F5) — same phantom-store guard as run(); _dispatch is the CLI choke.
@@ -2825,17 +2979,26 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     # stacks (a stale cache can classify a newly-relevant mirror as frozen and delete live
     # recall for up to the TTL). GC is rare — a fresh detect runs here, never the cache.
     stacks = detect_stacks(project_dir)
-    canon_fm = {n: fm for n, fm, _ in gfacts}
-    frozen: list = []
+    _memberships_gc = _project_memberships(_ctx_gc)
+    _g_created_gc = _group_created_at(_ctx_gc)
+    frozen: "list[tuple]" = []
     if store.exists():
         for f in sorted(store.glob("*.md")):
-            if f.name == "MEMORY.md" or _is_reserved_stem(f.stem) or f.stem not in canon_fm:
+            if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
                 continue
             t = _safe_read_text(f)   # store-scan convention — a vanished file must not abort the scan
-            _d_fz, _s_fz = decode_key(f.stem)
-            if t is not None and _is_mirror(t) and _s_fz in canon_fm \
-                    and not is_relevant(canon_fm[_s_fz], stacks):
-                frozen.append(f.stem)
+            if t is None or not _is_mirror(t):
+                continue
+            _ver_fz = _classify_frozen(_ctx_gc, f.stem, stacks=stacks,
+                                       memberships=_memberships_gc,
+                                       g_created=_g_created_gc)
+            if _ver_fz is not None:
+                frozen.append((f.stem, _ver_fz[0]))
+    # orphan yields to frozen whenever the canonical is disk-alive (spec §2.3): the
+    # classifier above already claimed those mirrors — the foreign alive-canonical
+    # mirror never reaches the orphan branch.
+    _frozen_names = {n for n, _r in frozen}
+    orphans = [n for n in orphans if n not in _frozen_names]
     out: list = []
     title = "✦ GARBAGE COLLECT · orphaned mirrors"
     tag = "APPLY" if apply else "REPORT"
@@ -2848,12 +3011,13 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     out.append(_ui.kv("ORPHANS", f"{len(orphans)} mirror(s) whose canonical is gone"
                + ("" if orphans else "  " + _ui.c("· nothing to reclaim", "dim"))))
     removed = 0
-    removed_frozen = 0
+    quarantined = 0
     _deleted_gc: set = set()
+    _quar_gc: set = set()
     if apply and (orphans or frozen):
         from control_plane import transact, _file_hash as _fh_gc, stable_fact_id as _sf_gc
         idxp = store / "MEMORY.md"
-        names = list(orphans) + list(frozen)
+        names = list(orphans) + [n for n, _r in frozen]
         expected: dict = {}
         if idxp.is_file():
             h = _fh_gc(idxp)
@@ -2867,20 +3031,71 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
                     expected[str(p)] = h
 
         def mutate(conn, temps):
+            import time as _time_gc
+            from mirror_conflict import semantic_hash as _sem_gc
             _idx_gc = _safe_read_text(idxp)
             idx = _idx_gc if _idx_gc is not None else "# Memory Index\n"
             deletes = []
             ops = []
+            quar: list = []
+            extra_expected: dict = {}
+            # review 3: the re-sourced predicate re-reads the REGISTRY maps
+            # too — a membership re-grant between scan and lock must skip the
+            # now-deliverable mirror. Fresh reads are safe under the
+            # interprocess lock (transacts serialize on it), and they're
+            # HOISTED — the registry cannot change mid-transact, so one fresh
+            # pair per op, not per name.
+            _memberships_lk = _project_memberships(_ctx_gc, refresh=True)
+            _g_created_lk = _group_created_at(_ctx_gc, refresh=True)
             for name in names:
                 p = store / f"{name}.md"
                 _t_gc = _safe_read_text(p)
-                if _t_gc is None:
+                if _t_gc is None or not _is_mirror(_t_gc):
                     continue
-                if name in frozen:
-                    # in-lock re-verification: never delete a file that stopped being a
-                    # mirror, or a mirror whose stack came back, between scan and lock
-                    if not _is_mirror(_t_gc) or is_relevant(canon_fm[name], stacks):
-                        continue
+                # in-lock re-verification RE-SOURCES (spec review N2): decode →
+                # disk-liveness → admissibility + relevance, for EVERY class. A
+                # name whose cause cleared (an owner's --repoint landed between
+                # scan and lock) is skipped; a name whose canonical died under
+                # the lock falls to the orphan arm.
+                _cp_now = _mirror_canonical_path(_ctx_gc, name)
+                _ver_gc = _classify_frozen(
+                    _ctx_gc, name, stacks=stacks,
+                    memberships=_memberships_lk,
+                    g_created=_g_created_lk,
+                    canon_p=_cp_now)
+                if _ver_gc is None:
+                    if _cp_now is not None:
+                        continue      # admitted + relevant again — nothing to reclaim
+                    # orphan arm (canonical gone): no canonical to compare — the
+                    # mirror's own global_ref_body lineage stamp vs its current
+                    # body hash (matching → clean → delete; diverging → the
+                    # user's work → quarantine; no stamp — pre-v0.1.78, never
+                    # refreshed — defaults clean).
+                    _fm_gc = _frontmatter(_t_gc)
+                    _stamp_gc = str(_fm_gc.get("global_ref_body") or "")
+                    if _stamp_gc and _stamp_gc != _body_hash(_t_gc):
+                        _qpath = store / "quarantine" / \
+                            f"{name}.{_time_gc.strftime('%Y%m%dT%H%M%SZ', _time_gc.gmtime())}.md"
+                        temps[str(_qpath)] = _t_gc
+                        quar.append(name)
+                else:
+                    # frozen arm: clean-vs-edited against the disk-alive canonical
+                    # (the revoke precedent's semantic compare). The canonical read
+                    # is pinned into expected_revisions — a mid-transact canonical
+                    # change must not silently flip the verdict (review N2).
+                    _ctext_gc = _safe_read_text(_cp_now) or ""
+                    try:
+                        _edited = _sem_gc(_t_gc) != _sem_gc(_ctext_gc)
+                    except Exception:
+                        _edited = True
+                    _h_cp = _fh_gc(_cp_now) if _cp_now.is_file() else ""
+                    if _h_cp:
+                        extra_expected[str(_cp_now)] = _h_cp
+                    if _edited:
+                        _qpath = store / "quarantine" / \
+                            f"{name}.{_time_gc.strftime('%Y%m%dT%H%M%SZ', _time_gc.gmtime())}.md"
+                        temps[str(_qpath)] = _t_gc
+                        quar.append(name)
                 deletes.append(str(p))
                 idx = "\n".join(
                     ln for ln in idx.splitlines() if f"]({name}.md)" not in ln)
@@ -2892,41 +3107,58 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
                 ops.append({"op": "holder_delete", "fact_id": fid,
                             "project_id": _ctx_gc.project_id})
             temps[str(idxp)] = idx.rstrip() + "\n"
-            return {"deletes": deletes, "removed": len(deletes), "registry_ops": ops}
+            return {"deletes": deletes, "removed": len(deletes) - len(quar),
+                    "quarantined": quar, "registry_ops": ops,
+                    "expected_revisions": extra_expected}
 
         try:
             # the in-lock re-verification may skip a name that changed between scan and
             # lock — the RESULT must report what the transact actually deleted, not the
             # scan lists (review fix: a skipped name over-stated the removal counts)
             _t_out = transact(_ctx_gc, "gc-apply",
-                              {"orphans": list(orphans), "frozen": list(frozen)},
+                              {"orphans": list(orphans),
+                               "frozen": [n for n, _r in frozen]},
                               mutate, expected_revisions=expected)
             _res_gc = _t_out.get("result") or {}
             _deleted_gc = {Path(str(p)).stem for p in (_res_gc.get("deletes") or [])}
-            removed = sum(1 for n in orphans if n in _deleted_gc)
-            removed_frozen = sum(1 for n in frozen if n in _deleted_gc)
+            _quar_gc = set(_res_gc.get("quarantined") or [])
+            removed = sum(1 for n in orphans if n in _deleted_gc and n not in _quar_gc)
+            removed += sum(1 for n, _r in frozen if n in _deleted_gc and n not in _quar_gc)
+            quarantined = len(_quar_gc)
         except _WRGc as e:
             print(f"gc: {e}", file=sys.stderr)
             return 2
     for name in orphans:
         if apply:
-            if name in _deleted_gc:
+            if name in _quar_gc:
+                out.append("    " + _ui.c("✻", "red") + f" quarantined {name}  " + _ui.c("(locally edited — kept under quarantine/)", "dim"))
+            elif name in _deleted_gc:
                 out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(file + index pointer)", "dim"))
             else:
                 out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(changed under lock — left in place)", "dim"))
         else:
             out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer)", "dim"))
-    out.append(_ui.kv("FROZEN", f"{len(frozen)} mirror(s) whose canonical is ALIVE but irrelevant here (dropped stack)"
+    # v0.4.11: the reason token drives the copy — the hardcoded "dropped stack"
+    # label would lie about guard-stale / not-entitled mirrors (review 5).
+    _reason_copy = {
+        "dropped-stack": "canonical alive but irrelevant here (dropped stack)",
+        "guard-stale": "canonical alive but the fact predates the group it cites — re-point or re-confirm",
+        "not-entitled": "canonical alive but this project is not entitled (member removed / not admitted)",
+    }
+    out.append(_ui.kv("FROZEN", f"{len(frozen)} mirror(s) whose canonical is ALIVE but not delivered here"
                + ("" if frozen else "  " + _ui.c("· none", "dim"))))
-    for name in frozen:
+    for name, reason in frozen:
+        _why = _reason_copy.get(reason, "canonical alive but not delivered here")
         if apply:
-            if name in _deleted_gc:
-                out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c("(re-pullable if the stack returns)", "dim"))
+            if name in _quar_gc:
+                out.append("    " + _ui.c("✻", "red") + f" quarantined {name}  " + _ui.c("(locally edited — kept under quarantine/)", "dim"))
+            elif name in _deleted_gc:
+                out.append("    " + _ui.c("✓", "green") + f" removed {name}  " + _ui.c(f"({_why}; re-pullable if the cause clears)", "dim"))
             else:
                 out.append("    " + _ui.c("·", "yellow") + f" {name}  " + _ui.c("(changed under lock — left in place)", "dim"))
         else:
-            out.append("    " + _ui.c("✻", "yellow") + f" {name}  " + _ui.c("(would remove file + index pointer; re-pullable — canonical stays)", "dim"))
-    tail = (f"removed {removed} orphan(s) + {removed_frozen} frozen" if apply
+            out.append("    " + _ui.c("✻", "yellow") + f" {name}  " + _ui.c(f"(would remove file + index pointer; {_why} — canonical stays)", "dim"))
+    tail = (f"removed {removed} mirror(s), quarantined {quarantined} (edited)" if apply
             else "run with --apply to delete (surface these to the user first)")
     out.append("")
     out.append(_ui.kv("RESULT", tail))
@@ -2975,7 +3207,8 @@ def _bodies_match(a: str, b: str) -> bool:
     return _body(a) == _body(b)
 
 
-def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonical: bool = False) -> int:
+def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonical: bool = False,
+             allow_repoint: bool = False) -> int:
     """Hand a project-authored LOCAL fact up to the canonical global store, then convert the
     origin's own copy into a managed mirror — the local→canonical hand-off the Phase-1 promotion
     re-audit drives. SINGLE-SHOT: one invocation does the full hand-off — write the canonical, record
@@ -3106,10 +3339,12 @@ def promote(project_dir: Path, local_fact: str, canon_name: str, prefer_canonica
             origin_delete = src
     if not reconcile:
         _up = _upsert(_sctx, canon_name, local_text, create_only=True,
-                      origin_local=dest, origin_delete=origin_delete)
+                      origin_local=dest, origin_delete=origin_delete,
+                      allow_repoint=allow_repoint)
     else:
         _up = _upsert(_sctx, canon_name, local_text, preserve_canonical=True,
-                      origin_local=dest, origin_delete=origin_delete)
+                      origin_local=dest, origin_delete=origin_delete,
+                      allow_repoint=allow_repoint)
     if not _up.get("ok"):
         print(f"promote: canonical upsert refused: {_up.get('error')}", file=sys.stderr)
         return 1
@@ -4510,9 +4745,11 @@ def _dispatch() -> int:
     if args and args[0] == "--promote":
         # --promote PROJECT_DIR LOCAL_FACT [CANON_NAME]  (CANON_NAME defaults to LOCAL_FACT)
         if len(pos) < 2:
-            print("usage: sync_global.py --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical]", file=sys.stderr)
+            print("usage: sync_global.py --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] [--repoint]", file=sys.stderr)
             return 2
-        return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1], prefer_canonical="--prefer-canonical" in args)
+        return promote(Path(pos[0]), pos[1], pos[2] if len(pos) >= 3 else pos[1],
+                       prefer_canonical="--prefer-canonical" in args,
+                       allow_repoint="--repoint" in args)
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--edges] [--apply] PROJECT_DIR "
               "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
