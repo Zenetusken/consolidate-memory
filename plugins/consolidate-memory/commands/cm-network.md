@@ -8,9 +8,9 @@ always-loaded tier, which facts are baseline (everyone-holds) vs this-stack, and
 the recall-utility evidence each canonical has accrued.
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --tokens . --json
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --network .
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --utility .
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --tokens . --json
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --network .
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --utility .
 ```
 
 Nothing here mutates a store. A canonical showing 0 organic reads is absence of

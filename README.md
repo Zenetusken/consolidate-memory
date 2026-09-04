@@ -12,7 +12,7 @@ It **complements** Auto Dream rather than replacing it — a deliberately *expli
 project tidy automatically; you invoke **`dream`** (or "consolidate my memory") when you want
 *verified* + *cross-project* consolidation.
 
-> **Current release: v0.4.10.** Public **1.0 remains HOLD** (evidence-gated — see
+> **Current release: v0.4.11.** Public **1.0 remains HOLD** (evidence-gated — see
 > [`docs/1.0-preflight.spec.md`](docs/1.0-preflight.spec.md)). Per-version detail lives in
 > [**CHANGELOG.md**](CHANGELOG.md).
 
@@ -109,7 +109,11 @@ operator-granted recipient set that a fact's `recipients:` targets to **narrow**
 delivery — to just two repos, or across domains. The same commands drive both
 layers: `/cm-domain` and `/cm-connect` shape the domains; `/cm-group` declares
 the links; `/cm-share` asks, when groups exist, whether to deliver to a group or
-the whole domain (the narrowing is printed verbatim before you confirm).
+the whole domain (the narrowing is printed verbatim before you confirm). Group
+lifecycles are governed too: deleting a populated group is refused (members
+first, named); a fact predating a recreated group is withheld on pull unless
+re-confirmed (`--repoint`), and its stranded mirrors show as FROZEN in `gc` —
+deleted clean, quarantined if locally edited.
 
 Enrolling a single project alone is just **`/cm-domain`**; `cm doctor` — or
 `/cm-doctor` — in any project prints the resolved setup, and the
@@ -132,9 +136,10 @@ reporting (never replacing it). You can also drive the pieces directly:
 ./cm extract           # curated session signal (human turns + error-gotchas, secrets omitted)
 ./cm distill           # recurring Bash-command workflows (templates + compound-command chains) — distill's raw signal
 ./cm pull .            # replicate relevant global facts into this project
-./cm gc . --apply      # reclaim orphaned mirrors (canonical deleted) — report-only without --apply
+./cm gc . --apply      # reclaim orphaned + FROZEN mirrors (canonical gone, or alive but not delivered here) — report-only without --apply
 ./cm tokens .          # per-node + total token consumption across the network (≈ chars/4)
 ./cm network           # the cross-project shared-memory graph
+./cm group create|add|remove|delete|list|show  # operator-granted recipient groups (the routed link)
 ./cm conflicts         # three-way mirror conflict queue (local edits are never silently overwritten)
 ./cm render cycle.json # render ONE cycle record → the ASCII dashboard
 ./cm report            # open the rich self-contained HTML archive (all dreams for this repo)
@@ -194,7 +199,10 @@ in one project has to be **replicated** into the others to surface there. The mo
   namespaced keys, and the operator's grant is the confidentiality carrier).
   Removing a member withdraws their mirrors (clean ones deleted, edited ones
   quarantined); a recreated group name is a fresh identity, and old facts
-  cannot silently re-point at it.
+  cannot silently re-point at it — re-confirming takes an explicit `--repoint`
+  (which restamps the fact to now), delivery withholds per-recipient, and
+  stranded mirrors are reclaimed by `gc` (clean deleted, locally-edited
+  quarantined).
 - They're **replicated** into each enrolled project's store on that project's next pull.
 
 `./cm network` shows the topology — the **universal baseline** (facts every project holds)

@@ -5,6 +5,27 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.11] — 2026-09-04
+
+**Patch** — group-lifecycle completion: the three gaps the 0.4.10 fleet
+dogfood named. `cm group delete` exists (refuses a populated group — naming
+the member project ids — and prints the citation count across every enrolled
+domain before deleting; the delete is journaled). The recreation guard gains
+its re-confirm affordance: `--repoint` on `cm canonical upsert` and
+`sync_global.py --promote` explicitly authorizes `recipients:` that predate
+the current group identity and force-restamps `content_modified` to now (the
+durable re-confirmation; the error names the flag). The pull side of the
+guard ships: delivery withholds **per-recipient** (a member of a FRESH cited
+group still receives the fact), a stamp-less edit re-delivers without the
+flag, and gc is **re-sourced** — a withheld fact's stranded mirror renders
+FROZEN with a reason token (dropped-stack / guard-stale / not-entitled),
+`gc --apply` deletes it clean or quarantines a locally-edited copy, and the
+orphan branch's blind-delete is replaced by the mirror's own lineage-stamp
+clean-vs-edited test. Design-of-record:
+`docs/group-lifecycle-completion.spec.md` (advisor + adversarial
+review-to-zero + a per-PR review round; 1573 smoke assertions, the pull-guard
+pins verified to fail on pre-fix code). Backward-compatible → patch.
+
 ## [0.4.10] — 2026-09-04
 
 **Patch** — the group-scopes layer: the routed-link tier above the domain. An

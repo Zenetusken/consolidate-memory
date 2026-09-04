@@ -2658,11 +2658,14 @@ with _tf43.TemporaryDirectory() as _td54:
           "this read's beat" in _se54 and "Phase-0" not in _se54)
 
 # (5) SKILL pins: every scripts/ command line carries the CM_DREAM_ARC=1 prefix (uniform rule —
-# zero unprefixed invocations), and the contract anchors exist (format schematic, beats, never-echo).
+# zero unprefixed invocations), the root is QUOTED (a whitespace-bearing install path must
+# not word-split — pentest), and the contract anchors exist (format schematic, beats, never-echo).
 _sk54 = _skill_md.read_text(encoding="utf-8")
-_cmd54 = [ln for ln in _sk54.splitlines() if "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/" in ln]
+_cmd54 = [ln for ln in _sk54.splitlines() if "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/" in ln]
 check(f"v0.1.54 SKILL pin: every scripts/ command line is CM_DREAM_ARC=1-prefixed ({len(_cmd54)} lines)",
       bool(_cmd54) and all("CM_DREAM_ARC=1 python3" in ln for ln in _cmd54))
+check("v0.1.54 SKILL pin: the plugin root is quoted in EVERY doc command site (zero unquoted)",
+      "python3 ${CLAUDE_PLUGIN_ROOT}/scripts/" not in _sk54)
 check("v0.1.54/57 SKILL pin: the dream-arc contract anchors (schematic, beats, never-echo)",
       "*💤" in _sk54 and "SLEEP" in _sk54 and "SURFACING" in _sk54 and "WAKE" in _sk54
       and "[dream-arc]" in _sk54)
@@ -12275,6 +12278,600 @@ with _tf73.TemporaryDirectory() as _td_gs:
             _os73.environ["HOME"] = _home_prev_gs
         sg.GLOBAL = _global_prev_gs
 
+# ── v0.4.11 group-lifecycle completion (docs/group-lifecycle-completion.spec.md §4) ──
+with _tf73.TemporaryDirectory() as _td_lc:
+    _home_lc = Path(_td_lc)
+    _pa_lc = (_home_lc / "src" / "pa").resolve(); _pa_lc.mkdir(parents=True)
+    _pb_lc = (_home_lc / "src" / "pb").resolve(); _pb_lc.mkdir(parents=True)
+    _pc_lc = (_home_lc / "src" / "pc").resolve(); _pc_lc.mkdir(parents=True)
+    _pd_lc = (_home_lc / "src" / "pd").resolve(); _pd_lc.mkdir(parents=True)
+    _pe_lc = (_home_lc / "src" / "pe").resolve(); _pe_lc.mkdir(parents=True)
+    for _p_lc in (_pa_lc, _pb_lc, _pc_lc, _pd_lc, _pe_lc):
+        (_home_lc / ".claude" / "projects" / ms.slug_for(_p_lc) / "memory").mkdir(parents=True)
+    _home_prev_lc = _os73.environ.get("HOME")
+    _global_prev_lc = sg.GLOBAL
+    _os73.environ["HOME"] = str(_home_lc)
+    sg.GLOBAL = _home_lc / ".claude" / "memory"    # absent — CI parity, no legacy leak
+    try:
+        import canonical_ingress as _ci_lc
+        import cm_ops as _co_lc
+        _gid_pair_lc = "g_" + "b" * 32
+        _gid_fresh_lc = "g_" + "c" * 32
+        _ctx0_lc = sc.resolve_store(_pa_lc)
+        _conn_lc = cp.connect(cp.db_path(_ctx0_lc))
+        try:
+            cp.enroll_project(_conn_lc, _ctx0_lc, "personal")
+            cp.apply_registry_ops(_conn_lc, [
+                {"op": "group_upsert", "group_id": _gid_pair_lc, "name": "pair",
+                 "domain_id": "personal", "created_at": "2026-08-01T00:00:00Z"},
+                {"op": "group_upsert", "group_id": _gid_fresh_lc, "name": "fresh",
+                 "domain_id": "personal", "created_at": "2026-08-01T00:00:00Z"},
+                {"op": "group_member_add", "group_id": _gid_pair_lc,
+                 "project_id": _ctx0_lc.project_id},
+                {"op": "group_member_add", "group_id": _gid_fresh_lc,
+                 "project_id": _ctx0_lc.project_id},
+            ])
+            _conn_lc.commit()
+        finally:
+            _conn_lc.close()
+        _ctxa_lc = sc.resolve_store(_pa_lc)
+        _ctxb_lc = sc.resolve_store(_pb_lc)
+        _ctxc_lc = sc.resolve_store(_pc_lc)
+        _ctxd_lc = sc.resolve_store(_pd_lc)
+        _ctxe_lc = sc.resolve_store(_pe_lc)
+        _conn2_lc = cp.connect(cp.db_path(_ctxa_lc))
+        try:
+            cp.enroll_project(_conn2_lc, _ctxb_lc, "personal")   # same-domain NON-member
+            cp.enroll_project(_conn2_lc, _ctxc_lc, "work")       # cross-domain member
+            cp.enroll_project(_conn2_lc, _ctxd_lc, "personal")   # pair AND fresh
+            cp.enroll_project(_conn2_lc, _ctxe_lc, "personal")   # pair only
+            cp.apply_registry_ops(_conn2_lc, [
+                {"op": "group_member_add", "group_id": _gid_pair_lc,
+                 "project_id": _ctxc_lc.project_id},
+                {"op": "group_member_add", "group_id": _gid_pair_lc,
+                 "project_id": _ctxd_lc.project_id},
+                {"op": "group_member_add", "group_id": _gid_fresh_lc,
+                 "project_id": _ctxd_lc.project_id},
+                {"op": "group_member_add", "group_id": _gid_pair_lc,
+                 "project_id": _ctxe_lc.project_id},
+            ])
+            _conn2_lc.commit()
+        finally:
+            _conn2_lc.close()
+        # re-resolve AFTER the grants (enrollment is cached at resolve — the
+        # pre-enrollment ctxs would read domain "unknown" and misroute the gc pins)
+        _ctxb_lc = sc.resolve_store(_pb_lc)
+        _ctxc_lc = sc.resolve_store(_pc_lc)
+        _ctxd_lc = sc.resolve_store(_pd_lc)
+        _ctxe_lc = sc.resolve_store(_pe_lc)
+        # the writer accepts [pair, fresh] (both pre-recreation)
+        check("v0.4.11 lifecycle: the writer accepts [pair, fresh] (both pre-recreation)",
+              _ci_lc.upsert(_ctxa_lc, "lc-accept", _v3_canon("lc-accept").replace(
+                  "applies_exclude: []\n",
+                  "applies_exclude: []\nrecipients: [pair, fresh]\n", 1)).get("ok") is True)
+        # the stranding fact is DIRECT-written with its OLD stamp: the writer
+        # restamps content_modified to now on create (the fresh-authoring
+        # convention), so a fact that genuinely predates the recreated group is
+        # one the writer has not touched since — a disk write, not an upsert
+        _canon_lc = _v3_canon("lc-fact").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair, fresh]\n", 1)
+        (_ctxa_lc.canonical_domain_dir / "lc-fact.md").write_text(_canon_lc, encoding="utf-8")
+        # pre-recreation delivery: C (bridge) and E (same-domain) both pull
+        _storec_lc = _ctxc_lc.native_memory_dir
+        _storee_lc = _ctxe_lc.native_memory_dir
+        for _proj_lc, _store_lc, _name_lc in (
+                (_pc_lc, _storec_lc, "personal--lc-fact.md"),
+                (_pe_lc, _storee_lc, "lc-fact.md")):
+            _o_lc = _io73.StringIO()
+            with _ctx73.redirect_stdout(_o_lc):
+                sg.run(_proj_lc, pull=True)
+            check(f"v0.4.11 lifecycle: pre-recreation pull lands the {_name_lc} mirror",
+                  (_store_lc / _name_lc).exists())
+        # ── recreate the group: pair now POSTdates every fact (the stale identity) ──
+        _conn3_lc = cp.connect(cp.db_path(_ctxa_lc))
+        try:
+            cp.apply_registry_ops(_conn3_lc, [{"op": "group_delete",
+                                               "group_id": _gid_pair_lc}])
+            cp.apply_registry_ops(_conn3_lc, [{"op": "group_upsert",
+                                               "group_id": _gid_pair_lc, "name": "pair",
+                                               "domain_id": "personal",
+                                               "created_at": "2026-09-02T00:00:00Z"}])
+            # re-grant the new identity to the same members (the accidental
+            # re-pointing the guard exists to catch)
+            for _pid_lc in (_ctxa_lc.project_id, _ctxc_lc.project_id,
+                            _ctxd_lc.project_id, _ctxe_lc.project_id):
+                cp.apply_registry_ops(_conn3_lc, [{"op": "group_member_add",
+                                                   "group_id": _gid_pair_lc,
+                                                   "project_id": _pid_lc}])
+            _conn3_lc.commit()
+        finally:
+            _conn3_lc.close()
+        # review 3: the refresh bypass — a cached membership set must not be
+        # served to the in-lock re-verify after a re-grant (B never pulls, so
+        # the grant affects nothing downstream)
+        _mem_b0_lc = sg._project_memberships(_ctxb_lc)
+        _conn_mb_lc = cp.connect(cp.db_path(_ctxa_lc))
+        try:
+            cp.apply_registry_ops(_conn_mb_lc, [{"op": "group_member_add",
+                                                 "group_id": _gid_fresh_lc,
+                                                 "project_id": _ctxb_lc.project_id}])
+            _conn_mb_lc.commit()
+        finally:
+            _conn_mb_lc.close()
+        check("v0.4.11 lifecycle: the membership cache serves the stale set while "
+              "refresh=True bypasses it (the gc re-verify's fresh registry read)",
+              sg._project_memberships(_ctxb_lc) == _mem_b0_lc
+              and _mem_b0_lc == set()
+              and "fresh" in sg._project_memberships(_ctxb_lc, refresh=True))
+        # writer guard: predating recipients refuse and NAME the re-confirm flag
+        _canon_rp_lc = _v3_canon("repoint-x").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        _up_no_lc = _ci_lc.upsert(_ctxa_lc, "repoint-x", _canon_rp_lc)
+        check("v0.4.11 lifecycle: upsert still refuses predating recipients and the "
+              "error names --repoint",
+              _up_no_lc.get("ok") is False and "repoint" in str(_up_no_lc.get("error") or ""))
+        _up_rp_lc = _ci_lc.upsert(_ctxa_lc, "repoint-x", _canon_rp_lc, allow_repoint=True)
+        _rp_canon_lc = _ctxa_lc.canonical_domain_dir / "repoint-x.md"
+        _rp_fm_lc = sg._frontmatter(
+            _rp_canon_lc.read_text(encoding="utf-8")) if _rp_canon_lc.exists() else {}
+        check("v0.4.11 lifecycle: upsert --repoint accepts AND force-restamps "
+              "content_modified to now (the durable re-confirmation)",
+              _up_rp_lc.get("ok") is True
+              and str(_rp_fm_lc.get("content_modified") or "") >= "2026-09-02")
+        # the CLI surface itself (review 1): the parsed flag reaches the writer —
+        # a parsed-but-not-forwarded --repoint would refuse identically
+        _draft_cli_lc = _home_lc / "draft-repoint.md"
+        _draft_cli_lc.write_text(_v3_canon("repoint-cli").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1),
+            encoding="utf-8")
+        _out_cli1_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_out_cli1_lc), _ctx73.redirect_stderr(_io73.StringIO()):
+            _rc_cli1_lc = _co_lc.main(["canonical", "upsert", "repoint-cli",
+                                       "--file", str(_draft_cli_lc), "--project", str(_pa_lc)])
+        check("v0.4.11 lifecycle: cm canonical upsert refuses predating recipients "
+              "without the flag (the CLI wire, not the in-process param)",
+              _rc_cli1_lc != 0 and "repoint" in _out_cli1_lc.getvalue())
+        _out_cli2_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_out_cli2_lc), _ctx73.redirect_stderr(_io73.StringIO()):
+            _rc_cli2_lc = _co_lc.main(["canonical", "upsert", "repoint-cli",
+                                       "--file", str(_draft_cli_lc), "--project", str(_pa_lc),
+                                       "--repoint"])
+        check("v0.4.11 lifecycle: cm canonical upsert --repoint accepts (the parsed "
+              "flag is FORWARDED — the dead-flag regression)",
+              _rc_cli2_lc == 0
+              and (_ctxa_lc.canonical_domain_dir / "repoint-cli.md").exists())
+        # the pull-side guard's fixture fact: authored against the OLD identity,
+        # so it predates the recreated group (direct write — the writer would refuse)
+        (_ctxa_lc.canonical_domain_dir / "lc-stale.md").write_text(
+            _v3_canon("lc-stale").replace(
+                "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1),
+            encoding="utf-8")
+        _o_c1_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_c1_lc):
+            sg.run(_pc_lc, pull=True)
+        check("v0.4.11 lifecycle: the bridge enumeration withholds a guard-stale fact",
+              not (_storec_lc / "personal--lc-stale.md").exists())
+        _o_e1_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_e1_lc):
+            sg.run(_pe_lc, pull=True)
+        check("v0.4.11 lifecycle: the same-domain narrowing withholds a guard-stale "
+              "fact, while a re-pointed fact delivers (the skip is per-fact)",
+              not (_storee_lc / "lc-stale.md").exists()
+              and (_storee_lc / "repoint-x.md").exists())
+        _o_d1_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_d1_lc):
+            sg.run(_pd_lc, pull=True)
+        check("v0.4.11 lifecycle: the SAME member is withheld lc-stale ([pair] all-stale) "
+              "yet receives lc-fact (the fresh group rescues — per-recipient, a "
+              "whole-fact skip would starve them)",
+              not (_ctxd_lc.native_memory_dir / "lc-stale.md").exists()
+              and (_ctxd_lc.native_memory_dir / "lc-fact.md").exists())
+        # self-heal corner: a stamp-less edit re-delivers WITHOUT --repoint
+        _canon_heal_lc = _v3_canon("lc-heal").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1
+        ).replace("content_modified: 2026-09-01T00:00:00Z\n", "", 1)
+        check("v0.4.11 lifecycle: a stamp-less fact with recipients is accepted "
+              "(fresh-authoring convention — the writer stamps now)",
+              _ci_lc.upsert(_ctxa_lc, "lc-heal", _canon_heal_lc).get("ok") is True)
+        _o_c2_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_c2_lc):
+            sg.run(_pc_lc, pull=True)
+        check("v0.4.11 lifecycle: the stamp-less fact re-delivers (self-heal)",
+              (_storec_lc / "personal--lc-heal.md").exists())
+        # PR-#194 interplay, re-cast as an invariant toggle: a guard-skipped fact's
+        # mirror present + a stale same-stem manifest row → the beacon stays silent,
+        # WITH the skip (the enumeration excludes it) and WITHOUT (the hash fill
+        # overwrites the foreign-domain record)
+        _beacon_lc = __import__("session_beacon")
+        _lc_fact_text_lc = (_ctxa_lc.canonical_domain_dir / "lc-fact.md").read_text(
+            encoding="utf-8")
+        _lc_fact_fm_lc = sg._frontmatter(_lc_fact_text_lc)
+        check("v0.4.11 lifecycle: the beacon is silent WITH the skip (no phantom "
+              "missing claim for a withheld fact)",
+              _beacon_lc.beacon_line(
+                  _storec_lc, domain_id="work", gfacts=[],
+                  memberships={"pair"}) == "")
+        _bh_filled_lc = _beacon_lc._fill_body_hashes(
+            {"lc-fact": "9" * 12},
+            [("lc-fact", _lc_fact_fm_lc, _lc_fact_text_lc)], "work")
+        _b2_lc = _beacon_lc.beacon_line(
+            _storec_lc, domain_id="work",
+            gfacts=[("lc-fact", _lc_fact_fm_lc, _lc_fact_text_lc)],
+            body_hashes=_bh_filled_lc, memberships={"pair"})
+        check("v0.4.11 lifecycle: the beacon is silent WITHOUT the skip (the stale "
+              "same-stem manifest row never phantom-stales the mirror)",
+              "outdated content" not in _b2_lc)
+        # ── the stranding pin: a guard-skipped fact's existing mirror renders
+        #    FROZEN with its reason token; gc --apply reclaims it — clean DELETED,
+        #    edited QUARANTINED — on BOTH geometries (namespaced foreign + bare stem)
+        _o_gc1_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_gc1_lc):
+            sg.gc(_pc_lc, False)
+        check("v0.4.11 lifecycle: the namespaced guard-stale mirror renders FROZEN "
+              "with the guard-stale reason token, NOT as an orphan",
+              "FROZEN" in _o_gc1_lc.getvalue()
+              and "predates the group" in _o_gc1_lc.getvalue()
+              and "personal--lc-fact" in _o_gc1_lc.getvalue()
+              and "nothing to reclaim" in _o_gc1_lc.getvalue())
+        _o_gc2_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_gc2_lc):
+            sg.gc(_pc_lc, apply=True)
+        check("v0.4.11 lifecycle: gc --apply DELETES the clean namespaced frozen mirror",
+              "removed 1 mirror(s)" in _o_gc2_lc.getvalue()
+              and not (_storec_lc / "personal--lc-fact.md").exists())
+        (_storec_lc / "personal--lc-fact.md").write_text(
+            _sg2_gs._as_mirror(_canon_lc.replace("body\n", "body edited by member\n", 1),
+                               "lc-fact", fact_id=cp.stable_fact_id("personal", "lc-fact"),
+                               domain="personal"), encoding="utf-8")
+        _o_gc3_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_gc3_lc):
+            sg.gc(_pc_lc, apply=True)
+        _qc_lc = _storec_lc / "quarantine"
+        _q_hits_lc = [q.name for q in _qc_lc.glob("*.md")] if _qc_lc.is_dir() else []
+        check("v0.4.11 lifecycle: gc --apply QUARANTINES the locally-edited namespaced "
+              "frozen mirror (clean-delete vs quarantine, foreign geometry)",
+              "quarantined 1" in _o_gc3_lc.getvalue()
+              and not (_storec_lc / "personal--lc-fact.md").exists()
+              and any("personal--lc-fact" in q for q in _q_hits_lc))
+        _o_gc4_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_gc4_lc):
+            sg.gc(_pe_lc, False)
+        check("v0.4.11 lifecycle: the bare-stem guard-stale mirror renders FROZEN "
+              "with the reason token (same-domain decode), NOT as an orphan",
+              "FROZEN" in _o_gc4_lc.getvalue()
+              and "predates the group" in _o_gc4_lc.getvalue()
+              and "lc-fact" in _o_gc4_lc.getvalue()
+              and "nothing to reclaim" in _o_gc4_lc.getvalue())
+        _o_gc5_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_gc5_lc):
+            sg.gc(_pe_lc, apply=True)
+        check("v0.4.11 lifecycle: gc --apply DELETES the clean bare-stem frozen mirror",
+              "removed 1 mirror(s)" in _o_gc5_lc.getvalue()
+              and not (_storee_lc / "lc-fact.md").exists())
+        (_storee_lc / "lc-fact.md").write_text(
+            _sg2_gs._as_mirror(_canon_lc.replace("body\n", "body edited by member\n", 1),
+                               "lc-fact", fact_id=cp.stable_fact_id("personal", "lc-fact"),
+                               domain="personal"), encoding="utf-8")
+        _o_gc6_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_gc6_lc):
+            sg.gc(_pe_lc, apply=True)
+        _qe_lc = _storee_lc / "quarantine"
+        _q_hits_e_lc = [q.name for q in _qe_lc.glob("*.md")] if _qe_lc.is_dir() else []
+        check("v0.4.11 lifecycle: gc --apply QUARANTINES the locally-edited bare-stem "
+              "frozen mirror (clean-delete vs quarantine, same-domain geometry)",
+              "quarantined 1" in _o_gc6_lc.getvalue()
+              and not (_storee_lc / "lc-fact.md").exists()
+              and any("lc-fact" in q for q in _q_hits_e_lc))
+        # the ORPHAN arm's clean-vs-edited (review 5a): a stamp-carrying orphan
+        # whose body matches its global_ref_body lineage stamp is DELETED; a
+        # diverging body is QUARANTINED (the precedent's canonical-gone arm
+        # blind-deleted both — this pin fails on that code)
+        _h_orphan_lc = sg._body_hash(_canon_lc)
+        (_storee_lc / "orphan-clean.md").write_text(
+            _sg2_gs._as_mirror(_canon_lc, "orphan-clean",
+                               since="2026-09-01T00:00:00Z", body_hash=_h_orphan_lc,
+                               fact_id=cp.stable_fact_id("personal", "orphan-clean"),
+                               domain="personal"), encoding="utf-8")
+        _mir_ed_lc = _sg2_gs._as_mirror(
+            _canon_lc, "orphan-ed", since="2026-09-01T00:00:00Z", body_hash=_h_orphan_lc,
+            fact_id=cp.stable_fact_id("personal", "orphan-ed"),
+            domain="personal").replace("body\n", "body edited\n", 1)
+        (_storee_lc / "orphan-ed.md").write_text(_mir_ed_lc, encoding="utf-8")
+        _o_gc7_lc = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_gc7_lc):
+            sg.gc(_pe_lc, apply=True)
+        _q_hits_e2_lc = [q.name for q in _qe_lc.glob("*.md")] if _qe_lc.is_dir() else []
+        check("v0.4.11 lifecycle: the ORPHAN arm is clean-vs-edited — a stamp-matching "
+              "orphan is deleted, a diverging one quarantined (no blind-delete)",
+              not (_storee_lc / "orphan-clean.md").exists()
+              and not (_storee_lc / "orphan-ed.md").exists()
+              and any("orphan-ed" in q for q in _q_hits_e2_lc)
+              and not any("orphan-clean" in q for q in _q_hits_e2_lc))
+        # ── promote threading: the CLI surface carries the authorization ──
+        _local_prom_lc = _v3_canon("prom-lc").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        (_storee_lc / "prom-lc.md").write_text(_local_prom_lc, encoding="utf-8")
+        _argv_prev_lc = sys.argv[:]
+        _err_prom_lc = _io73.StringIO()
+        try:
+            sys.argv = ["sync_global.py", "--promote", str(_pe_lc), "prom-lc"]
+            with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_err_prom_lc):
+                _rc_prom_lc = sg.main()
+        finally:
+            sys.argv = _argv_prev_lc
+        check("v0.4.11 lifecycle: --promote refuses a predating fact, naming --repoint "
+              "(the CLI surface the skill's Phase 4 invokes)",
+              _rc_prom_lc != 0 and "repoint" in _err_prom_lc.getvalue())
+        try:
+            sys.argv = ["sync_global.py", "--promote", str(_pe_lc), "prom-lc", "--repoint"]
+            with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+                _rc_prom2_lc = sg.main()
+        finally:
+            sys.argv = _argv_prev_lc
+        _prom_canon_lc = _ctxa_lc.canonical_domain_dir / "prom-lc.md"
+        _prom_fm_lc = sg._frontmatter(
+            _prom_canon_lc.read_text(encoding="utf-8")) if _prom_canon_lc.exists() else {}
+        check("v0.4.11 lifecycle: --promote --repoint promotes AND force-restamps",
+              _rc_prom2_lc == 0 and _prom_canon_lc.exists()
+              and str(_prom_fm_lc.get("content_modified") or "") >= "2026-09-02")
+        # ── cm group delete: populated refusal, then citation + journaled delete ──
+        _cwd_prev_lc = _os73.getcwd()
+        try:
+            _os73.chdir(str(_pa_lc))
+            _err_del1_lc = _io73.StringIO()
+            with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_err_del1_lc):
+                _rc_del1_lc = _co_lc.main(["group", "delete", "pair", "--apply",
+                                           "--confirm", "delete-group-pair"])
+            check("v0.4.11 lifecycle: cm group delete refuses a populated group, "
+                  "naming the member count + project ids",
+                  _rc_del1_lc == 2 and "member(s) first" in _err_del1_lc.getvalue()
+                  and _ctxc_lc.project_id in _err_del1_lc.getvalue())
+            # plan-first (review 2): the PLAN run already names the refusal —
+            # it is not hidden behind the confirm gate
+            _out_del3_lc = _io73.StringIO(); _err_del3_lc = _io73.StringIO()
+            with _ctx73.redirect_stdout(_out_del3_lc), _ctx73.redirect_stderr(_err_del3_lc):
+                _rc_del3_lc = _co_lc.main(["group", "delete", "pair"])
+            check("v0.4.11 lifecycle: the PLAN run already names the populated refusal "
+                  "(plan-first — not hidden behind the confirm gate)",
+                  _rc_del3_lc == 2 and "member(s) first" in _err_del3_lc.getvalue())
+        finally:
+            _os73.chdir(_cwd_prev_lc)
+        _conn_del_lc = cp.connect(cp.db_path(_ctxa_lc))
+        try:
+            cp.apply_registry_ops(_conn_del_lc, [
+                {"op": "group_upsert", "group_id": "g_" + "d" * 32, "name": "empty",
+                 "domain_id": "personal", "created_at": "2026-08-01T00:00:00Z"}])
+            _conn_del_lc.commit()
+        finally:
+            _conn_del_lc.close()
+        (_ctxa_lc.canonical_domain_dir / "cite-empty.md").write_text(
+            _v3_canon("cite-empty").replace(
+                "applies_exclude: []\n", "applies_exclude: []\nrecipients: [empty]\n", 1),
+            encoding="utf-8")
+        (_ctxa_lc.canonical_domain_dir / "mid-cite.md").write_text(
+            _v3_canon("mid-cite").replace(
+                "applies_exclude: []\n",
+                "applies_exclude: []\nrecipients: [other, empty]\n", 1),
+            encoding="utf-8")
+        _wdir_lc = _ctxc_lc.canonical_domain_dir
+        _wdir_lc.mkdir(parents=True, exist_ok=True)
+        (_wdir_lc / "work-cite.md").write_text(
+            _v3_canon("work-cite", domain="work").replace(
+                "applies_exclude: []\n", "applies_exclude: []\nrecipients: [empty]\n", 1),
+            encoding="utf-8")
+        _cwd_prev2_lc = _os73.getcwd()
+        try:
+            _os73.chdir(str(_pa_lc))
+            _out_del4_lc = _io73.StringIO()
+            with _ctx73.redirect_stdout(_out_del4_lc), _ctx73.redirect_stderr(_io73.StringIO()):
+                _rc_del4_lc = _co_lc.main(["group", "delete", "empty"])
+            _ok_del4_lc = (_rc_del4_lc == 0 and "dry" in _out_del4_lc.getvalue()
+                           and "3 fact(s) cite it" in _out_del4_lc.getvalue())
+            if not _ok_del4_lc:   # captured-output diagnostics (prints only on failure)
+                print(f"DEBUG del4: rc={_rc_del4_lc} out={_out_del4_lc.getvalue()!r}")
+            check("v0.4.11 lifecycle: the PLAN run prints the citation count FIRST "
+                  "(the legacy cross-domain AND mid-list citations counted — the "
+                  "operator sees them before deciding to confirm)", _ok_del4_lc)
+            _out_del2_lc = _io73.StringIO()
+            with _ctx73.redirect_stdout(_out_del2_lc), _ctx73.redirect_stderr(_io73.StringIO()):
+                _rc_del2_lc = _co_lc.main(["group", "delete", "empty", "--apply",
+                                           "--confirm", "delete-group-empty"])
+            _ok_del2_lc = (_rc_del2_lc == 0 and "3 fact(s) cite it" in _out_del2_lc.getvalue()
+                           and "group deleted: empty" in _out_del2_lc.getvalue())
+            if not _ok_del2_lc:   # captured-output diagnostics (prints only on failure)
+                print(f"DEBUG del2: rc={_rc_del2_lc} out={_out_del2_lc.getvalue()!r}")
+            check("v0.4.11 lifecycle: cm group delete prints the citation count "
+                  "and deletes the empty group", _ok_del2_lc)
+        finally:
+            _os73.chdir(_cwd_prev2_lc)
+        _conn_chk_lc = cp.connect(cp.db_path(_ctxa_lc))
+        try:
+            _g_left_lc = _conn_chk_lc.execute(
+                "SELECT COUNT(*) AS n FROM groups WHERE name='empty'").fetchone()["n"]
+        finally:
+            _conn_chk_lc.close()
+        _jconn_lc = cp.connect_journal(_ctxa_lc)
+        try:
+            _jdel_lc = _jconn_lc.execute(
+                "SELECT COUNT(*) AS n FROM journal WHERE kind='group-delete'").fetchone()["n"]
+        finally:
+            _jconn_lc.close()
+        check("v0.4.11 lifecycle: the group delete is journaled and the registry row is gone",
+              int(_g_left_lc) == 0 and int(_jdel_lc) >= 1)
+    finally:
+        if _home_prev_lc is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_prev_lc
+        sg.GLOBAL = _global_prev_lc
+
+# ── v0.4.11 DevSecOps pentest hardening (the audit's verified findings) ──────
+def _no_raise_pt(fn):
+    try:
+        return fn()
+    except Exception as e:   # noqa: BLE001 — the pin is "does NOT raise"
+        return e
+
+# _valid_sha: a tampered non-string state value degrades to no-marker, never a crash
+from typing import Any, cast as _cast_pt
+check("pentest: _valid_sha returns False on a non-string tampered value (no TypeError)",
+      _no_raise_pt(lambda: ms._valid_sha(_cast_pt(Any, 123))) is False
+      and _no_raise_pt(lambda: ms._valid_sha(_cast_pt(Any, {"commit": "x"}))) is False
+      and ms._valid_sha("deadbeef") is True)
+
+# _run: a non-UTF-8 git stdout byte degrades to a replacement char, never a crash
+check("pentest: git stdout with a non-UTF-8 byte degrades, never raises",
+      not isinstance(_no_raise_pt(lambda: ms._run(["printf", "\\x80"],
+                                                  Path("."))), UnicodeDecodeError))
+
+# the keyword-less vendor arms the audit verified evading (20-39 char tokens)
+for _tok_pt in ("glpat-8mNzX9pQrT2vWxYzAbCdEfGh", "hf_kX9pQm2vL8nR4tW7zA1cF3dG5hJ6kB0sY",
+                "7123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw",
+                "NDM3MzU2MDUwMTY5OTkzMzEx.Gabcde.xyzABCDEFGHIJKLMNOPQRSTUVW"):
+    check(f"pentest: the firewall flags {_tok_pt[:12]}… (the 20-39 char gap)",
+          ms._looks_secret(f"auth {_tok_pt}"))
+
+# the commit-subject scrub applies the Cf strip the audit found missing
+check("pentest: a ZWSP-embedded credential in a commit subject is omitted",
+      "omitted" in ms._scrub_commit_log("abc1234 AKIA​ABCDEFGHIJKLMNOP")[0])
+
+# the two Cf strips stay aligned (extract_signals._norm vs memory_status._strip_cf)
+_es_pt = __import__("extract_signals")
+_zw_pt = "AKIA​ABCDEFGHIJKLMNOP"
+check("pentest: the two Cf-strips agree (scan and store stay aligned)",
+      _es_pt._norm(_zw_pt) == ms._strip_cf(_zw_pt) and "​" not in ms._strip_cf(_zw_pt))
+
+# the wikilink scan cap: a real link past the cap is skipped (the quadratic gate)
+_big_pt = "[[real]] " + "x" * (ms._WIKI_SCAN_CAP + 1)
+check("pentest: extract_wikilinks skips a link past the scan cap (the quadratic gate)",
+      ms.extract_wikilinks(_big_pt) == [])
+
+# _write_private: a pre-planted symlink is REPLACED, its target untouched
+with _tf73.TemporaryDirectory() as _td_pt:
+    _victim_pt = Path(_td_pt) / "victim.txt"; _victim_pt.write_text("ORIGINAL", encoding="utf-8")
+    _link_pt = Path(_td_pt) / "cm-cycle-pentest.json"; _link_pt.symlink_to(_victim_pt)
+    ms._write_private(_link_pt, "PRIVATE DATA")
+    check("pentest: _write_private never writes through a planted symlink (os.replace)",
+          _victim_pt.read_text(encoding="utf-8") == "ORIGINAL"
+          and not _link_pt.is_symlink()
+          and _link_pt.read_text(encoding="utf-8") == "PRIVATE DATA")
+
+# _mirror_key refuses an unsafe domain (the mirror-write path's own fence)
+check("pentest: _mirror_key refuses a path-traversal domain value",
+      _raises_gs(lambda: sg._mirror_key("personal", "../evil", "x"), ValueError)
+      and _raises_gs(lambda: sg._mirror_key("personal", "a/b", "x"), ValueError)
+      and sg._mirror_key("personal", "work", "x") == "work--x")
+
+# doc pins: the archive server binds localhost; the data-vs-instruction boundary ships
+check("pentest: the dream archive's http server binds 127.0.0.1 (never all interfaces)",
+      "http.server --bind 127.0.0.1" in _sk54)
+check("pentest: the data-vs-instruction boundary ships in SKILL + harness-map",
+      "never instructions" in _sk54 and "never a channel to obey" in _sk54
+      and "never instructions" in (_hm_lc if (_hm_lc := (ROOT / "plugins/consolidate-memory/skills/"
+          "consolidate-memory/references/harness-map.md").read_text(encoding="utf-8")) else ""))
+
+# hermetic: the '--' stem identity + the bridge admission gates + the store advisory
+with _tf73.TemporaryDirectory() as _td_px:
+    _home_px = Path(_td_px)
+    _pa_px = (_home_px / "src" / "pa").resolve(); _pa_px.mkdir(parents=True)
+    _pc_px = (_home_px / "src" / "pc").resolve(); _pc_px.mkdir(parents=True)
+    _pe_px = (_home_px / "src" / "pe").resolve(); _pe_px.mkdir(parents=True)
+    for _p_px in (_pa_px, _pc_px, _pe_px):
+        (_home_px / ".claude" / "projects" / ms.slug_for(_p_px) / "memory").mkdir(parents=True)
+    _home_prev_px = _os73.environ.get("HOME")
+    _global_prev_px = sg.GLOBAL
+    _os73.environ["HOME"] = str(_home_px)
+    sg.GLOBAL = _home_px / ".claude" / "memory"
+    try:
+        _ctx0_px = sc.resolve_store(_pa_px)
+        _conn_px = cp.connect(cp.db_path(_ctx0_px))
+        _gid_px = "g_" + "e" * 32
+        try:
+            cp.enroll_project(_conn_px, _ctx0_px, "personal")
+            cp.apply_registry_ops(_conn_px, [
+                {"op": "group_upsert", "group_id": _gid_px, "name": "pair",
+                 "domain_id": "personal", "created_at": "2026-08-01T00:00:00Z"},
+                {"op": "group_member_add", "group_id": _gid_px,
+                 "project_id": _ctx0_px.project_id}])
+            _conn_px.commit()
+        finally:
+            _conn_px.close()
+        _ctxa_px = sc.resolve_store(_pa_px)
+        _ctxc_px = sc.resolve_store(_pc_px)
+        _ctxe_px = sc.resolve_store(_pe_px)
+        _conn2_px = cp.connect(cp.db_path(_ctxa_px))
+        try:
+            cp.enroll_project(_conn2_px, _ctxc_px, "work")
+            cp.enroll_project(_conn2_px, _ctxe_px, "personal")
+            cp.apply_registry_ops(_conn2_px, [
+                {"op": "group_member_add", "group_id": _gid_px,
+                 "project_id": _ctxc_px.project_id},
+                {"op": "group_member_add", "group_id": _gid_px,
+                 "project_id": _ctxe_px.project_id}])
+            _conn2_px.commit()
+        finally:
+            _conn2_px.close()
+        _ctxc_px = sc.resolve_store(_pc_px)
+        _ctxe_px = sc.resolve_store(_pe_px)
+        # a LEGAL '--'-bearing same-domain stem + a crafted bridge file
+        _ctxa_px.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
+        _canon_dd_px = _v3_canon("k8s--helm").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        (_ctxa_px.canonical_domain_dir / "k8s--helm.md").write_text(_canon_dd_px, encoding="utf-8")
+        _craft_px = _v3_canon("crafted-dom").replace("domain: personal", "domain: ../evil", 1).replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        (_ctxa_px.canonical_domain_dir / "crafted-dom.md").write_text(_craft_px, encoding="utf-8")
+        (_ctxa_px.canonical_domain_dir / "bad)stem[inj.md").write_text(_canon_dd_px.replace(
+            "k8s--helm", "bad)stem[inj", 1), encoding="utf-8")
+        # same-domain pull: E gets the bare mirror; the crafted files never deliver
+        _o_px = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_px):
+            sg.run(_pe_px, pull=True)
+        check("pentest: a legal '--' stem mirrors same-domain; the crafted stem/domain "
+              "files are NOT delivered (the bridge's missing gates)",
+              (_ctxe_px.native_memory_dir / "k8s--helm.md").exists()
+              and not (_ctxe_px.native_memory_dir / "crafted-dom.md").exists()
+              and not any(p.name.startswith("evil") for p in
+                          _ctxe_px.native_memory_dir.parent.glob("*.md")))
+        _o_px2 = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_px2):
+            sg.run(_pc_px, pull=True)
+        check("pentest: the cross-domain member is neither delivered the crafted files "
+              "nor a traversal mirror outside the store",
+              not any("evil" in p.name for p in _ctxc_px.native_memory_dir.parent.glob("*.md"))
+              and not (_ctxc_px.native_memory_dir / "personal--crafted-dom.md").exists()
+              and not (_ctxc_px.native_memory_dir / "personal--bad)stem[inj.md").exists())
+        # the '--' stem's mirror survives gc (identity via the mirror's own frontmatter)
+        _o_px3 = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_px3):
+            sg.gc(_pe_px, False)
+        check("pentest: the '--' stem's mirror is NOT mis-decoded as an orphan (report)",
+              "nothing to reclaim" in _o_px3.getvalue())
+        _o_px4 = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_px4):
+            sg.gc(_pe_px, apply=True)
+        check("pentest: gc --apply keeps the live '--' stem mirror (the decode would "
+              "have deleted it as a foreign orphan)",
+              (_ctxe_px.native_memory_dir / "k8s--helm.md").exists())
+        # the repo-supplied in-tree store advisory (store_context — the resolver
+        # is subprocess-free, so it FLAGS the arrangement instead of git-checking;
+        # the settings value must be ABSOLUTE per _expand_mem_dir)
+        _pb_px = (_home_px / "src" / "pb"); _pb_px.mkdir(parents=True)
+        (_pb_px / ".claude").mkdir()
+        (_pb_px / ".claude" / "settings.json").write_text(
+            _json_xp.dumps({"autoMemoryDirectory": str(_pb_px / "mem")}), encoding="utf-8")
+        _ctx_pb_px = sc.resolve_store(_pb_px)
+        _amb_px = getattr(_ctx_pb_px, "ambiguity", []) or []
+        check("pentest: a repo-supplied in-tree autoMemoryDirectory is flagged, not "
+              "silently trusted",
+              any("INSIDE the project" in str(a) for a in _amb_px))
+    finally:
+        if _home_prev_px is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_prev_px
+        sg.GLOBAL = _global_prev_px
+
 # v0.4.10 dogfood: a foreign-domain record OVERWRITES a stale local manifest hash
 _bhf_gs = {"dup": "a" * 12}
 _fillf_gs = __import__("session_beacon")._fill_body_hashes(
@@ -12288,10 +12885,11 @@ check("v0.4.10 groups: the beacon's hash fill overwrites a foreign-domain record
 
 _cmdg_gs = (ROOT / "plugins" / "consolidate-memory" / "commands" / "cm-group.md")
 _ctg_gs = _cmdg_gs.read_text(encoding="utf-8") if _cmdg_gs.is_file() else ""
-check("v0.4.10 groups: /cm-group exists with the confirm-phrase surface",
+check("v0.4.10 groups: /cm-group exists with the confirm-phrase surface "
+      "(delete included — v0.4.11 lifecycle)",
       _ctg_gs.startswith("---\nname: cm-group")
       and "create-group-<name>" in _ctg_gs and "add-group-<name>" in _ctg_gs
-      and "remove-group-<name>" in _ctg_gs)
+      and "remove-group-<name>" in _ctg_gs and "delete-group-<name>" in _ctg_gs)
 _shareg_gs = (ROOT / "plugins" / "consolidate-memory" / "commands" / "cm-share.md").read_text(encoding="utf-8")
 check("v0.4.10 groups: /cm-share names the group question + the verbatim narrowing",
       "share to a group or the whole" in _shareg_gs

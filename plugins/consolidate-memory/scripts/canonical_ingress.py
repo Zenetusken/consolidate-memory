@@ -317,7 +317,8 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
            create_only: bool = False,
            preserve_canonical: bool = False,
            extra_registry_ops: Optional[list] = None,
-           allow_resurrect: bool = False) -> dict:
+           allow_resurrect: bool = False,
+           allow_repoint: bool = False) -> dict:
     """Sole path that creates/updates a canonical. Transactional.
 
     `origin_local` may not exist yet (promote rename: write the origin mirror at the
@@ -375,7 +376,7 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
     prev_text = dest_existing.read_text(encoding="utf-8", errors="replace") if dest_existing.exists() else ""
     body_changed = (not prev_text) or (_body_up(prev_text) != _body_up(text))
     body = _with_timestamps(text if text.endswith("\n") else text + "\n", now,
-                            body_changed=body_changed)
+                            body_changed=body_changed or allow_repoint)
     fm = _frontmatter(body)
     if not str(fm.get("content_modified") or "").strip():
         body = insert_frontmatter_key(body, "content_modified", now)
@@ -454,10 +455,10 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
                 _g_created = str(_grow["created_at"] or "")
                 _in_cm = str(_frontmatter(text).get("content_modified") or "")
                 if (_g_created and _in_cm and _in_cm < _g_created
-                        and "recipients" in (text or "")):
+                        and "recipients" in (text or "") and not allow_repoint):
                     return {"ok": False, "error":
                             f"recipients: [{_slug}] predates the current group "
-                            f"(created {_g_created}) — re-confirm or re-point"}
+                            f"(created {_g_created}) — re-confirm (--repoint) or re-point"}
         finally:
             if _gconn is not None:
                 _gconn.close()

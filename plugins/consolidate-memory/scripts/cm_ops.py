@@ -973,7 +973,8 @@ def cmd_canonical(args: argparse.Namespace) -> int:
     if args.canonical_cmd == "upsert":
         text = Path(args.file).read_text(encoding="utf-8") if args.file else sys.stdin.read()
         origin = ctx.native_memory_dir / f"{args.stem}.md" if args.origin else None
-        out = upsert(ctx, args.stem, text, origin_local=origin, crash_after=args.crash_after)
+        out = upsert(ctx, args.stem, text, origin_local=origin, crash_after=args.crash_after,
+                     allow_repoint=bool(getattr(args, "repoint", False)))
         msg = "ok" if out.get("ok") else str(out.get("error") or "error")
         print(json.dumps(out, indent=2) if args.json else f"canonical upsert {args.stem}: {msg}")
         return 0 if out.get("ok") else 1
@@ -2166,7 +2167,7 @@ def cmd_group(args: argparse.Namespace) -> int:
     from identifiers import IdentifierRefused, validate_domain_id, validate_group_slug
     from store_context import resolve_store
     ctx = _ctx(".")
-    _writable = args.group_cmd in ("create", "add", "remove")
+    _writable = args.group_cmd in ("create", "add", "remove", "delete")
     conn = connect(db_path(ctx)) if _writable else connect_if_exists(db_path(ctx))
     if conn is None:
         print(json.dumps({"ok": True, "groups": []}) if args.json
@@ -2208,6 +2209,77 @@ def cmd_group(args: argparse.Namespace) -> int:
                                   "created_at": now}],
                 "deletes": [], "expected_revisions": {}, "dest_modes": {}})
             print(f"group created: {name} (home {domain}, {gid})")
+            return 0
+        if cmd == "delete":
+            gname = str(args.name_or_group or "")
+            if not gname:
+                print("group delete: pass GROUP", file=sys.stderr)
+                return 2
+            # plan-first (review 2): the membership refusal and the citation
+            # count are computed BEFORE the confirm gate — the operator deciding
+            # whether to confirm must see them on the dry run, not only as the
+            # delete fires.
+            row = conn.execute("SELECT group_id, domain_id FROM groups WHERE name=?",
+                               (gname,)).fetchone()
+            if row is None:
+                print(f"group delete: no such group {gname!r}", file=sys.stderr)
+                return 2
+            _mems = conn.execute(
+                "SELECT project_id FROM group_members WHERE group_id=?",
+                (row["group_id"],)).fetchall()
+            if _mems:
+                print(f"group delete: {len(_mems)} member(s) first — remove them "
+                      f"(`cm group remove`): " + ", ".join(str(m["project_id"]) for m in _mems),
+                      file=sys.stderr)
+                return 2
+            # citation count: fleet scan across EVERY enrolled domain's facts dir
+            # (the operator's domain vocabulary is not a fixed list — legacy
+            # cross-domain citations included; the parsed flow-list catches a
+            # mid-list citation too; fail-open on unreadable)
+            from memory_status import _frontmatter as _fm_del
+            from fact_schema import _parse_flow_list as _pfl_del
+            _cited = []
+            # resolve() EVERY candidate: on macOS /var → /private/var, so a
+            # mixed resolved/unresolved set holds two spellings of the SAME
+            # dir and counts every file twice (the macOS-job catch).
+            _d0 = ctx.canonical_domain_dir.resolve()
+            _dirs_del = {str(_d0)}
+            try:
+                _dirs_del |= {str(p.resolve()) for p in _d0.parents[1].glob("*/facts")}
+            except OSError:
+                pass
+            for _dd in sorted(_dirs_del):
+                _dp = Path(_dd)
+                if not _dp.is_dir():
+                    continue
+                for _f in sorted(_dp.glob("*.md")):
+                    if _f.name == "MEMORY.md":
+                        continue
+                    try:
+                        _t = _f.read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        continue
+                    try:
+                        _recips = set(_pfl_del(str(_fm_del(_t).get("recipients") or "")))
+                    except Exception:
+                        _recips = set()
+                    if gname in _recips:
+                        _cited.append(_f.stem)
+            if _cited:
+                print(f"group delete {gname}: {len(_cited)} fact(s) cite it "
+                      f"({', '.join(sorted(_cited)[:5])}) — they will deliver to nobody; "
+                      "re-point or forget them first")
+            need = _want_confirm(args, f"delete-group-{gname}")
+            if need:
+                print(f"group delete {gname}: {need}")
+                return 0 if not getattr(args, "apply", False) else 2
+            out = transact(ctx, "group-delete", {"name": gname},
+                           lambda c, temps: {
+                               "registry_ops": [{"op": "group_delete",
+                                                 "group_id": str(row["group_id"])}],
+                               "deletes": [], "expected_revisions": {},
+                               "dest_modes": {}})
+            print(f"group deleted: {gname}")
             return 0
         if cmd in ("add", "remove"):
             gname = str(args.name_or_group or "")
@@ -2730,6 +2802,9 @@ def build_parser() -> argparse.ArgumentParser:
     ca.add_argument("--replacement", help="replacement stem or fact_id for supersede")
     ca.add_argument("--project", default=".")
     ca.add_argument("--json", action="store_true")
+    ca.add_argument("--repoint", action="store_true",
+                    help="authorize recipients that predate a recreated group "
+                         "(the durable re-confirmation)")
     ca.add_argument("--crash-after")
 
     m = sub.add_parser("migrate")
@@ -2788,7 +2863,7 @@ def build_parser() -> argparse.ArgumentParser:
                     help="grant-native of a nonempty destination")
 
     gp = sub.add_parser("group")
-    gp.add_argument("group_cmd", choices=["create", "add", "remove", "list", "show"])
+    gp.add_argument("group_cmd", choices=["create", "add", "remove", "delete", "list", "show"])
     gp.add_argument("name_or_group", nargs="?")
     gp.add_argument("project", nargs="?")
     gp.add_argument("--domain")
