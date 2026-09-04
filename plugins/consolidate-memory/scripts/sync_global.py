@@ -1101,9 +1101,17 @@ def _mtime_iso(path: Path) -> str:
 
 def _source_facts_dir(ctx, sdom: str) -> Path:
     """The facts dir for a source domain (group-scopes: cross-domain canonicals
-    live in THEIR domain's dir, not the pulling project's)."""
+    live in THEIR domain's dir, not the pulling project's). Same-domain keeps
+    the _canonical_path parity: hermetic tests that patched GLOBAL still resolve
+    there (the fixture case), never the leftover ~/.claude/memory in production."""
     if not sdom or sdom == (getattr(ctx, "domain_id", "") or ""):
-        return ctx.canonical_domain_dir
+        p = Path(ctx.canonical_domain_dir)
+        try:
+            if not p.is_dir() and _global_is_fixture():
+                return global_store()
+        except OSError:
+            pass
+        return p
     return Path(ctx.canonical_domain_dir).resolve().parents[1] / sdom / "facts"
 
 
@@ -1289,6 +1297,7 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
 
     in_sync_names = list(in_sync_names or [])
     conflict_ops = list(conflict_ops or [])
+    _fm_by_name = {n: fm for n, fm, *_ in (jobs or [])}
     if not jobs and not evict_stem and not in_sync_names and not conflict_ops:
         return {"pulled": 0, "refreshed": 0, "fat": 0}
     idxp = store / "MEMORY.md"
@@ -1385,9 +1394,15 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                     from mirror_conflict import (CONFLICT as _CFL, QUARANTINE as _QAR,
                                                  STOP_LOCAL as _STP, classify_mirror as _cml)
                     from control_plane import holder_base_revision as _hbr2, stable_fact_id as _sf2
-                    _hb = _hbr2(conn, _sf2(ctx.domain_id, name), ctx.project_id)
-                    _ct = _safe_read_text(_canonical_path(ctx, name)) or ""
+                    _ws_dom = str(fm.get("domain") or ctx.domain_id or "")
                     _cfm = _frontmatter(cur_now)
+                    _hb = _hbr2(conn, _sf2(_ws_dom, name), ctx.project_id)
+                    if not _hb:
+                        # bootstrap (F1): the first refresh after the provenance
+                        # fix has no recorded holder base — the mirror's OWN
+                        # canonical_revision is the revision it sits at.
+                        _hb = str(_cfm.get("canonical_revision") or "") or None
+                    _ct = _safe_read_text(_source_facts_dir(ctx, _ws_dom) / f"{name}.md") or ""
                     _v3lock = bool(_cfm.get("canonical_fact_id") or _cfm.get("schema_version"))
                     _act2 = _cml(cur_now, _ct, base_revision=_hb,
                                  allow_legacy_fallback=not _v3lock)["action"]
@@ -1414,9 +1429,11 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         _hold_rows: list = []
         for name in hold_set:
             row = (sem_by_name or {}).get(name) or {}
+            _hd_dom = str((_fm_by_name or {}).get(name, {}).get("domain")
+                          or ctx.domain_id or "") if _fm_by_name else (ctx.domain_id or "")
             ctext: "str | None" = None
             if isinstance(row, dict) and row.get("mtime_ns") is not None:
-                cp = _canonical_path(ctx, name)
+                cp = _source_facts_dir(ctx, _hd_dom) / f"{name}.md"
                 try:
                     stc = cp.stat()
                     if (stc.st_mtime_ns == int(row.get("mtime_ns") or -1)
@@ -1426,14 +1443,14 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                 except OSError:
                     pass
             if ctext is None:
-                ctext = _safe_read_text(_canonical_path(ctx, name))
+                ctext = _safe_read_text(_source_facts_dir(ctx, _hd_dom) / f"{name}.md")
                 if ctext is None:
                     continue
             if ctext == "":
                 rev = str(row.get("sem") or "")
             else:
                 rev = _sem_hold(ctext)
-            fid = stable_fact_id(ctx.domain_id, name)
+            fid = stable_fact_id(_hd_dom, name)
             # P3: collect, then ONE executemany (N statements before — the warm pull's
             # holder re-record was ~50ms of the 10k-canonical run)
             _hold_rows.append((fid, ctx.project_id, rev, rev, rev))
@@ -2040,6 +2057,11 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                 # P3: the lookup shares ONE lazily-opened read-only conn across the loop
                 # (today: a fresh connect per STALE-mirror item — 10k canonicals × N stale).
                 _hold_base = _hold_base_for(_fid_w)
+                if not _hold_base:
+                    # bootstrap (F1): a cross-domain mirror pulled before the
+                    # provenance fix has no recorded holder base — its OWN
+                    # canonical_revision is the revision it sits at.
+                    _hold_base = str(cur_fm.get("canonical_revision") or "") or None
                 _v3m = bool(cur_fm.get("canonical_fact_id") or cur_fm.get("schema_version"))
                 _dec = classify_mirror(cur, text, base_revision=_hold_base,
                                        allow_legacy_fallback=not _v3m)
@@ -2549,8 +2571,9 @@ def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> 
 
 
 # ── garbage collection: orphaned mirrors (Fix B) ───────────────────────────────
-def _orphans(store: Path, canon: "set[str] | None" = None,
-              decode_names: bool = False) -> list[str]:
+def _orphans(store: Path, canon: "set | None" = None,
+              decode_names: bool = False, pair_keys: bool = False,
+              local_domain: str = "") -> list[str]:
     """Mirror files (`global_ref:`) in this store whose CANONICAL no longer exists in
     the global store. These are the dead memory --pull can never reclaim (it only
     iterates LIVE globals), so they accrue forever — the leak Fix B closes.
@@ -2568,8 +2591,16 @@ def _orphans(store: Path, canon: "set[str] | None" = None,
         text = _safe_read_text(f)    # v0.1.69/A3 (Gate-2a follow-up): store-scan convention — a
         if text is None:             # vanished/unreadable fact must not abort the orphan scan
             continue
-        _stem = decode_key(f.stem)[1] if decode_names else f.stem
-        if _is_mirror(text) and _stem not in canon:  # ONLY managed mirrors (frontmatter key)
+        _eff_o: "str | tuple"
+        if decode_names:
+            _d_o, _s_o = decode_key(f.stem)
+            if pair_keys:
+                _eff_o = (_d_o or local_domain, _s_o)
+            else:
+                _eff_o = _s_o
+        else:
+            _eff_o = f.stem
+        if _is_mirror(text) and _eff_o not in canon:  # ONLY managed mirrors (frontmatter key)
             out.append(f.stem)
     return out
 
@@ -2783,11 +2814,12 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             return 2
     if edges:   # v0.1.84 (P4): fleet-wide edge triage — project_dir-independent, same snapshot
         return _gc_edges(gfacts, apply, project_dir)
-    live_stems = iter_canonical_stems_for_gc(_ctx_gc) | {n for n, _, _ in gfacts}
-    if _global_is_fixture() and not live_stems:
-        live_stems = {n for n, _, _ in gfacts}
-    orphans = _orphans(store, canon=live_stems or {n for n, _, _ in gfacts},
-                      decode_names=True)
+    _local_stems = iter_canonical_stems_for_gc(_ctx_gc)
+    _pair_canon = {(_ctx_gc.domain_id or "", n) for n in _local_stems}
+    _pair_canon |= {(str(fm.get("domain") or _ctx_gc.domain_id or ""), n)
+                    for n, fm, _ in gfacts}
+    orphans = _orphans(store, canon=_pair_canon, decode_names=True,
+                      pair_keys=True, local_domain=_ctx_gc.domain_id or "")
     # v0.1.75 (audit F6): FROZEN mirrors — see the docstring. Detected against the SAME snapshot.
     # 2026-09-03 audit: the frozen verdict DELETES files, so it must not trust the cached
     # stacks (a stale cache can classify a newly-relevant mirror as frozen and delete live
@@ -3794,6 +3826,7 @@ def _store_gaps(store: Path, stacks: "set | None", gfacts: list, body_hashes: di
     _gap_memberships = memberships if memberships is not None else set()
     missing = stale = 0
     for n, fm, _text in gfacts:
+        _gk = _mirror_key(domain_id or "unknown", str(fm.get("domain") or ""), n)
         if not is_relevant(fm, stacks if stacks is not None else set()):
             continue
         if domain_id is not None:
@@ -3805,7 +3838,7 @@ def _store_gaps(store: Path, stacks: "set | None", gfacts: list, body_hashes: di
                                        group_recips=set(_pfl_gap(
                                            str(_adm.get("recipients") or "")))):
                 continue
-        p = store / f"{n}.md"
+        p = store / f"{_gk}.md"
         if not p.exists():
             missing += 1
             continue

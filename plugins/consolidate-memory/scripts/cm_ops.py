@@ -2102,7 +2102,7 @@ def _revoke_group_mirrors(ctx, member_ctx, group_id: str, gname: str) -> int:
     Clean mirrors are DELETED; locally-edited ones are QUARANTINED (the
     enrollment-revoke precedent, _revoke_unadmitted_mirrors)."""
     from memory_status import _frontmatter as _fm_rev
-    from mirror_conflict import classify_mirror as _cm_rev
+    from mirror_conflict import semantic_hash as _sem_rev
     from sync_global import (_is_mirror as _im_rev, _safe_read_text as _srt_rev,
                              _source_facts_dir, decode_key)
     store = member_ctx.native_memory_dir
@@ -2129,11 +2129,14 @@ def _revoke_group_mirrors(ctx, member_ctx, group_id: str, gname: str) -> int:
             removed_keys.append(f.stem)
             n += 1
             continue
+        # clean-vs-edited for a revoke is SEMANTIC equality: a mirror that
+        # differs from the canonical only in volatile stamps is clean → delete;
+        # anything that edited the content is the user's work → quarantine.
         try:
-            dec = _cm_rev(cur, ctext, base_revision=None, allow_legacy_fallback=False)
+            _edited = _sem_rev(cur) != _sem_rev(ctext)
         except Exception:
-            dec = {"action": "quarantine"}
-        if dec["action"] in ("stop-local", "conflict", "quarantine"):
+            _edited = True
+        if _edited:
             qdir = store / "quarantine"
             qdir.mkdir(parents=True, exist_ok=True)
             ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -2190,6 +2193,12 @@ def cmd_group(args: argparse.Namespace) -> int:
                             (name,)).fetchone():
                 print(f"group create: {name} already exists", file=sys.stderr)
                 return 2
+            if not conn.execute(
+                    "SELECT 1 FROM projects WHERE domain_id=? AND status='enrolled' LIMIT 1",
+                    (domain,)).fetchone():
+                print(f"group create: domain {domain!r} is not an enrolled domain "
+                      "(enroll a project into it first)", file=sys.stderr)
+                return 2
             gid = "g_" + hashlib.sha256(
                 (name + "\x00" + domain).encode("utf-8")).hexdigest()[:32]
             now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -2235,10 +2244,15 @@ def cmd_group(args: argparse.Namespace) -> int:
                   + (f"; revoked {_revoked} mirror(s)" if cmd == "remove" else ""))
             return 0
         if cmd == "list":
-            rows = conn.execute(
-                "SELECT g.name, g.domain_id, g.created_at, COUNT(m.project_id) AS n "
-                "FROM groups g LEFT JOIN group_members m ON m.group_id=g.group_id "
-                "GROUP BY g.group_id ORDER BY g.name").fetchall()
+            try:
+                rows = conn.execute(
+                    "SELECT g.name, g.domain_id, g.created_at, COUNT(m.project_id) AS n "
+                    "FROM groups g LEFT JOIN group_members m ON m.group_id=g.group_id "
+                    "GROUP BY g.group_id ORDER BY g.name").fetchall()
+            except Exception:
+                print(json.dumps({"ok": True, "groups": []}) if args.json
+                      else "group: registry not yet migrated (first enrolled op migrates it)")
+                return 0
             if args.json:
                 print(json.dumps({"ok": True, "groups": [dict(r) for r in rows]}))
             else:
@@ -2247,8 +2261,12 @@ def cmd_group(args: argparse.Namespace) -> int:
             return 0
         if cmd == "show":
             gname = str(args.name_or_group or "")
-            row = conn.execute("SELECT * FROM groups WHERE name=?",
-                               (gname,)).fetchone()
+            try:
+                row = conn.execute("SELECT * FROM groups WHERE name=?",
+                                   (gname,)).fetchone()
+            except Exception:
+                print("group show: registry not yet migrated", file=sys.stderr)
+                return 2
             if row is None:
                 print(f"group show: no such group {gname!r}", file=sys.stderr)
                 return 2

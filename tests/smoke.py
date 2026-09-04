@@ -12164,6 +12164,22 @@ with _tf73.TemporaryDirectory() as _td_gs:
             sg.run(_pc_gs, pull=True)
         check("v0.4.10 groups: a no-change refresh does not restamp the volatile group stamp (F9)",
               "restamped 1" not in _o5_gs.getvalue())
+        # F1 (review): a canonical change in the authoring domain REFRESHES the
+        # cross-domain mirror WHILE IT EXISTS (the ctx-derived write path froze
+        # it in QUARANTINE forever — holder base under the real fid)
+        import canonical_ingress as _ci2_gs
+        _up2_gs = _ci2_gs.upsert(_ctxa_gs, "grp-fact", _v3_canon("grp-fact").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1
+        ).replace("body\n", "body v2\n", 1))
+        _o6_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o6_gs):
+            sg.run(_pc_gs, pull=True)
+        _c2_gs = _storec_gs / "personal--grp-fact.md"
+        check("v0.4.10 groups: a canonical change REFRESHES the cross-domain mirror "
+              "(no QUARANTINE freeze — F1)",
+              "refreshed 1" in _o6_gs.getvalue()
+              and "quarantine" not in _o6_gs.getvalue()
+              and "body v2" in (_c2_gs.read_text(encoding="utf-8") if _c2_gs.exists() else ""))
         # F6: group remove deletes the clean cross-domain mirror (decode-first revoke)
         _conn2_gs = cp.connect(cp.db_path(_ctxa_gs))
         try:
@@ -12175,9 +12191,45 @@ with _tf73.TemporaryDirectory() as _td_gs:
             _conn2_gs.close()
         from cm_ops import _revoke_group_mirrors as _rgm_gs
         _rgm_gs(_ctxa_gs, _ctxc_gs, _gid_gs, "pair")
-        check("v0.4.10 groups: group remove deletes the clean namespaced mirror "
-              "(decode-first — the naive path quarantines it)",
-              not _cfile_gs.exists())
+        _qdir_gs = _storec_gs / "quarantine"
+        _q_hits_gs = [q.name for q in _qdir_gs.glob("*.md")] if _qdir_gs.is_dir() else []
+        check("v0.4.10 groups: group remove DELETES the clean namespaced mirror "
+              "(decode-first; a quarantine-rename would retain the withdrawn content)",
+              not _cfile_gs.exists()
+              and not any("personal--grp-fact" in q for q in _q_hits_gs))
+        # F2 (review): a foreign ORPHAN (canonical deleted) is reclaimed even when
+        # the member's own domain holds a same-stem canonical
+        _ci2_gs.forget(_ctxa_gs, "grp-fact")
+        (_storec_gs / "personal--grp-fact.md").write_text(
+            _v3_canon("grp-fact").replace("domain: personal", "domain: personal"),
+            encoding="utf-8")
+        import sync_global as _sg2_gs
+        (_storec_gs / "personal--grp-fact.md").write_text(
+            _sg2_gs._as_mirror(_v3_canon("grp-fact"), "grp-fact",
+                               fact_id=cp.stable_fact_id("personal", "grp-fact"),
+                               domain="personal"), encoding="utf-8")
+        _ci2_gs.upsert(_ctxc_gs, "grp-fact", _v3_canon("grp-fact").replace(
+            "domain: personal", "domain: work", 1))
+        _o7_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o7_gs):
+            sg.gc(_pc_gs, apply=True)
+        check("v0.4.10 groups: a foreign ORPHAN is reclaimed even under a same-stem "
+              "local canonical (pair-keyed GC — F2)",
+              not (_storec_gs / "personal--grp-fact.md").exists())
+        # F3 (review): the beacon counts a missing group mirror through main()
+        _bline_gs = None
+        try:
+            _bline_gs = __import__("session_beacon").beacon_line(
+                _storec_gs, domain_id="work", migration_mode="dual-read",
+                gfacts=[("grp-fact", _sg2_gs._frontmatter(_v3_canon("grp-fact").replace(
+                    "applies_exclude: []\n",
+                    "applies_exclude: []\nrecipients: [pair]\n", 1)), "t")],
+                memberships={"pair"})
+        except Exception:
+            _bline_gs = ""
+        check("v0.4.10 groups: the beacon counts a MISSING group-fact mirror "
+              "(membership-threaded _store_gaps — F3)",
+              bool(_bline_gs) and "1 shared" in str(_bline_gs))
     finally:
         if _home_prev_gs is None:
             _os73.environ.pop("HOME", None)
