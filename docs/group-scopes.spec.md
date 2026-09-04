@@ -2,7 +2,9 @@
 
 **Design-of-record for operator-granted recipient groups.** Status: advisor
 pass (11 findings) + adversarial review-to-zero (8 findings, 5 design attacks)
-complete — all folded and re-verified green; implementing.
+complete — all folded and re-verified green; SHIPPED in v0.4.10 (PR #192, with
+the per-PR review round: 6 findings fixed and re-verified; the pull-side leg of
+the recreation guard is the tracked fast-follow).
 
 ## 1. Context (measured, 2026-09-04)
 

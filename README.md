@@ -12,7 +12,7 @@ It **complements** Auto Dream rather than replacing it — a deliberately *expli
 project tidy automatically; you invoke **`dream`** (or "consolidate my memory") when you want
 *verified* + *cross-project* consolidation.
 
-> **Current release: v0.4.9.** Public **1.0 remains HOLD** (evidence-gated — see
+> **Current release: v0.4.10.** Public **1.0 remains HOLD** (evidence-gated — see
 > [`docs/1.0-preflight.spec.md`](docs/1.0-preflight.spec.md)). Per-version detail lives in
 > [**CHANGELOG.md**](CHANGELOG.md).
 
@@ -101,10 +101,20 @@ itself one — the operator grants it). The consolidated workflow:
    reachable here"*). **`/cm-network`** shows the whole network's token cost and
    topology, read-only.
 
+**Two layers, like VLANs and routed links.** A **domain** is an isolated
+broadcast scope — enroll related repos together (docs repos, LLM repos, tools)
+and a `user-global` fact reaches every member of its domain while other domains
+never see it. A **group** (`/cm-group`) is the routed link on top: an
+operator-granted recipient set that a fact's `recipients:` targets to **narrow**
+delivery — to just two repos, or across domains. The same commands drive both
+layers: `/cm-domain` and `/cm-connect` shape the domains; `/cm-group` declares
+the links; `/cm-share` asks, when groups exist, whether to deliver to a group or
+the whole domain (the narrowing is printed verbatim before you confirm).
+
 Enrolling a single project alone is just **`/cm-domain`**; `cm doctor` — or
 `/cm-doctor` — in any project prints the resolved setup, and the
 `UNENROLLED LOCAL-ONLY` line means that project keeps everything local until you
-enroll it. The full model (scopes, domains, replication) is below under
+enroll it. The full model (scopes, domains, groups, replication) is below under
 [How it works](#how-it-works).
 
 ## Usage
@@ -178,6 +188,13 @@ in one project has to be **replicated** into the others to surface there. The mo
   (`<config>/consolidate-memory/domains/<domain>/facts`); enrollment is an **operator
   grant** — a repository cannot grant itself a domain, and `user-global` is
   *domain*-global, not installation-global.
+- **Groups are the routed link** on top: an operator-granted recipient set. A
+  fact's optional `recipients:` narrows delivery to the group's members — the
+  same domain otherwise, or across domains (cross-domain mirrors get
+  namespaced keys, and the operator's grant is the confidentiality carrier).
+  Removing a member withdraws their mirrors (clean ones deleted, edited ones
+  quarantined); a recreated group name is a fresh identity, and old facts
+  cannot silently re-point at it.
 - They're **replicated** into each enrolled project's store on that project's next pull.
 
 `./cm network` shows the topology — the **universal baseline** (facts every project holds)

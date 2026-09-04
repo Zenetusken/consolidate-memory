@@ -5,6 +5,24 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.10] — 2026-09-04
+
+**Patch** — the group-scopes layer: the routed-link tier above the domain. An
+operator-granted **group** is a recipient set that a canonical's optional
+`recipients:` targets to **narrow** delivery — to two repos, or across domains
+(the governed successor to the v0.2.1 A→B sharing). Cross-domain mirrors get
+namespaced `{domain}--{stem}` keys with record-derived provenance; the pull
+path, beacon, GC, and revoke are membership-aware (a removed member's clean
+mirrors are deleted, edited ones quarantined); a recreated group name is a
+fresh identity — facts predating it refuse to re-point. Commands: `cm group
+create/add/remove/list/show` + `/cm-group`, and `/cm-share` asks whether to
+deliver to a group or the whole domain (the narrowing is printed verbatim).
+The fleet's two measured cases resolve: one cross-domain group for the
+universal plan-mode preference, one retired duplicate ruff/mypy gate.
+Design-of-record: `docs/group-scopes.spec.md` (advisor + adversarial
+review-to-zero + a per-PR review round; 1549 smoke assertions). Backward-
+compatible → patch.
+
 ## [0.4.9] — 2026-09-04
 
 **Patch** — the fleet-dogfood hotfix: `/cm-connect`'s absorb step now harvests
