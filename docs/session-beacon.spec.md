@@ -48,7 +48,12 @@ as missing or stale — the beacon must not nag for unreplicable facts.
 **Silence rules (no-nag, all deliberate):** global store absent/empty · this store holds no
 `*.md` (never-participated dirs must cost zero — the plugin is user-wide; discovery is
 `--staleness`'s job) · `beacon_snooze_until` in the future (set per-store on explicit user ask —
-report-then-apply applies to snoozing too) · 0 missing and 0 stale among domain-admitted facts.
+report-then-apply applies to snoozing too) · 0 missing and 0 stale among domain-admitted facts ·
+**unenrolled + store never participated → silent** (v0.4.8: the unenrolled advisory — a
+participating store in a fleet whose domain holds active facts is "behind" in its strongest
+form — shares the never-participated gate; N derives from the registry by pure SQL, the line
+is a statement, not a directive, and it repeats until enrolled or snoozed — see
+`cm-commands-onboarding.spec.md` §3).
 
 **Failure posture:** any unexpected error → empty stdout, diagnostic on stderr (hook debug only),
 exit 0 — a best-effort advisory must never inject a traceback into every session start nor render
