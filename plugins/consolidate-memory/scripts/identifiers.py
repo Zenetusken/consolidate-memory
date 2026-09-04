@@ -24,6 +24,27 @@ RESERVED_DOMAINS = frozenset({
     "unknown", ".", "..", "memory", "locks", "ops", "journal", "con", "prn", "aux",
 })
 RESERVED_STEMS = frozenset({"MEMORY"})
+# v0.4.10 (group-scopes spec §4): group slugs share the domain grammar (the
+# mirror-key encode {domain}--{stem} means a group name is never in a path, so
+# only grammar + reserved-set checks apply; `--` inside a name is legal — the
+# namespaced-key encoder, not the slug, owns ambiguity refusal).
+RESERVED_GROUP_NAMES = frozenset({
+    "unknown", ".", "..", "memory", "locks", "ops", "journal", "con", "prn", "aux",
+    "all", "everyone",
+})
+
+
+def validate_group_slug(raw: str) -> str:
+    s = (raw or "").strip()
+    if not s or s != s.lower():
+        raise IdentifierRefused("group name must be lowercase [a-z0-9][a-z0-9_-]{0,63}")
+    if s in RESERVED_GROUP_NAMES:
+        raise IdentifierRefused(f"reserved group name {s!r}")
+    if "/" in s or "\\" in s or ".." in s or s.startswith("-"):
+        raise IdentifierRefused("group name must not contain path components")
+    if not DOMAIN_RE.fullmatch(s):
+        raise IdentifierRefused(f"invalid group name {s!r}")
+    return s
 
 
 class IdentifierRefused(ValueError):

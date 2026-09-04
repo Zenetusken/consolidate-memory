@@ -415,6 +415,52 @@ def upsert(ctx: StoreContext, stem: str, text: str, *,
         return {"ok": False, "error": link_err}
     if ctx.domain_id == "unknown" and fact_domain(fm):
         return {"ok": False, "error": "unknown-domain writer cannot create a domain-tagged canonical"}
+    # v0.4.10 (group-scopes spec §4): recipients NARROW delivery; every slug must
+    # resolve to an existing group whose HOME domain is this fact's domain (the
+    # bridge is declared by the group's membership, not by the fact).
+    from fact_schema import _parse_flow_list as _parse_recipients
+    _recips = _parse_recipients(str(fm.get("recipients") or ""))
+    if _recips:
+        from control_plane import connect_if_exists, db_path
+        from identifiers import IdentifierRefused, validate_group_slug
+        _gconn = connect_if_exists(db_path(ctx))
+        try:
+            if _gconn is None:
+                return {"ok": False, "error":
+                        "recipients require the group registry (no registry yet)"}
+            for _slug in _recips:
+                try:
+                    _slug = validate_group_slug(_slug)
+                except IdentifierRefused as e:
+                    return {"ok": False, "error": f"recipients: {e}"}
+                _grow = _gconn.execute(
+                    "SELECT domain_id, created_at FROM groups WHERE name=?",
+                    (_slug,)).fetchone()
+                if _grow is None:
+                    return {"ok": False, "error":
+                            f"recipients: no such group {_slug!r}"}
+                if str(_grow["domain_id"]) != ctx.domain_id:
+                    return {"ok": False, "error":
+                            f"recipients: group {_slug!r} is home to "
+                            f"{_grow['domain_id']!r}, not {ctx.domain_id!r} "
+                            "(a fact targets only groups born in its own domain)"}
+                # recreation guard (spec §4): recipients that predate the current
+                # group refuse — a recreated name is a fresh identity, and old
+                # text must not silently re-point at the new membership. The
+                # comparison uses the INPUT text's own stamp (the writer
+                # re-stamps content_modified on every upsert, so the stamped
+                # fm can never predate anything); an input without a stamp is
+                # a fresh authoring and passes.
+                _g_created = str(_grow["created_at"] or "")
+                _in_cm = str(_frontmatter(text).get("content_modified") or "")
+                if (_g_created and _in_cm and _in_cm < _g_created
+                        and "recipients" in (text or "")):
+                    return {"ok": False, "error":
+                            f"recipients: [{_slug}] predates the current group "
+                            f"(created {_g_created}) — re-confirm or re-point"}
+        finally:
+            if _gconn is not None:
+                _gconn.close()
     from control_plane import _file_hash as _fh_origin
     origin_delete_hash = ""
     if origin_delete is not None and origin_delete.exists():

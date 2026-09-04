@@ -12042,6 +12042,251 @@ check("v0.4.8 cm-commands: the README cross-project section is the consolidated 
       all(_c in _readme_bq for _c in ("/cm-connect", "/cm-share", "/cm-sync", "/cm-network"))
       and "Hook your repos together" in _readme_bq)
 
+# ── v0.4.10 group-scopes (docs/group-scopes.spec.md) ───────────────────────────
+def _raises_gs(fn, exc):
+    try:
+        fn()
+    except exc:
+        return True
+    except Exception:
+        return False
+    return False
+
+
+check("v0.4.10 groups: the namespaced key encoder refuses the ambiguous '--' encoding",
+      _raises_gs(lambda: sg._mirror_key("personal", "a--b", "x"), ValueError)
+      and sg._mirror_key("personal", "personal", "x") == "x"
+      and sg._mirror_key("personal", "work", "x") == "work--x"
+      and sg.decode_key("work--x") == ("work", "x")
+      and sg.decode_key("x") == ("", "x"))
+
+with _tf73.TemporaryDirectory() as _td_gs:
+    _home_gs = Path(_td_gs)
+    _pa_gs = (_home_gs / "src" / "pa").resolve(); _pa_gs.mkdir(parents=True)
+    _pb_gs = (_home_gs / "src" / "pb").resolve(); _pb_gs.mkdir(parents=True)
+    _pc_gs = (_home_gs / "src" / "pc").resolve(); _pc_gs.mkdir(parents=True)
+    for _p_gs in (_pa_gs, _pb_gs, _pc_gs):
+        (_home_gs / ".claude" / "projects" / ms.slug_for(_p_gs) / "memory").mkdir(parents=True)
+    _home_prev_gs = _os73.environ.get("HOME")
+    _global_prev_gs = sg.GLOBAL
+    _os73.environ["HOME"] = str(_home_gs)
+    # hermeticity: an absent GLOBAL dir (CI parity) — the REAL ~/.claude/memory
+    # must never leak legacy facts into these fixtures
+    sg.GLOBAL = _home_gs / ".claude" / "memory"
+    try:
+        _ctxa0_gs = sc.resolve_store(_pa_gs)
+        _ca_gs = cp.connect(cp.db_path(_ctxa0_gs))
+        try:
+            cp.enroll_project(_ca_gs, _ctxa0_gs, "personal")
+            _ca_gs.commit()
+        finally:
+            _ca_gs.close()
+        # journal round-trip: the op kinds replay through the whitelist + dispatcher
+        _gid_gs = "g_" + "a" * 32
+        _ca2_gs = cp.connect(cp.db_path(_ctxa0_gs))
+        try:
+            cp.apply_registry_ops(_ca2_gs, [
+                {"op": "group_upsert", "group_id": _gid_gs, "name": "pair",
+                 "domain_id": "personal", "created_at": "2026-08-01T00:00:00Z"},
+                {"op": "group_member_add", "group_id": _gid_gs,
+                 "project_id": _ctxa0_gs.project_id},
+            ])
+            _ca2_gs.commit()
+        finally:
+            _ca2_gs.close()
+        # resolve the REAL contexts AFTER the grants (enrollment is cached at resolve)
+        _ctxa_gs = sc.resolve_store(_pa_gs)
+        _ctxb_gs = sc.resolve_store(_pb_gs)
+        _ctxc_gs = sc.resolve_store(_pc_gs)
+        _cb_gs = cp.connect(cp.db_path(_ctxa_gs))
+        try:
+            cp.enroll_project(_cb_gs, _ctxb_gs, "personal")
+            cp.enroll_project(_cb_gs, _ctxc_gs, "work")
+            cp.apply_registry_ops(_cb_gs, [
+                {"op": "group_member_add", "group_id": _gid_gs,
+                 "project_id": _ctxc_gs.project_id}])
+            _cb_gs.commit()
+        finally:
+            _cb_gs.close()
+        _conn_gs = cp.connect(cp.db_path(_ctxa_gs))
+        try:
+            _rows_gs = _conn_gs.execute("SELECT COUNT(*) AS n FROM group_members").fetchone()["n"]
+        finally:
+            _conn_gs.close()
+        check("v0.4.10 groups: the journal op kinds round-trip through the whitelist "
+              "AND the dispatcher (group_upsert/member_add)",
+              _rows_gs == 2)
+        # author a user-global fact with recipients in the personal domain
+        _canon_gs = _v3_canon("grp-fact").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        import canonical_ingress as _ci_gs
+        _up_gs = _ci_gs.upsert(_ctxa_gs, "grp-fact", _canon_gs)
+        check("v0.4.10 groups: the writer accepts a valid recipients list "
+              "(member-resolved, home-domain group)",
+              _up_gs.get("ok") is True)
+        _up_bad_gs = _ci_gs.upsert(_ctxa_gs, "grp-bad",
+                                   _canon_gs.replace("grp-fact", "grp-bad", 1)
+                                   .replace("recipients: [pair]", "recipients: [nope]", 1))
+        check("v0.4.10 groups: an unknown recipients group is refused, NAMING it",
+              _up_bad_gs.get("ok") is False and "nope" in str(_up_bad_gs.get("error") or ""))
+        # member A (personal) pulls it; non-member B (personal) does NOT (narrowing)
+        import io as _io_gs
+        _o_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o_gs):
+            sg.run(_pa_gs, pull=True)
+        _storea_gs = _ctxa_gs.native_memory_dir
+        check("v0.4.10 groups: a member pulls the recipients-fact (bare-stem mirror, "
+              "group stamp present)",
+              (_storea_gs / "grp-fact.md").exists()
+              and "group: pair" in (_storea_gs / "grp-fact.md").read_text(encoding="utf-8"))
+        _o2_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o2_gs):
+            sg.run(_pb_gs, pull=True)
+        check("v0.4.10 groups: a SAME-DOMAIN non-member does NOT receive it (narrowing)",
+              not (_ctxb_gs.native_memory_dir / "grp-fact.md").exists())
+        # the cross-domain member C (work) gets the NAMESPACED mirror + correct stamps
+        _o3_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o3_gs):
+            sg.run(_pc_gs, pull=True)
+        _storec_gs = _ctxc_gs.native_memory_dir
+        _cfile_gs = _storec_gs / "personal--grp-fact.md"
+        _ctext_gs = _cfile_gs.read_text(encoding="utf-8") if _cfile_gs.exists() else ""
+        check("v0.4.10 groups: the cross-domain member receives the namespaced mirror "
+              "with the REAL canonical stamps + group stamp",
+              "canonical_fact_id: " + cp.stable_fact_id("personal", "grp-fact") in _ctext_gs
+              and "canonical_domain: personal" in _ctext_gs
+              and "group: pair" in _ctext_gs)
+        # F1: a live cross-domain mirror survives gc --apply
+        _o4_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o4_gs):
+            sg.gc(_pc_gs, apply=True)
+        check("v0.4.10 groups: the live cross-domain mirror survives gc --apply (F1)",
+              _cfile_gs.exists())
+        # the group stamp is volatile: no restamp churn on a no-change refresh
+        _o5_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o5_gs):
+            sg.run(_pc_gs, pull=True)
+        check("v0.4.10 groups: a no-change refresh does not restamp the volatile group stamp (F9)",
+              "restamped 1" not in _o5_gs.getvalue())
+        # F1 (review): a canonical change in the authoring domain REFRESHES the
+        # cross-domain mirror WHILE IT EXISTS (the ctx-derived write path froze
+        # it in QUARANTINE forever — holder base under the real fid)
+        import canonical_ingress as _ci2_gs
+        _up2_gs = _ci2_gs.upsert(_ctxa_gs, "grp-fact", _v3_canon("grp-fact").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1
+        ).replace("body\n", "body v2\n", 1))
+        _o6_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o6_gs):
+            sg.run(_pc_gs, pull=True)
+        _c2_gs = _storec_gs / "personal--grp-fact.md"
+        check("v0.4.10 groups: a canonical change REFRESHES the cross-domain mirror "
+              "(no QUARANTINE freeze — F1)",
+              "refreshed 1" in _o6_gs.getvalue()
+              and "quarantine" not in _o6_gs.getvalue()
+              and "body v2" in (_c2_gs.read_text(encoding="utf-8") if _c2_gs.exists() else ""))
+        # F6: group remove deletes the clean cross-domain mirror (decode-first revoke)
+        _conn2_gs = cp.connect(cp.db_path(_ctxa_gs))
+        try:
+            cp.apply_registry_ops(_conn2_gs, [{
+                "op": "group_member_remove", "group_id": _gid_gs,
+                "project_id": _ctxc_gs.project_id}])
+            _conn2_gs.commit()
+        finally:
+            _conn2_gs.close()
+        from cm_ops import _revoke_group_mirrors as _rgm_gs
+        _rgm_gs(_ctxa_gs, _ctxc_gs, _gid_gs, "pair")
+        _qdir_gs = _storec_gs / "quarantine"
+        _q_hits_gs = [q.name for q in _qdir_gs.glob("*.md")] if _qdir_gs.is_dir() else []
+        check("v0.4.10 groups: group remove DELETES the clean namespaced mirror "
+              "(decode-first; a quarantine-rename would retain the withdrawn content)",
+              not _cfile_gs.exists()
+              and not any("personal--grp-fact" in q for q in _q_hits_gs))
+        # F2 (review): a foreign ORPHAN (canonical deleted) is reclaimed even when
+        # the member's own domain holds a same-stem canonical
+        _ci2_gs.forget(_ctxa_gs, "grp-fact")
+        (_storec_gs / "personal--grp-fact.md").write_text(
+            _v3_canon("grp-fact").replace("domain: personal", "domain: personal"),
+            encoding="utf-8")
+        import sync_global as _sg2_gs
+        (_storec_gs / "personal--grp-fact.md").write_text(
+            _sg2_gs._as_mirror(_v3_canon("grp-fact"), "grp-fact",
+                               fact_id=cp.stable_fact_id("personal", "grp-fact"),
+                               domain="personal"), encoding="utf-8")
+        _ctxc_gs = sc.resolve_store(_pc_gs)   # fresh resolve — the cached ctx predates later registry state
+        _upw_gs = _ci2_gs.upsert(_ctxc_gs, "grp-fact", _v3_canon("grp-fact").replace(
+            "domain: personal", "domain: work", 1))
+        _o7_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o7_gs):
+            sg.gc(_pc_gs, apply=True)
+        check("v0.4.10 groups: a foreign ORPHAN is reclaimed even under a same-stem "
+              "local canonical (pair-keyed GC — F2)",
+              not (_storec_gs / "personal--grp-fact.md").exists())
+        # recreation guard (spec §4): recipients predating a recreated group refuse
+        _conn4_gs = cp.connect(cp.db_path(_ctxa_gs))
+        try:
+            cp.apply_registry_ops(_conn4_gs, [{"op": "group_delete", "group_id": _gid_gs}])
+            cp.apply_registry_ops(_conn4_gs, [{"op": "group_upsert", "group_id": _gid_gs,
+                                               "name": "pair", "domain_id": "personal",
+                                               "created_at": "2026-09-04T12:00:00Z"}])
+            _conn4_gs.commit()
+        finally:
+            _conn4_gs.close()
+        _canon_old_gs = _v3_canon("old-recip").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        # stamp the fact OLDER than the recreated group → the guard fires
+        _canon_old_gs = _canon_old_gs.replace("content_modified: 2026-09-01T00:00:00Z",
+                                              "content_modified: 2026-09-03T00:00:00Z")
+        _up4_gs = _ci2_gs.upsert(_ctxa_gs, "old-recip", _canon_old_gs)
+        check("v0.4.10 groups: recipients predating a recreated group refuse "
+              "(the silent re-grant guard — spec §4)",
+              _up4_gs.get("ok") is False and "predates" in str(_up4_gs.get("error") or ""))
+        # confidential + foreign recipients lands for a member (F5: both equality legs)
+        _canon_conf_gs = _v3_canon("conf-grp").replace(
+            "sensitivity: internal", "sensitivity: confidential", 1).replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1).replace(
+            "content_modified: 2026-09-01T00:00:00Z",
+            "content_modified: 2026-09-06T00:00:00Z")
+        _up5_gs = _ci2_gs.upsert(_ctxa_gs, "conf-grp", _canon_conf_gs)
+        check("v0.4.10 groups: a confidential fact with recipients is writable "
+              "(the bridge carries it — F5)",
+              _up5_gs.get("ok") is True)
+        # F3 (review): the beacon counts a missing group mirror through main()
+        # (a local fact keeps the store PARTICIPATING past the never-participated
+        # silence gate)
+        (_storec_gs / "local.md").write_text("---\nname: local\n---\nbody\n",
+                                             encoding="utf-8")
+        _bline_gs = None
+        try:
+            _bline_gs = __import__("session_beacon").beacon_line(
+                _storec_gs, domain_id="work", migration_mode="dual-read",
+                gfacts=[("grp-fact", _sg2_gs._frontmatter(_v3_canon("grp-fact").replace(
+                    "applies_exclude: []\n",
+                    "applies_exclude: []\nrecipients: [pair]\n", 1)), "t")],
+                memberships={"pair"})
+        except Exception:
+            _bline_gs = ""
+        check("v0.4.10 groups: the beacon counts a MISSING group-fact mirror "
+              "(membership-threaded _store_gaps — F3)",
+              bool(_bline_gs) and "1 shared" in str(_bline_gs))
+    finally:
+        if _home_prev_gs is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_prev_gs
+        sg.GLOBAL = _global_prev_gs
+
+_cmdg_gs = (ROOT / "plugins" / "consolidate-memory" / "commands" / "cm-group.md")
+_ctg_gs = _cmdg_gs.read_text(encoding="utf-8") if _cmdg_gs.is_file() else ""
+check("v0.4.10 groups: /cm-group exists with the confirm-phrase surface",
+      _ctg_gs.startswith("---\nname: cm-group")
+      and "create-group-<name>" in _ctg_gs and "add-group-<name>" in _ctg_gs
+      and "remove-group-<name>" in _ctg_gs)
+_shareg_gs = (ROOT / "plugins" / "consolidate-memory" / "commands" / "cm-share.md").read_text(encoding="utf-8")
+check("v0.4.10 groups: /cm-share names the group question + the verbatim narrowing",
+      "share to a group or the whole" in _shareg_gs
+      and "same-domain projects STOP" in _shareg_gs
+      and "receiving it" in _shareg_gs)
+
 # ── v0.4.5 (#152 code leg): SHA256SUMS in the release pipeline ─────────────────
 _wf_cs = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
 check("v0.4.5 #152: the release workflow generates + self-verifies + uploads SHA256SUMS beside the SBOM",

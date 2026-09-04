@@ -1153,6 +1153,7 @@ _CANONICAL_RESERVED_KEYS = (
     "sensitivity", "scope", "status",
     "applies_any", "applies_all", "applies_exclude",
     "content_modified", "last_observed_at", "replacement_id",
+    "recipients",
 )
 
 
@@ -1219,7 +1220,8 @@ def _frontmatter(text: str) -> dict:
             # through THIS one parser, docs/evidence-clock-stamps.spec.md).
             m2 = re.match(r"\s+(scope|stacks|type|projects|node_type|originSessionId"
                           r"|global_ref_since|global_ref_body|mirrored_at"
-                          r"|base_revision|canonical_revision|domain|sensitivity):\s*(.+)", line)
+                          r"|base_revision|canonical_revision|canonical_fact_id"
+                          r"|canonical_domain|group|domain|sensitivity):\s*(.+)", line)
             if m2:
                 out[m2.group(1)] = m2.group(2).strip()
         i += 1
