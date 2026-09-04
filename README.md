@@ -84,18 +84,25 @@ the native store is **not recoverable** and can destroy unrelated Auto Memory.
 
 Everything works locally with zero setup; sharing takes **one deliberate step per
 project** — enrollment (a domain is a trust boundary, so a project can never grant
-itself one — the operator grants it). The whole path:
+itself one — the operator grants it). The consolidated workflow:
 
 1. **Install** (above) — two commands.
-2. **Enroll your first project:** run **`/cm-domain`** and follow the flow (in this
-   checkout: `cm project enroll --domain personal --apply --confirm enroll-personal`).
-   This creates the `personal` domain and enrolls the project in it.
-3. **Enroll every other project you want to share with** — the same `/cm-domain` in
-   each. From then on: dream in any enrolled project, and each other project absorbs
-   the cross-project facts on **its own next dream** (the session beacon nudges the
-   ones that lag).
+2. **Hook your repos together:** in one of them run **`/cm-connect <other-repo>`** —
+   it surveys both repos, shows each enrollment plan (the grants are
+   operator-confirmed there — a repo never grants itself), offers to share a first
+   fact, absorbs the shared layer in both directions, and prints the network it
+   just linked.
+3. **Share a fact:** **`/cm-share "…"`** in any enrolled project — one sentence,
+   verified against the live repo(s), shown to you, written only on your
+   confirmation.
+4. **Stay in sync:** each project absorbs the shared layer on **its own next
+   dream** — or right now with **`/cm-sync`** — and the session beacon names exactly
+   which repos are behind, including unenrolled ones (*"2 shared fact(s) not
+   reachable here"*). **`/cm-network`** shows the whole network's token cost and
+   topology, read-only.
 
-`cm doctor` — or `/cm-doctor` — in any project prints the resolved setup; the
+Enrolling a single project alone is just **`/cm-domain`**; `cm doctor` — or
+`/cm-doctor` — in any project prints the resolved setup, and the
 `UNENROLLED LOCAL-ONLY` line means that project keeps everything local until you
 enroll it. The full model (scopes, domains, replication) is below under
 [How it works](#how-it-works).

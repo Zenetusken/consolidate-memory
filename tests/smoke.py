@@ -11962,6 +11962,11 @@ _conn_bq = (_cmds_bq / "cm-connect.md").read_text(encoding="utf-8")
 check("v0.4.8 cm-commands: cm-connect sequences positional-first enrolls for both repos",
       "project enroll . --domain personal --apply --confirm enroll-personal" in _conn_bq
       and "project enroll <other-repo> --domain personal --apply --confirm enroll-personal" in _conn_bq)
+_readme_bq = (ROOT / "README.md").read_text(encoding="utf-8")
+check("v0.4.8 cm-commands: the README cross-project section is the consolidated workflow "
+      "(connect → share → sync, network)",
+      all(_c in _readme_bq for _c in ("/cm-connect", "/cm-share", "/cm-sync", "/cm-network"))
+      and "Hook your repos together" in _readme_bq)
 
 # ── v0.4.5 (#152 code leg): SHA256SUMS in the release pipeline ─────────────────
 _wf_cs = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
