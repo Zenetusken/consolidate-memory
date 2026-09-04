@@ -26,6 +26,11 @@ must survive verification before it may exist. NO VERIFY, NO WRITE.
 5. **Draft + show.** Draft the fact (frontmatter + body) and SHOW it — including
    the before/after diff when the stem already exists (a replace freezes other
    projects' mirrors at their next pull). The user's confirmation is the gate.
+   **Groups (v0.4.10):** when groups exist, ASK "share to a group or the whole
+   domain?", and print the narrowing VERBATIM when a group is chosen —
+   "delivery LIMITED to N members across X, Y; M same-domain projects STOP
+   receiving it" — recipients narrow, never widen, and the exclusion is stated,
+   never implied.
 
 6. **Write** through the sole canonical writer — one journaled transact
    (canonical + catalog + registry + this project's mirror + pointer):

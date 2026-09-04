@@ -2094,6 +2094,181 @@ def _want_confirm(args: argparse.Namespace, phrase: str) -> Optional[str]:
     return None
 
 
+def _revoke_group_mirrors(ctx, member_ctx, group_id: str, gname: str) -> int:
+    """v0.4.10 group-scopes §5-E: withdraw a removed member's group-fact mirrors.
+    Decode-first (the namespaced key → (domain, stem) BEFORE any canonical
+    lookup — the naive filename-resolve misclassifies clean cross-domain mirrors
+    as local edits and quarantines the very content the revoke must remove).
+    Clean mirrors are DELETED; locally-edited ones are QUARANTINED (the
+    enrollment-revoke precedent, _revoke_unadmitted_mirrors)."""
+    from memory_status import _frontmatter as _fm_rev
+    from mirror_conflict import classify_mirror as _cm_rev
+    from sync_global import (_is_mirror as _im_rev, _safe_read_text as _srt_rev,
+                             _source_facts_dir, decode_key)
+    store = member_ctx.native_memory_dir
+    if not store.is_dir():
+        return 0
+    n = 0
+    removed_keys: list = []
+    for f in sorted(store.glob("*.md")):
+        if f.name == "MEMORY.md":
+            continue
+        cur = _srt_rev(f) or ""
+        if not _im_rev(cur):
+            continue
+        fm_c = _fm_rev(cur)
+        slugs = {str(s).strip() for s in str(fm_c.get("group") or "").split(",") if s.strip()}
+        if gname not in slugs:
+            continue
+        _d, _stem = decode_key(f.stem)
+        canon_p = _source_facts_dir(ctx, _d or ctx.domain_id) / f"{_stem}.md"
+        ctext = _srt_rev(canon_p) or ""
+        if not ctext:
+            # canonical gone — the mirror is an orphan; delete + strip pointer
+            f.unlink(missing_ok=True)
+            removed_keys.append(f.stem)
+            n += 1
+            continue
+        try:
+            dec = _cm_rev(cur, ctext, base_revision=None, allow_legacy_fallback=False)
+        except Exception:
+            dec = {"action": "quarantine"}
+        if dec["action"] in ("stop-local", "conflict", "quarantine"):
+            qdir = store / "quarantine"
+            qdir.mkdir(parents=True, exist_ok=True)
+            ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+            f.rename(qdir / f"{f.stem}.{ts}.md")
+        else:
+            f.unlink(missing_ok=True)
+        removed_keys.append(f.stem)
+        n += 1
+    if removed_keys:
+        idxp = store / "MEMORY.md"
+        if idxp.exists():
+            idx_text = idxp.read_text(encoding="utf-8", errors="replace")
+            for _k in removed_keys:
+                idx_text = "\n".join(
+                    ln for ln in idx_text.splitlines() if f"]({_k}.md)" not in ln) + "\n"
+            idxp.write_text(idx_text, encoding="utf-8")
+    return n
+
+
+def cmd_group(args: argparse.Namespace) -> int:
+    """The group-scopes layer (v0.4.10 spec): operator-granted recipient sets.
+
+    Migrate-first per spec §3: mutations open via the writable connect (which
+    migrates); read-only paths degrade-to-empty on a pre-migration registry."""
+    import hashlib
+    from control_plane import connect, connect_if_exists, db_path, transact
+    from identifiers import IdentifierRefused, validate_domain_id, validate_group_slug
+    from store_context import resolve_store
+    ctx = _ctx(".")
+    _writable = args.group_cmd in ("create", "add", "remove")
+    conn = connect(db_path(ctx)) if _writable else connect_if_exists(db_path(ctx))
+    if conn is None:
+        print(json.dumps({"ok": True, "groups": []}) if args.json
+              else "group: no registry yet (first enrolled op migrates it)")
+        return 0
+    try:
+        cmd = args.group_cmd
+        if cmd == "create":
+            try:
+                name = validate_group_slug(args.name_or_group or "")
+            except IdentifierRefused as e:
+                print(f"group create: {e}", file=sys.stderr)
+                return 2
+            try:
+                domain = validate_domain_id(str(args.domain or "personal"))
+            except IdentifierRefused as e:
+                print(f"group create: {e}", file=sys.stderr)
+                return 2
+            need = _want_confirm(args, f"create-group-{name}")
+            if need:
+                print(f"group create {name}: home domain {domain} — {need}")
+                return 0 if not getattr(args, "apply", False) else 2
+            if conn.execute("SELECT 1 FROM groups WHERE name=?",
+                            (name,)).fetchone():
+                print(f"group create: {name} already exists", file=sys.stderr)
+                return 2
+            gid = "g_" + hashlib.sha256(
+                (name + "\x00" + domain).encode("utf-8")).hexdigest()[:32]
+            now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            out = transact(ctx, "group-create", {"name": name}, lambda c, temps: {
+                "registry_ops": [{"op": "group_upsert", "group_id": gid,
+                                  "name": name, "domain_id": domain,
+                                  "created_at": now}],
+                "deletes": [], "expected_revisions": {}, "dest_modes": {}})
+            print(f"group created: {name} (home {domain}, {gid})")
+            return 0
+        if cmd in ("add", "remove"):
+            gname = str(args.name_or_group or "")
+            if not gname:
+                print(f"group {cmd}: pass GROUP", file=sys.stderr)
+                return 2
+            need = _want_confirm(args, f"{cmd}-group-{gname}")
+            if need:
+                print(f"group {cmd} {gname}: {need}")
+                return 0 if not getattr(args, "apply", False) else 2
+            row = conn.execute("SELECT group_id, domain_id, created_at FROM groups "
+                               "WHERE name=?", (gname,)).fetchone()
+            if row is None:
+                print(f"group {cmd}: no such group {gname!r}", file=sys.stderr)
+                return 2
+            tctx = resolve_store(Path(str(args.project or ".")).resolve())
+            out = transact(ctx, f"group-{cmd}", {"group": gname},
+                              lambda c, temps: {
+                                  "registry_ops": [{
+                                      "op": "group_member_" +
+                                      ("add" if cmd == "add" else "remove"),
+                                      "group_id": str(row["group_id"]),
+                                      "project_id": tctx.project_id,
+                                      "granted_at": time.strftime(
+                                          "%Y-%m-%dT%H:%M:%SZ", time.gmtime())}],
+                                  "deletes": [], "expected_revisions": {},
+                                  "dest_modes": {}})
+            _revoked = 0
+            if cmd == "remove":
+                # spec §5-E: withdraw the member's group mirrors — decode-first
+                # (delete clean, quarantine locally-edited).
+                _revoked = _revoke_group_mirrors(ctx, tctx, str(row["group_id"]), gname)
+            print(f"group {cmd}: {tctx.project_id} {'∈' if cmd == 'add' else '∉'} {gname}"
+                  + (f"; revoked {_revoked} mirror(s)" if cmd == "remove" else ""))
+            return 0
+        if cmd == "list":
+            rows = conn.execute(
+                "SELECT g.name, g.domain_id, g.created_at, COUNT(m.project_id) AS n "
+                "FROM groups g LEFT JOIN group_members m ON m.group_id=g.group_id "
+                "GROUP BY g.group_id ORDER BY g.name").fetchall()
+            if args.json:
+                print(json.dumps({"ok": True, "groups": [dict(r) for r in rows]}))
+            else:
+                for r in rows:
+                    print(f"  {r['name']} (home {r['domain_id']}) · {r['n']} member(s)")
+            return 0
+        if cmd == "show":
+            gname = str(args.name_or_group or "")
+            row = conn.execute("SELECT * FROM groups WHERE name=?",
+                               (gname,)).fetchone()
+            if row is None:
+                print(f"group show: no such group {gname!r}", file=sys.stderr)
+                return 2
+            members = conn.execute(
+                "SELECT project_id, granted_at FROM group_members WHERE group_id=? "
+                "ORDER BY granted_at", (row["group_id"],)).fetchall()
+            if args.json:
+                print(json.dumps({"ok": True, "group": dict(row),
+                                  "members": [dict(m) for m in members]}))
+            else:
+                print(f"  {row['name']} (home {row['domain_id']}, "
+                      f"created {row['created_at']})")
+                for m in members:
+                    print(f"    {m['project_id']} @ {m['granted_at']}")
+            return 0
+        return 2
+    finally:
+        conn.close()
+
+
 def cmd_journal(args: argparse.Namespace) -> int:
     from control_plane import (compact_journal, connect_journal, journal_abandon,
                                journal_cleanup, journal_inventory, journal_retry,
@@ -2594,6 +2769,15 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--adopt", action="store_true",
                     help="grant-native of a nonempty destination")
 
+    gp = sub.add_parser("group")
+    gp.add_argument("group_cmd", choices=["create", "add", "remove", "list", "show"])
+    gp.add_argument("name_or_group", nargs="?")
+    gp.add_argument("project", nargs="?")
+    gp.add_argument("--domain")
+    gp.add_argument("--apply", action="store_true")
+    gp.add_argument("--confirm", metavar="PHRASE")
+    gp.add_argument("--json", action="store_true")
+
     mk = sub.add_parser("marker")
     mk.add_argument("marker_cmd", choices=["stamp", "standing-justify", "snooze"])
     mk.add_argument("--commit")
@@ -2663,6 +2847,8 @@ def main(argv: Optional[list] = None) -> int:
             return cmd_journal(args)
         if args.cmd == "project":
             return cmd_project(args)
+        if args.cmd == "group":
+            return cmd_group(args)
     except WriteRefused as e:
         payload = {"ok": False, "error": str(e), "code": 2}
         if getattr(args, "json", False):

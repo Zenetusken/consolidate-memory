@@ -660,6 +660,38 @@ process — run() consumes it so one pull parses the facts manifest ONCE (it use
 re-ensure after iter_admissible_facts and parse the 10k-row JSON a second time)."""
 
 
+_PROJECT_MEMBERSHIPS_CACHE: dict = {}
+
+
+def _project_memberships(ctx) -> set:
+    """The group slugs ctx.project_id belongs to (group-scopes spec §5-C).
+    Read-only registry lookup; degrade-to-empty on a missing/unmigrated
+    registry (the spec's one-cycle skew bound). Cached per project+registry."""
+    try:
+        from control_plane import connect_if_exists as _cife_m, db_path as _dbp_m
+        _rp = _dbp_m(ctx)
+        _ck = (str(_rp), ctx.project_id)
+        if _ck in _PROJECT_MEMBERSHIPS_CACHE:
+            return set(_PROJECT_MEMBERSHIPS_CACHE[_ck])
+        out: set = set()
+        _mc = _cife_m(_rp)
+        if _mc is not None:
+            try:
+                for r in _mc.execute(
+                        "SELECT g.name FROM groups g JOIN group_members m "
+                        "ON m.group_id=g.group_id WHERE m.project_id=?",
+                        (ctx.project_id,)).fetchall():
+                    out.add(str(r["name"]))
+            except Exception:
+                out = set()   # pre-migration schema: degrade-to-empty
+            finally:
+                _mc.close()
+        _PROJECT_MEMBERSHIPS_CACHE[_ck] = frozenset(out)
+        return out
+    except Exception:
+        return set()
+
+
 def _admissible_records(ctx) -> list:
     """iter_admissible_facts plus the actual source path.
 
@@ -671,7 +703,8 @@ def _admissible_records(ctx) -> list:
     if not getattr(ctx, "cross_project_allowed", False):
         return []
     from domain_policy import admit_cross_project, fact_domain
-    from fact_schema import CLASS_ACTIVE, CLASS_INVALID, CLASS_LEGACY, classify_canonical
+    from fact_schema import (CLASS_ACTIVE, CLASS_INVALID, CLASS_LEGACY,
+                              _parse_flow_list, classify_canonical)
     from memory_status import _looks_secret
     mode = "dual-read"
     try:
@@ -703,6 +736,8 @@ def _admissible_records(ctx) -> list:
         except Exception:
             man_rows = None
 
+    memberships = _project_memberships(ctx)
+
     def _consider(path: Path, *, untagged_only: bool) -> None:
         if path.name == "MEMORY.md" or _is_reserved_stem(path.stem) or not _safe_stem(path.stem):
             return
@@ -732,7 +767,10 @@ def _admissible_records(ctx) -> list:
         if (_is_fixture_now or _hermetic_now) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
             adm["domain"] = ctx.domain_id
         if not admit_cross_project(ctx.domain_id, adm, migration_mode=mode,
-                                   looks_secret=_looks_secret):
+                                   looks_secret=_looks_secret,
+                                   memberships=memberships,
+                                   group_recips=set(_parse_flow_list(
+                                       str(fm.get("recipients") or "")))):
             return
         key = (fact_domain(fm) or "legacy", path.stem)
         if key in seen:
@@ -790,7 +828,10 @@ def _admissible_records(ctx) -> list:
         # than admit's description+body blob) and this row is stat-fresh, so they cannot
         # disagree. The per-entry `_looks_secret(description)` re-run was ~10k regex
         # passes per warm pull.
-        if not admit_cross_project(ctx.domain_id, adm, migration_mode=mode):
+        if not admit_cross_project(ctx.domain_id, adm, migration_mode=mode,
+                                   memberships=memberships,
+                                   group_recips=set(_parse_flow_list(
+                                       str(fm.get("recipients") or "")))):
             return
         key = (fact_domain(fm) or "legacy", _stem)
         if key in seen:
@@ -821,7 +862,46 @@ def _admissible_records(ctx) -> list:
         if g.is_dir() and not same:
             for f in sorted(g.glob("*.md")):
                 _consider(f, untagged_only=False)
+
+    # v0.4.10 group-scopes: the bridge enumeration — the home domains of every
+    # group this project belongs to, filtered to facts whose recipients
+    # intersect the project's memberships. Foreign facts always carry their
+    # text (no manifest fast path) and are seen-keyed by (domain, stem).
+    if memberships:
+        from control_plane import connect_if_exists as _cife_g, db_path as _dbp_g
+        _gc = _cife_g(_dbp_g(ctx))
+        _homes: set = set()
+        if _gc is not None:
+            try:
+                _homes = {str(r["domain_id"]) for r in _gc.execute(
+                    "SELECT DISTINCT g.domain_id FROM groups g JOIN group_members m "
+                    "ON m.group_id=g.group_id WHERE m.project_id=?",
+                    (ctx.project_id,)).fetchall()}
+            except Exception:
+                _homes = set()
+            finally:
+                _gc.close()
+        for _sdom in sorted(_homes - {ctx.domain_id or ""}):
+            _fdir = _source_facts_dir(ctx, _sdom)
+            if not _fdir.is_dir():
+                continue
+            for _f in sorted(_fdir.glob("*.md")):
+                if _f.name == "MEMORY.md":
+                    continue
+                _ft = _safe_read_text(_f)
+                if _ft is None:
+                    continue
+                _fm_f = _frontmatter(_ft)
+                _recips_f = set(_parse_flow_list(str(_fm_f.get("recipients") or "")))
+                if not (_recips_f & memberships):
+                    continue
+                _key_f = (_sdom, _f.stem)
+                if _key_f in seen:
+                    continue
+                seen.add(_key_f)
+                recs.append((_f.stem, _fm_f, _ft, _f))
     return recs
+
 
 
 def iter_canonical_stems_for_gc(ctx) -> set:
@@ -1019,8 +1099,42 @@ def _mtime_iso(path: Path) -> str:
         return _now_iso()
 
 
+def _source_facts_dir(ctx, sdom: str) -> Path:
+    """The facts dir for a source domain (group-scopes: cross-domain canonicals
+    live in THEIR domain's dir, not the pulling project's)."""
+    if not sdom or sdom == (getattr(ctx, "domain_id", "") or ""):
+        return ctx.canonical_domain_dir
+    return Path(ctx.canonical_domain_dir).resolve().parents[1] / sdom / "facts"
+
+
+def _mirror_key(ctx_domain: str, fact_dom: str, stem: str) -> str:
+    """The mirror FILE key for a canonical: the bare stem when the fact is
+    same-domain (unchanged, backward-compatible), `{domain}--{stem}` when the
+    canonical lives in another domain (group-scopes spec §5-A). Refuses the
+    ambiguous encoding — if either part contains `--`, the namespaced form
+    would collide with another split, so the operator must rename."""
+    fdom = fact_dom or ctx_domain or ""
+    if fdom == (ctx_domain or "") or not fdom:
+        return stem
+    if "--" in fdom or "--" in stem:
+        raise ValueError(
+            f"namespaced mirror key ambiguity: domain {fdom!r} / stem {stem!r} "
+            "both may contain '--' — rename the domain or the stem")
+    return f"{fdom}--{stem}"
+
+
+def decode_key(key: str) -> tuple:
+    """Split a mirror key into (domain, stem). Valid namespaced keys have
+    exactly one `--` (the encoder refuses ambiguous parts); a bare stem
+    decodes to ('', stem)."""
+    if "--" not in key:
+        return "", key
+    fdom, _, stem = key.partition("--")
+    return fdom, stem
+
+
 def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
-               fact_id: str = "", domain: str = "") -> str:
+               fact_id: str = "", domain: str = "", groups: list | None = None) -> str:
     """Return the global fact stamped as a managed mirror (`global_ref: <name>`),
     robustly — drop any existing global_ref, then insert one after `metadata:`.
 
@@ -1066,7 +1180,7 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
         # e.g. a note explaining the mirror mechanism itself). Both of THIS function's own legitimate
         # stamps (the metadata-child form and the post-opening-'---' fallback) land strictly within
         # dashes == 1, so scoping the strip the same way loses no correctness.
-        if dashes == 1 and s.startswith(("global_ref:", "global_ref_since:", "global_ref_body:",
+        if dashes == 1 and s.startswith(("global_ref:", "global_ref_since:", "global_ref_body:", "group:",
                                          "canonical_fact_id:", "canonical_domain:")):
             # drop any existing global_ref + stamp lines (re-stamped below). EXACT three keys, not the
             # bare "global_ref" prefix (PR-#91 adversarial review): the wide prefix re-ate what the
@@ -1091,6 +1205,8 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
                 out.append(f"  canonical_fact_id: {fact_id}")
             if domain and domain != "unknown":
                 out.append(f"  canonical_domain: {domain}")
+            if groups:   # v0.4.10 group-scopes: ALL recipient slugs (volatile stamp —
+                out.append("  group: " + ", ".join(str(g) for g in groups))
             if since:   # v0.1.78: the content-lineage clock (see docstring; caller computes the carry)
                 out.append(f"  global_ref_since: {since}")
                 out.append(f"  global_ref_body: {body_hash}")
@@ -1103,6 +1219,8 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
                     block.append(f"  canonical_fact_id: {fact_id}")
                 if domain and domain != "unknown":
                     block.append(f"  canonical_domain: {domain}")
+                if groups:
+                    block.append("  group: " + ", ".join(str(g) for g in groups))
                 if since:
                     block.append(f"  global_ref_since: {since}")
                     block.append(f"  global_ref_body: {body_hash}")
@@ -1112,7 +1230,7 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
     return "\n".join(out) + "\n"
 
 
-def _pointer_line(name: str, fm: dict) -> str:
+def _pointer_line(name: str, fm: dict, anchor: str = "") -> str:
     """The canonical index pointer line for a fact (pure — testable). The `description`
     is the recall hook; it comes from a global fact (possibly crafted) and is written
     into the always-loaded index, so sanitize it: collapse control bytes/newlines to a
@@ -1124,7 +1242,8 @@ def _pointer_line(name: str, fm: dict) -> str:
     desc = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]()<>]", " ", desc).split())
     hook = (desc[:88] + "…") if len(desc) > 88 else desc
     scope = fm.get("scope", "")
-    return f"- [{name}]({name}.md) — {hook}" + (f" [{scope}]" if scope else "")
+    href = anchor or name
+    return f"- [{name}]({href}.md) — {hook}" + (f" [{scope}]" if scope else "")
 
 
 def _fat_hook_warning(pointer_line: str, name: str, *,
@@ -1215,7 +1334,9 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
                 ln for ln in planned.splitlines() if f"]({evict_stem}.md)" not in ln
             ) + "\n"
         for name, fm, status, path, want in jobs:
-            planned = apply_pointer(planned, _pointer_line(name, fm), name)
+            _j_sdom = str(fm.get("domain") or ctx.domain_id or "")
+            _j_key = _mirror_key(ctx.domain_id, _j_sdom, name)
+            planned = apply_pointer(planned, _pointer_line(name, fm, anchor=_j_key), name)
         plan_adm = project_index(planned)
         if evict_stem and not plan_adm["admitted"]:
             raise WriteRefused(
@@ -1227,10 +1348,12 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
             if evict_path is not None:
                 deletes.append(str(evict_path))
         for name, fm, status, path, want in jobs:
-            ptr = _pointer_line(name, fm)
+            _j_sdom = str(fm.get("domain") or ctx.domain_id or "")
+            _j_key = _mirror_key(ctx.domain_id, _j_sdom, name)
+            ptr = _pointer_line(name, fm, anchor=_j_key)
             lint = _fat_hook_warning(ptr, name)
             ptr_unchanged = any(
-                f"]({name}.md)" in ln and ln.strip() == ptr.strip()
+                f"]({_j_key}.md)" in ln and ln.strip() == ptr.strip()
                 for ln in idx_text.splitlines())
             future = apply_pointer(idx_text, ptr, name)
             adm = project_index(future)
@@ -1533,6 +1656,7 @@ def stacks_with_cache(store: Path, project_dir: Path) -> "tuple[set[str], bool]"
 
 
 def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str | None = None) -> int:
+    from fact_schema import _parse_flow_list  # noqa: F401 — group-scopes recipients parsing
     # v0.1.38 (M1): the PROJECTED net-grow BACKSTOP. A MISSING fact = a NEW always-loaded index pointer (the
     # v0.1.18 blowup class); on --pull we HOLD it when it would push the index past the threshold
     # (running_idx + the pointer's own cost) — even on a NEAR-threshold store one pull would tip over (the
@@ -1569,6 +1693,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                                  REFRESH as _MC_REFRESH, RESTAMP as _MC_RESTAMP,
                                  STOP_LOCAL as _MC_STOP, classify_mirror)
     ctx = resolve_store(project_dir)
+    _memberships_run: set = _project_memberships(ctx)
     warn_unenrolled_share(ctx)
     if pull:
         life = str(getattr(ctx, "domain_lifecycle", "active") or "active")
@@ -1748,6 +1873,16 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     conflict_ops: list = []
     try:
         for name, fm, text in facts:
+            # v0.4.10 group-scopes: the record's SOURCE domain + mirror key —
+            # cross-domain group facts get namespaced keys and record-derived
+            # provenance everywhere below (spec §5-A/B).
+            sdom = fact_domain(fm) or (ctx.domain_id or "")
+            try:
+                mkey = _mirror_key(ctx.domain_id, sdom, name)
+            except ValueError as e:
+                print(f"  pull: {e}", file=sys.stderr)
+                continue
+            _rec_groups = _parse_flow_list(str(fm.get("recipients") or ""))
             rel = is_relevant(fm, _rel_tags, stacks_memo=_stacks_memo)
             # P3: the applies-decision memo — keyed on the raw fields parse_applies reads
             # (including the nested-error keys and the stacks fallback); _rel_tags and
@@ -1781,7 +1916,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                 rel = False
             elif _dec_ap == "match" and fm.get("scope") == "stack-general" and _expl:
                 rel = True
-            path = store / f"{name}.md"
+            path = store / f"{mkey}.md"
             present = path.exists()
             cur = (_safe_read_text(path) or "") if present else ""   # store-scan convention (v0.1.69 Gate-2b)
             is_mirror = present and _is_mirror(cur)
@@ -1814,7 +1949,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                             _fast = True
                 if not _fast and present:
                     # a present mirror's body is needed NOW (in-sync/want compare)
-                    text = _safe_read_text(ctx.canonical_domain_dir / f"{name}.md")
+                    text = _safe_read_text(_source_facts_dir(ctx, sdom) / f"{name}.md")
                     if text is None:
                         rel = False
                         text = ""
@@ -1854,9 +1989,10 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                     cur_fm = {}
                     since = _now_iso()
                 from control_plane import stable_fact_id as _sfid_w
-                _fid_w = _sfid_w(ctx.domain_id, name)
+                _fid_w = _sfid_w(sdom, name)
                 want = _as_mirror(text, name, since=since, body_hash=new_hash,
-                                  fact_id=_fid_w, domain=ctx.domain_id)
+                                  fact_id=_fid_w, domain=sdom,
+                                  groups=_rec_groups)
                 from mirror_conflict import semantic_hash as _semh_w, stamp_revisions as _stamp_w
                 _rev_w = _semh_w(text)
                 want = _stamp_w(want, _rev_w, _rev_w)
@@ -1873,13 +2009,15 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                     # "restamped 1" forever while global_ref_since stayed absent. A migration that didn't
                     # happen must not be reported as one; the mirror stays on the documented mtime fallback.
                     _migrated = False
-            _fdom = fact_domain(fm) or (ctx.domain_id or "")
+            _fdom = sdom
             _adm_fm = dict(fm)
             if (_is_fixture_run or _hermetic_run) and not fact_domain(fm) and ctx.domain_id not in ("", "unknown"):
                 _adm_fm["domain"] = ctx.domain_id
             if str(fm.get("status") or "") in ("tombstoned", "superseded", "expired") or (_fdom, name) in _tomb_keys:
                 rel = False
-            elif rel and not admit_cross_project(ctx.domain_id, _adm_fm, migration_mode=mode):
+            elif rel and not admit_cross_project(ctx.domain_id, _adm_fm, migration_mode=mode,
+                                                memberships=_memberships_run,
+                                                group_recips=set(_rec_groups)):
                 rel = False
             if not rel:
                 # v0.1.75 (audit F6): a PRESENT mirror whose canonical is alive but no longer relevant here
@@ -2047,6 +2185,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     in_sync_names: list = []
     _sem_map: dict = {}
     for name, fm, text, status, path, want, rel, _fast_i, _r_man_i, _rev_w_i in classified:
+        sdom = str(fm.get("domain") or ctx.domain_id or "")   # per-record (group-scopes)
         g, col = glyphs.get(status, ("·", "dim"))
         rows.append(f"    {_ui.c(g, col)} {_ui.lbl(f'{status:<14}')}{name}  " + _ui.c(f"({fm.get('scope', '?')})", "dim"))
         if rel:
@@ -2061,7 +2200,7 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         elif pull and rel and status in ("MISSING", "STALE-mirror"):
             if want is None:
                 # deferred MISSING body — read it now that the plan pulled it
-                text = _safe_read_text(ctx.canonical_domain_dir / f"{name}.md")
+                text = _safe_read_text(_source_facts_dir(ctx, sdom) / f"{name}.md")
                 if text is None:
                     rows.append(f"    {_ui.c('↓', 'yellow')} {_ui.lbl(f'{status:<14}')}{name}  "
                                 f"{_ui.c('(unreadable — skipped)', 'dim')}")
@@ -2071,7 +2210,8 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
                 _rev_d = _semh_d(text)
                 want = _stamp_d(_as_mirror(
                     text, name, since=_now_iso(), body_hash=_body_hash(text),
-                    fact_id=_sfid_d(ctx.domain_id, name), domain=ctx.domain_id),
+                    fact_id=_sfid_d(sdom, name), domain=sdom,
+                    groups=_parse_flow_list(str(fm.get("recipients") or ""))),
                     _rev_d, _rev_d)
                 if "mirrored_at:" not in want and "  global_ref:" in want:
                     want = want.replace("  global_ref:", f"  mirrored_at: {_now_iso()}\n  global_ref:", 1)
@@ -2409,7 +2549,8 @@ def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> 
 
 
 # ── garbage collection: orphaned mirrors (Fix B) ───────────────────────────────
-def _orphans(store: Path, canon: "set[str] | None" = None) -> list[str]:
+def _orphans(store: Path, canon: "set[str] | None" = None,
+              decode_names: bool = False) -> list[str]:
     """Mirror files (`global_ref:`) in this store whose CANONICAL no longer exists in
     the global store. These are the dead memory --pull can never reclaim (it only
     iterates LIVE globals), so they accrue forever — the leak Fix B closes.
@@ -2427,7 +2568,8 @@ def _orphans(store: Path, canon: "set[str] | None" = None) -> list[str]:
         text = _safe_read_text(f)    # v0.1.69/A3 (Gate-2a follow-up): store-scan convention — a
         if text is None:             # vanished/unreadable fact must not abort the orphan scan
             continue
-        if _is_mirror(text) and f.stem not in canon:  # ONLY managed mirrors (frontmatter key)
+        _stem = decode_key(f.stem)[1] if decode_names else f.stem
+        if _is_mirror(text) and _stem not in canon:  # ONLY managed mirrors (frontmatter key)
             out.append(f.stem)
     return out
 
@@ -2641,10 +2783,11 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             return 2
     if edges:   # v0.1.84 (P4): fleet-wide edge triage — project_dir-independent, same snapshot
         return _gc_edges(gfacts, apply, project_dir)
-    live_stems = iter_canonical_stems_for_gc(_ctx_gc)
+    live_stems = iter_canonical_stems_for_gc(_ctx_gc) | {n for n, _, _ in gfacts}
     if _global_is_fixture() and not live_stems:
         live_stems = {n for n, _, _ in gfacts}
-    orphans = _orphans(store, canon=live_stems or {n for n, _, _ in gfacts})
+    orphans = _orphans(store, canon=live_stems or {n for n, _, _ in gfacts},
+                      decode_names=True)
     # v0.1.75 (audit F6): FROZEN mirrors — see the docstring. Detected against the SAME snapshot.
     # 2026-09-03 audit: the frozen verdict DELETES files, so it must not trust the cached
     # stacks (a stale cache can classify a newly-relevant mirror as frozen and delete live
@@ -2657,7 +2800,9 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
             if f.name == "MEMORY.md" or _is_reserved_stem(f.stem) or f.stem not in canon_fm:
                 continue
             t = _safe_read_text(f)   # store-scan convention — a vanished file must not abort the scan
-            if t is not None and _is_mirror(t) and not is_relevant(canon_fm[f.stem], stacks):
+            _d_fz, _s_fz = decode_key(f.stem)
+            if t is not None and _is_mirror(t) and _s_fz in canon_fm \
+                    and not is_relevant(canon_fm[_s_fz], stacks):
                 frozen.append(f.stem)
     out: list = []
     title = "✦ GARBAGE COLLECT · orphaned mirrors"
@@ -2707,7 +2852,8 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
                 deletes.append(str(p))
                 idx = "\n".join(
                     ln for ln in idx.splitlines() if f"]({name}.md)" not in ln)
-                fid = _sf_gc(_ctx_gc.domain_id, name)
+                _d_gc, _s_gc = decode_key(name)
+                fid = _sf_gc(_d_gc or _ctx_gc.domain_id, _s_gc)
                 conn.execute(
                     "DELETE FROM holders WHERE project_id=? AND fact_id=?",
                     (_ctx_gc.project_id, fid))
@@ -3632,7 +3778,8 @@ def _all_stores() -> "list[Path]":
 
 def _store_gaps(store: Path, stacks: "set | None", gfacts: list, body_hashes: dict,
                 *, domain_id: "str | None" = None,
-                migration_mode: str = "dual-read") -> "tuple[int, int]":
+                migration_mode: str = "dual-read",
+                memberships: "set | None" = None) -> "tuple[int, int]":
     """(missing, content_stale) for ONE store against the given relevance basis — the SINGLE gap
     predicate shared by fleet_staleness (per node) and the SessionStart beacon (its own store);
     v0.1.81, factored so the two can never diverge. `stacks=None` → user-global-only (the honest
@@ -3643,6 +3790,8 @@ def _store_gaps(store: Path, stacks: "set | None", gfacts: list, body_hashes: di
     count as missing/stale — the beacon must not nag for unreplicable facts.
     """
     from domain_policy import admit_cross_project
+    from fact_schema import _parse_flow_list as _pfl_gap
+    _gap_memberships = memberships if memberships is not None else set()
     missing = stale = 0
     for n, fm, _text in gfacts:
         if not is_relevant(fm, stacks if stacks is not None else set()):
@@ -3651,7 +3800,10 @@ def _store_gaps(store: Path, stacks: "set | None", gfacts: list, body_hashes: di
             _adm = dict(fm)
             if (_global_is_fixture() or _hermetic_home()) and not _adm.get("domain") and domain_id not in ("", "unknown"):
                 _adm["domain"] = domain_id
-            if not admit_cross_project(domain_id, _adm, migration_mode=migration_mode):
+            if not admit_cross_project(domain_id, _adm, migration_mode=migration_mode,
+                                       memberships=_gap_memberships,
+                                       group_recips=set(_pfl_gap(
+                                           str(_adm.get("recipients") or "")))):
                 continue
         p = store / f"{n}.md"
         if not p.exists():

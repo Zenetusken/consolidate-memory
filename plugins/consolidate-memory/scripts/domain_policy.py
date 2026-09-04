@@ -66,12 +66,18 @@ def _body_lite(text: str) -> str:
 def admit_cross_project(project_domain: str, fm: dict, *,
                         migration_mode: str = MIGRATION_DUAL_READ,
                         authorized_pairs: Optional[set] = None,
-                        looks_secret=None) -> bool:
+                        looks_secret=None,
+                        memberships: Optional[set] = None,
+                        group_recips: Optional[set] = None) -> bool:
     """May this project receive this canonical fact?
 
     Unknown is local-only (ADR 008): never admits. Cross-domain is always
-    denied (`authorized_pairs` is ignored / unsupported). Confidential only
-    same named domain. Untagged legacy is not ordinarily pullable.
+    denied EXCEPT through the group bridge (v0.4.10 spec §5-C): a fact with
+    `recipients:` delivers only to members of the named groups — the operator
+    grant carries it across both equality legs (confidential included, F5) —
+    and the same recipients NARROW same-domain delivery (non-members stop
+    receiving it). `secret`/secret-shaped/untagged-legacy rules never relax.
+    With `memberships` omitted, behavior is byte-identical to pre-0.4.10.
     """
     del authorized_pairs  # ADR 008: cross-domain authorization is unsupported
     pdom = (project_domain or "unknown").strip() or "unknown"
@@ -84,6 +90,12 @@ def admit_cross_project(project_domain: str, fm: dict, *,
         if blob.strip() and looks_secret(blob):
             return False
     if pdom == "unknown":
+        return False
+    if memberships is not None and group_recips is not None and group_recips:
+        # The bridge: delivery is membership-gated, and the grant IS the
+        # confidentiality carrier — both equality legs relax under it.
+        if group_recips & memberships:
+            return True
         return False
     if sens == "confidential":
         return bool(fdom) and fdom == pdom

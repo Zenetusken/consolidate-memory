@@ -43,11 +43,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from fact_schema import _parse_flow_list  # noqa: E402
 from memory_status import _parse_ts, est_tokens, INDEX_CEILING_TOKENS  # noqa: E402
 from store_context import resolve_store  # noqa: E402 — native path via StoreContext (no subprocess)
 from domain_policy import admit_cross_project  # noqa: E402
 from sync_global import (_body_hash, _plan_pull, _pointer_line,  # noqa: E402
-                         _safe_read_text, _store_gaps, is_relevant)
+                         _project_memberships, _safe_read_text, _store_gaps,
+                         is_relevant)
 
 
 _HOOK_CACHE: dict | None = None
@@ -146,7 +148,8 @@ def _unenrolled_advisory(ctx) -> int:
 def beacon_line(store: Path, *, domain_id: str = "unknown",
                 migration_mode: str = "dual-read",
                 gfacts: list | None = None,
-                body_hashes: "dict | None" = None) -> str:
+                body_hashes: "dict | None" = None,
+                memberships: "set | None" = None) -> str:
     """The at-most-one advisory line for `store` — '' when silent. PURE given the filesystem
     (smoke-pinned through both the silent and behind states)."""
     if not gfacts:
@@ -199,7 +202,10 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
     for n, fm, _t in gfacts:
         if not is_relevant(fm, stacks if stacks is not None else set()):
             continue
-        if not admit_cross_project(domain_id, fm, migration_mode=migration_mode):
+        if not admit_cross_project(domain_id, fm, migration_mode=migration_mode,
+                                   memberships=memberships,
+                                   group_recips=set(_parse_flow_list(
+                                       str(fm.get("recipients") or "")))):
             continue
         cost_new = est_tokens(_pointer_line(n, fm))
         cost_old = line_cost.get(n, 0)
@@ -267,6 +273,7 @@ def main() -> int:
             migration_mode=migration_mode_readonly(ctx),
             gfacts=_gf_b,
             body_hashes=_bh,
+            memberships=_project_memberships(ctx),
         )
         if line:
             print(line)

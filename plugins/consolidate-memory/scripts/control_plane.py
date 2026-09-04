@@ -104,6 +104,18 @@ CREATE TABLE IF NOT EXISTS native_store_grants (
     created_at TEXT NOT NULL,
     adopted_nonempty INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS groups (
+    group_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    domain_id TEXT NOT NULL,
+    created_at TEXT
+);
+CREATE TABLE IF NOT EXISTS group_members (
+    group_id TEXT NOT NULL,
+    project_id TEXT NOT NULL,
+    granted_at TEXT,
+    PRIMARY KEY (group_id, project_id)
+);
 CREATE INDEX IF NOT EXISTS idx_facts_domain_stem ON facts(domain_id, stem);
 CREATE INDEX IF NOT EXISTS idx_holders_project ON holders(project_id);
 CREATE INDEX IF NOT EXISTS idx_tombstones_domain ON tombstones(domain_id);
@@ -125,7 +137,8 @@ JOURNAL_STEPS = (
 )
 JOURNAL_CLEANUP_PENDING = "committed-cleanup-pending"
 # v4: drop the dormant hook-sketch tables (usage_events/workflow_sketches).
-REGISTRY_USER_VERSION = 4
+# v5: the group-scopes layer — groups + group_members (v0.4.10 spec).
+REGISTRY_USER_VERSION = 5
 JOURNAL_USER_VERSION = 1
 JOURNAL_RECEIPT_DAYS = 90
 # v0.4.0 review: receipt-collapse bounds PAYLOAD size, never ROW count — a row
@@ -399,6 +412,7 @@ REGISTRY_OP_KINDS = frozenset({
     "fact_delete", "holder_upsert", "holder_delete", "tombstone_upsert",
     "tombstone_delete", "conflict_upsert", "conflict_resolve", "migration_state_set",
     "project_alias", "project_rebind", "domain_status_set",
+    "group_upsert", "group_delete", "group_member_add", "group_member_remove",
 })
 
 
@@ -712,6 +726,16 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "normalized_path TEXT PRIMARY KEY, project_id TEXT NOT NULL, "
         "created_at TEXT NOT NULL, adopted_nonempty INTEGER NOT NULL)")
     conn.commit()
+    # v4→v5: the group-scopes layer (v0.4.10 spec §3) — idempotent additive.
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS groups ("
+        "group_id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, "
+        "domain_id TEXT NOT NULL, created_at TEXT)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS group_members ("
+        "group_id TEXT NOT NULL, project_id TEXT NOT NULL, granted_at TEXT, "
+        "PRIMARY KEY (group_id, project_id))")
+    conn.commit()
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_facts_domain_stem ON facts(domain_id, stem)")
     conn.execute(
@@ -934,6 +958,14 @@ def prevalidate_registry_ops(ops: list) -> None:
         if kind == "tombstone_delete" and not (
                 str(op.get("fact_id") or "") or str(op.get("domain_id") or "")):
             raise WriteRefused("tombstone_delete missing fact_id/domain_id")
+        if kind in ("group_upsert", "group_delete") and not str(op.get("group_id") or ""):
+            raise WriteRefused(f"{kind} missing group_id")
+        if kind == "group_upsert" and not (
+                str(op.get("name") or "") or str(op.get("domain_id") or "")):
+            raise WriteRefused("group_upsert missing name/domain_id")
+        if kind in ("group_member_add", "group_member_remove") and not (
+                str(op.get("group_id") or "") or str(op.get("project_id") or "")):
+            raise WriteRefused(f"{kind} missing group_id/project_id")
 
 
 def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
@@ -1075,6 +1107,29 @@ def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
                 "ON CONFLICT(domain_id) DO UPDATE SET status=excluded.status, "
                 "updated_at=excluded.updated_at",
                 (did, st, now))
+        elif kind == "group_upsert":
+            conn.execute(
+                "INSERT INTO groups(group_id, name, domain_id, created_at) "
+                "VALUES (?,?,?,?) ON CONFLICT(group_id) DO UPDATE SET "
+                "name=excluded.name, domain_id=excluded.domain_id, "
+                "created_at=excluded.created_at",
+                (str(op.get("group_id") or ""), str(op.get("name") or ""),
+                 str(op.get("domain_id") or ""), str(op.get("created_at") or now)))
+        elif kind == "group_delete":
+            gid = str(op.get("group_id") or "")
+            conn.execute("DELETE FROM group_members WHERE group_id=?", (gid,))
+            conn.execute("DELETE FROM groups WHERE group_id=?", (gid,))
+        elif kind == "group_member_add":
+            conn.execute(
+                "INSERT INTO group_members(group_id, project_id, granted_at) "
+                "VALUES (?,?,?) ON CONFLICT(group_id, project_id) DO UPDATE SET "
+                "granted_at=excluded.granted_at",
+                (str(op.get("group_id") or ""), str(op.get("project_id") or ""),
+                 str(op.get("granted_at") or now)))
+        elif kind == "group_member_remove":
+            conn.execute(
+                "DELETE FROM group_members WHERE group_id=? AND project_id=?",
+                (str(op.get("group_id") or ""), str(op.get("project_id") or "")))
 
 
 def domain_lifecycle(conn: Optional[sqlite3.Connection], domain_id: str) -> str:
