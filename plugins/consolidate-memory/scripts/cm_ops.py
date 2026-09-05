@@ -98,7 +98,14 @@ def _mirror_plan_for_dest(ctx: StoreContext, dest_domain: str, conn=None) -> dic
                                     "project_id": ctx.project_id})
             plan["source_hashes"][str(f)] = hashlib.sha256(
                 text.encode("utf-8")).hexdigest()
-            canon_text = dest_canon_text if dest_domain != "unknown" else _lookup_canonical_text(ctx, fm, f.name)
+            # clean-vs-edited reads the mirror's OWN canonical (decode-first, the
+            # group-revoke precedent): the dest domain's absence of the canonical
+            # is NOT evidence of a local edit (the fleet dogfood measured every
+            # cross-domain move quarantining verbatim replicas), and a namespaced
+            # mirror file must resolve through the fact's `name` (the bare fname
+            # misses `personal--x.md` → the canonical `x.md`).
+            _src_name = (str(fm.get("name") or "").strip() or Path(f.name).stem) + ".md"
+            canon_text = _lookup_canonical_text(ctx, fm, _src_name)
             v3 = bool(fm.get("canonical_fact_id") or fm.get("schema_version"))
             local_edit = False
             if canon_text is None:
@@ -2663,6 +2670,53 @@ def cmd_project(args: argparse.Namespace) -> int:
                     extra_domains=[current, dest], prepare=_prep_move)
                 print(f"moved {ctx.project_id} {current} → {dest}; revoked {n} unauthorized mirror(s)")
                 return 0
+            if args.project_cmd == "unenroll" and args.project_id:
+                # registry-only rows (no local store — the phantom-path's CLI form):
+                # one plan over the ids, one confirm phrase, one journaled transact.
+                ids = [str(i) for i in args.project_id]
+                rows = []
+                if ro is not None:
+                    _ph = ",".join("?" * len(ids))
+                    rows = ro.execute(
+                        f"SELECT project_id, domain_id, status FROM projects "
+                        f"WHERE project_id IN ({_ph})", tuple(ids)).fetchall()
+                    _found = {str(r["project_id"]) for r in rows}
+                    for _pid in ids:
+                        if _pid not in _found:
+                            print(f"project unenroll: unknown project_id {_pid}", file=sys.stderr)
+                            return 2
+                    _enr = [r for r in rows if str(r["status"]) == "enrolled"]
+                    _doms = sorted({str(r["domain_id"]) for r in _enr})
+                    _held = sum(
+                        int(r["n"]) for r in ro.execute(
+                            f"SELECT project_id, COUNT(*) AS n FROM holders "
+                            f"WHERE project_id IN ({_ph}) GROUP BY project_id",
+                            tuple(ids)).fetchall())
+                    print(f"unenroll plan: {len(_enr)} registry row(s) "
+                          f"({', '.join(_doms) or 'no domains'}) · {_held} holder row(s)")
+                    need = _want_confirm(args, "unenroll-registry")
+                    if need == "dry":
+                        print("  dry (pass --apply --confirm unenroll-registry)")
+                        return 0
+                    if need:
+                        print(f"project unenroll: {need}", file=sys.stderr)
+                        return 2
+                    def _mut_reg(c, temps):
+                        ops = []
+                        for r in _enr:
+                            _pid = str(r["project_id"])
+                            ops.append({"op": "project_domain_change", "project_id": _pid,
+                                        "domain_id": "unknown", "status": "active"})
+                            ops.append({"op": "holder_delete", "project_id": _pid,
+                                        "fact_id": "*"})
+                        return {"registry_ops": ops, "deletes": [], "expected_revisions": {},
+                                "dest_modes": {}}
+                    out = transact(ctx, "registry-unenroll",
+                                   {"project_ids": ids}, _mut_reg)
+                    print(f"unenrolled {len(_enr)} registry row(s)")
+                    return 0
+                print("project unenroll: registry unavailable", file=sys.stderr)
+                return 2
             if args.project_cmd == "unenroll":
                 current = (enrolled_domain(ro, ctx.project_id) if ro else None) or ctx.domain_id
                 if not (ro and enrolled_domain(ro, ctx.project_id)):
@@ -2861,6 +2915,11 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--json", action="store_true")
     pr.add_argument("--adopt", action="store_true",
                     help="grant-native of a nonempty destination")
+    pr.add_argument("--project-id", nargs="*", default=[],
+                    help="registry project_id(s) for unenroll (one flag, many ids) — "
+                         "the de-registration surface for enrolled rows with NO local "
+                         "store (fleet dogfood: registration-test residue was "
+                         "unreachable)")
 
     gp = sub.add_parser("group")
     gp.add_argument("group_cmd", choices=["create", "add", "remove", "delete", "list", "show"])

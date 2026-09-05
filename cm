@@ -121,7 +121,8 @@ users run the skill — they do not have ./cm on PATH)
   cm project grant-native --path PATH [DIR]  operator grant for a dedicated native store
   cm project revoke-native --path PATH [DIR] revoke a dedicated native store
   cm project transfer-native --path PATH [DIR]  transfer native-store ownership
-  cm project move-domain --to NAME [DIR]
+  cm project move-domain [DIR] --to NAME [--apply --confirm move-<from>-to-<name>]
+  cm project unenroll [DIR] [--project-id PID …] [--apply --confirm unenroll-<domain>|unenroll-registry]
   cm project rebind [DIR]
   cm project show [DIR]
   cm project unenroll [DIR]

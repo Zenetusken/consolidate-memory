@@ -12872,6 +12872,117 @@ with _tf73.TemporaryDirectory() as _td_px:
             _os73.environ["HOME"] = _home_prev_px
         sg.GLOBAL = _global_prev_px
 
+# ── v0.4.11 fleet-dogfood fixes (the 5 live findings) ────────────────────────
+with _tf73.TemporaryDirectory() as _td_dg:
+    _home_dg = Path(_td_dg)
+    _pa_dg = (_home_dg / "src" / "pa").resolve(); _pa_dg.mkdir(parents=True)
+    _pc_dg = (_home_dg / "src" / "pc").resolve(); _pc_dg.mkdir(parents=True)
+    _pe_dg = (_home_dg / "src" / "pe").resolve(); _pe_dg.mkdir(parents=True)
+    for _p_dg in (_pa_dg, _pc_dg, _pe_dg):
+        (_home_dg / ".claude" / "projects" / ms.slug_for(_p_dg) / "memory").mkdir(parents=True)
+    _home_prev_dg = _os73.environ.get("HOME")
+    _global_prev_dg = sg.GLOBAL
+    _os73.environ["HOME"] = str(_home_dg)
+    sg.GLOBAL = _home_dg / ".claude" / "memory"
+    try:
+        _ctx0_dg = sc.resolve_store(_pa_dg)
+        _conn_dg = cp.connect(cp.db_path(_ctx0_dg))
+        _gid_dg = "g_" + "f" * 32
+        try:
+            cp.enroll_project(_conn_dg, _ctx0_dg, "personal")
+            cp.apply_registry_ops(_conn_dg, [
+                {"op": "group_upsert", "group_id": _gid_dg, "name": "pair",
+                 "domain_id": "personal", "created_at": "2026-08-01T00:00:00Z"},
+                {"op": "group_member_add", "group_id": _gid_dg,
+                 "project_id": _ctx0_dg.project_id}])
+            _conn_dg.commit()
+        finally:
+            _conn_dg.close()
+        _ctxa_dg = sc.resolve_store(_pa_dg)
+        _ctxc_dg = sc.resolve_store(_pc_dg)
+        _ctxe_dg = sc.resolve_store(_pe_dg)
+        _conn2_dg = cp.connect(cp.db_path(_ctxa_dg))
+        try:
+            cp.enroll_project(_conn2_dg, _ctxc_dg, "work")
+            cp.enroll_project(_conn2_dg, _ctxe_dg, "personal")
+            cp.apply_registry_ops(_conn2_dg, [
+                {"op": "group_member_add", "group_id": _gid_dg,
+                 "project_id": _ctxc_dg.project_id},
+                {"op": "group_member_add", "group_id": _gid_dg,
+                 "project_id": _ctxe_dg.project_id}])
+            _conn2_dg.commit()
+        finally:
+            _conn2_dg.close()
+        _ctxc_dg = sc.resolve_store(_pc_dg)
+        _ctxe_dg = sc.resolve_store(_pe_dg)
+        _ctxa_dg.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
+        # (1) the holder fid uses the FACT's domain — a cross-domain fact held by
+        # C resolves its real holders (the fleet measured 1 holder where 10 existed)
+        _canon_dg = _v3_canon("dg-fact").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        (_ctxa_dg.canonical_domain_dir / "dg-fact.md").write_text(_canon_dg, encoding="utf-8")
+        _o_dg = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_dg):
+            sg.run(_pc_dg, pull=True)
+        _mir_dg = _ctxc_dg.native_memory_dir / "personal--dg-fact.md"
+        check("dogfood 1: the holder lookup resolves a CROSS-domain fact's holders "
+              "under the FACT's domain (the ctx-domain fid reported none)",
+              _mir_dg.exists()
+              and bool(sg._holder_labels(sg._frontmatter(_canon_dg), stem="dg-fact",
+                                         ctx=_ctxc_dg)))
+        # (2) the registry-only unenroll surface (the 315-row residue's lever)
+        _rid_dg = "p_" + "5" * 32
+        _conn3_dg = cp.connect(cp.db_path(_ctxa_dg))
+        try:
+            cp.apply_registry_ops(_conn3_dg, [
+                {"op": "project_upsert", "project_id": _rid_dg,
+                 "domain_id": "personal", "display_name": "regproj-dg",
+                 "status": "enrolled"}])
+            _conn3_dg.commit()
+        finally:
+            _conn3_dg.close()
+        _cwd_dg = _os73.getcwd()
+        try:
+            _os73.chdir(str(_pa_dg))
+            _out_du_dg = _io73.StringIO()
+            with _ctx73.redirect_stdout(_out_du_dg), _ctx73.redirect_stderr(_io73.StringIO()):
+                _rc_du_dg = _co_lc.main(["project", "unenroll", ".", "--project-id",
+                                         _rid_dg, "--apply", "--confirm", "unenroll-registry"])
+            check("dogfood 2: the registry-only row de-registers via --project-id "
+                  "(the no-local-store residue's unreachable surface)",
+                  _rc_du_dg == 0 and "unenrolled 1 registry row(s)" in _out_du_dg.getvalue())
+        finally:
+            _os73.chdir(_cwd_dg)
+        # (3+4) the revoke's clean-vs-edited reads the mirror's OWN canonical —
+        # a move quarantined verbatim replicas; a namespaced unenroll missed the
+        # canonical via the file-name lookup
+        from cm_ops import _mirror_plan_for_dest as _mpd_dg
+        _o_dg2 = _io73.StringIO()
+        with _ctx73.redirect_stdout(_o_dg2):
+            sg.run(_pe_dg, pull=True)
+        _plan_dg = _mpd_dg(_ctxe_dg, "work")
+        check("dogfood 3: moving a project CLEAN-deletes a mirror whose canonical "
+              "the destination lacks (the fleet measured a verbatim quarantine)",
+              "dg-fact" not in str(_plan_dg.get("quarantine") or "")
+              and any("dg-fact" in str(p) for p in _plan_dg.get("deletes") or []))
+        _plan2_dg = _mpd_dg(_ctxc_dg, "unknown")
+        check("dogfood 4: unenrolling a project CLEAN-deletes a NAMESPACED mirror "
+              "(the file-name lookup missed personal--x.md → the canonical x.md)",
+              "personal--dg-fact" not in str(_plan2_dg.get("quarantine") or "")
+              and any("personal--dg-fact" in str(p) for p in _plan2_dg.get("deletes") or []))
+    finally:
+        if _home_prev_dg is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_prev_dg
+        sg.GLOBAL = _global_prev_dg
+
+_cm_help_dg = (ROOT / "cm").read_text(encoding="utf-8")
+check("dogfood 5: the cm help shows move-domain POSITIONAL-first (the flag-first "
+      "form failed argparse)",
+      "cm project move-domain [DIR] --to NAME" in _cm_help_dg
+      and "move-<from>-to-<name>" in _cm_help_dg)
+
 # v0.4.10 dogfood: a foreign-domain record OVERWRITES a stale local manifest hash
 _bhf_gs = {"dup": "a" * 12}
 _fillf_gs = __import__("session_beacon")._fill_body_hashes(
