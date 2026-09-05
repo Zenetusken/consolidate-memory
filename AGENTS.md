@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.4.15** (2026-09-05). `CLAUDE.md` holds the
+verified against the live tree at **v0.4.16** (2026-09-05). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -86,9 +86,10 @@ plugins/consolidate-memory/       the main plugin (= ${CLAUDE_PLUGIN_ROOT})
                                   mirror_conflict.py, index_admission.py, capabilities.py,
                                   retention.py, local_ingress.py, cm_ops.py (doctor/conflicts/resolve/
                                   migrate/data/project enroll/journal/local), memory_status.py (contract seed + audit),
-                                  extract_signals.py, sync_global.py, distill_scan.py,
-                                  render_dashboard.py, render_html.py, render_log.py, _ui.py,
-                                  session_beacon.py, dashboard.template.html
+                                  extract_signals.py, sync_global.py, distill_scan.py, preflight.py
+                                  (the environment pre-flight — doctor embeds it, the beacon reads its
+                                  cached verdict), render_dashboard.py, render_html.py, render_log.py,
+                                  _ui.py, session_beacon.py, dashboard.template.html
 plugins/dream-beta-tester/        QA companion plugin
   .claude-plugin/plugin.json      manifest (v0.1.8)
   skills/dream-beta-test/         judgment-lens skill (/dream-beta-test) + references/lenses.md (7 lenses)
@@ -115,7 +116,7 @@ memory/                            GITIGNORED placeholder (.gitkeep only) — th
 
 1. **The cycle record is the contract.** `memory_status.py --seed` seeds it, the
    phases fill it, `render_dashboard.py` renders it. Shape = `TypedDict`s in
-   `memory_status.py` (`CycleRecord`, 20 top-level keys, all `total=False`).
+   `memory_status.py` (`CycleRecord`, 22 top-level keys, all `total=False`).
    `validate_cycle_record` warns (stderr, never blocks) on wrong container types
    and impossible counts beyond the scanner caps (`_DISTILL_CAPS = (40, 20)`).
    Changing the schema means updating the seed, the renderer, the TypedDicts, and

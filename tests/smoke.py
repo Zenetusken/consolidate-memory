@@ -1122,6 +1122,7 @@ for _nm, _obj, _td in [
     ("scope", _skill_schema.get("scope", {}), ms.Scope),
     ("rigor", _skill_schema.get("rigor", {}), ms.Rigor),
     ("verification", _skill_schema.get("verification", {}), ms.Verification),
+    ("preflight", _skill_schema.get("preflight", {}), ms.Preflight),
     ("entries[0]", (_skill_schema.get("entries") or [{}])[0], ms.Entry),
     ("budget", _sk_b, ms.Budget),
     ("budget.claude_md", _sk_b.get("claude_md", {}), ms.ClaudeMdBudget),
@@ -6233,6 +6234,9 @@ def _norm_mutate_tree(root: Path) -> "dict[str, str]":
                 rel = "/".join(parts)
             t = p.read_bytes().decode("utf-8", errors="replace")
             t = _reA3.sub(r"global_ref_since: .*", r"global_ref_since: NORMALIZED", t)
+            # v0.4.16: the pre-flight verdict's `at` is a per-run wall-clock stamp (the same
+            # class as the stamps above); fails/warns must still be byte-identical.
+            t = _reA3.sub(r'("preflight":\s*\{\s*"at":\s*")[^"]*', r"\1NORMALIZED", t)
             t = _reA3.sub(r"content_modified: .*", r"content_modified: NORMALIZED", t)
             t = _reA3.sub(r"last_observed_at: .*", r"last_observed_at: NORMALIZED", t)
             t = _reA3.sub(r"mirrored_at: .*", r"mirrored_at: NORMALIZED", t)
@@ -13566,6 +13570,372 @@ with _Env73() as _e_jp:
     check("journal paging: CLI plain footer prints the next-page cursor",
           _rc_jp2 == 0 and "for the next page" in _jp2_u.getvalue()
           and _jp_j["next_after"] in _jp2_u.getvalue())
+
+# ── v0.4.16: environment PRE-FLIGHT (docs/env-preflight.spec.md) ──
+# Each check below FAILED on the pre-fix tree (no preflight.py at all — the import and
+# the CLI surface are the discriminator); the probe-level pins fail on a stubbed env.
+import ast as _ast16
+import importlib as _imp16
+import json as _json16
+import os as _os16
+import shutil as _sh16
+import subprocess as _sp16
+import sys as _sys16
+import tempfile as _tf16
+import time as _time16
+from datetime import datetime as _dt16, timezone as _tz16, timedelta as _tdlt16
+from types import SimpleNamespace as _SN16
+import preflight as _pf16  # noqa: E402
+
+def _pf_env16(**kw):
+    # ambient CLAUDE_CONFIG_DIR / auto-memory knobs are stripped; EXPLICIT kwargs win
+    _e16 = {k: v for k, v in _os16.environ.items()
+            if k not in ("CLAUDE_CONFIG_DIR", "CLAUDE_CODE_DISABLE_AUTO_MEMORY")}
+    _e16.update(kw)
+    return _e16
+
+# the syntax discipline: preflight.py must PARSE on 3.7 so probe #1 discriminates below the floor
+check("preflight 3.7-parseable (the python-floor discipline)",
+      _ast16.parse((ROOT / "plugins" / "consolidate-memory" / "scripts" / "preflight.py").read_text(),
+                   feature_version=(3, 7)) is not None)
+
+# probe-level pins (stubbed injectables)
+check("preflight python-floor boundary",
+      _pf16.probe_python_floor((3, 7, 0))["status"] == "fail"
+      and _pf16.probe_python_floor((3, 8, 0))["status"] == "pass")
+check("preflight posix: win32 + cygwin fail with the WSL line, fcntl-missing fails, healthy passes",
+      _pf16.probe_posix("win32")["status"] == "fail" and "WSL" in _pf16.probe_posix("win32")["fix"]
+      and _pf16.probe_posix("cygwin")["status"] == "fail"
+      and _pf16.probe_posix("linux", importer=lambda n: (_ for _ in ()).throw(ImportError(n)))["status"] == "fail"
+      and _pf16.probe_posix("linux")["status"] == "pass")
+_sm16, _sm_mod16 = _pf16.probe_sqlite_module(importer=lambda n: (_ for _ in ()).throw(ImportError("no sqlite3")))
+check("preflight sqlite-module: a missing module is a verdict, not a crash",
+      _sm16["status"] == "fail" and "Rebuild Python with sqlite3 support" in _sm16["fix"] and _sm_mod16 is None)
+_sm16b, _sm_mod16b = _pf16.probe_sqlite_module(importer=_imp16.import_module)
+check("preflight sqlite-module healthy",
+      _sm16b["status"] == "pass" and _sm_mod16b is not None)
+check("preflight sqlite-floor 3.24 boundary",
+      _pf16.probe_sqlite_floor(_SN16(sqlite_version="3.20.0"))["status"] == "fail"
+      and _pf16.probe_sqlite_floor(_SN16(sqlite_version="3.24.0"))["status"] == "pass")
+
+# the roundtrip executes the LIVE schema (the drift discriminator) + proves the dialect
+with _tf16.TemporaryDirectory() as _td16a:
+    import control_plane as _cp16  # noqa: E402
+    _real_schema16 = _cp16.SCHEMA_SQL
+    try:
+        _cp16.SCHEMA_SQL = "CREATE TABLE nope("
+        check("preflight roundtrip executes the LIVE schema (monkeypatched SCHEMA_SQL breaks it)",
+              _pf16.probe_sqlite_roundtrip(Path(_td16a), _sm_mod16b, _cp16, __import__("fcntl"))["status"] == "fail")
+    finally:
+        _cp16.SCHEMA_SQL = _real_schema16
+    class _FakeCon16:
+        def executescript(self, *a):
+            pass
+        def execute(self, sql, *a):
+            if "ON CONFLICT" in sql:
+                raise _cp16.sqlite3.OperationalError("ON CONFLICT unsupported")
+        def fetchone(self):
+            return (1,)
+        def close(self):
+            pass
+    _fake_mod16 = _SN16(connect=lambda *a, **k: _FakeCon16())
+    check("preflight roundtrip exercises the UPSERT dialect",
+          _pf16.probe_sqlite_roundtrip(Path(_td16a), _fake_mod16, _cp16, __import__("fcntl"))["status"] == "fail")
+    check("preflight roundtrip healthy",
+          _pf16.probe_sqlite_roundtrip(Path(_td16a), _sm_mod16b, _cp16, __import__("fcntl"))["status"] == "pass")
+if _os16.geteuid() != 0:  # root bypasses modes — the 11308-11316 precedent
+    with _tf16.TemporaryDirectory() as _td16b:
+        _rd16 = Path(_td16b); _rd16.chmod(0o500)
+        try:
+            check("preflight roundtrip real-EACCES on the data dir",
+                  _pf16.probe_sqlite_roundtrip(_rd16, _sm_mod16b, __import__("control_plane"), __import__("fcntl"))["status"] == "fail")
+        finally:
+            _rd16.chmod(0o700)
+
+check("preflight plugin-self: bare dir fails, the real root passes, the sibling set equals the live listing",
+      _pf16.probe_plugin_self(Path(_tf16.mkdtemp()))["status"] == "fail"
+      and _pf16.probe_plugin_self(ROOT / "plugins" / "consolidate-memory")["status"] == "pass"
+      and set(_pf16.SIBLING_PY) == {p.stem for p in (ROOT / "plugins" / "consolidate-memory" / "scripts").glob("*.py")})
+
+check("preflight git skip-cascade + degrade split",
+      _pf16.probe_git_present(which=lambda x: None)["status"] == "warn"
+      and _pf16.probe_git_repo(Path("."), present=False)["status"] == "skip"
+      and _pf16.probe_git_shallow(Path("."), present=False)["status"] == "skip"
+      and _pf16.probe_git_repo(Path("."), run=lambda *a, **k: _SN16(returncode=128, stdout=b""))["status"] == "warn"
+      and _pf16.probe_git_repo(Path("."), run=lambda *a, **k: _SN16(returncode=0, stdout=b"true"))["status"] == "pass"
+      and _pf16.probe_git_shallow(Path("."), run=lambda *a, **k: _SN16(returncode=0, stdout=b"true"),
+                                  in_repo=True)["status"] == "warn")
+# a non-UTF-8 git byte degrades, never raises (the memory_status._run precedent)
+check("preflight git output decodes with errors=replace",
+      _pf16.probe_git_repo(Path("."), run=lambda *a, **k: _SN16(returncode=0, stdout=b"\xff\xfe"))["status"] in ("pass", "warn"))
+
+check("preflight tempdir: statvfs floor + real 64KB write; bogus dir fails",
+      _pf16.probe_tempdir(gettempdir=lambda: "/proc/definitely-not-writable")["status"] == "fail"
+      and _pf16.probe_tempdir(statvfs=lambda p: _SN16(f_bavail=0, f_frsize=4096))["status"] == "fail"
+      and _pf16.probe_tempdir()["status"] == "pass")
+
+def _mkstemp_fail16(*a, **k):
+    raise OSError(13, "Permission denied")
+check("preflight native-mem-dir: EACCES fails, disabled skips",
+      _pf16.probe_native_mem_dir(Path(_tf16.mkdtemp()), mkstemp=_mkstemp_fail16)["status"] == "fail"
+      and _pf16.probe_native_mem_dir(Path(_tf16.mkdtemp()), enabled=False)["status"] == "skip")
+
+_sent16 = _pf16.run_checks({"project_dir": ".", "store_resolution_error": "PermissionError: x"})
+check("preflight sentinel policy: #14 fails, ctx-free probes run, path probes skip",
+      _sent16["ok"] is False
+      and any(c["id"] == "store-resolution" and c["status"] == "fail" for c in _sent16["checks"])
+      and any(c["id"] == "sqlite-module" and c["status"] in ("pass", "fail") for c in _sent16["checks"])
+      and any(c["id"] == "sqlite-roundtrip" and c["status"] == "skip" for c in _sent16["checks"])
+      and any(c["id"] == "native-mem-dir" and c["status"] == "skip" for c in _sent16["checks"]))
+
+# subprocess pins (hermetic HOME)
+_PF16 = ROOT / "plugins" / "consolidate-memory" / "scripts" / "preflight.py"
+_BEACON16 = ROOT / "plugins" / "consolidate-memory" / "scripts" / "session_beacon.py"
+with _tf16.TemporaryDirectory() as _td16c:
+    _h16pf = Path(_td16c)
+    _r16 = _sp16.run([_sys16.executable, str(_PF16), ".", "--json"],
+                     capture_output=True, text=True, timeout=60,
+                     env=_pf_env16(HOME=str(_h16pf)))
+    _env16 = _json16.loads(_r16.stdout)
+    check("preflight subprocess: healthy -> exit 0 + envelope shape",
+          _r16.returncode == 0 and sorted(_env16.keys()) == ["at", "checks", "notes", "ok"]
+          and all(sorted(c.keys()) == ["detail", "fix", "id", "label", "status"] for c in _env16["checks"]))
+    # a REAL injection: PYTHONPATH shadows tempfile with a stub whose dir cannot hold a write
+    # (its own shim dir — the later sqlite shims must not inherit the poisoned tempfile)
+    _shim_td16 = Path(_td16c) / "shim-tempfile"; _shim_td16.mkdir()
+    (_shim_td16 / "tempfile.py").write_text(
+        "def gettempdir():\n    return '/proc/definitely-not-writable'\n"
+        "def mkstemp(*a, **k):\n    raise OSError(13, 'Permission denied')\n")
+    _r16 = _sp16.run([_sys16.executable, str(_PF16), ".", "--json"],
+                     capture_output=True, text=True, timeout=60,
+                     env=_pf_env16(HOME=str(_h16pf), PYTHONPATH=str(_shim_td16)))
+    _env16 = _json16.loads(_r16.stdout)
+    check("preflight subprocess: tempdir failure -> exit 2 + the tempdir FAIL row",
+          _r16.returncode == 2
+          and any(c["id"] == "tempdir" and c["status"] == "fail" for c in _env16["checks"]))
+    # the flagship no-sqlite3 env: a shim whose import raises — the sentinel path, no traceback
+    _shim_sq16 = Path(_td16c) / "shim-sqlite"; _shim_sq16.mkdir()
+    (_shim_sq16 / "sqlite3.py").write_text("raise ImportError('no sqlite3 in this build')\n")
+    _r16 = _sp16.run([_sys16.executable, str(_PF16), ".", "--json"],
+                     capture_output=True, text=True, timeout=60,
+                     env=_pf_env16(HOME=str(_h16pf), PYTHONPATH=str(_shim_sq16)))
+    _env16 = _json16.loads(_r16.stdout)
+    check("preflight subprocess: no-sqlite3 env -> exit 2, #3 FAIL + #14 FAIL, no traceback",
+          _r16.returncode == 2 and "Traceback" not in _r16.stdout + _r16.stderr
+          and any(c["id"] == "sqlite-module" and c["status"] == "fail" for c in _env16["checks"])
+          and any(c["id"] == "store-resolution" and c["status"] == "fail" for c in _env16["checks"]))
+    # the F1 reachability proof: sqlite3 present-but-old -> resolve SUCCEEDS -> the cache is
+    # written via the mutator -> the beacon prints the one line (the cacheable FAIL class)
+    (_shim_sq16 / "sqlite3.py").write_text(
+        "sqlite_version = '3.20.0'\nRow = tuple\ndef __getattr__(name):\n"
+        "    return lambda *a, **k: None\n")
+    _r16 = _sp16.run([_sys16.executable, str(_PF16), "."],
+                     capture_output=True, text=True, timeout=60,
+                     env=_pf_env16(HOME=str(_h16pf), PYTHONPATH=str(_shim_sq16)))
+    check("preflight subprocess: sqlite-floor env -> exit 2 + the floor FAIL",
+          _r16.returncode == 2 and "sqlite-floor" in _r16.stdout)
+    _st16 = _h16pf / ".claude" / "projects" / (ms.slug_for(ROOT)) / "memory" / ".consolidation-state.json"
+    check("preflight subprocess: the floor env still CACHED the verdict (the F1 reachability proof)",
+          _st16.exists()
+          and _json16.loads(_st16.read_text()).get("preflight", {}).get("fails") == ["sqlite-floor"])
+    _rb16 = _sp16.run([_sys16.executable, str(_BEACON16)],
+                      input=_json16.dumps({"cwd": str(ROOT), "session_id": "pf16",
+                                           "transcript_path": str(ROOT / "pf16.jsonl")}),
+                      capture_output=True, text=True, timeout=15,
+                      env=_pf_env16(HOME=str(_h16pf)))
+    check("preflight beacon: the cached floor FAIL prints exactly ONE line (<=60 est tok)",
+          _rb16.returncode == 0 and len(_rb16.stdout.splitlines()) == 1
+          and "pre-flight" in _rb16.stdout and len(_rb16.stdout.strip()) // 4 <= 60)
+    # warns-only / pass / stale / garbage -> silent rc 0 (the beacon failure posture)
+    _pf_ok16 = {"at": _dt16.now(_tz16.utc).isoformat(timespec="seconds"), "fails": [], "warns": ["git-present"]}
+    _st16.write_text(_json16.dumps({"timestamp": _time16.time(), "preflight": _pf_ok16}))
+    _rb16 = _sp16.run([_sys16.executable, str(_BEACON16)],
+                      input=_json16.dumps({"cwd": str(ROOT)}),
+                      capture_output=True, text=True, timeout=15,
+                      env=_pf_env16(HOME=str(_h16pf)))
+    check("preflight beacon: warns-only -> silent rc 0", _rb16.returncode == 0 and _rb16.stdout == "")
+    _st16.write_text(_json16.dumps({"preflight": {
+        "at": (_dt16.now(_tz16.utc) - _tdlt16(days=8)).isoformat(timespec="seconds"),
+        "fails": ["sqlite-module"], "warns": []}}))
+    _rb16 = _sp16.run([_sys16.executable, str(_BEACON16)],
+                      input=_json16.dumps({"cwd": str(ROOT)}),
+                      capture_output=True, text=True, timeout=15,
+                      env=_pf_env16(HOME=str(_h16pf)))
+    check("preflight beacon: 8d-stale -> silent rc 0", _rb16.returncode == 0 and _rb16.stdout == "")
+    _st16.write_text("{not json")
+    _rb16 = _sp16.run([_sys16.executable, str(_BEACON16)],
+                      input=_json16.dumps({"cwd": str(ROOT)}),
+                      capture_output=True, text=True, timeout=15,
+                      env=_pf_env16(HOME=str(_h16pf)))
+    check("preflight beacon: garbage state -> silent rc 0", _rb16.returncode == 0 and _rb16.stdout == "")
+
+# the beacon placement/precedence: the verdict read sits BETWEEN the auto-memory gate and the
+# cross-project gate (a FAIL supersedes absorption/unenrolled; disabled auto-memory stays silent)
+import inspect as _insp16  # noqa: E402
+import session_beacon as _sb16  # noqa: E402
+_beacon_src16 = _insp16.getsource(_sb16.main)
+check("preflight beacon placement: verdict read between the auto-memory gate and the cross-project gate",
+      _beacon_src16.index("if not ctx.auto_memory_enabled:") < _beacon_src16.index("cache_advisory")
+      < _beacon_src16.index("cross_project_allowed"))
+
+# doctor integration (in-process, hermetic HOME swap — the 1505-1519 pattern)
+with _tf16.TemporaryDirectory() as _td16d:
+    _h16pfd = Path(_td16d)
+    (_h16pfd / ".claude").mkdir()
+    _old16d = _os16.environ.get("HOME")
+    _os16.environ["HOME"] = str(_h16pfd)
+    try:
+        _doc16u = _io73.StringIO()
+        with _ctx73.redirect_stdout(_doc16u):
+            _doc16a = cmo.main(["doctor", str(ROOT)])
+        _doc16v = _io73.StringIO()
+        with _ctx73.redirect_stdout(_doc16v):
+            _doc16b = cmo.main(["doctor", str(ROOT)])
+    finally:
+        if _old16d is None:
+            _os16.environ.pop("HOME", None)
+        else:
+            _os16.environ["HOME"] = _old16d
+    check("preflight doctor: rc 0 healthy + the PRE-FLIGHT table renders IDENTICALLY twice "
+          "(no volatile `at`, no lock-file notes on a fresh store — review F1)",
+          _doc16a == 0 and _doc16b == 0 and _doc16u.getvalue() == _doc16v.getvalue())
+if _os16.geteuid() != 0:
+    with _tf16.TemporaryDirectory() as _td16e:
+        _h16pfe = Path(_td16e) / "cfg"; _h16pfe.mkdir(); _h16pfe.chmod(0o000)
+        _r16 = _sp16.run([_sys16.executable, str(ROOT / "plugins" / "consolidate-memory" / "scripts" / "cm_ops.py"),
+                          "doctor", str(ROOT), "--json"],
+                         capture_output=True, text=True, timeout=60,
+                         env=dict(_os16.environ, CLAUDE_CONFIG_DIR=str(_h16pfe)))
+        try:
+            _env16 = _json16.loads(_r16.stdout)
+            check("preflight doctor: EACCES config root -> rc 2, the #14 row, no traceback",
+                  _r16.returncode == 2 and "Traceback" not in _r16.stdout + _r16.stderr
+                  and any(c["id"] == "store-resolution" and c["status"] == "fail"
+                          for c in _env16["preflight"]["checks"]))
+        except ValueError:
+            check("preflight doctor: EACCES config root -> rc 2, JSON envelope", False)
+        finally:
+            _h16pfe.chmod(0o700)
+
+# seed-embed: the verdict rides the record; absent without it (legacy records render).
+# Real build_context under a hermetic HOME (the 1505-1519 pattern), not a hand-built dict.
+_seed_pf16 = {"at": _dt16.now(_tz16.utc).isoformat(timespec="seconds"), "fails": ["sqlite-floor"], "warns": ["git-present"]}
+with _tf16.TemporaryDirectory() as _td16f:
+    _h16pff = Path(_td16f) / "home"; _h16pff.mkdir()
+    _proj16f = Path(_td16f) / "proj"; _proj16f.mkdir()
+    _old16f = _os16.environ.get("HOME")
+    _os16.environ["HOME"] = str(_h16pff)
+    try:
+        _ctx16f = ms.build_context(_proj16f)
+        _ctx16f["preflight"] = _seed_pf16
+        _rec16f = ms.seed_record(_ctx16f)
+        check("preflight seed-embed: the verdict rides the record (fails/warns carried)",
+              _rec16f.get("preflight") == {"at": _seed_pf16["at"], "fails": ["sqlite-floor"],
+                                           "warns": ["git-present"]})
+        _rec16f2 = ms.seed_record({k: v for k, v in _ctx16f.items() if k != "preflight"})
+        check("preflight seed-embed: absent without a verdict (legacy records render)",
+              "preflight" not in _rec16f2)
+    finally:
+        if _old16f is None:
+            _os16.environ.pop("HOME", None)
+        else:
+            _os16.environ["HOME"] = _old16f
+
+# validator depth: a wrong-typed fails/warns warns (the dream.beats descent style)
+check("preflight validator: preflight.fails/warns must be lists",
+      any("preflight.fails is not a list" in w for w in ms.validate_cycle_record({"preflight": {"fails": "x"}}))
+      and any("preflight.warns is not a list" in w for w in ms.validate_cycle_record({"preflight": {"warns": 3}})))
+
+# co-state fixtures (review F2): the FAIL advisory's precedence is pinned BEHAVIORALLY —
+# snooze never quiets it, and a disabled-auto-memory env stays silent (the read must sit
+# AFTER that gate; a moved read would print here and fail this pin)
+with _tf16.TemporaryDirectory() as _td16g:
+    _h16g = Path(_td16g)
+    _slot16g = _h16g / ".claude" / "projects" / (ms.slug_for(ROOT)) / "memory"; _slot16g.mkdir(parents=True)
+    _st16g = _slot16g / ".consolidation-state.json"
+    _fresh_fail16 = {"at": _dt16.now(_tz16.utc).isoformat(timespec="seconds"),
+                     "fails": ["sqlite-module"], "warns": []}
+    _st16g.write_text(_json16.dumps({"beacon_snooze_until":
+                                     (_dt16.now(_tz16.utc) + _tdlt16(days=1)).isoformat(),
+                                     "preflight": _fresh_fail16}))
+    _rb16 = _sp16.run([_sys16.executable, str(_BEACON16)],
+                      input=_json16.dumps({"cwd": str(ROOT)}),
+                      capture_output=True, text=True, timeout=15, env=_pf_env16(HOME=str(_h16g)))
+    check("preflight beacon co-state: a fresh FAIL is NOT quieted by beacon_snooze_until",
+          _rb16.returncode == 0 and len(_rb16.stdout.splitlines()) == 1 and "pre-flight" in _rb16.stdout)
+    _rb16 = _sp16.run([_sys16.executable, str(_BEACON16)],
+                      input=_json16.dumps({"cwd": str(ROOT)}),
+                      capture_output=True, text=True, timeout=15,
+                      env=_pf_env16(HOME=str(_h16g), CLAUDE_CODE_DISABLE_AUTO_MEMORY="1"))
+    check("preflight beacon co-state: disabled auto-memory stays silent even with a cached FAIL "
+          "(behavior-level placement — the read sits AFTER that gate)",
+          _rb16.returncode == 0 and _rb16.stdout == "")
+
+# the cache merge-write law (review F2): a model-owned key survives the mutator write
+with _tf16.TemporaryDirectory() as _td16h:
+    _h16h = Path(_td16h); (_h16h / ".claude").mkdir()
+    _proj16h = Path(_td16h) / "proj"; _proj16h.mkdir()
+    _old16h = _os16.environ.get("HOME")
+    _os16.environ["HOME"] = str(_h16h)
+    try:
+        _ctx16h = sc.resolve_store(_proj16h)
+        _st16h = Path(_ctx16h.native_memory_dir) / ".consolidation-state.json"
+        _st16h.parent.mkdir(parents=True, exist_ok=True)
+        _st16h.write_text(_json16.dumps({"timestamp": 123, "project_path": "keep-me"}))
+        _wrote16 = _pf16.run_and_cache(_ctx16h, _pf16.verdict_for_cache(
+            {"at": _dt16.now(_tz16.utc).isoformat(timespec="seconds"),
+             "fails": ["sqlite-floor"], "warns": []}))
+        _st16h2 = _json16.loads(_st16h.read_text())
+        check("preflight cache merge-write: the verdict lands AND model-owned keys survive (one writer)",
+              _wrote16 and _st16h2.get("timestamp") == 123 and _st16h2.get("project_path") == "keep-me"
+              and _st16h2.get("preflight", {}).get("fails") == ["sqlite-floor"])
+    finally:
+        if _old16h is None:
+            _os16.environ.pop("HOME", None)
+        else:
+            _os16.environ["HOME"] = _old16h
+
+# the memory_status sentinel (review F2): single-dict stdout purity + rc 2, no traceback
+if _os16.geteuid() != 0:
+    with _tf16.TemporaryDirectory() as _td16i:
+        _h16i = Path(_td16i) / "cfg"; _h16i.mkdir(); _h16i.chmod(0o000)
+        _r16 = _sp16.run([_sys16.executable,
+                          str(ROOT / "plugins" / "consolidate-memory" / "scripts" / "memory_status.py"),
+                          str(ROOT), "--json"],
+                         capture_output=True, text=True, timeout=60,
+                         env=_pf_env16(CLAUDE_CONFIG_DIR=str(_h16i)))
+        try:
+            _env16 = _json16.loads(_r16.stdout)
+            check("preflight memory_status sentinel: --json stays a SINGLE dict, rc 2, no traceback",
+                  _r16.returncode == 2 and "Traceback" not in _r16.stdout + _r16.stderr
+                  and sorted(_env16.keys()) == ["at", "checks", "notes", "ok"]
+                  and any(c["id"] == "store-resolution" and c["status"] == "fail" for c in _env16["checks"]))
+        except ValueError:
+            check("preflight memory_status sentinel: --json stays a SINGLE dict, rc 2, no traceback", False)
+        finally:
+            _h16i.chmod(0o700)
+
+# the no-git discriminator (review F2): warns never render into the Phase-0 human report
+with _tf16.TemporaryDirectory() as _td16j:
+    _h16j = Path(_td16j) / "home"; _h16j.mkdir()
+    _proj16j = Path(_td16j) / "nogit"; _proj16j.mkdir()   # NO .git — the WARN class
+    _r16 = _sp16.run([_sys16.executable,
+                      str(ROOT / "plugins" / "consolidate-memory" / "scripts" / "memory_status.py"),
+                      str(_proj16j)],
+                     capture_output=True, text=True, timeout=60, env=_pf_env16(HOME=str(_h16j)))
+    check("preflight Phase-0 human report: a no-git repo (warns-only) gains NO pre-flight section",
+          _r16.returncode == 0 and "PRE-FLIGHT" not in _r16.stdout)
+
+# renderers: the dashboard red line (fails only) + the embed whitelist carries the key
+_rd_out16 = rd.render({"project": "x", "scope": {}, "preflight": {"fails": ["sqlite-module"], "warns": []}})
+check("preflight dashboard: one red PRE-FLIGHT line when fails present, none when clean",
+      _rd_out16.count("PRE-FLIGHT") == 1 and "sqlite-module" in _rd_out16)
+_rd_out16b = rd.render({"project": "x", "scope": {}})
+check("preflight dashboard: legacy/clean records render byte-identically (no PRE-FLIGHT line)",
+      "PRE-FLIGHT" not in _rd_out16b)
+import render_html as _rh16  # noqa: E402
+check("preflight render_html: 'preflight' is in the embed whitelist",
+      "preflight" in _rh16._EMBED_KEYS)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

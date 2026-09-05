@@ -5,6 +5,37 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.16] — 2026-09-05
+
+**Patch — the environment pre-flight.** A new `preflight.py` answers the deployment
+questions deterministically: 14 checks — Python 3.8+, POSIX/fcntl (win32/cygwin fail
+closed per ADR 016), the `sqlite3` stdlib module, the SQLite ≥ 3.24 UPSERT floor, a
+real-schema + flock round-trip inside the plugin-data dir, plugin self-integrity, the
+native memory dir (skipped when auto-memory is disabled — native Auto-Memory is NOT a
+prerequisite), git presence/repo/shallow (warn-only degradations per the shipped
+policy), `python3` on PATH, TMPDIR writability with a free-space floor, transcript
+inventory, and a synthetic store-resolution check for the brokenest environment. Exit
+0 = clean, **2 = any FAIL**; `--json` emits the envelope.
+
+- **Surfaces:** `cm doctor` embeds the PRE-FLIGHT table (+ rc 2 on FAIL); a resolution
+  failure (EACCES config root, or a no-sqlite3 interpreter) now yields a verdict
+  instead of a traceback. The SessionStart beacon prints ONE line when a fresh FAIL
+  verdict is cached (warns/pass/stale → silent; never quieted by snooze;
+  disabled-auto-memory stays silent). Phase 0 seeds the record's `preflight` block
+  (record-producing modes only — read-only modes stay write-free) and renders a red
+  line when fails were recorded.
+- **Honest boundary:** a no-sqlite3 environment is itself a resolution failure — it
+  reaches the sentinel verdict via doctor/Phase 0, but the beacon cannot cover it (no
+  resolved ctx → no cache); stated, not solved.
+- **The gated arc:** spec (`docs/env-preflight.spec.md`) → advisor (11 findings) →
+  adversarial review-to-zero (11 findings, incl. the F1 reachability contradiction
+  re-folded to the one-writer routing) → implementation → per-PR review (8 findings) —
+  every finding fixed + pinned (the suite grew 1620 → **1660 assertions**, incl. the
+  PYTHONPATH-shim sabotage runs and the cache-reachability proofs).
+
+Backward-compatible → patch (additive script + additive record/state/dict keys; legacy
+records render).
+
 ## [0.4.15] — 2026-09-05
 
 **Patch — the version-sweep hotfix.** The 0.4.14 Nocturne release updated `plugin.json`, the CHANGELOG, and AGENTS.md's CI paragraph, but left several current-version statements behind. This release completes the sweep to the shipping version: the CLAUDE.md banner, AGENTS.md's "verified against the live tree" line, the SKILL.md banner, harness-map's lead line, the README's current-release blurb, and the 1.0-preflight STATUS line.

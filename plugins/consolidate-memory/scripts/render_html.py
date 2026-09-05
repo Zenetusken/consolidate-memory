@@ -70,7 +70,7 @@ _DIFF_EMBED_CAP = 20   # P4 (v0.4.2): embed diff sidecars for only the newest N 
 _EMBED_KEYS = (
     "audit", "budget", "cross_project", "demotion", "distill", "dream",
     "entries", "health", "identity", "maintenance", "marker", "network",
-    "outcome", "project", "remediation", "rigor", "scope", "session",
+    "outcome", "preflight", "project", "remediation", "rigor", "scope", "session",
     "usage", "verification", "workflow_proposals",
 )
 

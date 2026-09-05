@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml"><img src="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.14-b3a6e4?style=flat-square&labelColor=101e31" alt="Version 0.4.14"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.16-b3a6e4?style=flat-square&labelColor=101e31" alt="Version 0.4.16"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8fced6?style=flat-square&labelColor=101e31" alt="MIT license"></a>
 </p>
 
@@ -27,7 +27,7 @@ One explicit **`dream`** produces a reviewed memory update and an inspectable re
 </p>
 
 > [!NOTE]
-> **Current release: v0.4.15.** Public 1.0 remains **HOLD**, with outstanding evidence
+> **Current release: v0.4.16.** Public 1.0 remains **HOLD**, with outstanding evidence
 > gates tracked in the [1.0 preflight](docs/1.0-preflight.spec.md).
 > See the [changelog](CHANGELOG.md) for shipped changes.
 
@@ -57,7 +57,12 @@ library; the agent performs the reasoning and source checks.
 ## 🚀 From install to your first dream
 
 **Requires:** Claude Code with plugins and auto-memory enabled, `python3` **3.8+** on
-PATH, and a POSIX environment (Linux, macOS, or WSL). No runtime packages to install.
+PATH **with the `sqlite3` stdlib module (SQLite ≥ 3.24)** — no system sqlite3 binary
+needed — and a POSIX environment (Linux, macOS, or WSL). No runtime packages to
+install. Native Auto-Memory features are **not** required — the plugin is
+self-contained; `git` is optional (dream scope degrades without it). Check all of
+this up front with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.py ."` after
+installing (exit 0 = clean; exit 2 = fix the FAILs first).
 
 In Claude Code:
 
