@@ -13131,6 +13131,13 @@ with _tf73.TemporaryDirectory() as _td_ft:
             _os73.environ["HOME"] = _home_prev_ft
         sg.GLOBAL = _global_prev_ft
 
+# (1b) the discipline pin: NO test-side render_html.py invocation may open a
+# browser (the repeated-window incident — a suite run spawned a window)
+_smoke_src_ft = (ROOT / "tests" / "smoke.py").read_text(encoding="utf-8")
+check("v0.4.13 hotfix: every test-side render_html.py invocation carries --no-open "
+      "(no test may spawn a browser window)",
+      _smoke_src_ft.count("--no-open") >= _smoke_src_ft.count("render_html.py"))
+
 # (2) the template: the fleet path's gate + layers exist; the legacy strings stay
 _tmpl_ft = (ROOT / "plugins" / "consolidate-memory" / "scripts"
             / "dashboard.template.html").read_text(encoding="utf-8")
@@ -13191,11 +13198,15 @@ with _tf73.TemporaryDirectory() as _td_rp:
             "dream": {"sleep": "*x*", "beats": ["*a*", "*b*", "*c*", "*d*", "*e*"], "wake": "*w*"}}
         (_store_rp / ".consolidation-log.jsonl").write_text(
             _json_xp.dumps(_rec_rp) + "\n", encoding="utf-8")
+        # the repeated-window incident: TEST renders must NEVER open a browser —
+        # --no-open + the CM_NO_OPEN kill-switch, both (a suite run spawned a
+        # probe-archive window every run before this)
         _rp_run = _sp_r5.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
                                                    / "scripts" / "render_html.py"),
-                              "--project", str(_proj_rp)],
+                              "--project", str(_proj_rp), "--no-open"],
                              capture_output=True, text=True, timeout=120,
-                             env={**_os73.environ, "HOME": str(_home_rp)})
+                             env={**_os73.environ, "HOME": str(_home_rp),
+                                  "CM_NO_OPEN": "1"})
         # review LOW: pin the EXACT archive path (a first-glob hit across two
         # roots is ambiguous about which record's archive is asserted)
         _arch_rp = _ctx_rp.native_memory_dir.parent / "dashboards" / "index.html"
