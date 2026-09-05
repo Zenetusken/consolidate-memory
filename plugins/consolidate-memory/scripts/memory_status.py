@@ -299,6 +299,9 @@ class NetworkNode(TypedDict, total=False):
     shared: int
     universal: int          # mirrors whose canonical is user-global (everyone-holds baseline)
     stack: int              # mirrors whose canonical is stack-general (this-stack / subset)
+    domain: str             # fleet basis: the node's enrolled domain id ("unknown" = legacy mirror holder)
+    groups: list[str]       # fleet basis: the operator-granted group names the node belongs to
+    sid: str                # fleet basis: the full store slug — the collision-proof join key (labels truncate)
 
 
 class NetworkTotals(TypedDict, total=False):
@@ -316,6 +319,29 @@ class StackEdge(TypedDict, total=False):
     n: int                  # |stack-general mirrors on a ∩ stack-general mirrors on b|
 
 
+class UniversalFact(TypedDict, total=False):
+    name: str               # the canonical stem
+    domain: str             # the fact's home domain
+    held: int               # holder count (partial universals read honest: "only 2/11")
+
+
+class DomainEntry(TypedDict, total=False):
+    domain: str             # the trust-boundary name; membership derived from nodes[].domain
+
+
+class GroupLink(TypedDict, total=False):
+    group: str              # the operator-granted group name (the routed link)
+    home_domain: str
+    members_n: int          # membership derived at render from nodes[].groups
+    facts: list[UniversalFact]   # the canonicals whose recipients: cite the group (capped)
+
+
+class StackEdgeFacts(TypedDict, total=False):
+    a: str
+    b: str
+    names: list[str]        # the binding fact stems (the drawn-chord set, capped)
+
+
 class Network(TypedDict, total=False):
     basis: str
     node_def: str
@@ -323,6 +349,11 @@ class Network(TypedDict, total=False):
     nodes: list[NetworkNode]
     stack_edges: list[StackEdge]   # pairwise this-stack intersections (HTML draws these, not mixed `shared`)
     totals: NetworkTotals
+    basis_scope: str        # "fleet" when emitted with --fleet (the HTML fleet path's gate)
+    domains: list[DomainEntry]
+    universal_facts: list[UniversalFact]   # partial-holders first, capped 24
+    group_links: list[GroupLink]           # the trigger's groups (--fleet=full: all)
+    stack_edge_facts: list[StackEdgeFacts]
 
 
 class Marker(TypedDict, total=False):
@@ -3265,6 +3296,29 @@ def validate_cycle_record(record: object) -> list[str]:
             warnings.append("network.stack_edges is not a list")
         elif "stack_edges" in net and any(not isinstance(e, dict) for e in net["stack_edges"]):
             warnings.append("network.stack_edges contains a non-dict item")
+        # v0.4.13 fleet-topology layers — NON-VACUOUS checks (spec MED-3): the four
+        # lists must be lists of dicts, universals must stay within the node
+        # count (a holder-counting producer can't exceed it), and every edge-fact
+        # pair must RESOLVE to a node label (the A2/HIGH-1 collision contract,
+        # enforced at runtime against emitter bugs and model hand-edits).
+        if "basis_scope" in net and net.get("basis_scope") == "fleet":
+            _nlabels = {str(n.get("node") or "") for n in net.get("nodes") or []
+                        if isinstance(n, dict)}
+            for _lk in ("domains", "universal_facts", "group_links", "stack_edge_facts"):
+                if _lk in net and not isinstance(net[_lk], list):
+                    warnings.append(f"network.{_lk} is not a list")
+                elif _lk in net and any(not isinstance(x, dict) for x in net[_lk]):
+                    warnings.append(f"network.{_lk} contains a non-dict item")
+            _n_nodes = int((net.get("totals") or {}).get("nodes") or len(_nlabels) or 1)
+            for u in net.get("universal_facts") or []:
+                if isinstance(u, dict) and int(u.get("held") or 0) > _n_nodes:
+                    warnings.append("network.universal_facts[].held exceeds totals.nodes — "
+                                    "impossible from a holder-counting producer")
+            for e in net.get("stack_edge_facts") or []:
+                if isinstance(e, dict) and _nlabels and (
+                        str(e.get("a") or "") not in _nlabels
+                        or str(e.get("b") or "") not in _nlabels):
+                    warnings.append("network.stack_edge_facts names an unknown node label")
 
     # Nested under health — checked ONLY when health itself is a dict. A non-dict `health`
     # already warned via the top-level tuple above ("health is not a dict"); here we just

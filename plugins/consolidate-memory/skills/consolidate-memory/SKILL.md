@@ -928,8 +928,13 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    + total estimated token consumption across every node in the shared-memory network
    and paste it into the cycle record's `network` block verbatim:
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --tokens . --json
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --tokens . --json --fleet
    ```
+   (`--fleet` is the fleet-topology basis — nodes across every domain with their
+   domain/group attribution, the universal baseline, and the group links; the
+   share-safe default scopes group_links to this project's own groups. The
+   operator's complete group set is `--fleet=full`. A record pasted from the bare
+   `--tokens` form stays domain-basis and renders the legacy diagram honestly.)
    Then **capture recall utility** (v0.1.63, Phase A — the usage instrument): scan the window's
    transcripts for ORGANIC fact-body reads (dream-procedure reads span-excluded) and inject the
    script-truth `usage` block into the seed — counts are script-only, never hand-authored. **Pass the
@@ -1364,17 +1369,24 @@ this once warned against; the dashboard remains the source of the figures.)
     "gc_removed": 0,   "_gc": "Phase 5: orphan mirrors reclaimed by sync_global --gc --apply"
   },
   "network": {
-    "_": "Phase 5: paste sync_global.py --tokens . --json verbatim here (per-node token cost + the stack-vs-universal split). shared = all mirrors; universal/stack split that mix; stack_edges = pairwise this-stack intersections the HTML graph draws. Pre-split records omit the new keys — renderers fall back without inventing topology.",
+    "_": "Phase 5: paste sync_global.py --tokens . --json --fleet verbatim here (per-node token cost + the stack-vs-universal split + the fleet-topology layers). shared = all mirrors; universal/stack split that mix; stack_edges = pairwise this-stack intersections the HTML graph draws; basis_scope fleet gates the layered diagram. Pre-split/domain-basis records omit the new keys — renderers fall back without inventing topology. --fleet=full widens group_links to every operator group (the share-safe default is the trigger's own).",
     "basis": "≈ chars/4 (heuristic estimate, not a tokenizer)",
     "node_def": "project stores holding ≥1 shared fact",
     "trigger": "<this project>",
     "nodes": [{"node": "...", "trigger": false, "always_loaded_tokens": 0,
                "mirror_index_tokens": 0, "recall_tokens": 0, "facts": 0, "shared": 0,
-               "universal": 0, "stack": 0}],
+               "universal": 0, "stack": 0, "domain": "personal", "groups": ["fleet"],
+               "sid": "-home-..."}],
     "stack_edges": [{"a": "...", "b": "...", "n": 0}],
     "totals": {"nodes": 0, "always_loaded_tokens": 0,
                "mirror_index_tokens": 0, "recall_tokens": 0,
-               "universal": 0, "stack": 0}
+               "universal": 0, "stack": 0},
+    "basis_scope": "fleet",
+    "domains": [{"domain": "personal"}],
+    "universal_facts": [{"name": "...", "domain": "personal", "held": 3}],
+    "group_links": [{"group": "fleet", "home_domain": "personal", "members_n": 11,
+                     "facts": [{"name": "...", "domain": "personal", "held": 0}]}],
+    "stack_edge_facts": [{"a": "...", "b": "...", "names": ["..."]}]
   },
   "remediation": {
     "_": "v0.1.18: present ONLY when the index is OVER budget (the GATE); absent on a healthy store. v0.1.21: when standing_justified the gate is SUPPRESSED (required=false) until fact-count grows by Δ. v0.1.66: over_ceiling is a SIBLING signal (the hard ceiling, SJ-independent) — never a re-key of required. Seeded by Phase 0; pruned/achieved_* filled in Phase 5.",

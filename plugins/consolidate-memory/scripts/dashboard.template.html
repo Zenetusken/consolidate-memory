@@ -419,6 +419,7 @@
         <div class="meter" id="m-global" style="display:none"></div>
       </div>
       <div><svg id="net" viewBox="0 0 520 170"></svg>
+        <div id="net-chips" style="display:none"></div>
         <div class="meta">
           <div class="legend center" id="net-legend">
             <span><i class="dot" style="background:var(--accent)"></i>this project</span>
@@ -688,6 +689,10 @@
   function paintDream(){
     clearEl("traj"); clearEl("trend"); clearEl("rigor"); clearEl("net");
     var tw=el("traj-warn"); if(tw){tw.style.display="none"; tw.innerHTML="";}
+    // review HIGH-2: the fleet layers' DOM must reset with every dream — a
+    // legacy dream must never show the previous fleet dream's chips/hull rows.
+    var chips0=el("net-chips"); if(chips0){chips0.style.display="none"; chips0.textContent="";}
+    var leg0=el("net-legend"); if(leg0){Array.prototype.slice.call(leg0.children).forEach(function(c){if(c&&c.textContent&&c.textContent.indexOf("⌁ ")===0)leg0.removeChild(c);});}
     ["dream-blk","distill-blk","demotion-blk","registrar-blk","xp-strip","m-global","dstl-top","dstl-chains-head","dstl-chains-list","dstl-used-head","dstl-used-list"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
     PROJ=g(CUR,"project",DATA.project||"consolidate-memory");
     el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
@@ -1166,6 +1171,160 @@
       minX=Math.min(minX,left);maxX=Math.max(maxX,right);
       minY=Math.min(minY,L.y-8);maxY=Math.max(maxY,L.y+4);
     });
+    var pad=12;
+    svg.setAttribute("viewBox",(minX-pad)+" "+(minY-pad)+" "+(maxX-minX+2*pad)+" "+(maxY-minY+2*pad));
+  })();
+
+  // ── fleet topology (basis_scope:"fleet") — the layered view ─────────────────
+  // The ONE gate (fleet-topology-ui spec HIGH-3): basis_scope === "fleet". The
+  // legacy painter above already ran; this path clears its output and draws ALL
+  // layers — domain arcs (the VLAN layer), group hulls (the routed links), the
+  // universal baseline chip strip, and fleet-wide differential chords. Records
+  // without the gate never reach here, so legacy pixels are untouched.
+  (function(){
+    var net0=g(CUR,"network",null);
+    if(!(net0&&typeof net0==="object"&&!Array.isArray(net0)&&net0.basis_scope==="fleet"))return;
+    var net=net0,svg=el("net"),allN=Array.isArray(net.nodes)?net.nodes:[];
+    var MAXN=16,nodes=allN.slice(0,MAXN),more=allN.length-nodes.length;
+    var tot=(net.totals&&typeof net.totals==="object"&&!Array.isArray(net.totals))?net.totals:{};
+    var trig=nodes.findIndex(function(d){return truthy(d.trigger);});if(trig<0)trig=0;
+    while(svg.firstChild)svg.removeChild(svg.firstChild);
+    var note=el("net-note");
+    if(note)note.textContent=allN.length+" project"+(allN.length!==1?"s":"")+(more?" (showing "+MAXN+")":"")+" · "+num(tot.universal)+" baseline · "+num(tot.stack)+" this-stack · fleet";
+    var E=Array.isArray(net.stack_edges)?net.stack_edges:[];
+    function edgeN(a,b){for(var ei=0;ei<E.length;ei++){var e=E[ei];if((e.a===a&&e.b===b)||(e.a===b&&e.b===a))return num(e.n);}return 0;}
+    // domain arcs: deterministic domain order, contiguous ring spans
+    var domOrder=[],domOf={};
+    nodes.forEach(function(d){var dm=String(d.domain||"unknown");if(domOrder.indexOf(dm)<0)domOrder.push(dm);domOf[String(d.node||"")]=dm;});
+    domOrder.sort();
+    var N=nodes.length,cx=260,cy=132,rad=N<=4?84:(N<=8?122:152);
+    var pos=nodes.map(function(){return[cx,cy];});pos[trig]=[cx,cy];
+    var ring=[];for(var i=0;i<N;i++)if(i!==trig)ring.push(i);
+    var trigName=String(nodes[trig].node||""),spokes={};
+    ring.forEach(function(i){spokes[i]=edgeN(trigName,String(nodes[i].node||""));});
+    ring.sort(function(a,b){var d=domOrder.indexOf(domOf[String(nodes[a].node||"")])-domOrder.indexOf(domOf[String(nodes[b].node||"")]);if(d)return d;d=(spokes[b]||0)-(spokes[a]||0);if(d)return d;return String(nodes[a].node||"").localeCompare(String(nodes[b].node||""));});
+    ring.forEach(function(i,k){var ang=(k/ring.length)*2*Math.PI-Math.PI/2;pos[i]=[cx+rad*Math.cos(ang),cy+rad*Math.sin(ang)];});
+    function arcPath(a0,a1,r){var x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0),x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);var large=((a1-a0)%(2*Math.PI))>Math.PI?1:0;return "M "+x0+" "+y0+" A "+r+" "+r+" 0 "+large+" 1 "+x1+" "+y1;}
+    var tints=["var(--tint-ok)","var(--tint-crit)","var(--tint-accent)","var(--tint-warn)"];
+    var domSpan={};
+    ring.forEach(function(i){var dm=domOf[String(nodes[i].node||"")];(domSpan[dm]=domSpan[dm]||[]).push(i);});
+    domOrder.forEach(function(dm,di){
+      var mem=domSpan[dm];if(!mem||!mem.length)return;
+      var a0=(ring.indexOf(mem[0])/ring.length)*2*Math.PI-Math.PI/2;
+      var a1=((ring.indexOf(mem[mem.length-1])+1)/ring.length)*2*Math.PI-Math.PI/2;
+      // review MED-3: a single domain spans the whole ring — the endpoints
+      // coincide and an SVG arc with coincident endpoints renders NOTHING.
+      // The full-ring case gets a circle instead.
+      if(Math.abs((a1-a0)-(2*Math.PI))<0.01){
+        svg.appendChild(S("circle",{cx:cx,cy:cy,r:rad+18,fill:"none",stroke:tints[di%tints.length],"stroke-width":4,"stroke-opacity":".35"}));
+      } else {
+        svg.appendChild(S("path",{d:arcPath(a0,a1,rad+18),fill:"none",stroke:tints[di%tints.length],"stroke-width":4,"stroke-opacity":".35","stroke-linecap":"round"}));
+      }
+      var am=(a0+a1)/2,lx=cx+(rad+32)*Math.cos(am),ly=cy+(rad+32)*Math.sin(am);
+      var lt=S("text",{x:lx,y:ly+4,"text-anchor":"middle",class:"axt d",style:"font-size:9px"});
+      lt.textContent=dm;svg.appendChild(lt);
+    });
+    // group hulls: the routed links — members derived from nodes[].groups
+    var G=Array.isArray(net.group_links)?net.group_links.slice(0,6):[];
+    var legend=el("net-legend");
+    G.forEach(function(gd,gi){
+      var gn=String(gd.group||""),memIdx=[];
+      nodes.forEach(function(d,i){if((d.groups||[]).indexOf(gn)>=0)memIdx.push(i);});
+      if(memIdx.length<1)return;
+      var mpos=memIdx.map(function(i){return {i:i,p:pos[i],k:ring.indexOf(i)};}).sort(function(a,b){return a.k-b.k;});
+      if(mpos.length<2){
+        var p0=pos[mpos[0].i];
+        svg.appendChild(S("circle",{cx:p0[0]+rad*0.22,cy:p0[1]-rad*0.22,r:5,fill:"none",stroke:"var(--data)","stroke-width":1.2,"stroke-dasharray":"3 2","stroke-opacity":".8"}));
+      } else {
+        var dPath="M "+mpos[0].p[0]+" "+mpos[0].p[1];
+        for(var mi=1;mi<mpos.length;mi++){var pp=mpos[mi].p;dPath+=" L "+pp[0]+" "+pp[1];}
+        dPath+=" Z";
+        svg.appendChild(S("path",{d:dPath,fill:"none",stroke:"var(--data)","stroke-width":1.2,"stroke-dasharray":"4 3","stroke-opacity":".55","stroke-linejoin":"round"}));
+      }
+      var lblX=pos[memIdx[0]][0]+10,lblY=pos[memIdx[0]][1]-10;
+      var gl=S("text",{x:lblX,y:lblY,class:"axt d",style:"font-size:8px;fill:var(--data)"});
+      gl.textContent=gn;svg.appendChild(gl);
+      if(legend){var sp=document.createElement("span");sp.style.cssText="color:var(--data);font-size:11px";sp.textContent="⌁ "+gn;legend.appendChild(sp);}
+    });
+    // spokes + peer chords (the differential layer, fleet-wide)
+    // review MED-2: the chord hover names the binding facts from
+    // stack_edge_facts (the drawn-chord set, mirrored at emission).
+    var efLookup={};
+    (Array.isArray(net.stack_edge_facts)?net.stack_edge_facts:[]).forEach(function(ef){
+      efLookup[String(ef.a)+"|"+String(ef.b)]=(ef.names||[]).slice(0,5);
+      efLookup[String(ef.b)+"|"+String(ef.a)]=(ef.names||[]).slice(0,5);
+    });
+    var drawn={};nodes.forEach(function(d){drawn[String(d.node||"")]=true;});
+    for(var i2=0;i2<N;i2++){
+      if(i2===trig)continue;
+      for(var j2=i2+1;j2<N;j2++){
+        if(j2===trig)continue;
+        var pn=edgeN(String(nodes[i2].node||""),String(nodes[j2].node||""));
+        if(pn<=Math.max(spokes[i2]||0,spokes[j2]||0))continue;
+        var mx=(pos[i2][0]+pos[j2][0])/2,my=(pos[i2][1]+pos[j2][1])/2;
+        var vx=mx-cx,vy=my-cy,vl=Math.sqrt(vx*vx+vy*vy)||1;
+        var bx=cx+vx/vl*(rad+16),by=cy+vy/vl*(rad+16);
+        var chordPath=S("path",{d:"M "+pos[i2][0]+" "+pos[i2][1]+" Q "+bx+" "+by+" "+pos[j2][0]+" "+pos[j2][1],fill:"none",stroke:"var(--data)","stroke-width":Math.max(.7,Math.min(2.6,pn*0.28)),"stroke-opacity":".4","stroke-linecap":"round"});
+        var efNames=efLookup[String(nodes[i2].node||"")+"|"+String(nodes[j2].node||"")];
+        if(efNames&&efNames.length){
+          chordPath.addEventListener("mousemove",tip(String(nodes[i2].node||"")+" ⟷ "+String(nodes[j2].node||"")+" · "+efNames.join(", ")));
+          chordPath.addEventListener("mouseleave",untip);
+        }
+        svg.appendChild(chordPath);
+      }
+    }
+    nodes.forEach(function(d,i){if(i===trig)return;var n2=spokes[i]||0;if(n2<=0)return;
+      svg.appendChild(S("line",{x1:pos[trig][0],y1:pos[trig][1],x2:pos[i][0],y2:pos[i][1],stroke:"var(--data)","stroke-width":Math.max(.8,Math.min(3.4,n2*0.38)),"stroke-opacity":".78","stroke-linecap":"round"}));});
+    // nodes (the ring, with the "+N more" satellite)
+    var maxF=Math.max.apply(null,nodes.map(function(d){return num(d.shared,1);}))||1;
+    nodes.forEach(function(d,i){
+      var r=7+11*Math.sqrt(num(d.shared,1)/maxF),isT=i===trig;
+      var unk=String(d.domain||"unknown")==="unknown";
+      var c=S("circle",{cx:pos[i][0],cy:pos[i][1],r:r,fill:isT?"rgba(179,71,39,.1)":"var(--card)",stroke:isT?"var(--accent)":"var(--ink2)","stroke-width":isT?2:1.3,opacity:unk?".45":"1"});
+      var hover=prettyNode(d.node)+" · "+String(d.domain||"unknown")+" · "+(d.groups||[]).join(",")+" · "+num(d.stack)+" this-stack · "+num(d.universal)+" baseline · "+num(d.facts)+" in this store";
+      c.addEventListener("mousemove",tip(hover));c.addEventListener("mouseleave",untip);svg.appendChild(c);
+      var ft=S("text",{x:pos[i][0],y:pos[i][1]+4,"text-anchor":"middle",class:"axt d",style:"font-size:11px;pointer-events:none"+(unk?";fill:var(--ghost)":"")});
+      ft.textContent=String(num(d.stack));svg.appendChild(ft);
+      var dx=pos[i][0]-cx,dy=pos[i][1]-cy,len=Math.sqrt(dx*dx+dy*dy)||1,ux=dx/len,uy=dy/len;
+      var lx=pos[i][0]+ux*(r+8),ly=pos[i][1]+uy*(r+8),anchor=Math.abs(ux)<0.38?"middle":(ux<0?"end":"start");
+      var lt=S("text",{x:lx,y:ly,"text-anchor":anchor,class:"axt",style:"font-size:9px;pointer-events:none"+(unk?";fill:var(--ghost)":"")});
+      lt.textContent=graphLabel(d.node);svg.appendChild(lt);
+    });
+    if(more){
+      var sx=cx, sy=cy+rad+52;
+      var sc=S("circle",{cx:sx,cy:sy,r:7,fill:"var(--card)",stroke:"var(--rule2)","stroke-width":1,"stroke-dasharray":"2 2","stroke-opacity":".7"});
+      svg.appendChild(sc);
+      var st=S("text",{x:sx,y:sy+4,"text-anchor":"middle",class:"axt d",style:"font-size:10px"});
+      st.textContent="+"+more+" more";svg.appendChild(st);
+    }
+    // the universal baseline chip strip (the honest substrate, below the SVG)
+    var chips=el("net-chips");
+    if(chips){
+      chips.style.display="block";
+      chips.textContent="";
+      var U=Array.isArray(net.universal_facts)?net.universal_facts.slice(0,12):[];
+      var capEl=el("net-cap");
+      if(capEl)capEl.textContent="Fleet view — tinted arcs are the trust boundaries (domains); dashed hulls are the operator-granted groups; chips are the everyone-holds baseline. "+(U.some(function(u){return num(u.held)<num(tot.nodes);})?"Some baselines are held by only part of the fleet (shown honestly).":"Every node holds the whole baseline.")+(more?" "+(more)+" node(s) beyond the ring.":"");
+      var row=document.createElement("div");row.className="xp-strip";
+      var rowSpan=document.createElement("span");rowSpan.className="lbl";rowSpan.textContent="baseline";
+      row.appendChild(rowSpan);
+      U.forEach(function(u){
+        var chip=document.createElement("span");chip.className="x";
+        var gap=num(u.held)<num(tot.nodes);
+        chip.style.cssText="border-color:"+(gap?"var(--tint-warn)":"var(--rule2)");
+        chip.textContent=String(u.name)+" · "+num(u.held)+"/"+num(tot.nodes);
+        row.appendChild(chip);
+      });
+      if((Array.isArray(net.universal_facts)?net.universal_facts.length:0)>U.length){var moreC=document.createElement("span");moreC.className="x";moreC.textContent="+"+(net.universal_facts.length-U.length)+" more";row.appendChild(moreC);}
+      chips.appendChild(row);
+    }
+    // viewBox fit (the fleet geometry grows past the fixed box)
+    var minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
+    nodes.forEach(function(d,i){var r=7+11*Math.sqrt(num(d.shared,1)/maxF);
+      minX=Math.min(minX,pos[i][0]-r);maxX=Math.max(maxX,pos[i][0]+r);
+      minY=Math.min(minY,pos[i][1]-r);maxY=Math.max(maxY,pos[i][1]+r);});
+    minY=Math.min(minY,cy-rad-46);maxY=Math.max(maxY,cy+rad+70);
+    minX=Math.min(minX,cx-rad-46);maxX=Math.max(maxX,cx+rad+46);
     var pad=12;
     svg.setAttribute("viewBox",(minX-pad)+" "+(minY-pad)+" "+(maxX-minX+2*pad)+" "+(maxY-minY+2*pad));
   })();
