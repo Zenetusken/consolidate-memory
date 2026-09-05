@@ -3622,7 +3622,100 @@ def _network_nodes() -> list[Path]:
     return nodes
 
 
-def token_network(project_dir: Path) -> dict:
+def _fleet_overlay(project_dir: Path) -> tuple:
+    """(store-path → (domain, [project_ids]), trigger_memberships, all_group_names) —
+    the registry attribution for the fleet basis (fleet-topology-ui spec §2.1):
+    the disk-first node set gets its domain + group membership from the SQLite
+    registry, keyed by each store's RESOLVED path. Degrades to empty on a
+    missing/unhealthy registry (attribution is overlay, enumeration is disk)."""
+    _overlay: dict = {}
+    _trig_mem: set = set()
+    _all_groups: list = []
+    try:
+        from store_context import resolve_store as _rs_fo
+        from control_plane import connect_if_exists as _cife_fo, db_path as _dbp_fo
+        _ctx_fo = _rs_fo(Path(project_dir))
+        _conn = _cife_fo(_dbp_fo(_ctx_fo))
+        if _conn is None:
+            return _overlay, _trig_mem, _all_groups
+        try:
+            _rows = _conn.execute(
+                "SELECT project_id, domain_id, native_memory_dir FROM projects "
+                "WHERE status='enrolled'").fetchall()
+            _mems = _conn.execute(
+                "SELECT gm.project_id, g.name, g.domain_id FROM group_members gm "
+                "JOIN groups g ON g.group_id = gm.group_id").fetchall()
+            _trid = str(getattr(_ctx_fo, "project_id", "") or "")
+            for r in _rows:
+                _nm = str(r["native_memory_dir"] or "")
+                if not _nm:
+                    continue
+                try:
+                    _k = str(Path(_nm).expanduser().resolve())
+                except OSError:
+                    _k = _nm
+                _dom_pids = _overlay.setdefault(_k, (str(r["domain_id"] or ""), []))
+                _dom_pids[1].append(str(r["project_id"] or ""))
+            for r in _mems:
+                _g = str(r["name"] or "")
+                if _g and _g not in [x[0] for x in _all_groups]:
+                    _all_groups.append((_g, str(r["domain_id"] or "")))
+                if str(r["project_id"] or "") == _trid:
+                    _trig_mem.add(_g)
+        finally:
+            _conn.close()
+    except Exception:
+        _overlay = {}
+        _trig_mem = set()
+        _all_groups = []
+    return _overlay, _trig_mem, _all_groups
+
+
+def _fleet_group_rows(project_dir: Path) -> dict:
+    """group name → {home_domain, member_project_ids} — every operator-granted
+    group (the routed-link layer). Degrades to {} without a registry."""
+    out: dict = {}
+    try:
+        from store_context import resolve_store as _rs_fg
+        from control_plane import connect_if_exists as _cife_fg, db_path as _dbp_fg
+        _ctx_fg = _rs_fg(Path(project_dir))
+        _conn = _cife_fg(_dbp_fg(_ctx_fg))
+        if _conn is None:
+            return out
+        try:
+            for r in _conn.execute(
+                    "SELECT g.name, g.domain_id, gm.project_id FROM groups g "
+                    "JOIN group_members gm ON gm.group_id = g.group_id").fetchall():
+                _g = str(r["name"] or "")
+                _row = out.setdefault(_g, {"home_domain": str(r["domain_id"] or ""),
+                                           "member_project_ids": []})
+                _row["member_project_ids"].append(str(r["project_id"] or ""))
+        finally:
+            _conn.close()
+    except Exception:
+        return {}
+    return out
+
+
+def _disambiguate_labels(nodes: list, sids: dict) -> None:
+    """HIGH-1 (fleet-topology-ui spec): the 24-char truncated label is
+    non-injective — two stores can collide on one label and silently merge.
+    Colliding labels get a 3-char head suffix from their full slug (the join
+    key stays the sid; the display label just becomes unique)."""
+    counts: dict = {}
+    for row in nodes:
+        counts[str(row.get("node") or "")] = counts.get(str(row.get("node") or ""), 0) + 1
+    for row in nodes:
+        _lab = str(row.get("node") or "")
+        if counts.get(_lab, 0) <= 1:
+            continue
+        _sid = sids.get(_lab, "")
+        _head = _sane(_sid.lstrip("-"))[:3] or "x"
+        row["node"] = f"{_lab}·{_head}"
+
+
+def token_network(project_dir: Path, *, fleet: bool = False,
+                  fleet_full: bool = False) -> dict:
     """Build the `network` block of the cycle record: per-node ESTIMATED token cost
     across every node in the shared-memory network, with the triggering node flagged.
 
@@ -3630,22 +3723,35 @@ def token_network(project_dir: Path) -> dict:
     and emits compact `stack_edges` (pairwise stack-general intersections among these
     physical nodes). The HTML graph draws those edges; it does not invent topology
     from live disk at render time. `--network` remains the logical-provenance view
-    (documented divergence: minds vs stores-with-mirrors)."""
+    (documented divergence: minds vs stores-with-mirrors).
+
+    `fleet=True` (fleet-topology-ui spec §2.1) emits the FLEET basis: the
+    whole-installation node set (disk-first, registry-overlaid) with per-node
+    `domain`/`groups`/`sid`, `domains`, `universal_facts` (capped), `group_links`
+    scoped to the TRIGGER's own groups (fleet_full widens to the operator's full
+    set), `stack_edge_facts` (the drawn-chord set, capped), and
+    `basis_scope: "fleet"`. The domain basis (fleet=False) is byte-shaped as
+    before — the additive keys never touch it."""
     project_dir = project_dir.resolve()
     trigger_store = project_store(project_dir)
     from store_context import resolve_store as _rs_tok
     _ctx_tok = _rs_tok(project_dir)
-    canon_scope = {n: str(fm.get("scope") or "") for n, fm, _ in facts_for_context(_ctx_tok)}
-    domain_stores = _same_domain_stores(_ctx_tok)
-    nodes = []
-    al_total = rc_total = mir_total = 0
-    stack_by: dict = {}
-    uni_all: set = set()
-    stk_all: set = set()
-    if _global_is_fixture():
+    if fleet:
+        canon_scope = {n: str(fm.get("scope") or "") for n, fm, _t, _p in _all_domain_records()}
+    else:
+        canon_scope = {n: str(fm.get("scope") or "") for n, fm, _ in facts_for_context(_ctx_tok)}
+    if fleet:
+        _tok_nodes = list(_network_nodes())
+        _overlay, _trig_mem, _all_groups = _fleet_overlay(project_dir)
+        _group_rows = _fleet_group_rows(project_dir)
+        _pid_groups: dict = {}
+        for _g, _r in _group_rows.items():
+            for _pid in _r["member_project_ids"]:
+                _pid_groups.setdefault(_pid, []).append(_g)
+    elif _global_is_fixture():
         _tok_nodes = list(_network_nodes())
     else:
-        _tok_nodes = list(domain_stores)
+        _tok_nodes = list(_same_domain_stores(_ctx_tok))
     if trigger_store.is_dir():
         try:
             _trig_k = str(trigger_store.resolve())
@@ -3659,23 +3765,52 @@ def token_network(project_dir: Path) -> dict:
                 _have.add(str(_s))
         if _trig_k not in _have:
             _tok_nodes.append(trigger_store)
+    _collected = []   # (store, is_trigger, row, stk_stems, uni_stems, sid)
+    nodes = []
+    stack_by: dict = {}
+    uni_all: set = set()
+    stk_all: set = set()
+    al_total = rc_total = mir_total = 0
+    _label_sids: dict = {}
     for store in _tok_nodes:
         m, uni_stems, stk_stems = _classify_node(store, canon_scope)
         is_trigger = store.resolve() == trigger_store.resolve()
         label = _sane(project_dir.name) if is_trigger else _node_label(store)
-        nodes.append({
+        try:
+            sid = session_dir_for_store(store).name
+        except OSError:
+            sid = label
+        _label_sids[label] = _label_sids.get(label) or sid
+        row = {
             # _sane the trigger label too — it's the argv-supplied project_dir.name
             "node": label,
             "trigger": is_trigger,
             **m,
-        })
+        }
+        if fleet:
+            try:
+                _k = str(store.resolve())
+            except OSError:
+                _k = str(store)
+            _dom, _pids = _overlay.get(_k, ("unknown", []))
+            row["domain"] = _dom or "unknown"
+            row["groups"] = sorted({g for _pid in _pids
+                                    for g in _pid_groups.get(_pid, [])})
+            row["sid"] = sid
+        _collected.append((store, is_trigger, row, stk_stems, sid))
         stack_by[label] = stk_stems
         uni_all |= uni_stems
         stk_all |= stk_stems
         al_total += m["always_loaded_tokens"]
         rc_total += m["recall_tokens"]
         mir_total += m["mirror_index_tokens"]
-    return {
+    if fleet:
+        # HIGH-1: disambiguate colliding labels BEFORE the edge join keys are
+        # built — two stores must never merge into one label in stack_edges.
+        _disambiguate_labels([r for _, _, r, _, _ in _collected], _label_sids)
+        stack_by = {r["node"]: stk for _, _, r, stk, _ in _collected}
+    nodes = [r for _, _, r, _, _ in _collected]
+    result = {
         "basis": "≈ chars/4 (heuristic estimate, not a tokenizer)",
         "node_def": "project stores holding ≥1 shared fact",
         "trigger": _sane(project_dir.name),
@@ -3689,11 +3824,91 @@ def token_network(project_dir: Path) -> dict:
                    "mirror_index_tokens": mir_total, "recall_tokens": rc_total,
                    "universal": len(uni_all), "stack": len(stk_all)},
     }
+    if fleet:
+        result["basis_scope"] = "fleet"
+        result.update(_fleet_layers(project_dir, _ctx_tok, result, stack_by,
+                                    _trig_mem, _all_groups, _group_rows,
+                                    fleet_full=fleet_full))
+    return result
 
 
-def token_report(project_dir: Path, as_json: bool) -> int:
+def _fleet_layers(project_dir: Path, ctx, result: dict, stack_by: dict,
+                  trig_mem: set, all_groups: list, group_rows: dict, *,
+                  fleet_full: bool) -> dict:
+    """The fleet basis' additive layers (fleet-topology-ui spec §2.1), all
+    emission-side capped (§3 BLOCK-2)."""
+    from fact_schema import _parse_flow_list as _pfl_fl
+    _nodes = result["nodes"]
+    _sids = {str(r.get("sid") or ""): r for r in _nodes}
+    _all_recs = _all_domain_records()
+    # domains: the VLAN layer — names only; membership is DERIVED at render
+    # time from the per-node `domain` attribution (the record stays DRY —
+    # BLOCK-2's size budget; a members list would duplicate nodes[]).
+    domains = [{"domain": d} for d in sorted({str(r.get("domain") or "unknown")
+                                              for r in _nodes})]
+    # universals: every user-global canonical with its holder count, PARTIALS
+    # first (the honest "only 2/11 so far"), capped at 24.
+    _uni_rows = []
+    for n, fm, _t, _p in _all_recs:
+        if str(fm.get("scope") or "") != "user-global":
+            continue
+        _held = len(_holder_labels(fm, stem=n, ctx=ctx))
+        _uni_rows.append({"name": n, "domain": str(fm.get("domain") or ""),
+                          "held": _held})
+    _uni_rows.sort(key=lambda u: (int(u["held"]), str(u["name"])))
+    universal_facts = _uni_rows[:24]
+    # stack_edge_facts: the DRAWN-chord set (S1 — the painter's deterministic
+    # filter mirrored at emission), names capped at 5.
+    _edges = _pairwise_stack_edges(stack_by)
+    _label_to_stems = stack_by
+    _trig = str(result.get("trigger") or "")
+    _spoke = {}
+    for e in _edges:
+        if e["a"] == _trig:
+            _spoke[e["b"]] = int(e["n"])
+        elif e["b"] == _trig:
+            _spoke[e["a"]] = int(e["n"])
+    stack_edge_facts = []
+    for e in _edges:
+        if e["a"] == _trig or e["b"] == _trig:
+            continue
+        _pn = int(e["n"])
+        if _pn <= max(_spoke.get(e["a"], 0), _spoke.get(e["b"], 0)):
+            continue
+        _names = sorted((_label_to_stems.get(e["a"]) or set())
+                        & (_label_to_stems.get(e["b"]) or set()))[:5]
+        stack_edge_facts.append({"a": e["a"], "b": e["b"], "names": _names})
+    # group_links: the routed-link layer — the trigger's own groups by default
+    # (the share-safe archive basis), the operator's full set under fleet_full.
+    _groups = sorted(trig_mem) if not fleet_full else sorted(
+        {g for g, _d in all_groups})
+    _recips_by_group: dict = {}
+    for n, fm, _t, _p in _all_recs:
+        for _g in _pfl_fl(str(fm.get("recipients") or "")):
+            _recips_by_group.setdefault(_g, []).append(
+                {"name": n, "domain": str(fm.get("domain") or "")})
+    _links = []
+    for _g in _groups:
+        _row = group_rows.get(_g)
+        if _row is None:
+            continue
+        # membership is DERIVED at render time from the per-node `groups`
+        # attribution (the record stays DRY — BLOCK-2); the link carries the
+        # routed FACTS, the layer's payload.
+        _members_n = sum(1 for r in _nodes if _g in (r.get("groups") or []))
+        _links.append({"group": _g, "home_domain": _row["home_domain"],
+                       "members_n": _members_n,
+                       "facts": (_recips_by_group.get(_g) or [])[:8]})
+    _links.sort(key=lambda L: int(L["members_n"]), reverse=True)
+    group_links = _links[:6]
+    return {"domains": domains, "universal_facts": universal_facts,
+            "group_links": group_links, "stack_edge_facts": stack_edge_facts}
+
+
+def token_report(project_dir: Path, as_json: bool, *, fleet: bool = False,
+                 fleet_full: bool = False) -> int:
     import json
-    net = token_network(project_dir)
+    net = token_network(project_dir, fleet=fleet, fleet_full=fleet_full)
     if as_json:
         print(json.dumps(net, indent=2))
         return 0
@@ -4782,6 +4997,10 @@ def _dispatch() -> int:
         if not a.startswith("-"):
             pos.append(a)
     project_dir = Path(pos[0]) if pos else Path.cwd()
+    if ("--fleet" in args or "--fleet=full" in args) and args and args[0] != "--tokens":
+        print("usage: --fleet/--fleet=full are --tokens-only flags — refusing "
+              "(a flag must never silently no-op on another mode)", file=sys.stderr)
+        return 2
     if args and args[0] == "--network":
         if "--all-domains" in args:
             return network(all_domains=True)
@@ -4801,7 +5020,13 @@ def _dispatch() -> int:
               "into every shared canonical)", file=sys.stderr)
         return 2
     if args and args[0] == "--tokens":
-        return token_report(project_dir, "--json" in args)
+        _fleet_on = "--fleet" in args or "--fleet=full" in args
+        if _fleet_on and args[0] != "--tokens":
+            print("usage: --fleet is a --tokens-only flag (refusing — a flag must "
+                  "never silently no-op)", file=sys.stderr)
+            return 2
+        return token_report(project_dir, "--json" in args, fleet=_fleet_on,
+                            fleet_full="--fleet=full" in args)
     if args and args[0] == "--utility":   # v0.1.67 (Phase C): fleet usage evidence (READ-ONLY, like --list)
         return utility_report(project_dir, "--json" in args)
     if args and args[0] == "--harvest":   # v0.1.79: capture every node's usage windows into the shared ledger
@@ -4841,7 +5066,7 @@ def _dispatch() -> int:
                        allow_repoint="--repoint" in args)
     if not args or args[0] not in ("--list", "--pull"):
         print("usage: sync_global.py --list|--pull [--allow-net-grow] [--evict=FACT] PROJECT_DIR | --gc [--edges] [--apply] PROJECT_DIR "
-              "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] PROJECT_DIR "
+              "| --promote PROJECT_DIR LOCAL_FACT [CANON_NAME] [--prefer-canonical] | --tokens [--json] [--fleet|--fleet=full] PROJECT_DIR "
               "| --utility [--json] PROJECT_DIR | --harvest PROJECT_DIR | --staleness [--json] PROJECT_DIR "
               "| --workflows [--json] [--registrar] [--into SEED] PROJECT_DIR "
               "| --network", file=sys.stderr)
