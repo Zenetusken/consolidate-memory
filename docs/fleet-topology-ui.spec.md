@@ -72,9 +72,10 @@ differential edges, dead-mind flags) never reaches the record.
   key). **HIGH-1: the label space is non-injective** (24-char truncation of
   full-path slugs can merge two stores into one label — silently wrong
   topology). All NEW keys (`domains[].members`, `group_links[].members`,
-  `stack_edge_facts`) reference `sid`s; the emitter guarantees label
-  UNIQUENESS by disambiguating colliding display labels with a suffix from
-  the dropped slug head; the renderer maps sid → display label. The existing
+  `stack_edge_facts`) reference `sid`s (the edge keys carry the
+  disambiguated LABELS — the nodes list is the label→sid map); the emitter
+  guarantees label UNIQUENESS by suffixing colliding display labels with a
+  short sha1 digest of their own sid. The existing
   `stack_edges {a,b,n}` stays label-keyed (byte-compat) and is emitted only
   over the disambiguated unique labels. Unenrolled stores holding legacy
   mirrors get `domain: "unknown"` — rendered DIMMED and unattributed

@@ -13157,16 +13157,20 @@ with _tf73.TemporaryDirectory() as _td_rp:
         _ctx_rp = sc.resolve_store(_proj_rp)
         _store_rp = _ctx_rp.native_memory_dir
         _store_rp.mkdir(parents=True, exist_ok=True)
-        _nodes_rp = [{"node": f"proj-{i:02d}", "trigger": False, "always_loaded_tokens": 300,
-                      "mirror_index_tokens": 40, "recall_tokens": 2000, "facts": 5,
-                      "shared": 2, "universal": 2, "stack": i % 3,
-                      "domain": ["docs", "llm", "personal", "tools"][i % 4],
-                      "groups": ["fleet"] if i % 2 == 0 else [], "sid": f"-home-you-proj-{i:02d}"}
-                     for i in range(24)] + [
+        # review B: trigger-FIRST — the emitter's contract; a trigger last in
+        # the list exercised the painter's fallback mis-hub, not the intended
+        # geometry (the pre-fix fixture blessed the defect)
+        _nodes_rp = [
                     {"node": "consolidate-memory", "trigger": True, "always_loaded_tokens": 765,
                      "mirror_index_tokens": 87, "recall_tokens": 15199, "facts": 16, "shared": 2,
                      "universal": 1, "stack": 1, "domain": "personal",
-                     "groups": ["fleet"], "sid": "-home-you-project-consolidate-memory"}]
+                     "groups": ["fleet"], "sid": "-home-you-project-consolidate-memory"}] + [
+                    {"node": f"proj-{i:02d}", "trigger": False, "always_loaded_tokens": 300,
+                     "mirror_index_tokens": 40, "recall_tokens": 2000, "facts": 5,
+                     "shared": 2, "universal": 2, "stack": i % 3,
+                     "domain": ["docs", "llm", "personal", "tools"][i % 4],
+                     "groups": ["fleet"] if i % 2 == 0 else [], "sid": f"-home-you-proj-{i:02d}"}
+                     for i in range(24)]
         _rec_rp = {"network": {
             "basis": "≈ chars/4 (heuristic estimate, not a tokenizer)",
             "node_def": "project stores holding ≥1 shared fact",
@@ -13234,19 +13238,6 @@ check("v0.4.13 topology: colliding labels disambiguate to UNIQUE labels "
       len({str(r["node"]) for r in _nodes_dis}) == 2)
 # HIGH-1: the trigger is FIRST in the emission (a sliced-away trigger made a
 # random peer the visual hub)
-_tn_17 = []
-for _i17 in range(17):
-    _tn_17.append({"node": f"p{_i17:02d}", "trigger": _i17 == 16,
-                   "always_loaded_tokens": 10, "mirror_index_tokens": 1,
-                   "recall_tokens": 10, "facts": 1, "shared": 1, "universal": 1,
-                   "stack": 0, "domain": "personal", "groups": [],
-                   "sid": f"-home-you-p{_i17:02d}"})
-_mut_tn = sg._disambiguate_labels([dict(r) for r in _tn_17], {}) if False else None
-# the ORDER guarantee is emitter-side: re-run token_network on a synthetic
-# fleet via the collected-sort path — assert via a direct probe of the sort
-# by building a record through _fleet_layers' caller contract instead:
-# simplest discriminator: the template's painter selects nodes[0] as the hub,
-# so the emitter pin = the sort exists; assert the code path directly.
 _tpl_ft2 = open(str(ROOT / "plugins" / "consolidate-memory" / "scripts"
                      / "dashboard.template.html"), encoding="utf-8").read()
 check("v0.4.13 topology: the emitter sorts the trigger FIRST (the mis-hub fix)",
@@ -13261,17 +13252,37 @@ check("v0.4.13 topology: paintDream resets the fleet DOM (chips + ⌁ legend row
 check("v0.4.13 topology: the single-domain full-ring arc special-cases to a circle",
       "coincident endpoints renders NOTHING" in _tpl_ft2
       and 'Math.abs((a1-a0)-(2*Math.PI))<0.01' in _tpl_ft2)
-# MED-1: the held count is distinct PROJECTS (same-display_name holders)
-_ctx_hc = sc.resolve_store(Path.cwd())
-_conn_hc = cp.connect(cp.db_path(_ctx_hc))
-try:
-    _pre_hc = int(_conn_hc.execute(
-        "SELECT COUNT(*) AS n FROM projects").fetchone()["n"])
-finally:
-    _conn_hc.close()
-check("v0.4.13 topology: _registry_holder_count exists (the distinct-project held "
-      "count — display labels may collide, the count must not)",
-      callable(getattr(sg, "_registry_holder_count", None)))
+# MED-1: the held count is distinct PROJECTS — the same-display_name pair is
+# the discriminator (a dedupe-by-label count would read 1 of 2)
+import sqlite3 as _sq_hc
+with _tf73.TemporaryDirectory() as _td_hc:
+    _home_hc = Path(_td_hc)
+    _proj_hc = (_home_hc / "src" / "x").resolve(); _proj_hc.mkdir(parents=True)
+    _oldh_hc = _os73.environ.get("HOME")
+    _os73.environ["HOME"] = str(_home_hc)
+    try:
+        _ctx_hc = sc.resolve_store(_proj_hc)
+        _conn_hc = cp.connect(cp.db_path(_ctx_hc))
+        _fid_hc = cp.stable_fact_id("personal", "hc-fact")
+        try:
+            cp.enroll_project(_conn_hc, _ctx_hc, "personal")
+            for _pid_hc in ("p_" + "1" * 32, "p_" + "2" * 32):
+                cp.apply_registry_ops(_conn_hc, [
+                    {"op": "project_upsert", "project_id": _pid_hc, "domain_id": "personal",
+                     "display_name": "same-basename", "status": "enrolled"},
+                    {"op": "holder_upsert", "fact_id": _fid_hc, "project_id": _pid_hc,
+                     "base_revision": "b", "canonical_revision": "c", "semantic_hash": "s"}])
+            _conn_hc.commit()
+        finally:
+            _conn_hc.close()
+        check("v0.4.13 topology: the held count is DISTINCT PROJECTS (two "
+              "same-basename holders count 2, not 1)",
+              sg._registry_holder_count(_ctx_hc, "hc-fact", "personal") == 2)
+    finally:
+        if _oldh_hc is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _oldh_hc
 
 # (4) the validator's non-vacuous fleet checks (MED-3)
 check("v0.4.13 topology: the validator catches a held>nodes universal and an "

@@ -3752,7 +3752,7 @@ def _disambiguate_labels(nodes: list, sids: dict) -> None:
         if _again.get(_l2, 0) <= 1:
             continue
         _sid = str(row.get("sid") or "") or _l2
-        row["node"] = f"{_l2}#{hashlib.sha1(_sid.encode('utf-8')).hexdigest()[:4]}"
+        row["node"] = f"{_l2}#{hashlib.sha1(_sid.encode('utf-8')).hexdigest()[:12]}"
 
 
 def token_network(project_dir: Path, *, fleet: bool = False,
@@ -3910,7 +3910,10 @@ def _fleet_layers(project_dir: Path, ctx, result: dict, stack_by: dict,
     # filter mirrored at emission), names capped at 5.
     _edges = _pairwise_stack_edges(stack_by)
     _label_to_stems = stack_by
-    _trig = str(result.get("trigger") or "")
+    # review C: the trigger's FINAL label (post-disambiguation — a colliding
+    # trigger row carries a digest suffix the raw `trigger` field lacks)
+    _trig = next((str(r.get("node") or "") for r in _nodes if r.get("trigger")),
+                 str(result.get("trigger") or ""))
     _spoke = {}
     for e in _edges:
         if e["a"] == _trig:
