@@ -1,0 +1,38 @@
+name: CodeQL
+
+# Advanced setup — replaces the default setup's per-PR analysis. CodeQL is a
+# SECURITY-TAB instrument, not a merge gate: it runs on pushes to main + weekly,
+# never on pull_request (a PR-triggered analyze cost ~10 minutes and added nothing
+# the 11 required checks don't already gate). The default setup was disabled once
+# this file landed (the security tab keeps its default-branch scans).
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['actions', 'python']
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          threat-model: remote
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
