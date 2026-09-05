@@ -26,6 +26,21 @@ import memory_status as ms  # sibling: the SINGLE-SOURCE procedure_integrity pre
 # plugins/consolidate-memory/scripts/). Found via __file__ so it resolves from the installed plugin cache
 # regardless of ${CLAUDE_PLUGIN_ROOT}. A single placeholder is replaced (NOT str.format — CSS/JS braces).
 _TEMPLATE = Path(__file__).parent / "dashboard.template.html"
+_BUNDLES = {"/*__CM_NETWORK__*/": "dashboard.network.js",
+            "/*__CM_SECTIONS__*/": "dashboard.sections.js"}
+
+
+def _load_template() -> str:
+    """Inline the shipped vanilla-JS modules, retaining a single offline artifact."""
+    template = _TEMPLATE.read_text(encoding="utf-8")
+    for marker, filename in _BUNDLES.items():
+        source = (_TEMPLATE.parent / filename).read_text(encoding="utf-8")
+        if "</script" in source.lower():
+            raise ValueError("unsafe script-end sequence in " + filename)
+        if template.count(marker) != 1:
+            raise ValueError("missing or duplicate bundle marker: " + filename)
+        template = template.replace(marker, source)
+    return template
 _PLACEHOLDER = "/*__CM_DATA__*/"
 
 INDEX_TOKEN_BUDGET = 1500       # mirrors memory_status.INDEX_TOKEN_BUDGET (the always-loaded MEMORY.md index)
@@ -180,7 +195,7 @@ def build_html(record: dict, history: list, generated_at: str, diffs: "dict | No
     `identity` on a record (seeded Phase 0) is this-pass truth when present.
     `cycles`/`total` (P4, v0.4.2): main() assembles the series ONCE (it needs the same list for
     read_diffs + #sel) — pass it in to skip the re-assembly; omitted, this assembles as before."""
-    template = _TEMPLATE.read_text(encoding="utf-8")
+    template = _load_template()
     if cycles is None:
         cycles, total = assemble_cycles(record, history)
     else:
@@ -336,6 +351,14 @@ def main(argv: list) -> int:
 
     if not _TEMPLATE.exists():       # out-of-the-box guard: the bundled template must ship with the plugin
         print(f"render_html: bundled template missing at {_TEMPLATE} — is the plugin install complete?", file=sys.stderr)
+        return 1
+    # the JS bundles are the same shipping-class dependency — a truncated install must
+    # degrade with the same one-line message, never a traceback (per-PR review M1).
+    try:
+        _load_template()
+    except (FileNotFoundError, ValueError) as e:
+        print(f"render_html: bundled JS module unavailable ({type(e).__name__}: {e}) — is the plugin install complete?",
+              file=sys.stderr)
         return 1
 
     store = _store_for(args.store, args.project)

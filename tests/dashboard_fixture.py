@@ -63,19 +63,29 @@ def sample():
                # spokes. These peers hold one more fact than atlas-api has pulled.
                stack_edge_facts=[{"a": "eval-lab", "b": "release-tools",
                                   "names": ["artifact-provenance", "benchmark-reproducibility", "release-checks"]}],
-               group_links=[{"group": "release-kit", "home_domain": "work", "members_n": 3,
+               group_links=[{"group": "release-kit", "home_domain": "work", "members_n": 3, "facts_total": 3,
                              "facts": [{"name": "release-checks", "domain": "work"},
                                        {"name": "artifact-provenance", "domain": "work"},
                                        {"name": "benchmark-reproducibility", "domain": "work"}]},
-                            {"group": "api-contract", "home_domain": "work", "members_n": 2,
+                            {"group": "api-contract", "home_domain": "work", "members_n": 2, "facts_total": 1,
                              "facts": [{"name": "contract-versioning", "domain": "work"}]}],
                totals=dict(nodes=len(nodes), universal=4, stack=4,
                            **{k: sum(n[k] for n in nodes) for k in ("always_loaded_tokens", "mirror_index_tokens", "recall_tokens")}))
+    from fact_schema import stable_fact_id
+    holdings = {stable_fact_id(domain, name): dict(fact_id=stable_fact_id(domain, name),
+                name=name, domain=domain, scope=scope, holders={'sample-'+h for h in held})
+                for name, domain, scope, _, held in SHARED_FACTS}
+    import sync_global as sg
+    net['fact_holdings'], counts = sg._bounded_fact_holdings(holdings, 'sample-atlas-api')
+    net['capture'] = dict(counts, basis='physical shared mirrors plus triggering store',
+                          group_scope='trigger', unresolved_identities=0, read_failures=0,
+                          read_failure_scope='captured native fact files')
     record = {
         "project": "atlas-api", "session": "example-09",
         "identity": {"domain_id": "work", "enrolled": True, "registry_state": "healthy", "cross_project_allowed": True, "conflicts": 0},
         "scope": {"git_range": "a10cafe..b20cafe", "git_commits": 3, "session_candidates": 2, "memories_reviewed": 24},
         "rigor": {"phase": "final", "applied": "SUBSTANTIAL", "prune_pressure": False},
+        "preflight": {"at": "2026-09-05T14:29:00Z", "fails": [], "warns": []},
         "verification": {"confirmed": 5, "corrected": 1, "unverifiable": 1, "method": "subagents"},
         "entries": [
             {"action": "added", "name": "retry-backoff", "tier": "recall", "store": "auto-mem", "scope": "project-local", "reason": "Keep the retry rationale available when changing the queue worker.", "citation": "src/queue.py:42", "files": ["memory/retry-backoff.md"]},
@@ -126,6 +136,7 @@ def sample():
                                before_timestamp=history[-1]["marker"]["timestamp"])
         c["scope"]["git_range"] = c["marker"].get("before_commit", "a10cafe00") + ".." + c["marker"]["commit"]
         c["session"] = "example-%02d" % i
+        c["preflight"]["at"] = c["marker"]["timestamp"]
         before_tokens = token_history[i-1] if i else 540
         c["budget"]["index"].update(before_tokens=before_tokens, after_tokens=tokens,
                                     before_lines=line_history[i-1] if i else 20,

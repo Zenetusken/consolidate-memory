@@ -97,27 +97,72 @@ boundary. An existing domain is never silently switched.
 <a id="dashboard"></a>
 ## 🌌 See what the system actually kept
 
-![Nocturne dashboard: midnight domain lanes, shared-fact routes, group controls, baseline holdings, and memory budgets. Fictional sample data.](docs/assets/nocturne-dashboard.png)
-
 **Nocturne** is the memory observatory that closes a dream: a self-contained HTML
 archive, rendered from the same structured cycle record as the terminal summary.
-Open the generated file in a browser; it needs no server, fonts service, or CDN.
+Start with the recorded outcome, then follow a claim, project, or decision to its
+evidence. Open the generated file in a browser; it needs no server or internet connection.
 
-- **Context and history:** index trajectory, budget targets, fact counts, writes,
-  verification effort, and cadence. Token figures are estimates, approximately characters ÷ 4.
-- **Memory network:** trust domains, shared-fact connections, selectable group grants,
-  baseline holdings, per-project costs, and the full captured network inventory.
-- **Evidence and decisions:** verification results, health warnings, observed file
-  mutations, recalled facts, workflow evidence, and before/after diffs.
-- **Revisit and inspect:** archive filter/sort, previous/next cycle navigation,
-  collapsible sections, compact mode, and the captured record. Choose **Nocturne**,
-  **Original** (the previous espresso dark palette), **Light**, or **System**.
+![Nocturne overview: the memory-index chart and key measures lead into an outcome summary, linked evidence, and a connected Sleep → beats → Wake sequence. Fictional sample data.](docs/assets/nocturne-overview.png)
 
-**Preview artifacts:** [HTML archive](docs/previews/nocturne/index.html) ·
-[network SVG](docs/assets/network-topology.svg) ·
+| What do you want to know? | Where to look |
+| :--- | :--- |
+| **What did this dream accomplish?** | **Dream summary** leads with the recorded outcome, verified claims, observed changes, and attention items. Select a passage in the Sleep → beats → Wake sequence, or read the complete dream. |
+| **Who holds this lesson, and who may receive it?** | **Memory network** unfolds from fleet → domains → projects. Select a project for its facts and costs, a fact for its recorded holders, or a group for its permitted members. |
+| **What changed over time?** | **Memory activity** aligns exact decision categories, observed reads, and captured rigor. Choose **12 / 24 / All captured** dreams, inspect a cycle locally, then use **Open this dream** to navigate. |
+| **What needs attention, and what supports the result?** | **Verification & health** puts exceptions first, with expandable verification evidence, store checks, observed file changes, and recall/workflow decisions. Before/after diffs remain one click away. |
+
+The header keeps the **memory-index trajectory and budget projection**. Historical
+fact counts and cadence remain available in the activity table. Decisions, physical
+file changes, and observed usage have separate labels; missing observations stay
+explicitly **Not captured**. Token figures are estimates, approximately characters ÷ 4.
+
+<details>
+<summary><strong>Explore the network, activity, and evidence</strong></summary>
+
+### Expand a domain. Follow a fact.
+
+Every captured domain appears, with the current project's domain expanded first.
+Browse projects in pages of 12, or search by name, domain, or identity. A selected
+fact branches to its physical holders; a selected group branches to its permitted
+members. The inspector explains the evidence, and breadcrumbs return to the fleet.
+
+![Nocturne memory network: an orbital fleet root branches to research, tools, and work domains; work is expanded into three projects beside a snapshot inspector. Fictional sample data.](docs/assets/nocturne-dashboard.png)
+
+New snapshots identify shared facts by their canonical identity, so differently
+named local mirrors of one lesson count as one fact. Older archives retain their
+recorded links and explicitly identify missing canonical detail. The view covers
+captured shared-memory stores plus the triggering project; absent projects are
+outside that snapshot.
+
+### Inspect activity before opening another dream
+
+Select a cycle to see its outcome, decisions, observed mutations, fact-count change,
+verification, and usage window. Reads from overlapping windows are never added into
+a misleading total, and missing observations remain gaps.
+
+![Memory activity: aligned decisions and observed reads, a categorical rigor ribbon, 12/24/All captured controls, and a local cycle inspector with a separate Open this dream action. Fictional sample data.](docs/assets/nocturne-activity.png)
+
+### Follow an attention item to its evidence
+
+Claims, store integrity, and observed changes each show **Needs attention**,
+**Recorded clear**, **Partially captured**, or **Not captured**. Adverse or pending
+details open by default. Expand the evidence to inspect preflight timestamps and
+failure IDs, file diffs, recall observations, workflow verdicts, and decline lineage.
+
+![Verification and health: an unverifiable claim appears first, followed by three separate status summaries and four evidence disclosures. Fictional sample data.](docs/assets/nocturne-evidence.png)
+
+</details>
+
+Choose **Nocturne**, **Original** (the espresso dark palette), **Light**, or **System**.
+The archive retains filtering, sorting, previous/next navigation, compact mode,
+keyboard controls, reduced motion, print support, and complete captured records.
+On narrow screens, the network becomes a vertical hierarchy with its inspector below.
+
+**Try the fictional preview:** [HTML archive](docs/previews/nocturne/index.html#sel=7) ·
+[dashboard network SVG](docs/assets/nocturne-network.svg) ·
 [design and validation notes](docs/nocturne-design.md).
-The previews use **fictional projects and synthetic data**. Download the HTML and
-open it locally; GitHub shows its source rather than running it.
+Download the HTML and open it locally at `#sel=7`; GitHub shows its source rather
+than running it. All screenshots and preview data use **fictional projects**.
 
 <a id="network"></a>
 ## 🕸️ Build a network with boundaries
@@ -177,9 +222,9 @@ and troubleshooting, see **[the network guide](docs/network-guide.md)**.
 
 > [!IMPORTANT]
 > **Permission is not delivery.** A recipient may not have pulled yet, may not match
-> the stack, or may be held at its memory budget ceiling. The network records observed
-> holdings. Its baseline counts can cover only part of the fleet because domains are
-> intentionally isolated; a partial count alone does not mean failed synchronization.
+> the stack, or may be held at its memory budget ceiling. The dashboard distinguishes
+> physical holdings, registry holder counts, and group permissions. These measure
+> different things; a partial count alone does not establish failed synchronization.
 
 <a id="commands"></a>
 ## 🧭 A command for each intent
@@ -306,6 +351,8 @@ development tools. For a reproducible visual preview:
 ```bash
 python3 tests/dashboard_fixture.py --out /tmp/cm-preview
 # Open /tmp/cm-preview/index.html#sel=7 in a browser.
+# With the development-only Playwright + Chromium tools installed:
+python3 tests/dashboard_browser.py --out /tmp/cm-browser
 ```
 
 The optional **dream-beta-tester** companion tests the consolidation skill itself,
@@ -321,5 +368,5 @@ See its [design](plugins/dream-beta-tester/docs/SPEC.md) and
 | Store topology, fact schema, verification recipes | [Harness map](plugins/consolidate-memory/skills/consolidate-memory/references/harness-map.md) |
 | Native/canonical path resolution | [store_context.py](plugins/consolidate-memory/scripts/store_context.py) |
 | Canonical writes and journal authority | [canonical_ingress.py](plugins/consolidate-memory/scripts/canonical_ingress.py), [control_plane.py](plugins/consolidate-memory/scripts/control_plane.py) |
-| Dashboard data and presentation | [render_html.py](plugins/consolidate-memory/scripts/render_html.py), [template](plugins/consolidate-memory/scripts/dashboard.template.html) |
+| Dashboard data and presentation | [Renderer](plugins/consolidate-memory/scripts/render_html.py), [template](plugins/consolidate-memory/scripts/dashboard.template.html), [network exploration](plugins/consolidate-memory/scripts/dashboard.network.js), [report sections](plugins/consolidate-memory/scripts/dashboard.sections.js) |
 | Decisions, release history, license | [ADRs](docs/adr), [CHANGELOG.md](CHANGELOG.md), [MIT](LICENSE) |

@@ -16,7 +16,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.4.13 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
+| `consolidate-memory` | 0.4.16 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
 | `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -29,7 +29,7 @@ relative source paths only resolve over Git).
 **Dev loop** — after any change to `plugins/consolidate-memory/scripts/`:
 
 ```bash
-python3 tests/smoke.py                          # the zero-dep gate — ~1518 assertions over every script's
+python3 tests/smoke.py                          # the zero-dep gate — ~1689 assertions over every script's
                                                 # pure functions + the cross-module pins; exit 1 on any failure
 python3 tests/simulate_accumulation.py          # lifecycle accumulation sim (probes A–W + X–AF) — the
                                                 # store-mechanics gate; CI runs it too

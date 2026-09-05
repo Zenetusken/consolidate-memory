@@ -84,6 +84,8 @@ from memory_status import (_is_archive_index_text, _is_mirror, _parse_ts, _sane,
                            _frontmatter, _valid_uuid,
                            INDEX_TOKEN_BUDGET, INDEX_CEILING_TOKENS, HOOK_TOKEN_WARN,
                            _REGISTRAR_BLOCKED_CAP, _is_distinctive_template,
+                           _NETWORK_FACT_CAP, _NETWORK_HOLDER_CAP, _NETWORK_INCIDENCE_BYTES,
+                           _network_incidence_bytes,
                            _is_fleet_proposal_row,
                            distill_history, extract_wikilinks, resolve_wikilink, usage_history,
                            _write_private)
@@ -3533,7 +3535,10 @@ def _pairwise_stack_edges(by_node: dict) -> list:
     return out
 
 
-def _classify_node(store: Path, canon_scope: "dict[str, str] | None" = None
+def _classify_node(store: Path, canon_scope: "dict[str, str] | None" = None, *,
+                   canonical_index: "dict | None" = None, holder_domain: str = "",
+                   holdings: "dict | None" = None, diagnostics: "dict | None" = None,
+                   sid: str = ""
                    ) -> "tuple[dict, set[str], set[str]]":
     """Per-node token cost + the stem sets that split `shared` into everyone-holds vs this-stack.
 
@@ -3546,6 +3551,8 @@ def _classify_node(store: Path, canon_scope: "dict[str, str] | None" = None
         if f.name == "MEMORY.md" or _is_reserved_stem(f.stem):
             continue
         body = _safe_read_text(f)             # store-scan convention (shared helper — v0.1.69 Gate-2a)
+        if body is None and diagnostics is not None:
+            diagnostics["read_failures"] += 1
         # v0.1.76 (audit): exclude ARCHIVE-INDEX docs (link-lists like SHIPPED.md — no frontmatter,
         # ≥3 links) — memory_status's own C1 fact/archive split, applied here too. They were counted
         # as recall facts (a live node's 7.6k-tok SHIPPED.md inflated recall_tokens + `facts`), so
@@ -3558,10 +3565,22 @@ def _classify_node(store: Path, canon_scope: "dict[str, str] | None" = None
     stk_stems: set[str] = set()
     for stem in mirror_stems:
         sc = _mirror_scope(stem, bodies[stem], canon_scope)
+        identity = stem
+        if canonical_index is not None:
+            resolved = _physical_fact_identity(stem, bodies[stem], holder_domain, canonical_index)
+            if resolved is None:
+                if diagnostics is not None:
+                    diagnostics["unresolved_identities"] += 1
+                continue
+            identity, fact = resolved
+            sc = fact["scope"]
+            if holdings is not None:
+                holding = holdings.setdefault(identity, {**fact, "holders": set()})
+                holding["holders"].add(sid)
         if sc == "user-global":
-            uni_stems.add(stem)
+            uni_stems.add(identity)
         elif sc == "stack-general":
-            stk_stems.add(stem)
+            stk_stems.add(identity)
     # Attribute the index pointer lines whose target fact (`](<stem>.md)`) is a mirror.
     # That is the fraction of the always-loaded tax the global store controls — what the
     # over-budget remedy must actually target. Estimate the matched lines as ONE blob (the
@@ -3580,6 +3599,115 @@ def _classify_node(store: Path, canon_scope: "dict[str, str] | None" = None
         "universal": len(uni_stems),
         "stack": len(stk_stems),
     }, uni_stems, stk_stems)
+
+
+def _canonical_identity_index(records: list) -> dict:
+    """An unambiguous canonical catalog. Duplicate/contradictory sources fail closed."""
+    from fact_schema import stable_fact_id
+    index: dict = {}
+    for name, fm, _text, _path in records:
+        domain = str(fm.get("domain") or "")
+        scope = str(fm.get("scope") or "")
+        if not domain or scope not in ("user-global", "stack-general"):
+            continue
+        key = (domain, name)
+        fid = stable_fact_id(domain, name)
+        row = {"fact_id": fid, "name": name, "domain": domain, "scope": scope}
+        invalid = (key in index or fm.get("name", name) != name
+                   or fm.get("fact_id", fid) != fid)
+        index[key] = None if invalid else row
+    return index
+
+
+def _physical_fact_identity(stem: str, body: str, holder_domain: str, index: dict
+                            ) -> "tuple | None":
+    """Join physical mirrors using their own stamps/context, never the trigger's domain.
+
+    Legacy '--' keys have two possible interpretations. Accept exactly one catalog
+    identity; contradictory stamps and ambiguous keys never create graph edges.
+    Local filenames are location, not identity (native and namespaced copies join).
+    """
+    fm = _frontmatter(body)
+    domain = str(fm.get("canonical_domain") or fm.get("domain") or "")
+    name = str(fm.get("name") or "")
+    ref = str(fm.get("global_ref") or fm.get("# global_ref") or "")
+    fid = str(fm.get("canonical_fact_id") or "")
+    if (fm.get("canonical_domain") and fm.get("domain")
+            and fm["canonical_domain"] != fm["domain"]):
+        return None
+    candidates = set()
+    if domain and name:
+        candidates.add((domain, name))
+    else:
+        key = ref or name or stem
+        if domain or holder_domain not in ("", "unknown"):
+            candidates.add((domain or holder_domain, key))
+        decoded_domain, decoded_name = decode_key(key)
+        if decoded_domain and (not domain or domain == decoded_domain):
+            candidates.add((decoded_domain, decoded_name))
+    matches = [index[k] for k in candidates if index.get(k) is not None]
+    if len(matches) != 1:
+        return None
+    fact = matches[0]
+    if fid and fid != fact["fact_id"]:
+        return None
+    if name and name != fact["name"]:
+        return None
+    if ref and ref not in (fact["name"], fact["domain"] + "--" + fact["name"]):
+        return None
+    scope = str(fm.get("scope") or "")
+    if scope and scope != fact["scope"]:
+        return None
+    return fact["fact_id"], fact
+
+
+def _bounded_fact_holdings(holdings: dict, trigger_sid: str) -> tuple:
+    """Bound incidence alone to 120 facts / 2000 references / 64 KiB UTF-8 JSON.
+
+    Exact counts precede limits. A final partial holder list keeps its exact held_n.
+    Order is deterministic, prioritizing the trigger, stack scope, then popularity.
+    """
+    ordered = sorted(holdings.values(), key=lambda f: (
+        trigger_sid not in f["holders"], f["scope"] != "stack-general",
+        -len(f["holders"]), f["fact_id"]))
+    rows: list = []
+    refs = 0
+    for fact in ordered[:_NETWORK_FACT_CAP]:
+        holders = sorted(fact["holders"], key=lambda s: (s != trigger_sid, s))
+        row = {k: fact[k] for k in ("fact_id", "name", "domain", "scope")}
+        row.update(held_n=len(holders), holder_sids=holders[:max(0, _NETWORK_HOLDER_CAP-refs)])
+        while row["holder_sids"] and _network_incidence_bytes(rows + [row]) > _NETWORK_INCIDENCE_BYTES:
+            row["holder_sids"].pop()
+        if not row["holder_sids"]:
+            break
+        rows.append(row)
+        refs += len(row["holder_sids"])
+        if len(row["holder_sids"]) < len(holders):
+            break
+    return rows, {"facts_total": len(holdings), "facts_emitted": len(rows),
+                  "holder_refs_total": sum(len(f["holders"]) for f in holdings.values()),
+                  "holder_refs_emitted": refs,
+                  "incidence_bytes": _network_incidence_bytes(rows)}
+
+
+def _fleet_display_names(ctx) -> dict:
+    """Readable names are optional registry evidence, separate from store join keys."""
+    try:
+        from control_plane import connect_if_exists, db_path
+        conn = connect_if_exists(db_path(ctx))
+        if conn is None:
+            return {}
+        try:
+            names: dict = {}
+            for row in conn.execute("SELECT native_memory_dir, display_name FROM projects WHERE status='enrolled'"):
+                if row["native_memory_dir"] and row["display_name"]:
+                    key = str(Path(row["native_memory_dir"]).resolve())
+                    names.setdefault(key, set()).add(str(row["display_name"]))
+            return {k: next(iter(v)) for k, v in names.items() if len(v) == 1}
+        finally:
+            conn.close()
+    except Exception:
+        return {}
 
 
 def _node_tokens(store: Path, canon_scope: "dict[str, str] | None" = None) -> dict:
@@ -3658,6 +3786,9 @@ def _fleet_overlay(project_dir: Path) -> tuple:
                 except OSError:
                     _k = _nm
                 _dom_pids = _overlay.setdefault(_k, (str(r["domain_id"] or ""), []))
+                if _dom_pids[0] != str(r["domain_id"] or ""):
+                    _dom_pids = ("unknown", _dom_pids[1])
+                    _overlay[_k] = _dom_pids
                 _dom_pids[1].append(str(r["project_id"] or ""))
             for r in _mems:
                 _g = str(r["name"] or "")
@@ -3777,8 +3908,14 @@ def token_network(project_dir: Path, *, fleet: bool = False,
     trigger_store = project_store(project_dir)
     from store_context import resolve_store as _rs_tok
     _ctx_tok = _rs_tok(project_dir)
+    _holdings: dict = {}
+    _diagnostics = {"unresolved_identities": 0, "read_failures": 0}
+    _identity_index: dict = {}
+    _display_names: dict = {}
     if fleet:
-        canon_scope = {n: str(fm.get("scope") or "") for n, fm, _t, _p in _all_domain_records()}
+        _identity_index = _canonical_identity_index(_all_domain_records())
+        _display_names = _fleet_display_names(_ctx_tok)
+        canon_scope = {}
     else:
         canon_scope = {n: str(fm.get("scope") or "") for n, fm, _ in facts_for_context(_ctx_tok)}
     if fleet:
@@ -3815,13 +3952,18 @@ def token_network(project_dir: Path, *, fleet: bool = False,
     al_total = rc_total = mir_total = 0
     _label_sids: dict = {}
     for store in _tok_nodes:
-        m, uni_stems, stk_stems = _classify_node(store, canon_scope)
         is_trigger = store.resolve() == trigger_store.resolve()
         label = _sane(project_dir.name) if is_trigger else _node_label(store)
         try:
             sid = session_dir_for_store(store).name
         except OSError:
             sid = label
+        _store_key = str(store.resolve())
+        _holder_domain = _overlay.get(_store_key, ("unknown", []))[0] if fleet else ""
+        m, uni_stems, stk_stems = _classify_node(
+            store, canon_scope, canonical_index=_identity_index if fleet else None,
+            holder_domain=_holder_domain, holdings=_holdings if fleet else None,
+            diagnostics=_diagnostics if fleet else None, sid=sid)
         _label_sids[label] = _label_sids.get(label) or sid
         row = {
             # _sane the trigger label too — it's the argv-supplied project_dir.name
@@ -3839,6 +3981,8 @@ def token_network(project_dir: Path, *, fleet: bool = False,
             row["groups"] = sorted({g for _pid in _pids
                                     for g in _pid_groups.get(_pid, [])})
             row["sid"] = sid
+            if _store_key in _display_names:
+                row["display_name"] = _display_names[_store_key]
         _collected.append((store, is_trigger, row, stk_stems, sid))
         stack_by[label] = stk_stems
         uni_all |= uni_stems
@@ -3875,6 +4019,16 @@ def token_network(project_dir: Path, *, fleet: bool = False,
         result.update(_fleet_layers(project_dir, _ctx_tok, result, stack_by,
                                     _trig_mem, _all_groups, _group_rows,
                                     fleet_full=fleet_full))
+        # Compatibility names remain readable; intersections above use stable ids.
+        for edge in result["stack_edge_facts"]:
+            edge["names"] = [_holdings[f]["name"] if f in _holdings else f for f in edge["names"]]
+        trigger_sid = next((r["sid"] for r in nodes if r.get("trigger")), "")
+        incidence, counts = _bounded_fact_holdings(_holdings, trigger_sid)
+        result["fact_holdings"] = incidence
+        result["capture"] = {"basis": "physical shared mirrors plus triggering store",
+                             "group_scope": "all" if fleet_full else "trigger",
+                             "read_failure_scope": "captured native fact files",
+                             **counts, **_diagnostics}
     return result
 
 
@@ -3955,6 +4109,7 @@ def _fleet_layers(project_dir: Path, ctx, result: dict, stack_by: dict,
         _members_n = sum(1 for r in _nodes if _g in (r.get("groups") or []))
         _links.append({"group": _g, "home_domain": _row["home_domain"],
                        "members_n": _members_n,
+                       "facts_total": len(_recips_by_group.get(_g) or []),
                        "facts": (_recips_by_group.get(_g) or [])[:8]})
     _links.sort(key=lambda L: int(L["members_n"]), reverse=True)
     group_links = _links[:6]

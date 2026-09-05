@@ -5,6 +5,32 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.17] — 2026-09-05
+
+**Patch — the captured-network truth layer + the v0.4.16 audit residuals.**
+
+**Network identity / fact-holdings incidence:** the fleet feed now captures physical
+holder identities — `NetworkNode.display_name`, `FactHolding`, and `NetworkCapture`
+(emitted/held counts, unresolved identities, read-failures, conservatively measured
+per-capture caps) — so the HTML network view reconstructs who actually holds each
+shared fact, with the captured-evidence inspector, the explicit absence contract, and
+legacy records rendering through an honest "not captured" note. The template's JS is
+split into bundled modules (`dashboard.network.js` / `dashboard.sections.js`, inlined
+at render with a case-insensitive `</script`-seam guard and exactly-once markers — the
+single offline artifact is retained); `render_html` degrades gracefully when a bundle
+is missing. New standalone suite `tests/network_identity.py` + 320 browser checks +
+the header-geometry golden fixture.
+
+**The v0.4.16 shipped-state audit residuals** (two audit passes + the per-PR review):
+the mode-gate keys on the read-only flags alone (`--triage --json` no longer mints the
+native plane); the no-sqlite3 beacon-silence pin and the non-list-`fails` absence pin
+landed; the spec gained amend-4; AGENTS.md's plugin-table row and assertion count
+swept; the capture chips use the numeric fallback for partial records; the incidence
+byte-cap conservatism documented.
+
+Backward-compatible → patch. Suite **1689 assertions** · browser **320** · sim /
+concurrency / manifests / mypy green.
+
 ## [0.4.16] — 2026-09-05
 
 **Patch — the environment pre-flight.** A new `preflight.py` answers the deployment

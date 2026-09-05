@@ -20,6 +20,11 @@
       "applied": "SUBSTANTIAL",
       "prune_pressure": false
     },
+    "preflight": {
+      "at": "2026-09-05T14:30:00Z",
+      "fails": [],
+      "warns": []
+    },
     "verification": {
       "confirmed": 5,
       "corrected": 1,
@@ -498,6 +503,7 @@
           "group": "release-kit",
           "home_domain": "work",
           "members_n": 3,
+          "facts_total": 3,
           "facts": [
             {
               "name": "release-checks",
@@ -517,6 +523,7 @@
           "group": "api-contract",
           "home_domain": "work",
           "members_n": 2,
+          "facts_total": 1,
           "facts": [
             {
               "name": "contract-versioning",
@@ -532,6 +539,112 @@
         "always_loaded_tokens": 4370,
         "mirror_index_tokens": 560,
         "recall_tokens": 17120
+      },
+      "fact_holdings": [
+        {
+          "fact_id": "f_bc87d34b67c6f8171de8ab59",
+          "name": "release-checks",
+          "domain": "work",
+          "scope": "stack-general",
+          "held_n": 3,
+          "holder_sids": [
+            "sample-atlas-api",
+            "sample-eval-lab",
+            "sample-release-tools"
+          ]
+        },
+        {
+          "fact_id": "f_ccae79d6d3189f0e103337e6",
+          "name": "artifact-provenance",
+          "domain": "work",
+          "scope": "stack-general",
+          "held_n": 3,
+          "holder_sids": [
+            "sample-atlas-api",
+            "sample-eval-lab",
+            "sample-release-tools"
+          ]
+        },
+        {
+          "fact_id": "f_c96d9b27d68ec9bd7ca2799f",
+          "name": "contract-versioning",
+          "domain": "work",
+          "scope": "stack-general",
+          "held_n": 2,
+          "holder_sids": [
+            "sample-atlas-api",
+            "sample-atlas-web"
+          ]
+        },
+        {
+          "fact_id": "f_1b564b3375d3d632d6d17923",
+          "name": "review-conventions",
+          "domain": "work",
+          "scope": "user-global",
+          "held_n": 3,
+          "holder_sids": [
+            "sample-atlas-api",
+            "sample-atlas-web",
+            "sample-team-docs"
+          ]
+        },
+        {
+          "fact_id": "f_235c879e8e24d2b1dc8b7803",
+          "name": "source-provenance",
+          "domain": "work",
+          "scope": "user-global",
+          "held_n": 3,
+          "holder_sids": [
+            "sample-atlas-api",
+            "sample-atlas-web",
+            "sample-team-docs"
+          ]
+        },
+        {
+          "fact_id": "f_a6178eab9fb77c1f57afd780",
+          "name": "benchmark-reproducibility",
+          "domain": "work",
+          "scope": "stack-general",
+          "held_n": 2,
+          "holder_sids": [
+            "sample-eval-lab",
+            "sample-release-tools"
+          ]
+        },
+        {
+          "fact_id": "f_0ff892321916e17c97842bd5",
+          "name": "shell-portability",
+          "domain": "tools",
+          "scope": "user-global",
+          "held_n": 2,
+          "holder_sids": [
+            "sample-dotfiles",
+            "sample-release-tools"
+          ]
+        },
+        {
+          "fact_id": "f_6cf8f29c8e20b7fbaccc5161",
+          "name": "evaluation-provenance",
+          "domain": "research",
+          "scope": "user-global",
+          "held_n": 2,
+          "holder_sids": [
+            "sample-eval-lab",
+            "sample-model-notes"
+          ]
+        }
+      ],
+      "capture": {
+        "facts_total": 8,
+        "facts_emitted": 8,
+        "holder_refs_total": 20,
+        "holder_refs_emitted": 20,
+        "incidence_bytes": 1592,
+        "basis": "physical shared mirrors plus triggering store",
+        "group_scope": "trigger",
+        "unresolved_identities": 0,
+        "read_failures": 0,
+        "read_failure_scope": "captured native fact files"
       }
     },
     "marker": {
@@ -562,6 +675,11 @@
         "phase": "final",
         "applied": "SUBSTANTIAL",
         "prune_pressure": false
+      },
+      "preflight": {
+        "at": "2026-08-15T14:30:00Z",
+        "fails": [],
+        "warns": []
       },
       "verification": {
         "confirmed": 5,
@@ -1036,6 +1154,7 @@
             "group": "release-kit",
             "home_domain": "work",
             "members_n": 3,
+            "facts_total": 3,
             "facts": [
               {
                 "name": "release-checks",
@@ -1055,6 +1174,7 @@
             "group": "api-contract",
             "home_domain": "work",
             "members_n": 2,
+            "facts_total": 1,
             "facts": [
               {
                 "name": "contract-versioning",
@@ -1070,6 +1190,112 @@
           "always_loaded_tokens": 4006,
           "mirror_index_tokens": 560,
           "recall_tokens": 14880
+        },
+        "fact_holdings": [
+          {
+            "fact_id": "f_bc87d34b67c6f8171de8ab59",
+            "name": "release-checks",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_ccae79d6d3189f0e103337e6",
+            "name": "artifact-provenance",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_c96d9b27d68ec9bd7ca2799f",
+            "name": "contract-versioning",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web"
+            ]
+          },
+          {
+            "fact_id": "f_1b564b3375d3d632d6d17923",
+            "name": "review-conventions",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_235c879e8e24d2b1dc8b7803",
+            "name": "source-provenance",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_a6178eab9fb77c1f57afd780",
+            "name": "benchmark-reproducibility",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_0ff892321916e17c97842bd5",
+            "name": "shell-portability",
+            "domain": "tools",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-dotfiles",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_6cf8f29c8e20b7fbaccc5161",
+            "name": "evaluation-provenance",
+            "domain": "research",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-model-notes"
+            ]
+          }
+        ],
+        "capture": {
+          "facts_total": 8,
+          "facts_emitted": 8,
+          "holder_refs_total": 20,
+          "holder_refs_emitted": 20,
+          "incidence_bytes": 1592,
+          "basis": "physical shared mirrors plus triggering store",
+          "group_scope": "trigger",
+          "unresolved_identities": 0,
+          "read_failures": 0,
+          "read_failure_scope": "captured native fact files"
         }
       },
       "marker": {
@@ -1097,6 +1323,11 @@
         "phase": "final",
         "applied": "SUBSTANTIAL",
         "prune_pressure": false
+      },
+      "preflight": {
+        "at": "2026-08-18T14:30:00Z",
+        "fails": [],
+        "warns": []
       },
       "verification": {
         "confirmed": 5,
@@ -1571,6 +1802,7 @@
             "group": "release-kit",
             "home_domain": "work",
             "members_n": 3,
+            "facts_total": 3,
             "facts": [
               {
                 "name": "release-checks",
@@ -1590,6 +1822,7 @@
             "group": "api-contract",
             "home_domain": "work",
             "members_n": 2,
+            "facts_total": 1,
             "facts": [
               {
                 "name": "contract-versioning",
@@ -1605,6 +1838,112 @@
           "always_loaded_tokens": 4126,
           "mirror_index_tokens": 560,
           "recall_tokens": 15200
+        },
+        "fact_holdings": [
+          {
+            "fact_id": "f_bc87d34b67c6f8171de8ab59",
+            "name": "release-checks",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_ccae79d6d3189f0e103337e6",
+            "name": "artifact-provenance",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_c96d9b27d68ec9bd7ca2799f",
+            "name": "contract-versioning",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web"
+            ]
+          },
+          {
+            "fact_id": "f_1b564b3375d3d632d6d17923",
+            "name": "review-conventions",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_235c879e8e24d2b1dc8b7803",
+            "name": "source-provenance",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_a6178eab9fb77c1f57afd780",
+            "name": "benchmark-reproducibility",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_0ff892321916e17c97842bd5",
+            "name": "shell-portability",
+            "domain": "tools",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-dotfiles",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_6cf8f29c8e20b7fbaccc5161",
+            "name": "evaluation-provenance",
+            "domain": "research",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-model-notes"
+            ]
+          }
+        ],
+        "capture": {
+          "facts_total": 8,
+          "facts_emitted": 8,
+          "holder_refs_total": 20,
+          "holder_refs_emitted": 20,
+          "incidence_bytes": 1592,
+          "basis": "physical shared mirrors plus triggering store",
+          "group_scope": "trigger",
+          "unresolved_identities": 0,
+          "read_failures": 0,
+          "read_failure_scope": "captured native fact files"
         }
       },
       "marker": {
@@ -1634,6 +1973,11 @@
         "phase": "final",
         "applied": "SUBSTANTIAL",
         "prune_pressure": false
+      },
+      "preflight": {
+        "at": "2026-08-21T14:30:00Z",
+        "fails": [],
+        "warns": []
       },
       "verification": {
         "confirmed": 5,
@@ -2108,6 +2452,7 @@
             "group": "release-kit",
             "home_domain": "work",
             "members_n": 3,
+            "facts_total": 3,
             "facts": [
               {
                 "name": "release-checks",
@@ -2127,6 +2472,7 @@
             "group": "api-contract",
             "home_domain": "work",
             "members_n": 2,
+            "facts_total": 1,
             "facts": [
               {
                 "name": "contract-versioning",
@@ -2142,6 +2488,112 @@
           "always_loaded_tokens": 4296,
           "mirror_index_tokens": 560,
           "recall_tokens": 15520
+        },
+        "fact_holdings": [
+          {
+            "fact_id": "f_bc87d34b67c6f8171de8ab59",
+            "name": "release-checks",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_ccae79d6d3189f0e103337e6",
+            "name": "artifact-provenance",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_c96d9b27d68ec9bd7ca2799f",
+            "name": "contract-versioning",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web"
+            ]
+          },
+          {
+            "fact_id": "f_1b564b3375d3d632d6d17923",
+            "name": "review-conventions",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_235c879e8e24d2b1dc8b7803",
+            "name": "source-provenance",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_a6178eab9fb77c1f57afd780",
+            "name": "benchmark-reproducibility",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_0ff892321916e17c97842bd5",
+            "name": "shell-portability",
+            "domain": "tools",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-dotfiles",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_6cf8f29c8e20b7fbaccc5161",
+            "name": "evaluation-provenance",
+            "domain": "research",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-model-notes"
+            ]
+          }
+        ],
+        "capture": {
+          "facts_total": 8,
+          "facts_emitted": 8,
+          "holder_refs_total": 20,
+          "holder_refs_emitted": 20,
+          "incidence_bytes": 1592,
+          "basis": "physical shared mirrors plus triggering store",
+          "group_scope": "trigger",
+          "unresolved_identities": 0,
+          "read_failures": 0,
+          "read_failure_scope": "captured native fact files"
         }
       },
       "marker": {
@@ -2171,6 +2623,11 @@
         "phase": "final",
         "applied": "SUBSTANTIAL",
         "prune_pressure": false
+      },
+      "preflight": {
+        "at": "2026-08-24T14:30:00Z",
+        "fails": [],
+        "warns": []
       },
       "verification": {
         "confirmed": 5,
@@ -2645,6 +3102,7 @@
             "group": "release-kit",
             "home_domain": "work",
             "members_n": 3,
+            "facts_total": 3,
             "facts": [
               {
                 "name": "release-checks",
@@ -2664,6 +3122,7 @@
             "group": "api-contract",
             "home_domain": "work",
             "members_n": 2,
+            "facts_total": 1,
             "facts": [
               {
                 "name": "contract-versioning",
@@ -2679,6 +3138,112 @@
           "always_loaded_tokens": 4506,
           "mirror_index_tokens": 560,
           "recall_tokens": 15840
+        },
+        "fact_holdings": [
+          {
+            "fact_id": "f_bc87d34b67c6f8171de8ab59",
+            "name": "release-checks",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_ccae79d6d3189f0e103337e6",
+            "name": "artifact-provenance",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_c96d9b27d68ec9bd7ca2799f",
+            "name": "contract-versioning",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web"
+            ]
+          },
+          {
+            "fact_id": "f_1b564b3375d3d632d6d17923",
+            "name": "review-conventions",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_235c879e8e24d2b1dc8b7803",
+            "name": "source-provenance",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_a6178eab9fb77c1f57afd780",
+            "name": "benchmark-reproducibility",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_0ff892321916e17c97842bd5",
+            "name": "shell-portability",
+            "domain": "tools",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-dotfiles",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_6cf8f29c8e20b7fbaccc5161",
+            "name": "evaluation-provenance",
+            "domain": "research",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-model-notes"
+            ]
+          }
+        ],
+        "capture": {
+          "facts_total": 8,
+          "facts_emitted": 8,
+          "holder_refs_total": 20,
+          "holder_refs_emitted": 20,
+          "incidence_bytes": 1592,
+          "basis": "physical shared mirrors plus triggering store",
+          "group_scope": "trigger",
+          "unresolved_identities": 0,
+          "read_failures": 0,
+          "read_failure_scope": "captured native fact files"
         }
       },
       "marker": {
@@ -2708,6 +3273,11 @@
         "phase": "final",
         "applied": "SUBSTANTIAL",
         "prune_pressure": false
+      },
+      "preflight": {
+        "at": "2026-08-27T14:30:00Z",
+        "fails": [],
+        "warns": []
       },
       "verification": {
         "confirmed": 5,
@@ -3182,6 +3752,7 @@
             "group": "release-kit",
             "home_domain": "work",
             "members_n": 3,
+            "facts_total": 3,
             "facts": [
               {
                 "name": "release-checks",
@@ -3201,6 +3772,7 @@
             "group": "api-contract",
             "home_domain": "work",
             "members_n": 2,
+            "facts_total": 1,
             "facts": [
               {
                 "name": "contract-versioning",
@@ -3216,6 +3788,112 @@
           "always_loaded_tokens": 4466,
           "mirror_index_tokens": 560,
           "recall_tokens": 16160
+        },
+        "fact_holdings": [
+          {
+            "fact_id": "f_bc87d34b67c6f8171de8ab59",
+            "name": "release-checks",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_ccae79d6d3189f0e103337e6",
+            "name": "artifact-provenance",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_c96d9b27d68ec9bd7ca2799f",
+            "name": "contract-versioning",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web"
+            ]
+          },
+          {
+            "fact_id": "f_1b564b3375d3d632d6d17923",
+            "name": "review-conventions",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_235c879e8e24d2b1dc8b7803",
+            "name": "source-provenance",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_a6178eab9fb77c1f57afd780",
+            "name": "benchmark-reproducibility",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_0ff892321916e17c97842bd5",
+            "name": "shell-portability",
+            "domain": "tools",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-dotfiles",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_6cf8f29c8e20b7fbaccc5161",
+            "name": "evaluation-provenance",
+            "domain": "research",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-model-notes"
+            ]
+          }
+        ],
+        "capture": {
+          "facts_total": 8,
+          "facts_emitted": 8,
+          "holder_refs_total": 20,
+          "holder_refs_emitted": 20,
+          "incidence_bytes": 1592,
+          "basis": "physical shared mirrors plus triggering store",
+          "group_scope": "trigger",
+          "unresolved_identities": 0,
+          "read_failures": 0,
+          "read_failure_scope": "captured native fact files"
         }
       },
       "marker": {
@@ -3245,6 +3923,11 @@
         "phase": "final",
         "applied": "SUBSTANTIAL",
         "prune_pressure": false
+      },
+      "preflight": {
+        "at": "2026-08-30T14:30:00Z",
+        "fails": [],
+        "warns": []
       },
       "verification": {
         "confirmed": 5,
@@ -3719,6 +4402,7 @@
             "group": "release-kit",
             "home_domain": "work",
             "members_n": 3,
+            "facts_total": 3,
             "facts": [
               {
                 "name": "release-checks",
@@ -3738,6 +4422,7 @@
             "group": "api-contract",
             "home_domain": "work",
             "members_n": 2,
+            "facts_total": 1,
             "facts": [
               {
                 "name": "contract-versioning",
@@ -3753,6 +4438,112 @@
           "always_loaded_tokens": 4586,
           "mirror_index_tokens": 560,
           "recall_tokens": 16480
+        },
+        "fact_holdings": [
+          {
+            "fact_id": "f_bc87d34b67c6f8171de8ab59",
+            "name": "release-checks",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_ccae79d6d3189f0e103337e6",
+            "name": "artifact-provenance",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_c96d9b27d68ec9bd7ca2799f",
+            "name": "contract-versioning",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web"
+            ]
+          },
+          {
+            "fact_id": "f_1b564b3375d3d632d6d17923",
+            "name": "review-conventions",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_235c879e8e24d2b1dc8b7803",
+            "name": "source-provenance",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_a6178eab9fb77c1f57afd780",
+            "name": "benchmark-reproducibility",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_0ff892321916e17c97842bd5",
+            "name": "shell-portability",
+            "domain": "tools",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-dotfiles",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_6cf8f29c8e20b7fbaccc5161",
+            "name": "evaluation-provenance",
+            "domain": "research",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-model-notes"
+            ]
+          }
+        ],
+        "capture": {
+          "facts_total": 8,
+          "facts_emitted": 8,
+          "holder_refs_total": 20,
+          "holder_refs_emitted": 20,
+          "incidence_bytes": 1592,
+          "basis": "physical shared mirrors plus triggering store",
+          "group_scope": "trigger",
+          "unresolved_identities": 0,
+          "read_failures": 0,
+          "read_failure_scope": "captured native fact files"
         }
       },
       "marker": {
@@ -3782,6 +4573,11 @@
         "phase": "final",
         "applied": "SUBSTANTIAL",
         "prune_pressure": false
+      },
+      "preflight": {
+        "at": "2026-09-02T14:30:00Z",
+        "fails": [],
+        "warns": []
       },
       "verification": {
         "confirmed": 5,
@@ -4256,6 +5052,7 @@
             "group": "release-kit",
             "home_domain": "work",
             "members_n": 3,
+            "facts_total": 3,
             "facts": [
               {
                 "name": "release-checks",
@@ -4275,6 +5072,7 @@
             "group": "api-contract",
             "home_domain": "work",
             "members_n": 2,
+            "facts_total": 1,
             "facts": [
               {
                 "name": "contract-versioning",
@@ -4290,6 +5088,112 @@
           "always_loaded_tokens": 4442,
           "mirror_index_tokens": 560,
           "recall_tokens": 16800
+        },
+        "fact_holdings": [
+          {
+            "fact_id": "f_bc87d34b67c6f8171de8ab59",
+            "name": "release-checks",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_ccae79d6d3189f0e103337e6",
+            "name": "artifact-provenance",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_c96d9b27d68ec9bd7ca2799f",
+            "name": "contract-versioning",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web"
+            ]
+          },
+          {
+            "fact_id": "f_1b564b3375d3d632d6d17923",
+            "name": "review-conventions",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_235c879e8e24d2b1dc8b7803",
+            "name": "source-provenance",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_a6178eab9fb77c1f57afd780",
+            "name": "benchmark-reproducibility",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_0ff892321916e17c97842bd5",
+            "name": "shell-portability",
+            "domain": "tools",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-dotfiles",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_6cf8f29c8e20b7fbaccc5161",
+            "name": "evaluation-provenance",
+            "domain": "research",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-model-notes"
+            ]
+          }
+        ],
+        "capture": {
+          "facts_total": 8,
+          "facts_emitted": 8,
+          "holder_refs_total": 20,
+          "holder_refs_emitted": 20,
+          "incidence_bytes": 1592,
+          "basis": "physical shared mirrors plus triggering store",
+          "group_scope": "trigger",
+          "unresolved_identities": 0,
+          "read_failures": 0,
+          "read_failure_scope": "captured native fact files"
         }
       },
       "marker": {
@@ -4319,6 +5223,11 @@
         "phase": "final",
         "applied": "SUBSTANTIAL",
         "prune_pressure": false
+      },
+      "preflight": {
+        "at": "2026-09-05T14:30:00Z",
+        "fails": [],
+        "warns": []
       },
       "verification": {
         "confirmed": 5,
@@ -4798,6 +5707,7 @@
             "group": "release-kit",
             "home_domain": "work",
             "members_n": 3,
+            "facts_total": 3,
             "facts": [
               {
                 "name": "release-checks",
@@ -4817,6 +5727,7 @@
             "group": "api-contract",
             "home_domain": "work",
             "members_n": 2,
+            "facts_total": 1,
             "facts": [
               {
                 "name": "contract-versioning",
@@ -4832,6 +5743,112 @@
           "always_loaded_tokens": 4370,
           "mirror_index_tokens": 560,
           "recall_tokens": 17120
+        },
+        "fact_holdings": [
+          {
+            "fact_id": "f_bc87d34b67c6f8171de8ab59",
+            "name": "release-checks",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_ccae79d6d3189f0e103337e6",
+            "name": "artifact-provenance",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_c96d9b27d68ec9bd7ca2799f",
+            "name": "contract-versioning",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web"
+            ]
+          },
+          {
+            "fact_id": "f_1b564b3375d3d632d6d17923",
+            "name": "review-conventions",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_235c879e8e24d2b1dc8b7803",
+            "name": "source-provenance",
+            "domain": "work",
+            "scope": "user-global",
+            "held_n": 3,
+            "holder_sids": [
+              "sample-atlas-api",
+              "sample-atlas-web",
+              "sample-team-docs"
+            ]
+          },
+          {
+            "fact_id": "f_a6178eab9fb77c1f57afd780",
+            "name": "benchmark-reproducibility",
+            "domain": "work",
+            "scope": "stack-general",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_0ff892321916e17c97842bd5",
+            "name": "shell-portability",
+            "domain": "tools",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-dotfiles",
+              "sample-release-tools"
+            ]
+          },
+          {
+            "fact_id": "f_6cf8f29c8e20b7fbaccc5161",
+            "name": "evaluation-provenance",
+            "domain": "research",
+            "scope": "user-global",
+            "held_n": 2,
+            "holder_sids": [
+              "sample-eval-lab",
+              "sample-model-notes"
+            ]
+          }
+        ],
+        "capture": {
+          "facts_total": 8,
+          "facts_emitted": 8,
+          "holder_refs_total": 20,
+          "holder_refs_emitted": 20,
+          "incidence_bytes": 1592,
+          "basis": "physical shared mirrors plus triggering store",
+          "group_scope": "trigger",
+          "unresolved_identities": 0,
+          "read_failures": 0,
+          "read_failure_scope": "captured native fact files"
         }
       },
       "marker": {

@@ -1,192 +1,206 @@
-# Nocturne: a memory observatory
+# Nocturne: clear topology, accessible evidence
 
-A presentation redesign for `consolidate-memory` v0.4.14. The design is implemented
-in the bundled dashboard template and rendered with the existing Python renderer.
-The example artifacts use fictional projects and synthetic cycle records, never a
-personal memory store.
+Nocturne is a self-contained, offline archive of recorded dreams. The four report
+sections support progressive exploration: **dream summary → memory network →
+memory activity → verification & health**, followed by the existing decision
+ledger. The header remains the sole index-size and budget-projection chart.
 
-## The design direction
+The redesigned renderer preserves its original header markup, shared helpers,
+calculations, and styles. Section navigation reflects the new order. Every figure
+is captured evidence, not a live store query.
 
-Memory needs two things to be useful later: a recognizable cue and evidence you can
-return to. Nocturne uses an orbital recall mark, a midnight canvas, and a network
-view whose structure explains where a lesson can travel. Charts and grants share a
-visual language without pretending that a saved report is a live network monitor.
+## Visual system
 
-| Token | Value | Purpose |
-| --- | --- | --- |
-| Midnight | `#080f1b` | Main page background; most of the page remains dark and quiet |
-| Deep blue | `#0c1727` / `#101e31` | Topology surface, domain containers, evidence sections |
-| Cloud | `#e5eef5` | Primary text |
-| Glacier | `#8fced6` | Observed shared-fact connections and active project |
-| Iris | `#b3a6e4` | Group permissions, selected members, recall mark |
-| Honey | `#e7bd78` | Attention and incomplete evidence |
-| Rose / sage | `#f0a3a6` / `#9cd4b5` | Critical conditions / positive outcomes, always accompanied by text |
+The midnight canvas, Glacier holdings, Iris permissions, restrained orbital mark,
+and humanist system typography remain. Georgia italic belongs to captured dream
+voice. Nocturne, Original, Light, and System themes, reduced motion, print, archive
+filters, density, keyboard navigation, and the accessible diff dialog remain.
+No fonts, scripts, stylesheets, or data are fetched from the network.
 
-The theme control cycles through **Nocturne → Original → Light → System**. Original
-retains all 19 color and tint tokens from the previous espresso dark palette. The
-selection persists locally and applies before rendering; System follows the device
-preference. Every mode prints with a light palette.
+## Network exploration
 
-Typography uses locally available humanist system fonts (`Avenir Next`, `Segoe UI`,
-Verdana, Arial). Monospace is reserved for commands and code. Georgia italic belongs
-only to the captured dream narrative. No downloaded fonts or web requests are needed.
+A ranked SVG tree replaces domain containers and perimeter-routed pairwise edges.
+Its initial root is the captured fleet. Every captured domain appears, including
+an explicitly captured domain with no project rows. The triggering project's
+domain starts expanded. Each domain has 12-project pages, and search reaches every
+captured project by its name, domain, or stable store identity. No global first-16
+cutoff remains.
 
-The main hierarchy is **project → context outlook → key measures → network →
-history → verification and decisions → narrative**. The network gets one substantial
-surface; the remainder uses readable sections and compact rows. This avoids a wall
-of identical metric cards, decorative neon, fake activity, and perpetual animation.
-The single chart trace on load and short group-selection transition answer actual
-state changes; reduced-motion preferences disable both.
+Selecting a project exposes its costs, captured facts, and recorded pairwise
+connections. Selecting a canonical fact produces **fact → domain → physical
+holders**. Selecting a group produces **group → domain → captured members**;
+permissions never center on an arbitrary project. Only those members appear in
+the focused group tree. Breadcrumbs and reset return to the fleet.
 
-The initial plan considered a glowing central constellation. Source inspection
-showed why that would be misleading: a hub can obscure domain membership and make a
-group grant look like delivered data. The implemented SVG uses domain lanes and
-explicit, selectable permission routes. The orbital motif stays in the brand mark;
-the diagram spends its space on actual project labels and evidence.
+Horizontal ranks use dedicated branch ports. A trunk is drawn once, junctions mark
+its aggregate branches, and expanding a domain exposes the members. Mobile changes
+to a vertical tree with separate fleet and domain rails; the evidence inspector
+moves below it. Text labels, interaction names, and explanatory evidence accompany
+color. Native disclosures retain complete inventories, addressed group facts,
+registry baseline counts, and every embedded network field.
 
-## What inspection found
+Historical archives use their recorded domains, projects, and pairwise links.
+When canonical identities are absent, the inspector states that boundary. The
+renderer never reconstructs history from current stores.
 
-The old HTML was an editorial field report with warm paper/espresso themes, extensive
-small monospace labels, and a small radial network beside the budget meters. Its
-information depth was hard to discover. The README introduced architecture and a
-comparison with another feature before making the practical value clear.
+## Canonical identity and capture contract
 
-Live source and the baseline browser render also exposed presentation defects:
+Two local filenames can represent one canonical fact. The fleet emitter now joins
+mirrors through canonical domain/name and stable fact identity. Legacy references
+use the **holder's own domain**, never the triggering project's domain. Contradictory
+stamps, scopes, references, or ambiguous namespace interpretations stay unresolved.
+The shared frontmatter parser exposes the existing `global_ref` stamp to that join.
 
-- The fleet painter dereferenced the first node even when no nodes were captured.
-- Mobile archive rules hid index, write, and commit columns.
-- The reset path hid workflow-chain and skill-usage containers; their render path
-  populated them without restoring their visibility.
-- Baseline chips lacked their own layout styling and visually ran together.
-- The diff overlay did not manage keyboard focus or make the background inert.
-- Sparse records could read as zero-cost, healthy results when measurements were absent.
+The optional fields are:
 
-These are corrected in the template. Store paths, admission policy, canonical writes,
-cycle schema, log assembly, and the Python HTML renderer are unchanged.
-
-## Preserve the evidence
-
-Every pre-existing template element ID remains present. The existing calculation and
-render paths remain for the following surfaces:
-
-| Surface | Retained detail |
+| Field | Meaning |
 | --- | --- |
-| Project identity | Domain/enrollment, registry health, conflicts, session, scope, generation time |
-| Context outlook | Index history, target and ceiling, trajectory estimate, warnings |
-| Indicators | Index percentage, recall facts, confirmed claims, effort, correction/unverifiable counts |
-| History | Facts, writes by action, rigor categories, and inter-dream cadence |
-| Budgets | Index, root/global `CLAUDE.md`, hierarchy cost, cliff/fat-hook detail |
-| Cross-project movement | Pulls, promotions, refreshes, holds, GC, scope changes |
-| Audit | Per-store and per-file mutations, token deltas, conservation warnings |
-| Verification and health | Claims, pointer/link health, schema drift, orphans, maintenance, remediation |
-| Usage | Organic reads, mentions, excluded procedure reads, archived-fact reads, top recalls |
-| Workflows | Recurring commands, chains, skill use, verdicts, demotion, registrar candidates and decline lineage |
-| Decisions | Entries, reasons, citations, declared files, unattributed observed diffs, capped-diff notices |
-| Narrative and archive | Sleep/beats/wake, cycle selection, filtering, sorting, keyboard navigation |
+| `nodes[].display_name` | Readable registry label, separate from the stable `sid` and compatibility label |
+| `fact_holdings[]` | Canonical `fact_id`, `name`, `domain`, `scope`, emitted `holder_sids`, exact pre-limit `held_n` |
+| `capture` | Physical basis, group scope, exact total/emitted fact and holder-reference counts, incidence bytes, unresolved identities, and native fact-file read failures |
+| `group_links[].facts_total` | Addressed canonical count before the existing eight-fact limit |
 
-The fleet view adds readable domain containers, full node names on inspection,
-keyboard/touch inspection, group selection, and tables of every embedded node,
-group, and edge. The diagram is bounded to 16 nodes; the complete **captured**
-inventory remains available. Existing emitter caps are not widened. Legacy networks
-use the retained legacy painter and expose their captured data below it.
+Unique fleet totals and compatibility pairwise intersections use canonical
+identities. Token accounting, physical fact/mirror counts, existing field shapes,
+CLI flags, and archived payloads remain compatible. Non-fleet emission retains its
+existing shape. Physical presence, registry holder rows, permissions, and delivery
+are separate measurements. In particular, `universal_facts[].held` is registry
+evidence and can exceed the physically captured node count.
 
-A collapsed JSON inspector makes the complete embedded cycle accessible, including
-fields omitted from abbreviated rows. It is an inspection surface, not a new data
-source. Unavailable budget, audit, usage, and verification measurements are marked
-explicitly; recorded problems remain visible. Domains can legitimately yield partial
-fleet baseline counts.
+Incidence stops at **120 facts, 2,000 holder references, or 64 KiB JSON**, whichever
+comes first. JSON byte accounting uses an ASCII-escaped representation including HTML delimiter escaping,
+so the limit remains valid for non-ASCII and hostile labels. Trigger-associated facts come
+first, then stack facts, then descending holder count, with stable identity as the
+tie-breaker. The trigger's holder reference comes first within a fact. A final
+partially captured fact retains its exact `held_n`; `capture` preserves all exact
+pre-limit counts. Read-failure counts explicitly cover captured native fact files;
+they do not claim that every absent store was successfully inspected.
 
-## Artifacts and reproduction
+The limits live in `memory_status.py` and are imported by the emitter. TypedDicts,
+validation, the skill's example schema, and fictional fixtures move together.
 
-- [Self-contained HTML archive](previews/nocturne/index.html) — download and open it;
-  append `#sel=7` for the latest illustrative cycle.
-- [Nocturne network screenshot](assets/nocturne-dashboard.png).
-- [Original dark-palette screenshot](assets/original-dashboard.png).
-- [Exported runtime network SVG](assets/nocturne-network.svg).
-- [README policy topology SVG](assets/network-topology.svg) — includes the local-only repo.
-- [Brand banner](assets/nocturne-banner.svg).
-- [Synthetic fixture source](../tests/dashboard_fixture.py).
+Fleet coverage still means **captured stores holding shared mirrors plus the
+triggering store**. Projects absent from this set are outside the capture basis;
+they are never described as disconnected.
+
+## Outcome and captured voice
+
+The summary follows the existing header/KPIs and leads with the recorded outcome.
+Confirmed claims, observed physical changes, decisions, and attention items link
+to their evidence or the existing ledger. No new completion judgment is invented.
+
+The dream is one connected **Sleep → intermediate passages → Wake** sequence.
+Both bookends stay visible. Intermediate passages are selectable, and **Read the
+complete dream** retains every captured text passage in order. Canonical phase
+labels require exactly six nonempty string beats; other sequences use numbered
+beats. Missing bookends and passages are explicit. The original record remains
+available unchanged in the raw-data inspector.
+
+## Verification and health
+
+Compact summaries distinguish claims, store integrity, and observed changes with
+four explicit states: **Needs attention**, **Recorded clear**, **Partially
+captured**, and **Not captured**. There is no combined health score. Exceptions
+come first and link to the relevant disclosure:
+
+1. **Verification evidence** — recorded judgments and procedure-integrity findings.
+2. **Store checks** — pointers, links, drift, preflight time and IDs, remediation,
+   identity/registry state, and maintenance evidence.
+3. **Observed file changes** — the measurement window, per-store observations,
+   every per-file operation with diff access, and conservation evidence.
+4. **Recall & workflow decisions** — usage windows, procedure exclusions, misses,
+   recurring commands/chains, skill use, demotion, registrar states, and decline lineage.
+
+Adverse or pending disclosures open by default. Preflight lists only its captured
+timestamp and failure/warning IDs, without inventing individual check outcomes.
+Unknown observations stay missing; actual zeroes stay zero. Complete evidence rows
+are reachable through native disclosures. Long movement and declared-file lists
+have working expansion controls instead of inert `+N more` labels.
+
+## Memory activity
+
+The lower stock/effort charts become aligned decision activity and observed reads,
+with a categorical ribbon for captured rigor. The default window is the latest 12
+dreams ending at the selected dream; **12 / 24 / All captured** controls change it.
+Exact action categories remain intact, including unfamiliar captured categories.
+Decisions are never called file writes, and activity does not infer productivity.
+
+Selecting a cycle updates a local inspector: outcome, decisions, observed mutations,
+fact-count change, verification, reads, and usage window. **Open this dream** is a
+separate archive navigation action. Missing reads and rigor remain gaps. A disclosed
+table preserves fact counts, timestamps, cadence, and each usage window. Overlapping
+windows are never summed into a misleading recall total.
+
+## Implementation and reproduction
+
+- `dashboard.template.html`: stable header/archive infrastructure and section markup/styles.
+- `dashboard.network.js`: network normalization, ranked layout, selection, and inventory.
+- `dashboard.sections.js`: outcome, captured voice, health/evidence, and activity rendering.
+- `render_html.py`: bundles both vanilla-JavaScript modules inline and safely embeds JSON.
+
+The renderer resolves assets relative to its installed script directory, rejects
+script-end sequences in a bundle, and requires each bundle marker exactly once.
+There are no new runtime dependencies. The browser tools remain development-only.
 
 ```bash
 python3 tests/dashboard_fixture.py --out /tmp/cm-preview
 python3 tests/dashboard_browser.py --out /tmp/cm-browser
+python3 tests/network_identity.py
+python3 tests/smoke.py
+python3 tests/simulate_accumulation.py
+mypy --config-file mypy.ini
+python3 tests/validate_manifests.py
+python3 tests/concurrency.py
+python3 tests/bench_phase5.py --quick --json /tmp/cm-bench.json
 ```
 
-The second command needs Playwright and its Chromium binary **as development tools**.
-It runs in a separate Chromium CI job and does not add dependencies to the plugin
-or the stdlib-only CI gate. The test
-launches a headless browser against local generated files, with no store reads or
-cycle persistence.
+The browser suite checks the actual SVG for label collisions, coincident branches,
+project-box intersections, and detours; exact membership; 125-project reachability;
+320/390/768/1440px layouts in all themes; keyboard/diff/archive behavior; rich/sparse
+navigation; malformed arcs; missing/zero observations; print; hostile text; and offline
+operation. The frozen header geometry fixture was captured from v0.4.16 before the
+redesign for ordinary, sparse, historical, over-target, and ceiling cases.
 
-## Validation
+[Download the fictional archive](previews/nocturne/index.html) and open `#sel=7`.
+Its companion JSON, screenshots, and SVG contain fictional data only. A supplied
+personal archive is regenerated separately by replacing its presentation while
+retaining its entire existing JSON payload and `#sel=45` selection; it is never
+copied into this public repository.
 
-At this working-tree checkpoint:
+## Local validation, 2026-09-05
+
+Validated against the working tree based on `ad3771f` (v0.4.16):
 
 | Gate | Result |
 | --- | --- |
-| Zero-dependency smoke suite | **1,620 passed, 0 failed** |
-| Lifecycle accumulation simulation | **All lifecycle properties hold** |
-| Mypy | **No issues in 38 source files** |
-| Portable manifest checker | **Passed** |
-| Claude CLI strict plugin validation | **Passed** |
-| Real Chromium browser checks | **127 passed** |
-| Original template IDs | **79 preserved; none removed** |
-| Process-level concurrency | **15 passed, 0 failed** |
-| Known-defect beta gate | **Clean; canary and cycle-probe self-tests passed** |
-| Isolated network CLI walkthrough | **44 successful commands** |
-| Isolated migration walkthrough | **18 checks passed: 15 successful commands and 3 expected refusals** |
-| Relative document links and SVG XML | **46 links valid; all SVGs parse** |
+| Smoke, including canonical identity regressions | 1,686 passed, 0 failed |
+| Chromium | 320 passed; no browser errors or external requests |
+| Lifecycle simulation | All properties through probe AG hold |
+| mypy | No issues in 40 source files |
+| Manifest checks | Portable checker and strict Claude CLI validation pass |
+| Concurrency | 15 passed, 0 failed |
+| Quick capacity benchmark | Both SLOs pass; beacon p99 130.0 ms, no-change pull 213.6 ms |
+| Header comparisons | Identical SVG geometry in all 20 case/viewport combinations |
 
-Browser checks cover the complete record, legacy/sparse/local-only states, empty and
-single-node fleets, a 25-node fleet, malicious text, ceiling/integrity warnings,
-archive navigation/filter/sort, section and group controls, diff focus trapping and
-restoration, Nocturne/Original/Light/System modes, reduced motion, print colors, and no external
-requests. Layout is checked at 320, 390, 768, and 1440 pixels. All-pair SVG routes
-are checked against unrelated node boxes across balanced and uneven 16-project
-layouts. An independent review also exercised 2,332 observed and permission routes
-across 30 layouts. Horizontal diagram and table scrolling preserves data at narrow widths. Screenshots were inspected in
-addition to DOM assertions.
+The header markup, shared helpers, calculation blocks, and pre-existing CSS were
+also compared directly with the pre-edit source. Header pixels match in all 20
+comparisons when captured at the same whole-pixel origin. In the natural page flow,
+16 match byte-for-byte; four at 320px have subpixel raster differences caused by
+section-navigation wrapping. The graph's own geometry and styles are unchanged.
 
-The old geometry/color source pins were updated to the new presentation. Original
-also has an exact 19-token preservation assertion against the previous palette. Text and
-semantic colors now have a **calculated 4.5:1 contrast check** against every theme's
-main surfaces, instead of an assertion that particular historical hex values exist.
-Single-domain visibility is also exercised in Chromium. The fixture validates its
-own audit totals and history continuity, and compares its topology payload with
-the real engine emitter using synthetic canonical records.
+The supplied archive's embedded JSON is preserved **byte for byte**, with all 46
+cycles and `#sel=45`. Both regenerated archives were visually inspected on desktop
+and mobile, including the focused group view; they render offline without errors.
+The live read-only fleet check resolves the previously split stack fact to one
+identity with ten holders and reports zero unresolved identities or fact-file read
+failures. These local results are not a release or hosted-CI claim.
 
-The CLI walkthrough exercised doctor, enrollment plans and grants, group creation and
-membership, pull, topology inspection, conflicts, and member removal against disposable
-projects under a separate `CLAUDE_CONFIG_DIR`. It did not author a fact or touch live
-operator grants. Canonical authoring syntax was checked against the command source;
-the placeholder draft is intentionally not executed. A separate isolated legacy-store
-fixture exercised two-domain assignments, exclusion, validation, application, rollback,
-reapplication, and finalization, including refusals for an unenrolled caller,
-unresolved assignments, and rollback after finalization.
+## Separate follow-ups for the next PR
 
-These are local checks, not a hosted CI or release certification. Browser behavior
-was exercised in Chromium; Safari and Firefox were not tested. Token forecasts remain
-heuristics from the original renderer, not measured savings or promises of recall.
-
-## Research and source traceability
-
-The README follows GitHub's recommendations to explain what a project does, why it
-is useful, and how to get started. It uses repository-relative assets/links, restrained
-alerts, a navigation scaffold, and a fenced Mermaid workflow. See
-[About READMEs](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-readmes),
-[GitHub formatting](https://docs.github.com/en/get-started/writing-on-github/getting-started-with-writing-and-formatting-on-github/basic-writing-and-formatting-syntax),
-and [diagrams](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/creating-diagrams).
-
-The dialog uses focus management and background inactivation alongside modal
-semantics, as described in [MDN's aria-modal guidance](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes/aria-modal).
-Motion respects the [prefers-reduced-motion media query](https://developer.mozilla.org/en-US/docs/Web/CSS/Reference/At-rules/%40media/prefers-reduced-motion).
-
-Product behavior was traced through the local [command workflows](../plugins/consolidate-memory/commands),
-[delivery policy](../plugins/consolidate-memory/scripts/domain_policy.py),
-[group operations](../plugins/consolidate-memory/scripts/cm_ops.py),
-[stack relevance and topology emitter](../plugins/consolidate-memory/scripts/sync_global.py),
-[cycle schema](../plugins/consolidate-memory/scripts/memory_status.py),
-[HTML assembly](../plugins/consolidate-memory/scripts/render_html.py), and
-[template](../plugins/consolidate-memory/scripts/dashboard.template.html).
-The privacy copy distinguishes local scripts from reasoning through Claude Code's
-configured model service; it no longer claims the entire agent session is offline.
+1. **Registry inventory:** include enrolled projects with no shared mirrors as a
+   separately labeled population. Keep physical holdings, registry presence, and
+   missing/unreadable stores distinguishable.
+2. **Comprehensive archive-size policy:** replace quadratic compatibility edges
+   and define a complete payload budget across incidence, nodes, groups, evidence,
+   cycle count, and diff sidecars. This change bounds new incidence only; existing
+   compatibility-edge and archive-size policies remain in force.
