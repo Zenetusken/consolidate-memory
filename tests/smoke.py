@@ -2182,9 +2182,12 @@ check("RC-89: _open_recent is a PURE read (same-anchor within the window reports
       rhtml._open_recent(Path("/tmp/x.html"), "#sel=3", _TS, _tmpd) is False
       and not (Path(_tmpd) / rhtml._OPEN_MARKER_NAME).exists())
 rhtml._mark_open(Path("/tmp/x.html"), "#sel=3", _TS, _tmpd)
-check("RC-89: _mark_open then _open_recent — one open per (archive, anchor) per window",
+check("RC-89: _mark_open then _open_recent — one open per (archive, anchor) per window "
+      "(v0.4.13 hotfix: the GLOBAL per-archive key also suppresses a CHANGED anchor — the "
+      "repeated-window incident's loop shape; a deliberate re-open survives the window)",
       rhtml._open_recent(Path("/tmp/x.html"), "#sel=3", _TS + 60, _tmpd) is True
-      and rhtml._open_recent(Path("/tmp/x.html"), "#sel=4", _TS + 60, _tmpd) is False
+      and rhtml._open_recent(Path("/tmp/x.html"), "#sel=4", _TS + 60, _tmpd) is True
+      and rhtml._open_recent(Path("/tmp/x.html"), "#sel=4", _TS + 3000, _tmpd) is False
       and rhtml._open_recent(Path("/tmp/x.html"), "#sel=3", _TS + 3000, _tmpd) is False)
 with _tempfile.TemporaryDirectory() as _tdn4:
     _cyc_n4 = Path(_tdn4) / "c.json"

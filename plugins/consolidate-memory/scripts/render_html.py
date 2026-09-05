@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import tempfile
 import webbrowser
@@ -263,13 +264,25 @@ _OPEN_WINDOW_S = 180.0    # one open per (archive, anchor) per 3 minutes — kil
 def _open_recent(out: Path, frag: str, now_ts: float, marker_dir: Path,
                  window_s: float = _OPEN_WINDOW_S) -> bool:
     """RC-89/n4: was this (archive, anchor) opened within the window? PURE READ — a FAILED
-    webbrowser.open must never have written the marker, or the next attempt is suppressed."""
+    webbrowser.open must never have written the marker, or the next attempt is suppressed.
+
+    v0.4.13 hotfix (the repeated-window incident): ALSO suppress on a GLOBAL
+    per-archive key (any anchor). The per-anchor key alone could not stop a
+    re-render loop whose anchor CHANGES each iteration (--latest while the log
+    grows, or a Phase-5 retry after each persist-gate failure) — every
+    iteration passed the exact-key check and opened a NEW browser window,
+    ~5s apart, indefinitely. The global key bounds the class: at most one
+    window per archive per window_s, whatever the anchor. The cost is
+    deliberate --select re-opens within 3 minutes of a prior open — acceptable
+    beside unbounded window spawning; the kill-switch below is the escape."""
     marker = marker_dir / _OPEN_MARKER_NAME
     key = f"{out.resolve()}::{frag}"
+    gkey = f"{out.resolve()}::*"
     try:
         prev = json.loads(marker.read_text(encoding="utf-8"))
-        if isinstance(prev, dict) and prev.get("key") == key and now_ts - float(prev.get("at", 0)) < window_s:
-            return True
+        if isinstance(prev, dict) and now_ts - float(prev.get("at", 0)) < window_s:
+            if prev.get("key") == key or prev.get("gkey") == gkey:
+                return True
     except (OSError, json.JSONDecodeError, ValueError):
         pass
     return False
@@ -281,7 +294,8 @@ def _mark_open(out: Path, frag: str, now_ts: float, marker_dir: Path) -> None:
     try:
         marker_dir.mkdir(parents=True, exist_ok=True)
         (marker_dir / _OPEN_MARKER_NAME).write_text(
-            json.dumps({"key": f"{out.resolve()}::{frag}", "at": now_ts}), encoding="utf-8")
+            json.dumps({"key": f"{out.resolve()}::{frag}",
+                        "gkey": f"{out.resolve()}::*", "at": now_ts}), encoding="utf-8")
     except OSError:
         pass
 
@@ -370,7 +384,9 @@ def main(argv: list) -> int:
     out.write_text(html, encoding="utf-8")
 
     opened = False
-    if not args.no_open:
+    # v0.4.13 hotfix: CM_NO_OPEN=1 is the operator kill-switch — a
+    # headless/loop-bound render must NEVER open a browser window.
+    if not args.no_open and not os.environ.get("CM_NO_OPEN"):
         try:                          # headless-safe: a missing/loopback browser must NEVER crash a dream
             _now = datetime.now(timezone.utc).timestamp()
             if _open_recent(out, frag, _now, out.parent):
