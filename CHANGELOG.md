@@ -5,6 +5,34 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.14] — 2026-09-05
+
+**Patch — Nocturne, a memory observatory.** The HTML summary now leads with the
+project's context outlook, evidence, and shared-memory network on a midnight-blue
+canvas. The theme control also offers **Original**, preserving the previous dark
+espresso palette, plus Light and System modes. Preferences persist locally; print
+stays legible and reduced-motion settings are respected.
+
+- **A network you can read:** domain lanes show trust boundaries, selected group
+  routes show permission, and shared-fact edges show captured holdings. Project
+  inspection and complete captured-data tables preserve details beyond the bounded
+  16-node diagram. Missing measurements are explicit, and legacy records still render.
+- **Evidence stays accessible:** all existing observation panes remain, with a full
+  embedded-record inspector. Workflow lists reset between cycles, partial records
+  retain recorded problems, mobile archives retain every column, and diff dialogs
+  support keyboard focus and return.
+- **A clearer entry point:** the README explains practical value before mechanics;
+  a complete multi-domain network guide covers enrollment, group grants, sharing,
+  inspection, revocation, and migration. Synthetic HTML, screenshots, and SVGs make
+  the design reviewable without exposing personal memory.
+- **Browser regression coverage:** Chromium exercises themes, data completeness,
+  archive navigation, sparse and legacy records, network bounds, accessibility,
+  and narrow screens in a separate development-only CI job. The runtime and core
+  test matrix remain Python stdlib-only.
+
+No cycle-record schema, store policy, canonical writer, or command contract changes.
+Backward-compatible → patch.
+
 ## [0.4.13] — 2026-09-04
 
 **Patch** — two arcs, one release cycle.

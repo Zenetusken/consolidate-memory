@@ -93,6 +93,29 @@ jobs:
       - run: pip install mypy
       - run: mypy --config-file mypy.ini
 
+  browser:
+    name: dashboard (chromium, dev-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: install browser test tools (not runtime dependencies)
+        run: |
+          python3 -m pip install playwright==1.60.0
+          python3 -m playwright install --with-deps chromium
+      - name: dashboard behavior and responsive layout
+        run: |
+          mkdir -p browser-report
+          python3 tests/dashboard_browser.py --out browser-report 2>&1 | tee browser-report/run.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dashboard-browser-report
+          path: browser-report/
+
   manifest:
     name: plugin manifest validation (claude CLI)
     runs-on: ubuntu-latest
