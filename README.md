@@ -12,7 +12,7 @@ It **complements** Auto Dream rather than replacing it — a deliberately *expli
 project tidy automatically; you invoke **`dream`** (or "consolidate my memory") when you want
 *verified* + *cross-project* consolidation.
 
-> **Current release: v0.4.12.** Public **1.0 remains HOLD** (evidence-gated — see
+> **Current release: v0.4.13.** Public **1.0 remains HOLD** (evidence-gated — see
 > [`docs/1.0-preflight.spec.md`](docs/1.0-preflight.spec.md)). Per-version detail lives in
 > [**CHANGELOG.md**](CHANGELOG.md).
 

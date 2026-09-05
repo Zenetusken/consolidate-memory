@@ -6814,6 +6814,23 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
               and "sha256 mismatch" in str(_imp_tam40.get("error") or ""))
         # (#9): the registry indexes exist in a FRESH DB and cm doctor reports
         # the integrity check.
+        # v0.4.12 dogfood: this section ran against the REAL plugin-data
+        # registry (HOME was not redirected) — every suite run minted a
+        # regproj enrollment row into the operator's fleet registry (the
+        # 315-row residue's origin) and the "fresh DB" pins were vacuous.
+        _home40p = _os73.environ.get("HOME")
+        _g40p = sg.GLOBAL
+        # the hermeticity pin's baseline: the REAL fleet registry's row count
+        _ctx_real40 = sc.resolve_store(Path.cwd())
+        _real40 = cp.connect(cp.db_path(_ctx_real40))
+        try:
+            _real_rows40 = int(_real40.execute(
+                "SELECT COUNT(*) AS n FROM projects").fetchone()["n"])
+        finally:
+            _real40.close()
+        _os73.environ["HOME"] = str(Path(_td40) / "home")
+        sg.GLOBAL = Path(_td40) / "home" / ".claude" / "memory"
+        (Path(_td40) / "home" / ".claude" / "projects").mkdir(parents=True, exist_ok=True)
         _reg40 = Path(_td40) / "regproj"; _reg40.mkdir()
         _enroll_personal(_reg40)
         _ctx40r = sc.resolve_store(_reg40)
@@ -6887,6 +6904,22 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
         check("v0.4.0 (#11): CLI error envelope — {ok, error, code} on --json with exit 2",
               _rc40_env == 2 and _env40_j.get("ok") is False and _env40_j.get("code") == 2
               and isinstance(_env40_j.get("error"), str) and bool(_env40_j["error"]))
+        if _home40p is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home40p
+        sg.GLOBAL = _g40p
+        # the hermeticity pin: the section must leave the REAL fleet registry
+        # untouched (pre-fix it minted a regproj row EVERY suite run)
+        _real40b = cp.connect(cp.db_path(_ctx_real40))
+        try:
+            _real_rows40b = int(_real40b.execute(
+                "SELECT COUNT(*) AS n FROM projects").fetchone()["n"])
+        finally:
+            _real40b.close()
+        check("v0.4.12 dogfood: the registry section is HERMETIC — the real "
+              "fleet registry gains no rows from a suite run (the regproj "
+              "residue origin)", _real_rows40b == _real_rows40)
 
     # generated catalog overwrites a hand-edited index
     _facts = Path(_tdxp) / "facts"
