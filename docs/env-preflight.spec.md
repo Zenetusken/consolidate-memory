@@ -2,7 +2,8 @@
 
 **Status: advisor pass (11 findings, amend-1) + adversarial review-to-zero (11 findings, amend-2 —
 1 HIGH · 5 MED · 5 LOW, all folded) + per-PR implementation review (8 findings — 3 MED · 5 LOW,
-all fixed + pinned, amend-3) complete. Shipped in v0.4.16.**
+all fixed + pinned, amend-3) + the shipped-state audit (1 MED · 2 LOW, fixed + pinned,
+amend-4) complete. Shipped in v0.4.16.**
 Target release: **v0.4.16 (patch)** — additive script + additive record/state keys; legacy records render.
 
 ## §1 Context (measured)
@@ -70,7 +71,11 @@ such.
 Surface:
 
 - `probe_*` — one pure function per check, returning
-  `{"id", "status": pass|warn|fail|skip, "label", "fix", "detail"}`.
+  `{"id", "status": pass|warn|fail|skip, "label", "fix", "detail"}` (amend-4, micro-shapes:
+  `probe_sqlite_module` returns a `(check, module-or-None)` tuple so the floor/roundtrip probes
+  share the import; `run_checks` adds `fails`/`warns` id-lists that `verdict_for_cache`
+  consumes — every emitted envelope filters to the four documented keys; matrix row 4's
+  no-module state is a `skip`, its FAIL verdict applying only when the module exists).
 - `run_checks(env) -> {"ok", "at", "checks", "notes"}` — env is a namespace of injectables
   (including resolved paths + a `store_resolution_error` sentinel). **Sentinel-path probe
   policy (review F1c):** when resolution failed, run every **ctx-free probe** (#1-4, #8-13)

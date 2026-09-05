@@ -1460,7 +1460,7 @@ check("v0.3.0 html: template carries identity + movement + extra-meter hooks",
           "function identOf", "function outcomeOf", "function paintBanners", "function identLine",
           'id="h-ident"', 'id="a-ident"', 'id="h-banners"', 'id="a-banners"',
           'id="xp-strip"', 'id="m-global"', "This pass across the domain",
-          "local-only", "/cm-domain", "schema drift", "slug orphans"]))
+          "local-only", "/cm-domain", "Schema drift recorded", "Orphan stores"]))
 check("v0.3.0 html: outcomeOf matches ASCII write bands (≤2 light, else substantial) + maintenance pivot",
       "if(w<=2) return \"Light pass\"" in _html
       and "return \"Substantial pass\"" in _html
@@ -2043,8 +2043,7 @@ check("RC: the registrar block renders candidates with dispositions (its first r
 #    (nowrap) with min-width:0 — 50 candidates shrank into unreadable columns. The panel is now
 #    a COLUMN of .reg-card dockets; the verdict is a block sentence; missing disposition is
 #    inferred from mechanical gates (never defaulted to awaiting-confirmation). ──
-_TEMPLATE_SRC = (Path(__file__).resolve().parent.parent / "plugins" / "consolidate-memory" / "scripts"
-                 / "dashboard.template.html").read_text(encoding="utf-8")
+_TEMPLATE_SRC = rhtml._load_template()
 check("RC-90: registrar candidates are .reg-card dockets, never the ledger .row grid",
       ".reg-card" in _TEMPLATE_SRC and 'class="reg-card"' in _TEMPLATE_SRC
       and 'id="reg-board"' in _TEMPLATE_SRC
@@ -2135,15 +2134,10 @@ check("0.3.1 html: health-row labels do not wrap when names are long",
       and ".audit-ln .nums" in _TEMPLATE_SRC
       and "overflow-wrap:anywhere" in _TEMPLATE_SRC
       and ".audit-ln{display:grid;grid-template-columns:1fr auto" not in _TEMPLATE_SRC)
-check("0.3.1 html: dangling/orphan names clip with +N more, never a silent slice(0,3)",
-      "function clipNames" in _TEMPLATE_SRC
-      and "dangNames.slice(0,3)" not in _TEMPLATE_SRC
-      and '" · +"+(names.length-cap)+" more"' in _TEMPLATE_SRC
-      and "clipNames(dangNames, 8)" in _TEMPLATE_SRC)
-check("0.3.1 html: usage is organic + dream-procedure excluded (not 0-reads vs N-confirmed)",
-      "organic read" in _TEMPLATE_SRC
-      and "dream-procedure excluded" in _TEMPLATE_SRC
-      and "not in the index" in _TEMPLATE_SRC)
+check('evidence: store checks expose every captured health row',
+      "capturedTree(c.health)" in _TEMPLATE_SRC and "evidence-rows" in _TEMPLATE_SRC)
+check('evidence: complete recall observations preserve procedure exclusions',
+      "All recall observations (including procedure exclusions and misses)" in _TEMPLATE_SRC and "c.usage" in _TEMPLATE_SRC)
 check("RC-90: longitudinal rigor is a categorical strip — no interpolating connectors, no LIGHT default",
       "x1:bx(i-1),y1:ty[pk],x2:bx(i),y2:ty[k]" not in _TEMPLATE_SRC.replace(" ", "")
       and 'if(!ty[k])k="LIGHT"' not in _TEMPLATE_SRC.replace(" ", "")
@@ -2152,28 +2146,16 @@ check("RC-90: longitudinal rigor is a categorical strip — no interpolating con
       and "function graphLabel" in _TEMPLATE_SRC
       and "this project</span>" in _TEMPLATE_SRC
       and "trigger node</span>" not in _TEMPLATE_SRC)
-check("graph: Shared Consciousness caption + this-stack legend exist (split vs fallback)",
-      'id="net-cap"' in _TEMPLATE_SRC
-      and 'id="net-leg-stack"' in _TEMPLATE_SRC
-      and "Numbers are this-stack facts; lines are what some share." in _TEMPLATE_SRC
-      and "Older record — a line just means this project holds at least one shared fact." in _TEMPLATE_SRC)
-check("graph: split records size by shared, number by stack; legacy keeps facts + shared/3 spokes",
-      'sizeKey=split?"shared":"facts"' in _TEMPLATE_SRC.replace(" ", "")
-      and "Math.max(.8,Math.min(3,n/3))" in _TEMPLATE_SRC.replace(" ", "")
-      and "pn<=Math.max(spokeN[i],spokeN[j])" in _TEMPLATE_SRC.replace(" ", "")
-      and 'split?"shared":"facts"' in _TEMPLATE_SRC)
-check("graph: does not invent live topology at render (edges come from the cycle record)",
-      "stack_edges" in _TEMPLATE_SRC
-      and "global_facts" not in _TEMPLATE_SRC
-      and "function edgeN" in _TEMPLATE_SRC)
-check("graph: circle numbers don't steal hover (pointer-events none on the count text)",
-      "font-size:11px;pointer-events:none" in _TEMPLATE_SRC)
-check("graph: ring is seriated by this-stack affinity; baseline-only satellites trail + dim",
-      "ringOrder" in _TEMPLATE_SRC
-      and "function isBaseline" in _TEMPLATE_SRC
-      and "function bowCtrl" in _TEMPLATE_SRC
-      and 'S("path"' in _TEMPLATE_SRC
-      and 'opacity:base?".5"' in _TEMPLATE_SRC)
+check('network: identity and permission capture boundaries are explicit',
+      "Canonical identities were not captured" in _TEMPLATE_SRC and "Permission only" in _TEMPLATE_SRC)
+check('network: domain pages replace the global visual cutoff',
+      "all.slice(page*12,page*12+12)" in _TEMPLATE_SRC and "MAXN=16" not in _TEMPLATE_SRC)
+check('network: all topology comes from captured record fields',
+      "edges:rows(net.stack_edges)" in _TEMPLATE_SRC and "global_facts" not in _TEMPLATE_SRC)
+check('network: ranked SVG junctions support keyboard activation',
+      "function activate" in _TEMPLATE_SRC and "domain-junction" in _TEMPLATE_SRC)
+check('network: aggregate branches and domain expansion are explicit',
+      "aggregate-branch" in _TEMPLATE_SRC and "state.expanded" in _TEMPLATE_SRC)
 check("graph: prettyNode keeps a trailing version tail (Qwen-3-6, not 3-6)",
       "/^[0-9]+$/.test(p[i])" in _TEMPLATE_SRC)
 check("v0.1.90: registrar blocked persist cap is 8 (HTML no longer samples blocked cards)",
@@ -2283,10 +2265,8 @@ check("C1: archive row + footer treat an empty timestamp as missing ('—', neve
 check("C1: empty-ts rows sort last under EITHER direction (unknown recency is never 'newest')",
       'var ea=a[st.key]==="", eb=b[st.key]==="";' in _TEMPLATE_SRC
       and "if(ea||eb)return ea&&eb?0:(ea?1:-1)" in _TEMPLATE_SRC)
-check("M1: an ABSENT network block renders the honest not-captured fallback (never the false empty claim)",
-      'g(CUR,"network",null)' in _TEMPLATE_SRC and "hasNet" in _TEMPLATE_SRC
-      and _TEMPLATE_SRC.count("project list wasn’t captured this pass") >= 2
-      and '"no other projects sharing memory yet"' in _TEMPLATE_SRC)
+check('network: absent topology is explicitly not captured',
+      "No project nodes captured for this view." in _TEMPLATE_SRC and "Network data was not captured" in _TEMPLATE_SRC)
 check("M2: files[] renders as a dim label even with no diff sidecar (capped +N more)",
       "function fileLabel" in _TEMPLATE_SRC and "return esc(nm)+fl;" in _TEMPLATE_SRC
       and "rawFiles.length>3" in _TEMPLATE_SRC)
@@ -2296,10 +2276,10 @@ check("M3: ledger middle column is minmax(0,1fr), reasons wrap, citations trunca
       and "String(cit).slice(0,10)" in _TEMPLATE_SRC and 'title="\'+esc(cit)+\'"' in _TEMPLATE_SRC)
 check("m1: reg-counts appends the blocked tally (N blocked no longer hides under 'none this pass')",
       "num(WP.n_blocked" in _TEMPLATE_SRC and '" blocked"' in _TEMPLATE_SRC)
-check("m2: audit per-file operations + usage archive_reads render",
-      "a.operations" in _TEMPLATE_SRC and "per-file" in _TEMPLATE_SRC and "archive read" in _TEMPLATE_SRC)
-check("m3: per_fact and demotion-surfaced truncation carry the +N more counter",
-      "ufact.length>3" in _TEMPLATE_SRC and "surfStr.length>3" in _TEMPLATE_SRC)
+check('evidence: every observed file operation has diff access',
+      "ops.forEach(function(op)" in _TEMPLATE_SRC and "openDiff(key)" in _TEMPLATE_SRC and "c.usage" in _TEMPLATE_SRC)
+check('evidence: complete demotion and usage records have disclosures',
+      "All demotion evidence" in _TEMPLATE_SRC and "All recall observations" in _TEMPLATE_SRC)
 check("m4: the demotion verdict strips a duplicated 'eligible N' lead and tags counter-justified",
       r"/^\s*eligible\s+\d+" in _TEMPLATE_SRC and "counter-justified" in _TEMPLATE_SRC)
 check("n1: dream stanzas wrap instead of overflowing",
@@ -2310,13 +2290,8 @@ check("n2: flag/dl tints are theme tokens in every screen and print palette (no 
       and "background:var(--tint-ok)" in _TEMPLATE_SRC and "background:var(--tint-crit)" in _TEMPLATE_SRC
       and "background:var(--tint-accent)" in _TEMPLATE_SRC and "background:var(--tint-warn)" in _TEMPLATE_SRC
       and ".dl-plus{background:rgba" not in _TEMPLATE_SRC and ".flag{background:rgba" not in _TEMPLATE_SRC)
-check("n3: verification is glyph-free colored counts (no ✓ KPI, no +/~/− audit cells)",
-      "'<small> ✓</small>'" not in _TEMPLATE_SRC
-      and "'+'+num(d.created)" not in _TEMPLATE_SRC
-      and "'~'+num(d.modified)" not in _TEMPLATE_SRC
-      and "'−'+num(d.deleted)" not in _TEMPLATE_SRC
-      and "class=\"a-added\">'+count(\"created\")" in _TEMPLATE_SRC
-      and 'function count(k){return d[k]==null?"—":num(d[k]);}' in _TEMPLATE_SRC)
+check('evidence: missing verification values stay missing',
+      "Verification judgments" in _TEMPLATE_SRC and "value(v)" in _TEMPLATE_SRC and "Not captured" in _TEMPLATE_SRC)
 check("v0.1.44: SPARES maintenance/bootstrap (0 commits, 0 candidates, 0/0/0)",
       ms.procedure_integrity(_pi(0, 0))[0])
 # the downgrade dodge: HEAVY magnitude relabeled LIGHT, 0 tally -> still FIRES + surfaces the dodge
@@ -2499,9 +2474,9 @@ check("v0.1.54 render: null sleep/wake → ✗ gaps (str(None) truthiness fixed)
 
 # (3) the HTML surface: the template ships the gated panel (hidden by default; JS reveals) and
 # build_html embeds the dream data through the XSS-safe embed (round-trip via the escaped JSON).
-_tpl54 = (ROOT / "plugins" / "consolidate-memory" / "scripts" / "dashboard.template.html").read_text(encoding="utf-8")
-check("v0.1.54 html: template ships the dream panel, hidden by default",
-      'id="dream-blk" style="display:none"' in _tpl54 and 'id="dream-arc"' in _tpl54 and "Dream narrative" in _tpl54)
+_tpl54 = rhtml._load_template()
+check('dream: summary and captured voice preserve stable section hooks',
+      'id="dream-blk"' in _tpl54 and 'id="dream-arc"' in _tpl54 and "Read the complete dream" in _tpl54)
 _html54 = rhtml.build_html(cast(dict, _dr54), [], "2026-07-01T00:00:00+00:00")
 check("v0.1.54 html: build_html embeds the dream block (safe-embedded, round-trippable)",
       _json43.loads(_html54.split('id="cm-data">', 1)[1].split("</script>", 1)[0])["cycles"][-1]["dream"]["beats"][0] == "> *🌙 a*")
@@ -9816,8 +9791,7 @@ with _Env73() as _e_ex2:
           bool(_ex2.get("ok") is True and _ok_ex2 and _want_ex2))
 
 # ── 0.3.3 Wave 6: dashboard / SKILL honesty ──────────────────────────────────
-_tpl033 = (ROOT / "plugins" / "consolidate-memory" / "scripts"
-           / "dashboard.template.html").read_text(encoding="utf-8")
+_tpl033 = rhtml._load_template()
 check("0.3.3: HTML does not label unverifiable as dropped",
       "+unv+' dropped'" not in _tpl033 and "0 dropped" not in _tpl033
       and "unverifiable" in _tpl033)
@@ -9833,10 +9807,10 @@ _idx_meter033 = _tpl033.find('meter(el("m-index")')
 check("0.3.3: HTML index meter uses cycle budget_tokens",
       _idx_meter033 != -1 and "idxbM" in _tpl033[_idx_meter033 - 80:_idx_meter033 + 160]
       and 'g(CUR,"budget.index.budget_tokens")' in _tpl033)
-check("0.3.3: HTML caption gates on verification tally",
-      "(conf+corr+unv)>0" in _tpl033 and "Every recorded claim is checked" in _tpl033)
-check("0.3.3: HTML over-budget unindexed is not schema drift",
-      "index_mismatch) && !overIdx" in _tpl033)
+check('dream: six canonical phase labels require six valid captured beats',
+      "beats.length===6&&beats.every" in _tpl033 and "Outcome not captured" in _tpl033)
+check('evidence: schema detail remains available independently of summary',
+      "capturedTree(c.health)" in _tpl033)
 check("0.3.3: HTML dream identOf does not fall back to live",
       "identOf(CUR,false)" in _tpl033)
 check("0.3.3: HTML local-only when cross_project_allowed is false",
@@ -11641,8 +11615,7 @@ with _tf73.TemporaryDirectory() as _td_p4:
     # makes (g(CUR,..)/g(c,..)/g(r,..) first segments + direct CUR.* reads) must root in
     # _EMBED_KEYS or the injected _integrity/_outcome stamps (nested reads like e.action /
     # D.verdict / h.broken legitimately root elsewhere — they hang off whitelisted subtrees).
-    _tpl_p4 = (ROOT / "plugins" / "consolidate-memory" / "scripts"
-               / "dashboard.template.html").read_text(encoding="utf-8")
+    _tpl_p4 = rhtml._load_template()
     _roots_p4 = {_mm.rsplit('"', 2)[1].split(".")[0]
                  for _mm in _re.findall(r'g\((?:CUR|c|r),"(?:[a-z_]+)\.', _tpl_p4)}
     _roots_p4 |= {_mm for _mm in _re.findall(r'\bCUR\.([a-z_]+)', _tpl_p4)}
@@ -13166,20 +13139,11 @@ check("v0.4.13 hotfix: every test-side render_html.py invocation carries --no-op
       _smoke_src_ft.count("--no-open") >= _smoke_src_ft.count('"render_html.py"'))
 
 # (2) the template: the fleet path's gate + layers exist; the legacy strings stay
-_tmpl_ft = (ROOT / "plugins" / "consolidate-memory" / "scripts"
-            / "dashboard.template.html").read_text(encoding="utf-8")
-check("v0.4.13 topology: the template carries the NAMED gate, the chip strip, the "
-      "domain-lane and grant painters, and the honest fleet caption",
-      'net0.basis_scope==="fleet"' in _tmpl_ft
-      and "net-chips" in _tmpl_ft
-      and "Fleet view — domain lanes" in _tmpl_ft
-      and "grant-edge" in _tmpl_ft
-      and "domain-zone" in _tmpl_ft
-      and "permission only" in _tmpl_ft)
-check("v0.4.13 topology: the legacy painter strings survive untouched",
-      all(m in _tmpl_ft for m in ("Older record — a line just means",
-                                  "Numbers are this-stack facts; lines are what some share.",
-                                  "function bowCtrl", "function isBaseline", "function edgeN")))
+_tmpl_ft = rhtml._load_template()
+check('network: bundled ranked hierarchy and permission layers are present',
+      "NocturneNetwork" in _tmpl_ft and "domain-junction" in _tmpl_ft and "grant-edge" in _tmpl_ft)
+check('network: historical pairwise evidence stays inspectable',
+      "recorded pairwise connections" in _tmpl_ft and "fact names were not captured" in _tmpl_ft)
 
 # (3) the render probe: a 25-node fleet record renders with all markers + the
 # legacy strings (the spec's mandated pre-pin probe, now pinned)
@@ -13239,14 +13203,8 @@ with _tf73.TemporaryDirectory() as _td_rp:
         # roots is ambiguous about which record's archive is asserted)
         _arch_rp = _ctx_rp.native_memory_dir.parent / "dashboards" / "index.html"
         _html_rp = _arch_rp.read_text(encoding="utf-8") if _arch_rp.exists() else ""
-        check("v0.4.13 topology: the 25-node fleet record renders the layered view "
-              "(gate, chips, caption, full inventory) with the legacy strings intact",
-              _rp_run.returncode == 0 and bool(_html_rp)
-              and 'net0.basis_scope==="fleet"' in _html_rp
-              and "net-chips" in _html_rp
-              and "Fleet view — domain lanes" in _html_rp
-              and "more projects in the complete inventory below" in _html_rp
-              and "Older record — a line just means" in _html_rp)
+        check('network: a large archived fleet embeds every source node and the new hierarchy',
+              _rp_run.returncode == 0 and "NocturneNetwork" in _html_rp and "Project inventory" in _html_rp and "Canonical identities were not captured" in _html_rp and len(_json_xp.loads(_html_rp.split('id="cm-data">',1)[1].split("</script>",1)[0])["cycles"][-1]["network"]["nodes"]) == 25)
         # the ASCII dashboard's key-gated topology line
         (_proj_rp / "cycle.json").write_text(_json_xp.dumps(_rec_rp), encoding="utf-8")
         _dash_rp = _sp_r5.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
@@ -13277,8 +13235,7 @@ check("v0.4.13 topology: colliding labels disambiguate to UNIQUE labels "
       len({str(r["node"]) for r in _nodes_dis}) == 2)
 # HIGH-1: the trigger is FIRST in the emission (a sliced-away trigger made a
 # random peer the visual hub)
-_tpl_ft2 = open(str(ROOT / "plugins" / "consolidate-memory" / "scripts"
-                     / "dashboard.template.html"), encoding="utf-8").read()
+_tpl_ft2 = rhtml._load_template()
 check("v0.4.13 topology: the emitter sorts the trigger FIRST (the mis-hub fix)",
       "not t[1]" in open(str(ROOT / "plugins" / "consolidate-memory" / "scripts"
                             / "sync_global.py"), encoding="utf-8").read())
@@ -13288,11 +13245,8 @@ check("v0.4.13 topology: paintDream resets the fleet DOM (chips + ⌁ legend row
       and 'indexOf("⌁ ")===0' in _tpl_ft2)
 # Nocturne replaces angular hulls with explicit domain rectangles. A single domain
 # must still draw its container. The optional browser gate exercises the actual SVG.
-check("topology: each nonempty domain draws a lane, including a single-domain fleet",
-      'doms.forEach(function(dm)' in _tpl_ft2
-      and 'if(!rows.length)return;' in _tpl_ft2
-      and 'class:"domain-zone"' in _tpl_ft2
-      and 'if(!nodes.length)' in _tpl_ft2)
+check('network: every captured domain has a junction even without project rows',
+      "domains=state.kind==='fleet'?model.domains" in _tpl_ft2 and "domains.forEach(function(domain)" in _tpl_ft2)
 # MED-1: the held count is distinct PROJECTS — the same-display_name pair is
 # the discriminator (a dedupe-by-label count would read 1 of 2)
 import sqlite3 as _sq_hc
@@ -13326,17 +13280,8 @@ with _tf73.TemporaryDirectory() as _td_hc:
             _os73.environ["HOME"] = _oldh_hc
 
 # (4) the validator's non-vacuous fleet checks (MED-3)
-check("v0.4.13 topology: the validator catches a held>nodes universal and an "
-      "unknown edge label (warn, never crash)",
-      any("exceeds totals.nodes" in w for w in ms.validate_cycle_record({
-          "network": {"basis_scope": "fleet", "nodes": [{"node": "a"}],
-                      "totals": {"nodes": 1},
-                      "universal_facts": [{"held": 5}],
-                      "stack_edge_facts": [{"a": "a", "b": "ghost"}]}}))
-      and any("unknown node label" in w for w in ms.validate_cycle_record({
-          "network": {"basis_scope": "fleet", "nodes": [{"node": "a"}],
-                      "totals": {"nodes": 1},
-                      "stack_edge_facts": [{"a": "a", "b": "ghost"}]}})))
+check('network: registry holdings may exceed physical nodes; edge labels must resolve',
+      not ms.validate_cycle_record({"network":{"basis_scope":"fleet","nodes":[{"node":"a"}],"totals":{"nodes":1},"universal_facts":[{"held":5}]}}) and any("unknown node label" in w for w in ms.validate_cycle_record({"network":{"basis_scope":"fleet","nodes":[{"node":"a"}],"stack_edge_facts":[{"a":"a","b":"ghost"}]}})))
 
 # v0.4.10 dogfood: a foreign-domain record OVERWRITES a stale local manifest hash
 _bhf_gs = {"dup": "a" * 12}
@@ -13499,10 +13444,9 @@ check("v0.4.2 L2: a legacy distill record without `top` renders byte-identically
 # L2 (2026-09-03 hotfix): the template list moved from the header's counts line into the BODY
 # (dstl-top-list) — long command names were wrapping the two-column header across rows. The pin
 # holds BOTH directions: the body list exists AND the header no longer appends a top: appendix.
-_tpl_l2 = (ROOT / "plugins" / "consolidate-memory" / "scripts"
-           / "dashboard.template.html").read_text(encoding="utf-8")
+_tpl_l2 = rhtml._load_template()
 check("v0.4.2 L2: the template renders the top commands in the BODY list, never the header counts line",
-      "dstl-top-list" in _tpl_l2 and "dtop.slice(0,3)" in _tpl_l2
+      "dstl-top-list" in _tpl_l2 and "dtop.map" in _tpl_l2
       and 'el("dstl-counts").textContent=counts.join(" · ")' in _tpl_l2
       and '" · top: "' not in _tpl_l2)
 check("v0.4.6 exposure: the template renders the contract's OTHER distill evidence (chains + skill usage) "
@@ -13517,8 +13461,8 @@ check("v0.4.6 exposure: the template renders the contract's OTHER distill eviden
 check("v0.4.6 header coherence: every section header's note carries its tallies — This Pass names the "
       "derived outcome + decision count (it was cleared-and-never-set)",
       'el("pass-note").textContent=outcomeOf(CUR)' in _tpl_l2
-      and 'el("hist-note").textContent' in _tpl_l2 and 'el("ent-note").textContent' in _tpl_l2
-      and 'el("net-note").textContent' in _tpl_l2 and 'el("a-note").textContent' in _tpl_l2)
+      and "el('hist-note').textContent" in _tpl_l2 and 'el("ent-note").textContent' in _tpl_l2
+      and "el('net-note').textContent" in _tpl_l2 and 'el("a-note").textContent' in _tpl_l2)
 
 
 # ── v0.4.0 Phase-5: journal inventory keyset pagination ─────────────────────────
@@ -13724,6 +13668,14 @@ with _tf16.TemporaryDirectory() as _td16c:
           _r16.returncode == 2 and "Traceback" not in _r16.stdout + _r16.stderr
           and any(c["id"] == "sqlite-module" and c["status"] == "fail" for c in _env16["checks"])
           and any(c["id"] == "store-resolution" and c["status"] == "fail" for c in _env16["checks"]))
+    # the spec's promised SILENCE pin (audit A1): the beacon under the same no-sqlite3 shim
+    # stays silent (the resolution-failure boundary — never a false-green line)
+    _rb16 = _sp16.run([_sys16.executable, str(_BEACON16)],
+                      input=_json16.dumps({"cwd": str(ROOT)}),
+                      capture_output=True, text=True, timeout=15,
+                      env=_pf_env16(HOME=str(_h16pf), PYTHONPATH=str(_shim_sq16)))
+    check("preflight beacon: the no-sqlite3 env stays SILENT (the documented boundary, pinned)",
+          _rb16.returncode == 0 and _rb16.stdout == "")
     # the F1 reachability proof: sqlite3 present-but-old -> resolve SUCCEEDS -> the cache is
     # written via the mutator -> the beacon prints the one line (the cacheable FAIL class)
     (_shim_sq16 / "sqlite3.py").write_text(
@@ -13768,6 +13720,15 @@ with _tf16.TemporaryDirectory() as _td16c:
                       capture_output=True, text=True, timeout=15,
                       env=_pf_env16(HOME=str(_h16pf)))
     check("preflight beacon: garbage state -> silent rc 0", _rb16.returncode == 0 and _rb16.stdout == "")
+    # the isinstance guards (audit A1): a non-list `fails` is treated as absent — silence, never a crash
+    _st16.write_text(_json16.dumps({"preflight": {"at": _dt16.now(_tz16.utc).isoformat(timespec="seconds"),
+                                                  "fails": "not-a-list", "warns": []}}))
+    _rb16 = _sp16.run([_sys16.executable, str(_BEACON16)],
+                      input=_json16.dumps({"cwd": str(ROOT)}),
+                      capture_output=True, text=True, timeout=15,
+                      env=_pf_env16(HOME=str(_h16pf)))
+    check("preflight beacon: a non-list fails verdict is treated as absent -> silent rc 0",
+          _rb16.returncode == 0 and _rb16.stdout == "")
 
 # the beacon placement/precedence: the verdict read sits BETWEEN the auto-memory gate and the
 # cross-project gate (a FAIL supersedes absorption/unenrolled; disabled auto-memory stays silent)
@@ -13915,6 +13876,18 @@ if _os16.geteuid() != 0:
         finally:
             _h16i.chmod(0o700)
 
+# the read-only-combo pin (audit A2): a read-only flag + --json must NOT mint the native plane
+with _tf16.TemporaryDirectory() as _td16k:
+    _h16k = Path(_td16k) / "home"; _h16k.mkdir()
+    _proj16k = Path(_td16k) / "proj"; _proj16k.mkdir()
+    _r16 = _sp16.run([_sys16.executable,
+                      str(ROOT / "plugins" / "consolidate-memory" / "scripts" / "memory_status.py"),
+                      str(_proj16k), "--triage", "--json"],
+                     capture_output=True, text=True, timeout=60, env=_pf_env16(HOME=str(_h16k)))
+    _st16k = _h16k / ".claude" / "projects" / ms.slug_for(_proj16k) / "memory" / ".consolidation-state.json"
+    check("preflight mode-gate: --triage --json stays write-free (no state file, no minted native dir)",
+          _r16.returncode == 0 and not _st16k.exists())
+
 # the no-git discriminator (review F2): warns never render into the Phase-0 human report
 with _tf16.TemporaryDirectory() as _td16j:
     _h16j = Path(_td16j) / "home"; _h16j.mkdir()
@@ -13936,6 +13909,9 @@ check("preflight dashboard: legacy/clean records render byte-identically (no PRE
 import render_html as _rh16  # noqa: E402
 check("preflight render_html: 'preflight' is in the embed whitelist",
       "preflight" in _rh16._EMBED_KEYS)
+
+from network_identity import run as run_network_identity
+run_network_identity(check)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

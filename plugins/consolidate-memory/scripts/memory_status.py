@@ -291,6 +291,7 @@ class CrossProject(TypedDict, total=False):
 
 class NetworkNode(TypedDict, total=False):
     node: str
+    display_name: str       # registry label; never an identity or join key
     trigger: bool
     always_loaded_tokens: int
     mirror_index_tokens: int
@@ -334,6 +335,29 @@ class GroupLink(TypedDict, total=False):
     home_domain: str
     members_n: int          # membership derived at render from nodes[].groups
     facts: list[UniversalFact]   # the canonicals whose recipients: cite the group (capped)
+    facts_total: int        # addressed canonical facts before the eight-fact limit
+
+
+class FactHolding(TypedDict, total=False):
+    fact_id: str
+    name: str
+    domain: str
+    scope: str
+    holder_sids: list[str]  # observed physical presence, not registry holdings or delivery
+    held_n: int            # exact physical holder count before incidence limits
+
+
+class NetworkCapture(TypedDict, total=False):
+    basis: str
+    group_scope: str
+    facts_total: int
+    facts_emitted: int
+    holder_refs_total: int
+    holder_refs_emitted: int
+    incidence_bytes: int
+    unresolved_identities: int
+    read_failures: int
+    read_failure_scope: str
 
 
 class StackEdgeFacts(TypedDict, total=False):
@@ -354,6 +378,8 @@ class Network(TypedDict, total=False):
     universal_facts: list[UniversalFact]   # partial-holders first, capped 24
     group_links: list[GroupLink]           # the trigger's groups (--fleet=full: all)
     stack_edge_facts: list[StackEdgeFacts]
+    fact_holdings: list[FactHolding]
+    capture: NetworkCapture
 
 
 class Marker(TypedDict, total=False):
@@ -552,6 +578,20 @@ def _proposal_decline_rows(c: Mapping[str, Any]) -> dict:
 # zero-read evidence, keeping the demotion policy dormant exactly where usage data is richest (a
 # spec-gate finding). 40 matches _DISTILL_CAPS[0]'s scale; an upper-bound LOOSENING is additive-safe
 # (old ≤20-row records stay valid). Producer + this mirror + the smoke pins move together.
+_NETWORK_FACT_CAP = 120
+_NETWORK_HOLDER_CAP = 2000
+_NETWORK_INCIDENCE_BYTES = 65536
+
+
+def _network_incidence_bytes(rows: list) -> int:
+    """Conservative archive bytes, including the HTML embed's delimiter escaping.
+    Deliberately OVER-measures vs the real embed (ensure_ascii=True vs the embed's
+    ensure_ascii=False): the cap may trip marginally early on non-ASCII payloads, never
+    late — under-emission in the honest direction. Keep it conservative; a switch to
+    ensure_ascii=False measurement here would silently invert the margin (review L5)."""
+    return len(json.dumps(rows, ensure_ascii=True).replace("<", "\\u003c")
+               .replace(">", "\\u003e").replace("&", "\\u0026").encode("utf-8"))
+
 _USAGE_FACT_CAP = 40
 
 
@@ -1281,7 +1321,7 @@ def _frontmatter(text: str) -> dict:
             # mirror metadata; sync_global's carry logic and fleet_utility's window clock read them back
             # through THIS one parser, docs/evidence-clock-stamps.spec.md).
             m2 = re.match(r"\s+(scope|stacks|type|projects|node_type|originSessionId"
-                          r"|global_ref_since|global_ref_body|mirrored_at"
+                          r"|global_ref|global_ref_since|global_ref_body|mirrored_at"
                           r"|base_revision|canonical_revision|canonical_fact_id"
                           r"|canonical_domain|group|domain|sensitivity):\s*(.+)", line)
             if m2:
@@ -3328,16 +3368,54 @@ def validate_cycle_record(record: object) -> list[str]:
         if "basis_scope" in net and net.get("basis_scope") == "fleet":
             _nlabels = {str(n.get("node") or "") for n in net.get("nodes") or []
                         if isinstance(n, dict)}
-            for _lk in ("domains", "universal_facts", "group_links", "stack_edge_facts"):
+            for _lk in ("domains", "universal_facts", "group_links", "stack_edge_facts", "fact_holdings"):
                 if _lk in net and not isinstance(net[_lk], list):
                     warnings.append(f"network.{_lk} is not a list")
                 elif _lk in net and any(not isinstance(x, dict) for x in net[_lk]):
                     warnings.append(f"network.{_lk} contains a non-dict item")
-            _n_nodes = int((net.get("totals") or {}).get("nodes") or len(_nlabels) or 1)
-            for u in net.get("universal_facts") or []:
-                if isinstance(u, dict) and int(u.get("held") or 0) > _n_nodes:
-                    warnings.append("network.universal_facts[].held exceeds totals.nodes — "
-                                    "impossible from a holder-counting producer")
+            # universal_facts.held is registry evidence. Registry-only holders may
+            # exceed the physical node set; never compare these different bases.
+            incidence = net.get("fact_holdings")
+            if isinstance(incidence, list):
+                if len(incidence) > _NETWORK_FACT_CAP or _network_incidence_bytes(incidence) > _NETWORK_INCIDENCE_BYTES:
+                    warnings.append("network.fact_holdings exceeds incidence limits")
+                captured_nodes = net.get("nodes")
+                if not isinstance(captured_nodes, list):
+                    captured_nodes = []
+                sids = {n.get("sid") for n in captured_nodes
+                        if isinstance(n, dict) and isinstance(n.get("sid"), str)}
+                ids: set = set()
+                refs = 0
+                for fact in incidence:
+                    if not isinstance(fact, dict):
+                        continue
+                    fid = fact.get("fact_id")
+                    if not isinstance(fid, str) or not fid or fid in ids:
+                        warnings.append("network.fact_holdings has missing or duplicate fact identity")
+                    if isinstance(fid, str):
+                        ids.add(fid)
+                    holders = fact.get("holder_sids")
+                    if not isinstance(holders, list) or any(not isinstance(s, str) for s in holders):
+                        warnings.append("network.fact_holdings holder_sids is not a string list")
+                        continue
+                    refs += len(holders)
+                    if len(set(holders)) != len(holders) or any(s not in sids for s in holders):
+                        warnings.append("network.fact_holdings has duplicate or unknown holders")
+                    held = fact.get("held_n")
+                    if not isinstance(held, int) or held < len(holders):
+                        warnings.append("network.fact_holdings held_n is missing or below emitted holders")
+                if refs > _NETWORK_HOLDER_CAP:
+                    warnings.append("network.fact_holdings exceeds holder reference limit")
+            capture = net.get("capture")
+            if "capture" in net and not isinstance(capture, dict):
+                warnings.append("network.capture is not a dict")
+            elif isinstance(capture, dict):
+                for total_key, emitted_key in (("facts_total", "facts_emitted"),
+                                                ("holder_refs_total", "holder_refs_emitted")):
+                    total_n, emitted_n = capture.get(total_key), capture.get(emitted_key)
+                    if (not isinstance(total_n, int) or not isinstance(emitted_n, int)
+                            or not 0 <= emitted_n <= total_n):
+                        warnings.append("network.capture has invalid total/emitted counts")
             for e in net.get("stack_edge_facts") or []:
                 if isinstance(e, dict) and _nlabels and (
                         str(e.get("a") or "") not in _nlabels
@@ -3944,12 +4022,12 @@ def main() -> int:
         else:
             print(preflight.render_table(_pf_res))
         return 2 if _pf_res.get("fails") else 0
-    # v0.4.16 (review F5): seed the verdict only on the record-producing/report modes —
-    # read-only modes (--triage/--sections/--snapshot/--diffs/--audit) stay write-free and
-    # keep the audit path's "never the native plane" invariant.
-    if as_json or "--seed" in argv or not any(f in argv for f in
-                                              ("--triage", "--sections", "--snapshot",
-                                               "--diffs", "--audit")):
+    # v0.4.16 (review F5 + audit A2): seed the verdict only on the record-producing/report
+    # modes — read-only modes (--triage/--sections/--snapshot/--diffs/--audit) stay write-free
+    # and keep the audit path's "never the native plane" invariant. The read-only flags ALONE
+    # are the gate (a --triage --json combo must not smuggle a write through the --json clause).
+    if not any(f in argv for f in ("--triage", "--sections", "--snapshot",
+                                   "--diffs", "--audit")):
         try:
             import preflight
             _pf_res = preflight.run_for_project(project_dir)

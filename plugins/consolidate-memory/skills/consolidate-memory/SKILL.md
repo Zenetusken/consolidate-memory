@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.16** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.17** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -27,7 +27,7 @@ plus the production/polish/performance pass (stacks cache on the sync paths,
 warm-pull margin, journal scale, archive embed budget, store-honesty advisories,
 and the renderer coherence sweep, plus the v0.4.6 archive-display pass, plus the
 v0.4.7 cross-project audit pass, plus the v0.4.8 onboarding-command pass, plus
-the v0.4.10 group-scopes pass, plus the v0.4.11 group-lifecycle completion pass (cm group delete, the --repoint re-confirm affordance, the per-recipient pull-side recreation guard, the re-sourced frozen GC), plus the v0.4.14 Nocturne patch (the memory-observatory theme — Original/Light/System, readable network lanes, the dev-only Chromium regression job) and the v0.4.15 version-sweep hotfix, plus the v0.4.16 environment pre-flight (the deterministic no-happy-path checker — doctor embeds it, the beacon reads its cached verdict, Phase 0 seeds the record). Public 1.0 stays HOLD.
+the v0.4.10 group-scopes pass, plus the v0.4.11 group-lifecycle completion pass (cm group delete, the --repoint re-confirm affordance, the per-recipient pull-side recreation guard, the re-sourced frozen GC), plus the v0.4.14 Nocturne patch (the memory-observatory theme — Original/Light/System, readable network lanes, the dev-only Chromium regression job) and the v0.4.15 version-sweep hotfix, plus the v0.4.16 environment pre-flight (the deterministic no-happy-path checker — doctor embeds it, the beacon reads its cached verdict, Phase 0 seeds the record) and the v0.4.17 captured-network truth layer (physical holder identities in the fleet feed). Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
@@ -1378,14 +1378,14 @@ this once warned against; the dashboard remains the source of the figures.)
     "gc_removed": 0,   "_gc": "Phase 5: orphan mirrors reclaimed by sync_global --gc --apply"
   },
   "network": {
-    "_": "Phase 5: paste sync_global.py --tokens . --json --fleet verbatim here (per-node token cost + the stack-vs-universal split + the fleet-topology layers). shared = all mirrors; universal/stack split that mix; stack_edges = pairwise this-stack intersections the HTML graph draws; basis_scope fleet gates the layered diagram. Pre-split/domain-basis records omit the new keys — renderers fall back without inventing topology. --fleet=full widens group_links to every operator group (the share-safe default is the trigger's own).",
+    "_": "Phase 5: paste sync_global.py --tokens . --json --fleet verbatim here (per-node token cost + the stack-vs-universal split + the fleet-topology layers). shared = all mirrors; universal/stack use resolved canonical identities; fact_holdings is physical presence (120 facts / 2000 holder references / 64 KiB), universal_facts.held is registry evidence, group_links is permission, none establishes delivery; capture preserves pre-limit counts and unresolved identities; stack_edges = pairwise this-stack intersections the HTML graph draws; basis_scope fleet gates the layered diagram. Pre-split/domain-basis records omit the new keys — renderers fall back without inventing topology. --fleet=full widens group_links to every operator group (the share-safe default is the trigger's own).",
     "basis": "≈ chars/4 (heuristic estimate, not a tokenizer)",
     "node_def": "project stores holding ≥1 shared fact",
     "trigger": "<this project>",
     "nodes": [{"node": "...", "trigger": false, "always_loaded_tokens": 0,
                "mirror_index_tokens": 0, "recall_tokens": 0, "facts": 0, "shared": 0,
                "universal": 0, "stack": 0, "domain": "personal", "groups": ["fleet"],
-               "sid": "-home-..."}],
+               "sid": "-home-...", "display_name": "Example project"}],
     "stack_edges": [{"a": "...", "b": "...", "n": 0}],
     "totals": {"nodes": 0, "always_loaded_tokens": 0,
                "mirror_index_tokens": 0, "recall_tokens": 0,
@@ -1393,9 +1393,15 @@ this once warned against; the dashboard remains the source of the figures.)
     "basis_scope": "fleet",
     "domains": [{"domain": "personal"}],
     "universal_facts": [{"name": "...", "domain": "personal", "held": 3}],
-    "group_links": [{"group": "fleet", "home_domain": "personal", "members_n": 11,
+    "group_links": [{"group": "fleet", "home_domain": "personal", "members_n": 11, "facts_total": 1,
                      "facts": [{"name": "...", "domain": "personal", "held": 0}]}],
-    "stack_edge_facts": [{"a": "...", "b": "...", "names": ["..."]}]
+    "stack_edge_facts": [{"a": "...", "b": "...", "names": ["..."]}],
+    "fact_holdings": [{"fact_id": "...", "name": "...", "domain": "personal",
+                       "scope": "stack-general", "holder_sids": ["-home-..."], "held_n": 1}],
+    "capture": {"basis": "physical shared mirrors plus triggering store", "group_scope": "trigger",
+                "facts_total": 1, "facts_emitted": 1, "holder_refs_total": 1, "holder_refs_emitted": 1,
+                "incidence_bytes": 0, "unresolved_identities": 0, "read_failures": 0,
+                "read_failure_scope": "captured native fact files"}
   },
   "remediation": {
     "_": "v0.1.18: present ONLY when the index is OVER budget (the GATE); absent on a healthy store. v0.1.21: when standing_justified the gate is SUPPRESSED (required=false) until fact-count grows by Δ. v0.1.66: over_ceiling is a SIBLING signal (the hard ceiling, SJ-independent) — never a re-key of required. Seeded by Phase 0; pruned/achieved_* filled in Phase 5.",
