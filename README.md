@@ -27,7 +27,7 @@ One explicit **`dream`** produces a reviewed memory update and an inspectable re
 </p>
 
 > [!NOTE]
-> **Current release: v0.4.14.** Public 1.0 remains **HOLD**, with outstanding evidence
+> **Current release: v0.4.15.** Public 1.0 remains **HOLD**, with outstanding evidence
 > gates tracked in the [1.0 preflight](docs/1.0-preflight.spec.md).
 > See the [changelog](CHANGELOG.md) for shipped changes.
 
