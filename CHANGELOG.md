@@ -7,21 +7,39 @@ version changes on `main`.
 
 ## [0.4.13] — 2026-09-04
 
-**Patch** — the round-2 dogfood's hermeticity fix: the v0.4.0 registry-index
-smoke section ran against the REAL plugin-data registry (HOME was not
-redirected), so every suite run minted a `regproj` enrollment row into the
-operator's fleet registry — the measured origin of the 315-row residue — and
-the section's "fresh DB" pins were vacuous (they asserted indexes the real
+**Patch** — two arcs, one release cycle.
+
+**The round-2 dogfood's hermeticity fix:** the v0.4.0 registry-index smoke
+section ran against the REAL plugin-data registry (HOME was not redirected),
+so every suite run minted a `regproj` enrollment row into the operator's
+fleet registry — the measured origin of the 315-row residue — and the
+section's "fresh DB" pins were vacuous (they asserted indexes the real
 registry already had). The section now runs under the hermetic HOME+GLOBAL
-swap, and a new pin asserts the real registry gains ZERO rows from a suite
-run (1604 assertions; the fleet registry verified at 11 enrolled / 0 residue
-across repeated runs). The round-2 dogfood also re-verified the full 0.4.12
-surface live — the two-domain bridge (bare + namespaced delivery, partial
-revoke), the third-domain move clean-deleting a namespaced mirror, the
-cross-domain citation count, the live per-recipient pull guard (a fresh
-group rescued the member the stale one withheld), and the FROZEN stranding
-report + reclamation with its reason token — every topology lens shifting
-logically at each step. Backward-compatible → patch.
+swap, and a pin asserts the real registry gains ZERO rows from a suite run
+(the fleet registry verified at 11 enrolled / 0 residue across repeated
+runs). The round-2 dogfood also re-verified the full 0.4.12 surface live.
+
+**The fleet-topology UI** (design-of-record
+`docs/fleet-topology-ui.spec.md`, amend-3 — deep-dive → advisor → adversarial
+review-to-zero → per-PR review, finder re-verified; 1619 assertions): the
+HTML archive's Shared-Consciousness view draws ALL topology layers on one
+diagram, key-gated on `basis_scope: "fleet"` — tinted domain arcs (the
+VLAN/trust-boundary layer), dashed group hulls (the routed links), a
+universal-baseline chip strip with honest partial-holder counts, fleet-wide
+differential chords naming their binding facts, and a 16-node ring bound.
+The feed: `--tokens --fleet` emits the whole-installation node set
+(disk-first, registry-overlaid for domain/group attribution), per-node
+`domain`/`groups`/`sid`, label disambiguation (the sid is the collision-proof
+join key), `domains`/`universal_facts`/`group_links`/`stack_edge_facts` —
+with `--fleet` scoping group links to the trigger's own groups (the
+share-safe archive basis) and `--fleet=full` for the operator's complete
+view. Bare `--tokens` stays byte-shaped; legacy records render
+pixel-identically; the demo, ASCII line, SKILL schema, and validator updated
+in lockstep. Plus the repeated-window hotfix: `render_html`'s auto-open is
+now globally bounded per archive (a changing-anchor re-render loop can no
+longer spawn a window per iteration), `CM_NO_OPEN=1` is the kill-switch,
+and no TEST may open a browser (the suite's own render probe had been
+spawning a window every run). Backward-compatible → patch.
 
 ## [0.4.12] — 2026-09-04
 
