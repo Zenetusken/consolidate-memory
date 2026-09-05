@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.16** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.17** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -27,7 +27,7 @@ plus the production/polish/performance pass (stacks cache on the sync paths,
 warm-pull margin, journal scale, archive embed budget, store-honesty advisories,
 and the renderer coherence sweep, plus the v0.4.6 archive-display pass, plus the
 v0.4.7 cross-project audit pass, plus the v0.4.8 onboarding-command pass, plus
-the v0.4.10 group-scopes pass, plus the v0.4.11 group-lifecycle completion pass (cm group delete, the --repoint re-confirm affordance, the per-recipient pull-side recreation guard, the re-sourced frozen GC), plus the v0.4.14 Nocturne patch (the memory-observatory theme — Original/Light/System, readable network lanes, the dev-only Chromium regression job) and the v0.4.15 version-sweep hotfix, plus the v0.4.16 environment pre-flight (the deterministic no-happy-path checker — doctor embeds it, the beacon reads its cached verdict, Phase 0 seeds the record). Public 1.0 stays HOLD.
+the v0.4.10 group-scopes pass, plus the v0.4.11 group-lifecycle completion pass (cm group delete, the --repoint re-confirm affordance, the per-recipient pull-side recreation guard, the re-sourced frozen GC), plus the v0.4.14 Nocturne patch (the memory-observatory theme — Original/Light/System, readable network lanes, the dev-only Chromium regression job) and the v0.4.15 version-sweep hotfix, plus the v0.4.16 environment pre-flight (the deterministic no-happy-path checker — doctor embeds it, the beacon reads its cached verdict, Phase 0 seeds the record) and the v0.4.17 captured-network truth layer (physical holder identities in the fleet feed). Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
