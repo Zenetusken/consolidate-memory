@@ -3981,8 +3981,10 @@ def token_network(project_dir: Path, *, fleet: bool = False,
             row["groups"] = sorted({g for _pid in _pids
                                     for g in _pid_groups.get(_pid, [])})
             row["sid"] = sid
-            if _store_key in _display_names:
-                row["display_name"] = _display_names[_store_key]
+            # display_name is ALWAYS present (the schema contract): a registry miss
+            # degrades to the node label — never a missing key (macOS CI: the resolved
+            # key form must match _fleet_display_names' resolve() both sides)
+            row["display_name"] = _display_names.get(_store_key) or label
         _collected.append((store, is_trigger, row, stk_stems, sid))
         stack_by[label] = stk_stems
         uni_all |= uni_stems
