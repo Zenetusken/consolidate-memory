@@ -5,6 +5,24 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.13] — 2026-09-04
+
+**Patch** — the round-2 dogfood's hermeticity fix: the v0.4.0 registry-index
+smoke section ran against the REAL plugin-data registry (HOME was not
+redirected), so every suite run minted a `regproj` enrollment row into the
+operator's fleet registry — the measured origin of the 315-row residue — and
+the section's "fresh DB" pins were vacuous (they asserted indexes the real
+registry already had). The section now runs under the hermetic HOME+GLOBAL
+swap, and a new pin asserts the real registry gains ZERO rows from a suite
+run (1604 assertions; the fleet registry verified at 11 enrolled / 0 residue
+across repeated runs). The round-2 dogfood also re-verified the full 0.4.12
+surface live — the two-domain bridge (bare + namespaced delivery, partial
+revoke), the third-domain move clean-deleting a namespaced mirror, the
+cross-domain citation count, the live per-recipient pull guard (a fresh
+group rescued the member the stale one withheld), and the FROZEN stranding
+report + reclamation with its reason token — every topology lens shifting
+logically at each step. Backward-compatible → patch.
+
 ## [0.4.12] — 2026-09-04
 
 **Patch** — the 0.4.11 fleet dogfood's five live findings, all fixed + pinned
