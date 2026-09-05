@@ -198,3 +198,11 @@ and `--finalize` refuses when `main`'s version doesn't match the CHANGELOG or th
 release PR isn't merged. (This replaced a keyword-driven flow after a
 `minor`-vs-`patch` slip mis-shipped a version: the version is now structurally tied to the
 reviewed CHANGELOG, not a release-time judgment.)
+
+**Cycle closeout hygiene — `--finalize` ends the cycle, including the branch surface**
+(2026-09-05, the maintainer's standing rule). A completed release leaves NO stale
+branches or worktrees: after the tag + GH Release, the harness prunes every branch
+merged into `origin/main` on BOTH sides (zero unique content, reflog-recoverable),
+runs the worktree sweep, and reports the result (any surviving worktree is named,
+never silently deleted). The sweep also runs on an already-done re-run, so a past
+release gets it for free. Never leave the cycle's branches behind by hand.

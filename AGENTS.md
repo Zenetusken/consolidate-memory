@@ -226,6 +226,10 @@ design.
   stub, a dirty tree (untracked files count) or existing tag, and `--finalize` refuses
   a `main` whose version didn't land or an unmerged release PR. (`release.sh` is a
   local, gitignored maintainer artifact — never published.)
+- **Cycle closeout hygiene:** `--finalize` ends the cycle, including the branch
+  surface — every branch merged into `main` is pruned local + remote and worktrees
+  are swept (a surviving worktree is named, never silently deleted). A completed
+  cycle leaves `main` only.
 - **Stacked PR chains merge oldest-first:** retarget each PR's base to `main`
   (`gh pr edit N --base main`), wait on checks, then `gh pr merge N --merge`
   (merge commits — the repo convention). The v0.4.0 chain (#128→#154→…→#160)
