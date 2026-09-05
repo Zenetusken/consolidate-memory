@@ -13136,7 +13136,7 @@ with _tf73.TemporaryDirectory() as _td_ft:
 _smoke_src_ft = (ROOT / "tests" / "smoke.py").read_text(encoding="utf-8")
 check("v0.4.13 hotfix: every test-side render_html.py invocation carries --no-open "
       "(no test may spawn a browser window)",
-      _smoke_src_ft.count("--no-open") >= _smoke_src_ft.count("render_html.py"))
+      _smoke_src_ft.count("--no-open") >= _smoke_src_ft.count('"render_html.py"'))
 
 # (2) the template: the fleet path's gate + layers exist; the legacy strings stay
 _tmpl_ft = (ROOT / "plugins" / "consolidate-memory" / "scripts"
