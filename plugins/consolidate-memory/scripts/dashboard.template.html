@@ -689,6 +689,10 @@
   function paintDream(){
     clearEl("traj"); clearEl("trend"); clearEl("rigor"); clearEl("net");
     var tw=el("traj-warn"); if(tw){tw.style.display="none"; tw.innerHTML="";}
+    // review HIGH-2: the fleet layers' DOM must reset with every dream — a
+    // legacy dream must never show the previous fleet dream's chips/hull rows.
+    var chips0=el("net-chips"); if(chips0){chips0.style.display="none"; chips0.textContent="";}
+    var leg0=el("net-legend"); if(leg0){Array.prototype.slice.call(leg0.children).forEach(function(c){if(c&&c.textContent&&c.textContent.indexOf("⌁ ")===0)leg0.removeChild(c);});}
     ["dream-blk","distill-blk","demotion-blk","registrar-blk","xp-strip","m-global","dstl-top","dstl-chains-head","dstl-chains-list","dstl-used-head","dstl-used-list"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});
     PROJ=g(CUR,"project",DATA.project||"consolidate-memory");
     el("h-proj").textContent=PROJ; el("boot-proj").textContent=PROJ;
@@ -1208,7 +1212,14 @@
       var mem=domSpan[dm];if(!mem||!mem.length)return;
       var a0=(ring.indexOf(mem[0])/ring.length)*2*Math.PI-Math.PI/2;
       var a1=((ring.indexOf(mem[mem.length-1])+1)/ring.length)*2*Math.PI-Math.PI/2;
-      svg.appendChild(S("path",{d:arcPath(a0,a1,rad+18),fill:"none",stroke:tints[di%tints.length],"stroke-width":4,"stroke-opacity":".35","stroke-linecap":"round"}));
+      // review MED-3: a single domain spans the whole ring — the endpoints
+      // coincide and an SVG arc with coincident endpoints renders NOTHING.
+      // The full-ring case gets a circle instead.
+      if(Math.abs((a1-a0)-(2*Math.PI))<0.01){
+        svg.appendChild(S("circle",{cx:cx,cy:cy,r:rad+18,fill:"none",stroke:tints[di%tints.length],"stroke-width":4,"stroke-opacity":".35"}));
+      } else {
+        svg.appendChild(S("path",{d:arcPath(a0,a1,rad+18),fill:"none",stroke:tints[di%tints.length],"stroke-width":4,"stroke-opacity":".35","stroke-linecap":"round"}));
+      }
       var am=(a0+a1)/2,lx=cx+(rad+32)*Math.cos(am),ly=cy+(rad+32)*Math.sin(am);
       var lt=S("text",{x:lx,y:ly+4,"text-anchor":"middle",class:"axt d",style:"font-size:9px"});
       lt.textContent=dm;svg.appendChild(lt);
@@ -1236,6 +1247,13 @@
       if(legend){var sp=document.createElement("span");sp.style.cssText="color:var(--data);font-size:11px";sp.textContent="⌁ "+gn;legend.appendChild(sp);}
     });
     // spokes + peer chords (the differential layer, fleet-wide)
+    // review MED-2: the chord hover names the binding facts from
+    // stack_edge_facts (the drawn-chord set, mirrored at emission).
+    var efLookup={};
+    (Array.isArray(net.stack_edge_facts)?net.stack_edge_facts:[]).forEach(function(ef){
+      efLookup[String(ef.a)+"|"+String(ef.b)]=(ef.names||[]).slice(0,5);
+      efLookup[String(ef.b)+"|"+String(ef.a)]=(ef.names||[]).slice(0,5);
+    });
     var drawn={};nodes.forEach(function(d){drawn[String(d.node||"")]=true;});
     for(var i2=0;i2<N;i2++){
       if(i2===trig)continue;
@@ -1246,7 +1264,13 @@
         var mx=(pos[i2][0]+pos[j2][0])/2,my=(pos[i2][1]+pos[j2][1])/2;
         var vx=mx-cx,vy=my-cy,vl=Math.sqrt(vx*vx+vy*vy)||1;
         var bx=cx+vx/vl*(rad+16),by=cy+vy/vl*(rad+16);
-        svg.appendChild(S("path",{d:"M "+pos[i2][0]+" "+pos[i2][1]+" Q "+bx+" "+by+" "+pos[j2][0]+" "+pos[j2][1],fill:"none",stroke:"var(--data)","stroke-width":Math.max(.7,Math.min(2.6,pn*0.28)),"stroke-opacity":".4","stroke-linecap":"round"}));
+        var chordPath=S("path",{d:"M "+pos[i2][0]+" "+pos[i2][1]+" Q "+bx+" "+by+" "+pos[j2][0]+" "+pos[j2][1],fill:"none",stroke:"var(--data)","stroke-width":Math.max(.7,Math.min(2.6,pn*0.28)),"stroke-opacity":".4","stroke-linecap":"round"});
+        var efNames=efLookup[String(nodes[i2].node||"")+"|"+String(nodes[j2].node||"")];
+        if(efNames&&efNames.length){
+          chordPath.addEventListener("mousemove",tip(String(nodes[i2].node||"")+" ⟷ "+String(nodes[j2].node||"")+" · "+efNames.join(", ")));
+          chordPath.addEventListener("mouseleave",untip);
+        }
+        svg.appendChild(chordPath);
       }
     }
     nodes.forEach(function(d,i){if(i===trig)return;var n2=spokes[i]||0;if(n2<=0)return;

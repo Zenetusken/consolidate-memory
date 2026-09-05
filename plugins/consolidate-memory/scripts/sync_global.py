@@ -184,7 +184,7 @@ def _is_fixture_store(p: Path) -> bool:
     return any(_pat in name for _pat in _FIXTURE_SLUG_PATTERNS)
 
 
-def iter_native_stores(*, include_fixture: bool = False) -> "list[Path]":
+def iter_native_stores(*, allow_fixture_paths: bool = False) -> "list[Path]":
     """Default `projects/*/memory` UNION registry `native_memory_dir`.
 
     Custom autoMemoryDirectory stores are invisible to a projects-tree walk;
@@ -193,10 +193,10 @@ def iter_native_stores(*, include_fixture: bool = False) -> "list[Path]":
 
     R2 (v0.4.2): fixture stores are EXCLUDED (marker or pinned slug patterns) —
     a dim stderr line keeps the exclusion visible in the consumer's output.
-    `include_fixture=True` lifts the exclusion — the HERMETIC smoke fixtures
-    only (every /tmp-derived slug matches the -tmp- pattern, so a fleet
-    fixture would otherwise enumerate zero sibling stores; MED-2)."""
-    _skip_fixture = not include_fixture
+    `allow_fixture_paths=True` lifts the exclusion — the HERMETIC smoke
+    fixtures only (every /tmp-derived slug matches the -tmp- pattern, so a
+    fleet fixture would otherwise enumerate zero sibling stores; MED-2)."""
+    _skip_fixture = not allow_fixture_paths
     seen: set = set()
     out: list = []
     skipped = 0
@@ -3607,7 +3607,7 @@ def _network_nodes(*, allow_fixture_paths: bool = False) -> list[Path]:
     (derived from provenance basenames, which can't be inverted to a store path) — the
     two views can diverge (names vs slugs); --network = topology, --tokens = cost."""
     nodes: list[Path] = []
-    for store in iter_native_stores(include_fixture=allow_fixture_paths):
+    for store in iter_native_stores(allow_fixture_paths=allow_fixture_paths):
         has_mirror = False
         try:
             files = store.glob("*.md")
@@ -3674,6 +3674,28 @@ def _fleet_overlay(project_dir: Path) -> tuple:
     return _overlay, _trig_mem, _all_groups
 
 
+def _registry_holder_count(ctx, stem: str, fact_dom: str) -> int:
+    """DISTINCT holder projects for a canonical (review MED-1) — the honesty
+    datum for universal_facts.held. Labels dedupe only for DISPLAY; the count
+    must not merge two same-basename checkouts."""
+    try:
+        from control_plane import connect_if_exists as _cife_hc, db_path as _dbp_hc, \
+            stable_fact_id as _sfid_hc
+        _conn = _cife_hc(_dbp_hc(ctx))
+        if _conn is None:
+            return 0
+        try:
+            _fid = _sfid_hc(fact_dom or getattr(ctx, "domain_id", "") or "unknown", stem)
+            _r = _conn.execute(
+                "SELECT COUNT(DISTINCT h.project_id) AS n FROM holders h "
+                "WHERE h.fact_id=?", (_fid,)).fetchone()
+            return int(_r["n"]) if _r is not None else 0
+        finally:
+            _conn.close()
+    except Exception:
+        return 0
+
+
 def _fleet_group_rows(project_dir: Path) -> dict:
     """group name → {home_domain, member_project_ids} — every operator-granted
     group (the routed-link layer). Degrades to {} without a registry."""
@@ -3703,8 +3725,9 @@ def _fleet_group_rows(project_dir: Path) -> dict:
 def _disambiguate_labels(nodes: list, sids: dict) -> None:
     """HIGH-1 (fleet-topology-ui spec): the 24-char truncated label is
     non-injective — two stores can collide on one label and silently merge.
-    Colliding labels get a 3-char head suffix from their full slug (the join
-    key stays the sid; the display label just becomes unique)."""
+    Colliding labels get a head suffix from THAT ROW'S OWN sid (review
+    BLOCKS-1: the first-wins map gave every collider the same suffix, so the
+    set stayed non-unique), extended while any collision remains."""
     counts: dict = {}
     for row in nodes:
         counts[str(row.get("node") or "")] = counts.get(str(row.get("node") or ""), 0) + 1
@@ -3712,9 +3735,24 @@ def _disambiguate_labels(nodes: list, sids: dict) -> None:
         _lab = str(row.get("node") or "")
         if counts.get(_lab, 0) <= 1:
             continue
-        _sid = sids.get(_lab, "")
-        _head = _sane(_sid.lstrip("-"))[:3] or "x"
+        _sid = str(row.get("sid") or "") or sids.get(_lab, "")   # the ROW's own sid
+        # a short digest, not the head — two colliding sids often SHARE the
+        # head (both "-home-you-…"), and the suffix must differ where the
+        # sids do (review BLOCKS-1's follow-up; the pin caught the head form).
+        _head = hashlib.sha1(_sid.encode("utf-8")).hexdigest()[:4]
         row["node"] = f"{_lab}·{_head}"
+    # assert uniqueness (the spec's contract): extend the suffix while any
+    # collision remains — pathological only, but the promise is unconditional.
+    _again: dict = {}
+    for row in nodes:
+        _l2 = str(row.get("node") or "")
+        _again[_l2] = _again.get(_l2, 0) + 1
+    for row in nodes:
+        _l2 = str(row.get("node") or "")
+        if _again.get(_l2, 0) <= 1:
+            continue
+        _sid = str(row.get("sid") or "") or _l2
+        row["node"] = f"{_l2}#{hashlib.sha1(_sid.encode('utf-8')).hexdigest()[:4]}"
 
 
 def token_network(project_dir: Path, *, fleet: bool = False,
@@ -3809,6 +3847,10 @@ def token_network(project_dir: Path, *, fleet: bool = False,
         rc_total += m["recall_tokens"]
         mir_total += m["mirror_index_tokens"]
     if fleet:
+        # review HIGH-1: the trigger must be FIRST — the painter draws the
+        # first 16 rows with index 0 as the hub, and a trigger sliced away
+        # would make a random peer the visual center.
+        _collected.sort(key=lambda t: (not t[1], str(t[2].get("node") or "")))
         # HIGH-1: disambiguate colliding labels BEFORE the edge join keys are
         # built — two stores must never merge into one label in stack_edges.
         _disambiguate_labels([r for _, _, r, _, _ in _collected], _label_sids)
@@ -3843,7 +3885,6 @@ def _fleet_layers(project_dir: Path, ctx, result: dict, stack_by: dict,
     emission-side capped (§3 BLOCK-2)."""
     from fact_schema import _parse_flow_list as _pfl_fl
     _nodes = result["nodes"]
-    _sids = {str(r.get("sid") or ""): r for r in _nodes}
     _all_recs = _all_domain_records()
     # domains: the VLAN layer — names only; membership is DERIVED at render
     # time from the per-node `domain` attribution (the record stays DRY —
@@ -3856,7 +3897,11 @@ def _fleet_layers(project_dir: Path, ctx, result: dict, stack_by: dict,
     for n, fm, _t, _p in _all_recs:
         if str(fm.get("scope") or "") != "user-global":
             continue
-        _held = len(_holder_labels(fm, stem=n, ctx=ctx))
+        # review MED-1: count DISTINCT holder PROJECTS — _holder_labels
+        # dedupes by display_name, so two same-basename checkouts holding one
+        # canonical would read held=1 of 2 (the exact duplicate population
+        # this layer exists to surface).
+        _held = _registry_holder_count(ctx, n, str(fm.get("domain") or ""))
         _uni_rows.append({"name": n, "domain": str(fm.get("domain") or ""),
                           "held": _held})
     _uni_rows.sort(key=lambda u: (int(u["held"]), str(u["name"])))
@@ -3872,9 +3917,14 @@ def _fleet_layers(project_dir: Path, ctx, result: dict, stack_by: dict,
             _spoke[e["b"]] = int(e["n"])
         elif e["b"] == _trig:
             _spoke[e["a"]] = int(e["n"])
+    # review MED-2: the painter draws chords only among the first 16 nodes
+    # (the trigger first) — mirror that slice so the emitted set IS the
+    # drawn-chord set, exactly the painter's preconditions.
+    _drawn_labels = {str(r.get("node") or "") for r in _nodes[:16]}
     stack_edge_facts = []
     for e in _edges:
-        if e["a"] == _trig or e["b"] == _trig:
+        if (e["a"] not in _drawn_labels or e["b"] not in _drawn_labels
+                or e["a"] == _trig or e["b"] == _trig):
             continue
         _pn = int(e["n"])
         if _pn <= max(_spoke.get(e["a"], 0), _spoke.get(e["b"], 0)):
@@ -5025,10 +5075,6 @@ def _dispatch() -> int:
         return 2
     if args and args[0] == "--tokens":
         _fleet_on = "--fleet" in args or "--fleet=full" in args
-        if _fleet_on and args[0] != "--tokens":
-            print("usage: --fleet is a --tokens-only flag (refusing — a flag must "
-                  "never silently no-op)", file=sys.stderr)
-            return 2
         return token_report(project_dir, "--json" in args, fleet=_fleet_on,
                             fleet_full="--fleet=full" in args)
     if args and args[0] == "--utility":   # v0.1.67 (Phase C): fleet usage evidence (READ-ONLY, like --list)

@@ -988,8 +988,7 @@ def _demo_record() -> ms.CycleRecord:
                     "universal_facts": [{"name": "advisor-pass", "domain": "personal", "held": 2},
                                         {"name": "docs-eval", "domain": "docs", "held": 1}],
                     "group_links": [{"group": "fleet", "home_domain": "personal", "members_n": 2,
-                                     "facts": [{"name": "advisor-pass", "domain": "personal", "held": 2}]}],
-                    "stack_edge_facts": [{"a": "acme-api", "b": "Doc_Flo", "names": ["x"]}]},
+                                     "facts": [{"name": "advisor-pass", "domain": "personal", "held": 2}]}]},
         "marker": {"commit": "b6d37b6e9f01", "timestamp": "2026-06-16T11:40:00Z"},
     }
 

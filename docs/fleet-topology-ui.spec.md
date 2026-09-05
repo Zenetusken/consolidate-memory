@@ -89,12 +89,12 @@ differential edges, dead-mind flags) never reaches the record.
     node set (cross-domain chords return), plus `{a,b,names:[stems]}`? No —
     keep `{a,b,n}` byte-compatible and add a parallel `stack_edge_facts`:
     `[{a,b,names:[…]}]` so hover can name the binding facts.
-  - `group_links`: `[{group, home_domain, members:[node…], facts:[{name,
-    domain}]}]` — the routed-link layer: each operator-granted group, its
-    members, and the canonicals whose `recipients:` cite it (the bridge's
-    cross-domain carriers).
-  - `domains`: `[{domain, members:[node…]}]` — the VLAN layer (nodes with no
-    shared facts still appear here so the domain's membership is visible).
+  - `group_links`: `[{group, home_domain, members_n, facts:[{name, domain,
+    held}]}]` — the routed-link layer: each operator-granted group's identity
+    and the canonicals whose `recipients:` cite it (the bridge's cross-domain
+    carriers); membership is derived at render from the per-node `groups`.
+  - `domains`: `[{domain}]` — the VLAN layer's names; membership is DERIVED
+    at render from the per-node `domain` attribution (the record stays DRY).
 - **The emission surface (BLOCK-1 — the scoping contradiction is decided at
   the emitter).** `sync_global.py --tokens . --json` gains a `--fleet` flag
   (B2: a distinct name — `--all-domains` already means something else on
@@ -135,7 +135,8 @@ dimming + seriation). New:
   its member nodes — crossing domain arcs IS the routed link — labeled with
   the group name; hover lists its facts (capped). Hulls cap at 6 with the
   overflow collapsing to legend rows (C3, the registrar's "+N more" idiom);
-  single-domain groups render as a pill beside their arc. `group_links`
+  single-domain groups render as a dashed marker beside their member node
+  plus a legend row. `group_links`
   covers the TRIGGER project's own groups by default (D1: the bridges that
   can carry this project's facts — the view that matters, and its exposure
   ≈ what this project could pull anyway); `--fleet` adds the operator's full
@@ -232,8 +233,8 @@ facts) — never before legacy keys are absent (the absent-block pin stays).
   corrected — fixture mode is in-process-only). `validate_cycle_record`
   gains NON-VACUOUS checks (MED-3): item-level dict shapes for the four
   lists, `universal_facts[].held ≤ totals.nodes`, and the strongest —
-  every `members` entry and every edge-fact name RESOLVES to a
-  `nodes[].sid` (A2/HIGH-1 enforced at runtime against emitter bugs and
+  every `stack_edge_facts` pair RESOLVES to a drawn `nodes[].node` label
+  (the A2/HIGH-1 contract enforced at runtime against emitter bugs and
   model hand-edits). The `--demo` record showcases the new layers (F3).
 
 ## 5. Ship shape
