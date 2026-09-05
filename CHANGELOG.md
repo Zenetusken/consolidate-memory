@@ -5,6 +5,40 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.12] — 2026-09-04
+
+**Patch** — the 0.4.11 fleet dogfood's five live findings, all fixed + pinned
+(1603 assertions):
+
+- **The cross-domain holder fid** — `_holder_labels` resolved registry holders
+  under the CONTEXT's domain, so a group-bridged fact reported 1 holder where
+  10 existed, and `--network --all-domains` passed no ctx at all (0 minds
+  holding 4 live canonicals). Holders now resolve under the FACT's domain, and
+  the all-domains lens resolves a ctx for the registry (Markdown `projects:`
+  stays the migration-only fallback). Measured live: `python-ruff-mypy-gate`
+  now reports its true 10 holders.
+- **The registry-only de-registration surface** — 315 enrolled rows left by a
+  registration test had NO local store and were unreachable through any CLI
+  (`unenroll` resolves from a path). `cm project unenroll --project-id PID…`
+  (one flag, many ids, plan-first, `--confirm unenroll-registry`, one journaled
+  transact with a holder sweep — `holder_delete` gains the symmetric
+  project-wide wildcard). The fleet's 315 residue rows were de-registered
+  through it; the census now reads the real 11.
+- **The move/unenroll clean-vs-edited** — a move quarantined EVERY mirror
+  whose canonical the destination domain lacks (verbatim replicas, measured
+  live), and a namespaced mirror missed its canonical through the bare
+  file-name lookup. The revoke now compares against the mirror's OWN canonical
+  (fact `name` + `canonical_domain`, the group-revoke precedent).
+- **`move-domain`'s documented form** — the flag-first help form failed
+  argparse; the `cm` help is now positional-first with the true confirm phrase
+  (`move-<from>-to-<name>`).
+
+Design note: the dogfood also verified the full 0.4.11 lifecycle end-to-end on
+the live fleet (scratch group create → add → narrowed delivery → populated
+refusal → plan-first citation → delete → recreate → stale refusal → `--repoint`
+→ teardown; a repo moved personal↔tools with clean mirror revoke/re-pull; the
+leftover `admins` group deleted). Backward-compatible → patch.
+
 ## [0.4.11] — 2026-09-04
 
 **Patch** — group-lifecycle completion: the three gaps the 0.4.10 fleet

@@ -2442,8 +2442,13 @@ def apply_provenance(text: str, project: str) -> str:
     return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
-def _registry_holder_labels(ctx, stem: str):
-    """Tri-state: None = registry unavailable, [] = authoritative zero, [..] = labels."""
+def _registry_holder_labels(ctx, stem: str, fact_dom: str = ""):
+    """Tri-state: None = registry unavailable, [] = authoritative zero, [..] = labels.
+
+    `fact_dom` is the FACT's own domain — the holders table stores the fid under
+    the fact's domain at write time, and a cross-domain fact (group bridge) held
+    from ctx's store would otherwise resolve under the WRONG fid (the fleet
+    dogfood measured it: 1 holder reported where 10 existed)."""
     if ctx is None or not stem:
         return None
     try:
@@ -2452,7 +2457,7 @@ def _registry_holder_labels(ctx, stem: str):
         if conn is None:
             return None
         try:
-            fid = stable_fact_id(getattr(ctx, "domain_id", "") or "unknown", stem)
+            fid = stable_fact_id(fact_dom or getattr(ctx, "domain_id", "") or "unknown", stem)
             rows = conn.execute(
                 "SELECT COALESCE(p.display_name, h.project_id) AS label "
                 "FROM holders h LEFT JOIN projects p ON p.project_id = h.project_id "
@@ -2479,7 +2484,9 @@ def _holder_labels(fm: dict, *, stem: str = "", ctx=None) -> list:
     Unavailable registry → Markdown `projects:` as migration input only.
     Authoritative zero (`[]`) does not fall through to Markdown.
     """
-    got = _registry_holder_labels(ctx, stem)
+    from domain_policy import fact_domain
+    _fdom = fact_domain(fm) or (getattr(ctx, "domain_id", "") if ctx is not None else "")
+    got = _registry_holder_labels(ctx, stem, _fdom)
     if got is None:
         return _holders(fm)
     return got
@@ -2613,6 +2620,15 @@ def network(project_dir: "Path | None" = None, *, all_domains: bool = False) -> 
     footnote; the flag is display-only (see _mind_unresolved — report, never prune)."""
     if all_domains:
         facts = [(s, fm, t) for s, fm, t, _p in _all_domain_records()]
+        # the fleet dogfood: all-domains passed ctx=None, so _holder_labels fell
+        # back to the RETIRED Markdown `projects:` and reported 0 minds holding
+        # 4 live canonicals. Resolve ANY enrolled ctx (cwd) — the registry's
+        # holders table is global, the ctx only supplies the db path.
+        try:
+            from store_context import resolve_store as _rs_net
+            _ctx_net = _rs_net(Path.cwd())
+        except Exception:
+            _ctx_net = None
     elif project_dir is None:
         facts = []
     else:

@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.11** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.12** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,

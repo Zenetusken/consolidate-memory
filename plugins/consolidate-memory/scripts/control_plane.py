@@ -1044,6 +1044,8 @@ def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
             pid = str(op.get("project_id") or "")
             if fid and pid == "*":
                 conn.execute("DELETE FROM holders WHERE fact_id=?", (fid,))
+            elif fid == "*" and pid:   # the registry-unenroll sweep: every row the project held
+                conn.execute("DELETE FROM holders WHERE project_id=?", (pid,))
             elif fid and pid:
                 conn.execute("DELETE FROM holders WHERE fact_id=? AND project_id=?",
                              (fid, pid))
