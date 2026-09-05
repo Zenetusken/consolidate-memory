@@ -18,14 +18,19 @@ from store_context import (StoreContext, WriteRefused, assert_writable, doctor_d
 
 
 def _lookup_canonical_text(ctx: StoreContext, fm: dict, fname: str) -> Optional[str]:
-    """Named-domain canonical only (never leftover ~/.claude/memory)."""
+    """Named-domain canonical only (never leftover ~/.claude/memory). The FILE
+    name joins through safe_child too (security pass MED): `fname` derives from
+    the mirror's frontmatter `name:` — untrusted shared-store content — and an
+    absolute or `..`-bearing value would escape the facts dir (or read an
+    arbitrary local *.md and flip the clean-vs-edited verdict)."""
     from identifiers import IdentifierRefused, safe_child, validate_domain_id
     from sync_global import _safe_read_text
     droot = ctx.config_root / "consolidate-memory" / "domains"
     cdom = str(fm.get("canonical_domain") or fm.get("domain") or "").strip()
     if cdom and cdom != "unknown":
         try:
-            cp = safe_child(droot, validate_domain_id(cdom)) / "facts" / fname
+            fdir = safe_child(droot, validate_domain_id(cdom)) / "facts"
+            cp = safe_child(fdir, fname)
             text = _safe_read_text(cp)
             if text is not None:
                 return text
@@ -2673,25 +2678,67 @@ def cmd_project(args: argparse.Namespace) -> int:
             if args.project_cmd == "unenroll" and args.project_id:
                 # registry-only rows (no local store — the phantom-path's CLI form):
                 # one plan over the ids, one confirm phrase, one journaled transact.
-                ids = [str(i) for i in args.project_id]
+                # Security pass: shape-validate EVERY id (the p_<hex> grammar —
+                # anything else is refused before it reaches SQL or an echo), cap
+                # the batch (the IN-list is bounded), and echo with repr() so a
+                # hostile byte string can never inject terminal escapes.
+                from identifiers import IdentifierRefused, validate_project_id
+                if len(args.project_id) > 1000:
+                    print(f"project unenroll: {len(args.project_id)} ids — refuse "
+                          "(cap 1000; batch the de-registrations)", file=sys.stderr)
+                    return 2
+                ids: list = []
+                for _raw in args.project_id:
+                    try:
+                        ids.append(validate_project_id(str(_raw)))
+                    except IdentifierRefused as _e40i:
+                        print(f"project unenroll: {_e40i}", file=sys.stderr)
+                        return 2
                 rows = []
                 if ro is not None:
                     _ph = ",".join("?" * len(ids))
                     rows = ro.execute(
-                        f"SELECT project_id, domain_id, status FROM projects "
+                        f"SELECT project_id, domain_id, status, native_memory_dir FROM projects "
                         f"WHERE project_id IN ({_ph})", tuple(ids)).fetchall()
                     _found = {str(r["project_id"]) for r in rows}
                     for _pid in ids:
                         if _pid not in _found:
-                            print(f"project unenroll: unknown project_id {_pid}", file=sys.stderr)
+                            print(f"project unenroll: unknown project_id {_pid!r}", file=sys.stderr)
                             return 2
                     _enr = [r for r in rows if str(r["status"]) == "enrolled"]
+                    if not _enr:
+                        print("project unenroll: nothing to do — no enrolled row among the ids")
+                        return 0
                     _doms = sorted({str(r["domain_id"]) for r in _enr})
+                    # review 2: a target row that DOES have a local store with
+                    # mirror files must go through the per-project unenroll (which
+                    # revokes them) — a registry-only flip would strand the
+                    # mirrors on disk forever (their canonical is alive, so gc
+                    # never reclaims them). Refuse fail-closed, naming the dir.
+                    _live = []
+                    for r in _enr:
+                        _nm = Path(str(r["native_memory_dir"] or "")).expanduser()
+                        try:
+                            if _nm.is_dir() and any(
+                                    p.name != "MEMORY.md" and p.suffix == ".md"
+                                    for p in _nm.glob("*.md")):
+                                _live.append(str(_nm))
+                        except OSError:
+                            pass
+                    if _live:
+                        print("project unenroll: refusing — "
+                              f"{len(_live)} target row(s) have local mirror files "
+                              "(the registry-only path would strand them; unenroll "
+                              f"per-project instead): {', '.join(_live[:5])}",
+                              file=sys.stderr)
+                        return 2
+                    _enr_ids = [str(r["project_id"]) for r in _enr]
+                    _ph2 = ",".join("?" * len(_enr_ids))
                     _held = sum(
                         int(r["n"]) for r in ro.execute(
                             f"SELECT project_id, COUNT(*) AS n FROM holders "
-                            f"WHERE project_id IN ({_ph}) GROUP BY project_id",
-                            tuple(ids)).fetchall())
+                            f"WHERE project_id IN ({_ph2}) GROUP BY project_id",
+                            tuple(_enr_ids)).fetchall())
                     print(f"unenroll plan: {len(_enr)} registry row(s) "
                           f"({', '.join(_doms) or 'no domains'}) · {_held} holder row(s)")
                     need = _want_confirm(args, "unenroll-registry")
@@ -2705,14 +2752,23 @@ def cmd_project(args: argparse.Namespace) -> int:
                         ops = []
                         for r in _enr:
                             _pid = str(r["project_id"])
+                            # review 4: the replayed op must not silently flip a
+                            # row that was re-enrolled elsewhere between crash
+                            # and recovery — carry the plan-time domain, and the
+                            # apply arm honors it as the precondition.
                             ops.append({"op": "project_domain_change", "project_id": _pid,
-                                        "domain_id": "unknown", "status": "active"})
+                                        "domain_id": "unknown", "status": "active",
+                                        "expected_domain": str(r["domain_id"])})
                             ops.append({"op": "holder_delete", "project_id": _pid,
                                         "fact_id": "*"})
                         return {"registry_ops": ops, "deletes": [], "expected_revisions": {},
                                 "dest_modes": {}}
-                    out = transact(ctx, "registry-unenroll",
-                                   {"project_ids": ids}, _mut_reg)
+                    try:
+                        out = transact(ctx, "registry-unenroll",
+                                       {"project_ids": ids}, _mut_reg)
+                    except WriteRefused as e:
+                        print(f"project unenroll: {e}", file=sys.stderr)
+                        return 2
                     print(f"unenrolled {len(_enr)} registry row(s)")
                     return 0
                 print("project unenroll: registry unavailable", file=sys.stderr)

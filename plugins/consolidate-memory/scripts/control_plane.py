@@ -966,6 +966,18 @@ def prevalidate_registry_ops(ops: list) -> None:
         if kind in ("group_member_add", "group_member_remove") and not (
                 str(op.get("group_id") or "") or str(op.get("project_id") or "")):
             raise WriteRefused(f"{kind} missing group_id/project_id")
+        # Security pass: holder_delete's three LEGAL shapes — a real fid with a
+        # project (or the project-wide sweep), or a real project with the
+        # fact-wide sweep. Anything else (both wildcards, neither) is a
+        # misbuilding caller or a crafted journal row — refuse it here, the
+        # single gate every replay passes through.
+        if kind == "holder_delete":
+            _hfid = str(op.get("fact_id") or "")
+            _hpid = str(op.get("project_id") or "")
+            if not (_hfid or _hpid):
+                raise WriteRefused("holder_delete missing fact_id/project_id")
+            if _hfid == "*" and _hpid == "*":
+                raise WriteRefused("holder_delete refuses the double wildcard")
 
 
 def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
@@ -1005,14 +1017,29 @@ def apply_registry_ops(conn: sqlite3.Connection, ops: list) -> None:
                  now, caps_s, str(op.get("status") or "active")))
         elif kind == "project_domain_change":
             pid = str(op.get("project_id") or "")
-            cur = conn.execute(
-                "UPDATE projects SET domain_id=?, status=? WHERE project_id=?",
-                (str(op.get("domain_id") or "unknown"),
-                 str(op.get("status") or "enrolled"), pid))
-            if cur.rowcount != 1:
-                raise WriteRefused(
-                    "project_domain_change affected %s rows (need project_upsert first)"
-                    % cur.rowcount)
+            _exp = str(op.get("expected_domain") or "")
+            if _exp:
+                # review 4: a REPLAYED registry-unenroll op carries the plan-time
+                # domain as its precondition — a row re-enrolled elsewhere between
+                # crash and recovery must not be silently flipped back.
+                cur = conn.execute(
+                    "UPDATE projects SET domain_id=?, status=? "
+                    "WHERE project_id=? AND domain_id=? AND status='enrolled'",
+                    (str(op.get("domain_id") or "unknown"),
+                     str(op.get("status") or "enrolled"), pid, _exp))
+                if cur.rowcount != 1:
+                    raise WriteRefused(
+                        "project_domain_change precondition unmet (row moved on "
+                        "since plan time — refusing the replay): " + pid)
+            else:
+                cur = conn.execute(
+                    "UPDATE projects SET domain_id=?, status=? WHERE project_id=?",
+                    (str(op.get("domain_id") or "unknown"),
+                     str(op.get("status") or "enrolled"), pid))
+                if cur.rowcount != 1:
+                    raise WriteRefused(
+                        "project_domain_change affected %s rows (need project_upsert first)"
+                        % cur.rowcount)
         elif kind == "fact_upsert":
             conn.execute(
                 "INSERT INTO facts(fact_id, stem, domain_id, canonical_path, revision, "

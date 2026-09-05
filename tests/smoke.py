@@ -6831,95 +6831,97 @@ with _tf_xp.TemporaryDirectory() as _tdxp:
         _os73.environ["HOME"] = str(Path(_td40) / "home")
         sg.GLOBAL = Path(_td40) / "home" / ".claude" / "memory"
         (Path(_td40) / "home" / ".claude" / "projects").mkdir(parents=True, exist_ok=True)
-        _reg40 = Path(_td40) / "regproj"; _reg40.mkdir()
-        _enroll_personal(_reg40)
-        _ctx40r = sc.resolve_store(_reg40)
-        _conn40r = cp.connect(cp.db_path(_ctx40r))
         try:
-            _inames40 = {r[0] for r in _conn40r.execute(
-                "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+            _reg40 = Path(_td40) / "regproj"; _reg40.mkdir()
+            _enroll_personal(_reg40)
+            _ctx40r = sc.resolve_store(_reg40)
+            _conn40r = cp.connect(cp.db_path(_ctx40r))
+            try:
+                _inames40 = {r[0] for r in _conn40r.execute(
+                    "SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+            finally:
+                _conn40r.close()
+            check("v0.4.0 (#9): registry indexes exist in a fresh DB + doctor reports integrity",
+                  {"idx_facts_domain_stem", "idx_holders_project",
+                   "idx_tombstones_domain"} <= _inames40
+                  and isinstance(sc.doctor_dict(_ctx40r).get("integrity_check"), str))
+            # (#9b): the dormant sketch tables are GONE from a FRESH registry too —
+            # the removal is complete at the schema level, not just the module.
+            _conn40t = cp.connect(cp.db_path(_ctx40r))
+            try:
+                _tnames40 = {r[0] for r in _conn40t.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            finally:
+                _conn40t.close()
+            check("v0.4.0 (#9): fresh control.sqlite has NEITHER usage_events NOR workflow_sketches",
+                  {"usage_events", "workflow_sketches"} & _tnames40 == set()
+                  and {"projects", "facts", "holders"} <= _tnames40)
+            # (#9c): the v3→v4 migration DROPs the dormant tables on an EXISTING
+            # install — simulate a pre-drop v3 registry (full current schema + the
+            # old literal DDL + sentinel rows + user_version 3) and reopen it.
+            _dbp40 = cp.db_path(_ctx40r)
+            _c40m = _sq40.connect(str(_dbp40))
+            try:
+                _c40m.executescript(cp.SCHEMA_SQL)
+                _c40m.executescript(
+                    "CREATE TABLE IF NOT EXISTS usage_events ("
+                    " id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, day TEXT, sketch TEXT);"
+                    "CREATE TABLE IF NOT EXISTS workflow_sketches ("
+                    " id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, day TEXT, sketch TEXT);")
+                _c40m.execute("INSERT INTO usage_events (project_id, day, sketch) "
+                              "VALUES ('probe','2026-08-31','x')")
+                _c40m.execute("INSERT INTO workflow_sketches (project_id, day, sketch) "
+                              "VALUES ('probe','2026-08-31','x')")
+                _c40m.execute("PRAGMA user_version = 3")
+                _c40m.commit()
+                # pre-reopen self-check: the tables + sentinels must exist BEFORE
+                # the migration runs, or the pin would pass vacuously.
+                _pre40 = {r[0] for r in _c40m.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+                _npre40 = _c40m.execute(
+                    "SELECT COUNT(*) AS n FROM usage_events").fetchone()[0]
+            finally:
+                _c40m.close()
+            _conn40m = cp.connect(_dbp40)   # ver 3 < REGISTRY_USER_VERSION → migration runs
+            try:
+                _t40m = {r[0] for r in _conn40m.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+                _ver40m = int(_conn40m.execute("PRAGMA user_version").fetchone()[0])
+            finally:
+                _conn40m.close()
+            check("v0.4.0 (#9): reopening a v3 registry with sketch tables drops them and "
+                  "lands user_version == REGISTRY_USER_VERSION",
+                  {"usage_events", "workflow_sketches"} <= _pre40 and _npre40 == 1
+                  and {"usage_events", "workflow_sketches"} & _t40m == set()
+                  and {"projects", "facts", "holders"} <= _t40m
+                  and _ver40m == cp.REGISTRY_USER_VERSION)
+            # (#11): CLI error envelope — a refused grant with --json emits
+            # {ok:false, error, code:2} and exits 2.
+            _env40_u, _env40_e = _io73.StringIO(), _io73.StringIO()
+            with _ctx73.redirect_stdout(_env40_u), _ctx73.redirect_stderr(_env40_e):
+                _rc40_env = cmo.main(["project", "grant-native", "--path", str(_pdata40),
+                                      "--apply", "--confirm", "grant-native", "--json"])
+            _env40_j = _json_xp.loads(_env40_u.getvalue().strip() or "{}")
+            check("v0.4.0 (#11): CLI error envelope — {ok, error, code} on --json with exit 2",
+                  _rc40_env == 2 and _env40_j.get("ok") is False and _env40_j.get("code") == 2
+                  and isinstance(_env40_j.get("error"), str) and bool(_env40_j["error"]))
         finally:
-            _conn40r.close()
-        check("v0.4.0 (#9): registry indexes exist in a fresh DB + doctor reports integrity",
-              {"idx_facts_domain_stem", "idx_holders_project",
-               "idx_tombstones_domain"} <= _inames40
-              and isinstance(sc.doctor_dict(_ctx40r).get("integrity_check"), str))
-        # (#9b): the dormant sketch tables are GONE from a FRESH registry too —
-        # the removal is complete at the schema level, not just the module.
-        _conn40t = cp.connect(cp.db_path(_ctx40r))
-        try:
-            _tnames40 = {r[0] for r in _conn40t.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        finally:
-            _conn40t.close()
-        check("v0.4.0 (#9): fresh control.sqlite has NEITHER usage_events NOR workflow_sketches",
-              {"usage_events", "workflow_sketches"} & _tnames40 == set()
-              and {"projects", "facts", "holders"} <= _tnames40)
-        # (#9c): the v3→v4 migration DROPs the dormant tables on an EXISTING
-        # install — simulate a pre-drop v3 registry (full current schema + the
-        # old literal DDL + sentinel rows + user_version 3) and reopen it.
-        _dbp40 = cp.db_path(_ctx40r)
-        _c40m = _sq40.connect(str(_dbp40))
-        try:
-            _c40m.executescript(cp.SCHEMA_SQL)
-            _c40m.executescript(
-                "CREATE TABLE IF NOT EXISTS usage_events ("
-                " id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, day TEXT, sketch TEXT);"
-                "CREATE TABLE IF NOT EXISTS workflow_sketches ("
-                " id INTEGER PRIMARY KEY AUTOINCREMENT, project_id TEXT, day TEXT, sketch TEXT);")
-            _c40m.execute("INSERT INTO usage_events (project_id, day, sketch) "
-                          "VALUES ('probe','2026-08-31','x')")
-            _c40m.execute("INSERT INTO workflow_sketches (project_id, day, sketch) "
-                          "VALUES ('probe','2026-08-31','x')")
-            _c40m.execute("PRAGMA user_version = 3")
-            _c40m.commit()
-            # pre-reopen self-check: the tables + sentinels must exist BEFORE
-            # the migration runs, or the pin would pass vacuously.
-            _pre40 = {r[0] for r in _c40m.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-            _npre40 = _c40m.execute(
-                "SELECT COUNT(*) AS n FROM usage_events").fetchone()[0]
-        finally:
-            _c40m.close()
-        _conn40m = cp.connect(_dbp40)   # ver 3 < REGISTRY_USER_VERSION → migration runs
-        try:
-            _t40m = {r[0] for r in _conn40m.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-            _ver40m = int(_conn40m.execute("PRAGMA user_version").fetchone()[0])
-        finally:
-            _conn40m.close()
-        check("v0.4.0 (#9): reopening a v3 registry with sketch tables drops them and "
-              "lands user_version == REGISTRY_USER_VERSION",
-              {"usage_events", "workflow_sketches"} <= _pre40 and _npre40 == 1
-              and {"usage_events", "workflow_sketches"} & _t40m == set()
-              and {"projects", "facts", "holders"} <= _t40m
-              and _ver40m == cp.REGISTRY_USER_VERSION)
-        # (#11): CLI error envelope — a refused grant with --json emits
-        # {ok:false, error, code:2} and exits 2.
-        _env40_u, _env40_e = _io73.StringIO(), _io73.StringIO()
-        with _ctx73.redirect_stdout(_env40_u), _ctx73.redirect_stderr(_env40_e):
-            _rc40_env = cmo.main(["project", "grant-native", "--path", str(_pdata40),
-                                  "--apply", "--confirm", "grant-native", "--json"])
-        _env40_j = _json_xp.loads(_env40_u.getvalue().strip() or "{}")
-        check("v0.4.0 (#11): CLI error envelope — {ok, error, code} on --json with exit 2",
-              _rc40_env == 2 and _env40_j.get("ok") is False and _env40_j.get("code") == 2
-              and isinstance(_env40_j.get("error"), str) and bool(_env40_j["error"]))
-        if _home40p is None:
-            _os73.environ.pop("HOME", None)
-        else:
-            _os73.environ["HOME"] = _home40p
-        sg.GLOBAL = _g40p
-        # the hermeticity pin: the section must leave the REAL fleet registry
-        # untouched (pre-fix it minted a regproj row EVERY suite run)
-        _real40b = cp.connect(cp.db_path(_ctx_real40))
-        try:
-            _real_rows40b = int(_real40b.execute(
-                "SELECT COUNT(*) AS n FROM projects").fetchone()["n"])
-        finally:
-            _real40b.close()
-        check("v0.4.12 dogfood: the registry section is HERMETIC — the real "
-              "fleet registry gains no rows from a suite run (the regproj "
-              "residue origin)", _real_rows40b == _real_rows40)
+            if _home40p is None:
+                _os73.environ.pop("HOME", None)
+            else:
+                _os73.environ["HOME"] = _home40p
+            sg.GLOBAL = _g40p
+            # the hermeticity pin: the section must leave the REAL fleet registry
+            # untouched (pre-fix it minted a regproj row EVERY suite run)
+            _real40b = cp.connect(cp.db_path(_ctx_real40))
+            try:
+                _real_rows40b = int(_real40b.execute(
+                    "SELECT COUNT(*) AS n FROM projects").fetchone()["n"])
+            finally:
+                _real40b.close()
+            check("v0.4.12 dogfood: the registry section is HERMETIC — the real "
+                  "fleet registry gains no rows from a suite run (the regproj "
+                  "residue origin)", _real_rows40b == _real_rows40)
 
     # generated catalog overwrites a hand-edited index
     _facts = Path(_tdxp) / "facts"
@@ -12965,12 +12967,18 @@ with _tf73.TemporaryDirectory() as _td_dg:
                                          ctx=_ctxc_dg)))
         # (2) the registry-only unenroll surface (the 315-row residue's lever)
         _rid_dg = "p_" + "5" * 32
+        _fid_dg = cp.stable_fact_id("personal", "dg-fact")
         _conn3_dg = cp.connect(cp.db_path(_ctxa_dg))
         try:
             cp.apply_registry_ops(_conn3_dg, [
                 {"op": "project_upsert", "project_id": _rid_dg,
                  "domain_id": "personal", "display_name": "regproj-dg",
-                 "status": "enrolled"}])
+                 "status": "enrolled"},
+                # the sweep must delete ONLY this row's holders — the fixture
+                # gives it one and keeps the author's own as the survivor
+                {"op": "holder_upsert", "fact_id": _fid_dg,
+                 "project_id": _rid_dg, "base_revision": "b", "canonical_revision": "c",
+                 "semantic_hash": "s"}])
             _conn3_dg.commit()
         finally:
             _conn3_dg.close()
@@ -12984,6 +12992,27 @@ with _tf73.TemporaryDirectory() as _td_dg:
             check("dogfood 2: the registry-only row de-registers via --project-id "
                   "(the no-local-store residue's unreachable surface)",
                   _rc_du_dg == 0 and "unenrolled 1 registry row(s)" in _out_du_dg.getvalue())
+            # review 5: the pin asserts the SWEEP'S EFFECT — the row flipped, its
+            # holder row gone, and the author's own holder row SURVIVED (a
+            # wildcard that over-broadened would fail here)
+            _conn5_dg = cp.connect(cp.db_path(_ctxa_dg))
+            try:
+                _row5_dg = _conn5_dg.execute(
+                    "SELECT domain_id, status FROM projects WHERE project_id=?",
+                    (_rid_dg,)).fetchone()
+                _held5_dg = _conn5_dg.execute(
+                    "SELECT COUNT(*) AS n FROM holders WHERE project_id=?",
+                    (_rid_dg,)).fetchone()["n"]
+                _surv5_dg = _conn5_dg.execute(
+                    "SELECT COUNT(*) AS n FROM holders WHERE project_id=?",
+                    (_ctxc_dg.project_id,)).fetchone()["n"]
+            finally:
+                _conn5_dg.close()
+            check("dogfood 2b: the sweep's effect — the row flipped to unknown, "
+                  "its holder row swept, the author's holder row survived",
+                  _row5_dg is not None and str(_row5_dg["domain_id"]) == "unknown"
+                  and str(_row5_dg["status"]) == "active"
+                  and int(_held5_dg) == 0 and int(_surv5_dg) >= 1)
         finally:
             _os73.chdir(_cwd_dg)
         # (3+4) the revoke's clean-vs-edited reads the mirror's OWN canonical —
