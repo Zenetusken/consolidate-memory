@@ -30,6 +30,9 @@ Silence rules (no-nag, all deliberate):
     shares the never-participated gate above — a store that holds no fact pays nothing;
     a PARTICIPATING unenrolled store hears it until enrolled or snoozed)
   - state-file `beacon_snooze_until` in future  → silent (set on explicit user ask, per-store)
+  - a FRESH pre-flight FAIL verdict cached in   → ONE pre-flight line (never quieted by snooze:
+    the state file                                env-broken is not absorption-nag); warns/pass/
+                                                  absent/stale preflight → silent (v0.4.16)
   - 0 missing AND 0 content-stale               → silent (in sync — the common case stays free)
 """
 
@@ -253,6 +256,13 @@ def main() -> int:
         ctx = resolve_store(Path(str(cwd)).resolve(), hook=hook)
         if not ctx.auto_memory_enabled:
             return 0  # disabled auto-memory: absence is not drift (ADR 002)
+        # v0.4.16 (env-preflight spec): a fresh cached pre-flight FAIL supersedes the
+        # absorption and unenrolled advisories — dreams failing makes absorption moot.
+        from preflight import cache_advisory
+        _pf_line = cache_advisory(ctx.native_memory_dir / ".consolidation-state.json")
+        if _pf_line:
+            print(_pf_line)
+            return 0
         if not getattr(ctx, "cross_project_allowed", False):
             # v0.4.8 (cm-commands spec §3): unenrolled no longer means silent —
             # a participating store hears the unenrolled advisory while the

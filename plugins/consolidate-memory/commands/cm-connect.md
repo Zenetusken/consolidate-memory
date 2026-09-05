@@ -7,11 +7,12 @@ The two-repo onboarding wizard (see `docs/cm-commands-onboarding.spec.md`).
 Enrollment is an OPERATOR grant (ADR 008) — this command sequences the grants,
 never self-grants; every enrollment is planned and confirmed.
 
-1. **Survey (read-only).** Doctor both repos and show the plan — enrolled?
-   domain? — plus each enrollment's forecast (how many unadmitted mirrors it
-   would quarantine; quarantine is recoverable, never delete):
+1. **Survey (read-only).** Pre-flight the environment, then doctor both repos and
+   show the plan — enrolled? domain? — plus each enrollment's forecast (how many
+   unadmitted mirrors it would quarantine; quarantine is recoverable, never delete):
 
    ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.py ."   # exit 2 = fix the FAILs first
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py doctor .
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py doctor <other-repo>
    ```

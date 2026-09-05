@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.15** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.16** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -27,7 +27,7 @@ plus the production/polish/performance pass (stacks cache on the sync paths,
 warm-pull margin, journal scale, archive embed budget, store-honesty advisories,
 and the renderer coherence sweep, plus the v0.4.6 archive-display pass, plus the
 v0.4.7 cross-project audit pass, plus the v0.4.8 onboarding-command pass, plus
-the v0.4.10 group-scopes pass, plus the v0.4.11 group-lifecycle completion pass (cm group delete, the --repoint re-confirm affordance, the per-recipient pull-side recreation guard, the re-sourced frozen GC), plus the v0.4.14 Nocturne patch (the memory-observatory theme — Original/Light/System, readable network lanes, the dev-only Chromium regression job) and the v0.4.15 version-sweep hotfix. Public 1.0 stays HOLD.
+the v0.4.10 group-scopes pass, plus the v0.4.11 group-lifecycle completion pass (cm group delete, the --repoint re-confirm affordance, the per-recipient pull-side recreation guard, the re-sourced frozen GC), plus the v0.4.14 Nocturne patch (the memory-observatory theme — Original/Light/System, readable network lanes, the dev-only Chromium regression job) and the v0.4.15 version-sweep hotfix, plus the v0.4.16 environment pre-flight (the deterministic no-happy-path checker — doctor embeds it, the beacon reads its cached verdict, Phase 0 seeds the record). Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
@@ -354,6 +354,15 @@ no-op** (which was already single-line and needed no change). The debrief's bold
 (v0.1.62) is unchanged and remains the ONLY thing that follows WAKE.
 
 ### Phase 0 — Locate data + the high-water mark
+
+**Environment pre-flight (v0.4.16).** `CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.py ."`
+(or `cm doctor`, which embeds the same table) checks the environment deterministically —
+Python 3.8+, POSIX/WSL, the `sqlite3` stdlib module + SQLite ≥ 3.24, a real schema
+round-trip, the plugin's own integrity, write access, git, and the temp dir. **FAILs are
+blockers: fix them and re-run Phase 0** (a dream here would crash mid-pass); warns are
+honest degradations (no-git dreams scope to empty). The verdict seeds the cycle record's
+`preflight` block and renders on the dashboard. A cached FAIL also surfaces as one
+SessionStart beacon line until the next fresh run.
 
 Run the bundled helper (it derives paths, inventories both stores, and computes the
 git range since the last consolidation — don't hand-derive these):
@@ -1443,6 +1452,8 @@ this once warned against; the dashboard remains the source of the figures.)
                                               "top_chains": [{"t": ["<a>", "<b>"], "n": 0, "d": 0}]}],
                          "n_candidates": 0, "n_fleet": 0, "n_blocked": 0, "n_generic": 0, "n_day_spread": 0,
                          "verdict": "<one line: nothing: 0 fleet-candidates | proposed <X> — awaiting confirmation>"},
+  "preflight": {"_": "v0.4.16: Phase-0 environment pre-flight — script-seeded, never hand-authored. FAILs block the dream (fix + re-run); warns are honest degradations (git/path identity).",
+                "at": "", "fails": [], "warns": []},
   "outcome": ""
 }
 ```

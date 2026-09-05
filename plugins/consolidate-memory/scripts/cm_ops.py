@@ -751,16 +751,47 @@ def _unb64(s: str) -> Optional[bytes]:
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
+    # v0.4.16 (env-preflight spec): the pre-flight wraps doctor — a resolution failure
+    # falls through to the sentinel verdict instead of a traceback, and the rc is 2 when
+    # any check FAILs (matching preflight.py's own main).
     from store_context import repair_permissions
-    ctx = _ctx(args.project)
+    ctx = None
+    _pf_err = ""
+    try:
+        ctx = _ctx(args.project)
+    except Exception as e:  # noqa: BLE001 — the sentinel path is the contract here
+        _pf_err = "%s: %s" % (type(e).__name__, e)
+    if ctx is None:
+        import preflight
+        _pf_res = preflight.safe_run_checks({"project_dir": str(args.project or "."),
+                                             "store_resolution_error": _pf_err})
+        if getattr(args, "repair_permissions", False):
+            _pf_res = dict(_pf_res)
+            _pf_res["notes"] = list(_pf_res.get("notes") or []) + [
+                "--repair-permissions cannot run until the config root resolves"]
+        if args.json:
+            _env = {k: _pf_res[k] for k in ("ok", "checks", "notes") if k in _pf_res}
+            print(json.dumps({"preflight": _env}, indent=2, sort_keys=True))
+        else:
+            sys.stdout.write(preflight.render_table(_pf_res))
+        return 2 if _pf_res.get("fails") else 0
     if getattr(args, "repair_permissions", False):
         print(json.dumps(repair_permissions(ctx)))
         return 0
+    import preflight
+    _pf_env = preflight._paths_from_ctx(ctx)
+    _pf_env["project_dir"] = str(_pf_env.get("project_dir") or args.project or ".")
+    _pf_res = preflight.run_checks(_pf_env)
+    preflight.run_and_cache(ctx, preflight.verdict_for_cache(_pf_res))
     if args.json:
-        print(json.dumps(doctor_dict(ctx), indent=2, sort_keys=True))
+        d = doctor_dict(ctx)
+        # the preflight key excludes the volatile `at` (twice-run equality must hold)
+        d["preflight"] = {k: _pf_res[k] for k in ("ok", "checks", "notes") if k in _pf_res}
+        print(json.dumps(d, indent=2, sort_keys=True))
     else:
         sys.stdout.write(doctor_report(ctx))
-    return 0
+        sys.stdout.write(preflight.render_table(_pf_res))
+    return 2 if _pf_res.get("fails") else 0
 
 
 def cmd_conflicts(args: argparse.Namespace) -> int:

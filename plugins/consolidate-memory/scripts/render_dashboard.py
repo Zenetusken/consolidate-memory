@@ -410,6 +410,16 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
             id_bits.append(_c(f"{_g(nconf)} open conflict(s)", "yellow"))
         out.append(_kv("IDENTITY", " · ".join(id_bits)))
 
+    # v0.4.16: environment pre-flight — one red line when fails were recorded (additive;
+    # legacy records skip the block entirely).
+    _pf16 = _dget(record, "preflight")
+    if isinstance(_pf16, dict):
+        _pf_fails = _pf16.get("fails")
+        if isinstance(_pf_fails, list) and _pf_fails:
+            out.append(_kv("PRE-FLIGHT",
+                           _c("%d environment check(s) failed (%s) — run cm doctor for the fixes"
+                              % (len(_pf_fails), ", ".join(str(x) for x in _pf_fails)), "red")))
+
     # Scope + Verification (aligned label column)
     s = _dget(record, "scope")
     out.append("")

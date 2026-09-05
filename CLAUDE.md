@@ -1,6 +1,6 @@
 # consolidate-memory — project conventions
 
-**v0.4.15.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
+**v0.4.16.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
 Claude Code's built-in Auto Dream (per-project consolidation), adding a governed cross-project store +
 verification against the live code. This repo is both the plugin and its marketplace —
 end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -47,6 +47,10 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
                                    (read-only, no-nag tiers, silent-exit-0 on failure; stacks via the
                                    --pull-written state cache — never detect_stacks, measured 2s on big repos)
     memory_status.py               Phase 0: locate stores + git scope + `--json` cycle-record seed
+    preflight.py                   environment PRE-FLIGHT (v0.4.16): deterministic no-happy-path
+                                   checks (python/sqlite/POSIX/git/plugin-self/write-access) —
+                                   `cm doctor` embeds it, the beacon reads the cached verdict,
+                                   Phase 0 seeds the record's `preflight` block
     extract_signals.py             Phase 2: curated, secret-safe session signal (claims-first)
     sync_global.py                 cross-project: --list/--pull [--evict=F | --allow-net-grow]/--promote/
                                    --gc [--edges] [--apply] (FROZEN reason tokens; clean-vs-edited reclaim)/--tokens/--utility/--harvest/--staleness/

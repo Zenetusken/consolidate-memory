@@ -566,6 +566,14 @@ class Identity(TypedDict, total=False):
     conflicts: int           # open three-way mirror conflicts for this project (omitted if unread)
 
 
+class Preflight(TypedDict, total=False):
+    # v0.4.16: environment pre-flight verdict (docs/env-preflight.spec.md) — script-seeded,
+    # never hand-authored. FAILs block the dream (fix + re-run); warns are honest degradations.
+    at: str
+    fails: list[str]
+    warns: list[str]
+
+
 class CycleRecord(TypedDict, total=False):
     project: str
     session: str
@@ -586,6 +594,7 @@ class CycleRecord(TypedDict, total=False):
     usage: Usage                   # v0.1.63 (Phase A): organic recall telemetry (additive; legacy records render)
     demotion: Demotion             # v0.1.67 (Phase C): demotion triage seed + verdict (additive; legacy records render)
     workflow_proposals: WorkflowProposals   # v0.1.87 (W-C): Tier-2 fleet-placement evidence (additive; legacy records render)
+    preflight: Preflight            # v0.4.16: environment pre-flight verdict (additive; legacy records render)
     marker: Marker
     outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
 
@@ -3155,6 +3164,14 @@ def seed_record(ctx: dict) -> CycleRecord:
     raw_ident = ctx.get("identity")
     if isinstance(raw_ident, dict) and raw_ident:
         record["identity"] = cast(Identity, dict(raw_ident))
+    # v0.4.16: the pre-flight verdict is ALWAYS seeded when the healthy path ran it —
+    # "ran and found nothing" honesty; absent only when the pre-flight itself was unreachable.
+    raw_pf = ctx.get("preflight")
+    if isinstance(raw_pf, dict) and "fails" in raw_pf:
+        record["preflight"] = cast(Preflight, {
+            "at": str(raw_pf.get("at") or ""),
+            "fails": [str(x) for x in raw_pf.get("fails") or []],
+            "warns": [str(x) for x in raw_pf.get("warns") or []]})
     return record
 
 
@@ -3182,7 +3199,7 @@ def validate_cycle_record(record: object) -> list[str]:
     # Top-level keys that MUST be a dict if present.
     for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health",
                 "audit", "remediation", "maintenance", "dream", "distill", "usage", "demotion",
-                "workflow_proposals", "identity"):
+                "workflow_proposals", "identity", "preflight"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
@@ -3197,6 +3214,13 @@ def validate_cycle_record(record: object) -> list[str]:
     dream = record.get("dream")
     if isinstance(dream, dict) and "beats" in dream and not isinstance(dream["beats"], list):
         warnings.append("dream.beats is not a list")
+    # v0.4.16: preflight.fails/warns must be lists if present (the dream.beats descent style —
+    # a wrong-typed fails list would render a wrong-N red line with no warning).
+    pf = record.get("preflight")
+    if isinstance(pf, dict):
+        for k in ("fails", "warns"):
+            if k in pf and not isinstance(pf[k], list):
+                warnings.append("preflight.%s is not a list" % k)
     # v0.4.1 (D1): a PRESENT-but-incomplete arc warns here (stderr, never blocks) — the same
     # single predicate the persist gate and the WAKE cue use. A missing/empty block stays quiet
     # (legacy/preview records; the gate's documented scope escape).
@@ -3799,6 +3823,14 @@ def print_report(ctx: dict) -> None:
     add("")
     add(_ui.kv("NEXT", _ui.c(f"run with --seed to start the record (per-pass file) · render_dashboard.py draws the summary · saves a checkpoint at {ctx['head'][:12]}", "dim")))
 
+    # ── PRE-FLIGHT (v0.4.16) — fails only: warns surface via cm doctor / --json / the record ──
+    _pf16 = ctx.get("preflight")
+    if isinstance(_pf16, dict) and isinstance(_pf16.get("fails"), list) and _pf16["fails"]:
+        add("")
+        add(_ui.kv("PRE-FLIGHT",
+                   _ui.c("%d environment check(s) failed (%s) — fix and re-run (cm doctor for the fixes)"
+                         % (len(_pf16["fails"]), ", ".join(str(x) for x in _pf16["fails"])), "red")))
+
     print(_ui.ascii_translate("\n".join(out)))
 
 
@@ -3894,7 +3926,36 @@ def main() -> int:
         print(json.dumps({"ok": True, "revision": out.get("revision"),
                           "status": out.get("status")}))
         return 0
-    ctx = build_context(project_dir)
+    # v0.4.16 (env-preflight spec): a resolution failure falls through to the sentinel
+    # verdict instead of a traceback; the healthy path seeds ctx["preflight"] for the record.
+    ctx = None
+    _pf_err = ""
+    try:
+        ctx = build_context(project_dir)
+    except Exception as e:  # noqa: BLE001 — the sentinel path is the contract here
+        _pf_err = "%s: %s" % (type(e).__name__, e)
+    if ctx is None:
+        import preflight
+        _pf_res = preflight.run_checks({"project_dir": str(project_dir),
+                                        "store_resolution_error": _pf_err})
+        if as_json or "--seed" in argv:
+            print(json.dumps({k: _pf_res[k] for k in ("ok", "at", "checks", "notes") if k in _pf_res},
+                             indent=2))
+        else:
+            print(preflight.render_table(_pf_res))
+        return 2 if _pf_res.get("fails") else 0
+    # v0.4.16 (review F5): seed the verdict only on the record-producing/report modes —
+    # read-only modes (--triage/--sections/--snapshot/--diffs/--audit) stay write-free and
+    # keep the audit path's "never the native plane" invariant.
+    if as_json or "--seed" in argv or not any(f in argv for f in
+                                              ("--triage", "--sections", "--snapshot",
+                                               "--diffs", "--audit")):
+        try:
+            import preflight
+            _pf_res = preflight.run_for_project(project_dir)
+            ctx["preflight"] = preflight.verdict_for_cache(_pf_res)
+        except Exception:  # noqa: BLE001 — the pre-flight can never break a dream
+            pass
     if "--triage" in argv:    # v0.1.18: focused read-only remediation view (the SKILL Phase-5 gate reads this)
         _ui.set_modes(color=_ui.color_enabled(argv, sys.stdout), ascii="--ascii" in argv, width=_ui.resolve_width(argv, sys.stdout))
         rem = ctx.get("remediation") or {}
