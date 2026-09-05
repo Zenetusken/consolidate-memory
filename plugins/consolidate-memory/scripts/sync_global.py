@@ -184,7 +184,7 @@ def _is_fixture_store(p: Path) -> bool:
     return any(_pat in name for _pat in _FIXTURE_SLUG_PATTERNS)
 
 
-def iter_native_stores() -> "list[Path]":
+def iter_native_stores(*, include_fixture: bool = False) -> "list[Path]":
     """Default `projects/*/memory` UNION registry `native_memory_dir`.
 
     Custom autoMemoryDirectory stores are invisible to a projects-tree walk;
@@ -193,7 +193,10 @@ def iter_native_stores() -> "list[Path]":
 
     R2 (v0.4.2): fixture stores are EXCLUDED (marker or pinned slug patterns) —
     a dim stderr line keeps the exclusion visible in the consumer's output.
-    """
+    `include_fixture=True` lifts the exclusion — the HERMETIC smoke fixtures
+    only (every /tmp-derived slug matches the -tmp- pattern, so a fleet
+    fixture would otherwise enumerate zero sibling stores; MED-2)."""
+    _skip_fixture = not include_fixture
     seen: set = set()
     out: list = []
     skipped = 0
@@ -206,7 +209,7 @@ def iter_native_stores() -> "list[Path]":
         if key in seen:
             return
         seen.add(key)
-        if _is_fixture_store(p):
+        if _skip_fixture and _is_fixture_store(p):
             skipped += 1
             return
         out.append(p)
@@ -3596,7 +3599,7 @@ def _node_tokens(store: Path, canon_scope: "dict[str, str] | None" = None) -> di
     return d
 
 
-def _network_nodes() -> list[Path]:
+def _network_nodes(*, allow_fixture_paths: bool = False) -> list[Path]:
     """Network nodes = project memory stores holding ≥1 shared (`global_ref:`) mirror.
 
     This is the PHYSICAL, measurable node set (we have each store's path, so we can
@@ -3604,7 +3607,7 @@ def _network_nodes() -> list[Path]:
     (derived from provenance basenames, which can't be inverted to a store path) — the
     two views can diverge (names vs slugs); --network = topology, --tokens = cost."""
     nodes: list[Path] = []
-    for store in iter_native_stores():
+    for store in iter_native_stores(include_fixture=allow_fixture_paths):
         has_mirror = False
         try:
             files = store.glob("*.md")
@@ -3741,7 +3744,8 @@ def token_network(project_dir: Path, *, fleet: bool = False,
     else:
         canon_scope = {n: str(fm.get("scope") or "") for n, fm, _ in facts_for_context(_ctx_tok)}
     if fleet:
-        _tok_nodes = list(_network_nodes())
+        _tok_nodes = list(_network_nodes(allow_fixture_paths=(
+            _global_is_fixture() or _hermetic_home())))
         _overlay, _trig_mem, _all_groups = _fleet_overlay(project_dir)
         _group_rows = _fleet_group_rows(project_dir)
         _pid_groups: dict = {}

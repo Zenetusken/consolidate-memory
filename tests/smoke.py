@@ -13045,6 +13045,199 @@ check("dogfood 5: the cm help shows move-domain POSITIONAL-first (the flag-first
       "cm project move-domain [DIR] --to NAME" in _cm_help_dg
       and "move-<from>-to-<name>" in _cm_help_dg)
 
+# ── v0.4.13 fleet-topology UI (docs/fleet-topology-ui.spec.md) ─────────────────
+# (1) the feed: a two-domain fleet fixture (allow_fixture_paths — MED-2) emits the
+# fleet basis with every layer; the bare emission stays domain-basis
+with _tf73.TemporaryDirectory() as _td_ft:
+    _home_ft = Path(_td_ft)
+    _pa_ft = (_home_ft / "src" / "pa").resolve(); _pa_ft.mkdir(parents=True)
+    _pb_ft = (_home_ft / "src" / "pb").resolve(); _pb_ft.mkdir(parents=True)
+    for _p_ft in (_pa_ft, _pb_ft):
+        (_home_ft / ".claude" / "projects" / ms.slug_for(_p_ft) / "memory").mkdir(parents=True)
+    _home_prev_ft = _os73.environ.get("HOME")
+    _global_prev_ft = sg.GLOBAL
+    _os73.environ["HOME"] = str(_home_ft)
+    sg.GLOBAL = _home_ft / ".claude" / "memory"
+    try:
+        _ctx0_ft = sc.resolve_store(_pa_ft)
+        _conn_ft = cp.connect(cp.db_path(_ctx0_ft))
+        _gid_ft = "g_" + "a" * 32
+        try:
+            cp.enroll_project(_conn_ft, _ctx0_ft, "personal")
+            cp.apply_registry_ops(_conn_ft, [
+                {"op": "group_upsert", "group_id": _gid_ft, "name": "pair",
+                 "domain_id": "personal", "created_at": "2026-08-01T00:00:00Z"},
+                {"op": "group_member_add", "group_id": _gid_ft,
+                 "project_id": _ctx0_ft.project_id}])
+            _conn_ft.commit()
+        finally:
+            _conn_ft.close()
+        _ctxa_ft = sc.resolve_store(_pa_ft)
+        _ctxb_ft = sc.resolve_store(_pb_ft)
+        _conn2_ft = cp.connect(cp.db_path(_ctxa_ft))
+        try:
+            cp.enroll_project(_conn2_ft, _ctxb_ft, "tools")
+            cp.apply_registry_ops(_conn2_ft, [{"op": "group_member_add",
+                                               "group_id": _gid_ft,
+                                               "project_id": _ctxb_ft.project_id}])
+            _conn2_ft.commit()
+        finally:
+            _conn2_ft.close()
+        _ctxa_ft = sc.resolve_store(_pa_ft)
+        _ctxb_ft = sc.resolve_store(_pb_ft)
+        # a cross-domain fact via the bridge + a tools fact, so both stores hold mirrors
+        _ctxa_ft.canonical_domain_dir.mkdir(parents=True, exist_ok=True)
+        _canon_ft = _v3_canon("ft-bridge").replace(
+            "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+        (_ctxa_ft.canonical_domain_dir / "ft-bridge.md").write_text(_canon_ft, encoding="utf-8")
+        for _pp_ft in (_pa_ft, _pb_ft):
+            _o_ft = _io73.StringIO()
+            with _ctx73.redirect_stdout(_o_ft):
+                sg.run(_pp_ft, pull=True)
+        _net_ft = sg.token_network(_pa_ft, fleet=True)
+        check("v0.4.13 topology: the FLEET emission carries basis_scope, per-node "
+              "domain/groups/sid, domains, universals with honest held counts, "
+              "group_links for the trigger's groups, and stack_edge_facts",
+              _net_ft.get("basis_scope") == "fleet"
+              and all(r.get("sid") and "domain" in r and "groups" in r
+                      for r in _net_ft["nodes"])
+              and {d["domain"] for d in _net_ft.get("domains", [])} == {"personal", "tools"}
+              and any(u["name"] == "ft-bridge" and u["held"] == 2
+                      for u in _net_ft.get("universal_facts", []))
+              and any(g["group"] == "pair" for g in _net_ft.get("group_links", []))
+              and isinstance(_net_ft.get("stack_edge_facts"), list))
+        _net_dom_ft = sg.token_network(_pa_ft)
+        check("v0.4.13 topology: the BARE emission stays domain-basis (no fleet keys)",
+              "basis_scope" not in _net_dom_ft
+              and "domain" not in _net_dom_ft["nodes"][0]
+              and "universal_facts" not in _net_dom_ft)
+        # the --fleet refusal on another mode (MED-1)
+        _argv_prev_ft = sys.argv[:]
+        try:
+            sys.argv = ["sync_global.py", "--gc", "--fleet", str(_pa_ft)]
+            with _ctx73.redirect_stdout(_io73.StringIO()), _ctx73.redirect_stderr(_io73.StringIO()):
+                _rc_ft = sg.main()
+        finally:
+            sys.argv = _argv_prev_ft
+        check("v0.4.13 topology: --fleet refuses on a non---tokens mode (no silent no-op)",
+              _rc_ft == 2)
+    finally:
+        if _home_prev_ft is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_prev_ft
+        sg.GLOBAL = _global_prev_ft
+
+# (2) the template: the fleet path's gate + layers exist; the legacy strings stay
+_tmpl_ft = (ROOT / "plugins" / "consolidate-memory" / "scripts"
+            / "dashboard.template.html").read_text(encoding="utf-8")
+check("v0.4.13 topology: the template carries the NAMED gate, the chip strip, the "
+      "domain-arc/hull painters, and the honest fleet caption",
+      'net0.basis_scope==="fleet"' in _tmpl_ft
+      and "net-chips" in _tmpl_ft
+      and "Fleet view — tinted arcs" in _tmpl_ft
+      and 'stroke-dasharray":"4 3"' in _tmpl_ft
+      and "arcPath(" in _tmpl_ft)
+check("v0.4.13 topology: the legacy painter strings survive untouched",
+      all(m in _tmpl_ft for m in ("Older record — a line just means",
+                                  "Numbers are this-stack facts; lines are what some share.",
+                                  "function bowCtrl", "function isBaseline", "function edgeN")))
+
+# (3) the render probe: a 25-node fleet record renders with all markers + the
+# legacy strings (the spec's mandated pre-pin probe, now pinned)
+with _tf73.TemporaryDirectory() as _td_rp:
+    _home_rp = Path(_td_rp)
+    _proj_rp = (_home_rp / "src" / "probe").resolve(); _proj_rp.mkdir(parents=True)
+    _oldh_rp = _os73.environ.get("HOME")
+    _os73.environ["HOME"] = str(_home_rp)
+    try:
+        _ctx_rp = sc.resolve_store(_proj_rp)
+        _store_rp = _ctx_rp.native_memory_dir
+        _store_rp.mkdir(parents=True, exist_ok=True)
+        _nodes_rp = [{"node": f"proj-{i:02d}", "trigger": False, "always_loaded_tokens": 300,
+                      "mirror_index_tokens": 40, "recall_tokens": 2000, "facts": 5,
+                      "shared": 2, "universal": 2, "stack": i % 3,
+                      "domain": ["docs", "llm", "personal", "tools"][i % 4],
+                      "groups": ["fleet"] if i % 2 == 0 else [], "sid": f"-home-you-proj-{i:02d}"}
+                     for i in range(24)] + [
+                    {"node": "consolidate-memory", "trigger": True, "always_loaded_tokens": 765,
+                     "mirror_index_tokens": 87, "recall_tokens": 15199, "facts": 16, "shared": 2,
+                     "universal": 1, "stack": 1, "domain": "personal",
+                     "groups": ["fleet"], "sid": "-home-you-project-consolidate-memory"}]
+        _rec_rp = {"network": {
+            "basis": "≈ chars/4 (heuristic estimate, not a tokenizer)",
+            "node_def": "project stores holding ≥1 shared fact",
+            "trigger": "consolidate-memory",
+            "nodes": _nodes_rp,
+            "stack_edges": [{"a": f"proj-{i:02d}", "b": f"proj-{i+1:02d}", "n": 2}
+                            for i in range(0, 20, 4)],
+            "totals": {"nodes": 25, "always_loaded_tokens": 9000, "mirror_index_tokens": 1200,
+                       "recall_tokens": 60000, "universal": 3, "stack": 2},
+            "basis_scope": "fleet",
+            "domains": [{"domain": d} for d in ("docs", "llm", "personal", "tools")],
+            "universal_facts": [{"name": "advisor-pass", "domain": "personal", "held": 25},
+                                {"name": "docs-eval", "domain": "docs", "held": 3}],
+            "group_links": [{"group": "fleet", "home_domain": "personal", "members_n": 25,
+                             "facts": [{"name": "advisor-pass", "domain": "personal", "held": 25}]}],
+            "stack_edge_facts": [{"a": "proj-00", "b": "proj-01", "names": ["x", "y"]}]},
+            "cycle_id": "probe-fleet", "commit": "abc1234",
+            "dream": {"sleep": "*x*", "beats": ["*a*", "*b*", "*c*", "*d*", "*e*"], "wake": "*w*"}}
+        (_store_rp / ".consolidation-log.jsonl").write_text(
+            _json_xp.dumps(_rec_rp) + "\n", encoding="utf-8")
+        _rp_run = _sp_r5.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
+                                                   / "scripts" / "render_html.py"),
+                              "--project", str(_proj_rp)],
+                             capture_output=True, text=True, timeout=120,
+                             env={**_os73.environ, "HOME": str(_home_rp)})
+        _html_rp = ""
+        for _cand_rp in (list(_proj_rp.rglob("index.html"))
+                         + list(_home_rp.rglob("index.html"))):
+            _html_rp = _cand_rp.read_text(encoding="utf-8")
+            break
+        check("v0.4.13 topology: the 25-node fleet record renders the layered view "
+              "(gate, chips, caption, satellite) with the legacy strings intact",
+              _rp_run.returncode == 0 and bool(_html_rp)
+              and 'net0.basis_scope==="fleet"' in _html_rp
+              and "net-chips" in _html_rp
+              and "Fleet view — tinted arcs" in _html_rp
+              and '"+"+more+" more"' in _html_rp
+              and "Older record — a line just means" in _html_rp)
+        # the ASCII dashboard's key-gated topology line
+        _dash_rp = _sp_r5.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
+                                                    / "scripts" / "render_dashboard.py"),
+                               str(_proj_rp / "cycle.json")],
+                              capture_output=True, text=True, timeout=60,
+                              env={**_os73.environ, "HOME": str(_home_rp)})
+        (_proj_rp / "cycle.json").write_text(_json_xp.dumps(_rec_rp), encoding="utf-8")
+        _dash_rp = _sp_r5.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
+                                                    / "scripts" / "render_dashboard.py"),
+                               str(_proj_rp / "cycle.json")],
+                              capture_output=True, text=True, timeout=60,
+                              env={**_os73.environ, "HOME": str(_home_rp)})
+        check("v0.4.13 topology: the ASCII dashboard names the layers on a fleet record "
+              "(key-gated — absent on a legacy record)",
+              "topology: 4 domain band(s)" in _dash_rp.stdout
+              and "1 routed group(s)" in _dash_rp.stdout
+              and "2 baseline fact(s) (1 partial)" in _dash_rp.stdout)
+    finally:
+        if _oldh_rp is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _oldh_rp
+
+# (4) the validator's non-vacuous fleet checks (MED-3)
+check("v0.4.13 topology: the validator catches a held>nodes universal and an "
+      "unknown edge label (warn, never crash)",
+      any("exceeds totals.nodes" in w for w in ms.validate_cycle_record({
+          "network": {"basis_scope": "fleet", "nodes": [{"node": "a"}],
+                      "totals": {"nodes": 1},
+                      "universal_facts": [{"held": 5}],
+                      "stack_edge_facts": [{"a": "a", "b": "ghost"}]}}))
+      and any("unknown node label" in w for w in ms.validate_cycle_record({
+          "network": {"basis_scope": "fleet", "nodes": [{"node": "a"}],
+                      "totals": {"nodes": 1},
+                      "stack_edge_facts": [{"a": "a", "b": "ghost"}]}})))
+
 # v0.4.10 dogfood: a foreign-domain record OVERWRITES a stale local manifest hash
 _bhf_gs = {"dup": "a" * 12}
 _fillf_gs = __import__("session_beacon")._fill_body_hashes(

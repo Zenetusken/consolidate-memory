@@ -288,6 +288,21 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
             out.append("      (node rows not captured this pass — totals above are the fleet's)")
         else:
             out.append("      (no nodes hold shared facts yet)")
+    # v0.4.13 fleet-topology layers — ONE honest line, key-gated (absent keys =
+    # legacy record, no line; the pin at smoke keeps this honest).
+    if net.get("basis_scope") == "fleet":
+        _layers = []
+        if isinstance(net.get("domains"), list) and net["domains"]:
+            _layers.append(f"{len(net['domains'])} domain band(s)")
+        if isinstance(net.get("group_links"), list) and net["group_links"]:
+            _layers.append(f"{len(net['group_links'])} routed group(s)")
+        if isinstance(net.get("universal_facts"), list) and net["universal_facts"]:
+            _partials = sum(1 for u in net["universal_facts"]
+                            if int(u.get("held") or 0) < int((_dget(net, "totals") or {}).get("nodes") or 0))
+            _layers.append(f"{len(net['universal_facts'])} baseline fact(s)"
+                           + (f" ({_partials} partial)" if _partials else ""))
+        if _layers:
+            out.append("    " + _c("topology: " + " · ".join(_layers), "dim"))
 
     # This cycle's lifecycle on the triggering node — derived, not hand-counted.
     entries = _lget(record, "entries")
@@ -958,14 +973,23 @@ def _demo_record() -> ms.CycleRecord:
                     "nodes": [
                         {"node": "acme-api", "trigger": True, "always_loaded_tokens": 278,
                          "mirror_index_tokens": 150, "recall_tokens": 1775, "facts": 12, "shared": 6,
-                         "universal": 4, "stack": 2},
+                         "universal": 4, "stack": 2, "domain": "tools",
+                         "groups": ["fleet"], "sid": "-home-you-acme-api"},
                         {"node": "Doc_Flo", "trigger": False, "always_loaded_tokens": 6183,
                          "mirror_index_tokens": 176, "recall_tokens": 207220, "facts": 104, "shared": 4,
-                         "universal": 4, "stack": 2}],
+                         "universal": 4, "stack": 2, "domain": "docs",
+                         "groups": ["fleet"], "sid": "-home-you-Doc-Flo"}],
                     "stack_edges": [{"a": "acme-api", "b": "Doc_Flo", "n": 2}],
                     "totals": {"nodes": 2, "always_loaded_tokens": 6461,
                                "mirror_index_tokens": 326, "recall_tokens": 208995,
-                               "universal": 4, "stack": 2}},
+                               "universal": 4, "stack": 2},
+                    "basis_scope": "fleet",
+                    "domains": [{"domain": "docs"}, {"domain": "tools"}],
+                    "universal_facts": [{"name": "advisor-pass", "domain": "personal", "held": 2},
+                                        {"name": "docs-eval", "domain": "docs", "held": 1}],
+                    "group_links": [{"group": "fleet", "home_domain": "personal", "members_n": 2,
+                                     "facts": [{"name": "advisor-pass", "domain": "personal", "held": 2}]}],
+                    "stack_edge_facts": [{"a": "acme-api", "b": "Doc_Flo", "names": ["x"]}]},
         "marker": {"commit": "b6d37b6e9f01", "timestamp": "2026-06-16T11:40:00Z"},
     }
 
