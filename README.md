@@ -1,341 +1,320 @@
+<p align="center">
+  <img src="docs/assets/nocturne-banner.svg" alt="consolidate-memory — Keep the lesson. Check the source. Choose who learns it." width="100%">
+</p>
+
+<p align="center">
+  <a href="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml"><img src="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.14-b3a6e4?style=flat-square&labelColor=101e31" alt="Version 0.4.14"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8fced6?style=flat-square&labelColor=101e31" alt="MIT license"></a>
+</p>
+
 # consolidate-memory
 
-**Cross-project, verification-first memory for Claude Code — the layer beyond Auto Dream.**
+**Give your next Claude Code session the lessons your last one earned.**
 
-Claude Code is rolling out a built-in **Auto Dream** that consolidates each project's memory in place. `consolidate-memory`
-goes further, on the two axes Auto Dream doesn't cover: it **shares memory across enrolled
-projects in the same trust domain** (a governed store, replicated into those projects) — and **verifies
-facts against the live code** (grep / file & symbol existence / `git log`), dropping any it can't
-confirm. Fact-checked, fleet-wide memory — not a per-project transcript-merge.
+A Claude Code plugin that turns project history and session feedback into **verified,
+reusable memory**. Check a lesson against the current code, keep a useful recall cue,
+and share it with the projects you choose. When the code changes, revisit the memory.
 
-It **complements** Auto Dream rather than replacing it — a deliberately *explicit*, rigorous pass: Auto Dream keeps each
-project tidy automatically; you invoke **`dream`** (or "consolidate my memory") when you want
-*verified* + *cross-project* consolidation.
+Useful when you maintain several repositories, return to work after a break, or keep
+explaining the same testing conventions, architectural decisions, and hard-won gotchas.
+One explicit **`dream`** produces a reviewed memory update and an inspectable report.
 
-> **Current release: v0.4.13.** Public **1.0 remains HOLD** (evidence-gated — see
-> [`docs/1.0-preflight.spec.md`](docs/1.0-preflight.spec.md)). Per-version detail lives in
-> [**CHANGELOG.md**](CHANGELOG.md).
+<p align="center">
+  <a href="#why">Why use it</a> · <a href="#start">Quick start</a> ·
+  <a href="#network">Build a memory network</a> · <a href="#dashboard">See the dashboard</a> ·
+  <a href="#commands">Commands</a> · <a href="#development">Contribute</a>
+</p>
 
-## Contents
+> [!NOTE]
+> **Current release: v0.4.14.** Public 1.0 remains **HOLD**, with outstanding evidence
+> gates tracked in the [1.0 preflight](docs/1.0-preflight.spec.md).
+> See the [changelog](CHANGELOG.md) for shipped changes.
 
-- [Install](#install)
-- [Cross-project sharing, out of the box](#cross-project-sharing-out-of-the-box)
-- [Usage](#usage)
-- [How it works](#how-it-works)
-- [Upgrading from v0.1.x → v0.3.0](#upgrading-from-v01x--v030)
-- [Security & privacy](#security--privacy)
-- [Architecture](#architecture)
-- [Design notes](#design-notes)
+<a id="why"></a>
+## 🧠 Less rediscovery. Better context.
 
-## Install
+| When this happens… | What a dream helps you retain |
+| :--- | :--- |
+| You fix a subtle bug, then meet it again months later | The verified cause and a recall cue that points to the explanation |
+| The README, agent instructions, and memory disagree | A correction grounded in the live files and commit history |
+| Several repos use the same tools | Relevant shared lessons, absorbed into each enrolled project's own memory |
+| Client work and personal experiments must stay separate | Explicit trust domains, with narrowly granted exceptions through groups |
+| The memory index keeps growing | Measured context cost, stale-fact review, and proposals to move detail out of the always-loaded tier |
+| You repeat the same multi-step checks across projects | Evidence for a reusable command or skill, proposed for your decision |
 
-This ships as a **Claude Code plugin** — no clone, no symlinks. In Claude Code:
+**For example:** you learn why a queue worker needs jittered retries. A dream checks
+that claim against the implementation and keeps the rationale where a future session
+can find it. A broader Python tooling lesson can be verified in another repo and
+shared with eligible projects. A claim with no supporting evidence is flagged or dropped.
+
+Claude Code's [native memory](https://code.claude.com/docs/en/memory) supplies project
+instructions and recall. This plugin adds an explicit verification workflow, governed
+cross-project sharing, and a record of what changed. The scripts use Python's standard
+library; the agent performs the reasoning and source checks.
+
+<a id="start"></a>
+## 🚀 From install to your first dream
+
+**Requires:** Claude Code with plugins and auto-memory enabled, `python3` **3.8+** on
+PATH, and a POSIX environment (Linux, macOS, or WSL). No runtime packages to install.
+
+In Claude Code:
 
 ```text
 /plugin marketplace add Zenetusken/consolidate-memory
 /plugin install consolidate-memory@zenetusken-plugins
 ```
 
-(or the CLI form: `claude plugin marketplace add Zenetusken/consolidate-memory` then
-`claude plugin install consolidate-memory@zenetusken-plugins`). That's it — the skill
-is available in **every** project. Update later with `/plugin update consolidate-memory`.
+Use the Git `owner/repo` form above: relative plugin paths do not resolve from a
+direct URL to `marketplace.json`.
 
-> Add the marketplace **via Git** (the `owner/repo` shorthand above), not a direct URL
-> to `marketplace.json` — the plugin uses a relative source path that only resolves
-> over Git.
+Then, after a useful work session:
 
-**Working on the tool itself?** Clone the repo, register it as a local marketplace, and install
-the plugin — `claude plugin marketplace add ./` then `claude plugin install
-consolidate-memory@zenetusken-plugins` — so you dogfood the exact artifact users get.
+```text
+dream
+```
 
-**The QA companion.** This repo also ships an optional second plugin, **`dream-beta-tester`** —
-a deterministic regression oracle plus an agent-driven judgment-lens pass that beta-tests
-consolidate-memory *itself* (`/dream-beta-test`). For maintainers/contributors validating a
-change, not day-to-day `dream` use; install it the same way (`/plugin install dream-beta-tester@zenetusken-plugins`) if you want to help QA new versions.
+Or say **“consolidate my memory.”** The pass gathers candidate lessons, checks the
+current code, shows the proposed changes, and records the decisions. Its final
+output links to your local HTML report.
 
-### Uninstall / purge your data
+**Start with one project.** Local consolidation works without enrollment. To share
+between two repos, run `/cm-connect ../other-repo`; it surveys both, presents the
+enrollment plans for your confirmation, offers a first shared fact, and syncs both.
+It uses the `personal` domain for unenrolled projects; use `/cm-domain` for a different
+boundary. An existing domain is never silently switched.
 
-`/plugin uninstall consolidate-memory` removes the code. Your consolidated memory is
-**separate and untouched by uninstall** — that split is the whole privacy posture.
+> [!TIP]
+> Ask `/cm-doctor` to show the resolved stores, enrollment, and registry health.
+> **`UNENROLLED LOCAL-ONLY`** means local memory works and cross-project sharing is off.
 
-Do **not** `rm -rf ~/.claude/projects/<slug>/memory/` to "uninstall this plugin": that
-directory is also Claude Code's native Auto Memory, and blanket deletion removes
-memory this plugin does not own. Domain canonicals live under
-`<config>/consolidate-memory/domains/<domain>/facts/`; the control plane lives under
-`~/.claude/plugins/data/consolidate-memory/`. Legacy `~/.claude/memory/` is a
-read-only migration source. Scoped purge commands are the right tool; hand-deleting
-the native store is **not recoverable** and can destroy unrelated Auto Memory.
+<a id="dashboard"></a>
+## 🌌 See what the system actually kept
 
-### Known limitations
+![Nocturne dashboard: midnight domain lanes, shared-fact routes, group controls, baseline holdings, and memory budgets. Fictional sample data.](docs/assets/nocturne-dashboard.png)
 
-- **Unenrolled projects are local-only.** They cannot create or pull cross-project
-  canonicals. Enroll with `/cm-domain` (marketplace) or `cm project enroll --domain
-  personal --apply --confirm enroll-personal` (this checkout). `cm doctor` prints
-  `UNENROLLED LOCAL-ONLY` when this applies.
-- Use `move-domain` / `unenroll` to revoke managed mirrors that the destination does
-  not admit. Do not run `cm migrate --apply` / `--rollback` or domain switches on
-  irreplaceable stores without a reviewed assignment plan.
-- `forget` is **lazy acknowledgment**: other projects drop the mirror on their next
-  `--pull` / `--gc --apply`. Offline clones keep bytes until they run.
-- 1.0 is **POSIX-only** (ADR 016): native Windows mutation is out of scope — run
-  under WSL. Missing `fcntl` is fail-closed `WriteRefused`, never an unlocked fallback.
+**Nocturne** is the memory observatory that closes a dream: a self-contained HTML
+archive, rendered from the same structured cycle record as the terminal summary.
+Open the generated file in a browser; it needs no server, fonts service, or CDN.
 
-## Cross-project sharing, out of the box
+- **Context and history:** index trajectory, budget targets, fact counts, writes,
+  verification effort, and cadence. Token figures are estimates, approximately characters ÷ 4.
+- **Memory network:** trust domains, shared-fact connections, selectable group grants,
+  baseline holdings, per-project costs, and the full captured network inventory.
+- **Evidence and decisions:** verification results, health warnings, observed file
+  mutations, recalled facts, workflow evidence, and before/after diffs.
+- **Revisit and inspect:** archive filter/sort, previous/next cycle navigation,
+  collapsible sections, compact mode, and the captured record. Choose **Nocturne**,
+  **Original** (the previous espresso dark palette), **Light**, or **System**.
 
-Everything works locally with zero setup; sharing takes **one deliberate step per
-project** — enrollment (a domain is a trust boundary, so a project can never grant
-itself one — the operator grants it). The consolidated workflow:
+**Preview artifacts:** [HTML archive](docs/previews/nocturne/index.html) ·
+[network SVG](docs/assets/network-topology.svg) ·
+[design and validation notes](docs/nocturne-design.md).
+The previews use **fictional projects and synthetic data**. Download the HTML and
+open it locally; GitHub shows its source rather than running it.
 
-1. **Install** (above) — two commands.
-2. **Hook your repos together:** in one of them run **`/cm-connect <other-repo>`** —
-   it surveys both repos, shows each enrollment plan (the grants are
-   operator-confirmed there — a repo never grants itself), offers to share a first
-   fact, absorbs the shared layer in both directions, and prints the network it
-   just linked.
-3. **Share a fact:** **`/cm-share "…"`** in any enrolled project — one sentence,
-   verified against the live repo(s), shown to you, written only on your
-   confirmation.
-4. **Stay in sync:** each project absorbs the shared layer on **its own next
-   dream** — or right now with **`/cm-sync`** — and the session beacon names exactly
-   which repos are behind, including unenrolled ones (*"2 shared fact(s) not
-   reachable here"*). **`/cm-network`** shows the whole network's token cost and
-   topology, read-only.
+<a id="network"></a>
+## 🕸️ Build a network with boundaries
 
-**Two layers, like VLANs and routed links.** A **domain** is an isolated
-broadcast scope — enroll related repos together (docs repos, LLM repos, tools)
-and a `user-global` fact reaches every member of its domain while other domains
-never see it. A **group** (`/cm-group`) is the routed link on top: an
-operator-granted recipient set that a fact's `recipients:` targets to **narrow**
-delivery — to just two repos, or across domains. The same commands drive both
-layers: `/cm-domain` and `/cm-connect` shape the domains; `/cm-group` declares
-the links; `/cm-share` asks, when groups exist, whether to deliver to a group or
-the whole domain (the narrowing is printed verbatim before you confirm). Group
-lifecycles are governed too: deleting a populated group is refused (members
-first, named); a fact predating a recreated group is withheld on pull unless
-re-confirmed (`--repoint`), and its stranded mirrors show as FROZEN in `gc` —
-deleted clean, quarantined if locally edited.
+Imagine maintaining a product, a research lab, and shared developer tools on one
+machine. You want lessons to travel where they apply, while each area keeps its own
+memory boundary.
 
-Enrolling a single project alone is just **`/cm-domain`**; `cm doctor` — or
-`/cm-doctor` — in any project prints the resolved setup, and the
-`UNENROLLED LOCAL-ONLY` line means that project keeps everything local until you
-enroll it. The full model (scopes, domains, groups, replication) is below under
-[How it works](#how-it-works).
+![Illustrative topology: three isolated domains (work, research, tools), seven enrolled projects, two explicitly granted recipient groups, and an unenrolled scratch repo that remains local-only.](docs/assets/network-topology.svg)
 
-## Usage
+### The VLAN analogy, made concrete
 
-In any project, just say **`dream`** — or "consolidate my memory" / "what should I
-remember from this?". The skill runs a 6-phase pass (locate → orient + pull globals →
-gather candidates → verify → consolidate → render), performed as a brief sleep → per-phase
-narration → wake, in a distinct italic voice layered *on top of* the dense technical
-reporting (never replacing it). You can also drive the pieces directly:
+| Network idea | Memory-system equivalent | What it actually means |
+| :--- | :--- | :--- |
+| VLAN / isolated segment | **Domain** | A project joins one domain by operator grant. Ordinary shared facts stay inside it. |
+| Selected endpoints with a routing rule | **Group** | A named recipient set can narrow delivery within a domain or bridge specific projects across domains. |
+| Traffic selected by purpose | **Scope and stack relevance** | `user-global` applies throughout the authorized audience; `stack-general` also requires a matching detected stack. |
+| Endpoint fetching an update | **Pull** | A receiving project absorbs admitted facts on its next dream or `/cm-sync`. |
+| Disconnected endpoint | **Unenrolled project** | Local memory only; it cannot create or pull shared canonicals. |
+
+This is a **local memory-delivery policy**, not an IP network or an OS security
+sandbox. Domains and groups do not create network sockets or synchronize machines.
+
+### One common topology, four delivery cases
+
+The example has `work` (`atlas-api`, `atlas-web`, `team-docs`), `research`
+(`eval-lab`, `model-notes`), and `tools` (`release-tools`, `dotfiles`).
+`scratch` stays unenrolled.
+
+| Example fact | Intended audience | Who stays outside |
+| :--- | :--- | :--- |
+| A verified account/tooling convention, `user-global` in `work` | All three `work` projects | `research`, `tools`, and `scratch` |
+| A Python lesson, `stack-general`, no group | Matching Python projects **in the fact's home domain** | Nonmatching projects and other domains |
+| A lesson addressed to `api-contract` | Only `atlas-api` and `atlas-web`, subject to scope/relevance checks | Even `team-docs`, despite sharing their domain |
+| A lesson addressed to `release-kit` | `atlas-api`, `eval-lab`, and `release-tools`, subject to scope/relevance checks | Every other repo; their domains are not opened wholesale |
+
+**Groups narrow the audience.** A fact naming `release-kit` reaches eligible members
+of that group; it does not also broadcast to all of `work`. A group has a home domain,
+and a canonical fact can target only groups created in that same home domain.
+Multiple named groups form a recipient union; stack relevance still applies.
+
+### Set it up in Claude Code
+
+1. **Create the boundaries.** In each repo, use `/cm-domain` and specify `work`,
+   `research`, or `tools`. Review each enrollment plan. Leave `scratch` unenrolled.
+2. **Grant the bridges.** Use `/cm-group` to create `release-kit` in `work` and add
+   `atlas-api`, `eval-lab`, and `release-tools`. Create `api-contract` in `work` and
+   add `atlas-api` and `atlas-web`. The command presents each grant for confirmation.
+3. **Share a verified lesson.** In `atlas-api`, run `/cm-share "<one claim sentence>"`.
+   When asked about delivery, choose a group or the whole domain. Review the exact
+   fact and recipient exclusions before confirming.
+4. **Absorb and inspect.** In each recipient, run `/cm-sync`, or wait for its next
+   dream. Run `/cm-network` to inspect recorded holdings, costs, and utility.
+
+For exact CLI syntax, a complete enrollment/group walkthrough, revocation behavior,
+and troubleshooting, see **[the network guide](docs/network-guide.md)**.
+
+> [!IMPORTANT]
+> **Permission is not delivery.** A recipient may not have pulled yet, may not match
+> the stack, or may be held at its memory budget ceiling. The network records observed
+> holdings. Its baseline counts can cover only part of the fleet because domains are
+> intentionally isolated; a partial count alone does not mean failed synchronization.
+
+<a id="commands"></a>
+## 🧭 A command for each intent
+
+These are the packaged commands available to marketplace users:
+
+| Intent | Command | Behavior |
+| :--- | :--- | :--- |
+| Consolidate this project's memory | `dream` | Full six-phase pass |
+| Connect two projects | `/cm-connect <other-repo>` | Survey, confirmed enrollment, optional share, sync both |
+| Show or change a trust boundary | `/cm-domain` | Show, enroll, move, or unenroll |
+| Manage selected recipients | `/cm-group` | List, create, add, remove, or delete groups |
+| Author one shared lesson | `/cm-share "<claim>"` | Verify, deduplicate, show, then write on confirmation |
+| Absorb approved shared memory | `/cm-sync` | List, pull, and harvest usage; reports held facts |
+| Inspect the fleet | `/cm-network` | Read-only topology, costs, and recall utility |
+| Diagnose resolved paths and grants | `/cm-doctor` | Read-only setup and registry inspection |
+| Manage retained plugin data | `/cm-data` | Inventory, export, compact, or scoped purge |
+
+The SessionStart beacon can add one factual reminder when memory is behind. It is
+read-only, never pulls, and stays silent on failure. Dreams run only when requested.
+
+<a id="workflow"></a>
+## 🔬 How a lesson becomes memory
+
+```mermaid
+flowchart LR
+    A["0 · Locate stores"] --> B["1 · Orient & pull"]
+    B --> C["2 · Gather claims"]
+    C --> D["3 · Verify sources"]
+    D --> E["4 · Review & consolidate"]
+    E --> F["5 · Prune, measure & report"]
+```
+
+Verification uses live files, symbols, git history, and documentation consistency.
+Unverifiable claims are flagged or dropped. The proposal makes authoring and
+irreversible changes reviewable; already-approved shared facts can be pulled earlier
+in the pass. Every decision lands in the cycle record.
+
+### Put detail where it costs the least
+
+| Tier | What belongs there | When it loads |
+| :--- | :--- | :--- |
+| **Always loaded** | Concise project instructions and the `MEMORY.md` index | At session start |
+| **Recall** | A useful description in the index pointing to a detailed fact | The cue loads first; the body is read when relevant |
+| **On demand** | Full explanations, references, and repository documents | When the work calls for them |
+
+The index target is **1,500 estimated tokens**; the pull ceiling is approximately
+**3,840**. `CLAUDE.md` has a **4,000-token** target and is edited conservatively.
+Scope decides **who** can use a fact; tier decides **how** it enters context.
+
+### Repeated work can become a reusable workflow
+
+The distill step looks for recurring command templates and command chains, including
+how many days and projects supplied the evidence. It can propose a command or skill.
+Existing coverage, weak evidence, or ordinary repeated commands can produce a
+**“create nothing”** verdict; that decision is recorded too. Nothing is auto-authored.
+
+<a id="privacy"></a>
+## 🔒 Local storage, explicit sharing
+
+The bundled scripts make no network calls or telemetry requests. Memory files and
+the HTML report stay local. The agent uses Claude Code's configured model service
+for reasoning; this is not a claim that the entire agent session runs offline.
+
+- **Enrolled by choice:** repositories cannot grant themselves cross-project access.
+- **Protected writes:** the canonical writer journals updates; locally edited mirrors
+  enter conflict handling instead of being silently overwritten.
+- **Secret filtering:** credential-shaped transcript text is omitted at retrieval;
+  the firewall also guards shared-fact authoring and workflow emission.
+- **Bounded context:** oversized indexes hold new pulls, with the held count surfaced.
+
+See [SECURITY.md](SECURITY.md) for the enforced properties and limitations.
+
+<details>
+<summary><strong>Updating, migration, and removing your data</strong></summary>
+
+Use Claude Code's `/plugin` manager to update or uninstall the plugin. Marketplace
+refresh and installed-plugin updates are separate operations; see the
+[official plugin reference](https://code.claude.com/docs/en/plugins-reference).
+
+**Coming from the legacy global store (before v0.3.0)?** Domain enrollment changed
+the trust boundary. Use an **enrolled maintenance project** to inventory, explicitly
+assign or exclude, and migrate the legacy facts before enrolling the remaining
+recipients. First enrollment revokes managed mirrors the destination does not admit,
+so review the maintenance caller's enrollment plan too. Verify the migration before
+finalizing; rollback is available only before finalization. The
+[network guide](docs/network-guide.md#migration-and-revocation) includes the commands.
+
+Uninstalling removes plugin code; it leaves memory data intact. Use `/cm-data` for
+scoped cleanup. Do not delete the native memory directory wholesale: it also contains
+Claude Code memory that this plugin does not own. Resolve actual paths with `/cm-doctor`.
+
+Revocation through `forget` is acknowledged lazily on subsequent pulls or GC; an
+offline copy retains bytes until it runs. Native Windows mutation is unsupported;
+use WSL. Missing POSIX locking fails closed.
+
+</details>
+
+<a id="development"></a>
+## 🛠️ Develop and contribute
+
+Clone this repository and dogfood the packaged artifact:
 
 ```bash
-./cm status            # Phase-0 context: stores, git range, marker, token budget + a no-nag dream-timing nudge
-./cm doctor            # resolved Claude store, source, profile, domain, auto-memory, ambiguity
-./cm project enroll --domain NAME   # maintainer CLI: operator grant (marketplace users: ask the skill)
-./cm extract           # curated session signal (human turns + error-gotchas, secrets omitted)
-./cm distill           # recurring Bash-command workflows (templates + compound-command chains) — distill's raw signal
-./cm pull .            # replicate relevant global facts into this project
-./cm gc . --apply      # reclaim orphaned + FROZEN mirrors (canonical gone, or alive but not delivered here) — report-only without --apply
-./cm tokens .          # per-node + total token consumption across the network (≈ chars/4)
-./cm network           # the cross-project shared-memory graph
-./cm group create|add|remove|delete|list|show  # operator-granted recipient groups (the routed link)
-./cm conflicts         # three-way mirror conflict queue (local edits are never silently overwritten)
-./cm render cycle.json # render ONE cycle record → the ASCII dashboard
-./cm report            # open the rich self-contained HTML archive (all dreams for this repo)
-./cm log               # the lean per-dream audit table (all cycles)
+claude plugin marketplace add ./
+claude plugin install consolidate-memory@zenetusken-plugins
 ```
 
-(`./cm` is a **maintainer** wrapper in this checkout; marketplace users invoke the skill
-and the packaged `/cm-*` commands.)
+The checkout's `./cm` wrapper is a **maintainer CLI**. Marketplace users use the
+commands above. Common development checks:
 
-**A second vertical — distill.** Beyond consolidating *facts*, a dream also watches for repeated
-*workflows*: recurring command templates and their compound-command chains, with a
-day-spread so a genuine multi-day workflow outranks a one-hour retry loop — and the pass
-proposes packaging a high-confidence one into a durable command/skill, **report-then-apply,
-never auto-written**. Across the fleet, only **distinctive** command classes that recur on
-more than one project over more than one day are proposed (ordinary `git add` is not a
-workflow). "Create nothing" is a frequent, honorable verdict; every distill step ends with a
-one-line disposition captured on the cycle record.
-
-## How it works
-
-### Three context-loading tiers
-
-A fact only helps a future session if it reaches that session's context — and everything
-that loads costs tokens. Claude Code loads memory in three tiers, and each fact belongs in
-the one that fits how often it's needed:
-
-| Tier | What loads | Consolidation rule |
-|---|---|---|
-| **Always-loaded** | `CLAUDE.md` + the auto-memory `MEMORY.md` index, injected every session | scarce & expensive — the index is kept lean; `CLAUDE.md` is user-owned, touched conservatively (a guest, not a fact dump) |
-| **Recall** | a fact's `description:` rides in the always-loaded index; the body is read on-demand when that hook cues it | the `description:` is a **recall key** — write it as the cue that makes a future session open the fact |
-| **On-demand** | repo docs + fact bodies, read when relevant | optimize for completeness, not per-session leanness |
-
-The product of a pass isn't tidy files — it's *correct, well-budgeted context loading*.
-Every candidate fact is **verified against the live code** before it can land; an
-unverifiable claim is dropped, not kept. A no-op pass and a heavy pass render visibly
-differently — the dashboard comes from a structured record of what the pass actually
-did, and a **rigor tier** scales the verification ceremony to the pass's magnitude.
-
-### Cross-project shared consciousness
-
-**This is the tier Auto Dream doesn't have.** Claude Code recall is **slug-scoped** — a
-project only auto-recalls its own `~/.claude/projects/<slug>/memory/` — so a fact learned
-in one project has to be **replicated** into the others to surface there. The model:
-
-- Facts get a **`scope`** — `project-local` / `stack-general` / `user-global` — by a hard
-  cascade, not vibes: does the fact depend on the user's **fleet-constant** substrate
-  (OS/account, `gh`, the Claude Code harness — present everywhere) or a **fleet-varying**
-  stack (a per-project tool like `mypy`)? Each pass re-audits existing `user-global`
-  facts by content and *offers* demotion for over-promoted ones (never auto-applied).
-- Cross-scope facts live canonically in a **domain-scoped store**
-  (`<config>/consolidate-memory/domains/<domain>/facts`); enrollment is an **operator
-  grant** — a repository cannot grant itself a domain, and `user-global` is
-  *domain*-global, not installation-global.
-- **Groups are the routed link** on top: an operator-granted recipient set. A
-  fact's optional `recipients:` narrows delivery to the group's members — the
-  same domain otherwise, or across domains (cross-domain mirrors get
-  namespaced keys, and the operator's grant is the confidentiality carrier).
-  Removing a member withdraws their mirrors (clean ones deleted, edited ones
-  quarantined); a recreated group name is a fresh identity, and old facts
-  cannot silently re-point at it — re-confirming takes an explicit `--repoint`
-  (which restamps the fact to now), delivery withholds per-recipient, and
-  stranded mirrors are reclaimed by `gc` (clean deleted, locally-edited
-  quarantined).
-- They're **replicated** into each enrolled project's store on that project's next pull.
-
-`./cm network` shows the topology — the **universal baseline** (facts every project holds)
-listed separately from the **differential edges** that carry real signal
-(`stack-general` facts binding only the matching-stack projects). Early on, with only
-universal facts, it honestly reads `N shared · N universal · 0 differential`. As stack-general facts
-accumulate, a graph emerges — the same split the HTML archive's Shared Consciousness view draws.
-
-### How insights propagate (the honest model)
-
-It's a **shared bloodstream, not telepathy** — and you never hand-edit another project.
-When project **A** dreams and learns something cross-cutting:
-
-1. **Deposit — instant.** The fact is written to the enrolled domain's canonical dir and
-   into A's own store.
-2. **Absorb — lazy.** Other projects pick it up on **their** next dream (every dream's
-   first step is a `pull`). Until B next dreams, B doesn't have A's new insight.
-
-So it's **eventually-consistent**, not a real-time broadcast — because recall is
-slug-scoped, a fact has to physically live in B's folder to surface in B's sessions, and
-replication on B's pull beats writing into projects you're not working in. The upshot:
-**no manual per-project busywork; each project syncs itself the next time you
-consolidate it.** Instant whole-network propagation would be a deliberate opt-in, not the
-default — the lazy pull keeps a project's memory changing only while *you're* in it.
-
-### The session beacon
-
-Lazy absorption has one honest cost: a project you rarely consolidate can drift far behind
-the fleet without anything telling you. The plugin ships a tiny **SessionStart hook** that
-measures exactly that — when you open a session in a project whose memory store is behind,
-it adds **at most one factual line** to the session's context, e.g.:
-
-> *Cross-project memory: 3 shared global fact(s) are not yet mirrored here (1 would be
-> ceiling-held); last consolidation 12.4d ago. A consolidation pass (dream) on this
-> project absorbs them; asking to snooze this reminder quiets it for this store.*
-
-It is read-only and advisory — it never pulls or writes anything; absorption still happens
-only when *you* run a dream. It stays **silent** in the common cases: projects that have
-never used the memory system, stores that are in sync, and stores you've snoozed (ask
-Claude to "snooze the memory beacon for this project"). It runs in ~40ms, needs `python3`
-on PATH, and if anything goes wrong it says nothing rather than guessing.
-
-## Upgrading from v0.1.x → v0.3.0
-
-**v0.3.0 moved the trust boundary.** Pre-0.3.0, any project could read or write the shared
-global store (`~/.claude/memory/`). v0.3.0 replaces that with **domain-scoped canonicals +
-enrollment** (ADR 008) — the big change in one sentence: **unenrolled is local-only.**
-
-| Was (≤ v0.1.91) | Is (≥ v0.3.0) |
-|---|---|
-| One global store at `~/.claude/memory/`, open to every project | Domain-scoped canonicals at `<config>/consolidate-memory/domains/<domain>/facts` |
-| Any dream could write or pull anything | Enrollment (`cm project enroll --domain NAME`) is an **operator grant**, per project |
-| Mirrors replicated everywhere by default | First-enroll **revokes managed mirrors the destination does not admit** |
-| Files + a hand-written index were the record | A **SQLite control plane** journals every op; `cm canonical upsert` is the **sole** canonical writer |
-| `~/.claude/memory/` was live | It is now a **read-only migration source** |
-
-**Migrate an existing fleet in this order (order matters):**
-
-1. **Update the plugin** (`/plugin update consolidate-memory`). Everything old keeps
-   working; unenrolled projects simply stop sharing until enrolled.
-2. **Populate the domain FIRST.** `cm migrate --plan` inventories the legacy facts and
-   stages an assignment plan — review it, then `cm migrate --apply --confirm migrate-apply`, then `--finalize`
-  (rollback: `cm migrate --rollback --confirm migrate-rollback`).
-3. **Then enroll each project** that should share: `cm project enroll --domain personal
-   --apply --confirm enroll-personal` (marketplace users: `/cm-domain`).
-4. **Enroll after migrating, not before.** A first-enroll revokes unadmitted mirrors —
-   enrolling into a still-empty domain strips every mirror with nothing to replace them.
-5. Projects you leave unenrolled stay fully functional **locally** — they just don't
-   share, and they drop out of the cross-project fleet view.
-
-`cm doctor` in any project prints the resolved StoreContext (domain, enrollment, paths,
-registry health) — the one command that answers "what is my memory setup?"
-
-## Security & privacy
-
-Your consolidated memory is personal and **never leaves your machine** — the scripts are
-**stdlib-only** (uses 3.8+ stdlib; CI validates the full 3.8–3.13 range), make **no
-network calls**, and the pipeline’s only external process is read-only `git` — the
-HTML archive’s render opens your local browser, the one other process it ever spawns. The `memory/` store is
-gitignored and is **not** part of the published plugin (only `plugins/consolidate-memory/`
-ships). The secrets firewall applies at *retrieval*: a credential-shaped turn in a
-transcript is dropped before it could ever reach a fact file. Control-plane locks use
-`fcntl.flock` (POSIX); missing `fcntl` is **WriteRefused** — fail-closed (ADR 016). Each
-release is gated by an internal multi-agent white-hat security review; see
-**[SECURITY.md](SECURITY.md)** for the full threat model and how to report an issue.
-
-## Architecture
-
-```
-consolidate-memory/                         # repo root = plugin marketplace
-├── .claude-plugin/marketplace.json         # the marketplace catalog
-├── plugins/consolidate-memory/             # the plugin (= ${CLAUDE_PLUGIN_ROOT})
-│   ├── .claude-plugin/plugin.json          # plugin manifest (name, version, …)
-│   ├── skills/consolidate-memory/
-│   │   ├── SKILL.md                         # the 6-phase workflow + loading-tier model
-│   │   └── references/harness-map.md        # paths, schema, verification recipes
-│   └── scripts/                            # stdlib-only runtime — store_context (sole path
-│                                           # constructor), memory_status (Phase 0), extract_signals
-│                                           # (secret-safe signal), sync_global (cross-project),
-│                                           # canonical_ingress (sole canonical writer), distill_scan,
-│                                           # render_dashboard / render_html / render_log (+ template), cm_ops
-├── plugins/dream-beta-tester/              # the QA companion plugin
-├── tests/                                   # zero-dependency smoke + accumulation + manifest checks
-├── memory/                                  # gitignored placeholder (.gitkeep) — live canonicals are domain dirs
-├── cm                                       # dev CLI over the scripts
-├── docs/                                    # ADRs, the 1.0 preflight, design specs
-└── SECURITY.md · CHANGELOG.md · LICENSE
+```bash
+python3 tests/smoke.py
+python3 tests/simulate_accumulation.py
+mypy --config-file mypy.ini
+./cm status
+python3 tests/validate_manifests.py
+claude plugin validate ./plugins/consolidate-memory --strict
 ```
 
-## Design notes
+Runtime scripts stay **stdlib-only**. Mypy and the separate Chromium CI checks are
+development tools. For a reproducible visual preview:
 
-A few load-bearing choices, in case you're poking at the code or wondering "why is it
-built this way":
+```bash
+python3 tests/dashboard_fixture.py --out /tmp/cm-preview
+# Open /tmp/cm-preview/index.html#sel=7 in a browser.
+```
 
-- **The model produces *data*; scripts produce *presentation*.** A pass emits a small
-  JSON "cycle record" of what it did; `render_dashboard.py` turns that into the
-  dashboard. Output is consistent run-to-run and the rendering is unit-testable — the
-  LLM never free-writes the report.
-- **Claims-first, secret-safe retrieval.** Transcripts are huge (tens of MB) but the
-  signal is tiny, so they're never bulk-read — the extractor streams, scopes to the last
-  consolidation marker, and drops credential-shaped text *at retrieval*.
-- **`scope` ≠ `tier`.** *Scope* is how widely a fact applies (this project / this stack /
-  everywhere); *tier* is how it loads. Cross-project sharing falls out of one harness
-  fact: recall is per-project, so global facts must be *replicated*, not just stored once.
-- **Boring-on-purpose engineering.** Zero runtime dependencies, ships as a
-  self-contained plugin (scripts referenced via `${CLAUDE_PLUGIN_ROOT}`, no build step),
-  and the mutating ops are idempotent + reversible (sync refreshes rather than
-  duplicates, GC is report-then-apply, a marker scopes each run to "since last time").
+The optional **dream-beta-tester** companion tests the consolidation skill itself,
+combining deterministic invariants with an agent judgment pass. Install with
+`/plugin install dream-beta-tester@zenetusken-plugins` and invoke `/dream-beta-test`.
+See its [design](plugins/dream-beta-tester/docs/SPEC.md) and
+[report contract](plugins/dream-beta-tester/docs/CONTRACT.md).
 
-If a design decision here surprised you, it probably has a one-line "why" in
-[`SKILL.md`](plugins/consolidate-memory/skills/consolidate-memory/SKILL.md) or its
-[`harness-map.md`](plugins/consolidate-memory/skills/consolidate-memory/references/harness-map.md).
-
-## License
-
-MIT — see [LICENSE](LICENSE).
+| Find your way around | Source |
+| :--- | :--- |
+| Repository conventions and required gates | [AGENTS.md](AGENTS.md) |
+| The six-phase workflow and tier rules | [SKILL.md](plugins/consolidate-memory/skills/consolidate-memory/SKILL.md) |
+| Store topology, fact schema, verification recipes | [Harness map](plugins/consolidate-memory/skills/consolidate-memory/references/harness-map.md) |
+| Native/canonical path resolution | [store_context.py](plugins/consolidate-memory/scripts/store_context.py) |
+| Canonical writes and journal authority | [canonical_ingress.py](plugins/consolidate-memory/scripts/canonical_ingress.py), [control_plane.py](plugins/consolidate-memory/scripts/control_plane.py) |
+| Dashboard data and presentation | [render_html.py](plugins/consolidate-memory/scripts/render_html.py), [template](plugins/consolidate-memory/scripts/dashboard.template.html) |
+| Decisions, release history, license | [ADRs](docs/adr), [CHANGELOG.md](CHANGELOG.md), [MIT](LICENSE) |

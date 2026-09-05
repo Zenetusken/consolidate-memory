@@ -2097,10 +2097,32 @@ check("RC-90: hashchange re-routes without location.reload()",
       and "location.reload()" not in _TEMPLATE_SRC)
 check("RC-90: hash-route resets scroll (reload used to land at top; in-page nav must too)",
       "window.scrollTo(0,0)" in _TEMPLATE_SRC.replace(" ", ""))
-check("RC-90: light/dark --faint/--ghost are the WCAG-AA tokens (ghost passes on paper2/card too)",
-      "--faint:#6a6356; --ghost:#6e675b" in _TEMPLATE_SRC
-      and _TEMPLATE_SRC.count("--faint:#9a8d74; --ghost:#8e816a") == 2)
-check("RC-90: audit head COUNTS are not uppercased (labels stay tracked small-caps)",
+# All palettes remain readable; Original also preserves the shipped dark colors.
+def _ui_luminance(hex_color):
+    channels = [int(hex_color[i:i+2], 16)/255 for i in (1, 3, 5)]
+    linear = [v/12.92 if v <= .04045 else ((v+.055)/1.055)**2.4 for v in channels]
+    return sum(v*w for v, w in zip(linear, (.2126, .7152, .0722)))
+
+_ui_palettes = [dict(_re.findall(r"--([a-z0-9-]+):(#[a-fA-F0-9]{6})", block))
+                for block in _re.findall(r":root[^{}]*\{([^{}]+)\}", _TEMPLATE_SRC)]
+_ui_colors = ("ink", "ink2", "faint", "ghost", "data", "accent", "ok", "warn", "crit")
+check("RC-90: every theme's text and semantic colors meet WCAG AA on all surfaces",
+      len(_ui_palettes) >= 5 and all(
+          all(k in pal for k in _ui_colors + ("paper", "paper2", "card"))
+          and all((max(_ui_luminance(pal[fg]), _ui_luminance(pal[bg]))+.05) /
+                  (min(_ui_luminance(pal[fg]), _ui_luminance(pal[bg]))+.05) >= 4.5
+                  for fg in _ui_colors for bg in ("paper", "paper2", "card"))
+          for pal in _ui_palettes))
+_original_palette_match = _re.search(r':root\[data-theme="original"\]\{([^{}]+)\}', _TEMPLATE_SRC)
+_original_palette = _original_palette_match.group(1) if _original_palette_match else ""
+check("Original theme: preserves the complete production dark palette",
+      dict(_re.findall(r"--([a-z0-9-]+):([^;]+);", _original_palette)) == {
+          "paper": "#15120d", "paper2": "#1e1913", "card": "#1c1711", "rule": "#332c22", "rule2": "#493f30",
+          "ink": "#ece4d2", "ink2": "#b4a98e", "faint": "#9a8d74", "ghost": "#8e816a",
+          "accent": "#d96a3f", "data": "#5fa996", "ok": "#7cae65", "warn": "#d4a24d", "crit": "#d96a3f", "glow": "#221b13",
+          "tint-ok": "rgba(95,169,150,.16)", "tint-crit": "rgba(217,106,63,.12)",
+          "tint-accent": "rgba(217,106,63,.09)", "tint-warn": "rgba(212,162,77,.10)"})
+check("RC-90: audit head counts retain sentence case",
       ".audit-ln.head>.nums" in _TEMPLATE_SRC.replace(" ", "")
       and "text-transform:none" in _TEMPLATE_SRC)
 # Dogfood 0.3.1: a 8-dangling health row wrapped "dangling wikilinks" onto two lines
@@ -2268,7 +2290,7 @@ check("M2: files[] renders as a dim label even with no diff sidecar (capped +N m
       "function fileLabel" in _TEMPLATE_SRC and "return esc(nm)+fl;" in _TEMPLATE_SRC
       and "rawFiles.length>3" in _TEMPLATE_SRC)
 check("M3: ledger middle column is minmax(0,1fr), reasons wrap, citations truncate + tooltip",
-      "grid-template-columns:96px minmax(0,1fr) auto" in _TEMPLATE_SRC
+      _re.search(r"\.row\{[^}]*grid-template-columns:[^ ]+ minmax\(0,1fr\)", _TEMPLATE_SRC) is not None
       and "grid-template-columns:96px 1fr auto" not in _TEMPLATE_SRC
       and "String(cit).slice(0,10)" in _TEMPLATE_SRC and 'title="\'+esc(cit)+\'"' in _TEMPLATE_SRC)
 check("m1: reg-counts appends the blocked tally (N blocked no longer hides under 'none this pass')",
@@ -2280,10 +2302,10 @@ check("m3: per_fact and demotion-surfaced truncation carry the +N more counter",
 check("m4: the demotion verdict strips a duplicated 'eligible N' lead and tags counter-justified",
       r"/^\s*eligible\s+\d+" in _TEMPLATE_SRC and "counter-justified" in _TEMPLATE_SRC)
 check("n1: dream stanzas wrap instead of overflowing",
-      ".dream-stanza div{font-family:var(--serif);font-style:italic;color:var(--ink2);font-size:14.5px;line-height:1.6;overflow-wrap:anywhere}" in _TEMPLATE_SRC)
-check("n2: flag/dl tints are theme tokens in all three theme blocks (no hardcoded rgba rules)",
-      "--tint-ok:rgba(95,169,150,.13)" in _TEMPLATE_SRC
-      and _TEMPLATE_SRC.count("--tint-ok:rgba(95,169,150,.16)") == 2
+      _re.search(r"\.dream-stanza div\{[^}]*overflow-wrap:anywhere", _TEMPLATE_SRC) is not None)
+check("n2: flag/dl tints are theme tokens in every screen and print palette (no hardcoded rgba rules)",
+      all(all("--tint-"+t+":rgba(" in block for t in ("ok", "crit", "accent", "warn"))
+          for block in _re.findall(r":root[^{}]*\{([^{}]+)\}", _TEMPLATE_SRC))
       and "background:var(--tint-ok)" in _TEMPLATE_SRC and "background:var(--tint-crit)" in _TEMPLATE_SRC
       and "background:var(--tint-accent)" in _TEMPLATE_SRC and "background:var(--tint-warn)" in _TEMPLATE_SRC
       and ".dl-plus{background:rgba" not in _TEMPLATE_SRC and ".flag{background:rgba" not in _TEMPLATE_SRC)
@@ -2292,7 +2314,8 @@ check("n3: verification is glyph-free colored counts (no ✓ KPI, no +/~/− aud
       and "'+'+num(d.created)" not in _TEMPLATE_SRC
       and "'~'+num(d.modified)" not in _TEMPLATE_SRC
       and "'−'+num(d.deleted)" not in _TEMPLATE_SRC
-      and "class=\"a-added\">'+num(d.created)" in _TEMPLATE_SRC)
+      and "class=\"a-added\">'+count(\"created\")" in _TEMPLATE_SRC
+      and 'function count(k){return d[k]==null?"—":num(d[k]);}' in _TEMPLATE_SRC)
 check("v0.1.44: SPARES maintenance/bootstrap (0 commits, 0 candidates, 0/0/0)",
       ms.procedure_integrity(_pi(0, 0))[0])
 # the downgrade dodge: HEAVY magnitude relabeled LIGHT, 0 tally -> still FIRES + surfaces the dodge
@@ -2477,7 +2500,7 @@ check("v0.1.54 render: null sleep/wake → ✗ gaps (str(None) truthiness fixed)
 # build_html embeds the dream data through the XSS-safe embed (round-trip via the escaped JSON).
 _tpl54 = (ROOT / "plugins" / "consolidate-memory" / "scripts" / "dashboard.template.html").read_text(encoding="utf-8")
 check("v0.1.54 html: template ships the dream panel, hidden by default",
-      'id="dream-blk" style="display:none"' in _tpl54 and 'id="dream-arc"' in _tpl54 and "The Dream" in _tpl54)
+      'id="dream-blk" style="display:none"' in _tpl54 and 'id="dream-arc"' in _tpl54 and "Dream narrative" in _tpl54)
 _html54 = rhtml.build_html(cast(dict, _dr54), [], "2026-07-01T00:00:00+00:00")
 check("v0.1.54 html: build_html embeds the dream block (safe-embedded, round-trippable)",
       _json43.loads(_html54.split('id="cm-data">', 1)[1].split("</script>", 1)[0])["cycles"][-1]["dream"]["beats"][0] == "> *🌙 a*")
@@ -12081,7 +12104,7 @@ _readme_bq = (ROOT / "README.md").read_text(encoding="utf-8")
 check("v0.4.8 cm-commands: the README cross-project section is the consolidated workflow "
       "(connect → share → sync, network)",
       all(_c in _readme_bq for _c in ("/cm-connect", "/cm-share", "/cm-sync", "/cm-network"))
-      and "Hook your repos together" in _readme_bq)
+      and all(_c in _readme_bq for _c in ("/cm-domain", "/cm-group", "docs/network-guide.md")))
 
 # ── v0.4.10 group-scopes (docs/group-scopes.spec.md) ───────────────────────────
 def _raises_gs(fn, exc):
@@ -13142,12 +13165,13 @@ check("v0.4.13 hotfix: every test-side render_html.py invocation carries --no-op
 _tmpl_ft = (ROOT / "plugins" / "consolidate-memory" / "scripts"
             / "dashboard.template.html").read_text(encoding="utf-8")
 check("v0.4.13 topology: the template carries the NAMED gate, the chip strip, the "
-      "domain-arc/hull painters, and the honest fleet caption",
+      "domain-lane and grant painters, and the honest fleet caption",
       'net0.basis_scope==="fleet"' in _tmpl_ft
       and "net-chips" in _tmpl_ft
-      and "Fleet view — tinted arcs" in _tmpl_ft
-      and 'stroke-dasharray":"4 3"' in _tmpl_ft
-      and "arcPath(" in _tmpl_ft)
+      and "Fleet view — domain lanes" in _tmpl_ft
+      and "grant-edge" in _tmpl_ft
+      and "domain-zone" in _tmpl_ft
+      and "permission only" in _tmpl_ft)
 check("v0.4.13 topology: the legacy painter strings survive untouched",
       all(m in _tmpl_ft for m in ("Older record — a line just means",
                                   "Numbers are this-stack facts; lines are what some share.",
@@ -13212,12 +13236,12 @@ with _tf73.TemporaryDirectory() as _td_rp:
         _arch_rp = _ctx_rp.native_memory_dir.parent / "dashboards" / "index.html"
         _html_rp = _arch_rp.read_text(encoding="utf-8") if _arch_rp.exists() else ""
         check("v0.4.13 topology: the 25-node fleet record renders the layered view "
-              "(gate, chips, caption, satellite) with the legacy strings intact",
+              "(gate, chips, caption, full inventory) with the legacy strings intact",
               _rp_run.returncode == 0 and bool(_html_rp)
               and 'net0.basis_scope==="fleet"' in _html_rp
               and "net-chips" in _html_rp
-              and "Fleet view — tinted arcs" in _html_rp
-              and '"+"+more+" more"' in _html_rp
+              and "Fleet view — domain lanes" in _html_rp
+              and "more projects in the complete inventory below" in _html_rp
               and "Older record — a line just means" in _html_rp)
         # the ASCII dashboard's key-gated topology line
         (_proj_rp / "cycle.json").write_text(_json_xp.dumps(_rec_rp), encoding="utf-8")
@@ -13258,11 +13282,13 @@ check("v0.4.13 topology: the emitter sorts the trigger FIRST (the mis-hub fix)",
 check("v0.4.13 topology: paintDream resets the fleet DOM (chips + ⌁ legend rows)",
       'var chips0=el("net-chips")' in _tpl_ft2
       and 'indexOf("⌁ ")===0' in _tpl_ft2)
-# MED-3: the full-ring single-domain arc becomes a circle (coincident-endpoint
-# arcs render nothing)
-check("v0.4.13 topology: the single-domain full-ring arc special-cases to a circle",
-      "coincident endpoints renders NOTHING" in _tpl_ft2
-      and 'Math.abs((a1-a0)-(2*Math.PI))<0.01' in _tpl_ft2)
+# Nocturne replaces angular hulls with explicit domain rectangles. A single domain
+# must still draw its container. The optional browser gate exercises the actual SVG.
+check("topology: each nonempty domain draws a lane, including a single-domain fleet",
+      'doms.forEach(function(dm)' in _tpl_ft2
+      and 'if(!rows.length)return;' in _tpl_ft2
+      and 'class:"domain-zone"' in _tpl_ft2
+      and 'if(!nodes.length)' in _tpl_ft2)
 # MED-1: the held count is distinct PROJECTS — the same-display_name pair is
 # the discriminator (a dedupe-by-label count would read 1 of 2)
 import sqlite3 as _sq_hc
