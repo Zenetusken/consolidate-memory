@@ -5,6 +5,12 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.15] — 2026-09-05
+
+**Patch — the version-sweep hotfix.** The 0.4.14 Nocturne release updated `plugin.json`, the CHANGELOG, and AGENTS.md's CI paragraph, but left several current-version statements behind. This release completes the sweep to the shipping version: the CLAUDE.md banner, AGENTS.md's "verified against the live tree" line, the SKILL.md banner, harness-map's lead line, the README's current-release blurb, and the 1.0-preflight STATUS line.
+
+Doc-only. No cycle-record schema, store policy, canonical writer, command, or hook contract changes. Backward-compatible → patch.
+
 ## [0.4.14] — 2026-09-05
 
 **Patch — Nocturne, a memory observatory.** The HTML summary now leads with the
