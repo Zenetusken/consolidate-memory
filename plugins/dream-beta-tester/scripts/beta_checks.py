@@ -1385,6 +1385,44 @@ def narration_capture(ctx: Ctx) -> list[Result]:
     return out
 
 
+@family
+def network_capture(ctx: Ctx) -> list[Result]:
+    """v0.4.20: the fleet-capture presence on the latest persisted dream. Phase-5 step 4
+    mandates the --tokens --fleet capture pasted into the record's `network` block; a skipped
+    capture persists silently today (only the archive shows the absence). The FOURTH member of
+    the skipped-by-scope set: a maintenance/bootstrap pivot skips the capture BY SCOPE (the
+    _maintenance_pivoted carve-out — unlike narration, the network block is NOT written on every
+    judged persist). is_complete = nodes is a list — the producer always emits nodes (possibly
+    []); a nodes-less dict is a corruption shape the archive's note ladder also reads as
+    not-captured (one predicate, three surfaces). ADVISORY (LOW / WARN, never FAIL). Version
+    gate / empty-log SKIP / latest-read: _latest_capture_check (min_version 0.4.13 — the
+    --fleet mandate floor). Design: docs/network-capture-teeth.spec.md."""
+    if _maintenance_pivoted(ctx):
+        return []
+    # Presence is the KEY's existence, not the block's truthiness: the scaffold normalizes an
+    # absent AND a present-non-dict block to {} before is_complete runs, so the closure reads
+    # raw presence from the latest record itself — a `network: {}` / `network: []` / `null`
+    # must read the corruption tail, never the era tail (spec §2.2).
+    _latest = ctx.log_records[-1] if ctx.log_records else {}
+    _net_present = isinstance(_latest, dict) and "network" in _latest
+    def is_complete(net: dict[str, Any]) -> tuple[bool, str]:
+        nodes_ok = isinstance(net.get("nodes"), list)
+        if nodes_ok:
+            return True, f"nodes={len(net.get('nodes') or [])}"
+        if net or _net_present:
+            return False, ("the block is present but its nodes are not a list — the producer "
+                           "always emits nodes (a corrupt block, never an honest capture)")
+        return False, ("block MISSING — expected on pre-v0.4.13 records (the --fleet capture "
+                       "mandate shipped in v0.4.13); a defect on any v0.4.13+ full dream "
+                       "(check the record's recency before promoting)")
+    return _latest_capture_check(
+        ctx, block_key="network", family_name="network_capture", min_version=(0, 4, 13),
+        check_id="CHK-NETWORK-CAPTURE",
+        title="latest persisted dream captured its fleet network (network.nodes)",
+        expected="a v0.4.13+ full dream pastes the --tokens --fleet capture into the record's network block",
+        defect_ref="v0.4.20", is_complete=is_complete)
+
+
 def _maintenance_pivoted(ctx: Ctx) -> bool:
     """True iff the latest persisted record is a maintenance/bootstrap pivot pass (scoped to pull +
     health only) — factored out (v0.1.7 Gate-2a follow-up: usage_capture/demotion_capture need the

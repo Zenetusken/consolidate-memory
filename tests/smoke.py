@@ -6081,10 +6081,12 @@ with _tf43.TemporaryDirectory() as _tdA1:
     _dA1 = _json43.loads(_oA1)
     check("v0.1.8/A1 F4: flag absent → no cycle_probe key (inert seam)",
           "cycle_probe" not in _dA1 and _rcA1 == 0 and _dA1["summary"]["fail"] == 0)
-    check("v0.1.8/A1 F4: re-baselined fixture is 0 FAIL / 1 expected WARN (the v0.4.19 narration "
-          "block-leg advisory — the frozen probe predates the narration block; no other noise)",
-          _dA1["summary"]["fail"] == 0 and _dA1["summary"]["warn"] == 1
-          and any(r.get("id") == "CHK-NARRATION" for r in _dA1["results"]))
+    check("v0.1.8/A1 F4: re-baselined fixture is 0 FAIL / 2 expected WARNs (the v0.4.19 narration "
+          "block-leg advisory + the v0.4.20 network-capture advisory — the frozen 2026-06-21 probe "
+          "predates both mandates; no other noise)",
+          _dA1["summary"]["fail"] == 0 and _dA1["summary"]["warn"] == 2
+          and any(r.get("id") == "CHK-NARRATION" for r in _dA1["results"])
+          and any(r.get("id") == "CHK-NETWORK-CAPTURE" for r in _dA1["results"]))
     check("v0.1.8/A1 F1: CHK-CYCLE-BUDGET present on the re-baselined fixture (trigger node exists)",
           any(r["id"] == "CHK-CYCLE-BUDGET" for r in _dA1["results"]))
 
@@ -13912,6 +13914,63 @@ check("preflight render_html: 'preflight' is in the embed whitelist",
 from network_identity import run as run_network_identity
 run_network_identity(check)
 
+# ── v0.4.20 network capture teeth (docs/network-capture-teeth.spec.md) ───────────────────
+# The NET advisory panel (ONE predicate: network.nodes is a list — absent OR nodes-less fires,
+# pivot-suppressed with the string coercion, dreamless exempt, no exit change), the beta
+# network_capture family (the fourth _maintenance_pivoted member; era vs corruption tails),
+# and the A1 fixture re-baseline (2 named WARNs).
+_REC20 = {"project": "p", "scope": {}, "verification": {},
+          "dream": {"sleep": "s", "beats": ["b"] * 6, "wake": "w"}}
+_join20 = lambda lines: "\n".join(lines)  # noqa: E731
+check("v0.4.20 NET panel: a dream-bearing record with no network block fires the advisory, "
+      "and the copy avoids the F19H phrase",
+      "NETWORK CAPTURE MISSING" in _join20(rd._net_capture_section(_REC20))
+      and "CONVERSATION-TRUTH" not in _join20(rd._net_capture_section(_REC20)))
+check("v0.4.20 NET panel: a nodes-less dict fires too (the one-predicate seam)",
+      "NETWORK CAPTURE MISSING" in _join20(
+          rd._net_capture_section(dict(_REC20, network={"totals": {}}))))
+check("v0.4.20 NET panel: a nodes list suppresses; a dreamless record is exempt",
+      rd._net_capture_section(dict(_REC20, network={"nodes": []})) == []
+      and rd._net_capture_section({"project": "p", "scope": {}}) == [])
+for _pv20 in (True, "true", "1"):
+    check(f"v0.4.20 NET panel: pivot suppressed ({_pv20!r})",
+          rd._net_capture_section({"dream": _REC20["dream"],
+                                   "maintenance": {"pivoted": _pv20}}) == [])
+check("v0.4.20 NET panel: the string coercion — a 'false' string and a False bool both FIRE",
+      bool(rd._net_capture_section({"dream": _REC20["dream"], "maintenance": {"pivoted": "false"}}))
+      and bool(rd._net_capture_section({"dream": _REC20["dream"], "maintenance": {"pivoted": False}})))
+class _FakeCtx20:
+    def __init__(self, records, ver="0.4.20"):
+        self.log_records = records
+        self.skill_version = ver
+_r20a = _bc54.network_capture(cast(_bc54.Ctx, _FakeCtx20([{"marker": {"timestamp": "t1"}}])))
+check("v0.4.20 beta family: an absent block → WARN with the era caveat tail",
+      len(_r20a) == 1 and _r20a[0].status == "WARN" and "pre-v0.4.13" in _r20a[0].actual)
+_r20b = _bc54.network_capture(cast(_bc54.Ctx, _FakeCtx20(
+    [{"marker": {"timestamp": "t2"}, "network": {"nodes": [{"node": "x"}]}}])))
+_r20c = _bc54.network_capture(cast(_bc54.Ctx, _FakeCtx20(
+    [{"marker": {"timestamp": "t3"}, "network": {"nodes": []}}])))
+check("v0.4.20 beta family: nodes lists PASS (1 node and the honest 0-node empty capture)",
+      _r20b[0].status == "PASS" and "nodes=1" in _r20b[0].actual
+      and _r20c[0].status == "PASS" and "nodes=0" in _r20c[0].actual)
+_r20d = _bc54.network_capture(cast(_bc54.Ctx, _FakeCtx20(
+    [{"marker": {"timestamp": "t4"}, "network": {"totals": {}}}])))
+check("v0.4.20 beta family: a nodes-less dict → WARN with the corruption tail (never the era tail)",
+      _r20d[0].status == "WARN" and "not a list" in _r20d[0].actual
+      and "pre-v0.4.13" not in _r20d[0].actual)
+check("v0.4.20 beta family: the pivot carve-out + the pre-0.4.13 skill skip (a RECORD present — "
+      "the version gate is the only suppressor, never an over-determined empty log)",
+      _bc54.network_capture(cast(_bc54.Ctx, _FakeCtx20(
+          [{"marker": {"timestamp": "t5"}, "maintenance": {"pivoted": True}}]))) == []
+      and _bc54.network_capture(cast(_bc54.Ctx, _FakeCtx20(
+          [{"marker": {"timestamp": "t6"}}], ver="0.4.12"))) == [])
+_r20e = _bc54.network_capture(cast(_bc54.Ctx, _FakeCtx20(
+    [{"marker": {"timestamp": "t7"}, "network": {}}])))
+check("v0.4.20 beta family: a PRESENT empty network dict reads the corruption tail, never the "
+      "era tail (presence is the key's existence, not the block's truthiness)",
+      _r20e[0].status == "WARN" and "not a list" in _r20e[0].actual
+      and "pre-v0.4.13" not in _r20e[0].actual)
+
 # ── v0.4.19 narration teeth (docs/dream-narration-teeth.spec.md) ────────────────────────
 # The conversation-truth detector: NAR (narration verification against assistant TEXT blocks
 # only) + EXT (extractor accountability) at the terminal --persist, with the honest degrade.
@@ -14198,9 +14257,10 @@ with _tf43.TemporaryDirectory() as _td19:
     _p19h = _wr19("f19h.json", "2026-09-02T02:00:08Z", _T0, _dream19h)
     _so19, _se19, _rc19 = _run19(_p19h, "--persist", str(_store19))
     check("v0.4.19 persist precedence: a 4/6 record exits 4 with the record-side panel and NO "
-          "contradictory NAR panel (suppression is a stdout contract)",
+          "contradictory NAR panel (suppression is a stdout contract), and the v0.4.20 NET "
+          "advisory COEXISTS on the same render",
           _rc19 == 4 and "4/6 beats" in _so19 and "DREAM ARC INCOMPLETE" in _so19
-          and "CONVERSATION-TRUTH" not in _so19)
+          and "CONVERSATION-TRUTH" not in _so19 and "NETWORK CAPTURE MISSING" in _so19)
     # F19I — the dreamless legacy carve-out: no dream block → the arms skip entirely (no panel,
     # no narration block on the log line, exit 0).
     _recI = {"project": "p", "session": "s19",
