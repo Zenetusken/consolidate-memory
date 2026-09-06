@@ -193,7 +193,7 @@ this is backward-compatible (legacy records still render; no removed/renamed fla
    commits still fire)? Does it false-fire on any legit record (the 13-record unit test), on LIGHT/maintenance/
    bootstrap, or on a SEED/preview render (the `--persist` gate must spare these — the re-gate caught a
    seed-render false-fire)? Does exit-3 reach a legit-path caller — `cm render` (no `--persist` → spared),
-   `tests/`, and the **dream-beta-tester** (it renders WITHOUT `--persist` at `beta_checks.py:446`, and inspects a
+   `tests/`, and the **dream-beta-tester** (it renders WITHOUT `--persist` at `beta_checks.py:444`, and inspects a
    returncode only at the `_probe` path on empty-scope records → no-op → exit 0)? Measure each; the exit code is
    distinct (3) so callers can tell integrity-violation from render-error.
 3. **Smoke.** Unit-test the predicate: fires on the 3 real records, spares the 10 legit; spares a synthetic

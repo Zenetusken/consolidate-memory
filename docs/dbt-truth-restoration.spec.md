@@ -101,15 +101,15 @@ pin enforces permanently); SPEC's placement section names only shipped paths.
 **Current.** The blocking gate's real floor is ~v0.1.37: the gate fixture has no
 `.consolidation-log.jsonl`, so `dream_arc_capture` (min 0.1.54) and `distill_capture` (min 0.1.55)
 **never emit a row on the empty-log guard** (`_latest_capture_check` returns `[]` at the
-`if not ctx.log_records: return out` short-circuit, beta_checks.py:1204) — they are therefore
-absent from BOTH `families_ran` and `families_skipped` (:1331-1332 computes `families_skipped` as
+`if not ctx.log_records: return out` short-circuit, beta_checks.py:1248) — they are therefore
+absent from BOTH `families_ran` and `families_skipped` (:1758-1759 computes `families_skipped` as
 families that emitted a row minus `families_ran`; a family with zero rows is in neither set). NOT
 "SKIP-by-empty" in the sense of a visible SKIP result — they're invisible, which is arguably worse.
 Nothing covers the index-lifecycle ladder (v0.1.63 usage · v0.1.66 hard ceiling · v0.1.67
 demotion/miss/utility). A Phase A/B/C regression ships green through the gate; only the 695-check
 smoke suite covers it, and only in-repo.
 
-**Change.** Two legs, both reusing the existing v0.1.55 capture scaffold (`beta_checks.py:1190`):
+**Change.** Two legs, both reusing the existing v0.1.55 capture scaffold (`beta_checks.py:1233`):
 1. **Fixture carries a persisted dream.** `make_fixture.py` additionally writes a
    `.consolidation-log.jsonl` with ONE current-shape cycle record (dream + distill + usage +
    demotion blocks present, honest dormant/zero values) into the gate store. Dot-file state is
@@ -140,7 +140,7 @@ even less diagnostic.
 **Change.** The canary leg parses the canary run's FAIL **ids** (`run_oracle` already writes
 `FAIL {id} …` to its stderr detail file, ci_check.sh:40 — the id-parse extends that, no new plumbing)
 and requires `{CHK-GATE-BACKFILL, CHK-EVICT-STAGE} ⊆ ids` (the real D3/D4 identities, cross-checked
-against beta_checks.py:813-839/:881-887 and STATUS.md:53/CONTRACT.md:72). Count drops to a reported
+against beta_checks.py:813-839/:910-931 and STATUS.md:53/CONTRACT.md:72). Count drops to a reported
 detail. On a miss → the existing SELFTEST_BROKEN path (fail-open + loud, verdicts untrustworthy).
 emit_result's `self_test` gains additive fields `expected_ids` + `detected_ids` (schema stays
 `result/v1` — additive, consumers unaffected; update CONTRACT.md:26's `self_test` field list to

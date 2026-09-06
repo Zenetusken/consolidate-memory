@@ -13,7 +13,7 @@ re-verified against the live tree before curation. Grounded in the measured evid
 **Goal — give the gate two teeth it lacks today, both measured:**
 
 1. **Cycle-identity teeth.** `CHK-CYCLE-PROJECT` / `CHK-CYCLE-BUDGET` carry
-   `basis="identity-by-construction"` and CANNOT fail as shipped (`beta_checks.py:764-768`):
+   `basis="identity-by-construction"` and CANNOT fail as shipped (`beta_checks.py:761-765`):
    `gather()` rebuilds the seed from the target's own store (`beta_checks.py:349-358`), so no
    foreign record can reach them. Add a test-only seam that feeds a FROZEN contaminated
    record into `cycle_identity`, plus a self-test leg proving the family FAILs on it —
@@ -39,17 +39,17 @@ re-verified against the live tree before curation. Grounded in the measured evid
 | Measurement | Result |
 |---|---|
 | Contaminated fixture store (foreign fact + index pointer + persisted record naming `OTHER-PROJ`, `after_tokens=9999`) through the current oracle | **rc=0, fail=0** — invisible. Gap confirmed. |
-| No foreign-record input seam exists | `gather()` rebuilds the seed from the target (`beta_checks.py:355`) |
+| No foreign-record input seam exists | `gather()` rebuilds the seed from the target (`beta_checks.py:352`) |
 | Scripted write-pass (seed → stamp → audit → persist, promote guard-refused) two runs | byte-identical stores, 0.3 s wall |
 | **Review correction** — determinism WITH a completing promote | **unverified, refuted by code**: the origin mirror is minted `since=_now_iso()` (`sync_global.py:1623, 467-468`) — cross-run byte-identity requires normalizing `since:` (D-7) |
-| **Review correction** — the fixture is NOT a network node | `make_fixture.py` writes zero `global_ref:` mirrors; node status requires a mirror (`sync_global.py:3739-3751`), so `_trigger_node` (`beta_checks.py:530-537`) returns None and `CHK-CYCLE-BUDGET` is **silently absent** from the fixture run (`beta_checks.py:793`) — the probe's budget FAIL needs a mirror in the fixture (D-3) |
+| **Review correction** — the fixture is NOT a network node | `make_fixture.py` writes zero `global_ref:` mirrors; node status requires a mirror (`sync_global.py:3739-3751`), so `_trigger_node` (`beta_checks.py:527-531`) returns None and `CHK-CYCLE-BUDGET` is **silently absent** from the fixture run (`beta_checks.py:790`) — the probe's budget FAIL needs a mirror in the fixture (D-3) |
 | Oracle baseline on the fixture | 0.4 s; 20 results, 0 FAIL, 0 WARN (re-measured by the mechanics reviewer) |
 | `--persist` refuses an unstamped seed (`marker.timestamp` empty) | measured — the stamp is a MODEL step; `--audit --into` does NOT inject it (`memory_status.py:4089-4144`) |
 | `--promote` guard ladder | scopeless refused → `stacks:` missing refused → non-`_DETECTABLE_STACKS` refused (`sync_global.py:3364-3385`) — all correct |
 | `--pull` on the fixture | no-op by design (M1 hold — fixture index 3879 est-tokens vs `INDEX_CEILING_TOKENS` 3840) |
 | Cross-run state-file diff from differing repo paths | `_write_stacks_cache` merges `project_path` (`sync_global.py:1675-1716`) — the driver MUST use a fixed repo path |
 | `run_beta.py` subprocess env | **no `env=` pin anywhere** (`run_beta.py:155, 162, 215`) — ambient HOME inheritance (D-9) |
-| Contaminant magnitude | `after_tokens=9999` vs fixture trigger ~3879: Δ≫ tolerance `max(50, 0.10×ntok)` (`beta_checks.py:795`) — sound at any plausible fixture size |
+| Contaminant magnitude | `after_tokens=9999` vs fixture trigger ~3879: Δ≫ tolerance `max(50, 0.10×ntok)` (`beta_checks.py:792`) — sound at any plausible fixture size |
 
 ## 3. Design decisions
 
@@ -64,10 +64,10 @@ seed — the record seam is the only faithful vector).
 **D-2 — The probe is a self-test leg with the FAIL-identity formula.**
 Teeth-intact = `expected_ids ⊆ detected_ids` where detected = the probe leg's FAIL ids —
 the canary CIDS discipline verbatim (`ci_check.sh:50, 60-78`). Probe results carry
-`basis="probe"` (free-form `basis`, `beta_checks.py:521-528`; precedent: B7 minted
+`basis="probe"` (free-form `basis`, `beta_checks.py:518-521`; precedent: B7 minted
 `identity-by-construction`) and a probe-identifying `site`. **Teeth check asserts BOTH FAILs
 explicitly** — an ABSENT check reads as teeth-loss, never as intact (absence ≠ PASS: today a
-missing trigger node silently omits `CHK-CYCLE-BUDGET`, `beta_checks.py:793`; under the probe
+missing trigger node silently omits `CHK-CYCLE-BUDGET`, `beta_checks.py:790`; under the probe
 the same absence must degrade to loud teeth-loss, D-3).
 
 **D-3 — Fixture re-baselined with one mirror; probe record FROZEN, self-stamped.**
@@ -149,14 +149,14 @@ only; the byte-unchanged assert is NEW.
 3. `cycle_identity` re-evaluates against the probe record: `CHK-CYCLE-PROJECT` FAILs on the
    foreign `project`; `CHK-CYCLE-BUDGET` FAILs on the foreign `after_tokens` vs the LIVE
    trigger node (the mirror added in D-3 makes the fixture a node; `_trigger_node` reads
-   `ctx.network`, `beta_checks.py:530-537`).
+   `ctx.network`, `beta_checks.py:527-531`).
 4. Partitioned results in the JSON: `cycle_probe: {expected_ids, detected_ids, ok, results[],
    stamp_verified}`. Teeth-intact iff stamp verified AND
    `{CHK-CYCLE-PROJECT, CHK-CYCLE-BUDGET} ⊆ detected_ids` (BOTH, explicitly — absence is
    teeth-loss).
 5. Missing/corrupt probe file, unstamped record, or any shape-guard SKIP in the probe leg
    (the §8 SKIP-with-reason is NEW behavior — today the missing-path omission is silent,
-   `beta_checks.py:793`) → `cycle_probe.ok: false` → `ci_check.sh` maps it to the
+   `beta_checks.py:790`) → `cycle_probe.ok: false` → `ci_check.sh` maps it to the
    `selftest_broken` class — the canary-BROKEN path (`ci_check.sh:72-78`), NOT the
    canary-missing path. Fail-open, loud, and the verdict is never `clean`.
 
@@ -203,7 +203,7 @@ Measured order (each step a separate subprocess of the real script, env per D-9)
    `~/.claude/memory` and real project slug are byte-unchanged after a full pass.
 2. **Inert seam.** Absent `--cycle-probe`, the oracle is bit-identical to today; probe
    results never reach `results[]`/`_summary`/the exit code/the renderer's re-grep (verified:
-   all five sinks consume top-level results only — `beta_checks.py:1414-1421, 1472`;
+   all five sinks consume top-level results only — `beta_checks.py:1665-1672, 1790`;
    `ci_check.sh:50-51, 102-105`; `emit_result.py:96-110`; `render_beta_report.py:186-187`).
 3. **Restore-or-hard-stop.** Default restore; `--keep` = copy; restore failure = distinct
    exit + dirty marker + `ci_check.sh` refusal (D-4).
@@ -249,7 +249,7 @@ emit `clean` with no teeth info). Verdict semantics unchanged; `actionable[]` FA
    write (phantom, non-allowlisted) → FAIL; an allowlisted no-delta stamp → NOT a phantom.
 4. **Inert-seam pin:** scoped to `families_ran` + fail-count + results-count unchanged from
    the arc-start baseline (captured at P-1, paths normalized — no committed golden exists
-   and the JSON embeds absolute paths, `beta_checks.py:1450-1460`), NOT full byte-identity.
+   and the JSON embeds absolute paths, `beta_checks.py:1762-1773`), NOT full byte-identity.
 5. **Canary pins:** canary leg summary unchanged (fail=4); canary payload carries no
    `cycle_probe` block; B6 ungrafted sabotage still yields `selftest_broken`.
 6. **Tolerance-margin pin:** assert `|9999 − fixture_trigger_tokens| > max(50, 0.10×trigger)`
@@ -307,7 +307,7 @@ emit `clean` with no teeth info). Verdict semantics unchanged; `actionable[]` FA
 Closed by the review: Q1 (frozen + shape-guard + regeneration command is sufficient — the
 canary precedent settles it), Q2 (seed-only is the faithful D1/D2 signature —
 `STATUS.md:105`), Q4 (`basis="probe"` is right — free-form basis, honesty-labeling doctrine,
-`beta_checks.py:507, 788`). One genuine remainder:
+`beta_checks.py:504, 785`). One genuine remainder:
 
 1. **Fixture mirror placement.** The D-3 mirror makes the fixture a node and shifts
    ground-truth quantities. If the re-baseline surfaces a WARN (e.g., index-weight change

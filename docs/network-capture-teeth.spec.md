@@ -19,8 +19,8 @@ mandate shipped in v0.4.13), so the omission persists silently; only the archive
 absence, and the terminal render says nothing. The renderer's behavior was honest in each state
 — the defect is that the two states STACK (dashboard.network.js:146 paints the empty-fleet SVG
 text whenever no blocks render, and :174 adds the not-captured note whenever `net.nodes` is not
-an array — on an absent block BOTH fire; pre-change revision — the post-fix sites are :154 and
-:182), and that a skipped capture has no teeth anywhere else
+an array — on an absent block BOTH fire; pre-change revision — the post-fix sites are :155 and
+:183), and that a skipped capture has no teeth anywhere else
 — on a FULL dream pass. One class is exempt by scope: a maintenance/bootstrap pivot runs
 Phase 1 pull + Phase 5 health only (the SKILL's no-op rule), so its fleet capture is skipped BY
 SCOPE, same class as the distill/usage/demotion steps — the pivot carve-out is part of the
