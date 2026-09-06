@@ -428,6 +428,18 @@ class DreamArc(TypedDict, total=False):
     wake: str                # the waking stanza (composed at final record-fill, performed after the render)
 
 
+class Narration(TypedDict, total=False):
+    # v0.4.19: the conversation-truth verdict — SCRIPT-INJECTED by dream_procedure at the
+    # terminal --persist, never hand-authored. The block on the log line is that attempt's scan
+    # result: absence on a log line = pre-feature (the beta min_version gate skips). Verdicts:
+    # verified (all checked texts narrated + extractor accounted) · degraded (transcript
+    # unavailable — honest, loud, never a hard block) · failed (gaps named). Design:
+    # docs/dream-narration-teeth.spec.md.
+    verdict: str               # "verified" | "degraded" | "failed"
+    reason: str                # the one-line disposition
+    gaps: list[str]            # failed only: sleep by name, beats by record index 0-5, "extractor unaccounted"
+
+
 class Distill(TypedDict, total=False):
     # v0.1.55: the distill VERDICT capture — the model mirrors the Phase-5 distill outcome here so it
     # survives into the log/dashboard/archive ("ran and correctly proposed nothing" must be
@@ -635,6 +647,7 @@ class CycleRecord(TypedDict, total=False):
     demotion: Demotion             # v0.1.67 (Phase C): demotion triage seed + verdict (additive; legacy records render)
     workflow_proposals: WorkflowProposals   # v0.1.87 (W-C): Tier-2 fleet-placement evidence (additive; legacy records render)
     preflight: Preflight            # v0.4.16: environment pre-flight verdict (additive; legacy records render)
+    narration: Narration            # v0.4.19: conversation-truth verdict (additive; legacy records render)
     marker: Marker
     outcome: str             # OPTIONAL explicit override of the derived outcome banner (render:_outcome)
 
@@ -3239,7 +3252,7 @@ def validate_cycle_record(record: object) -> list[str]:
     # Top-level keys that MUST be a dict if present.
     for key in ("scope", "rigor", "verification", "budget", "cross_project", "network", "marker", "health",
                 "audit", "remediation", "maintenance", "dream", "distill", "usage", "demotion",
-                "workflow_proposals", "identity", "preflight"):
+                "workflow_proposals", "identity", "preflight", "narration"):
         if key in record and not isinstance(record[key], dict):
             warnings.append(f"{key} is not a dict")
     # entries must be a list if present.
@@ -3261,6 +3274,11 @@ def validate_cycle_record(record: object) -> list[str]:
         for k in ("fails", "warns"):
             if k in pf and not isinstance(pf[k], list):
                 warnings.append("preflight.%s is not a list" % k)
+    # v0.4.19: narration.gaps must be a list if present (the same descent style — the
+    # conversation-truth panel renders it; a wrong-typed gaps list must warn, never block).
+    nr = record.get("narration")
+    if isinstance(nr, dict) and "gaps" in nr and not isinstance(nr["gaps"], list):
+        warnings.append("narration.gaps is not a list")
     # v0.4.1 (D1): a PRESENT-but-incomplete arc warns here (stderr, never blocks) — the same
     # single predicate the persist gate and the WAKE cue use. A missing/empty block stays quiet
     # (legacy/preview records; the gate's documented scope escape).

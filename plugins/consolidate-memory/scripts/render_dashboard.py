@@ -361,7 +361,78 @@ def _arc_gate_section(record: Mapping[str, Any]) -> list:
     return out
 
 
-def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
+def _narration_section(record: Mapping[str, Any], narration: Any) -> list:
+    """v0.4.19: the conversation-truth detector's panel (docs/dream-narration-teeth.spec.md).
+    `narration` is the pre-print verdict dict or None (no --persist / dreamless legacy — no
+    panel). SUPPRESSED when the record-side arc fails: the arc gate's own exit-4 panel + cue own
+    that render (a contradictory NAR panel would double-report — pin (6) is a stdout contract,
+    not just an exit contract). Verified = no panel; degraded = loud but honest (no exit change);
+    failed = the gap names + first ~15 words so the backfill is targeted."""
+    if narration is None or narration.get("verdict") == "verified":
+        return []
+    arc_ok, _ = ms.arc_completeness(record)
+    if not arc_ok:
+        return []
+    if narration.get("verdict") == "degraded":
+        out = ["", _rule()]
+        out.append("  " + _c("⚠ CONVERSATION-TRUTH UNVERIFIABLE", "bold", "yellow")
+                   + _c("   · the transcript is unavailable — this pass was NOT narration-verified", "dim"))
+        out.append(_rule())
+        out.append("    " + _ui.wrap(_clean(narration.get("reason", "")), hang=4))
+        out.append("    " + _c("→ the verdict is persisted on the record (nothing to fix — the honest degrade case)", "dim"))
+        return out
+    gaps = [g for g in (narration.get("gaps") or []) if isinstance(g, dict) and g.get("label")]
+    out = ["", _rule()]
+    out.append("  " + _c("⚠ CONVERSATION-TRUTH GAPS", "bold", "red")
+               + _c("   · dream text exists in the record but was never narrated in this session", "dim"))
+    out.append(_rule())
+    lines = []
+    for g in gaps:
+        label = _clean(g.get("label", ""))
+        preview = _clean(g.get("preview", ""))
+        lines.append(label + (f" — \"{preview}\"" if preview else ""))
+    out.append("    " + _ui.wrap(" · ".join(lines), hang=4))
+    out.append("    " + _c("→ narrate the missing beats in the conversation (or run the extractor / record the "
+                          "extractor-skip: entry), then re-render — a narrated pass clears this ⚠", "dim"))
+    return out
+
+
+def _narration_session_dir(store: Any) -> Any:
+    """v0.4.19: the transcript pool for the narration detector, resolved from the PERSISTED
+    STORE's identity — NEVER ambient cwd (render_dashboard operates cross-cwd today; a
+    wrong-store pool could satisfy NAR on a fabricated record with a byte-identical scripted
+    beat — a cross-project false-clean in the forbidden direction). Order: (1) the store's own
+    state file project_path → resolve_store (the script-owned anchor); (2) cwd resolves to THIS
+    store (the usage-clock check's shape); (3) the default layout — the session pool is the
+    native memory dir's parent (store_context: session_dir = cfg/projects/<slot>, native =
+    session_dir/"memory"); (4) None → the caller degrades honestly."""
+    from pathlib import Path as _P
+    try:
+        st_raw = (_P(str(store)) / ms.STATE_FILE).read_text(encoding="utf-8")
+        st = json.loads(st_raw)
+        pp = str(st.get("project_path") or "") if isinstance(st, dict) else ""
+        if pp:
+            from store_context import resolve_store as _rs_a
+            return _rs_a(_P(str(pp))).session_dir
+    except Exception:
+        pass
+    try:
+        from store_context import resolve_store as _rs_b
+        _ctx_c = _rs_b(_P.cwd())
+        if _ctx_c.native_memory_dir.resolve() == _P(str(store)).resolve():
+            return _ctx_c.session_dir
+    except Exception:
+        pass
+    try:
+        _p_store = _P(str(store))
+        if _p_store.name == "memory" and _p_store.parent.is_dir():
+            return _p_store.parent
+    except Exception:
+        pass
+    return None
+
+
+def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = None) -> str:
     if not isinstance(record, dict):
         record = {}  # a non-dict record (JSON list/scalar from stdin) degrades — this is the runtime boundary
     out: list = []
@@ -390,6 +461,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False) -> str:
     if judged:
         out += _procedure_integrity_section(record)
         out += _arc_gate_section(record)
+        out += _narration_section(record, narration)
 
     # v0.3.0: domain / enrollment — the trust-boundary line the HTML masthead also
     # carries. Absent on pre-0.3 records (legacy render is byte-identical).
@@ -1162,11 +1234,39 @@ def main() -> int:
     # NEVER touches stdout — the rendered dashboard stays byte-identical.
     for w in ms.validate_cycle_record(record):
         print(f"render_dashboard: cycle-record warning: {w}", file=sys.stderr)
+    # v0.4.19: the conversation-truth detector (docs/dream-narration-teeth.spec.md) — computed
+    # BEFORE the single print: the exit-3/exit-4 renders return without a second print, so the
+    # gap panel must be IN this print (compute-before-print; only the EXIT ladder below stays
+    # ordered after the record-side checks). The verdict + the record's `narration` block are
+    # attached here; _persist appends the payload, so the block rides the log line (absence on a
+    # log line = pre-feature). Any failure of the detector itself never blocks a persist (the
+    # preflight precedent: the machinery must not break a dream).
+    narration = None
+    if persist_dir:
+        try:
+            from pathlib import Path as _P
+            import dream_procedure as _dp
+            if _dp._checked_texts(record):
+                _store = _P(persist_dir)
+                # _dget returns dict SUBVALUES (a str before_timestamp would read as {}) — the
+                # anchor is a plain .get on the marker dict (the spec's HIGH-class pin: the
+                # window keys on the record's Phase-0-seeded value, never the state file).
+                _since = str(_dget(record, "marker").get("before_timestamp") or "")
+                _sess = _narration_session_dir(_store)
+                if _sess is None:
+                    narration = {"verdict": "degraded", "reason": "transcript unavailable",
+                                 "gaps": [], "ext_unaccounted": False}
+                else:
+                    narration = _dp.judge(record, _sess, _since)
+                record["narration"] = cast(ms.Narration, _dp.narration_block(narration))
+        except Exception as exc:
+            print(f"render_dashboard: narration check skipped ({exc.__class__.__name__})",
+                  file=sys.stderr)
     # `judged` only when persisting: a completed dream is judged by the PROCEDURE INTEGRITY detector;
     # a seed/preview render (no --persist) is the dream's BEFORE state (0 candidates, 0/0/0 by
     # construction) and must NOT be flagged. So the panel is gated here, matching the exit below.
     judged = persist_dir is not None
-    print(render(record, judged=judged))
+    print(render(record, judged=judged, narration=narration))
     if persist_dir:
         try:
             from pathlib import Path as _P
@@ -1222,6 +1322,21 @@ def main() -> int:
         if not arc_ok:
             _ui.dream_cue("NOT over — arc incomplete: backfill the missing beats "
                           "(SLEEP · 5 phase beats + surfacing · WAKE) and re-render")
+            return 4
+        # v0.4.19: the conversation-truth arms judge LAST — record-side verdicts own their
+        # renders (a 4/6 record exits 4 with the record-side panel + cue; NAR never
+        # double-reports). EXT unaccounted → exit 3 (the Phase-2 lazy-skip's silent cousin);
+        # NAR gaps → exit 4 (the arc's conversation-side arm); both → 3 (the existing key).
+        # Degraded/verified → no exit change.
+        if narration is not None and narration.get("verdict") == "failed":
+            if narration.get("ext_unaccounted"):
+                _ui.dream_cue("NOT over — Phase 2 left no trace in the conversation: run "
+                              "extract_signals.py (--json or the human table) or record an "
+                              "extractor-skip: entry, then re-render; WAKE only on the clean re-run")
+                return 3
+            _ui.dream_cue("NOT over — the dream lives only in the record: narrate the missing "
+                          "beats in the conversation (sleep · beats 0–5), then re-render; "
+                          "WAKE only on the clean re-run")
             return 4
         if status == "ok":
             _ui.dream_cue("persist clean — Phase 5 continues (--diffs, then render_html opens the "

@@ -59,6 +59,63 @@ it reaches the sentinel path, where the ctx-free probes still run alongside #14;
 beacon stays silent there by design (no ctx → no cache). Design-of-record:
 `docs/env-preflight.spec.md`.
 
+## Conversation-truth gates (v0.4.19)
+
+`dream_procedure.py` — the terminal `--persist` now verifies the dream against the
+CONVERSATION (the session transcript), not just the record. The record-side gates
+(procedure integrity, dream-arc completeness) read what the record says about itself;
+the measured 2026-09-06 defect class — the dream block filled at record-fill instead
+of narrated, Phase 2's extractor never run with no skip note — is invisible to them.
+Two arms + one boundary:
+
+- **NAR (narration verification).** The record's `dream.sleep` + six `dream.beats`
+  entries (indexes 0–5) must each appear verbatim-normalized in an ASSISTANT TEXT
+  BLOCK of the transcript window. Match domain: text blocks ONLY — never
+  `tool_use.input`, never `tool_result` (the record-fill Write/Edit input carries the
+  whole dream block and its tool_result echoes the file content; counting them would
+  self-satisfy the exact fabrication), and thinking blocks never count. Gaps → the
+  CONVERSATION-TRUTH GAPS panel naming each missing text + its first ~15 words,
+  `narration.verdict: "failed"` on the log line, **exit 4**. On any gap the window is
+  re-read once (~500 ms) and the exit fires only if the second read confirms — scoped
+  to the sub-second same-message flush race; the 5-minute write-behind class is
+  handled by persist-then-re-render (the asymmetry: a false exit-4 is cheap and
+  self-healing; a false clean is permanent and invisible — the fabricated record
+  archives as performed and poisons record-side calibration).
+- **EXT (extractor accountability).** The window must contain an EXECUTED
+  `extract_signals.py` invocation in the Phase-2 form (`--json` or the human table;
+  `--recalls` does not count) or an `entries[]` reason beginning with the canonical
+  `extractor-skip:` marker + a non-empty why. Anchored on execution: the token must be
+  a `python3` argv, not a grep/sed/cat target, not inside `$(…)`, never a text
+  mention. Neither → **exit 3** (the Phase-2 lazy-skip's silent cousin).
+- **The window.** `since` = the record's Phase-0-seeded `marker.before_timestamp` —
+  NEVER the state file at persist time (Phase-5 step 5 re-stamps it first; a
+  persist-time read yields an empty window on every real pass). The transcript pool
+  resolves from the PERSISTED STORE's identity (state-file `project_path` → cwd match
+  → the default layout's parent dir), never ambient cwd. Leak surfaces accepted
+  consciously: a re-run's failed-attempt narration sits inside the retry's window; a
+  missing state file at Phase 0 seeds the keep-all window (a mid-life loss plus
+  surviving prior dreams is a documented residual).
+- **The honest degrade.** Zero kept transcript lines (missing/unreadable transcript —
+  headless runner, early rotation) degrades BOTH arms: a loud CONVERSATION-TRUTH
+  UNVERIFIABLE panel, `narration.verdict: "degraded"`, no exit change. The seam is
+  decidable: any kept line (even a user tool_result, even ts-less — the reused
+  per-line filter keeps those) = content ⇒ fire on gaps; only zero content degrades.
+- **The verdict block.** Every judged persist writes `narration` pre-append
+  (verified | degraded | failed; failed carries the gap indexes) — the block on the
+  log line is that attempt's scan result, so absence on a log line = pre-feature
+  (the beta `narration_capture` family's min_version gate skips). A dreamless record
+  (no `dream` block) is outside both arms — the v0.4.1 legacy carve-out extended.
+- **Known ceilings (documented, not solved).** The check verifies PRESENCE of
+  narration text and calls — conversation-truth, not performed-truth: the
+  coordinated-fabrication burst (all beats + a pro-forma extractor call in one final
+  message) passes. The audit's phase-table method (tool evidence vs. claims) still
+  catches it. Exact containment assumes the mirroring model pastes verbatim — this
+  repo's 12-pass history is exact-or-absent (one model's behavior); a lightly-
+  rewording model would false-fire, and the remedy is narrate + re-render in the same
+  window.
+
+Design-of-record: `docs/dream-narration-teeth.spec.md`.
+
 ## The two memory stores
 
 Claude Code splits memory across two places. Reconciling them — and keeping them
