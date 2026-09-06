@@ -5,6 +5,50 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.19] — 2026-09-06
+
+**Patch — the narration teeth (conversation-truth verification at the terminal `--persist`).**
+
+The v0.4.1 persist gates are record-side: they read what the record says about
+itself. A post-dream audit measured the class they cannot see — the dream block
+filled at record-fill instead of narrated in the session, and Phase 2's extractor
+never run with no skip note. `dream_procedure.py` adds the ground truth the terminal
+render can actually read: the dream's own session transcript.
+
+- **NAR — narration verification.** The `dream.sleep` stanza + the six `dream.beats`
+  entries must each appear verbatim-normalized in an ASSISTANT TEXT BLOCK of the
+  transcript window (anchored on the record's Phase-0-seeded
+  `marker.before_timestamp` — never the persist-time state file). The match domain
+  is text blocks only — never tool inputs or their echoed results (the record-fill
+  Write/Edit carries the whole dream block), never thinking blocks. Gaps → a loud
+  CONVERSATION-TRUTH GAPS panel naming each missing text + its first ~15 words,
+  `narration.verdict: "failed"` on the log line, **exit 4**. A gap re-reads the
+  window once (~500 ms) before firing — the flush-race guard.
+- **EXT — extractor accountability.** The window must contain an executed
+  `extract_signals.py` in the Phase-2 form (`--json` or the human table; `--recalls`
+  does not count — the match is anchored on execution, so grep/sed targets, `$(…)`
+  substitutions, and prose mentions never count) or an `entries[]` reason beginning
+  with the canonical `extractor-skip:` marker + a why (the SKILL now defines that
+  fixed token). Neither → **exit 3**.
+- **The honest degrade.** A missing/unreadable transcript (zero kept window lines)
+  degrades both arms loudly — the CONVERSATION-TRUTH UNVERIFIABLE panel,
+  `narration.verdict: "degraded"`, no exit change — never a hard block. Every judged
+  persist writes the additive `narration` block pre-append (verified | degraded |
+  failed; absence on a log line = pre-feature), riding the full schema lockstep.
+  Legacy/dreamless records stay outside both arms.
+- **The beta oracle** gains the `narration_capture` family: the latest-record block
+  check on the `_latest_capture_check` scaffold plus hermetic detector self-test legs
+  (a fabricated-beat pair must FAIL the detector; the skip-note must pass).
+
+Known ceilings documented in harness-map.md: the check verifies presence of
+narration text and calls — conversation-truth, not performed-truth — and exact
+containment assumes verbatim mirroring (a rewording model false-fires cheaply;
+narrate + re-render in the same window). Design-of-record:
+`docs/dream-narration-teeth.spec.md`.
+
+Backward-compatible → patch. Suite **1712** · browser **1101** · sim / concurrency /
+manifests / mypy green.
+
 ## [0.4.18] — 2026-09-05
 
 **Patch — the Nocturne QA rework + the v0.4.17 audit residuals.**

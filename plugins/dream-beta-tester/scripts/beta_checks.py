@@ -1296,6 +1296,95 @@ def dream_arc_capture(ctx: Ctx) -> list[Result]:
         defect_ref="v0.1.54", is_complete=is_complete)
 
 
+@family
+def narration_capture(ctx: Ctx) -> list[Result]:
+    """v0.4.19: the conversation-truth verdict + the detector self-test. Two legs:
+    (a) the LATEST persisted record carries its `narration` block — every judged persist writes
+    verdict verified|degraded|failed pre-append, so absence on the latest record means either a
+    pre-feature record (the min_version gate skips) or a judged persist that never ran the
+    detector — teeth silently lost. ADVISORY (LOW / WARN, never FAIL): the verdict is the
+    detector's claim, not proof of narration (the transcript is the ground truth and is not
+    snapshotted — a judgment-lens check). (b) the detector itself is re-exercised against
+    hermetic in-memory record+transcript pairs: a fabricated-beat pair must FAIL the detector
+    (verdict failed, gaps named), an unaccounted extractor must FAIL, the skip-note case must
+    pass — these cover the DETECTOR (spec §3 beta family), never an individual rotated dream,
+    and FAIL when dream_procedure regresses. Both legs skip on pre-0.4.19 skills / empty logs."""
+    def is_complete(nar: dict[str, Any]) -> tuple[bool, str]:
+        verdict = str(nar.get("verdict") or "").strip()
+        known = verdict in ("verified", "degraded", "failed")
+        return known, (f"verdict={verdict or 'MISSING'}"
+                       + ("" if known else " — expected on pre-v0.4.19 records (the block is "
+                                          "absent); a defect on any v0.4.19+ judged persist"))
+    out = _latest_capture_check(
+        ctx, block_key="narration", family_name="narration_capture", min_version=(0, 4, 19),
+        check_id="CHK-NARRATION",
+        title="latest persisted dream carries its conversation-truth verdict (narration block)",
+        expected="a v0.4.19+ judged persist writes narration.verdict (verified | degraded | failed)",
+        defect_ref="v0.4.19", is_complete=is_complete)
+    if _version_tuple(ctx.skill_version or "") < (0, 4, 19):
+        return out                               # pre-feature skill → the detector legs don't exist
+    try:
+        sd = str(ctx.skill) if ctx.skill is not None else ""   # ctx.skill IS the scripts dir (gather: skill/"memory_status.py")
+        if sd and sd not in sys.path:
+            sys.path.insert(0, sd)
+        import dream_procedure as _dp
+        if ctx.skill is not None and Path(getattr(_dp, "__file__", "")).resolve().parent != Path(ctx.skill):
+            _dp = importlib.reload(_dp)          # the import_skill_module guard shape: never test a stale copy
+    except Exception:
+        return out                               # no detector module → the block leg's WARN covers it
+    # Leg (b): hermetic pairs, in-memory only (no store, no transcript files — the detector
+    # functions are pure). A FAIL here is a regression IN THE DETECTOR, not in a dream.
+    beats = ["*Beat %d: a phase beat, narrated in the session.*" % i for i in range(6)]
+    record = {"dream": {"sleep": "*The sleep stanza.*", "beats": beats, "wake": "*wake*"}}
+
+    def _line(ts: str, blocks: list[dict]) -> dict:
+        return {"timestamp": ts, "message": {"role": "assistant", "content": blocks}}
+
+    def _txt(t: str) -> dict:
+        return {"type": "text", "text": t}
+
+    def _bash(cmd: str) -> dict:
+        return {"type": "tool_use", "name": "Bash", "input": {"command": cmd}}
+    # fabricated-beat pair: the transcript narrates 2 of 7 checked texts; EXT is accounted (a
+    # real Phase-2 call) — the DETECTOR must still return failed with the named gaps.
+    fab_lines = [_line("2026-09-06T01:00:00Z", [_txt(beats[0])]),
+                 _line("2026-09-06T01:01:00Z", [_txt(beats[1])]),
+                 _line("2026-09-06T01:02:00Z", [_bash('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/'
+                                                     'extract_signals.py" --json')])]
+    fab = _dp.judge(record, Path("."), "", retry_delay=0, scan_fn=lambda: (
+        _dp._assistant_text_blocks(fab_lines), fab_lines, False))
+    out.append(_R("narration_capture", "CHK-NARRATION-FABRICATED",
+                  "the detector FAILS a fabricated-beat pair (2/7 narrated, extractor ran)",
+                  "HIGH", "PASS" if (fab["verdict"] == "failed" and fab["gaps"]) else "FAIL",
+                  "verdict=failed with the missing beats named", f"verdict={fab['verdict']}",
+                  "hermetic in-memory record + transcript pair", "detector self-test",
+                  "v0.4.19", "structural"))
+    # unaccounted extractor: all 7 narrated, NO Phase-2 call, no skip-note — EXT must fire.
+    ext_lines = [_line("2026-09-06T02:00:00Z", [_txt("*The sleep stanza.*")]),
+                 _line("2026-09-06T02:01:00Z", [_txt(" ".join(beats))])]
+    ext = _dp.judge(record, Path("."), "", retry_delay=0, scan_fn=lambda: (
+        _dp._assistant_text_blocks(ext_lines), ext_lines, False))
+    out.append(_R("narration_capture", "CHK-NARRATION-UNACCOUNTED",
+                  "the detector FAILS an unaccounted extractor (all narrated, no Phase-2 call)",
+                  "HIGH", "PASS" if (ext["verdict"] == "failed" and ext["ext_unaccounted"]) else "FAIL",
+                  "verdict=failed with ext_unaccounted", f"verdict={ext['verdict']}",
+                  "hermetic in-memory record + transcript pair", "detector self-test",
+                  "v0.4.19", "structural"))
+    # skip-note case: the canonical marker + why must satisfy EXT (the justification escape hatch).
+    skip_record = {"dream": record["dream"],
+                   "entries": [{"action": "skipped", "name": "session-signal extract",
+                                "reason": "extractor-skip: magnitude 0 — no session candidates"}]}
+    skip = _dp.judge(skip_record, Path("."), "", retry_delay=0, scan_fn=lambda: (
+        _dp._assistant_text_blocks(ext_lines), ext_lines, False))
+    out.append(_R("narration_capture", "CHK-NARRATION-SKIPNOTE",
+                  "the detector accepts the canonical extractor-skip: marker + why",
+                  "HIGH", "PASS" if (skip["verdict"] == "verified" and not skip["ext_unaccounted"]) else "FAIL",
+                  "verdict=verified via the skip marker", f"verdict={skip['verdict']}",
+                  "hermetic in-memory record + transcript pair", "detector self-test",
+                  "v0.4.19", "structural"))
+    return out
+
+
 def _maintenance_pivoted(ctx: Ctx) -> bool:
     """True iff the latest persisted record is a maintenance/bootstrap pivot pass (scoped to pull +
     health only) — factored out (v0.1.7 Gate-2a follow-up: usage_capture/demotion_capture need the

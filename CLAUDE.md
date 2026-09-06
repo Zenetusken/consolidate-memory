@@ -1,6 +1,6 @@
 # consolidate-memory — project conventions
 
-**v0.4.18.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
+**v0.4.19.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
 Claude Code's built-in Auto Dream (per-project consolidation), adding a governed cross-project store +
 verification against the live code. This repo is both the plugin and its marketplace —
 end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -56,6 +56,9 @@ plugins/consolidate-memory/        the plugin (= ${CLAUDE_PLUGIN_ROOT})
                                    --gc [--edges] [--apply] (FROZEN reason tokens; clean-vs-edited reclaim)/--tokens/--utility/--harvest/--staleness/
                                    --workflows/--network + provenance
     distill_scan.py                Phase 5 distill: recurring Bash-command templates + compound-command chains (workflow signal); `--into`/`--from` inject script-truth counts into a cycle record
+    dream_procedure.py             v0.4.19 narration teeth: NAR (dream beats must narrate in the transcript's
+                                   assistant text blocks) + EXT (extractor accountability) + the honest degrade,
+                                   invoked by render_dashboard --persist (exit 4/3 arms); docs/dream-narration-teeth.spec.md
     render_dashboard.py            the data-driven ASCII dashboard (renders ONE cycle record)
     render_html.py                 the self-contained HTML archive (all cycles, rich; + dashboards/diffs sidecars)
     dashboard.template.html        the HTML shell render_html.py fills

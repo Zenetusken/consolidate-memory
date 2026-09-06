@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.18** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.19** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -27,7 +27,7 @@ plus the production/polish/performance pass (stacks cache on the sync paths,
 warm-pull margin, journal scale, archive embed budget, store-honesty advisories,
 and the renderer coherence sweep, plus the v0.4.6 archive-display pass, plus the
 v0.4.7 cross-project audit pass, plus the v0.4.8 onboarding-command pass, plus
-the v0.4.10 group-scopes pass, plus the v0.4.11 group-lifecycle completion pass (cm group delete, the --repoint re-confirm affordance, the per-recipient pull-side recreation guard, the re-sourced frozen GC), plus the v0.4.14 Nocturne patch (the memory-observatory theme — Original/Light/System, readable network lanes, the dev-only Chromium regression job) and the v0.4.15 version-sweep hotfix, plus the v0.4.16 environment pre-flight (the deterministic no-happy-path checker — doctor embeds it, the beacon reads its cached verdict, Phase 0 seeds the record) and the v0.4.17 captured-network truth layer (physical holder identities in the fleet feed), plus the v0.4.18 Nocturne polish (the reworked narration + 1101 browser checks). Public 1.0 stays HOLD.
+the v0.4.10 group-scopes pass, plus the v0.4.11 group-lifecycle completion pass (cm group delete, the --repoint re-confirm affordance, the per-recipient pull-side recreation guard, the re-sourced frozen GC), plus the v0.4.14 Nocturne patch (the memory-observatory theme — Original/Light/System, readable network lanes, the dev-only Chromium regression job) and the v0.4.15 version-sweep hotfix, plus the v0.4.16 environment pre-flight (the deterministic no-happy-path checker — doctor embeds it, the beacon reads its cached verdict, Phase 0 seeds the record) and the v0.4.17 captured-network truth layer (physical holder identities in the fleet feed), plus the v0.4.18 Nocturne polish (the reworked narration + 1101 browser checks), plus the v0.4.19 narration teeth (conversation-truth verification at the terminal `--persist`: NAR narration-verification + EXT extractor-accountability arms + the honest degrade boundary). Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
@@ -288,7 +288,10 @@ keeps each dream and the beta harness can detect a skipped arc. The terminal `--
 gate counts 6 (5 phase beats + the surfacing line) and exits 4 on a short arc, so mirror
 every beat as it happens. Compose `dream.wake` at the
 final record-fill (before `--persist`), then perform it after the render. Filling the
-record INSTEAD of narrating is a defect, not compliance.
+record INSTEAD of narrating is a defect, not compliance — and since v0.4.19 it is a CAUGHT
+one: the terminal `--persist` verifies each mirrored beat against the session transcript's
+assistant text blocks and exits 4 on narration that exists only in the record (the
+conversation-truth gates, Phase 5 step 7).
 
 **The cues.** During a dream, every `scripts/` invocation carries `CM_DREAM_ARC=1` — it is
 part of the command, not optional chrome; the command lines in the phases below all include
@@ -580,7 +583,11 @@ typed messages are <1% of the transcript and carry only the *feedback* slice; th
    degraded source, your memory of the session is NOT a substitute. If you deliberately skip it,
    record an explicit skip-justification as an `entries[]` note (it always renders; `rigor.override_reason`
    only shows on a tier override, so it can't carry a no-override skip) so the skip is a visible
-   decision, not a silent gap.
+   decision, not a silent gap. **The marker is fixed (v0.4.19):** the note's `reason` must begin
+   with the exact token **`extractor-skip:`** followed by a non-empty why (e.g.
+   `"extractor-skip: magnitude 0 — no session candidates to signal"`). The terminal `--persist`
+   matches THAT token, never free-form prose — a skip recorded any other way reads as an
+   unaccounted silent skip.
 3. **Existing memory entries that look stale** — candidates for re-verification.
    `memory_status.py` (Phase 0) lists a **"Re-verification candidates"** section: facts
    untouched since the last consolidation marker (mtime ≤ marker), which may have
@@ -1182,6 +1189,29 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    `dream` block at all, the legacy carve-out). A missing block escapes the gate by
    design (the beta WARN covers it next pass).
 
+   **Conversation-truth gates (v0.4.19).** The gates above read what the RECORD says; the
+   terminal `--persist` now also verifies against the conversation itself — the dream's session
+   transcript is the ground truth, and dream text that exists only in the record is the named
+   defect ("filling the record INSTEAD of narrating"). Two arms:
+   **NAR — narration verification.** Every checked text in your `dream` block (the sleep stanza
+   + the six `beats` entries, indexes 0–5) must appear verbatim-normalized in an ASSISTANT TEXT
+   BLOCK of the transcript window (since the record's Phase-0-seeded `marker.before_timestamp`)
+   — never in a tool input or its echoed result (the record-fill Write/Edit carries the whole
+   dream block; counting it would self-satisfy the fabrication). Gaps print a loud
+   **CONVERSATION-TRUTH GAPS ⚠** panel naming each missing text + its first ~15 words, persist
+   the record with `narration.verdict: "failed"`, and **exit 4** — narrate the missing beats in
+   the conversation, then re-render. **EXT — extractor accountability.** The window must contain
+   an executed `extract_signals.py` in the Phase-2 form (`--json` or the human table; `--recalls`
+   does not count) OR the `extractor-skip:` entry from Phase 2. Neither → **exit 3** (the Phase-2
+   lazy-skip's silent cousin). Precedence: record-side verdicts own their renders (a 4/6 record
+   exits 4 with the record-side panel; NAR never double-reports); both arms failing → 3.
+   **The honest degrade:** a missing/unreadable transcript (headless runner, early rotation)
+   prints a loud **CONVERSATION-TRUTH UNVERIFIABLE ⚠** panel, persists
+   `narration.verdict: "degraded"`, and does NOT change the exit — the absence is stated, never
+   silent, and never hard-blocks. Known ceilings (harness-map.md): the check verifies presence
+   of narration text and calls, not performed-truth; a false positive is cheap — narrate and
+   re-render in the same window.
+
    **Procedure-integrity gate (v0.1.44).** Because this terminal `--persist` is the one step
    every finishing dream runs, the render also JUDGES the completed dream here: if a
    SUBSTANTIAL-or-larger-MAGNITUDE pass recorded **0/0/0 verification** (the lazy-skip — you
@@ -1460,6 +1490,8 @@ this once warned against; the dashboard remains the source of the figures.)
                          "verdict": "<one line: nothing: 0 fleet-candidates | proposed <X> — awaiting confirmation>"},
   "preflight": {"_": "v0.4.16: Phase-0 environment pre-flight — script-seeded, never hand-authored. FAILs block the dream (fix + re-run); warns are honest degradations (git/path identity).",
                 "at": "", "fails": [], "warns": []},
+  "narration": {"_": "v0.4.19: conversation-truth verdict — SCRIPT-injected by dream_procedure at the terminal --persist, never hand-authored. Absent on pre-0.4.19 records; absent on a v0.4.19+ log line = never judged (the legacy/dreamless carve-out).",
+                "verdict": "verified|degraded|failed", "reason": "", "gaps": []},
   "outcome": ""
 }
 ```

@@ -49,7 +49,7 @@ multi-part inner loop; extract has one `ts` per line, so a direct parse matches)
 - Unparseable `ts` on a line → line kept (fail-open), no exception.
 - Mixed aware/naive never raises: assert `_parse_ts` yields comparable (tz-aware) values
   for `Z`, `+HH:MM`, and `+HHMM` inputs *(R1 resolved at Gate-1: `_parse_ts`
-  (memory_status.py:561-580) returns tz-aware-or-None for EVERY accepted shape — a naive
+  (memory_status.py:875-894) returns tz-aware-or-None for EVERY accepted shape — a naive
   parse is coerced to UTC before return — so the instant compare cannot raise TypeError)*.
 
 ## A2 — sanitize report text at the presentation boundary

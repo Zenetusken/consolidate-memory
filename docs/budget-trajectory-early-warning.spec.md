@@ -9,7 +9,7 @@ standalone line used only for the early-warning branch). Read-only, per-node, ad
 no persisted schema key. Would be the next increment of the audit's enhancement program
 (harness-native lens) — rides the existing `.consolidation-log.jsonl` `budget.index.after_tokens`
 series the HTML dashboard already renders (`dashboard.template.html:432-442`) and the marker
-plumbing `dream_timing_advisory` already reads (`memory_status.py:2144-2175`, `:1924`). Per
+plumbing `dream_timing_advisory` already reads (`memory_status.py:2988-3019`, `:2928`). Per
 CLAUDE.md's versioning policy: a new function that annotates an existing report line (staleness
 age, breach magnitude) and, only for the early-warning branch, adds one new report line — no
 removed/renamed script or flag, no schema change, every existing install keeps working — additive
@@ -23,14 +23,14 @@ windowing (last ≤4 logged cycles), against the 3 real fleet nodes' `.consolida
 `budget.index.after_tokens` series:
 
 - **consolidate-memory** (control): 24 cycles, current 1438 tok (target `INDEX_TOKEN_BUDGET`=1500,
-  `memory_status.py:407`), slope −33.5 tok/cycle over the last 4 — healthy, actively shrinking;
+  `memory_status.py:663`), slope −33.5 tok/cycle over the last 4 — healthy, actively shrinking;
   the index-lifecycle policy (v0.1.66–67) visibly working.
 - **job-applicator-python**: 19 cycles, 2026-06-21→2026-07-04, current 2200 tok — already 47%
   OVER its 1500 target, and the uptrend is sustained across the ENTIRE 19-cycle history
   (596→2200), not a last-4-window artifact. Slope over the last 4: +130.5 tok/cycle. Projected
-  against the NEXT uncrossed threshold — `INDEX_CEILING_TOKENS`=3840 (`memory_status.py:456`),
+  against the NEXT uncrossed threshold — `INDEX_CEILING_TOKENS`=3840 (`memory_status.py:716`),
   the hard ceiling where `--pull` auto-holds new globals ("M1 holds all new pulls",
-  `memory_status.py:2592-2593`) — that's `bf=(3840−2200)/130.5≈12.6` raw cycles to breach, which
+  `memory_status.py:3765-3766`) — that's `bf=(3840−2200)/130.5≈12.6` raw cycles to breach, which
   the shipped algorithm's `max(1,round(bf))` reports as **13** (not a tie case — `round(12.567)=13`
   unambiguously; the ~12.6 here is the raw pre-rounding figure, kept for the arithmetic trail, not
   the number the feature would actually print). Real, currently live risk;
@@ -51,8 +51,8 @@ roadmap's one-line "surface the index slope + projected breach":
    whether it comes from a node that dreamed 0 days ago (evidence of health) or 19 days ago
    (absence of evidence). Reporting the bare slope number conflates the two.
 2. **The new signal must attach to the existing over-target report, not duplicate it.** Doc-Flo is
-   flat AND already 84% over its 1500 target — but `memory_status.py`'s STORES gauge (`:2584`) and
-   REMEDIATION block (`:1983`, `:2490`) already report that fact unconditionally on every run,
+   flat AND already 84% over its 1500 target — but `memory_status.py`'s STORES gauge (`:3757`) and
+   REMEDIATION block (`:2795`, `:3591`) already report that fact unconditionally on every run,
    regardless of slope; a trend-only check (`n>=3`, `slope>0.5`) never independently re-derives
    it, and it shouldn't try to. The fix is to attach the two things that existing report is
    missing — the staleness age (correction 1) and, when computable, the ceiling-breach magnitude —
@@ -90,7 +90,7 @@ purely synthetic; see gate 1d.
   dashboard's window.** `budget_trajectory_advisory(auto_mem: Path, cur_tokens: int, marker_ts:
   str) -> tuple[str | None, str | None]` builds `s` from `iter_cycle_log(auto_mem /
   ".consolidation-log.jsonl", tail=_LOG_TAIL_CAP)` — the exact shared-reader call already used
-  twice in this file (`distill_history` at `memory_status.py:1294`, `usage_history` at `:1332`) —
+  twice in this file (`distill_history` at `memory_status.py:1707`, `usage_history` at `:1786`) —
   pulling `budget.index.after_tokens` per record, falling back to `before_tokens` then `0`
   (matching `idxTok()`, `dashboard.template.html:403`), and forward-filling any `≤0`/missing value
   from the previous point (the `carryFwd` behavior at `:420`, so a legacy or malformed record
@@ -109,8 +109,8 @@ purely synthetic; see gate 1d.
 - **`cur` is LIVE, not logged** — one deliberate deviation from the ported chart. The dashboard
   has only the log, so its `cur = s[s.length-1]` (`:437`). `print_report` already holds a fresher
   number: the just-measured `ctx["index_lb"][2]` (`it`, STORES section, unpacked at
-  `memory_status.py:2583` — `il, ib, it = ctx["index_lb"]`, one line below the `.exists()` guard at
-  `:2582`). `budget_trajectory_advisory` takes `cur_tokens` as a parameter and anchors the over-target check
+  `memory_status.py:3756` — `il, ib, it = ctx["index_lb"]`, one line below the `.exists()` guard at
+  `:3755`). `budget_trajectory_advisory` takes `cur_tokens` as a parameter and anchors the over-target check
   and the breach projection on it, while the historical series still drives the slope fit. In the
   steady state the two agree (nothing but a dream writes the index); this only matters when the
   index changed since the last logged cycle closed.
@@ -121,7 +121,7 @@ purely synthetic; see gate 1d.
   signal — 2200 tok, still climbing, heading for the hard-hold — unreported. So the ported formula
   targets whichever threshold hasn't been crossed yet: `target = INDEX_CEILING_TOKENS if
   cur_tokens > INDEX_TOKEN_BUDGET else INDEX_TOKEN_BUDGET` (both existing constants,
-  `memory_status.py:407`/`:456` — no new constant; strict `>`, matching the over-target predicate
+  `memory_status.py:663`/`:716` — no new constant; strict `>`, matching the over-target predicate
   fixed in the next bullet — NOT the dashboard's `>=`). Same gates as the original, just
   re-pointed: `n>=3`, `cur_tokens<target`, `slope>0.5`, `bf=(target-cur_tokens)/slope`, accepted
   only if `0<bf` and `round(bf)<=60` (else both `bf` and the breach count are discarded — the
@@ -146,14 +146,14 @@ purely synthetic; see gate 1d.
   fact itself is already reported elsewhere (see the next bullet).
 - **Over-target reuses the existing signal; only the annotation is new (correction 2, revised).**
   `cur_tokens > INDEX_TOKEN_BUDGET` — strict greater-than, matching the STORES gauge's own `over`
-  flag (`memory_status.py:2584`: `it > INDEX_TOKEN_BUDGET`) and the REMEDIATION gate (`:1983`,
-  `:1989`: `index_lb[2] > INDEX_TOKEN_BUDGET`), NOT the dashboard's `>=` (`over:cur>=IDXB`,
+  flag (`memory_status.py:3757`: `it > INDEX_TOKEN_BUDGET`) and the REMEDIATION gate (`:2795`,
+  `:2801`: `index_lb[2] > INDEX_TOKEN_BUDGET`), NOT the dashboard's `>=` (`over:cur>=IDXB`,
   `dashboard.template.html:441` — a different file, a different operator; using it here would make
   the new output disagree with the existing gauge/REMEDIATION lines at exactly 1500 tokens, a
   self-contradictory pair of lines from one `print_report` run). This predicate is not new,
-  though: `memory_status.py:2584`'s `⚠ OVER` badge on the STORES gauge line, and the full
-  REMEDIATION block (`_remediation_section`, def at `:2471`, the "GATE active" line at `:2490-2491`,
-  called unconditionally from `print_report` at `:2725`) ALREADY render an over-target state on
+  though: `memory_status.py:3757`'s `⚠ OVER` badge on the STORES gauge line, and the full
+  REMEDIATION block (`_remediation_section`, def at `:3571`, the "GATE active" line at `:3591`,
+  called unconditionally from `print_report` at `:3904`) ALREADY render an over-target state on
   every run whenever it's true —
   both fleet nodes in the measured probe (job-applicator-python, Doc-Flo) already trigger
   REMEDIATION today, on the current, unmodified codebase. So `budget_trajectory_advisory` does NOT
@@ -167,31 +167,31 @@ purely synthetic; see gate 1d.
   already showing.
 - **Staleness rides along on every signal the function surfaces, whenever it's COMPUTABLE
   (correction 1, precise form).** Age-since-last-dream is computed via `_parse_ts(marker_ts)`
-  (`memory_status.py:586` — the pipeline's one timestamp parser) against
+  (`memory_status.py:875` — the pipeline's one timestamp parser) against
   `datetime.now(timezone.utc)`, using the SAME `ctx["last_ts"]` marker `dream_timing_advisory`
-  already consumes (`memory_status.py:1924`, `:2575`) — no new read of
+  already consumes (`memory_status.py:2928`, `:3748`) — no new read of
   `.consolidation-state.json`. Two independent, unrelated crash sites exist along this path, and
   the fix is a **degradation invariant**, not an exception-tuple enumeration (an enumeration
   invites exactly the whack-a-mole that found both of these):
   **any malformed, non-string, unparseable, or out-of-range `marker_ts` → no age suffix, never
   raises.** Concretely, two guards, not one:
   - **Non-string marker (e.g. a hand-corrupted `.consolidation-state.json` with `"timestamp":
-    12345`).** `_parse_ts`'s first executable line (`:598`, `ts.replace("Z", "+00:00")`) runs
+    12345`).** `_parse_ts`'s first executable line (`:887`, `ts.replace("Z", "+00:00")`) runs
     BEFORE its own internal try block — a non-string `marker_ts` raises `AttributeError` there
     (verified: `_parse_ts(12345)`, `_parse_ts(12345.6)`, `_parse_ts(True)`, `_parse_ts({"ts": "x"})`
     all raise it — a FALSY non-string (`{}`, `[]`, `0`) returns `None` instead, stopped by the
-    `if not ts` guard at `:596-597` before `:598` is reached), which is in neither `_parse_ts`'s internal `(ValueError, TypeError)` guard
-    (`:599-602`) nor a naive `(OSError, OverflowError, ValueError)` wrapper around the call. Guard:
+    `if not ts` guard at `:885-886` before `:887` is reached), which is in neither `_parse_ts`'s internal `(ValueError, TypeError)` guard
+    (`:888-891`) nor a naive `(OSError, OverflowError, ValueError)` wrapper around the call. Guard:
     `isinstance(marker_ts, str) and marker_ts` BEFORE ever calling `_parse_ts` — the same
-    precondition `dream_timing_advisory` already checks at `:2164`, reused here as a precondition,
+    precondition `dream_timing_advisory` already checks at `:3008`, reused here as a precondition,
     not inherited as a shared code path.
   - **Out-of-range string (e.g. `'9999-12-31T23:59:59-14:00'`).** Passes the isinstance guard and
     `_parse_ts`'s own `fromisoformat` parse, then raises `OverflowError: date value out of range`
-    from its OWN later, unguarded call at `:605`, `dt.astimezone(timezone.utc)` — outside
+    from its OWN later, unguarded call at `:894`, `dt.astimezone(timezone.utc)` — outside
     `_parse_ts`'s internal try/except entirely (empirically confirmed). Guard: wrap the
     `_parse_ts(marker_ts)` call itself in this function's own
     `try/except (OSError, OverflowError, ValueError)` — a new, narrower guard specific to this call
-    site, NOT a reuse of `dream_timing_advisory`'s `:2171` guard (that guard wraps a structurally
+    site, NOT a reuse of `dream_timing_advisory`'s `:3015` guard (that guard wraps a structurally
     different, manual `datetime.fromisoformat(marker_ts...).timestamp()` computation, not a call
     into `_parse_ts`, and this function never calls into it).
   Both guards are required together — the isinstance check alone leaves the out-of-range-string
@@ -216,8 +216,8 @@ purely synthetic; see gate 1d.
   see Call site) can't be mistaken for a fresher one (see the silence rule).
 - **No new persisted schema key (deliberate).** Nothing here writes into `seed_record()`'s
   `Budget`/`IndexBudget` literal, so no `CycleRecord`/`Budget`/`IndexBudget` TypedDict change
-  (`memory_status.py:106-119`, `:189-195`), no `render_dashboard.py` change, no `SKILL.md`
-  schema-block change, and `validate_cycle_record` (`memory_status.py:2284`) has nothing new to
+  (`memory_status.py:108-122`, `:224-231`), no `render_dashboard.py` change, no `SKILL.md`
+  schema-block change, and `validate_cycle_record` (`memory_status.py:3231`) has nothing new to
   check. Justification: (a) every input — the log series, the live index measurement, the marker
   timestamp — is already durable and re-derivable on demand from what Phase 0 already reads;
   persisting a redundant snapshot of a number one function call away buys no future capability.
@@ -226,20 +226,20 @@ purely synthetic; see gate 1d.
   this trend fleet-visible (e.g. folded into `sync_global.py --utility`), that's new scope with
   its own spec, not this one.
 - **Call site.** `budget_trajectory_advisory` is defined immediately after `dream_timing_advisory`
-  (`memory_status.py:2144-2175`) — same "pure, never-crash, ctx-value-in" shape — and called ONCE
+  (`memory_status.py:2988-3019`) — same "pure, never-crash, ctx-value-in" shape — and called ONCE
   from the STORES section, right where the index gauge line is built. It returns a `(suffix,
   line)` pair: `suffix` (`str | None`) is folded directly into the SAME f-string that already
-  builds `over + ceil + cliff` at `memory_status.py:2594-2595`, so an over-target node's
+  builds `over + ceil + cliff` at `memory_status.py:3768-3769`, so an over-target node's
   staleness/breach annotation lands ON the line that already carries its `⚠ OVER`/`HARD CEILING`
   badges, never on a separate one; `line` (`str | None`) is a wholly new, independently-`add()`-ed
   line, rendered with the section's own `_ui.c`/`add` style (mirroring `dream_timing_advisory`'s
-  own call at `:2575-2577`) alongside the existing `hooks:` sub-line (`:2596-2599`) — used ONLY for
+  own call at `:3748-3750`) alongside the existing `hooks:` sub-line (`:3773-3776`) — used ONLY for
   the early-warning branch (under target, rising trend, breach projected), the one case with no
   existing line to attach to. At most one of the two is non-`None` for any given node: being over
   target and being under-target-with-a-rising-trend are mutually exclusive by construction.
 - **The silence rule: fire only on a real signal, exactly like `dream_timing_advisory`'s own
   `return None`.** `dream_timing_advisory` itself stays silent when there's nothing to advise
-  (`if tier == "LIGHT": return None`, `memory_status.py:2161-2162`) even though it sits in the
+  (`if tier == "LIGHT": return None`, `memory_status.py:3005-3006`) even though it sits in the
   same report — matching that, not "always render," is what "no-nag" means here. Concretely:
   `suffix` is non-`None` IFF `cur_tokens > INDEX_TOKEN_BUDGET` AND (the staleness age is
   computable OR a ceiling-breach projection was computed) — the bare over-target boolean is NOT by
@@ -269,10 +269,10 @@ purely synthetic; see gate 1d.
   `try/except` around `_parse_ts` (per the Staleness bullet above) never let a garbage or
   out-of-range `marker_ts` raise. Rendering `line` needs a guard, but that guard does not
   exist yet anywhere in `memory_status.py` today — `grep -n "if line\b"` over the file finds no
-  such construct (the file's only `if line` hit, `:1633`, is an unrelated markdown-header check
+  such construct (the file's only `if line` hit, `:2399`, is an unrelated markdown-header check
   inside a different function) — so this PR WRITES a new `if line: add(...)` at the call site,
   mirroring the existing `if advisory: add(_ui.li(advisory))` pattern immediately above it at
-  `:2576` (that guard covers `dream_timing_advisory`'s own, different return value — not this
+  `:3749` (that guard covers `dream_timing_advisory`'s own, different return value — not this
   feature's — and isn't itself extended, only imitated); a plain `(suffix or "")` fold into the
   gauge f-string (for `suffix`), plus `print_report`'s no-exit-code-contract-beyond-"don't crash
   Phase 0" posture, are all unaffected.
@@ -300,7 +300,7 @@ against.
 No fleet-wide aggregation anywhere in this feature — `sync_global.py` is untouched. No
 blocking/gating behavior — this never sets `remediation.required`/`over_ceiling`, never holds a
 pull, never fails a gate; the existing STORES `over`/`ceil` flags and `remediation` block
-(`memory_status.py:2045`, `:2592-2593`) remain the sole enforcement path — AND, per the revised
+(`memory_status.py:2854-2862`, `:3765-3766`) remain the sole enforcement path — AND, per the revised
 Design above, the sole PRIMARY reporting surface for the over-target boolean too. This feature
 only ever annotates that existing surface (staleness age, breach magnitude) or adds the separate
 early-warning line; it never re-derives or re-states the over-target boolean itself. No new CLI
@@ -408,8 +408,8 @@ the hard ceiling once already over it (the existing `ceil` line already owns tha
    - **4b — parseable-but-out-of-platform-range marker on a firing series.** A value like
      `9999-12-31T23:59:59-14:00` or `0001-01-01T00:00:00+14:00`, combined with the same firing
      series. Expected: `_parse_ts` parses the string successfully, then raises `OverflowError: date
-     value out of range` from its own unguarded `dt.astimezone(timezone.utc)` call at `:605` — sitting
-     OUTSIDE `_parse_ts`'s own `:599-602` try/except entirely — which this function's own dedicated
+     value out of range` from its own unguarded `dt.astimezone(timezone.utc)` call at `:894` — sitting
+     OUTSIDE `_parse_ts`'s own `:888-891` try/except entirely — which this function's own dedicated
      `try/except (OSError, OverflowError, ValueError)` around the `_parse_ts(marker_ts)` call catches
      (per Design's Staleness bullet); `line` still fires with the breach content, age absent.
    - **4c — malformed/truncated log line.** Skipped per `iter_cycle_log`'s existing contract; no

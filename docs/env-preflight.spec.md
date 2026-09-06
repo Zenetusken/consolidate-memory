@@ -32,10 +32,10 @@ Additional measured no-happy paths folded in (the "be thorough" mandate):
   3.24.0. No CTE/RETURNING/JSON ops exist, so 3.24.0 is the true floor.
 - **No-git already degrades, deliberately** (shipped policy): `source = "default-path"`
   (`store_context.py:908`), path-keyed uuid5 identity (`project_id_for`, 424-438),
-  `memory_status._run` (2251) labels git failure once and degrades scope to empty. The
+  `memory_status._run` (2264) labels git failure once and degrades scope to empty. The
   pre-flight must *surface* this, not re-litigate it: WARN, never FAIL.
 - **Unwritable TMPDIR crashes Phase 0.** `memory_status.py --seed` writes the per-slug cycle
-  file via `_write_private` (4050) with no try/except — a traceback, not a verdict. (This
+  file via `_write_private` (4068) with no try/except — a traceback, not a verdict. (This
   upgraded the check to FAIL.)
 - **`${CLAUDE_PLUGIN_ROOT}` is shell-only.** An unset var kills hooks/commands in the shell
   before Python starts (`No such file or directory`) — the documented symlinked-skill gotcha. A
@@ -169,9 +169,9 @@ silent case.
    the doctor table, the record's `preflight` key, and `--json`; a no-git dream must NOT gain a
    nag section).
 4. **Schema lockstep (all five together — the law):** `Preflight` TypedDict (total=False:
-   `at`, `fails`, `warns`) + `preflight` key in `CycleRecord` (memory_status.py:609-637) + the
-   `validate_cycle_record` dict-key tuple (3218-3242) **plus is-a-list descents for
-   `fails`/`warns`** (review F8, the dream.beats style at 3195-3199) + the SKILL.md schema fence
+   `at`, `fails`, `warns`) + `preflight` key in `CycleRecord` (memory_status.py:621-652) + the
+   `validate_cycle_record` dict-key tuple (3253-3256) **plus is-a-list descents for
+   `fails`/`warns`** (review F8, the dream.beats style at 3265-3269) + the SKILL.md schema fence
    + the smoke lockstep sweep (tests/smoke.py's lockstep sweep — top-level keyset equality plus the nested fails/warns
    descent — symbol-checked, since suite line numbers drift).
 5. **Renderers** — `render_dashboard.py`: one red line after IDENTITY when `fails` non-empty
@@ -190,7 +190,7 @@ real-EACCES chmod-0o500 root-guarded (the 11308-11316 precedent) + flock-probe a
 posix platform param + `sys.modules["fcntl"] = None` (the 7841-7855 precedent) + the cygwin
 branch · plugin-self bare dir vs real root + sibling-set equality against the live listing ·
 git skip-cascade with which/run stubs (incl. a non-UTF-8 output stub under a C-locale env —
-`errors="replace"` decode, the `memory_status._run` precedent at 2206-2208; advisor F10.4) ·
+`errors="replace"` decode, the `memory_status._run` precedent at 2267-2268; advisor F10.4) ·
 tempdir statvfs+64KB-write FAIL · native-mem-dir EACCES mkfile stub + disabled-auto-memory skip ·
 sentinel-path probe policy (ctx-free probes run, #5/#7 skip).
 

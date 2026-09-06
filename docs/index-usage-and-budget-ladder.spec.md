@@ -49,7 +49,7 @@ while the remediation panel shows `✓ density justified` — a permanently-red 
 The operator correctly read this as "something is wrong in the system or the assumption." The measurements:
 
 - **The steady state is by construction.** `INDEX_TOKEN_BUDGET = 1500` was derived as "measured active set
-  (~1100–1200 tok) + ~25% headroom" (`memory_status.py:322`) — so a mature, healthy store converges to
+  (~1100–1200 tok) + ~25% headroom" (`memory_status.py:663`) — so a mature, healthy store converges to
   ~100% and pins there. Trajectory: 522 → 1504 est tok across 19 dreams / 17 days; **zero prunes in the
   last 11 dreams**; the last two ran `justify` → standing-justify (baseline 26 facts / 1504 tok).
 - **"Everything is merited" is the deterministic output of the current protocol, not a finding.** Merit is
@@ -61,7 +61,7 @@ The operator correctly read this as "something is wrong in the system or the ass
   routed `gc` (mirror share 61% > `_MIRROR_DOMINATED`) and projected `reaches_budget=True` (keep_core ×
   `_LEAN_HOOK_TOK` ≈ 720 ≤ 1500), yet the recorded block says `justify` / `reaches_budget=false` — the
   merit-framed judgment overrode the script's own projection.
-- **The over-target state already costs knowledge.** The M1 auto-hold (`sync_global.py:405`, keyed to
+- **The over-target state already costs knowledge.** The M1 auto-hold (`sync_global.py:1593`, keyed to
   `INDEX_TOKEN_BUDGET`) has withheld 2 relevant globals (`no-failure-masking-fallbacks` [user-global],
   `integration-test-loop-store-seam`) for 3 dreams — over a **0.3% overage of a heuristic soft target**.
 - **The real failure boundary is elsewhere and is silent.** Claude Code hard-truncates: *"The first 200
@@ -130,7 +130,7 @@ reconcile-vs-neighbors) — none by absolute per-item merit in isolation.
 ### A1. Recall tracking: `extract_signals.py --recalls`
 
 New mode on the script that already owns transcript streaming and the marker window
-(`_window_transcripts`, `extract_signals.py:293`; THE single timestamp parser):
+(`_window_transcripts`, `extract_signals.py:244`; THE single timestamp parser):
 
 ```bash
 CM_DREAM_ARC=1 python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --recalls [--json] [--into SEED]
@@ -190,7 +190,7 @@ Seed records `budget.index.cliff_pct = round(100 * max(bytes/CAP_BYTES, lines/CA
 
 ### A. Contract changes
 
-`IndexBudget` (`memory_status.py:103`) gains `fat_hooks: int`, `hook_max_tokens: int`, `cliff_pct: int`;
+`IndexBudget` (`memory_status.py:108`) gains `fat_hooks: int`, `hook_max_tokens: int`, `cliff_pct: int`;
 `CycleRecord` gains `usage: Usage` with:
 ```python
 class UsageFact(TypedDict, total=False):
@@ -201,7 +201,7 @@ class Usage(TypedDict, total=False):
 ```
 All `total=False` additive (legacy records render). `validate_cycle_record` gains the impossible-count
 backstop for `len(per_fact) > _USAGE_FACT_CAP`, with the cap **pinned cross-module to the producer** by a
-smoke test (the `_DISTILL_CAPS` pattern, `memory_status.py:291`). SKILL.md schema block updated in the
+smoke test (the `_DISTILL_CAPS` pattern, `memory_status.py:474`). SKILL.md schema block updated in the
 same change (the existing smoke pin forces this). `render_html.py` mirrors any displayed constant as a
 byte-pinned copy (its existing convention, `render_html.py:30`).
 
@@ -211,7 +211,7 @@ byte-pinned copy (its existing convention, `render_html.py:30`).
 re-keyed ONE existing field (`remediation.required`) from the target to the ceiling. That field is not
 free-standing — it is read by three other things that must NOT change meaning: the Phase-5 triage/
 prune-pressure surfacing (fires at amber, per the ladder's own table), `maintenance.over_budget_not_
-justified` (the no-commit maintenance-pass pivot, `memory_status.py:1447-1449`), and `dream-beta-tester`'s
+justified` (the no-commit maintenance-pass pivot, `memory_status.py:2882`), and `dream-beta-tester`'s
 `CHK-REM-SEED-CONTRACT` release-gating oracle (asserts over-target-non-SJ ⟹ `required is True` — a
 HIGH-severity, push-blocking check). Re-keying `required` breaks all three at once. **The fix is not a
 different threshold for the same field — it is a SECOND, INDEPENDENT signal for a SECOND, INDEPENDENT
@@ -225,7 +225,7 @@ concern:**
   all** — it is defined the same way `_would_net_grow` already is today: a pure comparison with no SJ
   input. There is no "boundary where SJ stops suppressing" to place, because SJ was never wired to this
   check in the first place — mirroring how `_would_net_grow` (the REAL M1 hold predicate; see Dead
-  symbols below) already ignores `standing_justify` entirely (`sync_global.py:404-408`, verified: it takes
+  symbols below) already ignores `standing_justify` entirely (`sync_global.py:1593`, verified: it takes
   `(running_idx, pointer_cost, allow_net_grow)`, no SJ parameter).
 
 ```
@@ -245,11 +245,11 @@ cliff                25 KB / 200 ln (harness)              silent truncation —
 
 **B1. Dead symbols (gate-confirmed, all three lenses independently) — fix before anything else.**
 `_should_hold` does not exist anywhere in the codebase; the real M1 hold predicate is
-`_would_net_grow(running_idx, pointer_cost, allow_net_grow)` (`sync_global.py:404`, 3 required
+`_would_net_grow(running_idx, pointer_cost, allow_net_grow)` (`sync_global.py:1593`, 3 required
 positional args, no default — every real call site and smoke pin passes all three). `_pass_budget_flag`
 does not exist; the real over-target gauge flag is `_over(b)` (`render_dashboard.py:202`, returns the red
-`⚠ OVER` string when `b.get("over")`) — it is **shared** by both the index gauge (`:468`) and the
-CLAUDE.md gauge (`:458`, which has no ceiling concept and must not gain one). Every reference below uses
+`⚠ OVER` string when `b.get("over")`) — it is **shared** by both the index gauge (`:629`) and the
+CLAUDE.md gauge (`:617`, which has no ceiling concept and must not gain one). Every reference below uses
 the real names.
 
 **B2. The new ceiling gate — a single-source token threshold, isolated from the byte/line cliff math.**
@@ -259,12 +259,12 @@ NATIVE_INDEX_CAP_LINES_AS_TOKENS))` or an equivalent single deterministic formul
 canonical est-token number, not a live byte/line re-derivation at each comparison site, so `_would_net_
 grow`, the new dashboard flag, and the new SKILL prose all compare the SAME value in the SAME unit
 (closes the byte/line-vs-est-token mismatch the gate review found in the original B1). `_would_net_grow`
-(`sync_global.py:408`) and `_evict_frees_enough`'s default (`:431`) take this constant via their EXISTING
+(`sync_global.py:1593`) and `_evict_frees_enough`'s default (`:431`) take this constant via their EXISTING
 parameter (no signature change — both already accept the threshold as an argument/default, so re-keying
 is passing `INDEX_CEILING_TOKENS` instead of `INDEX_TOKEN_BUDGET` at the call site, not editing the
 functions). New seed field: **`remediation.over_ceiling: bool`** — computed independently from
 `index_lb[2] > INDEX_CEILING_TOKENS`, alongside (never inside) the existing `required`-setting branch in
-`memory_status.py`'s remediation-dict construction (~`:1376-1388`) — it is a sibling assignment, not a
+`memory_status.py`'s remediation-dict construction (~`:2854-2862`) — it is a sibling assignment, not a
 replacement. `--allow-net-grow` and `--evict` keep their semantics, now checked against
 `INDEX_CEILING_TOKENS`. Consequence, honestly stated (corrected from the original, self-healed-stale
 numbers): **no real fleet store is within reach of this gate today** (this project: 1406/3840 tok;
@@ -273,10 +273,10 @@ the three live nodes are in, which is the intended shape of a ceiling (see Hones
 
 **B3. Gauge honesty — three renderers, not one, plus SKILL prose (a genuinely NEW addition, not an edit
 to existing behavioral text).** `over_ceiling` renders alongside the existing `over` flag, never replacing
-it, at all three sites that show the index budget: `render_dashboard.py`'s `_over(idx)` call (`:468`,
-index gauge only — leave the CLAUDE.md call at `:458` untouched), `memory_status.py`'s own Phase-0/
-`cm status` report (the gauge at `:1911/1917-1918`, the `_remediation_section` panel at `:1819`, the RIGOR
-line at `:1892` — this is the operator's daily view via `cm status` outside a dream and must not keep
+it, at all three sites that show the index budget: `render_dashboard.py`'s `_over(idx)` call (`:629`,
+index gauge only — leave the CLAUDE.md call at `:617` untouched), `memory_status.py`'s own Phase-0/
+`cm status` report (the gauge at `:3756-3765`, the `_remediation_section` panel at `:3571`, the RIGOR
+line at `:3741` — this is the operator's daily view via `cm status` outside a dream and must not keep
 showing only the old signal), and `render_html.py` (which today renders NO remediation/rung state at all
 — this is net-new work, not a mirror of an existing render). Legacy records (no `over_ceiling` key)
 render **byte-identically** — gate this on **key presence** (`"over_ceiling" in idx`), not
@@ -288,7 +288,7 @@ existing over-target/justify language is unaffected by it.
 
 **B4. Hook lint at write time (unchanged from the original design — no lens found an issue here).**
 `sync_global --pull`/`--promote` warn (stderr + report line, never truncate) when a written pointer
-(`_pointer_line`, `sync_global.py:365`) exceeds `HOOK_TOKEN_WARN`, naming the **canonical's description**
+(`_pointer_line`, `sync_global.py:1340`) exceeds `HOOK_TOKEN_WARN`, naming the **canonical's description**
 as the fix site (the pointer is derived from it; a fat mirror hook taxes *every* node). SKILL.md Phase 4
 gets the same rule for model-authored pointers ("the hook is a distilled cue ≤ ~60 est tok; the
 `description:` stays the full recall key").
@@ -418,7 +418,7 @@ that instrument; the refit itself stays future work.
 
 **Naming (gate finding): the record block is `demotion`, NOT `lifecycle`** — render_dashboard already
 has an entries[]-derived "lifecycle" line ("Lifecycle counts are DERIVED from entries[] (single source
-of truth)", render_dashboard.py:268); reusing the word for a new hand-adjacent block invites exactly
+of truth)", render_dashboard.py:249-250); reusing the word for a new hand-adjacent block invites exactly
 the drift that convention exists to prevent. Constants are `_DEMOTION_*`; the state key is
 `demotion_justify`.
 
@@ -427,7 +427,7 @@ the drift that convention exists to prevent. Constants are `_DEMOTION_*`; the st
 - **`_parse_ts` RELOCATES to memory_status.py** (the dependency root). C1/C2 must parse window-`since`
   ISO stamps and compare them to `st_mtime` epochs; THE single timestamp parser lives in
   extract_signals.py, which imports FROM memory_status — reusing it in place is a circular import, and
-  a second local parser is the documented already-bitten divergence class (extract_signals.py:278-282).
+  a second local parser is the documented already-bitten divergence class (extract_signals.py:235-240).
   Pure relocation; extract_signals imports it back; a smoke pin asserts the two modules resolve the
   SAME function object. All epoch↔ISO comparisons go through it (never lexicographic across mixed
   offsets; never a bare `fromisoformat().timestamp()` whose naive-=-LOCAL assumption the parser's own

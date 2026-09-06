@@ -53,7 +53,7 @@ PROBE_WRITE_BYTES = 64 * 1024  # the real write the tempdir probe performs
 # live scripts/ listing — a renamed script fails the pin by design).
 SIBLING_PY = frozenset([
     "calibration_report", "canonical_ingress", "capabilities", "cm_ops", "control_plane",
-    "distill_scan", "domain_policy", "extract_signals", "fact_schema", "facts_manifest",
+    "distill_scan", "domain_policy", "dream_procedure", "extract_signals", "fact_schema", "facts_manifest",
     "identifiers", "identity", "index_admission", "local_ingress", "memory_status",
     "mirror_conflict", "preflight", "render_dashboard", "render_html", "render_log",
     "retention", "session_beacon", "store_context", "sync_global", "_ui",

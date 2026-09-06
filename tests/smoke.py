@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, Optional, cast
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "plugins" / "consolidate-memory" / "scripts"))
@@ -6081,8 +6081,10 @@ with _tf43.TemporaryDirectory() as _tdA1:
     _dA1 = _json43.loads(_oA1)
     check("v0.1.8/A1 F4: flag absent → no cycle_probe key (inert seam)",
           "cycle_probe" not in _dA1 and _rcA1 == 0 and _dA1["summary"]["fail"] == 0)
-    check("v0.1.8/A1 F4: re-baselined fixture is 0 FAIL / 0 WARN (the mirror added no noise)",
-          _dA1["summary"]["fail"] == 0 and _dA1["summary"]["warn"] == 0)
+    check("v0.1.8/A1 F4: re-baselined fixture is 0 FAIL / 1 expected WARN (the v0.4.19 narration "
+          "block-leg advisory — the frozen probe predates the narration block; no other noise)",
+          _dA1["summary"]["fail"] == 0 and _dA1["summary"]["warn"] == 1
+          and any(r.get("id") == "CHK-NARRATION" for r in _dA1["results"]))
     check("v0.1.8/A1 F1: CHK-CYCLE-BUDGET present on the re-baselined fixture (trigger node exists)",
           any(r["id"] == "CHK-CYCLE-BUDGET" for r in _dA1["results"]))
 
@@ -13909,6 +13911,359 @@ check("preflight render_html: 'preflight' is in the embed whitelist",
 
 from network_identity import run as run_network_identity
 run_network_identity(check)
+
+# ── v0.4.19 narration teeth (docs/dream-narration-teeth.spec.md) ────────────────────────
+# The conversation-truth detector: NAR (narration verification against assistant TEXT blocks
+# only) + EXT (extractor accountability) at the terminal --persist, with the honest degrade.
+# In-process pins use scan_fn injection (no transcripts on disk, retry_delay=0); the
+# subprocess pins exercise the real --persist judgment under a hermetic HOME.
+import dream_procedure as _dp19  # noqa: E402
+
+_SLEEP19 = "*💤 The session's work dissolves into the dream.*"
+_BEATS19 = [
+    "*Beat zero: the locate phase finds the stores.*",
+    "*Beat one: the network phase surfaces holders.*",
+    "*Beat two: the signals phase gathers candidates.*",
+    "*Beat three: the verify phase fans out.*",
+    "*Beat four: the defrag phase sweeps.*",
+    "*Beat five: the pass surfaces to ask.*",   # the surfacing line — the last beats entry
+]
+_REC19 = {"dream": {"sleep": _SLEEP19, "beats": _BEATS19, "wake": "*The wake stanza.*"}}
+
+def _line19(ts: str, blocks: list) -> dict:
+    return {"timestamp": ts, "message": {"role": "assistant", "content": blocks}}
+
+def _userline19(ts: str, blocks: list) -> dict:
+    return {"timestamp": ts, "message": {"role": "user", "content": blocks}}
+
+def _txt19(t: str) -> dict:
+    return {"type": "text", "text": t}
+
+def _bash19(cmd: str) -> dict:
+    return {"type": "tool_use", "name": "Bash", "input": {"command": cmd}}
+
+def _scan19(lines: list) -> "tuple[list, list, bool]":
+    return _dp19._assistant_text_blocks(lines), lines, False
+
+_CALL19 = 'CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py" --json'
+_NARR19 = [_line19("2026-09-02T01:00:00Z", [_txt19(_SLEEP19)]),
+           _line19("2026-09-02T01:01:00Z", [_txt19(" ".join(_BEATS19))])]
+
+check("v0.4.19 normalizer: emoji + surrounding asterisks strip, case preserved",
+      _dp19.normalize_beat_text("> *💤 The sleep.*") == "💤 The sleep."
+      and _dp19.normalize_beat_text("*Beat zero: the locate phase.*") == "Beat zero: the locate phase.")
+check("v0.4.19 normalizer: per-line '> ' prefixes strip BEFORE collapsing (the wrapped-quote case)",
+      _dp19.normalize_beat_text("> *l1*\n> *l2*") == _dp19.normalize_beat_text("*l1*\n*l2*"))
+check("v0.4.19 normalizer: a trailing-asterisk-differing narration matches, a one-word drift fails",
+      "Beat three: the verify phase fans out" in _dp19.normalize_beat_text("*Beat three: the verify phase fans out")
+      and "Beat three: the verify phase fanned out" not in _dp19.normalize_beat_text("*Beat three: the verify phase fans out"))
+_v19a = _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(
+    _NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])]))
+check("v0.4.19 NAR: 7-narrated (sleep + 6 beats) + a Phase-2 call → verified",
+      _v19a["verdict"] == "verified" and "7/7" in _v19a["reason"])
+_v19b = _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(
+    [_line19("2026-09-02T01:00:00Z", [_txt19(_BEATS19[0])]),
+     _line19("2026-09-02T01:01:00Z", [_txt19(_BEATS19[1])]),
+     _line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])]))
+check("v0.4.19 NAR: 2-narrated → 5 named gaps (sleep by name, beats by record index)",
+      _v19b["verdict"] == "failed"
+      and [g["label"] for g in _v19b["gaps"]] == ["sleep", "beats[2]", "beats[3]", "beats[4]", "beats[5]"]
+      and not _v19b["ext_unaccounted"])
+_v19c = _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(
+    [_line19("2026-09-02T01:00:00Z", [{"type": "tool_use", "name": "Write",
+                                       "input": {"file_path": "/tmp/r.json",
+                                                 "content": _SLEEP19 + " " + " ".join(_BEATS19)}}]),
+     _userline19("2026-09-02T01:00:01Z", [{"type": "tool_result",
+                                           "content": " ".join(_BEATS19)}]),
+     _line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])]))
+check("v0.4.19 NAR record-fill attack (the BLOCK-class pin): beats only in a Write input + its "
+      "tool_result echo → ALL named gaps, never self-satisfied",
+      _v19c["verdict"] == "failed" and len(_v19c["gaps"]) == 7)
+_v19c2 = _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(
+    [_line19("2026-09-02T01:00:00Z", [{"type": "thinking", "text": " ".join(_BEATS19)}]),
+     _line19("2026-09-02T01:01:00Z", [_txt19(_SLEEP19)]),
+     _line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])]))
+check("v0.4.19 NAR domain: thinking blocks never count (a rehearsed beat is not a narration)",
+      _v19c2["verdict"] == "failed" and any(g["label"] == "beats[0]" for g in _v19c2["gaps"]))
+_v19d = _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(_NARR19))
+check("v0.4.19 EXT: all narrated but NO Phase-2 call and no skip-note → failed + unaccounted",
+      _v19d["verdict"] == "failed" and _v19d["ext_unaccounted"]
+      and any(g["label"] == "extractor unaccounted" for g in _v19d["gaps"]))
+check("v0.4.19 EXT anchor: grep/sed targets, text mentions, tool_result echoes, --recalls, and "
+      "test_-prefixed names never count as an invocation",
+      all(not _dp19._extractor_accounted(
+          [_line19("2026-09-02T01:00:00Z", [_bash19(cmd)])], None)[0] for cmd in (
+          'grep -n "extract_signals" tests/smoke.py',
+          'sed -n "1p" scripts/extract_signals.py',
+          'python3 -m pytest tests/test_extract_signals.py',
+          'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py" --recalls --into r.json',
+          'echo "$(python3 scripts/extract_signals.py --json)"',
+          'python3 tools/extract_signalsXpy --json',
+      )) and _dp19._extractor_accounted(
+          [_line19("2026-09-02T01:00:00Z", [_bash19(_CALL19)])], None)[0]
+      and _dp19._extractor_accounted(
+          [_line19("2026-09-02T01:00:00Z",
+                   [_bash19('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py"')])], None)[0]
+      and _dp19._extractor_accounted(
+          [_line19("2026-09-02T01:00:00Z",
+                   [_bash19('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/\\\nextract_signals.py" --json')])],
+          None)[0]
+      and not _dp19._extractor_accounted(
+          [_line19("2026-09-02T01:00:00Z", [_txt19("the extract_signals.py output was checked")])],
+          None)[0])
+_sk19 = dict(_REC19, entries=[{"action": "skipped", "name": "session-signal extract",
+                               "reason": "extractor-skip: magnitude 0 — no candidates"}])
+check("v0.4.19 EXT skip-note: the canonical extractor-skip: marker + why satisfies EXT",
+      _dp19.judge(_sk19, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(_NARR19))["verdict"] == "verified")
+_sk19b = dict(_REC19, entries=[{"action": "skipped", "reason": "extractor-skip:"}])
+_v19e = _dp19.judge(_sk19b, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(_NARR19))
+_sk19c = dict(_REC19, entries=[{"action": "skipped", "reason": "no candidates this cycle"}])
+_v19f = _dp19.judge(_sk19c, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(_NARR19))
+check("v0.4.19 EXT skip-note: marker without a why AND free-form prose both stay unaccounted",
+      _v19e["ext_unaccounted"] and _v19f["ext_unaccounted"])
+_v19g = _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=lambda: ([], [], False))
+_v19g2 = _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=lambda: ([], [], True))
+check("v0.4.19 degrade: zero content AND unavailable both degrade loudly, never fire",
+      _v19g["verdict"] == "degraded" and _v19g2["verdict"] == "degraded")
+_v19g3 = _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(
+    [_userline19("2026-09-02T01:00:00Z", [{"type": "tool_result", "content": "done"}])]))
+check("v0.4.19 degrade seam: any kept line (even a user tool_result) = content → FIRE, not "
+      "degrade, and both arms fail (review finding 4's in-process half)",
+      _v19g3["verdict"] == "failed" and _v19g3["ext_unaccounted"])
+# Review finding 2: one unopenable pooled file is SKIPPED — the seam never degrades an
+# otherwise-verifiable window on a chmod/gc race; only nothing-readable degrades.
+with _tf43.TemporaryDirectory() as _td19c:
+    _p19pool = Path(_td19c)
+    (_p19pool / "good.jsonl").write_text(_json43.dumps(
+        _line19("2026-09-02T01:00:00Z", [_txt19(_SLEEP19)])) + "\n")
+    (_p19pool / "bad.jsonl").write_text(_json43.dumps(
+        _line19("2026-09-02T01:01:00Z", [_txt19(_BEATS19[0])])) + "\n")
+    _open_orig19 = Path.open
+    def _open_skip19(self, *a, **kw):
+        if self.name == "bad.jsonl":
+            raise OSError("chmod/gc race")
+        return _open_orig19(self, *a, **kw)
+    setattr(Path, "open", _open_skip19)
+    try:
+        _kept19b, _unav19b = _dp19._window_lines(_p19pool, "2026-09-01T00:00:00Z")
+    finally:
+        setattr(Path, "open", _open_orig19)
+    check("v0.4.19 seam: one unopenable pooled file is skipped (the readable window survives)",
+          not _unav19b and len(_kept19b) == 1)
+    (_p19pool / "good.jsonl").unlink()
+    setattr(Path, "open", _open_skip19)
+    try:
+        _kept19b, _unav19b = _dp19._window_lines(_p19pool, "2026-09-01T00:00:00Z")
+    finally:
+        setattr(Path, "open", _open_orig19)
+    check("v0.4.19 seam: NOTHING readable → unavailable (the honest degrade)",
+          _unav19b and _kept19b == [])
+_calls19 = {"n": 0}
+def _grows19() -> "tuple[list, list, bool]":
+    _calls19["n"] += 1
+    if _calls19["n"] == 1:
+        return _dp19._assistant_text_blocks(_NARR19[:-1]), _NARR19[:-1], False
+    return _scan19(_NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])])
+_v19h = _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=_grows19)
+check("v0.4.19 retry: a gap filled on the second read confirms clean (the re-read guard)",
+      _v19h["verdict"] == "verified" and _calls19["n"] == 2)
+_v19blk = _dp19.narration_block({"verdict": "failed", "reason": "x", "gaps": [
+    {"label": "sleep", "preview": "s"}, {"label": "beats[0]", "preview": "b"}],
+    "ext_unaccounted": True})
+check("v0.4.19 narration block: failed carries the gap indexes; the scan-detail fields stay out",
+      _v19blk == {"verdict": "failed", "reason": "x", "gaps": ["sleep", "beats[0]"]})
+
+# Subprocess: the real --persist judgment. Hermetic HOME; the store is the default layout
+# (<pool>/memory) so the pool resolves from the STORE identity — cwd is deliberately elsewhere
+# (the cross-cwd pin).
+with _tf43.TemporaryDirectory() as _td19:
+    import retention as _ret19
+    _home19 = str(Path(_td19) / "home"); (Path(_td19) / "home").mkdir()
+    _pool19 = Path(_td19) / "proj"; _pool19.mkdir()
+    _store19 = _pool19 / "memory"; _store19.mkdir()
+    _else19 = Path(_td19) / "elsewhere"; _else19.mkdir()
+
+    def _run19(*args: str, cwd: str = "") -> "tuple[str, str, int]":
+        env = {**_os53.environ, "HOME": _home19, "CM_DREAM_ARC": "1"}
+        p = _sp53.run([sys.executable, str(_scripts54 / "render_dashboard.py"), *args],
+                      capture_output=True, text=True, timeout=60, env=env,
+                      cwd=cwd or _td19)
+        return p.stdout, p.stderr, p.returncode
+
+    def _last19() -> dict:
+        _lp = _ret19.cycle_log_write_path(_store19, environ={**_os53.environ, "HOME": _home19})
+        return _json43.loads(_lp.read_text(encoding="utf-8").strip().splitlines()[-1])
+
+    def _wr19(name: str, ts: str, before: str, dream: dict, extra: Optional[dict] = None) -> str:
+        rec = {"project": "p", "session": "s19",
+               "scope": {"git_commits": 1, "session_candidates": 0},
+               "verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0},
+               "marker": {"before_commit": "", "before_timestamp": before,
+                          "commit": "c19-" + name, "timestamp": ts},
+               "dream": dream}
+        if extra:
+            rec.update(extra)
+        p = Path(_td19) / name
+        p.write_text(_json43.dumps(rec))
+        return str(p)
+
+    def _clear19() -> None:
+        for f in _pool19.glob("*.jsonl"):
+            f.unlink()
+
+    def _fixture19(lines: list, name: str = "s.jsonl") -> None:
+        _clear19()  # one pin's transcript must never leak into the next pin's window
+        (_pool19 / name).write_text(
+            "\n".join(_json43.dumps(l) for l in lines) + "\n", encoding="utf-8")
+    _T0 = "2026-09-01T00:00:00Z"
+    # F19A — NAR fires alone (EXT accounted): 7 gaps → exit 4 with the gap panel + the NAR cue.
+    _fixture19([_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])])
+    _p19a = _wr19("f19a.json", "2026-09-02T02:00:01Z", _T0, _REC19["dream"])
+    _so19, _se19, _rc19 = _run19(_p19a, "--persist", str(_store19))
+    check("v0.4.19 persist NAR: fabricated beats (extractor accounted) → exit 4, the gap panel "
+          "names sleep + beat indexes, the NAR cue fires",
+          _rc19 == 4 and "CONVERSATION-TRUTH GAPS" in _so19 and "sleep" in _so19
+          and "beats[0]" in _so19 and "lives only in the record" in _se19
+          and "Phase 2 left no trace" not in _se19
+          and _last19()["narration"]["verdict"] == "failed"
+          and set(_last19()["narration"]["gaps"]) == {"sleep", "beats[0]", "beats[1]",
+                                                      "beats[2]", "beats[3]", "beats[4]", "beats[5]"}
+          and "extractor unaccounted" not in _last19()["narration"]["gaps"])
+    # F19B — EXT fires alone (all narrated, no call) → exit 3 with the EXT cue.
+    _fixture19(_NARR19)
+    _p19b = _wr19("f19b.json", "2026-09-02T02:00:02Z", _T0, _REC19["dream"])
+    _so19, _se19, _rc19 = _run19(_p19b, "--persist", str(_store19))
+    check("v0.4.19 persist EXT: all narrated but no Phase-2 call → exit 3, the EXT cue (not NAR's), "
+          "and the EXT-only panel header (review finding 8)",
+          _rc19 == 3 and "Phase 2 left no trace" in _se19
+          and "lives only in the record" not in _se19
+          and "extractor left no trace" in _so19 and "never narrated" not in _so19
+          and _last19()["narration"]["verdict"] == "failed"
+          and _last19()["narration"]["gaps"] == ["extractor unaccounted"])
+    # F19C — the clean pair + cross-cwd pool resolution (cwd is NOT the store's project).
+    _fixture19(_NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s2.jsonl")
+    _p19c = _wr19("f19c.json", "2026-09-02T02:00:03Z", _T0, _REC19["dream"])
+    _so19, _se19, _rc19 = _run19(_p19c, "--persist", str(_store19), cwd=str(_else19))
+    check("v0.4.19 persist clean pair + cross-cwd: exit 0, persist clean, the log line carries "
+          "verdict verified (the pool resolved from the store identity, never cwd)",
+          _rc19 == 0 and "persist clean" in _se19
+          and _last19()["narration"]["verdict"] == "verified"
+          and "7/7" in _last19()["narration"]["reason"])
+    # F19D — the record-fill attack end-to-end (the BLOCK-class pin): beats only in a Write
+    # tool_use input + its tool_result echo → all named gaps → exit 4.
+    _fixture19([_line19("2026-09-02T01:00:00Z", [{"type": "tool_use", "name": "Write",
+                                                  "input": {"file_path": "/tmp/r.json",
+                                                            "content": _SLEEP19 + " " + " ".join(_BEATS19)}}]),
+                _userline19("2026-09-02T01:00:01Z", [{"type": "tool_result",
+                                                      "content": " ".join(_BEATS19)}]),
+                _line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s3.jsonl")
+    _p19d = _wr19("f19d.json", "2026-09-02T02:00:04Z", _T0, _REC19["dream"])
+    _so19, _se19, _rc19 = _run19(_p19d, "--persist", str(_store19))
+    check("v0.4.19 persist record-fill attack: exit 4 with ALL 7 gaps named (never self-satisfied)",
+          _rc19 == 4 and "CONVERSATION-TRUTH GAPS" in _so19
+          and len(_last19()["narration"]["gaps"]) == 7)
+    # F19E — the record-anchor pin (the HIGH-class pin): the state file is re-stamped PAST the
+    # narration; the record's seeded before_timestamp precedes it → beats found regardless.
+    _fixture19(_NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s5.jsonl")
+    (_store19 / ".consolidation-state.json").write_text(
+        _json43.dumps({"commit": "c19-state", "timestamp": "2026-09-03T00:00:00Z"}))
+    _p19e = _wr19("f19e.json", "2026-09-02T02:00:05Z", _T0, _REC19["dream"])
+    _so19, _se19, _rc19 = _run19(_p19e, "--persist", str(_store19))
+    check("v0.4.19 persist record-anchor: a state file stamped PAST the narration changes nothing "
+          "— the window anchors on the record's seeded before_timestamp (verified, not degraded)",
+          _rc19 == 0 and _last19()["narration"]["verdict"] == "verified")
+    (_store19 / ".consolidation-state.json").unlink()
+    # F19F — the skip-note escape hatch end-to-end.
+    _fixture19(_NARR19, name="s6.jsonl")
+    _p19f = _wr19("f19f.json", "2026-09-02T02:00:06Z", _T0, _REC19["dream"],
+                {"entries": [{"action": "skipped", "name": "session-signal extract",
+                              "reason": "extractor-skip: magnitude 0 — no candidates"}]})
+    _so19, _se19, _rc19 = _run19(_p19f, "--persist", str(_store19))
+    check("v0.4.19 persist skip-note: the extractor-skip: entry satisfies EXT end-to-end (exit 0)",
+          _rc19 == 0 and _last19()["narration"]["verdict"] == "verified")
+    # F19G — the session-ful rotated window (the F-1 pin): content exists but ALL of it is
+    # pre-since → zero kept lines → BOTH arms degrade, NO exit-3, the loud panel, verdict persisted.
+    _fixture19([_line19("2026-08-30T00:00:00Z", [_txt19(_SLEEP19)])], name="s4.jsonl")
+    _pG = _wr19("f19g.json", "2026-09-02T02:00:07Z", _T0, _REC19["dream"])
+    _so19, _se19, _rc19 = _run19(_pG, "--persist", str(_store19))
+    check("v0.4.19 persist rotated window: zero kept lines → the loud degrade panel, exit 0 "
+          "(no exit-3 — the extractor evidence rotated away with the transcript)",
+          _rc19 == 0 and "CONVERSATION-TRUTH UNVERIFIABLE" in _so19
+          and "Phase 2 left no trace" not in _se19
+          and _last19()["narration"]["verdict"] == "degraded")
+    # F19H — precedence + panel suppression: a 4/6 record whose narration ALSO gaps → the
+    # record-side arc owns the render (exit 4, "4/6 beats", NO contradictory NAR panel).
+    _clear19()
+    _dream19h = {"sleep": _SLEEP19, "beats": _BEATS19[:4], "wake": "*The wake stanza.*"}
+    _p19h = _wr19("f19h.json", "2026-09-02T02:00:08Z", _T0, _dream19h)
+    _so19, _se19, _rc19 = _run19(_p19h, "--persist", str(_store19))
+    check("v0.4.19 persist precedence: a 4/6 record exits 4 with the record-side panel and NO "
+          "contradictory NAR panel (suppression is a stdout contract)",
+          _rc19 == 4 and "4/6 beats" in _so19 and "DREAM ARC INCOMPLETE" in _so19
+          and "CONVERSATION-TRUTH" not in _so19)
+    # F19I — the dreamless legacy carve-out: no dream block → the arms skip entirely (no panel,
+    # no narration block on the log line, exit 0).
+    _recI = {"project": "p", "session": "s19",
+             "scope": {"git_commits": 1, "session_candidates": 0},
+             "verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0},
+             "marker": {"before_commit": "", "before_timestamp": _T0,
+                        "commit": "c19-f19i", "timestamp": "2026-09-02T02:00:09Z"}}
+    _p19i = str(Path(_td19) / "f19i.json")
+    Path(_p19i).write_text(_json43.dumps(_recI))
+    _so19, _se19, _rc19 = _run19(_p19i, "--persist", str(_store19))
+    check("v0.4.19 persist legacy carve-out: a dreamless record skips both arms (exit 0, no "
+          "CONVERSATION-TRUTH panel, no narration block on the log line)",
+          _rc19 == 0 and "CONVERSATION-TRUTH" not in _so19
+          and "narration" not in _last19())
+    # F19J — the healed loop-back (review finding 1): attempt-1 fabricated → exit 4 (log + cycle
+    # file carry failed); attempt-2 (same record file, now-narrated transcript) → duplicate,
+    # exit 0, the CYCLE FILE heals to verified while the LOG line stays attempt-scoped (failed).
+    _fixture19([_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s8.jsonl")
+    _p19j = _wr19("f19j.json", "2026-09-02T02:00:11Z", _T0, _REC19["dream"])
+    _so19, _se19, _rc19 = _run19(_p19j, "--persist", str(_store19))
+    _rc19j1 = _rc19
+    _lp19 = _ret19.cycle_log_write_path(_store19, environ={**_os53.environ, "HOME": _home19})
+    _n_log19 = len(_lp19.read_text(encoding="utf-8").strip().splitlines())
+    _fixture19(_NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s9.jsonl")
+    _so19, _se19, _rc19 = _run19(_p19j, "--persist", str(_store19))
+    _cycle19j = _json43.loads(Path(_p19j).read_text(encoding="utf-8"))
+    _log19j = _lp19.read_text(encoding="utf-8").strip().splitlines()
+    check("v0.4.19 persist loop-back heal: attempt-1 exits 4; the duplicate re-render exits 0 and "
+          "heals the CYCLE FILE to verified while the log line stays attempt-scoped",
+          _rc19j1 == 4 and _rc19 == 0
+          and _cycle19j.get("narration", {}).get("verdict") == "verified"
+          and len(_log19j) == _n_log19
+          and _json43.loads(_log19j[-1])["narration"]["verdict"] == "failed")
+    # F19K — the both-arms precedence pin (review finding 4): content but no narration AND no
+    # extractor call → gaps + unaccounted → exit 3, the EXT cue, NAR's cue suppressed.
+    _fixture19([_userline19("2026-09-02T01:00:00Z", [{"type": "tool_result", "content": "done"}])],
+               name="s10.jsonl")
+    _p19k = _wr19("f19k.json", "2026-09-02T02:00:12Z", _T0, _REC19["dream"])
+    _so19, _se19, _rc19 = _run19(_p19k, "--persist", str(_store19))
+    check("v0.4.19 persist both-arms: gaps + unaccounted → exit 3 with the EXT cue, the log's "
+          "gaps name both classes",
+          _rc19 == 3 and "Phase 2 left no trace" in _se19
+          and "lives only in the record" not in _se19
+          and "sleep" in _last19()["narration"]["gaps"]
+          and _last19()["narration"]["gaps"][-1] == "extractor unaccounted")
+    # Review finding 5: the state-file project_path pool is ownership-guarded — a stale path
+    # must NOT mis-pool the transcripts to the wrong project.
+    _wrong19 = Path(_td19) / "wrongproj"; _wrong19.mkdir()
+    (_store19 / ".consolidation-state.json").write_text(
+        _json43.dumps({"commit": "c", "timestamp": "t", "project_path": str(_wrong19)}))
+    _old_home19 = _os53.environ.get("HOME")
+    _os53.environ["HOME"] = _home19
+    try:
+        _got19 = rd._narration_session_dir(_store19)
+    finally:
+        if _old_home19 is None:
+            _os53.environ.pop("HOME", None)
+        else:
+            _os53.environ["HOME"] = _old_home19
+    (_store19 / ".consolidation-state.json").unlink()
+    check("v0.4.19 pool ownership guard: a stale project_path falls through to the store layout "
+          "(the wrong project's session dir is never returned)",
+          _got19 == _pool19)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -42,12 +42,12 @@ re-verified against the live tree before curation. Grounded in the measured evid
 | No foreign-record input seam exists | `gather()` rebuilds the seed from the target (`beta_checks.py:355`) |
 | Scripted write-pass (seed → stamp → audit → persist, promote guard-refused) two runs | byte-identical stores, 0.3 s wall |
 | **Review correction** — determinism WITH a completing promote | **unverified, refuted by code**: the origin mirror is minted `since=_now_iso()` (`sync_global.py:1623, 467-468`) — cross-run byte-identity requires normalizing `since:` (D-7) |
-| **Review correction** — the fixture is NOT a network node | `make_fixture.py` writes zero `global_ref:` mirrors; node status requires a mirror (`sync_global.py:1746-1758`), so `_trigger_node` (`beta_checks.py:530-537`) returns None and `CHK-CYCLE-BUDGET` is **silently absent** from the fixture run (`beta_checks.py:793`) — the probe's budget FAIL needs a mirror in the fixture (D-3) |
+| **Review correction** — the fixture is NOT a network node | `make_fixture.py` writes zero `global_ref:` mirrors; node status requires a mirror (`sync_global.py:3739-3751`), so `_trigger_node` (`beta_checks.py:530-537`) returns None and `CHK-CYCLE-BUDGET` is **silently absent** from the fixture run (`beta_checks.py:793`) — the probe's budget FAIL needs a mirror in the fixture (D-3) |
 | Oracle baseline on the fixture | 0.4 s; 20 results, 0 FAIL, 0 WARN (re-measured by the mechanics reviewer) |
-| `--persist` refuses an unstamped seed (`marker.timestamp` empty) | measured — the stamp is a MODEL step; `--audit --into` does NOT inject it (`memory_status.py:2917-2927`) |
-| `--promote` guard ladder | scopeless refused → `stacks:` missing refused → non-`_DETECTABLE_STACKS` refused (`sync_global.py:1535-1556`) — all correct |
+| `--persist` refuses an unstamped seed (`marker.timestamp` empty) | measured — the stamp is a MODEL step; `--audit --into` does NOT inject it (`memory_status.py:4089-4144`) |
+| `--promote` guard ladder | scopeless refused → `stacks:` missing refused → non-`_DETECTABLE_STACKS` refused (`sync_global.py:3364-3385`) — all correct |
 | `--pull` on the fixture | no-op by design (M1 hold — fixture index 3879 est-tokens vs `INDEX_CEILING_TOKENS` 3840) |
-| Cross-run state-file diff from differing repo paths | `_write_stacks_cache` merges `project_path` (`sync_global.py:718-745`) — the driver MUST use a fixed repo path |
+| Cross-run state-file diff from differing repo paths | `_write_stacks_cache` merges `project_path` (`sync_global.py:1675-1716`) — the driver MUST use a fixed repo path |
 | `run_beta.py` subprocess env | **no `env=` pin anywhere** (`run_beta.py:155, 162, 215`) — ambient HOME inheritance (D-9) |
 | Contaminant magnitude | `after_tokens=9999` vs fixture trigger ~3879: Δ≫ tolerance `max(50, 0.10×ntok)` (`beta_checks.py:795`) — sound at any plausible fixture size |
 
@@ -123,7 +123,7 @@ pin-break caused by a benign future skill change is "investigate", never an auto
 
 **D-8 — Promote runs on a driver-authored scoped fact, stacks from `_DETECTABLE_STACKS`.**
 The driver writes its own fact with `scope: stack-general` AND a non-empty `stacks:` drawn
-from `_DETECTABLE_STACKS` (a non-detectable stack is refused, `sync_global.py:1549-1554`),
+from `_DETECTABLE_STACKS` (a non-detectable stack is refused, `sync_global.py:3380-3385`),
 INSIDE the frontmatter block (a body append is invisible to the parser — measured), claims
 it in the plan (`fact` class), and promotes it. The local mirror rewrite + index pointer are
 diff-visible claims; the canonical side is out-of-band (D-6).
