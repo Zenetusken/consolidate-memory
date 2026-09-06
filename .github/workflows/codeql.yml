@@ -18,6 +18,10 @@ on:
 
 permissions:
   contents: read
+  # security-events: write is the CodeQL action's own requirement — the analyze step uploads the
+  # SARIF results (v4 hard-errors without it; v3 degraded silently). Scoped to THIS workflow only:
+  # the repo's least-privilege policy (ci.yml stays contents: read) is untouched elsewhere.
+  security-events: write
 
 jobs:
   analyze:
