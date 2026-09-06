@@ -12,6 +12,15 @@ var NocturneNetwork = (function(){
   }
   function paint(record){
     var model=normalize(record), net=model.raw, svg=el('net'), detail=el('net-detail'), controls=el('net-controls');
+    // v0.4.20 (docs/network-capture-teeth.spec.md): absence and emptiness never stack. When the
+    // block is ABSENT (net.nodes is not an array) the panel collapses to the not-captured note
+    // alone — the map, controls, legend, and detail attribution all hide (they painted
+    // unconditionally over a blank canvas, the same stacked read one level up). A PRESENT block
+    // with 0 nodes keeps the chrome and shows the honest empty-capture state. Reset each paint
+    // (the archive re-paints per dream), then hide only on absence.
+    svg.hidden=false;controls.hidden=false;el('net-legend').hidden=false;detail.hidden=false;
+    el('net-scroll').hidden=false;
+    if(!Array.isArray(net.nodes)){svg.hidden=true;controls.hidden=true;el('net-legend').hidden=true;detail.hidden=true;el('net-scroll').hidden=true;}
     var trigger=model.nodes.find(function(n){return truthy(n.raw.trigger);});
     var state={kind:'fleet',value:null,expanded:new Set(trigger?[trigger.domain]:[]),pages:Object.create(null),query:''};
     svg.classList.add('hierarchy-map');svg.setAttribute('role','group');

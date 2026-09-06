@@ -5,6 +5,39 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.20] — 2026-09-06
+
+**Patch — the network capture teeth (the skipped fleet capture is no longer silent).**
+
+The first dream judged by the v0.4.19 gates exposed the capture-side gap: Phase-5
+step 4's `--tokens --fleet` capture never ran in the pass, the record persisted
+with no `network` block, and the archive stacked "No project nodes captured for
+this view" on "Network details were not captured for this dream" — absence read
+as fleet disconnection, with no teeth anywhere.
+
+- **NET — the persist-side advisory.** A dream-bearing record whose `network`
+  block has no `nodes` list (absent OR present-without-nodes — the ONE predicate
+  the panel, the beta oracle, and the archive's note ladder share: the producer
+  always emits nodes) gets a loud NETWORK CAPTURE MISSING panel at the terminal
+  `--persist` — advisory only, no exit change (the capture is an enrichment of a
+  completed dream; the exit key stays frozen). Suppressed on a maintenance/
+  bootstrap pivot (its scope excludes the capture by design) with the
+  string-coercion discipline, and on the dreamless legacy carve-out.
+- **The `network_capture` beta-oracle family** — the fourth member of the
+  skipped-by-scope set (`_maintenance_pivoted`), on the `_latest_capture_check`
+  scaffold (min_version 0.4.13, the `--fleet` mandate floor); the WARN's actual
+  string branches (era caveat tail for an absent block, a corruption tail for a
+  present nodes-less one). The frozen A1 fixture pin re-baselined to 2 named
+  expected WARNs.
+- **Archive readability** — on an absent block the network panel collapses to the
+  not-captured note alone (map, controls, legend, and detail all hide); a
+  present-but-empty capture keeps the chrome with the honest empty-fleet text.
+  Absence ≠ emptiness, and each renders alone.
+
+Design-of-record: `docs/network-capture-teeth.spec.md` (advisor + review-to-zero,
+amend-1/2). Backward-compatible → patch. Suite **1729** · browser **1105** · sim /
+manifests / mypy green · beta gate 0 FAIL (2 by-design advisories).
+
 ## [0.4.19] — 2026-09-06
 
 **Patch — the narration teeth (conversation-truth verification at the terminal `--persist`).**

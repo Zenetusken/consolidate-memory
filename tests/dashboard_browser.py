@@ -589,6 +589,30 @@ def main(out):
             page.locator('.open-dream').click();page.wait_for_function("location.hash==='#sel=0' && document.querySelector('#dreamnav .pos').textContent.includes('dream 1 /')")
             check(str(count)+' cycles navigate only through Open this dream',page.locator('.activity-cycle').count()==1)
 
+        # v0.4.20 network capture teeth: absence and emptiness never stack (the whole-panel
+        # collapse on an ABSENT block; the honest empty capture keeps the chrome).
+        fixture('v0419-absent-network', {'project': 'absent-net', 'scope': {},
+                                         'dream': {'sleep': 's', 'beats': ['b'] * 6, 'wake': 'w'},
+                                         'marker': {'commit': 'c', 'timestamp': 't'}})
+        check('absent network collapses to the not-captured note alone (map, scroll wrapper, controls, legend, detail hidden)',
+              all(page.locator(s).evaluate('e=>e.hidden')
+                  for s in ['#net', '#net-scroll', '#net-controls', '#net-legend', '#net-detail'])
+              and 'Network details were not captured for this dream' in page.locator('#net-cap').inner_text())
+        _empty20 = {'nodes': [], 'fact_holdings': [], 'stack_edges': [], 'group_links': [],
+                    'totals': {'nodes': 0}, 'capture': {'facts_total': 0, 'facts_emitted': 0,
+                                                       'holder_refs_total': 0, 'holder_refs_emitted': 0,
+                                                       'incidence_bytes': 0, 'unresolved_identities': 0,
+                                                       'read_failures': 0}}
+        fixture('v0419-empty-capture', {'project': 'empty-net', 'scope': {}, 'network': _empty20,
+                                        'dream': {'sleep': 's', 'beats': ['b'] * 6, 'wake': 'w'},
+                                        'marker': {'commit': 'c2', 'timestamp': 't2'}})
+        check('empty capture keeps the chrome with the honest empty text and no not-captured note',
+              all(not page.locator(s).evaluate('e=>e.hidden')
+                  for s in ['#net', '#net-scroll', '#net-controls', '#net-legend', '#net-detail'])
+              and 'No project nodes captured for this view' in page.locator('#net').text_content()
+              and 'Network details were not captured' not in page.locator('#net-cap').inner_text()
+              and 'older snapshot' not in page.locator('#net-detail').inner_text())
+
         # Golden geometry captured from the v0.4.16 header before this redesign.
         check('frozen header geometry reference is present',GEOMETRY.is_file())
         if GEOMETRY.exists():

@@ -403,6 +403,35 @@ def _narration_section(record: Mapping[str, Any], narration: Any) -> list:
     return out
 
 
+def _net_capture_section(record: Mapping[str, Any]) -> list:
+    """v0.4.20: the NETWORK CAPTURE advisory (docs/network-capture-teeth.spec.md). Fires on a
+    judged render when the record has a dream block (a full dream — the dreamless legacy
+    carve-out extends) and `network.nodes` is NOT a list — absent OR present-without-nodes: the
+    ONE predicate the panel, the beta oracle, and the archive's note ladder share (the producer
+    always emits nodes, so a nodes-less block is never an honest capture and the terminal never
+    reads it as one). Suppressed on a maintenance/bootstrap pivot (its scope excludes the
+    capture BY DESIGN — mis-directing it would be a false positive on the most common no-op
+    pass), with the string-coercion discipline (a model-authored `"false"` must not suppress).
+    Advisory only — no exit change (the capture is an enrichment of a completed dream; the exit
+    key stays frozen). The copy must avoid the phrase CONVERSATION-TRUTH (F19H's negative)."""
+    if not isinstance(record.get("dream"), dict):
+        return []
+    m = _dget(record, "maintenance")
+    pv = m.get("pivoted")
+    if pv is True or str(pv).strip().lower() in ("true", "1"):
+        return []
+    if isinstance(_dget(record, "network").get("nodes"), list):
+        return []
+    out = ["", _rule()]
+    out.append("  " + _c("⚠ NETWORK CAPTURE MISSING", "bold", "yellow")
+               + _c("   · the fleet capture never ran or was not fully recorded", "dim"))
+    out.append(_rule())
+    out.append("    " + _ui.wrap(_clean(
+        "run sync_global.py --tokens . --json --fleet and paste its full output into the "
+        "record's network block, then re-render"), hang=4))
+    return out
+
+
 def _narration_session_dir(store: Any) -> Any:
     """v0.4.19: the transcript pool for the narration detector, resolved from the PERSISTED
     STORE's identity — NEVER ambient cwd (render_dashboard operates cross-cwd today; a
@@ -473,6 +502,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         out += _procedure_integrity_section(record)
         out += _arc_gate_section(record)
         out += _narration_section(record, narration)
+        out += _net_capture_section(record)
 
     # v0.3.0: domain / enrollment — the trust-boundary line the HTML masthead also
     # carries. Absent on pre-0.3 records (legacy render is byte-identical).

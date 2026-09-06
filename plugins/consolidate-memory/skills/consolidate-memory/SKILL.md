@@ -950,7 +950,11 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    domain/group attribution, the universal baseline, and the group links; the
    share-safe default scopes group_links to this project's own groups. The
    operator's complete group set is `--fleet=full`. A record pasted from the bare
-   `--tokens` form stays domain-basis and renders the legacy diagram honestly.)
+   `--tokens` form stays domain-basis and renders the legacy diagram honestly.
+   **v0.4.20 — the capture has teeth:** a dream-bearing record whose `network` block has no
+   `nodes` list gets a loud **NETWORK CAPTURE MISSING ⚠** panel at the terminal `--persist`
+   (advisory — no exit change; a maintenance/bootstrap pivot is exempt by scope), and the
+   beta `network_capture` family watches the latest record in QA.)
    Then **capture recall utility** (v0.1.63, Phase A — the usage instrument): scan the window's
    transcripts for ORGANIC fact-body reads (dream-procedure reads span-excluded) and inject the
    script-truth `usage` block into the seed — counts are script-only, never hand-authored. **Pass the
