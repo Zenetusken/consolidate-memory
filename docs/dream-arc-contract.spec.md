@@ -155,7 +155,7 @@ weaker than v0.1.53's `--into`, which writes the data itself — claimed accordi
 
   The exit-3 split is round-1 finding 2 (BLOCK-grade defect in draft 1): a wake signal must
   never fire on the lazy-skip path — it would instruct waking exactly where the SKILL
-  forbids proceeding (SKILL:842–844). The split cue keeps the model in-dream through the
+  forbids proceeding (SKILL:1219–1221). The split cue keeps the model in-dream through the
   verification loop-back. The **WAKE cue lives at `render_html`**, not `--persist` — the
   code-review round confirmed draft 2's `--persist` wake fired two mandatory steps early
   (`--diffs`, the mandatory archive open) and was then contradicted by the `--diffs` cue

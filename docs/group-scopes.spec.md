@@ -164,7 +164,7 @@ site is load-bearing and listed here.** The mirror additionally carries
 delivering canonical (review F8), threaded into `_as_mirror` from the
 enumeration record on BOTH the create and the refresh paths** — and `group`
 joins `VOLATILE_KEYS` (mirror_conflict.py:9-14) AND `_as_mirror`'s strip list
-(sync_global.py:1069-1075) in the same commit (F9: a non-volatile mirror-only
+(sync_global.py:1290-1292) in the same commit (F9: a non-volatile mirror-only
 stamp would make `sem(mirror) != sem(canonical)` forever — perpetual STALE
 churn; smoke-pinned).
 
@@ -177,23 +177,23 @@ to explicit members per the F5 ruling. The override is gated on group
 membership at these five gate sites — plus the enumeration grows from one
 domain dir to N (per membership), each with its own facts-manifest record (the
 single-ddir `_MAN_ROWS_STASH` logic in run() becomes per-record):
-1. sync_global.py:734 `_consider` · 2. :793 `_consider_fast` ·
-3. :1882 run()'s relevance re-admission · 4. session_beacon.py:202 ·
-5. :3654 `_store_gaps`. `secret`/`looks_secret`/unknown/legacy rules unchanged.
+1. sync_global.py:801 `_consider` · 2. :846 `_consider_fast` ·
+3. :1886 run()'s relevance re-admission · 4. session_beacon.py:202 ·
+5. :4564 `_store_gaps`. `secret`/`looks_secret`/unknown/legacy rules unchanged.
 
 **C2. The two remaining stem-keyed readers (review F3/F5), declared:**
 `reconcile_inactive_mirrors` (canonical_ingress.py:886-1015) stays same-domain
 — a cross-domain group fact's tombstone is NOT acked in member stores; GC
 (with the membership-aware live set from §5-D) is the sole reclaim path for
 withdrawn group mirrors. **Declared non-goal, not an accident.** Likewise
-`_classify_edge` (sync_global.py:2298-2332) and `fleet_utility`/harvest joins
-(:3996-4113, :4068-4077) remain domain-scoped: group-fact usage evidence is
+`_classify_edge` (sync_global.py:2576-2598) and `fleet_utility`/harvest joins
+(:4934-5115, :4993-5011) remain domain-scoped: group-fact usage evidence is
 **undercount-bounded** (foreign-member reads/windows don't join the foreign
 canonical) and `gc --edges` may label a live cross-domain edge `stale` —
 report-only, conservative direction, accepted for v0.4.10 and stated here.
 
 **D. GC (F1).** The orphan predicate is stem-absent-from-the-LOCAL-domain
-(`_orphans` sync_global.py:2430; `iter_canonical_stems_for_gc` :827-852) — a
+(`_orphans` sync_global.py:2699; `iter_canonical_stems_for_gc` :997-1033) — a
 live cross-domain group mirror would be deleted by `--gc --apply` and re-pulled
 forever (delete-pull oscillation). The GC live-stem basis becomes the same
 membership-aware admissible set `--pull` uses, and the mutate's holder fid comes

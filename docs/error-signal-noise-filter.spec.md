@@ -6,7 +6,7 @@ a smoke pin
 
 ## The problem (measured)
 
-`extract_signals.py` surfaces `is_error` tool-results as a Phase-2 **gotcha source** (`SKILL.md:391`). But
+`extract_signals.py` surfaces `is_error` tool-results as a Phase-2 **gotcha source** (`SKILL.md:570`). But
 unlike human turns — which get a noise filter (`_NOISE`/`_SKILL_PROMPT`) **and** a cap (`max_n`) — the error
 channel gets **neither**: every non-secret `is_error` result becomes a signal (deduped, uncapped). The result
 is that Phase-2 input is flooded with **Claude's own transient tool-usage mistakes**, not environment gotchas.
@@ -96,7 +96,7 @@ The signal **schema is unchanged** (same canonical keyset from `_signal`); the o
 transient-noise rows + a bounded error count. No consumer relies on receiving *all* error results or an
 uncapped list; `counts["errors"]` keeps its meaning (total `is_error` seen), filtered ones increment
 `counts["noise"]` (transparency). This conflates error-protocol noise with human-harness noise in the **single**
-consumer of `counts` — the human-readable `_report()` line (`extract_signals.py:350`, verified the only reader;
+consumer of `counts` — the human-readable `_report()` line (`extract_signals.py:471`, verified the only reader;
 no cycle-record / dashboard / test reads this dict). That conflation is **intentional** — a dedicated
 `errors_noise` key would gold-plate what this spec keeps minimal; just note it in the PR narrative. No
 removed/renamed key, script, or flag. Backward-compatible ⇒ **PATCH** (v0.1.48 → v0.1.49).

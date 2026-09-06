@@ -40,18 +40,18 @@ A target absent from **both** local and global stems stays dangling — that set
 typo} ∪ {a sibling-project-local down-link}, both genuinely unreachable from this node.
 
 **Callers — BOTH, or the false positive just migrates channels.** The dangling count is filled
-in two places and SKILL.md guarantees they cannot drift (`SKILL.md:700` — "Phase-0
+in two places and SKILL.md guarantees they cannot drift (`SKILL.md:937-938` — "Phase-0
 `maintenance.dangling` calls the SAME helper, so the two counts can't drift"). Both must pass
 `global_dir = Path.home() / ".claude" / "memory"`:
-1. **Phase-0 maintenance seed** — `memory_status.py:1307` `_dangling = dangling_links(auto_mem)`
+1. **Phase-0 maintenance seed** — `memory_status.py:2879` `_dangling = dangling_links(auto_mem, global_dirs=_gdirs)`
    → `maintenance.dangling` (count).
-2. **Phase-5 health fill** — the *model instruction* at `SKILL.md:696`
+2. **Phase-5 health fill** — the *model instruction* at `SKILL.md:930-934`
    (`dangling_links(auto_mem)` → fills `health.dangling_links`, the list rendered at
-   `render_dashboard.py:596-601`). A Class B link is by definition **unfixable in Phase-5** (the
-   target is a real global fact pending pull — nothing local to rewrite), so if `SKILL.md:696`
+   `render_dashboard.py:842-843`). A Class B link is by definition **unfixable in Phase-5** (the
+   target is a real global fact pending pull — nothing local to rewrite), so if `SKILL.md:930-934`
    keeps scanning local-only, the link survives remediation and renders on the dashboard even
    though `maintenance.dangling` dropped it. The Phase-5 **fix-suggestion** call at
-   `SKILL.md:701-702` must likewise widen to
+   `SKILL.md:939-940` must likewise widen to
    `resolve_wikilink(name, valid_link_targets(auto_mem) | valid_link_targets(global_dir))`, else
    the model is told to propose a slug-drift fix for a clean pending-pull link (a phantom prompt).
    These are prose edits — no TypedDict/schema-pin friction (the smoke pin parses only the first
@@ -82,9 +82,9 @@ intact per the versioning policy).
 
 ## Edge cases (considered)
 
-- **Global store absent / empty (the common first-run path):** `memory_status.py:1307` passes
+- **Global store absent / empty (the common first-run path):** `memory_status.py:2879` passes
   `~/.claude/memory` **unconditionally**, and on a fresh machine that dir does not exist.
-  `valid_link_targets` returns `set()` on a missing dir (`memory_status.py:448`), so the union
+  `valid_link_targets` returns `set()` on a missing dir (`memory_status.py:968`), so the union
   collapses to the legacy local-only set — byte-identical to current behavior. Pinned by test 3.
 - **`auto_mem == global_dir`** (a dangling check run *on* the global store itself): the union is
   idempotent (same stems). Not exercised by the Phase-0 caller (it runs on project stores), but
@@ -119,8 +119,8 @@ intact per the versioning policy).
 
 ## Coexisting cross-store check (do NOT unify)
 
-`sync_global.py:54 _nonglobal_wikilinks` already does a cross-store dangling check at **promotion**
-time (`sync_global.py:874`), with deliberately different logic (`"." not in w` instead of
+`sync_global.py:280 _nonglobal_wikilinks` already does a cross-store dangling check at **promotion**
+time (`sync_global.py:3400`), with deliberately different logic (`"." not in w` instead of
 `extract_wikilinks`' fenced+inline stripping, no fuzzy `resolve_wikilink`, excludes `MEMORY`).
 After this change there are two cross-store checks that answer **different questions**:
 `_nonglobal_wikilinks` = "will promoting THIS fact strand `[[links]]` in every mirror?" vs.

@@ -323,7 +323,7 @@ live scripts. Resolutions (all folded into §2/§4/§5 above):
    → the rule is pinned to the post-truncation SEGMENT tokens, before the path-drop loop; the
    abs-path case joins the §4 pin table.
 2. MAJOR-2 — "mirror the audit `--into`" invited a wholesale clobber (`_cyc["audit"] = diff`,
-   proven at memory_status.py:2003) that would destroy a model verdict → the sub-key merge is now
+   proven at memory_status.py:4135) that would destroy a model verdict → the sub-key merge is now
    spelled out mechanically; the audit idiom is explicitly NOT the model.
 3. MAJOR-3 — the unknown-flag warning would misfire on the legitimate visual flags (`--ascii` etc.
    are consumed by `_ui.set_modes` from sys.argv, proven) → known-flag whitelist pinned + a

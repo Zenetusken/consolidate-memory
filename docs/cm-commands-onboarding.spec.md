@@ -140,7 +140,7 @@ one line pointing at `/cm-domain` (pull is a no-op by design — say so, honestl
   not `/cm-domain`). Silent when the
   registry is absent, no enrolled domain has active facts, or the store has never
   participated (F1: the snooze stamp REFUSES a store with no state file —
-  memory_status.py:1864-1865 — so a never-participated store could never quiet
+  memory_status.py:1982 — so a never-participated store could never quiet
   the line; the participation gate restores "never-participated dirs cost 0"
   literally, and both dogfood repos were mirror-heavy pre-enroll so the gate
   still captures the dogfood case). **F3:** the beacon docstring silence block +
