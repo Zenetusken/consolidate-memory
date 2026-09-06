@@ -1319,18 +1319,18 @@ def main() -> int:
                     _stored = json.loads(_fh.read())
                 if _dget(_stored, "narration").get("verdict") != _dget(record, "narration").get("verdict"):
                     _heal = True
-            except (OSError, ValueError, json.JSONDecodeError):
+            except (OSError, ValueError):  # JSONDecodeError is a ValueError subclass
                 pass
         if _heal and paths:
-                try:
-                    from memory_status import reconcile_marker as _reconcile_wb
-                    _wb = dict(record)
-                    _wb["marker"] = _reconcile_wb(_dget(record, "marker"),
-                                                  __import__("pathlib").Path(persist_dir))
-                    with open(paths[0], "w", encoding="utf-8") as _fh:
-                        _fh.write(json.dumps(_wb, ensure_ascii=False) + "\n")
-                except OSError:
-                    pass
+            try:
+                from memory_status import reconcile_marker as _reconcile_wb
+                _wb = dict(record)
+                _wb["marker"] = _reconcile_wb(_dget(record, "marker"),
+                                              __import__("pathlib").Path(persist_dir))
+                with open(paths[0], "w", encoding="utf-8") as _fh:
+                    _fh.write(json.dumps(_wb, ensure_ascii=False) + "\n")
+            except OSError:
+                pass
         # "ok" OR "duplicate": the record IS in the log (freshly, or already) — the gates judge it
         # either way (the exit-3/exit-4 re-render must re-exit its code, never a silent 0).
         ok, _reason, _sev = ms.procedure_integrity(record)
