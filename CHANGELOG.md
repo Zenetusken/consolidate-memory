@@ -5,6 +5,28 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.18] — 2026-09-05
+
+**Patch — the Nocturne QA rework + the v0.4.17 audit residuals.**
+
+**The Nocturne archive polish:** the report sections' narration reworked — the
+`countLabel` singular/plural helper (a one-window dormant pass reads "1 window",
+never "1 windows"), the honest "not captured" language replacing the fabricated
+dormant fallbacks (the SKILL's verdict contract is the single source), the
+captured-evidence note chain for every record class (older snapshot / not captured
+/ partial — keyed on real truncation signals, never absent keys), the diff-modal's
+`capturedDiff()` migration, and the browser suite grown 320 → **1101 checks** (the
+narration-order pin, the hostile-string round-trips, the sparse-workflow fixture,
+the header-geometry golden pins).
+
+**The v0.4.17 shipped-state audit residuals** (two audit passes + the per-PR
+review): the spec's drifted line citations refreshed, the preflight STATUS date
+swept, the codeql.yml comment corrected to the live config, the roadmap's
+formatting blemish fixed, and the doc counts swept to the tree truth.
+
+Backward-compatible → patch. Suite **1688** · browser **1101** · sim / concurrency /
+manifests / mypy green.
+
 ## [0.4.17] — 2026-09-05
 
 **Patch — the captured-network truth layer + the v0.4.16 audit residuals.**

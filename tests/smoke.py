@@ -1434,7 +1434,7 @@ check("v0.1.32: template carries the diff-modal (diffKey mirror, dmodal overlay,
 check("v0.1.72: template generalizes the diff-modal beyond the memory/ prefix (store-aware split + the size-capped message)",
       all(s in _html for s in ["function splitDiffPath", "function diffDisplayName", "size_capped", "too large to snapshot"]))
 check("v0.1.72: an index-line-only entry (no diff for its OWN memory/<name>.md) falls back to the shared MEMORY.md diff",
-      'store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"]' in _html)
+      'store==="auto-mem"&&capturedDiff("memory/MEMORY.md")' in _html)
 check("v0.1.72 Gate-2: the store='repo' fallback checks ambiguity JOINTLY across claude_md+repo_doc "
       "(repoKeys=cmKeys.concat(rdKeys); repoKeys.length===1) — NOT independently per store, which would auto-link "
       "an entry to the wrong file whenever exactly one claude_md AND one repo_doc file both changed in the same pass",
@@ -1442,10 +1442,10 @@ check("v0.1.72 Gate-2: the store='repo' fallback checks ambiguity JOINTLY across
 check("v0.1.72: template gives model-declared entry.files[] priority over the name-match/store heuristics — "
       "deterministic linking (possibly MULTIPLE files per entry), not a guess",
       "Array.isArray(rawFiles)" in _html and "declared.length" in _html
-      and _html.index("Array.isArray(rawFiles)") < _html.index('store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"]'))
+      and _html.index("Array.isArray(rawFiles)") < _html.index('store==="auto-mem"&&capturedDiff("memory/MEMORY.md")'))
 check("v0.1.72 Gate-2: declared entry.files are DEDUPED (seen{}) before rendering chips — a files[] array listing "
       "the same path twice must not render two redundant chips for one diff",
-      "declared=[], seen={}" in _html and "seen[p]" in _html)
+      "declared=[], seen=Object.create(null)" in _html and "seen[p]" in _html)
 check("v0.1.72 Gate-2: an entry with declared-but-UNRESOLVED files (empty after the DREAMDIFFS filter — a model "
       "typo/omission) falls through to the legacy heuristic instead of trusting a possibly-wrong negative "
       "declaration and silently dropping a real, observed diff",
@@ -2137,8 +2137,8 @@ check("0.3.1 html: health-row labels do not wrap when names are long",
 check('evidence: store checks expose every captured health row',
       "capturedTree(c.health)" in _TEMPLATE_SRC and "evidence-rows" in _TEMPLATE_SRC)
 check('evidence: complete recall observations preserve procedure exclusions',
-      "All recall observations (including procedure exclusions and misses)" in _TEMPLATE_SRC and "c.usage" in _TEMPLATE_SRC)
-check("RC-90: longitudinal rigor is a categorical strip — no interpolating connectors, no LIGHT default",
+      "Usage window & complete recall evidence" in _TEMPLATE_SRC and "c.usage" in _TEMPLATE_SRC)
+check("RC-90: historical rigor remains categorical — no interpolating connectors, no LIGHT default",
       "x1:bx(i-1),y1:ty[pk],x2:bx(i),y2:ty[k]" not in _TEMPLATE_SRC.replace(" ", "")
       and 'if(!ty[k])k="LIGHT"' not in _TEMPLATE_SRC.replace(" ", "")
       and "chart-kicker" in _TEMPLATE_SRC
@@ -2147,7 +2147,7 @@ check("RC-90: longitudinal rigor is a categorical strip — no interpolating con
       and "this project</span>" in _TEMPLATE_SRC
       and "trigger node</span>" not in _TEMPLATE_SRC)
 check('network: identity and permission capture boundaries are explicit',
-      "Canonical identities were not captured" in _TEMPLATE_SRC and "Permission only" in _TEMPLATE_SRC)
+      "This older snapshot records project connections" in _TEMPLATE_SRC and "permission to receive, not delivery" in _TEMPLATE_SRC)
 check('network: domain pages replace the global visual cutoff',
       "all.slice(page*12,page*12+12)" in _TEMPLATE_SRC and "MAXN=16" not in _TEMPLATE_SRC)
 check('network: all topology comes from captured record fields',
@@ -2259,27 +2259,27 @@ with _tempfile.TemporaryDirectory() as _td41r:
           and _rdf41.get("c41__nots__s41") == {"memory": {"modified": 1}})
 
 # ── v0.4.1 template repairs — exact-fragment pins (the template must carry them verbatim) ──
-check("C1: archive row + footer treat an empty timestamp as missing ('—', never a blank cell)",
+check("C1: archive row + footer explicitly identify missing timestamps",
       'String(g(c,"marker.timestamp","")||"—")' in _TEMPLATE_SRC
-      and 'String(g(CUR,"marker.timestamp","")||"—")' in _TEMPLATE_SRC)
+      and 'Save time not captured' in _TEMPLATE_SRC)
 check("C1: empty-ts rows sort last under EITHER direction (unknown recency is never 'newest')",
       'var ea=a[st.key]==="", eb=b[st.key]==="";' in _TEMPLATE_SRC
       and "if(ea||eb)return ea&&eb?0:(ea?1:-1)" in _TEMPLATE_SRC)
 check('network: absent topology is explicitly not captured',
       "No project nodes captured for this view." in _TEMPLATE_SRC and "Network data was not captured" in _TEMPLATE_SRC)
-check("M2: files[] renders as a dim label even with no diff sidecar (capped +N more)",
-      "function fileLabel" in _TEMPLATE_SRC and "return esc(nm)+fl;" in _TEMPLATE_SRC
-      and "rawFiles.length>3" in _TEMPLATE_SRC)
-check("M3: ledger middle column is minmax(0,1fr), reasons wrap, citations truncate + tooltip",
+check("M2: every declared file is available inside decision details without a diff sidecar",
+      "function fileLabel" in _TEMPLATE_SRC and "fileLabel(e.files)" in _TEMPLATE_SRC
+      and "rawFiles.map" in _TEMPLATE_SRC and "Decision details" in _TEMPLATE_SRC)
+check("M3: ledger content wraps and full citations are disclosed without truncation",
       _re.search(r"\.row\{[^}]*grid-template-columns:[^ ]+ minmax\(0,1fr\)", _TEMPLATE_SRC) is not None
       and "grid-template-columns:96px 1fr auto" not in _TEMPLATE_SRC
-      and "String(cit).slice(0,10)" in _TEMPLATE_SRC and 'title="\'+esc(cit)+\'"' in _TEMPLATE_SRC)
+      and "['Citation',e.citation]" in _TEMPLATE_SRC and "String(cit).slice(0,10)" not in _TEMPLATE_SRC)
 check("m1: reg-counts appends the blocked tally (N blocked no longer hides under 'none this pass')",
       "num(WP.n_blocked" in _TEMPLATE_SRC and '" blocked"' in _TEMPLATE_SRC)
 check('evidence: every observed file operation has diff access',
       "ops.forEach(function(op)" in _TEMPLATE_SRC and "openDiff(key)" in _TEMPLATE_SRC and "c.usage" in _TEMPLATE_SRC)
 check('evidence: complete demotion and usage records have disclosures',
-      "All demotion evidence" in _TEMPLATE_SRC and "All recall observations" in _TEMPLATE_SRC)
+      "Complete demotion evidence" in _TEMPLATE_SRC and "complete recall evidence" in _TEMPLATE_SRC)
 check("m4: the demotion verdict strips a duplicated 'eligible N' lead and tags counter-justified",
       r"/^\s*eligible\s+\d+" in _TEMPLATE_SRC and "counter-justified" in _TEMPLATE_SRC)
 check("n1: dream stanzas wrap instead of overflowing",
@@ -2291,7 +2291,7 @@ check("n2: flag/dl tints are theme tokens in every screen and print palette (no 
       and "background:var(--tint-accent)" in _TEMPLATE_SRC and "background:var(--tint-warn)" in _TEMPLATE_SRC
       and ".dl-plus{background:rgba" not in _TEMPLATE_SRC and ".flag{background:rgba" not in _TEMPLATE_SRC)
 check('evidence: missing verification values stay missing',
-      "Verification judgments" in _TEMPLATE_SRC and "value(v)" in _TEMPLATE_SRC and "Not captured" in _TEMPLATE_SRC)
+      "measured(v[k])?v[k]+' '+k:k+' not captured'" in _TEMPLATE_SRC and "value(v)" in _TEMPLATE_SRC and "Not captured" in _TEMPLATE_SRC)
 check("v0.1.44: SPARES maintenance/bootstrap (0 commits, 0 candidates, 0/0/0)",
       ms.procedure_integrity(_pi(0, 0))[0])
 # the downgrade dodge: HEAVY magnitude relabeled LIGHT, 0 tally -> still FIRES + surfaces the dodge
@@ -2476,7 +2476,7 @@ check("v0.1.54 render: null sleep/wake → ✗ gaps (str(None) truthiness fixed)
 # build_html embeds the dream data through the XSS-safe embed (round-trip via the escaped JSON).
 _tpl54 = rhtml._load_template()
 check('dream: summary and captured voice preserve stable section hooks',
-      'id="dream-blk"' in _tpl54 and 'id="dream-arc"' in _tpl54 and "Read the complete dream" in _tpl54)
+      all('id="'+hook+'"' in _tpl54 for hook in ('dream-blk', 'dream-summary', 'dream-arc')))
 _html54 = rhtml.build_html(cast(dict, _dr54), [], "2026-07-01T00:00:00+00:00")
 check("v0.1.54 html: build_html embeds the dream block (safe-embedded, round-trippable)",
       _json43.loads(_html54.split('id="cm-data">', 1)[1].split("</script>", 1)[0])["cycles"][-1]["dream"]["beats"][0] == "> *🌙 a*")
@@ -9807,8 +9807,6 @@ _idx_meter033 = _tpl033.find('meter(el("m-index")')
 check("0.3.3: HTML index meter uses cycle budget_tokens",
       _idx_meter033 != -1 and "idxbM" in _tpl033[_idx_meter033 - 80:_idx_meter033 + 160]
       and 'g(CUR,"budget.index.budget_tokens")' in _tpl033)
-check('dream: six canonical phase labels require six valid captured beats',
-      "beats.length===6&&beats.every" in _tpl033 and "Outcome not captured" in _tpl033)
 check('evidence: schema detail remains available independently of summary',
       "capturedTree(c.health)" in _tpl033)
 check("0.3.3: HTML dream identOf does not fall back to live",
@@ -13143,7 +13141,7 @@ _tmpl_ft = rhtml._load_template()
 check('network: bundled ranked hierarchy and permission layers are present',
       "NocturneNetwork" in _tmpl_ft and "domain-junction" in _tmpl_ft and "grant-edge" in _tmpl_ft)
 check('network: historical pairwise evidence stays inspectable',
-      "recorded pairwise connections" in _tmpl_ft and "fact names were not captured" in _tmpl_ft)
+      "model.edges.forEach" in _tmpl_ft and "This older snapshot records project connections" in _tmpl_ft and 'id="record-json"' in _tmpl_ft)
 
 # (3) the render probe: a 25-node fleet record renders with all markers + the
 # legacy strings (the spec's mandated pre-pin probe, now pinned)
@@ -13204,7 +13202,7 @@ with _tf73.TemporaryDirectory() as _td_rp:
         _arch_rp = _ctx_rp.native_memory_dir.parent / "dashboards" / "index.html"
         _html_rp = _arch_rp.read_text(encoding="utf-8") if _arch_rp.exists() else ""
         check('network: a large archived fleet embeds every source node and the new hierarchy',
-              _rp_run.returncode == 0 and "NocturneNetwork" in _html_rp and "Project inventory" in _html_rp and "Canonical identities were not captured" in _html_rp and len(_json_xp.loads(_html_rp.split('id="cm-data">',1)[1].split("</script>",1)[0])["cycles"][-1]["network"]["nodes"]) == 25)
+              _rp_run.returncode == 0 and "NocturneNetwork" in _html_rp and 'id="net-view"' in _html_rp and "This older snapshot records project connections" in _html_rp and len(_json_xp.loads(_html_rp.split('id="cm-data">',1)[1].split("</script>",1)[0])["cycles"][-1]["network"]["nodes"]) == 25)
         # the ASCII dashboard's key-gated topology line
         (_proj_rp / "cycle.json").write_text(_json_xp.dumps(_rec_rp), encoding="utf-8")
         _dash_rp = _sp_r5.run([sys.executable, str(ROOT / "plugins" / "consolidate-memory"
@@ -13458,9 +13456,8 @@ check("v0.4.6 exposure: the template renders the contract's OTHER distill eviden
       and "counts-only by design" in _tpl_l2
       and "WP.decline_anchors" in _tpl_l2
       and "decline lineage — other nodes declined these" in _tpl_l2)
-check("v0.4.6 header coherence: every section header's note carries its tallies — This Pass names the "
-      "derived outcome + decision count (it was cleared-and-never-set)",
-      'el("pass-note").textContent=outcomeOf(CUR)' in _tpl_l2
+check("v0.4.6 header coherence: every section header has recorded context; health names exceptions or pending decisions",
+      "el('pass-note').textContent=assessment.errors.length" in _tpl_l2
       and "el('hist-note').textContent" in _tpl_l2 and 'el("ent-note").textContent' in _tpl_l2
       and "el('net-note').textContent" in _tpl_l2 and 'el("a-note").textContent' in _tpl_l2)
 

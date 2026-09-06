@@ -3,7 +3,7 @@ var NocturneNetwork = (function(){
   function rows(v){return Array.isArray(v)?v.filter(function(x){return x&&typeof x==='object';}):[];}
   function normalize(record){
     var net=record.network||{}, seen=new Set(), nodes=rows(net.nodes).map(function(n,i){
-      // Invalid duplicate sids cannot join incidence; retain both inventory rows.
+      // Invalid duplicate sids cannot join incidence; retain both captured nodes.
       var sid=String(n.sid||'legacy:'+i), duplicate=seen.has(sid);seen.add(sid);
       return {raw:n,id:'project:'+i,sid:sid,duplicate:duplicate,label:String(n.display_name||n.node||'Unnamed project'),domain:String(n.domain||'unknown'),groups:Array.isArray(n.groups)?n.groups:[]};
     });
@@ -13,15 +13,31 @@ var NocturneNetwork = (function(){
   function paint(record){
     var model=normalize(record), net=model.raw, svg=el('net'), detail=el('net-detail'), controls=el('net-controls');
     var trigger=model.nodes.find(function(n){return truthy(n.raw.trigger);});
-    var state={kind:'fleet',value:null,expanded:new Set(trigger?[trigger.domain]:[]),pages:{},query:''};
+    var state={kind:'fleet',value:null,expanded:new Set(trigger?[trigger.domain]:[]),pages:Object.create(null),query:''};
     svg.classList.add('hierarchy-map');svg.setAttribute('role','group');
-    controls.innerHTML='<div id="net-breadcrumbs" class="breadcrumbs"></div><label class="network-search">Find a captured project or fact<input id="net-search" type="search" autocomplete="off" placeholder="Search name, domain or identity"></label><div id="net-groups"></div>';
-    el('net-search').oninput=function(){state.query=this.value.trim().toLowerCase();state.kind='fleet';state.value=null;state.pages={};draw();};
+    // Programmatic focus retains keyboard navigation after redraws. Keep pointer
+    // selection from inheriting a keyboard outline, including after typing a search.
+    if(paint.focusHost)paint.focusHost.removeEventListener('pointerdown',paint.pointerHandler,true);
+    if(paint.keyboardHandler)window.removeEventListener('keydown',paint.keyboardHandler,true);
+    paint.focusHost=el('network-blk');
+    paint.pointerHandler=function(){svg.dataset.focusMode='pointer';};
+    paint.keyboardHandler=function(){svg.dataset.focusMode='keyboard';};
+    paint.focusHost.addEventListener('pointerdown',paint.pointerHandler,true);
+    window.addEventListener('keydown',paint.keyboardHandler,true);
+    if(!svg.dataset.focusMode)svg.dataset.focusMode='pointer';
+    controls.innerHTML='<div id="net-breadcrumbs" class="breadcrumbs"></div><label class="network-search">Find a project<input id="net-search" type="search" autocomplete="off" placeholder="Search project or domain"></label><div id="net-groups"><label class="network-view">View<select id="net-view"><option value="fleet">All captured projects</option></select></label></div>';
+    function matches(n){return !state.query||(n.label+' '+n.domain+' '+n.sid+' '+(n.raw.node||'')).toLowerCase().indexOf(state.query)>=0;}
+    el('net-search').oninput=function(){state.query=this.value.trim().toLowerCase();state.kind='fleet';state.value=null;state.pages=Object.create(null);state.expanded=new Set(state.query?model.nodes.filter(matches).map(function(n){return n.domain;}):trigger?[trigger.domain]:[]);draw();};
     function button(label,fn,box,cls){var b=document.createElement('button');b.type='button';b.textContent=label;if(cls)b.className=cls;b.onclick=fn;box.appendChild(b);return b;}
-    function reset(){state.kind='fleet';state.value=null;state.expanded=new Set(trigger?[trigger.domain]:[]);state.pages={};state.query='';el('net-search').value='';draw();}
-    button('Reset view',reset,el('net-groups'));
-    model.groups.forEach(function(group){button('Group / '+group.group,function(){focus('group',group);},el('net-groups'));});
-    function focus(kind,value){state.kind=kind;state.value=value;state.pages={};state.expanded=new Set(model.domains);state.query='';el('net-search').value='';draw();svg.querySelector('.network-root').focus({preventScroll:true});}
+    function reset(){state.kind='fleet';state.value=null;state.expanded=new Set(trigger?[trigger.domain]:[]);state.pages=Object.create(null);state.query='';el('net-search').value='';draw();}
+    function viewOptions(label,kind,values){
+      if(!values.length)return;
+      var group=document.createElement('optgroup');group.label=label;el('net-view').appendChild(group);
+      values.forEach(function(value,i){var option=document.createElement('option');option.value=kind+':'+i;option.textContent=kind==='fact'?(value.domain||'Unknown domain')+' / '+value.name:value.group;group.appendChild(option);});
+    }
+    viewOptions('Shared facts','fact',model.facts);viewOptions('Sharing groups','group',model.groups);
+    el('net-view').onchange=function(){var parts=this.value.split(':');if(parts[0]==='fact')focus('fact',model.facts[Number(parts[1])],true);else if(parts[0]==='group')focus('group',model.groups[Number(parts[1])],true);else if(parts[0]==='fleet')reset();};
+    function focus(kind,value,keepControl){state.kind=kind;state.value=value;state.pages=Object.create(null);state.expanded=new Set(model.domains);state.query='';el('net-search').value='';draw();if(!keepControl)svg.querySelector('.network-root').focus({preventScroll:true});}
     function selectedNodes(){
       if(state.kind==='fact'){
         var sids=Array.isArray(state.value.holder_sids)?state.value.holder_sids:[];
@@ -42,25 +58,41 @@ var NocturneNetwork = (function(){
     function draw(){
       var focusKey=document.activeElement&&document.activeElement.getAttribute('data-key');
       svg.textContent='';
-      var breadcrumb=el('net-breadcrumbs');breadcrumb.textContent='';button('Fleet',reset,breadcrumb);
-      if(state.kind!=='fleet'){var crumb=document.createElement('span');crumb.textContent=' / '+state.kind+' / '+rootLabel();breadcrumb.appendChild(crumb);}
-      var selected=selectedNodes(), matching=selected.filter(function(n){return !state.query||(n.label+' '+n.domain+' '+n.sid+' '+n.raw.node).toLowerCase().indexOf(state.query)>=0;});
+      svg.dataset.kind=state.kind;detail.dataset.kind=state.kind;
+      el('net-breadcrumbs').textContent='';
+      var view=el('net-view'),projectOption=view.querySelector('option[value="project"]');
+      if(projectOption)projectOption.remove();
+      if(state.kind==='project'){projectOption=document.createElement('option');projectOption.value='project';projectOption.textContent=state.value.label;view.appendChild(projectOption);}
+      view.value=state.kind==='fact'?'fact:'+model.facts.indexOf(state.value):state.kind==='group'?'group:'+model.groups.indexOf(state.value):state.kind;
+      var selected=selectedNodes(), matching=selected.filter(matches);
       var domains=state.kind==='fleet'?model.domains:model.domains.filter(function(d){return selected.some(function(n){return n.domain===d;});});
       // Search preserves domain coverage while expanding matching domains.
-      var mobile=window.innerWidth<700, W=mobile?Math.max(260,el('network-blk').clientWidth-36):960;
+      // Change ranks before the horizontal map would shrink its text and controls.
+      // A vertical map uses its actual container width, including narrow phones.
+      var available=svg.parentElement.clientWidth||Math.max(200,el('network-blk').clientWidth-36);
+      var mobile=available<960, W=mobile?Math.max(200,available):960;
       var blocks=[],y=mobile?108:38;
       domains.forEach(function(domain){
-        var all=matching.filter(function(n){return n.domain===domain;}), expanded=state.query?all.length>0:state.expanded.has(domain);
+        var all=matching.filter(function(n){return n.domain===domain;}), expanded=all.length>0&&state.expanded.has(domain);
         var page=state.pages[domain]||0,shown=expanded?all.slice(page*12,page*12+12):[];
-        var height=expanded?Math.max(mobile?94:90,shown.length*(mobile?60:56)+(mobile?94:36)):mobile?72:84;
+        var height=expanded?Math.max(mobile?94:90,shown.length*(mobile?60:56)+(mobile?94:36))+(all.length>12?(mobile?32:56):0):mobile?72:84;
         blocks.push({domain:domain,all:all,shown:shown,expanded:expanded,page:page,y:y,height:height,cy:mobile?y:y+height/2});y+=height;
       });
       var H=Math.max(mobile?200:260,y+24), rootX=mobile?W/2:92, rootY=mobile?36:H/2;
-      svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.style.height=H+'px';
+      // Let the viewBox set the displayed height when the map scales down.
+      // Capping its width preserves the existing scale and centering on wide screens.
+      svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.style.height='auto';svg.style.maxWidth=W+'px';svg.style.marginLeft='auto';svg.style.marginRight='auto';
+      if(!mobile){
+        text(rootX,18,state.kind==='fleet'?'FLEET':state.kind.toUpperCase(),'rank-label').setAttribute('text-anchor','middle');
+        text(358,18,'DOMAIN','rank-label').setAttribute('text-anchor','middle');
+        text(608,18,state.kind==='fact'?'PROJECTS HOLDING THIS FACT':state.kind==='group'?'PERMITTED PROJECTS':'PROJECTS','rank-label');
+      }
       var kind=state.kind==='group'?'grant-edge':state.kind==='fact'||state.kind==='project'?'fact-edge':'structure-edge';
       if(blocks.length){
-        if(mobile){branch('M '+rootX+' '+(rootY+18)+' V 78 H 14 V '+blocks[blocks.length-1].cy,kind,true);}
-        else{branch('M '+(rootX+24)+' '+rootY+' H 234',kind,true);branch('M 234 '+blocks[0].cy+' V '+blocks[blocks.length-1].cy,kind,true);}
+        var rootRadius=state.kind==='fleet'?16:18;
+        // Use a side port: the root's readable label occupies the space below it.
+        if(mobile){branch('M '+(rootX-rootRadius)+' '+rootY+' H 14 V '+blocks[blocks.length-1].cy,kind,true);}
+        else{branch('M '+(rootX+rootRadius)+' '+rootY+' H 234',kind,true);branch('M 234 '+Math.min(rootY,blocks[0].cy)+' V '+Math.max(rootY,blocks[blocks.length-1].cy),kind,true);}
       }
       var root=S('g',{class:'network-root','data-key':'root'});svg.appendChild(root);
       if(state.kind==='fleet'){
@@ -79,66 +111,80 @@ var NocturneNetwork = (function(){
         svg.appendChild(S('circle',{cx:linkX,cy:dy,r:2.5,class:'aggregate-junction'}));
         var dg=S('g',{class:'domain-junction','data-domain':b.domain,'data-key':'domain:'+b.domain});svg.appendChild(dg);
         dg.appendChild(S('circle',{cx:dx,cy:dy,r:12}));
-        text(dx,dy+4,b.expanded?'−':'+','domain-toggle',dg).setAttribute('text-anchor','middle');
+        if(b.all.length)text(dx,dy+4,b.expanded?'−':'+','domain-toggle',dg).setAttribute('text-anchor','middle');
         var dt=text(mobile?56:dx,mobile?dy+4:dy+31,b.domain,'domain-label',dg);if(!mobile)dt.setAttribute('text-anchor','middle');clipped(dt,b.domain,mobile?W-70:225);
-        var count=b.all.length+' project'+(b.all.length===1?'':'s');var ct=text(mobile?56:dx,mobile?dy+23:dy+50,count,'domain-count',dg);if(!mobile)ct.setAttribute('text-anchor','middle');
-        dg.setAttribute('aria-expanded',String(b.expanded));activate(dg,function(){if(state.expanded.has(b.domain))state.expanded.delete(b.domain);else state.expanded.add(b.domain);draw();},b.domain+' / '+count+' / '+(b.expanded?'collapse':'expand'));
+        var count=b.all.length?b.all.length+(state.query?' matching project':' project')+(b.all.length===1?'':'s'):state.query?'No matching projects':'No captured projects';var ct=text(mobile?56:dx,mobile?dy+23:dy+50,count,'domain-count',dg);if(!mobile)ct.setAttribute('text-anchor','middle');
+        if(b.all.length){dg.setAttribute('aria-expanded',String(b.expanded));activate(dg,function(){if(state.expanded.has(b.domain))state.expanded.delete(b.domain);else state.expanded.add(b.domain);draw();},b.domain+' / '+count+' / '+(b.expanded?'collapse':'expand'));}
+        else{var emptyTitle=S('title');emptyTitle.textContent=b.domain+' / '+count;dg.appendChild(emptyTitle);}
         if(b.shown.length){
           var first=mobile?dy+62:b.y+26,last=first+(b.shown.length-1)*(mobile?60:56),jx=mobile?34:570;
-          if(mobile)branch('M '+dx+' '+(dy+13)+' V '+last,kind,true);
-          else {branch('M '+(dx+13)+' '+dy+' H '+jx,kind,true);branch('M '+jx+' '+Math.min(first,dy)+' V '+Math.max(last,dy),kind,true);}
+          if(mobile)branch('M '+dx+' '+(dy+12)+' V '+last,kind,true);
+          else {branch('M '+(dx+12)+' '+dy+' H '+jx,kind,true);branch('M '+jx+' '+Math.min(first,dy)+' V '+Math.max(last,dy),kind,true);}
           b.shown.forEach(function(n,i){
             var py=first+i*(mobile?60:56),px=mobile?52:608,pw=mobile?W-64:330;
             branch('M '+jx+' '+py+' H '+px,kind,false);svg.appendChild(S('circle',{cx:jx,cy:py,r:2.5,class:'aggregate-junction'}));
             var node=S('g',{class:'net-node'+(state.kind==='group'?' selected':''),'data-node':n.raw.node||n.id,'data-sid':n.sid,'data-key':n.id,'data-current':truthy(n.raw.trigger)?'true':'false'});svg.appendChild(node);
             node.appendChild(S('rect',{x:px,y:py-21,width:pw,height:44,rx:5}));
             var nt=text(px+12,py-3,n.label,'project-label',node);clipped(nt,n.label,pw-24);
-            text(px+12,py+14,(truthy(n.raw.trigger)?'This project · ':'')+(n.raw.shared==null?'Holdings not captured':n.raw.shared+' physical mirrors'),'project-meta',node);
-            var title=S('title');title.textContent=n.label+' · '+n.sid;node.appendChild(title);
+            var relation=state.kind==='fact'?'Holds this fact':state.kind==='group'?'Permitted member':truthy(n.raw.trigger)?'This project':'Select to explore';
+            text(px+12,py+14,relation,'project-meta',node);
+            var title=S('title');title.textContent=n.label+' · '+n.domain;node.appendChild(title);
             activate(node,function(){focus('project',n);},n.label+' / inspect captured project');
           });
         }
         if(b.expanded&&b.all.length>12){
-          var pg=S('g',{class:'domain-page','data-key':'page:'+b.domain});svg.appendChild(pg);
-          var px=mobile?56:608,py=b.y+b.height-22;
-          var prev=text(px,py,'← Previous','page-link',pg),next=text(px+(mobile?114:190),py,'Next →','page-link',pg);
-          activate(prev,function(){state.pages[b.domain]=Math.max(0,b.page-1);draw();},'Previous projects in '+b.domain);
-          activate(next,function(){state.pages[b.domain]=Math.min(Math.ceil(b.all.length/12)-1,b.page+1);draw();},'Next projects in '+b.domain);
-          text(px,py-18,(b.page*12+1)+'–'+Math.min(b.all.length,b.page*12+12)+' of '+b.all.length,'domain-count',pg);
+          var pg=S('g',{class:'domain-page'});svg.appendChild(pg);
+          var px=mobile?52:608,py=b.y+b.height-66,gap=mobile?8:12,width=((mobile?W-64:330)-gap)/2,lastPage=Math.ceil(b.all.length/12)-1;
+          function pageControl(direction,x,label,disabled){var key='page:'+direction+':'+b.domain,control=S('g',{class:'page-control','data-key':key,role:'button','aria-label':(direction==='previous'?'Previous':'Next')+' projects in '+b.domain,'aria-disabled':String(disabled)});pg.appendChild(control);
+            control.appendChild(S('rect',{x:x,y:py,width:width,height:44,rx:5}));text(x+width/2,py+27,label,'page-link',control).setAttribute('text-anchor','middle');
+            if(!disabled)activate(control,function(){state.pages[b.domain]=b.page+(direction==='previous'?-1:1);draw();},(direction==='previous'?'Previous':'Next')+' projects in '+b.domain);
+          }
+          pageControl('previous',px,'← Previous',b.page===0);pageControl('next',px+width+gap,'Next →',b.page===lastPage);
+          text(px,py-10,(b.page*12+1)+'–'+Math.min(b.all.length,b.page*12+12)+' of '+b.all.length,'domain-count',pg);
         }
       });
       if(!blocks.length)text(mobile?24:285,mobile?142:120,'No project nodes captured for this view.','empty-network');
+      // Block spacing leaves room for the next domain. The final domain needs
+      // only a small bottom inset; measure the drawn content so pagination stays visible.
+      var bounds=svg.getBBox(),contentHeight=Math.ceil(bounds.y+bounds.height+24);
+      if(bounds.height>0&&contentHeight<H)svg.setAttribute('viewBox','0 0 '+W+' '+contentHeight);
       inspect(selected);
       svg.dataset.viewport=String(window.innerWidth);
-      if(focusKey){var target=Array.from(svg.querySelectorAll('[data-key]')).find(function(n){return n.getAttribute('data-key')===focusKey;});if(target)target.focus({preventScroll:true});}
+      if(focusKey){var target=Array.from(svg.querySelectorAll('[data-key]')).find(function(n){return n.getAttribute('data-key')===focusKey;});if(target&&target.getAttribute('aria-disabled')==='true')target=target.parentElement.querySelector('.page-control[aria-disabled="false"]');if(target)target.focus({preventScroll:true});}
     }
-    function kv(label,value){return '<div class="inspector-row"><span>'+esc(label)+'</span><b>'+esc(value==null?'Not captured':value)+'</b></div>';}
+    function count(v){return typeof v==='number'&&isFinite(v)&&v>=0?v:null;}
     function inspect(selected){
-      var h='<div class="inspector-kicker">'+esc(state.kind==='fleet'?'Snapshot evidence':state.kind+' evidence')+'</div><h4>'+esc(rootLabel())+'</h4>';
+      var capture=net.capture||{},facts=[],note='',explanation='';
+      var partial=count(capture.unresolved_identities)>0||count(capture.read_failures)>0;
+      [['facts_total','facts_emitted'],['holder_refs_total','holder_refs_emitted']].forEach(function(keys){if(count(capture[keys[0]])!=null&&count(capture[keys[1]])!=null&&capture[keys[1]]<capture[keys[0]])partial=true;});
       if(state.kind==='project'){
-        var n=state.value.raw;h+=kv('Stable store',state.value.sid)+kv('Domain',state.value.domain)+kv('Always-loaded tokens',n.always_loaded_tokens)+kv('Mirror index tokens',n.mirror_index_tokens)+kv('Recall tokens',n.recall_tokens)+kv('Physical mirrors',n.shared);
-      }else if(state.kind==='fact')h+=kv('Canonical identity',state.value.fact_id)+kv('Home domain',state.value.domain)+kv('Scope',state.value.scope)+kv('Physical holders before limits',state.value.held_n)+kv('Captured holder references',(state.value.holder_sids||[]).length)+kv('Resolved captured projects',selected.length)+((state.value.holder_sids||[]).length!==selected.length?'<p class="capture-note">Some captured holder references do not uniquely identify project rows.</p>':'');
-      else if(state.kind==='group')h+='<p>Permission only · '+selected.length+' captured group members. Membership does not establish physical presence or delivery.</p>'+kv('Home domain',state.value.home_domain)+kv('Facts addressed before limit',state.value.facts_total)+kv('Captured addressed facts',rows(state.value.facts).length);
-      else h+='<p>'+(Array.isArray(net.nodes)?model.nodes.length+' captured projects':'Project list not captured')+' in '+model.domains.length+' domains. Expand a domain, then select a project.</p>';
-      if(!model.canonical)h+='<p class="capture-note">Canonical identities were not captured. This archive supports exploration of its recorded pairwise links; fact holders cannot be reconstructed.</p>';
-      if(net.capture)h+=kv('Unresolved mirror identities',num(net.capture.unresolved_identities))+kv('Unreadable fact files',num(net.capture.read_failures))+kv('Canonical facts captured / total',num(net.capture.facts_emitted)+' / '+num(net.capture.facts_total))+kv('Holder references captured / total',num(net.capture.holder_refs_emitted)+' / '+num(net.capture.holder_refs_total));
-      detail.innerHTML=h;
-      var facts=model.facts.filter(function(f){return state.kind!=='project'||(f.holder_sids||[]).indexOf(state.value.sid)>=0;}).filter(function(f){return !state.query||(f.name+' '+f.domain+' '+f.fact_id).toLowerCase().indexOf(state.query)>=0;});
-      if(facts.length){var disclosure=document.createElement('details');disclosure.open=state.kind==='project'||!!state.query;disclosure.innerHTML='<summary>'+facts.length+' captured facts</summary>';detail.appendChild(disclosure);facts.forEach(function(f){button(f.domain+' / '+f.name+' · '+f.held_n+' holders',function(){focus('fact',f);},disclosure,'inspector-choice');});}
-      if(state.kind==='project'){
-        var links=model.edges.filter(function(e){return e.a===state.value.raw.node||e.b===state.value.raw.node;});
-        var list=document.createElement('details');list.open=true;list.innerHTML='<summary>'+links.length+' recorded pairwise connections</summary>';detail.appendChild(list);
-        links.forEach(function(e){var named=rows(net.stack_edge_facts).find(function(f){return f.a===e.a&&f.b===e.b||f.b===e.a&&f.a===e.b;});var p=document.createElement('p');p.textContent=(e.a===state.value.raw.node?e.b:e.a)+' · '+e.n+' shared stack facts · '+(named?(named.names||[]).join(', '):'fact names were not captured');list.appendChild(p);});
+        var unique=model.nodes.filter(function(n){return n.sid===state.value.sid;}).length===1;
+        if(unique)facts=model.facts.filter(function(f){return Array.isArray(f.holder_sids)&&f.holder_sids.indexOf(state.value.sid)>=0;});
+        else partial=true;
+        explanation=facts.length?'Choose a shared fact to see which projects hold it.':model.canonical?'No named shared facts were captured for this project.':'These projects share facts recorded in this dream.';
+      }else if(state.kind==='fact'){
+        var refs=Array.isArray(state.value.holder_sids)?state.value.holder_sids:null;
+        if(!refs||refs.length!==selected.length||count(state.value.held_n)!=null&&state.value.held_n>selected.length)partial=true;
+        explanation='These projects held a local copy of this fact.';
+      }else if(state.kind==='group'){
+        if(!Array.isArray(net.nodes)||model.nodes.some(function(n){return !Array.isArray(n.raw.groups);}))partial=true;
+        if(count(state.value.facts_total)!=null&&state.value.facts_total>rows(state.value.facts).length)partial=true;
+        explanation='These projects have permission to receive facts addressed to this group.';
       }
-      if(state.kind==='group'){rows(state.value.facts).forEach(function(f){var p=document.createElement('p');p.textContent='Addressed: '+f.domain+' / '+f.name;detail.appendChild(p);});}
+      if(!Array.isArray(net.nodes))note='Network details were not captured for this dream.';
+      else if(!model.canonical)note='This older snapshot records project connections, but not individual fact holders.';
+      else if(partial)note='This snapshot is partial; some facts or connections cannot be shown.';
+      else if(['facts_total','facts_emitted','holder_refs_total','holder_refs_emitted','unresolved_identities','read_failures'].some(function(key){return count(capture[key])==null;}))note='Capture completeness was not recorded for this dream.';
+      detail.innerHTML=(state.kind==='fleet'?'':'<strong class="network-selection-name">'+esc(rootLabel())+'</strong>')+(explanation?'<p class="network-explanation" aria-live="polite">'+esc(explanation)+'</p>':'')+'<span class="network-attribution">Saved with this dream</span>';
+      if(facts.length){
+        var choices=document.createElement('div');choices.className='network-facts';detail.appendChild(choices);
+        facts.forEach(function(f){var duplicate= facts.filter(function(x){return x.name===f.name;}).length>1;var b=button((duplicate?f.domain+' / ':'')+f.name,function(){focus('fact',f);},choices,'inspector-choice');b.dataset.factId=f.fact_id||'';});
+      }
+      el('net-cap').textContent=note;el('net-cap').hidden=!note;
+      var interpretation=state.kind==='group'?'Dashed branches show permission to receive, not delivery.':state.kind==='fact'?'Solid branches show projects holding this fact.':state.kind==='project'?'Solid branches show recorded shared-fact connections.':'Projects are organized by domain. Select a domain to expand it.';
+      el('net-legend').innerHTML='<span class="'+(state.kind==='group'?'permissions-key':state.kind==='fleet'?'organization-key':'holdings-key')+'">'+esc(interpretation)+'</span>';
     }
-    el('net-note').textContent=Array.isArray(net.nodes)?model.nodes.length+' captured projects · '+model.domains.length+' domains':'Project list not captured';
-    el('net-cap').textContent='Coverage: captured stores holding shared mirrors plus the triggering store. Absent projects are outside this snapshot. Branches organize captured evidence; junctions aggregate their visible members.';
-    el('net-legend').innerHTML='<span>○ Domain / expand projects</span><span id="net-leg-stack" class="holdings-key">— Observed holdings in a focused view</span><span class="permissions-key">┄ Group permission only</span>';
-    var inventory='<h4>Project inventory</h4><div class="table-scroll"><table><thead><tr><th>Project</th><th>Domain</th><th>Stable store</th><th>Index</th><th>Mirror index</th><th>Recall</th><th>Groups</th></tr></thead><tbody>'+model.nodes.map(function(n){return '<tr>'+[n.label,n.domain,n.sid,n.raw.always_loaded_tokens,n.raw.mirror_index_tokens,n.raw.recall_tokens,n.groups.join(', ')].map(function(v){return '<td>'+esc(v==null?'Not captured':v)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>';
-    inventory+='<h4>Permissions</h4><div class="table-scroll"><table><thead><tr><th>Group</th><th>Captured group members</th><th>Facts addressed to group</th></tr></thead><tbody>'+model.groups.map(function(g){return '<tr><td>'+esc(g.group)+'</td><td>'+esc(g.members_n==null?'Not captured':g.members_n)+'</td><td>'+rows(g.facts).map(function(f){return esc(f.domain+' / '+f.name);}).join(', ')+(g.facts_total!=null?' · '+g.facts_total+' before limit':' · total before limit not captured')+'</td></tr>';}).join('')+'</tbody></table></div>';
-    inventory+='<h4>Registry baseline holdings</h4><p>Registry holder counts use a different basis from observed physical presence.</p>'+rows(net.universal_facts).map(function(f){return '<p>'+esc(f.domain+' / '+f.name)+' · '+esc(f.held==null?'Not captured':f.held)+' registry holders</p>';}).join('')+'<details><summary>Every recorded network field</summary><pre>'+esc(JSON.stringify(net,null,2))+'</pre></details>';
-    el('network-data-body').innerHTML=inventory;
+    el('net-note').textContent=Array.isArray(net.nodes)?model.nodes.length+' projects · '+model.domains.length+' domains':'Not captured';
     draw();
     // One resize listener per mounted report; old closures are removed on navigation.
     if(paint.resize)window.removeEventListener('resize',paint.resize);
