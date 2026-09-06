@@ -1328,6 +1328,8 @@ def narration_capture(ctx: Ctx) -> list[Result]:
         if sd and sd not in sys.path:
             sys.path.insert(0, sd)
         import dream_procedure as _dp
+        if ctx.skill is not None and Path(getattr(_dp, "__file__", "")).resolve().parent != Path(ctx.skill):
+            _dp = importlib.reload(_dp)          # the import_skill_module guard shape: never test a stale copy
     except Exception:
         return out                               # no detector module → the block leg's WARN covers it
     # Leg (b): hermetic pairs, in-memory only (no store, no transcript files — the detector

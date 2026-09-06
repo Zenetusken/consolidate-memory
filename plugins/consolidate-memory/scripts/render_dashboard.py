@@ -382,9 +382,15 @@ def _narration_section(record: Mapping[str, Any], narration: Any) -> list:
         out.append("    " + _c("→ the verdict is persisted on the record (nothing to fix — the honest degrade case)", "dim"))
         return out
     gaps = [g for g in (narration.get("gaps") or []) if isinstance(g, dict) and g.get("label")]
+    # The header is per-arm: an EXT-only render (the single "extractor unaccounted" row) must
+    # not misframe as a narration gap (review finding 8) — the stderr cue carries the remedy.
+    if any(g.get("label") != "extractor unaccounted" for g in gaps):
+        _sub = "dream text exists in the record but was never narrated in this session"
+    else:
+        _sub = "the Phase-2 extractor left no trace in this session"
     out = ["", _rule()]
     out.append("  " + _c("⚠ CONVERSATION-TRUTH GAPS", "bold", "red")
-               + _c("   · dream text exists in the record but was never narrated in this session", "dim"))
+               + _c("   · " + _sub, "dim"))
     out.append(_rule())
     lines = []
     for g in gaps:
@@ -413,7 +419,12 @@ def _narration_session_dir(store: Any) -> Any:
         pp = str(st.get("project_path") or "") if isinstance(st, dict) else ""
         if pp:
             from store_context import resolve_store as _rs_a
-            return _rs_a(_P(str(pp))).session_dir
+            _ctx_a = _rs_a(_P(str(pp)))
+            # Ownership guard (the usage-clock fallback's precedent): a stale/migrated
+            # project_path must NOT mis-pool the transcripts to the wrong project — only
+            # return the pool when the resolved store IS the store being persisted.
+            if _ctx_a.native_memory_dir.resolve() == _P(str(store)).resolve():
+                return _ctx_a.session_dir
     except Exception:
         pass
     try:
@@ -1292,11 +1303,25 @@ def main() -> int:
         if status in ("no-dir", "io-error"):
             # keep their stderr diagnostics (exit 0, no cue)
             return 0
-        if status == "ok":
-            # Split-brain heal (v0.4.1): the log now carries the RECONCILED marker — write the same
-            # payload back to the cycle file, or the archive embeds the dream twice (reconciled log
-            # line vs unstamped cycle copy never dedup).
-            if paths:
+        # Split-brain heal (v0.4.1): the log now carries the RECONCILED marker — write the same
+        # payload back to the cycle file, or the archive embeds the dream twice (reconciled log
+        # line vs unstamped cycle copy never dedup).
+        _heal = status == "ok"
+        if status == "duplicate" and paths:
+            # v0.4.19 (review M1): the loop-back re-render (narrate + re-render after an
+            # exit-3/exit-4) appends nothing — but the narration verdict is script-injected, so
+            # the model CANNOT heal it in the cycle file. When the recomputed verdict differs
+            # from the stored block, heal the file anyway (the log line stays attempt-scoped —
+            # the spec's F-2: the block on the log line is that attempt's scan result; the
+            # archive's fresher-file rule then surfaces the healed verdict).
+            try:
+                with open(paths[0], encoding="utf-8") as _fh:
+                    _stored = json.loads(_fh.read())
+                if _dget(_stored, "narration").get("verdict") != _dget(record, "narration").get("verdict"):
+                    _heal = True
+            except (OSError, ValueError, json.JSONDecodeError):
+                pass
+        if _heal and paths:
                 try:
                     from memory_status import reconcile_marker as _reconcile_wb
                     _wb = dict(record)

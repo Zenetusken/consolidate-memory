@@ -55,13 +55,17 @@ _EXTRACTOR_TOKEN = "extract_signals.py"
 _SKIP_MARKER = "extractor-skip:"
 # Anchored on EXECUTION (spec §2): python3/python as an invocation word (start-of-command or
 # after a whitespace/;/&/| separator — `$(...)` fails the class: '(' is not in it), followed by
-# a command segment (no ;/&/|/newline) containing `extract_signals.py` with a word-boundary
-# guard (tests/test_extract_signals.py never matches). The match extends to the SEGMENT TAIL so
-# the form check sees the flags (`--recalls` follows the token — it must be inside the match or
-# the recall-only form would pass for the Phase-2 extract). grep/sed/cat targets never match —
-# no python invocation word precedes them.
+# a command segment (no ;/&/|/newline, but a backslash-newline continuation is part of the same
+# segment) containing `extract_signals.py` with a word-boundary guard
+# (tests/test_extract_signals.py never matches). The match extends to the SEGMENT TAIL so the
+# form check sees the flags (`--recalls` follows the token — it must be inside the match or the
+# recall-only form would pass for the Phase-2 extract). grep/sed/cat targets never match — no
+# python invocation word precedes them. The token is re.escape'd — the raw `.` would be a
+# wildcard (extract_signalsXpy must never match).
+_SEG = r"(?:[^\n;&|]|\\\n)"
 _INVOKE_RE = re.compile(
-    r"(?:^|[\s;&|])(?:python3|python)\s+[^\n;&|]*?(?<![A-Za-z0-9_])" + _EXTRACTOR_TOKEN + r"[^\n;&|]*")
+    r"(?:^|[\s;&|])(?:python3|python)\s+" + _SEG + r"*?(?<![A-Za-z0-9_])"
+    + re.escape(_EXTRACTOR_TOKEN) + _SEG + r"*")
 
 
 def normalize_beat_text(text: str) -> str:
@@ -116,11 +120,17 @@ def _window_lines(session_dir: Path, since: str) -> tuple[list[dict], bool]:
         return [], True
     since_dt = _parse_ts(since) if since else None
     kept: list[dict] = []
+    opened_any = False
     for f in files:
         try:
             fh = f.open(encoding="utf-8", errors="replace")
         except OSError:
-            return [], True  # a file that fails to open counts as unavailable (spec F-5)
+            # One unopenable pooled file (a chmod/gc race mid-scan — the spec's own rotation
+            # scenario) must NOT degrade the whole window: the reused machinery's convention is
+            # skip-and-continue (extract_signals), and the seam's contract is "only the
+            # zero-content case degrades". Unavailable is only for the NOTHING-readable case.
+            continue
+        opened_any = True
         with fh:
             for line in fh:
                 try:
@@ -132,7 +142,7 @@ def _window_lines(session_dir: Path, since: str) -> tuple[list[dict], bool]:
                 if since_dt and ts_dt and ts_dt <= since_dt:
                     continue
                 kept.append(o)
-    return kept, False
+    return kept, not opened_any
 
 
 def _assistant_text_blocks(lines: list[dict]) -> list[str]:

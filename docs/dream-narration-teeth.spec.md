@@ -104,7 +104,10 @@ pool whose dream falls inside [since, now] would satisfy NAR on a fabricated rec
 byte-identical scripted beat — a cross-project false-clean in the forbidden direction. Documented
 leak surfaces, accepted consciously: (a) a re-run after an exit-4/exit-3 sits inside the retry's
 window — the failed attempt's narration can satisfy NAR on the retry; that is arguably "performed"
-(it was narrated and mirrored before the gate fired); (b) a missing state file at Phase 0 —
+(it was narrated and mirrored before the gate fired) — and the retry's duplicate re-render
+heals the cycle FILE's `narration` block when the recomputed verdict differs (the model cannot
+heal a script-injected block; the log line stays attempt-scoped per F-2, and the archive's
+fresher-file rule surfaces the healed verdict); (b) a missing state file at Phase 0 —
 whether the first pass or a mid-life loss (cleanup, corruption, store migration; the measured
 session file spans 9 days) — seeds `before_timestamp=""` and the keep-all fail-open; only a true
 first pass has nothing prior to leak; mid-life loss plus surviving prior dreams (whose scripted
@@ -120,10 +123,12 @@ hard-block an otherwise-valid dream on a rotated log (a hard block would make ev
 headless/cleanup-rotated dream un-finishable; rotation is rare but real — the measured session
 file spans 9 days). The seam is decidable, not ambiguous: any line the reused per-line filter
 keeps within the window (`ts > since`, or ts-less/unparseable — the filter keeps those too, never
-`≤ since`; a file that fails to open counts as unavailable) ⇒ the pass's conversation exists ⇒
-NAR fires on gaps (a fabricated pass always leaves in-window content — the record-fill tool call
-itself); zero kept lines within the window ⇒ unverifiable ⇒ degrade. Only the zero-content case
-degrades, and it degrades BOTH arms (see the EXT section). Stated AND persisted — on EVERY judged
+`≤ since`) ⇒ the pass's conversation exists ⇒ NAR fires on gaps (a fabricated pass always leaves
+in-window content — the record-fill tool call itself); zero kept lines within the window ⇒
+unverifiable ⇒ degrade. One unopenable pooled file is SKIPPED (the reused machinery's
+skip-and-continue convention — a mid-scan chmod/gc race on one of several files must not degrade
+an otherwise-verifiable window); unavailable means nothing could be READ at all. Only the
+zero-content case degrades, and it degrades BOTH arms (see the EXT section). Stated AND persisted — on EVERY judged
 persist, not just the degraded one: before the persist append, the record gains an additive
 optional block — `narration: {"verdict": "verified" | "degraded" | "failed", ...}` (failed
 carries the gap indexes; the arms' verdict is computed regardless of the record-side outcome —
@@ -198,8 +203,10 @@ beats; exit 3 on the extractor gap; exit 0 on the clean pair; the panels name th
 each arm's cue line appears only on its own arm's exit; the record-fill-attack fixture → exit 4
 with all named gaps (the BLOCK-class pin end-to-end).
 
-Beta oracle: the new family runs in the existing harness flow (the make_fixture/make_cycle_probe
-machinery gains the narration fixture legs).
+Beta oracle: the new family runs in the existing harness flow — the block-presence leg rides
+`_latest_capture_check` and the detector self-test legs are hermetic in-memory record+transcript
+pairs (§2's corrected scope: the fixtures cover the DETECTOR, never an individual rotated dream;
+no make_fixture/make_cycle_probe change).
 
 Docs: SKILL.md's persist-gate section gains the two arms + the degrade boundary; SKILL.md's
 Phase-2 section defines the canonical skip marker (the exact `extractor-skip:` token + non-empty

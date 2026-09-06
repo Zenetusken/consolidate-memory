@@ -13996,11 +13996,16 @@ check("v0.4.19 EXT anchor: grep/sed targets, text mentions, tool_result echoes, 
           'python3 -m pytest tests/test_extract_signals.py',
           'python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py" --recalls --into r.json',
           'echo "$(python3 scripts/extract_signals.py --json)"',
+          'python3 tools/extract_signalsXpy --json',
       )) and _dp19._extractor_accounted(
           [_line19("2026-09-02T01:00:00Z", [_bash19(_CALL19)])], None)[0]
       and _dp19._extractor_accounted(
           [_line19("2026-09-02T01:00:00Z",
                    [_bash19('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py"')])], None)[0]
+      and _dp19._extractor_accounted(
+          [_line19("2026-09-02T01:00:00Z",
+                   [_bash19('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/\\\nextract_signals.py" --json')])],
+          None)[0]
       and not _dp19._extractor_accounted(
           [_line19("2026-09-02T01:00:00Z", [_txt19("the extract_signals.py output was checked")])],
           None)[0])
@@ -14020,8 +14025,37 @@ check("v0.4.19 degrade: zero content AND unavailable both degrade loudly, never 
       _v19g["verdict"] == "degraded" and _v19g2["verdict"] == "degraded")
 _v19g3 = _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(
     [_userline19("2026-09-02T01:00:00Z", [{"type": "tool_result", "content": "done"}])]))
-check("v0.4.19 degrade seam: any kept line (even a user tool_result) = content → FIRE, not degrade",
-      _v19g3["verdict"] == "failed")
+check("v0.4.19 degrade seam: any kept line (even a user tool_result) = content → FIRE, not "
+      "degrade, and both arms fail (review finding 4's in-process half)",
+      _v19g3["verdict"] == "failed" and _v19g3["ext_unaccounted"])
+# Review finding 2: one unopenable pooled file is SKIPPED — the seam never degrades an
+# otherwise-verifiable window on a chmod/gc race; only nothing-readable degrades.
+with _tf43.TemporaryDirectory() as _td19c:
+    _p19pool = Path(_td19c)
+    (_p19pool / "good.jsonl").write_text(_json43.dumps(
+        _line19("2026-09-02T01:00:00Z", [_txt19(_SLEEP19)])) + "\n")
+    (_p19pool / "bad.jsonl").write_text(_json43.dumps(
+        _line19("2026-09-02T01:01:00Z", [_txt19(_BEATS19[0])])) + "\n")
+    _open_orig19 = Path.open
+    def _open_skip19(self, *a, **kw):
+        if self.name == "bad.jsonl":
+            raise OSError("chmod/gc race")
+        return _open_orig19(self, *a, **kw)
+    setattr(Path, "open", _open_skip19)
+    try:
+        _kept19b, _unav19b = _dp19._window_lines(_p19pool, "2026-09-01T00:00:00Z")
+    finally:
+        setattr(Path, "open", _open_orig19)
+    check("v0.4.19 seam: one unopenable pooled file is skipped (the readable window survives)",
+          not _unav19b and len(_kept19b) == 1)
+    (_p19pool / "good.jsonl").unlink()
+    setattr(Path, "open", _open_skip19)
+    try:
+        _kept19b, _unav19b = _dp19._window_lines(_p19pool, "2026-09-01T00:00:00Z")
+    finally:
+        setattr(Path, "open", _open_orig19)
+    check("v0.4.19 seam: NOTHING readable → unavailable (the honest degrade)",
+          _unav19b and _kept19b == [])
 _calls19 = {"n": 0}
 def _grows19() -> "tuple[list, list, bool]":
     _calls19["n"] += 1
@@ -14097,9 +14131,11 @@ with _tf43.TemporaryDirectory() as _td19:
     _fixture19(_NARR19)
     _p19b = _wr19("f19b.json", "2026-09-02T02:00:02Z", _T0, _REC19["dream"])
     _so19, _se19, _rc19 = _run19(_p19b, "--persist", str(_store19))
-    check("v0.4.19 persist EXT: all narrated but no Phase-2 call → exit 3, the EXT cue (not NAR's)",
+    check("v0.4.19 persist EXT: all narrated but no Phase-2 call → exit 3, the EXT cue (not NAR's), "
+          "and the EXT-only panel header (review finding 8)",
           _rc19 == 3 and "Phase 2 left no trace" in _se19
           and "lives only in the record" not in _se19
+          and "extractor left no trace" in _so19 and "never narrated" not in _so19
           and _last19()["narration"]["verdict"] == "failed"
           and _last19()["narration"]["gaps"] == ["extractor unaccounted"])
     # F19C — the clean pair + cross-cwd pool resolution (cwd is NOT the store's project).
@@ -14177,6 +14213,55 @@ with _tf43.TemporaryDirectory() as _td19:
           "CONVERSATION-TRUTH panel, no narration block on the log line)",
           _rc19 == 0 and "CONVERSATION-TRUTH" not in _so19
           and "narration" not in _last19())
+    # F19J — the healed loop-back (review finding 1): attempt-1 fabricated → exit 4 (log + cycle
+    # file carry failed); attempt-2 (same record file, now-narrated transcript) → duplicate,
+    # exit 0, the CYCLE FILE heals to verified while the LOG line stays attempt-scoped (failed).
+    _fixture19([_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s8.jsonl")
+    _p19j = _wr19("f19j.json", "2026-09-02T02:00:11Z", _T0, _REC19["dream"])
+    _so19, _se19, _rc19 = _run19(_p19j, "--persist", str(_store19))
+    _rc19j1 = _rc19
+    _lp19 = _ret19.cycle_log_write_path(_store19, environ={**_os53.environ, "HOME": _home19})
+    _n_log19 = len(_lp19.read_text(encoding="utf-8").strip().splitlines())
+    _fixture19(_NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s9.jsonl")
+    _so19, _se19, _rc19 = _run19(_p19j, "--persist", str(_store19))
+    _cycle19j = _json43.loads(Path(_p19j).read_text(encoding="utf-8"))
+    _log19j = _lp19.read_text(encoding="utf-8").strip().splitlines()
+    check("v0.4.19 persist loop-back heal: attempt-1 exits 4; the duplicate re-render exits 0 and "
+          "heals the CYCLE FILE to verified while the log line stays attempt-scoped",
+          _rc19j1 == 4 and _rc19 == 0
+          and _cycle19j.get("narration", {}).get("verdict") == "verified"
+          and len(_log19j) == _n_log19
+          and _json43.loads(_log19j[-1])["narration"]["verdict"] == "failed")
+    # F19K — the both-arms precedence pin (review finding 4): content but no narration AND no
+    # extractor call → gaps + unaccounted → exit 3, the EXT cue, NAR's cue suppressed.
+    _fixture19([_userline19("2026-09-02T01:00:00Z", [{"type": "tool_result", "content": "done"}])],
+               name="s10.jsonl")
+    _p19k = _wr19("f19k.json", "2026-09-02T02:00:12Z", _T0, _REC19["dream"])
+    _so19, _se19, _rc19 = _run19(_p19k, "--persist", str(_store19))
+    check("v0.4.19 persist both-arms: gaps + unaccounted → exit 3 with the EXT cue, the log's "
+          "gaps name both classes",
+          _rc19 == 3 and "Phase 2 left no trace" in _se19
+          and "lives only in the record" not in _se19
+          and "sleep" in _last19()["narration"]["gaps"]
+          and _last19()["narration"]["gaps"][-1] == "extractor unaccounted")
+    # Review finding 5: the state-file project_path pool is ownership-guarded — a stale path
+    # must NOT mis-pool the transcripts to the wrong project.
+    _wrong19 = Path(_td19) / "wrongproj"; _wrong19.mkdir()
+    (_store19 / ".consolidation-state.json").write_text(
+        _json43.dumps({"commit": "c", "timestamp": "t", "project_path": str(_wrong19)}))
+    _old_home19 = _os53.environ.get("HOME")
+    _os53.environ["HOME"] = _home19
+    try:
+        _got19 = rd._narration_session_dir(_store19)
+    finally:
+        if _old_home19 is None:
+            _os53.environ.pop("HOME", None)
+        else:
+            _os53.environ["HOME"] = _old_home19
+    (_store19 / ".consolidation-state.json").unlink()
+    check("v0.4.19 pool ownership guard: a stale project_path falls through to the store layout "
+          "(the wrong project's session dir is never returned)",
+          _got19 == _pool19)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

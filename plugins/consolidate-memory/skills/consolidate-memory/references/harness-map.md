@@ -100,6 +100,10 @@ Two arms + one boundary:
   UNVERIFIABLE panel, `narration.verdict: "degraded"`, no exit change. The seam is
   decidable: any kept line (even a user tool_result, even ts-less — the reused
   per-line filter keeps those) = content ⇒ fire on gaps; only zero content degrades.
+  One unopenable pooled file is skipped (the reused machinery's skip-and-continue
+  convention); unavailable means nothing could be read at all. The duplicate
+  loop-back re-render heals the cycle FILE's verdict when it differs (the log line
+  stays attempt-scoped).
 - **The verdict block.** Every judged persist writes `narration` pre-append
   (verified | degraded | failed; failed carries the gap indexes) — the block on the
   log line is that attempt's scan result, so absence on a log line = pre-feature
