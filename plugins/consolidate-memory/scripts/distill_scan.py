@@ -384,16 +384,23 @@ def scan(project_dir: Path, since: str) -> dict:
                         if day:
                             crec["days"].add(day)
     counts["days"] = len(days_seen)
-    recurring = sorted(
+    # v0.4.21 (D5): the TRUE counts are the FILTERED pre-cap lengths — the `[:MAX_*_OUT]` slices are
+    # OUTPUT caps, never counts (a capped length undercounts past 40/20, and the counts live in
+    # `scanned` so a model reading the scan JSON reads the truth, never a wrong-field zero).
+    recurring_all = sorted(
         ({"template": t, "count": v["count"], "days": len(v["days"]), "sample": v["sample"]}
          for t, v in tally.items() if v["count"] >= MIN_RECUR),
         key=lambda r: (r["days"], r["count"], r["template"]), reverse=True,
-    )[:MAX_RECUR_OUT]
-    chains_out = sorted(
+    )
+    chains_all = sorted(
         ({"templates": list(pair), "count": v["count"], "days": len(v["days"])}
          for pair, v in ctally.items() if v["count"] >= MIN_RECUR),
         key=lambda r: (r["days"], r["count"], r["templates"]), reverse=True,
-    )[:MAX_CHAIN_OUT]
+    )
+    counts["n_recurring"] = len(recurring_all)
+    counts["n_chains"] = len(chains_all)
+    recurring = recurring_all[:MAX_RECUR_OUT]
+    chains_out = chains_all[:MAX_CHAIN_OUT]
     used_out = [{"a": k, "n": v} for k, v in
                 sorted(used_tally.items(), key=lambda kv: (-kv[1], kv[0]))[:_USED_CAP]]
     return {"window": since or "(all)", "scanned": counts, "recurring": recurring, "chains": chains_out,
@@ -405,7 +412,9 @@ def _report(d: dict) -> None:
     out: list = []
     add = out.append
     title = "✦ DISTILL · recurring workflow signal"
-    tag = f"{len(d['recurring'])} template(s) · {len(d.get('chains', []))} chain(s)"
+    # v0.4.21 (D5): the scale line shows the TRUE counts (scanned), never the capped list lengths.
+    tag = f"{c.get('n_recurring', len(d['recurring']))} template(s) · " \
+          f"{c.get('n_chains', len(d.get('chains', [])))} chain(s)"
     gap = max(2, _ui.W - 2 - len(title) - len(tag))
     add(_ui.rule())
     add("  " + _ui.c("✦", "cyan") + title[1:] + " " * gap + _ui.c(tag, "bold"))
@@ -453,7 +462,10 @@ def inject_into(seed_path: str, d: dict, verdict: str, proposed: list, created: 
         sc = d.get("scanned")
         sc = sc if isinstance(sc, dict) else {}
         blk.update({"sessions": sc.get("sessions", 0), "commands": sc.get("commands", 0),
-                    "n_recurring": len(d.get("recurring") or []), "n_chains": len(d.get("chains") or []),
+                    # v0.4.21 (D5): the TRUE counts from the scanned block; the capped-list-length
+                    # fallback keeps a stale (pre-fix) --from scan working.
+                    "n_recurring": sc.get("n_recurring", len(d.get("recurring") or [])),
+                    "n_chains": sc.get("n_chains", len(d.get("chains") or [])),
                     "window": d.get("window", "(all)"), "secrets_omitted": sc.get("secrets_omitted", 0)})
         # v0.1.82 (W-A): persist the TOP rows — projected to compact {t,n,d}, deliberately WITHOUT
         # `sample` (samples carry raw command text and stay display-only: the privacy tier the module

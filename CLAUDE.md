@@ -1,6 +1,6 @@
 # consolidate-memory — project conventions
 
-**v0.4.20.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
+**v0.4.21.** A **Claude Code plugin**: **cross-project, verification-first memory** for agents — the layer beyond
 Claude Code's built-in Auto Dream (per-project consolidation), adding a governed cross-project store +
 verification against the live code. This repo is both the plugin and its marketplace —
 end users install it with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -115,9 +115,9 @@ Only `SECURITY.md` at the repo root is public.
 - **The cycle record is the contract — now TYPED.** `memory_status.py --json` seeds it,
   the phases fill it, `render_dashboard.py` renders it. The shape is `TypedDict`s in
   `memory_status.py` (`CycleRecord` + nested, all `total=False`); a `validate_cycle_record`
-  warns (stderr, never blocks) on a wrong-container-type key — or an impossible distill count
-  above the scanner caps (`_DISTILL_CAPS`, pinned to `distill_scan` by a cross-module smoke
-  test) — at runtime. Changing the
+  warns (stderr, never blocks) on a wrong-container-type key at runtime. (The former
+  impossible-distill-count backstop was dropped in v0.4.21 — the counts are script-truth,
+  and the scanner's output caps are its own constants.) Changing the
   schema means updating the seed, the renderer, the **TypedDicts**, and `SKILL.md`'s
   schema block together — a smoke test pins the SKILL block to `CycleRecord.__annotations__`,
   so they can't silently drift.
