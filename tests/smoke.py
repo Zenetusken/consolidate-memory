@@ -6081,8 +6081,10 @@ with _tf43.TemporaryDirectory() as _tdA1:
     _dA1 = _json43.loads(_oA1)
     check("v0.1.8/A1 F4: flag absent → no cycle_probe key (inert seam)",
           "cycle_probe" not in _dA1 and _rcA1 == 0 and _dA1["summary"]["fail"] == 0)
-    check("v0.1.8/A1 F4: re-baselined fixture is 0 FAIL / 0 WARN (the mirror added no noise)",
-          _dA1["summary"]["fail"] == 0 and _dA1["summary"]["warn"] == 0)
+    check("v0.1.8/A1 F4: re-baselined fixture is 0 FAIL / 1 expected WARN (the v0.4.19 narration "
+          "block-leg advisory — the frozen probe predates the narration block; no other noise)",
+          _dA1["summary"]["fail"] == 0 and _dA1["summary"]["warn"] == 1
+          and any(r.get("id") == "CHK-NARRATION" for r in _dA1["results"]))
     check("v0.1.8/A1 F1: CHK-CYCLE-BUDGET present on the re-baselined fixture (trigger node exists)",
           any(r["id"] == "CHK-CYCLE-BUDGET" for r in _dA1["results"]))
 
