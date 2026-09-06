@@ -1960,7 +1960,8 @@ with _tf43.TemporaryDirectory() as _td51:
     check("v0.1.55/58/82: scan --json contract shape (+chains, +days; +secrets_omitted v0.1.58; "
           "+used v0.1.82 — the Skill-adoption tally)",
           set(_r51) == {"window", "scanned", "recurring", "chains", "used"}
-          and set(_r51["scanned"]) == {"sessions", "commands", "days", "secrets_omitted"}
+          and set(_r51["scanned"]) == {"sessions", "commands", "days", "secrets_omitted",
+                                  "n_recurring", "n_chains"}  # v0.4.21 (D5): the TRUE counts
           and all(set(r) == {"template", "count", "days", "sample"} for r in _r51["recurring"])
           and isinstance(_r51["used"], list))
 with _tf43.TemporaryDirectory() as _td51b:   # "create nothing" — distinct NON-stoplisted one-offs, so the
@@ -3027,14 +3028,13 @@ with _tf43.TemporaryDirectory() as _td58b:
           and _json43.loads(_seed58p.read_text())["distill"]["secrets_omitted"] == 0
           and _json43.loads(_seed58p.read_text())["distill"]["window"] == "(all)")
 # (5) validator backstop + the caps cross-module pin (no runtime import cycle; smoke pins the mirror).
-check("v0.1.58 validate: warns on an impossible count (the ×47 production mis-fill class)",
-      any("exceeds the scanner cap" in w for w in ms.validate_cycle_record({"distill": {"n_recurring": 47}}))
-      and any("exceeds the scanner cap" in w for w in ms.validate_cycle_record({"distill": {"n_chains": 21}})))
-check("v0.1.58 validate: silent AT the caps and on non-numeric junk",
-      not any("exceeds" in w for w in ms.validate_cycle_record({"distill": {"n_recurring": 40, "n_chains": 20}}))
+check("v0.4.21 D5: the validator stays silent on an over-cap TRUE count (the backstop dropped — "
+      "the count is script-truth and the output cap is not a count)",
+      not any("exceeds" in w for w in ms.validate_cycle_record({"distill": {"n_recurring": 47, "n_chains": 21}}))
       and not any("exceeds" in w for w in ms.validate_cycle_record({"distill": {"n_recurring": "junk"}})))
-check("v0.1.58 caps cross-module pin (the mirror cannot drift)",
-      ms._DISTILL_CAPS == (ds.MAX_RECUR_OUT, ds.MAX_CHAIN_OUT))
+# v0.4.21 (D5, the amend-2 A5 + round-4 F2 fold): the _DISTILL_CAPS mirror tuple and its
+# cross-module pin are DELETED with the validator backstop they served — the output caps the
+# scan enforces are the producer's own constants, and nothing reads the mirror anymore.
 # (6) F7 — the per-line window: a fresh-mtime file's OLD-timestamp line is excluded from counts AND days.
 with _tf43.TemporaryDirectory() as _td58c:
     _h58c = Path(_td58c); _p58c = _h58c / "proj"; _p58c.mkdir()
@@ -4117,7 +4117,7 @@ if _bad69:
 # A6 (Gate-2b follow-up): SKILL.md's ONLY previously had a MANUAL grep as its spec's acceptance
 # criterion — no automated regression check, unlike every other A-item. Pin it: the --list command's
 # inline comment must describe a read-only preview, NEVER "held" (held only exists under --pull).
-_list69_line = next((ln for ln in _skill_text.splitlines() if "sync_global.py --list ." in ln), "")
+_list69_line = next((ln for ln in _skill_text.splitlines() if "sync_global.py" in ln and "--list ." in ln), "")
 check("v0.1.69/A6: SKILL.md's --list command comment never overclaims 'held' (regression guard — "
       "held only exists under --pull, per sync_global.py's own held_this predicate)",
       bool(_list69_line) and "held" not in _list69_line)
@@ -14324,6 +14324,171 @@ with _tf43.TemporaryDirectory() as _td19:
     check("v0.4.19 pool ownership guard: a stale project_path falls through to the store layout "
           "(the wrong project's session dir is never returned)",
           _got19 == _pool19)
+
+# ── v0.4.21 defect sweep (docs/defect-sweep-v0421.spec.md) ────────────────────────────────
+# D1 the stamp-marker resolution (the literal "HEAD" class); D2 the demotion-verdict
+# contradiction guard; D3 the SKILL command-template quoting; D5 the distill true counts;
+# D6 the exact-count pin (an orphaned section can never print green again).
+with _tf43.TemporaryDirectory() as _td21:
+    _home21 = str(Path(_td21) / "home"); (Path(_td21) / "home").mkdir()
+    _env21 = {**_os53.environ, "HOME": _home21}
+
+    def _stamp21(proj: str, *args: str) -> "tuple[str, str]":
+        _p = _sp53.run([sys.executable, str(_scripts54 / "memory_status.py"), proj, "--stamp-marker",
+                        *args], capture_output=True, text=True, timeout=60, env=_env21)
+        return (_p.stdout or ""), (_p.stderr or "")
+
+    def _stamp_rc21(proj: str, *args: str) -> int:
+        return _sp53.run([sys.executable, str(_scripts54 / "memory_status.py"), proj, "--stamp-marker",
+                          *args], capture_output=True, text=True, timeout=60, env=_env21).returncode
+
+    def _state21(proj: str) -> "tuple[Any, Path]":
+        _found = list(Path(_home21).glob("**/.consolidation-state.json"))
+        _mine = [f for f in _found if proj.replace("/", "-") in str(f) or proj.split("/")[-1] in str(f)]
+        _hit = _mine[0] if _mine else (_found[0] if len(_found) == 1 else None)
+        assert _hit is not None, f"state file not found for {proj} (found {_found})"
+        return _json43.loads(_hit.read_text(encoding="utf-8")), _hit
+
+    _gitless21 = Path(_td21) / "nogit"; _gitless21.mkdir()
+    _so21, _se21 = _stamp21(str(_gitless21), "HEAD")
+    _st21, _spath21 = _state21(str(_gitless21))
+    check("v0.4.21 D1: a git-less stamp of the literal HEAD mints commit:'' + a timestamp "
+          "(never the placeholder, never a refusal)",
+          "ok" in _so21 and _st21["commit"] == "" and bool(_st21.get("timestamp")))
+    _repo21 = Path(_td21) / "repo"; _repo21.mkdir()
+    _sp21 = _sp53.run(["git", "init", "-q", "-b", "main", str(_repo21)],
+                      capture_output=True, text=True, timeout=60)
+    (_repo21 / "f.txt").write_text("x")
+    for _gitcfg21 in (("user.email", "t@t"), ("user.name", "t")):
+        _sp21 = _sp53.run(["git", "-C", str(_repo21), "config", _gitcfg21[0], _gitcfg21[1]],
+                          capture_output=True, text=True, timeout=60)
+    _sp21 = _sp53.run(["git", "-C", str(_repo21), "add", "-A"], capture_output=True, text=True, timeout=60)
+    _sp21 = _sp53.run(["git", "-C", str(_repo21), "commit", "-qm", "c1"], capture_output=True, text=True, timeout=60)
+    _sha21 = _sp53.run(["git", "-C", str(_repo21), "rev-parse", "HEAD"],
+                       capture_output=True, text=True, timeout=60).stdout.strip()
+    _so21, _se21 = _stamp21(str(_repo21), "HEAD")
+    _st21b, _spath21b = _state21(str(_repo21))
+    _so21, _se21 = _stamp21(str(_repo21), _sha21)
+    _bytes_before = _spath21b.read_bytes()
+    _rc21d = _stamp_rc21(str(_repo21), "definitely-not-a-ref")
+    _rc21e = _stamp_rc21(str(_repo21), "0" * 40)
+    check("v0.4.21 D1: in a commit-ful repo, HEAD resolves to the full SHA and a valid SHA passes "
+          "through unchanged",
+          "ok" in _so21 and _st21b["commit"] == _sha21)
+    check("v0.4.21 D1: a junk arg AND a dead 40-hex arg both REFUSE with the file byte-identical "
+          "(the dead-SHA door closed)",
+          _rc21d == 2 and _rc21e == 2 and _spath21b.read_bytes() == _bytes_before)
+check("v0.4.21 D2: the validator flags a verdict whose probative count contradicts "
+      "windows_observed, and stays silent on a matching one",
+      any("demotion.verdict contradicts" in w for w in ms.validate_cycle_record(
+          {"demotion": {"windows_observed": 12, "verdict": "dormant — 0 probative windows"}}))
+      and not any("demotion.verdict contradicts" in w for w in ms.validate_cycle_record(
+          {"demotion": {"windows_observed": 12, "verdict": "dormant — 12 probative windows"}})))
+check("v0.4.21 D2 (amend-3 R2): the MANDATE-format digits are enforced too — 'observed 5' over 12 "
+      "warns, a matching mandate verdict stays silent",
+      any("says observed 5" in w for w in ms.validate_cycle_record(
+          {"demotion": {"windows_observed": 12, "eligible": 0,
+                        "verdict": "dormant — observed 5 · eligible 0"}}))
+      and not any("demotion.verdict contradicts" in w for w in ms.validate_cycle_record(
+          {"demotion": {"windows_observed": 12, "eligible": 0,
+                        "verdict": "dormant — observed 12 · eligible 0"}})))
+_sk21 = open("plugins/consolidate-memory/skills/consolidate-memory/SKILL.md").read()
+# amend-3 R1: the DOCUMENT-WIDE next-char rule — every script-path occurrence must be
+# immediately followed by a closing quote (covers the unclosed-fence lines AND the prose span;
+# no fence parsing).
+_glued21 = list(_re.finditer(r'\$\{CLAUDE_PLUGIN_ROOT\}/scripts/[a-z_]+\.py(?!")', _sk21))
+check("v0.4.21 D3: every SKILL script path is immediately quote-closed (no glued or unclosed "
+      "command lines)", _glued21 == [])
+_ds21 = ds.scan(Path("/tmp/nonexistent-proj21"), "")
+check("v0.4.21 D5: the scan's scanned block carries the TRUE counts (n_recurring/n_chains) "
+      "alongside the counts it always carried",
+      isinstance(_ds21["scanned"].get("n_recurring"), int)
+      and isinstance(_ds21["scanned"].get("n_chains"), int))
+check("v0.4.21 D5(c) (amend-3 R5): the SKILL's empty-set rule names the scanned counts",
+      "scanned.n_recurring" in _sk21 and "scanned.n_chains" in _sk21
+      and "never a wrong-field zero" in _sk21)
+check("v0.4.21 D1(c) (amend-3 R3 + per-PR finding 1): the exit-5 hint names the SHA form AND no "
+      "<HEAD> placeholder survives in EITHER surface (render_dashboard or the SKILL)",
+      "run memory_status.py --stamp-marker HEAD (resolved to the SHA for you" in
+      open("plugins/consolidate-memory/scripts/render_dashboard.py").read()
+      and "--stamp-marker <HEAD>" not in
+      open("plugins/consolidate-memory/scripts/render_dashboard.py").read()
+      and "<HEAD>" not in _sk21
+      and "resolved 40-hex SHA" in _sk21)
+check("v0.4.21 D2 (per-PR finding 3): the mandate instruction is SKILL-pinned",
+      "Quote the block's OWN" in _sk21 and "observed N · eligible M" in _sk21)
+# Per-PR finding 2: the read-path warning itself is pinned — a garbage non-empty marker.commit
+# warns + falls back to the -20 window; an empty commit stays silent (the honest no-git state).
+with _tf43.TemporaryDirectory() as _td21d:
+    _home21d = str(Path(_td21d) / "home"); (Path(_td21d) / "home").mkdir()
+    _proj21d = Path(_td21d) / "proj"; _proj21d.mkdir()
+    # the deterministic slug rule (store_context.slug_for): the absolute path with every
+    # non-alphanumeric replaced by '-' — the store dir resolve will find is derived below.
+    _slug21d = _re.sub(r"[^A-Za-z0-9]", "-", str(_proj21d.resolve()))
+    _store21d = Path(_home21d) / ".claude" / "projects" / _slug21d / "memory"
+    _store21d.mkdir(parents=True, exist_ok=True)
+    _env21d = {**_os53.environ, "HOME": _home21d}
+    def _read21d(commit_val: str) -> str:
+        (_store21d / ".consolidation-state.json").write_text(
+            _json43.dumps({"commit": commit_val, "timestamp": "2026-09-05T00:00:00Z"}))
+        return _sp53.run([sys.executable, str(_scripts54 / "memory_status.py"), str(_proj21d),
+                          "--no-color", "--ascii"], capture_output=True, text=True, timeout=60,
+                         env=_env21d).stderr
+    _err21d = _read21d("HEAD-garbage")
+    _err21e = _read21d("")
+    check("v0.4.21 D1 read path (per-PR finding 2): a garbage non-empty marker.commit warns on "
+          "stderr; an empty commit stays silent (the honest no-git state)",
+          "marker.commit is not a valid SHA" in _err21d
+          and "marker.commit is not a valid SHA" not in _err21e)
+# amend-3 R5(i): the over-cap fixture covers BOTH counts — 45 distinct templates + 25 distinct
+# chains, each at count >= MIN_RECUR, in one hermetic scan subprocess (the resolve happens
+# inside the subprocess under the temp HOME — the module-level config-root cache is the reason).
+with _tf43.TemporaryDirectory() as _td21c:
+    _home21c = str(Path(_td21c) / "home"); (Path(_td21c) / "home").mkdir()
+    _proj21c = Path(_td21c) / "proj"; _proj21c.mkdir()
+    _script21c = (Path(_scripts54) / "distill_scan.py").read_text(encoding="utf-8")
+    _fx21c = Path(_td21c) / "fx21.py"
+    _fx21c.write_text(
+        "import json, os, sys\n"
+        "from pathlib import Path\n"
+        "sys.path.insert(0, sys.argv[2])\n"
+        "import distill_scan as ds21c\n"
+        "from store_context import resolve_store\n"
+        "proj = Path(sys.argv[1])\n"
+        "sess = resolve_store(proj).session_dir\n"
+        "sess.mkdir(parents=True, exist_ok=True)\n"
+        "rows = []\n"
+        "for i in range(45):\n"
+        "    for rep in range(2):\n"
+        "        rows.append({'timestamp': '2026-09-06T0%d:%02d:00Z' % (rep, min(i, 59)),\n"
+        "                     'message': {'role': 'assistant', 'content': [\n"
+        "                         {'type': 'tool_use', 'name': 'Bash',\n"
+        "                          'input': {'command': 'tool-cmd-%02d --flag' % i}}]}})\n"
+        "for i in range(25):\n"
+        "    for rep in range(2):\n"
+        "        rows.append({'timestamp': '2026-09-06T0%d:%02d:30Z' % (rep + 4, min(i, 59)),\n"
+        "                     'message': {'role': 'assistant', 'content': [\n"
+        "                         {'type': 'tool_use', 'name': 'Bash',\n"
+        "                          'input': {'command': 'chain-a-%02d && chain-b-%02d' % (i, i)}}]}})\n"
+        "(sess / 'fx21.jsonl').write_text('\\n'.join(json.dumps(r) for r in rows) + '\\n')\n"
+        "d = ds21c.scan(proj, '')\n"
+        "print(json.dumps({'n_recurring': d['scanned'].get('n_recurring'),\n"
+        "                  'n_chains': d['scanned'].get('n_chains'),\n"
+        "                  'recurring_len': len(d.get('recurring') or []),\n"
+        "                  'chains_len': len(d.get('chains') or [])}))\n")
+    _env21c = {**_os53.environ, "HOME": _home21c}
+    _pr21c = _sp53.run([sys.executable, str(_fx21c), str(_proj21c), str(_scripts54)],
+                       capture_output=True, text=True, timeout=120, env=_env21c)
+    _out21c = _json43.loads(_pr21c.stdout.strip().splitlines()[-1])
+    check("v0.4.21 D5 (amend-3 R5): the over-cap fixture pins BOTH true counts — 95 templates "
+          "(45 standalone + the 50 chain members, each also a recurring template) and 25 chains "
+          "past their output caps, the capped lists stay capped",
+          _out21c["n_recurring"] == 95 and _out21c["n_chains"] == 25
+          and _out21c["recurring_len"] == 40 and _out21c["chains_len"] == 20)
+check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
+      "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
+      "ADD checks, and it must equal the reported count)",
+      passed + failed + 1 == 1740)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

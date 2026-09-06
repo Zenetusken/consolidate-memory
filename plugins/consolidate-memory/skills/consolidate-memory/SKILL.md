@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.20** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.21** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -358,7 +358,7 @@ no-op** (which was already single-line and needed no change). The debrief's bold
 
 ### Phase 0 — Locate data + the high-water mark
 
-**Environment pre-flight (v0.4.16).** `CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.py ."`
+**Environment pre-flight (v0.4.16).** `CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.py" .`
 (or `cm doctor`, which embeds the same table) checks the environment deterministically —
 Python 3.8+, POSIX/WSL, the `sqlite3` stdlib module + SQLite ≥ 3.24, a real schema
 round-trip, the plugin's own integrity, write access, git, and the temp dir. **FAILs are
@@ -371,7 +371,7 @@ Run the bundled helper (it derives paths, inventories both stores, and computes 
 git range since the last consolidation — don't hand-derive these):
 
 ```bash
-CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py
+CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py"
 ```
 
 It prints: the repo docs, the **user-global `~/.claude/CLAUDE.md`** (read-only — a
@@ -432,7 +432,7 @@ measured before-state (scope, before-budget, marker) into a working file you'll 
 in as you go:
 
 ```bash
-CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --seed   # writes a PER-PASS cycle file + prints its path
+CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --seed   # writes a PER-PASS cycle file + prints its path
 ```
 
 `--seed` writes the seed to a **per-slug** path under the temp dir (`cm-cycle-<slug>.json`) and **prints
@@ -448,7 +448,7 @@ the CLAUDE.md hierarchy, so Phase 5 can emit a script-OBSERVED mutation trail (n
 `entries[]`):
 
 ```bash
-CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --snapshot   # writes a per-slug BEFORE snapshot + prints its path
+CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --snapshot   # writes a per-slug BEFORE snapshot + prints its path
 ```
 
 Keep that path for Phase 5's `--audit`. (Phase 0 also now reports the **whole CLAUDE.md hierarchy** — the
@@ -489,9 +489,9 @@ them — so the enrichment is legible (you see the bootstrap/refresh picture; ho
 relevance filter that decides PROCEED-vs-honest-no-op; on a normal pass it's a cheap read that costs nothing:
 
 ```bash
-CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --list .    # surface relevant/present/missing (read-only)
-CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --pull .    # then replicate (M1 auto-holds a past-the-CEILING pull)
-CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --harvest . # then harvest EVERY node's usage windows (v0.1.79)
+CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --list .    # surface relevant/present/missing (read-only)
+CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --pull .    # then replicate (M1 auto-holds a past-the-CEILING pull)
+CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --harvest . # then harvest EVERY node's usage windows (v0.1.79)
 ```
 
 The `--harvest` (v0.1.79) captures every OTHER node's organic fact-read windows from its
@@ -573,7 +573,7 @@ typed messages are <1% of the transcript and carry only the *feedback* slice; th
    turns** (secrets firewall at retrieval), and returns ranked, structured, scoped
    candidates:
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --json
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py" --json
    ```
    (For *eyeballing*, run it WITHOUT `--json` — the human-readable table is already formatted; reserve `--json`
    for machine capture. The `--json` shape is `{counts:{…, surfaced}, signals:[…]}` where each signal is
@@ -770,12 +770,12 @@ placing each fact in its tier and optimizing it for how that tier loads:
   trust boundary (`user-global` is domain-global, not installation-global).
   - **A NET-NEW fact:** author the Markdown, then:
     ```bash
-    CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py canonical upsert STEM --file PATH --origin --project .
+    CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py" canonical upsert STEM --file PATH --origin --project .
     ```
     **Validate a `stack-general` fact's `stacks:` against the detectable set FIRST.**
   - **PROMOTING a local fact:** set `scope`/`stacks` on the local file, then:
     ```bash
-    CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --promote . LOCAL_FACT [CANON_NAME]
+    CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --promote . LOCAL_FACT [CANON_NAME]
     ```
     `--promote` calls the same upsert (not a second ingress). Pass `CANON_NAME` to
     rename or dedup onto an existing canonical (never overwritten). v0.1.67 (Phase C): the
@@ -800,7 +800,7 @@ placing each fact in its tier and optimizing it for how that tier loads:
   as two untracked steps. Rebuild is plan-first:
   `cm local rebuild-index` then `--apply --confirm rebuild-local-index`.
   ```bash
-  CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py local upsert STEM --file PATH --project .
+  CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/cm_ops.py" local upsert STEM --file PATH --project .
   ```
 - **Cite** each new/changed entry with the commit SHA or session basename it came
   from, so a future pass can trace it.
@@ -912,8 +912,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    here (and the orphan clears in every other project on its next pass too). Report
    them, then apply (surface deletions per the safety rule before applying):
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --gc .          # report
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --gc . --apply  # reclaim
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --gc .          # report
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --gc . --apply  # reclaim
    ```
    GC only touches `global_ref:` mirror files, never project-authored facts. Record an
    `entries[]` row (`action: deleted`) per reclaimed orphan and set
@@ -962,7 +962,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    classification is judged against the WINDOW-START state, so a fact you archived earlier THIS pass
    (whose reads happened while it was still indexed) is never misclassified as a miss:
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py --recalls --into <the --seed path> --before <the --snapshot path>
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py" --recalls --into <the --seed path> --before <the --snapshot path>
    ```
    Transcripts rotate quickly, so this per-dream capture is the ONLY way usage accrues. A fact showing
    0 reads is ABSENCE OF EVIDENCE (retention + span-exclusion undercount), never proof it's unused —
@@ -996,16 +996,19 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      Phase 0 `justified: stem (re-fires at Nw · K to go)` means a re-stamp is unnecessary
      (a still-quiet stem is a no-op).
    Fill `demotion.verdict` — ONE sentence, always (a dormant/none verdict is still a verdict; "ran
-   and proposed nothing" must be distinguishable from "never ran").
+   and proposed nothing" must be distinguishable from "never ran"). **Quote the block's OWN
+   numbers (v0.4.21):** the verdict MUST derive its counts from the script-seeded fields —
+   "dormant — observed N · eligible M" from `windows_observed`/`eligible` — never a hand-invented
+   count; the validator flags a probative-count phrase that contradicts the block.
    Finally set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
    so the always-loaded gauge and ⚠ reflect the post-write state (AFTER any dispositions above).
-5. **Update the high-water mark**: script-write `commit` (current `HEAD`) + ISO
+5. **Update the high-water mark**: script-write `commit` + ISO
    `timestamp` into the native store's `.consolidation-state.json` (the
    `native_memory_dir` Phase 0 / `cm doctor` printed — never hand-build a
    `projects/<slug>/memory` path). **Do not hand-MERGE the JSON** — concurrent
    stacks-cache / snooze / justify writers share one locked CAS API:
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --stamp-marker <HEAD> \
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --stamp-marker HEAD \
        [--standing-justify-facts N --standing-justify-tokens N] [--snooze-until <iso>]
    ```
    Stamp the timestamp at write time; the scripts auto-mirror an EMPTY
@@ -1025,7 +1028,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    displayed `Nw` is the O1 loop: that number is per-fact zero-read windows, and a
    compacted `windows_full` can suppress forever):
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --justify-demotion <stem> [<stem>…]
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-demotion <stem> [<stem>…]
    ```
    It stamps `demotion_justify: {"<stem>": {"sequence": <monotonic usage-window seq>, "at": "<iso>"}}`
    under the project lock (preserves `commit`/`timestamp`/`stacks`/`beacon_snooze_until`
@@ -1037,7 +1040,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    Then **emit the deterministic mutation audit** (v0.1.22) — diff the post-write state against the Phase-0
    `--snapshot`:
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --audit <the --snapshot path> --into <the --seed path>
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --audit <the --snapshot path> --into <the --seed path>
    ```
    It appends a per-operation record to plugin-data
    `~/.claude/plugins/data/consolidate-memory/ops/<slot>/.mutation-log.jsonl` (the durable,
@@ -1060,7 +1063,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    skill). Run the scan ONCE and save it (so the same counts you judge are the counts captured — no
    second scan whose window has drifted):
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py . --json > <the --scan path>
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py" . --json > <the --scan path>
    ```
    (`<the --scan path>` = a temp file, e.g. the snapshot dir's sibling `distill-scan.json`.) Read it:
    It returns recurring Bash-command **templates** (`recurring`, count≥2, each with a `days` episode-spread)
@@ -1070,7 +1073,9 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    dream's scope). Ranking is by day-spread then count — rank is a HINT, not truth (a same-day high-count
    workflow can still be real). Credential-shaped commands COUNT into their class but their `sample` is an
    omission label (`scanned.secrets_omitted` says how many) — never a raw secret. The script only COUNTS —
-   you do the judgment. **Empty-set rule:** if `recurring` and `chains` are both empty, the GATE has
+   you do the judgment. **Empty-set rule:** read the counts from the scan's `scanned` block
+   (`scanned.n_recurring`/`scanned.n_chains` — the TRUE filtered counts, v0.4.21; never the capped
+   top-level list lengths, and never a wrong-field zero): if both are 0, the GATE has
    already produced the verdict (`nothing: 0 recurring · 0 chains`) — capture it with `--from/--into`
    (and still RUN `--workflows` / `--registrar --into` so the record is complete); do not walk the
    bullets below and do not judge blocked rows. Otherwise:
@@ -1099,7 +1104,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      Feed the SAVED scan straight into the seed with `--from` (no second scan — the injected counts are
      byte-identical to the ones you just judged):
      ```bash
-     CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py \
+     CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py" \
          --from <the --scan path> --into <the --seed path> \
          --verdict '<the one-liner>' [--proposed <X>]... [--created <X>]...
      ```
@@ -1110,7 +1115,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      retro-written; `verdict` = the one-liner, one sentence — both dashboards show it in full).
      **Before finalizing the gate verdict, also consult the FLEET view** (v0.1.83, read-only):
      ```bash
-     CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --workflows .
+     CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --workflows .
      ```
      Fold its evidence into the SAME gate: **breadth strengthens** a candidate (a template recurring in
      ≥2 nodes is the workflow analog of the cascade's G2.3 named-other-project witness — necessary
@@ -1128,7 +1133,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    ready for FLEET-WIDE placement (the binary rule: an artifact is project-local OR fleet-wide — NEVER
    stack-general), consult the registrar's MECHANICAL gates FIRST:
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py --workflows . --registrar --into <the --seed path>
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --workflows . --registrar --into <the --seed path>
    ```
    The engine emits per-candidate dispositions — `fleet-candidate` (a **distinctive** command/chain
    on ≥2 real nodes whose **every** node's own day-spread is d≥2 — fleet `d` is the MIN across nodes,
@@ -1166,7 +1171,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      has no audit record; **name it explicitly in the closing debrief** and fold the verdict into the debrief.
 7. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py <the --seed path> \
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py" <the --seed path> \
        --persist <native_memory_dir from Phase 0 / cm doctor>
    ```
    `--persist <store dir>` identifies the native store; the rendered record (one
@@ -1243,7 +1248,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    `--persist` (so `marker.timestamp` is stamped) and BEFORE `render_html` (so the dashboard
    embeds it):
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py --diffs <the --seed path> \
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --diffs <the --seed path> \
        --before <the --snapshot path>
    ```
    It writes a per-dream sidecar `dashboards/diffs/<commit>__<timestamp>.json` (per-file diff
@@ -1260,7 +1265,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    report (one cycle-record contract, two renderers): the same data plus the longitudinal
    index-budget trajectory, rendered into the per-repo archive mini-site.
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/render_html.py <the --seed path> \
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/render_html.py" <the --seed path> \
        --store <native_memory_dir from Phase 0 / cm doctor> --latest
    ```
    It writes a ZERO-dependency, self-contained `dashboards/index.html` (the whole per-repo
@@ -1479,8 +1484,8 @@ this once warned against; the dashboard remains the source of the figures.)
                "windows_observed": 0, "eligible": 0,
                "surfaced": [], "struck": [],
                "verdict": "<one line: dormant — N probative windows | demoted X · justified Y | none: <top candidate> kept because …>"},
-  "marker": {"before_commit": "<prev marker HEAD>", "before_timestamp": "<prev marker ISO>",
-             "commit": "<HEAD>", "timestamp": "<ISO, stamped in Phase 5>"},
+  "marker": {"before_commit": "<prev marker full SHA>", "before_timestamp": "<prev marker ISO>",
+             "commit": "<resolved 40-hex SHA — the stamp resolves HEAD for you, v0.4.21>", "timestamp": "<ISO, stamped in Phase 5>"},
   "workflow_proposals": {"_": "v0.1.87/W-C: the registrar's Tier-2 fleet-placement evidence — SCRIPT-INJECTED by --workflows --registrar --into (candidates + decline_anchors, counts never hand-mirrored); the MODEL writes disposition (awaiting-confirmation|confirmed|declined) + the genericized artifact name ONLY on fleet-candidate rows + the one-line verdict. Absent = the registrar was not consulted this pass (a visible decision). v0.1.90: n_* are the FULL join sizes; candidates[] persists every distinctive fleet-candidate + a capped distinctive day-spread sample (generic-cli / single-node are counts only); mechanical.distinctive + n_generic/n_day_spread; fleet d is MIN of per-node d; decline_anchors attach from declined fleet-candidate WP rows.",
                          "candidates": [{"candidate": "<the normalized template/chain>", "form": "command|chain",
                                         "evidence": {"nodes": ["<node label>"], "d": 0, "n": 0},

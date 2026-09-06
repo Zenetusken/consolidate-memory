@@ -1325,9 +1325,10 @@ def main() -> int:
         if status == "unstamped":
             print("⚠ UNSTAMPED CYCLE · no marker.timestamp in the record and no stamp in "
                   ".consolidation-state.json", file=sys.stderr)
-            print("  → run memory_status.py --stamp-marker <HEAD> (SKILL step 5), fill "
-                  "marker.timestamp, then re-render", file=sys.stderr)
-            _ui.dream_cue("NOT persisted — the cycle is unstamped: run --stamp-marker <HEAD> and "
+            print("  → run memory_status.py --stamp-marker HEAD (resolved to the SHA for you, "
+                  "v0.4.21) and fill marker.timestamp, then re-render", file=sys.stderr)
+            _ui.dream_cue("NOT persisted — the cycle is unstamped: run --stamp-marker HEAD "
+                          "(resolved to the SHA for you, v0.4.21) and "
                           "fill marker.timestamp before re-rendering; WAKE only after the clean re-run")
             return 5
         if status in ("no-dir", "io-error"):

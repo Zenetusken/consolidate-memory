@@ -5,6 +5,42 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.21] — 2026-09-06
+
+**Patch — the defect sweep (six measured defects from the dream session, root-caused and pinned).**
+
+- **D1 — the marker could be stamped with a literal placeholder and silently ignored.**
+  Two dreams ran `--stamp-marker HEAD` with the literal arg; the stamp wrote the string
+  "HEAD" verbatim (no validation), and the next read's `_valid_sha` guard silently
+  cleared it → the first-consolidation fallback mis-scoped the whole pass. The stamp
+  now RESOLVES its argument (`rev-parse --verify <arg>^{commit}` — bare `rev-parse`
+  echoes any 40-hex without an object-DB lookup, the dead-SHA door), stamps the honest
+  `commit: ""` + timestamp on a no-git/unborn-HEAD store (a refusal would exit-5 every
+  no-git dream — the persist gate is timestamp-only), and REFUSES only unresolvable
+  args in commit-ful repos (the state file stays byte-identical). The read now WARNS
+  when it silently clears a non-empty invalid commit.
+- **D2 — the demotion verdict could contradict the scripted block.** The validator now
+  flags a verdict whose probative-count phrase contradicts `windows_observed`, and the
+  SKILL binds the verdict's numbers to the block's own fields.
+- **D3 — the SKILL command template glued an argument into the quoted script path**
+  (copying it verbatim failed). Fixed + a smoke pin that no command line glues an arg
+  inside the quotes.
+- **D5 — the distill scan's counts lived only in capped list lengths.** The `scanned`
+  block now carries the TRUE filtered pre-cap `n_recurring`/`n_chains`; the injection
+  and the report's scale line use them (the capped lengths stay the output cap), the
+  validator's "impossible count" backstop is dropped (the count is script-truth), and
+  the SKILL names the exact fields to read — the class where the record's numbers and
+  the model's verdict contradicted each other is closed.
+- **D6 — the suite's exact-count pin.** An orphaned section (the double print/exit
+  class) can never print green again: the final count is pinned exactly.
+
+D4 (beat reuse) is a documented authorship ceiling, no code. Design-of-record:
+`docs/defect-sweep-v0421.spec.md` (advisor + review-to-zero, amend-1/2/3 — the final
+sweep's R1–R5 closed: the doc-wide quote-close pin, the mandate-format verdict
+digits, the reconcile_marker gate, the resolution cwd + 40-hex belt, the dual-count
+over-cap fixture). Backward-compatible → patch. Suite **1739** · browser **1105** ·
+sim / manifests / mypy green.
+
 ## [0.4.20] — 2026-09-06
 
 **Patch — the network capture teeth (the skipped fleet capture is no longer silent).**

@@ -451,8 +451,8 @@ class Distill(TypedDict, total=False):
     # fields (proposed/created/verdict) are model-authored (by flag, preferred, or by hand).
     sessions: int            # scan scale, from the scan JSON's scanned.sessions (script-injected)
     commands: int            # scanned.commands (script-injected)
-    n_recurring: int         # = len(scan.recurring) — n_ prefix: the scan JSON's `recurring` is a LIST
-    n_chains: int            # = len(scan.chains)
+    n_recurring: int         # the scan's TRUE filtered pre-cap count (scanned.n_recurring, v0.4.21 — never the capped list length)
+    n_chains: int            # scanned.n_chains (same true-count contract)
     window: str              # v0.1.58: the scan window (`--since` ISO or "(all)") — a record can tell scopes apart
     secrets_omitted: int     # v0.1.58: firewall-flagged commands (samples suppressed) — capture parity with the scan
     proposed: list[str]      # artifacts proposed BY NAME (confirmation usually arrives post-persist)
@@ -468,13 +468,11 @@ class Distill(TypedDict, total=False):
     used: list               # [{"a": skill-name, "n": count}] Skill-invocation adoption tally — ≤ _DISTILL_USED_CAP
 
 
-# v0.1.58: the distill scanner's output caps, MIRRORED (importing distill_scan here would cycle —
-# distill_scan imports FROM this module). A smoke pin asserts equality with distill_scan.MAX_RECUR_OUT /
-# MAX_CHAIN_OUT, so the mirror cannot drift. Used by validate_cycle_record's impossible-count backstop.
-_DISTILL_CAPS = (40, 20)
+# v0.4.21 (D5): the old _DISTILL_CAPS mirror tuple is DELETED with the validator backstop it served —
+# the output caps are distill_scan's own constants, and the true counts made the mirror dead.
 
 # v0.1.82 (W-A): the PERSISTED-row caps, mirrored from distill_scan._DISTILL_PERSIST_CAP/_USED_CAP
-# (same no-import rationale + the same cross-module smoke-pin discipline as _DISTILL_CAPS above).
+# (same no-import rationale, pinned by the v0.1.82 smoke rows).
 # Used by validate_cycle_record's impossible-length backstop on distill.top/top_chains/used.
 _DISTILL_PERSIST_CAP = (12, 8)
 _DISTILL_USED_CAP = 12
@@ -584,11 +582,11 @@ def _proposal_decline_rows(c: Mapping[str, Any]) -> dict:
 
 # v0.1.63 (Phase A): mirrors extract_signals._USAGE_FACT_CAP (the --recalls per_fact emission cap;
 # smoke-pinned so the mirror cannot drift) — validate_cycle_record's impossible-count backstop for
-# the usage block, same shape as _DISTILL_CAPS above.
+# the usage block (the former _DISTILL_CAPS mirror shape).
 # v0.1.67 (Phase C): 20 → 40. The fleet's heaviest-usage node measured 22 distinct facts read in one
 # window — above the old cap, so its EVERY window would be cap-truncated and non-probative for
 # zero-read evidence, keeping the demotion policy dormant exactly where usage data is richest (a
-# spec-gate finding). 40 matches _DISTILL_CAPS[0]'s scale; an upper-bound LOOSENING is additive-safe
+# spec-gate finding). 40 matches distill_scan.MAX_RECUR_OUT's scale; an upper-bound LOOSENING is additive-safe
 # (old ≤20-row records stay valid). Producer + this mirror + the smoke pins move together.
 _NETWORK_FACT_CAP = 120
 _NETWORK_HOLDER_CAP = 2000
@@ -1967,18 +1965,60 @@ def _utc_iso_now() -> str:
     return dt.strftime("%Y-%m-%dT%H:%M:%S") + f".{dt.microsecond // 1000:03d}Z"
 
 
+def _resolve_stamp_commit(project_dir: Path, commit: str) -> "tuple[str, str]":
+    """(resolved, error) — the D1 fix (docs/defect-sweep-v0421.spec.md): stamp_project_marker once
+    wrote the literal placeholder string "HEAD" verbatim into the state file (measured twice), and
+    the read silently cleared it → first-consolidation mis-scope. Outcomes: a hex SHA passes through
+    after a DEAD-check (`rev-parse --verify X^{commit}` — bare rev-parse echoes any 40-hex WITHOUT an
+    object-DB lookup, the dead-SHA door); a resolvable ref/HEAD resolves to the full SHA; NOT a git
+    work tree, or an unborn HEAD, stamps the EMPTY commit (honest — the read already treats "" as
+    first-consolidation, and the persist gate is TIMESTAMP-only, so a refusal would exit-5 every
+    no-git dream forever); anything else REFUSES — the state file stays byte-identical."""
+    if _valid_sha(commit):
+        # amend-3 R4 + the per-PR review's finding 4 + its NIT 2: the work-tree check runs
+        # FIRST so a hex arg in a no-git store mints the honest "" (never a refusal the spec
+        # reserves for commit-ful repos); an UNBORN repo (a work tree, zero commits) mints ""
+        # too, mirroring the non-hex branch; a commit-ful repo with an unresolvable hex still
+        # refuses (the dead-SHA door preserved).
+        inside_hex = _run(["git", "rev-parse", "--is-inside-work-tree"], project_dir).strip()
+        if inside_hex != "true":
+            return "", ""
+        resolved = _run(["git", "rev-parse", "--verify", f"{commit}^{{commit}}"], project_dir).strip()
+        if _valid_sha(resolved) and len(resolved) == 40:
+            return resolved, ""
+        if not _run(["git", "rev-parse", "--verify", "HEAD^{commit}"], project_dir).strip():
+            return "", ""  # unborn HEAD — the empty commit is the honest state
+        return "", f"commit {commit[:12]} does not resolve in this repository"
+    inside = _run(["git", "rev-parse", "--is-inside-work-tree"], project_dir).strip()
+    if inside != "true":
+        return "", ""
+    resolved = _run(["git", "rev-parse", "--verify", f"{commit}^{{commit}}"], project_dir).strip()
+    # amend-3 R4: the resolved output must fullmatch 40-hex before writing (argv belt-and-braces).
+    if _valid_sha(resolved) and len(resolved) == 40:
+        return resolved, ""
+    if not _run(["git", "rev-parse", "--verify", "HEAD^{commit}"], project_dir).strip():
+        return "", ""  # unborn HEAD (no commits yet) — the empty commit is the honest state
+    return "", f"cannot resolve {commit!r} to a commit in this repository"
+
+
 def stamp_project_marker(project_dir: Path, *, commit: "str | None" = None,
                          timestamp: "str | None" = None,
                          standing_justify: "dict | None" = None,
                          snooze_until: "str | None" = None) -> dict:
-    """Locked CAS merge of dream-marker keys. Does not mint a missing marker unless commit is set."""
+    """Locked CAS merge of dream-marker keys. Does not mint a missing marker unless commit is set.
+    v0.4.21 (D1): a passed commit is RESOLVED (never written verbatim) — see _resolve_stamp_commit;
+    the empty string CAN mint (the no-git/unborn honest state), so the mint gate keys on `is None`."""
     from control_plane import update_project_state
     from store_context import WriteRefused, resolve_store
     ctx = resolve_store(project_dir)
     iso = timestamp or _utc_iso_now()
+    if commit is not None:
+        commit, err = _resolve_stamp_commit(project_dir, commit)
+        if err:
+            return {"ok": False, "error": err}
 
     def mutator(state: dict, snap: object) -> dict:
-        if not getattr(snap, "exists", False) and not commit:
+        if not getattr(snap, "exists", False) and commit is None:
             raise WriteRefused("no .consolidation-state.json — run a dream's marker write first")
         out = dict(state)
         if commit is not None:
@@ -2015,6 +2055,11 @@ def reconcile_marker(marker: object, store_dir: Path) -> dict:
         state = {}
     for k in ("commit", "timestamp"):
         if not str(out.get(k) or "").strip() and str(state.get(k) or "").strip():
+            # v0.4.21 (D1, amend-3 R3): the commit fill is _valid_sha-gated — a defect-era
+            # garbage commit (the literal "HEAD" class) must never copy into the record marker,
+            # the archive, or the persist dedup key; the timestamp fills unconditionally.
+            if k == "commit" and not _valid_sha(str(state.get(k))):
+                continue
             out[k] = state[k]
     return out
 
@@ -2732,7 +2777,14 @@ def build_context(project_dir: Path) -> dict:
     # git as an OPTION (argument injection). Accept only a real hex SHA; anything else
     # is treated as "no marker" (first-consolidation scope). Defends the one external
     # command in this tool against a tampered/garbage state file.
-    if not _valid_sha(last_commit):
+    if last_commit and not _valid_sha(last_commit):
+        # v0.4.21 (D1): the class must SURFACE at first read, not at the next audit — a
+        # non-empty invalid commit (the literal "HEAD" placeholder class) warns and falls back;
+        # an EMPTY commit is the honest no-git/unborn state and stays silent.
+        print("memory_status: marker.commit is not a valid SHA — treating as first consolidation",
+              file=sys.stderr)
+        last_commit = ""
+    elif not last_commit:
         last_commit = ""
 
     head = _run(["git", "rev-parse", "HEAD"], project_dir)
@@ -3279,6 +3331,35 @@ def validate_cycle_record(record: object) -> list[str]:
     nr = record.get("narration")
     if isinstance(nr, dict) and "gaps" in nr and not isinstance(nr["gaps"], list):
         warnings.append("narration.gaps is not a list")
+    # v0.4.21 (D2, the amend-2 A7 fold): the demotion verdict must quote the block's OWN numbers —
+    # a probative-count phrase in the verdict that contradicts windows_observed is the measured
+    # defect class (an authored "0 probative" over a scripted 12, rendered side by side).
+    dm = record.get("demotion")
+    if isinstance(dm, dict) and isinstance(dm.get("verdict"), str):
+        _wo21 = dm.get("windows_observed")
+        _el21 = dm.get("eligible")
+        # v0.4.21 (D2, amend-3 R2): THREE patterns — the measured "N probative" phrase AND the
+        # mandate's own digits ("observed N · eligible M") must equal the scripted block. Each
+        # warn-only, silent when the phrase is absent. Known false-warn ceiling, accepted: a
+        # verdict quoting the gate's "≥3 probative zero-read windows" threshold over a different
+        # windows_observed warns — non-blocking stderr.
+        if isinstance(_wo21, int):
+            _dm = re.search(r"(\d+)\s+probative", dm["verdict"])
+            if _dm and int(_dm.group(1)) != _wo21:
+                warnings.append(
+                    "demotion.verdict contradicts the scripted block (verdict says %s probative, "
+                    "windows_observed=%d)" % (_dm.group(1), _wo21))
+            _do = re.search(r"observed\s+(\d+)", dm["verdict"])
+            if _do and int(_do.group(1)) != _wo21:
+                warnings.append(
+                    "demotion.verdict contradicts the scripted block (verdict says observed %s, "
+                    "windows_observed=%d)" % (_do.group(1), _wo21))
+        if isinstance(_el21, int):
+            _de = re.search(r"eligible\s+(\d+)", dm["verdict"])
+            if _de and int(_de.group(1)) != _el21:
+                warnings.append(
+                    "demotion.verdict contradicts the scripted block (verdict says eligible %s, "
+                    "eligible=%d)" % (_de.group(1), _el21))
     # v0.4.1 (D1): a PRESENT-but-incomplete arc warns here (stderr, never blocks) — the same
     # single predicate the persist gate and the WAKE cue use. A missing/empty block stays quiet
     # (legacy/preview records; the gate's documented scope escape).
@@ -3295,12 +3376,10 @@ def validate_cycle_record(record: object) -> list[str]:
         # v0.1.58 numeric backstop: counts above the scanner caps are IMPOSSIBLE from a capped scan —
         # the measured hand-mirror failure (a persisted n_recurring=47 vs MAX_RECUR_OUT=40). `--into`
         # is the cure; this warn catches a hand-fill that dodged it. Coercion-guarded (warn-only gate).
-        for ck, cap in (("n_recurring", _DISTILL_CAPS[0]), ("n_chains", _DISTILL_CAPS[1])):
-            try:
-                if ck in distill and int(distill[ck]) > cap:
-                    warnings.append(f"distill.{ck} exceeds the scanner cap ({cap}) — impossible from a capped scan")
-            except (TypeError, ValueError):
-                pass  # a non-numeric count is a shape problem the render coercion boundary absorbs
+        # v0.4.21 (D5, the amend-2 A5 fold): the count backstop is DROPPED — the scan now emits
+        # the TRUE filtered pre-cap counts into scanned.n_recurring/n_chains, so a legitimately
+        # over-cap count (an output cap, never a count) must not warn; the hand-mirror class the
+        # backstop guarded died with the script-only injection.
         # v0.1.82 (W-A): same backstop shape for the persisted ROWS — a length above the producer cap
         # is impossible from a capped --into injection (only a hand-fill can produce it).
         for lk2, cap2 in (("top", _DISTILL_PERSIST_CAP[0]), ("top_chains", _DISTILL_PERSIST_CAP[1]),
@@ -3334,7 +3413,7 @@ def validate_cycle_record(record: object) -> list[str]:
             warnings.append(f"usage.mention_stems exceeds the scanner cap ({_USAGE_FACT_CAP}) — impossible from a capped scan")
 
     # v0.1.67 (Phase C): the demotion block — surfaced is script-seeded and capped at _DEMOTION_BOTTOM_K
-    # (producer + validator share THIS module, so no cross-module mirror is needed, unlike _DISTILL_CAPS).
+    # (producer + validator share THIS module, so no cross-module mirror is needed).
     demotion = record.get("demotion")
     if isinstance(demotion, dict):
         for lk in ("surfaced", "struck"):
