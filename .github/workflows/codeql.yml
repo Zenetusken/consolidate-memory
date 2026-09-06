@@ -5,6 +5,9 @@ name: CodeQL
 # never on pull_request (a PR-triggered analyze cost ~10 minutes and added nothing
 # the 11 required checks don't already gate). The repo's default setup is toggled off in Settings
 # (the security tab keeps its default-branch scans via this workflow).
+# v4 (2026-09-06): the v3 line rejected the `threat-model` init input as a configuration
+# error (the main/weekly run went red) and logs a December-2026 deprecation — the input is
+# dropped (the default threat model covers this repo's analysis) and the action is v4.
 
 on:
   push:
@@ -28,11 +31,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
-          threat-model: remote
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v3
+        uses: github/codeql-action/autobuild@v4
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
