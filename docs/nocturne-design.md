@@ -5,7 +5,7 @@ sections support progressive exploration: **dream summary → memory network →
 memory activity → verification & health**, followed by the existing decision
 ledger. The header remains the sole index-size and budget-projection chart.
 
-The redesigned renderer preserves its original header markup, shared helpers,
+The redesigned renderer preserves the original header graph markup, shared helpers,
 calculations, and styles. Section navigation reflects the new order. Every figure
 is captured evidence, not a live store query.
 
@@ -13,34 +13,95 @@ is captured evidence, not a live store query.
 
 The midnight canvas, Glacier holdings, Iris permissions, restrained orbital mark,
 and humanist system typography remain. Georgia italic belongs to captured dream
-voice. Nocturne, Original, Light, and System themes, reduced motion, print, archive
+voice. Report sections use larger, heavier headings and conclusions, comfortable
+body text, compact evidence labels, and quieter source notes. Status text has its
+own emphasis and color; meaning remains explicit in words. Section spacing and
+dividers separate the questions each section answers. The network uses Glacier
+for observed holdings and Iris for permissions, with a short selection caption.
+Report changes are scoped below the existing header and KPIs; the surrounding
+toolbar controls share the control styling described below.
+
+Narration, outcome text, captions, ledger explanations, and the activity inspector
+use their section's available width. Section titles, metadata, and collapse
+controls share a consistent alignment. The dream-summary columns are equal, and
+the activity chart fills its container. Network search and View controls have
+matching heights and stack on mobile. Mobile ledger rows put the action above the
+lesson name; long names and evidence wrap within their containers.
+
+Source notes identify the saved outcome, decision ledger, verification, or recall
+observations behind each section. The network caption attributes its answer to
+the saved dream snapshot. Recorded save times identify the dream, without implying
+a fresh inspection of today's stores or a separate capture timestamp.
+
+Nocturne, Original, Light, and System themes, reduced motion, print, archive
 filters, density, keyboard navigation, and the accessible diff dialog remain.
 No fonts, scripts, stylesheets, or data are fetched from the network.
+
+### Controls and links
+
+Controls share a coherent hierarchy across the archive toolbar and report sections.
+The primary **Open this dream** action has a filled treatment; secondary actions,
+selectors, and toolbar buttons use clear outlines. Inline evidence actions remain
+close to their associated claim or filename, with an explicit visual affordance.
+Expandable details have chevrons, distinct hover and expanded states, and generous
+clickable rows. Section collapse indicators have visible frames. File actions pair
+the filename with an explicit **View diff** label and resolve only to a captured
+diff, including historical file references.
+
+Control sizes, padding, radii, and interaction colors are consistent. Standalone
+controls provide 44-pixel targets. Keyboard focus remains visible, disabled controls
+cannot activate, and pointer clicks do not add unrelated selection boxes to the
+graph. The control styling adapts to all four themes without changing the header
+graph's own colors, geometry, or calculations.
+
+Evidence actions expand and focus the appropriate detail. **Open this dream** opens
+the selected report or returns to its summary when it is already open. **Archive**
+and Escape return to the dream list for both query and fragment selection links.
+The diff dialog keeps keyboard focus inside it, supports scrolling the diff with
+the keyboard, and returns focus to its trigger when closed.
 
 ## Network exploration
 
 A ranked SVG tree replaces domain containers and perimeter-routed pairwise edges.
 Its initial root is the captured fleet. Every captured domain appears, including
 an explicitly captured domain with no project rows. The triggering project's
-domain starts expanded. Each domain has 12-project pages, and search reaches every
-captured project by its name, domain, or stable store identity. No global first-16
-cutoff remains.
+domain starts expanded. Each domain has 12-project pages, and project search
+reaches every captured project. No global first-16 cutoff remains.
 
-Selecting a project exposes its costs, captured facts, and recorded pairwise
-connections. Selecting a canonical fact produces **fact → domain → physical
-holders**. Selecting a group produces **group → domain → captured members**;
-permissions never center on an arbitrary project. Only those members appear in
-the focused group tree. Breadcrumbs and reset return to the fleet.
+A single **View** selector switches between the fleet, captured facts, and groups.
+Selecting a canonical fact produces **fact → domain → physical holders**.
+Selecting a group produces **group → domain → captured members**; permissions
+never center on an arbitrary project. Only those members appear in the focused
+group tree. Project names and their relationship labels appear on the map itself.
+A compact caption explains the selection and its saved-snapshot basis.
+
+The visible network consists of this map, project search, the View selector, and
+the caption. When capture is incomplete, one brief note states the limitation.
+There is no second holder list, technical inspector, project directory, token
+accounting panel, or repeated statistics beneath the map. The existing page-level
+**Inspect the complete captured cycle record** disclosure retains all original
+network fields, including identities, capture counters, token estimates, registry
+counts, and historical pairwise links.
 
 Horizontal ranks use dedicated branch ports. A trunk is drawn once, junctions mark
-its aggregate branches, and expanding a domain exposes the members. Mobile changes
-to a vertical tree with separate fleet and domain rails; the evidence inspector
-moves below it. Text labels, interaction names, and explanatory evidence accompany
-color. Native disclosures retain complete inventories, addressed group facts,
-registry baseline counts, and every embedded network field.
+its aggregate branches, and expanding a domain exposes the members. Each trunk
+extends through both the root's port and every child branch, including a single
+domain whose center differs from the root. Root connections have no visual gaps.
+Rank labels distinguish the selected root, domains, and projects. Mobile changes
+to a vertical tree with separate fleet and domain rails before labels and paging
+controls become cramped. Text labels,
+interaction names, and the selection caption accompany color. The SVG height
+follows its rendered width and view box so sparse trees do not leave large blank
+bands above and below their branches.
+
+Pointer interactions show the chosen relationship without a focus rectangle around
+an unrelated root. Keyboard navigation retains a visible focus indicator. Mobile
+branches leave the root at its side so they stay clear of the fact or group name.
+The gray fleet branches are labeled **Project organization**, distinct from
+observed holdings and permission to receive.
 
 Historical archives use their recorded domains, projects, and pairwise links.
-When canonical identities are absent, the inspector states that boundary. The
+When canonical identities are absent, the caption states that boundary. The
 renderer never reconstructs history from current stores.
 
 ## Canonical identity and capture contract
@@ -89,52 +150,77 @@ The summary follows the existing header/KPIs and leads with the recorded outcome
 Confirmed claims, observed physical changes, decisions, and attention items link
 to their evidence or the existing ledger. No new completion judgment is invented.
 
-The dream is one connected **Sleep → intermediate passages → Wake** sequence.
-Both bookends stay visible. Intermediate passages are selectable, and **Read the
-complete dream** retains every captured text passage in order. Canonical phase
-labels require exactly six nonempty string beats; other sequences use numbered
-beats. Missing bookends and passages are explicit. The original record remains
-available unchanged in the raw-data inspector.
+The complete dream reads in one column of italic paragraphs, ordered from sleep
+through the captured passages to wake. Each passage appears once, fully visible,
+without phase controls, repeated labels, or a second expanded copy. Paragraph
+breaks and captured wording are preserved; surrounding Markdown emphasis and quote
+markers are removed for display because the typography already supplies the voice.
+Missing or malformed passages remain explicit in ordinary report typography. The
+original record remains available unchanged in the raw-data inspector.
 
 ## Verification and health
 
-Compact summaries distinguish claims, store integrity, and observed changes with
-four explicit states: **Needs attention**, **Recorded clear**, **Partially
-captured**, and **Not captured**. There is no combined health score. Exceptions
-come first and link to the relevant disclosure:
+Exceptions come first and link to four disclosures. The first three display their
+own **Needs attention**, **Recorded clear**, **Partially captured**, or **Not
+captured** state in the disclosure heading. A second row of status cards does not
+repeat the same judgments. There is no combined health score.
 
-1. **Verification evidence** — recorded judgments and procedure-integrity findings.
-2. **Store checks** — pointers, links, drift, preflight time and IDs, remediation,
-   identity/registry state, and maintenance evidence.
-3. **Observed file changes** — the measurement window, per-store observations,
-   every per-file operation with diff access, and conservation evidence.
-4. **Recall & workflow decisions** — usage windows, procedure exclusions, misses,
-   recurring commands/chains, skill use, demotion, registrar states, and decline lineage.
+1. **Verification evidence** — a concise account of confirmed, corrected, and
+   unverifiable claims, the recorded method, and procedure-integrity findings.
+2. **Store checks** — named checks and recorded failures, followed by preflight
+   time and IDs. Detailed health, remediation, identity, and maintenance fields
+   remain inside subordinate disclosures.
+3. **Observed file changes** — changed filenames and diff access lead. Store
+   accounting, the observation window, and conservation evidence remain available
+   on expansion.
+4. **Recall & workflow decisions** — readable recall observations and recorded
+   verdicts lead into separate workflow, demotion, and cross-project disclosures.
+   Complete command rows, chains, skill use, registrar states, and decline lineage
+   stay reachable without dominating the initial view.
 
-Adverse or pending disclosures open by default. Preflight lists only its captured
+Only adverse or pending results open by default. Partial capture is clearly labeled
+but does not open routine detail automatically. Preflight lists only its captured
 timestamp and failure/warning IDs, without inventing individual check outcomes.
 Unknown observations stay missing; actual zeroes stay zero. Complete evidence rows
-are reachable through native disclosures. Long movement and declared-file lists
-have working expansion controls instead of inert `+N more` labels.
+remain available through native disclosures and the unchanged raw record.
 
 ## Memory activity
 
-The lower stock/effort charts become aligned decision activity and observed reads,
-with a categorical ribbon for captured rigor. The default window is the latest 12
-dreams ending at the selected dream; **12 / 24 / All captured** controls change it.
-Exact action categories remain intact, including unfamiliar captured categories.
-Decisions are never called file writes, and activity does not infer productivity.
+Two aligned timelines show decision counts and observed reads for all captured
+dreams through the open dream. Both fit the section width without a horizontal
+scrollbar or time-window controls. Labels become sparse as history grows, while
+missing observations retain visible gaps. The same composition adapts to narrow
+screens. A compact dream selector with **Previous / Next** controls provides exact
+local selection even when a dense chart cannot give every cycle a large target.
 
-Selecting a cycle updates a local inspector: outcome, decisions, observed mutations,
-fact-count change, verification, reads, and usage window. **Open this dream** is a
-separate archive navigation action. Missing reads and rigor remain gaps. A disclosed
-table preserves fact counts, timestamps, cadence, and each usage window. Overlapping
-windows are never summed into a misleading recall total.
+Selecting a cycle updates a concise local summary without changing the archive
+selection or shortening the chart. Additional detail retains exact
+decision categories, observed file changes, fact-count change, verification, captured
+rigor, and the usage window. **Open this dream** remains a separate archive
+navigation action. Categories are preserved, including unfamiliar captured actions;
+decisions are never called file writes, and activity does not infer productivity.
+Missing observations remain gaps. A disclosed table preserves historical values,
+timestamps, cadence, rigor, and each usage window. Overlapping windows are never
+summed into a recall total.
+
+## Changes and decisions
+
+Each ledger row leads with its recorded action, lesson name, and reason. Captured
+diffs remain directly accessible from the lesson. A **Decision details** disclosure
+holds the scope, tier, full citation, and declared files; the citation no longer
+relies on a truncated label or pointer-only tooltip. Rows preserve their original
+order and exact action categories.
+
+Diffs without a corresponding narrated decision appear in a separate **Other
+observed file changes** list. Its label distinguishes physical observations from
+model decisions while keeping every captured diff reachable. Missing decisions and
+missing diffs have explicit states. Mobile rows keep the action above the lesson
+name, with long citations and filenames wrapping inside the section.
 
 ## Implementation and reproduction
 
 - `dashboard.template.html`: stable header/archive infrastructure and section markup/styles.
-- `dashboard.network.js`: network normalization, ranked layout, selection, and inventory.
+- `dashboard.network.js`: network normalization, ranked layout, view selection, and captions.
 - `dashboard.sections.js`: outcome, captured voice, health/evidence, and activity rendering.
 - `render_html.py`: bundles both vanilla-JavaScript modules inline and safely embeds JSON.
 
@@ -164,36 +250,44 @@ redesign for ordinary, sparse, historical, over-target, and ceiling cases.
 [Download the fictional archive](previews/nocturne/index.html) and open `#sel=7`.
 Its companion JSON, screenshots, and SVG contain fictional data only. A supplied
 personal archive is regenerated separately by replacing its presentation while
-retaining its entire existing JSON payload and `#sel=45` selection; it is never
+retaining its entire existing JSON payload and selection link; it is never
 copied into this public repository.
 
 ## Local validation, 2026-09-05
 
-Validated against the working tree based on `ad3771f` (v0.4.16):
+Validation applies to the working tree based on `fad663f` (v0.4.17):
 
 | Gate | Result |
 | --- | --- |
-| Smoke, including canonical identity regressions | 1,686 passed, 0 failed |
-| Chromium | 320 passed; no browser errors or external requests |
+| Smoke, including canonical identity regressions | 1,688 passed, 0 failed |
+| Chromium | 1,101 passed, 0 failed |
 | Lifecycle simulation | All properties through probe AG hold |
 | mypy | No issues in 40 source files |
 | Manifest checks | Portable checker and strict Claude CLI validation pass |
+| CLI status | `cm status` passes |
 | Concurrency | 15 passed, 0 failed |
-| Quick capacity benchmark | Both SLOs pass; beacon p99 130.0 ms, no-change pull 213.6 ms |
-| Header comparisons | Identical SVG geometry in all 20 case/viewport combinations |
+| Quick capacity benchmark | Both SLOs pass; worst beacon p99 75.4 ms, no-change pull 144.5 ms; peak RSS 36,148 KB |
 
-The header markup, shared helpers, calculation blocks, and pre-existing CSS were
-also compared directly with the pre-edit source. Header pixels match in all 20
-comparisons when captured at the same whole-pixel origin. In the natural page flow,
-16 match byte-for-byte; four at 320px have subpixel raster differences caused by
-section-navigation wrapping. The graph's own geometry and styles are unchanged.
+The browser matrix covers 320, 390, 768, and 1440 pixels in all four themes,
+reduced motion, print, offline rendering, and hostile text. Activity cases include
+47, 120, and 500 dreams: the chart fits without scrolling, missing observations
+remain gaps, and every dream remains accessible through the selector and keyboard.
+Evidence cases include pending workflows, missing-versus-zero values, full citations,
+real diff destinations, long scrollable diffs, archive links, and rich/sparse
+navigation. Control checks cover target sizes, hover/focus/disabled states, and
+matching destinations rather than appearance alone.
 
-The supplied archive's embedded JSON is preserved **byte for byte**, with all 46
-cycles and `#sel=45`. Both regenerated archives were visually inspected on desktop
-and mobile, including the focused group view; they render offline without errors.
-The live read-only fleet check resolves the previously split stack fact to one
-identity with ten holders and reports zero unresolved identities or fact-file read
-failures. These local results are not a release or hosted-CI claim.
+The header graph is compared with the frozen v0.4.16 fixture for ordinary, sparse,
+historical, over-target, and ceiling cases. The checks preserve its SVG geometry,
+calculation blocks, and styles; screenshot comparisons account for page position
+when navigation wrapping changes the surrounding layout.
+
+Public previews and screenshots contain fictional data only. The regenerated
+personal preview preserves all 47 captured cycles byte for byte, including its
+original selection link. Desktop and mobile previews have been visually inspected.
+Canonical-identity regressions retain coverage for differently named mirrors of
+one fact, distinct domains, ambiguous identities, and bounded capture. These are
+local validation results, not a release or hosted-CI claim.
 
 ## Separate follow-ups for the next PR
 

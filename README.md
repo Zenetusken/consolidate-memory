@@ -102,19 +102,27 @@ archive, rendered from the same structured cycle record as the terminal summary.
 Start with the recorded outcome, then follow a claim, project, or decision to its
 evidence. Open the generated file in a browser; it needs no server or internet connection.
 
-![Nocturne overview: the memory-index chart and key measures lead into an outcome summary, linked evidence, and a connected Sleep → beats → Wake sequence. Fictional sample data.](docs/assets/nocturne-overview.png)
+![Nocturne overview: the memory-index chart and key measures lead into an outcome summary, linked evidence, and the complete dream as flowing italic paragraphs. Fictional sample data.](docs/assets/nocturne-overview.png)
 
 | What do you want to know? | Where to look |
 | :--- | :--- |
-| **What did this dream accomplish?** | **Dream summary** leads with the recorded outcome, verified claims, observed changes, and attention items. Select a passage in the Sleep → beats → Wake sequence, or read the complete dream. |
-| **Who holds this lesson, and who may receive it?** | **Memory network** unfolds from fleet → domains → projects. Select a project for its facts and costs, a fact for its recorded holders, or a group for its permitted members. |
-| **What changed over time?** | **Memory activity** aligns exact decision categories, observed reads, and captured rigor. Choose **12 / 24 / All captured** dreams, inspect a cycle locally, then use **Open this dream** to navigate. |
-| **What needs attention, and what supports the result?** | **Verification & health** puts exceptions first, with expandable verification evidence, store checks, observed file changes, and recall/workflow decisions. Before/after diffs remain one click away. |
+| **What did this dream accomplish?** | **Dream summary** leads with the recorded outcome, verified claims, observed changes, and attention items. Read the complete narration as one passage of italic paragraphs, from sleep through wake. |
+| **Who holds this lesson, and who may receive it?** | **Memory network** unfolds from fleet → domains → projects. Choose a fact or group in **View** to see its holders or permitted members on the map. |
+| **What changed over time?** | **Memory activity** fits the captured decision and read history into two timelines. Select a dream for its short summary, then use **Open this dream** to navigate. |
+| **What needs attention, and what supports the result?** | **Verification & health** puts exceptions first. Each disclosure names its status; open it for readable findings and supporting evidence. |
+| **Why was a lesson changed or kept?** | **Changes & decisions** leads with each action, lesson, and reason. Expand its decision details for sources and declared files, or open a captured diff. |
 
 The header keeps the **memory-index trajectory and budget projection**. Historical
 fact counts and cadence remain available in the activity table. Decisions, physical
 file changes, and observed usage have separate labels; missing observations stay
 explicitly **Not captured**. Token figures are estimates, approximately characters ÷ 4.
+Distinct headings, prominent conclusions, labeled statuses, and quieter source notes
+separate the result from its supporting detail. Narration, charts, and evidence use
+the section width, with aligned controls and mobile layouts that keep long text
+readable. Primary actions, toolbar controls, evidence links, and expandable details
+have distinct visual treatments, with clear hover and keyboard focus states. Source
+labels identify the saved records behind each section; a dream's save time is never
+presented as a live check.
 
 <details>
 <summary><strong>Explore the network, activity, and evidence</strong></summary>
@@ -122,11 +130,16 @@ explicitly **Not captured**. Token figures are estimates, approximately characte
 ### Expand a domain. Follow a fact.
 
 Every captured domain appears, with the current project's domain expanded first.
-Browse projects in pages of 12, or search by name, domain, or identity. A selected
-fact branches to its physical holders; a selected group branches to its permitted
-members. The inspector explains the evidence, and breadcrumbs return to the fleet.
+Browse projects in pages of 12, or search for a project. The **View** selector
+switches between the fleet, a shared fact's holders, and a group's permitted
+members. Project names appear directly on the map; a short caption explains the
+selection and identifies its saved snapshot.
 
-![Nocturne memory network: an orbital fleet root branches to research, tools, and work domains; work is expanded into three projects beside a snapshot inspector. Fictional sample data.](docs/assets/nocturne-dashboard.png)
+The network stays a visual summary. A brief note identifies partial capture when
+needed. The complete saved data remains available in the page's **Inspect the
+complete captured cycle record** disclosure.
+
+![Nocturne memory network: an orbital fleet root branches to research, tools, and work domains; work is expanded into three named projects. A View selector and project search control the map. Fictional sample data.](docs/assets/nocturne-dashboard.png)
 
 New snapshots identify shared facts by their canonical identity, so differently
 named local mirrors of one lesson count as one fact. Older archives retain their
@@ -136,27 +149,40 @@ outside that snapshot.
 
 ### Inspect activity before opening another dream
 
-Select a cycle to see its outcome, decisions, observed mutations, fact-count change,
-verification, and usage window. Reads from overlapping windows are never added into
-a misleading total, and missing observations remain gaps.
+Two aligned timelines fit the section width without horizontal scrolling. They
+show all captured dreams through the open dream, with sparse labels to keep dense
+history readable. Use the dream selector or **Previous / Next** to inspect an exact
+cycle. Its recorded outcome and brief summary lead into optional details for exact
+decision categories, verification, fact-count change, rigor, and usage window.
+**Open this dream** opens that report, or returns to its summary if it is already
+open. Reads from overlapping windows are never added into a total, and missing
+observations remain gaps.
 
-![Memory activity: aligned decisions and observed reads, a categorical rigor ribbon, 12/24/All captured controls, and a local cycle inspector with a separate Open this dream action. Fictional sample data.](docs/assets/nocturne-activity.png)
+![Memory activity: a dream selector and Previous/Next controls accompany two timelines that fit the section width, followed by a concise summary with expandable detail and a separate Open this dream action. Fictional sample data.](docs/assets/nocturne-activity.png)
 
 ### Follow an attention item to its evidence
 
-Claims, store integrity, and observed changes each show **Needs attention**,
-**Recorded clear**, **Partially captured**, or **Not captured**. Adverse or pending
-details open by default. Expand the evidence to inspect preflight timestamps and
-failure IDs, file diffs, recall observations, workflow verdicts, and decline lineage.
+Disclosure headings identify claims, store integrity, and observed changes as
+**Needs attention**, **Recorded clear**, **Partially captured**, or **Not captured**.
+Adverse or pending results open by default. Named findings and file diffs come
+before detailed accounting. Further disclosures preserve preflight timestamps and
+failure IDs, recall observations, workflow verdicts, and decline lineage.
 
-![Verification and health: an unverifiable claim appears first, followed by three separate status summaries and four evidence disclosures. Fictional sample data.](docs/assets/nocturne-evidence.png)
+The decision ledger keeps each lesson's action and reason together. **Decision
+details** exposes its full citation, scope, tier, and declared files. Other observed
+file changes appear under their own label, separate from recorded decisions.
+**View diff** opens the corresponding captured file change in a dialog that supports
+keyboard scrolling. Evidence links open and focus their supporting detail.
+
+![Verification and health: attention items lead into four disclosures with status labels, concise findings, and optional supporting evidence. Fictional sample data.](docs/assets/nocturne-evidence.png)
 
 </details>
 
 Choose **Nocturne**, **Original** (the espresso dark palette), **Light**, or **System**.
 The archive retains filtering, sorting, previous/next navigation, compact mode,
 keyboard controls, reduced motion, print support, and complete captured records.
-On narrow screens, the network becomes a vertical hierarchy with its inspector below.
+**Archive** returns to the dream list; unavailable previous/next actions are disabled.
+The network switches to a vertical hierarchy before its controls become cramped.
 
 **Try the fictional preview:** [HTML archive](docs/previews/nocturne/index.html#sel=7) ·
 [dashboard network SVG](docs/assets/nocturne-network.svg) ·

@@ -222,7 +222,8 @@
   #network-blk .page-link{font:13px var(--sans);fill:var(--data);text-decoration:underline;cursor:pointer}
   #network-blk .empty-network{font:14px var(--sans);fill:var(--faint)}
   #network-blk [role="button"]{cursor:pointer}
-  #network-blk [role="button"]:focus{outline:2px solid var(--data);outline-offset:4px}
+  #network-blk [role="button"]:focus-visible{outline:2px solid var(--data);outline-offset:4px}
+  #network-blk #net[data-focus-mode="pointer"] [role="button"]:focus{outline:none}
   #network-blk .network-search{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--faint);width:min(460px,100%)}
   #network-blk .network-search input{font:14px var(--sans);color:var(--ink);background:var(--paper2);border:1px solid var(--rule2);border-radius:5px;padding:10px 12px;width:100%;box-sizing:border-box}
   #network-blk .map-controls{display:flex;align-items:start;gap:14px;flex-wrap:wrap;margin:20px 0}
@@ -234,21 +235,16 @@
   #network-blk .holdings-key{color:var(--data)}#network-blk .permissions-key{color:var(--accent)}
   #network-blk details>summary,#dream-blk details>summary,#pass-blk details>summary,#history-blk details>summary{cursor:pointer;padding:14px 0;font:500 13px/1.5 var(--sans);color:var(--ink2)}
   #network-blk h4,#pass-blk h4,#history-blk h4{font:500 17px/1.5 var(--sans);margin:8px 0 16px;color:var(--ink)}
-  #dream-blk .summary-outcome{font:500 clamp(24px,3vw,34px)/1.35 var(--sans);margin:0 0 18px;max-width:40ch}
+  #dream-blk .summary-outcome{font:500 clamp(24px,3vw,34px)/1.35 var(--sans);margin:0 0 18px;overflow-wrap:anywhere}
   #dream-blk .summary-evidence{display:flex;flex-wrap:wrap;gap:8px 24px;margin-bottom:14px}
   #dream-blk button.evidence-link,#pass-blk button.evidence-link{background:transparent;border:0;border-bottom:1px solid var(--rule2);border-radius:0;padding:4px 0;text-align:left;color:var(--data);font:13px/1.65 var(--sans);cursor:pointer;overflow-wrap:anywhere}
   #dream-blk .summary-attention{font-size:13px;color:var(--warn);margin:18px 0}
   #dream-blk .summary-attention button{color:var(--warn)}
-  #dream-blk .dream-sequence{margin-top:26px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(0,1fr);gap:24px;border-top:1px solid var(--rule);padding-top:22px}
-  #dream-blk .dream-bookend,#dream-blk .dream-passages{min-width:0;position:relative;padding-top:12px}
-  #dream-blk .dream-bookend::before,#dream-blk .dream-passages::before{content:'';position:absolute;width:7px;height:7px;background:var(--data);border:4px solid var(--paper);border-radius:50%;top:-30px;left:0}
-  #dream-blk .passage-label{color:var(--faint);font:11px/1.5 var(--sans);letter-spacing:.06em;text-transform:uppercase}
-  #dream-blk .dream-voice{font:italic 16px/1.85 Georgia,serif;color:var(--ink2);white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 14px}
-  #dream-blk .beat-controls{display:flex;flex-wrap:wrap;gap:6px}
-  #dream-blk .beat-controls button{font-size:11px;padding:5px 8px;min-height:32px}
-  #dream-blk button[aria-pressed="true"],#history-blk button[aria-pressed="true"]{background:var(--tint-ok);color:var(--data);border-color:var(--data)}
-  #dream-blk #complete-dream{border-bottom:1px solid var(--rule)}
-  #dream-blk #complete-dream .dream-voice{max-width:85ch}
+  #dream-blk #dream-arc{margin-top:26px;border-top:1px solid var(--rule);padding-top:22px}
+  #dream-blk .dream-voice{font:italic 16px/1.85 Georgia,serif;color:var(--ink2);overflow-wrap:anywhere;margin:0 0 16px;orphans:3;widows:3}
+  #dream-blk .dream-capture-note{font:13px/1.65 var(--sans);color:var(--faint);overflow-wrap:anywhere;margin:0 0 16px}
+  #dream-blk #dream-arc>:last-child{margin-bottom:0}
+  #history-blk button[aria-pressed="true"]{background:var(--tint-ok);color:var(--data);border-color:var(--data)}
   #pass-blk #health-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin:16px 0 24px}
   #pass-blk .health-status{display:flex;flex-direction:column;align-items:start;gap:5px;padding-bottom:12px;border-bottom:1px solid var(--rule);font-size:12px;color:var(--faint)}
   #pass-blk .health-status[data-state="Needs attention"] button{color:var(--warn)}
@@ -285,16 +281,15 @@
   #history-blk .activity-cycle:focus .activity-selection{stroke:var(--data);stroke-width:2}
   #history-blk .rigor-category{font:9px var(--sans);fill:var(--ink2)}
   #history-blk .activity-legend{display:flex;flex-wrap:wrap;gap:10px 16px;font-size:11px;color:var(--faint);margin:12px 0}
+  #history-blk .activity-legend>span{min-width:0;max-width:100%;overflow-wrap:anywhere}
   #history-blk .activity-legend i{display:inline-block;width:8px;height:8px;margin-right:6px}
-  #history-blk .evidence-inspector{margin:20px 0;max-width:800px}
+  #history-blk .evidence-inspector{margin:20px 0;width:100%;min-width:0}
   #history-blk .open-dream{display:inline-block;margin:18px 0 4px;color:var(--data);font-size:13px}
   #history-blk table{min-width:900px;font-size:12px}
   #history-blk td,#history-blk th{padding:10px 14px;text-align:left;border-bottom:1px solid var(--rule)}
   @media(max-width:1100px){#network-blk .network-explorer{grid-template-columns:1fr}#network-blk .map-detail{border-left:0;border-top:1px solid var(--rule);padding:18px 0}}
   @media(max-width:699px){
     #network-blk .network-surface{padding:16px}#network-blk #net.hierarchy-map{min-width:0}#network-blk .network-explorer{gap:8px}
-    #dream-blk .dream-sequence{grid-template-columns:1fr;border-top:0;border-left:1px solid var(--rule);padding:0 0 0 20px;gap:16px}
-    #dream-blk .dream-bookend::before,#dream-blk .dream-passages::before{top:12px;left:-28px}
     #pass-blk #health-summary{grid-template-columns:1fr;gap:10px}
     #pass-blk .health-status{flex-direction:row;justify-content:space-between;align-items:center}
     #pass-blk .evidence-fields>div{grid-template-columns:1fr;gap:2px}
@@ -304,8 +299,252 @@
   @media print{
     #network-blk .network-explorer{display:block}#network-blk .network-surface{break-inside:auto}#network-blk .map-detail{border-left:0}
     #history-blk .activity-scroll{overflow:visible}#history-blk .activity-scroll svg{max-width:100%}
-    #dream-blk .beat-controls,#network-blk .network-search{display:none}
+    #network-blk .network-search{display:none}
     #dream-blk details::details-content,#pass-blk details::details-content,#history-blk details::details-content{content-visibility:visible}
+  }
+
+  /* Reading hierarchy for report sections; the header graph and its tokens stay unchanged. */
+  #app section.blk{margin-top:48px;padding-top:24px;border-top:1px solid var(--rule)}
+  #app section.blk>.shead{display:grid;grid-template-columns:36px minmax(0,1fr) auto 20px;gap:8px 12px;margin-bottom:8px;padding-right:0;position:relative}
+  #app section.blk>.shead .ln{display:none}
+  #app section.blk>.shead::after{position:static;margin:0;text-align:right;grid-column:4;grid-row:1}
+  #app section.blk.collapsed>.shead{margin-bottom:0}
+  #app section.blk>.shead h3{font-size:clamp(23px,2.2vw,28px);font-weight:700;letter-spacing:-.035em;color:var(--ink);min-width:0;overflow-wrap:anywhere}
+  #app section.blk>.shead .no{width:36px;height:36px;border-radius:10px;font-size:20px}
+  #app section.blk>.shead .note{font-size:12px;line-height:1.7;letter-spacing:0;width:auto;margin:0;text-align:right;max-width:36vw;overflow-wrap:anywhere}
+  #app .section-purpose{font:15px/1.7 var(--sans);color:var(--ink2);margin-bottom:22px;overflow-wrap:anywhere}
+  #app section.blk .cap{max-width:none}
+  #app .source-note{font:12px/1.8 var(--sans);color:var(--faint);margin:12px 0 22px;overflow-wrap:anywhere}
+  #app .source-label{font-weight:700;color:var(--ink2);margin-right:6px}
+  #app .evidence-label{display:block;font:700 11px/1.6 var(--sans);letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+  #dream-blk .summary-outcome{font-size:clamp(28px,3vw,38px);font-weight:650;color:var(--ink);letter-spacing:-.025em}
+  #dream-blk .summary-evidence{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:start;margin:20px 0}
+  #dream-blk .summary-evidence>div{min-width:0;max-width:100%}
+  #dream-blk button.evidence-link,#pass-blk button.evidence-link{font-size:14px;font-weight:600;border-bottom-style:dotted}
+  #dream-blk .summary-attention{padding:12px 16px;background:var(--tint-warn);border-left:3px solid var(--warn);line-height:1.8}
+  #dream-blk #dream-arc{padding-top:24px}
+  #network-blk .network-surface{border-radius:12px;padding:26px}
+  #network-blk .network-explorer{display:block;margin-top:20px}
+  #network-blk .map-detail{background:transparent;border:0;border-radius:0;padding:8px 0 0;font-size:14px;line-height:1.8}
+  #network-blk .network-selection-name{display:inline;font-size:16px;font-weight:700;line-height:1.8;margin-right:8px;color:var(--ink)}
+  #network-blk .network-explanation{display:inline;font-size:14px;color:var(--ink2);margin:0}
+  #network-blk .network-attribution{display:block;font:12px/1.8 var(--sans);color:var(--faint);margin-top:6px}
+  #network-blk .network-facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  #network-blk .inspector-choice{font-size:13px;color:var(--data);border:1px solid var(--rule);border-radius:6px;padding:6px 10px;line-height:1.55;width:auto;margin:0}
+  #network-blk .capture-note{color:var(--warn);margin:10px 0 0;font-size:13px}
+  #network-blk .network-search{font-size:12px;font-weight:600;color:var(--ink2)}
+  #network-blk .network-search input{font-size:14px;background:var(--card)}
+  #network-blk .network-search input::placeholder{color:var(--faint);opacity:1}
+  #network-blk .network-view{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--ink2);min-width:0}
+  #network-blk #net-view{font:14px var(--sans);color:var(--ink);background:var(--card);border:1px solid var(--rule2);border-radius:5px;padding:10px 12px;width:100%;min-width:0;max-width:100%}
+  #network-blk .network-search input,#network-blk #net-view{height:42px;line-height:20px;box-sizing:border-box}
+  #network-blk .map-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin:0}
+  #network-blk .network-search{width:100%}
+  #network-blk #net-groups{display:block;min-width:0}
+  #network-blk #net-breadcrumbs{grid-column:1/-1}
+  #network-blk #net-breadcrumbs:empty{display:none}
+  #network-blk .root-label,#network-blk .domain-label{font-size:18px;font-weight:700}
+  #network-blk .domain-label{fill:var(--data)}
+  #network-blk .project-label{font-size:17px;font-weight:600}
+  #network-blk .domain-count,#network-blk .project-meta{font-size:13px;fill:var(--ink2)}
+  #network-blk .rank-label{font:700 12px var(--sans);fill:var(--faint);letter-spacing:.04em}
+  #network-blk .hierarchy-branch{stroke-width:1.8}
+  #network-blk .hierarchy-branch.fact-edge{stroke-width:2;opacity:1}
+  #network-blk .hierarchy-branch.grant-edge{stroke-width:1.8}
+  #network-blk .domain-junction circle{stroke:var(--data);fill:var(--card);stroke-width:1.5}
+  #network-blk .net-node rect{fill:var(--card);stroke:var(--rule2);stroke-width:1.1}
+  #network-blk .net-node[data-current="true"] rect{stroke:var(--data);stroke-width:1.8}
+  #network-blk .net-node.selected rect{fill:var(--tint-accent);stroke:var(--accent)}
+  #network-blk .legend{font-size:12px;margin-top:8px}
+  #network-blk #net-cap{max-width:none;font-size:13px;line-height:1.8;margin:10px 0 0;color:var(--warn)}
+  #pass-blk .health-status{border:1px solid var(--rule);border-top:3px solid var(--rule2);border-radius:6px;padding:16px;background:var(--paper2)}
+  #pass-blk .health-status>span{font-size:12px;font-weight:600;color:var(--ink2)}
+  #pass-blk .health-status button{font-size:18px;font-weight:700;line-height:1.5}
+  #pass-blk .health-status[data-state="Needs attention"]{border-top-color:var(--warn)}
+  #pass-blk .health-status[data-state="Recorded clear"]{border-top-color:var(--ok)}
+  #pass-blk .health-status[data-state="Recorded clear"] button{color:var(--ok)}
+  #pass-blk #attention-items{padding:14px 20px;background:var(--tint-warn);border-left-width:3px}
+  #pass-blk .attention-heading{font-size:16px;font-weight:700}
+  #pass-blk .evidence-block>summary{font-size:17px;font-weight:600;color:var(--ink);padding:20px 0}
+  #pass-blk .evidence-block[open]>summary{color:var(--data)}
+  #pass-blk h4{font-size:17px;font-weight:700;margin-top:22px}
+  #pass-blk .inspector-row,#history-blk .inspector-row{font-size:13px;padding:10px 0}
+  #pass-blk .inspector-row>b,#history-blk .inspector-row>b{font-weight:600;color:var(--ink)}
+  #history-blk .evidence-inspector{background:var(--paper2);padding:22px;border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:6px}
+  #history-blk .evidence-inspector h4{font-size:25px;font-weight:700;margin:6px 0 8px}
+  #history-blk .inspector-kicker{color:var(--accent);font-size:12px;font-weight:700}
+  #history-blk .open-dream{font-size:14px;font-weight:600}
+  #entries-blk .row .nm{font-size:16px;font-weight:600;color:var(--ink)}
+  #entries-blk .row .rs{font-size:14px;line-height:1.8;color:var(--ink2);max-width:none}
+  #entries-blk .row>*{min-width:0}
+  #entries-blk .row .act{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;overflow-wrap:anywhere}
+  #entries-blk .row .ci{font-size:12px}
+  @media(max-width:699px){
+    #app section.blk{margin-top:34px;padding-top:20px}
+    #app section.blk>.shead{grid-template-columns:36px minmax(0,1fr) 20px}
+    #app section.blk>.shead .note{grid-column:2;grid-row:2;text-align:left;max-width:none}
+    #app section.blk>.shead::after{grid-column:3}
+    #app .section-purpose{font-size:14px;margin-bottom:18px}
+    #network-blk .network-surface{padding:16px}
+    #network-blk .map-controls{grid-template-columns:1fr}
+    #network-blk .project-label{font-size:15px}
+    #network-blk .domain-label{font-size:16px}
+    #network-blk .project-meta{font-size:12px}
+    #pass-blk .health-status{padding:12px}
+    #pass-blk .health-status button{font-size:16px}
+    #history-blk .evidence-inspector{padding:16px}
+    #dream-blk .summary-evidence{grid-template-columns:1fr;gap:16px}
+    #entries-blk .row{grid-template-columns:minmax(0,1fr);gap:8px}
+    #entries-blk .row .ci{grid-column:1;text-align:left}
+  }
+  @media print{#network-blk .network-explorer{display:block}#app .source-note{color:var(--faint)}#app section.blk>.shead{break-after:avoid}}
+
+  /* Lower report: short answers, with the saved evidence one disclosure away. */
+  #history-blk #rigor[hidden],#pass-blk #health-summary[hidden]{display:none}
+  #history-blk .activity-axis-label{font:600 12px var(--sans);fill:var(--ink2)}
+  #history-blk .activity-value{font:13px var(--sans);fill:var(--ink2)}
+  #history-blk .activity-cycle-number{font-size:12px;fill:var(--faint)}
+  #history-blk .activity-scroll{padding:8px 0;overflow:hidden;width:100%;min-width:0}
+  #history-blk .activity-scroll svg{max-width:100%;min-width:0}
+  #history-blk .activity-axis-note{font:12px var(--sans);fill:var(--faint)}
+  #history-blk .activity-selection{fill:none;stroke:transparent;stroke-width:1}
+  #history-blk .activity-cycle[aria-pressed="true"] .activity-selection{fill:none;stroke:var(--rule2)}
+  #history-blk .activity-cycle[aria-pressed="true"] .activity-point{r:4px;stroke:var(--paper);stroke-width:1.5}
+  #history-blk .activity-cycle:focus-visible .activity-selection{stroke:var(--accent);stroke-width:1.5}
+  #history-blk #activity-controls{display:grid;grid-template-columns:42px auto minmax(0,240px) 42px;align-items:center;gap:10px;justify-content:start}
+  #history-blk #activity-controls button,#history-blk #activity-cycle-select{height:42px;box-sizing:border-box;min-width:0;max-width:100%;padding:8px 10px;border:1px solid var(--rule2);border-radius:5px;background:var(--paper2);font:14px/20px var(--sans);color:var(--ink)}
+  #history-blk #activity-controls button{padding:0;font-size:18px;cursor:pointer}
+  #history-blk #activity-controls button:disabled{opacity:.45;cursor:default}
+  #history-blk #activity-controls label{font-size:13px;font-weight:600;color:var(--ink2)}
+  #history-blk .activity-legend{justify-content:space-between;font-size:12px;margin:10px 0 20px}
+  #history-blk .evidence-inspector{padding:20px 0;background:transparent;border:0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);border-radius:0}
+  #history-blk .activity-summary-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+  #history-blk .activity-summary-head>div{min-width:0;overflow-wrap:anywhere}
+  #history-blk .activity-summary-head h4{font-size:23px;line-height:1.5;margin:4px 0}
+  #history-blk .activity-date{font-size:12px;color:var(--faint)}
+  #history-blk .open-dream{flex:none;margin:0;padding:8px 0}
+  #history-blk .activity-summary-facts{display:flex;flex-wrap:wrap;gap:12px 32px;margin:14px 0}
+  #history-blk .activity-stat{font-size:14px;color:var(--ink2)}
+  #history-blk .activity-stat strong{font-size:19px;font-weight:600;color:var(--ink);margin-right:5px}
+  #history-blk .activity-summary p{font-size:12px;color:var(--faint);margin:0}
+  #history-blk .activity-details{margin-top:16px}
+  #history-blk .activity-details>summary,#entries-blk .decision-detail>summary{font:13px/1.8 var(--sans);color:var(--data);padding:4px 0;cursor:pointer}
+  #pass-blk .evidence-block>summary{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:10px;align-items:baseline;list-style:none;font-size:17px;padding:20px 0}
+  #pass-blk .evidence-block>summary::-webkit-details-marker{display:none}
+  #pass-blk .evidence-block>summary::before{content:'▸';font-size:13px;color:var(--faint)}
+  #pass-blk .evidence-block[open]>summary::before{content:'▾'}
+  #pass-blk .health-status{display:block;border:0;border-radius:0;padding:0;background:transparent;font:600 13px/1.7 var(--sans);color:var(--faint)}
+  #pass-blk .health-status[data-state="Recorded clear"]{color:var(--ok)}
+  #pass-blk .health-status[data-state="Needs attention"],#pass-blk .health-status[data-state="Decision pending"]{color:var(--warn)}
+  #pass-blk .evidence-title{min-width:0;overflow-wrap:anywhere}
+  #pass-blk .evidence-conclusion{font-size:16px;font-weight:600;color:var(--ink2);line-height:1.8;margin:0 0 14px;overflow-wrap:anywhere}
+  #pass-blk .inspector-row,#history-blk .inspector-row{display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;font-size:13px;align-items:baseline}
+  #pass-blk .inspector-row>b,#history-blk .inspector-row>b{max-width:none;text-align:left;font-weight:400}
+  #pass-blk .captured-details{margin:12px 0;font-size:13px}
+  #pass-blk .captured-details>summary{padding:6px 0;color:var(--data)}
+  #pass-blk .workflow-detail{margin:0;padding:0;border-top:1px solid var(--rule);border-radius:0}
+  #pass-blk .workflow-detail>summary{font:600 15px/1.8 var(--sans);padding:14px 0;color:var(--ink2)}
+  #pass-blk .workflow-detail>.head{font-size:12px;margin:0 0 12px}
+  #pass-blk .workflow-detail>.head .s{display:none}
+  #pass-blk .file-evidence-name{font-size:14px;color:var(--ink2);overflow-wrap:anywhere;min-width:0}
+  #pass-blk .file-evidence-link{font-size:14px;font-weight:600}
+  #pass-blk .file-operation{font-size:12px;color:var(--faint)}
+  #entries-blk .row{grid-template-columns:108px minmax(0,1fr);gap:20px}
+  #entries-blk .decision-detail{margin-top:12px}
+  #entries-blk .decision-detail dl{font-size:13px;line-height:1.8;margin:10px 0}
+  #entries-blk .decision-detail dl>div{display:grid;grid-template-columns:100px minmax(0,1fr);gap:16px;padding:5px 0}
+  #entries-blk .decision-detail dt{color:var(--faint)}
+  #entries-blk .decision-detail dd{margin:0;color:var(--ink2);overflow-wrap:anywhere;min-width:0}
+  #entries-blk .other-file-changes{margin-top:28px}
+  #entries-blk .other-file-changes h4{font-size:18px;font-weight:600;margin-bottom:6px}
+  #entries-blk .capture-note{font:13px/1.8 var(--sans);color:var(--faint)}
+  @media(max-width:699px){
+    #history-blk .activity-axis-label{font-size:11px}
+    #history-blk .activity-axis-note{font-size:11px}
+    #history-blk #activity-controls{grid-template-columns:36px auto minmax(0,1fr) 36px;gap:8px;justify-content:stretch}
+    #history-blk .activity-summary-head{align-items:flex-start;flex-direction:column;gap:8px}
+    #history-blk .activity-summary-facts{gap:10px 24px}
+    #pass-blk .evidence-block>summary{grid-template-columns:16px minmax(0,1fr);gap:4px 10px}
+    #pass-blk .health-status{grid-column:2;padding:0}
+    #pass-blk .inspector-row,#history-blk .inspector-row{grid-template-columns:1fr;gap:2px}
+    #entries-blk .row{grid-template-columns:minmax(0,1fr);gap:8px}
+    #entries-blk .decision-detail dl>div{grid-template-columns:1fr;gap:0}
+  }
+  @media print{#history-blk .activity-axis-panel{transform:none!important}}
+
+  /* Controls share a size and state language without changing chart tokens. */
+  .chrome .theme-tog,.dreamnav .nav-link,#app .report-nav button,
+  #network-blk .inspector-choice,#history-blk #activity-controls button,
+  #history-blk #activity-cycle-select,#network-blk #net-view,#network-blk #net-search,
+  #archive .arch-tools select,.modal .modal-x{
+    min-height:44px;border:1px solid var(--rule2);border-radius:8px;
+    background:var(--paper2);color:var(--ink2);padding:10px 14px;
+    font:600 14px/22px var(--sans);text-decoration:none;
+    transition:background-color .15s,border-color .15s,color .15s;
+  }
+  #history-blk #activity-cycle-select,#network-blk #net-view,#network-blk #net-search,#archive .arch-tools select{height:44px;padding:10px 12px;font-weight:400;color:var(--ink)}
+  #history-blk #activity-controls button,.modal .modal-x{width:44px;height:44px;padding:0;font-size:20px;flex:none}
+  #history-blk #activity-controls{grid-template-columns:44px auto minmax(0,240px) 44px}
+  .chrome .theme-tog[aria-pressed="true"]{background:var(--tint-accent);border-color:var(--accent);color:var(--ink)}
+  .chrome .theme-tog:hover,.dreamnav a.nav-link:hover,#app .report-nav button:hover,
+  #network-blk .inspector-choice:hover,#history-blk #activity-controls button:not(:disabled):hover,
+  #archive .arch-tools select:hover,.modal .modal-x:hover{background:var(--card);border-color:var(--data);color:var(--ink);text-decoration:none}
+  #network-blk #net-search:hover,#network-blk #net-view:hover,#history-blk #activity-cycle-select:hover{border-color:var(--data)}
+  .chrome .theme-tog:active,.dreamnav a.nav-link:active,#app .report-nav button:active,
+  #network-blk .inspector-choice:active,#history-blk #activity-controls button:not(:disabled):active{background:var(--tint-accent);border-color:var(--accent)}
+  .dreamnav{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px 20px}
+  .dreamnav .pos{text-align:center}
+  .dreamnav .nav-link{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+  .dreamnav .dreamnav-steps{display:flex;gap:8px}
+  .dreamnav .off,#history-blk #activity-controls button:disabled{opacity:1;color:var(--ghost);border-color:var(--rule);background:transparent;cursor:default}
+  #app .report-nav{gap:8px;padding:8px 0 16px}
+  #app .report-nav button{font-size:13px;padding:10px 12px}
+  #history-blk .open-dream{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border:1px solid var(--data);border-radius:8px;background:var(--data);color:var(--paper);font:600 14px/22px var(--sans);text-decoration:none;transition:background-color .15s,border-color .15s}
+  #history-blk .open-dream:hover{background:var(--ink);border-color:var(--ink)}
+  #history-blk .open-dream:active{background:var(--ink2);border-color:var(--ink2)}
+  #dream-blk button.evidence-link,#pass-blk button.evidence-link{min-height:44px;border:1px solid var(--rule2);border-radius:8px;padding:10px 12px;background:var(--paper2);font:600 14px/1.6 var(--sans);color:var(--data);text-decoration:none;transition:background-color .15s,border-color .15s}
+  #dream-blk .summary-evidence button.evidence-link{display:block;width:100%;text-align:left}
+  #dream-blk button.evidence-link:hover,#pass-blk button.evidence-link:hover{background:var(--card);border-color:var(--data)}
+  #dream-blk .summary-attention button.evidence-link,#pass-blk #attention-items button.evidence-link{background:transparent;border-color:var(--warn);color:var(--warn);margin:4px 0}
+  #entries-blk .nm-diff,#pass-blk .file-evidence-link{display:inline-flex;align-items:center;gap:12px;max-width:100%;min-height:44px;padding:8px 12px;border:1px solid var(--rule2);border-radius:8px;background:var(--paper2);color:var(--data);font:600 14px/1.7 var(--sans);text-align:left;text-decoration:none;overflow-wrap:anywhere;cursor:pointer}
+  #entries-blk .nm-diff:hover,#pass-blk .file-evidence-link:hover{background:var(--card);border-color:var(--data)}
+  #entries-blk .nm-diff:active,#pass-blk .file-evidence-link:active{background:var(--tint-accent);border-color:var(--accent)}
+  #entries-blk .diff-name{min-width:0;overflow-wrap:anywhere}
+  #app .diff-action{flex:none;font-size:11px;font-weight:600;color:var(--ink2);border-left:1px solid var(--rule2);padding-left:12px;white-space:nowrap}
+  #app details:not(.evidence-block)>summary{display:flex;align-items:center;gap:10px;width:fit-content;max-width:100%;min-height:44px;padding:10px 12px;margin:6px 0;border:1px solid var(--rule2);border-radius:8px;background:var(--paper2);color:var(--ink2);font:600 13px/1.7 var(--sans);list-style:none;cursor:pointer;overflow-wrap:anywhere}
+  #app details:not(.evidence-block)>summary::-webkit-details-marker{display:none}
+  #app details:not(.evidence-block)>summary::before{content:'›';font-size:20px;line-height:20px;flex:none;transition:transform .15s;color:var(--data)}
+  #app details:not(.evidence-block)[open]>summary::before{transform:rotate(90deg)}
+  #app details:not(.evidence-block)[open]>summary{border-color:var(--accent);background:var(--tint-accent);color:var(--ink)}
+  #app details:not(.evidence-block)>summary:hover{border-color:var(--data);color:var(--ink)}
+  #pass-blk .evidence-block>summary{border-radius:8px;transition:background-color .15s}
+  #pass-blk .evidence-block>summary:hover{background:var(--paper2)}
+  #app section.blk>.shead{grid-template-columns:36px minmax(0,1fr) auto 32px;min-height:44px;border-radius:8px;cursor:pointer}
+  #app section.blk>.shead:hover{background:var(--paper2)}
+  #app section.blk>.shead::after{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--rule2);border-radius:7px;background:var(--paper2);color:var(--ink2);font:20px/1 var(--sans)}
+  #app section.blk>.shead:hover::after{border-color:var(--data);color:var(--data)}
+  #network-blk .page-control rect{fill:var(--paper2);stroke:var(--rule2);stroke-width:1}
+  #network-blk .page-control .page-link{fill:var(--data);font:600 12px var(--sans);text-decoration:none;cursor:inherit}
+  #network-blk .page-control:not([aria-disabled="true"]):hover rect{fill:var(--card);stroke:var(--data)}
+  #network-blk .page-control[aria-disabled="true"]{cursor:default}
+  #network-blk .page-control[aria-disabled="true"] rect{fill:transparent;stroke:var(--rule)}
+  #network-blk .page-control[aria-disabled="true"] .page-link{fill:var(--ghost);cursor:default}
+  #archive .arch-row:hover{box-shadow:inset 3px 0 var(--data)}
+  .chrome :focus-visible,.dreamnav :focus-visible,#app button:focus-visible,#app a:focus-visible,
+  #app select:focus-visible,#app input:focus-visible,#app summary:focus-visible,
+  #app .shead:focus-visible,#archive a:focus-visible,#archive select:focus-visible,.modal button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  .modal .modal-body:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+  @media(max-width:699px){
+    .dreamnav{grid-template-columns:minmax(0,1fr) auto;gap:10px}
+    .dreamnav .archive-link{justify-self:start}.dreamnav .pos{text-align:right}
+    .dreamnav .dreamnav-steps{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+    #history-blk #activity-controls{grid-template-columns:44px auto minmax(0,1fr) 44px}
+    #app section.blk>.shead{grid-template-columns:36px minmax(0,1fr) 32px}
+    #entries-blk .nm-diff,#pass-blk .file-evidence-link{flex-wrap:wrap;gap:6px 12px}
+  }
+  @media print{
+    #app .open-dream,#app #activity-controls{display:none}
+    #app button,#app details>summary{box-shadow:none}
   }
 
 </style>
@@ -316,14 +555,14 @@
 <a class="skip" href="#app">Skip to report</a>
 <div class="chrome" role="toolbar" aria-label="Display settings">
   <div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4A16 16 0 1 0 36 20" fill="none" stroke="var(--data)" stroke-width="1.5"/><path d="M20 11a9 9 0 1 0 9 9" fill="none" stroke="var(--accent)" stroke-width="1.5"/><path d="M20 20 32 8" stroke="var(--rule2)"/><circle cx="20" cy="20" r="3" fill="var(--data)"/><circle cx="32" cy="8" r="3" fill="var(--accent)"/></svg><span>consolidate-memory<small>Nocturne / memory observatory</small></span></div>
-  <button id="dens-tog" class="theme-tog" type="button" aria-label="toggle density">⊟ compact</button>
+  <button id="dens-tog" class="theme-tog" type="button" aria-label="Compact spacing" aria-pressed="false">Compact spacing</button>
   <button id="theme-tog" class="theme-tog" type="button" aria-label="Color theme: Nocturne. Switch to Original">● Nocturne</button>
 </div>
 <div id="boot"><div class="bt">Opening the memory record</div><div class="bl"><i></i></div><div class="bn" id="boot-proj">consolidate-memory</div></div>
 <div class="tip" id="tip"></div>
 <div class="modal" id="dmodal" role="dialog" aria-modal="true" aria-labelledby="dmodal-title" style="display:none"><div class="modal-bg" id="dmodal-bg"></div>
   <div class="modal-box"><div class="modal-head"><b id="dmodal-title">—</b><button class="modal-x" id="dmodal-x" aria-label="close diff">×</button></div>
-  <div class="modal-body" id="dmodal-body"></div></div></div>
+  <div class="modal-body" id="dmodal-body" tabindex="0" role="region" aria-label="Captured file diff"></div></div></div>
 
 <!-- ARCHIVE INDEX VIEW — shown when the URL has no #sel (cm report [DIR]) -->
 <div class="wrap" id="archive" role="main" style="visibility:hidden;display:none">
@@ -394,14 +633,15 @@
 
   <!-- 00 the dream as dreamt (v0.1.54) — present only when the cycle captured its dream arc -->
   <section class="blk" id="dream-blk" style="display:none"><div class="shead"><span class="no" aria-hidden="true">☾</span><h3>Dream summary</h3><span class="ln"></span><span class="note" id="dream-note"></span></div>
+    <p class="section-purpose">What this dream concluded, and the evidence behind it.</p>
     <div id="dream-summary"></div><div id="dream-arc"></div>
   </section>
 
 
   <!-- 02 network + budgets -->
   <section class="blk" id="network-blk"><div class="shead"><span class="no" aria-hidden="true">⌘</span><h3>Memory network</h3><span class="ln"></span><span class="note" id="net-note"></span></div>
+    <p class="section-purpose">See who holds a shared fact and who has permission to receive it.</p>
     <div class="network-surface">
-      <div class="network-intro"><div><strong>Separate boundaries. Deliberate connections.</strong><p>The saved topology of this pass. Domains define trust; group grants select recipients. Delivery depends on each project's pull and admission checks.</p></div></div>
       <div id="net-controls" class="map-controls" role="group" aria-label="Highlight network membership"></div>
       <div class="network-explorer"><div class="map-scroll" role="region" aria-label="Memory topology hierarchy" tabindex="0"><svg id="net" viewBox="0 0 520 170" role="img" aria-label="Captured shared-memory topology"></svg></div>
 
@@ -413,32 +653,36 @@
       </div>
       <div id="net-chips" style="display:none"></div>
       <div class="cap" id="net-cap"></div>
-      <details id="network-data" class="network-data"><summary>Explore all captured network data</summary><div id="network-data-body"></div></details>
+      <div id="network-data" hidden><div id="network-data-body"></div></div>
     </div>
-    <div class="budget-grid">
+    <div class="budget-grid" hidden>
       <div class="meter" id="m-index"></div>
       <div class="meter" id="m-cmd"></div>
       <div class="meter" id="m-global" style="display:none"></div>
     </div>
-    <div class="xp-strip" id="xp-strip" style="display:none"></div>
+    <div class="xp-strip" id="xp-strip" hidden></div>
   </section>
 
   <!-- 01 longitudinal -->
   <section class="blk" id="history-blk"><div class="shead"><span class="no" aria-hidden="true">↗</span><h3>Memory activity</h3><span class="ln"></span><span class="note" id="hist-note"></span></div>
+    <p class="section-purpose">Explore what changed and which memories were recalled.</p>
+    <p id="activity-source" class="source-note"></p>
     <div id="activity-controls" class="explore-controls"></div>
-    <div class="activity-scroll"><svg id="trend" role="group" aria-label="Decisions and observed reads"></svg><svg id="rigor" role="group" aria-label="Captured rigor categories"></svg></div>
+    <div class="activity-scroll" role="region" aria-label="Dream activity timeline"><svg id="trend" role="group" aria-label="Decisions and observed reads"></svg><svg id="rigor" hidden role="group" aria-label="Captured rigor categories"></svg></div>
     <div id="activity-inspector" class="evidence-inspector" aria-live="polite"></div>
     <details id="activity-table"><summary>Historical fact counts &amp; cadence</summary><div class="table-scroll" id="activity-table-body"></div></details>
   </section>
 
   <!-- 03 this pass: audit + verification + the distill verdict -->
   <section class="blk" id="pass-blk"><div class="shead"><span class="no" aria-hidden="true">✓</span><h3>Verification &amp; health</h3><span class="ln"></span><span class="note" id="pass-note"></span></div>
+    <p class="section-purpose">Start with anything that needs attention, then inspect its evidence.</p>
+    <p id="health-source" class="source-note"></p>
     <div id="attention-items"></div><div id="health-summary"></div>
     <details id="verification-evidence" class="evidence-block"><summary>Verification evidence</summary><div id="verify"></div></details>
     <details id="store-checks" class="evidence-block"><summary>Store checks</summary><div id="store-evidence"></div></details>
     <details id="file-changes" class="evidence-block"><summary>Observed file changes</summary><div id="audit"></div></details>
     <details id="workflow-evidence" class="evidence-block"><summary>Recall &amp; workflow decisions</summary><div id="usage-evidence"></div>
-    <div class="dstl" id="distill-blk" style="display:none">
+    <details class="dstl workflow-detail" id="distill-blk" style="display:none"><summary>Recurring workflows</summary>
       <div class="audit-ln head"><span class="s">recurring workflows</span><span class="nums" id="dstl-counts"></span></div>
       <div class="dstl-verdict" id="dstl-verdict"></div>
       <!-- L2 (v0.4.2) top commands: the template list lives in the BODY (its own layout), never the
@@ -452,27 +696,29 @@
         <div id="dstl-used-list"></div>
       </div>
       <div class="cap">Patterns from the last ~30 days — including work before this dream.</div>
-    </div>
+    </details>
     <!-- v0.1.67 (Phase C): the demotion triage — same lead/verdict rhythm as distill; key-gated (legacy cycles hide it) -->
-    <div class="dstl" id="demotion-blk" style="display:none">
+    <details class="dstl workflow-detail" id="demotion-blk" style="display:none"><summary>Rarely used facts</summary>
       <div class="audit-ln head"><span class="s">rarely used facts</span><span class="nums" id="demo-counts"></span></div>
       <div class="dstl-verdict" id="demo-verdict"></div>
       <div class="cap">Indexed facts that haven’t been opened in a while. A red miss means one of those was needed again — put it back.</div>
-    </div>
+    </details>
     <!-- v0.1.87/W-C (render-chain audit): the registrar's Tier-2 consult — key-gated like distill/demotion.
          An ABSENT key on a distill-era record renders the not-consulted line (the SKILL's "absent = a
          visible decision", which no renderer previously made visible). -->
-    <div class="dstl" id="registrar-blk" style="display:none">
+    <details class="dstl workflow-detail" id="registrar-blk" style="display:none"><summary>Across-project decisions</summary>
       <div class="audit-ln head"><span class="s">across projects</span><span class="nums" id="reg-counts"></span></div>
       <div class="reg-verdict" id="reg-verdict"></div>
       <div class="reg-board" id="reg-board"></div>
       <div class="cap" id="reg-cap" style="display:none"></div>
-    </div>
+    </details>
     </details>
   </section>
 
   <!-- 04 ledger -->
   <section class="blk" id="entries-blk"><div class="shead"><span class="no" aria-hidden="true">≡</span><h3>Changes &amp; decisions</h3><span class="ln"></span><span class="note" id="ent-note"></span></div>
+    <p class="section-purpose">The recorded decision for each lesson, with file diffs where captured.</p>
+    <p id="ledger-source" class="source-note"></p>
     <div class="ledger" id="entries"></div>
   </section>
 
@@ -480,7 +726,7 @@
   <details class="record-detail"><summary>Inspect the complete captured cycle record</summary><pre id="record-json"></pre></details>
   <footer>
     <span id="f-marker">—</span>
-    <span class="em">self-contained · zero-dependency · token figures are ≈ char/4 estimates</span>
+    <span class="em">Offline dream archive</span>
   </footer>
 </main>
 
@@ -494,10 +740,11 @@
   // v0.1.29 — the archive embeds ALL cycles; the URL #sel=N selects a dream (else the archive INDEX view).
   var ALL=Array.isArray(DATA.cycles)?DATA.cycles.filter(function(c){return c&&typeof c==="object";}):[];
   if(!ALL.length)ALL=[{}];
-  function _readSel(){var m=(location.hash+" "+location.search).match(/sel=(\d+)/);if(!m)return null;var i=+m[1];return (i>=0&&i<ALL.length)?i:null;}
+  function _readSel(){if(location.hash==="#archive")return null;var m=(location.hash+" "+location.search).match(/sel=(\d+)/);if(!m)return null;var i=+m[1];return (i>=0&&i<ALL.length)?i:null;}
   var SEL, VIEW, selIdx, CUR, HIST, ENT, CYCLES, DREAMDIFFS, traj, PROJ;
   var lastSel=ALL.length-1;
-  var ALLDIFFS=(DATA.diffs&&typeof DATA.diffs==="object")?DATA.diffs:{};   // v0.1.32: cycleKey → its persisted memory diffs
+  var ALLDIFFS=(DATA.diffs&&typeof DATA.diffs==="object"&&!Array.isArray(DATA.diffs))?DATA.diffs:{};   // v0.1.32: cycleKey → its persisted memory diffs
+  function ownObject(o,key){if(!o||!Object.prototype.hasOwnProperty.call(o,key))return null;var value=o[key];return value&&typeof value==="object"&&!Array.isArray(value)?value:null;}
   function diffKey(m,s){m=(m&&typeof m==="object")?m:{};   // MUST mirror memory_status.diff_key (the write side)
     var c=String(m.commit||"").replace(/[^0-9A-Za-z]/g,"").slice(0,12)||"nocommit";
     var t=String(m.timestamp||"").replace(/[^0-9A-Za-z]/g,"-")||"nots";
@@ -647,7 +894,7 @@
     CUR=ALL[selIdx]||{}; HIST=ALL.slice(0,selIdx);
     ENT=Array.isArray(CUR.entries)?CUR.entries:[];
     CYCLES=HIST.slice(); if(!CYCLES.length||!sameCycle(CYCLES[CYCLES.length-1],CUR))CYCLES.push(CUR);
-    DREAMDIFFS=ALLDIFFS[diffKey((CUR&&CUR.marker)||{}, g(CUR,"session",""))]||ALLDIFFS[diffKey((CUR&&CUR.marker)||{})]||{};
+    DREAMDIFFS=ownObject(ALLDIFFS,diffKey((CUR&&CUR.marker)||{}, g(CUR,"session","")))||ownObject(ALLDIFFS,diffKey((CUR&&CUR.marker)||{}))||{};
   }
   function clearEl(id){var n=el(id); if(!n)return; while(n.firstChild)n.removeChild(n.firstChild);}
   // carry the last valid value forward over a MISSING field only (a GENUINE 0 is data and
@@ -667,23 +914,25 @@
       if(p.indexOf(pre)===0)return {rel:p.slice(pre.length), store:STORE_PREFIXES[i][1]};}
     return {rel:p, store:""};}
   function diffDisplayName(p){var sp=splitDiffPath(p);return sp.store==="memory"?sp.rel.replace(/\.md$/,""):sp.rel;}
+  function capturedDiff(p){return ownObject(DREAMDIFFS,p);}
   var diffFocus=null;
   function showDiff(){
     diffFocus=document.activeElement;
     el("dmodal").style.display="flex";
     ["app","archive"].forEach(function(id){el(id).inert=true;});
     document.querySelector(".chrome").inert=true;
+    el("dmodal-body").scrollTop=0;
     document.body.style.overflow="hidden"; el("dmodal-x").focus();
   }
   function openDiff(p){
-    var d=DREAMDIFFS[p]; if(!d)return;
+    var d=capturedDiff(p); if(!d)return;
     var sp=splitDiffPath(p);
     el("dmodal-title").textContent=diffDisplayName(p)+(sp.store?"  ·  "+sp.store:"")+"  ·  "+(d.op||"modified");
     if(d.size_capped){
       el("dmodal-body").innerHTML='<div class="dl-more">diff not available — file too large to snapshot (this dream still recorded that it changed)</div>';
       showDiff(); return;
     }
-    var html=(d.lines||[]).map(function(l){
+    var html=(Array.isArray(d.lines)?d.lines:[]).filter(function(l){return l&&typeof l==="object"&&!Array.isArray(l);}).map(function(l){
       var t=l.t, cls=t==="+"?"dl-plus":t==="-"?"dl-minus":t==="@"?"dl-at":"dl-ctx";
       var pre=t==="+"?"+ ":t==="-"?"- ":t==="@"?"":"  ";
       return '<div class="dl '+cls+'">'+esc(pre+(l.s==null?"":l.s))+'</div>';
@@ -699,7 +948,7 @@
     document.querySelector(".chrome").inert=false; document.body.style.overflow="";
     if(wasOpen&&diffFocus&&diffFocus.isConnected)diffFocus.focus();
   }
-  el("dmodal").addEventListener("keydown",function(e){if(e.key==="Tab"){e.preventDefault();el("dmodal-x").focus();}});
+  el("dmodal").addEventListener("keydown",function(e){if(e.key==="Tab"){e.preventDefault();var targets=[el("dmodal-x"),el("dmodal-body")],current=targets.indexOf(document.activeElement),next=current<0?(e.shiftKey?1:0):(current+(e.shiftKey?-1:1)+targets.length)%targets.length;targets[next].focus();}});
   el("dmodal-x").onclick=closeDiff;
   el("dmodal-bg").onclick=closeDiff;
 
@@ -708,7 +957,7 @@ var NocturneNetwork = (function(){
   function rows(v){return Array.isArray(v)?v.filter(function(x){return x&&typeof x==='object';}):[];}
   function normalize(record){
     var net=record.network||{}, seen=new Set(), nodes=rows(net.nodes).map(function(n,i){
-      // Invalid duplicate sids cannot join incidence; retain both inventory rows.
+      // Invalid duplicate sids cannot join incidence; retain both captured nodes.
       var sid=String(n.sid||'legacy:'+i), duplicate=seen.has(sid);seen.add(sid);
       return {raw:n,id:'project:'+i,sid:sid,duplicate:duplicate,label:String(n.display_name||n.node||'Unnamed project'),domain:String(n.domain||'unknown'),groups:Array.isArray(n.groups)?n.groups:[]};
     });
@@ -718,15 +967,31 @@ var NocturneNetwork = (function(){
   function paint(record){
     var model=normalize(record), net=model.raw, svg=el('net'), detail=el('net-detail'), controls=el('net-controls');
     var trigger=model.nodes.find(function(n){return truthy(n.raw.trigger);});
-    var state={kind:'fleet',value:null,expanded:new Set(trigger?[trigger.domain]:[]),pages:{},query:''};
+    var state={kind:'fleet',value:null,expanded:new Set(trigger?[trigger.domain]:[]),pages:Object.create(null),query:''};
     svg.classList.add('hierarchy-map');svg.setAttribute('role','group');
-    controls.innerHTML='<div id="net-breadcrumbs" class="breadcrumbs"></div><label class="network-search">Find a captured project or fact<input id="net-search" type="search" autocomplete="off" placeholder="Search name, domain or identity"></label><div id="net-groups"></div>';
-    el('net-search').oninput=function(){state.query=this.value.trim().toLowerCase();state.kind='fleet';state.value=null;state.pages={};draw();};
+    // Programmatic focus retains keyboard navigation after redraws. Keep pointer
+    // selection from inheriting a keyboard outline, including after typing a search.
+    if(paint.focusHost)paint.focusHost.removeEventListener('pointerdown',paint.pointerHandler,true);
+    if(paint.keyboardHandler)window.removeEventListener('keydown',paint.keyboardHandler,true);
+    paint.focusHost=el('network-blk');
+    paint.pointerHandler=function(){svg.dataset.focusMode='pointer';};
+    paint.keyboardHandler=function(){svg.dataset.focusMode='keyboard';};
+    paint.focusHost.addEventListener('pointerdown',paint.pointerHandler,true);
+    window.addEventListener('keydown',paint.keyboardHandler,true);
+    if(!svg.dataset.focusMode)svg.dataset.focusMode='pointer';
+    controls.innerHTML='<div id="net-breadcrumbs" class="breadcrumbs"></div><label class="network-search">Find a project<input id="net-search" type="search" autocomplete="off" placeholder="Search project or domain"></label><div id="net-groups"><label class="network-view">View<select id="net-view"><option value="fleet">All captured projects</option></select></label></div>';
+    function matches(n){return !state.query||(n.label+' '+n.domain+' '+n.sid+' '+(n.raw.node||'')).toLowerCase().indexOf(state.query)>=0;}
+    el('net-search').oninput=function(){state.query=this.value.trim().toLowerCase();state.kind='fleet';state.value=null;state.pages=Object.create(null);state.expanded=new Set(state.query?model.nodes.filter(matches).map(function(n){return n.domain;}):trigger?[trigger.domain]:[]);draw();};
     function button(label,fn,box,cls){var b=document.createElement('button');b.type='button';b.textContent=label;if(cls)b.className=cls;b.onclick=fn;box.appendChild(b);return b;}
-    function reset(){state.kind='fleet';state.value=null;state.expanded=new Set(trigger?[trigger.domain]:[]);state.pages={};state.query='';el('net-search').value='';draw();}
-    button('Reset view',reset,el('net-groups'));
-    model.groups.forEach(function(group){button('Group / '+group.group,function(){focus('group',group);},el('net-groups'));});
-    function focus(kind,value){state.kind=kind;state.value=value;state.pages={};state.expanded=new Set(model.domains);state.query='';el('net-search').value='';draw();svg.querySelector('.network-root').focus({preventScroll:true});}
+    function reset(){state.kind='fleet';state.value=null;state.expanded=new Set(trigger?[trigger.domain]:[]);state.pages=Object.create(null);state.query='';el('net-search').value='';draw();}
+    function viewOptions(label,kind,values){
+      if(!values.length)return;
+      var group=document.createElement('optgroup');group.label=label;el('net-view').appendChild(group);
+      values.forEach(function(value,i){var option=document.createElement('option');option.value=kind+':'+i;option.textContent=kind==='fact'?(value.domain||'Unknown domain')+' / '+value.name:value.group;group.appendChild(option);});
+    }
+    viewOptions('Shared facts','fact',model.facts);viewOptions('Sharing groups','group',model.groups);
+    el('net-view').onchange=function(){var parts=this.value.split(':');if(parts[0]==='fact')focus('fact',model.facts[Number(parts[1])],true);else if(parts[0]==='group')focus('group',model.groups[Number(parts[1])],true);else if(parts[0]==='fleet')reset();};
+    function focus(kind,value,keepControl){state.kind=kind;state.value=value;state.pages=Object.create(null);state.expanded=new Set(model.domains);state.query='';el('net-search').value='';draw();if(!keepControl)svg.querySelector('.network-root').focus({preventScroll:true});}
     function selectedNodes(){
       if(state.kind==='fact'){
         var sids=Array.isArray(state.value.holder_sids)?state.value.holder_sids:[];
@@ -747,25 +1012,41 @@ var NocturneNetwork = (function(){
     function draw(){
       var focusKey=document.activeElement&&document.activeElement.getAttribute('data-key');
       svg.textContent='';
-      var breadcrumb=el('net-breadcrumbs');breadcrumb.textContent='';button('Fleet',reset,breadcrumb);
-      if(state.kind!=='fleet'){var crumb=document.createElement('span');crumb.textContent=' / '+state.kind+' / '+rootLabel();breadcrumb.appendChild(crumb);}
-      var selected=selectedNodes(), matching=selected.filter(function(n){return !state.query||(n.label+' '+n.domain+' '+n.sid+' '+n.raw.node).toLowerCase().indexOf(state.query)>=0;});
+      svg.dataset.kind=state.kind;detail.dataset.kind=state.kind;
+      el('net-breadcrumbs').textContent='';
+      var view=el('net-view'),projectOption=view.querySelector('option[value="project"]');
+      if(projectOption)projectOption.remove();
+      if(state.kind==='project'){projectOption=document.createElement('option');projectOption.value='project';projectOption.textContent=state.value.label;view.appendChild(projectOption);}
+      view.value=state.kind==='fact'?'fact:'+model.facts.indexOf(state.value):state.kind==='group'?'group:'+model.groups.indexOf(state.value):state.kind;
+      var selected=selectedNodes(), matching=selected.filter(matches);
       var domains=state.kind==='fleet'?model.domains:model.domains.filter(function(d){return selected.some(function(n){return n.domain===d;});});
       // Search preserves domain coverage while expanding matching domains.
-      var mobile=window.innerWidth<700, W=mobile?Math.max(260,el('network-blk').clientWidth-36):960;
+      // Change ranks before the horizontal map would shrink its text and controls.
+      // A vertical map uses its actual container width, including narrow phones.
+      var available=svg.parentElement.clientWidth||Math.max(200,el('network-blk').clientWidth-36);
+      var mobile=available<960, W=mobile?Math.max(200,available):960;
       var blocks=[],y=mobile?108:38;
       domains.forEach(function(domain){
-        var all=matching.filter(function(n){return n.domain===domain;}), expanded=state.query?all.length>0:state.expanded.has(domain);
+        var all=matching.filter(function(n){return n.domain===domain;}), expanded=all.length>0&&state.expanded.has(domain);
         var page=state.pages[domain]||0,shown=expanded?all.slice(page*12,page*12+12):[];
-        var height=expanded?Math.max(mobile?94:90,shown.length*(mobile?60:56)+(mobile?94:36)):mobile?72:84;
+        var height=expanded?Math.max(mobile?94:90,shown.length*(mobile?60:56)+(mobile?94:36))+(all.length>12?(mobile?32:56):0):mobile?72:84;
         blocks.push({domain:domain,all:all,shown:shown,expanded:expanded,page:page,y:y,height:height,cy:mobile?y:y+height/2});y+=height;
       });
       var H=Math.max(mobile?200:260,y+24), rootX=mobile?W/2:92, rootY=mobile?36:H/2;
-      svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.style.height=H+'px';
+      // Let the viewBox set the displayed height when the map scales down.
+      // Capping its width preserves the existing scale and centering on wide screens.
+      svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.style.height='auto';svg.style.maxWidth=W+'px';svg.style.marginLeft='auto';svg.style.marginRight='auto';
+      if(!mobile){
+        text(rootX,18,state.kind==='fleet'?'FLEET':state.kind.toUpperCase(),'rank-label').setAttribute('text-anchor','middle');
+        text(358,18,'DOMAIN','rank-label').setAttribute('text-anchor','middle');
+        text(608,18,state.kind==='fact'?'PROJECTS HOLDING THIS FACT':state.kind==='group'?'PERMITTED PROJECTS':'PROJECTS','rank-label');
+      }
       var kind=state.kind==='group'?'grant-edge':state.kind==='fact'||state.kind==='project'?'fact-edge':'structure-edge';
       if(blocks.length){
-        if(mobile){branch('M '+rootX+' '+(rootY+18)+' V 78 H 14 V '+blocks[blocks.length-1].cy,kind,true);}
-        else{branch('M '+(rootX+24)+' '+rootY+' H 234',kind,true);branch('M 234 '+blocks[0].cy+' V '+blocks[blocks.length-1].cy,kind,true);}
+        var rootRadius=state.kind==='fleet'?16:18;
+        // Use a side port: the root's readable label occupies the space below it.
+        if(mobile){branch('M '+(rootX-rootRadius)+' '+rootY+' H 14 V '+blocks[blocks.length-1].cy,kind,true);}
+        else{branch('M '+(rootX+rootRadius)+' '+rootY+' H 234',kind,true);branch('M 234 '+Math.min(rootY,blocks[0].cy)+' V '+Math.max(rootY,blocks[blocks.length-1].cy),kind,true);}
       }
       var root=S('g',{class:'network-root','data-key':'root'});svg.appendChild(root);
       if(state.kind==='fleet'){
@@ -784,66 +1065,80 @@ var NocturneNetwork = (function(){
         svg.appendChild(S('circle',{cx:linkX,cy:dy,r:2.5,class:'aggregate-junction'}));
         var dg=S('g',{class:'domain-junction','data-domain':b.domain,'data-key':'domain:'+b.domain});svg.appendChild(dg);
         dg.appendChild(S('circle',{cx:dx,cy:dy,r:12}));
-        text(dx,dy+4,b.expanded?'−':'+','domain-toggle',dg).setAttribute('text-anchor','middle');
+        if(b.all.length)text(dx,dy+4,b.expanded?'−':'+','domain-toggle',dg).setAttribute('text-anchor','middle');
         var dt=text(mobile?56:dx,mobile?dy+4:dy+31,b.domain,'domain-label',dg);if(!mobile)dt.setAttribute('text-anchor','middle');clipped(dt,b.domain,mobile?W-70:225);
-        var count=b.all.length+' project'+(b.all.length===1?'':'s');var ct=text(mobile?56:dx,mobile?dy+23:dy+50,count,'domain-count',dg);if(!mobile)ct.setAttribute('text-anchor','middle');
-        dg.setAttribute('aria-expanded',String(b.expanded));activate(dg,function(){if(state.expanded.has(b.domain))state.expanded.delete(b.domain);else state.expanded.add(b.domain);draw();},b.domain+' / '+count+' / '+(b.expanded?'collapse':'expand'));
+        var count=b.all.length?b.all.length+(state.query?' matching project':' project')+(b.all.length===1?'':'s'):state.query?'No matching projects':'No captured projects';var ct=text(mobile?56:dx,mobile?dy+23:dy+50,count,'domain-count',dg);if(!mobile)ct.setAttribute('text-anchor','middle');
+        if(b.all.length){dg.setAttribute('aria-expanded',String(b.expanded));activate(dg,function(){if(state.expanded.has(b.domain))state.expanded.delete(b.domain);else state.expanded.add(b.domain);draw();},b.domain+' / '+count+' / '+(b.expanded?'collapse':'expand'));}
+        else{var emptyTitle=S('title');emptyTitle.textContent=b.domain+' / '+count;dg.appendChild(emptyTitle);}
         if(b.shown.length){
           var first=mobile?dy+62:b.y+26,last=first+(b.shown.length-1)*(mobile?60:56),jx=mobile?34:570;
-          if(mobile)branch('M '+dx+' '+(dy+13)+' V '+last,kind,true);
-          else {branch('M '+(dx+13)+' '+dy+' H '+jx,kind,true);branch('M '+jx+' '+Math.min(first,dy)+' V '+Math.max(last,dy),kind,true);}
+          if(mobile)branch('M '+dx+' '+(dy+12)+' V '+last,kind,true);
+          else {branch('M '+(dx+12)+' '+dy+' H '+jx,kind,true);branch('M '+jx+' '+Math.min(first,dy)+' V '+Math.max(last,dy),kind,true);}
           b.shown.forEach(function(n,i){
             var py=first+i*(mobile?60:56),px=mobile?52:608,pw=mobile?W-64:330;
             branch('M '+jx+' '+py+' H '+px,kind,false);svg.appendChild(S('circle',{cx:jx,cy:py,r:2.5,class:'aggregate-junction'}));
             var node=S('g',{class:'net-node'+(state.kind==='group'?' selected':''),'data-node':n.raw.node||n.id,'data-sid':n.sid,'data-key':n.id,'data-current':truthy(n.raw.trigger)?'true':'false'});svg.appendChild(node);
             node.appendChild(S('rect',{x:px,y:py-21,width:pw,height:44,rx:5}));
             var nt=text(px+12,py-3,n.label,'project-label',node);clipped(nt,n.label,pw-24);
-            text(px+12,py+14,(truthy(n.raw.trigger)?'This project · ':'')+(n.raw.shared==null?'Holdings not captured':n.raw.shared+' physical mirrors'),'project-meta',node);
-            var title=S('title');title.textContent=n.label+' · '+n.sid;node.appendChild(title);
+            var relation=state.kind==='fact'?'Holds this fact':state.kind==='group'?'Permitted member':truthy(n.raw.trigger)?'This project':'Select to explore';
+            text(px+12,py+14,relation,'project-meta',node);
+            var title=S('title');title.textContent=n.label+' · '+n.domain;node.appendChild(title);
             activate(node,function(){focus('project',n);},n.label+' / inspect captured project');
           });
         }
         if(b.expanded&&b.all.length>12){
-          var pg=S('g',{class:'domain-page','data-key':'page:'+b.domain});svg.appendChild(pg);
-          var px=mobile?56:608,py=b.y+b.height-22;
-          var prev=text(px,py,'← Previous','page-link',pg),next=text(px+(mobile?114:190),py,'Next →','page-link',pg);
-          activate(prev,function(){state.pages[b.domain]=Math.max(0,b.page-1);draw();},'Previous projects in '+b.domain);
-          activate(next,function(){state.pages[b.domain]=Math.min(Math.ceil(b.all.length/12)-1,b.page+1);draw();},'Next projects in '+b.domain);
-          text(px,py-18,(b.page*12+1)+'–'+Math.min(b.all.length,b.page*12+12)+' of '+b.all.length,'domain-count',pg);
+          var pg=S('g',{class:'domain-page'});svg.appendChild(pg);
+          var px=mobile?52:608,py=b.y+b.height-66,gap=mobile?8:12,width=((mobile?W-64:330)-gap)/2,lastPage=Math.ceil(b.all.length/12)-1;
+          function pageControl(direction,x,label,disabled){var key='page:'+direction+':'+b.domain,control=S('g',{class:'page-control','data-key':key,role:'button','aria-label':(direction==='previous'?'Previous':'Next')+' projects in '+b.domain,'aria-disabled':String(disabled)});pg.appendChild(control);
+            control.appendChild(S('rect',{x:x,y:py,width:width,height:44,rx:5}));text(x+width/2,py+27,label,'page-link',control).setAttribute('text-anchor','middle');
+            if(!disabled)activate(control,function(){state.pages[b.domain]=b.page+(direction==='previous'?-1:1);draw();},(direction==='previous'?'Previous':'Next')+' projects in '+b.domain);
+          }
+          pageControl('previous',px,'← Previous',b.page===0);pageControl('next',px+width+gap,'Next →',b.page===lastPage);
+          text(px,py-10,(b.page*12+1)+'–'+Math.min(b.all.length,b.page*12+12)+' of '+b.all.length,'domain-count',pg);
         }
       });
       if(!blocks.length)text(mobile?24:285,mobile?142:120,'No project nodes captured for this view.','empty-network');
+      // Block spacing leaves room for the next domain. The final domain needs
+      // only a small bottom inset; measure the drawn content so pagination stays visible.
+      var bounds=svg.getBBox(),contentHeight=Math.ceil(bounds.y+bounds.height+24);
+      if(bounds.height>0&&contentHeight<H)svg.setAttribute('viewBox','0 0 '+W+' '+contentHeight);
       inspect(selected);
       svg.dataset.viewport=String(window.innerWidth);
-      if(focusKey){var target=Array.from(svg.querySelectorAll('[data-key]')).find(function(n){return n.getAttribute('data-key')===focusKey;});if(target)target.focus({preventScroll:true});}
+      if(focusKey){var target=Array.from(svg.querySelectorAll('[data-key]')).find(function(n){return n.getAttribute('data-key')===focusKey;});if(target&&target.getAttribute('aria-disabled')==='true')target=target.parentElement.querySelector('.page-control[aria-disabled="false"]');if(target)target.focus({preventScroll:true});}
     }
-    function kv(label,value){return '<div class="inspector-row"><span>'+esc(label)+'</span><b>'+esc(value==null?'Not captured':value)+'</b></div>';}
+    function count(v){return typeof v==='number'&&isFinite(v)&&v>=0?v:null;}
     function inspect(selected){
-      var h='<div class="inspector-kicker">'+esc(state.kind==='fleet'?'Snapshot evidence':state.kind+' evidence')+'</div><h4>'+esc(rootLabel())+'</h4>';
+      var capture=net.capture||{},facts=[],note='',explanation='';
+      var partial=count(capture.unresolved_identities)>0||count(capture.read_failures)>0;
+      [['facts_total','facts_emitted'],['holder_refs_total','holder_refs_emitted']].forEach(function(keys){if(count(capture[keys[0]])!=null&&count(capture[keys[1]])!=null&&capture[keys[1]]<capture[keys[0]])partial=true;});
       if(state.kind==='project'){
-        var n=state.value.raw;h+=kv('Stable store',state.value.sid)+kv('Domain',state.value.domain)+kv('Always-loaded tokens',n.always_loaded_tokens)+kv('Mirror index tokens',n.mirror_index_tokens)+kv('Recall tokens',n.recall_tokens)+kv('Physical mirrors',n.shared);
-      }else if(state.kind==='fact')h+=kv('Canonical identity',state.value.fact_id)+kv('Home domain',state.value.domain)+kv('Scope',state.value.scope)+kv('Physical holders before limits',state.value.held_n)+kv('Captured holder references',(state.value.holder_sids||[]).length)+kv('Resolved captured projects',selected.length)+((state.value.holder_sids||[]).length!==selected.length?'<p class="capture-note">Some captured holder references do not uniquely identify project rows.</p>':'');
-      else if(state.kind==='group')h+='<p>Permission only · '+selected.length+' captured group members. Membership does not establish physical presence or delivery.</p>'+kv('Home domain',state.value.home_domain)+kv('Facts addressed before limit',state.value.facts_total)+kv('Captured addressed facts',rows(state.value.facts).length);
-      else h+='<p>'+(Array.isArray(net.nodes)?model.nodes.length+' captured projects':'Project list not captured')+' in '+model.domains.length+' domains. Expand a domain, then select a project.</p>';
-      if(!model.canonical)h+='<p class="capture-note">Canonical identities were not captured. This archive supports exploration of its recorded pairwise links; fact holders cannot be reconstructed.</p>';
-      if(net.capture)h+=kv('Unresolved mirror identities',net.capture.unresolved_identities)+kv('Unreadable fact files',net.capture.read_failures)+kv('Canonical facts captured / total',net.capture.facts_emitted+' / '+net.capture.facts_total)+kv('Holder references captured / total',net.capture.holder_refs_emitted+' / '+net.capture.holder_refs_total);
-      detail.innerHTML=h;
-      var facts=model.facts.filter(function(f){return state.kind!=='project'||(f.holder_sids||[]).indexOf(state.value.sid)>=0;}).filter(function(f){return !state.query||(f.name+' '+f.domain+' '+f.fact_id).toLowerCase().indexOf(state.query)>=0;});
-      if(facts.length){var disclosure=document.createElement('details');disclosure.open=state.kind==='project'||!!state.query;disclosure.innerHTML='<summary>'+facts.length+' captured facts</summary>';detail.appendChild(disclosure);facts.forEach(function(f){button(f.domain+' / '+f.name+' · '+f.held_n+' holders',function(){focus('fact',f);},disclosure,'inspector-choice');});}
-      if(state.kind==='project'){
-        var links=model.edges.filter(function(e){return e.a===state.value.raw.node||e.b===state.value.raw.node;});
-        var list=document.createElement('details');list.open=true;list.innerHTML='<summary>'+links.length+' recorded pairwise connections</summary>';detail.appendChild(list);
-        links.forEach(function(e){var named=rows(net.stack_edge_facts).find(function(f){return f.a===e.a&&f.b===e.b||f.b===e.a&&f.a===e.b;});var p=document.createElement('p');p.textContent=(e.a===state.value.raw.node?e.b:e.a)+' · '+e.n+' shared stack facts · '+(named?(named.names||[]).join(', '):'fact names were not captured');list.appendChild(p);});
+        var unique=model.nodes.filter(function(n){return n.sid===state.value.sid;}).length===1;
+        if(unique)facts=model.facts.filter(function(f){return Array.isArray(f.holder_sids)&&f.holder_sids.indexOf(state.value.sid)>=0;});
+        else partial=true;
+        explanation=facts.length?'Choose a shared fact to see which projects hold it.':model.canonical?'No named shared facts were captured for this project.':'These projects share facts recorded in this dream.';
+      }else if(state.kind==='fact'){
+        var refs=Array.isArray(state.value.holder_sids)?state.value.holder_sids:null;
+        if(!refs||refs.length!==selected.length||count(state.value.held_n)!=null&&state.value.held_n>selected.length)partial=true;
+        explanation='These projects held a local copy of this fact.';
+      }else if(state.kind==='group'){
+        if(!Array.isArray(net.nodes)||model.nodes.some(function(n){return !Array.isArray(n.raw.groups);}))partial=true;
+        if(count(state.value.facts_total)!=null&&state.value.facts_total>rows(state.value.facts).length)partial=true;
+        explanation='These projects have permission to receive facts addressed to this group.';
       }
-      if(state.kind==='group'){rows(state.value.facts).forEach(function(f){var p=document.createElement('p');p.textContent='Addressed: '+f.domain+' / '+f.name;detail.appendChild(p);});}
+      if(!Array.isArray(net.nodes))note='Network details were not captured for this dream.';
+      else if(!model.canonical)note='This older snapshot records project connections, but not individual fact holders.';
+      else if(partial)note='This snapshot is partial; some facts or connections cannot be shown.';
+      else if(['facts_total','facts_emitted','holder_refs_total','holder_refs_emitted','unresolved_identities','read_failures'].some(function(key){return count(capture[key])==null;}))note='Capture completeness was not recorded for this dream.';
+      detail.innerHTML=(state.kind==='fleet'?'':'<strong class="network-selection-name">'+esc(rootLabel())+'</strong>')+(explanation?'<p class="network-explanation" aria-live="polite">'+esc(explanation)+'</p>':'')+'<span class="network-attribution">Saved with this dream</span>';
+      if(facts.length){
+        var choices=document.createElement('div');choices.className='network-facts';detail.appendChild(choices);
+        facts.forEach(function(f){var duplicate= facts.filter(function(x){return x.name===f.name;}).length>1;var b=button((duplicate?f.domain+' / ':'')+f.name,function(){focus('fact',f);},choices,'inspector-choice');b.dataset.factId=f.fact_id||'';});
+      }
+      el('net-cap').textContent=note;el('net-cap').hidden=!note;
+      var interpretation=state.kind==='group'?'Dashed branches show permission to receive, not delivery.':state.kind==='fact'?'Solid branches show projects holding this fact.':state.kind==='project'?'Solid branches show recorded shared-fact connections.':'Projects are organized by domain. Select a domain to expand it.';
+      el('net-legend').innerHTML='<span class="'+(state.kind==='group'?'permissions-key':state.kind==='fleet'?'organization-key':'holdings-key')+'">'+esc(interpretation)+'</span>';
     }
-    el('net-note').textContent=Array.isArray(net.nodes)?model.nodes.length+' captured projects · '+model.domains.length+' domains':'Project list not captured';
-    el('net-cap').textContent='Coverage: captured stores holding shared mirrors plus the triggering store. Absent projects are outside this snapshot. Branches organize captured evidence; junctions aggregate their visible members.';
-    el('net-legend').innerHTML='<span>○ Domain / expand projects</span><span id="net-leg-stack" class="holdings-key">— Observed holdings in a focused view</span><span class="permissions-key">┄ Group permission only</span>';
-    var inventory='<h4>Project inventory</h4><div class="table-scroll"><table><thead><tr><th>Project</th><th>Domain</th><th>Stable store</th><th>Index</th><th>Mirror index</th><th>Recall</th><th>Groups</th></tr></thead><tbody>'+model.nodes.map(function(n){return '<tr>'+[n.label,n.domain,n.sid,n.raw.always_loaded_tokens,n.raw.mirror_index_tokens,n.raw.recall_tokens,n.groups.join(', ')].map(function(v){return '<td>'+esc(v==null?'Not captured':v)+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table></div>';
-    inventory+='<h4>Permissions</h4><div class="table-scroll"><table><thead><tr><th>Group</th><th>Captured group members</th><th>Facts addressed to group</th></tr></thead><tbody>'+model.groups.map(function(g){return '<tr><td>'+esc(g.group)+'</td><td>'+esc(g.members_n==null?'Not captured':g.members_n)+'</td><td>'+rows(g.facts).map(function(f){return esc(f.domain+' / '+f.name);}).join(', ')+(g.facts_total!=null?' · '+g.facts_total+' before limit':' · total before limit not captured')+'</td></tr>';}).join('')+'</tbody></table></div>';
-    inventory+='<h4>Registry baseline holdings</h4><p>Registry holder counts use a different basis from observed physical presence.</p>'+rows(net.universal_facts).map(function(f){return '<p>'+esc(f.domain+' / '+f.name)+' · '+esc(f.held==null?'Not captured':f.held)+' registry holders</p>';}).join('')+'<details><summary>Every recorded network field</summary><pre>'+esc(JSON.stringify(net,null,2))+'</pre></details>';
-    el('network-data-body').innerHTML=inventory;
+    el('net-note').textContent=Array.isArray(net.nodes)?model.nodes.length+' projects · '+model.domains.length+' domains':'Not captured';
     draw();
     // One resize listener per mounted report; old closures are removed on navigation.
     if(paint.resize)window.removeEventListener('resize',paint.resize);
@@ -855,10 +1150,11 @@ var NocturneNetwork = (function(){
   /* Bundled report sections. Inlined inside the archive closure; no external imports. */
 var NocturneSections = (function(){
   function legacyEvidence(){
+    function countLabel(v,suffix){return measured(v)?fmt(v)+suffix:'Not captured';}
     var D=CUR.distill;
     if(D&&typeof D==="object"&&!Array.isArray(D)){
-      var counts=[num(D.n_recurring)+" recurring",num(D.n_chains)+" chains"];
-      if(num(D.commands)>0)counts.push(fmt(num(D.commands))+" commands / "+num(D.sessions)+" session"+(num(D.sessions)!==1?"s":""));
+      var counts=[measured(D.n_recurring)?D.n_recurring+' recurring':'Recurring count not captured',measured(D.n_chains)?D.n_chains+' chains':'Chain count not captured'];
+      if(measured(D.commands))counts.push(countLabel(D.commands,' commands')+' / '+countLabel(D.sessions,' sessions'));
       // v0.1.58 — the firewall-suppression count, so the transparency counter reaches the human view.
       if(num(D.secrets_omitted)>0)counts.push(num(D.secrets_omitted)+" secret-shaped");
       // L2 (v0.4.2): the top recurring commands — the BODY list below the verdict, never the
@@ -871,7 +1167,7 @@ var NocturneSections = (function(){
         el("dstl-top-list").style.display="";
         el("dstl-top-list").innerHTML=dtop.map(function(t){
           return '<div class="dstl-row"><span class="cmd">'+esc(String(t.t||"?"))+'</span>'
-            +'<span class="ev">×'+num(t.n)+' · '+num(t.d)+'d</span></div>';
+            +'<span class="ev">'+countLabel(t.n,' observations')+' · '+countLabel(t.d,' days')+'</span></div>';
         }).join("")
           ;
         el("dstl-top").style.display="";
@@ -885,7 +1181,7 @@ var NocturneSections = (function(){
         el("dstl-chains-list").innerHTML=dchains.map(function(t){
           var seg=(Array.isArray(t.t)?t.t:[]).map(function(x){return esc(String(x));}).join(" → ");
           return '<div class="dstl-row"><span class="cmd">'+seg+'</span>'
-            +'<span class="ev">×'+num(t.n)+' · '+num(t.d)+'d</span></div>';
+            +'<span class="ev">'+countLabel(t.n,' observations')+' · '+countLabel(t.d,' days')+'</span></div>';
         }).join("")
           ;
         el("dstl-top").style.display="";
@@ -896,7 +1192,7 @@ var NocturneSections = (function(){
         el("dstl-used-head").style.display="";
         el("dstl-used-list").innerHTML=dused.map(function(t){
           return '<div class="dstl-row"><span class="cmd">'+esc(String(t.a))+'</span>'
-            +'<span class="ev">×'+num(t.n)+'</span></div>';
+            +'<span class="ev">'+countLabel(t.n,' uses')+'</span></div>';
         }).join("")
           ;
         el("dstl-top").style.display="";
@@ -921,8 +1217,8 @@ var NocturneSections = (function(){
     var missN=(U&&typeof U==="object"&&Array.isArray(U.misses))?U.misses.length:0;
     if((DM&&typeof DM==="object"&&!Array.isArray(DM))||missN>0){
       DM=(DM&&typeof DM==="object"&&!Array.isArray(DM))?DM:{};
-      var dmc=[num(DM.windows_observed)+" window"+(num(DM.windows_observed)!==1?"s":""),
-               num(DM.eligible)+" eligible"];
+      var dmc=[measured(DM.windows_observed)?countLabel(DM.windows_observed,' windows'):'Usage windows not captured',
+               measured(DM.eligible)?countLabel(DM.eligible,' eligible'):'Eligibility not captured'];
       var surf=Array.isArray(DM.surfaced)?DM.surfaced:[], stk=Array.isArray(DM.struck)?DM.struck:[];
       var surfStr=surf.filter(function(s){return typeof s==="string";});
       if(surf.length)dmc.push(surf.length+" surfaced · inspect all demotion evidence below");
@@ -936,7 +1232,6 @@ var NocturneSections = (function(){
       // demoted/justified/none) becomes the bordered tag, same as distill's created/proposed/nothing —
       // so a dormant triage reads as a badge + sentence, not bare italic text beside a badged sibling.
       var dvd=String(DM.verdict==null?"":DM.verdict);
-      if(!dvd&&missN===0&&num(DM.eligible)===0)dvd="dormant — not enough evidence yet";
       if(dvd){
         var dvd2=dvd.replace(/^\s*eligible\s+\d+\s*(?:→|—|-)?\s*/i,"");
         var dm2=dvd2.match(/^\s*(dormant|demoted|justified|none|counter-justified)\b[:\s—-]*/i);
@@ -945,7 +1240,7 @@ var NocturneSections = (function(){
         bits+=(bits?'<span class="vtx"> · </span>':"")
           +(dtag?'<span class="tag'+dcls+'">'+esc(dtag)+'</span>':"")+'<span class="vtx">'+esc(drest)+'</span>';
       }
-      if(!bits)bits='<span class="vtx" style="color:var(--faint)">no verdict recorded — a triage with eligible candidates and no verdict is incomplete</span>';
+      if(!bits)bits='<span class="vtx" style="color:var(--faint)">Demotion verdict not captured.</span>';
       el("demo-verdict").innerHTML=bits;
       el("demotion-blk").style.display="";
     }
@@ -998,12 +1293,10 @@ var NocturneSections = (function(){
         var nConf=named.filter(function(c){return String(c.disposition)==="confirmed";}).length;
         var nFleet=num(WP.n_fleet, wc.filter(function(c){return isFleetRec(c)&&isSpread(c)&&isDistinct(c);}).length);
         var nSpread=num(WP.n_day_spread, wc.filter(function(c){return isFleetRec(c)&&!isSpread(c)&&isDistinct(c);}).length);
-        el("reg-counts").textContent=nConf?(nConf+" placed"):(nAwait?(nAwait+" proposed"):(nFleet?"none proposed":"none this pass"))+(num(WP.n_blocked,0)>0?" · "+num(WP.n_blocked,0)+" blocked":"");
+        el("reg-counts").textContent=nConf?(nConf+" placed"):(nAwait?(nAwait+" proposed"):(measured(WP.n_fleet)?WP.n_fleet+' fleet candidates':Array.isArray(WP.candidates)?wc.length+' captured candidates':'Candidate counts not captured'))+(num(WP.n_blocked,0)>0?" · "+num(WP.n_blocked,0)+" blocked":"");
         var vd=String(WP.verdict||"");
         if(vd) el("reg-verdict").innerHTML=verdictHtml(vd,"declined|confirmed|awaiting|nothing|blocked");
-        else if(nFleet && !named.length) el("reg-verdict").innerHTML='<span class="vtx" style="color:var(--faint)">'+nFleet+" distinctive command"+(nFleet!==1?"s":"")+" crossed projects; none proposed as an artifact.</span>";
-        else if(!named.length) el("reg-verdict").innerHTML='<span class="vtx" style="color:var(--faint)">Nothing distinctive showed up on more than one project this pass.</span>';
-        else el("reg-verdict").innerHTML="";
+        else el("reg-verdict").innerHTML='<span class="vtx" style="color:var(--faint)">Placement verdict not captured.</span>';
         function regStatus(c){
           var raw=String(c.disposition||"").trim();
           if(raw==="confirmed") return {tag:"confirmed", cls:"ok"};
@@ -1090,12 +1383,25 @@ var NocturneSections = (function(){
   function value(v){return v==null?'Not captured':typeof v==='object'?JSON.stringify(v):String(v);}
   function line(label,v){return '<div class="inspector-row"><span>'+esc(label)+'</span><b>'+esc(value(v))+'</b></div>';}
   function facts(c){return g(c,'budget.recall_facts',{});}
-  function decisions(c){if(!Array.isArray(c.entries))return null;var result={};c.entries.forEach(function(e){var k=e&&e.action?String(e.action):'Unspecified';result[k]=(result[k]||0)+1;});return result;}
+  function decisions(c){if(!Array.isArray(c.entries))return null;var result=Object.create(null);c.entries.forEach(function(e){var k=e&&e.action?String(e.action):'Unspecified';result[k]=(result[k]||0)+1;});return result;}
   function decisionText(c){var d=decisions(c);return d===null?'Not captured':Object.keys(d).length?Object.keys(d).map(function(k){return d[k]+' '+k;}).join(' · '):'0 decisions';}
   function mutationText(c){var a=object(c.audit);if(Array.isArray(a.operations))return a.operations.length+' observed file operation'+(a.operations.length===1?'':'s');var stores=['memory','claude_md','repo_doc'], keys=['created','modified','deleted'];if(stores.every(function(s){return keys.every(function(k){return measured(g(a,s+'.'+k,null));});}))return stores.reduce(function(n,s){return n+keys.reduce(function(x,k){return x+a[s][k];},0);},0)+' observed file mutations';return 'File mutations not fully captured';}
-  function reveal(id){var box=el(id),section=box.closest('.blk');if(section&&section.classList.contains('collapsed'))section.querySelector('.shead').click();if(box.tagName==='DETAILS')box.open=true;box.scrollIntoView({block:'start',behavior:'auto'});var target=box.querySelector('summary')||box;target.setAttribute('tabindex','-1');target.focus({preventScroll:true});}
+  function reveal(id){
+    var box=el(id);if(!box)return;
+    var section=box.closest('.blk');if(section&&section.classList.contains('collapsed'))section.querySelector('.shead').click();
+    for(var ancestor=box;ancestor&&ancestor!==section;ancestor=ancestor.parentElement)if(ancestor.tagName==='DETAILS')ancestor.open=true;
+    var target=box===section?box.querySelector('.shead'):box.tagName==='DETAILS'?box.querySelector('summary'):box;
+    box.scrollIntoView({block:'start',behavior:'auto'});
+    if(!target.matches('button,a[href],input,select,textarea,summary,[tabindex]')){target.setAttribute('tabindex','-1');target.addEventListener('blur',function(){target.removeAttribute('tabindex');},{once:true});}
+    target.focus({preventScroll:true});
+  }
   function bindEvidence(box){box.querySelectorAll('[data-evidence]').forEach(function(b){b.onclick=function(){reveal(b.getAttribute('data-evidence'));};});}
   function evidenceButton(text,id){return '<button type="button" class="evidence-link" data-evidence="'+esc(id)+'">'+esc(text)+'</button>';}
+  function sourceNote(label,c){
+    var stamp=g(c||{},'marker.timestamp',null),when='';
+    if(stamp){var date=new Date(stamp);when=' · '+(isNaN(date.getTime())?esc(stamp):'<time datetime="'+esc(stamp)+'">'+esc(date.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'UTC'}))+' UTC</time>');}
+    return '<span class="source-label">Source</span> '+esc(label)+when;
+  }
   function capturedTree(v){
     // An uncapped structured disclosure preserves scanner rows, windows and future
     // optional fields without guessing an individual check result from a total.
@@ -1131,75 +1437,150 @@ var NocturneSections = (function(){
   function summary(c,assessment){
     var outcome=c._outcome||'Outcome not captured',v=object(c.verification),d=object(c.dream);
     el('dream-blk').style.display='';el('dream-note').textContent='Recorded outcome & captured voice';
-    var h='<p class="summary-outcome">'+esc(outcome)+'</p><div class="summary-evidence">';
-    h+=evidenceButton((measured(v.confirmed)?v.confirmed+' confirmed claim'+(v.confirmed===1?'':'s'):'Confirmed claims not captured')+' · '+assessment.claims,'verification-evidence');
-    h+=evidenceButton(mutationText(c),'file-changes')+evidenceButton(decisionText(c),'entries-blk')+'</div>';
+    var h='<p class="evidence-label">Recorded outcome</p><p class="summary-outcome">'+esc(outcome)+'</p><div class="summary-evidence">';
+    h+='<div><span class="evidence-label">Claims checked</span>'+evidenceButton((measured(v.confirmed)?v.confirmed+' confirmed claim'+(v.confirmed===1?'':'s'):'Confirmed claims not captured')+' · '+assessment.claims,'verification-evidence')+'</div>';
+    h+='<div><span class="evidence-label">Observed file changes</span>'+evidenceButton(mutationText(c),'file-changes')+'</div><div><span class="evidence-label">Decisions recorded</span>'+evidenceButton(decisionText(c),'entries-blk')+'</div></div>';
     if(assessment.errors.length)h+='<p class="summary-attention">Needs attention · '+evidenceButton(assessment.errors[0].label,assessment.errors[0].target)+(assessment.errors.length>1?' · '+evidenceButton((assessment.errors.length-1)+' further items','attention-items'):'')+'</p>';
+    h+='<p id="summary-source" class="source-note">'+sourceNote('Saved dream outcome, verification, and decision ledger',c)+'</p>';
     el('dream-summary').innerHTML=h;bindEvidence(el('dream-summary'));
-    var beats=array(d.beats),valid=beats.length===6&&beats.every(function(b){return typeof b==='string'&&b.trim();});
-    var labels=['Locate','Orient','Gather','Verify','Consolidate','Measure & wake'];
-    function voice(v){if(typeof v!=='string')return v==null?'Not captured':JSON.stringify(v);return v.split('\n').map(function(l){return l.replace(/^\s*>\s?/,'').replace(/^\s*\*(.*)\*\s*$/,'$1');}).join('\n');}
-    var arc=el('dream-arc');arc.innerHTML='<div class="dream-sequence"><div class="dream-bookend"><span class="passage-label">Sleep</span><p class="dream-voice">'+esc(voice(d.sleep))+'</p></div><div class="dream-passages"><div id="dream-beats" class="beat-controls" role="group" aria-label="Captured dream passages"></div><p id="dream-passage" class="dream-voice" aria-live="polite"></p></div><div class="dream-bookend"><span class="passage-label">Wake</span><p class="dream-voice">'+esc(voice(d.wake))+'</p></div></div>';
-    var controls=el('dream-beats');beats.forEach(function(beat,i){var b=document.createElement('button');b.type='button';b.textContent=valid?'Phase '+i+' · '+labels[i]:'Beat '+(i+1);b.onclick=function(){controls.querySelectorAll('button').forEach(function(btn){btn.setAttribute('aria-pressed',String(btn===b));});el('dream-passage').textContent=voice(beat);};controls.appendChild(b);if(i===0)b.click();});
-    if(!beats.length)el('dream-passage').textContent='Intermediate passages were not captured.';
-    var full=document.createElement('details');full.id='complete-dream';full.innerHTML='<summary>Read the complete dream</summary>';
-    ['sleep','beats','wake'].forEach(function(k){var values=k==='beats'?beats:[d[k]];values.forEach(function(v,i){if(v==null)return;var p=document.createElement('p');p.className='dream-voice';p.textContent=typeof v==='string'?v:JSON.stringify(v);var label=document.createElement('div');label.className='passage-label';label.textContent=k==='beats'?(valid?'Phase '+i+' · '+labels[i]:'Beat '+(i+1)):k;full.appendChild(label);full.appendChild(p);});});arc.appendChild(full);
+    var arc=el('dream-arc');arc.replaceChildren();
+    arc.setAttribute('role','region');arc.setAttribute('aria-label','Dream narration');
+    function paragraph(text,captured){var p=document.createElement('p');p.className=captured?'dream-voice':'dream-capture-note';p.textContent=text;arc.appendChild(p);}
+    function unwrapped(text){return text.trim().replace(/^(\*{1,3}|_{1,3})(\S(?:[\s\S]*\S)?)\1$/,'$2');}
+    function passage(v,label){
+      if(typeof v!=='string'||!v.trim()){
+        paragraph(label+': '+(v==null||typeof v==='string'?'Not captured':JSON.stringify(v)),false);return;
+      }
+      // Captured prose sometimes carries Markdown quote/emphasis wrappers. CSS
+      // supplies the voice; keep literal symbols inside the prose and never parse HTML.
+      var paragraphs=v.replace(/\r\n?/g,'\n').split('\n').map(function(line){return line.replace(/^\s*>\s?/,'');}).join('\n').trim().split(/\n\s*\n/).map(unwrapped);
+      // Strip paragraph wrappers first so separately wrapped paragraphs cannot
+      // be mistaken for one wrapper spanning the complete passage.
+      unwrapped(paragraphs.join('\n\n')).split(/\n\s*\n/).forEach(function(text){paragraph(text,true);});
+    }
+    if(!Object.keys(d).length){paragraph('Dream narration: Not captured',false);return;}
+    passage(d.sleep,'Sleep');
+    if(Array.isArray(d.beats)&&d.beats.length)d.beats.forEach(function(beat,i){passage(beat,'Passage '+(i+1));});
+    else passage(Array.isArray(d.beats)?null:d.beats,'Intermediate passages');
+    passage(d.wake,'Wake');
   }
   function evidence(c,assessment){
     legacyEvidence();
-    el("pass-note").textContent=outcomeOf(CUR)+" · "+(Array.isArray(c.entries)?c.entries.length+" decisions":"Decisions not captured");
-    el('health-summary').innerHTML=[['Claims',assessment.claims,'verification-evidence'],['Store integrity',assessment.stores,'store-checks'],['Observed changes',assessment.changes,'file-changes']].map(function(s){return '<div class="health-status" data-state="'+esc(s[1])+'"><span>'+s[0]+'</span>'+evidenceButton(s[1],s[2])+'</div>';}).join('');bindEvidence(el('health-summary'));
-    el('attention-items').innerHTML=assessment.errors.length?'<p class="attention-heading">Needs attention</p><ul>'+assessment.errors.map(function(e){return '<li>'+evidenceButton(e.label,e.target)+'</li>';}).join('')+'</ul>':'';bindEvidence(el('attention-items'));
-    var v=object(c.verification),h=object(c.health),pf=object(c.preflight);
-    el('verify').innerHTML='<p>Verification judgments · '+esc(assessment.claims)+'</p>'+['confirmed','corrected','unverifiable','method'].map(function(k){return line(k,v[k]);}).join('')+extra('All verification fields',c.verification)+(c._integrity?'<p class="adverse">Procedure integrity: '+esc(c._integrity.reason)+'</p>':'');
-    el('store-evidence').innerHTML='<p>Recorded store checks · '+esc(assessment.stores)+'</p>'+line('Index pointers',h.index_pointers_ok==null?null:h.index_pointers_ok?'Recorded clear':'Needs attention')+capturedTree(c.health)
-      +'<h4>Environment preflight</h4>'+line('Captured at',pf.at)+line('Failure IDs',Array.isArray(pf.fails)?pf.fails.join(', ')||'0 recorded failures':null)+line('Warning IDs',Array.isArray(pf.warns)?pf.warns.join(', ')||'0 recorded warnings':null)
-      +'<p class="capture-note">The verdict records IDs and a timestamp. Individual check outcomes are not present in this snapshot.</p>'
-      +extra('Remediation evidence',c.remediation)+extra('Identity & registry state',c.identity)+extra('Maintenance decisions',c.maintenance);
-    var audit=object(c.audit),ops=array(audit.operations);
-    el('audit').innerHTML='<p>'+esc(mutationText(c))+'. Decisions are listed separately.</p>'+line('Observation window',audit.window)
-      +['memory','claude_md','repo_doc'].map(function(s){return '<h4>'+esc(s.replace(/_/g,' '))+'</h4>'+['created','modified','deleted','token_delta'].map(function(k){return line(k,audit[s]&&audit[s][k]);}).join('');}).join('')
-      +'<div id="observed-file-rows"></div>'+extra('Conservation evidence',audit.conservation)+extra('Every audit field',c.audit);
-    var fileRows=el('observed-file-rows');ops.forEach(function(op){var row=document.createElement('div');row.className='observed-file';var key=String(op.store||'memory')+'/'+String(op.path||''),b=document.createElement('button');b.type='button';b.textContent=op.path||'Unnamed file';b.className='file-evidence-link';b.onclick=function(){openDiff(key);};row.appendChild(b);var desc=document.createElement('span');desc.textContent=value(op.op)+' · '+(op.token_delta==null?'token delta not captured':op.token_delta+' tokens');row.appendChild(desc);fileRows.appendChild(row);});
-    el('usage-evidence').innerHTML='<h4>Observed recall</h4>'+line('Usage window',g(c,'usage.window',null))+line('Observed reads',g(c,'usage.reads',null))+line('Mentions',g(c,'usage.mentions',null))+extra('All recall observations (including procedure exclusions and misses)',c.usage);
-    [['distill-blk','All workflow evidence',c.distill],['demotion-blk','All demotion evidence',c.demotion],['registrar-blk','All registrar evidence & decline lineage',c.workflow_proposals]].forEach(function(r){if(r[2]!=null)el(r[0]).insertAdjacentHTML('beforeend',extra(r[1],r[2]));});
-    var pending=!!c.distill&&!String(g(c,'distill.verdict','')).trim()||!!c.demotion&&!String(g(c,'demotion.verdict','')).trim()||array(g(c,'workflow_proposals.candidates',[])).some(function(x){return !x.disposition||['proposed','awaiting-confirmation'].indexOf(x.disposition)>=0;});
-    ['verification-evidence','store-checks','file-changes'].forEach(function(id){el(id).open=assessment.errors.some(function(e){return e.target===id;})||({ 'verification-evidence':assessment.claims,'store-checks':assessment.stores,'file-changes':assessment.changes}[id]==='Partially captured');});
-    el('workflow-evidence').open=pending;
+    var v=object(c.verification),h=object(c.health),pf=object(c.preflight),audit=object(c.audit),ops=array(audit.operations);
+    var pendingWorkflow=Object.keys(object(c.distill)).length>0&&(!String(g(c,'distill.verdict','')).trim()||/^proposed\b/i.test(String(c.distill.verdict))&&!/\bdeclined\b/i.test(String(c.distill.verdict)));
+    var pendingDemotion=!!c.demotion&&!String(g(c,'demotion.verdict','')).trim()&&num(c.demotion.eligible)>0;
+    var pendingRegistrar=array(g(c,'workflow_proposals.candidates',[])).some(function(x){return !x.disposition||['proposed','awaiting-confirmation'].indexOf(x.disposition)>=0;});
+    var recallMisses=array(g(c,'usage.misses',[])).length>0;
+    var workflowPending=pendingWorkflow||pendingDemotion||pendingRegistrar;
+    el('pass-note').textContent=assessment.errors.length?'Recorded exceptions':workflowPending?'Decision pending':'Saved evidence';
+    el('health-summary').replaceChildren();el('health-summary').hidden=true;
+    function heading(id,label,state){el(id).querySelector('summary').innerHTML='<span class="evidence-title">'+esc(label)+'</span><span class="health-status" data-state="'+esc(state)+'">'+esc(state)+'</span>';}
+    heading('verification-evidence','Verification evidence',assessment.claims);
+    heading('store-checks','Store checks',assessment.stores);
+    heading('file-changes','Observed file changes',assessment.changes);
+    heading('workflow-evidence','Recall & workflow decisions',workflowPending?'Decision pending':recallMisses?'Needs attention':c.usage||c.distill||c.demotion||c.workflow_proposals?'Recorded':'Not captured');
+    var attention=assessment.errors.slice();
+    if(workflowPending)attention.push({label:'A workflow or memory decision is pending',target:'workflow-evidence'});
+    if(recallMisses)attention.push({label:'An archived fact was needed again',target:'workflow-evidence'});
+    el('attention-items').innerHTML=attention.length?'<p class="attention-heading">Needs attention</p><ul>'+attention.map(function(e){return '<li>'+evidenceButton(e.label,e.target)+'</li>';}).join('')+'</ul>':'';bindEvidence(el('attention-items'));
+    var claimSummary=['confirmed','corrected','unverifiable'].map(function(k){return measured(v[k])?v[k]+' '+k:k+' not captured';}).join(' · ');
+    el('verify').innerHTML='<p class="evidence-conclusion">'+esc(claimSummary)+'</p>'+line('Verification method',v.method)+(c._integrity?'<p class="adverse">Procedure integrity: '+esc(c._integrity.reason)+'</p>':'')+extra('Complete verification record',c.verification);
+    function observedList(label,items){return line(label,Array.isArray(items)?items.length?items.map(value).join(', '):'None recorded':null);}
+    function capturedDate(stamp){if(typeof stamp!=='string'||!stamp)return null;var d=new Date(stamp);return isNaN(d.getTime())?stamp:d.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'UTC'})+' UTC';}
+    var healthDetails='<details class="captured-details"><summary>Complete store-check record</summary>'+capturedTree(c.health)+'</details>';
+    el('store-evidence').innerHTML=line('Index pointers',typeof h.index_pointers_ok==='boolean'?h.index_pointers_ok?'Recorded clear':'Needs attention':null)
+      +observedList('Broken pointers',h.broken)+observedList('Dangling links',h.dangling_links)+observedList('Orphan stores',h.slug_orphans)
+      +'<div class="preflight-evidence"><h4>Environment preflight</h4>'+line('Captured at',capturedDate(pf.at))+observedList('Failure IDs',pf.fails)+observedList('Warning IDs',pf.warns)+'</div>'
+      +healthDetails+extra('Remediation evidence',c.remediation)+extra('Identity & registry state',c.identity)+extra('Maintenance decisions',c.maintenance);
+    var storeLabels={memory:'Memory files',claude_md:'Agent instructions',repo_doc:'Repository documents'};
+    var accounting=['memory','claude_md','repo_doc'].map(function(s){return '<h4>'+storeLabels[s]+'</h4>'+['created','modified','deleted','token_delta'].map(function(k){return line(k.replace(/_/g,' '),audit[s]&&audit[s][k]);}).join('');}).join('');
+    el('audit').innerHTML='<p class="evidence-conclusion">'+esc(mutationText(c))+'</p><div id="observed-file-rows"></div>'
+      +(Array.isArray(audit.operations)?ops.length?'':'<p class="capture-note">No file operations were recorded.</p>':'<p class="capture-note">Individual file operations were not captured. Available diffs are linked in Changes & decisions.</p>')
+      +'<details class="captured-details"><summary>File counts & observation window</summary>'+line('Observation window',audit.window)+accounting+'</details>'
+      +extra('Conservation evidence',audit.conservation)+extra('Complete file-change record',c.audit);
+    var fileRows=el('observed-file-rows');ops.forEach(function(op){var row=document.createElement('div');row.className='observed-file';
+      var store=String(op.store||'memory'),path=String(op.path||''),keys=[store+'/'+path];
+      // Older records include the store prefix in path; newer records may keep
+      // it in store alone. Connect only when the captured diff resolves uniquely.
+      if(path.indexOf(store+'/')===0)keys.push(path);
+      keys=keys.filter(function(key){return capturedDiff(key);});
+      var hasDiff=keys.length===1,key=hasDiff?keys[0]:'',b=document.createElement(hasDiff?'button':'span');
+      if(hasDiff){b.type='button';b.className='file-evidence-link';b.dataset.p=key;b.setAttribute('aria-label','View captured diff for '+(op.path||'Unnamed file'));b.onclick=function(){openDiff(key);};}else b.className='file-evidence-name';
+      b.textContent=op.path||'Unnamed file';if(hasDiff){var hint=document.createElement('span');hint.className='diff-action';hint.setAttribute('aria-hidden','true');hint.textContent='View diff';b.appendChild(hint);}row.appendChild(b);var desc=document.createElement('span');desc.className='file-operation';desc.textContent=value(op.op)+(hasDiff?'':' · Diff not captured');row.appendChild(desc);fileRows.appendChild(row);});
+    el('usage-evidence').innerHTML='<h4>Observed recall</h4><p class="evidence-conclusion">'+esc(measured(g(c,'usage.reads',null))?c.usage.reads+' observed reads':'Reads not captured')+'</p><p class="capture-note">Observations belong to the recorded usage window.</p>'+extra('Usage window & complete recall evidence',c.usage);
+    [['distill-blk','Complete workflow evidence',c.distill,pendingWorkflow],['demotion-blk','Complete demotion evidence',c.demotion,pendingDemotion||recallMisses],['registrar-blk','Complete registrar evidence & decline lineage',c.workflow_proposals,pendingRegistrar]].forEach(function(r){var box=el(r[0]);box.open=!!r[3];if(r[2]!=null)box.insertAdjacentHTML('beforeend',extra(r[1],r[2]));});
+    ['verification-evidence','store-checks','file-changes'].forEach(function(id){el(id).open=assessment.errors.some(function(e){return e.target===id;});});
+    el('workflow-evidence').open=workflowPending||recallMisses;
   }
+  var activityResize;
   function activity(c,cycles){
-    var span=12,spanChoice='12',selected=cycles.length-1,controls=el('activity-controls');controls.innerHTML='<span>Dreams ending at this selection</span>';
-    [12,24,'All captured'].forEach(function(n){var b=document.createElement('button');b.type='button';b.textContent=String(n);b.onclick=function(){span=n==='All captured'?cycles.length:n;spanChoice=String(n);draw();};controls.appendChild(b);});
-    function title(c){return c._outcome||'Outcome not captured';}
-    function inspect(){var r=cycles[selected],f=facts(r),v=object(r.verification);el('activity-inspector').innerHTML='<div class="inspector-kicker">Dream '+(selected+1)+' · local inspection</div><h4>'+esc(title(r))+'</h4>'+line('Decisions',decisionText(r))+line('Observed mutations',mutationText(r))+line('Fact count change',measured(f.before)&&measured(f.after)?f.before+' → '+f.after+' ('+(f.after-f.before>=0?'+':'')+(f.after-f.before)+')':null)+line('Verification',Object.keys(v).length?['confirmed','corrected','unverifiable'].map(function(k){return k+': '+value(v[k]);}).join(' · '):null)+line('Observed reads',g(r,'usage.reads',null))+line('Usage window',g(r,'usage.window',null))+'<a class="open-dream" href="#sel='+selected+'">Open this dream →</a>';}
-    function draw(){
-      var start=Math.max(0,cycles.length-span),shown=cycles.slice(start),N=shown.length,W=Math.max(920,N*62),H=244,svg=el('trend'),rig=el('rigor'),left=120,step=(W-left-16)/Math.max(1,N);
-      controls.querySelectorAll('button').forEach(function(b){b.setAttribute('aria-pressed',String(b.textContent===spanChoice));});
-      svg.textContent='';rig.textContent='';svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.style.width=W+'px';svg.style.height=H+'px';rig.setAttribute('viewBox','0 0 '+W+' 48');rig.style.width=W+'px';rig.style.height='48px';
-      el('hist-note').textContent=shown.length+' of '+cycles.length+' captured dreams · decisions and recall';
-      function text(target,x,y,s,cls){var t=S('text',{x:x,y:y,class:cls||'activity-label'});t.textContent=s;target.appendChild(t);return t;}
-      var totals=shown.map(function(r){return Array.isArray(r.entries)?r.entries.length:null;}),reads=shown.map(function(r){var v=g(r,'usage.reads',null);return measured(v)?v:null;});
-      var maxD=Math.max(1,...totals.map(function(x){return x||0;})),maxR=Math.max(1,...reads.map(function(x){return x||0;}));
-      var actions=Array.from(new Set(shown.flatMap(function(r){return Object.keys(decisions(r)||{});}))).sort();var palette=['var(--data)','var(--accent)','var(--warn)','var(--ok)','var(--crit)','var(--ink2)'];
-      text(svg,8,34,'Decisions');text(svg,8,54,'0–'+maxD+' per dream');text(svg,8,148,'Observed reads');text(svg,8,168,'0–'+maxR+' per window');text(rig,8,27,'Captured rigor');
-      shown.forEach(function(r,i){var x=left+i*step,index=start+i,group=S('g',{class:'activity-cycle','data-cycle':index,tabindex:0,role:'button','aria-label':'Inspect dream '+(index+1),'aria-pressed':String(index===selected)});svg.appendChild(group);group.appendChild(S('rect',{x:x+2,y:8,width:step-4,height:220,rx:4,class:'activity-selection'}));
-        var d=decisions(r),bottom=99;
-        if(d===null)text(group,x+step/2-3,75,'—');else{Object.keys(d).sort().forEach(function(a){var h=d[a]*64/maxD;group.appendChild(S('rect',{x:x+step*.25,y:bottom-h,width:step*.5,height:h,fill:palette[actions.indexOf(a)%palette.length],'data-action':a}));bottom-=h;});text(group,x+step/2-4,116,String(totals[i]));}
-        if(reads[i]===null)text(group,x+step/2-3,182,'—');else {group.appendChild(S('rect',{x:x+step*.4,y:202-reads[i]*58/maxR,width:step*.2,height:reads[i]*58/maxR,fill:'var(--data)'}));text(group,x+step/2-4,220,String(reads[i]));}
-        var desc=S('title');desc.textContent='Dream '+(index+1)+' · '+decisionText(r)+' · reads: '+value(reads[i])+' · window: '+value(g(r,'usage.window',null));group.appendChild(desc);
-        function choose(){selected=index;svg.querySelectorAll('.activity-cycle').forEach(function(g){g.setAttribute('aria-pressed',String(+g.dataset.cycle===index));});inspect();}
-        group.onclick=choose;group.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();choose();}if(e.key==='ArrowLeft'||e.key==='ArrowRight'){e.preventDefault();e.stopPropagation();var next=svg.querySelector('[data-cycle="'+(index+(e.key==='ArrowRight'?1:-1))+'"]');if(next)next.focus();}};
-        text(svg,x+step/2-6,240,String(index+1));var rigor=g(r,'rigor.applied',null);text(rig,x+6,26,rigor==null?'—':String(rigor),'rigor-category');
-      });
-      var legend=el('activity-legend');if(!legend){legend=document.createElement('div');legend.id='activity-legend';legend.className='activity-legend';el('activity-controls').after(legend);}legend.innerHTML=actions.map(function(a,i){return '<span><i style="background:'+palette[i%palette.length]+'"></i>'+esc(a)+'</span>';}).join('')+'<span>— observation not captured</span>';
-      inspect();
+    if(activityResize)window.removeEventListener('resize',activityResize);
+    var selected=cycles.length-1,detailsOpen=false,controls=el('activity-controls'),scroller=el('trend').parentElement;
+    controls.innerHTML='<button type="button" class="activity-previous" aria-label="Previous dream">←</button><label for="activity-cycle-select">Dream</label><select id="activity-cycle-select">'+cycles.map(function(r,i){var raw=g(r,'marker.timestamp',null),date=raw?new Date(raw):null,label=date&&!isNaN(date.getTime())?date.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}):'Date not captured';return '<option value="'+i+'">'+(i+1)+' · '+esc(label)+'</option>';}).join('')+'</select><button type="button" class="activity-next" aria-label="Next dream">→</button>';
+    controls.querySelector('select').onchange=function(){selectCycle(Number(this.value));};
+    controls.querySelector('.activity-previous').onclick=function(){selectCycle(selected-1);};
+    controls.querySelector('.activity-next').onclick=function(){selectCycle(selected+1);};
+    activityResize=draw;window.addEventListener('resize',activityResize);
+    function count(r){return Array.isArray(r.entries)?r.entries.length:null;}
+    function observedReads(r){var n=g(r,'usage.reads',null);return measured(n)&&n>=0?n:null;}
+    function stamp(r){var raw=g(r,'marker.timestamp',null),d=raw?new Date(raw):null;return !d?'Date not captured':isNaN(d.getTime())?esc(raw):'<time datetime="'+esc(raw)+'">'+esc(d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric',timeZone:'UTC'}))+'</time>';}
+    function inspect(){
+      var currentDetails=el('activity-inspector').querySelector('.activity-details');if(currentDetails)detailsOpen=currentDetails.open;
+      var r=cycles[selected]||{},f=object(facts(r)),v=object(r.verification),n=count(r),reads=observedReads(r);
+      el('activity-inspector').innerHTML='<div class="activity-summary"><div class="activity-summary-head"><div><div class="inspector-kicker">Dream '+(selected+1)+' <span class="activity-date">'+stamp(r)+'</span></div><h4>'+esc(r._outcome||'Outcome not captured')+'</h4></div><a class="open-dream" href="#sel='+selected+'">Open this dream →</a></div>'
+        +'<div class="activity-summary-facts"><p class="activity-stat"><span class="evidence-label">Decisions</span><strong>'+esc(value(n))+'</strong></p><p class="activity-stat"><span class="evidence-label">Observed reads</span><strong>'+esc(value(reads))+'</strong><span class="activity-stat-note">'+(reads==null?'No recall observation saved':g(r,'usage.window',null)==null?'Usage window not captured':'In its recorded usage window')+'</span></p></div></div>'
+        +'<details class="activity-details"'+(detailsOpen?' open':'')+'><summary>Cycle details</summary>'+line('Decisions',decisionText(r))+line('Observed mutations',mutationText(r))+line('Fact count change',measured(f.before)&&measured(f.after)?f.before+' → '+f.after+' ('+(f.after-f.before>=0?'+':'')+(f.after-f.before)+')':null)+line('Verification',Object.keys(v).length?['confirmed','corrected','unverifiable'].map(function(k){return k+': '+value(v[k]);}).join(' · '):null)+line('Recorded reads',g(r,'usage.reads',null))+line('Usage window',g(r,'usage.window',null))+line('Rigor',g(r,'rigor.applied',null))+line('Captured at',g(r,'marker.timestamp',null))+'</details>';
+      el('activity-inspector').querySelector('.open-dream').onclick=function(e){if(!e.defaultPrevented&&e.button===0&&!e.metaKey&&!e.ctrlKey&&!e.shiftKey&&!e.altKey&&this.hash===location.hash){e.preventDefault();reveal('dream-blk');}};
     }
-    el('activity-table-body').innerHTML='<p>Counts and cadence are recorded history. Usage windows can overlap; reads are never summed across windows.</p><table><thead><tr><th>Dream</th><th>Timestamp</th><th>Facts before → after</th><th>Cadence</th><th>Decisions</th><th>Observed reads</th><th>Usage window</th><th>Rigor</th></tr></thead><tbody>'+cycles.map(function(r,i){var f=facts(r),now=Date.parse(g(r,'marker.timestamp','')),before=i?Date.parse(g(cycles[i-1],'marker.timestamp','')):NaN;var cadence=isFinite(now)&&isFinite(before)?((now-before)/3600000).toFixed(1)+'h':null;return '<tr>'+[i+1,g(r,'marker.timestamp',null),value(f.before)+' → '+value(f.after),cadence,decisionText(r),g(r,'usage.reads',null),g(r,'usage.window',null),g(r,'rigor.applied',null)].map(function(v){return '<td>'+esc(value(v))+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>';draw();
+    function selectCycle(index){
+      if(index<0||index>=cycles.length)return;selected=index;
+      el('trend').querySelectorAll('.activity-cycle').forEach(function(group){var active=Number(group.dataset.cycle)===selected;group.setAttribute('aria-pressed',String(active));group.setAttribute('tabindex',active?'0':'-1');});
+      controls.querySelector('select').value=String(selected);controls.querySelector('.activity-previous').disabled=selected<=0;controls.querySelector('.activity-next').disabled=selected>=cycles.length-1;inspect();
+    }
+    function draw(){
+      var N=cycles.length,W=scroller.clientWidth||el('history-blk').clientWidth,svg=el('trend'),rig=el('rigor'),left=12,right=W-12,step=N>1?(right-left)/(N-1):0;
+      var hadGraphFocus=svg.contains(document.activeElement)&&document.activeElement.classList.contains('activity-cycle');
+      el('hist-note').textContent=N+' captured dream'+(N===1?'':'s');
+      function text(target,x,y,s,cls){var t=S('text',{x:x,y:y,class:cls||'activity-label'});t.textContent=s;target.appendChild(t);return t;}
+      function at(i){return N===1?W/2:left+i*step;}
+      var totals=cycles.map(count),reads=cycles.map(observedReads);
+      var observedMaxD=Math.max(0,...totals.map(function(x){return x||0;})),observedMaxR=Math.max(0,...reads.map(function(x){return x||0;})),maxD=Math.max(1,observedMaxD),maxR=Math.max(1,observedMaxR);
+      var fullReads=reads.some(function(n){return n>0;}),readBase=fullReads?193:160,cycleY=fullReads?222:189,H=cycleY+10,pointR=N>80?1.5:2.5;
+      svg.textContent='';rig.textContent='';rig.hidden=true;rig.setAttribute('hidden','');svg.setAttribute('viewBox','0 0 '+W+' '+H);svg.style.width=W+'px';svg.style.height=H+'px';
+      scroller.onscroll=null;scroller.scrollLeft=0;
+      function range(values,max,unit){return values.every(function(n){return n===null;})?'Not captured':(max===0?'0':'0–'+max)+' per '+unit;}
+      text(svg,0,18,'Decisions','activity-axis-label');text(svg,W,18,range(totals,observedMaxD,'dream'),'activity-axis-note').setAttribute('text-anchor','end');
+      text(svg,0,125,'Observed reads','activity-axis-label');text(svg,W,125,range(reads,observedMaxR,'window'),'activity-axis-note').setAttribute('text-anchor','end');
+      [90,readBase].forEach(function(y){svg.appendChild(S('line',{x1:left,y1:y,x2:right,y2:y,stroke:'var(--rule)'}));});
+      function series(values,base,height,max,name,color){
+        var segment=[];function flush(){if(segment.length>1)svg.appendChild(S('polyline',{points:segment.join(' '),fill:'none',stroke:color,'stroke-width':1.6,'data-series':name,'aria-hidden':'true'}));segment=[];}
+        values.forEach(function(n,i){if(n===null){flush();return;}segment.push(at(i)+','+(base-(n/max)*height));});flush();
+      }
+      series(totals,90,52,maxD,'decisions','var(--accent)');series(reads,readBase,fullReads?52:0,maxR,'reads','var(--data)');
+      cycles.forEach(function(r,index){var x=at(index),description='Dream '+(index+1)+' · '+decisionText(r)+' · observed reads: '+value(reads[index]),group=S('g',{class:'activity-cycle','data-cycle':index,tabindex:index===selected?0:-1,role:'button','aria-label':description,'aria-pressed':String(index===selected)});svg.appendChild(group);
+        group.appendChild(S('line',{x1:x,y1:30,x2:x,y2:readBase+9,stroke:'transparent','stroke-width':Math.max(2,Math.min(44,step||44)),class:'activity-hit'}));
+        group.appendChild(S('line',{x1:x,y1:30,x2:x,y2:readBase+9,class:'activity-selection'}));
+        [[totals[index],90,52,maxD,'decisions','var(--accent)'],[reads[index],readBase,fullReads?52:0,maxR,'reads','var(--data)']].forEach(function(s){
+          if(s[0]===null){group.appendChild(S('line',{x1:x-2,y1:s[1]+5,x2:x+2,y2:s[1]+5,class:'activity-gap','data-series':s[4],stroke:'var(--faint)'}));return;}
+          group.appendChild(S('circle',{cx:x,cy:s[1]-(s[0]/s[3])*s[2],r:pointR,fill:s[5],class:'activity-point','data-series':s[4],'data-value':s[0]}));
+        });
+        var desc=S('title');desc.textContent=description+' · window: '+value(g(r,'usage.window',null));group.appendChild(desc);
+        group.onclick=function(e){var pointerIndex=e.detail&&N>1?Math.max(0,Math.min(N-1,Math.round((e.clientX-svg.getBoundingClientRect().left-left)/step))):index;selectCycle(pointerIndex);if(e.detail)svg.querySelector('[data-cycle="'+pointerIndex+'"]').focus({preventScroll:true});};group.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();selectCycle(index);}if(['ArrowLeft','ArrowRight','Home','End'].indexOf(e.key)>=0){e.preventDefault();e.stopPropagation();var nextIndex=e.key==='Home'?0:e.key==='End'?cycles.length-1:index+(e.key==='ArrowRight'?1:-1),next=svg.querySelector('[data-cycle="'+nextIndex+'"]');if(next){selectCycle(nextIndex);next.focus({preventScroll:true});}}};
+      });
+      var ticks=Math.min(N,Math.max(2,Math.floor(W/100)));for(var t=0;t<ticks;t++){var index=ticks===1?0:Math.round(t*(N-1)/(ticks-1)),label=text(svg,at(index),cycleY,'Dream '+(index+1),'activity-value activity-cycle-number');label.setAttribute('text-anchor',ticks===1?'middle':t===0?'start':t===ticks-1?'end':'middle');}
+      var legend=el('activity-legend');if(!legend){legend=document.createElement('div');legend.id='activity-legend';legend.className='activity-legend';scroller.after(legend);}legend.innerHTML='<span>Choose a point or dream to see its outcome.</span><span>Gaps mean not captured.</span>';
+      selectCycle(selected);
+      if(hadGraphFocus){var target=svg.querySelector('[data-cycle="'+selected+'"]');if(target)target.focus({preventScroll:true});}
+    }
+    el('activity-table-body').innerHTML='<p>Counts and cadence are recorded history. Usage windows can overlap; reads are never summed across windows.</p><table><thead><tr><th>Dream</th><th>Timestamp</th><th>Facts before → after</th><th>Cadence</th><th>Decisions</th><th>Observed reads</th><th>Usage window</th><th>Rigor</th></tr></thead><tbody>'+cycles.map(function(r,i){var f=object(facts(r)),now=Date.parse(g(r,'marker.timestamp','')),before=i?Date.parse(g(cycles[i-1],'marker.timestamp','')):NaN;var cadence=isFinite(now)&&isFinite(before)?((now-before)/3600000).toFixed(1)+'h':null;return '<tr>'+[i+1,g(r,'marker.timestamp',null),value(f.before)+' → '+value(f.after),cadence,decisionText(r),g(r,'usage.reads',null),g(r,'usage.window',null),g(r,'rigor.applied',null)].map(function(v){return '<td>'+esc(value(v))+'</td>';}).join('')+'</tr>';}).join('')+'</tbody></table>';draw();
   }
   function paint(c,cycles){
     // Appended uncapped evidence must reset on every rich/sparse navigation.
     document.querySelectorAll('#pass-blk > details .captured-details').forEach(function(e){e.remove();});
     var assessment=assess(c);summary(c,assessment);evidence(c,assessment);activity(c,cycles);
+    el('activity-source').innerHTML=sourceNote('Saved decision ledgers and recall observations');
+    el('health-source').innerHTML=sourceNote('Recorded verification, store checks, and file observations',c);
+    el('ledger-source').innerHTML=sourceNote('Consolidation decisions; linked diffs show observed file changes',c);
   }
   return {paint:paint,assess:assess};
 
@@ -1213,6 +1594,10 @@ var NocturneSections = (function(){
     // legacy dream must never show the previous fleet dream's chips/hull rows.
     el("net").classList.remove("fleet-map"); el("net").setAttribute("role","img"); clearEl("net-controls"); clearEl("network-data-body");
     el("record-json").textContent=JSON.stringify(CUR,null,2);
+    // The explicit-absence marker: a source-visible contract ("Network data was not
+    // captured") the smoke pin guards. The painter overwrites network-data-body in the
+    // same pass, so this node is deliberate dead DOM — and safe: the reset above clears
+    // the body on EVERY paintDream, so it can never accumulate.
     var legacyData=document.createElement("pre");legacyData.className="legacy-network-data";
     legacyData.textContent=CUR.network?JSON.stringify(CUR.network,null,2):"Network data was not captured in this record.";
     el("network-data-body").appendChild(legacyData);
@@ -1452,8 +1837,8 @@ var NocturneSections = (function(){
 
   // ── ledger: the narrated entries; a changed-memory-fact's NAME links to its diff (ONE list, no separate section) ──
   (function(){
-    var box=el("entries"), used={};
-    function link(p,nm){used[p]=1;return '<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>';}
+    var box=el("entries"), used=Object.create(null);
+    function link(p,nm){used[p]=1;return '<button type="button" class="nm-diff" data-p="'+esc(p)+'" aria-label="View captured diff for '+esc(nm)+'"><span class="diff-name">'+esc(nm)+'</span><span class="diff-action" aria-hidden="true">View diff</span></button>';}
     // v0.1.72: the model DECLARES which file(s) an entry touched (`files[]`, audit_snapshot labels) — the
     // deterministic path, no guessing which diff an entry means. Declared files (deduped) take priority
     // whenever at least one resolves to a real diff. Otherwise — no `files` field at all (pre-v0.1.72), OR
@@ -1461,53 +1846,50 @@ var NocturneSections = (function(){
     // than trusting a possibly-mistaken negative declaration and silently dropping a real, observed change.
     function fileLabel(rawFiles){
       if(!Array.isArray(rawFiles)||!rawFiles.length)return "";
-      var shown=rawFiles.slice(0,3).map(function(p){return esc(String(p));});
-      return ' <em>'+shown.join(" · ")+'</em>'+(rawFiles.length>3?'<details><summary>Show '+(rawFiles.length-3)+' more declared files</summary>'+rawFiles.slice(3).map(function(p){return '<div>'+esc(String(p))+'</div>';}).join("")+'</details>':"");
+      return '<div><dt>Declared files</dt><dd>'+rawFiles.map(function(p){return '<div>'+esc(String(p))+'</div>';}).join("")+'</dd></div>';
     }
     function nameCell(e){
-      var nm=g(e,"name","—"), rawFiles=g(e,"files",null), declared=[], seen={}, fl=fileLabel(rawFiles);
+      var nm=g(e,"name","—"), rawFiles=g(e,"files",null), declared=[], seen=Object.create(null);
       if(Array.isArray(rawFiles))rawFiles.forEach(function(p){p=String(p);
-        if(DREAMDIFFS[p]&&!seen[p]){seen[p]=1;declared.push(p);}});
+        if(capturedDiff(p)&&!seen[p]){seen[p]=1;declared.push(p);}});
       if(declared.length){
         var primary=link(declared[0],nm), extra=declared.slice(1).map(function(p){return link(p,diffDisplayName(p));});
-        return (extra.length?primary+' <em>+</em> '+extra.join(' '):primary)+fl;
+        return (extra.length?primary+' <em>+</em> '+extra.join(' '):primary);
       }
       // legacy/fallback heuristic: an entry's OWN file may carry no diff even though something real changed
       // FOR it — an index-line-only compression touches memory/MEMORY.md, not memory/<name>.md; a
       // claude_md/repo_doc entry has no per-entry filename convention to begin with.
       var p="memory/"+nm+".md";   // a memory fact's entry name == its slug → match the sidecar key
-      if(DREAMDIFFS[p])return link(p,nm)+fl;
+      if(capturedDiff(p))return link(p,nm);
       var store=g(e,"store","");
-      if(store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"])return link("memory/MEMORY.md",nm)+fl;   // index-only edit
+      if(store==="auto-mem"&&capturedDiff("memory/MEMORY.md"))return link("memory/MEMORY.md",nm);   // index-only edit
       if(store==="repo"){
-        var cmKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("claude_md/")===0;});
-        var rdKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("repo_doc/")===0;});
+        var cmKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("claude_md/")===0&&capturedDiff(k);});
+        var rdKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("repo_doc/")===0&&capturedDiff(k);});
         // only auto-link when JOINTLY unambiguous (exactly one candidate across BOTH stores combined) — one
         // claude_md file AND one repo_doc file changed in the same pass is still two real candidates, not one
         var repoKeys=cmKeys.concat(rdKeys);
-        if(repoKeys.length===1)return link(repoKeys[0],nm)+fl;
+        if(repoKeys.length===1)return link(repoKeys[0],nm);
       }
-      return esc(nm)+fl;}
-    var rows=ENT.map(function(e){var act=g(e,"action","-"),tier=g(e,"tier","");tier=(tier===""||tier==="-")?"":tier;var sc=g(e,"scope","");
-      var cit=g(e,"citation","");
+      return esc(nm);}
+    var rows=ENT.map(function(e){
+      var act=g(e,"action","Unspecified"), name=nameCell(e);
+      var metadata=[['Store',e.store],['Tier',e.tier],['Scope',e.scope],['Citation',e.citation]].filter(function(pair){return pair[1]!=null&&pair[1]!=="";}).map(function(pair){return '<div><dt>'+pair[0]+'</dt><dd>'+esc(String(pair[1]))+'</dd></div>';}).join("")+fileLabel(e.files);
       return '<div class="row"><div class="act a-'+esc(act)+'">'+esc(act)+'</div>'
-        +'<div><div class="nm">'+nameCell(e)+(tier||sc?' <em>'+esc([tier,sc].filter(Boolean).join(" · "))+'</em>':'')+'</div>'
-        +(g(e,"reason","")?'<div class="rs">'+esc(g(e,"reason",""))+'</div>':'')+'</div>'
-        +'<div class="ci"'+(cit?' title="'+esc(cit)+'"':"")+'>'+(cit?esc(String(cit).slice(0,10)):"")+'</div></div>';});
-    // a changed file with no narrated entry → appended (e.g. an index-line-only compression, or a CLAUDE.md/repo-doc
-    // edit — those stores have no per-entry name convention to match). Every DREAMDIFFS key lands SOMEWHERE in the
-    // ledger, narrated or not — no observed file change is ever silently dropped.
-    Object.keys(DREAMDIFFS).filter(function(p){return !used[p];}).forEach(function(p){
+        +'<div class="decision-body"><div class="nm">'+name+'</div>'
+        +(g(e,"reason","")?'<div class="rs">'+esc(g(e,"reason",""))+'</div>':'')
+        +(metadata?'<details class="decision-detail"><summary>Decision details</summary><dl>'+metadata+'</dl></details>':'')+'</div></div>';});
+    // A file diff is an observation; it does not imply an additional model decision.
+    var other=Object.keys(DREAMDIFFS).filter(function(p){return capturedDiff(p)&&!used[p];}).map(function(p){
       var sp=splitDiffPath(p), nm=diffDisplayName(p);
-      rows.push('<div class="row"><div class="act a-changed">changed</div><div><div class="nm">'
-        +'<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>'
-        +' <em>'+esc(sp.store||"file")+' · diff</em></div></div><div class="ci"></div></div>');});
-    var nd=Object.keys(DREAMDIFFS).length;
-    // L3 (v0.4.2): the honest no-capture row — a dream that woke without its --diffs
-    // sidecar says so (the skill's Phase-5 --diffs is MANDATORY before WAKE)
-    el("ent-note").textContent=ENT.length+" entr"+(ENT.length!==1?"ies":"y")
+      return '<div class="row observed-only"><div class="act a-changed">File change</div><div class="decision-body"><div class="nm">'
+        +link(p,nm)+'</div>'
+        +'<div class="rs">'+esc(sp.store||"file")+' · View the captured diff</div></div></div>';});
+    var nd=Object.keys(DREAMDIFFS).filter(function(p){return capturedDiff(p);}).length, captured=Array.isArray(CUR.entries);
+    el("ent-note").textContent=(captured?ENT.length+" decision"+(ENT.length!==1?"s":""):"Decisions not captured")
       +(nd?" · "+nd+" diff"+(nd!==1?"s":""):" · no diffs captured");
-    box.innerHTML=rows.length?rows.join(""):'<div class="cap" style="padding:16px 0">No recorded decisions this pass.</div>';
+    box.innerHTML=(rows.length?rows.join(""):'<p class="capture-note">'+(captured?'No decisions were recorded in this dream.':'Decisions were not captured for this dream.')+'</p>')
+      +(other.length?'<div class="other-file-changes"><h4>Other observed file changes</h4><p class="capture-note">Captured diffs without a matching decision entry.</p>'+other.join("")+'</div>':'');
     [].slice.call(box.querySelectorAll(".nm-diff")).forEach(function(b){b.addEventListener("click",function(){openDiff(b.getAttribute("data-p"));});});
   })();
 
@@ -1519,7 +1901,8 @@ var NocturneSections = (function(){
     el("kpis").children[0].querySelector(".d").textContent="Not captured";
   }
   if(recallN(CUR)==null)el("kpis").children[1].querySelector(".n").textContent="—";
-  el("f-marker").textContent="marker → "+String(g(CUR,"marker.commit","—")).slice(0,12)+" @ "+String(g(CUR,"marker.timestamp","")||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
+  var savedAt=g(CUR,"marker.timestamp",null),savedDate=savedAt?new Date(savedAt):null;
+  el("f-marker").textContent=savedDate&&!isNaN(savedDate.getTime())?'Saved '+savedDate.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'UTC'})+' UTC':'Save time not captured';
   } // paintDream
 
   // ── theme toggle · Nocturne → Original → Light → System ──
@@ -1592,9 +1975,10 @@ var NocturneSections = (function(){
   // ── dream-view nav: back to the archive + prev/next ──
   function showDreamNav(){
     var n=ALL.length,prev=selIdx-1,next=selIdx+1;
-    el("dreamnav").innerHTML='<a href="#">← Archive</a>'
+    function navLink(index,label,arrow){return index<0||index>=n?'<span class="nav-link off" aria-disabled="true">'+arrow+' '+label+'</span>':'<a class="nav-link" href="#sel='+index+'" aria-label="'+label+' dream">'+arrow+' '+label+'</a>';}
+    el("dreamnav").innerHTML='<a class="nav-link archive-link" href="#archive">← Archive</a>'
       +'<span class="pos">dream '+(selIdx+1)+' / '+n+(num(DATA.total,n)>n?" of "+num(DATA.total,n):"")+'</span>'
-      +'<span><a class="'+(prev<0?"off":"")+'" href="#sel='+Math.max(0,prev)+'">‹ prev</a> &nbsp; <a class="'+(next>=n?"off":"")+'" href="#sel='+Math.min(n-1,next)+'">next ›</a></span>';
+      +'<span class="dreamnav-steps">'+navLink(prev,'Previous','←')+navLink(next,'Next','→')+'</span>';
   }
 
   // route the view without a full reload (hashchange used to location.reload and flash a blank page)
@@ -1629,15 +2013,17 @@ var NocturneSections = (function(){
   });});
   route();
   window.addEventListener("hashchange", route);
-  // keyboard nav (dream view): ← → step dreams · Esc → archive (ignored while typing in a filter control)
+  // Page shortcuts apply outside local controls and horizontally scrollable evidence.
   document.addEventListener("keydown", function(e){
     if(e.key==="Escape" && el("dmodal") && el("dmodal").style.display!=="none"){ closeDiff(); return; }   // modal closes first
     if(el("dmodal") && el("dmodal").style.display!=="none") return;   // ← → must NOT reload a dream while the modal is open (state loss)
-    if(/^(INPUT|SELECT|TEXTAREA)$/.test((e.target||{}).tagName||"")) return;
+    var target=e.target&&e.target.closest?e.target:null;
+    if(target&&(target.isContentEditable||target.closest('input,select,textarea,[contenteditable]:not([contenteditable="false"])')))return;
     if(VIEW!=="dream") return;
+    if((e.key==="ArrowLeft"||e.key==="ArrowRight")&&target&&target.closest('button,a,summary,[role="button"],[role="region"],.table-scroll'))return;
     if(e.key==="ArrowLeft" && selIdx>0) location.hash="#sel="+(selIdx-1);
     else if(e.key==="ArrowRight" && selIdx<ALL.length-1) location.hash="#sel="+(selIdx+1);
-    else if(e.key==="Escape") location.hash="";
+    else if(e.key==="Escape") location.hash="#archive";
   });
 
   // focus: collapse/expand dashboard sections (persisted across reloads, incl. nav), keyed on the section title
@@ -1655,6 +2041,7 @@ var NocturneSections = (function(){
         var now=h.parentNode.classList.toggle("collapsed"), j=COLL.indexOf(key);
         if(now && j<0) COLL.push(key); else if(!now && j>=0) COLL.splice(j,1);
         h.setAttribute("aria-expanded", now?"false":"true");
+        if(!now && h.parentNode.id==="network-blk" && NocturneNetwork.paint.resize)NocturneNetwork.paint.resize();
         try{localStorage.setItem("cm-collapsed",JSON.stringify(COLL));}catch(e){}
       }
       h.addEventListener("click",toggle);
@@ -1666,7 +2053,7 @@ var NocturneSections = (function(){
   // density: compact / cozy (persisted)
   (function(){
     var b=el("dens-tog"); if(!b) return;
-    function apply(c){document.body.classList.toggle("compact",c);b.textContent=c?"⊞ cozy":"⊟ compact";}
+    function apply(c){document.body.classList.toggle("compact",c);b.textContent='Compact spacing';b.setAttribute('aria-pressed',String(c));b.setAttribute('aria-label','Compact spacing');}
     var on=false; try{on=localStorage.getItem("cm-dense")==="1";}catch(e){}
     apply(on);
     b.addEventListener("click",function(){on=!document.body.classList.contains("compact");apply(on);try{localStorage.setItem("cm-dense",on?"1":"0");}catch(e){}});

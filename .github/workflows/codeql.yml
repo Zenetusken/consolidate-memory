@@ -3,8 +3,8 @@ name: CodeQL
 # Advanced setup — replaces the default setup's per-PR analysis. CodeQL is a
 # SECURITY-TAB instrument, not a merge gate: it runs on pushes to main + weekly,
 # never on pull_request (a PR-triggered analyze cost ~10 minutes and added nothing
-# the 11 required checks don't already gate). The default setup was disabled once
-# this file landed (the security tab keeps its default-branch scans).
+# the 11 required checks don't already gate). The repo's default setup is toggled off in Settings
+# (the security tab keeps its default-branch scans via this workflow).
 
 on:
   push:

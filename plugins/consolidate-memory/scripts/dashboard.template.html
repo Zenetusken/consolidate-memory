@@ -222,7 +222,8 @@
   #network-blk .page-link{font:13px var(--sans);fill:var(--data);text-decoration:underline;cursor:pointer}
   #network-blk .empty-network{font:14px var(--sans);fill:var(--faint)}
   #network-blk [role="button"]{cursor:pointer}
-  #network-blk [role="button"]:focus{outline:2px solid var(--data);outline-offset:4px}
+  #network-blk [role="button"]:focus-visible{outline:2px solid var(--data);outline-offset:4px}
+  #network-blk #net[data-focus-mode="pointer"] [role="button"]:focus{outline:none}
   #network-blk .network-search{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--faint);width:min(460px,100%)}
   #network-blk .network-search input{font:14px var(--sans);color:var(--ink);background:var(--paper2);border:1px solid var(--rule2);border-radius:5px;padding:10px 12px;width:100%;box-sizing:border-box}
   #network-blk .map-controls{display:flex;align-items:start;gap:14px;flex-wrap:wrap;margin:20px 0}
@@ -234,21 +235,16 @@
   #network-blk .holdings-key{color:var(--data)}#network-blk .permissions-key{color:var(--accent)}
   #network-blk details>summary,#dream-blk details>summary,#pass-blk details>summary,#history-blk details>summary{cursor:pointer;padding:14px 0;font:500 13px/1.5 var(--sans);color:var(--ink2)}
   #network-blk h4,#pass-blk h4,#history-blk h4{font:500 17px/1.5 var(--sans);margin:8px 0 16px;color:var(--ink)}
-  #dream-blk .summary-outcome{font:500 clamp(24px,3vw,34px)/1.35 var(--sans);margin:0 0 18px;max-width:40ch}
+  #dream-blk .summary-outcome{font:500 clamp(24px,3vw,34px)/1.35 var(--sans);margin:0 0 18px;overflow-wrap:anywhere}
   #dream-blk .summary-evidence{display:flex;flex-wrap:wrap;gap:8px 24px;margin-bottom:14px}
   #dream-blk button.evidence-link,#pass-blk button.evidence-link{background:transparent;border:0;border-bottom:1px solid var(--rule2);border-radius:0;padding:4px 0;text-align:left;color:var(--data);font:13px/1.65 var(--sans);cursor:pointer;overflow-wrap:anywhere}
   #dream-blk .summary-attention{font-size:13px;color:var(--warn);margin:18px 0}
   #dream-blk .summary-attention button{color:var(--warn)}
-  #dream-blk .dream-sequence{margin-top:26px;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) minmax(0,1fr);gap:24px;border-top:1px solid var(--rule);padding-top:22px}
-  #dream-blk .dream-bookend,#dream-blk .dream-passages{min-width:0;position:relative;padding-top:12px}
-  #dream-blk .dream-bookend::before,#dream-blk .dream-passages::before{content:'';position:absolute;width:7px;height:7px;background:var(--data);border:4px solid var(--paper);border-radius:50%;top:-30px;left:0}
-  #dream-blk .passage-label{color:var(--faint);font:11px/1.5 var(--sans);letter-spacing:.06em;text-transform:uppercase}
-  #dream-blk .dream-voice{font:italic 16px/1.85 Georgia,serif;color:var(--ink2);white-space:pre-wrap;overflow-wrap:anywhere;margin:8px 0 14px}
-  #dream-blk .beat-controls{display:flex;flex-wrap:wrap;gap:6px}
-  #dream-blk .beat-controls button{font-size:11px;padding:5px 8px;min-height:32px}
-  #dream-blk button[aria-pressed="true"],#history-blk button[aria-pressed="true"]{background:var(--tint-ok);color:var(--data);border-color:var(--data)}
-  #dream-blk #complete-dream{border-bottom:1px solid var(--rule)}
-  #dream-blk #complete-dream .dream-voice{max-width:85ch}
+  #dream-blk #dream-arc{margin-top:26px;border-top:1px solid var(--rule);padding-top:22px}
+  #dream-blk .dream-voice{font:italic 16px/1.85 Georgia,serif;color:var(--ink2);overflow-wrap:anywhere;margin:0 0 16px;orphans:3;widows:3}
+  #dream-blk .dream-capture-note{font:13px/1.65 var(--sans);color:var(--faint);overflow-wrap:anywhere;margin:0 0 16px}
+  #dream-blk #dream-arc>:last-child{margin-bottom:0}
+  #history-blk button[aria-pressed="true"]{background:var(--tint-ok);color:var(--data);border-color:var(--data)}
   #pass-blk #health-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin:16px 0 24px}
   #pass-blk .health-status{display:flex;flex-direction:column;align-items:start;gap:5px;padding-bottom:12px;border-bottom:1px solid var(--rule);font-size:12px;color:var(--faint)}
   #pass-blk .health-status[data-state="Needs attention"] button{color:var(--warn)}
@@ -285,16 +281,15 @@
   #history-blk .activity-cycle:focus .activity-selection{stroke:var(--data);stroke-width:2}
   #history-blk .rigor-category{font:9px var(--sans);fill:var(--ink2)}
   #history-blk .activity-legend{display:flex;flex-wrap:wrap;gap:10px 16px;font-size:11px;color:var(--faint);margin:12px 0}
+  #history-blk .activity-legend>span{min-width:0;max-width:100%;overflow-wrap:anywhere}
   #history-blk .activity-legend i{display:inline-block;width:8px;height:8px;margin-right:6px}
-  #history-blk .evidence-inspector{margin:20px 0;max-width:800px}
+  #history-blk .evidence-inspector{margin:20px 0;width:100%;min-width:0}
   #history-blk .open-dream{display:inline-block;margin:18px 0 4px;color:var(--data);font-size:13px}
   #history-blk table{min-width:900px;font-size:12px}
   #history-blk td,#history-blk th{padding:10px 14px;text-align:left;border-bottom:1px solid var(--rule)}
   @media(max-width:1100px){#network-blk .network-explorer{grid-template-columns:1fr}#network-blk .map-detail{border-left:0;border-top:1px solid var(--rule);padding:18px 0}}
   @media(max-width:699px){
     #network-blk .network-surface{padding:16px}#network-blk #net.hierarchy-map{min-width:0}#network-blk .network-explorer{gap:8px}
-    #dream-blk .dream-sequence{grid-template-columns:1fr;border-top:0;border-left:1px solid var(--rule);padding:0 0 0 20px;gap:16px}
-    #dream-blk .dream-bookend::before,#dream-blk .dream-passages::before{top:12px;left:-28px}
     #pass-blk #health-summary{grid-template-columns:1fr;gap:10px}
     #pass-blk .health-status{flex-direction:row;justify-content:space-between;align-items:center}
     #pass-blk .evidence-fields>div{grid-template-columns:1fr;gap:2px}
@@ -304,8 +299,252 @@
   @media print{
     #network-blk .network-explorer{display:block}#network-blk .network-surface{break-inside:auto}#network-blk .map-detail{border-left:0}
     #history-blk .activity-scroll{overflow:visible}#history-blk .activity-scroll svg{max-width:100%}
-    #dream-blk .beat-controls,#network-blk .network-search{display:none}
+    #network-blk .network-search{display:none}
     #dream-blk details::details-content,#pass-blk details::details-content,#history-blk details::details-content{content-visibility:visible}
+  }
+
+  /* Reading hierarchy for report sections; the header graph and its tokens stay unchanged. */
+  #app section.blk{margin-top:48px;padding-top:24px;border-top:1px solid var(--rule)}
+  #app section.blk>.shead{display:grid;grid-template-columns:36px minmax(0,1fr) auto 20px;gap:8px 12px;margin-bottom:8px;padding-right:0;position:relative}
+  #app section.blk>.shead .ln{display:none}
+  #app section.blk>.shead::after{position:static;margin:0;text-align:right;grid-column:4;grid-row:1}
+  #app section.blk.collapsed>.shead{margin-bottom:0}
+  #app section.blk>.shead h3{font-size:clamp(23px,2.2vw,28px);font-weight:700;letter-spacing:-.035em;color:var(--ink);min-width:0;overflow-wrap:anywhere}
+  #app section.blk>.shead .no{width:36px;height:36px;border-radius:10px;font-size:20px}
+  #app section.blk>.shead .note{font-size:12px;line-height:1.7;letter-spacing:0;width:auto;margin:0;text-align:right;max-width:36vw;overflow-wrap:anywhere}
+  #app .section-purpose{font:15px/1.7 var(--sans);color:var(--ink2);margin-bottom:22px;overflow-wrap:anywhere}
+  #app section.blk .cap{max-width:none}
+  #app .source-note{font:12px/1.8 var(--sans);color:var(--faint);margin:12px 0 22px;overflow-wrap:anywhere}
+  #app .source-label{font-weight:700;color:var(--ink2);margin-right:6px}
+  #app .evidence-label{display:block;font:700 11px/1.6 var(--sans);letter-spacing:.07em;text-transform:uppercase;color:var(--faint);margin-bottom:6px}
+  #dream-blk .summary-outcome{font-size:clamp(28px,3vw,38px);font-weight:650;color:var(--ink);letter-spacing:-.025em}
+  #dream-blk .summary-evidence{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;align-items:start;margin:20px 0}
+  #dream-blk .summary-evidence>div{min-width:0;max-width:100%}
+  #dream-blk button.evidence-link,#pass-blk button.evidence-link{font-size:14px;font-weight:600;border-bottom-style:dotted}
+  #dream-blk .summary-attention{padding:12px 16px;background:var(--tint-warn);border-left:3px solid var(--warn);line-height:1.8}
+  #dream-blk #dream-arc{padding-top:24px}
+  #network-blk .network-surface{border-radius:12px;padding:26px}
+  #network-blk .network-explorer{display:block;margin-top:20px}
+  #network-blk .map-detail{background:transparent;border:0;border-radius:0;padding:8px 0 0;font-size:14px;line-height:1.8}
+  #network-blk .network-selection-name{display:inline;font-size:16px;font-weight:700;line-height:1.8;margin-right:8px;color:var(--ink)}
+  #network-blk .network-explanation{display:inline;font-size:14px;color:var(--ink2);margin:0}
+  #network-blk .network-attribution{display:block;font:12px/1.8 var(--sans);color:var(--faint);margin-top:6px}
+  #network-blk .network-facts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  #network-blk .inspector-choice{font-size:13px;color:var(--data);border:1px solid var(--rule);border-radius:6px;padding:6px 10px;line-height:1.55;width:auto;margin:0}
+  #network-blk .capture-note{color:var(--warn);margin:10px 0 0;font-size:13px}
+  #network-blk .network-search{font-size:12px;font-weight:600;color:var(--ink2)}
+  #network-blk .network-search input{font-size:14px;background:var(--card)}
+  #network-blk .network-search input::placeholder{color:var(--faint);opacity:1}
+  #network-blk .network-view{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:600;color:var(--ink2);min-width:0}
+  #network-blk #net-view{font:14px var(--sans);color:var(--ink);background:var(--card);border:1px solid var(--rule2);border-radius:5px;padding:10px 12px;width:100%;min-width:0;max-width:100%}
+  #network-blk .network-search input,#network-blk #net-view{height:42px;line-height:20px;box-sizing:border-box}
+  #network-blk .map-controls{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;margin:0}
+  #network-blk .network-search{width:100%}
+  #network-blk #net-groups{display:block;min-width:0}
+  #network-blk #net-breadcrumbs{grid-column:1/-1}
+  #network-blk #net-breadcrumbs:empty{display:none}
+  #network-blk .root-label,#network-blk .domain-label{font-size:18px;font-weight:700}
+  #network-blk .domain-label{fill:var(--data)}
+  #network-blk .project-label{font-size:17px;font-weight:600}
+  #network-blk .domain-count,#network-blk .project-meta{font-size:13px;fill:var(--ink2)}
+  #network-blk .rank-label{font:700 12px var(--sans);fill:var(--faint);letter-spacing:.04em}
+  #network-blk .hierarchy-branch{stroke-width:1.8}
+  #network-blk .hierarchy-branch.fact-edge{stroke-width:2;opacity:1}
+  #network-blk .hierarchy-branch.grant-edge{stroke-width:1.8}
+  #network-blk .domain-junction circle{stroke:var(--data);fill:var(--card);stroke-width:1.5}
+  #network-blk .net-node rect{fill:var(--card);stroke:var(--rule2);stroke-width:1.1}
+  #network-blk .net-node[data-current="true"] rect{stroke:var(--data);stroke-width:1.8}
+  #network-blk .net-node.selected rect{fill:var(--tint-accent);stroke:var(--accent)}
+  #network-blk .legend{font-size:12px;margin-top:8px}
+  #network-blk #net-cap{max-width:none;font-size:13px;line-height:1.8;margin:10px 0 0;color:var(--warn)}
+  #pass-blk .health-status{border:1px solid var(--rule);border-top:3px solid var(--rule2);border-radius:6px;padding:16px;background:var(--paper2)}
+  #pass-blk .health-status>span{font-size:12px;font-weight:600;color:var(--ink2)}
+  #pass-blk .health-status button{font-size:18px;font-weight:700;line-height:1.5}
+  #pass-blk .health-status[data-state="Needs attention"]{border-top-color:var(--warn)}
+  #pass-blk .health-status[data-state="Recorded clear"]{border-top-color:var(--ok)}
+  #pass-blk .health-status[data-state="Recorded clear"] button{color:var(--ok)}
+  #pass-blk #attention-items{padding:14px 20px;background:var(--tint-warn);border-left-width:3px}
+  #pass-blk .attention-heading{font-size:16px;font-weight:700}
+  #pass-blk .evidence-block>summary{font-size:17px;font-weight:600;color:var(--ink);padding:20px 0}
+  #pass-blk .evidence-block[open]>summary{color:var(--data)}
+  #pass-blk h4{font-size:17px;font-weight:700;margin-top:22px}
+  #pass-blk .inspector-row,#history-blk .inspector-row{font-size:13px;padding:10px 0}
+  #pass-blk .inspector-row>b,#history-blk .inspector-row>b{font-weight:600;color:var(--ink)}
+  #history-blk .evidence-inspector{background:var(--paper2);padding:22px;border:1px solid var(--rule);border-left:3px solid var(--accent);border-radius:6px}
+  #history-blk .evidence-inspector h4{font-size:25px;font-weight:700;margin:6px 0 8px}
+  #history-blk .inspector-kicker{color:var(--accent);font-size:12px;font-weight:700}
+  #history-blk .open-dream{font-size:14px;font-weight:600}
+  #entries-blk .row .nm{font-size:16px;font-weight:600;color:var(--ink)}
+  #entries-blk .row .rs{font-size:14px;line-height:1.8;color:var(--ink2);max-width:none}
+  #entries-blk .row>*{min-width:0}
+  #entries-blk .row .act{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;overflow-wrap:anywhere}
+  #entries-blk .row .ci{font-size:12px}
+  @media(max-width:699px){
+    #app section.blk{margin-top:34px;padding-top:20px}
+    #app section.blk>.shead{grid-template-columns:36px minmax(0,1fr) 20px}
+    #app section.blk>.shead .note{grid-column:2;grid-row:2;text-align:left;max-width:none}
+    #app section.blk>.shead::after{grid-column:3}
+    #app .section-purpose{font-size:14px;margin-bottom:18px}
+    #network-blk .network-surface{padding:16px}
+    #network-blk .map-controls{grid-template-columns:1fr}
+    #network-blk .project-label{font-size:15px}
+    #network-blk .domain-label{font-size:16px}
+    #network-blk .project-meta{font-size:12px}
+    #pass-blk .health-status{padding:12px}
+    #pass-blk .health-status button{font-size:16px}
+    #history-blk .evidence-inspector{padding:16px}
+    #dream-blk .summary-evidence{grid-template-columns:1fr;gap:16px}
+    #entries-blk .row{grid-template-columns:minmax(0,1fr);gap:8px}
+    #entries-blk .row .ci{grid-column:1;text-align:left}
+  }
+  @media print{#network-blk .network-explorer{display:block}#app .source-note{color:var(--faint)}#app section.blk>.shead{break-after:avoid}}
+
+  /* Lower report: short answers, with the saved evidence one disclosure away. */
+  #history-blk #rigor[hidden],#pass-blk #health-summary[hidden]{display:none}
+  #history-blk .activity-axis-label{font:600 12px var(--sans);fill:var(--ink2)}
+  #history-blk .activity-value{font:13px var(--sans);fill:var(--ink2)}
+  #history-blk .activity-cycle-number{font-size:12px;fill:var(--faint)}
+  #history-blk .activity-scroll{padding:8px 0;overflow:hidden;width:100%;min-width:0}
+  #history-blk .activity-scroll svg{max-width:100%;min-width:0}
+  #history-blk .activity-axis-note{font:12px var(--sans);fill:var(--faint)}
+  #history-blk .activity-selection{fill:none;stroke:transparent;stroke-width:1}
+  #history-blk .activity-cycle[aria-pressed="true"] .activity-selection{fill:none;stroke:var(--rule2)}
+  #history-blk .activity-cycle[aria-pressed="true"] .activity-point{r:4px;stroke:var(--paper);stroke-width:1.5}
+  #history-blk .activity-cycle:focus-visible .activity-selection{stroke:var(--accent);stroke-width:1.5}
+  #history-blk #activity-controls{display:grid;grid-template-columns:42px auto minmax(0,240px) 42px;align-items:center;gap:10px;justify-content:start}
+  #history-blk #activity-controls button,#history-blk #activity-cycle-select{height:42px;box-sizing:border-box;min-width:0;max-width:100%;padding:8px 10px;border:1px solid var(--rule2);border-radius:5px;background:var(--paper2);font:14px/20px var(--sans);color:var(--ink)}
+  #history-blk #activity-controls button{padding:0;font-size:18px;cursor:pointer}
+  #history-blk #activity-controls button:disabled{opacity:.45;cursor:default}
+  #history-blk #activity-controls label{font-size:13px;font-weight:600;color:var(--ink2)}
+  #history-blk .activity-legend{justify-content:space-between;font-size:12px;margin:10px 0 20px}
+  #history-blk .evidence-inspector{padding:20px 0;background:transparent;border:0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);border-radius:0}
+  #history-blk .activity-summary-head{display:flex;align-items:center;justify-content:space-between;gap:16px}
+  #history-blk .activity-summary-head>div{min-width:0;overflow-wrap:anywhere}
+  #history-blk .activity-summary-head h4{font-size:23px;line-height:1.5;margin:4px 0}
+  #history-blk .activity-date{font-size:12px;color:var(--faint)}
+  #history-blk .open-dream{flex:none;margin:0;padding:8px 0}
+  #history-blk .activity-summary-facts{display:flex;flex-wrap:wrap;gap:12px 32px;margin:14px 0}
+  #history-blk .activity-stat{font-size:14px;color:var(--ink2)}
+  #history-blk .activity-stat strong{font-size:19px;font-weight:600;color:var(--ink);margin-right:5px}
+  #history-blk .activity-summary p{font-size:12px;color:var(--faint);margin:0}
+  #history-blk .activity-details{margin-top:16px}
+  #history-blk .activity-details>summary,#entries-blk .decision-detail>summary{font:13px/1.8 var(--sans);color:var(--data);padding:4px 0;cursor:pointer}
+  #pass-blk .evidence-block>summary{display:grid;grid-template-columns:16px minmax(0,1fr) auto;gap:10px;align-items:baseline;list-style:none;font-size:17px;padding:20px 0}
+  #pass-blk .evidence-block>summary::-webkit-details-marker{display:none}
+  #pass-blk .evidence-block>summary::before{content:'▸';font-size:13px;color:var(--faint)}
+  #pass-blk .evidence-block[open]>summary::before{content:'▾'}
+  #pass-blk .health-status{display:block;border:0;border-radius:0;padding:0;background:transparent;font:600 13px/1.7 var(--sans);color:var(--faint)}
+  #pass-blk .health-status[data-state="Recorded clear"]{color:var(--ok)}
+  #pass-blk .health-status[data-state="Needs attention"],#pass-blk .health-status[data-state="Decision pending"]{color:var(--warn)}
+  #pass-blk .evidence-title{min-width:0;overflow-wrap:anywhere}
+  #pass-blk .evidence-conclusion{font-size:16px;font-weight:600;color:var(--ink2);line-height:1.8;margin:0 0 14px;overflow-wrap:anywhere}
+  #pass-blk .inspector-row,#history-blk .inspector-row{display:grid;grid-template-columns:180px minmax(0,1fr);gap:16px;font-size:13px;align-items:baseline}
+  #pass-blk .inspector-row>b,#history-blk .inspector-row>b{max-width:none;text-align:left;font-weight:400}
+  #pass-blk .captured-details{margin:12px 0;font-size:13px}
+  #pass-blk .captured-details>summary{padding:6px 0;color:var(--data)}
+  #pass-blk .workflow-detail{margin:0;padding:0;border-top:1px solid var(--rule);border-radius:0}
+  #pass-blk .workflow-detail>summary{font:600 15px/1.8 var(--sans);padding:14px 0;color:var(--ink2)}
+  #pass-blk .workflow-detail>.head{font-size:12px;margin:0 0 12px}
+  #pass-blk .workflow-detail>.head .s{display:none}
+  #pass-blk .file-evidence-name{font-size:14px;color:var(--ink2);overflow-wrap:anywhere;min-width:0}
+  #pass-blk .file-evidence-link{font-size:14px;font-weight:600}
+  #pass-blk .file-operation{font-size:12px;color:var(--faint)}
+  #entries-blk .row{grid-template-columns:108px minmax(0,1fr);gap:20px}
+  #entries-blk .decision-detail{margin-top:12px}
+  #entries-blk .decision-detail dl{font-size:13px;line-height:1.8;margin:10px 0}
+  #entries-blk .decision-detail dl>div{display:grid;grid-template-columns:100px minmax(0,1fr);gap:16px;padding:5px 0}
+  #entries-blk .decision-detail dt{color:var(--faint)}
+  #entries-blk .decision-detail dd{margin:0;color:var(--ink2);overflow-wrap:anywhere;min-width:0}
+  #entries-blk .other-file-changes{margin-top:28px}
+  #entries-blk .other-file-changes h4{font-size:18px;font-weight:600;margin-bottom:6px}
+  #entries-blk .capture-note{font:13px/1.8 var(--sans);color:var(--faint)}
+  @media(max-width:699px){
+    #history-blk .activity-axis-label{font-size:11px}
+    #history-blk .activity-axis-note{font-size:11px}
+    #history-blk #activity-controls{grid-template-columns:36px auto minmax(0,1fr) 36px;gap:8px;justify-content:stretch}
+    #history-blk .activity-summary-head{align-items:flex-start;flex-direction:column;gap:8px}
+    #history-blk .activity-summary-facts{gap:10px 24px}
+    #pass-blk .evidence-block>summary{grid-template-columns:16px minmax(0,1fr);gap:4px 10px}
+    #pass-blk .health-status{grid-column:2;padding:0}
+    #pass-blk .inspector-row,#history-blk .inspector-row{grid-template-columns:1fr;gap:2px}
+    #entries-blk .row{grid-template-columns:minmax(0,1fr);gap:8px}
+    #entries-blk .decision-detail dl>div{grid-template-columns:1fr;gap:0}
+  }
+  @media print{#history-blk .activity-axis-panel{transform:none!important}}
+
+  /* Controls share a size and state language without changing chart tokens. */
+  .chrome .theme-tog,.dreamnav .nav-link,#app .report-nav button,
+  #network-blk .inspector-choice,#history-blk #activity-controls button,
+  #history-blk #activity-cycle-select,#network-blk #net-view,#network-blk #net-search,
+  #archive .arch-tools select,.modal .modal-x{
+    min-height:44px;border:1px solid var(--rule2);border-radius:8px;
+    background:var(--paper2);color:var(--ink2);padding:10px 14px;
+    font:600 14px/22px var(--sans);text-decoration:none;
+    transition:background-color .15s,border-color .15s,color .15s;
+  }
+  #history-blk #activity-cycle-select,#network-blk #net-view,#network-blk #net-search,#archive .arch-tools select{height:44px;padding:10px 12px;font-weight:400;color:var(--ink)}
+  #history-blk #activity-controls button,.modal .modal-x{width:44px;height:44px;padding:0;font-size:20px;flex:none}
+  #history-blk #activity-controls{grid-template-columns:44px auto minmax(0,240px) 44px}
+  .chrome .theme-tog[aria-pressed="true"]{background:var(--tint-accent);border-color:var(--accent);color:var(--ink)}
+  .chrome .theme-tog:hover,.dreamnav a.nav-link:hover,#app .report-nav button:hover,
+  #network-blk .inspector-choice:hover,#history-blk #activity-controls button:not(:disabled):hover,
+  #archive .arch-tools select:hover,.modal .modal-x:hover{background:var(--card);border-color:var(--data);color:var(--ink);text-decoration:none}
+  #network-blk #net-search:hover,#network-blk #net-view:hover,#history-blk #activity-cycle-select:hover{border-color:var(--data)}
+  .chrome .theme-tog:active,.dreamnav a.nav-link:active,#app .report-nav button:active,
+  #network-blk .inspector-choice:active,#history-blk #activity-controls button:not(:disabled):active{background:var(--tint-accent);border-color:var(--accent)}
+  .dreamnav{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px 20px}
+  .dreamnav .pos{text-align:center}
+  .dreamnav .nav-link{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+  .dreamnav .dreamnav-steps{display:flex;gap:8px}
+  .dreamnav .off,#history-blk #activity-controls button:disabled{opacity:1;color:var(--ghost);border-color:var(--rule);background:transparent;cursor:default}
+  #app .report-nav{gap:8px;padding:8px 0 16px}
+  #app .report-nav button{font-size:13px;padding:10px 12px}
+  #history-blk .open-dream{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:10px 16px;border:1px solid var(--data);border-radius:8px;background:var(--data);color:var(--paper);font:600 14px/22px var(--sans);text-decoration:none;transition:background-color .15s,border-color .15s}
+  #history-blk .open-dream:hover{background:var(--ink);border-color:var(--ink)}
+  #history-blk .open-dream:active{background:var(--ink2);border-color:var(--ink2)}
+  #dream-blk button.evidence-link,#pass-blk button.evidence-link{min-height:44px;border:1px solid var(--rule2);border-radius:8px;padding:10px 12px;background:var(--paper2);font:600 14px/1.6 var(--sans);color:var(--data);text-decoration:none;transition:background-color .15s,border-color .15s}
+  #dream-blk .summary-evidence button.evidence-link{display:block;width:100%;text-align:left}
+  #dream-blk button.evidence-link:hover,#pass-blk button.evidence-link:hover{background:var(--card);border-color:var(--data)}
+  #dream-blk .summary-attention button.evidence-link,#pass-blk #attention-items button.evidence-link{background:transparent;border-color:var(--warn);color:var(--warn);margin:4px 0}
+  #entries-blk .nm-diff,#pass-blk .file-evidence-link{display:inline-flex;align-items:center;gap:12px;max-width:100%;min-height:44px;padding:8px 12px;border:1px solid var(--rule2);border-radius:8px;background:var(--paper2);color:var(--data);font:600 14px/1.7 var(--sans);text-align:left;text-decoration:none;overflow-wrap:anywhere;cursor:pointer}
+  #entries-blk .nm-diff:hover,#pass-blk .file-evidence-link:hover{background:var(--card);border-color:var(--data)}
+  #entries-blk .nm-diff:active,#pass-blk .file-evidence-link:active{background:var(--tint-accent);border-color:var(--accent)}
+  #entries-blk .diff-name{min-width:0;overflow-wrap:anywhere}
+  #app .diff-action{flex:none;font-size:11px;font-weight:600;color:var(--ink2);border-left:1px solid var(--rule2);padding-left:12px;white-space:nowrap}
+  #app details:not(.evidence-block)>summary{display:flex;align-items:center;gap:10px;width:fit-content;max-width:100%;min-height:44px;padding:10px 12px;margin:6px 0;border:1px solid var(--rule2);border-radius:8px;background:var(--paper2);color:var(--ink2);font:600 13px/1.7 var(--sans);list-style:none;cursor:pointer;overflow-wrap:anywhere}
+  #app details:not(.evidence-block)>summary::-webkit-details-marker{display:none}
+  #app details:not(.evidence-block)>summary::before{content:'›';font-size:20px;line-height:20px;flex:none;transition:transform .15s;color:var(--data)}
+  #app details:not(.evidence-block)[open]>summary::before{transform:rotate(90deg)}
+  #app details:not(.evidence-block)[open]>summary{border-color:var(--accent);background:var(--tint-accent);color:var(--ink)}
+  #app details:not(.evidence-block)>summary:hover{border-color:var(--data);color:var(--ink)}
+  #pass-blk .evidence-block>summary{border-radius:8px;transition:background-color .15s}
+  #pass-blk .evidence-block>summary:hover{background:var(--paper2)}
+  #app section.blk>.shead{grid-template-columns:36px minmax(0,1fr) auto 32px;min-height:44px;border-radius:8px;cursor:pointer}
+  #app section.blk>.shead:hover{background:var(--paper2)}
+  #app section.blk>.shead::after{display:grid;place-items:center;width:32px;height:32px;border:1px solid var(--rule2);border-radius:7px;background:var(--paper2);color:var(--ink2);font:20px/1 var(--sans)}
+  #app section.blk>.shead:hover::after{border-color:var(--data);color:var(--data)}
+  #network-blk .page-control rect{fill:var(--paper2);stroke:var(--rule2);stroke-width:1}
+  #network-blk .page-control .page-link{fill:var(--data);font:600 12px var(--sans);text-decoration:none;cursor:inherit}
+  #network-blk .page-control:not([aria-disabled="true"]):hover rect{fill:var(--card);stroke:var(--data)}
+  #network-blk .page-control[aria-disabled="true"]{cursor:default}
+  #network-blk .page-control[aria-disabled="true"] rect{fill:transparent;stroke:var(--rule)}
+  #network-blk .page-control[aria-disabled="true"] .page-link{fill:var(--ghost);cursor:default}
+  #archive .arch-row:hover{box-shadow:inset 3px 0 var(--data)}
+  .chrome :focus-visible,.dreamnav :focus-visible,#app button:focus-visible,#app a:focus-visible,
+  #app select:focus-visible,#app input:focus-visible,#app summary:focus-visible,
+  #app .shead:focus-visible,#archive a:focus-visible,#archive select:focus-visible,.modal button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+  .modal .modal-body:focus-visible{outline:2px solid var(--accent);outline-offset:-3px}
+  @media(max-width:699px){
+    .dreamnav{grid-template-columns:minmax(0,1fr) auto;gap:10px}
+    .dreamnav .archive-link{justify-self:start}.dreamnav .pos{text-align:right}
+    .dreamnav .dreamnav-steps{grid-column:1/-1;display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+    #history-blk #activity-controls{grid-template-columns:44px auto minmax(0,1fr) 44px}
+    #app section.blk>.shead{grid-template-columns:36px minmax(0,1fr) 32px}
+    #entries-blk .nm-diff,#pass-blk .file-evidence-link{flex-wrap:wrap;gap:6px 12px}
+  }
+  @media print{
+    #app .open-dream,#app #activity-controls{display:none}
+    #app button,#app details>summary{box-shadow:none}
   }
 
 </style>
@@ -316,14 +555,14 @@
 <a class="skip" href="#app">Skip to report</a>
 <div class="chrome" role="toolbar" aria-label="Display settings">
   <div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4A16 16 0 1 0 36 20" fill="none" stroke="var(--data)" stroke-width="1.5"/><path d="M20 11a9 9 0 1 0 9 9" fill="none" stroke="var(--accent)" stroke-width="1.5"/><path d="M20 20 32 8" stroke="var(--rule2)"/><circle cx="20" cy="20" r="3" fill="var(--data)"/><circle cx="32" cy="8" r="3" fill="var(--accent)"/></svg><span>consolidate-memory<small>Nocturne / memory observatory</small></span></div>
-  <button id="dens-tog" class="theme-tog" type="button" aria-label="toggle density">⊟ compact</button>
+  <button id="dens-tog" class="theme-tog" type="button" aria-label="Compact spacing" aria-pressed="false">Compact spacing</button>
   <button id="theme-tog" class="theme-tog" type="button" aria-label="Color theme: Nocturne. Switch to Original">● Nocturne</button>
 </div>
 <div id="boot"><div class="bt">Opening the memory record</div><div class="bl"><i></i></div><div class="bn" id="boot-proj">consolidate-memory</div></div>
 <div class="tip" id="tip"></div>
 <div class="modal" id="dmodal" role="dialog" aria-modal="true" aria-labelledby="dmodal-title" style="display:none"><div class="modal-bg" id="dmodal-bg"></div>
   <div class="modal-box"><div class="modal-head"><b id="dmodal-title">—</b><button class="modal-x" id="dmodal-x" aria-label="close diff">×</button></div>
-  <div class="modal-body" id="dmodal-body"></div></div></div>
+  <div class="modal-body" id="dmodal-body" tabindex="0" role="region" aria-label="Captured file diff"></div></div></div>
 
 <!-- ARCHIVE INDEX VIEW — shown when the URL has no #sel (cm report [DIR]) -->
 <div class="wrap" id="archive" role="main" style="visibility:hidden;display:none">
@@ -394,14 +633,15 @@
 
   <!-- 00 the dream as dreamt (v0.1.54) — present only when the cycle captured its dream arc -->
   <section class="blk" id="dream-blk" style="display:none"><div class="shead"><span class="no" aria-hidden="true">☾</span><h3>Dream summary</h3><span class="ln"></span><span class="note" id="dream-note"></span></div>
+    <p class="section-purpose">What this dream concluded, and the evidence behind it.</p>
     <div id="dream-summary"></div><div id="dream-arc"></div>
   </section>
 
 
   <!-- 02 network + budgets -->
   <section class="blk" id="network-blk"><div class="shead"><span class="no" aria-hidden="true">⌘</span><h3>Memory network</h3><span class="ln"></span><span class="note" id="net-note"></span></div>
+    <p class="section-purpose">See who holds a shared fact and who has permission to receive it.</p>
     <div class="network-surface">
-      <div class="network-intro"><div><strong>Separate boundaries. Deliberate connections.</strong><p>The saved topology of this pass. Domains define trust; group grants select recipients. Delivery depends on each project's pull and admission checks.</p></div></div>
       <div id="net-controls" class="map-controls" role="group" aria-label="Highlight network membership"></div>
       <div class="network-explorer"><div class="map-scroll" role="region" aria-label="Memory topology hierarchy" tabindex="0"><svg id="net" viewBox="0 0 520 170" role="img" aria-label="Captured shared-memory topology"></svg></div>
 
@@ -413,32 +653,36 @@
       </div>
       <div id="net-chips" style="display:none"></div>
       <div class="cap" id="net-cap"></div>
-      <details id="network-data" class="network-data"><summary>Explore all captured network data</summary><div id="network-data-body"></div></details>
+      <div id="network-data" hidden><div id="network-data-body"></div></div>
     </div>
-    <div class="budget-grid">
+    <div class="budget-grid" hidden>
       <div class="meter" id="m-index"></div>
       <div class="meter" id="m-cmd"></div>
       <div class="meter" id="m-global" style="display:none"></div>
     </div>
-    <div class="xp-strip" id="xp-strip" style="display:none"></div>
+    <div class="xp-strip" id="xp-strip" hidden></div>
   </section>
 
   <!-- 01 longitudinal -->
   <section class="blk" id="history-blk"><div class="shead"><span class="no" aria-hidden="true">↗</span><h3>Memory activity</h3><span class="ln"></span><span class="note" id="hist-note"></span></div>
+    <p class="section-purpose">Explore what changed and which memories were recalled.</p>
+    <p id="activity-source" class="source-note"></p>
     <div id="activity-controls" class="explore-controls"></div>
-    <div class="activity-scroll"><svg id="trend" role="group" aria-label="Decisions and observed reads"></svg><svg id="rigor" role="group" aria-label="Captured rigor categories"></svg></div>
+    <div class="activity-scroll" role="region" aria-label="Dream activity timeline"><svg id="trend" role="group" aria-label="Decisions and observed reads"></svg><svg id="rigor" hidden role="group" aria-label="Captured rigor categories"></svg></div>
     <div id="activity-inspector" class="evidence-inspector" aria-live="polite"></div>
     <details id="activity-table"><summary>Historical fact counts &amp; cadence</summary><div class="table-scroll" id="activity-table-body"></div></details>
   </section>
 
   <!-- 03 this pass: audit + verification + the distill verdict -->
   <section class="blk" id="pass-blk"><div class="shead"><span class="no" aria-hidden="true">✓</span><h3>Verification &amp; health</h3><span class="ln"></span><span class="note" id="pass-note"></span></div>
+    <p class="section-purpose">Start with anything that needs attention, then inspect its evidence.</p>
+    <p id="health-source" class="source-note"></p>
     <div id="attention-items"></div><div id="health-summary"></div>
     <details id="verification-evidence" class="evidence-block"><summary>Verification evidence</summary><div id="verify"></div></details>
     <details id="store-checks" class="evidence-block"><summary>Store checks</summary><div id="store-evidence"></div></details>
     <details id="file-changes" class="evidence-block"><summary>Observed file changes</summary><div id="audit"></div></details>
     <details id="workflow-evidence" class="evidence-block"><summary>Recall &amp; workflow decisions</summary><div id="usage-evidence"></div>
-    <div class="dstl" id="distill-blk" style="display:none">
+    <details class="dstl workflow-detail" id="distill-blk" style="display:none"><summary>Recurring workflows</summary>
       <div class="audit-ln head"><span class="s">recurring workflows</span><span class="nums" id="dstl-counts"></span></div>
       <div class="dstl-verdict" id="dstl-verdict"></div>
       <!-- L2 (v0.4.2) top commands: the template list lives in the BODY (its own layout), never the
@@ -452,27 +696,29 @@
         <div id="dstl-used-list"></div>
       </div>
       <div class="cap">Patterns from the last ~30 days — including work before this dream.</div>
-    </div>
+    </details>
     <!-- v0.1.67 (Phase C): the demotion triage — same lead/verdict rhythm as distill; key-gated (legacy cycles hide it) -->
-    <div class="dstl" id="demotion-blk" style="display:none">
+    <details class="dstl workflow-detail" id="demotion-blk" style="display:none"><summary>Rarely used facts</summary>
       <div class="audit-ln head"><span class="s">rarely used facts</span><span class="nums" id="demo-counts"></span></div>
       <div class="dstl-verdict" id="demo-verdict"></div>
       <div class="cap">Indexed facts that haven’t been opened in a while. A red miss means one of those was needed again — put it back.</div>
-    </div>
+    </details>
     <!-- v0.1.87/W-C (render-chain audit): the registrar's Tier-2 consult — key-gated like distill/demotion.
          An ABSENT key on a distill-era record renders the not-consulted line (the SKILL's "absent = a
          visible decision", which no renderer previously made visible). -->
-    <div class="dstl" id="registrar-blk" style="display:none">
+    <details class="dstl workflow-detail" id="registrar-blk" style="display:none"><summary>Across-project decisions</summary>
       <div class="audit-ln head"><span class="s">across projects</span><span class="nums" id="reg-counts"></span></div>
       <div class="reg-verdict" id="reg-verdict"></div>
       <div class="reg-board" id="reg-board"></div>
       <div class="cap" id="reg-cap" style="display:none"></div>
-    </div>
+    </details>
     </details>
   </section>
 
   <!-- 04 ledger -->
   <section class="blk" id="entries-blk"><div class="shead"><span class="no" aria-hidden="true">≡</span><h3>Changes &amp; decisions</h3><span class="ln"></span><span class="note" id="ent-note"></span></div>
+    <p class="section-purpose">The recorded decision for each lesson, with file diffs where captured.</p>
+    <p id="ledger-source" class="source-note"></p>
     <div class="ledger" id="entries"></div>
   </section>
 
@@ -480,7 +726,7 @@
   <details class="record-detail"><summary>Inspect the complete captured cycle record</summary><pre id="record-json"></pre></details>
   <footer>
     <span id="f-marker">—</span>
-    <span class="em">self-contained · zero-dependency · token figures are ≈ char/4 estimates</span>
+    <span class="em">Offline dream archive</span>
   </footer>
 </main>
 
@@ -494,10 +740,11 @@
   // v0.1.29 — the archive embeds ALL cycles; the URL #sel=N selects a dream (else the archive INDEX view).
   var ALL=Array.isArray(DATA.cycles)?DATA.cycles.filter(function(c){return c&&typeof c==="object";}):[];
   if(!ALL.length)ALL=[{}];
-  function _readSel(){var m=(location.hash+" "+location.search).match(/sel=(\d+)/);if(!m)return null;var i=+m[1];return (i>=0&&i<ALL.length)?i:null;}
+  function _readSel(){if(location.hash==="#archive")return null;var m=(location.hash+" "+location.search).match(/sel=(\d+)/);if(!m)return null;var i=+m[1];return (i>=0&&i<ALL.length)?i:null;}
   var SEL, VIEW, selIdx, CUR, HIST, ENT, CYCLES, DREAMDIFFS, traj, PROJ;
   var lastSel=ALL.length-1;
-  var ALLDIFFS=(DATA.diffs&&typeof DATA.diffs==="object")?DATA.diffs:{};   // v0.1.32: cycleKey → its persisted memory diffs
+  var ALLDIFFS=(DATA.diffs&&typeof DATA.diffs==="object"&&!Array.isArray(DATA.diffs))?DATA.diffs:{};   // v0.1.32: cycleKey → its persisted memory diffs
+  function ownObject(o,key){if(!o||!Object.prototype.hasOwnProperty.call(o,key))return null;var value=o[key];return value&&typeof value==="object"&&!Array.isArray(value)?value:null;}
   function diffKey(m,s){m=(m&&typeof m==="object")?m:{};   // MUST mirror memory_status.diff_key (the write side)
     var c=String(m.commit||"").replace(/[^0-9A-Za-z]/g,"").slice(0,12)||"nocommit";
     var t=String(m.timestamp||"").replace(/[^0-9A-Za-z]/g,"-")||"nots";
@@ -647,7 +894,7 @@
     CUR=ALL[selIdx]||{}; HIST=ALL.slice(0,selIdx);
     ENT=Array.isArray(CUR.entries)?CUR.entries:[];
     CYCLES=HIST.slice(); if(!CYCLES.length||!sameCycle(CYCLES[CYCLES.length-1],CUR))CYCLES.push(CUR);
-    DREAMDIFFS=ALLDIFFS[diffKey((CUR&&CUR.marker)||{}, g(CUR,"session",""))]||ALLDIFFS[diffKey((CUR&&CUR.marker)||{})]||{};
+    DREAMDIFFS=ownObject(ALLDIFFS,diffKey((CUR&&CUR.marker)||{}, g(CUR,"session","")))||ownObject(ALLDIFFS,diffKey((CUR&&CUR.marker)||{}))||{};
   }
   function clearEl(id){var n=el(id); if(!n)return; while(n.firstChild)n.removeChild(n.firstChild);}
   // carry the last valid value forward over a MISSING field only (a GENUINE 0 is data and
@@ -667,23 +914,25 @@
       if(p.indexOf(pre)===0)return {rel:p.slice(pre.length), store:STORE_PREFIXES[i][1]};}
     return {rel:p, store:""};}
   function diffDisplayName(p){var sp=splitDiffPath(p);return sp.store==="memory"?sp.rel.replace(/\.md$/,""):sp.rel;}
+  function capturedDiff(p){return ownObject(DREAMDIFFS,p);}
   var diffFocus=null;
   function showDiff(){
     diffFocus=document.activeElement;
     el("dmodal").style.display="flex";
     ["app","archive"].forEach(function(id){el(id).inert=true;});
     document.querySelector(".chrome").inert=true;
+    el("dmodal-body").scrollTop=0;
     document.body.style.overflow="hidden"; el("dmodal-x").focus();
   }
   function openDiff(p){
-    var d=DREAMDIFFS[p]; if(!d)return;
+    var d=capturedDiff(p); if(!d)return;
     var sp=splitDiffPath(p);
     el("dmodal-title").textContent=diffDisplayName(p)+(sp.store?"  ·  "+sp.store:"")+"  ·  "+(d.op||"modified");
     if(d.size_capped){
       el("dmodal-body").innerHTML='<div class="dl-more">diff not available — file too large to snapshot (this dream still recorded that it changed)</div>';
       showDiff(); return;
     }
-    var html=(d.lines||[]).map(function(l){
+    var html=(Array.isArray(d.lines)?d.lines:[]).filter(function(l){return l&&typeof l==="object"&&!Array.isArray(l);}).map(function(l){
       var t=l.t, cls=t==="+"?"dl-plus":t==="-"?"dl-minus":t==="@"?"dl-at":"dl-ctx";
       var pre=t==="+"?"+ ":t==="-"?"- ":t==="@"?"":"  ";
       return '<div class="dl '+cls+'">'+esc(pre+(l.s==null?"":l.s))+'</div>';
@@ -699,7 +948,7 @@
     document.querySelector(".chrome").inert=false; document.body.style.overflow="";
     if(wasOpen&&diffFocus&&diffFocus.isConnected)diffFocus.focus();
   }
-  el("dmodal").addEventListener("keydown",function(e){if(e.key==="Tab"){e.preventDefault();el("dmodal-x").focus();}});
+  el("dmodal").addEventListener("keydown",function(e){if(e.key==="Tab"){e.preventDefault();var targets=[el("dmodal-x"),el("dmodal-body")],current=targets.indexOf(document.activeElement),next=current<0?(e.shiftKey?1:0):(current+(e.shiftKey?-1:1)+targets.length)%targets.length;targets[next].focus();}});
   el("dmodal-x").onclick=closeDiff;
   el("dmodal-bg").onclick=closeDiff;
 
@@ -956,8 +1205,8 @@
 
   // ── ledger: the narrated entries; a changed-memory-fact's NAME links to its diff (ONE list, no separate section) ──
   (function(){
-    var box=el("entries"), used={};
-    function link(p,nm){used[p]=1;return '<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>';}
+    var box=el("entries"), used=Object.create(null);
+    function link(p,nm){used[p]=1;return '<button type="button" class="nm-diff" data-p="'+esc(p)+'" aria-label="View captured diff for '+esc(nm)+'"><span class="diff-name">'+esc(nm)+'</span><span class="diff-action" aria-hidden="true">View diff</span></button>';}
     // v0.1.72: the model DECLARES which file(s) an entry touched (`files[]`, audit_snapshot labels) — the
     // deterministic path, no guessing which diff an entry means. Declared files (deduped) take priority
     // whenever at least one resolves to a real diff. Otherwise — no `files` field at all (pre-v0.1.72), OR
@@ -965,53 +1214,50 @@
     // than trusting a possibly-mistaken negative declaration and silently dropping a real, observed change.
     function fileLabel(rawFiles){
       if(!Array.isArray(rawFiles)||!rawFiles.length)return "";
-      var shown=rawFiles.slice(0,3).map(function(p){return esc(String(p));});
-      return ' <em>'+shown.join(" · ")+'</em>'+(rawFiles.length>3?'<details><summary>Show '+(rawFiles.length-3)+' more declared files</summary>'+rawFiles.slice(3).map(function(p){return '<div>'+esc(String(p))+'</div>';}).join("")+'</details>':"");
+      return '<div><dt>Declared files</dt><dd>'+rawFiles.map(function(p){return '<div>'+esc(String(p))+'</div>';}).join("")+'</dd></div>';
     }
     function nameCell(e){
-      var nm=g(e,"name","—"), rawFiles=g(e,"files",null), declared=[], seen={}, fl=fileLabel(rawFiles);
+      var nm=g(e,"name","—"), rawFiles=g(e,"files",null), declared=[], seen=Object.create(null);
       if(Array.isArray(rawFiles))rawFiles.forEach(function(p){p=String(p);
-        if(DREAMDIFFS[p]&&!seen[p]){seen[p]=1;declared.push(p);}});
+        if(capturedDiff(p)&&!seen[p]){seen[p]=1;declared.push(p);}});
       if(declared.length){
         var primary=link(declared[0],nm), extra=declared.slice(1).map(function(p){return link(p,diffDisplayName(p));});
-        return (extra.length?primary+' <em>+</em> '+extra.join(' '):primary)+fl;
+        return (extra.length?primary+' <em>+</em> '+extra.join(' '):primary);
       }
       // legacy/fallback heuristic: an entry's OWN file may carry no diff even though something real changed
       // FOR it — an index-line-only compression touches memory/MEMORY.md, not memory/<name>.md; a
       // claude_md/repo_doc entry has no per-entry filename convention to begin with.
       var p="memory/"+nm+".md";   // a memory fact's entry name == its slug → match the sidecar key
-      if(DREAMDIFFS[p])return link(p,nm)+fl;
+      if(capturedDiff(p))return link(p,nm);
       var store=g(e,"store","");
-      if(store==="auto-mem"&&DREAMDIFFS["memory/MEMORY.md"])return link("memory/MEMORY.md",nm)+fl;   // index-only edit
+      if(store==="auto-mem"&&capturedDiff("memory/MEMORY.md"))return link("memory/MEMORY.md",nm);   // index-only edit
       if(store==="repo"){
-        var cmKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("claude_md/")===0;});
-        var rdKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("repo_doc/")===0;});
+        var cmKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("claude_md/")===0&&capturedDiff(k);});
+        var rdKeys=Object.keys(DREAMDIFFS).filter(function(k){return k.indexOf("repo_doc/")===0&&capturedDiff(k);});
         // only auto-link when JOINTLY unambiguous (exactly one candidate across BOTH stores combined) — one
         // claude_md file AND one repo_doc file changed in the same pass is still two real candidates, not one
         var repoKeys=cmKeys.concat(rdKeys);
-        if(repoKeys.length===1)return link(repoKeys[0],nm)+fl;
+        if(repoKeys.length===1)return link(repoKeys[0],nm);
       }
-      return esc(nm)+fl;}
-    var rows=ENT.map(function(e){var act=g(e,"action","-"),tier=g(e,"tier","");tier=(tier===""||tier==="-")?"":tier;var sc=g(e,"scope","");
-      var cit=g(e,"citation","");
+      return esc(nm);}
+    var rows=ENT.map(function(e){
+      var act=g(e,"action","Unspecified"), name=nameCell(e);
+      var metadata=[['Store',e.store],['Tier',e.tier],['Scope',e.scope],['Citation',e.citation]].filter(function(pair){return pair[1]!=null&&pair[1]!=="";}).map(function(pair){return '<div><dt>'+pair[0]+'</dt><dd>'+esc(String(pair[1]))+'</dd></div>';}).join("")+fileLabel(e.files);
       return '<div class="row"><div class="act a-'+esc(act)+'">'+esc(act)+'</div>'
-        +'<div><div class="nm">'+nameCell(e)+(tier||sc?' <em>'+esc([tier,sc].filter(Boolean).join(" · "))+'</em>':'')+'</div>'
-        +(g(e,"reason","")?'<div class="rs">'+esc(g(e,"reason",""))+'</div>':'')+'</div>'
-        +'<div class="ci"'+(cit?' title="'+esc(cit)+'"':"")+'>'+(cit?esc(String(cit).slice(0,10)):"")+'</div></div>';});
-    // a changed file with no narrated entry → appended (e.g. an index-line-only compression, or a CLAUDE.md/repo-doc
-    // edit — those stores have no per-entry name convention to match). Every DREAMDIFFS key lands SOMEWHERE in the
-    // ledger, narrated or not — no observed file change is ever silently dropped.
-    Object.keys(DREAMDIFFS).filter(function(p){return !used[p];}).forEach(function(p){
+        +'<div class="decision-body"><div class="nm">'+name+'</div>'
+        +(g(e,"reason","")?'<div class="rs">'+esc(g(e,"reason",""))+'</div>':'')
+        +(metadata?'<details class="decision-detail"><summary>Decision details</summary><dl>'+metadata+'</dl></details>':'')+'</div></div>';});
+    // A file diff is an observation; it does not imply an additional model decision.
+    var other=Object.keys(DREAMDIFFS).filter(function(p){return capturedDiff(p)&&!used[p];}).map(function(p){
       var sp=splitDiffPath(p), nm=diffDisplayName(p);
-      rows.push('<div class="row"><div class="act a-changed">changed</div><div><div class="nm">'
-        +'<button class="nm-diff" data-p="'+esc(p)+'" title="view the before/after diff">'+esc(nm)+'</button>'
-        +' <em>'+esc(sp.store||"file")+' · diff</em></div></div><div class="ci"></div></div>');});
-    var nd=Object.keys(DREAMDIFFS).length;
-    // L3 (v0.4.2): the honest no-capture row — a dream that woke without its --diffs
-    // sidecar says so (the skill's Phase-5 --diffs is MANDATORY before WAKE)
-    el("ent-note").textContent=ENT.length+" entr"+(ENT.length!==1?"ies":"y")
+      return '<div class="row observed-only"><div class="act a-changed">File change</div><div class="decision-body"><div class="nm">'
+        +link(p,nm)+'</div>'
+        +'<div class="rs">'+esc(sp.store||"file")+' · View the captured diff</div></div></div>';});
+    var nd=Object.keys(DREAMDIFFS).filter(function(p){return capturedDiff(p);}).length, captured=Array.isArray(CUR.entries);
+    el("ent-note").textContent=(captured?ENT.length+" decision"+(ENT.length!==1?"s":""):"Decisions not captured")
       +(nd?" · "+nd+" diff"+(nd!==1?"s":""):" · no diffs captured");
-    box.innerHTML=rows.length?rows.join(""):'<div class="cap" style="padding:16px 0">No recorded decisions this pass.</div>';
+    box.innerHTML=(rows.length?rows.join(""):'<p class="capture-note">'+(captured?'No decisions were recorded in this dream.':'Decisions were not captured for this dream.')+'</p>')
+      +(other.length?'<div class="other-file-changes"><h4>Other observed file changes</h4><p class="capture-note">Captured diffs without a matching decision entry.</p>'+other.join("")+'</div>':'');
     [].slice.call(box.querySelectorAll(".nm-diff")).forEach(function(b){b.addEventListener("click",function(){openDiff(b.getAttribute("data-p"));});});
   })();
 
@@ -1023,7 +1269,8 @@
     el("kpis").children[0].querySelector(".d").textContent="Not captured";
   }
   if(recallN(CUR)==null)el("kpis").children[1].querySelector(".n").textContent="—";
-  el("f-marker").textContent="marker → "+String(g(CUR,"marker.commit","—")).slice(0,12)+" @ "+String(g(CUR,"marker.timestamp","")||"—").replace("T"," ").replace(/(\+.*|Z)$/,"");
+  var savedAt=g(CUR,"marker.timestamp",null),savedDate=savedAt?new Date(savedAt):null;
+  el("f-marker").textContent=savedDate&&!isNaN(savedDate.getTime())?'Saved '+savedDate.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'UTC'})+' UTC':'Save time not captured';
   } // paintDream
 
   // ── theme toggle · Nocturne → Original → Light → System ──
@@ -1096,9 +1343,10 @@
   // ── dream-view nav: back to the archive + prev/next ──
   function showDreamNav(){
     var n=ALL.length,prev=selIdx-1,next=selIdx+1;
-    el("dreamnav").innerHTML='<a href="#">← Archive</a>'
+    function navLink(index,label,arrow){return index<0||index>=n?'<span class="nav-link off" aria-disabled="true">'+arrow+' '+label+'</span>':'<a class="nav-link" href="#sel='+index+'" aria-label="'+label+' dream">'+arrow+' '+label+'</a>';}
+    el("dreamnav").innerHTML='<a class="nav-link archive-link" href="#archive">← Archive</a>'
       +'<span class="pos">dream '+(selIdx+1)+' / '+n+(num(DATA.total,n)>n?" of "+num(DATA.total,n):"")+'</span>'
-      +'<span><a class="'+(prev<0?"off":"")+'" href="#sel='+Math.max(0,prev)+'">‹ prev</a> &nbsp; <a class="'+(next>=n?"off":"")+'" href="#sel='+Math.min(n-1,next)+'">next ›</a></span>';
+      +'<span class="dreamnav-steps">'+navLink(prev,'Previous','←')+navLink(next,'Next','→')+'</span>';
   }
 
   // route the view without a full reload (hashchange used to location.reload and flash a blank page)
@@ -1133,15 +1381,17 @@
   });});
   route();
   window.addEventListener("hashchange", route);
-  // keyboard nav (dream view): ← → step dreams · Esc → archive (ignored while typing in a filter control)
+  // Page shortcuts apply outside local controls and horizontally scrollable evidence.
   document.addEventListener("keydown", function(e){
     if(e.key==="Escape" && el("dmodal") && el("dmodal").style.display!=="none"){ closeDiff(); return; }   // modal closes first
     if(el("dmodal") && el("dmodal").style.display!=="none") return;   // ← → must NOT reload a dream while the modal is open (state loss)
-    if(/^(INPUT|SELECT|TEXTAREA)$/.test((e.target||{}).tagName||"")) return;
+    var target=e.target&&e.target.closest?e.target:null;
+    if(target&&(target.isContentEditable||target.closest('input,select,textarea,[contenteditable]:not([contenteditable="false"])')))return;
     if(VIEW!=="dream") return;
+    if((e.key==="ArrowLeft"||e.key==="ArrowRight")&&target&&target.closest('button,a,summary,[role="button"],[role="region"],.table-scroll'))return;
     if(e.key==="ArrowLeft" && selIdx>0) location.hash="#sel="+(selIdx-1);
     else if(e.key==="ArrowRight" && selIdx<ALL.length-1) location.hash="#sel="+(selIdx+1);
-    else if(e.key==="Escape") location.hash="";
+    else if(e.key==="Escape") location.hash="#archive";
   });
 
   // focus: collapse/expand dashboard sections (persisted across reloads, incl. nav), keyed on the section title
@@ -1159,6 +1409,7 @@
         var now=h.parentNode.classList.toggle("collapsed"), j=COLL.indexOf(key);
         if(now && j<0) COLL.push(key); else if(!now && j>=0) COLL.splice(j,1);
         h.setAttribute("aria-expanded", now?"false":"true");
+        if(!now && h.parentNode.id==="network-blk" && NocturneNetwork.paint.resize)NocturneNetwork.paint.resize();
         try{localStorage.setItem("cm-collapsed",JSON.stringify(COLL));}catch(e){}
       }
       h.addEventListener("click",toggle);
@@ -1170,7 +1421,7 @@
   // density: compact / cozy (persisted)
   (function(){
     var b=el("dens-tog"); if(!b) return;
-    function apply(c){document.body.classList.toggle("compact",c);b.textContent=c?"⊞ cozy":"⊟ compact";}
+    function apply(c){document.body.classList.toggle("compact",c);b.textContent='Compact spacing';b.setAttribute('aria-pressed',String(c));b.setAttribute('aria-label','Compact spacing');}
     var on=false; try{on=localStorage.getItem("cm-dense")==="1";}catch(e){}
     apply(on);
     b.addEventListener("click",function(){on=!document.body.classList.contains("compact");apply(on);try{localStorage.setItem("cm-dense",on?"1":"0");}catch(e){}});
