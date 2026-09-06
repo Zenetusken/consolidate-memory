@@ -248,8 +248,8 @@ cliff                25 KB / 200 ln (harness)              silent truncation —
 `_would_net_grow(running_idx, pointer_cost, allow_net_grow)` (`sync_global.py:1593`, 3 required
 positional args, no default — every real call site and smoke pin passes all three). `_pass_budget_flag`
 does not exist; the real over-target gauge flag is `_over(b)` (`render_dashboard.py:202`, returns the red
-`⚠ OVER` string when `b.get("over")`) — it is **shared** by both the index gauge (`:629`) and the
-CLAUDE.md gauge (`:617`, which has no ceiling concept and must not gain one). Every reference below uses
+`⚠ OVER` string when `b.get("over")`) — it is **shared** by both the index gauge (`:659`) and the
+CLAUDE.md gauge (`:647`, which has no ceiling concept and must not gain one). Every reference below uses
 the real names.
 
 **B2. The new ceiling gate — a single-source token threshold, isolated from the byte/line cliff math.**

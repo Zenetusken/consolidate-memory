@@ -47,7 +47,7 @@ in two places and SKILL.md guarantees they cannot drift (`SKILL.md:937-938` — 
    → `maintenance.dangling` (count).
 2. **Phase-5 health fill** — the *model instruction* at `SKILL.md:930-934`
    (`dangling_links(auto_mem)` → fills `health.dangling_links`, the list rendered at
-   `render_dashboard.py:842-843`). A Class B link is by definition **unfixable in Phase-5** (the
+   `render_dashboard.py:872-873`). A Class B link is by definition **unfixable in Phase-5** (the
    target is a real global fact pending pull — nothing local to rewrite), so if `SKILL.md:930-934`
    keeps scanning local-only, the link survives remediation and renders on the dashboard even
    though `maintenance.dangling` dropped it. The Phase-5 **fix-suggestion** call at
