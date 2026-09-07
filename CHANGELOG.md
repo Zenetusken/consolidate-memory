@@ -29,7 +29,7 @@ verification tally was a count with no named carrier in the contract. Four layer
   over all 8 history cycles stays green, and the row doubles as the name-pin
   vehicle for both renderers.
 
-Smoke 1748/0 (+8 pins), mypy clean, sim, manifests, browser 1106.
+Smoke 1749/0 (+9 pins), mypy clean, sim, manifests, browser 1108.
 
 ## [0.4.21] — 2026-09-06
 
