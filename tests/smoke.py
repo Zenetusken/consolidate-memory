@@ -14607,6 +14607,10 @@ with _tf43.TemporaryDirectory() as _td23:
     # (the per-PR-review F2 guard)
     _plant23(_state23a, defrag_justify="junk")
     _r23j = _report23(_proj23a)
+    if not ("defrag?" in _r23j and "roadmap23" in _r23j and "defrag-justified:" not in _r23j):
+        print("DIAG container pin report lines:",
+              [_l for _l in _r23j.splitlines() if "defrag" in _l.lower() or "roadmap" in _l.lower()][:8],
+              file=sys.stderr)
     check("v0.4.23 P1: a non-dict defrag_justify container is treated as absent (the stock flag "
           "fires, nothing raises)",
           "defrag?" in _r23j and "roadmap23" in _r23j and "defrag-justified:" not in _r23j)
