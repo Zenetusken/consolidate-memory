@@ -672,7 +672,13 @@ cited lines), decision-landed-in-git (`git log -S`), doc self-consistency (e.g. 
 Be **recall-biased**: a claim that can't be verified is flagged, not silently kept.
 Outcomes per claim: **confirmed** (lands), **stale/wrong** (correct it to the real
 current state, cite it), **unverifiable** (drop, or keep only if explicitly marked
-unverified and the user wants it).
+unverified and the user wants it). **Every claim you judge unverifiable is tallied
+(v0.4.22):** a dropped claim gets one entries[] `skipped` row and a kept-with-approval
+claim gets one `reconciled` row — each row's `name` names the claim and its `reason`
+begins the canonical token `unverifiable:` followed by a non-empty why (e.g.
+`"unverifiable: user-behavior preference — corroborated code-effect leg only"`). The
+tally equals the marked-row count: one row per claim, one claim per row. The validator
+warns on a mismatch, and both dashboards render the names at the ⚠.
 
 → **Cycle record:** tally `verification.confirmed` / `corrected` / `unverifiable`,
 and set `verification.method` (`inline` or `subagents`).

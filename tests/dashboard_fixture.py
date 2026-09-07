@@ -90,7 +90,7 @@ def sample():
         "entries": [
             {"action": "added", "name": "retry-backoff", "tier": "recall", "store": "auto-mem", "scope": "project-local", "reason": "Keep the retry rationale available when changing the queue worker.", "citation": "src/queue.py:42", "files": ["memory/retry-backoff.md"]},
             {"action": "corrected", "name": "test-command", "tier": "always-loaded", "store": "repo", "scope": "project-local", "reason": "The verification command now includes the contract suite.", "citation": "Makefile:18", "files": ["claude_md/CLAUDE.md"]},
-            {"action": "skipped", "name": "cache-expiry-claim", "tier": "-", "store": "-", "scope": "project-local", "reason": "No source establishes the claimed expiration window; retain no fact.", "citation": "src/cache.py"}],
+            {"action": "skipped", "name": "cache-expiry-claim", "tier": "-", "store": "-", "scope": "project-local", "reason": "unverifiable: no source establishes the claimed expiration window; retain no fact.", "citation": "src/cache.py"}],
         "budget": {"index": {"before_tokens": 1056, "after_tokens": 984, "budget_tokens": 1500, "over": False, "before_lines": 32, "after_lines": 30, "cliff_pct": 16, "fat_hooks": 0},
                    "claude_md": {"before_tokens": 1860, "after_tokens": 1820, "budget_tokens": 4000, "over": False},
                    "global_claude_md": {"present": True, "tokens": 720, "budget_tokens": 4000, "over": False},

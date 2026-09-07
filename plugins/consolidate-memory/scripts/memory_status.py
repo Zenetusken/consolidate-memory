@@ -3360,6 +3360,32 @@ def validate_cycle_record(record: object) -> list[str]:
                 warnings.append(
                     "demotion.verdict contradicts the scripted block (verdict says eligible %s, "
                     "eligible=%d)" % (_de.group(1), _el21))
+    # v0.4.22 (U1): the unverifiable tally must have named carriers — every claim counted in
+    # verification.unverifiable gets one entries[] row whose reason begins the canonical
+    # "unverifiable:" token (the SKILL Phase-3 mandate; both dashboards render the names at the
+    # ⚠). Warn on a mismatch in EITHER direction (a count with no/unequal rows, or rows without
+    # a count). Container/scalar-guarded (the never-raises contract): junk shapes skip the check
+    # (the entries list/items guards at the top of this function already warn on bad containers).
+    _v22 = record.get("verification")
+    _unv22 = _v22.get("unverifiable") if isinstance(_v22, dict) else None
+    _entries22 = record.get("entries")
+    if isinstance(_entries22, list):
+        _marked22 = 0
+        for _e22 in _entries22:
+            if isinstance(_e22, dict):
+                _r22 = _e22.get("reason")
+                if isinstance(_r22, str) and _r22.startswith("unverifiable:"):
+                    _marked22 += 1
+        if isinstance(_unv22, int):
+            if _unv22 > 0 and _marked22 != _unv22:
+                warnings.append(
+                    "verification.unverifiable=%d but %d entries[] row(s) carry the unverifiable: "
+                    "token — every judged-unverifiable claim gets one named row (SKILL Phase 3)"
+                    % (_unv22, _marked22))
+            elif _unv22 == 0 and _marked22 > 0:
+                warnings.append(
+                    "verification.unverifiable is 0 but %d entries[] row(s) carry the unverifiable: "
+                    "token — a marked row without a tally" % _marked22)
     # v0.4.1 (D1): a PRESENT-but-incomplete arc warns here (stderr, never blocks) — the same
     # single predicate the persist gate and the WAKE cue use. A missing/empty block stays quiet
     # (legacy/preview records; the gate's documented scope escape).

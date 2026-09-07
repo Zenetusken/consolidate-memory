@@ -550,7 +550,22 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
     bits = [f"{_c('✓', 'green')} {_g(_conf)} confirmed",
             f"{_c('~', 'yellow')} {_g(_corr)} corrected" if _corr else "0 corrected"]
     if _unv:
-        bits.append(f"{_c('⚠', 'yellow')} {_g(_unv)} unverifiable")
+        # v0.4.22 (U1): the ⚠ names its claims — the marked rows' names join after the count
+        # (cap-with-counter), falling back to the bare count when no marked rows exist (legacy
+        # records render unchanged). Derived from _lget directly (module-scope; the CHANGES
+        # extraction below runs later). The reason is bound to a variable first (mypy never
+        # narrows a repeated method-call expression).
+        _unv_names = []
+        for _e in _lget(record, "entries"):
+            if isinstance(_e, dict):
+                _r = _e.get("reason")
+                if isinstance(_r, str) and _r.startswith("unverifiable:"):
+                    _unv_names.append(_clean(_e.get("name") or "?"))
+        _unv_bit = f"{_c('⚠', 'yellow')} {_g(_unv)} unverifiable"
+        if _unv_names:
+            _unv_rest = len(_unv_names) - 3
+            _unv_bit += " — " + ", ".join(_unv_names[:3]) + (f" +{_unv_rest} more" if _unv_rest > 0 else "")
+        bits.append(_unv_bit)
     out.append(_kv("VERIFIED", " · ".join(bits) + method))
 
     # Rigor tier (v0.1.3) — the EARLY predicted-effort HINT. BOTH the tier and the magnitude
