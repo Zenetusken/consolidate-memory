@@ -14525,10 +14525,147 @@ _sk22 = _skill_md.read_text(encoding="utf-8")
 check("v0.4.22 U1: SKILL Phase 3 mandates BOTH directions + the canonical token",
       "Every claim you judge unverifiable is tallied" in _sk22
       and "one entries[]" in _sk22 and "`unverifiable:`" in _sk22)
+# ── v0.4.23 P1/P2 (docs/defrag-flow-and-emoji-index.spec.md) ─────────────────────────
+# P1 the defrag detector flags STOCK not FLOW — the --justify-defrag watermark (refresh
+# semantics, never the demotion no-op); P2 the emoji flag names its beat index.
+with _tf43.TemporaryDirectory() as _td23:
+    _home23 = str(Path(_td23) / "home"); (Path(_td23) / "home").mkdir()
+    _env23 = {**_os53.environ, "HOME": _home23}
+
+    def _proj23(name: str, big_tok: int, small_tok: int = 10) -> "tuple[str, str, int]":
+        # a hermetic project store: 3 small facts + one oversized stem (the defrag population
+        # needs >=3 to define a median; the oversized body makes the 2.5x-flag fire). The facts
+        # land in the RESOLVED native store (the state file's dir — under HOME, never the
+        # project-local memory/).
+        _proj = str(Path(_td23) / name)
+        Path(_proj).mkdir(parents=True)
+        _p = _sp53.run([sys.executable, str(_scripts54 / "memory_status.py"), _proj,
+                        "--stamp-marker", "HEAD"], capture_output=True, text=True,
+                        timeout=60, env=_env23)
+        assert _p.returncode == 0, _p.stderr
+        _found = list(Path(_home23).glob("**/.consolidation-state.json"))
+        _mine = [f for f in _found if name in str(f)]
+        assert _mine, "state file not found"
+        _mem = _mine[0].parent
+        for _i in range(3):
+            (_mem / f"small{_i}.md").write_text("x" * (small_tok * 4), encoding="utf-8")
+        _big = "x" * (big_tok * 4)
+        (_mem / "roadmap23.md").write_text(_big, encoding="utf-8")
+        (_mem / "MEMORY.md").write_text(
+            "- [small0](small0.md)\n- [small1](small1.md)\n- [small2](small2.md)\n"
+            "- [roadmap23](roadmap23.md)\n", encoding="utf-8")
+        return _proj, str(_mine[0]), ms.est_tokens(_big)
+
+    def _plant23(state: str, **keys: object) -> None:
+        _d = _json43.loads(Path(state).read_text(encoding="utf-8"))
+        _d.update(keys)
+        Path(state).write_text(_json43.dumps(_d), encoding="utf-8")
+
+    def _report23(proj: str) -> str:
+        _p = _sp53.run([sys.executable, str(_scripts54 / "memory_status.py"), proj],
+                       capture_output=True, text=True, timeout=60, env=_env23)
+        assert _p.returncode == 0, _p.stderr
+        return _p.stdout
+
+    def _justify23(proj: str, stem: str, *extra: str) -> "tuple[str, str, int]":
+        _p = _sp53.run([sys.executable, str(_scripts54 / "memory_status.py"),
+                        "--justify-defrag", stem, *extra, proj],
+                       capture_output=True, text=True, timeout=60, env=_env23)
+        return (_p.stdout or ""), (_p.stderr or ""), _p.returncode
+
+    # (a) an unchanged-watermark stem is SILENT (pre-fix: the stock flag lists it — clean mismatch)
+    _proj23a, _state23a, _big23a = _proj23("pa", big_tok=200)
+    _plant23(_state23a, defrag_justify={"roadmap23": {"body_tokens": _big23a, "at": "2026-09-07T00:00:00Z"}},
+             stacks={"python": True})
+    check("v0.4.23 P1: a baseline-stamped stem whose body is unchanged is NOT a defrag candidate "
+          "(pre-fix lists it — the stock flag fires regardless)",
+          "defrag?" not in _report23(_proj23a))
+    # (b') reading-A: grown past its watermark but UNDER the 2.5x-median line stays silent (the
+    # hand-made baseline — a legitimately minted baseline implies ratio >= 2.5; the only
+    # real-system path to this case is median accretion)
+    _proj23b, _state23b, _big23b = _proj23("pb", big_tok=20, small_tok=20)
+    _plant23(_state23b, defrag_justify={"roadmap23": {"body_tokens": 10, "at": "2026-09-07T00:00:00Z"}})
+    check("v0.4.23 P1: a grown stem UNDER the stock line stays silent (the AND contract — "
+          "the change only quiets, never widens)",
+          "defrag?" not in _report23(_proj23b))
+    # (b) grown past BOTH floors AND still an outlier -> listed (post-fix semantic pin)
+    _proj23c, _state23c, _big23c = _proj23("pc", big_tok=200)
+    _plant23(_state23c, defrag_justify={"roadmap23": {"body_tokens": 100, "at": "2026-09-07T00:00:00Z"}},
+             stacks={"python": True})
+    _r23c = _report23(_proj23c)
+    check("v0.4.23 P1: a stem grown past its watermark (+40 AND +25%) re-flags",
+          "defrag?" in _r23c and "roadmap23" in _r23c)
+    # the malformed-baseline fail-open (S3): a junk entry treats the stem as un-baselined
+    _plant23(_state23c, defrag_justify={"roadmap23": "junk"})
+    check("v0.4.23 P1: a malformed baseline entry fails OPEN (the stem flags as un-baselined)",
+          "defrag?" in _report23(_proj23c) and "roadmap23" in _report23(_proj23c))
+    # the unconditional justified line (F4): visible even when defrag? is empty
+    _r23a = _report23(_proj23a)
+    check("v0.4.23 P1: the justified-line renders the watermark even with no candidates",
+          "defrag-justified:" in _r23a and "roadmap23" in _r23a)
+    # a malformed CONTAINER (a truthy non-dict baseline) is treated as absent — never raises
+    # (the per-PR-review F2 guard)
+    _plant23(_state23a, defrag_justify="junk")
+    _r23j = _report23(_proj23a)
+    check("v0.4.23 P1: a non-dict defrag_justify container is treated as absent (the stock flag "
+          "fires, nothing raises)",
+          "defrag?" in _r23j and "roadmap23" in _r23j and "defrag-justified:" not in _r23j)
+    # the DETERMINISTIC guard pin (in-process, no report surface): a junk baseline through the
+    # pure function returns the stock candidates without raising — the guard's direct contract.
+    # The cast is the honest expression of feeding OUT-OF-CONTRACT input to a defensive guard
+    # (the CI's mypy flags the deliberate str, the local older mypy doesn't).
+    _pop23 = [Path(_state23a).parent / f"small{i}.md" for i in range(3)] + \
+             [Path(_state23a).parent / "roadmap23.md"]
+    _guarded = ms.defrag_candidates(_pop23, {p.stem for p in _pop23}, baseline=cast(dict, "junk"))
+    check("v0.4.23 P1: the pure-function guard treats a non-dict baseline as absent (stock "
+          "candidates returned, nothing raises)",
+          any(c["stem"] == "roadmap23" for c in _guarded))
+    # the stamp: script-read size + the planted stacks key survives the merge. (The re-plant
+    # restores a well-formed baseline first — the malformed pin above poisoned the entry, and a
+    # string entry would crash the pre-fix assertion instead of failing it cleanly.)
+    _plant23(_state23c, defrag_justify={"roadmap23": {"body_tokens": 100, "at": "2026-09-07T00:00:00Z"}})
+    _jo23, _je23, _jrc23 = _justify23(_proj23c, "roadmap23", "--force")
+    _st23c = _json43.loads(Path(_state23c).read_text(encoding="utf-8"))
+    check("v0.4.23 P1: --justify-defrag stamps the script-read body size and preserves the "
+          "other state keys (stacks survives the merge)",
+          _jrc23 == 0 and _st23c.get("defrag_justify", {}).get("roadmap23", {}).get("body_tokens") == _big23c
+          and _st23c.get("stacks") == {"python": True})
+    # the REFRESH (A1): a justify over a GROWN body re-stamps the new size (never the demotion no-op)
+    _big23g = _big23c + ms.est_tokens("x" * 200)
+    (Path(_state23c).parent / "roadmap23.md").write_text("x" * (_big23g * 4), encoding="utf-8")
+    _jo23g, _je23g, _jrc23g = _justify23(_proj23c, "roadmap23")
+    _st23g = _json43.loads(Path(_state23c).read_text(encoding="utf-8"))
+    check("v0.4.23 P1: re-justifying a GROWN body REFRESHES the watermark (the demotion no-op "
+          "is not inherited)",
+          _jrc23g == 0 and _st23g.get("defrag_justify", {}).get("roadmap23", {}).get("body_tokens") == _big23g)
+    # the default candidate check refuses a non-candidate stem (the report/CLI share one function)
+    _jo23r, _je23r, _jrc23r = _justify23(_proj23a, "small0")
+    check("v0.4.23 P1: a non-candidate stem is refused without --force",
+          _jrc23r == 2 and "not a current defrag candidate" in _je23r)
+    # the shared parser fix: a trailing PROJECT DIR is never swallowed as a stem (the demotion
+    # sibling had the same flaw — its usage promises [PROJECT_DIR] but the collector ate it)
+    _jd23 = _sp53.run([sys.executable, str(_scripts54 / "memory_status.py"),
+                       "--justify-demotion", "small0", _proj23a],
+                      capture_output=True, text=True, timeout=60, env=_env23)
+    check("v0.4.23 P1: the justify collectors stop at an existing directory (the trailing "
+          "project dir is positional, never a stem)",
+          _jd23.returncode == 2 and "demotion candidate" in _jd23.stderr
+          and "unsafe or reserved" not in _jd23.stderr)
+    # P2: the emoji flag names the 1-based beat index
+    _emo23 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, dream={
+        "sleep": "*a*", "beats": ["*a*", "*b*", "*c 💤*", "*d*", "*e*", "*f*"], "wake": "*g*"})))
+    check("v0.4.23 P2: the emoji flag names the offending beat (1-based, the archive's Passage "
+          "numbering) — pre-fix renders the bare phrase",
+          "emoji in beat(s): 3" in _emo23)
+    # the SKILL mandates the justify path + the --force re-anchor
+    check("v0.4.23 P1: SKILL Phase 5 names the justify-defrag path + the post-curation --force "
+          "re-anchor",
+          '"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag <stem> .' in _sk22
+          and "re-anchor the watermark with `--force`" in _sk22)
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1740 + 9)
+      passed + failed + 1 == 1740 + 22)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

@@ -5,6 +5,29 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.23] — 2026-09-07
+
+**Patch — the defrag detector flags flow, not stock (the footnote polish).**
+
+Two dream-session footnotes root-caused (`docs/defrag-flow-and-emoji-index.spec.md`
+— advisor + adversarial review-to-zero, amend-1/2):
+
+- **P1 — the defrag re-nag:** `defrag_candidates` flagged every fact with a body
+  > 2.5× the store median — a structural property of any roadmap, so a KEEP'd doc
+  re-nagged every dream. The `--justify-defrag` watermark (`defrag_justify` in the
+  state file, REFRESH semantics — never the demotion skip-if-present no-op, which
+  would re-anchor the very re-nag) quiets a justified stem until it genuinely
+  grows (+40 tokens AND +25%, malformed entries fail open); the Phase-0 report
+  shows the watermark line independent of the candidate count; `--force` is the
+  post-curation re-anchor repair. The justify collectors stop at an existing
+  directory — the demotion sibling's trailing-project-dir swallow, same class.
+- **P2 — the emoji flag names its beat:** `⚠ emoji in beat(s): 3` (1-based, the
+  archive's Passage numbering).
+- **P3 — the debrief discipline:** claims about the rendered archive are verified
+  against the rendered file (the log line is attempt-scoped).
+
+Smoke 1762/0 (+13 pins — 8 discriminating vs the merge-base, 5 semantic regression guards), mypy clean, sim, manifests, browser 1108.
+
 ## [0.4.22] — 2026-09-06
 
 **Patch — the unverifiable tally names its claims (the alert-carrier defect).**

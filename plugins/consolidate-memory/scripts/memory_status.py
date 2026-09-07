@@ -11,6 +11,7 @@ verification, after-budget, health) and renders with render_dashboard.py.
 
 Usage: python3 memory_status.py [PROJECT_DIR] [--json]
        python3 memory_status.py --justify-demotion STEM [STEM…] [PROJECT_DIR]
+       python3 memory_status.py --justify-defrag STEM [STEM…] [PROJECT_DIR]
 """
 
 from __future__ import annotations
@@ -1610,7 +1611,8 @@ def archive_candidates(fact_files: list, index_names: set) -> list:
     return out
 
 
-def defrag_candidates(fact_files: list, index_names: set, *, factor: float = 2.5) -> list:
+def defrag_candidates(fact_files: list, index_names: set, *, factor: float = 2.5,
+                      baseline: "dict | None" = None) -> list:
     """PURE, budget-INDEPENDENT: surface INDEXED, non-mirror, NON-dated (active) facts whose BODY is a
     SIZE outlier — `body_tokens` > `factor` × the MEDIAN body_tokens over that SAME population (indexed,
     non-mirror, non-dated — self-consistent/reproducible). These are bloated ACTIVE files (a roadmap/
@@ -1639,8 +1641,30 @@ def defrag_candidates(fact_files: list, index_names: set, *, factor: float = 2.5
     if med <= 0 or sizes[0] == sizes[-1]:           # degenerate / all-equal → no meaningful outlier
         return []
     out = [{"stem": s, "body_tokens": t, "ratio": round(t / med, 1)} for s, t in pop if t > factor * med]
+    # v0.4.23 (P1): the baseline filter — a justified stem re-flags only on GROWTH past its
+    # watermark (both floors AND the stock test it already cleared above). The change only
+    # QUIETS re-flagged stems, never widens the surface. A malformed/absent entry fails OPEN
+    # (the stem flags as un-baselined — the demotion reader's fail-open mirror), and a
+    # malformed CONTAINER (a truthy non-dict baseline) is treated as absent — never raises.
+    if isinstance(baseline, dict) and baseline:
+        out = [c for c in out if _defrag_grown(c, baseline.get(c["stem"]))]
     out.sort(key=lambda c: -c["body_tokens"])
     return out
+
+
+def _defrag_grown(cand: dict, entry: object) -> bool:
+    """v0.4.23 (P1): a baseline-stamped stem re-flags only on growth — body_tokens at least
+    +40 AND +25% over the watermark (both floors: the ≥40-token floor guards tiny-file noise,
+    the ≥1.25× floor guards huge-file routine churn — a huge file's +10% is churn, not
+    accretion). PURE; the caller's stock filter ran first. A malformed/absent entry fails
+    open."""
+    if not isinstance(entry, dict):
+        return True
+    base = entry.get("body_tokens")
+    if not isinstance(base, int) or base < 0:
+        return True
+    cur = int(cand.get("body_tokens") or 0)
+    return (cur - base >= 40) and (cur >= base * 1.25)
 
 
 def iter_cycle_log(log: Path, tail: "int | None" = None) -> list:
@@ -2150,6 +2174,108 @@ def run_justify_demotion(project_dir: Path, stems: list, *,
                 "stamped": [], "skipped": [], "windows_full": wf, "sequence": seq}
     return {"ok": True, "error": "", "stamped": box["stamped"],
             "skipped": box["skipped"], "windows_full": wf, "sequence": seq}
+
+
+def apply_defrag_justify(state: dict, stems: list, *, sizes_fn, now_iso: str) -> dict:
+    """v0.4.23 (P1): MERGE defrag_justify watermarks. REFRESH semantics — a justify ALWAYS
+    re-stamps the script-read current body size (defrag has no suppression clock; the demotion
+    skip-if-present rule must NOT be inherited — it would re-anchor the very re-nag this design
+    kills). `sizes_fn(stem) -> int` reads the fact body; the caller NEVER supplies a size.
+    Returns {state, stamped, skipped}."""
+    out_state = dict(state)
+    raw_dj = state.get("defrag_justify")
+    dj: dict = {k: (dict(v) if isinstance(v, dict) else v) for k, v in raw_dj.items()} \
+        if isinstance(raw_dj, dict) else {}
+    stamped: list = []
+    for stem in stems:
+        if not isinstance(stem, str) or not stem:
+            continue
+        size = int(sizes_fn(stem))
+        dj[stem] = {"body_tokens": size, "at": now_iso}
+        stamped.append({"stem": stem, "body_tokens": size, "at": now_iso})
+    out_state["defrag_justify"] = dj
+    return {"state": out_state, "stamped": stamped, "skipped": []}
+
+
+def run_justify_defrag(project_dir: Path, stems: list, *,
+                       now_iso: "str | None" = None,
+                       force: bool = False) -> dict:
+    """v0.4.23 (P1): CLI core — MERGE defrag_justify watermarks via the locked CAS writer.
+    Does not mint a marker. Default: only current baseline-aware defrag candidates.
+    `--force` is administrative repair (incl. re-anchoring after a real curation)."""
+    from control_plane import update_project_state
+    from identifiers import IdentifierRefused, validate_fact_stem
+    from store_context import WriteRefused, resolve_store
+    if not stems:
+        return {"ok": False, "error": "pass one or more STEM arguments",
+                "stamped": [], "skipped": []}
+    valid: list = []
+    for s in stems:
+        try:
+            valid.append(validate_fact_stem(str(s)))
+        except IdentifierRefused as e:
+            return {"ok": False, "error": str(e), "stamped": [], "skipped": []}
+    ctx = resolve_store(project_dir)
+    marker = ctx.native_memory_dir / STATE_FILE
+    if not marker.is_file():
+        return {"ok": False,
+                "error": "no .consolidation-state.json — run a dream's marker write first",
+                "stamped": [], "skipped": []}
+    iso = now_iso or _utc_iso_now()
+    if not force:
+        try:
+            raw_pre = json.loads(marker.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError, ValueError):
+            return {"ok": False, "error": "unreadable marker", "stamped": [], "skipped": []}
+        if not isinstance(raw_pre, dict):
+            return {"ok": False, "error": "marker is not an object", "stamped": [], "skipped": []}
+        facts = sorted(p for p in ctx.native_memory_dir.glob("*.md")
+                       if p.name not in ("MEMORY.md", "SHIPPED.md"))
+        # v0.4.23 (P1): the SAME baseline-aware function AND the SAME index-name population the
+        # Phase-0 report's ctx was built from — a stem the report just listed can never be
+        # refused (the all-stems set would shift the median vs the report's MEMORY.md-linked
+        # names on a store with an archive index doc). The pre-read is UNLOCKED (the demotion
+        # sibling's order; the flock lives inside update_project_state) — a concurrent curation
+        # between pre-read and merge stamps a stale baseline, harmless under refresh semantics
+        # (the next justify re-anchors).
+        idx_names = index_fact_names(ctx.native_memory_dir / "MEMORY.md")
+        cands = defrag_candidates(facts, idx_names, baseline=raw_pre.get("defrag_justify"))
+        allowed = {c["stem"] for c in cands if isinstance(c, dict)}
+        refused = [s for s in valid if s not in allowed]
+        if refused:
+            return {"ok": False,
+                    "error": ("not a current defrag candidate: " + ", ".join(refused)
+                              + " (pass --force)"),
+                    "stamped": [], "skipped": []}
+
+    def _size_fn(stem: str) -> int:
+        # script-truth: the body size comes from the file, never the caller
+        fpath = ctx.native_memory_dir / f"{stem}.md"
+        if fpath.is_file():
+            try:
+                return est_tokens(fpath.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                return 0
+        return 0
+
+    box: dict = {"stamped": [], "skipped": []}
+
+    def mutator(state: dict, snap: object) -> dict:
+        if not getattr(snap, "exists", False):
+            raise WriteRefused("no .consolidation-state.json — run a dream's marker write first")
+        result = apply_defrag_justify(state, valid, sizes_fn=_size_fn, now_iso=iso)
+        box["stamped"] = result["stamped"]
+        box["skipped"] = result["skipped"]
+        return result["state"]
+
+    try:
+        update_project_state(ctx, mutator)
+    except WriteRefused as e:
+        return {"ok": False, "error": str(e), "stamped": [], "skipped": []}
+    except OSError as e:
+        return {"ok": False, "error": f"marker write failed ({e.__class__.__name__})",
+                "stamped": [], "skipped": []}
+    return {"ok": True, "error": "", "stamped": box["stamped"], "skipped": box["skipped"]}
 
 
 def _demotion_justify(dj: object) -> dict:
@@ -2764,12 +2890,14 @@ def build_context(project_dir: Path) -> dict:
     last_commit = last_ts = ""
     standing_justify: object = None
     demotion_justify: object = None
+    defrag_justify: object = None
     if state_path.exists():
         try:
             st = json.loads(state_path.read_text(encoding="utf-8"))
             last_commit, last_ts = st.get("commit", ""), st.get("timestamp", "")
             standing_justify = st.get("standing_justify")   # v0.1.21 (D7): the justified-density baseline, if any
             demotion_justify = st.get("demotion_justify")   # v0.1.67 (Phase C): per-item counter-justify map, if any
+            defrag_justify = st.get("defrag_justify")       # v0.4.23 (P1): per-item body watermarks, if any
         except (json.JSONDecodeError, OSError):
             pass
     # Harden: the commit comes from a JSON file on disk and is passed to `git` as an
@@ -2988,6 +3116,7 @@ def build_context(project_dir: Path) -> dict:
         "maintenance": maintenance,
         "usage_hist": usage_hist,   # v0.1.67 (Phase C)
         "demotion": demotion,       # v0.1.67 (Phase C)
+        "defrag_justify": defrag_justify,   # v0.4.23 (P1)
         "global_store_facts": _global_fact_count,
         "identity": identity_snapshot(_ctx),
     }
@@ -3960,13 +4089,24 @@ def print_report(ctx: dict) -> None:
                           "(completion-driven, NOT budget-gated; judge each, a dated-but-live lesson STAYS): "
                           + _ui.c(", ".join(c["stem"] for c in _arch[:8]) + ("…" if len(_arch) > 8 else ""), "dim"),
                           bullet="↓", bullet_color="cyan"))
-    _defrag = defrag_candidates(ctx["fact_files"], _idxn)
+    _defrag = defrag_candidates(ctx["fact_files"], _idxn, baseline=ctx.get("defrag_justify"))
     if _defrag:
         sig.append(_ui.li(f"defrag? {len(_defrag)} bloated ACTIVE file(s) (body ≫ store median) → curate the BODY "
                           "in place (collapse completed detail that's redundant with git/CHANGELOG, keep active "
                           "content + live lessons; propose-then-apply): "
                           + _ui.c(", ".join(f"{c['stem']}({c['ratio']}×)" for c in _defrag[:6]) + ("…" if len(_defrag) > 6 else ""), "dim"),
                           bullet="↓", bullet_color="cyan"))
+    # v0.4.23 (P1): the defrag watermark line renders INDEPENDENT of the candidate count (the
+    # demotion idiom) — a fully-quiet store still shows what is justified, so quiet-from-
+    # justified is never read as gone.
+    _dfj = ctx.get("defrag_justify")
+    if isinstance(_dfj, dict) and _dfj:
+        _jl = ", ".join(f"{k}({_pi_int(v.get('body_tokens'))}t)" for k, v in _dfj.items()
+                        if isinstance(v, dict))
+        if _jl:
+            sig.append(_ui.li(f"defrag-justified: {_jl} — the body watermark (re-fires on growth; "
+                              "--justify-defrag re-anchors, --force after a curation)",
+                              bullet="·", bullet_color="dim"))
     # v0.1.67 (Phase C): the demotion triage — `demote?` when eligible; the dim DORMANT accrual line while
     # the evidence gate hasn't opened (so the accrual is visible, not mysterious). Eligible stems, veto
     # tallies, and live justifies are SEPARATE lines (a shared line read as "this fact is justified").
@@ -4072,15 +4212,25 @@ def main() -> int:
                 else:
                     audit_into = argv[_fi + 1]
     justify_stems: list = []
+    defrag_stems: list = []
     if "--justify-demotion" in argv:
         _ji = argv.index("--justify-demotion")
         _j = _ji + 1
-        while _j < len(argv) and not argv[_j].startswith("-"):
+        while _j < len(argv) and not argv[_j].startswith("-") \
+                and not (_j == len(argv) - 1 and Path(argv[_j]).is_dir()):
             justify_stems.append(argv[_j])
+            _j += 1
+    if "--justify-defrag" in argv:
+        _ji = argv.index("--justify-defrag")
+        _j = _ji + 1
+        while _j < len(argv) and not argv[_j].startswith("-") \
+                and not (_j == len(argv) - 1 and Path(argv[_j]).is_dir()):
+            defrag_stems.append(argv[_j])
             _j += 1
     as_json = "--json" in argv
     _argpaths = {audit_before, diffs_cycle, diffs_before, audit_into} - {""}   # v0.1.53: --into value is NOT the positional project_dir
     _argpaths.update(justify_stems)
+    _argpaths.update(defrag_stems)
     for _flag in ("--stamp-marker", "--standing-justify-facts",
                   "--standing-justify-tokens", "--snooze-until"):
         if _flag in argv:
@@ -4097,6 +4247,14 @@ def main() -> int:
         print(json.dumps({"ok": True, "windows_full": out.get("windows_full"),
                           "sequence": out.get("sequence"),
                           "stamped": out.get("stamped"), "skipped": out.get("skipped")}))
+        return 0
+    if "--justify-defrag" in argv:
+        out = run_justify_defrag(project_dir, defrag_stems, force="--force" in argv)
+        if not out.get("ok"):
+            print("justify-defrag: " + str(out.get("error") or "failed"), file=sys.stderr)
+            return 2
+        print(json.dumps({"ok": True, "stamped": out.get("stamped"),
+                          "skipped": out.get("skipped")}))
         return 0
     if "--stamp-marker" in argv:
         commit = ""

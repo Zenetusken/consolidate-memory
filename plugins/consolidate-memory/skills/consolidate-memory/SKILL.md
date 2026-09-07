@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.22** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.23** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -27,7 +27,7 @@ plus the production/polish/performance pass (stacks cache on the sync paths,
 warm-pull margin, journal scale, archive embed budget, store-honesty advisories,
 and the renderer coherence sweep, plus the v0.4.6 archive-display pass, plus the
 v0.4.7 cross-project audit pass, plus the v0.4.8 onboarding-command pass, plus
-the v0.4.10 group-scopes pass, plus the v0.4.11 group-lifecycle completion pass (cm group delete, the --repoint re-confirm affordance, the per-recipient pull-side recreation guard, the re-sourced frozen GC), plus the v0.4.14 Nocturne patch (the memory-observatory theme — Original/Light/System, readable network lanes, the dev-only Chromium regression job) and the v0.4.15 version-sweep hotfix, plus the v0.4.16 environment pre-flight (the deterministic no-happy-path checker — doctor embeds it, the beacon reads its cached verdict, Phase 0 seeds the record) and the v0.4.17 captured-network truth layer (physical holder identities in the fleet feed), plus the v0.4.18 Nocturne polish (the reworked narration + 1101 browser checks), plus the v0.4.19 narration teeth (conversation-truth verification at the terminal `--persist`: NAR narration-verification + EXT extractor-accountability arms + the honest degrade boundary), plus the v0.4.22 unverifiable carrier (the ⚠ tally names its claims — one canonical `unverifiable:` entries[] row per judged claim, validator-bound). Public 1.0 stays HOLD.
+the v0.4.10 group-scopes pass, plus the v0.4.11 group-lifecycle completion pass (cm group delete, the --repoint re-confirm affordance, the per-recipient pull-side recreation guard, the re-sourced frozen GC), plus the v0.4.14 Nocturne patch (the memory-observatory theme — Original/Light/System, readable network lanes, the dev-only Chromium regression job) and the v0.4.15 version-sweep hotfix, plus the v0.4.16 environment pre-flight (the deterministic no-happy-path checker — doctor embeds it, the beacon reads its cached verdict, Phase 0 seeds the record) and the v0.4.17 captured-network truth layer (physical holder identities in the fleet feed), plus the v0.4.18 Nocturne polish (the reworked narration + 1101 browser checks), plus the v0.4.19 narration teeth (conversation-truth verification at the terminal `--persist`: NAR narration-verification + EXT extractor-accountability arms + the honest degrade boundary), plus the v0.4.22 unverifiable carrier (the ⚠ tally names its claims — one canonical `unverifiable:` entries[] row per judged claim, validator-bound), plus the v0.4.23 defrag flow-signal (the `--justify-defrag` watermark — a KEEP'd doc re-flags only on real growth) and the emoji beat-index flag. Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
@@ -850,7 +850,8 @@ non-dated completed arc the helper won't surface — catch those by the same jud
 defragmentation that keeps the index lean; the over-budget gate below is what catches the rare case it doesn't.
 
 **Body-defragmentation (runs EVERY dream — v0.1.x, Cycle 2).** Phase 0 also surfaces **`defrag? N`** bloated ACTIVE
-files — indexed, non-mirror, NON-dated facts whose BODY is a size outlier (≫ the store median; `defrag_candidates`).
+files — indexed, non-mirror, NON-dated facts whose BODY is a size outlier (≫ the store median; `defrag_candidates`,
+v0.4.23: a counter-justified stem re-flags only on GROWTH past its watermark — +40 tokens AND +25%).
 Empty-set rule when N=0. When N>0, these are long-lived status/roadmap docs that have ACCRETED completed/stale items over time. Curate the BODY **in
 place** (the index pointer STAYS — distinct from archiving a whole dated fact): **COLLAPSE** completed detail that is
 redundant with git/CHANGELOG — but **READ the CHANGELOG/git and CONFIRM the detail is actually present there BEFORE
@@ -859,7 +860,10 @@ doc; **KEEP** active/forward content (OPEN items, current state, watch-list) and
 **Propose-then-apply IN-CONVERSATION (show the body edits + confirm), never auto-trim** — the Phase-5 `--diffs` sidecar
 is the POST-write audit record, NOT the pre-apply gate. Higher-risk than pointer-archiving (intra-file): keep-on-doubt,
 relocate-over-delete. Goal — the file returns toward the store's typical length, kept accurate + forward-looking. Full
-design: `docs/body-defragmentation.spec.md`.
+design: `docs/body-defragmentation.spec.md`. **A KEEP judgment runs
+`"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag <stem> .` (the script reads the body and stamps the
+watermark — the detector then re-fires only on real growth; after a real curation that dropped the body under the
+line, re-anchor the watermark with `--force`, which is repair).**
 
 **0. Over-budget remediation (v0.1.18 GATE; v0.1.21 standing-justify) — when `remediation.required`.** If Phase 0
 flagged the index OVER budget AND the gate is NOT standing-justified, it's a hard gate: you may not finish a pass
@@ -1304,7 +1308,9 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    non-obvious WHY + what was KEPT / PRUNED / verified — and the **distill outcome**: any workflow artifact
    proposed / created, or nothing) rather than re-tabulate the dashboard's gauges,
    **scaled to the outcome banner** (a no-op / maintenance / light pass gets one or two lines + the path,
-   NOT the full debrief). The debrief **ends on the 📊 dashboard path** — the self-contained file
+   NOT the full debrief). **A claim about what the rendered archive shows is verified against the
+   rendered file** (grep the `index.html` — the log line is attempt-scoped, and the fresher-file rule may
+   surface the healed record in the archive). The debrief **ends on the 📊 dashboard path** — the self-contained file
    `render_html` wrote at `<native_memory_dir>/../dashboards/index.html` (Phase 0 / `cm doctor`) —
    and tells the user they can
    **re-open it any time by opening that file** (it holds the whole archive; navigate dreams in-page via
