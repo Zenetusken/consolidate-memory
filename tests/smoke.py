@@ -14603,7 +14603,17 @@ with _tf43.TemporaryDirectory() as _td23:
     _r23a = _report23(_proj23a)
     check("v0.4.23 P1: the justified-line renders the watermark even with no candidates",
           "defrag-justified:" in _r23a and "roadmap23" in _r23a)
-    # the stamp: script-read size + the planted stacks key survives the merge
+    # a malformed CONTAINER (a truthy non-dict baseline) is treated as absent — never raises
+    # (the per-PR-review F2 guard)
+    _plant23(_state23a, defrag_justify="junk")
+    _r23j = _report23(_proj23a)
+    check("v0.4.23 P1: a non-dict defrag_justify container is treated as absent (the stock flag "
+          "fires, nothing raises)",
+          "defrag?" in _r23j and "roadmap23" in _r23j and "defrag-justified:" not in _r23j)
+    # the stamp: script-read size + the planted stacks key survives the merge. (The re-plant
+    # restores a well-formed baseline first — the malformed pin above poisoned the entry, and a
+    # string entry would crash the pre-fix assertion instead of failing it cleanly.)
+    _plant23(_state23c, defrag_justify={"roadmap23": {"body_tokens": 100, "at": "2026-09-07T00:00:00Z"}})
     _jo23, _je23, _jrc23 = _justify23(_proj23c, "roadmap23", "--force")
     _st23c = _json43.loads(Path(_state23c).read_text(encoding="utf-8"))
     check("v0.4.23 P1: --justify-defrag stamps the script-read body size and preserves the "
@@ -14645,7 +14655,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1740 + 20)
+      passed + failed + 1 == 1740 + 21)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

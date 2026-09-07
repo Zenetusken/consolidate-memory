@@ -1644,8 +1644,9 @@ def defrag_candidates(fact_files: list, index_names: set, *, factor: float = 2.5
     # v0.4.23 (P1): the baseline filter — a justified stem re-flags only on GROWTH past its
     # watermark (both floors AND the stock test it already cleared above). The change only
     # QUIETS re-flagged stems, never widens the surface. A malformed/absent entry fails OPEN
-    # (the stem flags as un-baselined — the demotion reader's fail-open mirror).
-    if baseline:
+    # (the stem flags as un-baselined — the demotion reader's fail-open mirror), and a
+    # malformed CONTAINER (a truthy non-dict baseline) is treated as absent — never raises.
+    if isinstance(baseline, dict) and baseline:
         out = [c for c in out if _defrag_grown(c, baseline.get(c["stem"]))]
     out.sort(key=lambda c: -c["body_tokens"])
     return out
@@ -2230,12 +2231,14 @@ def run_justify_defrag(project_dir: Path, stems: list, *,
             return {"ok": False, "error": "marker is not an object", "stamped": [], "skipped": []}
         facts = sorted(p for p in ctx.native_memory_dir.glob("*.md")
                        if p.name not in ("MEMORY.md", "SHIPPED.md"))
-        idx_names = {p.stem for p in facts}
-        # v0.4.23 (P1): the SAME baseline-aware function the Phase-0 report's ctx was built
-        # from — a stem the report just listed can never be refused. The pre-read is UNLOCKED
-        # (the demotion sibling's order; the flock lives inside update_project_state) — a
-        # concurrent curation between pre-read and merge stamps a stale baseline, harmless
-        # under refresh semantics (the next justify re-anchors).
+        # v0.4.23 (P1): the SAME baseline-aware function AND the SAME index-name population the
+        # Phase-0 report's ctx was built from — a stem the report just listed can never be
+        # refused (the all-stems set would shift the median vs the report's MEMORY.md-linked
+        # names on a store with an archive index doc). The pre-read is UNLOCKED (the demotion
+        # sibling's order; the flock lives inside update_project_state) — a concurrent curation
+        # between pre-read and merge stamps a stale baseline, harmless under refresh semantics
+        # (the next justify re-anchors).
+        idx_names = index_fact_names(ctx.native_memory_dir / "MEMORY.md")
         cands = defrag_candidates(facts, idx_names, baseline=raw_pre.get("defrag_justify"))
         allowed = {c["stem"] for c in cands if isinstance(c, dict)}
         refused = [s for s in valid if s not in allowed]
@@ -4213,13 +4216,15 @@ def main() -> int:
     if "--justify-demotion" in argv:
         _ji = argv.index("--justify-demotion")
         _j = _ji + 1
-        while _j < len(argv) and not argv[_j].startswith("-") and not Path(argv[_j]).is_dir():
+        while _j < len(argv) and not argv[_j].startswith("-") \
+                and not (_j == len(argv) - 1 and Path(argv[_j]).is_dir()):
             justify_stems.append(argv[_j])
             _j += 1
     if "--justify-defrag" in argv:
         _ji = argv.index("--justify-defrag")
         _j = _ji + 1
-        while _j < len(argv) and not argv[_j].startswith("-") and not Path(argv[_j]).is_dir():
+        while _j < len(argv) and not argv[_j].startswith("-") \
+                and not (_j == len(argv) - 1 and Path(argv[_j]).is_dir()):
             defrag_stems.append(argv[_j])
             _j += 1
     as_json = "--json" in argv
