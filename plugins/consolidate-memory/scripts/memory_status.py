@@ -3386,6 +3386,12 @@ def validate_cycle_record(record: object) -> list[str]:
                 warnings.append(
                     "verification.unverifiable is 0 but %d entries[] row(s) carry the unverifiable: "
                     "token — a marked row without a tally" % _marked22)
+        elif _unv22 is None and _marked22 > 0:
+            # the ABSENT half of the stray arm (per-PR review, 2026-09-06): a marked row with no
+            # tally key at all also warns. A junk non-int scalar stays silent (the guard contract).
+            warnings.append(
+                "verification.unverifiable is absent but %d entries[] row(s) carry the unverifiable: "
+                "token — a marked row without a tally" % _marked22)
     # v0.4.1 (D1): a PRESENT-but-incomplete arc warns here (stderr, never blocks) — the same
     # single predicate the persist gate and the WAKE cue use. A missing/empty block stays quiet
     # (legacy/preview records; the gate's documented scope escape).

@@ -14503,6 +14503,10 @@ check("v0.4.22 U1: the STRAY arm warns (a marked row with tally 0)",
           ms.validate_cycle_record(cast(dict, dict(_U22, entries=[_U22_ROW],
                                                    verification={"confirmed": 2, "corrected": 0,
                                                                  "unverifiable": 0})))))
+check("v0.4.22 U1: the STRAY arm warns on an ABSENT tally too (marked row, no verification block)",
+      any("unverifiable is absent but 1 entries[] row(s)" in w for w in
+          ms.validate_cycle_record(cast(dict, dict({k: v for k, v in _U22.items() if k != "verification"},
+                                                   entries=[_U22_ROW])))))
 for _u22j in (dict(_U22, entries="junk"),
               dict(_U22, entries=[1]),
               dict(_U22, entries=[{"action": "skipped", "name": "x", "reason": None}]),
@@ -14510,8 +14514,10 @@ for _u22j in (dict(_U22, entries="junk"),
     ms.validate_cycle_record(cast(dict, _u22j))  # the never-raises contract — junk shapes skip the binding
 check("v0.4.22 U1: junk entries/tally shapes never raise (container + scalar guards)", True)
 _u22r = rd.render(cast(ms.CycleRecord, dict(_U22, entries=[_U22_ROW])))
-check("v0.4.22 U1: the ASCII ⚠ line names the claim (the joined form — pre-fix renders the bare count)",
-      " — cache-expiry-claim" in _u22r)
+_u22r_l = _u22r.splitlines()
+_u22r_i = next((i for i, l in enumerate(_u22r_l) if l.startswith("  VERIFIED")), -1)
+check("v0.4.22 U1: the ASCII ⚠ line names the claim (line-scoped to the VERIFIED block — pre-fix renders the bare count)",
+      _u22r_i >= 0 and " — cache-expiry-claim" in " ".join(_u22r_l[_u22r_i:_u22r_i + 4]))
 _u22l = rd.render(cast(ms.CycleRecord, dict(_U22, entries=[])))
 check("v0.4.22 U1: a legacy-shaped record keeps the bare count (no names, no join)",
       "⚠ 1 unverifiable" in _u22l and " — cache-expiry-claim" not in _u22l)
@@ -14522,7 +14528,7 @@ check("v0.4.22 U1: SKILL Phase 3 mandates BOTH directions + the canonical token"
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1740 + 8)
+      passed + failed + 1 == 1740 + 9)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

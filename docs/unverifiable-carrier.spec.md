@@ -181,6 +181,18 @@ no third ⚠ renderer exists.
 
 ## Amend ledger
 
+- **amend-3 (per-PR review, PR #213, 2026-09-06):** 1 confirmed + 2 suspected folded.
+  P1 the stray-token arm now fires on an ABSENT tally too (the `elif _unv22 is None`
+  arm — a marked row with no verification block/unverifiable key warns; a junk
+  non-int scalar stays silent per the guard contract) + the absent-half pin (D6 →
+  1740+9). P2 the HTML-side legacy-fallback pin now exists — the browser harness
+  renders a token-stripped copy of the fixture record via `fixture()` and asserts the
+  bare label (no names in #dream-summary). P3 the ASCII pin is now line-scoped to the
+  VERIFIED block (the C1 mandate; the whole-render form was discriminating in practice
+  but carried the fragility C1's scoping exists to remove). The reviewer verified the
+  core mechanically: F1/F2/F3/F4 all conform, all 8 original pins fail pre-fix, the
+  fixture's 8 cycles carry exactly tally-1/1-row, and the version sweep is complete
+  with the historical tags untouched.
 - **amend-2 (adversarial review-to-zero, 2026-09-06):** NOT clean — 2 confirmed + 5
   suspected, all folded. C1 the F4 ASCII name pin was VACUOUS (pre-fix output carries
   every entry name in the CHANGES ledger, render_dashboard.py:607) — the assertion is
