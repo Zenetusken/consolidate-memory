@@ -82,7 +82,7 @@ cm                                 dev CLI over the scripts (uses explicit paths
                                    from ANY repo, CWD-defaulting to that project). MAINTAINER tool — end users
                                    open ~/.claude/projects/<slug>/dashboards/index.html (see SKILL Phase 5).
 tests/                             zero-dependency smoke + accumulation sim + manifest validation
-memory/                            GITIGNORED placeholder (.gitkeep only) — the personal global store lives at ~/.claude/memory (a real dir, decoupled from this repo)
+memory/                            GITIGNORED placeholder (.gitkeep only) — the global store lives at ~/.claude/consolidate-memory/domains/<domain>/
 
 plugins/dream-beta-tester/         QA companion plugin — beta-tests the dream skill itself
   .claude-plugin/plugin.json       plugin manifest
@@ -128,9 +128,10 @@ Only `SECURITY.md` at the repo root is public.
 
 ## Safety (this repo is PUBLIC)
 
-- **Never commit personal memory.** The shared-consciousness stream / global store now lives at
-  `~/.claude/memory` (a real dir, outside this repo — decoupled); repo-root `memory/` is just a
-  gitignored placeholder. Only `memory/.gitkeep` belongs on the remote. Verify with
+- **Never commit personal memory.** The global store lives at
+  `~/.claude/consolidate-memory/domains/<domain>/facts` (legacy `~/.claude/memory/`:
+  migration-only); repo-root `memory/` is just a gitignored placeholder. Only
+  `memory/.gitkeep` belongs on the remote. Verify with
   `git ls-tree -r --name-only origin/main | grep memory`.
 - **Keep the skill generic.** No hardcoded user paths, project names, or identities —
   use placeholders (`/home/you/project/foo`). It's meant to be reusable by anyone.
