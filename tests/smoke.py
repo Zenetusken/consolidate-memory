@@ -14611,10 +14611,12 @@ with _tf43.TemporaryDirectory() as _td23:
           "fires, nothing raises)",
           "defrag?" in _r23j and "roadmap23" in _r23j and "defrag-justified:" not in _r23j)
     # the DETERMINISTIC guard pin (in-process, no report surface): a junk baseline through the
-    # pure function returns the stock candidates without raising — the guard's direct contract
+    # pure function returns the stock candidates without raising — the guard's direct contract.
+    # The cast is the honest expression of feeding OUT-OF-CONTRACT input to a defensive guard
+    # (the CI's mypy flags the deliberate str, the local older mypy doesn't).
     _pop23 = [Path(_state23a).parent / f"small{i}.md" for i in range(3)] + \
              [Path(_state23a).parent / "roadmap23.md"]
-    _guarded = ms.defrag_candidates(_pop23, {p.stem for p in _pop23}, baseline="junk")
+    _guarded = ms.defrag_candidates(_pop23, {p.stem for p in _pop23}, baseline=cast(dict, "junk"))
     check("v0.4.23 P1: the pure-function guard treats a non-dict baseline as absent (stock "
           "candidates returned, nothing raises)",
           any(c["stem"] == "roadmap23" for c in _guarded))
