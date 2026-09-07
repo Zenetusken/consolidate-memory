@@ -929,8 +929,12 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
             (_c("✓", "green") if _full else _c("✗", "yellow")) + f" {_g(_nb)}/6 beat" + ("" if _nb == 1 else "s"),
             (_c("✓", "green") if _have[1] else _c("✗", "yellow")) + " wake",
         ]
-        if any(_ui.BEAT_EMOJI_RE.search(str(b)) for b in _beats):
-            _bits.append(_c("⚠ emoji in beat(s) — the arc bans them outside the bookends", "yellow"))
+        _emoji_hits = [i + 1 for i, b in enumerate(_beats) if _ui.BEAT_EMOJI_RE.search(str(b))]
+        if _emoji_hits:
+            # v0.4.23 (P2): name the offending beat(s) — 1-based, matching the archive's
+            # Passage numbering (the record's 0-based array stays the internal convention).
+            _bits.append(_c("⚠ emoji in beat(s): " + ", ".join(str(i) for i in _emoji_hits)
+                            + " — the arc bans them outside the bookends", "yellow"))
         out.append("")
         out.append(_kv("DREAM ARC", " · ".join(_bits)))
 
