@@ -26,7 +26,7 @@ Two dream-session footnotes root-caused (`docs/defrag-flow-and-emoji-index.spec.
 - **P3 — the debrief discipline:** claims about the rendered archive are verified
   against the rendered file (the log line is attempt-scoped).
 
-Smoke 1761/0 (+12 pins — 8 discriminating vs the merge-base, 4 semantic regression guards), mypy clean, sim, manifests, browser 1108.
+Smoke 1762/0 (+13 pins — 8 discriminating vs the merge-base, 5 semantic regression guards), mypy clean, sim, manifests, browser 1108.
 
 ## [0.4.22] — 2026-09-06
 

@@ -14607,13 +14607,17 @@ with _tf43.TemporaryDirectory() as _td23:
     # (the per-PR-review F2 guard)
     _plant23(_state23a, defrag_justify="junk")
     _r23j = _report23(_proj23a)
-    if not ("defrag?" in _r23j and "roadmap23" in _r23j and "defrag-justified:" not in _r23j):
-        print("DIAG container pin report lines:",
-              [_l for _l in _r23j.splitlines() if "defrag" in _l.lower() or "roadmap" in _l.lower()][:8],
-              file=sys.stderr)
     check("v0.4.23 P1: a non-dict defrag_justify container is treated as absent (the stock flag "
           "fires, nothing raises)",
           "defrag?" in _r23j and "roadmap23" in _r23j and "defrag-justified:" not in _r23j)
+    # the DETERMINISTIC guard pin (in-process, no report surface): a junk baseline through the
+    # pure function returns the stock candidates without raising — the guard's direct contract
+    _pop23 = [Path(_state23a).parent / f"small{i}.md" for i in range(3)] + \
+             [Path(_state23a).parent / "roadmap23.md"]
+    _guarded = ms.defrag_candidates(_pop23, {p.stem for p in _pop23}, baseline="junk")
+    check("v0.4.23 P1: the pure-function guard treats a non-dict baseline as absent (stock "
+          "candidates returned, nothing raises)",
+          any(c["stem"] == "roadmap23" for c in _guarded))
     # the stamp: script-read size + the planted stacks key survives the merge. (The re-plant
     # restores a well-formed baseline first — the malformed pin above poisoned the entry, and a
     # string entry would crash the pre-fix assertion instead of failing it cleanly.)
@@ -14659,7 +14663,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1740 + 21)
+      passed + failed + 1 == 1740 + 22)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
