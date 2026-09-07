@@ -266,7 +266,13 @@ var NocturneSections = (function(){
     var v=object(c.verification),h=object(c.health),a=object(c.audit),pf=object(c.preflight),rem=object(c.remediation),id=object(c.identity),errors=[];
     function add(test,label,target){if(test)errors.push({label:label,target:target});}
     add(c._integrity,'Procedure integrity: '+g(c,'_integrity.reason','recorded failure'),'verification-evidence');
-    add(num(v.unverifiable)>0,v.unverifiable+' unverifiable claim'+(v.unverifiable===1?'':'s'),'verification-evidence');
+    // v0.4.22 (U1): the ⚠ names its claims — marked rows' names join after the count (the label
+    // renders through evidenceButton → esc'd); a legacy record with no marked rows keeps the
+    // bare count.
+    var unvNames=array(c.entries).filter(function(e){return e&&typeof e.reason==='string'&&e.reason.indexOf('unverifiable:')===0;}).map(function(e){return e.name==null?'?':String(e.name);});
+    var unvLabel=v.unverifiable+' unverifiable claim'+(v.unverifiable===1?'':'s');
+    if(unvNames.length)unvLabel+=' — '+unvNames.slice(0,3).join(', ')+(unvNames.length>3?' +'+(unvNames.length-3)+' more':'');
+    add(num(v.unverifiable)>0,unvLabel,'verification-evidence');
     add(array(pf.fails).length,'Preflight failures: '+array(pf.fails).join(', '),'store-checks');
     add(array(pf.warns).length,'Preflight warnings: '+array(pf.warns).join(', '),'store-checks');
     add(h.index_pointers_ok===false||array(h.broken).length,'Broken index pointers'+(array(h.broken).length?': '+array(h.broken).join(', '):''),'store-checks');

@@ -5,6 +5,32 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.22] — 2026-09-06
+
+**Patch — the unverifiable tally names its claims (the alert-carrier defect).**
+
+The dream's dashboard rendered `⚠ 1 unverifiable` with no surface naming the claim
+(`docs/unverifiable-carrier.spec.md` — advisor + review-to-zero, amend-1/2): the
+verification tally was a count with no named carrier in the contract. Four layers:
+
+- **The SKILL mandate (bidirectional):** every claim judged unverifiable is
+  tallied AND gets one entries[] row (`skipped` when dropped, `reconciled` when
+  kept with approval) whose `name` names the claim and whose `reason` begins the
+  canonical `unverifiable:` token (the `extractor-skip:` precedent).
+- **The validator binding:** `validate_cycle_record` warns when the tally and the
+  marked rows disagree in either direction — a count with no/unequal rows, or
+  marked rows without a tally — container/scalar-guarded under the never-raises
+  contract (junk shapes skip the check).
+- **Both dashboards name the claims at the ⚠:** the ASCII `VERIFIED` line and the
+  HTML assess/KPI surfaces join the marked rows' names after the count
+  (cap-with-counter); the legacy bare-count fallback stays byte-identical, and the
+  KPI sub-label escapes each joined name.
+- **The browser fixture's skipped row gains the token** — the validate-assert
+  over all 8 history cycles stays green, and the row doubles as the name-pin
+  vehicle for both renderers.
+
+Smoke 1749/0 (+9 pins), mypy clean, sim, manifests, browser 1108.
+
 ## [0.4.21] — 2026-09-06
 
 **Patch — the defect sweep (six measured defects from the dream session, root-caused and pinned).**

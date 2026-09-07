@@ -14485,10 +14485,50 @@ with _tf43.TemporaryDirectory() as _td21c:
           "past their output caps, the capped lists stay capped",
           _out21c["n_recurring"] == 95 and _out21c["n_chains"] == 25
           and _out21c["recurring_len"] == 40 and _out21c["chains_len"] == 20)
+# ── v0.4.22 U1: the unverifiable tally must have named carriers ──
+_U22 = {"project": "p", "scope": {"git_commits": 1, "session_candidates": 1, "memories_reviewed": 1},
+        "verification": {"confirmed": 2, "corrected": 0, "unverifiable": 1, "method": "subagents"}}
+_U22_ROW = {"action": "skipped", "tier": "-", "store": "-", "scope": "-", "name": "cache-expiry-claim",
+            "reason": "unverifiable: no source establishes the claimed expiration window"}
+check("v0.4.22 U1: a tally with NO carrier rows warns (the count names nothing)",
+      any("verification.unverifiable=1 but 0 entries[] row(s) carry the unverifiable: token" in w
+          for w in ms.validate_cycle_record(cast(dict, dict(_U22, entries=[])))))
+check("v0.4.22 U1: the matched record is silent (one marked row per claim)",
+      not ms.validate_cycle_record(cast(dict, dict(_U22, entries=[_U22_ROW]))))
+check("v0.4.22 U1: a count/row MISMATCH warns (2 marked rows, tally 1)",
+      any("verification.unverifiable=1 but 2 entries[] row(s)" in w for w in
+          ms.validate_cycle_record(cast(dict, dict(_U22, entries=[_U22_ROW, dict(_U22_ROW)])))))
+check("v0.4.22 U1: the STRAY arm warns (a marked row with tally 0)",
+      any("unverifiable is 0 but 1 entries[] row(s)" in w for w in
+          ms.validate_cycle_record(cast(dict, dict(_U22, entries=[_U22_ROW],
+                                                   verification={"confirmed": 2, "corrected": 0,
+                                                                 "unverifiable": 0})))))
+check("v0.4.22 U1: the STRAY arm warns on an ABSENT tally too (marked row, no verification block)",
+      any("unverifiable is absent but 1 entries[] row(s)" in w for w in
+          ms.validate_cycle_record(cast(dict, dict({k: v for k, v in _U22.items() if k != "verification"},
+                                                   entries=[_U22_ROW])))))
+for _u22j in (dict(_U22, entries="junk"),
+              dict(_U22, entries=[1]),
+              dict(_U22, entries=[{"action": "skipped", "name": "x", "reason": None}]),
+              dict(_U22, verification={"confirmed": 2, "corrected": 0, "unverifiable": "1"})):
+    ms.validate_cycle_record(cast(dict, _u22j))  # the never-raises contract — junk shapes skip the binding
+check("v0.4.22 U1: junk entries/tally shapes never raise (container + scalar guards)", True)
+_u22r = rd.render(cast(ms.CycleRecord, dict(_U22, entries=[_U22_ROW])))
+_u22r_l = _u22r.splitlines()
+_u22r_i = next((i for i, l in enumerate(_u22r_l) if l.startswith("  VERIFIED")), -1)
+check("v0.4.22 U1: the ASCII ⚠ line names the claim (line-scoped to the VERIFIED block — pre-fix renders the bare count)",
+      _u22r_i >= 0 and " — cache-expiry-claim" in " ".join(_u22r_l[_u22r_i:_u22r_i + 4]))
+_u22l = rd.render(cast(ms.CycleRecord, dict(_U22, entries=[])))
+check("v0.4.22 U1: a legacy-shaped record keeps the bare count (no names, no join)",
+      "⚠ 1 unverifiable" in _u22l and " — cache-expiry-claim" not in _u22l)
+_sk22 = _skill_md.read_text(encoding="utf-8")
+check("v0.4.22 U1: SKILL Phase 3 mandates BOTH directions + the canonical token",
+      "Every claim you judge unverifiable is tallied" in _sk22
+      and "one entries[]" in _sk22 and "`unverifiable:`" in _sk22)
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1740)
+      passed + failed + 1 == 1740 + 9)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

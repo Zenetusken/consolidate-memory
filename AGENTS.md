@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.4.21** (2026-09-06). `CLAUDE.md` holds the
+verified against the live tree at **v0.4.22** (2026-09-06). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -16,7 +16,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.4.21 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
+| `consolidate-memory` | 0.4.22 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
 | `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -108,17 +108,19 @@ docs/adr/                         001 empty-set judgment · 002 StoreContext · 
                                   017 journal complete-old · 018 StoreContext authorization ·
                                   019 forget-ack / domain lifecycle
 tests/                             smoke.py · simulate_accumulation.py · validate_manifests.py
-memory/                            GITIGNORED placeholder (.gitkeep only) — the real global store lives at
-                                   ~/.claude/memory (a real dir, decoupled from this repo)
+memory/                            GITIGNORED placeholder (.gitkeep only) — the canonical global store lives at
+                                   ~/.claude/consolidate-memory/domains/<domain>/ (legacy ~/.claude/memory/ is read-only migration inventory)
 ```
 
 ## Core contracts — do not break these
 
 1. **The cycle record is the contract.** `memory_status.py --seed` seeds it, the
    phases fill it, `render_dashboard.py` renders it. Shape = `TypedDict`s in
-   `memory_status.py` (`CycleRecord`, 22 top-level keys, all `total=False`).
+   `memory_status.py` (`CycleRecord`, 23 top-level keys, all `total=False`).
    `validate_cycle_record` warns (stderr, never blocks) on wrong container types
-   and impossible counts beyond the scanner caps (`_DISTILL_CAPS = (40, 20)`).
+   and impossible persisted-row counts beyond the distill caps (`_DISTILL_PERSIST_CAP`/
+   `_DISTILL_USED_CAP`, cross-module smoke-pinned — the old `_DISTILL_CAPS = (40, 20)`
+   mirror and its backstop were deleted in v0.4.21).
    Changing the schema means updating the seed, the renderer, the TypedDicts, and
    SKILL.md's schema block together — a smoke test pins the SKILL block to
    `CycleRecord.__annotations__`, so they cannot silently drift.
@@ -129,7 +131,7 @@ memory/                            GITIGNORED placeholder (.gitkeep only) — th
    prose — emit a cycle record and render it.
 4. **Cross-module drift pins exist because real drift happened.** smoke.py
    behaviorally pins `_ui.py` ↔ `render_dashboard.py` (output equality, not source
-   bytes), `_DISTILL_CAPS` ↔ `distill_scan.py` caps, a 5-way `slug_for` agreement
+   bytes), `_DISTILL_PERSIST_CAP`/`_DISTILL_USED_CAP` ↔ `distill_scan.py` persist caps, a 5-way `slug_for` agreement
    (memory_status / dream-beta snapshot / beta_checks / render_beta_report /
    make_fixture — make_fixture drifted in v0.1.40), and single-source identity
    (`sg._frontmatter is ms._frontmatter` etc.). If you reimplement a shared helper
@@ -139,9 +141,9 @@ memory/                            GITIGNORED placeholder (.gitkeep only) — th
    user/project/local/`--settings`. Writes fail closed on disagreement or disabled
    auto-memory. `cm canonical upsert` is the sole canonical writer. Native 200-line/25KB
    caps apply only to a project's `MEMORY.md`, not the generated global catalog.
-6. **Public-repo safety.** Never commit personal memory — the shared store lives at
-   `~/.claude/memory` (outside the repo; dual-read with domain dirs until
-   `cm migrate --apply`); repo-root `memory/` is a gitignored
+6. **Public-repo safety.** Never commit personal memory — the canonical shared store lives at
+   `~/.claude/consolidate-memory/domains/<domain>/` (legacy `~/.claude/memory/` is read-only
+   migration inventory); repo-root `memory/` is a gitignored
    placeholder. Verify with
    `git ls-tree -r --name-only origin/main | grep memory` (expect only
    `memory/.gitkeep`). Keep the skill generic: placeholders, no real user paths —

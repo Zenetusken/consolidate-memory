@@ -1088,12 +1088,16 @@
     var io=num(ix)>idxb, ceilK=truthy(g(CUR,"remediation.over_ceiling",false)), sjK=truthy(g(CUR,"remediation.standing_justified",false));
     var pp=truthy(g(CUR,"rigor.prune_pressure",false));
     function kpi(n,k,d,cls){return '<div class="kpi"><div class="n'+(cls?" ":"")+'" '+(cls?'style="color:'+cls+'"':'')+'>'+n+'</div><div class="k">'+esc(k)+'</div><div class="d">'+d+'</div></div>';}
+    // v0.4.22 (U1): the KPI sub-label names the unverifiable claims — each joined name esc'd
+    // (the kpi() `d` slot injects raw; model-authored names carry angle-bracket content).
+    var unvNamesK=(Array.isArray(CUR.entries)?CUR.entries:[]).filter(function(e){return e&&typeof e.reason==='string'&&e.reason.indexOf('unverifiable:')===0;}).map(function(e){return e.name==null?'?':esc(String(e.name));});
+    var unvSub=(v.unverifiable==null?"unverifiable: not captured":num(v.unverifiable)+" unverifiable"+(unvNamesK.length?" — "+unvNamesK.slice(0,3).join(", ")+(unvNamesK.length>3?" +"+(unvNamesK.length-3)+" more":""):""));
     el("kpis").innerHTML=
       kpi(pct(num(ix),idxb)+'<small>%</small>', "index vs target", tok(num(ix))+" / "+tok(idxb),
           ceilK?"var(--crit)":(io&&!sjK)?"var(--crit)":(io?"var(--warn)":null))
      +kpi(recallN(CUR), "recall facts", "in the private store", null)
      +kpi(v.confirmed==null?"—":num(v.confirmed), "verified",
-          (v.corrected==null?"corrected: not captured":num(v.corrected)+" corrected")+" · "+(v.unverifiable==null?"unverifiable: not captured":num(v.unverifiable)+" unverifiable"), num(v.unverifiable)>0?"var(--warn)":null)
+          (v.corrected==null?"corrected: not captured":num(v.corrected)+" corrected")+" · "+unvSub, num(v.unverifiable)>0?"var(--warn)":null)
      +kpi(esc(rg).charAt(0)+esc(rg).slice(1).toLowerCase(), "rigor",
           esc("via "+g(CUR,"verification.method","—"))+(pp?' · <span style="color:var(--warn)">prune pressure</span>':""),
           pp?"var(--warn)":null);
