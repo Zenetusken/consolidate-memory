@@ -5,18 +5,31 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Nocturne · Memory observatory — consolidate-memory</title>
 <style>
-  /* Nocturne: a memory observatory. Midnight canvas, luminous evidence, violet grants.
-     Local system fonts; no remote assets. Color never carries a verdict alone. */
+  /* Deep Field: a memory observatory. A near-black field, hairline structure, luminous
+     evidence. Color is reserved for data, never atmosphere. Local system fonts; no remote
+     assets. Color never carries a verdict alone — the semantic triple is dichromat-checked. */
   :root{
+    color-scheme:dark;
+    --paper:#04070e; --paper2:#080e18; --card:#0f1c2e; --rule:#1f3046; --rule2:#2c4059;
+    --ink:#e9f1f8; --ink2:#b9c9da; --faint:#8296ad; --ghost:#7b90a6;
+    --accent:#a999f5; --data:#63d3e8; --ok:#7fd8b8; --warn:#f0bd6a; --crit:#f58f7a; --glow:#0d1a33;
+    --tint-ok:rgba(99,211,232,.08); --tint-crit:rgba(245,143,122,.10);
+    --tint-accent:rgba(169,153,245,.09); --tint-warn:rgba(240,189,106,.10);
+    --sans:"Avenir Next","Segoe UI",Verdana,Arial,sans-serif;
+    --serif:var(--sans);
+    --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  }
+  /* Nocturne (the shipped palette, retained as a selectable theme): midnight canvas,
+     Glacier holdings, Iris permissions. Values are byte-identical to the pre-0.4.24
+     default. Do not spell the root pseudo-class in these comments — see the note in the
+     Deep Field chapter below. */
+  :root[data-theme="nocturne"]{
     color-scheme:dark;
     --paper:#080f1b; --paper2:#0c1727; --card:#101e31; --rule:#25354b; --rule2:#435873;
     --ink:#e5eef5; --ink2:#bccbdb; --faint:#96abc2; --ghost:#8da2ba;
     --accent:#b3a6e4; --data:#8fced6; --ok:#9cd4b5; --warn:#e7bd78; --crit:#f0a3a6; --glow:#15263e;
     --tint-ok:rgba(143,206,214,.08); --tint-crit:rgba(240,163,166,.10);
     --tint-accent:rgba(179,166,228,.09); --tint-warn:rgba(231,189,120,.10);
-    --sans:"Avenir Next","Segoe UI",Verdana,Arial,sans-serif;
-    --serif:var(--sans);
-    --mono:"SFMono-Regular",Consolas,"Liberation Mono",monospace;
   }
   /* Original dark palette: preserve the warm espresso, rust, and teal colors
      shipped before Nocturne. The layout and evidence remain the same. */
@@ -129,7 +142,7 @@
   .net-node[data-current="true"] rect{stroke:var(--data);fill:var(--tint-ok);stroke-width:1.5}
   .net-node .node-name{font:500 13px var(--sans);fill:var(--ink)}.net-node .node-meta{font:11px var(--sans);fill:var(--faint)}
   .net-node:focus rect,.net-node:hover rect{stroke:var(--ink)}.net-node{outline:none;cursor:pointer}
-  .net-node{transition:opacity .18s ease}.net-node.dim{opacity:.26}.net-node.selected rect{stroke:var(--accent);stroke-width:2}
+  .net-node rect,.net-node text{transition:opacity .18s ease}.net-node.selected rect{stroke:var(--accent);stroke-width:2}
   .fact-edge{fill:none;stroke:var(--data);stroke-width:2;stroke-opacity:.65}
   .fact-edge:hover,.fact-edge:focus{stroke-opacity:1;stroke-width:4;outline:none}
   .grant-edge{animation:grant-in .25s ease-out;fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:4 5;pointer-events:none}
@@ -547,16 +560,120 @@
     #app button,#app details>summary{box-shadow:none}
   }
 
+  /* ── Deep Field: elevation, atmosphere, and motion ────────────────────────────────
+     Presentation only — no data, no routing, no section structure. Two structural rules
+     govern this chapter:
+
+     · Nothing is ever added inside <svg id="net">, and no SVG child is ever transformed.
+       The network script measures svg.getBBox() and shrinks the viewBox to the drawn
+       content, and that box includes descendants and their transforms. A backdrop rect —
+       or a translate on a branch — would drive the measurement to the full canvas and
+       break the canvas-margin assertion in tests/dashboard_browser.py. So: atmosphere
+       lives on HTML wrappers, and SVG children are only ever faded, never moved.
+     · Draw-on effects keep their dasharray AND their animation inside the no-preference
+       block, with fill-mode:forwards. Under reduced motion the whole rule simply does not
+       apply, so the element renders normally and needs no reset. (A blanket animation that
+       applies in both modes — like .draw — does need one; see the reduce block above.) */
+
+  /* Star field: an instrument's sky, not wallpaper. Two dot lattices at different scales,
+     faded out below the first screen so content never has to fight it. */
+  body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
+    background-image:
+      radial-gradient(circle,var(--rule2) 0 .8px,transparent .9px),
+      radial-gradient(circle,var(--rule) 0 .7px,transparent .8px);
+    background-size:210px 210px,101px 101px;
+    background-position:0 0,37px 61px;
+    opacity:.55;
+    -webkit-mask-image:linear-gradient(180deg,#000 0,rgba(0,0,0,.5) 42%,transparent 74%);
+    mask-image:linear-gradient(180deg,#000 0,rgba(0,0,0,.5) 42%,transparent 74%)}
+
+  /* Elevation: the KPI band becomes four raised plates rather than numbers on the void.
+     The inset top line is what makes a dark surface read as lifted without a drop shadow. */
+  .kpis{border-top:0;border-bottom:0;padding:0;gap:13px;margin:22px 0 34px}
+  .kpi{background:var(--card);border:1px solid var(--rule);border-radius:12px;
+    padding:16px 18px;box-shadow:inset 0 1px 0 var(--rule2)}
+  .kpi .n{margin-top:2px}
+  .network-surface{border-color:var(--rule2);box-shadow:inset 0 1px 0 var(--rule)}
+  @media(max-width:600px){.kpis{gap:10px}.kpi{padding:13px 14px}}
+  /* Light surfaces read dark speckle as dust rather than sky, so the field thins out.
+     Written against `html` rather than the root pseudo-class: the suite discovers palettes
+     by regex-matching root-prefixed rules, so ANY such selector with a declaration block
+     is parsed as a theme and must carry all 12 colour keys plus the four tints. The regex
+     runs from the token to the next brace, which also means the token must never appear in
+     a COMMENT inside this stylesheet — it would latch onto the following rule and register
+     a phantom, key-less palette. Hence the circumlocution. */
+  html[data-theme="light"] body::before{opacity:.28}
+  @media(prefers-color-scheme:light){html[data-theme="auto"] body::before{opacity:.28}}
+
+  /* Dimmed nodes: corrected, but LATENT — nothing applies `.dim`. The string does not
+     appear in either JS bundle, and the one path that applies `.selected` (the group view)
+     marks EVERY node it renders, so no candidate for this rule exists. Kept correct rather
+     than deleted in case a selection affordance revives it.
+
+     Opacity on the GROUP is the trap, and the obvious implementation of "recede the plate,
+     keep the label" walks straight into it: a group renders its subtree offscreen and then
+     fades the result, so a `.82` label inside a `.5` group is an effective .41 — the label
+     recedes twice and gets DIMMER than before. Measured worst-theme label contrast (the
+     `--ink`/`--ink2` text over its own plate over `--paper`, over every shipped palette —
+     Light's `--ink2` is worst in all three rows, so a sixth theme moves these only if it
+     is lighter still; undimmed baseline is 7.63):
+
+       group opacity .26                (pre-0.4.24) ...... 1.55
+       group opacity .50 + text .82     (the first fix) ... 2.06
+       split: rect .50 + text .82       (this rule) ....... 5.04
+
+     Only the split clears 4.5, because it recedes the plate WITHOUT receding the label.
+     Do not "simplify" this back onto the `.net-node` group. */
+  #network-blk .net-node.dim rect{opacity:.5}
+  #network-blk .net-node.dim text{opacity:.82}
+
+  /* Deep Field chrome: edges keep their kind, but each kind reads at its own weight —
+     structure is a hairline, holdings carry evidence, grants are the only dashed line. */
+  #network-blk .net-node:hover rect,#network-blk .net-node:focus rect{stroke:var(--data);fill:var(--paper2)}
+  #network-blk .domain-junction:hover circle{stroke:var(--accent)}
+  #network-blk .page-control:not([aria-disabled="true"]):hover rect{fill:var(--card);stroke:var(--data)}
+
+  @media(prefers-reduced-motion:no-preference){
+    /* The instrument powers up: chrome, headline, measures, then the report sections.
+       `backwards` fill is deliberate — it holds the start state through the stagger delay
+       and then releases to the element's natural CSS state, so nothing is left hidden and
+       no reduced-motion reset is needed. */
+    @keyframes rise{from{opacity:0;transform:translateY(7px)}}
+    @keyframes branch-draw{to{stroke-dashoffset:0}}
+    @keyframes node-in{from{opacity:0}}
+    .chrome,.mast{animation:rise .5s cubic-bezier(.22,.7,.3,1) backwards}
+    .lead,.hero-chart{animation:rise .5s cubic-bezier(.22,.7,.3,1) .05s backwards}
+    .kpi{animation:rise .5s cubic-bezier(.22,.7,.3,1) backwards}
+    .kpi:nth-child(1){animation-delay:.10s}.kpi:nth-child(2){animation-delay:.15s}
+    .kpi:nth-child(3){animation-delay:.20s}.kpi:nth-child(4){animation-delay:.25s}
+    #app section.blk{animation:rise .45s cubic-bezier(.22,.7,.3,1) .28s backwards}
+    /* Constellation draw-on: the topology resolves rather than appearing. Opacity-only for
+       nodes (a transform here would move getBBox), dash for the branches.
+       `forwards` here, NOT `backwards`: the un-animated state of a dashed path is
+       dashoffset == full length, i.e. invisible. Releasing the animation would erase the
+       branch the instant it finished drawing. Safe without a reduced-motion reset only
+       because this whole rule is inside the no-preference block. */
+    #network-blk .hierarchy-branch:not(.grant-edge){
+      stroke-dasharray:var(--blen,0);stroke-dashoffset:var(--blen,0);
+      animation:branch-draw .62s cubic-bezier(.3,.7,.3,1) forwards}
+    #network-blk .net-node,#network-blk .domain-junction,#network-blk .rank-label{
+      animation:node-in .4s ease-out .12s backwards}
+  }
+  @media print{body::before{display:none}}
+
 </style>
-<script>/* Nocturne by default; restore a saved palette or system preference before paint. */
-(function(){try{var m=localStorage.getItem("cm-theme");if(m==="light"||m==="dark"||m==="auto"||m==="original")document.documentElement.setAttribute("data-theme",m);}catch(e){}})();</script>
+<script>/* Deep Field by default; restore a saved palette or system preference before paint.
+   "dark" is a legacy value from before Deep Field became the default — it is normalized to
+   the bare root palette in apply(), so it is deliberately absent from this whitelist
+   (setting it would stamp a data-theme no block matches). */
+(function(){try{var m=localStorage.getItem("cm-theme");if(m==="light"||m==="auto"||m==="original"||m==="deepfield"||m==="nocturne")document.documentElement.setAttribute("data-theme",m);}catch(e){}})();</script>
 </head>
 <body>
 <a class="skip" href="#app">Skip to report</a>
 <div class="chrome" role="toolbar" aria-label="Display settings">
-  <div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><path d="M20 4A16 16 0 1 0 36 20" fill="none" stroke="var(--data)" stroke-width="1.5"/><path d="M20 11a9 9 0 1 0 9 9" fill="none" stroke="var(--accent)" stroke-width="1.5"/><path d="M20 20 32 8" stroke="var(--rule2)"/><circle cx="20" cy="20" r="3" fill="var(--data)"/><circle cx="32" cy="8" r="3" fill="var(--accent)"/></svg><span>consolidate-memory<small>Nocturne / memory observatory</small></span></div>
+  <div class="brand"><svg viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="15" fill="none" stroke="var(--rule2)" stroke-width="1"/><path d="M20 2v7M20 31v7M2 20h7M31 20h7" stroke="var(--rule2)" stroke-width="1"/><circle cx="20" cy="20" r="7" fill="none" stroke="var(--data)" stroke-width="1.4"/><circle cx="20" cy="20" r="2.4" fill="var(--accent)"/><circle cx="27" cy="20" r="2" fill="var(--data)"/></svg><span>consolidate-memory<small>Nocturne / memory observatory</small></span></div>
   <button id="dens-tog" class="theme-tog" type="button" aria-label="Compact spacing" aria-pressed="false">Compact spacing</button>
-  <button id="theme-tog" class="theme-tog" type="button" aria-label="Color theme: Nocturne. Switch to Original">● Nocturne</button>
+  <button id="theme-tog" class="theme-tog" type="button" aria-label="Color theme: Deep Field. Switch to Nocturne">◉ Deep Field</button>
 </div>
 <div id="boot"><div class="bt">Opening the memory record</div><div class="bl"><i></i></div><div class="bn" id="boot-proj">consolidate-memory</div></div>
 <div class="tip" id="tip"></div>
@@ -1277,17 +1394,19 @@
   el("f-marker").textContent=savedDate&&!isNaN(savedDate.getTime())?'Saved '+savedDate.toLocaleString('en-US',{month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit',timeZone:'UTC'})+' UTC':'Save time not captured';
   } // paintDream
 
-  // ── theme toggle · Nocturne → Original → Light → System ──
+  // ── theme toggle · Deep Field → Nocturne → Original → Light → System ──
   (function(){
-    var root=document.documentElement, btn=el("theme-tog"), modes=["dark","original","light","auto"];
-    var names={dark:"Nocturne",original:"Original",light:"Light",auto:"System"}, icon={dark:"●",original:"◒",light:"○",auto:"◐"};
-    function read(){try{return localStorage.getItem("cm-theme")||"dark";}catch(e){return "dark";}}
-    function apply(m){ root.setAttribute("data-theme",m);
+    var root=document.documentElement, btn=el("theme-tog"), modes=["deepfield","nocturne","original","light","auto"];
+    var names={deepfield:"Deep Field",nocturne:"Nocturne",original:"Original",light:"Light",auto:"System"}, icon={deepfield:"◉",nocturne:"●",original:"◒",light:"○",auto:"◐"};
+    // A saved "dark" predates Deep Field (it meant the bare root palette then, as it does
+    // now), so it migrates to the current default rather than becoming a dead value.
+    function read(){try{var v=localStorage.getItem("cm-theme")||"deepfield";return v==="dark"?"deepfield":v;}catch(e){return "deepfield";}}
+    function apply(m){ if(m==="dark")m="deepfield"; root.setAttribute("data-theme",m);
       btn.textContent=icon[m]+" "+names[m];
       btn.setAttribute("aria-label","Color theme: "+names[m]+". Switch to "+names[modes[(modes.indexOf(m)+1)%modes.length]]);
-      btn.title="Nocturne → Original → Light → System";
+      btn.title="Deep Field → Nocturne → Original → Light → System";
       try{localStorage.setItem("cm-theme",m);}catch(e){} }
-    var cur=read(); if(modes.indexOf(cur)<0)cur="dark"; apply(cur);
+    var cur=read(); if(modes.indexOf(cur)<0)cur="deepfield"; apply(cur);
     btn.addEventListener("click",function(){ cur=modes[(modes.indexOf(cur)+1)%modes.length]; apply(cur); });
   })();
 

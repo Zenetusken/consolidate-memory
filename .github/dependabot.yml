@@ -1,0 +1,24 @@
+# Dependabot — GitHub Actions only, deliberately.
+#
+# The plugin has NO runtime dependencies: every script under
+# plugins/consolidate-memory/scripts/ is stdlib-only on Python 3.8+, and that is the
+# product promise, not a preference. So there is no pip ecosystem to watch.
+#
+# What IS worth watching is the workflow surface: actions/checkout, actions/setup-python,
+# actions/setup-node and actions/upload-artifact are pinned to major tags in
+# .github/workflows/, and a stale major there is how a CI job quietly stops being a gate.
+# Those four are the only third-party code this repository executes.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "ci"
+    groups:
+      # One PR for the whole action surface: these move together and land together, and
+      # four separate PRs for four major bumps is noise, not review.
+      actions:
+        patterns: ["*"]

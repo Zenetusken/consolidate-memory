@@ -10,6 +10,7 @@ import copy
 import datetime
 import importlib
 import json
+import re
 from pathlib import Path
 from dashboard_fixture import sample, write_preview, rh
 
@@ -17,7 +18,7 @@ ROOT=Path(__file__).resolve().parents[1]
 GEOMETRY=ROOT/'tests/fixtures/dashboard-header-geometry.json'
 
 
-def main(out):
+def main(out,capture=False):
     sync_playwright=importlib.import_module('playwright.sync_api').sync_playwright
     out.mkdir(parents=True,exist_ok=True)
     preview=write_preview(out)
@@ -175,7 +176,7 @@ def main(out):
             }'''))
 
         ready(preview.as_uri()+'#sel=7')
-        check('Nocturne is the default under a light system preference',page.locator('body').evaluate('e=>getComputedStyle(e).backgroundColor')=='rgb(8, 15, 27)')
+        check('Deep Field is the default under a light system preference',page.locator('body').evaluate('e=>getComputedStyle(e).backgroundColor')=='rgb(4, 7, 14)')
         check('summary follows header KPIs and precedes network',page.evaluate("document.querySelector('#dream-blk').previousElementSibling.id==='kpis' && document.querySelector('#dream-blk').nextElementSibling.id==='network-blk'"))
         check('stable section hooks are retained',all(page.locator('#'+s).count()==1 for s in ['traj','trend','rigor','dream-blk','pass-blk','network-blk','history-blk','entries-blk','audit','verify','dream-arc','net-chips','net-detail']))
         check('summary names recorded outcome and evidence',all(t in page.locator('#dream-summary').inner_text() for t in ['LIGHT PASS','5 confirmed claims','4 observed file operations','1 unverifiable claim']))
@@ -306,7 +307,11 @@ def main(out):
             resize(width);contained('archive '+str(width))
             check('archive columns remain accessible '+str(width),page.locator('.arch-row .hh').first.is_visible() and page.locator('.arch-row .en').first.is_visible())
         page.locator('a.arch-row[href="#sel=7"]').click();page.wait_for_function("document.querySelector('#app').style.display!=='none'")
-        for theme in ['dark','original','light','auto']:
+        # 'deepfield' is the bare root palette (what 'dark' used to mean), so it REPLACES
+        # 'dark' in this list rather than joining it — listing both would exercise the same
+        # CSS twice. 'nocturne' is its own named block, so it is a distinct palette and both
+        # must be tested.
+        for theme in ['deepfield','nocturne','original','light','auto']:
             page.evaluate('(theme)=>{document.documentElement.dataset.theme=theme;localStorage.setItem("cm-theme",theme);}',theme)
             for width in (320,390,768,1440):
                 resize(width);contained(theme+' '+str(width));geometry(theme+' '+str(width))
@@ -322,8 +327,8 @@ def main(out):
         page.evaluate("localStorage.setItem('cm-theme','original')");page.reload();page.wait_for_function("document.querySelector('#boot').style.display==='none'")
         check('Original persists and names its next theme',page.locator('#theme-tog').inner_text()=='◒ Original' and page.locator('#theme-tog').get_attribute('aria-label')=='Color theme: Original. Switch to Light')
         page.locator('#theme-tog').click();check('Light theme control works',page.locator('html').get_attribute('data-theme')=='light')
-        page.locator('#theme-tog').click();page.emulate_media(color_scheme='dark');check('System responds to changed device preference',page.locator('body').evaluate('e=>getComputedStyle(e).backgroundColor')=='rgb(8, 15, 27)')
-        page.locator('#theme-tog').click();check('theme loop returns to Nocturne',page.locator('#theme-tog').inner_text()=='● Nocturne')
+        page.locator('#theme-tog').click();page.emulate_media(color_scheme='dark');check('System responds to changed device preference',page.locator('body').evaluate('e=>getComputedStyle(e).backgroundColor')=='rgb(4, 7, 14)')
+        page.locator('#theme-tog').click();check('theme loop returns to Deep Field',page.locator('#theme-tog').inner_text()=='◉ Deep Field')
         check('reduced motion disables animated permission branches',page.evaluate("matchMedia('(prefers-reduced-motion: reduce)').matches") and page.locator('html').evaluate("e=>getComputedStyle(e).scrollBehavior!=='smooth'"))
 
         # Focused evidence discriminators, including absent vs measured zero.
@@ -635,10 +640,96 @@ def main(out):
               and 'cache-expiry-claim' not in page.locator('#dream-summary').inner_text())
         check('every transition completed without browser exceptions',not errors)
         check('archives run offline without external requests',not requests)
+        if capture:
+            # A fresh page: the checks above leave the last fixture open, and the art
+            # must come from the sample record the README's captions describe.
+            # reduced_motion='reduce' is what makes the export deterministic: the reveal
+            # animations are scoped to no-preference, so this samples every element at its
+            # natural state instead of wherever the stagger happened to be.
+            art=browser.new_context(viewport={'width':1440,'height':1000},color_scheme='light',
+                                    reduced_motion='reduce').new_page()
+            for path in capture_art(art,out,preview):print('captured '+path.name,flush=True)
+            art.close()
         browser.close()
     print('%d browser checks passed'%len(results))
 
 
+# The README's art is exported from a live render, never hand-drawn: that is what
+# keeps it honest when the theme or the layout moves. Two rules make it safe.
+#
+# 1. It writes ONLY into --out. Promoting a file into docs/assets/ is a separate,
+#    deliberate step, so a routine `dashboard_browser.py` run (which CI does on
+#    every push) can never rewrite tracked files.
+# 2. The network SVG is captured in the DEFAULT theme. The old export was pinned
+#    to Nocturne's values purely because that is the theme it happened to be taken
+#    in — not because of the file format — so capturing in Deep Field is the whole
+#    of the "re-palette" step. rgb() is then rewritten to hex for readability; the
+#    numbers are untouched, so this transform cannot shift a colour.
+CAPTURE_CROPS=(('nocturne-dashboard',('#network-blk',)),
+               ('nocturne-activity',('#history-blk',)),
+               ('nocturne-evidence',('#pass-blk',)))
+# The overview crop spans the chart, the key measures and the dream block, so it
+# is a document-coordinate clip rather than one element's box.
+CAPTURE_OVERVIEW=('nocturne-overview','.overview','#dream-blk')
+_INLINE_PROPS=('fill','stroke','stroke-width','stroke-dasharray','stroke-opacity','stroke-linecap',
+               'stroke-linejoin','font-family','font-size','font-style','font-weight','text-anchor',
+               'opacity','letter-spacing')
+# Inlines the computed style of every node, because the live SVG is styled by CSS
+# classes and a bare outerHTML would export an unstyled file. The export is linked
+# from the README (not embedded), so nothing would define those classes at the far
+# end -- self-contained inline styles are what make it render standalone.
+_INLINE_JS="""([sel,props])=>{const src=document.querySelector(sel),clone=src.cloneNode(true);
+const a=[src,...src.querySelectorAll('*')],b=[clone,...clone.querySelectorAll('*')];
+a.forEach((el,i)=>{const cs=getComputedStyle(el);b[i].setAttribute('style',props.map(p=>p+':'+cs.getPropertyValue(p)).join(';'));});
+// #net is transparent; its surface colour lives on an ancestor. The export is linked,
+// not embedded, so without this it would sit on the viewer's white page as light-on-white.
+let bg='',n=src;
+while(n&&(bg===''||bg==='rgba(0, 0, 0, 0)')){bg=getComputedStyle(n).backgroundColor;n=n.parentElement;}
+clone.style.background=bg;
+return clone.outerHTML;}"""
+_HEX=re.compile(r'rgb\((\d+),\s*(\d+),\s*(\d+)\)')
+
+
+def standalone_svg(svg):
+    """Make a serialized SVG load as a file rather than only inside its own document.
+
+    outerHTML omits xmlns (an HTML document implies the SVG namespace), but a file
+    opened directly -- which is how the README links this one -- is parsed as XML,
+    lands in no namespace, and renders as nothing at all. width/height come from the
+    viewBox so the file has an intrinsic size.
+    """
+    box=re.search(r'viewBox="([\d.\- ]+)"',svg)
+    size=' width="%s" height="%s"'%tuple(box.group(1).split()[2:4]) if box else ''
+    return svg.replace('<svg ','<svg xmlns="http://www.w3.org/2000/svg"'+size+' ',1)
+
+
+def capture_art(page,out,preview):
+    """Re-export the README's art from a live render into --out. Returns the paths written."""
+    page.goto(preview.as_uri()+'#sel=7')
+    page.wait_for_function("document.querySelector('#boot').style.display==='none'")
+    page.evaluate("()=>{document.documentElement.dataset.theme='deepfield';}")
+    page.wait_for_timeout(250)
+    written=[]
+    def shoot(name,clip):
+        # full_page is what lets a clip reach below the fold; without it Playwright
+        # rejects any box taller than the viewport.
+        path=out/(name+'.png');page.screenshot(path=str(path),clip=clip,full_page=True);written.append(path)
+    top,bottom=page.locator(CAPTURE_OVERVIEW[1]).bounding_box(),page.locator(CAPTURE_OVERVIEW[2]).bounding_box()
+    shoot(CAPTURE_OVERVIEW[0],{'x':bottom['x'],'y':top['y'],'width':bottom['width'],
+                               'height':bottom['y']+bottom['height']-top['y']})
+    for name,(sel,) in CAPTURE_CROPS:
+        box=page.locator(sel).bounding_box()
+        shoot(name,{'x':box['x'],'y':box['y'],'width':box['width'],'height':box['height']})
+    svg=page.evaluate(_INLINE_JS,['#net',list(_INLINE_PROPS)])
+    svg=_HEX.sub(lambda m:'#%02x%02x%02x'%tuple(int(g) for g in m.groups()),svg)
+    svg=standalone_svg(svg).replace('><','>\n<')
+    path=out/'nocturne-network.svg';path.write_text(svg+'\n');written.append(path)
+    return written
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--out',required=True,type=Path)
-    main(parser.parse_args().out.resolve())
+    parser.add_argument('--capture',action='store_true',
+                        help='maintainer-only: also re-export the README art into --out')
+    args=parser.parse_args()
+    main(args.out.resolve(),args.capture)

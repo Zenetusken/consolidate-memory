@@ -74,7 +74,7 @@
         "tier": "-",
         "store": "-",
         "scope": "project-local",
-        "reason": "No source establishes the claimed expiration window; retain no fact.",
+        "reason": "unverifiable: no source establishes the claimed expiration window; retain no fact.",
         "citation": "src/cache.py"
       }
     ],
@@ -730,7 +730,7 @@
           "tier": "-",
           "store": "-",
           "scope": "project-local",
-          "reason": "No source establishes the claimed expiration window; retain no fact.",
+          "reason": "unverifiable: no source establishes the claimed expiration window; retain no fact.",
           "citation": "src/cache.py"
         }
       ],
@@ -1378,7 +1378,7 @@
           "tier": "-",
           "store": "-",
           "scope": "project-local",
-          "reason": "No source establishes the claimed expiration window; retain no fact.",
+          "reason": "unverifiable: no source establishes the claimed expiration window; retain no fact.",
           "citation": "src/cache.py"
         }
       ],
@@ -2028,7 +2028,7 @@
           "tier": "-",
           "store": "-",
           "scope": "project-local",
-          "reason": "No source establishes the claimed expiration window; retain no fact.",
+          "reason": "unverifiable: no source establishes the claimed expiration window; retain no fact.",
           "citation": "src/cache.py"
         }
       ],
@@ -2678,7 +2678,7 @@
           "tier": "-",
           "store": "-",
           "scope": "project-local",
-          "reason": "No source establishes the claimed expiration window; retain no fact.",
+          "reason": "unverifiable: no source establishes the claimed expiration window; retain no fact.",
           "citation": "src/cache.py"
         }
       ],
@@ -3328,7 +3328,7 @@
           "tier": "-",
           "store": "-",
           "scope": "project-local",
-          "reason": "No source establishes the claimed expiration window; retain no fact.",
+          "reason": "unverifiable: no source establishes the claimed expiration window; retain no fact.",
           "citation": "src/cache.py"
         }
       ],
@@ -3978,7 +3978,7 @@
           "tier": "-",
           "store": "-",
           "scope": "project-local",
-          "reason": "No source establishes the claimed expiration window; retain no fact.",
+          "reason": "unverifiable: no source establishes the claimed expiration window; retain no fact.",
           "citation": "src/cache.py"
         }
       ],
@@ -4628,7 +4628,7 @@
           "tier": "-",
           "store": "-",
           "scope": "project-local",
-          "reason": "No source establishes the claimed expiration window; retain no fact.",
+          "reason": "unverifiable: no source establishes the claimed expiration window; retain no fact.",
           "citation": "src/cache.py"
         }
       ],
@@ -5278,7 +5278,7 @@
           "tier": "-",
           "store": "-",
           "scope": "project-local",
-          "reason": "No source establishes the claimed expiration window; retain no fact.",
+          "reason": "unverifiable: no source establishes the claimed expiration window; retain no fact.",
           "citation": "src/cache.py"
         }
       ],

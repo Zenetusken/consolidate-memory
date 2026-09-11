@@ -98,6 +98,22 @@ jobs:
       - run: pip install mypy
       - run: mypy --config-file mypy.ini
 
+  # Its own job rather than a step inside `test`: docs drift is version- and OS-independent,
+  # so running it six times in the matrix would only multiply the same answer. What it
+  # guards is the class of breakage nothing else can see — a version badge that drifts from
+  # plugin.json, a table-of-contents entry pointing at a renamed section, a relative link to
+  # a moved file. None of those fail a build; a reader just hits them.
+  docs:
+    name: docs (badges, links, anchors)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: documentation drift gate (zero-dependency)
+        run: python3 tests/docs_links.py
+
   browser:
     name: dashboard (chromium, dev-only)
     runs-on: ubuntu-latest

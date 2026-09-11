@@ -1,0 +1,23 @@
+# Default owner for everything in the repository.
+#
+# This project is a single-maintainer plugin with no release automation a contributor can
+# break silently — so the useful job for this file is not per-directory routing (there is
+# nobody to route *to*), it is making sure the maintainer is requested on every change and
+# stays as a required reviewer when branch protection is tightened.
+*
+@Zenetusken
+
+# The trust boundary. A change here alters who can receive memory, so it never wants to
+# ride an unrelated PR unnoticed.
+/plugins/consolidate-memory/scripts/domain_policy.py @Zenetusken
+/plugins/consolidate-memory/scripts/canonical_ingress.py @Zenetusken
+/plugins/consolidate-memory/scripts/control_plane.py @Zenetusken
+
+# Verification and the secrets firewall — the parts whose failure mode is silence.
+/plugins/consolidate-memory/scripts/extract_signals.py @Zenetusken
+/plugins/consolidate-memory/scripts/mirror_conflict.py @Zenetusken
+
+# CI and the manifest contract: a weakened gate looks exactly like a passing one.
+/.github/workflows/ @Zenetusken
+/plugins/consolidate-memory/.claude-plugin/plugin.json @Zenetusken
+/.claude-plugin/marketplace.json @Zenetusken
