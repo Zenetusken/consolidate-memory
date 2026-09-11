@@ -613,10 +613,10 @@
      Opacity on the GROUP is the trap, and the obvious implementation of "recede the plate,
      keep the label" walks straight into it: a group renders its subtree offscreen and then
      fades the result, so a `.82` label inside a `.5` group is an effective .41 — the label
-     recedes twice and gets DIMMER than before. Measured worst-theme label contrast (the
-     `--ink`/`--ink2` text over its own plate over `--paper`, over every shipped palette —
-     Light's `--ink2` is worst in all three rows, so a sixth theme moves these only if it
-     is lighter still; undimmed baseline is 7.63):
+     recedes twice and gets DIMMER than before. Measured over all four shipped palettes (the
+     `--ink`/`--ink2` text over its own plate over `--paper`; `auto` is Light byte-for-byte,
+     so it is not a fifth) — Light's `--ink2` is worst in every row, so a new palette moves
+     these only by being lighter still. Undimmed baseline 7.63:
 
        group opacity .26                (pre-0.4.24) ...... 1.55
        group opacity .50 + text .82     (the first fix) ... 2.06

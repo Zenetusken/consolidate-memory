@@ -84,8 +84,8 @@ forward rather than breaking (below).
   measured. The embedded-archive figure was wrong (270,056 B / ~36 KB claimed), and so was
   the unit: the gate bounds `len(_html_p4)` — a CHARACTER count, against `300 * 1024` — and
   the shell is dense with multi-byte glyphs, so bytes and characters are not
-  interchangeable here. Measured on the tree: 276,454 characters before, 285,063 after,
-  leaving **22,137 (= 21.6 KiB)** of headroom, down from 30.0 KiB. A first re-derivation
+  interchangeable here. Measured on the tree: 276,454 characters before, 285,084 after,
+  leaving **22,116 (= 21.6 KiB)** of headroom, down from 30.0 KiB. A first re-derivation
   from file sizes got this wrong precisely by mixing the two units; only measuring the
   shipping tree settled it. And the dichromacy table was optimistic: re-measured
   CIEDE2000 separations for the `ok`/`warn`/`crit` triple are, normal 27.5→24.8,

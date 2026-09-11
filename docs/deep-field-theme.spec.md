@@ -179,8 +179,9 @@ The first correction was wrong, and the reason is a genuine CSS trap. Opacity on
 renders the subtree offscreen and fades the result, so `.82` on a label inside a `.5` group
 is an effective `.41` — the obvious "recede the plate, keep the label" implementation makes
 the label dimmer than the rule it replaced. Measured worst-theme label contrast
-(`--ink`/`--ink2` over its own plate over `--paper`, all four palettes; undimmed baseline
-7.63):
+(`--ink`/`--ink2` over its own plate over `--paper`, all four shipped palettes — `auto` is
+Light byte-for-byte, verified token by token, so it is not a fifth; `@media print` is the
+only other surface and differs from Light on five tokens. Undimmed baseline 7.63):
 
 | rule | worst |
 | :--- | ---: |
@@ -232,9 +233,9 @@ fixture:
 | | rendered archive (characters) | headroom |
 | :--- | ---: | ---: |
 | pre-0.4.24 | 276,454 | 30,746 = 30.0 KiB |
-| 0.4.24 | 285,063 | **22,137 = 21.6 KiB** |
+| 0.4.24 | 285,084 | **22,116 = 21.6 KiB** |
 
-The Deep Field chapter costs **8,609 characters** of shell, which is the whole of the delta. 21.6 KiB
+The Deep Field chapter costs **8,630 characters** of shell, which is the whole of the delta. 21.6 KiB
 is comfortable but no longer generous — **a future theme chapter should budget against this
 number**, and the bound is a smoke check, not a guideline.
 
