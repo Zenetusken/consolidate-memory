@@ -1,6 +1,7 @@
 # Cross-domain mirror key — the bare stem where the namespaced key belongs
 
-**Design-of-record for a four-site fix spanning the write path and its accounting model.**
+**Design-of-record for four sites on the write path and its accounting model — plus the
+`--gc` dead-probe, the same root cause reached from a reporting surface.**
 Status: drafted 2026-09-11 (UTC 09-12), adversarial review round 1 complete and folded.
 
 ## 1. Context (measured 2026-09-11)
@@ -35,8 +36,9 @@ The false claim sat **above** its correction, in the tier every session pays for
 `_mirror_key(ctx_domain, fact_dom, stem)` (`sync_global.py:1208-1230`) returns the bare
 `stem` for a same-domain fact and `f"{fdom}--{stem}"` for a cross-domain one, raising on
 an unsafe domain or a `--` ambiguity. That namespaced value is the fact's **file key**
-and its **index anchor**. Four sites derive a *different* quantity from it and get the
-bare stem instead.
+and its **index anchor**. Four sites on the write/accounting dependency derive a *different*
+quantity from it and get the bare stem instead; the `--gc` dead-probe makes the same
+substitution from a classification surface, and §7 treats it separately.
 
 **Leg A — the matcher key (write path).**
 
@@ -205,8 +207,11 @@ untested path.
 
 ## 7. The fix
 
-Two tokens at each of the four sites — pass the namespaced key where the bare stem is
-being used as a *derived* key.
+Two tokens at each of the four sites on the **write/accounting dependency** — pass the
+namespaced key where the bare stem is being used as a *derived* key. (A **fifth** site, the
+`--gc` dead-probe, shares the root cause and is fixed here too; it derives a key the same way
+but carries no accounting dependency, so it is not part of this section's leg argument, and
+the census below lists it separately as `sync_global.py:3300`.)
 
 ```python
 # write leg (matcher key)
@@ -277,6 +282,17 @@ has measured; it is deliberately **left to its own cycle** rather than folded in
 distinction is worth the ink because "no" with a reason that does not generalize is exactly
 what F1's gap was made of: the census cleared a *class* on a claim that held for the rows
 it had listed.
+
+**The deferral's residual is a delay, not a leak** — stated so the next reader need not
+re-derive the bound before trusting it. The dead-canonical case is what that sweep would have
+collected, and it is also the case `_mirror_canonical_path` refuses to resolve: it returns
+`None` when the canonical is absent *or* its status is `tombstoned`/`superseded`/`expired`
+(`sync_global.py:2899`, `:2910`), on the reasoning that a tombstone holds no re-pullable
+content and so its mirror is orphaned. `_orphans` then scans against the same live-stem set
+the mass-delete guard uses — `iter_canonical_stems_for_gc`, the `_local_stems` set built at
+`sync_global.py:3085` — so `--gc --apply` reclaims precisely the mirrors the ack sweep would
+have. Left un-run, they persist until someone runs gc: a deferred reclaim, never an
+unreclaimable one.
 
 ## 8. Invariants — conserved, and changed
 
@@ -662,9 +678,12 @@ browser / pre-push gate; one review agent per PR; the finder re-verifies every f
 Additive and backward-compatible — no schema, manifest, or CLI change → **patch**.
 CHANGELOG-first.
 
-**Scope: four sites, two files, one PR — not splittable.** Not a packaging preference:
-the write-side fix alone degrades the accounting it feeds (§8.2), so a write-only PR would
-ship a known new defect. The dependency decides it.
+**Scope: five sites across two files, one PR — not splittable.** The four on the
+write/accounting dependency are what forbid the split: the write-side fix alone degrades
+the accounting it feeds (§8.2), so a write-only PR would ship a known new defect. The
+fifth, the `--gc` dead-probe, is the same root cause reached from a reporting surface; it
+rides along with the change rather than being depended upon by it. The dependency decides
+the four.
 
 **Repair of an already-damaged store.** The fix converges — `apply_pointer` replaces the
 first match and drops the rest, so a store carrying a stale line *above* the correct one

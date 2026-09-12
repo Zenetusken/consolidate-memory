@@ -7,12 +7,13 @@ version changes on `main`.
 
 ## [0.4.26] — 2026-09-12
 
-**Patch — the cross-domain mirror index refresh: one root cause, two legs, four sites.**
+**Patch — the cross-domain mirror index refresh: one root cause, two legs, four sites on the
+write/accounting dependency — plus the `--gc` dead-probe.**
 
 `_mirror_key(ctx_domain, fact_domain, stem)` returns the bare stem for a same-domain fact
 and `f"{fdom}--{stem}"` for a cross-domain one, and that single value is **both** the
-fact's filename and its index anchor. Four sites derived a different quantity — the bare
-stem — and got it wrong, in two directions:
+fact's filename and its index anchor. Four sites on that dependency derived a different
+quantity — the bare stem — and got it wrong, in two directions:
 
 - **Leg A, the write path.** `apply_pointer` matches `]({stem}.md)`, so a namespaced href
   never matched the bare stem it was passed. Every cross-domain refresh **appended** a
