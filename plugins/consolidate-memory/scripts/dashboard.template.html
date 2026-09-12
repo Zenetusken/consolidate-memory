@@ -605,25 +605,30 @@
   html[data-theme="light"] body::before{opacity:.28}
   @media(prefers-color-scheme:light){html[data-theme="auto"] body::before{opacity:.28}}
 
-  /* Dimmed nodes: corrected, but LATENT — nothing applies `.dim`. The string does not
-     appear in either JS bundle, and the one path that applies `.selected` (the group view)
-     marks EVERY node it renders, so no candidate for this rule exists. Kept correct rather
-     than deleted in case a selection affordance revives it.
+  /* Dimmed nodes: IMPROVED, but still LATENT and still sub-4.5 — nothing applies `.dim`. The
+     string does not appear in either JS bundle, and the one path that applies `.selected`
+     (the group view) marks EVERY node it renders, so no candidate for this rule exists. Kept
+     rather than deleted in case a selection affordance revives it.
 
      Opacity on the GROUP is the trap, and the obvious implementation of "recede the plate,
      keep the label" walks straight into it: a group renders its subtree offscreen and then
      fades the result, so a `.82` label inside a `.5` group is an effective .41 — the label
-     recedes twice and gets DIMMER than before. Measured over all four shipped palettes (the
-     `--ink`/`--ink2` text over its own plate over `--paper`; `auto` is Light byte-for-byte,
-     so it is not a fifth) — Light's `--ink2` is worst in every row, so a new palette moves
-     these only by being lighter still. Undimmed baseline 7.63:
+     recedes twice and gets DIMMER than before.
 
-       group opacity .26                (pre-0.4.24) ...... 1.55
-       group opacity .50 + text .82     (the first fix) ... 2.06
-       split: rect .50 + text .82       (this rule) ....... 5.04
+     Measured over all four shipped palettes, worst theme per row, over the REAL backdrop:
+     the plate is --card at opacity .5 over `.network-surface`, which is --paper2, NOT
+     --paper (`auto` is Light byte-for-byte, so it is not a fifth). Count EVERY text child —
+     this rule dims `.node-name` (--ink) AND `.node-meta` (--faint), and --faint, not --ink2,
+     is the binding case:
 
-     Only the split clears 4.5, because it recedes the plate WITHOUT receding the label.
-     Do not "simplify" this back onto the `.net-node` group. */
+       group opacity .26                (pre-0.4.24) ...... 1.44
+       group opacity .50 + text .82     (the first fix) ... 1.86
+       split: rect .50 + text .82       (this rule) ....... 3.72
+
+     Undimmed baseline 5.45 counting --faint (7.63 over --ink/--ink2 alone). Splitting is what
+     buys the improvement — it recedes the plate WITHOUT receding the label — but it does NOT
+     reach 4.5. Do not "simplify" it back onto the `.net-node` group, and do not read this
+     rule as AA-clean if it is ever revived: that needs the label tokens re-picked. */
   #network-blk .net-node.dim rect{opacity:.5}
   #network-blk .net-node.dim text{opacity:.82}
 

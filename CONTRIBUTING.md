@@ -23,7 +23,8 @@ does. `mypy` and Playwright are development-only tools.
 
 ## The gate list
 
-Run these before opening a pull request. CI runs all of them.
+Run these before opening a pull request. CI runs the first five; the last is a local
+smoke-check of the CLI itself, with no CI equivalent.
 
 ```bash
 python3 tests/smoke.py                     # the zero-dependency gate
@@ -31,7 +32,7 @@ python3 tests/simulate_accumulation.py     # lifecycle accumulation simulation
 python3 tests/validate_manifests.py        # portable manifest shape check
 python3 tests/docs_links.py                # badges, links, anchors, theme table
 mypy --config-file mypy.ini                # dev-only cycle-record contract check
-./cm status                                # spot-check Phase-0 output
+./cm status                                # local only: spot-check Phase-0 output
 ```
 
 If you touched anything under `plugins/consolidate-memory/scripts/`, `smoke.py` is
@@ -60,7 +61,11 @@ viewport widths, plus a print emulation.
   those to each other so they cannot drift silently.
 - **Palette and contrast changes are gated twice** — once by `smoke.py` (RC-90) and once by
   the browser suite's own compositing check. Both must stay green, and neither passes by
-  accident; see `docs/deep-field-theme.spec.md`.
+  accident; see `docs/deep-field-theme.spec.md`. RC-90 also refuses a **literal hex outside a
+  palette block**: a colour either names a token or it does not ship. Do not rely on the
+  rendering gate to catch that — `visual_hierarchy` walks a fixed selector list, and a measured
+  mutant (one rule's `--card` hardcoded) left the entire browser suite green at 1213/0 while
+  collapsing visibly under Light.
 - **Never commit personal memory.** The repository is public and contains none. Your facts
   live in your own store. Only `memory/.gitkeep` belongs in the tree.
 
