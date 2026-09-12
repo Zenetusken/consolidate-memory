@@ -691,7 +691,7 @@ now holds. The title this section first carried counted the first and read as th
 
 **Every count in this section is as of the revision it was measured at, and each tally names
 its own total: `passed + failed` IS the suite size then.** The size grows with every check
-added — `1767 → 1775 → 1777 → 1778` from `main`'s base to HEAD, the branch's three
+added — `1767 → 1775 → 1777 → 1778` from `main`'s base to `eb7f7a0`, the branch's three
 check-adding commits carrying +8, +2 and +1 — so the durable claim is always the **failure
 set** (which check failed, and whether it failed *alone*), never the count. A count quoted in
 the present tense has been re-measured at the current revision; the ones in failures 1–6 carry
@@ -774,7 +774,7 @@ survives there only as the declared size and as the comment `whole suite GREEN (
 applied to this row. The row records a **state**, never a tree.
 
 Both write legs unfixed was caught — reverting the two `apply_pointer` call sites alone
-leaves **1772 passed, 6 failed** at HEAD's 1778 (measured; a **different** six from the
+leaves **1772 passed, 6 failed** at 1778 (measured; a **different** six from the
 anchor-drop run the ladder note above also calls six-failure: their `passed` fields collide at
 `1772` while their failure sets do not — this one is #1 #2 #4 #5 #7 #11, the anchor-drop's is
 #1 #2 #3 #5 #7 #11, so #3 and #4 swap. A total identifies a size, never a run). Exactly one
@@ -783,7 +783,7 @@ is not inert: with the bare stem its `planned` index carries the duplicate, so t
 verdict is computed against a pessimistic model of a write that will not happen that way, and
 a pull that should be admitted can be refused. The pin now asserts the anchored key appears
 **once per leg** (`_stems_gs.count("personal--grp-fact") == 2`), and that closes the hole:
-reverting the plan loop alone at HEAD leaves **1777 passed, 1 failed**, the sole ✗ being the
+reverting the plan loop alone at 1778 leaves **1777 passed, 1 failed**, the sole ✗ being the
 call-site assertion — so the axis this row called undetected is detected, by the check the row
 itself prompted. Label the revision on such a claim: "nothing" was true of the draft's set and
 false of HEAD's, and the two differ by exactly the clause that fixed it.
@@ -856,7 +856,7 @@ upstream of #7 and dropping the injection made it fail on the mutant as intended
 re-measured independently at the revision then shipping 1777 checks: **the gc check the sole
 failure** (1776 passed, 1 failed), while the same revert with the check left in its pre-review
 position is green (**1777 passed, 0 failed**). **Both arms were then reproduced again at
-HEAD's 1778 checks** — the gc revert at **1777 passed, 1 failed** (#9 the sole failure)
+1778 checks** — the gc revert at **1777 passed, 1 failed** (#9 the sole failure)
 against a `1778 passed, 0 failed` control, and the pre-review-position arm green at
 **1778 passed, 0 failed** — so neither the discrimination nor the vacuity is an artifact of the revision it
 was measured at. The vacuity is therefore reproducible on demand, not merely recorded.
@@ -922,7 +922,7 @@ boundary rather than a plausible one.
 the same reason a half-applied fix does — the check set *looked* complete. Mutant-measured,
 the run-side revert alone (the anchor dropped from the projected cost, `cost_old` still
 anchored) left the suite at **1777 passed, 0 failed** — at the 1777-check revision, before #11
-existed: entirely green. (The same revert at HEAD's 1778 checks is 1777/1, #11 the sole
+existed: entirely green. (The same revert at 1778 checks is 1777/1, #11 the sole
 failure; the two figures are the same finding at two revisions, not a contradiction.) It was found by
 running the mutant the review's own `cost_new` finding implies, at the **second** site that
 finding named — the review listed both (`cost_old = line_cost.get(_bk, 0)` in
