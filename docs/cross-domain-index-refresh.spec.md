@@ -889,13 +889,15 @@ the bare line's length ≡ 1 (mod 4) the count does not move at all, so the comp
 equal and no item is built. The line qualifier carries weight for a second, independent
 reason: a mirror whose body is in sync can still carry an anchored line written from an older
 description — `_body_hash` is body-only — and the `elif` reads the **line**, so being in sync
-does not disqualify it. Its delta is its own drift's: zero across the four-wide `ceil(chars/4)`
-window the anchored line lands in, *negative* while the current description falls short of that
-window and positive once it has grown past it — and the window contains the equal-length point,
-so its other three lengths, shorter than the anchored description or longer, tie at zero too.
-And it is four wide only while both descriptions sit under the 88-character hook cap, since
-`_pointer_line` keeps `desc[:88]` — past it, two descriptions sharing that prefix derive one
-**identical** line and book no item at all, however much the current one is the longer. The
+does not disqualify it. Its delta is its own drift's: zero across the `ceil(chars/4)` window
+the anchored line lands in, *negative* while the current description falls short of that window
+and positive once it has grown past it — and the window contains the equal-length point, so its
+other lengths, shorter than the anchored description or longer, tie at zero too. That window is
+four consecutive lengths — fewer only where the run starts below an empty description — unless
+its `ceil` bucket is the one the cap's saturation lands in, where every longer description
+joins it instead, since `_pointer_line` keeps `desc[:88]` — past it, two descriptions sharing
+that prefix derive one **identical** line and book no item at all, however much the current one
+is the longer. The
 quantifier was too wide on **both** axes; the mechanism and the direction are not. The
 un-anchored `cost_new` builds a phantom STALE-mirror item whose
 delta is **negative**, and `_plan_pull` **adds** deltas to the running index — so the phantom
