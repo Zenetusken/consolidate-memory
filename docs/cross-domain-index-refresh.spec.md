@@ -320,12 +320,20 @@ moves.
    | | real index delta | what the readers replay |
    |---|---|---|
    | pre-fix (bare matcher, appends) | 35 tok | 36 — matches |
-   | post-fix (anchored matcher, replaces in place) | **17 tok** | **36 — over-counts by 19** |
+   | matcher fixed, accounting NOT (the write-only state) | **17 tok** | **36 — over-counts by 19** |
+   | **shipped** (both legs: anchored matcher + anchored lookup) | **17 tok** | **17 — matches** |
+
+   The middle row is the state a write-only fix would have shipped — it is *not* this
+   branch, and the row is kept because it is the measurement that forces the fourth site:
+   with the matcher anchored, `cost_old` resolves to the real 19-tok line and the replay
+   lands on the real 17-tok delta. The two rows together are the argument for shipping the
+   writer and its model as one change.
 
    Pre-fix the phantom `cost_new - 0` happened to match reality, because the append
    really did grow the index by a full line. That is *why* Leg B was invisible: an
-   accidentally-correct estimate. Fixing the matcher alone flips it into a ~30 tok
-   overstatement per cross-domain refresh — so **the four sites are one change, not two.**
+   accidentally-correct estimate. Fixing the matcher alone flips it into the over-count the
+   table's middle row measures — **19 tok, against a real 17-tok delta**, i.e. a refresh
+   booked at more than double its real cost — so **the four sites are one change, not two.**
    `_plan_pull` is a model of the writer; shipping the writer without its model would
    create a fresh instance of the very defect class `evict-accounting-truth.spec.md` F3
    exists to prevent.
@@ -335,9 +343,11 @@ moves.
 A pin is only a pin if it **fails on pre-fix code**. That rule is stated as a test, not a
 slogan.
 
-**What was actually implemented — eight checks, all in `tests/smoke.py`'s v0.4.10 groups
-fixture.** The table is deliberately narrower than the design intent below it: a spec that
-lists pins it did not write is the drift this repo's gates exist to catch.
+**What was actually implemented — ten checks, nine in `tests/smoke.py`'s v0.4.10 groups
+fixture and #10 in the v0.1.81 near-ceiling beacon fixture** (see failure 5 for why it
+cannot live with the others). The table is deliberately narrower than the design intent
+below it: a spec that lists pins it did not write is the drift this repo's gates exist to
+catch.
 
 | # | pin | leg it covers | discriminates? |
 |---|---|---|---|
@@ -349,6 +359,8 @@ lists pins it did not write is the drift this repo's gates exist to catch.
 | 6 | the anchored key **spares** a same-stem native while the bare stem evicts it | A (contract) | ⚪ guard — passes pre-fix by construction |
 | 7 | a **real MISSING delivery** into a same-stem collision preserves the native pointer | A (outcome, both legs) | ✅ fails pre-fix; measured |
 | 8 | a **real same-domain refresh** stays replace-in-place at its original position | A (same-domain arm) | ⚪ guard — fails **alone** under the position mutant |
+| 9 | the **gc report** does not call a LIVE cross-domain mirror dead (its probe uses the mirror key) | A (GC's dead-probe) | ✅ fails pre-fix; **placement is load-bearing** — §9.1, failure 5 |
+| 10 | an **in-sync cross-domain mirror** books **no** phantom refresh delta — the held projection still ceiling-holds the missing fact | B (beacon, *both* legs at once) | ✅ on the **half-fixed** tree · ⚪ on the original pre-fix tree — §9.1, failure 6 |
 
 #6 and #8 are the two **guards** in the set, marked as such rather than counted as pins:
 `apply_pointer` and `_mirror_key`'s same-domain arm are both unchanged by this fix, so
@@ -357,6 +369,17 @@ change breaks an invariant this fix depends on. #6 pins the premise behind #4's
 implication (that the anchored key cannot match a native's bare line); #8 pins the
 same-domain arm the fix must leave alone. Both are mutant-verified, and §9.1 records a
 claim about #8's mutant that measurement forced me to withdraw.
+
+**#10 discriminates a state the other nine cannot see, and that is the whole reason it
+exists.** It is green on the original pre-fix tree (where the bare lookup dropped the item
+entirely rather than mis-costing it) and green on this branch — it fails only on the
+**half-fixed** tree, `cost_old` anchored and `cost_new` left bare, which is exactly the
+regression the first cut of this cycle's own fix introduced and the review caught. Without
+it, re-applying the obvious half of §7's Leg B re-ships a defect with the entire suite
+green. Its boundary is **measured, not chosen**: the index is padded so the missing fact is
+held by exactly one token, and the relief a bare `cost_new` would grant is computed off the
+two real pointer lines and asserted positive — so a future change that made the two costs
+equal trips an assert instead of silently un-arming the pin.
 
 - **Primary pin (#2) — reword refresh.** *Required, not optional:* the body-only form alone
   cannot distinguish "replaced in place" from "never written", so it would go green if the
@@ -416,7 +439,10 @@ the booked delta *equals* the real index delta — §8.3's growth-model table).
 The rule above ("fails on pre-fix code") was applied to all five pins, and **three of them
 still passed green against an unfixed site.** All three are recorded because the rule as
 stated is not strong enough to catch them, and because the third is the one a whole-change
-revert structurally cannot see.
+revert structurally cannot see. The review added two more entries after that count was
+written — **failure 5**, a fourth pin that passed green, and **failure 6**, a regression no
+pin could see at all. The "three times" of this section's title is therefore a historical
+measurement, not a current one; the set it applies to is now ten checks.
 
 **Failure 1 — the tautology.** The first MISSING-leg pin called
 `apply_pointer(text, line, "personal--grp-fact")` — *passing the correct key by hand*. The
@@ -496,12 +522,48 @@ future reader looks to decide whether the check is load-bearing. The measured mu
 the suite's **only** failure, which is both true and a stronger claim than the withdrawn
 one: #8 guards *placement*, not key derivation. Corrected in the comment and in the table.
 
-All four were found by **running a mutant to completion**, never by reading the pin — the
+All six were found by **running a mutant to completion**, never by reading the pin — the
 fourth not by a failing pin but by running a mutant its comment named and the suite never
-reached. That is §6's rule (`f84135c`) holding again in this repo: *a gate reviewed by
+reached, and the sixth by tracing what *consumes* the number a finding changed rather than
+how large the change was. That is §6's rule (`f84135c`) holding again in this repo: *a gate reviewed by
 reading it yields nothing — the gate is precisely the thing that looks correct.* Every fix
 here is one conjunct — a `bool(...)`, a `.count(...) == 2` — which is the whole argument for
 preferring the cheap structural assertion over the plausible-looking one.
+
+**Failure 5 — the pin a later fixture disarmed (placement, not assertion).** #9 (the
+gc-DEAD probe) was first written *after* #7 in the same groups fixture. It was measured
+**vacuous twice**: it stayed green with its probe reverted to the bare stem. The first
+repair attempt — injecting a `holders` row by SQL, on the theory that the probe's
+precondition was unmet — changed nothing. Instrumentation then showed the precondition
+**was** met (`holders=['pc','pa']`, `san='pc'`); the cause was found by grep, one line:
+`_native_c_gs = _storec_gs / "grp-fact.md"`, planted by **#7's own setup** in the same
+fixture. With a bare same-stem native on disk, *both* the correct and the reverted probe
+find a file, so the check could not discriminate **in either direction**. Moving it
+upstream of #7 and dropping the injection made it fail on the mutant as intended
+(measured: 1774 passed, 2 failed).
+
+The rule this yields is about position, not assertion: **a pin's power depends on the
+fixture state at its execution point, and a neighbouring check's setup can silently consume
+that state.** The assertion was right the whole time; it was simply standing downstream of
+the evidence it needed. Neither re-reading the check nor re-running it in isolation could
+have shown this — only reverting the site and watching the pin stay green.
+
+**Failure 6 — the regression no pin could see (a half-applied fix).** The first cut of
+§7's Leg B anchored `cost_old` in both readers and left `cost_new` on the bare stem. The
+full suite was **green** on that tree. The finding was initially graded *low* on magnitude —
+the two costs differ by the anchor text, ~2 tokens — and that grade was wrong for a reason
+worth recording: the severity of a token count is not its magnitude but **what reads it**.
+Tracing the consumers showed those 2 tokens flip the beacon's `elif cost_old and cost_new !=
+cost_old` to **true for every in-sync cross-domain mirror**, because an un-anchored
+`cost_new` is systematically *lighter* than the anchored line it is compared against. That
+builds a phantom STALE-mirror item whose delta is **negative**, and `_plan_pull` **adds**
+deltas to the running index — so the phantom *relieves* the ceiling and books a MISSING fact
+as absorbable that a real `--pull` holds. The beacon advertises a pull the run refuses: the
+same divergence class the fix exists to close, re-created by half of it.
+
+The repair is structural — both costs now derive from one `_bk`, computed first, so they
+cannot be derived from different quantities — and #10 pins it at a **measured** one-token
+boundary rather than a plausible one.
 
 Full suite per round: smoke / concurrency / simulate_accumulation / mypy / manifests /
 browser / pre-push gate; one review agent per PR; the finder re-verifies every fix.
@@ -543,9 +605,10 @@ heals to a single line in one refresh. Three limits, all honest:
 suite's own execution surface (`passed + failed + 1 == N + 27`) so an orphaned section can
 never print green. It is a count of the full suite *including itself*, so adding the eight
 checks here without bumping it leaves smoke red — the pin is designed to fail loudly rather
-than let the count drift. This change moves it **`1740 + 27` → `1748 + 27`**, in two steps:
-`1746 + 27` for the first six checks, then `1748 + 27` when #7 and #8 landed. Any future
-addition to this spec's check set moves it again.
+than let the count drift. This change moves it **`1740 + 27` → `1750 + 27`**, in three
+steps: `1746 + 27` for the first six checks, `1748 + 27` when #7 and #8 landed, and
+`1750 + 27` for the two checks the review added afterwards (#9, the gc-DEAD probe, and
+#10, the phantom-delta pin). Any future addition to this spec's check set moves it again.
 
 **The second member of §8.2's family — a *live* bare-keyed mirror — is the one input where
 the anchored matcher is strictly less tidy. Measured, scoped, and not reachable here.**
