@@ -864,13 +864,18 @@ full suite was **green** on that tree. The finding was initially graded *low* on
 the two costs differ by the anchor text, ~2 tokens — and that grade was wrong for a reason
 worth recording: the severity of a token count is not its magnitude but **what reads it**.
 Tracing the consumers showed those 2 tokens flip the beacon's `elif cost_old and cost_new !=
-cost_old` to **true for every in-sync cross-domain mirror whose domain is two or more
-characters long**, because an un-anchored `cost_new` is systematically *lighter* than the
-anchored line it is compared against — the anchor then adds ≥4 chars, which always crosses a
-`ceil(chars/4)` boundary. A **one-character** domain is the sole exception the domain grammar
-admits: the anchor adds exactly 3, and where the bare line's length ≡ 1 (mod 4) the count does
-not move at all, so the comparison stays equal and no item is built. The quantifier was too
-wide; the mechanism and the direction are not. That
+cost_old` to **true for every cross-domain mirror whose index line is still the current
+derivation's and whose domain is two or more characters long**, because an un-anchored
+`cost_new` is systematically *lighter* than the anchored line it is compared against — the
+anchor then adds ≥4 chars, which always crosses a `ceil(chars/4)` boundary. A **one-character**
+domain is the sole exception the domain grammar admits: the anchor adds exactly 3, and where
+the bare line's length ≡ 1 (mod 4) the count does not move at all, so the comparison stays
+equal and no item is built. The line qualifier carries weight for a second, independent
+reason: a mirror whose body is in sync but whose anchored line was written from an older
+description sits **inside** the set, not outside it — measured, its delta runs *positive*
+while the current description is the longer, ties to zero across a four-character window, and
+only then turns negative. The quantifier was too wide on **both** axes; the mechanism and the
+direction are not. That
 builds a phantom STALE-mirror item whose delta is **negative**, and `_plan_pull` **adds**
 deltas to the running index — so the phantom *relieves* the ceiling and books a MISSING fact
 as absorbable that a real `--pull` holds. The beacon advertises a pull the run refuses: the

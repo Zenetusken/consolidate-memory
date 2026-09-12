@@ -212,8 +212,8 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
     # The old note here claimed the conservative direction unconditionally; that is false for
     # the fat arm, and it is not hypothetical: it is exactly the shape review F2a caught when
     # cost_new was derived un-anchored (a mechanically fatter cost_old, ~2 tok for a `work--`
-    # anchor), which made every in-sync cross-domain mirror carrying a two-or-more-character
-    # domain a phantom negative delta.
+    # anchor), which made that phantom NEGATIVE delta the steady state — on the mirrors the
+    # derivation below scopes, and only those: an index line still the current derivation's.
     idx_text = _safe_read_text(store / "MEMORY.md") or ""
     # PR-#94 review F4: build the anchor→cost map ONCE — per-fact _index_line_cost re-split the
     # whole index every call (O(relevant × index_bytes); measured 4.5s only at a pathological
@@ -241,14 +241,14 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
         #     dropped (docs/cross-domain-index-refresh.spec.md §2 Leg B).
         #   cost_new — un-anchored it is ~2 tok LIGHTER than the line a pull writes, so once
         #     cost_old resolved, `cost_new != cost_old` was TRUE for every in-sync cross-domain
-        #     mirror carrying an index line: the anchor adds ≥3 chars, which
+        #     mirror carrying an index line: the anchor adds ≥4 chars, which
         #     crosses a ceil(chars/4) boundary for any domain of two or more characters. (A
         #     one-character domain — legal; identifiers.DOMAIN_RE admits it — adds exactly 3
         #     and can land inside one, leaving the comparison EQUAL and no item built, phantom
         #     or otherwise. It is the sole exception on the domain-length axis, which is why
-        #     that axis is scoped rather than universal.) "In-sync" is scoped for a second,
-        #     independent reason — a mirror carrying an OLDER anchored line can match the bare
-        #     derivation's token count exactly, and then no item is built at all. The phantom row
+        #     that axis is scoped rather than universal.) The governing condition is LINE
+        #     provenance, not body sync, for a second, independent reason: the collision lives
+        #     INSIDE the in-sync set — an older line ties, so no item is built. The phantom row
         #     was the steady state, not an edge case, and its delta is NEGATIVE — it
         #     RELIEVES the running index in _plan_pull, so `held` under-states what a run
         #     would hold and the beacon over-advertises absorption. Fixing one leg unmasked
