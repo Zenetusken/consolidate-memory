@@ -8,7 +8,7 @@ This does, in the same stdlib-only style as smoke.py / validate_manifests.py, an
 its own CI job (`docs`) rather than inside the 7-way test matrix — the answers do not vary
 by Python version or OS.
 
-Five invariants:
+Invariants:
 
 1. **Badge ↔ manifest.** The shields version badge is a hand-written URL that nothing else
    reads, so it silently drifts from plugin.json. `release.sh` rewrites both in the same
@@ -19,13 +19,16 @@ Five invariants:
 3. **Manual anchors are balanced.** The README uses explicit `<a id="…">` markers because
    GitHub's auto-slugifier handles emoji-prefixed headings badly, which means a typo can
    silently orphan a section (or a link) with no error anywhere.
-4. **The theme table matches the shipped theme set, both ways** — a palette added to the
+4. **The README keeps documenting the cross-project workflow** — the command names smoke.py
+   pins; a restructure that drops one is caught here rather than by a reader who follows a
+   command that no longer exists.
+5. **The theme table matches the shipped theme set, both ways** — a palette added to the
    toggle without a docs row, and a row left behind by a palette that no longer ships.
-5. **Every live doc states the current release**, closing the version-sweep class: the sweep
+6. **Every live doc states the current release**, closing the version-sweep class: the sweep
    is a manual grep, and three consecutive releases left statements behind (v0.4.14 missed
    five files; v0.4.24 missed four of the same ones). This runs on every PR, not just at
    release time, so a doc can no longer advertise a superseded version.
-6. **The committed preview matches a fresh render**, closing the same class for a *generated*
+7. **The committed preview matches a fresh render**, closing the same class for a *generated*
    doc: `docs/previews/nocturne/` is produced by `tests/dashboard_fixture.py` and committed,
    and nothing regenerates it on its own. It had drifted for two releases — v0.4.22 changed
    the reason-string format and v0.4.24 the dimmed-node CSS, and the README's linked preview

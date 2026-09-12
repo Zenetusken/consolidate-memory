@@ -273,10 +273,11 @@ design.
 ## The QA companion (dream-beta-tester)
 
 - **Two co-equal detectors.** The deterministic oracle (`beta_checks.py`) runs the
-  dream skill's own read-only scripts against a repo and checks 9 invariant
-  families (quantity registry, cycle identity, recommendation coherence, safe
-  suggestion, closure reachability, calibration, remediation coherence,
-  maintenance-pivot coherence, capture completeness) — exit 1 iff any FAIL,
+  dream skill's own read-only scripts against a repo and checks its registered
+  invariant families (`FAMILIES`): quantity registry, cycle identity,
+  recommendation coherence, safe suggestion, closure reachability, calibration,
+  remediation coherence, maintenance-pivot coherence, capture completeness,
+  persist gate — exit 1 iff any FAIL,
   missing inputs → SKIP never crash, absent store = valid clean outcome. The
   judgment-lens pass (`/dream-beta-test`) promotes or downgrades each oracle
   finding and reduces every lens hit to a reproducible deterministic check or a
