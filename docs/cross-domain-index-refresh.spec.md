@@ -642,19 +642,27 @@ the present tense has been re-measured at the current revision; the ones in fail
 their total in the prose around them.
 
 **The first version of that ladder was wrong in exactly the way the paragraph above warns
-about.** It read `1772 → 1776 → 1777 → 1778`, whose first two rungs are `passed` fields — 1772
-is the passed count of the six-failure write-side mutant run, 1776 the passed count at 1777 —
-and so are precisely what the paragraph above says a suite size is not (`passed + failed` IS
-the size). It also contradicted **failure 5's note** below, which says in terms that 1776 is a
-clean run of no committed revision. The corrected rungs are the four committed D6 literals:
+about.** It read `1772 → 1776 → 1777 → 1778`, and neither of its first two rungs is a
+*committed* suite size — for two different reasons, which is why one diagnosis did not cover
+both. 1776 is a `passed` field quoted where a size belongs (the 1777-check revision's size is
+1777). 1772 carries **two** roles this cycle: the `passed` count of the six-failure write-side
+mutant run (1772 + 6 = 1778), and the **suite total** of the five-check working tree whose D6
+literal is `1745 + 27`. As a rung in a size ladder it can only have meant the second — which
+puts it in the same limb as the phantom `1746 + 27` rung below: a genuine size, measured on a
+tree no revision carries. It also contradicted **Failure 5**'s note below — the paragraph
+opening "One note for a reader arriving from `git log`" (grep that phrase: **two** hits, the
+note and this citation of it, which is why the count is stated rather than the phrase called
+unique; the anchor this sentence first carried, "failure 5's note", also hit twice and never
+the note — itself, and §10's past-tense *mention* of it). That note says in terms that 1776 is
+a clean run of no committed revision. The corrected rungs are the four committed D6 literals:
 `1740 + 27` on `main`, then `1748 + 27`, `1750 + 27`, `1750 + 28`.
 
 *(That reference was a line distance when this paragraph was written — "111 lines below" — and
-it went stale within the same review round, because the fixes above it moved the target. Three
-lines, no more: the same silent-short drift §7 measures for `file:line` citations. It is
-recorded here rather than quietly patched because it is §10's rule on derived figures catching
-an author who had just written it, and because the corrected number would have gone stale again
-on the next edit. Name the anchor; the anchor is greppable and the number never was.)*
+it went stale within the same review round, because the fixes above it moved the target: the
+same silent-short drift §7 measures for `file:line` citations. It is recorded here rather than
+quietly patched because it is §10's rule on derived figures catching an author who had just
+written it, and because the corrected number would have gone stale again on the next edit.
+Name the anchor; the anchor is greppable and the number never was.)*
 
 **Failure 1 — the tautology.** The first MISSING-leg pin called
 `apply_pointer(text, line, "personal--grp-fact")` — *passing the correct key by hand*. The
@@ -667,8 +675,9 @@ dict with the last call's arguments. The beacon's own fixed call contributes not
 cost_old is 0 — the `elif cost_old and …` drops the item — so on a beacon revert the dict
 simply still held the **run side's** rows, and every conjunct of the check was satisfied by
 the wrong call. Measured, with `session_beacon.py` reverted and `sync_global.py` left
-fixed — on a **1772-check working tree**, a total no committed blob carries (see §9.1's ladder
-note; this is the same basis as its `1746 + 27` rung):
+fixed — on a **1772-check working tree** (D6 `1745 + 27`), a total no revision carries: the
+only blob that does sits in a dropped stash, reachable from no ref (see §9.1's ladder note;
+this is the same basis as its `1746 + 27` rung):
 
 ```
 old pin shape  →  1772 passed, 0 failed     (beacon entirely unfixed, suite green)
@@ -765,13 +774,14 @@ was measured at. The vacuity is therefore reproducible on demand, not merely rec
 
 One note for a reader arriving from `git log`: commit `b023d02`'s message carries "1774 passed,
 2 failed" — 1776 — which is a clean run of **no** committed revision of this work: `b023d02`
-itself ships 1777 checks (its own D6 literal is `1750 + 27`) and its parent `ed4c67f` ships
-1775. It was therefore taken on a tree one check above `ed4c67f`'s 1775 — *which* check, and
-whether it was temporary or simply an interim state of `b023d02`'s own work, the message does
-not say and no committed blob can settle. That unresolvable basis is the point, and it is the
-same working-tree-between-revisions basis that produced the phantom `1746 + 27` rung below. The
-figures above are the reproducible form of that claim. The message is published and cannot be
-amended, which is why the correction lives here.
+itself ships 1777 checks (its own D6 literal is `1750 + 27`), and its parent is `dba2a49` — a
+docs-only commit carrying `1748 + 27` = 1775, inherited from `ed4c67f`, *its* parent — so the
+tree it descends from ships 1775. It was therefore taken on a tree one check above that 1775 —
+*which* check, and whether it was temporary or simply an interim state of `b023d02`'s own
+work, the message does not say, and nothing that survives settles it. That unresolvable basis
+is the point, and it is the same working-tree-between-revisions basis that produced the phantom
+`1746 + 27` rung below. The figures above are the reproducible form of that claim. The message
+is published and cannot be amended, which is why the correction lives here.
 
 The rule this yields is about position, not assertion: **a pin's power depends on the
 fixture state at its execution point, and a neighbouring check's setup can silently consume
@@ -854,9 +864,13 @@ heals to a single line in one refresh. Three limits, all honest:
   `re.search(r"\]\(([^)]+)\.md\)", …)` call in each of `local_ingress.py`,
   `session_beacon.py`, and `sync_global.py` (which has two: the cost-map build and the
   `mirror_stems` tally) — none compares
-  targets against each other; the one message that reads like a detector, `archive_index`'s
-  "duplicate archive target" (`index_admission.py:98`), governs `SHIPPED.md` — a different
-  file, as its own docstring says. A duplicate can therefore persist silently.
+  targets against each other. The tree does hold duplicate detectors, and naming them with
+  their scope is what makes this sweep checkable rather than asserted: `local_ingress`'s
+  `_duplicate_reserved` and `memory_status.frontmatter_duplicate_reserved` both refuse a
+  duplicate **reserved key** in frontmatter — a codec concern, never a pointer target. The one
+  message that reads like a pointer detector, `archive_index`'s "duplicate archive target"
+  (`index_admission.py:98`), governs `SHIPPED.md` — a different file, as its own docstring
+  says. A duplicate pointer can therefore persist silently.
 - **`cm local rebuild-index --apply --confirm rebuild-local-index` is the immediate
   repair** — it emits one `_pointer_line` per file from a glob, so N duplicate lines
   collapse to 1 regardless of anchors. It is compatible with the fix: it calls
@@ -885,10 +899,12 @@ literals.
 
 **The rule covers derived figures, not only quoted literals, and that distinction is what let
 three instances of one basis survive into the review round.** Besides the `1746 + 27` rung
-above, failure 5's note compared `b023d02`'s reported 1776 against "the 1775 checks that
-revision ships" (`b023d02` ships 1777), and failures 2 and 3 both date their measurements to
-"the revision then shipping 1772 checks" — a total no committed `smoke.py` blob carries
-(`git rev-list --all`, every blob, no 1772). In each, a **sum observed in a run** was given a
+above, failure 5's note compared the 1776 reported *in* `b023d02`'s message against "the 1775
+checks that revision ships" (`b023d02` ships 1777), and failures 2 and 3 both date their
+measurements to "the revision then shipping 1772 checks" — a total no *revision* carries: all
+226 refs-reachable `smoke.py` blobs were checked, and the single blob whose D6 literal is
+`1745 + 27` sits in a dropped stash (`188a326`), reachable from no ref — which is precisely
+what makes it a working tree rather than a revision. In each, a **sum observed in a run** was
 **revision's name**. The quoted halves were all correct; only the comparison term was inferred,
 which is why reading for wrong literals finds none of them — and why the rule is stated here as
 the inference to refuse: *read a measurement's total as evidence of what the tree was, never of

@@ -12539,12 +12539,14 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # gone). No fleet store carries this collision today, so this is the ONLY coverage.
         # The COUNT is load-bearing, not belt-and-braces: TWO write legs call apply_pointer
         # (the plan loop and the execute loop), and the execute loop's correct key masks a
-        # plan-loop regression from every outcome-shaped pin in this file — measured, a
-        # site-1-only revert (sync_global.py:1451 back to the bare stem, :1483 untouched)
-        # was invisible to every outcome-shaped pin in this file: the suite ran GREEN, in
-        # the revision before this count clause existed. With the clause, that revert fails
-        # THIS check and nothing else (measured: 1776 passed, 1 failed at the 1777-check
-        # revision this clause first landed on; 1777 passed, 1 failed at HEAD's 1778).
+        # plan-loop regression from every outcome-shaped pin in this file — measured, with
+        # that one omission applied and this check absent, a site-1-only revert
+        # (sync_global.py:1451 back to the bare stem, :1483 untouched) leaves the suite
+        # green. With the clause, that revert fails THIS check and nothing else (measured:
+        # 1776 passed, 1 failed at b023d02's 1777; 1777 passed, 1 failed at HEAD's 1778).
+        # Name no revision for the green run: the clause and the fix landed together in
+        # ed4c67f (1775), so that state is a tree, and the subtraction above is how it is
+        # stated.
         # So presence alone cannot see a single-leg revert; the anchored key must appear
         # ONCE PER LEG
         # (measured call order, both legs: upsert:'grp-fact' [same-domain, legitimate] →
