@@ -251,7 +251,7 @@ names a **greppable anchor**, not a line number:
 | `_line_cost_run.get(_j_key` (`_line_cost_run` lookup) | B | **yes** |
 | `line_cost.get(_bk` (`line_cost` lookup, `session_beacon.py`) | B | **yes** |
 | `store / f"{_g_mkey}.md"` (gc DEAD report) | A — identity use, not a matcher | **yes** — fixed here, pinned by §9 #9 |
-| `f"]({evict_stem}.md)" not in ln` (plan + execute evict filters) | — | no |
+| `f"]({evict_stem}.md)" not in ln` ×2 (plan + execute evict filters) | — | no |
 | `f"]({name}.md)" not in ln` (gc strip) · `f"]({_k}.md)" not in ln`, `f"]({name})" not in ln` (`cm_ops` revoke + quarantine) | — | no |
 | `apply_pointer(idx, ptr, stem)`, `apply_pointer(at, ptr, stem)`, `f"]({stem}.md)" not in ln` ×2 (`local_ingress.py` upsert / archive / forget) | — | no |
 | `apply_pointer(catalog, pointer, stem)`, `apply_pointer(idx_text, ptr, stem)`, `apply_pointer(idx, ptr, rstem)`, `f"]({stem}.md)" not in ln` ×4 (`canonical_ingress.py` catalog writes) | — | no |
@@ -326,16 +326,35 @@ collected, and it is also the case `_mirror_canonical_path` refuses to resolve: 
 content and so its mirror is orphaned. `_orphans` then scans against the same live-stem set
 the mass-delete guard uses — `_local_stems`, built from `iter_canonical_stems_for_gc`
 and widened by the facts pairs just below — so `--gc --apply` reclaims
-precisely the mirrors the ack sweep would have. Two clauses carry that guarantee and are worth
-naming, because citing the container alone leaves the claim reading safe after a change that
-would void it: the exclusion sits *inside* the enumerator — the
-`if … .get("status") … in ("tombstoned", "superseded", "expired"):` guard `continue`s on that
-status, which is what keeps the tombstone's own
-stem **out** of the live set (delete that and the mirror stops reading as orphaned while this
-paragraph still reads true) — and `--gc --apply` calls `ack_tombstoned_mirrors` itself
-(`:3077-3078`), before the orphan scan, so the containment is by *call* and not merely by set
-agreement. Left un-run, they persist until someone runs gc: a deferred reclaim, never an
-unreclaimable one.
+precisely the mirrors the ack sweep would have. **One clause carries that guarantee for the
+cross-domain shape, and it is worth naming**, because citing the container alone leaves the
+claim reading safe after a change that would void it: the exclusion sits *inside* the
+enumerator — the `if … .get("status") … in ("tombstoned", "superseded", "expired"):` guard
+`continue`s on that status, which is what keeps the tombstone's own stem **out** of the live
+set (delete that and the mirror stops reading as orphaned while this paragraph still reads
+true).
+
+**The second carrier does not reach the cross-domain case, and saying it did was an
+over-claim.** `--gc --apply` does call `ack_tombstoned_mirrors` itself before the orphan scan
+— but that name is a two-line back-compat alias for `reconcile_inactive_mirrors`, and the
+aliased body probes `ctx.canonical_domain_dir / f"{f.stem}.md"` with `reg_status` built under
+`WHERE domain_id=?` (`ctx.domain_id`). A cross-domain mirror's file stem **is** its mirror key
+(`tools--mag-pb`), so that probe resolves in *this* domain for a file that can only exist in
+the foreign one — a miss by construction, and the registry lookup misses with it. Measured on
+the real function against a store holding a cross-domain mirror of a tombstoned foreign
+canonical: `{'ok': True, 'acked': 0}`, transaction never reached — while the same store plus a
+same-domain tombstone pair acks `1` (the control that makes the null a discrimination), and
+`_orphans()` on it returns both stems. So it is the no-op the census above already defers, not
+a backstop: **read this clause as a hole, because a maintainer who takes it for a second
+carrier will delete the exclusion above believing the call still covers it — which is the same
+inversion, one level up.**
+
+**And "never unreclaimable" is bounded by one more guard.** gc refuses outright when there are
+no admissible canonicals ("cannot distinguish that from all-canonicals-deleted"), so in a store
+whose every canonical is dead, gc reclaims nothing and the mirrors wait for the domain to
+regain a live fact. A deliberate trade, not a defect — but it makes the honest form of the
+claim *a deferred reclaim, never an unreclaimable one **while a live canonical exists***.
+Left un-run, they persist until someone runs gc.
 
 ## 8. Invariants — conserved, and changed
 
@@ -672,8 +691,8 @@ re-measured independently at the revision then shipping 1777 checks: **the gc ch
 failure** (1776 passed, 1 failed), while the same revert with the check left in its pre-review
 position is green (**1777 passed, 0 failed**). **Both arms were then reproduced again at
 HEAD's 1778 checks** — the gc revert at **1777 passed, 1 failed** (#9 the sole failure)
-against a `1778 passed, 0 failed` control, and the relocated-check arm green at **1778 passed,
-0 failed** — so neither the discrimination nor the vacuity is an artifact of the revision it
+against a `1778 passed, 0 failed` control, and the pre-review-position arm green at
+**1778 passed, 0 failed** — so neither the discrimination nor the vacuity is an artifact of the revision it
 was measured at. The vacuity is therefore reproducible on demand, not merely recorded.
 
 One note for a reader arriving from `git log`: commit `b023d02`'s message carries "1774 passed,
@@ -709,7 +728,9 @@ boundary rather than a plausible one.
 `cost_new`; the run planner's stayed unread, and the asymmetry survived a review round for
 the same reason a half-applied fix does — the check set *looked* complete. Mutant-measured,
 the run-side revert alone (the anchor dropped from the projected cost, `cost_old` still
-anchored) left the suite at **1777 passed, 0 failed**: entirely green. It was found by
+anchored) left the suite at **1777 passed, 0 failed** — at the 1777-check revision, before #11
+existed: entirely green. (The same revert at HEAD's 1778 checks is 1777/1, #11 the sole
+failure; the two figures are the same finding at two revisions, not a contradiction.) It was found by
 running the mutant the review's own `cost_new` finding implies, at the **second** site that
 finding named — the review listed both (`cost_old = line_cost.get(_bk, 0)` in
 `session_beacon.py` and `_line_cost_run.get(_j_key` in `sync_global.py`)
@@ -769,10 +790,18 @@ heals to a single line in one refresh. Three limits, all honest:
 suite's own execution surface (`passed + failed + 1 == N + 28`) so an orphaned section can
 never print green. It is a count of the full suite *including itself*, so adding the eleven
 checks here without bumping it leaves smoke red — the pin is designed to fail loudly rather
-than let the count drift. This change moves it **`1740 + 27` → `1750 + 28`**, in four steps:
-`1746 + 27` for the first six checks, `1748 + 27` when #7 and #8 landed, `1750 + 27` for the
-two the review added next (#9, the gc-DEAD probe, and #10, the phantom-delta pin), and
-`1750 + 28` when #11 (the run-side `cost_new` pin) landed. **Only the sum is load-bearing** —
+than let the count drift. This change moves it **`1740 + 27` → `1750 + 28`**. The branch's
+three check-adding commits carry it as `1748 + 27` (ed4c67f — #1–#8, the write leg and its
+accounting, **+8**), `1750 + 27` (b023d02 — #9, the gc-DEAD probe, and #10, the phantom-delta
+pin, +2) and `1750 + 28` (eb7f7a0 — #11, the run-side `cost_new` pin, +1).
+
+The check count has a finer grouping than the history does — the first six, then #7/#8, then
+#9/#10, then #11 — and an earlier draft of this paragraph quoted it as a ladder, with
+`1746 + 27` as its second rung. **That literal existed in no commit**: the first six checks and
+#7/#8 landed together in ed4c67f, so `git log -S'1746 + 27' -- tests/smoke.py` comes back
+empty. The grouping is real but it is *authorship*, not history, and quoting it as a rung
+sends a maintainer auditing the branch to a revision that never shipped. Quote the committed
+literals. **Only the sum is load-bearing** —
 the split between the two addends is bookkeeping, and it is the total that must equal the
 reported count (measured at HEAD: `1778 passed, 0 failed` against `1750 + 28`). #11 moved the
 *second* addend because no check landed between #10 and it; a maintainer copying either

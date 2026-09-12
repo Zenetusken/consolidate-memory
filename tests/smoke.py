@@ -12518,8 +12518,12 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # `bool(_cline2_gs)` — measured, dropping `anchor=_j_key` from the pointer-line
         # construction at both write legs gives `cost_new=16 written=None nrow=1 nline=0`:
         # no anchored line exists to compare at all, so this check dies on the guard, and
-        # #2/#3/#4/#7 fire alongside it. Those are that side's primary detectors; this
-        # check is the read side's.
+        # #1/#2/#3/#5/#7/#11 fire alongside it (measured: 1772 passed, 6 failed). Those are
+        # that side's primary detectors; this check is the read side's. #4 is NOT among
+        # them, and the reason is worth keeping: #4 counts `apply_pointer`'s KEY argument
+        # (the spy above records `_stem`), while this mutant leaves the key anchored and
+        # changes only the rendered line — so a list written from the fix's *shape* rather
+        # than from a run gets it wrong in both directions at once.
         check("v0.4.10 groups: the pull planner books the ANCHORED cost_new — the line the "
               "writer wrote (a bare-stem cost_new is ~2 tok light and relieves the ceiling)",
               bool(_row_gs) and bool(_cline2_gs)
@@ -12539,8 +12543,10 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # site-1-only revert (sync_global.py:1451 back to the bare stem, :1483 untouched)
         # was invisible to every outcome-shaped pin in this file: the suite ran GREEN, in
         # the revision before this count clause existed. With the clause, that revert fails
-        # THIS check and nothing else (measured: 1776 passed, 1 failed). So presence alone
-        # cannot see a single-leg revert; the anchored key must appear ONCE PER LEG
+        # THIS check and nothing else (measured: 1776 passed, 1 failed at the 1777-check
+        # revision this clause first landed on; 1777 passed, 1 failed at HEAD's 1778).
+        # So presence alone cannot see a single-leg revert; the anchored key must appear
+        # ONCE PER LEG
         # (measured call order, both legs: upsert:'grp-fact' [same-domain, legitimate] →
         # 1451 → 1483).
         # NB "the bare stem is absent" would be WRONG here — the canonical upsert in this
