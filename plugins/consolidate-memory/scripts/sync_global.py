@@ -1338,17 +1338,26 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
 
 
 def _pointer_line(name: str, fm: dict, anchor: str = "") -> str:
-    """The canonical index pointer line for a fact (pure — testable). The `description`
-    is the recall hook; it comes from a global fact (possibly crafted) and is written
-    into the always-loaded index, so sanitize it: collapse control bytes/newlines to a
-    space (a stray newline/ESC would break or inject into the index line), then truncate."""
+    """The canonical index pointer line for a fact (pure — testable). Three values are
+    interpolated into the always-loaded index and all of them come from a possibly-crafted
+    store, so each is fenced at its own layer: `name`, upstream — every row source applies
+    `_safe_stem` to the file stem before it reaches here; `description`, here — collapse
+    control bytes/newlines to a space (a stray newline/ESC would break or inject into the
+    index line), then truncate; `scope`, here — admitted against the canonical vocabulary."""
+    from fact_schema import SCOPES   # deferred, like _admissible_records
     desc = fm.get("description", "").strip().strip('"')
     # Strip control bytes (line-break/ESC injection) AND markdown link/bracket chars so a
     # crafted description can't inject a link or a spoofed `](name.md)` target into the
     # always-loaded index line.
     desc = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]()<>]", " ", desc).split())
     hook = (desc[:88] + "…") if len(desc) > 88 else desc
-    scope = fm.get("scope", "")
+    # `scope` is the line's ONE other free-form interpolation, and it was unguarded: a
+    # crafted `scope: evil](http://x)` rendered a LIVE link into the always-loaded index.
+    # Render the vocabulary value, never the field — a non-vocabulary scope has no meaning
+    # to show, so the suffix can carry nothing but a known literal. (local_ingress's
+    # sibling writer renders from vocabulary too, and refuses a bad scope at write time.)
+    _raw_scope = str(fm.get("scope") or "").strip().strip('"')
+    scope = _raw_scope if _raw_scope in SCOPES else ""
     href = anchor or name
     return f"- [{name}]({href}.md) — {hook}" + (f" [{scope}]" if scope else "")
 

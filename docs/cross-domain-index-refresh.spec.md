@@ -936,6 +936,58 @@ outcome-shaped pin, and both were found by reverting one thing at a time and wat
 Full suite per round: smoke / concurrency / simulate_accumulation / mypy / manifests /
 browser / pre-push gate; one review agent per PR; the finder re-verifies every fix.
 
+### 9.2 What the pin work reached on the way — an unguarded interpolation in the index line
+
+§9.1's rule (*run the mutant to completion; never read the pin*) was being applied to
+`_pointer_line`'s length expressions when it surfaced a defect on a **different root cause**, so
+it is recorded here as a finding of this cycle rather than as part of the mirror fix. The function
+interpolates three values from a store its own docstring calls *possibly crafted*, and two are
+fenced: `name`, upstream — `_safe_stem`'s docstring names exactly this threat ("markdown/link
+injection payloads in a crafted name") and both row sources apply it before a stem arrives;
+`description`, in-function, by the four expressions the `window:` pins measure. **`scope` was
+interpolated raw.** Measured:
+
+```
+_pointer_line("foo", {"description": "d", "scope": "evil](http://x)"}, anchor="bar--foo")
+→ '- [foo](bar--foo.md) — d [evil](http://x)]'      # count("](") == 2 — a LIVE link
+```
+
+— a live markdown link in the always-loaded index line, reachable from **every call site of
+`_pointer_line`**: the `canonical_ingress` arms, `local_ingress`'s reconcile arm, `sync_global`'s
+pull plan and execute loops, its pull item cost map, the fleet-tax advisory and the utility
+report, and the beacon's cost projection. Only the promote path validated a scope at all, and
+only against the two scopes promote can write. The miss has a
+legible shape, and it is `_safe_stem`'s again: `local_ingress._pointer`'s docstring calls
+`_pointer_line` *"the global injection sanitizer"* — written to justify that sibling's *weaker*
+escaping — so the function's reputation was doing the work its code did not.
+
+**The fix keys the suffix to the vocabulary and renders the vocabulary value, never the field.**
+A non-vocabulary scope is **dropped**, not sanitized — it has no meaning to show, so the suffix
+can carry nothing but a known literal. Absent/blank values still render no suffix, and a
+non-string YAML value (`scope: [x]`) becomes a no-op instead of an `AttributeError` mid-pull
+(`str(...)` before `.strip()`). `local_ingress._pointer` already did both — renders from
+vocabulary and refuses a bad scope at write time — so this is the global side catching up to its
+sibling, not a new convention.
+
+**Three pins, each run against the real suite at this revision (D6 `1750 + 42`, 1792 checks).**
+Two are the **sole** failure under their own mutation; the third shares its run with the other
+two, which is what a single-expression revert looks like:
+
+| pin | mutation | that run |
+|---|---|---|
+| a non-vocabulary `scope` never reaches the line (4 fixtures: link payload, list, `None`, int) | revert to the raw interpolation — reds **all three** pins | `1789 passed, 3 failed`, nothing else |
+| a quoted/padded vocabulary scope still renders | the normalization dropped | `1791 passed, 1 failed` — **this pin alone** |
+| a case variant is **not** admitted | admission case-folded | `1791 passed, 1 failed` — **this pin alone** |
+
+**One candidate pin was declined, on a measurement.** An empty scope rendering *no* suffix is a
+real branch, and a pin on it discriminates one mutant. But that mutant (an always-rendered
+suffix) also reddens the six `window:` pins and the pre-existing `hook strips markdown link
+chars` check — `1783 passed, 9 failed`, that pin among them — because a suffix change moves the
+line's fixed prefix, which is the phase quantity the window pins measure; and the bracket-absence
+a pin on it would assert is already asserted, on the same shape, by that bracket check. Declined
+on that measurement rather than on taste, and recorded here so the same measurement is available
+to overrule it.
+
 ## 10. Ship shape
 
 Additive and backward-compatible — no schema, manifest, or CLI change → **patch**.
@@ -947,6 +999,13 @@ the accounting it feeds (§8.2), so a write-only PR would ship a known new defec
 fifth, the `--gc` dead-probe, is the same root cause reached from a reporting surface; it
 rides along with the change rather than being depended upon by it. The dependency decides
 the four.
+
+**One more site rides along, on a different root cause** (§9.2): `_pointer_line`'s raw `scope`
+interpolation, in a file this change already edits, found by this cycle's own mutation work. It
+is independent of the mirror fix in both directions — neither is a precondition of the other —
+and it ships here rather than in a branch of its own because a measured injection into the
+always-loaded tier does not wait on scheduling. Counted with it the branch's surface is six sites
+in two files; the "not splittable" argument above is still the four.
 
 **Repair of an already-damaged store.** The fix converges — `apply_pointer` replaces the
 first match and drops the rest, so a store carrying a stale line *above* the correct one
@@ -990,13 +1049,17 @@ heals to a single line in one refresh. Three limits, all honest:
   are the same sentence read at two scopes.
 
 **The suite-total pin must move in this PR.** `tests/smoke.py`'s D6 anti-rot check pins the
-suite's own execution surface (`passed + failed + 1 == N + 28`) so an orphaned section can
-never print green. It is a count of the full suite *including itself*, so adding the eleven
-checks here without bumping it leaves smoke red — the pin is designed to fail loudly rather
-than let the count drift. This change moves it **`1740 + 27` → `1750 + 28`**. The branch's
-three check-adding commits carry it as `1748 + 27` (ed4c67f — #1–#8, the write leg and its
+suite's own execution surface (`passed + failed + 1 == N + M`) so an orphaned section can
+never print green. It is a count of the full suite *including itself*, so adding checks without
+bumping it leaves smoke red — the pin is designed to fail loudly rather than let the count
+drift. This change moves it **`1740 + 27` → `1750 + 28`**, and the branch's later check-adding
+commits carry it on to **`1750 + 42`**, the current literal and the one §9.2's three pins land
+with. Every rung below is read from a committed blob, never from a message — the rule the
+paragraph after this one earned: `1748 + 27` (ed4c67f — #1–#8, the write leg and its
 accounting, **+8**), `1750 + 27` (b023d02 — #9, the gc-DEAD probe, and #10, the phantom-delta
-pin, +2) and `1750 + 28` (eb7f7a0 — #11, the run-side `cost_new` pin, +1).
+pin, +2), `1750 + 28` (eb7f7a0 — #11, the run-side `cost_new` pin, +1), `1750 + 37` (4f0f7da —
+the sanitizer's unowned axes, **+9**), `1750 + 39` (3907215 — the declined pin's reinstatement
+and the axis-pin split, +2), `1750 + 42` (§9.2's three scope pins, +3).
 
 The check count has a finer grouping than the history does — the first six, then #7/#8, then
 #9/#10, then #11 — and an earlier draft of this paragraph quoted it as a ladder, with

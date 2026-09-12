@@ -576,6 +576,32 @@ check("window: the saturated tail is a PHASE property — at `K mod 4 = 0` the c
 check("window: so is the FLOOR clip — the aligned phase's first bucket reaches four, where this "
       "fixture's phase clips it to two, so 'clipped short' is a phase-bound claim",
       _tie_window("fooo", "bar--foo", 1) == [1, 2, 3, 4])
+# The pointer line has THREE untrusted interpolations, and `scope` was the unguarded one: unlike
+# `name` (fenced upstream by `_safe_stem`) it is free-form frontmatter, and unlike `description`
+# nothing sanitized it — a crafted `scope: evil](http://x)` rendered a LIVE markdown link into the
+# always-loaded index, reachable through every fact-file ingress. The fix keys the suffix to the
+# canonical vocabulary, so the render can only ever be a known literal. These pins hold it to the
+# shapes that reach that key: a non-vocabulary value (dropped — including a non-STRING YAML value,
+# which would otherwise crash the pull at `.strip()` rather than merely print), a quoted/padded
+# vocabulary value (normalized like the sibling writer, then rendered), and a case variant
+# (dropped — the vocabulary is exact strings, so a near-miss must not render). A fourth shape —
+# an absent scope rendering no suffix at all — is deliberately NOT pinned here: measured, every
+# mutant that reddens such a pin also reddens the six window pins above, and the bracket-absence
+# it would assert is already `smoke.py`'s `hook strips markdown link chars` check on the same
+# shape (that check also reddens the injection-axis pin this family made redundant).
+check("pointer: a non-vocabulary `scope` never reaches the index line — neither a "
+      "link-injection payload nor a non-string YAML value",
+      [sg._pointer_line("foo", {"description": "d", "scope": s}, anchor="bar--foo")
+       for s in ("evil](http://x)", ["user-global"], None, 42)] ==
+      ["- [foo](bar--foo.md) — d"] * 4)
+check("pointer: a quoted/padded vocabulary `scope` still renders — normalized like the sibling "
+      "local writer, then admitted",
+      sg._pointer_line("foo", {"description": "d", "scope": ' "user-global" '})
+      == "- [foo](foo.md) — d [user-global]")
+check("pointer: a case variant of a vocabulary `scope` is NOT admitted — the vocabulary is "
+      "exact strings, so the render stays a known literal",
+      sg._pointer_line("foo", {"description": "d", "scope": "USER-GLOBAL"})
+      == "- [foo](foo.md) — d")
 # frontmatter parses folded/block scalars (description: >-) instead of storing ">-"
 check("frontmatter: folds block scalar value",
       sg._frontmatter("---\nname: x\ndescription: >-\n  hello\n  world\nmetadata:\n  scope: user-global\n---\nb")["description"] == "hello world")
@@ -15195,7 +15221,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 39)
+      passed + failed + 1 == 1750 + 42)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

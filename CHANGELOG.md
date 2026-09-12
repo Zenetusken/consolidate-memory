@@ -81,6 +81,25 @@ refresh-gated and does not cover every shape; §10 of the spec scopes what a sin
 can and cannot collapse.
 
 The design-of-record, with the review's corrections to its own claims, is
+**A third finding, from the same round's pin work — the index line's own sanitizer had an
+unguarded interpolation.** `_pointer_line` builds every pointer line, and `local_ingress`'s
+sibling writer calls it *"the global injection sanitizer"* in its own docstring. It interpolates
+three values from a possibly-crafted store: `name` is fenced upstream (`_safe_stem`, whose
+docstring names exactly this threat, and which both row sources apply), `description` is
+sanitized in-function — and `scope` was interpolated **raw**, so a crafted
+`scope: evil](http://x)` rendered a live markdown link into the always-loaded index line, on
+every path that turns frontmatter into an index pointer (the `canonical_ingress` arms, the local
+reconcile path, `sync_global`'s pull loops and its cost maps). The suffix is now keyed to the
+canonical vocabulary (`fact_schema.SCOPES`) and rendered **from the vocabulary, never from the
+field**, so it cannot carry anything but a known literal; a non-vocabulary value is **dropped**,
+not sanitized — it has no meaning to show — which also makes a non-string YAML value
+(`scope: [x]`) a no-op instead of an `AttributeError` mid-pull. `local_ingress`'s sibling writer
+already did both: renders from vocabulary, and refuses a bad scope at write time. Three checks;
+reverted to the raw interpolation, the suite reddens **exactly those three and nothing else**
+(`1789 passed, 3 failed` against `1792 passed, 0 failed` fixed) — the hole had no detector at all
+before this branch. The suite-total anti-rot constant moves `1750+39` → `1750+42`.
+
+The design-of-record, with the review's corrections to its own claims, is
 `docs/cross-domain-index-refresh.spec.md`. No CLI flag moved, no schema or manifest
 changed, and legacy stores are unaffected → **patch**.
 
