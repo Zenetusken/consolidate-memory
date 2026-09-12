@@ -23,12 +23,15 @@ stem — and got it wrong, in two directions:
   (the plan loop and the execute loop) now pass the same anchored value; they must agree
   or the executed write diverges from the planned one.
 - **Leg B, the read path.** Both cost maps are keyed by the link *target* (the namespaced
-  anchor) and were looked up by the bare stem, so `cost_old` pinned at `0`. Run-side that
-  booked a full line for a refresh where only the replaced delta applies, holding pulls
-  the index had room for; beacon-side the `elif cost_old and …` went falsy and the STALE
-  item was never built at all. Fixing the matcher alone flips the append into a replace,
-  so the **accidentally-correct** estimate becomes a 19-tok overstatement against a real
-  17-tok delta — which is why the writer and its accounting model ship as one change.
+  anchor) and were looked up by the bare stem, so `cost_old` pinned at `0`. One confusion
+  made two failures: the MISSING arm booked a **full line** (`cost_new - 0`) for a refresh
+  where only the replaced delta applies, holding pulls the index had room for, and the
+  STALE arm's `elif cost_old and …` went falsy — the item was **never built at all**, out
+  of the projection rather than merely mis-costed. Pre-fix the first error was invisible
+  precisely because it was accidentally right: the writer really did append a full line.
+  Fixing the matcher alone flips that append into a replace and moves the write underneath
+  the unchanged model — measured on the §1 fixture, **+27 tok booked against a real +4** —
+  which is why the writer and its accounting model ship as one change.
 
 Two findings from the adversarial review round, both on the read side:
 
@@ -38,24 +41,37 @@ Two findings from the adversarial review round, both on the read side:
   the way the writer does, and an *uncomputable* key (a `--` ambiguity) is treated as
   unknown rather than dead — that arm must not guess.
 - **A phantom refresh delta, introduced by the first cut of the Leg B fix.** Anchoring
-  `cost_old` while leaving `cost_new` bare made the two differ by exactly the anchor text
-  (~2 tok) for an **in-sync** cross-domain mirror, firing the STALE branch for a mirror
-  that needed no refresh. The item's delta is **negative**, and `_plan_pull` *adds* deltas
-  — so the phantom **relieved** the ceiling and booked a missing fact as absorbable that a
-  real `--pull` holds: the beacon advertising a pull the run refuses, the same divergence
-  class the fix exists to close, re-created by half of it. Both costs now derive from one
-  key computed once, so they cannot be derived from different quantities.
+  `cost_old` while leaving `cost_new` bare made the two differ by the anchor text for an
+  **in-sync** cross-domain mirror, firing the STALE branch for a mirror that needed no
+  refresh. The condition was not even drift-gated: the anchor adds ≥3 chars, which moves
+  `ceil(chars/4)` on a line of pointer length, so the phantom row was the **steady state**
+  for every cross-domain mirror carrying an index line. Its delta is **negative**, and
+  `_plan_pull` *adds* deltas — so it **relieved** the running index and **under-stated**
+  `held`, advertising a missing fact as absorbable that a real `--pull` holds: the same
+  divergence class the fix exists to close, re-created by half of it. Both costs now derive
+  from one key computed once, so they cannot be derived from different quantities.
 
-**Ten checks, all measured rather than asserted.** Nine in the v0.4.10 groups fixture and
+**Eleven checks, all measured rather than asserted.** Ten in the v0.4.10 groups fixture and
 one in the v0.1.81 near-ceiling beacon fixture — `held` is only observable near the
 ceiling, which is why the phantom-delta check cannot live with the others. Six of the eight
 in the fix commit fail on pre-fix code; the other two are **guards**, marked as such
 because `apply_pointer` and `_mirror_key`'s same-domain arm are unchanged by the fix and
-neither *can* fail pre-fix. The phantom-delta check discriminates the **half-fixed** state
+neither *can* fail pre-fix. The gc-DEAD probe (#9) is discriminating too: reverted to the
+bare canonical stem, it fails as that run's **only** failure (1777
+passed, 1 failed) — which is the placement its first draft needed, since a later fixture's
+same-stem native silenced it (§9.1, failure 5). The phantom-delta check discriminates the **half-fixed** state
 and nothing else — green on both the fully-fixed and the original pre-fix trees — and its
 boundary is measured: the index is padded so the missing fact is held by exactly one token,
 and the relief a bare `cost_new` would grant is computed off the two real pointer lines and
-asserted positive. The suite-total anti-rot constant moves `1740+27` → `1750+27`.
+asserted positive. **The run side's `cost_new` was the one field nothing read**: the only
+assertion on the planner's item tuple was `cost_old` (index 3), so the half-fixed state had
+a detector on the beacon's projected cost and none on the run's. The review named both sites
+and both were fixed in this branch — but only one was pinned, and only a mutation round
+could show it. The new check reads index 2 against the cost of the line the run actually
+**wrote** (not a re-derivation), pinning the plan/execute agreement itself; the run-side
+revert alone leaves it the suite's **only** failure (1777 passed, 1 failed), and with the
+check absent every other one is green under that revert. The suite-total anti-rot constant
+moves `1740+27` → `1750+28`.
 
 **Blast radius, measured:** 14 namespaced mirrors across 11 projects, 0 duplicated stems
 across 21 indexes, 0 dead index pointers, 0 same-stem collisions fleet-wide — the fleet is

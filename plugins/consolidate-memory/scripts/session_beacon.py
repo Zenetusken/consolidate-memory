@@ -238,9 +238,13 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
         #     and the `elif` below was unreachable: every cross-domain STALE refresh silently
         #     dropped (docs/cross-domain-index-refresh.spec.md §2 Leg B).
         #   cost_new — un-anchored it is ~2 tok LIGHTER than the line a pull writes, so once
-        #     cost_old resolved, `cost_new != cost_old` was TRUE for every IN-SYNC
-        #     cross-domain mirror: a phantom refresh item at a NEGATIVE delta, i.e. the
-        #     beacon advertising a pull the run refuses. Fixing one leg unmasked the other.
+        #     cost_old resolved, `cost_new != cost_old` was TRUE for every cross-domain
+        #     mirror carrying an index line — in sync or not: the anchor adds ≥3 chars, and
+        #     on a line of pointer length that always moves ceil(chars/4). The phantom row
+        #     was the steady state, not an edge case, and its delta is NEGATIVE — it
+        #     RELIEVES the running index in _plan_pull, so `held` under-states what a run
+        #     would hold and the beacon over-advertises absorption. Fixing one leg unmasked
+        #     the other.
         # Same read-leg site as sync_global's cost map; the two MUST key alike or `held`
         # diverges from the run (the F1 divergence the replay-by-law note above closes).
         _bk = _mirror_key(domain_id, str(fm.get("domain") or ""), n)

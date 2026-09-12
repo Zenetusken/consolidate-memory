@@ -244,6 +244,8 @@ lookup target — not merely the `apply_pointer` callers:
 | `canonical_ingress.py:499`, `:543`, `:1063` | — | no |
 | `sync_global.py:1442`, `:1464` (evict filters) | — | no |
 | `sync_global.py:3195` (gc strip) · `cm_ops.py:2198`, `:167` | — | no |
+| `sync_global.py:3300` (gc DEAD report) | A | **yes** — fixed here, pinned by §9 #9 |
+| `canonical_ingress.py:988` (inactive-canonical sweep) | — | no — cleared by *unreachability*; see below |
 | `local_ingress.py:344`, `:404` (index strip) | — | no |
 
 The rows below the divide were cleared **by execution, not reading**, in review:
@@ -251,14 +253,30 @@ the evict filters cannot receive a namespaced stem (a mirror is refused as an ev
 target at `sync_global.py:2263`, so `evict_stem` is always a bare local stem); gc's strip
 and `cm group remove`'s revoke both build their key from `f.stem` and match correctly;
 `local_ingress`'s three entry points (`forget`/`archive`/`upsert`) all refuse a managed
-mirror before writing; the `canonical_ingress` sites operate inside one domain's catalog
-where the namespaced form cannot arise.
+mirror before writing; the `canonical_ingress` sites *listed above* operate inside one
+domain's catalog where the namespaced form cannot arise (`:988` does not, and is treated
+separately below).
 
 **A correction to the first draft's rationale:** the `local_ingress` rows were justified
 as "native store, no mirrors". That is false — the native store *does* hold mirrors. They
 are safe for the reason just given: all three entry points refuse a managed mirror first.
 A right conclusion resting on a wrong reason is the kind of thing that survives review
 until someone relies on the reason.
+
+**One row is cleared by a different argument, and it is called out for that reason.**
+`canonical_ingress.py:988` takes a **native-store** filename stem (`f.stem` — a mirror key
+for a cross-domain mirror) and resolves it in *this domain's* catalog:
+`ctx.canonical_domain_dir / f"{f.stem}.md"`. For a cross-domain mirror that path cannot
+exist, and the `reg_status` lookup beside it is built under `WHERE domain_id=ctx.domain_id`
+(`:960`), so it cannot hold either. Both halves of the arm are therefore **guaranteed
+no-ops** — not correct, *unreachable*. It has never fired for a cross-domain mirror, and
+making it fire means resolving the canonical from the mirror's own frontmatter, which is
+the pair-key reconstruction `_orphans(..., pair_keys=True)` already performs (`:2711`).
+That is a behavior change to a path nothing has ever exercised, with a blast radius nothing
+has measured; it is deliberately **left to its own cycle** rather than folded in here. The
+distinction is worth the ink because "no" with a reason that does not generalize is exactly
+what F1's gap was made of: the census cleared a *class* on a claim that held for the rows
+it had listed.
 
 ## 8. Invariants — conserved, and changed
 
@@ -315,35 +333,52 @@ moves.
    "a supported repair removes it" sentence is true only of the dead line this paragraph is
    about.
 3. **The write's growth model changes, so the accounting model must move with it.**
-   Measured against the real `apply_pointer`:
+   Measured against the real `apply_pointer` and the real `est_tokens`, on a named fixture
+   — the §1 case: `python-ruff-mypy-gate`, ctx domain `python-repos`, canonical domain
+   `tools`, its stale description reworded into the correction. One index line exists
+   beforehand (28 tok); the line a refresh writes is 33 tok anchored, 31 un-anchored. Both
+   reader arms are modelled, because they fail differently:
 
-   | | real index delta | what the readers replay |
-   |---|---|---|
-   | pre-fix (bare matcher, appends) | 35 tok | 36 — matches |
-   | matcher fixed, accounting NOT (the write-only state) | **17 tok** | **36 — over-counts by 19** |
-   | **shipped** (both legs: anchored matcher + anchored lookup) | **17 tok** | **17 — matches** |
+   | state | real index delta | MISSING arm books | err | STALE arm books | err |
+   |---|---|---|---|---|---|
+   | pre-fix | **+32** (append) | 31 — `cost_new - 0` | −1 | **0** — item dropped | **−32** |
+   | matcher fixed, accounting NOT (the write-only state) | **+4** (replace) | **31** | **+27** | **0** — still dropped | **−4** |
+   | **shipped** (both legs: anchored matcher + anchored lookup) | **+4** | 5 | +1 | 5 | +1 |
 
    The middle row is the state a write-only fix would have shipped — it is *not* this
-   branch, and the row is kept because it is the measurement that forces the fourth site:
-   with the matcher anchored, `cost_old` resolves to the real 19-tok line and the replay
-   lands on the real 17-tok delta. The two rows together are the argument for shipping the
-   writer and its model as one change.
+   branch — and it is the measurement that forces the fourth site. Three things to read off
+   the grid, and the third is the one this table omitted until review round 2:
 
-   Pre-fix the phantom `cost_new - 0` happened to match reality, because the append
-   really did grow the index by a full line. That is *why* Leg B was invisible: an
-   accidentally-correct estimate. Fixing the matcher alone flips it into the over-count the
-   table's middle row measures — **19 tok, against a real 17-tok delta**, i.e. a refresh
-   booked at more than double its real cost — so **the four sites are one change, not two.**
-   `_plan_pull` is a model of the writer; shipping the writer without its model would
-   create a fresh instance of the very defect class `evict-accounting-truth.spec.md` F3
-   exists to prevent.
+   **The MISSING arm's pre-fix −1 is why Leg B was invisible.** `cost_new - 0` booked the
+   whole line, and the writer really did append a whole line. A correct answer from a wrong
+   model survives any amount of review that only checks the answer.
+
+   **The write-only +27 is that same booking meeting a replace.** `cost_old` is looked up
+   by the bare stem in an anchor-keyed map, so it is pinned at **0**; anchoring the matcher
+   alone moves the write underneath an unchanged model. The magnitude is structural rather
+   than tuned: the booking is a full line, and a full line has no ceiling.
+
+   **The STALE arm's −32 is the worse error and the MISSING column cannot show it.**
+   `elif cost_old and cost_new != cost_old` cannot fire while `cost_old` is pinned at 0, so
+   a reworded refresh built **no item at all** — out of the projection entirely, not merely
+   mis-costed. That is the arm the beacon runs.
+
+   Anchoring the lookup collapses both columns at once. `cost_new - cost_old` now subtracts
+   two lines for the *same* fact under the *same* anchor, which differ only in the hook —
+   and `_pointer_line` truncates the hook at 88 chars (`sync_global.py:1350`), so a replayed
+   refresh is bounded above by the hook's own weight (~22 tok) instead of by a whole line.
+   The shipped row's residual is +1 here, the estimate's own rounding granularity,
+   cross-checked by the review on a second fixture (real 0/booked 0, +7/+8, −2/−2 — ≤2 tok,
+   in both directions). So **the four sites are one change, not two:** `_plan_pull` is a
+   model of the writer, and shipping the writer without its model would create a fresh
+   instance of the very defect class `evict-accounting-truth.spec.md` F3 exists to prevent.
 
 ## 9. Verification
 
 A pin is only a pin if it **fails on pre-fix code**. That rule is stated as a test, not a
 slogan.
 
-**What was actually implemented — ten checks, nine in `tests/smoke.py`'s v0.4.10 groups
+**What was actually implemented — eleven checks, ten in `tests/smoke.py`'s v0.4.10 groups
 fixture and #10 in the v0.1.81 near-ceiling beacon fixture** (see failure 5 for why it
 cannot live with the others). The table is deliberately narrower than the design intent
 below it: a spec that lists pins it did not write is the drift this repo's gates exist to
@@ -361,6 +396,7 @@ catch.
 | 8 | a **real same-domain refresh** stays replace-in-place at its original position | A (same-domain arm) | ⚪ guard — fails **alone** under the position mutant |
 | 9 | the **gc report** does not call a LIVE cross-domain mirror dead (its probe uses the mirror key) | A (GC's dead-probe) | ✅ fails pre-fix; **placement is load-bearing** — §9.1, failure 5 |
 | 10 | an **in-sync cross-domain mirror** books **no** phantom refresh delta — the held projection still ceiling-holds the missing fact | B (beacon, *both* legs at once) | ✅ on the **half-fixed** tree · ⚪ on the original pre-fix tree — §9.1, failure 6 |
+| 11 | the pull planner books the **anchored** `cost_new` — exactly the cost of the line the run wrote | B (run — the *other* half of #10's axis) | ✅ fails on the **run-side half-fixed** tree, and **alone** — §9.1, failure 7 |
 
 #6 and #8 are the two **guards** in the set, marked as such rather than counted as pins:
 `apply_pointer` and `_mirror_key`'s same-domain arm are both unchanged by this fix, so
@@ -381,6 +417,26 @@ held by exactly one token, and the relief a bare `cost_new` would grant is compu
 two real pointer lines and asserted positive — so a future change that made the two costs
 equal trips an assert instead of silently un-arming the pin.
 
+**#11 is #10's other half, and it was the uncovered site.** The half-fixed tree failure 6
+describes has two faces — the beacon's `cost_new` (`session_beacon.py:251`, covered by #10)
+and the run planner's (`sync_global.py:2260`, covered by nothing). Both were **fixed** in
+this branch; the finding that prompted the check is that only one of them was *pinned*, so
+the axis had a single detector standing on half of it. Measured on the run-side revert alone
+(the anchor dropped from the projected cost, `cost_old` left anchored): **#11 is the only
+failing check in the entire suite** (1777 passed, 1 failed) — equivalently, with #11 absent
+every one of the other 1777 checks is blind to it.
+
+That blindness is a **field** gap, not a fixture gap, and the distinction is the reason it
+survived a review round. The planner's item tuple is `(name, status, cost_new, cost_old)`,
+and the only assertion on it read index **3**; a change to index **2** was invisible *by
+position*. #4's lesson — count the calls, don't detect the key — has a counterpart here:
+**assert the field, don't detect the tuple.** #11 reads index 2 against ground truth the run
+itself produced, the line the writer actually wrote (`_cline2_gs[0]`, already pinned to
+exactly one line by #2), rather than re-deriving the expected value from the same helper the
+code calls. So it pins the plan/execute *agreement* — that the planner books the cost of the
+line the writer writes — which is the contract this whole leg is about, and it stays true if
+`_pointer_line`'s format ever changes.
+
 - **Primary pin (#2) — reword refresh.** *Required, not optional:* the body-only form alone
   cannot distinguish "replaced in place" from "never written", so it would go green if the
   index write were skipped entirely (the `continue` at `:1482`/`:1529` on an admission
@@ -392,10 +448,13 @@ equal trips an assert instead of silently un-arming the pin.
   They do **not** pin the exact booked delta against the real index delta; `> 0` is the
   assertion that separates the two behaviours, and it is what was measured failing pre-fix.
   Stating the stronger claim would overstate the pin.
-- **The exact-value form is deliberately absent** and is the honest gap in this set: no pin
-  asserts the booked delta *equals* the real index delta (§8.3's growth-model table). What
-  holds the four sites together today is that #3/#5 fail on a **write-only** fix, not that
-  they measure the delta.
+- **The delta-equality form is still absent** and remains the honest gap in this set: no pin
+  asserts the booked *delta* equals the real index delta (§8.3's growth-model table). #11
+  pins one half of it exactly — the booked `cost_new` equals the line the writer wrote — but
+  that is a plan/execute agreement, not the growth model: measured, the shipped tree still
+  books **+1 against a real +4** on the §8.3 fixture, and nothing fails for it. What holds
+  the four sites together today is that #3/#5 fail on a **write-only** fix, not that they
+  measure the delta.
 
 **Both designed pins are now implemented** (#7, #8), and both were verified the way §9.1's
 first rule demands — against a revert of the specific site each covers, not of the change
@@ -439,10 +498,11 @@ the booked delta *equals* the real index delta — §8.3's growth-model table).
 The rule above ("fails on pre-fix code") was applied to all five pins, and **three of them
 still passed green against an unfixed site.** All three are recorded because the rule as
 stated is not strong enough to catch them, and because the third is the one a whole-change
-revert structurally cannot see. The review added two more entries after that count was
-written — **failure 5**, a fourth pin that passed green, and **failure 6**, a regression no
-pin could see at all. The "three times" of this section's title is therefore a historical
-measurement, not a current one; the set it applies to is now ten checks.
+revert structurally cannot see. The review added three more entries after that count was
+written — **failure 5**, a fourth pin that passed green; **failure 6**, a regression no pin
+could see at all; and **failure 7**, a whole field no pin read. The "three times" of this
+section's title is therefore a historical measurement, not a current one; the set it applies
+to is now eleven checks.
 
 **Failure 1 — the tautology.** The first MISSING-leg pin called
 `apply_pointer(text, line, "personal--grp-fact")` — *passing the correct key by hand*. The
@@ -489,7 +549,7 @@ Two notes on getting *that* discriminator right, both from measurement:
   failed on *correct* code. The spy also observes a legitimate bare-stem call: the
   canonical `upsert` in the same block writes a **same-domain** fact, where `_j_key == name`
   and the bare stem is the correct key. Measured call order, both legs fixed:
-  `upsert:619 'grp-fact'` → `mutate:1451 'personal--grp-fact'` → `mutate:1483
+  `upsert:canonical_ingress.py:499 'grp-fact'` → `mutate:1451 'personal--grp-fact'` → `mutate:1483
   'personal--grp-fact'`. A discriminator that cannot distinguish "correct for a
   same-domain write" from "wrong for a cross-domain one" is not a discriminator.
 
@@ -522,10 +582,11 @@ future reader looks to decide whether the check is load-bearing. The measured mu
 the suite's **only** failure, which is both true and a stronger claim than the withdrawn
 one: #8 guards *placement*, not key derivation. Corrected in the comment and in the table.
 
-All six were found by **running a mutant to completion**, never by reading the pin — the
+All seven were found by **running a mutant to completion**, never by reading the pin — the
 fourth not by a failing pin but by running a mutant its comment named and the suite never
-reached, and the sixth by tracing what *consumes* the number a finding changed rather than
-how large the change was. That is §6's rule (`f84135c`) holding again in this repo: *a gate reviewed by
+reached, the sixth by tracing what *consumes* the number a finding changed rather than how
+large the change was, and the seventh by running that mutant at the *other* site the same
+finding had named. That is §6's rule (`f84135c`) holding again in this repo: *a gate reviewed by
 reading it yields nothing — the gate is precisely the thing that looks correct.* Every fix
 here is one conjunct — a `bool(...)`, a `.count(...) == 2` — which is the whole argument for
 preferring the cheap structural assertion over the plausible-looking one.
@@ -564,6 +625,23 @@ same divergence class the fix exists to close, re-created by half of it.
 The repair is structural — both costs now derive from one `_bk`, computed first, so they
 cannot be derived from different quantities — and #10 pins it at a **measured** one-token
 boundary rather than a plausible one.
+
+**Failure 7 — the field no pin read (failure 6's run-side twin).** #10 pinned the beacon's
+`cost_new`; the run planner's stayed unread, and the asymmetry survived a review round for
+the same reason a half-applied fix does — the check set *looked* complete. Mutant-measured,
+the run-side revert alone (the anchor dropped from the projected cost, `cost_old` still
+anchored) left the suite at **1777 passed, 0 failed**: entirely green. It was found by
+running the mutant the review's own `cost_new` finding implies, at the **second** site that
+finding named — the review listed both (`session_beacon.py:226` and `sync_global.py:2250`)
+and both were fixed in the branch, so only a mutation round could show that one of the two
+had no detector behind it.
+
+This is failure 3's shape one layer up. There, a sibling **leg** masked a regression because
+another call site produced the correct outcome; here, a sibling **field** masked it because
+another index of the same tuple carried the only assertion. Both were invisible to every
+outcome-shaped pin, and both were found by reverting one thing at a time and watching.
+
+
 
 Full suite per round: smoke / concurrency / simulate_accumulation / mypy / manifests /
 browser / pre-push gate; one review agent per PR; the finder re-verifies every fix.
@@ -620,12 +698,17 @@ post-fix, measured on a probe store carrying exactly that shape:
 | after one refresh of the now-foreign canonical | pre-fix | post-fix |
 |---|---|---|
 | index lines | 1 — the stale bare line, href rewritten in place | **2** — the stale bare line survives, the anchored pointer appends beside it |
-| mirror files for that canonical | 1 (the existing one, reused) | **2** — `path` is keyed by mirror key, so `store / f"{mkey}.md"` is a *second* file |
+| mirror files for that canonical | **2** — the pre-existing `{bare}.md`, plus a fresh `{mkey}.md` (the delivery `path` is keyed by the mirror key at *both* revisions — `sync_global.py:2052`, untouched by this diff) | **2** — the same two files |
 
-The pre-fix outcome is accidentally correct — one line, one file — reached because the bare
-matcher overwrote a line that pointed at a mirror which, under the new key, is the wrong
-file. So this is a genuine regression in tidiness, and it is the reason the entry is here
-rather than omitted. It cannot fire for a canonical that is *already* cross-domain (both
+The index cell is the only one that moves, and the file cell is a correction review round 2
+owes this table: pre-fix is **not** "one line, one file". The delivery path was already
+mirror-keyed before this change, so it writes `{mkey}.md` in both revisions; what the bare
+matcher did was overwrite the stale line **in place**, leaving the old `{bare}.md` an
+**orphan** — on disk, unreferenced. Pre-fix is therefore one correct line beside one
+orphan, and post-fix is two lines beside the same two files. The regression is **one line,
+not one file**: the stale bare line survives the refresh and its correction appends below
+it — §1's exact symptom, in the tier every session pays for. It is the reason the entry is
+here rather than omitted. It cannot fire for a canonical that is *already* cross-domain (both
 matchers agree there), and it is **not instantiated**: §5's re-key scan found exactly **one**
 bare-keyed mirror in the fleet whose key no longer reproduces, and it sits in an *unenrolled*
 synthetic QA fixture — local-only, so the delivery path cannot run there. **0 real nodes.**

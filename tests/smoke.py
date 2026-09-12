@@ -12468,6 +12468,12 @@ with _tf73.TemporaryDirectory() as _td_gs:
             _ia_gs.apply_pointer = _real_ap_gs
         _cidx2_gs = (_storec_gs / "MEMORY.md").read_text(encoding="utf-8")
         _cline2_gs = [ln for ln in _cidx2_gs.splitlines() if "](personal--grp-fact.md)" in ln]
+        # The third conjunct (the pre-reword line is gone) is kept but never decides: the
+        # pre-reword line carries the SAME anchor, so "exactly one anchored line" plus "that
+        # line carries the new hook" already exclude it. It restates the property in the
+        # reword form; it is implied by the two conjuncts before it and is never the
+        # deciding clause. Kept because it is the assertion's plain-language statement, not
+        # because it adds coverage.
         check("v0.4.10 groups: a REWORDED cross-domain refresh replaces its pointer in "
               "place (one line, carrying the new hook — NOT the pre-reword line)",
               len(_cline2_gs) == 1
@@ -12482,6 +12488,23 @@ with _tf73.TemporaryDirectory() as _td_gs:
         check("v0.4.10 groups: the pull planner books a cross-domain mirror's REAL line "
               "cost (cost_old > 0 — the bare-stem lookup pinned it at 0)",
               bool(_row_gs) and _row_gs[0][3] > 0)
+        # spec §9 cost_new pin — the SAME tuple's other half. The ACCOUNTING check above reads
+        # index 3 (cost_old); the PLANNED line cost is index 2 and was asserted by NOTHING, so
+        # `_pointer_line(name, fm)` with the anchor dropped from cost_new survived the whole
+        # suite (measured: with that one omission applied and this check absent, the other 1777
+        # checks ran green — 0 failed). The axis is real, not hypothetical: an un-anchored
+        # cost_new is ~2 est tok LIGHTER than the line a pull writes, and a lighter cost_new
+        # books a NEGATIVE delta — which RELIEVES the running index in _plan_pull, the same
+        # phantom-relief arm §8.3 tabulates (the direction that advertises a fact as absorbable
+        # when a real --pull holds it).
+        # Ground truth is the line the run actually WROTE (`_cline2_gs[0]`, pinned to exactly
+        # one line just above), never a re-derivation of it: the planner must book the cost of
+        # the line the writer writes — that plan/execute agreement IS this leg's contract, and
+        # it is what an anchor dropped on either side breaks.
+        check("v0.4.10 groups: the pull planner books the ANCHORED cost_new — the line the "
+              "writer wrote (a bare-stem cost_new is ~2 tok light and relieves the ceiling)",
+              bool(_row_gs) and bool(_cline2_gs)
+              and _row_gs[0][2] == sg.est_tokens(_cline2_gs[0]))
         # spec §9 MISSING-leg pin — at the CALL SITE, not on apply_pointer itself. A unit
         # call passing the namespaced key passes on ANY code (the function was never the
         # defect; the caller's KEY is), so that form cannot discriminate — it is a
@@ -12494,9 +12517,13 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # The COUNT is load-bearing, not belt-and-braces: TWO write legs call apply_pointer
         # (the plan loop and the execute loop), and the execute loop's correct key masks a
         # plan-loop regression from every outcome-shaped pin in this file — measured, a
-        # site-1-only revert leaves the whole suite GREEN (1772/0). So presence alone cannot
-        # see a single-leg revert; the anchored key must appear ONCE PER LEG (measured call
-        # order, both legs: upsert:'grp-fact' [same-domain, legitimate] → 1451 → 1483).
+        # site-1-only revert (sync_global.py:1451 back to the bare stem, :1483 untouched)
+        # was invisible to every outcome-shaped pin in this file: the suite ran GREEN, in
+        # the revision before this count clause existed. With the clause, that revert fails
+        # THIS check and nothing else (measured: 1776 passed, 1 failed). So presence alone
+        # cannot see a single-leg revert; the anchored key must appear ONCE PER LEG
+        # (measured call order, both legs: upsert:'grp-fact' [same-domain, legitimate] →
+        # 1451 → 1483).
         # NB "the bare stem is absent" would be WRONG here — the canonical upsert in this
         # same block legitimately passes it for a same-domain write.
         check("v0.4.10 groups: BOTH sync call sites match on the NAMESPACED key (the bare "
@@ -12504,9 +12531,12 @@ with _tf73.TemporaryDirectory() as _td_gs:
               _stems_gs.count("personal--grp-fact") == 2)
         # spec §9 ACCOUNTING pin, BEACON leg (site 4). The beacon builds the same
         # anchor-keyed cost map and looked it up by the bare stem, so cost_old was 0 and
-        # `elif cost_old and cost_new != cost_old` DROPPED the item — the beacon could not
-        # observe a cross-domain mirror going stale, and its `held` projection under-
-        # reported what the run would hold (the F1 divergence at session_beacon.py:200-206).
+        # `elif cost_old and cost_new != cost_old` DROPPED the item — the beacon's
+        # ACCOUNTING could not observe a cross-domain mirror going stale (its printed
+        # `N mirror(s) carry outdated content` count comes from _store_gaps, which compares
+        # body hashes and was never affected by this leg), and its `held` projection
+        # under-reported what the run would hold (the F1 divergence at
+        # session_beacon.py:200-206).
         # NB the patch target: session_beacon imports _plan_pull at MODULE level (:53), so
         # the beacon's own name must be replaced — patching sg._plan_pull would not reach it
         # (and a spy on the wrong one fails SILENTLY, which is why the capture below is
@@ -15062,7 +15092,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 27)
+      passed + failed + 1 == 1750 + 28)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
