@@ -136,9 +136,17 @@ forward rather than breaking (below).
   **full browser suite was also 1213/0**, five themes and all. It is not blind because the copied
   value matches everywhere (under Light it visibly does not) — `visual_hierarchy` walks a fixed
   selector list and this rule is not on it. So the stylesheet is now pinned to naming tokens only,
-  with the four deliberate theme-*independent* hexes (`#000` mask-gradient stops, whose colour
-  is never read; `#0006` the modal shadow; `#fff` print paper) allowlisted by count **and
-  reason**, so a fifth has to be a decision somebody writes down.
+  with the five deliberate theme-*independent* literals allowlisted by count **and reason**, so a
+  sixth has to be a decision somebody writes down.
+- **…and the check reproached itself before it ever shipped.** Its first version scanned for
+  `#hex`, and this stylesheet also writes colours as `rgba()`: `.modal-bg{background:rgba(0,5,14,.82)}`
+  is a colour that pattern cannot see — the same blind spot the check exists to close,
+  reproduced inside the fix for it. It now scans **every notation a stylesheet can name a colour
+  in** (hex, `rgb()`/`rgba()`, `hsl()`, named-as-a-whole-value), with four further mutants run to
+  prove it: `rgba(12,23,39,.9)` and `color:red` were both invisible and are both caught now,
+  a rule writing `background-color: var(--card)` stays green, and so does the hex case.
+  `hsl()` and named colours measure 0 today and are scanned anyway — the cost is one alternation,
+  and the failure mode of omitting them is a gate that reports green on a hardcoded colour.
 
 Smoke **1767**/0 (+5: mode → palette-block, whitelist ≡ modes, the real rule-pair set and its
 contrast, and no-colour-escapes-the-palette — each one mutation-verified), mypy clean in 42

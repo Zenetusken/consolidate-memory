@@ -2205,21 +2205,43 @@ check("RC-90: every real color/background rule pair meets WCAG AA in every palet
 # rule), smoke was 1766/0 and the FULL browser suite was 1213/0. Note it is not blind because the
 # value matches everywhere — under Light it visibly does not — but because `visual_hierarchy`
 # walks a fixed selector list that never samples this rule. Only a static check can see it.
-# So it gets its own check. A rule may name a token; the only hexes allowed outside a palette
-# block are the four that are deliberately theme-INDEPENDENT, and each carries its reason so
-# that a fifth has to be a decision somebody writes down rather than an edit that quietly passes.
-_hex_outside_palette: dict = {}
+# So it gets its own check. A rule may name a token; the only literals allowed outside a palette
+# block are the five that are deliberately theme-INDEPENDENT, and each carries its reason so that
+# a sixth has to be a decision somebody writes down rather than an edit that quietly passes.
+# Scanned in EVERY notation a stylesheet can name a colour in, not just `#hex`. The first
+# version of this check scanned hex only — and `.modal-bg{background:rgba(0,5,14,.82)}` is a
+# colour that pattern cannot see, i.e. the exact blind spot this block exists to close,
+# reproduced inside the fix for it. `hsl()` and the named colours measure 0 today and are
+# scanned anyway: the cost is one alternation, and the failure mode of omitting them is a gate
+# that reports green on a hardcoded colour. (Named colours are matched only as a declaration's
+# whole value, so a class named `.black-friday` cannot trip it; a named colour buried inside a
+# gradient would still slip through, and there are none.)
+#
+# Scanning this ONE file is enough because the template IS the whole surface: `render_html.py`
+# emits no colour literal and no `<style>` of its own, and neither JS bundle carries one — so
+# there is nowhere else for a stray colour to live in the shipped archive.
+_colour_literals: dict = {}
 # Blank, never delete: removing the blocks outright could splice a stray `#` onto the hex digits
 # that follow and invent a token that is in neither.
 _palette_blanked = _re.sub(r":root[^{}]*\{[^{}]+\}",
                            lambda m: " "*(m.end()-m.start()), _TEMPLATE_SRC)
-for _stray in _re.findall(r"#[0-9a-fA-F]{3,8}\b", _palette_blanked):
-    _hex_outside_palette[_stray.lower()] = _hex_outside_palette.get(_stray.lower(), 0) + 1
-check("RC-90: no colour escapes the palette (only the 4 declared theme-independent hexes)",
-      _hex_outside_palette == {
-          "#000": 2,   # mask-image gradient stops: only their ALPHA is read, never the colour
-          "#0006": 1,  # the modal's drop shadow — black in every theme, on purpose
-          "#fff": 1})  # @media print — paper is white by definition, not by theme
+for _m in _re.finditer(r"#[0-9a-fA-F]{3,8}\b|\brgba?\([^)]*\)|\bhsla?\([^)]*\)"
+                       r"|(?:color|background(?:-color)?|fill|stroke)\s*:\s*"
+                       r"(?:red|blue|green|black|white|gray|grey|silver|maroon|navy|teal"
+                       r"|olive|purple|fuchsia|aqua|lime|yellow|orange|pink|brown|cyan"
+                       r"|magenta)\b", _palette_blanked):
+    # Normalise so the key is the LITERAL, never its spelling: whitespace collapsed, and a
+    # declaration's property stripped, so `color: red` and `color:red` are one entry.
+    _lit = _re.sub(r"^(?:color|background(?:-color)?|fill|stroke):", "",
+                   _re.sub(r"\s+", "", _m.group(0).lower()))
+    _colour_literals[_lit] = _colour_literals.get(_lit, 0) + 1
+check("RC-90: no colour escapes the palette (only the declared theme-independent literals)",
+      _colour_literals == {
+          "#000": 2,              # mask-image gradient stops — only their ALPHA is ever read
+          "rgba(0,0,0,.5)": 2,    # …and those same stops again, in the other notation
+          "#0006": 1,             # the modal's drop shadow — black in every theme, on purpose
+          "rgba(0,5,14,.82)": 1,  # the modal scrim — meant to darken whatever is behind it
+          "#fff": 1})             # @media print — paper is white by definition, not by theme
 _original_palette_match = _re.search(r':root\[data-theme="original"\]\{([^{}]+)\}', _TEMPLATE_SRC)
 _original_palette = _original_palette_match.group(1) if _original_palette_match else ""
 check("Original theme: preserves the complete production dark palette",

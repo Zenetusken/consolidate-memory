@@ -310,15 +310,23 @@ the only evidence that a gate works. The baseline is 1767/0 and each mutant belo
 | a rule references an undefined token (`var(--paper3)`) | the rule-pair pin |
 | a rule pairs two semantic tokens (`--warn` on `--ink`) | the rule-pair contrast check |
 | one of three `--ink` on `--card` rules hardcodes `#0f1c2e` | no colour escapes the palette |
+| a rule hardcodes `rgba(12,23,39,.9)` (the notation the first scanner could not see) | no colour escapes the palette |
+| a rule writes `color:red` | no colour escapes the palette |
 
-Two of those are findings about the *gates*, not just passes. The first version of the whitelist
-check used `[a-z]+`, and a hyphenated dead value slipped straight through it — a value the
-pattern cannot see is a value the check cannot reject. Worse: the rule-pair pin was written to
-catch a hardcoded background and **did not**. It pins a *set*, the template's 15 pair occurrences
-collapse to 7 pairs, and replacing one of three `--ink` on `--card` rules left the suite at
-1766/0. That surviving mutant is what motivated the fifth check. A surviving mutant has exactly
-two honest answers — a new check, or a weaker claim — and never a comment asserting the gate
-covers something it does not.
+Three of those are findings about the *gates*, not just passes — and all three have the same
+shape. The first version of the whitelist check used `[a-z]+`, and a hyphenated dead value
+slipped straight through it. The rule-pair pin was written to catch a hardcoded background and
+**did not**: it pins a *set*, the template's 15 pair occurrences collapse to 7 pairs, and
+replacing one of three `--ink` on `--card` rules left the suite at 1766/0. That surviving mutant
+is what motivated the fifth check. And the fifth check then **reproached itself before it ever
+shipped**: its first version scanned `#hex`, while `.modal-bg{background:rgba(0,5,14,.82)}` is a
+colour written in a notation that pattern cannot see. It was caught by scanning the stylesheet for
+*every* notation a colour can be written in rather than only the one being matched — which is the
+generalised form of the lesson: **a value the pattern cannot see is a value the check cannot
+reject**, and the pattern is always the suspect, never just the value.
+
+A surviving mutant has exactly two honest answers — a new check, or a weaker claim — and never a
+comment asserting the gate covers something it does not.
 
 The browser suite was measured on that same mutant rather than assumed to be the safety net:
 **1213/0, green across all five themes**, which is a stronger result than "the copy still matched
