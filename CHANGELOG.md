@@ -100,7 +100,7 @@ reports.
   and the failure mode of omitting them is a gate that reports green on a hardcoded colour.
 
 Smoke **1767**/0 (+5 post-review checks, each one mutation-verified), mypy clean in 42 files, sim,
-manifests, docs gate green, browser **1213**, CI 13/13 on the merge commit.
+manifests, docs gate green, browser **1213**, CI 13/13 on the audit's merge commit.
 
 ## [0.4.24] — 2026-09-11
 
