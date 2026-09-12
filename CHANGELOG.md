@@ -28,7 +28,7 @@ forward rather than breaking (below).
   texture lives on
   the HTML wrapper, **never** inside `<svg id="net">` — `dashboard.network.js` shrinks the
   viewBox from `getBBox()`, which includes descendants, and a backdrop `<rect>` there
-  would zero the margin `dashboard_browser.py:152` asserts.
+  would zero the margin the browser suite's `gap>=15 && gap<=40` assertion requires.
 - **Two contrast gates, both green.** Deep Field had to clear smoke's RC-90 (9 foregrounds
   × 3 surfaces × 6 palette blocks) *and* the browser suite's `visual_hierarchy`, which
   composites against the real background chain including the node plate
@@ -109,17 +109,25 @@ forward rather than breaking (below).
   28 configurations, so the spec now states the property and the direction instead of quoting
   absolutes it cannot reproduce. **And the `.dim` table was wrong on both axes** — see that
   bullet above: correct inputs, wrong frame, and the number reproduced perfectly either way.
-- **Every `file:line` citation in the spec re-anchored.** The design-of-record's authority is
-  "verified by measurement, not by reading", so its anchors are load-bearing and several had
-  rotted: `network.js:158-159`→`:161-162`, the whitelist `:664-668`→`:665-669`, the motion
-  block `:635-660`→`:636-661`, the `#traj` pin `dashboard_browser.py:620-627`→`:628-629`, the
-  size bound `smoke.py:11632-11633`→`:11634`, the star-field pin `:4315-4318`→`:4318-4319`,
-  and the palette range `:11-46`→`:11-59` (the old range ended mid-Light and omitted `auto`).
-  The pattern is diagnostic rather than random: **every citation at or below
-  `dashboard.template.html:211` was still exact, while several above it were short by exactly
-  one line** — the signature of a stylesheet that gained a line after the spec was written.
-  Also recorded: `smoke.py:13146` pins `NocturneNetwork` only, not `NocturneSections`, which
-  the §9 sentence had implied it covered.
+- **The spec's `file:line` citations were re-anchored — and the re-anchor did not hold, so they
+  are gone.** The design-of-record's authority is "verified by measurement, not by reading", so
+  its citations are load-bearing. Re-measuring them against the tree they actually ship in found
+  that the corrected numbers were right for the tree they were *computed* in and wrong for the
+  tree they were *committed to*: the same commit's `.dim` comment rewrite is five lines longer
+  than the text it replaced, displacing every template citation below it by five, and the new
+  smoke checks displaced every smoke citation below them by 128. Of the seven, the palette
+  range was genuinely mis-ended (it stopped mid-Light and omitted `auto`) and that correction
+  stands in substance. The diagnostic that guided the pass — **everything at or below
+  `dashboard.template.html:211` still exact, several above it short by exactly one line** — was a
+  real pattern that had already been read correctly: the released stylesheet really had gained
+  exactly one line. But a +1 is only the right correction while the file stays still, and it did
+  not: the toggle-cycle range was seven short rather than one, so a +1 left it wrong, and the
+  citations and the edit that moved the file travelled in the same commit. Every citation in the
+  spec now names its target instead — a check's name, a function, a literal — and §11 records
+  why, because this is the chapter's own lesson one level down: a value kept in sync by hand
+  drifts, and a stale line number fails *silently*, still resolving, just to the wrong line.
+  Kept from the review: smoke pins `NocturneNetwork` by that literal only, not
+  `NocturneSections`, which the §9 sentence had implied it covered.
 - **Three more gate holes closed — and one was found by a mutant surviving.** The suite now
   carries five post-review RC-90 checks, all mutation-verified. The last two came from the
   browser gate's blind side: RC-90's 9×3 matrix is mostly hypothetical (only **5 of its 27
@@ -3289,7 +3297,7 @@ v0.1.35 dream.
 `render_dashboard` reported an over-budget remediation gate **resolved by a rebuild-lean** (re-indexing MEMORY.md
 leaner — `pruned=0` but `achieved_index ≤ budget`) as `⚠ gate fired but not acted on — surface candidates +
 prune-or-justify`, **while the always-loaded gauge showed the index UNDER budget** — a self-contradicting dashboard
-that could prompt needless fact-eviction. Root cause: `render_dashboard.py:479` `acted = pruned` derived "acted on"
+that could prompt needless fact-eviction. Root cause: `render_dashboard.py`'s `acted = pruned` derived "acted on"
 from facts-evicted ONLY, ignoring `achieved_index`; but the skill SANCTIONS rebuild-lean as a remediation action
 (Phase 5 step 0: "prune … and/or rebuild the index lean"). Fix: `acted = pruned or (rebuild-lean brought the index
 ≤ budget)`, with a clear `✓ gate resolved by rebuild-lean — index back under budget, no eviction needed` note

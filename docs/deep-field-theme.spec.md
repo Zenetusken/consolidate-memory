@@ -15,11 +15,12 @@ the stylesheet:
 
 - **The dashboard is a 19-token design system.** Every colour resolves through `var(--paper)`,
   `var(--data)`, `var(--accent)`, … declared once per theme
-  (`dashboard.template.html:11-59` — the five shipped palettes). A re-palette is ~16 lines,
-  not a rewrite.
-- **Colour is gated twice, independently.** `tests/smoke.py:2102-2116` (RC-90) walks every
-  palette-shaped block and requires 9 foregrounds × 3 surfaces ≥ 4.5:1.
-  `tests/dashboard_browser.py:132-148` (`visual_hierarchy`) composites each element against
+  (the five palette blocks at the top of the stylesheet, `:root{` through the `auto` block).
+  A re-palette is ~16 lines, not a rewrite.
+- **Colour is gated twice, independently.** The RC-90 check named `every theme's text and
+  semantic colors meet WCAG AA on all surfaces` walks every palette-shaped block and requires
+  9 foregrounds × 3 surfaces ≥ 4.5:1.
+  `visual_hierarchy` in `tests/dashboard_browser.py` composites each element against
   its *real* background chain in a live browser — including the node plate
   (`#network-blk .net-node rect{fill:var(--card)}`), so `--card` is load-bearing for both.
 
@@ -105,13 +106,14 @@ means re-picking `ok`/`crit` hues away from their conventional green/red anchors
 
 ## §3 Theme plumbing (three touch points)
 
-1. **Pre-paint whitelist** (`dashboard.template.html:665-669`). Adds `deepfield` and
+1. **Pre-paint whitelist** — the one-line pre-paint IIFE in `dashboard.template.html` that
+   reads `localStorage.getItem("cm-theme")`. Adds `deepfield` and
    `nocturne`. A saved `cm-theme="dark"` — the pre-0.4.24 default's storage value — is
    deliberately **absent** from the whitelist: stamping `data-theme="dark"` would set an
    attribute no block matches, and the pre-paint script would then paint the legacy palette
    for one frame. It is normalized to `deepfield` at the two points that *do* normalize —
-   `read()` (`:1403`) and `apply()` (`:1404`) — **not** at the whitelist, which only filters.
-2. **Toggle cycle** (`dashboard.template.html:1397-1411`).
+   `read()` and `apply()` — **not** at the whitelist, which only filters.
+2. **Toggle cycle** — the `modes` array in `dashboard.template.html`.
    `["deepfield","nocturne","original","light","auto"]` with icons
    `◉ ● ◒ ○ ◐`. Original's cycle neighbour is still Light, so the existing
    `'◒ Original'` / `'Switch to Light'` assertions hold unchanged.
@@ -122,9 +124,9 @@ means re-picking `ok`/`crit` hues away from their conventional green/red anchors
 
 ## §4 Atmosphere, and the structural rule that constrains it
 
-`dashboard.network.js:161-162` measures `svg.getBBox()` and shrinks `#net`'s viewBox to the
-drawn content plus a 24px margin; `tests/dashboard_browser.py:152` asserts that leftover gap
-is 15–40px. `getBBox()` **includes descendants and their transforms.**
+`dashboard.network.js` measures `svg.getBBox()` and shrinks `#net`'s viewBox to the
+drawn content plus a 24px margin; the browser suite's `gap>=15 && gap<=40` assertion covers
+that leftover gap. `getBBox()` **includes descendants and their transforms.**
 
 So the chapter carries two structural rules, written into the stylesheet rather than left
 to memory:
@@ -133,7 +135,7 @@ to memory:
   A backdrop `<rect>` spanning the canvas forces the gap to 0 — a hard failure that would
   also permanently disable the shrink. Atmosphere therefore lives on HTML wrappers
   (`body::before`, `.network-surface`), and SVG children are only ever *faded*, never moved.
-- **The star field must be its own rule.** `smoke.py:4318-4319` pins
+- **The star field must be its own rule.** A smoke pin requires
   `background-image:radial-gradient(…var(--glow)…)` immediately followed by
   `background-repeat`, so the masthead gradient cannot be edited in place.
 
@@ -153,7 +155,7 @@ brace. Two consequences, both now respected in source:
 ## §5 Motion
 
 All of it lives inside `@media(prefers-reduced-motion:no-preference)`
-(`dashboard.template.html:636-661`): a staggered `rise` on chrome → headline → measures →
+(in `dashboard.template.html`): a staggered `rise` on chrome → headline → measures →
 sections, `node-in` fades for the constellation, and a `branch-draw` dash-on for topology
 branches.
 
@@ -167,7 +169,7 @@ Two fill modes, chosen per effect, and the reason matters:
   the instant it finished drawing.
 
 The trap this avoids: a `forwards` animation normally needs an explicit reset in the reduce
-block (that is why `.draw{stroke-dashoffset:0}` exists at `dashboard.template.html:211`).
+block (that is why `.draw{stroke-dashoffset:0}` exists in the reduce block).
 Because the branch rule keeps *both* its `stroke-dasharray` and its `animation` inside the
 no-preference block, the declarations themselves are scoped out under reduce — the element
 renders as an ordinary solid path and no reset is required. Verified by measurement, not by
@@ -179,7 +181,7 @@ a hidden stroke is geometrically identical to a drawn one.
 
 ### The header chart is frozen in geometry, not in colour
 
-`tests/dashboard_browser.py:628-629` pins `#traj`'s `inner_html()` byte-for-byte, but the
+The browser check `immutable header SVG geometry` pins `#traj`'s `inner_html()` byte-for-byte, but the
 frozen fixture (`tests/fixtures/dashboard-header-geometry.json`) contains **zero hex** — only
 class names and `fill="var(--data)"`. Those classes are variable-styled, so the chart
 re-themes while its geometry stays untouchable. Frozen set: the `d` attributes,
@@ -202,11 +204,11 @@ both survived a first round of measurement because the model was wrong rather th
 arithmetic:
 
 - **The backdrop is `--paper2`, not `--paper`.** The plate is
-  `#network-blk .net-node rect{fill:var(--card)}` (`dashboard.template.html:368`) and
-  `.network-surface{background:var(--paper2)}` (`:131`) wraps `<svg id="net">` (`:763`) — so
+  `#network-blk .net-node rect{fill:var(--card)}` and
+  `.network-surface{background:var(--paper2)}` wraps `<svg id="net">` — so
   the plate composites over `--paper2`.
 - **The rule dims every text child, not just `--ink`/`--ink2`.** `.node-name` is `--ink` but
-  `.node-meta` is `--faint` (`:143`), and `--faint` is the binding case.
+  `.node-meta` is `--faint`, and `--faint` is the binding case.
 
 Measured over all four shipped palettes, worst theme per row, `--paper2` backdrop (`auto` is
 Light byte-for-byte, verified token by token, so it is not a fifth; `@media print` is the only
@@ -258,7 +260,7 @@ were one-off exports, so any theme change meant hand-cropping. `tests/dashboard_
 
 ## §8 Budget
 
-`smoke.py:11634` bounds the rendered archive at `300 * 1024`; `render_html.py` inlines the
+The smoke pin `len(_html_p4) < 300 * 1024` bounds the rendered archive; `render_html.py` inlines the
 template **plus both JS bundles**. The bounded quantity is `len(_html_p4)` — a CHARACTER count, not a
 byte size, and the shell is dense with multi-byte glyphs, so the two are not interchangeable. Read
 the bound as 307,200 units, never as a file size. Measured with smoke's own 120-cycle / 20-sidecar
@@ -279,14 +281,15 @@ this document were stale numbers that had been carried forward exactly that way.
 
 ## §9 What deliberately did not change
 
-Frozen identifiers and contracts, none of them touched: `NocturneNetwork`
-(`smoke.py:13146` — note the pin covers this name only; `NocturneSections` is real
-(`dashboard.sections.js:2`, called at `dashboard.template.html:1325`) but is **not** pinned by
-smoke, only exercised behaviourally by the browser suite), `#traj`'s inner HTML, every `#net`
+Frozen identifiers and contracts, none of them touched: `NocturneNetwork` (pinned by the
+literal `"NocturneNetwork" in _tmpl_ft` — note it covers this name only; `NocturneSections`
+is real (defined in `dashboard.sections.js`, called as `NocturneSections.paint(CUR, CYCLES)`)
+but is **not** pinned by smoke, only exercised
+behaviourally by the browser suite), `#traj`'s inner HTML, every `#net`
 routing class and its orthogonal
 `M…H…V…` geometry, the 12-per-page paging, the `_EMBED_KEYS` read-whitelist (no new
 `CUR.<key>` read was added), the cycle-record schema and its `TypedDict`s, and the Original
-palette (`smoke.py:2117-2125` byte-pins it).
+palette (byte-pinned by the check `Original theme: preserves the complete production dark palette`).
 
 ## §10 Verification
 
@@ -338,3 +341,30 @@ fifth check earns its place rather than duplicating one.
 Manual, in the rendered output — the part assertions cannot cover: all five themes at
 320 / 390 / 1440px plus print preview; the README SVGs opened as *images*, never read as
 source; and the network with the group view selected.
+
+## §11 How this document cites code
+
+**By a greppable string — never by a line number.** Every citation above names the thing it
+points at: a check's name, a function, a literal. `grep` finds it however much the file has
+grown since.
+
+This is not style. The first edition cited line numbers, and a re-anchoring pass corrected
+them. The correction did not hold, and could not have: **the commit carrying it added lines to
+the files it cited.** The `.dim` comment rewrite is five lines longer than the text it
+replaced, so it displaced every template citation below it by five; the new smoke checks
+displaced every smoke citation below *them* by 128. A line number's correctness depends on the
+length of a file that the same change is editing, so it is invalidated by the work it ships
+with — and it fails silently, because a stale number still resolves, just to the wrong line.
+
+The re-anchoring pass had a real diagnostic — everything at or below
+`dashboard.template.html:211` was still exact, and several citations above it were short by
+exactly one line, the signature of a stylesheet that had gained one. That reading was right
+about the *released* tree and still produced numbers that were stale on arrival, because the
+citation and the edit that moved the file travelled together. Two of the seven were wrong for
+an unrelated reason: the palette range was genuinely mis-ended (it stopped mid-Light and
+omitted `auto`), while the toggle-cycle range was seven short rather than one, so a +1
+correction left it wrong.
+
+The durable form is the one where the identifier is stable under insertion. This is the
+chapter's own lesson one level down: **a value that must be kept in sync by hand drifts; a
+value that is derived, or that *is* the thing, does not.**
