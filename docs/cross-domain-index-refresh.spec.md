@@ -767,8 +767,9 @@ spy's capture list carries the count-form assertion, never the pre-clause presen
 stripping the clause from this blob (D6 restated as `1744 + 27`) gives **1771 passed, 0
 failed** — the row's invisibility back, one check below this blob's own clean `1772`. `1772`
 survives there only as the declared size and as the comment `whole suite GREEN (1772/0)`.
-`1772 = 1767 + 5`, and *which* five is exactly what a total cannot say — the rule stated two
-paragraphs above, applied to this row. The row records a **state**, never a tree.
+`1772 = 1767 + 5`, and *which* five is exactly what a total cannot say — the rule
+"never the count" (grep that phrase: **two** hits, the rule and this citation of it),
+applied to this row. The row records a **state**, never a tree.
 
 Both write legs unfixed was caught — reverting the two `apply_pointer` call sites alone
 leaves **1772 passed, 6 failed** at HEAD's 1778 (measured; a **different** six from the
@@ -889,9 +890,10 @@ equal and no item is built. The line qualifier carries weight for a second, inde
 reason: a mirror whose body is in sync can still carry an anchored line written from an older
 description — `_body_hash` is body-only — and the `elif` reads the **line**, so being in sync
 does not disqualify it. Its delta is its own drift's: zero across the four-wide `ceil(chars/4)`
-window the anchored line lands in, *negative* below that window and positive above it — and the
-window contains the equal-length point, so up to three lengths where the current description is
-*already* the longer still tie at zero. And it is four wide only while both descriptions sit
+window the anchored line lands in, *negative* while the current description is the shorter and
+positive once it is the longer — and the window contains the equal-length point, so up to three
+lengths where the current description is *already* the longer still tie at zero. And it is four
+wide only while both descriptions sit
 under the 88-character hook cap, since `_pointer_line` keeps `desc[:88]` — past it, two
 descriptions sharing that prefix derive one **identical** line and book no item at all, however
 much the current one is the longer. The quantifier was too wide on **both** axes; the mechanism
