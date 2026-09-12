@@ -100,8 +100,8 @@ renders from vocabulary, and refuses a bad scope at write time. Four checks; rev
 raw interpolation, the suite reddens **exactly those four and nothing else**
 (`1789 passed, 4 failed` against `1793 passed, 0 failed` fixed) — the hole had no detector at
 all before this branch. The fourth pins the INVARIANT rather than a fixture, because the first
-three could not carry the universal their names claimed: a widened admission (any strict
-superset of `SCOPES`) satisfied every one of their fixtures and passed all 1792 checks while
+three could not carry the universal their names claimed: an admission widened to a prefix match
+(`startswith`) satisfied every one of their fixtures and passed all 1792 checks while
 restoring the live link for `scope: user-global](http://x)`; it is now that mutant's sole
 detector. The suite-total anti-rot constant moves `1750+39` → `1750+43`.
 

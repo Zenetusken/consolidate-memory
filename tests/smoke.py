@@ -584,18 +584,22 @@ check("window: so is the FLOOR clip — the aligned phase's first bucket reaches
 # cannot reach them). The fix keys the suffix to the canonical vocabulary, so the render can
 # only ever be a known literal. These pins hold it to the shapes that reach that key — and one
 # of them is a PROPERTY rather than an equality, because the equality alone did not earn the
-# universal its name claimed: it fixes four fixtures, so a widened ADMISSION (any strict
-# superset of `SCOPES` — a prefix match, a first-char match) passed all 1792 checks AT
-# `7a17600` — the revision before this pin existed — while restoring the live link for a value
-# that merely CONTAINS a vocabulary string, e.g. `scope: user-global](http://x)`, which none of
-# the four is. Measured on that blob: `any(_raw_scope.startswith(s) for s in SCOPES)` →
-# `1792 passed, 0 failed`, and `_raw_scope[:1] in ("p","s","u")` → the same. The two pins below
-# are not redundant and neither subsumes the other: a widened admission reds the invariant
-# ALONE (the rendered tail is not a literal), a COERCION reds the equality alone (it renders a
-# literal, but it should have rendered nothing). A further shape — an absent scope rendering no
-# suffix — is deliberately NOT pinned: measured, every mutant that reddens such a pin also
-# reddens the six window pins above, and the bracket-absence it would assert is already this
-# suite's `hook strips markdown link chars` check on the same shape.
+# universal its name claimed: it fixes four fixtures, and an admission widened to admit a value
+# that merely CONTAINS a vocabulary string satisfies every one of them. Two shapes measured AT
+# `7a17600` — the revision before this pin existed — while restoring the live link for
+# `scope: user-global](http://x)`, which none of the four is:
+# `any(_raw_scope.startswith(s) for s in SCOPES)` → `1792 passed, 0 failed`, and
+# `_raw_scope[:1] in ("p","s","u")` → the same. Those are the measured shapes, not a class: a
+# SUBSTRING admission (`any(s in _raw_scope for s in SCOPES)`) reds the drop pin alone
+# (`1791 passed, 1 failed`), because the `["user-global"]` fixture stringifies to
+# `"['user-global']"`. The two pins below are not redundant and neither subsumes the other —
+# exact reverses, each with a witness: a prefix WIDENING reds the invariant ALONE (the rendered
+# tail is not a literal), coercing a LIST to a vocabulary default reds the equality alone (it
+# renders a literal, but it should have rendered nothing). Witnesses, not classes again:
+# coercing an unknown STRING to the default reds four checks. A further shape — an absent scope
+# rendering no suffix — is deliberately NOT pinned: measured, every mutant that reddens such a
+# pin also reddens the six window pins above, and the bracket-absence it would assert is
+# already this suite's `hook strips markdown link chars` check on the same shape.
 import fact_schema as _fs  # noqa: E402  — the vocabulary itself, never a copy of it
 _PTR_PREFIX = "- [foo](bar--foo.md) — d"
 _VOCAB_TAIL = {""} | {f" [{v}]" for v in _fs.SCOPES}

@@ -968,13 +968,16 @@ legible shape, and it is `_safe_stem`'s again: `local_ingress._pointer`'s docstr
 `_pointer_line` *"the global injection sanitizer"* — written to justify that sibling's *weaker*
 escaping — so the function's reputation was doing the work its code did not.
 
-**The fix keys the suffix to the vocabulary and renders the vocabulary value, never the field.**
-A non-vocabulary scope is **dropped**, not sanitized — it has no meaning to show, so the suffix
-can carry nothing but a known literal. Absent/blank values still render no suffix, and a
-non-string YAML value (`scope: [x]`) becomes a no-op instead of an `AttributeError` mid-pull
-(`str(...)` before `.strip()`). `local_ingress._pointer` already did both — renders from
-vocabulary and refuses a bad scope at write time — so this is the global side catching up to its
-sibling, not a new convention.
+**The fix keys the suffix to the vocabulary and renders the vocabulary value, never the
+field.** A non-vocabulary scope is **dropped**, not sanitized — it has no meaning to show, so
+the suffix can carry nothing but a known literal. Absent/blank values still render no suffix,
+and a non-string YAML value (`scope: [x]`) is a no-op too — but **not** because it used to
+raise: run against the `6c37479` blob, the raw interpolation rendered `[['user-global']]` into
+the line and no scope value raised (`None` rendered no suffix, `42` rendered `[42]`). The
+`AttributeError` belongs to the fix's OWN shape — the `str(...)` it applies before `.strip()`
+is what keeps it from raising there. `local_ingress._pointer` already did both — renders from
+vocabulary and refuses a bad scope at write time — so this is the global side catching up to
+its sibling, not a new convention.
 
 **Four pins, each run against the real suite at this revision (D6 `1750 + 43`, 1793 checks).**
 Three are the **sole** failure under their own mutation; the drop pin shares its run with the
@@ -983,23 +986,31 @@ other three, which is what a single-expression revert looks like:
 | pin | mutation | that run |
 |---|---|---|
 | a non-vocabulary `scope` is dropped, not coerced (4 fixtures: link payload, list, `None`, int) | revert to the raw interpolation — reds **all four** pins | `1789 passed, 4 failed`, nothing else |
-| whatever a scope renders is a vocabulary literal (11 fixtures, as a property) | admission widened to a strict superset of `SCOPES` | `1792 passed, 1 failed` — **this pin alone** |
+| whatever a scope renders is a vocabulary literal (11 fixtures, as a property) | admission widened to a prefix match (`startswith`) | `1792 passed, 1 failed` — **this pin alone** |
 | a quoted/padded vocabulary scope still renders | the normalization dropped | `1792 passed, 1 failed` — **this pin alone** |
 | a case variant is **not** admitted | admission case-folded | `1792 passed, 1 failed` — **this pin alone** |
 
 **The fourth pin exists because the first three could not carry their own names.** All three
-fix *fixtures*; a widened ADMISSION — any strict superset of `SCOPES`, a prefix match or a
-first-char match — satisfies every fixture they carry while restoring the live link for a value
-that merely CONTAINS a vocabulary string. Measured on `7a17600`, the revision that shipped the
-three: `any(_raw_scope.startswith(s) for s in SCOPES)` → `1792 passed, 0 failed`, and
-`_raw_scope[:1] in ("p","s","u")` → the same, with `scope: user-global](http://x)` rendering a
-second `](`. The shipped predicate was never wrong — this is pin coverage, not a defect in the
-fix — but the *name* was: a universal asserted over a body that tests four inputs, the class
-this document keeps meeting. The fourth pin states the invariant as a PROPERTY, so no widening
-satisfies it: whatever a scope renders, the tail is absent or one of the three literals. It
-neither subsumes the drop pin nor is subsumed by it — the two are exact reverses: a widened
-admission reds the invariant alone (the tail is not a literal), a COERCION reds the drop pin
-alone (the tail IS a literal, where nothing should have rendered at all).
+fix *fixtures*, and an admission widened to admit a value that merely CONTAINS a vocabulary
+string satisfies every one of them while restoring the live link. Two shapes measured on
+`7a17600`, the revision that shipped the three: `any(_raw_scope.startswith(s) for s in SCOPES)`
+→ `1792 passed, 0 failed`, and `_raw_scope[:1] in ("p","s","u")` → the same, with
+`scope: user-global](http://x)` rendering a second `](`. Those are the measured shapes, not a
+class — "any strict superset", as an earlier draft of this paragraph had it, is one word wider
+than the evidence: a substring admission (`any(s in _raw_scope for s in SCOPES)`) reds the drop
+pin alone at that revision (`1791 passed, 1 failed`), because the `["user-global"]` fixture
+stringifies to `"['user-global']"`, which contains a vocabulary string. The shipped predicate
+was never wrong — this is pin coverage, not a defect in the fix — but the *name* was: a
+universal asserted over a body that tests four inputs, the class this document keeps meeting.
+The fourth pin states the invariant as a PROPERTY, so no widening satisfies it: whatever a
+scope renders, the tail is absent or one of the three literals. It neither subsumes the drop
+pin nor is subsumed by it — the two are exact reverses, each with a measured witness: a prefix
+WIDENING reds the invariant alone (the tail is not a literal), and coercing a LIST to a
+vocabulary default (`SCOPES[0] if isinstance(fm.get("scope"), list) else` the admission) reds
+the equality alone (the tail IS a literal, where nothing should have rendered at all).
+Witnesses again, not classes: coercing an unknown STRING to the default reds four checks
+(`1789 passed, 4 failed` — the scope-tag pin, the drop pin, the quote pin and the case pin), so
+the coercion family is wider than the reversal this pair claims.
 
 **One candidate pin was declined, on a measurement.** An empty scope rendering *no* suffix is a
 real branch, and a pin on it discriminates one mutant. But that mutant (an always-rendered
