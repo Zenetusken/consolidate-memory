@@ -371,7 +371,7 @@ A right conclusion resting on a wrong reason is the kind of thing that survives 
 until someone relies on the reason.
 
 **The last row is cleared by construction, not by a guard.** The pull writer's
-`path = store / f"{mkey}.md"`, `_store_gaps`' `store / f"{_gk}.md"`, and the beacon's
+`path = store / f"{mkey}.md"`, `_store_gaps`'`store / f"{_gk}.md"`, and the beacon's
 `store / f"{_bk}.md"` all take their key *directly* from `_mirror_key` — they **are** the
 writer's key use, so the file key and the index anchor agree because there is only ever one
 value. They are listed because they are the same shape (one key consumed as both), and
@@ -952,11 +952,18 @@ _pointer_line("foo", {"description": "d", "scope": "evil](http://x)"}, anchor="b
 → '- [foo](bar--foo.md) — d [evil](http://x)]'      # count("](") == 2 — a LIVE link
 ```
 
-— a live markdown link in the always-loaded index line, reachable from **every call site of
-`_pointer_line`**: the `canonical_ingress` arms, `local_ingress`'s reconcile arm, `sync_global`'s
-pull plan and execute loops, its pull item cost map, the fleet-tax advisory and the utility
-report, and the beacon's cost projection. Only the promote path validated a scope at all, and
-only against the two scopes promote can write. The miss has a
+— a live markdown link in the always-loaded index line, reachable from **10 of
+`_pointer_line`'s 12 live call sites**: `canonical_ingress`'s `generate_catalog` and
+`reconcile_inactive_mirrors`, `local_ingress`'s reconcile arm, `sync_global`'s pull plan and
+execute loops, its pull item cost map, the fleet-tax advisory and the utility report, and the
+beacon's cost projection. The other two — both inside `canonical_ingress.upsert`, in the nested
+`mutate` at `:470` — sit downstream of that writer's own `validate_canonical_frontmatter` call
+and of the `stack-general|user-global` refusal beneath it, so a non-vocabulary scope cannot
+reach them. That refusal is the only scope check on the path, and it is what this sentence used
+to overstate as "only the promote path validated a scope at all" while listing those same two
+sites as reachable. (A 13th call site exists in the vendored `canary-v0.1.19` fixture — a
+frozen copy, not a live path.)
+The miss has a
 legible shape, and it is `_safe_stem`'s again: `local_ingress._pointer`'s docstring calls
 `_pointer_line` *"the global injection sanitizer"* — written to justify that sibling's *weaker*
 escaping — so the function's reputation was doing the work its code did not.
@@ -969,24 +976,44 @@ non-string YAML value (`scope: [x]`) becomes a no-op instead of an `AttributeErr
 vocabulary and refuses a bad scope at write time — so this is the global side catching up to its
 sibling, not a new convention.
 
-**Three pins, each run against the real suite at this revision (D6 `1750 + 42`, 1792 checks).**
-Two are the **sole** failure under their own mutation; the third shares its run with the other
-two, which is what a single-expression revert looks like:
+**Four pins, each run against the real suite at this revision (D6 `1750 + 43`, 1793 checks).**
+Three are the **sole** failure under their own mutation; the drop pin shares its run with the
+other three, which is what a single-expression revert looks like:
 
 | pin | mutation | that run |
 |---|---|---|
-| a non-vocabulary `scope` never reaches the line (4 fixtures: link payload, list, `None`, int) | revert to the raw interpolation — reds **all three** pins | `1789 passed, 3 failed`, nothing else |
-| a quoted/padded vocabulary scope still renders | the normalization dropped | `1791 passed, 1 failed` — **this pin alone** |
-| a case variant is **not** admitted | admission case-folded | `1791 passed, 1 failed` — **this pin alone** |
+| a non-vocabulary `scope` is dropped, not coerced (4 fixtures: link payload, list, `None`, int) | revert to the raw interpolation — reds **all four** pins | `1789 passed, 4 failed`, nothing else |
+| whatever a scope renders is a vocabulary literal (11 fixtures, as a property) | admission widened to a strict superset of `SCOPES` | `1792 passed, 1 failed` — **this pin alone** |
+| a quoted/padded vocabulary scope still renders | the normalization dropped | `1792 passed, 1 failed` — **this pin alone** |
+| a case variant is **not** admitted | admission case-folded | `1792 passed, 1 failed` — **this pin alone** |
+
+**The fourth pin exists because the first three could not carry their own names.** All three
+fix *fixtures*; a widened ADMISSION — any strict superset of `SCOPES`, a prefix match or a
+first-char match — satisfies every fixture they carry while restoring the live link for a value
+that merely CONTAINS a vocabulary string. Measured on `7a17600`, the revision that shipped the
+three: `any(_raw_scope.startswith(s) for s in SCOPES)` → `1792 passed, 0 failed`, and
+`_raw_scope[:1] in ("p","s","u")` → the same, with `scope: user-global](http://x)` rendering a
+second `](`. The shipped predicate was never wrong — this is pin coverage, not a defect in the
+fix — but the *name* was: a universal asserted over a body that tests four inputs, the class
+this document keeps meeting. The fourth pin states the invariant as a PROPERTY, so no widening
+satisfies it: whatever a scope renders, the tail is absent or one of the three literals. It
+neither subsumes the drop pin nor is subsumed by it — the two are exact reverses: a widened
+admission reds the invariant alone (the tail is not a literal), a COERCION reds the drop pin
+alone (the tail IS a literal, where nothing should have rendered at all).
 
 **One candidate pin was declined, on a measurement.** An empty scope rendering *no* suffix is a
 real branch, and a pin on it discriminates one mutant. But that mutant (an always-rendered
-suffix) also reddens the six `window:` pins and the pre-existing `hook strips markdown link
-chars` check — `1783 passed, 9 failed`, that pin among them — because a suffix change moves the
-line's fixed prefix, which is the phase quantity the window pins measure; and the bracket-absence
-a pin on it would assert is already asserted, on the same shape, by that bracket check. Declined
-on that measurement rather than on taste, and recorded here so the same measurement is available
-to overrule it.
+suffix) is never caught by such a pin ALONE: measured at `7a17600`, the revision the decision
+was taken on, it reddens nine checks — the six `window:` pins ABOVE this section, this
+section's own two scope pins, and the pre-existing `hook strips markdown link chars` check
+(`1783 passed, 9 failed`). A suffix change moves the line's fixed prefix, which is the phase
+quantity the window pins measure, so that family moves with it; and the bracket-absence a pin
+on it would assert is already asserted, on the same shape, by that bracket check. Declined on
+that measurement rather than on taste, and recorded so the same measurement is available to
+overrule it. Two precisions on the figure, both measured: the six are the window pins ABOVE —
+the suite's two LATER window pins stay green, because a constant prefix shift cancels inside a
+RELATIVE window pin and only the absolute ones move — and two of the nine are this section's
+own pins, which cannot be evidence of their own redundancy at the revision they landed in.
 
 ## 10. Ship shape
 
@@ -1053,20 +1080,31 @@ suite's own execution surface (`passed + failed + 1 == N + M`) so an orphaned se
 never print green. It is a count of the full suite *including itself*, so adding checks without
 bumping it leaves smoke red — the pin is designed to fail loudly rather than let the count
 drift. This change moves it **`1740 + 27` → `1750 + 28`**, and the branch's later check-adding
-commits carry it on to **`1750 + 42`**, the current literal and the one §9.2's three pins land
-with. Every rung below is read from a committed blob, never from a message — the rule the
-paragraph after this one earned: `1748 + 27` (ed4c67f — #1–#8, the write leg and its
-accounting, **+8**), `1750 + 27` (b023d02 — #9, the gc-DEAD probe, and #10, the phantom-delta
-pin, +2), `1750 + 28` (eb7f7a0 — #11, the run-side `cost_new` pin, +1), `1750 + 37` (4f0f7da —
-the sanitizer's unowned axes, **+9**), `1750 + 39` (3907215 — the declined pin's reinstatement
-and the axis-pin split, +2), `1750 + 42` (§9.2's three scope pins, +3).
+commits carry it on to **`1750 + 43`**, the current literal and the one §9.2's pins land with.
+Every rung below is read from a committed blob, never from a message — the rule the paragraph
+after this one earned: `1748 + 27` (ed4c67f — #1–#8, the write leg and its accounting, **+8**),
+`1750 + 27` (b023d02 — #9, the gc-DEAD probe, and #10, the phantom-delta pin, +2), `1750 + 28`
+(eb7f7a0 — #11, the run-side `cost_new` pin, +1), `1750 + 31` (ce1c226 — the delta's tie window
+is four wide only under the cap, +3), `1750 + 34` (9400f85 — the window's measure is the
+sanitized length, +3), `1750 + 37` (4f0f7da — the sanitizer's unowned axes, +3), `1750 + 39`
+(3907215 — the declined pin's reinstatement and the axis-pin split, +2), `1750 + 42` (7a17600 —
+§9.2's three scope pins, +3), `1750 + 43` (the invariant pin beside them, +1).
+
+**Two rungs and one delta in that list were wrong until this revision, in exactly the way this
+section warns about.** `ce1c226` and `9400f85` were omitted outright: both prefix `docs(cm):`
+and their `session_beacon.py` hunks are comment-only, which reads as not check-adding — but
+each also lands three checks. And `4f0f7da`'s label read **+9**, which is not that commit's
+delta but the CUMULATIVE `1750 + 28` → `1750 + 37`: a derived figure silently summing the two
+commits the ladder did not list, the same substitution of a run's sum for a revision's name
+this section exists to forbid. `4f0f7da^` carries `1750 + 34`; `4f0f7da` carries
+`1750 + 37`, so the rung is **+3** whatever the running sum reads.
 
 The check count has a finer grouping than the history does — the first six, then #7/#8, then
 #9/#10, then #11 — and an earlier draft of this paragraph quoted it as a ladder, with
 `1746 + 27` as its second rung. **That literal existed in no commit**: the first six checks and
 #7/#8 landed together in ed4c67f, so `git log -S'1746 + 27' -- tests/smoke.py` comes back
-empty. The grouping is real but it is *authorship*, not history, and quoting it as a rung
-sends a maintainer auditing the branch to a revision that never shipped. Quote the committed
+empty. The grouping is real but it is *authorship*, not history, and quoting it as a rung sends
+a maintainer auditing the branch to a revision that never shipped. Quote the committed
 literals.
 
 **The rule covers derived figures, not only quoted literals, and that distinction is what let
@@ -1076,17 +1114,16 @@ checks that revision ships" (`b023d02` ships 1777), and failures 2 and 3 both da
 measurements to "the revision then shipping 1772 checks" — a total no *revision* carries: no
 refs-reachable `smoke.py` blob was left unchecked, and a scan of the **object database**,
 restricted to `smoke.py`, finds the D6 literal `1745 + 27` in exactly one blob — the dropped
-stash `188a326`, reachable from no ref — which is precisely what makes it a working tree
-rather than a revision. In each, a **sum observed in a run** was
-**revision's name**. The quoted halves were all correct; only the comparison term was inferred,
-which is why reading for wrong literals finds none of them — and why the rule is stated here as
-the inference to refuse: *read a measurement's total as evidence of what the tree was, never of
-what shipped.* **Only the sum is load-bearing** —
-the split between the two addends is bookkeeping, and it is the total that must equal the
-reported count (measured at HEAD: `1778 passed, 0 failed` against `1750 + 28`). #11 moved the
-*second* addend because no check landed between #10 and it; a maintainer copying either
-literal without the other reintroduces exactly the drift this pin exists to catch. Any future
-addition to this spec's check set moves it again.
+stash `188a326`, reachable from no ref — which is precisely what makes it a working tree rather
+than a revision. In each, a **sum observed in a run** was **revision's name**. The quoted
+halves were all correct; only the comparison term was inferred, which is why reading for wrong
+literals finds none of them — and why the rule is stated here as the inference to refuse: *read
+a measurement's total as evidence of what the tree was, never of what shipped.* **Only the sum
+is load-bearing** — the split between the two addends is bookkeeping, and it is the total that
+must equal the reported count — `eb7f7a0` carries `1750 + 28` and measures
+`1778 passed, 0 failed`. #11 moved the *second* addend because no check landed between #10 and
+it; a maintainer copying either literal without the other reintroduces exactly the drift this
+pin exists to catch. Any future addition to this spec's check set moves it again.
 
 **The second member of §8.2's family — a *live* bare-keyed mirror — is the one input where
 the anchored matcher is strictly less tidy. Measured, scoped, and not reachable here.**

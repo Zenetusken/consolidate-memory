@@ -83,21 +83,27 @@ can and cannot collapse.
 The design-of-record, with the review's corrections to its own claims, is
 **A third finding, from the same round's pin work — the index line's own sanitizer had an
 unguarded interpolation.** `_pointer_line` builds every pointer line, and `local_ingress`'s
-sibling writer calls it *"the global injection sanitizer"* in its own docstring. It interpolates
-three values from a possibly-crafted store: `name` is fenced upstream (`_safe_stem`, whose
-docstring names exactly this threat, and which both row sources apply), `description` is
-sanitized in-function — and `scope` was interpolated **raw**, so a crafted
-`scope: evil](http://x)` rendered a live markdown link into the always-loaded index line, on
-every path that turns frontmatter into an index pointer (the `canonical_ingress` arms, the local
-reconcile path, `sync_global`'s pull loops and its cost maps). The suffix is now keyed to the
-canonical vocabulary (`fact_schema.SCOPES`) and rendered **from the vocabulary, never from the
-field**, so it cannot carry anything but a known literal; a non-vocabulary value is **dropped**,
-not sanitized — it has no meaning to show — which also makes a non-string YAML value
-(`scope: [x]`) a no-op instead of an `AttributeError` mid-pull. `local_ingress`'s sibling writer
-already did both: renders from vocabulary, and refuses a bad scope at write time. Three checks;
-reverted to the raw interpolation, the suite reddens **exactly those three and nothing else**
-(`1789 passed, 3 failed` against `1792 passed, 0 failed` fixed) — the hole had no detector at all
-before this branch. The suite-total anti-rot constant moves `1750+39` → `1750+42`.
+sibling writer calls it *"the global injection sanitizer"* in its own docstring. It
+interpolates three values from a possibly-crafted store: `name` is fenced upstream
+(`_safe_stem`, whose docstring names exactly this threat, and which both row sources apply),
+`description` is sanitized in-function — and `scope` was interpolated **raw**, so a crafted
+`scope: evil](http://x)` rendered a live markdown link into the always-loaded index line, on 10
+of `_pointer_line`'s 12 live call sites (the two inside `canonical_ingress.upsert` sit
+downstream of that writer's own scope refusal, so a bad scope cannot reach them). The suffix is
+now keyed to the canonical vocabulary (`fact_schema.SCOPES`) and rendered **from the
+vocabulary, never from the field**, so it cannot carry anything but a known literal; a
+non-vocabulary value is **dropped**, not sanitized — it has no meaning to show. A non-string
+YAML value (`scope: [x]`) is a no-op too: pre-fix it rendered `[['user-global']]` into the
+line, and the `str(...)` the fix applies before `.strip()` is what keeps the fix's OWN shape
+from raising `AttributeError` there instead. `local_ingress`'s sibling writer already did both:
+renders from vocabulary, and refuses a bad scope at write time. Four checks; reverted to the
+raw interpolation, the suite reddens **exactly those four and nothing else**
+(`1789 passed, 4 failed` against `1793 passed, 0 failed` fixed) — the hole had no detector at
+all before this branch. The fourth pins the INVARIANT rather than a fixture, because the first
+three could not carry the universal their names claimed: a widened admission (any strict
+superset of `SCOPES`) satisfied every one of their fixtures and passed all 1792 checks while
+restoring the live link for `scope: user-global](http://x)`; it is now that mutant's sole
+detector. The suite-total anti-rot constant moves `1750+39` → `1750+43`.
 
 The design-of-record, with the review's corrections to its own claims, is
 `docs/cross-domain-index-refresh.spec.md`. No CLI flag moved, no schema or manifest

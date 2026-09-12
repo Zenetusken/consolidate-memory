@@ -576,24 +576,41 @@ check("window: the saturated tail is a PHASE property — at `K mod 4 = 0` the c
 check("window: so is the FLOOR clip — the aligned phase's first bucket reaches four, where this "
       "fixture's phase clips it to two, so 'clipped short' is a phase-bound claim",
       _tie_window("fooo", "bar--foo", 1) == [1, 2, 3, 4])
-# The pointer line has THREE untrusted interpolations, and `scope` was the unguarded one: unlike
-# `name` (fenced upstream by `_safe_stem`) it is free-form frontmatter, and unlike `description`
-# nothing sanitized it — a crafted `scope: evil](http://x)` rendered a LIVE markdown link into the
-# always-loaded index, reachable through every fact-file ingress. The fix keys the suffix to the
-# canonical vocabulary, so the render can only ever be a known literal. These pins hold it to the
-# shapes that reach that key: a non-vocabulary value (dropped — including a non-STRING YAML value,
-# which would otherwise crash the pull at `.strip()` rather than merely print), a quoted/padded
-# vocabulary value (normalized like the sibling writer, then rendered), and a case variant
-# (dropped — the vocabulary is exact strings, so a near-miss must not render). A fourth shape —
-# an absent scope rendering no suffix at all — is deliberately NOT pinned here: measured, every
-# mutant that reddens such a pin also reddens the six window pins above, and the bracket-absence
-# it would assert is already `smoke.py`'s `hook strips markdown link chars` check on the same
-# shape (that check also reddens the injection-axis pin this family made redundant).
-check("pointer: a non-vocabulary `scope` never reaches the index line — neither a "
-      "link-injection payload nor a non-string YAML value",
+# The pointer line has THREE untrusted interpolations, and `scope` was the unguarded one:
+# unlike `name` (fenced upstream by `_safe_stem`) it is free-form frontmatter, and unlike
+# `description` nothing sanitized it — a crafted `scope: evil](http://x)` rendered a LIVE
+# markdown link into the always-loaded index, on 10 of the 12 live call sites (the two inside
+# `canonical_ingress.upsert` sit downstream of that writer's own scope refusal, so a bad scope
+# cannot reach them). The fix keys the suffix to the canonical vocabulary, so the render can
+# only ever be a known literal. These pins hold it to the shapes that reach that key — and one
+# of them is a PROPERTY rather than an equality, because the equality alone did not earn the
+# universal its name claimed: it fixes four fixtures, so a widened ADMISSION (any strict
+# superset of `SCOPES` — a prefix match, a first-char match) passed all 1792 checks AT
+# `7a17600` — the revision before this pin existed — while restoring the live link for a value
+# that merely CONTAINS a vocabulary string, e.g. `scope: user-global](http://x)`, which none of
+# the four is. Measured on that blob: `any(_raw_scope.startswith(s) for s in SCOPES)` →
+# `1792 passed, 0 failed`, and `_raw_scope[:1] in ("p","s","u")` → the same. The two pins below
+# are not redundant and neither subsumes the other: a widened admission reds the invariant
+# ALONE (the rendered tail is not a literal), a COERCION reds the equality alone (it renders a
+# literal, but it should have rendered nothing). A further shape — an absent scope rendering no
+# suffix — is deliberately NOT pinned: measured, every mutant that reddens such a pin also
+# reddens the six window pins above, and the bracket-absence it would assert is already this
+# suite's `hook strips markdown link chars` check on the same shape.
+import fact_schema as _fs  # noqa: E402  — the vocabulary itself, never a copy of it
+_PTR_PREFIX = "- [foo](bar--foo.md) — d"
+_VOCAB_TAIL = {""} | {f" [{v}]" for v in _fs.SCOPES}
+check("pointer: a non-vocabulary `scope` is dropped — not sanitized, not coerced — so a link "
+      "payload, a list and a non-string YAML value all render no suffix",
       [sg._pointer_line("foo", {"description": "d", "scope": s}, anchor="bar--foo")
        for s in ("evil](http://x)", ["user-global"], None, 42)] ==
-      ["- [foo](bar--foo.md) — d"] * 4)
+      [_PTR_PREFIX] * 4)
+check("pointer: no `scope` can put anything into the line but a vocabulary literal — the "
+      "invariant, held over the near-miss class a widened admission would admit",
+      all(sg._pointer_line("foo", {"description": "d", "scope": s}, anchor="bar--foo")
+          [len(_PTR_PREFIX):] in _VOCAB_TAIL
+          for s in ("user-global](http://x)", "project-local](", "stack-general evil](x)",
+                    "evil](http://x)", "USER-GLOBAL](x)", ["user-global"], 42, None,
+                    "", "user-global", ' "user-global" ')))
 check("pointer: a quoted/padded vocabulary `scope` still renders — normalized like the sibling "
       "local writer, then admitted",
       sg._pointer_line("foo", {"description": "d", "scope": ' "user-global" '})
@@ -15221,7 +15238,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 42)
+      passed + failed + 1 == 1750 + 43)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
