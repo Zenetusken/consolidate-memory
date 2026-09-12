@@ -254,10 +254,13 @@ settled on, stated so a reader can apply it to a site not listed here: **a key t
 store's own listing — `Path.stem` over a glob, or a name matched against the index — is always
 right; a key taken from a registry or frontmatter fact *name* and consumed against a store that
 can hold mirrors is the defect.** The boundary is necessary, not sufficient: a site inside it
-can still be cleared upstream, and **four rows below are**, each by a mirror check that runs
+can still be cleared upstream, and **three rows below are**, each by a mirror check that runs
 before the key is used — the two evict filters and `_index_line_cost` (a mirror is refused as
-an evict target), `local_ingress`'s three entry points (each refuses a managed mirror before
-writing), and the demotion population (`not _is_mirror(…)`).
+an evict target), and `local_ingress`'s three entry points (each refuses a managed mirror
+before writing). A fourth row sits **outside** the boundary rather than cleared inside it —
+the demotion population, whose key is `f.stem` off the store's own glob, the "always right"
+limb; its `not _is_mirror(…)` is a second and independent reason the row is safe, which is
+why its gloss below names both.
 
 The first draft's frame — "derives a key from a fact name and consumes it as a match target, a
 lookup key, or a file path" — was **wider than its own table**. It named a file-path leg the

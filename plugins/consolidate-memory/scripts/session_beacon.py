@@ -203,7 +203,8 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
     # STALE stands in as POINTER DRIFT (real index line ≠ derived pointer): a description-drifted
     # mirror carries exactly the refresh delta a real --pull applies; body-only staleness is
     # delta-0 (nothing to count). Reach note: a hand-edited index line under a genuinely in-sync
-    # mirror also builds an item, and the SIGN of its delta decides the direction — cost_old is
+    # mirror also builds an item whenever the edit moves the count, and the SIGN of its delta
+    # decides the direction — cost_old is
     # the REAL line and cost_new the line DERIVED from the canonical, so a hand-edit LEANER than
     # that derivation books a positive delta (consumes headroom: fewer advertised as absorbable,
     # the conservative direction) while a FATTER one books a NEGATIVE delta that RELIEVES the
@@ -239,13 +240,15 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
         #     and the `elif` below was unreachable: every cross-domain STALE refresh silently
         #     dropped (docs/cross-domain-index-refresh.spec.md §2 Leg B).
         #   cost_new — un-anchored it is ~2 tok LIGHTER than the line a pull writes, so once
-        #     cost_old resolved, `cost_new != cost_old` was TRUE for every cross-domain
-        #     mirror carrying an index line — in sync or not: the anchor adds ≥3 chars, which
+        #     cost_old resolved, `cost_new != cost_old` was TRUE for every in-sync cross-domain
+        #     mirror carrying an index line: the anchor adds ≥3 chars, which
         #     crosses a ceil(chars/4) boundary for any domain of two or more characters. (A
         #     one-character domain — legal; identifiers.DOMAIN_RE admits it — adds exactly 3
         #     and can land inside one, leaving the comparison EQUAL and no item built, phantom
-        #     or otherwise. It is the sole exception, which is why the quantifier here is
-        #     scoped rather than universal.) The phantom row
+        #     or otherwise. It is the sole exception on the domain-length axis, which is why
+        #     that axis is scoped rather than universal.) "In-sync" is scoped for a second,
+        #     independent reason — a mirror carrying an OLDER anchored line can match the bare
+        #     derivation's token count exactly, and then no item is built at all. The phantom row
         #     was the steady state, not an edge case, and its delta is NEGATIVE — it
         #     RELIEVES the running index in _plan_pull, so `held` under-states what a run
         #     would hold and the beacon over-advertises absorption. Fixing one leg unmasked
