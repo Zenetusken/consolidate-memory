@@ -224,7 +224,7 @@ Two tokens at each of the four sites on the **write/accounting dependency** — 
 namespaced key where the bare stem is being used as a *derived* key. (A **fifth** site, the
 `--gc` dead-probe, shares the root cause and is fixed here too; it derives a key the same way
 but carries no accounting dependency, so it is not part of this section's leg argument, and
-the census below lists it separately as `sync_global.py:3300`.)
+the census below lists it separately, in the `gc DEAD report` row.)
 
 ```python
 # write leg (matcher key)
@@ -733,8 +733,8 @@ cost_old is 0 — the `elif cost_old and …` drops the item — so on a beacon 
 simply still held the **run side's** rows, and every conjunct of the check was satisfied by
 the wrong call. Measured, with `session_beacon.py` reverted and `sync_global.py` left
 fixed — on a **1772-check working tree** (D6 `1745 + 27`), a total no revision carries: the
-only blob that does sits in a dropped stash, reachable from no ref (see §9.1's ladder note;
-this is the same basis as its `1746 + 27` rung):
+only `smoke.py` blob that does sits in a dropped stash, reachable from no ref (see §9.1's
+ladder note; this is the same basis as its `1746 + 27` rung):
 
 ```
 old pin shape  →  1772 passed, 0 failed     (beacon entirely unfixed, suite green)
@@ -761,10 +761,14 @@ site-1-only revert (execute loop left fixed)  →  1772 passed, 0 failed
 ```
 
 **The basis is the pin set, not the tree — and `1772` cannot express the difference.** The one
-blob carrying D6 `1745 + 27` (the dropped stash) carries the count clause as executable code,
-so on that blob the revert is **not** invisible: with it the run is **1771 passed, 1 failed**,
-the single ✗ being the clause itself. The `1772/0` above belongs to the **pin set that predates
-it** — same blob, a set without the clause, and a total that reads exactly like a clean run.
+`smoke.py` blob carrying D6 `1745 + 27` (the dropped stash) carries the count clause as
+executable code, so on that blob the revert is **not** invisible: with it the run is **1771
+passed, 1 failed**, the single ✗ being the clause itself. The `1772/0` above belongs to the
+**pin set that predates it**, and no blob carries that set: every `smoke.py` blob touching the
+spy's capture list carries the count-form assertion, never the pre-clause presence form, and
+stripping the clause from this blob (D6 restated as `1744 + 27`) gives **1771 passed, 0
+failed** — the row's invisibility back, one check below this blob's own clean `1772`. `1772`
+survives there only as the declared size and as the comment `whole suite GREEN (1772/0)`.
 `1772 = 1767 + 5`, and *which* five is exactly what a total cannot say — the rule stated two
 paragraphs above, applied to this row. The row records a **state**, never a tree.
 
@@ -884,15 +888,20 @@ anchor then adds ≥4 chars, which always crosses a `ceil(chars/4)` boundary. A 
 domain is the sole exception the domain grammar admits: the anchor adds exactly 3, and where
 the bare line's length ≡ 1 (mod 4) the count does not move at all, so the comparison stays
 equal and no item is built. The line qualifier carries weight for a second, independent
-reason: a mirror whose body is in sync but whose anchored line was written from an older
-description sits **inside** the set, not outside it — measured, its delta runs *positive*
-while the current description is the longer, ties to zero across a four-character window, and
-only then turns negative. The quantifier was too wide on **both** axes; the mechanism and the
-direction are not. That
-builds a phantom STALE-mirror item whose delta is **negative**, and `_plan_pull` **adds**
-deltas to the running index — so the phantom *relieves* the ceiling and books a MISSING fact
-as absorbable that a real `--pull` holds. The beacon advertises a pull the run refuses: the
-same divergence class the fix exists to close, re-created by half of it.
+reason: a mirror whose body is in sync can still carry an anchored line written from an older
+description — `_body_hash` is body-only — and the `elif` reads the **line**, so being in sync
+does not disqualify it. Its delta is its own drift's: zero across the four-wide `ceil(chars/4)`
+window the anchored line lands in, *positive* below that window and negative above it — and the
+window straddles the equal-length point, so up to three lengths where the current description is
+*already* the longer still tie at zero. And it is four wide only while both descriptions sit
+under the 88-character hook cap, since `_pointer_line` keeps `desc[:88]` — past it, two
+descriptions sharing that prefix derive one **identical** line and book no item at all, however
+much the current one is the longer. The quantifier was too wide on **both** axes; the mechanism
+and the direction are not. The un-anchored `cost_new` builds a phantom STALE-mirror item whose
+delta is **negative**, and `_plan_pull` **adds** deltas to the running index — so the phantom
+*relieves* the ceiling and books a MISSING fact as absorbable that a real `--pull` holds. The
+beacon advertises a pull the run refuses: the same divergence class the fix exists to close,
+re-created by half of it.
 
 The repair is structural — both costs now derive from one `_bk`, computed first, so they
 cannot be derived from different quantities — and #10 pins it at a **measured** one-token

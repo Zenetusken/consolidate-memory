@@ -233,26 +233,27 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
                                    group_recips=set(_parse_flow_list(
                                        str(fm.get("recipients") or "")))):
             continue
-        # _bk FIRST, and BOTH costs derived from it — the anchor is the key the WRITER uses
-        # for the file AND the index line, so deriving either cost from the bare stem is a
-        # different quantity, and the two errors point opposite ways:
-        #   cost_old — the map is keyed by the link TARGET, so a bare lookup pinned it at 0
-        #     and the `elif` below was unreachable: every cross-domain STALE refresh silently
-        #     dropped (docs/cross-domain-index-refresh.spec.md §2 Leg B).
+        # _bk FIRST, and BOTH costs derived from it — the anchor is the key the WRITER uses for the
+        # file AND the index line, so deriving either cost from the bare stem is a different
+        # quantity, and the two errors point opposite ways:
+        #   cost_old — the map is keyed by the link TARGET, so a bare lookup pinned it at 0 and the
+        #     `elif` below was unreachable: every cross-domain STALE refresh silently dropped
+        #     (docs/cross-domain-index-refresh.spec.md §2 Leg B).
         #   cost_new — un-anchored it is ~2 tok LIGHTER than the line a pull writes, so once
         #     cost_old resolved, `cost_new != cost_old` was TRUE for every in-sync cross-domain
-        #     mirror carrying an index line: the anchor adds ≥4 chars, which
-        #     crosses a ceil(chars/4) boundary for any domain of two or more characters. (A
-        #     one-character domain — legal; identifiers.DOMAIN_RE admits it — adds exactly 3
-        #     and can land inside one, leaving the comparison EQUAL and no item built, phantom
-        #     or otherwise. It is the sole exception on the domain-length axis, which is why
-        #     that axis is scoped rather than universal.) The governing condition is LINE
-        #     provenance, not body sync, for a second, independent reason: the collision lives
-        #     INSIDE the in-sync set — an older line ties, so no item is built. The phantom row
-        #     was the steady state, not an edge case, and its delta is NEGATIVE — it
-        #     RELIEVES the running index in _plan_pull, so `held` under-states what a run
-        #     would hold and the beacon over-advertises absorption. Fixing one leg unmasked
-        #     the other.
+        #     mirror whose index line is still the current derivation's — the set nothing should
+        #     fire on: the anchor adds ≥4 chars, which crosses a ceil(chars/4) boundary for any
+        #     domain of two or more characters. (A one-character domain — legal;
+        #     identifiers.DOMAIN_RE admits it — adds exactly 3 and can land inside one, leaving the
+        #     comparison EQUAL and no item built — the domain-length axis's sole exception, and why
+        #     that axis is scoped rather than universal.)
+        #     The governing condition is LINE provenance, not body sync: `_body_hash` is body-only
+        #     (`def _body_hash(`), so an in-sync mirror can still carry an OLDER line, and that
+        #     line's delta is its own drift's — positive, zero across a four-wide `ceil` window
+        #     that straddles the equal-length point, or negative. So the phantom row was the steady
+        #     state, not an edge case, and its delta is NEGATIVE — it RELIEVES the running index in
+        #     _plan_pull, so `held` under-states a run's hold and the beacon over-advertises
+        #     absorption. Fixing one leg unmasked the other.
         # Same read-leg site as sync_global's cost map; the two MUST key alike or `held`
         # diverges from the run (the F1 divergence the replay-by-law note above closes).
         _bk = _mirror_key(domain_id, str(fm.get("domain") or ""), n)
