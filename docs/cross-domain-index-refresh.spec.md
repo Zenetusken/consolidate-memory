@@ -311,8 +311,11 @@ inserts above it. Every citation into a file this change does *not* edit — `lo
 `canonical_ingress.py`, `cm_ops.py`, `memory_status.py`, `index_admission.py` — resolved
 exactly, which is the same finding from the other side.
 
-It fails silently, too: a stale number still resolves, just to something else (`:1447`
-landed on a comment, `:3195` on an `else:`). A greppable string has no such dependency.
+It fails silently, too: a stale number still resolves, just to something else — at
+`536f0a0`, the last revision where both held, `:1447` landed on a comment and `:3195` on an
+`else:`. That second one is the mechanism reproducing on its own illustration: `0c99864`'s
+comment-only insertion displaced it, and it now sits on a `quar.append(name)`. (`:1447`
+still resolves, to the same comment.) A greppable string has no such dependency.
 Same lesson as §9's counts and the D6 constant, one level down — a value that must be kept
 in sync by hand drifts; one that *is* the thing does not (`docs/deep-field-theme.spec.md`
 §11).
@@ -377,14 +380,17 @@ because they are the three sites a future refactor would have to carry with it: 
 the anchor stops being the file key, these are the first to break.
 
 **One row is cleared by a different argument, and it is called out for that reason.**
-`canonical_ingress.py:988` takes a **native-store** filename stem (`f.stem` — a mirror key
-for a cross-domain mirror) and resolves it in *this domain's* catalog:
-`ctx.canonical_domain_dir / f"{f.stem}.md"`. For a cross-domain mirror that path cannot
-exist, and the `reg_status` lookup beside it is built under `WHERE domain_id=ctx.domain_id`
-(`:960`), so it cannot hold either. Both halves of the arm are therefore **guaranteed
-no-ops** — not correct, *unreachable*. It has never fired for a cross-domain mirror, and
-making it fire means resolving the canonical from the mirror's own frontmatter, which is
-the pair-key reconstruction `_orphans(..., pair_keys=True)` already performs (`:2711`).
+`canonical_ingress.py` takes a **native-store** filename stem (`f.stem` — a mirror key
+for a cross-domain mirror) and resolves it in *this domain's* catalog, at the anchor
+`ctx.canonical_domain_dir / f"{f.stem}.md"` (1 hit in that file — this one). For a
+cross-domain mirror that path cannot exist, and the `reg_status` lookup beside it is keyed
+by *this* domain's stems — the anchor `SELECT stem, status FROM facts` (1 hit in that file),
+whose domain axis is a bound `?` rather than the literal the draft wrote — so it cannot hold
+either. Both halves of the arm are therefore **guaranteed no-ops** — not correct,
+*unreachable*. It has never fired for a cross-domain mirror, and making it fire means
+resolving the canonical from the mirror's own frontmatter, which is the pair-key
+reconstruction `_orphans(..., pair_keys=True)` already performs — the anchor `def _orphans(`
+(1 hit in `sync_global.py`).
 That is a behavior change to a path nothing has ever exercised, with a blast radius nothing
 has measured; it is deliberately **left to its own cycle** rather than folded in here. The
 distinction is worth the ink because "no" with a reason that does not generalize is exactly
@@ -607,8 +613,15 @@ line the writer writes — which is the contract this whole leg is about, and it
 
 - **Primary pin (#2) — reword refresh.** *Required, not optional:* the body-only form alone
   cannot distinguish "replaced in place" from "never written", so it would go green if the
-  index write were skipped entirely (the `continue` at `:1482`/`:1529` on an admission
-  refusal) while the store kept a stale pointer. #1 could not carry this alone.
+  index write were skipped while the store kept a stale pointer. **The two loops skip it
+  differently, and neither is the `continue` the draft cited.** The anchor
+  `index admission refused` has **three** hits in `sync_global.py`, failing three ways: the
+  evict valve raises `WriteRefused`; the plan loop prints and then **continues**, so the item
+  never reaches the write loop; and the execute loop prints from the whole `else` arm of
+  `if adm["admitted"]:` with **no `continue`** — its body write and `recorded.append(name)`
+  have already run by then. That last arm is precisely the state #2 must catch: mirror TEXT
+  refreshed, index line left stale, and re-reading the written index the only thing that can
+  see it.
 - **Stale line cannot survive** is folded into #2 (`_pre_line_gs[0] not in _cidx2_gs`)
   rather than being its own check — it catches "appended and orphaned" rather than merely
   "exactly one line", and it is only implementable in the reword form.
