@@ -666,10 +666,10 @@ same-domain arm, which that revert does not touch) — measured, and correct. An
 its first comment named — `_mirror_key` "simplified" into always namespacing — is **not
 measurable through this pin at all**: it kills the suite at the `canon-x` fixture's read-back
 of its own canonical, `(_e.store / "canon-x.md").read_text(encoding="utf-8")` — its only
-occurrence in `tests/smoke.py` — 571 checks before #8's check runs (in an intact run at
-`e2a3048` the counter reads 983 there and 1554 at #8's check, the suite's 1555th). So that
-direction is caught by gross failure rather than by #8, and the comment now claims only the
-measured mutant. §9.1 records why this was worth chasing down.
+occurrence in `tests/smoke.py` — 571 checks before #8's check runs (983 checks complete there
+and 1554 by the time #8's check begins, at `e2a3048`). So that direction is caught by gross
+failure rather than by #8, and the comment now claims only the measured mutant. §9.1 records
+why this was worth chasing down.
 
 **The one remaining gap is unchanged**: the exact-value form (`#3`/`#5` assert `> 0`, never
 the booked delta *equals* the real index delta — §8.3's growth-model table).
@@ -826,13 +826,13 @@ naming its mutant: *"it fails if a future change simplifies `_mirror_key` into A
 namespacing."* That mutant was never run against this pin. Run now, it **cannot reach it**:
 always-namespacing kills the suite at the `canon-x` fixture's read-back of its own canonical,
 `(_e.store / "canon-x.md").read_text(encoding="utf-8")` — its only occurrence in
-`tests/smoke.py` — 571 checks before #8's check runs (in an intact run at `e2a3048` the counter
-reads 983 there and 1554 at #8's check, the suite's 1555th), so #8 never executes at all. The
-stated justification was structurally unverifiable, and it sat in the exact place a future
-reader looks to decide whether the check is load-bearing. The measured mutant (`apply_pointer`
-rewritten to delete the matched line and append at the end) leaves #8 as the suite's **only**
-failure, which is both true and a stronger claim than the withdrawn one: #8 guards *placement*,
-not key derivation. Corrected in the comment and in the table.
+`tests/smoke.py` — 571 checks before #8's check runs (983 checks complete there and 1554 by the
+time #8's check begins, at `e2a3048`), so #8 never executes at all. The stated justification
+was structurally unverifiable, and it sat in the exact place a future reader looks to decide
+whether the check is load-bearing. The measured mutant (`apply_pointer` rewritten to delete the
+matched line and append at the end) leaves #8 as the suite's **only** failure, which is both
+true and a stronger claim than the withdrawn one: #8 guards *placement*, not key derivation.
+Corrected in the comment and in the table.
 
 All seven were found by **running a mutant to completion**, never by reading the pin — the
 fourth not by a failing pin but by running a mutant its comment named and the suite never

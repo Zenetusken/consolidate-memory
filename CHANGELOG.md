@@ -110,11 +110,11 @@ this was "thousands of checks" before `#8`: the spec's two `#8` paragraphs and t
 in `tests/smoke.py`. The mutant was re-run rather than trusted — it does die where they say, at
 the `canon-x` fixture's read-back of its own canonical, so `#8` never executes — but the number
 held only in the tree it was written in: that read-back is now at `smoke.py:5085`, +123 as the
-branch grew, and an intact run's counter reads 983 at the fixture against 1554 at `#8`'s check,
-the suite's 1555th — **571** checks, not thousands, in a suite of 1793. So the line numbers are
-replaced by the target itself (the fixture's own read-back expression, with its hit count
-stated), and the quantity by the two counter readings that produced it — because a stale line
-number fails *silently*, still resolving, just to the wrong line.
+branch grew, and 983 checks complete at the fixture against 1554 by the time `#8`'s check
+begins — **571** checks, not thousands, in a suite of 1793. So the line numbers are replaced by
+the target itself (the fixture's own read-back expression, with its hit count stated), and the
+quantity by the two check positions that produced it — because a stale line number fails
+*silently*, still resolving, just to the wrong line.
 
 The design-of-record, with the review's corrections to its own claims, is
 `docs/cross-domain-index-refresh.spec.md`. No CLI flag moved, no schema or manifest

@@ -12789,9 +12789,8 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # it covers the same-domain arm), and the mutant it was first written to claim —
         # _mirror_key "simplified" into always namespacing — is unreachable from here:
         # that mutant kills the suite at the canon-x fixture's read-back of its own
-        # canonical, 571 checks earlier (in an intact run at e2a3048 the counter reads 983
-        # there and 1554 at #8's check, the suite's 1555th). Claim what was measured, not
-        # what's plausible.
+        # canonical, 571 checks earlier (983 checks complete there and 1554 by the time
+        # #8's check begins, at e2a3048). Claim what was measured, not what's plausible.
         _aidx_lines_gs = (_storea_gs / "MEMORY.md").read_text(encoding="utf-8").splitlines()
         _aidx_lines_gs.append("- [zz-local](zz-local.md) — a neighbouring local entry")
         (_storea_gs / "MEMORY.md").write_text("\n".join(_aidx_lines_gs) + "\n",
