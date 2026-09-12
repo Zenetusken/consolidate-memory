@@ -12540,7 +12540,7 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # The COUNT is load-bearing, not belt-and-braces: TWO write legs call apply_pointer
         # (the plan loop and the execute loop), and the execute loop's correct key masks a
         # plan-loop regression from every outcome-shaped pin in this file — measured, with
-        # that one omission applied and this check absent, a site-1-only revert
+        # this check absent, a site-1-only revert
         # (sync_global.py:1451 back to the bare stem, :1483 untouched) leaves the suite
         # green. With the clause, that revert fails THIS check and nothing else (measured:
         # 1776 passed, 1 failed at b023d02's 1777; 1777 passed, 1 failed at HEAD's 1778).

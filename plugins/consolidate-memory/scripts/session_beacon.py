@@ -211,7 +211,8 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
     # The old note here claimed the conservative direction unconditionally; that is false for
     # the fat arm, and it is not hypothetical: it is exactly the shape review F2a caught when
     # cost_new was derived un-anchored (a mechanically fatter cost_old, ~2 tok for a `work--`
-    # anchor), which made EVERY in-sync cross-domain mirror a phantom negative delta.
+    # anchor), which made every in-sync cross-domain mirror carrying a two-or-more-character
+    # domain a phantom negative delta.
     idx_text = _safe_read_text(store / "MEMORY.md") or ""
     # PR-#94 review F4: build the anchor→cost map ONCE — per-fact _index_line_cost re-split the
     # whole index every call (O(relevant × index_bytes); measured 4.5s only at a pathological
@@ -239,8 +240,12 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
         #     dropped (docs/cross-domain-index-refresh.spec.md §2 Leg B).
         #   cost_new — un-anchored it is ~2 tok LIGHTER than the line a pull writes, so once
         #     cost_old resolved, `cost_new != cost_old` was TRUE for every cross-domain
-        #     mirror carrying an index line — in sync or not: the anchor adds ≥3 chars, and
-        #     on a line of pointer length that always moves ceil(chars/4). The phantom row
+        #     mirror carrying an index line — in sync or not: the anchor adds ≥3 chars, which
+        #     crosses a ceil(chars/4) boundary for any domain of two or more characters. (A
+        #     one-character domain — legal; identifiers.DOMAIN_RE admits it — adds exactly 3
+        #     and can land inside one, leaving the comparison EQUAL and no item built, phantom
+        #     or otherwise. It is the sole exception, which is why the quantifier here is
+        #     scoped rather than universal.) The phantom row
         #     was the steady state, not an edge case, and its delta is NEGATIVE — it
         #     RELIEVES the running index in _plan_pull, so `held` under-states what a run
         #     would hold and the beacon over-advertises absorption. Fixing one leg unmasked

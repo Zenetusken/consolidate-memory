@@ -78,12 +78,15 @@ _line_cost_run[_m.group(1)] = est_tokens(_ln)     # key = "tools--python-ruff-my
 ....get(name, 0)                                  # lookup = "python-ruff-mypy-gate" → 0
 ```
 
-`_plan_pull` charges a STALE refresh `cost_new - cost_old` and **always runs** it
-(`elif status == "STALE-mirror":` in `sync_global.py`, a bare `idx += cost_new - cost_old`
-with no gate on it), so a `cost_old` pinned at `0` books a full line where the real delta
-applies. The neighbouring `if status == "MISSING":` arm is the **gated** one — it routes its
-delta through `_would_net_grow` and can *hold* the pull — which is why the ungated STALE arm
-is the one that matters here: an over-charge there meets no growth gate at all. The beacon
+`_plan_pull` charges a STALE refresh `cost_new - cost_old` and **always runs** it — the
+`idx += cost_new - cost_old` line in `sync_global.py`, which occurs **once** in that file and
+carries no gate — so a `cost_old` pinned at `0` books a full line where the real delta applies.
+The gated arm is the MISSING one: its `delta = cost_new - cost_old` (also a single hit in that
+file) routes through `_would_net_grow` and can *hold* the pull. That contrast is why the ungated
+STALE arm is the one that matters here: an over-charge there meets no growth gate at all.
+**Citing the two lines rather than the two `status` arms is deliberate** — `if status ==
+"MISSING":` has a *second* arm in the execute loop, gated by file-presence and admission
+instead, so a reader who greps the arm phrasing carries away the wrong gate. The beacon
 (the `line_cost` build in `session_beacon.py`) builds the identical map and adds a sharper
 failure:
 `elif cost_old and cost_new != cost_old:` is falsy whenever `cost_old == 0`, so a
@@ -310,11 +313,23 @@ in sync by hand drifts; one that *is* the thing does not (`docs/deep-field-theme
 §11).
 
 **And a greppable string has an acceptance test — its hit count, not its uniqueness.** An
-anchor quoted inside the citing sentence can never be unique, because the citation contains
-its own anchor; so a **quoted** anchor is stated with its hit count and each hit named, and
-only an anchor that is *not* quoted may be called unique. §9.1's footnote is the instance —
-it names its two hits and says which is the note — and this paragraph is the rule that
-footnote was measuring itself against.
+anchor quoted inside the citing sentence can never be unique, because the citation contains its
+own anchor; but *not* being quoted is no licence either, since a collision need not be a
+self-hit. So the rule runs one way only: **uniqueness may be claimed only after the hits have
+been counted and found to be one — a quoted anchor can never be unique, and is therefore always
+stated with its count and each hit named.** §9.1's footnote is the instance — it names its two
+hits and says which is the note — and this paragraph is the rule that footnote was measuring
+itself against.
+
+Two parameters the rule leaves to the claim, and both belong in it: **the domain of the count**
+(this file, the document, the tree) and **the revision counted at**. The census's own anchors
+are the case in point — they are **table cells, not citing sentences**, so no part of the
+quoted/unquoted carve reaches them, and not one is unique *within this document alone* before
+`scripts/` is even opened: the plan-loop call's anchor has **three** document hits (two fenced
+code blocks and the census row) and occurs in a script as well. A fenced block counts like any
+other text — `grep` does not know it is fenced — which is why a transcript reporting the count
+of an anchor **it also quotes** can never report the number measured on the file containing it.
+State the count in prose; do not restate the anchor beside it.
 
 The rows marked `no` were cleared **by execution, not reading**, in review:
 the evict filters cannot receive a namespaced stem (a mirror is refused as an evict
@@ -641,9 +656,9 @@ the booked delta *equals* the real index delta — §8.3's growth-model table).
 ### 9.1 A pin that does not discriminate — seven recorded failures in this cycle
 
 The rule above ("fails on pre-fix code") was applied to every one of the draft's verification
-bullets, and **three of them still passed green against an unfixed site** — the other two are
-the guards §4(b) names, which pass pre-fix by construction rather than by failing to fail. All
-three are recorded because the rule as
+bullets, and **three of them still passed green against an unfixed site**. A fourth observation
+rather than a fourth member of that set: the **two guards §4(b) names** pass pre-fix by
+construction rather than by failing to fail. All three are recorded because the rule as
 stated is not strong enough to catch them, and because the third is the one a whole-change
 revert structurally cannot see. The review added three more entries after that count was
 written — **failure 5**, a fourth pin that passed green; **failure 6**, a regression no pin
@@ -666,8 +681,9 @@ about.** It read `1772 → 1776 → 1777 → 1778`, and neither of its first two
 *committed* suite size — for two different reasons, which is why one diagnosis did not cover
 both. 1776 is a `passed` field quoted where a size belongs (the 1777-check revision's size is
 1777). 1772 carries **two** roles this cycle: the `passed` count of the six-failure write-side
-mutant run (1772 + 6 = 1778), and the **suite total** of the five-check working tree whose D6
-literal is `1745 + 27`. As a rung in a size ladder it can only have meant the second — which
+mutant run — the **anchor-drop** one, both keys left correct and only the rendered line losing
+its anchor (1772 + 6 = 1778; ✗ = #1 #2 #3 #5 #7 #11, so #4 stays green) — and the **suite
+total** of the five-check working tree whose D6 literal is `1745 + 27`. As a rung in a size ladder it can only have meant the second — which
 puts it in the same limb as the phantom `1746 + 27` rung below: a genuine size, measured on a
 tree no revision carries. It also contradicted **Failure 5**'s note below — the paragraph
 opening "One note for a reader arriving from `git log`" (grep that phrase: **two** hits, the
@@ -710,22 +726,34 @@ one function: the *plan* loop (`sync_global.py:1451`), whose result feeds only t
 **admission** decision via `project_index(planned)`, and the *execute* loop (`:1483`),
 which performs the actual index write. Every outcome-shaped pin in the file asserts on the
 **written index** — and the execute loop's correct key produces a correct index regardless
-of what the plan loop passed. So a revert of the plan loop alone is invisible — measured on
-the same 1772-check working tree:
+of what the plan loop passed. So a revert of the plan loop alone was invisible — measured on a
+pin set that predates the count clause this fix adds:
 
 ```
 site-1-only revert (execute loop left fixed)  →  1772 passed, 0 failed
 ```
 
+**The basis is the pin set, not the tree — and `1772` cannot express the difference.** The one
+blob carrying D6 `1745 + 27` (the dropped stash) carries the *pre-clause* five; on that same
+blob the revert is **not** invisible once the clause is present: with it the run is **1771
+passed, 1 failed**, the single ✗ being the count clause itself. `1772 = 1767 + 5`, and *which*
+five is exactly what a total cannot say — the rule stated two paragraphs above, applied to this
+row. The row records a **state**, never a tree.
+
 Both write legs unfixed was caught — reverting the two `apply_pointer` call sites alone
-leaves **1772 passed, 6 failed** at HEAD's 1778 (measured; the run the ladder note above
-calls the six-failure write-side mutant run — the same `1772`, a `passed` field, not a
-size). Exactly one
-write leg unfixed was caught by **nothing** — and the plan loop's key is not inert: with
-the bare stem its `planned` index carries the duplicate, so the admission verdict is
-computed against a pessimistic model of a write that will not happen that way, and a pull
-that should be admitted can be refused. The pin now asserts the anchored key appears
-**once per leg** (`_stems_gs.count("personal--grp-fact") == 2`).
+leaves **1772 passed, 6 failed** at HEAD's 1778 (measured; a **different** six from the
+anchor-drop run the ladder note above also calls six-failure: their `passed` fields collide at
+`1772` while their failure sets do not — this one is #1 #2 #4 #5 #7 #11, the anchor-drop's is
+#1 #2 #3 #5 #7 #11, so #3 and #4 swap. A total identifies a size, never a run). Exactly one
+write leg unfixed was caught by **nothing in the draft's pin set** — and the plan loop's key
+is not inert: with the bare stem its `planned` index carries the duplicate, so the admission
+verdict is computed against a pessimistic model of a write that will not happen that way, and
+a pull that should be admitted can be refused. The pin now asserts the anchored key appears
+**once per leg** (`_stems_gs.count("personal--grp-fact") == 2`), and that closes the hole:
+reverting the plan loop alone at HEAD leaves **1777 passed, 1 failed**, the sole ✗ being the
+call-site assertion — so the axis this row called undetected is detected, by the check the row
+itself prompted. Label the revision on such a claim: "nothing" was true of the draft's set and
+false of HEAD's, and the two differ by exactly the clause that fixed it.
 
 Two notes on getting *that* discriminator right, both from measurement:
 
@@ -821,8 +849,13 @@ full suite was **green** on that tree. The finding was initially graded *low* on
 the two costs differ by the anchor text, ~2 tokens — and that grade was wrong for a reason
 worth recording: the severity of a token count is not its magnitude but **what reads it**.
 Tracing the consumers showed those 2 tokens flip the beacon's `elif cost_old and cost_new !=
-cost_old` to **true for every in-sync cross-domain mirror**, because an un-anchored
-`cost_new` is systematically *lighter* than the anchored line it is compared against. That
+cost_old` to **true for every in-sync cross-domain mirror whose domain is two or more
+characters long**, because an un-anchored `cost_new` is systematically *lighter* than the
+anchored line it is compared against — the anchor then adds ≥4 chars, which always crosses a
+`ceil(chars/4)` boundary. A **one-character** domain is the sole exception the domain grammar
+admits: the anchor adds exactly 3, and where the bare line's length ≡ 1 (mod 4) the count does
+not move at all, so the comparison stays equal and no item is built. The quantifier was too
+wide; the mechanism and the direction are not. That
 builds a phantom STALE-mirror item whose delta is **negative**, and `_plan_pull` **adds**
 deltas to the running index — so the phantom *relieves* the ceiling and books a MISSING fact
 as absorbable that a real `--pull` holds. The beacon advertises a pull the run refuses: the
@@ -886,7 +919,9 @@ heals to a single line in one refresh. Three limits, all honest:
   indexed` — a tier partition that structurally *cannot* see a duplicate, since two identical
   lines collapse to one element before any comparison could run; `index_admission.py`'s
   `_POINTER_TARGET_RE`, a generic `](…)`
-  capture used per-target for admission syntax, never target-against-target; and the
+  capture used per-target for admission syntax **on the always-loaded index** — never
+  target-against-target *there*, the one comparison of that kind being the archive path the
+  next sentence concedes — and the
   `re.search(r"\]\(([^)]+)\.md\)", …)` call in each of `local_ingress.py`,
   `session_beacon.py`, and `sync_global.py` (which has two: the cost-map build and the
   `mirror_stems` tally) — none compares
@@ -927,10 +962,11 @@ literals.
 three instances of one basis survive into the review round.** Besides the `1746 + 27` rung
 above, failure 5's note compared the 1776 reported *in* `b023d02`'s message against "the 1775
 checks that revision ships" (`b023d02` ships 1777), and failures 2 and 3 both date their
-measurements to "the revision then shipping 1772 checks" — a total no *revision* carries: all
-226 refs-reachable `smoke.py` blobs were checked, and the single blob whose D6 literal is
-`1745 + 27` sits in a dropped stash (`188a326`), reachable from no ref — which is precisely
-what makes it a working tree rather than a revision. In each, a **sum observed in a run** was
+measurements to "the revision then shipping 1772 checks" — a total no *revision* carries: no
+refs-reachable `smoke.py` blob was left unchecked, and a scan of the **object database**,
+restricted to `smoke.py`, finds the D6 literal `1745 + 27` in exactly one blob — the dropped
+stash `188a326`, reachable from no ref — which is precisely what makes it a working tree
+rather than a revision. In each, a **sum observed in a run** was
 **revision's name**. The quoted halves were all correct; only the comparison term was inferred,
 which is why reading for wrong literals finds none of them — and why the rule is stated here as
 the inference to refuse: *read a measurement's total as evidence of what the tree was, never of

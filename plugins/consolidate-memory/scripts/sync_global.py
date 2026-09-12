@@ -3283,7 +3283,8 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     from domain_policy import fact_domain as _fd_gc
     dead = []
     for name, fm, _ in gfacts:
-        # The mirror's FILE key is _mirror_key — the SAME key the writer uses (:2052), bare-stem
+        # The mirror's FILE key is _mirror_key — the SAME key the writer uses
+        # (_execute_pull_writes) and the pull path derives (run's `mkey`), bare-stem
         # only when the canonical is same-domain. Probing `{name}.md` looked for `X.md` while the
         # file is `{fdom}--X.md`, so every CROSS-DOMAIN canonical read as DEAD here (14 mirrors
         # across 11 projects — spec §5), and a genuinely ABSENT one read as PRESENT whenever an
