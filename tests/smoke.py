@@ -5422,9 +5422,17 @@ with _tf73.TemporaryDirectory() as _td81:
     #
     # Scope, stated precisely (a pin must not claim more than it measures): this discriminates
     # the HALF-FIXED state (cost_old anchored / cost_new bare) — the tree the finding was
-    # raised against. It is green on the fully-fixed tree AND on the ORIGINAL pre-fix tree,
-    # which dropped the item entirely rather than mis-costing it (that leg is pinned by the
-    # §9 beacon-leg check in the groups block, `cost_old > 0`).
+    # raised against. That arm and the fully-fixed one are MEASURED; the third is an ARGUMENT,
+    # and is labelled rather than sitting in the same register as the other two:
+    #   - HALF-FIXED and fully-fixed, MEASURED. On the fully-fixed tree both costs derive from
+    #     one key and one hook, so cost_new == cost_old exactly: no item, no delta, `held`
+    #     unchanged.
+    #   - ORIGINAL pre-fix tree, green by CONSTRUCTION, not by a run. There the bare lookup
+    #     pins cost_old at 0, so the `elif cost_old and …` guard drops the item outright
+    #     instead of mis-costing it — and a dropped zero-delta item cannot move the running
+    #     index, so no index arithmetic can observe it either.
+    # The dropped item's own leg is pinned separately by the §9 beacon-leg check in the groups
+    # block (`cost_old > 0`), which is what keeps this arm's blindness from being a hole.
     _mk_pb = sg._mirror_key("personal", "work", "mag-pb")
     _canon_pb = _v3_canon("mag-pb", domain="work", description="mag hook").replace(
         "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
@@ -12494,13 +12502,20 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # suite (measured: with that one omission applied and this check absent, the other 1777
         # checks ran green — 0 failed). The axis is real, not hypothetical: an un-anchored
         # cost_new is ~2 est tok LIGHTER than the line a pull writes, and a lighter cost_new
-        # books a NEGATIVE delta — which RELIEVES the running index in _plan_pull, the same
-        # phantom-relief arm §8.3 tabulates (the direction that advertises a fact as absorbable
-        # when a real --pull holds it).
+        # books a NEGATIVE delta — which RELIEVES the running index in _plan_pull, the
+        # phantom-relief arm §9 #10 pins and §9.1's failure 6 measured (the direction that
+        # advertises a fact as absorbable when a real --pull holds it). §8.3 supplies the relief
+        # DIRECTION in its err columns, not this arm — its grid has no half-fixed row and no
+        # in-sync mirror, so citing it here would name a table that does not contain the shape.
         # Ground truth is the line the run actually WROTE (`_cline2_gs[0]`, pinned to exactly
         # one line just above), never a re-derivation of it: the planner must book the cost of
-        # the line the writer writes — that plan/execute agreement IS this leg's contract, and
-        # it is what an anchor dropped on either side breaks.
+        # the line the writer writes — that plan/execute agreement IS this leg's contract. An
+        # anchor dropped on either side breaks it, by a different clause each way: on the READ
+        # side the equality below decides (measured — under exactly this revert this check is
+        # the only failure, both `bool(...)` conjuncts being true on the mutant), while on the
+        # WRITE side the deciding clause is the vacuity guard `bool(_cline2_gs)` — drop the
+        # write-side anchor and no anchored line exists to compare at all. #2 and #4 are that
+        # side's primary detectors; this check is the read side's.
         check("v0.4.10 groups: the pull planner books the ANCHORED cost_new — the line the "
               "writer wrote (a bare-stem cost_new is ~2 tok light and relieves the ceiling)",
               bool(_row_gs) and bool(_cline2_gs)

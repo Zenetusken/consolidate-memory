@@ -625,10 +625,13 @@ precondition was unmet — changed nothing. Instrumentation then showed the prec
 fixture. With a bare same-stem native on disk, *both* the correct and the reverted probe
 find a file, so the check could not discriminate **in either direction**. Moving it
 upstream of #7 and dropping the injection made it fail on the mutant as intended —
-re-measured independently at HEAD (1777 checks): **the gc check the sole failure** (1776
-passed, 1 failed), while the same revert with the check left in its pre-review position is
-green (**1777 passed, 0 failed**). The vacuity is therefore reproducible on demand, not
-merely recorded.
+re-measured independently at the revision then shipping 1777 checks: **the gc check the sole
+failure** (1776 passed, 1 failed), while the same revert with the check left in its pre-review
+position is green (**1777 passed, 0 failed**). The gc revert was then reproduced again at
+HEAD's 1778 checks — **1777 passed, 1 failed**, #9 the sole failure, against a `1778 passed,
+0 failed` control — so the discrimination is a property of the check, not of the revision it
+was measured at. (The pre-review-position arm is stated only at its own revision; it has not
+been re-measured since.) The vacuity is therefore reproducible on demand, not merely recorded.
 
 The rule this yields is about position, not assertion: **a pin's power depends on the
 fixture state at its execution point, and a neighbouring check's setup can silently consume
@@ -710,13 +713,18 @@ heals to a single line in one refresh. Three limits, all honest:
   are the same sentence read at two scopes.
 
 **The suite-total pin must move in this PR.** `tests/smoke.py`'s D6 anti-rot check pins the
-suite's own execution surface (`passed + failed + 1 == N + 27`) so an orphaned section can
-never print green. It is a count of the full suite *including itself*, so adding the eight
+suite's own execution surface (`passed + failed + 1 == N + 28`) so an orphaned section can
+never print green. It is a count of the full suite *including itself*, so adding the eleven
 checks here without bumping it leaves smoke red — the pin is designed to fail loudly rather
-than let the count drift. This change moves it **`1740 + 27` → `1750 + 27`**, in three
-steps: `1746 + 27` for the first six checks, `1748 + 27` when #7 and #8 landed, and
-`1750 + 27` for the two checks the review added afterwards (#9, the gc-DEAD probe, and
-#10, the phantom-delta pin). Any future addition to this spec's check set moves it again.
+than let the count drift. This change moves it **`1740 + 27` → `1750 + 28`**, in four steps:
+`1746 + 27` for the first six checks, `1748 + 27` when #7 and #8 landed, `1750 + 27` for the
+two the review added next (#9, the gc-DEAD probe, and #10, the phantom-delta pin), and
+`1750 + 28` when #11 (the run-side `cost_new` pin) landed. **Only the sum is load-bearing** —
+the split between the two addends is bookkeeping, and it is the total that must equal the
+reported count (measured at HEAD: `1778 passed, 0 failed` against `1750 + 28`). #11 moved the
+*second* addend because no check landed between #10 and it; a maintainer copying either
+literal without the other reintroduces exactly the drift this pin exists to catch. Any future
+addition to this spec's check set moves it again.
 
 **The second member of §8.2's family — a *live* bare-keyed mirror — is the one input where
 the anchored matcher is strictly less tidy. Measured, scoped, and not reachable here.**
