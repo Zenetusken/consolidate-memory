@@ -595,16 +595,17 @@ check("window: so is the FLOOR clip — the aligned phase's first bucket reaches
 # pin alone at `7a17600` (`1791 passed, 1 failed`) and BOTH pins at this revision
 # (`1791 passed, 2 failed`) — the invariant covers that same fixture, so a red set is
 # revision-relative even when the shape is not. The two pins below are not redundant and
-# neither subsumes the other,
-# and each fails where the other alone stays green at this revision: a prefix WIDENING reds the
-# invariant ALONE (the rendered tail is not a literal) with the equality green, coercing a LIST
-# to a vocabulary default reds the equality alone (it renders a literal, but it should have
-# rendered nothing) with the invariant green. That crossing is not a partition — the substring
-# reds both, the raw revert reds all four. Witnesses, not classes again: coercing an unknown
-# STRING to the default reds four checks. A further shape — an absent scope rendering no
-# suffix — is deliberately NOT pinned: measured, every mutant that reddens such a pin also
-# reddens the six window pins above, and the bracket-absence it would assert is already this
-# suite's `hook strips markdown link chars` check on the same shape.
+# neither subsumes the other, and each fails where the other alone stays green at this
+# revision: a prefix WIDENING reds the invariant ALONE (the rendered tail is not a literal)
+# with the equality green, coercing a LIST to a vocabulary default reds the equality alone (it
+# renders a literal, but it should have rendered nothing) with the invariant green. That
+# crossing is not a partition — the substring reds both, the raw revert reds all four. Nor is
+# the coercion witness a class: it differs by whether it preserves a vocabulary value. Keeping
+# the admission branch fires only on a truthy value absent from the list and reds two checks;
+# dropping it also coerces a quoted vocabulary value and reds four. A further shape — an absent
+# scope rendering no suffix — is deliberately NOT pinned: measured, every mutant that reddens
+# such a pin also reddens the six window pins above, and the bracket-absence it would assert is
+# already this suite's `hook strips markdown link chars` check on the same shape.
 import fact_schema as _fs  # noqa: E402  — the vocabulary itself, never a copy of it
 _PTR_PREFIX = "- [foo](bar--foo.md) — d"
 _VOCAB_TAIL = {""} | {f" [{v}]" for v in _fs.SCOPES}

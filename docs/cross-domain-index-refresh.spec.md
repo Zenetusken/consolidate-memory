@@ -1012,10 +1012,15 @@ equality green, and coercing a LIST to a vocabulary default
 (`SCOPES[0] if isinstance(fm.get("scope"), list) else` the admission) reds the equality alone
 (the tail IS a literal, where nothing should have rendered at all) with the invariant green.
 That crossing is not a partition and the pair is not "exact reverses" — the substring reds
-both, the raw revert reds all four. Witnesses again, not classes: coercing an unknown STRING to
-the default reds four checks (`1789 passed, 4 failed` — the scope-tag pin, the drop pin, the
-quote pin and the case pin), so the coercion family is wider than the crossing this pair
-measures.
+both, the raw revert reds all four. Nor is the coercion witness a class: the same shape differs
+by whether it preserves a vocabulary value.
+`_raw_scope if _raw_scope in SCOPES else (SCOPES[0] if fm.get("scope") else "")` keeps the
+vocabulary branch, so it fires only on a truthy value absent from the list and reds two checks
+(`1791 passed, 2 failed` — the drop pin and the case pin, which meets `USER-GLOBAL` for the
+first time). `SCOPES[0] if fm.get("scope") else ""` drops the admission entirely, so it also
+coerces `' "user-global" '` and reds four (`1789 passed, 4 failed` — the scope-tag pin, the
+drop pin, the quote pin and the case pin). The coercion family is wider than the crossing this
+pair measures, and wider than either of its witnesses.
 
 **One candidate pin was declined, on a measurement.** An empty scope rendering *no* suffix is a
 real branch, and a pin on it discriminates one mutant. But that mutant (an always-rendered
