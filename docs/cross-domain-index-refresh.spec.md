@@ -892,7 +892,11 @@ description — `_body_hash` is body-only — and the `elif` reads the **line**,
 does not disqualify it. Its delta is its own drift's: zero across the `ceil(chars/4)` window
 the anchored line lands in, *negative* while the current description falls short of that window
 and positive once it has grown past it — and the window contains the equal-length point, so its
-other lengths, shorter than the anchored description or longer, tie at zero too. That window is
+other lengths, shorter than the anchored description or longer, tie at zero too. Every length
+here is a **sanitized** one, with the line's other inputs — name, anchor, scope — held fixed:
+`_pointer_line` folds control and markdown-bracket characters to spaces and collapses
+whitespace runs *before* `desc[:88]` caps the result and `est_tokens` reads it, so two
+descriptions of equal raw length can derive different lines. That window is
 four consecutive lengths — fewer only where the run starts below an empty description — unless
 its `ceil` bucket is the one the cap's saturation lands in, where every longer description
 joins it instead, since `_pointer_line` keeps `desc[:88]` — past it, two descriptions sharing

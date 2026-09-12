@@ -515,20 +515,36 @@ check("pointer: strips control bytes/newlines from the hook (no index injection)
 # the first bucket short, and every longer description once the bucket is the cap's saturated one
 # (which is why "four wide" holds only INSIDE the cap — the sentence asserting it universally was
 # false wherever a bucket reached the cap, which 3 of the 4 `est_tokens` phases admit).
+# And pin the AXIS: those lengths are SANITIZED ones. `_pointer_line` folds control/bracket
+# characters and collapses whitespace runs BEFORE `desc[:88]` caps, so a RAW-length sweep sees
+# ties and one-token moves the sanitized rule calls impossible — which is how this window was
+# first mis-stated. `_tie_window` sweeps `"x" * n`, its own sanitized form; `_tok_desc` takes
+# the raw string, so the difference is observable.
 def _tie_window(name: str, anchor: str, d: int, hi: int = 400) -> list:
     """The current-description lengths whose pointer books the same bucket as `d` (0..hi)."""
     def _tok(n: int) -> int:
         return ms.est_tokens(sg._pointer_line(name, {"description": "x" * n}, anchor=anchor))
     return [n for n in range(0, hi + 1) if _tok(n) == _tok(d)]
 
+def _tok_desc(name: str, anchor: str, desc: str) -> int:
+    """The same cost for a RAW description — sanitized inside `_pointer_line`, not by us."""
+    return ms.est_tokens(sg._pointer_line(name, {"description": desc}, anchor=anchor))
+
 check("window: mid-cap the tie window is four consecutive lengths, the equal-length point among them",
       _tie_window("foo", "bar--foo", 40) == [38, 39, 40, 41])
-check("window: a run starting below an empty description is clipped short of four",
-      len(_tie_window("foo", "bar--foo", 1)) < 4)
+check("window: a run starting below an empty description is clipped short of four — to [0, 1]",
+      _tie_window("foo", "bar--foo", 1) == [0, 1])
 _w_sat = _tie_window("foo", "bar--foo", 88)
 check("window: once the bucket is the cap's saturated one, every longer description ties too "
       "(the in-cap tail is absorbed with it, nothing below it)",
       all(n in _w_sat for n in range(86, 401)) and 85 not in _w_sat)
+check("window: equal RAW length need not tie — the window is a sanitized-length window",
+      _tok_desc("foo", "bar--foo", "x" * 41 + "\n") != _tok_desc("foo", "bar--foo", "x" * 42))
+check("window: a raw-LONGER description can still tie — a bracketed run collapses away",
+      _tok_desc("foo", "bar--foo", "x" * 41 + "[" * 10) == _tok_desc("foo", "bar--foo", "x" * 40))
+check("window: past the cap a raw-length gain can book NEGATIVE — the saturated tail absorbs "
+      "sanitized lengths, not raw ones",
+      _tok_desc("foo", "bar--foo", "x" * 85 + "[" * 4) < _tok_desc("foo", "bar--foo", "x" * 88))
 # frontmatter parses folded/block scalars (description: >-) instead of storing ">-"
 check("frontmatter: folds block scalar value",
       sg._frontmatter("---\nname: x\ndescription: >-\n  hello\n  world\nmetadata:\n  scope: user-global\n---\nb")["description"] == "hello world")
@@ -15148,7 +15164,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 31)
+      passed + failed + 1 == 1750 + 34)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
