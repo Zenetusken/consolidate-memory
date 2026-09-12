@@ -94,9 +94,11 @@ LIVE_DOCS = [
 
 # A literal `v` is what separates a currency statement from a version *mention*, and it is
 # not cosmetic — a bare `\d+\.\d+\.\d+` mis-fires on two things in these very files: the
-# README's shields URL (`badge/version-0.4.24`, no `v`) and preflight's `**1.0.0**` (the
-# release the checklist certifies, not the current one). Both measured; neither is a false
-# positive under this rule, and it finds the right token in all six docs.
+# README's shields URL — whose version token carries no `v` and is renamed every release,
+# so it is cited by shape (`badge/version-<X.Y.Z>`) rather than by a value that rots — and
+# preflight's `**1.0.0**` (the release the checklist certifies, not the current one). Both
+# measured; neither is a false positive under this rule, and it finds the right token in all
+# six docs.
 _CURRENCY = re.compile(r"\bv(\d+\.\d+\.\d+)\b")
 
 # Inline code spans and fenced blocks are stripped before scanning: a doc may legitimately

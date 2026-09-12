@@ -50,8 +50,8 @@ dev-only label), `docs` (`tests/docs_links.py` — badge ↔ `plugin.json`, link
 resolution, manual anchors, the theme table, live-doc version statements, required
 strings, and the committed preview's byte-equality; its own job because docs drift
 is version- and OS-independent, so the 6-way matrix would only repeat the same
-answer), `manifest` (`claude plugin
-validate --strict`, a real blocking gate — no continue-on-error), `bench` (the
+answer), `manifest` (`claude plugin validate --strict`,
+a real blocking gate — no continue-on-error), `bench` (the
 capacity SLO corner: `bench_phase5.py --quick`, measured — not gated — with the
 report stored as a run artifact), and `browser` (development-only Playwright +
 Chromium; archive behavior, themes, data preservation, and responsive layout, with
@@ -253,10 +253,12 @@ design.
   ruleset requires the check-run **display names** (GitHub matches those, never
   job keys) — 12 contexts, and a review count of 0 (the solo-maintainer model
   below, not a stale aspiration): `test (python 3.8)`–`test (python 3.13)`,
-  `test (macos python 3.12)`, `concurrency (linux python 3.12)`, `typecheck
-  (mypy, dev-only contract check)`, `plugin manifest validation (claude CLI)`,
-  `bench (linux python 3.12)`, and `docs (badges, links, anchors)`. The CI
-  job list in the Commands section is the authoritative enumeration.
+  `test (macos python 3.12)`, `concurrency (linux python 3.12)`,
+  `typecheck (mypy, dev-only contract check)`,
+  `plugin manifest validation (claude CLI)`, `bench (linux python 3.12)`, and
+  `docs (badges, links, anchors)`. The Commands section lists the **8
+  workflow jobs**; they expand into 13 check-runs and the ruleset requires 12
+  — all but the dev-only `browser` job.
 
 - **The review gate vs the solo maintainer.** GitHub refuses self-approval —
   and self-approval protection overrides bypass actors — so a solo account can
