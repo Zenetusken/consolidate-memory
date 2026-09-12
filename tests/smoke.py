@@ -584,16 +584,17 @@ check("window: so is the FLOOR clip — the aligned phase's first bucket reaches
 # cannot reach them). The fix keys the suffix to the canonical vocabulary, so the render can
 # only ever be a known literal. These pins hold it to the shapes that reach that key — and one
 # of them is a PROPERTY rather than an equality, because the equality alone did not earn the
-# universal its name claimed: it fixes four fixtures, and an admission widened to admit a value
-# that merely CONTAINS a vocabulary string satisfies every one of them. Two shapes measured AT
+# universal its name claimed: it fixes four fixtures, and two admissions that widen the guard —
+# a prefix match and a first-char match — satisfy every one of them. Two shapes measured AT
 # `7a17600` — the revision before this pin existed — while restoring the live link for
 # `scope: user-global](http://x)`, which none of the four is:
 # `any(_raw_scope.startswith(s) for s in SCOPES)` → `1792 passed, 0 failed`, and
 # `_raw_scope[:1] in ("p","s","u")` → the same. Those are the measured shapes, not a class: a
 # SUBSTRING admission (`any(s in _raw_scope for s in SCOPES)`) restores the live link too,
-# because the `["user-global"]` fixture stringifies to `"['user-global']"`. It reds the drop
-# pin alone at `7a17600` (`1791 passed, 1 failed`) and BOTH pins at this revision
-# (`1791 passed, 2 failed`) — the invariant covers that same fixture, so a red set is
+# because `scope: user-global](http://x)` contains a vocabulary string. It reds the drop pin
+# alone at `7a17600` (`1791 passed, 1 failed`) — the `["user-global"]` fixture, stringifying to
+# `"['user-global']"`, is what renders a suffix where none should — and BOTH pins at this
+# revision (`1791 passed, 2 failed`) — the invariant covers that same fixture, so a red set is
 # revision-relative even when the shape is not. The two pins below are not redundant and
 # neither subsumes the other, and each fails where the other alone stays green at this
 # revision: a prefix WIDENING reds the invariant ALONE (the rendered tail is not a literal)
