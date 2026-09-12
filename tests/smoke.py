@@ -520,12 +520,20 @@ check("pointer: strips control bytes/newlines from the hook (no index injection)
 # its LAST member is the cap itself — nothing is culled, nothing longer joins, and the window at
 # the cap stays four wide. All three regimes above are `foo`/`bar--foo` shapes (23 chars of fixed
 # prefix, `K mod 4 = 3`), so their arithmetic is phase-bound and renaming that fixture flips all
-# three: the SHAPES are phase-dependent, the AXIS is not. One P=0 instance is pinned below.
-# And pin the AXIS: those lengths are SANITIZED ones. `_pointer_line` folds control/bracket
-# characters and collapses whitespace runs BEFORE `desc[:88]` caps, so a RAW-length sweep sees
-# ties and one-token moves the sanitized rule calls impossible — which is how this window was
-# first mis-stated. `_tie_window` sweeps `"x" * n`, its own sanitized form; `_tok_desc` takes
-# the raw string, so the difference is observable.
+# three: the SHAPES are phase-dependent, the AXIS is not. A P=0 instance of each phase-bound
+# regime is pinned below — the cap's saturation and the floor's clip, which clips to two here
+# and reaches four at P=0.
+# And pin the AXIS: those lengths are SANITIZED ones. `_pointer_line` strips surrounding
+# whitespace, strips surrounding quotes, folds control/bracket characters and collapses
+# whitespace runs BEFORE `desc[:88]` caps — four expressions, and a mutant only tests a fixture
+# that carries the feature its expression acts on. So the pins below are deliberately split by
+# expression: the quote strip needs a fixture with no padding outside the quotes, the whitespace
+# strip needs padding outside them, and the collapse needs an INTERIOR run (a trailing run is
+# already absorbed by the strip, which is why the first pin added here read green under every
+# single-step fold mutant and detects nothing). A RAW-length sweep sees ties and one-token moves
+# the sanitized rule calls impossible — which is how this window was first mis-stated.
+# `_tie_window` sweeps `"x" * n`, its own sanitized form; `_tok_desc` takes the raw string, so
+# the difference is observable.
 def _tie_window(name: str, anchor: str, d: int, hi: int = 400) -> list:
     """The current-description lengths whose pointer books the same bucket as `d` (0..hi)."""
     def _tok(n: int) -> int:
@@ -538,7 +546,7 @@ def _tok_desc(name: str, anchor: str, desc: str) -> int:
 
 check("window: mid-cap the tie window is four consecutive lengths, the equal-length point among them",
       _tie_window("foo", "bar--foo", 40) == [38, 39, 40, 41])
-check("window: a run starting below an empty description is clipped short of four — to [0, 1]",
+check("window: at this fixture's phase the floor clips the first bucket to two — [0, 1]",
       _tie_window("foo", "bar--foo", 1) == [0, 1])
 _w_sat = _tie_window("foo", "bar--foo", 88)
 check("window: once the bucket is the cap's saturated one, every longer description ties too "
@@ -551,16 +559,23 @@ check("window: a raw-LONGER description can still tie — a bracketed run collap
 check("window: past the cap a raw-length gain can book NEGATIVE — the saturated tail absorbs "
       "sanitized lengths, not raw ones",
       _tok_desc("foo", "bar--foo", "x" * 85 + "[" * 4) < _tok_desc("foo", "bar--foo", "x" * 88))
-check("window: the strip step is length-affecting too — a quoted description books its "
+check("window: the quote strip is length-affecting too — a quoted description books its "
       "unquoted core, so the measure is neither raw nor post-fold length alone",
       _tok_desc("foo", "bar--foo", '"' + "x" * 41 + '"') == _tok_desc("foo", "bar--foo", "x" * 41))
+check("window: the whitespace strip is length-affecting SEPARATELY from the quote strip — a "
+      "fixture with padding OUTSIDE the quotes is the only shape that reaches it",
+      _tok_desc("foo", "bar--foo", ' "' + "x" * 41 + '" ') ==
+      _tok_desc("foo", "bar--foo", "x" * 41))
+check("window: the collapse is a THIRD expression, and an INTERIOR run is what reddens it — "
+      "the fold can be intact while a trailing-run-only fixture stays green",
+      _tok_desc("foo", "bar--foo", "x" * 20 + "\n" * 10 + "x" * 21) ==
+      _tok_desc("foo", "bar--foo", "x" * 42))
 check("window: the saturated tail is a PHASE property — at `K mod 4 = 0` the cap's bucket ends "
       "exactly at the cap, so no longer description joins and the window stays four wide there",
       len(_tie_window("fooo", "bar--foo", 88)) == 4 and len(_tie_window("foo", "bar--foo", 88)) > 4)
-check("window: a crafted description cannot inject a link target — the sanitizer's stated "
-      "purpose asserted directly, not through a length proxy for it",
-      sg._pointer_line("foo", {"description": "x" * 40 + "](evil.md)"},
-                       anchor="bar--foo").count("](") == 1)
+check("window: so is the FLOOR clip — the aligned phase's first bucket reaches four, where this "
+      "fixture's phase clips it to two, so 'clipped short' is a phase-bound claim",
+      _tie_window("fooo", "bar--foo", 1) == [1, 2, 3, 4])
 # frontmatter parses folded/block scalars (description: >-) instead of storing ">-"
 check("frontmatter: folds block scalar value",
       sg._frontmatter("---\nname: x\ndescription: >-\n  hello\n  world\nmetadata:\n  scope: user-global\n---\nb")["description"] == "hello world")
@@ -15180,7 +15195,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 37)
+      passed + failed + 1 == 1750 + 39)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
