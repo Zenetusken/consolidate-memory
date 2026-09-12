@@ -504,6 +504,13 @@ could see at all; and **failure 7**, a whole field no pin read. The "three times
 section's title is therefore a historical measurement, not a current one; the set it applies
 to is now eleven checks.
 
+**Every count in this section is as of the revision it was measured at, and each tally names
+its own total: `passed + failed` IS the suite size then.** The size grows with every check
+added — 1772 → 1776 → 1777 → 1778 within this cycle alone — so the durable claim is always
+the **failure set** (which check failed, and whether it failed *alone*), never the count. A
+count quoted in the present tense has been re-measured at the current revision; the ones in
+failures 1–6 carry their total in the prose around them.
+
 **Failure 1 — the tautology.** The first MISSING-leg pin called
 `apply_pointer(text, line, "personal--grp-fact")` — *passing the correct key by hand*. The
 function was never the defect; the caller's key is. So the pin passed on pre-fix code. It
@@ -515,7 +522,7 @@ dict with the last call's arguments. The beacon's own fixed call contributes not
 cost_old is 0 — the `elif cost_old and …` drops the item — so on a beacon revert the dict
 simply still held the **run side's** rows, and every conjunct of the check was satisfied by
 the wrong call. Measured, with `session_beacon.py` reverted and `sync_global.py` left
-fixed:
+fixed — at the revision then shipping **1772 checks**:
 
 ```
 old pin shape  →  1772 passed, 0 failed     (beacon entirely unfixed, suite green)
@@ -528,7 +535,8 @@ one function: the *plan* loop (`sync_global.py:1451`), whose result feeds only t
 **admission** decision via `project_index(planned)`, and the *execute* loop (`:1483`),
 which performs the actual index write. Every outcome-shaped pin in the file asserts on the
 **written index** — and the execute loop's correct key produces a correct index regardless
-of what the plan loop passed. So a revert of the plan loop alone is invisible:
+of what the plan loop passed. So a revert of the plan loop alone is invisible — measured at
+the same 1772-check revision:
 
 ```
 site-1-only revert (execute loop left fixed)  →  1772 passed, 0 failed
@@ -600,8 +608,11 @@ precondition was unmet — changed nothing. Instrumentation then showed the prec
 `_native_c_gs = _storec_gs / "grp-fact.md"`, planted by **#7's own setup** in the same
 fixture. With a bare same-stem native on disk, *both* the correct and the reverted probe
 find a file, so the check could not discriminate **in either direction**. Moving it
-upstream of #7 and dropping the injection made it fail on the mutant as intended
-(measured: 1774 passed, 2 failed).
+upstream of #7 and dropping the injection made it fail on the mutant as intended —
+re-measured independently at HEAD (1777 checks): **the gc check the sole failure** (1776
+passed, 1 failed), while the same revert with the check left in its pre-review position is
+green (**1777 passed, 0 failed**). The vacuity is therefore reproducible on demand, not
+merely recorded.
 
 The rule this yields is about position, not assertion: **a pin's power depends on the
 fixture state at its execution point, and a neighbouring check's setup can silently consume
