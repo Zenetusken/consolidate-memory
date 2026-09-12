@@ -53,7 +53,7 @@ body:
     attributes:
       label: Plugin version
       description: From `/plugin`, or the `version` field in the installed plugin.json.
-      placeholder: "0.4.25"
+      placeholder: "0.4.26"
     validations:
       required: true
 
