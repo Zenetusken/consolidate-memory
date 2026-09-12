@@ -2,37 +2,56 @@
   <img src="docs/assets/nocturne-banner.svg" alt="consolidate-memory — Keep the lesson. Check the source. Choose who learns it." width="100%">
 </p>
 
+<h1 align="center">consolidate-memory</h1>
+
 <p align="center">
-  <a href="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml"><img src="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.18-b3a6e4?style=flat-square&labelColor=101e31" alt="Version 0.4.18"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-8fced6?style=flat-square&labelColor=101e31" alt="MIT license"></a>
+  <strong>Give your next Claude Code session the lessons your last one earned.</strong><br>
+  A plugin that turns work history into <em>verified</em>, reusable memory — checked against the<br>
+  current code, kept behind an explicit recall cue, and shared only with the projects you choose.
 </p>
 
-# consolidate-memory
-
-**Give your next Claude Code session the lessons your last one earned.**
-
-A Claude Code plugin that turns project history and session feedback into **verified,
-reusable memory**. Check a lesson against the current code, keep a useful recall cue,
-and share it with the projects you choose. When the code changes, revisit the memory.
-
-Useful when you maintain several repositories, return to work after a break, or keep
-explaining the same testing conventions, architectural decisions, and hard-won gotchas.
-One explicit **`dream`** produces a reviewed memory update and an inspectable report.
+<p align="center">
+  <a href="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml"><img src="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.24-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.24"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7fd8b8?style=flat-square&labelColor=0f1c2e" alt="MIT license"></a>
+  <a href="#start"><img src="https://img.shields.io/badge/python-3.8%2B-63d3e8?style=flat-square&labelColor=0f1c2e" alt="Python 3.8 or newer"></a>
+  <a href="https://github.com/Zenetusken/consolidate-memory"><img src="https://img.shields.io/badge/marketplace-zenetusken--plugins-b9c9da?style=flat-square&labelColor=0f1c2e" alt="Marketplace: zenetusken-plugins"></a>
+</p>
 
 <p align="center">
-  <a href="#why">Why use it</a> · <a href="#start">Quick start</a> ·
-  <a href="#network">Build a memory network</a> · <a href="#dashboard">See the dashboard</a> ·
-  <a href="#commands">Commands</a> · <a href="#development">Contribute</a>
+  <img src="https://img.shields.io/badge/verified_against_live_code-63d3e8?style=flat-square&labelColor=0f1c2e" alt="Verified against live code">
+  <img src="https://img.shields.io/badge/governed_cross--project_sharing-a999f5?style=flat-square&labelColor=0f1c2e" alt="Governed cross-project sharing">
+  <img src="https://img.shields.io/badge/explicit_trust_domains-b9c9da?style=flat-square&labelColor=0f1c2e" alt="Explicit trust domains">
+  <img src="https://img.shields.io/badge/measured_context_budget-f0bd6a?style=flat-square&labelColor=0f1c2e" alt="Measured context budget">
+  <img src="https://img.shields.io/badge/no_telemetry-7fd8b8?style=flat-square&labelColor=0f1c2e" alt="No telemetry">
+  <img src="https://img.shields.io/badge/stdlib_only-8296ad?style=flat-square&labelColor=0f1c2e" alt="Standard library only">
+</p>
+
+<p align="center">
+  <a href="#why">🧠 Why</a> · <a href="#start">🚀 Quick start</a> · <a href="#dashboard">🌌 Dashboard</a> ·
+  <a href="#network">🕸️ Memory network</a> · <a href="#commands">🧭 Commands</a><br>
+  <a href="#workflow">🔬 How it works</a> · <a href="#privacy">🔒 Privacy</a> ·
+  <a href="#development">🛠️ Contribute</a>
 </p>
 
 > [!NOTE]
-> **Current release: v0.4.23.** Public 1.0 remains **HOLD**, with outstanding evidence
-> gates tracked in the [1.0 preflight](docs/1.0-preflight.spec.md).
-> See the [changelog](CHANGELOG.md) for shipped changes.
+> **Current release: v0.4.24** — the Deep Field theme, now the dashboard's default.
+> Public 1.0 remains **HOLD**, with outstanding evidence gates tracked in the
+> [1.0 preflight](docs/1.0-preflight.spec.md). See the [changelog](CHANGELOG.md) for
+> shipped changes.
 
 <a id="why"></a>
-## 🧠 Less rediscovery. Better context.
+## 🧠 The two costs it removes
+
+An assistant with no durable memory pays the same two bills forever: it **re-derives
+conclusions it already reached**, and it **trusts an index that quietly rotted** while
+the code moved on. Both are charged in context window and in your attention — on every
+session, in every repository, whether or not you noticed.
+
+One explicit **`dream`** settles both. It proposes candidate lessons from the session,
+**checks each one against the live files, symbols, and commit history**, keeps a short
+recall cue pointing at the ones that survived, and hands you a report of exactly what
+changed and why.
 
 | When this happens… | What a dream helps you retain |
 | :--- | :--- |
@@ -48,10 +67,23 @@ that claim against the implementation and keeps the rationale where a future ses
 can find it. A broader Python tooling lesson can be verified in another repo and
 shared with eligible projects. A claim with no supporting evidence is flagged or dropped.
 
+Useful when you maintain several repositories, return to work after a break, or keep
+re-explaining the same testing conventions, architectural decisions, and hard-won gotchas.
+
+### How this relates to Claude Code's native memory
+
 Claude Code's [native memory](https://code.claude.com/docs/en/memory) supplies project
-instructions and recall. This plugin adds an explicit verification workflow, governed
-cross-project sharing, and a record of what changed. The scripts use Python's standard
-library; the agent performs the reasoning and source checks.
+instructions and recall, and this plugin builds on that rather than replacing it.
+
+| | Native memory | With consolidate-memory |
+| :--- | :--- | :--- |
+| Scope | One project at a time | One project, **plus** a governed cross-project store |
+| A lesson's status | Recorded as written | Survives a claim-vs-code check, or is flagged/dropped |
+| Growth | Index grows until someone trims it | Context cost measured each cycle; stale facts surfaced for review |
+| Sharing | — | Explicit trust domains; sharing only through named, revocable grants |
+| Audit | Session history | An inspectable cycle record and a local HTML archive |
+
+The scripts use Python's standard library; the agent performs the reasoning and source checks.
 
 <a id="start"></a>
 ## 🚀 From install to your first dream
@@ -178,11 +210,20 @@ keyboard scrolling. Evidence links open and focus their supporting detail.
 
 </details>
 
-Choose **Nocturne**, **Original** (the espresso dark palette), **Light**, or **System**.
-The archive retains filtering, sorting, previous/next navigation, compact mode,
-keyboard controls, reduced motion, print support, and complete captured records.
-**Archive** returns to the dream list; unavailable previous/next actions are disabled.
-The network switches to a vertical hierarchy before its controls become cramped.
+### Pick a theme
+
+| Theme | Character |
+| :--- | :--- |
+| **◉ Deep Field** *(default)* | A near-black observatory canvas with hairline structure and luminous evidence. Colour marks data, never decoration. |
+| **● Nocturne** | The original midnight-and-glacier palette, still shipped and still the archive's namesake. |
+| **◒ Original** | The warm espresso palette the plugin shipped before Nocturne. |
+| **○ Light** | A bright, high-contrast working theme. |
+| **◐ System** | Follows your OS preference. |
+
+Whichever you pick, the archive retains filtering, sorting, previous/next navigation,
+compact mode, keyboard controls, reduced motion, print support, and complete captured
+records. **Archive** returns to the dream list; unavailable previous/next actions are
+disabled. The network switches to a vertical hierarchy before its controls become cramped.
 
 **Try the fictional preview:** [HTML archive](docs/previews/nocturne/index.html#sel=7) ·
 [dashboard network SVG](docs/assets/nocturne-network.svg) ·
@@ -197,7 +238,7 @@ Imagine maintaining a product, a research lab, and shared developer tools on one
 machine. You want lessons to travel where they apply, while each area keeps its own
 memory boundary.
 
-![Illustrative topology: three isolated domains (work, research, tools), seven enrolled projects, two explicitly granted recipient groups, and an unenrolled scratch repo that remains local-only.](docs/assets/network-topology.svg)
+![Illustrative topology: three isolated domains — work, research, and tools — each holding projects. Group api-contract opens one gate into work and reaches atlas-api and atlas-web, leaving team-docs unconnected; group release-kit opens one gate into each domain and reaches atlas-api, eval-lab, and release-tools. The unenrolled scratch repo has no route into any domain. Fictional sample data.](docs/assets/network-topology.svg)
 
 ### The VLAN analogy, made concrete
 
@@ -331,21 +372,25 @@ Use Claude Code's `/plugin` manager to update or uninstall the plugin. Marketpla
 refresh and installed-plugin updates are separate operations; see the
 [official plugin reference](https://code.claude.com/docs/en/plugins-reference).
 
-**Coming from the legacy global store (before v0.3.0)?** Domain enrollment changed
-the trust boundary. Use an **enrolled maintenance project** to inventory, explicitly
-assign or exclude, and migrate the legacy facts before enrolling the remaining
-recipients. First enrollment revokes managed mirrors the destination does not admit,
-so review the maintenance caller's enrollment plan too. Verify the migration before
-finalizing; rollback is available only before finalization. The
-[network guide](docs/network-guide.md#migration-and-revocation) includes the commands.
+> [!WARNING]
+> **Coming from the legacy global store (before v0.3.0)?** Domain enrollment changed
+> the trust boundary. Use an **enrolled maintenance project** to inventory, explicitly
+> assign or exclude, and migrate the legacy facts before enrolling the remaining
+> recipients. First enrollment revokes managed mirrors the destination does not admit,
+> so review the maintenance caller's enrollment plan too. Verify the migration before
+> finalizing; rollback is available only before finalization. The
+> [network guide](docs/network-guide.md#migration-and-revocation) includes the commands.
+
+> [!WARNING]
+> **Revocation is lazy, not immediate.** Revocation through `forget` is acknowledged on
+> subsequent pulls or GC; an offline copy retains bytes until it runs. Do not treat a
+> forgotten fact as erased from a machine that has not synced since.
 
 Uninstalling removes plugin code; it leaves memory data intact. Use `/cm-data` for
 scoped cleanup. Do not delete the native memory directory wholesale: it also contains
 Claude Code memory that this plugin does not own. Resolve actual paths with `/cm-doctor`.
 
-Revocation through `forget` is acknowledged lazily on subsequent pulls or GC; an
-offline copy retains bytes until it runs. Native Windows mutation is unsupported;
-use WSL. Missing POSIX locking fails closed.
+Native Windows mutation is unsupported; use WSL. Missing POSIX locking fails closed.
 
 </details>
 
@@ -381,11 +426,18 @@ python3 tests/dashboard_fixture.py --out /tmp/cm-preview
 python3 tests/dashboard_browser.py --out /tmp/cm-browser
 ```
 
+README contributions are checked too: `python3 tests/docs_links.py` verifies that the
+version badge matches `plugin.json` and that every relative link resolves. See
+[CONTRIBUTING.md](CONTRIBUTING.md) for the gate list and the
+[code of conduct](CODE_OF_CONDUCT.md) for community expectations.
+
 The optional **dream-beta-tester** companion tests the consolidation skill itself,
 combining deterministic invariants with an agent judgment pass. Install with
 `/plugin install dream-beta-tester@zenetusken-plugins` and invoke `/dream-beta-test`.
 See its [design](plugins/dream-beta-tester/docs/SPEC.md) and
 [report contract](plugins/dream-beta-tester/docs/CONTRACT.md).
+
+### 🗺️ Find your way around
 
 | Find your way around | Source |
 | :--- | :--- |
@@ -395,4 +447,10 @@ See its [design](plugins/dream-beta-tester/docs/SPEC.md) and
 | Native/canonical path resolution | [store_context.py](plugins/consolidate-memory/scripts/store_context.py) |
 | Canonical writes and journal authority | [canonical_ingress.py](plugins/consolidate-memory/scripts/canonical_ingress.py), [control_plane.py](plugins/consolidate-memory/scripts/control_plane.py) |
 | Dashboard data and presentation | [Renderer](plugins/consolidate-memory/scripts/render_html.py), [template](plugins/consolidate-memory/scripts/dashboard.template.html), [network exploration](plugins/consolidate-memory/scripts/dashboard.network.js), [report sections](plugins/consolidate-memory/scripts/dashboard.sections.js) |
+| The Deep Field visual system | [deep-field-theme.spec.md](docs/deep-field-theme.spec.md) |
 | Decisions, release history, license | [ADRs](docs/adr), [CHANGELOG.md](CHANGELOG.md), [MIT](LICENSE) |
+
+## License
+
+[MIT](LICENSE). This repository ships the plugin and its documentation only — it
+contains **no personal memory**; your facts stay in your own store.

@@ -1,0 +1,72 @@
+name: Feature or design proposal
+description: Propose a change to what the plugin does, or to how it is built.
+title: "[proposal] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Structural changes in this repository go through a **design-of-record**: a
+        `docs/*.spec.md` written before implementation, reviewed adversarially, and kept
+        afterwards as the record of why the thing is the way it is. You do not need to write
+        that document to open an issue — but an issue that argues from the problem rather
+        than the patch is the one that lands.
+
+        Two constraints shape most proposals here, so it helps to say up front how yours
+        relates to them:
+        - The runtime scripts are **stdlib-only on Python 3.8+**. No new runtime dependency.
+        - The **cycle record is the contract** — its shape is `TypedDict`s, and the seed, the
+          renderer, and the `SKILL.md` schema block are pinned to each other by a test.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: |
+        What is currently wrong, expensive, or missing — from the user's side, not the
+        implementation's. Concrete beats general: a specific session where this bit you is
+        worth more than a category of concern.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you propose
+      description: The shape of the change. If you considered alternatives, say why this one.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What you ruled out
+      description: Approaches you considered and rejected, and what ruled them out.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: What does this touch?
+      multiple: true
+      options:
+        - The dream workflow / SKILL.md
+        - Cross-project sharing (domains, groups, canonical store)
+        - The HTML archive (dashboard template or a JS bundle)
+        - The command surface (/cm-* slash commands)
+        - Verification, extraction, or the secrets firewall
+        - Tests, CI, or release tooling
+        - Documentation only
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: I checked the open issues and the `docs/*.spec.md` files for an existing proposal.
+          required: true
+        - label: This can be built without a new runtime dependency (or I have explained why it cannot).
+          required: true

@@ -1,0 +1,77 @@
+name: Bug report
+description: Something behaved differently from what the documentation says it does.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        The most useful bug report here includes the **rendered artifact** — a cycle record
+        or the HTML archive — rather than a description of it. The archive is generated, so a
+        wrong-looking screen is usually a data question, not a style question.
+
+        Please redact real project names, paths, and memory content. The repository's
+        [fictional sample](https://github.com/Zenetusken/consolidate-memory/tree/main/docs/previews/nocturne)
+        shows the shape the tests use.
+
+        **Do not file security issues here** — see
+        [SECURITY.md](https://github.com/Zenetusken/consolidate-memory/blob/main/SECURITY.md).
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: How to reproduce
+      description: The exact command or steps. "Run `dream` on a repo with X" beats a description of the session.
+      placeholder: |
+        1. In a repo with ... run `dream`
+        2. Phase 3 reports ...
+        3. Expected ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: artifact
+    attributes:
+      label: The artifact
+      description: |
+        The cycle record (`memory_status.py --json` output) or the relevant part of the
+        rendered HTML archive. Redacted is fine; pasted is far better than described.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Plugin version
+      description: From `/plugin`, or the `version` field in the installed plugin.json.
+      placeholder: "0.4.24"
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, and whether `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.py ."` reports anything.
+      placeholder: "Ubuntu 24.04, Python 3.12, preflight exit 0"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before filing
+      options:
+        - label: I ran `/cm-doctor` and included anything it flagged.
+          required: false
+        - label: This is not a security issue (those go through SECURITY.md, not the tracker).
+          required: true

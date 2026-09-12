@@ -62,7 +62,10 @@ var NocturneNetwork = (function(){
     function activate(n,fn,label){n.setAttribute('tabindex','0');n.setAttribute('role','button');n.setAttribute('aria-label',label);n.addEventListener('click',fn);n.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();fn();}});}
     function text(x,y,value,cls,parent){var t=S('text',{x:x,y:y,class:cls||''});t.textContent=value;(parent||svg).appendChild(t);return t;}
     function clipped(t,value,width){var s=value;while(t.getComputedTextLength()>width&&s.length){s=s.slice(0,-1);t.textContent=s+'…';}}
-    function branch(d,kind,aggregate){var p=S('path',{d:d,class:'hierarchy-branch '+kind+(aggregate?' aggregate-branch':''),'data-aggregate':aggregate?'true':'false'});svg.appendChild(p);return p;}
+    // --blen feeds the Deep Field draw-on (CSS dasharray/dashoffset). It is set here, not in
+    // CSS, because only the path knows its own length. Purely presentational: nothing reads
+    // it back, and the geometry checks measure `d` and getTotalLength(), not this.
+    function branch(d,kind,aggregate){var p=S('path',{d:d,class:'hierarchy-branch '+kind+(aggregate?' aggregate-branch':''),'data-aggregate':aggregate?'true':'false'});svg.appendChild(p);try{p.style.setProperty('--blen',p.getTotalLength());}catch(e){}return p;}
     function rootLabel(){return state.kind==='fleet'?'Captured fleet':state.kind==='group'?String(state.value.group):state.kind==='fact'?String(state.value.name):state.value.label;}
     function draw(){
       var focusKey=document.activeElement&&document.activeElement.getAttribute('data-key');

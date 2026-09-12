@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.4.23** (2026-09-06). `CLAUDE.md` holds the
+verified against the live tree at **v0.4.24** (2026-09-11). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -16,7 +16,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.4.23 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
+| `consolidate-memory` | 0.4.24 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
 | `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -37,14 +37,18 @@ mypy --config-file mypy.ini                     # dev-only TypedDict contract ch
 ./cm status                                     # spot-check Phase-0 output
 python3 tests/validate_manifests.py             # portable manifest checker (it has NO --strict flag;
                                                 # --strict belongs to the claude CLI)
+python3 tests/docs_links.py                     # docs drift gate — ALSO run it after editing README.md,
+                                                # CHANGELOG.md, AGENTS.md, or any doc a reader links to
 claude plugin validate ./plugins/consolidate-memory --strict   # when iterating on the published artifact
 ```
 
-CI (`.github/workflows/ci.yml`, one workflow, **7** jobs) runs the same gates: `test`
+CI (`.github/workflows/ci.yml`, one workflow, **8** jobs) runs the same gates: `test`
 (smoke + manifests + sim on Python **3.8–3.13**, with 3.8/3.9 pinned to
 ubuntu-22.04, **no pip install — that IS the stdlib-only proof**), `test-macos`
 (Python 3.12), `concurrency` (process-level races, Python 3.12), `typecheck` (mypy,
-dev-only label), `manifest` (`claude plugin
+dev-only label), `docs` (`tests/docs_links.py` — badge ↔ `plugin.json`, relative
+links, manual anchors, theme table; its own job because docs drift is version- and
+OS-independent, so the 6-way matrix would only repeat the same answer), `manifest` (`claude plugin
 validate --strict`, a real blocking gate — no continue-on-error), `bench` (the
 capacity SLO corner: `bench_phase5.py --quick`, measured — not gated — with the
 report stored as a run artifact), and `browser` (development-only Playwright +
@@ -288,5 +292,11 @@ design.
 - `plugins/dream-beta-tester/docs/SPEC.md` — QA design-of-record; `STATUS.md` —
   validation matrix + fixed-vs-open defect log; `CONTRACT.md` — latest.json
   self-heal contract.
+- `docs/network-guide.md` — the cross-project delivery model by example (the README's
+  VLAN analogy); `docs/nocturne-design.md` — the archive's section-by-section design
+  contract; `docs/deep-field-theme.spec.md` — the dashboard palette design-of-record
+  (the two contrast gates and the measurement behind every value in it).
 - `CHANGELOG.md` — full per-version precedent (versioning policy §Releasing).
 - `SECURITY.md` — public threat model + enforced properties.
+- `CONTRIBUTING.md` — setup, the full gate list, what review will ask for;
+  `CODE_OF_CONDUCT.md` — Contributor Covenant 2.1.

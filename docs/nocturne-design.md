@@ -11,15 +11,21 @@ is captured evidence, not a live store query.
 
 ## Visual system
 
-The midnight canvas, Glacier holdings, Iris permissions, restrained orbital mark,
-and humanist system typography remain. Georgia italic belongs to captured dream
-voice. Report sections use larger, heavier headings and conclusions, comfortable
-body text, compact evidence labels, and quieter source notes. Status text has its
-own emphasis and color; meaning remains explicit in words. Section spacing and
-dividers separate the questions each section answers. The network uses Glacier
-for observed holdings and Iris for permissions, with a short selection caption.
-Report changes are scoped below the existing header and KPIs; the surrounding
-toolbar controls share the control styling described below.
+**Deep Field** is the default theme (v0.4.24): a near-black observatory field,
+hairline structure, luminous evidence, a reticle brand mark, and humanist system
+typography. Colour is reserved for data, never atmosphere. Nocturne's midnight
+canvas, Glacier holdings, and Iris permissions remain shipped and selectable
+unchanged; see [deep-field-theme.spec.md](deep-field-theme.spec.md) for the palette,
+the two contrast gates it must clear, and the measurements behind each value.
+
+Georgia italic belongs to captured dream voice. Report sections use larger, heavier
+headings and conclusions, comfortable body text, compact evidence labels, and quieter
+source notes. Status text has its own emphasis and color; meaning remains explicit in
+words, and the semantic triple is dichromat-checked rather than assumed. Section
+spacing and dividers separate the questions each section answers. The network uses
+the data hue for observed holdings and the accent hue for permissions, with a short
+selection caption. Report changes are scoped below the existing header and KPIs; the
+surrounding toolbar controls share the control styling described below.
 
 Narration, outcome text, captions, ledger explanations, and the activity inspector
 use their section's available width. Section titles, metadata, and collapse
@@ -33,9 +39,9 @@ observations behind each section. The network caption attributes its answer to
 the saved dream snapshot. Recorded save times identify the dream, without implying
 a fresh inspection of today's stores or a separate capture timestamp.
 
-Nocturne, Original, Light, and System themes, reduced motion, print, archive
-filters, density, keyboard navigation, and the accessible diff dialog remain.
-No fonts, scripts, stylesheets, or data are fetched from the network.
+Deep Field, Nocturne, Original, Light, and System themes, reduced motion, print,
+archive filters, density, keyboard navigation, and the accessible diff dialog
+remain. No fonts, scripts, stylesheets, or data are fetched from the network.
 
 ### Controls and links
 
@@ -51,7 +57,7 @@ diff, including historical file references.
 Control sizes, padding, radii, and interaction colors are consistent. Standalone
 controls provide 44-pixel targets. Keyboard focus remains visible, disabled controls
 cannot activate, and pointer clicks do not add unrelated selection boxes to the
-graph. The control styling adapts to all four themes without changing the header
+graph. The control styling adapts to all five themes without changing the header
 graph's own colors, geometry, or calculations.
 
 Evidence actions expand and focus the appropriate detail. **Open this dream** opens

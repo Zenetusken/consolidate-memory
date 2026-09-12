@@ -5,6 +5,101 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.24] — 2026-09-11
+
+**Patch — the archive gets an instrument panel, the README gets a value proposition
+(`docs/deep-field-theme.spec.md`).**
+
+Presentation only: no script behaviour changed, no CLI flag moved, no cycle-record key
+added or renamed, every legacy archive still renders — hence a patch. The one piece of
+returning-user state that touches this release is a theme preference, and it resolves
+forward rather than breaking (below).
+
+- **Deep Field is a fifth theme and the new default.** Bare `:root` was Nocturne; it is
+  now Deep Field — a near-black observatory field (`--paper:#04070e`) with hairline
+  structure, a reticle brand mark, and a 19-token palette where colour is reserved for
+  data, never atmosphere. Nocturne is preserved verbatim behind
+  `:root[data-theme="nocturne"]` and stays selectable; Original, Light, and System are
+  untouched. A saved `cm-theme="dark"` normalizes to `deepfield` at **both** read points
+  (the pre-paint whitelist and `apply()`), so an existing user lands on the new default
+  instead of a value the toggle no longer cycles through. The star-field texture lives on
+  the HTML wrapper, **never** inside `<svg id="net">` — `dashboard.network.js` shrinks the
+  viewBox from `getBBox()`, which includes descendants, and a backdrop `<rect>` there
+  would zero the margin `dashboard_browser.py:152` asserts.
+- **Two contrast gates, both green.** Deep Field had to clear smoke's RC-90 (9 foregrounds
+  × 3 surfaces × 6 palette blocks) *and* the browser suite's `visual_hierarchy`, which
+  composites against the real background chain including the node plate
+  (`#network-blk .net-node rect{fill:var(--card)}`) — so `--card` is load-bearing for both.
+  Worst Deep Field pair is **5.21** (`ghost` on `card`), more headroom than the shipped
+  Original theme's 4.57.
+- **The dimmed-node rule was corrected, and is labelled latent — not "fixed".** The old
+  `.net-node.dim{opacity:.26}` dimmed plate and label together; uniform opacity compresses
+  contrast toward the backdrop, and no single value clears 4.5:1 (at `.60` it is still
+  3.64) because the mechanism is the problem. The rule now splits — plate `.5`, label
+  `.82`, measured worst pair **5.04**. **But nothing applies `.dim`:** the string is in
+  neither JS bundle, and the one path that applies `.selected` (the group view) marks every
+  node it renders. So the correction is real and unreachable, and the template comment says
+  so rather than claiming a live improvement. The near-miss is recorded with it: the first
+  attempt (group `.5` + text `.82`) measured **2.06** — *worse than the `.26` it replaced*
+  (1.55) — because a group's opacity renders its subtree offscreen and fades the result, so
+  the child multiplies (`.5 × .82 = .41`). Do not "simplify" it back onto the group.
+- **README restructured end to end**: a badge row, an emoji-per-section TOC carried through
+  to the headings, the value proposition leading with the cost removed rather than the
+  mechanism, a comparison against Claude Code's native Auto Dream, a five-row theme table,
+  `[!WARNING]` callouts on legacy-data migration and lazy revocation, and every relative
+  link and manual anchor resolving (the two orphaned anchors are now wired up).
+  `docs/assets/network-topology.svg` is rebuilt as an honest topology — labelled zone
+  bands, bridge nodes with **drawn** edges for the narrowing (`api-contract`) and
+  cross-domain (`release-kit`) cases, a visibly *severed* node for the unenrolled project —
+  replacing a card grid with letter badges and no edges at all. GitHub renders it as an
+  `<img>`, so it is static by construction: no script, no animation, no fetched fonts.
+- **The art is generated now, not hand-cropped.** Nothing in the repo produced
+  `docs/assets/*`; the PNGs and the network SVG were one-off exports, which is why a theme
+  change used to mean manual re-cropping. `tests/dashboard_browser.py --capture` writes
+  them to `--out` for inspection and promotion (never straight into `docs/assets/` — the CI
+  browser job must not rewrite tracked files), rendering in Deep Field from a live page and
+  inlining each node's computed style, because the live SVG is styled by CSS classes and
+  the README *links* it rather than embedding it — at the far end nothing would define
+  those classes. The colours it exports are hex, and that is the correct output rather than
+  a compromise: the file is consumed as an `<img>`, a document with no stylesheet context,
+  so a `var(--data)` there has nothing to resolve against. What stops it going
+  palette-baked *again* is that the asset is **generated** — a re-palette is a re-export,
+  not a hand-edit — not that it avoids literal colours.
+- **A docs gate, and a release that keeps it green.** `tests/docs_links.py` (zero-dep, same
+  style as smoke) asserts badge ↔ `plugin.json`, every relative link target exists, manual
+  anchors balance in both directions, the smoke-pinned workflow strings survive a
+  restructure, and every theme in the toggle has a row in the README table — scoped to the
+  table's first cell, so a passing mention in another row cannot satisfy the contract. It
+  runs as its own CI job (the workflow is now **8** jobs, not 7) because docs drift is
+  version- and OS-independent. The gate would have failed on every release as planned —
+  `release.sh` bumped only `plugin.json` and never touched the README — so the bump now
+  moves the badge URL *and* its alt text in the same commit, writing neither file unless
+  both shapes matched (a half-applied bump is the exact drift the gate hunts).
+- **Scaffolding**: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1),
+  `.github/PULL_REQUEST_TEMPLATE.md`, issue forms for bug/feature,
+  `.github/CODEOWNERS` (the trust-boundary and secrets-firewall scripts named explicitly),
+  and `.github/dependabot.yml` — `github-actions` only, because a stale action major is how
+  a CI job quietly stops being a gate, and there is deliberately no pip ecosystem to watch.
+- **The record corrected, twice.** The design-of-record's first draft overstated what was
+  measured. The embedded-archive figure was wrong (270,056 B / ~36 KB claimed), and so was
+  the unit: the gate bounds `len(_html_p4)` — a CHARACTER count, against `300 * 1024` — and
+  the shell is dense with multi-byte glyphs, so bytes and characters are not
+  interchangeable here. Measured on the tree: 276,454 characters before, 285,084 after,
+  leaving **22,116 (= 21.6 KiB)** of headroom, down from 30.0 KiB. A first re-derivation
+  from file sizes got this wrong precisely by mixing the two units; only measuring the
+  shipping tree settled it. And the dichromacy table was optimistic: re-measured
+  CIEDE2000 separations for the `ok`/`warn`/`crit` triple are, normal 27.5→24.8,
+  deuteranopia 2.9→6.0, protanopia 5.5→7.3 (Nocturne→Deep Field, one self-tested
+  Viénot-1999 implementation). Deep Field separates the triple better under both
+  dichromacies, but 6.0 is not a large deutan separation and the spec says so under "Known
+  limit, stated plainly" rather than re-paletting — which would have invalidated the
+  freshly regenerated art and both gates. The design does not rest on hue: every verdict
+  carries its words.
+
+Smoke 1762/0 (unchanged — the new gate is its own file and its own CI job, so no smoke pin
+moved), mypy clean in 42 files, sim, manifests, docs gate green, browser **1213** (+105:
+the fifth theme × four widths) in 31.6 s.
+
 ## [0.4.23] — 2026-09-07
 
 **Patch — the defrag detector flags flow, not stock (the footnote polish).**
