@@ -149,7 +149,7 @@ holds both `X.md` and `D--X.md`). The collision is nevertheless the *design case
 namespacing — the whole point of `{domain}--{stem}` is to let a member keep its own fact
 under a name a global also uses.
 
-**(b) "each pin fails on pre-fix code" — over-claimed.** See §9; two of the five
+**(b) "each pin fails on pre-fix code" — over-claimed.** See §9; two of the draft's
 verification bullets cannot fail pre-fix and are guards, not pins.
 
 **(c) The census frame was too narrow.** The first draft framed the search as "all 7
@@ -251,8 +251,10 @@ settled on, stated so a reader can apply it to a site not listed here: **a key t
 store's own listing — `Path.stem` over a glob, or a name matched against the index — is always
 right; a key taken from a registry or frontmatter fact *name* and consumed against a store that
 can hold mirrors is the defect.** The boundary is necessary, not sufficient: a site inside it
-can still be cleared by a guard upstream, and two rows below are (a mirror is refused as an
-evict target; the demotion population filters mirrors out).
+can still be cleared upstream, and **four rows below are**, each by a mirror check that runs
+before the key is used — the two evict filters and `_index_line_cost` (a mirror is refused as
+an evict target), `local_ingress`'s three entry points (each refuses a managed mirror before
+writing), and the demotion population (`not _is_mirror(…)`).
 
 The first draft's frame — "derives a key from a fact name and consumes it as a match target, a
 lookup key, or a file path" — was **wider than its own table**. It named a file-path leg the
@@ -260,8 +262,10 @@ table carried in one row (the three writers that *take* their key from `_mirror_
 left four match sites unclaimed, because none of them derives its key from a fact name — plus
 a fifth the draft never named at all: `apply_pointer`'s own matcher, the single site where a
 key actually becomes a match target, which the census had recorded only through its callers.
-All five are below; the first is that matcher, and the second is the counter-example the whole
-fix turns on. Each row names a **greppable anchor**, not a line number:
+The two rows that carry the argument are therefore **named rather than counted** — an ordinal
+here reads as a table-row number, and neither of them is in the first two rows: **the matcher
+itself** (`apply_pointer`, `index_admission.py`) and **the counter-example the whole fix turns
+on** (the `ptr_unchanged` row). Each row names a **greppable anchor**, not a line number:
 
 | site — greppable anchor | leg | affected |
 |---|---|---|
@@ -319,7 +323,14 @@ is about to delete out of the **destination's** index, not that file's own: the 
 is the one bound by that block's own `idxp = origin_local.parent / "MEMORY.md"`, while `old`
 comes from a *separate* parameter (`origin_delete`, declared independently, and the code below
 contemplates the two differing — `same_origin`, and the `if not same_origin:` arm that adds a
-second delete). So the strip is a cross-file identity, not a self-identity. The outcome is
+second delete). **The first draft read that as a cross-file identity; it is not one, and the
+distinction is one the code makes on purpose.** The two parameters can differ as *files* and
+never as *stores*: the only caller that passes `origin_delete` at all binds both sides off one
+`store` — `src = store / f"{local_fact}.md"` and `dest = store / f"{canon_name}.md"`, consumed
+as `origin_local=dest, origin_delete=src` — so the index bound by `idxp` is the index of the
+very store `origin_delete` lives in, and `old` names a file that index is responsible for.
+That is a self-identity at the level the argument needs (the *index*), reached through two
+parameters that are distinct at a level it does not (the *file*). The outcome is
 identical anyway, and for the reason the `local_ingress` rows share: both stems are bare native
 stems — `Path.stem` of files in one project's native store, which no namespacing reaches.
 
@@ -620,18 +631,20 @@ the measured mutant. §9.1 records why this was worth chasing down.
 **The one remaining gap is unchanged**: the exact-value form (`#3`/`#5` assert `> 0`, never
 the booked delta *equals* the real index delta — §8.3's growth-model table).
 
-### 9.1 A pin that does not discriminate — measured three times in this cycle
+### 9.1 A pin that does not discriminate — seven recorded failures in this cycle
 
-The rule above ("fails on pre-fix code") was applied to all five of the draft's verification
+The rule above ("fails on pre-fix code") was applied to every one of the draft's verification
 bullets, and **three of them still passed green against an unfixed site** — the other two are
 the guards §4(b) names, which pass pre-fix by construction rather than by failing to fail. All
 three are recorded because the rule as
 stated is not strong enough to catch them, and because the third is the one a whole-change
 revert structurally cannot see. The review added three more entries after that count was
 written — **failure 5**, a fourth pin that passed green; **failure 6**, a regression no pin
-could see at all; and **failure 7**, a whole field no pin read. The "three times" of this
-section's title is therefore a historical measurement, not a current one; the set it applies
-to is now eleven checks.
+could see at all; and **failure 7**, a whole field no pin read. **Three quantities are in play
+here and none of them is either of the others**: the draft's **three** non-discriminating
+bullets (a count of an uncommitted draft — recorded as prose, not re-derivable from any
+blob), the **seven** failures this section numbers below, and the **eleven** checks §9's table
+now holds. The title this section first carried counted the first and read as the third.
 
 **Every count in this section is as of the revision it was measured at, and each tally names
 its own total: `passed + failed` IS the suite size then.** The size grows with every check
@@ -697,7 +710,10 @@ the same 1772-check working tree:
 site-1-only revert (execute loop left fixed)  →  1772 passed, 0 failed
 ```
 
-Both write legs unfixed was caught (the whole-change revert failed 5 pins). Exactly one
+Both write legs unfixed was caught — reverting the two `apply_pointer` call sites alone
+leaves **1772 passed, 6 failed** at HEAD's 1778 (measured; the run the ladder note above
+calls the six-failure write-side mutant run — the same `1772`, a `passed` field, not a
+size). Exactly one
 write leg unfixed was caught by **nothing** — and the plan loop's key is not inert: with
 the bare stem its `planned` index carries the duplicate, so the admission verdict is
 computed against a pessimistic model of a write that will not happen that way, and a pull
@@ -719,8 +735,11 @@ Two notes on getting *that* discriminator right, both from measurement:
 Four rules follow, and all four are general:
 
 - **Verify each pin against a revert of the specific site it covers, not of the change as
-  a whole.** A whole-change revert cannot expose a pin that a sibling site's effects
-  satisfy. All five of those checks stayed green under the whole-change revert; only the
+  a whole.** A whole-change revert is blunt in both directions: it fails checks for sites
+  other than the ones they cover, and it cannot arm a check that only a *site-scoped*
+  revert reaches. Measured at HEAD, the whole-change revert (both scripts back at `79077b9`)
+  fails **8** of the eleven and leaves exactly three green — the two guards (#6, #8) and
+  **#10**, which §9 records as failing on the half-fixed tree and nowhere else. Only the
   site-scoped reverts exposed failures 2 and 3.
 - **Where one function calls the same primitive on two legs, the pin must count calls, not
   detect the key.** One leg supplying the right argument is indistinguishable from both
@@ -950,7 +969,9 @@ either, and for a reason worth naming: the scan that could take it, the `_orphan
 pair_keys=True)` call in `sync_global.py`, reconstructs the pair from the **mirror's own
 frontmatter** (`canonical_domain` + `name`), not from its filename — so the stale bare-keyed
 file resolves to the *live* canonical pair and is correctly classified as neither an orphan
-nor FROZEN (`_classify_frozen`, `:2907`, returns `None` for admitted-and-relevant). In other
+nor FROZEN — `_classify_frozen` returns `None` for an admitted-and-relevant canonical, at the
+arm `if is_relevant(c_fm, stacks):` (that arm, not a line number: the first draft cited
+`:2907`, which is inside `_mirror_canonical_path`, the function *above* it). In other
 words the file is not stale to the classifier; only its **filename and index line** are
 stale. **No supported single command collapses this shape** — the repair is two steps
 (delete the stale bare-keyed mirror file, then rebuild). Recorded because the simpler claim
