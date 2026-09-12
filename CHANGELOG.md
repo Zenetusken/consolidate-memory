@@ -5,6 +5,121 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.26] — 2026-09-12
+
+**Patch — the cross-domain mirror index refresh: one root cause, two legs, four sites on the
+write/accounting dependency — plus the `--gc` dead-probe.**
+
+`_mirror_key(ctx_domain, fact_domain, stem)` returns the bare stem for a same-domain fact
+and `f"{fdom}--{stem}"` for a cross-domain one, and that single value is **both** the
+fact's filename and its index anchor. Four sites on that dependency derived a different
+quantity — the bare stem — and got it wrong, in two directions:
+
+- **Leg A, the write path.** `apply_pointer` matches `]({stem}.md)`, so a namespaced href
+  never matched the bare stem it was passed. Every cross-domain refresh **appended** a
+  duplicate index line instead of replacing in place — and on a MISSING delivery it
+  **evicted a same-stem native pointer**, deleting a local fact from the always-loaded
+  index while its file survived on disk. The line count did not move, which is why the
+  first draft of the spec read the whole delivery path as unaffected. Both write sites
+  (the plan loop and the execute loop) now pass the same anchored value; they must agree
+  or the executed write diverges from the planned one.
+- **Leg B, the read path.** Both cost maps are keyed by the link *target* (the namespaced
+  anchor) and were looked up by the bare stem, so `cost_old` pinned at `0`. One confusion
+  made two failures: the MISSING arm booked a **full line** (`cost_new - 0`) for a refresh
+  where only the replaced delta applies, holding pulls the index had room for, and the
+  STALE arm's `elif cost_old and …` went falsy — the item was **never built at all**, out
+  of the projection rather than merely mis-costed. Pre-fix the first error was invisible
+  precisely because it was accidentally right: the writer really did append a full line.
+  Fixing the matcher alone flips that append into a replace and moves the write underneath
+  the unchanged model — measured on the §1 fixture, **+27 tok booked against a real +4** —
+  which is why the writer and its accounting model ship as one change.
+
+Two findings from the adversarial review round, both on the read side:
+
+- **The `--gc` dead-probe asked the wrong question.** It classified a mirror as dead by
+  testing for a file keyed by the bare canonical stem; for a live cross-domain mirror that
+  file cannot exist, so a **live** mirror was reported dead. The probe now derives the key
+  the way the writer does, and an *uncomputable* key (a `--` ambiguity) is treated as
+  unknown rather than dead — that arm must not guess.
+- **A phantom refresh delta, introduced by the first cut of the Leg B fix.** Anchoring
+  `cost_old` while leaving `cost_new` bare made the two differ by the anchor text for an
+  **in-sync** cross-domain mirror, firing the STALE branch for a mirror that needed no
+  refresh. The condition was not even drift-gated: the anchor adds ≥3 chars, which moves
+  `ceil(chars/4)` on a line of pointer length, so the phantom row was the **steady state**
+  for every cross-domain mirror carrying an index line. Its delta is **negative**, and
+  `_plan_pull` *adds* deltas — so it **relieved** the running index and **under-stated**
+  `held`, advertising a missing fact as absorbable that a real `--pull` holds: the same
+  divergence class the fix exists to close, re-created by half of it. Both costs now derive
+  from one key computed once, so they cannot be derived from different quantities.
+
+**Eleven checks, all measured rather than asserted.** Ten in the v0.4.10 groups fixture and
+one in the v0.1.81 near-ceiling beacon fixture — `held` is only observable near the
+ceiling, which is why the phantom-delta check cannot live with the others. Six of the eight
+in the fix commit fail on pre-fix code; the other two are **guards**, marked as such
+because `apply_pointer` and `_mirror_key`'s same-domain arm are unchanged by the fix and
+neither *can* fail pre-fix. The gc-DEAD probe (#9) is discriminating too: reverted to the
+bare canonical stem, it fails as that run's **only** failure (1777
+passed, 1 failed) — which is the placement its first draft needed, since a later fixture's
+same-stem native silenced it (§9.1, failure 5). The phantom-delta check discriminates the **half-fixed** state
+and nothing else — green on both the fully-fixed and the original pre-fix trees — and its
+boundary is measured: the index is padded so the missing fact is held by exactly one token,
+and the relief a bare `cost_new` would grant is computed off the two real pointer lines and
+asserted positive. **The run side's `cost_new` was the one field nothing read**: the only
+assertion on the planner's item tuple was `cost_old` (index 3), so the half-fixed state had
+a detector on the beacon's projected cost and none on the run's. The review named both sites
+and both were fixed in this branch — but only one was pinned, and only a mutation round
+could show it. The new check reads index 2 against the cost of the line the run actually
+**wrote** (not a re-derivation), pinning the plan/execute agreement itself; the run-side
+revert alone leaves it the suite's **only** failure (1777 passed, 1 failed), and with the
+check absent every other one is green under that revert. The suite-total anti-rot constant
+moves `1740+27` → `1750+28`.
+
+**Blast radius, measured:** 14 namespaced mirrors across 11 projects, 0 duplicated stems
+across 21 indexes, 0 dead index pointers, 0 same-stem collisions fleet-wide — the fleet is
+undamaged and the defect is latent, not absent. Repair of an already-damaged store is
+refresh-gated and does not cover every shape; §10 of the spec scopes what a single command
+can and cannot collapse.
+
+**A third finding, from the same round's pin work — the index line's own sanitizer had an
+unguarded interpolation.** `_pointer_line` builds every pointer line, and `local_ingress`'s
+sibling writer calls it *"the global injection sanitizer"* in its own docstring. It
+interpolates three values from a possibly-crafted store: `name` is fenced upstream
+(`_safe_stem`, whose docstring names exactly this threat, and which both row sources apply),
+`description` is sanitized in-function — and `scope` was interpolated **raw**, so a crafted
+`scope: evil](http://x)` rendered a live markdown link into the always-loaded index line, on 10
+of `_pointer_line`'s 12 live call sites (the two inside `canonical_ingress.upsert` sit
+downstream of that writer's own scope refusal, so a bad scope cannot reach them). The suffix is
+now keyed to the canonical vocabulary (`fact_schema.SCOPES`) and rendered **from the
+vocabulary, never from the field**, so it cannot carry anything but a known literal; a
+non-vocabulary value is **dropped**, not sanitized — it has no meaning to show. A non-string
+YAML value (`scope: [x]`) is a no-op too: pre-fix it rendered `[['user-global']]` into the
+line, and the `str(...)` the fix applies before `.strip()` is what keeps the fix's OWN shape
+from raising `AttributeError` there instead. `local_ingress`'s sibling writer already did both:
+renders from vocabulary, and refuses a bad scope at write time. Four checks; reverted to the
+raw interpolation, the suite reddens **exactly those four and nothing else**
+(`1789 passed, 4 failed` against `1793 passed, 0 failed` fixed) — the hole had no detector at
+all before this branch. The fourth pins the INVARIANT rather than a fixture, because the first
+three could not carry the universal their names claimed: an admission widened to a prefix match
+(`startswith`) satisfied every one of their fixtures and passed all 1792 checks while
+restoring the live link for `scope: user-global](http://x)`; it is now that mutant's sole
+detector. The suite-total anti-rot constant moves `1750+39` → `1750+43`.
+
+**A fourth finding, from the same round's pin work — two numbers in the record had rotted.**
+Three places said the always-namespacing mutant "kills the suite at `smoke.py:4962`" and that
+this was "thousands of checks" before `#8`: the spec's two `#8` paragraphs and the `#8` comment
+in `tests/smoke.py`. The mutant was re-run rather than trusted — it does die where they say, at
+the `canon-x` fixture's read-back of its own canonical, so `#8` never executes — but the number
+held only in the tree it was written in: at `e2a3048` the read-back is at `smoke.py:5085`, +123
+as the branch grew, and 983 checks complete at the fixture against 1554 by the time `#8`'s
+check begins — **571** checks, not thousands, in a suite of 1793. So the line numbers are
+replaced by the target itself (the fixture's own read-back expression, with its hit count
+stated), and the quantity by the two check positions that produced it — because a stale line
+number fails *silently*, still resolving, just to the wrong line.
+
+The design-of-record, with the review's corrections to its own claims, is
+`docs/cross-domain-index-refresh.spec.md`. No CLI flag moved, no schema or manifest
+changed, and legacy stores are unaffected → **patch**.
+
 ## [0.4.25] — 2026-09-11
 
 **Patch — the post-release audit of the Deep Field chapter, and the gate holes it found.**

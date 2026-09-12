@@ -507,6 +507,129 @@ check("pointer: truncates long description to a recall hook",
 check("pointer: strips control bytes/newlines from the hook (no index injection)",
       "\n" not in sg._pointer_line("foo", {"description": "a\nb\x1b[31mc"}) and
       "\x1b" not in sg._pointer_line("foo", {"description": "a\nb\x1b[31mc"}))
+
+# --- the tie window the drift delta reads (docs/cross-domain-index-refresh.spec.md §9.1) ---
+# The beacon's `elif` fires on a NON-ZERO delta, and that delta is zero exactly over the current-
+# description lengths whose pointer books the same `ceil(chars/4)` bucket — so this window's shape
+# IS the mechanism. Pin its three regimes: four consecutive lengths mid-cap, the floor clipping
+# the first bucket short, and every longer description once the bucket is the cap's saturated one
+# (which is why "four wide" holds only INSIDE the cap — the sentence asserting it universally was
+# false wherever a bucket reached the cap, which 3 of the 4 `est_tokens` phases admit).
+# The escaping phase is the one this fixture does NOT exercise, and it is worth naming because
+# the ray is a `K mod 4 != 0` property: at `K mod 4 = 0` the saturating bucket is `[85, 88]`, so
+# its LAST member is the cap itself — nothing is culled, nothing longer joins, and the window at
+# the cap stays four wide. All three regimes above are `foo`/`bar--foo` shapes (23 chars of fixed
+# prefix, `K mod 4 = 3`), so their arithmetic is phase-bound and renaming that fixture flips all
+# three: the SHAPES are phase-dependent, the AXIS is not. A P=0 instance of each phase-bound
+# regime is pinned below — the cap's saturation and the floor's clip, which clips to two here
+# and reaches four at P=0.
+# And pin the AXIS: those lengths are SANITIZED ones. `_pointer_line` strips surrounding
+# whitespace, strips surrounding quotes, folds control/bracket characters and collapses
+# whitespace runs BEFORE `desc[:88]` caps — four expressions, and a mutant only tests a fixture
+# that carries the feature its expression acts on. So the pins below are deliberately split by
+# expression: the quote strip needs a fixture with no padding outside the quotes, the whitespace
+# strip needs padding outside them, and the collapse needs an INTERIOR run (a trailing run is
+# already absorbed by the strip, which is why the first pin added here read green under every
+# single-step fold mutant and detects nothing). A RAW-length sweep sees ties and one-token moves
+# the sanitized rule calls impossible — which is how this window was first mis-stated.
+# `_tie_window` sweeps `"x" * n`, its own sanitized form; `_tok_desc` takes the raw string, so
+# the difference is observable.
+def _tie_window(name: str, anchor: str, d: int, hi: int = 400) -> list:
+    """The current-description lengths whose pointer books the same bucket as `d` (0..hi)."""
+    def _tok(n: int) -> int:
+        return ms.est_tokens(sg._pointer_line(name, {"description": "x" * n}, anchor=anchor))
+    return [n for n in range(0, hi + 1) if _tok(n) == _tok(d)]
+
+def _tok_desc(name: str, anchor: str, desc: str) -> int:
+    """The same cost for a RAW description — sanitized inside `_pointer_line`, not by us."""
+    return ms.est_tokens(sg._pointer_line(name, {"description": desc}, anchor=anchor))
+
+check("window: mid-cap the tie window is four consecutive lengths, the equal-length point among them",
+      _tie_window("foo", "bar--foo", 40) == [38, 39, 40, 41])
+check("window: at this fixture's phase the floor clips the first bucket to two — [0, 1]",
+      _tie_window("foo", "bar--foo", 1) == [0, 1])
+_w_sat = _tie_window("foo", "bar--foo", 88)
+check("window: once the bucket is the cap's saturated one, every longer description ties too "
+      "(the in-cap tail is absorbed with it, nothing below it)",
+      all(n in _w_sat for n in range(86, 401)) and 85 not in _w_sat)
+check("window: equal RAW length need not tie — the window is a sanitized-length window",
+      _tok_desc("foo", "bar--foo", "x" * 41 + "\n") != _tok_desc("foo", "bar--foo", "x" * 42))
+check("window: a raw-LONGER description can still tie — a bracketed run collapses away",
+      _tok_desc("foo", "bar--foo", "x" * 41 + "[" * 10) == _tok_desc("foo", "bar--foo", "x" * 40))
+check("window: past the cap a raw-length gain can book NEGATIVE — the saturated tail absorbs "
+      "sanitized lengths, not raw ones",
+      _tok_desc("foo", "bar--foo", "x" * 85 + "[" * 4) < _tok_desc("foo", "bar--foo", "x" * 88))
+check("window: the quote strip is length-affecting too — a quoted description books its "
+      "unquoted core, so the measure is neither raw nor post-fold length alone",
+      _tok_desc("foo", "bar--foo", '"' + "x" * 41 + '"') == _tok_desc("foo", "bar--foo", "x" * 41))
+check("window: the whitespace strip is length-affecting SEPARATELY from the quote strip — a "
+      "fixture with padding OUTSIDE the quotes is the only shape that reaches it",
+      _tok_desc("foo", "bar--foo", ' "' + "x" * 41 + '" ') ==
+      _tok_desc("foo", "bar--foo", "x" * 41))
+check("window: the collapse is a THIRD expression, and an INTERIOR run is what reddens it — "
+      "the fold can be intact while a trailing-run-only fixture stays green",
+      _tok_desc("foo", "bar--foo", "x" * 20 + "\n" * 10 + "x" * 21) ==
+      _tok_desc("foo", "bar--foo", "x" * 42))
+check("window: the saturated tail is a PHASE property — at `K mod 4 = 0` the cap's bucket ends "
+      "exactly at the cap, so no longer description joins and the window stays four wide there",
+      len(_tie_window("fooo", "bar--foo", 88)) == 4 and len(_tie_window("foo", "bar--foo", 88)) > 4)
+check("window: so is the FLOOR clip — the aligned phase's first bucket reaches four, where this "
+      "fixture's phase clips it to two, so 'clipped short' is a phase-bound claim",
+      _tie_window("fooo", "bar--foo", 1) == [1, 2, 3, 4])
+# The pointer line has THREE untrusted interpolations, and `scope` was the unguarded one:
+# unlike `name` (fenced upstream by `_safe_stem`) it is free-form frontmatter, and unlike
+# `description` nothing sanitized it — a crafted `scope: evil](http://x)` rendered a LIVE
+# markdown link into the always-loaded index, on 10 of the 12 live call sites (the two inside
+# `canonical_ingress.upsert` sit downstream of that writer's own scope refusal, so a bad scope
+# cannot reach them). The fix keys the suffix to the canonical vocabulary, so the render can
+# only ever be a known literal. These pins hold it to the shapes that reach that key — and one
+# of them is a PROPERTY rather than an equality, because the equality alone did not earn the
+# universal its name claimed: it fixes four fixtures, and two admissions that widen the guard —
+# a prefix match and a first-char match — satisfy every one of them. Two shapes measured AT
+# `7a17600` — the revision before this pin existed — while restoring the live link for
+# `scope: user-global](http://x)`, which none of the four is:
+# `any(_raw_scope.startswith(s) for s in SCOPES)` → `1792 passed, 0 failed`, and
+# `_raw_scope[:1] in ("p","s","u")` → the same. Those are the measured shapes, not a class: a
+# SUBSTRING admission (`any(s in _raw_scope for s in SCOPES)`) restores the live link too,
+# because `scope: user-global](http://x)` contains a vocabulary string. It reds the drop pin
+# alone at `7a17600` (`1791 passed, 1 failed`) — the `["user-global"]` fixture, stringifying to
+# `"['user-global']"`, is what renders a suffix where none should — and BOTH pins at this
+# revision (`1791 passed, 2 failed`) — the invariant covers that same fixture, so a red set is
+# revision-relative even when the shape is not. The two pins below are not redundant and
+# neither subsumes the other, and each fails where the other alone stays green at this
+# revision: a prefix WIDENING reds the invariant ALONE (the rendered tail is not a literal)
+# with the equality green, coercing a LIST to a vocabulary default reds the equality alone (it
+# renders a literal, but it should have rendered nothing) with the invariant green. That
+# crossing is not a partition — the substring reds both, the raw revert reds all four. Nor is
+# the coercion witness a class: it differs by whether it preserves a vocabulary value. Keeping
+# the admission branch fires only on a truthy value absent from the list and reds two checks;
+# dropping it also coerces a quoted vocabulary value and reds four. A further shape — an absent
+# scope rendering no suffix — is deliberately NOT pinned: measured, every mutant that reddens
+# such a pin also reddens the six window pins above, and the bracket-absence it would assert is
+# already this suite's `hook strips markdown link chars` check on the same shape.
+import fact_schema as _fs  # noqa: E402  — the vocabulary itself, never a copy of it
+_PTR_PREFIX = "- [foo](bar--foo.md) — d"
+_VOCAB_TAIL = {""} | {f" [{v}]" for v in _fs.SCOPES}
+check("pointer: a non-vocabulary `scope` is dropped — not sanitized, not coerced — so a link "
+      "payload, a list and a non-string YAML value all render no suffix",
+      [sg._pointer_line("foo", {"description": "d", "scope": s}, anchor="bar--foo")
+       for s in ("evil](http://x)", ["user-global"], None, 42)] ==
+      [_PTR_PREFIX] * 4)
+check("pointer: no `scope` can put anything into the line but a vocabulary literal — the "
+      "invariant, held over the near-miss class a widened admission would admit",
+      all(sg._pointer_line("foo", {"description": "d", "scope": s}, anchor="bar--foo")
+          [len(_PTR_PREFIX):] in _VOCAB_TAIL
+          for s in ("user-global](http://x)", "project-local](", "stack-general evil](x)",
+                    "evil](http://x)", "USER-GLOBAL](x)", ["user-global"], 42, None,
+                    "", "user-global", ' "user-global" ')))
+check("pointer: a quoted/padded vocabulary `scope` still renders — normalized like the sibling "
+      "local writer, then admitted",
+      sg._pointer_line("foo", {"description": "d", "scope": ' "user-global" '})
+      == "- [foo](foo.md) — d [user-global]")
+check("pointer: a case variant of a vocabulary `scope` is NOT admitted — the vocabulary is "
+      "exact strings, so the render stays a known literal",
+      sg._pointer_line("foo", {"description": "d", "scope": "USER-GLOBAL"})
+      == "- [foo](foo.md) — d")
 # frontmatter parses folded/block scalars (description: >-) instead of storing ">-"
 check("frontmatter: folds block scalar value",
       sg._frontmatter("---\nname: x\ndescription: >-\n  hello\n  world\nmetadata:\n  scope: user-global\n---\nb")["description"] == "hello world")
@@ -5403,6 +5526,64 @@ with _tf73.TemporaryDirectory() as _td81:
           "_plan_pull — it reports the missing fact as ceiling-held exactly where a real --pull "
           "would hold it (the hand-rolled loop said absorbable)",
           "would be ceiling-held" in _r.stdout and "1 shared global fact(s)" in _r.stdout)
+    # spec §9, review F2a — the PHANTOM-DELTA pin. The C1 regression (caught in this cycle's
+    # review, introduced by the first cut of the cost-site fix) ANCHORED cost_old while
+    # leaving cost_new on the bare stem. For an IN-SYNC cross-domain mirror those two costs
+    # differ by exactly the anchor text (`work--`, ~2 tok), so
+    # `elif cost_old and cost_new != cost_old` fired for a mirror that needed NO refresh — a
+    # phantom STALE-mirror item whose delta is NEGATIVE. _plan_pull ADDS that delta to the
+    # running index, so the phantom RELIEVES the ceiling and lets a MISSING fact be booked as
+    # absorbable that a real --pull holds: the beacon advertising a pull the run refuses.
+    #
+    # It lives HERE, not with the other §9 pins in the groups block: `held` is only observable
+    # near the ceiling, and this is the fixture that sits at it.
+    #
+    # The boundary is MEASURED, never a guessed token count: the index is padded so the miss
+    # is held by exactly ONE token post-fix, and the relief the regression would grant is
+    # computed off the two real pointer lines (`_p_pb`) — asserted positive, so a change that
+    # made the two costs equal TRIPS the assert instead of silently un-arming the pin.
+    #
+    # Scope, stated precisely (a pin must not claim more than it measures): this discriminates
+    # the HALF-FIXED state (cost_old anchored / cost_new bare) — the tree the finding was
+    # raised against. That arm and the fully-fixed one are MEASURED; the third is an ARGUMENT,
+    # and is labelled rather than sitting in the same register as the other two:
+    #   - HALF-FIXED and fully-fixed, MEASURED. On the fully-fixed tree both costs derive from
+    #     one key and one hook, so cost_new == cost_old exactly: no item, no delta, `held`
+    #     unchanged.
+    #   - ORIGINAL pre-fix tree, green by CONSTRUCTION, not by a run. There the bare lookup
+    #     pins cost_old at 0, so the `elif cost_old and …` guard drops the item outright
+    #     instead of mis-costing it — and a dropped zero-delta item cannot move the running
+    #     index, so no index arithmetic can observe it either.
+    # The dropped item's own leg is pinned separately by the §9 beacon-leg check in the groups
+    # block (`cost_old > 0`), which is what keeps this arm's blindness from being a hole.
+    _mk_pb = sg._mirror_key("personal", "work", "mag-pb")
+    _canon_pb = _v3_canon("mag-pb", domain="work", description="mag hook").replace(
+        "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+    _fm_pb = sg._frontmatter(_canon_pb)
+    _mline_pb = sg._pointer_line("mag-pb", _fm_pb, anchor=_mk_pb)
+    (_st81 / f"{_mk_pb}.md").write_text(
+        sg._as_mirror(_canon_pb, "mag-pb", since="2026-01-01T00:00:00Z",
+                      body_hash=sg._body_hash(_canon_pb)), encoding="utf-8")
+    # the relief the phantom would grant: the anchored pointer (what the writer stores) minus
+    # the bare one (what the regression derives) — the whole of the defect, in tokens.
+    _p_pb = ms.est_tokens(_mline_pb) - ms.est_tokens(sg._pointer_line("mag-pb", _fm_pb))
+    assert _p_pb > 0, f"anchor asymmetry vanished (p={_p_pb}) — the pin cannot discriminate"
+    _miss_pb = _v3_canon("zmiss-pb", description="m")
+    (_df81 / "zmiss-pb.md").write_text(_miss_pb, encoding="utf-8")
+    _mfm_pb = sg._frontmatter(_miss_pb)
+    _cz_pb = ms.est_tokens(sg._pointer_line("zmiss-pb", _mfm_pb))
+    (_st81 / "MEMORY.md").write_text(_pad_index73(_C73 + 1 - _cz_pb, [_mline_pb]),
+                                     encoding="utf-8")
+    assert ms.est_tokens((_st81 / "MEMORY.md").read_text(encoding="utf-8")) == _C73 + 1 - _cz_pb
+    import session_beacon as _sb_pb
+    _out_pb = _sb_pb.beacon_line(
+        _st81, domain_id="personal", migration_mode="dual-read",
+        gfacts=[("mag-pb", _fm_pb, _canon_pb), ("zmiss-pb", _mfm_pb, _miss_pb)],
+        memberships={"pair"})
+    check("v0.4.10/spec §9: an IN-SYNC cross-domain mirror books NO refresh delta — the "
+          "beacon's held projection still counts the missing fact as ceiling-held (an "
+          "un-anchored cost_new made every in-sync mirror a phantom NEGATIVE delta)",
+          "would be ceiling-held" in _out_pb and "1 shared global fact(s)" in _out_pb)
 
 # --- v0.1.82: distill-template persistence (W-A — docs/distill-template-persistence.spec.md).
 # RED baseline is the contract itself: before this, --into persisted COUNTS only (the pre-change
@@ -12355,6 +12536,281 @@ with _tf73.TemporaryDirectory() as _td_gs:
               "refreshed 1" in _o6_gs.getvalue()
               and "quarantine" not in _o6_gs.getvalue()
               and "body v2" in (_c2_gs.read_text(encoding="utf-8") if _c2_gs.exists() else ""))
+        # cross-domain-index-refresh spec §10 (the gc DEAD report): the report's mirror-existence
+        # probe must use the WRITER's key. It tested `{name}.md` — the CANONICAL stem — while the
+        # live file is `personal--grp-fact.md`, so a held cross-domain canonical reported DEAD
+        # (14 mirrors / 11 projects, measured fleet-wide). Report-only, so nothing was deleted.
+        # PLACEMENT IS THE PIN: it must run while C's store holds ONLY the namespaced mirror —
+        # check #7 below plants a same-stem native `grp-fact.md`, after which BOTH probes find a
+        # file and the check cannot discriminate. (Measured: the first draft sat after #7 and was
+        # green with the probe reverted. A vacuous pin is worse than no pin.)
+        _ogc_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_ogc_gs):
+            sg.gc(_pc_gs, apply=False)
+        _gc_out_gs = _ogc_gs.getvalue()
+        check("v0.4.10 groups: the gc report does NOT call a LIVE cross-domain mirror dead "
+              "(the probe uses the mirror key, not the canonical stem)",
+              _cfile_gs.exists() and "no mirror here" not in _gc_out_gs)
+        # cross-domain-index-refresh spec §9: the refresh must REPLACE its index pointer,
+        # not append a second one. `apply_pointer` matches on `]({stem}.md)`; a namespaced
+        # link `](personal--grp-fact.md)` never matches the bare stem, so it appended.
+        # This refresh is BODY-ONLY (the description is unchanged), so the pre-fix index
+        # ends up with two byte-identical lines — the corrected trigger, not a reword.
+        _cidx_gs = (_storec_gs / "MEMORY.md").read_text(encoding="utf-8")
+        _cline_gs = [ln for ln in _cidx_gs.splitlines() if "](personal--grp-fact.md)" in ln]
+        check("v0.4.10 groups: the cross-domain refresh REPLACES its index pointer "
+              "(exactly one line; no bare-stem append)",
+              len(_cline_gs) == 1)
+        # cross-domain-index-refresh spec §9 PRIMARY pin (reword). The body-only pin above
+        # cannot distinguish "replaced in place" from "never written": its pointer text is
+        # byte-identical either way, so a skipped index write (the admission `continue` at
+        # the MISSING/refresh arms) would leave it GREEN while the store kept a stale
+        # pointer. Reword the DESCRIPTION so the new line differs, then pin both halves.
+        _pre_line_gs = [ln for ln in _cidx_gs.splitlines() if "](personal--grp-fact.md)" in ln]
+        _cap_gs: dict = {}
+        _stems_gs: list = []
+        _real_pp_gs = sg._plan_pull
+        import index_admission as _ia_gs
+        _real_ap_gs = _ia_gs.apply_pointer
+
+        def _spy_pp_gs(items: list, start_idx: int, allow_net_grow: bool,
+                       budget: int) -> dict:
+            _cap_gs["items"] = list(items)
+            return _real_pp_gs(items, start_idx, allow_net_grow, budget)
+
+        def _spy_ap_gs(_text, _line, _stem):
+            _stems_gs.append(_stem)
+            return _real_ap_gs(_text, _line, _stem)
+
+        # apply_pointer is imported FUNCTION-LOCALLY (sync_global.py:1393), so patching the
+        # index_admission attribute is what the call site re-reads on each run.
+        sg._plan_pull = _spy_pp_gs
+        _ia_gs.apply_pointer = _spy_ap_gs
+        try:
+            _ci2_gs.upsert(_ctxa_gs, "grp-fact", _v3_canon(
+                "grp-fact", description="d-reworded").replace(
+                "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1
+            ).replace("body\n", "body v3\n", 1))
+            _o7_gs = _io_gs.StringIO()
+            with _ctx73.redirect_stdout(_o7_gs):
+                sg.run(_pc_gs, pull=True)
+        finally:
+            sg._plan_pull = _real_pp_gs
+            _ia_gs.apply_pointer = _real_ap_gs
+        _cidx2_gs = (_storec_gs / "MEMORY.md").read_text(encoding="utf-8")
+        _cline2_gs = [ln for ln in _cidx2_gs.splitlines() if "](personal--grp-fact.md)" in ln]
+        # The third conjunct (the pre-reword line is gone) is kept but never decides: the
+        # pre-reword line carries the SAME anchor, so "exactly one anchored line" plus "that
+        # line carries the new hook" already exclude it. It restates the property in the
+        # reword form; it is implied by the two conjuncts before it and is never the
+        # deciding clause. Kept because it is the assertion's plain-language statement, not
+        # because it adds coverage.
+        check("v0.4.10 groups: a REWORDED cross-domain refresh replaces its pointer in "
+              "place (one line, carrying the new hook — NOT the pre-reword line)",
+              len(_cline2_gs) == 1
+              and "d-reworded" in _cline2_gs[0]
+              and (not _pre_line_gs or _pre_line_gs[0] not in _cidx2_gs))
+        # spec §9 ACCOUNTING pin — captured from the REAL planner call, not a replica of
+        # its inputs. The cost map is keyed by the LINK TARGET (the namespaced anchor for a
+        # cross-domain mirror); a bare-stem lookup pinned cost_old at 0, so _plan_pull
+        # booked a full appended line for a refresh that replaces in place — near the
+        # ceiling that holds globals the index has room for.
+        _row_gs = [r for r in _cap_gs.get("items", []) if r[0] == "grp-fact"]
+        check("v0.4.10 groups: the pull planner books a cross-domain mirror's REAL line "
+              "cost (cost_old > 0 — the bare-stem lookup pinned it at 0)",
+              bool(_row_gs) and _row_gs[0][3] > 0)
+        # spec §9 cost_new pin — the SAME tuple's other half. The ACCOUNTING check above reads
+        # index 3 (cost_old); the PLANNED line cost is index 2 and was asserted by NOTHING, so
+        # `_pointer_line(name, fm)` with the anchor dropped from cost_new survived the whole
+        # suite (measured: with that one omission applied and this check absent, the other 1777
+        # checks ran green — 0 failed). The axis is real, not hypothetical: an un-anchored
+        # cost_new is ~2 est tok LIGHTER than the line a pull writes, and a lighter cost_new
+        # books a NEGATIVE delta — which RELIEVES the running index in _plan_pull, the
+        # phantom-relief arm §9 #10 pins and §9.1's failure 6 measured (the direction that
+        # advertises a fact as absorbable when a real --pull holds it). §8.3 supplies the relief
+        # DIRECTION in its err columns, not this arm — its grid has no half-fixed row and no
+        # in-sync mirror, so citing it here would name a table that does not contain the shape.
+        # Ground truth is the line the run actually WROTE (`_cline2_gs[0]`, pinned to exactly
+        # one line just above), never a re-derivation of it: the planner must book the cost of
+        # the line the writer writes — that plan/execute agreement IS this leg's contract. An
+        # anchor dropped on either side breaks it, by a different clause each way: on the READ
+        # side the equality below decides — measured, and the two conjuncts are visibly not
+        # what decides: under exactly this revert this check is the ONLY failure, with
+        # `cost_new=13 written=16 nrow=1 nline=1` (both `bool(...)` true on the mutant).
+        # On the WRITE side the deciding clause is instead the vacuity guard
+        # `bool(_cline2_gs)` — measured, dropping `anchor=_j_key` from the pointer-line
+        # construction at both write legs gives `cost_new=16 written=None nrow=1 nline=0`:
+        # no anchored line exists to compare at all, so this check dies on the guard, and
+        # #1/#2/#3/#5/#7 fire alongside it (measured: 1772 passed, 6 failed — the sixth being
+        # this check). Those are that side's primary detectors; this check is the read side's.
+        # #4 is NOT among
+        # them, and the reason is worth keeping: #4 counts `apply_pointer`'s KEY argument
+        # (the spy above records `_stem`), while this mutant leaves the key anchored and
+        # changes only the rendered line — so a list written from the fix's *shape* rather
+        # than from a run gets it wrong in both directions at once.
+        check("v0.4.10 groups: the pull planner books the ANCHORED cost_new — the line the "
+              "writer wrote (a bare-stem cost_new is ~2 tok light and relieves the ceiling)",
+              bool(_row_gs) and bool(_cline2_gs)
+              and _row_gs[0][2] == sg.est_tokens(_cline2_gs[0]))
+        # spec §9 MISSING-leg pin — at the CALL SITE, not on apply_pointer itself. A unit
+        # call passing the namespaced key passes on ANY code (the function was never the
+        # defect; the caller's KEY is), so that form cannot discriminate — it is a
+        # tautology, and it measured green on pre-fix scripts. One call site serves BOTH
+        # arms: _j_key is bound ABOVE the MISSING/STALE branch and consumed by the same
+        # apply_pointer call, so pinning the key here covers delivery too — with the bare
+        # stem, a same-stem native's `](grp-fact.md)` line matches on delivery and is
+        # silently replaced (the local file keeps its body; its always-loaded pointer is
+        # gone). No fleet store carries this collision today, so this is the ONLY coverage.
+        # The COUNT is load-bearing, not belt-and-braces: TWO write legs call apply_pointer
+        # (the plan loop and the execute loop), and the execute loop's correct key masks a
+        # plan-loop regression from every outcome-shaped pin in this file — measured, with
+        # this check absent, a site-1-only revert
+        # (sync_global.py:1451 back to the bare stem, :1483 untouched) leaves the suite
+        # green. With the clause, that revert fails THIS check and nothing else (measured:
+        # 1776 passed, 1 failed at b023d02's 1777; 1777 passed, 1 failed at HEAD's 1778).
+        # Name no revision for the green run: the clause and the fix landed together in
+        # ed4c67f (1775), so that state is a tree, and the subtraction above is how it is
+        # stated.
+        # So presence alone cannot see a single-leg revert; the anchored key must appear
+        # ONCE PER LEG
+        # (measured call order, both legs: upsert:'grp-fact' [same-domain, legitimate] →
+        # 1451 → 1483).
+        # NB "the bare stem is absent" would be WRONG here — the canonical upsert in this
+        # same block legitimately passes it for a same-domain write.
+        check("v0.4.10 groups: BOTH sync call sites match on the NAMESPACED key (the bare "
+              "stem is what evicts a same-stem native pointer on delivery)",
+              _stems_gs.count("personal--grp-fact") == 2)
+        # spec §9 ACCOUNTING pin, BEACON leg (site 4). The beacon builds the same
+        # anchor-keyed cost map and looked it up by the bare stem, so cost_old was 0 and
+        # `elif cost_old and cost_new != cost_old` DROPPED the item — the beacon's
+        # ACCOUNTING could not observe a cross-domain mirror going stale (its printed
+        # `N mirror(s) carry outdated content` count comes from _store_gaps, which compares
+        # body hashes and was never affected by this leg), and its `held` projection
+        # under-reported what the run would hold (the F1 divergence at
+        # session_beacon.py:200-206).
+        # NB the patch target: session_beacon imports _plan_pull at MODULE level (:53), so
+        # the beacon's own name must be replaced — patching sg._plan_pull would not reach it
+        # (and a spy on the wrong one fails SILENTLY, which is why the capture below is
+        # beacon-private and asserted non-empty: _spy_pp_gs OVERWRITES its dict with the
+        # last call's args, so a non-binding patch would leave the RUN side's rows in place
+        # and this check would pass while the beacon was never observed — a vacuous pin
+        # that stays green under a beacon-only revert).
+        import session_beacon as _sb_mod_gs
+        _capb_gs: dict = {}
+        _real_pp_sb_gs = _sb_mod_gs._plan_pull
+
+        def _spy_ppb_gs(items: list, start_idx: int, allow_net_grow: bool,
+                         budget: int) -> dict:
+            _capb_gs["items"] = list(items)
+            return _real_pp_sb_gs(items, start_idx, allow_net_grow, budget)
+
+        _sb_mod_gs._plan_pull = _spy_ppb_gs
+        try:
+            _bline2_gs = ""
+            try:
+                _bline2_gs = _sb_mod_gs.beacon_line(
+                    _storec_gs, domain_id="work", migration_mode="dual-read",
+                    gfacts=[("grp-fact", sg._frontmatter(_v3_canon("grp-fact").replace(
+                        "applies_exclude: []\n",
+                        "applies_exclude: []\nrecipients: [pair]\n", 1)), "t")],
+                    memberships={"pair"})
+            except Exception:
+                _bline2_gs = ""
+        finally:
+            _sb_mod_gs._plan_pull = _real_pp_sb_gs
+        _brow_gs = [r for r in _capb_gs.get("items", []) if r[0] == "grp-fact"]
+        check("v0.4.10 groups: the beacon builds a STALE item for a cross-domain mirror "
+              "(a bare-stem cost lookup dropped it entirely)",
+              bool(_capb_gs.get("items"))   # anti-vacuity: the patch BOUND, the spy ran
+              and bool(_brow_gs) and _brow_gs[0][1] == "STALE-mirror" and _brow_gs[0][3] > 0)
+        # spec §8.1 — the CONTRACT the call-site key pin above leans on, and the reason a
+        # delivery no longer evicts a member's own same-stem native pointer. NOT a pin in
+        # §9's sense (apply_pointer is unchanged by this fix, so it passes pre- and
+        # post-fix): it is the GUARD for the implication "call site passes the anchored key
+        # => the native's bare line cannot match". Without it, a future loosening of the
+        # matcher would silently falsify that implication while the key pin stayed green.
+        # Measured for the spec by direct probe; pinned here so it cannot drift unobserved.
+        _native_idx_gs = ("# Memory index\n\n"
+                          "- [grp-fact](grp-fact.md) — the member's OWN local fact\n"
+                          "- [other](other.md) — unrelated\n")
+        _delivered_gs = "- [grp-fact](personal--grp-fact.md) — the delivered global"
+        _anch_gs = _real_ap_gs(_native_idx_gs, _delivered_gs, "personal--grp-fact")
+        _bare_gs = _real_ap_gs(_native_idx_gs, _delivered_gs, "grp-fact")
+        check("v0.4.10 groups: the anchored key SPARES a same-stem native pointer while the "
+              "bare stem evicts it (the contract the call-site key pin relies on)",
+              "](grp-fact.md)" in _anch_gs and "](personal--grp-fact.md)" in _anch_gs
+              and "](grp-fact.md)" not in _bare_gs and "](personal--grp-fact.md)" in _bare_gs)
+        # spec §9 MISSING-OUTCOME pin — the largest gap the first pass shipped, closed here.
+        # #4 pins the KEY the call site passes and #6 pins the matcher premise, but neither
+        # DELIVERS anything: a regression living between the key and the index write stays
+        # invisible to both. This runs the REAL pull into the §4a collision shape — the member
+        # holds a same-stem NATIVE fact of its own and the global arrives (mirror absent, so
+        # the classified status is MISSING). Pre-fix the bare matcher found the native's
+        # `](grp-fact.md)` line first and REPLACED it: the body survived, its always-loaded
+        # pointer did not, and the line count did not move to show it (§8.1).
+        _native_c_gs = _storec_gs / "grp-fact.md"
+        _native_c_gs.write_text(
+            _v3_canon("grp-fact", domain="work", scope="project-local",
+                      body="the member's own local body\n"), encoding="utf-8")
+        # rebuild the index to its real MISSING-collision shape: no mirror line (nothing
+        # wrote one — there is no mirror), the native's own pointer present and LAST.
+        (_storec_gs / "MEMORY.md").write_text(
+            "\n".join([ln for ln in (_storec_gs / "MEMORY.md").read_text(
+                encoding="utf-8").splitlines() if "](personal--grp-fact.md)" not in ln]
+                + ["- [grp-fact](grp-fact.md) — the member's OWN local fact"]) + "\n",
+            encoding="utf-8")
+        _cfile_gs.unlink()
+        _o8_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o8_gs):
+            sg.run(_pc_gs, pull=True)
+        _cidx_post_gs = (_storec_gs / "MEMORY.md").read_text(encoding="utf-8")
+        check("v0.4.10 groups: a MISSING delivery into a same-stem collision PRESERVES the "
+              "member's own native pointer (the bare matcher overwrote it in place)",
+              _cfile_gs.exists() and _native_c_gs.exists()
+              and "the member's OWN local fact" in _cidx_post_gs
+              and "](grp-fact.md)" in _cidx_post_gs
+              and "](personal--grp-fact.md)" in _cidx_post_gs)
+        # spec §9 SAME-DOMAIN guard — the `_j_key == name` arm, which this fix must leave
+        # EXACTLY as it was: same outcome, neighbour order preserved. ⚪ GUARD, not a pin —
+        # the arm is identical pre- and post-fix, so it cannot fail pre-fix. Its MEASURED
+        # value is the other direction: rewriting apply_pointer to delete the matched line
+        # and append the new one at the END leaves this as the ONLY failure in the whole
+        # suite — #8 alone, 1777/1 at HEAD's 1778 checks (1774/1 at the 1775-check revision
+        # it was first measured on). #1/#2/#6 stay green because the pointer remains a
+        # SINGLE PRESENT line (the target count stays 1): those checks assert on the pointer,
+        # never on the index's length. The index's line COUNT is not what that mutant preserves —
+        # measured `pre=4 post=5` — and a count-preserving variant (same delete+append, no
+        # separator blank: `pre=4 post=4`, `postpos=[3]`) still fails #8 ALONE, so the
+        # position and neighbour conjuncts have teeth independent of the count. Chained
+        # across refreshes "the line
+        # moved" is a real regression: it reorders the always-loaded tier. The neighbour
+        # line is seeded so "order preserved" is a real constraint, not a one-line
+        # tautology. NB this check passes under the write-leg revert (measured — correct:
+        # it covers the same-domain arm), and the mutant it was first written to claim —
+        # _mirror_key "simplified" into always namespacing — is unreachable from here:
+        # that mutant kills the suite at the canon-x fixture's read-back of its own
+        # canonical, 571 checks earlier (983 checks complete there and 1554 by the time
+        # #8's check begins, at e2a3048). Claim what was measured, not what's plausible.
+        _aidx_lines_gs = (_storea_gs / "MEMORY.md").read_text(encoding="utf-8").splitlines()
+        _aidx_lines_gs.append("- [zz-local](zz-local.md) — a neighbouring local entry")
+        (_storea_gs / "MEMORY.md").write_text("\n".join(_aidx_lines_gs) + "\n",
+                                             encoding="utf-8")
+        _apos_gs = [i for i, ln in enumerate(_aidx_lines_gs) if "](grp-fact.md)" in ln]
+        _o9_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o9_gs):
+            sg.run(_pa_gs, pull=True)   # the reworded canonical → a REAL pointer change
+        _aidx_post_lines_gs = (_storea_gs / "MEMORY.md").read_text(
+            encoding="utf-8").splitlines()
+        check("v0.4.10 groups: a SAME-DOMAIN refresh stays replace-in-place (one bare line "
+              "at its ORIGINAL position, neighbours unmoved, nothing namespaced)",
+              len(_aidx_post_lines_gs) == len(_aidx_lines_gs)
+              and len(_apos_gs) == 1
+              and "](grp-fact.md)" in _aidx_post_lines_gs[_apos_gs[0]]
+              and "d-reworded" in _aidx_post_lines_gs[_apos_gs[0]]
+              and _aidx_post_lines_gs[-1] == ("- [zz-local](zz-local.md) — a neighbouring "
+                                              "local entry")
+              and not any("](personal--grp-fact.md)" in ln
+                          for ln in _aidx_post_lines_gs))
         # F6: group remove deletes the clean cross-domain mirror (decode-first revoke)
         _conn2_gs = cp.connect(cp.db_path(_ctxa_gs))
         try:
@@ -14793,7 +15249,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1740 + 27)
+      passed + failed + 1 == 1750 + 43)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

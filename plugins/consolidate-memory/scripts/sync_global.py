@@ -1338,17 +1338,26 @@ def _as_mirror(text: str, name: str, since: str = "", body_hash: str = "",
 
 
 def _pointer_line(name: str, fm: dict, anchor: str = "") -> str:
-    """The canonical index pointer line for a fact (pure — testable). The `description`
-    is the recall hook; it comes from a global fact (possibly crafted) and is written
-    into the always-loaded index, so sanitize it: collapse control bytes/newlines to a
-    space (a stray newline/ESC would break or inject into the index line), then truncate."""
+    """The canonical index pointer line for a fact (pure — testable). Three values are
+    interpolated into the always-loaded index and all of them come from a possibly-crafted
+    store, so each is fenced at its own layer: `name`, upstream — every row source applies
+    `_safe_stem` to the file stem before it reaches here; `description`, here — collapse
+    control bytes/newlines to a space (a stray newline/ESC would break or inject into the
+    index line), then truncate; `scope`, here — admitted against the canonical vocabulary."""
+    from fact_schema import SCOPES   # deferred, like _admissible_records
     desc = fm.get("description", "").strip().strip('"')
     # Strip control bytes (line-break/ESC injection) AND markdown link/bracket chars so a
     # crafted description can't inject a link or a spoofed `](name.md)` target into the
     # always-loaded index line.
     desc = " ".join(re.sub(r"[\x00-\x1f\x7f-\x9f\[\]()<>]", " ", desc).split())
     hook = (desc[:88] + "…") if len(desc) > 88 else desc
-    scope = fm.get("scope", "")
+    # `scope` is the line's ONE other free-form interpolation, and it was unguarded: a
+    # crafted `scope: evil](http://x)` rendered a LIVE link into the always-loaded index.
+    # Render the vocabulary value, never the field — a non-vocabulary scope has no meaning
+    # to show, so the suffix can carry nothing but a known literal. (local_ingress's
+    # sibling writer renders from vocabulary too, and refuses a bad scope at write time.)
+    _raw_scope = str(fm.get("scope") or "").strip().strip('"')
+    scope = _raw_scope if _raw_scope in SCOPES else ""
     href = anchor or name
     return f"- [{name}]({href}.md) — {hook}" + (f" [{scope}]" if scope else "")
 
@@ -1444,7 +1453,11 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         for name, fm, status, path, want in jobs:
             _j_sdom = str(fm.get("domain") or ctx.domain_id or "")
             _j_key = _mirror_key(ctx.domain_id, _j_sdom, name)
-            planned = apply_pointer(planned, _pointer_line(name, fm, anchor=_j_key), name)
+            # the MATCHER key is the anchor: `](d--s.md)` does not contain `](s.md)`, so
+            # passing the bare stem appended a duplicate instead of replacing — and on a
+            # delivery it evicted a same-stem NATIVE pointer.
+            # (docs/cross-domain-index-refresh.spec.md §2 Leg A / §8.1)
+            planned = apply_pointer(planned, _pointer_line(name, fm, anchor=_j_key), _j_key)
         plan_adm = project_index(planned)
         if evict_stem and not plan_adm["admitted"]:
             raise WriteRefused(
@@ -1473,7 +1486,10 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
             ptr_unchanged = any(
                 f"]({_j_key}.md)" in ln and ln.strip() == ptr.strip()
                 for ln in idx_text.splitlines())
-            future = apply_pointer(idx_text, ptr, name)
+            # matcher key == anchor — same argument as the plan loop above, and the two MUST
+            # agree or the executed write diverges from the planned one
+            # (docs/cross-domain-index-refresh.spec.md §2 Leg A)
+            future = apply_pointer(idx_text, ptr, _j_key)
             adm = project_index(future)
             if status == "MISSING":
                 if path.exists():
@@ -1647,8 +1663,8 @@ def _plan_pull(items: list, start_idx: int, allow_net_grow: bool, budget: int) -
     comment papered over), so near the ceiling an evict could pass its fit-check yet land nothing.
 
     `items` = (name, status, cost_new, cost_old) for every RELEVANT MISSING/STALE-mirror fact in
-    loop order; cost_old is the fact's REAL existing index line (_index_line_cost, usually 0 for
-    MISSING). A MISSING pull grows the index by (cost_new - cost_old) unless that would net-grow
+    loop order; cost_old is the fact's REAL existing index line, keyed by its MIRROR KEY as run()'s
+    map is — not by _index_line_cost (whose anchor is bare). A MISSING pull grows the index by (cost_new - cost_old) unless that would net-grow
     past `budget` (→ HELD, at its full pointer cost for display); a STALE-mirror refresh ALWAYS
     runs and contributes its real pointer delta (F4: refresh deltas were previously untracked, so
     a later hold decision used a stale figure and breached the ceiling by a measured +22t).
@@ -1952,8 +1968,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # v0.1.73 (accounting truth — docs/evict-accounting-truth.spec.md): CLASSIFY first (no writes),
     # PLAN the index accounting ONCE via _plan_pull, THEN execute — the write loop consults plan
     # membership and never re-decides. Seed from the live index (store-scan convention, v0.1.69
-    # Gate-2b); cost_old per stem is the REAL existing line (_index_line_cost), so a stale-refresh
-    # delta and a line-without-file drift state both net honestly instead of slipping the ceiling.
+    # Gate-2b); cost_old per MIRROR KEY — the bare stem for a same-domain fact — is the REAL
+    # existing line (the anchor-keyed map built below), so a stale-refresh delta and a
+    # line-without-file drift state both net honestly instead of slipping the ceiling.
     _idxp = store / "MEMORY.md"
     idx_text = _safe_read_text(_idxp) or "# Memory Index\n\n"
     _is_fixture_run = _global_is_fixture()
@@ -2236,9 +2253,22 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         _m = re.search(r"\]\(([^)]+)\.md\)", _ln)
         if _m and _m.group(1) not in _line_cost_run:
             _line_cost_run[_m.group(1)] = est_tokens(_ln)
-    items = [(name, status, est_tokens(_pointer_line(name, fm)), _line_cost_run.get(name, 0))
-             for name, fm, _t, status, _p, _w, rel, *_x in classified
-             if rel and status in ("MISSING", "STALE-mirror")]
+    # Both costs come from the SAME key the writer uses (_j_key, as in _execute_pull_writes):
+    #   cost_old — the map is keyed by the link TARGET (the namespaced anchor for a
+    #     cross-domain mirror), so a bare-stem lookup pinned it at 0 and _plan_pull booked a
+    #     full line for a STALE refresh where only the replaced delta applies.
+    #   cost_new — un-anchored it is ~2 tok lighter than the line the writer emits, so with
+    #     cost_old corrected the model under-counted instead: 7 cross-domain MISSING pulls
+    #     planned end_idx 3837 against a real 3854, i.e. past the ceiling the budget exists
+    #     to respect. The sign flipped; the gap did not close until both sides anchored.
+    # (docs/cross-domain-index-refresh.spec.md §2 Leg B, §8.3)
+    items = []
+    for name, fm, _t, status, _p, _w, rel, *_x in classified:
+        if not rel or status not in ("MISSING", "STALE-mirror"):
+            continue
+        _j_key = _mirror_key(ctx.domain_id, str(fm.get("domain") or ""), name)
+        items.append((name, status, est_tokens(_pointer_line(name, fm, anchor=_j_key)),
+                      _line_cost_run.get(_j_key, 0)))
     plan = _plan_pull(items, seed_idx, allow_net_grow, budget=INDEX_CEILING_TOKENS)
     # v0.1.41 → v0.1.73: --evict <fact> — the EVICT-TO-RECEIVE valve (the release for M1's hold),
     # rebuilt on measured accounting. Pre-checks BEFORE any delete (Guard-3 no-partial-state); the
@@ -3260,13 +3290,25 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     if apply:
         print(_ui.ascii_translate("\n".join(out)))
         return 0
+    from domain_policy import fact_domain as _fd_gc
     dead = []
     for name, fm, _ in gfacts:
+        # The mirror's FILE key is _mirror_key — the SAME key the writer uses
+        # (_execute_pull_writes) and the pull path derives (run's `mkey`), bare-stem
+        # only when the canonical is same-domain. Probing `{name}.md` looked for `X.md` while the
+        # file is `{fdom}--X.md`, so every CROSS-DOMAIN canonical read as DEAD here (14 mirrors
+        # across 11 projects — spec §5), and a genuinely ABSENT one read as PRESENT whenever an
+        # unrelated same-stem native existed. Report-only, so this arm never deleted anything;
+        # it just lied, in both directions (docs/cross-domain-index-refresh.spec.md §10).
+        try:
+            _g_mkey = _mirror_key(_ctx_gc.domain_id, _fd_gc(fm) or (_ctx_gc.domain_id or ""), name)
+        except ValueError:
+            continue    # an UNCOMPUTABLE key is "unknown", never "dead" — this arm must not guess
         for holder in _holder_labels(fm, stem=name, ctx=_ctx_gc):
             # we only know THIS project's store path; report if it's listed but absent.
             # v0.1.76: compare in the SANITIZED token space provenance is written in — a basename
             # _sanitize_token rewrites ('@scope' → '-scope') never equalled its raw self here.
-            if holder == _sanitize_token(project_dir.name) and not (store / f"{name}.md").exists():
+            if holder == _sanitize_token(project_dir.name) and not (store / f"{_g_mkey}.md").exists():
                 dead.append(name)
     if dead:
         out.append("")

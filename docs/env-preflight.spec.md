@@ -149,7 +149,9 @@ silent case.
    `"consolidate-memory pre-flight: N environment check(s) failed (dreams will fail here) — run cm doctor for the fixes."`; warns/pass/absent/stale (>7d TTL) → silent; failure posture
    unchanged (silent + rc 0). **Placement + precedence (review F4, amend-2):** the verdict is
    read **between the `auto_memory_enabled` gate and the `cross_project_allowed` gate**
-   (session_beacon.py:255-256) — disabled-auto-memory envs stay silent (unchanged); a fresh
+   (one hit each in `session_beacon.py`: `if not ctx.auto_memory_enabled:` and `if not
+   getattr(ctx, "cross_project_allowed", False):`) — disabled-auto-memory envs stay silent
+   (unchanged); a fresh
    FAIL **supersedes** the unenrolled and behind advisories and is **NOT quieted by
    `beacon_snooze_until`** (env-broken is not absorption-nag — the docstring silence rules say
    so explicitly); total stdout stays ≤1 line in every co-state. The post-fix nag window is

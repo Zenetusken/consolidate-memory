@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.4.25** (2026-09-11). `CLAUDE.md` holds the
+verified against the live tree at **v0.4.26** (2026-09-12). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -16,7 +16,7 @@ plugin and its marketplace. Two plugins ship from it:
 
 | Plugin | Version | Role |
 |---|---|---|
-| `consolidate-memory` | 0.4.25 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
+| `consolidate-memory` | 0.4.26 | The product: a 6-phase `dream` workflow, StoreContext-resolved native stores, operator-enrolled domain isolation, SQLite control plane + journal (sole authority for holders/grants/migration state per ADR 023), sole canonical writer, `cm local` native writer (local recall-key pointer + `extract_wikilinks` as pull), facts-manifest beacon/pull cache, paginated journal inventory, tiered context-budget accounting. Unenrolled projects are local-only. |
 | `dream-beta-tester` | 0.1.8 | The QA companion: beta-tests the dream skill itself — deterministic invariant oracle + judgment-lens pass + maintainer pre-push gate |
 
 End users install with `/plugin marketplace add Zenetusken/consolidate-memory` +
@@ -29,7 +29,7 @@ relative source paths only resolve over Git).
 **Dev loop** — after any change to `plugins/consolidate-memory/scripts/`:
 
 ```bash
-python3 tests/smoke.py                          # the zero-dep gate — ~1688 assertions over every script's
+python3 tests/smoke.py                          # the zero-dep gate — 1793 assertions over every script's
                                                 # pure functions + the cross-module pins; exit 1 on any failure
 python3 tests/simulate_accumulation.py          # lifecycle accumulation sim (probes A–W + X–AF) — the
                                                 # store-mechanics gate; CI runs it too
@@ -46,10 +46,12 @@ CI (`.github/workflows/ci.yml`, one workflow, **8** jobs) runs the same gates: `
 (smoke + manifests + sim on Python **3.8–3.13**, with 3.8/3.9 pinned to
 ubuntu-22.04, **no pip install — that IS the stdlib-only proof**), `test-macos`
 (Python 3.12), `concurrency` (process-level races, Python 3.12), `typecheck` (mypy,
-dev-only label), `docs` (`tests/docs_links.py` — badge ↔ `plugin.json`, relative
-links, manual anchors, theme table; its own job because docs drift is version- and
-OS-independent, so the 6-way matrix would only repeat the same answer), `manifest` (`claude plugin
-validate --strict`, a real blocking gate — no continue-on-error), `bench` (the
+dev-only label), `docs` (`tests/docs_links.py` — badge ↔ `plugin.json`, link
+resolution, manual anchors, the theme table, live-doc version statements, required
+strings, and the committed preview's byte-equality; its own job because docs drift
+is version- and OS-independent, so the 6-way matrix would only repeat the same
+answer), `manifest` (`claude plugin validate --strict`,
+a real blocking gate — no continue-on-error), `bench` (the
 capacity SLO corner: `bench_phase5.py --quick`, measured — not gated — with the
 report stored as a run artifact), and `browser` (development-only Playwright +
 Chromium; archive behavior, themes, data preservation, and responsive layout, with
@@ -68,7 +70,8 @@ a new session; `plugin.json`/`marketplace.json` edits need
 `status` `seed` `extract` `distill` `sync` `pull` `gc` `promote` `tokens`
 `utility` `harvest` `staleness` `workflows` `calibration` `beacon` `network`
 `render` `report` `log` `doctor` `conflicts` `resolve` `repair-mirror`
-`canonical` `migrate` `data` `journal` `forget` `project` `group`. Native paths come from `cm doctor`
+`canonical` `local` `marker` `justify-demotion` `migrate` `data` `journal`
+`forget` `project` `group`. Native paths come from `cm doctor`
 (`StoreContext`); never hand-build `~/.claude/projects/<slug>/memory`.
 
 ## Layout
@@ -110,8 +113,13 @@ docs/adr/                         001 empty-set judgment · 002 StoreContext · 
                                   004 stable identity · 005 three-way mirrors · 006 control plane ·
                                   007 schema v2 / migrate · 008–016 0.3.0 hardening ·
                                   017 journal complete-old · 018 StoreContext authorization ·
-                                  019 forget-ack / domain lifecycle
-tests/                             smoke.py · simulate_accumulation.py · validate_manifests.py
+                                  019 forget-ack / domain lifecycle · 020 project-state CAS / LocalFactV1 ·
+                                  021 journal terminal cleanup · 022 domain-lifecycle inactive ack ·
+                                  023 sole authority per state kind · 024 trajectory evidence ladder
+tests/                             smoke.py · simulate_accumulation.py · validate_manifests.py ·
+                                   docs_links.py (the docs drift gate) · concurrency.py · bench_phase5.py ·
+                                   dashboard_browser.py + dashboard_fixture.py + network_identity.py
+                                   (the dev-only Chromium suite) · fixtures/ · lifecycle-audit.md
 memory/                            GITIGNORED placeholder (.gitkeep only) — the canonical global store lives at
                                    ~/.claude/consolidate-memory/domains/<domain>/ (legacy ~/.claude/memory/ is read-only migration inventory)
 ```
@@ -242,18 +250,21 @@ design.
   (merge commits — the repo convention). The v0.4.0 chain (#128→#154→…→#160)
   merged this way under the user's delegation.
 - **Required checks on `main` (the #152 operator leg):** the `protect-main`
-  ruleset should require the check-run **display names** (GitHub matches those,
-  never job keys) with a review count ≥ 1: `test (python 3.8)`–`test (python
-  3.13)`, `test (macos python 3.12)`, `concurrency (linux python 3.12)`,
-  `typecheck (mypy, dev-only contract check)`, `plugin manifest validation
-  (claude CLI)`, and `bench (linux python 3.12)` (after PR #180 lands). The CI
-  job list in the Commands section is the authoritative enumeration.
+  ruleset requires the check-run **display names** (GitHub matches those, never
+  job keys) — 12 contexts, and a review count of 0 (the solo-maintainer model
+  below, not a stale aspiration): `test (python 3.8)`–`test (python 3.13)`,
+  `test (macos python 3.12)`, `concurrency (linux python 3.12)`,
+  `typecheck (mypy, dev-only contract check)`,
+  `plugin manifest validation (claude CLI)`, `bench (linux python 3.12)`, and
+  `docs (badges, links, anchors)`. The Commands section lists the **8
+  workflow jobs**; they expand into 13 check-runs and the ruleset requires 12
+  — all but the dev-only `browser` job.
 
 - **The review gate vs the solo maintainer.** GitHub refuses self-approval —
   and self-approval protection overrides bypass actors — so a solo account can
   NEVER merge its own PRs under `review count ≥ 1`, in any ruleset
   configuration (verified empirically, 0.4.6). The coherent model: the
-  ruleset requires **0 approvals** and the **11 required checks gate every
+  ruleset requires **0 approvals** and the **12 required checks gate every
   merge**; the review process is the per-PR adversarial review agent, whose
   findings are recorded in the PR thread — that is what actually caught every
   bug this session. An external contributor's PR still gets the maintainer's
@@ -262,10 +273,11 @@ design.
 ## The QA companion (dream-beta-tester)
 
 - **Two co-equal detectors.** The deterministic oracle (`beta_checks.py`) runs the
-  dream skill's own read-only scripts against a repo and checks 9 invariant
-  families (quantity registry, cycle identity, recommendation coherence, safe
-  suggestion, closure reachability, calibration, remediation coherence,
-  maintenance-pivot coherence, capture completeness) — exit 1 iff any FAIL,
+  dream skill's own read-only scripts against a repo and checks its registered
+  invariant families (`FAMILIES`): quantity registry, cycle identity,
+  recommendation coherence, safe suggestion, closure reachability, calibration,
+  remediation coherence, maintenance-pivot coherence, capture completeness,
+  persist gate — exit 1 iff any FAIL,
   missing inputs → SKIP never crash, absent store = valid clean outcome. The
   judgment-lens pass (`/dream-beta-test`) promotes or downgrades each oracle
   finding and reduces every lens hit to a reproducible deterministic check or a

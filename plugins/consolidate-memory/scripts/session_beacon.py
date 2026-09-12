@@ -203,7 +203,17 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
     # STALE stands in as POINTER DRIFT (real index line ≠ derived pointer): a description-drifted
     # mirror carries exactly the refresh delta a real --pull applies; body-only staleness is
     # delta-0 (nothing to count). Reach note: a hand-edited index line under a genuinely in-sync
-    # mirror counts a phantom delta — conservative direction (fewer advertised as absorbable).
+    # mirror also builds an item whenever the edit moves the count, and the SIGN of its delta
+    # decides the direction — cost_old is
+    # the REAL line and cost_new the line DERIVED from the canonical, so a hand-edit LEANER than
+    # that derivation books a positive delta (consumes headroom: fewer advertised as absorbable,
+    # the conservative direction) while a FATTER one books a NEGATIVE delta that RELIEVES the
+    # running index in _plan_pull — advertising a fact as absorbable that a real --pull holds.
+    # The old note here claimed the conservative direction unconditionally; that is false for
+    # the fat arm, and it is not hypothetical: it is exactly the shape review F2a caught when
+    # cost_new was derived un-anchored (a mechanically fatter cost_old, ~2 tok for a `work--`
+    # anchor), which made that phantom NEGATIVE delta the steady state — on the mirrors the
+    # derivation below scopes, and only those: an index line still the current derivation's.
     idx_text = _safe_read_text(store / "MEMORY.md") or ""
     # PR-#94 review F4: build the anchor→cost map ONCE — per-fact _index_line_cost re-split the
     # whole index every call (O(relevant × index_bytes); measured 4.5s only at a pathological
@@ -223,9 +233,36 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
                                    group_recips=set(_parse_flow_list(
                                        str(fm.get("recipients") or "")))):
             continue
-        cost_new = est_tokens(_pointer_line(n, fm))
-        cost_old = line_cost.get(n, 0)
+        # _bk FIRST, and BOTH costs derived from it — the anchor is the key the WRITER uses for the
+        # file AND the index line, so deriving either cost from the bare stem is a different
+        # quantity, and the two errors point opposite ways:
+        #   cost_old — the map is keyed by the link TARGET, so a bare lookup pinned it at 0 and the
+        #     `elif` below was unreachable: every cross-domain STALE refresh silently dropped
+        #     (docs/cross-domain-index-refresh.spec.md §2 Leg B).
+        #   cost_new — un-anchored it is ~2 tok LIGHTER than the line a pull writes, so once
+        #     cost_old resolved, `cost_new != cost_old` was TRUE for every in-sync cross-domain
+        #     mirror whose index line is still the current derivation's — the set nothing should
+        #     fire on: the anchor adds ≥4 chars, which crosses a ceil(chars/4) boundary for any
+        #     domain of two or more characters. (A one-character domain — legal;
+        #     identifiers.DOMAIN_RE admits it — adds exactly 3 and can land inside one, leaving the
+        #     comparison EQUAL and no item built — the domain-length axis's sole exception, and why
+        #     that axis is scoped rather than universal.)
+        #     The governing condition is LINE provenance, not body sync: `_body_hash` is body-only
+        #     (`def _body_hash(` in `sync_global.py`), so an in-sync mirror can still carry an
+        #     OLDER line, and that line's delta is its own drift's — positive, zero across the
+        #     `ceil` window that contains the equal-length point (up to four SANITIZED lengths:
+        #     `_pointer_line` folds control/bracket chars and collapses whitespace BEFORE
+        #     `desc[:88]` caps, so raw length is not the measure — unless its bucket is the one
+        #     the cap's saturation lands in, where every longer description joins instead), or
+        #     negative. So the phantom row was the steady state, not an edge case, and its delta
+        #     is NEGATIVE — it RELIEVES the running index in _plan_pull, so `held` under-states
+        #     a run's hold and the beacon over-advertises absorption. Fixing one leg unmasked
+        #     the other.
+        # Same read-leg site as sync_global's cost map; the two MUST key alike or `held`
+        # diverges from the run (the F1 divergence the replay-by-law note above closes).
         _bk = _mirror_key(domain_id, str(fm.get("domain") or ""), n)
+        cost_new = est_tokens(_pointer_line(n, fm, anchor=_bk))
+        cost_old = line_cost.get(_bk, 0)
         if not (store / f"{_bk}.md").exists():
             items.append((n, "MISSING", cost_new, cost_old))
         elif cost_old and cost_new != cost_old:
