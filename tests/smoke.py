@@ -12518,8 +12518,9 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # `bool(_cline2_gs)` — measured, dropping `anchor=_j_key` from the pointer-line
         # construction at both write legs gives `cost_new=16 written=None nrow=1 nline=0`:
         # no anchored line exists to compare at all, so this check dies on the guard, and
-        # #1/#2/#3/#5/#7/#11 fire alongside it (measured: 1772 passed, 6 failed). Those are
-        # that side's primary detectors; this check is the read side's. #4 is NOT among
+        # #1/#2/#3/#5/#7 fire alongside it (measured: 1772 passed, 6 failed — the sixth being
+        # this check). Those are that side's primary detectors; this check is the read side's.
+        # #4 is NOT among
         # them, and the reason is worth keeping: #4 counts `apply_pointer`'s KEY argument
         # (the spy above records `_stem`), while this mutant leaves the key anchored and
         # changes only the rendered line — so a list written from the fix's *shape* rather
@@ -12653,8 +12654,8 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # and append the new one at the END leaves this as the ONLY failure in the whole
         # suite — #8 alone, 1777/1 at HEAD's 1778 checks (1774/1 at the 1775-check revision
         # it was first measured on). #1/#2/#6 stay green because the pointer remains a
-        # SINGLE PRESENT line (`nptr` stays 1): those checks assert on the pointer, never on
-        # the index's length. The index's line COUNT is not what that mutant preserves —
+        # SINGLE PRESENT line (the target count stays 1): those checks assert on the pointer,
+        # never on the index's length. The index's line COUNT is not what that mutant preserves —
         # measured `pre=4 post=5` — and a count-preserving variant (same delete+append, no
         # separator blank: `pre=4 post=4`, `postpos=[3]`) still fails #8 ALONE, so the
         # position and neighbour conjuncts have teeth independent of the count. Chained

@@ -116,14 +116,16 @@ upstream, on every pull arm).
 
 ## 3. Trigger — every STALE refresh, not just a reword
 
-The status classifier compares the **whole file text** (`sync_global.py:2161-2163`):
+The status classifier compares the **whole file text** (one hit in `sync_global.py` —
+`status = "frozen(mirror)" if present and is_mirror else "irrelevant"`):
 `in-sync` iff `cur == want`, else the three-way path. Because the mirrored body and its
 revision stamps are part of `cur`, a **body-only** canonical edit produces STALE just as
 a description change does.
 
 So the append fires on *any* STALE refresh of a cross-domain mirror where admission
-passes. `ptr_unchanged` (`:1473`) does **not** prevent it — its only use is gating a lint
-*warning* at `:1525`; the index write at `:1524` is unconditional.
+passes. `ptr_unchanged` (`ptr_unchanged = any(`, one hit in `sync_global.py`) does **not**
+prevent it — its only use is gating a lint *warning* (`if lint and not ptr_unchanged:`); the
+index write beside it is unconditional.
 
 An earlier reading of this defect scoped it to "reword only", by assuming `ptr_unchanged`
 guarded the write. It does not. The corrected trigger is broader and is what the
@@ -327,9 +329,10 @@ itself against.
 Two parameters the rule leaves to the claim, and both belong in it: **the domain of the count**
 (this file, the document, the tree) and **the revision counted at**. The census's own anchors
 are the case in point — they are **table cells, not citing sentences**, so no part of the
-quoted/unquoted carve reaches them, and not one is unique *within this document alone* before
-`scripts/` is even opened: the plan-loop call's anchor has **three** document hits (two fenced
-code blocks and the census row) and occurs in a script as well. A fenced block counts like any
+quoted/unquoted carve reaches them and the count is the whole test. That is why the count must
+name its domain, and the domain is not always the document: the plan-loop call's anchor has
+**three** document hits (two fenced code blocks and the census row) and occurs in a script as
+well. A fenced block counts like any
 other text — `grep` does not know it is fenced — which is why a transcript reporting the count
 of an anchor **it also quotes** can never report the number measured on the file containing it.
 State the count in prose; do not restate the anchor beside it.
@@ -581,8 +584,10 @@ two real pointer lines and asserted positive — so a future change that made th
 equal trips an assert instead of silently un-arming the pin.
 
 **#11 is #10's other half, and it was the uncovered site.** The half-fixed tree failure 6
-describes has two faces — the beacon's `cost_new` (`session_beacon.py:251`, covered by #10)
-and the run planner's (`sync_global.py:2260`, covered by nothing). Both were **fixed** in
+describes has two faces — the beacon's `cost_new` (one hit in `session_beacon.py`:
+`_pointer_line(n, fm, anchor=_bk)`, covered by #10) and the run planner's (one hit in
+`sync_global.py`: `est_tokens(_pointer_line(name, fm, anchor=_j_key))`, covered by nothing).
+Both were **fixed** in
 this branch; the finding that prompted the check is that only one of them was *pinned*, so
 the axis had a single detector standing on half of it. Measured on the run-side revert alone
 (the anchor dropped from the projected cost, `cost_old` left anchored): **#11 is the only
@@ -723,6 +728,12 @@ old pin shape  →  1772 passed, 0 failed     (beacon entirely unfixed, suite gr
 new pin shape  →  1771 passed, 1 failed     (the beacon pin)
 ```
 
+**A green with nothing to name is the weaker record.** The first line has no ✗ to separate it
+from the half-fixed phantom green (§9.1 failure 6) that the same blob reaches when run as-is;
+the second names its ✗, and that is what tells its `1771/1` apart from the count-clause ✗
+failure 3 measures below. No blob carries the old pin shape — every blob holding that check's
+text holds the beacon-private form — so the first line's green is not reproducible from one.
+
 **Failure 3 — the sibling leg masks the regression (the site-1 hole).** This is the
 important one. `apply_pointer` is called **twice per pull**, by two different legs inside
 one function: the *plan* loop (`sync_global.py:1451`), whose result feeds only the
@@ -737,11 +748,12 @@ site-1-only revert (execute loop left fixed)  →  1772 passed, 0 failed
 ```
 
 **The basis is the pin set, not the tree — and `1772` cannot express the difference.** The one
-blob carrying D6 `1745 + 27` (the dropped stash) carries the *pre-clause* five; on that same
-blob the revert is **not** invisible once the clause is present: with it the run is **1771
-passed, 1 failed**, the single ✗ being the count clause itself. `1772 = 1767 + 5`, and *which*
-five is exactly what a total cannot say — the rule stated two paragraphs above, applied to this
-row. The row records a **state**, never a tree.
+blob carrying D6 `1745 + 27` (the dropped stash) carries the count clause as executable code,
+so on that blob the revert is **not** invisible: with it the run is **1771 passed, 1 failed**,
+the single ✗ being the clause itself. The `1772/0` above belongs to the **pin set that predates
+it** — same blob, a set without the clause, and a total that reads exactly like a clean run.
+`1772 = 1767 + 5`, and *which* five is exactly what a total cannot say — the rule stated two
+paragraphs above, applied to this row. The row records a **state**, never a tree.
 
 Both write legs unfixed was caught — reverting the two `apply_pointer` call sites alone
 leaves **1772 passed, 6 failed** at HEAD's 1778 (measured; a **different** six from the
@@ -922,9 +934,9 @@ heals to a single line in one refresh. Three limits, all honest:
   indexed` — a tier partition that structurally *cannot* see a duplicate, since two identical
   lines collapse to one element before any comparison could run; `index_admission.py`'s
   `_POINTER_TARGET_RE`, a generic `](…)`
-  capture used per-target for admission syntax **on the always-loaded index** — never
-  target-against-target *there*, the one comparison of that kind being the archive path the
-  next sentence concedes — and the
+  capture used per-target **inside `archive_index`** — never target-against-target *itself*;
+  the one comparison of that kind is that same function's `seen` set, which the next sentence
+  concedes — and the
   `re.search(r"\]\(([^)]+)\.md\)", …)` call in each of `local_ingress.py`,
   `session_beacon.py`, and `sync_global.py` (which has two: the cost-map build and the
   `mirror_stems` tally) — none compares
@@ -990,7 +1002,7 @@ post-fix, measured on a probe store carrying exactly that shape:
 | after one refresh of the now-foreign canonical | pre-fix | post-fix |
 |---|---|---|
 | index lines | 1 — the stale bare line, href rewritten in place | **2** — the stale bare line survives, the anchored pointer appends beside it |
-| mirror files for that canonical | **2** — the pre-existing `{bare}.md`, plus a fresh `{mkey}.md` (the delivery `path` is keyed by the mirror key at *both* revisions — `sync_global.py:2052`, untouched by this diff) | **2** — the same two files |
+| mirror files for that canonical | **2** — the pre-existing `{bare}.md`, plus a fresh `{mkey}.md` (the delivery `path` is keyed by the mirror key at *both* revisions — `path = store / f"{mkey}.md"`, one hit in `sync_global.py`, untouched by this diff) | **2** — the same two files |
 
 The index cell is the only one that moves, and the file cell is a correction review round 2
 owes this table: pre-fix is **not** "one line, one file". The delivery path was already

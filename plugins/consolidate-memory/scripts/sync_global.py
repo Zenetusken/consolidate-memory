@@ -1959,8 +1959,9 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
     # v0.1.73 (accounting truth — docs/evict-accounting-truth.spec.md): CLASSIFY first (no writes),
     # PLAN the index accounting ONCE via _plan_pull, THEN execute — the write loop consults plan
     # membership and never re-decides. Seed from the live index (store-scan convention, v0.1.69
-    # Gate-2b); cost_old per stem is the REAL existing line (_index_line_cost), so a stale-refresh
-    # delta and a line-without-file drift state both net honestly instead of slipping the ceiling.
+    # Gate-2b); cost_old per MIRROR KEY — the bare stem for a same-domain fact — is the REAL
+    # existing line (the anchor-keyed map built below), so a stale-refresh delta and a
+    # line-without-file drift state both net honestly instead of slipping the ceiling.
     _idxp = store / "MEMORY.md"
     idx_text = _safe_read_text(_idxp) or "# Memory Index\n\n"
     _is_fixture_run = _global_is_fixture()
