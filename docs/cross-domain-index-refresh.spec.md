@@ -260,12 +260,17 @@ names a **greppable anchor**, not a line number:
 | `path = store / f"{mkey}.md"` (the pull writer) · `store / f"{_gk}.md"` (`_store_gaps`) · `store / f"{_bk}.md"` (beacon mirror probe) | — | no — these **take** the key from `_mirror_key`; see below |
 
 **Why the anchors and not line numbers.** The first draft cited `file:line`, and the
-displacement was measured, not feared: by the time this branch was reviewed, four of the
-five `yes` rows and two of the six `no` rows had drifted onto a neighbouring line, while
-every citation into a file the change never touched stayed exact. The split is the
-mechanism — **the commit that carries a citation is the commit that edits the file it
-cites**, so a number's correctness depends on how many lines that same work inserts above
-it. It fails silently too: a stale number still resolves, just to the wrong thing (`:1447`
+displacement was measured, not feared: by the time this branch was reviewed, four of the five
+`yes` rows and two of the six `no` rows no longer resolved to the site they named — and
+**every one of the six pointed short**, by 4, 4, 7, 20, 22 and 25 lines, never once past.
+The direction is the mechanism: the fix inserts lines *above* the sites it edits and leaves
+the citation where it was. So **the commit that carries a citation is the commit that edits
+the file it cites**, and a number's correctness depends on how many lines that same work
+inserts above it. Every citation into a file this change does *not* edit — `local_ingress.py`,
+`canonical_ingress.py`, `cm_ops.py`, `memory_status.py`, `index_admission.py` — resolved
+exactly, which is the same finding from the other side.
+
+It fails silently, too: a stale number still resolves, just to something else (`:1447`
 landed on a comment, `:3195` on an `else:`). A greppable string has no such dependency.
 Same lesson as §9's counts and the D6 constant, one level down — a value that must be kept
 in sync by hand drifts; one that *is* the thing does not (`docs/deep-field-theme.spec.md`
