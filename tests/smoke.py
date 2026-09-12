@@ -12355,6 +12355,210 @@ with _tf73.TemporaryDirectory() as _td_gs:
               "refreshed 1" in _o6_gs.getvalue()
               and "quarantine" not in _o6_gs.getvalue()
               and "body v2" in (_c2_gs.read_text(encoding="utf-8") if _c2_gs.exists() else ""))
+        # cross-domain-index-refresh spec §9: the refresh must REPLACE its index pointer,
+        # not append a second one. `apply_pointer` matches on `]({stem}.md)`; a namespaced
+        # link `](personal--grp-fact.md)` never matches the bare stem, so it appended.
+        # This refresh is BODY-ONLY (the description is unchanged), so the pre-fix index
+        # ends up with two byte-identical lines — the corrected trigger, not a reword.
+        _cidx_gs = (_storec_gs / "MEMORY.md").read_text(encoding="utf-8")
+        _cline_gs = [ln for ln in _cidx_gs.splitlines() if "](personal--grp-fact.md)" in ln]
+        check("v0.4.10 groups: the cross-domain refresh REPLACES its index pointer "
+              "(exactly one line; no bare-stem append)",
+              len(_cline_gs) == 1)
+        # cross-domain-index-refresh spec §9 PRIMARY pin (reword). The body-only pin above
+        # cannot distinguish "replaced in place" from "never written": its pointer text is
+        # byte-identical either way, so a skipped index write (the admission `continue` at
+        # the MISSING/refresh arms) would leave it GREEN while the store kept a stale
+        # pointer. Reword the DESCRIPTION so the new line differs, then pin both halves.
+        _pre_line_gs = [ln for ln in _cidx_gs.splitlines() if "](personal--grp-fact.md)" in ln]
+        _cap_gs: dict = {}
+        _stems_gs: list = []
+        _real_pp_gs = sg._plan_pull
+        import index_admission as _ia_gs
+        _real_ap_gs = _ia_gs.apply_pointer
+
+        def _spy_pp_gs(items: list, start_idx: int, allow_net_grow: bool,
+                       budget: int) -> dict:
+            _cap_gs["items"] = list(items)
+            return _real_pp_gs(items, start_idx, allow_net_grow, budget)
+
+        def _spy_ap_gs(_text, _line, _stem):
+            _stems_gs.append(_stem)
+            return _real_ap_gs(_text, _line, _stem)
+
+        # apply_pointer is imported FUNCTION-LOCALLY (sync_global.py:1393), so patching the
+        # index_admission attribute is what the call site re-reads on each run.
+        sg._plan_pull = _spy_pp_gs
+        _ia_gs.apply_pointer = _spy_ap_gs
+        try:
+            _ci2_gs.upsert(_ctxa_gs, "grp-fact", _v3_canon(
+                "grp-fact", description="d-reworded").replace(
+                "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1
+            ).replace("body\n", "body v3\n", 1))
+            _o7_gs = _io_gs.StringIO()
+            with _ctx73.redirect_stdout(_o7_gs):
+                sg.run(_pc_gs, pull=True)
+        finally:
+            sg._plan_pull = _real_pp_gs
+            _ia_gs.apply_pointer = _real_ap_gs
+        _cidx2_gs = (_storec_gs / "MEMORY.md").read_text(encoding="utf-8")
+        _cline2_gs = [ln for ln in _cidx2_gs.splitlines() if "](personal--grp-fact.md)" in ln]
+        check("v0.4.10 groups: a REWORDED cross-domain refresh replaces its pointer in "
+              "place (one line, carrying the new hook — NOT the pre-reword line)",
+              len(_cline2_gs) == 1
+              and "d-reworded" in _cline2_gs[0]
+              and (not _pre_line_gs or _pre_line_gs[0] not in _cidx2_gs))
+        # spec §9 ACCOUNTING pin — captured from the REAL planner call, not a replica of
+        # its inputs. The cost map is keyed by the LINK TARGET (the namespaced anchor for a
+        # cross-domain mirror); a bare-stem lookup pinned cost_old at 0, so _plan_pull
+        # booked a full appended line for a refresh that replaces in place — near the
+        # ceiling that holds globals the index has room for.
+        _row_gs = [r for r in _cap_gs.get("items", []) if r[0] == "grp-fact"]
+        check("v0.4.10 groups: the pull planner books a cross-domain mirror's REAL line "
+              "cost (cost_old > 0 — the bare-stem lookup pinned it at 0)",
+              bool(_row_gs) and _row_gs[0][3] > 0)
+        # spec §9 MISSING-leg pin — at the CALL SITE, not on apply_pointer itself. A unit
+        # call passing the namespaced key passes on ANY code (the function was never the
+        # defect; the caller's KEY is), so that form cannot discriminate — it is a
+        # tautology, and it measured green on pre-fix scripts. One call site serves BOTH
+        # arms: _j_key is bound ABOVE the MISSING/STALE branch and consumed by the same
+        # apply_pointer call, so pinning the key here covers delivery too — with the bare
+        # stem, a same-stem native's `](grp-fact.md)` line matches on delivery and is
+        # silently replaced (the local file keeps its body; its always-loaded pointer is
+        # gone). No fleet store carries this collision today, so this is the ONLY coverage.
+        # The COUNT is load-bearing, not belt-and-braces: TWO write legs call apply_pointer
+        # (the plan loop and the execute loop), and the execute loop's correct key masks a
+        # plan-loop regression from every outcome-shaped pin in this file — measured, a
+        # site-1-only revert leaves the whole suite GREEN (1772/0). So presence alone cannot
+        # see a single-leg revert; the anchored key must appear ONCE PER LEG (measured call
+        # order, both legs: upsert:'grp-fact' [same-domain, legitimate] → 1451 → 1483).
+        # NB "the bare stem is absent" would be WRONG here — the canonical upsert in this
+        # same block legitimately passes it for a same-domain write.
+        check("v0.4.10 groups: BOTH sync call sites match on the NAMESPACED key (the bare "
+              "stem is what evicts a same-stem native pointer on delivery)",
+              _stems_gs.count("personal--grp-fact") == 2)
+        # spec §9 ACCOUNTING pin, BEACON leg (site 4). The beacon builds the same
+        # anchor-keyed cost map and looked it up by the bare stem, so cost_old was 0 and
+        # `elif cost_old and cost_new != cost_old` DROPPED the item — the beacon could not
+        # observe a cross-domain mirror going stale, and its `held` projection under-
+        # reported what the run would hold (the F1 divergence at session_beacon.py:200-206).
+        # NB the patch target: session_beacon imports _plan_pull at MODULE level (:53), so
+        # the beacon's own name must be replaced — patching sg._plan_pull would not reach it
+        # (and a spy on the wrong one fails SILENTLY, which is why the capture below is
+        # beacon-private and asserted non-empty: _spy_pp_gs OVERWRITES its dict with the
+        # last call's args, so a non-binding patch would leave the RUN side's rows in place
+        # and this check would pass while the beacon was never observed — a vacuous pin
+        # that stays green under a beacon-only revert).
+        import session_beacon as _sb_mod_gs
+        _capb_gs: dict = {}
+        _real_pp_sb_gs = _sb_mod_gs._plan_pull
+
+        def _spy_ppb_gs(items: list, start_idx: int, allow_net_grow: bool,
+                         budget: int) -> dict:
+            _capb_gs["items"] = list(items)
+            return _real_pp_sb_gs(items, start_idx, allow_net_grow, budget)
+
+        _sb_mod_gs._plan_pull = _spy_ppb_gs
+        try:
+            _bline2_gs = ""
+            try:
+                _bline2_gs = _sb_mod_gs.beacon_line(
+                    _storec_gs, domain_id="work", migration_mode="dual-read",
+                    gfacts=[("grp-fact", sg._frontmatter(_v3_canon("grp-fact").replace(
+                        "applies_exclude: []\n",
+                        "applies_exclude: []\nrecipients: [pair]\n", 1)), "t")],
+                    memberships={"pair"})
+            except Exception:
+                _bline2_gs = ""
+        finally:
+            _sb_mod_gs._plan_pull = _real_pp_sb_gs
+        _brow_gs = [r for r in _capb_gs.get("items", []) if r[0] == "grp-fact"]
+        check("v0.4.10 groups: the beacon builds a STALE item for a cross-domain mirror "
+              "(a bare-stem cost lookup dropped it entirely)",
+              bool(_capb_gs.get("items"))   # anti-vacuity: the patch BOUND, the spy ran
+              and bool(_brow_gs) and _brow_gs[0][1] == "STALE-mirror" and _brow_gs[0][3] > 0)
+        # spec §8.1 — the CONTRACT the call-site key pin above leans on, and the reason a
+        # delivery no longer evicts a member's own same-stem native pointer. NOT a pin in
+        # §9's sense (apply_pointer is unchanged by this fix, so it passes pre- and
+        # post-fix): it is the GUARD for the implication "call site passes the anchored key
+        # => the native's bare line cannot match". Without it, a future loosening of the
+        # matcher would silently falsify that implication while the key pin stayed green.
+        # Measured for the spec by direct probe; pinned here so it cannot drift unobserved.
+        _native_idx_gs = ("# Memory index\n\n"
+                          "- [grp-fact](grp-fact.md) — the member's OWN local fact\n"
+                          "- [other](other.md) — unrelated\n")
+        _delivered_gs = "- [grp-fact](personal--grp-fact.md) — the delivered global"
+        _anch_gs = _real_ap_gs(_native_idx_gs, _delivered_gs, "personal--grp-fact")
+        _bare_gs = _real_ap_gs(_native_idx_gs, _delivered_gs, "grp-fact")
+        check("v0.4.10 groups: the anchored key SPARES a same-stem native pointer while the "
+              "bare stem evicts it (the contract the call-site key pin relies on)",
+              "](grp-fact.md)" in _anch_gs and "](personal--grp-fact.md)" in _anch_gs
+              and "](grp-fact.md)" not in _bare_gs and "](personal--grp-fact.md)" in _bare_gs)
+        # spec §9 MISSING-OUTCOME pin — the largest gap the first pass shipped, closed here.
+        # #4 pins the KEY the call site passes and #6 pins the matcher premise, but neither
+        # DELIVERS anything: a regression living between the key and the index write stays
+        # invisible to both. This runs the REAL pull into the §4a collision shape — the member
+        # holds a same-stem NATIVE fact of its own and the global arrives (mirror absent, so
+        # the classified status is MISSING). Pre-fix the bare matcher found the native's
+        # `](grp-fact.md)` line first and REPLACED it: the body survived, its always-loaded
+        # pointer did not, and the line count did not move to show it (§8.1).
+        _native_c_gs = _storec_gs / "grp-fact.md"
+        _native_c_gs.write_text(
+            _v3_canon("grp-fact", domain="work", scope="project-local",
+                      body="the member's own local body\n"), encoding="utf-8")
+        # rebuild the index to its real MISSING-collision shape: no mirror line (nothing
+        # wrote one — there is no mirror), the native's own pointer present and LAST.
+        (_storec_gs / "MEMORY.md").write_text(
+            "\n".join([ln for ln in (_storec_gs / "MEMORY.md").read_text(
+                encoding="utf-8").splitlines() if "](personal--grp-fact.md)" not in ln]
+                + ["- [grp-fact](grp-fact.md) — the member's OWN local fact"]) + "\n",
+            encoding="utf-8")
+        _cfile_gs.unlink()
+        _o8_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o8_gs):
+            sg.run(_pc_gs, pull=True)
+        _cidx_post_gs = (_storec_gs / "MEMORY.md").read_text(encoding="utf-8")
+        check("v0.4.10 groups: a MISSING delivery into a same-stem collision PRESERVES the "
+              "member's own native pointer (the bare matcher overwrote it in place)",
+              _cfile_gs.exists() and _native_c_gs.exists()
+              and "the member's OWN local fact" in _cidx_post_gs
+              and "](grp-fact.md)" in _cidx_post_gs
+              and "](personal--grp-fact.md)" in _cidx_post_gs)
+        # spec §9 SAME-DOMAIN guard — the `_j_key == name` arm, which this fix must leave
+        # EXACTLY as it was: same outcome, neighbour order preserved. ⚪ GUARD, not a pin —
+        # the arm is identical pre- and post-fix, so it cannot fail pre-fix. Its MEASURED
+        # value is the other direction: rewriting apply_pointer to delete the matched line
+        # and append the new one at the END leaves this as the ONLY failure in the whole
+        # suite (measured 1774/1) — #1/#2/#6 stay green, because that mutant preserves both
+        # the line count and the presence of the line. Chained across refreshes "the line
+        # moved" is a real regression: it reorders the always-loaded tier. The neighbour
+        # line is seeded so "order preserved" is a real constraint, not a one-line
+        # tautology. NB this check passes under the write-leg revert (measured — correct:
+        # it covers the same-domain arm), and the mutant it was first written to claim —
+        # _mirror_key "simplified" into always namespacing — is unreachable from here:
+        # that mutant kills the suite at smoke.py:4962, a fixture reading back its own
+        # canonical, thousands of checks earlier. Claim what was measured, not what's
+        # plausible.
+        _aidx_lines_gs = (_storea_gs / "MEMORY.md").read_text(encoding="utf-8").splitlines()
+        _aidx_lines_gs.append("- [zz-local](zz-local.md) — a neighbouring local entry")
+        (_storea_gs / "MEMORY.md").write_text("\n".join(_aidx_lines_gs) + "\n",
+                                             encoding="utf-8")
+        _apos_gs = [i for i, ln in enumerate(_aidx_lines_gs) if "](grp-fact.md)" in ln]
+        _o9_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_o9_gs):
+            sg.run(_pa_gs, pull=True)   # the reworded canonical → a REAL pointer change
+        _aidx_post_lines_gs = (_storea_gs / "MEMORY.md").read_text(
+            encoding="utf-8").splitlines()
+        check("v0.4.10 groups: a SAME-DOMAIN refresh stays replace-in-place (one bare line "
+              "at its ORIGINAL position, neighbours unmoved, nothing namespaced)",
+              len(_aidx_post_lines_gs) == len(_aidx_lines_gs)
+              and len(_apos_gs) == 1
+              and "](grp-fact.md)" in _aidx_post_lines_gs[_apos_gs[0]]
+              and "d-reworded" in _aidx_post_lines_gs[_apos_gs[0]]
+              and _aidx_post_lines_gs[-1] == ("- [zz-local](zz-local.md) — a neighbouring "
+                                              "local entry")
+              and not any("](personal--grp-fact.md)" in ln
+                          for ln in _aidx_post_lines_gs))
         # F6: group remove deletes the clean cross-domain mirror (decode-first revoke)
         _conn2_gs = cp.connect(cp.db_path(_ctxa_gs))
         try:
@@ -14793,7 +14997,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1740 + 27)
+      passed + failed + 1 == 1748 + 27)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

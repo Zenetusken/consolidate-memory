@@ -1444,7 +1444,11 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
         for name, fm, status, path, want in jobs:
             _j_sdom = str(fm.get("domain") or ctx.domain_id or "")
             _j_key = _mirror_key(ctx.domain_id, _j_sdom, name)
-            planned = apply_pointer(planned, _pointer_line(name, fm, anchor=_j_key), name)
+            # the MATCHER key is the anchor: `](d--s.md)` does not contain `](s.md)`, so
+            # passing the bare stem appended a duplicate instead of replacing — and on a
+            # delivery it evicted a same-stem NATIVE pointer.
+            # (docs/cross-domain-index-refresh.spec.md §2 Leg A / §8.1)
+            planned = apply_pointer(planned, _pointer_line(name, fm, anchor=_j_key), _j_key)
         plan_adm = project_index(planned)
         if evict_stem and not plan_adm["admitted"]:
             raise WriteRefused(
@@ -1473,7 +1477,10 @@ def _execute_pull_writes(ctx, store: Path, jobs: list, evict_stem: "str | None",
             ptr_unchanged = any(
                 f"]({_j_key}.md)" in ln and ln.strip() == ptr.strip()
                 for ln in idx_text.splitlines())
-            future = apply_pointer(idx_text, ptr, name)
+            # matcher key == anchor — same argument as the plan loop above, and the two MUST
+            # agree or the executed write diverges from the planned one
+            # (docs/cross-domain-index-refresh.spec.md §2 Leg A)
+            future = apply_pointer(idx_text, ptr, _j_key)
             adm = project_index(future)
             if status == "MISSING":
                 if path.exists():
@@ -2236,7 +2243,12 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         _m = re.search(r"\]\(([^)]+)\.md\)", _ln)
         if _m and _m.group(1) not in _line_cost_run:
             _line_cost_run[_m.group(1)] = est_tokens(_ln)
-    items = [(name, status, est_tokens(_pointer_line(name, fm)), _line_cost_run.get(name, 0))
+    # the cost map is keyed by the LINK TARGET — the namespaced anchor for a cross-domain
+    # mirror. A bare-stem lookup missed every one and pinned cost_old at 0, so _plan_pull
+    # booked a full line for a STALE refresh where only the replaced delta applies
+    # (docs/cross-domain-index-refresh.spec.md §2 Leg B, §8.3).
+    items = [(name, status, est_tokens(_pointer_line(name, fm)),
+              _line_cost_run.get(_mirror_key(ctx.domain_id, str(fm.get("domain") or ""), name), 0))
              for name, fm, _t, status, _p, _w, rel, *_x in classified
              if rel and status in ("MISSING", "STALE-mirror")]
     plan = _plan_pull(items, seed_idx, allow_net_grow, budget=INDEX_CEILING_TOKENS)

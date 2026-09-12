@@ -1,0 +1,599 @@
+# Cross-domain mirror key — the bare stem where the namespaced key belongs
+
+**Design-of-record for a four-site fix spanning the write path and its accounting model.**
+Status: drafted 2026-09-11 (UTC 09-12), adversarial review round 1 complete and folded.
+
+## 1. Context (measured 2026-09-11)
+
+`python-ruff-mypy-gate` — the cross-domain canonical that motivated group-scopes §1
+— was reworded in its home domain (`tools`). The reword corrected a false universal:
+the shipped description said "The user's Python repos gate quality before commits",
+but `consolidate-memory` is a `python-repos` member whose gate is mypy-only, with no
+ruff config and no `pyproject.toml` at all. The distinction cannot be carried by
+`applies_*`: those tokens resolve against capabilities derived from `stacks:`
+(`capabilities.py`), and every affected repo is `python`. So it had to be prose.
+
+Three of the four writes landed correctly:
+
+| layer | outcome |
+|---|---|
+| canonical (`domains/tools/facts/`) | ✅ new body, `fact_id` preserved |
+| member mirror body | ✅ refreshed, `base_revision == canonical_revision` |
+| member index line | ❌ **appended a second line; the stale one survived** |
+
+The member's always-loaded index then read:
+
+```
+- [python-ruff-mypy-gate](tools--python-ruff-mypy-gate.md) — The user's Python repos gate quality …   ← STALE, false
+- [python-ruff-mypy-gate](tools--python-ruff-mypy-gate.md) — job-applicator-python + agent-loop …    ← correct
+```
+
+The false claim sat **above** its correction, in the tier every session pays for.
+
+## 2. The defect — one root cause, two legs
+
+`_mirror_key(ctx_domain, fact_dom, stem)` (`sync_global.py:1208-1230`) returns the bare
+`stem` for a same-domain fact and `f"{fdom}--{stem}"` for a cross-domain one, raising on
+an unsafe domain or a `--` ambiguity. That namespaced value is the fact's **file key**
+and its **index anchor**. Four sites derive a *different* quantity from it and get the
+bare stem instead.
+
+**Leg A — the matcher key (write path).**
+
+```python
+_j_key = _mirror_key(ctx.domain_id, _j_sdom, name)
+planned = apply_pointer(planned, _pointer_line(name, fm, anchor=_j_key), name)
+#                           ^ the line is BUILT from _j_key …      ^ … but MATCHED against name
+```
+
+`index_admission.apply_pointer(current_text, pointer_line, stem)` replaces the first
+line containing `]({stem}.md)` and **appends** when no line matches
+(`index_admission.py:111-128`). The written link is `](tools--python-ruff-mypy-gate.md)`,
+which does **not** contain `](python-ruff-mypy-gate.md)`, so no line ever matches and
+the append branch runs unconditionally. Reproduced against the real function:
+
+| `stem` argument | result |
+|---|---|
+| `python-ruff-mypy-gate` (what the code passes) | duplicate: stale line retained, new line appended |
+| `tools--python-ruff-mypy-gate` (the anchor it already computed) | correct in-place replacement |
+
+**The strongest evidence that this is an oversight and not a design choice** sits *inside
+the same loop body*, two lines above the execute-site defect:
+
+```python
+ptr_unchanged = any(
+    f"]({_j_key}.md)" in ln and ln.strip() == ptr.strip()   # :1474 — matches on the RIGHT key
+    for ln in idx_text.splitlines())
+future = apply_pointer(idx_text, ptr, name)                  # :1476 — …and this one doesn't
+```
+
+**Leg B — the accounting key (read path).** The same confusion, at sites that never call
+`apply_pointer`. Both cost maps are keyed by the **real link target parsed from the
+index** (the namespaced anchor) and looked up by the **bare stem**:
+
+```python
+_line_cost_run[_m.group(1)] = est_tokens(_ln)     # sync_global.py:2237  key = "tools--python-ruff-mypy-gate"
+....get(name, 0)                                  # sync_global.py:2239  lookup = "python-ruff-mypy-gate" → 0
+```
+
+`_plan_pull` charges a STALE refresh `cost_new - cost_old` and **always runs** it
+(`sync_global.py:1670-1671`), so a `cost_old` pinned at `0` books a full line where the
+real delta applies. The beacon (`session_beacon.py:213-216`, `:227`) builds the identical
+map and adds a sharper failure: `elif cost_old and cost_new != cost_old:` (`:231`) is
+falsy whenever `cost_old == 0`, so a cross-domain STALE item is **never constructed**.
+
+The three concrete instances share one signature — **the correct namespaced key is
+computed within a line or two and used correctly for an adjacent purpose, while a derived
+quantity falls back to the bare stem**:
+
+| site | correct use (nearby) | wrong use |
+|---|---|---|
+| `sync_global.py:1476` | `:1474` — `ptr_unchanged` matches `]({_j_key}.md)` | `apply_pointer(…, name)` |
+| `sync_global.py:2239` | `:2237` — the map is *keyed* by the full anchor | `.get(name, 0)` |
+| `session_beacon.py:227` | `:229` — `(store / f"{_bk}.md").exists()` | `line_cost.get(n, 0)` |
+
+This is one unfinished refactor, not three typos: namespacing was applied to the
+**identity uses** (filenames, existence checks — where a wrong key throws immediately)
+and missed on the **derived quantities** (matcher keys, cost lookups — where a wrong key
+returns a plausible `0` and stays silent).
+
+**Same-domain is genuinely safe.** `_j_key == name` exactly when the canonical's `domain`
+equals `ctx.domain_id` or is empty, and `_mirror_key`'s other exits *raise* rather than
+return a differing key. Whitespace cannot defeat it (`_frontmatter` and `fact_domain`
+both `.strip()`); case variance cannot either (`domain: Tools` would make
+`_j_key != name`, but `fact_schema.validate_canonical_frontmatter` rejects `fdom != domain`
+upstream, on every pull arm).
+
+## 3. Trigger — every STALE refresh, not just a reword
+
+The status classifier compares the **whole file text** (`sync_global.py:2161-2163`):
+`in-sync` iff `cur == want`, else the three-way path. Because the mirrored body and its
+revision stamps are part of `cur`, a **body-only** canonical edit produces STALE just as
+a description change does.
+
+So the append fires on *any* STALE refresh of a cross-domain mirror where admission
+passes. `ptr_unchanged` (`:1473`) does **not** prevent it — its only use is gating a lint
+*warning* at `:1525`; the index write at `:1524` is unconditional.
+
+An earlier reading of this defect scoped it to "reword only", by assuming `ptr_unchanged`
+guarded the write. It does not. The corrected trigger is broader and is what the
+regression test must pin.
+
+## 4. Corrections the review forced
+
+Two claims in the first draft of this spec were wrong. Both are recorded here rather
+than quietly edited, because the errors are the interesting part.
+
+**(a) "MISSING is unaffected" — FALSE.** The first draft argued that on first delivery
+there is no line to replace, so the append branch is correct. There **is** a line to
+replace: the member's own **native fact with the same stem**, whose pointer is a bare
+`](stem.md)`. `apply_pointer` matches it, takes the *replace* branch, and the local
+fact's index pointer is **deleted** — file intact, always-loaded entry gone. Reproduced
+end-to-end through the real `run(<project>, pull=True)`, with attribution proven by
+intercepting the call site (`sync_global.py:1447`/`:1476`, `namespaced_link=True`); the
+spec's fix restores the local line and appends the mirror.
+
+This fires at **delivery**, not just refresh, so it is the more reachable of the two
+write-side symptoms. It is *latent in this fleet* only because the collision has not
+occurred: a scan of all 21 project stores found **0 same-stem collisions** (no store
+holds both `X.md` and `D--X.md`). The collision is nevertheless the *design case* for
+namespacing — the whole point of `{domain}--{stem}` is to let a member keep its own fact
+under a name a global also uses.
+
+**(b) "each pin fails on pre-fix code" — over-claimed.** See §9; two of the five
+verification bullets cannot fail pre-fix and are guards, not pins.
+
+**(c) The census frame was too narrow.** The first draft framed the search as "all 7
+`apply_pointer` callers". That frame structurally **cannot** see Leg B, which does not
+call `apply_pointer` at all. A matcher-argument audit is not an accounting-key audit.
+
+## 5. Blast radius (measured 2026-09-11/12)
+
+Cross-domain mirrors are the **entire** set of mirrors whose key is namespaced:
+
+- **14 mirrors across 11 projects**, covering **2 canonicals** —
+  `tools--python-ruff-mypy-gate` (6) and `personal--advisor-pass-before-plan-approval` (8).
+- **0 duplicated stems** across 21 project indexes: the fleet's other mirrors have never
+  gone STALE since delivery, so the append path has never run for them. They are latent,
+  not immune — the first refresh of any of them fires it.
+- **0 same-stem collisions** (§4a) across the same 21 stores, so the delivery-time
+  pointer eviction has also never fired.
+- **12 bare-keyed mirrors, and none of them stale in a real store.** A second scan
+  (2026-09-12) re-keyed every mirror on disk with the current
+  `_mirror_key(own_domain, canonical_domain, stem)` and compared the result with the file's
+  actual name: the 14 namespaced mirrors reproduce exactly, 11 bare-keyed mirrors reproduce
+  exactly (legitimate same-domain mirrors), and **1** bare-keyed mirror does not — in a
+  *synthetic QA fixture store*, which is unenrolled and therefore cannot pull at all
+  (local-only), so the delivery path cannot fire there. The 14 also reproduce §5's count
+  above, which is what makes the method checkable. **0 dead index pointers** fleet-wide —
+  §8.2's variant is not instantiated either.
+
+**The fleet is undamaged right now.** The one duplicate this cycle produced was in the
+authoring project, and `cm local rebuild-index` cleared it. That matters because repair
+is refresh-gated (§10): a damaged store heals only on its next STALE event, which
+requires a *further* canonical change. Zero live instances means the fix lands on a clean
+fleet rather than leaving a repair backlog.
+
+**Leg B is the live one.** Its effects are decision-bearing rather than cosmetic: the
+same `items` list feeds both the hold decision and the `--evict` A/B gain-gate
+(`sync_global.py:2242`, `:2284`). Measured near the ceiling (341 filler lines,
+`seed = 3788 tok`, `INDEX_CEILING_TOKENS = 3840`):
+
+```
+as the code computes it -> held=['some-new-global']  pull=[]
+with the true delta     -> held=[]                   pull=['some-new-global']
+```
+
+i.e. a global the index has room for is reported HELD ("shrink to receive"). The beacon
+is the mirror image — its `held` projection omits the cross-domain STALE delta entirely,
+which is *verbatim* the F1 divergence `session_beacon.py:200-206` records as fixed ("a
+hand-rolled MISSING-only loop OMITTED the STALE-refresh deltas `_plan_pull` counts"), and
+the acceptance/outcome divergence `docs/evict-accounting-truth.spec.md` F3 rests on.
+
+## 6. Why the suite was green
+
+`docs/group-scopes.spec.md` §9 already asserts:
+
+> a canonical change in the authoring domain REFRESHES the cross-domain mirror (no
+> QUARANTINE freeze — F3) and the `group:` stamp does not restamp on a no-change
+> refresh (F9 volatility);
+
+That pin covers the **body** leg of the refresh and the stamp-volatility question. It
+never asserts anything about the **index**, and nothing anywhere asserts the accounting
+key. The gap is a missing assertion on a path the suite already exercises, not an
+untested path.
+
+## 7. The fix
+
+Two tokens at each of the four sites — pass the namespaced key where the bare stem is
+being used as a *derived* key.
+
+```python
+# write leg (matcher key)
+_j_key = _mirror_key(ctx.domain_id, _j_sdom, name)
+planned = apply_pointer(planned, _pointer_line(name, fm, anchor=_j_key), _j_key)
+
+# read leg (accounting key)
+items = [(name, status, est_tokens(_pointer_line(name, fm)),
+          _line_cost_run.get(_mirror_key(ctx.domain_id, _sdom, name), 0))
+         for …, fm, …, status, … in classified
+         if rel and status in ("MISSING", "STALE-mirror")]
+```
+
+At `session_beacon.py:227` this is a **reorder**, not an edit in place: `_bk` is already
+computed at `:228` and used correctly at `:229`, one line *below* where the lookup needs
+it, so the lookup must move above it (or call `_mirror_key(...)` inline).
+
+**Do not key the cost maps by bare stem instead.** `tools--foo` and `personal--foo` can
+both be mirrored into one store, and collapsing them to `foo` collides exactly the case
+namespacing exists to separate.
+
+Backward-compatible by construction: same-domain mirrors have `_j_key == name`, so their
+behaviour is bit-identical. No frontmatter, schema, or file-key change.
+
+**Site census.** Every site that derives a key from a fact and consumes it as a match or
+lookup target — not merely the `apply_pointer` callers:
+
+| site | leg | affected |
+|---|---|---|
+| `sync_global.py:1447` (plan loop matcher) | A | **yes** |
+| `sync_global.py:1476` (execute loop matcher) | A | **yes** |
+| `sync_global.py:2239` (`_line_cost_run` lookup) | B | **yes** |
+| `session_beacon.py:227` (`line_cost` lookup) | B | **yes** |
+| `local_ingress.py:292`, `:413` | — | no |
+| `canonical_ingress.py:499`, `:543`, `:1063` | — | no |
+| `sync_global.py:1442`, `:1464` (evict filters) | — | no |
+| `sync_global.py:3195` (gc strip) · `cm_ops.py:2198`, `:167` | — | no |
+| `local_ingress.py:344`, `:404` (index strip) | — | no |
+
+The rows below the divide were cleared **by execution, not reading**, in review:
+the evict filters cannot receive a namespaced stem (a mirror is refused as an evict
+target at `sync_global.py:2263`, so `evict_stem` is always a bare local stem); gc's strip
+and `cm group remove`'s revoke both build their key from `f.stem` and match correctly;
+`local_ingress`'s three entry points (`forget`/`archive`/`upsert`) all refuse a managed
+mirror before writing; the `canonical_ingress` sites operate inside one domain's catalog
+where the namespaced form cannot arise.
+
+**A correction to the first draft's rationale:** the `local_ingress` rows were justified
+as "native store, no mirrors". That is false — the native store *does* hold mirrors. They
+are safe for the reason just given: all three entry points refuse a managed mirror first.
+A right conclusion resting on a wrong reason is the kind of thing that survives review
+until someone relies on the reason.
+
+## 8. Invariants — conserved, and changed
+
+**Conserved.** Same-domain refresh: byte-identical index outcome (the `_j_key == name`
+arm), measured pre-fix == post-fix. `apply_pointer`'s contract: unchanged — no matcher
+change, so no new false-match surface. The `--` ambiguity refusal in `_mirror_key` is
+untouched; this fix consumes its output rather than re-deriving it. The beacon's
+`missing`/`stale` **counts** are unaffected (they come from `_store_gaps`, which keys
+correctly on the mirror file key at `sync_global.py:4594`) — only its `held` projection
+moves.
+
+**Changed — and both changes are the point.**
+
+1. **"MISSING only ever appends" was FALSE, and the fix makes it true.** The first draft
+   asserted MISSING delivery was unaffected by the matcher change. It is affected, and in
+   the *harmful* direction pre-fix. Measured against the real `apply_pointer` on the §4a
+   collision shape (an index holding a native `](grp-fact.md)` line):
+
+   | | native's own pointer | mirror's pointer | lines |
+   |---|---|---|---|
+   | pre-fix (bare matcher) | **gone — replaced** | present | 4 → 4 |
+   | post-fix (anchored) | present | present | 4 → 6 |
+
+   Pre-fix the delivery **evicted the member's own always-loaded pointer** — the file and
+   its body survived on disk, but its index line was overwritten by the mirror's, and the
+   line count did not change to show it. That is precisely why the first draft's
+   "unchanged" reading looked safe: nothing in the diff grew. Post-fix the native's pointer
+   survives untouched and the mirror appends its own. This is a **repair**, and it was the
+   one leg of the defect that could silently reduce what a session loads.
+   The honest cost of the repair: a colliding store now shows **two lines whose `[label]`
+   is the same** (`[grp-fact](grp-fact.md)` beside `[grp-fact](personal--grp-fact.md)`).
+   That is two distinct facts with two distinct hrefs, not a duplicate — but it reads as
+   one, which is a cosmetic price the pre-fix behaviour was silently paying down by
+   deleting one of them.
+2. **The anti-question — "is there any input where the anchored matcher makes MISSING
+   worse?"** Asked and answered by the review, and the answer is *one theoretical
+   direction, not reachable in this fleet*. The anchored matcher can only ever **append
+   where the bare matcher would have replaced**, so it can preserve a line the bare matcher
+   would have consumed. The single input shape is a store carrying a **dead bare-stem
+   line** — a line whose target file no longer exists, left from an era when the fact was
+   native. Pre-fix, the delivery overwrote it (a correct outcome reached by accident, since
+   the line pointed at nothing); post-fix it survives until `rebuild-index` clears it —
+   which it does, because that command emits one `_pointer_line` per *file* from a glob, so
+   a line whose file is gone is simply not regenerated (§10). Measured fleet input for this
+   shape: **0 dead bare-stem lines** across all 23 stores (§5). So the reachable behaviour
+   is unchanged, and the unreachable behaviour is a stale line that a supported repair
+   removes.
+   **One correction to the paragraph above, forced by measurement:** the claim holds for the
+   *dead* variant only, and this is not the only member of the family. A **live** bare-keyed
+   mirror whose canonical now lives in another domain behaves differently — the anchored
+   matcher *appends* beside it, `rebuild-index` does **not** collapse the pair (it emits one
+   line per *file*, and both files exist), and `--gc` reclaims neither. That variant is
+   scoped, measured and costed in §10; it is not reachable in this fleet either, but the
+   "a supported repair removes it" sentence is true only of the dead line this paragraph is
+   about.
+3. **The write's growth model changes, so the accounting model must move with it.**
+   Measured against the real `apply_pointer`:
+
+   | | real index delta | what the readers replay |
+   |---|---|---|
+   | pre-fix (bare matcher, appends) | 35 tok | 36 — matches |
+   | post-fix (anchored matcher, replaces in place) | **17 tok** | **36 — over-counts by 19** |
+
+   Pre-fix the phantom `cost_new - 0` happened to match reality, because the append
+   really did grow the index by a full line. That is *why* Leg B was invisible: an
+   accidentally-correct estimate. Fixing the matcher alone flips it into a ~30 tok
+   overstatement per cross-domain refresh — so **the four sites are one change, not two.**
+   `_plan_pull` is a model of the writer; shipping the writer without its model would
+   create a fresh instance of the very defect class `evict-accounting-truth.spec.md` F3
+   exists to prevent.
+
+## 9. Verification
+
+A pin is only a pin if it **fails on pre-fix code**. That rule is stated as a test, not a
+slogan.
+
+**What was actually implemented — eight checks, all in `tests/smoke.py`'s v0.4.10 groups
+fixture.** The table is deliberately narrower than the design intent below it: a spec that
+lists pins it did not write is the drift this repo's gates exist to catch.
+
+| # | pin | leg it covers | discriminates? |
+|---|---|---|---|
+| 1 | body-only refresh replaces in place (exactly one line) | A (both write legs) | ✅ fails pre-fix |
+| 2 | reword refresh replaces in place **and** carries the new hook **and** the pre-line is gone | A (both write legs) | ✅ fails pre-fix |
+| 3 | the pull planner books `cost_old > 0` for a cross-domain mirror | B (run) | ✅ fails pre-fix |
+| 4 | **both** sync call sites pass the namespaced key (`.count(...) == 2`) | A (each leg separately) | ✅ fails pre-fix / single-leg |
+| 5 | the beacon builds a STALE item with `cost_old > 0` | B (beacon) | ✅ fails pre-fix / beacon-only |
+| 6 | the anchored key **spares** a same-stem native while the bare stem evicts it | A (contract) | ⚪ guard — passes pre-fix by construction |
+| 7 | a **real MISSING delivery** into a same-stem collision preserves the native pointer | A (outcome, both legs) | ✅ fails pre-fix; measured |
+| 8 | a **real same-domain refresh** stays replace-in-place at its original position | A (same-domain arm) | ⚪ guard — fails **alone** under the position mutant |
+
+#6 and #8 are the two **guards** in the set, marked as such rather than counted as pins:
+`apply_pointer` and `_mirror_key`'s same-domain arm are both unchanged by this fix, so
+neither can fail pre-fix. They exist for the opposite direction — to fail when a *future*
+change breaks an invariant this fix depends on. #6 pins the premise behind #4's
+implication (that the anchored key cannot match a native's bare line); #8 pins the
+same-domain arm the fix must leave alone. Both are mutant-verified, and §9.1 records a
+claim about #8's mutant that measurement forced me to withdraw.
+
+- **Primary pin (#2) — reword refresh.** *Required, not optional:* the body-only form alone
+  cannot distinguish "replaced in place" from "never written", so it would go green if the
+  index write were skipped entirely (the `continue` at `:1482`/`:1529` on an admission
+  refusal) while the store kept a stale pointer. #1 could not carry this alone.
+- **Stale line cannot survive** is folded into #2 (`_pre_line_gs[0] not in _cidx2_gs`)
+  rather than being its own check — it catches "appended and orphaned" rather than merely
+  "exactly one line", and it is only implementable in the reword form.
+- **Accounting pins (#3, #5)** discriminate the *defect* (pinned at `0` versus non-zero).
+  They do **not** pin the exact booked delta against the real index delta; `> 0` is the
+  assertion that separates the two behaviours, and it is what was measured failing pre-fix.
+  Stating the stronger claim would overstate the pin.
+- **The exact-value form is deliberately absent** and is the honest gap in this set: no pin
+  asserts the booked delta *equals* the real index delta (§8.3's growth-model table). What
+  holds the four sites together today is that #3/#5 fail on a **write-only** fix, not that
+  they measure the delta.
+
+**Both designed pins are now implemented** (#7, #8), and both were verified the way §9.1's
+first rule demands — against a revert of the specific site each covers, not of the change
+as a whole.
+
+- **#7 — MISSING preserves a same-stem native pointer (§4a, outcome level).** It runs the
+  real pull: the member holds a native `grp-fact.md` of its own, the mirror is absent
+  (classified `MISSING`), and the global arrives. Asserted: the native's `](grp-fact.md)`
+  line **and** its label survive, *and* the mirror appends `](personal--grp-fact.md)`.
+  Measured on the two write legs reverted to the bare stem: **#7 fails** (4 failures in
+  that round, #1/#2/#4/#7). The failure reason was measured, not inferred — an instrumented
+  run dumped the resulting index as
+  `'# Memory Index\n\n\n\n- [grp-fact](personal--grp-fact.md) — d-reworded [user-global]\n'`:
+  the native's line and its label are **gone**, which is §8.1's eviction reproduced through
+  the real path rather than through a hand-passed key. This closes the gap the first pass
+  named as the largest in the set.
+- **#8 — same-domain refresh stays replace-in-place.** Also a real pull (the reworded
+  canonical into its own domain), asserting the index keeps the same line count, the line
+  carries the new hook **at its original index position**, the seeded neighbour is unmoved,
+  and nothing namespaced appears. Its discriminating mutant is a **position** mutant, not a
+  key mutant: `apply_pointer` rewritten to delete the matched line and append the new one
+  at the end. Measured: **#8 is the only failing check in the entire suite** (1 failed,
+  1774 passed) — while #1, #2 and #6 all stay green, because they assert presence and
+  count, and this mutant preserves both. So #8 is not redundant: it is the suite's only
+  detector for "the line moved", which chained across refreshes reorders the always-loaded
+  tier.
+
+**#8's reach, stated honestly.** It does **not** fail under the write-leg revert (it covers
+the same-domain arm, which that revert does not touch) — measured, and correct. And the
+mutation its first comment named — `_mirror_key` "simplified" into always namespacing — is
+**not measurable through this pin at all**: that mutant kills the suite at `smoke.py:4962`,
+a fixture reading back its own canonical, thousands of checks before this fixture runs. So
+that direction is caught by gross failure rather than by #8, and the comment now claims only
+the measured mutant. §9.1 records why this was worth chasing down.
+
+**The one remaining gap is unchanged**: the exact-value form (`#3`/`#5` assert `> 0`, never
+the booked delta *equals* the real index delta — §8.3's growth-model table).
+
+### 9.1 A pin that does not discriminate — measured three times in this cycle
+
+The rule above ("fails on pre-fix code") was applied to all five pins, and **three of them
+still passed green against an unfixed site.** All three are recorded because the rule as
+stated is not strong enough to catch them, and because the third is the one a whole-change
+revert structurally cannot see.
+
+**Failure 1 — the tautology.** The first MISSING-leg pin called
+`apply_pointer(text, line, "personal--grp-fact")` — *passing the correct key by hand*. The
+function was never the defect; the caller's key is. So the pin passed on pre-fix code. It
+was replaced by a **call-site spy** asserting the third argument the real call receives.
+
+**Failure 2 — the shared-capture spy.** The beacon pin spies `_plan_pull` to capture the
+`items` the beacon builds. It reused the run-side spy, which **overwrites** one shared
+dict with the last call's arguments. The beacon's own fixed call contributes nothing when
+cost_old is 0 — the `elif cost_old and …` drops the item — so on a beacon revert the dict
+simply still held the **run side's** rows, and every conjunct of the check was satisfied by
+the wrong call. Measured, with `session_beacon.py` reverted and `sync_global.py` left
+fixed:
+
+```
+old pin shape  →  1772 passed, 0 failed     (beacon entirely unfixed, suite green)
+new pin shape  →  1771 passed, 1 failed     (the beacon pin)
+```
+
+**Failure 3 — the sibling leg masks the regression (the site-1 hole).** This is the
+important one. `apply_pointer` is called **twice per pull**, by two different legs inside
+one function: the *plan* loop (`sync_global.py:1451`), whose result feeds only the
+**admission** decision via `project_index(planned)`, and the *execute* loop (`:1483`),
+which performs the actual index write. Every outcome-shaped pin in the file asserts on the
+**written index** — and the execute loop's correct key produces a correct index regardless
+of what the plan loop passed. So a revert of the plan loop alone is invisible:
+
+```
+site-1-only revert (execute loop left fixed)  →  1772 passed, 0 failed
+```
+
+Both write legs unfixed was caught (the whole-change revert failed 5 pins). Exactly one
+write leg unfixed was caught by **nothing** — and the plan loop's key is not inert: with
+the bare stem its `planned` index carries the duplicate, so the admission verdict is
+computed against a pessimistic model of a write that will not happen that way, and a pull
+that should be admitted can be refused. The pin now asserts the anchored key appears
+**once per leg** (`_stems_gs.count("personal--grp-fact") == 2`).
+
+Two notes on getting *that* discriminator right, both from measurement:
+
+- **Presence is not enough; count is.** "The anchored key appears" cannot see a single-leg
+  revert, because one leg still supplies it.
+- **"The bare stem is absent" would have been wrong** — the first attempted fix, and it
+  failed on *correct* code. The spy also observes a legitimate bare-stem call: the
+  canonical `upsert` in the same block writes a **same-domain** fact, where `_j_key == name`
+  and the bare stem is the correct key. Measured call order, both legs fixed:
+  `upsert:619 'grp-fact'` → `mutate:1451 'personal--grp-fact'` → `mutate:1483
+  'personal--grp-fact'`. A discriminator that cannot distinguish "correct for a
+  same-domain write" from "wrong for a cross-domain one" is not a discriminator.
+
+Four rules follow, and all four are general:
+
+- **Verify each pin against a revert of the specific site it covers, not of the change as
+  a whole.** A whole-change revert cannot expose a pin that a sibling site's effects
+  satisfy. All five pins failed the whole-change revert; only the site-scoped reverts
+  exposed failures 2 and 3.
+- **Where one function calls the same primitive on two legs, the pin must count calls, not
+  detect the key.** One leg supplying the right argument is indistinguishable from both
+  doing so if the assertion is existential.
+- **A spy writing to a shared capture must assert that it ran.** The beacon pin now uses a
+  beacon-private dict and asserts it is non-empty, so a monkeypatch that silently fails to
+  bind — the documented hazard, since `session_beacon.py:53` binds `_plan_pull` at module
+  level while `sync_global.py:1393` re-reads `apply_pointer` on every call — fails loudly
+  instead of passing on another caller's data.
+- **A claimed mutant is a claim; run it.** Failure 4 is the case where the pin *was* honest
+  and its justification was not — and the justification is what tells the next reader
+  whether the check can be deleted.
+
+**Failure 4 — the claim I did not measure (a comment, not a pin).** #8 shipped with a
+comment naming its mutant: *"it fails if a future change simplifies `_mirror_key` into
+ALWAYS namespacing."* That mutant was never run against this pin. Run now, it **cannot
+reach it**: always-namespacing kills the suite at `smoke.py:4962` — a fixture reading back
+its own canonical, thousands of checks before this fixture — so #8 never executes at all.
+The stated justification was structurally unverifiable, and it sat in the exact place a
+future reader looks to decide whether the check is load-bearing. The measured mutant
+(`apply_pointer` rewritten to delete the matched line and append at the end) leaves #8 as
+the suite's **only** failure, which is both true and a stronger claim than the withdrawn
+one: #8 guards *placement*, not key derivation. Corrected in the comment and in the table.
+
+All four were found by **running a mutant to completion**, never by reading the pin — the
+fourth not by a failing pin but by running a mutant its comment named and the suite never
+reached. That is §6's rule (`f84135c`) holding again in this repo: *a gate reviewed by
+reading it yields nothing — the gate is precisely the thing that looks correct.* Every fix
+here is one conjunct — a `bool(...)`, a `.count(...) == 2` — which is the whole argument for
+preferring the cheap structural assertion over the plausible-looking one.
+
+Full suite per round: smoke / concurrency / simulate_accumulation / mypy / manifests /
+browser / pre-push gate; one review agent per PR; the finder re-verifies every fix.
+
+## 10. Ship shape
+
+Additive and backward-compatible — no schema, manifest, or CLI change → **patch**.
+CHANGELOG-first.
+
+**Scope: four sites, two files, one PR — not splittable.** Not a packaging preference:
+the write-side fix alone degrades the accounting it feeds (§8.2), so a write-only PR would
+ship a known new defect. The dependency decides it.
+
+**Repair of an already-damaged store.** The fix converges — `apply_pointer` replaces the
+first match and drops the rest, so a store carrying a stale line *above* the correct one
+heals to a single line in one refresh. Three limits, all honest:
+
+- **Healing is refresh-gated.** The index temp is staged at exactly one site,
+  `if jobs or evict_stem:` (`sync_global.py:1531`), and `jobs` is built only for
+  `MISSING`/`STALE-mirror` (`:2315-2359`) — so an `in-sync` fact stages no index write and
+  a damaged index stays damaged until the canonical next changes. Measured end-to-end: an
+  in-sync re-pull leaves a hand-damaged index byte-identical; the next STALE refresh
+  converges it to one line.
+- **There is no duplicate-pointer detector anywhere in the tree.** Verified across every
+  site that parses `](…)` index targets (`memory_status.py:1220` `_LINK_RE`,
+  `local_ingress.py:453`, `session_beacon.py:214`, `sync_global.py:2236`) — none compares
+  targets against each other; `index_admission.py:98`'s "duplicate archive target" is
+  `SHIPPED.md`, a different file. A duplicate can therefore persist silently.
+- **`cm local rebuild-index --apply --confirm rebuild-local-index` is the immediate
+  repair** — it emits one `_pointer_line` per file from a glob, so N duplicate lines
+  collapse to 1 regardless of anchors. It is compatible with the fix: it calls
+  `_pointer_line(f.stem, fm)` with no anchor, so the mirror key *is* the href, which the
+  fixed matcher matches. **Scope it as "per file", not "per canonical"** — that is exactly
+  the seam the live-bare-keyed variant below falls through, where two *files* (not two lines
+  for one file) yield two lines and nothing collapses. Read the two entries together; they
+  are the same sentence read at two scopes.
+
+**The suite-total pin must move in this PR.** `tests/smoke.py`'s D6 anti-rot check pins the
+suite's own execution surface (`passed + failed + 1 == N + 27`) so an orphaned section can
+never print green. It is a count of the full suite *including itself*, so adding the eight
+checks here without bumping it leaves smoke red — the pin is designed to fail loudly rather
+than let the count drift. This change moves it **`1740 + 27` → `1748 + 27`**, in two steps:
+`1746 + 27` for the first six checks, then `1748 + 27` when #7 and #8 landed. Any future
+addition to this spec's check set moves it again.
+
+**The second member of §8.2's family — a *live* bare-keyed mirror — is the one input where
+the anchored matcher is strictly less tidy. Measured, scoped, and not reachable here.**
+§8.2's anti-question names the **dead** bare-stem line: a pointer whose target file is gone.
+The other member of that family is a mirror file that **exists**, whose bare key was correct
+when it was written, and whose canonical has since moved to another domain. Pre-fix and
+post-fix, measured on a probe store carrying exactly that shape:
+
+| after one refresh of the now-foreign canonical | pre-fix | post-fix |
+|---|---|---|
+| index lines | 1 — the stale bare line, href rewritten in place | **2** — the stale bare line survives, the anchored pointer appends beside it |
+| mirror files for that canonical | 1 (the existing one, reused) | **2** — `path` is keyed by mirror key, so `store / f"{mkey}.md"` is a *second* file |
+
+The pre-fix outcome is accidentally correct — one line, one file — reached because the bare
+matcher overwrote a line that pointed at a mirror which, under the new key, is the wrong
+file. So this is a genuine regression in tidiness, and it is the reason the entry is here
+rather than omitted. It cannot fire for a canonical that is *already* cross-domain (both
+matchers agree there), and it is **not instantiated**: §5's re-key scan found exactly **one**
+bare-keyed mirror in the fleet whose key no longer reproduces, and it sits in an *unenrolled*
+synthetic QA fixture — local-only, so the delivery path cannot run there. **0 real nodes.**
+
+**A correction owed about the repair path.** The intuitive claim — "`cm local
+rebuild-index` clears it, same as the dead variant" — is **false for this shape**.
+`_rebuild_plan` (`local_ingress.py:437`) globs `native.glob("*.md")` and emits one
+`_pointer_line(f.stem, fm)` **per file**, so with both the bare-keyed mirror and the
+namespaced one on disk it plans a line for each; it drops only lines whose target file is
+gone (`would_remove_existing_pointers = existing_ptrs - planned`). `--gc` does not reclaim it
+either, and for a reason worth naming: the scan that could take it, `_orphans(...,
+pair_keys=True)` (`sync_global.py:2711`), reconstructs the pair from the **mirror's own
+frontmatter** (`canonical_domain` + `name`), not from its filename — so the stale bare-keyed
+file resolves to the *live* canonical pair and is correctly classified as neither an orphan
+nor FROZEN (`_classify_frozen`, `:2907`, returns `None` for admitted-and-relevant). In other
+words the file is not stale to the classifier; only its **filename and index line** are
+stale. **No supported single command collapses this shape** — the repair is two steps
+(delete the stale bare-keyed mirror file, then rebuild). Recorded because the simpler claim
+is the one a future reader will assume.
+
+**A hazard for the mutation testing this spec relies on:** reverting a site by editing a
+script in place and then restoring it with `cp` can be silently defeated by **stale
+bytecode** — CPython validates a `.pyc` on source mtime *and* size, so a restore landing in
+the same second as a same-sized mutant leaves the mutant's code executing. Observed once in
+this cycle (a post-restore run reported 5 failures that three subsequent runs did not
+reproduce). Any mutation run should `find . -name __pycache__ -type d -exec rm -rf {} +`
+first. Recorded because an unnoticed stale `.pyc` can as easily manufacture a *false
+failure* as hide a real one, and §9.1's conclusions rest entirely on mutation readings.
+
+Non-blocking and equally broken before and after: `validate_fact_stem("a--b")` succeeds
+and `_mirror_key`'s same-domain arm returns `a--b` without the ambiguity refusal, so
+`decode_key("a--b") == ("a", "b")` — a same-domain `--` stem can collide with another
+domain's namespaced key. The fix neither causes nor worsens it, and its matcher is
+strictly more precise than the bare stem it replaces. Recorded for a future cycle.

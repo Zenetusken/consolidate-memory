@@ -224,8 +224,13 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
                                        str(fm.get("recipients") or "")))):
             continue
         cost_new = est_tokens(_pointer_line(n, fm))
-        cost_old = line_cost.get(n, 0)
+        # _bk FIRST: the cost map is keyed by the link target, so a bare-stem lookup
+        # pinned cost_old at 0 — which the `elif cost_old and …` below then read as "no
+        # existing line", silently dropping every cross-domain STALE refresh
+        # (docs/cross-domain-index-refresh.spec.md §2 Leg B — same read-leg site as
+        # sync_global's cost map; the two MUST key alike or `held` diverges from the run).
         _bk = _mirror_key(domain_id, str(fm.get("domain") or ""), n)
+        cost_old = line_cost.get(_bk, 0)
         if not (store / f"{_bk}.md").exists():
             items.append((n, "MISSING", cost_new, cost_old))
         elif cost_old and cost_new != cost_old:
