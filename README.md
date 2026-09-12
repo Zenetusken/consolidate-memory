@@ -88,11 +88,13 @@ The scripts use Python's standard library; the agent performs the reasoning and 
 <a id="start"></a>
 ## 🚀 From install to your first dream
 
-**Requires:** Claude Code with plugins and auto-memory enabled, `python3` **3.8+** on
+**Requires:** Claude Code with plugins enabled, `python3` **3.8+** on
 PATH **with the `sqlite3` stdlib module (SQLite ≥ 3.24)** — no system sqlite3 binary
 needed — and a POSIX environment (Linux, macOS, or WSL). No runtime packages to
 install. Native Auto-Memory features are **not** required — the plugin is
-self-contained; `git` is optional (dream scope degrades without it). Check all of
+self-contained, and `preflight` reports a disabled auto-memory as a supported *skip*,
+not a failure (`preflight.py:207-209`, exit 0); `git` is optional (dream scope
+degrades without it). Check all of
 this up front with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.py ."` after
 installing (exit 0 = clean; exit 2 = fix the FAILs first).
 

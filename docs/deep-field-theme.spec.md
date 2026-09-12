@@ -15,10 +15,12 @@ the stylesheet:
 
 - **The dashboard is a 19-token design system.** Every colour resolves through `var(--paper)`,
   `var(--data)`, `var(--accent)`, … declared once per theme
-  (`dashboard.template.html:11-46`). A re-palette is ~16 lines, not a rewrite.
-- **Colour is gated twice, independently.** `tests/smoke.py:2102-2116` (RC-90) walks every
-  palette-shaped block and requires 9 foregrounds × 3 surfaces ≥ 4.5:1.
-  `tests/dashboard_browser.py:132-148` (`visual_hierarchy`) composites each element against
+  (the five palette blocks at the top of the stylesheet, `:root{` through the `auto` block).
+  A re-palette is ~16 lines, not a rewrite.
+- **Colour is gated twice, independently.** The RC-90 check named `every theme's text and
+  semantic colors meet WCAG AA on all surfaces` walks every palette-shaped block and requires
+  9 foregrounds × 3 surfaces ≥ 4.5:1.
+  `visual_hierarchy` in `tests/dashboard_browser.py` composites each element against
   its *real* background chain in a live browser — including the node plate
   (`#network-blk .net-node rect{fill:var(--card)}`), so `--card` is load-bearing for both.
 
@@ -50,9 +52,17 @@ color-scheme:dark
 | `auto` (light) | 4.75 (`ghost` on `paper2`) | 0 |
 | `@media print` | 5.32 (`ghost` on `paper2`) | 0 |
 
-Deep Field becomes the *tightest* dark theme at 5.21 — above the shipped Original's 4.57,
-so it raises the floor rather than lowering it. The regex finds 6 blocks against a `>= 5`
-requirement, and every one carries all 12 colour keys plus the four `--tint-*` as `rgba(`.
+Deep Field is **tighter than the Nocturne default it replaces (5.21 vs 6.40) but sits above
+the shipped Original's 4.57** — Original is itself a dark theme (`--paper:#15120d`, relative
+luminance 0.0062) and it is the tighter of the two, so Deep Field is the *middle* of the three
+darks and the repository's contrast floor is unchanged at 4.57. The regex finds 6 blocks
+against a `>= 5` requirement, and every one carries all 12 colour keys plus the four
+`--tint-*` as `rgba(`.
+
+That `>= 5` is one unit of slack now that six blocks ship, and it is a real hole: deleting a
+whole shipped palette leaves RC-90 green (verified by mutation — see §10). The check that
+closes it resolves every entry in the toggle's `modes` list to a palette block, which is the
+invariant actually meant.
 
 Three values were chosen against measurements rather than taste:
 
@@ -75,10 +85,17 @@ CIEDE2000 (minimum pairwise ΔE00 within `ok`/`warn`/`crit`):
 | deuteranopia | 2.9 | 6.0 |
 | protanopia | 5.5 | 7.3 |
 
-The simulation self-tests before reporting: the red/green pair collapses from ΔE00 86.6 to
-10.2 under both simulated dichromacies, greys survive the projection unchanged, and the
-LMS matrices round-trip to identity within 2e-5. Absolute values depend on the sim's
-constants; the **direction of the comparison** is the result that drove the design.
+The simulation self-tested before reporting: greys survive the projection unchanged and the
+LMS matrices round-trip to identity within 2e-5. **The collapse figures are not reproducible
+and are no longer quoted**: the sim was an ad-hoc script from the design pass that was never
+committed — `grep -rl 'vienot\|dichrom\|CIEDE' --include=*.py` finds nothing — and an
+independent reimplementation could not recover the published red/green collapse across 28
+configurations (7 sim families × 2 Lab transfer-function handlings × 2 sim domains).
+
+Read the whole table as **a comparison instrument, not a set of absolute separations.**
+The values depend on the sim's transfer-function handling, and self-consistent pipelines move
+the Deep Field deuteranopia cell to 8.8–11.2 — i.e. *better* than the 6.0 recorded here. The
+**direction** is the result that drove the design, and it survives under every pipeline tried.
 
 **Known limit, stated plainly:** neither theme separates the triple well by colour alone
 under red-green dichromacy, and Deep Field should not be described as *accessible* on the
@@ -89,12 +106,14 @@ means re-picking `ok`/`crit` hues away from their conventional green/red anchors
 
 ## §3 Theme plumbing (three touch points)
 
-1. **Pre-paint whitelist** (`dashboard.template.html:664-668`). Adds `deepfield` and
+1. **Pre-paint whitelist** — the one-line pre-paint IIFE in `dashboard.template.html` that
+   reads `localStorage.getItem("cm-theme")`. Adds `deepfield` and
    `nocturne`. A saved `cm-theme="dark"` — the pre-0.4.24 default's storage value — is
-   deliberately **absent** from the whitelist and is normalized to `deepfield` inside
-   `apply()`: stamping `data-theme="dark"` would set an attribute no block matches, and the
-   pre-paint script would then paint the legacy palette for one frame.
-2. **Toggle cycle** (`dashboard.template.html:1396-1406`).
+   deliberately **absent** from the whitelist: stamping `data-theme="dark"` would set an
+   attribute no block matches, and the pre-paint script would then paint the legacy palette
+   for one frame. It is normalized to `deepfield` at the two points that *do* normalize —
+   `read()` and `apply()` — **not** at the whitelist, which only filters.
+2. **Toggle cycle** — the `modes` array in `dashboard.template.html`.
    `["deepfield","nocturne","original","light","auto"]` with icons
    `◉ ● ◒ ○ ◐`. Original's cycle neighbour is still Light, so the existing
    `'◒ Original'` / `'Switch to Light'` assertions hold unchanged.
@@ -105,9 +124,9 @@ means re-picking `ok`/`crit` hues away from their conventional green/red anchors
 
 ## §4 Atmosphere, and the structural rule that constrains it
 
-`dashboard.network.js:158-159` measures `svg.getBBox()` and shrinks `#net`'s viewBox to the
-drawn content plus a 24px margin; `tests/dashboard_browser.py:152` asserts that leftover gap
-is 15–40px. `getBBox()` **includes descendants and their transforms.**
+`dashboard.network.js` measures `svg.getBBox()` and shrinks `#net`'s viewBox to the
+drawn content plus a 24px margin; the browser suite's `gap>=15 && gap<=40` assertion covers
+that leftover gap. `getBBox()` **includes descendants and their transforms.**
 
 So the chapter carries two structural rules, written into the stylesheet rather than left
 to memory:
@@ -116,7 +135,7 @@ to memory:
   A backdrop `<rect>` spanning the canvas forces the gap to 0 — a hard failure that would
   also permanently disable the shrink. Atmosphere therefore lives on HTML wrappers
   (`body::before`, `.network-surface`), and SVG children are only ever *faded*, never moved.
-- **The star field must be its own rule.** `smoke.py:4315-4318` pins
+- **The star field must be its own rule.** A smoke pin requires
   `background-image:radial-gradient(…var(--glow)…)` immediately followed by
   `background-repeat`, so the masthead gradient cannot be edited in place.
 
@@ -136,7 +155,7 @@ brace. Two consequences, both now respected in source:
 ## §5 Motion
 
 All of it lives inside `@media(prefers-reduced-motion:no-preference)`
-(`dashboard.template.html:635-660`): a staggered `rise` on chrome → headline → measures →
+(in `dashboard.template.html`): a staggered `rise` on chrome → headline → measures →
 sections, `node-in` fades for the constellation, and a `branch-draw` dash-on for topology
 branches.
 
@@ -150,7 +169,7 @@ Two fill modes, chosen per effect, and the reason matters:
   the instant it finished drawing.
 
 The trap this avoids: a `forwards` animation normally needs an explicit reset in the reduce
-block (that is why `.draw{stroke-dashoffset:0}` exists at `dashboard.template.html:211`).
+block (that is why `.draw{stroke-dashoffset:0}` exists in the reduce block).
 Because the branch rule keeps *both* its `stroke-dasharray` and its `animation` inside the
 no-preference block, the declarations themselves are scoped out under reduce — the element
 renders as an ordinary solid path and no reset is required. Verified by measurement, not by
@@ -162,13 +181,13 @@ a hidden stroke is geometrically identical to a drawn one.
 
 ### The header chart is frozen in geometry, not in colour
 
-`tests/dashboard_browser.py:620-627` pins `#traj`'s `inner_html()` byte-for-byte, but the
+The browser check `immutable header SVG geometry` pins `#traj`'s `inner_html()` byte-for-byte, but the
 frozen fixture (`tests/fixtures/dashboard-header-geometry.json`) contains **zero hex** — only
 class names and `fill="var(--data)"`. Those classes are variable-styled, so the chart
 re-themes while its geometry stays untouchable. Frozen set: the `d` attributes,
 `stroke-width`, the `--len` values, and `.draw` placement.
 
-## §6 The `.dim` rule — corrected, and honestly latent
+## §6 The `.dim` rule — improved, latent, and still sub-4.5
 
 `.net-node.dim` is **never applied**: the string appears in neither JS bundle, and the one
 path that applies `.selected` (the group view) marks *every* node it renders, so no candidate
@@ -178,18 +197,35 @@ revives it.
 The first correction was wrong, and the reason is a genuine CSS trap. Opacity on a **group**
 renders the subtree offscreen and fades the result, so `.82` on a label inside a `.5` group
 is an effective `.41` — the obvious "recede the plate, keep the label" implementation makes
-the label dimmer than the rule it replaced. Measured worst-theme label contrast
-(`--ink`/`--ink2` over its own plate over `--paper`, all four shipped palettes — `auto` is
-Light byte-for-byte, verified token by token, so it is not a fifth; `@media print` is the
-only other surface and differs from Light on five tokens. Undimmed baseline 7.63):
+the label dimmer than the rule it replaced.
 
-| rule | worst |
-| :--- | ---: |
-| `.net-node.dim{opacity:.26}` (pre-0.4.24) | 1.55 |
-| `.net-node.dim{opacity:.5}` + `text{opacity:.82}` | 2.06 |
-| `.net-node.dim rect{opacity:.5}` + `text{opacity:.82}` | **5.04** |
+**Two corrections to the numbers this section first published.** Both were scope errors, and
+both survived a first round of measurement because the model was wrong rather than the
+arithmetic:
 
-Only splitting onto the two elements clears 4.5. The value shipped is the split.
+- **The backdrop is `--paper2`, not `--paper`.** The plate is
+  `#network-blk .net-node rect{fill:var(--card)}` and
+  `.network-surface{background:var(--paper2)}` wraps `<svg id="net">` — so
+  the plate composites over `--paper2`.
+- **The rule dims every text child, not just `--ink`/`--ink2`.** `.node-name` is `--ink` but
+  `.node-meta` is `--faint`, and `--faint` is the binding case.
+
+Measured over all four shipped palettes, worst theme per row, `--paper2` backdrop (`auto` is
+Light byte-for-byte, verified token by token, so it is not a fifth; `@media print` is the only
+other surface and differs from Light on five tokens):
+
+| rule | worst, all dimmed text | worst, `--ink`/`--ink2` only |
+| :--- | ---: | ---: |
+| `.net-node.dim{opacity:.26}` (pre-0.4.24) | 1.44 | 1.56 |
+| `.net-node.dim{opacity:.5}` + `text{opacity:.82}` | 1.86 | 2.08 |
+| `.net-node.dim rect{opacity:.5}` + `text{opacity:.82}` | **3.72** | **4.91** |
+
+Splitting onto the two elements is what buys the improvement — it recedes the plate without
+receding the label — but **it does not clear 4.5**, because `--faint` at Light measures 3.72.
+The value shipped is the split, and the rule stays labelled *latent* partly for that reason:
+it is better than what it replaced and still not AA-clean, so reviving it needs the label
+tokens re-picked, not just the rule restored. Undimmed baselines for comparison: 7.63 over
+`--ink`/`--ink2`, 5.45 counting `--faint`.
 
 ## §7 Reproducing the README art
 
@@ -224,7 +260,7 @@ were one-off exports, so any theme change meant hand-cropping. `tests/dashboard_
 
 ## §8 Budget
 
-`smoke.py:11632-11633` bounds the rendered archive at `300 * 1024`; `render_html.py` inlines the
+The smoke pin `len(_html_p4) < 300 * 1024` bounds the rendered archive; `render_html.py` inlines the
 template **plus both JS bundles**. The bounded quantity is `len(_html_p4)` — a CHARACTER count, not a
 byte size, and the shell is dense with multi-byte glyphs, so the two are not interchangeable. Read
 the bound as 307,200 units, never as a file size. Measured with smoke's own 120-cycle / 20-sidecar
@@ -233,24 +269,32 @@ fixture:
 | | rendered archive (characters) | headroom |
 | :--- | ---: | ---: |
 | pre-0.4.24 | 276,454 | 30,746 = 30.0 KiB |
-| 0.4.24 | 285,084 | **22,116 = 21.6 KiB** |
+| 0.4.24 | 285,411 | **21,789 = 21.28 KiB** |
 
-The Deep Field chapter costs **8,630 characters** of shell, which is the whole of the delta. 21.6 KiB
-is comfortable but no longer generous — **a future theme chapter should budget against this
-number**, and the bound is a smoke check, not a guideline.
+The Deep Field chapter costs **8,957 characters** of shell, which is the whole of the delta.
+
+Note the figure moved **twice after the release was cut** — 285,063 → 285,084 → 285,411 — with no
+CSS change at all, purely from rewriting comments in this template. The bound is a smoke check, not
+a guideline, and it counts every character of the file that ships, comments included. Re-measure
+after any edit here rather than reasoning from a previous number; several of the corrections in
+this document were stale numbers that had been carried forward exactly that way.
 
 ## §9 What deliberately did not change
 
-Frozen identifiers and contracts, none of them touched: `NocturneNetwork` / `NocturneSections`
-(`smoke.py:13146`), `#traj`'s inner HTML, every `#net` routing class and its orthogonal
+Frozen identifiers and contracts, none of them touched: `NocturneNetwork` (pinned by the
+literal `"NocturneNetwork" in _tmpl_ft` — note it covers this name only; `NocturneSections`
+is real (defined in `dashboard.sections.js`, called as `NocturneSections.paint(CUR, CYCLES)`)
+but is **not** pinned by smoke, only exercised
+behaviourally by the browser suite), `#traj`'s inner HTML, every `#net`
+routing class and its orthogonal
 `M…H…V…` geometry, the 12-per-page paging, the `_EMBED_KEYS` read-whitelist (no new
 `CUR.<key>` read was added), the cycle-record schema and its `TypedDict`s, and the Original
-palette (`smoke.py:2117-2125` byte-pins it).
+palette (byte-pinned by the check `Original theme: preserves the complete production dark palette`).
 
 ## §10 Verification
 
 ```bash
-python3 tests/smoke.py                                    # 1762 checks, RC-90 + the size bound
+python3 tests/smoke.py                                    # 1767 checks, RC-90 + the size bound
 python3 tests/dashboard_browser.py --out /tmp/cm-browser  # 5 themes × 4 widths + the second gate
 python3 tests/docs_links.py                               # the gate this arc added
 python3 tests/validate_manifests.py
@@ -258,6 +302,69 @@ mypy --config-file mypy.ini
 python3 tests/simulate_accumulation.py
 ```
 
+The five RC-90 checks added after the adversarial review were **verified by mutation**, which is
+the only evidence that a gate works. The baseline is 1767/0 and each mutant below turns it red:
+
+| mutant | caught by |
+| :--- | :--- |
+| delete a shipped palette block | exactly one mode rides the bare root |
+| drop a value from the pre-paint whitelist | whitelist ≡ the toggle's modes |
+| add a dead hyphenated whitelist value (`ghost-theme`) | whitelist ≡ the toggle's modes |
+| a rule references an undefined token (`var(--paper3)`) | the rule-pair pin |
+| a rule pairs two semantic tokens (`--warn` on `--ink`) | the rule-pair contrast check |
+| one of three `--ink` on `--card` rules hardcodes `#0f1c2e` | no colour escapes the palette |
+| a rule hardcodes `rgba(12,23,39,.9)` (the notation the first scanner could not see) | no colour escapes the palette |
+| a rule writes `color:red` | no colour escapes the palette |
+
+Three of those are findings about the *gates*, not just passes — and all three have the same
+shape. The first version of the whitelist check used `[a-z]+`, and a hyphenated dead value
+slipped straight through it. The rule-pair pin was written to catch a hardcoded background and
+**did not**: it pins a *set*, the template's 15 pair occurrences collapse to 7 pairs, and
+replacing one of three `--ink` on `--card` rules left the suite at 1766/0. That surviving mutant
+is what motivated the fifth check. And the fifth check then **reproached itself before it ever
+shipped**: its first version scanned `#hex`, while `.modal-bg{background:rgba(0,5,14,.82)}` is a
+colour written in a notation that pattern cannot see. It was caught by scanning the stylesheet for
+*every* notation a colour can be written in rather than only the one being matched — which is the
+generalised form of the lesson: **a value the pattern cannot see is a value the check cannot
+reject**, and the pattern is always the suspect, never just the value.
+
+A surviving mutant has exactly two honest answers — a new check, or a weaker claim — and never a
+comment asserting the gate covers something it does not.
+
+The browser suite was measured on that same mutant rather than assumed to be the safety net:
+**1213/0, green across all five themes**, which is a stronger result than "the copy still matched
+the palette" would explain — under Light it visibly does not. The compositing check walks a
+*fixed selector list*, and `.arch-tools select` is not on it. A rendering gate sees what someone
+pointed it at; a check over the stylesheet itself has no such list, which is the whole reason the
+fifth check earns its place rather than duplicating one.
+
 Manual, in the rendered output — the part assertions cannot cover: all five themes at
 320 / 390 / 1440px plus print preview; the README SVGs opened as *images*, never read as
 source; and the network with the group view selected.
+
+## §11 How this document cites code
+
+**By a greppable string — never by a line number.** Every citation above names the thing it
+points at: a check's name, a function, a literal. `grep` finds it however much the file has
+grown since.
+
+This is not style. The first edition cited line numbers, and a re-anchoring pass corrected
+them. The correction did not hold, and could not have: **the commit carrying it added lines to
+the files it cited.** The `.dim` comment rewrite is five lines longer than the text it
+replaced, so it displaced every template citation below it by five; the new smoke checks
+displaced every smoke citation below *them* by 128. A line number's correctness depends on the
+length of a file that the same change is editing, so it is invalidated by the work it ships
+with — and it fails silently, because a stale number still resolves, just to the wrong line.
+
+The re-anchoring pass had a real diagnostic — everything at or below
+`dashboard.template.html:211` was still exact, and several citations above it were short by
+exactly one line, the signature of a stylesheet that had gained one. That reading was right
+about the *released* tree and still produced numbers that were stale on arrival, because the
+citation and the edit that moved the file travelled together. Two of the seven were wrong for
+an unrelated reason: the palette range was genuinely mis-ended (it stopped mid-Light and
+omitted `auto`), while the toggle-cycle range was seven short rather than one, so a +1
+correction left it wrong.
+
+The durable form is the one where the identifier is stable under insertion. This is the
+chapter's own lesson one level down: **a value that must be kept in sync by hand drifts; a
+value that is derived, or that *is* the thing, does not.**

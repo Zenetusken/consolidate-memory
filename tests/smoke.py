@@ -2104,16 +2104,144 @@ def _ui_luminance(hex_color):
     linear = [v/12.92 if v <= .04045 else ((v+.055)/1.055)**2.4 for v in channels]
     return sum(v*w for v, w in zip(linear, (.2126, .7152, .0722)))
 
+def _ui_ratio(fg_hex, bg_hex):
+    lo, hi = sorted((_ui_luminance(fg_hex), _ui_luminance(bg_hex)))
+    return (hi+.05)/(lo+.05)
+
 _ui_palettes = [dict(_re.findall(r"--([a-z0-9-]+):(#[a-fA-F0-9]{6})", block))
                 for block in _re.findall(r":root[^{}]*\{([^{}]+)\}", _TEMPLATE_SRC)]
 _ui_colors = ("ink", "ink2", "faint", "ghost", "data", "accent", "ok", "warn", "crit")
 check("RC-90: every theme's text and semantic colors meet WCAG AA on all surfaces",
       len(_ui_palettes) >= 5 and all(
           all(k in pal for k in _ui_colors + ("paper", "paper2", "card"))
-          and all((max(_ui_luminance(pal[fg]), _ui_luminance(pal[bg]))+.05) /
-                  (min(_ui_luminance(pal[fg]), _ui_luminance(pal[bg]))+.05) >= 4.5
+          and all(_ui_ratio(pal[fg], pal[bg]) >= 4.5
                   for fg in _ui_colors for bg in ("paper", "paper2", "card"))
           for pal in _ui_palettes))
+# The palette blocks, the toggle's `modes`, and the pre-paint whitelist are ONE contract
+# written in three places, and nothing tied them together — found by mutation, not by review.
+# Deleting a whole shipped palette left RC-90 green, because its `>= 5` gained a unit of slack
+# the moment a sixth block shipped (5 pre-arc → 6 after, requirement unmoved). And dropping a
+# value from the whitelist left the first paint on the wrong palette for one frame, which is
+# exactly the flash the pre-paint script exists to prevent. Both mutants passed smoke,
+# docs_links AND the browser suite.
+_modes_match_pin = _re.search(r"modes=\[([^\]]+)\]", _TEMPLATE_SRC)
+_modes_pin = _re.findall(r'"([^"]+)"', _modes_match_pin.group(1)) if _modes_match_pin else []
+# Scoped to the pre-paint IIFE on purpose: `m==="dark"` also appears in apply()'s legacy
+# normalisation, and a whole-file findall would fold that value into the whitelist.
+_paint_pin = _re.search(r'localStorage\.getItem\("cm-theme"\).*?setAttribute\("data-theme",m\)',
+                        _TEMPLATE_SRC, _re.S)
+# `[^"]+`, never `[a-z]+`: a hyphenated theme name (`deep-field`) or a hyphenated junk value
+# (`ghost-theme`) is invisible to a lowercase-only class, and a value the class cannot see is a
+# value the check cannot reject. Found by mutating the whitelist with a hyphenated dead value
+# and watching the gate stay green — the same blind-spot shape as the `_EMBED_KEYS` note above.
+_whitelist_pin = set(_re.findall(r'm==="([^"]+)"', _paint_pin.group(0))) if _paint_pin else set()
+_named_pin = set(_re.findall(r':root\[data-theme="([^"]+)"\]\{', _TEMPLATE_SRC))
+# Exactly ONE mode may ride the bare root pseudo-class: that is the default (deepfield), and
+# it is what keeps `System` coherent under a dark OS preference. "Exactly one" rather than "at
+# least one" is what gives this teeth — a deleted palette block makes its mode unresolved too,
+# so the count reaches two and the check fires.
+_unresolved_pin = [m for m in _modes_pin if m not in _named_pin]
+check("RC-90: every toggle mode resolves to a palette block (exactly one rides the bare root)",
+      bool(_modes_pin) and len(_unresolved_pin) == 1)
+check("RC-90: the pre-paint whitelist is exactly the toggle's mode set (no dead value, none missing)",
+      bool(_whitelist_pin) and _whitelist_pin == set(_modes_pin))
+# The palette blocks and the CSS rules that CONSUME them are one more contract written in two
+# places, and nothing tied these together either. The matrix above is uniform and therefore
+# mostly hypothetical: it checks 9 foregrounds against 3 surfaces, but only 5 of those 27 cells
+# are a pairing any rule actually ships, and 2 real pairs (`--paper` on `--data`, `--paper` on
+# `--ink`) sit outside the matrix entirely. These are the real ones — every rule setting BOTH
+# `color:var(--X)` and a palette-token background. 7 distinct pairs are hex-on-hex and
+# checkable right here; the 8 that sit on a `--tint-*` rgba composite against whatever is
+# behind them, so they belong to the browser suite's `visual_hierarchy` pass and are
+# deliberately not summed here. No bug today — the worst real pair is `--data` on `--paper2` at
+# Light, 5.32 — but before this check a re-palette could regress a rule a reader lands on with
+# the gate still green, which is the same hole the two checks above were closing.
+#
+# The pair set is pinned EXACTLY, never as a floor. `>= 7` would be worse than useless: the
+# failure being guarded is the scanner going BLIND to a rule, and a floor that still counts 7
+# while two real pairs slipped out of view reads as green. What the pin buys is a pair the gate
+# has never seen — a rule referencing a token no block defines (`var(--paper3)`, which CSS
+# resolves to nothing and loses without a word), or the first rule of a new pairing. What it
+# canNOT buy is a colour leaving the palette while its pair survives in another rule; it is a
+# set, and the `no colour escapes the palette` check further down is the one that closes that.
+#
+# The contrast check below adds no coverage over the matrix TODAY, and saying so is the point:
+# all 7 pairs are already a matrix cell or its transpose (5 are literal cells; `--paper` on
+# `--data` and on `--ink` are the transposes of `--data`/`--ink` on `--paper`, and contrast is
+# symmetric). It is here for the pair that is not — a rule pairing two SEMANTIC tokens, e.g.
+# `--warn` on `--ink`, has no cell in either direction, because the matrix's backgrounds are
+# only ever surfaces. That pair does not exist yet; the check is what makes adding it safe.
+# `\s*` after each colon on purpose: the template is machine-consistent today (every one of the
+# 25 pair occurrences matches without it), but a reformat that inserts a space is a change with
+# no semantic content, and a scanner that goes blind on it would red this pin with a message
+# about pairs when nothing about a pair changed. The pin is for the edit that MEANS something.
+_rule_pairs_pin = set()
+for _rule_body in _re.findall(r"\{([^{}]*)\}", _TEMPLATE_SRC):
+    # `(?<![\w-])` guards `color:`. Without it `background-color:var(--card)` also matches —
+    # and `-` is a non-word character, so a plain `\b` would NOT have excluded it. (Zero
+    # `background-color:var(` in the template today; the guard is for the edit that adds one,
+    # which would otherwise inject a phantom foreground into every rule that sets one.)
+    for _fg in _re.findall(r"(?<![\w-])color:\s*var\(--([a-z0-9-]+)\)", _rule_body):
+        for _bg in _re.findall(r"(?<![\w-])background(?:-color)?:\s*var\(--([a-z0-9-]+)\)",
+                               _rule_body):
+            if not _bg.startswith("tint-"):
+                _rule_pairs_pin.add((_fg, _bg))
+check("RC-90: the scanner's rule pairs are exactly the set this gate knows about (no blind spot)",
+      _rule_pairs_pin == {("data", "paper2"), ("ink", "card"), ("ink", "paper"),
+                          ("ink", "paper2"), ("ink2", "paper2"), ("paper", "data"),
+                          ("paper", "ink")})
+check("RC-90: every real color/background rule pair meets WCAG AA in every palette defining both",
+      bool(_rule_pairs_pin) and all(
+          all(k in pal and j in pal and _ui_ratio(pal[k], pal[j]) >= 4.5
+              for k, j in _rule_pairs_pin)
+          for pal in _ui_palettes))
+# Why a THIRD check rather than a weaker sentence above — a mutant survived, measured, not
+# assumed. That pin is over DISTINCT pairs, and the template's 15 pair occurrences collapse into
+# 7 pairs: replacing ONE of the three `--ink` on `--card` rules with a literal
+# `background:#0f1c2e` left the suite at 1766/0, because the pair survived through the other two.
+# That is a real drift vector, not a technicality — the colour has silently left the theme system
+# and will not move with the next re-palette. NO other gate sees it, and that is measured rather
+# than reasoned: with the mutant applied (the exact Deep Field `--card` value copied into one
+# rule), smoke was 1766/0 and the FULL browser suite was 1213/0. Note it is not blind because the
+# value matches everywhere — under Light it visibly does not — but because `visual_hierarchy`
+# walks a fixed selector list that never samples this rule. Only a static check can see it.
+# So it gets its own check. A rule may name a token; the only literals allowed outside a palette
+# block are the five that are deliberately theme-INDEPENDENT, and each carries its reason so that
+# a sixth has to be a decision somebody writes down rather than an edit that quietly passes.
+# Scanned in EVERY notation a stylesheet can name a colour in, not just `#hex`. The first
+# version of this check scanned hex only — and `.modal-bg{background:rgba(0,5,14,.82)}` is a
+# colour that pattern cannot see, i.e. the exact blind spot this block exists to close,
+# reproduced inside the fix for it. `hsl()` and the named colours measure 0 today and are
+# scanned anyway: the cost is one alternation, and the failure mode of omitting them is a gate
+# that reports green on a hardcoded colour. (Named colours are matched only as a declaration's
+# whole value, so a class named `.black-friday` cannot trip it; a named colour buried inside a
+# gradient would still slip through, and there are none.)
+#
+# Scanning this ONE file is enough because the template IS the whole surface: `render_html.py`
+# emits no colour literal and no `<style>` of its own, and neither JS bundle carries one — so
+# there is nowhere else for a stray colour to live in the shipped archive.
+_colour_literals: dict = {}
+# Blank, never delete: removing the blocks outright could splice a stray `#` onto the hex digits
+# that follow and invent a token that is in neither.
+_palette_blanked = _re.sub(r":root[^{}]*\{[^{}]+\}",
+                           lambda m: " "*(m.end()-m.start()), _TEMPLATE_SRC)
+for _m in _re.finditer(r"#[0-9a-fA-F]{3,8}\b|\brgba?\([^)]*\)|\bhsla?\([^)]*\)"
+                       r"|(?:color|background(?:-color)?|fill|stroke)\s*:\s*"
+                       r"(?:red|blue|green|black|white|gray|grey|silver|maroon|navy|teal"
+                       r"|olive|purple|fuchsia|aqua|lime|yellow|orange|pink|brown|cyan"
+                       r"|magenta)\b", _palette_blanked):
+    # Normalise so the key is the LITERAL, never its spelling: whitespace collapsed, and a
+    # declaration's property stripped, so `color: red` and `color:red` are one entry.
+    _lit = _re.sub(r"^(?:color|background(?:-color)?|fill|stroke):", "",
+                   _re.sub(r"\s+", "", _m.group(0).lower()))
+    _colour_literals[_lit] = _colour_literals.get(_lit, 0) + 1
+check("RC-90: no colour escapes the palette (only the declared theme-independent literals)",
+      _colour_literals == {
+          "#000": 2,              # mask-image gradient stops — only their ALPHA is ever read
+          "rgba(0,0,0,.5)": 2,    # …and those same stops again, in the other notation
+          "#0006": 1,             # the modal's drop shadow — black in every theme, on purpose
+          "rgba(0,5,14,.82)": 1,  # the modal scrim — meant to darken whatever is behind it
+          "#fff": 1})             # @media print — paper is white by definition, not by theme
 _original_palette_match = _re.search(r':root\[data-theme="original"\]\{([^{}]+)\}', _TEMPLATE_SRC)
 _original_palette = _original_palette_match.group(1) if _original_palette_match else ""
 check("Original theme: preserves the complete production dark palette",
@@ -14665,7 +14793,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1740 + 22)
+      passed + failed + 1 == 1740 + 27)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

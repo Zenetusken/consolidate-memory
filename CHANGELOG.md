@@ -20,29 +20,38 @@ forward rather than breaking (below).
   structure, a reticle brand mark, and a 19-token palette where colour is reserved for
   data, never atmosphere. Nocturne is preserved verbatim behind
   `:root[data-theme="nocturne"]` and stays selectable; Original, Light, and System are
-  untouched. A saved `cm-theme="dark"` normalizes to `deepfield` at **both** read points
-  (the pre-paint whitelist and `apply()`), so an existing user lands on the new default
-  instead of a value the toggle no longer cycles through. The star-field texture lives on
+  untouched. A saved `cm-theme="dark"` normalizes to `deepfield` in `read()` and `apply()`,
+  so an existing user lands on the new default instead of a value the toggle no longer cycles
+  through. The pre-paint whitelist deliberately does **not** normalize it — it omits the value
+  entirely, because stamping `data-theme="dark"` would set an attribute no palette block
+  matches, which is the exact one-frame flash the script exists to prevent. The star-field
+  texture lives on
   the HTML wrapper, **never** inside `<svg id="net">` — `dashboard.network.js` shrinks the
   viewBox from `getBBox()`, which includes descendants, and a backdrop `<rect>` there
-  would zero the margin `dashboard_browser.py:152` asserts.
+  would zero the margin the browser suite's `gap>=15 && gap<=40` assertion requires.
 - **Two contrast gates, both green.** Deep Field had to clear smoke's RC-90 (9 foregrounds
   × 3 surfaces × 6 palette blocks) *and* the browser suite's `visual_hierarchy`, which
   composites against the real background chain including the node plate
   (`#network-blk .net-node rect{fill:var(--card)}`) — so `--card` is load-bearing for both.
   Worst Deep Field pair is **5.21** (`ghost` on `card`), more headroom than the shipped
   Original theme's 4.57.
-- **The dimmed-node rule was corrected, and is labelled latent — not "fixed".** The old
+- **The dimmed-node rule was improved, and is labelled latent — not "fixed".** The old
   `.net-node.dim{opacity:.26}` dimmed plate and label together; uniform opacity compresses
   contrast toward the backdrop, and no single value clears 4.5:1 (at `.60` it is still
-  3.64) because the mechanism is the problem. The rule now splits — plate `.5`, label
-  `.82`, measured worst pair **5.04**. **But nothing applies `.dim`:** the string is in
-  neither JS bundle, and the one path that applies `.selected` (the group view) marks every
-  node it renders. So the correction is real and unreachable, and the template comment says
-  so rather than claiming a live improvement. The near-miss is recorded with it: the first
-  attempt (group `.5` + text `.82`) measured **2.06** — *worse than the `.26` it replaced*
-  (1.55) — because a group's opacity renders its subtree offscreen and fades the result, so
-  the child multiplies (`.5 × .82 = .41`). Do not "simplify" it back onto the group.
+  3.64) because the mechanism is the problem. The rule now splits — plate `.5`, label `.82`,
+  taking the worst case from **1.44** to **3.72**. It does *not* reach 4.5, and the record
+  got that wrong twice over before measurement settled it: the table was scoped to
+  `--ink`/`--ink2` while the rule dims **every** text child (`--faint` on `.node-meta` is the
+  binding case), and it modelled the plate over `--paper` when
+  `.network-surface{background:var(--paper2)}` is what actually wraps `<svg id="net">`. Both
+  errors were inside a number that reproduced perfectly. **But nothing applies `.dim`:** the
+  string is in neither JS bundle, and the one path that applies `.selected` (the group view)
+  marks every node it renders. So the change is real and unreachable, and the template comment
+  says so rather than claiming a live improvement. The near-miss is recorded with it: the
+  first attempt (group `.5` + text `.82`) measured **1.86** — *worse than the `.26` it
+  replaced* (1.44) — because a group's opacity renders its subtree offscreen and fades the
+  result, so the child multiplies (`.5 × .82 = .41`). Do not "simplify" it back onto the
+  group, and do not read it as AA-clean if it is ever revived.
 - **README restructured end to end**: a badge row, an emoji-per-section TOC carried through
   to the headings, the value proposition leading with the cost removed rather than the
   mechanism, a comparison against Claude Code's native Auto Dream, a five-row theme table,
@@ -80,25 +89,76 @@ forward rather than breaking (below).
   `.github/CODEOWNERS` (the trust-boundary and secrets-firewall scripts named explicitly),
   and `.github/dependabot.yml` — `github-actions` only, because a stale action major is how
   a CI job quietly stops being a gate, and there is deliberately no pip ecosystem to watch.
-- **The record corrected, twice.** The design-of-record's first draft overstated what was
-  measured. The embedded-archive figure was wrong (270,056 B / ~36 KB claimed), and so was
-  the unit: the gate bounds `len(_html_p4)` — a CHARACTER count, against `300 * 1024` — and
-  the shell is dense with multi-byte glyphs, so bytes and characters are not
-  interchangeable here. Measured on the tree: 276,454 characters before, 285,084 after,
-  leaving **22,116 (= 21.6 KiB)** of headroom, down from 30.0 KiB. A first re-derivation
-  from file sizes got this wrong precisely by mixing the two units; only measuring the
-  shipping tree settled it. And the dichromacy table was optimistic: re-measured
-  CIEDE2000 separations for the `ok`/`warn`/`crit` triple are, normal 27.5→24.8,
-  deuteranopia 2.9→6.0, protanopia 5.5→7.3 (Nocturne→Deep Field, one self-tested
-  Viénot-1999 implementation). Deep Field separates the triple better under both
-  dichromacies, but 6.0 is not a large deutan separation and the spec says so under "Known
-  limit, stated plainly" rather than re-paletting — which would have invalidated the
+- **The record corrected, three times.** The design-of-record's first draft overstated what
+  was measured, and later rounds found worse. **The embedded-archive figure was wrong**
+  (270,056 B / ~36 KB claimed) **and so was the unit:** the gate bounds `len(_html_p4)` — a
+  CHARACTER count, against `300 * 1024` — and the shell is dense with multi-byte glyphs, so
+  bytes and characters are not interchangeable here. Measured on the tree: 276,454 characters
+  before, 285,411 after, leaving **21,789 (= 21.28 KiB)** of headroom, down from 30.0 KiB. A
+  first re-derivation from file sizes got this wrong precisely by mixing the two units; only
+  measuring the shipping tree settled it. The "after" figure itself moved twice after the
+  release was cut (285,063 → 285,084 → 285,411) with no CSS change — comments count, because
+  comments ship. **The dichromacy table was optimistic:** re-measured
+  CIEDE2000 separations for the `ok`/`warn`/`crit` triple are, normal 27.5→24.8, deuteranopia
+  2.9→6.0, protanopia 5.5→7.3 (Nocturne→Deep Field). Deep Field separates the triple better
+  under both dichromacies, but 6.0 is not a large deutan separation and the spec says so under
+  "Known limit, stated plainly" rather than re-paletting — which would have invalidated the
   freshly regenerated art and both gates. The design does not rest on hue: every verdict
-  carries its words.
+  carries its words. The simulation's own published *collapse* constants are withdrawn: the
+  sim was never committed, and an independent reimplementation could not recover them across
+  28 configurations, so the spec now states the property and the direction instead of quoting
+  absolutes it cannot reproduce. **And the `.dim` table was wrong on both axes** — see that
+  bullet above: correct inputs, wrong frame, and the number reproduced perfectly either way.
+- **The spec's `file:line` citations were re-anchored — and the re-anchor did not hold, so they
+  are gone.** The design-of-record's authority is "verified by measurement, not by reading", so
+  its citations are load-bearing. Re-measuring them against the tree they actually ship in found
+  that the corrected numbers were right for the tree they were *computed* in and wrong for the
+  tree they were *committed to*: the same commit's `.dim` comment rewrite is five lines longer
+  than the text it replaced, displacing every template citation below it by five, and the new
+  smoke checks displaced every smoke citation below them by 128. Of the seven, the palette
+  range was genuinely mis-ended (it stopped mid-Light and omitted `auto`) and that correction
+  stands in substance. The diagnostic that guided the pass — **everything at or below
+  `dashboard.template.html:211` still exact, several above it short by exactly one line** — was a
+  real pattern that had already been read correctly: the released stylesheet really had gained
+  exactly one line. But a +1 is only the right correction while the file stays still, and it did
+  not: the toggle-cycle range was seven short rather than one, so a +1 left it wrong, and the
+  citations and the edit that moved the file travelled in the same commit. Every citation in the
+  spec now names its target instead — a check's name, a function, a literal — and §11 records
+  why, because this is the chapter's own lesson one level down: a value kept in sync by hand
+  drifts, and a stale line number fails *silently*, still resolving, just to the wrong line.
+  Kept from the review: smoke pins `NocturneNetwork` by that literal only, not
+  `NocturneSections`, which the §9 sentence had implied it covered.
+- **Three more gate holes closed — and one was found by a mutant surviving.** The suite now
+  carries five post-review RC-90 checks, all mutation-verified. The last two came from the
+  browser gate's blind side: RC-90's 9×3 matrix is mostly hypothetical (only **5 of its 27
+  cells** are a pair any rule actually ships, and `--paper` on `--data` / `--ink` fall outside
+  it entirely), so the suite now reads the **real** `color`/`background` rule pairs out of the
+  template and checks those — 7 distinct hex-on-hex pairs, worst `--data` on `--paper2` at
+  Light, **5.32**. It is stated in the source that this adds no coverage *today* (all 7 are a
+  matrix cell or its transpose, and contrast is symmetric); it is there for the pair that is
+  not — two semantic tokens, e.g. `--warn` on `--ink`, have no cell in either direction.
+  The third check exists because the pin **failed its own mutant**: it pins a *set*, the
+  template's 15 pair occurrences collapse to 7 pairs, and hardcoding one of three `--ink` on
+  `--card` rules left smoke at **1766/0** — a colour that has left the theme system and that
+  **no other gate sees**, which is measured rather than reasoned: with the mutant applied, the
+  **full browser suite was also 1213/0**, five themes and all. It is not blind because the copied
+  value matches everywhere (under Light it visibly does not) — `visual_hierarchy` walks a fixed
+  selector list and this rule is not on it. So the stylesheet is now pinned to naming tokens only,
+  with the five deliberate theme-*independent* literals allowlisted by count **and reason**, so a
+  sixth has to be a decision somebody writes down.
+- **…and the check reproached itself before it ever shipped.** Its first version scanned for
+  `#hex`, and this stylesheet also writes colours as `rgba()`: `.modal-bg{background:rgba(0,5,14,.82)}`
+  is a colour that pattern cannot see — the same blind spot the check exists to close,
+  reproduced inside the fix for it. It now scans **every notation a stylesheet can name a colour
+  in** (hex, `rgb()`/`rgba()`, `hsl()`, named-as-a-whole-value), with four further mutants run to
+  prove it: `rgba(12,23,39,.9)` and `color:red` were both invisible and are both caught now,
+  a rule writing `background-color: var(--card)` stays green, and so does the hex case.
+  `hsl()` and named colours measure 0 today and are scanned anyway — the cost is one alternation,
+  and the failure mode of omitting them is a gate that reports green on a hardcoded colour.
 
-Smoke 1762/0 (unchanged — the new gate is its own file and its own CI job, so no smoke pin
-moved), mypy clean in 42 files, sim, manifests, docs gate green, browser **1213** (+105:
-the fifth theme × four widths) in 31.6 s.
+Smoke **1767**/0 (+5: mode → palette-block, whitelist ≡ modes, the real rule-pair set and its
+contrast, and no-colour-escapes-the-palette — each one mutation-verified), mypy clean in 42
+files, sim, manifests, docs gate green, browser **1213** (+105: the fifth theme × four widths).
 
 ## [0.4.23] — 2026-09-07
 
@@ -3237,7 +3297,7 @@ v0.1.35 dream.
 `render_dashboard` reported an over-budget remediation gate **resolved by a rebuild-lean** (re-indexing MEMORY.md
 leaner — `pruned=0` but `achieved_index ≤ budget`) as `⚠ gate fired but not acted on — surface candidates +
 prune-or-justify`, **while the always-loaded gauge showed the index UNDER budget** — a self-contradicting dashboard
-that could prompt needless fact-eviction. Root cause: `render_dashboard.py:479` `acted = pruned` derived "acted on"
+that could prompt needless fact-eviction. Root cause: `render_dashboard.py`'s `acted = pruned` derived "acted on"
 from facts-evicted ONLY, ignoring `achieved_index`; but the skill SANCTIONS rebuild-lean as a remediation action
 (Phase 5 step 0: "prune … and/or rebuild the index lean"). Fix: `acted = pruned or (rebuild-lean brought the index
 ≤ budget)`, with a clear `✓ gate resolved by rebuild-lean — index back under budget, no eviction needed` note

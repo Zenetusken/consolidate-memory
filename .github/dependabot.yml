@@ -7,7 +7,14 @@
 # What IS worth watching is the workflow surface: actions/checkout, actions/setup-python,
 # actions/setup-node and actions/upload-artifact are pinned to major tags in
 # .github/workflows/, and a stale major there is how a CI job quietly stops being a gate.
-# Those four are the only third-party code this repository executes.
+#
+# Those four are the only third-party code with a *package* ecosystem to watch. They are NOT
+# the only third-party code the workflows execute: `pip install mypy` (ci.yml, typecheck job)
+# and `npm install -g @anthropic-ai/claude-code` (ci.yml, manifest job) are both unpinned and
+# both run in CI. Dependabot cannot track either — one has no manifest, the other is a global
+# install with no lockfile — so they are deliberate, named exceptions rather than oversights.
+# Playwright is the counter-example that shows the intent: pinned exactly
+# (`playwright==1.60.0`), because a browser gate that silently changes version is not a gate.
 version: 2
 updates:
   - package-ecosystem: github-actions
