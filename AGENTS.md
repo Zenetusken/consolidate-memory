@@ -253,7 +253,7 @@ design.
   and self-approval protection overrides bypass actors — so a solo account can
   NEVER merge its own PRs under `review count ≥ 1`, in any ruleset
   configuration (verified empirically, 0.4.6). The coherent model: the
-  ruleset requires **0 approvals** and the **11 required checks gate every
+  ruleset requires **0 approvals** and the **12 required checks gate every
   merge**; the review process is the per-PR adversarial review agent, whose
   findings are recorded in the PR thread — that is what actually caught every
   bug this session. An external contributor's PR still gets the maintainer's
