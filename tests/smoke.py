@@ -515,6 +515,12 @@ check("pointer: strips control bytes/newlines from the hook (no index injection)
 # the first bucket short, and every longer description once the bucket is the cap's saturated one
 # (which is why "four wide" holds only INSIDE the cap — the sentence asserting it universally was
 # false wherever a bucket reached the cap, which 3 of the 4 `est_tokens` phases admit).
+# The escaping phase is the one this fixture does NOT exercise, and it is worth naming because
+# the ray is a `K mod 4 != 0` property: at `K mod 4 = 0` the saturating bucket is `[85, 88]`, so
+# its LAST member is the cap itself — nothing is culled, nothing longer joins, and the window at
+# the cap stays four wide. All three regimes above are `foo`/`bar--foo` shapes (23 chars of fixed
+# prefix, `K mod 4 = 3`), so their arithmetic is phase-bound and renaming that fixture flips all
+# three: the SHAPES are phase-dependent, the AXIS is not. One P=0 instance is pinned below.
 # And pin the AXIS: those lengths are SANITIZED ones. `_pointer_line` folds control/bracket
 # characters and collapses whitespace runs BEFORE `desc[:88]` caps, so a RAW-length sweep sees
 # ties and one-token moves the sanitized rule calls impossible — which is how this window was
@@ -545,6 +551,16 @@ check("window: a raw-LONGER description can still tie — a bracketed run collap
 check("window: past the cap a raw-length gain can book NEGATIVE — the saturated tail absorbs "
       "sanitized lengths, not raw ones",
       _tok_desc("foo", "bar--foo", "x" * 85 + "[" * 4) < _tok_desc("foo", "bar--foo", "x" * 88))
+check("window: the strip step is length-affecting too — a quoted description books its "
+      "unquoted core, so the measure is neither raw nor post-fold length alone",
+      _tok_desc("foo", "bar--foo", '"' + "x" * 41 + '"') == _tok_desc("foo", "bar--foo", "x" * 41))
+check("window: the saturated tail is a PHASE property — at `K mod 4 = 0` the cap's bucket ends "
+      "exactly at the cap, so no longer description joins and the window stays four wide there",
+      len(_tie_window("fooo", "bar--foo", 88)) == 4 and len(_tie_window("foo", "bar--foo", 88)) > 4)
+check("window: a crafted description cannot inject a link target — the sanitizer's stated "
+      "purpose asserted directly, not through a length proxy for it",
+      sg._pointer_line("foo", {"description": "x" * 40 + "](evil.md)"},
+                       anchor="bar--foo").count("](") == 1)
 # frontmatter parses folded/block scalars (description: >-) instead of storing ">-"
 check("frontmatter: folds block scalar value",
       sg._frontmatter("---\nname: x\ndescription: >-\n  hello\n  world\nmetadata:\n  scope: user-global\n---\nb")["description"] == "hello world")
@@ -15164,7 +15180,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 34)
+      passed + failed + 1 == 1750 + 37)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
