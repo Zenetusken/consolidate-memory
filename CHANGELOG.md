@@ -80,7 +80,6 @@ undamaged and the defect is latent, not absent. Repair of an already-damaged sto
 refresh-gated and does not cover every shape; §10 of the spec scopes what a single command
 can and cannot collapse.
 
-The design-of-record, with the review's corrections to its own claims, is
 **A third finding, from the same round's pin work — the index line's own sanitizer had an
 unguarded interpolation.** `_pointer_line` builds every pointer line, and `local_ingress`'s
 sibling writer calls it *"the global injection sanitizer"* in its own docstring. It
@@ -104,6 +103,18 @@ three could not carry the universal their names claimed: an admission widened to
 (`startswith`) satisfied every one of their fixtures and passed all 1792 checks while
 restoring the live link for `scope: user-global](http://x)`; it is now that mutant's sole
 detector. The suite-total anti-rot constant moves `1750+39` → `1750+43`.
+
+**A fourth finding, from the same round's pin work — two numbers in the record had rotted.**
+Three places said the always-namespacing mutant "kills the suite at `smoke.py:4962`" and that
+this was "thousands of checks" before `#8`: the spec's two `#8` paragraphs and the `#8`
+comment in `tests/smoke.py`. The mutant was re-run rather than trusted — it does die where
+they say, at the `canon-x` fixture's read-back of its own canonical, so `#8` never executes —
+but the number held only in the tree it was written in: that read-back is now at
+`smoke.py:5085`, +123 as the branch grew, and the counter reads 983 at the fixture against
+1554 at `#8` — **571** checks, not thousands, in a suite of 1793. So the line numbers are
+replaced by the target itself (the fixture's own read-back expression, with its hit count
+stated), and the quantity by the two counter readings that produced it — because a stale line
+number fails *silently*, still resolving, just to the wrong line.
 
 The design-of-record, with the review's corrections to its own claims, is
 `docs/cross-domain-index-refresh.spec.md`. No CLI flag moved, no schema or manifest

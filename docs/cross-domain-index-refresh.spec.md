@@ -661,13 +661,15 @@ as a whole.
   detector for "the line moved", which chained across refreshes reorders the always-loaded
   tier.
 
-**#8's reach, stated honestly.** It does **not** fail under the write-leg revert (it covers
-the same-domain arm, which that revert does not touch) — measured, and correct. And the
-mutation its first comment named — `_mirror_key` "simplified" into always namespacing — is
-**not measurable through this pin at all**: that mutant kills the suite at `smoke.py:4962`,
-a fixture reading back its own canonical, thousands of checks before this fixture runs. So
-that direction is caught by gross failure rather than by #8, and the comment now claims only
-the measured mutant. §9.1 records why this was worth chasing down.
+**#8's reach, stated honestly.** It does **not** fail under the write-leg revert (it covers the
+same-domain arm, which that revert does not touch) — measured, and correct. And the mutation
+its first comment named — `_mirror_key` "simplified" into always namespacing — is **not
+measurable through this pin at all**: it kills the suite at the `canon-x` fixture's read-back
+of its own canonical, `(_e.store / "canon-x.md").read_text(encoding="utf-8")` — its only
+occurrence in `tests/smoke.py` — 571 checks before #8's check runs (the counter reads 983 there
+and 1554 here, at `e2a3048`). So that direction is caught by gross failure rather than by #8,
+and the comment now claims only the measured mutant. §9.1 records why this was worth chasing
+down.
 
 **The one remaining gap is unchanged**: the exact-value form (`#3`/`#5` assert `> 0`, never
 the booked delta *equals* the real index delta — §8.3's growth-model table).
@@ -819,16 +821,18 @@ Four rules follow, and all four are general:
   and its justification was not — and the justification is what tells the next reader
   whether the check can be deleted.
 
-**Failure 4 — the claim I did not measure (a comment, not a pin).** #8 shipped with a
-comment naming its mutant: *"it fails if a future change simplifies `_mirror_key` into
-ALWAYS namespacing."* That mutant was never run against this pin. Run now, it **cannot
-reach it**: always-namespacing kills the suite at `smoke.py:4962` — a fixture reading back
-its own canonical, thousands of checks before this fixture — so #8 never executes at all.
-The stated justification was structurally unverifiable, and it sat in the exact place a
-future reader looks to decide whether the check is load-bearing. The measured mutant
-(`apply_pointer` rewritten to delete the matched line and append at the end) leaves #8 as
-the suite's **only** failure, which is both true and a stronger claim than the withdrawn
-one: #8 guards *placement*, not key derivation. Corrected in the comment and in the table.
+**Failure 4 — the claim I did not measure (a comment, not a pin).** #8 shipped with a comment
+naming its mutant: *"it fails if a future change simplifies `_mirror_key` into ALWAYS
+namespacing."* That mutant was never run against this pin. Run now, it **cannot reach it**:
+always-namespacing kills the suite at the `canon-x` fixture's read-back of its own canonical,
+`(_e.store / "canon-x.md").read_text(encoding="utf-8")` — its only occurrence in
+`tests/smoke.py` — 571 checks before #8's check runs (the counter reads 983 there and 1554
+here, at `e2a3048`), so #8 never executes at all. The stated justification was structurally
+unverifiable, and it sat in the exact place a future reader looks to decide whether the check
+is load-bearing. The measured mutant (`apply_pointer` rewritten to delete the matched line and
+append at the end) leaves #8 as the suite's **only** failure, which is both true and a stronger
+claim than the withdrawn one: #8 guards *placement*, not key derivation. Corrected in the
+comment and in the table.
 
 All seven were found by **running a mutant to completion**, never by reading the pin — the
 fourth not by a failing pin but by running a mutant its comment named and the suite never
