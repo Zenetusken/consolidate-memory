@@ -5403,6 +5403,56 @@ with _tf73.TemporaryDirectory() as _td81:
           "_plan_pull — it reports the missing fact as ceiling-held exactly where a real --pull "
           "would hold it (the hand-rolled loop said absorbable)",
           "would be ceiling-held" in _r.stdout and "1 shared global fact(s)" in _r.stdout)
+    # spec §9, review F2a — the PHANTOM-DELTA pin. The C1 regression (caught in this cycle's
+    # review, introduced by the first cut of the cost-site fix) ANCHORED cost_old while
+    # leaving cost_new on the bare stem. For an IN-SYNC cross-domain mirror those two costs
+    # differ by exactly the anchor text (`work--`, ~2 tok), so `elif cost_old and cost_new !=
+    # cost_old` fired for a mirror that needed NO refresh — a phantom STALE-mirror item whose
+    # delta is NEGATIVE. _plan_pull ADDS that delta to the running index, so the phantom
+    # RELIEVES the ceiling and lets a MISSING fact be booked as absorbable that a real --pull
+    # holds: the beacon advertising a pull the run refuses.
+    #
+    # It lives HERE, not with the other §9 pins in the groups block: `held` is only observable
+    # near the ceiling, and this is the fixture that sits at it.
+    #
+    # The boundary is MEASURED, never a guessed token count: the index is padded so the miss
+    # is held by exactly ONE token post-fix, and the relief the regression would grant is
+    # computed off the two real pointer lines (`_p_pb`) — asserted positive, so a change that
+    # made the two costs equal TRIPS the assert instead of silently un-arming the pin.
+    #
+    # Scope, stated precisely (a pin must not claim more than it measures): this discriminates
+    # the HALF-FIXED state (cost_old anchored / cost_new bare) — the tree the finding was
+    # raised against. It is green on the fully-fixed tree AND on the ORIGINAL pre-fix tree,
+    # which dropped the item entirely rather than mis-costing it (that leg is pinned by the
+    # §9 beacon-leg check in the groups block, `cost_old > 0`).
+    _mk_pb = sg._mirror_key("personal", "work", "mag-pb")
+    _canon_pb = _v3_canon("mag-pb", domain="work", description="mag hook").replace(
+        "applies_exclude: []\n", "applies_exclude: []\nrecipients: [pair]\n", 1)
+    _fm_pb = sg._frontmatter(_canon_pb)
+    _mline_pb = sg._pointer_line("mag-pb", _fm_pb, anchor=_mk_pb)
+    (_st81 / f"{_mk_pb}.md").write_text(
+        sg._as_mirror(_canon_pb, "mag-pb", since="2026-01-01T00:00:00Z",
+                      body_hash=sg._body_hash(_canon_pb)), encoding="utf-8")
+    # the relief the phantom would grant: the anchored pointer (what the writer stores) minus
+    # the bare one (what the regression derives) — the whole of the defect, in tokens.
+    _p_pb = ms.est_tokens(_mline_pb) - ms.est_tokens(sg._pointer_line("mag-pb", _fm_pb))
+    assert _p_pb > 0, f"anchor asymmetry vanished (p={_p_pb}) — the pin cannot discriminate"
+    _miss_pb = _v3_canon("zmiss-pb", description="m")
+    (_df81 / "zmiss-pb.md").write_text(_miss_pb, encoding="utf-8")
+    _mfm_pb = sg._frontmatter(_miss_pb)
+    _cz_pb = ms.est_tokens(sg._pointer_line("zmiss-pb", _mfm_pb))
+    (_st81 / "MEMORY.md").write_text(_pad_index73(_C73 + 1 - _cz_pb, [_mline_pb]),
+                                     encoding="utf-8")
+    assert ms.est_tokens((_st81 / "MEMORY.md").read_text(encoding="utf-8")) == _C73 + 1 - _cz_pb
+    import session_beacon as _sb_pb
+    _out_pb = _sb_pb.beacon_line(
+        _st81, domain_id="personal", migration_mode="dual-read",
+        gfacts=[("mag-pb", _fm_pb, _canon_pb), ("zmiss-pb", _mfm_pb, _miss_pb)],
+        memberships={"pair"})
+    check("v0.4.10/spec §9: an IN-SYNC cross-domain mirror books NO refresh delta — the "
+          "beacon's held projection still counts the missing fact as ceiling-held (an "
+          "un-anchored cost_new made every in-sync mirror a phantom NEGATIVE delta)",
+          "would be ceiling-held" in _out_pb and "1 shared global fact(s)" in _out_pb)
 
 # --- v0.1.82: distill-template persistence (W-A — docs/distill-template-persistence.spec.md).
 # RED baseline is the contract itself: before this, --into persisted COUNTS only (the pre-change
@@ -12355,6 +12405,21 @@ with _tf73.TemporaryDirectory() as _td_gs:
               "refreshed 1" in _o6_gs.getvalue()
               and "quarantine" not in _o6_gs.getvalue()
               and "body v2" in (_c2_gs.read_text(encoding="utf-8") if _c2_gs.exists() else ""))
+        # cross-domain-index-refresh spec §10 (the gc DEAD report): the report's mirror-existence
+        # probe must use the WRITER's key. It tested `{name}.md` — the CANONICAL stem — while the
+        # live file is `personal--grp-fact.md`, so a held cross-domain canonical reported DEAD
+        # (14 mirrors / 11 projects, measured fleet-wide). Report-only, so nothing was deleted.
+        # PLACEMENT IS THE PIN: it must run while C's store holds ONLY the namespaced mirror —
+        # check #7 below plants a same-stem native `grp-fact.md`, after which BOTH probes find a
+        # file and the check cannot discriminate. (Measured: the first draft sat after #7 and was
+        # green with the probe reverted. A vacuous pin is worse than no pin.)
+        _ogc_gs = _io_gs.StringIO()
+        with _ctx73.redirect_stdout(_ogc_gs):
+            sg.gc(_pc_gs, apply=False)
+        _gc_out_gs = _ogc_gs.getvalue()
+        check("v0.4.10 groups: the gc report does NOT call a LIVE cross-domain mirror dead "
+              "(the probe uses the mirror key, not the canonical stem)",
+              _cfile_gs.exists() and "no mirror here" not in _gc_out_gs)
         # cross-domain-index-refresh spec §9: the refresh must REPLACE its index pointer,
         # not append a second one. `apply_pointer` matches on `]({stem}.md)`; a namespaced
         # link `](personal--grp-fact.md)` never matches the bare stem, so it appended.
@@ -14997,7 +15062,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1748 + 27)
+      passed + failed + 1 == 1750 + 27)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

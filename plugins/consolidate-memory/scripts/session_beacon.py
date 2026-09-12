@@ -203,7 +203,15 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
     # STALE stands in as POINTER DRIFT (real index line ≠ derived pointer): a description-drifted
     # mirror carries exactly the refresh delta a real --pull applies; body-only staleness is
     # delta-0 (nothing to count). Reach note: a hand-edited index line under a genuinely in-sync
-    # mirror counts a phantom delta — conservative direction (fewer advertised as absorbable).
+    # mirror also builds an item, and the SIGN of its delta decides the direction — cost_old is
+    # the REAL line and cost_new the line DERIVED from the canonical, so a hand-edit LEANER than
+    # that derivation books a positive delta (consumes headroom: fewer advertised as absorbable,
+    # the conservative direction) while a FATTER one books a NEGATIVE delta that RELIEVES the
+    # running index in _plan_pull — advertising a fact as absorbable that a real --pull holds.
+    # The old note here claimed the conservative direction unconditionally; that is false for
+    # the fat arm, and it is not hypothetical: it is exactly the shape review F2a caught when
+    # cost_new was derived un-anchored (a mechanically fatter cost_old, ~2 tok for a `work--`
+    # anchor), which made EVERY in-sync cross-domain mirror a phantom negative delta.
     idx_text = _safe_read_text(store / "MEMORY.md") or ""
     # PR-#94 review F4: build the anchor→cost map ONCE — per-fact _index_line_cost re-split the
     # whole index every call (O(relevant × index_bytes); measured 4.5s only at a pathological
@@ -223,13 +231,20 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
                                    group_recips=set(_parse_flow_list(
                                        str(fm.get("recipients") or "")))):
             continue
-        cost_new = est_tokens(_pointer_line(n, fm))
-        # _bk FIRST: the cost map is keyed by the link target, so a bare-stem lookup
-        # pinned cost_old at 0 — which the `elif cost_old and …` below then read as "no
-        # existing line", silently dropping every cross-domain STALE refresh
-        # (docs/cross-domain-index-refresh.spec.md §2 Leg B — same read-leg site as
-        # sync_global's cost map; the two MUST key alike or `held` diverges from the run).
+        # _bk FIRST, and BOTH costs derived from it — the anchor is the key the WRITER uses
+        # for the file AND the index line, so deriving either cost from the bare stem is a
+        # different quantity, and the two errors point opposite ways:
+        #   cost_old — the map is keyed by the link TARGET, so a bare lookup pinned it at 0
+        #     and the `elif` below was unreachable: every cross-domain STALE refresh silently
+        #     dropped (docs/cross-domain-index-refresh.spec.md §2 Leg B).
+        #   cost_new — un-anchored it is ~2 tok LIGHTER than the line a pull writes, so once
+        #     cost_old resolved, `cost_new != cost_old` was TRUE for every IN-SYNC
+        #     cross-domain mirror: a phantom refresh item at a NEGATIVE delta, i.e. the
+        #     beacon advertising a pull the run refuses. Fixing one leg unmasked the other.
+        # Same read-leg site as sync_global's cost map; the two MUST key alike or `held`
+        # diverges from the run (the F1 divergence the replay-by-law note above closes).
         _bk = _mirror_key(domain_id, str(fm.get("domain") or ""), n)
+        cost_new = est_tokens(_pointer_line(n, fm, anchor=_bk))
         cost_old = line_cost.get(_bk, 0)
         if not (store / f"{_bk}.md").exists():
             items.append((n, "MISSING", cost_new, cost_old))

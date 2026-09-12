@@ -2243,14 +2243,22 @@ def run(project_dir: Path, pull: bool, allow_net_grow: bool = False, evict: str 
         _m = re.search(r"\]\(([^)]+)\.md\)", _ln)
         if _m and _m.group(1) not in _line_cost_run:
             _line_cost_run[_m.group(1)] = est_tokens(_ln)
-    # the cost map is keyed by the LINK TARGET — the namespaced anchor for a cross-domain
-    # mirror. A bare-stem lookup missed every one and pinned cost_old at 0, so _plan_pull
-    # booked a full line for a STALE refresh where only the replaced delta applies
-    # (docs/cross-domain-index-refresh.spec.md §2 Leg B, §8.3).
-    items = [(name, status, est_tokens(_pointer_line(name, fm)),
-              _line_cost_run.get(_mirror_key(ctx.domain_id, str(fm.get("domain") or ""), name), 0))
-             for name, fm, _t, status, _p, _w, rel, *_x in classified
-             if rel and status in ("MISSING", "STALE-mirror")]
+    # Both costs come from the SAME key the writer uses (_j_key, as in _execute_pull_writes):
+    #   cost_old — the map is keyed by the link TARGET (the namespaced anchor for a
+    #     cross-domain mirror), so a bare-stem lookup pinned it at 0 and _plan_pull booked a
+    #     full line for a STALE refresh where only the replaced delta applies.
+    #   cost_new — un-anchored it is ~2 tok lighter than the line the writer emits, so with
+    #     cost_old corrected the model under-counted instead: 7 cross-domain MISSING pulls
+    #     planned end_idx 3837 against a real 3854, i.e. past the ceiling the budget exists
+    #     to respect. The sign flipped; the gap did not close until both sides anchored.
+    # (docs/cross-domain-index-refresh.spec.md §2 Leg B, §8.3)
+    items = []
+    for name, fm, _t, status, _p, _w, rel, *_x in classified:
+        if not rel or status not in ("MISSING", "STALE-mirror"):
+            continue
+        _j_key = _mirror_key(ctx.domain_id, str(fm.get("domain") or ""), name)
+        items.append((name, status, est_tokens(_pointer_line(name, fm, anchor=_j_key)),
+                      _line_cost_run.get(_j_key, 0)))
     plan = _plan_pull(items, seed_idx, allow_net_grow, budget=INDEX_CEILING_TOKENS)
     # v0.1.41 → v0.1.73: --evict <fact> — the EVICT-TO-RECEIVE valve (the release for M1's hold),
     # rebuilt on measured accounting. Pre-checks BEFORE any delete (Guard-3 no-partial-state); the
@@ -3272,13 +3280,24 @@ def gc(project_dir: Path, apply: bool, edges: bool = False) -> int:
     if apply:
         print(_ui.ascii_translate("\n".join(out)))
         return 0
+    from domain_policy import fact_domain as _fd_gc
     dead = []
     for name, fm, _ in gfacts:
+        # The mirror's FILE key is _mirror_key — the SAME key the writer uses (:2052), bare-stem
+        # only when the canonical is same-domain. Probing `{name}.md` looked for `X.md` while the
+        # file is `{fdom}--X.md`, so every CROSS-DOMAIN canonical read as DEAD here (14 mirrors
+        # across 11 projects — spec §5), and a genuinely ABSENT one read as PRESENT whenever an
+        # unrelated same-stem native existed. Report-only, so this arm never deleted anything;
+        # it just lied, in both directions (docs/cross-domain-index-refresh.spec.md §10).
+        try:
+            _g_mkey = _mirror_key(_ctx_gc.domain_id, _fd_gc(fm) or (_ctx_gc.domain_id or ""), name)
+        except ValueError:
+            continue    # an UNCOMPUTABLE key is "unknown", never "dead" — this arm must not guess
         for holder in _holder_labels(fm, stem=name, ctx=_ctx_gc):
             # we only know THIS project's store path; report if it's listed but absent.
             # v0.1.76: compare in the SANITIZED token space provenance is written in — a basename
             # _sanitize_token rewrites ('@scope' → '-scope') never equalled its raw self here.
-            if holder == _sanitize_token(project_dir.name) and not (store / f"{name}.md").exists():
+            if holder == _sanitize_token(project_dir.name) and not (store / f"{_g_mkey}.md").exists():
                 dead.append(name)
     if dead:
         out.append("")
