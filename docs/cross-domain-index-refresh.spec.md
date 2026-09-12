@@ -615,8 +615,10 @@ the booked delta *equals* the real index delta — §8.3's growth-model table).
 
 ### 9.1 A pin that does not discriminate — measured three times in this cycle
 
-The rule above ("fails on pre-fix code") was applied to all five pins, and **three of them
-still passed green against an unfixed site.** All three are recorded because the rule as
+The rule above ("fails on pre-fix code") was applied to all five of the draft's verification
+bullets, and **three of them still passed green against an unfixed site** — the other two are
+the guards §4(b) names, which pass pre-fix by construction rather than by failing to fail. All
+three are recorded because the rule as
 stated is not strong enough to catch them, and because the third is the one a whole-change
 revert structurally cannot see. The review added three more entries after that count was
 written — **failure 5**, a fourth pin that passed green; **failure 6**, a regression no pin
@@ -702,8 +704,8 @@ Four rules follow, and all four are general:
 
 - **Verify each pin against a revert of the specific site it covers, not of the change as
   a whole.** A whole-change revert cannot expose a pin that a sibling site's effects
-  satisfy. All five pins failed the whole-change revert; only the site-scoped reverts
-  exposed failures 2 and 3.
+  satisfy. All five of those checks stayed green under the whole-change revert; only the
+  site-scoped reverts exposed failures 2 and 3.
 - **Where one function calls the same primitive on two legs, the pin must count calls, not
   detect the key.** One leg supplying the right argument is indistinguishable from both
   doing so if the assertion is existential.
