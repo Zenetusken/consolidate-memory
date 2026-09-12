@@ -257,9 +257,11 @@ evict target; the demotion population filters mirrors out).
 The first draft's frame — "derives a key from a fact name and consumes it as a match target, a
 lookup key, or a file path" — was **wider than its own table**. It named a file-path leg the
 table carried in one row (the three writers that *take* their key from `_mirror_key`), and it
-left four match sites unclaimed, because none of them derives its key from a fact name. All
-four are below; the first is the counter-example the whole fix turns on. Each row names a
-**greppable anchor**, not a line number:
+left four match sites unclaimed, because none of them derives its key from a fact name — plus
+a fifth the draft never named at all: `apply_pointer`'s own matcher, the single site where a
+key actually becomes a match target, which the census had recorded only through its callers.
+All five are below; the first is that matcher, and the second is the counter-example the whole
+fix turns on. Each row names a **greppable anchor**, not a line number:
 
 | site — greppable anchor | leg | affected |
 |---|---|---|
@@ -283,8 +285,13 @@ four are below; the first is the counter-example the whole fix turns on. Each ro
 
 **Why the anchors and not line numbers.** The first draft cited `file:line`, and the
 displacement was measured, not feared: by the time this branch was reviewed, four of the five
-`yes` rows and two of the six `no` rows no longer resolved to the site they named — and
-**every one of the six pointed short**, by 4, 4, 7, 20, 22 and 25 lines, never once past.
+`yes` rows and two of the six `no` rows **the draft then carried** no longer resolved to the
+site they named — and
+**every one of those six pointed short**, by 4, 4, 7, 20, 22 and 25 lines, never once past.
+(Those two totals count the **draft's** table — 5 `yes` + 6 `no` — not the one below, which is
+larger: the same commit that replaced the line numbers with anchors also added the
+`origin-delete` row, completing the class. A reader counting the current table's `no` rows will
+get a different number; that is the drift, not an error.)
 The direction is the mechanism: the fix inserts lines *above* the sites it edits and leaves
 the citation where it was. So **the commit that carries a citation is the commit that edits
 the file it cites**, and a number's correctness depends on how many lines that same work
@@ -498,11 +505,11 @@ moves.
 A pin is only a pin if it **fails on pre-fix code**. That rule is stated as a test, not a
 slogan.
 
-**What was actually implemented — eleven checks, ten in `tests/smoke.py`'s v0.4.10 groups
-fixture and #10 in the v0.1.81 near-ceiling beacon fixture** (see failure 5 for why it
-cannot live with the others). The table is deliberately narrower than the design intent
-below it: a spec that lists pins it did not write is the drift this repo's gates exist to
-catch.
+**What was actually implemented — eleven checks: ten of them (#1–#9 and #11) across
+`tests/smoke.py`'s v0.4.10 groups fixture, and #10 alone in the v0.1.81 near-ceiling beacon
+fixture** (see failure 5 for why it cannot live with the others). The table is deliberately
+narrower than the design intent below it: a spec that lists pins it did not write is the drift
+this repo's gates exist to catch.
 
 | # | pin | leg it covers | discriminates? |
 |---|---|---|---|
