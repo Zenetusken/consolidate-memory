@@ -997,20 +997,25 @@ string satisfies every one of them while restoring the live link. Two shapes mea
 → `1792 passed, 0 failed`, and `_raw_scope[:1] in ("p","s","u")` → the same, with
 `scope: user-global](http://x)` rendering a second `](`. Those are the measured shapes, not a
 class — "any strict superset", as an earlier draft of this paragraph had it, is one word wider
-than the evidence: a substring admission (`any(s in _raw_scope for s in SCOPES)`) reds the drop
-pin alone at that revision (`1791 passed, 1 failed`), because the `["user-global"]` fixture
-stringifies to `"['user-global']"`, which contains a vocabulary string. The shipped predicate
-was never wrong — this is pin coverage, not a defect in the fix — but the *name* was: a
-universal asserted over a body that tests four inputs, the class this document keeps meeting.
-The fourth pin states the invariant as a PROPERTY, so no widening satisfies it: whatever a
-scope renders, the tail is absent or one of the three literals. It neither subsumes the drop
-pin nor is subsumed by it — the two are exact reverses, each with a measured witness: a prefix
-WIDENING reds the invariant alone (the tail is not a literal), and coercing a LIST to a
-vocabulary default (`SCOPES[0] if isinstance(fm.get("scope"), list) else` the admission) reds
-the equality alone (the tail IS a literal, where nothing should have rendered at all).
-Witnesses again, not classes: coercing an unknown STRING to the default reds four checks
-(`1789 passed, 4 failed` — the scope-tag pin, the drop pin, the quote pin and the case pin), so
-the coercion family is wider than the reversal this pair claims.
+than the evidence: a substring admission (`any(s in _raw_scope for s in SCOPES)`) restores the
+live link too, because the `["user-global"]` fixture stringifies to `"['user-global']"`, which
+contains a vocabulary string. It reds the drop pin alone at `7a17600` (`1791 passed, 1 failed`)
+and **both** pins at this revision (`1791 passed, 2 failed`), the second because the fourth pin
+covers that same fixture — a red set is revision-relative even when the shape is not. The
+shipped predicate was never wrong — this is pin coverage, not a defect in the fix — but the
+*name* was: a universal asserted over a body that tests four inputs, the class this document
+keeps meeting. The fourth pin states the invariant as a PROPERTY, so no widening satisfies it:
+whatever a scope renders, the tail is absent or one of the three literals. It neither subsumes
+the drop pin nor is subsumed by it, and each fails where the other alone stays green, at this
+revision: a prefix WIDENING reds the invariant alone (the tail is not a literal) with the
+equality green, and coercing a LIST to a vocabulary default
+(`SCOPES[0] if isinstance(fm.get("scope"), list) else` the admission) reds the equality alone
+(the tail IS a literal, where nothing should have rendered at all) with the invariant green.
+That crossing is not a partition and the pair is not "exact reverses" — the substring reds
+both, the raw revert reds all four. Witnesses again, not classes: coercing an unknown STRING to
+the default reds four checks (`1789 passed, 4 failed` — the scope-tag pin, the drop pin, the
+quote pin and the case pin), so the coercion family is wider than the crossing this pair
+measures.
 
 **One candidate pin was declined, on a measurement.** An empty scope rendering *no* suffix is a
 real branch, and a pin on it discriminates one mutant. But that mutant (an always-rendered

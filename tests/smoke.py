@@ -590,16 +590,21 @@ check("window: so is the FLOOR clip — the aligned phase's first bucket reaches
 # `scope: user-global](http://x)`, which none of the four is:
 # `any(_raw_scope.startswith(s) for s in SCOPES)` → `1792 passed, 0 failed`, and
 # `_raw_scope[:1] in ("p","s","u")` → the same. Those are the measured shapes, not a class: a
-# SUBSTRING admission (`any(s in _raw_scope for s in SCOPES)`) reds the drop pin alone
-# (`1791 passed, 1 failed`), because the `["user-global"]` fixture stringifies to
-# `"['user-global']"`. The two pins below are not redundant and neither subsumes the other —
-# exact reverses, each with a witness: a prefix WIDENING reds the invariant ALONE (the rendered
-# tail is not a literal), coercing a LIST to a vocabulary default reds the equality alone (it
-# renders a literal, but it should have rendered nothing). Witnesses, not classes again:
-# coercing an unknown STRING to the default reds four checks. A further shape — an absent scope
-# rendering no suffix — is deliberately NOT pinned: measured, every mutant that reddens such a
-# pin also reddens the six window pins above, and the bracket-absence it would assert is
-# already this suite's `hook strips markdown link chars` check on the same shape.
+# SUBSTRING admission (`any(s in _raw_scope for s in SCOPES)`) restores the live link too,
+# because the `["user-global"]` fixture stringifies to `"['user-global']"`. It reds the drop
+# pin alone at `7a17600` (`1791 passed, 1 failed`) and BOTH pins at this revision
+# (`1791 passed, 2 failed`) — the invariant covers that same fixture, so a red set is
+# revision-relative even when the shape is not. The two pins below are not redundant and
+# neither subsumes the other,
+# and each fails where the other alone stays green at this revision: a prefix WIDENING reds the
+# invariant ALONE (the rendered tail is not a literal) with the equality green, coercing a LIST
+# to a vocabulary default reds the equality alone (it renders a literal, but it should have
+# rendered nothing) with the invariant green. That crossing is not a partition — the substring
+# reds both, the raw revert reds all four. Witnesses, not classes again: coercing an unknown
+# STRING to the default reds four checks. A further shape — an absent scope rendering no
+# suffix — is deliberately NOT pinned: measured, every mutant that reddens such a pin also
+# reddens the six window pins above, and the bracket-absence it would assert is already this
+# suite's `hook strips markdown link chars` check on the same shape.
 import fact_schema as _fs  # noqa: E402  — the vocabulary itself, never a copy of it
 _PTR_PREFIX = "- [foo](bar--foo.md) — d"
 _VOCAB_TAIL = {""} | {f" [{v}]" for v in _fs.SCOPES}
