@@ -889,7 +889,7 @@ equal and no item is built. The line qualifier carries weight for a second, inde
 reason: a mirror whose body is in sync can still carry an anchored line written from an older
 description — `_body_hash` is body-only — and the `elif` reads the **line**, so being in sync
 does not disqualify it. Its delta is its own drift's: zero across the four-wide `ceil(chars/4)`
-window the anchored line lands in, *positive* below that window and negative above it — and the
+window the anchored line lands in, *negative* below that window and positive above it — and the
 window contains the equal-length point, so up to three lengths where the current description is
 *already* the longer still tie at zero. And it is four wide only while both descriptions sit
 under the 88-character hook cap, since `_pointer_line` keeps `desc[:88]` — past it, two
