@@ -79,9 +79,13 @@ _line_cost_run[_m.group(1)] = est_tokens(_ln)     # key = "tools--python-ruff-my
 ```
 
 `_plan_pull` charges a STALE refresh `cost_new - cost_old` and **always runs** it
-(`if status == "MISSING":` in `sync_global.py`), so a `cost_old` pinned at `0` books a
-full line where the real delta applies. The beacon (the `line_cost` build in
-`session_beacon.py`) builds the identical map and adds a sharper failure:
+(`elif status == "STALE-mirror":` in `sync_global.py`, a bare `idx += cost_new - cost_old`
+with no gate on it), so a `cost_old` pinned at `0` books a full line where the real delta
+applies. The neighbouring `if status == "MISSING":` arm is the **gated** one — it routes its
+delta through `_would_net_grow` and can *hold* the pull — which is why the ungated STALE arm
+is the one that matters here: an over-charge there meets no growth gate at all. The beacon
+(the `line_cost` build in `session_beacon.py`) builds the identical map and adds a sharper
+failure:
 `elif cost_old and cost_new != cost_old:` is falsy whenever `cost_old == 0`, so a
 cross-domain STALE item is **never constructed**.
 
@@ -124,8 +128,9 @@ regression test must pin.
 
 ## 4. Corrections the review forced
 
-Two claims in the first draft of this spec were wrong. Both are recorded here rather
-than quietly edited, because the errors are the interesting part.
+Three claims in the first draft of this spec were wrong. All three are recorded here rather
+than quietly edited, because the errors are the interesting part. (The paragraph said "two"
+until review — (c) sits below it and was outside the count.)
 
 **(a) "MISSING is unaffected" — FALSE.** The first draft argued that on first delivery
 there is no line to replace, so the append branch is correct. There **is** a line to
@@ -240,9 +245,21 @@ namespacing exists to separate.
 Backward-compatible by construction: same-domain mirrors have `_j_key == name`, so their
 behaviour is bit-identical. No frontmatter, schema, or file-key change.
 
-**Site census.** Every site that derives a key from a fact name and consumes it as a match
-target, a lookup key, or a file path — not merely the `apply_pointer` callers. Each row
-names a **greppable anchor**, not a line number:
+**Site census.** Every site that consumes a `](…)` index-target match — not merely the
+`apply_pointer` callers. The frame was widened once in review, and this is the boundary it
+settled on, stated so a reader can apply it to a site not listed here: **a key taken from the
+store's own listing — `Path.stem` over a glob, or a name matched against the index — is always
+right; a key taken from a registry or frontmatter fact *name* and consumed against a store that
+can hold mirrors is the defect.** The boundary is necessary, not sufficient: a site inside it
+can still be cleared by a guard upstream, and two rows below are (a mirror is refused as an
+evict target; the demotion population filters mirrors out).
+
+The first draft's frame — "derives a key from a fact name and consumes it as a match target, a
+lookup key, or a file path" — was **wider than its own table**. It named a file-path leg the
+table carried in one row (the three writers that *take* their key from `_mirror_key`), and it
+left four match sites unclaimed, because none of them derives its key from a fact name. All
+four are below; the first is the counter-example the whole fix turns on. Each row names a
+**greppable anchor**, not a line number:
 
 | site — greppable anchor | leg | affected |
 |---|---|---|
@@ -251,6 +268,11 @@ names a **greppable anchor**, not a line number:
 | `_line_cost_run.get(_j_key` (`_line_cost_run` lookup) | B | **yes** |
 | `line_cost.get(_bk` (`line_cost` lookup, `session_beacon.py`) | B | **yes** |
 | `store / f"{_g_mkey}.md"` (gc DEAD report) | A — identity use, not a matcher | **yes** — fixed here, pinned by §9 #9 |
+| `f"]({stem}.md)" in ln or f"]({stem})" in ln` (**the matcher itself**, `apply_pointer` in `index_admission.py`) | A | **the matcher**, not a call site — the parameter *is* the key: every row above decides what it receives, and this is the only place a `](…)` target is actually compared. It also accepts the bare `]({stem})` form, which is why the namespaced-vs-bare miss is total on both spellings |
+| `f"]({_j_key}.md)" in ln and ln.strip() == ptr.strip()` (`ptr_unchanged`) | — | no — **the counter-example**: the *same* `_mirror_key`-derived input the four `yes` sites take, consumed as the namespaced anchor. This is what the fix makes the other four agree with |
+| `anchor = f"]({stem}.md)"` (`_index_line_cost`) | — | no — one caller passes an `--evict=` name, cleared by the upstream mirror refusal; the other an `f.stem` |
+| `f"]({stem}.md)" in ln` (demotion `hook_tokens`, `memory_status.py`; an unrelated second hit in `index_admission.py`) | — | no — `stem` is `f.stem` off the store's own listing, and the population is filtered `not _is_mirror(…)` |
+| `hook = f"]({stem}.md)"` (`migrate finalize` catalog check, `cm_ops.py`) | — | no — checked against a **canonical**-store catalog, where the namespaced form cannot arise |
 | `f"]({evict_stem}.md)" not in ln` ×2 (plan + execute evict filters) | — | no |
 | `f"]({name}.md)" not in ln` (gc strip) · `f"]({_k}.md)" not in ln`, `f"]({name})" not in ln` (`cm_ops` revoke + quarantine) | — | no |
 | `apply_pointer(idx, ptr, stem)`, `apply_pointer(at, ptr, stem)`, `f"]({stem}.md)" not in ln` ×2 (`local_ingress.py` upsert / archive / forget) | — | no |
@@ -285,9 +307,14 @@ from `f.stem` and match correctly; `local_ingress`'s three entry points
 `canonical_ingress` sites *listed above* operate inside one domain's catalog where the
 namespaced form cannot arise (`ctx.canonical_domain_dir / f"{f.stem}.md"` does not, and is
 treated separately below). The one `canonical_ingress` row that is **not** a catalog site —
-`f"]({old}.md)" not in ln`, with `old = origin_delete.stem` — takes its key from the file it
-is about to delete and strips it from that file's own store index, so the strip names exactly
-the file whose pointer the writer wrote: the same identity the last row below rests on.
+`f"]({old}.md)" not in ln`, with `old = origin_delete.stem` — strips a line naming the file it
+is about to delete out of the **destination's** index, not that file's own: the index it edits
+is the one bound by that block's own `idxp = origin_local.parent / "MEMORY.md"`, while `old`
+comes from a *separate* parameter (`origin_delete`, declared independently, and the code below
+contemplates the two differing — `same_origin`, and the `if not same_origin:` arm that adds a
+second delete). So the strip is a cross-file identity, not a self-identity. The outcome is
+identical anyway, and for the reason the `local_ingress` rows share: both stems are bare native
+stems — `Path.stem` of files in one project's native store, which no namespacing reaches.
 
 **A correction to the first draft's rationale:** the `local_ingress` rows were justified
 as "native store, no mirrors". That is false — the native store *does* hold mirrors. They
@@ -336,8 +363,8 @@ true).
 
 **The draft also claimed a second carrier, and that carrier does not reach the cross-domain
 case — saying it did was an over-claim.** `--gc --apply` does call `ack_tombstoned_mirrors`
-itself before the orphan scan
-— but that name is a two-line back-compat alias for `reconcile_inactive_mirrors`, and the
+itself before the orphan scan — but that name is a three-line back-compat alias for
+`reconcile_inactive_mirrors` (signature, docstring, one `return`), and the
 aliased body probes `ctx.canonical_domain_dir / f"{f.stem}.md"` with `reg_status` built under
 `WHERE domain_id=?` (`ctx.domain_id`). A cross-domain mirror's file stem **is** its mirror key
 (`tools--mag-pb`), so that probe resolves in *this* domain for a file that can only exist in
@@ -350,12 +377,26 @@ a backstop: **read this clause as a hole, because a maintainer who takes it for 
 carrier will delete the exclusion above believing the call still covers it — which is the same
 inversion, one level up.**
 
-**And "never unreclaimable" is bounded by one more guard.** gc refuses outright when there are
-no admissible canonicals ("cannot distinguish that from all-canonicals-deleted"), so in a store
-whose every canonical is dead, gc reclaims nothing and the mirrors wait for the domain to
-regain a live fact. A deliberate trade, not a defect — but it makes the honest form of the
-claim *a deferred reclaim, never an unreclaimable one **while a live canonical exists***.
-Left un-run, they persist until someone runs gc.
+**And "never unreclaimable" is bounded by one more guard — but not the one the first draft
+named.** gc refuses outright when the canonical dir holds **no `.md` files at all** and
+leftover mirrors are present; the message it prints there ("cannot distinguish that from
+all-canonicals-deleted") names the hazard correctly. Two corrections to the draft, pulling the
+same claim narrower from opposite sides. (i) The predicate is **file presence, not
+admissibility** — `_has_canon_files` tests `any(p.suffix == ".md" and p.name != "MEMORY.md")`
+over the canonical domain dir (`_global_is_fixture()` falls back to the global store's, a
+test-only arm). "No admissible canonicals" is only the *label*, and only on the
+`cross_project_allowed` branch of the refusal; a domain full of ineligible-but-present
+canonicals passes. (ii) The gloss ran **backwards**. The draft said a store whose every
+canonical is *dead* reclaims nothing; the reverse is true, and the source says it in terms —
+"Tombstones still sit as .md files, so forget-then-GC still proceeds." A tombstone keeps its
+`.md` file, so an all-dead store **passes** this guard and gc reclaims normally. The bound is
+therefore about *deletion*, not liveness: while any canonical file remains on disk — live or
+tombstoned — gc runs. Only a domain whose canonical dir has been emptied of `.md` files
+outright, mirrors still pointing into it, is refused, and that is the mass-wipe guard (Probe
+G), not a liveness one. So the honest form of the claim is *a deferred reclaim, never an
+unreclaimable one **while canonical files remain in the domain's canonical dir*** — and since
+tombstones count as files, that is a weaker bound than "while a canonical is live". Left
+un-run, they persist until someone runs gc.
 
 ## 8. Invariants — conserved, and changed
 
@@ -585,10 +626,26 @@ to is now eleven checks.
 
 **Every count in this section is as of the revision it was measured at, and each tally names
 its own total: `passed + failed` IS the suite size then.** The size grows with every check
-added — 1772 → 1776 → 1777 → 1778 within this cycle alone — so the durable claim is always
-the **failure set** (which check failed, and whether it failed *alone*), never the count. A
-count quoted in the present tense has been re-measured at the current revision; the ones in
-failures 1–6 carry their total in the prose around them.
+added — `1767 → 1775 → 1777 → 1778` from `main`'s base to HEAD, the branch's three
+check-adding commits carrying +8, +2 and +1 — so the durable claim is always the **failure
+set** (which check failed, and whether it failed *alone*), never the count. A count quoted in
+the present tense has been re-measured at the current revision; the ones in failures 1–6 carry
+their total in the prose around them.
+
+**The first version of that ladder was wrong in exactly the way the paragraph above warns
+about.** It read `1772 → 1776 → 1777 → 1778`, whose first two rungs are `passed` fields — 1772
+is the passed count of the six-failure write-side mutant run, 1776 the passed count at 1777 —
+and so are precisely what the paragraph above says a suite size is not (`passed + failed` IS
+the size). It also contradicted **failure 5's note** below, which says in terms that 1776 is a
+clean run of no committed revision. The corrected rungs are the four committed D6 literals:
+`1740 + 27` on `main`, then `1748 + 27`, `1750 + 27`, `1750 + 28`.
+
+*(That reference was a line distance when this paragraph was written — "111 lines below" — and
+it went stale within the same review round, because the fixes above it moved the target. Three
+lines, no more: the same silent-short drift §7 measures for `file:line` citations. It is
+recorded here rather than quietly patched because it is §10's rule on derived figures catching
+an author who had just written it, and because the corrected number would have gone stale again
+on the next edit. Name the anchor; the anchor is greppable and the number never was.)*
 
 **Failure 1 — the tautology.** The first MISSING-leg pin called
 `apply_pointer(text, line, "personal--grp-fact")` — *passing the correct key by hand*. The
@@ -777,12 +834,20 @@ heals to a single line in one refresh. Three limits, all honest:
   in-sync re-pull leaves a hand-damaged index byte-identical; the next STALE refresh
   converges it to one line.
 - **There is no duplicate-pointer detector anywhere in the tree.** Verified across every
-  site that parses `](…)` index targets — `memory_status.py`'s `_LINK_RE`, and the
+  site that parses `](…)` index targets — `memory_status.py`'s `_LINK_RE` (four further sites
+  in that module: two set builds, a `search` filter, and a match-count shape test — none
+  comparing targets); its **one** importer,
+  `extract_signals.py`, which `findall`s the same regex into **set arithmetic**, `arch -
+  indexed` — a tier partition that structurally *cannot* see a duplicate, since two identical
+  lines collapse to one element before any comparison could run; `index_admission.py`'s
+  `_POINTER_TARGET_RE`, a generic `](…)`
+  capture used per-target for admission syntax, never target-against-target; and the
   `re.search(r"\]\(([^)]+)\.md\)", …)` call in each of `local_ingress.py`,
   `session_beacon.py`, and `sync_global.py` (which has two: the cost-map build and the
   `mirror_stems` tally) — none compares
-  targets against each other; `index_admission.py:98`'s "duplicate archive target" is
-  `SHIPPED.md`, a different file. A duplicate can therefore persist silently.
+  targets against each other; the one message that reads like a detector, `archive_index`'s
+  "duplicate archive target" (`index_admission.py:98`), governs `SHIPPED.md` — a different
+  file, as its own docstring says. A duplicate can therefore persist silently.
 - **`cm local rebuild-index --apply --confirm rebuild-local-index` is the immediate
   repair** — it emits one `_pointer_line` per file from a glob, so N duplicate lines
   collapse to 1 regardless of anchors. It is compatible with the fix: it calls
