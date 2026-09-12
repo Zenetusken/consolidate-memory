@@ -60,13 +60,13 @@ the append branch runs unconditionally. Reproduced against the real function:
 | `tools--python-ruff-mypy-gate` (the anchor it already computed) | correct in-place replacement |
 
 **The strongest evidence that this is an oversight and not a design choice** sits *inside
-the same loop body*, two lines above the execute-site defect:
+the same loop body*, two lines above the execute-site defect (pre-fix tree):
 
 ```python
 ptr_unchanged = any(
-    f"]({_j_key}.md)" in ln and ln.strip() == ptr.strip()   # :1474 — matches on the RIGHT key
+    f"]({_j_key}.md)" in ln and ln.strip() == ptr.strip()   # matches on the RIGHT key
     for ln in idx_text.splitlines())
-future = apply_pointer(idx_text, ptr, name)                  # :1476 — …and this one doesn't
+future = apply_pointer(idx_text, ptr, name)                  # …and this one doesn't
 ```
 
 **Leg B — the accounting key (read path).** The same confusion, at sites that never call
@@ -74,15 +74,16 @@ future = apply_pointer(idx_text, ptr, name)                  # :1476 — …and 
 index** (the namespaced anchor) and looked up by the **bare stem**:
 
 ```python
-_line_cost_run[_m.group(1)] = est_tokens(_ln)     # sync_global.py:2237  key = "tools--python-ruff-mypy-gate"
-....get(name, 0)                                  # sync_global.py:2239  lookup = "python-ruff-mypy-gate" → 0
+_line_cost_run[_m.group(1)] = est_tokens(_ln)     # key = "tools--python-ruff-mypy-gate"
+....get(name, 0)                                  # lookup = "python-ruff-mypy-gate" → 0
 ```
 
 `_plan_pull` charges a STALE refresh `cost_new - cost_old` and **always runs** it
-(`sync_global.py:1670-1671`), so a `cost_old` pinned at `0` books a full line where the
-real delta applies. The beacon (`session_beacon.py:213-216`, `:227`) builds the identical
-map and adds a sharper failure: `elif cost_old and cost_new != cost_old:` (`:231`) is
-falsy whenever `cost_old == 0`, so a cross-domain STALE item is **never constructed**.
+(`if status == "MISSING":` in `sync_global.py`), so a `cost_old` pinned at `0` books a
+full line where the real delta applies. The beacon (the `line_cost` build in
+`session_beacon.py`) builds the identical map and adds a sharper failure:
+`elif cost_old and cost_new != cost_old:` is falsy whenever `cost_old == 0`, so a
+cross-domain STALE item is **never constructed**.
 
 The three concrete instances share one signature — **the correct namespaced key is
 computed within a line or two and used correctly for an adjacent purpose, while a derived
@@ -90,9 +91,9 @@ quantity falls back to the bare stem**:
 
 | site | correct use (nearby) | wrong use |
 |---|---|---|
-| `sync_global.py:1476` | `:1474` — `ptr_unchanged` matches `]({_j_key}.md)` | `apply_pointer(…, name)` |
-| `sync_global.py:2239` | `:2237` — the map is *keyed* by the full anchor | `.get(name, 0)` |
-| `session_beacon.py:227` | `:229` — `(store / f"{_bk}.md").exists()` | `line_cost.get(n, 0)` |
+| the execute-loop matcher, `sync_global.py` | `ptr_unchanged` matches `]({_j_key}.md)` | `apply_pointer(…, name)` |
+| the `_line_cost_run` build, `sync_global.py` | the map is *keyed* by the full anchor, `re.search(r"\]\(([^)]+)\.md\)", …)` | `.get(name, 0)` |
+| the `line_cost` lookup, `session_beacon.py` | `(store / f"{_bk}.md").exists()` | `line_cost.get(n, 0)` |
 
 This is one unfinished refactor, not three typos: namespacing was applied to the
 **identity uses** (filenames, existence checks — where a wrong key throws immediately)
@@ -132,7 +133,8 @@ replace: the member's own **native fact with the same stem**, whose pointer is a
 `](stem.md)`. `apply_pointer` matches it, takes the *replace* branch, and the local
 fact's index pointer is **deleted** — file intact, always-loaded entry gone. Reproduced
 end-to-end through the real `run(<project>, pull=True)`, with attribution proven by
-intercepting the call site (`sync_global.py:1447`/`:1476`, `namespaced_link=True`); the
+intercepting the call site (the plan- and execute-loop matchers in `sync_global.py`,
+`namespaced_link=True`); the
 spec's fix restores the local line and appends the mirror.
 
 This fires at **delivery**, not just refresh, so it is the more reachable of the two
@@ -178,7 +180,8 @@ fleet rather than leaving a repair backlog.
 
 **Leg B is the live one.** Its effects are decision-bearing rather than cosmetic: the
 same `items` list feeds both the hold decision and the `--evict` A/B gain-gate
-(`sync_global.py:2242`, `:2284`). Measured near the ceiling (341 filler lines,
+(`plan = _plan_pull(items,` and `plan_evict = _plan_pull(items,`, `sync_global.py`).
+Measured near the ceiling (341 filler lines,
 `seed = 3788 tok`, `INDEX_CEILING_TOKENS = 3840`):
 
 ```
@@ -225,9 +228,10 @@ items = [(name, status, est_tokens(_pointer_line(name, fm)),
          if rel and status in ("MISSING", "STALE-mirror")]
 ```
 
-At `session_beacon.py:227` this is a **reorder**, not an edit in place: `_bk` is already
-computed at `:228` and used correctly at `:229`, one line *below* where the lookup needs
-it, so the lookup must move above it (or call `_mirror_key(...)` inline).
+At the beacon's `line_cost` lookup this is a **reorder**, not an edit in place: `_bk` is
+already computed, and used correctly by the `store / f"{_bk}.md"` probe one line *below*
+where the lookup needs it, so the lookup must move above it (or call `_mirror_key(...)`
+inline).
 
 **Do not key the cost maps by bare stem instead.** `tools--foo` and `personal--foo` can
 both be mirrored into one store, and collapsing them to `foo` collides exactly the case
@@ -236,37 +240,63 @@ namespacing exists to separate.
 Backward-compatible by construction: same-domain mirrors have `_j_key == name`, so their
 behaviour is bit-identical. No frontmatter, schema, or file-key change.
 
-**Site census.** Every site that derives a key from a fact and consumes it as a match or
-lookup target — not merely the `apply_pointer` callers:
+**Site census.** Every site that derives a key from a fact name and consumes it as a match
+target, a lookup key, or a file path — not merely the `apply_pointer` callers. Each row
+names a **greppable anchor**, not a line number:
 
-| site | leg | affected |
+| site — greppable anchor | leg | affected |
 |---|---|---|
-| `sync_global.py:1447` (plan loop matcher) | A | **yes** |
-| `sync_global.py:1476` (execute loop matcher) | A | **yes** |
-| `sync_global.py:2239` (`_line_cost_run` lookup) | B | **yes** |
-| `session_beacon.py:227` (`line_cost` lookup) | B | **yes** |
-| `local_ingress.py:292`, `:413` | — | no |
-| `canonical_ingress.py:499`, `:543`, `:1063` | — | no |
-| `sync_global.py:1442`, `:1464` (evict filters) | — | no |
-| `sync_global.py:3195` (gc strip) · `cm_ops.py:2198`, `:167` | — | no |
-| `sync_global.py:3300` (gc DEAD report) | A | **yes** — fixed here, pinned by §9 #9 |
-| `canonical_ingress.py:988` (inactive-canonical sweep) | — | no — cleared by *unreachability*; see below |
-| `local_ingress.py:344`, `:404` (index strip) | — | no |
+| `apply_pointer(planned,` (plan-loop matcher) | A | **yes** |
+| `apply_pointer(idx_text, ptr, _j_key)` (execute-loop matcher) | A | **yes** |
+| `_line_cost_run.get(_j_key` (`_line_cost_run` lookup) | B | **yes** |
+| `line_cost.get(_bk` (`line_cost` lookup, `session_beacon.py`) | B | **yes** |
+| `store / f"{_g_mkey}.md"` (gc DEAD report) | A — identity use, not a matcher | **yes** — fixed here, pinned by §9 #9 |
+| `f"]({evict_stem}.md)" not in ln` (plan + execute evict filters) | — | no |
+| `f"]({name}.md)" not in ln` (gc strip) · `f"]({_k}.md)" not in ln`, `f"]({name})" not in ln` (`cm_ops` revoke + quarantine) | — | no |
+| `apply_pointer(idx, ptr, stem)`, `apply_pointer(at, ptr, stem)`, `f"]({stem}.md)" not in ln` ×2 (`local_ingress.py` upsert / archive / forget) | — | no |
+| `apply_pointer(catalog, pointer, stem)`, `apply_pointer(idx_text, ptr, stem)`, `apply_pointer(idx, ptr, rstem)`, `f"]({stem}.md)" not in ln` ×4 (`canonical_ingress.py` catalog writes) | — | no |
+| `f"]({old}.md)" not in ln` (`old = origin_delete.stem`, `canonical_ingress.py` origin-delete arm) | — | no — a **native**-store stem against the native store's own index; see below |
+| `ctx.canonical_domain_dir / f"{f.stem}.md"` (inactive-canonical sweep) | — | no — cleared by *unreachability*; see below |
+| `path = store / f"{mkey}.md"` (the pull writer) · `store / f"{_gk}.md"` (`_store_gaps`) · `store / f"{_bk}.md"` (beacon mirror probe) | — | no — these **take** the key from `_mirror_key`; see below |
 
-The rows below the divide were cleared **by execution, not reading**, in review:
+**Why the anchors and not line numbers.** The first draft cited `file:line`, and the
+displacement was measured, not feared: by the time this branch was reviewed, four of the
+five `yes` rows and two of the six `no` rows had drifted onto a neighbouring line, while
+every citation into a file the change never touched stayed exact. The split is the
+mechanism — **the commit that carries a citation is the commit that edits the file it
+cites**, so a number's correctness depends on how many lines that same work inserts above
+it. It fails silently too: a stale number still resolves, just to the wrong thing (`:1447`
+landed on a comment, `:3195` on an `else:`). A greppable string has no such dependency.
+Same lesson as §9's counts and the D6 constant, one level down — a value that must be kept
+in sync by hand drifts; one that *is* the thing does not (`docs/deep-field-theme.spec.md`
+§11).
+
+The rows marked `no` were cleared **by execution, not reading**, in review:
 the evict filters cannot receive a namespaced stem (a mirror is refused as an evict
-target at `sync_global.py:2263`, so `evict_stem` is always a bare local stem); gc's strip
-and `cm group remove`'s revoke both build their key from `f.stem` and match correctly;
-`local_ingress`'s three entry points (`forget`/`archive`/`upsert`) all refuse a managed
-mirror before writing; the `canonical_ingress` sites *listed above* operate inside one
-domain's catalog where the namespaced form cannot arise (`:988` does not, and is treated
-separately below).
+target — `_is_mirror(_ep_text)`, "is a managed MIRROR (global_ref)" — so `evict_stem` is
+always a bare local stem); gc's strip and `cm group remove`'s revoke both build their key
+from `f.stem` and match correctly; `local_ingress`'s three entry points
+(`forget`/`archive`/`upsert`) all refuse a managed mirror before writing; the
+`canonical_ingress` sites *listed above* operate inside one domain's catalog where the
+namespaced form cannot arise (`ctx.canonical_domain_dir / f"{f.stem}.md"` does not, and is
+treated separately below). The one `canonical_ingress` row that is **not** a catalog site —
+`f"]({old}.md)" not in ln`, with `old = origin_delete.stem` — takes its key from the file it
+is about to delete and strips it from that file's own store index, so the strip names exactly
+the file whose pointer the writer wrote: the same identity the last row below rests on.
 
 **A correction to the first draft's rationale:** the `local_ingress` rows were justified
 as "native store, no mirrors". That is false — the native store *does* hold mirrors. They
 are safe for the reason just given: all three entry points refuse a managed mirror first.
 A right conclusion resting on a wrong reason is the kind of thing that survives review
 until someone relies on the reason.
+
+**The last row is cleared by construction, not by a guard.** The pull writer's
+`path = store / f"{mkey}.md"`, `_store_gaps`' `store / f"{_gk}.md"`, and the beacon's
+`store / f"{_bk}.md"` all take their key *directly* from `_mirror_key` — they **are** the
+writer's key use, so the file key and the index anchor agree because there is only ever one
+value. They are listed because they are the same shape (one key consumed as both), and
+because they are the three sites a future refactor would have to carry with it: the moment
+the anchor stops being the file key, these are the first to break.
 
 **One row is cleared by a different argument, and it is called out for that reason.**
 `canonical_ingress.py:988` takes a **native-store** filename stem (`f.stem` — a mirror key
@@ -287,14 +317,15 @@ it had listed.
 re-derive the bound before trusting it. The dead-canonical case is what that sweep would have
 collected, and it is also the case `_mirror_canonical_path` refuses to resolve: it returns
 `None` when the canonical is absent *or* its status is `tombstoned`/`superseded`/`expired`
-(`sync_global.py:2899`, `:2910`), on the reasoning that a tombstone holds no re-pullable
+(inside `_mirror_canonical_path`), on the reasoning that a tombstone holds no re-pullable
 content and so its mirror is orphaned. `_orphans` then scans against the same live-stem set
-the mass-delete guard uses — `_local_stems`, built from `iter_canonical_stems_for_gc` at
-`sync_global.py:3085` and widened by the facts pairs just below — so `--gc --apply` reclaims
+the mass-delete guard uses — `_local_stems`, built from `iter_canonical_stems_for_gc`
+and widened by the facts pairs just below — so `--gc --apply` reclaims
 precisely the mirrors the ack sweep would have. Two clauses carry that guarantee and are worth
 naming, because citing the container alone leaves the claim reading safe after a change that
-would void it: the exclusion sits *inside* the enumerator — `sync_global.py:1013-1016`
-`continue`s on a tombstoned/superseded/expired status, which is what keeps the tombstone's own
+would void it: the exclusion sits *inside* the enumerator — the
+`if … .get("status") … in ("tombstoned", "superseded", "expired"):` guard `continue`s on that
+status, which is what keeps the tombstone's own
 stem **out** of the live set (delete that and the mirror stops reading as orphaned while this
 paragraph still reads true) — and `--gc --apply` calls `ack_tombstoned_mirrors` itself
 (`:3077-3078`), before the orphan scan, so the containment is by *call* and not merely by set
@@ -308,7 +339,7 @@ arm), measured pre-fix == post-fix. `apply_pointer`'s contract: unchanged — no
 change, so no new false-match surface. The `--` ambiguity refusal in `_mirror_key` is
 untouched; this fix consumes its output rather than re-deriving it. The beacon's
 `missing`/`stale` **counts** are unaffected (they come from `_store_gaps`, which keys
-correctly on the mirror file key at `sync_global.py:4594`) — only its `held` projection
+correctly on the mirror file key inside `_store_gaps`) — only its `held` projection
 moves.
 
 **Changed — and both changes are the point.**
@@ -675,7 +706,8 @@ the same reason a half-applied fix does — the check set *looked* complete. Mut
 the run-side revert alone (the anchor dropped from the projected cost, `cost_old` still
 anchored) left the suite at **1777 passed, 0 failed**: entirely green. It was found by
 running the mutant the review's own `cost_new` finding implies, at the **second** site that
-finding named — the review listed both (`session_beacon.py:226` and `sync_global.py:2250`)
+finding named — the review listed both (`cost_old = line_cost.get(_bk, 0)` in
+`session_beacon.py` and `_line_cost_run.get(_j_key` in `sync_global.py`)
 and both were fixed in the branch, so only a mutation round could show that one of the two
 had no detector behind it.
 
@@ -705,15 +737,18 @@ the four.
 first match and drops the rest, so a store carrying a stale line *above* the correct one
 heals to a single line in one refresh. Three limits, all honest:
 
-- **Healing is refresh-gated.** The index temp is staged at exactly one site,
-  `if jobs or evict_stem:` (`sync_global.py:1531`), and `jobs` is built only for
-  `MISSING`/`STALE-mirror` (`:2315-2359`) — so an `in-sync` fact stages no index write and
+- **Healing is refresh-gated.** The index temp is staged at exactly one site, the
+  `temps[str(idxp)] = idx_text` write under the run-side `if jobs or evict_stem:`, and `jobs`
+  is built only for `MISSING`/`STALE-mirror` (`pull_jobs.append(`, `sync_global.py`) — so an
+  `in-sync` fact stages no index write and
   a damaged index stays damaged until the canonical next changes. Measured end-to-end: an
   in-sync re-pull leaves a hand-damaged index byte-identical; the next STALE refresh
   converges it to one line.
 - **There is no duplicate-pointer detector anywhere in the tree.** Verified across every
-  site that parses `](…)` index targets (`memory_status.py:1220` `_LINK_RE`,
-  `local_ingress.py:453`, `session_beacon.py:214`, `sync_global.py:2236`) — none compares
+  site that parses `](…)` index targets — `memory_status.py`'s `_LINK_RE`, and the
+  `re.search(r"\]\(([^)]+)\.md\)", …)` call in each of `local_ingress.py`,
+  `session_beacon.py`, and `sync_global.py` (which has two: the cost-map build and the
+  `mirror_stems` tally) — none compares
   targets against each other; `index_admission.py:98`'s "duplicate archive target" is
   `SHIPPED.md`, a different file. A duplicate can therefore persist silently.
 - **`cm local rebuild-index --apply --confirm rebuild-local-index` is the immediate
@@ -770,8 +805,8 @@ rebuild-index` clears it, same as the dead variant" — is **false for this shap
 `_pointer_line(f.stem, fm)` **per file**, so with both the bare-keyed mirror and the
 namespaced one on disk it plans a line for each; it drops only lines whose target file is
 gone (`would_remove_existing_pointers = existing_ptrs - planned`). `--gc` does not reclaim it
-either, and for a reason worth naming: the scan that could take it, `_orphans(...,
-pair_keys=True)` (`sync_global.py:2711`), reconstructs the pair from the **mirror's own
+either, and for a reason worth naming: the scan that could take it, the `_orphans(...,
+pair_keys=True)` call in `sync_global.py`, reconstructs the pair from the **mirror's own
 frontmatter** (`canonical_domain` + `name`), not from its filename — so the stale bare-keyed
 file resolves to the *live* canonical pair and is correctly classified as neither an orphan
 nor FROZEN (`_classify_frozen`, `:2907`, returns `None` for admitted-and-relevant). In other
