@@ -1654,8 +1654,8 @@ def _plan_pull(items: list, start_idx: int, allow_net_grow: bool, budget: int) -
     comment papered over), so near the ceiling an evict could pass its fit-check yet land nothing.
 
     `items` = (name, status, cost_new, cost_old) for every RELEVANT MISSING/STALE-mirror fact in
-    loop order; cost_old is the fact's REAL existing index line (_index_line_cost, usually 0 for
-    MISSING). A MISSING pull grows the index by (cost_new - cost_old) unless that would net-grow
+    loop order; cost_old is the fact's REAL existing index line, keyed by its MIRROR KEY as run()'s
+    map is — not by _index_line_cost (whose anchor is bare). A MISSING pull grows the index by (cost_new - cost_old) unless that would net-grow
     past `budget` (→ HELD, at its full pointer cost for display); a STALE-mirror refresh ALWAYS
     runs and contributes its real pointer delta (F4: refresh deltas were previously untracked, so
     a later hold decision used a stale figure and breached the ceiling by a measured +22t).
