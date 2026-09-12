@@ -5529,11 +5529,11 @@ with _tf73.TemporaryDirectory() as _td81:
     # spec §9, review F2a — the PHANTOM-DELTA pin. The C1 regression (caught in this cycle's
     # review, introduced by the first cut of the cost-site fix) ANCHORED cost_old while
     # leaving cost_new on the bare stem. For an IN-SYNC cross-domain mirror those two costs
-    # differ by exactly the anchor text (`work--`, ~2 tok), so `elif cost_old and cost_new !=
-    # cost_old` fired for a mirror that needed NO refresh — a phantom STALE-mirror item whose
-    # delta is NEGATIVE. _plan_pull ADDS that delta to the running index, so the phantom
-    # RELIEVES the ceiling and lets a MISSING fact be booked as absorbable that a real --pull
-    # holds: the beacon advertising a pull the run refuses.
+    # differ by exactly the anchor text (`work--`, ~2 tok), so
+    # `elif cost_old and cost_new != cost_old` fired for a mirror that needed NO refresh — a
+    # phantom STALE-mirror item whose delta is NEGATIVE. _plan_pull ADDS that delta to the
+    # running index, so the phantom RELIEVES the ceiling and lets a MISSING fact be booked as
+    # absorbable that a real --pull holds: the beacon advertising a pull the run refuses.
     #
     # It lives HERE, not with the other §9 pins in the groups block: `held` is only observable
     # near the ceiling, and this is the fixture that sits at it.
