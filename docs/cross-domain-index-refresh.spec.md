@@ -309,6 +309,13 @@ Same lesson as §9's counts and the D6 constant, one level down — a value that
 in sync by hand drifts; one that *is* the thing does not (`docs/deep-field-theme.spec.md`
 §11).
 
+**And a greppable string has an acceptance test — its hit count, not its uniqueness.** An
+anchor quoted inside the citing sentence can never be unique, because the citation contains
+its own anchor; so a **quoted** anchor is stated with its hit count and each hit named, and
+only an anchor that is *not* quoted may be called unique. §9.1's footnote is the instance —
+it names its two hits and says which is the note — and this paragraph is the rule that
+footnote was measuring itself against.
+
 The rows marked `no` were cleared **by execution, not reading**, in review:
 the evict filters cannot receive a namespaced stem (a mirror is refused as an evict
 target — `_is_mirror(_ep_text)`, "is a managed MIRROR (global_ref)" — so `evict_stem` is
@@ -871,7 +878,7 @@ heals to a single line in one refresh. Three limits, all honest:
   a damaged index stays damaged until the canonical next changes. Measured end-to-end: an
   in-sync re-pull leaves a hand-damaged index byte-identical; the next STALE refresh
   converges it to one line.
-- **There is no duplicate-pointer detector anywhere in the tree.** Verified across every
+- **There is no duplicate-pointer detector on the always-loaded index.** Verified across every
   site that parses `](…)` index targets — `memory_status.py`'s `_LINK_RE` (four further sites
   in that module: two set builds, a `search` filter, and a match-count shape test — none
   comparing targets); its **one** importer,
