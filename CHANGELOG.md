@@ -5,6 +5,68 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.26] — 2026-09-12
+
+**Patch — the cross-domain mirror index refresh: one root cause, two legs, four sites.**
+
+`_mirror_key(ctx_domain, fact_domain, stem)` returns the bare stem for a same-domain fact
+and `f"{fdom}--{stem}"` for a cross-domain one, and that single value is **both** the
+fact's filename and its index anchor. Four sites derived a different quantity — the bare
+stem — and got it wrong, in two directions:
+
+- **Leg A, the write path.** `apply_pointer` matches `]({stem}.md)`, so a namespaced href
+  never matched the bare stem it was passed. Every cross-domain refresh **appended** a
+  duplicate index line instead of replacing in place — and on a MISSING delivery it
+  **evicted a same-stem native pointer**, deleting a local fact from the always-loaded
+  index while its file survived on disk. The line count did not move, which is why the
+  first draft of the spec read the whole delivery path as unaffected. Both write sites
+  (the plan loop and the execute loop) now pass the same anchored value; they must agree
+  or the executed write diverges from the planned one.
+- **Leg B, the read path.** Both cost maps are keyed by the link *target* (the namespaced
+  anchor) and were looked up by the bare stem, so `cost_old` pinned at `0`. Run-side that
+  booked a full line for a refresh where only the replaced delta applies, holding pulls
+  the index had room for; beacon-side the `elif cost_old and …` went falsy and the STALE
+  item was never built at all. Fixing the matcher alone flips the append into a replace,
+  so the **accidentally-correct** estimate becomes a 19-tok overstatement against a real
+  17-tok delta — which is why the writer and its accounting model ship as one change.
+
+Two findings from the adversarial review round, both on the read side:
+
+- **The `--gc` dead-probe asked the wrong question.** It classified a mirror as dead by
+  testing for a file keyed by the bare canonical stem; for a live cross-domain mirror that
+  file cannot exist, so a **live** mirror was reported dead. The probe now derives the key
+  the way the writer does, and an *uncomputable* key (a `--` ambiguity) is treated as
+  unknown rather than dead — that arm must not guess.
+- **A phantom refresh delta, introduced by the first cut of the Leg B fix.** Anchoring
+  `cost_old` while leaving `cost_new` bare made the two differ by exactly the anchor text
+  (~2 tok) for an **in-sync** cross-domain mirror, firing the STALE branch for a mirror
+  that needed no refresh. The item's delta is **negative**, and `_plan_pull` *adds* deltas
+  — so the phantom **relieved** the ceiling and booked a missing fact as absorbable that a
+  real `--pull` holds: the beacon advertising a pull the run refuses, the same divergence
+  class the fix exists to close, re-created by half of it. Both costs now derive from one
+  key computed once, so they cannot be derived from different quantities.
+
+**Ten checks, all measured rather than asserted.** Nine in the v0.4.10 groups fixture and
+one in the v0.1.81 near-ceiling beacon fixture — `held` is only observable near the
+ceiling, which is why the phantom-delta check cannot live with the others. Six of the eight
+in the fix commit fail on pre-fix code; the other two are **guards**, marked as such
+because `apply_pointer` and `_mirror_key`'s same-domain arm are unchanged by the fix and
+neither *can* fail pre-fix. The phantom-delta check discriminates the **half-fixed** state
+and nothing else — green on both the fully-fixed and the original pre-fix trees — and its
+boundary is measured: the index is padded so the missing fact is held by exactly one token,
+and the relief a bare `cost_new` would grant is computed off the two real pointer lines and
+asserted positive. The suite-total anti-rot constant moves `1740+27` → `1750+27`.
+
+**Blast radius, measured:** 14 namespaced mirrors across 11 projects, 0 duplicated stems
+across 21 indexes, 0 dead index pointers, 0 same-stem collisions fleet-wide — the fleet is
+undamaged and the defect is latent, not absent. Repair of an already-damaged store is
+refresh-gated and does not cover every shape; §10 of the spec scopes what a single command
+can and cannot collapse.
+
+The design-of-record, with the review's corrections to its own claims, is
+`docs/cross-domain-index-refresh.spec.md`. No CLI flag moved, no schema or manifest
+changed, and legacy stores are unaffected → **patch**.
+
 ## [0.4.25] — 2026-09-11
 
 **Patch — the post-release audit of the Deep Field chapter, and the gate holes it found.**
