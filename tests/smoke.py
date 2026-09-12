@@ -12511,11 +12511,15 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # one line just above), never a re-derivation of it: the planner must book the cost of
         # the line the writer writes — that plan/execute agreement IS this leg's contract. An
         # anchor dropped on either side breaks it, by a different clause each way: on the READ
-        # side the equality below decides (measured — under exactly this revert this check is
-        # the only failure, both `bool(...)` conjuncts being true on the mutant), while on the
-        # WRITE side the deciding clause is the vacuity guard `bool(_cline2_gs)` — drop the
-        # write-side anchor and no anchored line exists to compare at all. #2 and #4 are that
-        # side's primary detectors; this check is the read side's.
+        # side the equality below decides — measured, and the two conjuncts are visibly not
+        # what decides: under exactly this revert this check is the ONLY failure, with
+        # `cost_new=13 written=16 nrow=1 nline=1` (both `bool(...)` true on the mutant).
+        # On the WRITE side the deciding clause is instead the vacuity guard
+        # `bool(_cline2_gs)` — measured, dropping `anchor=_j_key` from the pointer-line
+        # construction at both write legs gives `cost_new=16 written=None nrow=1 nline=0`:
+        # no anchored line exists to compare at all, so this check dies on the guard, and
+        # #2/#3/#4/#7 fire alongside it. Those are that side's primary detectors; this
+        # check is the read side's.
         check("v0.4.10 groups: the pull planner books the ANCHORED cost_new — the line the "
               "writer wrote (a bare-stem cost_new is ~2 tok light and relieves the ceiling)",
               bool(_row_gs) and bool(_cline2_gs)
@@ -12639,8 +12643,14 @@ with _tf73.TemporaryDirectory() as _td_gs:
         # the arm is identical pre- and post-fix, so it cannot fail pre-fix. Its MEASURED
         # value is the other direction: rewriting apply_pointer to delete the matched line
         # and append the new one at the END leaves this as the ONLY failure in the whole
-        # suite (measured 1774/1) — #1/#2/#6 stay green, because that mutant preserves both
-        # the line count and the presence of the line. Chained across refreshes "the line
+        # suite — #8 alone, 1777/1 at HEAD's 1778 checks (1774/1 at the 1775-check revision
+        # it was first measured on). #1/#2/#6 stay green because the pointer remains a
+        # SINGLE PRESENT line (`nptr` stays 1): those checks assert on the pointer, never on
+        # the index's length. The index's line COUNT is not what that mutant preserves —
+        # measured `pre=4 post=5` — and a count-preserving variant (same delete+append, no
+        # separator blank: `pre=4 post=4`, `postpos=[3]`) still fails #8 ALONE, so the
+        # position and neighbour conjuncts have teeth independent of the count. Chained
+        # across refreshes "the line
         # moved" is a real regression: it reorders the always-loaded tier. The neighbour
         # line is seeded so "order preserved" is a real constraint, not a one-line
         # tautology. NB this check passes under the write-leg revert (measured — correct:

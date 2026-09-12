@@ -289,9 +289,16 @@ collected, and it is also the case `_mirror_canonical_path` refuses to resolve: 
 `None` when the canonical is absent *or* its status is `tombstoned`/`superseded`/`expired`
 (`sync_global.py:2899`, `:2910`), on the reasoning that a tombstone holds no re-pullable
 content and so its mirror is orphaned. `_orphans` then scans against the same live-stem set
-the mass-delete guard uses — `iter_canonical_stems_for_gc`, the `_local_stems` set built at
-`sync_global.py:3085` — so `--gc --apply` reclaims precisely the mirrors the ack sweep would
-have. Left un-run, they persist until someone runs gc: a deferred reclaim, never an
+the mass-delete guard uses — `_local_stems`, built from `iter_canonical_stems_for_gc` at
+`sync_global.py:3085` and widened by the facts pairs just below — so `--gc --apply` reclaims
+precisely the mirrors the ack sweep would have. Two clauses carry that guarantee and are worth
+naming, because citing the container alone leaves the claim reading safe after a change that
+would void it: the exclusion sits *inside* the enumerator — `sync_global.py:1013-1016`
+`continue`s on a tombstoned/superseded/expired status, which is what keeps the tombstone's own
+stem **out** of the live set (delete that and the mirror stops reading as orphaned while this
+paragraph still reads true) — and `--gc --apply` calls `ack_tombstoned_mirrors` itself
+(`:3077-3078`), before the orphan scan, so the containment is by *call* and not merely by set
+agreement. Left un-run, they persist until someone runs gc: a deferred reclaim, never an
 unreclaimable one.
 
 ## 8. Invariants — conserved, and changed
@@ -627,11 +634,17 @@ find a file, so the check could not discriminate **in either direction**. Moving
 upstream of #7 and dropping the injection made it fail on the mutant as intended —
 re-measured independently at the revision then shipping 1777 checks: **the gc check the sole
 failure** (1776 passed, 1 failed), while the same revert with the check left in its pre-review
-position is green (**1777 passed, 0 failed**). The gc revert was then reproduced again at
-HEAD's 1778 checks — **1777 passed, 1 failed**, #9 the sole failure, against a `1778 passed,
-0 failed` control — so the discrimination is a property of the check, not of the revision it
-was measured at. (The pre-review-position arm is stated only at its own revision; it has not
-been re-measured since.) The vacuity is therefore reproducible on demand, not merely recorded.
+position is green (**1777 passed, 0 failed**). **Both arms were then reproduced again at
+HEAD's 1778 checks** — the gc revert at **1777 passed, 1 failed** (#9 the sole failure)
+against a `1778 passed, 0 failed` control, and the relocated-check arm green at **1778 passed,
+0 failed** — so neither the discrimination nor the vacuity is an artifact of the revision it
+was measured at. The vacuity is therefore reproducible on demand, not merely recorded.
+
+One note for a reader arriving from `git log`: commit `b023d02`'s message carries "1774 passed,
+2 failed", which sums to 1776 against the 1775 checks that revision ships and so cannot be a
+clean run of that tree — it was taken with a temporary instrumented check present. The figures
+above are the reproducible form of that claim. The message is published and cannot be amended,
+which is why the correction lives here.
 
 The rule this yields is about position, not assertion: **a pin's power depends on the
 fixture state at its execution point, and a neighbouring check's setup can silently consume
