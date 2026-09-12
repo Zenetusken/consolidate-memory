@@ -334,8 +334,9 @@ enumerator — the `if … .get("status") … in ("tombstoned", "superseded", "e
 set (delete that and the mirror stops reading as orphaned while this paragraph still reads
 true).
 
-**The second carrier does not reach the cross-domain case, and saying it did was an
-over-claim.** `--gc --apply` does call `ack_tombstoned_mirrors` itself before the orphan scan
+**The draft also claimed a second carrier, and that carrier does not reach the cross-domain
+case — saying it did was an over-claim.** `--gc --apply` does call `ack_tombstoned_mirrors`
+itself before the orphan scan
 — but that name is a two-line back-compat alias for `reconcile_inactive_mirrors`, and the
 aliased body probes `ctx.canonical_domain_dir / f"{f.stem}.md"` with `reg_status` built under
 `WHERE domain_id=?` (`ctx.domain_id`). A cross-domain mirror's file stem **is** its mirror key
