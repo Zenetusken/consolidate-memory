@@ -84,13 +84,12 @@ carries no gate — so a `cost_old` pinned at `0` books a full line where the re
 The gated arm is the MISSING one: its `delta = cost_new - cost_old` (also a single hit in that
 file) routes through `_would_net_grow` and can *hold* the pull. That contrast is why the ungated
 STALE arm is the one that matters here: an over-charge there meets no growth gate at all.
-**Citing the two lines rather than the two `status` arms is deliberate** — `if status ==
-"MISSING":` has a *second* arm in the execute loop, gated by file-presence and admission
-instead, so a reader who greps the arm phrasing carries away the wrong gate. The beacon
-(the `line_cost` build in `session_beacon.py`) builds the identical map and adds a sharper
-failure:
-`elif cost_old and cost_new != cost_old:` is falsy whenever `cost_old == 0`, so a
-cross-domain STALE item is **never constructed**.
+**Citing the two lines rather than the two `status` arms is deliberate** —
+`if status == "MISSING":` has a *second* arm in the execute loop, gated by file-presence and
+admission instead, so a reader who greps the arm phrasing carries away the wrong gate. The
+beacon (the `line_cost` build in `session_beacon.py`) builds the identical map and adds a
+sharper failure: `elif cost_old and cost_new != cost_old:` is falsy whenever `cost_old == 0`, so
+a cross-domain STALE item is **never constructed**.
 
 The three concrete instances share one signature — **the correct namespaced key is
 computed within a line or two and used correctly for an adjacent purpose, while a derived
@@ -612,16 +611,15 @@ line the writer writes — which is the contract this whole leg is about, and it
 `_pointer_line`'s format ever changes.
 
 - **Primary pin (#2) — reword refresh.** *Required, not optional:* the body-only form alone
-  cannot distinguish "replaced in place" from "never written", so it would go green if the
-  index write were skipped while the store kept a stale pointer. **The two loops skip it
-  differently, and neither is the `continue` the draft cited.** The anchor
-  `index admission refused` has **three** hits in `sync_global.py`, failing three ways: the
-  evict valve raises `WriteRefused`; the plan loop prints and then **continues**, so the item
-  never reaches the write loop; and the execute loop prints from the whole `else` arm of
-  `if adm["admitted"]:` with **no `continue`** — its body write and `recorded.append(name)`
-  have already run by then. That last arm is precisely the state #2 must catch: mirror TEXT
-  refreshed, index line left stale, and re-reading the written index the only thing that can
-  see it.
+  cannot distinguish "replaced in place" from "never written", so it would go green if the index
+  write were skipped while the store kept a stale pointer. **The two loops skip it differently, and
+  neither is the `continue` the draft cited.** The anchor `index admission refused` has **three**
+  hits in `sync_global.py`, failing three ways: the evict valve raises `WriteRefused`; the plan
+  loop prints and then **continues**, so the item never reaches the write loop; and the execute
+  loop prints from the whole `else` arm of `if adm["admitted"]:` with **no `continue`** — its body
+  write, its `refreshed` counter and `recorded.append(name)` have all already run by then. That
+  last arm is precisely the state #2 must catch: mirror TEXT refreshed, index line left stale, and
+  re-reading the written index the only thing that can see it.
 - **Stale line cannot survive** is folded into #2 (`_pre_line_gs[0] not in _cidx2_gs`)
   rather than being its own check — it catches "appended and orphaned" rather than merely
   "exactly one line", and it is only implementable in the reword form.
@@ -795,8 +793,8 @@ Two notes on getting *that* discriminator right, both from measurement:
   failed on *correct* code. The spy also observes a legitimate bare-stem call: the
   canonical `upsert` in the same block writes a **same-domain** fact, where `_j_key == name`
   and the bare stem is the correct key. Measured call order, both legs fixed:
-  `upsert:canonical_ingress.py:499 'grp-fact'` → `mutate:1451 'personal--grp-fact'` → `mutate:1483
-  'personal--grp-fact'`. A discriminator that cannot distinguish "correct for a
+  `upsert:canonical_ingress.py:499 'grp-fact'` → `mutate:1451 'personal--grp-fact'` →
+  `mutate:1483 'personal--grp-fact'`. A discriminator that cannot distinguish "correct for a
   same-domain write" from "wrong for a cross-domain one" is not a discriminator.
 
 Four rules follow, and all four are general:
@@ -876,12 +874,12 @@ the evidence it needed. Neither re-reading the check nor re-running it in isolat
 have shown this — only reverting the site and watching the pin stay green.
 
 **Failure 6 — the regression no pin could see (a half-applied fix).** The first cut of
-§7's Leg B anchored `cost_old` in both readers and left `cost_new` on the bare stem. The
-full suite was **green** on that tree. The finding was initially graded *low* on magnitude —
-the two costs differ by the anchor text, ~2 tokens — and that grade was wrong for a reason
-worth recording: the severity of a token count is not its magnitude but **what reads it**.
-Tracing the consumers showed those 2 tokens flip the beacon's `elif cost_old and cost_new !=
-cost_old` to **true for every cross-domain mirror whose index line is still the current
+§7's Leg B anchored `cost_old` in both readers and left `cost_new` on the bare stem. The full
+suite was **green** on that tree. The finding was initially graded *low* on magnitude — the two
+costs differ by the anchor text, ~2 tokens — and that grade was wrong for a reason worth
+recording: the severity of a token count is not its magnitude but **what reads it**. Tracing
+the consumers showed those 2 tokens flip the beacon's `elif cost_old and cost_new != cost_old`
+to **true for every cross-domain mirror whose index line is still the current
 derivation's and whose domain is two or more characters long**, because an un-anchored
 `cost_new` is systematically *lighter* than the anchored line it is compared against — the
 anchor then adds ≥4 chars, which always crosses a `ceil(chars/4)` boundary. A **one-character**
@@ -892,7 +890,7 @@ reason: a mirror whose body is in sync can still carry an anchored line written 
 description — `_body_hash` is body-only — and the `elif` reads the **line**, so being in sync
 does not disqualify it. Its delta is its own drift's: zero across the four-wide `ceil(chars/4)`
 window the anchored line lands in, *positive* below that window and negative above it — and the
-window straddles the equal-length point, so up to three lengths where the current description is
+window contains the equal-length point, so up to three lengths where the current description is
 *already* the longer still tie at zero. And it is four wide only while both descriptions sit
 under the 88-character hook cap, since `_pointer_line` keeps `desc[:88]` — past it, two
 descriptions sharing that prefix derive one **identical** line and book no item at all, however
@@ -956,9 +954,9 @@ heals to a single line in one refresh. Three limits, all honest:
 - **There is no duplicate-pointer detector on the always-loaded index.** Verified across every
   site that parses `](…)` index targets — `memory_status.py`'s `_LINK_RE` (four further sites
   in that module: two set builds, a `search` filter, and a match-count shape test — none
-  comparing targets); its **one** importer,
-  `extract_signals.py`, which `findall`s the same regex into **set arithmetic**, `arch -
-  indexed` — a tier partition that structurally *cannot* see a duplicate, since two identical
+  comparing targets); its **one** importer, `extract_signals.py`, which `findall`s the same
+  regex into **set arithmetic**, `arch - indexed` — a tier partition that structurally
+  *cannot* see a duplicate, since two identical
   lines collapse to one element before any comparison could run; `index_admission.py`'s
   `_POINTER_TARGET_RE`, a generic `](…)`
   capture used per-target **inside `archive_index`** — never target-against-target *itself*;
@@ -1044,18 +1042,20 @@ matchers agree there), and it is **not instantiated**: §5's re-key scan found e
 bare-keyed mirror in the fleet whose key no longer reproduces, and it sits in an *unenrolled*
 synthetic QA fixture — local-only, so the delivery path cannot run there. **0 real nodes.**
 
-**A correction owed about the repair path.** The intuitive claim — "`cm local
-rebuild-index` clears it, same as the dead variant" — is **false for this shape**.
+**A correction owed about the repair path.** The intuitive claim — "`cm local rebuild-index`
+clears it, same as the dead variant" — is **false for this shape**.
 `_rebuild_plan` (`local_ingress.py:437`) globs `native.glob("*.md")` and emits one
 `_pointer_line(f.stem, fm)` **per file**, so with both the bare-keyed mirror and the
 namespaced one on disk it plans a line for each; it drops only lines whose target file is
 gone (`would_remove_existing_pointers = existing_ptrs - planned`). `--gc` does not reclaim it
-either, and for a reason worth naming: the scan that could take it, the `_orphans(...,
-pair_keys=True)` call in `sync_global.py`, reconstructs the pair from the **mirror's own
-frontmatter** (`canonical_domain` + `name`), not from its filename — so the stale bare-keyed
-file resolves to the *live* canonical pair and is correctly classified as neither an orphan
-nor FROZEN — `_classify_frozen` returns `None` for an admitted-and-relevant canonical, at the
-arm `if is_relevant(c_fm, stacks):` (that arm, not a line number: the first draft cited
+either, and for a reason worth naming: the scan that could take it, the
+`_orphans(store, canon=_pair_canon,` call in `sync_global.py` (with `decode_names` and
+`pair_keys` both on), takes the pair from the **mirror's own frontmatter**
+(`canonical_domain` + `name`), falling back to the decoded filename only when either is
+absent — so the stale bare-keyed file resolves to the *live* canonical pair and is correctly
+classified as neither an orphan nor FROZEN — `_classify_frozen` returns `None` for an
+admitted-and-relevant canonical, at the arm `if is_relevant(c_fm, stacks):` (that arm, not a
+line number: the first draft cited
 `:2907`, which is inside `_mirror_canonical_path`, the function *above* it). In other
 words the file is not stale to the classifier; only its **filename and index line** are
 stale. **No supported single command collapses this shape** — the repair is two steps

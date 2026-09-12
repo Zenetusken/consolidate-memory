@@ -248,12 +248,12 @@ def beacon_line(store: Path, *, domain_id: str = "unknown",
         #     comparison EQUAL and no item built — the domain-length axis's sole exception, and why
         #     that axis is scoped rather than universal.)
         #     The governing condition is LINE provenance, not body sync: `_body_hash` is body-only
-        #     (`def _body_hash(`), so an in-sync mirror can still carry an OLDER line, and that
-        #     line's delta is its own drift's — positive, zero across a four-wide `ceil` window
-        #     that straddles the equal-length point, or negative. So the phantom row was the steady
-        #     state, not an edge case, and its delta is NEGATIVE — it RELIEVES the running index in
-        #     _plan_pull, so `held` under-states a run's hold and the beacon over-advertises
-        #     absorption. Fixing one leg unmasked the other.
+        #     (`def _body_hash(` in `sync_global.py`), so an in-sync mirror can still carry an
+        #     OLDER line, and that line's delta is its own drift's — positive, zero across a
+        #     four-wide `ceil` window that contains the equal-length point, or negative. So the
+        #     phantom row was the steady state, not an edge case, and its delta is NEGATIVE — it
+        #     RELIEVES the running index in _plan_pull, so `held` under-states a run's hold and the
+        #     beacon over-advertises absorption. Fixing one leg unmasked the other.
         # Same read-leg site as sync_global's cost map; the two MUST key alike or `held`
         # diverges from the run (the F1 divergence the replay-by-law note above closes).
         _bk = _mirror_key(domain_id, str(fm.get("domain") or ""), n)
