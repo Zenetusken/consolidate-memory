@@ -601,7 +601,8 @@ dict with the last call's arguments. The beacon's own fixed call contributes not
 cost_old is 0 — the `elif cost_old and …` drops the item — so on a beacon revert the dict
 simply still held the **run side's** rows, and every conjunct of the check was satisfied by
 the wrong call. Measured, with `session_beacon.py` reverted and `sync_global.py` left
-fixed — at the revision then shipping **1772 checks**:
+fixed — on a **1772-check working tree**, a total no committed blob carries (see §9.1's ladder
+note; this is the same basis as its `1746 + 27` rung):
 
 ```
 old pin shape  →  1772 passed, 0 failed     (beacon entirely unfixed, suite green)
@@ -614,8 +615,8 @@ one function: the *plan* loop (`sync_global.py:1451`), whose result feeds only t
 **admission** decision via `project_index(planned)`, and the *execute* loop (`:1483`),
 which performs the actual index write. Every outcome-shaped pin in the file asserts on the
 **written index** — and the execute loop's correct key produces a correct index regardless
-of what the plan loop passed. So a revert of the plan loop alone is invisible — measured at
-the same 1772-check revision:
+of what the plan loop passed. So a revert of the plan loop alone is invisible — measured on
+the same 1772-check working tree:
 
 ```
 site-1-only revert (execute loop left fixed)  →  1772 passed, 0 failed
@@ -806,7 +807,18 @@ The check count has a finer grouping than the history does — the first six, th
 #7/#8 landed together in ed4c67f, so `git log -S'1746 + 27' -- tests/smoke.py` comes back
 empty. The grouping is real but it is *authorship*, not history, and quoting it as a rung
 sends a maintainer auditing the branch to a revision that never shipped. Quote the committed
-literals. **Only the sum is load-bearing** —
+literals.
+
+**The rule covers derived figures, not only quoted literals, and that distinction is what let
+three instances of one basis survive into the review round.** Besides the `1746 + 27` rung
+above, failure 5's note compared `b023d02`'s reported 1776 against "the 1775 checks that
+revision ships" (`b023d02` ships 1777), and failures 2 and 3 both date their measurements to
+"the revision then shipping 1772 checks" — a total no committed `smoke.py` blob carries
+(`git rev-list --all`, every blob, no 1772). In each, a **sum observed in a run** was given a
+**revision's name**. The quoted halves were all correct; only the comparison term was inferred,
+which is why reading for wrong literals finds none of them — and why the rule is stated here as
+the inference to refuse: *read a measurement's total as evidence of what the tree was, never of
+what shipped.* **Only the sum is load-bearing** —
 the split between the two addends is bookkeeping, and it is the total that must equal the
 reported count (measured at HEAD: `1778 passed, 0 failed` against `1750 + 28`). #11 moved the
 *second* addend because no check landed between #10 and it; a maintainer copying either
