@@ -700,11 +700,11 @@ One note for a reader arriving from `git log`: commit `b023d02`'s message carrie
 2 failed" — 1776 — which is a clean run of **no** committed revision of this work: `b023d02`
 itself ships 1777 checks (its own D6 literal is `1750 + 27`) and its parent `ed4c67f` ships
 1775. It was therefore taken on a tree one check above `ed4c67f`'s 1775 — *which* check, and
-whether it was temporary or simply an interim state of `b023d02`'s own work, the message does not
-say and no committed blob can settle. That unresolvable basis is the point, and it is the same
-working-tree-between-revisions basis that produced the phantom `1746 + 27` rung below. The figures
-above are the reproducible form of that claim. The message is published
-and cannot be amended, which is why the correction lives here.
+whether it was temporary or simply an interim state of `b023d02`'s own work, the message does
+not say and no committed blob can settle. That unresolvable basis is the point, and it is the
+same working-tree-between-revisions basis that produced the phantom `1746 + 27` rung below. The
+figures above are the reproducible form of that claim. The message is published and cannot be
+amended, which is why the correction lives here.
 
 The rule this yields is about position, not assertion: **a pin's power depends on the
 fixture state at its execution point, and a neighbouring check's setup can silently consume
