@@ -91,7 +91,8 @@ Design-of-record: [docs/redos-guard-linearity.spec.md](docs/redos-guard-linearit
 measurement tables, the admission rule with its corrected arithmetic and the `S*` measurement
 method, the empty-window proof stated in the rule's own quantities, the coverage matrix with its
 recorded gaps *and* the one this cycle closed, the rejected alternatives (the ratio; a behavioral
-eyJ pin at n=96000 needing an ~84s failure time; a uniform `n`), and a runnable recipe so every
+eyJ pin at n=96000, which does not clear the rule **at all** rather than merely costing an ~84s
+failure time; a uniform `n`), and a runnable recipe so every
 number is re-derivable rather than testimony — including the pin's twelve cases, each asserting its
 mutation applied before the verdict is read.
 
@@ -103,6 +104,19 @@ and it reads 8.19s against its 2.0s bound). It is flagged as a follow-up in the 
 silently re-based inside a patch. An earlier draft of this entry said there were two such guards; on
 inspection neither of the others is a stopwatch at all — the stacks-cache check compares a stored
 timestamp's *age*, and the archive bound counts **characters** — so neither has a clock to switch.
+
+**The interpreter axis was re-measured during release preparation, and a claim did not survive it.**
+§2.5's table had been read *one sample per interpreter* — the same defect §3.1 corrects for `S*`,
+on a different axis: a second pass moved 3.13's alnum reading by **72%**. Re-measured as a floor over
+seven trials × two passes, the spread is **1.24×** rather than 1.42×, and the **"older is slower"**
+claim the earlier draft leaned on is gone: the worst reading falls on 3.12.13 for two of the three
+payloads, which is neither the oldest nor the newest interpreter here. That claim existed to argue
+the axis leans the right way for the 3.8 runner this patch is *for*, so it is **given up rather than
+reworded** — the version axis cannot be extrapolated from these five interpreters to 3.8 at all. What
+is bounded is the observed spread among the interpreters that exist on this box; 3.8's evidence
+remains the CI matrix, which is where the flake was observed in the first place. (Because a ratio
+divides two noisy readings and independent noise *adds* in a ratio rather than cancelling, the
+tabulated spread is stated as an upper bound on the version effect, not a precise factor.)
 
 ## [0.4.27] — 2026-09-13
 
