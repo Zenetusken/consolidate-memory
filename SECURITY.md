@@ -57,14 +57,26 @@ does, what it never does, and how to report a problem.
   is now bounded — some by a `{n,MAX}` cap where there was none, some by a cap replacing a `*` or
   `+`; the arm around it is not uniformly bounded, and does not need to be. The `_PROBE_CAP` = 4000
   length cap on transcript turns is **defense-in-depth, not the defense**, and it does not cover
-  every call site — the three `extract_signals.py` probes cap, `facts_manifest.py` caps its
-  fact-body read at 4 MiB, and `sync_global.py`'s shared `_safe_read_text` is **uncapped**. (The
-  irony is on the record there: that helper was factored once precisely because "copy-paste doesn't
-  propagate a fix" — and the cap is the part that did not propagate.) One instance that no timing
-  bound can separate (the JWT arm) is pinned structurally instead. The guard asserts a **measured
-  CPU-time bound, not proven linearity**, so the rest of the pattern's linearity rests on
-  measurement rather than on an argument; the measurements, the margin every bound carries, and the
-  guard's own blind spots are recorded in the ReDoS guard's design-of-record,
+  every call site — `extract_signals.py`'s probes cap, `facts_manifest.py` caps its fact-body read at
+  4 MiB, and `sync_global.py`'s shared `_safe_read_text` is **uncapped**. It is not only that helper:
+  `distill_scan.py` screens **uncapped** text at its emission choke-point (`_looks_secret(_norm(tpl))`)
+  and again on its row scan, where the only cap is `_USED_CAP` applied *after* the screen. (The irony
+  is on the record at `_safe_read_text`: that helper was factored once precisely because "copy-paste
+  doesn't propagate a fix" — and the cap is the part that did not propagate.) This is why the cap is
+  *defense-in-depth* rather than the defense, and why the sentence above is about **bounded
+  quantifiers** instead: what keeps uncapped input affordable is that the scan is **linear**, which is
+  measured rather than argued — an uncapped call site costs more, not catastrophically more.
+- **One instance no timing bound can separate is asserted structurally instead** — the JWT arm, whose
+  separation grows only `~0.37 × (n/cap)` because its blowup is `occurrences × sweep` with the sweep
+  capped; at n=24000 the shipped scan *under load* already exceeds the pre-fix scan *idle*, so the
+  window is empty rather than narrow. That pin takes **two** checks since v0.4.28, because a
+  source scan returning a *verdict* about linearity proved undecidable in practice (six one-token
+  evasions across three review rounds): a behavioural check on a repeated-anchor payload, and a check
+  that the arm's text **is** its measured text, byte for byte — which is decidable, and which makes
+  the scanner's own bugs fail **safe**. The guard asserts a **measured CPU-time bound, not proven
+  linearity**, so the rest of the pattern's linearity rests on measurement rather than on an argument;
+  the measurements, the margin every bound carries, and the guard's own blind spots are recorded in
+  the ReDoS guard's design-of-record,
   [docs/redos-guard-linearity.spec.md](docs/redos-guard-linearity.spec.md).
 - **Filesystem safety:** `sync_global.py --gc` only deletes files marked as managed
   mirrors (`global_ref:`) whose canonical is gone — never project-authored facts — and

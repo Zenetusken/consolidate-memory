@@ -1061,19 +1061,22 @@ for _name, _val in [
 # read once, the dotted payload gives 0.0627 instead of 0.2360 and its bound would leave only 1.10x
 # against a reproducible reading. The three below measure 2.16x / 3.38x / 29.7x, and each payload is
 # the smallest MEASURED size clearing the bar (the alnum arm needs 48000; it fails it at 24000).
+# The LENGTH is asserted, not merely printed: trimming `* 2400` to `* 240` measures FASTER and would
+# read green while testing a payload the bound was never derived from — the name would disagree with
+# the bound and nothing would notice, because the name is the only place the length appeared.
 # The predicate's lower half is not decoration: it catches a DEAD CLOCK, which would otherwise make
 # every one of these bounds vacuously green. The pre-fix figure in each name is measured too, and it
 # bounds the SINGLE-ARM revert it names — reverting every instance at once costs more (the alnum arm
 # reaches 26.7s, the whole block 44.5s), still bounded because the payloads are fixed: a regression
 # can never cost an unbounded wait.
 import time as _time70  # noqa: E402
-for _redos_name, _redos_payload, _redos_bound, _redos_was in [
+for _redos_name, _redos_payload, _redos_bound, _redos_was, _redos_len in [
     ("dotted/dashed run (original pentest PoC shape)",
-     "a1b2-c3d4." * 2400, 0.509, "7.20s"),
+     "a1b2-c3d4." * 2400, 0.509, "7.20s", 24000),
     ("pure-alnum run + trailing keyword, no separator",
-     ("x" * 47980) + "password" + ("y" * 12), 3.135, "16.22s"),
+     ("x" * 47980) + "password" + ("y" * 12), 3.135, "16.22s", 48000),
     ("authorization + padding spaces (Gate-2a's 4th instance)",
-     "authorization" + (" " * 23987), 0.285, "8.36s"),
+     "authorization" + (" " * 23987), 0.285, "8.36s", 24000),
 ]:
     _t0_70 = _time70.process_time()
     ms._SECRET.search(_redos_payload)
@@ -1081,87 +1084,117 @@ for _redos_name, _redos_payload, _redos_bound, _redos_was in [
     check(f"firewall ReDoS guard: {_redos_name} (len={len(_redos_payload)}) stays LINEAR — "
           f"{_dt_70:.3f}s CPU against a {_redos_bound}s bound (pre-fix this arm measures "
           f"{_redos_was} here)",
-          0.0 < _dt_70 < _redos_bound)
+          len(_redos_payload) == _redos_len and 0.0 < _dt_70 < _redos_bound)
 
 # The JWT arm is the ONE instance no CPU-time bound can cover: its blowup is occurrences x sweep,
 # and the sweep is capped, so separation grows only ~0.37 x (n/cap) — 8.5x at n=48000, the largest
 # size whose shipped cost is affordable. And the rule divides mutant IDLE by shipped LOADED: at
 # n=48000 that is 3.62/2.70 = 1.34, a margin of 1.16x against the 2x floor. The window is EMPTY, not
-# narrow. A timing check there would read green forever while pinning nothing — worse than no check,
-# because it advertises coverage it does not have. The caps ARE the defense, so this pins them two
-# ways and the check NAME says both:
-#   (a) NO OPEN QUANTIFIER in the arm — with the alternation split correctly, which means stripping
-#       re.X comments the way the ENGINE does (unescaped, outside a character class, to end of line,
-#       plus (?#...) groups) BEFORE splitting on '|'. The naive scan this replaces
-#       (re.search(r"eyJ[^|\n]*"), then split on the first '#') is evadable three ways, each a
-#       ONE-TOKEN edit that restores the full blowup while the pin reads green: a newline after
-#       `eyJ` (whitespace is insignificant under re.X, and this pattern is 105 lines, so wrapping is
-#       the house style); a `(?#...)` group there; or a mention of `eyJ` in an EARLIER arm's comment,
-#       which makes the scan pin the comment and never examine the arm. All three are failures of
-#       that stripping, and all three collapse once it is done. Measured: the old predicate reads
-#       PASS (evaded) on all three; this one trips on all three.
-#       A FOURTH was found by review AFTER the first three were closed, and it is why the split is
-#       now class-aware rather than only comment-aware: a '|' inside a character class. The scanner
-#       already tracked classes for the comment rule and then discarded that tracking at the split,
-#       so `[A-Za-z|_]` — a class whose third member happens to be a pipe — cut the arm at 36 chars
-#       and left `[A-Za-z0-9_-]*` in the discarded tail, reading green on a quadratic revert. The
-#       shipped pattern has no in-class '|' (checked: 0 occurrences), so this was a latent hole
-#       reachable only by a mutation, never a wrong verdict on the code it guards. Modelling a
-#       syntax PARTWAY is what made it invisible: the rule was present, and applied to one site.
-#   (b) THE THREE CAPS EXACT AS MEASURED — closes the one gap (a) cannot see: WIDENING a cap
-#       ({8,2000} -> {8,9000}) leaves every quantifier bounded, so (a) accepts it while the sweep
-#       grows 4.5x. Exact literals also mean a re-tune fires this check, which is the intended
-#       behaviour — the spec requires a re-measurement for any cap change, so a false alarm there is
-#       the prompt, not a nuisance to be loosened away.
-# Charsets collapse to C and escapes to E in the SAME pass that splits the arms: [A-Za-z0-9_-]
-# carries a literal '-' and the arm's `\.` is an escape, so a naive scan reports both as quantifier
-# characters — and a second-pass regex doing that fold would not know a class can be ended by `\]`.
-import re as _re_redos  # noqa: E402  — the pattern SOURCE text, not a match against input
+# narrow — so v0.4.27's guard pinned it with a SOURCE check instead, and that pin is where this
+# cycle's real work ended up. It now takes TWO checks, because the two halves see mutant families
+# neither can see alone:
+#
+#   (1) BEHAVIOURAL — the repeated-anchor payload below. It fires only when a mutation actually
+#       BLOWS UP on that payload, which is FEWER cases than it sounds, and the matrix is what says
+#       so: a cap replaced by `*`, replaced by `+`, or deleted is measured INERT here (eyJ* still
+#       matches, then the required `\.` fails at the first position), and so is an open quantifier
+#       APPENDED to the arm (nothing follows it to backtrack against). Those are (2)'s alone. What
+#       (1) does catch is the AMBIGUOUS shapes — a starred group before the capped segment, an open
+#       quantifier after one, a ']'-first class — measured at 2.91-2.95s against 0.0099s shipped,
+#       294-298x. And it is the only check that can see a blowup (2)'s scope EXCLUDES: a
+#       catastrophic sibling branch, or one in any other arm.
+#       N1 — a NESTED BOUNDED quantifier, the one thing no scan can rule out — is NOT a (1) catch.
+#       Measured, (1) HANGS on it (it blew a 20s cap at k=200); since (1) runs first, (2)'s verdict
+#       on that mutant is never reached in a real run. It is caught by the job timeout, which is a
+#       RED job. N1 is the ARGUMENT for exactness, not a coverage row: a verdict-scan cannot be
+#       trusted while a pattern can be catastrophic with EVERY quantifier bounded.
+#   (2) STRUCTURAL — the arm's text, asserted EXACTLY. This is the half that covers what (1)
+#       structurally cannot: a WIDENED cap ({8,2000} -> {8,9000}) leaves every quantifier bounded
+#       and the scan linear at any affordable n, so (1) is blind to it — measured 1.2x at k=800 —
+#       while the sweep grows 4.5x. Only exactness catches it.
+#
+# WHY EXACTNESS, AND WHY IT ENDS THE EVASION CYCLE. Four review rounds each found a DIFFERENT
+# unmodelled syntax rule in the verdict-scan this replaces: re.X comments (three ways), then a '|'
+# that was a MEMBER of a character class, which cut the arm at 36 chars and left the open quantifier
+# in the DISCARDED TAIL — 1604x the shipped scan at n=6000. Each was a one-token edit that restored
+# the full blowup with the pin reading GREEN. That is not a bug tail, it is a wrong design: a scan
+# that reads an arm and returns a VERDICT about linearity is undecidable in practice — see (1)'s
+# nested-bounded example — so it will always have holes, and every hole is a false PASS. Asserting
+# the arm's TEXT is decidable, and it makes the scanner's own bugs fail SAFE: a missed comment, a
+# missed class close, a '|' split in the wrong place can only produce a string that DIFFERS from the
+# literal. A false PASS now requires the branch to be byte-identical to the shipped branch.
+# Depth is deliberately NOT tracked, and that is measured rather than assumed: the whole alternation
+# is wrapped in `(?:...`, so EVERY branch sits at depth 1 and a depth-0 split collapses all 48 into
+# one 12868-char arm (which trips). Splitting at every '|' outside a class is what yields the branch
+# — and with the text asserted verbatim, a split in the wrong place no longer matters, because the
+# fragment cannot equal the literal.
+#
+# WHAT IT DOES NOT COVER — a NEW SIBLING BRANCH. `LIT|X` leaves LIT present as a '|'-delimited span,
+# so the pin passes while X goes unexamined; only (1) can see X, and only if X blows up on its
+# payload. The pin's scope is the anchor's branch BY CONSTRUCTION — spec §5 gap 1, sharpened.
+# (1)'s failure time is also NOT bounded the way the three table payloads' is: those are fixed runs,
+# so the worst case is a mutant's own measurement (<=16.2s), but a mutant that NESTS two bounded
+# quantifiers is EXPONENTIAL (it blew a 20s cap at k=200) and no stdlib `re` timeout exists to
+# interrupt it. The backstop is the JOB — `timeout-minutes: 15` on ci.yml's `test` job, added with
+# this check and matching its siblings' 10. The failure MODE stays safe either way: a mutant (1)
+# cannot finish reading is a RED job, never a green check. A subprocess with a timeout would bound
+# it in-process and was REJECTED — it would put the block's slice-and-exec re-derivation (spec §9)
+# out of reach for one check, and every mechanism added to this guard so far has become a hole.
 
 
 def _redos_arms(src: str, marker: str) -> list[str]:
-    """Every top-level alternation arm containing `marker`, as the ENGINE reads it: re.X comments
-    dropped, each character class folded to one 'C', each escape to one 'E'.
+    """Every alternation arm containing `marker`, as the ENGINE reads it: re.X comments and
+    insignificant whitespace dropped, everything else VERBATIM.
 
-    All three happen in ONE scanner because each is a place where the pattern's SOURCE text and the
-    engine's reading of it differ, and a scan that models some of them while missing one is worse
-    than one that models none — it reads as handled. Three sites, one rule each: a '|' inside a
-    class is a MEMBER, not an alternation (splitting there truncates the arm, and everything after
-    the truncation goes unexamined — how the class-blind split this replaces read green on a
-    quadratic revert); '#' opens a comment only outside a class; and a class ends at an UNESCAPED
-    ']', so `[\\]]` is one class, not a class plus a stray bracket. Folding classes here rather than
-    in a second regex also means a class body can never leak a '*', '+' or '{n,}' into the scan."""
+    Comments and whitespace are the only two things re.X discards, and both are dropped here in the
+    SAME pass that splits the arms, so no class state survives to be forgotten at a later step. The
+    rest stays verbatim because the caller compares the result to a literal: the previous design
+    folded each class to 'C', which made `[A-Za-z0-9_-]` and `[a-z]` indistinguishable and would
+    hide a charset edit — a fold is a lossy reading, and the one thing this check must not do is
+    read lossily. Three syntax sites need a rule, each a place where the source text and the
+    engine's reading of it differ: a '|' inside a class is a MEMBER, not an alternation; '#' opens a
+    comment only outside a class; and a class ends at an unescaped ']' that is not its FIRST member,
+    so `[]a]` is one class of two members and `[\\]]` one class of one. Reading either of those as a
+    close ends the class early and lets its body leak a '|' or a '#' into the split."""
     arms, cur, i, n, in_class = [], [], 0, len(src), False
     while i < n:
         c = src[i]
         if c == "\\":                      # an escape binds the next char — even '#', ']' or '|'
-            cur.append("E")
+            cur.append(src[i:i + 2])
             i += 2
             continue
         if in_class:
             if c == "]":
                 in_class = False
-                cur.append("C")
+            cur.append(c)
             i += 1
             continue
         if c == "[":
-            in_class = True
+            in_class = True                # a leading '^' negates, a leading ']' is a MEMBER
+            cur.append(c)
             i += 1
+            if i < n and src[i] == "^":
+                cur.append("^")
+                i += 1
+            if i < n and src[i] == "]":
+                cur.append("]")
+                i += 1
             continue
         if src.startswith("(?#", i):       # an inline comment group, closed by ')'
             j = src.find(")", i)
             i = n if j < 0 else j + 1
-            cur.append(" ")
             continue
         if c == "#":                       # a re.X comment runs to end of line
             j = src.find("\n", i)
             i = n if j < 0 else j + 1
-            cur.append(" ")
             continue
         if c == "|":                       # the ONLY place an alternation splits
             arms.append("".join(cur))
             cur = []
             i += 1
+            continue
+        if c.isspace():                    # insignificant only OUTSIDE a class. Both those cases
+            i += 1                         # are handled above, so this skips exactly what re.X does
             continue
         cur.append(c)
         i += 1
@@ -1169,19 +1202,32 @@ def _redos_arms(src: str, marker: str) -> list[str]:
     return [arm for arm in arms if marker in arm]
 
 
-_redos_jwt_caps = ("{8,2000}", "{8,4000}", "{6,200}")   # the three caps, as measured this cycle
+_redos_jwt_probe = "eyJ" * 600                   # 1800 chars — the repeated-anchor attack shape
+_redos_jwt_bound = 0.2055                        # sqrt(S* x M): S* = 0.0145 loaded, M = 2.9128 idle
+_t0_jwt = _time70.process_time()
+ms._SECRET.search(_redos_jwt_probe)
+_dt_jwt = _time70.process_time() - _t0_jwt
+check(f"firewall ReDoS guard: the JWT arm's repeated-anchor payload (k=600, len="
+      f"{len(_redos_jwt_probe)}) stays LINEAR — {_dt_jwt:.4f}s CPU against a {_redos_jwt_bound}s "
+      f"bound (the one-token unboundings of that arm measure 2.91-2.95s here against 0.0099s "
+      f"shipped, 294-298x, and a NESTED-BOUNDED mutant is exponential — the one catastrophic "
+      f"family no source scan can rule out, which is why this check sits beside the structural "
+      f"pin rather than under it; the bound is the geometric mean sqrt(S* x M) of the worst LOADED "
+      f"shipped reading and the WEAKEST owning mutant, so each margin is 14.2x against the rule's "
+      f"2x floor)",
+      0.0 < _dt_jwt < _redos_jwt_bound)
+
+_redos_jwt_lit = r"eyJ[A-Za-z0-9_-]{8,2000}\.[A-Za-z0-9_-]{8,4000}\.[A-Za-z0-9_-]{6,200}"
 _redos_jwt_arms = _redos_arms(ms._SECRET.pattern, "eyJ")
-if len(_redos_jwt_arms) == 1:
-    _redos_jwt_open = _re_redos.findall(r"[*+]|\{\d+,\}", _redos_jwt_arms[0])
-else:
-    _redos_jwt_open = [f"not exactly 1 eyJ arm ({len(_redos_jwt_arms)} found)"]
-_redos_jwt_missing = [c for c in _redos_jwt_caps if c not in ms._SECRET.pattern]
-check("firewall ReDoS guard: the JWT arm still carries its three measured caps (no WIDENING or "
-      "re-tune) and adds no open quantifier — the anchor's own chars ('e','y','J') sit in its "
-      "charset, so an open {8,} sweeps a repeated-anchor run to the end of the string (v0.1.70's "
-      "instance; no CPU-time bound separates pre-fix from shipped here, so the caps ARE the "
-      "defense)",
-      len(_redos_jwt_arms) == 1 and not _redos_jwt_open and not _redos_jwt_missing)
+check("firewall ReDoS guard: the JWT arm IS EXACTLY its measured text — the three caps "
+      "({8,2000}/{8,4000}/{6,200}), both charsets and every quantifier byte-for-byte — because no "
+      "CPU-time bound separates pre-fix from shipped here (window EMPTY: at n=24000 the shipped "
+      "scan under load already exceeds the pre-fix scan idle), and a bounded-quantifier scan does "
+      "not either (a nested-bounded arm is catastrophic with EVERY quantifier bounded, so no scan "
+      "of the source can decide the property). Exactness IS the one assertion a scanner bug cannot "
+      "false-PASS: a missed comment, a missed class close or a mis-split can only produce text that "
+      "DIFFERS from this literal",
+      len(_redos_jwt_arms) == 1 and _redos_jwt_arms[0] == _redos_jwt_lit)
 
 # --- v0.1.70 security: git-log commit subjects now pass through the SAME firewall (was: only
 # _sane()'s control-byte strip — no credential-shape check at all, a stark asymmetry against
@@ -15433,7 +15479,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 44)
+      passed + failed + 1 == 1750 + 45)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

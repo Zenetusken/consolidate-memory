@@ -344,7 +344,7 @@ are one tree now, and the figures below are that tree's.
 | Gate | Result |
 | --- | --- |
 | `tests/dashboard_browser.py` | **1334 passed, 0 failed** |
-| `tests/smoke.py` | **1794 passed, 0 failed** — census constant `1750 + 44`, which is `origin/main`'s `1750 + 43` **+1**: the `.dim` guard pin this cycle wrote (§4.2's M7, the check `network: the .dim class keeps its claim`). An earlier draft of this row read "unchanged (no smoke pin was added)", which the two constants refute — the delta *is* the pin |
+| `tests/smoke.py` | **1795 passed, 0 failed** — census constant `1750 + 45`, which is `origin/main`'s `1750 + 43` **+2**: the `.dim` guard pin this cycle wrote (§4.2's M7, the check `network: the .dim class keeps its claim`), plus the ReDoS guard's **behavioural** eyJ check added in v0.4.28 (the structural eyJ pin it sits beside *replaced* an existing check, so it costs no census slot). An earlier draft of this row read "unchanged (no smoke pin was added)", which the two constants refute — the delta *is* the pin |
 | `tests/docs_links.py` | pass — the preview is regenerated on the ship tree *before* this gate, since a stale one fails it by design |
 | `tests/simulate_accumulation.py` | "All lifecycle properties hold" |
 | `mypy --config-file mypy.ini` | success — 42 files |

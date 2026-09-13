@@ -40,12 +40,16 @@ gives 0.0627 against 0.2360 across batches, and a bound derived from it would ha
   ~2.8× — and by n=24000 the shipped scan *under load* (1.20s) already exceeds the pre-fix scan
   measured *idle* (0.94s). The rule divides mutant *idle* by shipped *loaded*, which at n=48000 is a
   margin of **1.16×** against the 2× floor. The window is empty, not narrow — so the guard pins the
-  caps themselves, two ways, and the check name says both: **no open quantifier** in the arm, and
-  the **three caps as exact literals**. A behavioral check there would have read green forever while
-  pinning nothing, which is worse than no check: it advertises coverage it does not have.
-- **That pin was evadable three ways, each a one-token edit.** It scanned the source with
-  `re.search(r"eyJ[^|\n]*")` and split on the first `#` — a naive scan that does not model `re.X`,
-  and all three evasions live in exactly that gap: a **newline** after `eyJ` (whitespace is
+  arm's **source text** instead. It took three review rounds and **six** one-token evasions to land
+  there, and the endpoint is a behavioural check plus a pin that asserts the arm *is* the shipped
+  text, byte for byte. Both are load-bearing, and the matrix is what says so: the behavioural check
+  measures **294–298×** separation on the ambiguous shapes, and the pin catches rows the behavioural
+  check is measurably blind to. "Would either have read green forever while pinning nothing?" was
+  asked of both, with measurements rather than intent — a check that advertises coverage it does not
+  have is worse than no check.
+- **The pin v0.4.27 shipped was evadable three ways, each a one-token edit.** It scanned the source
+  with `re.search(r"eyJ[^|\n]*")` and split on the first `#` — a naive scan that does not model
+  `re.X`, and all three evasions live in exactly that gap: a **newline** after `eyJ` (whitespace is
   insignificant to the engine but fatal to `[^|\n]*`, and at 105 lines this pattern's house style is
   to wrap), a **`(?#…)` group** there, or a mention of `eyJ` in an **earlier arm's comment**, which
   makes the scan pin the comment and never examine the arm. Each restores the full blowup with the
@@ -53,40 +57,78 @@ gives 0.0627 against 0.2360 across batches, and a bound derived from it would ha
   outside a character class, plus `(?#…)` groups — before splitting the alternation, and requires
   exactly one arm to carry the anchor. Measured: the old predicate reads PASS (evaded) on all three;
   the new one trips on all three.
-- **A fourth evasion, found by review after that fix was written — and it walked through it.** The
-  scanner tracked character classes (for the comment rule) and then **discarded that tracking at the
-  split**, so a `|` that was a *member* of a class still split the arm. `[A-Za-z|_]` — a class whose
-  third member happens to be a pipe — cut the arm at 36 characters and left the open quantifier
-  `[A-Za-z0-9_-]*` in the **discarded tail**, past the truncation. The old pin reads **PASS** on that
-  mutant. It is the worst regression in the whole cycle's evidence — **225× the shipped scan at
-  n=1500, 1604× at n=6000**, growing faster than quadratically — and it is squarely *inside* the
-  scope the pin claims. The shipped pattern carries **0** in-class pipes, so no verdict on real code
-  was ever wrong; the hole is reachable only by a mutation, which is exactly why it survived a cycle
-  *about* this defect class. The fix folds classes to `C`, escapes to `E`, drops comments, and splits
-  arms in **one pass**, so no class state survives to be forgotten at a later step; it retires a
-  latent sibling too, since the old class-collapse was itself a regex that did not know a class ends
-  at an *unescaped* `]`. **Fifteen cases** total, every mutation asserting its edit applied first —
-  four of an earlier draft's eleven were silent no-ops that certified a pin they never exercised. And
-  each evasion token is tested **twice**: alone (which must PASS — a newline after `eyJ` is
-  insignificant under `re.X`, so demanding a trip there would be demanding a false alarm) and paired
-  with a restored blowup (which must trip). They are compound evasions; testing only the first half
-  had passed for coverage.
-- **Three behavioral checks and one structural**, each failing on a *measured* revert. Every mutant
-  has a named detector, and the eyJ mutant is caught by the structural pin **alone** — it measures
-  1.00×/1.00×/0.95× separation on the other three payloads, i.e. nothing else in the guard sees it.
-  Pre-fix figures are interpolated into the check names, so a failure is self-diagnosing, and a dead
-  clock fails too (`0.0 < dt`) rather than making every bound vacuously green.
+- **Then a fourth, fifth and sixth — and the pattern in them is the finding.** The class-aware fix
+  above still **discarded its class tracking at the split**, so a `|` that was a *member* of a class
+  split the arm anyway: `[A-Za-z|_]` — a class whose third member happens to be a pipe — cut the arm
+  at 36 characters and left the open quantifier `[A-Za-z0-9_-]*` in the **discarded tail**, past the
+  truncation. Review found two more at other syntax sites: a `|` inside a **group**, and a `]` in
+  **first** class position, which CPython reads as a literal member rather than a close. The in-class
+  pipe is the worst regression in the whole cycle's evidence — **225× the shipped scan at n=1500,
+  1604× at n=6000**, growing faster than quadratically — and it is squarely *inside* the scope the
+  pin claims. The shipped pattern carries **0** in-class pipes, so no verdict on real code was ever
+  wrong; the holes are reachable only by mutation, which is exactly why they survived a cycle *about*
+  this defect class. Six rounds, six different unmodelled syntax rules, six false passes. That is not
+  a bug tail, it is a **wrong design** — and the next bullet is why.
+- **The pin now asserts the arm's TEXT, and that is decidable.** A scan that reads an arm and returns
+  a *verdict* about linearity cannot be made correct: `eyJ(?:[A-Za-z0-9_-]{8,2000}){8,4000}` is
+  catastrophic with **every quantifier bounded**, so no scan of the source can decide the property,
+  and every hole in such a scan is a false pass. Asserting the text is decidable, and it makes the
+  scanner's own bugs fail **safe**: a missed comment, a missed class close, or a `|` split in the
+  wrong place can only produce a string that **differs** from the literal. A false pass now requires
+  the branch to be byte-identical to the shipped branch. Exactness also subsumes what the previous
+  half did one property at a time — the open-quantifier scan, the three-cap substring test, cap
+  order, cap adjacency, charset edits, appended groups — and the class **fold** is gone with it: a
+  fold is a lossy reading, and `[A-Za-z0-9_-]` folded to `C` is indistinguishable from `[a-z]`.
+  **Depth is deliberately not tracked**, and that is measured rather than assumed: the whole
+  alternation is wrapped in `(?:…`, so every branch sits at depth 1 and a depth-0 split collapses all
+  48 into one 12 868-char arm, which trips on the shipped pattern.
+- **22 cases, of which six are the ones the previous pin could not see.** Against the pinned
+  revision `c8f4012`, **six rows read PASS there and trip here**: a starred group before the capped
+  segment, a `]`-first class, the **three caps permuted** between segments, a **widened cap hidden
+  behind a comment mention**, newline + a starred group, and the nested-bounded mutant. Two of those
+  are not evasions at all but plain errors the old pin could not express: the caps are a *set* to a
+  test that checks each one is present, and a permutation keeps every member; and a comment mention
+  ahead of the arm reintroduces the third evasion — so the previous revision's "widening is now
+  caught" claim held only for a widening that nothing else was hiding behind. Every mutation asserts
+  its edit applied **and** that the subject was the full pattern: an edit assert alone does not catch
+  a wrong *subject*, since `SEG.replace(SEG, X)` legitimately applies. And each evasion token is
+  tested **twice** — alone (which must PASS: a newline after `eyJ` is insignificant under `re.X`, so
+  demanding a trip there would be demanding a false alarm) and paired with a restored blowup (which
+  must trip). They are compound evasions; testing only the first half had passed for coverage.
+- **Five checks now — three behavioural and two for the eyJ arm — each failing on a *measured*
+  revert.** Every mutant has a named detector, and the eyJ mutant is caught by the pin **alone**,
+  with the behavioural check measured **inert** on it rather than merely silent (1.00×/1.00×/0.95×
+  separation on the other three payloads too). Pre-fix figures are interpolated into the check names,
+  so a failure is self-diagnosing, and a dead clock fails too (`0.0 < dt`) rather than making every
+  bound vacuously green.
 - **One limit recorded, and one former limit closed.** Every payload is a non-matching probe — a
   matching probe was built and measured *non-discriminating* (3.59s pre-fix against 3.93s shipped),
   because the two versions scan it by different routes. The former limit, **cap widening**
   (`{8,2000}` → `{8,9000}` grows the sweep 4.5× while leaving every quantifier bounded), is now
-  caught by the pin's exact-literal half. That costs a false-positive mode worth naming: a
-  legitimate **re-tune** of a cap now fails the check until the figure is re-measured — which is the
-  intended prompt, since the spec requires a re-measurement for any cap change. The limit that
-  remains is that the pin is scoped to the eyJ arm: an open quantifier introduced into a *different*
-  arm has no structural detector, only the behavioural payloads. (The fourth evasion above is a
-  reminder that this sentence is weaker than it reads — that one was inside the scope and still went
-  unexamined. A pin's coverage is bounded by its extraction, and an extraction is a parser.)
+  caught by exactness — and closed in two constructions the older "all three literals are present"
+  test accepted, a widening behind a comment mention and a **permuted** cap set. That costs a
+  false-positive mode worth naming: any edit to that arm now fails the check until the text is
+  re-measured, including a legitimate **re-tune** of a cap. That is the intended prompt — the spec
+  requires a re-measurement for any cap change — but a reader should know the failure may mean "the
+  cap moved" rather than "the cap is open". The limit that remains is **scope, and now only scope**:
+  the pin examines the anchor's branch *by construction*, so an open quantifier in a different arm,
+  or in a new **sibling** branch, has no structural detector — only the behavioural payloads, and
+  only if that branch blows up on one. This gap got *narrower* this cycle rather than wider: the
+  revision before it read "a pin's coverage is bounded by its extraction, and an extraction is a
+  parser; this one was a parser with a hole in it", and exactness removes that failure mode, because
+  there is no reach left to get wrong — only a comparison.
+- **One failure mode is recorded as unbounded, and the backstop is the job rather than the code.**
+  The behavioural check's mutant family contains an **exponential** member (N1 — two nested bounded
+  quantifiers, which blew a 20s cap at k=200), and no stdlib `re` timeout exists to interrupt a
+  running search. A subprocess with a timeout would bound it and was **rejected**: it would put the
+  spec's slice-and-exec re-derivation out of reach for one check, and every mechanism added to this
+  guard so far has become a hole. Instead ci.yml's `test` job gained `timeout-minutes: 15` — it had
+  none while its siblings carried 10 — which is ~18× the job's **measured** 50s, so it cannot flake.
+  The failure *mode* is safe either way: a mutant the check cannot finish reading is a RED job, never
+  a green check. **And a claim about N1 did not survive re-measurement**: an earlier draft of the
+  spec listed the nested-bounded family among the things the behavioural check *catches*. It hangs on
+  it — and because it runs first, the pin's verdict is never reached in a real run. Corrected at both
+  sites; the claim had been written from the design's intent rather than from the measurement.
 - **`SECURITY.md` corrected for the third time on this same bullet** — v0.1.12 had replaced "linear
   (no nested quantifiers)" with a disjointness argument it recorded as "same property, accurate
   wording", and that argument is exactly what the four v0.1.70 instances falsified. The third
@@ -110,13 +152,17 @@ measurement tables, the admission rule with its corrected arithmetic and the `S*
 method, the empty-window proof stated in the rule's own quantities, the coverage matrix with its
 recorded gaps *and* the one this cycle closed, the rejected alternatives (the ratio; a behavioral
 eyJ pin at n=96000, which does not clear the rule **at all** rather than merely costing an ~84s
-failure time; a uniform `n`), and a runnable recipe so every
-number is re-derivable rather than testimony — including the pin's fifteen cases, each asserting its
-mutation applied before the verdict is read.
+failure time; a uniform `n`; a subprocess timeout), and a runnable recipe so every
+number is re-derivable rather than testimony — including the pin's **22 cases**, each asserting its
+mutation applied *and* its subject before the verdict is read, and the **six `c8f4012`-evaded rows**,
+whose evidence is a comparison between two revisions rather than a reading.
 
-**Verification.** 1794 smoke checks (0 failed — the census is deliberately unchanged: three
-behavioral checks replace four, plus one structural), with `docs_links`, `simulate_accumulation`,
-`mypy` and the manifest validator green. **One** other wall-clock stopwatch exists in the suite — the
+**Verification.** **1795** smoke checks (0 failed — census `1750 + 45`, up from `origin/main`'s
+`1750 + 43` by **+2**: the v0.4.27 `.dim` guard pin, and this cycle's behavioural eyJ check; the
+exact-text pin *replaced* the structural check already there, so it costs no slot), with
+`docs_links`, `simulate_accumulation`, `mypy` and the manifest validator green. The guard block
+itself was exec'd verbatim — the spec's own recipe — under all five local interpreters: **5/5 green
+on 3.10.12, 3.11.15, 3.12.13, 3.13.15 and 3.14.6**. **One** other wall-clock stopwatch exists in the suite — the
 commit-subject cap check, ~21× headroom, and load-bearing rather than merely loose (remove the cap
 and it reads 8.19s against its 2.0s bound). It is flagged as a follow-up in the spec rather than
 silently re-based inside a patch. An earlier draft of this entry said there were two such guards; on
