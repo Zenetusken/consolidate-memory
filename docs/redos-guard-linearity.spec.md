@@ -350,8 +350,9 @@ Two structural properties of the predicate, both load-bearing:
 
 ### §4.1 The eyJ pin — the arm's text, asserted exactly
 
-The eyJ arm's defense *is* its caps, so the guard asserts them directly. Since v0.4.28 it does so
-**two ways**, on two axes that see disjoint mutant families:
+The eyJ arm's defense *is* its caps, and no CPU-time bound can separate that arm from a
+caps-reverted one (§2.4) — so the guard asserts the arm itself. Since v0.4.28 it does so **two
+ways**, on two axes that see disjoint mutant families:
 
 | | what it asserts | what it is blind to |
 | --- | --- | --- |
@@ -373,10 +374,17 @@ scan, every one a **one-token** edit that restored the full blowup with the pin 
 
 A′, B′ and C are failures of the same thing — not stripping `re.X` the way the engine does. D was
 the same failure at a second site, and F1/F2 at a third and fourth. Six rounds, six different
-unmodelled syntax rules, six false PASSes. That is not a bug tail: it is a **wrong design**. A scan
-that reads an arm and returns a *verdict* about linearity is undecidable in practice — (1) exists
-because of `eyJ(?:[A-Za-z0-9_-]{8,2000}){8,4000}`, which is catastrophic with **every quantifier
-bounded** — so such a scan will always have holes, and **every hole is a false PASS**.
+unmodelled syntax rules, six false PASSes.
+
+That is not a bug tail: it is a **wrong design**, and the reason is a property of the problem rather
+than of those six rules. A scan that reads an arm and returns a *verdict* about linearity cannot be
+made correct, because the property it is being asked to decide is not readable off the source:
+`eyJ(?:[A-Za-z0-9_-]{8,2000}){8,4000}` is catastrophic with **every quantifier bounded**. So such a
+scan will always have holes — and **every hole is a false PASS**, which is the worst direction for a
+guard to be wrong in. That is the argument for exactness, and it does not depend on finding a
+seventh evasion. (It is *not* the argument for (1): the behavioural check exists for the opposite
+reason — to see the blowups (2)'s scope **excludes**, since no exactness assertion about one branch
+can speak for the other 47. Two checks, because they fail in opposite directions.)
 
 Asserting the arm's **text** is decidable, and it makes the scanner's own bugs fail **safe**: a
 missed comment, a missed class close, or a `|` split in the wrong place can only produce a string
@@ -396,35 +404,30 @@ scope is the anchor's branch **by construction**, and no scan of that shape can 
 the alternation without asserting the whole pattern — which would trade this hole for a false-alarm
 surface across all 48 branches.
 
-**Where (1) comes in.** (1) is the check that *can* see outside the branch, and it is also the
-independent oracle on (2)'s scanner. Its division of labour is measured, not assumed, and it is
-narrower than it first looks: a cap replaced by `*`, replaced by `+`, or deleted is **inert** at
-that payload (`eyJ*` still matches, then the required `\.` fails at the first position), as is an
-open quantifier appended to the arm's end (nothing follows it to backtrack against). Those rows are
-(2)'s alone. What (1) catches is the **ambiguous** shapes — a starred group before the capped
-segment, an open quantifier after one, a `]`-first class — measured at **2.91–2.95 s** against
-0.0099 s shipped (**294–298×**).
+**How far (1) actually reaches is measured, and it is narrower than it first looks.** A cap replaced
+by `*`, replaced by `+`, or deleted is **inert** at that payload (`eyJ*` still matches, then the
+required `\.` fails at the first position), as is an open quantifier appended to the arm's end
+(nothing follows it to backtrack against). Those rows are (2)'s alone. What (1) catches is the
+**ambiguous** shapes — a starred group before the capped segment, an open quantifier after one, a
+`]`-first class — measured at **2.91–2.95 s** against 0.0099 s shipped (**294–298×**). Outside the
+branch it is the only check that sees anything at all, which is the whole of its case.
 
-**N1 is the argument, not a coverage row — and the matrix says so.** The nested-bounded mutant
-(`eyJ(?:[A-Za-z0-9_-]{8,2000}){8,4000}`, every quantifier bounded, exponential) is *why* a
-verdict-scan is undecidable: no scan of the source can conclude "this arm is linear" while it
-exists. It is **not** a thing (1) catches — measured, (1) **hangs** on it (it blew a 20 s cap at
-k=200), and because (1) runs first in the block, the pin's verdict on that mutant is never reached
-in a real run. The detection is the **job timeout**, which is a RED job. That is the failure mode
-recorded as safe in §4.1's last paragraph, and it is the only honest description: on N1 the guard
-does not return a verdict at all, it stops. (An earlier draft of this document listed "nested
-bounded" among the things (1) catches. The matrix falsified that in the same run that produced the
-table — the mutant's own row reads `hung`, not `TRIP`.)
+**N1 is the argument, not a coverage row — and the matrix says so.** It is **not** a thing (1)
+catches: measured, (1) **hangs** on it (it blew a 20 s cap at k=200), and because (1) runs first in
+the block, the pin's verdict on that mutant is never reached in a real run. Detection there is the
+**job timeout**, which is a RED job. (An earlier draft of this document listed "nested bounded"
+among the things (1) catches; the matrix falsified that in the same run that produced the table,
+where the mutant's own row reads `hung`, not `TRIP`.)
 
-**(1)'s failure time is not bounded, and that is recorded rather than papered over.** The three
+**So (1)'s failure time is not bounded, and that is recorded rather than papered over.** The three
 table payloads are fixed runs, so a regression against them costs at most that mutant's own
-measurement (≤16.2 s). (1)'s mutant family contains an **exponential** member — two nested bounded
-quantifiers blew a 20 s cap at k=200 — and no stdlib `re` timeout exists to interrupt a running
-search. The backstop is therefore the **job**: `timeout-minutes: 15` on ci.yml's `test` job, which
-had none while its siblings carried 10. A subprocess with a timeout would bound it in-process and
-was **rejected** (§6.5): it would put §9's slice-and-exec re-derivation out of reach for one check,
-and every mechanism added to this guard so far has become a hole. The failure **mode** stays safe
-either way — a mutant the check cannot finish reading is a RED job, never a green check.
+measurement (≤16.2 s). (1) is different: its mutant family contains an **exponential** member, and no
+stdlib `re` timeout exists to interrupt a running search. The backstop is therefore the **job** —
+`timeout-minutes: 15` on ci.yml's `test` job, which had none while its siblings carried 10. A
+subprocess with a timeout would bound it in-process and was **rejected** (§6.5): it would put §9's
+slice-and-exec re-derivation out of reach for one check, and every mechanism added to this guard so
+far has become a hole. The failure **mode** stays safe either way — a mutant the check cannot finish
+reading is a RED job, never a green check.
 
 **How bad the evasions were.** D, F1 and F2 are not narrow misses — they are the worst regressions
 anywhere in this document, and they grow faster than quadratically. D, measured at its own sizes:
@@ -438,10 +441,10 @@ The shipped pattern is unaffected — **0** in-class pipes, checked — so this 
 by a mutation, never a wrong verdict on the code it guards. That is exactly why it survived a cycle
 that was *about* this class of defect, and exactly the kind of hole a verdict-scan can never close.
 
-The lesson is the one §1.3 records twice already, arriving a sixth time: **modelling a syntax partway
-is worse than not modelling it at all.** Every one of the six evasions is a rule that was present,
-correct, and applied at one site and not another — and the site that *was* modelled is what made the
-unmodelled one read as covered.
+The lesson is the one §1.3 records twice already, now arriving in the design rather than in a
+sentence: **modelling a syntax partway is worse than not modelling it at all.** Every one of the six
+evasions is a rule that was present, correct, and applied at one site and not another — and the site
+that *was* modelled is what made the unmodelled one read as covered.
 
 **What exactness buys, precisely.** It does not make the scanner correct; it makes the scanner's
 incorrectness **survivable**, which is the whole point:
