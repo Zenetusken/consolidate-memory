@@ -20,6 +20,9 @@ the one that flaked, inflates **17.7×** under load on wall against **5.8×** on
 `time.process_time()` over the identical scan. And its 2.0s bound left 2.2× over that payload
 (0.891s here), not the "deliberately loose … ~0.005-0.19s" headroom its comment claimed — the JWT
 payload is 4.7× the top of that range, so a 2.3× slower runner trips it, which is what CI did.
+(Both figures are **wall-clock**, because that is the clock the old guard read — and the qualifier
+matters: over the identical scan, load inflates wall 17.7× against CPU's 5.8×, so "2.3× slower" asks
+far less of a *machine* than it sounds. The new bound's margins are CPU-clock.)
 
 The bound is now **derived, not chosen**: a payload is admitted only if each side's margin
 `sqrt(M/S*) ≥ 2`, where `S*` is the worst shipped CPU time under a standard stress load and `M` is

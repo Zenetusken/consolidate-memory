@@ -1050,7 +1050,10 @@ for _name, _val in [
 #       reading. The JWT payload — the one that flaked — inflates 17.7x under load on wall against
 #       5.8x on time.process_time() over the identical scan. Every payload here is steadier on CPU.
 #   (2) THE MARGIN. That 2.0s bound left 2.2x over that payload (0.89s here), not the
-#       "deliberately loose" headroom the old comment claimed — a 2.3x slower runner trips it.
+#       "deliberately loose" headroom the old comment claimed — a 2.3x slower runner trips it. Both
+#       of those are WALL-clock figures, because that is the clock the old guard read; over the
+#       identical scan, load inflates wall 17.7x against CPU's 5.8x, so "2.3x slower" asks far less
+#       of a MACHINE than it sounds. The three bounds below are CPU-clock.
 # The bound is now DERIVED, not chosen: a payload is admitted only if each side's margin
 # sqrt(M/S*) >= 2, where S* is the WORST shipped CPU time under the standard stress load and M is
 # the WEAKEST owning mutant's idle CPU time. The bound sits at their geometric mean sqrt(S* x M), so

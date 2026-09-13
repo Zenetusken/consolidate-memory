@@ -41,7 +41,11 @@ the bound would have hidden it: the guard was measuring something that could not
    load on wall against **5.8×** on `time.process_time()` over the identical scan (§2.2).
 2. **The margin.** Its 2.0s bound left 2.2× over that payload (0.891s measured here), not the
    "deliberately loose … ~0.005-0.19s" headroom its comment claimed — the JWT payload is 4.7× the
-   top of that range. A runner 2.3× slower trips it, which is what CI did.
+   top of that range. A runner 2.3× slower trips it, which is what CI did. **Both figures are
+   wall-clock, because that is the clock the old guard read** — and that qualifier is load-bearing
+   rather than pedantic: §2.2 measures the same scan inflating **17.7×** on wall against **5.8×** on
+   CPU under load, so "2.3× slower" is a far smaller ask of a *machine* than it sounds. The new
+   bound's margins are CPU-clock, and §8 states the machine allowance in its own units.
 
 Neither cause is visible from the code. Both are visible in ten minutes of measurement, which is
 what this document is: every number below was measured on the maintainer's box (24 cores,
@@ -805,7 +809,8 @@ the marker going stale.)
 
 | tier | what | how a reader checks it |
 | --- | --- | --- |
-| re-derivable from the committed tree | §2.1, §2.3 shipped columns, §2.4 pre-fix and shipped, §5 matrix, §4.1's **22** pin cases and the mutant table's per-doubling readings, §7's headroom and the two non-guards, the three bounds | §9's recipe, against the committed `_SECRET`; the pin cases by mutating the source with asserted counts; the mutant table by compiling the in-class-pipe pattern and timing it against the shipped scan; **the six `c8f4012`-evaded rows by running both pins against `git show c8f4012:tests/smoke.py`** — the only row class here whose evidence is a *comparison* between two revisions rather than a reading |
+| re-derivable from the committed tree | §2.1, §2.3 shipped columns, §2.4 pre-fix and shipped, §5 matrix, §4.1's **22** pin cases and the mutant table's per-doubling readings, §7's headroom and the two non-guards, the three bounds | §9's recipe, against the committed `_SECRET`; the mutant table by compiling the in-class-pipe pattern and timing it against the shipped scan; **the six `c8f4012`-evaded rows by running both pins against `git show c8f4012:tests/smoke.py`** — the only row class here whose evidence is a *comparison* between two revisions rather than a reading |
+| **re-derivable only by rebuilding the harness** | §4.1's **22-case matrix, as a whole**, and §2.5's two new eyJ rows | The matrix's *cases* are fully specified in §4.1's table — which edit, at which syntax site, expecting which verdict — so a reader can reconstruct it; the harness that produced it is **not committed**, and is not in the tree. Stated as its own row rather than folded into the one above because that is the honest tier: the six `c8f4012` verdicts are checkable against two committed revisions, but the **count of 22** is checkable only by rebuilding the runner. (The two §2.5 rows are the exception inside this row: those come from §9's recipe verbatim and are tier 1.) |
 | re-derivable from the committed tree, but only by re-running it | §4.1's N1 row: **(1) hangs, (2) trips** | exec the behavioural half alone against a pattern with two nested bounded quantifiers — it does not return within 20 s at k=200. The `(2)` verdict comes from running the pin slice **without** the behavioural check ahead of it, since in the real block the hang means (2) is never reached |
 | re-derivable by scanning the pattern | the **20 unbounded quantifiers** in live arms (§8's companion in `SECURITY.md`) | strip `re.X` comments, collapse `[classes]`→`C` and `\x`→`E`, count `[*+]\|\{\d+,\}` — 22 raw, 20 after the collapse (2 are literal `+` inside classes) |
 | re-derivable by reading a file | `SECURITY.md`'s cap-coverage claim: `facts_manifest.py` caps at 4 MiB, `sync_global.py` does not | `os.read(fd, 4 * 1024 * 1024)` versus an uncapped `path.read_text` in `_safe_read_text` |
