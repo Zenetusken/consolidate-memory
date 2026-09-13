@@ -15161,7 +15161,16 @@ with _tf43.TemporaryDirectory() as _td23:
                         timeout=60, env=_env23)
         assert _p.returncode == 0, _p.stderr
         _found = list(Path(_home23).glob("**/.consolidation-state.json"))
-        _mine = [f for f in _found if name in str(f)]
+        # Match the store SLUG segment, which is derived from the project path and ends in the
+        # project name — never `name in str(f)`. That substring form is order-dependent and wrong
+        # whenever the RANDOM temp dir name happens to contain the 2-character project name: every
+        # store's path then contains it, `_mine` holds all three, and `_mine[0]` is whichever the
+        # glob yielded first — another project's store, whose population is a different shape, so
+        # the checks below fail on an unrelated commit. Measured 2.1% wrong-pick per name (~6% per
+        # suite run): that is the flake that reddened CI on d9ade6e and went green on a re-run of
+        # the same commit. The assert stays: should the layout ever move the state file off
+        # `<slug>/memory/`, this matches nothing and fails LOUD instead of mispicking.
+        _mine = [f for f in _found if f.parent.parent.name.endswith("-" + name)]
         assert _mine, "state file not found"
         _mem = _mine[0].parent
         for _i in range(3):
