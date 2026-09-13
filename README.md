@@ -36,7 +36,7 @@
 
 > [!NOTE]
 > **Current release: v0.4.27** — the network map's closed loop: the anchor now marks what you
-> clicked, the hover cue stops erasing it, and the graph gains a position trail, a selection
+> clicked, the hover cue stops repainting it, and the graph gains a position trail, a selection
 > summary, and a link out to the complete record.
 > Public 1.0 remains **HOLD**, with outstanding evidence gates tracked in the
 > [1.0 preflight](docs/1.0-preflight.spec.md). See the [changelog](CHANGELOG.md) for

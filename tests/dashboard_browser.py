@@ -74,12 +74,20 @@ def main(out,capture=False):
             # view that can accrete one row at a time becomes that panel again, and no other check
             # here would notice. The pairing is the structural half — a <dl> whose dt/dd counts
             # disagree renders as a shifted grid, not as an error, so nothing else can catch it.
-            # Both halves are view-independent, so this needs no branch: in the fleet the summary
-            # does not exist and 0==0 is the correct reading, while the six focused call sites run
-            # it with a real summary on screen — where the ceiling is a boundary test, not a 0<0.
+            # The FLOOR is the other half, and it is not decoration. With a ceiling alone a summary
+            # that never renders at all reads 0 rows, 0==0 passes, and the check is green against
+            # the very defect it was written for — measured, not reasoned: replanting these
+            # predicates against a bundle whose <dl> is never built gives dt=0, dd=0, GREEN.
+            # So the bound is keyed to the view the map itself reports, never to the call site's
+            # label string: a focused view must carry a real summary, and the fleet must carry
+            # none because it has no selection to summarise. Measured rows — fleet 0, group 2,
+            # fact 3, project 4 — so the project view's four IS the ceiling (a boundary test
+            # there), and the floor is the half a missing summary cannot satisfy.
+            summary_rows=page.locator('#net-detail .network-summary > dt').count()
+            low,high=(0,0) if page.locator('#net').get_attribute('data-kind')=='fleet' else (1,4)
             check(label+' keeps the selection summary to a handful of paired rows',
-                  page.locator('#net-detail .network-summary > dt').count()==page.locator('#net-detail .network-summary > dd').count()
-                  and page.locator('#net-detail .network-summary > dt').count()<=4)
+                  summary_rows==page.locator('#net-detail .network-summary > dd').count()
+                  and low<=summary_rows<=high)
 
         def resize(width):
             page.set_viewport_size({'width':width,'height':1000})
@@ -88,11 +96,56 @@ def main(out,capture=False):
         def contained(label):
             check(label+' has no page overflow',page.evaluate('document.documentElement.scrollWidth<=innerWidth'))
 
+        def focused_fit(label):
+            # The summary's EXISTENCE is the load-bearing half, and it is the half nothing else at
+            # these two sites asserts: a <dl> that never builds cannot overflow, so a containment-
+            # only check is green against a focused view that lost its whole summary — the D2 shape,
+            # at the two places D2's own repair (concise_network's floor) does not reach: the
+            # fact-view width loop, and the theme loop's focused pass.
+            #
+            # The page-scroll clause is inherited from the `contained()` call this replaces, and it
+            # is NARROWER than it reads — measured, not assumed: force #net-detail to
+            # calc(100vw + 240px) and this stays green, because .network-surface clips it
+            # (overflow:hidden; clientW 1206 against scrollW 1706) so nothing reaches
+            # documentElement.scrollWidth. Containment of the map's own surfaces is report_layout's
+            # surface-alignment clause, which runs in the same focused pass and caught that forced
+            # width at all four widths. Kept because it still guards a blowout that ESCAPES the
+            # clip, which is a different failure from one swallowed by it.
+            check(label+' renders its summary without overflowing the page',
+                  page.locator('#net-detail .network-summary > dt').count()>0
+                  and page.evaluate('document.documentElement.scrollWidth<=innerWidth'))
+
         def narration_layout(label):
             check(label+' narration is a visible single column of italic paragraphs',page.locator('#dream-arc .dream-voice').evaluate_all('''es=>es.length>0 && es.every((e,i)=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e),first=es[0].getBoundingClientRect();return s.fontStyle==='italic' && r.height>0 && Math.abs(r.x-first.x)<1 && Math.abs(r.width-first.width)<1 && (!i || r.y>=es[i-1].getBoundingClientRect().bottom);})'''))
             check(label+' narration reaches the section content margin',page.locator('#dream-arc .dream-voice').evaluate_all('''es=>es.every(e=>{const r=e.getBoundingClientRect(),parent=e.parentElement,p=parent.getBoundingClientRect(),s=getComputedStyle(parent),left=p.left+parseFloat(s.borderLeftWidth)+parseFloat(s.paddingLeft),right=p.right-parseFloat(s.borderRightWidth)-parseFloat(s.paddingRight);return Math.abs(r.left-left)<1 && Math.abs(r.right-right)<1;})'''))
 
         def report_layout(label):
+            # The four .network-* selectors appended to the text-in-box list below are the map's
+            # own surfaces, and they are here rather than in visual_hierarchy's list for two
+            # measured reasons.
+            #
+            # First, this clause is the one with the Range walk, and the Range walk is
+            # CLIP-IMMUNE: getClientRects() returns layout rects, not clipped ones, so it still
+            # reports text that .network-surface{overflow:hidden} has swallowed. That is exactly
+            # where the contained() family goes blind (see focused_fit), which makes this clause
+            # the only instrument that sees a blown-out surface at all.
+            #
+            # Second, only a box that is CONSTRAINED can overflow, and three of the five obvious
+            # selectors turned out not to be. Measured at 1440/320 by putting a 600-char nowrap
+            # token in each and watching the box: `.network-summary dt` 129/129 -> 3900, the
+            # trail 109/109 -> 3900, `#net-legend-note` 554/246 -> 3600 — each box GREW to fit,
+            # because a grid `auto` track and a flex item both floor at min-content. Text past
+            # their own box is unreachable, so a check on them could never fail; they are
+            # decoration and were dropped. Their containers did hold (`.network-summary` and
+            # #net-controls, 1154/246 unchanged, text 2746-3046 past the right edge), and a
+            # container's walk covers its descendants' text — so the container is what carries
+            # the dt, the trail and the note here. `.network-summary dd` is kept as well: its
+            # `minmax(0,1fr)` track has a 0 floor, which is the constraint the whole rule exists
+            # for, and it is the most sensitive member of the list.
+            #
+            # They render only in a focused view, so the extension is worthless without the
+            # focused call in the theme loop, and clean-where-it-does-not-render is not evidence:
+            # the +new-surfaces probe was run at 1440/390/320 against a real focused view.
             failures=page.evaluate('''()=>{
                 const failures=[],rect=e=>e.getBoundingClientRect(),inside=e=>{const r=rect(e),s=getComputedStyle(e);return {left:r.left+parseFloat(s.borderLeftWidth)+parseFloat(s.paddingLeft),right:r.right-parseFloat(s.borderRightWidth)-parseFloat(s.paddingRight)};};
                 function aligned(e,parent,full){if(!e || !e.getClientRects().length)return;const r=rect(e),p=inside(parent);if(Math.abs(r.left-p.left)>1 || full&&Math.abs(r.right-p.right)>1)failures.push({element:e.id||e.className,left:r.left,right:r.right,expected:p});}
@@ -110,7 +163,7 @@ def main(out,capture=False):
             })''')
             check(label+' keeps heading titles, notes and collapse controls apart '+json.dumps(failures),not failures)
             failures=page.evaluate('''()=>{
-                const selectors=['#dream-arc .dream-voice','#entries .row .act','#entries .row .nm','#entries .row .rs','#entries .row .ci','#pass-blk .file-evidence-link','#pass-blk .evidence-fields dt','#pass-blk .evidence-fields dd','#activity-inspector .inspector-row>span','#activity-inspector .inspector-row>b'];
+                const selectors=['#dream-arc .dream-voice','#entries .row .act','#entries .row .nm','#entries .row .rs','#entries .row .ci','#pass-blk .file-evidence-link','#pass-blk .evidence-fields dt','#pass-blk .evidence-fields dd','#activity-inspector .inspector-row>span','#activity-inspector .inspector-row>b','.network-summary','.network-summary dd','#net-controls','#net-legend'];
                 return selectors.flatMap(s=>[...document.querySelectorAll(s)]).filter(e=>e.getClientRects().length&&!e.closest('details:not([open])')).flatMap(e=>{const bounds=e.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(e);return [...range.getClientRects()].some(r=>r.left<bounds.left-1||r.right>bounds.right+1)?[{element:e.className||e.tagName,text:e.textContent.slice(0,60),issue:'text exceeds its content box'}]:[];});
             }''')
             check(label+' wraps prose, ledger labels and evidence values inside their columns '+json.dumps(failures),not failures)
@@ -203,6 +256,17 @@ def main(out,capture=False):
         check('captured voice alone uses Georgia italic',page.locator('#dream-arc .dream-voice').first.evaluate("e=>getComputedStyle(e).fontFamily.includes('Georgia') && getComputedStyle(e).fontStyle==='italic'") and not page.locator('#dream-summary').evaluate("e=>getComputedStyle(e).fontFamily.includes('Georgia')"))
         check('initial fleet shows every captured domain and expands the trigger domain',page.locator('.domain-junction').count()==3 and page.locator('.net-node').count()==3 and page.locator('.domain-junction[aria-expanded="true"]').get_attribute('data-domain')=='work')
         concise_network('initial fleet')
+        # The dot keys say "this project / other project" — a statement the FLEET can make and a
+        # focused view cannot, because no focused view marks one node of a set. Both directions are
+        # asserted separately, and both are guarded on count for the same reason: pre-pass,
+        # inspect() replaced the legend wholesale, so the keys are ABSENT rather than hidden, and
+        # is_hidden() reads absence as hidden — the focused half alone would pass vacuously against
+        # the very defect §2.4 repaired.
+        legend_keys=page.locator('#net-legend .legend-keys')
+        check('the fleet legend shows its dot keys beside a fleet reading',
+              legend_keys.count()==1 and legend_keys.is_visible()
+              and all(k in legend_keys.inner_text() for k in ['this project','other project'])
+              and page.locator('#net-legend #net-legend-note').inner_text().strip()!='')
         check('one view selector replaces the network button lists',page.locator('#net-view').count()==1 and page.locator('#net-view optgroup').all_text_contents() and page.locator('#net-controls > button, #net-groups button').count()==0)
         check('network attributes its saved snapshot to the selected dream','this dream' in page.locator('.network-attribution').inner_text().lower() and captured_network()==record['network'])
         check('each report section identifies its evidence source',all(page.locator('#'+s).is_visible() and 'Source' in page.locator('#'+s).inner_text() for s in ['summary-source','activity-source','health-source','ledger-source']))
@@ -216,6 +280,7 @@ def main(out,capture=False):
         network_view('group','release-kit')
         check('group view has an independent permission root and exact membership',page.locator('.network-root').text_content().startswith('release-kit') and set(page.locator('.net-node').evaluate_all('es=>es.map(e=>e.dataset.node)'))=={'atlas-api','eval-lab','release-tools'})
         check('group context distinguishes permission from physical delivery',all(t in page.locator('#net-detail').inner_text().lower() for t in ['permission','receiv']) and 'not delivery' in page.locator('#net-legend').inner_text())
+        check('a sharing-group view reads its own kind into the trail',page.locator('#net-breadcrumbs').inner_text().split()==['Captured','fleet','›','Sharing','group','›','release-kit'])
         concise_network('group view')
         check('group membership is presented once on the map',page.locator('#net-detail .network-members, #net-detail .network-holders').count()==0 and 'atlas-api' not in page.locator('#net-detail').inner_text())
         geometry('cross-domain group')
@@ -239,6 +304,20 @@ def main(out,capture=False):
         check('the position trail names the focused view and offers exactly one way back',page.locator('#net-breadcrumbs').inner_text().split()==['Captured','fleet','›','Project','›','atlas-web'] and page.locator('#net-breadcrumbs button').count()==1)
         page.locator('#net-breadcrumbs button').click()
         check('the trail back-control returns to the fleet and leaves no trail behind',page.locator('#net').get_attribute('data-kind')=='fleet' and page.locator('#net-breadcrumbs').inner_text()=='' and page.locator('#net-breadcrumbs button').count()==0)
+        # ...and it is the SECOND control whose own activation destroys it: draw() empties
+        # #net-breadcrumbs, so the button just clicked has no successor to restore focus to. The
+        # repair lives at the redraw rather than at this control, so the assertion is the outcome a
+        # user feels — focus on a real control inside the widget, never stranded on <body>, where
+        # the next Tab restarts from the top of the page. The crumb is a native <button> carrying
+        # an onclick, so Enter synthesizes this same click and there is ONE handler, not two; both
+        # modalities are still asserted, because the focus ring they earn differs and because
+        # "one handler" is itself a claim worth pinning rather than reasoning about.
+        check('the trail back-control hands focus to a control in the widget, not to body',
+              page.evaluate("()=>{const a=document.activeElement;return !!a&&a!==document.body&&a!==document.documentElement&&!!a.closest('#network-blk');}"))
+        page.locator('.net-node[data-node="atlas-api"]').click()
+        page.locator('#net-breadcrumbs button').focus();page.keyboard.press('Enter')
+        check('the same back-control reached by keyboard also lands focus in the widget',
+              page.locator('#net').get_attribute('data-kind')=='fleet' and page.evaluate("()=>{const a=document.activeElement;return !!a&&a!==document.body&&a!==document.documentElement&&!!a.closest('#network-blk');}"))
         # Back to atlas-api for the fact flow below: those checks select release-checks, which
         # atlas-web does not hold, so staying on the project clicked above would strand them.
         page.locator('.net-node[data-node="atlas-api"]').click()
@@ -246,9 +325,10 @@ def main(out,capture=False):
         check('project context offers shared facts without token or identity accounting','release-checks' in page.locator('#net-detail .network-facts').inner_text() and '984' not in page.locator('#net-detail').inner_text() and 'sample-atlas-api' not in page.locator('#net-detail').inner_text())
         fact_id=next(f['fact_id'] for f in record['network']['fact_holdings'] if f['name']=='release-checks')
         page.locator('#net-detail [data-fact-id="'+fact_id+'"]').click()
-        # The one activation with no successor: inspect() rewrites #net-detail, destroying the
-        # button that was clicked, so focus would be stranded on <body>. focus() falls back to the
-        # root here — assert it lands on a real control and shows no keyboard rectangle.
+        # The other activation whose element its own redraw destroys: inspect() rewrites
+        # #net-detail, so the fact button just clicked is gone by the time draw() returns. The
+        # redraw-level repair lands focus on the root — assert it is a real control and, since this
+        # activation came from the pointer, that it carries no keyboard rectangle.
         check('switching from keyboard to pointer removes the graph focus rectangle and strands no focus on body',page.locator('.network-root').evaluate("e=>e===document.activeElement && (getComputedStyle(e).outlineStyle==='none'||parseFloat(getComputedStyle(e).outlineWidth)===0)"))
         check('focused fact names its subject and leaves exact holder names on the graph','release-checks' in page.locator('.network-selection-name').inner_text() and set(page.locator('.net-node').evaluate_all('es=>es.map(e=>e.dataset.node)'))=={'atlas-api','eval-lab','release-tools'})
         concise_network('focused fact')
@@ -368,15 +448,36 @@ def main(out,capture=False):
             page.locator('#net-view').select_option('fleet')
             page.locator('.net-node[data-current="true"]').click()
             visual_hierarchy(theme+' focused');controls_layout(theme+' focused')
-            # The mark must survive the pointer. Two rules carry it and both are same-specificity
-            # with the :hover/:focus cue, so source order decides — and the shipped palettes order
-            # them OPPOSITELY. Comparing fill+stroke before and against hover is what catches that:
-            # unscoped, the cue repaints the anchor exactly while the pointer is on it.
-            # Park the pointer and take the anchor out of :focus first. Both palettes carry the
-            # cue on `:hover, :focus` as one rule, so an anchor still focused from the click that
-            # opened this view has ALREADY been repainted — measuring its "rest" state there
-            # compares two repainted readings and the check passes with the defect in place.
-            # Parking also matters because the click left the pointer somewhere on the graph.
+            # report_layout belongs here for the same reason the two above do, and it is the one
+            # whose text-in-box clause the new surfaces were added to: that clause is blind where
+            # the surfaces do not render, and the fleet pass — the only place it used to run — is
+            # exactly where they do not.
+            report_layout(theme+' focused')
+            # Same two legend elements as the fleet check above, opposite expectation — read that
+            # check for why the count guard is what stops absence from reading as hiding. The count
+            # guard covers the KEYS only, so alone it let the whole legend be display:none'd and
+            # still read as correct: all three clauses below stay true of a hidden subtree, and
+            # inner_text() returns text from one. The visibility clause is what makes the other
+            # three a reading about a legend the reader can actually see.
+            check(theme+' focused drops the fleet dot keys and keeps its own reading',
+                  page.locator('#net-legend').is_visible()
+                  and page.locator('#net-legend .legend-keys').count()==1
+                  and page.locator('#net-legend .legend-keys').is_hidden()
+                  and page.locator('#net-legend #net-legend-note').inner_text().strip()!='')
+            focused_fit(theme+' focused')
+            # The mark must survive the pointer. The cue is NOT level with the anchor rule: it
+            # carries two :not() guards and scores (1,4,1) against the anchor's (1,2,1), so it wins
+            # outright and no source order between them can save the anchor — the repair is the
+            # :not([data-current="true"]) it carries, which excludes the anchor from the rule
+            # entirely. Measured with that guard stripped, the anchor's plate fill goes --card ->
+            # --paper2 under the pointer while its stroke holds: the fill half of the reading below,
+            # and the defect. Theme-independent — the palettes are :root[data-theme] token blocks
+            # and contain no node rule, so no theme can reorder anything here.
+            # Park the pointer and take the anchor out of :focus first. The cue fires on
+            # `:hover, :focus` together, so an anchor still focused from the click that opened this
+            # view has ALREADY been repainted — measuring its "rest" state there compares two
+            # repainted readings and the check passes with the defect in place. Parking also matters
+            # because the click left the pointer somewhere on the graph.
             page.locator('#net-view').focus();page.mouse.move(0,0)
             read="e=>{const s=getComputedStyle(e);return {mark:s.fill+'|'+s.stroke,w:s.strokeWidth};}"
             rest=page.locator('.net-node[data-current="true"] rect').evaluate(read)
@@ -497,9 +598,10 @@ def main(out,capture=False):
         fixture('two-holder-fact',two_holders)
         network_view('fact','release-checks')
         check('small focused view names both holders without unrelated project totals',set(page.locator('.net-node').evaluate_all('es=>es.map(e=>e.dataset.node)'))=={'atlas-api','atlas-web'} and 'physical mirrors' not in page.locator('#net-detail').inner_text())
+        check('a shared-fact view reads its own kind into the trail',page.locator('#net-breadcrumbs').inner_text().split()==['Captured','fleet','›','Shared','fact','›','release-checks'])
         concise_network('two-holder fact')
         for width in (1440,390,320):
-            resize(width);geometry('two-holder fact '+str(width));contained('two-holder fact '+str(width))
+            resize(width);geometry('two-holder fact '+str(width));focused_fit('two-holder fact '+str(width))
             check('sparse graph keeps its own height '+str(width),page.locator('.map-scroll').bounding_box()['height']<=page.locator('#net').bounding_box()['height']+24)
             page.locator('#network-blk').screenshot(path=str(out/('focused-fact-'+str(width)+'.png')))
         resize(390);page.locator('#network-blk > .shead').click();resize(320)

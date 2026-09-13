@@ -2416,12 +2416,18 @@ check('network: the activation primitive wires a pointer path and a keyboard pat
       and "setAttribute('role','button')" in _TEMPLATE_SRC
       and "setAttribute('tabindex','0')" in _TEMPLATE_SRC
       and "domain-junction" in _TEMPLATE_SRC)
-# GUARD pin, NOT a mutation pin — do not expect it to go red for any fix. The `.dim` rule is
-# unreachable by design (draw() renders exactly its own selection, so no view ever draws a
-# complement to dim), and the template comment beside that rule claims "the string does not
-# appear in either JS bundle". That claim had no gate, so it could go quietly false. This is
-# the gate. It passes on pre-fix code by construction — there was never a dim-emitting draw()
-# to remove — so it guards the CLAIM, not a fix.
+# GUARD pin, NOT a fix pin — reverting this pass's code changes will never turn it red. The
+# `.dim` rule is unreachable by design (draw() renders a SUBSET of its own selection in every view
+# — matching is selectedNodes() filtered, never widened — so no node ON SCREEN is ever a
+# non-member, and no view draws the complement a candidate would need), and the template comment
+# beside that rule claims "the string does not appear in either JS bundle". That claim had no gate,
+# so it could go quietly false. This is the gate. It passes on pre-fix code by construction — there
+# was never a dim-emitting draw() to remove — so it guards the CLAIM, not a fix.
+#
+# "Guard" names its BASELINE, not an exemption from verification. A guard still has to be shown to
+# have teeth, or it is vacuous in the only direction available to it — and that direction IS
+# available: the mutation is the INTRODUCTION of a dim-emitting site, not the removal of one. That
+# mutation was run (M7: a bundle applying `dim`) and this pin went red for it.
 #
 # The match set is "a quoted string containing `dim` as a whole word", NOT a list of spellings.
 # An earlier draft of this very pin listed three literal forms ('dim', "dim", "net-node dim") and

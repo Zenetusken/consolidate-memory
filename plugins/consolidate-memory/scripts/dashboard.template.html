@@ -141,10 +141,13 @@
   .net-node rect{fill:var(--paper2);stroke:var(--rule2);stroke-width:1}
   .net-node[data-current="true"] rect{stroke:var(--data);fill:var(--tint-ok);stroke-width:1.5}
   .net-node .node-name{font:500 13px var(--sans);fill:var(--ink)}.net-node .node-meta{font:11px var(--sans);fill:var(--faint)}
-  /* A marked node keeps its mark under the pointer. Hover and focus change only stroke-width, and
+  /* A marked node keeps its mark under the pointer: hover and focus change only stroke-width, and
      the ink cue is scoped away from marked nodes, so neither can repaint a stroke or fill that a
-     rule above them chose — unscoped, the ink cue is same-specificity with [data-current] and
-     .selected and, being later, silently erased the mark the moment the pointer landed on it. */
+     rule above them chose. Specificity, not source order, is why: every #network-blk-prefixed rule
+     scores (1,·,·) and outranks every unscoped rule here regardless of order, so nothing on this
+     line can win a node's fill, stroke or width in any state or theme. The rule that did repaint a
+     marked node was the PREFIXED hover rule — level with the anchor rule, and later — so its
+     guards are the repair; the guards on the unscoped cue below are precedence documentation. */
   .net-node:not(.selected):not([data-current="true"]):focus rect,.net-node:not(.selected):not([data-current="true"]):hover rect{stroke:var(--ink)}
   .net-node:hover rect,.net-node:focus rect{stroke-width:2.6}.net-node{outline:none;cursor:pointer}
   .net-node rect,.net-node text{transition:opacity .18s ease}.net-node.selected:not([data-current="true"]) rect{stroke:var(--accent);stroke-width:2}
@@ -396,6 +399,10 @@
      rather than being a bare text target; the trail states where the view is. Both stay empty in
      the fleet, where #net-breadcrumbs:empty hides the whole row. */
   #network-blk #net-breadcrumbs{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  /* The crumb is listed in the base group by #network-blk #net-breadcrumbs button — a (2,0,1)
+     selector that also BEATS the generic #network-blk button:hover fallback at (1,1,1). So its
+     hover and active states cannot come from the fallback and must be declared in the groups
+     below, by name, the way .inspector-choice is. */
   #network-blk .crumb-back{flex:none}
   #network-blk .crumb-trail{font-size:13px;color:var(--faint);overflow-wrap:anywhere}
   #pass-blk .health-status{border:1px solid var(--rule);border-top:3px solid var(--rule2);border-radius:6px;padding:16px;background:var(--paper2)}
@@ -528,11 +535,11 @@
   #history-blk #activity-controls{grid-template-columns:44px auto minmax(0,240px) 44px}
   .chrome .theme-tog[aria-pressed="true"]{background:var(--tint-accent);border-color:var(--accent);color:var(--ink)}
   .chrome .theme-tog:hover,.dreamnav a.nav-link:hover,#app .report-nav button:hover,
-  #network-blk .inspector-choice:hover,#history-blk #activity-controls button:not(:disabled):hover,
+  #network-blk .inspector-choice:hover,#network-blk #net-breadcrumbs button:hover,#history-blk #activity-controls button:not(:disabled):hover,
   #archive .arch-tools select:hover,.modal .modal-x:hover{background:var(--card);border-color:var(--data);color:var(--ink);text-decoration:none}
   #network-blk #net-search:hover,#network-blk #net-view:hover,#history-blk #activity-cycle-select:hover{border-color:var(--data)}
   .chrome .theme-tog:active,.dreamnav a.nav-link:active,#app .report-nav button:active,
-  #network-blk .inspector-choice:active,#history-blk #activity-controls button:not(:disabled):active{background:var(--tint-accent);border-color:var(--accent)}
+  #network-blk .inspector-choice:active,#network-blk #net-breadcrumbs button:active,#history-blk #activity-controls button:not(:disabled):active{background:var(--tint-accent);border-color:var(--accent)}
   .dreamnav{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px 20px}
   .dreamnav .pos{text-align:center}
   .dreamnav .nav-link{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
@@ -636,10 +643,11 @@
   /* Dimmed nodes: IMPROVED, but still LATENT and still sub-4.5 — nothing applies `.dim`. The
      string does not appear in either JS bundle, and the one path that applies `.selected`
      (the group view) marks EVERY node it renders, so no candidate for this rule exists — and
-     none can be created by marking more nodes. draw() renders exactly its own selection in every
-     view (matching is selectedNodes() filtered, never widened), so no node ON SCREEN is ever a
-     non-member to dim; a candidate needs a view that draws a complement, which is a rendering
-     change, not a selection one. Kept rather than deleted in case such a view is ever built.
+     none can be created by marking more nodes. draw() renders a SUBSET of its own selection in
+     every view (matching is selectedNodes() filtered, never widened; collapsing a domain or
+     paging past twelve both narrow it further), so no node ON SCREEN is ever a non-member to
+     dim; a candidate needs a view that draws a complement, which is a rendering change, not a
+     selection one. Kept rather than deleted in case such a view is ever built.
 
      Opacity on the GROUP is the trap, and the obvious implementation of "recede the plate,
      keep the label" walks straight into it: a group renders its subtree offscreen and then
@@ -677,7 +685,10 @@
   /* A marked node keeps its mark under the pointer. The plate lift is scoped away from marked
      nodes because this rule is same-specificity with .selected and, being later, the unscoped
      form silently un-tinted every member the moment the pointer landed on it. Marked nodes get
-     a thickness bump instead — a property no rule above them uses to carry state. */
+     a thickness bump instead — safe only because of source order: the width rule below and the
+     anchor rule above both set stroke-width and both score (1,2,1), so the later one wins, and
+     that is the only thing making 2.6 beat the anchor's 1.8. Move either one and the anchor
+     silently reverts to 1.8px under the pointer, which no gate here would catch. */
   #network-blk .net-node:not(.selected):not([data-current="true"]):hover rect,#network-blk .net-node:not(.selected):not([data-current="true"]):focus rect{stroke:var(--data);fill:var(--paper2)}
   #network-blk .net-node:hover rect,#network-blk .net-node:focus rect{stroke-width:2.6}
   #network-blk .domain-junction:hover circle{stroke:var(--accent)}

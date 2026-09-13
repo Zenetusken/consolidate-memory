@@ -194,11 +194,15 @@ path that applies `.selected` (the group view) marks *every* node it renders, so
 for the rule exists. It is kept correct rather than deleted in case a selection affordance
 revives it.
 
-**The reason is now structural, and the claim is now gated** (v0.4.27). `draw()` renders exactly
-its own selection in every view — `matching` is `selectedNodes()` filtered, never widened — so
-**no view draws a complement**, and a candidate for this rule would need a view that renders one,
-which is a rendering change, not a selection one. Two `.selected[data-current="true"]` rules that
-had been written as if both states could co-occur were removed as dead on arrival.
+**The reason is now structural, and the claim is now gated** (v0.4.27). `draw()` renders a
+**subset** of its own selection in every view — `matching` is `selectedNodes()` filtered, never
+widened — so **no view draws a complement**, and a candidate for this rule would need a view that
+renders one, which is a rendering change, not a selection one. (An earlier draft of this paragraph
+said "exactly its own selection"; the subset is strict whenever a domain is collapsed or paged,
+and the direction is what the argument needs.) The two `.net-node.selected` rules were given
+`:not([data-current="true"])` guards so a marked node keeps its mark under the pointer; a
+`.selected[data-current="true"]` rule would have been dead on arrival and never existed at any
+revision — the template comment now says so, so the guard is not mistaken later for a removal.
 `smoke.py` now asserts the "neither JS bundle" clause (`the .dim class keeps its claim`), so the
 sentence above can no longer go quietly false.
 

@@ -8,7 +8,7 @@ version changes on `main`.
 ## [0.4.27] — 2026-09-12
 
 **Patch — the network map's closed loop: the anchor marks what you clicked, the hover cue stops
-erasing it, and the graph gains a way out.**
+repainting it, and the graph gains a way out.**
 
 Reported as *"every click is incoherent; we cannot navigate it or get any information out of any
 of the nodes."* Five defects had compounded into one property: **the map answered a question the
@@ -19,15 +19,24 @@ broken code also produced.
 - **The anchor marked the wrong node.** `data-current` was wired to `truthy(n.raw.trigger)` — the
   *fleet capture trigger* — so clicking `atlas-web` left `atlas-api` stroked, tinted and labelled
   **"This project"** while the heading named the project actually selected.
-- **Three same-specificity cascade rules fought, and the two shipped palettes order them
-  OPPOSITELY.** So the same click was coherent in one theme and broken in the other, and in the
-  theme that puts hover last the **hover cue repainted the anchor exactly while the pointer was on
-  it** — the mark vanished at the moment of pointing.
+- **Three same-specificity cascade rules fought.** `[data-current="true"] rect`, `.selected rect`
+  and `:hover/:focus rect` are all (1,2,1), so source order decided — and the hover rule, being
+  last, won: its `fill:var(--paper2)` **repainted the anchor exactly while the pointer was on it**,
+  and on a **selected** node it overwrote both halves of the mark. (Measured in `deepfield`: the
+  anchor's `--data` stroke and 1.8px width held — its plate moved, not its mark — while a selected
+  node lost `--tint-accent` and `--accent` both.) This was **theme-independent**. An earlier draft
+  of this entry said the two shipped palettes ordered these rules oppositely, so one theme was
+  coherent and the other broken; that cannot happen. The palettes are `:root[data-theme=…]` token
+  blocks of ~430 characters containing no `.net-node` rule at all, and a token-only theme mechanism
+  cannot reorder rules — every theme was broken in exactly the same way.
 - **Focus was stolen on every draw.** `focus()`'s unconditional `.network-root` `.focus()` ran
   *after* `draw()`'s own `[data-key]` restore and clobbered it; the root's handler is `reset()`,
-  so **the next Enter undid the activation**. It is now a fallback that fires only when
-  `activeElement` is `<body>` — the one genuinely stranded case, a fact button whose element
-  `inspect()`'s `innerHTML` rewrite destroys.
+  so **the next Enter undid the activation**. It is now a fallback that fires only when a control
+  *had* focus and nothing inherited it — enforced once, at the redraw, because **two** controls
+  are wiped by the very activation they carry: a fact button (`inspect()` rewrites `#net-detail`)
+  and the trail's own back-control (`draw()` empties `#net-breadcrumbs`). Only the first passes
+  through `focus()`, so the fallback's original home covered the activation someone had noticed
+  and missed its sibling.
 - **No position and no way back.** `#net-breadcrumbs` was created and cleared but never written —
   `b665ffc` deleted the writer — while its CSS sat intact and idle.
 - **Focused views rendered no summary at all**, because `inspect()` rewrites `#net-detail` on
@@ -35,11 +44,12 @@ broken code also produced.
 
 **The fix is smaller than it first looked, and measuring that first is the point.** An earlier
 draft proposed marking the rendered members; the premise was false. `matching` is
-`selectedNodes()` *filtered*, never widened, so **rendered ≡ selected in every view** — the map is
-exactly its own selection, and marking it would only say "these are the things you can see". The
-one genuine 1-of-N distinction is anchor vs. members, and that mark already existed, wired to the
-wrong predicate. Correcting the predicate touches neither `selectedNodes()` nor the render
-filters, so **no rendered set changes** and the five anti-duplication pins stay green untouched.
+`selectedNodes()` *filtered*, never widened, so **no view can render a node the selection does not
+contain** — and marking the rendered members would only say "these are the things you can see".
+The one genuine 1-of-N distinction is anchor vs. members, and that mark already existed, wired to
+the wrong predicate. Correcting the predicate touches neither `selectedNodes()` nor the render
+filters, so **no rendered set changes**: the checks that assert a view renders an exact node set
+are green and none of them was edited by this pass.
 
 Alongside the fixes: a **position trail** (`Captured fleet › kind › label`, one control back), a
 **selection summary** of at most four paired rows that respects absence ≠ emptiness and never
@@ -56,26 +66,114 @@ membership"* for a control the group no longer contains; and the inner `.network
 `aria-live` doubled every announcement with the `#net-detail` live region that already contains
 it, including on pager clicks that changed nothing.
 
-**Verification.** 1264 browser checks (0 failed) and 1794 smoke checks (0 failed). Eleven pins
-were **mutation-verified** — the defect restored, the named check confirmed red — 9 in the browser
-suite and 2 in `smoke.py`. Two of those pins had to be debugged before they could be believed,
-because **a vacuous pin reads exactly like a passing one**: the hover pin passed *with the defect
-in place* (the anchor was still focused from the click that opened the view, and both palettes
-bundle the cue as `:hover, :focus` in one rule, so the "rest" reading was already repainted), and
-the first draft of the `.dim` guard listed three literal class spellings — exactly the match-set
-bug of the pin it replaced, walked through by a mutation. Neither is in the shipped suite in that
-form.
+**Verification.** 1309 browser checks (0 failed) and 1794 smoke checks (0 failed), with
+`docs_links`, `simulate_accumulation`, `mypy` and the manifest validator green. The browser figure
+is the shipped tree's, and there are three measured points behind it: **1213** before this pass,
+**1264** as the pass committed it, **1309** as it ships — each one that tree's own suite run
+against that tree's own scripts. An earlier draft of this block said 1266, which was wrong.
+Fifteen mutation runs: 12 of 13 in the browser suite and 2 of 2 in `smoke.py` went **red for the
+defect they claim to guard**. Two of those pins had to be debugged before they could be believed, because **a
+vacuous pin reads exactly like a passing one**: the hover pin passed *with the defect in place*
+(the anchor was still focused from the click that opened the view, and both rule families bundle the
+cue as `:hover, :focus` in one rule, so the "rest" reading was already repainted), and the first draft
+of the `.dim` guard listed three literal class spellings — exactly the match-set bug of the pin it
+replaced, walked through by a mutation. Neither is in the shipped suite in that form.
+
+A third vacuity turned up in the review round's own work, and is worth naming because it is the
+*quietest* of the three: the focused legend pin read the note's text and the keys' count and
+hiddenness, but never that the legend itself was on screen — and in a focused view the keys are
+hidden **by design**, so no clause about them can distinguish "keys hidden, legend shown" from
+"legend hidden". Hiding the whole legend passed it. The pin now asserts the container's visibility,
+and the mutation that isolates it — hiding the container only in non-fleet views, since hiding it
+outright is caught earlier by the fleet check — turns this pin **red first**, aborting the suite at
+check 235. Repaired at the source in `tests/dashboard_browser.py`, so it ships corrected.
+
+The one run that did *not* go red is reported rather than dropped: restoring the **positional**
+node focus key breaks no check at all, because the fixture leaves the anchor at the same index in
+the fleet and in the project view, so both schemes land on the same node and the suite cannot tell
+them apart. The stable key is still the right key — a positional index surviving a repaint lands
+focus on a *different* project — but that claim is **uncovered**, and saying so is the point.
+
+**The review round found two defects this pass had introduced.** The first: the trail's
+back-control stranded focus on `<body>`. This entry added the control, wrote the invariant it
+broke, and wrote the reasoning that hid it — *"the crumb cannot be a focus-restore target, so it
+needs none"* — which is true and irrelevant, because the question is what the redraw does to the
+focus it holds. Fixed by moving the repair to the redraw, which covers both controls without
+touching either. The second: the new crumb had **no hover and no press feedback in any theme** —
+it is styled by a `(2,0,1)` selector in the shared control group, which beats the generic
+`button:hover` fallback at `(1,1,1)`, so its states had to be declared by name and were not. The
+only way back to the fleet looked inert under the pointer. Both now measured: focus lands inside
+the widget, and the crumb changes colour, background and border on hover and on press in all five
+themes.
+
+The same round found the summary check had a ceiling but no floor: a summary that never rendered
+read `0` rows, `0==0` passed, and the check was green against the very defect it was written for.
+Both now have pins that go red for them, and the fix for the first cost the second its old comment
+— which had called the fact button *"the one activation with no successor"*.
+
+**Six of the holes the round recorded are now closed, each with the mutation that closed it.** The
+legend's dot keys can no longer be hidden in every view (mutation: `hidden=true` unconditionally —
+1 check red); they can no longer be left showing in a focused view, where the mark they explain
+cannot be drawn (mutation: the assignment deleted — 5 red, one per theme); the trail is asserted
+for all three focused kinds, not just the project view (mutation: the writer's branch collapsed to
+one label — 2 red). The summary's own existence is now asserted in the views it renders in
+(mutation: the rows are never built — **13 red from that one edit**, 8 of them the new existence
+clause, 4 `concise_network`'s floor, 1 the absence-semantics pin). Three independent pins seeing
+one reversion is the property the pin discipline asks for, and it is the one the round could not
+previously claim: the clause is red on pre-pass code, not on an invented defect.
+
+**The overflow half needed a different instrument, and the template says why.** `.network-surface`
+is `overflow:hidden`, so a map surface that blows out is *clipped* rather than scrolled: forcing
+`#net-detail` to `calc(100vw + 240px)` leaves it 1680px wide while the surface reports `clientWidth`
+1206 against `scrollWidth` 1706, and nothing reaches `documentElement.scrollWidth` — which is all
+the suite's page-overflow idiom reads, so every check in that family stays green against it. The
+`report_layout` clause that compares element edges to the surface's padded box caught it at all
+four widths, and now runs in the focused pass too, because it was blind in exactly the view where
+the new surfaces render. The Range-walk clause beside it is immune to the same clip by
+construction — it compares layout geometry, not scroll extents.
+
+**The text-in-box selector list lost three of its five new members to measurement.** A box only
+overflows if it is constrained, and both a grid `auto` track and a flex item floor at min-content:
+given a 600-character unbreakable token with the wrap rule removed, `.network-summary dt`, the
+trail and the legend note each *grew* to fit it (129→3900, 109→3900, 554→3600) — text past their
+own box is unreachable, so a check on them could never fail. They were replaced by the constrained
+containers that own them, whose boxes held at 1154 while the same token ran 2746–3046 past the
+right edge. Recorded here because "the selector is in the list" is not the same claim as "the
+selector can fail", and only the second is worth shipping.
+
+**Six claims corrected where measurement contradicted them**, each caught by the round rather than
+by a user: `rendered ≡ selected` (it is a subset, strict whenever a domain is collapsed — seven
+nodes render as three); the anchor's resting stroke width (1.8px, not the 2.6px hover width);
+`M3 fails at deepfield specifically` (it fails in all five — the loop's first theme was read as the
+only one); the pre-pass suite size (`1213`, not `1257`); `bytes` for a character count; and a claim
+to have *removed* two `.selected[data-current]` rules that never existed at any revision — the
+pass added `:not()` guards to two different rules instead. A seventh, `the five anti-duplication
+pins stay green untouched`, named a set that could not be identified; it now names the checks.
 
 **Two claims corrected where measurement contradicted them**, recorded rather than silently
 restated: `.node-name`/`.node-meta` are CSS with **no emitter** (the live classes are
 `project-label` and `project-meta`, whose fill resolves to `--ink2`, not `--faint`), so the `.dim`
 contrast table's magnitudes are testimony and must be re-derived — only the split's *direction*
 survives; and base Nocturne's node **fill** declarations are shadowed dead code in every theme, so
-the anchor is marked by stroke only (`--data` 2.6px vs `--rule2` 1.1px), judged legible.
+the anchor is marked by stroke only — resting at 1.8px `--data` against an ordinary node's 1.1px
+`--rule2` (2.6px is the hover width every node takes) — judged legible.
 
-**Archive embed budget, measured:** 285,411 → 297,637 bytes against the 300 KiB pin. The
-previously recorded headroom of 21,789 reproduces exactly; this pass cost 12,226 characters, 56%
-of it. The pin holds, but the margin is now thin enough to constrain the next template pass.
+**Archive embed budget, measured:** 285,411 → 300,408 **characters** against the 300 KiB pin. The
+gate bounds `len(_html_p4)`, so these are characters, not file bytes — the two are not
+interchangeable here, and this entry said "bytes" until the review round caught it. The previously
+recorded headroom of 21,789 reproduces exactly; pre-fix to ship, the whole review cost 14,997
+characters, 68.8% of it, of which 2,771 is the review round's — 1,689 in the redraw's focus repair,
+770 in the crumb's missing hover and active states, 297 in the comment repair that replaced the
+theme-dependence story with the measured one, and 15 in the wording fix that corrected a
+cascade-order claim naming the wrong pair of rules. The pin holds, but the margin — 6,792
+characters — is now thin enough to constrain the next template pass.
+
+**That last figure is measured on a tree no one had built.** The review round's repairs were
+authored in two places — the JavaScript in a pristine copy of the commit, the template in the
+working tree — so no single tree held the whole delta, and the assembled state had never been
+through any gate: the live suite ran against live-template + pre-review JS, the pristine suite
+against pre-review template + review JS, and the two together are not the shipped artifact. An
+assembled tree is now built and gated before the commit rather than after it.
 
 Design-of-record: `docs/network-graph-interaction.spec.md`.
 

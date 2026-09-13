@@ -50,20 +50,17 @@ var NocturneNetwork = (function(){
       values.forEach(function(value,i){var option=document.createElement('option');option.value=kind+':'+i;option.textContent=kind==='fact'?(value.domain||'Unknown domain')+' / '+value.name:value.group;group.appendChild(option);});
     }
     viewOptions('Shared facts','fact',model.facts);viewOptions('Sharing groups','group',model.groups);
-    el('net-view').onchange=function(){var parts=this.value.split(':');if(parts[0]==='fact')focus('fact',model.facts[Number(parts[1])],true);else if(parts[0]==='group')focus('group',model.groups[Number(parts[1])],true);else if(parts[0]==='fleet')reset();};
-    function focus(kind,value,keepControl){
+    el('net-view').onchange=function(){var parts=this.value.split(':');if(parts[0]==='fact')focus('fact',model.facts[Number(parts[1])]);else if(parts[0]==='group')focus('group',model.groups[Number(parts[1])]);else if(parts[0]==='fleet')reset();};
+    function focus(kind,value){
       state.kind=kind;state.value=value;state.pages=Object.create(null);state.expanded=new Set(model.domains);state.query='';el('net-search').value='';
       draw();
-      // Every focusable control on this map carries data-key and is rebuilt by draw(), whose
-      // restore pass returns focus to its successor. Focusing the root unconditionally ran
-      // AFTER that restore and moved focus to a control the pointer never touched — and the
-      // root's own handler is reset(), so the next Enter undid the click that just happened.
-      // Kept as a FALLBACK for the one activation that has no successor: a fact button inside
-      // #net-detail, whose element inspect()'s innerHTML rewrite destroys, stranding focus.
-      // Test <body>/<html> explicitly, not !document.activeElement — Chrome points
-      // activeElement at <body> when the focused node is removed, and never uses null.
-      if(!keepControl&&(document.activeElement===document.body||document.activeElement===document.documentElement))
-        svg.querySelector('.network-root').focus({preventScroll:true});
+      // No focus repair here, and no keepControl flag to suppress one. Focusing the root
+      // unconditionally ran AFTER draw()'s own restore and moved focus to a control the pointer
+      // never touched — and the root's own handler is reset(), so the next Enter undid the
+      // activation that had just happened. The stranded case it was later narrowed to cover (an
+      // activation whose own element the redraw destroys) is real, but it is NOT specific to this
+      // function: the trail's back-control is destroyed by the same draw(). The invariant is
+      // enforced where the destruction happens, once — see the tail of draw().
     }
     function selectedNodes(){
       if(state.kind==='fact'){
@@ -86,7 +83,13 @@ var NocturneNetwork = (function(){
     function branch(d,kind,aggregate){var p=S('path',{d:d,class:'hierarchy-branch '+kind+(aggregate?' aggregate-branch':''),'data-aggregate':aggregate?'true':'false'});svg.appendChild(p);try{p.style.setProperty('--blen',p.getTotalLength());}catch(e){}return p;}
     function rootLabel(){return state.kind==='fleet'?'Captured fleet':state.kind==='group'?String(state.value.group):state.kind==='fact'?String(state.value.name):state.value.label;}
     function draw(){
+      // Focus repair is a two-step contract. `focusKey` identifies a control this redraw will
+      // REBUILD, so the restore at the tail can hand focus to its successor — but every data-key
+      // holder is an <svg> child, so it only ever describes SVG controls. `hadFocus` records that
+      // a real control held focus at all, which is what tells a STRANDING apart from a redraw
+      // nobody was focused in. Captured before svg.textContent='' below, which is what destroys.
       var focusKey=document.activeElement&&document.activeElement.getAttribute('data-key');
+      var hadFocus=!!document.activeElement&&document.activeElement!==document.body&&document.activeElement!==document.documentElement;
       svg.textContent='';
       svg.dataset.kind=state.kind;detail.dataset.kind=state.kind;
       // The trail b665ffc left headless: #net-breadcrumbs was created and cleared but never
@@ -168,8 +171,11 @@ var NocturneNetwork = (function(){
             // dream's captured project, a project view marks the project you selected.
             // Fact and group views are peer sets — no node is their anchor — and marking the
             // fleet trigger there stroked and labelled a project the user never chose.
-            // Rendered set IS the selection in every view (matching===selected, see
-            // selectedNodes), so the anchor is the only 1-of-N mark the map can carry.
+            // Every rendered node IS a member — rendered ⊆ matching ⊆ selected, and matching
+            // only narrows further under a search — so the map can never show a non-member to
+            // mark, which makes the anchor the only 1-of-N mark it can carry. Note it is a
+            // STRICT subset in the default view: a collapsed domain and a paged one both render
+            // fewer nodes than the selection holds.
             var anchor=state.kind==='project'?n===state.value:state.kind==='fleet'&&truthy(n.raw.trigger);
             var node=S('g',{class:'net-node'+(state.kind==='group'?' selected':''),'data-node':n.raw.node||n.id,'data-sid':n.sid,'data-key':n.key,'data-current':anchor?'true':'false'});svg.appendChild(node);
             node.appendChild(S('rect',{x:px,y:py-21,width:pw,height:44,rx:5}));
@@ -199,6 +205,18 @@ var NocturneNetwork = (function(){
       inspect(selected);
       svg.dataset.viewport=String(window.innerWidth);
       if(focusKey){var target=Array.from(svg.querySelectorAll('[data-key]')).find(function(n){return n.getAttribute('data-key')===focusKey;});if(target&&target.getAttribute('aria-disabled')==='true')target=target.parentElement.querySelector('.page-control[aria-disabled="false"]');if(target)target.focus({preventScroll:true});}
+      // The stranded case, repaired once for every activation — and only here, because only the
+      // redraw knows what it destroyed. Two controls are built OUTSIDE <svg id="net"> and are
+      // wiped by the very activation they carry: a fact button in #net-detail (inspect() replaces
+      // its innerHTML) and the trail's back-control (this function empties #net-breadcrumbs). The
+      // restore above can reach neither — it searches svg.querySelectorAll('[data-key]') — so
+      // without this, focus lands on <body> and the next Tab restarts from the top of the page.
+      // Guarded on hadFocus, because a redraw nobody was focused in (the initial paint, the
+      // per-dream repaint in the archive) must never seize focus. Test <body>/<html> explicitly
+      // rather than !document.activeElement: Chrome points activeElement at <body> when the
+      // focused node is removed, and never uses null.
+      if(hadFocus&&(document.activeElement===document.body||document.activeElement===document.documentElement))
+        svg.querySelector('.network-root').focus({preventScroll:true});
     }
     function count(v){return typeof v==='number'&&isFinite(v)&&v>=0?v:null;}
     function inspect(selected){
