@@ -42,10 +42,20 @@ does, what it never does, and how to report a problem.
   omission label, and every emitted template is screened through the same firewall (on the
   `_norm`'d form, so a zero-width-split secret is caught) before it can become a row or a
   chain endpoint.
-- **Bounded input:** transcript turns are length-capped (`_PROBE_CAP` = 4000 chars) before regex
-  classification (defense-in-depth); the regexes have no catastrophic backtracking — each
-  alphanumeric run and its required separator are disjoint, so there's no ambiguity to blow up —
-  and the length cap bounds worst-case matching regardless.
+- **Bounded input:** the regexes are built from **bounded quantifiers**, and that is the actual
+  defense. An earlier version of this bullet argued the opposite — "each alphanumeric run and its
+  required separator are disjoint, so there's no ambiguity to blow up" — and that reasoning was
+  falsified: v0.1.70's pentest found **four** arms in `_SECRET` where adjacent unbounded
+  quantifiers could sweep a separator-free run to the end of the string for genuine O(n²) blowup
+  (the compound-keyword prefix, a URI-creds arm, the JWT arm via a repeated-anchor attack, and the
+  `authorization|bearer` arm). Each is now `{n,MAX}`. The `_PROBE_CAP` = 4000 length cap on
+  transcript turns is **defense-in-depth, not the defense**, and it does not cover every call site —
+  the three `extract_signals.py` probes cap, while the fact-body scanners in `facts_manifest.py`
+  and `sync_global.py` scan text no cap bounded. One instance that no timing bound can separate
+  (the JWT arm) is pinned structurally instead. The measurements, the margin every other bound
+  carries, and the guard's own two blind spots — it asserts a CPU-time bound rather than proven
+  linearity, and it cannot see a cap being *widened* — are recorded in the ReDoS guard's
+  design-of-record, [docs/redos-guard-linearity.spec.md](docs/redos-guard-linearity.spec.md).
 - **Filesystem safety:** `sync_global.py --gc` only deletes files marked as managed
   mirrors (`global_ref:`) whose canonical is gone — never project-authored facts — and
   defaults to report-only (deletion requires `--apply`).

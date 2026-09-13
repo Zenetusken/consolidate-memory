@@ -5,6 +5,67 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.28] — 2026-09-13
+
+**Patch — the firewall's ReDoS guard is re-based on measurement: a CPU clock, a bound derived from a
+stated rule, and a structural pin for the one arm no timing bound can reach.**
+
+The v0.4.27 release PR came back **six red**. Triaged by job *conclusion* rather than by the checks
+table, it was **one** real failure — `test (python 3.8)` — plus five siblings GitHub **cancelled**
+under the matrix's implicit `fail-fast`. Re-running the identical commit gave 13/13 green.
+
+**The guard was the defect, and two causes are now measured.** It bracketed its scan in
+`time.time()` — WALL time — so every descheduling landed directly in the reading: the JWT payload,
+the one that flaked, inflates **17.7×** under load on wall against **5.8×** on
+`time.process_time()` over the identical scan. And its 2.0s bound left 2.2× over that payload
+(0.891s here), not the "deliberately loose … ~0.005-0.19s" headroom its comment claimed — the JWT
+payload is 4.7× the top of that range, so a 2.3× slower runner trips it, which is what CI did.
+
+The bound is now **derived, not chosen**: a payload is admitted only if `sqrt(M/S) ≥ 4`, where `S` is
+the worst shipped CPU time over five trials under a standard stress load and `M` is the **weakest**
+owning mutant's idle CPU time; the bound then sits at their geometric mean, so each side's margin
+equals `sqrt(separation)`.
+
+- **The ratio design was measured and dropped.** `t(4n)/t(n)` was the first design — attractive
+  because it cancels machine speed — but it cancels only a *uniform* scale factor: under load the
+  shipped ratio's tail reaches **10.34** while the weakest mutant reads **11.21**, overlapping
+  distributions. Absolute CPU separation at the same payloads is **17×–890×**.
+- **The JWT arm cannot be pinned by time at all.** Its blowup is `occurrences × sweep` with `sweep`
+  capped, so the achievable separation is only `≈ n/cap`; by n=24000 the shipped scan *under load*
+  (1.20s) already exceeds the pre-fix scan measured *idle* (0.94s). The window is empty, not narrow —
+  so the guard asserts the property the caps encode (every quantifier in that arm is bounded). A
+  behavioral check there would have read green forever while pinning nothing, which is worse than no
+  check: it advertises coverage it does not have.
+- **Three behavioral checks and one structural**, each failing on a *measured* revert. Every mutant
+  has a named detector, and the eyJ mutant is caught by the structural pin **alone** — it measures
+  1.00×/1.00×/0.95× separation on the other three payloads, i.e. nothing else in the guard sees it.
+  Pre-fix figures are interpolated into the check names, so a failure is self-diagnosing, and a dead
+  clock fails too (`0.0 < dt`) rather than making every bound vacuously green.
+- **Two limits recorded, not papered over:** widening a cap is caught by nothing, and every payload
+  is a non-matching probe — a matching probe was built and measured *non-discriminating* (3.59s
+  pre-fix against 3.93s shipped), because the two versions scan it by different routes.
+- **`SECURITY.md` corrected for the third time on this same bullet** — v0.1.12 had replaced "linear
+  (no nested quantifiers)" with a disjointness argument it recorded as "same property, accurate
+  wording", and that argument is exactly what the four v0.1.70 instances falsified. The bullet now
+  says the bounded quantifiers are the defense, that `_PROBE_CAP` is defense-in-depth and does not
+  cover the uncapped fact-body scanners, and what the guard does *not* claim.
+- **The JWT arm's bounding comment moved back under its own arm** — a later pattern insertion had
+  displaced it so its rationale visually attached to the dotted-token arm — and its figures
+  corrected: re-measured **0.012s/0.12s/1.66s** at n=2000/8000/32000, where it had recorded
+  0.001/0.02/0.33, i.e. 12×/6×/5× low. Its "~16x per 4x" *shape* was right and its 128000-char
+  claim re-verified true, so both are kept.
+
+Design-of-record: [docs/redos-guard-linearity.spec.md](docs/redos-guard-linearity.spec.md) — the
+measurement tables, the admission rule, the empty-window proof, the coverage matrix with both gaps,
+the rejected alternatives (the ratio; a behavioral eyJ pin at n=96000 needing an ~84s failure time;
+a uniform `n`), and a runnable recipe so every number is re-derivable rather than testimony.
+
+**Verification.** 1794 smoke checks (0 failed — the census is deliberately unchanged: three
+behavioral checks replace four, plus one structural), with `docs_links`, `simulate_accumulation`,
+`mypy` and the manifest validator green. The two other wall-clock guards in the suite are genuinely
+loose and were not flaky; they share the defect's *cause* and are flagged as a follow-up in the spec
+rather than silently re-based inside a patch.
+
 ## [0.4.27] — 2026-09-13
 
 **Patch — the network map's closed loop: the anchor marks what you clicked, the hover cue stops

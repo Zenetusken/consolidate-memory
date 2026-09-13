@@ -1040,23 +1040,62 @@ for _name, _val in [
 # --- v0.1.70 security: ReDoS — the firewall must stay LINEAR-time on adversarial input (a
 # CONFIRMED bypass: the unbounded compound-keyword prefix AND a sibling unbounded URI-creds arm
 # both gave real re.search O(n²) blowup; a THIRD instance was found in the JWT arm via a
-# repeated-anchor attack; #4 the authorization|bearer arm, a Gate-2a-found 4th instance). Assert
-# completion under a GENEROUS wall-clock bound (2.0s — deliberately loose vs. this machine's
-# actual post-fix timings, ~0.005-0.19s below, to absorb slower/loaded-CI variance without going
-# flaky) at a payload size chosen so the PRE-fix regex clearly exceeds it by a wide margin (3.4s
-# to 21s measured, i.e. the bound isn't just barely tripped — a real regression fails it hard).
+# repeated-anchor attack; #4 the authorization|bearer arm, a Gate-2a-found 4th instance).
+#
+# RE-BASED ON MEASUREMENT (v0.4.28). This replaces a wall-clock guard that went RED on CI's
+# python-3.8 runner while re-running the identical commit gave 13/13 green — so the defect was in
+# the GUARD, not the firewall. Two causes, both measured on a 24-core box at 2x CPU oversubscription
+# (docs/redos-guard-linearity.spec.md):
+#   (1) THE CLOCK. time.time() reads WALL time, so every descheduling lands directly in the
+#       reading. The JWT payload — the one that flaked — inflates 17.7x under load on wall against
+#       5.8x on time.process_time() over the identical scan. Every payload here is steadier on CPU.
+#   (2) THE MARGIN. That 2.0s bound left 2.2x over that payload (0.89s here), not the
+#       "deliberately loose" headroom the old comment claimed — a 2.3x slower runner trips it.
+# The bound is now DERIVED, not chosen: a payload is admitted only if sqrt(M/S) >= 4, where S is
+# the WORST shipped CPU time over 5 trials under the standard stress load and M is the owning
+# mutant's idle CPU time — the bound then sits at their geometric mean sqrt(S*M), so each side's
+# margin is sqrt(separation). The three below measure 4.2x / 4.6x / 29.8x, and each payload is the
+# smallest MEASURED size clearing the bar (the alnum arm needs 48000; it fails it at 24000).
+# The predicate's lower half is not decoration: it catches a DEAD CLOCK, which would otherwise make
+# every one of these bounds vacuously green. The pre-fix figure in each name is measured too, and it
+# BOUNDS the failure — the payloads are fixed, so a regression costs at most its own mutant's scan
+# (7-16s), never an unbounded wait.
 import time as _time70  # noqa: E402
-for _redos_name, _redos_payload in [
-    ("dotted/dashed run (original pentest PoC shape)", ("a1b2-c3d4." * 5000)),
-    ("pure-alnum run + trailing keyword, no separator", ("x" * 49992) + "password" + ("y" * 12)),
-    ("repeated JWT anchor, no periods", "eyJ" * 33333),
-    ("authorization + padding spaces (Gate-2a's 4th instance)", "authorization" + " " * 20000),
+for _redos_name, _redos_payload, _redos_bound, _redos_was in [
+    ("dotted/dashed run (original pentest PoC shape)",
+     "a1b2-c3d4." * 2400, 0.26, "7.20s"),
+    ("pure-alnum run + trailing keyword, no separator",
+     ("x" * 47980) + "password" + ("y" * 12), 3.54, "16.22s"),
+    ("authorization + padding spaces (Gate-2a's 4th instance)",
+     "authorization" + (" " * 23987), 0.28, "8.36s"),
 ]:
-    _t0_70 = _time70.time()
+    _t0_70 = _time70.process_time()
     ms._SECRET.search(_redos_payload)
-    _dt_70 = _time70.time() - _t0_70
-    check(f"firewall ReDoS guard: {_redos_name} (len={len(_redos_payload)}) completes in <2s (was multi-second/unbounded)",
-          _dt_70 < 2.0)
+    _dt_70 = _time70.process_time() - _t0_70
+    check(f"firewall ReDoS guard: {_redos_name} (len={len(_redos_payload)}) stays LINEAR — "
+          f"{_dt_70:.3f}s CPU against a {_redos_bound}s bound (pre-fix this arm measures "
+          f"{_redos_was} here)",
+          0.0 < _dt_70 < _redos_bound)
+
+# The JWT arm is the ONE instance no CPU-time bound can cover: its blowup is occurrences x sweep,
+# and the sweep is capped, so the separation available is only ~n/cap — 8.6x at n=48000, the largest
+# size whose shipped cost is affordable. At n=24000 the shipped scan UNDER LOAD (1.20s) is already
+# slower than the pre-fix scan measured IDLE (0.94s): the window is EMPTY, not narrow. A timing
+# check there would read green forever while pinning nothing — worse than no check, because it
+# advertises coverage it does not have. The caps ARE the defense, so this pins the property they
+# encode. Charsets collapse to C and escapes to E FIRST: [A-Za-z0-9_-] carries a literal '-' and the
+# arm's `\.` is an escape, so a naive scan reports both as quantifier characters. Validated against
+# three removal styles — reverting a cap to {8,} trips this, and so does writing it as * or +.
+import re as _re_redos  # noqa: E402  — the pattern SOURCE text, not a match against input
+_redos_jwt_match = _re_redos.search(r"eyJ[^|\n]*", ms._SECRET.pattern)
+_redos_jwt_arm = _redos_jwt_match.group(0) if _redos_jwt_match else ""
+_redos_jwt_body = _re_redos.sub(
+    r"\\.", "E", _re_redos.sub(r"\[[^\]]*\]", "C", _redos_jwt_arm.split("#", 1)[0]))
+check("firewall ReDoS guard: the JWT arm's quantifiers are all BOUNDED — the anchor's own chars "
+      "('e','y','J') sit in its charset, so an open {8,} sweeps a repeated-anchor run to the end of "
+      "the string (v0.1.70's instance; no CPU-time bound separates pre-fix from shipped here, so "
+      "the caps ARE the defense). NOT covered: WIDENING a cap — see the spec",
+      bool(_redos_jwt_arm) and not _re_redos.findall(r"[*+]|\{\d+,\}", _redos_jwt_body))
 
 # --- v0.1.70 security: git-log commit subjects now pass through the SAME firewall (was: only
 # _sane()'s control-byte strip — no credential-shape check at all, a stark asymmetry against

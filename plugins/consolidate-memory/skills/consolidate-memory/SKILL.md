@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.27** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.28** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -33,7 +33,9 @@ anchors), plus the v0.4.26 mirror-index patch (the cross-domain index refresh �
 namespaced-anchor write and cost sites fixed as one root cause, and the `--gc` dead-probe),
 plus the v0.4.27 network-graph patch (the map's closed loop reopened — the anchor marks the
 project you clicked, the focus steal becomes a stranded-focus fallback, and a position trail,
-a selection summary and a record link give the graph a way out).
+a selection summary and a record link give the graph a way out), plus the v0.4.28 ReDoS-guard
+patch (the firewall's linearity guard re-based on measurement — a CPU clock, bounds derived from
+a stated admission rule, and a structural pin for the one arm no timing bound can separate).
 Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
