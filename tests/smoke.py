@@ -2404,8 +2404,41 @@ check('network: domain pages replace the global visual cutoff',
       "all.slice(page*12,page*12+12)" in _TEMPLATE_SRC and "MAXN=16" not in _TEMPLATE_SRC)
 check('network: all topology comes from captured record fields',
       "edges:rows(net.stack_edges)" in _TEMPLATE_SRC and "global_facts" not in _TEMPLATE_SRC)
-check('network: ranked SVG junctions support keyboard activation',
-      "function activate" in _TEMPLATE_SRC and "domain-junction" in _TEMPLATE_SRC)
+# A source-shape pin, and its ceiling is exactly that. It used to assert only that the function
+# and the junction class EXISTED — it stayed green with `n.addEventListener('click',fn)` deleted,
+# because the string "function activate" survives its own gutting. Asserting the wiring (both
+# dispatch paths, on an element that announces itself as a button) is as far as source text can
+# reach: it cannot prove a click ARRIVES at a node. That claim is pinned in the browser suite,
+# where a real pointer re-anchors the graph to the clicked project.
+check('network: the activation primitive wires a pointer path and a keyboard path onto a button',
+      "n.addEventListener('click',fn)" in _TEMPLATE_SRC
+      and "n.addEventListener('keydown'" in _TEMPLATE_SRC
+      and "setAttribute('role','button')" in _TEMPLATE_SRC
+      and "setAttribute('tabindex','0')" in _TEMPLATE_SRC
+      and "domain-junction" in _TEMPLATE_SRC)
+# GUARD pin, NOT a fix pin — reverting this pass's code changes will never turn it red. The
+# `.dim` rule is unreachable by design (draw() renders a SUBSET of its own selection in every view
+# — matching is selectedNodes() filtered, never widened — so no node ON SCREEN is ever a
+# non-member, and no view draws the complement a candidate would need), and the template comment
+# beside that rule claims "the string does not appear in either JS bundle". That claim had no gate,
+# so it could go quietly false. This is the gate. It passes on pre-fix code by construction — there
+# was never a dim-emitting draw() to remove — so it guards the CLAIM, not a fix.
+#
+# "Guard" names its BASELINE, not an exemption from verification. A guard still has to be shown to
+# have teeth, or it is vacuous in the only direction available to it — and that direction IS
+# available: the mutation is the INTRODUCTION of a dim-emitting site, not the removal of one. That
+# mutation was run (M7: a bundle applying `dim`) and this pin went red for it.
+#
+# The match set is "a quoted string containing `dim` as a whole word", NOT a list of spellings.
+# An earlier draft of this very pin listed three literal forms ('dim', "dim", "net-node dim") and
+# a mutation writing `class:'dim net-node'` walked through all three — the same match-set failure
+# the pin it replaced had. The bundles compose class strings with `+`, so the word can land at
+# either end of a literal; matching the token inside any quoted string covers the realistic set,
+# while the word boundary keeps an innocent `dims`/`dimensions` identifier from setting it off.
+_dim_named = _re.compile(r"""['"][^'"\n]*\bdim\b[^'"\n]*['"]""")
+check('network: the .dim class keeps its claim — no bundle names it, so the latent rule has no candidate',
+      _dim_named.search(_TEMPLATE_SRC) is None
+      and ".net-node.dim" in _TEMPLATE_SRC)
 check('network: aggregate branches and domain expansion are explicit',
       "aggregate-branch" in _TEMPLATE_SRC and "state.expanded" in _TEMPLATE_SRC)
 check("graph: prettyNode keeps a trailing version tail (Qwen-3-6, not 3-6)",
@@ -11938,9 +11971,26 @@ with _tf73.TemporaryDirectory() as _td_p4:
           len({_json_xp.dumps(_v, sort_keys=True) for _v in _diffs_p4.values()}) == 20
           and any("c119__" in _k for _k in _diffs_p4)
           and not any("c099__" in _k for _k in _diffs_p4))
+    # The bound is a CHARACTER count of the RENDERED archive, and it counts the SHELL too: the
+    # template and both JS bundles are inlined, comments included, so every character added to a
+    # shipped file spends this budget.
+    #
+    # Re-based 300 -> 320 KiB at v0.4.27, and re-based on measurement rather than argument. At
+    # 1864f68 this fixture rendered 307,050 — 150 characters of headroom — and the commits before it
+    # had already spent the rest: 0.4.24 shipped at 285,411, leaving 21,789. The code-review round's
+    # comment corrections then landed it at 308,659: +1,609 CHARACTERS of archive, which is +458 in
+    # the template and +1,151 in network.js (an earlier draft summed the two files' BYTE deltas to
+    # +1,611 — the template's added comment carries one em dash, three bytes to one character, and
+    # this pin counts characters). Trimming comments instead would have meant deleting corrections
+    # review had just asked for, and this pin does not exist to cap documentation: it catches a lost TRIM,
+    # which is a different order of magnitude. Measured, the two junk keys alone — admit
+    # `junk_never_read` and `registrar_working` back into the whitelist and the same fixture renders
+    # 600,821 characters, so the trim is worth 292,162 of them. 320 KiB restores the ~19 KiB working
+    # margin 0.4.24 shipped with and still sits 273,141 characters below a junk-untrimmed render,
+    # which is the regression it is here to catch.
     check("v0.4.2 P4: the trimmed archive stays under the size bound (the fixture embeds "
           "~400KB untrimmed)",
-          len(_html_p4) < 300 * 1024)
+          len(_html_p4) < 320 * 1024)
 
 # ── v0.4.2 R1: stranded-global advisory (memory_status.py) ─────────────────────
 with _tf73.TemporaryDirectory() as _td_r1:
@@ -15128,7 +15178,16 @@ with _tf43.TemporaryDirectory() as _td23:
                         timeout=60, env=_env23)
         assert _p.returncode == 0, _p.stderr
         _found = list(Path(_home23).glob("**/.consolidation-state.json"))
-        _mine = [f for f in _found if name in str(f)]
+        # Match the store SLUG segment, which is derived from the project path and ends in the
+        # project name — never `name in str(f)`. That substring form is order-dependent and wrong
+        # whenever the RANDOM temp dir name happens to contain the 2-character project name: every
+        # store's path then contains it, `_mine` holds all three, and `_mine[0]` is whichever the
+        # glob yielded first — another project's store, whose population is a different shape, so
+        # the checks below fail on an unrelated commit. Measured 2.1% wrong-pick per name (~6% per
+        # suite run): that is the flake that reddened CI on d9ade6e and went green on a re-run of
+        # the same commit. The assert stays: should the layout ever move the state file off
+        # `<slug>/memory/`, this matches nothing and fails LOUD instead of mispicking.
+        _mine = [f for f in _found if f.parent.parent.name.endswith("-" + name)]
         assert _mine, "state file not found"
         _mem = _mine[0].parent
         for _i in range(3):
@@ -15249,7 +15308,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 43)
+      passed + failed + 1 == 1750 + 44)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

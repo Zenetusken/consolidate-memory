@@ -5,6 +5,334 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.27] — 2026-09-13
+
+**Patch — the network map's closed loop: the anchor marks what you clicked, the hover cue stops
+repainting it, and the graph gains a way out.**
+
+Reported as *"every click is incoherent; we cannot navigate it or get any information out of any
+of the nodes."* Five defects had compounded into one property: **the map answered a question the
+user had not asked, then gave them no way to leave.** All five came from `b665ffc` (v0.4.18) and
+none was ever asserted against, because the pins that named them asserted a consequence the
+broken code also produced.
+
+- **The anchor marked the wrong node.** `data-current` was wired to `truthy(n.raw.trigger)` — the
+  *fleet capture trigger* — so clicking `atlas-web` left `atlas-api` stroked, tinted and labelled
+  **"This project"** while the heading named the project actually selected.
+- **Three same-specificity cascade rules fought.** `[data-current="true"] rect`, `.selected rect`
+  and `:hover/:focus rect` are all (1,2,1), so source order decided — and the hover rule, being
+  last, won: its `fill:var(--paper2)` **repainted the anchor exactly while the pointer was on it**,
+  and on a **selected** node it overwrote both halves of the mark. (Measured in `deepfield`: the
+  anchor's `--data` stroke and 1.8px width held — its plate moved, not its mark — while a selected
+  node lost `--tint-accent` and `--accent` both.) This was **theme-independent**. An earlier draft
+  of this entry said the two shipped palettes ordered these rules oppositely, so one theme was
+  coherent and the other broken; that cannot happen. The palettes are `:root[data-theme=…]` token
+  blocks of ~430 characters containing no `.net-node` rule at all, and a token-only theme mechanism
+  cannot reorder rules — every theme was broken in exactly the same way.
+- **Focus was stolen on every draw.** `focus()`'s unconditional `.network-root` `.focus()` ran
+  *after* `draw()`'s own `[data-key]` restore and clobbered it; the root's handler is `reset()`,
+  so **the next Enter undid the activation**. It is now a fallback that fires only when a control
+  *had* focus and nothing inherited it — enforced once, at the redraw, because **two** controls
+  are wiped by the very activation they carry: a fact button (`inspect()` rewrites `#net-detail`)
+  and the trail's own back-control (`draw()` empties `#net-breadcrumbs`). Only the first passes
+  through `focus()`, so the fallback's original home covered the activation someone had noticed
+  and missed its sibling.
+- **No position and no way back.** `#net-breadcrumbs` was created and cleared but never written —
+  `b665ffc` deleted the writer — while its CSS sat intact and idle.
+- **Focused views rendered no summary at all**, because `inspect()` rewrites `#net-detail` on
+  every draw and destroys the template's seeded text.
+
+**The fix is smaller than it first looked, and measuring that first is the point.** An earlier
+draft proposed marking the rendered members; the premise was false. `matching` is
+`selectedNodes()` *filtered*, never widened, so **no view can render a node the selection does not
+contain** — and marking the rendered members would only say "these are the things you can see".
+The one genuine 1-of-N distinction is anchor vs. members, and that mark already existed, wired to
+the wrong predicate. Correcting the predicate touches neither `selectedNodes()` nor the render
+filters, so **no rendered set changes**: the checks that assert a view renders an exact node set
+are green and none of them was edited by this pass.
+
+Alongside the fixes: a **position trail** (`Captured fleet › kind › label`, one control back), a
+**selection summary** of at most four paired rows that respects absence ≠ emptiness and never
+renders a bare `0`, and a **link out** to the complete record via `reveal()` — newly exported
+from `dashboard.sections.js` and guarded on capability, so a bundle without it renders *no* link
+rather than a dead one. The legend is now **updated rather than replaced**, so the template's dot
+markup is wired instead of orphaned — while `#net-leg-stack`, which shipped `hidden` and was read
+and unhidden by nothing, is removed rather than kept as the same fossil under a new name.
+
+Three smaller corrections ride along, all of them strings or regions that had stopped matching
+what they governed: the detail region's seeded text promised *"a project **or connection**"* when
+connections have no handler; the controls group's `aria-label` still said *"Highlight network
+membership"* for a control the group no longer contains; and the inner `.network-explanation`
+`aria-live` doubled every announcement with the `#net-detail` live region that already contains
+it, including on pager clicks that changed nothing.
+
+**Verification.** 1331 browser checks (0 failed) and 1794 smoke checks (0 failed), with
+`docs_links`, `simulate_accumulation`, `mypy` and the manifest validator green. The browser figure
+is the shipped tree's, and there are five measured points behind it: **1213** before this pass,
+**1264** as the pass committed it, **1309** after the review round, **1329** after the re-audit
+round, **1331** as it ships — each one
+that tree's own suite run against that tree's own scripts. An earlier draft of this block said
+1266, which was wrong.
+Fifteen mutation runs: 12 of 13 in the browser suite and 2 of 2 in `smoke.py` went **red for the
+defect they claim to guard**. Two of those pins had to be debugged before they could be believed, because **a
+vacuous pin reads exactly like a passing one**: the hover pin passed *with the defect in place*
+(the anchor was still focused from the click that opened the view, and both rule families bundle the
+cue as `:hover, :focus` in one rule, so the "rest" reading was already repainted), and the first draft
+of the `.dim` guard listed three literal class spellings — exactly the match-set bug of the pin it
+replaced, walked through by a mutation. Neither is in the shipped suite in that form.
+
+A third vacuity turned up in the review round's own work, and is worth naming because it is the
+*quietest* of the three: the focused legend pin read the note's text and the keys' count and
+hiddenness, but never that the legend itself was on screen — and in a focused view the keys are
+hidden **by design**, so no clause about them can distinguish "keys hidden, legend shown" from
+"legend hidden". Hiding the whole legend passed it. The pin now asserts the container's visibility,
+and the mutation that isolates it — hiding the container only in non-fleet views, since hiding it
+outright is caught earlier by the fleet check — turns this pin **red first**, aborting the suite at
+check 235. Repaired at the source in `tests/dashboard_browser.py`, so it ships corrected.
+
+The one run that did *not* go red is reported rather than dropped: restoring the **positional**
+node focus key breaks no check at all, because the fixture leaves the anchor at the same index in
+the fleet and in the project view, so both schemes land on the same node and the suite cannot tell
+them apart. The stable key is still the right key — a positional index surviving a repaint lands
+focus on a *different* project — but that claim is **uncovered**, and saying so is the point.
+
+**The review round found two defects this pass had introduced.** The first: the trail's
+back-control stranded focus on `<body>`. This entry added the control, wrote the invariant it
+broke, and wrote the reasoning that hid it — *"the crumb cannot be a focus-restore target, so it
+needs none"* — which is true and irrelevant, because the question is what the redraw does to the
+focus it holds. Fixed by moving the repair to the redraw, which covers both controls without
+touching either. The second: the new crumb had **no hover and no press feedback in any theme** —
+it is styled by a `(2,0,1)` selector in the shared control group, which beats the generic
+`button:hover` fallback at `(1,1,1)`, so its states had to be declared by name and were not. The
+only way back to the fleet looked inert under the pointer. Both now measured: focus lands inside
+the widget, and the crumb changes colour, background and border on hover and on press in all five
+themes.
+
+The same round found the summary check had a ceiling but no floor: a summary that never rendered
+read `0` rows, `0==0` passed, and the check was green against the very defect it was written for.
+Both now have pins that go red for them, and the fix for the first cost the second its old comment
+— which had called the fact button *"the one activation with no successor"*.
+
+**Six of the holes the round recorded are now closed, each with the mutation that closed it.** The
+legend's dot keys can no longer be hidden in every view (mutation: `hidden=true` unconditionally —
+1 check red); they can no longer be left showing in a focused view, where the mark they explain
+cannot be drawn (mutation: the assignment deleted — 5 red, one per theme); the trail is asserted
+for all three focused kinds, not just the project view (mutation: the writer's branch collapsed to
+one label — 2 red). The summary's own existence is now asserted in the views it renders in
+(mutation: the rows are never built — **13 red from that one edit**, 8 of them the new existence
+clause, 4 `concise_network`'s floor, 1 the absence-semantics pin). Three independent pins seeing
+one reversion is the property the pin discipline asks for, and it is the one the round could not
+previously claim: the clause is red on pre-pass code, not on an invented defect.
+
+**The overflow half needed a different instrument, and the template says why.** `.network-surface`
+is `overflow:hidden`, so a map surface that blows out is *clipped* rather than scrolled: forcing
+`#net-detail` to `calc(100vw + 240px)` leaves it 1680px wide while the surface reports `clientWidth`
+1206 against `scrollWidth` 1706, and nothing reaches `documentElement.scrollWidth` — which is all
+the suite's page-overflow idiom reads, so every check in that family stays green against it. The
+`report_layout` clause that compares element edges to the surface's padded box caught it at all
+four widths, and now runs in the focused pass too, because it was blind in exactly the view where
+the new surfaces render. The Range-walk clause beside it is immune to the same clip by
+construction — it compares layout geometry, not scroll extents.
+
+**The text-in-box selector list lost three of its five new members to measurement.** A box only
+overflows if it is constrained, and both a grid `auto` track and a flex item floor at min-content:
+given a 600-character unbreakable token with the wrap rule removed, `.network-summary dt`, the
+trail and the legend note each *grew* to fit it (129→3900, 109→3900, 554→3600) — text past their
+own box is unreachable, so a check on them could never fail. They were replaced by the constrained
+containers that own them, whose boxes held at 1154 while the same token ran 2746–3046 past the
+right edge. Recorded here because "the selector is in the list" is not the same claim as "the
+selector can fail", and only the second is worth shipping.
+
+**Six claims corrected where measurement contradicted them**, each caught by the round rather than
+by a user: `rendered ≡ selected` (it is a subset, strict whenever a domain is collapsed — seven
+nodes render as three); the anchor's resting stroke width (1.8px, not the 2.6px hover width);
+`M3 fails at deepfield specifically` (it fails in all five — the loop's first theme was read as the
+only one); the pre-pass suite size (`1213`, not `1257`); `bytes` for a character count; and a claim
+to have *removed* two `.selected[data-current]` rules that never existed at any revision — the
+pass added `:not()` guards to two different rules instead. A seventh, `the five anti-duplication
+pins stay green untouched`, named a set that could not be identified; it now names the checks.
+
+**Two claims corrected where measurement contradicted them**, recorded rather than silently
+restated: `.node-name`/`.node-meta` are CSS with **no emitter** (the live classes are
+`project-label` and `project-meta`, whose fill resolves to `--ink2`, not `--faint`), so the `.dim`
+contrast table's magnitudes are testimony and must be re-derived — only the split's *direction*
+survives; and base Nocturne's node **fill** declarations are shadowed dead code in every theme, so
+the anchor is marked by stroke only — resting at 1.8px `--data` against an ordinary node's 1.1px
+`--rule2` (2.6px is the hover width every node takes) — judged legible.
+
+**Archive embed budget, measured:** 285,411 → **308,659** **characters**, against a P4 pin
+**re-based from 300 KiB to 320 KiB** in this cycle. The gate bounds `len(_html_p4)`, so these are
+characters, not file bytes — the two are not interchangeable here, and this entry said "bytes"
+until the review round caught it. The previously recorded headroom of 21,789 reproduces exactly,
+and the re-base is a measurement rather than a concession: at `1864f68` the same fixture rendered
+**307,050** — **150 characters** of headroom, so the pin sat one comment from red — and the cycle's
+later rounds then spent it (**6,642** for the re-audit round, **1,609** for the code-review round
+that followed, which took the archive **1,459 over**). Trimming the comments to fit was the
+alternative and was rejected on the measurement: they correct two claims review had just found
+false. The pin's actual subject is the trim, which is worth **292,162** characters — admit the
+fixture's two junk keys back into the whitelist and the same render is **600,821** — so 320 KiB
+restores the ~19–21 KiB working margin 0.4.24 shipped with while still sitting 273,141 characters
+below a junk-untrimmed render. The review round's own share was 2,771 characters — 1,689 in the
+redraw's focus repair, 770 in the crumb's missing hover and active states, 297 in the comment
+repair that replaced the theme-dependence story with the measured one, and 15 in the wording fix
+that corrected a cascade-order claim naming the wrong pair of rules — and the whole cycle's cost,
+**23,248 characters, is more than the headroom it started with**. Full trail, with every
+intermediate tree named: the spec's §4.5.
+
+**The bytes-versus-characters slip recurred in the sentence that recorded it** — in
+`tests/smoke.py`'s pin comment and in the spec's §4.5, whose first draft summed the two files'
+**byte** deltas (+460 template, +1,151 `network.js`) to +1,611 and presented it as the archive's
+growth. The archive grew by **1,609**: the template's added comment carries one em dash, three
+bytes and one character, so its byte count leads its character count by exactly the 2 the sum was
+too large by. Caught by re-measuring the two endpoints (307,050 and 308,659) against the per-file
+**character** deltas (+458, +1,151), which agree to the character — the check that makes the
+figure re-derivable rather than remembered. Fixing the word did not fix the arithmetic under it.
+
+**That last figure is measured on a tree no one had built.** The review round's repairs were
+authored in two places — the JavaScript in a pristine copy of the commit, the template in the
+working tree — so no single tree held the whole delta, and the assembled state had never been
+through any gate: the live suite ran against live-template + pre-review JS, the pristine suite
+against pre-review template + review JS, and the two together are not the shipped artifact. An
+assembled tree is now built and gated before the commit rather than after it.
+
+**A re-audit round turned on the escape hatch itself, and found one vacuous pin in its own work.**
+Seven mutations, each the pre-fix form of one mechanism, run on a non-fatal copy of the harness so
+one run exposes every red: **15 red across the seven**, on a baseline of 1326 checks — and re-run in
+full against the suite as it ships once the guard arm's three checks existed. Every count
+reproduces there except one, and the exception earned its own paragraph below: M20 restores the
+`Held by` row, the code-review round rewrote that row, and the re-targeted mutation reds **three**
+where it red previously two. **A mutation is identified by the code it restores** — editing the
+target silently redefines the mutation — so its count was re-measured rather than carried. The anchor
+reversion — this pass's central fix — is caught by **four** checks where the pass's own mutation
+recorded one. That is not a pin that weakened; it is fixture shape. A pin can only separate two
+predicates on a fixture where they disagree, and the pass's fixtures were built so that the two
+anchor predicates **coincided**.
+
+**The vacuous pin was the round's own, and it is the quiet kind.** The focus-repair block asserted
+three controls each hand focus back to themselves after a redraw, but it resized to a *fixed* width
+inside the loop — and `resize()` waits for the map to reach the new width, so from the second
+iteration on the wait returned immediately, no redraw ran, the control was never destroyed, and the
+assertion stayed green **against the very defect it exists for**. Only the first of the three went
+red under the mutant. The target width now alternates, every iteration forces a real redraw, and
+all three go red.
+
+**Three of the round's four guards can only be verified by introducing the defect.**
+They assert the network's HTML controls show a focus ring when focus arrives by keyboard. That ring
+predates this pass, so no reversion can redden them — and the first two attempts reddened
+**nothing**, because the edit went on the rule that *reads* as the control's own. A
+`document.styleSheets` walk over the focused record link shows the ring is supplied by the
+app-wide `#app button:focus-visible`: the network-scoped rules lose on equal specificity and
+earlier source order, the same tie-break that decides the anchor's hover bump, one selector pair
+over. Appending `outline:none` *after* the winning rule reddens exactly those three checks and
+nothing else. The first placement is not a gap in the guards — it is a defect that never took
+effect, which measures nothing about the guard.
+
+**One mutation looked right and proved nothing.** Its first anchor reversion edited only the
+*fleet* arm of the predicate, and the paged-anchor pins stayed green — which was first read as a
+gap in them, and was not: the pre-fix anchor had **no project arm at all**, so reverting half of a
+repair is not reverting the repair, and the pins that stayed green were never asked the question.
+Restored whole, the same predicate reddens four, those two among them. Recorded because the wrong
+reading was one step away — *"the paged-anchor pins do not catch the anchor reversion"* would have
+been written about pins that catch it.
+
+**Two residuals the round leaves uncovered, said out loud rather than rounded off.** The anchor is
+still hidden without the legend saying so when the domain is collapsed or the anchor is paged away
+— one-directional, uncovered by any pin; and the positional `legacy:`/duplicate-sid focus-key
+fallback stays unasserted, for the reason this entry already gives.
+
+**A count the record carries was being reported as one it lacks.** The summary rows route every
+value through a two-shape vocabulary — `Not captured` for a field the snapshot never recorded,
+`None recorded` for a measured empty — and a value that is *present but not a count* is neither.
+`countText()` collapsed that third case to `Not captured`, so a persisted `members_n` of `"2"`
+rendered as an absence claim about data the record plainly carries. It is reachable rather than
+theoretical: `validate_cycle_record` warns on a wrong-typed key and never blocks, so the record
+renders. The repair is the rule the block above it already stated — an unexpected value renders as
+itself — and it restores a second property on the way: the zero test now reads the **parsed**
+number, so a `"0"` is `None recorded` rather than a bare zero on screen. The `Held by` clause was
+corrected in the same pass for the same reason: it said **"shown on the map"**, and the count it
+prints is the *selection* — `selectedNodes()` is what the capture resolved, while the map draws one
+page per expanded domain and nothing for a collapsed one. The words named a measurement the value
+does not make. Both fixes are pinned by reversion: reverting `countText()` alone reds exactly one
+check, and reverting the whole `Held by` row reds three, the other two being the label and the
+resolved-versus-listed count.
+
+**The preview banner's splice was bounded by an accident, and the check that claimed to gate it
+could not fail.** `tests/dashboard_fixture.py` labels the generated preview by splicing a
+`sample-notice` div after `<body>`, and `docs/previews/nocturne/index.html` is committed — so a
+splice in the wrong place ships. `<body>` is not unique in the built page: the network bundle's own
+focus-repair comment carries two of them, so the splice was bounded to the first occurrence. That
+worked only by emission order (the bundles are written after the tag), and a `<body>` literal
+emitted **before** it — a script or style block added to the head — would have taken the splice
+while a count of one still reported success. Measured two-sided on the built HTML with such a
+literal inserted in the head: the first-occurrence splice puts the notice **inside the head
+script**, 35 characters before the real tag, and the head-anchored `^</head>\n<body>$` splice puts
+it at the tag. The fixture now anchors on that boundary and **asserts it matched exactly once**, so
+a template that stops emitting the shape fails at generation instead of splicing somewhere a reader
+cannot see. The docs gate's companion check — counting `class="sample-notice"` in the committed
+artifact — was **deleted rather than reworded**: given the render assert and the byte-compare
+beside it, a committed artifact *is* a render, so the count is one by construction and the check
+was reachable in no run at all while reading as coverage. Its hole (a render failure surfacing as a
+traceback instead of a gate error) is closed where the enforcing assert lives. **Test
+infrastructure only** — no shipped code, cycle-record or manifest change.
+
+**A pre-existing smoke flake was root-caused and fixed rather than re-run away.** CI reddened on
+`d9ade6e` (`1792 passed, 2 failed`) and then went **green on a re-run of the identical commit** —
+non-determinism, not the diff. `_proj23` (`tests/smoke.py`) selected its temp store with
+`if name in str(f)` over a glob of every state file under `HOME`; the store slug is derived from
+the project path and **embeds the temp dir name**, so whenever the random suffix contains the
+2-character fixture name (`pa`/`pb`/`pc`) every store matches, `_mine[0]` is whichever the glob
+yielded first, and the fixture writes its population into a **neighbouring** project's store —
+whose shape (three equal-sized facts, no outlier) makes `defrag_candidates` return `[]` and that
+project's checks fail. Measured at **2.1% wrong-pick per name**; reproduced deterministically under
+a colliding `TMPDIR`, where the old filter returns three matches with a neighbour's store first
+against exactly one for the slug match. **Test infrastructure only** — no shipped code, no
+cycle-record or manifest change — and the `assert _mine` is kept so a future layout change fails
+loud rather than mispicking silently.
+
+**A value that is not the shape the code assumes, reported as though it were — twice more.** The
+review round above fixed one instance of that class in `countText()`. A parallel fan-out then found
+two siblings in the same file:
+
+- **`listText()` joined a list of objects.** `join(', ')` stringifies each element, so an
+  array-of-objects group list rendered `'[object Object], [object Object]'` — the output the rule
+  eight lines above it forbids in words, and the output the pin beside it was **named** for while
+  testing a shape that cannot produce it. The guard belongs on the join, not the stringify: a
+  non-empty array never reaches `fieldText()` at all.
+- **The fact focus key fell back to a name, which is not unique.** `data-key` was
+  `'fact:'+(fact_id||name)`, while the same expression computes `duplicate` to decide whether the
+  *label* needs a domain prefix — the code admitting names repeat while the key assumed they do
+  not. The redraw's restore takes the **first** match, so two same-named facts left a keyboard user
+  on the wrong one, their next Enter opening a record they did not choose. The key now
+  disambiguates exactly where the label does — identity, then index — the shape `normalize()`
+  already uses for node keys.
+
+Both are reachable only through the name fallback — a foreign or hand-edited record, since the
+shipped producer always writes `fact_id` — so neither is a shipped-producer defect. Each ships with
+a mutation that reverts it: **M23** (`listText()`) and **M24** (the key), **1 red each**, and each
+is the *first* failure in its run. The second is why this round has a pin where the budget item
+above did not: reverting the key fix with the pin absent left all 1332 checks green — **a fix
+nothing holds is a claim, not a fix.** The browser suite went **1331 → 1334**; two are the pins and
+the third is a *preview render* (`render without errors: focus-duplicate-keys.html#sel=0`), because
+a new `fixture()` writes a new preview and the suite renders every fixture it finds. Recorded
+because the arithmetic is +2 and the suite says +3.
+
+**The fan-out's verdicts are dated, and triage is the work.** Seven of its findings were refuted by
+the tree they were aimed at — most were measured on `1864f68`, the revision *before* the fixes they
+reported. Each refutation is a measurement: `countText()` and the `Held by` clause quoted as live
+both quote source that no longer exists; the preview-splice check that was "still open" was deleted
+in the same commit; the legend's 7px gap was real but had already been repaired, by the very
+`e15ac3e` change whose comment describes the descendant match the finding reports; and two
+`file:line` spec citations reported drifted are part of a set the spec no longer contains at all —
+counted, `[a-zA-Z_0-9]+\.(js|py|html|md|json):[0-9]` → **0 hits**. §4.9 records the triage. The
+lesson is not that the fan-out was wrong to run — it found both of the real defects above — but
+that **a verdict is a claim about one revision**, and re-reviewing a tree that has already moved
+reports the past.
+
+The archive grew **308,659 → 309,802** characters — measured at both endpoints, not reasoned from
+the diff — nearly all of it the two fixes' comments, leaving **17,878** of the 320 KiB bound.
+
+Design-of-record: `docs/network-graph-interaction.spec.md`.
+
 ## [0.4.26] — 2026-09-12
 
 **Patch — the cross-domain mirror index refresh: one root cause, two legs, four sites on the

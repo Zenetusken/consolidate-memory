@@ -439,6 +439,9 @@ var NocturneSections = (function(){
     el('health-source').innerHTML=sourceNote('Recorded verification, store checks, and file observations',c);
     el('ledger-source').innerHTML=sourceNote('Consolidation decisions; linked diffs show observed file changes',c);
   }
-  return {paint:paint,assess:assess};
+  // reveal is exported for the network module's record link: #record-json sits inside a closed
+  // <details>, and this is the page's one routine that opens disclosure ancestors before
+  // scrolling and focusing. Duplicating it there would be a second copy to keep in step.
+  return {paint:paint,assess:assess,reveal:reveal};
 
 })();

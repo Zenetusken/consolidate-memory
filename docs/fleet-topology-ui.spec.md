@@ -208,7 +208,9 @@ facts) — never before legacy keys are absent (the absent-block pin stays).
   filter, S1 — mirroring its `i,j≠trig`, `drawn`, and fork preconditions)
   with ≤5 names each; `group_links` ≤ the trigger's 6 largest groups
   (members truncated to the node set). Fleet-basis record budget stated:
-  ≤ ~6 KB so 120 cycles stay inside the 300 KB embed contract; the P4 size
+  ≤ ~6 KB so 120 cycles stay inside the embed contract (`300 * 1024` when
+  this was written; the bound is **`320 * 1024`** since the v0.4.27 re-base,
+  measured in `docs/network-graph-interaction.spec.md` §4.5); the P4 size
   pin gains a fleet-scale synthetic cycle asserting it.
 
 ## 4. Verification (each pin fails on pre-fix code)
