@@ -258,7 +258,9 @@ restored, exactly **one** check in 225 goes red. The focused pass in the theme l
 two predicates apart, because it re-selects the fleet and then clicks
 `.net-node[data-current="true"]` — under the old predicate that is the *trigger* project, so both
 schemes mark the same node in that view. Same shape as M12 (§4.3): the fixture makes two
-implementations coincide. M1's coverage is a single check, and that is the honest number.
+implementations coincide. M1's coverage is a single check, and that is the honest number **for this
+round's suite** — the re-audit round's own pins take it to four (§4.7, M15), by adding the two
+fixtures where the two predicates cannot coincide.
 
 **M2's row names the `<select>` pin, not the node pin.** An unconditional focus at the redraw also
 strips the select that drove the view change, and that check sits earlier in the suite, so it is
@@ -332,13 +334,13 @@ until this run no tree on disk *was* the artifact (§4.5).
 
 | Gate | Result |
 | --- | --- |
-| `tests/dashboard_browser.py` | **1309 passed, 0 failed** |
+| `tests/dashboard_browser.py` | **1329 passed, 0 failed** |
 | `tests/smoke.py` | **1794 passed, 0 failed** — census constant `1750 + 44`, unchanged (no smoke pin was added) |
 | `tests/docs_links.py` | pass — the preview is regenerated on the ship tree *before* this gate, since a stale one fails it by design |
 | `tests/simulate_accumulation.py` | "All lifecycle properties hold" |
 | `mypy --config-file mypy.ini` | success — 42 files |
 | `tests/validate_manifests.py` | "manifests valid (consolidate-memory v0.4.27)" |
-| mutation harnesses | the pass's own runs: **12 of 13** browser RED, 2/2 smoke RED (M12's GREEN is §4.3). The review round adds four more browser groups, re-run against the final selector list — PV-2 **1/1**, PV-2b **5/5**, D4 **2/2**, D3 **13 from a single mutation** (8 existence + 4 floor + 1 absence, counted on a non-fatal harness — the shipped one aborts on the first red; §4.6), and D3b **4/4** against `report_layout` after its first prediction was measured wrong (§4.6). That run's baseline was **1309 checks, 0 failed** — so the new selector list is clean everywhere the suite reaches before any mutation is planted. |
+| mutation harnesses | the pass's own runs: **12 of 13** browser RED, 2/2 smoke RED (M12's GREEN is §4.3). The review round adds four more browser groups, re-run against the final selector list — PV-2 **1/1**, PV-2b **5/5**, D4 **2/2**, D3 **13 from a single mutation** (8 existence + 4 floor + 1 absence, counted on a non-fatal harness — the shipped one aborts on the first red; §4.6), and D3b **4/4** against `report_layout` after its first prediction was measured wrong (§4.6). That run's baseline was **1309 checks, 0 failed** — so the new selector list is clean everywhere the suite reaches before any mutation is planted. The re-audit round (§4.7) adds **M15–M21: 15 RED across 7 mutations**, every one a revert of pre-fix code. It first ran on a **1326**-check baseline and was **re-run in full on the shipped 1329**, where every count reproduces unchanged. Its **guard arm** is a separate kind of run — the defect is *introduced*, not restored — and runs on the same 1329: **3 RED**, the three focus-indicator guards and nothing else, against a control placement of the same edit that reds **0** (§4.7). |
 
 **How the suite grew — three measured points**, each one that tree's own suite run against that
 tree's own scripts, which is the procedure that produced the pre-pass figure rather than a delta
@@ -349,6 +351,7 @@ off it:
 | `df2c1c5^` (pre-pass) | **1213** | 0 |
 | `df2c1c5` (the pass as committed) | **1264** | 0 |
 | as it ships (review round included) | **1309** | 0 |
+| as it ships (re-audit round included) | **1329** | 0 |
 
 The pass added **6 `check(` sites** (196 → 202) for **+51 runtime checks**; the review round added
 **7 sites** (202 → 209) for **+45**. Runtime exceeds the site count in both cases because several
@@ -361,6 +364,15 @@ diffing the two runs' check-name multisets, not derived:
 | `focused_fit` — five focused passes and three fact-view widths, net of the three `contained()` calls it replaced | **+5** |
 | the focused legend pin, ×5 themes | **+5** |
 | five one-shot pins: the fleet legend, both trail labels, both focus-handoff checks | **+5** |
+
+The re-audit round added **10 sites** (209 → 219) for **+20**, and the two counts differ because two
+of the new sites loop. Its ten new `check(` sites carry **15** runtime checks — two fire once per
+focus-exit control (×3 each: the handoff and the focus indicator beside it), one fires once per
+paged-anchor fixture (×2, in the existing `large`/`uneven` loop), and the other seven fire once.
+The five new fixtures add the remaining **5**: `fixture()` calls `ready()`, which owns its own
+`render without errors` check, so a new fixture is +1 before any assertion is written. Sites are
+counted as occurrences of `check(`; the 209 in the review round's row is that same method, which is
+why it reconciles with this one and not with a `^\s*check(` count (195 at that tree).
 
 An earlier draft of this section said the pass counted "1266, +53". Both figures were wrong; the
 measured values are **1264** and **+51**. The pre-pass **1213** was then re-measured the same way
@@ -551,17 +563,53 @@ is watching and it is not:
   record link `.network-record-link` is in the same position; it does inherit the generic
   `#network-blk button:hover`, because `#network-blk .inspector-choice` is `(1,1,0)` and loses to
   `(1,1,1)` — the specificity trap that made the crumb inert does not reach it.
-- **`.crumb-back` has no `.dim`-style absence guard**: nothing asserts it is *absent* in the fleet
-  view, only that the trail is empty there.
-- **The `.dim` guard's own match set has two blind spots.** Its regex catches
-  `setAttribute('class','net-node dim')`, `classList.add("dim")` and
+- **CORRECTED — the `.crumb-back` absence is pinned; this entry claimed otherwise.**
+  `tests/dashboard_browser.py:306`, added by this same round, asserts
+  `#net-breadcrumbs button').count()==0` on the line immediately after the crumb click, and
+  `button()` builds the crumb as `#net-breadcrumbs button.crumb-back` — so the fleet's crumb
+  absence *is* gated, by the third clause of a check whose name speaks only of the trail. The
+  entry read *"nothing asserts it is absent in the fleet view, only that the trail is empty
+  there"* and was stale the moment it was written: the ledger was drafted against the suite as it
+  stood before this round's own additions landed in it. The damaging direction is a future author
+  who believes the ledger and *simplifies* :306 to trail-emptiness alone, un-gating the property
+  while all 1311 checks stay green. **The rule this earns: a coverage ledger written in the same
+  change that closes the holes must be re-derived from the suite's final text, not from memory of
+  what was still open when the drafting started.**
+- **The `.dim` guard's own match set has two blind spots, and a false-positive mode.** Its regex
+  catches `setAttribute('class','net-node dim')`, `classList.add("dim")` and
   `classList.add(String('dim'))`, but not a backtick literal, a concatenation (`'di'+'m'`), or a
   variable holding it. Latent only: both bundles use backticks exclusively inside `//` comment
-  lines, so no composed form exists to evade it today. Recorded because the pin's own comment
-  describes its match set, and a future author could read that description as exhaustive.
+  lines, so no composed form exists to evade it today. The other direction is that the same regex
+  cannot tell code from **prose**: it matches any quoted run containing the bare word, so a comment
+  reading *"the word 'dim' is reserved"* reddens a guard whose message claims a bundle named the
+  class. Also latent — neither bundle quotes the word outside code — and recorded for the same
+  reason as the blind spots: the pin's comment describes its match set, and a future author could
+  read that description as exhaustive. The general shape is worth naming, because it recurs in
+  both directions: **a gate proves only what its matcher can see** (`gate-coverage-is-its-match-set`),
+  and a matcher loose enough to be robust is loose enough to be wrong.
 - **No smoke pin names any new surface**, and the print check never runs with a focused view on
   screen.
-- **The node focus key is uncovered** (§4.3, M12), and **M1's coverage is a single check** (§4.1).
+- **The node focus key is uncovered** (§4.3, M12). **M1's coverage started at a single check**
+  (§4.1) and stands at four after the re-audit round (§4.7, M15).
+- **The anchor's presence is one-directional, and its residual is deliberate.** `rendered ⊆
+  matching ⊆ selected` rules out marking a NON-member and says nothing about whether the anchor is
+  on screen. The other direction is carried by the entry page and only there: a user who **pages
+  away** from the anchor's page, or who **collapses the anchor's own domain**, hides it, and the
+  anchor branch then matches nothing while the legend still reads *"The outlined node is the
+  project you selected"*. That is a user-initiated hide with the same semantics fleet paging
+  already has for the captured trigger, so it is a behaviour rather than a defect — but **no pin
+  covers it**, and the two ways to reach it (a pager click, a domain collapse) are both one
+  interaction away from the pinned path. Recorded because the entry-page pin makes the opposite
+  claim look total.
+- **The focus key falls back to position where the record supplies no identity.** `normalize()`
+  keys nodes on the sid, but a capture with **no sids** and a capture with a **duplicated sid**
+  both fall back to the positional index — the exact fragility the sid key was introduced to
+  remove (§2.2). It is bounded rather than fixed: with no stable identity in the record there is
+  nothing else to key on, and the duplicate case additionally keeps the two nodes distinct through
+  that index. **Uncovered**: no fixture carries a sid-less capture or drives a repaint while
+  focused on one of a duplicated pair's nodes, and a stale index surviving a cycle change would
+  land focus on a different project. This is the node focus key's hole (§4.3, M12) seen from the
+  other side.
   Both are correct changes the suite cannot currently distinguish from the defect they replaced.
 - **The `#net-legend-note` clause is unguarded, and its failure mode is a crash rather than a red.**
   Both legend checks read `page.locator('#net-legend #net-legend-note').inner_text()` with no count
@@ -620,6 +668,81 @@ overflow in 80 states, min contrast 7.19 over 40 readings against a 4.5 floor, h
 every width down to 320, long captured values held by `minmax(0,1fr)` + `overflow-wrap:anywhere`),
 so these are gates to add, not defects to chase.
 
+### 4.7 The re-audit round — the escape hatch measured, and one vacuous pin it exposed
+
+The pass shipped a working exit from the graph and then had the *exit itself* re-audited. Seven
+mutations, each the pre-fix form of one mechanism, run on a non-fatal copy of the harness so one
+run exposes every red rather than the first. (An eighth run follows them: the guard arm, which
+introduces a defect rather than restoring one, and therefore cannot sit in this table.) The round
+first ran on a **1326**-check suite; the whole matrix was then **re-run against the shipped
+1329**-check suite once the guard arm's three checks existed, and **every count below reproduces
+unchanged** — the three new checks sit inside the same focus loop as M17's, so re-measuring them
+rather than carrying the table forward was the point.
+
+| # | Mechanism restored to its pre-fix form | Checks RED |
+| --- | --- | --- |
+| M15 | the anchor marks the capture trigger in every view (`truthy(n.raw.trigger)`, no project arm) | **4** |
+| M16 | the *fleet* anchor re-tests the trigger per node (`n===trigger` → `truthy(n.raw.trigger)` in that arm only) | **1** |
+| M17 | the focus restore searches `svg.querySelectorAll('[data-key]')` — the pre-fix scope | **3** |
+| M18 | `fieldText`/`listText` revert to the pre-fix pair | **2** |
+| M19 | the `Shared facts` row reverts to two states **and** the explanation drops its `!unique` arm | **1** |
+| M20 | `Held by`'s `drawn` reads `pf.holder_sids.length` instead of the rendered selection | **2** |
+| M21 | a project view enters its anchor's domain on page 0 (the entry-page fix removed) | **2** |
+
+**M15 more than doubles the coverage M1 was recorded as having.** §4.1's M1 row said its coverage
+was "a single check, and that is the honest number", and it was — for the suite as it stood. The
+re-audit's own pins now catch the same mutation: the paged-anchor pair reddens because its fixture
+pages the anchor away, and the two-trigger pin because it is the one fixture where the two
+predicates cannot coincide. **The lesson is about fixture shape, not pin count**: a pin can only
+separate two predicates on a fixture where they disagree, and the pass's fixtures were built so
+that they never did.
+
+**A vacuous pin, found by mutation and repaired — the same failure §4.3 records, in a new place.**
+The focus-repair block asserts three controls (the trail's back-control, the record link, and a
+shared-fact button) each hand focus back to *themselves* after a redraw. It resized to a **fixed**
+target width inside the loop. `resize()` waits for `#net`'s `data-viewport` to reach the new width,
+so after the first iteration the width was already correct, the wait returned immediately, no
+resize event fired, no redraw ran, and the control was never destroyed — leaving focus on it and
+the assertion green **against the very defect it exists for**. Under M17, only the first of the
+three went red. The repair alternates the target width, so every iteration forces a real redraw,
+and M17 then reds all three. Nothing about the assertion was wrong; the *instrument* was inert,
+which is the harder failure to see because the check's text stays true.
+
+**Four of §4.7's thirteen assertions are GUARDs, and the source names each as one.** `a group list
+the capture never recorded reads as not captured` cannot move under M18: pre-fix `listText()`
+reported an absent list and a present non-array *identically*, so no revert separates them. What it
+holds is the boundary the vocabulary rewrite could overshoot the other way — a rule rendering every
+non-array as `None recorded` would call a field the capture never recorded a measured empty. It is
+kept, and named, because a pin that cannot fail reads exactly like one that can (§4.3) and the next
+author deserves to know which is which. The other three — the focus-indicator checks — are guards
+for the same reason in a different place, and how they were verified is the next block.
+
+**The guard arm: a mutation has to be planted where it wins.** A guard cannot be reddened by any
+revert, so verifying one means *introducing* the defect instead. For the focus-indicator checks that
+took two attempts, and the failed one is the finding:
+
+| Placement of `outline:none` on the network button | Checks RED |
+| --- | --- |
+| a **new** `#network-blk button:focus-visible{outline:none}` planted beside the network's own focus rules | **0** |
+| the same declaration appended **after** `#app button:focus-visible`, the rule that supplies the ring | **3** — exactly the three guards, nothing else |
+
+Both rules are **(1,1,1)**, so source order decides — the anchor hover bump's tie-break, one
+selector pair over (§5). Note too that the network has no scoped `button` focus rule to edit: its
+`#network-blk [role="button"]:focus-visible` matches the SVG nodes, which carry the attribute, and
+never a bare `<button>`, whose role is implicit. That absence *is* the mechanism — the ring has one
+supplier, and it is app-wide. The first placement is not a gap in the guards; it is a mutation that
+never became a defect, since the rule it planted already loses the cascade and its `outline:none`
+is dead on arrival. It is recorded because *"the guards do not catch a suppressed outline"* was one
+step away from being written about three checks that do.
+
+**A mutation that looked right and proved nothing — and the reading it nearly produced.** The
+fleet-arm reversion (M16) reddens exactly one check and leaves **both paged-anchor pins green**.
+That was first read as a gap in those pins. It is not. The pre-fix anchor had **no project arm at
+all**, so reverting only the fleet arm reverts half of a repair, and the pins that stayed green
+were never asked the question. Restored whole as M15, the same predicate reddens four, those two
+among them. The wrong reading is recorded because it was one step away: *"the paged-anchor pins do
+not catch the anchor reversion"* would have been written about pins that catch it.
+
 ## 5. Deliberately not fixed (found by measurement, recorded rather than silently changed)
 
 - **`.node-name` / `.node-meta` are emitted by nothing.** The live classes are `project-label`
@@ -643,9 +766,28 @@ so these are gates to add, not defects to chase.
   anchor's *resting* width: the number was read off the hover state. Judged legible on the rest
   widths — a brighter stroke, 0.7px thicker, plus three redundant textual cues. The hover bump
   survives only because the two same-specificity rules that decide it sit in the right source
-  order (the template comment now says so); **no gate here would catch a reorder**, which is why
-  the order is documented rather than left to look accidental. Re-tinting a shipped surface would
-  need its own contrast gates.
+  order (the template comment now says so). **CORRECTED: this read *"no gate here would catch a
+  reorder, which is why the order is documented rather than left to look accidental."* A gate does
+  catch it** — `dashboard_browser.py:489` reads the anchor rect's `stroke-width` at rest and under
+  the pointer in every theme and asserts they differ. Mutation-verified rather than argued: moving
+  the `stroke-width:2.6` hover rule ahead of the anchor's `stroke-width:1.8` rest rule (**both
+  (1,2,1)**; nothing else changed) reddens exactly that check on the first theme with
+  `rest={'w':'1.8px'} hovered={'w':'1.8px'}`, against a green run's `1.8px → 2.6px` on all five.
+  The other half of the same reading — `mark`, the fill+stroke pair — is equal on both sides of
+  the mutation, which is why the check is two-sided: the order-independent half cannot carry the
+  order-dependent one. The false claim was worse than a gap: it told the next editor the order was
+  unprotected and must be preserved by comment alone, and a reviewer checking it would find the
+  comment wrong about its own gate. Re-tinting a shipped surface would need its own contrast gates.
+- **The network's HTML controls get their focus ring from an app-wide rule, not from the
+  `#network-blk`-scoped ones.** Measured while mutation-verifying §4.7's focus-indicator guards: a
+  `document.styleSheets` walk over the focused record link lists three matching rules, and the ring
+  comes from `#app button:focus-visible` — the template's focus group — at the same **(1,1,1)** as
+  `#network-blk button:focus-visible`, decided by **source order**. The scoped rule's
+  `outline:none` is what makes it read as the authority; it loses. This is the hover bump's own
+  tie-break one selector pair over, and it has the same practical edge: whoever mutation-tests that
+  ring must plant the defect *after* the winning rule, or it never takes effect. The scoped rule is
+  not dead in the way §5's unscoped `.net-node rect` family is — it is outranked by exactly one
+  later rule that can be moved.
 - **The record link lands coarsely.** `#record-json` is one `<pre>` holding the whole record, so
   the landing is top-of-blob, not the node's entry. Narrowing via a `Range` is deferred: it means
   re-serialising with matching indentation or string-searching `"sid": "…"`, and the pin

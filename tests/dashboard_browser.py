@@ -617,6 +617,151 @@ def main(out,capture=False):
         check('unknown completeness gets one concise notice','Capture completeness was not recorded' in page.locator('#net-cap').inner_text())
         concise_network('partial capture')
 
+        # ── The two HTML hosts that had no exit, and the vocabulary a summary row renders. ──
+        #
+        # (1) A REDRAW MUST REACH A FOCUSED CONTROL OUTSIDE <svg>. draw() empties three hosts every
+        # time it runs — the <svg> itself, #net-breadcrumbs, and, through inspect(), #net-detail —
+        # but the restore that hands focus to a rebuilt successor searched
+        # svg.querySelectorAll('[data-key]') and so could only ever describe SVG controls. A focused
+        # control in either HTML host therefore had no successor to find and dropped through to the
+        # .network-root fallback, whose own handler is reset(): the next Enter threw away the view
+        # the user had just opened. A resize is the instrument rather than a click because it is the
+        # cheapest redraw that rebuilds all three hosts WITHOUT also moving the selection — a click
+        # would change the thing under test.
+        #
+        # Each assertion reads document.activeElement, a consequence only the restore can produce,
+        # and each is paired with an existence guard on the same selector so a builder that stopped
+        # emitting the trail, the link or the fact row fails here rather than passing vacuously
+        # against a successor that is simply missing.
+        #
+        # The width ALTERNATES per iteration, and that is not decoration. resize() waits for
+        # #net's data-viewport to reach the new width, so re-issuing the SAME width is a no-op that
+        # returns immediately with no redraw — the control is never destroyed, keeps its focus, and
+        # the check passes against a restore that never ran. Measured: with a fixed target width
+        # only the first of these three reddened under the svg-only mutant; the other two were green
+        # against the defect they exist for.
+        def summary_rows():
+            return page.locator('#net-detail .network-summary').evaluate(
+                "d=>Object.fromEntries([...d.querySelectorAll('dt')].map((e,i)=>[e.textContent,d.querySelectorAll('dd')[i].textContent]))")
+
+        fixture('focus-exits',record)
+        page.locator('.net-node[data-node="atlas-api"]').click()
+        exit_fact=next(f['fact_id'] for f in record['network']['fact_holdings'] if f['name']=='release-checks')
+        for exit_i,(exit_label,exit_sel) in enumerate([('the trail back-control','#net-breadcrumbs button'),
+                                                       ('the record link','#net-detail .network-record-link'),
+                                                       ('the shared-fact button','#net-detail [data-fact-id="'+exit_fact+'"]')]):
+            page.locator(exit_sel).focus()
+            resize(1200 if exit_i%2==0 else 1440)
+            check('a redraw hands focus back to '+exit_label+', not to the retired root fallback',
+                  page.locator(exit_sel).count()==1
+                  and page.locator(exit_sel).evaluate('e=>e===document.activeElement'))
+            # ...and the control it lands on is one a keyboard user can SEE they are on. These are
+            # HTML controls outside <svg>, so the node pins that assert a focus rectangle (and its
+            # absence after a pointer activation) reach none of them — measured: arrival by a real
+            # Tab gives outline solid 2px + :focus-visible in every theme, while the programmatic
+            # restore above gives outline `none` and no :focus-visible, which is the correct half of
+            # the same two-sided rule the node pins use. This is the GUARD half: it cannot fail on
+            # pre-fix code, because these buttons always had a ring — its mutation introduces the
+            # defect rather than reverting one, and was run. The run cost two attempts, and the
+            # first is the reason this comment names a rule. Suppressing the ring on the control's
+            # OWN scoped rule reds NOTHING: the ring these controls show is delivered by the
+            # app-wide `#app button:focus-visible` in the template's focus group, which ties that
+            # rule on specificity and wins on source order — the same tie-break this spec documents
+            # for the anchor's hover bump, one selector pair over. Appending an equal-specificity
+            # `outline:none` AFTER the winning rule reds exactly these three and nothing else. A
+            # defect planted where it cannot take effect measures nothing about the guard.
+            page.locator(exit_sel).focus()
+            page.keyboard.press('Shift+Tab');page.keyboard.press('Tab')
+            check(exit_label+' carries a visible focus indicator when focus arrives by keyboard',
+                  page.locator(exit_sel).count()==1
+                  and page.locator(exit_sel).evaluate("e=>{const s=getComputedStyle(e);return e===document.activeElement&&e.matches(':focus-visible')&&s.outlineStyle!=='none'&&parseFloat(s.outlineWidth)>0;}"))
+        resize(1440)
+
+        # (2) THE SUMMARY'S ABSENCE STATES AND THE SHAPE OF A PRESENT VALUE. A row must separate a
+        # field the capture never recorded ('Not captured') from a measured empty ('None recorded')
+        # from a value the capture carries in a shape the row did not expect — and the third must
+        # render AS ITSELF, never as a blank cell, a '[object Object]', or a false 'Not captured'.
+        # Measured pre-fix, one cause each: an empty-string domain drew a blank, a scalar `groups`
+        # drew 'Not captured' for a project the record plainly groups, an object drew
+        # '[object Object]', and a duplicated sid reported every shared fact in the record as never
+        # captured. Asserted separately because they are four different defects sharing one row.
+        vocabulary=copy.deepcopy(record)
+        # All three in the trigger's own domain so the fleet view expands them and each is one
+        # click away — a searched-for node in a collapsed domain is not rendered at all.
+        vocabulary['network']=dict(vocabulary['network'],
+            nodes=[{'node':'empty-domain','sid':'voc-1','domain':'','groups':'all,even','trigger':True,'shared':1},
+                   {'node':'absent-groups','sid':'voc-2','domain':'','trigger':False,'shared':1},
+                   {'node':'object-groups','sid':'voc-3','domain':'','groups':{'all':True},'trigger':False,'shared':1}],
+            domains=[{'domain':'unknown'}],stack_edges=[],group_links=[],fact_holdings=[])
+        fixture('summary-vocabulary',vocabulary)
+        # A project view selects the node and its recorded connections — with stack_edges empty
+        # that is the clicked node alone, so each row needs its own trip back to the fleet.
+        page.locator('.net-node[data-node="empty-domain"]').click()
+        check('an empty-string domain reads as a measured empty rather than a blank cell',
+              summary_rows().get('Domain')=='None recorded' and summary_rows().get('Groups')=='all,even')
+        network_view('fleet');page.locator('.net-node[data-node="absent-groups"]').click()
+        # A GUARD, not a mutation pin, and labelled as one because a pin that does not move under a
+        # mutation is worthless — this one cannot move. Pre-fix listText() reported an absent list
+        # and a present non-array identically ('Not captured'), so no revert separates them; what
+        # this holds is the BOUNDARY the vocabulary rewrite could overshoot in the other direction,
+        # since a rule that rendered every non-array as 'None recorded' would call a field the
+        # capture never recorded a measured empty. The present-non-array half of that boundary is
+        # asserted by the two checks around it (the 'all,even' string above, the object below), and
+        # both of those DO move under the mutation.
+        check('a group list the capture never recorded reads as not captured',
+              summary_rows().get('Groups')=='Not captured')
+        network_view('fleet');page.locator('.net-node[data-node="object-groups"]').click()
+        check('a present non-array group list renders as its own value, never as [object Object]',
+              summary_rows().get('Groups')=='{"all":true}')
+
+        # (3) A DUPLICATED SID IS UNATTRIBUTABLE, WHICH IS NOT THE SAME ANSWER AS NEVER CAPTURED.
+        # With two captured nodes sharing a sid no fact can be joined to either, and the record
+        # lists facts the whole time — so 'Not captured' was an absence claim about present data.
+        duplicate=copy.deepcopy(record)
+        duplicate['network']['nodes']=copy.deepcopy(duplicate['network']['nodes'])
+        once=next(n['sid'] for n in duplicate['network']['nodes'] if n['node']=='atlas-api')
+        next(n for n in duplicate['network']['nodes'] if n['node']=='atlas-web')['sid']=once
+        fixture('duplicate-sid',duplicate)
+        page.locator('.net-node[data-node="atlas-api"]').click()
+        check('a project the capture records twice reports its shared facts as unattributable, not absent',
+              summary_rows().get('Shared facts')=='Unresolved identity'
+              and 'records this project more than once' in page.locator('#net-detail .network-explanation').text_content())
+
+        # (4) 'Held by' COUNTS THE NODES THE MAP DREW, NOT THE RAW HOLDER LIST. selectedNodes() keeps
+        # only sids that are non-duplicate and resolve to exactly one captured node, so the record's
+        # array length overstates the map — measured '5 · 3 shown on the map' beside a map drawing a
+        # single node, and '3 · 0 shown on the map' beside a map drawing none. A zero is words, the
+        # same rule every other row here obeys.
+        held_by=copy.deepcopy(record)
+        held_by['network']['fact_holdings']=copy.deepcopy(held_by['network']['fact_holdings'])
+        next(f for f in held_by['network']['fact_holdings'] if f['name']=='release-checks').update(
+            holder_sids=['sample-atlas-api','ghost-1','ghost-2'],held_n=3)
+        next(f for f in held_by['network']['fact_holdings'] if f['name']=='shell-portability').update(
+            holder_sids=['ghost-1','ghost-2'],held_n=2)
+        fixture('held-by',held_by)
+        network_view('fact','release-checks')
+        check("a fact's holder row counts what the map drew, not what the record listed",
+              summary_rows().get('Held by')=='3 · 1 shown on the map')
+        network_view('fact','shell-portability')
+        check('a fact none of whose holders resolve says so in words, never as a bare zero',
+              summary_rows().get('Held by')=='2 · none shown on the map')
+
+        # (5) ONE ANCHOR PER VIEW, EVEN WHEN THE CAPTURE NAMES TWO TRIGGERS. `trigger` is a truthy
+        # test, not a uniqueness test: nothing in the record schema, normalize() or any gate bounds
+        # it to one node, so a truncated or hand-merged capture can flag two — and re-testing
+        # truthy(trigger) per node then stroked and labelled two projects 'This project', 2-of-N
+        # against a rule the comment states as 1-of-N. Anchoring on the node the view already
+        # resolved as its trigger makes the rule structural rather than assumed.
+        two_triggers=copy.deepcopy(record)
+        two_triggers['network']['nodes']=copy.deepcopy(two_triggers['network']['nodes'])
+        next(n for n in two_triggers['network']['nodes'] if n['node']=='atlas-web')['trigger']=True
+        fixture('two-triggers',two_triggers)
+        network_view('fleet')
+        check('a capture naming two triggers still draws exactly one captured-project mark and one label',
+              page.locator('.net-node[data-current="true"]').count()==1
+              and page.locator('.net-node[data-current="true"]').get_attribute('data-node')=='atlas-api'
+              and page.locator('.net-node .project-meta').evaluate_all('es=>es.filter(e=>e.textContent==="This project").length')==1)
+
         # Dense and uneven fleets: all captured domains visible, all projects reachable.
         for name,count,domain_of in [('empty',0,lambda i:'work'),('singleton',1,lambda i:'work'),('baseline-only',10,lambda i:'work'),('disconnected',18,lambda i:'d-%d'%(i%4)),('dense',36,lambda i:'d-%d'%(i%4)),('uneven',45,lambda i:'work' if i<39 else 'tools'),('unknown-domain',7,lambda i:'unknown'),('large',125,lambda i:'d-%d'%(i%9)),('prototype-domain',27,lambda i:'constructor')]:
             rec=copy.deepcopy(record);nodes=[dict(node='project-%03d'%i,sid='sid-%03d'%i,display_name='Readable project %03d'%i,domain=domain_of(i),groups=['all','even'] if i%2==0 else ['all'],trigger=i==0,shared=1) for i in range(count)]
@@ -655,6 +800,28 @@ def main(out,capture=False):
                 before=set(page.locator('.net-node').evaluate_all('es=>es.map(e=>e.dataset.sid)'))
                 page.get_by_role('button',name='Next projects in '+domain_of(0),exact=True).click()
                 check(name+' pagination reaches further nodes',not set(page.locator('.net-node').evaluate_all('es=>es.map(e=>e.dataset.sid)')).issubset(before))
+                # Paging a domain exposes nodes whose position in their OWN domain list is past the
+                # page slice — sid-108 is the 13th of d-0's 14, sid-030 the 31st of work's 39. Clicking
+                # one enters a project view whose selection is that node's whole connected component,
+                # and focus() clears every page on the way in, so each domain re-entered on page 0 and
+                # the slice omitted the clicked project: the map rendered 108 nodes with NOT ONE
+                # [data-current="true"], every row reading "Recorded connection", while the legend above
+                # it still promised "The outlined node is the project you selected". Assert the MARK,
+                # never a page number, so the pin survives a fixture-size change; and assert the
+                # non-anchor wording beside it, or a bundle that labelled every row "This project"
+                # would satisfy the anchor half alone.
+                target={'large':'sid-108','uneven':'sid-030'}[name]
+                nxt=page.get_by_role('button',name='Next projects in '+domain_of(0),exact=True)
+                while page.locator('.net-node[data-sid="'+target+'"]').count()==0 and nxt.get_attribute('aria-disabled')!='true':
+                    nxt.click()
+                page.locator('.net-node[data-sid="'+target+'"]').click()
+                marked=page.locator('.net-node[data-current="true"]')
+                check(name+' project view opened from a paged node still marks the project it names',
+                      marked.count()==1 and marked.get_attribute('data-sid')==target
+                      and marked.locator('.project-meta').text_content()=='This project'
+                      and page.locator('.net-node:not([data-sid="'+target+'"]) .project-meta').evaluate_all('es=>es.every(e=>e.textContent==="Recorded connection")')
+                      and page.locator('#net-legend-note').text_content().startswith('The outlined node is the project you selected'))
+                network_view('fleet')
             resize(320);contained(name+' mobile');geometry(name+' mobile');resize(1440)
         legacy=copy.deepcopy(record);legacy['network'].pop('fact_holdings');legacy['network'].pop('capture');fixture('legacy-network',legacy)
         page.locator('.net-node[data-current="true"]').click()

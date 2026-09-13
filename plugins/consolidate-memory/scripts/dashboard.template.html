@@ -688,7 +688,10 @@
      a thickness bump instead — safe only because of source order: the width rule below and the
      anchor rule above both set stroke-width and both score (1,2,1), so the later one wins, and
      that is the only thing making 2.6 beat the anchor's 1.8. Move either one and the anchor
-     silently reverts to 1.8px under the pointer, which no gate here would catch. */
+     reverts to 1.8px under the pointer — and a gate DOES catch that: dashboard_browser.py reads
+     the anchor rect's stroke-width at rest and under the pointer in every theme and asserts the
+     two differ, so a reorder reddens the suite. Recorded because a comment that claims to be the
+     only protection where a pin already exists teaches the next editor to trust the wrong half. */
   #network-blk .net-node:not(.selected):not([data-current="true"]):hover rect,#network-blk .net-node:not(.selected):not([data-current="true"]):focus rect{stroke:var(--data);fill:var(--paper2)}
   #network-blk .net-node:hover rect,#network-blk .net-node:focus rect{stroke-width:2.6}
   #network-blk .domain-junction:hover circle{stroke:var(--accent)}
@@ -1152,7 +1155,7 @@
     var legacyData=document.createElement("pre");legacyData.className="legacy-network-data";
     legacyData.textContent=CUR.network?JSON.stringify(CUR.network,null,2):"Network data was not captured in this record.";
     el("network-data-body").appendChild(legacyData);
-    el("net-detail").textContent="Select a project or connection to inspect its captured evidence.";
+    el("net-detail").textContent="Select a project to inspect its captured evidence.";
     var chips0=el("net-chips"); if(chips0){chips0.style.display="none"; chips0.textContent="";}
     var leg0=el("net-legend"); if(leg0){Array.prototype.slice.call(leg0.children).forEach(function(c){if(c&&c.textContent&&c.textContent.indexOf("⌁ ")===0)leg0.removeChild(c);});}
     ["dream-blk","distill-blk","demotion-blk","registrar-blk","xp-strip","m-global","dstl-top","dstl-chains-head","dstl-used-head"].forEach(function(id){var n=el(id); if(n)n.style.display="none";});

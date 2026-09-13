@@ -226,7 +226,13 @@ arithmetic:
   node (0 matches each), and neither string appears in either JS bundle. Both classes are **CSS
   with no emitter**. `draw()` writes `project-label` (`--ink`, the one class this bullet names
   correctly) and `project-meta`, whose fill resolves to **`--ink2`, not `--faint`** — two rules
-  set it, and the `#network-blk`-prefixed one wins on ID specificity in every theme. So the
+  set it (`dashboard.template.html:246` and `:375`), and **both carry `#network-blk` and score
+  (1,1,0)**, so no specificity separates them: the later one wins on **source order**, in every
+  theme, and there is no unprefixed competitor for specificity to decide against. **Corrected:**
+  this sentence read *"the `#network-blk`-prefixed one wins on ID specificity"*, which is false for
+  these two rules and load-bearing in the wrong direction — an editor who believed it would reorder
+  them, trusting specificity to hold the winner, and silently move the relation text onto `--faint`.
+  The conclusion was right; the mechanism was invented. So the
   `--faint` text child that made `--faint` "the binding case" never renders, and the rows counted
   against it are testimony rather than a measurement anything can re-run. **Only the split's
   direction survives on its own** — two rules receding plate and label apart is structural, not a

@@ -8,8 +8,13 @@ var NocturneNetwork = (function(){
       // `key` is what draw() restores focus by, so it must survive a re-normalize. A
       // positional index (the old 'project:'+i) does not: a repaint on a cycle change
       // re-enters draw() with a fresh model, and the stale index would land focus on
-      // whatever project now occupies that slot. Duplicate sids are invalid capture data;
-      // they fall back to the index only to stay distinct from each other.
+      // whatever project now occupies that slot. The key is therefore the SID — but only
+      // where a sid exists to be had. A capture with no sids, and a duplicated sid, both
+      // fall back to the index, and there the old fragility survives by construction rather
+      // than by oversight: the record supplies no stable identity to key on, so the only
+      // thing left is the position. Bounded, not fixed — the fallback is recorded as an open
+      // hole in the spec's coverage ledger. Duplicate sids are additionally invalid capture
+      // data, and they stay distinct from each other only via that index.
       return {raw:n,id:'project:'+i,key:duplicate?'project:'+sid+'#'+i:'project:'+sid,sid:sid,duplicate:duplicate,label:String(n.display_name||n.node||'Unnamed project'),domain:String(n.domain||'unknown'),groups:Array.isArray(n.groups)?n.groups:[]};
     });
     var domains=Array.from(new Set(rows(net.domains).map(function(d){return String(d.domain||'unknown');}).concat(nodes.map(function(n){return n.domain;})))).sort();
@@ -84,10 +89,15 @@ var NocturneNetwork = (function(){
     function rootLabel(){return state.kind==='fleet'?'Captured fleet':state.kind==='group'?String(state.value.group):state.kind==='fact'?String(state.value.name):state.value.label;}
     function draw(){
       // Focus repair is a two-step contract. `focusKey` identifies a control this redraw will
-      // REBUILD, so the restore at the tail can hand focus to its successor — but every data-key
-      // holder is an <svg> child, so it only ever describes SVG controls. `hadFocus` records that
-      // a real control held focus at all, which is what tells a STRANDING apart from a redraw
-      // nobody was focused in. Captured before svg.textContent='' below, which is what destroys.
+      // REBUILD, so the restore at the tail can hand focus to its successor. The search spans the
+      // whole widget, not just <svg>: a redraw also destroys controls that live OUTSIDE it — the
+      // trail's back-control (this function empties #net-breadcrumbs), the record link and the
+      // shared-fact buttons (inspect() replaces #net-detail's innerHTML) — and an <svg>-only
+      // search cannot reach their successors, so it dropped a focused control onto .network-root
+      // instead. Root's own handler is reset(), so the next Enter then discarded the view the
+      // user had opened. `hadFocus` records that a real control held focus at all, which is what
+      // tells a STRANDING apart from a redraw nobody was focused in. Captured before
+      // svg.textContent='' below, which is what destroys.
       var focusKey=document.activeElement&&document.activeElement.getAttribute('data-key');
       var hadFocus=!!document.activeElement&&document.activeElement!==document.body&&document.activeElement!==document.documentElement;
       svg.textContent='';
@@ -99,7 +109,7 @@ var NocturneNetwork = (function(){
       // in a project view that leaves no visible way back.
       var crumbs=el('net-breadcrumbs');crumbs.textContent='';
       if(state.kind!=='fleet'){
-        button('Captured fleet',reset,crumbs,'crumb-back');
+        button('Captured fleet',reset,crumbs,'crumb-back').setAttribute('data-key','crumb:back');
         var trail=document.createElement('span');trail.className='crumb-trail';
         trail.textContent='› '+(state.kind==='fact'?'Shared fact':state.kind==='group'?'Sharing group':'Project')+' › '+rootLabel();
         crumbs.appendChild(trail);
@@ -118,7 +128,21 @@ var NocturneNetwork = (function(){
       var blocks=[],y=mobile?108:38;
       domains.forEach(function(domain){
         var all=matching.filter(function(n){return n.domain===domain;}), expanded=all.length>0&&state.expanded.has(domain);
-        var page=state.pages[domain]||0,shown=expanded?all.slice(page*12,page*12+12):[];
+        // A project view OPENS ON its anchor. focus() clears every page, so each domain would enter
+        // on page 0 — but the selection this view renders is the anchor's whole connected component,
+        // which can outgrow one page: measured on the suite's 125-node fixture, the component is the
+        // entire fleet, 14 members in d-0 against a 12-node page, so page 0 omitted the very project
+        // the user clicked. The view then marked NOTHING — no [data-current="true"] in the whole map —
+        // while its own legend still read "The outlined node is the project you selected", and every
+        // rendered row read "Recorded connection", the string reserved for the non-anchor members.
+        // Entering on the anchor's page keeps the slice contiguous on the anchor and leaves the
+        // pager's 1-of-N arithmetic untouched. `page==null` rather than `||0` so an explicitly
+        // pressed page is respected: paging moves the anchor like any other member, and can carry it
+        // off-screen, exactly as fleet paging can already carry the captured trigger off-screen.
+        var page=state.pages[domain];
+        if(page==null&&state.kind==='project'&&domain===state.value.domain){var at=all.indexOf(state.value);if(at>=0)page=Math.floor(at/12);}
+        if(page==null)page=0;
+        var shown=expanded?all.slice(page*12,page*12+12):[];
         var height=expanded?Math.max(mobile?94:90,shown.length*(mobile?60:56)+(mobile?94:36))+(all.length>12?(mobile?32:56):0):mobile?72:84;
         blocks.push({domain:domain,all:all,shown:shown,expanded:expanded,page:page,y:y,height:height,cy:mobile?y:y+height/2});y+=height;
       });
@@ -169,6 +193,12 @@ var NocturneNetwork = (function(){
             branch('M '+jx+' '+py+' H '+px,kind,false);svg.appendChild(S('circle',{cx:jx,cy:py,r:2.5,class:'aggregate-junction'}));
             // One anchor per view, and only the two views that have one: fleet marks the
             // dream's captured project, a project view marks the project you selected.
+            // Fleet anchors on the SINGLE node :30 resolved, not on re-testing truthy(trigger)
+            // per node: nothing in normalize(), the record schema or any gate constrains `trigger`
+            // to one node, and truthy() accepts 'true'/'1'/'yes', so a truncated or hand-merged
+            // capture that flags two projects drew two outlined nodes both labelled "This
+            // project" — 2-of-N against a rule this comment states as 1-of-N. Anchoring on the
+            // same node the view already treats as its trigger makes the rule structural.
             // Fact and group views are peer sets — no node is their anchor — and marking the
             // fleet trigger there stroked and labelled a project the user never chose.
             // Every rendered node IS a member — rendered ⊆ matching ⊆ selected, and matching
@@ -176,7 +206,15 @@ var NocturneNetwork = (function(){
             // mark, which makes the anchor the only 1-of-N mark it can carry. Note it is a
             // STRICT subset in the default view: a collapsed domain and a paged one both render
             // fewer nodes than the selection holds.
-            var anchor=state.kind==='project'?n===state.value:state.kind==='fleet'&&truthy(n.raw.trigger);
+            // That containment is ONE-DIRECTIONAL, and reading it as if it closed the question is
+            // what this round got wrong: it rules out marking a NON-member, and says nothing about
+            // the anchor's own presence. The other direction is carried by the entry page computed
+            // above — a project view opens on its anchor's page — and only there. So the residual
+            // is real and deliberate: a user who pages AWAY, or who collapses the anchor's own
+            // domain, hides it, and this branch then matches nothing at all. That is a
+            // user-initiated hide, the same semantics fleet paging already has for the captured
+            // trigger, and it is recorded as an open hole in the spec's coverage ledger.
+            var anchor=state.kind==='project'?n===state.value:state.kind==='fleet'&&n===trigger;
             var node=S('g',{class:'net-node'+(state.kind==='group'?' selected':''),'data-node':n.raw.node||n.id,'data-sid':n.sid,'data-key':n.key,'data-current':anchor?'true':'false'});svg.appendChild(node);
             node.appendChild(S('rect',{x:px,y:py-21,width:pw,height:44,rx:5}));
             var nt=text(px+12,py-3,n.label,'project-label',node);clipped(nt,n.label,pw-24);
@@ -204,13 +242,15 @@ var NocturneNetwork = (function(){
       if(bounds.height>0&&contentHeight<H)svg.setAttribute('viewBox','0 0 '+W+' '+contentHeight);
       inspect(selected);
       svg.dataset.viewport=String(window.innerWidth);
-      if(focusKey){var target=Array.from(svg.querySelectorAll('[data-key]')).find(function(n){return n.getAttribute('data-key')===focusKey;});if(target&&target.getAttribute('aria-disabled')==='true')target=target.parentElement.querySelector('.page-control[aria-disabled="false"]');if(target)target.focus({preventScroll:true});}
+      if(focusKey){var target=Array.from(el('network-blk').querySelectorAll('[data-key]')).find(function(n){return n.getAttribute('data-key')===focusKey;});if(target&&target.getAttribute('aria-disabled')==='true')target=target.parentElement.querySelector('.page-control[aria-disabled="false"]');if(target)target.focus({preventScroll:true});}
       // The stranded case, repaired once for every activation — and only here, because only the
-      // redraw knows what it destroyed. Two controls are built OUTSIDE <svg id="net"> and are
-      // wiped by the very activation they carry: a fact button in #net-detail (inspect() replaces
-      // its innerHTML) and the trail's back-control (this function empties #net-breadcrumbs). The
-      // restore above can reach neither — it searches svg.querySelectorAll('[data-key]') — so
-      // without this, focus lands on <body> and the next Tab restarts from the top of the page.
+      // redraw knows what it destroyed. This is a genuine LAST RESORT: the restore above now
+      // reaches every rebuildable control, including the ones outside <svg>, so it has already
+      // had its chance. What is left is a focused control the redraw destroyed with no successor
+      // to hand focus to — a crumb whose activation left the fleet view, where no crumb is built.
+      // Landing there is safe only because the fleet is where that control leads: root's own
+      // handler is reset(), so it would be a trap anywhere else, and any control that reaches
+      // this fallback from a FOCUSED view is a bug in the key map above, not a case to patch here.
       // Guarded on hadFocus, because a redraw nobody was focused in (the initial paint, the
       // per-dream repaint in the archive) must never seize focus. Test <body>/<html> explicitly
       // rather than !document.activeElement: Chrome points activeElement at <body> when the
@@ -227,7 +267,11 @@ var NocturneNetwork = (function(){
         var unique=model.nodes.filter(function(n){return n.sid===state.value.sid;}).length===1;
         if(unique)facts=model.facts.filter(function(f){return Array.isArray(f.holder_sids)&&f.holder_sids.indexOf(state.value.sid)>=0;});
         else partial=true;
-        explanation=facts.length?'Choose a shared fact to see which projects hold it.':model.canonical?'No named shared facts were captured for this project.':'These projects share facts recorded in this dream.';
+        // The !unique arm comes FIRST. Without it a duplicated sid falls through to the empty-facts
+        // wording and asserts "No named shared facts were captured for this project" while the
+        // record lists them — an absence claim about data that is present, which is the collapse
+        // the capture-teeth rule forbids. Unattributable and not-captured are different answers.
+        explanation=!unique?'This capture records this project more than once, so its shared facts cannot be attributed.':facts.length?'Choose a shared fact to see which projects hold it.':model.canonical?'No named shared facts were captured for this project.':'These projects share facts recorded in this dream.';
       }else if(state.kind==='fact'){
         var refs=Array.isArray(state.value.holder_sids)?state.value.holder_sids:null;
         if(!refs||refs.length!==selected.length||count(state.value.held_n)!=null&&state.value.held_n>selected.length)partial=true;
@@ -249,8 +293,20 @@ var NocturneNetwork = (function(){
       // Absence and emptiness never collapse into one another (the capture-teeth rule above):
       // "Not captured" is a field the snapshot never recorded, "None recorded" a measured empty,
       // and a bare 0 never renders as a measurement.
-      function fieldText(v){return v===undefined||v===null?'Not captured':String(v);}
-      function listText(v){return !Array.isArray(v)?'Not captured':(v.length?v.join(', '):'None recorded');}
+      // A field that is PRESENT but not the shape its row expects is neither absent nor empty, and
+      // rendering it as "Not captured" reports a value the record carries as one it does not have —
+      // measured: a duplicated sid did exactly that for every shared fact in the record, and a
+      // present-but-scalar `groups` did it for a project the record plainly groups. So a present
+      // value renders as ITSELF — non-scalars through the same JSON.stringify treatment the page's
+      // own value() uses, never '[object Object]' — and only genuine absence reads "Not captured".
+      // The empty string is a measured empty, not absence: sync_global.py writes str(x or '') for
+      // captured node domains, so '' is reachable from the emitter rather than only from hand edits.
+      function fieldText(v){
+        if(v==null)return 'Not captured';
+        if(v===''||(Array.isArray(v)&&!v.length))return 'None recorded';
+        return typeof v==='object'?JSON.stringify(v):String(v);
+      }
+      function listText(v){return Array.isArray(v)&&v.length?v.join(', '):fieldText(v);}
       function countText(v){if(v===undefined||v===null||count(v)===null)return 'Not captured';return v===0?'None recorded':String(v);}
       var summary=[];
       if(state.kind==='project'){
@@ -260,11 +316,23 @@ var NocturneNetwork = (function(){
         summary=[['Domain',fieldText(pn.raw.domain)],
                  ['Groups',listText(pn.raw.groups)],
                  ['Recorded connections',Array.isArray(net.stack_edges)?countText(model.edges.filter(function(e){return e.a===pn.raw.node||e.b===pn.raw.node;}).length):'Not captured'],
-                 ['Shared facts',model.canonical&&uniqueSid?countText(model.facts.filter(function(f){return Array.isArray(f.holder_sids)&&f.holder_sids.indexOf(pn.sid)>=0;}).length):'Not captured']];
+                 // Three states, not two: absent (the capture carries no fact_holdings at all),
+                 // unattributable (this project's sid appears more than once, so no fact can be
+                 // joined to it), and a real count. Folding the middle into "Not captured" claimed
+                 // the snapshot never recorded the field while the facts sat in the record —
+                 // measured: baseline 5, then "Not captured" once the sid was duplicated. The word
+                 // is the record's own: the capture block already counts unresolved_identities.
+                 ['Shared facts',!model.canonical?'Not captured':uniqueSid?countText(model.facts.filter(function(f){return Array.isArray(f.holder_sids)&&f.holder_sids.indexOf(pn.sid)>=0;}).length):'Unresolved identity']];
       }else if(state.kind==='fact'){
         var pf=state.value;
+        // The clause counts the nodes the MAP drew, not pf.holder_sids.length: selectedNodes()
+        // keeps only non-duplicate sids that resolve to exactly one captured node, so the raw
+        // array length overstates what is on screen — measured "5 · 3 shown on the map" beside a
+        // map drawing 1 node, and "3 · 0 shown on the map" beside none. A zero renders as words,
+        // the same rule as every other row here, so "never a bare 0" holds by construction.
+        var drawn=selected.length;
         summary=[['Domain',fieldText(pf.domain)],['Scope',fieldText(pf.scope)],
-                 ['Held by',count(pf.held_n)===null?'Not captured':countText(pf.held_n)+(Array.isArray(pf.holder_sids)&&pf.holder_sids.length<pf.held_n?' · '+pf.holder_sids.length+' shown on the map':'')]];
+                 ['Held by',count(pf.held_n)===null?'Not captured':countText(pf.held_n)+(drawn<pf.held_n?' · '+(drawn?drawn+' shown on the map':'none shown on the map'):'')]];
       }else if(state.kind==='group'){
         var pg=state.value;
         summary=[['Home domain',fieldText(pg.home_domain)],['Members',countText(pg.members_n)]];
@@ -286,14 +354,14 @@ var NocturneNetwork = (function(){
       // capability so a bundle loaded without NocturneSections renders NO link, never a dead one.
       if(state.kind!=='fleet'&&typeof NocturneSections!=='undefined'&&typeof NocturneSections.reveal==='function'){
         var recordLink=document.createElement('button');recordLink.type='button';
-        recordLink.className='inspector-choice network-record-link';
+        recordLink.className='inspector-choice network-record-link';recordLink.setAttribute('data-key','record:link');
         recordLink.textContent='Open the complete captured cycle record';
         recordLink.onclick=function(){NocturneSections.reveal('record-json');};
         detail.insertBefore(recordLink,attribution);
       }
       if(facts.length){
         var choices=document.createElement('div');choices.className='network-facts';detail.appendChild(choices);
-        facts.forEach(function(f){var duplicate= facts.filter(function(x){return x.name===f.name;}).length>1;var b=button((duplicate?f.domain+' / ':'')+f.name,function(){focus('fact',f);},choices,'inspector-choice');b.dataset.factId=f.fact_id||'';});
+        facts.forEach(function(f){var duplicate= facts.filter(function(x){return x.name===f.name;}).length>1;var b=button((duplicate?f.domain+' / ':'')+f.name,function(){focus('fact',f);},choices,'inspector-choice');b.dataset.factId=f.fact_id||'';b.setAttribute('data-key','fact:'+(f.fact_id||f.name));});
       }
       el('net-cap').textContent=note;el('net-cap').hidden=!note;
       // The legend is UPDATED, not replaced. Overwriting #net-legend's children orphaned the

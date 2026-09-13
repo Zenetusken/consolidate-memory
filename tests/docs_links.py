@@ -349,6 +349,17 @@ def check_preview() -> None:
             elif fresh.read_bytes() != committed.read_bytes():
                 err(f"docs/previews/nocturne/{name} is stale — regenerate both with "
                     "`python3 tests/dashboard_fixture.py --out docs/previews/nocturne`")
+        # The byte-compare above cannot see the sample-notice SPLICE: write_preview renders BOTH
+        # sides, so a splice that fires in the wrong place is byte-identical on both and the gate
+        # is green by construction. It did fire in the wrong place — an unbounded str.replace
+        # rewrote every `<body>` literal in the JS bundles as well, and a change that documents
+        # the focus-repair cases in comments added three of them, so the committed artifact
+        # carried the banner inside JavaScript as well as at the top of <body>. Count what a
+        # reader can see: the notice appears exactly once.
+        index = PREVIEW / "index.html"
+        if index.is_file() and index.read_text(encoding="utf-8").count('class="sample-notice"') != 1:
+            err("docs/previews/nocturne/index.html does not carry exactly one sample notice — the "
+                "notice splice in tests/dashboard_fixture.py is not bounded to the real <body> tag")
 
 
 def main() -> int:

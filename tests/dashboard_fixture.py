@@ -256,7 +256,14 @@ def write_preview(out):
     validate_sample(record, history, diffs)
     html = rh.build_html(record, history, "2026-09-05T14:35:00Z", diffs, record["identity"])
     # Label the artifact itself. The production template never claims data is synthetic.
-    html = html.replace('<body>', '<body><div class="sample-notice">Illustrative sample · fictional projects and cycle data · not a live consolidation</div>')
+    # Replace the FIRST occurrence only, and never unbounded: `<body>` is a literal that also occurs
+    # inside the page's own JavaScript — the network bundle documents the focus-repair cases as
+    # "focus lands on <body>" — so an unbounded replace rewrites those comments too and buries a
+    # visible banner inside a JS comment. Measured: three spliced copies shipped in
+    # docs/previews/nocturne/index.html before this was bounded. The first `<body>` is the real tag
+    # because the template's script bundles are emitted after it (template :735 vs :918); count=1
+    # is what protects that, and docs_links.py counts the notice so the dependency is gated.
+    html = html.replace('<body>', '<body><div class="sample-notice">Illustrative sample · fictional projects and cycle data · not a live consolidation</div>', 1)
     (out / "index.html").write_text(html, encoding="utf-8")
     (out / "sample.json").write_text(json.dumps({"record": record, "history": history, "diffs": diffs}, indent=2)+"\n", encoding="utf-8")
     return out / "index.html"

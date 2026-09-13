@@ -66,11 +66,12 @@ membership"* for a control the group no longer contains; and the inner `.network
 `aria-live` doubled every announcement with the `#net-detail` live region that already contains
 it, including on pager clicks that changed nothing.
 
-**Verification.** 1309 browser checks (0 failed) and 1794 smoke checks (0 failed), with
+**Verification.** 1329 browser checks (0 failed) and 1794 smoke checks (0 failed), with
 `docs_links`, `simulate_accumulation`, `mypy` and the manifest validator green. The browser figure
-is the shipped tree's, and there are three measured points behind it: **1213** before this pass,
-**1264** as the pass committed it, **1309** as it ships — each one that tree's own suite run
-against that tree's own scripts. An earlier draft of this block said 1266, which was wrong.
+is the shipped tree's, and there are four measured points behind it: **1213** before this pass,
+**1264** as the pass committed it, **1309** after the review round, **1329** as it ships — each one
+that tree's own suite run against that tree's own scripts. An earlier draft of this block said
+1266, which was wrong.
 Fifteen mutation runs: 12 of 13 in the browser suite and 2 of 2 in `smoke.py` went **red for the
 defect they claim to guard**. Two of those pins had to be debugged before they could be believed, because **a
 vacuous pin reads exactly like a passing one**: the hover pin passed *with the defect in place*
@@ -174,6 +175,48 @@ working tree — so no single tree held the whole delta, and the assembled state
 through any gate: the live suite ran against live-template + pre-review JS, the pristine suite
 against pre-review template + review JS, and the two together are not the shipped artifact. An
 assembled tree is now built and gated before the commit rather than after it.
+
+**A re-audit round turned on the escape hatch itself, and found one vacuous pin in its own work.**
+Seven mutations, each the pre-fix form of one mechanism, run on a non-fatal copy of the harness so
+one run exposes every red: **15 red across the seven**, on a baseline of 1326 checks — and re-run in
+full against the shipped 1329 once the guard arm's three checks existed, where every count
+reproduces unchanged. The anchor
+reversion — this pass's central fix — is caught by **four** checks where the pass's own mutation
+recorded one. That is not a pin that weakened; it is fixture shape. A pin can only separate two
+predicates on a fixture where they disagree, and the pass's fixtures were built so that the two
+anchor predicates **coincided**.
+
+**The vacuous pin was the round's own, and it is the quiet kind.** The focus-repair block asserted
+three controls each hand focus back to themselves after a redraw, but it resized to a *fixed* width
+inside the loop — and `resize()` waits for the map to reach the new width, so from the second
+iteration on the wait returned immediately, no redraw ran, the control was never destroyed, and the
+assertion stayed green **against the very defect it exists for**. Only the first of the three went
+red under the mutant. The target width now alternates, every iteration forces a real redraw, and
+all three go red.
+
+**Three of the round's checks are guards, and verifying a guard means introducing the defect.**
+They assert the network's HTML controls show a focus ring when focus arrives by keyboard. That ring
+predates this pass, so no reversion can redden them — and the first two attempts reddened
+**nothing**, because the edit went on the rule that *reads* as the control's own. A
+`document.styleSheets` walk over the focused record link shows the ring is supplied by the
+app-wide `#app button:focus-visible`: the network-scoped rules lose on equal specificity and
+earlier source order, the same tie-break that decides the anchor's hover bump, one selector pair
+over. Appending `outline:none` *after* the winning rule reddens exactly those three checks and
+nothing else. The first placement is not a gap in the guards — it is a defect that never took
+effect, which measures nothing about the guard.
+
+**One mutation looked right and proved nothing.** Its first anchor reversion edited only the
+*fleet* arm of the predicate, and the paged-anchor pins stayed green — which was first read as a
+gap in them, and was not: the pre-fix anchor had **no project arm at all**, so reverting half of a
+repair is not reverting the repair, and the pins that stayed green were never asked the question.
+Restored whole, the same predicate reddens four, those two among them. Recorded because the wrong
+reading was one step away — *"the paged-anchor pins do not catch the anchor reversion"* would have
+been written about pins that catch it.
+
+**Two residuals the round leaves uncovered, said out loud rather than rounded off.** The anchor is
+still hidden without the legend saying so when the domain is collapsed or the anchor is paged away
+— one-directional, uncovered by any pin; and the positional `legacy:`/duplicate-sid focus-key
+fallback stays unasserted, for the reason this entry already gives.
 
 **A pre-existing smoke flake was root-caused and fixed rather than re-run away.** CI reddened on
 `d9ade6e` (`1792 passed, 2 failed`) and then went **green on a re-run of the identical commit** —
