@@ -1137,11 +1137,17 @@ _SECRET = re.compile(
                                                                      # claim (generous past any real JWT, linear to
                                                                      # 128000 chars) re-verified and kept.
                                                                      # Pinned STRUCTURALLY in smoke.py, never by a
-                                                                     # CPU-time bound: separation is only ~n/cap (8.6x
-                                                                     # at n=48000), so by n=24000 the SHIPPED scan under
-                                                                     # load (1.20s) already exceeds the PRE-FIX scan idle
-                                                                     # (0.94s) — an empty window, not a narrow one. The
-                                                                     # caps ARE the defense, which is what gets asserted.
+                                                                     # CPU-time bound: separation grows only ~0.37 x
+                                                                     # (n/cap) — the bare model over-predicts by ~2.8x —
+                                                                     # so by n=24000 the SHIPPED scan under load (1.20s)
+                                                                     # already exceeds the PRE-FIX scan idle (0.94s). The
+                                                                     # rule divides mutant IDLE by shipped LOADED, which
+                                                                     # at n=48000 is a 1.16x margin against a 2x floor: an
+                                                                     # empty window, not a narrow one. The caps ARE the
+                                                                     # defense, so smoke.py asserts BOTH that no quantifier
+                                                                     # here is open AND that these three caps are unchanged
+                                                                     # (the second half catches a cap being WIDENED, which
+                                                                     # leaves every quantifier bounded).
       | glpat-[0-9A-Za-z_-]{20,100}                                 # GitLab personal access token (legacy prefix)
       | hf_[A-Za-z0-9]{25,80}                                      # HuggingFace token
       | \d{6,20}:[A-Za-z0-9_-]{25,200}                             # Telegram bot token (id:secret)

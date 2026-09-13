@@ -1051,23 +1051,29 @@ for _name, _val in [
 #       5.8x on time.process_time() over the identical scan. Every payload here is steadier on CPU.
 #   (2) THE MARGIN. That 2.0s bound left 2.2x over that payload (0.89s here), not the
 #       "deliberately loose" headroom the old comment claimed — a 2.3x slower runner trips it.
-# The bound is now DERIVED, not chosen: a payload is admitted only if sqrt(M/S) >= 4, where S is
-# the WORST shipped CPU time over 5 trials under the standard stress load and M is the owning
-# mutant's idle CPU time — the bound then sits at their geometric mean sqrt(S*M), so each side's
-# margin is sqrt(separation). The three below measure 4.2x / 4.6x / 29.8x, and each payload is the
-# smallest MEASURED size clearing the bar (the alnum arm needs 48000; it fails it at 24000).
+# The bound is now DERIVED, not chosen: a payload is admitted only if each side's margin
+# sqrt(M/S*) >= 2, where S* is the WORST shipped CPU time under the standard stress load and M is
+# the WEAKEST owning mutant's idle CPU time. The bound sits at their geometric mean sqrt(S* x M), so
+# the two margins are equal BY CONSTRUCTION and the rule reduces to exactly "both margins >= 2x".
+# (It read ">= 4" while claiming that reduction; both cannot hold — sqrt(M/S*) >= 4 demands 4x
+# margins — and the slip disqualified two payloads that satisfy the 2x intent. See the spec §3.)
+# S* is a worst case over a distribution, so it is measured worst-of-3-batches x 7 trials, not once:
+# read once, the dotted payload gives 0.0627 instead of 0.2360 and its bound would leave only 1.10x
+# against a reproducible reading. The three below measure 2.16x / 3.38x / 29.7x, and each payload is
+# the smallest MEASURED size clearing the bar (the alnum arm needs 48000; it fails it at 24000).
 # The predicate's lower half is not decoration: it catches a DEAD CLOCK, which would otherwise make
 # every one of these bounds vacuously green. The pre-fix figure in each name is measured too, and it
-# BOUNDS the failure — the payloads are fixed, so a regression costs at most its own mutant's scan
-# (7-16s), never an unbounded wait.
+# bounds the SINGLE-ARM revert it names — reverting every instance at once costs more (the alnum arm
+# reaches 26.7s, the whole block 44.5s), still bounded because the payloads are fixed: a regression
+# can never cost an unbounded wait.
 import time as _time70  # noqa: E402
 for _redos_name, _redos_payload, _redos_bound, _redos_was in [
     ("dotted/dashed run (original pentest PoC shape)",
-     "a1b2-c3d4." * 2400, 0.26, "7.20s"),
+     "a1b2-c3d4." * 2400, 0.509, "7.20s"),
     ("pure-alnum run + trailing keyword, no separator",
-     ("x" * 47980) + "password" + ("y" * 12), 3.54, "16.22s"),
+     ("x" * 47980) + "password" + ("y" * 12), 3.135, "16.22s"),
     ("authorization + padding spaces (Gate-2a's 4th instance)",
-     "authorization" + (" " * 23987), 0.28, "8.36s"),
+     "authorization" + (" " * 23987), 0.285, "8.36s"),
 ]:
     _t0_70 = _time70.process_time()
     ms._SECRET.search(_redos_payload)
@@ -1078,24 +1084,85 @@ for _redos_name, _redos_payload, _redos_bound, _redos_was in [
           0.0 < _dt_70 < _redos_bound)
 
 # The JWT arm is the ONE instance no CPU-time bound can cover: its blowup is occurrences x sweep,
-# and the sweep is capped, so the separation available is only ~n/cap — 8.6x at n=48000, the largest
-# size whose shipped cost is affordable. At n=24000 the shipped scan UNDER LOAD (1.20s) is already
-# slower than the pre-fix scan measured IDLE (0.94s): the window is EMPTY, not narrow. A timing
-# check there would read green forever while pinning nothing — worse than no check, because it
-# advertises coverage it does not have. The caps ARE the defense, so this pins the property they
-# encode. Charsets collapse to C and escapes to E FIRST: [A-Za-z0-9_-] carries a literal '-' and the
-# arm's `\.` is an escape, so a naive scan reports both as quantifier characters. Validated against
-# three removal styles — reverting a cap to {8,} trips this, and so does writing it as * or +.
+# and the sweep is capped, so separation grows only ~0.37 x (n/cap) — 8.5x at n=48000, the largest
+# size whose shipped cost is affordable. And the rule divides mutant IDLE by shipped LOADED: at
+# n=48000 that is 3.62/2.70 = 1.34, a margin of 1.16x against the 2x floor. The window is EMPTY, not
+# narrow. A timing check there would read green forever while pinning nothing — worse than no check,
+# because it advertises coverage it does not have. The caps ARE the defense, so this pins them two
+# ways and the check NAME says both:
+#   (a) NO OPEN QUANTIFIER in the arm — with the alternation split correctly, which means stripping
+#       re.X comments the way the ENGINE does (unescaped, outside a character class, to end of line,
+#       plus (?#...) groups) BEFORE splitting on '|'. The naive scan this replaces
+#       (re.search(r"eyJ[^|\n]*"), then split on the first '#') is evadable three ways, each a
+#       ONE-TOKEN edit that restores the full blowup while the pin reads green: a newline after
+#       `eyJ` (whitespace is insignificant under re.X, and this pattern is 105 lines, so wrapping is
+#       the house style); a `(?#...)` group there; or a mention of `eyJ` in an EARLIER arm's comment,
+#       which makes the scan pin the comment and never examine the arm. All three are failures of
+#       that stripping, and all three collapse once it is done. Measured: the old predicate reads
+#       PASS (evaded) on all three; this one trips on all three.
+#   (b) THE THREE CAPS EXACT AS MEASURED — closes the one gap (a) cannot see: WIDENING a cap
+#       ({8,2000} -> {8,9000}) leaves every quantifier bounded, so (a) accepts it while the sweep
+#       grows 4.5x. Exact literals also mean a re-tune fires this check, which is the intended
+#       behaviour — the spec requires a re-measurement for any cap change, so a false alarm there is
+#       the prompt, not a nuisance to be loosened away.
+# Charsets collapse to C and escapes to E FIRST: [A-Za-z0-9_-] carries a literal '-' and the arm's
+# `\.` is an escape, so a naive scan reports both as quantifier characters.
 import re as _re_redos  # noqa: E402  — the pattern SOURCE text, not a match against input
-_redos_jwt_match = _re_redos.search(r"eyJ[^|\n]*", ms._SECRET.pattern)
-_redos_jwt_arm = _redos_jwt_match.group(0) if _redos_jwt_match else ""
-_redos_jwt_body = _re_redos.sub(
-    r"\\.", "E", _re_redos.sub(r"\[[^\]]*\]", "C", _redos_jwt_arm.split("#", 1)[0]))
-check("firewall ReDoS guard: the JWT arm's quantifiers are all BOUNDED — the anchor's own chars "
-      "('e','y','J') sit in its charset, so an open {8,} sweeps a repeated-anchor run to the end of "
-      "the string (v0.1.70's instance; no CPU-time bound separates pre-fix from shipped here, so "
-      "the caps ARE the defense). NOT covered: WIDENING a cap — see the spec",
-      bool(_redos_jwt_arm) and not _re_redos.findall(r"[*+]|\{\d+,\}", _redos_jwt_body))
+
+
+def _redos_arms(src: str, marker: str) -> list[str]:
+    """Every top-level alternation arm containing `marker`, re.X comments removed exactly as the
+    ENGINE removes them. Stripping comments is what makes splitting on '|' correct at all: a '|'
+    inside a comment or a character class is not an alternation, and all three known evasions of
+    the scan this replaces live in exactly that difference."""
+    out, i, n, in_class = [], 0, len(src), False
+    while i < n:
+        c = src[i]
+        if c == "\\":                      # an escape binds the next char, even '#' or ']'
+            out.append(src[i:i + 2])
+            i += 2
+            continue
+        if in_class:
+            out.append(c)
+            if c == "]":
+                in_class = False
+            i += 1
+            continue
+        if c == "[":
+            in_class = True
+            out.append(c)
+            i += 1
+            continue
+        if src.startswith("(?#", i):       # an inline comment group, closed by ')'
+            j = src.find(")", i)
+            i = n if j < 0 else j + 1
+            out.append(" ")
+            continue
+        if c == "#":                       # a re.X comment runs to end of line
+            j = src.find("\n", i)
+            i = n if j < 0 else j + 1
+            out.append(" ")
+            continue
+        out.append(c)
+        i += 1
+    return [arm for arm in "".join(out).split("|") if marker in arm]
+
+
+_redos_jwt_caps = ("{8,2000}", "{8,4000}", "{6,200}")   # the three caps, as measured this cycle
+_redos_jwt_arms = _redos_arms(ms._SECRET.pattern, "eyJ")
+if len(_redos_jwt_arms) == 1:
+    _redos_jwt_body = _re_redos.sub(
+        r"\\.", "E", _re_redos.sub(r"\[[^\]]*\]", "C", _redos_jwt_arms[0]))
+    _redos_jwt_open = _re_redos.findall(r"[*+]|\{\d+,\}", _redos_jwt_body)
+else:
+    _redos_jwt_open = [f"not exactly 1 eyJ arm ({len(_redos_jwt_arms)} found)"]
+_redos_jwt_missing = [c for c in _redos_jwt_caps if c not in ms._SECRET.pattern]
+check("firewall ReDoS guard: the JWT arm still carries its three measured caps (no WIDENING or "
+      "re-tune) and adds no open quantifier — the anchor's own chars ('e','y','J') sit in its "
+      "charset, so an open {8,} sweeps a repeated-anchor run to the end of the string (v0.1.70's "
+      "instance; no CPU-time bound separates pre-fix from shipped here, so the caps ARE the "
+      "defense)",
+      len(_redos_jwt_arms) == 1 and not _redos_jwt_open and not _redos_jwt_missing)
 
 # --- v0.1.70 security: git-log commit subjects now pass through the SAME firewall (was: only
 # _sane()'s control-byte strip — no credential-shape check at all, a stark asymmetry against

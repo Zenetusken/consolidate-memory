@@ -21,34 +21,66 @@ the one that flaked, inflates **17.7×** under load on wall against **5.8×** on
 (0.891s here), not the "deliberately loose … ~0.005-0.19s" headroom its comment claimed — the JWT
 payload is 4.7× the top of that range, so a 2.3× slower runner trips it, which is what CI did.
 
-The bound is now **derived, not chosen**: a payload is admitted only if `sqrt(M/S) ≥ 4`, where `S` is
-the worst shipped CPU time over five trials under a standard stress load and `M` is the **weakest**
-owning mutant's idle CPU time; the bound then sits at their geometric mean, so each side's margin
-equals `sqrt(separation)`.
+The bound is now **derived, not chosen**: a payload is admitted only if each side's margin
+`sqrt(M/S*) ≥ 2`, where `S*` is the worst shipped CPU time under a standard stress load and `M` is
+the **weakest** owning mutant's idle CPU time; the bound then sits at their geometric mean, so the
+two margins are equal **by construction** and the rule reduces to exactly "both margins ≥ 2×". (It
+was written as `≥ 4` while making that same claim — which cannot hold, since `sqrt(M/S*)` *is* the
+margin — and the slip disqualified two payloads that satisfied the 2× intent.) `S*` is a worst case
+over a distribution, so it is measured **worst-of-three-batches × seven trials**: read once, dotted
+gives 0.0627 against 0.2360 across batches, and a bound derived from it would have left only
+**1.10×** against a reproducible reading — thinner than the 2.2× that made the original guard flake.
 
 - **The ratio design was measured and dropped.** `t(4n)/t(n)` was the first design — attractive
   because it cancels machine speed — but it cancels only a *uniform* scale factor: under load the
   shipped ratio's tail reaches **10.34** while the weakest mutant reads **11.21**, overlapping
-  distributions. Absolute CPU separation at the same payloads is **17×–890×**.
+  distributions. Absolute separation at the same payloads is **4.6×–883×**.
 - **The JWT arm cannot be pinned by time at all.** Its blowup is `occurrences × sweep` with `sweep`
-  capped, so the achievable separation is only `≈ n/cap`; by n=24000 the shipped scan *under load*
-  (1.20s) already exceeds the pre-fix scan measured *idle* (0.94s). The window is empty, not narrow —
-  so the guard asserts the property the caps encode (every quantifier in that arm is bounded). A
-  behavioral check there would have read green forever while pinning nothing, which is worse than no
-  check: it advertises coverage it does not have.
+  capped, so separation grows only `~0.37 × (n/cap)` — the bare `n/cap` model over-predicts by
+  ~2.8× — and by n=24000 the shipped scan *under load* (1.20s) already exceeds the pre-fix scan
+  measured *idle* (0.94s). The rule divides mutant *idle* by shipped *loaded*, which at n=48000 is a
+  margin of **1.16×** against the 2× floor. The window is empty, not narrow — so the guard pins the
+  caps themselves, two ways, and the check name says both: **no open quantifier** in the arm, and
+  the **three caps as exact literals**. A behavioral check there would have read green forever while
+  pinning nothing, which is worse than no check: it advertises coverage it does not have.
+- **That pin was evadable three ways, each a one-token edit.** It scanned the source with
+  `re.search(r"eyJ[^|\n]*")` and split on the first `#` — a naive scan that does not model `re.X`,
+  and all three evasions live in exactly that gap: a **newline** after `eyJ` (whitespace is
+  insignificant to the engine but fatal to `[^|\n]*`, and at 105 lines this pattern's house style is
+  to wrap), a **`(?#…)` group** there, or a mention of `eyJ` in an **earlier arm's comment**, which
+  makes the scan pin the comment and never examine the arm. Each restores the full blowup with the
+  pin reading green. The replacement strips `re.X` comments the way the *engine* does — unescaped,
+  outside a character class, plus `(?#…)` groups — before splitting the alternation, and requires
+  exactly one arm to carry the anchor. Measured: the old predicate reads PASS (evaded) on all three;
+  the new one trips on all three. Twelve cases total, every mutation asserting that its edit applied
+  first — four of an earlier draft's eleven were silent no-ops that certified a pin they never
+  exercised.
 - **Three behavioral checks and one structural**, each failing on a *measured* revert. Every mutant
   has a named detector, and the eyJ mutant is caught by the structural pin **alone** — it measures
   1.00×/1.00×/0.95× separation on the other three payloads, i.e. nothing else in the guard sees it.
   Pre-fix figures are interpolated into the check names, so a failure is self-diagnosing, and a dead
   clock fails too (`0.0 < dt`) rather than making every bound vacuously green.
-- **Two limits recorded, not papered over:** widening a cap is caught by nothing, and every payload
-  is a non-matching probe — a matching probe was built and measured *non-discriminating* (3.59s
-  pre-fix against 3.93s shipped), because the two versions scan it by different routes.
+- **One limit recorded, and one former limit closed.** Every payload is a non-matching probe — a
+  matching probe was built and measured *non-discriminating* (3.59s pre-fix against 3.93s shipped),
+  because the two versions scan it by different routes. The former limit, **cap widening**
+  (`{8,2000}` → `{8,9000}` grows the sweep 4.5× while leaving every quantifier bounded), is now
+  caught by the pin's exact-literal half. That costs a false-positive mode worth naming: a
+  legitimate **re-tune** of a cap now fails the check until the figure is re-measured — which is the
+  intended prompt, since the spec requires a re-measurement for any cap change. The limit that
+  remains is that the pin is scoped to the eyJ arm: an open quantifier introduced into a *different*
+  arm has no structural detector, only the behavioural payloads.
 - **`SECURITY.md` corrected for the third time on this same bullet** — v0.1.12 had replaced "linear
   (no nested quantifiers)" with a disjointness argument it recorded as "same property, accurate
-  wording", and that argument is exactly what the four v0.1.70 instances falsified. The bullet now
-  says the bounded quantifiers are the defense, that `_PROBE_CAP` is defense-in-depth and does not
-  cover the uncapped fact-body scanners, and what the guard does *not* claim.
+  wording", and that argument is exactly what the four v0.1.70 instances falsified. The third
+  correction nearly repeated the error in the opposite direction: the draft asserted "the regexes are
+  built from bounded quantifiers, and that is the actual defense" — a **new universal that the same
+  pattern falsifies**, since a comment-stripped scan finds **20 unbounded quantifiers** in live arms
+  (`\s*`, `\S+`, `\S{8,}`, the vendor-key arms). The bounded property holds **at the four
+  instances**, not of the regex. Two further claims fell in the same sweep: `facts_manifest.py`
+  *does* cap its fact-body read (4 MiB at `os.read`) — only `sync_global.py`'s shared
+  `_safe_read_text` is uncapped, which is pointed given that helper was factored out precisely
+  because "copy-paste doesn't propagate a fix". And the draft said the guard proves linearity; it
+  asserts a CPU-time bound, which is a different and weaker claim, now stated as such.
 - **The JWT arm's bounding comment moved back under its own arm** — a later pattern insertion had
   displaced it so its rationale visually attached to the dotted-token arm — and its figures
   corrected: re-measured **0.012s/0.12s/1.66s** at n=2000/8000/32000, where it had recorded
@@ -56,15 +88,21 @@ equals `sqrt(separation)`.
   claim re-verified true, so both are kept.
 
 Design-of-record: [docs/redos-guard-linearity.spec.md](docs/redos-guard-linearity.spec.md) — the
-measurement tables, the admission rule, the empty-window proof, the coverage matrix with both gaps,
-the rejected alternatives (the ratio; a behavioral eyJ pin at n=96000 needing an ~84s failure time;
-a uniform `n`), and a runnable recipe so every number is re-derivable rather than testimony.
+measurement tables, the admission rule with its corrected arithmetic and the `S*` measurement
+method, the empty-window proof stated in the rule's own quantities, the coverage matrix with its
+recorded gaps *and* the one this cycle closed, the rejected alternatives (the ratio; a behavioral
+eyJ pin at n=96000 needing an ~84s failure time; a uniform `n`), and a runnable recipe so every
+number is re-derivable rather than testimony — including the pin's twelve cases, each asserting its
+mutation applied before the verdict is read.
 
 **Verification.** 1794 smoke checks (0 failed — the census is deliberately unchanged: three
 behavioral checks replace four, plus one structural), with `docs_links`, `simulate_accumulation`,
-`mypy` and the manifest validator green. The two other wall-clock guards in the suite are genuinely
-loose and were not flaky; they share the defect's *cause* and are flagged as a follow-up in the spec
-rather than silently re-based inside a patch.
+`mypy` and the manifest validator green. **One** other wall-clock stopwatch exists in the suite — the
+commit-subject cap check, ~21× headroom, and load-bearing rather than merely loose (remove the cap
+and it reads 8.19s against its 2.0s bound). It is flagged as a follow-up in the spec rather than
+silently re-based inside a patch. An earlier draft of this entry said there were two such guards; on
+inspection neither of the others is a stopwatch at all — the stacks-cache check compares a stored
+timestamp's *age*, and the archive bound counts **characters** — so neither has a clock to switch.
 
 ## [0.4.27] — 2026-09-13
 
