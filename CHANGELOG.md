@@ -175,6 +175,20 @@ through any gate: the live suite ran against live-template + pre-review JS, the 
 against pre-review template + review JS, and the two together are not the shipped artifact. An
 assembled tree is now built and gated before the commit rather than after it.
 
+**A pre-existing smoke flake was root-caused and fixed rather than re-run away.** CI reddened on
+`d9ade6e` (`1792 passed, 2 failed`) and then went **green on a re-run of the identical commit** —
+non-determinism, not the diff. `_proj23` (`tests/smoke.py`) selected its temp store with
+`if name in str(f)` over a glob of every state file under `HOME`; the store slug is derived from
+the project path and **embeds the temp dir name**, so whenever the random suffix contains the
+2-character fixture name (`pa`/`pb`/`pc`) every store matches, `_mine[0]` is whichever the glob
+yielded first, and the fixture writes its population into a **neighbouring** project's store —
+whose shape (three equal-sized facts, no outlier) makes `defrag_candidates` return `[]` and that
+project's checks fail. Measured at **2.1% wrong-pick per name**; reproduced deterministically under
+a colliding `TMPDIR`, where the old filter returns three matches with a neighbour's store first
+against exactly one for the slug match. **Test infrastructure only** — no shipped code, no
+cycle-record or manifest change — and the `assert _mine` is kept so a future layout change fails
+loud rather than mispicking silently.
+
 Design-of-record: `docs/network-graph-interaction.spec.md`.
 
 ## [0.4.26] — 2026-09-12
