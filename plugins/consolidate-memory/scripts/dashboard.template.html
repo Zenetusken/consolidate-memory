@@ -122,6 +122,12 @@
   @keyframes draw{to{stroke-dashoffset:0}}
   .legend{display:flex;flex-wrap:wrap;gap:10px 20px;color:var(--faint);font-size:12px;margin-top:12px}
   .legend span{display:inline-flex;align-items:center;gap:7px}.legend i{display:inline-block;width:15px;height:3px;border-radius:1px}.legend i.dot{width:6px;height:6px;border-radius:50%}
+  /* .legend-keys wraps the two dot keys so a focused view can hide them together, and it is a
+     `.legend span` — so it inherits the 7px gap that rule sets for [dot | label] INSIDE one key.
+     Between two keys the legend's own 20px column gap is the spacing, and it is what these had
+     before the wrapper existed. Restated here rather than removed there: the 7px is right for
+     every other `.legend span`. */
+  .legend .legend-keys{gap:10px 20px}
   .budget-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:32px;margin:24px 0}
   .meter{padding:0;min-width:0}.meter .top{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
   .meter .lab{font-size:13px;color:var(--ink2)}.meter .val{font-size:12px;font-variant-numeric:tabular-nums}

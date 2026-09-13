@@ -289,18 +289,25 @@ were one-off exports, so any theme change meant hand-cropping. `tests/dashboard_
 
 ## §8 Budget
 
-The smoke pin `len(_html_p4) < 300 * 1024` bounds the rendered archive; `render_html.py` inlines the
+The smoke pin `len(_html_p4) < 320 * 1024` bounds the rendered archive; `render_html.py` inlines the
 template **plus both JS bundles**. The bounded quantity is `len(_html_p4)` — a CHARACTER count, not a
 byte size, and the shell is dense with multi-byte glyphs, so the two are not interchangeable. Read
-the bound as 307,200 units, never as a file size. Measured with smoke's own 120-cycle / 20-sidecar
+the bound as 327,680 units, never as a file size. Measured with smoke's own 120-cycle / 20-sidecar
 fixture:
 
-| | rendered archive (characters) | headroom |
+| | rendered archive (characters) | headroom (bound then in force) |
 | :--- | ---: | ---: |
-| pre-0.4.24 | 276,454 | 30,746 = 30.0 KiB |
-| 0.4.24 | 285,411 | **21,789 = 21.28 KiB** |
+| pre-0.4.24 | 276,454 | 30,746 = 30.0 KiB (of 300 KiB) |
+| 0.4.24 | 285,411 | **21,789 = 21.28 KiB** (of 300 KiB) |
+| 0.4.27, at `1864f68` | 307,050 | 150 (of 300 KiB) |
+| 0.4.27 as it ships | 308,659 | **19,021** (of the re-based 320 KiB) |
 
-The Deep Field chapter costs **8,957 characters** of shell, which is the whole of the delta.
+The Deep Field chapter costs **8,957 characters** of shell, which is the whole of the 0.4.24 delta.
+**The bound moved at 0.4.27** — 300 → 320 KiB — because the cycle's rounds spent the margin the
+0.4.24 row records: the first new row landed at **150 characters** of headroom, one comment away
+from red, and the second went past it. The re-basing is measured in
+`docs/network-graph-interaction.spec.md` §4.5, including the trim's own worth (292,162 characters,
+against which the bound still has teeth).
 
 Note the figure moved **twice after the release was cut** — 285,063 → 285,084 → 285,411 — with no
 CSS change at all, purely from rewriting comments in this template. The bound is a smoke check, not

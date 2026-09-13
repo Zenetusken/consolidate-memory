@@ -11971,9 +11971,26 @@ with _tf73.TemporaryDirectory() as _td_p4:
           len({_json_xp.dumps(_v, sort_keys=True) for _v in _diffs_p4.values()}) == 20
           and any("c119__" in _k for _k in _diffs_p4)
           and not any("c099__" in _k for _k in _diffs_p4))
+    # The bound is a CHARACTER count of the RENDERED archive, and it counts the SHELL too: the
+    # template and both JS bundles are inlined, comments included, so every character added to a
+    # shipped file spends this budget.
+    #
+    # Re-based 300 -> 320 KiB at v0.4.27, and re-based on measurement rather than argument. At
+    # 1864f68 this fixture rendered 307,050 — 150 characters of headroom — and the commits before it
+    # had already spent the rest: 0.4.24 shipped at 285,411, leaving 21,789. The code-review round's
+    # comment corrections then landed it at 308,659: +1,609 CHARACTERS of archive, which is +458 in
+    # the template and +1,151 in network.js (an earlier draft summed the two files' BYTE deltas to
+    # +1,611 — the template's added comment carries one em dash, three bytes to one character, and
+    # this pin counts characters). Trimming comments instead would have meant deleting corrections
+    # review had just asked for, and this pin does not exist to cap documentation: it catches a lost TRIM,
+    # which is a different order of magnitude. Measured, the two junk keys alone — admit
+    # `junk_never_read` and `registrar_working` back into the whitelist and the same fixture renders
+    # 600,821 characters, so the trim is worth 292,162 of them. 320 KiB restores the ~19 KiB working
+    # margin 0.4.24 shipped with and still sits 273,141 characters below a junk-untrimmed render,
+    # which is the regression it is here to catch.
     check("v0.4.2 P4: the trimmed archive stays under the size bound (the fixture embeds "
           "~400KB untrimmed)",
-          len(_html_p4) < 300 * 1024)
+          len(_html_p4) < 320 * 1024)
 
 # ── v0.4.2 R1: stranded-global advisory (memory_status.py) ─────────────────────
 with _tf73.TemporaryDirectory() as _td_r1:

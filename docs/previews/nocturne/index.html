@@ -122,6 +122,12 @@
   @keyframes draw{to{stroke-dashoffset:0}}
   .legend{display:flex;flex-wrap:wrap;gap:10px 20px;color:var(--faint);font-size:12px;margin-top:12px}
   .legend span{display:inline-flex;align-items:center;gap:7px}.legend i{display:inline-block;width:15px;height:3px;border-radius:1px}.legend i.dot{width:6px;height:6px;border-radius:50%}
+  /* .legend-keys wraps the two dot keys so a focused view can hide them together, and it is a
+     `.legend span` — so it inherits the 7px gap that rule sets for [dot | label] INSIDE one key.
+     Between two keys the legend's own 20px column gap is the spacing, and it is what these had
+     before the wrapper existed. Restated here rather than removed there: the 7px is right for
+     every other `.legend span`. */
+  .legend .legend-keys{gap:10px 20px}
   .budget-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:32px;margin:24px 0}
   .meter{padding:0;min-width:0}.meter .top{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
   .meter .lab{font-size:13px;color:var(--ink2)}.meter .val{font-size:12px;font-variant-numeric:tabular-nums}
@@ -1386,10 +1392,14 @@ var NocturneNetwork = (function(){
       // redraw knows what it destroyed. This is a genuine LAST RESORT: the restore above now
       // reaches every rebuildable control, including the ones outside <svg>, so it has already
       // had its chance. What is left is a focused control the redraw destroyed with no successor
-      // to hand focus to — a crumb whose activation left the fleet view, where no crumb is built.
-      // Landing there is safe only because the fleet is where that control leads: root's own
-      // handler is reset(), so it would be a trap anywhere else, and any control that reaches
-      // this fallback from a FOCUSED view is a bug in the key map above, not a case to patch here.
+      // to hand focus to. TWO controls reach it, and both reach it because their own activation
+      // destroys them: the trail's back-control (that activation leaves the fleet, where no crumb
+      // builds) and a shared-fact button (inspect() rewrites #net-detail, and a fact view renders
+      // no fact button for its own fact). Root is the right landing for both only because the fleet
+      // is where each of them leads — reset() is what root does, which is why this is a last resort
+      // and not a general repair. An earlier draft of this comment listed only the crumb and called
+      // any focused control reaching this fallback "a bug in the key map above"; the fact button is
+      // one of the two cases the fallback exists for, and the check below it says so.
       // Guarded on hadFocus, because a redraw nobody was focused in (the initial paint, the
       // per-dream repaint in the archive) must never seize focus. Test <body>/<html> explicitly
       // rather than !document.activeElement: Chrome points activeElement at <body> when the
@@ -1446,7 +1456,12 @@ var NocturneNetwork = (function(){
         return typeof v==='object'?JSON.stringify(v):String(v);
       }
       function listText(v){return Array.isArray(v)&&v.length?v.join(', '):fieldText(v);}
-      function countText(v){if(v===undefined||v===null||count(v)===null)return 'Not captured';return v===0?'None recorded':String(v);}
+      // A value that is PRESENT but not a count is neither absent nor empty: falling through to
+      // fieldText renders it as itself, which is the rule the block above states for a value the
+      // row did not expect. Collapsing it to 'Not captured' reported a count the record carries as
+      // one it does not have — and it is reachable, because validate_cycle_record warns on a
+      // wrong-typed key at runtime and never blocks, so a persisted members_n of "2" renders.
+      function countText(v){if(v===undefined||v===null)return 'Not captured';var n=count(v);return n===null?fieldText(v):(n===0?'None recorded':String(n));}
       var summary=[];
       if(state.kind==='project'){
         // domain/groups are read from raw, not the normalized node: normalize() collapses an
@@ -1463,15 +1478,17 @@ var NocturneNetwork = (function(){
                  // is the record's own: the capture block already counts unresolved_identities.
                  ['Shared facts',!model.canonical?'Not captured':uniqueSid?countText(model.facts.filter(function(f){return Array.isArray(f.holder_sids)&&f.holder_sids.indexOf(pn.sid)>=0;}).length):'Unresolved identity']];
       }else if(state.kind==='fact'){
-        var pf=state.value;
-        // The clause counts the nodes the MAP drew, not pf.holder_sids.length: selectedNodes()
-        // keeps only non-duplicate sids that resolve to exactly one captured node, so the raw
-        // array length overstates what is on screen — measured "5 · 3 shown on the map" beside a
-        // map drawing 1 node, and "3 · 0 shown on the map" beside none. A zero renders as words,
-        // the same rule as every other row here, so "never a bare 0" holds by construction.
-        var drawn=selected.length;
+        var pf=state.value,held=count(pf.held_n);
+        // The clause counts what the capture RESOLVED, not what the record listed — and it says
+        // "captured", not "shown on the map", because those are different numbers. selectedNodes()
+        // keeps only non-duplicate sids that resolve to exactly one captured node, so the raw array
+        // length overstates the resolvable set; but selected is still the whole SELECTION, while the
+        // map draws one page per expanded domain and nothing for a collapsed one. The rendered count
+        // is strictly smaller in both of those reachable states, so "shown on the map" named a
+        // measurement this value does not make. A zero renders as words, the rule every row here
+        // obeys, so "never a bare 0" holds by construction.
         summary=[['Domain',fieldText(pf.domain)],['Scope',fieldText(pf.scope)],
-                 ['Held by',count(pf.held_n)===null?'Not captured':countText(pf.held_n)+(drawn<pf.held_n?' · '+(drawn?drawn+' shown on the map':'none shown on the map'):'')]];
+                 ['Held by',countText(pf.held_n)+(held!==null&&selected.length<held?' · '+(selected.length?selected.length+' captured':'none captured'):'')]];
       }else if(state.kind==='group'){
         var pg=state.value;
         summary=[['Home domain',fieldText(pg.home_domain)],['Members',countText(pg.members_n)]];

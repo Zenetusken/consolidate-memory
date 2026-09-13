@@ -66,10 +66,11 @@ membership"* for a control the group no longer contains; and the inner `.network
 `aria-live` doubled every announcement with the `#net-detail` live region that already contains
 it, including on pager clicks that changed nothing.
 
-**Verification.** 1329 browser checks (0 failed) and 1794 smoke checks (0 failed), with
+**Verification.** 1331 browser checks (0 failed) and 1794 smoke checks (0 failed), with
 `docs_links`, `simulate_accumulation`, `mypy` and the manifest validator green. The browser figure
-is the shipped tree's, and there are four measured points behind it: **1213** before this pass,
-**1264** as the pass committed it, **1309** after the review round, **1329** as it ships — each one
+is the shipped tree's, and there are five measured points behind it: **1213** before this pass,
+**1264** as the pass committed it, **1309** after the review round, **1329** after the re-audit
+round, **1331** as it ships — each one
 that tree's own suite run against that tree's own scripts. An earlier draft of this block said
 1266, which was wrong.
 Fifteen mutation runs: 12 of 13 in the browser suite and 2 of 2 in `smoke.py` went **red for the
@@ -159,15 +160,33 @@ survives; and base Nocturne's node **fill** declarations are shadowed dead code 
 the anchor is marked by stroke only — resting at 1.8px `--data` against an ordinary node's 1.1px
 `--rule2` (2.6px is the hover width every node takes) — judged legible.
 
-**Archive embed budget, measured:** 285,411 → 300,408 **characters** against the 300 KiB pin. The
-gate bounds `len(_html_p4)`, so these are characters, not file bytes — the two are not
-interchangeable here, and this entry said "bytes" until the review round caught it. The previously
-recorded headroom of 21,789 reproduces exactly; pre-fix to ship, the whole review cost 14,997
-characters, 68.8% of it, of which 2,771 is the review round's — 1,689 in the redraw's focus repair,
-770 in the crumb's missing hover and active states, 297 in the comment repair that replaced the
-theme-dependence story with the measured one, and 15 in the wording fix that corrected a
-cascade-order claim naming the wrong pair of rules. The pin holds, but the margin — 6,792
-characters — is now thin enough to constrain the next template pass.
+**Archive embed budget, measured:** 285,411 → **308,659** **characters**, against a P4 pin
+**re-based from 300 KiB to 320 KiB** in this cycle. The gate bounds `len(_html_p4)`, so these are
+characters, not file bytes — the two are not interchangeable here, and this entry said "bytes"
+until the review round caught it. The previously recorded headroom of 21,789 reproduces exactly,
+and the re-base is a measurement rather than a concession: at `1864f68` the same fixture rendered
+**307,050** — **150 characters** of headroom, so the pin sat one comment from red — and the cycle's
+later rounds then spent it (**6,642** for the re-audit round, **1,609** for the code-review round
+that followed, which took the archive **1,459 over**). Trimming the comments to fit was the
+alternative and was rejected on the measurement: they correct two claims review had just found
+false. The pin's actual subject is the trim, which is worth **292,162** characters — admit the
+fixture's two junk keys back into the whitelist and the same render is **600,821** — so 320 KiB
+restores the ~19–21 KiB working margin 0.4.24 shipped with while still sitting 273,141 characters
+below a junk-untrimmed render. The review round's own share was 2,771 characters — 1,689 in the
+redraw's focus repair, 770 in the crumb's missing hover and active states, 297 in the comment
+repair that replaced the theme-dependence story with the measured one, and 15 in the wording fix
+that corrected a cascade-order claim naming the wrong pair of rules — and the whole cycle's cost,
+**23,248 characters, is more than the headroom it started with**. Full trail, with every
+intermediate tree named: the spec's §4.5.
+
+**The bytes-versus-characters slip recurred in the sentence that recorded it** — in
+`tests/smoke.py`'s pin comment and in the spec's §4.5, whose first draft summed the two files'
+**byte** deltas (+460 template, +1,151 `network.js`) to +1,611 and presented it as the archive's
+growth. The archive grew by **1,609**: the template's added comment carries one em dash, three
+bytes and one character, so its byte count leads its character count by exactly the 2 the sum was
+too large by. Caught by re-measuring the two endpoints (307,050 and 308,659) against the per-file
+**character** deltas (+458, +1,151), which agree to the character — the check that makes the
+figure re-derivable rather than remembered. Fixing the word did not fix the arithmetic under it.
 
 **That last figure is measured on a tree no one had built.** The review round's repairs were
 authored in two places — the JavaScript in a pristine copy of the commit, the template in the
@@ -179,8 +198,11 @@ assembled tree is now built and gated before the commit rather than after it.
 **A re-audit round turned on the escape hatch itself, and found one vacuous pin in its own work.**
 Seven mutations, each the pre-fix form of one mechanism, run on a non-fatal copy of the harness so
 one run exposes every red: **15 red across the seven**, on a baseline of 1326 checks — and re-run in
-full against the shipped 1329 once the guard arm's three checks existed, where every count
-reproduces unchanged. The anchor
+full against the suite as it ships once the guard arm's three checks existed. Every count
+reproduces there except one, and the exception earned its own paragraph below: M20 restores the
+`Held by` row, the code-review round rewrote that row, and the re-targeted mutation reds **three**
+where it red previously two. **A mutation is identified by the code it restores** — editing the
+target silently redefines the mutation — so its count was re-measured rather than carried. The anchor
 reversion — this pass's central fix — is caught by **four** checks where the pass's own mutation
 recorded one. That is not a pin that weakened; it is fixture shape. A pin can only separate two
 predicates on a fixture where they disagree, and the pass's fixtures were built so that the two
@@ -194,7 +216,7 @@ assertion stayed green **against the very defect it exists for**. Only the first
 red under the mutant. The target width now alternates, every iteration forces a real redraw, and
 all three go red.
 
-**Three of the round's checks are guards, and verifying a guard means introducing the defect.**
+**Three of the round's four guards can only be verified by introducing the defect.**
 They assert the network's HTML controls show a focus ring when focus arrives by keyboard. That ring
 predates this pass, so no reversion can redden them — and the first two attempts reddened
 **nothing**, because the edit went on the rule that *reads* as the control's own. A
@@ -217,6 +239,41 @@ been written about pins that catch it.
 still hidden without the legend saying so when the domain is collapsed or the anchor is paged away
 — one-directional, uncovered by any pin; and the positional `legacy:`/duplicate-sid focus-key
 fallback stays unasserted, for the reason this entry already gives.
+
+**A count the record carries was being reported as one it lacks.** The summary rows route every
+value through a two-shape vocabulary — `Not captured` for a field the snapshot never recorded,
+`None recorded` for a measured empty — and a value that is *present but not a count* is neither.
+`countText()` collapsed that third case to `Not captured`, so a persisted `members_n` of `"2"`
+rendered as an absence claim about data the record plainly carries. It is reachable rather than
+theoretical: `validate_cycle_record` warns on a wrong-typed key and never blocks, so the record
+renders. The repair is the rule the block above it already stated — an unexpected value renders as
+itself — and it restores a second property on the way: the zero test now reads the **parsed**
+number, so a `"0"` is `None recorded` rather than a bare zero on screen. The `Held by` clause was
+corrected in the same pass for the same reason: it said **"shown on the map"**, and the count it
+prints is the *selection* — `selectedNodes()` is what the capture resolved, while the map draws one
+page per expanded domain and nothing for a collapsed one. The words named a measurement the value
+does not make. Both fixes are pinned by reversion: reverting `countText()` alone reds exactly one
+check, and reverting the whole `Held by` row reds three, the other two being the label and the
+resolved-versus-listed count.
+
+**The preview banner's splice was bounded by an accident, and the check that claimed to gate it
+could not fail.** `tests/dashboard_fixture.py` labels the generated preview by splicing a
+`sample-notice` div after `<body>`, and `docs/previews/nocturne/index.html` is committed — so a
+splice in the wrong place ships. `<body>` is not unique in the built page: the network bundle's own
+focus-repair comment carries two of them, so the splice was bounded to the first occurrence. That
+worked only by emission order (the bundles are written after the tag), and a `<body>` literal
+emitted **before** it — a script or style block added to the head — would have taken the splice
+while a count of one still reported success. Measured two-sided on the built HTML with such a
+literal inserted in the head: the first-occurrence splice puts the notice **inside the head
+script**, 35 characters before the real tag, and the head-anchored `^</head>\n<body>$` splice puts
+it at the tag. The fixture now anchors on that boundary and **asserts it matched exactly once**, so
+a template that stops emitting the shape fails at generation instead of splicing somewhere a reader
+cannot see. The docs gate's companion check — counting `class="sample-notice"` in the committed
+artifact — was **deleted rather than reworded**: given the render assert and the byte-compare
+beside it, a committed artifact *is* a render, so the count is one by construction and the check
+was reachable in no run at all while reading as coverage. Its hole (a render failure surfacing as a
+traceback instead of a gate error) is closed where the enforcing assert lives. **Test
+infrastructure only** — no shipped code, cycle-record or manifest change.
 
 **A pre-existing smoke flake was root-caused and fixed rather than re-run away.** CI reddened on
 `d9ade6e` (`1792 passed, 2 failed`) and then went **green on a re-run of the identical commit** —

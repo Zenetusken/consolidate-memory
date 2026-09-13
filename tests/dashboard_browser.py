@@ -727,11 +727,17 @@ def main(out,capture=False):
               summary_rows().get('Shared facts')=='Unresolved identity'
               and 'records this project more than once' in page.locator('#net-detail .network-explanation').text_content())
 
-        # (4) 'Held by' COUNTS THE NODES THE MAP DREW, NOT THE RAW HOLDER LIST. selectedNodes() keeps
-        # only sids that are non-duplicate and resolve to exactly one captured node, so the record's
-        # array length overstates the map — measured '5 · 3 shown on the map' beside a map drawing a
-        # single node, and '3 · 0 shown on the map' beside a map drawing none. A zero is words, the
-        # same rule every other row here obeys.
+        # (4) 'Held by' COUNTS WHAT THE CAPTURE RESOLVED, NOT THE RAW HOLDER LIST. selectedNodes()
+        # keeps only sids that are non-duplicate and resolve to exactly one captured node, so the
+        # record's array length overstates the resolvable set — measured '5 · 3 captured' beside a
+        # single captured node, and '3 · none captured' beside none. A zero is words, the same rule
+        # every other row here obeys.
+        #
+        # The clause says "captured" and not "shown on the map" because those are different numbers,
+        # and the earlier wording named a measurement this value does not make: this is the SELECTION
+        # count, while the map draws one page per expanded domain and nothing for a collapsed one.
+        # This check can see the resolved-vs-listed difference (3 → 1) and could never have seen the
+        # resolved-vs-rendered one, so the words were the thing that had to give.
         held_by=copy.deepcopy(record)
         held_by['network']['fact_holdings']=copy.deepcopy(held_by['network']['fact_holdings'])
         next(f for f in held_by['network']['fact_holdings'] if f['name']=='release-checks').update(
@@ -740,11 +746,24 @@ def main(out,capture=False):
             holder_sids=['ghost-1','ghost-2'],held_n=2)
         fixture('held-by',held_by)
         network_view('fact','release-checks')
-        check("a fact's holder row counts what the map drew, not what the record listed",
-              summary_rows().get('Held by')=='3 · 1 shown on the map')
+        check("a fact's holder row counts what the capture resolved, not what the record listed",
+              summary_rows().get('Held by')=='3 · 1 captured')
         network_view('fact','shell-portability')
         check('a fact none of whose holders resolve says so in words, never as a bare zero',
-              summary_rows().get('Held by')=='2 · none shown on the map')
+              summary_rows().get('Held by')=='2 · none captured')
+
+        # (4b) A COUNT THAT IS PRESENT BUT NOT A COUNT IS NOT ABSENT. validate_cycle_record warns on
+        # a wrong-typed key at runtime and never blocks, so a persisted held_n of "2" renders — and
+        # the row must show it as itself rather than claim the snapshot never recorded the field.
+        # The vocabulary fixture above covers fieldText's three shapes; countText had its own, and
+        # it collapsed every non-count to 'Not captured'.
+        wrong_type=copy.deepcopy(record)
+        wrong_type['network']['fact_holdings']=copy.deepcopy(wrong_type['network']['fact_holdings'])
+        next(f for f in wrong_type['network']['fact_holdings'] if f['name']=='release-checks')['held_n']='2'
+        fixture('wrong-typed-count',wrong_type)
+        network_view('fact','release-checks')
+        check('a count the record carries in the wrong shape renders as itself, not as one it lacks',
+              summary_rows().get('Held by')=='2')
 
         # (5) ONE ANCHOR PER VIEW, EVEN WHEN THE CAPTURE NAMES TWO TRIGGERS. `trigger` is a truthy
         # test, not a uniqueness test: nothing in the record schema, normalize() or any gate bounds

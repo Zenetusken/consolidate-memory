@@ -341,7 +341,17 @@ def check_preview() -> None:
         err("the committed preview is missing: docs/previews/nocturne/")
         return
     with tempfile.TemporaryDirectory() as td:
-        dashboard_fixture.write_preview(Path(td))
+        try:
+            dashboard_fixture.write_preview(Path(td))
+        except Exception as e:
+            # write_preview ASSERTS that its sample-notice splice matched the document's <body> tag
+            # exactly once (tests/dashboard_fixture.py). That assert is the enforcement site for
+            # "the notice reaches the page a reader sees": the byte-compare below renders BOTH
+            # sides, so a splice that fires in the wrong place is byte-identical on both and would
+            # be green by construction. Report it as a gate failure rather than a traceback, so the
+            # failure names the check that failed.
+            err(f"could not render the preview fixture: {type(e).__name__}: {e}")
+            return
         for name in PREVIEW_FILES:
             fresh, committed = Path(td) / name, PREVIEW / name
             if not committed.is_file():
@@ -349,17 +359,13 @@ def check_preview() -> None:
             elif fresh.read_bytes() != committed.read_bytes():
                 err(f"docs/previews/nocturne/{name} is stale — regenerate both with "
                     "`python3 tests/dashboard_fixture.py --out docs/previews/nocturne`")
-        # The byte-compare above cannot see the sample-notice SPLICE: write_preview renders BOTH
-        # sides, so a splice that fires in the wrong place is byte-identical on both and the gate
-        # is green by construction. It did fire in the wrong place — an unbounded str.replace
-        # rewrote every `<body>` literal in the JS bundles as well, and a change that documents
-        # the focus-repair cases in comments added three of them, so the committed artifact
-        # carried the banner inside JavaScript as well as at the top of <body>. Count what a
-        # reader can see: the notice appears exactly once.
-        index = PREVIEW / "index.html"
-        if index.is_file() and index.read_text(encoding="utf-8").count('class="sample-notice"') != 1:
-            err("docs/previews/nocturne/index.html does not carry exactly one sample notice — the "
-                "notice splice in tests/dashboard_fixture.py is not bounded to the real <body> tag")
+        # NOT re-counted here: the notice's presence and position. An earlier version of this check
+        # counted `class="sample-notice"` in the committed artifact and demanded exactly one, with a
+        # message claiming it detected an unbounded splice. It could not: given the render assert
+        # above and the byte-compare, a committed artifact is a render, so its count is one by
+        # construction — the check was red-reachable in no run at all, while reading as coverage.
+        # The invariant lives at the stronger site (the fixture cannot emit a misplaced notice),
+        # which is why nothing is re-added here.
 
 
 def main() -> int:
