@@ -5,7 +5,7 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
-## [0.4.27] — 2026-09-12
+## [0.4.27] — 2026-09-13
 
 **Patch — the network map's closed loop: the anchor marks what you clicked, the hover cue stops
 repainting it, and the graph gains a way out.**
