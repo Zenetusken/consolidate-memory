@@ -310,7 +310,12 @@ var NocturneNetwork = (function(){
         if(v===''||(Array.isArray(v)&&!v.length))return 'None recorded';
         return typeof v==='object'?JSON.stringify(v):String(v);
       }
-      function listText(v){return Array.isArray(v)&&v.length?v.join(', '):fieldText(v);}
+      // A list of scalars joins readably, and a list of OBJECTS must not: join() stringifies each
+      // element, so an array of objects renders '[object Object], [object Object]' — the exact
+      // output the rule above forbids. Anything this cannot join readably goes to fieldText, which
+      // is where 'as ITSELF' is implemented; the two functions have to agree on that or the row
+      // that reaches the second shape is the one that lies.
+      function listText(v){return Array.isArray(v)&&v.length&&!v.some(function(x){return x&&typeof x==='object';})?v.join(', '):fieldText(v);}
       // A value that is PRESENT but not a count is neither absent nor empty: falling through to
       // fieldText renders it as itself, which is the rule the block above states for a value the
       // row did not expect. Collapsing it to 'Not captured' reported a count the record carries as
@@ -372,7 +377,14 @@ var NocturneNetwork = (function(){
       }
       if(facts.length){
         var choices=document.createElement('div');choices.className='network-facts';detail.appendChild(choices);
-        facts.forEach(function(f){var duplicate= facts.filter(function(x){return x.name===f.name;}).length>1;var b=button((duplicate?f.domain+' / ':'')+f.name,function(){focus('fact',f);},choices,'inspector-choice');b.dataset.factId=f.fact_id||'';b.setAttribute('data-key','fact:'+(f.fact_id||f.name));});
+        // The focus key must be UNIQUE, or a redraw hands focus to a different button: the restore
+        // above takes the FIRST match, so two facts sharing a key mean the next Enter opens the
+        // other one. `duplicate` already decides the visible label (the domain prefix below), so
+        // the key disambiguates exactly where the label does — identity first, then index — which
+        // is the shape normalize() uses for node keys. fact_id is always present in shipped
+        // records; the name fallback exists for foreign or hand-edited ones, and that is where a
+        // collision lives.
+        facts.forEach(function(f,i){var duplicate= facts.filter(function(x){return x.name===f.name;}).length>1;var b=button((duplicate?f.domain+' / ':'')+f.name,function(){focus('fact',f);},choices,'inspector-choice');b.dataset.factId=f.fact_id||'';b.setAttribute('data-key','fact:'+(f.fact_id||f.name)+(duplicate?'#'+i:''));});
       }
       el('net-cap').textContent=note;el('net-cap').hidden=!note;
       // The legend is UPDATED, not replaced. Overwriting #net-legend's children orphaned the

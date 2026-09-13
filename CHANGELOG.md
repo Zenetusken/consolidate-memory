@@ -289,6 +289,48 @@ against exactly one for the slug match. **Test infrastructure only** — no ship
 cycle-record or manifest change — and the `assert _mine` is kept so a future layout change fails
 loud rather than mispicking silently.
 
+**A value that is not the shape the code assumes, reported as though it were — twice more.** The
+review round above fixed one instance of that class in `countText()`. A parallel fan-out then found
+two siblings in the same file:
+
+- **`listText()` joined a list of objects.** `join(', ')` stringifies each element, so an
+  array-of-objects group list rendered `'[object Object], [object Object]'` — the output the rule
+  eight lines above it forbids in words, and the output the pin beside it was **named** for while
+  testing a shape that cannot produce it. The guard belongs on the join, not the stringify: a
+  non-empty array never reaches `fieldText()` at all.
+- **The fact focus key fell back to a name, which is not unique.** `data-key` was
+  `'fact:'+(fact_id||name)`, while the same expression computes `duplicate` to decide whether the
+  *label* needs a domain prefix — the code admitting names repeat while the key assumed they do
+  not. The redraw's restore takes the **first** match, so two same-named facts left a keyboard user
+  on the wrong one, their next Enter opening a record they did not choose. The key now
+  disambiguates exactly where the label does — identity, then index — the shape `normalize()`
+  already uses for node keys.
+
+Both are reachable only through the name fallback — a foreign or hand-edited record, since the
+shipped producer always writes `fact_id` — so neither is a shipped-producer defect. Each ships with
+a mutation that reverts it: **M23** (`listText()`) and **M24** (the key), **1 red each**, and each
+is the *first* failure in its run. The second is why this round has a pin where the budget item
+above did not: reverting the key fix with the pin absent left all 1332 checks green — **a fix
+nothing holds is a claim, not a fix.** The browser suite went **1331 → 1334**; two are the pins and
+the third is a *preview render* (`render without errors: focus-duplicate-keys.html#sel=0`), because
+a new `fixture()` writes a new preview and the suite renders every fixture it finds. Recorded
+because the arithmetic is +2 and the suite says +3.
+
+**The fan-out's verdicts are dated, and triage is the work.** Seven of its findings were refuted by
+the tree they were aimed at — most were measured on `1864f68`, the revision *before* the fixes they
+reported. Each refutation is a measurement: `countText()` and the `Held by` clause quoted as live
+both quote source that no longer exists; the preview-splice check that was "still open" was deleted
+in the same commit; the legend's 7px gap was real but had already been repaired, by the very
+`e15ac3e` change whose comment describes the descendant match the finding reports; and two
+`file:line` spec citations reported drifted are part of a set the spec no longer contains at all —
+counted, `[a-zA-Z_0-9]+\.(js|py|html|md|json):[0-9]` → **0 hits**. §4.9 records the triage. The
+lesson is not that the fan-out was wrong to run — it found both of the real defects above — but
+that **a verdict is a claim about one revision**, and re-reviewing a tree that has already moved
+reports the past.
+
+The archive grew **308,659 → 309,802** characters — measured at both endpoints, not reasoned from
+the diff — nearly all of it the two fixes' comments, leaving **17,878** of the 320 KiB bound.
+
 Design-of-record: `docs/network-graph-interaction.spec.md`.
 
 ## [0.4.26] — 2026-09-12

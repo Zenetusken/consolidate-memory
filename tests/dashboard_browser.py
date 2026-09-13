@@ -677,6 +677,29 @@ def main(out,capture=False):
                   and page.locator(exit_sel).evaluate("e=>{const s=getComputedStyle(e);return e===document.activeElement&&e.matches(':focus-visible')&&s.outlineStyle!=='none'&&parseFloat(s.outlineWidth)>0;}"))
         resize(1440)
 
+        # (1b) A FOCUS KEY MUST BE UNIQUE, OR THE RESTORE HANDS FOCUS TO A DIFFERENT CONTROL. The
+        # restore above takes the FIRST match, so two buttons sharing a key leave a keyboard user
+        # on the other one and their next Enter opens a record they did not choose. fact_id is
+        # always present in shipped captures, so the collision has to be built through the NAME
+        # fallback — a foreign or hand-edited record, the same reachability argument §4.8's
+        # count-shape pin rests on, and the label's own `duplicate` prefix is the code admitting
+        # that names repeat while the key went on assuming they do not. Both entries are seeded
+        # from one real holder of the clicked node, so the fixture differs from the shipped record
+        # in exactly the two fields under test.
+        dupkey=copy.deepcopy(record)
+        seed=next(f for f in dupkey['network']['fact_holdings'] if f['name']=='release-checks')
+        held=[copy.deepcopy(seed),copy.deepcopy(seed)]
+        for held_row in held:
+            held_row['name']='dup-name';held_row.pop('fact_id',None)
+        dupkey['network']['fact_holdings'].extend(held)
+        fixture('focus-duplicate-keys',dupkey)
+        page.locator('.net-node[data-node="atlas-api"]').click()
+        dup_btns=page.locator('#net-detail .network-facts button').filter(has_text='dup-name')
+        dup_btns.nth(1).focus()
+        resize(1200)
+        check('a duplicated fact key hands focus back to the same fact, not to the first one sharing its key',
+              dup_btns.count()==2 and dup_btns.nth(1).evaluate('e=>e===document.activeElement'))
+
         # (2) THE SUMMARY'S ABSENCE STATES AND THE SHAPE OF A PRESENT VALUE. A row must separate a
         # field the capture never recorded ('Not captured') from a measured empty ('None recorded')
         # from a value the capture carries in a shape the row did not expect — and the third must
@@ -686,12 +709,13 @@ def main(out,capture=False):
         # '[object Object]', and a duplicated sid reported every shared fact in the record as never
         # captured. Asserted separately because they are four different defects sharing one row.
         vocabulary=copy.deepcopy(record)
-        # All three in the trigger's own domain so the fleet view expands them and each is one
+        # All four in the trigger's own domain so the fleet view expands them and each is one
         # click away — a searched-for node in a collapsed domain is not rendered at all.
         vocabulary['network']=dict(vocabulary['network'],
             nodes=[{'node':'empty-domain','sid':'voc-1','domain':'','groups':'all,even','trigger':True,'shared':1},
                    {'node':'absent-groups','sid':'voc-2','domain':'','trigger':False,'shared':1},
-                   {'node':'object-groups','sid':'voc-3','domain':'','groups':{'all':True},'trigger':False,'shared':1}],
+                   {'node':'object-groups','sid':'voc-3','domain':'','groups':{'all':True},'trigger':False,'shared':1},
+                   {'node':'array-object-groups','sid':'voc-4','domain':'','groups':[{'all':True},{'even':False}],'trigger':False,'shared':1}],
             domains=[{'domain':'unknown'}],stack_edges=[],group_links=[],fact_holdings=[])
         fixture('summary-vocabulary',vocabulary)
         # A project view selects the node and its recorded connections — with stack_edges empty
@@ -713,6 +737,14 @@ def main(out,capture=False):
         network_view('fleet');page.locator('.net-node[data-node="object-groups"]').click()
         check('a present non-array group list renders as its own value, never as [object Object]',
               summary_rows().get('Groups')=='{"all":true}')
+        # The object shape above and the ARRAY-OF-OBJECTS shape below are different code paths into
+        # the same rule, and only the second one can actually print '[object Object]': listText()
+        # joins a non-empty array before fieldText() ever sees it, so it is the JOIN that needs the
+        # guard, not the stringify. The check above was named for the forbidden output while
+        # testing a shape that could never produce it.
+        network_view('fleet');page.locator('.net-node[data-node="array-object-groups"]').click()
+        check('a group list of objects renders as its own value, never as [object Object]',
+              summary_rows().get('Groups')=='[{"all":true},{"even":false}]')
 
         # (3) A DUPLICATED SID IS UNATTRIBUTABLE, WHICH IS NOT THE SAME ANSWER AS NEVER CAPTURED.
         # With two captured nodes sharing a sid no fact can be joined to either, and the record

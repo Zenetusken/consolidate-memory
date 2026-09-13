@@ -343,13 +343,13 @@ are one tree now, and the figures below are that tree's.
 
 | Gate | Result |
 | --- | --- |
-| `tests/dashboard_browser.py` | **1331 passed, 0 failed** |
-| `tests/smoke.py` | **1794 passed, 0 failed** — census constant `1750 + 44`, unchanged (no smoke pin was added) |
+| `tests/dashboard_browser.py` | **1334 passed, 0 failed** |
+| `tests/smoke.py` | **1794 passed, 0 failed** — census constant `1750 + 44`, which is `origin/main`'s `1750 + 43` **+1**: the `.dim` guard pin this cycle wrote (§4.2's M7, the check `network: the .dim class keeps its claim`). An earlier draft of this row read "unchanged (no smoke pin was added)", which the two constants refute — the delta *is* the pin |
 | `tests/docs_links.py` | pass — the preview is regenerated on the ship tree *before* this gate, since a stale one fails it by design |
 | `tests/simulate_accumulation.py` | "All lifecycle properties hold" |
 | `mypy --config-file mypy.ini` | success — 42 files |
 | `tests/validate_manifests.py` | "manifests valid (consolidate-memory v0.4.27)" |
-| mutation harnesses | the pass's own runs: **12 of 13** browser RED, 2/2 smoke RED (M12's GREEN is §4.3). The review round adds four more browser groups, re-run against the final selector list — PV-2 **1/1**, PV-2b **5/5**, D4 **2/2**, D3 **13 from a single mutation** (8 existence + 4 floor + 1 absence, counted on a non-fatal harness — the shipped one aborts on the first red; §4.6), and D3b **4/4** against `report_layout` after its first prediction was measured wrong (§4.6). That run's baseline was **1309 checks, 0 failed** — so the new selector list is clean everywhere the suite reaches before any mutation is planted. The re-audit round (§4.7) adds **M15–M21**, every one a revert of pre-fix code: **15 RED across the seven** as the round first measured them on a **1326**-check baseline, and **16** re-run in full on the suite as it ships (**1331**) — the extra red is M20's, whose target the code-review round rewrote, so the mutation was re-targeted and re-measured rather than carried (§4.8). Its **guard arm** is a separate kind of run — the defect is *introduced*, not restored — and runs on the same 1331: **3 RED**, the three focus-indicator guards and nothing else, against a control placement of the same edit that reds **0** (§4.7). The code-review round adds **M22** — `countText()` reverted alone, the rest of the row untouched — for **1 RED**, the count-shape pin (§4.8). |
+| mutation harnesses | the pass's own runs: **12 of 13** browser RED, 2/2 smoke RED (M12's GREEN is §4.3). The review round adds four more browser groups, re-run against the final selector list — PV-2 **1/1**, PV-2b **5/5**, D4 **2/2**, D3 **13 from a single mutation** (8 existence + 4 floor + 1 absence, counted on a non-fatal harness — the shipped one aborts on the first red; §4.6), and D3b **4/4** against `report_layout` after its first prediction was measured wrong (§4.6). That run's baseline was **1309 checks, 0 failed** — so the new selector list is clean everywhere the suite reaches before any mutation is planted. The re-audit round (§4.7) adds **M15–M21**, every one a revert of pre-fix code: **15 RED across the seven** as the round first measured them on a **1326**-check baseline, and **16** re-run in full on the suite as it then shipped (**1331**) — the extra red is M20's, whose target the code-review round rewrote, so the mutation was re-targeted and re-measured rather than carried (§4.8). Its **guard arm** is a separate kind of run — the defect is *introduced*, not restored — and runs on that same suite: **3 RED**, the three focus-indicator guards and nothing else, against a control placement of the same edit that reds **0** (§4.7). The code-review round adds **M22** — `countText()` reverted alone, the rest of the row untouched — for **1 RED**, the count-shape pin (§4.8). The fan-out triage round (§4.9) adds **M23** — `listText()` reverted alone, the join left unguarded — for **1 RED**, the array-of-objects pin, and **M24** — the fact focus key reverted to its pre-fix name-only form — for **1 RED**, the duplicate-key pin. Both mutations revert *the round's own two fixes*, and both were run before either fix was believed. |
 
 **How the suite grew — three measured points**, each one that tree's own suite run against that
 tree's own scripts, which is the procedure that produced the pre-pass figure rather than a delta
@@ -361,7 +361,8 @@ off it:
 | `df2c1c5` (the pass as committed) | **1264** | 0 |
 | `d9ade6e` (the review round) | **1309** | 0 |
 | `1864f68` (the re-audit round) | **1329** | 0 |
-| as it ships (the code-review round) | **1331** | 0 |
+| `e15ac3e` (the code-review round) | **1331** | 0 |
+| as it ships (the fan-out triage round) | **1334** | 0 |
 
 The pass added **6 `check(` sites** (196 → 202) for **+51 runtime checks**; the review round added
 **7 sites** (202 → 209) for **+45**. Runtime exceeds the site count in both cases because several
@@ -406,7 +407,8 @@ the same 120-cycle fixture:
 | `df2c1c5` (the pass as committed) | 297,637 | 30,043 |
 | review round | 300,408 | 27,272 |
 | `1864f68` (the re-audit round) | **307,050** | 20,630 — but **150** under the bound then in force |
-| as it ships (this round's corrections) | **308,659** | 19,021 |
+| `e15ac3e` (this round's corrections) | **308,659** | 19,021 |
+| as it ships (the fan-out triage round, §4.9) | **309,802** | 17,878 |
 
 **Why the bound moved.** Under `300 * 1024` the headroom at `1864f68` was **150 characters**: the
 commits before this round had already spent the margin, and this round's corrections (**+1,609
@@ -732,8 +734,9 @@ mutations, each the pre-fix form of one mechanism, run on a non-fatal copy of th
 run exposes every red rather than the first. (An eighth run follows them: the guard arm, which
 introduces a defect rather than restoring one, and therefore cannot sit in this table.) The round
 first ran on a **1326**-check suite; the whole matrix was then **re-run against the shipped suite**
-once the guard arm's three checks existed — first at **1329**, and again at **1331** when the
-code-review round landed. Every count below reproduces on both except M20's, for the reason the
+once the guard arm's three checks existed — first at **1329**, again at **1331** when the
+code-review round landed, and a third time at **1334** after the fan-out triage round (§4.9).
+Every count below reproduces on all three except M20's, for the reason the
 row itself now carries: **a reversion is identified by the code it restores**, and the code-review
 round rewrote the row M20 restores (§4.8).
 
@@ -845,9 +848,9 @@ untouched, which is what proves that pin is sensitive to `countText`'s own predi
 row's shape. Reverting the whole row (**M20**, re-targeted) reds **3**: the count-shape pin plus
 the two that hold the label and the resolved-versus-listed count. So M20's coverage contains M22's,
 and M22 is kept because it *isolates* it — the count it produces answers a question M20 cannot ask,
-which is *which* check holds this behaviour. Both were measured on the shipped **1331**-check
-suite, in the same run as the rest of the matrix, whose closing line asserts that both mutated
-sources were restored byte-identical.
+which is *which* check holds this behaviour. Both were measured on the **1331**-check suite this
+round shipped, in the same run as the rest of the matrix, whose closing line asserts that both
+mutated sources were restored byte-identical.
 
 **The budget sentence repeated the error it was recording.** §4.5's re-base paragraph first read
 "+1,611 — 460 in the template, 1,151 in `dashboard.network.js`", which is the sum of the two files'
@@ -865,6 +868,71 @@ splice was bounded by emission order rather than by a rule, and that the docs ga
 check on it could not fail in any run; both are the CHANGELOG entry's, since neither touches a
 shipped file.
 
+### 4.9 The fan-out triage round — two more of the same shape, and a stale verdict is not a finding
+
+A parallel review fan-out audited the shipped tree. Its verdicts arrive **against the revision
+each was measured on**, and most of them were measured on `1864f68` — the tree *before* §4.8's
+fixes — so the first work of this round was triage, not repair. Seven verdicts were refuted by the
+tree they were aimed at, and each refutation is one measurement, not an argument:
+
+- **`countText()`'s third shape** (§4.8's fix) and **the `Held by` clause** (§4.8's fix) were
+  reported live; both quoted the *pre-fix* source (`return v===0?'None recorded'`, the literal
+  `'shown on the map'`), which no longer exists. At HEAD the string survives only inside the two
+  comments that explain why it was wrong.
+- **The preview splice** (§4.8's CHANGELOG item) was reported as an open defect with its
+  `tests/docs_links.py` check quoted; that check was deleted in the same commit.
+- **The legend's 7px gap** was reported as introduced and unpinned. `df2c1c5` did introduce it —
+  and `e15ac3e` had already repaired it with `.legend .legend-keys{gap:10px 20px}`, whose own
+  comment names the descendant match the finding describes.
+- **A fixture comment citing `template :918`** was reported stale; the comment no longer contains
+  that citation, or any other.
+- **Two spec `file:line` citations** were reported drifted. The spec now contains **zero**
+  citations of that form — counted, `[a-zA-Z_0-9]+\.(js|py|html|md|json):[0-9]` → 0 hits — so the
+  §4.8 repair had already re-anchored them.
+
+**The two that survived are one defect shape, twice**: a value or a key that is *not the shape the
+code assumes*, rendered or resolved as though it were. That is §4.8's `countText` defect, and the
+round that fixed it fixed one instance of a class.
+
+- **`listText()` joined a list of objects.** `join(', ')` stringifies each element, so an
+  array-of-objects group list rendered `'[object Object], [object Object]'` — the exact output the
+  rule 8 lines above it forbids in words, and the exact output the pin beside it was **named** for
+  while testing a shape that cannot produce it. The guard belongs on the join, not on the
+  stringify: a non-empty array never reaches `fieldText()` at all.
+- **The fact focus key fell back to a name, which is not unique.** `data-key` was
+  `'fact:'+(fact_id||name)`, and the same expression computes `duplicate` to decide whether the
+  *label* needs a domain prefix — the code admitting names repeat while the key assumed they do
+  not. The redraw's restore takes the **first** match, so two same-named facts meant the next Enter
+  opened the other one. The key now disambiguates exactly where the label does — identity, then
+  index — which is the shape `normalize()` already uses for node keys.
+
+Both are reachable only through the name fallback (a foreign or hand-edited record: the shipped
+producer always writes `fact_id`), which is the same reachability argument §4.8 used for the
+count-shape fix, and neither is a shipped-producer defect.
+
+| Mutation | Reverts | RED |
+| --- | --- | --- |
+| **M23** | `listText()` to its pre-fix join, the rest of the row untouched | **1** |
+| **M24** | the fact focus key to its pre-fix name-only form | **1** |
+
+Each reddens **exactly one** check and is the first failure in its run, so each isolates the
+behaviour it names rather than corroborating it. Both were run **before the fix was believed**, and
+the second is the reason this round has a pin where §4.8's budget item did not: reverting the key
+fix with the pin absent left all **1332** checks green — a fix nothing holds is not a fix, it is a
+claim. `M24`'s pin is built by seeding two entries from one real holder of the clicked node and
+then changing exactly the two fields under test (same `name`, no `fact_id`).
+
+**The check count moved 1331 → 1334, and the third is not a check anyone wrote.** Two come from
+the two pins; the third is `render without errors: focus-duplicate-keys.html#sel=0`, because a new
+`fixture()` call writes a new preview into the output directory and the suite renders every fixture
+it finds there. Recorded because the arithmetic is otherwise +2 and the suite says +3 — and a count
+that no longer matches its tree is a defect, not a rounding.
+
+**The archive grew 1,143 characters, measured at both endpoints** — 308,659 → 309,802, re-derived
+the way §4.5's own lesson insists rather than reasoned from the diff. Nearly all of it is the two
+fixes' comments. Against the 320 KiB bound that leaves **17,878** characters, so the round spends
+about a sixteenth of the headroom §4.5's re-base restored.
+
 ## 5. Deliberately not fixed (found by measurement, recorded rather than silently changed)
 
 - **`.node-name` / `.node-meta` are emitted by nothing.** The live classes are `project-label`
@@ -873,14 +941,26 @@ shipped file.
   pair. The template comment now carries a `⚠ RE-DERIVE BEFORE REVIVING` note; only the split's
   *direction* survives its own derivation, since every magnitude was counted against a text child
   that never renders.
-- **Every unscoped `.net-node rect` rule is dead code — including the three this pass added.**
-  `#network-blk`-prefixed rules beat non-prefixed base rules on the ID in every theme, so the
+- **Every unscoped `.net-node rect` rule this measurement reached is dead code — including the
+  three this pass added.** The mechanism is about *competing declarations of one property*, not
+  about elements: `#network-blk`-prefixed rules beat non-prefixed base rules on the ID in every
+  theme, so wherever both families declare the same property the prefixed one wins, and the
   scoping half of this pass's cascade fix is delivered entirely by the prefixed family. Measured
   by reverting the unscoped family to its pre-pass form: **0 of 45 state cells change** (9 states
   × 5 themes). This was already recorded for the node *fill* declarations; the new fact is that
   the three declarations this pass wrote into that family — the `:not([data-current="true"])`
   guards on the hover cue, their `stroke-width` split, and `.net-node.selected:hover` — are inert
   for the same reason. They read as live to the next editor and are not.
+  **The boundary matters, and an earlier draft of this bullet omitted it.** The 45 cells are built
+  from fill, stroke and width — exactly the properties the three declarations compete on — so the
+  measurement cannot reach a declaration with *no* prefixed competitor, and one exists:
+  `.net-node rect,.net-node text{transition:opacity .18s ease}` declares `transition`, which no
+  `#network-blk` rule re-declares, so it is outranked by nothing and its computed value is live in
+  every theme. It is inert only in the weaker sense that nothing animates: the only rule that
+  changes a node's opacity is `#network-blk .net-node.dim rect`, and nothing applies `.dim` (§5;
+  the same unreachability the theme spec's contrast analysis rests on). Stated as a universal, the
+  bullet licensed deleting a live declaration — which is the one edit a "this family is dead"
+  paragraph invites.
 - **The anchor is marked by stroke only, and the widths matter.** No fill distinction survives in
   any theme. The anchor rests at **1.8px** `--data`; an ordinary node rests at **1.1px**
   `--rule2`; **2.6px** is the hover/focus width *every* node takes — measured across
