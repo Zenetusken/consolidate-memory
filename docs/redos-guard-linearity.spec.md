@@ -601,6 +601,23 @@ claimed from a pre-§3.1 `S*`. The margin is thinner than that draft implied; th
 unchanged, because 4× separation still discriminates where a 1.1× gap cannot. A ratio also cannot be
 re-derived by a reader from a single measurement, while an absolute bound can.
 
+**The same ratio measured IDLE, which is the contrast that makes the claim readable.** Both figures
+above are *loaded*, and a reader reconstructing this section on a quiet box will get something very
+different — so it is reported here rather than left as a surprise. Running the identical method
+(interleaved, CPU clock, reps=9, `t(4n)/t(n)` at n = 24 000) with **no** stress load:
+
+| | ratio, worst of 9 | spread across the 9 |
+| --- | --- | --- |
+| shipped (`_SECRET`) | **4.03** | every one of the 9 read 4.0 |
+| weakest mutant (M-R5) | **15.71** | every one read 15.7 |
+
+Idle, the ratio is not merely discriminating but *maximally* stable — 4.0 for a linear scan and 15.7
+for a quadratic one, to the last digit, which is what those two complexities predict. **The load is
+what collapses them to 10.34 and 11.21**: it is not that the ratio is a bad statistic in principle,
+it is that under the load the guard must actually survive, the 3.90× idle separation degrades to
+1.1×. That is the honest form of the rejection, and it also corroborates the "roughly 4×" figure
+quoted above from §2.3's columns, by an independent route.
+
 ### §6.2 A behavioural eyJ pin at n = 96 000 — rejected
 
 Earlier drafts rejected this on **cost** — a 20s bound, a ~84s failure time, 4.9s of loaded runtime
@@ -737,6 +754,14 @@ behavioural check sees one only if it blows up on the eyJ payload (§5 gap 1). T
 where v0.4.28's design is *narrower* than a reader might assume rather than wider, which is why it is
 stated here as well as in §5.
 
+**Every probe is a non-matching payload** (§5 gap 2), and that is a coverage limit rather than a
+detail: a regression that only manifests on *matching* input is measured by none of the three
+behavioural checks. A matching probe was built and measured non-discriminating — pre-fix 3.59s
+against shipped 3.93s, because the two versions scan it by different routes — so this is a limit
+with evidence behind it rather than an untried idea, but the limit is what it is. Stated here as well
+as in §5 because §8 is the section a reader consults to learn the guard's edges, and a gap that
+appears only in §5 is a gap a reader of §8 will not find.
+
 **It does not cover arms other than the eyJ arm** (§5 gap 1).
 
 ## §9 Measurement recipe
@@ -815,7 +840,7 @@ the marker going stale.)
 | re-derivable by scanning the pattern | the **20 unbounded quantifiers** in live arms (§8's companion in `SECURITY.md`) | strip `re.X` comments, collapse `[classes]`→`C` and `\x`→`E`, count `[*+]\|\{\d+,\}` — 22 raw, 20 after the collapse (2 are literal `+` inside classes) |
 | re-derivable by reading a file | `SECURITY.md`'s cap-coverage claim: `facts_manifest.py` caps at 4 MiB, `sync_global.py` does not | `os.read(fd, 4 * 1024 * 1024)` versus an uncapped `path.read_text` in `_safe_read_text` |
 | re-derivable given the interpreters | §2.5 | §9's recipe under each of 3.10–3.14, **floor** over 7 trials × 2 passes; requires all five installed |
-| re-derivable only with the stress harness | §2.2, §3.1's `S*` column, §2.3's `S*` column | §9 plus 48 spinners, worst-of-3-batches; readings vary with core count |
+| re-derivable only with the stress harness | §2.2, §3.1's `S*` column, §2.3's `S*` column, and §6.1's **two loaded ratio figures (10.34 / 11.21)** | §9 plus 48 spinners, worst-of-3-batches; readings vary with core count. §6.1's loaded ratios are in **no other row** — they were not listed here until v0.4.28, which is a provenance hole rather than a rounding detail: the *rejection* they support is a loaded claim, so a reader could neither find them nor reproduce them. §6.1 now also carries the same ratio measured **idle** (4.03 / 15.71, spread zero across 9 reps), which is re-derivable here on a quiet box and shows the load is what collapses the separation. |
 | derived from rows above, not a fresh measurement | §6.1's 4.6×–883× and §6.3's clearance argument | divide §2.3's mutant column by its `S*` column; §6.3's monotonicity is §2.1's linear shipment against a quadratic revert |
 | **extrapolated** from measured endpoints, labelled as such | §6.2's ~1.6× margin at n = 96 000, and the n ≈ 160 000 admission point | §2.1 (linear) + §2.4's table (quadratic) + §3.1's 6.32× inflation held constant — no reading exists at those sizes |
 | measurement, not reproduced here | the CI flake itself (one red job, five cancelled) | `gh api repos/.../actions/runs/<id>/jobs` — job conclusions, never the checks table |
