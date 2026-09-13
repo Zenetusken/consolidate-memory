@@ -5,6 +5,80 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.27] — 2026-09-12
+
+**Patch — the network map's closed loop: the anchor marks what you clicked, the hover cue stops
+erasing it, and the graph gains a way out.**
+
+Reported as *"every click is incoherent; we cannot navigate it or get any information out of any
+of the nodes."* Five defects had compounded into one property: **the map answered a question the
+user had not asked, then gave them no way to leave.** All five came from `b665ffc` (v0.4.18) and
+none was ever asserted against, because the pins that named them asserted a consequence the
+broken code also produced.
+
+- **The anchor marked the wrong node.** `data-current` was wired to `truthy(n.raw.trigger)` — the
+  *fleet capture trigger* — so clicking `atlas-web` left `atlas-api` stroked, tinted and labelled
+  **"This project"** while the heading named the project actually selected.
+- **Three same-specificity cascade rules fought, and the two shipped palettes order them
+  OPPOSITELY.** So the same click was coherent in one theme and broken in the other, and in the
+  theme that puts hover last the **hover cue repainted the anchor exactly while the pointer was on
+  it** — the mark vanished at the moment of pointing.
+- **Focus was stolen on every draw.** `focus()`'s unconditional `.network-root` `.focus()` ran
+  *after* `draw()`'s own `[data-key]` restore and clobbered it; the root's handler is `reset()`,
+  so **the next Enter undid the activation**. It is now a fallback that fires only when
+  `activeElement` is `<body>` — the one genuinely stranded case, a fact button whose element
+  `inspect()`'s `innerHTML` rewrite destroys.
+- **No position and no way back.** `#net-breadcrumbs` was created and cleared but never written —
+  `b665ffc` deleted the writer — while its CSS sat intact and idle.
+- **Focused views rendered no summary at all**, because `inspect()` rewrites `#net-detail` on
+  every draw and destroys the template's seeded text.
+
+**The fix is smaller than it first looked, and measuring that first is the point.** An earlier
+draft proposed marking the rendered members; the premise was false. `matching` is
+`selectedNodes()` *filtered*, never widened, so **rendered ≡ selected in every view** — the map is
+exactly its own selection, and marking it would only say "these are the things you can see". The
+one genuine 1-of-N distinction is anchor vs. members, and that mark already existed, wired to the
+wrong predicate. Correcting the predicate touches neither `selectedNodes()` nor the render
+filters, so **no rendered set changes** and the five anti-duplication pins stay green untouched.
+
+Alongside the fixes: a **position trail** (`Captured fleet › kind › label`, one control back), a
+**selection summary** of at most four paired rows that respects absence ≠ emptiness and never
+renders a bare `0`, and a **link out** to the complete record via `reveal()` — newly exported
+from `dashboard.sections.js` and guarded on capability, so a bundle without it renders *no* link
+rather than a dead one. The legend is now **updated rather than replaced**, so the template's dot
+markup is wired instead of orphaned — while `#net-leg-stack`, which shipped `hidden` and was read
+and unhidden by nothing, is removed rather than kept as the same fossil under a new name.
+
+Three smaller corrections ride along, all of them strings or regions that had stopped matching
+what they governed: the detail region's seeded text promised *"a project **or connection**"* when
+connections have no handler; the controls group's `aria-label` still said *"Highlight network
+membership"* for a control the group no longer contains; and the inner `.network-explanation`
+`aria-live` doubled every announcement with the `#net-detail` live region that already contains
+it, including on pager clicks that changed nothing.
+
+**Verification.** 1264 browser checks (0 failed) and 1794 smoke checks (0 failed). Eleven pins
+were **mutation-verified** — the defect restored, the named check confirmed red — 9 in the browser
+suite and 2 in `smoke.py`. Two of those pins had to be debugged before they could be believed,
+because **a vacuous pin reads exactly like a passing one**: the hover pin passed *with the defect
+in place* (the anchor was still focused from the click that opened the view, and both palettes
+bundle the cue as `:hover, :focus` in one rule, so the "rest" reading was already repainted), and
+the first draft of the `.dim` guard listed three literal class spellings — exactly the match-set
+bug of the pin it replaced, walked through by a mutation. Neither is in the shipped suite in that
+form.
+
+**Two claims corrected where measurement contradicted them**, recorded rather than silently
+restated: `.node-name`/`.node-meta` are CSS with **no emitter** (the live classes are
+`project-label` and `project-meta`, whose fill resolves to `--ink2`, not `--faint`), so the `.dim`
+contrast table's magnitudes are testimony and must be re-derived — only the split's *direction*
+survives; and base Nocturne's node **fill** declarations are shadowed dead code in every theme, so
+the anchor is marked by stroke only (`--data` 2.6px vs `--rule2` 1.1px), judged legible.
+
+**Archive embed budget, measured:** 285,411 → 297,637 bytes against the 300 KiB pin. The
+previously recorded headroom of 21,789 reproduces exactly; this pass cost 12,226 characters, 56%
+of it. The pin holds, but the margin is now thin enough to constrain the next template pass.
+
+Design-of-record: `docs/network-graph-interaction.spec.md`.
+
 ## [0.4.26] — 2026-09-12
 
 **Patch — the cross-domain mirror index refresh: one root cause, two legs, four sites on the

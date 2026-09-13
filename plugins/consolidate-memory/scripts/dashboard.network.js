@@ -5,7 +5,12 @@ var NocturneNetwork = (function(){
     var net=record.network||{}, seen=new Set(), nodes=rows(net.nodes).map(function(n,i){
       // Invalid duplicate sids cannot join incidence; retain both captured nodes.
       var sid=String(n.sid||'legacy:'+i), duplicate=seen.has(sid);seen.add(sid);
-      return {raw:n,id:'project:'+i,sid:sid,duplicate:duplicate,label:String(n.display_name||n.node||'Unnamed project'),domain:String(n.domain||'unknown'),groups:Array.isArray(n.groups)?n.groups:[]};
+      // `key` is what draw() restores focus by, so it must survive a re-normalize. A
+      // positional index (the old 'project:'+i) does not: a repaint on a cycle change
+      // re-enters draw() with a fresh model, and the stale index would land focus on
+      // whatever project now occupies that slot. Duplicate sids are invalid capture data;
+      // they fall back to the index only to stay distinct from each other.
+      return {raw:n,id:'project:'+i,key:duplicate?'project:'+sid+'#'+i:'project:'+sid,sid:sid,duplicate:duplicate,label:String(n.display_name||n.node||'Unnamed project'),domain:String(n.domain||'unknown'),groups:Array.isArray(n.groups)?n.groups:[]};
     });
     var domains=Array.from(new Set(rows(net.domains).map(function(d){return String(d.domain||'unknown');}).concat(nodes.map(function(n){return n.domain;})))).sort();
     return {raw:net,nodes:nodes,domains:domains,facts:rows(net.fact_holdings),groups:rows(net.group_links),edges:rows(net.stack_edges),canonical:Array.isArray(net.fact_holdings)};
@@ -46,7 +51,20 @@ var NocturneNetwork = (function(){
     }
     viewOptions('Shared facts','fact',model.facts);viewOptions('Sharing groups','group',model.groups);
     el('net-view').onchange=function(){var parts=this.value.split(':');if(parts[0]==='fact')focus('fact',model.facts[Number(parts[1])],true);else if(parts[0]==='group')focus('group',model.groups[Number(parts[1])],true);else if(parts[0]==='fleet')reset();};
-    function focus(kind,value,keepControl){state.kind=kind;state.value=value;state.pages=Object.create(null);state.expanded=new Set(model.domains);state.query='';el('net-search').value='';draw();if(!keepControl)svg.querySelector('.network-root').focus({preventScroll:true});}
+    function focus(kind,value,keepControl){
+      state.kind=kind;state.value=value;state.pages=Object.create(null);state.expanded=new Set(model.domains);state.query='';el('net-search').value='';
+      draw();
+      // Every focusable control on this map carries data-key and is rebuilt by draw(), whose
+      // restore pass returns focus to its successor. Focusing the root unconditionally ran
+      // AFTER that restore and moved focus to a control the pointer never touched — and the
+      // root's own handler is reset(), so the next Enter undid the click that just happened.
+      // Kept as a FALLBACK for the one activation that has no successor: a fact button inside
+      // #net-detail, whose element inspect()'s innerHTML rewrite destroys, stranding focus.
+      // Test <body>/<html> explicitly, not !document.activeElement — Chrome points
+      // activeElement at <body> when the focused node is removed, and never uses null.
+      if(!keepControl&&(document.activeElement===document.body||document.activeElement===document.documentElement))
+        svg.querySelector('.network-root').focus({preventScroll:true});
+    }
     function selectedNodes(){
       if(state.kind==='fact'){
         var sids=Array.isArray(state.value.holder_sids)?state.value.holder_sids:[];
@@ -71,7 +89,18 @@ var NocturneNetwork = (function(){
       var focusKey=document.activeElement&&document.activeElement.getAttribute('data-key');
       svg.textContent='';
       svg.dataset.kind=state.kind;detail.dataset.kind=state.kind;
-      el('net-breadcrumbs').textContent='';
+      // The trail b665ffc left headless: #net-breadcrumbs was created and cleared but never
+      // filled, so a focused view had no visible "where am I / go back". Fleet stays empty and
+      // #net-breadcrumbs:empty{display:none} hides it, so the default look is unchanged. The
+      // crumb is a real button because the SVG root's visible label is the VIEW's own name —
+      // in a project view that leaves no visible way back.
+      var crumbs=el('net-breadcrumbs');crumbs.textContent='';
+      if(state.kind!=='fleet'){
+        button('Captured fleet',reset,crumbs,'crumb-back');
+        var trail=document.createElement('span');trail.className='crumb-trail';
+        trail.textContent='› '+(state.kind==='fact'?'Shared fact':state.kind==='group'?'Sharing group':'Project')+' › '+rootLabel();
+        crumbs.appendChild(trail);
+      }
       var view=el('net-view'),projectOption=view.querySelector('option[value="project"]');
       if(projectOption)projectOption.remove();
       if(state.kind==='project'){projectOption=document.createElement('option');projectOption.value='project';projectOption.textContent=state.value.label;view.appendChild(projectOption);}
@@ -135,10 +164,17 @@ var NocturneNetwork = (function(){
           b.shown.forEach(function(n,i){
             var py=first+i*(mobile?60:56),px=mobile?52:608,pw=mobile?W-64:330;
             branch('M '+jx+' '+py+' H '+px,kind,false);svg.appendChild(S('circle',{cx:jx,cy:py,r:2.5,class:'aggregate-junction'}));
-            var node=S('g',{class:'net-node'+(state.kind==='group'?' selected':''),'data-node':n.raw.node||n.id,'data-sid':n.sid,'data-key':n.id,'data-current':truthy(n.raw.trigger)?'true':'false'});svg.appendChild(node);
+            // One anchor per view, and only the two views that have one: fleet marks the
+            // dream's captured project, a project view marks the project you selected.
+            // Fact and group views are peer sets — no node is their anchor — and marking the
+            // fleet trigger there stroked and labelled a project the user never chose.
+            // Rendered set IS the selection in every view (matching===selected, see
+            // selectedNodes), so the anchor is the only 1-of-N mark the map can carry.
+            var anchor=state.kind==='project'?n===state.value:state.kind==='fleet'&&truthy(n.raw.trigger);
+            var node=S('g',{class:'net-node'+(state.kind==='group'?' selected':''),'data-node':n.raw.node||n.id,'data-sid':n.sid,'data-key':n.key,'data-current':anchor?'true':'false'});svg.appendChild(node);
             node.appendChild(S('rect',{x:px,y:py-21,width:pw,height:44,rx:5}));
             var nt=text(px+12,py-3,n.label,'project-label',node);clipped(nt,n.label,pw-24);
-            var relation=state.kind==='fact'?'Holds this fact':state.kind==='group'?'Permitted member':truthy(n.raw.trigger)?'This project':'Select to explore';
+            var relation=state.kind==='fact'?'Holds this fact':state.kind==='group'?'Permitted member':anchor?'This project':state.kind==='project'?'Recorded connection':'Select to explore';
             text(px+12,py+14,relation,'project-meta',node);
             var title=S('title');title.textContent=n.label+' · '+n.domain;node.appendChild(title);
             activate(node,function(){focus('project',n);},n.label+' / inspect captured project');
@@ -187,14 +223,71 @@ var NocturneNetwork = (function(){
       else if(!model.canonical)note='This older snapshot records project connections, but not individual fact holders.';
       else if(partial)note='This snapshot is partial; some facts or connections cannot be shown.';
       else if(['facts_total','facts_emitted','holder_refs_total','holder_refs_emitted','unresolved_identities','read_failures'].some(function(key){return count(capture[key])==null;}))note='Capture completeness was not recorded for this dream.';
-      detail.innerHTML=(state.kind==='fleet'?'':'<strong class="network-selection-name">'+esc(rootLabel())+'</strong>')+(explanation?'<p class="network-explanation" aria-live="polite">'+esc(explanation)+'</p>':'')+'<span class="network-attribution">Saved with this dream</span>';
+      // A focused view states its selection's captured basis in words. These rows are readable
+      // labels, NOT the v0.4.14 inventory: concise_network (tests/dashboard_browser.py) already
+      // forbids that inventory's accounting labels and debugging structures inside #net-detail,
+      // and this is written TO that guard rather than around it — if a row needs a label the
+      // guard happens to miss, the design is wrong, not the pin.
+      // Absence and emptiness never collapse into one another (the capture-teeth rule above):
+      // "Not captured" is a field the snapshot never recorded, "None recorded" a measured empty,
+      // and a bare 0 never renders as a measurement.
+      function fieldText(v){return v===undefined||v===null?'Not captured':String(v);}
+      function listText(v){return !Array.isArray(v)?'Not captured':(v.length?v.join(', '):'None recorded');}
+      function countText(v){if(v===undefined||v===null||count(v)===null)return 'Not captured';return v===0?'None recorded':String(v);}
+      var summary=[];
+      if(state.kind==='project'){
+        // domain/groups are read from raw, not the normalized node: normalize() collapses an
+        // absent field to 'unknown'/[] and would misreport absence as a captured value.
+        var pn=state.value,uniqueSid=model.nodes.filter(function(x){return x.sid===pn.sid;}).length===1;
+        summary=[['Domain',fieldText(pn.raw.domain)],
+                 ['Groups',listText(pn.raw.groups)],
+                 ['Recorded connections',Array.isArray(net.stack_edges)?countText(model.edges.filter(function(e){return e.a===pn.raw.node||e.b===pn.raw.node;}).length):'Not captured'],
+                 ['Shared facts',model.canonical&&uniqueSid?countText(model.facts.filter(function(f){return Array.isArray(f.holder_sids)&&f.holder_sids.indexOf(pn.sid)>=0;}).length):'Not captured']];
+      }else if(state.kind==='fact'){
+        var pf=state.value;
+        summary=[['Domain',fieldText(pf.domain)],['Scope',fieldText(pf.scope)],
+                 ['Held by',count(pf.held_n)===null?'Not captured':countText(pf.held_n)+(Array.isArray(pf.holder_sids)&&pf.holder_sids.length<pf.held_n?' · '+pf.holder_sids.length+' shown on the map':'')]];
+      }else if(state.kind==='group'){
+        var pg=state.value;
+        summary=[['Home domain',fieldText(pg.home_domain)],['Members',countText(pg.members_n)]];
+      }
+      // Fleet has no selection to summarise, so it carries the instruction the template seeds —
+      // which the first draw() used to destroy, leaving initial markup and drawn state disagreeing.
+      var lead=state.kind==='fleet'?'Select a project to inspect its captured evidence.':explanation;
+      detail.innerHTML=(state.kind==='fleet'?'':'<strong class="network-selection-name">'+esc(rootLabel())+'</strong>')
+        +(lead?'<p class="network-explanation">'+esc(lead)+'</p>':'')
+        +'<span class="network-attribution">Saved with this dream</span>';
+      var attribution=detail.querySelector('.network-attribution');
+      if(summary.length){
+        var dl=document.createElement('dl');dl.className='network-summary';
+        summary.forEach(function(row){var dt=document.createElement('dt');dt.textContent=row[0];var dd=document.createElement('dd');dd.textContent=row[1];dl.appendChild(dt);dl.appendChild(dd);});
+        detail.insertBefore(dl,attribution);
+      }
+      // The escape hatch. reveal() is the page's one "open the disclosure, scroll to it, focus it"
+      // routine, and #record-json needs it: the record sits inside a closed <details>. Guarded on
+      // capability so a bundle loaded without NocturneSections renders NO link, never a dead one.
+      if(state.kind!=='fleet'&&typeof NocturneSections!=='undefined'&&typeof NocturneSections.reveal==='function'){
+        var recordLink=document.createElement('button');recordLink.type='button';
+        recordLink.className='inspector-choice network-record-link';
+        recordLink.textContent='Open the complete captured cycle record';
+        recordLink.onclick=function(){NocturneSections.reveal('record-json');};
+        detail.insertBefore(recordLink,attribution);
+      }
       if(facts.length){
         var choices=document.createElement('div');choices.className='network-facts';detail.appendChild(choices);
         facts.forEach(function(f){var duplicate= facts.filter(function(x){return x.name===f.name;}).length>1;var b=button((duplicate?f.domain+' / ':'')+f.name,function(){focus('fact',f);},choices,'inspector-choice');b.dataset.factId=f.fact_id||'';});
       }
       el('net-cap').textContent=note;el('net-cap').hidden=!note;
-      var interpretation=state.kind==='group'?'Dashed branches show permission to receive, not delivery.':state.kind==='fact'?'Solid branches show projects holding this fact.':state.kind==='project'?'Solid branches show recorded shared-fact connections.':'Projects are organized by domain. Select a domain to expand it.';
-      el('net-legend').innerHTML='<span class="'+(state.kind==='group'?'permissions-key':state.kind==='fleet'?'organization-key':'holdings-key')+'">'+esc(interpretation)+'</span>';
+      // The legend is UPDATED, not replaced. Overwriting #net-legend's children orphaned the
+      // template's dot markup — smoke.py pins "this project</span>" in _TEMPLATE_SRC, and a
+      // pin on markup nothing renders is exactly the fossil this pass exists to clear. The dot
+      // keys describe the FLEET's node roles, so they hide in focused views where no node is
+      // "this project"; the interpretation then says what this view's branches and mark mean.
+      var interpretation=state.kind==='group'?'Dashed branches show permission to receive, not delivery.':state.kind==='fact'?'Solid branches show projects holding this fact.':state.kind==='project'?'The outlined node is the project you selected; solid branches show its recorded shared-fact connections.':'Projects are organized by domain. Select a domain to expand it.';
+      var legendNote=el('net-legend-note');
+      if(legendNote){legendNote.className=state.kind==='group'?'permissions-key':state.kind==='fleet'?'organization-key':'holdings-key';legendNote.textContent=interpretation;}
+      var legendKeys=el('net-legend')&&el('net-legend').querySelector('.legend-keys');
+      if(legendKeys)legendKeys.hidden=state.kind!=='fleet';
     }
     el('net-note').textContent=Array.isArray(net.nodes)?model.nodes.length+' projects · '+model.domains.length+' domains':'Not captured';
     draw();

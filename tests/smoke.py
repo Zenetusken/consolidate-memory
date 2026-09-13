@@ -2404,8 +2404,35 @@ check('network: domain pages replace the global visual cutoff',
       "all.slice(page*12,page*12+12)" in _TEMPLATE_SRC and "MAXN=16" not in _TEMPLATE_SRC)
 check('network: all topology comes from captured record fields',
       "edges:rows(net.stack_edges)" in _TEMPLATE_SRC and "global_facts" not in _TEMPLATE_SRC)
-check('network: ranked SVG junctions support keyboard activation',
-      "function activate" in _TEMPLATE_SRC and "domain-junction" in _TEMPLATE_SRC)
+# A source-shape pin, and its ceiling is exactly that. It used to assert only that the function
+# and the junction class EXISTED — it stayed green with `n.addEventListener('click',fn)` deleted,
+# because the string "function activate" survives its own gutting. Asserting the wiring (both
+# dispatch paths, on an element that announces itself as a button) is as far as source text can
+# reach: it cannot prove a click ARRIVES at a node. That claim is pinned in the browser suite,
+# where a real pointer re-anchors the graph to the clicked project.
+check('network: the activation primitive wires a pointer path and a keyboard path onto a button',
+      "n.addEventListener('click',fn)" in _TEMPLATE_SRC
+      and "n.addEventListener('keydown'" in _TEMPLATE_SRC
+      and "setAttribute('role','button')" in _TEMPLATE_SRC
+      and "setAttribute('tabindex','0')" in _TEMPLATE_SRC
+      and "domain-junction" in _TEMPLATE_SRC)
+# GUARD pin, NOT a mutation pin — do not expect it to go red for any fix. The `.dim` rule is
+# unreachable by design (draw() renders exactly its own selection, so no view ever draws a
+# complement to dim), and the template comment beside that rule claims "the string does not
+# appear in either JS bundle". That claim had no gate, so it could go quietly false. This is
+# the gate. It passes on pre-fix code by construction — there was never a dim-emitting draw()
+# to remove — so it guards the CLAIM, not a fix.
+#
+# The match set is "a quoted string containing `dim` as a whole word", NOT a list of spellings.
+# An earlier draft of this very pin listed three literal forms ('dim', "dim", "net-node dim") and
+# a mutation writing `class:'dim net-node'` walked through all three — the same match-set failure
+# the pin it replaced had. The bundles compose class strings with `+`, so the word can land at
+# either end of a literal; matching the token inside any quoted string covers the realistic set,
+# while the word boundary keeps an innocent `dims`/`dimensions` identifier from setting it off.
+_dim_named = _re.compile(r"""['"][^'"\n]*\bdim\b[^'"\n]*['"]""")
+check('network: the .dim class keeps its claim — no bundle names it, so the latent rule has no candidate',
+      _dim_named.search(_TEMPLATE_SRC) is None
+      and ".net-node.dim" in _TEMPLATE_SRC)
 check('network: aggregate branches and domain expansion are explicit',
       "aggregate-branch" in _TEMPLATE_SRC and "state.expanded" in _TEMPLATE_SRC)
 check("graph: prettyNode keeps a trailing version tail (Qwen-3-6, not 3-6)",
@@ -15249,7 +15276,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 43)
+      passed + failed + 1 == 1750 + 44)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

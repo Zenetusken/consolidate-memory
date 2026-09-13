@@ -68,6 +68,7 @@ DOCS = [
     "docs/network-guide.md",
     "docs/nocturne-design.md",
     "docs/deep-field-theme.spec.md",
+    "docs/network-graph-interaction.spec.md",
 ]
 
 # smoke.py pins these as the README's cross-project workflow; a restructure must not lose

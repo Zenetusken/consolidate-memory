@@ -194,6 +194,14 @@ path that applies `.selected` (the group view) marks *every* node it renders, so
 for the rule exists. It is kept correct rather than deleted in case a selection affordance
 revives it.
 
+**The reason is now structural, and the claim is now gated** (v0.4.27). `draw()` renders exactly
+its own selection in every view — `matching` is `selectedNodes()` filtered, never widened — so
+**no view draws a complement**, and a candidate for this rule would need a view that renders one,
+which is a rendering change, not a selection one. Two `.selected[data-current="true"]` rules that
+had been written as if both states could co-occur were removed as dead on arrival.
+`smoke.py` now asserts the "neither JS bundle" clause (`the .dim class keeps its claim`), so the
+sentence above can no longer go quietly false.
+
 The first correction was wrong, and the reason is a genuine CSS trap. Opacity on a **group**
 renders the subtree offscreen and fades the result, so `.82` on a label inside a `.5` group
 is an effective `.41` — the obvious "recede the plate, keep the label" implementation makes
@@ -209,6 +217,17 @@ arithmetic:
   the plate composites over `--paper2`.
 - **The rule dims every text child, not just `--ink`/`--ink2`.** `.node-name` is `--ink` but
   `.node-meta` is `--faint`, and `--faint` is the binding case.
+  ⚠ **But that pair is not what the map emits — re-derive the table below before relying on it.**
+  Measured 2026-09-12 over default/nocturne/light: no view renders a `.node-name` or `.node-meta`
+  node (0 matches each), and neither string appears in either JS bundle. Both classes are **CSS
+  with no emitter**. `draw()` writes `project-label` (`--ink`, the one class this bullet names
+  correctly) and `project-meta`, whose fill resolves to **`--ink2`, not `--faint`** — two rules
+  set it, and the `#network-blk`-prefixed one wins on ID specificity in every theme. So the
+  `--faint` text child that made `--faint` "the binding case" never renders, and the rows counted
+  against it are testimony rather than a measurement anything can re-run. **Only the split's
+  direction survives on its own** — two rules receding plate and label apart is structural, not a
+  number. Every magnitude below has to be redone. Nothing on screen depends on this today: the
+  rule is latent, so no shipped contrast rests on the numbers.
 
 Measured over all four shipped palettes, worst theme per row, `--paper2` backdrop (`auto` is
 Light byte-for-byte, verified token by token, so it is not a fifth; `@media print` is the only

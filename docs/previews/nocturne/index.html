@@ -141,8 +141,18 @@
   .net-node rect{fill:var(--paper2);stroke:var(--rule2);stroke-width:1}
   .net-node[data-current="true"] rect{stroke:var(--data);fill:var(--tint-ok);stroke-width:1.5}
   .net-node .node-name{font:500 13px var(--sans);fill:var(--ink)}.net-node .node-meta{font:11px var(--sans);fill:var(--faint)}
-  .net-node:focus rect,.net-node:hover rect{stroke:var(--ink)}.net-node{outline:none;cursor:pointer}
-  .net-node rect,.net-node text{transition:opacity .18s ease}.net-node.selected rect{stroke:var(--accent);stroke-width:2}
+  /* A marked node keeps its mark under the pointer. Hover and focus change only stroke-width, and
+     the ink cue is scoped away from marked nodes, so neither can repaint a stroke or fill that a
+     rule above them chose — unscoped, the ink cue is same-specificity with [data-current] and
+     .selected and, being later, silently erased the mark the moment the pointer landed on it. */
+  .net-node:not(.selected):not([data-current="true"]):focus rect,.net-node:not(.selected):not([data-current="true"]):hover rect{stroke:var(--ink)}
+  .net-node:hover rect,.net-node:focus rect{stroke-width:2.6}.net-node{outline:none;cursor:pointer}
+  .net-node rect,.net-node text{transition:opacity .18s ease}.net-node.selected:not([data-current="true"]) rect{stroke:var(--accent);stroke-width:2}
+  /* The :not([data-current="true"]) guards above and on the line before are precedence
+     documentation, not a live path: .selected is applied only by the group view and
+     [data-current] only by the fleet and project views, so no node carries both. A
+     `.selected[data-current]` rule would be dead on arrival and there isn't one. */
+  .net-node.selected:hover rect,.net-node.selected:focus rect{stroke-width:2.6}
   .fact-edge{fill:none;stroke:var(--data);stroke-width:2;stroke-opacity:.65}
   .fact-edge:hover,.fact-edge:focus{stroke-opacity:1;stroke-width:4;outline:none}
   .grant-edge{animation:grant-in .25s ease-out;fill:none;stroke:var(--accent);stroke-width:2;stroke-dasharray:4 5;pointer-events:none}
@@ -367,9 +377,27 @@
   #network-blk .domain-junction circle{stroke:var(--data);fill:var(--card);stroke-width:1.5}
   #network-blk .net-node rect{fill:var(--card);stroke:var(--rule2);stroke-width:1.1}
   #network-blk .net-node[data-current="true"] rect{stroke:var(--data);stroke-width:1.8}
-  #network-blk .net-node.selected rect{fill:var(--tint-accent);stroke:var(--accent)}
+  #network-blk .net-node.selected:not([data-current="true"]) rect{fill:var(--tint-accent);stroke:var(--accent)}
+  /* No `.selected[data-current]` rule here: the group view renders a peer set with no anchor,
+     and a project view renders no .selected at all, so the two states cannot co-occur. */
   #network-blk .legend{font-size:12px;margin-top:8px}
   #network-blk #net-cap{max-width:none;font-size:13px;line-height:1.8;margin:10px 0 0;color:var(--warn)}
+  /* The selection summary: label/value rows as a definition list. Deliberately NOT the v0.4.14
+     inspector grid — concise_network (tests/dashboard_browser.py) pins that inventory's row class
+     and its seven accounting labels out of #net-detail, and this surface is written to satisfy
+     that guard rather than to sidestep it. Rows are capped by the same check. */
+  #network-blk .network-summary{display:grid;grid-template-columns:auto minmax(0,1fr);gap:3px 14px;margin:10px 0 0;font-size:13px;line-height:1.7;overflow-wrap:anywhere}
+  #network-blk .network-summary dt{color:var(--faint)}
+  #network-blk .network-summary dd{margin:0;color:var(--ink2)}
+  /* The escape hatch to the complete captured record. Box sizing comes from the shared control
+     group; this only spaces it. */
+  #network-blk .network-record-link{margin-top:12px}
+  /* The position trail. The crumb is a real control, so it carries the shared hit-area floor
+     rather than being a bare text target; the trail states where the view is. Both stay empty in
+     the fleet, where #net-breadcrumbs:empty hides the whole row. */
+  #network-blk #net-breadcrumbs{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  #network-blk .crumb-back{flex:none}
+  #network-blk .crumb-trail{font-size:13px;color:var(--faint);overflow-wrap:anywhere}
   #pass-blk .health-status{border:1px solid var(--rule);border-top:3px solid var(--rule2);border-radius:6px;padding:16px;background:var(--paper2)}
   #pass-blk .health-status>span{font-size:12px;font-weight:600;color:var(--ink2)}
   #pass-blk .health-status button{font-size:18px;font-weight:700;line-height:1.5}
@@ -487,7 +515,7 @@
 
   /* Controls share a size and state language without changing chart tokens. */
   .chrome .theme-tog,.dreamnav .nav-link,#app .report-nav button,
-  #network-blk .inspector-choice,#history-blk #activity-controls button,
+  #network-blk .inspector-choice,#network-blk #net-breadcrumbs button,#history-blk #activity-controls button,
   #history-blk #activity-cycle-select,#network-blk #net-view,#network-blk #net-search,
   #archive .arch-tools select,.modal .modal-x{
     min-height:44px;border:1px solid var(--rule2);border-radius:8px;
@@ -607,8 +635,11 @@
 
   /* Dimmed nodes: IMPROVED, but still LATENT and still sub-4.5 — nothing applies `.dim`. The
      string does not appear in either JS bundle, and the one path that applies `.selected`
-     (the group view) marks EVERY node it renders, so no candidate for this rule exists. Kept
-     rather than deleted in case a selection affordance revives it.
+     (the group view) marks EVERY node it renders, so no candidate for this rule exists — and
+     none can be created by marking more nodes. draw() renders exactly its own selection in every
+     view (matching is selectedNodes() filtered, never widened), so no node ON SCREEN is ever a
+     non-member to dim; a candidate needs a view that draws a complement, which is a rendering
+     change, not a selection one. Kept rather than deleted in case such a view is ever built.
 
      Opacity on the GROUP is the trap, and the obvious implementation of "recede the plate,
      keep the label" walks straight into it: a group renders its subtree offscreen and then
@@ -628,13 +659,27 @@
      Undimmed baseline 5.45 counting --faint (7.63 over --ink/--ink2 alone). Splitting is what
      buys the improvement — it recedes the plate WITHOUT receding the label — but it does NOT
      reach 4.5. Do not "simplify" it back onto the `.net-node` group, and do not read this
-     rule as AA-clean if it is ever revived: that needs the label tokens re-picked. */
+     rule as AA-clean if it is ever revived: that needs the label tokens re-picked.
+
+     ⚠ RE-DERIVE BEFORE REVIVING — the two text classes named above are NOT the ones the graph
+     emits. Measured 2026-09-12 over default/nocturne/light: no view renders a `.node-name` or
+     `.node-meta` node (0 matches each), while draw() writes `project-label` (--ink) and
+     `project-meta`, whose fill resolves to --ink2, not --faint. So the rows above were counted
+     against a --faint text child that never renders: they are not this rule's contrast for the
+     palette as shipped, and they are testimony rather than a measurement anything can re-run.
+     Only the split's DIRECTION survives on its own: two rules receding plate and label apart is
+     structural, not a number. Every magnitude above has to be redone. */
   #network-blk .net-node.dim rect{opacity:.5}
   #network-blk .net-node.dim text{opacity:.82}
 
   /* Deep Field chrome: edges keep their kind, but each kind reads at its own weight —
      structure is a hairline, holdings carry evidence, grants are the only dashed line. */
-  #network-blk .net-node:hover rect,#network-blk .net-node:focus rect{stroke:var(--data);fill:var(--paper2)}
+  /* A marked node keeps its mark under the pointer. The plate lift is scoped away from marked
+     nodes because this rule is same-specificity with .selected and, being later, the unscoped
+     form silently un-tinted every member the moment the pointer landed on it. Marked nodes get
+     a thickness bump instead — a property no rule above them uses to carry state. */
+  #network-blk .net-node:not(.selected):not([data-current="true"]):hover rect,#network-blk .net-node:not(.selected):not([data-current="true"]):focus rect{stroke:var(--data);fill:var(--paper2)}
+  #network-blk .net-node:hover rect,#network-blk .net-node:focus rect{stroke-width:2.6}
   #network-blk .domain-junction:hover circle{stroke:var(--accent)}
   #network-blk .page-control:not([aria-disabled="true"]):hover rect{fill:var(--card);stroke:var(--data)}
 
@@ -764,14 +809,18 @@
   <section class="blk" id="network-blk"><div class="shead"><span class="no" aria-hidden="true">⌘</span><h3>Memory network</h3><span class="ln"></span><span class="note" id="net-note"></span></div>
     <p class="section-purpose">See who holds a shared fact and who has permission to receive it.</p>
     <div class="network-surface">
-      <div id="net-controls" class="map-controls" role="group" aria-label="Highlight network membership"></div>
+      <div id="net-controls" class="map-controls" role="group" aria-label="Network view and position"></div>
       <div class="network-explorer"><div class="map-scroll" id="net-scroll" role="region" aria-label="Memory topology hierarchy" tabindex="0"><svg id="net" viewBox="0 0 520 170" role="img" aria-label="Captured shared-memory topology"></svg></div>
 
-      <div id="net-detail" class="map-detail" role="status" aria-live="polite">Select a project or connection to inspect its captured evidence.</div></div>
+      <div id="net-detail" class="map-detail" role="status" aria-live="polite">Select a project to inspect its captured evidence.</div></div>
+      <!-- The dot keys describe the fleet's node roles. dashboard.network.js updates this legend
+           in place — it hides .legend-keys in focused views (where no node is "this project") and
+           writes #net-legend-note — rather than replacing the children, which orphaned this
+           markup. #net-leg-stack was removed: nothing ever read it or unhid it. -->
       <div class="legend" id="net-legend">
-        <span><i class="dot" style="background:var(--data)"></i>this project</span>
-        <span><i class="dot" style="background:var(--ink2)"></i>other project</span>
-        <span id="net-leg-stack" hidden><i style="background:var(--data)"></i>shared stack facts</span>
+        <span class="legend-keys"><span><i class="dot" style="background:var(--data)"></i>this project</span>
+        <span><i class="dot" style="background:var(--ink2)"></i>other project</span></span>
+        <span id="net-legend-note"></span>
       </div>
       <div id="net-chips" style="display:none"></div>
       <div class="cap" id="net-cap"></div>
@@ -1081,7 +1130,12 @@ var NocturneNetwork = (function(){
     var net=record.network||{}, seen=new Set(), nodes=rows(net.nodes).map(function(n,i){
       // Invalid duplicate sids cannot join incidence; retain both captured nodes.
       var sid=String(n.sid||'legacy:'+i), duplicate=seen.has(sid);seen.add(sid);
-      return {raw:n,id:'project:'+i,sid:sid,duplicate:duplicate,label:String(n.display_name||n.node||'Unnamed project'),domain:String(n.domain||'unknown'),groups:Array.isArray(n.groups)?n.groups:[]};
+      // `key` is what draw() restores focus by, so it must survive a re-normalize. A
+      // positional index (the old 'project:'+i) does not: a repaint on a cycle change
+      // re-enters draw() with a fresh model, and the stale index would land focus on
+      // whatever project now occupies that slot. Duplicate sids are invalid capture data;
+      // they fall back to the index only to stay distinct from each other.
+      return {raw:n,id:'project:'+i,key:duplicate?'project:'+sid+'#'+i:'project:'+sid,sid:sid,duplicate:duplicate,label:String(n.display_name||n.node||'Unnamed project'),domain:String(n.domain||'unknown'),groups:Array.isArray(n.groups)?n.groups:[]};
     });
     var domains=Array.from(new Set(rows(net.domains).map(function(d){return String(d.domain||'unknown');}).concat(nodes.map(function(n){return n.domain;})))).sort();
     return {raw:net,nodes:nodes,domains:domains,facts:rows(net.fact_holdings),groups:rows(net.group_links),edges:rows(net.stack_edges),canonical:Array.isArray(net.fact_holdings)};
@@ -1122,7 +1176,20 @@ var NocturneNetwork = (function(){
     }
     viewOptions('Shared facts','fact',model.facts);viewOptions('Sharing groups','group',model.groups);
     el('net-view').onchange=function(){var parts=this.value.split(':');if(parts[0]==='fact')focus('fact',model.facts[Number(parts[1])],true);else if(parts[0]==='group')focus('group',model.groups[Number(parts[1])],true);else if(parts[0]==='fleet')reset();};
-    function focus(kind,value,keepControl){state.kind=kind;state.value=value;state.pages=Object.create(null);state.expanded=new Set(model.domains);state.query='';el('net-search').value='';draw();if(!keepControl)svg.querySelector('.network-root').focus({preventScroll:true});}
+    function focus(kind,value,keepControl){
+      state.kind=kind;state.value=value;state.pages=Object.create(null);state.expanded=new Set(model.domains);state.query='';el('net-search').value='';
+      draw();
+      // Every focusable control on this map carries data-key and is rebuilt by draw(), whose
+      // restore pass returns focus to its successor. Focusing the root unconditionally ran
+      // AFTER that restore and moved focus to a control the pointer never touched — and the
+      // root's own handler is reset(), so the next Enter undid the click that just happened.
+      // Kept as a FALLBACK for the one activation that has no successor: a fact button inside
+      // #net-detail, whose element inspect()'s innerHTML rewrite destroys, stranding focus.
+      // Test <body><div class="sample-notice">Illustrative sample · fictional projects and cycle data · not a live consolidation</div>/<html> explicitly, not !document.activeElement — Chrome points
+      // activeElement at <body><div class="sample-notice">Illustrative sample · fictional projects and cycle data · not a live consolidation</div> when the focused node is removed, and never uses null.
+      if(!keepControl&&(document.activeElement===document.body||document.activeElement===document.documentElement))
+        svg.querySelector('.network-root').focus({preventScroll:true});
+    }
     function selectedNodes(){
       if(state.kind==='fact'){
         var sids=Array.isArray(state.value.holder_sids)?state.value.holder_sids:[];
@@ -1147,7 +1214,18 @@ var NocturneNetwork = (function(){
       var focusKey=document.activeElement&&document.activeElement.getAttribute('data-key');
       svg.textContent='';
       svg.dataset.kind=state.kind;detail.dataset.kind=state.kind;
-      el('net-breadcrumbs').textContent='';
+      // The trail b665ffc left headless: #net-breadcrumbs was created and cleared but never
+      // filled, so a focused view had no visible "where am I / go back". Fleet stays empty and
+      // #net-breadcrumbs:empty{display:none} hides it, so the default look is unchanged. The
+      // crumb is a real button because the SVG root's visible label is the VIEW's own name —
+      // in a project view that leaves no visible way back.
+      var crumbs=el('net-breadcrumbs');crumbs.textContent='';
+      if(state.kind!=='fleet'){
+        button('Captured fleet',reset,crumbs,'crumb-back');
+        var trail=document.createElement('span');trail.className='crumb-trail';
+        trail.textContent='› '+(state.kind==='fact'?'Shared fact':state.kind==='group'?'Sharing group':'Project')+' › '+rootLabel();
+        crumbs.appendChild(trail);
+      }
       var view=el('net-view'),projectOption=view.querySelector('option[value="project"]');
       if(projectOption)projectOption.remove();
       if(state.kind==='project'){projectOption=document.createElement('option');projectOption.value='project';projectOption.textContent=state.value.label;view.appendChild(projectOption);}
@@ -1211,10 +1289,17 @@ var NocturneNetwork = (function(){
           b.shown.forEach(function(n,i){
             var py=first+i*(mobile?60:56),px=mobile?52:608,pw=mobile?W-64:330;
             branch('M '+jx+' '+py+' H '+px,kind,false);svg.appendChild(S('circle',{cx:jx,cy:py,r:2.5,class:'aggregate-junction'}));
-            var node=S('g',{class:'net-node'+(state.kind==='group'?' selected':''),'data-node':n.raw.node||n.id,'data-sid':n.sid,'data-key':n.id,'data-current':truthy(n.raw.trigger)?'true':'false'});svg.appendChild(node);
+            // One anchor per view, and only the two views that have one: fleet marks the
+            // dream's captured project, a project view marks the project you selected.
+            // Fact and group views are peer sets — no node is their anchor — and marking the
+            // fleet trigger there stroked and labelled a project the user never chose.
+            // Rendered set IS the selection in every view (matching===selected, see
+            // selectedNodes), so the anchor is the only 1-of-N mark the map can carry.
+            var anchor=state.kind==='project'?n===state.value:state.kind==='fleet'&&truthy(n.raw.trigger);
+            var node=S('g',{class:'net-node'+(state.kind==='group'?' selected':''),'data-node':n.raw.node||n.id,'data-sid':n.sid,'data-key':n.key,'data-current':anchor?'true':'false'});svg.appendChild(node);
             node.appendChild(S('rect',{x:px,y:py-21,width:pw,height:44,rx:5}));
             var nt=text(px+12,py-3,n.label,'project-label',node);clipped(nt,n.label,pw-24);
-            var relation=state.kind==='fact'?'Holds this fact':state.kind==='group'?'Permitted member':truthy(n.raw.trigger)?'This project':'Select to explore';
+            var relation=state.kind==='fact'?'Holds this fact':state.kind==='group'?'Permitted member':anchor?'This project':state.kind==='project'?'Recorded connection':'Select to explore';
             text(px+12,py+14,relation,'project-meta',node);
             var title=S('title');title.textContent=n.label+' · '+n.domain;node.appendChild(title);
             activate(node,function(){focus('project',n);},n.label+' / inspect captured project');
@@ -1263,14 +1348,71 @@ var NocturneNetwork = (function(){
       else if(!model.canonical)note='This older snapshot records project connections, but not individual fact holders.';
       else if(partial)note='This snapshot is partial; some facts or connections cannot be shown.';
       else if(['facts_total','facts_emitted','holder_refs_total','holder_refs_emitted','unresolved_identities','read_failures'].some(function(key){return count(capture[key])==null;}))note='Capture completeness was not recorded for this dream.';
-      detail.innerHTML=(state.kind==='fleet'?'':'<strong class="network-selection-name">'+esc(rootLabel())+'</strong>')+(explanation?'<p class="network-explanation" aria-live="polite">'+esc(explanation)+'</p>':'')+'<span class="network-attribution">Saved with this dream</span>';
+      // A focused view states its selection's captured basis in words. These rows are readable
+      // labels, NOT the v0.4.14 inventory: concise_network (tests/dashboard_browser.py) already
+      // forbids that inventory's accounting labels and debugging structures inside #net-detail,
+      // and this is written TO that guard rather than around it — if a row needs a label the
+      // guard happens to miss, the design is wrong, not the pin.
+      // Absence and emptiness never collapse into one another (the capture-teeth rule above):
+      // "Not captured" is a field the snapshot never recorded, "None recorded" a measured empty,
+      // and a bare 0 never renders as a measurement.
+      function fieldText(v){return v===undefined||v===null?'Not captured':String(v);}
+      function listText(v){return !Array.isArray(v)?'Not captured':(v.length?v.join(', '):'None recorded');}
+      function countText(v){if(v===undefined||v===null||count(v)===null)return 'Not captured';return v===0?'None recorded':String(v);}
+      var summary=[];
+      if(state.kind==='project'){
+        // domain/groups are read from raw, not the normalized node: normalize() collapses an
+        // absent field to 'unknown'/[] and would misreport absence as a captured value.
+        var pn=state.value,uniqueSid=model.nodes.filter(function(x){return x.sid===pn.sid;}).length===1;
+        summary=[['Domain',fieldText(pn.raw.domain)],
+                 ['Groups',listText(pn.raw.groups)],
+                 ['Recorded connections',Array.isArray(net.stack_edges)?countText(model.edges.filter(function(e){return e.a===pn.raw.node||e.b===pn.raw.node;}).length):'Not captured'],
+                 ['Shared facts',model.canonical&&uniqueSid?countText(model.facts.filter(function(f){return Array.isArray(f.holder_sids)&&f.holder_sids.indexOf(pn.sid)>=0;}).length):'Not captured']];
+      }else if(state.kind==='fact'){
+        var pf=state.value;
+        summary=[['Domain',fieldText(pf.domain)],['Scope',fieldText(pf.scope)],
+                 ['Held by',count(pf.held_n)===null?'Not captured':countText(pf.held_n)+(Array.isArray(pf.holder_sids)&&pf.holder_sids.length<pf.held_n?' · '+pf.holder_sids.length+' shown on the map':'')]];
+      }else if(state.kind==='group'){
+        var pg=state.value;
+        summary=[['Home domain',fieldText(pg.home_domain)],['Members',countText(pg.members_n)]];
+      }
+      // Fleet has no selection to summarise, so it carries the instruction the template seeds —
+      // which the first draw() used to destroy, leaving initial markup and drawn state disagreeing.
+      var lead=state.kind==='fleet'?'Select a project to inspect its captured evidence.':explanation;
+      detail.innerHTML=(state.kind==='fleet'?'':'<strong class="network-selection-name">'+esc(rootLabel())+'</strong>')
+        +(lead?'<p class="network-explanation">'+esc(lead)+'</p>':'')
+        +'<span class="network-attribution">Saved with this dream</span>';
+      var attribution=detail.querySelector('.network-attribution');
+      if(summary.length){
+        var dl=document.createElement('dl');dl.className='network-summary';
+        summary.forEach(function(row){var dt=document.createElement('dt');dt.textContent=row[0];var dd=document.createElement('dd');dd.textContent=row[1];dl.appendChild(dt);dl.appendChild(dd);});
+        detail.insertBefore(dl,attribution);
+      }
+      // The escape hatch. reveal() is the page's one "open the disclosure, scroll to it, focus it"
+      // routine, and #record-json needs it: the record sits inside a closed <details>. Guarded on
+      // capability so a bundle loaded without NocturneSections renders NO link, never a dead one.
+      if(state.kind!=='fleet'&&typeof NocturneSections!=='undefined'&&typeof NocturneSections.reveal==='function'){
+        var recordLink=document.createElement('button');recordLink.type='button';
+        recordLink.className='inspector-choice network-record-link';
+        recordLink.textContent='Open the complete captured cycle record';
+        recordLink.onclick=function(){NocturneSections.reveal('record-json');};
+        detail.insertBefore(recordLink,attribution);
+      }
       if(facts.length){
         var choices=document.createElement('div');choices.className='network-facts';detail.appendChild(choices);
         facts.forEach(function(f){var duplicate= facts.filter(function(x){return x.name===f.name;}).length>1;var b=button((duplicate?f.domain+' / ':'')+f.name,function(){focus('fact',f);},choices,'inspector-choice');b.dataset.factId=f.fact_id||'';});
       }
       el('net-cap').textContent=note;el('net-cap').hidden=!note;
-      var interpretation=state.kind==='group'?'Dashed branches show permission to receive, not delivery.':state.kind==='fact'?'Solid branches show projects holding this fact.':state.kind==='project'?'Solid branches show recorded shared-fact connections.':'Projects are organized by domain. Select a domain to expand it.';
-      el('net-legend').innerHTML='<span class="'+(state.kind==='group'?'permissions-key':state.kind==='fleet'?'organization-key':'holdings-key')+'">'+esc(interpretation)+'</span>';
+      // The legend is UPDATED, not replaced. Overwriting #net-legend's children orphaned the
+      // template's dot markup — smoke.py pins "this project</span>" in _TEMPLATE_SRC, and a
+      // pin on markup nothing renders is exactly the fossil this pass exists to clear. The dot
+      // keys describe the FLEET's node roles, so they hide in focused views where no node is
+      // "this project"; the interpretation then says what this view's branches and mark mean.
+      var interpretation=state.kind==='group'?'Dashed branches show permission to receive, not delivery.':state.kind==='fact'?'Solid branches show projects holding this fact.':state.kind==='project'?'The outlined node is the project you selected; solid branches show its recorded shared-fact connections.':'Projects are organized by domain. Select a domain to expand it.';
+      var legendNote=el('net-legend-note');
+      if(legendNote){legendNote.className=state.kind==='group'?'permissions-key':state.kind==='fleet'?'organization-key':'holdings-key';legendNote.textContent=interpretation;}
+      var legendKeys=el('net-legend')&&el('net-legend').querySelector('.legend-keys');
+      if(legendKeys)legendKeys.hidden=state.kind!=='fleet';
     }
     el('net-note').textContent=Array.isArray(net.nodes)?model.nodes.length+' projects · '+model.domains.length+' domains':'Not captured';
     draw();
@@ -1722,7 +1864,10 @@ var NocturneSections = (function(){
     el('health-source').innerHTML=sourceNote('Recorded verification, store checks, and file observations',c);
     el('ledger-source').innerHTML=sourceNote('Consolidation decisions; linked diffs show observed file changes',c);
   }
-  return {paint:paint,assess:assess};
+  // reveal is exported for the network module's record link: #record-json sits inside a closed
+  // <details>, and this is the page's one routine that opens disclosure ancestors before
+  // scrolling and focusing. Duplicating it there would be a second copy to keep in step.
+  return {paint:paint,assess:assess,reveal:reveal};
 
 })();
 
@@ -1735,9 +1880,10 @@ var NocturneSections = (function(){
     el("net").classList.remove("fleet-map"); el("net").setAttribute("role","img"); clearEl("net-controls"); clearEl("network-data-body");
     el("record-json").textContent=JSON.stringify(CUR,null,2);
     // The explicit-absence marker: a source-visible contract ("Network data was not
-    // captured") the smoke pin guards. The painter overwrites network-data-body in the
-    // same pass, so this node is deliberate dead DOM — and safe: the reset above clears
-    // the body on EVERY paintDream, so it can never accumulate.
+    // captured") the smoke pin guards. The network painter does NOT write this container —
+    // it is cleared and re-created here on every paintDream, so it can never accumulate —
+    // and #network-data ships hidden, so the node is deliberate dead DOM. It exists to be
+    // read in the shipped source, not on screen.
     var legacyData=document.createElement("pre");legacyData.className="legacy-network-data";
     legacyData.textContent=CUR.network?JSON.stringify(CUR.network,null,2):"Network data was not captured in this record.";
     el("network-data-body").appendChild(legacyData);

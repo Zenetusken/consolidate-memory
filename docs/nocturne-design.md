@@ -79,15 +79,22 @@ Selecting a canonical fact produces **fact → domain → physical holders**.
 Selecting a group produces **group → domain → captured members**; permissions
 never center on an arbitrary project. Only those members appear in the focused
 group tree. Project names and their relationship labels appear on the map itself.
-A compact caption explains the selection and its saved-snapshot basis.
+A compact caption explains the selection and its saved-snapshot basis; the caption
+element is hidden outright when capture is complete, so no view carries a note that
+has nothing to say.
 
 The visible network consists of this map, project search, the View selector, and
-the caption. When capture is incomplete, one brief note states the limitation.
-There is no second holder list, technical inspector, project directory, token
-accounting panel, or repeated statistics beneath the map. The existing page-level
-**Inspect the complete captured cycle record** disclosure retains all original
-network fields, including identities, capture counters, token estimates, registry
-counts, and historical pairwise links.
+the caption — plus, in a focused view, three surfaces the fleet does not show: a
+**position trail** naming where you are with one control back to the fleet, a
+**selection summary** of at most four label/value rows, and a **link out** to the
+complete captured record. When capture is incomplete, one brief note states the
+limitation. There is no second holder list, technical inspector, project directory,
+token accounting panel, or repeated statistics beneath the map: the summary carries
+the selection's own brief and nothing that duplicates the record — a boundary the
+browser suite pins by row budget and by the removed inspector's accounting
+vocabulary. The existing page-level **Inspect the complete captured cycle record**
+disclosure retains all original network fields, including identities, capture
+counters, token estimates, registry counts, and historical pairwise links.
 
 Horizontal ranks use dedicated branch ports. A trunk is drawn once, junctions mark
 its aggregate branches, and expanding a domain exposes the members. Each trunk

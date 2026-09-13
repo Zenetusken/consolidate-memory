@@ -62,8 +62,24 @@ def main(out,capture=False):
             page.locator('#net-view').select_option(value)
 
         def concise_network(label):
-            check(label+' presents a map and brief context without debugging panels',page.locator('#net-detail details, #net-detail table, #net-detail pre, #net-detail .inspector-row, #net-detail .network-holders, #net-detail .network-members').count()==0 and page.locator('#network-blk').evaluate("e=>!['Technical evidence','Stable store','Canonical identity','Holder references','Project directory','tokens (est.)','Registry baseline'].some(text=>e.innerText.includes(text))"))
+            # The four `*tokens`/`Physical mirrors` labels are the deep-dive inspector's ACCOUNTING
+            # rows, removed in b665ffc. They are named here because the compact summary is a <dl>
+            # of label/value rows — the same shape — so the accounting vocabulary is what it would
+            # regress toward, one row at a time. `Domain`/`Scope`/`Home domain` are NOT listed:
+            # those labels were shared with the removed panel and are legitimately the summary's
+            # own, so forbidding them would fail the fix rather than a regression.
+            check(label+' presents a map and brief context without debugging panels',page.locator('#net-detail details, #net-detail table, #net-detail pre, #net-detail .inspector-row, #net-detail .network-holders, #net-detail .network-members').count()==0 and page.locator('#network-blk').evaluate("e=>!['Technical evidence','Stable store','Canonical identity','Holder references','Project directory','tokens (est.)','Registry baseline','Always-loaded tokens','Mirror index tokens','Recall tokens','Physical mirrors'].some(text=>e.innerText.includes(text))"))
             check(label+' keeps network inventory and accounting off the dashboard',page.locator('#network-data:visible, #network-blk .budget-grid:visible, #network-blk #xp-strip:visible').count()==0)
+            # The summary replaced a debugging panel, so it carries a hard row budget: a compact
+            # view that can accrete one row at a time becomes that panel again, and no other check
+            # here would notice. The pairing is the structural half — a <dl> whose dt/dd counts
+            # disagree renders as a shifted grid, not as an error, so nothing else can catch it.
+            # Both halves are view-independent, so this needs no branch: in the fleet the summary
+            # does not exist and 0==0 is the correct reading, while the six focused call sites run
+            # it with a real summary on screen — where the ceiling is a boundary test, not a 0<0.
+            check(label+' keeps the selection summary to a handful of paired rows',
+                  page.locator('#net-detail .network-summary > dt').count()==page.locator('#net-detail .network-summary > dd').count()
+                  and page.locator('#net-detail .network-summary > dt').count()<=4)
 
         def resize(width):
             page.set_viewport_size({'width':width,'height':1000})
@@ -121,7 +137,7 @@ def main(out,capture=False):
             check(label+' fits all activity inside the report without horizontal scrolling',page.locator('.activity-scroll').evaluate('''e=>{const c=e.getBoundingClientRect(),r=e.querySelector('#trend').getBoundingClientRect();return e.scrollWidth<=e.clientWidth+1 && r.left>=c.left-1 && r.right<=c.right+1;}'''))
 
         def controls_layout(label):
-            failures=page.locator('.chrome button,.dreamnav .nav-link,#app .report-nav button,#network-blk .inspector-choice,#net-search,#net-view,#activity-controls button,#activity-cycle-select,#app .open-dream,#app button.evidence-link,#app .nm-diff,#app .file-evidence-link,#app summary,#app section.blk>.shead,#archive select').evaluate_all('''es=>es.filter(e=>{const r=e.getBoundingClientRect();if(!r.width||!r.height)return false;for(let p=e.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS'&&!p.open&&!(e.tagName==='SUMMARY'&&e.parentElement===p))return false;return true;}).flatMap(e=>{const r=e.getBoundingClientRect();return r.height<43.5||r.width<43.5?[{name:e.getAttribute('aria-label')||e.textContent.slice(0,70),width:r.width,height:r.height}]:[];})''')
+            failures=page.locator('.chrome button,.dreamnav .nav-link,#app .report-nav button,#network-blk .inspector-choice,#net-breadcrumbs button,#net-search,#net-view,#activity-controls button,#activity-cycle-select,#app .open-dream,#app button.evidence-link,#app .nm-diff,#app .file-evidence-link,#app summary,#app section.blk>.shead,#archive select').evaluate_all('''es=>es.filter(e=>{const r=e.getBoundingClientRect();if(!r.width||!r.height)return false;for(let p=e.parentElement;p;p=p.parentElement)if(p.tagName==='DETAILS'&&!p.open&&!(e.tagName==='SUMMARY'&&e.parentElement===p))return false;return true;}).flatMap(e=>{const r=e.getBoundingClientRect();return r.height<43.5||r.width<43.5?[{name:e.getAttribute('aria-label')||e.textContent.slice(0,70),width:r.width,height:r.height}]:[];})''')
             check(label+' gives visible controls usable hit areas '+json.dumps(failures),not failures)
             check(label+' distinguishes primary navigation from secondary controls',page.locator('.open-dream').evaluate('e=>{const a=getComputedStyle(e),b=getComputedStyle(document.querySelector("#activity-controls button"));return a.backgroundColor!==b.backgroundColor && a.borderStyle==="solid" && parseFloat(a.borderRadius)>=6 && a.color!==b.color;}'))
             check(label+' explains diff buttons before clicking',page.locator('.nm-diff,.file-evidence-link').evaluate_all('es=>es.every(e=>e.querySelector(".diff-action")?.textContent==="View diff" && e.getAttribute("aria-label")?.includes("diff"))'))
@@ -135,7 +151,7 @@ def main(out,capture=False):
                 return parseFloat(heading.fontSize)>=24 && +heading.fontWeight>=600 && parseFloat(conclusion.fontSize)>parseFloat(body.fontSize) && +conclusion.fontWeight>=600 && parseFloat(source.fontSize)<parseFloat(body.fontSize) && new Set([heading.color,body.color,source.color]).size>=3;
             }'''))
             failures=page.evaluate('''()=>{
-                const selectors=['.blk .shead h3','.section-purpose','.summary-outcome','.summary-evidence','.network-conclusion','.network-selection-name','.network-attribution','.network-detail-section h5','.network-holders','.network-members','#net text','#net-legend','.source-note','.health-status','#activity-inspector','.activity-copy','.open-dream','.evidence-link','.diff-action','.diff-name','.chrome button','#app summary','#app .report-nav button','#activity-cycle-select'];
+                const selectors=['.blk .shead h3','.section-purpose','.summary-outcome','.summary-evidence','.network-conclusion','.network-selection-name','.network-attribution','.network-detail-section h5','.network-holders','.network-members','.network-summary dt','.network-summary dd','.crumb-trail','#net-legend-note','#net text','#net-legend','.source-note','.health-status','#activity-inspector','.activity-copy','.open-dream','.evidence-link','.diff-action','.diff-name','.chrome button','#app summary','#app .report-nav button','#activity-cycle-select'];
                 const rgba=s=>{const m=s.match(/[\\d.]+/g);return m?[+m[0],+m[1],+m[2],m[3]===undefined?1:+m[3]]:[0,0,0,0];};
                 const over=(fg,bg)=>[0,1,2].map(i=>fg[i]*fg[3]+bg[i]*(1-fg[3])).concat(1);
                 function background(e){const chain=[];for(let n=e;n;n=n.parentElement)chain.unshift(n);let bg=[255,255,255,1];for(const n of chain)bg=over(rgba(getComputedStyle(n).backgroundColor),bg);const node=e.closest('.net-node');if(node)bg=over(rgba(getComputedStyle(node.querySelector('rect')).fill),bg);return bg;}
@@ -210,18 +226,38 @@ def main(out,capture=False):
         check('keyboard view selection reaches the final sharing group without losing select focus',page.locator('#net').get_attribute('data-kind')=='group' and page.locator('.network-root').text_content().startswith('api-contract') and page.locator('#net-view').evaluate('e=>e===document.activeElement'))
         page.keyboard.press('Home')
         check('keyboard view selection returns to all captured projects',page.locator('#net').get_attribute('data-kind')=='fleet' and page.locator('#net-view').input_value()=='fleet')
+        # The keyboard path. Activating a node must move the graph to that project AND leave focus
+        # on the node: it used to land on .network-root, whose own handler is reset(), so the next
+        # Enter undid the activation. This check is the reversal of that pin — it fails pre-fix.
         page.locator('.net-node[data-current="true"]').focus();page.keyboard.press('Enter')
-        check('keyboard selection retains a visible focus indicator',page.locator('.network-root').evaluate("e=>{const s=getComputedStyle(e);return e===document.activeElement && e.matches(':focus-visible') && s.outlineStyle!=='none' && parseFloat(s.outlineWidth)>0;}"))
-        page.locator('.net-node[data-current="true"]').click()
-        check('a pointer click on an SVG project clears the previous keyboard focus rectangle',page.locator('.network-root').evaluate("e=>{const s=getComputedStyle(e);return s.outlineStyle==='none'||parseFloat(s.outlineWidth)===0;}"))
+        check('keyboard activation reaches the activated project and keeps focus on that node',page.locator('#net').get_attribute('data-kind')=='project' and page.locator('.net-node[data-current="true"]').evaluate("e=>{const s=getComputedStyle(e);return e===document.activeElement && e.matches(':focus-visible') && s.outlineStyle!=='none' && parseFloat(s.outlineWidth)>0;}"))
+        # The pointer path, on a DIFFERENT node: the anchor must follow the click. It was wired to
+        # the fleet capture trigger, so clicking atlas-web left atlas-api stroked and labelled
+        # "This project" — the map answered a question the user never asked.
+        page.locator('.net-node[data-node="atlas-web"]').click()
+        check('a pointer click re-anchors the graph to the clicked project, not the capture trigger',page.locator('.net-node[data-current="true"]').get_attribute('data-node')=='atlas-web' and page.locator('.net-node[data-current="true"]').evaluate("e=>e===document.activeElement && !e.matches(':focus-visible') && (getComputedStyle(e).outlineStyle==='none'||parseFloat(getComputedStyle(e).outlineWidth)===0)"))
+        check('the position trail names the focused view and offers exactly one way back',page.locator('#net-breadcrumbs').inner_text().split()==['Captured','fleet','›','Project','›','atlas-web'] and page.locator('#net-breadcrumbs button').count()==1)
+        page.locator('#net-breadcrumbs button').click()
+        check('the trail back-control returns to the fleet and leaves no trail behind',page.locator('#net').get_attribute('data-kind')=='fleet' and page.locator('#net-breadcrumbs').inner_text()=='' and page.locator('#net-breadcrumbs button').count()==0)
+        # Back to atlas-api for the fact flow below: those checks select release-checks, which
+        # atlas-web does not hold, so staying on the project clicked above would strand them.
+        page.locator('.net-node[data-node="atlas-api"]').click()
         concise_network('project selection')
         check('project context offers shared facts without token or identity accounting','release-checks' in page.locator('#net-detail .network-facts').inner_text() and '984' not in page.locator('#net-detail').inner_text() and 'sample-atlas-api' not in page.locator('#net-detail').inner_text())
         fact_id=next(f['fact_id'] for f in record['network']['fact_holdings'] if f['name']=='release-checks')
         page.locator('#net-detail [data-fact-id="'+fact_id+'"]').click()
-        check('switching from keyboard to pointer removes the graph focus rectangle',page.locator('.network-root').evaluate("e=>{const s=getComputedStyle(e);return s.outlineStyle==='none'||parseFloat(s.outlineWidth)===0;}"))
+        # The one activation with no successor: inspect() rewrites #net-detail, destroying the
+        # button that was clicked, so focus would be stranded on <body>. focus() falls back to the
+        # root here — assert it lands on a real control and shows no keyboard rectangle.
+        check('switching from keyboard to pointer removes the graph focus rectangle and strands no focus on body',page.locator('.network-root').evaluate("e=>e===document.activeElement && (getComputedStyle(e).outlineStyle==='none'||parseFloat(getComputedStyle(e).outlineWidth)===0)"))
         check('focused fact names its subject and leaves exact holder names on the graph','release-checks' in page.locator('.network-selection-name').inner_text() and set(page.locator('.net-node').evaluate_all('es=>es.map(e=>e.dataset.node)'))=={'atlas-api','eval-lab','release-tools'})
         concise_network('focused fact')
         check('focused fact does not repeat the graph as a holder list','atlas-api' not in page.locator('#net-detail').inner_text() and 'Holder references' not in page.locator('#net-detail').inner_text())
+        # The escape hatch. reveal() has to open #record-json's own <details> ancestor before it
+        # can scroll to and focus it, so a link that merely moved the viewport would pass a
+        # visibility check while leaving the record shut.
+        page.locator('.network-record-link').click()
+        check('the record link opens the complete captured record and lands focus inside it',page.locator('#record-json').evaluate("e=>{const d=e.closest('details');return d!==null&&d.open&&e===document.activeElement;}"))
         geometry('canonical fact')
         network_view('fleet')
         page.locator('#net-search').fill('dotfiles')
@@ -230,6 +266,12 @@ def main(out,capture=False):
         check('a searched domain can be collapsed and expanded',page.locator('.net-node').count()==0)
         page.locator('.domain-junction[aria-expanded="false"]').click()
         check('expanding a searched domain restores its matching project',page.locator('.net-node').count()==1 and page.locator('.net-node').get_attribute('data-node')=='dotfiles')
+        # dotfiles has no groups and no edges, so both counts are absent rather than zero. The rule
+        # is that absence and emptiness never stack and a count renders only when it is >0 — so the
+        # summary must say so in words and must not print a bare 0 next to an unmeasured field.
+        page.locator('.net-node[data-node="dotfiles"]').click()
+        summary=page.locator('#net-detail .network-summary').inner_text()
+        check('an unshared project reports absence as absence rather than as a measured zero',summary.count('None recorded')>=2 and re.search(r'\b0\b',summary) is None)
         network_view('fleet')
         check('adverse verification is open and routine store evidence is collapsed',page.locator('#verification-evidence').get_attribute('open') is not None and page.locator('#store-checks').get_attribute('open') is None)
         check('three independent evidence states replace duplicate health cards',page.locator('#health-summary:visible').count()==0 and sorted(page.locator('#verification-evidence .health-status, #store-checks .health-status, #file-changes .health-status').evaluate_all('es=>es.map(e=>e.dataset.state)'))==['Needs attention','Recorded clear','Recorded clear'])
@@ -319,6 +361,32 @@ def main(out,capture=False):
                 report_layout(theme+' '+str(width));lower_layout(theme+' '+str(width));controls_layout(theme+' '+str(width))
                 check('brief network context stays below the graph '+theme+' '+str(width),page.locator('#net-detail').bounding_box()['y']>=page.locator('.map-scroll').bounding_box()['y']+page.locator('.map-scroll').bounding_box()['height']-1)
             visual_hierarchy(theme)
+            # The map's own surfaces — the position trail, the selection summary and the record
+            # link — render ONLY in a focused view, so the fleet passes above can never see them:
+            # a selector list walked in one view is blind to every surface another view owns.
+            # select_option fires change even when it re-selects, so this pins the fleet first.
+            page.locator('#net-view').select_option('fleet')
+            page.locator('.net-node[data-current="true"]').click()
+            visual_hierarchy(theme+' focused');controls_layout(theme+' focused')
+            # The mark must survive the pointer. Two rules carry it and both are same-specificity
+            # with the :hover/:focus cue, so source order decides — and the shipped palettes order
+            # them OPPOSITELY. Comparing fill+stroke before and against hover is what catches that:
+            # unscoped, the cue repaints the anchor exactly while the pointer is on it.
+            # Park the pointer and take the anchor out of :focus first. Both palettes carry the
+            # cue on `:hover, :focus` as one rule, so an anchor still focused from the click that
+            # opened this view has ALREADY been repainted — measuring its "rest" state there
+            # compares two repainted readings and the check passes with the defect in place.
+            # Parking also matters because the click left the pointer somewhere on the graph.
+            page.locator('#net-view').focus();page.mouse.move(0,0)
+            read="e=>{const s=getComputedStyle(e);return {mark:s.fill+'|'+s.stroke,w:s.strokeWidth};}"
+            rest=page.locator('.net-node[data-current="true"] rect').evaluate(read)
+            page.locator('.net-node[data-current="true"]').hover()
+            hovered=page.locator('.net-node[data-current="true"] rect').evaluate(read)
+            page.mouse.move(0,0)
+            # Two-sided: the mark holds, AND the hover still answers on width. Asserting only the
+            # first would pass if hover feedback were deleted outright instead of scoped.
+            check(theme+' focused keeps the anchor mark under the pointer while still answering it',rest['mark']==hovered['mark'] and rest['w']!=hovered['w'])
+            page.locator('#net-breadcrumbs button').click()
             page.screenshot(path=str(out/('report-'+theme+'.png')),full_page=True)
             page.emulate_media(media='print')
             check(theme+' prints with white surfaces and readable ink',page.locator('body').evaluate('e=>getComputedStyle(e).color')=='rgb(23, 43, 67)' and page.locator('html').evaluate('e=>getComputedStyle(e).colorScheme')=='light')
