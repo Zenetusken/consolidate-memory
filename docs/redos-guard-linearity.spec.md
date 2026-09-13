@@ -165,14 +165,19 @@ asserts (§4).
 
 §3's bounds carry an allowance for a slower **machine**. Version is a separate axis, and it is the
 one that matters most here: the runner that actually failed was **3.8**, the oldest in the matrix.
-Measured by exec'ing the committed guard block verbatim against the shipped pattern under each
-locally available interpreter, one at a time on a quiet box:
+Measured by timing the **same scan the guard performs** — `ms._SECRET.search` on the guard's own
+payloads at the guard's own sizes (`"a1b2-c3d4." * 2400`, `"x" * 47980 + "password" + "y" * 12`,
+`"authorization" + " " * 23987`), bracketed in `process_time()` exactly as the block brackets it —
+seven trials per interpreter across **two passes**, taking each interpreter's **floor**. The last
+row is not timed at all: it is the verdict of exec'ing the committed guard block **verbatim** (the
+slice §9's recipe takes), which is how all four checks were separately confirmed to pass, at their
+real bounds, under all five interpreters:
 
 | payload @ n | 3.10.12 | 3.11.15 | 3.12.13 | 3.13.15 | 3.14.6 | spread |
 | --- | --- | --- | --- | --- | --- | --- |
-| dotted @ 24 000 | **0.044** | 0.037 | 0.039 | 0.037 | 0.031 | 1.42× |
-| alnum @ 48 000 | **0.139** | 0.135 | 0.134 | 0.123 | 0.113 | 1.23× |
-| authz @ 24 000 | 0.006 | 0.006 | **0.007** | 0.006 | 0.005 | 1.40× |
+| dotted @ 24 000 | 0.0343 | 0.0373 | **0.0387** | 0.0341 | 0.0333 | 1.16× |
+| alnum @ 48 000 | **0.1391** | 0.1293 | 0.1294 | 0.1229 | 0.1118 | 1.24× |
+| authz @ 24 000 | 0.0058 | 0.0060 | **0.0068** | 0.0058 | 0.0055 | 1.24× |
 | the structural pin | pass | pass | pass | pass | pass | — |
 
 (Worst reading per payload in bold.) **This table carries readings and the spread only** — the
@@ -182,22 +187,37 @@ re-derivation moved the bounds without moving this table, leaving a second copy 
 a margin argument computed from the stale ones. One table is how the drift happened; not keeping
 two is how it stays fixed.
 
-Two things follow. **Older is slower** — 3.10 owns the worst reading on two of the three payloads
-and 3.14 the best on all three — so the axis leans in the safe direction for the 3.8 runner this
-patch exists for, rather than against it. That last step is an **extrapolation from the measured
-trend, not a measurement**: 3.8 is not installable here (§2.5's recorded gap), so the evidence for
-the runner this patch is *for* is the CI matrix, not this table. The spread across the whole
-supported range, though, is measured: **≤1.42×**. It is a *ratio*, so §3.1's under-measurement
-concern cancels in it — both ends move together — which is why this axis can be read from single
-quiet runs while `S*` could not.
+**The floor — and not one reading per interpreter — is itself a finding.** A second pass through the
+five moved 3.13's alnum reading from 0.1229 to 0.2115, a **72%** swing; that is §3.1's defect
+appearing on a different axis, a single reading presenting as a tight number. And a *ratio* divides
+two such readings, so independent noise does **not** cancel in it — it adds. The `spread` column is
+therefore honestly read as **an upper bound on the version effect, not a precise factor**: the true
+systematic difference is no larger than what is tabulated, and may be smaller. The arithmetic below
+composes a deliberately pessimistic number.
+
+**3.14.6 is fastest on all three payloads; the worst reading falls on 3.12.13 for two of the three
+and on 3.10.12 for one.** There is **no age trend.** An earlier draft of this subsection reported
+"older is slower", with 3.10 owning the worst reading on two payloads, and leaned on that to argue
+the axis favours the 3.8 runner this patch exists for. Re-measured as a floor over trials rather
+than as a single reading, it does not survive: 3.12.13 — this box's own reference interpreter, and
+neither the oldest nor the newest — is the slowest on dotted and authz. The argument it supported has
+to be given up with it, which is the honest cost: **the version axis cannot be extrapolated from
+these five interpreters to 3.8 at all.** What is bounded here is the observed spread among the
+interpreters that exist on this box, **≤1.24×**, and nothing beyond it. The evidence for 3.8 remains
+the CI matrix — which is where the flake was observed in the first place.
 
 **The spread is not free, and correcting §3's arithmetic is what makes that visible.** Version
 composes with the admission margin rather than sitting beside it: dotted — the tightest bound, at
-**2.16×** — would have `1.42×` of that consumed by a 3.10-class interpreter, leaving **1.52×** for
-box speed. The pre-correction text called the same 1.42× "about a third of the 4.2× allowance",
-which was arithmetically true of the pre-correction margin; the re-derivation made the cushion
-smaller, not the spread. Version *and* a slower box together can therefore consume dotted's margin,
-which is the trade R1 names in §8.
+**2.16×** — would have `1.24×` of that consumed, leaving **1.74×** for box speed. The pre-correction
+text called a `1.42×` spread "about a third of the 4.2× allowance", which was arithmetically true of
+the pre-correction margin; the re-derivation made the cushion smaller, not the spread. Version *and*
+a slower box together can therefore consume dotted's margin, which is the trade R1 names in §8.
+
+One method note: these runs were taken with another process holding ~48% of a core, which is not the
+quiet box §9 asks for. It does not corrupt them, for the reason §2.2 selects this clock — the reading
+is per-process CPU, so a competitor costs second-order cache effects rather than direct descheduling.
+Within-interpreter floor-to-ceiling spread was usually ≤2% but not always (3.10's dotted spanned
+0.0343–0.0373, 8.7%, on the second pass), which is the same instability the floor rule absorbs.
 
 The structural pin is flat across all five **by construction**, and that is the point of choosing a
 source pin over a behavioural one: it reads `pattern` — a string — and the interpreter decides only
@@ -522,8 +542,9 @@ site.
 
 The tightest bound is dotted's, and it is deliberately the one to watch: 2.16× is the least
 headroom in the set, so a slower runner or a heavier load shows up there first. §2.5 bounds the
-version axis separately at ≤1.42× across the supported interpreters, which leaves the remainder for
-a genuinely slower machine — the trade R1 names rather than a margin that is free.
+version axis separately at **≤1.24×**, and cannot be extended past the five interpreters installed
+here — so the remainder is for a genuinely slower machine, the trade R1 names rather than a margin
+that is free.
 
 **It does not claim to detect cap widening any more — it now does, and that is a behaviour change
 worth naming.** The structural pin requires the eyJ arm's three caps as exact literals (§4.1), which
@@ -604,7 +625,7 @@ found one.
 | re-derivable from the committed tree | §2.1, §2.3 shipped columns, §2.4 pre-fix and shipped, §5 matrix, §4.1's 12 pin cases, §7's headroom and the two non-guards, the three bounds | §9's recipe, against the committed `_SECRET`; the pin cases by mutating the source with asserted counts |
 | re-derivable by scanning the pattern | the **20 unbounded quantifiers** in live arms (§8's companion in `SECURITY.md`) | strip `re.X` comments, collapse `[classes]`→`C` and `\x`→`E`, count `[*+]\|\{\d+,\}` — 22 raw, 20 after the collapse (2 are literal `+` inside classes) |
 | re-derivable by reading a file | `SECURITY.md`'s cap-coverage claim: `facts_manifest.py` caps at 4 MiB, `sync_global.py` does not | `os.read(fd, 4 * 1024 * 1024)` versus an uncapped `path.read_text` in `_safe_read_text` |
-| re-derivable given the interpreters | §2.5 | §9's recipe under each of 3.10–3.14; requires all five installed |
+| re-derivable given the interpreters | §2.5 | §9's recipe under each of 3.10–3.14, **floor** over 7 trials × 2 passes; requires all five installed |
 | re-derivable only with the stress harness | §2.2, §3.1's `S*` column, §2.3's `S*` column | §9 plus 48 spinners, worst-of-3-batches; readings vary with core count |
 | derived from rows above, not a fresh measurement | §6.1's 4.6×–883× and §6.3's clearance argument | divide §2.3's mutant column by its `S*` column; §6.3's monotonicity is §2.1's linear shipment against a quadratic revert |
 | **extrapolated** from measured endpoints, labelled as such | §6.2's ~1.6× margin at n = 96 000, and the n ≈ 160 000 admission point | §2.1 (linear) + §2.4's table (quadratic) + §3.1's 6.32× inflation held constant — no reading exists at those sizes |
