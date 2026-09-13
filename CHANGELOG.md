@@ -52,9 +52,25 @@ gives 0.0627 against 0.2360 across batches, and a bound derived from it would ha
   pin reading green. The replacement strips `re.X` comments the way the *engine* does — unescaped,
   outside a character class, plus `(?#…)` groups — before splitting the alternation, and requires
   exactly one arm to carry the anchor. Measured: the old predicate reads PASS (evaded) on all three;
-  the new one trips on all three. Twelve cases total, every mutation asserting that its edit applied
-  first — four of an earlier draft's eleven were silent no-ops that certified a pin they never
-  exercised.
+  the new one trips on all three.
+- **A fourth evasion, found by review after that fix was written — and it walked through it.** The
+  scanner tracked character classes (for the comment rule) and then **discarded that tracking at the
+  split**, so a `|` that was a *member* of a class still split the arm. `[A-Za-z|_]` — a class whose
+  third member happens to be a pipe — cut the arm at 36 characters and left the open quantifier
+  `[A-Za-z0-9_-]*` in the **discarded tail**, past the truncation. The old pin reads **PASS** on that
+  mutant. It is the worst regression in the whole cycle's evidence — **225× the shipped scan at
+  n=1500, 1604× at n=6000**, growing faster than quadratically — and it is squarely *inside* the
+  scope the pin claims. The shipped pattern carries **0** in-class pipes, so no verdict on real code
+  was ever wrong; the hole is reachable only by a mutation, which is exactly why it survived a cycle
+  *about* this defect class. The fix folds classes to `C`, escapes to `E`, drops comments, and splits
+  arms in **one pass**, so no class state survives to be forgotten at a later step; it retires a
+  latent sibling too, since the old class-collapse was itself a regex that did not know a class ends
+  at an *unescaped* `]`. **Fifteen cases** total, every mutation asserting its edit applied first —
+  four of an earlier draft's eleven were silent no-ops that certified a pin they never exercised. And
+  each evasion token is tested **twice**: alone (which must PASS — a newline after `eyJ` is
+  insignificant under `re.X`, so demanding a trip there would be demanding a false alarm) and paired
+  with a restored blowup (which must trip). They are compound evasions; testing only the first half
+  had passed for coverage.
 - **Three behavioral checks and one structural**, each failing on a *measured* revert. Every mutant
   has a named detector, and the eyJ mutant is caught by the structural pin **alone** — it measures
   1.00×/1.00×/0.95× separation on the other three payloads, i.e. nothing else in the guard sees it.
@@ -68,7 +84,9 @@ gives 0.0627 against 0.2360 across batches, and a bound derived from it would ha
   legitimate **re-tune** of a cap now fails the check until the figure is re-measured — which is the
   intended prompt, since the spec requires a re-measurement for any cap change. The limit that
   remains is that the pin is scoped to the eyJ arm: an open quantifier introduced into a *different*
-  arm has no structural detector, only the behavioural payloads.
+  arm has no structural detector, only the behavioural payloads. (The fourth evasion above is a
+  reminder that this sentence is weaker than it reads — that one was inside the scope and still went
+  unexamined. A pin's coverage is bounded by its extraction, and an extraction is a parser.)
 - **`SECURITY.md` corrected for the third time on this same bullet** — v0.1.12 had replaced "linear
   (no nested quantifiers)" with a disjointness argument it recorded as "same property, accurate
   wording", and that argument is exactly what the four v0.1.70 instances falsified. The third
@@ -93,7 +111,7 @@ method, the empty-window proof stated in the rule's own quantities, the coverage
 recorded gaps *and* the one this cycle closed, the rejected alternatives (the ratio; a behavioral
 eyJ pin at n=96000, which does not clear the rule **at all** rather than merely costing an ~84s
 failure time; a uniform `n`), and a runnable recipe so every
-number is re-derivable rather than testimony — including the pin's twelve cases, each asserting its
+number is re-derivable rather than testimony — including the pin's fifteen cases, each asserting its
 mutation applied before the verdict is read.
 
 **Verification.** 1794 smoke checks (0 failed — the census is deliberately unchanged: three

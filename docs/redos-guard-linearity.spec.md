@@ -338,8 +338,35 @@ All three are failures of the same thing — stripping comments the way the engi
 the way a text scan guesses. The replacement strips unescaped `#`-to-EOL outside a character class,
 plus `(?#…)` groups, **before** splitting the alternation on `|`; it then requires **exactly one**
 arm to contain the anchor. Every evasion collapses: A′ and C lose their truncation point, and B′'s
-quantifiers become visible. Splitting correctly is the same fix, incidentally — a `|` inside a
-comment or a character class is not an alternation either.
+quantifiers become visible.
+
+**A fourth evasion, found by review after this document shipped.** The paragraph above originally
+ended here — "splitting correctly is the same fix, incidentally: a `|` inside a comment or a
+character class is not an alternation either." That sentence asserted the character-class half was
+handled. **It was not.** The scanner tracked classes (for the comment rule) and then **discarded the
+tracking at the split**, which was a naive `"".join(out).split("|")` — every pipe, including one
+that was a *member* of a class. So `[A-Za-z|_]`, a class whose third member happens to be a pipe, cut
+the arm at 36 characters and left `[A-Za-z0-9_-]*` — an open quantifier — in the **discarded tail**,
+past the truncation. The old pin reads **PASS** on that mutant; the corrected scanner reads **TRIP**.
+
+| mutant | n=1500 | n=3000 | n=6000 | per doubling | vs shipped |
+| --- | --- | --- | --- | --- | --- |
+| shipped scan | 0.0076s | 0.0208s | 0.0479s | 2.3–2.7× | — |
+| `[A-Za-z\|_]` + open tail | 1.7052s | 13.0803s | 76.8100s | 5.9–7.7× | **225× → 1604×** |
+
+That is not a narrow miss: it is the worst regression anywhere in this document, growing faster than
+quadratically, and it walks straight through a pin whose entire purpose is this class of defect. The
+shipped pattern is unaffected — **0** in-class pipes, checked — so this was a hole reachable only by
+a mutation, never a wrong verdict on the code it guards. That is exactly why it survived a cycle
+that was *about* this class of defect.
+
+The lesson is the one §1.3 records twice already, arriving a third time: **modelling a syntax
+partway is worse than not modelling it at all.** The rule was present and correct, and applied to
+one site and not the other — and the half that *was* applied is what made the half that was not read
+as covered. The fix is not a second rule bolted beside the first, but a single scanner that folds
+classes to `C`, escapes to `E`, drops comments, and splits arms in **one pass**, so no class state
+survives to be forgotten at a later step. It retires a latent sibling with it: the old class-collapse
+was itself a regex, `r"\[[^\]]*\]"`, which does not know a class ends at an *unescaped* `]`.
 
 **Why (2) exists.** The quantifier pattern `[*+]|\{\d+,\}` matches `{8,}` but **not** `{8,2000}` —
 deliberately, so a legitimate finite cap never reads as open. The cost is that **widening** a cap
@@ -357,13 +384,21 @@ Other implementation notes that are not incidental:
 - The arm count is asserted, so the check fails — rather than silently passing — if the anchor moves
   and no arm (or more than one) is found.
 
-**Validated, 12 cases, with a control.** Shipped and two legitimate reformats pass. The three
+**Validated, 15 cases, with controls.** Shipped and two legitimate reformats pass. The three
 evasions trip — where the **old** predicate reads PASS on all three. Revert-all-three, a cap written
-as `*`, as `+`, widening, re-tuning, and a new open quantifier placed in front of an intact cap all
-trip. (Every variant asserts its edit applied before the pin is consulted: `str.replace` with a
-non-matching needle silently does nothing, so an unasserted "mutation" re-tests the shipped pattern
-and certifies a pin it never exercised. Four of an earlier draft's eleven cases were no-ops for
-exactly this reason.)
+as `*`, as `+`, widening, re-tuning, a new open quantifier placed in front of an intact cap, a
+duplicated anchor arm, and the in-class-pipe mutant above all trip. (Every variant asserts its edit
+applied before the pin is consulted: `str.replace` with a non-matching needle silently does nothing,
+so an unasserted "mutation" re-tests the shipped pattern and certifies a pin it never exercised.
+Four of an earlier draft's eleven cases were no-ops for exactly this reason.)
+
+**Each evasion token is tested twice, and the second half is the one that matters.** A′/B′/C *alone*
+restore no blowup — a newline after `eyJ` is insignificant under `re.X`, so that mutant is
+semantically the shipped pattern, and **PASS is the correct verdict for it**. They are **compound**
+evasions: the token matters only paired with a restored blowup. A matrix that tested only the token
+would demand a false alarm; one that tested only the blowup would never exercise the evasion at all.
+Both halves are in the matrix, and an earlier draft of this validation had the first half and called
+it coverage.
 
 **A probed negative worth recording.** The obvious way to smuggle an open quantifier past a text
 scan is to exploit `re.X`, which ignores unescaped whitespace — so `{8, }` would read as `{8,}` to
@@ -419,7 +454,10 @@ among equals but the smallest one that works.
    is that no payload can see the eyJ arm — so the arm needing a structural pin is exactly the arm
    that has one, and every other arm has none. Mitigation: the three behavioural payloads are
    measured, so a regression large enough to matter generally lands in one of them. "Generally" is
-   the honest word.
+   the honest word. **And "scoped to the arm" is weaker than it reads** — the in-class-pipe mutant of
+   §4.1 was squarely inside that scope and still went unexamined, because what failed was the
+   *reach within* the scope, not the scope. A pin's coverage is bounded by its extraction, and an
+   extraction is a parser; this one was a parser with a hole in it.
 2. **Every payload is a non-matching probe.** A matching probe was built and measured —
    `"authorization" + K spaces + "A"*64` — and it does **not** discriminate: pre-fix 3.59s, shipped
    3.93s. Pre-fix the unbounded `\s*` matches it, and post-fix the capped `\s{0,20}` cannot span the
@@ -622,7 +660,7 @@ found one.
 
 | tier | what | how a reader checks it |
 | --- | --- | --- |
-| re-derivable from the committed tree | §2.1, §2.3 shipped columns, §2.4 pre-fix and shipped, §5 matrix, §4.1's 12 pin cases, §7's headroom and the two non-guards, the three bounds | §9's recipe, against the committed `_SECRET`; the pin cases by mutating the source with asserted counts |
+| re-derivable from the committed tree | §2.1, §2.3 shipped columns, §2.4 pre-fix and shipped, §5 matrix, §4.1's **15** pin cases and the mutant table's per-doubling readings, §7's headroom and the two non-guards, the three bounds | §9's recipe, against the committed `_SECRET`; the pin cases by mutating the source with asserted counts; the mutant table by compiling the in-class-pipe pattern and timing it against the shipped scan |
 | re-derivable by scanning the pattern | the **20 unbounded quantifiers** in live arms (§8's companion in `SECURITY.md`) | strip `re.X` comments, collapse `[classes]`→`C` and `\x`→`E`, count `[*+]\|\{\d+,\}` — 22 raw, 20 after the collapse (2 are literal `+` inside classes) |
 | re-derivable by reading a file | `SECURITY.md`'s cap-coverage claim: `facts_manifest.py` caps at 4 MiB, `sync_global.py` does not | `os.read(fd, 4 * 1024 * 1024)` versus an uncapped `path.read_text` in `_safe_read_text` |
 | re-derivable given the interpreters | §2.5 | §9's recipe under each of 3.10–3.14, **floor** over 7 trials × 2 passes; requires all five installed |

@@ -1100,60 +1100,79 @@ for _redos_name, _redos_payload, _redos_bound, _redos_was in [
 #       which makes the scan pin the comment and never examine the arm. All three are failures of
 #       that stripping, and all three collapse once it is done. Measured: the old predicate reads
 #       PASS (evaded) on all three; this one trips on all three.
+#       A FOURTH was found by review AFTER the first three were closed, and it is why the split is
+#       now class-aware rather than only comment-aware: a '|' inside a character class. The scanner
+#       already tracked classes for the comment rule and then discarded that tracking at the split,
+#       so `[A-Za-z|_]` — a class whose third member happens to be a pipe — cut the arm at 36 chars
+#       and left `[A-Za-z0-9_-]*` in the discarded tail, reading green on a quadratic revert. The
+#       shipped pattern has no in-class '|' (checked: 0 occurrences), so this was a latent hole
+#       reachable only by a mutation, never a wrong verdict on the code it guards. Modelling a
+#       syntax PARTWAY is what made it invisible: the rule was present, and applied to one site.
 #   (b) THE THREE CAPS EXACT AS MEASURED — closes the one gap (a) cannot see: WIDENING a cap
 #       ({8,2000} -> {8,9000}) leaves every quantifier bounded, so (a) accepts it while the sweep
 #       grows 4.5x. Exact literals also mean a re-tune fires this check, which is the intended
 #       behaviour — the spec requires a re-measurement for any cap change, so a false alarm there is
 #       the prompt, not a nuisance to be loosened away.
-# Charsets collapse to C and escapes to E FIRST: [A-Za-z0-9_-] carries a literal '-' and the arm's
-# `\.` is an escape, so a naive scan reports both as quantifier characters.
+# Charsets collapse to C and escapes to E in the SAME pass that splits the arms: [A-Za-z0-9_-]
+# carries a literal '-' and the arm's `\.` is an escape, so a naive scan reports both as quantifier
+# characters — and a second-pass regex doing that fold would not know a class can be ended by `\]`.
 import re as _re_redos  # noqa: E402  — the pattern SOURCE text, not a match against input
 
 
 def _redos_arms(src: str, marker: str) -> list[str]:
-    """Every top-level alternation arm containing `marker`, re.X comments removed exactly as the
-    ENGINE removes them. Stripping comments is what makes splitting on '|' correct at all: a '|'
-    inside a comment or a character class is not an alternation, and all three known evasions of
-    the scan this replaces live in exactly that difference."""
-    out, i, n, in_class = [], 0, len(src), False
+    """Every top-level alternation arm containing `marker`, as the ENGINE reads it: re.X comments
+    dropped, each character class folded to one 'C', each escape to one 'E'.
+
+    All three happen in ONE scanner because each is a place where the pattern's SOURCE text and the
+    engine's reading of it differ, and a scan that models some of them while missing one is worse
+    than one that models none — it reads as handled. Three sites, one rule each: a '|' inside a
+    class is a MEMBER, not an alternation (splitting there truncates the arm, and everything after
+    the truncation goes unexamined — how the class-blind split this replaces read green on a
+    quadratic revert); '#' opens a comment only outside a class; and a class ends at an UNESCAPED
+    ']', so `[\\]]` is one class, not a class plus a stray bracket. Folding classes here rather than
+    in a second regex also means a class body can never leak a '*', '+' or '{n,}' into the scan."""
+    arms, cur, i, n, in_class = [], [], 0, len(src), False
     while i < n:
         c = src[i]
-        if c == "\\":                      # an escape binds the next char, even '#' or ']'
-            out.append(src[i:i + 2])
+        if c == "\\":                      # an escape binds the next char — even '#', ']' or '|'
+            cur.append("E")
             i += 2
             continue
         if in_class:
-            out.append(c)
             if c == "]":
                 in_class = False
+                cur.append("C")
             i += 1
             continue
         if c == "[":
             in_class = True
-            out.append(c)
             i += 1
             continue
         if src.startswith("(?#", i):       # an inline comment group, closed by ')'
             j = src.find(")", i)
             i = n if j < 0 else j + 1
-            out.append(" ")
+            cur.append(" ")
             continue
         if c == "#":                       # a re.X comment runs to end of line
             j = src.find("\n", i)
             i = n if j < 0 else j + 1
-            out.append(" ")
+            cur.append(" ")
             continue
-        out.append(c)
+        if c == "|":                       # the ONLY place an alternation splits
+            arms.append("".join(cur))
+            cur = []
+            i += 1
+            continue
+        cur.append(c)
         i += 1
-    return [arm for arm in "".join(out).split("|") if marker in arm]
+    arms.append("".join(cur))
+    return [arm for arm in arms if marker in arm]
 
 
 _redos_jwt_caps = ("{8,2000}", "{8,4000}", "{6,200}")   # the three caps, as measured this cycle
 _redos_jwt_arms = _redos_arms(ms._SECRET.pattern, "eyJ")
 if len(_redos_jwt_arms) == 1:
-    _redos_jwt_body = _re_redos.sub(
-        r"\\.", "E", _re_redos.sub(r"\[[^\]]*\]", "C", _redos_jwt_arms[0]))
-    _redos_jwt_open = _re_redos.findall(r"[*+]|\{\d+,\}", _redos_jwt_body)
+    _redos_jwt_open = _re_redos.findall(r"[*+]|\{\d+,\}", _redos_jwt_arms[0])
 else:
     _redos_jwt_open = [f"not exactly 1 eyJ arm ({len(_redos_jwt_arms)} found)"]
 _redos_jwt_missing = [c for c in _redos_jwt_caps if c not in ms._SECRET.pattern]
