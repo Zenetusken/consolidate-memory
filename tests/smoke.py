@@ -16131,6 +16131,23 @@ with _tf43.TemporaryDirectory() as _td29:
               f"(render_dashboard <record> {_f33} → exit 0, no `unknown flag`, no traceback)",
               _rc33 == 0 and "unknown flag" not in _se33 and "Traceback" not in _se33)
 
+    # (42) F9 — the combination that silently did nothing. `--demo --persist DIR` exited **0**
+    # with empty stderr and an empty dir: `--demo` builds its record in-process, so its
+    # short-circuit returned before the print→persist→exit block and all three gates were
+    # skipped. Pre-fix measured: rc 0, 0 files persisted, 0 bytes of stderr.
+    _dp42 = Path(_td29) / "demo-persist"
+    _dp42.mkdir()
+    _so42, _se42, _rc42 = _run29("render_dashboard.py", "--demo", "--persist", str(_dp42))
+    check("v0.4.29 pin 42: `--demo --persist DIR` is exit 2 naming the conflict, not a silent "
+          "exit 0 that persisted nothing (pre-fix: rc 0, empty dir, empty stderr — the false-clean "
+          "shape this cycle exists to close, on the one flag no visual-flag list names)",
+          _rc42 == 2 and "--demo" in _se42 and "--persist" in _se42 and not list(_dp42.iterdir()))
+    _so42b, _se42b, _rc42b = _run29("render_dashboard.py", "--demo")
+    check("v0.4.29 pin 42 (REGRESSION, green pre-fix): `--demo` ALONE stays a clean preview — "
+          "exit 0, a rendered record on stdout, nothing on stderr — so the refusal above is scoped "
+          "to the PAIR and a preview did not stop being a preview",
+          _rc42b == 0 and _so42b.strip() != "" and _se42b == "")
+
     # (37) The flag-shape boundary: `-h`/`--help` are rejected on the four and kept on `cm`.
     for _sc37 in ("extract_signals.py", "memory_status.py", "preflight.py", "render_dashboard.py"):
         for _f37 in ("-h", "--help"):
@@ -16198,6 +16215,13 @@ with _tf43.TemporaryDirectory() as _td29:
 # red on 15 blocks AND 56 command lines, arm 2 red on 28 lines, arm 3 green on both trees.
 # The `>= 77` floor keeps the pin non-vacuous if the doc surface shrinks — an empty glob would
 # otherwise pass every arm.
+#
+# ARM 3 IS VACUOUS ON PRE-FIX CODE, and "green on both trees" must not be read as evidence it
+# verified anything there. It asks the parser (`_flagdefined29`), and the pre-fix parsers reject
+# NOTHING — an unknown flag was skipped and the script exited 0 — so every flag reads as defined.
+# Arm 3's teeth are therefore conditional on §2.5's strictness, and the strictness itself is what
+# pins 37/38 verify. Arm 3's job is the *other* direction: with strict parsers in place, a doc line
+# naming a flag no script has gets exit 2 + `unknown flag:` and is caught here.
 _PL29 = ROOT / "plugins" / "consolidate-memory"
 _DOCS29 = sorted((_PL29 / "commands").glob("*.md")) + [
     _PL29 / "skills" / "consolidate-memory" / "SKILL.md",
@@ -16206,14 +16230,163 @@ _PH29 = _re.compile(r'(?<!")(<[^<>\n]*>)(?!")')
 _DOCMIN29 = 77
 
 
-def _docflags29(script: Path) -> "set[str]":
-    """The flags a script could accept: every `--flag` literal in its own source, plus _ui's
-    global visual set (its parser reads the RAW sys.argv, so its flags are invisible to a
-    script-local scan). Deliberately over-permissive — arm 3 is a regression arm, and the failure
-    it exists to catch is a doc naming a flag the script has never heard of."""
-    _src = script.read_text(encoding="utf-8")
-    return set(_re.findall(r"""["'](--[a-z][a-z0-9-]*)["']""", _src)) | {
-        "--ascii", "--color", "--no-color"}
+import tempfile as _tf29, shutil as _sh29  # noqa: E402
+
+_FLAGRE29 = _re.compile(r"--[A-Za-z0-9][A-Za-z0-9._=-]*")
+_PROBE29: list = []
+_FLAGDEF29: dict = {}
+
+
+def _probe_env29():
+    """A throwaway HOME/config/plugin-data tree + cwd, so no probe can reach the real store.
+
+    ISOLATION, measured before it existed: one arm-3 sweep appended a row to the live
+    `<plugin-data>/ops/-tmp/.mutation-log.jsonl` and bumped `control.sqlite`'s WAL, because the
+    probe ran with `cwd="/tmp"` and the ambient HOME — and a later draft of this docstring
+    *claimed* a fresh temp cwd under an isolated HOME that the code did not do. Every variable
+    below is one `store_context` actually reads (`config_root` ← CLAUDE_CONFIG_DIR ·
+    `plugin_data_dir` ← CLAUDE_PLUGIN_DATA · `_home_dir` ← HOME · `CM_STORE_OVERRIDE` ·
+    `CM_DOMAIN`), so the isolation is the resolvers' own inputs rather than a guess at them.
+    """
+    if not _PROBE29:
+        _root = _tf29.mkdtemp(prefix="cmprobe29-")
+        _env = dict(_os53.environ)
+        _env.update({"HOME": _root, "CLAUDE_CONFIG_DIR": _root, "CLAUDE_PLUGIN_DATA": _root,
+                     "CM_STORE_OVERRIDE": _root, "CM_DOMAIN": "probe"})
+        _env.pop("CLAUDE_CODE_SETTINGS", None)
+        _PROBE29.append((_env, _root))
+    return _PROBE29[0]
+
+
+def _proberun29(script: Path, *argv):
+    """Run `script argv…` isolated. RAW output — the in-scope test needs the token it echoes.
+
+    Named `_proberun29`, not `_run29`: this file already has a `_run29` (above, the pin-30/37/38
+    runner, which returns `(stdout, stderr, rc)`). This one takes a `Path` and returns
+    `(rc, stdout, stderr)` — the opposite order. The collision was harmless only because the
+    earlier calls all execute before this definition is reached, which means the name silently
+    means two things and which one you get depends on where in the file you call from. A
+    reordering edit would have swapped the tuples at ~40 call sites.
+    """
+    _env, _root = _probe_env29()
+    try:
+        _p = _sp53.run([sys.executable, str(script), *argv], capture_output=True, text=True,
+                       timeout=30, cwd=_root, env=_env)
+        return (_p.returncode, _p.stdout, _p.stderr)
+    except _sp53.TimeoutExpired:
+        return ("TIMEOUT", "", "")
+    except OSError:
+        return ("OSERR", "", "")
+
+
+def _sig29(script: Path, flag: str):
+    """The script's answer to `flag`, with every flag-shaped token collapsed to `«F»`.
+
+    The collapse is load-bearing, not cosmetic. The oracle below asks "did the script NOTICE the
+    one character that changed?", so `unknown flag: --gc` and `unknown flag: --gcx` must compare
+    EQUAL — without the collapse their raw text differs, which reads as recognition and blesses
+    every undefined flag. Collapsing all tokens (not just the probed one) also makes a usage
+    banner listing the legal flags the same string in both runs, so it cancels.
+    """
+    _rc, _out, _err = _proberun29(script, flag)
+    return (_rc, _FLAGRE29.sub("«F»", _out)[:900], _FLAGRE29.sub("«F»", _err)[:900])
+
+
+def _flagdefined29(script: Path, flag: str) -> bool:
+    """Did `script`'s PARSER notice `flag`? Answered by mutating one character of it, never by
+    reading the script's source.
+
+    `flag + "x"` is a token no parser defines, and it is the SAME SHAPE as `flag`, so running the
+    identical argv twice isolates exactly the one character that changed. A script that answers
+    both runs alike did not notice the flag.
+
+    Three earlier oracles each answered a NARROWER question than "is this flag defined":
+
+      1. a scrape of every `"--flag"` literal in the script's source (`_docflags29`, deleted) —
+         blessed a flag named only in a COMMENT or an error string. Correct by luck of today's
+         sources: measured 0 comment-only flags, so the hole was latent, not absent.
+      2. `"unknown flag" in stderr` — fires on the five custom strict parsers and on NOTHING
+         else, so `cm_ops` / `sync_global` / the two dashboard scripts read as "defines
+         everything". Measured: 25 of 35 pairs were silently blessed.
+      3. the exit code alone — a DEFINED flag that takes a value exits 2 when passed without
+         one, exactly as an unknown flag does. Measured over the 35 pairs: 20 of 35 defined
+         flags exit 2 alone.
+
+    A FOURTH candidate was built and rejected, recorded so it is not re-proposed: run the whole
+    DOCUMENTED argv and mutate the one token (the `argv` column of the differential probe). It
+    should be sound by construction — it is the invocation the docs mean — and it is not:
+    measured on `sync_global.py`, `--gc`/`--list`/`--pull`/`--tokens`/`--utility`/`--harvest`/
+    `--staleness`/`--workflows`/`--network`/`--promote` all read as UNDEFINED, i.e. it is wrong
+    on 10 of the 14 pairs the LONE shape gets right, because a real argv reaches a *different*
+    failure (a missing PROJECT_DIR) that prints the same constant banner. The lone shape also
+    keeps every probe cheap and side-effect-free: a refused argument fails before any work, so
+    no probe launched Chromium (measured: ≤ 0.14 s each).
+    """
+    _key = (script.name, flag)
+    if _key not in _FLAGDEF29:
+        _FLAGDEF29[_key] = _sig29(script, flag) != _sig29(script, flag + "x")
+    return _FLAGDEF29[_key]
+
+
+def _declared29(script: Path, argv) -> str:
+    """What `script`'s OWN parser says it accepts — read from the parser at runtime, never from
+    its source. A source scrape is the oracle this pin already deleted once (`_docflags29`).
+    """
+    _rc, _out, _err = _proberun29(script, *argv)
+    return _out + _err
+
+
+# Each carve-out's WITNESS: a token the script's own usage PRINTS as accepted, yet which the lone
+# oracle calls undefined. That contradiction is the whole reason the script is out of scope — if a
+# parser answers a token it declares with the same bytes it answers garbage with, then no
+# differential can separate "refused because undefined" from "refused for any other reason."
+#
+# (script, the token its usage declares, the argv that makes it print that surface.)
+#
+# The alternative — deriving the carve-out set from the tree under test — is NOT available here,
+# and the reason is worth stating: a pin's control must be INVARIANT under the mutation it detects.
+# On pre-fix code the five lax parsers reject nothing, so the lone oracle already answers
+# "undefined" for every token INCLUDING the ones their banners declare; a measured carve-out would
+# therefore grow until it had swallowed precisely the RED this arm exists to report. The set is
+# static for the same reason the census constant is.
+_ARM3_WITNESS29 = (
+    ("sync_global.py", "--apply", ()),
+    ("cm_ops.py", "--domain", ("project", "--help")),
+)
+
+
+# `_docflags29(script)` — "every `--flag` literal in the script's own source, plus `_ui`'s visual
+# set" — was DELETED in review (F2/F14), not renamed. It answered a different question than arm 3
+# asserts, in the cycle's own defect class: a flag named in a COMMENT or an error string was
+# blessed as defined, so the arm was correct by luck of today's sources rather than by contract.
+# Measured before removing it: **0** comment-only flags, so nothing was passing wrongly yet.
+#
+# The tombstone is a COMMENT rather than a function that raises: a stub whose whole body is an
+# assertion would be a landmine in a file whose mutation runs require every check to report RED
+# rather than abort the suite, and it would fire on the next person who greps for the old name
+# rather than on the next person who needs the wrong answer.
+#
+# ARM 3's REACH, measured and stated rather than implied. Its subject is every ```bash fence line
+# after BACKSLASH CONTINUATIONS ARE ASSEMBLED: 45 distinct (script, flag) pairs. Before assembly
+# it saw 35, because a wrapped command's flags live on the continuation — `render_dashboard.py …
+# \` + `--persist "<dir>"` put the skill's most load-bearing flag on a line with no `.py` token,
+# so arm 3 skipped it, and `--seed` / `--before` / `--diffs` / `--stamp-marker` /
+# `--standing-justify-tokens` / `--from` / `--into` / `--verdict` / `--latest` / `--store` with
+# it. Of the 45, `cm_ops.py` (9) and `sync_global.py` (14) are OUT OF SCOPE — named, counted and
+# asserted, never silently blessed — leaving 22 pairs across 7 scripts that arm 3 really checks.
+#
+# WHY those two, measured rather than assumed (the first draft of this comment gave `cm_ops` the
+# WRONG reason, so the distinction is worth keeping): `cm_ops` DOES echo the token it refuses —
+# `cm_ops: error: unrecognized arguments: --domain` — and is unsound anyway, because it echoes that
+# for a flag its own `project` subparser defines. Naming the token is neither necessary nor
+# sufficient for a differential to be sound; the property that matters is whether the refusal text
+# encodes WHY the parser refused. Neither script's does:
+#   · `sync_global.py` answers every rejection with one constant 412-byte banner. 4 of its 14
+#     documented pairs (`--apply`, `--into`, `--json`, `--registrar`) therefore read as undefined.
+#   · `cm_ops.py` never routes a lone flag to its subparser table. All 9 of its documented pairs
+#     read as undefined.
+# Both are false-RED directions, so the carve-out costs coverage rather than risking a false clean.
+_ARM3_OUT29 = ("cm_ops.py", "sync_global.py")
 
 
 _doc_lines29, _doc_a1, _doc_a2, _doc_a3, _doc_why29 = 0, 0, 0, 0, []
@@ -16235,6 +16408,26 @@ for _f40 in _DOCS29:
                 _doc_why29.append(f"{_f40.name} · unquoted placeholder · {_s40[:44]}")
             # A `<…>` placeholder is ONE argument: normalize it before tokenizing, or a placeholder
             # whose TEXT carries a flag (`--into <the --seed path>`) reads as the script's argv.
+            # ARM 3 IS NOT HERE. It reads LOGICAL lines, not physical ones — see its own loop below.
+
+# Arm 3's own pass, over backslash-ASSEMBLED logical lines. Splitting it out of the physical-line
+# loop above is what lets arms 1 and 2 keep their recorded pre-fix counts (15 blocks + 56 lines,
+# 28 lines) while arm 3 stops skipping every flag that sits past a line wrap.
+_doc_a3_pairs29, _doc_a3_scripts29 = 0, set()
+for _f40 in _DOCS29:
+    for _blk40 in _re.findall(r"```bash\n(.*?)```", _f40.read_text(encoding="utf-8"), _re.S):
+        _logical40, _buf40 = [], ""
+        for _ln40 in _blk40.split("\n"):
+            if _ln40.rstrip().endswith("\\"):
+                _buf40 += _ln40.rstrip()[:-1] + " "
+                continue
+            _logical40.append(_buf40 + _ln40)
+            _buf40 = ""
+        if _buf40:
+            _logical40.append(_buf40)
+        for _s40 in (x.strip() for x in _logical40):
+            if not _s40 or _s40.startswith("#"):
+                continue
             try:
                 _toks40 = _shlex29.split(_re.sub(r"<[^<>\n]*>", "PLACEHOLDER", _s40))
             except ValueError:
@@ -16247,11 +16440,55 @@ for _f40 in _DOCS29:
                 _doc_a3 += 1
                 _doc_why29.append(f"{_f40.name} · no such script: {_py40}")
                 continue
-            _allow40 = _docflags29(_spath40)
+            if _spath40.name in _ARM3_OUT29:
+                continue
             for _tk40 in _toks40:
-                if _tk40.startswith("--") and _tk40 not in _allow40:
-                    _doc_a3 += 1
-                    _doc_why29.append(f"{_f40.name} · {_tk40} is not a {_spath40.name} flag")
+                if _tk40.startswith("--"):
+                    # A script enters the JUDGED set only by contributing a flag pair. Four of the
+                    # documented scripts (`tests/smoke.py`, `simulate_accumulation.py`,
+                    # `validate_manifests.py`, `preflight.py`) are invoked with NO flags at all —
+                    # and probing this file's own path would re-run the suite inside itself.
+                    _doc_a3_scripts29.add(_spath40)
+                    _doc_a3_pairs29 += 1
+                    if not _flagdefined29(_spath40, _tk40):
+                        _doc_a3 += 1
+                        _doc_why29.append(f"{_f40.name} · {_tk40} is not a {_spath40.name} flag")
+
+# The carve-outs' JUSTIFICATION, measured at runtime against each script's own parser rather than
+# asserted in a comment. A carve-out is only honest if it is still necessary: repair `sync_global`
+# so it names its refusals, or `cm_ops` so a lone flag reaches its subparser, and the witness
+# vanishes — this check then goes RED, and the only way back to green is to delete the carve-out
+# and let arm 3 judge the script. Nothing here is scraped from source: `_declared29` reads the
+# script's usage as the PARSER prints it.
+_arm3_witness29 = []
+for _nm29, _tok29, _argv29 in _ARM3_WITNESS29:
+    _p29 = _PL29 / "scripts" / _nm29
+    if not _p29.exists():
+        _arm3_witness29.append(f"{_nm29}: no such script ({_p29})")
+    elif _tok29 not in _declared29(_p29, _argv29):
+        _arm3_witness29.append(f"{_nm29}: its own usage does not declare {_tok29}")
+    elif _flagdefined29(_p29, _tok29):
+        _arm3_witness29.append(f"{_nm29}: the lone oracle now RECOGNISES {_tok29} — carve-out is stale")
+if {n for n, _, _ in _ARM3_WITNESS29} != set(_ARM3_OUT29):
+    _arm3_witness29.append(
+        f"the witness set and the carve-out set have drifted apart "
+        f"({sorted(n for n, _, _ in _ARM3_WITNESS29)} vs {sorted(_ARM3_OUT29)})")
+check("v0.4.29 pin 40 arm 3's carve-outs are still JUSTIFIED, measured against each script's own "
+      "parser: `sync_global.py` prints one constant 412-byte banner for every rejection and "
+      "false-REDs on 4 of its 14 documented pairs; `cm_ops.py` never routes a lone flag to its "
+      "subparser table and false-REDs on all 9. Each is witnessed by a token its OWN usage prints "
+      "as accepted which the lone oracle calls undefined — so the refusal text does not encode the "
+      "reason, and no differential can be trusted on it"
+      + (f" · stale: {'; '.join(_arm3_witness29)}" if _arm3_witness29 else ""), not _arm3_witness29)
+_arm3_judged29 = sorted(_p.name for _p in _doc_a3_scripts29)
+check(f"v0.4.29 pin 40 arm 3's SCOPE is the declared one ({_doc_a3_pairs29} distinct (script, flag) "
+      f"pairs across {len(_arm3_judged29)} scripts: {', '.join(_arm3_judged29)}; "
+      f"`{'`, `'.join(_ARM3_OUT29)}` are the named carve-outs — never silently blessed; floor 20)",
+      _doc_a3_pairs29 >= 20 and len(_arm3_judged29) >= 6
+      and not (set(_arm3_judged29) & set(_ARM3_OUT29)))
+if _PROBE29:
+    _sh29.rmtree(_PROBE29[0][1], ignore_errors=True)
+
 check(f"v0.4.29 pin 40: the documented surface is non-empty ({_doc_lines29} command lines, "
       f"floor {_DOCMIN29} — an empty glob must not pass every arm)", _doc_lines29 >= _DOCMIN29)
 check("v0.4.29 pin 40 arm 1: `bash -n` passes for every bash block and every command line across "
@@ -16261,8 +16498,9 @@ check("v0.4.29 pin 40 arm 2: no UNQUOTED `<…>` placeholder (pre-fix: 28 lines 
       "`a placeholder is quoted`, not `no angle brackets`)"
       + (f" · first: {next((w for w in _doc_why29 if 'placeholder' in w), '')}" if _doc_a2 else ""),
       _doc_a2 == 0)
-check("v0.4.29 pin 40 arm 3 (REGRESSION, green pre-fix): every documented argv names a real script "
-      "and only flags that script defines"
+check("v0.4.29 pin 40 arm 3: every documented argv names a real script and only flags that script "
+      "defines (RED pre-fix — the lax parsers enforced no surface at all, so they answered a flag "
+      "and its mutated twin identically, which is precisely what this arm detects)"
       + (f" · first: {_doc_why29[-1]}" if _doc_a3 else ""), _doc_a3 == 0)
 
 # (41) The PROSE arms — D3's mandate, which pin 40 never carried. Pin 40 parses only ```bash
@@ -16323,7 +16561,7 @@ check("v0.4.29 pin 41 arm B: a `<…>` placeholder in a prose COMMAND span is QU
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 45 + 113)
+      passed + failed + 1 == 1750 + 45 + 117)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

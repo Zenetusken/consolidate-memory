@@ -2011,7 +2011,152 @@ evidence for each is re-derived rather than carried.
 | **F4** — `_POST_ARC_KEYS` was narrower than its own stated criterion | the criterion admits **7** keys introduced strictly after v0.1.54; the tuple named **2**. The first cut even excluded `distill` (v0.1.58), a key *older* than the `usage` (v0.1.63) it already trusted — self-contradicting, not merely narrow | the tuple widened to 7, each key dated by `git log -S` + first containing tag (never CHANGELOG prose, which dates `demotion` to v0.1.8 — eleven releases early). Measured **inert** on both real populations: 0 newly firing across the 55-cycle archive and across 69 records / 44 dreamless in 11 store logs. `audit` (v0.1.53) and `outcome` (v0.1.1) stay out, and they are load-bearing exclusions — 9 of the archive's 17 dreamless records carry one |
 | **F5** — the execution anchor's walk had no grammar | **12** legitimate Phase-2 forms were refused: four unlisted wrappers, their positional operands, their value flags, a `(`-fused subshell, a `then`-led and a `do`-led segment, a `{ …; }` group, an apostrophe in a `#` comment, a Windows drive path | `_WRAPPER_GRAMMAR` (flags-before-positionals, with each wrapper's value-consuming flags), `_PREFIX_TOKENS` + `_lead` for the fused spelling, `_strip_comments`, and a drive-path normalize in `_unfold`. 13 pins, all RED on pre-fix code |
 | **F8** — the anchor's ONE silent hole, and the direction claim it contradicted | a heredoc **body** holding a complete command was segmented and **credited** — a pass that only *wrote* the command into a file passed the arm whose job is to prove it ran. The same comment block called the loud direction "the worse of the two"; the spec's own tie-break (*Uncertain → fire*) and its own words (*"a false clean is permanent and invisible"*) say the opposite | `_strip_heredocs` imported from `distill_scan` (verified import-safe; cross-script imports are the established pattern) and applied before segmentation; the direction paragraph corrected at the constant, in §2.3, and in the commit message |
-| **F2 + F14** — a pin that scraped source text where pin 38 does not | pin 40 arm 3 read `--flag` literals out of **source text**, so a flag mentioned in a comment counted as defined; harmless **only** while no script had a dead flag, which is luck, not a contract — and pin 38 in the same file asserts the opposite rule | unresolved at amend-8's close; carried forward, not implied closed |
+| **F2 + F14** — a pin that scraped source text where pin 38 does not | pin 40 arm 3 read `--flag` literals out of **source text**, so a flag mentioned in a comment counted as defined; harmless **only** while no script had a dead flag, which is luck, not a contract — and pin 38 in the same file asserts the opposite rule | the scrape is **closed in amend-10**, and closing it took three more oracles — the replacement reintroduced the same class twice (a token-masking collision, then an in-scope test whose condition could never be satisfied). **F14 — five hand-maintained flag allowlists — remains OPEN**, and amend-10 says why the arm-3 work did not close it |
+
+**Added in amend-10 (the F2/F14 closure — arm 3's third oracle, and the fourth time this cycle's
+own defect class appeared inside the instrument built to detect it).**
+
+F2 said arm 3's oracle was a source scrape. Replacing it took **three more oracles**, each narrower
+than the claim it carried, and the last one's *soundness test* certified a property that is neither
+necessary nor sufficient. Every number below is re-derived on the final harness; the counts moved,
+which is why the triple's rule exists.
+
+| | oracle | what it actually answered | how it failed |
+| --- | --- | --- | --- |
+| 1 | `_docflags29` — every `"--flag"` literal in the script's source | "does this string appear in this file" | a flag named only in a comment or an error string read as defined (F2). Correct by luck: measured **0** comment-only flags, so the hole was latent, not absent |
+| 2 | `"unknown flag" in stderr` | "did this one particular string appear" | fires on the five custom strict parsers and **nothing else**. Measured: `cm_ops`, `sync_global`, `dashboard_browser`, `dashboard_fixture` never emit it, so **25 of 35** pairs were silently blessed — F2 recurring inside its own fix |
+| 3 | the exit code alone | "did it exit 2" | a **defined** flag that takes a value exits 2 when passed without one. Measured over the 35 pairs: **20 of 35** defined flags exit 2 alone |
+| 4 | the mutation differential — `script --f` vs `script --fx`, every flag-shaped token collapsed to `«F»` | *see below* | bounds its own reach at `_ARM3_OUT29` |
+
+1. **The collapse is load-bearing, and the first cut of it was wrong.** Without collapsing, `unknown
+   flag: --persist` and `unknown flag: --persistx` differ — which reads as *recognition* and blesses
+   every undefined flag. The first cut masked only the probed token, so masking `--gc` also masked it
+   inside a static usage banner that *lists the legal flags*; `--gc` and `--gcx` then looked
+   distinguishable for a reason that had nothing to do with either flag. Masking every flag-shaped
+   token fixes it: a banner naming the same legal flags in both runs collapses to the same string and
+   cancels.
+
+2. **Arm 3 was blind to every flag past a line wrap.** It tokenized per **physical** line, so `_py40`
+   was `None` on a continuation line and every flag following a trailing `\` was skipped — including
+   `--persist`, the skill's most load-bearing flag, plus `--seed` / `--before` / `--diffs` /
+   `--stamp-marker` / `--standing-justify-tokens` / `--from` / `--into` / `--verdict` / `--latest` /
+   `--store`. Assembling backslash continuations before tokenizing moves the subject from **35 to 45**
+   distinct (script, flag) pairs. Arm 1 is line-scoped too, but the wrap does not hide anything from
+   it: `bash -n` returns 0 for a trailing-backslash line *and* for a lone `--persist "x"` line, so its
+   per-line check is nearly vacuous on continuations while remaining correct — a blind spot that
+   cannot produce a false clean.
+
+3. **Naming the token is neither necessary nor sufficient for the oracle to be sound**, and this is
+   the finding that killed the test written to certify it. Measured on the two carve-out scripts:
+   - `cm_ops.py` **does** name it — `cm_ops: error: unrecognized arguments: --domain`, identically
+     for `--domain` and `--domainx` after the collapse — and is unsound anyway, because `--domain` is
+     defined on the `project` **subparser** and a lone flag never reaches that table. All **9** of its
+     documented pairs read as undefined. *So the differential is sound on a script that names nothing
+     and unsound on a script that names everything.*
+   - `sync_global.py` names nothing and is sound on **10 of its 14** pairs; the other **4**
+     (`--apply`, `--into`, `--json`, `--registrar`) are false-REDs.
+
+   The property that actually matters is not whether the refusal *text* mentions the token but whether
+   it encodes *why* the parser refused. Neither script's does: `sync_global` answers every rejection
+   with one constant **412-byte** banner, so a false-RED and a hard-RED are the same bytes. That is
+   the measured justification for the script-level carve-out, and it replaces a claim that had been
+   asserted in the label without being checked.
+
+4. **The test written to police the oracle could not be satisfied, and then certified the wrong
+   property.** The first cut read `_CANON29 in "".join(_sig29(script, _CANON29)[1:])` — searching
+   output that `_sig29` had already collapsed, which rewrites the canonical token itself. Its
+   condition is unreachable by construction, and it reported all **7** judged scripts as unsound.
+   Repaired to read raw output it would have passed — while blessing `cm_ops`, which item 3 measures
+   as unsound. Both halves are the cycle's own thesis: **a guard's label is not its predicate**, and a
+   test that fires on the wrong thing is indistinguishable from a test that works until you check
+   what it measured.
+
+5. **The carve-out cannot be derived from the tree under test.** The tempting replacement — carve out
+   any script whose own usage contradicts the oracle — is not available, and the reason generalizes:
+   **a pin's control must be invariant under the mutation it detects.** On pre-fix code the five lax
+   parsers reject *nothing*, so the differential already answers "undefined" for every token
+   **including the ones their own banners declare**; a measured carve-out would therefore grow until
+   it had swallowed precisely the RED this arm exists to report. The set is static for the same reason
+   the census constant is. What *is* measured is the carve-out's **justification**: each carve-out
+   names a **witness** — a token its own usage prints as accepted which the lone oracle calls
+   undefined — so repairing either parser turns the witness green and the check RED, and the only way
+   back is to delete the carve-out and let arm 3 judge the script. Verified by construction: swapping
+   `cm_ops`'s witness to `--help`, which it *does* recognize, fires the check with `carve-out is
+   stale`.
+
+6. **Arm 3's character changed, so its label did.** It was recorded in amend-8 as *"green pre-fix"*,
+   under the then-current oracle. Under the differential it is **RED pre-fix**: the lax parsers
+   enforced no surface at all, so they answered a flag and its mutated twin **identically** — which is
+   exactly what this arm detects. Its label was corrected from `(REGRESSION, green pre-fix)`. Item 8
+   of amend-9's rule still applies to the arms that earned it; this one no longer does.
+
+7. **The probes were writing to the live store.** One arm-3 sweep appended a row to the real
+   `<plugin-data>/ops/-tmp/.mutation-log.jsonl` and bumped `control.sqlite`'s WAL, because the probe
+   ran with `cwd="/tmp"` and the ambient `HOME`. Worse, a draft of the docstring *claimed* isolation
+   the code did not implement. The environment is now the resolvers' own inputs rather than a guess at
+   them — `HOME` (`_home_dir`), `CLAUDE_CONFIG_DIR` (`config_root`), `CLAUDE_PLUGIN_DATA`
+   (`plugin_data_dir`), `CM_STORE_OVERRIDE`, `CM_DOMAIN`, with `CLAUDE_CODE_SETTINGS` popped — and the
+   throwaway root doubles as cwd. Cost, measured: every probe ≤ **0.14 s** (a refused argument fails
+   before any work, so no Chromium is ever launched).
+
+8. **Arm 3's reach is now stated rather than implied**: **45** distinct (script, flag) pairs across
+   **9** scripts; **23** carved out by name (`cm_ops.py` 9, `sync_global.py` 14); **22 judged across 7
+   scripts** — `dashboard_browser`, `dashboard_fixture`, `distill_scan`, `extract_signals`,
+   `memory_status`, `render_dashboard`, `render_html`. Four documented scripts (`tests/smoke.py`,
+   `simulate_accumulation.py`, `validate_manifests.py`, `preflight.py`) are invoked with **no flags at
+   all** and so never enter the judged set — a script joins it only by contributing a flag pair, which
+   also keeps the suite from probing its own path and re-running itself inside itself.
+
+9. **F14 stays open, and deliberately.** The five hand-maintained flag allowlists are a real
+   duplication (`_KNOWN_FLAGS` in `memory_status` consults its parser directly and cannot drift;
+   `extract_signals`' `_VISUAL_FLAGS` if/elif chain can). Collapsing them into one shared helper in
+   `_ui.py` is a **refactor of shipped parsers**, not a gate fix, and this cycle's mandate is that
+   each gate mean what it claims. It is recorded as open rather than folded in at the close, where it
+   would ship unmeasured.
+
+10. **The arm-3 helpers were added under a name that already meant something else.** `tests/smoke.py`
+    already had a `_run29` — the pin-30/37/38 runner, returning `(stdout, stderr, rc)` and taking a
+    script **name**; the new probe helper took a `Path` and returned `(rc, stdout, stderr)`, the
+    opposite order, under the same name in the same module scope. Nothing failed, because every
+    earlier call executes before the second definition is reached, so the name silently means two
+    things and which one you get depends on *where in the file you call from*. A reordering edit
+    would have swapped the tuples at ~40 call sites with no test between them and the failure. Renamed
+    `_proberun29`. Found by checking for collisions rather than by anything failing — which is the
+    point: this class is invisible until someone moves a line, and the cycle's own instrument had two
+    live instances of it.
+
+11. **Three more findings closed, two deferred, and one now measured as already closed.** The
+    deferrals from the review rounds are dispositioned rather than left implied:
+    - **Closed — F6, the SKILL's stale gate contract.** `SKILL.md` still described the dream-arc gate
+      as *"sleep or wake empty, or ≠ 6 beats"* and asserted *"a missing block escapes the gate by
+      design (the beta WARN covers it next pass)"*. Both halves were falsified by this cycle: a
+      non-string or blank **beat** now fails the arc, and a dreamless record carrying a post-v0.1.54
+      key now fails it at `--persist`. The prose is corrected to the shipped rule, including the
+      7-key `_POST_ARC_KEYS` list — which was itself first written from memory of amend-8's prose and
+      corrected against the constant, the same *"read it, don't recall it"* rule as item 10.
+    - **Closed — F9, `--demo --persist DIR`.** Measured pre-fix: **rc 0, 0 files persisted, 0 bytes
+      of stderr**. `--demo` builds its record in-process, so its short-circuit returned before the
+      print→persist→exit block and all three gates were skipped — the false-clean shape, on the one
+      flag no visual-flag list names. It is now exit **2** naming the conflict, pinned by 42, with its
+      second clause pinning that `--demo` alone is still a clean preview (a regression clause:
+      green on both trees).
+    - **Closed as a doc correction — F11.** `_persist`'s `"no-dir"` return is unreachable from
+      `main`, which refuses a missing `--persist` dir at exit 2 first, and the **only** direct caller
+      in the tests pre-creates its dir. No pin covers it. It is kept as the guard for a dir that
+      vanishes between the two checks, and the docstring now says exactly that. The first draft of
+      that docstring claimed a test exercised it; it did not, and the claim was removed rather than
+      left standing — a documentation fix is still a claim, and this one was checked.
+    - **Already closed — F10 and F12.** `dream_procedure` guards a non-dict `dream` (the empty *list*
+      is read apart from the absent block, deliberate and recorded at the constant), and
+      `beta_checks` now prefers `memory_status.stanza_present` when it exists and falls back to a
+      local copy when it does not.
+    - **Which is why the mutation matrix shows `beta_checks` moving ZERO checks**, and the cluster is
+      the explanation rather than a second defect: the 36-line change is a **compatibility shim**. On
+      the fixed tree `hasattr(_ms, "stanza_present")` is True, so reverting `beta_checks` alone picks
+      the same branch and nothing moves. Its effect appears only where the symbol is absent — the
+      coherent cluster is `beta_checks + memory_status`, which `prefix_pre_fix` covers. A change that
+      no single-file mutation can move is not dead code; it is a change whose subject is a *pair*,
+      and the matrix has to be read at the granularity of the mutation, not the file.
 
 **Why the corpus needed a second, different measurement.** Amend-7 compared the shipped **regex**
 against the first anchor cut and reported 15 flips. That answers *"is replacing the regex right?"*

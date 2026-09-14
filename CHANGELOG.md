@@ -78,9 +78,33 @@ render and no downstream consumer needs a migration.
    bash blocks had malformed invocations: a quote opened before `${CLAUDE_PLUGIN_ROOT}` and closed
    nowhere, unquoted `<…>` placeholders that bash reads as **redirections**, and compound commands
    that silently ran only their first part. Every documented invocation now parses and runs. The
-   suite pins this with three arms over 77 command lines — `bash -n` per block *and* per line, no
-   unquoted placeholder, and every flag a script's own parser defines — because a syntax-only gate
-   passes six lines of `cm-domain.md` while every one of them is wrong.
+   suite pins this with three arms — `bash -n` per block *and* per line, no unquoted placeholder,
+   and every flag a script's own parser defines — because a syntax-only gate passes six lines of
+   `cm-domain.md` while every one of them is wrong.
+
+**The flag arm judges more than it did, and getting there took three oracles.** Its predecessors
+each answered a narrower question than *"is this flag defined"*: a scrape of `--flag` literals out
+of the script's **source** (a flag named only in a comment counted as defined); `"unknown flag" in
+stderr`, which fires on the five custom strict parsers and **nothing else** — measured, **25 of 35**
+pairs were silently blessed; and the exit code alone — **20 of 35** defined flags exit 2 when passed
+without their value. The oracle that replaced them runs the script with a flag and again with one
+character of it mutated, collapsing every flag-shaped token so that a usage banner listing legal
+flags cannot be mistaken for recognition. Three things fell out of building it: the arm read
+**physical** lines, so every flag past a backslash wrap was skipped — including `--persist`, the
+skill's most load-bearing flag — and assembling continuations moves its subject from 35 to **45**
+pairs; and the probes ran against the **live** store, appending to the real ops journal, so they now
+run in a throwaway HOME/config/plugin-data tree. **23** pairs are carved out by name (`cm_ops.py` 9,
+`sync_global.py` 14) leaving **22** judged across 7 scripts, and each carve-out is self-justifying:
+it names a token its own usage prints as accepted that the lone oracle calls undefined, so repairing
+either parser turns the pin RED until the carve-out is removed.
+
+**Two counts that look like one.** The documentation repair covers **77** command lines
+(`commands/*.md` + `SKILL.md`) if you are counting the population the malformation census was taken
+over, and **87** if you count all ten documented files, which is what the pin's subject is — the pin's
+floor is set at 77 for a different reason (an empty glob must not pass every arm). Both are correct
+counts of different subjects, they sit in the same file, and they are `77` and `87` rather than
+"about eighty". The repair is also measured to change **no** line counts (47 / 77 / 87, identical
+pre-fix and post-fix), so it was an in-place rewrite and nothing was dropped in the doing.
 
 Also in this release: the narration reason's numerator is now coverage rather than a label count;
 `render_html`'s and the validator's use of the arc predicate are unchanged by design; and the

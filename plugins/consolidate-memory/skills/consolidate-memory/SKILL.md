@@ -1213,14 +1213,25 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    4 dream-arc incomplete (backfill beats) · 5 unstamped (re-stamp).** Gate
    precedence: both-violating → 3; arc+unstamped → 4, then 5 on the re-render.
 
-   **Dream-arc completeness gate (v0.4.1).** The same terminal `--persist` judges the
-   arc: a PRESENT-but-incomplete dream block (sleep or wake empty, or ≠ 6 beats —
-   5 phase beats + the surfacing line) prints a loud **DREAM ARC INCOMPLETE ⚠**
-   panel, persists the record (it accrues — the log keeps the short-arc record even
-   after you backfill, the integrity precedent), and **exits 4**. Backfill the
-   missing beats, re-render (exit 0 on a complete arc — or on a record with no
-   `dream` block at all, the legacy carve-out). A missing block escapes the gate by
-   design (the beta WARN covers it next pass).
+   **Dream-arc completeness gate (v0.4.1; widened v0.4.29).** The same terminal `--persist`
+   judges the arc: a PRESENT-but-incomplete dream block prints a loud **DREAM ARC
+   INCOMPLETE ⚠** panel, persists the record (it accrues — the log keeps the short-arc
+   record even after you backfill, the integrity precedent), and **exits 4**. Incomplete
+   means any of: `sleep` or `wake` is not a non-empty string; **any `beats[i]` is not a
+   non-empty string** (the panel names the index — a `null`, a `{}` or a number is an arc
+   defect, not a narration gap); or the beat count is ≠ 6 (5 phase beats + the surfacing
+   line). Backfill the missing beats, re-render (exit 0 on a complete arc).
+
+   **The dreamless carve-out is per-record, not blanket (v0.4.29).** A record with no
+   `dream` block at all still exits 0 — that is the legacy carve-out, and it stays, because
+   the block only became mandatory at v0.1.54 and records carry no version stamp. But
+   leniency there is decided **structurally**: if the record carries any key introduced
+   strictly *after* v0.1.54 (`usage` · `demotion` · `distill` · `workflow_proposals` ·
+   `identity` · `narration` · `preflight`), it was written by a version that already
+   required the arc, so its missing block is a **SKIP** — the same panel and **exit 4**,
+   not a clean pass. The persist gate is the only caller that asserts this; the render
+   panel and the archive keep the permissive reading, so no already-archived record
+   retro-flips its display.
 
    **Conversation-truth gates (v0.4.19).** The gates above read what the RECORD says; the
    terminal `--persist` now also verifies against the conversation itself — the dream's session

@@ -1185,7 +1185,16 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> str:
     BEFORE the unstamped refusal, appends the RECONCILED payload, and returns a
     status — "ok" (appended) | "duplicate" (already logged — the exit-4 loop-back
     re-render) | "unstamped" (empty timestamp even after reconcile) | "no-dir" |
-    "io-error". Idempotent on (commit, timestamp)."""
+    "io-error". Idempotent on (commit, timestamp).
+
+    "no-dir" is part of THIS function's contract but is unreachable from `main` (measured,
+    v0.4.29): `main` refuses a `--persist` dir that does not exist at exit 2 BEFORE calling
+    here, and it is the only production caller — the one direct caller in `tests/smoke.py`
+    pre-creates its dir with `mkdir(parents=True, exist_ok=True)`. So this return is NOT
+    covered by any pin, and it is kept rather than deleted because it is the only guard
+    against the dir vanishing between `main`'s `isdir` and this call. Named as an unpinned
+    defensive arm so the next pass does not read it as a live gate: `main`'s
+    `no-dir`/`io-error` arm at its `_persist` call site fires only for `io-error` today."""
     if not os.path.isdir(dirpath):
         print(f"render_dashboard: --persist dir not found, skipping log: {dirpath}", file=sys.stderr)
         return "no-dir"
@@ -1314,6 +1323,17 @@ def main() -> int:
         pruned.append(argv[i])
         i += 1
     argv = pruned
+    if persist_dir is not None and "--demo" in argv:
+        # `--demo --persist DIR` exited 0, persisted NOTHING and printed nothing: `--demo` builds
+        # its record in-process, so the short-circuit below returned before the
+        # print→persist→exit block and all three gates were skipped. Persisting a synthetic
+        # record would be wrong, so the pair is refused rather than honoured — but refused
+        # LOUDLY, because "exit 0, nothing persisted, no trace" is the false-clean shape this
+        # cycle exists to close, and the caller asked for a persist. Distinct from `--demo`
+        # alone, which stays a clean preview.
+        print("render_dashboard: --demo renders a built-in record and cannot be combined with "
+              "--persist — nothing would be persisted and no gate would run", file=sys.stderr)
+        return 2
     if persist_dir is not None and not os.path.isdir(persist_dir):
         # A dir that parses but does not exist was turned into `no-dir` by _persist and then into
         # exit 0 by main — BEFORE either gate was consulted: the false-clean this cycle exists to
