@@ -15843,9 +15843,10 @@ check("v0.4.29 §2.3 (REGRESSION, green pre-fix): a heredoc FEEDING the extracto
 # the first cut tested `-c`/`-m`/`--recalls` by EXACT token membership, which the ATTACHED spelling
 # evades — `-c'import os'`, `-mjson.tool` and `--recalls=3` each arrive from shlex as ONE token, so
 # all three were credited and a pass that never ran the extractor read `verified · ext_unaccounted
-# False`. 10d-4 is the argv-POSITION arm: the first cut credited the token ANYWHERE in argv, so
-# `python3 other.py <path>` — the path handed to a different script as an argument — passed.
-# Post-fix the extractor must be the FIRST operand after the interpreter.
+# False`. A FOURTH, separate arm hides behind those three: the first cut credited the token ANYWHERE
+# in argv, so `python3 other.py <path>` — the path handed to a different script as an argument —
+# passed. Post-fix the extractor must be the FIRST operand after the interpreter. The arm is the
+# last tuple entry below, `the token in argv but not the script python runs`.
 #
 # FOUR of these five are pins; the fifth is a PORT-FIDELITY guard, and the split is measured rather
 # than assumed — one tree per revision, `_extractor_accounted` read directly (the "pre-fix"
