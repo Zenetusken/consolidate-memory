@@ -333,10 +333,22 @@ is bounded and named rather than adopted.
 ### 2.3 The execution anchor
 
 The docstring's claim — *"anchored on EXECUTION"* — is made true by replacing the single regex with
-the structure the claim names: **split the command into top-level segments, tokenize each, and ask
-whether the interpreter actually runs the script.**
+the structure the claim names: **normalize the command, split it into top-level segments, tokenize
+each, and ask whether the interpreter actually runs the script.**
 
-1. **Unfold** backslash-newline continuations first, so a wrapped command is one segment.
+1. **Normalize** first, in the order `distill_scan` pinned for the same job:
+   - **Unfold** backslash-newline continuations, so a wrapped command is one segment;
+   - **normalize a Windows drive path** (`C:\a\b` → `C:/a/b`) — posix `shlex` eats each `\` as an
+     escape, so the `/` before the filename, the separator the token test depends on, is gone
+     before the test can see it. Measured: without this the whole form was unaccounted;
+   - **strip heredoc BODIES** — **imported from `distill_scan._strip_heredocs`**, not re-written
+     here (two copies of one rule drifting apart is the defect class this cycle is about; the
+     cross-script import is the established pattern, cf. `distill_scan`'s own `from memory_status
+     import`). The rule is terminated-heredoc-only, and the **opener's** command line survives;
+   - **strip `#` comments** — `#` opens a comment at the start of a word and outside quotes, so an
+     apostrophe inside one (`# don't re-run this`) can no longer unbalance the tokenizer. That
+     mattered: an unbalanced segment is *Uncertain → fire*, so the anchor was firing on a call that
+     had fully executed.
 2. **Split** on the unquoted top-level operators `;` `&&` `||` `|` `&` and newlines. A separator
    inside quotes is literal. **`&` is a token test, not a character split**: `&&` is matched first,
    and a bare `&` separates only when tokenization yields it as a token of its own — so the `&` in
@@ -345,15 +357,26 @@ whether the interpreter actually runs the script.**
 3. **Tokenize** each segment with `shlex.split(..., posix=True)` — stdlib, and the only way to know
    what is a quoted payload rather than an argument. A segment that cannot be tokenized (unbalanced
    quotes) is **not** accounted: the contract's tie-break is *Uncertain → fire*.
-4. **Decide**, on the token list: walk past a leading prefix of `VAR=VALUE` env assignments (the
-   SKILL's own Phase-2 form is `CM_DREAM_ARC=1 python3 …`) **and wrapper commands drawn from an
-   explicit bounded set** — `env`, `time`, `nohup`, `sudo`, `command`, `exec`, `xargs` — together
-   with any leading `-`-prefixed flags belonging to those wrappers; the next token's basename must be
-   `python3` or `python`; the remainder must carry no `-c` and no `-m`; the remainder must carry no
-   `--recalls`
-   **argv element** (the recall-only mode is not the Phase-2 extract — carried over from the old
-   substring test, restated as a token test because the segment is now the unit); and some remaining
-   token must equal `extract_signals.py` or end with `/extract_signals.py`.
+4. **Decide**, on the token list: walk past
+   - a leading prefix of `VAR=VALUE` env assignments (the SKILL's own Phase-2 form is
+     `CM_DREAM_ARC=1 python3 …`);
+   - the shell's **grouping / control prefixes** — `then` `do` `else` `{` `!` `eval` `(` — including
+     the **`(`-FUSED** spelling `shlex` produces with `punctuation_chars` off, where `(python3`
+     arrives as ONE token whose basename is not an interpreter. This set is a subset of
+     `distill_scan._KW_PREFIX`; `exec` is deliberately **not** in it, because `exec` is a *wrapper*
+     here and a bare prefix-skip would drop its flags;
+   - **wrapper commands drawn from an explicit bounded set**, each with **its own argument
+     grammar** — the flags that consume the next token as their value (`sudo -u root`,
+     `nice -n 10`, `timeout -s KILL`) and the leading positional operands (`timeout 300 …`,
+     `flock /tmp/l …`). Flags are consumed **before** the positionals: `timeout -s KILL 5 python3 …`
+     has a value that is not flag-shaped, and a positionals-first walk would spend the slot on `-s`
+     and read `KILL` as the command word.
+
+   Then the next token's basename must be `python3` or `python`; the remainder must carry no `-c` and
+   no `-m`; the remainder must carry no `--recalls` **argv element** (the recall-only mode is not the
+   Phase-2 extract — carried over from the old substring test, restated as a token test because the
+   segment is now the unit); and some remaining token must equal `extract_signals.py` or end with
+   `/extract_signals.py`.
 
 The `/` requirement is doing the same work the old `(?<![A-Za-z0-9_])` lookbehind did, which is why
 `tests/test_extract_signals.py` and `tools/extract_signalsXpy` stay unaccounted: `endswith` demands
@@ -382,38 +405,56 @@ independently by the missing `/` separator).
 the old regex did.** Measured against the shipped `_INVOKE_RE`, all of `env python3 <tok> --json`,
 `env VAR=1 python3 …`, `time …`, `command …`, `nohup … &`, `sudo …`, `xargs -I{} …` and
 `sleep 5 & python3 …` are accounted **today**; the first prototype made **all eight unaccounted** —
-eight new exit-3 fires on legitimate calls, a regression in the loud-on-clean direction, which is the
-worse of the two. (The four C4 holes flipping the other way are the *intended* diffs; a first count
-conflated the two directions and is corrected here.) Two causes, both now fixed:
+eight new exit-3 fires on legitimate calls. (The four C4 holes flipping the other way are the
+*intended* diffs; a first count conflated the two directions and is corrected here.) Two causes, both
+now fixed:
 
 - the replaced prefix `(?:^|[\s;&|])(?:python3|python)\s+` anchored on **any whitespace or a bare
   `&`**, while the new separator list named `&&` and omitted `&`;
 - a wrapper like `env` or `sudo` is neither a `VAR=VALUE` assignment nor the interpreter, so the walk
   stalled on it instead of reaching `python3`.
 
-With `&` restored at token granularity and the wrapper set added, **all fourteen** measured forms give
-the correct verdict — every inherited form preserved (`xargs -I{}` included, because a wrapper's
-leading `-`-flags are skipped too), **and** `echo python3 <tok>` still unaccounted, **and**
-`--recalls` still unaccounted. Validated by running both prototypes and the shipped regex over the
-same 14-form table: shipped and fixed agree on every row except the four C4 holes, which are the four
-the fix is *for*. The property that matters survives: **`echo` is not a wrapper**, so it never
-reaches the interpreter test. Every residual is in the loud direction — a
-wrapper's *value-taking* flag (`sudo -u root python3 …`) is not modelled, and a wrapper absent from
-the list is unaccounted rather than accounted — a false exit 3 the model can see and report, never a
-false clean. §5 records the list as bounded.
+**The direction of error was stated backwards and is corrected here.** The first cut called the
+loud-on-clean drop "the worse of the two". It is not, and the spec's own contract says so twice: the
+tie-break is *Uncertain → fire*, and a false **clean** is *"permanent and invisible (a fabricated
+record archived as performed)"* while a false **fire** is an exit 3 the model reads, reports, and
+repairs by re-running the extractor plainly. The worse direction is the silent one, and the first cut
+did not merely mislabel it — it **had one**: a heredoc *body* was segmented like any other line, so a
+pass that only **wrote** the command into a file was credited. That is the hole §2.3 step 1's
+imported heredoc strip closes, and it is the reason the repair is specified as *under-account rather
+than over-account* everywhere the two conflict.
 
-**The narrowing's direction is confirmed against the only corpus available, and it is the direction
-the spec claims.** Across every transcript on this machine (908 JSONL files), assistant Bash commands
-mentioning the extractor number **390**. Of those, **56** are accounted by the shipped anchor and
-**15** flip to unaccounted under §2.3's — and **all 15 are false accounts the new anchor correctly
-rejects**: heredoc bodies (`python3 - <<'PY' … extract_signals.py …`), `cat > file` writes, and probe
-scripts where the token is *data*. **Zero** are genuine execution forms. One measured specimen shows
-how loose the shipped anchor is: writing `cat > /tmp/m3.py <<'EOF' … f"echo python3 {TOK} --json" …`
-to a file is accounted **today**, because the regex matches `python3 /x/extract_signals.py` inside a
-heredoc being *written*. So on the one corpus that exists, the anchor trades 15 wrong accounts for 0
-right ones — and the eight wrapper forms the first prototype dropped do not occur in it at all, which
-is exactly why a match set could not have found them and why the corpus is corroboration rather than
-proof.
+**The second cut's residuals, measured, and all twelve closed.** The first §2.3 cut walked past
+wrapper *keywords* but not their arguments, never stripped the shell's grouping prefixes or comments,
+and did not touch drive paths. Run through `judge`'s own seam (`_ext29`), **12** legitimate Phase-2
+forms were unaccounted — four unlisted wrappers (`timeout`, `nice`, `stdbuf`, `flock`) · their
+positional operands (`timeout 300 …`, `flock /tmp/l …`) · their value flags (`nice -n 10`,
+`sudo -u root`, `timeout -s KILL 5`) · a `(`-fused subshell · a `then`-led and a `do`-led segment ·
+a `{ …; }` group · an apostrophe inside a `#` comment · a Windows backslash path. All 12 are
+accounted by the grammar above, and **13 pins** (§3) cover them, each RED on pre-fix code
+(measured: 1895 passed / 13 failed on the pre-fix tree, 1908 / 0 here).
+
+**The corpus, re-derived against the FINAL anchor.** Across every transcript on this machine (946
+JSONL files), **503** assistant Bash commands mention the extractor. The shipped regex accounts
+**95**; the final anchor accounts **46**. The delta is **49 flips accounted → unaccounted and ZERO
+the other way** — nothing new is credited. Classified by inspection: **46** are unambiguous
+non-executions (10 heredoc/`cat >` *writes*, 25 scripts fed to `python3 -` on stdin where the token
+is data, 6 `python3 -c` one-liners, 1 `grep`, 4 `cat > … <<'PY'` writes with a `cd` prefix). The
+remaining **3** are shell-*function*-mediated calls (`probe … python3 $S/extract_signals.py …`,
+where `probe(){ … "$@"; }` runs it) — the anchor cannot resolve a user-defined function, so it fires
+loudly. That is the *Uncertain → fire* contract, not a regression, and §5 records it as a ceiling.
+A specimen of how loose the shipped regex was: writing
+`cat > /tmp/m3.py <<'EOF' … f"echo python3 {TOK} --json" …` to a file is accounted **by the regex**,
+because it matches `python3 /x/extract_signals.py` inside a heredoc being *written*.
+
+**Two baselines, two questions, and both are needed.** The 49-flip number compares the *shipped
+regex* against the final anchor — it is the case for the whole §2.3 rewrite. Against the *first §2.3
+cut* the corpus delta is **ZERO in both directions** (measured: 46 accounted before and after): the
+12 forms above do not occur in this corpus at all. So the widening has no observed victim and no
+observed regression, and the false fires it closes are **latent** — demonstrated synthetically and
+pinned, not observed in the field. A match set could not have found either the 12 or the eight —
+which is exactly why the corpus is corroboration rather than proof, and why every widening here
+carries its own pin rather than resting on the corpus's silence.
 
 ### 2.4 The dream-absent carve-out, closed where it is enforceable
 
@@ -422,17 +463,38 @@ skip the arc" must not.** They are separable, because the record's *own shape* d
 
 `docs/dream-arc-contract.spec.md` supplies both halves of the discriminator: the block became
 mandatory at **v0.1.54**, and *"records carry no plugin-version stamp"* — so the dating must be
-structural. Two keys were introduced **strictly after** v0.1.54:
+structural. The criterion is **"a key introduced strictly after v0.1.54"**, and the first cut applied
+it to **two** of the **seven** keys that satisfy it:
 
 ```python
 # The dream block became MANDATORY at v0.1.54 (2026-07-01) — docs/dream-arc-contract.spec.md:
 # "a latest record written by ≤ v0.1.53 legitimately lacks `dream`". Records carry no version
 # stamp, so legacy-vs-skipped is decided structurally: each of these keys was introduced
-# STRICTLY AFTER v0.1.54 (usage → v0.1.63, 2026-07-04; demotion → v0.1.67, 2026-07-05), so a
-# record carrying either was written by a version that already required the arc — its missing
-# `dream` is a SKIP, not a legacy artifact.
-_POST_ARC_KEYS = ("usage", "demotion")
+# STRICTLY AFTER v0.1.54, so a record carrying any of them was written by a version that already
+# required the arc — its missing `dream` is a SKIP, not a legacy artifact.
+_POST_ARC_KEYS = ("usage", "demotion", "distill", "workflow_proposals", "identity",
+                  "narration", "preflight")
 ```
+
+| key | first tag containing its introducing commit |
+| --- | --- |
+| `distill` | v0.1.58 |
+| `usage` | v0.1.63 |
+| `demotion` | v0.1.67 |
+| `workflow_proposals` | v0.1.87 |
+| `identity` | v0.3.1 |
+| `preflight` | v0.4.16 |
+| `narration` | v0.4.19 |
+
+Dated by `git log --reverse -S'record["<key>"]'` and the first tag containing that commit — **never
+by CHANGELOG prose**, which matches the bare word in any sentence and dates `demotion` to v0.1.8,
+eleven releases early. The first cut was *narrower than its own stated criterion, and
+self-contradicting*: it excluded `distill` (v0.1.58), a key **older** than the `usage` (v0.1.63) it
+already trusted. Two keys stay **out**, by the same rule: `audit` (v0.1.53, pre-mandate) and
+`outcome` (v0.1.1) — and they are load-bearing exclusions, because 9 of this store's 17 dreamless
+archive records carry one and are correctly carved out. Measured **inert** on both real populations:
+the 55-cycle archive (0 newly firing) and the 69 records across 11 store logs (44 dreamless, 0 newly
+firing).
 
 `arc_completeness` gains **`enforce_post_arc: bool = False`**:
 
@@ -1109,24 +1171,31 @@ record still renders and no downstream consumer needs a migration.
 pre-fix code. A pin that never moves on any revert is vacuous; the counts belong to the
 **(restored code, fixture, harness)** triple and are re-derived here, never carried.
 
-Measured 2026-09-13 against the build this spec ships. **The subject is a clone of the base commit
+Measured 2026-09-14 against the build this spec ships. **The subject is a clone of the base commit
 `308e15b`** — named by SHA and never as "HEAD", which moves with the branch and would silently turn
-a re-run into a *post*-fix baseline — **sha256-verified pre-fix on all five changed scripts,
-running this branch's `smoke.py`** — not a `git worktree`, for the reason below. Numbers are the
-final harness's; the pre-`mypy`-fix suite produced the identical split, and both are re-derived
-rather than carried:
+a re-run into a *post*-fix baseline — **byte-verified pre-fix on all five changed scripts
+(`dream_procedure` · `extract_signals` · `memory_status` · `preflight` · `render_dashboard`),
+running this branch's `smoke.py`** — not a `git worktree`, for the reason below:
 
 | tree | result |
 | --- | --- |
-| fixed (this branch) | **1888 passed, 0 failed** |
-| pre-fix (clone of `308e15b`) | **1835 passed, 53 failed** |
+| fixed (this branch) | **1908 passed, 0 failed** |
+| pre-fix (clone of `308e15b`) | **1848 passed, 60 failed** |
 
-`1835 + 53 = 1888`, and all **53** failures are `v0.4.29` checks — **0** failures anywhere else. The
-pre-fix failure count therefore equals the genuine-pin count *exactly*: the 53 are precisely the
-checks this cycle's diff moves, and the **40** further `v0.4.29` checks green on both trees are
-precisely the labelled regression set (pins 3, 6, 8, 9, 15, 20, 29, 34, pin 40 arm 3, and the
-§2.2/§2.3/C2/C4/C6 negative arms). 53 + 40 = 93 — the count the D6 census constant carries as its
-`+ 93`. Nothing in the matrix is unattributed.
+`1848 + 60 = 1908`, and all **60** failures are `v0.4.29` checks — **0** failures anywhere else. The
+pre-fix failure count therefore equals the genuine-pin count *exactly*: the 60 are precisely the
+checks this cycle's diff moves, and the **53** further `v0.4.29` checks green on both trees are
+precisely the labelled regression set (pins 3, 6, 8, 9, 15, 20, 29, 34, pin 40 arm 3, the F8 heredoc
+FEED, the F5 wrapper-with-bare-flag guards, and the §2.2/§2.3/C2/C4/C6 negative arms).
+60 + 53 = 113 — the count the D6 census constant carries as its `+ 113`. Nothing in the matrix is
+unattributed.
+
+**The counts are the TRIPLE's, not the pins'.** A mutation's RED count belongs to (the code it
+restores, the fixture, the harness) together, so every number above was re-derived on this run
+rather than carried from the previous one; the previous triple read 1888/1835/53, and the growth to
+1908/1848/60 is this batch's 14 new checks plus the 13 that move. The anchor's own contribution is
+stated separately and more sharply in §2.3: restoring only `dream_procedure.py` gives **1895 passed,
+13 failed**, so the anchor's 13 are exactly its own.
 
 **The matrix found its own instrument first.** The first three runs died mid-suite, each on a pin
 that asserted on post-fix API without probing it (`amend-9` item 11). The fourth ran to completion
@@ -1168,7 +1237,7 @@ surface** — the `cm` wrapper, which is what a maintainer actually types — me
 concurrently (the v0.4.28 story was a timing flake under load):
 
 ```bash
-python3 tests/smoke.py                                    # 1888 passed, 0 failed
+python3 tests/smoke.py                                    # 1908 passed, 0 failed
 python3 tests/docs_links.py                               # ✓ badge + 6 live docs at v0.4.29
 python3 tests/simulate_accumulation.py                    # green — all lifecycle properties hold
 mypy --config-file mypy.ini                               # Success: no issues found in 42 files
@@ -1181,9 +1250,9 @@ python3 tests/dashboard_browser.py --out /tmp/cm-browser  # 1334 browser checks 
 in the `-home-<name>-` form — so the pin fired on this spec, mid-cycle, at `1887 passed, 1 failed`.
 Repaired in the same commit, and by mechanism rather than by redaction: the literal became "the
 **main worktree's** slug", which carries the reason instead of hiding the value. The pointed part is
-the timing: the `1888` above was first measured **before** this file's §4 was written, so the leak
-sat in a tree that had already reported clean. Not a gate narrower than its rule — a gate **older
-than its subject**. Same class, one remove.
+the timing: the suite count above was first measured **before** this file's §4 was written, so the
+leak sat in a tree that had already reported clean. Not a gate narrower than its rule — a gate
+**older than its subject**. Same class, one remove.
 
 **The repair then reproduced the pin's own ceiling — measured, and left open.** Both of the pin's
 slug arms require a dash *after* the name, so a **bare** `home-<name>` matches neither: the first
@@ -1219,13 +1288,22 @@ spot is **recorded, not closed**: a scheduled decision, not a silent one.
   writable log. Named here as measured-and-open so the next pass inherits a known hole instead of
   rediscovering it; closing it properly means deciding how the gates and the write failure compose,
   which is a bigger change than Cycle A's charter.
-- **The wrapper set is a bounded, hand-written list** (`env` · `time` · `nohup` · `sudo` · `command` ·
-  `exec` · `xargs`), with the same character as `_POST_ARC_KEYS`: it closes the measured regression
-  and it will not generalise to a wrapper nobody listed. Two consequences, both stated rather than
-  fixed: a wrapper's **value-taking** flag is not modelled (`sudo -u root python3 …` reads as
-  unaccounted), and a wrapper outside the list is unaccounted too. Both are *loud* — an exit-3 the
-  model can see — which is why the list can stay short. The alternative, enumerating "any token that
-  could precede an interpreter", is unbounded and would re-open `echo python3 …`.
+- **The wrapper set is a bounded, hand-written table** (`env` · `time` · `nohup` · `sudo` · `command` ·
+  `exec` · `xargs` · `setsid` · `nice` · `stdbuf` · `ionice` · `timeout` · `flock`), each entry
+  carrying its own argument grammar, with the same character as `_POST_ARC_KEYS`: it closes the
+  measured class and it will not generalise to a wrapper nobody listed or a flag nobody modelled. A
+  wrapper outside the list is unaccounted. That is *loud* — an exit-3 the model can see — which is
+  why the table can stay short, and it is why the second cut's 12 dropped forms were a defect worth a
+  cycle and not a cost worth accepting. The alternative, enumerating "any token that could precede an
+  interpreter", is unbounded and would re-open `echo python3 …`.
+- **A user-defined shell FUNCTION is unresolvable, and the corpus contains three.** Measured over the
+  503 real commands (§2.3): `probe … python3 $S/extract_signals.py --json`, where
+  `probe(){ … "$@"; }` runs it, is **unaccounted** — the anchor cannot follow a name it has no
+  definition for, so it fires. This is *Uncertain → fire* working as contracted, and the alternative
+  (resolving function bodies) means parsing a shell script, which is unbounded work for a gate whose
+  job is to catch a *missing* call. Recorded because it is the one shape in the corpus where the
+  anchor's verdict differs from ground truth, and a future pass should inherit it as known rather than
+  rediscover it as a bug.
 - **`_POST_ARC_KEYS` is a two-key list with a dated rationale.** It closes the hole for every record
   written since v0.1.63. A hypothetical record carrying *only* pre-v0.1.63 keys while skipping the
   arc is indistinguishable from a legacy one by construction — that is the price of dating an
@@ -1281,7 +1359,14 @@ Every number above was measured on the pre-fix tree at `308e15b` unless marked o
 | the §2.1 flip count | the strict predicate vs `arc_completeness` over the 38 dict-dream records — 23 complete before, 23 after, **0** flips |
 | the narrowing's 1 true positive | the same walk filtered on `_POST_ARC_KEYS`, plus the neighbouring records' key sets; and the over-fire counter-check (35 records carry a post-arc key *with* a dream block) |
 | the criterion table | the five candidate predicates of §2.4 run over the same 17 dreamless records |
-| the version dating | `CHANGELOG.md`'s `[0.1.54]` (2026-07-01), `[0.1.63]` (2026-07-04), `[0.1.67]` (2026-07-05) sections; the mandate itself from `docs/dream-arc-contract.spec.md` |
+| the mandate date | `CHANGELOG.md`'s `[0.1.54]` (2026-07-01) section, plus the mandate itself from `docs/dream-arc-contract.spec.md` |
+| each `_POST_ARC_KEYS` version | `git log --reverse --format=%H -S'record["<key>"]' -- <path>`, then the first tag containing that commit. **Not** CHANGELOG prose: it matches the bare word in any sentence and dates `demotion` to v0.1.8, eleven releases early |
+| the widened tuple is inert | `arc_completeness` + the strict predicate over the 55-cycle archive (0 newly firing) and the 69 records across 11 store logs (44 dreamless, 0 newly firing) |
+| the §2.3 F5 false fires | `judge` end to end (the `_ext29` seam) over the 12 forms; 12 unaccounted on the pre-fix tree, 12 accounted here |
+| the §2.3 F8 silent hole | the same seam on `cat <<'EOF'` + the command in the body; **accounted** on the pre-fix tree, unaccounted here |
+| the corpus, regex → final | two processes, one tree each: the shipped `_INVOKE_RE` rule and the final anchor, each emitting `A\|u` + the command for every assistant Bash command containing the token — 946 JSONL files, 503 rows, 95 vs 46 accounted, **49 flips one way and 0 the other** |
+| the 49 flips classified | the row set printed and grouped by shape; 46 non-executions (10 heredoc/`cat >` writes, 25 `python3 -` stdin scripts, 6 `python3 -c`, 1 `grep`, 4 prefixed writes) and 3 shell-function-mediated calls, each then re-checked for a *direct* interpreter-led extractor segment — **0 found in all four** |
+| the corpus, first cut → final | the same two-process diff against the first §2.3 cut: **0 flips either way** (46 accounted both sides), which is what makes the 12 forms latent rather than observed |
 | the R2 sweep | every flag literal at every live call site, against each script's branch-set |
 | the F19I fixture's shape | `tests/smoke.py` — `project`/`session`/`scope`/`verification`/`marker` only |
 
@@ -1295,7 +1380,7 @@ Every number above was measured on the pre-fix tree at `308e15b` unless marked o
 | the membership table (§2.2) | `judge` with an accounting EXT fixture over three shapes: 7 distinct needles in **one** block, 6 identical beats, 3 blocks covering 7 slots — all three `verified · 7/7 narrated` |
 | the value assertion (§3 pin 1) | a `str()`-coercing `_checked_texts` swapped in: it also returns 7 entries, so a **count-only** pin passes both the shipped and the coercing implementation, and the coercing one returns `verified · 7/7 narrated` on an all-numeric record against a transcript containing `0` |
 | the pin-19 preconditions | the bare fixture (no accounting EXT call, no live session dir) exits **0** as `degraded (transcript unavailable)`, not 4 — so the pin's fixture is part of the pin |
-| the corpus measurement (§2.3) | 908 JSONL files under the session dirs, 390 commands mentioning the extractor, 56 accounted by the shipped anchor, **15** of those flip to unaccounted under the fixed anchor — **all 15 false accounts** (heredocs and echoes), **0** genuine execution forms. This is a *corpus* measurement; the §2.3 14-form table is a *constructed-forms* measurement, and the two are not the same claim |
+| the corpus measurement (§2.3) — **SUPERSEDED by amend-8, kept as the record** | 908 JSONL files under the session dirs, 390 commands mentioning the extractor, 56 accounted by the shipped anchor, **15** of those flip to unaccounted under the fixed anchor — **all 15 false accounts** (heredocs and echoes), **0** genuine execution forms. This is a *corpus* measurement; the §2.3 14-form table is a *constructed-forms* measurement, and the two are not the same claim. Amend-8 re-ran it on a larger corpus (946 files) with the *final* anchor as the subject and found **three** of the flips are not false accounts at all — see §5's shell-function ceiling. The "all 15" clause above was true of the 15 it saw; the row is kept because a superseded measurement that agrees with its successor on the direction is evidence, and rewriting it would destroy that |
 | the `-h`/`--help` table | each of the five run with `-h`; exit code plus what it actually did (see §2.5). Post-fix each is 2; `cm -h` stays 0 |
 | the relative-`--persist` crash | isolated `HOME`, `--persist memory` on a directory that **exists** → exit 1, 15-line traceback ending `IdentifierRefused: invalid project id ''`; identical for `.` and `./memory`; absolute spellings exit 0. Mechanism read at the source: `retention._ops_slot` keys on `native_store.parent.name`, and `Path("memory").parent.name == ''` (measured) |
 | the docs census (§2.5) | `git show HEAD:<file>` for all 8 `commands/*.md` + `SKILL.md`, bash blocks extracted, then per **command line**: class-A regex (unclosed quote after the script path) and class-B regex (unquoted `<…>`), plus `bash -n` per block. 77 lines, A=47, B=28, overlap=14 → **61 malformed, 16 clean (all in `SKILL.md`)**, 0 blocks failing after repair. Re-derivable from HEAD, so the number is not a recollection |
@@ -1914,3 +1999,33 @@ here because the failure mode is a false negative that looks like a refutation.
        red baseline that could not attribute its own failures). Item 10's census is the *only*
        thing that would ever have caught a truncated run, and it sits at the file's last line,
        after everything that could truncate it.
+
+**Added in amend-8 (the fold after the third adversarial round — the second `/code-review` pass).**
+
+Four findings landed after amend-7, all in the same class: a gate narrower than the rule it is
+believed to enforce, each failing in the **clean** direction. Every one is corrected above, and the
+evidence for each is re-derived rather than carried.
+
+| finding | what was measured | what changed |
+| --- | --- | --- |
+| **F4** — `_POST_ARC_KEYS` was narrower than its own stated criterion | the criterion admits **7** keys introduced strictly after v0.1.54; the tuple named **2**. The first cut even excluded `distill` (v0.1.58), a key *older* than the `usage` (v0.1.63) it already trusted — self-contradicting, not merely narrow | the tuple widened to 7, each key dated by `git log -S` + first containing tag (never CHANGELOG prose, which dates `demotion` to v0.1.8 — eleven releases early). Measured **inert** on both real populations: 0 newly firing across the 55-cycle archive and across 69 records / 44 dreamless in 11 store logs. `audit` (v0.1.53) and `outcome` (v0.1.1) stay out, and they are load-bearing exclusions — 9 of the archive's 17 dreamless records carry one |
+| **F5** — the execution anchor's walk had no grammar | **12** legitimate Phase-2 forms were refused: four unlisted wrappers, their positional operands, their value flags, a `(`-fused subshell, a `then`-led and a `do`-led segment, a `{ …; }` group, an apostrophe in a `#` comment, a Windows drive path | `_WRAPPER_GRAMMAR` (flags-before-positionals, with each wrapper's value-consuming flags), `_PREFIX_TOKENS` + `_lead` for the fused spelling, `_strip_comments`, and a drive-path normalize in `_unfold`. 13 pins, all RED on pre-fix code |
+| **F8** — the anchor's ONE silent hole, and the direction claim it contradicted | a heredoc **body** holding a complete command was segmented and **credited** — a pass that only *wrote* the command into a file passed the arm whose job is to prove it ran. The same comment block called the loud direction "the worse of the two"; the spec's own tie-break (*Uncertain → fire*) and its own words (*"a false clean is permanent and invisible"*) say the opposite | `_strip_heredocs` imported from `distill_scan` (verified import-safe; cross-script imports are the established pattern) and applied before segmentation; the direction paragraph corrected at the constant, in §2.3, and in the commit message |
+| **F2 + F14** — a pin that scraped source text where pin 38 does not | pin 40 arm 3 read `--flag` literals out of **source text**, so a flag mentioned in a comment counted as defined; harmless **only** while no script had a dead flag, which is luck, not a contract — and pin 38 in the same file asserts the opposite rule | unresolved at amend-8's close; carried forward, not implied closed |
+
+**Why the corpus needed a second, different measurement.** Amend-7 compared the shipped **regex**
+against the first anchor cut and reported 15 flips. That answers *"is replacing the regex right?"*
+It does **not** answer *"is the anchor's walk right?"* — a different pair of subjects. Amend-8 ran
+both comparisons separately: regex → final (503 rows, 95 → 46, **49 flips, 0 the other way**) and
+first cut → final (**0 flips**). The second is the one that makes the 12 F5 forms **latent** rather
+than observed, which is what §2.3 now says and what the first draft got wrong by asserting the corpus
+as corroboration for a claim the corpus cannot see.
+
+**The one number that changed meaning under scrutiny.** Amend-7's row said "all 15 are false
+accounts". Amend-8, classifying all 49 by hand, found **3** that are not: shell-*function*-mediated
+calls (`probe … python3 $S/extract_signals.py …`, where `probe(){ … "$@"; }` runs it). Each was
+re-checked for a *direct* interpreter-led extractor segment — **zero found in all four commands** —
+so the anchor's verdict is *Uncertain → fire* working as contracted, not a false fire and not a
+regression. It is now §5's shell-function ceiling. The correction is recorded here rather than
+quietly folded in because the original claim was stronger than its evidence: "all 15" was a
+classification of 15 rows by pattern, and 3 of them were never opened.
