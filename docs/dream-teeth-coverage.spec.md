@@ -891,7 +891,7 @@ are exceptions, and they are labelled rather than left to look vacuous.** Pins *
 **9**, **15** and **20** are green before *and* after, because their whole content is that the fix
 must **not** move what already worked — and the set grew as the pins were measured (`amend-9`
 item 8 adds 29, 34, 40-arm-3 and pin 26's no-scan half). The count that matters is the measured
-one, not this list: **40 of the 93 `v0.4.29` checks are green pre-fix** (§4), and every one of them
+one, not this list: **59 of the 117 `v0.4.29` checks are green pre-fix** (§4), and every one of them
 is a labelled regression arm — the six below are the pin-level seeds of that set:
 
 | pin | why it cannot fail pre-fix |
@@ -1119,7 +1119,9 @@ is exactly what the first prototype did, to seven forms.
     and `SKILL.md` while every line of the first two is wrong. **Arm 3 is green pre-fix** (all 77
     lines' flags are defined today, measured per line) — it is the pin's *regression* arm, and it is
     labelled like pins 3/6/8/9/15/20/34 for the same reason: without it, the next flag added to a
-    doc and not to its script is a defect nothing sees.
+    doc and not to its script is a defect nothing sees. *(Superseded by `amend-10` item 6: under the
+    differential oracle arm 3 became **RED** pre-fix, and its label was corrected. This paragraph is
+    left as the record of what amend-8 measured, not as a description of the shipped pin.)*
 
 ## §4 Ship shape
 
@@ -1179,23 +1181,61 @@ running this branch's `smoke.py`** — not a `git worktree`, for the reason belo
 
 | tree | result |
 | --- | --- |
-| fixed (this branch) | **1908 passed, 0 failed** |
-| pre-fix (clone of `308e15b`) | **1848 passed, 60 failed** |
+| fixed (this branch) | **1912 passed, 0 failed** |
+| pre-fix (the six scripts reverted to `308e15b`) | **1854 passed, 58 failed** |
 
-`1848 + 60 = 1908`, and all **60** failures are `v0.4.29` checks — **0** failures anywhere else. The
-pre-fix failure count therefore equals the genuine-pin count *exactly*: the 60 are precisely the
-checks this cycle's diff moves, and the **53** further `v0.4.29` checks green on both trees are
-precisely the labelled regression set (pins 3, 6, 8, 9, 15, 20, 29, 34, pin 40 arm 3, the F8 heredoc
-FEED, the F5 wrapper-with-bare-flag guards, and the §2.2/§2.3/C2/C4/C6 negative arms).
-60 + 53 = 113 — the count the D6 census constant carries as its `+ 113`. Nothing in the matrix is
+`1854 + 58 = 1912`, and all **58** failures are `v0.4.29` checks — **0** failures anywhere else. The
+pre-fix failure count therefore equals the genuine-pin count *exactly*: the 58 are precisely the
+checks this cycle's diff moves, and the **59** further `v0.4.29` checks green on both trees are
+precisely the labelled regression set (pins 3, 6, 8, 9, 15, 20, 29, 34, the F8 heredoc FEED, the F5
+wrapper-with-bare-flag guards, the §2.2/§2.3/C2/C4/C6 negative arms, and pin 42's second clause).
+58 + 59 = 117 — the count the D6 census constant carries as its `+ 117`. Nothing in the matrix is
 unattributed.
 
+**Per-cluster, and why the clusters are not a sum.** Every cluster's RED set is a **subset** of the
+58, and their **union is exactly the 58** — so no pin is unattributed and none fires only in a
+partial revert. The union is not the sum because pins are not one-per-file by construction: pin 38
+asserts that a flag legal on ONE script is rejected on the others, so it moves on all six script
+clusters at once; the 14 `render_dashboard` pins appear in three clusters (its own and both `arc_*`
+pairs, which include `render_dashboard`); and `pin 40 arm 3` appears in exactly two.
+
+| cluster (files reverted) | passed / failed |
+| --- | --- |
+| fixed (none) | 1912 / 0 |
+| `cm` | 1909 / 3 |
+| `dream_procedure` | 1891 / 21 |
+| `extract_signals` | 1904 / 8 |
+| `preflight` | 1905 / 7 |
+| `render_dashboard` | 1898 / 14 |
+| `memory_status` + `render_dashboard` | 1883 / 29 |
+| `dream_procedure` + `render_dashboard` | 1877 / 35 |
+| `beta_checks` | 1912 / **0** |
+| all six scripts | 1854 / 58 |
+
+The `beta_checks` row is **0 by design, not by absence** — see item 11: the change there is a
+compatibility shim whose branch is identical while `memory_status` stays fixed, so no single-file
+mutation can move it. `memory_status` alone is not a cluster because it is not a coherent state:
+reverting it alone crashes the suite (`TypeError: arc_completeness() got an unexpected keyword
+argument 'enforce_post_arc'`) rather than reporting RED. **A crash is not a RED**, and the driver
+prints it as such rather than letting it read as a clean zero.
+
 **The counts are the TRIPLE's, not the pins'.** A mutation's RED count belongs to (the code it
-restores, the fixture, the harness) together, so every number above was re-derived on this run
-rather than carried from the previous one; the previous triple read 1888/1835/53, and the growth to
-1908/1848/60 is this batch's 14 new checks plus the 13 that move. The anchor's own contribution is
-stated separately and more sharply in §2.3: restoring only `dream_procedure.py` gives **1895 passed,
-13 failed**, so the anchor's 13 are exactly its own.
+restores, the fixture, the harness) together, so every number above was re-derived on the frozen
+committed revision rather than carried. This is not rhetorical: the previous run of this matrix was
+**invalidated mid-flight** — its driver copied the *working-tree* `tests/smoke.py` at each mutation,
+so clusters that ran after an edit measured a different harness than the baseline, and the
+uncommitted F9 fix made pin 42 RED even in the `beta_checks` cluster, where it has no cause. The
+driver now takes the harness from the archive and **refuses to run against a dirty tree**, so the
+flaw cannot silently return; it also counts RED as `'^  ✗ '` rather than any `✗` in the output, which
+read 3 with zero failures (three `✗` sit inside *passing* labels — the v0.1.54 render checks assert
+the glyph is printed). The anchor's own contribution is stated separately and more sharply in §2.3:
+restoring only `dream_procedure.py` gives **1891 passed, 21 failed**, and the two sets are exactly
+disjoint — `|DP| + |RD| = 21 + 14 = 35 = |arc_dp_rd|` with an empty intersection — so all 21 are the
+anchor's own and not one of them needs a second file reverted. (An earlier draft of this sentence
+claimed 14 of the 21 also moved under `render_dashboard`. That came from grouping RED lines by pin
+*number*, which pools the six distinct `C1` checks and the three distinct `pin 37` checks into one
+label; keyed on the full label the intersection is empty. Same defect as the one this cycle exists
+to close, in my own analysis: a coarser key than the question.)
 
 **The matrix found its own instrument first.** The first three runs died mid-suite, each on a pin
 that asserted on post-fix API without probing it (`amend-9` item 11). The fourth ran to completion
@@ -1802,7 +1842,9 @@ here because the failure mode is a false negative that looks like a refutation.
      placeholder) alone would pass a doc that names a flag its script does not have. Arm 3 checks
      each line's flags against its script. It is **green pre-fix** — all 77 lines' flags are defined
      today, measured per line — so it is labelled with pins 3/6/8/9/15/20/34 as a *regression* arm
-     rather than left to look like a pin that never fires.
+     rather than left to look like a pin that never fires. *(Superseded by `amend-10` items 2 and 6:
+     the source scrape F2 named was replaced, backslash continuations moved the subject from 35 to
+     45 pairs, and under the differential arm 3 is RED pre-fix. Left as the amend-8 record.)*
   4. **Two instrumentation errors, both the cycle's own thesis, both caught by contradiction rather
      than by inspection.** (a) The first census script reported `SKILL.md` as class-B = **0**, which
      contradicts the repair script that had just changed **20** placeholders in the same file; the
@@ -1941,6 +1983,11 @@ here because the failure mode is a false negative that looks like a refutation.
      check by design (item 7) and three existing checks were re-spelled rather than added
      (`amend-8` item 6). `amend-8` item 7's "1795 passed" is a historical record of the suite
      *before* this pass's pins existed, and is left exactly as written for that reason.
+     *(`amend-10` carries the constant forward twice more: `+ 113` at the F2/F14 closure, then
+     `+ 117` after pin 42 — **1912 passed, 0 failed** on the frozen revision. 93, 113 and 117 are
+     three measurements of a growing quantity, each true of its own revision, and none of them is
+     the current one except the last; the `117` is verified as `v0.4.29`-labelled check count
+     directly, so the constant's last term is not merely "whatever makes the arithmetic work".)*
  11. **The mutation matrix found the HARNESS, not the product — three aborts, and then a wrong
      measurement.** This is §4's "every pin verified to fail on pre-fix code" step failing at its
      own job, so it is recorded rather than absorbed:
@@ -2084,11 +2131,27 @@ which is why the triple's rule exists.
    `cm_ops`'s witness to `--help`, which it *does* recognize, fires the check with `carve-out is
    stale`.
 
-6. **Arm 3's character changed, so its label did.** It was recorded in amend-8 as *"green pre-fix"*,
-   under the then-current oracle. Under the differential it is **RED pre-fix**: the lax parsers
-   enforced no surface at all, so they answered a flag and its mutated twin **identically** — which is
-   exactly what this arm detects. Its label was corrected from `(REGRESSION, green pre-fix)`. Item 8
-   of amend-9's rule still applies to the arms that earned it; this one no longer does.
+6. **Arm 3's character changed, so its label did** — and the label's first cut then claimed a *class*
+   that measurement refutes. It was recorded in amend-8 as *"green pre-fix"*, under the then-current
+   oracle; under the differential it is **RED pre-fix**. The first cut of the label said why: *"the
+   lax parsers enforced no surface at all, so they answered a flag and its mutated twin identically."*
+   That is true of two of them and **false of `render_dashboard`**, whose pre-fix parser already
+   refused `--persist` with `requires a directory argument` while reading `--persistx` as a record
+   path — two different answers, so the differential called the flag defined.
+
+   Measured per pair, the whole pre-fix effect is **5 of the judged pairs**, all on the two parsers
+   that genuinely consumed nothing: `--before` · `--into` · `--standing-justify-tokens` on
+   `memory_status`, and `--before` · `--into` on `extract_signals`. **0** pairs read as undefined on
+   both trees, so the arm is not vacuously green on the fixed one. That attribution is also what the
+   mutation matrix independently shows: arm 3 is RED in the `extract_signals` and `arc_ms_rd`
+   clusters and GREEN in the `render_dashboard` and `preflight` ones — which looked like a gap in the
+   arm until the per-pair measurement explained it as the *pin working correctly*.
+
+   The label now carries the measured attribution instead of the class claim, and the arm is still
+   labelled RED pre-fix. Item 8 of amend-9's rule applies to the arms that earned it; this one no
+   longer does. (This is the third time in this cycle that a claim written as prose in a label — as
+   opposed to one asserted by the check's own predicate — turned out to be narrower than the class
+   it named. Hence the correction, rather than leaving a true pin wearing a false explanation.)
 
 7. **The probes were writing to the live store.** One arm-3 sweep appended a row to the real
    `<plugin-data>/ops/-tmp/.mutation-log.jsonl` and bumped `control.sqlite`'s WAL, because the probe
@@ -2150,13 +2213,22 @@ which is why the triple's rule exists.
       is read apart from the absent block, deliberate and recorded at the constant), and
       `beta_checks` now prefers `memory_status.stanza_present` when it exists and falls back to a
       local copy when it does not.
-    - **Which is why the mutation matrix shows `beta_checks` moving ZERO checks**, and the cluster is
-      the explanation rather than a second defect: the 36-line change is a **compatibility shim**. On
-      the fixed tree `hasattr(_ms, "stanza_present")` is True, so reverting `beta_checks` alone picks
-      the same branch and nothing moves. Its effect appears only where the symbol is absent — the
-      coherent cluster is `beta_checks + memory_status`, which `prefix_pre_fix` covers. A change that
-      no single-file mutation can move is not dead code; it is a change whose subject is a *pair*,
-      and the matrix has to be read at the granularity of the mutation, not the file.
+    - **Which is why the mutation matrix shows `beta_checks` moving ZERO checks** — measured on the
+      frozen revision, `1912 passed, 0 failed`, identical to the baseline — and the explanation is
+      the change's *shape*, not a second defect: it is a **compatibility shim**. On the fixed tree
+      `hasattr(_ms, "stanza_present")` is True, so reverting `beta_checks` alone leaves the oracle
+      reading the same symbol from the same place and nothing moves.
+
+      Its effect can appear only where that symbol is **absent**, and the matrix does reach that
+      state, by a cluster named for a different reason: `arc_ms_rd` reverts `memory_status` (and
+      `render_dashboard`, for coherence) while leaving `beta_checks` FIXED, so the oracle takes its
+      `_stanza_present_local` fallback — verified, pre-fix `memory_status.py` defines
+      `stanza_present` **0** times against the fixed tree's 1. The first draft of this entry named
+      `prefix_pre_fix` as the covering cluster, which is wrong in the direction that matters: that
+      cluster reverts `beta_checks` while keeping `memory_status` fixed, so it exercises the
+      *preferred* branch with a pre-fix oracle — the one combination that cannot reach the fallback.
+      A change no single-file mutation can move is not dead code; it is a change whose subject is a
+      *pair*, and the matrix has to be read at the granularity of the mutation, not the file.
 
 **Why the corpus needed a second, different measurement.** Amend-7 compared the shipped **regex**
 against the first anchor cut and reported 15 flips. That answers *"is replacing the regex right?"*

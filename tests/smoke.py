@@ -16499,8 +16499,15 @@ check("v0.4.29 pin 40 arm 2: no UNQUOTED `<…>` placeholder (pre-fix: 28 lines 
       + (f" · first: {next((w for w in _doc_why29 if 'placeholder' in w), '')}" if _doc_a2 else ""),
       _doc_a2 == 0)
 check("v0.4.29 pin 40 arm 3: every documented argv names a real script and only flags that script "
-      "defines (RED pre-fix — the lax parsers enforced no surface at all, so they answered a flag "
-      "and its mutated twin identically, which is precisely what this arm detects)"
+      "defines (RED pre-fix — and the pre-fix attribution was MEASURED per pair, because the first "
+      "cut of this label claimed a class and the class is false: exactly 5 of the judged pairs flip "
+      "from recognised to not (`--before`/`--into`/`--standing-justify-tokens` on memory_status, "
+      "`--before`/`--into` on extract_signals), and those two parsers consumed nothing pre-fix, so a "
+      "flag and its mutated twin produced byte-identical output. The other scripts' documented flags "
+      "stay distinguishable pre-fix, which is why this arm is RED in the extract_signals and "
+      "memory_status clusters and GREEN in the render_dashboard one — whose pre-fix parser already "
+      "refused `--persist` with `requires a directory argument` while reading `--persistx` as a "
+      "record path. A pin that fires is not the same as a pin that fires for the stated reason)"
       + (f" · first: {_doc_why29[-1]}" if _doc_a3 else ""), _doc_a3 == 0)
 
 # (41) The PROSE arms — D3's mandate, which pin 40 never carried. Pin 40 parses only ```bash
