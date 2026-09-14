@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.28** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.29** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -35,12 +35,17 @@ plus the v0.4.27 network-graph patch (the map's closed loop reopened — the anc
 project you clicked, the focus steal becomes a stranded-focus fallback, and a position trail,
 a selection summary and a record link give the graph a way out), plus the v0.4.28 ReDoS-guard
 patch (the firewall's linearity guard re-based on measurement — a CPU clock, bounds derived from
-a stated admission rule, and a structural pin for the one arm no timing bound can separate).
+a stated admission rule, and a structural pin for the one arm no timing bound can separate), plus
+the v0.4.29 dream-teeth-coverage patch (every gate now means what its rule claims — the checked
+narration set cannot silently shrink, a stanza that normalizes to nothing is a gap rather than a
+pass, the extractor anchor anchors on **execution** rather than on the token's spelling, a
+dreamless record carrying a post-arc block is a skipped arc rather than a legacy one, and an
+unknown flag is a usage error on the five lax scripts and `cm`).
 Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
-`cm project enroll --domain personal --apply --confirm enroll-<domain>` (this
+`cm project enroll --domain personal --apply --confirm enroll-personal` (this
 checkout). First enroll grants the domain and revokes managed mirrors the
 destination does not admit; use `move-domain` to switch and `unenroll` to go
 local-only. `cm doctor` prints `UNENROLLED LOCAL-ONLY` when this applies.
@@ -870,7 +875,7 @@ doc; **KEEP** active/forward content (OPEN items, current state, watch-list) and
 is the POST-write audit record, NOT the pre-apply gate. Higher-risk than pointer-archiving (intra-file): keep-on-doubt,
 relocate-over-delete. Goal — the file returns toward the store's typical length, kept accurate + forward-looking. Full
 design: `docs/body-defragmentation.spec.md`. **A KEEP judgment runs
-`"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag <stem> .` (the script reads the body and stamps the
+`"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag "<stem>" .` (the script reads the body and stamps the
 watermark — the detector then re-fires only on real growth; after a real curation that dropped the body under the
 line, re-anchor the watermark with `--force`, which is repair).**
 
@@ -981,7 +986,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    classification is judged against the WINDOW-START state, so a fact you archived earlier THIS pass
    (whose reads happened while it was still indexed) is never misclassified as a miss:
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py" --recalls --into <the --seed path> --before <the --snapshot path>
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py" --recalls --into "<the --seed path>" --before "<the --snapshot path>"
    ```
    Transcripts rotate quickly, so this per-dream capture is the ONLY way usage accrues. A fact showing
    0 reads is ABSENCE OF EVIDENCE (retention + span-exclusion undercount), never proof it's unused —
@@ -1028,7 +1033,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    stacks-cache / snooze / justify writers share one locked CAS API:
    ```bash
    CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --stamp-marker HEAD \
-       [--standing-justify-facts N --standing-justify-tokens N] [--snooze-until <iso>]
+       [--standing-justify-facts N --standing-justify-tokens N] [--snooze-until "<iso>"]
    ```
    Stamp the timestamp at write time; the scripts auto-mirror an EMPTY
    `marker.timestamp` from this file at `--persist`/`--diffs`/`--audit` (v0.4.1) — a
@@ -1047,7 +1052,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    displayed `Nw` is the O1 loop: that number is per-fact zero-read windows, and a
    compacted `windows_full` can suppress forever):
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-demotion <stem> [<stem>…]
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-demotion "<stem>" ["<stem>"…]
    ```
    It stamps `demotion_justify: {"<stem>": {"sequence": <monotonic usage-window seq>, "at": "<iso>"}}`
    under the project lock (preserves `commit`/`timestamp`/`stacks`/`beacon_snooze_until`
@@ -1059,7 +1064,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    Then **emit the deterministic mutation audit** (v0.1.22) — diff the post-write state against the Phase-0
    `--snapshot`:
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --audit <the --snapshot path> --into <the --seed path>
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --audit "<the --snapshot path>" --into "<the --seed path>"
    ```
    It appends a per-operation record to plugin-data
    `~/.claude/plugins/data/consolidate-memory/ops/<slot>/.mutation-log.jsonl` (the durable,
@@ -1082,7 +1087,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    skill). Run the scan ONCE and save it (so the same counts you judge are the counts captured — no
    second scan whose window has drifted):
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py" . --json > <the --scan path>
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py" . --json > "<the --scan path>"
    ```
    (`<the --scan path>` = a temp file, e.g. the snapshot dir's sibling `distill-scan.json`.) Read it:
    It returns recurring Bash-command **templates** (`recurring`, count≥2, each with a `days` episode-spread)
@@ -1124,8 +1129,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      byte-identical to the ones you just judged):
      ```bash
      CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py" \
-         --from <the --scan path> --into <the --seed path> \
-         --verdict '<the one-liner>' [--proposed <X>]... [--created <X>]...
+         --from "<the --scan path>" --into "<the --seed path>" \
+         --verdict "<the one-liner>" [--proposed "<X>"]... [--created "<X>"]...
      ```
      It injects the script-truth `sessions`/`commands`/`n_recurring`/`n_chains`/`window`/`secrets_omitted`
      into the seed's `distill` block — plus, v0.1.82, the persisted evidence ROWS (`top`/`top_chains`/
@@ -1152,7 +1157,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    ready for FLEET-WIDE placement (the binary rule: an artifact is project-local OR fleet-wide — NEVER
    stack-general), consult the registrar's MECHANICAL gates FIRST:
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --workflows . --registrar --into <the --seed path>
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/sync_global.py" --workflows . --registrar --into "<the --seed path>"
    ```
    The engine emits per-candidate dispositions — `fleet-candidate` (a **distinctive** command/chain
    on ≥2 real nodes whose **every** node's own day-spread is d≥2 — fleet `d` is the MIN across nodes,
@@ -1190,8 +1195,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      has no audit record; **name it explicitly in the closing debrief** and fold the verdict into the debrief.
 7. **Render the dashboard AND persist the record** — this is the skill's output (see below):
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py" <the --seed path> \
-       --persist <native_memory_dir from Phase 0 / cm doctor>
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/render_dashboard.py" "<the --seed path>" \
+       --persist "<native_memory_dir from Phase 0 / cm doctor>"
    ```
    `--persist <store dir>` identifies the native store; the rendered record (one
    JSON line) is appended under plugin data (the project-id-keyed ops dir, or
@@ -1208,14 +1213,26 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    4 dream-arc incomplete (backfill beats) · 5 unstamped (re-stamp).** Gate
    precedence: both-violating → 3; arc+unstamped → 4, then 5 on the re-render.
 
-   **Dream-arc completeness gate (v0.4.1).** The same terminal `--persist` judges the
-   arc: a PRESENT-but-incomplete dream block (sleep or wake empty, or ≠ 6 beats —
-   5 phase beats + the surfacing line) prints a loud **DREAM ARC INCOMPLETE ⚠**
-   panel, persists the record (it accrues — the log keeps the short-arc record even
-   after you backfill, the integrity precedent), and **exits 4**. Backfill the
-   missing beats, re-render (exit 0 on a complete arc — or on a record with no
-   `dream` block at all, the legacy carve-out). A missing block escapes the gate by
-   design (the beta WARN covers it next pass).
+   **Dream-arc completeness gate (v0.4.1; widened v0.4.29).** The same terminal `--persist`
+   judges the arc: a PRESENT-but-incomplete dream block prints a loud **DREAM ARC
+   INCOMPLETE ⚠** panel, persists the record (it accrues — the log keeps the short-arc
+   record even after you backfill, the integrity precedent), and **exits 4**. Incomplete
+   means any of: `sleep` or `wake` is not a non-empty string; **any `beats[i]` is not a
+   non-empty string** (the panel names the index — a `null`, a `{}` or a number is an arc
+   defect, not a narration gap); or the beat count is ≠ 6 (5 phase beats + the surfacing
+   line). Backfill the missing beats, re-render (exit 0 on a complete arc).
+
+   **The dreamless carve-out is per-record, not blanket (v0.4.29).** A record with no
+   `dream` block at all still exits 0 — that is the legacy carve-out, and it stays, because
+   the block only became mandatory at v0.1.54 and records carry no version stamp. But
+   leniency there is decided **structurally**: if the record carries any key introduced
+   strictly *after* v0.1.54 (`usage` · `demotion` · `distill` · `workflow_proposals` ·
+   `identity` · `narration` · `preflight`), it was written by a version that already
+   required the arc, so its missing block is a **SKIP** — the same panel and **exit 4**,
+   not a clean pass. Two surfaces on the `--persist` render carry the strict reading — the exit-4
+   gate and the **⚠ arc panel** (they ride the same `judged` flag, so they cannot disagree). The
+   archive, the validator, the standalone render and the permissive **✓/✗ DREAM ARC row** on that
+   same screen keep the default, so no already-archived record retro-flips its display.
 
    **Conversation-truth gates (v0.4.19).** The gates above read what the RECORD says; the
    terminal `--persist` now also verifies against the conversation itself — the dream's session
@@ -1267,8 +1284,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    `--persist` (so `marker.timestamp` is stamped) and BEFORE `render_html` (so the dashboard
    embeds it):
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --diffs <the --seed path> \
-       --before <the --snapshot path>
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --diffs "<the --seed path>" \
+       --before "<the --snapshot path>"
    ```
    It writes a per-dream sidecar `dashboards/diffs/<commit>__<timestamp>.json` (per-file diff
    capped; `chmod 600`, so fact bodies stay owner-only) that `render_html` reads to make each
@@ -1284,8 +1301,8 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    report (one cycle-record contract, two renderers): the same data plus the longitudinal
    index-budget trajectory, rendered into the per-repo archive mini-site.
    ```bash
-   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/render_html.py" <the --seed path> \
-       --store <native_memory_dir from Phase 0 / cm doctor> --latest
+   CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/render_html.py" "<the --seed path>" \
+       --store "<native_memory_dir from Phase 0 / cm doctor>" --latest
    ```
    It writes a ZERO-dependency, self-contained `dashboards/index.html` (the whole per-repo
    archive of dreams in one file) and **auto-opens this dream's dashboard** (`--latest` →

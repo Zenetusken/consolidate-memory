@@ -774,6 +774,10 @@ def _recalls_report(d: dict) -> None:
                            + " · re-promote the pointer(s) to MEMORY.md (report-then-apply)", "red"))
 
 
+_VALUE_FLAGS = ("--since", "--into", "--before", "--max")
+_VISUAL_FLAGS = ("--ascii", "--color", "--no-color")
+
+
 def main() -> int:
     argv = sys.argv[1:]
     as_json = "--json" in argv
@@ -787,23 +791,37 @@ def main() -> int:
     pos = []
     i = 0
     while i < len(argv):
-        if argv[i] == "--since" and i + 1 < len(argv):
-            since = argv[i + 1]; i += 2
-        elif argv[i] == "--into" and i + 1 < len(argv):   # v0.1.63: --recalls seed-injection target
-            into = argv[i + 1]; i += 2
-        elif argv[i] == "--before" and i + 1 < len(argv):   # v0.1.67: Phase-0 snapshot → window-start tiering
-            before = argv[i + 1]; i += 2
-        elif argv[i] == "--max" and i + 1 < len(argv):
-            try:
-                max_n = max(0, int(argv[i + 1]))
-            except ValueError:
-                print(f"--max expects an integer, got {argv[i + 1]!r}", file=sys.stderr)
+        a = argv[i]
+        if a in _VALUE_FLAGS:
+            if i + 1 >= len(argv):                       # a trailing value-flag (its value lost) is usage
+                print(f"{a} requires a value", file=sys.stderr)
                 return 2
+            v = argv[i + 1]
+            if a == "--since":
+                since = v
+            elif a == "--into":                          # v0.1.63: --recalls seed-injection target
+                into = v
+            elif a == "--before":                        # v0.1.67: Phase-0 snapshot → window-start tiering
+                before = v
+            else:
+                try:
+                    max_n = max(0, int(v))
+                except ValueError:
+                    print(f"--max expects an integer, got {v!r}", file=sys.stderr)
+                    return 2
             i += 2
-        elif not argv[i].startswith("-"):
-            pos.append(argv[i]); i += 1
+        elif not a.startswith("-"):
+            pos.append(a); i += 1
+        elif a in _VISUAL_FLAGS or a.startswith(("--color=", "--width=")):
+            i += 1                                       # visual flags are handled by _ui.set_modes
         else:
-            i += 1   # skip visual flags (--ascii/--color/--no-color, handled by set_modes) + unknown flags
+            # v0.4.29 (spec §2.5): an unknown flag was SKIPPED here — so `--persit`, `--jsoon` and
+            # `-h` silently did nothing (measured: `-h` exited 0 running a FULL EXTRACTION of CWD).
+            # The allowance is a five-form set — `--ascii`/`--color`/`--no-color`/`--color=*`/
+            # `--width=*` — and a bare `--width` is deliberately NOT on it: `_ui.resolve_width`
+            # matches `startswith("--width=")` only, so blessing it would be a silent no-op.
+            print(f"unknown flag: {a}", file=sys.stderr)
+            return 2
     project_dir = Path(pos[0]) if pos else Path.cwd()
     if recalls:
         # v0.1.63 (Phase A): the recall scan is a Phase-5 command — no Phase-2 cue here (the phase's

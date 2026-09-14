@@ -639,6 +639,16 @@ def render_table(result: Dict[str, Any]) -> str:
 def main(argv: List[str]) -> int:
     args = list(argv)
     as_json = "--json" in args
+    # v0.4.29 (spec §2.5): an unknown flag used to survive this filter and become args[0] — the
+    # PROJECT DIR. Measured pre-fix: `-h` ran a pre-flight of a directory named `-h` and exited 0.
+    # The allowance is the empty set plus --json, and that is not an oversight: although this
+    # module IMPORTS _ui (for rule/lbl/c in render_table), it never calls set_modes,
+    # resolve_color or resolve_width — so --ascii/--color=/--width= would be blessed-and-ignored
+    # here. A per-script list derived from imports would get this script exactly backwards.
+    for _a in args:
+        if _a.startswith("-") and _a != "--json":
+            print(f"unknown flag: {_a}", file=sys.stderr)
+            return 2
     args = [a for a in args if a != "--json"]
     project_dir = Path(args[0]) if args else Path(".")
     result = run_for_project(project_dir, force=True)

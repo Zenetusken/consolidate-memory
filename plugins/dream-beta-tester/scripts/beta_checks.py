@@ -330,6 +330,16 @@ def _local_norm(s: str) -> str:
     return re.sub(r"[-_]", "-", s).lower()
 
 
+def _stanza_present_local(value: Any) -> bool:
+    """Fallback for the skill's `stanza_present` (v0.4.29): a dream stanza is PRESENT iff it is a
+    non-empty string. Selected on TWO conditions, not the one the first cut of this docstring
+    claimed: the skill module did not import, OR it imported but does not EXPORT the symbol. The
+    second is a scripts dir pinned to a release before v0.4.29 — an operator can pin one via
+    `--skill` / `$CONSOLIDATE_MEMORY_SCRIPTS`, and `discover_skill` honours both verbatim — where
+    the module imports fine and this rule, not that version's own, is what judges it."""
+    return isinstance(value, str) and bool(value.strip())
+
+
 def _is_archive_index_local(path: Path, link_re: re.Pattern[str]) -> bool:
     """Local fallback for the skill's `_is_archive_index`: a `*.md` with NO `---` frontmatter and
     ≥3 `](x.md)` links is an archive index (link-list), not a fact. Only used if the skill module
@@ -1274,20 +1284,32 @@ def dream_arc_capture(ctx: Ctx) -> list[Result]:
     def is_complete(dream: dict[str, Any]) -> tuple[bool, str]:
         _b = dream.get("beats")
         beats: list[Any] = _b if isinstance(_b, list) else []
-        # `or ""` — a JSON-null stanza must read ABSENT (str(None) == "None" is truthy).
-        have_sleep = bool(str(dream.get("sleep") or "").strip())
-        have_wake = bool(str(dream.get("wake") or "").strip())
-        complete = have_sleep and have_wake and len(beats) == 6
+        # v0.4.29: the type rule is IMPORTED from the skill under test (ctx.ms = the module
+        # discovered by import_skill_module), not re-typed. The `or ""` hedge this replaces
+        # covered the JSON-null stanza and ONLY that one — so `[null]*6` and `[{}]*6` were
+        # reported COMPLETE by the oracle while the product's gate rejects them: two matchers
+        # describing different contracts. The inline fallback is the identical rule, for the
+        # degrade path and for a `--skill`-pinned pre-v0.4.29 tree (see _stanza_present_local).
+        _ms = getattr(ctx, "ms", None)   # a hand-built Ctx in a test may carry no `ms` at all
+        _present = (_ms.stanza_present if _ms is not None and hasattr(_ms, "stanza_present")
+                    else _stanza_present_local)
+        have_sleep = _present(dream.get("sleep"))
+        have_wake = _present(dream.get("wake"))
+        bad = [i for i, b in enumerate(beats) if not _present(b)]
+        complete = have_sleep and have_wake and len(beats) == 6 and not bad
         if not dream:
             tail = (" — expected on pre-v0.1.54 records (the block is absent); a defect on any dream "
                     "run with v0.1.54+ (check the record's recency before promoting)")
         else:
             tail = (" — a 1–5-beat arc was compliant on v0.1.54–v0.4.0 records; since v0.4.1 the "
                     "contract is 6 beats (5 phase beats + surfacing) and the render's --persist "
-                    "gate exits 4 on a short arc (check the record's recency before promoting)")
-        return complete, (f"sleep={'present' if have_sleep else 'MISSING'} · beats={len(beats)} · "
-                          f"wake={'present' if have_wake else 'MISSING'}"
-                          + ("" if complete else tail))
+                    "gate exits 4 on a short arc; since v0.4.29 every beat must also be a "
+                    "non-empty string (check the record's recency before promoting)")
+        detail = (f"sleep={'present' if have_sleep else 'MISSING'} · beats={len(beats)} · "
+                  f"wake={'present' if have_wake else 'MISSING'}")
+        if bad:
+            detail += " · beat(s) not a non-empty string: " + ", ".join(str(i) for i in bad)
+        return complete, detail + ("" if complete else tail)
     return _latest_capture_check(
         ctx, block_key="dream", family_name="dream_arc_capture", min_version=(0, 1, 54),
         check_id="CHK-DREAM-ARC",

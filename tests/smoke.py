@@ -8357,7 +8357,10 @@ check("SKILL Phase 5 persist/store/marker use native_memory_dir (do not hand-bui
       and "--store ~/.claude/projects/<slug>/memory" not in _p5_ac
       and "~/.claude/projects/<slug>/memory/.consolidation-state.json" not in _p5_ac
       and "native_memory_dir" in _p5_ac
-      and "--persist <native_memory_dir from Phase 0 / cm doctor>" in _p5_ac)
+      # The marker phrase decides this, not its surrounding quoting: the doc must say WHERE the
+      # path comes from. Asserting the raw `--persist <…>` literal pinned the pre-v0.4.29 spelling,
+      # which bash reads as a redirect — a pin that certifies the defect it should catch.
+      and "native_memory_dir from Phase 0 / cm doctor" in _p5_ac.replace('"', ""))
 
 with _Env73() as _e_h:
     (_e_h.glob / "ug-hold.md").write_text(_fact73("ug-hold", "holder pin"), encoding="utf-8")
@@ -12610,8 +12613,11 @@ check("v0.4.8 cm-commands: cm-domain.md enroll forms are positional-first (the s
       and "project enroll --domain personal ." not in _domain_bq)
 _conn_bq = (_cmds_bq / "cm-connect.md").read_text(encoding="utf-8")
 check("v0.4.8 cm-commands: cm-connect sequences positional-first enrolls for both repos",
+      # Quote-normalized: `"<other-repo>"` (v0.4.29) and the bare `<other-repo>` it replaced mean the
+      # same thing to a reader, and only the quoted form is valid shell — the bare one is a redirect.
       "project enroll . --domain personal --apply --confirm enroll-personal" in _conn_bq
-      and "project enroll <other-repo> --domain personal --apply --confirm enroll-personal" in _conn_bq)
+      and "project enroll <other-repo> --domain personal --apply --confirm enroll-personal"
+      in _conn_bq.replace('"', ""))
 _readme_bq = (ROOT / "README.md").read_text(encoding="utf-8")
 check("v0.4.8 cm-commands: the README cross-project section is the consolidated workflow "
       "(connect → share → sync, network)",
@@ -14106,11 +14112,15 @@ check("v0.4.10 groups: the beacon's hash fill overwrites a foreign-domain record
 
 _cmdg_gs = (ROOT / "plugins" / "consolidate-memory" / "commands" / "cm-group.md")
 _ctg_gs = _cmdg_gs.read_text(encoding="utf-8") if _cmdg_gs.is_file() else ""
+# Quote-normalized for the same reason as the cm-connect pin above: the confirm phrase is
+# `create-group-<name>` either way, and v0.4.29 quotes only the placeholder half so bash sees
+# one word instead of an unterminated string.
+_ctg_gs_q = _ctg_gs.replace('"', "")
 check("v0.4.10 groups: /cm-group exists with the confirm-phrase surface "
       "(delete included — v0.4.11 lifecycle)",
       _ctg_gs.startswith("---\nname: cm-group")
-      and "create-group-<name>" in _ctg_gs and "add-group-<name>" in _ctg_gs
-      and "remove-group-<name>" in _ctg_gs and "delete-group-<name>" in _ctg_gs)
+      and "create-group-<name>" in _ctg_gs_q and "add-group-<name>" in _ctg_gs_q
+      and "remove-group-<name>" in _ctg_gs_q and "delete-group-<name>" in _ctg_gs_q)
 _shareg_gs = (ROOT / "plugins" / "consolidate-memory" / "commands" / "cm-share.md").read_text(encoding="utf-8")
 check("v0.4.10 groups: /cm-share names the group question + the verbatim narrowing",
       "share to a group or the whole" in _shareg_gs
@@ -14509,6 +14519,12 @@ with _tf16.TemporaryDirectory() as _td16c:
           and "pre-flight" in _rb16.stdout and len(_rb16.stdout.strip()) // 4 <= 60)
     # warns-only / pass / stale / garbage -> silent rc 0 (the beacon failure posture)
     _pf_ok16 = {"at": _dt16.now(_tz16.utc).isoformat(timespec="seconds"), "fails": [], "warns": ["git-present"]}
+    # The store dir is created WHEN THE CACHE IS WRITTEN — i.e. by the behavior the check above
+    # asserts. So on a tree where that assertion is red, the dir does not exist and this bare
+    # write raised FileNotFoundError, aborting the whole suite: an expected RED became a crashed
+    # RUN, and the mutation matrix could not be collected at all. A check must never assume its
+    # predecessor passed. mkdir is a no-op on the green tree, so the census is unchanged.
+    _st16.parent.mkdir(parents=True, exist_ok=True)
     _st16.write_text(_json16.dumps({"timestamp": _time16.time(), "preflight": _pf_ok16}))
     _rb16 = _sp16.run([_sys16.executable, str(_BEACON16)],
                       input=_json16.dumps({"cwd": str(ROOT)}),
@@ -15133,6 +15149,154 @@ with _tf43.TemporaryDirectory() as _td19:
           "(the wrong project's session dir is never returned)",
           _got19 == _pool19)
 
+    # ── v0.4.29 dream-teeth coverage: the store-backed pins (spec §3 pins 14, 16-19, 27, 31,
+    # 35, 36, 39) ─────────────────────────────────────────────────────────────────────────────
+    # These need a store, a log and a live transcript pool, so they reuse the fixture above. The
+    # judged persist path is the ONLY surface that knows the record was just written — which is
+    # why it, and not the archive, carries the strict flags (spec §2.4).
+    _T0_29 = "2026-09-01T00:00:00Z"
+    _OPS29 = Path(_home19) / ".claude" / "plugins" / "data" / "consolidate-memory" / "ops"
+
+    def _slots29() -> list:
+        return sorted(str(p) for p in _OPS29.rglob("*.jsonl"))
+
+    def _nlines29() -> int:
+        _s = _slots29()
+        return (len(Path(_s[0]).read_text(encoding="utf-8").strip().splitlines())
+                if _s else 0)
+
+    def _dreamless29(marker: str, ts: str) -> str:
+        """The pin 14/15 pair: the same dreamless shape with and without a post-arc key. The key
+        is the whole discriminator — everything else about the two records is identical."""
+        _r = {"project": "p", "session": "s19",
+              "scope": {"git_commits": 1, "session_candidates": 0},
+              "verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0},
+              "marker": {"before_commit": "", "before_timestamp": _T0_29,
+                         "commit": "c19-" + marker, "timestamp": ts}}
+        _p = str(Path(_td19) / (marker + ".json"))
+        Path(_p).write_text(_json43.dumps(_r))
+        return _p
+
+    # (14) A post-arc DREAMLESS record: the arc gate fires, and the NAR arm stays OUT — a dreamless
+    # record is outside both arms, so it carries no `narration` block while still exiting 4. That
+    # pairing is the C6 boundary at the subprocess surface: the panel speaks, the narration block
+    # does not, and neither may borrow the other's verdict.
+    _p29a = _dreamless29("f29a", "2026-09-02T02:01:14Z")
+    _d29a = _json43.loads(Path(_p29a).read_text(encoding="utf-8"))
+    _d29a["usage"] = {"reads": 0}                     # the post-v0.1.63 marker: a SKIP, not legacy
+    Path(_p29a).write_text(_json43.dumps(_d29a))
+    _so29, _se29, _rc29 = _run19(_p29a, "--persist", str(_store19))
+    check("v0.4.29 pin 14: a post-arc dreamless record at --persist → exit 4 + the strict arc panel "
+          "naming the skip, and NO `narration` block — a dreamless record is outside both arms "
+          "(pre-fix: exit 0, no panel)",
+          _rc29 == 4 and "DREAM ARC INCOMPLETE" in _so29 and "skipped" in _so29
+          and "narration" not in _last19())
+    # (15) …and the legacy carve-out is untouched by it: same shape, no post-arc key → exit 0, no
+    # panel, no block. Labelled REGRESSION (measured green pre-fix) — this is F19I's own shape,
+    # re-asserted here as 14's PAIR: the fix must separate the two, not tighten over both.
+    _p29b = _dreamless29("f29b", "2026-09-02T02:01:15Z")
+    _so29, _se29, _rc29 = _run19(_p29b, "--persist", str(_store19))
+    check("v0.4.29 pin 15 (REGRESSION, green pre-fix): the legacy dreamless fixture still exits 0 "
+          "with no gate panel and no `narration` block — the carve-out pin 14 closes is not "
+          "collateral",
+          _rc29 == 0 and "DREAM ARC INCOMPLETE" not in _so29
+          and "CONVERSATION-TRUTH" not in _so29 and "narration" not in _last19())
+    # (16)/(36) The empty string is a MISSING argument, never a falsy persist target. Pre-fix it
+    # fell through `if persist_dir:` — no gate, no exit, exit 0 reading as a persisted dream.
+    _so29, _se29, _rc29 = _run19(_p29b, "--persist", "")
+    check("v0.4.29 pins 16/36: `--persist \"\"` → exit 2 + `--persist requires a directory "
+          "argument`, nothing on stdout (pre-fix: exit 0, ungated — the falsy-persist hole)",
+          _rc29 == 2 and "--persist requires a directory argument" in _se29 and _so29 == "")
+    # (31) The equals form is a DIFFERENT token, not a spelling of `--persist`. The pin asserts the
+    # exit code AND the log delta together: either alone passes on the old code, which exited 0
+    # having written nothing and gated nothing.
+    _n31 = _nlines29()
+    _so29, _se29, _rc29 = _run19(_p29b, "--persist=" + str(_store19))
+    check("v0.4.29 pin 31: `--persist=DIR` → exit 2 + `unknown flag: --persist=…` and NO line "
+          "appended (pre-fix: exit 0, no write, no gate — the silent no-op)",
+          _rc29 == 2 and "unknown flag: --persist=" in _se29 and _so29 == ""
+          and _nlines29() == _n31)
+    # (17) The near-miss typo, which is the same class as (31) and the likeliest one in the wild.
+    _n17 = _nlines29()
+    _so29, _se29, _rc29 = _run19(_p29b, "--persit", str(_store19))
+    check("v0.4.29 pin 17: the `--persit` typo → exit 2 + `unknown flag: --persit`, no line "
+          "appended (pre-fix: exit 0, silently not persisting)",
+          _rc29 == 2 and "unknown flag: --persit" in _se29 and _so29 == ""
+          and _nlines29() == _n17)
+    # (35) A missing directory: assert the exit code AND the absence of a panel in the SAME run.
+    # Pre-fix this is the measured §1 defect — exit 0 the loud way, with "persist dir not found,
+    # skipping log" on stderr, so the dream's terminal render reads as a completed pass.
+    _so29, _se29, _rc29 = _run19(_p29b, "--persist", str(Path(_td19) / "nope"))
+    check("v0.4.29 pin 35: `--persist <missing dir>` → exit 2 naming the path, and no gate panel "
+          "in the same run (pre-fix: exit 0 WITH the skip notice — a skipped gate wearing a "
+          "clean exit)",
+          _rc29 == 2 and "dir not found" in _se29 and "nope" in _se29
+          and "DREAM ARC INCOMPLETE" not in _so29
+          and "CONVERSATION-TRUTH" not in _so29)
+    # (18) A malformed beat end to end: exit 4 (the ARC arm — precedence pin 6), naming the index.
+    # Pre-fix this record renders `DREAM ARC ✓ sleep · ✓ 6/6 beats · ✓ wake` and exits 0.
+    _fixture19(_NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s12.jsonl")
+    # `list[object]`, not `list` of the beats: the point of the fixture is that index 2 is NOT a
+    # string, and a `list[str]` annotation makes the null unassignable — the mypy gate would reject
+    # the very malformation this pin exists to feed the gate under test.
+    _bad29: "list[object]" = list(_BEATS19)
+    _bad29[2] = None
+    _p18 = _wr19("f29c.json", "2026-09-02T02:01:18Z", _T0_29,
+                 {"sleep": _SLEEP19, "beats": _bad29, "wake": "*The wake stanza.*"})
+    _so29, _se29, _rc29 = _run19(_p18, "--persist", str(_store19))
+    check("v0.4.29 pin 18: a malformed beat end to end → exit 4 naming THE index, with the arc "
+          "panel (pre-fix: exit 0 and a green ✓ 6/6 beats — a counted beat that was never read)",
+          _rc29 == 4 and "DREAM ARC INCOMPLETE" in _so29
+          and "beat(s) 2 not a non-empty string" in _so29)
+    # (19) An empty-normalizing stanza end to end → exit 4, the NAR arm, all seven slots named.
+    # Preconditions ARE the pin (spec §3): the fixture carries an accounting `--json` call and the
+    # live pool above, so the verdict is the NAR fire and not an EXT one — measured, the bare shape
+    # without them exits 0 as `degraded · transcript unavailable`, which reads as the pin failing
+    # when the fixture is what is wrong.
+    _fixture19(_NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s13.jsonl")
+    _p19 = _wr19("f29d.json", "2026-09-02T02:01:19Z", _T0_29,
+                 {"sleep": "*", "beats": ["*"] * 6, "wake": "*"})
+    _so29, _se29, _rc29 = _run19(_p19, "--persist", str(_store19))
+    check("v0.4.29 pin 19: an all-'*' record end to end → exit 4, the gap panel, all seven slots "
+          "named `no narratable content` (pre-fix: exit 0 as `verified · 7/7 narrated` against "
+          "this same transcript — the audit's reproduction)",
+          _rc29 == 4 and "CONVERSATION-TRUTH GAPS" in _so29
+          and "empty after normalize" in _so29
+          and set(_last19()["narration"]["gaps"])
+          == {"sleep", "beats[0]", "beats[1]", "beats[2]", "beats[3]", "beats[4]", "beats[5]"}
+          and "7/7" not in _last19()["narration"]["reason"])
+    # (27) The block C6 is about: a record whose dream block carries nothing USABLE (blank strings,
+    # not missing keys) now gets judged — so the log line's `narration` block exists and reads
+    # `failed`. Pre-fix it writes NO block, which is the class C6 names: absence on a log line
+    # stops meaning "pre-feature" and starts meaning "nothing to see here". The pin asserts the
+    # BLOCK, not the exit code — the arc gate already exited 4 pre-fix (`sleep missing`), so a
+    # code-only assertion would pass on the old code.
+    _fixture19(_NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s14.jsonl")
+    _p27 = _wr19("f29e.json", "2026-09-02T02:01:27Z", _T0_29,
+                 {"sleep": "   ", "beats": ["  "] * 6, "wake": "*The wake stanza.*"})
+    _so29, _se29, _rc29 = _run19(_p27, "--persist", str(_store19))
+    check("v0.4.29 pin 27: an emptied-dream record writes a `narration` block reading `failed` "
+          "(pre-fix: NO block at all — the absence C6 makes ambiguous)",
+          _rc29 == 4 and _last19().get("narration", {}).get("verdict") == "failed")
+    # (39) A RELATIVE `--persist` must land on its absolute twin's slot. Pre-fix it exits 1 with
+    # `IdentifierRefused: invalid project id ''` — the store identity is derived from the path, and
+    # a relative one has no project component. The identity assertion is the SECOND run: the
+    # absolute spelling sees the relative one's line as a duplicate of the same marker, which can
+    # only happen if both resolved to one slot. A fix that merely caught the exception and exited 0
+    # would pass a code-only assertion while leaving the two spellings on different slots.
+    _fixture19(_NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])], name="s15.jsonl")
+    _rp39 = _wr19("f29f.json", "2026-09-02T02:01:39Z", _T0_29, _REC19["dream"])
+    _n39a = _nlines29()
+    _so39, _se39, _rc39 = _run19(_rp39, "--persist", "memory", cwd=str(_pool19))
+    _n39b = _nlines29()
+    _so39c, _se39c, _rc39c = _run19(_rp39, "--persist", str(_store19), cwd=str(_else19))
+    check("v0.4.29 pin 39: a RELATIVE `--persist memory` exits 0, appends its line, and the "
+          "ABSOLUTE twin then reads that same line as a duplicate (one slot, one marker) — no "
+          "traceback (pre-fix: exit 1, `IdentifierRefused: invalid project id ''`)",
+          _rc39 == 0 and "Traceback" not in _se39 and "IdentifierRefused" not in _se39
+          and _n39b == _n39a + 1 and _rc39c == 0 and _nlines29() == _n39b
+          and _last19()["narration"]["verdict"] == "verified")
+
 # ── v0.4.21 defect sweep (docs/defect-sweep-v0421.spec.md) ────────────────────────────────
 # D1 the stamp-marker resolution (the literal "HEAD" class); D2 the demotion-verdict
 # contradiction guard; D3 the SKILL command-template quoting; D5 the distill true counts;
@@ -15474,15 +15638,986 @@ with _tf43.TemporaryDirectory() as _td23:
     check("v0.4.23 P2: the emoji flag names the offending beat (1-based, the archive's Passage "
           "numbering) — pre-fix renders the bare phrase",
           "emoji in beat(s): 3" in _emo23)
-    # the SKILL mandates the justify path + the --force re-anchor
+    # the SKILL mandates the justify path + the --force re-anchor. This asserts the PATH and the
+    # FLAG, never the placeholder's spelling: v0.4.29 quoted `<stem>` (`--justify-defrag "<stem>"`)
+    # because bare `<stem>` is a bash stdin redirect, and this pin's old full-literal form failed
+    # on the repair — it had encoded the defect. The quoting rule now lives in pin 41 arm B,
+    # which owns it across the whole prose surface; pinning it here too would only duplicate it.
     check("v0.4.23 P1: SKILL Phase 5 names the justify-defrag path + the post-curation --force "
           "re-anchor",
-          '"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag <stem> .' in _sk22
+          '"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag' in _sk22
           and "re-anchor the watermark with `--force`" in _sk22)
+# ── v0.4.29 dream-teeth coverage (docs/dream-teeth-coverage.spec.md) ──────────────────────────
+# Cycle A of the audit remediation. One structural defect: every gate here was
+# NARROWER than the rule it was believed to enforce, and each failed in the CLEAN direction.
+# In-process pins 1-13/13b/25/26/29/34 sit here; 21-24/30/32/33/37/38 run the scripts; 40 reads
+# the docs. Pins 14-19/27/31/35/36/39 live in the v0.4.19 persist fixture above (they need a
+# store, a log and a transcript pool to measure a delta rather than an exit code).
+# Pin 20 adds no check BY DESIGN: the exit ladder is unchanged, and F19A/B/C/K plus the v0.4.1 gate
+# block ARE that pin. Pins 3, 6, 8, 9, 15, 20, 29, 34, 40's arm 3 and the 10d/10e blocks are
+# labelled REGRESSION pins — green before AND after, because their whole content is that the fix
+# must not move what already worked. That labelling is load-bearing: an implementer who reads a
+# survivor as broken will "fix" the pin instead of the bug. Two of the spec's labels were wrong and
+# are corrected here against measurement — pin 26's no-scan half is green pre-fix (so the pin
+# carries a verdict half too), and pin 34's `echo` clause FLIPS pre-fix (so it belongs to pin 7,
+# not to the regression set). The regression set is NOT one-directional, and 10d/10e are where that
+# shows: most members catch a fix that over-narrows (loud — a real call loses its credit), while
+# `--recalls=3` catches a fix that drops an exclusion the shipped regex had (silent). Both are
+# green pre-fix, so the label alone does not say which; each block's own comment states its column.
+import shlex as _shlex29  # noqa: E402
+import inspect as _inspect29  # noqa: E402
+
+_T29 = "${CLAUDE_PLUGIN_ROOT}/scripts/extract_signals.py"
+
+# (1) The checked set cannot shrink — asserted on VALUES, not on the count. A count-only assertion
+# is not the pin: a `str()`-coercing _checked_texts also returns 7 here and would pass it.
+for _lbl29, _beats29 in (("null", [None] * 6), ("dict", [{}] * 6), ("int", [0] * 6)):
+    _ct29 = _dp19._checked_texts({"dream": {"sleep": "S", "beats": _beats29}})
+    check(f"v0.4.29 C1: _checked_texts cannot shrink — beats [{_lbl29}]*6 keeps all 7 slots, "
+          "indexes preserved and the real string verbatim",
+          _ct29 is not None and len(_ct29) == 7
+          and [l for l, _ in _ct29] == ["sleep", "beats[0]", "beats[1]", "beats[2]", "beats[3]",
+                                        "beats[4]", "beats[5]"]
+          and _ct29[0] == ("sleep", "S") and all(v == "" for _, v in _ct29[1:]))
+_ct29mix = _dp19._checked_texts({"dream": {"sleep": None, "beats": ["a", {}, "b", None, "c", 0]}})
+check("v0.4.29 C1: a mixed null/real beat list keeps every index (real strings verbatim, the holes "
+      "carried as empty needles so they fail rather than leave)",
+      _ct29mix is not None and [v for _, v in _ct29mix] == ["", "a", "", "b", "", "c", ""])
+# The sharp half of pin 1: a coercing set returns 7 here too — and then this record, against a
+# transcript that literally contains the character '0', reads `verified · 7/7 narrated`. (Pre-fix
+# the SET was empty: `checked == []` fell through to `missing == [] and accounted` → verified.)
+_co29_lines = [_line19("2026-09-02T01:00:00Z", [_txt19("0 0 0 0 0 0 0")]),
+               _line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])]
+_co29 = _dp19.judge({"dream": {"sleep": 0, "beats": [0] * 6}}, Path("."), "", retry_delay=0,
+                    scan_fn=lambda: _scan19(_co29_lines))
+check("v0.4.29 C1: a coercing _checked_texts would certify this record 7/7 against the character "
+      "'0' — the shipped set fails it (every needle empty, every slot a gap)",
+      _co29["verdict"] == "failed" and "7/7" not in _co29["reason"] and len(_co29["gaps"]) == 7)
+
+# (2) The two states are distinguishable by RETURN TYPE, not by membership in a set ({"dream": {}}
+# yields [], so nothing is "in" it) — None is the legacy carve-out, [] is a claimed-but-empty arc.
+check("v0.4.29 C6: _checked_texts → None for no dream block, [] for a dream block carrying nothing "
+      "usable (the two states C6 collapsed)",
+      _dp19._checked_texts({}) is None and _dp19._checked_texts("junk") is None
+      and _dp19._checked_texts({"dream": "x"}) is None
+      and _dp19._checked_texts({"dream": {}}) == []
+      and _dp19._checked_texts({"dream": {"beats": []}}) == [])
+check("v0.4.29 C1: a PRESENT stanza enters the set whether or not it is a usable string; an ABSENT "
+      "key stays out (the arc gate owns absence — one absence, one panel)",
+      _dp19._checked_texts({"dream": {"sleep": None}}) == [("sleep", "")]
+      and _dp19._checked_texts({"dream": {"sleep": "S"}}) == [("sleep", "S")])
+
+# (3) REGRESSION (documents, cannot fail pre-fix): the mechanism C2 rides on.
+check("v0.4.29 C2 mechanism (REGRESSION, green pre-fix): normalize_beat_text of a markers-only "
+      "stanza is '' — the empty needle the gap rule exists for",
+      _dp19.normalize_beat_text("*") == "" and _dp19.normalize_beat_text("***") == ""
+      and _dp19.normalize_beat_text("> ") == "")
+
+# (4) THE AUDIT'S REPRODUCTION, pinned as a negative — pre-fix this returned `verified · 7/7
+# narrated` against a transcript with zero text blocks: the teeth that exist to guarantee the dream
+# narrated its beats certified an empty narration.
+_REC29STAR = {"dream": {"sleep": "*", "beats": ["*"] * 6, "wake": "*"}}
+_star29 = _dp19.judge(_REC29STAR, Path("."), "", retry_delay=0,
+                      scan_fn=lambda: _scan19([_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])]))
+check("v0.4.29 C2: the audit's reproduction — an all-'*' record against a ZERO-text-block "
+      "transcript is not verified, names no 7/7, and gaps all seven slots",
+      _star29["verdict"] == "failed" and "7/7 narrated" not in _star29["reason"]
+      and [g["label"] for g in _star29["gaps"]] == ["sleep", "beats[0]", "beats[1]", "beats[2]",
+                                                     "beats[3]", "beats[4]", "beats[5]"])
+# (5) The sharper half: the same record against a transcript that DOES narrate the beats is still
+# failed — and for the right reason (the needle, never the narration).
+_star29b = _dp19.judge(_REC29STAR, Path("."), "", retry_delay=0,
+                       scan_fn=lambda: _scan19(_NARR19 + [_line19("2026-09-02T01:02:00Z",
+                                                                   [_bash19(_CALL19)])]))
+check("v0.4.29 C2: the same record against a NARRATING transcript is failed too — measured, "
+      "pre-fix it certified identically against an empty and a narrating transcript",
+      _star29b["verdict"] == "failed" and len(_star29b["gaps"]) == 7
+      and all(g["preview"] == "no narratable content (empty after normalize)"
+              for g in _star29b["gaps"]))
+
+# (6) REGRESSION: pin (2)'s pre-existing cases, re-asserted as ONE conjunction so the survivor set
+# is checkable at a glance. The standalone halves are the v0.4.19 pins above (_v19a clean 7/7,
+# _v19b exactly 5 named gaps, _v19c the record-fill attack, plus the surfacing-line and TEXT-domain
+# negatives) — the fix's job is to leave every one of them exactly where it was.
+_v29six = _dp19.judge(_REC19, Path("."), "", retry_delay=0,
+                      scan_fn=lambda: _scan19(_NARR19 + [_line19("2026-09-02T01:02:00Z",
+                                                                  [_bash19(_CALL19)])]))
+check("v0.4.29 §2.2 (REGRESSION, green pre-fix): the v0.4.19 cases survive — 7-narrated clean with "
+      "the surfacing line as the last beats entry, 2-narrated naming exactly 5 gaps, and a valid "
+      "needle never mistaken for an empty one",
+      _v29six["verdict"] == "verified" and "7/7" in _v29six["reason"]
+      and _v19b["verdict"] == "failed" and not _v19b["ext_unaccounted"]
+      and [g["label"] for g in _v19b["gaps"]] == ["sleep", "beats[2]", "beats[3]", "beats[4]",
+                                                  "beats[5]"])
+
+
+def _ext29(cmd: str) -> bool:
+    """True iff `cmd`, emitted as an in-window Bash tool_use beside a fully-narrating transcript,
+    is ACCOUNTED by the EXT arm. Judged end to end through `judge` — not through _INVOKE_RE — so
+    the pin exercises the whole seam (the spec's pin-34 requirement, applied to every anchor case)."""
+    _l = _NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(cmd)])]
+    return not _dp19.judge(_REC19, Path("."), "", retry_delay=0,
+                           scan_fn=lambda: _scan19(_l))["ext_unaccounted"]
+
+
+# (7) Each C4 non-invocation → unaccounted. The first four are the SHIPPED anchor's holes (each was
+# accounted before this cycle); the rest are the inherited negatives, re-asserted so a fix that
+# over-narrows is caught here rather than in the field.
+for _lbl29, _cmd29 in (
+        ("echo prefixes the interpreter", f"echo python3 {_T29} --json"),
+        ("-m consumes the path as a module name", f"python3 -m py_compile {_T29}"),
+        ("-c consumes it as code", f"""python3 -c "open('{_T29}')" """),
+        ("a continuation splits the token from --recalls",
+         f"python3 {_T29} \\\n  --recalls --into S --before B"),
+        ("grep reads it as a pattern", f'grep -n "{_T29}" /dev/null'),
+        ("cat reads it as a file", f"cat {_T29}"),
+        ("sed reads it as an input", f"sed -n 1p {_T29}"),
+        ("no / separator before the extension", "python3 /x/scripts/extract_signalsXpy --json"),
+        ("the test file, not the script", "python3 -m pytest tests/test_extract_signals.py"),
+        ("a command substitution is not the invoked path", f'python3 "$(echo {_T29})" --json')):
+    check(f"v0.4.29 C4: unaccounted — {_lbl29}", not _ext29(_cmd29))
+check("v0.4.29 C4: a text-block mention of the extractor is not an execution (the NAR domain's "
+      "own negative, re-asserted at the EXT arm)",
+      not _dp19.judge(_REC19, Path("."), "", retry_delay=0, scan_fn=lambda: _scan19(
+          _NARR19 + [_line19("2026-09-02T01:03:00Z", [_txt19(f"I ran {_T29} --json")])])
+      )["ext_unaccounted"] is False)
+
+# (8) REGRESSION: every real form the shipped anchor already accounted stays accounted. The bare
+# form, the SKILL's own Phase-2 form, and a path split *inside quotes* by a continuation.
+for _lbl29, _cmd29 in (
+        ("the bare form", f'python3 "{_T29}" --json'),
+        ("the SKILL's Phase-2 form", f'CM_DREAM_ARC=1 python3 "{_T29}" --json'),
+        ("a continuation inside the quoted path",
+         f'python3 "${{CLAUDE_PLUGIN_ROOT}}/scripts/\\\nextract_signals.py" --json')):
+    check(f"v0.4.29 §2.3 (REGRESSION, green pre-fix): accounted — {_lbl29}", _ext29(_cmd29))
+
+# (9) REGRESSION: the SKILL's Phase-5 form is the recall-only mode, not the Phase-2 extract.
+check("v0.4.29 §2.3 (REGRESSION, green pre-fix): --recalls is not the Phase-2 extract (unaccounted)",
+      not _ext29(f'CM_DREAM_ARC=1 python3 "{_T29}" --recalls --into S --before B'))
+
+# (10) A segment that cannot be tokenized is Uncertain → fire, never accounted.
+check("v0.4.29 §2.3: unbalanced quotes are a tokenizer failure → unaccounted (Uncertain → fire)",
+      not _ext29(f'python3 "{_T29} --json'))
+
+# (10b) THE FORMS THE FIRST §2.3 CUT DROPPED (review F5). Every one of these is a legitimate
+# Phase-2 call the anchor REFUSED — a loud false exit 3, which is the safe direction and still
+# wrong: a gate that fires on a correct pass teaches the model to route around it. Measured
+# through the same `_ext29` seam, all 12 were unaccounted before the wrapper grammar, the
+# grouping-prefix strip, the comment strip and the drive-path normalize landed, and all 12 are
+# accounted after. `_ext29`'s fixture narrates fully, so a False here is the EXT fire and nothing
+# else. The last case is the one a positional-BEFORE-flag walk would also drop: `-s` would spend
+# the positional slot and `KILL` would be read as the command word.
+for _lbl29, _cmd29 in (
+        ("timeout + its positional duration", f"timeout 300 python3 {_T29} --json"),
+        ("nice + a value flag", f"nice -n 10 python3 {_T29} --json"),
+        ("stdbuf + a fused flag", f"stdbuf -oL python3 {_T29} --json"),
+        ("flock + its positional lock path", f"flock /tmp/l python3 {_T29} --json"),
+        ("sudo + a value flag", f"sudo -u root python3 {_T29} --json"),
+        ("timeout -s KILL (the value is not flag-shaped)",
+         f"timeout -s KILL 5 python3 {_T29} --json"),
+        ("a `(`-fused subshell (shlex does not split punctuation by default)",
+         f"(python3 {_T29} --json)"),
+        ("a then-led segment", f"if true; then python3 {_T29} --json; fi"),
+        ("a do-led segment", f"for f in a; do python3 {_T29} --json; done"),
+        ("a brace group", f"{{ python3 {_T29} --json; }}"),
+        ("an apostrophe inside a # comment (it unbalanced the tokenizer)",
+         f"python3 {_T29} --json  # don't re-run this by hand"),
+        ("a Windows drive path (posix shlex eats the separator)",
+         "python3 C:\\x\\scripts\\extract_signals.py --json")):
+    check(f"v0.4.29 §2.3 (F5): accounted — {_lbl29}", _ext29(_cmd29))
+
+# (10c) THE ONE SILENT DIRECTION the anchor was too generous in (review F8), and the reason the
+# heredoc rule is IMPORTED from distill_scan rather than re-written here. A heredoc BODY holding a
+# complete command was segmented like any other line and CREDITED: measured, a pass that merely
+# WROTE the extractor's command into a file passed the arm whose whole job is to prove it ran.
+# Post-fix the body is stripped before segmentation (the opener's own command line survives), so
+# the write is unaccounted and the feed stays accounted.
+check("v0.4.29 §2.3 (F8): a heredoc BODY holding a complete command is data, not an execution "
+      "(pre-fix this was ACCOUNTED — the anchor's one silent hole)",
+      not _ext29(f"cat <<'EOF'\npython3 {_T29} --json\nEOF"))
+check("v0.4.29 §2.3 (REGRESSION, green pre-fix): a heredoc FEEDING the extractor keeps its own "
+      "command line — the body is stripped, the opener is not",
+      _ext29(f"python3 {_T29} --json <<'EOF'\n{{}}\nEOF"))
+
+# (10d) THE REMAINING SILENT DIRECTION (review F10, found by the prior-PR lens after 10c landed):
+# the first cut tested `-c`/`-m`/`--recalls` by EXACT token membership, which the ATTACHED spelling
+# evades — `-c'import os'`, `-mjson.tool` and `--recalls=3` each arrive from shlex as ONE token, so
+# all three were credited and a pass that never ran the extractor read `verified · ext_unaccounted
+# False`. A FOURTH, separate arm hides behind those three: the first cut credited the token ANYWHERE
+# in argv, so `python3 other.py <path>` — the path handed to a different script as an argument —
+# passed. Post-fix the extractor must be the FIRST operand after the interpreter. The arm is the
+# last tuple entry below, `the token in argv but not the script python runs`.
+#
+# FOUR of these five are pins; the fifth is a PORT-FIDELITY guard, and the split is measured rather
+# than assumed — one tree per revision, `_extractor_accounted` read directly (the "pre-fix"
+# column is the anchor 308e15b, "1st cut" is 2bad609, where the tokenized rewrite first landed):
+#     case                    308e15b   1st cut   HEAD
+#     -c'import os'           acct      acct      unacct   <- pin
+#     -c"import os"           acct      acct      unacct   <- pin
+#     -mjson.tool             acct      acct      unacct   <- pin
+#     --recalls=3             UNACCT    acct      unacct   <- guard, not a pin
+#     python3 other.py <tok>  acct      acct      unacct   <- pin
+# `--recalls` was ALREADY excluded shipped-side (`if "--recalls" in m.group(0): continue`), so the
+# anchor is unaccounted too and this case cannot flip against it. It guards the exclusion THROUGH
+# the tokenized rewrite, which is where it can be lost: a substring test on `group(0)` has no
+# `group(0)` to read any more (§2.3), and the 1st-cut column is that loss actually happening.
+for _lbl29, _cmd29 in (
+        ("-c's ATTACHED spelling (one shlex token, not `-c`)", f"python3 -c'import os' {_T29}"),
+        ("-c attached with double quotes", f'python3 -c"import os" {_T29}'),
+        ("-m's ATTACHED spelling", f"python3 -mjson.tool {_T29}"),
+        ("--recalls' attached spelling", f"python3 {_T29} --recalls=3"),
+        ("the token in argv but not the script python runs", f"python3 other.py {_T29} --json")):
+    check(f"v0.4.29 §2.3 (F10): unaccounted — {_lbl29}", not _ext29(_cmd29))
+
+# (10e) REGRESSION for the same change: `env`'s own value-taking flags (`env -u FOO cmd`,
+# `env -C /tmp cmd`) consume the following token, so a grammar that skipped flags WITHOUT their
+# values read `FOO` as the command word and lost a legitimate call. GREEN PRE-FIX — the shipped
+# regex matched the token anywhere, so these hold a line the cycle's own first cut broke, not one
+# the anchor broke (308e15b acct · 1st cut unacct · HEAD acct; a loud false exit 3 in the middle
+# column). `env -i` moves on NO measured revision: it is the boundary guard on the grammar's
+# no-value branch, kept because that branch is one edit away from consuming `python3`.
+for _lbl29, _cmd29 in (
+        ("env -u FOO", f"env -u FOO python3 {_T29} --json"),
+        ("env -C /tmp", f"env -C /tmp python3 {_T29} --json"),
+        ("env -i (no value — must stay accounted)", f"env -i python3 {_T29} --json")):
+    check(f"v0.4.29 §2.3 (F10, REGRESSION, green pre-fix): accounted — {_lbl29}", _ext29(_cmd29))
+
+# (11) The shared stanza predicate. `getattr` is not defensive padding: the claim is that the
+# SYMBOL exists as the shared type rule, and on pre-fix code it does not exist at all. Calling it
+# unguarded raised AttributeError and aborted the whole suite, so the mutation matrix collected
+# nothing past this line — a pin whose claim is FALSE must report RED, never crash the RUN.
+_sp29 = getattr(ms, "stanza_present", None)
+check("v0.4.29 §2.1: stanza_present — a non-empty string is present; '', '   ', None, 0, [], {}, "
+      "[1], {'a': 1}, True and 1.5 are not (the class, not just the JSON-null member)",
+      _sp29 is not None and _sp29("x") and _sp29("  x  ")
+      and not _sp29("   ") and not _sp29("")
+      and not _sp29(None) and not _sp29(0) and not _sp29(1.5)
+      and not _sp29(True) and not _sp29([]) and not _sp29({})
+      and not _sp29([1]) and not _sp29({"a": 1}))
+
+# (12) The arc's type arms — the count alone was never the rule. Pre-fix every one of these records
+# is arc-complete: `[None]*6`/`[""]*6` because `len(beats) == 6` was the whole test, and `sleep:[1]`
+# because `str()` coercion read a list as present. Measured pre-fix: (True, '') for all three.
+check("v0.4.29 §2.1: a null or blank beat fails the ARC and names its record index — which is the "
+      "exit-4 arm, and per precedence pin 6 it fires BEFORE NAR (record-arc wins)",
+      ms.arc_completeness({"dream": {"sleep": "s", "beats": [None] * 6, "wake": "w"}})
+      == (False, "beat(s) 0, 1, 2, 3, 4, 5 not a non-empty string")
+      and ms.arc_completeness({"dream": {"sleep": "s", "beats": [""] * 6, "wake": "w"}})
+      == (False, "beat(s) 0, 1, 2, 3, 4, 5 not a non-empty string"))
+check("v0.4.29 §2.1: one bad index is named alone, and a list stanza is not 'present' (the str() "
+      "coercion read `sleep: [1]` as present while the gate exits 4 `sleep missing`)",
+      ms.arc_completeness({"dream": {"sleep": [1], "beats": ["a"] * 5 + [{}], "wake": "w"}})
+      == (False, "sleep missing; beat(s) 5 not a non-empty string"))
+# The bad-beat clause APPENDS: the pre-existing count arm must still fire alone, or the exact
+# reason strings the v0.4.1 pins assert (`4/6 beats`) would be reworded.
+check("v0.4.29 §2.1: the count arm is untouched — a 4-beat record still reads exactly `4/6 beats`, "
+      "and a beat list whose entries are all valid adds no clause",
+      ms.arc_completeness({"dream": {"sleep": "s", "beats": ["a"] * 4, "wake": "w"}})
+      == (False, "4/6 beats")
+      and ms.arc_completeness({"dream": {"sleep": "s", "beats": ["a"] * 5, "wake": "w"}})
+      == (False, "5/6 beats"))
+
+# (13) The preserve/enforce matrix. The carve-out survives BOTH modes — that is what makes it a
+# carve-out — and the strict flag fires only on a record whose own shape dates it past the mandate.
+#
+# `enforce_post_arc` is a NEW KEYWORD on a function that exists pre-fix, so calling it unguarded is
+# a TypeError that aborts the whole mutation run — the same class as the stanza_present
+# AttributeError, and the third such abort. A pin whose claim is "the flag exists and narrows the
+# dreamless case" must report RED when the parameter is absent. The gate is a SIGNATURE PROBE, not
+# a try/except: `arc_completeness` is documented never to raise, but a future TypeError from
+# inside it must not be swallowed as though it were the probe. The sentinel `(None, …)` fails
+# every equality assertion below and can never accidentally equal a real verdict.
+_ARC29_STRICT = "enforce_post_arc" in _inspect29.signature(ms.arc_completeness).parameters
+
+
+def _arc29(record: object) -> "tuple[object, str]":
+    return ms.arc_completeness(record, enforce_post_arc=True) if _ARC29_STRICT \
+        else (None, "arc_completeness has no enforce_post_arc parameter")
+
+
+check("v0.4.29 §2.4: the legacy dreamless record is complete WITH and WITHOUT the strict flag "
+      "(F19I's shape — its subprocess pin is pin 15)",
+      ms.arc_completeness({}) == (True, "")
+      and _arc29({}) == (True, ""))
+check("v0.4.29 §2.4: a dreamless record carrying a post-arc key is complete by default and a SKIP "
+      "under the flag — the version-grounded rule (usage → v0.1.63, demotion → v0.1.67, both "
+      "STRICTLY after the v0.1.54 mandate)",
+      ms.arc_completeness({"usage": {}}) == (True, "")
+      and ms.arc_completeness({"demotion": {}}) == (True, "")
+      and _arc29({"usage": {}})
+      == (False, "dream block absent — the arc was skipped (a post-v0.1.54 record)")
+      and _arc29({"demotion": {}})
+      == (False, "dream block absent — the arc was skipped (a post-v0.1.54 record)"))
+
+# The set is the COMPLETE post-mandate writer set, never a sample (v0.4.29 review). The first cut
+# named only usage/demotion and was NARROWER THAN ITS OWN STATED CRITERION — and self-contradicting
+# with it, since it omitted `distill` (v0.1.58) while trusting the NEWER `usage` (v0.1.63). So a
+# record that skipped the arc via the distill path escaped the gate while an identical one that
+# also ran Phase 2 fired. Versions here are the first TAG CONTAINING the commit that introduced
+# the writing line (`git log -S 'record["<key>"]'`, never CHANGELOG prose, which matches the bare
+# word in any sentence — it dates `demotion` to v0.1.8, eleven releases early).
+#
+# The controls are the other direction, and they are not decorative: `audit` (v0.1.53) and
+# `outcome` (v0.1.1) predate the mandate, so firing on them would retro-flag a LEGACY record as a
+# skip. Measured, 9 of this store's 17 dreamless archive records carry one of the two.
+_POSTARC29 = ("usage", "demotion", "distill", "workflow_proposals", "identity",
+              "narration", "preflight")
+_PREARC29 = ("audit", "outcome")
+_SKIP29 = (False, "dream block absent — the arc was skipped (a post-v0.1.54 record)")
+check("v0.4.29 §2.4 (review): the post-arc set is COMPLETE — all 7 keys whose writer entered "
+      "after the v0.1.54 mandate fire, including `distill` (v0.1.58), the one the first cut "
+      "omitted while trusting the newer `usage` (v0.1.63)",
+      len(_POSTARC29) == 7 and all(_arc29({k: {}}) == _SKIP29 for k in _POSTARC29))
+check("v0.4.29 §2.4 (review): the PRE-mandate keys stay carved out — `audit` (v0.1.53) and "
+      "`outcome` (v0.1.1) may NOT fire, or 9 genuinely legacy archive records are retro-flagged",
+      len(_PREARC29) == 2 and all(_arc29({k: {}}) == (True, "") for k in _PREARC29))
+check("v0.4.29 §2.4 (review): the module's constant IS this pinned set — a key added to "
+      "memory_status without a matching pin (or the reverse) is a silent widening or narrowing "
+      "of the gate, which is the whole defect class this cycle closes",
+      # getattr, not `ms._POST_ARC_KEYS`: the constant is NEW on this branch, so a bare access
+      # raises AttributeError on pre-fix code and ABORTS the whole mutation run — the exact
+      # failure class `_ARC29_STRICT` exists to avoid. An absent constant must read RED here,
+      # not crash the run that is supposed to record it as red.
+      set(getattr(ms, "_POST_ARC_KEYS", ())) == set(_POSTARC29))
+check("v0.4.29 §2.4: the isinstance belt holds — a non-dict record with a post-arc key is still "
+      "outside the arc (the guard the sketch must KEEP), and a post-arc record with a COMPLETE "
+      "dream is complete in both modes (the flag narrows only the dreamless case)",
+      _arc29("junk") == (True, "")
+      and ms.arc_completeness(dict(_REC19, usage={})) == (True, "")
+      and _arc29(dict(_REC19, usage={})) == (True, ""))
+# (13b) §2.4's SCOPING, at the surface where the default is observable. The strict flag must reach
+# the persist gate and NOT the archive/preview surface, or every historical skipped-arc record's
+# display retro-flips (measured: the flag flips exactly 1 of 55, and only under `judged`).
+# Pre-fix both halves are panel-free, so the pin fails on the second.
+_skipped29 = cast(ms.CycleRecord, {"project": "p", "usage": {}})
+check("v0.4.29 §2.4: the scoping is real — the skipped-arc record renders NO panel on the "
+      "preview/archive surface (judged=False) and the strict panel only on the persist surface "
+      "(judged=True)",
+      "DREAM ARC INCOMPLETE" not in rd.render(_skipped29, judged=False, narration=None)
+      and "DREAM ARC INCOMPLETE" in rd.render(_skipped29, judged=True, narration=None))
+
+# (25) The verdict matrix, all four shapes against an ACCOUNTING EXT fixture — so the fixture
+# cannot account for a `failed`: the narration arm has to be the thing that fires. Pre-fix all four
+# return `verified` with the LEGACY reason (measured), which is the C6 collapse at the judge
+# boundary: `dream: {}` and `dream: {"sleep": None, …}` were indistinguishable from no dream at all.
+_REC29M = _NARR19 + [_line19("2026-09-02T01:02:00Z", [_bash19(_CALL19)])]
+_j29 = {}
+for _lbl29, _rec29 in (("no dream key", {"project": "p"}),
+                       ("dream {}", {"dream": {}}),
+                       ("sleep null + beats null", {"dream": {"sleep": None, "beats": [None] * 6}}),
+                       ("sleep blank + beats blank", {"dream": {"sleep": "  ", "beats": ["  "] * 6}})):
+    _j29[_lbl29] = _dp19.judge(_rec29, Path("."), "", retry_delay=0,
+                               scan_fn=lambda: _scan19(_REC29M))
+check("v0.4.29 C6: the judge verdict matrix — only the ABSENT dream block is legacy-verified; the "
+      "empty block and both malformed shapes are failed, and each keeps its own reason",
+      _j29["no dream key"]["verdict"] == "verified"
+      and _j29["no dream key"]["reason"] == "no dream block — a legacy record is outside both arms"
+      and _j29["dream {}"]["verdict"] == "failed"
+      and _j29["dream {}"]["reason"] == "dream block empty — no narratable stanza"
+      and _j29["dream {}"]["gaps"] == [{"label": "dream block",
+                                        "preview": "no narratable stanza"}]
+      and _j29["sleep null + beats null"]["verdict"] == "failed"
+      and _j29["sleep blank + beats blank"]["verdict"] == "failed")
+check("v0.4.29 pin 25: the two malformed shapes fail on the NARRATION arm ALONE — the accounting "
+      "EXT fixture keeps `extractor unaccounted` out of their gaps, so the pin cannot pass on an "
+      "EXT fire (pre-fix: `verified`, the legacy reason, for both)",
+      [g["label"] for g in _j29["sleep null + beats null"]["gaps"]]
+      == ["sleep", "beats[0]", "beats[1]", "beats[2]", "beats[3]", "beats[4]", "beats[5]"]
+      and _j29["sleep null + beats null"]["ext_unaccounted"] is False
+      and _j29["sleep blank + beats blank"]["reason"]
+      == "missing narration: sleep, beats[0], beats[1], beats[2], beats[3], beats[4], beats[5]")
+
+
+# (26) The `[]` arm returns BEFORE the scan. Its no-scan half is green pre-fix — the old truthiness
+# test returned early too, it just returned `verified` — so the VERDICT half is what makes this a
+# mutation pin; the no-scan half pins the SHAPE the C6 fix must keep, which a naive rewrite that
+# deletes the early return (and lets the empty block reach `missing == [] and accounted`) breaks.
+def _no_scan29() -> "tuple[list, list, bool]":
+    raise AssertionError("the [] arm reached the transcript")
+
+
+_scanned29 = True
+try:
+    _j29empty = _dp19.judge({"project": "p", "dream": {}}, Path("."), "", retry_delay=0,
+                            scan_fn=_no_scan29)
+    _scanned29 = False
+except AssertionError:
+    _j29empty = {}
+check("v0.4.29 pin 26: the empty-block arm returns BEFORE the scan AND fails — there is nothing "
+      "to look for, and falling through would reach the conjunction that certifies an empty block "
+      "as verified",
+      not _scanned29 and _j29empty.get("verdict") == "failed"
+      and _j29empty.get("reason") == "dream block empty — no narratable stanza")
+
+# (29) Segment segregation. Labelled REGRESSION (measured: both clauses hold pre-fix) — its whole
+# content is that the split must not let ONE segment's flags speak for another, which is the
+# failure mode a naive "collect the flags, then decide" rewrite introduces.
+check("v0.4.29 pin 29 (REGRESSION, green pre-fix): segment 1's extract is accounted while segment "
+      "2's `--recalls` is not — neither segment's argv speaks for the other",
+      _ext29(f'python3 "{_T29}" --json && echo done')
+      and not _ext29(f'echo hi && python3 "{_T29}" --recalls'))
+
+# (34) The anchor's compatibility surface. REGRESSION, and labelled: every form below is accounted
+# on the pre-fix anchor too (measured 10/10 both sides), and the FIRST §2.3 prototype made all of
+# them unaccounted — eight-plus new exit-3 fires on legitimate calls, a regression in the loud
+# direction, which is the worse of the two. Without this pin the next edit to the wrapper set ships
+# a false exit 3 that no other pin sees. (The bare / `CM_DREAM_ARC=1` / continuation-inside-quotes
+# forms are pin 8's.)
+# NOT in this set, deliberately: `echo python3 <tok> --json` is one of the four C4 HOLES — the
+# pre-fix anchor accounts it and §2.3's does not, so it is pin 7's first case, not a regression
+# clause. Spec §3 listed it under pin 34 as "must stay unaccounted" on both sides; measured, it
+# flips, and the flip is the fix.
+for _lbl29, _cmd29 in (
+        ("env", f'env python3 "{_T29}" --json'),
+        ("env VAR=1", f'env CM_X=1 python3 "{_T29}" --json'),
+        ("time", f'time python3 "{_T29}" --json'),
+        ("command", f'command python3 "{_T29}" --json'),
+        ("nohup … &", f'nohup python3 "{_T29}" --json &'),
+        ("sudo", f'sudo python3 "{_T29}" --json'),
+        ("xargs -I{}", f'xargs -I{{}} python3 "{_T29}" --json'),
+        ("sleep 5 & …", f'sleep 5 & python3 "{_T29}" --json'),
+        ("the && second segment", f'echo hi && python3 "{_T29}" --json'),
+        ("a trailing 2>&1 (the token-granularity test — a character split on `&` truncates this "
+         "to `…2>` and nothing else in the list would notice)", f'python3 "{_T29}" --json 2>&1')):
+    check(f"v0.4.29 pin 34 (REGRESSION, green pre-fix): accounted — {_lbl29}", _ext29(_cmd29))
+
+# The other entry points: an unknown flag is a usage error, and the real surface is untouched.
+# Pre-fix, `--jsoon` was SKIPPED on extract_signals/memory_status and became the PROJECT DIR on
+# preflight — so each pin asserts the side effect is gone, not merely the code.
+_scripts29 = ROOT / "plugins" / "consolidate-memory" / "scripts"
+
+
+def _run29(script: str, *args: str, cwd: str = "") -> "tuple[str, str, int]":
+    env = {**_os53.environ}
+    env.pop("CM_DREAM_ARC", None)
+    p = _sp53.run([sys.executable, str(_scripts29 / script), *args],
+                  capture_output=True, text=True, timeout=120, env=env, cwd=cwd or None)
+    return p.stdout, p.stderr, p.returncode
+
+
+def _cm29(*args: str) -> "tuple[str, str, int]":
+    p = _sp53.run([str(ROOT / "cm"), *args], capture_output=True, text=True, timeout=120,
+                  cwd=str(ROOT))
+    return p.stdout, p.stderr, p.returncode
+
+
+_USAGE29 = "cm — consolidate-memory (MAINTAINER CLI"
+
+with _tf43.TemporaryDirectory() as _td29:
+    _proj29 = str(Path(_td29) / "proj")
+    Path(_proj29).mkdir()
+    _rec30 = Path(_td29) / "rec.json"
+    _rec30.write_text(_json43.dumps({"project": "p", "marker": {"timestamp": "t"}}))
+
+    # (21)
+    _so29, _se29, _rc29 = _run29("extract_signals.py", "--jsoon", _proj29)
+    check("v0.4.29 pin 21: extract_signals → `--jsoon` is exit 2 + `unknown flag: --jsoon`, and NO "
+          "extraction was emitted (pre-fix it exited 0 doing a full extraction)",
+          _rc29 == 2 and "unknown flag: --jsoon" in _se29 and _so29 == "")
+    _so29, _se29, _rc29 = _run29("extract_signals.py", "--ascii", "--json", _proj29)
+    check("v0.4.29 pin 21: extract_signals → the visual flags never misfire the strictness "
+          "(`--ascii --json` is a normal run)",
+          _rc29 == 0 and "unknown flag" not in _se29)
+    # (22)
+    _so29, _se29, _rc29 = _run29("memory_status.py", "--jsoon", _proj29)
+    check("v0.4.29 pin 22: memory_status → `--jsoon` is exit 2, and no status report was emitted "
+          "(pre-fix the token was DROPPED and a full report printed)",
+          _rc29 == 2 and "unknown flag: --jsoon" in _se29 and _so29 == "")
+    _ok22 = {}
+    for _f22 in ("--json", "--triage", "--no-color", "--ascii"):
+        _so29, _se29, _rc29 = _run29("memory_status.py", _f22, _proj29)
+        _ok22[_f22] = (_rc29, _se29)
+    _so29j, _se29j, _rc29j = _run29("memory_status.py", "--json", _proj29)
+    check("v0.4.29 pin 22: memory_status → --json/--triage/--no-color/--ascii are unaffected "
+          "(exit 0, no `unknown flag`, and --json still emits a parseable record)",
+          all(rc == 0 for rc, _ in _ok22.values())
+          and all("unknown flag" not in se for _, se in _ok22.values())
+          and isinstance(_json43.loads(_so29j), dict))
+    # (23)
+    _so29, _se29, _rc29 = _run29("preflight.py", "--jsoon")
+    check("v0.4.29 pin 23: preflight → `--jsoon` is exit 2 (pre-fix it became args[0], the PROJECT "
+          "DIR) and no pre-flight ran",
+          _rc29 == 2 and "unknown flag: --jsoon" in _se29 and _so29 == "")
+    _rc23 = [_run29("preflight.py", *a)[2] for a in ((".",), ("--json",))]
+    check("v0.4.29 pin 23: preflight → `.` and `--json` stay green", _rc23 == [0, 0])
+
+    # (30) The visual surface, AT ITS SOURCE and at its copies. Five forms — two of them
+    # equals-only — and a bare `--width` is rejected everywhere, because `_ui.resolve_width`
+    # matches `startswith("--width=")` only: blessing it would bless a silent no-op, the very
+    # defect C5 is. Pre-fix every one of these is accepted (exit 0) by every script.
+    for _s30, _base30 in (("distill_scan.py", (_td29,)), ("extract_signals.py", (_proj29,)),
+                          ("memory_status.py", (_proj29,)), ("render_dashboard.py", (str(_rec30),))):
+        _eq30 = [_run29(_s30, *_base30, _f30)[2] for _f30 in ("--color=always", "--width=80")]
+        _so30, _se30, _rc30 = _run29(_s30, *_base30, "--width")
+        check(f"v0.4.29 pin 30: {_s30} — `--color=always`/`--width=80` survive, bare `--width` is "
+              "exit 2 (equals-only at the source, and at every copy of the rule)",
+              all(rc != 2 for rc in _eq30) and _rc30 == 2
+              and "unknown flag: --width" in _se30)
+    check("v0.4.29 pin 30: the PRECEDENT itself is pinned too (a future edit that narrows "
+          "distill_scan's allowance is caught at the precedent, not only at its copies)",
+          _run29("distill_scan.py", _td29, "--color=always")[2] != 2
+          and _run29("distill_scan.py", _td29, "--width=80")[2] != 2
+          and _run29("distill_scan.py", _td29, "--width")[2] == 2)
+
+    # (32) preflight's allowance is the EMPTY SET plus --json — not an oversight: it imports _ui
+    # but never calls set_modes, so a house-style list derived from imports would bless three flags
+    # it then ignores. Pre-fix all five are 0: accepted and doing nothing.
+    _pf32 = [_run29("preflight.py", _a)[2] for _a in ("--ascii", "--color=always", "--width=80")]
+    check("v0.4.29 pin 32: preflight → its allowance is the empty set plus --json; the visual "
+          "flags are exit 2 (pre-fix all three were 0 — blessed and ignored)",
+          all(rc == 2 for rc in _pf32)
+          and _run29("preflight.py", ".")[2] == 0 and _run29("preflight.py", "--json")[2] == 0)
+
+    # (33) The over-strict direction — the regression pin for §2.5's whole risk. A naive token-set
+    # check breaks a WORKING flag, and this is not hypothetical: `_VISUAL_FLAGS` was referenced in
+    # render_dashboard's new strict loop and never defined there, so every `--color`/`--ascii` run
+    # of this script died with a NameError on a path no other pin exercised.
+    for _f33 in ("--ascii", "--color", "--no-color", "--color=always"):
+        _so33, _se33, _rc33 = _run29("render_dashboard.py", str(_rec30), _f33)
+        check(f"v0.4.29 pin 33: the visual flags do not misfire on a bare call "
+              f"(render_dashboard <record> {_f33} → exit 0, no `unknown flag`, no traceback)",
+              _rc33 == 0 and "unknown flag" not in _se33 and "Traceback" not in _se33)
+
+    # (42) F9 — the combination that silently did nothing. `--demo --persist DIR` exited **0**
+    # with empty stderr and an empty dir: `--demo` builds its record in-process, so its
+    # short-circuit returned before the print→persist→exit block and all three gates were
+    # skipped. Pre-fix measured: rc 0, 0 files persisted, 0 bytes of stderr.
+    _dp42 = Path(_td29) / "demo-persist"
+    _dp42.mkdir()
+    _so42, _se42, _rc42 = _run29("render_dashboard.py", "--demo", "--persist", str(_dp42))
+    check("v0.4.29 pin 42: `--demo --persist DIR` is exit 2 naming the conflict, not a silent "
+          "exit 0 that persisted nothing (pre-fix: rc 0, empty dir, empty stderr — the false-clean "
+          "shape this cycle exists to close, on the one flag no visual-flag list names)",
+          _rc42 == 2 and "--demo" in _se42 and "--persist" in _se42 and not list(_dp42.iterdir()))
+    _so42b, _se42b, _rc42b = _run29("render_dashboard.py", "--demo")
+    check("v0.4.29 pin 42 (REGRESSION, green pre-fix): `--demo` ALONE stays a clean preview — "
+          "exit 0, a rendered record on stdout, nothing on stderr — so the refusal above is scoped "
+          "to the PAIR and a preview did not stop being a preview",
+          _rc42b == 0 and _so42b.strip() != "" and _se42b == "")
+
+    # (37) The flag-shape boundary: `-h`/`--help` are rejected on the four and kept on `cm`.
+    for _sc37 in ("extract_signals.py", "memory_status.py", "preflight.py", "render_dashboard.py"):
+        for _f37 in ("-h", "--help"):
+            _a37 = ((str(_rec30), _f37) if _sc37 == "render_dashboard.py" else (_f37,))
+            _so37, _se37, _rc37 = _run29(_sc37, *_a37)
+            check(f"v0.4.29 pin 37: {_sc37} {_f37} → exit 2, `unknown flag: {_f37}`, no side effect "
+                  "(pre-fix it exited 0 doing the work — a user asking for help got their CWD "
+                  "extracted, their status reported, or a pre-flight run)",
+                  _rc37 == 2 and f"unknown flag: {_f37}" in _se37 and _so37 == "")
+    for _f37 in ("-h", "--help", "help"):
+        _so37, _se37, _rc37 = _cm29(_f37)
+        check(f"v0.4.29 pin 37: `cm {_f37}` keeps the real help arm — exit 0, usage on stdout, "
+              "nothing on stderr (the deliberate asymmetry with the four)",
+              _rc37 == 0 and _USAGE29 in _so37 and _se37 == "")
+
+    # (38) The allowance is "what THIS script parses", pinned by cross-script rejection. The
+    # git-passthrough arm is the one a grep-derived allowance gets wrong: those flags are string
+    # literals in the same files, but they are SUBPROCESS arguments and never appear in main()'s
+    # branch structure, so they must not enter any allowance.
+    _LEGAL38 = {"--demo": ("render_dashboard.py",), "--audit": ("memory_status.py",),
+                "--into": ("extract_signals.py", "memory_status.py")}
+
+    def _rc38(script: str, flag: str) -> int:
+        if script == "cm":
+            return _cm29(flag)[2]
+        if script == "render_dashboard.py":
+            return _run29(script, str(_rec30), flag)[2]
+        return _run29(script, flag, _proj29)[2]
+
+    _rej38 = []
+    for _f38, _owners38 in _LEGAL38.items():
+        for _s38 in ("extract_signals.py", "memory_status.py", "preflight.py",
+                     "render_dashboard.py", "cm"):
+            if _s38 not in _owners38 and _rc38(_s38, _f38) != 2:
+                _rej38.append(f"{_s38} accepted {_f38}")
+    check("v0.4.29 pin 38: a flag legal on ONE script is rejected on the others — `--demo` "
+          "(render_dashboard's real flag, the one no visual-flag list names) is not blessed "
+          "house-wide, and --audit/--into keep their own surface"
+          + (f" · {_rej38[0]}" if _rej38 else ""), not _rej38)
+    _rej38b = []
+    for _f38 in ("--oneline", "--no-merges", "--exclude-standard", "--is-inside-work-tree",
+                 "--verify"):
+        for _s38 in ("extract_signals.py", "memory_status.py", "preflight.py",
+                     "render_dashboard.py", "cm"):
+            if _rc38(_s38, _f38) != 2:
+                _rej38b.append(f"{_s38} accepted {_f38}")
+    check("v0.4.29 pin 38: the GIT PASSTHROUGHS are subprocess arguments, never script flags — "
+          "rejected on every one of the five"
+          + (f" · {_rej38b[0]}" if _rej38b else ""), not _rej38b)
+    check("v0.4.29 pin 38: `--` (end-of-options) is an unknown flag on each of the five (measured "
+          "pre-fix: render_dashboard read it as a record path and exited 1; extract_signals "
+          "swallowed it and exited 0)",
+          _rc38("extract_signals.py", "--") == 2 and _rc38("preflight.py", "--") == 2
+          and _rc38("memory_status.py", "--") == 2 and _rc38("render_dashboard.py", "--") == 2
+          and _cm29("--")[2] == 2
+          and "unknown flag: --" in _run29("extract_signals.py", "--", _proj29)[1])
+
+# (40) Every documented invocation is RUNNABLE — three arms, because one is not enough. Arm 1
+# (`bash -n`, per block AND per command line) catches class A's odd-quote sub-shape and every
+# class B; arm 2 (no UNQUOTED `<…>`) catches the single-word `<name>` that parses cleanly while
+# redirecting stdin — its rule is "a placeholder is QUOTED", NEVER "no `<`/`>`", or SKILL's
+# genuine `> "<the --scan path>"` output redirect is flagged (the over-strict direction, pin 33's
+# failure mode). Arm 3 — each line's script exists and every flag it passes is one that script
+# defines — is the REGRESSION arm. Measured against the pre-fix revision over these 9 files: arm 1
+# red on 15 blocks AND 56 command lines, arm 2 red on 28 lines, arm 3 green on both trees.
+# The `>= 77` floor keeps the pin non-vacuous if the doc surface shrinks — an empty glob would
+# otherwise pass every arm.
+#
+# ARM 3 IS VACUOUS ON PRE-FIX CODE, and "green on both trees" must not be read as evidence it
+# verified anything there. It asks the parser (`_flagdefined29`), and the pre-fix parsers reject
+# NOTHING — an unknown flag was skipped and the script exited 0 — so every flag reads as defined.
+# Arm 3's teeth are therefore conditional on §2.5's strictness, and the strictness itself is what
+# pins 37/38 verify. Arm 3's job is the *other* direction: with strict parsers in place, a doc line
+# naming a flag no script has gets exit 2 + `unknown flag:` and is caught here.
+_PL29 = ROOT / "plugins" / "consolidate-memory"
+_DOCS29 = sorted((_PL29 / "commands").glob("*.md")) + [
+    _PL29 / "skills" / "consolidate-memory" / "SKILL.md",
+    ROOT / "README.md"]
+_PH29 = _re.compile(r'(?<!")(<[^<>\n]*>)(?!")')
+_DOCMIN29 = 77
+
+
+import tempfile as _tf29, shutil as _sh29  # noqa: E402
+
+_FLAGRE29 = _re.compile(r"--[A-Za-z0-9][A-Za-z0-9._=-]*")
+_PROBE29: list = []
+_FLAGDEF29: dict = {}
+
+
+def _probe_env29():
+    """A throwaway HOME/config/plugin-data tree + cwd, so no probe can reach the real store.
+
+    ISOLATION, measured before it existed: one arm-3 sweep appended a row to the live
+    `<plugin-data>/ops/-tmp/.mutation-log.jsonl` and bumped `control.sqlite`'s WAL, because the
+    probe ran with `cwd="/tmp"` and the ambient HOME — and a later draft of this docstring
+    *claimed* a fresh temp cwd under an isolated HOME that the code did not do. Every variable
+    below is one `store_context` actually reads (`config_root` ← CLAUDE_CONFIG_DIR ·
+    `plugin_data_dir` ← CLAUDE_PLUGIN_DATA · `_home_dir` ← HOME · `CM_STORE_OVERRIDE` ·
+    `CM_DOMAIN`), so the isolation is the resolvers' own inputs rather than a guess at them.
+    """
+    if not _PROBE29:
+        _root = _tf29.mkdtemp(prefix="cmprobe29-")
+        _env = dict(_os53.environ)
+        _env.update({"HOME": _root, "CLAUDE_CONFIG_DIR": _root, "CLAUDE_PLUGIN_DATA": _root,
+                     "CM_STORE_OVERRIDE": _root, "CM_DOMAIN": "probe"})
+        _env.pop("CLAUDE_CODE_SETTINGS", None)
+        _PROBE29.append((_env, _root))
+    return _PROBE29[0]
+
+
+def _proberun29(script: Path, *argv):
+    """Run `script argv…` isolated. RAW output — the in-scope test needs the token it echoes.
+
+    Named `_proberun29`, not `_run29`: this file already has a `_run29` (above, the pin-30/37/38
+    runner, which returns `(stdout, stderr, rc)`). This one takes a `Path` and returns
+    `(rc, stdout, stderr)` — the opposite order. The collision was harmless only because the
+    earlier calls all execute before this definition is reached, which means the name silently
+    means two things and which one you get depends on where in the file you call from. A
+    reordering edit would have swapped the tuples at every one of `_run29`'s call sites (measured:
+    22 in this file, counting `_run29(` and excluding the definition — a count that moves with the
+    matcher, so it is stated with one rather than as a bare estimate).
+    """
+    _env, _root = _probe_env29()
+    try:
+        _p = _sp53.run([sys.executable, str(script), *argv], capture_output=True, text=True,
+                       timeout=30, cwd=_root, env=_env)
+        return (_p.returncode, _p.stdout, _p.stderr)
+    except _sp53.TimeoutExpired:
+        return ("TIMEOUT", "", "")
+    except OSError:
+        return ("OSERR", "", "")
+
+
+def _sig29(script: Path, flag: str):
+    """The script's answer to `flag`, with every flag-shaped token collapsed to `«F»`.
+
+    The collapse is load-bearing, not cosmetic. The oracle below asks "did the script NOTICE the
+    one character that changed?", so `unknown flag: --gc` and `unknown flag: --gcx` must compare
+    EQUAL — without the collapse their raw text differs, which reads as recognition and blesses
+    every undefined flag. Collapsing all tokens (not just the probed one) also makes a usage
+    banner listing the legal flags the same string in both runs, so it cancels.
+    """
+    _rc, _out, _err = _proberun29(script, flag)
+    return (_rc, _FLAGRE29.sub("«F»", _out)[:900], _FLAGRE29.sub("«F»", _err)[:900])
+
+
+def _flagdefined29(script: Path, flag: str) -> bool:
+    """Did `script`'s PARSER notice `flag`? Answered by mutating one character of it, never by
+    reading the script's source.
+
+    `flag + "x"` is a token no parser defines, and it is the SAME SHAPE as `flag`, so running the
+    identical argv twice isolates exactly the one character that changed. A script that answers
+    both runs alike did not notice the flag.
+
+    Three earlier oracles each answered a NARROWER question than "is this flag defined":
+
+      1. a scrape of every `"--flag"` literal in the script's source (`_docflags29`, deleted) —
+         blessed a flag named only in a COMMENT or an error string. Correct by luck of today's
+         sources: measured 0 comment-only flags, so the hole was latent, not absent.
+      2. `"unknown flag" in stderr` — fires on the five custom strict parsers and on NOTHING
+         else, so `cm_ops` / `sync_global` / the two dashboard scripts read as "defines
+         everything". Measured: 25 of 35 pairs were silently blessed.
+      3. the exit code alone — a DEFINED flag that takes a value exits 2 when passed without
+         one, exactly as an unknown flag does. Measured over the 35 pairs: 20 of 35 defined
+         flags exit 2 alone.
+
+    A FOURTH candidate was built and rejected, recorded so it is not re-proposed: run the whole
+    DOCUMENTED argv and mutate the one token (the `argv` column of the differential probe). It
+    should be sound by construction — it is the invocation the docs mean — and it is not:
+    measured on `sync_global.py`, `--gc`/`--list`/`--pull`/`--tokens`/`--utility`/`--harvest`/
+    `--staleness`/`--workflows`/`--network`/`--promote` all read as UNDEFINED, i.e. it is wrong
+    on 10 of the 14 pairs the LONE shape gets right, because a real argv reaches a *different*
+    failure (a missing PROJECT_DIR) that prints the same constant banner. The lone shape also
+    keeps every probe cheap and side-effect-free: a refused argument fails before any work, so
+    no probe launched Chromium (measured: ≤ 0.14 s each).
+    """
+    _key = (script.name, flag)
+    if _key not in _FLAGDEF29:
+        _FLAGDEF29[_key] = _sig29(script, flag) != _sig29(script, flag + "x")
+    return _FLAGDEF29[_key]
+
+
+def _declared29(script: Path, argv) -> str:
+    """What `script`'s OWN parser says it accepts — read from the parser at runtime, never from
+    its source. A source scrape is the oracle this pin already deleted once (`_docflags29`).
+    """
+    _rc, _out, _err = _proberun29(script, *argv)
+    return _out + _err
+
+
+# Each carve-out's WITNESS: a token the script's own usage PRINTS as accepted, yet which the lone
+# oracle calls undefined. That contradiction is the whole reason the script is out of scope — if a
+# parser answers a token it declares with the same bytes it answers garbage with, then no
+# differential can separate "refused because undefined" from "refused for any other reason."
+#
+# (script, the token its usage declares, the argv that makes it print that surface.)
+#
+# The alternative — deriving the carve-out set from the tree under test — is NOT available here,
+# and the reason is worth stating: a pin's control must be INVARIANT under the mutation it detects.
+# On pre-fix code the five lax parsers reject nothing, so the lone oracle already answers
+# "undefined" for every token INCLUDING the ones their banners declare; a measured carve-out would
+# therefore grow until it had swallowed precisely the RED this arm exists to report. The set is
+# static for the same reason the census constant is.
+_ARM3_WITNESS29 = (
+    ("sync_global.py", "--apply", ()),
+    ("cm_ops.py", "--domain", ("project", "--help")),
+)
+
+
+# `_docflags29(script)` — "every `--flag` literal in the script's own source, plus `_ui`'s visual
+# set" — was DELETED in review (F2/F14), not renamed. It answered a different question than arm 3
+# asserts, in the cycle's own defect class: a flag named in a COMMENT or an error string was
+# blessed as defined, so the arm was correct by luck of today's sources rather than by contract.
+# Measured before removing it: **0** comment-only flags, so nothing was passing wrongly yet.
+#
+# The tombstone is a COMMENT rather than a function that raises: a stub whose whole body is an
+# assertion would be a landmine in a file whose mutation runs require every check to report RED
+# rather than abort the suite, and it would fire on the next person who greps for the old name
+# rather than on the next person who needs the wrong answer.
+#
+# ARM 3's REACH, measured and stated rather than implied. Its subject is every ```bash fence line
+# after BACKSLASH CONTINUATIONS ARE ASSEMBLED: 45 distinct (script, flag) pairs. Before assembly
+# it saw 35, because a wrapped command's flags live on the continuation — `render_dashboard.py …
+# \` + `--persist "<dir>"` put the skill's most load-bearing flag on a line with no `.py` token,
+# so arm 3 skipped it, and `--seed` / `--before` / `--diffs` / `--stamp-marker` /
+# `--standing-justify-tokens` / `--from` / `--into` / `--verdict` / `--latest` / `--store` with
+# it. Of the 45, `cm_ops.py` (9) and `sync_global.py` (14) are OUT OF SCOPE — named, counted and
+# asserted, never silently blessed — leaving 22 pairs across 7 scripts that arm 3 really checks.
+#
+# WHY those two, measured rather than assumed (the first draft of this comment gave `cm_ops` the
+# WRONG reason, so the distinction is worth keeping): `cm_ops` DOES echo the token it refuses —
+# `cm_ops: error: unrecognized arguments: --domain` — and is unsound anyway, because it echoes that
+# for a flag its own `project` subparser defines. Naming the token is neither necessary nor
+# sufficient for a differential to be sound; the property that matters is whether the refusal text
+# encodes WHY the parser refused. Neither script's does:
+#   · `sync_global.py` answers every rejection with one constant 412-byte banner. 4 of its 14
+#     documented pairs (`--apply`, `--into`, `--json`, `--registrar`) therefore read as undefined.
+#   · `cm_ops.py` never routes a lone flag to its subparser table. All 9 of its documented pairs
+#     read as undefined.
+# Both are false-RED directions, so the carve-out costs coverage rather than risking a false clean.
+_ARM3_OUT29 = ("cm_ops.py", "sync_global.py")
+
+
+_doc_lines29, _doc_a1, _doc_a2, _doc_a3, _doc_why29 = 0, 0, 0, 0, []
+for _f40 in _DOCS29:
+    for _blk40 in _re.findall(r"```bash\n(.*?)```", _f40.read_text(encoding="utf-8"), _re.S):
+        if _sp53.run(["bash", "-n"], input=_blk40, capture_output=True, text=True).returncode != 0:
+            _doc_a1 += 1
+            _doc_why29.append(f"{_f40.name}: a block fails bash -n")
+        for _ln40 in _blk40.split("\n"):
+            _s40 = _ln40.strip()
+            if not _s40 or _s40.startswith("#"):
+                continue
+            _doc_lines29 += 1
+            if _sp53.run(["bash", "-n"], input=_s40, capture_output=True, text=True).returncode != 0:
+                _doc_a1 += 1
+                _doc_why29.append(f"{_f40.name} · {_s40[:44]}")
+            if _PH29.search(_s40):
+                _doc_a2 += 1
+                _doc_why29.append(f"{_f40.name} · unquoted placeholder · {_s40[:44]}")
+            # A `<…>` placeholder is ONE argument: normalize it before tokenizing, or a placeholder
+            # whose TEXT carries a flag (`--into <the --seed path>`) reads as the script's argv.
+            # ARM 3 IS NOT HERE. It reads LOGICAL lines, not physical ones — see its own loop below.
+
+# Arm 3's own pass, over backslash-ASSEMBLED logical lines. Splitting it out of the physical-line
+# loop above is what lets arms 1 and 2 keep their recorded pre-fix counts (15 blocks + 56 lines,
+# 28 lines) while arm 3 stops skipping every flag that sits past a line wrap.
+_doc_a3_pairs29, _doc_a3_scripts29 = 0, set()
+for _f40 in _DOCS29:
+    for _blk40 in _re.findall(r"```bash\n(.*?)```", _f40.read_text(encoding="utf-8"), _re.S):
+        _logical40, _buf40 = [], ""
+        for _ln40 in _blk40.split("\n"):
+            if _ln40.rstrip().endswith("\\"):
+                _buf40 += _ln40.rstrip()[:-1] + " "
+                continue
+            _logical40.append(_buf40 + _ln40)
+            _buf40 = ""
+        if _buf40:
+            _logical40.append(_buf40)
+        for _s40 in (x.strip() for x in _logical40):
+            if not _s40 or _s40.startswith("#"):
+                continue
+            try:
+                _toks40 = _shlex29.split(_re.sub(r"<[^<>\n]*>", "PLACEHOLDER", _s40))
+            except ValueError:
+                continue
+            _py40 = next((t for t in _toks40 if t.endswith(".py")), None)
+            if _py40 is None:
+                continue
+            _spath40 = ROOT / _py40.replace("${CLAUDE_PLUGIN_ROOT}", "plugins/consolidate-memory")
+            if not _spath40.exists():
+                _doc_a3 += 1
+                _doc_why29.append(f"{_f40.name} · no such script: {_py40}")
+                continue
+            if _spath40.name in _ARM3_OUT29:
+                continue
+            for _tk40 in _toks40:
+                if _tk40.startswith("--"):
+                    # A script enters the JUDGED set only by contributing a flag pair. Four of the
+                    # documented scripts (`tests/smoke.py`, `simulate_accumulation.py`,
+                    # `validate_manifests.py`, `preflight.py`) are invoked with NO flags at all —
+                    # and probing this file's own path would re-run the suite inside itself.
+                    _doc_a3_scripts29.add(_spath40)
+                    _doc_a3_pairs29 += 1
+                    if not _flagdefined29(_spath40, _tk40):
+                        _doc_a3 += 1
+                        _doc_why29.append(f"{_f40.name} · {_tk40} is not a {_spath40.name} flag")
+
+# The carve-outs' JUSTIFICATION, measured at runtime against each script's own parser rather than
+# asserted in a comment. A carve-out is only honest if it is still necessary: repair `sync_global`
+# so it names its refusals, or `cm_ops` so a lone flag reaches its subparser, and the witness
+# vanishes — this check then goes RED, and the only way back to green is to delete the carve-out
+# and let arm 3 judge the script. Nothing here is scraped from source: `_declared29` reads the
+# script's usage as the PARSER prints it.
+_arm3_witness29 = []
+for _nm29, _tok29, _argv29 in _ARM3_WITNESS29:
+    _p29 = _PL29 / "scripts" / _nm29
+    if not _p29.exists():
+        _arm3_witness29.append(f"{_nm29}: no such script ({_p29})")
+    elif _tok29 not in _declared29(_p29, _argv29):
+        _arm3_witness29.append(f"{_nm29}: its own usage does not declare {_tok29}")
+    elif _flagdefined29(_p29, _tok29):
+        _arm3_witness29.append(f"{_nm29}: the lone oracle now RECOGNISES {_tok29} — carve-out is stale")
+if {n for n, _, _ in _ARM3_WITNESS29} != set(_ARM3_OUT29):
+    _arm3_witness29.append(
+        f"the witness set and the carve-out set have drifted apart "
+        f"({sorted(n for n, _, _ in _ARM3_WITNESS29)} vs {sorted(_ARM3_OUT29)})")
+check("v0.4.29 pin 40 arm 3's carve-outs are still JUSTIFIED, measured against each script's own "
+      "parser: `sync_global.py` prints one constant 412-byte banner for every rejection and "
+      "false-REDs on 4 of its 14 documented pairs; `cm_ops.py` never routes a lone flag to its "
+      "subparser table and false-REDs on all 9. Each is witnessed by a token its OWN usage prints "
+      "as accepted which the lone oracle calls undefined — so the refusal text does not encode the "
+      "reason, and no differential can be trusted on it"
+      + (f" · stale: {'; '.join(_arm3_witness29)}" if _arm3_witness29 else ""), not _arm3_witness29)
+_arm3_judged29 = sorted(_p.name for _p in _doc_a3_scripts29)
+check(f"v0.4.29 pin 40 arm 3's SCOPE is the declared one ({_doc_a3_pairs29} distinct (script, flag) "
+      f"pairs across {len(_arm3_judged29)} scripts: {', '.join(_arm3_judged29)}; "
+      f"`{'`, `'.join(_ARM3_OUT29)}` are the named carve-outs — never silently blessed; floor 20)",
+      _doc_a3_pairs29 >= 20 and len(_arm3_judged29) >= 6
+      and not (set(_arm3_judged29) & set(_ARM3_OUT29)))
+if _PROBE29:
+    _sh29.rmtree(_PROBE29[0][1], ignore_errors=True)
+
+check(f"v0.4.29 pin 40: the documented surface is non-empty ({_doc_lines29} command lines, "
+      f"floor {_DOCMIN29} — an empty glob must not pass every arm)", _doc_lines29 >= _DOCMIN29)
+check("v0.4.29 pin 40 arm 1: `bash -n` passes for every bash block and every command line across "
+      "commands/*.md + SKILL.md + README.md (pre-fix: 15 blocks + 56 lines red)"
+      + (f" · first: {_doc_why29[0]}" if _doc_a1 else ""), _doc_a1 == 0)
+check("v0.4.29 pin 40 arm 2: no UNQUOTED `<…>` placeholder (pre-fix: 28 lines red; the rule is "
+      "`a placeholder is quoted`, not `no angle brackets`)"
+      + (f" · first: {next((w for w in _doc_why29 if 'placeholder' in w), '')}" if _doc_a2 else ""),
+      _doc_a2 == 0)
+check("v0.4.29 pin 40 arm 3: every documented argv names a real script and only flags that script "
+      "defines (RED pre-fix — and the pre-fix attribution was MEASURED per pair, because the first "
+      "cut of this label claimed a class and the class is false: exactly 5 of the judged pairs flip "
+      "from recognised to not (`--before`/`--into`/`--standing-justify-tokens` on memory_status, "
+      "`--before`/`--into` on extract_signals), and those two parsers consumed nothing pre-fix, so a "
+      "flag and its mutated twin produced byte-identical output. The other scripts' documented flags "
+      "stay distinguishable pre-fix, which is why this arm is RED in the extract_signals and "
+      "memory_status clusters and GREEN in the render_dashboard one — whose pre-fix parser already "
+      "refused `--persist` with `requires a directory argument` while reading `--persistx` as a "
+      "record path. A pin that fires is not the same as a pin that fires for the stated reason)"
+      + (f" · first: {_doc_why29[-1]}" if _doc_a3 else ""), _doc_a3 == 0)
+
+# (41) The PROSE arms — D3's mandate, which pin 40 never carried. Pin 40 parses only ```bash
+# fences, so a command written as a PROSE code span was invisible to all three of its arms:
+# measured, README.md's first documented command (the `.` glued INSIDE the quoted script path)
+# exited 2 for two releases, and SKILL's defrag invocation passed an unquoted `<stem>` that bash
+# read as an stdin redirect. docs/defect-sweep-v0421.spec.md D3 fixed this class in v0.4.21 and
+# mandated its pin be DOCUMENT-WIDE with NO fence parsing; the pin that shipped was fence-scoped,
+# so the class reopened. A recorded blind spot that is not closed is a scheduled defect — this is
+# that closure, and it is why the two arms below read PROSE spans rather than fences.
+#
+# Scope is the SHIPPED surface (README + commands/*.md + SKILL.md + references/*.md), never
+# `docs/`: a spec quoting a broken form as its own exemplar (docs/defect-sweep-v0421.spec.md:62
+# does exactly that) would false-fire arm A.
+#
+# Arm A is D3's rule verbatim — every `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.py` is immediately
+# followed by `"`. That one rule is what makes "the argument sits inside the quotes"
+# unrepresentable, which no `bash -n` arm can see (the glued form is valid shell).
+# Arm B extends pin 40 arm 2's rule (`a placeholder is QUOTED`, never `no angle brackets`) to
+# prose, scoped to COMMAND spans: a span starting with python3/python/bash/cm — optionally after
+# `CM_DREAM_ARC=1` or `$` — or with the quoted plugin root. The narrowing is load-bearing:
+# measured, an unnarrowed rule takes 6 raw hits, of which 2 are not bash at all
+# (`/cm-connect <other-repo>` is a slash command; `cm-cycle-<slug>.json` is a filename) and 4 are
+# real. Narrowed: 41 command spans judged, 4 red pre-fix, 0 false positives.
+_PROSESURF41 = [ROOT / "README.md",
+                _PL29 / "skills" / "consolidate-memory" / "SKILL.md"] \
+    + sorted((_PL29 / "commands").glob("*.md")) \
+    + sorted((_PL29 / "skills" / "consolidate-memory" / "references").glob("*.md"))
+_PROSESPAN41 = _re.compile(r"`([^`\n]+)`")
+_GLUE41 = _re.compile(r'\$\{CLAUDE_PLUGIN_ROOT\}/scripts/[a-z_]+\.py(?!")')
+_CMDSPAN41 = _re.compile(r'^(?:CM_DREAM_ARC=1\s+|\$\s+)?(?:python3?|bash|cm)\s'
+                         r'|^"\$\{CLAUDE_PLUGIN_ROOT\}')
+_PROSEFLOOR41 = 35
+
+_prose_cmd41, _prose_glue41, _prose_place41, _prose_why41 = 0, 0, 0, []
+for _f41 in sorted(set(_PROSESURF41)):
+    for _s41 in _PROSESPAN41.findall(_f41.read_text(encoding="utf-8")):
+        if _GLUE41.search(_s41):
+            _prose_glue41 += 1
+            _prose_why41.append(f"{_f41.name} · arg glued inside the quoted path · {_s41[:46]}")
+        if _CMDSPAN41.search(_s41):
+            _prose_cmd41 += 1
+            if _PH29.search(_s41):
+                _prose_place41 += 1
+                _prose_why41.append(f"{_f41.name} · unquoted placeholder · {_s41[:46]}")
+check(f"v0.4.29 pin 41: the prose command surface is non-empty ({_prose_cmd41} command spans, "
+      f"floor {_PROSEFLOOR41} — an empty scan must not pass both arms)",
+      _prose_cmd41 >= _PROSEFLOOR41)
+check("v0.4.29 pin 41 arm A: in the shipped prose surface every "
+      "`${CLAUDE_PLUGIN_ROOT}/scripts/<name>.py` is immediately followed by a closing quote "
+      "(pre-fix: README.md's first documented command — measured, exit 2)"
+      + (f" · first: {_prose_why41[0]}" if _prose_glue41 else ""), _prose_glue41 == 0)
+check("v0.4.29 pin 41 arm B: a `<…>` placeholder in a prose COMMAND span is QUOTED "
+      "(pre-fix: 4 spans, incl. SKILL's `--justify-defrag <stem>` → an stdin redirect)"
+      + (f" · first: {next((w for w in _prose_why41 if 'placeholder' in w), '')}"
+         if _prose_place41 else ""), _prose_place41 == 0)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 45)
+      passed + failed + 1 == 1750 + 45 + 125)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
