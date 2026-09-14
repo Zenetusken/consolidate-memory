@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml"><img src="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.28-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.28"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.29-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.29"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7fd8b8?style=flat-square&labelColor=0f1c2e" alt="MIT license"></a>
   <a href="#start"><img src="https://img.shields.io/badge/python-3.8%2B-63d3e8?style=flat-square&labelColor=0f1c2e" alt="Python 3.8 or newer"></a>
   <a href="https://github.com/Zenetusken/consolidate-memory"><img src="https://img.shields.io/badge/marketplace-zenetusken--plugins-b9c9da?style=flat-square&labelColor=0f1c2e" alt="Marketplace: zenetusken-plugins"></a>
@@ -35,9 +35,11 @@
 </p>
 
 > [!NOTE]
-> **Current release: v0.4.28** — the firewall's ReDoS guard re-based on measurement: a CPU clock
-> instead of wall time, bounds derived from a stated rule rather than chosen, and a structural pin
-> for the one arm no timing bound can separate.
+> **Current release: v0.4.29** — the dream pass's gates mean what they claim: the checked
+> narration set cannot silently shrink, a stanza that normalizes to nothing is a gap rather than a
+> pass, the extractor anchor anchors on **execution** instead of on the token's spelling, every
+> documented command actually parses and runs, and an unknown flag is a usage error rather than a
+> silent no-op.
 > Public 1.0 remains **HOLD**, with outstanding evidence gates tracked in the
 > [1.0 preflight](docs/1.0-preflight.spec.md). See the [changelog](CHANGELOG.md) for
 > shipped changes.
