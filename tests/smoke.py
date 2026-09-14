@@ -15795,6 +15795,46 @@ check("v0.4.29 §2.3 (REGRESSION, green pre-fix): --recalls is not the Phase-2 e
 check("v0.4.29 §2.3: unbalanced quotes are a tokenizer failure → unaccounted (Uncertain → fire)",
       not _ext29(f'python3 "{_T29} --json'))
 
+# (10b) THE FORMS THE FIRST §2.3 CUT DROPPED (review F5). Every one of these is a legitimate
+# Phase-2 call the anchor REFUSED — a loud false exit 3, which is the safe direction and still
+# wrong: a gate that fires on a correct pass teaches the model to route around it. Measured
+# through the same `_ext29` seam, all 12 were unaccounted before the wrapper grammar, the
+# grouping-prefix strip, the comment strip and the drive-path normalize landed, and all 12 are
+# accounted after. `_ext29`'s fixture narrates fully, so a False here is the EXT fire and nothing
+# else. The last case is the one a positional-BEFORE-flag walk would also drop: `-s` would spend
+# the positional slot and `KILL` would be read as the command word.
+for _lbl29, _cmd29 in (
+        ("timeout + its positional duration", f"timeout 300 python3 {_T29} --json"),
+        ("nice + a value flag", f"nice -n 10 python3 {_T29} --json"),
+        ("stdbuf + a fused flag", f"stdbuf -oL python3 {_T29} --json"),
+        ("flock + its positional lock path", f"flock /tmp/l python3 {_T29} --json"),
+        ("sudo + a value flag", f"sudo -u root python3 {_T29} --json"),
+        ("timeout -s KILL (the value is not flag-shaped)",
+         f"timeout -s KILL 5 python3 {_T29} --json"),
+        ("a `(`-fused subshell (shlex does not split punctuation by default)",
+         f"(python3 {_T29} --json)"),
+        ("a then-led segment", f"if true; then python3 {_T29} --json; fi"),
+        ("a do-led segment", f"for f in a; do python3 {_T29} --json; done"),
+        ("a brace group", f"{{ python3 {_T29} --json; }}"),
+        ("an apostrophe inside a # comment (it unbalanced the tokenizer)",
+         f"python3 {_T29} --json  # don't re-run this by hand"),
+        ("a Windows drive path (posix shlex eats the separator)",
+         "python3 C:\\x\\scripts\\extract_signals.py --json")):
+    check(f"v0.4.29 §2.3 (F5): accounted — {_lbl29}", _ext29(_cmd29))
+
+# (10c) THE ONE SILENT DIRECTION the anchor was too generous in (review F8), and the reason the
+# heredoc rule is IMPORTED from distill_scan rather than re-written here. A heredoc BODY holding a
+# complete command was segmented like any other line and CREDITED: measured, a pass that merely
+# WROTE the extractor's command into a file passed the arm whose whole job is to prove it ran.
+# Post-fix the body is stripped before segmentation (the opener's own command line survives), so
+# the write is unaccounted and the feed stays accounted.
+check("v0.4.29 §2.3 (F8): a heredoc BODY holding a complete command is data, not an execution "
+      "(pre-fix this was ACCOUNTED — the anchor's one silent hole)",
+      not _ext29(f"cat <<'EOF'\npython3 {_T29} --json\nEOF"))
+check("v0.4.29 §2.3 (REGRESSION, green pre-fix): a heredoc FEEDING the extractor keeps its own "
+      "command line — the body is stripped, the opener is not",
+      _ext29(f"python3 {_T29} --json <<'EOF'\n{{}}\nEOF"))
+
 # (11) The shared stanza predicate. `getattr` is not defensive padding: the claim is that the
 # SYMBOL exists as the shared type rule, and on pre-fix code it does not exist at all. Calling it
 # unguarded raised AttributeError and aborted the whole suite, so the mutation matrix collected
@@ -16283,7 +16323,7 @@ check("v0.4.29 pin 41 arm B: a `<…>` placeholder in a prose COMMAND span is QU
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 45 + 99)
+      passed + failed + 1 == 1750 + 45 + 113)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
