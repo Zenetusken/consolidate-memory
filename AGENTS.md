@@ -1,7 +1,7 @@
 # AGENTS.md — consolidate-memory
 
 Agent operating manual for this repo, authored from a 5-agent codebase map and
-verified against the live tree at **v0.4.27** (2026-09-12). `CLAUDE.md` holds the
+verified against the live tree at **v0.4.28** (2026-09-13). `CLAUDE.md` holds the
 same conventions with more narrative; where they disagree, the live files win.
 Under the plugin's own tier model this file is an on-demand store — read it when
 you work here; the always-loaded store is `CLAUDE.md` + the auto-memory
@@ -29,7 +29,7 @@ relative source paths only resolve over Git).
 **Dev loop** — after any change to `plugins/consolidate-memory/scripts/`:
 
 ```bash
-python3 tests/smoke.py                          # the zero-dep gate — 1794 assertions over every script's
+python3 tests/smoke.py                          # the zero-dep gate — 1795 assertions over every script's
                                                 # pure functions + the cross-module pins; exit 1 on any failure
 python3 tests/simulate_accumulation.py          # lifecycle accumulation sim (probes A–W + X–AF) — the
                                                 # store-mechanics gate; CI runs it too

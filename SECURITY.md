@@ -42,10 +42,42 @@ does, what it never does, and how to report a problem.
   omission label, and every emitted template is screened through the same firewall (on the
   `_norm`'d form, so a zero-width-split secret is caught) before it can become a row or a
   chain endpoint.
-- **Bounded input:** transcript turns are length-capped (`_PROBE_CAP` = 4000 chars) before regex
-  classification (defense-in-depth); the regexes have no catastrophic backtracking — each
-  alphanumeric run and its required separator are disjoint, so there's no ambiguity to blow up —
-  and the length cap bounds worst-case matching regardless.
+- **Bounded input:** the defense is that **the quantifier which can sweep a separator-free run to
+  the end of the string is bounded** — *not* the stronger and more flattering claim that `_SECRET`
+  is built only from bounded quantifiers. That universal is false, so it is worth stating the
+  narrower truth plainly: scanning the live pattern (comments stripped, character classes and
+  escapes collapsed) for `[*+]|\{\d+,\}` finds **20 unbounded quantifiers** in non-comment parts of
+  it — `\s*`, `\S+`, `\S{8,}`, `{16,}`, the vendor-key arms. The bounded-quantifier property holds
+  **at the four instances**, not of the regex. An earlier version of this bullet argued the
+  opposite — "each alphanumeric run and its required separator are disjoint, so there's no
+  ambiguity to blow up" — and that reasoning was falsified: v0.1.70's pentest found **four**
+  instances in `_SECRET` where adjacent unbounded quantifiers could sweep a separator-free run for
+  genuine O(n²) blowup (the compound-keyword prefix, a URI-creds arm, the JWT arm via a
+  repeated-anchor attack, and the `authorization|bearer` arm). In each, the *offending* quantifier
+  is now bounded — some by a `{n,MAX}` cap where there was none, some by a cap replacing a `*` or
+  `+`; the arm around it is not uniformly bounded, and does not need to be. The `_PROBE_CAP` = 4000
+  length cap on transcript turns is **defense-in-depth, not the defense**, and it does not cover
+  every call site — `extract_signals.py`'s probes cap, `facts_manifest.py` caps its fact-body read at
+  4 MiB, and `sync_global.py`'s shared `_safe_read_text` is **uncapped**. It is not only that helper:
+  `distill_scan.py` screens **uncapped** text at its emission choke-point (`_looks_secret(_norm(tpl))`)
+  and again on its row scan, where the only cap is `_USED_CAP` applied *after* the screen. (The irony
+  is on the record at `_safe_read_text`: that helper was factored once precisely because "copy-paste
+  doesn't propagate a fix" — and the cap is the part that did not propagate.) This is why the cap is
+  *defense-in-depth* rather than the defense, and why the sentence above is about **bounded
+  quantifiers** instead: what keeps uncapped input affordable is that the scan is **linear**, which is
+  measured rather than argued — an uncapped call site costs more, not catastrophically more.
+- **One instance no timing bound can separate is asserted structurally instead** — the JWT arm, whose
+  separation grows only `~0.37 × (n/cap)` because its blowup is `occurrences × sweep` with the sweep
+  capped; at n=24000 the shipped scan *under load* already exceeds the pre-fix scan *idle*, so the
+  window is empty rather than narrow. That pin takes **two** checks since v0.4.28, because a
+  source scan returning a *verdict* about linearity proved undecidable in practice (six one-token
+  evasions across three review rounds): a behavioural check on a repeated-anchor payload, and a check
+  that the arm's text **is** its measured text, byte for byte — which is decidable, and which makes
+  the scanner's own bugs fail **safe**. The guard asserts a **measured CPU-time bound, not proven
+  linearity**, so the rest of the pattern's linearity rests on measurement rather than on an argument;
+  the measurements, the margin every bound carries, and the guard's own blind spots are recorded in
+  the ReDoS guard's design-of-record,
+  [docs/redos-guard-linearity.spec.md](docs/redos-guard-linearity.spec.md).
 - **Filesystem safety:** `sync_global.py --gc` only deletes files marked as managed
   mirrors (`global_ref:`) whose canonical is gone — never project-authored facts — and
   defaults to report-only (deletion requires `--apply`).

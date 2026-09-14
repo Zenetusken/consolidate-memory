@@ -1040,23 +1040,197 @@ for _name, _val in [
 # --- v0.1.70 security: ReDoS — the firewall must stay LINEAR-time on adversarial input (a
 # CONFIRMED bypass: the unbounded compound-keyword prefix AND a sibling unbounded URI-creds arm
 # both gave real re.search O(n²) blowup; a THIRD instance was found in the JWT arm via a
-# repeated-anchor attack; #4 the authorization|bearer arm, a Gate-2a-found 4th instance). Assert
-# completion under a GENEROUS wall-clock bound (2.0s — deliberately loose vs. this machine's
-# actual post-fix timings, ~0.005-0.19s below, to absorb slower/loaded-CI variance without going
-# flaky) at a payload size chosen so the PRE-fix regex clearly exceeds it by a wide margin (3.4s
-# to 21s measured, i.e. the bound isn't just barely tripped — a real regression fails it hard).
+# repeated-anchor attack; #4 the authorization|bearer arm, a Gate-2a-found 4th instance).
+#
+# RE-BASED ON MEASUREMENT (v0.4.28). This replaces a wall-clock guard that went RED on CI's
+# python-3.8 runner while re-running the identical commit gave 13/13 green — so the defect was in
+# the GUARD, not the firewall. Two causes, both measured on a 24-core box at 2x CPU oversubscription
+# (docs/redos-guard-linearity.spec.md):
+#   (1) THE CLOCK. time.time() reads WALL time, so every descheduling lands directly in the
+#       reading. The JWT payload — the one that flaked — inflates 17.7x under load on wall against
+#       5.8x on time.process_time() over the identical scan. Every payload here is steadier on CPU.
+#   (2) THE MARGIN. That 2.0s bound left 2.2x over that payload (0.89s here), not the
+#       "deliberately loose" headroom the old comment claimed — a 2.3x slower runner trips it. Both
+#       of those are WALL-clock figures, because that is the clock the old guard read; over the
+#       identical scan, load inflates wall 17.7x against CPU's 5.8x, so "2.3x slower" asks far less
+#       of a MACHINE than it sounds. The three bounds below are CPU-clock.
+# The bound is now DERIVED, not chosen: a payload is admitted only if each side's margin
+# sqrt(M/S*) >= 2, where S* is the WORST shipped CPU time under the standard stress load and M is
+# the WEAKEST owning mutant's idle CPU time. The bound sits at their geometric mean sqrt(S* x M), so
+# the two margins are equal BY CONSTRUCTION and the rule reduces to exactly "both margins >= 2x".
+# (It read ">= 4" while claiming that reduction; both cannot hold — sqrt(M/S*) >= 4 demands 4x
+# margins — and the slip disqualified two payloads that satisfy the 2x intent. See the spec §3.)
+# S* is a worst case over a distribution, so it is measured worst-of-3-batches x 7 trials, not once:
+# read once, the dotted payload gives 0.0627 instead of 0.2360 and its bound would leave only 1.10x
+# against a reproducible reading. The three below measure 2.16x / 3.38x / 29.7x, and each payload is
+# the smallest MEASURED size clearing the bar (the alnum arm needs 48000; it fails it at 24000).
+# The LENGTH is asserted, not merely printed: trimming `* 2400` to `* 240` measures FASTER and would
+# read green while testing a payload the bound was never derived from — the name would disagree with
+# the bound and nothing would notice, because the name is the only place the length appeared.
+# The predicate's lower half is not decoration: it catches a DEAD CLOCK, which would otherwise make
+# every one of these bounds vacuously green. The pre-fix figure in each name is measured too, and it
+# bounds the SINGLE-ARM revert it names — reverting every instance at once costs more (the alnum arm
+# reaches 26.7s, the whole block 44.5s), still bounded because the payloads are fixed: a regression
+# can never cost an unbounded wait.
 import time as _time70  # noqa: E402
-for _redos_name, _redos_payload in [
-    ("dotted/dashed run (original pentest PoC shape)", ("a1b2-c3d4." * 5000)),
-    ("pure-alnum run + trailing keyword, no separator", ("x" * 49992) + "password" + ("y" * 12)),
-    ("repeated JWT anchor, no periods", "eyJ" * 33333),
-    ("authorization + padding spaces (Gate-2a's 4th instance)", "authorization" + " " * 20000),
+for _redos_name, _redos_payload, _redos_bound, _redos_was, _redos_len in [
+    ("dotted/dashed run (original pentest PoC shape)",
+     "a1b2-c3d4." * 2400, 0.509, "7.20s", 24000),
+    ("pure-alnum run + trailing keyword, no separator",
+     ("x" * 47980) + "password" + ("y" * 12), 3.135, "16.22s", 48000),
+    ("authorization + padding spaces (Gate-2a's 4th instance)",
+     "authorization" + (" " * 23987), 0.285, "8.36s", 24000),
 ]:
-    _t0_70 = _time70.time()
+    _t0_70 = _time70.process_time()
     ms._SECRET.search(_redos_payload)
-    _dt_70 = _time70.time() - _t0_70
-    check(f"firewall ReDoS guard: {_redos_name} (len={len(_redos_payload)}) completes in <2s (was multi-second/unbounded)",
-          _dt_70 < 2.0)
+    _dt_70 = _time70.process_time() - _t0_70
+    check(f"firewall ReDoS guard: {_redos_name} (len={len(_redos_payload)}) stays LINEAR — "
+          f"{_dt_70:.3f}s CPU against a {_redos_bound}s bound (pre-fix this arm measures "
+          f"{_redos_was} here)",
+          len(_redos_payload) == _redos_len and 0.0 < _dt_70 < _redos_bound)
+
+# The JWT arm is the ONE instance no CPU-time bound can cover: its blowup is occurrences x sweep,
+# and the sweep is capped, so separation grows only ~0.37 x (n/cap) — 8.5x at n=48000, the largest
+# size whose shipped cost is affordable. And the rule divides mutant IDLE by shipped LOADED: at
+# n=48000 that is 3.62/2.70 = 1.34, a margin of 1.16x against the 2x floor. The window is EMPTY, not
+# narrow — so v0.4.27's guard pinned it with a SOURCE check instead, and that pin is where this
+# cycle's real work ended up. It now takes TWO checks, because the two halves see mutant families
+# neither can see alone:
+#
+#   (1) BEHAVIOURAL — the repeated-anchor payload below. It fires only when a mutation actually
+#       BLOWS UP on that payload, which is FEWER cases than it sounds, and the matrix is what says
+#       so: a cap replaced by `*`, replaced by `+`, or deleted is measured INERT here (eyJ* still
+#       matches, then the required `\.` fails at the first position), and so is an open quantifier
+#       APPENDED to the arm (nothing follows it to backtrack against). Those are (2)'s alone. What
+#       (1) does catch is the AMBIGUOUS shapes — a starred group before the capped segment, an open
+#       quantifier after one, a ']'-first class — measured at 2.91-2.95s against 0.0099s shipped,
+#       294-298x. And it is the only check that can see a blowup (2)'s scope EXCLUDES: a
+#       catastrophic sibling branch, or one in any other arm.
+#       N1 — a NESTED BOUNDED quantifier, the one thing no scan can rule out — is NOT a (1) catch.
+#       Measured, (1) HANGS on it (it blew a 20s cap at k=200); since (1) runs first, (2)'s verdict
+#       on that mutant is never reached in a real run. It is caught by the job timeout, which is a
+#       RED job. N1 is the ARGUMENT for exactness, not a coverage row: a verdict-scan cannot be
+#       trusted while a pattern can be catastrophic with EVERY quantifier bounded.
+#   (2) STRUCTURAL — the arm's text, asserted EXACTLY. This is the half that covers what (1)
+#       structurally cannot: a WIDENED cap ({8,2000} -> {8,9000}) leaves every quantifier bounded
+#       and the scan linear at any affordable n, so (1) is blind to it — measured 1.2x at k=800 —
+#       while the sweep grows 4.5x. Only exactness catches it.
+#
+# WHY EXACTNESS, AND WHY IT ENDS THE EVASION CYCLE. Four review rounds each found a DIFFERENT
+# unmodelled syntax rule in the verdict-scan this replaces: re.X comments (three ways), then a '|'
+# that was a MEMBER of a character class, which cut the arm at 36 chars and left the open quantifier
+# in the DISCARDED TAIL — 1604x the shipped scan at n=6000. Each was a one-token edit that restored
+# the full blowup with the pin reading GREEN. That is not a bug tail, it is a wrong design: a scan
+# that reads an arm and returns a VERDICT about linearity is undecidable in practice — see (1)'s
+# nested-bounded example — so it will always have holes, and every hole is a false PASS. Asserting
+# the arm's TEXT is decidable, and it makes the scanner's own bugs fail SAFE: a missed comment, a
+# missed class close, a '|' split in the wrong place can only produce a string that DIFFERS from the
+# literal. A false PASS now requires the branch to be byte-identical to the shipped branch.
+# Depth is deliberately NOT tracked, and that is measured rather than assumed: the whole alternation
+# is wrapped in `(?:...`, so EVERY branch sits at depth 1 and a depth-0 split collapses all 48 into
+# one 12868-char arm (which trips). Splitting at every '|' outside a class is what yields the branch
+# — and with the text asserted verbatim, a split in the wrong place no longer matters, because the
+# fragment cannot equal the literal.
+#
+# WHAT IT DOES NOT COVER — a NEW SIBLING BRANCH. `LIT|X` leaves LIT present as a '|'-delimited span,
+# so the pin passes while X goes unexamined; only (1) can see X, and only if X blows up on its
+# payload. The pin's scope is the anchor's branch BY CONSTRUCTION — spec §5 gap 1, sharpened.
+# (1)'s failure time is also NOT bounded the way the three table payloads' is: those are fixed runs,
+# so the worst case is a mutant's own measurement (<=16.2s), but a mutant that NESTS two bounded
+# quantifiers is EXPONENTIAL (it blew a 20s cap at k=200) and no stdlib `re` timeout exists to
+# interrupt it. The backstop is the JOB — `timeout-minutes: 15` on ci.yml's `test` job, added with
+# this check and matching its siblings' 10. The failure MODE stays safe either way: a mutant (1)
+# cannot finish reading is a RED job, never a green check. A subprocess with a timeout would bound
+# it in-process and was REJECTED — it would put the block's slice-and-exec re-derivation (spec §9)
+# out of reach for one check, and every mechanism added to this guard so far has become a hole.
+
+
+def _redos_arms(src: str, marker: str) -> list[str]:
+    """Every alternation arm containing `marker`, as the ENGINE reads it: re.X comments and
+    insignificant whitespace dropped, everything else VERBATIM.
+
+    Comments and whitespace are the only two things re.X discards, and both are dropped here in the
+    SAME pass that splits the arms, so no class state survives to be forgotten at a later step. The
+    rest stays verbatim because the caller compares the result to a literal: the previous design
+    folded each class to 'C', which made `[A-Za-z0-9_-]` and `[a-z]` indistinguishable and would
+    hide a charset edit — a fold is a lossy reading, and the one thing this check must not do is
+    read lossily. Three syntax sites need a rule, each a place where the source text and the
+    engine's reading of it differ: a '|' inside a class is a MEMBER, not an alternation; '#' opens a
+    comment only outside a class; and a class ends at an unescaped ']' that is not its FIRST member,
+    so `[]a]` is one class of two members and `[\\]]` one class of one. Reading either of those as a
+    close ends the class early and lets its body leak a '|' or a '#' into the split."""
+    arms, cur, i, n, in_class = [], [], 0, len(src), False
+    while i < n:
+        c = src[i]
+        if c == "\\":                      # an escape binds the next char — even '#', ']' or '|'
+            cur.append(src[i:i + 2])
+            i += 2
+            continue
+        if in_class:
+            if c == "]":
+                in_class = False
+            cur.append(c)
+            i += 1
+            continue
+        if c == "[":
+            in_class = True                # a leading '^' negates, a leading ']' is a MEMBER
+            cur.append(c)
+            i += 1
+            if i < n and src[i] == "^":
+                cur.append("^")
+                i += 1
+            if i < n and src[i] == "]":
+                cur.append("]")
+                i += 1
+            continue
+        if src.startswith("(?#", i):       # an inline comment group, closed by ')'
+            j = src.find(")", i)
+            i = n if j < 0 else j + 1
+            continue
+        if c == "#":                       # a re.X comment runs to end of line
+            j = src.find("\n", i)
+            i = n if j < 0 else j + 1
+            continue
+        if c == "|":                       # the ONLY place an alternation splits
+            arms.append("".join(cur))
+            cur = []
+            i += 1
+            continue
+        if c.isspace():                    # insignificant only OUTSIDE a class. Both those cases
+            i += 1                         # are handled above, so this skips exactly what re.X does
+            continue
+        cur.append(c)
+        i += 1
+    arms.append("".join(cur))
+    return [arm for arm in arms if marker in arm]
+
+
+_redos_jwt_probe = "eyJ" * 600                   # 1800 chars — the repeated-anchor attack shape
+_redos_jwt_bound = 0.2055                        # sqrt(S* x M): S* = 0.0145 loaded, M = 2.9128 idle
+_t0_jwt = _time70.process_time()
+ms._SECRET.search(_redos_jwt_probe)
+_dt_jwt = _time70.process_time() - _t0_jwt
+check(f"firewall ReDoS guard: the JWT arm's repeated-anchor payload (k=600, len="
+      f"{len(_redos_jwt_probe)}) stays LINEAR — {_dt_jwt:.4f}s CPU against a {_redos_jwt_bound}s "
+      f"bound (the one-token unboundings of that arm measure 2.91-2.95s here against 0.0099s "
+      f"shipped, 294-298x, and a NESTED-BOUNDED mutant is exponential — the one catastrophic "
+      f"family no source scan can rule out, which is why this check sits beside the structural "
+      f"pin rather than under it; the bound is the geometric mean sqrt(S* x M) of the worst LOADED "
+      f"shipped reading and the WEAKEST owning mutant, so each margin is 14.2x against the rule's "
+      f"2x floor)",
+      0.0 < _dt_jwt < _redos_jwt_bound)
+
+_redos_jwt_lit = r"eyJ[A-Za-z0-9_-]{8,2000}\.[A-Za-z0-9_-]{8,4000}\.[A-Za-z0-9_-]{6,200}"
+_redos_jwt_arms = _redos_arms(ms._SECRET.pattern, "eyJ")
+check("firewall ReDoS guard: the JWT arm IS EXACTLY its measured text — the three caps "
+      "({8,2000}/{8,4000}/{6,200}), both charsets and every quantifier byte-for-byte — because no "
+      "CPU-time bound separates pre-fix from shipped here (window EMPTY: at n=24000 the shipped "
+      "scan under load already exceeds the pre-fix scan idle), and a bounded-quantifier scan does "
+      "not either (a nested-bounded arm is catastrophic with EVERY quantifier bounded, so no scan "
+      "of the source can decide the property). Exactness IS the one assertion a scanner bug cannot "
+      "false-PASS: a missed comment, a missed class close or a mis-split can only produce text that "
+      "DIFFERS from this literal",
+      len(_redos_jwt_arms) == 1 and _redos_jwt_arms[0] == _redos_jwt_lit)
 
 # --- v0.1.70 security: git-log commit subjects now pass through the SAME firewall (was: only
 # _sane()'s control-byte strip — no credential-shape check at all, a stark asymmetry against
@@ -15308,7 +15482,7 @@ with _tf43.TemporaryDirectory() as _td23:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 44)
+      passed + failed + 1 == 1750 + 45)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

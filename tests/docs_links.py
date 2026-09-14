@@ -69,6 +69,9 @@ DOCS = [
     "docs/nocturne-design.md",
     "docs/deep-field-theme.spec.md",
     "docs/network-graph-interaction.spec.md",
+    # Reached from SECURITY.md, which is itself in this list — so the chain README →
+    # SECURITY.md → spec is walked, and the spec's own outbound links are checked too.
+    "docs/redos-guard-linearity.spec.md",
 ]
 
 # smoke.py pins these as the README's cross-project workflow; a restructure must not lose

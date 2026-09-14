@@ -1123,21 +1123,35 @@ _SECRET = re.compile(
       | AIza[0-9A-Za-z_-]{35}                                        # Google API key
       | AC[0-9a-f]{32}                                               # Twilio account SID
       | eyJ[A-Za-z0-9_-]{8,2000}\.[A-Za-z0-9_-]{8,4000}\.[A-Za-z0-9_-]{6,200}  # JWT (header.payload.sig)
+                                                                     # ^ v0.1.70 SECURITY: each segment's unbounded
+                                                                     # `{n,}` is now `{n,MAX}` — the charset a JWT
+                                                                     # segment matches (`[A-Za-z0-9_-]`) includes the
+                                                                     # literal anchor's OWN chars ('e','y','J'), so a
+                                                                     # repeated `eyJeyJeyJ...` payload (no periods)
+                                                                     # makes each occurrence's backtrack sweep run to
+                                                                     # the end of the string — O(n²) over many repeats.
+                                                                     # Re-measured 2026-09-13 (v0.4.28) at 0.012s/
+                                                                     # 0.12s/1.66s for n=2000/8000/32000 (~10-14x per
+                                                                     # 4x). The figures this comment first carried —
+                                                                     # 0.001/0.02/0.33 — were 12x/6x/5x low; its own
+                                                                     # claim (generous past any real JWT, linear to
+                                                                     # 128000 chars) re-verified and kept.
+                                                                     # Pinned STRUCTURALLY in smoke.py, never by a
+                                                                     # CPU-time bound: separation grows only ~0.37 x
+                                                                     # (n/cap) — the bare model over-predicts by ~2.8x —
+                                                                     # so by n=24000 the SHIPPED scan under load (1.20s)
+                                                                     # already exceeds the PRE-FIX scan idle (0.94s). The
+                                                                     # rule divides mutant IDLE by shipped LOADED, which
+                                                                     # at n=48000 is a 1.16x margin against a 2x floor: an
+                                                                     # empty window, not a narrow one. The caps ARE the
+                                                                     # defense, so smoke.py asserts BOTH that no quantifier
+                                                                     # here is open AND that these three caps are unchanged
+                                                                     # (the second half catches a cap being WIDENED, which
+                                                                     # leaves every quantifier bounded).
       | glpat-[0-9A-Za-z_-]{20,100}                                 # GitLab personal access token (legacy prefix)
       | hf_[A-Za-z0-9]{25,80}                                      # HuggingFace token
       | \d{6,20}:[A-Za-z0-9_-]{25,200}                             # Telegram bot token (id:secret)
       | [A-Za-z0-9_-]{20,200}\.[A-Za-z0-9_-]{6,80}\.[A-Za-z0-9_-]{20,400}  # dotted 3-segment token (Discord bot & kin)
-                                                                     # v0.1.70 SECURITY: each segment's unbounded `{n,}`
-                                                                     # is now `{n,MAX}` — the charset a JWT segment
-                                                                     # matches (`[A-Za-z0-9_-]`) includes the literal
-                                                                     # anchor's OWN chars ('e','y','J'), so a repeated
-                                                                     # `eyJeyJeyJ...` payload (no periods) makes each
-                                                                     # occurrence's backtrack sweep run to the end of
-                                                                     # the string — O(n²) over many repeats (measured
-                                                                     # 0.001s/0.02s/0.33s at n=2000/8000/32000, ~16x per
-                                                                     # 4x length). The caps are generous past any real
-                                                                     # JWT (a payload of thousands of claims) and restore
-                                                                     # linear scaling (verified to 128000 chars).
       | -----BEGIN[ A-Z]*PRIVATE[ ]KEY-----                          # PEM private key
     )""",
     re.I | re.X,
