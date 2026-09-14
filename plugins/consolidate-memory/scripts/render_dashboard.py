@@ -31,6 +31,7 @@ import json
 import os
 import re
 import sys
+from pathlib import Path
 from typing import Any, Mapping, cast
 
 import _ui  # sibling: shared visual vocabulary — wrap() + resolve_width() (other primitives mirrored below, smoke-pinned)
@@ -1290,6 +1291,197 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> str:
     return "ok"
 
 
+def _refresh_post_state(record: "ms.CycleRecord", store: Path) -> None:
+    """Re-take the store-local POST-state at the terminal persist.
+
+    v0.4.30 (Cycle B — spec `docs/record-post-state.spec.md` §2). `memory_status.seed_record`
+    seeds a whole family of `after` leaves from the SAME Phase-0 `ctx` read that produces the
+    `before` leaves, so `before == after` by construction and NOTHING owned the after-side: the
+    only refresh path was a prose instruction naming three of the keys. This is the script taking
+    ownership of what it can measure from the store it is about to persist to.
+
+    Call it ONLY when persisting. A seed/preview render IS the dream's BEFORE state — the one
+    honest pre-state the product produces — so refreshing there would destroy it; the caller uses
+    the same `persist_dir is not None` predicate that already distinguishes the two. Mutates
+    `record` in place (the object `_persist` and the heal already share), and it must run BEFORE
+    `validate_cycle_record`, or the reconcile invariant checks the unrefreshed seed and warns on
+    every pass whose index moved — a check that is always red is a check nobody reads.
+
+    Three rules, each a MECHANISM rather than an assurance:
+
+      • NEVER BLOCKS. Any failure leaves `record` exactly as authored and warns on stderr. A
+        measurement failure must not fabricate. Not `_ui.dream_cue`: that is gated on
+        `CM_DREAM_ARC` and is invisible to `cm`, the tests and the beta harness by design — a
+        refresh failure has to be loud, not suppressible.
+      • ONE SPLICE. The complete leaf set is built in scratch dicts and written after the LAST
+        measurement succeeds, so no leaf can be half-written. This matters because
+        `validate_cycle_record` descends into `budget` for exactly TWO leaves — §2.4's reconcile
+        invariant reads `budget.index`'s `before_tokens`/`after_tokens` — and NOT for the rest: a
+        `budget.index` holding only SOME of its other leaves (`after_lines`, `after_bytes`,
+        `cliff_pct`, `fat_hooks`, `hook_max_tokens`, `budget_tokens`, `ceiling_tokens`, `over`)
+        renders with zero warnings and zero errors, every reader using `.get(k, default)` — a
+        mixed-generation record persisting invisibly.
+      • LEAF-WISE. A leaf is written only where its OWN parent mapping already exists; an absent
+        container is a POLICY skip (silent — nothing is wrong), which is deliberately a different
+        path from a failed measurement (which always warns). Creating a container would author
+        state the record never had and newly draw a render row — a different change than
+        correcting one.
+    """
+    # ── the policy skip, gated per PARENT mapping, never on `budget` as a whole ──────────────
+    # The renderer gates the index gauge row on `if idx:` — `idx` being `budget.index`, the INNER
+    # mapping — and its `(unchanged)` fallback on `if not (cm or idx or rf or …)`. So a record
+    # carrying `budget.claude_md` WITHOUT `budget.index` is a shape the renderer treats as having
+    # no index, and splicing into a newly created `budget["index"]` would author that block and
+    # newly draw the row. The shape is type-legal (`Budget` is `total=False`) and `--persist`
+    # consumes arbitrary JSON, so it is constructible; measured across the fleet it does not
+    # occur, which makes this a precision rule rather than a live defect.
+    b = _dget(record, "budget")
+    h = _dget(record, "health")
+    rem = _dget(record, "remediation")          # TOP-LEVEL, not `budget.remediation`
+    idx = b.get("index") if isinstance(b.get("index"), dict) else None
+    rf = b.get("recall_facts") if isinstance(b.get("recall_facts"), dict) else None
+    sd = h.get("schema_drift") if isinstance(h.get("schema_drift"), dict) else None
+    if idx is None and rf is None and sd is None:
+        return
+
+    # ── the precondition, asserted before any measurement ────────────────────────────────────
+    # This is the one failure the never-blocks contract cannot catch by itself: every measurement
+    # below returns a well-formed ZERO on an absent index and NONE of them raises — `_measure`
+    # gives (0, 0, 0), `hook_stats("")` gives (0, 0, []), `cliff_pct(0, 0)` gives 0, and
+    # `schema_drift([], set())` returns every field zero. Writing those beside the seed's true
+    # `before_*` would fabricate a post-state that is CLEAN in the concealment direction, strictly
+    # worse than the mirrored seed it replaces (which at least carried a real Phase-0 value).
+    # It is asserted before the first scratch leaf is built, so no partial post-state can exist.
+    #
+    # The path comes from `store_local_index`'s OWN `index_path`, never rebuilt here. Two
+    # expressions of one fact is the repo's weakest-enforcement-site rule at the exact site whose
+    # docstring invokes it: a future rename of the index filename (or a store whose index is
+    # discovered rather than fixed-name) would update the measurement and leave this guard behind,
+    # and the guard would then pass on one file while `_measure` read another — writing
+    # `after_tokens: 0` beside a true `before_*`, which is the fabrication this check exists to
+    # prevent. Reading it back makes the guard and the measurement ONE expression by construction.
+    #
+    # EMPTINESS is deliberately NOT part of this. A zero-byte MEMORY.md is a real file and
+    # (0, 0, 0) is a truthful measurement of it; the resulting large negative delta then trips the
+    # reconcile invariant, so the record falsifies itself LOUDLY — the system working. Absence has
+    # no truthful measurement; emptiness does.
+    try:
+        local = ms.store_local_index(store)
+        if not local["index_path"].is_file():
+            print("render_dashboard: post-state refresh skipped (no MEMORY.md in the store)",
+                  file=sys.stderr)
+            return
+        il = local["index_lb"]
+        hooks = local["index_hooks"]
+        # Build EVERY scratch value first — the splice below is the only write.
+        scratch: dict = {}
+        if idx is not None:
+            scratch["index"] = {
+                "after_lines": il[0], "after_bytes": il[1], "after_tokens": il[2],
+                "fat_hooks": hooks[0], "hook_max_tokens": hooks[1],
+                "cliff_pct": local["index_cliff"],
+                # The two POLICY constants, written in the same splice as the measurement they
+                # qualify. `budget_tokens` is a seed-TIME SNAPSHOT of a module constant — measured,
+                # 14 of this store's 55 records still carry the retired `1200` — so refreshing the
+                # numerator alone paired a live measurement with an obsolete denominator, and the
+                # gauge derives three values from the pair (`_bar`, `_pct`, `_over`): a recovered
+                # store rendered a full red bar at 100% with no OVER flag, all on one line. The
+                # HTML archive never had this defect because it meters from its own constant, not
+                # the record's field; this makes the two agree.
+                "budget_tokens": ms.INDEX_TOKEN_BUDGET,
+                "ceiling_tokens": ms.INDEX_CEILING_TOKENS,
+                # The SAME comparison the over-budget warning below makes, so the warning and this
+                # leaf cannot disagree by construction.
+                "over": il[2] > ms.INDEX_TOKEN_BUDGET,
+            }
+            # The ceiling VERDICT rides along with the index it judges — `remediation` is the
+            # top-level triage block, so LEAF-WISE holds: the parent exists or the leaf is not
+            # written. `over_ceiling` is not a triage verdict despite its address: memory_status
+            # defines it as `index_lb[2] > INDEX_CEILING_TOKENS`, structurally
+            # standing-justify-independent ("there is nothing to suppress and no justify escape"),
+            # computed from the very read above. Leaving it frozen is what let a red HARD CEILING
+            # alarm outlive the over-ceiling index it was raised for, drawn on the same rendered
+            # line as the healthy gauge that contradicted it. `required`/`standing_justified`/
+            # `lever`/`candidates_surfaced`/`pruned`/`achieved_*` are NOT written here: those read
+            # `standing_justify`, `baseline_facts` and fact-count growth, which are not store-local
+            # measurements and which the refresh must not invent. Falsy is render-identical to
+            # absent at all three readers (dashboard tail, remediation panel, HTML template), so
+            # this leaf can only ever correct the alarm, never newly draw one it should not.
+            if rem:
+                scratch["remediation"] = {"over_ceiling": il[2] > ms.INDEX_CEILING_TOKENS}
+        if rf is not None:
+            scratch["recall_facts"] = {"after": len(local["fact_files"])}
+        if sd is not None:
+            # Six of the seven fields are store-local. The seventh is NOT: `canonical_stems`
+            # comes from `ctx.canonical_domain_dir`, and obtaining that directory is a
+            # project-keyed REGISTRY read (`resolve_store` takes the domain from the control
+            # plane, or a git-root settings file, falling back to `domains/unknown/facts`).
+            # Deriving it from the store would mean GUESSING — and the `unknown` fallback
+            # resolves to a directory that does not exist, so `canonical_stems` becomes `set()`,
+            # which is a different wrong answer rather than a safe one. So the field is PRESERVED
+            # from the seed; it is not one of the under-reporters, so preserving it costs
+            # nothing measured.
+            drift = ms.schema_drift(local["fact_files"],
+                                    ms.placed_fact_names(local["index_path"], local["archive_docs"]))
+            drift_out: dict = dict(drift)
+            # Preserved when the seed HAS it, and DROPPED when it does not — never authored as 0.
+            # `schema_drift` returns all seven fields, and on the `canonical_stems=None` path taken
+            # here the seventh is structurally zero: it was not measured, it cannot be. Writing
+            # that 0 into a legacy-shaped block would put a measured-looking value on a field
+            # nothing measured — LEAF-WISE's rule ("creating a container would author state the
+            # record never had") applied one level down, to a leaf.
+            if "advisory_stranded_globals" in sd:
+                drift_out["advisory_stranded_globals"] = sd["advisory_stranded_globals"]
+            else:
+                drift_out.pop("advisory_stranded_globals", None)
+            scratch["schema_drift"] = drift_out
+    except Exception as exc:
+        # NEVER BLOCKS. The record keeps its authored values, which is the honest outcome of a
+        # measurement that did not happen.
+        print(f"render_dashboard: post-state refresh skipped ({exc.__class__.__name__})",
+              file=sys.stderr)
+        return
+
+    # ── the two conditions: WARN, then write the measurements anyway ─────────────────────────
+    # An index over the target with no `remediation` block (nothing for the triage to defer to),
+    # or a fresh `after_tokens` past the hard ceiling. Both operands are the LIVE constants, never
+    # the record's own seeded fields: `budget.index.budget_tokens` is seed-derived and can be a
+    # RETIRED constant (records here carry both `1200` and `1500`), so keying to it would compare
+    # a fresh measurement against an obsolete budget and could warn over-budget while the same
+    # pass wrote `over: False`. Keying both to the constants the refresh is about to write makes
+    # the warning and the leaf the same comparison by construction.
+    #
+    # `remediation` is read from the TOP LEVEL of the record. It is a `CycleRecord` key, not a
+    # `budget` sub-key — `budget` carries exactly `claude_md`, `global_claude_md`, `index`,
+    # `recall_facts` and `claude_md_hierarchy`, so a guard reading `budget.remediation` is dead:
+    # it warns on every over-target persist, the standing-justified store included, and tells the
+    # operator its record "carries no remediation block" while one sits in the record.
+    #
+    # Suppressing the WRITE instead was considered and rejected: `over` is a MEASUREMENT, not a
+    # verdict, so it must be written truthfully.
+    if il[2] > ms.INDEX_TOKEN_BUDGET and not rem:
+        _wtail = ("post-state written anyway" if idx is not None
+                  else "no index block in the record — nothing written")
+        print(f"render_dashboard: index is over budget ({il[2]} > {ms.INDEX_TOKEN_BUDGET} est tok) "
+              f"and the record carries no remediation block — {_wtail}", file=sys.stderr)
+    if il[2] > ms.INDEX_CEILING_TOKENS:
+        print(f"render_dashboard: index is past the hard ceiling ({il[2]} > "
+              f"{ms.INDEX_CEILING_TOKENS} est tok) — post-state written anyway", file=sys.stderr)
+
+    # ── the splice: one write per parent mapping, after every measurement succeeded ───────────
+    # Each scratch entry was built under the same `is not None` test that guards its write, and
+    # reaching here means the whole measurement block ran to completion — so the entries and the
+    # writes pair up exactly, and no leaf can be written on a path where a later measurement threw.
+    if idx is not None:
+        idx.update(scratch["index"])
+    if rf is not None:
+        rf.update(scratch["recall_facts"])
+    if sd is not None:
+        sd.update(scratch["schema_drift"])
+    if "remediation" in scratch:
+        rem.update(scratch["remediation"])
+
+
 def main() -> int:
     global _COLOR, _ASCII, W
     argv = sys.argv[1:]
@@ -1381,6 +1573,15 @@ def main() -> int:
     except json.JSONDecodeError as exc:
         print(f"render_dashboard: invalid cycle-record JSON: {exc}", file=sys.stderr)
         return 1
+    # v0.4.30 (Cycle B — spec §2.1/§2.2/§2.3): the store-local POST-state is script-owned from
+    # here on. Ordered BEFORE the validator on purpose — the reconcile invariant must check the
+    # value the refresh JUST WROTE, or it checks the unrefreshed seed and warns on every pass
+    # whose index moved (a check that is always red is a check nobody reads). Gated on
+    # `persist_dir is not None`, the same predicate `judged` uses below, because a seed/preview
+    # render IS the dream's BEFORE state and refreshing it would destroy the only honest
+    # pre-state the product produces. Before the print, so the log and the display agree.
+    if persist_dir is not None:
+        _refresh_post_state(record, Path(persist_dir))
     # Warn-only structural validation (v0.1.6): surface a wrong-CONTAINER-type key (the
     # model-slip class behind the past crashes) on STDERR. NEVER blocks the render and
     # NEVER touches stdout — the rendered dashboard stays byte-identical.
@@ -1460,10 +1661,18 @@ def main() -> int:
             # from the stored block, heal the file anyway (the log line stays attempt-scoped —
             # the spec's F-2: the block on the log line is that attempt's scan result; the
             # archive's fresher-file rule then surfaces the healed verdict).
+            # v0.4.30 (Cycle B, spec §2.5): WIDENED from the verdict alone to the WHOLE record.
+            # The branch's premise — "the current file is the fresher expression" — held only for
+            # the one field it compared, so a correction to `budget`/`health` (which the §2.1
+            # refresh now writes into the record) had no path to the cycle file at all, while
+            # `assemble_cycles` prefers that file over the log. The flip direction is safe and
+            # one-way: `_already_logged` keys on the (commit, timestamp) PAIR, so this branch
+            # already forces both equal, and the widening can only turn append→replace (one row
+            # instead of a double-embed), never the reverse.
             try:
                 with open(paths[0], encoding="utf-8") as _fh:
                     _stored = json.loads(_fh.read())
-                if _dget(_stored, "narration").get("verdict") != _dget(record, "narration").get("verdict"):
+                if _stored != record:
                     _heal = True
             except (OSError, ValueError):  # JSONDecodeError is a ValueError subclass
                 pass

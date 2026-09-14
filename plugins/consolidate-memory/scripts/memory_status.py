@@ -2860,6 +2860,51 @@ def _scrub_commit_log(log: str) -> list:
     return out
 
 
+def store_local_index(auto_mem: Path) -> dict:
+    """The store-local always-loaded measurements, in ONE place.
+
+    Extracted from `build_context` (v0.4.30, spec `docs/record-post-state.spec.md` §2.2) because
+    the terminal post-state refresh takes exactly this measurement and must not re-implement it.
+    What it replaces is not the single `_measure` call it appears to be — it holds THREE
+    behaviours, and a second copy that reproduced only the obvious one would write
+    `after_tokens=0` in precisely the write-truncate race the re-read guard below was added to
+    settle, on the one path (the terminal persist) where the number is written down as truth.
+
+    This is the repo's weakest-enforcement-site rule applied in the constructive direction: the
+    repair is to remove the second site rather than keep two sites in step by discipline.
+    """
+    index_path = auto_mem / "MEMORY.md"
+    index_lb = _measure(index_path)
+    # C1 (v0.1.18.x): split store *.md into FACTS vs ARCHIVE-INDEX docs (link-lists like SHIPPED.md). Archive
+    # indexes are NOT facts — exclude them so the triage never classifies/evicts a relocated archive (MEMORY.md
+    # is already excluded by name; this generalizes). archive_docs double as a reference surface.
+    _store_md = sorted(f for f in auto_mem.glob("*.md") if f.name != "MEMORY.md") if auto_mem.exists() else []
+    archive_docs = [f for f in _store_md if _is_archive_index(f)]
+    fact_files = [f for f in _store_md if f not in archive_docs]
+    # E (v0.1.18.x): a 0-token index read WHILE facts exist is anomalous (a write-truncate race) and would
+    # wrongly clear the over-budget gate — re-read ONCE to settle it. A persistent 0 is a genuine all-unindexed
+    # store (schema_drift flags the mismatch), not "under budget / all well".
+    if index_lb[2] == 0 and fact_files and index_path.exists():
+        index_lb = _measure(index_path)
+    # v0.1.63 (Phase A): hook-cost + native-cliff telemetry for the always-loaded index. This is a
+    # SECOND, independent read of the same file — its text feeds hook_stats here and
+    # demotion_candidates in build_context — so the two can legitimately disagree if the file is
+    # rewritten between them, which is why both happen at one point in one function.
+    try:
+        index_text = index_path.read_text(encoding="utf-8", errors="replace") if index_path.exists() else ""
+    except OSError:
+        index_text = ""
+    return {
+        "index_path": index_path,
+        "index_lb": index_lb,
+        "index_text": index_text,
+        "fact_files": fact_files,
+        "archive_docs": archive_docs,
+        "index_hooks": hook_stats(index_text),
+        "index_cliff": cliff_pct(index_lb[1], index_lb[0]),
+    }
+
+
 def build_context(project_dir: Path) -> dict:
     """Gather all Phase-0 facts into one dict (basis for both report and --json seed)."""
     project_dir = project_dir.resolve()
@@ -2877,26 +2922,16 @@ def build_context(project_dir: Path) -> dict:
     # the per-session cost the dashboard reports is honest, not understated.
     global_claude_md = _measure(_cfg_root() / "CLAUDE.md")
 
-    index_path = auto_mem / "MEMORY.md"
-    index_lb = _measure(index_path)
-    # C1 (v0.1.18.x): split store *.md into FACTS vs ARCHIVE-INDEX docs (link-lists like SHIPPED.md). Archive
-    # indexes are NOT facts — exclude them so the triage never classifies/evicts a relocated archive (MEMORY.md
-    # is already excluded by name; this generalizes). archive_docs double as a reference surface below.
-    _store_md = sorted(f for f in auto_mem.glob("*.md") if f.name != "MEMORY.md") if auto_mem.exists() else []
-    archive_docs = [f for f in _store_md if _is_archive_index(f)]
-    fact_files = [f for f in _store_md if f not in archive_docs]
-    # E (v0.1.18.x): a 0-token index read WHILE facts exist is anomalous (a write-truncate race) and would
-    # wrongly clear the over-budget gate — re-read ONCE to settle it. A persistent 0 is a genuine all-unindexed
-    # store (schema_drift flags the mismatch), not "under budget / all well".
-    if index_lb[2] == 0 and fact_files and index_path.exists():
-        index_lb = _measure(index_path)
-    # v0.1.63 (Phase A): hook-cost + native-cliff telemetry for the always-loaded index (report + seed).
-    try:
-        _index_text = index_path.read_text(encoding="utf-8", errors="replace") if index_path.exists() else ""
-    except OSError:
-        _index_text = ""
-    index_hooks = hook_stats(_index_text)
-    index_cliff = cliff_pct(index_lb[1], index_lb[0])
+    # The store-local always-loaded measurements live in ONE site (spec §2.2's "One site, not
+    # two") so the post-state refresh cannot drift from this caller.
+    _local = store_local_index(auto_mem)
+    index_path = _local["index_path"]
+    index_lb = _local["index_lb"]
+    _index_text = _local["index_text"]
+    archive_docs = _local["archive_docs"]
+    fact_files = _local["fact_files"]
+    index_hooks = _local["index_hooks"]
+    index_cliff = _local["index_cliff"]
 
     transcripts = sorted(proj_root.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
 
@@ -3436,8 +3471,12 @@ def validate_cycle_record(record: object) -> list[str]:
     `health`, … — `health` included, so a non-dict `health` warns) plus `health.slug_orphans`
     / `health.schema_drift`, which nest UNDER `health`. It is deliberately QUIET on a missing
     key (a partial record is normal, the phases fill it incrementally) and on a correct
-    type, and it does NOT check scalar value types — that's the `_num`/`_clean`/`_flag`
-    coercion boundary in render, not this structural gate."""
+    type, and it does NOT check scalar value TYPES — that's the `_num`/`_clean`/`_flag`
+    coercion boundary in render, not this structural gate. Two checks sit on the far side
+    of that line, each because the VALUES contradict one another rather than merely being
+    mistyped: `demotion.verdict` (v0.4.21) and the index reconcile invariant (v0.4.30,
+    spec `docs/record-post-state.spec.md` §2.4). Both stay scalar-TYPE-blind — a mistyped
+    operand still only abstains, never warns."""
     warnings: list[str] = []
     if not isinstance(record, dict):
         # Not even a dict — render's own json.loads guard handles the parse; here we just
@@ -3703,6 +3742,62 @@ def validate_cycle_record(record: object) -> list[str]:
             warnings.append("health.slug_orphans is not a list")
         if "schema_drift" in health and not isinstance(health["schema_drift"], dict):
             warnings.append("health.schema_drift is not a dict")
+
+    # v0.4.30 (Cycle B, spec §2.4): the RECONCILE INVARIANT — the record's `after`-side must agree
+    # with the scripted audit's own delta for the same file. The two operands arrive by independent
+    # paths: `after_tokens` is a measurement of the store, the audit's `token_delta` is what the
+    # scripted `--audit-into` diff computed for `memory/MEMORY.md`. They describe one number, so a
+    # disagreement means the record contradicts itself — the C3 class (a `1746 → 1746` pair beside
+    # an audit delta of −52), which rendered as a self-falsifying gauge line and was caught by
+    # nothing. PURE and zero-I/O: every operand is already in the record.
+    #
+    # The matcher is three conjuncts (spec §C8), each load-bearing for a different case, and every
+    # one of them exists because a narrower matcher would be SILENT rather than wrong on the only
+    # inputs that test it (the recorded `gate-coverage-is-its-match-set` failure):
+    #   1. normalize ONE leading `memory/`, then require exactly `MEMORY.md` — a bare basename test
+    #      would also match `memory/AA/MEMORY.md`, which sorts first and would be read as the index.
+    #   2. accept `store` absent or == "memory"; reject anything else — this is what excludes a
+    #      REPO `MEMORY.md` (store == "repo_doc"), the one case conjuncts 1 and 3 alone get wrong.
+    #   3. more than one surviving row → silent. Ambiguity is not-checkable, never a first-match guess.
+    #
+    # Warn-not-fail: it returns a warning like every other check here, so it can never newly fail a
+    # pass, and validation happens at the terminal render — the only moment a correction is possible.
+    _bud30 = record.get("budget")
+    _idx30 = _bud30.get("index") if isinstance(_bud30, dict) else None
+    _aud30 = record.get("audit")
+    _ops30 = _aud30.get("operations") if isinstance(_aud30, dict) else None
+    if isinstance(_idx30, dict) and isinstance(_ops30, list):
+        _bt30, _at30 = _idx30.get("before_tokens"), _idx30.get("after_tokens")
+        # `bool` is an int subclass — excluded so a JSON `true` is never read as a token count.
+        if (isinstance(_bt30, int) and not isinstance(_bt30, bool)
+                and isinstance(_at30, int) and not isinstance(_at30, bool)):
+            # A single unreadable row makes the whole check NOT-CHECKABLE rather than skipping that
+            # row: a row with no path may BE the index row, so the surviving set would be a guess.
+            # The `isinstance` guard is also what keeps a `{"path": null}` row from raising
+            # AttributeError inside a function whose contract is that it never raises.
+            _rows30: list = []
+            _readable30 = True
+            for _r30 in _ops30:
+                if not isinstance(_r30, dict) or not isinstance(_r30.get("path"), str):
+                    _readable30 = False
+                    break
+                _p30 = _r30["path"]
+                _norm30 = _p30[len("memory/"):] if _p30.startswith("memory/") else _p30
+                if _norm30 != "MEMORY.md":
+                    continue
+                if _r30.get("store") not in (None, "memory"):
+                    continue
+                _rows30.append(_r30)
+            _dt30 = _rows30[0].get("token_delta") if len(_rows30) == 1 else None
+            # A row whose delta is absent or non-integer is not-checkable too — reading it as 0
+            # would manufacture a contradiction out of a malformed row, this cycle's own failure
+            # class pointed the other way.
+            if (_readable30 and len(_rows30) == 1 and isinstance(_dt30, int)
+                    and not isinstance(_dt30, bool)):
+                if _at30 - _bt30 != _dt30:
+                    warnings.append(
+                        "budget.index.after_tokens contradicts the scripted audit "
+                        "(after=%d, before=%d, audit delta=%d)" % (_at30, _bt30, _dt30))
     return warnings
 
 
