@@ -902,7 +902,7 @@ are exceptions, and they are labelled rather than left to look vacuous.** Pins *
 **9**, **15** and **20** are green before *and* after, because their whole content is that the fix
 must **not** move what already worked — and the set grew as the pins were measured (`amend-9`
 item 8 adds 29, 34, 40-arm-3 and pin 26's no-scan half). The count that matters is the measured
-one, not this list: **59 of the 117 `v0.4.29` checks are green pre-fix** (§4), and every one of them
+one, not this list: **63 of the 125 `v0.4.29` checks are green pre-fix** (§4), and every one of them
 is a labelled regression arm — the six below are the pin-level seeds of that set:
 
 | pin | why it cannot fail pre-fix |
@@ -1189,21 +1189,27 @@ pre-fix code. A pin that never moves on any revert is vacuous; the counts belong
 
 Measured 2026-09-14 against the build this spec ships. **The subject is a clone of the base commit
 `308e15b`** — named by SHA and never as "HEAD", which moves with the branch and would silently turn
-a re-run into a *post*-fix baseline — **byte-verified pre-fix on all five changed scripts
-(`dream_procedure` · `extract_signals` · `memory_status` · `preflight` · `render_dashboard`),
-running this branch's `smoke.py`** — not a `git worktree`, for the reason below:
+a re-run into a *post*-fix baseline — **byte-verified pre-fix on all seven changed product paths
+(`cm` plus the six scripts: `dream_procedure` · `extract_signals` · `memory_status` · `preflight` ·
+`render_dashboard` · `beta_checks`), running this branch's `smoke.py`** — not a `git worktree`, for
+the reason below. ("Five" was this sentence's earlier number, and it was narrower than its own
+claim: `git diff --stat 308e15b..HEAD -- 'plugins/**/scripts/*' cm` lists **seven** files, and the
+driver reverts all seven in the `all_six` cluster.)
 
 | tree | result |
 | --- | --- |
-| fixed (this branch) | **1912 passed, 0 failed** |
-| pre-fix (every changed product file reverted to `308e15b`) | **1854 passed, 58 failed** |
+| fixed (this branch) | **1920 passed, 0 failed** |
+| pre-fix (every changed product file reverted to `308e15b`) | **1858 passed, 62 failed** |
 
-`1854 + 58 = 1912`, and all **58** failures are `v0.4.29` checks — **0** failures anywhere else. The
-pre-fix failure count therefore equals the genuine-pin count *exactly*: the 58 are precisely the
-checks this cycle's diff moves, and the **59** further `v0.4.29` checks green on both trees are
+`1858 + 62 = 1920`, and all **62** failures are `v0.4.29` checks — **0** failures anywhere else. The
+pre-fix failure count therefore equals the genuine-pin count *exactly*: the 62 are precisely the
+checks this cycle's diff moves, and the **63** further `v0.4.29` checks green on both trees are
 precisely the labelled regression set (pins 3, 6, 8, 9, 15, 20, 29, 34, the F8 heredoc FEED, the F5
-wrapper-with-bare-flag guards, the §2.2/§2.3/C2/C4/C6 negative arms, and pin 42's second clause).
-58 + 59 = 117 — the count the D6 census constant carries as its `+ 117`. Nothing in the matrix is
+wrapper-with-bare-flag guards, the §2.2/§2.3/C2/C4/C6 negative arms, pin 42's second clause, and the
+four non-flipping 10d/10e arms).
+62 + 63 = 125 — the count the D6 census constant carries as its `+ 125`, verified as the
+`v0.4.29`-labelled **runtime** check population (125 check lines carrying `v0.4.29` in the fixed
+tree's output) rather than as whatever makes the arithmetic work. Nothing in the matrix is
 unattributed.
 
 **The regression set has two directions, and §3's preamble names only one of them.** That paragraph
@@ -1223,33 +1229,51 @@ further: it moves on **no** measured revision, and is kept as the boundary guard
 no-value branch, which is one edit away from consuming `python3`.
 
 **Per-cluster, and why the clusters are not a sum.** Every cluster's RED set is a **subset** of the
-58, and their **union is exactly the 58** — so no pin is unattributed and none fires only in a
+62, and their **union is exactly the 62** — so no pin is unattributed and none fires only in a
 partial revert. The union is not the sum because pins are not one-per-file by construction: pin 38
 asserts that a flag legal on ONE script is rejected on the others, so it moves on six clusters at
 once (`cm`, `extract_signals`, `preflight`, `render_dashboard`, `arc_ms_rd`, `arc_dp_rd`); and
-`pin 40 arm 3` appears in exactly two.
+`pin 40 arm 3` appears in exactly two (`extract_signals`, `arc_ms_rd`).
+
+**That union claim is only checkable against a defined check IDENTITY, and the printed label is not
+one.** A RED line prints the check's label *with a dynamic tail appended*, naming the weakest site
+the check found: pin 38 ends `· extract_signals.py accepted --demo` in one cluster and
+`· render_dashboard.py accepted --audit` in another; pin 40 arm 3 ends `· --before is not a
+extract_signals.py flag` against `… memory_status.py flag`. Keying a set comparison on that text
+therefore measures *which file was reverted*, not *which check moved*: two naive attempts returned
+**71** and then **65** for a union that is **62**, and the residual was always the same three checks
+— the ones whose tail varies. The identity is the check's label as it prints in the **fixed** tree,
+where it passes and carries no tail; a RED label is that identity plus its tail. Mapped that way,
+every RED line in every cluster resolves to **exactly one** identity — 0 ambiguous, 0 unmapped,
+across all ten — and each cluster's distinct-identity count equals its reported failure count. The
+same defect as the `|DP| ∩ |RD|` note below, and as the cycle's own subject: a coarser key than the
+question.
 
 The driver's full-revert cluster is labelled `all_six` and reverts **seven** paths — the six Python
 scripts *plus* the `cm` dispatcher. The label is the driver's and it is narrower than its
 predicate, which is this cycle's own subject reproduced in the instrument built to detect it: an
 earlier draft of this section recorded *"the six scripts reverted to `308e15b`"* as fact. The
 counts below are keyed to the file list, never to the name. Measured spread over the eight
-per-script clusters: **22 checks in one cluster, 22 in two, 11 in three, 3 in six** (22+22+11+3 =
-58) — so no single cluster's count is the union, and the three checks that move in six clusters are
-all pin 38's.
+per-script clusters: **22 checks in one cluster, 26 in two, 11 in three, 3 in six** (22+26+11+3 =
+62) — so no single cluster's count is the union, and the three checks that move in six clusters are
+all pin 38's. The four pins the F10 round added all land in the *two-cluster* bucket (22 → 26),
+which is the shape their arms predict: each is an attached-spelling or argv-position case judged at
+the `dream_procedure` anchor, so it moves under `dream_procedure` and under `arc_dp_rd` and nowhere
+else.
 
 | cluster (files reverted) | passed / failed |
 | --- | --- |
-| fixed (none) | 1912 / 0 |
-| `cm` | 1909 / 3 |
-| `dream_procedure` | 1891 / 21 |
-| `extract_signals` | 1904 / 8 |
-| `preflight` | 1905 / 7 |
-| `render_dashboard` | 1898 / 14 |
-| `memory_status` + `render_dashboard` | 1883 / 29 |
-| `dream_procedure` + `render_dashboard` | 1877 / 35 |
-| `beta_checks` | 1912 / **0** |
-| every changed product file (`cm` + the six scripts) | 1854 / 58 |
+| fixed (none) | 1920 / 0 |
+| `cm` | 1917 / 3 |
+| `dream_procedure` | 1895 / 25 |
+| `extract_signals` | 1912 / 8 |
+| `preflight` | 1913 / 7 |
+| `render_dashboard` | 1906 / 14 |
+| `memory_status` + `render_dashboard` | 1891 / 29 |
+| `dream_procedure` + `render_dashboard` | 1881 / 39 |
+| `beta_checks` | 1920 / **0** |
+| every changed product file (`cm` + the six scripts) | 1858 / 62 |
+| every changed product file **except** `memory_status` | 1872 / 48 |
 
 The `beta_checks` row is **0 by design, not by absence** — see item 11: the change there is a
 compatibility shim whose branch is identical while `memory_status` stays fixed, so no single-file
@@ -1268,17 +1292,20 @@ driver now takes the harness from the archive and **refuses to run against a dir
 flaw cannot silently return; it also counts RED as `'^  ✗ '` rather than any `✗` in the output, which
 read 3 with zero failures (three `✗` sit inside *passing* labels — the v0.1.54 render checks assert
 the glyph is printed). The anchor's own contribution is stated separately and more sharply in §2.3:
-restoring only `dream_procedure.py` gives **1891 passed, 21 failed**, and the two sets are exactly
-disjoint — `|DP| + |RD| = 21 + 14 = 35 = |arc_dp_rd|` with an empty intersection — so all 21 are the
+restoring only `dream_procedure.py` gives **1895 passed, 25 failed**, and the two sets are exactly
+disjoint — `|DP| + |RD| = 25 + 14 = 39 = |arc_dp_rd|` with an empty intersection — so all 25 are the
 anchor's own and not one of them needs a second file reverted. (An earlier draft of this sentence
-claimed 14 of the 21 also moved under `render_dashboard`. That came from grouping RED lines by pin
-*number*, which pools the six distinct `C1` checks and the three distinct `pin 37` checks into one
-label; keyed on the full label the intersection is empty. Same defect as the one this cycle exists
-to close, in my own analysis: a coarser key than the question.)
+claimed 14 of the then-21 also moved under `render_dashboard`. That came from grouping RED lines by
+pin *number*, which pools the six distinct `C1` checks and the three distinct `pin 37` checks into
+one label; keyed on the full label the intersection is empty. Same defect as the one this cycle
+exists to close, in my own analysis: a coarser key than the question — and the same trap the union
+test above sprang, where the *printed* label was the coarser key.)
 
 **The matrix found its own instrument first.** The first three runs died mid-suite, each on a pin
 that asserted on post-fix API without probing it (`amend-9` item 11). The fourth ran to completion
 but reported **59** failures, 6 of them outside `v0.4.29` — all in the preflight-beacon region.
+(Those are **that** run's numbers, on the revision then current — not the table's, which belong to
+the triple frozen at `ce3e182`. Every count in this section names its revision for that reason.)
 They were not pins. `git worktree add` writes a `.git` **file** (`gitdir: …/.git/worktrees/<name>`
 — a linked worktree), and `store_context._common_from_gitdir` follows its `commondir` to the
 **main** worktree, correctly, since a linked worktree *is* the same project. Inside the mutation
