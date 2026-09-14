@@ -32,7 +32,12 @@ render and no consumer needs a migration.
    raised for. The refresh is bounded to that key set (a record's model-authored blocks, its `before`
    halves and its `marker` are never written), it runs only when persisting — a seed/preview render
    still shows the one honest BEFORE state the product produces — and it **never blocks**: if any
-   measurement fails, the record keeps its authored values and one line goes to stderr.
+   measurement fails, the record keeps its authored values and one line goes to stderr. The HTML
+   archive's two budget constants (`INDEX_TOKEN_BUDGET`, `CLAUDE_MD_TOKEN_BUDGET`) also became live
+   references into `memory_status` in this pass: they were unpinned hardcoded copies of a value that
+   module owns, so a retune would have silently left the archive metering off a threshold nothing
+   else held. That one changes no rendered number — the copies agreed on the day they were written,
+   which is exactly why nothing noticed they were copies.
 2. **A duplicate re-render now heals the whole record, not just the narration verdict.** When a pass
    re-renders at a `(commit, timestamp)` pair already in the log, a corrected `budget`/`health` now
    reaches the cycle file — the file `render_html`'s `assemble_cycles` prefers. The log does not grow

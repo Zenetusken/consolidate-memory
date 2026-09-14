@@ -1386,8 +1386,10 @@ def _refresh_post_state(record: "ms.CycleRecord", store: Path) -> None:
                 # numerator alone paired a live measurement with an obsolete denominator, and the
                 # gauge derives three values from the pair (`_bar`, `_pct`, `_over`): a recovered
                 # store rendered a full red bar at 100% with no OVER flag, all on one line. The
-                # HTML archive never had this defect because it meters from its own constant, not
-                # the record's field; this makes the two agree.
+                # HTML archive never had this defect, and for a reason this splice now shares: its
+                # gauge takes both operands from the same record (`budget.index.after_tokens`
+                # against `budget.index.budget_tokens`, each with a fallback), so wherever the key
+                # is present the pair is contemporaneous — and this writes them together.
                 "budget_tokens": ms.INDEX_TOKEN_BUDGET,
                 "ceiling_tokens": ms.INDEX_CEILING_TOKENS,
                 # The SAME comparison the over-budget warning below makes, so the warning and this
