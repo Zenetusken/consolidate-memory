@@ -1407,8 +1407,13 @@ def _refresh_post_state(record: "ms.CycleRecord", store: Path) -> None:
             # `lever`/`candidates_surfaced`/`pruned`/`achieved_*` are NOT written here: those read
             # `standing_justify`, `baseline_facts` and fact-count growth, which are not store-local
             # measurements and which the refresh must not invent. Falsy is render-identical to
-            # absent at all three readers (dashboard tail, remediation panel, HTML template), so
-            # this leaf can only ever correct the alarm, never newly draw one it should not.
+            # absent at ALL SIX record readers — the dashboard tail and the remediation panel
+            # (`render_dashboard.py`), three in the archive (the remediation lead, the KPI, and the
+            # gauge, in `dashboard.template.html`), and one in `dashboard.sections.js` — because
+            # every one tests truthiness (`_flag`, `truthy`, or a bare `if`). So this leaf can only
+            # ever correct the alarm, never newly draw one it should not. The count is
+            # `grep -rn over_ceiling`'s: an earlier draft named three, which is the number its
+            # author happened to know, and a count is not a census until it has been counted.
             if rem:
                 scratch["remediation"] = {"over_ceiling": il[2] > ms.INDEX_CEILING_TOKENS}
         if rf is not None:
