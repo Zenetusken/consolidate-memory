@@ -85,7 +85,8 @@ _SKIP_MARKER = "extractor-skip:"
 #
 # wrapper -> (flags that CONSUME the next token as their value, leading positional operands)
 _WRAPPER_GRAMMAR = {
-    "env":     (frozenset(), 0),      # env VAR=1 cmd / env -i cmd
+    "env":     (frozenset(("-u", "-C", "-S", "--unset", "--chdir",
+                           "--split-string")), 0),   # env -u FOO cmd / env -C /tmp cmd
     "time":    (frozenset(), 0),      # time cmd / time -p cmd
     "nohup":   (frozenset(), 0),
     "command": (frozenset(), 0),      # command -v cmd
@@ -117,7 +118,10 @@ _PREFIX_TOKENS = frozenset(("do", "then", "else", "{", "!", "eval", "("))
 # A Windows drive path. POSIX `shlex(posix=True)` eats each `\` as an escape, so the separator
 # that makes `…\scripts\extract_signals.py` an invocation disappears before the token test sees
 # it — measured, the whole form went unaccounted. Normalizing `C:\a\b` → `C:/a/b` BEFORE tokenizing
-# restores it. Only a drive-prefixed span is touched, so an ordinary escape is never rewritten.
+# restores it. The span is matched by SHAPE, not by context, so the rewrite is not confined to
+# paths: measured, `_unfold(r"sed -e 's/a:\.*/b/'")` rewrites the `a:\` inside the quotes. That is
+# harmless here because the result feeds only the token test, and a `\` the token test would have
+# eaten anyway cannot make an invocation appear or vanish.
 _WINPATH = re.compile(r"([A-Za-z]:)\\([^\s\"']*)")
 
 
@@ -251,12 +255,15 @@ def _runs_extractor(tokens: list[str]) -> bool:
     form), the shell's grouping/control prefixes, and wrapper commands from the bounded set
     together with their OWN argument grammar (`sudo -n`, `xargs -I{}`, `sudo -u root`,
     `timeout 300`). The next token's basename must be the interpreter; the remainder must carry
-    no `-c` and no `-m` — both consume the following token as *code* or as a *module name*, so an
-    extractor path inside them is a string, never the thing python runs — and no `--recalls` argv
-    element (the recall-only mode is not the Phase-2 extract, restated as a token test because the
-    segment is now the unit). Finally some remaining token must EQUAL the token or end with `/` +
-    it: the separator requirement is what keeps `tools/extract_signalsXpy` and
-    `tests/test_extract_signals.py` unaccounted.
+    no `-c`, no `-m` and no `--recalls` — matched on the PREFIX, so the attached spelling counts
+    (`-c'import os'` / `-mjson.tool` / `--recalls=3` arrive as single tokens) — because the first
+    two consume the following token as *code* or as a *module name* (an extractor path inside them
+    is a string, never the thing python runs) and the third is the recall-only mode, not the
+    Phase-2 extract. Finally the extractor must be the FIRST operand after the interpreter — the
+    script python actually runs, not any token in argv (`python3 other.py <path>` hands the path
+    to another script) — and it must EQUAL the token or end with `/` + it: the separator
+    requirement is what keeps `tools/extract_signalsXpy` and `tests/test_extract_signals.py`
+    unaccounted.
 
     Every widening here is measured (spec §2.3's table): each one closed a form that the first cut
     dropped, and a drop is a LOUD false exit 3 on a legitimate call. Nothing was relaxed in the
@@ -271,10 +278,24 @@ def _runs_extractor(tokens: list[str]) -> bool:
         base = tok.rsplit("/", 1)[-1]
         if base in _INTERPRETERS:
             rest = tokens[i + 1:]
-            if "-c" in rest or "-m" in rest or "--recalls" in rest:
+            # `-c`/`-m`/`--recalls` are matched on their PREFIX, not by exact membership: the
+            # attached spelling (`-c'import os'`, `-mjson.tool`, `--recalls=3`) arrives from
+            # shlex as ONE token, and an exact-membership test credited all three. Measured
+            # pre-fix at the judged surface: `python3 -c'import os' <path>` and
+            # `python3 -mjson.tool <path>` both read `verified · ext_unaccounted False` — the
+            # SILENT direction, which is the one this anchor exists to close.
+            if any(t.startswith(("-c", "-m", "--recalls")) for t in rest):
                 return False
-            return any(t == _EXTRACTOR_TOKEN or t.endswith("/" + _EXTRACTOR_TOKEN)
-                       for t in rest)
+            # …and the extractor must be the thing python RUNS, not merely present in argv:
+            # `python3 other.py <path>` hands the path to another script as an argument. The
+            # first non-option operand is that script (an interpreter option like `-u`/`-O` is
+            # skipped; one that CONSUMES a value, `-X importtime`, then under-accounts — the
+            # loud direction, and no Phase-2 form spells it that way).
+            for t in rest:
+                if t.startswith("-"):
+                    continue
+                return t == _EXTRACTOR_TOKEN or t.endswith("/" + _EXTRACTOR_TOKEN)
+            return False
         if base in _WRAPPERS:
             value_flags, positionals = _WRAPPER_GRAMMAR[base]
             i += 1

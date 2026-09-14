@@ -358,19 +358,36 @@ def _arc_gate_section(record: Mapping[str, Any], enforce_post_arc: bool = False)
     dreamless (legacy/preview). The CALLER gates this on --persist, like the integrity panel.
 
     `enforce_post_arc` (v0.4.29; spec §2.4) rides in from the same `judged` gate as the exit-4 it
-    explains: a panel that disagreed with the exit beside it would be worse than either, and the
-    two cannot desync because §2.5 makes `--persist ""` and a missing dir usage errors — so there
-    is no reachable render where the panel speaks and the gate does not run."""
+    explains: a panel that disagreed with the exit beside it would be worse than either. The
+    desync is NOT impossible — the first cut of this docstring claimed it was, and the spec's own
+    §2.4 records that claim as **measured false**. One path still desyncs and is named open in
+    spec §5: `_persist` returning "io-error" (the cycle log cannot be appended) exits 0 at main's
+    `no-dir`/`io-error` arm AFTER this panel has printed, so the screen says INCOMPLETE and the
+    exit says clean. Measured end-to-end on a dreamless post-arc record with an unwritable log:
+    panel printed, `cannot append to log: … Permission denied` on stderr, **exit 0**; the same
+    record with a writable log exits **4**. Closing it changes the exit ladder, so it is carried
+    as a named hole rather than fixed here."""
     arc_ok, arc_reason = ms.arc_completeness(record, enforce_post_arc=enforce_post_arc)
     if arc_ok:
         return []
     out = ["", _rule()]
+    # The subtitle is DERIVED, not a literal: under `enforce_post_arc` the reason can be the
+    # absent-block text, and a fixed "a present dream block must carry …" then asserts the very
+    # rule the arm just exempted — measured, the panel printed both that headline and "dream
+    # block absent" three lines apart, routing the operator to backfill a block that is not there.
+    _sub = ("a present dream block must carry sleep + 6 beats + wake"
+            if isinstance(record, dict) and "dream" in record
+            else "no dream block, and this record's own keys date it after the arc mandate")
     out.append("  " + _c("⚠ DREAM ARC INCOMPLETE", "bold", "yellow")
-               + _c("   · a present dream block must carry sleep + 6 beats + wake", "dim"))
+               + _c("   · " + _sub, "dim"))
     out.append(_rule())
     out.append("    " + _ui.wrap(_clean(arc_reason), hang=4))
-    out.append("    " + _c("→ backfill the missing beats (SLEEP · 5 phase beats + surfacing · WAKE), then re-render"
-                          " — a complete arc clears this ⚠ + exits 0", "dim"))
+    # …and the REMEDY is derived from the same fact: an absent block is not a partial one, so
+    # "backfill the missing beats" is the wrong instruction for it (there is nothing to backfill).
+    _fix = ("→ backfill the missing beats (SLEEP · 5 phase beats + surfacing · WAKE), then re-render"
+            if isinstance(record, dict) and "dream" in record
+            else "→ the arc was skipped, so run it: the dream block was never written this pass")
+    out.append("    " + _c(_fix + " — a complete arc clears this ⚠ + exits 0", "dim"))
     return out
 
 
@@ -1187,14 +1204,13 @@ def _persist(record: Mapping[str, Any], dirpath: str) -> str:
     re-render) | "unstamped" (empty timestamp even after reconcile) | "no-dir" |
     "io-error". Idempotent on (commit, timestamp).
 
-    "no-dir" is part of THIS function's contract but is unreachable from `main` (measured,
-    v0.4.29): `main` refuses a `--persist` dir that does not exist at exit 2 BEFORE calling
-    here, and it is the only production caller — the one direct caller in `tests/smoke.py`
-    pre-creates its dir with `mkdir(parents=True, exist_ok=True)`. So this return is NOT
-    covered by any pin, and it is kept rather than deleted because it is the only guard
-    against the dir vanishing between `main`'s `isdir` and this call. Named as an unpinned
-    defensive arm so the next pass does not read it as a live gate: `main`'s
-    `no-dir`/`io-error` arm at its `_persist` call site fires only for `io-error` today."""
+    "no-dir" is unreachable from `main` (measured, v0.4.29): `main` refuses a `--persist` dir
+    that does not exist at exit 2 BEFORE calling here, so `main`'s `no-dir`/`io-error` arm fires
+    only for `io-error` today. It is kept rather than deleted because it is the only guard
+    against the dir vanishing between `main`'s `isdir` and this call. Note it is NOT unpinned —
+    a first cut of this docstring said so and was wrong: `tests/simulate_accumulation.py`'s
+    Probe I calls this function with a NON-EXISTENT dir and asserts the skip, so deleting the
+    arm fails the accumulation sim."""
     if not os.path.isdir(dirpath):
         print(f"render_dashboard: --persist dir not found, skipping log: {dirpath}", file=sys.stderr)
         return "no-dir"
@@ -1314,9 +1330,11 @@ def main() -> int:
                 print("render_dashboard: --persist requires a directory argument", file=sys.stderr)
                 return 2
             # os.path.abspath makes the relative and absolute spellings ONE input:
-            # retention._ops_slot keys a non-`memory` store dir by native_store.parent.name, and
-            # for a relative path that is Path(".").name — '' — whose empty project id raises
-            # IdentifierRefused (measured: a 15-line traceback on a directory that EXISTS).
+            # retention._ops_slot returns native_store.parent.name when the dir is NAMED `memory`
+            # — so `Path("memory").parent.name` is `Path(".").name`, '' — and native_store.name
+            # otherwise, so `Path(".").name` is '' as well. Both relative spellings therefore
+            # yield an empty project id, which raises IdentifierRefused (measured: a 15-line
+            # traceback on a directory that EXISTS).
             persist_dir = os.path.abspath(argv[i + 1])
             i += 2
             continue

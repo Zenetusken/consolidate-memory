@@ -332,8 +332,11 @@ def _local_norm(s: str) -> str:
 
 def _stanza_present_local(value: Any) -> bool:
     """Fallback for the skill's `stanza_present` (v0.4.29): a dream stanza is PRESENT iff it is a
-    non-empty string. ONLY used if the skill module didn't import — the live path always calls
-    ctx.ms.stanza_present, so the oracle's verdict describes the shipped contract."""
+    non-empty string. Selected on TWO conditions, not the one the first cut of this docstring
+    claimed: the skill module did not import, OR it imported but does not EXPORT the symbol. The
+    second is a scripts dir pinned to a release before v0.4.29 — an operator can pin one via
+    `--skill` / `$CONSOLIDATE_MEMORY_SCRIPTS`, and `discover_skill` honours both verbatim — where
+    the module imports fine and this rule, not that version's own, is what judges it."""
     return isinstance(value, str) and bool(value.strip())
 
 
@@ -1286,8 +1289,7 @@ def dream_arc_capture(ctx: Ctx) -> list[Result]:
         # covered the JSON-null stanza and ONLY that one — so `[null]*6` and `[{}]*6` were
         # reported COMPLETE by the oracle while the product's gate rejects them: two matchers
         # describing different contracts. The inline fallback is the identical rule, for the
-        # degrade path where no skill module imported (never a second definition on the live
-        # path — `ctx.ms` is loaded from the version under test).
+        # degrade path and for a `--skill`-pinned pre-v0.4.29 tree (see _stanza_present_local).
         _ms = getattr(ctx, "ms", None)   # a hand-built Ctx in a test may carry no `ms` at all
         _present = (_ms.stanza_present if _ms is not None and hasattr(_ms, "stanza_present")
                     else _stanza_present_local)

@@ -15835,6 +15835,32 @@ check("v0.4.29 §2.3 (REGRESSION, green pre-fix): a heredoc FEEDING the extracto
       "command line — the body is stripped, the opener is not",
       _ext29(f"python3 {_T29} --json <<'EOF'\n{{}}\nEOF"))
 
+# (10d) THE REMAINING SILENT DIRECTION (review F10, found by the prior-PR lens after 10c landed):
+# the first cut tested `-c`/`-m`/`--recalls` by EXACT token membership, which the ATTACHED spelling
+# evades — `-c'import os'`, `-mjson.tool` and `--recalls=3` each arrive from shlex as ONE token, so
+# all three were credited and a pass that never ran the extractor read `verified · ext_unaccounted
+# False`. Measured pre-fix at the judged surface (not the helper): all four below accounted.
+# 10d-3 is the argv-POSITION arm: the first cut credited the token ANYWHERE in argv, so
+# `python3 other.py <path>` — the path handed to a different script as an argument — passed.
+# Post-fix the extractor must be the FIRST operand after the interpreter.
+for _lbl29, _cmd29 in (
+        ("-c's ATTACHED spelling (one shlex token, not `-c`)", f"python3 -c'import os' {_T29}"),
+        ("-c attached with double quotes", f'python3 -c"import os" {_T29}'),
+        ("-m's ATTACHED spelling", f"python3 -mjson.tool {_T29}"),
+        ("--recalls' attached spelling", f"python3 {_T29} --recalls=3"),
+        ("the token in argv but not the script python runs", f"python3 other.py {_T29} --json")):
+    check(f"v0.4.29 §2.3 (F10): unaccounted — {_lbl29}", not _ext29(_cmd29))
+
+# (10e) REGRESSION for the same change: `env`'s own value-taking flags (`env -u FOO cmd`,
+# `env -C /tmp cmd`) consume the following token, so a grammar that skipped flags WITHOUT their
+# values read `FOO` as the command word and lost a legitimate call. Both were measured unaccounted
+# before this pin's fix (a loud false exit 3) and are accounted after.
+for _lbl29, _cmd29 in (
+        ("env -u FOO", f"env -u FOO python3 {_T29} --json"),
+        ("env -C /tmp", f"env -C /tmp python3 {_T29} --json"),
+        ("env -i (no value — must stay accounted)", f"env -i python3 {_T29} --json")):
+    check(f"v0.4.29 §2.3 (F10, REGRESSION): accounted — {_lbl29}", _ext29(_cmd29))
+
 # (11) The shared stanza predicate. `getattr` is not defensive padding: the claim is that the
 # SYMBOL exists as the shared type rule, and on pre-fix code it does not exist at all. Calling it
 # unguarded raised AttributeError and aborted the whole suite, so the mutation matrix collected
@@ -16266,7 +16292,9 @@ def _proberun29(script: Path, *argv):
     `(rc, stdout, stderr)` — the opposite order. The collision was harmless only because the
     earlier calls all execute before this definition is reached, which means the name silently
     means two things and which one you get depends on where in the file you call from. A
-    reordering edit would have swapped the tuples at ~40 call sites.
+    reordering edit would have swapped the tuples at every one of `_run29`'s call sites (measured:
+    22 in this file, counting `_run29(` and excluding the definition — a count that moves with the
+    matcher, so it is stated with one rather than as a bare estimate).
     """
     _env, _root = _probe_env29()
     try:
@@ -16568,7 +16596,7 @@ check("v0.4.29 pin 41 arm B: a `<…>` placeholder in a prose COMMAND span is QU
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 45 + 117)
+      passed + failed + 1 == 1750 + 45 + 125)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

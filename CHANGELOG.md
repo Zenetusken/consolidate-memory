@@ -9,7 +9,7 @@ version changes on `main`.
 
 **Patch — the dream passes' gates mean what they claim: the checked set cannot shrink, an empty
 narration is a gap, the extractor anchor anchors on execution, every documented invocation runs,
-and an unknown flag is a usage error on the five lax scripts and `cm`.**
+and an unknown flag is a usage error on the four lax scripts and `cm`.**
 
 A full audit of the `dream` pass found **one structural defect with nine faces**: every gate was
 narrower than the rule it was believed to enforce, and each failed in the **clean** direction. The
@@ -40,13 +40,17 @@ render and no downstream consumer needs a migration.
    none. This is the case that made the archive's documented *"absence means pre-feature"* read
    false: `None` (no dream block, the legacy carve-out) and `[]` (a dream block with nothing usable)
    were collapsed into one state. The two are now distinguishable, and only `None` is a carve-out.
-5. **A dreamless record carrying `usage` or `demotion` now fails the arc at `--persist`** (exit 4).
+5. **A dreamless record carrying any post-mandate key now fails the arc at `--persist`** (exit 4).
    Deleting the `dream` key bypassed both arms. Records carry no version stamp, so legacy-vs-skipped
-   is decided structurally: those two keys were introduced strictly after the v0.1.54 arc mandate,
-   so a record carrying either cannot be a pre-mandate artifact. Measured over the 55-record
-   archive, this narrows exactly **one** record — a genuine fully-skipped arc, whose neighbours on
-   both sides carry a dream block *and* both keys. Every other consumer (the archive, the render
-   panel, the validator) keeps the old default, so no historical display retro-flips.
+   is decided structurally: **seven** keys were introduced strictly after the v0.1.54 arc mandate —
+   `usage` · `demotion` · `distill` · `workflow_proposals` · `identity` · `narration` · `preflight`
+   (`_POST_ARC_KEYS`) — so a record carrying any of them cannot be a pre-mandate artifact.
+   Measured over the 55-record archive, this narrows exactly **one** record — a genuine
+   fully-skipped arc, whose neighbours on both sides carry a dream block *and* those keys.
+   The archive, the standalone render and the validator keep the old default, so no archived
+   display retro-flips. The `--persist` render's own **⚠ arc panel** does assert the strict rule —
+   it rides the same `judged` flag as the exit beside it — while the permissive ✓/✗ DREAM ARC row
+   on that same screen is a different call site and keeps the default.
 6. **The extractor anchor now anchors on execution.** Its docstring already claimed this; the
    implementation was a regex matching the token across any whitespace. So `echo python3
    …/extract_signals.py --json`, `python3 -c "open('…')"`, `python3 -m py_compile …`,

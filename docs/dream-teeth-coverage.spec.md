@@ -763,9 +763,10 @@ write — they **disable the gate**:
   Measured with an isolated HOME, on a directory that **exists**: `--persist memory` → exit **1** with
   a 15-line traceback ending `identifiers.IdentifierRefused: invalid project id ''`; identical for `.`
   and `./memory`; the absolute equivalents exit 0 with `persist → …`. Mechanism:
-  `retention._ops_slot` keys a non-`memory` store dir by `native_store.parent.name` — and for a
-  relative path that is `Path(".").name`, which is `''` (measured: `Path("memory").parent.name` is
-  `''`). The empty id then fails the identifier validator. **Fold the fix in**: normalize the parsed
+  `retention._ops_slot` returns `native_store.parent.name` when the dir is **named `memory`** (so
+  `Path("memory").parent.name` is `Path(".").name`, `''`) and `native_store.name` otherwise (so
+  `Path(".").name` is `''` too). The two relative spellings reach the empty id by **different
+  branches**, and the empty id then fails the identifier validator. **Fold the fix in**: normalize the parsed
   value with `os.path.abspath` at the flag, so the relative and absolute spellings become **one
   input** and the relative form lands on the same slot as its absolute twin. A Python traceback is
   never an acceptable outcome for a valid directory, and pin 39 holds it.
@@ -1182,7 +1183,7 @@ running this branch's `smoke.py`** — not a `git worktree`, for the reason belo
 | tree | result |
 | --- | --- |
 | fixed (this branch) | **1912 passed, 0 failed** |
-| pre-fix (the six scripts reverted to `308e15b`) | **1854 passed, 58 failed** |
+| pre-fix (every changed product file reverted to `308e15b`) | **1854 passed, 58 failed** |
 
 `1854 + 58 = 1912`, and all **58** failures are `v0.4.29` checks — **0** failures anywhere else. The
 pre-fix failure count therefore equals the genuine-pin count *exactly*: the 58 are precisely the
@@ -1195,9 +1196,18 @@ unattributed.
 **Per-cluster, and why the clusters are not a sum.** Every cluster's RED set is a **subset** of the
 58, and their **union is exactly the 58** — so no pin is unattributed and none fires only in a
 partial revert. The union is not the sum because pins are not one-per-file by construction: pin 38
-asserts that a flag legal on ONE script is rejected on the others, so it moves on all six script
-clusters at once; the 14 `render_dashboard` pins appear in three clusters (its own and both `arc_*`
-pairs, which include `render_dashboard`); and `pin 40 arm 3` appears in exactly two.
+asserts that a flag legal on ONE script is rejected on the others, so it moves on six clusters at
+once (`cm`, `extract_signals`, `preflight`, `render_dashboard`, `arc_ms_rd`, `arc_dp_rd`); and
+`pin 40 arm 3` appears in exactly two.
+
+The driver's full-revert cluster is labelled `all_six` and reverts **seven** paths — the six Python
+scripts *plus* the `cm` dispatcher. The label is the driver's and it is narrower than its
+predicate, which is this cycle's own subject reproduced in the instrument built to detect it: an
+earlier draft of this section recorded *"the six scripts reverted to `308e15b`"* as fact. The
+counts below are keyed to the file list, never to the name. Measured spread over the eight
+per-script clusters: **22 checks in one cluster, 22 in two, 11 in three, 3 in six** (22+22+11+3 =
+58) — so no single cluster's count is the union, and the three checks that move in six clusters are
+all pin 38's.
 
 | cluster (files reverted) | passed / failed |
 | --- | --- |
@@ -1210,7 +1220,7 @@ pairs, which include `render_dashboard`); and `pin 40 arm 3` appears in exactly 
 | `memory_status` + `render_dashboard` | 1883 / 29 |
 | `dream_procedure` + `render_dashboard` | 1877 / 35 |
 | `beta_checks` | 1912 / **0** |
-| all six scripts | 1854 / 58 |
+| every changed product file (`cm` + the six scripts) | 1854 / 58 |
 
 The `beta_checks` row is **0 by design, not by absence** — see item 11: the change there is a
 compatibility shim whose branch is identical while `memory_status` stays fixed, so no single-file
@@ -1962,10 +1972,17 @@ here because the failure mode is a false negative that looks like a refutation.
 
   9. **R2's invocation census — the cycle's named landing gate — is measured GREEN, and the
      instrument took three iterations to become trustworthy.** The gate asks whether any *live*
-     caller passes a flag its script does not define. Measured over the whole repo: **72 call
+     caller passes a flag its script does not define. Recorded over the whole repo: **71 call
      sites** (11 to `extract_signals`, 9 to `memory_status`, 1 to `render_dashboard`, 2 to
      `distill_scan`, 22 to `sync_global`, 26 to `cm_ops`, 0 to the rest), every flag defined by
-     its own script's parser. `hooks/hooks.json` passes none; CI runs only `tests/` plus
+     its own script's parser. Two caveats, recorded rather than tidied: the total previously read
+     **72**, which is not the sum of its own addends (they are 71 — a `number-provenance` slip
+     inside the ledger that exists to catch them), and **the per-script figures are testimony, not
+     a derivation** — re-implementing the two stated rules from this paragraph (the script token
+     follows `python3`; argv cut at the first shell metacharacter) yields **133** invocations, not
+     71, so the prose does not determine the instrument. The gate's *verdict* — "every flag
+     defined by its own parser" — is what the cycle landed on and is unaffected; the count is a
+     property of a matcher this paragraph does not pin. `hooks/hooks.json` passes none; CI runs only `tests/` plus
      `bench_phase5.py --quick --json` (not a strict script); `cm`'s arms forward `"$@"`, which is
      *user* argv, not a caller's flag. **The first draft of the census reported 9 scripts RED and
      all nine findings were artifacts** — it matched any `--flag` sharing a line with a script

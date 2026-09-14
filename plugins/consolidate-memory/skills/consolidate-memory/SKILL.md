@@ -1229,9 +1229,10 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    strictly *after* v0.1.54 (`usage` · `demotion` · `distill` · `workflow_proposals` ·
    `identity` · `narration` · `preflight`), it was written by a version that already
    required the arc, so its missing block is a **SKIP** — the same panel and **exit 4**,
-   not a clean pass. The persist gate is the only caller that asserts this; the render
-   panel and the archive keep the permissive reading, so no already-archived record
-   retro-flips its display.
+   not a clean pass. Two surfaces on the `--persist` render carry the strict reading — the exit-4
+   gate and the **⚠ arc panel** (they ride the same `judged` flag, so they cannot disagree). The
+   archive, the validator, the standalone render and the permissive **✓/✗ DREAM ARC row** on that
+   same screen keep the default, so no already-archived record retro-flips its display.
 
    **Conversation-truth gates (v0.4.19).** The gates above read what the RECORD says; the
    terminal `--persist` now also verifies against the conversation itself — the dream's session
