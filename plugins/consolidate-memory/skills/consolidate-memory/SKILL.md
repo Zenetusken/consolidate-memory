@@ -45,7 +45,7 @@ Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
 cross-project canonicals. Enroll with `/cm-domain` (marketplace) or
-`cm project enroll --domain personal --apply --confirm enroll-<domain>` (this
+`cm project enroll --domain personal --apply --confirm enroll-personal` (this
 checkout). First enroll grants the domain and revokes managed mirrors the
 destination does not admit; use `move-domain` to switch and `unenroll` to go
 local-only. `cm doctor` prints `UNENROLLED LOCAL-ONLY` when this applies.
@@ -875,7 +875,7 @@ doc; **KEEP** active/forward content (OPEN items, current state, watch-list) and
 is the POST-write audit record, NOT the pre-apply gate. Higher-risk than pointer-archiving (intra-file): keep-on-doubt,
 relocate-over-delete. Goal — the file returns toward the store's typical length, kept accurate + forward-looking. Full
 design: `docs/body-defragmentation.spec.md`. **A KEEP judgment runs
-`"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag <stem> .` (the script reads the body and stamps the
+`"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag "<stem>" .` (the script reads the body and stamps the
 watermark — the detector then re-fires only on real growth; after a real curation that dropped the body under the
 line, re-anchor the watermark with `--force`, which is repair).**
 
@@ -1130,7 +1130,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
      ```bash
      CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/distill_scan.py" \
          --from "<the --scan path>" --into "<the --seed path>" \
-         --verdict '"<the one-liner>"' [--proposed "<X>"]... [--created "<X>"]...
+         --verdict "<the one-liner>" [--proposed "<X>"]... [--created "<X>"]...
      ```
      It injects the script-truth `sessions`/`commands`/`n_recurring`/`n_chains`/`window`/`secrets_omitted`
      into the seed's `distill` block — plus, v0.1.82, the persisted evidence ROWS (`top`/`top_chains`/

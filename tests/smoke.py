@@ -15638,10 +15638,14 @@ with _tf43.TemporaryDirectory() as _td23:
     check("v0.4.23 P2: the emoji flag names the offending beat (1-based, the archive's Passage "
           "numbering) — pre-fix renders the bare phrase",
           "emoji in beat(s): 3" in _emo23)
-    # the SKILL mandates the justify path + the --force re-anchor
+    # the SKILL mandates the justify path + the --force re-anchor. This asserts the PATH and the
+    # FLAG, never the placeholder's spelling: v0.4.29 quoted `<stem>` (`--justify-defrag "<stem>"`)
+    # because bare `<stem>` is a bash stdin redirect, and this pin's old full-literal form failed
+    # on the repair — it had encoded the defect. The quoting rule now lives in pin 41 arm B,
+    # which owns it across the whole prose surface; pinning it here too would only duplicate it.
     check("v0.4.23 P1: SKILL Phase 5 names the justify-defrag path + the post-curation --force "
           "re-anchor",
-          '"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag <stem> .' in _sk22
+          '"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag' in _sk22
           and "re-anchor the watermark with `--force`" in _sk22)
 # ── v0.4.29 dream-teeth coverage (docs/dream-teeth-coverage.spec.md) ──────────────────────────
 # Cycle A of the audit remediation. One structural defect with nine faces: every gate here was
@@ -15857,6 +15861,37 @@ check("v0.4.29 §2.4: a dreamless record carrying a post-arc key is complete by 
       == (False, "dream block absent — the arc was skipped (a post-v0.1.54 record)")
       and _arc29({"demotion": {}})
       == (False, "dream block absent — the arc was skipped (a post-v0.1.54 record)"))
+
+# The set is the COMPLETE post-mandate writer set, never a sample (v0.4.29 review). The first cut
+# named only usage/demotion and was NARROWER THAN ITS OWN STATED CRITERION — and self-contradicting
+# with it, since it omitted `distill` (v0.1.58) while trusting the NEWER `usage` (v0.1.63). So a
+# record that skipped the arc via the distill path escaped the gate while an identical one that
+# also ran Phase 2 fired. Versions here are the first TAG CONTAINING the commit that introduced
+# the writing line (`git log -S 'record["<key>"]'`, never CHANGELOG prose, which matches the bare
+# word in any sentence — it dates `demotion` to v0.1.8, eleven releases early).
+#
+# The controls are the other direction, and they are not decorative: `audit` (v0.1.53) and
+# `outcome` (v0.1.1) predate the mandate, so firing on them would retro-flag a LEGACY record as a
+# skip. Measured, 9 of this store's 17 dreamless archive records carry one of the two.
+_POSTARC29 = ("usage", "demotion", "distill", "workflow_proposals", "identity",
+              "narration", "preflight")
+_PREARC29 = ("audit", "outcome")
+_SKIP29 = (False, "dream block absent — the arc was skipped (a post-v0.1.54 record)")
+check("v0.4.29 §2.4 (review): the post-arc set is COMPLETE — all 7 keys whose writer entered "
+      "after the v0.1.54 mandate fire, including `distill` (v0.1.58), the one the first cut "
+      "omitted while trusting the newer `usage` (v0.1.63)",
+      len(_POSTARC29) == 7 and all(_arc29({k: {}}) == _SKIP29 for k in _POSTARC29))
+check("v0.4.29 §2.4 (review): the PRE-mandate keys stay carved out — `audit` (v0.1.53) and "
+      "`outcome` (v0.1.1) may NOT fire, or 9 genuinely legacy archive records are retro-flagged",
+      len(_PREARC29) == 2 and all(_arc29({k: {}}) == (True, "") for k in _PREARC29))
+check("v0.4.29 §2.4 (review): the module's constant IS this pinned set — a key added to "
+      "memory_status without a matching pin (or the reverse) is a silent widening or narrowing "
+      "of the gate, which is the whole defect class this cycle closes",
+      # getattr, not `ms._POST_ARC_KEYS`: the constant is NEW on this branch, so a bare access
+      # raises AttributeError on pre-fix code and ABORTS the whole mutation run — the exact
+      # failure class `_ARC29_STRICT` exists to avoid. An absent constant must read RED here,
+      # not crash the run that is supposed to record it as red.
+      set(getattr(ms, "_POST_ARC_KEYS", ())) == set(_POSTARC29))
 check("v0.4.29 §2.4: the isinstance belt holds — a non-dict record with a post-arc key is still "
       "outside the arc (the guard the sketch must KEEP), and a post-arc record with a COMPLETE "
       "dream is complete in both modes (the flag narrows only the dreamless case)",
@@ -16125,7 +16160,8 @@ with _tf43.TemporaryDirectory() as _td29:
 # otherwise pass every arm.
 _PL29 = ROOT / "plugins" / "consolidate-memory"
 _DOCS29 = sorted((_PL29 / "commands").glob("*.md")) + [
-    _PL29 / "skills" / "consolidate-memory" / "SKILL.md"]
+    _PL29 / "skills" / "consolidate-memory" / "SKILL.md",
+    ROOT / "README.md"]
 _PH29 = _re.compile(r'(?<!")(<[^<>\n]*>)(?!")')
 _DOCMIN29 = 77
 
@@ -16179,7 +16215,7 @@ for _f40 in _DOCS29:
 check(f"v0.4.29 pin 40: the documented surface is non-empty ({_doc_lines29} command lines, "
       f"floor {_DOCMIN29} — an empty glob must not pass every arm)", _doc_lines29 >= _DOCMIN29)
 check("v0.4.29 pin 40 arm 1: `bash -n` passes for every bash block and every command line across "
-      "commands/*.md + SKILL.md (pre-fix: 15 blocks + 56 lines red)"
+      "commands/*.md + SKILL.md + README.md (pre-fix: 15 blocks + 56 lines red)"
       + (f" · first: {_doc_why29[0]}" if _doc_a1 else ""), _doc_a1 == 0)
 check("v0.4.29 pin 40 arm 2: no UNQUOTED `<…>` placeholder (pre-fix: 28 lines red; the rule is "
       "`a placeholder is quoted`, not `no angle brackets`)"
@@ -16189,10 +16225,65 @@ check("v0.4.29 pin 40 arm 3 (REGRESSION, green pre-fix): every documented argv n
       "and only flags that script defines"
       + (f" · first: {_doc_why29[-1]}" if _doc_a3 else ""), _doc_a3 == 0)
 
+# (41) The PROSE arms — D3's mandate, which pin 40 never carried. Pin 40 parses only ```bash
+# fences, so a command written as a PROSE code span was invisible to all three of its arms:
+# measured, README.md's first documented command (the `.` glued INSIDE the quoted script path)
+# exited 2 for two releases, and SKILL's defrag invocation passed an unquoted `<stem>` that bash
+# read as an stdin redirect. docs/defect-sweep-v0421.spec.md D3 fixed this class in v0.4.21 and
+# mandated its pin be DOCUMENT-WIDE with NO fence parsing; the pin that shipped was fence-scoped,
+# so the class reopened. A recorded blind spot that is not closed is a scheduled defect — this is
+# that closure, and it is why the two arms below read PROSE spans rather than fences.
+#
+# Scope is the SHIPPED surface (README + commands/*.md + SKILL.md + references/*.md), never
+# `docs/`: a spec quoting a broken form as its own exemplar (docs/defect-sweep-v0421.spec.md:62
+# does exactly that) would false-fire arm A.
+#
+# Arm A is D3's rule verbatim — every `${CLAUDE_PLUGIN_ROOT}/scripts/<name>.py` is immediately
+# followed by `"`. That one rule is what makes "the argument sits inside the quotes"
+# unrepresentable, which no `bash -n` arm can see (the glued form is valid shell).
+# Arm B extends pin 40 arm 2's rule (`a placeholder is QUOTED`, never `no angle brackets`) to
+# prose, scoped to COMMAND spans: a span starting with python3/python/bash/cm — optionally after
+# `CM_DREAM_ARC=1` or `$` — or with the quoted plugin root. The narrowing is load-bearing:
+# measured, an unnarrowed rule takes 6 raw hits, of which 2 are not bash at all
+# (`/cm-connect <other-repo>` is a slash command; `cm-cycle-<slug>.json` is a filename) and 4 are
+# real. Narrowed: 41 command spans judged, 4 red pre-fix, 0 false positives.
+_PROSESURF41 = [ROOT / "README.md",
+                _PL29 / "skills" / "consolidate-memory" / "SKILL.md"] \
+    + sorted((_PL29 / "commands").glob("*.md")) \
+    + sorted((_PL29 / "skills" / "consolidate-memory" / "references").glob("*.md"))
+_PROSESPAN41 = _re.compile(r"`([^`\n]+)`")
+_GLUE41 = _re.compile(r'\$\{CLAUDE_PLUGIN_ROOT\}/scripts/[a-z_]+\.py(?!")')
+_CMDSPAN41 = _re.compile(r'^(?:CM_DREAM_ARC=1\s+|\$\s+)?(?:python3?|bash|cm)\s'
+                         r'|^"\$\{CLAUDE_PLUGIN_ROOT\}')
+_PROSEFLOOR41 = 35
+
+_prose_cmd41, _prose_glue41, _prose_place41, _prose_why41 = 0, 0, 0, []
+for _f41 in sorted(set(_PROSESURF41)):
+    for _s41 in _PROSESPAN41.findall(_f41.read_text(encoding="utf-8")):
+        if _GLUE41.search(_s41):
+            _prose_glue41 += 1
+            _prose_why41.append(f"{_f41.name} · arg glued inside the quoted path · {_s41[:46]}")
+        if _CMDSPAN41.search(_s41):
+            _prose_cmd41 += 1
+            if _PH29.search(_s41):
+                _prose_place41 += 1
+                _prose_why41.append(f"{_f41.name} · unquoted placeholder · {_s41[:46]}")
+check(f"v0.4.29 pin 41: the prose command surface is non-empty ({_prose_cmd41} command spans, "
+      f"floor {_PROSEFLOOR41} — an empty scan must not pass both arms)",
+      _prose_cmd41 >= _PROSEFLOOR41)
+check("v0.4.29 pin 41 arm A: in the shipped prose surface every "
+      "`${CLAUDE_PLUGIN_ROOT}/scripts/<name>.py` is immediately followed by a closing quote "
+      "(pre-fix: README.md's first documented command — measured, exit 2)"
+      + (f" · first: {_prose_why41[0]}" if _prose_glue41 else ""), _prose_glue41 == 0)
+check("v0.4.29 pin 41 arm B: a `<…>` placeholder in a prose COMMAND span is QUOTED "
+      "(pre-fix: 4 spans, incl. SKILL's `--justify-defrag <stem>` → an stdin redirect)"
+      + (f" · first: {next((w for w in _prose_why41 if 'placeholder' in w), '')}"
+         if _prose_place41 else ""), _prose_place41 == 0)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 45 + 93)
+      passed + failed + 1 == 1750 + 45 + 99)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

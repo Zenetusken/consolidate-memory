@@ -3756,13 +3756,29 @@ def stanza_present(value: Any) -> bool:
 
 # The dream block became MANDATORY at v0.1.54 (2026-07-01) — docs/dream-arc-contract.spec.md:
 # "a latest record written by ≤ v0.1.53 legitimately lacks `dream`". Records carry no plugin-version
-# stamp, so legacy-vs-skipped is decided STRUCTURALLY: each of these keys was introduced STRICTLY
-# AFTER v0.1.54 (usage → v0.1.63, 2026-07-04; demotion → v0.1.67, 2026-07-05), so a record carrying
-# either was written by a version that already required the arc — its missing `dream` is a SKIP,
-# not a legacy artifact. Measured against the 55-record archive union: a blanket "missing dream is
-# incomplete" newly fails all 17 dreamless records; this rule fails exactly 1 (2026-07-11T15:51,
-# whose neighbours on both sides carry a dream block AND both keys — a genuine fully-skipped arc).
-_POST_ARC_KEYS = ("usage", "demotion")
+# stamp (re-verified v0.4.29: no version-shaped key anywhere in the record, `preflight` included), so
+# legacy-vs-skipped is decided STRUCTURALLY: each of these keys was introduced STRICTLY AFTER
+# v0.1.54, so a record carrying ANY ONE of them was written by a version that already required the
+# arc — its missing `dream` is a SKIP, not a legacy artifact.
+#
+# The set is the COMPLETE post-mandate writer set, never a sample. The first cut named only
+# usage/demotion — NARROWER THAN ITS OWN STATED CRITERION, and self-contradicting: it excluded
+# `distill` (v0.1.58), a key OLDER than the `usage` (v0.1.63) it already trusted, so a record that
+# skipped the arc via the distill path escaped while an identical one that also ran Phase 2 fired.
+# Versions below are the first TAG CONTAINING the commit that introduced the writing line
+# (`git log -S 'record["<key>"]'` — never CHANGELOG prose, which matches the word in any sentence):
+# distill v0.1.58 · usage v0.1.63 · demotion v0.1.67 · workflow_proposals v0.1.87 · identity v0.3.1 ·
+# preflight v0.4.16 · narration v0.4.19. The boundary is load-bearing in BOTH directions: `audit`
+# (v0.1.53) and `outcome` (v0.1.1) are PRE-mandate and stay out — measured, 9 of this store's 17
+# dreamless archive records carry one of them and are correctly carved out.
+#
+# The extension is a latent-hole close, not a behavior change: measured on the 55-cycle archive
+# embedded in the store's dashboards/index.html (and independently on the 69 records across all 11
+# store logs on this machine) it newly fires on exactly 0 — every dreamless record predates these
+# keys. The rule still fails exactly 1 (2026-07-11T15:51, which carries usage+demotion+distill:
+# its neighbours on both sides carry a dream block AND post-arc keys — a genuine fully-skipped arc).
+_POST_ARC_KEYS = ("usage", "demotion", "distill", "workflow_proposals", "identity",
+                  "narration", "preflight")
 
 
 def arc_completeness(record: object, enforce_post_arc: bool = False) -> "tuple[bool, str]":

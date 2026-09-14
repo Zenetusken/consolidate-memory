@@ -99,7 +99,7 @@ install. Native Auto-Memory features are **not** required — the plugin is
 self-contained, and `preflight` reports a disabled auto-memory as a supported *skip*,
 not a failure (`preflight.py:207-209`, exit 0); `git` is optional (dream scope
 degrades without it). Check all of
-this up front with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.py ."` after
+this up front with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.py" .` after
 installing (exit 0 = clean; exit 2 = fix the FAILs first).
 
 In Claude Code:
