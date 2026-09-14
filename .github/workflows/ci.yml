@@ -44,8 +44,8 @@ jobs:
           - python-version: "3.13"
             os: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: smoke tests (zero-dependency)
@@ -59,8 +59,8 @@ jobs:
     name: test (macos python 3.12)
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: smoke tests (zero-dependency)
@@ -72,8 +72,8 @@ jobs:
     name: concurrency (linux python 3.12)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: process-level races (Phase 1 subset)
@@ -84,13 +84,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: capacity SLO corner (measured, not gated)
         run: python3 tests/bench_phase5.py --quick --json bench-report.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: bench-report
           path: bench-report.json
@@ -99,8 +99,8 @@ jobs:
     name: typecheck (mypy, dev-only contract check)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
       - run: pip install mypy
@@ -115,8 +115,8 @@ jobs:
     name: docs (badges, links, anchors)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: documentation drift gate (zero-dependency)
@@ -127,8 +127,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: install browser test tools (not runtime dependencies)
@@ -139,7 +139,7 @@ jobs:
         run: |
           mkdir -p browser-report
           python3 tests/dashboard_browser.py --out browser-report 2>&1 | tee browser-report/run.log
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: dashboard-browser-report
@@ -155,8 +155,8 @@ jobs:
     # (no job- or step-level continue-on-error) — a broken plugin.json/marketplace.json
     # must fail CI, not silently pass behind a safety net proven unnecessary.
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - run: npm install -g @anthropic-ai/claude-code
