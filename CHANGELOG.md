@@ -11,8 +11,11 @@ version changes on `main`.
 narration is a gap, the extractor anchor anchors on execution, every documented invocation runs,
 and an unknown flag is a usage error on the four lax scripts and `cm`.**
 
-A full audit of the `dream` pass found **one structural defect with nine faces**: every gate was
+A full audit of the `dream` pass found **one structural defect**: every gate was
 narrower than the rule it was believed to enforce, and each failed in the **clean** direction. The
+**six** faces of it that sit on the dream's own gates are enumerated **C1–C6** in
+`docs/dream-teeth-coverage.spec.md`, and all six are closed here; the audit's remainder is staged
+behind this release. The
 severest is measured rather than inferred — a record whose every narration slot is `*`, scanned
 against a transcript containing **zero** text blocks, returned `NAR verdict: VERIFIED` /
 `7/7 narrated · extract_signals.py executed in-window`. The teeth that exist to guarantee the dream

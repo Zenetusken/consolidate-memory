@@ -15648,18 +15648,22 @@ with _tf43.TemporaryDirectory() as _td23:
           '"${CLAUDE_PLUGIN_ROOT}/scripts/memory_status.py" --justify-defrag' in _sk22
           and "re-anchor the watermark with `--force`" in _sk22)
 # ── v0.4.29 dream-teeth coverage (docs/dream-teeth-coverage.spec.md) ──────────────────────────
-# Cycle A of the audit remediation. One structural defect with nine faces: every gate here was
+# Cycle A of the audit remediation. One structural defect: every gate here was
 # NARROWER than the rule it was believed to enforce, and each failed in the CLEAN direction.
 # In-process pins 1-13/13b/25/26/29/34 sit here; 21-24/30/32/33/37/38 run the scripts; 40 reads
 # the docs. Pins 14-19/27/31/35/36/39 live in the v0.4.19 persist fixture above (they need a
 # store, a log and a transcript pool to measure a delta rather than an exit code).
 # Pin 20 adds no check BY DESIGN: the exit ladder is unchanged, and F19A/B/C/K plus the v0.4.1 gate
-# block ARE that pin. Pins 3, 6, 8, 9, 15, 20, 29, 34 and 40's arm 3 are labelled REGRESSION pins
-# — green before AND after, because their whole content is that the fix must not move what already
-# worked. That labelling is load-bearing: an implementer who reads a survivor as broken will "fix"
-# the pin instead of the bug. Two of the spec's labels were wrong and are corrected here against
-# measurement — pin 26's no-scan half is green pre-fix (so the pin carries a verdict half too), and
-# pin 34's `echo` clause FLIPS pre-fix (so it belongs to pin 7, not to the regression set).
+# block ARE that pin. Pins 3, 6, 8, 9, 15, 20, 29, 34, 40's arm 3 and the 10d/10e blocks are
+# labelled REGRESSION pins — green before AND after, because their whole content is that the fix
+# must not move what already worked. That labelling is load-bearing: an implementer who reads a
+# survivor as broken will "fix" the pin instead of the bug. Two of the spec's labels were wrong and
+# are corrected here against measurement — pin 26's no-scan half is green pre-fix (so the pin
+# carries a verdict half too), and pin 34's `echo` clause FLIPS pre-fix (so it belongs to pin 7,
+# not to the regression set). The regression set is NOT one-directional, and 10d/10e are where that
+# shows: most members catch a fix that over-narrows (loud — a real call loses its credit), while
+# `--recalls=3` catches a fix that drops an exclusion the shipped regex had (silent). Both are
+# green pre-fix, so the label alone does not say which; each block's own comment states its column.
 import shlex as _shlex29  # noqa: E402
 import inspect as _inspect29  # noqa: E402
 
@@ -15839,10 +15843,23 @@ check("v0.4.29 §2.3 (REGRESSION, green pre-fix): a heredoc FEEDING the extracto
 # the first cut tested `-c`/`-m`/`--recalls` by EXACT token membership, which the ATTACHED spelling
 # evades — `-c'import os'`, `-mjson.tool` and `--recalls=3` each arrive from shlex as ONE token, so
 # all three were credited and a pass that never ran the extractor read `verified · ext_unaccounted
-# False`. Measured pre-fix at the judged surface (not the helper): all four below accounted.
-# 10d-3 is the argv-POSITION arm: the first cut credited the token ANYWHERE in argv, so
+# False`. 10d-4 is the argv-POSITION arm: the first cut credited the token ANYWHERE in argv, so
 # `python3 other.py <path>` — the path handed to a different script as an argument — passed.
 # Post-fix the extractor must be the FIRST operand after the interpreter.
+#
+# FOUR of these five are pins; the fifth is a PORT-FIDELITY guard, and the split is measured rather
+# than assumed — one tree per revision, `_extractor_accounted` read directly (the "pre-fix"
+# column is the anchor 308e15b, "1st cut" is 2bad609, where the tokenized rewrite first landed):
+#     case                    308e15b   1st cut   HEAD
+#     -c'import os'           acct      acct      unacct   <- pin
+#     -c"import os"           acct      acct      unacct   <- pin
+#     -mjson.tool             acct      acct      unacct   <- pin
+#     --recalls=3             UNACCT    acct      unacct   <- guard, not a pin
+#     python3 other.py <tok>  acct      acct      unacct   <- pin
+# `--recalls` was ALREADY excluded shipped-side (`if "--recalls" in m.group(0): continue`), so the
+# anchor is unaccounted too and this case cannot flip against it. It guards the exclusion THROUGH
+# the tokenized rewrite, which is where it can be lost: a substring test on `group(0)` has no
+# `group(0)` to read any more (§2.3), and the 1st-cut column is that loss actually happening.
 for _lbl29, _cmd29 in (
         ("-c's ATTACHED spelling (one shlex token, not `-c`)", f"python3 -c'import os' {_T29}"),
         ("-c attached with double quotes", f'python3 -c"import os" {_T29}'),
@@ -15853,13 +15870,16 @@ for _lbl29, _cmd29 in (
 
 # (10e) REGRESSION for the same change: `env`'s own value-taking flags (`env -u FOO cmd`,
 # `env -C /tmp cmd`) consume the following token, so a grammar that skipped flags WITHOUT their
-# values read `FOO` as the command word and lost a legitimate call. Both were measured unaccounted
-# before this pin's fix (a loud false exit 3) and are accounted after.
+# values read `FOO` as the command word and lost a legitimate call. GREEN PRE-FIX — the shipped
+# regex matched the token anywhere, so these hold a line the cycle's own first cut broke, not one
+# the anchor broke (308e15b acct · 1st cut unacct · HEAD acct; a loud false exit 3 in the middle
+# column). `env -i` moves on NO measured revision: it is the boundary guard on the grammar's
+# no-value branch, kept because that branch is one edit away from consuming `python3`.
 for _lbl29, _cmd29 in (
         ("env -u FOO", f"env -u FOO python3 {_T29} --json"),
         ("env -C /tmp", f"env -C /tmp python3 {_T29} --json"),
         ("env -i (no value — must stay accounted)", f"env -i python3 {_T29} --json")):
-    check(f"v0.4.29 §2.3 (F10, REGRESSION): accounted — {_lbl29}", _ext29(_cmd29))
+    check(f"v0.4.29 §2.3 (F10, REGRESSION, green pre-fix): accounted — {_lbl29}", _ext29(_cmd29))
 
 # (11) The shared stanza predicate. `getattr` is not defensive padding: the claim is that the
 # SYMBOL exists as the shared type rule, and on pre-fix code it does not exist at all. Calling it

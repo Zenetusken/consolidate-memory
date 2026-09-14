@@ -705,7 +705,7 @@ on the live tree:
   each script's real allowance is knowable only by reading `main()` **and** `_ui` together.
 
   **`preflight.py` is the case that shows why the rule is "what this script consumes," not "what it
-  imports."** It **does** import and call `_ui` — `import _ui` at `preflight.py:596`, then
+  imports."** It **does** import and call `_ui` — `preflight.py`'s own `import _ui`, then
   `ui.rule()`, `ui.lbl()`, `ui.c()` in `render_table` — so a grep for `_ui` finds three call sites
   and suggests a visual surface. It has none: it never calls `set_modes`, `resolve_color` or
   `resolve_width`, so `--ascii`, `--color=*` and `--width=*` would all be **blessed and ignored**
@@ -807,14 +807,24 @@ it is the one a *user* pastes from; adding it is what surfaced the defect below.
 | site | flags | defined? |
 | --- | --- | --- |
 | `cm` (34 arms, forwarding `"$@"`) | pass-through — bounded by the scripts themselves | — |
-| `beta_checks.py:444` | `--no-color --ascii` | ✓ |
-| `beta_checks.py:1571`, `run_beta.py:448` | `--persist DIR` | ✓ |
-| `beta_checks.py:352/354/355`, `run_beta.py:225` | `--json` · `--triage` · `--no-color` · `--ascii` | ✓ |
-| `run_beta.py:407/425/432` | `--snapshot` · `--json` · `--audit X --into Y` | ✓ |
-| `make_cycle_probe.py:102` | `--json` | ✓ |
-| `smoke.py:14955` (`_run19`, 12 callers) | `--persist` ×11, one bare record path | ✓ |
-| `smoke.py:2955` (`_run54`, 16 callers) | `--persist` · `--json` · `--triage` · `--tokens` · `--list` | ✓ |
+| `beta_checks.py` — its `--no-color --ascii` child call | `--no-color --ascii` | ✓ |
+| `beta_checks.py`, `run_beta.py` — the `--persist DIR` child calls | `--persist DIR` | ✓ |
+| `beta_checks.py`, `run_beta.py` — the `--json`·`--triage` child calls | `--json` · `--triage` · `--no-color` · `--ascii` | ✓ |
+| `run_beta.py` — the `--snapshot`·`--audit` child calls | `--snapshot` · `--json` · `--audit X --into Y` | ✓ |
+| `make_cycle_probe.py` | `--json` | ✓ |
+| `smoke.py` — the `_run19` helper (12 callers) | `--persist` ×11, one bare record path | ✓ |
+| `smoke.py` — the `_run54` helper (16 callers) | `--persist` · `--json` · `--triage` · `--tokens` · `--list` | ✓ |
 | `cm beacon` | **no arguments at all** | — |
+
+**The site column is a file and a named call, not a `file:line`.** The census originally carried
+line numbers, and by the time this spec closed **not one of them still located its call** —
+`beta_checks.py:444` was `import tempfile`, `make_cycle_probe.py:102` was blank, `smoke.py:14955`
+was the tail of a dict literal. None of that was a mistake at the time: the numbers were measured
+at a revision, and every edit above them moved them. A line number is a citation that cannot
+survive the file it cites; the *call* is the datum the census actually keyed on, and the helper
+names (`_run19`, `_run54`) were already in the row. This is the same rule the rest of the spec
+follows, and §4 records the measurement that made it non-optional — see the citation-drift note
+there. The census's **claim** is untouched: no caller passes a flag its script does not define.
 
 Every one is defined. `--snapshot`, `--audit`, `--into`, `--triage` are all in `memory_status`'s
 surface; `--tokens`/`--list` land on `sync_global`, which is **outside the fix and only partially
@@ -865,7 +875,7 @@ ever ran them**.
   `native_memory_dir`, passes `from Phase 0 …` as arguments, and truncates a file named after
   whatever follows. A **single-word** placeholder is the worse half — `<name>` parses cleanly and
   silently redirects stdin from a file called `name`. The one thing that looks like the defect and
-  is not: `distill_scan.py … --json > "<the --scan path>"` (`SKILL.md:1085`) is a **genuine** output
+  is not: `distill_scan.py … --json > "<the --scan path>"` in `SKILL.md` is a **genuine** output
   redirect and must survive the fix. The pin's rule is therefore *"a `<…>` placeholder is quoted"*,
   **not** *"no `<`/`>` characters"* — the second would fail correct code, and it did fail this
   spec's own first draft of the check (pin 40).
@@ -909,7 +919,10 @@ already unaccounted; "keeps its existing verdicts"; "in both modes") are the sam
 with pin 34 these form the **regression set** — the pins that catch an implementation which
 over-narrows, which is precisely the failure the first §2.3 prototype had. Leaving them under a
 header that claims the opposite is how a regression pin gets "fixed" by someone who thinks it is
-broken.
+broken. **The set is not one-directional** — §4 records the second kind, added by the F10 round: an
+arm that is green pre-fix because the *rewrite* could drop an exclusion the shipped code had
+(`--recalls`), which fails silently rather than loudly, and `env -i`, which moves on no measured
+revision at all.
 
 **In-process — the checked set and the coverage count**
 
@@ -1113,7 +1126,7 @@ is exactly what the first prototype did, to seven forms.
     | 3 | each line's extracted argv: the script exists and **every flag it passes is defined by that script** | a flag added to a doc before the script has it | — |
 
     Arm 2's rule is *"a placeholder is quoted"*, **not** *"no `<`/`>`"*: arm 2's first draft was the
-    latter and it flagged `SKILL.md:1085`'s **genuine** `> "<the --scan path>"` redirect — the
+    latter and it flagged `SKILL.md`'s **genuine** `> "<the --scan path>"` redirect — the
     over-strict direction, and the same failure mode as pin 33. Measured both ways before adopting
     the rule: the genuine redirect is not flagged, `--pull <other-repo>` is. Pre-fix, arms 1–2 fail
     on **61 of 77 lines across 9 files**; a syntax-only gate passes `cm-domain.md`, `cm-group.md`
@@ -1193,6 +1206,22 @@ wrapper-with-bare-flag guards, the §2.2/§2.3/C2/C4/C6 negative arms, and pin 4
 58 + 59 = 117 — the count the D6 census constant carries as its `+ 117`. Nothing in the matrix is
 unattributed.
 
+**The regression set has two directions, and §3's preamble names only one of them.** That paragraph
+describes it as *"the pins that catch an implementation which over-narrows"* — which is the **loud**
+direction, a legitimate call losing its credit. The F10 round added a member of the other kind: the
+`--recalls` case is green pre-fix not because the fix could over-narrow it but because the rewrite
+could **drop an exclusion the shipped regex had** (`if "--recalls" in m.group(0): continue`), which
+fails *silently* — the exact direction this cycle exists to close, reproduced in the instrument.
+So the set is "checks whose only referent is a regression the fix itself could introduce", and
+both directions belong to it. A green-pre-fix check is not evidence a fix was unnecessary; it is
+evidence of which failure the check can still see — and for `--recalls` the answer is: only the
+rewrite's, never the anchor's. It is a **port-fidelity guard**: it holds an old behaviour through a
+translation that has no `group(0)` to read it from any more (§2.3). Measured three-column — anchor
+`308e15b` unaccounted, first cut `2bad609` accounted (the exclusion lost), HEAD unaccounted again —
+so it moved on the intermediate and cannot move on the anchor. `env -i` is the same class one step
+further: it moves on **no** measured revision, and is kept as the boundary guard on the grammar's
+no-value branch, which is one edit away from consuming `python3`.
+
 **Per-cluster, and why the clusters are not a sum.** Every cluster's RED set is a **subset** of the
 58, and their **union is exactly the 58** — so no pin is unattributed and none fires only in a
 partial revert. The union is not the sum because pins are not one-per-file by construction: pin 38
@@ -1261,6 +1290,22 @@ environmental rather than mutational by running the **fixed** tree's `preflight.
 **clones** instead of linking a worktree (its own real `.git`, no `commondir`) and asserts the two
 identities agree before the run. A red baseline is the dangerous direction — it lets an environment
 failure wear a pin's clothes.
+
+**Every `file:line` citation this spec's drafts carried was stale before it shipped, and that is a
+measurement, not a stylistic preference.** The standing rule is *greppable anchors, never
+`file:line`* (the v0.4.25 rule); the drafts carried 16. Two of them name a line in a file **this
+branch edits**: the `distill_scan.py … --json > "<the --scan path>"` redirect sat at
+`SKILL.md:1085` on the base commit `308e15b` and at **1090** from the branch's *first* commit
+onward — so every commit on the branch cited a line that no longer held it, and nothing failed.
+The census table fared worse. Re-checking its line numbers one by one at close: of six,
+**four no longer located their call** — `beta_checks.py:444` was `import tempfile`,
+`beta_checks.py:1571` a `def`, `make_cycle_probe.py:102` blank, `smoke.py:14955` the tail of a
+dict literal — and two still did. None of that was wrong when written; it is what a line number
+*is*: bound to a revision, and invalidated by any edit above it, silently, for every reader
+thereafter. All of them are now anchors — the literal (`import _ui`), the helper name (`_run19`),
+the quoted command — and the three evidence-ledger rows name the pin by its label instead. The
+failure was not the drafting, it was the **genre**: a citation form with a known expiry date was
+used for claims expected to outlive it.
 
 **End-to-end, because this cycle changes what a pass does.** Run a real `dream` and confirm: a clean
 pass still exits 0; a malformed beat exits 4 naming the index; an empty-normalizing stanza exits 4
@@ -1437,7 +1482,7 @@ Every number above was measured on the pre-fix tree at `308e15b` unless marked o
 | the cm-connect.md specimen | verbatim, pre-fix: line 15 is *balanced* but is **one argument** — `python3: can't open file '…/preflight.py .'`, exit 2 — and `bash -n` fails on blocks **1 and 3** (rc 2, `syntax error near unexpected token`), while blocks **2 and 4** pass *only* because their quotes pair across lines |
 | the flag census over the docs | every `--flag` on all 77 lines checked against its script's branch structure: **all defined** (including `--registrar` and `--workflows` on `sync_global`) — so the repair is spelling-only and R2's flag conclusion is untouched |
 | arm 2's rule, measured both ways | the genuine redirect `python3 x.py . --json > "out.json"` is **not** flagged; `--pull <other-repo>` **is**. The first draft of arm 2 (`"no < or > in the line"`) flagged the genuine redirect — the over-strict direction, caught before adoption |
-| the three defect-pinning pins | `python3 tests/smoke.py` after the doc repair: **3 failed**, all three asserting a raw broken literal (`smoke.py:8360`, `:12614`, `:14112`). Re-run after quote-normalizing the haystack: **1795 passed, 0 failed** — same total, so no check was added or lost |
+| the three defect-pinning pins | `python3 tests/smoke.py` after the doc repair: **3 failed**, all three asserting a raw broken literal — the `native_memory_dir` Phase-5 pin, the `cm-connect sequences positional-first` pin and the `/cm-group` confirm-phrase pin. Re-run after quote-normalizing the haystack: **1795 passed, 0 failed** — same total, so no check was added or lost |
 | the sync_global table | `--list --evict=x` → 2; `--list --fleet=personal` · `--tokens --fleet=personal` · `--pull --tokens` · `--list`/`--tokens`/`--gc` `--jsoon` → 0, empty stderr; `--jsoon .` → 2 (usage). Positional-0 only — re-confirmed on `-h`, which is the row that makes the §2.5/§5 contradiction visible: `sync_global --list -h .` → **0** |
 | the `-h`/`--help` mechanism split | `distill_scan.py -h` / `--help` → 2 with `unknown flag: …`; `sync_global.py -h` / `--help` → 2 with `usage: …`. Same exit code, **different mechanism** — the second is positional-0, so it is not a pattern source for the fix |
 | the `--` measurement | `render_dashboard.py -- /dev/null` → exit **1**, `cannot read cycle record: '--'`; `extract_signals.py -- .` → exit **0**, swallowed. Measured **unpiped** — a first attempt piped through `head`, which made `$?` `head`'s status (0) and briefly recorded the wrong code for the first arm |
@@ -1611,7 +1656,7 @@ here because the failure mode is a false negative that looks like a refutation.
      and the reasoning, and the R2 census confirms no live caller uses the form.
   3. **A peer claim corrected rather than accepted.** The report's sub-point was that `preflight.py`
      "has no `_ui` call at all", so exempting `--ascii` there is moot. It **does** call `_ui` —
-     `import _ui` at `preflight.py:596`, then `ui.rule()`, `ui.lbl()`, `ui.c()` — so a grep for `_ui`
+     `preflight.py`'s own `import _ui`, then `ui.rule()`, `ui.lbl()`, `ui.c()` — so a grep for `_ui`
      finds three hits and suggests a visual surface. The *conclusion* holds for a sharper reason: it
      never calls `set_modes`/`resolve_color`/`resolve_width`. §2.5 now says "what this script
      consumes, not what it imports", which is the rule that generalizes; "no `_ui` call" is the
@@ -1842,7 +1887,7 @@ here because the failure mode is a false negative that looks like a refutation.
      without `commands/*.md` at all; the sweep added one file; the repair found nine. Flagged to the
      maintainer in the fold report as the one item that grew.
   2. **A rule the pin had wrong, caught by the pin's own first draft failing correct code.** Pin 40's
-     placeholder arm was written as *"no `<`/`>` in the line"*, which flags `SKILL.md:1085`'s
+     placeholder arm was written as *"no `<`/`>` in the line"*, which flags `SKILL.md`'s
      **genuine** `distill_scan.py … --json > "<the --scan path>"` — an output redirect, correctly
      written. The rule is *"a `<…>` placeholder is quoted"*, and it is now measured **both ways**
      before adoption: the genuine redirect is not flagged, `--pull <other-repo>` is. This is exactly
@@ -2008,7 +2053,9 @@ here because the failure mode is a false negative that looks like a refutation.
  11. **The mutation matrix found the HARNESS, not the product — three aborts, and then a wrong
      measurement.** This is §4's "every pin verified to fail on pre-fix code" step failing at its
      own job, so it is recorded rather than absorbed:
-     - the suite ABORTED at `smoke.py:14522` with `FileNotFoundError`, at roughly 90% of the file
+     - the suite ABORTED with `FileNotFoundError` at the `_st16.write_text` that follows the
+       beacon's cached-FAIL check — a bare write into the store dir that **check** creates, so an
+       expected RED became a crashed RUN and the matrix could not be collected at all (~90% in)
        and **before any v0.4.29 pin**, so the first matrix collected nothing. The check above it
        (`preflight subprocess: the floor env still CACHED the verdict`) asserts a file that the
        tested BEHAVIOR writes — so on pre-fix code that check goes correctly RED, the state dir is
