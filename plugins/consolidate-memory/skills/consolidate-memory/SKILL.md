@@ -830,8 +830,11 @@ just writes but also `skipped` and `reconciled` ones, since "what I deliberately
 NOT record, and why" is part of the dashboard's signal. Each:
 `{"action": "...", "tier": "...", "store": "...", "scope":
 "project-local|stack-general|user-global", "name": "...", "reason": "...",
-"citation": "...", "files": [...]}`. After writing, update the ONE budget leaf the script
-does not own — `budget.claude_md.after` / `after_tokens` (the repo `CLAUDE.md`'s lines/tokens).
+"citation": "...", "files": [...]}`. After writing, update the one budget leaf that is still
+yours to measure — `budget.claude_md.after` / `after_tokens` (the repo `CLAUDE.md`'s
+lines/tokens). Two other budget leaves are equally out of the script's reach, and they are not
+yours either: `budget.global_claude_md.*` measures the *user-global* CLAUDE.md, and
+`budget.claude_md_hierarchy` has no `after` key to write — so don't author them to fill the gap.
 The store-local post-state (`budget.index.*`, `budget.recall_facts.after`,
 `health.schema_drift`, and the one store-derived leaf in `remediation` — `over_ceiling`)
 is **script-owned**: `render_dashboard.py --persist` re-measures it
