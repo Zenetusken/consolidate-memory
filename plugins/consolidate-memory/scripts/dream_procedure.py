@@ -46,26 +46,124 @@ Design-of-record: docs/dream-narration-teeth.spec.md (amend-3, review-to-zero).
 from __future__ import annotations
 
 import json
-import re
+import shlex
 import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
 _EXTRACTOR_TOKEN = "extract_signals.py"
 _SKIP_MARKER = "extractor-skip:"
-# Anchored on EXECUTION (spec §2): python3/python as an invocation word (start-of-command or
-# after a whitespace/;/&/| separator — `$(...)` fails the class: '(' is not in it), followed by
-# a command segment (no ;/&/|/newline, but a backslash-newline continuation is part of the same
-# segment) containing `extract_signals.py` with a word-boundary guard
-# (tests/test_extract_signals.py never matches). The match extends to the SEGMENT TAIL so the
-# form check sees the flags (`--recalls` follows the token — it must be inside the match or the
-# recall-only form would pass for the Phase-2 extract). grep/sed/cat targets never match — no
-# python invocation word precedes them. The token is re.escape'd — the raw `.` would be a
-# wildcard (extract_signalsXpy must never match).
-_SEG = r"(?:[^\n;&|]|\\\n)"
-_INVOKE_RE = re.compile(
-    r"(?:^|[\s;&|])(?:python3|python)\s+" + _SEG + r"*?(?<![A-Za-z0-9_])"
-    + re.escape(_EXTRACTOR_TOKEN) + _SEG + r"*")
+# The EXECUTION anchor (v0.4.29; spec §2.3 of docs/dream-teeth-coverage.spec.md). The single
+# regex this replaces could not tell an execution from a string SHAPE: it anchored `python3` on
+# ANY whitespace, so `echo python3 …/extract_signals.py --json`, `python3 -m py_compile …` and a
+# heredoc merely *writing* the token were all accounted — a silent EXT pass on a pass that never
+# ran the extractor. The anchor is now the structure the docstring always claimed: unfold →
+# split into top-level segments → shlex.split → decide on the TOKENS.
+#
+# The wrapper set is BOUNDED, and the bound is the design: a wrapper absent from this list makes
+# its call UNACCOUNTED — a loud false exit 3 the model can see and report, never a silent clean.
+# (Measured against the shipped anchor, `env`/`time`/`nohup`/`sudo`/`command`/`exec`/`xargs`
+# forms are all accounted today, and the first prototype — which omitted them — dropped all
+# eight: a regression in the LOUD-on-legitimate direction, the worse of the two.)
+_WRAPPERS = frozenset(("env", "time", "nohup", "sudo", "command", "exec", "xargs"))
+_INTERPRETERS = frozenset(("python3", "python"))
+
+
+def _unfold(cmd: str) -> str:
+    """Remove backslash-newline continuations — the shell's own rule, not a whitespace
+    substitution — so a command wrapped across lines is ONE segment and a path split *inside
+    quotes* by a continuation rejoins (`…/scripts/\\<newline>extract_signals.py`)."""
+    return cmd.replace("\\\n", "")
+
+
+def _segments(cmd: str) -> list[str]:
+    """Split a command at its UNQUOTED top-level separators: `;` `&&` `||` `|` and newlines. A
+    separator inside quotes (or escaped) is literal. `&` is deliberately NOT split here — it is
+    decided at TOKEN granularity (_split_amp), because a character split would truncate
+    `python3 <tok> --json 2>&1` to `…2>` and lose a legitimate call."""
+    out: list[str] = []
+    buf: list[str] = []
+    quote = ""
+    i = 0
+    while i < len(cmd):
+        ch = cmd[i]
+        if quote:
+            buf.append(ch)
+            if ch == "\\" and quote == '"' and i + 1 < len(cmd):
+                buf.append(cmd[i + 1])   # a \" inside double quotes is not the closing quote
+                i += 2
+                continue
+            if ch == quote:
+                quote = ""
+            i += 1
+            continue
+        if ch in ("'", '"'):
+            quote = ch
+        elif ch == "\\" and i + 1 < len(cmd):
+            buf.append(cmd[i:i + 2])     # an escaped separator is data, never a split point
+            i += 2
+            continue
+        elif ch == "\n" or ch == ";":
+            out.append("".join(buf)); buf = []; i += 1; continue
+        elif ch == "|":
+            step = 2 if cmd[i:i + 2] == "||" else 1
+            out.append("".join(buf)); buf = []; i += step; continue
+        elif ch == "&" and cmd[i:i + 2] == "&&":
+            out.append("".join(buf)); buf = []; i += 2; continue
+        buf.append(ch)
+        i += 1
+    out.append("".join(buf))
+    return [s for s in out if s.strip()]
+
+
+def _split_amp(tokens: list[str]) -> list[list[str]]:
+    """Split a token list at a standalone `&` token — the background operator, and the only form
+    that separates. `2>&1` arrives as ONE token, so redirections survive."""
+    out: list[list[str]] = []
+    cur: list[str] = []
+    for t in tokens:
+        if t == "&":
+            if cur:
+                out.append(cur)
+            cur = []
+        else:
+            cur.append(t)
+    if cur:
+        out.append(cur)
+    return out
+
+
+def _runs_extractor(tokens: list[str]) -> bool:
+    """True iff this token list EXECUTES the extractor (spec §2.3 step 4). Walks past a leading
+    prefix of `VAR=VALUE` env assignments (`CM_DREAM_ARC=1 python3 …`, the SKILL's own Phase-2
+    form), wrapper commands from the bounded set, and the wrappers' own leading flags
+    (`xargs -I{}`, `sudo -n`). The next token's basename must be the interpreter; the remainder
+    must carry no `-c` and no `-m` — both consume the following token as *code* or as a *module
+    name*, so an extractor path inside them is a string, never the thing python runs — and no
+    `--recalls` argv element (the recall-only mode is not the Phase-2 extract, restated as a
+    token test because the segment is now the unit). Finally some remaining token must EQUAL the
+    token or end with `/` + it: the separator requirement is what keeps
+    `tools/extract_signalsXpy` and `tests/test_extract_signals.py` unaccounted."""
+    i, n = 0, len(tokens)
+    while i < n:
+        tok = tokens[i]
+        base = tok.rsplit("/", 1)[-1]
+        if base in _INTERPRETERS:
+            rest = tokens[i + 1:]
+            if "-c" in rest or "-m" in rest or "--recalls" in rest:
+                return False
+            return any(t == _EXTRACTOR_TOKEN or t.endswith("/" + _EXTRACTOR_TOKEN)
+                       for t in rest)
+        if base in _WRAPPERS:
+            i += 1
+            while i < n and tokens[i].startswith("-"):
+                i += 1                    # the wrapper's OWN flags — `sudo -n`, `xargs -I{}`
+            continue
+        if "=" in tok and not tok.startswith("-"):
+            i += 1                        # a leading VAR=VALUE environment assignment
+            continue
+        return False                      # `echo`, `cat`, `grep`, … — never reaches the test
+    return False
 
 
 def normalize_beat_text(text: str) -> str:
@@ -81,23 +179,34 @@ def normalize_beat_text(text: str) -> str:
 def _checked_texts(record: Any) -> Optional[list[tuple[str, str]]]:
     """The NAR checked set: (label, raw-text) for `dream.sleep` + the six `dream.beats` entries
     (record indexes 0-5 — the surfacing line is the last beats entry; WAKE is post-persist and
-    correctly unchecked). None when the record has no dream block — a legacy/dreamless record is
-    OUTSIDE both arms (the v0.4.1 legacy carve-out extended: the arms judge only records that
-    claim a dream)."""
+    correctly unchecked).
+
+    THE SET CANNOT SILENTLY SHRINK (v0.4.29, spec §2.2). It used to admit a stanza only if
+    `isinstance(x, str) and x.strip()`, so a beat that was `null`, `{}` or `0` did not FAIL the
+    check — it LEFT the set, and the reason string's numerator is `len(checked)`. Measured on the
+    shipped code: `beats: [null]*6` yielded a checked set of exactly `['sleep']` and could still
+    read `verified`. The rule now: a stanza whose KEY IS PRESENT is judged — a non-string is
+    carried as an empty needle so it fails (and _gaps names it). A stanza whose key is ABSENT
+    stays out, because the arc gate owns absence (its have_sleep/have_wake arms fire exit 4) and
+    pin (6)'s "record-arc wins" forbids double-reporting one absence in two panels.
+
+    None when the record has no dream block — a legacy/dreamless record is OUTSIDE both arms
+    (the v0.4.1 legacy carve-out extended: the arms judge only records that claim a dream). The
+    empty LIST is a different state — a dream block carrying nothing usable — and `judge` reads
+    the two apart; collapsing them is defect C6."""
     if not isinstance(record, dict):
         return None
     dream = record.get("dream")
     if not isinstance(dream, dict):
         return None
     out: list[tuple[str, str]] = []
-    sleep = dream.get("sleep")
-    if isinstance(sleep, str) and sleep.strip():
-        out.append(("sleep", sleep))
+    if "sleep" in dream:
+        sleep = dream["sleep"]
+        out.append(("sleep", sleep if isinstance(sleep, str) else ""))
     beats = dream.get("beats")
     if isinstance(beats, list):
         for i, b in enumerate(beats):
-            if isinstance(b, str) and b.strip():
-                out.append((f"beats[{i}]", b))
+            out.append((f"beats[{i}]", b if isinstance(b, str) else ""))
     return out
 
 
@@ -173,8 +282,8 @@ def _assistant_text_blocks(lines: list[dict]) -> list[str]:
 def _extractor_accounted(lines: list[dict], entries: Any) -> tuple[bool, str]:
     """EXT: (accounted, detail). Accounted iff an EXECUTED extract_signals.py invocation in the
     Phase-2 form appears in an in-window Bash tool_use command (anchored on execution — see
-    _INVOKE_RE; a fragment carrying --recalls does NOT count: the recall-only mode is not the
-    Phase-2 extract), OR an entries[] row whose reason begins with the canonical
+    _runs_extractor; a fragment carrying --recalls does NOT count: the recall-only mode is not
+    the Phase-2 extract), OR an entries[] row whose reason begins with the canonical
     `extractor-skip:` marker + a non-empty why (the fixed token the SKILL defines — a prose
     matcher would false-exit-3 legitimate skips)."""
     for o in lines:
@@ -191,10 +300,17 @@ def _extractor_accounted(lines: list[dict], entries: Any) -> tuple[bool, str]:
             cmd_s = cmd.get("command", "") if isinstance(cmd, dict) else ""
             if not isinstance(cmd_s, str):
                 continue
-            for m in _INVOKE_RE.finditer(cmd_s):
-                if "--recalls" in m.group(0):
+            if _EXTRACTOR_TOKEN not in cmd_s:
+                continue                  # cheap pre-filter: keep the tokenizer off the hot path
+            for seg in _segments(_unfold(cmd_s)):
+                if _EXTRACTOR_TOKEN not in seg:
                     continue
-                return True, "extract_signals.py executed in-window (Phase-2 form)"
+                try:
+                    toks = shlex.split(seg, posix=True)
+                except ValueError:
+                    continue              # unbalanced quotes — Uncertain → fire, never accounted
+                if any(_runs_extractor(part) for part in _split_amp(toks)):
+                    return True, "extract_signals.py executed in-window (Phase-2 form)"
     if isinstance(entries, list):
         for e in entries:
             if not isinstance(e, dict):
@@ -228,10 +344,20 @@ def judge(record: Any, session_dir: Path, since: str,
     re-read). The retry recomputes EXT too — free and consistent.
     """
     checked = _checked_texts(record)
-    if not checked:
+    if checked is None:
         return {"verdict": "verified",
                 "reason": "no dream block — a legacy record is outside both arms",
                 "gaps": [], "ext_unaccounted": False}
+    if not checked:
+        # A dream block that carries nothing usable is a FAILED pass, not an absent one (v0.4.29,
+        # spec §2.2). Returns BEFORE the scan: there is nothing to look for, and falling through
+        # would reach the `missing or not accounted` conjunction with `missing == []` — which
+        # would certify an empty block as verified. Distinguished from the None arm above because
+        # the two mean opposite things and only `None` is the legacy carve-out (C6).
+        return {"verdict": "failed",
+                "reason": "dream block empty — no narratable stanza",
+                "gaps": [{"label": "dream block", "preview": "no narratable stanza"}],
+                "ext_unaccounted": False}
 
     def _scan():
         if scan_fn is not None:
@@ -245,6 +371,12 @@ def judge(record: Any, session_dir: Path, since: str,
         for label, raw in checked:
             needle = normalize_beat_text(raw)
             if not needle:
+                # An empty needle is a GAP, never a `continue` (v0.4.29, spec §2.2). Skipping it
+                # removed the item from the check while leaving it in the numerator, so a record
+                # whose every stanza was `*` (or `***`, or `> `) recorded as 7/7 narrated against
+                # a transcript with no narration at all. The spec's tie-break is Uncertain → fire.
+                missing.append({"label": label,
+                                "preview": "no narratable content (empty after normalize)"})
                 continue
             if not any(needle in n for n in norms):
                 missing.append({"label": label, "preview": _preview(raw)})

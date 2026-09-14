@@ -3744,27 +3744,62 @@ def _pi_int(x: object) -> int:
     return 0
 
 
-def arc_completeness(record: object) -> "tuple[bool, str]":
+def stanza_present(value: Any) -> bool:
+    """A dream stanza is PRESENT iff it is a non-empty STRING — the type rule the arc gate, the
+    render panel and the beta oracle share (v0.4.29; spec §2.1). `str(v or "")`, the rule this
+    replaces, reads a list, a dict or a number as present: measured, `sleep: [1]` rendered
+    `✓ sleep` on a panel whose gate exits 4 `sleep missing`, and `str()`-coercing the beats
+    counted `[null]*6` as a complete arc. A guard built against a CLASS of truthy coercion and
+    implemented against one member of it — the JSON-null case — is the defect this closes."""
+    return isinstance(value, str) and bool(value.strip())
+
+
+# The dream block became MANDATORY at v0.1.54 (2026-07-01) — docs/dream-arc-contract.spec.md:
+# "a latest record written by ≤ v0.1.53 legitimately lacks `dream`". Records carry no plugin-version
+# stamp, so legacy-vs-skipped is decided STRUCTURALLY: each of these keys was introduced STRICTLY
+# AFTER v0.1.54 (usage → v0.1.63, 2026-07-04; demotion → v0.1.67, 2026-07-05), so a record carrying
+# either was written by a version that already required the arc — its missing `dream` is a SKIP,
+# not a legacy artifact. Measured against the 55-record archive union: a blanket "missing dream is
+# incomplete" newly fails all 17 dreamless records; this rule fails exactly 1 (2026-07-11T15:51,
+# whose neighbours on both sides carry a dream block AND both keys — a genuine fully-skipped arc).
+_POST_ARC_KEYS = ("usage", "demotion")
+
+
+def arc_completeness(record: object, enforce_post_arc: bool = False) -> "tuple[bool, str]":
     """v0.4.1 (D1): the SINGLE dream-arc completeness predicate — consumed by the
     render panel's ✓/✗ line, the persist gate (exit 4), the validate warning, and
     render_html's WAKE cue (one definition, or the dashboard could green-check while
     the gate exits 4). (True, "") when COMPLETE or not evaluable — a missing/empty
     `dream` block is a legacy or preview record (the gate must not fail it; the beta
     oracle's WARN covers a missing block post-hoc). Incomplete = a PRESENT dream
-    block whose sleep or wake is empty, or whose beats list is not 6 (5 phase beats
-    + the surfacing line). JSON-null stanzas read absent (the str(None) rule).
-    PURE; never raises."""
+    block whose sleep or wake is absent, whose beats list is not 6 (5 phase beats +
+    the surfacing line), or any of whose beat entries is not a non-empty string
+    (v0.4.29: the count alone was never the rule). JSON-null stanzas read absent
+    (now via stanza_present, so a list/dict/number does too). PURE; never raises.
+
+    `enforce_post_arc` (v0.4.29; spec §2.4) turns a MISSING `dream` block into an incomplete arc
+    when the record's own shape dates it after the mandate (see _POST_ARC_KEYS). It defaults OFF
+    because this predicate is the single source for four surfaces, and narrowing it in place
+    would retroactively flip an ARCHIVED record's display (measured: 1 of 55). Only the persist
+    gate passes True — it alone knows the record is the terminal render of a live pass."""
     if not isinstance(record, dict) or "dream" not in record:
+        # The `not isinstance(record, dict)` half is load-bearing: a non-dict record is outside
+        # the arc exactly as a dreamless one is (a pin asserts arc_completeness("junk") == (True,
+        # "")). Without it, "usage" in "junk" would decide a string's arc by luck of spelling.
+        if (enforce_post_arc and isinstance(record, dict)
+                and any(k in record for k in _POST_ARC_KEYS)):
+            return (False, "dream block absent — the arc was skipped (a post-v0.1.54 record)")
         return (True, "")
     dream = record["dream"]
     if not isinstance(dream, dict):
         return (False, "dream block malformed (not a dict)")
     beats = dream.get("beats")
     beats = beats if isinstance(beats, list) else []
-    have_sleep = bool(str(dream.get("sleep") or "").strip())
-    have_wake = bool(str(dream.get("wake") or "").strip())
+    have_sleep = stanza_present(dream.get("sleep"))
+    have_wake = stanza_present(dream.get("wake"))
     n = len(beats)
-    if have_sleep and have_wake and n == 6:
+    bad = [i for i, b in enumerate(beats) if not stanza_present(b)]
+    if have_sleep and have_wake and n == 6 and not bad:
         return (True, "")
     bits: list = []
     if not have_sleep:
@@ -3773,6 +3808,11 @@ def arc_completeness(record: object) -> "tuple[bool, str]":
         bits.append("wake missing")
     if n != 6:
         bits.append(f"{n}/6 beats")
+    if bad:
+        # Name the offending record indexes (the same 0-based convention _dp's beat labels use),
+        # so the backfill is targeted rather than "one of your beats is wrong".
+        bits.append("beat(s) %s not a non-empty string"
+                    % ", ".join(str(i) for i in bad))
     return (False, "; ".join(bits))
 
 
@@ -4207,8 +4247,31 @@ _CUE_PHASE5 = ("Phase-5 beat due — narrate the audit/defrag dreamily (plain it
                "WAKE only after the archive opens (render_html)")
 
 
+# v0.4.29 (spec §2.5): the flags this script PARSES — enumerated from main()'s branch structure,
+# never from a house-style list. The git passthroughs this file also carries as literals
+# (`--oneline`, `--no-merges`, `--verify`, `--is-inside-work-tree`, `--exclude-standard`,
+# `--others`) are SUBPROCESS arguments and are deliberately NOT here. The last two entries are
+# _ui's global set (`--color`/`--no-color` bare; `--color=`/`--width=` are the equals allowance).
+# A bare `--width` is absent on purpose: `_ui.resolve_width` matches `startswith("--width=")` only,
+# so blessing it would be a flag that parses and does nothing.
+_KNOWN_FLAGS = ("--ascii", "--audit", "--before", "--color", "--diffs", "--force", "--into",
+                "--json", "--justify-defrag", "--justify-demotion", "--no-color", "--sections",
+                "--seed", "--snapshot", "--snooze-until", "--stamp-marker",
+                "--standing-justify-facts", "--standing-justify-tokens", "--triage")
+
+
 def main() -> int:
     argv = sys.argv[1:]
+    # v0.4.29 (spec §2.5): an unrecognized `-`-token used to be DROPPED — it vanished from `pos`
+    # and from `_argpaths` and the run proceeded. Measured: `-h` exited 0 emitting a full status
+    # report (a user asking for help got work instead), and `--jsoon` silently did nothing.
+    # Reject BEFORE any positional is computed, so an unknown flag can never be read as the
+    # project dir. The diagnostic echoes the WHOLE token, path included.
+    for _a in argv:
+        if _a.startswith("-") and _a not in _KNOWN_FLAGS \
+                and not _a.startswith(("--color=", "--width=")):
+            print(f"unknown flag: {_a}", file=sys.stderr)
+            return 2
     audit_before = ""    # v0.1.22: --audit <before-snapshot-path> — capture its path arg so pos doesn't read it as project_dir
     if "--audit" in argv:
         _ai = argv.index("--audit")

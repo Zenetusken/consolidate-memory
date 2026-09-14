@@ -73,6 +73,14 @@ _GLYPH_ASCII = str.maketrans({
 })
 
 
+# v0.4.29 (spec §2.5): the shared visual vocabulary this script's main() must bless — the same
+# five forms the sibling scripts' strict loops allow (`--ascii`/`--color`/`--no-color` handled here
+# and in `_ui`, plus the two EQUALS-ONLY forms allowed at the *_startswith* test below). A bare
+# `--width` is deliberately absent: `_ui.resolve_width` matches `startswith("--width=")` only, so
+# blessing it would bless a silent no-op.
+_VISUAL_FLAGS = ("--ascii", "--color", "--no-color")
+
+
 def _color_enabled(argv: list, stream: object) -> bool:
     """Resolve the color mode. `--color=never|always|auto` (or `--no-color`) wins;
     otherwise AUTO = stdout is a TTY and NO_COLOR is unset and TERM isn't 'dumb'. The
@@ -343,12 +351,17 @@ def _procedure_integrity_section(record: Mapping[str, Any]) -> list:
     return out
 
 
-def _arc_gate_section(record: Mapping[str, Any]) -> list:
+def _arc_gate_section(record: Mapping[str, Any], enforce_post_arc: bool = False) -> list:
     """v0.4.1 (D1): the dream-arc gate's user-visible teeth — a PRESENT-but-incomplete arc
-    (sleep/wake empty or != 6 beats) is loud here and exits 4 at the terminal --persist.
-    Empty (no panel) when the arc is complete OR the record is dreamless (legacy/preview).
-    The CALLER gates this on --persist, like the integrity panel."""
-    arc_ok, arc_reason = ms.arc_completeness(record)
+    (sleep/wake absent, != 6 beats, or a beat that is not a non-empty string) is loud here and
+    exits 4 at the terminal --persist. Empty (no panel) when the arc is complete OR the record is
+    dreamless (legacy/preview). The CALLER gates this on --persist, like the integrity panel.
+
+    `enforce_post_arc` (v0.4.29; spec §2.4) rides in from the same `judged` gate as the exit-4 it
+    explains: a panel that disagreed with the exit beside it would be worse than either, and the
+    two cannot desync because §2.5 makes `--persist ""` and a missing dir usage errors — so there
+    is no reachable render where the panel speaks and the gate does not run."""
+    arc_ok, arc_reason = ms.arc_completeness(record, enforce_post_arc=enforce_post_arc)
     if arc_ok:
         return []
     out = ["", _rule()]
@@ -361,7 +374,8 @@ def _arc_gate_section(record: Mapping[str, Any]) -> list:
     return out
 
 
-def _narration_section(record: Mapping[str, Any], narration: Any) -> list:
+def _narration_section(record: Mapping[str, Any], narration: Any,
+                       enforce_post_arc: bool = False) -> list:
     """v0.4.19: the conversation-truth detector's panel (docs/dream-narration-teeth.spec.md).
     `narration` is the pre-print verdict dict or None (no --persist / dreamless legacy — no
     panel). SUPPRESSED when the record-side arc fails: the arc gate's own exit-4 panel + cue own
@@ -370,7 +384,11 @@ def _narration_section(record: Mapping[str, Any], narration: Any) -> list:
     failed = the gap names + first ~15 words so the backfill is targeted."""
     if narration is None or narration.get("verdict") == "verified":
         return []
-    arc_ok, _ = ms.arc_completeness(record)
+    # The suppression test MUST use the same predicate as the panel and the exit above it
+    # (spec §2.4's routing table): pin (6) is a no-contradictory-panel contract, so a NAR panel
+    # firing beside a silent arc gate would break it in the one direction that reads as an
+    # unqualified failure.
+    arc_ok, _ = ms.arc_completeness(record, enforce_post_arc=enforce_post_arc)
     if not arc_ok:
         return []
     if narration.get("verdict") == "degraded":
@@ -500,8 +518,8 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
     # is judged — a seed/preview render (no --persist) is the BEFORE state and is never flagged.
     if judged:
         out += _procedure_integrity_section(record)
-        out += _arc_gate_section(record)
-        out += _narration_section(record, narration)
+        out += _arc_gate_section(record, enforce_post_arc=True)
+        out += _narration_section(record, narration, enforce_post_arc=True)
         out += _net_capture_section(record)
 
     # v0.3.0: domain / enrollment — the trust-boundary line the HTML masthead also
@@ -913,13 +931,14 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
     # v0.1.54: dream-arc capture presence — gated on the key, so legacy records (and seeds,
     # which never carry `dream`) render byte-identically. One line: which beats were captured;
     # a partial arc shows its gaps (✗) honestly. The stanzas themselves live in the HTML archive.
-    # _dget/_lget = the file's model-boundary idiom; `or ""` so a JSON-null stanza reads ✗ (absent),
-    # never a truthy str(None).
+    # _dget/_lget = the file's model-boundary idiom. The ✓/✗ reads the SHARED stanza predicate
+    # (v0.4.29): the old `bool(str(v or "").strip())` covered the JSON-null case and ONLY that
+    # one, so a `sleep: [1]` record rendered `✓ sleep` against a gate exiting 4 `sleep missing`.
     dr = _dget(record, "dream")
     if dr:
         _beats = _lget(dr, "beats")
         _nb = len(_beats)
-        _have = [bool(str(dr.get("sleep") or "").strip()), bool(str(dr.get("wake") or "").strip())]
+        _have = [ms.stanza_present(dr.get("sleep")), ms.stanza_present(dr.get("wake"))]
         # v0.4.1 (D1): the ✓ now gates on the SINGLE arc-completeness predicate (the same one the
         # persist gate + WAKE cue consume) — one definition, or the dashboard could green-check
         # while the gate exits 4. The contract is 5 phase beats + the surfacing line (6 total).
@@ -1252,22 +1271,57 @@ def main() -> int:
     _COLOR = _color_enabled(argv, sys.stdout)
     _ASCII = "--ascii" in argv   # opt-in no-Unicode fallback (translated as render's last step)
     W = _ui.resolve_width(argv, sys.stdout)   # uniform width: fill the terminal (clamped [60,100]); --width=N override; fixed 60 for pipes/tests
+    # Pass 1 — the flag surface, strictly (v0.4.29; spec §2.5). This script used to keep every
+    # unrecognized `-`-token and let the filter below turn it into a RECORD PATH: `--persit DIR`
+    # opened a file named `--persit` (exit 1, "cannot read cycle record"), and `--persist=DIR` —
+    # the plausible typo, since the ecosystem accepts `=` for --color/--width/--evict/--into —
+    # never set persist_dir at all, so `judged` was False and a stamped, arc-incomplete record
+    # rendered as an UNJUDGED PREVIEW: exit 0, no gate, no trace. `-h` exited 1 the same way.
+    # `--demo` is a real, live flag and is explicitly allowed — it is the one flag no
+    # visual-flag list names, and a house-style copy would reject it.
+    for _a in argv:
+        if not _a.startswith("-"):
+            continue
+        if _a == "--persist" or _a == "--demo" or _a in _VISUAL_FLAGS \
+                or _a.startswith(("--color=", "--width=")):
+            continue
+        print(f"unknown flag: {_a}", file=sys.stderr)
+        return 2
     # --persist DIR (v0.1.4): pull the flag + its value out BEFORE positionals are taken, so
-    # the cycle-record path isn't shadowed by '--persist' or its DIR (the blocklist below only
+    # the cycle-record path isn't shadowed by '--persist' or its DIR (the filter below only
     # strips the --color/--demo chrome). Mirrors how --color is excluded — but consumes TWO
     # tokens (the flag and its separate value).
     persist_dir, pruned, i = None, [], 0
     while i < len(argv):
         if argv[i] == "--persist":
-            if i + 1 >= len(argv):
+            # The value is checked for EMPTINESS and not merely for presence: `--persist ""`
+            # made these two predicates disagree — `judged = persist_dir is not None` is True for
+            # "", so the render was judged, while `if persist_dir:` is falsy, so the entire
+            # print→persist→exit block (the 3/4/5 gates) never ran. It rendered a dashboard that
+            # claims the dream is being judged and then judged nothing. Exit 2 is deliberately
+            # STRICTER than the distill_scan --into precedent (which accepts ""), because --into's
+            # emptiness costs a file and --persist's costs the gate.
+            if i + 1 >= len(argv) or not argv[i + 1].strip():
                 print("render_dashboard: --persist requires a directory argument", file=sys.stderr)
                 return 2
-            persist_dir = argv[i + 1]
+            # os.path.abspath makes the relative and absolute spellings ONE input:
+            # retention._ops_slot keys a non-`memory` store dir by native_store.parent.name, and
+            # for a relative path that is Path(".").name — '' — whose empty project id raises
+            # IdentifierRefused (measured: a 15-line traceback on a directory that EXISTS).
+            persist_dir = os.path.abspath(argv[i + 1])
             i += 2
             continue
         pruned.append(argv[i])
         i += 1
     argv = pruned
+    if persist_dir is not None and not os.path.isdir(persist_dir):
+        # A dir that parses but does not exist was turned into `no-dir` by _persist and then into
+        # exit 0 by main — BEFORE either gate was consulted: the false-clean this cycle exists to
+        # close, and the reason this check is here rather than in _persist (by then the judged
+        # dashboard has already printed). Nothing is lost by refusing: the dir is only ever a
+        # STORE HANDLE here, so a run that reached no-dir was never going to persist anything.
+        print(f"render_dashboard: --persist dir not found: {persist_dir}", file=sys.stderr)
+        return 2
     if "--demo" in argv:  # paste-free preview with a built-in record
         print(render(_demo_record()))
         return 0
@@ -1306,7 +1360,11 @@ def main() -> int:
         try:
             from pathlib import Path as _P
             import dream_procedure as _dp
-            if _dp._checked_texts(record):
+            # v0.4.29 (spec §2.2): `is not None`, not truthiness. The empty LIST is a dream block
+            # carrying nothing usable — it must be judged (and fails), or C6's class lands in the
+            # archive: an emptied dream would carry no `narration` block, so ABSENCE on a log line
+            # would stop meaning "pre-feature" and start meaning "nothing to see here".
+            if _dp._checked_texts(record) is not None:
                 _store = _P(persist_dir)
                 # _dget returns dict SUBVALUES (a str before_timestamp would read as {}) — the
                 # anchor is a plain .get on the marker dict (the spec's HIGH-class pin: the
@@ -1384,7 +1442,11 @@ def main() -> int:
         # "ok" OR "duplicate": the record IS in the log (freshly, or already) — the gates judge it
         # either way (the exit-3/exit-4 re-render must re-exit its code, never a silent 0).
         ok, _reason, _sev = ms.procedure_integrity(record)
-        arc_ok, _arc_reason = ms.arc_completeness(record)
+        # enforce_post_arc=True (v0.4.29; spec §2.4): this is the ONE surface that knows the
+        # record was just written by a live pass, so a missing `dream` here is a SKIPPED arc, not
+        # a legacy artifact. Every other consumer keeps the default — `_POST_ARC_KEYS` is
+        # version-grounded, and narrowing in place would retro-flip an archived display.
+        arc_ok, _arc_reason = ms.arc_completeness(record, enforce_post_arc=True)
         # v0.1.54/v0.4.1: the dream-arc cue SPLITS on the gate outcome. The exit-3 path keeps the
         # model IN the dream through the Phase-3 loop-back (waking here would contradict SKILL's
         # re-verify rule); exit-4 keeps it in the dream through the backfill loop; the clean path

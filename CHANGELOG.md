@@ -5,6 +5,87 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.29] — 2026-09-13
+
+**Patch — the dream passes' gates mean what they claim: the checked set cannot shrink, an empty
+narration is a gap, the extractor anchor anchors on execution, every documented invocation runs,
+and an unknown flag is a usage error on the five lax scripts and `cm`.**
+
+A full audit of the `dream` pass found **one structural defect with nine faces**: every gate was
+narrower than the rule it was believed to enforce, and each failed in the **clean** direction. The
+severest is measured rather than inferred — a record whose every narration slot is `*`, scanned
+against a transcript containing **zero** text blocks, returned `NAR verdict: VERIFIED` /
+`7/7 narrated · extract_signals.py executed in-window`. The teeth that exist to guarantee the dream
+narrated its beats certified an empty narration, and the spec they implement says the opposite in
+two places, with *Uncertain → fire* as its own tie-break.
+
+**The new failure modes are user-visible, so they are listed explicitly.** Everything below is a
+gate that was *supposed* to fire; a pass that previously exited 0 with a fabricated or absent
+narration will now exit non-zero. Nothing changes the cycle-record schema, so legacy records still
+render and no downstream consumer needs a migration.
+
+1. **A non-string or blank beat or stanza now fails the dream arc** (exit 4, naming the index).
+   `arc_completeness` counted `len(beats)` and `str()`-coerced `sleep`/`wake`, so `beats: [null]*6`
+   and `sleep: [1]` were "arc complete" while the dashboard green-checked `✓ 6/6 beats`. By the
+   spec's own precedence rule the record-side arc owns the render, so a malformed-beat record that
+   used to show a narration gap panel now shows the arc panel instead — the one item here that
+   could be mistaken for a loss, and it is the intended precedence.
+2. **A stanza that normalizes to empty is now a narration gap** (exit 4), not a silent pass.
+   `_gaps` did `if not needle: continue`, so `"*"`, `"***"` and `"> "` left the check while staying
+   in the numerator — a label count wearing a coverage claim's clothes.
+3. **The checked set cannot shrink.** A beat that is `null` or `{}` used to *leave* the set rather
+   than fail it, and with the set empty the verdict fell through to `missing == [] and accounted` —
+   `verified`. A present-but-unusable stanza now enters the set and fails.
+4. **An emptied dream block now carries a `narration` block reading `failed`**, where it carried
+   none. This is the case that made the archive's documented *"absence means pre-feature"* read
+   false: `None` (no dream block, the legacy carve-out) and `[]` (a dream block with nothing usable)
+   were collapsed into one state. The two are now distinguishable, and only `None` is a carve-out.
+5. **A dreamless record carrying `usage` or `demotion` now fails the arc at `--persist`** (exit 4).
+   Deleting the `dream` key bypassed both arms. Records carry no version stamp, so legacy-vs-skipped
+   is decided structurally: those two keys were introduced strictly after the v0.1.54 arc mandate,
+   so a record carrying either cannot be a pre-mandate artifact. Measured over the 55-record
+   archive, this narrows exactly **one** record — a genuine fully-skipped arc, whose neighbours on
+   both sides carry a dream block *and* both keys. Every other consumer (the archive, the render
+   panel, the validator) keeps the old default, so no historical display retro-flips.
+6. **The extractor anchor now anchors on execution.** Its docstring already claimed this; the
+   implementation was a regex matching the token across any whitespace. So `echo python3
+   …/extract_signals.py --json`, `python3 -c "open('…')"`, `python3 -m py_compile …`,
+   `grep`/`cat`/`sed` against the script, and a heredoc *being written* to a file were all
+   accounted as "the extractor ran". It now unfolds line-continuations, splits on unquoted
+   top-level separators, tokenizes, and asks whether the interpreter actually runs the script.
+   Measured against the 14 legitimate forms the old anchor handled: **all preserved**.
+7. **An unknown flag is a usage error (exit 2) on `extract_signals`, `memory_status`, `preflight`,
+   `render_dashboard` and `cm`.** Previously each skipped the token, mis-slotted it, or forwarded
+   it, so `memory_status --jsoon .` printed a full report and `preflight --jsoon` preflighted a
+   project directory named `--jsoon`. The rejections include:
+   - **`--persist=DIR`** — today exits 0 while silently degrading a judged terminal render to an
+     unjudged preview, because `judged` keys on the parse, not the meaning;
+   - **`--persist ""`** — the falsy-persist hole: no gate, no exit, exit 0 reading as persisted;
+   - **`--persist <dir that does not exist>`** — now exit 2 where it exited 0 with a `skipping log`
+     notice, i.e. every terminal gate skipped under cover of a clean exit;
+   - **`-h`/`--help`** on the four scripts, three of which exited **0 doing something else
+     entirely** (an extraction of CWD, a status report, a preflight of a dir named `-h`);
+   - **a bare `--width`**, which no script consumes — `_ui.resolve_width` matches `startswith
+     ("--width=")` only, so blessing it would bless a silent no-op. `distill_scan.py`, the
+     precedent, already rejects it.
+   `cm`'s `-h`/`--help`/`help` are **unchanged** (a dispatcher with a real help arm is the
+   deliberate asymmetry), and `cm <unknown>` now exits **2 with usage on stderr** instead of
+   returning the last command's status — 0 — and reading as success.
+8. **A *relative* `--persist` now works**, landing on its absolute twin's slot, where it previously
+   crashed with an `IdentifierRefused: invalid project id ''` traceback. The one item here that
+   makes a previously fatal call succeed.
+9. **The documented commands are repaired across `commands/*.md` (8 files) and `SKILL.md`** — the
+   bash blocks had malformed invocations: a quote opened before `${CLAUDE_PLUGIN_ROOT}` and closed
+   nowhere, unquoted `<…>` placeholders that bash reads as **redirections**, and compound commands
+   that silently ran only their first part. Every documented invocation now parses and runs. The
+   suite pins this with three arms over 77 command lines — `bash -n` per block *and* per line, no
+   unquoted placeholder, and every flag a script's own parser defines — because a syntax-only gate
+   passes six lines of `cm-domain.md` while every one of them is wrong.
+
+Also in this release: the narration reason's numerator is now coverage rather than a label count;
+`render_html`'s and the validator's use of the arc predicate are unchanged by design; and the
+`_ui` visual vocabulary is enforced at its source (`distill_scan.py`) as well as at its copies.
+
 ## [0.4.28] — 2026-09-13
 
 **Patch — the firewall's ReDoS guard is re-based on measurement: a CPU clock, a bound derived from a
