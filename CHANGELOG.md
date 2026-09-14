@@ -5,6 +5,58 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.30] — 2026-09-14
+
+**Patch — a persisted record's post-state is measured at persist time instead of mirrored from its
+own before-state, and a duplicate re-render now heals the whole record into the cycle file.**
+
+The second cycle of the 2026-09-14 `dream` audit. `memory_status.seed_record` wrote a whole family of
+`after` leaves from the **same** Phase-0 `ctx` read that produces the `before` leaves, so
+`before == after` **by construction** and nothing owned the after-half — the only refresh path was a
+prose instruction naming three of the keys, and nothing verified it. Measured on the live store: the
+newest record read `1746 / 1746` where the store actually held **1694**, and its `after_bytes=7161`
+described a size `MEMORY.md` **never had**. Design and evidence: `docs/record-post-state.spec.md`.
+
+Three changes are user-visible. None of them changes the cycle-record schema, so legacy records still
+render and no consumer needs a migration.
+
+1. **A persisted record's `after`-side figures now describe the store at persist time.** The terminal
+   `render_dashboard.py --persist` re-takes every store-local measurement — `budget.index.*`,
+   `budget.recall_facts.after`, the six store-local `health.schema_drift` fields, and exactly one leaf
+   outside `budget`: `remediation.over_ceiling`, which is a store-derived comparison rather than one of
+   that block's triage verdicts (those are untouched) — so the same pass can log different `after_*`
+   values than it did before this release. That is the fix, and it is also a change in what the
+   archived record says. Two consequences are visible in what gets *rendered*: the budget gauge can no
+   longer pair a fresh token count with a retired threshold (14 of this store's 55 records carry the
+   superseded `1200`), and a red HARD CEILING alarm can no longer outlive the over-ceiling index it was
+   raised for. The refresh is bounded to that key set (a record's model-authored blocks, its `before`
+   halves and its `marker` are never written), it runs only when persisting — a seed/preview render
+   still shows the one honest BEFORE state the product produces — and it **never blocks**: if any
+   measurement fails, the record keeps its authored values and one line goes to stderr.
+2. **A duplicate re-render now heals the whole record, not just the narration verdict.** When a pass
+   re-renders at a `(commit, timestamp)` pair already in the log, a corrected `budget`/`health` now
+   reaches the cycle file — the file `render_html`'s `assemble_cycles` prefers. The log does not grow
+   (idempotence is unchanged), and the row count can *fall*: the heal stamps a file whose
+   `marker.timestamp` was empty, so a dream the archive was embedding **twice** now appears once.
+3. **One new warning on the record validator** (stderr; like every warning there, it never blocks).
+   `budget.index`'s token delta must equal the `token_delta` on the audit's own row for `MEMORY.md` —
+   both operands are already in the record, so the check is pure and zero-I/O. It fires at render time
+   on the record being rendered, which is the only moment a correction is still possible. Measured
+   over the archive: **6 of the 31** records whose operands are checkable, **5 of which predate this
+   pass**; the other 24 are not checkable and stay silent rather than passing.
+
+**Verification.** 22 new checks in `tests/smoke.py` (census `1772 + 45 + 125`) — **10 pins and 12
+guards**, where every pin is re-derived to fail on pre-fix code by running the suite inside a
+`git archive HEAD` tree, and each guard is labeled with the revision it *does* move on. The mutation
+matrix is in `docs/record-post-state.spec.md` §3; building it is what caught one of the checks
+asserting the right thing about the wrong subject, and running the five checks added by the last
+review round caught two more — a fixture that never reached the arm it was written for, and an
+assertion on a warning *count* that passed on a revision which warned from the wrong arm.
+
+**Not in this release.** The stale `AGENTS.md` version cell and the three structural blinds in
+`tests/docs_links.py` are split off by decision (spec §6) and ship separately. `tests/docs_links.py`
+exits 0 on this tree **because of** that blind spot, not because the docs surface is current.
+
 ## [0.4.29] — 2026-09-13
 
 **Patch — the dream passes' gates mean what they claim: the checked set cannot shrink, an empty
