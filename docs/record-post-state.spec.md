@@ -1,6 +1,6 @@
 # Record post-state — design-of-record
 
-**Status: revision 11 — for adversarial review** (2372 lines; revision 10 read 2266, revision 9 read
+**Status: revision 11 — for adversarial review** (2376 lines; revision 10 read 2266, revision 9 read
 1965, revision 8 read 1941, revision 6 read 1657). Target release: **v0.4.30 (patch)** — a repair to
 fields that were always meant to be measured; no schema, flag, or install-contract change.
 
@@ -106,15 +106,17 @@ its own item: **a count says how many moved; a probe says which.**
 **Revision 11 audits this branch's own claims — and falsifies one of this file's own counts.** Every
 claim this cycle added about its own code was followed to its source: each named count, each
 enumeration, each "never / only / single / exactly N", and each check's **name set against its
-condition**. **Six failed, and no gate could have reached any of them**, because comments, skill
-instructions and a check's *label* are never executed. Five were repaired where they were written. A
+condition**. **Six failed, and no *executing* gate could have reached any of them**: five are claims in
+text that is never executed — comments, a skill instruction, a check's *name* — and the sixth is a
+binding whose value **agreed** with its source, which only a check on the source's *shape* can see.
+Five were repaired where they were written. A
 `render_dashboard` comment asserted the HTML archive "never had this defect because it meters from its
 own constant": measured, the archive's gauge takes *both* of its operands from the record and uses the
 constant only as a fallback. Two `render_html` constants were unpinned literal copies of
 `memory_status`'s **in a module that already imports `ms`** — the same comment's own "mirrors
 `memory_status`" was true as an intention and held by nothing. That comment's "all **three** readers"
-is **six** — the same `grep -rn over_ceiling` census §5 now records. SKILL.md step 7's "the ONE budget leaf the script does not own" is
-false twice over — `budget.global_claude_md.*` and `budget.claude_md_hierarchy` are equally out of the
+is **six** — the same `grep -rn over_ceiling` census §5 now records. SKILL.md step 7's "the ONE
+budget leaf the script does not own" is false twice over — `budget.global_claude_md.*` and `budget.claude_md_hierarchy` are equally out of the
 script's reach — and false in the direction that acts, since its reader is the model one step from
 authoring the value §2.3 forbids. And a check's label claimed "*a live reference, not a hardcoded
 copy*" while its condition was `==`, which a copy passes on the day it is written. The sixth is this
@@ -125,13 +127,15 @@ reader is exactly what would let it. **The same sweep confirms the neighbouring 
 falsified**: `ceiling_tokens` reads at **one** site, the `⚠ HARD CEILING` alarm. That pair is the only
 evidence that these numbers came from a census and not from a prior — a method that lowers one
 number and leaves the next one standing.
-**The last of the six is the class one domain over.** The first five are repairs to *reasons*; the
-sixth is a **predicate** that did not test the property its name asserted — so its repair is not a
-rewritten sentence but a new check (P23) that reads the source, because reference-ness is not a
-property of the value. **Census: 23 items, 11 pins, 12 guards** — P23 added, the equality half
-replacing and widening the v0.1.66 check it succeeds, so the census moves by exactly one. **None of
-the six changes a rendered byte on this tree**: the constants agreed on the day they were copied,
-which is precisely why nothing noticed they were copies.
+**Two of the six are one gap seen from both sides.** #2 is the unpinned binding and #5 the check that
+appeared to hold it: because the constants' values *agreed* on the day, the only thing asserting they
+would keep agreeing was a comment ("mirrors `memory_status`") plus a check whose **name** claimed
+reference-ness while its **condition** compared values. So its repair is one structural thing — bind
+the three names to the one definition, and pin that binding where the property actually lives, in the
+source. **Census: 23 items, 11 pins, 12 guards** — P23 added, the equality half replacing and widening
+the v0.1.66 check it succeeds, so the census moves by exactly one. **None of the six changes a rendered
+byte on this tree**: the constants agreed on the day they were copied, which is precisely why nothing
+noticed they were copies.
 
 **Revision 9 audits the ledger rather than the claims.** Round 4's three lane reports were re-read
 against this file, and every repair the ledger says the round made was re-derived at the text instead
