@@ -185,14 +185,29 @@ are archives the rule calls one — and **0** verdict changes under the tighteni
 nothing for any store that exists, and it is the deciding number: the §2.6 class has **no live
 instance**; the fixtures are its whole evidence, which is why the repair is a class closure
 rather than a repair of observed damage. The scan is re-derivable with the root globs in §7 and
-one predicate swap; the fleet drifts as sessions run, so the counts are dated and the *zero* is
-the figure that carries the argument.
+one predicate swap.
 It would still move a predicate with four consumers, three of which (`schema_drift`,
 `ref_stems`, `remediation_triage`) ask a different question and are correctly lenient there. The
 defect is joint — a lenient classifier is right for those three, and the rebuild wrongly read
 leniency as ownership — so the fix belongs on the reading side, where it costs nothing to the
 three. The framing matters: a shared predicate loosened for one consumer is not evidence that the
 next consumer may assume the strict form.
+
+**Two of the four measured figures do not survive re-derivation, and the cause is the
+measurement, not the fleet.** Re-running the §7 snippet gave **444** roots and **547** docs a few
+hours later, then **446** roots on the next run — while **26** `MEMORY.md`, **2** archives and the
+**0** were identical every time. Three readings in one afternoon, one number climbing and three
+holding, and the climbing one is the apparatus's: **416 of the 446 roots have a slug derived from a
+`/tmp` path** — the slug is the path, so `-tmp-…` is proof rather than inference, and it means a
+test or verification run minted that store (`/tmp/mx/*`, `/tmp/fm`, `/tmp/mut-*`; any script run
+that touches a store creates `~/.claude/projects/<slug>/memory/`). **387 carry today's mtime**,
+and the census rose by two *between two runs of this audit itself*. The one extra doc is a
+concurrent live session writing a fact. So the figures divide cleanly: `stores` and `docs` are
+inflated by whatever measures them, while **26**, **2** and the **zero** are properties that held
+across every reading. The snippet prints its own empty-root count so this is visible rather than
+inferred — **420 of 446** roots hold no `*.md` at all. The *zero* is what carries the argument;
+the counts are dated, and a fleet census that cannot state its own drift is a number pretending to
+be a measurement.
 
 **Residual, recorded rather than papered over.** A store-root doc whose link is *formatted as a
 pointer line* (`- [x](x.md) — hook`) stays indistinguishable from a real archive entry: that is
@@ -469,7 +484,7 @@ process wherever two trees are compared:
 | registry-less run 1 / run 2 | `ok`, then `TypeError` | `/tmp/justify_probe.py`, hermetic HOME |
 | `control.sqlite` after both runs | absent | same probe |
 | scalars visited by the block pin | 138 (3 under the naive walker) | instrumented walk |
-| fleet stores / store-root docs | 437 / 546 (26 are `MEMORY.md`) | the two root globs below |
+| fleet stores / store-root docs | 437 / 546 as first measured, **446 / 547 on re-run — the root count climbs every time an arm runs** (416 of 446 slugged from a `/tmp` path, 420 empty; §2.6) | the two root globs below, which now print the empty-root count |
 | archives among them | 2 non-`MEMORY.md` | `_is_archive_index_text` per doc |
 | verdict changes under the declined tightening | **0** | the same scan, pointer-line predicate swapped in |
 | bare-matcher first picks | 6 docs: `CLAUDE.md`→`1.0.0`, `AGENTS.md`→`0.4.32`, `README.md`→`0.4.32`, `SKILL.md`→`127.0.0`, `harness-map.md`→none, `docs/1.0-preflight.spec.md`→`1.0.0` | `(?<!v)\d+\.\d+\.\d+`, first match per `LIVE_DOCS` entry |
@@ -526,9 +541,15 @@ that predates this cycle (three facts the retrieval firewall refuses), which is 
 is measured in plan mode: it never writes, and the placement figures are still reported.
 
 ```bash
-# the fleet scan behind §2.6 — re-runnable as written (it prints 437 / 546 / 26 / 2 on the
-# 2026-09-14 fleet; the bare-matcher row above is one `(?<!v)\d+\.\d+\.\d+` search per LIVE_DOCS
-# entry, and the archive row one `len(index_html.read_text())`)
+# The fleet scan behind §2.6 — re-runnable as written, but only TWO of its figures are stable.
+# `stores` and `docs` grow every time a verification arm runs (each mints a store dir) and every
+# time another session writes a fact, so the `empty` count is printed beside them: it is the
+# number that moves, and seeing it move is how a reader knows the census is apparatus-inflated.
+# Readings on 2026-09-14: 437 / 546 / 26 / 2 / 0, then 444 / 547 / 26 / 2 / 0, then
+# 446 / 547 / 26 / 2 / 0 with 420 of 446 roots empty and 416 slugged from a /tmp path. Only 26, 2
+# and 0 held across all three.
+# The bare-matcher row above is one `(?<!v)\d+\.\d+\.\d+` search per LIVE_DOCS entry
+# (tests/docs_links.py), and the archive row one `len(index_html.read_text())`.
 python3 - <<'PY'
 import glob, sys
 from pathlib import Path
@@ -541,7 +562,9 @@ roots = [Path(d) for pat in ("~/.claude/projects/*/memory",
          for d in glob.glob(str(Path(pat).expanduser())) if Path(d).is_dir()]
 docs = [f for r in roots for f in sorted(r.glob("*.md"))]
 mem = [f for f in docs if f.name == "MEMORY.md"]
-print("stores", len(roots), "| docs", len(docs), "| MEMORY.md", len(mem),
+empty = [r for r in roots if not any(r.glob("*.md"))]
+print("stores", len(roots), "| of which empty", len(empty),
+      "| docs", len(docs), "| MEMORY.md", len(mem),
       "| archives", sum(ms._is_archive_index_text(f.read_text(encoding="utf-8", errors="replace"))
                           for f in docs if f.name != "MEMORY.md"))
 PY

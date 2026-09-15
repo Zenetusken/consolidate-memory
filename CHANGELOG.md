@@ -41,9 +41,13 @@ evidence: `docs/periphery-parity.spec.md`.
    never ran, and on the smallest fixture an **empty rebuilt index reporting `ok: true`**. The
    repair reads the archive's own pointer lines — the exact extraction `local_archive` gates its
    own writes on — and where a doc is nonetheless indistinguishable from an archive, the report
-   now names it instead of vouching for it. Measured fleet-wide before choosing: **437** store
-   roots, **2** archives, and **0** verdict changes under the rejected alternative, so this closes
-   a class with no live instance rather than repairing observed damage.
+   now names it instead of vouching for it. Measured fleet-wide before choosing: **2** archives
+   among the store roots and **0** verdict changes under the rejected alternative — re-measured the
+   same day at a larger root count and still **0** — so this closes a class with no live instance
+   rather than repairing observed damage. The root total is the one figure that does **not**
+   reproduce, and its drift is the apparatus's: this cycle's own verification arms mint store
+   directories, so it read 437, then 444, then 446 while the archive count and the zero held at
+   every reading. Only the stable figures are load-bearing.
 2. **`--justify-demotion` survives a registry-less store.** `control_plane.count_probative_after`
    returns `None` *deliberately* when no registry exists — its comment records that a `0` there
    once suppressed a stamp **forever** — and `_justify_remaining` tolerates it. Its caller did not,
@@ -137,7 +141,8 @@ line**, not "known issues":
   forever. This cycle fixed the `None` path and left the sibling.
 - **A text-level `_LINK_RE.findall` can match across a newline** (`[^)]+` includes `\n`), so a
   target split over two lines is seen by a text scan and missed by a per-line one. Measured: **0**
-  such matches across **546** store-root docs, so this is latent, not observed.
+  such matches across every store-root doc on the fleet (**547** at re-measurement), so this is
+  latent, not observed.
 - **The fleet network capture** (the one observability block still hand-pasted rather than
   script-injected, whose beta capture is not enforced) and **the post-persist correction path**
   (the detector fires to stderr and cannot stop the write) remain root-caused and unscheduled from
