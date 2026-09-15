@@ -1,6 +1,6 @@
 # Record post-state — design-of-record
 
-**Status: revision 11 — for adversarial review** (2376 lines; revision 10 read 2266, revision 9 read
+**Status: revision 11 — for adversarial review** (2378 lines; revision 10 read 2266, revision 9 read
 1965, revision 8 read 1941, revision 6 read 1657). Target release: **v0.4.30 (patch)** — a repair to
 fields that were always meant to be measured; no schema, flag, or install-contract change.
 
@@ -127,7 +127,7 @@ reader is exactly what would let it. **The same sweep confirms the neighbouring 
 falsified**: `ceiling_tokens` reads at **one** site, the `⚠ HARD CEILING` alarm. That pair is the only
 evidence that these numbers came from a census and not from a prior — a method that lowers one
 number and leaves the next one standing.
-**Two of the six are one gap seen from both sides.** #2 is the unpinned binding and #5 the check that
+**Two of the six are one gap seen from both sides.** A2 is the unpinned binding and A5 the check that
 appeared to hold it: because the constants' values *agreed* on the day, the only thing asserting they
 would keep agreeing was a comment ("mirrors `memory_status`") plus a check whose **name** claimed
 reference-ness while its **condition** compared values. So its repair is one structural thing — bind
@@ -2323,34 +2323,36 @@ are stated with the artifact they were measured on.
   that is the one surface with no gate on it: a comment, a skill instruction and a check's *name* are
   all never executed, so only following each one to its source can falsify it. Five of the six were
   repaired on the branch before this entry was written (commits `351ed20`, `533244e`, `0aa233d`).
+  Findings are labeled **A1–A6, not F1–F6**: the F-series belongs to the round-3 review entry above,
+  and two live `F5`s in one file is the same ambiguity this revision exists to remove.
   - **The sweep's shape.** Every added claim that names a **count, an enumeration, or a
     "never / only / single / ONE"**, plus — and this is the sixth's origin — every check asked
     *what would this print if its claim were false?*
-  - **F1 — the archive "never had this defect".** Falsified by reading
+  - **A1 — the archive "never had this defect".** Falsified by reading
     `dashboard.template.html`'s gauge: it takes **both** operands from the record
     (`budget.index.after_tokens` against `budget.index.budget_tokens`), its constant only as the
     fallback. The repair is the reason, not the code, and the corrected reason is the sharper one:
     the pair is contemporaneous because the splice writes both together.
-  - **F2 — two `render_html` constants that were unpinned literal copies** of `memory_status`'s, in a
+  - **A2 — two `render_html` constants that were unpinned literal copies** of `memory_status`'s, in a
     module that already imported `ms`. Not a prose defect but a claim nothing held: the comment said
     "mirrors `memory_status`", which is true as an intention and enforced by nothing. Repaired by
     making both a live reference, as `INDEX_CEILING_TOKENS` has been since v0.1.66 for this exact
     reason. **The probe found a drift, not an error** — rebinding `ms.INDEX_TOKEN_BUDGET = 1600` left
     `render_html` at `1500` — and the drift is invisible in any output on the current tree, because
     the copies agreed on the day they were written.
-  - **F3 — "all three readers"** where `grep -rn over_ceiling` finds six, in three files, one of them
+  - **A3 — "all three readers"** where `grep -rn over_ceiling` finds six, in three files, one of them
     (`dashboard.sections.js`) an enumeration that never reached it.
-  - **F4 — SKILL.md's "the ONE budget leaf the script does not own."** False twice over
+  - **A4 — SKILL.md's "the ONE budget leaf the script does not own."** False twice over
     (`budget.global_claude_md.*` and `budget.claude_md_hierarchy` are equally out of reach) and false
     in the direction that acts: its reader is the **model**, one step from authoring the value §2.3
     forbids. The only one of the six whose reader is an actor rather than a reader, which is what
     makes a false count *actionable* rather than merely imprecise.
-  - **F5 — a check whose label asserted one property while its condition tested another.** The v0.1.66
+  - **A5 — a check whose label asserted one property while its condition tested another.** The v0.1.66
     check named "*a live reference, not a hardcoded copy*" and tested `==`. Found by asking each check
     the question above; for this one the answer was ✓, which is the whole finding. **Repaired as two
     checks, not one stronger one**, because the two properties live in different domains: the value
     (equality — a copy passes) and the source's shape (an AST read of what the name is bound to).
-  - **F6 — this file's own count.** §5 recorded `over_ceiling` as having "exactly two readers (the
+  - **A6 — this file's own count.** §5 recorded `over_ceiling` as having "exactly two readers (the
     alarm line and `render_html`'s gauge)". The census is **six sites in three files** — and the
     claim was load-bearing: it was offered as the reason the repair "cannot invent a display", where
     one unexamined reader is exactly what would let it. **All six test truthiness**, so falsy is
