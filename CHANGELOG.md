@@ -118,9 +118,20 @@ line**, not "known issues":
   based form of this rule (`sync_global.py`'s `archive_stems`, built with
   `_is_archive_index_text`), so the fix is a two-site diff against an existing pattern, not a
   design question.
-- **`_rebuild_plan` still skips `SHIPPED.md` by name for the *fact* side** — `SHIPPED` is a legal
-  fact stem (`identifiers.RESERVED_STEMS` holds only `MEMORY`), so a fact by that name is
-  swallowed rather than indexed, exactly the class this cycle closed for the archive side.
+- **The archive's name is hand-written at four skip sites, and it is not a reserved stem.**
+  `local_archive` constructs the archive path itself (the canonical definition), but
+  `_rebuild_plan`'s fact scan, `local_migrate_schema`'s glob, and `run_justify_demotion`'s two
+  globs each restate the literal `"SHIPPED.md"` by hand, with no shared constant behind them —
+  while `sync_global` classifies archives by **content**. The reserved-stem set is itself one of
+  the second copies — `identifiers.RESERVED_STEMS` and `sync_global._RESERVED_STEMS` are two
+  literals holding the same one name, so a fix that updates only the first leaves the second
+  behind. The inconsistency is reachable, not theoretical: neither set holds `SHIPPED`, so
+  `validate_fact_stem("SHIPPED")` is **accepted** and `cm local upsert SHIPPED` writes the very
+  file the rebuild then hides by name — and a case-variant (`shipped.md`) resolves to the same
+  file on a case-insensitive filesystem, which is the self-clobber class `_is_reserved_stem`'s
+  docstring was written for and guards for `MEMORY` only. Recorded rather than fixed here because
+  the fix changes which stems a store accepts, and a cycle that widens as it runs is a cycle whose
+  spec stops describing its diff.
 - **`apply_demotion_justify` mints `n_after = 0`** on its `elif` arm — the exact value the
   deliberate-`None` comment in `count_probative_after` records as having suppressed a stamp
   forever. This cycle fixed the `None` path and left the sibling.
