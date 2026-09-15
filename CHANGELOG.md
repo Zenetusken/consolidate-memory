@@ -67,14 +67,22 @@ agree, so no revert has anything to fail against, and a documentation check's ev
 mutation of the artifact it reads. (mypy cannot see it by construction: its inputs are the `.py`
 sources, and `SKILL.md` is not among them.)
 
-A recorded number was **withdrawn rather than carried**. The staged plan gave the rendered archive
-as 1,465,823 chars at 55 cycles, extrapolating to ~3.2 MB at the 120-cycle cap. Re-derived: the file
-is **1,514,984 chars** over a **30**-record `.consolidation-log.jsonl` — more chars at *fewer*
-cycles, so the recorded per-cycle premise does not hold — and the embedded cycle payload is
-**250,960 bytes (8,365/cycle) measured through `render_html._safe_embed`**, the encoder that
-actually writes it. The static shell is therefore ~83.5% of the file, so the cap bounds roughly
-**1.00 MB** of embedded payload, an order of magnitude less than the file it was extrapolated from.
-Nothing changed: `_ARCHIVE_CAP` already bounds growth, and this is a documentation correction.
+A recorded number was re-derived, and the first two attempts at replacing it were **wrong in a way
+that inverted the conclusion**. The staged plan gave the rendered archive as 1,465,823 chars at 55
+cycles, extrapolating to ~3.2 MB at the 120-cycle cap. Re-derived: the file is **1,514,984 chars**,
+the embedded payload is **1,301,208 chars (85.9%)** and the static shell is **213,776 chars
+(14.1%)** — so the payload dominates, and the plan's ~3.2 MB figure is **reinstated** rather than
+withdrawn (a file-size extrapolation gives 3.25 MB, the payload-plus-shell form 3.0 MB). The
+closure is exact: `_load_template()` is 213,791 chars, the `/*__CM_DATA__*/` placeholder it
+replaces is 15, and 213,791 − 15 + 1,301,208 = 1,514,984 byte for byte. What went wrong twice is
+worth stating because it is a general trap: the payload was measured as
+`len(_safe_embed(assemble_cycles({}, history)))`, an expression that measures neither half —
+`assemble_cycles` returns a **`(cycles, total)` tuple**, not the dict the template receives, and
+`history` came from the **native log alone** (30 records of the **56** that
+`iter_store_cycle_log` merges across three paths). The missing 26 records carry the `diffs`,
+`identity` and `budgets` blocks, so the payload read 5× small and the shell 6× large. Naming the
+encoder was not enough; the **object** encoded had to be named too. Nothing changed:
+`_ARCHIVE_CAP` already bounds growth, and this is a documentation correction.
 
 **A version claim no gate could see, now pinned.** `AGENTS.md`'s plugin table restates each
 manifest's version, and the docs gate read neither: its `v`-prefixed sweep needs a `v` the cell

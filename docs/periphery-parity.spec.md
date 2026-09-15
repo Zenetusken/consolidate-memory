@@ -289,24 +289,33 @@ not be a change to `placed_fact_names` or to the classifier it shares. `local_ar
 untouched: the relocation is correct, and the defect is that its sibling did not honor it.
 
 **Recorded, not changed — the archive size.** The plan carried this as a re-derivable
-number. It was re-derived and **did not reproduce**:
+number. Re-deriving it cost three attempts, and the first two were wrong in a way worth
+recording, because they inverted the conclusion:
 
 | figure | plan (recorded earlier) | measured this cycle |
 | --- | --- | --- |
 | `dashboards/index.html` | 1,465,823 chars at 55 cycles | **1,514,984 chars / 1,527,070 bytes** |
-| records the archive renders from | — | **30** (`.consolidation-log.jsonl`) |
-| embedded cycle payload | — | **250,960 bytes / 249,478 chars → 8,365 bytes/cycle** (`_safe_embed`, the artifact's own encoder) |
-| static shell | — | **1,265,506 chars ≈ 83.5% of the file** |
-| extrapolation at `_ARCHIVE_CAP = 120` | ~3.2 MB (of the file) | **~1.00 MB of embedded payload** |
+| records the archive renders from | — | **56**, merged from three log paths (below) |
+| embedded cycle payload | — | **1,301,208 chars → 85.9% of the file** |
+| static shell | — | **213,776 chars → 14.1%** (`_load_template()`, the HTML plus its JS bundles) |
+| extrapolation at `_ARCHIVE_CAP = 120` | ~3.2 MB (of the file) | **~2.79 MB of payload → ~3.0 MB of file** |
 
-More chars at *fewer* cycles contradicts the recorded per-cycle-growth premise: the static shell
-is ~83% of the file, so a file-size extrapolation models the shell's growth as the archive's, and
-the cap bounds a payload an order of magnitude smaller than the file. Both readings are recorded;
-the ~3.2 MB extrapolation is withdrawn rather than carried, since it does not follow from either
-measurement. **Nothing is changed** — the cap already bounds growth, and this is a
-documentation correction. (An earlier revision of this block recorded 253,020 bytes /
-8,434 per cycle / ~1.01 MB without naming its encoder; the payload is only re-derivable when the
-encoder is named, so the row now names it.)
+The payload is the dominant term, not the shell — and the closure is exact, which is what makes
+the split comfortable to state: `_load_template()` is 213,791 chars, the `/*__CM_DATA__*/`
+placeholder it replaces is 15, and 213,791 − 15 + 1,301,208 = **1,514,984**, the file byte for
+byte. Two earlier attempts at this row are withdrawn. The first used
+`len(_safe_embed(assemble_cycles({}, history)))` — a plausible-looking expression that measures
+neither half: `assemble_cycles` returns a **`(cycles, total)` tuple**, not the dict the template
+receives, and `history` was read from the **native log alone**. That combination yields 249,484
+chars (deterministic — re-measured twice), a **5.2× understatement**: no `diffs` sidecars, no
+`identity`, no `budgets`. Subtracting it
+from the file size attributed the difference to a "static shell" of 1,265,506 chars, which
+manufactured the ~83.5% and with it the claim that a file-size extrapolation models the shell
+rather than the archive. **The plan's ~3.2 MB figure is therefore reinstated, not withdrawn** (a
+pure file-size extrapolation gives 3.25 MB; the payload-plus-shell form gives 3.0 MB, and they
+agree because the payload is 86% of the file). The encoder still has to be named — an unnamed
+encoder is a number that cannot be re-derived — but naming the encoder is not enough: the
+**object** it encodes has to be named too, and that is the error this row records.
 
 ## 5. Pins
 
@@ -490,22 +499,27 @@ process wherever two trees are compared:
 | bare-matcher first picks | 6 docs: `CLAUDE.md`→`1.0.0`, `AGENTS.md`→`0.4.32`, `README.md`→`0.4.32`, `SKILL.md`→`127.0.0`, `harness-map.md`→none, `docs/1.0-preflight.spec.md`→`1.0.0` | `(?<!v)\d+\.\d+\.\d+`, first match per `LIVE_DOCS` entry |
 | multi-pointer lines in live `MEMORY.md` | 0 | `_LINK_RE`-equivalent scan |
 | live archive | 1,514,984 chars / 1,527,070 bytes | direct read of `dashboards/index.html` |
-| records the archive renders from | 30 | `.consolidation-log.jsonl`, non-blank lines |
-| embedded cycle payload | 250,960 bytes (8,365/cycle) | `len(_safe_embed(assemble_cycles({}, history)))` — **the artifact's own encoder**, not `json.dumps` defaults |
-| static shell | 1,265,506 chars (~83.5% of the file) | the two rows above, subtracted (both in chars) |
-| payload at the 120-cycle cap | ≈1.00 MB | 8,365 × `_ARCHIVE_CAP` |
+| records the archive renders from | **56** | `ms.iter_store_cycle_log` → `retention.cycle_log_read_paths`: **three** logs, not one |
+| embedded cycle payload | 1,301,208 chars (85.9%) | `len(_safe_embed(d))` where `d` is the dict the template receives — **not** `assemble_cycles`' `(cycles, total)` tuple |
+| static shell | 213,776 chars (14.1%) | `_load_template()`, minus the 15-char placeholder — the file closes exactly |
+| payload at the 120-cycle cap | ≈2.79 MB of payload / ~3.0 MB of file | 23,236 × `_ARCHIVE_CAP`, plus the shell |
 | live facts the firewall refuses | 3 (`ok: false`) | unrelated to this cycle; why the live plan is a refusal |
 
-The archive rows are **recorded, not changed** — the plan's decision for this site. Two method
-notes, because both change the number: the payload is measured with `render_html._safe_embed`,
-the function that actually writes it (`json.dumps` defaults differ by ~5%, compact separators by
-~5% the other way — an unnamed encoder is a number that cannot be re-derived), and the
-extrapolation is taken on the **payload**, not the file, because the static shell is ~83% of the
-file and a file-size extrapolation would model the shell's growth as if it were the archive's.
-(An earlier draft carried `1,465,823 chars at 55 cycles` from the planning document; the live
-file re-derives at `1,514,984` chars over a 30-record log, and the two pairings are not the same
-measurement. The stale one is dropped rather than reconciled — a number belonging to a
-measurement nobody can re-run is testimony, and this spec carries only the re-derivable ones.)
+The archive rows are **recorded, not changed** — the plan's decision for this site. The record
+count is the row that hid the error: `.consolidation-log.jsonl` holds **30** records and is the
+*native legacy* source only, while `iter_store_cycle_log` merges **three** paths — that legacy
+file (30), the plugin-data log keyed by slug (4), and the plugin-data log keyed by project id
+`p_<hash>` (22) — for **56**, the number the archive actually embeds. Reading the first path and
+calling it the source is what made the payload look small: the missing 26 records carry the
+`diffs`, `identity` and `budgets` blocks, and a 5× understatement of the payload became a 6×
+overstatement of the shell. Two method notes stand: the payload is measured with
+`render_html._safe_embed`, the function that actually writes it (`json.dumps` defaults differ by
+~2.2%, compact separators by ~3.0% the other way — an unnamed encoder is a number that cannot be
+re-derived), and the **object** encoded must be named alongside the encoder, since measuring the
+wrong one is how this row went wrong twice. (An earlier draft carried `1,465,823 chars at 55
+cycles` from the planning document; the live file re-derives at `1,514,984` chars. The stale one
+is dropped rather than reconciled — a number belonging to a measurement nobody can re-run is
+testimony, and this spec carries only the re-derivable ones.)
 
 The bare-matcher row is the reason the new plugin-table check exists: **four of those six picks
 are not the document's current version** (two are not versions at all — `1.0.0` is the versioning
