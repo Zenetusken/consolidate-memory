@@ -443,9 +443,13 @@ encoder is a number that cannot be re-derived — but naming the encoder is not 
    Two version couplings surfaced, both found in CI rather than reasoned about.
    `typing.is_typeddict` is **3.10+**, so the discriminator is a structural `_is_typeddict`
    (`issubclass(td, dict)` plus `__total__`) — one code path rather than a version switch, whose
-   agreement with the stdlib was checked on 3.10.12 across all **195** annotations and arguments
-   the walk inspects: **0** disagreements. And the walk is the first code in this repo that
-   **evaluates** `memory_status`'s annotations: that module carries
+   agreement with the stdlib was checked on 3.10.12 on every annotation the discriminator is
+   actually **invoked** on: **0** disagreements across **31** of the **200** annotations the walk
+   inspects — the other 169 being 138 scalars (compared by exact type instead) and 31 list-valued
+   keys (skipped). This sentence read **195** until review, a count no measurement produces: the
+   walk yields exactly 200 / 138 / 31, and the discriminator's `__args__` branch fires **0** times,
+   so the "arguments" half of the withdrawn phrase inspected nothing at all. And the walk is the
+   first code in this repo that **evaluates** `memory_status`'s annotations: that module carries
    `from __future__ import annotations` and 49 PEP 585 spellings, free precisely because nothing
    evaluates them — which `get_type_hints` ends, and 3.8 rejects the subscript. The walk supplies
    its own evaluation namespace so the check runs on every version CI validates (3.8–3.13);
@@ -675,7 +679,7 @@ not read the changed function; they are dated where they appear.)
 | multi-pointer lines in live `MEMORY.md` | 0 | `_LINK_RE`-equivalent scan |
 | live archive | 1,514,984 chars / 1,527,070 bytes | direct read of `dashboards/index.html` |
 | records the archive renders from | **56** | `ms.iter_store_cycle_log` → `retention.cycle_log_read_paths`: **three** logs, not one |
-| embedded cycle payload | 1,301,208 chars (85.9%) | `len(_safe_embed(d))` where `d` is the dict the template receives — **not** `assemble_cycles`' `(cycles, total)` tuple |
+| embedded cycle payload | 1,301,208 chars (85.9%) | `len(file) − len(shell)` against the shipped artifact. The encoder is `_safe_embed` and the object is the dict the template receives (**not** `assemble_cycles`' `(cycles, total)` tuple) — but that object is the *render-time* store state, so re-running `len(_safe_embed(d))` measures a different thing, not a stale number: **1,299,979 today**. The artifact identity is the re-derivable form |
 | static shell | 213,776 chars (14.1%) | `_load_template()`, minus the 15-char placeholder — the file closes exactly |
 | payload at the 120-cycle cap | ≈2.79 MB of payload / ~3.0 MB of file | 23,236 × `_ARCHIVE_CAP`, plus the shell |
 | live facts the firewall refuses | 3 (`ok: false`) | unrelated to this cycle; why the live plan is a refusal |
