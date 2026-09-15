@@ -542,7 +542,8 @@ cycle** — this suite's 1964 minus the twelve periphery-parity checks P1–P12 
 quotes it in that sense. The first row's total is 1953 rather than 1952 only because that arm
 mutates *code* against the *current* harness, so it sums with its own failures to 1964.)
 
-**Every figure this spec states is re-derived on this branch's revision** (2026-09-14), one tree
+**Every figure this spec states is re-derived on this branch's revision** (2026-09-14; §7's tables
+re-taken 2026-09-15 against the revision this branch ships), one tree
 per process wherever two trees are compared — except the two it labels as **plan testimony** where
 they appear (§2.1's `0 durable`, and §4's `plan (recorded earlier)` column): those have no artifact
 to re-derive from, and the label is the honest form of that, not an exemption from the rule.
