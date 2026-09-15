@@ -1,6 +1,6 @@
 # Record post-state — design-of-record
 
-**Status: revision 11 — for adversarial review** (2379 lines; revision 10 read 2266, revision 9 read
+**Status: revision 11 — for adversarial review** (2427 lines; revision 10 read 2266, revision 9 read
 1965, revision 8 read 1941, revision 6 read 1657). Target release: **v0.4.30 (patch)** — a repair to
 fields that were always meant to be measured; no schema, flag, or install-contract change.
 
@@ -106,10 +106,12 @@ its own item: **a count says how many moved; a probe says which.**
 **Revision 11 audits this branch's own claims — and falsifies one of this file's own counts.** Every
 claim this cycle added about its own code was followed to its source: each named count, each
 enumeration, each "never / only / single / exactly N", and each check's **name set against its
-condition**. **Six failed, and no *executing* gate could have reached any of them.** Five are claims in
-text that nothing executes: the two comments and the skill instruction below, plus this file's own §5.
-The sixth is not text — **A2** is a binding whose value *agreed* with its source, so only a check on
-the source's *shape* can see the gap that a comment ("mirrors `memory_status`") was papering over. A
+condition**. **Nine failed, and no *executing* gate could have reached any of them.** Eight are claims
+in text that nothing executes — A1 and A3 (the archive comment and its reader count), A4 (the skill
+instruction), A5 (a check's *label*), A6 (this file's §5), and A7, A8 and A9, the three the sweep
+found only once it was turned on the entry reporting it. **A2 is the one that is not text at all**: a
+binding whose value *agreed* with its source, so only a check on the source's *shape* can see the gap
+that a comment ("mirrors `memory_status`") was papering over. A
 `render_dashboard` comment asserted the HTML archive "never had this defect because it meters from its
 own constant": measured, the archive's gauge takes *both* of its operands from the record and uses the
 constant only as a fallback. Two `render_html` constants were unpinned literal copies of
@@ -120,20 +122,27 @@ leaf the script does not own" is false twice over — `budget.global_claude_md.*
 `budget.claude_md_hierarchy` are equally out of the script's reach — and false in the direction that
 acts, since its reader is the model one step from authoring the value §2.3 forbids. And a check's label
 claimed "*a live reference, not a hardcoded copy*" while its condition was `==`, which a copy passes on
-the day it is written. The sixth is this file's: §5 recorded `over_ceiling` as having "exactly two
+the day it is written. A6 is this file's own: §5 recorded `over_ceiling` as having "exactly two
 readers (the alarm line and `render_html`'s gauge)", and the census is **six sites in three files**.
 **The spec's count was wrong in the direction that matters** — it was offered as the reason the repair
 "cannot invent a display", and one unexamined reader is exactly what would let it. **The same sweep
 confirms the neighbouring count it could have falsified**: `ceiling_tokens` reads at **one** site, the
 `⚠ HARD CEILING` alarm. That pair is the only evidence that these numbers came from a census and not
 from a prior — a method that lowers one number and leaves the next one standing.
-**Two of the six are one gap seen from both sides.** A2 is the unpinned binding and A5 the check that
-appeared to hold it: because the constants' values *agreed* on the day, the only thing asserting they
-would keep agreeing was a comment ("mirrors `memory_status`") plus a check whose **name** claimed
-reference-ness while its **condition** compared values. So its repair is one structural thing — bind
-the three names to the one definition, and pin that binding where the property actually lives, in the
-source. **Census: 23 items, 11 pins, 12 guards** — P23 added, the equality half replacing and widening
-the v0.1.66 check it succeeds, so the census moves by exactly one. **None of the six changes a rendered
+**The last three came from turning the sweep on the ledger entry that reports them.** A7's probe, re-run
+as worded, prints the *pre-fix* number on the repaired tree. A8's renumbering left two live `F5`s in the
+prose it did not reach. A9 counted the A-list from the wrong end. A record of a sweep is a text
+surface like any other, and this one had been held to none of the sweep's own rules — which is the
+finding, because a ledger is exactly the document a reader trusts *instead of* re-running the census.
+**Three of the nine are one gap seen from three sides.** A2 is the unpinned binding, A5 the check that
+appeared to hold it, and A7 the evidence offered for the repair: because the constants' values
+*agreed* on the day, the only things asserting they would keep agreeing were a comment ("mirrors
+`memory_status`"), a check whose **name** claimed reference-ness while its **condition** compared
+values, and a probe description that cannot tell the repaired tree from the unrepaired one. So its
+repair is one structural thing — bind the three names to the one definition, pin that binding where
+the property actually lives, in the source, and **state the probe in the form that discriminates**.
+**Census: 23 items, 11 pins, 12 guards** — P23 added, the equality half replacing and widening
+the v0.1.66 check it succeeds, so the census moves by exactly one. **None of the nine changes a rendered
 byte on this tree**: the constants agreed on the day they were copied, which is precisely why nothing
 noticed they were copies.
 
@@ -2318,17 +2327,23 @@ are stated with the artifact they were measured on.
     can outrun its own closure, because it was stated per leaf over a set whose members are not all
     leaves.
 
-- **2026-09-14 — revision 11, the branch's own claims (six, and the sweep is the method).** No
+- **2026-09-14 — revision 11, the branch's own claims (nine, and the sweep is the method).** No
   reviewer filed this round. It is a pass over **what this cycle said about its own code**, because
   that is the one surface with no gate on it: a comment, a skill instruction and a check's *name* are
-  all never executed, so only following each one to its source can falsify it. Five of the six were
-  repaired before this entry was written; **A6 is repaired in the same revision that records it**, which
-  is the one shape a self-audit's ledger cannot avoid.
-  Findings are labeled **A1–A6, not F1–F6**: the F-series belongs to the round-3 review entry above,
-  and two live `F5`s in one file is the same ambiguity this revision exists to remove.
-  - **The sweep's shape.** Every added claim that names a **count, an enumeration, or a
-    "never / only / single / ONE"**, plus — and this is the sixth's origin — every check asked
-    *what would this print if its claim were false?*
+  all never executed, so only following each one to its source can falsify it. Six of the nine were
+  repaired before this entry was written. **A6 was recorded and repaired in one revision; A7–A9 were
+  found by holding *this entry* to the method it describes** — the one shape a self-audit's ledger
+  cannot avoid, arriving three more times.
+  Findings are labeled **A1–A9, not F1–F9**: the F-series belongs to the round-3 review entry above,
+  and two live `F5`s in one file is the same ambiguity this revision exists to remove — a rule this
+  entry's own prose broke, which is **A8**.
+  - **The sweep's shape — four questions, the last two learned here.** Every added claim that names a
+    **count, an enumeration, or a "never / only / single / ONE"**; every check asked *what would this
+    print if its claim were false?* (A5's origin); every measurement offered as **evidence for a
+    repair** asked whether it *distinguishes* the repaired tree from the unrepaired one (A7's origin —
+    the question the first three could not reach, because the sentence was true of the tree it was
+    written on); and finally **the entry read as a text surface in its own right**, since a ledger that
+    names findings is the one document whose referents nothing else sweeps (A8, A9).
   - **A1 — the archive "never had this defect".** Falsified by reading
     `dashboard.template.html`'s gauge: it takes **both** operands from the record
     (`budget.index.after_tokens` against `budget.index.budget_tokens`), its constant only as the
@@ -2338,15 +2353,16 @@ are stated with the artifact they were measured on.
     module that already imported `ms`. Not a prose defect but a claim nothing held: the comment said
     "mirrors `memory_status`", which is true as an intention and enforced by nothing. Repaired by
     making both a live reference, as `INDEX_CEILING_TOKENS` has been since v0.1.66 for this exact
-    reason. **The probe found a drift, not an error** — rebinding `ms.INDEX_TOKEN_BUDGET = 1600` left
-    `render_html` at `1500` — and the drift is invisible in any output on the current tree, because
-    the copies agreed on the day they were written.
+    reason. **The probe found a drift, not an error** — with `ms.INDEX_TOKEN_BUDGET` rebound to `1600`
+    *before* `render_html` is imported, `render_html` still read `1500` — and the drift is invisible
+    in any output on the current tree, because the copies agreed on the day they were written. The
+    timing is the whole discrimination, which is **A7**.
   - **A3 — "all three readers"** where `grep -rn over_ceiling` finds six, in three files, one of them
     (`dashboard.sections.js`) an enumeration that never reached it.
   - **A4 — SKILL.md's "the ONE budget leaf the script does not own."** False twice over
     (`budget.global_claude_md.*` and `budget.claude_md_hierarchy` are equally out of reach) and false
     in the direction that acts: its reader is the **model**, one step from authoring the value §2.3
-    forbids. The only one of the six whose reader is an actor rather than a reader, which is what
+    forbids. The only one of the nine whose reader is an actor rather than a reader, which is what
     makes a false count *actionable* rather than merely imprecise.
   - **A5 — a check whose label asserted one property while its condition tested another.** The v0.1.66
     check named "*a live reference, not a hardcoded copy*" and tested `==`. Found by asking each check
@@ -2359,10 +2375,40 @@ are stated with the artifact they were measured on.
     one unexamined reader is exactly what would let it. **All six test truthiness**, so falsy is
     render-identical to absent, which is the conclusion the paragraph needed and could not get from a
     count of two.
+  - **A7 — this list's own evidence for A2, which does not re-derive.** It reports the probe as
+    `rebinding ms.INDEX_TOKEN_BUDGET = 1600 left render_html at 1500` — the mutation without its
+    **timing**, which is the entire discrimination. Measured, one process per cell: rebinding *before*
+    the import reads **`1600`** on the repaired tree (the reference tracks its source) and **`1500`**
+    on the pre-fix tree; rebinding *after* reads **`1500` on both**. So the sentence, re-run by the next
+    reader on the repaired tree, prints the pre-fix number and reads as evidence that the repair is
+    inert. The source comment beside the repaired lines already carried the distinction — *"a retune is
+    pinned at the source (edit + re-import), never by monkeypatching this module's `ms`"* — and the
+    bullet now does too. **A pin is only a pin if it fails on pre-fix code; evidence is only evidence
+    if the two trees read differently**, and a probe that prints one number either way has a
+    measurement's shape and a prior's content. It is why this bullet states the *cell* and not just
+    the number.
+  - **A8 — the rename reached the bullets and not the prose.** The findings were renamed F→A *because*
+    "two live `F5`s in one file" is an ambiguity — and, four lines below that sentence, `F5` still
+    named the check-label finding in the mutation bullet while `F1`–`F4`/`F2`/`F6` went on naming the
+    rest in the chronology bullet. So the collision the rename removed from the headers survived in the
+    entry documenting the removal. `grep -n '\bF[1-6]\b'` was the census: **every `F`-reference still
+    naming a finding was stale**, and the only survivors were the two that talk *about* the rename.
+    A rule applied to a list and not to the sentences citing the list removes the label and keeps the
+    ambiguity — which is the defect A5 found one level down, in a check's name.
+  - **A9 — ordinals, pointing at the wrong thing in three places.** The sweep's-shape bullet called the
+    check-label question "the sixth's origin" — that is **A5**. The block introducing this revision used
+    "the sixth" for **two different findings ten lines apart**: "The sixth is not text" named **A2**,
+    "The sixth is this file's" named **A6**. And the control bullet below lets "the other four numbers"
+    mean anything, when no set of four is enumerated anywhere near it. An ordinal is a pointer that
+    re-points itself the moment the list it counts grows, and this list grew from the first pass's four
+    to nine while the entry was being written. It is why the findings above carry ids — and the pattern
+    in the three that rotted is that **each points at a list that is not on the page**: the ordinals
+    that survive ("the first three" questions, "the second ✗") are the ones whose list is enumerated
+    beside them.
   - **The one that held is the entry's control.** `ceiling_tokens` reads at **exactly one** site, the
     `⚠ HARD CEILING` alarm, checked in the same pass that falsified its neighbour. A method that
-    lowers every number it meets is not a census; the pair is what lets the other four numbers mean
-    anything.
+    lowers every number it meets is not a census; the pair is what makes the others measurements
+    rather than recollections.
   - **Pin census: 22 items / 10 pins / 12 guards → 23 items / 11 pins / 12 guards**; the smoke
     constant `1772 + 45 + 125` → `1773 + 45 + 125`. P23's predicate is **source-level by necessity**:
     the property it asserts — this name is bound from `ms` — is invisible to any comparison of values,
@@ -2372,8 +2418,10 @@ are stated with the artifact they were measured on.
   - **Mutation, recorded as the pair it is.** On a tree carrying the literals again: the equality half
     prints **✓** and P23 prints **✗** — `1941 passed, 2 failed`, the second ✗ being the census
     constant, which is how a suite fails when its surface moves and its census is still correct. The ✓
-    is the finding rather than a surprise: it is F5 reproduced in one line of output.
-  - **Chronology, because it is the honest part.** F1–F4 came from the first pass; F5 arrived while
-    auditing F2's repair, and F6 while writing this entry. The count in this revision's title is six
-    rather than the first pass's four because the sweep was not one pass — it was the same question
-    asked until the answers stopped arriving.
+    is the finding rather than a surprise: it is **A5** reproduced in one line of output.
+  - **Chronology, because it is the honest part.** A1–A4 came from the first pass; A5 arrived while
+    auditing A2's repair, and A6 while writing this entry. A7–A9 arrived only afterwards, from running
+    **the entry's own** claims through the sweep it had just run over everyone else's — so the title
+    counts nine rather than the first pass's four, because the sweep was never one pass: it was the
+    same question asked until the answers stopped arriving, **including the question asked of the entry
+    that had just finished asking it.**
