@@ -108,10 +108,10 @@ as fixed, because that pin is green pre-fix for a reason unrelated to the rule u
 `5072833` arm isolates the one defect review found *in the fix itself*, an unguarded store-root read
 that aborted `cm local rebuild-index` on an unreadable file instead of failing closed. That one is
 guarded rather than pinned, and the arm is how the guard is shown non-vacuous. Guards are verified
-**forward**, since
-no revert can fail them — restoring the retired ≥3-link floor turns **1952 passed, 11 failed**
-(including the guard that exists to notice exactly that), and corrupting the `SKILL.md` schema
-block's scalar types left the pre-extension harness at **1952 passed, 0 failed**. The cycle's own
+**forward**, since no revert can fail them — restoring the retired ≥3-link floor turns **1953
+passed, 11 failed** (including the guard that exists to notice exactly that), and corrupting the
+`SKILL.md` block's scalar types still leaves the pre-extension harness at **1952 passed, 0 failed**.
+The cycle's own
 premise was re-checked against the tree rather than against the plan that proposed it: the staged
 plan asserted a constraint — *"the tempting fix is a no-op, because `_is_archive_index_text` floors
 at ≥3 links"* — that v0.4.31 had already removed, and carrying it would have routed the fix around
