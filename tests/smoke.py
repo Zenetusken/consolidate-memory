@@ -1537,6 +1537,32 @@ check("SKILL↔TypedDict: schema-block marker keys == Marker TypedDict (incl. be
 # so get_type_hints is what makes them comparable at all.)
 import typing as _typing  # noqa: E402
 
+# Python 3.8 cannot subscript the builtin containers, and `memory_status` spells its annotations
+# in the PEP 585 form (`list[str]`) on the strength of `from __future__ import annotations` — free
+# there, because nothing in that module ever evaluates an annotation. This walk is the first thing
+# that does, and 3.8 rejects it (`TypeError: 'type' object is not subscriptable`, measured in CI
+# on `test (python 3.8)` and reproduced on a real 3.8.20). The evaluation namespace supplies the
+# `typing` aliases for the five builtin containers, so the ForwardRefs resolve on every version CI
+# runs instead of only on 3.9+. Respelling the 49 annotations in `memory_status` would be fixing
+# production code to accommodate a test.
+_EVAL_NS = {"list": _typing.List, "dict": _typing.Dict, "set": _typing.Set,
+            "tuple": _typing.Tuple, "frozenset": _typing.FrozenSet}
+
+
+def _is_typeddict(td: object) -> bool:
+    """`typing.is_typeddict` is 3.10+, so test structurally rather than version-switch.
+
+    A version-switched helper would give CI two paths, and a divergence between them would be
+    invisible — so there is one path, and its agreement with the stdlib is measured instead.
+    TypedDict sets `__total__` on the class it builds. The only non-TypedDict that would pass
+    `issubclass(td, dict)` is the builtin `dict` itself, which carries no `__total__` (and never
+    arrives here as a sole annotation — `data: dict` shapes are skipped one level up).
+
+    Measured on 3.10.12: this agrees with `typing.is_typeddict` on every annotation the walk
+    visits, and the walk's reach is unchanged at 138 scalars — the same figure the block pin and
+    the spec state. 3.8/3.9 have no `is_typeddict` to compare against, which is why this exists."""
+    return isinstance(td, type) and issubclass(td, dict) and hasattr(td, "__total__")
+
 
 def _td_sub(ann: object) -> object:
     """The TypedDict a nested schema-block value is judged against, or None.
@@ -1544,17 +1570,17 @@ def _td_sub(ann: object) -> object:
     A directly TypedDict-typed key has no `__args__` (only Optional[...]/dict[...] wrappers do),
     so both shapes are handled — otherwise the walk visits 3 scalars instead of 138 and reads
     as a pass."""
-    if _typing.is_typeddict(ann):
+    if _is_typeddict(ann):
         return ann
     for _a in getattr(ann, "__args__", ()):
-        if _typing.is_typeddict(_a):
+        if _is_typeddict(_a):
             return _a
     return None
 
 
 def _scalar_drift(block: dict, td: object, path: str = "") -> list:
     out: list = []
-    hints = _typing.get_type_hints(td)
+    hints = _typing.get_type_hints(td, localns=_EVAL_NS)
     for k in sorted(set(block) & set(hints)):
         ann, val = hints[k], block[k]
         if isinstance(val, dict):
