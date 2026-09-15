@@ -43,14 +43,17 @@ def _load_template() -> str:
     return template
 _PLACEHOLDER = "/*__CM_DATA__*/"
 
-INDEX_TOKEN_BUDGET = 1500       # mirrors memory_status.INDEX_TOKEN_BUDGET (the always-loaded MEMORY.md index)
-CLAUDE_MD_TOKEN_BUDGET = 4000   # mirrors memory_status.CLAUDE_MD_TOKEN_BUDGET (the root CLAUDE.md)
-# v0.1.66: a live REFERENCE, not a hardcoded copy like the two constants above — `ms` is already
-# imported in this module (unlike when INDEX_TOKEN_BUDGET/CLAUDE_MD_TOKEN_BUDGET were first added), so
-# a literal mirror here would be a needless, structurally-avoidable drift risk a code-review workflow
-# flagged (2026-07-04): if INDEX_CEILING_FRACTION is ever retuned, this stays correct with no smoke pin
-# to remember updating by hand.
-INDEX_CEILING_TOKENS = ms.INDEX_CEILING_TOKENS
+# The budget constants are LIVE REFERENCES into `memory_status` — ONE definition, every reader, so a
+# retune of the constant can never leave this module holding the retired number. That has been this
+# module's stated preference since v0.1.66, when INDEX_CEILING_TOKENS became a reference because a
+# literal mirror is "a needless, structurally-avoidable drift risk" a code-review workflow flagged
+# (2026-07-04). The other two stayed hardcoded copies (1500 / 4000) only because they predate this
+# module's `ms` import — and nothing pinned either pair. Fixed v0.4.30. Bound at IMPORT, like any
+# module constant: a runtime rebinding of `ms.X` is NOT seen here, so a retune is pinned at the source
+# (edit + re-import), never by monkeypatching this module's `ms`.
+INDEX_TOKEN_BUDGET = ms.INDEX_TOKEN_BUDGET          # the always-loaded MEMORY.md index
+CLAUDE_MD_TOKEN_BUDGET = ms.CLAUDE_MD_TOKEN_BUDGET  # the root CLAUDE.md
+INDEX_CEILING_TOKENS = ms.INDEX_CEILING_TOKENS      # 0.6 × the native 25KB cap — the harm rung
 
 
 def _safe_embed(data: dict) -> str:

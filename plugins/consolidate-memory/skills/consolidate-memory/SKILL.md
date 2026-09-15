@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.29** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.30** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -830,8 +830,16 @@ just writes but also `skipped` and `reconciled` ones, since "what I deliberately
 NOT record, and why" is part of the dashboard's signal. Each:
 `{"action": "...", "tier": "...", "store": "...", "scope":
 "project-local|stack-general|user-global", "name": "...", "reason": "...",
-"citation": "...", "files": [...]}`. After writing, update `budget.*.after` (CLAUDE.md
-lines, index lines/bytes, recall-fact count).
+"citation": "...", "files": [...]}`. After writing, update the one budget leaf that is still
+yours to measure — `budget.claude_md.after` / `after_tokens` (the repo `CLAUDE.md`'s
+lines/tokens). Two other budget leaves are equally out of the script's reach, and they are not
+yours either: `budget.global_claude_md.*` measures the *user-global* CLAUDE.md, and
+`budget.claude_md_hierarchy` has no `after` key to write — so don't author them to fill the gap.
+The store-local post-state (`budget.index.*`, `budget.recall_facts.after`,
+`health.schema_drift`, and the one store-derived leaf in `remediation` — `over_ceiling`)
+is **script-owned**: `render_dashboard.py --persist` re-measures it
+from the store immediately before validating the record, so a hand-written value there is
+redundant — and, measured, the one that drifts.
 
 **`files` (v0.1.72) — declare, don't make the dashboard guess.** When an entry's action changed a
 file `memory_status.py --diffs` tracks (a fact body, `MEMORY.md`, a `claude_md/*` file, a repo doc),
@@ -1024,8 +1032,13 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    numbers (v0.4.21):** the verdict MUST derive its counts from the script-seeded fields —
    "dormant — observed N · eligible M" from `windows_observed`/`eligible` — never a hand-invented
    count; the validator flags a probative-count phrase that contradicts the block.
-   Finally set `budget.*.after`/`after_tokens`/`over` from a final `memory_status.py` read
-   so the always-loaded gauge and ⚠ reflect the post-write state (AFTER any dispositions above).
+   Finally set `budget.claude_md.after`/`after_tokens`/`over` from a final `memory_status.py` read
+   so the always-loaded gauge and ⚠ reflect the post-write state (AFTER any dispositions above) —
+   **the one budget leaf still yours.** Everything store-local (`budget.index.*`,
+   `budget.recall_facts.after`, `health.schema_drift`, `remediation.over_ceiling`) is re-measured
+   by `render_dashboard.py
+   --persist` at the terminal render; leave it alone. `budget.claude_md` stays here because it
+   measures the REPO's `CLAUDE.md`, and the refresh holds only the store handle.
 5. **Update the high-water mark**: script-write `commit` + ISO
    `timestamp` into the native store's `.consolidation-state.json` (the
    `native_memory_dir` Phase 0 / `cm doctor` printed — never hand-build a

@@ -3742,13 +3742,46 @@ import io as _ioB  # noqa: E402
 import json as _jsonB  # noqa: E402
 import os as _osB  # noqa: E402
 import tempfile as _tfB  # noqa: E402
+import ast as _ast30  # noqa: E402
 
 # (1) constant derivation + the render_html mirror
 check("v0.1.66 ceiling: ONE canonical est-token threshold from the native byte cap (0.6 × 25KB/4 = 3840, > target)",
       ms.INDEX_CEILING_TOKENS == round(ms.INDEX_CEILING_FRACTION * ms.NATIVE_INDEX_CAP_BYTES / 4) == 3840
       and ms.INDEX_CEILING_TOKENS > ms.INDEX_TOKEN_BUDGET)
-check("v0.1.66 ceiling: render_html references ms.INDEX_CEILING_TOKENS directly (a live reference, not a hardcoded copy)",
-      rhtml.INDEX_CEILING_TOKENS == ms.INDEX_CEILING_TOKENS)
+# v0.4.30: this was one check whose LABEL read "a live reference, not a hardcoded copy" while its
+# CONDITION was `==` — a label wearing a predicate that cannot distinguish the two, since a hardcoded
+# copy agrees on the day it is written (which is exactly how the two copies this pass removed stayed
+# invisible). Split into the two predicates it conflated: this one is the drift half, widened to all
+# three constants (the other two had no runtime check at all); the source pin below is the other half.
+check("v0.4.30 budget constants: render_html's three AGREE with memory_status at runtime (the drift half — "
+      "a literal copy passes THIS and fails the source pin below)",
+      rhtml.INDEX_TOKEN_BUDGET == ms.INDEX_TOKEN_BUDGET
+      and rhtml.CLAUDE_MD_TOKEN_BUDGET == ms.CLAUDE_MD_TOKEN_BUDGET
+      and rhtml.INDEX_CEILING_TOKENS == ms.INDEX_CEILING_TOKENS)
+
+
+def _rh_budget_refs30():
+    """{name: is-a-live-reference} for render_html's three budget constants, read from the SOURCE."""
+    _tree30 = _ast30.parse((ROOT / "plugins" / "consolidate-memory" / "scripts"
+                            / "render_html.py").read_text(encoding="utf-8"))
+    _want30 = ("INDEX_TOKEN_BUDGET", "CLAUDE_MD_TOKEN_BUDGET", "INDEX_CEILING_TOKENS")
+    _refs30 = {}
+    for _node30 in _tree30.body:
+        if not (isinstance(_node30, _ast30.Assign) and len(_node30.targets) == 1):
+            continue
+        _tgt30 = _node30.targets[0]
+        if isinstance(_tgt30, _ast30.Name) and _tgt30.id in _want30:
+            _val30 = _node30.value
+            _refs30[_tgt30.id] = (isinstance(_val30, _ast30.Attribute)
+                                  and isinstance(_val30.value, _ast30.Name)
+                                  and _val30.value.id == "ms")
+    return _refs30
+
+
+check("v0.4.30 budget constants: render_html BINDS all three from `ms` in the source, not literal copies "
+      "(fails on pre-fix code, where two of the three were 1500 / 4000)",
+      _rh_budget_refs30() == {"INDEX_TOKEN_BUDGET": True, "CLAUDE_MD_TOKEN_BUDGET": True,
+                              "INDEX_CEILING_TOKENS": True})
 
 # (2) _would_net_grow at the ceiling — the NEW call-site behavior (the v0.1.38 target-default pins above
 # are UNCHANGED calls at the UNCHANGED default; these pass the ceiling explicitly, as run() now does).
@@ -16614,10 +16647,596 @@ check("v0.4.29 pin 41 arm B: a `<…>` placeholder in a prose COMMAND span is QU
       + (f" · first: {next((w for w in _prose_why41 if 'placeholder' in w), '')}"
          if _prose_place41 else ""), _prose_place41 == 0)
 
+# ── v0.4.30 record post-state (docs/record-post-state.spec.md §3) ─────────────────────────────
+# The twenty-two items, one `check` per item, so the census moves by exactly 22 —
+# `passed + failed + 1 == 1750 + 45 + 125` becomes `1772 + 45 + 125`. P1 · P2 · P6 · P7 · P13 ·
+# P15 · P16 · P18 · P20 · P21 are PINs, and each is asserted on a MEASURED pre-fix/post-fix pair
+# (the numbers in the names are that pair, not a recollection). The other twelve are GUARDs, each
+# labeled with the revision it DOES move on — a check that cannot flip on any revision is not a
+# pin and must not inflate the count. P19 and P22 name REVISION 9 by hand: both are defects
+# introduced by this cycle's own first implementation, found by adversarial review of it, and
+# measured RED on it — the "revision" a guard moves on need not be hypothetical.
+#
+# The 23rd is the prose audit's own (revision 11): this branch removed two unpinned literal copies of
+# `memory_status`'s budget constants and left the replacement unpinned too, while the one v0.1.66 check
+# that looked like its pin tested `==` — which a literal copy passes. Reference-ness is a SOURCE
+# property, so the new pin reads the module's AST. `1772` → `1773`.
+#
+# P1–P5 + P8/P9/P11/P15/P18–P22 run IN PROCESS: the validator, the refresh and the archive
+# predicate are all importable, and P8/P9/P18–P22 need either a monkeypatch or an in-place
+# mutation assertion, which no subprocess can be handed. P6/P7/P10/P12–P14/P16/P17 drive a real
+# `--persist` against a temp store holding a real `MEMORY.md` plus two fact files — the shape §3
+# states the existing persist helpers CANNOT supply: `_pdir54`, `_p41` and `_p41b` each persist
+# into an EMPTY dir, which now takes the leave-as-authored path, so every one of those pins would
+# go green while testing nothing.
+import retention as _ret30  # local: the module-level `ret` alias lands later in this file
+
+
+def _idx30(before: int, after: int) -> dict:
+    return {"before_tokens": before, "after_tokens": after}
+
+
+def _op30(path, store, delta: int) -> "ms.AuditOp":
+    return {"path": path, "store": store, "op": "modified", "token_delta": delta}
+
+
+def _mkrec30(before: int, after: int, path: str = "memory/MEMORY.md", store: str = "memory",
+             delta: int = -52) -> dict:
+    """The minimal record the reconcile invariant reads: two operands on `budget.index` and the
+    scripted audit's own row for the same file."""
+    return {"budget": {"index": _idx30(before, after)},
+            "audit": {"operations": [_op30(path, store, delta)]}}
+
+
+def _why30(rec: object) -> "list[str]":
+    """ONLY the v0.4.30 invariant's messages — the rest of the validator is pinned elsewhere, and
+    a check that counted them would go red for an unrelated reason.
+
+    `object`, not a record type: P5 feeds it deliberately malformed rows, and the callee's own
+    signature is `validate_cycle_record(record: object)` — a record type here would make the
+    malformed-input item unrepresentable rather than tested."""
+    return [w for w in ms.validate_cycle_record(rec) if "contradicts the scripted audit" in w]
+
+
+# (P1) the self-falsifying pair — the C3 class, certified by every gate before this cycle.
+_w30_p1 = _why30(_mkrec30(1746, 1746))
+check("v0.4.30 P1 (PIN): the self-falsifying record warns — `1746 → 1746` beside an audit "
+      "`token_delta` of −52 (pre-fix: silent, so the record falsified its own gauge unremarked)",
+      len(_w30_p1) == 1 and "(after=1746, before=1746, audit delta=-52)" in _w30_p1[0])
+
+# (P2) the spelling every FIXTURE uses. Not a gate-protection pin — measured, no §4 gate reddens
+# under the exact-spelling matcher, because that matcher finds 0 of the fixture's 8 index rows and
+# goes SILENT rather than wrong. It is a pin on COVERAGE: without it the check is invisible to
+# every fixture-shaped input, which is to say to P1, P3 and P5 themselves.
+_w30_p2 = _why30(_mkrec30(1746, 1746, path="MEMORY.md"))
+check("v0.4.30 P2 (PIN, coverage): the bare `MEMORY.md` spelling warns IDENTICALLY — one leading "
+      "`memory/` normalized, not the record (pre-fix: silent)",
+      _w30_p2 == _w30_p1 and len(_w30_p2) == 1)
+
+# (P3) GUARD — green pre-fix by construction; its referent is any revision of the CHECK itself, so
+# it is the one that catches a matcher warning on arithmetic that agrees.
+check("v0.4.30 P3 (GUARD, any revision of the check): a consistent record is silent — "
+      "`1746 → 1694` beside a delta of −52, both spellings",
+      _why30(_mkrec30(1746, 1694)) == [] and _why30(_mkrec30(1746, 1694, path="MEMORY.md")) == [])
+
+# (P4) GUARD — moves on C8's VARIANT 2 (basename + store-blind), which no shipped revision has.
+# This guard is the sole justification for C8's store conjunct, so both spellings are asserted.
+check("v0.4.30 P4 (GUARD, C8 variant 2 = basename + store-blind): a `store: repo_doc` row never "
+      "satisfies the arm — the repo's own MEMORY.md is not the store's index, prefixed or bare",
+      _why30(_mkrec30(1746, 1746, path="MEMORY.md", store="repo_doc")) == []
+      and _why30(_mkrec30(1746, 1746, store="repo_doc")) == [])
+
+# (P5) GUARD — its referent is a revision that adds the check WITHOUT §2.4's abstentions (on
+# pre-fix code there is no check at all, so nothing can raise). The junk-row arm is the one with a
+# live failure mode behind it: `{"path": null}` raises AttributeError in a naive matcher, INSIDE a
+# validator whose contract is that it never raises.
+_p5_30 = [
+    {"budget": {"index": _idx30(1746, 1746)}},                                   # no audit block
+    {"budget": {"index": {"before_tokens": "1746", "after_tokens": 1746}},
+     "audit": {"operations": [_op30("MEMORY.md", "memory", -52)]}},              # str, not int
+    {"budget": {"index": _idx30(1746, 1746)}, "audit": {"operations": [{"path": None}]}},
+    {"budget": {"index": _idx30(1746, 1746)},
+     "audit": {"operations": [{"path": "MEMORY.md", "store": "memory"}]}},       # no token_delta
+    {"budget": {"index": _idx30(1746, 1746)},
+     "audit": {"operations": [_op30("MEMORY.md", "memory", -52),
+                              _op30("memory/MEMORY.md", "memory", -52)]}},       # two rows, one file
+    {"budget": {"index": _idx30(1746, 1746)},
+     "audit": {"operations": [_op30("memory/AA/MEMORY.md", "memory", -52)]}},    # nested, not the index
+    {"budget": {"index": _idx30(True, 1746)},
+     "audit": {"operations": [_op30("MEMORY.md", "memory", -52)]}},              # bool is an int
+]
+_w30_p5: list = []
+for _r30 in _p5_30:
+    try:
+        _w30_p5.append(_why30(_r30))
+    except Exception as _exc30:                      # a raise IS the failure this item names
+        _w30_p5.append(_exc30)
+check('v0.4.30 P5 (GUARD, a check added without §2.4\'s abstentions): absence is never failure — '
+      'no audit block · a str `before_tokens` · a `{"path": null}` row · a row with no delta · two '
+      'rows normalizing onto one file · a nested path · a bool operand → all silent, none raising'
+      + (f" · first: {_w30_p5[0]}" if any(_w30_p5) else ""),
+      all(_w == [] for _w in _w30_p5))
+
+with _tf43.TemporaryDirectory() as _td30:
+    _home30 = Path(_td30) / "home"
+    _home30.mkdir()
+    _env30 = {**_os53.environ, "HOME": str(_home30)}
+    _scripts30 = ROOT / "plugins" / "consolidate-memory" / "scripts"
+
+    def _run30(*args: str) -> "tuple[str, str, int]":
+        _p30 = _sp53.run([sys.executable, str(_scripts30 / "render_dashboard.py"), *args],
+                         capture_output=True, text=True, timeout=60, env=_env30)
+        return _p30.stdout, _p30.stderr, _p30.returncode
+
+    # The index the fixture writes, and the three leaves the refresh must re-derive from it. These
+    # are computed INDEPENDENTLY of the code under test — `splitlines` / `encode` / `est_tokens` are
+    # the definitions, not a second call into the refresh — so a refresh that agreed with itself
+    # while disagreeing with the file could not pass.
+    _T30 = ("# Memory Index\n\n- [alpha](alpha.md) — first fact\n"
+            "- [beta](beta.md) — second fact\n")
+    _L30, _B30, _K30 = len(_T30.splitlines()), len(_T30.encode()), ms.est_tokens(_T30)
+    _HOOK30, _CLIFF30 = ms.hook_stats(_T30), ms.cliff_pct(_B30, _L30)
+
+    def _store30(name: str, *, index: bool = True) -> Path:
+        """A store the refresh can actually MEASURE: a real `MEMORY.md` — plus two fact files,
+        because the `recall_facts` leaf counts them and `schema_drift` needs a pointer set. §3
+        states this once as a property of the fixture: its failure mode is uniform, and it is
+        every one of these pins going green while testing nothing."""
+        _d30 = Path(_td30) / name
+        _d30.mkdir(parents=True, exist_ok=True)
+        if index:
+            (_d30 / "MEMORY.md").write_text(_T30, encoding="utf-8")
+        for _st30 in ("alpha", "beta"):
+            (_d30 / f"{_st30}.md").write_text(
+                f"---\nname: {_st30}\ndescription: {_st30} fact\n---\nbody\n", encoding="utf-8")
+        return _d30
+
+    def _log30(store: Path) -> Path:
+        return _ret30.cycle_log_write_path(store, environ=_env30)
+
+    def _lines30(store: Path) -> int:
+        _p30 = _log30(store)
+        return len(_p30.read_text(encoding="utf-8").strip().splitlines()) if _p30.is_file() else 0
+
+    def _last30(store: Path) -> dict:
+        return _json43.loads(_log30(store).read_text(encoding="utf-8").strip().splitlines()[-1])
+
+    def _rec30_full(tokens: int = 1746, lines: int = 40) -> "ms.CycleRecord":
+        """A CLEAN, arc-complete record carrying a deliberately stale index family — the shape a
+        dream authors when its Phase-0 read predates its own writes. Exit 0 is a precondition of
+        reading the log at all, and the exit ladder short-circuits before the block below."""
+        _r30 = rd._demo_record()
+        _r30["dream"] = {"sleep": "s", "wake": "w",
+                         "beats": ["b1", "b2", "b3", "b4", "b5", "surfacing"]}
+        _r30["verification"] = {"confirmed": 3, "corrected": 0, "unverifiable": 0}
+        _r30["scope"] = {"git_commits": 1, "session_candidates": 1}
+        _r30.pop("identity", None)
+        _r30["budget"]["index"] = {"before_lines": 40, "after_lines": lines,
+                                   "before_tokens": 1746, "after_tokens": tokens,
+                                   "budget_tokens": 1200, "over": True,
+                                   "fat_hooks": 9, "hook_max_tokens": 99, "cliff_pct": 28}
+        _r30["budget"]["recall_facts"] = {"before": 31, "after": 31}
+        _r30["audit"] = {"operations": [_op30("memory/MEMORY.md", "memory", -52)]}
+        _r30["marker"] = {"commit": "v0430pin", "timestamp": "2026-09-14T00:36:00Z"}
+        return _r30
+
+    # (P6/P7) one fixture, two items: P6 owns the index family, P7 the three leaves LINKED to it.
+    _sA30, _fA30 = _store30("a"), Path(_td30) / "a.json"
+    _fA30.write_text(_json43.dumps(_rec30_full()), encoding="utf-8")
+    _soA30, _seA30, _rcA30 = _run30(str(_fA30), "--persist", str(_sA30))
+    _ixA30 = _last30(_sA30).get("budget", {}).get("index", {})
+    _fresh30 = ms.store_local_index(_sA30)["index_lb"]      # (lines, bytes, tokens)
+    check("v0.4.30 P6 (PIN): the refresh is REAL — the logged `after_tokens`/`after_lines`/"
+          "`after_bytes` are a fresh measurement of `<store>/MEMORY.md`, not the seed's mirror "
+          f"(pre-fix: 1746 / 40 / absent; post-fix: {_K30} / {_L30} / {_B30})",
+          _rcA30 == 0
+          and (_ixA30.get("after_lines"), _ixA30.get("after_bytes"), _ixA30.get("after_tokens"))
+          == (_L30, _B30, _K30) == (_fresh30[0], _fresh30[1], _fresh30[2]))
+    check("v0.4.30 P7 (PIN): the CLOSURE — `cliff_pct`/`fat_hooks`/`hook_max_tokens` on the logged "
+          "line come from the SAME read as the index family, so no two linked values on the gauge "
+          "line can disagree (pre-fix: 28 / 9 / 99, the stale mirror beside a fresh anchor)",
+          _ixA30.get("cliff_pct") == _CLIFF30 and _ixA30.get("fat_hooks") == _HOOK30[0]
+          and _ixA30.get("hook_max_tokens") == _HOOK30[1]
+          and _ixA30.get("over") == (_K30 > ms.INDEX_TOKEN_BUDGET)
+          and _last30(_sA30)["budget"]["recall_facts"]["after"] == 2)
+
+    # (P8) the never-blocks contract, driven through `main` so the EXIT CODE is the real one.
+    _sH30, _fH30 = _store30("h8"), Path(_td30) / "h8.json"
+    _fH30.write_text(_json43.dumps(_rec30_full()), encoding="utf-8")
+    _authored8 = _json43.loads(_fH30.read_text(encoding="utf-8"))
+    _orig_sli30 = ms.store_local_index
+
+    def _boom30(*_a, **_k):
+        raise RuntimeError("forced measurement failure (smoke)")
+
+    ms.store_local_index = _boom30
+    _o30, _e30 = _io73.StringIO(), _io73.StringIO()
+    _argv30, _w30_save = sys.argv, (rd._COLOR, rd._ASCII, rd.W)
+    try:
+        sys.argv = ["render_dashboard.py", str(_fH30), "--persist", str(_sH30)]
+        with _ctx73.redirect_stdout(_o30), _ctx73.redirect_stderr(_e30):
+            _rc8 = rd.main()
+    finally:
+        ms.store_local_index = _orig_sli30
+        sys.argv = _argv30
+        rd._COLOR, rd._ASCII, rd.W = _w30_save
+    _skip8 = [l for l in _e30.getvalue().splitlines() if "post-state refresh skipped" in l]
+    _after8 = _json43.loads(_fH30.read_text(encoding="utf-8"))
+    # `narration` is script-injected on every persist (pinned by its own v0.4.19 checks), so it is
+    # excluded from the comparison — everything the refresh could have written is not.
+    _after8.pop("narration", None)
+    _authored8.pop("narration", None)
+    check("v0.4.30 P8 (GUARD, a refresh added without the handler): the refresh NEVER BLOCKS — a "
+          "raising measurement leaves `main`'s exit at 0, every leaf exactly as authored (no "
+          "fabricated half-state), and exactly one stderr line"
+          + ("" if (_rc8 == 0 and len(_skip8) == 1 and _after8 == _authored8)
+             else f" · rc={_rc8} skip_lines={len(_skip8)}"),
+          _rc8 == 0 and len(_skip8) == 1 and _after8 == _authored8
+          and _after8["budget"]["index"]["after_tokens"] == 1746)
+
+    # (P9) no partial state. The failure is forced on the LAST measurement, so the index and
+    # recall scratch dicts are already built when it throws — which is exactly where an
+    # incrementally-assigning revision would have left half a post-state on the record.
+    _sI30, _rI30 = _store30("h9"), _rec30_full()
+    _rI30["health"] = {"slug_orphans": [], "schema_drift": {"missing_node_type": 0}}
+    _authored9 = _copy.deepcopy(_rI30)
+    _orig_sd30 = ms.schema_drift
+
+    def _boom_sd30(*_a, **_k):
+        raise RuntimeError("forced failure on the LAST of the nine measurements (smoke)")
+
+    ms.schema_drift = _boom_sd30
+    _e9 = _io73.StringIO()
+    try:
+        with _ctx73.redirect_stderr(_e9):
+            rd._refresh_post_state(_rI30, _sI30)
+    finally:
+        ms.schema_drift = _orig_sd30
+    check("v0.4.30 P9 (GUARD, a revision that assigns incrementally): NO PARTIAL STATE — with the "
+          "index and recall leaves already measured and the last one throwing, every leaf on the "
+          "record is still its authored value and one warning is printed",
+          _rI30 == _authored9
+          and len([l for l in _e9.getvalue().splitlines() if "post-state" in l]) == 1)
+
+    # (P10) the gate. A preview render IS the dream's before-state, so it must survive untouched.
+    _sB30, _fB30 = _store30("b"), Path(_td30) / "b.json"
+    _fB30.write_text(_json43.dumps(_rec30_full()), encoding="utf-8")
+    _beforeB30 = _fB30.read_text(encoding="utf-8")
+    _soB30, _seB30, _rcB30 = _run30(str(_fB30))            # no --persist
+    check("v0.4.30 P10 (GUARD, a revision that widens the gate to previews): a preview render "
+          "keeps the BEFORE state — the record file is byte-identical and no refresh ran",
+          _rcB30 == 0 and _fB30.read_text(encoding="utf-8") == _beforeB30
+          and "post-state refresh" not in _seB30 and _lines30(_sB30) == 0)
+
+    # (P11) the Out-list. In process, so the comparison is a deep equality on the authored record
+    # rather than a parse of a written file.
+    _rW30 = _rec30_full()
+    _rW30["budget"]["claude_md"] = {"before": 40, "after": 41, "before_tokens": 1180,
+                                    "after_tokens": 1210, "budget_tokens": 4000, "over": False}
+    # Two literals here were shapes no producer emits — `claude_md_hierarchy.files` is a LIST of
+    # `{path, tokens}` (with `worst_path` a DIRECTORY, not the filename) and `Entry` carries no
+    # `claim` key at all. Nothing caught them until `_rec30_full` was annotated as the
+    # `ms.CycleRecord` it actually returns: the block's fixtures were outside the contract the
+    # TypedDicts define, and a fixture that is not a record the product can produce tests a
+    # scenario the product cannot reach.
+    _rW30["budget"]["claude_md_hierarchy"] = {
+        "files": [{"path": "CLAUDE.md", "tokens": 7}],
+        "worst_path": ".", "worst_path_tokens": 7, "total_files": 1}
+    _rW30["health"] = {"slug_orphans": ["a"], "schema_drift": {"missing_node_type": 0}}
+    _rW30["maintenance"] = {"pivoted": True}
+    _rW30["entries"] = [{"name": "c"}]
+    _rW30["narration"] = {"verdict": "verified", "gaps": []}
+    _rW30["outcome"] = "MAINTENANCE PASS"
+    _rW30["health"]["slug_orphans"] = ["a"]
+    _keepW30 = _copy.deepcopy(_rW30)
+    rd._refresh_post_state(_rW30, _store30("w"))
+    _out30 = ["marker", "entries", "verification", "audit", "network", "distill", "usage",
+              "demotion", "workflow_proposals", "preflight", "narration", "dream", "scope",
+              "rigor", "cross_project", "outcome", "maintenance"]
+    _drift30 = [_k for _k in _out30 if _rW30.get(_k) != _keepW30.get(_k)]
+    _drift30 += [_k for _k in ("claude_md", "claude_md_hierarchy", "global_claude_md")
+                 if _rW30["budget"].get(_k) != _keepW30["budget"].get(_k)]
+    if _rW30["health"].get("slug_orphans") != _keepW30["health"].get("slug_orphans"):
+        _drift30.append("health.slug_orphans")
+    check("v0.4.30 P11 (GUARD, a revision that block-splices the Out-list): every §2.2 Out-list "
+          "key is byte-identical across a refresh — `marker` FIRST among them, since the log's "
+          "`(commit, timestamp)` idempotence rides on it"
+          + (f" · drifted: {_drift30}" if _drift30 else ""),
+          _drift30 == [] and _rW30["budget"]["index"]["after_tokens"] == _K30)
+
+    # (P12) idempotence. The refresh must not have touched `marker`, or the pair-keyed duplicate
+    # detection that R4 depends on would stop matching.
+    _sJ30, _fJ30 = _store30("i12"), Path(_td30) / "i12.json"
+    _fJ30.write_text(_json43.dumps(_rec30_full()), encoding="utf-8")
+    _run30(str(_fJ30), "--persist", str(_sJ30))
+    _nJ30 = _lines30(_sJ30)
+    _soJ30b, _seJ30b, _rcJ30b = _run30(str(_fJ30), "--persist", str(_sJ30))
+    check("v0.4.30 P12 (GUARD, a refresh that widens past §2.2's Out-list far enough to write "
+          "`marker`): idempotence SURVIVES — a second `--persist` at the same (commit, timestamp) "
+          "appends nothing and prints no append",
+          _nJ30 == 1 and _lines30(_sJ30) == 1 and _rcJ30b == 0
+          and f"persist → {_log30(_sJ30)}" not in _soJ30b
+          and _last30(_sJ30)["marker"] == _rec30_full()["marker"])
+
+    # (P13/P14) the widened heal, two runs: persist, then re-author the file STALE beyond
+    # `narration.verdict` and re-render. Run 2 is a duplicate (no append) whose in-memory record
+    # the refresh has just corrected, so `_stored != record` — which is the whole mechanism.
+    _sK30, _fK30 = _store30("j13"), Path(_td30) / "j13.json"
+    _fK30.write_text(_json43.dumps(_rec30_full()), encoding="utf-8")
+    _run30(str(_fK30), "--persist", str(_sK30))
+    _re13 = _json43.loads(_fK30.read_text(encoding="utf-8"))
+    _re13["budget"]["index"].update({"after_tokens": 1746, "after_lines": 40, "over": True})
+    _re13["verification"]["confirmed"] = 4
+    _fK30.write_text(_json43.dumps(_re13), encoding="utf-8")
+    _nK30 = _lines30(_sK30)
+    _soK30, _seK30, _rcK30 = _run30(str(_fK30), "--persist", str(_sK30))
+    _healed30 = _json43.loads(_fK30.read_text(encoding="utf-8"))
+    check("v0.4.30 P13 (PIN): a duplicate with a differing record HEALS the cycle file — the "
+          "refresh's correction reaches the very file `assemble_cycles` prefers (pre-fix: the "
+          "file keeps the stale 1746 / 40, and `assemble_cycles` then prefers it)",
+          _rcK30 == 0 and _healed30["budget"]["index"]["after_tokens"] == _K30
+          and _healed30["budget"]["index"]["after_lines"] == _L30
+          and _healed30["verification"]["confirmed"] == 4)
+    check("v0.4.30 P14 (GUARD, R4 — a heal that appends on a duplicate): and the LOG does not "
+          "grow — `_already_logged` still reports the pair and the line count is unchanged",
+          _nK30 == 1 and _lines30(_sK30) == 1 and _rcK30 == 0
+          and rd._already_logged(str(_log30(_sK30)), "v0430pin", "2026-09-14T00:36:00Z") is True)
+
+    # (P15) THE DOUBLE EMBED — §2.5's second defect. An earlier cut of this check fed SYNTHETIC
+    # records to `assemble_cycles` and asserted the predicate table below, which is P15's
+    # PRECONDITION and is GREEN on pre-fix code, because this cycle never touched `_same_dream`.
+    # The mutation matrix caught it: a check labeled PIN that no revert moves. The pin is the ROW
+    # COUNT off a REAL heal, and the mechanism is the MARKER — `_persist` reconciles the marker it
+    # LOGS, the heal reconciles the marker it writes to the FILE, and pre-fix the `duplicate`
+    # branch compares `narration.verdict` alone, finds it equal, and never runs — so the file keeps
+    # an empty stamp, and `_fill_timestamp` hands the archive the same dream twice, both rows
+    # stamped identically.
+    _C15, _T15 = "v0430pin", "2026-09-14T00:36:00Z"
+
+    def _dream15(sess, stamp: str) -> dict:
+        _r15 = {"marker": {"commit": _C15, "timestamp": stamp}}
+        if sess:
+            _r15["session"] = sess
+        return _r15
+
+    # the precondition, stated as a NEGATION: `logged S1 · file S1` is the single shape that
+    # collapses before the heal, so healing it changes no row count. Re-derived on the live
+    # predicate rather than quoted from §2.5's table, so a `_same_dream` change is caught here.
+    _vac15, _holes15 = 0, []
+    for _ls15, _fs15, _is_vac in [("S1", "S1", True), ("S1", "S2", False),
+                                  ("S1", None, False), (None, "S1", False),
+                                  (None, None, False)]:
+        _L15 = _dream15(_ls15, _T15)
+        _u15 = len(rhtml.assemble_cycles(_dream15(_fs15, ""), [_L15])[0])
+        _h15 = len(rhtml.assemble_cycles(_dream15(_fs15, _T15), [_L15])[0])
+        if _is_vac:
+            _vac15 += 1
+        elif not (_u15 == 2 and _h15 == 1):
+            _holes15.append((_ls15, _fs15, _u15, _h15))
+
+    # the pin: a real run on a file in the pre-heal shape. The state file supplies the stamp
+    # `reconcile_marker` fills — so the SAME call that makes run 2 a duplicate is the one that
+    # heals the file, and `--persist` returning "duplicate" is the fixture's own proof that the
+    # fill is reachable (an unfillable stamp would exit 5, not silently pass).
+    _sN30, _fN30 = _store30("m15"), Path(_td30) / "m15.json"
+    (_sN30 / ms.STATE_FILE).write_text(
+        _json43.dumps({"commit": _C15, "timestamp": _T15}), encoding="utf-8")
+    _fN30.write_text(_json43.dumps(_rec30_full()), encoding="utf-8")
+    _run30(str(_fN30), "--persist", str(_sN30))          # run 1 — appends, and heals (status "ok")
+    _blk15 = _json43.loads(_fN30.read_text(encoding="utf-8"))
+    _blk15["marker"]["timestamp"] = ""                   # every pre-heal write's shape
+    # THE PRECONDITION, and the reason §2.5 states it as a NEGATION: `rd._demo_record()` — and so
+    # every fixture derived from it — carries `session`, so a naive fixture puts both sides in the
+    # table's single VACUOUS row, where the session arm collapses them before the heal and the row
+    # count moves 1 → 1 whichever revision runs. Dropping it from the FILE (the log's line keeps
+    # run 1's) reproduces `logged S1 · file NONE`, the shape the live archive is measured to hold.
+    _blk15.pop("session", None)
+    _blk15["budget"]["index"].update({"after_tokens": 1746, "after_lines": 40})  # a live diff
+    _fN30.write_text(_json43.dumps(_blk15), encoding="utf-8")
+    _lg15 = _last30(_sN30)
+    _rows_un15 = len(rhtml.assemble_cycles(_blk15, [_lg15])[0])
+    _soN30, _seN30, _rcN30 = _run30(str(_fN30), "--persist", str(_sN30))
+    _fin15 = _json43.loads(_fN30.read_text(encoding="utf-8"))
+    _rows_h15 = len(rhtml.assemble_cycles(_fin15, [_lg15])[0])
+    check("v0.4.30 P15 (PIN): the widened heal collapses the DOUBLE EMBED — on a file whose stamp "
+          "is empty and whose only live difference is `budget` (the narration verdict is EQUAL, so "
+          f"the narrow heal does not fire) the archive row count goes {_rows_un15} → {_rows_h15}: "
+          "the unhealed file appends a SECOND row for a dream the log already holds (pre-fix: 2 "
+          "rows, both stamped — the double embed the heal exists to prevent)"
+          + (f" · holes: {_holes15}" if _holes15 else ""),
+          _vac15 == 1 and _holes15 == []
+          and _rcN30 == 0 and _rows_un15 == 2 and _rows_h15 == 1
+          and _fin15["budget"]["index"]["after_tokens"] == _K30
+          and _fin15["marker"]["timestamp"] == _lg15["marker"]["timestamp"] != "")
+
+    # (P16) the ordering. Clause (b) is load-bearing: a check that only asserted "a warning
+    # fires" would pass under BOTH orderings, because the unrefreshed seed mis-matches the audit
+    # too — so the numbers in the message must be the REFRESHED ones.
+    _sL30, _fL30 = _store30("k16"), Path(_td30) / "k16.json"
+    _fL30.write_text(_json43.dumps(_rec30_full()), encoding="utf-8")
+    _soL30, _seL30, _rcL30 = _run30(str(_fL30), "--persist", str(_sL30))
+    _seL30n = " ".join(_seL30.splitlines())
+    check("v0.4.30 P16 (PIN): the invariant checks the REFRESHED value — the warning fires AND "
+          f"names `after={_K30}` on both sides of the pair, not the seed's `after=1746`, which is "
+          "what validating BEFORE the refresh would print (pre-fix: silent)",
+          _rcL30 == 0
+          and f"(after={_K30}, before=1746, audit delta=-52)" in _seL30n
+          and "after=1746" not in _seL30n)
+
+    # (P17) the precondition. `--persist` into a dir with no `MEMORY.md`: every measurement below
+    # would return a well-formed ZERO and NONE of them raises, so without this gate the refresh
+    # fabricates a post-state that is clean in the concealment direction.
+    _sM30, _fM30 = _store30("l17", index=False), Path(_td30) / "l17.json"
+    _rM30 = _rec30_full(tokens=1694)                       # == 1746 + (-52): self-consistent
+    _rM30["budget"]["index"].update({"over": True, "cliff_pct": 28})
+    _fM30.write_text(_json43.dumps(_rM30), encoding="utf-8")
+    _soM30, _seM30, _rcM30 = _run30(str(_fM30), "--persist", str(_sM30))
+    _lgM30 = _last30(_sM30)["budget"]
+    check("v0.4.30 P17 (GUARD, a refresh added WITHOUT the precondition — the §2.3 "
+          "zero-fabrication revision): an absent index is NOT measured as zero — the authored "
+          "post-state is logged unchanged and exactly one warning is printed",
+          _rcM30 == 0
+          and len([l for l in _seM30.splitlines() if "post-state refresh skipped" in l]) == 1
+          and _lgM30["index"]["after_tokens"] == 1694 and _lgM30["index"]["after_lines"] == 40
+          and _lgM30["index"]["over"] is True and _lgM30["index"]["cliff_pct"] == 28
+          and _lgM30["recall_facts"]["after"] == 31)
+
+    # ── P18–P22: the CROSS-LEAF relations the first seventeen items could not see ────────────
+    # Every item above tests a leaf's OWN movement — a dyadic property ("did `after_tokens` stop
+    # mirroring `before_tokens`?"). These five are the class a per-leaf pin structurally cannot
+    # falsify: a relation between two leaves (`over` vs its own denominator), between a leaf and
+    # its READER (`over_ceiling` vs the gauge line that renders it), or between a leaf and the
+    # measurement it claims to be (`advisory_stranded_globals`). All five were found by adversarial
+    # review of revision 9 — the implementation every item above certifies — and each was measured
+    # RED on revision 9 AND on pre-fix HEAD before the repair landed (§3 records both).
+    _ref30 = getattr(rd, "_refresh_post_state", None)
+
+    def _refresh30(_rec: "ms.CycleRecord", _st: Path) -> str:
+        """Call the refresh when the revision has one at all.
+
+        A revision WITHOUT one returns "" so these items fail AS CHECKS. The alternative — calling
+        `rd._refresh_post_state` directly, as P8/P9 do — raises AttributeError on pre-fix code and
+        takes the rest of the suite (including the census line) down with it, which is a worse
+        failure signal: a crash reports no count, and "did not run" is indistinguishable from
+        "passed" in a truncated log."""
+        if _ref30 is None:
+            return ""
+        _ref30(_rec, _st)
+        return "called"
+
+    # (P18) the ceiling VERDICT is re-derived from the same read as the index it judges. The seed
+    # writes `over_ceiling` from its Phase-0 read and nothing ever re-derived it; once the refresh
+    # made `after_tokens` fresh, a store that shrank BELOW the ceiling kept a red HARD CEILING
+    # alarm on the same rendered line as its own healthy gauge — §2.3's promise ("the divergence
+    # from the frozen verdict is warned about") had no warn in that direction.
+    _sN30 = _store30("m18")
+    _rN30 = _rec30_full()
+    _rN30["remediation"] = {"required": True, "lever": "prune", "over_ceiling": True}
+    _ref30_18 = _refresh30(_rN30, _sN30)
+    check("v0.4.30 P18 (PIN): the ceiling verdict is re-derived with the index it judges — a record "
+          f"seeded `over_ceiling: True` over a store that now measures {_K30} est tok leaves the "
+          f"flag FALSE (ceiling {ms.INDEX_CEILING_TOKENS}), so `remediation.over_ceiling` cannot "
+          "outlive the over-ceiling index it was raised for (pre-fix AND rev-9: the seed's `True` "
+          "survives — a red HARD CEILING alarm drawn beside the healthy gauge it contradicts)",
+          _ref30_18 == "called" and _K30 < ms.INDEX_CEILING_TOKENS
+          and _rN30["remediation"].get("over_ceiling") is False
+          and _rN30["remediation"].get("required") is True)
+
+    # (P19) the suppressed-warning operand. `remediation` is a TOP-LEVEL CycleRecord key; the guard
+    # read `budget.remediation`, which NO writer in the codebase produces — so it was dead, and the
+    # warning it guards printed on every over-target persist, on a standing-justified store that is
+    # explicitly the designed steady state. Both arms matter: the top-level block SUPPRESSES, and
+    # the phantom key does NOT (a guard that merely "looks for remediation somewhere" gets one).
+    _sO30 = _store30("n19")
+    # 200 lines, measured at ≈1900 est tok: the warning's first operand is a LIVE measurement of the
+    # STORE, so the fixture must genuinely clear `INDEX_TOKEN_BUDGET` — 120 lines measured 1152 and
+    # left the arm unfired, which is the assert-the-fixture's-precondition habit earning its keep.
+    _bigT30 = "# Memory Index\n\n" + "".join(
+        f"- [f{i}](f{i}.md) — fact line number {i}, long enough to be a pointer\n" for i in range(200))
+    (_sO30 / "MEMORY.md").write_text(_bigT30, encoding="utf-8")
+    _bigK30 = ms.est_tokens(_bigT30)
+    _rO30a = _rec30_full()
+    _rO30a["remediation"] = {"required": False, "standing_justified": True, "over_ceiling": False}
+    _rO30b = _rec30_full()
+    # The phantom key, written on purpose: `Budget` has no `remediation`, which is exactly why the
+    # guard that read it was dead. This is the one place in the block that constructs a shape no
+    # producer emits, so it carries the ignore rather than the fixture being bent to the contract.
+    _rO30b["budget"]["remediation"] = dict(  # type: ignore[typeddict-unknown-key]
+        _rO30a["remediation"])
+    # ONE CAPTURE PER ARM, because a COUNT cannot separate the two revisions: with the operand read
+    # off `budget`, the top-level arm warns and the phantom arm is suppressed — also exactly one
+    # warning, from the wrong arm. This item passed on rev-9 until the arms were split.
+    _e19a, _e19b = _io73.StringIO(), _io73.StringIO()
+    with _ctx73.redirect_stderr(_e19a):
+        _ref30_19 = _refresh30(_rO30a, _sO30)
+    with _ctx73.redirect_stderr(_e19b):
+        _refresh30(_rO30b, _sO30)
+    _w19 = lambda _s: [l for l in _s.getvalue().splitlines() if "no remediation block" in l]  # noqa: E731
+    check("v0.4.30 P19 (GUARD, a revision that reads the guard's operand off `budget` — rev-9 did): "
+          "the over-budget warning keys to the TOP-LEVEL `remediation` — a standing-justified record "
+          f"suppresses it ({len(_w19(_e19a))} warnings) while the phantom `budget.remediation` key "
+          f"does not ({len(_w19(_e19b))}) "
+          f"(precondition: {_bigK30} > {ms.INDEX_TOKEN_BUDGET} est tok, so the warning's first "
+          "operand holds in both arms)",
+          _ref30_19 == "called" and _bigK30 > ms.INDEX_TOKEN_BUDGET
+          and _w19(_e19a) == [] and len(_w19(_e19b)) == 1)
+
+    # (P20) the denominator. The gauge pairs a FRESH numerator (`after_tokens`) with
+    # `budget_tokens` and derives its OVER flag from `over` — three values on one rendered line.
+    # Refreshing only the numerator let a retired seed-time threshold lay under a live measurement:
+    # `≈1205/1200` renders as a full red bar, 100%, and NO over flag, all at once. Writing the live
+    # constants makes the line one comparison, and it makes the ASCII gauge agree with the HTML one,
+    # which already renders its meter from its own constant rather than the record's field.
+    _sP30 = _store30("o20")
+    _rP30 = _rec30_full()                      # authors `budget_tokens: 1200, over: True`
+    _ref30_20 = _refresh30(_rP30, _sP30)
+    _ix20 = _rP30["budget"]["index"]
+    check("v0.4.30 P20 (PIN): the denominator is refreshed with the numerator — `budget_tokens` and "
+          "`ceiling_tokens` are written as the LIVE constants in the same splice, so the gauge's "
+          f"`_bar`/`_pct`/`_over` cannot disagree (`{_ix20.get('after_tokens')}` measured, "
+          f"{_ix20.get('budget_tokens')} budget; pre-fix: `1200` — a retired threshold — with both "
+          "`ceiling_tokens` and the live constant absent)",
+          _ref30_20 == "called"
+          and _ix20.get("budget_tokens") == ms.INDEX_TOKEN_BUDGET
+          and _ix20.get("ceiling_tokens") == ms.INDEX_CEILING_TOKENS
+          and _ix20.get("over") == (_ix20.get("after_tokens", 0) > _ix20.get("budget_tokens", 0)))
+
+    # (P21) no fabricated leaf. `schema_drift` returns all seven fields, and the seventh
+    # (`advisory_stranded_globals`) is structurally ZERO on the `canonical_stems=None` path the
+    # refresh takes — it was not measured, it cannot be. Preserving the seed's value covered only
+    # the case where the seed HAD the key, so a legacy-shaped block got a measured-looking `0`
+    # authored into it: the function's own LEAF-WISE rule ("creating a container would author state
+    # the record never had") one level down, on a LEAF.
+    _sQ30 = _store30("p21")
+    _rQ30 = _rec30_full()
+    _rQ30["health"] = {"schema_drift": {"missing_node_type": 3}}
+    _ref30_21 = _refresh30(_rQ30, _sQ30)
+    _dr21 = _rQ30["health"]["schema_drift"]
+    check("v0.4.30 P21 (PIN): a field the refresh did not measure is not authored as a zero — the "
+          "legacy-shaped block's six store-local fields are replaced by the measurement "
+          f"(`missing_node_type` 3 → {_dr21.get('missing_node_type')}: two fact files, neither "
+          "carrying one) and `advisory_stranded_globals` is ABSENT, not fabricated as 0 "
+          "(pre-fix: the authored block stands; rev-9: the key is written as 0)",
+          _ref30_21 == "called" and _dr21.get("missing_node_type") == 2
+          and "advisory_stranded_globals" not in _dr21)
+
+    # (P22) ONE SITE for the index path. The precondition rebuilt `<store>/MEMORY.md` while
+    # `store_local_index` builds the same path a line later — two expressions of one fact at the
+    # exact site whose docstring invokes the repo's weakest-enforcement-site rule. The stub below
+    # returns an `index_path` that does NOT exist (while `<store>/MEMORY.md` does), which is the
+    # shape a future rename produces: with the two sites diverged, the guard passes on the real file
+    # and `_measure` returns (0, 0, 0) for a different one — the refresh then writes
+    # `after_tokens: 0` beside the seed's true `before_*`, the fabrication the precondition exists
+    # to prevent.
+    _sR30 = _store30("q22")
+    _rR30 = _rec30_full()
+    _auth22 = _copy.deepcopy(_rR30)
+    _orig_sli22 = ms.store_local_index
+
+    def _sli_stub30(auto_mem: Path) -> dict:
+        return {"index_path": auto_mem / "NOT-THE-INDEX.md", "index_lb": (0, 0, 0),
+                "index_text": "", "fact_files": [], "archive_docs": [],
+                "index_hooks": (0, 0, []), "index_cliff": 0}
+
+    ms.store_local_index = _sli_stub30
+    _e22 = _io73.StringIO()
+    try:
+        with _ctx73.redirect_stderr(_e22):
+            _ref30_22 = _refresh30(_rR30, _sR30)
+    finally:
+        ms.store_local_index = _orig_sli22
+    check("v0.4.30 P22 (GUARD, a revision whose precondition rebuilds the path instead of reading "
+          "the measurement's own — rev-9 did): the guard and the measurement are ONE expression of "
+          "the path — when `store_local_index` reports an `index_path` that does not exist, the "
+          "refresh takes the skip path and leaves every authored leaf alone, rather than measuring "
+          "zeros off a file the guard never checked",
+          _ref30_22 == "called" and _rR30 == _auth22
+          and len([l for l in _e22.getvalue().splitlines()
+                   if "post-state refresh skipped" in l]) == 1)
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1750 + 45 + 125)
+      passed + failed + 1 == 1773 + 45 + 125)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
