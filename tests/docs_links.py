@@ -24,11 +24,29 @@ Invariants:
    command that no longer exists.
 5. **The theme table matches the shipped theme set, both ways** — a palette added to the
    toggle without a docs row, and a row left behind by a palette that no longer ships.
-6. **Every live doc states the current release**, closing the version-sweep class: the sweep
-   is a manual grep, and three consecutive releases left statements behind (v0.4.14 missed
-   five files; v0.4.24 missed four of the same ones). This runs on every PR, not just at
-   release time, so a doc can no longer advertise a superseded version.
-7. **The committed preview matches a fresh render**, closing the same class for a *generated*
+6. **Every live doc's OPENING currency statement matches plugin.json.** Deliberately narrow, and
+   this docstring used to claim considerably more — it said the check closed "the version-sweep
+   class … so a doc can no longer advertise a superseded version". It does not, and the
+   counterexample sat in this file's own doc set: `AGENTS.md`'s plugin table read `0.4.27` on a
+   `0.4.32` tree for five releases with every gate green (measured — setting that cell to `9.9.9`
+   also leaves the full PR-time gate set green, so the cell was unpinned, not merely stale).
+   Three structural blinds do that, all measured on this tree:
+
+   - only the FIRST `\bvX.Y.Z\b` per doc is read — `docs/record-post-state.spec.md` §6 counted
+     **183** later matches, every one a correct reference to a past release;
+   - a bare `X.Y.Z` carries no `v`, so the sweep cannot tell a currency statement from any other
+     dotted triple — the six docs' first bare picks are `1.0.0`, `0.4.32`, `0.4.32`, `127.0.0`,
+     *nothing*, `1.0.0`, and only the two that are right are right because something else keeps
+     them so (invariant 1, and invariant 7 below);
+   - a table cell is a current-version claim shaped like neither of those.
+
+   What remains true, and is why the check is worth keeping: the six `LIVE_DOCS` put their
+   currency statement in the opening lines (that is the convention the rule rests on), and a
+   *missing* statement is an error — so deleting the line that tripped it cannot be the cheap fix.
+7. **The plugin table's Version column equals the manifest it restates.** One pinned site, the
+   way invariant 1 pins one badge — NOT a class, and it says so rather than implying otherwise.
+   A plugin with no row is an error too, so the table cannot quietly stop covering what ships.
+8. **The committed preview matches a fresh render**, closing the same class for a *generated*
    doc: `docs/previews/nocturne/` is produced by `tests/dashboard_fixture.py` and committed,
    and nothing regenerates it on its own. It had drifted for two releases — v0.4.22 changed
    the reason-string format and v0.4.24 the dimmed-node CSS, and the README's linked preview
@@ -99,13 +117,14 @@ LIVE_DOCS = [
     "docs/1.0-preflight.spec.md",
 ]
 
-# A literal `v` is what separates a currency statement from a version *mention*, and it is
-# not cosmetic — a bare `\d+\.\d+\.\d+` mis-fires on two things in these very files: the
-# README's shields URL — whose version token carries no `v` and is renamed every release,
-# so it is cited by shape (`badge/version-<X.Y.Z>`) rather than by a value that rots — and
-# preflight's `**1.0.0**` (the release the checklist certifies, not the current one). Both
-# measured; neither is a false positive under this rule, and it finds the right token in all
-# six docs.
+# A literal `v` is what separates a currency statement from a version *mention*, and the reason
+# is that the bare alternative cannot tell the two apart — not, as an earlier version of this
+# comment claimed, that a bare pattern "mis-fires on the README's shields URL". That URL is the
+# one bare site a bare rule would get RIGHT, and invariant 1 pins it regardless; citing it as the
+# counterexample was wrong even though the rule it justified is not. The measured counterexamples
+# are the ones in the invariant-6 list: `SKILL.md`'s `127.0.0` (out of a loopback address) and
+# `harness-map.md`'s nothing-at-all are not version statements in any sense, and `preflight`'s
+# `**1.0.0**` is the release that checklist certifies rather than the one it describes.
 _CURRENCY = re.compile(r"\bv(\d+\.\d+\.\d+)\b")
 
 # Inline code spans and fenced blocks are stripped before scanning: a doc may legitimately
@@ -323,6 +342,55 @@ def check_version_statements() -> None:
                 "sweep missed this file")
 
 
+def check_plugin_table() -> int:
+    """`AGENTS.md`'s plugin table restates each manifest's version, and nothing could see it drift.
+
+    Returns the number of rows checked, so `main` can report the coverage instead of implying it.
+
+    Why this exists at all: the cell is a *current-version claim* that the currency sweep is
+    structurally blind to (invariant 6). It was measured stale — `0.4.27` on a `0.4.29` tree,
+    surviving four releases — and measured UNPINNED: rewriting it to `9.9.9` left every gate
+    green. So this is one site, pinned the way `check_badge` pins the badge, and it is not
+    offered as coverage of the class.
+
+    Rows are matched by MANIFEST, not by shape: for each `plugins/*/.claude-plugin/plugin.json`
+    the table is searched for a row naming it, so an unrelated table in the same file cannot be
+    mistaken for a plugin row (and a plugin the table forgot is an error rather than a silence).
+    """
+    rel = "AGENTS.md"
+    path = ROOT / rel
+    if not path.is_file():
+        err(f"missing {rel} — its plugin table is the manifest's restatement")
+        return 0
+    manifests = sorted((ROOT / "plugins").glob("*/.claude-plugin/plugin.json"))
+    if not manifests:
+        err("no manifests under plugins/*/.claude-plugin/ — this check would pass vacuously")
+        return 0
+    rows: dict[str, tuple[str, int]] = {}
+    for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if len(cells) < 2:
+            continue
+        name = cells[0].strip("`")
+        if not (ROOT / "plugins" / name / ".claude-plugin" / "plugin.json").is_file():
+            continue                       # not a plugin row — some other table in the same file
+        rows.setdefault(name, (cells[1].strip("`"), n))
+    for manifest in manifests:
+        name = manifest.parent.parent.name
+        version = json.loads(manifest.read_text(encoding="utf-8")).get("version", "")
+        if name not in rows:
+            err(f"{rel}: no plugin-table row for {name!r} — a manifest with no row is a version "
+                "site nothing checks (or the table moved; either way this check just shrank)")
+            continue
+        stated, where = rows[name]
+        if stated != version:
+            err(f"{rel}:{where}: the plugin table says {name} is {stated!r} but its manifest is "
+                f"{version!r} — a table cell is a current-version claim the `v`-sweep cannot see")
+    return len(manifests)
+
+
 def check_preview() -> None:
     """The committed preview is byte-identical to a fresh render of its own fixture.
 
@@ -378,6 +446,7 @@ def main() -> int:
     check_required_strings()
     check_themes()
     check_version_statements()
+    plugin_rows = check_plugin_table()
     check_preview()
     if errors:
         print("✗ documentation gate FAILED:")
@@ -386,7 +455,8 @@ def main() -> int:
         return 1
     version = json.loads(PLUGIN.read_text(encoding="utf-8"))["version"]
     print(f"✓ docs valid (badge + {len(LIVE_DOCS)} live-doc statements at v{version}, "
-          f"{len(DOCS)} files link-checked, anchors balanced, preview current)")
+          f"{plugin_rows} plugin-table rows, {len(DOCS)} files link-checked, anchors balanced, "
+          "preview current)")
     return 0
 
 

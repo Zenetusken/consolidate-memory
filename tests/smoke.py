@@ -11489,6 +11489,75 @@ try:
 finally:
     _td_nr.cleanup()
 
+# v0.4.32 P8..P11 (§2.3 — the second half of root cause A). An archive is read through its own
+# POINTER LINES, not through every `](x.md)` its text contains. That distinction only became
+# load-bearing in v0.4.31, which loosened the shared text rule to "frontmatter-less + ONE link":
+# a store-root prose doc now classifies as an archive, and the intermediate revision read a prose
+# MENTION as a placement — the mentioned fact lost its pointer from the rebuilt index while the
+# plan labelled it an intentional eviction. Fixture: a fact whose pointer is missing from
+# MEMORY.md (the rebuild's own repair case) which a stray prose doc happens to link.
+with _Env73() as _e_pr:
+    _ctx_pr = sc.resolve_store(_e_pr.proj)
+    (_e_pr.store / "kept-live.md").write_text(
+        "---\nname: kept-live\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_pr.store / "mention-fact.md").write_text(
+        "---\nname: mention-fact\ndescription: d\n---\nbody\n", encoding="utf-8")
+    _prose_pr = ("# Working notes\n\n"
+                 "Read [the baseline](mention-fact.md) before tuning anything.\n")
+    (_e_pr.store / "prose-mention.md").write_text(_prose_pr, encoding="utf-8")
+    (_e_pr.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [kept-live](kept-live.md) — hook\n", encoding="utf-8")
+    _plan_pr = _li_rb3._rebuild_plan(_ctx_pr)          # `_li_rb3` is module-scope, from P1's block
+    _rep_pr = _li_rb3.local_rebuild_index(_ctx_pr)
+    _inc_pr = {r["stem"] for r in _plan_pr["included"]}
+    check("v0.4.32 P8 (PIN against the INTERMEDIATE revision, not against pre-fix): a prose "
+          "MENTION cannot suppress a fact — the rebuild still repairs a missing pointer when a "
+          "stray store-root doc links the fact, and the live fact keeps its own "
+          "(intermediate revision c45aa0f: `mention-fact` was absent from `included` AND from the "
+          "rebuilt index, so a drifted pointer stayed missing forever). Pre-fix it passes for a "
+          "different reason: that rebuild consulted no archive at all, so the prose doc fell "
+          "through to the fact scan and failed closed as `invalid` — a file that fails closed "
+          "cannot be silently swallowed. P10 pins the premise here so this cannot go green for it",
+          "mention-fact" in _inc_pr and "](mention-fact.md)" in _plan_pr["future"]
+          and "](kept-live.md)" in _plan_pr["future"])
+    check("v0.4.32 P9 (PIN): the plan does not LABEL that repair an intentional eviction — a bare "
+          "stem list asserts a `cm local archive` the operator cannot check (intermediate: "
+          "would_readd_archived_pointers == ['mention-fact']; pre-fix: the key does not exist)",
+          _rep_pr.get("would_readd_archived_pointers") == [])
+    check("v0.4.32 P10 (GUARD on every arm — forward-verified, the way a check whose red is only "
+          "reachable by mutating the rule it reads has to be): the fixture exercises the "
+          "NARROWING and not the fact-file path — the shared rule calls the prose doc an archive, "
+          "and the extraction the fix reads takes zero targets from it. Verified forward: "
+          "restoring a link floor in `_is_archive_index_text` turns this red (§5), which is what "
+          "stops P8 from going green for a reason it does not name",
+          ms._is_archive_index_text(_prose_pr) is True
+          and ia.archive_index(_prose_pr)["targets"] == [])
+
+# P11 — the residual §2.3 records, plus the evidence that replaces the vouch. A store-root doc
+# whose link is FORMATTED as a pointer line (`- [x](x.md) — …`) is structurally identical to a
+# real archive entry: nothing can separate them without also refusing a genuine 2-entry
+# SHIPPED.md, which is the v0.4.31 regression this cycle exists to protect. So the decline
+# stands, and the plan NAMES the doc that claimed the placement — that, not a stem list, is what
+# lets an operator see through it.
+with _Env73() as _e_pr2:
+    _ctx_pr2 = sc.resolve_store(_e_pr2.proj)
+    (_e_pr2.store / "listed-live.md").write_text(
+        "---\nname: listed-live\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_pr2.store / "list-claimed.md").write_text(
+        "---\nname: list-claimed\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_pr2.store / "prose-list.md").write_text(
+        "# Working notes\n\n- [list-claimed](list-claimed.md) — noted\n", encoding="utf-8")
+    (_e_pr2.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [listed-live](listed-live.md) — hook\n", encoding="utf-8")
+    _rep_pr2 = _li_rb3.local_rebuild_index(_ctx_pr2)
+    check("v0.4.32 P11 (PIN, the recorded residual + its evidence — red on BOTH earlier "
+          "revisions): a pointer-LINE-shaped link in a stray store-root doc stays "
+          "indistinguishable from an archive, so the stem is declined; the plan must then name "
+          "the doc that claimed it rather than vouch for it (pre-fix the stem was re-added and "
+          "the key did not exist; intermediate the key still did not exist)",
+          _rep_pr2.get("would_readd_archived_pointers") == ["list-claimed"]
+          and _rep_pr2.get("would_readd_archived_sources") == {"list-claimed": ["prose-list.md"]})
+
 # ── Phase 2: journal terminal cleanup / schema split ──
 with _Env73() as _e_js:
     _ctx_js = sc.resolve_store(_e_js.proj)
@@ -17495,8 +17564,8 @@ with _tf43.TemporaryDirectory() as _td30:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 7)   # +9: v0.4.31 store-classifier parity C1..C7
-                                                        # +7: v0.4.32 periphery parity P1..P7
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 11)  # +9: v0.4.31 store-classifier parity C1..C7
+                                                        # +11: v0.4.32 periphery parity P1..P11
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

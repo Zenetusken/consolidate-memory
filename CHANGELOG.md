@@ -7,29 +7,43 @@ version changes on `main`.
 
 ## [0.4.32] — 2026-09-14
 
-**Patch — two periphery sites each kept their own copy of a rule the store already states, so
-`cm local rebuild-index` silently undid `cm local archive`, and `--justify-demotion` crashed on
-the second run against an unenrolled store.**
+**Patch — the periphery kept its own copies of rules the store already states, so `cm local
+rebuild-index` silently undid `cm local archive`, and `--justify-demotion` crashed on the second
+run against an unenrolled store.**
 
-The last cycle staged from the 2026-09-14 audit. Its two defects share a shape rather than a
+The last cycle staged from the 2026-09-14 audit. Its defects share a shape rather than a
 mechanism — **a local rule narrower than the canonical one** — which is the same shape v0.4.31
-fixed two layers in. Both repairs are the constructive form of the repo's weakest-enforcement-site
-rule: delete the second site instead of keeping two in step by discipline. Design and evidence:
-`docs/periphery-parity.spec.md`.
+fixed two layers in. The repairs are the constructive form of the repo's weakest-enforcement-site
+rule: delete the second site rather than keep two sites in step by discipline. Design and
+evidence: `docs/periphery-parity.spec.md`.
 
-1. **`cm local rebuild-index` no longer re-adds a pointer the archive removed.** A fact file does
-   not record its own *placement* — placement is recorded only by which pointer doc holds the
+1. **`cm local rebuild-index` honors placement — in both directions.** A fact file does not
+   record its own *placement* — placement is recorded only by which pointer doc holds the
    pointer — so a rebuild that globs fact files alone treated every archived fact as unplaced and
    wrote its pointer back into `MEMORY.md`, silently undoing the eviction `cm local archive` had
    just performed. Measured on the live store: **2** re-adds, both facts whose entire purpose in
    the store is to be off the always-loaded budget; the two relocations relieved **111 est tok**
-   and **0 durable**. The rule is no longer re-derived — it is `memory_status.placed_fact_names`,
-   whose own docstring already states it (*"the always-loaded index = the active set"*) — and the
-   direction is deliberately the one that **cannot delete**: the plan may decline to re-add an
-   archived pointer, never remove a live one, so a stem sitting in both docs is kept. Plan mode
-   now **names** the prevented re-adds, because the undo direction was invisible exactly where an
-   operator looks. The archive doc also enters the plan's snapshot map: the plan reads its
-   contents, so the apply transaction must verify the revision it planned against.
+   and **0 durable**. The rule is no longer re-derived — the rebuild asks what the index places
+   (`memory_status.index_fact_names`) and what the archive owns
+   (`index_admission.archive_index`) — and the direction is deliberately the one that **cannot
+   delete**: the plan may decline to re-add an archived pointer, never remove a live one, so a
+   stem sitting in both docs is kept. Plan mode now **names** the prevented re-adds *and the doc
+   that claimed each one*, and the archive doc enters the plan's snapshot map, because the plan
+   reads its contents and the apply transaction must verify the revision it planned against.
+
+   The second direction was found by review of this change and fixed before release. The first
+   revision computed *what an archive owns* with a predicate built for a different question
+   (`placed_fact_names`, correctly lenient for the drift check it serves), and v0.4.31's loosened
+   classifier makes **any** frontmatter-less store-root `*.md` carrying one link an archive — so a
+   working-notes file that merely *mentioned* a fact suppressed that fact's pointer from the
+   rebuilt index, and the plan reported the omission as an intentional eviction. Measured on
+   fixtures: the fact dropped out of `included` while the report named a `cm local archive` that
+   never ran, and on the smallest fixture an **empty rebuilt index reporting `ok: true`**. The
+   repair reads the archive's own pointer lines — the exact extraction `local_archive` gates its
+   own writes on — and where a doc is nonetheless indistinguishable from an archive, the report
+   now names it instead of vouching for it. Measured fleet-wide before choosing: **437** store
+   roots, **2** archives, and **0** verdict changes under the rejected alternative, so this closes
+   a class with no live instance rather than repairing observed damage.
 2. **`--justify-demotion` survives a registry-less store.** `control_plane.count_probative_after`
    returns `None` *deliberately* when no registry exists — its comment records that a `0` there
    once suppressed a stamp **forever** — and `_justify_remaining` tolerates it. Its caller did not,
@@ -37,7 +51,9 @@ rule: delete the second site instead of keeping two in step by discipline. Desig
    production entry point against an **unenrolled** store (a documented, supported state): the
    **first** run succeeds and writes the stamp, and the **second** dies — so the store does not
    merely fail on a cold start, it acquires the very stamp that makes every later run crash. The
-   clock's `None` now reaches the documented fallback.
+   clock's `None` now reaches the documented fallback — which is not one outcome but whatever that
+   fallback judges: `already-justified` when no window start postdates the stamp (the measured
+   case), a fresh stamp once enough later windows have accrued.
 
 The same pass **extended the SKILL↔TypedDict pin from key names to scalar types**, because the
 block could state a type the code did not have: measured *forward*, with `verification.confirmed`
@@ -49,26 +65,76 @@ sources, and `SKILL.md` is not among them.)
 
 A recorded number was **withdrawn rather than carried**. The staged plan gave the rendered archive
 as 1,465,823 chars at 55 cycles, extrapolating to ~3.2 MB at the 120-cycle cap. Re-derived: the file
-is **1,514,984 chars at 30 embedded cycles** — more chars at *fewer* cycles, so the recorded
-per-cycle premise does not hold — and the embedded cycle payload is **253,020 bytes (8,434/cycle),
-~17% of the file**, so the cap bounds roughly **1.01 MB**, an order of magnitude less than the file
-it was extrapolated from. Nothing changed: `_ARCHIVE_CAP` already bounds growth, and this is a
-documentation correction.
+is **1,514,984 chars** over a **30**-record `.consolidation-log.jsonl` — more chars at *fewer*
+cycles, so the recorded per-cycle premise does not hold — and the embedded cycle payload is
+**250,960 bytes (8,365/cycle) measured through `render_html._safe_embed`**, the encoder that
+actually writes it. The static shell is therefore ~83% of the file, so the cap bounds roughly
+**1.00 MB** of embedded payload, an order of magnitude less than the file it was extrapolated from.
+Nothing changed: `_ARCHIVE_CAP` already bounds growth, and this is a documentation correction.
 
-**Verification.** 7 new checks (`tests/smoke.py` census `1773 + 45 + 125 + 9 + 7`) — **4 pins and 3
-guards**. Re-derived against the pre-fix tree, one tree per process: **1955 passed, 4 failed** (all
-four pins) against **1959 passed, 0 failed** on the fixed tree; all three guards hold on *both*
-revisions. The cycle's own premise was re-checked against the tree rather than against the plan that
-proposed it: the staged plan asserted a constraint — *"the tempting fix is a no-op, because
-`_is_archive_index_text` floors at ≥3 links"* — that v0.4.31 had already removed, and carrying it
-would have routed the fix around a wall that no longer stood. Every live figure is re-measured
-through the production entry points, not a lookalike: `cm local rebuild-index --json` for the plan,
-and a hermetic-HOME reproduction for the double run.
+**A version claim no gate could see, now pinned.** `AGENTS.md`'s plugin table restates each
+manifest's version, and the docs gate read neither: its `v`-prefixed sweep needs a `v` the cell
+does not have, its currency matcher takes the first match per doc, and a table cell is not the
+first match of anything. Measured: the cell read **`0.4.27` on a `0.4.32` tree** through four
+releases with all five gates green, and rewriting it to `9.9.9` was green too — it was not merely
+stale, it was **unpinned**. `tests/docs_links.py` gains `check_plugin_table` (rows matched by
+manifest, not by shape, and a manifest with no row is an error rather than a silence), and the
+cell is corrected. The same pass corrects two docstring claims in that file that measurement
+falsified — the sweep does **not** close "the version-sweep class", and its inline rationale cited
+as a bare-matcher mis-fire the one bare site a bare rule gets right — and replaces `AGENTS.md`'s
+dev-loop `1795 assertions` figure, stale by 164 and stale by construction, with a pointer to the
+census constant that is printed on every run.
 
-**Not in this release.** Two faces of the audit remain root-caused and unscheduled: the fleet
-network capture (the one observability block still hand-pasted rather than script-injected, whose
-beta capture is not enforced) and the post-persist correction path (the detector fires to stderr and
-cannot stop the write).
+**Verification.** 11 new checks (`tests/smoke.py` census `1773 + 45 + 125 + 9 + 11`) — **7 pins and
+4 guards**. Re-derived on **three** arms, one tree per process, one harness for all three: pre-fix
+`1056dd1` **1957 passed, 6 failed** (P1, P4, P5, P6, P9, P11) · intermediate `c45aa0f` **1960 passed,
+3 failed** (P8, P9, P11) · fixed **1963 passed, 0 failed**. The three-arm shape is the point: a
+single-arm matrix would have certified the second-direction defect as fixed, because that pin is
+green pre-fix for a reason unrelated to the rule under test. Guards are verified **forward**, since
+no revert can fail them — restoring the retired ≥3-link floor turns **1952 passed, 11 failed**
+(including the guard that exists to notice exactly that), and corrupting the `SKILL.md` schema
+block's scalar types left the pre-extension harness at **1952 passed, 0 failed**. The cycle's own
+premise was re-checked against the tree rather than against the plan that proposed it: the staged
+plan asserted a constraint — *"the tempting fix is a no-op, because `_is_archive_index_text` floors
+at ≥3 links"* — that v0.4.31 had already removed, and carrying it would have routed the fix around
+a wall that no longer stood. Every live figure is re-measured through the production entry points,
+not a lookalike: `cm local rebuild-index --json` for the plan, and a hermetic-HOME reproduction for
+the double run.
+
+**Not in this release — the same rule, still unfixed elsewhere.** This cycle fixed the periphery
+sites that were in its frame and left the rest, because a cycle that widens as it runs is a cycle
+whose spec stops describing its diff. These are **named, anchored, and reproducible by reading one
+line**, not "known issues":
+
+- **`local_migrate_schema` skips archives by name** (`local_ingress.py`, the
+  `f.name in ("MEMORY.md", "SHIPPED.md")` guard in its glob). Two consequences, both wrong: a
+  store-root archive named anything else is fed to `prepare_local_fact(..., inject=True)`, so
+  `--apply` **rewrites an archive as if it were a fact**; and a genuine fact whose stem is
+  `SHIPPED` is silently never migrated. `SHIPPED` is not in `identifiers.RESERVED_STEMS`, so that
+  stem is legal.
+- **`run_justify_demotion`'s candidate glob skips by the same name** (`memory_status.py`), and
+  builds `idx_names` from the same list — so a second archive's stem can be stamped **durably** in
+  `.consolidation-state.json` as though it were a fact. The package already states the content-
+  based form of this rule (`sync_global.py`'s `archive_stems`, built with
+  `_is_archive_index_text`), so the fix is a two-site diff against an existing pattern, not a
+  design question.
+- **`_rebuild_plan` still skips `SHIPPED.md` by name for the *fact* side** — `SHIPPED` is a legal
+  fact stem (`identifiers.RESERVED_STEMS` holds only `MEMORY`), so a fact by that name is
+  swallowed rather than indexed, exactly the class this cycle closed for the archive side.
+- **`apply_demotion_justify` mints `n_after = 0`** on its `elif` arm — the exact value the
+  deliberate-`None` comment in `count_probative_after` records as having suppressed a stamp
+  forever. This cycle fixed the `None` path and left the sibling.
+- **A text-level `_LINK_RE.findall` can match across a newline** (`[^)]+` includes `\n`), so a
+  target split over two lines is seen by a text scan and missed by a per-line one. Measured: **0**
+  such matches across **546** store-root docs, so this is latent, not observed.
+- **The fleet network capture** (the one observability block still hand-pasted rather than
+  script-injected, whose beta capture is not enforced) and **the post-persist correction path**
+  (the detector fires to stderr and cannot stop the write) remain root-caused and unscheduled from
+  the audit that opened this cycle.
+
+Two items this cycle **closes** rather than carries: `AGENTS.md`'s unpinned table cell (above) and
+`docs/index-usage-and-budget-ladder.spec.md`'s falsified ≥3-link justification, corrected in
+v0.4.31 — recorded here so the staged plan's item is not silently dropped.
 
 ## [0.4.31] — 2026-09-14
 

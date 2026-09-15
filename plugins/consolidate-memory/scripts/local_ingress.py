@@ -440,17 +440,26 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
     v0.4.32 (spec docs/periphery-parity.spec.md §2): a fact file does not record its own
     PLACEMENT — placement is recorded only by which pointer doc holds the pointer — so a
     rebuild that globs fact files alone re-adds every pointer `local_archive` moved to an
-    archive doc, silently undoing the eviction. The "already placed elsewhere" rule is not
-    restated here; it is `memory_status.placed_fact_names`, whose own docstring states it
-    ("the always-loaded index = the active set"). Earlier revisions of this function
-    hand-rolled BOTH the placement rule and the `](stem.md)` anchor; both second copies are
-    gone (the anchor one was inert — no live index line carries two pointers — but a second
-    copy of a canonical rule is a site the next reader has to re-adjudicate).
+    archive doc, silently undoing the eviction.
+
+    §2.3 — the SECOND half of that root cause. Which entries an archive OWNS is not restated
+    here either: it is `index_admission.archive_index`, the extraction `local_archive`'s own
+    write path gates its admission on. That matters because the two readings differ exactly
+    where it hurts — the shared text rule classifies any frontmatter-less store-root `*.md`
+    carrying ONE link as an archive (v0.4.31), so a prose doc that merely *mentions* a fact
+    was read as placing it, and the mention suppressed the fact's pointer from the rebuilt
+    index while the plan labelled it an intentional eviction. Reading the archive's pointer
+    LINES is what makes an archive's own entries the unit of the rule.
+
+    Earlier revisions hand-rolled the placement rule, the `](stem.md)` anchor, AND this
+    extraction; all three second copies are gone. The anchor one was inert (no live index
+    line carries two pointers), but a second copy of a canonical rule is a site the next
+    reader has to re-adjudicate.
     """
     from control_plane import read_snapshot
     from identifiers import IdentifierRefused, validate_fact_stem
-    from memory_status import (_LINK_RE, _frontmatter, _is_archive_index_text,
-                               index_fact_names, placed_fact_names)
+    from index_admission import archive_index
+    from memory_status import _LINK_RE, _frontmatter, _is_archive_index_text, index_fact_names
     from sync_global import _is_mirror, _pointer_line
     native = ctx.native_memory_dir
     idxp = native / "MEMORY.md"
@@ -479,14 +488,23 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
             if _is_archive_index_text((snap.data or b"").decode("utf-8", errors="replace")):
                 archive_paths.add(str(f))
                 snaps[str(f)] = snap
-    # Conservative direction (§2.3): stems an archive places AND the index does not. The
-    # rebuild may decline to RE-ADD an archived pointer; it may never REMOVE a live one, so
-    # a stem sitting in both docs stays. Taking the difference against the canonical union is
-    # what keeps this from re-deriving placement.
+    # Conservative direction (§2.3): the stems an archive's own POINTER LINES name AND the
+    # index does not. The rebuild may decline to RE-ADD an archived pointer; it may never
+    # REMOVE a live one, so a stem sitting in both docs stays.
+    #
+    # `readd_sources` carries the EVIDENCE alongside the verdict. A bare stem list asserts an
+    # intentional `cm local archive` the operator cannot check, and a stray store-root doc is
+    # exactly what makes that assertion false (§2.3's residual: a doc whose link is formatted
+    # as a pointer line is structurally indistinguishable from a real archive, so the honest
+    # move is to name the doc that claimed the placement rather than vouch for it).
     archived: set = set()
+    readd_sources: dict = {}
     if archive_paths:
-        archived = (placed_fact_names(idxp, sorted(archive_paths))
-                    - index_fact_names(idxp))
+        for ap in sorted(archive_paths):
+            ap_text = (snaps[ap].data or b"").decode("utf-8", errors="replace")
+            for stem in archive_index(ap_text)["targets"]:
+                readd_sources.setdefault(stem, []).append(Path(ap).name)
+        archived = set(readd_sources) - index_fact_names(idxp)
     lines = ["# Memory Index", ""]
     if native.is_dir():
         for f in sorted(native.glob("*.md")):
@@ -548,6 +566,7 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
         "mirrors": mirrors,
         "would_remove_existing_pointers": would_remove,
         "would_readd_archived_pointers": sorted(readd_archived),
+        "would_readd_archived_sources": {s: readd_sources[s] for s in sorted(readd_archived)},
         "future": future,
         "snaps": snaps,
         "idx_snap": idx_snap,
@@ -567,7 +586,8 @@ def local_rebuild_index(ctx: StoreContext, *, apply: bool = False,
     plan = _rebuild_plan(ctx)
     report = {k: plan[k] for k in (
         "included", "invalid", "unreadable", "mirrors",
-        "would_remove_existing_pointers", "would_readd_archived_pointers")}
+        "would_remove_existing_pointers", "would_readd_archived_pointers",
+        "would_readd_archived_sources")}
     blocked = bool(plan["invalid"] or plan["unreadable"]) and not skip_invalid
     if not apply:
         return {"ok": not blocked, "plan": True, "error":
