@@ -75,10 +75,11 @@ tempting fix — feed `archive_docs` in — is a no-op, because `_is_archive_ind
 at ≥3 links and the live `SHIPPED.md` has 2."* It also recorded the standing decision
 *"The shared classifier must not be loosened."*
 
-v0.4.31 overturned that decision **with the measurement that falsified it**, and
-`_is_archive_index` now recognizes an archive of any size ≥1 pointer. `archive_docs`
-therefore resolves correctly, and the fix this plan had to route around is available
-directly. Both of the plan's statements are superseded and neither is repeated here.
+v0.4.31 overturned that decision **with the measurement that falsified it**: inside
+`_is_archive_index_text`, the shared text classifier, a `>= 3` link *threshold* became a link
+*presence* test — `_is_archive_index` is its path wrapper and inherits the change. `archive_docs`
+therefore resolves correctly, and the fix this plan had to route around is available directly.
+Both of the plan's statements are superseded and neither is repeated here.
 
 This is the ordinary consequence of staging cycles: a later cycle's *premise* can be moved
 by an earlier cycle's landing. §7 makes the re-derivation explicit rather than assumed.
@@ -169,8 +170,10 @@ exists to repair, and the **report** asserts an eviction the operator cannot che
 row is the fail-open case: nothing is written, nothing is reported as wrong, and the rebuilt
 index is empty. (Pre-fix this failed **closed** — the prose doc was not an archive there, so it
 reached `prepare_local_fact` and came back `invalid` with `ok: False`. A file that fails closed
-cannot be silently swallowed, which is why the intermediate revision is the one worth pinning
-and the pre-fix tree is not.)
+cannot be silently swallowed, which is why the intermediate revision is the one worth pinning and
+the pre-fix tree is not. The **fixed** tree is not the pinning target either, for the opposite
+reason: the harm is gone — the fact stays in `included` — while the *doc* falls into the
+absorption window **R6** records. The defect has exactly one window, and `c45aa0f` is it.)
 
 **The fix is the narrow reading** — the archive's own pointer entries, which is what
 `index_admission.archive_index(text)["targets"]` extracts. It is not a new rule: it is the exact
@@ -190,12 +193,14 @@ nothing for any store that exists, and it is the deciding number: the §2.6 clas
 instance**; the fixtures are its whole evidence, which is why the repair is a class closure
 rather than a repair of observed damage. The scan is re-derivable with the root globs in §7 and
 one predicate swap.
-It would still move a predicate with four consumers, three of which (`schema_drift`,
-`ref_stems`, `remediation_triage`) ask a different question and are correctly lenient there. The
-defect is joint — a lenient classifier is right for those three, and the rebuild wrongly read
-leniency as ownership — so the fix belongs on the reading side, where it costs nothing to the
-three. The framing matters: a shared predicate loosened for one consumer is not evidence that the
-next consumer may assume the strict form.
+It would still move a predicate with **five** call sites across **four** modules — the rebuild,
+`extract_signals`' snapshot tiering, `sync_global`'s counter and archive sweep, and
+`_is_archive_index` itself, the path wrapper three further sites reach the classifier by. Those
+other consumers ask a different question and are correctly lenient there. The defect is joint — a
+lenient classifier is right for them, and the rebuild wrongly read leniency as ownership — so the
+fix belongs on the reading side, where it costs nothing to the other four. The framing matters: a
+shared predicate loosened for one consumer is not evidence that the next consumer may assume the
+strict form.
 
 **Two of the four measured figures do not survive re-derivation, and the cause is the
 measurement, not the fleet.** Re-running the §7 snippet gave **444** roots and **547** docs a few
@@ -357,9 +362,23 @@ encoder is a number that cannot be re-derived — but naming the encoder is not 
    worth recording: a walker that descends only through `Optional[...]`/`dict[...]` wrappers
    visits **3** scalars in this block, because a directly `TypedDict`-typed key (the nested
    schema blocks) carries no `__args__` — the descent silently does nothing and reads as a pass.
-   Using `typing.is_typeddict` as the discriminator, the walk visits **138**. A check whose
-   coverage is an order of magnitude below what it claims is the same defect this cycle is
-   about, so the census is stated here rather than left implicit.
+   Handling both shapes, the walk visits **138**. A check whose coverage is an order of magnitude
+   below what it claims is the same defect this cycle is about, so the census is stated here
+   rather than left implicit. A walker handling *only* the direct shape also reaches 138 —
+   measured — because all **31** nested blocks in the live schema are annotated directly, so the
+   wrapper branch is latent rather than load-bearing *today*; it is kept because the 3-scalar
+   failure it guards against is silent when it happens.
+
+   Two version couplings surfaced, both found in CI rather than reasoned about.
+   `typing.is_typeddict` is **3.10+**, so the discriminator is a structural `_is_typeddict`
+   (`issubclass(td, dict)` plus `__total__`) — one code path rather than a version switch, whose
+   agreement with the stdlib was checked on 3.10.12 across all **195** annotations and arguments
+   the walk inspects: **0** disagreements. And the walk is the first code in this repo that
+   **evaluates** `memory_status`'s annotations: that module carries
+   `from __future__ import annotations` and 49 PEP 585 spellings, free precisely because nothing
+   evaluates them — which `get_type_hints` ends, and 3.8 rejects the subscript. The walk supplies
+   its own evaluation namespace so the check runs on every version CI validates (3.8–3.13);
+   respelling the annotations in production code would be fixing the module to suit a test.
 
 8. **A prose MENTION cannot suppress a fact** (§2.6) — a store whose only drift is a missing
    pointer, which a stray store-root prose doc happens to link: the fact stays in `included` and
@@ -371,7 +390,7 @@ encoder is a number that cannot be re-derived — but naming the encoder is not 
    key does not exist).
 10. **GUARD — the fixture exercises the NARROWING, not the fact-file path** — the shared rule
     classifies the prose doc as an archive, and the extraction the fix reads takes zero targets
-    from it. Green on all three arms by design, and verified **forward** instead (§7): a guard
+    from it. Green on all four arms by design, and verified **forward** instead (§7): a guard
     whose red is unreachable by revert has no revert to fail against. Without it, a later
     classifier change would leave P8 green for a reason it does not name.
 11. **The residual, and the evidence that replaces the vouch** — a store-root doc whose link is
@@ -444,8 +463,9 @@ targets, so the last two arms exist to show it is not vacuous and not a pin.
   reads `AGENTS.md`'s second cell as a version claim, so reordering that table's columns, moving
   the table to another file, or adding a row for a plugin that does not exist yet each turn the
   gate red — all of them correct-by-intent edits. That is the accepted cost of closing an
-  **unpinned** current-version site: at v0.4.31 the cell read `0.4.27` on a `0.4.32` tree and
-  every gate was green, and a mutation to `9.9.9` was green too (§7). The gate fails *loudly and
+  **unpinned** current-version site: the cell read `0.4.27` at every release from v0.4.28 through
+  v0.4.31 — four versions, every gate green on each — and a mutation to `9.9.9` was green too
+  (§7), so it was not merely stale, it was unpinned. The gate fails *loudly and
   locally* with the file, line, stated value and manifest value, so the fix is a one-line edit;
   the alternative is a drift nothing can see. Its vacuity guard (`no manifests → error`) exists
   for the same reason — a check whose subject vanished must fail rather than shrink to nothing.
@@ -477,13 +497,13 @@ python3 tests/validate_manifests.py         # ✓ manifests valid (consolidate-m
 mypy --config-file mypy.ini                 # Success: no issues found in 42 source files
 ```
 
-**Mutation-verify — three arms, one process per tree, one harness.** Each arm is a
+**Mutation-verify — four arms, one process per tree, one harness.** Each arm is a
 `git archive <sha> | tar -x` extraction with **this branch's `tests/smoke.py` copied over it**,
 so the only variable is the code under test. Never `git worktree add`: its commondir resolves the
 main project identity and breaks the hermetic-`HOME` fixture. All four arms below were run with
-the harness at `sha256 3e144293…` — the same file in every arm, verified by hash after copying,
-because a stale overlay is invisible in a count. The counts belong to that triple; re-derive them
-if the harness changes.
+the harness at the sha in the next block — the same file in every arm, verified by hash after
+copying, because a stale overlay is invisible in a count. The counts belong to that triple;
+re-derive them if the harness changes.
 
 | arm | result | which checks moved |
 | --- | --- | --- |
@@ -500,19 +520,27 @@ under test (§5, P8/P9). The `5072833` arm earns its row the same way in the oth
 isolates the unguarded discovery read as the *only* thing left wrong at that revision, so P12's red
 is attributable rather than incidental.
 
-All four arms run the **same** harness: `tests/smoke.py` sha256 `f10d258c6b65bc8743bbd5e0e51fbab0c983975b222878bfe66c08225a2e25e1`,
-verified identical in the working tree and every extracted arm before the runs.
+Every arm in this section — the four above and the forward mutations below — ran with
+`tests/smoke.py` at sha256 `6e057fce83a6cd43600d9241b3d592b4b5cc5e65e17a32ff356977c4eaf02e58`,
+verified identical in the working tree and in every extracted arm before the run. Earlier drafts of
+this section cited two different hashes because the tables were measured at different times; the
+whole section was re-taken against this one, so a single hash now covers it. **The re-take moved no
+count**: the harness edits between the two (the 3.8/3.9 compatibility fixes described under pin 7)
+added and removed no `check()` call, so all four arm totals and every failure set are unchanged.
 
 **A guard has no revert to fail against, so its premise is verified forward.** Two arms:
 
 | forward mutation | result | what it shows |
 | --- | --- | --- |
-| `_is_archive_index_text`'s floor restored to `>= 3` (`/tmp/fm`) | **1952 passed, 11 failed**: C1, C1b, C2, C3, C4, C7, P1, P4, P5, **P10**, P11 | P10 is load-bearing: it names the fixture's dependence on the classified-as-archive premise, and P8 stays **green** under this mutation — exactly the blindness P10 exists to catch |
+| `_is_archive_index_text`'s floor restored to `>= 3` (`/tmp/fm`) | **1953 passed, 11 failed**: C1, C1b, C2, C3, C4, C7, P1, P4, P5, **P10**, P11 | P10 is load-bearing: it names the fixture's dependence on the classified-as-archive premise, and P8 stays **green** under this mutation — exactly the blindness P10 exists to catch |
 | the `SKILL.md` schema block corrupted to `"confirmed": "NOT-AN-INT"` | **1952 passed, 0 failed** on the pre-scalar harness | the block pin's drift was invisible before this cycle; the extended check is red on the mutated block and green on the real one |
 | `AGENTS.md`'s table cell, four ways (`0.4.27` / `9.9.9` / `not-a-version` / row deleted) | **rc 1, exactly one error line each** | each arm fails **only** on the new check; the unmutated control arm is green (rc 0), so the harness is faithful and the gate is not red for an unrelated reason. `9.9.9` is the one that matters — it was **green before this cycle**, so that cell moved from UNPINNED to PINNED |
 
-(1952 is not a coincidence: it is this suite minus the eleven P8–P11 checks, i.e. the total the
-block-pin arm was measured on before they existed.)
+(1952 is not a coincidence, and it names exactly one thing: the census of the harness **before this
+cycle** — this suite's 1964 minus the twelve periphery-parity checks P1–P12 — measured by running
+`1056dd1`'s `tests/smoke.py` unmodified, which reports `1952 passed, 0 failed`. The second row
+quotes it in that sense. The first row's total is 1953 rather than 1952 only because that arm
+mutates *code* against the *current* harness, so it sums with its own failures to 1964.)
 
 **Every figure this spec states is re-derived on this branch's revision** (2026-09-14), one tree
 per process wherever two trees are compared — except the two it labels as **plan testimony** where
@@ -526,9 +554,9 @@ not read the changed function; they are dated where they appear.)
 
 | figure | value | how |
 | --- | --- | --- |
-| registry-less run 1 / run 2 | `ok`, then `TypeError` | `/tmp/justify_probe.py`, hermetic HOME |
+| registry-less run 1 / run 2 | `ok` (stamps the stem), then `ok` naming `already-justified` — Post-fix: no raise, and no `control.sqlite` is minted by either run | `/tmp/justify_probe.py`, hermetic HOME |
 | `control.sqlite` after both runs | absent | same probe |
-| scalars visited by the block pin | 138 (3 under the naive walker) | instrumented walk |
+| scalars visited by the block pin | 138 (3 under a wrapper-only walker, which is the failure the shape handling exists to prevent) | instrumented walk |
 | fleet stores / store-root docs | 437 / 546 as first measured, **446 / 547 on re-run — the root count climbs every time an arm runs** (416 of 446 slugged from a `/tmp` path, 420 empty; §2.6) | the two root globs below, which now print the empty-root count |
 | archives among them | 2 non-`MEMORY.md` | `_is_archive_index_text` per doc |
 | verdict changes under the declined tightening | **0** | the same scan, pointer-line predicate swapped in |
