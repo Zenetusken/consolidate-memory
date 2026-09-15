@@ -68,7 +68,7 @@ as 1,465,823 chars at 55 cycles, extrapolating to ~3.2 MB at the 120-cycle cap. 
 is **1,514,984 chars** over a **30**-record `.consolidation-log.jsonl` — more chars at *fewer*
 cycles, so the recorded per-cycle premise does not hold — and the embedded cycle payload is
 **250,960 bytes (8,365/cycle) measured through `render_html._safe_embed`**, the encoder that
-actually writes it. The static shell is therefore ~83% of the file, so the cap bounds roughly
+actually writes it. The static shell is therefore ~83.5% of the file, so the cap bounds roughly
 **1.00 MB** of embedded payload, an order of magnitude less than the file it was extrapolated from.
 Nothing changed: `_ARCHIVE_CAP` already bounds growth, and this is a documentation correction.
 

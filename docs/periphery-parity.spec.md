@@ -280,8 +280,8 @@ number. It was re-derived and **did not reproduce**:
 | --- | --- | --- |
 | `dashboards/index.html` | 1,465,823 chars at 55 cycles | **1,514,984 chars / 1,527,070 bytes** |
 | records the archive renders from | — | **30** (`.consolidation-log.jsonl`) |
-| embedded cycle payload | — | **250,960 bytes → 8,365 bytes/cycle** (`_safe_embed`, the artifact's own encoder) |
-| static shell | — | **1,264,024 chars ≈ 83% of the file** |
+| embedded cycle payload | — | **250,960 bytes / 249,478 chars → 8,365 bytes/cycle** (`_safe_embed`, the artifact's own encoder) |
+| static shell | — | **1,265,506 chars ≈ 83.5% of the file** |
 | extrapolation at `_ARCHIVE_CAP = 120` | ~3.2 MB (of the file) | **~1.00 MB of embedded payload** |
 
 More chars at *fewer* cycles contradicts the recorded per-cycle-growth premise: the static shell
@@ -433,8 +433,10 @@ mypy --config-file mypy.ini                 # Success: no issues found in 42 sou
 **Mutation-verify — three arms, one process per tree, one harness.** Each arm is a
 `git archive <sha> | tar -x` extraction with **this branch's `tests/smoke.py` copied over it**,
 so the only variable is the code under test. Never `git worktree add`: its commondir resolves the
-main project identity and breaks the hermetic-`HOME` fixture. The harness is one file at one
-hash, and the counts below belong to that triple — re-derive them if it changes.
+main project identity and breaks the hermetic-`HOME` fixture. All four arms below were run with
+the harness at `sha256 3e144293…` — the same file in every arm, verified by hash after copying,
+because a stale overlay is invisible in a count. The counts belong to that triple; re-derive them
+if the harness changes.
 
 | arm | result | which checks moved |
 | --- | --- | --- |
@@ -475,7 +477,7 @@ process wherever two trees are compared:
 | live archive | 1,514,984 chars / 1,527,070 bytes | direct read of `dashboards/index.html` |
 | records the archive renders from | 30 | `.consolidation-log.jsonl`, non-blank lines |
 | embedded cycle payload | 250,960 bytes (8,365/cycle) | `len(_safe_embed(assemble_cycles({}, history)))` — **the artifact's own encoder**, not `json.dumps` defaults |
-| static shell | 1,264,024 chars (~83% of the file) | the two rows above, subtracted |
+| static shell | 1,265,506 chars (~83.5% of the file) | the two rows above, subtracted (both in chars) |
 | payload at the 120-cycle cap | ≈1.00 MB | 8,365 × `_ARCHIVE_CAP` |
 | live facts the firewall refuses | 3 (`ok: false`) | unrelated to this cycle; why the live plan is a refusal |
 
