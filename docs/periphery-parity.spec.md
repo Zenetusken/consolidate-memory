@@ -613,8 +613,8 @@ re-derive them if the harness changes.
 | fixed (this branch) | **1966 passed, 0 failed** | — |
 
 P2, P3, P7, P10 and P12 are **guards** — green on the pre-fix arm by design. P9 and P11 are red on
-both earlier revisions; P8 is red only on the first intermediate one, which is the revision it
-exists for. The multi-arm shape is the point: **a single-arm matrix would have certified §2.6's
+the first two arms and green from `5072833` on; P8 is red only on the first intermediate one, which
+is the revision it exists for. The multi-arm shape is the point: **a single-arm matrix would have certified §2.6's
 regression as a fix**, because P8 is green pre-fix for a reason that has nothing to do with the rule
 under test (§5, P8/P9). The `5072833` arm earns its row the same way in the other direction — it
 isolates the unguarded discovery read as the *only* thing left wrong at that revision, so P12's red
@@ -675,14 +675,14 @@ not read the changed function; they are dated where they appear.)
 | registry-less run 1 / run 2 | `ok` (stamps the stem), then `ok` naming `already-justified` — Post-fix: no raise, and no `control.sqlite` is minted by either run | `/tmp/justify_probe.py`, hermetic HOME |
 | `control.sqlite` after both runs | absent | same probe |
 | scalars visited by the block pin | 138 (3 under a wrapper-only walker, which is the failure the shape handling exists to prevent) | instrumented walk |
-| fleet stores / store-root docs | 437 / 546 as first measured, **446 / 547 on re-run — the root count climbs every time an arm runs** (416 of 446 slugged from a `/tmp` path, 420 empty; §2.6) | the two root globs below, which now print the empty-root count |
+| fleet stores / store-root docs | 437 / 546 as first measured, **446 / 547 on re-run — the root count climbs every time an arm runs** (the method block below carries the full series, whose last reading on this revision is **483 / 547 / 26 / 2 / 0**; 416 of 446 slugged from a `/tmp` path, 420 empty; §2.6) | the two root globs below, which now print the empty-root count |
 | archives among them | 2 non-`MEMORY.md` | `_is_archive_index_text` per doc |
 | verdict changes under the declined tightening | **0** | the same scan, pointer-line predicate swapped in |
 | bare-matcher first picks | 6 docs: `CLAUDE.md`→`1.0.0`, `AGENTS.md`→`0.4.32`, `README.md`→`0.4.32`, `SKILL.md`→`127.0.0`, `harness-map.md`→none, `docs/1.0-preflight.spec.md`→`1.0.0` | `(?<!v)\d+\.\d+\.\d+`, first match per `LIVE_DOCS` entry |
 | multi-pointer lines in live `MEMORY.md` | 0 | `_LINK_RE`-equivalent scan |
 | live archive | 1,514,984 chars / 1,527,070 bytes | direct read of `dashboards/index.html` |
 | records the archive renders from | **56** | `ms.iter_store_cycle_log` → `retention.cycle_log_read_paths`: **three** logs, not one |
-| embedded cycle payload | 1,301,208 chars (85.9%) | `len(file) − len(shell)` against the shipped artifact. The encoder is `_safe_embed` and the object is the dict the template receives (**not** `assemble_cycles`' `(cycles, total)` tuple) — but that object is the *render-time* store state, so re-running `len(_safe_embed(d))` measures a different thing, not a stale number: **1,299,979 today**. The artifact identity is the re-derivable form |
+| embedded cycle payload | 1,301,208 chars (85.9%) | `len(file) − len(shell)` against the shipped artifact. The encoder is `_safe_embed` and the object is the dict the template receives (**not** `assemble_cycles`' `(cycles, total)` tuple) — but that object is the *render-time* store state, so re-running `len(_safe_embed(d))` measures a different thing, not a stale number: the live render closes at **1,513,755 chars** (shell 213,776 + payload 1,299,979), **1,229 fewer** than the artifact, with the shell identical in both. That live payload digit is deliberately **not a figure this spec asks you to re-derive** — a second independent measurer rendered the same 56-cycle store to **1,299,980**, and the one-char gap *is* the argument rather than a bug in either reading. What re-derives is the closure; the artifact identity is the figure |
 | static shell | 213,776 chars (14.1%) | `_load_template()`, minus the 15-char placeholder — the file closes exactly |
 | payload at the 120-cycle cap | ≈2.79 MB of payload / ~3.0 MB of file | 23,236 × `_ARCHIVE_CAP`, plus the shell |
 | live facts the firewall refuses | 3 (`ok: false`) | unrelated to this cycle; why the live plan is a refusal |
