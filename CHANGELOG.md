@@ -50,13 +50,19 @@ render and no consumer needs a migration.
    over the archive: **6 of the 31** records whose operands are checkable, **5 of which predate this
    pass**; the other 24 are not checkable and stay silent rather than passing.
 
-**Verification.** 22 new checks in `tests/smoke.py` (census `1772 + 45 + 125`) — **10 pins and 12
+**Verification.** 23 new checks in `tests/smoke.py` (census `1773 + 45 + 125`) — **11 pins and 12
 guards**, where every pin is re-derived to fail on pre-fix code by running the suite inside a
 `git archive HEAD` tree, and each guard is labeled with the revision it *does* move on. The mutation
 matrix is in `docs/record-post-state.spec.md` §3; building it is what caught one of the checks
 asserting the right thing about the wrong subject, and running the five checks added by the last
 review round caught two more — a fixture that never reached the arm it was written for, and an
-assertion on a warning *count* that passed on a revision which warned from the wrong arm.
+assertion on a warning *count* that passed on a revision which warned from the wrong arm. The 23rd
+came from auditing the branch's own claims, and it is the only one of the 23 whose subject is a
+*check* rather than the product: a v0.1.66 check **named** "a live reference, not a hardcoded copy"
+while its condition compared values, which a copy passes. Reference-ness is a property of the source,
+so the new pin parses `render_html`'s AST — and the equality half, widened to all three constants,
+stays beside it as the drift half, proven separate by a mutation that prints ✓ on one and ✗ on the
+other.
 
 **Not in this release.** The stale `AGENTS.md` version cell and the three structural blinds in
 `tests/docs_links.py` are split off by decision (spec §6) and ship separately. `tests/docs_links.py`

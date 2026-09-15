@@ -1,8 +1,8 @@
 # Record post-state — design-of-record
 
-**Status: revision 10 — for adversarial review** (2266 lines; revision 9 read 1965, revision 8 read
-1941, revision 6 read 1657). Target release: **v0.4.30 (patch)** — a repair to fields that were always
-meant to be measured; no schema, flag, or install-contract change.
+**Status: revision 11 — for adversarial review** (2372 lines; revision 10 read 2266, revision 9 read
+1965, revision 8 read 1941, revision 6 read 1657). Target release: **v0.4.30 (patch)** — a repair to
+fields that were always meant to be measured; no schema, flag, or install-contract change.
 
 This spec closes the record-honesty class the 2026-09-14 audit found: **a cycle record's post-state
 was never owned by anything.** It is the second of three staged cycles; Cycle A (dream-teeth
@@ -102,6 +102,36 @@ the arm it was supposed to exercise never fired), and P19's *original* form asse
 **count** — which passed on revision 9, because a revision reading the operand off the wrong block
 also fires exactly one warning, from the wrong arm. That is this repo's own recorded norm inverted by
 its own item: **a count says how many moved; a probe says which.**
+
+**Revision 11 audits this branch's own claims — and falsifies one of this file's own counts.** Every
+claim this cycle added about its own code was followed to its source: each named count, each
+enumeration, each "never / only / single / exactly N", and each check's **name set against its
+condition**. **Six failed, and no gate could have reached any of them**, because comments, skill
+instructions and a check's *label* are never executed. Five were repaired where they were written. A
+`render_dashboard` comment asserted the HTML archive "never had this defect because it meters from its
+own constant": measured, the archive's gauge takes *both* of its operands from the record and uses the
+constant only as a fallback. Two `render_html` constants were unpinned literal copies of
+`memory_status`'s **in a module that already imports `ms`** — the same comment's own "mirrors
+`memory_status`" was true as an intention and held by nothing. That comment's "all **three** readers"
+is **six** — the same `grep -rn over_ceiling` census §5 now records. SKILL.md step 7's "the ONE budget leaf the script does not own" is
+false twice over — `budget.global_claude_md.*` and `budget.claude_md_hierarchy` are equally out of the
+script's reach — and false in the direction that acts, since its reader is the model one step from
+authoring the value §2.3 forbids. And a check's label claimed "*a live reference, not a hardcoded
+copy*" while its condition was `==`, which a copy passes on the day it is written. The sixth is this
+file's: §5 recorded `over_ceiling` as having "exactly two readers (the alarm line and `render_html`'s
+gauge)", and the census is **six sites in three files**. **The spec's count was wrong in the direction
+that matters** — it was offered as the reason the repair "cannot invent a display", and one unexamined
+reader is exactly what would let it. **The same sweep confirms the neighbouring count it could have
+falsified**: `ceiling_tokens` reads at **one** site, the `⚠ HARD CEILING` alarm. That pair is the only
+evidence that these numbers came from a census and not from a prior — a method that lowers one
+number and leaves the next one standing.
+**The last of the six is the class one domain over.** The first five are repairs to *reasons*; the
+sixth is a **predicate** that did not test the property its name asserted — so its repair is not a
+rewritten sentence but a new check (P23) that reads the source, because reference-ness is not a
+property of the value. **Census: 23 items, 11 pins, 12 guards** — P23 added, the equality half
+replacing and widening the v0.1.66 check it succeeds, so the census moves by exactly one. **None of
+the six changes a rendered byte on this tree**: the constants agreed on the day they were copied,
+which is precisely why nothing noticed they were copies.
 
 **Revision 9 audits the ledger rather than the claims.** Round 4's three lane reports were re-read
 against this file, and every repair the ledger says the round made was re-derived at the text instead
@@ -761,8 +791,14 @@ re-key of it."* `required` reads `standing_justify`, `baseline_facts` and fact-c
 one is a verdict, and it stays out. So the split running through the Out-list bullet is not
 `maintenance` vs `remediation` by container; it is **per leaf, by whether the computation reads
 record state or store state**, and `over_ceiling` is on the store-state side of it. Writing it costs
-nothing else: it has exactly two readers (the alarm line and `render_html`'s gauge), both of which
-already render it identically when absent or falsy — so the repair cannot invent a display.
+nothing else: **every** reader renders it identically when absent or falsy — so the repair cannot
+invent a display. The census is `grep -rn over_ceiling`'s, and it is **six sites in three files**:
+the dashboard tail and the remediation panel in `render_dashboard`; the remediation lead, the KPI and
+the gauge in `dashboard.template.html`; and the store-checks row in `dashboard.sections.js`. All six
+test truthiness (`_flag`, `truthy`, or a bare `if`). An earlier revision said "exactly two readers
+(the alarm line and `render_html`'s gauge)" — the number its author happened to know, and wrong in
+the direction that matters here, because a single unexamined reader is exactly what would let this
+write invent a display.
 
 **One site, not two.** The index family is not re-implemented in the refresh; it is **shared** with
 `build_context`. The distinction is load-bearing, because the seed's read of `<store>/MEMORY.md` is not
@@ -1444,6 +1480,17 @@ below are therefore stated as relations, which is the only form in which their c
   diverged the guard passes on the real file while `_measure` reads a different one, writing
   `after_tokens: 0` beside a true `before_*` — §2.3's fabrication, reached through the check that
   exists to prevent it.
+- **P23 — "a live reference" is a property of the SOURCE, not of the value.** Parse `render_html.py`'s
+  AST and assert that each of its three budget constants (`INDEX_TOKEN_BUDGET`,
+  `CLAUDE_MD_TOKEN_BUDGET`, `INDEX_CEILING_TOKENS`) is assigned an **attribute of `ms`**, not a
+  literal. **PIN** — RED on the pre-fix operands, which carried `1500` and `4000`; nothing else about
+  the module changes, so the ✗ is the literals and only the literals. The equal-*value* half is a
+  rewrite of the pre-existing v0.1.66 check rather than a new item (no census movement): widened from
+  one constant to three, and relabeled — because that check's **label** read "a live reference, not a
+  hardcoded copy" while its **condition** was `==`, which a literal copy passes on the day it is
+  written. Measured rather than argued: on the mutated tree the equality half prints **✓** and only
+  P23 goes red. Same shape as the other five repairs in this revision, one domain over — a check whose
+  name asserts one property while its predicate tests another.
 
 **Revision 9 as a referent is new, and it is a consequence of the review being adversarial rather than
 anticipatory.** P19 and P22 name a revision that **exists and was measured**, where every earlier guard
@@ -1453,11 +1500,13 @@ was itself put through review: a guard whose referent is real has been observed 
 argued to be capable of it.
 
 **Smoke census.** The census constant moves only if checks are added; the pre-change figure was
-`1750 + 45 + 125`, the revision-9 figure (seventeen items in) was `1767 + 45 + 125`, and this
-revision's is **`1772 + 45 + 125`** — the five round-3 items, `+5` on the first addend and nothing
-else. Each figure is re-derived from a run, never carried: the constant is the full-suite total
-*including the census check itself*, so a carried number is a check that certifies a count it did not
-produce.
+`1750 + 45 + 125`, the revision-9 figure (seventeen items in) was `1767 + 45 + 125`, revision 10's
+was **`1772 + 45 + 125`** (the five round-3 items, `+5` on the first addend and nothing else), and
+this revision's is **`1773 + 45 + 125`** — P23, `+1` on the first addend. Each figure is re-derived
+from a run, never carried: the constant is the full-suite total *including the census check itself*,
+so a carried number is a check that certifies a count it did not produce. P23 is why the revision-11
+figure is a run rather than an increment by hand: a check that replaces another moves nothing, and
+only a run can say which of the two new clauses that is.
 
 ## §4 Ship shape
 
@@ -2264,3 +2313,60 @@ are stated with the artifact they were measured on.
     have repeatedly found that a claim outruns its operand; round 3 found that a **closure argument**
     can outrun its own closure, because it was stated per leaf over a set whose members are not all
     leaves.
+
+- **2026-09-14 — revision 11, the branch's own claims (six, and the sweep is the method).** No
+  reviewer filed this round. It is a pass over **what this cycle said about its own code**, because
+  that is the one surface with no gate on it: a comment, a skill instruction and a check's *name* are
+  all never executed, so only following each one to its source can falsify it. Five of the six were
+  repaired on the branch before this entry was written (commits `351ed20`, `533244e`, `0aa233d`).
+  - **The sweep's shape.** Every added claim that names a **count, an enumeration, or a
+    "never / only / single / ONE"**, plus — and this is the sixth's origin — every check asked
+    *what would this print if its claim were false?*
+  - **F1 — the archive "never had this defect".** Falsified by reading
+    `dashboard.template.html`'s gauge: it takes **both** operands from the record
+    (`budget.index.after_tokens` against `budget.index.budget_tokens`), its constant only as the
+    fallback. The repair is the reason, not the code, and the corrected reason is the sharper one:
+    the pair is contemporaneous because the splice writes both together.
+  - **F2 — two `render_html` constants that were unpinned literal copies** of `memory_status`'s, in a
+    module that already imported `ms`. Not a prose defect but a claim nothing held: the comment said
+    "mirrors `memory_status`", which is true as an intention and enforced by nothing. Repaired by
+    making both a live reference, as `INDEX_CEILING_TOKENS` has been since v0.1.66 for this exact
+    reason. **The probe found a drift, not an error** — rebinding `ms.INDEX_TOKEN_BUDGET = 1600` left
+    `render_html` at `1500` — and the drift is invisible in any output on the current tree, because
+    the copies agreed on the day they were written.
+  - **F3 — "all three readers"** where `grep -rn over_ceiling` finds six, in three files, one of them
+    (`dashboard.sections.js`) an enumeration that never reached it.
+  - **F4 — SKILL.md's "the ONE budget leaf the script does not own."** False twice over
+    (`budget.global_claude_md.*` and `budget.claude_md_hierarchy` are equally out of reach) and false
+    in the direction that acts: its reader is the **model**, one step from authoring the value §2.3
+    forbids. The only one of the six whose reader is an actor rather than a reader, which is what
+    makes a false count *actionable* rather than merely imprecise.
+  - **F5 — a check whose label asserted one property while its condition tested another.** The v0.1.66
+    check named "*a live reference, not a hardcoded copy*" and tested `==`. Found by asking each check
+    the question above; for this one the answer was ✓, which is the whole finding. **Repaired as two
+    checks, not one stronger one**, because the two properties live in different domains: the value
+    (equality — a copy passes) and the source's shape (an AST read of what the name is bound to).
+  - **F6 — this file's own count.** §5 recorded `over_ceiling` as having "exactly two readers (the
+    alarm line and `render_html`'s gauge)". The census is **six sites in three files** — and the
+    claim was load-bearing: it was offered as the reason the repair "cannot invent a display", where
+    one unexamined reader is exactly what would let it. **All six test truthiness**, so falsy is
+    render-identical to absent, which is the conclusion the paragraph needed and could not get from a
+    count of two.
+  - **The one that held is the entry's control.** `ceiling_tokens` reads at **exactly one** site, the
+    `⚠ HARD CEILING` alarm, checked in the same pass that falsified its neighbour. A method that
+    lowers every number it meets is not a census; the pair is what lets the other four numbers mean
+    anything.
+  - **Pin census: 22 items / 10 pins / 12 guards → 23 items / 11 pins / 12 guards**; the smoke
+    constant `1772 + 45 + 125` → `1773 + 45 + 125`. P23's predicate is **source-level by necessity**:
+    the property it asserts — this name is bound from `ms` — is invisible to any comparison of values,
+    which is the defect that created it. The equality half is not a new item; it replaces and widens
+    the v0.1.66 check it succeeds, which is why a revision adding one pin moves the census by exactly
+    one.
+  - **Mutation, recorded as the pair it is.** On a tree carrying the literals again: the equality half
+    prints **✓** and P23 prints **✗** — `1941 passed, 2 failed`, the second ✗ being the census
+    constant, which is how a suite fails when its surface moves and its census is still correct. The ✓
+    is the finding rather than a surprise: it is F5 reproduced in one line of output.
+  - **Chronology, because it is the honest part.** F1–F4 came from the first pass; F5 arrived while
+    auditing F2's repair, and F6 while writing this entry. The count in this revision's title is six
+    rather than the first pass's four because the sweep was not one pass — it was the same question
+    asked until the answers stopped arriving.
