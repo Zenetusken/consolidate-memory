@@ -479,20 +479,36 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
     # apply transaction verifies exactly the bytes this pass classified.
     #
     # GUARDED, and not for symmetry with the fact loop below. `read_snapshot` RAISES on an
-    # unreadable path (`except OSError` → `WriteRefused`), so without this an unreadable
+    # unreadable path (`except OSError` → `WriteRefused`), so without a guard an unreadable
     # store-root doc — or a directory named `*.md` — aborts the whole command with a raw
     # message instead of the structured `ok: False` + `unreadable` report the fact loop builds.
-    # That loop's own guard cannot cover it: the raise happens here, before it runs. An
-    # unreadable file is not an archive, so skipping it hands it back to the fact loop, which
-    # is where the store-scan convention (skip unreadable, never abort) already lives.
+    # The raise happens here, before that loop runs.
+    #
+    # The guard REPORTS; it does not merely skip. Handing the path back to the fact loop is what
+    # the first revision did, and it is false for exactly one name: that loop skips
+    # `("MEMORY.md", "SHIPPED.md")` BY NAME, so an unreadable `SHIPPED.md` — the canonical
+    # archive doc, the one name this whole rule is about — is seen by NO loop. `archived` then
+    # comes out empty and the plan re-adds every pointer that doc owns while reporting
+    # `ok: True` and an empty `unreadable`: the defect this function exists to fix, silent, and
+    # invisible in the one report an operator reads. The harm needs a doc that is BOTH excluded
+    # from the fact loop AND consulted for placement, and `SHIPPED.md` is the only one: a
+    # `/quarantine/` path is excluded from both loops deliberately, and a quarantined doc is not a
+    # placement record, so nothing is re-added on its account. That is why the consequence is a
+    # wrong write rather than a missing warning. Recording it
+    # here fails the plan closed through the fact loop's own machinery (`blocked`), leaving
+    # `--skip-invalid` as the operator's explicit escape — and `reported_unreadable` keeps the
+    # entry single-homed, since the fact loop would otherwise report the same path again.
     archive_paths: set = set()
+    reported_unreadable: set = set()
     if native.is_dir():
         for f in sorted(native.glob("*.md")):
             if f.name == "MEMORY.md" or "/quarantine/" in str(f):
                 continue
             try:
                 snap = read_snapshot(f)
-            except WriteRefused:
+            except WriteRefused as e:
+                unreadable.append({"stem": f.stem, "error": str(e)})
+                reported_unreadable.add(str(f))
                 continue
             if not snap.exists:
                 continue
@@ -535,7 +551,7 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
         for f in sorted(native.glob("*.md")):
             if f.name in ("MEMORY.md", "SHIPPED.md") or "/quarantine/" in str(f):
                 continue
-            if str(f) in archive_paths:
+            if str(f) in archive_paths or str(f) in reported_unreadable:
                 continue
             try:
                 snap = read_snapshot(f)

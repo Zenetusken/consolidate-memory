@@ -40,7 +40,8 @@
 > alone wrote archived facts back into `MEMORY.md`, silently undoing `cm local archive` — measured on
 > the live store, **2 re-adds** — both completed arcs, whose pointers belong in the on-demand
 > archive rather than the always-loaded index. The rule is no longer re-derived: the rebuild asks
-> what the index places (`memory_status.index_fact_names`) and what an archive owns
+> what the index places (the canonical `_LINK_RE` anchor over its pinned snapshot of `MEMORY.md`)
+> and what an archive owns
 > (`index_admission.archive_index`), and it can only *decline to re-add*, never delete. Separately,
 > `--justify-demotion` no longer **crashes on the second run** against an unenrolled store: the
 > usage clock's deliberate `None` now reaches its documented fallback instead of `int()`.

@@ -11481,6 +11481,62 @@ with _Env73() as _e_rb4:
           and [r["stem"] for r in _rep_rb4.get("unreadable") or []] == ["locked"]
           and [r["stem"] for r in _rep_rb4.get("included") or []] == ["good-rbu"])
 
+# v0.4.32 P13 (§2.7 — the OTHER half of P12's premise, and the case its own fixture cannot reach).
+# P12 asserts the archive pass REPORTS an unreadable store-root doc rather than raising; the report
+# it lands in is the fact loop's, reached by handing the path back to that loop. That hand-back is
+# false for exactly one name. The fact loop skips ("MEMORY.md", "SHIPPED.md") BY NAME, so an
+# unreadable `SHIPPED.md` is seen by NO loop: it is not classified as an archive (loop 1 skipped
+# it) and it is not reported (loop 2 excludes it), `archived` comes out empty, and the plan re-adds
+# every pointer that doc owns while reporting `ok: True` and an empty `unreadable`. Measured, same
+# fixture and call path as P12, one value changed:
+# locked.md -> ok=False/unreadable=['locked']; SHIPPED.md -> ok=True/unreadable=[].
+#
+# PIN, not a guard, and the tree it pins is this branch's own prior commit: red on `4490dd8`, and
+# also on `1056dd1` and both intermediates (the name exclusion is old — `df18912`, the 0.3.5
+# LocalFactV1 era — so nothing in this cycle introduced the hole; the cycle's archive pass is what
+# made an unreadable doc decide placement, and §2.7's guard what failed to notice).
+#
+# The harm is the WRITE, so the pin asserts the apply boundary, not the plan label. Verified on
+# `4490dd8` end-to-end, not merely inferred from the red: plan `ok: True` / `unreadable: []`,
+# `included == ['archived-rbo']`, apply `ok: True`, and MEMORY.md rewritten with the pointer
+# appended. The fixture's archive is unreadable, so whether it owned that stem is unknowable here —
+# which IS the defect: placement could not be determined and the rebuild wrote anyway. P1 is the
+# readable half of the same pair (a doc whose ownership is visible must suppress the re-add).
+with _Env73() as _e_rb5:
+    _ctx_rb5 = sc.resolve_store(_e_rb5.proj)
+    (_e_rb5.store / "archived-rbo.md").write_text(
+        "---\nname: archived-rbo\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_rb5.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n", encoding="utf-8")   # present, and NOT placing `archived-rbo`
+    (_e_rb5.store / "SHIPPED.md").mkdir()      # unreadable: IsADirectoryError -> WriteRefused
+    _idx_before = (_e_rb5.store / "MEMORY.md").read_bytes()
+    _rep_rb5: dict = {}
+    try:
+        _rep_rb5 = _li_rb3.local_rebuild_index(_ctx_rb5)
+    except Exception as _rb5_exc:      # pre-P12 shape: a raw raise out of the CLI path
+        _rep_rb5 = {"raised": f"{type(_rb5_exc).__name__}: {_rb5_exc}"}
+    _app_rb5: dict = {}
+    try:
+        _app_rb5 = _li_rb3.local_rebuild_index(
+            _ctx_rb5, apply=True, confirm=_li_rb3.REBUILD_CONFIRM)
+    except Exception as _rb5a_exc:
+        _app_rb5 = {"raised": f"{type(_rb5a_exc).__name__}: {_rb5a_exc}"}
+    check("v0.4.32 P13 (PIN): an unreadable `SHIPPED.md` is REPORTED like any other unreadable "
+          "store-root doc, and the plan fails closed — the name the fact loop excludes cannot be "
+          "handed back to it (pre-fix and both intermediates: `ok: True` with an EMPTY "
+          "`unreadable`, because loop 1 skipped the file and loop 2 excludes the name, so nothing "
+          "reported it at all)",
+          _rep_rb5.get("ok") is False
+          and [r["stem"] for r in _rep_rb5.get("unreadable") or []] == ["SHIPPED"]
+          and _rep_rb5.get("raised") is None)
+    check("v0.4.32 P13b (PIN, the harm itself): `--apply` REFUSES and MEMORY.md keeps its bytes — "
+          "the re-add is the damage, so the pin is on the write, not the label (pre-fix, "
+          "`4490dd8` included: the apply ADMITS and MEMORY.md is rewritten with the pointer "
+          "appended — measured, not inferred from the red)",
+          _app_rb5.get("ok") is False
+          and "unchanged" in (_app_rb5.get("error") or "")
+          and (_e_rb5.store / "MEMORY.md").read_bytes() == _idx_before)
+
 with _Env73() as _e_clk:
     _ctx_clk = sc.resolve_store(_e_clk.proj)
     from control_plane import count_probative_after as _cpa, record_usage_window as _ruw
@@ -17627,8 +17683,8 @@ with _tf43.TemporaryDirectory() as _td30:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 12)  # +9: v0.4.31 store-classifier parity C1..C7
-                                                        # +12: v0.4.32 periphery parity P1..P12
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14)  # +9: v0.4.31 store-classifier parity C1..C7
+                                                        # +14: v0.4.32 periphery parity P1..P12, P13/P13b
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

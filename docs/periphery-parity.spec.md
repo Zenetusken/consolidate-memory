@@ -89,11 +89,17 @@ by an earlier cycle's landing. §7 makes the re-derivation explicit rather than 
 The rule chosen is deliberately the one that **cannot delete**:
 
 ```
-archived = ⋃ { archive_index(text_of(doc))["targets"] : doc ∈ archive_docs } − index_fact_names(idxp)
+existing_ptrs = set(_LINK_RE.findall(text_of(idxp)))          # idxp = the PINNED MEMORY.md snapshot
+archived      = ⋃ { archive_index(text_of(doc))["targets"] : doc ∈ archive_docs } − existing_ptrs
 ```
 
-Both names are real and greppable: `index_admission.archive_index` and
-`memory_status.index_fact_names`.
+Both names are real and greppable: `index_admission.archive_index`, and `memory_status._LINK_RE`
+— the same anchor `index_fact_names` itself applies. The second operand is the plan's own
+`existing_ptrs`, and it is deliberately **not** `index_fact_names(idxp)`: that call asks the same
+question of the same file, but it re-reads `MEMORY.md` from disk, and a concurrent write between
+the pin and that read makes the plan report one stem as both a pointer to remove and a re-add to
+decline. Every input this verdict rests on is therefore a byte string the apply transaction
+verifies by sha256. §2.5 records the other half of the same operand's history.
 
 That is: stems an archive's own **pointer lines** name **and** MEMORY.md does not. A stem in
 both docs is a live pointer the operator has (for whatever reason) in both — the rebuild keeps
@@ -128,9 +134,11 @@ enters `snaps` like any other source.
 
 ### 2.5 The second anchor
 
-`_rebuild_plan` builds `existing_ptrs` with a hand-rolled per-line first-match scan
+`_rebuild_plan` **built** `existing_ptrs` with a hand-rolled per-line first-match scan
 (`re.search(r"\]\(([^)]+)\.md\)", ln)`) rather than the package's `_LINK_RE`. On a line
-carrying two pointers only the first is seen.
+carrying two pointers only the first is seen. The shipped form is §2.3's — one `_LINK_RE` over
+the pinned snapshot's text — and this section records what it replaced, so the two are not read
+as alternatives.
 
 Measured on the live `MEMORY.md`: **0** lines carry more than one pointer, so the divergence
 is inert today. It is fixed here anyway — it is the same defect (a second, narrower copy of
@@ -161,9 +169,18 @@ case, and the reason anyone runs it):
 
 | fixture | `included` | `would_readd_archived_pointers` | rebuilt index |
 | --- | --- | --- | --- |
-| a prose doc that MENTIONS the fact in a sentence | `['other-live']` — the fact is dropped | `['only-fact']` — a `cm local archive` that never ran | keeps `other-live` |
-| a prose doc whose link sits on its own list item | `['other-live']` — dropped | `['only-fact']` | keeps `other-live` |
-| the prose doc is the store's only other file | `[]` | `['only-fact']` | **zero pointers, `ok: True`** |
+| a prose doc that MENTIONS the fact in a sentence | `['kept-live']` — `mention-fact` is dropped | `['mention-fact']` — a `cm local archive` that never ran | keeps `kept-live` |
+| a prose doc whose link sits on its own list item | `['kept-live']` — dropped | `['mention-fact']` | keeps `kept-live` |
+| the prose doc is the store's only other file | `[]` | `['mention-fact']` | **zero pointers, `ok: True`** |
+
+The stems are the **shipped** fixture's (`kept-live` / `mention-fact` / `prose-mention.md`, §5's P8
+block), not a throwaway script's: rows 1–2 are that fixture re-taken at `c45aa0f`, and row 3
+differs only by omitting `kept-live.md`. Stated because the first revision of this table named
+stems that existed in no harness — a measurement whose fixture is not preserved is testimony, and
+these three rows are re-derivable. Two further values at this revision are worth naming, since the
+repair depends on them: `would_readd_archived_sources` is **absent** (the doc that claimed the
+placement arrives with P4, so at `c45aa0f` the report asserts an eviction with no evidence offered),
+and the third row's `ok` is **`True`** — the fail-open case, indistinguishable from a clean plan.
 
 Two harms in one measurement. The **plan** silently declines to repair the missing pointer it
 exists to repair, and the **report** asserts an eviction the operator cannot check. The third
@@ -202,6 +219,17 @@ fix belongs on the reading side, where it costs nothing to the other four. The f
 shared predicate loosened for one consumer is not evidence that the next consumer may assume the
 strict form.
 
+**A third second-copy, named so this census does not read as exhaustive.** The count above is of
+call sites of the *classifier*. A second copy of the *anchor* over archive docs also exists:
+`build_context` computes `reference_stems` by running `_LINK_RE` over the same `archive_docs` that
+`placed_fact_names` unions — in the same function, twenty lines below the canonical call. It is
+**not a defect and is not repaired.** It asks the eviction-safety question, where a lenient reading
+can only ever *keep* a fact (a match yields keep, never a blind evict), and it deliberately unions
+two further sources — `CLAUDE.md` prose mentions and `[[wikilinks]]` — that the canonical predicate
+has no business knowing about. It is recorded because this cycle's root cause is "the periphery's
+second copies", so a reader who greps the anchor will find it and should not have to re-adjudicate
+why it was left standing.
+
 **Two of the four measured figures do not survive re-derivation, and the cause is the
 measurement, not the fleet.** Re-running the §7 snippet gave **444** roots and **547** docs a few
 hours later, then **446** roots on the next run — while **26** `MEMORY.md`, **2** archives and the
@@ -227,6 +255,45 @@ therefore stands, and the plan **names the doc that claimed the placement**
 `{'list-claimed': ['prose-list.md']}`. This converts an unverifiable claim into a checkable one —
 the operator can see *what* is asserting a `cm local archive` and judge whether it is an archive
 at all. It is pinned as a residual (P11), not as a fix.
+
+### 2.7 An unreadable archive doc — the hole in §2.6's guard, and why the harm is a write
+
+§2.6's fix added a guard to the archive-discovery loop: that loop reads **every** store-root
+`*.md` to classify it, and `control_plane.read_snapshot` RAISES on an unreadable path
+(`except OSError` → `WriteRefused`). Unguarded, one unreadable doc aborts the whole command with
+a raw message instead of the structured `ok: False` + `unreadable` report the fact loop builds.
+
+The guard's first form **skipped** the unreadable doc, on the stated theory that skipping
+"hands it back to the fact loop, which is where the store-scan convention lives." That theory is
+false for exactly one filename. The fact loop opens by excluding `("MEMORY.md", "SHIPPED.md")`
+**by name** — an exclusion old enough to predate this cycle (`df18912`, the 0.3.5 LocalFactV1
+era) — so for `SHIPPED.md`, the one doc this entire rule is about, *neither* loop sees the file:
+the discovery loop skipped it, and the fact loop excludes the name. The consequence is not a
+missing warning but a wrong write: `archived` comes out empty, so the plan re-adds every pointer
+that doc owns — the defect §2.1 exists to fix — while reporting `ok: True` and an empty
+`unreadable`, which is the one report an operator reads.
+
+Measured, same fixture and same call path as §5's P12, one value changed:
+
+| unreadable store-root doc | `ok` | `unreadable` |
+| --- | --- | --- |
+| `locked.md` (P12's value) | `False` | `['locked']` |
+| `SHIPPED.md` (the name the fact loop excludes) | **`True`** | **`[]`** |
+
+The repair is routing, not new machinery: an unreadable candidate is recorded in `unreadable`
+like any other, which fails the plan closed through the *existing* `blocked` predicate — plan mode
+returns `ok: False` and `--apply` refuses with "index unchanged", leaving `--skip-invalid` as the
+operator's explicit escape. A `reported_unreadable` set keeps the entry single-homed, since the
+fact loop would otherwise report the same path a second time — P12's own assertion (`unreadable ==
+['locked']`) is what holds that to one entry. The pin asserts the **write** boundary (P13b), not
+the label, because the re-add is the damage: pre-fix the apply ADMITS.
+
+**Deliberately NOT changed, and the asymmetry is the point.** `idx_snap = read_snapshot(idxp)` at
+the top of `_rebuild_plan` is unguarded too, so an unreadable `MEMORY.md` aborts the command. That
+one is left alone: the rebuild's entire output *is* `MEMORY.md`, so planning against an index it
+cannot read has no honest answer, and aborting fails **closed**. The `SHIPPED.md` hole failed
+**open** — the two look alike at the call site and are opposite in direction, which is why only
+one of them is a defect.
 
 ## 3. Root cause B — the usage clock's `None` reaches an `int()` call
 
@@ -279,8 +346,9 @@ reproduce the defect; the fix is a pin that builds a store the harness never bui
 
 | Site | Change |
 | --- | --- |
-| `local_ingress._rebuild_plan` | Discover archive docs (`_is_archive_index_text` — the TEXT rule, run on the snapshot's own bytes, which is what lets the classification and the revision pin share one read) among store-root `*.md`; snapshot-pin each into `snaps`; compute `archived` as the union of `index_admission.archive_index(text)["targets"]` over those docs, minus the index's own pointer set from that same snapshot (`existing_ptrs`, **not** a second read of `MEMORY.md` from disk), and exclude those stems from `included` (§2.3, §2.6). The discovery read is guarded: `read_snapshot` raises `WriteRefused` on an unreadable path, and an unguarded raise there aborts the command before the fact loop's own guard — which is where the store-scan convention lives — can run. |
+| `local_ingress._rebuild_plan` | Discover archive docs (`_is_archive_index_text` — the TEXT rule, run on the snapshot's own bytes, which is what lets the classification and the revision pin share one read) among store-root `*.md`; snapshot-pin each into `snaps`; compute `archived` as the union of `index_admission.archive_index(text)["targets"]` over those docs, minus the index's own pointer set from that same snapshot (`existing_ptrs`, **not** a second read of `MEMORY.md` from disk), and exclude those stems from `included` (§2.3, §2.6). The discovery read is guarded **and REPORTS**: `read_snapshot` raises `WriteRefused` on an unreadable path, so an unguarded raise there aborts the command before the fact loop's own guard can run — but that loop excludes `("MEMORY.md", "SHIPPED.md")` **by name**, so for `SHIPPED.md` it cannot hand the path back either. The candidate is recorded in `unreadable` (§2.7), which fails the plan closed through the existing `blocked` predicate. |
 | `local_ingress._rebuild_plan` | Build `existing_ptrs` with the canonical `_LINK_RE` over the index **snapshot's** bytes — the anchor is reused, the snapshot provenance is kept (§2.5). |
+| `local_ingress._rebuild_plan` | Skip a path the discovery loop already reported (`reported_unreadable`) in the fact loop — the two loops glob the same directory, and without the skip an unreadable doc that is not `SHIPPED.md` is reported twice (§2.7). |
 | `local_ingress.local_rebuild_index` | Report the prevented re-adds under `would_readd_archived_pointers`, so the undo direction is visible where the operator looks. |
 | `local_ingress.local_rebuild_index` | Report **which doc** claimed each prevented re-add under `would_readd_archived_sources` (§2.6 residual): the stem list alone is a claim the operator cannot check, and a stray store-root doc is exactly what makes it false. |
 | `memory_status.apply_demotion_justify` | Tolerate `None` from `n_after_fn`, mirroring `_justify_remaining`: the stamp is judged by the fallback, not crashed into. |
@@ -292,10 +360,13 @@ reproduce the defect; the fix is a pin that builds a store the harness never bui
 | `AGENTS.md` | The dev-loop comment claimed `1795 assertions` — stale by 157 (`1795` at v0.4.28, where it was still true; `1952` at v0.4.31), and stale by construction: no gate reads it, and it drifts on every check added. Replaced by a pointer to where the count actually lives (`tests/smoke.py`'s own census constant, printed on every run) rather than by a fresh number that would rot the same way. |
 | `docs/index-usage-and-budget-ladder.spec.md` | Already corrected in v0.4.31 (the falsified ≥3 justification). Nothing left; recorded here so the plan's item is not silently dropped. |
 
-**Not changed, deliberately.** `remediation_triage`, `placed_fact_names`, and
-`index_fact_names` are untouched — this cycle consumes them, and §2.6 records why the fix could
-not be a change to `placed_fact_names` or to the classifier it shares. `local_archive` is
-untouched: the relocation is correct, and the defect is that its sibling did not honor it.
+**Not changed, deliberately.** `remediation_triage` and `placed_fact_names` are untouched — this
+cycle consumes them, and §2.6 records why the fix could not be a change to `placed_fact_names` or
+to the classifier it shares. `index_fact_names` is untouched too, and deliberately **no longer
+called by the rebuild** (§2.3): it asks the rebuild's question correctly but reads `MEMORY.md`
+from disk, which re-opens the write window the snapshot pin exists to close.
+`local_archive` is untouched: the relocation is correct, and the defect is that its sibling did
+not honor it.
 
 **Recorded, not changed — the archive size.** The plan carried this as a re-derivable
 number. Re-deriving it cost three attempts, and the first two were wrong in a way worth
@@ -401,23 +472,44 @@ encoder is a number that cannot be re-derived — but naming the encoder is not 
     the residual turns a check red and forces §2.6 to be re-adjudicated rather than quietly
     outgrown — a recorded blind spot that is not pinned is a scheduled defect.
 
+12. **An unreadable `SHIPPED.md` is reported, and the write is refused** — the name the fact loop
+    excludes cannot be handed back to it (§2.7). Measured, one value apart from P12's fixture:
+    `locked.md` → `ok: False`, `unreadable == ['locked']`; `SHIPPED.md` → pre-fix `ok: True` with an
+    **empty** `unreadable`. Two checks: **P13** the plan report, **P13b** the `--apply` refusal with
+    `MEMORY.md`'s bytes unchanged. Both are **pins**, and the tree they pin is this branch's own
+    prior commit — red on `4490dd8`, green only on the fix — as well as on all three earlier arms,
+    since the name exclusion is old enough to predate the cycle.
+
 **Measured on the mutation matrix**, one arm per revision and one process per tree (§7):
 
 | arm | result | which checks moved |
 | --- | --- | --- |
-| pre-fix (`1056dd1`) + this branch's harness | **1958 passed, 6 failed** | P1, P4, P5, P6, P9, P11 |
-| intermediate (`c45aa0f`) + this branch's harness | **1960 passed, 4 failed** | P8, P9, P11, **P12** |
-| intermediate (`5072833`) + this branch's harness | **1963 passed, 1 failed** | **P12** |
-| fixed (this branch) | **1964 passed, 0 failed** | — |
+| pre-fix (`1056dd1`) + this branch's harness | **1958 passed, 8 failed** | P1, P4, P5, P6, P9, P11, **P13, P13b** |
+| intermediate (`c45aa0f`) + this branch's harness | **1960 passed, 6 failed** | P8, P9, P11, P12, **P13, P13b** |
+| intermediate (`5072833`) + this branch's harness | **1963 passed, 3 failed** | P12, **P13, P13b** |
+| prior commit (`4490dd8`) + this branch's harness | **1964 passed, 2 failed** | **P13, P13b** |
+| fixed (this branch, working tree) | **1966 passed, 0 failed** | — |
 
 P2, P3, P7, P10 and P12 are **guards** — green on the pre-fix arm. P9 and P11 are red on both
 earlier revisions; P8 is red only on the first intermediate one, which is the revision it exists
 for. **P12 is red only on the two intermediate revisions**, which is the pair that introduced the
 unguarded read it guards: the guard was earned by review of the fix, not by the defect the fix
-targets, so the last two arms exist to show it is not vacuous and not a pin.
+targets, so the last arms exist to show it is not vacuous and not a pin.
+
+**The fourth row is the one worth reading, and it is a property of how pins age.** `4490dd8` was
+this branch's head until §2.7's fix landed, and it is a mutation arm now — the same commit, re-read.
+Its suite is green on P1–P12 and red on exactly P13 and P13b, which is the cleanest available
+statement that those two checks pin *this* fix and nothing else: a check riding along on an earlier
+defect would have moved in the rows above and not here, and one asserting a general property would
+have moved everywhere including the fixed tree. The `passed` column is the corroboration — it is
+1958 / 1960 / 1963 / 1964 across the four arms, moving only where a *new* check passes, while
+`failed` rises by exactly 2 in every one of them.
 
 (Numbering above is stable, not positional: P8–P11 were added after the review round that found
-§2.6, and P1–P7 keep the numbers they were measured under in the revisions cited throughout.)
+§2.6, P13–P13b after the round that found §2.7, and P1–P7 keep the numbers they were measured
+under in the revisions cited throughout. Two cycles therefore both number a "P13" — the v0.4.30
+block and this one — so a `✗` sweep must anchor on the leading `vX.Y.Z Pn` token; a bare `P[0-9]+`
+search also matches check *labels*, which quote other checks by name.)
 
 ## 6. Risks
 
@@ -490,27 +582,28 @@ targets, so the last two arms exist to show it is not vacuous and not a pin.
 **The gate set, on this branch's revision (all five green):**
 
 ```bash
-python3 tests/smoke.py                      # 1964 passed, 0 failed
+python3 tests/smoke.py                      # 1966 passed, 0 failed
 python3 tests/simulate_accumulation.py
 python3 tests/docs_links.py                 # ✓ … 2 plugin-table rows …
 python3 tests/validate_manifests.py         # ✓ manifests valid (consolidate-memory v0.4.32)
 mypy --config-file mypy.ini                 # Success: no issues found in 42 source files
 ```
 
-**Mutation-verify — four arms, one process per tree, one harness.** Each arm is a
+**Mutation-verify — five arms, one process per tree, one harness.** Each arm is a
 `git archive <sha> | tar -x` extraction with **this branch's `tests/smoke.py` copied over it**,
 so the only variable is the code under test. Never `git worktree add`: its commondir resolves the
-main project identity and breaks the hermetic-`HOME` fixture. All four arms below were run with
+main project identity and breaks the hermetic-`HOME` fixture. All five arms below were run with
 the harness at the sha in the next block — the same file in every arm, verified by hash after
 copying, because a stale overlay is invisible in a count. The counts belong to that triple;
 re-derive them if the harness changes.
 
 | arm | result | which checks moved |
 | --- | --- | --- |
-| pre-fix (`1056dd1`) | **1958 passed, 6 failed** | P1, P4, P5, P6, P9, P11 |
-| intermediate (`c45aa0f`) | **1960 passed, 4 failed** | P8, P9, P11, P12 |
-| intermediate (`5072833`) | **1963 passed, 1 failed** | P12 |
-| fixed (this branch) | **1964 passed, 0 failed** | — |
+| pre-fix (`1056dd1`) | **1958 passed, 8 failed** | P1, P4, P5, P6, P9, P11, P13, P13b |
+| intermediate (`c45aa0f`) | **1960 passed, 6 failed** | P8, P9, P11, P12, P13, P13b |
+| intermediate (`5072833`) | **1963 passed, 3 failed** | P12, P13, P13b |
+| prior commit (`4490dd8`) | **1964 passed, 2 failed** | P13, P13b |
+| fixed (this branch) | **1966 passed, 0 failed** | — |
 
 P2, P3, P7, P10 and P12 are **guards** — green on the pre-fix arm by design. P9 and P11 are red on
 both earlier revisions; P8 is red only on the first intermediate one, which is the revision it
@@ -518,29 +611,46 @@ exists for. The multi-arm shape is the point: **a single-arm matrix would have c
 regression as a fix**, because P8 is green pre-fix for a reason that has nothing to do with the rule
 under test (§5, P8/P9). The `5072833` arm earns its row the same way in the other direction — it
 isolates the unguarded discovery read as the *only* thing left wrong at that revision, so P12's red
-is attributable rather than incidental.
+is attributable rather than incidental. The `4490dd8` arm earns its row in a third way: it is the
+revision §2.7 repairs rather than one this branch introduced, so its red set — exactly P13 and P13b,
+with P1–P12 green — is what attributes those two checks to this fix instead of to the cycle.
 
-Every arm in this section — the four above and the forward mutations below — ran with
-`tests/smoke.py` at sha256 `6e057fce83a6cd43600d9241b3d592b4b5cc5e65e17a32ff356977c4eaf02e58`,
+Every arm in this section — the five above and the forward mutations below — ran with
+`tests/smoke.py` at sha256 `033a3a7bb0a0d3eb05e448887401bd6a6e48dd4dc98d8e50393d7176fdc1efb3`,
 verified identical in the working tree and in every extracted arm before the run. Earlier drafts of
 this section cited two different hashes because the tables were measured at different times; the
-whole section was re-taken against this one, so a single hash now covers it. **The re-take moved no
-count**: the harness edits between the two (the 3.8/3.9 compatibility fixes described under pin 7)
-added and removed no `check()` call, so all four arm totals and every failure set are unchanged.
+whole section was re-taken against one, and the harness then moved twice more. **Three harness
+revisions, and only one of them moved a count** — which is the rule this section is built on, so
+each is named:
+
+- **The 3.8/3.9 compatibility fixes under pin 7** added and removed no `check()` call, so every arm
+  total and failure set was unchanged. Re-run to establish that, not reasoned.
+- **§2.7's fix** added two `check()` calls, so all five arm totals moved and the section was
+  re-taken rather than patched. A count carried across a harness edit is a count about a different
+  triple.
+- **§2.7's pin labels** were then corrected (they cited the wrong section, and the arm that mattered
+  most was missing). Labels are not conditions, so no failure set can move — and the five arms were
+  re-run anyway to establish it: identical totals (1958 / 1960 / 1963 / 1964 / 1966) and identical
+  moved sets.
+
+The rule the three cases share: **the numbers follow the harness, and whether they moved is itself
+measured rather than assumed.** Two of the three edits changed nothing and one changed everything;
+guessing which would have been wrong in one direction or the other.
 
 **A guard has no revert to fail against, so its premise is verified forward.** Two arms:
 
 | forward mutation | result | what it shows |
 | --- | --- | --- |
-| `_is_archive_index_text`'s floor restored to `>= 3` (`/tmp/fm`) | **1953 passed, 11 failed**: C1, C1b, C2, C3, C4, C7, P1, P4, P5, **P10**, P11 | P10 is load-bearing: it names the fixture's dependence on the classified-as-archive premise, and P8 stays **green** under this mutation — exactly the blindness P10 exists to catch |
+| `_is_archive_index_text`'s floor restored to `>= 3` (`/tmp/fm2`) | **1955 passed, 11 failed**: C1, C1b, C2, C3, C4, C7, P1, P4, P5, **P10**, P11 | P10 is load-bearing: it names the fixture's dependence on the classified-as-archive premise, and P8 stays **green** under this mutation — exactly the blindness P10 exists to catch. P13/P13b stay green too, which is the check's scope stated as a measurement: they pin the name exclusion, not the link floor |
 | the `SKILL.md` schema block corrupted to `"confirmed": "NOT-AN-INT"` | **1952 passed, 0 failed** on the pre-scalar harness | the block pin's drift was invisible before this cycle; the extended check is red on the mutated block and green on the real one |
 | `AGENTS.md`'s table cell, four ways (`0.4.27` / `9.9.9` / `not-a-version` / row deleted) | **rc 1, exactly one error line each** | each arm fails **only** on the new check; the unmutated control arm is green (rc 0), so the harness is faithful and the gate is not red for an unrelated reason. `9.9.9` is the one that matters — it was **green before this cycle**, so that cell moved from UNPINNED to PINNED |
 
 (1952 is not a coincidence, and it names exactly one thing: the census of the harness **before this
-cycle** — this suite's 1964 minus the twelve periphery-parity checks P1–P12 — measured by running
-`1056dd1`'s `tests/smoke.py` unmodified, which reports `1952 passed, 0 failed`. The second row
-quotes it in that sense. The first row's total is 1953 rather than 1952 only because that arm
-mutates *code* against the *current* harness, so it sums with its own failures to 1964.)
+cycle** — this suite's 1966 minus the fourteen periphery-parity checks P1–P13b — measured by running
+`1056dd1`'s `tests/smoke.py` unmodified, which reports `1952 passed, 0 failed`, at sha256
+`560e60d12204fb30e7f59b29dac27b1230607829422fe02385e292aae4eb005f`. The second row
+quotes it in that sense. The first row's total is 1955 rather than 1952 only because that arm
+mutates *code* against the *current* harness, so it sums with its own failures to 1966.)
 
 **Every figure this spec states is re-derived on this branch's revision** (2026-09-14; §7's tables
 re-taken 2026-09-15 against the revision this branch ships), one tree

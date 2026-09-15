@@ -23,8 +23,10 @@ evidence: `docs/periphery-parity.spec.md`.
    wrote its pointer back into `MEMORY.md`, silently undoing the eviction `cm local archive` had
    just performed. Measured on the live store: **2** re-adds — both **completed arcs**, whose
    pointers belong in the on-demand archive the store keeps for exactly that; the two relocations
-   relieved **111 est tok** and **0 durable**. The rule is no longer re-derived — the rebuild asks what the index places
-   (`memory_status.index_fact_names`) and what the archive owns
+   relieved **111 est tok** and **0 durable**. The rule is no longer re-derived — the rebuild asks
+   what the index places (the canonical `_LINK_RE` over its **pinned** snapshot of `MEMORY.md`;
+   `memory_status.index_fact_names` asks the same question, but re-reads the file from disk and so
+   re-opens the window the pin exists to close) and what the archive owns
    (`index_admission.archive_index`) — and the direction is deliberately the one that **cannot
    delete**: the plan may decline to re-add an archived pointer, never remove a live one, so a
    stem sitting in both docs is kept. Plan mode now **names** the prevented re-adds *and the doc
@@ -48,6 +50,25 @@ evidence: `docs/periphery-parity.spec.md`.
    reproduce, and its drift is the apparatus's: this cycle's own verification arms mint store
    directories, so it read 437, then 444, then 446 while the archive count and the zero held at
    every reading. Only the stable figures are load-bearing.
+
+   **A third direction, found by review of the guard itself.** Walking every store-root `*.md` to
+   classify it means reading it, and that read *raises* on an unreadable path — so the discovery
+   loop is guarded, or one unreadable doc aborts the command with a raw message instead of the
+   structured `ok: false` + `unreadable` report the fact loop builds. That guard's first form
+   **skipped** the unreadable doc, on the theory that skipping hands it back to the fact loop,
+   where the store-scan convention already lives. The theory is false for exactly one filename:
+   the fact loop excludes `("MEMORY.md", "SHIPPED.md")` **by name**, so an unreadable `SHIPPED.md`
+   — the canonical archive doc, the one name this rule is about — was seen by neither loop.
+   `archived` then came out empty and the plan re-added every pointer that doc owns while
+   reporting `ok: true` and an empty `unreadable`: the original defect, silent, and invisible in
+   the one report an operator reads. Measured, one value from the guard's own fixture: an
+   unreadable `locked.md` gave `ok: false` / `unreadable: ['locked']`, an unreadable `SHIPPED.md`
+   gave `ok: true` / `unreadable: []`. The repair routes the candidate into the same `unreadable`
+   report, which fails the plan closed through the **existing** predicate — `--apply` refuses with
+   "index unchanged" and `--skip-invalid` stays the operator's explicit escape. The pin asserts the
+   write, not the label, because the re-add is the damage. Left alone deliberately: an unreadable
+   `MEMORY.md` still aborts, since the rebuild's whole output *is* that file and aborting fails
+   **closed** — the two look alike at the call site and are opposite in direction.
 2. **`--justify-demotion` survives a registry-less store.** `control_plane.count_probative_after`
    returns `None` *deliberately* when no registry exists — its comment records that a `0` there
    once suppressed a stamp **forever** — and `_justify_remaining` tolerates it. Its caller did not,
@@ -98,20 +119,27 @@ dev-loop `1795 assertions` figure, stale by 157 (`1795` at v0.4.28 where it was 
 at v0.4.31) and stale by construction, with a pointer to the census constant that is printed on
 every run.
 
-**Verification.** 12 new checks (`tests/smoke.py` census `1773 + 45 + 125 + 9 + 12`) — **7 pins and
-5 guards**. Re-derived on **four** arms, one tree per process, one harness for all four (`smoke.py`
-sha256 `f10d258c…`, verified identical in every arm): pre-fix `1056dd1` **1958 passed, 6 failed**
-(P1, P4, P5, P6, P9, P11) · intermediate `c45aa0f` **1960 passed, 4 failed** (P8, P9, P11, P12) ·
-intermediate `5072833` **1963 passed, 1 failed** (P12) · fixed **1964 passed, 0 failed**. The
+**Verification.** 14 new checks (`tests/smoke.py` census `1773 + 45 + 125 + 9 + 14`) — **9 pins and
+5 guards**. Re-derived on **five** arms, one tree per process, one harness for all five (`smoke.py`
+sha256 `033a3a7b…`, verified identical in every arm, and re-verified after the pin labels were
+corrected — a label is not a condition, and that third harness revision moved no count, so the
+sha quoted is the later one): pre-fix `1056dd1` **1958 passed, 8 failed**
+(P1, P4, P5, P6, P9, P11, P13, P13b) · intermediate `c45aa0f` **1960 passed, 6 failed** (P8, P9,
+P11, P12, P13, P13b) · intermediate `5072833` **1963 passed, 3 failed** (P12, P13, P13b) · the
+branch's own prior commit `4490dd8` **1964 passed, 2 failed** (**P13, P13b**) · fixed
+**1966 passed, 0 failed**. The
 multi-arm shape is the point: a single-arm matrix would have certified the second-direction defect
 as fixed, because that pin is green pre-fix for a reason unrelated to the rule under test — and the
 `5072833` arm isolates the one defect review found *in the fix itself*, an unguarded store-root read
 that aborted `cm local rebuild-index` on an unreadable file instead of failing closed. That one is
 guarded rather than pinned, and the arm is how the guard is shown non-vacuous. Guards are verified
-**forward**, since no revert can fail them — restoring the retired ≥3-link floor turns **1953
-passed, 11 failed** (including the guard that exists to notice exactly that), and corrupting the
+**forward**, since no revert can fail them — restoring the retired ≥3-link floor turns **1955
+passed, 11 failed** (including the guard that exists to notice exactly that; P13/P13b correctly stay
+green, which is their scope stated as a measurement), and corrupting the
 `SKILL.md` block's scalar types still leaves the pre-extension harness at **1952 passed, 0 failed**.
-The cycle's own
+The fourth arm is the one worth reading: `4490dd8` was this branch's head until the guard fix
+landed, and re-read as a mutation arm its suite is green on P1–P12 and red on exactly P13 and P13b —
+the cleanest statement that those two pin *that* fix and nothing else. The cycle's own
 premise was re-checked against the tree rather than against the plan that proposed it: the staged
 plan asserted a constraint — *"the tempting fix is a no-op, because `_is_archive_index_text` floors
 at ≥3 links"* — that v0.4.31 had already removed, and carrying it would have routed the fix around

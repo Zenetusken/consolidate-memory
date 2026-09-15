@@ -51,9 +51,10 @@ already states canonically — `cm local rebuild-index` re-derived *placement* f
 alone, so a fact whose pointer `cm local archive` relocated into `SHIPPED.md` was not "placed" and
 got re-added, silently undoing the eviction (measured live: 2 re-adds); and `--justify-demotion`
 re-derived the usage clock's tolerance for its DELIBERATE `None`, raising `TypeError` on the SECOND
-run against an unenrolled store. Both now read the canonical rule — `memory_status.index_fact_names`
-for what the index places and `index_admission.archive_index` for what an archive owns, plus the
-`None` tolerance `_justify_remaining` already documented — and the rebuild can only DECLINE to
+run against an unenrolled store. Both now read the canonical rule — the `_LINK_RE` anchor over a
+pinned `MEMORY.md` snapshot for what the index places and `index_admission.archive_index` for what
+an archive owns, plus the `None` tolerance `_justify_remaining` already documented — and the
+rebuild can only DECLINE to
 re-add an archived pointer, never delete one).
 Public 1.0 stays HOLD.
 
