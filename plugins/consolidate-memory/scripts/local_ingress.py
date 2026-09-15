@@ -459,7 +459,7 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
     from control_plane import read_snapshot
     from identifiers import IdentifierRefused, validate_fact_stem
     from index_admission import archive_index
-    from memory_status import _LINK_RE, _frontmatter, _is_archive_index_text, index_fact_names
+    from memory_status import _LINK_RE, _frontmatter, _is_archive_index_text
     from sync_global import _is_mirror, _pointer_line
     native = ctx.native_memory_dir
     idxp = native / "MEMORY.md"
@@ -475,14 +475,25 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
         idx_text = (idx_snap.data or b"").decode("utf-8", errors="replace")
         existing_ptrs = set(_LINK_RE.findall(idx_text))
     # Archive docs (SHIPPED.md and any sibling) — classified from the SNAPSHOT's own bytes,
-    # via the shared text rule, so the classification and the revision pin below come from
-    # ONE read: the apply transaction verifies the same bytes this rule judged.
+    # via the shared text rule, so the rule and the revision pin below read ONE source: the
+    # apply transaction verifies exactly the bytes this pass classified.
+    #
+    # GUARDED, and not for symmetry with the fact loop below. `read_snapshot` RAISES on an
+    # unreadable path (`except OSError` → `WriteRefused`), so without this an unreadable
+    # store-root doc — or a directory named `*.md` — aborts the whole command with a raw
+    # message instead of the structured `ok: False` + `unreadable` report the fact loop builds.
+    # That loop's own guard cannot cover it: the raise happens here, before it runs. An
+    # unreadable file is not an archive, so skipping it hands it back to the fact loop, which
+    # is where the store-scan convention (skip unreadable, never abort) already lives.
     archive_paths: set = set()
     if native.is_dir():
         for f in sorted(native.glob("*.md")):
             if f.name == "MEMORY.md" or "/quarantine/" in str(f):
                 continue
-            snap = read_snapshot(f)
+            try:
+                snap = read_snapshot(f)
+            except WriteRefused:
+                continue
             if not snap.exists:
                 continue
             if _is_archive_index_text((snap.data or b"").decode("utf-8", errors="replace")):
@@ -492,11 +503,25 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
     # index does not. The rebuild may decline to RE-ADD an archived pointer; it may never
     # REMOVE a live one, so a stem sitting in both docs stays.
     #
+    # Both operands come from the pinned SNAPSHOTS — `readd_sources` from the archive bytes
+    # classified above, the subtracted set from `existing_ptrs`. Sourcing that second operand
+    # from DISK instead (`index_fact_names(idxp)`, which asks the same question) costs a second
+    # read of MEMORY.md and opens a window where a concurrent write makes the plan report one
+    # stem as both a pointer to remove and a re-add to decline. Every input this verdict rests
+    # on is a byte string whose sha256 the apply transaction verifies (`expected`, below).
+    #
     # `readd_sources` carries the EVIDENCE alongside the verdict. A bare stem list asserts an
     # intentional `cm local archive` the operator cannot check, and a stray store-root doc is
     # exactly what makes that assertion false (§2.3's residual: a doc whose link is formatted
     # as a pointer line is structurally indistinguishable from a real archive, so the honest
     # move is to name the doc that claimed the placement rather than vouch for it).
+    #
+    # `targets` only — `admitted` is deliberately UNREAD here. The cap and the syntax check
+    # govern an archive's WRITE path (local_archive gates on `admitted` before it appends); an
+    # archive already on disk over its cap still records real placements, and honouring the
+    # refusal would re-add exactly the pointers this rule exists to leave out. The asymmetry is
+    # the safe direction for the same reason as `archived` itself: reading a refusal as "no
+    # entries" can only re-add, never delete.
     archived: set = set()
     readd_sources: dict = {}
     if archive_paths:
@@ -504,7 +529,7 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
             ap_text = (snaps[ap].data or b"").decode("utf-8", errors="replace")
             for stem in archive_index(ap_text)["targets"]:
                 readd_sources.setdefault(stem, []).append(Path(ap).name)
-        archived = set(readd_sources) - index_fact_names(idxp)
+        archived = set(readd_sources) - existing_ptrs
     lines = ["# Memory Index", ""]
     if native.is_dir():
         for f in sorted(native.glob("*.md")):

@@ -1570,9 +1570,11 @@ def _scalar_drift(block: dict, td: object, path: str = "") -> list:
 
 
 _scalar_bad = _scalar_drift(_skill_schema, ms.CycleRecord)
-check("v0.4.32 P7 (GUARD, forward-verified): every scalar in the SKILL schema block matches its "
+check("v0.4.32 P7 (GUARD, forward-verified): every scalar the drift walker REACHES matches its "
       "TypedDict annotation by EXACT type — the key-set pins above cannot see a type change; "
-      "evidence is the forward mutation (0 -> \"NOT-AN-INT\"), never a revert",
+      "evidence is the forward mutation (0 -> \"NOT-AN-INT\"), never a revert. SCOPE: the walker "
+      "reaches a subset of the block's scalars (138 measured), so a type change in a shape it "
+      "skips passes every gate — this guards a documented slice, it does not close the class",
       _scalar_bad == [])
 # v0.1.12: extend the pin to ALL nested shapes (was only top-level + health + marker), so SKILL.md's
 # nested schema can't silently drift from the code. Strip doc-annotation keys (leading "_", e.g.
@@ -11398,8 +11400,9 @@ with _Env73() as _e_rb3:
     _rep_rb3 = _li_rb3.local_rebuild_index(_ctx_rb3)
     _inc_rb3 = {r["stem"] for r in _plan_rb3["included"]}
     check("v0.4.32 P1 (PIN): the rebuild does not re-add a pointer the archive holds — "
-          "`cm local rebuild-index` must not silently undo `cm local archive` (pre-fix: "
-          "archived-rbp was in `included` and the rebuilt index carried its pointer again)",
+          "`cm local archive` is not silently undone (pre-fix: archived-rbp was in `included` and "
+          "the rebuilt index carried its pointer again). Asserted on `_rebuild_plan`, because the "
+          "CLI report carries `included` but never `future`; P4 pins the operator-visible half",
           "archived-rbp" not in _inc_rb3
           and "](archived-rbp.md)" not in _plan_rb3["future"])
     check("v0.4.32 P2 (GUARD, the P1 control): a LIVE fact is still indexed, so P1 tests "
@@ -11415,8 +11418,42 @@ with _Env73() as _e_rb3:
           _rep_rb3.get("would_readd_archived_pointers") == ["archived-rbp"])
     check("v0.4.32 P5 (PIN): the archive doc enters `snaps` — the plan reads its contents, so the "
           "apply transaction must verify the revision it planned against (pre-fix: SHIPPED.md was "
-          "excluded by name and never pinned)",
+          "excluded by name and never pinned). Also a private-plan key: `snaps` holds "
+          "FileSnapshots, so the CLI report omits it and this proves nothing an operator can see",
           any(k.endswith("SHIPPED.md") for k in _plan_rb3["snaps"]))
+
+# v0.4.32 P12 (GUARD, measured against the two INTERMEDIATE revisions): the archive-discovery
+# pass reads every store-root `*.md` to classify it, and that read RAISES on an unreadable path
+# (`control_plane.read_snapshot`: `except OSError` -> `WriteRefused`). Unguarded, one such doc
+# aborts the command with a raw message instead of the structured `ok: False` + `unreadable`
+# report the fact loop builds — and the fact loop's OWN guard cannot cover it, because the raise
+# happens before that loop runs. This re-opened the store-scan convention (skip unreadable,
+# never abort) pinned at A3 above.
+#
+# A DIRECTORY named `*.md` is the fixture rather than `chmod 000`: `read_bytes()` on it raises
+# `IsADirectoryError` -> `WriteRefused`, it needs no permission bit, and unlike a mode bit it
+# still fails for a root-run test process. A dangling symlink would NOT do — `read_snapshot`
+# maps `FileNotFoundError` to `exists=False`, a branch that returns instead of raising.
+#
+# GUARD, not a pin: pre-fix (`1056dd1`) has no archive pass, so the fact loop reports the same
+# shape and this check is green there by construction. It reds only on `c45aa0f`/`5072833`,
+# which introduced the unguarded read — so the fixed suite's own green is not evidence about it.
+with _Env73() as _e_rb4:
+    _ctx_rb4 = sc.resolve_store(_e_rb4.proj)
+    (_e_rb4.store / "good-rbu.md").write_text(
+        "---\nname: good-rbu\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_rb4.store / "locked.md").mkdir()
+    _rep_rb4: dict = {}
+    try:
+        _rep_rb4 = _li_rb3.local_rebuild_index(_ctx_rb4)
+    except Exception as _rb4_exc:      # the regression: a raw raise out of the CLI path
+        _rep_rb4 = {"raised": f"{type(_rb4_exc).__name__}: {_rb4_exc}"}
+    check("v0.4.32 P12 (GUARD): an unreadable store-root `*.md` is REPORTED, not raised — the "
+          "archive pass must not abort the command the fact loop fails closed on "
+          "(reds on the intermediate revisions: `cm: cannot snapshot ...`, rc=2, no report)",
+          _rep_rb4.get("ok") is False
+          and [r["stem"] for r in _rep_rb4.get("unreadable") or []] == ["locked"]
+          and [r["stem"] for r in _rep_rb4.get("included") or []] == ["good-rbu"])
 
 with _Env73() as _e_clk:
     _ctx_clk = sc.resolve_store(_e_clk.proj)
@@ -17564,8 +17601,8 @@ with _tf43.TemporaryDirectory() as _td30:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 11)  # +9: v0.4.31 store-classifier parity C1..C7
-                                                        # +11: v0.4.32 periphery parity P1..P11
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 12)  # +9: v0.4.31 store-classifier parity C1..C7
+                                                        # +12: v0.4.32 periphery parity P1..P12
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
