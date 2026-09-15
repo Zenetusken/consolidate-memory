@@ -5,6 +5,82 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.31] — 2026-09-14
+
+**Patch — two store-honesty classifiers knew fewer fact shapes than the store holds, so a clean pass
+reported four wrong `schema_drift` counts and a remediation docket that named live memory for
+deletion.**
+
+The third cycle to land from the 2026-09-14 `dream` audit, closing the two faces that corrupt what a
+pass *reports*. The failure direction is the **opposite** of the audit's teeth cycle: those gates
+failed *clean* (a false pass); these fail *noisy and destructive* — manufactured findings, plus a
+deletion recommendation, emitted on a pass that exited 0. Design and evidence:
+`docs/store-classifier-parity.spec.md`.
+
+1. **An archive index is now recognized by the ABSENCE of fact frontmatter plus the PRESENCE of a
+   pointer — not by a `≥3`-link threshold.** `_is_archive_index_text` floored at three `](stem.md)`
+   links, so an archive doc below that floor was classified as a **fact**, and two consequences
+   followed. The archive's own missing frontmatter entered `schema_drift` as a fact's drift — four
+   fields overstated (`missing_node_type` 2→1, `index_mismatch` 4→1, `advisory_no_scope` 17→16,
+   `advisory_no_origin` 2→1), which alone takes `drift_findings` **6 → 2**; the second root cause
+   above takes it to the **1** genuine finding — and, because `archive_docs` came back empty,
+   `remediation_triage`'s Stage A, whose own docstring reads *"TRUE orphans … dead weight; **evict OR
+   re-index**"*, named **the archive itself**, and — because the archive was never recognized as a
+   reference surface — one of the two facts it points at. Acting on that docket deletes the archive
+   and the fact whose only pointer it held; post-fix the stage is empty. (The second archived fact
+   escaped by accident: a `[[wikilink]]` from a surviving fact reaches it, so it landed in the
+   *referenced* stage instead — a rescue by an unrelated edge, never by the archive.)
+2. **A LocalFactV1 fact no longer counts as native-schema drift.** `schema_drift` already exempted a
+   mirror's stamp block; it did not exempt the second documented contract that legitimately lives in a
+   native store — `local_ingress`'s `LocalFactV1`, whose reserved keys exclude `node_type` and
+   `originSessionId` *by construction* (the contract does not reserve them; it does not forbid them
+   either, and in practice **most marker-carrying files carry them anyway**, since `local_ingress`
+   passes non-reserved keys through — which is exactly why the exemption keys on the marker and not
+   on the absence of native keys). One live fact was reported as corruption. The exemption keys
+   on the contract's own version marker (`local_schema_version`), exactly as a mirror is detected by
+   its stamp — not on guessing at key shapes, and not on "fewer findings", so a native fact that
+   genuinely lost its frontmatter still reports.
+
+The `≥3` floor was a **recorded decision**, and it is superseded rather than quietly dropped:
+`docs/index-usage-and-budget-ladder.spec.md` now carries the measurement that overrode it. Its
+justification — *"SHIPPED.md-style archives exceed 3 links almost immediately in practice"* — was
+false for the store this product dogfoods (2 links, 536 bytes), and its stated blast radius named one
+harmless consequence while omitting both above. The floor also **inverted**: a verdict keyed to entry
+count reclassifies an archive as a fact when the archive *shrinks*, which is how the v0.1.76 audit fix
+for this exact file had gone silently inert. The residual bound is now a **0-pointer** frontmatter-less
+file, which stays a fact and keeps reporting rather than being silently absorbed. The loosening's own
+radius is **measured, not assumed**: fleet-wide it changes the predicate's verdict on five files — this
+store's archive, plus four domain stores whose `MEMORY.md` carries a single link — and those four never
+reach a decision, because every store-root consumer drops `MEMORY.md` **by name** before consulting the
+classifier. The change is safe because of those guards, not because `≥1` and `≥2` agree; at the
+predicate level they do not.
+
+No consumer logic changed: `remediation_triage`, `placed_fact_names` and every downstream reader are
+untouched, because all four corrections follow from the two predicates. Patching the counters
+individually would have left the misclassification intact at every other consumer.
+
+**Verification.** 9 new checks in `tests/smoke.py` (census `1773 + 45 + 125 + 9`) — **7 pins and 2
+guards**. Re-derived against the pre-fix tree: **1945 passed, 7 failed** (all seven pins), against
+**1952 passed, 0 failed** on the fixed tree; both guards pass on *both* revisions, which is what makes
+them controls rather than pins. Building the matrix caught a defect in its own pins: one referenced a
+helper the fix introduces, so on the pre-fix tree it raised `AttributeError` and **aborted the
+harness** instead of failing — taking the evidence for every later check down with it. A pin's
+precondition must be satisfiable on the tree it is supposed to fail on, so that pin now states its
+claim through a symbol both revisions have. Review found two more pins that did not pin what they
+claimed, both fixed here. The shrink-invariance pin called the text **helper** while production calls
+the path **classifier**, which adds a 64-byte head read the helper never exercises — so a read-shape
+dependence reintroduced there went unmeasured. And **nothing sampled a one-pointer archive** — the
+boundary the floor actually moved *to* — so an edit moving it to `≥2` would have kept every check green
+while re-opening this release's entire defect class. The suite now samples the floor at 0, 1, 2 and 20.
+A third finding was a label rather than a pin: the LocalFactV1 check claimed *"NO native-schema drift"*
+while reading two of the four drift counters, so its label now names the two it reads.
+
+**Not in this release.** Two faces of the same root-cause pass remain staged: the fleet network
+capture, which is the only observability block still hand-pasted into the record rather than
+script-injected, and the post-persist correction path for a record whose claims fail verification (the
+detector fires to stderr and cannot stop the write, and `_persist`'s `(commit, timestamp)`
+idempotence then leaves a correction no route into the log). Both are root-caused; neither ships here.
+
 ## [0.4.30] — 2026-09-14
 
 **Patch — a persisted record's post-state is measured at persist time instead of mirrored from its

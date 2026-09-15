@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.30** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.31** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -40,7 +40,12 @@ the v0.4.29 dream-teeth-coverage patch (every gate now means what its rule claim
 narration set cannot silently shrink, a stanza that normalizes to nothing is a gap rather than a
 pass, the extractor anchor anchors on **execution** rather than on the token's spelling, a
 dreamless record carrying a post-arc block is a skipped arc rather than a legacy one, and an
-unknown flag is a usage error on the five lax scripts and `cm`).
+unknown flag is a usage error on the five lax scripts and `cm`), plus
+the v0.4.31 store-classifier-parity patch (an archive index is recognized by the ABSENCE of fact
+frontmatter plus the PRESENCE of a pointer rather than by a `≥3`-link floor — below that floor the
+archive read as a fact, overstating four `schema_drift` fields and putting the archive, and one of
+the two facts it points at, on the eviction docket — and a `LocalFactV1` fact, whose reserved keys
+exclude `node_type`, no longer counts as native-schema drift).
 Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull

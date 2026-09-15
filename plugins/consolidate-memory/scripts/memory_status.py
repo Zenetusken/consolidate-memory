@@ -1427,7 +1427,14 @@ def schema_drift(fact_files: list, index_names: set,
                 and str(fm.get("scope") or "") in ("user-global", "stack-general")
                 and f.stem not in canonical_stems):
             advisory_stranded_globals += 1
-        if "node_type" not in fm:
+        # v0.4.31 (spec docs/store-classifier-parity.spec.md §3): a LocalFactV1 (`cm local`) fact is
+        # a DIFFERENT CONTRACT, not a native fact missing fields — LOCAL_RESERVED excludes node_type
+        # and originSessionId by construction, exactly as the mirror-stamp block does in the `continue`
+        # above. Counting it as native-schema drift is the same defect as the mirror case, one schema
+        # further out. This exempts ONLY the two native-only counters; `scope` is required by
+        # LocalFactV1 too, so a missing or malformed scope still reports.
+        _local_fact = _is_local_fact(fm)
+        if "node_type" not in fm and not _local_fact:
             missing_node_type += 1
         if "scope" in fm:
             if fm["scope"] not in _SCOPES:
@@ -1437,7 +1444,7 @@ def schema_drift(fact_files: list, index_names: set,
         if "originSessionId" in fm:
             if not _valid_uuid(fm["originSessionId"]):
                 malformed_origin += 1
-        else:
+        elif not _local_fact:
             advisory_no_origin += 1
     return {"missing_node_type": missing_node_type, "malformed_scope": malformed_scope,
             "malformed_origin": malformed_origin, "index_mismatch": len(stems ^ index_names),
@@ -1496,13 +1503,55 @@ def _standing_baseline_tokens(sj: object) -> int | None:
     return None
 
 
+def _is_local_fact(fm: Mapping[str, Any]) -> bool:
+    """True iff PARSED frontmatter is a LocalFactV1 — the `cm local` contract (`local_ingress`).
+
+    Keyed on the contract's OWN version marker, the same discipline `_is_mirror` applies to a
+    mirror stamp. The discrimination is one-directional, and that is enough: a native fact never
+    writes `local_schema_version`, so the marker alone identifies a LocalFactV1.
+
+    The CONVERSE does not hold, and an earlier revision of this docstring wrongly asserted it did
+    ("a LocalFactV1 does not carry `metadata.node_type`"). `local_ingress._render_local` passes
+    non-reserved keys through, so a marker-carrying file usually carries `node_type` and
+    `originSessionId` as well — measured 2026-09-15, 11 of the 12 such files in the live store.
+    That is precisely why the exemption keys on the marker and NOT on the absence of native keys:
+    an absence test would exempt almost nothing, while the marker test also covers the file that
+    has no native keys at all, which is the one the counter was misfiring on.
+
+    Tested for PRESENCE, not for the value it names. `local_ingress` rejects any version but
+    `1`/`v1` on its own read path, so a `local_schema_version: 2` file would be exempted here —
+    this is a shape discriminator, not a validator of the contract.
+
+    A marker test is still the right shape (and not a "fewer required fields" heuristic): a
+    heuristic would also go quiet on a NATIVE fact that had lost its frontmatter, which is the one
+    case the drift counter exists to report (spec docs/store-classifier-parity.spec.md §3, R3).
+
+    Lives beside its only consumer instead of importing `local_ingress`, which would put a
+    WRITER module on the dependency root's read path."""
+    return "local_schema_version" in fm
+
+
 def _is_archive_index_text(text: str) -> bool:
     """v0.1.67 (Phase C): the archive-index rule on TEXT — split out of _is_archive_index so the
     miss-detector can classify tier from a Phase-0 --snapshot's stored CONTENT (the window-start state)
-    with the SAME rule the path classifier uses (single source; the two cannot drift)."""
+    with the SAME rule the path classifier uses (single source; the two cannot drift).
+
+    v0.4.31 (spec docs/store-classifier-parity.spec.md §2): the link test is a PRESENCE test, not
+    a threshold. It was `>= 3`, which made archive-recognition a function of how many entries the
+    archive currently held — so the guard inverted DOWNWARD: an archive that shrank (entries
+    re-promoted, facts GC'd) silently reclassified as a fact and re-entered the eviction docket.
+    Not hypothetical: the v0.1.76 audit fixed this exact misclassification on this exact file at
+    7.6k tokens, and that fix went inert once the archive shrank to two entries. A predicate
+    whose verdict on an unchanged file flips when the file's CONTENT shrinks is not a predicate.
+
+    The discriminator is the frontmatter test, not the count: a fact is a fact because it carries
+    fact frontmatter, so this arm is unreachable for any well-formed fact. Once a file has failed
+    that test, ONE pointer already establishes it is a pointer list rather than prose. A
+    frontmatter-less file with NO pointers stays a fact on purpose, so it keeps reporting
+    (missing_node_type) instead of being silently absorbed — the spec's pin 6 / R2 boundary."""
     if text.lstrip("﻿").lstrip().startswith("---"):   # fact frontmatter (BOM-tolerant, cf _frontmatter) → not an archive
         return False
-    return len(_LINK_RE.findall(text)) >= 3          # link-list with no frontmatter → archive index
+    return bool(_LINK_RE.findall(text))   # a frontmatter-less file carrying a pointer is a pointer list
 
 
 def _is_archive_index(path: Path) -> bool:

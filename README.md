@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml"><img src="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.30-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.30"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.31-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.31"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7fd8b8?style=flat-square&labelColor=0f1c2e" alt="MIT license"></a>
   <a href="#start"><img src="https://img.shields.io/badge/python-3.8%2B-63d3e8?style=flat-square&labelColor=0f1c2e" alt="Python 3.8 or newer"></a>
   <a href="https://github.com/Zenetusken/consolidate-memory"><img src="https://img.shields.io/badge/marketplace-zenetusken--plugins-b9c9da?style=flat-square&labelColor=0f1c2e" alt="Marketplace: zenetusken-plugins"></a>
@@ -35,13 +35,12 @@
 </p>
 
 > [!NOTE]
-> **Current release: v0.4.30** — a persisted cycle record's `after`-side figures are now **measured
-> at persist time** instead of mirrored from the record's own before-state, so the index size, recall
-> count and schema-drift numbers a dream logs describe the store it actually left behind; the budget
-> gauge can no longer pair a fresh token count with a retired threshold or keep a HARD CEILING alarm
-> after the index it was raised for is gone; a duplicate re-render heals the corrected record into
-> the cycle file; and the record validator gains one non-blocking warning that catches a record whose
-> index delta contradicts its own audit row.
+> **Current release: v0.4.31** — an archive index is recognized by the **absence of fact frontmatter
+> plus the presence of a pointer**, not by a `≥3`-link threshold. Below that floor the archive read as
+> a *fact*, which overstated four `schema_drift` fields and put **the archive itself — and one of the
+> two facts it points at — on the remediation docket**, a recommendation to delete live memory
+> emitted on a pass that exited 0. A `LocalFactV1` fact also no longer counts as native-schema drift:
+> that contract's reserved keys exclude `node_type`, so their absence was being read as corruption.
 > Public 1.0 remains **HOLD**, with outstanding evidence gates tracked in the
 > [1.0 preflight](docs/1.0-preflight.spec.md). See the [changelog](CHANGELOG.md) for
 > shipped changes.
