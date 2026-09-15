@@ -450,8 +450,11 @@ encoder is a number that cannot be re-derived — but naming the encoder is not 
    walk yields exactly 200 / 138 / 31, and the discriminator's `__args__` branch fires **0** times,
    so the "arguments" half of the withdrawn phrase inspected nothing at all. And the walk is the
    first code in this repo that **evaluates** `memory_status`'s annotations: that module carries
-   `from __future__ import annotations` and 49 PEP 585 spellings, free precisely because nothing
-   evaluates them — which `get_type_hints` ends, and 3.8 rejects the subscript. The walk supplies
+   `from __future__ import annotations` and **58** PEP 585 spellings — 35 TypedDict fields, 14
+   function signatures, 9 function-local, **every** one in an annotation position and **0**
+   evaluated at runtime — free precisely because nothing evaluates them, which `get_type_hints`
+   ends, and 3.8 rejects the subscript. (This read **49** until review; an AST scan of every
+   annotation slot in the module returns 58, and no reading of it returns 49.) The walk supplies
    its own evaluation namespace so the check runs on every version CI validates (3.8–3.13);
    respelling the annotations in production code would be fixing the module to suit a test.
 
