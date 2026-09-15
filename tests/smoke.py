@@ -1519,6 +1519,89 @@ check("SKILL↔TypedDict: schema-block health keys == Health TypedDict (nested s
       set(_skill_schema.get("health", {}).keys()) == set(ms.Health.__annotations__))
 check("SKILL↔TypedDict: schema-block marker keys == Marker TypedDict (incl. before_*; v0.1.6 drift fix)",
       set(_skill_schema.get("marker", {}).keys()) == set(ms.Marker.__annotations__))
+# v0.4.32 (spec docs/periphery-parity.spec.md §5 pin 7): the three checks above compare KEY
+# SETS, so a scalar TYPE change in the block passed every gate. Measured FORWARD: with
+# `verification.confirmed` rewritten 0 -> "NOT-AN-INT" against a `confirmed: int` annotation,
+# the suite still reported 1952 passed, 0 failed. (mypy cannot see it by construction — its
+# inputs are the `.py` sources, and SKILL.md is not among them; validate_cycle_record checks
+# container types and never reads the block.)
+#
+# This is a GUARD, not a pin, and calling it a pin would be false: at HEAD the block and the
+# TypedDicts agree, so no revert has anything to fail against. A documentation check's evidence
+# is a FORWARD mutation of the artifact it reads, never a reverse revert.
+#
+# The rule visits every non-dict, non-list value whose annotation resolved to a real type and
+# requires an EXACT type match: `type(val) is ann`, not isinstance — so `budget_tokens: True`
+# is drift, not an int. Strings are NOT exempt: a str in an int slot is the drift this closes.
+# (Annotations are ForwardRefs here — memory_status has `from __future__ import annotations` —
+# so get_type_hints is what makes them comparable at all.)
+import typing as _typing  # noqa: E402
+
+# Python 3.8 cannot subscript the builtin containers, and `memory_status` spells its annotations
+# in the PEP 585 form (`list[str]`) on the strength of `from __future__ import annotations` — free
+# there, because nothing in that module ever evaluates an annotation. This walk is the first thing
+# that does, and 3.8 rejects it (`TypeError: 'type' object is not subscriptable`, measured in CI
+# on `test (python 3.8)` and reproduced on a real 3.8.20). The evaluation namespace supplies the
+# `typing` aliases for the five builtin containers, so the ForwardRefs resolve on every version CI
+# runs instead of only on 3.9+. Respelling the 49 annotations in `memory_status` would be fixing
+# production code to accommodate a test.
+_EVAL_NS = {"list": _typing.List, "dict": _typing.Dict, "set": _typing.Set,
+            "tuple": _typing.Tuple, "frozenset": _typing.FrozenSet}
+
+
+def _is_typeddict(td: object) -> bool:
+    """`typing.is_typeddict` is 3.10+, so test structurally rather than version-switch.
+
+    A version-switched helper would give CI two paths, and a divergence between them would be
+    invisible — so there is one path, and its agreement with the stdlib is measured instead.
+    TypedDict sets `__total__` on the class it builds. The only non-TypedDict that would pass
+    `issubclass(td, dict)` is the builtin `dict` itself, which carries no `__total__` (and never
+    arrives here as a sole annotation — `data: dict` shapes are skipped one level up).
+
+    Measured on 3.10.12: this agrees with `typing.is_typeddict` on every annotation the walk
+    visits, and the walk's reach is unchanged at 138 scalars — the same figure the block pin and
+    the spec state. 3.8/3.9 have no `is_typeddict` to compare against, which is why this exists."""
+    return isinstance(td, type) and issubclass(td, dict) and hasattr(td, "__total__")
+
+
+def _td_sub(ann: object) -> object:
+    """The TypedDict a nested schema-block value is judged against, or None.
+
+    A directly TypedDict-typed key has no `__args__` (only Optional[...]/dict[...] wrappers do),
+    so both shapes are handled — otherwise the walk visits 3 scalars instead of 138 and reads
+    as a pass."""
+    if _is_typeddict(ann):
+        return ann
+    for _a in getattr(ann, "__args__", ()):
+        if _is_typeddict(_a):
+            return _a
+    return None
+
+
+def _scalar_drift(block: dict, td: object, path: str = "") -> list:
+    out: list = []
+    hints = _typing.get_type_hints(td, localns=_EVAL_NS)
+    for k in sorted(set(block) & set(hints)):
+        ann, val = hints[k], block[k]
+        if isinstance(val, dict):
+            sub = _td_sub(ann)
+            if sub is not None:
+                out += _scalar_drift(val, sub, f"{path}{k}.")
+            continue
+        if isinstance(val, list) or not isinstance(ann, type):
+            continue
+        if type(val) is not ann:
+            out.append(f"{path}{k}: doc {type(val).__name__} vs annotation {ann.__name__}")
+    return out
+
+
+_scalar_bad = _scalar_drift(_skill_schema, ms.CycleRecord)
+check("v0.4.32 P7 (GUARD, forward-verified): every scalar the drift walker REACHES matches its "
+      "TypedDict annotation by EXACT type — the key-set pins above cannot see a type change; "
+      "evidence is the forward mutation (0 -> \"NOT-AN-INT\"), never a revert. SCOPE: the walker "
+      "reaches a subset of the block's scalars (138 measured), so a type change in a shape it "
+      "skips passes every gate — this guards a documented slice, it does not close the class",
+      _scalar_bad == [])
 # v0.1.12: extend the pin to ALL nested shapes (was only top-level + health + marker), so SKILL.md's
 # nested schema can't silently drift from the code. Strip doc-annotation keys (leading "_", e.g.
 # cross_project._pulled / network._) before comparing; list-wrapped shapes compare their [0] item.
@@ -11320,6 +11403,140 @@ with _Env73() as _e_rb2:
           and "](good-rb.md)" in _idx_skip
           and "](bad-rb.md)" not in _idx_skip)
 
+# --- v0.4.32 periphery parity (docs/periphery-parity.spec.md §2/§5) -------------------------
+# A fact file does not record its own PLACEMENT — only a pointer doc does — so a rebuild that
+# globs fact files alone re-adds every pointer `local_archive` moved into an archive, silently
+# undoing the eviction. Fixture: one live fact, one archive-ONLY fact, and one fact in BOTH docs
+# (which is the direction guard — the rebuild may decline to RE-ADD, never REMOVE a live pointer).
+with _Env73() as _e_rb3:
+    _ctx_rb3 = sc.resolve_store(_e_rb3.proj)
+    import local_ingress as _li_rb3
+    # NOTE the name: this is ONE flat module scope, so a loop variable that collides with an
+    # earlier Path binding is a mypy error, not a fresh local (`_s3` was taken at line 6709).
+    for _stem_rb3 in ("live-rbp", "archived-rbp", "both-rbp"):
+        (_e_rb3.store / f"{_stem_rb3}.md").write_text(
+            f"---\nname: {_stem_rb3}\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_rb3.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [live-rbp](live-rbp.md) — hook\n- [both-rbp](both-rbp.md) — hook\n",
+        encoding="utf-8")
+    (_e_rb3.store / "SHIPPED.md").write_text(
+        "# SHIPPED\n\n- [archived-rbp](archived-rbp.md) — done\n- [both-rbp](both-rbp.md) — done\n",
+        encoding="utf-8")
+    _plan_rb3 = _li_rb3._rebuild_plan(_ctx_rb3)
+    _rep_rb3 = _li_rb3.local_rebuild_index(_ctx_rb3)
+    _inc_rb3 = {r["stem"] for r in _plan_rb3["included"]}
+    check("v0.4.32 P1 (PIN): the rebuild does not re-add a pointer the archive holds — "
+          "`cm local archive` is not silently undone (pre-fix: archived-rbp was in `included` and "
+          "the rebuilt index carried its pointer again). Asserted on `_rebuild_plan`, because the "
+          "CLI report carries `included` but never `future`; P4 pins the operator-visible half",
+          "archived-rbp" not in _inc_rb3
+          and "](archived-rbp.md)" not in _plan_rb3["future"])
+    check("v0.4.32 P2 (GUARD, the P1 control): a LIVE fact is still indexed, so P1 tests "
+          "placement rather than 'fewer facts'",
+          "live-rbp" in _inc_rb3 and "](live-rbp.md)" in _plan_rb3["future"])
+    check("v0.4.32 P3 (GUARD, the direction): a fact placed in BOTH docs is KEPT — the rule is "
+          "the conservative difference (archive-placed AND not index-placed), not 'anything the "
+          "archive mentions'",
+          "both-rbp" in _inc_rb3 and "](both-rbp.md)" in _plan_rb3["future"])
+    check("v0.4.32 P4 (PIN): plan mode NAMES the prevented re-adds, so the undo direction is "
+          "visible where the operator looks (pre-fix: the key does not exist — the plan reported "
+          "only `would_remove_existing_pointers`)",
+          _rep_rb3.get("would_readd_archived_pointers") == ["archived-rbp"])
+    check("v0.4.32 P5 (PIN): the archive doc enters `snaps` — the plan reads its contents, so the "
+          "apply transaction must verify the revision it planned against (pre-fix: SHIPPED.md was "
+          "excluded by name and never pinned). Also a private-plan key: `snaps` holds "
+          "FileSnapshots, so the CLI report omits it and this proves nothing an operator can see",
+          any(k.endswith("SHIPPED.md") for k in _plan_rb3["snaps"]))
+
+# v0.4.32 P12 (GUARD, measured against the two INTERMEDIATE revisions): the archive-discovery
+# pass reads every store-root `*.md` to classify it, and that read RAISES on an unreadable path
+# (`control_plane.read_snapshot`: `except OSError` -> `WriteRefused`). Unguarded, one such doc
+# aborts the command with a raw message instead of the structured `ok: False` + `unreadable`
+# report the fact loop builds — and the fact loop's OWN guard cannot cover it, because the raise
+# happens before that loop runs. This re-opened the store-scan convention (skip unreadable,
+# never abort) pinned at A3 above.
+#
+# A DIRECTORY named `*.md` is the fixture rather than `chmod 000`: `read_bytes()` on it raises
+# `IsADirectoryError` -> `WriteRefused`, it needs no permission bit, and unlike a mode bit it
+# still fails for a root-run test process. A dangling symlink would NOT do — `read_snapshot`
+# maps `FileNotFoundError` to `exists=False`, a branch that returns instead of raising.
+#
+# GUARD, not a pin: pre-fix (`1056dd1`) has no archive pass, so the fact loop reports the same
+# shape and this check is green there by construction. It reds only on `c45aa0f`/`5072833`,
+# which introduced the unguarded read — so the fixed suite's own green is not evidence about it.
+with _Env73() as _e_rb4:
+    _ctx_rb4 = sc.resolve_store(_e_rb4.proj)
+    (_e_rb4.store / "good-rbu.md").write_text(
+        "---\nname: good-rbu\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_rb4.store / "locked.md").mkdir()
+    _rep_rb4: dict = {}
+    try:
+        _rep_rb4 = _li_rb3.local_rebuild_index(_ctx_rb4)
+    except Exception as _rb4_exc:      # the regression: a raw raise out of the CLI path
+        _rep_rb4 = {"raised": f"{type(_rb4_exc).__name__}: {_rb4_exc}"}
+    check("v0.4.32 P12 (GUARD): an unreadable store-root `*.md` is REPORTED, not raised — the "
+          "archive pass must not abort the command the fact loop fails closed on "
+          "(reds on the intermediate revisions: `cm: cannot snapshot ...`, rc=2, no report)",
+          _rep_rb4.get("ok") is False
+          and [r["stem"] for r in _rep_rb4.get("unreadable") or []] == ["locked"]
+          and [r["stem"] for r in _rep_rb4.get("included") or []] == ["good-rbu"])
+
+# v0.4.32 P13 (§2.7 — the OTHER half of P12's premise, and the case its own fixture cannot reach).
+# P12 asserts the archive pass REPORTS an unreadable store-root doc rather than raising; the report
+# it lands in is the fact loop's, reached by handing the path back to that loop. That hand-back is
+# false for exactly one name. The fact loop skips ("MEMORY.md", "SHIPPED.md") BY NAME, so an
+# unreadable `SHIPPED.md` is seen by NO loop: it is not classified as an archive (loop 1 skipped
+# it) and it is not reported (loop 2 excludes it), `archived` comes out empty, and the plan re-adds
+# every pointer that doc owns while reporting `ok: True` and an empty `unreadable`. Measured, same
+# fixture and call path as P12, one value changed:
+# locked.md -> ok=False/unreadable=['locked']; SHIPPED.md -> ok=True/unreadable=[].
+#
+# PIN, not a guard, and the tree it pins is this branch's own prior commit: red on `4490dd8`, and
+# also on `1056dd1` and both intermediates (the name exclusion is old — `df18912`, the 0.3.5
+# LocalFactV1 era — so nothing in this cycle introduced the hole; the cycle's archive pass is what
+# made an unreadable doc decide placement, and §2.7's guard what failed to notice).
+#
+# The harm is the WRITE, so the pin asserts the apply boundary, not the plan label. Verified on
+# `4490dd8` end-to-end, not merely inferred from the red: plan `ok: True` / `unreadable: []`,
+# `included == ['archived-rbo']`, apply `ok: True`, and MEMORY.md rewritten with the pointer
+# appended. The fixture's archive is unreadable, so whether it owned that stem is unknowable here —
+# which IS the defect: placement could not be determined and the rebuild wrote anyway. P1 is the
+# readable half of the same pair (a doc whose ownership is visible must suppress the re-add).
+with _Env73() as _e_rb5:
+    _ctx_rb5 = sc.resolve_store(_e_rb5.proj)
+    (_e_rb5.store / "archived-rbo.md").write_text(
+        "---\nname: archived-rbo\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_rb5.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n", encoding="utf-8")   # present, and NOT placing `archived-rbo`
+    (_e_rb5.store / "SHIPPED.md").mkdir()      # unreadable: IsADirectoryError -> WriteRefused
+    _idx_before = (_e_rb5.store / "MEMORY.md").read_bytes()
+    _rep_rb5: dict = {}
+    try:
+        _rep_rb5 = _li_rb3.local_rebuild_index(_ctx_rb5)
+    except Exception as _rb5_exc:      # pre-P12 shape: a raw raise out of the CLI path
+        _rep_rb5 = {"raised": f"{type(_rb5_exc).__name__}: {_rb5_exc}"}
+    _app_rb5: dict = {}
+    try:
+        _app_rb5 = _li_rb3.local_rebuild_index(
+            _ctx_rb5, apply=True, confirm=_li_rb3.REBUILD_CONFIRM)
+    except Exception as _rb5a_exc:
+        _app_rb5 = {"raised": f"{type(_rb5a_exc).__name__}: {_rb5a_exc}"}
+    check("v0.4.32 P13 (PIN): an unreadable `SHIPPED.md` is REPORTED like any other unreadable "
+          "store-root doc, and the plan fails closed — the name the fact loop excludes cannot be "
+          "handed back to it (pre-fix and both intermediates: `ok: True` with an EMPTY "
+          "`unreadable`, because loop 1 skipped the file and loop 2 excludes the name, so nothing "
+          "reported it at all)",
+          _rep_rb5.get("ok") is False
+          and [r["stem"] for r in _rep_rb5.get("unreadable") or []] == ["SHIPPED"]
+          and _rep_rb5.get("raised") is None)
+    check("v0.4.32 P13b (PIN, the harm itself): `--apply` REFUSES and MEMORY.md keeps its bytes — "
+          "the re-add is the damage, so the pin is on the write, not the label (pre-fix, "
+          "`4490dd8` included: the apply ADMITS and MEMORY.md is rewritten with the pointer "
+          "appended — measured, not inferred from the red)",
+          _app_rb5.get("ok") is False
+          and "unchanged" in (_app_rb5.get("error") or "")
+          and (_e_rb5.store / "MEMORY.md").read_bytes() == _idx_before)
+
 with _Env73() as _e_clk:
     _ctx_clk = sc.resolve_store(_e_clk.proj)
     from control_plane import count_probative_after as _cpa, record_usage_window as _ruw
@@ -11342,6 +11559,123 @@ with _Env73() as _e_clk:
     _nogo = ms.run_justify_demotion(_e_clk.proj, ["not-a-candidate"])
     check("R128-2: default justify-demotion refuses a non-candidate stem",
           _nogo.get("ok") is False and "not a current demotion candidate" in str(_nogo.get("error") or ""))
+
+# v0.4.32 P6 (spec docs/periphery-parity.spec.md §3): the fixture this suite never builds.
+# `_Env73` ENROLLS, and enrollment calls control_plane.connect — which MINTS control.sqlite. So
+# every store above has a registry, `count_probative_after` always returns a real int there, and
+# the branch that consumed its None was unreachable in the harness while being the ordinary case
+# in production. (The helper's None RETURN is pinned elsewhere; its CONSUMER was not.) The
+# fixture is built inline so its precondition is visible at the pin rather than inherited.
+_td_nr = _tf_arch.TemporaryDirectory()
+try:
+    _home_nr = Path(_td_nr.name)
+    _proj_nr = (_home_nr / "src" / "nr").resolve()
+    _proj_nr.mkdir(parents=True)
+    _store_nr = _home_nr / ".claude" / "projects" / ms.slug_for(_proj_nr) / "memory"
+    _store_nr.mkdir(parents=True)
+    _home_save, _glob_save = _os73.environ.get("HOME"), sg.GLOBAL
+    _os73.environ["HOME"] = str(_home_nr)
+    sg.GLOBAL = _home_nr / "canonical"
+    sg.GLOBAL.mkdir(parents=True, exist_ok=True)
+    try:
+        (_store_nr / "nr-fact.md").write_text(
+            "---\nname: nr-fact\ndescription: d\n---\nbody\n", encoding="utf-8")
+        (_store_nr / ms.STATE_FILE).write_text(
+            '{"commit": "aa", "timestamp": "2026-01-01T00:00:00Z"}\n', encoding="utf-8")
+        import control_plane as _cp_nr
+        _ctx_nr = sc.resolve_store(_proj_nr)
+        _ok_nr, _r1_nr, _r2_nr = True, {}, {}
+        try:
+            _r1_nr = ms.run_justify_demotion(_proj_nr, ["nr-fact"], force=True,
+                                             now_iso="2026-01-01T00:00:00Z")
+            _r2_nr = ms.run_justify_demotion(_proj_nr, ["nr-fact"], force=True,
+                                             now_iso="2026-01-01T00:00:00Z")
+        except Exception:            # pre-fix this is a TypeError; the harness must survive it
+            _ok_nr = False
+        check("v0.4.32 P6 (PIN): a registry-less store survives a SECOND --justify-demotion — the "
+              "clock's deliberate None must reach the documented fallback, never int() "
+              "(pre-fix: TypeError straight through run_justify_demotion; the FIRST run succeeds "
+              "and writes the stamp that makes the second one take that branch)",
+              _ok_nr and _r1_nr.get("ok") is True and _r2_nr.get("ok") is True
+              and [s.get("reason") for s in (_r2_nr.get("skipped") or [])] == ["already-justified"]
+              and not _cp_nr.db_path(_ctx_nr).is_file())
+    finally:
+        sg.GLOBAL = _glob_save
+        if _home_save is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_save
+finally:
+    _td_nr.cleanup()
+
+# v0.4.32 P8..P11 (§2.3 — the second half of root cause A). An archive is read through its own
+# POINTER LINES, not through every `](x.md)` its text contains. That distinction only became
+# load-bearing in v0.4.31, which loosened the shared text rule to "frontmatter-less + ONE link":
+# a store-root prose doc now classifies as an archive, and the intermediate revision read a prose
+# MENTION as a placement — the mentioned fact lost its pointer from the rebuilt index while the
+# plan labelled it an intentional eviction. Fixture: a fact whose pointer is missing from
+# MEMORY.md (the rebuild's own repair case) which a stray prose doc happens to link.
+with _Env73() as _e_pr:
+    _ctx_pr = sc.resolve_store(_e_pr.proj)
+    (_e_pr.store / "kept-live.md").write_text(
+        "---\nname: kept-live\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_pr.store / "mention-fact.md").write_text(
+        "---\nname: mention-fact\ndescription: d\n---\nbody\n", encoding="utf-8")
+    _prose_pr = ("# Working notes\n\n"
+                 "Read [the baseline](mention-fact.md) before tuning anything.\n")
+    (_e_pr.store / "prose-mention.md").write_text(_prose_pr, encoding="utf-8")
+    (_e_pr.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [kept-live](kept-live.md) — hook\n", encoding="utf-8")
+    _plan_pr = _li_rb3._rebuild_plan(_ctx_pr)          # `_li_rb3` is module-scope, from P1's block
+    _rep_pr = _li_rb3.local_rebuild_index(_ctx_pr)
+    _inc_pr = {r["stem"] for r in _plan_pr["included"]}
+    check("v0.4.32 P8 (PIN against the INTERMEDIATE revision, not against pre-fix): a prose "
+          "MENTION cannot suppress a fact — the rebuild still repairs a missing pointer when a "
+          "stray store-root doc links the fact, and the live fact keeps its own "
+          "(intermediate revision c45aa0f: `mention-fact` was absent from `included` AND from the "
+          "rebuilt index, so a drifted pointer stayed missing forever). Pre-fix it passes for a "
+          "different reason: that rebuild consulted no archive at all, so the prose doc fell "
+          "through to the fact scan and failed closed as `invalid` — a file that fails closed "
+          "cannot be silently swallowed. P10 pins the premise here so this cannot go green for it",
+          "mention-fact" in _inc_pr and "](mention-fact.md)" in _plan_pr["future"]
+          and "](kept-live.md)" in _plan_pr["future"])
+    check("v0.4.32 P9 (PIN): the plan does not LABEL that repair an intentional eviction — a bare "
+          "stem list asserts a `cm local archive` the operator cannot check (intermediate: "
+          "would_readd_archived_pointers == ['mention-fact']; pre-fix: the key does not exist)",
+          _rep_pr.get("would_readd_archived_pointers") == [])
+    check("v0.4.32 P10 (GUARD on every arm — forward-verified, the way a check whose red is only "
+          "reachable by mutating the rule it reads has to be): the fixture exercises the "
+          "NARROWING and not the fact-file path — the shared rule calls the prose doc an archive, "
+          "and the extraction the fix reads takes zero targets from it. Verified forward: "
+          "restoring a link floor in `_is_archive_index_text` turns this red (§5), which is what "
+          "stops P8 from going green for a reason it does not name",
+          ms._is_archive_index_text(_prose_pr) is True
+          and ia.archive_index(_prose_pr)["targets"] == [])
+
+# P11 — the residual §2.3 records, plus the evidence that replaces the vouch. A store-root doc
+# whose link is FORMATTED as a pointer line (`- [x](x.md) — …`) is structurally identical to a
+# real archive entry: nothing can separate them without also refusing a genuine 2-entry
+# SHIPPED.md, which is the v0.4.31 regression this cycle exists to protect. So the decline
+# stands, and the plan NAMES the doc that claimed the placement — that, not a stem list, is what
+# lets an operator see through it.
+with _Env73() as _e_pr2:
+    _ctx_pr2 = sc.resolve_store(_e_pr2.proj)
+    (_e_pr2.store / "listed-live.md").write_text(
+        "---\nname: listed-live\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_pr2.store / "list-claimed.md").write_text(
+        "---\nname: list-claimed\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_pr2.store / "prose-list.md").write_text(
+        "# Working notes\n\n- [list-claimed](list-claimed.md) — noted\n", encoding="utf-8")
+    (_e_pr2.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [listed-live](listed-live.md) — hook\n", encoding="utf-8")
+    _rep_pr2 = _li_rb3.local_rebuild_index(_ctx_pr2)
+    check("v0.4.32 P11 (PIN, the recorded residual + its evidence — red on BOTH earlier "
+          "revisions): a pointer-LINE-shaped link in a stray store-root doc stays "
+          "indistinguishable from an archive, so the stem is declined; the plan must then name "
+          "the doc that claimed it rather than vouch for it (pre-fix the stem was re-added and "
+          "the key did not exist; intermediate the key still did not exist)",
+          _rep_pr2.get("would_readd_archived_pointers") == ["list-claimed"]
+          and _rep_pr2.get("would_readd_archived_sources") == {"list-claimed": ["prose-list.md"]})
 
 # ── Phase 2: journal terminal cleanup / schema split ──
 with _Env73() as _e_js:
@@ -17349,7 +17683,8 @@ with _tf43.TemporaryDirectory() as _td30:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9)   # +9: v0.4.31 store-classifier parity C1..C7
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14)  # +9: v0.4.31 store-classifier parity C1..C7
+                                                        # +14: v0.4.32 periphery parity P1..P12, P13/P13b
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

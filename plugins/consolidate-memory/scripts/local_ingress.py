@@ -435,10 +435,31 @@ def local_archive(ctx: StoreContext, stem: str) -> dict:
 
 
 def _rebuild_plan(ctx: StoreContext) -> dict:
-    """Scan native facts. Never writes. Pins every source hash."""
+    """Scan native facts. Never writes. Pins every source hash.
+
+    v0.4.32 (spec docs/periphery-parity.spec.md §2): a fact file does not record its own
+    PLACEMENT — placement is recorded only by which pointer doc holds the pointer — so a
+    rebuild that globs fact files alone re-adds every pointer `local_archive` moved to an
+    archive doc, silently undoing the eviction.
+
+    §2.3 — the SECOND half of that root cause. Which entries an archive OWNS is not restated
+    here either: it is `index_admission.archive_index`, the extraction `local_archive`'s own
+    write path gates its admission on. That matters because the two readings differ exactly
+    where it hurts — the shared text rule classifies any frontmatter-less store-root `*.md`
+    carrying ONE link as an archive (v0.4.31), so a prose doc that merely *mentions* a fact
+    was read as placing it, and the mention suppressed the fact's pointer from the rebuilt
+    index while the plan labelled it an intentional eviction. Reading the archive's pointer
+    LINES is what makes an archive's own entries the unit of the rule.
+
+    Earlier revisions hand-rolled the placement rule, the `](stem.md)` anchor, AND this
+    extraction; all three second copies are gone. The anchor one was inert (no live index
+    line carries two pointers), but a second copy of a canonical rule is a site the next
+    reader has to re-adjudicate.
+    """
     from control_plane import read_snapshot
     from identifiers import IdentifierRefused, validate_fact_stem
-    from memory_status import _frontmatter
+    from index_admission import archive_index
+    from memory_status import _LINK_RE, _frontmatter, _is_archive_index_text
     from sync_global import _is_mirror, _pointer_line
     native = ctx.native_memory_dir
     idxp = native / "MEMORY.md"
@@ -447,18 +468,90 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
     invalid: list = []
     unreadable: list = []
     mirrors: list = []
+    readd_archived: list = []
     snaps: dict = {str(idxp): idx_snap}
     existing_ptrs: set = set()
     if idx_snap.exists:
         idx_text = (idx_snap.data or b"").decode("utf-8", errors="replace")
-        for ln in idx_text.splitlines():
-            m = re.search(r"\]\(([^)]+)\.md\)", ln)
-            if m:
-                existing_ptrs.add(m.group(1))
+        existing_ptrs = set(_LINK_RE.findall(idx_text))
+    # Archive docs (SHIPPED.md and any sibling) — classified from the SNAPSHOT's own bytes,
+    # via the shared text rule, so the rule and the revision pin below read ONE source: the
+    # apply transaction verifies exactly the bytes this pass classified.
+    #
+    # GUARDED, and not for symmetry with the fact loop below. `read_snapshot` RAISES on an
+    # unreadable path (`except OSError` → `WriteRefused`), so without a guard an unreadable
+    # store-root doc — or a directory named `*.md` — aborts the whole command with a raw
+    # message instead of the structured `ok: False` + `unreadable` report the fact loop builds.
+    # The raise happens here, before that loop runs.
+    #
+    # The guard REPORTS; it does not merely skip. Handing the path back to the fact loop is what
+    # the first revision did, and it is false for exactly one name: that loop skips
+    # `("MEMORY.md", "SHIPPED.md")` BY NAME, so an unreadable `SHIPPED.md` — the canonical
+    # archive doc, the one name this whole rule is about — is seen by NO loop. `archived` then
+    # comes out empty and the plan re-adds every pointer that doc owns while reporting
+    # `ok: True` and an empty `unreadable`: the defect this function exists to fix, silent, and
+    # invisible in the one report an operator reads. The harm needs a doc that is BOTH excluded
+    # from the fact loop AND consulted for placement, and `SHIPPED.md` is the only one: a
+    # `/quarantine/` path is excluded from both loops deliberately, and a quarantined doc is not a
+    # placement record, so nothing is re-added on its account. That is why the consequence is a
+    # wrong write rather than a missing warning. Recording it
+    # here fails the plan closed through the fact loop's own machinery (`blocked`), leaving
+    # `--skip-invalid` as the operator's explicit escape — and `reported_unreadable` keeps the
+    # entry single-homed, since the fact loop would otherwise report the same path again.
+    archive_paths: set = set()
+    reported_unreadable: set = set()
+    if native.is_dir():
+        for f in sorted(native.glob("*.md")):
+            if f.name == "MEMORY.md" or "/quarantine/" in str(f):
+                continue
+            try:
+                snap = read_snapshot(f)
+            except WriteRefused as e:
+                unreadable.append({"stem": f.stem, "error": str(e)})
+                reported_unreadable.add(str(f))
+                continue
+            if not snap.exists:
+                continue
+            if _is_archive_index_text((snap.data or b"").decode("utf-8", errors="replace")):
+                archive_paths.add(str(f))
+                snaps[str(f)] = snap
+    # Conservative direction (§2.3): the stems an archive's own POINTER LINES name AND the
+    # index does not. The rebuild may decline to RE-ADD an archived pointer; it may never
+    # REMOVE a live one, so a stem sitting in both docs stays.
+    #
+    # Both operands come from the pinned SNAPSHOTS — `readd_sources` from the archive bytes
+    # classified above, the subtracted set from `existing_ptrs`. Sourcing that second operand
+    # from DISK instead (`index_fact_names(idxp)`, which asks the same question) costs a second
+    # read of MEMORY.md and opens a window where a concurrent write makes the plan report one
+    # stem as both a pointer to remove and a re-add to decline. Every input this verdict rests
+    # on is a byte string whose sha256 the apply transaction verifies (`expected`, below).
+    #
+    # `readd_sources` carries the EVIDENCE alongside the verdict. A bare stem list asserts an
+    # intentional `cm local archive` the operator cannot check, and a stray store-root doc is
+    # exactly what makes that assertion false (§2.3's residual: a doc whose link is formatted
+    # as a pointer line is structurally indistinguishable from a real archive, so the honest
+    # move is to name the doc that claimed the placement rather than vouch for it).
+    #
+    # `targets` only — `admitted` is deliberately UNREAD here. The cap and the syntax check
+    # govern an archive's WRITE path (local_archive gates on `admitted` before it appends); an
+    # archive already on disk over its cap still records real placements, and honouring the
+    # refusal would re-add exactly the pointers this rule exists to leave out. The asymmetry is
+    # the safe direction for the same reason as `archived` itself: reading a refusal as "no
+    # entries" can only re-add, never delete.
+    archived: set = set()
+    readd_sources: dict = {}
+    if archive_paths:
+        for ap in sorted(archive_paths):
+            ap_text = (snaps[ap].data or b"").decode("utf-8", errors="replace")
+            for stem in archive_index(ap_text)["targets"]:
+                readd_sources.setdefault(stem, []).append(Path(ap).name)
+        archived = set(readd_sources) - existing_ptrs
     lines = ["# Memory Index", ""]
     if native.is_dir():
         for f in sorted(native.glob("*.md")):
             if f.name in ("MEMORY.md", "SHIPPED.md") or "/quarantine/" in str(f):
+                continue
+            if str(f) in archive_paths or str(f) in reported_unreadable:
                 continue
             try:
                 snap = read_snapshot(f)
@@ -478,6 +571,12 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
             except IdentifierRefused as e:
                 invalid.append({"stem": f.stem, "error": str(e),
                                 "sha256": snap.sha256})
+                continue
+            if f.stem in archived:
+                # Placed by an archive on purpose. Declining to re-add IS the fix; naming it
+                # is the other half — the plan reported only the REMOVE direction, so an
+                # operator could not see the rebuild about to undo an eviction (§4).
+                readd_archived.append(f.stem)
                 continue
             if _is_mirror(text):
                 fm = _frontmatter(text)
@@ -507,6 +606,8 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
         "unreadable": unreadable,
         "mirrors": mirrors,
         "would_remove_existing_pointers": would_remove,
+        "would_readd_archived_pointers": sorted(readd_archived),
+        "would_readd_archived_sources": {s: readd_sources[s] for s in sorted(readd_archived)},
         "future": future,
         "snaps": snaps,
         "idx_snap": idx_snap,
@@ -526,7 +627,8 @@ def local_rebuild_index(ctx: StoreContext, *, apply: bool = False,
     plan = _rebuild_plan(ctx)
     report = {k: plan[k] for k in (
         "included", "invalid", "unreadable", "mirrors",
-        "would_remove_existing_pointers")}
+        "would_remove_existing_pointers", "would_readd_archived_pointers",
+        "would_readd_archived_sources")}
     blocked = bool(plan["invalid"] or plan["unreadable"]) and not skip_invalid
     if not apply:
         return {"ok": not blocked, "plan": True, "error":

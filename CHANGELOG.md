@@ -5,6 +5,232 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.32] — 2026-09-14
+
+**Patch — the periphery kept its own copies of rules the store already states, so `cm local
+rebuild-index` silently undid `cm local archive`, and `--justify-demotion` crashed on the second
+run against an unenrolled store.**
+
+The last cycle staged from the 2026-09-14 audit. Its defects share a shape rather than a
+mechanism — **a local rule narrower than the canonical one** — which is the same shape v0.4.31
+fixed two layers in. The repairs are the constructive form of the repo's weakest-enforcement-site
+rule: delete the second site rather than keep two sites in step by discipline. Design and
+evidence: `docs/periphery-parity.spec.md`.
+
+1. **`cm local rebuild-index` honors placement — in both directions.** A fact file does not
+   record its own *placement* — placement is recorded only by which pointer doc holds the
+   pointer — so a rebuild that globs fact files alone treated every archived fact as unplaced and
+   wrote its pointer back into `MEMORY.md`, silently undoing the eviction `cm local archive` had
+   just performed. Measured on the live store: **2** re-adds — both **completed arcs**, whose
+   pointers belong in the on-demand archive the store keeps for exactly that; the two relocations
+   relieved **111 est tok** and **0 durable**. The rule is no longer re-derived — the rebuild asks
+   what the index places (the canonical `_LINK_RE` over its **pinned** snapshot of `MEMORY.md`;
+   `memory_status.index_fact_names` asks the same question, but re-reads the file from disk and so
+   re-opens the window the pin exists to close) and what the archive owns
+   (`index_admission.archive_index`) — and the direction is deliberately the one that **cannot
+   delete**: the plan may decline to re-add an archived pointer, never remove a live one, so a
+   stem sitting in both docs is kept. Plan mode now **names** the prevented re-adds *and the doc
+   that claimed each one*, and the archive doc enters the plan's snapshot map, because the plan
+   reads its contents and the apply transaction must verify the revision it planned against.
+
+   The second direction was found by review of this change and fixed before release. The first
+   revision computed *what an archive owns* with a predicate built for a different question
+   (`placed_fact_names`, correctly lenient for the drift check it serves), and v0.4.31's loosened
+   classifier makes **any** frontmatter-less store-root `*.md` carrying one link an archive — so a
+   working-notes file that merely *mentioned* a fact suppressed that fact's pointer from the
+   rebuilt index, and the plan reported the omission as an intentional eviction. Measured on
+   fixtures: the fact dropped out of `included` while the report named a `cm local archive` that
+   never ran, and on the smallest fixture an **empty rebuilt index reporting `ok: true`**. The
+   repair reads the archive's own pointer lines — the exact extraction `local_archive` gates its
+   own writes on — and where a doc is nonetheless indistinguishable from an archive, the report
+   now names it instead of vouching for it. Measured fleet-wide before choosing: **2** archives
+   among the store roots and **0** verdict changes under the rejected alternative — re-measured the
+   same day at a larger root count and still **0** — so this closes a class with no live instance
+   rather than repairing observed damage. The root total is the one figure that does **not**
+   reproduce, and its drift is the apparatus's: this cycle's own verification arms mint store
+   directories, so it read 437, then 444, then 446 while the archive count and the zero held at
+   every reading. Only the stable figures are load-bearing.
+
+   **A third direction, found by review of the guard itself.** Walking every store-root `*.md` to
+   classify it means reading it, and that read *raises* on an unreadable path — so the discovery
+   loop is guarded, or one unreadable doc aborts the command with a raw message instead of the
+   structured `ok: false` + `unreadable` report the fact loop builds. That guard's first form
+   **skipped** the unreadable doc, on the theory that skipping hands it back to the fact loop,
+   where the store-scan convention already lives. The theory is false for exactly one filename:
+   the fact loop excludes `("MEMORY.md", "SHIPPED.md")` **by name**, so an unreadable `SHIPPED.md`
+   — the canonical archive doc, the one name this rule is about — was seen by neither loop.
+   `archived` then came out empty and the plan re-added every pointer that doc owns while
+   reporting `ok: true` and an empty `unreadable`: the original defect, silent, and invisible in
+   the one report an operator reads. Measured, one value from the guard's own fixture: an
+   unreadable `locked.md` gave `ok: false` / `unreadable: ['locked']`, an unreadable `SHIPPED.md`
+   gave `ok: true` / `unreadable: []`. The repair routes the candidate into the same `unreadable`
+   report, which fails the plan closed through the **existing** predicate — `--apply` refuses with
+   "index unchanged" and `--skip-invalid` stays the operator's explicit escape. The pin asserts the
+   write, not the label, because the re-add is the damage. Left alone deliberately: an unreadable
+   `MEMORY.md` still aborts, since the rebuild's whole output *is* that file and aborting fails
+   **closed** — the two look alike at the call site and are opposite in direction.
+2. **`--justify-demotion` survives a registry-less store.** `control_plane.count_probative_after`
+   returns `None` *deliberately* when no registry exists — its comment records that a `0` there
+   once suppressed a stamp **forever** — and `_justify_remaining` tolerates it. Its caller did not,
+   so `int(None)` raised `TypeError` straight through `run_justify_demotion`. Reproduced on the
+   production entry point against an **unenrolled** store (a documented, supported state): the
+   **first** run succeeds and writes the stamp, and the **second** dies — so the store does not
+   merely fail on a cold start, it acquires the very stamp that makes every later run crash. The
+   clock's `None` now reaches the documented fallback — which is not one outcome but whatever that
+   fallback judges: `already-justified` when no window start postdates the stamp (the measured
+   case), a fresh stamp once enough later windows have accrued.
+
+The same pass **extended the SKILL↔TypedDict pin from key names to scalar types**, because the
+block could state a type the code did not have: measured *forward*, with `verification.confirmed`
+rewritten `0 → "NOT-AN-INT"` against a `confirmed: int` annotation, the suite reported **1952
+passed, 0 failed**. That check is a **guard, not a pin** — at HEAD the block and the TypedDicts
+agree, so no revert has anything to fail against, and a documentation check's evidence is a forward
+mutation of the artifact it reads. (mypy cannot see it by construction: its inputs are the `.py`
+sources, and `SKILL.md` is not among them.)
+
+A recorded number was re-derived, and the first two attempts at replacing it were **wrong in a way
+that inverted the conclusion**. The staged plan gave the rendered archive as 1,465,823 chars at 55
+cycles, extrapolating to ~3.2 MB at the 120-cycle cap. Re-derived: the file is **1,514,984 chars**,
+the embedded payload is **1,301,208 chars (85.9%)** and the static shell is **213,776 chars
+(14.1%)** — so the payload dominates, and the plan's ~3.2 MB figure is **reinstated** rather than
+withdrawn (a file-size extrapolation gives 3.25 MB, the payload-plus-shell form 3.0 MB). The
+closure is exact: `_load_template()` is 213,791 chars, the `/*__CM_DATA__*/` placeholder it
+replaces is 15, and 213,791 − 15 + 1,301,208 = 1,514,984 byte for byte. What went wrong twice is
+worth stating because it is a general trap: the payload was measured as
+`len(_safe_embed(assemble_cycles({}, history)))`, an expression that measures neither half —
+`assemble_cycles` returns a **`(cycles, total)` tuple**, not the dict the template receives, and
+`history` came from the **native log alone** (30 records of the **56** that
+`iter_store_cycle_log` merges across three paths). The missing 26 records carry the `diffs`,
+`identity` and `budgets` blocks, so the payload read 5× small and the shell 6× large. Naming the
+encoder was not enough; the **object** encoded had to be named too. Nothing changed:
+`_ARCHIVE_CAP` already bounds growth, and this is a documentation correction.
+
+**A version claim no gate could see, now pinned.** `AGENTS.md`'s plugin table restates each
+manifest's version, and the docs gate read neither: its `v`-prefixed sweep needs a `v` the cell
+does not have, its currency matcher takes the first match per doc, and a table cell is not the
+first match of anything. Measured: the cell read **`0.4.27` at every release from v0.4.28 through
+v0.4.31** — four versions, every gate green on each, because none of them reads a table cell — and
+rewriting it to `9.9.9` was green too, so it was not merely stale, it was **unpinned**. `tests/docs_links.py` gains `check_plugin_table` (rows matched by
+manifest, not by shape, and a manifest with no row is an error rather than a silence), and the
+cell is corrected. The same pass corrects two docstring claims in that file that measurement
+falsified — the sweep does **not** close "the version-sweep class", and its inline rationale cited
+as a bare-matcher mis-fire the one bare site a bare rule gets right — and replaces `AGENTS.md`'s
+dev-loop `1795 assertions` figure, stale by 157 (`1795` at v0.4.28 where it was still true, `1952`
+at v0.4.31) and stale by construction, with a pointer to the census constant that is printed on
+every run.
+
+**Verification.** 14 new checks (`tests/smoke.py` census `1773 + 45 + 125 + 9 + 14`) — **9 pins and
+5 guards**. Re-derived on **five** arms, one tree per process, one harness for all five (`smoke.py`
+sha256 `033a3a7b…`, verified identical in every arm, and re-verified after the pin labels were
+corrected — a label is not a condition, and that third harness revision moved no count, so the
+sha quoted is the later one): pre-fix `1056dd1` **1958 passed, 8 failed**
+(P1, P4, P5, P6, P9, P11, P13, P13b) · intermediate `c45aa0f` **1960 passed, 6 failed** (P8, P9,
+P11, P12, P13, P13b) · intermediate `5072833` **1963 passed, 3 failed** (P12, P13, P13b) · the
+branch's own prior commit `4490dd8` **1964 passed, 2 failed** (**P13, P13b**) · fixed
+**1966 passed, 0 failed**. The
+multi-arm shape is the point: a single-arm matrix would have certified the second-direction defect
+as fixed, because that pin is green pre-fix for a reason unrelated to the rule under test — and the
+`5072833` arm isolates the one defect review found *in the fix itself*, an unguarded store-root read
+that aborted `cm local rebuild-index` on an unreadable file instead of failing closed. That one is
+guarded rather than pinned, and the arm is how the guard is shown non-vacuous. Guards are verified
+**forward**, since no revert can fail them — restoring the retired ≥3-link floor turns **1955
+passed, 11 failed** (including the guard that exists to notice exactly that; P13/P13b correctly stay
+green, which is their scope stated as a measurement), and corrupting the
+`SKILL.md` block's scalar types still leaves the pre-extension harness at **1952 passed, 0 failed**.
+The fourth arm is the one worth reading: `4490dd8` was this branch's head until the guard fix
+landed, and re-read as a mutation arm its suite is green on P1–P12 and red on exactly P13 and P13b —
+the cleanest statement that those two pin *that* fix and nothing else. The cycle's own
+premise was re-checked against the tree rather than against the plan that proposed it: the staged
+plan asserted a constraint — *"the tempting fix is a no-op, because `_is_archive_index_text` floors
+at ≥3 links"* — that v0.4.31 had already removed, and carrying it would have routed the fix around
+a wall that no longer stood. Every live figure is re-measured, and each **names the surface it came
+from** rather than implying one: `cm local rebuild-index --json` for the plan, `_rebuild_plan` for
+the two rows the CLI report does not carry (`future`, and `snaps` — the latter holds `FileSnapshot`
+objects), and a hermetic-HOME reproduction for the double run.
+
+**Not in this release — the same rule, still unfixed elsewhere.** This cycle fixed the periphery
+sites that were in its frame and left the rest, because a cycle that widens as it runs is a cycle
+whose spec stops describing its diff. These are **named, anchored, and reproducible by reading one
+line**, not "known issues":
+
+- **`local_migrate_schema` skips archives by name** (`local_ingress.py`, the
+  `f.name in ("MEMORY.md", "SHIPPED.md")` guard in its glob). Two consequences, both wrong: a
+  store-root archive named anything else is fed to `prepare_local_fact(..., inject=True)`, so
+  `--apply` **rewrites an archive as if it were a fact**; and a genuine fact whose stem is
+  `SHIPPED` is silently never migrated. `SHIPPED` is not in `identifiers.RESERVED_STEMS`, so that
+  stem is legal.
+- **`run_justify_demotion`'s candidate glob skips by the same name** (`memory_status.py`), and
+  builds `idx_names` from the same list — so a second archive's stem can be stamped **durably** in
+  `.consolidation-state.json` as though it were a fact. The package already states the content-
+  based form of this rule (`sync_global.py`'s `archive_stems`, built with
+  `_is_archive_index_text`), so the fix is a two-site diff against an existing pattern, not a
+  design question.
+- **The archive's name is hand-written at four skip sites, and it is not a reserved stem.**
+  `local_archive` constructs the archive path itself (the canonical definition), but
+  `_rebuild_plan`'s fact scan, `local_migrate_schema`'s glob, and `run_justify_demotion`'s two
+  globs each restate the literal `"SHIPPED.md"` by hand, with no shared constant behind them —
+  while `sync_global` classifies archives by **content**. The reserved-stem set is itself one of
+  the second copies — `identifiers.RESERVED_STEMS` and `sync_global._RESERVED_STEMS` are two
+  literals holding the same one name, so a fix that updates only the first leaves the second
+  behind. The inconsistency is reachable, not theoretical: neither set holds `SHIPPED`, so
+  `validate_fact_stem("SHIPPED")` is **accepted** and `cm local upsert SHIPPED` writes the very
+  file the rebuild then hides by name — and a case-variant (`shipped.md`) resolves to the same
+  file on a case-insensitive filesystem, which is the self-clobber class `_is_reserved_stem`'s
+  docstring was written for and guards for `MEMORY` only. Recorded rather than fixed here because
+  the fix changes which stems a store accepts, and a cycle that widens as it runs is a cycle whose
+  spec stops describing its diff.
+- **`apply_demotion_justify` mints `n_after = 0`** on its `elif` arm — the exact value the
+  deliberate-`None` comment in `count_probative_after` records as having suppressed a stamp
+  forever. This cycle fixed the `None` path and left the sibling.
+- **A text-level `_LINK_RE.findall` can match across a newline** (`[^)]+` includes `\n`), so a
+  target split over two lines is seen by a text scan and missed by a per-line one. Measured: **0**
+  such matches across every store-root doc on the fleet (**547** at re-measurement), so this is
+  latent, not observed.
+- **Two more store-scan reads raise instead of reporting**, the same convention this cycle had to
+  repair in its own new loop. `local_ingress._rebuild_plan`'s read of `MEMORY.md` itself, and
+  `local_ingress.local_migrate_schema`'s read inside its fact glob, are both unguarded against
+  the `WriteRefused` that `control_plane.read_snapshot` raises on an unreadable path — so an
+  unreadable file aborts the command with a raw message where the store-scan convention (`skip
+  unreadable, never abort`) says to report it. Pre-existing, and left standing for the same reason
+  as the by-name skips above: the cycle fixed the site it touched and records the others rather
+  than widening mid-flight. `_orphans()` was recorded as the fourth such site; these are the
+  fifth and sixth.
+- **Three verbatim copies of the `](stem.md)` anchor survive** outside the two this cycle
+  consolidated: the anchor→cost maps in `session_beacon.py` and `sync_global.py` (the same map
+  hoisted twice, each with its own `re.search` over a line) and the mirror-pointer attribution in
+  `sync_global.py`. All three are inert for the same measured reason the retired copy was — **0**
+  live index lines carry two pointers — so this is a consistency finding, not a live bug, and both
+  modules already import from `memory_status`, so the consolidation is free. `memory_status`'s
+  `run_justify_defrag` glob is the defrag sibling of the by-name skip above.
+- **The archive-placed stems are keyed on the archive's LINK TEXT, the skip on the FILE STEM.**
+  The two are equal only because the single production writer constructs its pointer from a bare
+  stem; `sync_global._pointer_line` is the one constructor that can emit a namespaced anchor, and
+  no production path points it at an archive doc. So an archive entry whose link text differs
+  from its target's stem is reachable only by hand-editing, and the rebuild silently re-adds that
+  fact — the archive is correctly recognised and pinned, but the skip misses. Latent, and named
+  here as an unfixed coupling rather than a live defect.
+- **A pointer written as `](stem)` without `.md` is still a grammar split.** `index_admission`'s
+  `apply_pointer` accepts both forms; `memory_status._LINK_RE` sees only the `.md` one, so a
+  bare-form pointer list is an archive to the writer and prose to the classifier. Pre-existing at
+  both ends, and unobserved on the fleet.
+- **No check writes a rebuilt index that contains an archived stem.** Every placement pin reads
+  the plan (`included`/`future`), which is verbatim what the apply arm writes, so the assertion is
+  faithful — but the apply path itself is exercised only by a pre-existing check whose fixture has
+  no archive, so a regression in the write half would not be caught by this cycle's pins.
+- **`CHANGELOG`'s top heading and `plugin.json` are unpinned by every PR-time gate.** Nothing in
+  the repository compares them (the docs sweep never reads the heading; the manifest validator
+  never opens the CHANGELOG), and the CI step that does compare them runs on tag push, i.e. after
+  the merge. The sanctioned path is safe — the release harness reads its target version *from* the
+  heading — so this is a defense-in-depth gap worth one step, not a hole in the release path.
+- **The fleet network capture** (the one observability block still hand-pasted rather than
+  script-injected, whose beta capture is not enforced) and **the post-persist correction path**
+  (the detector fires to stderr and cannot stop the write) remain root-caused and unscheduled from
+  the audit that opened this cycle.
+
+Two items this cycle **closes** rather than carries: `AGENTS.md`'s unpinned table cell (above) and
+`docs/index-usage-and-budget-ladder.spec.md`'s falsified ≥3-link justification, corrected in
+v0.4.31 — recorded here so the staged plan's item is not silently dropped.
+
 ## [0.4.31] — 2026-09-14
 
 **Patch — two store-honesty classifiers knew fewer fact shapes than the store holds, so a clean pass

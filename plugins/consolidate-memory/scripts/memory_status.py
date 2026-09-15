@@ -2032,7 +2032,15 @@ def apply_demotion_justify(state: dict, stems: list, *, wf: int,
         jseq, jw, at = _justify_entry(dj.get(stem))
         n_after: "int | None" = None
         if jseq is not None and callable(n_after_fn):
-            n_after = int(n_after_fn(jseq))
+            # v0.4.32 (spec docs/periphery-parity.spec.md §3): the clock's `None` is
+            # DELIBERATE and documented (count_probative_after: a 0 there once suppressed a
+            # stamp FOREVER on a registry-less store). `int(None)` raised TypeError straight
+            # through run_justify_demotion on the SECOND `--justify-demotion` of an
+            # unenrolled store — the first run succeeds and writes the stamp that makes the
+            # second one take this branch. Tolerated exactly as `_justify_remaining` does:
+            # keep the None and let the documented fallback judge the stamp.
+            _raw_after = n_after_fn(jseq)
+            n_after = int(_raw_after) if _raw_after is not None else None
         elif seq is not None and jseq is not None:
             n_after = 0
         if _justify_suppresses(jw, at, wf, window_starts, sequence=jseq,
