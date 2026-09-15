@@ -1,6 +1,6 @@
 # Record post-state — design-of-record
 
-**Status: revision 11 — for adversarial review** (2378 lines; revision 10 read 2266, revision 9 read
+**Status: revision 11 — for adversarial review** (2379 lines; revision 10 read 2266, revision 9 read
 1965, revision 8 read 1941, revision 6 read 1657). Target release: **v0.4.30 (patch)** — a repair to
 fields that were always meant to be measured; no schema, flag, or install-contract change.
 
@@ -106,27 +106,27 @@ its own item: **a count says how many moved; a probe says which.**
 **Revision 11 audits this branch's own claims — and falsifies one of this file's own counts.** Every
 claim this cycle added about its own code was followed to its source: each named count, each
 enumeration, each "never / only / single / exactly N", and each check's **name set against its
-condition**. **Six failed, and no *executing* gate could have reached any of them**: five are claims in
-text that is never executed — comments, a skill instruction, a check's *name* — and the sixth is a
-binding whose value **agreed** with its source, which only a check on the source's *shape* can see.
-Five were repaired where they were written. A
+condition**. **Six failed, and no *executing* gate could have reached any of them.** Five are claims in
+text that nothing executes: the two comments and the skill instruction below, plus this file's own §5.
+The sixth is not text — **A2** is a binding whose value *agreed* with its source, so only a check on
+the source's *shape* can see the gap that a comment ("mirrors `memory_status`") was papering over. A
 `render_dashboard` comment asserted the HTML archive "never had this defect because it meters from its
 own constant": measured, the archive's gauge takes *both* of its operands from the record and uses the
 constant only as a fallback. Two `render_html` constants were unpinned literal copies of
 `memory_status`'s **in a module that already imports `ms`** — the same comment's own "mirrors
 `memory_status`" was true as an intention and held by nothing. That comment's "all **three** readers"
-is **six** — the same `grep -rn over_ceiling` census §5 now records. SKILL.md step 7's "the ONE
-budget leaf the script does not own" is false twice over — `budget.global_claude_md.*` and `budget.claude_md_hierarchy` are equally out of the
-script's reach — and false in the direction that acts, since its reader is the model one step from
-authoring the value §2.3 forbids. And a check's label claimed "*a live reference, not a hardcoded
-copy*" while its condition was `==`, which a copy passes on the day it is written. The sixth is this
-file's: §5 recorded `over_ceiling` as having "exactly two readers (the alarm line and `render_html`'s
-gauge)", and the census is **six sites in three files**. **The spec's count was wrong in the direction
-that matters** — it was offered as the reason the repair "cannot invent a display", and one unexamined
-reader is exactly what would let it. **The same sweep confirms the neighbouring count it could have
-falsified**: `ceiling_tokens` reads at **one** site, the `⚠ HARD CEILING` alarm. That pair is the only
-evidence that these numbers came from a census and not from a prior — a method that lowers one
-number and leaves the next one standing.
+is **six** — the same `grep -rn over_ceiling` census §5 now records. SKILL.md step 7's "the ONE budget
+leaf the script does not own" is false twice over — `budget.global_claude_md.*` and
+`budget.claude_md_hierarchy` are equally out of the script's reach — and false in the direction that
+acts, since its reader is the model one step from authoring the value §2.3 forbids. And a check's label
+claimed "*a live reference, not a hardcoded copy*" while its condition was `==`, which a copy passes on
+the day it is written. The sixth is this file's: §5 recorded `over_ceiling` as having "exactly two
+readers (the alarm line and `render_html`'s gauge)", and the census is **six sites in three files**.
+**The spec's count was wrong in the direction that matters** — it was offered as the reason the repair
+"cannot invent a display", and one unexamined reader is exactly what would let it. **The same sweep
+confirms the neighbouring count it could have falsified**: `ceiling_tokens` reads at **one** site, the
+`⚠ HARD CEILING` alarm. That pair is the only evidence that these numbers came from a census and not
+from a prior — a method that lowers one number and leaves the next one standing.
 **Two of the six are one gap seen from both sides.** A2 is the unpinned binding and A5 the check that
 appeared to hold it: because the constants' values *agreed* on the day, the only thing asserting they
 would keep agreeing was a comment ("mirrors `memory_status`") plus a check whose **name** claimed
@@ -2322,7 +2322,8 @@ are stated with the artifact they were measured on.
   reviewer filed this round. It is a pass over **what this cycle said about its own code**, because
   that is the one surface with no gate on it: a comment, a skill instruction and a check's *name* are
   all never executed, so only following each one to its source can falsify it. Five of the six were
-  repaired on the branch before this entry was written (commits `351ed20`, `533244e`, `0aa233d`).
+  repaired before this entry was written; **A6 is repaired in the same revision that records it**, which
+  is the one shape a self-audit's ledger cannot avoid.
   Findings are labeled **A1–A6, not F1–F6**: the F-series belongs to the round-3 review entry above,
   and two live `F5`s in one file is the same ambiguity this revision exists to remove.
   - **The sweep's shape.** Every added claim that names a **count, an enumeration, or a
