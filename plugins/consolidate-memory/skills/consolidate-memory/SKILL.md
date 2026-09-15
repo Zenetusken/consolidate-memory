@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.31** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.32** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -45,7 +45,15 @@ the v0.4.31 store-classifier-parity patch (an archive index is recognized by the
 frontmatter plus the PRESENCE of a pointer rather than by a `≥3`-link floor — below that floor the
 archive read as a fact, overstating four `schema_drift` fields and putting the archive, and one of
 the two facts it points at, on the eviction docket — and a `LocalFactV1` fact, whose reserved keys
-exclude `node_type`, no longer counts as native-schema drift).
+exclude `node_type`, no longer counts as native-schema drift), plus
+the v0.4.32 periphery-parity patch (two periphery sites each kept a SECOND copy of a rule the store
+already states canonically — `cm local rebuild-index` re-derived *placement* from the fact files
+alone, so a fact whose pointer `cm local archive` relocated into `SHIPPED.md` was not "placed" and
+got re-added, silently undoing the eviction (measured live: 2 re-adds); and `--justify-demotion`
+re-derived the usage clock's tolerance for its DELIBERATE `None`, raising `TypeError` on the SECOND
+run against an unenrolled store. Both now read the canonical rule — `memory_status.placed_fact_names`
+and the `None` tolerance `_justify_remaining` already documented — and the rebuild can only DECLINE
+to re-add an archived pointer, never delete one).
 Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull

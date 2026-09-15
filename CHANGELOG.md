@@ -5,6 +5,71 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.32] — 2026-09-14
+
+**Patch — two periphery sites each kept their own copy of a rule the store already states, so
+`cm local rebuild-index` silently undid `cm local archive`, and `--justify-demotion` crashed on
+the second run against an unenrolled store.**
+
+The last cycle staged from the 2026-09-14 audit. Its two defects share a shape rather than a
+mechanism — **a local rule narrower than the canonical one** — which is the same shape v0.4.31
+fixed two layers in. Both repairs are the constructive form of the repo's weakest-enforcement-site
+rule: delete the second site instead of keeping two in step by discipline. Design and evidence:
+`docs/periphery-parity.spec.md`.
+
+1. **`cm local rebuild-index` no longer re-adds a pointer the archive removed.** A fact file does
+   not record its own *placement* — placement is recorded only by which pointer doc holds the
+   pointer — so a rebuild that globs fact files alone treated every archived fact as unplaced and
+   wrote its pointer back into `MEMORY.md`, silently undoing the eviction `cm local archive` had
+   just performed. Measured on the live store: **2** re-adds, both facts whose entire purpose in
+   the store is to be off the always-loaded budget; the two relocations relieved **111 est tok**
+   and **0 durable**. The rule is no longer re-derived — it is `memory_status.placed_fact_names`,
+   whose own docstring already states it (*"the always-loaded index = the active set"*) — and the
+   direction is deliberately the one that **cannot delete**: the plan may decline to re-add an
+   archived pointer, never remove a live one, so a stem sitting in both docs is kept. Plan mode
+   now **names** the prevented re-adds, because the undo direction was invisible exactly where an
+   operator looks. The archive doc also enters the plan's snapshot map: the plan reads its
+   contents, so the apply transaction must verify the revision it planned against.
+2. **`--justify-demotion` survives a registry-less store.** `control_plane.count_probative_after`
+   returns `None` *deliberately* when no registry exists — its comment records that a `0` there
+   once suppressed a stamp **forever** — and `_justify_remaining` tolerates it. Its caller did not,
+   so `int(None)` raised `TypeError` straight through `run_justify_demotion`. Reproduced on the
+   production entry point against an **unenrolled** store (a documented, supported state): the
+   **first** run succeeds and writes the stamp, and the **second** dies — so the store does not
+   merely fail on a cold start, it acquires the very stamp that makes every later run crash. The
+   clock's `None` now reaches the documented fallback.
+
+The same pass **extended the SKILL↔TypedDict pin from key names to scalar types**, because the
+block could state a type the code did not have: measured *forward*, with `verification.confirmed`
+rewritten `0 → "NOT-AN-INT"` against a `confirmed: int` annotation, the suite reported **1952
+passed, 0 failed**. That check is a **guard, not a pin** — at HEAD the block and the TypedDicts
+agree, so no revert has anything to fail against, and a documentation check's evidence is a forward
+mutation of the artifact it reads. (mypy cannot see it by construction: its inputs are the `.py`
+sources, and `SKILL.md` is not among them.)
+
+A recorded number was **withdrawn rather than carried**. The staged plan gave the rendered archive
+as 1,465,823 chars at 55 cycles, extrapolating to ~3.2 MB at the 120-cycle cap. Re-derived: the file
+is **1,514,984 chars at 30 embedded cycles** — more chars at *fewer* cycles, so the recorded
+per-cycle premise does not hold — and the embedded cycle payload is **253,020 bytes (8,434/cycle),
+~17% of the file**, so the cap bounds roughly **1.01 MB**, an order of magnitude less than the file
+it was extrapolated from. Nothing changed: `_ARCHIVE_CAP` already bounds growth, and this is a
+documentation correction.
+
+**Verification.** 7 new checks (`tests/smoke.py` census `1773 + 45 + 125 + 9 + 7`) — **4 pins and 3
+guards**. Re-derived against the pre-fix tree, one tree per process: **1955 passed, 4 failed** (all
+four pins) against **1959 passed, 0 failed** on the fixed tree; all three guards hold on *both*
+revisions. The cycle's own premise was re-checked against the tree rather than against the plan that
+proposed it: the staged plan asserted a constraint — *"the tempting fix is a no-op, because
+`_is_archive_index_text` floors at ≥3 links"* — that v0.4.31 had already removed, and carrying it
+would have routed the fix around a wall that no longer stood. Every live figure is re-measured
+through the production entry points, not a lookalike: `cm local rebuild-index --json` for the plan,
+and a hermetic-HOME reproduction for the double run.
+
+**Not in this release.** Two faces of the audit remain root-caused and unscheduled: the fleet
+network capture (the one observability block still hand-pasted rather than script-injected, whose
+beta capture is not enforced) and the post-persist correction path (the detector fires to stderr and
+cannot stop the write).
+
 ## [0.4.31] — 2026-09-14
 
 **Patch — two store-honesty classifiers knew fewer fact shapes than the store holds, so a clean pass

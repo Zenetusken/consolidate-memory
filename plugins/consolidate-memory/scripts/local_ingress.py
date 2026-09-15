@@ -435,10 +435,22 @@ def local_archive(ctx: StoreContext, stem: str) -> dict:
 
 
 def _rebuild_plan(ctx: StoreContext) -> dict:
-    """Scan native facts. Never writes. Pins every source hash."""
+    """Scan native facts. Never writes. Pins every source hash.
+
+    v0.4.32 (spec docs/periphery-parity.spec.md §2): a fact file does not record its own
+    PLACEMENT — placement is recorded only by which pointer doc holds the pointer — so a
+    rebuild that globs fact files alone re-adds every pointer `local_archive` moved to an
+    archive doc, silently undoing the eviction. The "already placed elsewhere" rule is not
+    restated here; it is `memory_status.placed_fact_names`, whose own docstring states it
+    ("the always-loaded index = the active set"). Earlier revisions of this function
+    hand-rolled BOTH the placement rule and the `](stem.md)` anchor; both second copies are
+    gone (the anchor one was inert — no live index line carries two pointers — but a second
+    copy of a canonical rule is a site the next reader has to re-adjudicate).
+    """
     from control_plane import read_snapshot
     from identifiers import IdentifierRefused, validate_fact_stem
-    from memory_status import _frontmatter
+    from memory_status import (_LINK_RE, _frontmatter, _is_archive_index_text,
+                               index_fact_names, placed_fact_names)
     from sync_global import _is_mirror, _pointer_line
     native = ctx.native_memory_dir
     idxp = native / "MEMORY.md"
@@ -447,18 +459,40 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
     invalid: list = []
     unreadable: list = []
     mirrors: list = []
+    readd_archived: list = []
     snaps: dict = {str(idxp): idx_snap}
     existing_ptrs: set = set()
     if idx_snap.exists:
         idx_text = (idx_snap.data or b"").decode("utf-8", errors="replace")
-        for ln in idx_text.splitlines():
-            m = re.search(r"\]\(([^)]+)\.md\)", ln)
-            if m:
-                existing_ptrs.add(m.group(1))
+        existing_ptrs = set(_LINK_RE.findall(idx_text))
+    # Archive docs (SHIPPED.md and any sibling) — classified from the SNAPSHOT's own bytes,
+    # via the shared text rule, so the classification and the revision pin below come from
+    # ONE read: the apply transaction verifies the same bytes this rule judged.
+    archive_paths: set = set()
+    if native.is_dir():
+        for f in sorted(native.glob("*.md")):
+            if f.name == "MEMORY.md" or "/quarantine/" in str(f):
+                continue
+            snap = read_snapshot(f)
+            if not snap.exists:
+                continue
+            if _is_archive_index_text((snap.data or b"").decode("utf-8", errors="replace")):
+                archive_paths.add(str(f))
+                snaps[str(f)] = snap
+    # Conservative direction (§2.3): stems an archive places AND the index does not. The
+    # rebuild may decline to RE-ADD an archived pointer; it may never REMOVE a live one, so
+    # a stem sitting in both docs stays. Taking the difference against the canonical union is
+    # what keeps this from re-deriving placement.
+    archived: set = set()
+    if archive_paths:
+        archived = (placed_fact_names(idxp, sorted(archive_paths))
+                    - index_fact_names(idxp))
     lines = ["# Memory Index", ""]
     if native.is_dir():
         for f in sorted(native.glob("*.md")):
             if f.name in ("MEMORY.md", "SHIPPED.md") or "/quarantine/" in str(f):
+                continue
+            if str(f) in archive_paths:
                 continue
             try:
                 snap = read_snapshot(f)
@@ -478,6 +512,12 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
             except IdentifierRefused as e:
                 invalid.append({"stem": f.stem, "error": str(e),
                                 "sha256": snap.sha256})
+                continue
+            if f.stem in archived:
+                # Placed by an archive on purpose. Declining to re-add IS the fix; naming it
+                # is the other half — the plan reported only the REMOVE direction, so an
+                # operator could not see the rebuild about to undo an eviction (§4).
+                readd_archived.append(f.stem)
                 continue
             if _is_mirror(text):
                 fm = _frontmatter(text)
@@ -507,6 +547,7 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
         "unreadable": unreadable,
         "mirrors": mirrors,
         "would_remove_existing_pointers": would_remove,
+        "would_readd_archived_pointers": sorted(readd_archived),
         "future": future,
         "snaps": snaps,
         "idx_snap": idx_snap,
@@ -526,7 +567,7 @@ def local_rebuild_index(ctx: StoreContext, *, apply: bool = False,
     plan = _rebuild_plan(ctx)
     report = {k: plan[k] for k in (
         "included", "invalid", "unreadable", "mirrors",
-        "would_remove_existing_pointers")}
+        "would_remove_existing_pointers", "would_readd_archived_pointers")}
     blocked = bool(plan["invalid"] or plan["unreadable"]) and not skip_invalid
     if not apply:
         return {"ok": not blocked, "plan": True, "error":

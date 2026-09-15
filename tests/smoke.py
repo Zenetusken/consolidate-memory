@@ -1519,6 +1519,61 @@ check("SKILL↔TypedDict: schema-block health keys == Health TypedDict (nested s
       set(_skill_schema.get("health", {}).keys()) == set(ms.Health.__annotations__))
 check("SKILL↔TypedDict: schema-block marker keys == Marker TypedDict (incl. before_*; v0.1.6 drift fix)",
       set(_skill_schema.get("marker", {}).keys()) == set(ms.Marker.__annotations__))
+# v0.4.32 (spec docs/periphery-parity.spec.md §5 pin 7): the three checks above compare KEY
+# SETS, so a scalar TYPE change in the block passed every gate. Measured FORWARD: with
+# `verification.confirmed` rewritten 0 -> "NOT-AN-INT" against a `confirmed: int` annotation,
+# the suite still reported 1952 passed, 0 failed. (mypy cannot see it by construction — its
+# inputs are the `.py` sources, and SKILL.md is not among them; validate_cycle_record checks
+# container types and never reads the block.)
+#
+# This is a GUARD, not a pin, and calling it a pin would be false: at HEAD the block and the
+# TypedDicts agree, so no revert has anything to fail against. A documentation check's evidence
+# is a FORWARD mutation of the artifact it reads, never a reverse revert.
+#
+# The rule visits every non-dict, non-list value whose annotation resolved to a real type and
+# requires an EXACT type match: `type(val) is ann`, not isinstance — so `budget_tokens: True`
+# is drift, not an int. Strings are NOT exempt: a str in an int slot is the drift this closes.
+# (Annotations are ForwardRefs here — memory_status has `from __future__ import annotations` —
+# so get_type_hints is what makes them comparable at all.)
+import typing as _typing  # noqa: E402
+
+
+def _td_sub(ann: object) -> object:
+    """The TypedDict a nested schema-block value is judged against, or None.
+
+    A directly TypedDict-typed key has no `__args__` (only Optional[...]/dict[...] wrappers do),
+    so both shapes are handled — otherwise the walk visits 3 scalars instead of 138 and reads
+    as a pass."""
+    if _typing.is_typeddict(ann):
+        return ann
+    for _a in getattr(ann, "__args__", ()):
+        if _typing.is_typeddict(_a):
+            return _a
+    return None
+
+
+def _scalar_drift(block: dict, td: object, path: str = "") -> list:
+    out: list = []
+    hints = _typing.get_type_hints(td)
+    for k in sorted(set(block) & set(hints)):
+        ann, val = hints[k], block[k]
+        if isinstance(val, dict):
+            sub = _td_sub(ann)
+            if sub is not None:
+                out += _scalar_drift(val, sub, f"{path}{k}.")
+            continue
+        if isinstance(val, list) or not isinstance(ann, type):
+            continue
+        if type(val) is not ann:
+            out.append(f"{path}{k}: doc {type(val).__name__} vs annotation {ann.__name__}")
+    return out
+
+
+_scalar_bad = _scalar_drift(_skill_schema, ms.CycleRecord)
+check("v0.4.32 P7 (GUARD, forward-verified): every scalar in the SKILL schema block matches its "
+      "TypedDict annotation by EXACT type — the key-set pins above cannot see a type change; "
+      "evidence is the forward mutation (0 -> \"NOT-AN-INT\"), never a revert",
+      _scalar_bad == [])
 # v0.1.12: extend the pin to ALL nested shapes (was only top-level + health + marker), so SKILL.md's
 # nested schema can't silently drift from the code. Strip doc-annotation keys (leading "_", e.g.
 # cross_project._pulled / network._) before comparing; list-wrapped shapes compare their [0] item.
@@ -11320,6 +11375,49 @@ with _Env73() as _e_rb2:
           and "](good-rb.md)" in _idx_skip
           and "](bad-rb.md)" not in _idx_skip)
 
+# --- v0.4.32 periphery parity (docs/periphery-parity.spec.md §2/§5) -------------------------
+# A fact file does not record its own PLACEMENT — only a pointer doc does — so a rebuild that
+# globs fact files alone re-adds every pointer `local_archive` moved into an archive, silently
+# undoing the eviction. Fixture: one live fact, one archive-ONLY fact, and one fact in BOTH docs
+# (which is the direction guard — the rebuild may decline to RE-ADD, never REMOVE a live pointer).
+with _Env73() as _e_rb3:
+    _ctx_rb3 = sc.resolve_store(_e_rb3.proj)
+    import local_ingress as _li_rb3
+    # NOTE the name: this is ONE flat module scope, so a loop variable that collides with an
+    # earlier Path binding is a mypy error, not a fresh local (`_s3` was taken at line 6709).
+    for _stem_rb3 in ("live-rbp", "archived-rbp", "both-rbp"):
+        (_e_rb3.store / f"{_stem_rb3}.md").write_text(
+            f"---\nname: {_stem_rb3}\ndescription: d\n---\nbody\n", encoding="utf-8")
+    (_e_rb3.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [live-rbp](live-rbp.md) — hook\n- [both-rbp](both-rbp.md) — hook\n",
+        encoding="utf-8")
+    (_e_rb3.store / "SHIPPED.md").write_text(
+        "# SHIPPED\n\n- [archived-rbp](archived-rbp.md) — done\n- [both-rbp](both-rbp.md) — done\n",
+        encoding="utf-8")
+    _plan_rb3 = _li_rb3._rebuild_plan(_ctx_rb3)
+    _rep_rb3 = _li_rb3.local_rebuild_index(_ctx_rb3)
+    _inc_rb3 = {r["stem"] for r in _plan_rb3["included"]}
+    check("v0.4.32 P1 (PIN): the rebuild does not re-add a pointer the archive holds — "
+          "`cm local rebuild-index` must not silently undo `cm local archive` (pre-fix: "
+          "archived-rbp was in `included` and the rebuilt index carried its pointer again)",
+          "archived-rbp" not in _inc_rb3
+          and "](archived-rbp.md)" not in _plan_rb3["future"])
+    check("v0.4.32 P2 (GUARD, the P1 control): a LIVE fact is still indexed, so P1 tests "
+          "placement rather than 'fewer facts'",
+          "live-rbp" in _inc_rb3 and "](live-rbp.md)" in _plan_rb3["future"])
+    check("v0.4.32 P3 (GUARD, the direction): a fact placed in BOTH docs is KEPT — the rule is "
+          "the conservative difference (archive-placed AND not index-placed), not 'anything the "
+          "archive mentions'",
+          "both-rbp" in _inc_rb3 and "](both-rbp.md)" in _plan_rb3["future"])
+    check("v0.4.32 P4 (PIN): plan mode NAMES the prevented re-adds, so the undo direction is "
+          "visible where the operator looks (pre-fix: the key does not exist — the plan reported "
+          "only `would_remove_existing_pointers`)",
+          _rep_rb3.get("would_readd_archived_pointers") == ["archived-rbp"])
+    check("v0.4.32 P5 (PIN): the archive doc enters `snaps` — the plan reads its contents, so the "
+          "apply transaction must verify the revision it planned against (pre-fix: SHIPPED.md was "
+          "excluded by name and never pinned)",
+          any(k.endswith("SHIPPED.md") for k in _plan_rb3["snaps"]))
+
 with _Env73() as _e_clk:
     _ctx_clk = sc.resolve_store(_e_clk.proj)
     from control_plane import count_probative_after as _cpa, record_usage_window as _ruw
@@ -11342,6 +11440,54 @@ with _Env73() as _e_clk:
     _nogo = ms.run_justify_demotion(_e_clk.proj, ["not-a-candidate"])
     check("R128-2: default justify-demotion refuses a non-candidate stem",
           _nogo.get("ok") is False and "not a current demotion candidate" in str(_nogo.get("error") or ""))
+
+# v0.4.32 P6 (spec docs/periphery-parity.spec.md §3): the fixture this suite never builds.
+# `_Env73` ENROLLS, and enrollment calls control_plane.connect — which MINTS control.sqlite. So
+# every store above has a registry, `count_probative_after` always returns a real int there, and
+# the branch that consumed its None was unreachable in the harness while being the ordinary case
+# in production. (The helper's None RETURN is pinned elsewhere; its CONSUMER was not.) The
+# fixture is built inline so its precondition is visible at the pin rather than inherited.
+_td_nr = _tf_arch.TemporaryDirectory()
+try:
+    _home_nr = Path(_td_nr.name)
+    _proj_nr = (_home_nr / "src" / "nr").resolve()
+    _proj_nr.mkdir(parents=True)
+    _store_nr = _home_nr / ".claude" / "projects" / ms.slug_for(_proj_nr) / "memory"
+    _store_nr.mkdir(parents=True)
+    _home_save, _glob_save = _os73.environ.get("HOME"), sg.GLOBAL
+    _os73.environ["HOME"] = str(_home_nr)
+    sg.GLOBAL = _home_nr / "canonical"
+    sg.GLOBAL.mkdir(parents=True, exist_ok=True)
+    try:
+        (_store_nr / "nr-fact.md").write_text(
+            "---\nname: nr-fact\ndescription: d\n---\nbody\n", encoding="utf-8")
+        (_store_nr / ms.STATE_FILE).write_text(
+            '{"commit": "aa", "timestamp": "2026-01-01T00:00:00Z"}\n', encoding="utf-8")
+        import control_plane as _cp_nr
+        _ctx_nr = sc.resolve_store(_proj_nr)
+        _ok_nr, _r1_nr, _r2_nr = True, {}, {}
+        try:
+            _r1_nr = ms.run_justify_demotion(_proj_nr, ["nr-fact"], force=True,
+                                             now_iso="2026-01-01T00:00:00Z")
+            _r2_nr = ms.run_justify_demotion(_proj_nr, ["nr-fact"], force=True,
+                                             now_iso="2026-01-01T00:00:00Z")
+        except Exception:            # pre-fix this is a TypeError; the harness must survive it
+            _ok_nr = False
+        check("v0.4.32 P6 (PIN): a registry-less store survives a SECOND --justify-demotion — the "
+              "clock's deliberate None must reach the documented fallback, never int() "
+              "(pre-fix: TypeError straight through run_justify_demotion; the FIRST run succeeds "
+              "and writes the stamp that makes the second one take that branch)",
+              _ok_nr and _r1_nr.get("ok") is True and _r2_nr.get("ok") is True
+              and [s.get("reason") for s in (_r2_nr.get("skipped") or [])] == ["already-justified"]
+              and not _cp_nr.db_path(_ctx_nr).is_file())
+    finally:
+        sg.GLOBAL = _glob_save
+        if _home_save is None:
+            _os73.environ.pop("HOME", None)
+        else:
+            _os73.environ["HOME"] = _home_save
+finally:
+    _td_nr.cleanup()
 
 # ── Phase 2: journal terminal cleanup / schema split ──
 with _Env73() as _e_js:
@@ -17349,7 +17495,8 @@ with _tf43.TemporaryDirectory() as _td30:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9)   # +9: v0.4.31 store-classifier parity C1..C7
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 7)   # +9: v0.4.31 store-classifier parity C1..C7
+                                                        # +7: v0.4.32 periphery parity P1..P7
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
