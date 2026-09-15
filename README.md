@@ -38,11 +38,12 @@
 > **Current release: v0.4.32** — `cm local rebuild-index` no longer **re-adds a pointer the archive
 > removed**. A fact file does not record its own placement, so a rebuild that globbed fact files
 > alone wrote archived facts back into `MEMORY.md`, silently undoing `cm local archive` — measured on
-> the live store, **2 re-adds**, both facts whose whole purpose is to be off the always-loaded
-> budget. The rule is now the one the store already states (`placed_fact_names`), and it can only
-> *decline to re-add*, never delete. Separately, `--justify-demotion` no longer **crashes on the
-> second run** against an unenrolled store: the usage clock's deliberate `None` now reaches its
-> documented fallback instead of `int()`.
+> the live store, **2 re-adds** — both completed arcs, whose pointers belong in the on-demand
+> archive rather than the always-loaded index. The rule is no longer re-derived: the rebuild asks
+> what the index places (`memory_status.index_fact_names`) and what an archive owns
+> (`index_admission.archive_index`), and it can only *decline to re-add*, never delete. Separately,
+> `--justify-demotion` no longer **crashes on the second run** against an unenrolled store: the
+> usage clock's deliberate `None` now reaches its documented fallback instead of `int()`.
 > Public 1.0 remains **HOLD**, with outstanding evidence gates tracked in the
 > [1.0 preflight](docs/1.0-preflight.spec.md). See the [changelog](CHANGELOG.md) for
 > shipped changes.

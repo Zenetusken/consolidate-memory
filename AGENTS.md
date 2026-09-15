@@ -34,7 +34,7 @@ python3 tests/smoke.py                          # the zero-dep gate — every sc
                                                 # census is the constant in the file's own final check (it
                                                 # prints the count on every run) — deliberately NOT restated
                                                 # here, where no gate could have caught it drifting: this
-                                                # line claimed 1795 for three releases, through +141 checks
+                                                # line claimed 1795 for three releases, through +157 checks
 python3 tests/simulate_accumulation.py          # lifecycle accumulation sim (probes A–W + X–AF) — the
                                                 # store-mechanics gate; CI runs it too
 mypy --config-file mypy.ini                     # dev-only TypedDict contract check (mypy is NOT a runtime dep)

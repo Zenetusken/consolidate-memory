@@ -27,9 +27,10 @@ Invariants:
 6. **Every live doc's OPENING currency statement matches plugin.json.** Deliberately narrow, and
    this docstring used to claim considerably more — it said the check closed "the version-sweep
    class … so a doc can no longer advertise a superseded version". It does not, and the
-   counterexample sat in this file's own doc set: `AGENTS.md`'s plugin table read `0.4.27` on a
-   `0.4.32` tree for five releases with every gate green (measured — setting that cell to `9.9.9`
-   also leaves the full PR-time gate set green, so the cell was unpinned, not merely stale).
+   counterexample sat in this file's own doc set: `AGENTS.md`'s plugin table read `0.4.27` at every
+   release from v0.4.28 through v0.4.31 — written at v0.4.27, stale through the **four** releases
+   that followed, with every gate green (measured — setting that cell to `9.9.9` also leaves the
+   full PR-time gate set green, so the cell was unpinned, not merely stale).
    Three structural blinds do that, all measured on this tree:
 
    - only the FIRST `\bvX.Y.Z\b` per doc is read — `docs/record-post-state.spec.md` §6 counted
@@ -348,10 +349,10 @@ def check_plugin_table() -> int:
     Returns the number of rows checked, so `main` can report the coverage instead of implying it.
 
     Why this exists at all: the cell is a *current-version claim* that the currency sweep is
-    structurally blind to (invariant 6). It was measured stale — `0.4.27` on a `0.4.29` tree,
-    surviving four releases — and measured UNPINNED: rewriting it to `9.9.9` left every gate
-    green. So this is one site, pinned the way `check_badge` pins the badge, and it is not
-    offered as coverage of the class.
+    structurally blind to (invariant 6). It was measured stale at every release from v0.4.28 through
+    v0.4.31 — the cell read `0.4.27` against four successive manifests — and measured UNPINNED:
+    rewriting it to `9.9.9` left every gate green. So this is one site, pinned the way `check_badge`
+    pins the badge, and it is not offered as coverage of the class.
 
     Rows are matched by MANIFEST, not by shape: for each `plugins/*/.claude-plugin/plugin.json`
     the table is searched for a row naming it, so an unrelated table in the same file cannot be
