@@ -3742,13 +3742,46 @@ import io as _ioB  # noqa: E402
 import json as _jsonB  # noqa: E402
 import os as _osB  # noqa: E402
 import tempfile as _tfB  # noqa: E402
+import ast as _ast30  # noqa: E402
 
 # (1) constant derivation + the render_html mirror
 check("v0.1.66 ceiling: ONE canonical est-token threshold from the native byte cap (0.6 × 25KB/4 = 3840, > target)",
       ms.INDEX_CEILING_TOKENS == round(ms.INDEX_CEILING_FRACTION * ms.NATIVE_INDEX_CAP_BYTES / 4) == 3840
       and ms.INDEX_CEILING_TOKENS > ms.INDEX_TOKEN_BUDGET)
-check("v0.1.66 ceiling: render_html references ms.INDEX_CEILING_TOKENS directly (a live reference, not a hardcoded copy)",
-      rhtml.INDEX_CEILING_TOKENS == ms.INDEX_CEILING_TOKENS)
+# v0.4.30: this was one check whose LABEL read "a live reference, not a hardcoded copy" while its
+# CONDITION was `==` — a label wearing a predicate that cannot distinguish the two, since a hardcoded
+# copy agrees on the day it is written (which is exactly how the two copies this pass removed stayed
+# invisible). Split into the two predicates it conflated: this one is the drift half, widened to all
+# three constants (the other two had no runtime check at all); the source pin below is the other half.
+check("v0.4.30 budget constants: render_html's three AGREE with memory_status at runtime (the drift half — "
+      "a literal copy passes THIS and fails the source pin below)",
+      rhtml.INDEX_TOKEN_BUDGET == ms.INDEX_TOKEN_BUDGET
+      and rhtml.CLAUDE_MD_TOKEN_BUDGET == ms.CLAUDE_MD_TOKEN_BUDGET
+      and rhtml.INDEX_CEILING_TOKENS == ms.INDEX_CEILING_TOKENS)
+
+
+def _rh_budget_refs30():
+    """{name: is-a-live-reference} for render_html's three budget constants, read from the SOURCE."""
+    _tree30 = _ast30.parse((ROOT / "plugins" / "consolidate-memory" / "scripts"
+                            / "render_html.py").read_text(encoding="utf-8"))
+    _want30 = ("INDEX_TOKEN_BUDGET", "CLAUDE_MD_TOKEN_BUDGET", "INDEX_CEILING_TOKENS")
+    _refs30 = {}
+    for _node30 in _tree30.body:
+        if not (isinstance(_node30, _ast30.Assign) and len(_node30.targets) == 1):
+            continue
+        _tgt30 = _node30.targets[0]
+        if isinstance(_tgt30, _ast30.Name) and _tgt30.id in _want30:
+            _val30 = _node30.value
+            _refs30[_tgt30.id] = (isinstance(_val30, _ast30.Attribute)
+                                  and isinstance(_val30.value, _ast30.Name)
+                                  and _val30.value.id == "ms")
+    return _refs30
+
+
+check("v0.4.30 budget constants: render_html BINDS all three from `ms` in the source, not literal copies "
+      "(fails on pre-fix code, where two of the three were 1500 / 4000)",
+      _rh_budget_refs30() == {"INDEX_TOKEN_BUDGET": True, "CLAUDE_MD_TOKEN_BUDGET": True,
+                              "INDEX_CEILING_TOKENS": True})
 
 # (2) _would_net_grow at the ceiling — the NEW call-site behavior (the v0.1.38 target-default pins above
 # are UNCHANGED calls at the UNCHANGED default; these pass the ceiling explicitly, as run() now does).
@@ -16624,6 +16657,11 @@ check("v0.4.29 pin 41 arm B: a `<…>` placeholder in a prose COMMAND span is QU
 # introduced by this cycle's own first implementation, found by adversarial review of it, and
 # measured RED on it — the "revision" a guard moves on need not be hypothetical.
 #
+# The 23rd is the prose audit's own (revision 11): this branch removed two unpinned literal copies of
+# `memory_status`'s budget constants and left the replacement unpinned too, while the one v0.1.66 check
+# that looked like its pin tested `==` — which a literal copy passes. Reference-ness is a SOURCE
+# property, so the new pin reads the module's AST. `1772` → `1773`.
+#
 # P1–P5 + P8/P9/P11/P15/P18–P22 run IN PROCESS: the validator, the refresh and the archive
 # predicate are all importable, and P8/P9/P18–P22 need either a monkeypatch or an in-place
 # mutation assertion, which no subprocess can be handed. P6/P7/P10/P12–P14/P16/P17 drive a real
@@ -17198,7 +17236,7 @@ with _tf43.TemporaryDirectory() as _td30:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1772 + 45 + 125)
+      passed + failed + 1 == 1773 + 45 + 125)
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
