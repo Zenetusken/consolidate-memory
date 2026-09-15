@@ -756,11 +756,36 @@ fragile-live-pin shape in the draft's own gates)
   dead *reference/status* weight; for lessons, the utility evidence surfaces as the report's veto
   tallies + `--utility`'s per-canonical table — information for the human's standing-justify/gc
   judgment, never candidacy.
-- **The miss-detector's recall is bounded by `_is_archive_index`'s ≥3-link recognition** — a 1–2
-  pointer archive doc is not recognized, so reads of its facts classify as neither indexed nor
-  archived (no miss recorded). Undercount direction; SHIPPED.md-style archives exceed 3 links almost
-  immediately in practice. The shared classifier is NOT loosened (it guards the evict path — blast
-  radius).
+- **The miss-detector's recall is bounded by `_is_archive_index`'s link recognition — a PRESENCE test
+  since v0.4.31, not the ≥3 threshold this entry originally recorded.** The residual bound is a
+  **0-pointer** archive doc: a frontmatter-less file carrying no `](x.md)` link stays a fact, so **it**
+  classifies as neither indexed nor archived (no miss recorded for it). The clause that used to stand
+  here spoke of *"reads of the facts it holds"* — a survivor of the old 1–2-pointer bound, and by
+  definition a 0-pointer doc holds no facts by pointer, so it described an empty set. Undercount
+  direction — and deliberately kept loud rather than absorbed, so such a file still reports
+  (`missing_node_type`) instead of vanishing.
+  **The ≥3 floor was removed** (`docs/store-classifier-parity.spec.md`, v0.4.31), superseding the
+  decision recorded here. Two reasons, both measured. (1) **The justification was false**:
+  *"SHIPPED.md-style archives exceed 3 links almost immediately in practice"* — the store this product
+  dogfoods sat at **2 links / 536 bytes**, so its archive was classified as a FACT, and the v0.1.76
+  audit fix for that exact file (routed through this classifier at 7.6k tokens) had gone silently
+  inert. (2) **The stated blast radius was incomplete.** The entry named one consequence — the
+  miss-detector's recall, *undercount direction*, i.e. safe — and omitted the two that run the other
+  way: correcting the misclassification alone moves four `schema_drift` fields (**2/4/17/2 → 1/1/16/1**),
+  and `remediation_triage` Stage A — docstring: *"TRUE orphans … dead weight; **evict OR re-index**"* —
+  named **the archive itself and one of the two facts it pointed at**, a recommendation to delete
+  memory, emitted on a pass that reported success. (The second archived fact escaped by accident, on a
+  `[[wikilink]]` from a surviving fact — a property of an unrelated edge, never of the archive.)
+  A recorded cost is only acceptable while its blast radius is accurate. **The loosening's own radius
+  is measured, not assumed**: fleet-wide the presence test flips **five** files — this store's archive,
+  and four domain stores whose `MEMORY.md` carries a single link — and those four stay stable only
+  because every store-root consumer **that reaches a decision** drops `MEMORY.md` **by name** before
+  consulting the classifier, not because `≥1` and `≥2` agree (they do not). The qualifier is
+  load-bearing and was missing from an earlier draft of this sentence, which said "every" and then
+  cited a spec naming one unguarded site — a bare "every" refuted by its own footnote. See
+  `docs/store-classifier-parity.spec.md` §6 R1 for the enumeration.
+  The floor also **inverted**: a verdict keyed to entry count reclassifies an archive as a
+  fact when the archive *shrinks*, so the guard degrades exactly as the store is pruned.
 - **A miss can itself be missed** (the revealing transcript can rotate before the next dream) — but a
   CAUGHT miss persists forever in the log's `usage.misses`, so the veto (C2.6) never forgets one.
 - **Fleet utility sees only instrumented nodes** — `nodes_reporting` is printed precisely so the table

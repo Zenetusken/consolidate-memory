@@ -721,6 +721,119 @@ finally:
 check("build_context schema_drift uses placed_fact_names (archive-indexed bodies are not drift)",
       "placed_fact_names(index_path, archive_docs)" in Path(__file__).resolve().parent.parent.joinpath(
           "plugins/consolidate-memory/scripts/memory_status.py").read_text(encoding="utf-8"))
+# --- v0.4.31 store-classifier parity (docs/store-classifier-parity.spec.md §5) --------------
+# The fixture above writes a THREE-pointer archive — exactly the old `>= 3` floor, which is why
+# it stayed green across the change and is the CONTROL beside these boundary pins. Everything
+# below sits one entry BELOW that floor, where the defect lived.
+_td_scp = _tf_arch.TemporaryDirectory()
+try:
+    _mem_scp = Path(_td_scp.name) / "memory"
+    _mem_scp.mkdir()
+    def _fact_scp(stem: str, fm: str | None = None) -> None:
+        (_mem_scp / f"{stem}.md").write_text(
+            fm or f"---\nname: {stem}\nmetadata:\n  node_type: memory\n---\nbody\n",
+            encoding="utf-8")
+    _fact_scp("live")
+    _fact_scp("arch-one")
+    _fact_scp("arch-two")
+    (_mem_scp / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [live](live.md) — hook\n", encoding="utf-8")
+    # exactly TWO pointers — the measured live shape
+    (_mem_scp / "SHIPPED.md").write_text(
+        "# SHIPPED\n\n- [arch-one](arch-one.md) — done\n- [arch-two](arch-two.md) — done\n",
+        encoding="utf-8")
+    _scp_docs = [p for p in _mem_scp.glob("*.md")
+                 if p.name != "MEMORY.md" and ms._is_archive_index(p)]
+    _scp_facts = [p for p in _mem_scp.glob("*.md")
+                  if p.name != "MEMORY.md" and p not in _scp_docs]
+    _scp_placed = ms.placed_fact_names(_mem_scp / "MEMORY.md", _scp_docs)
+    check("v0.4.31 C1 (PIN): a TWO-pointer archive is an archive index and is not a fact "
+          "(pre-fix: `_is_archive_index_text` floored at 3, so SHIPPED.md entered fact_files)",
+          [p.name for p in _scp_docs] == ["SHIPPED.md"]
+          and sorted(p.name for p in _scp_facts) == ["arch-one.md", "arch-two.md", "live.md"])
+    _scp_drift = ms.schema_drift(_scp_facts, _scp_placed)
+    check("v0.4.31 C1b (PIN): the archive's own missing frontmatter is not a fact's missing "
+          "node_type (pre-fix: missing_node_type 1, the archive counted as a frontmatter-less fact)",
+          _scp_drift["missing_node_type"] == 0 and ms.drift_findings(_scp_drift) == 0)
+    check("v0.4.31 C3 (PIN): placed_fact_names unions a TWO-pointer archive's targets "
+          "(pre-fix: archive_docs empty → index_mismatch 3 — the archive is itself an unplaced fact, "
+          "plus the two bodies whose only pointer lives in it)",
+          _scp_placed == {"live", "arch-one", "arch-two"} and _scp_drift["index_mismatch"] == 0)
+    _scp_tri = ms.remediation_triage(_scp_facts, _scp_placed, 5000, 0)
+    _scp_a = [c["stem"] for c in _scp_tri["stages"]["A_orphans"]]
+    check("v0.4.31 C2 (PIN): the eviction docket never names the archive or the bodies it holds — "
+          "Stage A is 'TRUE orphans … evict OR re-index' (pre-fix: A_orphans held SHIPPED and both "
+          "archived facts, so acting on the docket deletes live memory)",
+          _scp_tri["required"] and _scp_a == [])
+    # The pin that forbids the CLASS, not the constant: recognition must not depend on how many
+    # entries the archive currently holds, or the guard inverts again the next time one shrinks.
+    # It runs through `_is_archive_index`, the PRODUCTION entry point, not the text helper — the
+    # helper alone stays green if a size- or read-shape dependence is reintroduced in the wrapper's
+    # own 64-byte head read, which the helper never exercises (D3, pin-auditor-2).
+    (_mem_scp / "MANY.md").write_text(
+        "# MANY\n\n" + "".join(f"- [f{i}](f{i}.md) — done\n" for i in range(20)),
+        encoding="utf-8")
+    check("v0.4.31 C4 (PIN, shrink-invariance): through the production classifier, the same archive "
+          "classifies the same at 2 entries and at 20 (pre-fix: 2 → fact, 20 → archive — the verdict "
+          "flipped when the file SHRANK, which is how the v0.1.76 recall-counter fix went silently "
+          "inert)",
+          ms._is_archive_index(_mem_scp / "SHIPPED.md")
+          and ms._is_archive_index(_mem_scp / "MANY.md"))
+    # C7 pins the boundary the floor moved TO. Before it, this suite sampled 0 (C6), 2 (C1/C2/C3/C4)
+    # and 20 (C4) — never 1 — so an edit that moved the floor to `>= 2` kept all eight checks green
+    # while re-opening this cycle's whole defect class (D4, pin-auditor-2). Asserted at BOTH entry
+    # points: one pointer is the smallest archive the presence test admits, and the rule is shared.
+    (_mem_scp / "ONE.md").write_text(
+        "# ONE\n\n- [only](only.md) — done\n", encoding="utf-8")
+    check("v0.4.31 C7 (PIN, the new floor): an archive carrying a SINGLE pointer is still an archive "
+          "(pre-fix: the ≥3 floor made it a FACT, so a one-entry archive re-entered the eviction "
+          "docket as dead weight — the boundary no check in this suite sampled)",
+          ms._is_archive_index(_mem_scp / "ONE.md")
+          and ms._is_archive_index_text((_mem_scp / "ONE.md").read_text(encoding="utf-8")))
+    # LocalFactV1 is a DIFFERENT CONTRACT, not a native fact missing fields (spec §3).
+    _scp_lf = ("---\nlocal_schema_version: 1\nname: lf\ndescription: d\nscope: project-local\n"
+               "status: active\nsensitivity: internal\n"
+               "content_modified: 2026-09-14T00:00:00Z\nlast_observed_at: 2026-09-14T00:00:00Z\n"
+               "---\nbody\n")
+    _scp_nat = "---\nname: nat\ndescription: d\nscope: project-local\n---\nbody\n"
+    _fact_scp("local-fact", _scp_lf)
+    _fact_scp("native-lost-fm", _scp_nat)
+    # NOTE on how these two pins state "the marker": they read the marker off `_frontmatter`, which
+    # exists on BOTH revisions, and NOT off the fix's own `_is_local_fact`. Naming a symbol the fix
+    # introduces does not make a pin fail on pre-fix code — it raises AttributeError, aborts the
+    # harness, and takes every LATER pin's evidence down with it (measured: C6 never ran). A pin's
+    # precondition must be satisfiable on the tree it is supposed to fail on.
+    # The empty `placed` set is deliberate: this check asserts on two counters, and a non-empty set
+    # would move only `index_mismatch`, which it does not read. The label names those two counters
+    # rather than "drift" at large, so it cannot be read as a claim about the others.
+    _scp_d_lf = ms.schema_drift([_mem_scp / "local-fact.md"], set())
+    check("v0.4.31 C5 (PIN): a LocalFactV1 fact contributes NO NATIVE-SCHEMA drift — 0 to "
+          "missing_node_type and 0 to advisory_no_origin, the two counters this predicate reads; "
+          "its reserved keys exclude node_type/originSessionId by construction (pre-fix: 1 and 1, "
+          "counting a valid contract as corruption)",
+          _scp_d_lf["missing_node_type"] == 0 and _scp_d_lf["advisory_no_origin"] == 0
+          and ms._frontmatter(_scp_lf).get("local_schema_version") is not None)
+    # The control for C5, and the reason it is a SECOND check rather than a second operand of the
+    # first: it must hold on BOTH revisions. Had the exemption been written as "skip files with
+    # fewer findings", or keyed on a field native facts also lack, C5 would still pass and only
+    # this would fail — which is exactly what a control is for.
+    _scp_d_nat = ms.schema_drift([_mem_scp / "native-lost-fm.md"], set())
+    check("v0.4.31 C5b (GUARD, the C5 control): the exemption keys on the CONTRACT MARKER, not on "
+          "`fewer findings` — an otherwise-identical NATIVE fact still reports node_type and "
+          "originSessionId, so the exemption cannot mask the case the counter exists to catch",
+          _scp_d_nat["missing_node_type"] == 1 and _scp_d_nat["advisory_no_origin"] == 1
+          and ms._frontmatter(_scp_nat).get("local_schema_version") is None)
+    # A frontmatter-less file with NO pointer stays a fact and keeps reporting rather than being
+    # silently absorbed as an archive (spec §6 R1/R2 — the boundary the presence-test opens). A
+    # GUARD, not a pin: it must hold on BOTH revisions, fencing the arm the fix newly opens.
+    (_mem_scp / "stray.md").write_text("just prose, no frontmatter, no links\n", encoding="utf-8")
+    _scp_d_stray = ms.schema_drift([_mem_scp / "stray.md"], set())
+    check("v0.4.31 C6 (GUARD): a frontmatter-less, LINK-LESS file is still a fact and still reports "
+          "missing_node_type — the loosened arm is a presence test, never an absorb-everything rule",
+          not ms._is_archive_index(_mem_scp / "stray.md")
+          and _scp_d_stray["missing_node_type"] == 1)
+finally:
+    _td_scp.cleanup()
 # render: HEALTH surfaces slug-orphan + schema-drift findings (presence-checked) ...
 _h_orphan = rd.render({"project": "p", "session": "s", "scope": {}, "entries": [],
                        "health": {"index_pointers_ok": True, "slug_orphans": ["-home-x-Doc_Flo"],
@@ -17236,7 +17349,7 @@ with _tf43.TemporaryDirectory() as _td30:
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125)
+      passed + failed + 1 == 1773 + 45 + 125 + 9)   # +9: v0.4.31 store-classifier parity C1..C7
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
