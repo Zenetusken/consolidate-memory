@@ -1,11 +1,11 @@
 # Render/declaration parity — design-of-record
 
-**Status: revision 8 — a fifth pass, and the last three of its corrections land in the harness rather
-than in this document. Every repaired defect survives and no shipped behaviour changes. The fourth
-pass audited revision 6's prose; this one swept this cycle's *pre-fix narratives* — every label
-claiming what a revision the tree no longer contains did — executing each claim against `1d97f54`'s
-renderer rather than re-reading it. **The scope was the defect.** The sweep selected with the
-case-sensitive test `"Pre-fix" in label`, and the file spells the counterfactual both ways: enumerated
+**Status: revision 9 — a sixth pass: the peer review adjudicated, and the audit's own selection
+audited. Every repaired defect survives and no shipped behaviour changes.** The fifth pass swept this
+cycle's *pre-fix narratives* — every label claiming what a revision the tree no longer contains did —
+executing each claim against `1d97f54`'s renderer rather than re-reading it. That pass then found,
+with the lead's own fourth lens, that **the scope was the defect:** the selection matched with the
+case-sensitive test `"Pre-fix" in label`, and the file spells the counterfactual both ways. Enumerated
 structurally from the diff rather than matched, **eighteen** of this branch's twenty-one added labels
 carry a claim about a non-HEAD revision, and the matcher reached **eight** — all three of the cycle's
 GUARDs among the ten it never looked at. Executing all eighteen against the revision each names,
@@ -2523,3 +2523,45 @@ precisely why it needed its own measurement.
 this document. The one code-adjacent change is again that `tests/smoke.py`'s content moved — re-taken
 rather than argued, for the same reason as the seventh: the harness is a member of the triple, and a
 member's content is a hash.
+
+**Revision 9** — **a sixth pass: the peer review adjudicated, and the audit's own selection audited.**
+Three lenses (prose, pins, consumers) were run over revision 8's committed revision, and every finding
+was re-measured here rather than applied — a peer finding is a hypothesis, and two of the six did not
+survive contact with the tree.
+
+- **The sweep's matcher was narrower than its claim, and the claim was the contract.** The selection
+  was the case-sensitive test `"Pre-fix" in label`; the file spells the counterfactual both ways.
+  Enumerated structurally from the diff instead of matched, **eighteen** of this branch's twenty-one
+  added labels carry a claim about a non-HEAD revision and the matcher reached **eight**. All three
+  GUARDs sit among the ten it never read — not a coincidence: a guard's entire justification *is* a
+  counterfactual. `:309` and E2-a spell theirs in neither case, so a case-insensitive matcher would
+  still have missed them; the only honest match set for this class is the diff, because `git diff`
+  compares trees and cannot miss a spelling.
+- **Executing all eighteen: seventeen hold, one is false.** E2-b quoted `'30 blocked'` as the pre-fix
+  render; `1d97f54` prints `'… +30 more blocked'`, and `30 blocked` is the fixed form's own spelling.
+  E3-d's claim is true but its stated derivation was not — the prose described `_clean(...)[:18] or
+  "?"` (measures GREEN, width 26) where the code block showed `_clean(...) or "?"[:18]` (measures RED,
+  width 36). The claim and the measurement both stand; the sentence was the defect, in the comment and
+  in the label a failure prints (`weakest-enforcement-site-wins`, inside one check).
+- **The contracted figure propagated through four sites, each citing the previous as evidence.**
+  `:7`, two revision-8 entries, and the status body all rest on one case-sensitive census: capital
+  `Pre-fix` is **28 of the file's 210 case-insensitive spellings**, and **nineteen** of those 28
+  predate this branch — measured on the diff, not on the file. The denominator the audit quotes is the
+  denominator it read: `gate-coverage-is-its-match-set` with the audit as its own subject.
+- **Two findings were adjudicated rather than applied.** The `lever` header
+  (`render_dashboard.py:899`) is a live coerced default, already recorded at §6 with its prevalence
+  measured — *reachable by authorship, never yet authored* — so it **stays recorded**: this document
+  reserves that reversal to the merge, and a code edit here would move a member of the triple for a
+  state the corpus has never produced. And the demotion-corpus zero borrowed at §6 was measured on a
+  population that **cannot** carry the field (`Demotion` declares no `lever` key), so it was never a
+  second witness and no longer reads as one.
+
+**No shipped behaviour changes in this revision either.** Every edit is a label, a comment, or a
+paragraph of this document. `tests/smoke.py`'s content moved — `eeeafdcd908cd186` → `38d4835486d0db41`
+— and the harness is a member of the triple, so the measurement was re-taken rather than argued. The
+thirteen trees reproduce the eighth revision **exactly**: every red set byte-identical tree-for-tree,
+`|set| == reported` on all thirteen, total red **70**. Both injections were re-run on the new harness
+and returned as predicted: the branch-deletion reds **E1-e alone** (2015/1, set==reported), and the
+*same injected tree* is **GREEN** on the pre-arm harness (2016/0). The arm bites, and nothing else
+catches it — which is the half of the E1-e label that was always true, now stated without the half
+that was not.
