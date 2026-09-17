@@ -1,0 +1,1139 @@
+# Record duty presence — design-of-record
+
+**Status: revision 3 — the post-implementation pass, for adversarial review.** Target release:
+**v0.4.33 (patch)** — an added terminal-gate clause and a new panel; no schema, flag, or
+install-contract change.
+
+This spec closes the OPEN 4b class: **a cycle record's seeded duties were never checked for being
+filled.** It is the first of two staged cycles. Cycle E carries the renderer/declaration fixes
+(its own spec, `docs/render-declaration-parity.spec.md`, is authored with that cycle; until then
+the plan's scope for it is the design-of-record), including the two defects this cycle records but
+does not schedule (§6).
+
+Every number below was derived on branch `fix/record-duty-presence` at `2b07ce3`, the head of
+`main` when the branch was cut — **except the population census (§3.1), which reads archived
+session logs and so measures a FLEET, not a checkout.** A fleet is neither re-derivable from a
+clone nor frozen, and during revision 3 (2026-09-17) that stopped being a caveat and became a
+measurement: the census script, run twice hours apart on the same machine, returned **99** records
+and then **100**, with two clause counts moving beside it. The difference was a single row written
+by **this cycle's own test suite** — an instrument that contaminated itself while measuring — and
+it exposed that the population's `ops/*` glob had always admitted a class of six test-scratch
+directories, of which the single synthetic row the plan hand-excluded was one member. §3.1 states
+the class, prints both columns, and keeps the drift as the evidence for why a prevalence number is
+testimony. Every such number in this document is **testimony about a fleet at a timestamp**, and is
+labelled that way where it appears.
+
+---
+
+## 1. The defect
+
+A real `dream` pass persisted a cycle record carrying **four unmet duties, every one of which
+rendered as silence**:
+
+| Duty | What the record held | Why nothing caught it |
+| --- | --- | --- |
+| `session` | `""` | the renderer's `_clean(record.get("session", "?"))` defaults on **absent**, never on empty |
+| `entries[1].action` | `"added"` | contradicted the row's own reason — no clause compared the two |
+| `rigor.applied` | `""` | the field the magnitude→applied calibration exists to collect |
+| `remediation.achieved_recall` | absent | absent **beside a present** `achieved_index` |
+
+The four were found by audit rounds, hand-repaired, then healed into the archive.
+
+The sharpest statement of the mechanism came from the contract auditor, and it is the thing this
+cycle is built on: **`validate_cycle_record`'s cross-block clauses are all of the form *"two values
+that both exist must agree"*.** A clause of that shape is **vacuously satisfied** when one operand
+is missing — so an unfilled duty is not merely uncaught, it is uncaught **by construction**. No
+amount of adding clauses in that shape closes the class.
+
+The same shape recurs one level up. `procedure_integrity` fires iff
+`tier >= SUBSTANTIAL` **and** `tally <= 0`; `arc_completeness` fires iff a *present* `dream` block
+is incomplete. Both are correct and both abstain on absence — which is right for their rules, and
+which is exactly why neither could see this record. The gap is not a missing check; it is a missing
+*shape of check*.
+
+**The rule this cycle adds to the module:** value-contradiction clauses and presence clauses are
+different families and belong in different predicates (§2.1).
+
+---
+
+## 2. Design
+
+### 2.1 The host, chosen by consumer census
+
+The first draft of this design put the presence clauses **inside `procedure_integrity`**, on the
+strength of its `(ok, reason, severity)` shape and its own legacy short-circuit. An adversarial
+pass overturned it, and the reason is worth recording as a method:
+
+> `render_html.py`'s `_embed_integrity` calls `ms.procedure_integrity` **for every archived cycle**
+> and stamps a `_integrity` key into the embedded payload when it is not ok. That key is read by
+> **three** consumers across two files: `dashboard.template.html`'s archive-list row, whose ⚠ badge
+> carries the literal tooltip *"procedure integrity: verification skipped on a substantial-or-
+> heavier pass"*; and `dashboard.sections.js`'s assessment row and its `<p class="adverse">` block,
+> each of which prints the predicate's own `reason` string.
+
+*(Revision 3 correction: this paragraph previously attributed the tooltip to the `.adverse` block.
+It is the archive-list badge's — `sections.js`'s two consumers interpolate `_integrity.reason` and
+carry no tooltip of their own. The correction sharpens the argument rather than softening it: the
+archive-wide consumption is **three surfaces in two files**, and the run-time literal lives in a
+file none of the predicate's own callers appear in — which is exactly the fact a consumer census
+run over `grep -rn "procedure_integrity" plugins/ tests/` would have missed.)*
+
+Narrowing that predicate in place would retro-flag **every archived record with an empty
+`session`** under a tooltip naming a different cause. The repo had already learned this exact rule
+and written it down — `arc_completeness`'s docstring says *"narrowing in place would retroactively
+flip an ARCHIVED record's display … Only the persist gate passes True"* — and the first draft
+quoted that sentence in one paragraph and violated it in the next.
+
+**The check that catches this is a consumer census before a host is chosen**, and it is cheap:
+`grep -rn "<predicate>" plugins/ tests/`. Nothing in the predicate's own body distinguishes a
+persist-only predicate from an archive-wide one.
+
+So the clauses get their own host:
+
+```
+memory_status.duty_gaps(record: object) -> list[DutyClause]
+```
+
+- **Pure**, never raises, **empty by default** — the `procedure_integrity` posture.
+- Consumed by `render_dashboard` in exactly **two** places, both under the existing `judged` gate
+  (the `persist_dir is not None` predicate that already separates a live terminal render from a
+  seed/preview): the exit ladder (§2.3) and the panel (§2.4).
+- `validate_cycle_record` is **not touched**. Its documented posture — *"deliberately QUIET on a
+  missing key"* — stays true, every silence pin stays green, and the fixture's `validate_sample`
+  assert (which gates `docs_links.py`, `dashboard_browser.py`, and regenerating the committed
+  `docs/previews/`) is unaffected.
+- `procedure_integrity` is **not touched**. No archived cycle gains a `_integrity` flag.
+
+**The three families, stated once so the next reader does not re-make this cycle's error:**
+
+| Family | Test | Lives in | Callers |
+| --- | --- | --- | --- |
+| container type | is a present key the right *shape*? | `validate_cycle_record` | stderr everywhere |
+| **value wrong** — *disagree* · *membership* · *absent/dup* | is a present value *right*? — do two agree · is it one of a known set · is a required one missing or repeated | `validate_cycle_record` + `procedure_integrity` | stderr; the persist gate |
+| **presence** | did the pass fill the field it seeded? | `duty_gaps` | **the persist gate only** |
+
+Family 2 is named in full, not as *"value contradiction"*, for the reason §2.5 measures: the loose
+name reads as the whole while excluding two of its three kinds, and it is the name under which
+membership and identity rows have twice gone uncounted.
+
+### 2.2 The clauses
+
+Each clause is a row in a module-level table — data, not a chain of `if`s — so the renderer can
+render each row's **own** words rather than a shared literal. The row type is a `NamedTuple`,
+`DutyClause`, with **six** fields: `name` (the stable key, for pins), `label` (the field name the
+panel prints), `detail` (what is wrong, **in this row's own words**), `remedy` (what the pass must
+do about it), `severity` (`alert` ⇒ routes exit 3; `warn` ⇒ reported only), and `fires` (the
+predicate).
+
+`detail` is a field rather than a constant because the three clauses share a *shape* but not a
+*cause* — an unfilled id, an unrecorded tier, a half-measured trio. One sentence describing all
+three would reproduce this cycle's headline defect one layer up: **a fixed label standing where
+derived data belongs.**
+
+**The era gate is "the key is PRESENT and holds nothing."** A record that never had the key is a
+different thing, and abstaining on it is what keeps the clause off the archive. Three shapes
+implement that, and the distinction between them is load-bearing:
+
+```python
+def _duty_blank(v: object) -> bool:
+    """A seeded duty is UNFILLED when the key is present and holds nothing: JSON null, or a
+    string that is empty or whitespace-only."""
+    return v is None or (isinstance(v, str) and not v.strip())
+```
+
+A **wrong-typed non-empty** value (`session: 123`) **abstains**. That is deliberate and is the
+family boundary above: a mistyped scalar is `validate_cycle_record`'s container territory or
+render's coercion boundary, and a presence clause that also reported it would double-report another
+gate's job while claiming to be about presence. `procedure_integrity`'s docstring states the same
+posture for its own operands (*"a mistyped operand still only abstains"*).
+
+| # | name | fires iff | severity |
+| --- | --- | --- | --- |
+| A | `session` | the key is present and `_duty_blank` | **warn** |
+| B | `rigor.applied` | `rigor` is a dict, the key is present, and `_duty_blank` | alert |
+| C | `remediation` progress trio | `remediation` is a dict **and the trio is PARTIALLY filled** — the union below | alert |
+
+**Why C is a contract test and not three separate clauses.** `SKILL.md`'s schema block declares the
+three together, and the audited defect was a partial fill — a present `achieved_index` beside an
+absent `achieved_recall`. A test of "both present must agree" cannot see it (the missing operand
+makes it vacuous); a test of "each must be present" would newly fire on the **legitimate** "pending
+Phase 5" state, which `render_dashboard`'s remediation section documents outright as the shape where
+`pruned`/`achieved_*` are all absent. So C is **the contract itself**, written as the union of the
+two ways the contract can be broken:
+
+```python
+present = sum(1 for k in _DUTY_TRIO if k in rem)         # keys written
+filled  = sum(1 for k in _DUTY_TRIO if k in rem and not _duty_blank(rem[k]))   # keys holding a value
+return not (present == 0 or filled == len(_DUTY_TRIO))   # abstain only on UNTOUCHED or WHOLLY FILLED
+```
+
+**"Together" is itself a two-operand contract, and each single-operand projection drops one.**
+A **key** count misses `{"pruned": 3, "achieved_index": 402, "achieved_recall": ""}` — three keys,
+two facts, the shape a pass reaches by emitting the block with a placeholder. A **value** count
+misses `{"achieved_recall": ""}` — one key, no fact, which `_duty_blank`'s own reading calls
+unfilled and which is the reading A and B apply to their own keys. Neither operand is the rule: the
+trio must arrive *together*, and "together" has a writing half and a holding half. The predicate is
+the union for the same reason `_duty_blank` reads `""` and `null` alike — **a field that renders as
+nothing is not a filled field** — and which half a given record fails is not the clause's business.
+
+*(Revision 3 — the shipped form is the union above; revision 2 shipped a **key count** with a
+paragraph defending it. The adversarial pass found the corridor in `{"pruned": 3, "achieved_index":
+402, "achieved_recall": ""}`, and the defence it replaced was false on its own evidence as well as
+narrower than the rule. It read: "the sub-case is unreachable: the seed writes none of the three,
+and the only producer that does is `distill_scan --into`, which parses a JSON number." Both halves
+fail. `distill_scan --into` writes the **`distill`** block and never touches `remediation`; and the
+seed's own comment states why — "OMIT pruned/achieved_* — the model fills them in Phase 5". The
+trio's producer is **the pass** — a model writing the record — so *"can anything produce the shape
+this fires on?"* has one honest answer for a model-authored block: yes, a model can, and the
+audited defect is what that looks like. The fleet cannot choose between the three forms (all three
+fire **6** of 99 records — §3.1 — so the `filled` operand changes nothing on the archive), but a
+census of what has been written cannot speak for what can be written. This is the same *"can
+anything produce it?"* test that dropped clause D (§2.6), applied where it belongs: to the shapes a
+**model** can emit, not to the shapes the scripts have emitted so far.)*
+
+**Why A does not gate.** `seed_record` writes `"session": "",  # fill with the session id when
+known` while `SKILL.md` forbids *"fabricating session ids"*. Gating on A would resolve that
+conflict **in favour of fabrication** — the wrong direction for a validator in a repo whose
+diagnosed disease is self-reported fields. A is **reported, never enforced**: it prints in the
+panel and changes no exit code. Its 20/94 prevalence (§3.1) says the duty was ignored through most
+of the archive's history; that is a statement about the duty's signal quality, not a mandate to
+force it.
+
+**Why there is no `rigor.phase == "final"` conjunct.** It would have been a tempting belt-and-braces
+era gate, and it is rejected on measurement and on principle. Measured: `phase != "final"` holds on
+**0 of the 94 records carrying the key** (and 0 of 93 outside the scratch class — §3.1), so it buys
+nothing. And it is itself a model self-report — the same
+file's own prose says *"the model sets `phase='final'` in Phase 2"* — so gating on it would let one
+omitted field silence the entire family. **The era gate is the record's shape, never a label the
+record applies to itself.**
+
+### 2.3 The exit ladder
+
+The gate is the **persist gate only**, which is the ONE surface that knows the record was just
+written by a live pass. It already computes that: `judged = persist_dir is not None`.
+
+The duty arm is inserted into the existing ladder **after the arc arm**:
+
+```
+procedure_integrity  → not ok        → cue → exit 3     (unchanged, stays FIRST)
+arc_completeness(enforce_post_arc=True) → not ok → cue → exit 4   (unchanged)
+duty_gaps            → any alert     → cue → exit 3     (NEW)
+narration arms                       → ... → exit 3/4  (unchanged, judge LAST)
+```
+
+**The ordering is a design decision, not an implementation detail.** The first draft put the duty
+arm first. That would have made a record with `session: ""` **and** a 4/6 arc exit 3 — masking the
+arc diagnostic entirely and sending the model back to Phase 3 with the wrong remedy, on a loop it
+could not exit by following the cue. Ordering is by **check specificity**: a record-side structural
+failure outranks a record-side field gap, and both outrank the conversation-side arms, which the
+existing comment already states as *"the conversation-truth arms judge LAST"*.
+
+*(Revision 3 — this paragraph asserted *"Exit 3 must never pre-empt exit 4"* as a bare claim about
+the code, and that is **false and measurably so**: the `procedure_integrity` arm sits five lines
+above the arc arm, so a record carrying a lazy-skip **and** a 4/6 arc exits **3**, not 4. The rule
+the shipped code actually holds is the scoped one — *this* arm, inserted **below** the arc arm, does
+not pre-empt it. The universal was the design's intent written as the code's property, which is the
+shape this whole cycle exists to close; the code was right and the sentence was wrong.)*
+
+**The exit-3 cue branches on which check fired.** The existing arm hardcodes *"NOT over — the dream
+pulls you back: narrate the return to Phase-3 verification dreamily"*, which is right for a
+lazy-skip and wrong for a duty gap. A duty gap is repaired by **filling a field**, not by running a
+verification fan-out; the cue must say so or it routes the model into a loop whose remedy does not
+apply.
+
+Exit 3 therefore gains a **second meaning**. Both are "the record is not fit to close", and the
+panel and cue disambiguate them; the exit-code budget is small and the existing key is correct.
+The key is a **SET of arms**, and the arm **ORDER** is a separate fact (§2.3's ladder) — an
+enumeration that lists the key's meanings without the order is half the contract.
+
+**Every enumeration of exit 3 is updated in the same change, and they are enumerated rather than
+counted** — the same rule the docstring census in §2.5 applies to itself. By greppable anchor, not
+by line: `render_dashboard.py`'s `--persist` ladder comment · `SKILL.md`'s Phase-5 exit-code key,
+its version line, and its new Phase-5 record-duty paragraph · `harness-map.md`'s record-side-gates
+line and its exit-code key · `AGENTS.md`'s terminal-gates line · `README.md`'s blurb ·
+`dream_procedure.py`'s record-side-gates list · `CHANGELOG.md`'s new entry. Two specs gain a row
+rather than a rewrite: `docs/dream-arc-contract.spec.md`'s cue table (the duty arm carries its own
+cue, so it needs its own row) and `docs/dream-narration-teeth.spec.md`'s two-item list of the
+record-side gates.
+
+Sites that enumerate a **different** subject are deliberately left alone, and the distinction is
+the reason this list is written out: `dream_procedure.py`'s EXT-arm note and `harness-map.md`'s EXT
+row describe the narration module's own arms; `CHANGELOG.md`'s v0.1.44 entry and
+`docs/final-phase-debrief.spec.md` use *"substantial pass"* as a historical/debrief phrase about a
+past release. Widening those would be editing a true claim about one subject to mention another,
+which is its own class of defect.
+
+### 2.4 The panel
+
+A new `_duty_gaps_section(record)`, rendered inside `render()`'s existing `if judged:` block beside
+the three panels already there. It follows `_arc_gate_section`'s structure, and specifically its
+rule that **the subtitle is DERIVED, not a literal**:
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ⚠ RECORD DUTY GAPS   · 2 seeded duties the pass left unfilled
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    session — the pass never filled the id it seeded
+      → fill session with this pass's id — or leave it
+        blank when the id is genuinely unknown (SKILL
+        forbids fabricating one); ADVISORY, never gates
+    rigor.applied — the pass recorded no ceremony tier
+      → record the tier the pass actually ran, then
+        re-render
+```
+
+*(Verbatim output for a `session: ""` + `rigor.applied: ""` record at `judged=True`, ANSI stripped —
+not a hand-drawn mock. A mock in a design-of-record is a claim no test reads.)*
+
+- **There is no shared closing remedy line.** Each row prints its own `remedy`, because the three
+  remedies are different actions (fill an id / record a tier / complete a trio) and a single
+  sentence covering all three would be the defect described in §2.2, one layer up.
+- The subtitle's count and the body's rows are derived from the fired rows — **and the count's
+  OPERAND is the rows.** This bullet read exactly that sentence in revision 3, and the sentence was
+  true of the rows and false of the count: the code printed `len(gaps)` (fired CLAUSES) under the
+  words *"seeded field(s)"*, and for clause C the two differ by construction — the trio is **three
+  fields** behind **one** clause. So the audited defect shape (`{"achieved_index": 100}`) rendered
+  **"1 seeded field"** directly above a row naming three fields, two of them blank: the cycle's own
+  subject — a derived number whose label names a different operand than the code uses — arriving in
+  the cycle's own panel, one layer above the code it was written to fix. The count is now the
+  **number of rows drawn** (a reader can verify it by counting them, which is the whole test of a
+  derived count), the FIELD count is left where the fields are named, in the rows, and the wording
+  says *duty* rather than *field*. Caught by the adversarial pass, not by the suite: the shipped
+  pin for the A+B shape asserts a count, and that fixture fires two clauses over two fields, so
+  **clauses == fields** there and the two operands are indistinguishable. The trio fixture is the
+  one shipped shape where they disagree, and it is now pinned as the **relationship** — subtitle
+  count equals rows drawn — rather than as two literals, so it holds against a reworded subtitle:
+  with the field-count operand restored, the count reads *3* above a single row and the check reds
+  (measured: the only red in the suite, 1983 pass / 1 fail).
+- Per-row `label — detail` comes from the row's own `label` and `detail`, so a fired clause can
+  never be described by another clause's words.
+- `col` is red when any fired row is `alert`, yellow when only `warn` rows fired — so an
+  A-only record renders the panel in yellow and still exits 0.
+
+**No structural change to `_procedure_integrity_section`, and one word of its subtitle.** The
+adversarial pass reported the subtitle and remedy as hardcoded — they are — and inferred they would
+misframe a duty gap. That inference was **contingent on the wrong host**: with the clauses in their
+own predicate and their own panel, the integrity panel never describes a duty gap. The colour-only
+severity is correct for a two-valued alert/warn, and the remedy string names the fan-out the
+predicate is about. **A hardcoded label is a defect only when it can be false** — so the label was
+then tested against the predicate's firing condition rather than against its own prose.
+
+The predicate fires iff `tier >= SUBSTANTIAL` **and** `tally <= 0` (`tally` =
+`confirmed + corrected + unverifiable`). Read against that set, the subtitle was **false for a named
+shape in two ways**, and the two have different resolutions:
+
+- *"substantial pass"* was **narrow**: the predicate fires on `HEAVY` as well, and `HEAVY` is a
+  reachable, ordinary magnitude. **Fixed** — the subtitle now reads *"substantial-or-heavier pass,
+  zero verification recorded"*, which is true for every firing record's tier by construction.
+  (This is the same repair the v0.4.33 docs pass applied to the honesty surfaces that paraphrased
+  the predicate; the panel itself was one of them.)
+- *"zero verification recorded"* is **loose on a negative tally**: `tally <= 0` includes `tally < 0`
+  (`{"confirmed": -1}` sums below zero; so does `{"confirmed": 3, "corrected": -5}`), and the
+  predicate's own docstring says the negative case is deliberate — *"a negative/junk tally can't
+  dodge it"*. Fixed at the **predicate's `reason` string**, which is the canonical text this
+  subtitle and the archive badge's tooltip both paraphrase, and therefore **not fixed in this
+  cycle**: that string is stamped into archived payloads as `_integrity.reason` and rendered by all
+  three archive-wide consumers, so editing it retro-flips archived display text — the exact harm
+  §2.1 chose this host to avoid. Named in §5 with the reason, rather than left as an unstated
+  overclaim in a sentence asserting the opposite.
+
+So the honest form of the revision-2 claim is the scoped one: **the literal is true in every case a
+producer reaches, and false on one junk shape whose repair is out of this cycle's blast radius.**
+"A hardcoded label is a defect only when it can be false" survives — this one *can* be, which is why
+one of its two halves moved.
+
+### 2.5 The docstring census
+
+`validate_cycle_record`'s docstring claims:
+
+> *"Two checks sit on the far side of that line, each because the VALUES contradict one another
+> rather than merely being mistyped: `demotion.verdict` (v0.4.21) and the index reconcile invariant
+> (v0.4.30)."*
+
+**The count is wrong, and has been for a long time.** Enumerated from the function body by AST
+census — not by reading — the far side holds **sixteen** rows over **22** warning sites, in three
+kinds. The `Sites` column is not decoration: it is the operand that makes the total checkable
+instead of asserted, and it is what the first two attempts at this table both got wrong.
+
+| Kind | Check | Sites | Since |
+| --- | --- | --- | --- |
+| **disagree** | `demotion.verdict` vs the scripted block (three patterns) | 3 | v0.4.21 |
+| disagree | `demotion.surfaced` vs the rank cap | 1 | v0.1.67 |
+| disagree | `distill.{top,top_chains,used}` vs the persist cap | 1 | v0.1.82 |
+| disagree | `usage.per_fact` / `usage.misses` / `usage.mention_stems` vs the scanner caps | 3 | v0.1.63 / v0.1.67 / v0.1.85 |
+| disagree | `network.fact_holdings` vs the incidence limits | 1 | v0.4.13 |
+| disagree | `network.fact_holdings` vs the holder reference limit | 1 | v0.4.13 |
+| disagree | `network.fact_holdings` `held_n` vs the emitted holder count | 1 | v0.4.13 |
+| disagree | `network.capture` total vs emitted | 1 | v0.4.17 |
+| disagree | the U1 unverifiable tally vs its named carriers, both directions | 3 | v0.4.22 |
+| disagree | the index reconcile invariant | 1 | v0.4.30 |
+| disagree | `dream` arc completeness vs the beats contract | 1 | v0.4.1, narrowed v0.4.29 |
+| **membership** | `workflow_proposals.candidates[].disposition` is not a known value | 1 | v0.1.87 |
+| membership | `…disposition` declared on a non-fleet-candidate | 1 | v0.1.87 |
+| membership | `network.stack_edge_facts` names an unknown node label | 1 | v0.4.13 |
+| membership | `network.fact_holdings` holder resolution — unknown or repeated | 1 | v0.4.13 |
+| **absent/dup** | `network.fact_holdings` fact identity missing or duplicate | 1 | v0.4.13 |
+
+**Three successive counts of this list were wrong, and the way each was wrong is the section's
+point.** The docstring's original *"two"* was a guess that stayed put while thirteen clauses were
+added beside it. Revision 2's table carried **ten** rows and called them "value-contradiction
+checks" — the count wrong, and the *kind* wrong in the more instructive direction: the far side is
+not co-extensive with "two values disagree". Three rows are **enum membership** and one carries a
+**presence disjunct inside its own warning text** (*"has missing or duplicate fact identity"*); the
+revision-2 table was the *disagree* subfamily presented as the whole.
+
+**Then revision 3's own correction — the one written to fix exactly this — said "fifteen" and was
+short a row again.** `network.fact_holdings`' holder resolution (a holder sid must resolve to a
+captured node, and must not repeat) sits at the far side beside the identity row and was in neither
+the table nor the docstring. It was found by re-deriving the census with the *site* as the unit
+rather than the *warning text*: the row-grouping had been done by reading, and a reading groups by
+what the rows look like, while the body emits by block. **The missing row is a MEMBERSHIP row —
+again, precisely the kind the "value-contradiction" framing hides.** That is the same defect
+recurring one layer out, twice, in the sentence written to prevent it: which is why the fix here is
+not a third, more careful count.
+
+**The fix is that the census is now executed.** `tests/smoke.py` AST-parses
+`validate_cycle_record`, splits its `warnings.append` sites into SHAPE (family 1's descent rule —
+*"is not a &lt;type&gt;"*, *"contains a non-dict item"*) and VALUE, and requires the docstring to
+enumerate 16 rows against the body's 22 value sites. A new far-side clause reds the suite until the
+docstring and this table grow with it, so *"the body is the census"* is enforced rather than
+promised. The pin cannot say **which** row is missing — a count never can, and the docstring's own
+text says so — only that the two numbers must move together. Docstring and table are therefore
+**grouped by kind rather than walked in body order**, and the docstring no longer claims otherwise;
+that claim was false when written, which is how a reader would have been sent looking for a
+mismatch that was not there.
+
+**An instrument is only as wide as its match set, and this one was widened four times.** The first
+cut walked `validate_cycle_record`'s body for `warnings.append`. The adversarial pass measured three
+evasions of that — and mis-aiming one of its own injections found a fourth — each one an injection
+that left every surface green:
+
+| evasion | before | now |
+| --- | --- | --- |
+| **delegation** — the clause lives in a helper the body calls | measured **GREEN**: a body walk cannot see a clause that lives elsewhere | the walk followed bare-name calls **one level deep**, which closed the injection as written and left the *class* open — body → `_h1` → `_h2` → `append` was **also measured GREEN**. It is now a **worklist fixpoint** over the call graph, so delegation counts at any depth; the closure measures 8 functions on the shipped module |
+| **re-methoded mutation** — the clause is added by `warnings.extend([...])` | measured **GREEN**: only `.append` was matched, so the site existed and no count moved | `_mutations` enumerates *every* way to write the binding — method call, `+=`, item assignment, hand-off to a callee — and the census reports how many are not the one recognised form. That count must be 0, and it is a **separate check** so its red is legible as itself rather than as a count that will not reconcile |
+| **renamed parameter** — the clause is written by a helper that calls its parameter `warns` | **GREEN, and still green in the count even now** — the closure walk follows the call, but `warns.append` binds to a name no `warnings` filter in the file can see | **RED via the whitelist only.** This is the honest shape of the fix: a hand-off is recognised only when the callee's parameter *at that position* is itself named `warnings`, so the unfollowable case is reported instead of assumed benign. Measured: `value=22` (the count pin unmoved) with `escapes=1` |
+| **drifted legend** — the docstring's three `· KIND — gloss` lines, which *define* the tokens every count is keyed on, are retagged (`· MEMBERSHIP —` becomes `· DISAGREE —`) | **GREEN, every operand unmoved** — the legend is excluded from the row list by the same prefix test that a retag preserves. Found by **mis-aiming an injection**: a retag meant for a row hit the legend instead, and the census did not move. The docstring then teaches that *disagree* means *membership*, while the row counts, the split and the spec table all still reconcile | the legend's token tuple is returned and asserted in order. A token **outside** the three was already loud (the exclusion stops matching, the line lands in `_rows`, and that count moves) — so the pair covers the surface completely |
+
+The last row is the reason the whitelist is a count of *unrecognised* forms rather than a list of
+known-bad ones: an enumeration of bad forms has the same defect as the walk it replaces — it is
+only as wide as the author's imagination. The count is closed against everything that is not the
+one form the census can follow, so a mutation form nobody anticipated fails **loudly** at the
+whitelist. What it still cannot see is stated at the definition rather than left to be
+rediscovered: **folding a new case into an existing `.append` moves nothing**, and no counting
+scheme can see it.
+
+**Which forces a refinement of §2.1's family table, not just its count.** Family 3 is
+*seeded-duty* presence — "did the pass fill the field it seeded?" — and the `fact_holdings` identity
+row shows that **structural** presence at depth is a far-side row, not a `duty_gaps` clause: an
+identity the block needs to be internally meaningful is a different question from a duty the pass
+was handed and skipped. Stated precisely, because the loose form ("presence lives in `duty_gaps`")
+is exactly the sentence that would send the next reader to the wrong host again:
+
+> `validate_cycle_record` = *is a present value the right SHAPE / is a present value RIGHT* ·
+> `duty_gaps` = *did the pass fill what it SEEDED*.
+
+The fix, then, is to **enumerate rather than count**, and in the docstring itself to state the
+boundary above, the DESCENT rule that generates the container row, and — because an enumeration
+written from a function body drifts the moment the body grows — an explicit note that the container
+list is *representative*, so the docstring's sentence never reads as a census it cannot be.
+
+This is the same defect class as the cycle's headline, one level up: **a claim in a comment with no
+test is a claim that drifts.** *"Two"* was true when written and stayed in the prose through
+thirteen additions. The repo already has the rule — `render_dashboard.py`'s own `over_ceiling`
+comment records *"an earlier draft named three, which is the number its author happened to know,
+and a count is not a census until it has been counted."*
+
+### 2.6 What was dropped, and on what evidence
+
+The first draft carried six clauses. Three were dropped before implementation. Each drop is a
+finding, not a simplification.
+
+**The `lever` ↔ `candidates_surfaced` biconditional — dropped.** `lever = "gc" if share >
+_MIRROR_DOMINATED else ("prune" if cands else "justify")` means `justify ⟹ zero candidates` holds
+but its **converse does not**: the `gc` arm is taken regardless of `cands`. `tests/simulate_accumulation.py`
+builds exactly that record by triaging one candidate list twice. Worse, for any record the script
+produced, both operands come from **one dict literal** — so the clause is script-vs-script, can only
+fire on a hand-edit, and catches none of the four audited defects.
+
+**`entries[].action` vs `audit.memory.created` — dropped.** No sound biconditional exists.
+`audit.memory` is a **per-store** content-hash rollup, while `entries[].files` spans all three
+stores (`memory/…`, `claude_md/…`, `repo_doc/…`) and `entries[].store` is a third, unrelated axis.
+An `added` row naming `claude_md/CLAUDE.md` moves a different store's counter, and
+`tests/dashboard_fixture.py` contains exactly that row. The one real signal in the audited defect
+was the **row's own reason** contradicting its **own action** — a model-phrase-vs-model-enum
+contradiction that never touches `audit`. Recorded in §6.
+
+**`remediation` half-seed (`required` and not `standing_justified`, `lever`/`candidates_surfaced`
+absent) — dropped.** This one was dropped *after* the plan that carried it was approved, on
+re-measurement, and the sequence is worth recording because the first number was wrong in a way
+that would have shipped a false justification.
+
+The clause as first drafted fired **13/100** on the fleet of the day, which looked like healthy
+signal and motivated a `not standing_justified` guard that brought it to **1/100**. Re-deriving by
+variant shows what the 12 were: **the legitimate suppressed block** — `required: False,
+standing_justified: True`, which `seed_record` writes *deliberately* without a lever or a candidate
+count (*"seed the lightweight suppressed block (no lever/triage to surface)"*). So the guard was
+not a refinement; it removed a mostly-false-positive class.
+
+**Re-measured 2026-09-17 on the drifted fleet (§3.1), the sequence reproduces in shape and not in
+figures**, and the drift is worth reading rather than smoothing:
+
+| Form | fires, 2026-09-17 |
+| --- | --- |
+| `lever`/`candidates_surfaced` **absent** — as first drafted, **no** SJ guard | **11** |
+| the same **+** the `not standing_justified` guard — the form the plan carried | **0** |
+| `lever` present-and-blank | **0** |
+| `candidates_surfaced` present-and-null | **0** |
+| either emptied | **0** |
+
+All 11 of the drafted form's fires are `standing_justified` with `required` falsy, so the guard's
+target is confirmed; the count moved 13 → 11 because the fleet moved, and the residual single fire is
+**gone with the synthetic record it was**. The decision is untouched and in fact strengthened —
+**every form now fires zero** — but revision 2's `all`/`genuine` column pair does not survive the
+re-measurement intact, and the reason is worth more than the pair was. `genuine` was defined by
+matching **one literal commit id**; §3.1 shows that row was one member of a **six-directory scratch
+class**, and that the class is *live* — a test run appended to it mid-revision. The pair is therefore
+replaced by a **named class** with both columns printed, so the operand choice is visible instead of
+encoded in a filter that silently matches a string. A number whose operand has left the population is
+not a number to keep re-quoting.
+
+And it fails the same three tests that dropped the other two: it catches **none** of the four
+audited defects; and its premise is **absence**, which unlike A/B/C carries **no era gate** — the
+record cannot distinguish "the pass removed this" from "this record predates the field".
+
+*(Revision 3 also retires a sentence here that claimed the clause had **"no producer path"**,
+parenthesised as "the seed always writes both keys, and the Phase-5 refresh merges leaf-wise into
+the existing block rather than replacing it, so nothing removes them". The parenthetical is false,
+and its falseness is a better argument than the claim it supported: the seed's standing-justified
+branch writes **neither** key — `record["remediation"] = {"required": False, "standing_justified":
+True, "baseline_facts": …, "over_ceiling": …}` — which is precisely why the drafted clause fired on
+it at all. And no Phase-5 refresh of `remediation` exists to merge into: `ctx["remediation"]` is
+Phase 0's analysis, `seed_record` copies it, and the three progress keys are left to the model. The
+surviving argument is the one that needed no producer census: **the same test that governs clause
+C governs D** — D's firing shape is *absence*, whose producer is likewise a model-authored record,
+but unlike C's it is absence of a **seeded** key, and the seed's own branch proves the absence is
+normal. The decisive property is unchanged, and it is the sharpest one: **A and B have a producer
+path** — `seed_record` writes `session: ""` and `_provisional_rigor` writes `applied: ""`, so a
+skipping pass genuinely produces those shapes, while D's shape is what the seed writes when
+everything is fine.)*
+
+The decisive property, restated once because it is the whole reason D is not a clause: **a
+firing shape the seed itself produces when nothing is wrong is not a defect signal.** A and B
+survive it — the seed writes `session: ""` and `_provisional_rigor` writes `applied: ""` because a
+pass has not yet reached the phase that fills them, and the `judged` gate is what tells a live pass
+from a seed. D's shape is what the SJ branch writes *on a healthy store*, so the record cannot
+tell the two apart at all, and no gate could.
+
+---
+
+## 3. Measurements
+
+### 3.1 The population census
+
+#### What this measures, and what it cannot
+
+The census reads every `~/.claude/projects/*/memory/.consolidation-log.jsonl` and every
+`~/.claude/plugins/data/consolidate-memory/ops/*/.consolidation-log.jsonl`, deduped on
+`marker.(commit, timestamp)`. **Those are live session stores on the measuring machine, so this is
+a fleet at a timestamp — not a checkout.** The script below is reproducible; its *output* is not,
+and revision 2 was wrong to imply otherwise.
+
+**The population includes the instrument's own scratch — and that is a class, not an exception.**
+Measured composition of the raw 100 rows: **67** come from `~/.claude/projects/*/memory/` and **33**
+sit under `ops/`, of which **six** are self-evidently test scratch — `h8`, `link_store`, `persist0`,
+`relstore`, `tmp4lqb479m`, `valid` — one of them carrying
+`marker = {"commit": "c", "timestamp": "t"}`. The plan hand-excluded a single synthetic row
+(`marker.commit: "deadbeef"`) to publish its "0/99 genuine" figure. **That row was one member of this
+class.** Excluding one instance by hand while leaving the class in place is the ad-hoc form of the
+right fix, which is to name the class and report both columns.
+
+**And the census moved while this revision was being written** — the cleanest evidence available for
+why a prevalence number is testimony:
+
+> Run early in revision 3, the script returned **99** records, A **20**, B **3**. Run again minutes
+> later, on the same machine, the same script returned **100**, A **21**, B **4**. The difference is
+> exactly one row: `ops/persist0`, whose log was appended at **07:44** by a run of **this cycle's own
+> test suite**. That row fires A *and* B. The instrument contaminated itself while measuring — and it
+> did so *because the cycle under test was running*.
+
+Two framings, still not the same number:
+
+- **Not a blast radius.** The gate is live-only (§2.3), so no archived record is ever re-judged and
+  no archived display retro-flips. Blast radius is structurally **zero** — and it is structurally
+  zero *because of the host choice*, not because the prevalence turned out low.
+- **A prevalence estimate** — how often a past pass left this duty unfilled. This is the analogue
+  of the `enforce_post_arc` *"1 of 55"* decision, taken on a measured number rather than a guess. The
+  denominator below is the **94 records outside the scratch class**, because a fixture directory is
+  not a pass; the raw column is printed beside it so the choice of operand is visible rather than
+  buried in a filter.
+
+| Clause | Raw (the glob as written) | **Prevalence (scratch excluded)** | Renders as |
+| --- | --- | --- | --- |
+| A `session` present-and-blank | 21/100 | **20/94** | warn — panel only, exits 0 |
+| B `rigor.applied` present-and-blank | 4/100 | **3/94** | alert — exit 3 |
+| C trio partially filled (a key count) | 6/100 | **6/94** | alert — exit 3 |
+| C, measured as the shipped union form | 6/100 | **6/94** | — (identical on this fleet: it cannot choose) |
+| `rigor.phase != "final"` (rejected conjunct, §2.2) | 0 of 94 carrying the key | 0 of 93 | — |
+
+Supporting counts are **identical on both sides** — the six scratch rows carry no `remediation` block
+at all, so the contamination reaches exactly two numerators and no supporting figure: **34** records
+carry a `remediation` block, **24** of those are standing-justified, **11** of the 24 lack
+`lever`/`candidates_surfaced` (the set §2.6's pre-guard row measures), and **16** carry all three
+progress keys.
+
+Re-derivation script — the one that produced the table, not a sketch of it:
+
+```python
+import glob, json, os
+
+# The scratch class, named rather than filtered by a literal: these ops/ subdirectories are the
+# test harness's own working dirs, not projects. A fixture is not a pass, so a fidelity figure
+# should not count one — but the RAW column is printed beside it so the operand choice is visible.
+SCRATCH = {"h8", "link_store", "persist0", "relstore", "tmp4lqb479m", "valid"}
+
+def blank(v):
+    return v is None or (isinstance(v, str) and not v.strip())
+
+rows, seen = [], set()
+for pat in (os.path.expanduser("~/.claude/projects/*/memory/.consolidation-log.jsonl"),
+            os.path.expanduser("~/.claude/plugins/data/consolidate-memory/ops/*/.consolidation-log.jsonl")):
+    for path in sorted(glob.glob(pat)):
+        try:
+            fh = open(path, encoding="utf-8")
+        except OSError:
+            continue
+        src = path.split("/ops/")[1].split("/")[0] if "/ops/" in path else "<projects>"
+        with fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    r = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(r, dict):
+                    continue
+                m = r.get("marker") if isinstance(r.get("marker"), dict) else {}
+                key = (m.get("commit"), m.get("timestamp"))
+                if all(k is None for k in key) or key in seen:
+                    continue
+                seen.add(key)
+                rows.append((src, r))
+
+TRIO = ("pruned", "achieved_index", "achieved_recall")
+
+def report(label, pop):
+    A = sum(1 for _, r in pop if "session" in r and blank(r["session"]))
+    B = sum(1 for _, r in pop if isinstance(r.get("rigor"), dict)
+            and "applied" in r["rigor"] and blank(r["rigor"]["applied"]))
+    rem = [r["remediation"] for _, r in pop if isinstance(r.get("remediation"), dict)]
+    key_n = union = 0
+    for d in rem:
+        present = sum(1 for k in TRIO if k in d)                    # keys written
+        filled = sum(1 for k in TRIO if k in d and not blank(d[k]))  # keys holding a value
+        if 0 < present < 3:
+            key_n += 1
+        if not (present == 0 or filled == 3):                        # the SHIPPED union form
+            union += 1
+    # `rigor.phase` — the rejected conjunct's operand, printed so the table's last row is produced
+    # by this script rather than by a separate probe (a figure the table cites and the script does
+    # not compute is the same defect as a count no test reads, one layer out).
+    ph = [r for _, r in pop if isinstance(r.get("rigor"), dict) and "phase" in r["rigor"]]
+    print("%-18s N=%-4d A=%-3d B=%-3d C(key-count)=%-2d C(union)=%-2d remediation blocks=%d"
+          " · phase present=%-3d phase!='final'=%d"
+          % (label, len(pop), A, B, key_n, union, len(rem), len(ph),
+             sum(1 for r in ph if r["rigor"]["phase"] != "final")))
+
+report("raw (the glob)", rows)
+report("scratch-excluded", [(s, r) for s, r in rows if s not in SCRATCH])
+```
+
+Both C forms are printed on purpose: they agree on this fleet (6 = 6), and that agreement is the
+evidence for §2.2's claim that the archive cannot choose between them. Both **populations** are
+printed for the same reason — a single column would hide which operand produced the number, which is
+the defect this whole revision is about.
+
+### 3.2 The dropped clause's variant census
+
+Measured on the same fleet as §3.1, and **the variant set is reproduced as §2.6's table rather
+than as a second script** — a variant census whose only anchor is a `/tmp` path is a number no
+later reader can check, and revision 2 cited exactly that. The forms, in words:
+
+- **as first drafted**: `lever` **and** `candidates_surfaced` both absent — a pure absence test,
+  with no `required` and no `standing_justified` operand at all;
+- **as the plan carried it**: the same **plus** `required` truthy and `standing_justified` falsy;
+- then the two key-emptiness forms and their union.
+
+The revision-2 column pair (`all` / `genuine`) is gone with its operand: `genuine` existed to
+exclude one synthetic record, and that record is no longer in the fleet (§3.1). A column that can
+only be computed by remembering a row is not a measurement.
+
+### 3.3 What the seed itself trips
+
+`duty_gaps(seed_record(ctx))` **fires A and B** — the seed writes `session: ""` and
+`_provisional_rigor` writes `applied: ""`, both by design. This is the single most important
+consequence of the host choice and it is stated here rather than discovered in review:
+
+> **The predicate cannot tell a seed from a finished pass, and must not try.** If it could, it would
+> be reading a self-reported label (`rigor.phase`) to decide its own era — the trap §2.2 rejects.
+> The `judged` gate is the entire protection, and it is sufficient because it is structural:
+> `judged` is set by `main()` iff `--persist`, and no other caller of `duty_gaps` exists.
+
+The first draft of this cycle proposed a pin asserting `duty_gaps(seed_record(ctx)) == []`. **That
+pin is impossible** and its impossibility is the finding: it asserted the predicate abstain where
+the predicate must fire, and would have been satisfied only by the label-reading era gate §2.2
+rejects. It is replaced by three shipped checks that pin the fact from both sides rather than
+wishing it away:
+
+- **U7** — a fresh seed **does** trip the predicate (`["session", "applied"]`), so a later "make the
+  predicate abstain on a seed" change has to argue with this design rather than quietly read
+  `rigor.phase`;
+- **G2** — a preview render (no `--persist`) of a gap record shows no panel and exits **0**;
+- **G3** — `render(record, judged=False)` shows no panel where `judged=True` does.
+
+The abstention direction needs no separate gate-level check: the pre-existing persist fixtures carry
+no `session`, `rigor`, or `remediation` key at all and still exit 0 (§5 R4, measured), which is the
+absent-vs-empty era gate exercised end-to-end through the very arm this cycle adds.
+
+---
+
+## 4. Pins
+
+Per the repo rule, a "stays silent" assertion is **conjoined with a firing assertion inside the same
+`check(...)`** — alone it passes pre-fix and is not a pin. **Nineteen** checks ship, in six
+labelled groups, each check's own label naming its group; the census constant in `tests/smoke.py`
+carries the same breakdown and is asserted against the reported total, so a check that vanishes reds
+the suite. (The nineteenth is **C2**, added by revision 5 — see the amend ledger; the C group's
+first check was C1.)
+
+**How the pre-fix column was obtained — measured first, and it is not what revision 2 said.** The
+new harness run against the pre-fix scripts **does not report a set of red U checks; it aborts**.
+Measured on a hybrid tree (`git archive 2b07ce3 | tar -x`, then the current `tests/smoke.py` over
+it): **rc 1, 692 checks executed, then `AttributeError: module 'memory_status' has no attribute
+'duty_gaps'` at `tests/smoke.py` line 3316, and no totals line printed at all.** The binding
+`_gapA = ms.duty_gaps` is module-level, so the first reference kills the process and neither the U
+group nor anything after it is ever evaluated. Revision 2's "all seven fail pre-fix on
+`AttributeError`, a legitimate RED for a new predicate" described a per-check failure that does not
+occur.
+
+That changes what each group's pre-fix number *means*, so the method is named per group:
+
+- the **P** group is a subprocess call, so its pre-fix value is observable from outside with the
+  predicate absent — driven directly against the pre-fix renderer, all four fixtures exit **0** with
+  no panel (§4.4);
+- the **U** group cannot be measured by the revert at all, and its one genuinely pre-fixed check —
+  the F1 evasion pin — is verified by **mutant C**, which restores the predicate's shipped-then-
+  superseded key-count form. A cycle that changes its own predicate mid-flight has a real pre-fix
+  revision for that change, and mutant C is it.
+
+**U — the predicate, directly** (`ms.duty_gaps`, hand-built records).
+
+| # | check | asserts |
+| --- | --- | --- |
+| U1 | duty A era gate | `{"session": ""}` fires; `{}`, `{"project": "p"}`, `{"session": "abc"}` do not |
+| U2 | duty A is type-blind | `null` and `"   "` fire; `123` and `["a"]` abstain (§2.2) |
+| U3 | duty B | `{"rigor": {"applied": ""}}` fires; `"LIGHT"`, `{}`, `{"applied": 5}` do not |
+| U4 | duty C is the CONTRACT | 1-of-3 (the audited shape) and 2-of-3 fire; 0 keys (the documented "pending Phase 5" state) and 3-keys-3-values do not |
+| U5 | **the F1 evasion** — the union's `filled` operand | three keys with one holding `""` fires; the same with `null` fires; `{"achieved_recall": ""}` alone fires; `{"pruned": "", "achieved_index": null}` fires; the **true zeros** `{0, 0, 0.0}` abstain, as does `{"over_ceiling": True}` |
+| U6 | the seed shape | the standing-justified block fires nothing; `"junk"` / `None` / `[1]` fire nothing |
+| U7 | severity | A yields `warn`; B and C each yield `alert` |
+| U8 | the seed trips it (§3.3) | a fresh seed yields exactly `["session", "applied"]` — the design's central consequence pinned rather than left to be rediscovered |
+
+U5 is the check that makes this cycle's own predicate falsifiable: it is written so that the
+*pre-fix* form (a key count) provably fails it, which is what mutant C measures. It is also why the
+casualty case is pinned in the same check — `{0, 0, 0.0}` is a *measurement*, not a blank, so a
+repair that reached for numeric coercion instead of presence would red U5 from the other side.
+
+**P — the gate**, `render_dashboard --persist` as a subprocess in the existing persist family, over
+one shared persist dir and the existing record-writing helper.
+
+| # | check | pre-fix |
+| --- | --- | --- |
+| P1 | a complete 6/6 arc with `session: ""` exits **3**; the panel names `session`, `rigor.applied` and its own count; the **stderr cue is the duty cue** and **`"Phase-3 verification dreamily"` is absent** (§2.3) | exit **0**, no panel → PIN |
+| P2 | the same with `rigor.applied: ""` alone exits **3** | exit **0**, no panel → PIN |
+| P3 | the same with a partially filled trio alone exits **3**, naming `remediation progress` | exit **0**, no panel → PIN |
+| P4 | **the F1 evasion at the terminal**: three keys with `achieved_recall: ""` exits **3** with the panel and the duty cue | exit **0**, no panel → PIN (and RED under mutant C) |
+
+**G — the boundaries.** These guard defects **this design introduces**, so no pre-fix pin can exist
+for them. But "guard" does not mean "passes pre-fix", and the difference was measured rather than
+assumed (§4.4):
+
+| # | check | guards | verified by |
+| --- | --- | --- | --- |
+| G1 | a duty gap **and** a 4/6 arc exits **4** with **both** panels, and the cue is the arc's | the §2.3 ordering (drafted duty-first, which exits 3 and masks the arc) | **injection**: duty-arm-before-arc-arm ⇒ rc 3, G1 RED |
+| G2 | a **preview** render (no `--persist`) of a gap record shows no panel and exits **0** | the `judged` boundary in the display direction | **injection** (dropping `judged` reds it), *and* its assertion is true of pre-fix code |
+| G3 | `render(record, judged=False)` shows no panel where `judged=True` does | the same boundary at the API level | **injection**: `judged` dropped from the panel block ⇒ RED |
+
+**"Passes the pre-fix revert" needs a stricter reading than revision 2 gave it, because the revert
+measurement does not exist for this cycle.** The pre-fix suite aborts at line 3316, so no v0.4.33
+check — G2 included — is ever *evaluated* by a revert run; "G2 passes the revert" can only mean
+**G2's assertion is true of pre-fix code**, and that was then measured directly rather than
+inferred: driving the pre-fix renderer on a gap record without `--persist` returns **rc 0 with no
+panel**. The same probe on G3's shape returns no panel **in either direction** (`judged=True` and
+`judged=False` both absent), so G3's positive conjunct fails on pre-fix code — for the reason the
+group's label already states, which is *not* the boundary it guards. Revision 2 and the shipped
+check label both said "passes the pre-fix revert" without that distinction; the distinction is the
+entire content of the claim.
+
+**A guard's verification is the injection of its own defect**, which is the table's last column —
+and it is the only test that distinguishes a guard that works from a guard that is merely green.
+The exit direction of the `judged` boundary needs no separate check: the arm sits inside
+`if persist_dir:`, so no non-persist render can reach it.
+
+**W — the advisory path.** One check, pinning three wires at once, because a check that pins one
+wire and lets the other two drift is how this class survives:
+
+| # | check | pins |
+| --- | --- | --- |
+| W1 | `session: ""` alone (severity `warn`) exits **0** *with* the panel, `"ADVISORY duty gap"` is on stderr, `"persist clean"` is **not**, and the Phase-5 instruction is | (a) the severity→exit wire — without it, replacing the arm's `any(g.severity == "alert" …)` with a bare `if _gaps:` flips A-only from 0 to 3 and the suite stays green; (b) the cue's truth — a printed ⚠ beside the words *"persist clean"* is this cycle's own thesis one layer out, since SKILL defines the WAKE as rendering "only through a clean exit 0"; (c) that the advisory path still instructs, rather than going silent |
+
+**H — a named hole, pinned so it cannot change shape silently.** The panel prints before `_persist`
+runs, so an unappendable cycle log leaves a fired panel on screen and returns **0** at `main`'s
+`no-dir`/`io-error` arm. It is a **desync between the display and the exit**, it is the arc arm's
+documented behaviour reached through a new door, and it is recorded in §5 rather than fixed. The
+check asserts the *current* shape deliberately: if a later cycle closes the hole, H1 reds and says
+to update both this spec's §5 list and the check. Its setup is root-proof — a **directory** where
+the log file must go, so the append raises `IsADirectoryError` with no `chmod` for a root runner to
+defeat.
+
+**C — the §2.5 census, pinned on the body rather than on its own prose.** The two checks in this
+cycle that guard a *document* rather than shipped behaviour, and they exist because §2.5's subject
+is a count that was wrong three times running. C1 reconciles the surfaces; C2 states the
+instrument's **coverage**, because a census that reconciles perfectly while a clause sits outside
+its match set reconciles within a set it never questioned — the failure mode of every version of
+this count to date. Two checks rather than one because their reds are different findings with
+different repairs: a count that will not reconcile is a missing row, a whitelist red is a walk
+whose match set is too narrow.
+
+| # | check | pins |
+| --- | --- | --- |
+| C1 | **three surfaces of one census agree**: the body's **22** VALUE sites, the docstring's **16** `· KIND` rows, and §2.5's table — **16** rows summing to **22** `Sites` — each surface splitting **11 disagree / 4 membership / 1 absent-dup** | that all four numbers move together. It AST-parses `validate_cycle_record`, splits the `warnings.append` sites into SHAPE (*"is not a &lt;type&gt;"*, *"contains a non-dict item"* — family 1's descent rule) and VALUE, **follows bare-name calls to a fixpoint over the call graph** so a clause delegated to a helper counts at any depth, then parses §2.5's table out of the spec file. It **cannot name which row is missing** — a count never can, and the docstring says so — only that a far-side clause arrived without the list |
+| C2 | **no write to `warnings` escapes the census**: over the same closure, every mutation is the one recognised form (`warnings.append(…)`) or a hand-off whose callee names that parameter `warnings` at the matching position | that the census's coverage is *stated*, not assumed. `_mutations` enumerates every way to write the binding — method call, `+=`, item assignment, hand-off — and the count of unrecognised ones must be **0**. A re-methoded or renamed-parameter site reds **here** instead of leaving the count pin green over a clause it never saw (§2.5). It reports no location, only the count; and a widened existing `.append` is invisible to it, which is stated at the definition |
+
+**The label was wrong before the check was.** Revision 3's C1 said it reds *"until the docstring and
+spec §2.5's table agree"* while **nothing read the spec at all** — a claim wider than its check, in
+the check's own label, which is this cycle's defect class arriving inside its own fix. The same
+adversarial pass measured a second evasion: a far-side clause moved into a **helper the body calls**
+was **green**. Both are closed, and closing the second is what made the check a *reachability* walk
+rather than a body walk.
+
+Verified by injection in both directions and on all three surfaces, because a count-shaped check has
+two ways to be vacuous and this one writes its census three times:
+
+| injection | expected | measured |
+| --- | --- | --- |
+| drop the 16th row (the literal pre-fix state) | RED | **RED** |
+| add an unlisted far-side clause to the body | RED | **RED** |
+| add a **second** `warnings.append` — a new site | RED | **RED** |
+| move a far-side clause into a **helper the body calls** | RED | **RED** — was **GREEN** |
+| edit one `Sites` value in §2.5's table | RED | **RED** — was **unobservable** |
+| retag a docstring row `DISAGREE`→`MEMBERSHIP` (11/4/1 → 10/5/1) | RED | **RED** |
+| retag a spec table row likewise | RED | **RED** |
+| **fold a new case into an EXISTING append** | RED | **GREEN — the open limit** |
+
+**The last row is a hole in *granularity* — and C1 has exactly two, of which the classifier is the
+other.** The check counts *sites*, so a far-side case added to a clause that already exists changes
+no number it reads: reproduced, not theorised. Closing it means classifying *conditions* rather than
+*sites*, and the structural classifier that would do it was tried and rejected (below). Both limits
+ship **named** — in the check's own label, in its comment, and here — because a limit written down
+has stopped being the thing this cycle audits: an *unstated* limit on a gate is a miss that renders
+as silence, while a stated one is a bounded, reviewable cost. What bounds this one is the table
+above: seven of its eight injections red, so the evasion is confined to one shape rather than to a
+family of them.
+
+It reads the file through `ast.get_source_segment`, not `ast.unparse`, which is 3.9+ and would break
+the 3.8 CI leg.
+
+**And its own limit, stated in the same breath — because a gate that fails quietly is this
+cycle's subject and C1 is not exempt.** The SHAPE/VALUE split is a regex over the warning *text*,
+so a far-side clause worded in shape language (*"… is not a list"*) is classified SHAPE and slips
+past the count: a **silent** miss. The opposite error is **loud** — a container check worded
+without the idiom (*"… must be dicts"*) counts as VALUE, reds the pin, and demands a row it does
+not need. The asymmetry is the whole point: of C1's two errors, only the one that costs *coverage*
+can ship unnoticed, so the limit is written down here rather than left to be rediscovered. All 24
+SHAPE-classified sites were hand-checked against that claim on this revision and all 24 are family
+1. A structural classifier was considered and rejected: `held_n is missing or below emitted
+holders` is guarded by an `isinstance(int)`, so "is the append under an isinstance test" does not
+separate the families either — it trades a silent miss for a different one.
+
+### 4.4 The measurement behind the table
+
+**Every number below was measured in one batch, on one revision.** Four mutant trees were rebuilt
+from the current working tree (not from an earlier copy) — each differing from it by **exactly one
+edit**, verified by a whole-tree diff — and their suites were run in parallel.
+
+**"One revision" is checkable, not asserted.** The batch wrapper sha256s the working tree before it
+builds the mutants and after their suites finish, and refuses the result if the two disagree;
+both sides of this run read **`34d0a07ce1d2ade7`** (201 files, whole tree) — and a later
+re-fingerprint will differ, because this spec lives inside `docs/` and writing the number down
+changes it: the value identifies the *run*, which is the only thing it was ever for.
+
+**It is testimony, not a derived number, and the fix itself is the reason.** The match set is drawn
+around *everything in the tree*, not around *everything the suite reads*, so it deliberately includes
+artifacts the harness never opens. Counted on this checkout: of the **201** files, **192 are
+tracked** — re-derivable by anyone who clones — and **9 are not**, of which **8 are gitignored
+maintainer-only files that will never be in the repository** (`release.sh`, five `security/**`
+documents and workflows, `.claude/settings.local.json`, `PREFLIGHT.md`) and one is **this spec**,
+unreproducible only until the branch merges. So `34d0a07ce1d2ade7` sits in §3.1's third tier:
+**what makes it good evidence — it is bound to this checkout — is exactly what stops anyone else
+re-deriving it.** Over-covering is the safe direction for this gate (a match set wider than the
+harness cannot miss a file, and all three of its earlier versions failed by being **too narrow**),
+and the two directions of match-set error are not symmetric: too narrow is **silent** (a file the
+suite reads can change while the gate reports a stable revision — the defect this wrapper spent
+three versions on), while too wide is **loud and inert**. Only the first can ship unnoticed, which is
+why the wrapper over-covers on purpose and says so here.
+
+**What the number is for, kept separate from what it can bear.** Its job is to prove the four mutants
+were built from, and run against, *one* revision — not to be a citation for this document's own
+content. For that narrower question the operative surface is smaller and **is** re-derivable: the
+mutant runs read §2.5's table, the body's `warnings.append` sites, and the pin definitions in
+`tests/smoke.py`. §2.5's region of this file hashes to **`3b06c6344ae4f72a`** on **both sides** of
+the revision-4 corrections, so the census the mutants were measured against is byte-for-byte the
+census shipping here — and unlike the fingerprint, that value anyone can recompute from the shipped
+file, on any machine, with no access to this checkout. It took **three** tries
+to make that fingerprint honest: v1 covered `plugins/*/scripts` + `tests/` + `docs/`; v2 widened to
+the whole plugin because the suite reads `SKILL.md`; both were *still* narrower than the harness,
+which also reads `CHANGELOG.md`, `README.md`, `SECURITY.md`, `AGENTS.md`, `cm`, the marketplace
+manifest and `.github/workflows/*.yml` — every one at the repo root, outside all three roots chosen.
+Each version would have called a revision stable while a file the suite reads had changed, which is
+this cycle's own defect wearing a build-tool costume: **a gate is only as wide as its match set.**
+The counts are recorded because a mutation's RED count belongs to the **triple** (the restored code,
+the fixture, the harness), so an inherited count is not evidence: the W group's own label had
+carried one ("flipped A-only from 0 to 3, measured by review") and it was re-derived, not copied.
+
+| tree | suite | reds |
+| --- | --- | --- |
+| **the shipped revision** | rc 0 — **1984 passed, 0 failed** | — |
+| **`2b07ce3` (pre-fix revert)** | rc 1 — **the suite ABORTS** at `tests/smoke.py:3316` after **692 checks**, no totals line | *nothing is evaluated* — not the U group, not anything after it |
+| **mutant A** — duty arm moved before the arc arm | rc 1 — 1983 passed, 1 failed | **G1** |
+| **mutant B** — `judged` dropped from the panel block | rc 1 — 1982 passed, 2 failed | **G2, G3** |
+| **mutant C** — the shipped key-count predicate restored | rc 1 — 1982 passed, 2 failed | **U5, P4** |
+| **mutant D** — the severity wire dropped | rc 1 — 1983 passed, 1 failed | **W1** |
+
+**These four mutants were rebuilt and re-run after the revision-4 corrections, and the diagonal came
+back identical.** That is deliberate rather than incidental: a gate result belongs to the revision it
+ran on, and between the two batches the tree gained the docstring's corrected kind figure, the
+census pin's kind-split operand and its type annotations — so instead of arguing that a docstring is
+inert, every mutant was rebuilt from the corrected tree and the whole batch re-measured. The
+fingerprint moved `40778217f4bae2ad` → `34d0a07ce1d2ade7`; the reds did not move at all. That is the
+correct reading and not an accident, because the corrections are confined to surfaces no check
+examines — §4 and the amend ledger, plus a `warnings.append`-site census whose §2.5 region and body
+sites are byte-identical on both sides (the hash above). It is also the reason the earlier row count
+of this document is quoted as `40778217f4bae2ad`: an inherited count is not evidence, so the number
+it was measured under is kept beside it rather than overwritten.
+
+**Read the diagonal: every mutant reds exactly the check(s) written to catch it and nothing else.**
+That is a *coverage* measurement, not merely a pin — it says no other check in the 1984 was
+incidentally standing in for the property, and that the pin is not redundant. The census pin C1
+passes in all four, which is the correct reading: none of the mutants touches the docstring, and a
+check that reds under an unrelated mutant would be measuring something other than what it claims.
+
+**The revert row is why the injection column exists.** A pre-fix revert cannot verify *any* check in
+this cycle, because it cannot reach one: the run dies at the first U check with an `AttributeError`
+(the predicate does not exist on that tree). "Passes the pre-fix revert" therefore means **the
+check's assertion is true of pre-fix code**, which for the two groups whose assertions a revert can
+reach was measured by **driving the pre-fix renderer directly, not by running the suite**:
+
+- **the P group** — all four fixtures (P1's gap, P2's applied-only, P3's partial trio, P4's F1
+  evasion) against the `2b07ce3` renderer: **rc 0, no panel, on every one.** That is the evidence
+  behind the P table's "exit 0, no panel → PIN", and it is the same fact as the audited defect: the
+  record persisted clean and silent.
+- **G2** — the same renderer on a gap record with **no** `--persist`: **rc 0, no panel**, so G2's
+  assertion (an absence) holds of pre-fix code. **G3's** probe is the complement: no panel in
+  *either* direction on pre-fix code, so its positive conjunct fails there — for the reason the
+  group's label states, which is not the boundary it guards.
+
+The complement is that **a guard whose defect is injected is verified more strongly than a pin**:
+mutant A's test would be unobservable to any revert, since the ordering only matters when both arms
+could fire, and a **6/6 arc has no arc arm for the duty arm to pre-empt** — which is also why mutant
+A leaves the P group green.
+
+**One measured consequence the W label does not claim.** Mutant D does not merely red W1; driving
+it directly shows the advisory shape flipping **rc 0 → rc 3** *and losing its cue entirely* — the
+exit-3 path has no duty cue (mutant D's `stderr` is empty where the shipped tree emits the advisory
+cue). That is the display/exit desync of §5's io-error hole reached through a second door: a panel
+on screen, a nonzero exit, and nothing telling the model why.
+
+---
+
+## 5. Risks and open items
+
+**R1 — the gate newly exits 3 on a pass that previously exited 0.** That is the point, but it is a
+user-visible behaviour change and gets an explicit `CHANGELOG` entry naming each clause. Structurally
+mitigated: live-only plus present-but-empty means no legacy record and no seed/preview render can
+trip it.
+
+**R2 — A's 20/94 prevalence may mean the duty is decorative.** It is reported, never enforced, and
+the reasoning is in this spec (§2.2) so a future reader can revisit it on fresh data rather than
+re-deriving the argument. (The denominator moved with the fleet — §3.1.)
+
+**R3 — the `judged` gate is the whole safety argument** (§3.3). If any other call site ever invokes
+`duty_gaps`, the archive arm returns. The predicate's docstring states this; the display direction is
+guarded by **G2 and G3** (the two `judged` checks), and the exit direction by the gate's position
+inside `if persist_dir:`. *Revision 2 named "P13" here. No P13 ships in this cycle* — that name
+belongs to v0.4.32 and v0.4.30, and a spec that cites a check by a number no cycle defines is the
+same class of defect as a count no test reads.
+
+**R4 — existing persist-path test records may carry a gap shape.** If a current pin's fixture has
+`session: ""` or an empty `applied`, its expected exit changes from 0 to 3. That is the gate
+working; the fixture is completed rather than the clause weakened, and any such occurrence is named
+in the PR. Measured before implementation (§6).
+
+**R5 — the panel's row rendering is new surface.** Its subtitle and rows are derived (§2.4); the
+pin asserts exact substrings rather than a verdict scan, per the repo's
+*exact-assertion-beats-verdict-scan* rule.
+
+**Open, carried deliberately — three items, each pinned so it cannot change shape in silence:**
+
+1. **The io-error hole** (H1's shape). The panel prints before `_persist` runs, so an unappendable
+   cycle log leaves a fired panel on screen and returns **0**. A display/exit desync, reached
+   through a new door — the arc arm's documented behaviour, inherited rather than introduced.
+   §4.4 measures a **second** door into the same room: under mutant D the advisory shape exits 3
+   and emits **no cue at all**, so the model sees a panel, a nonzero exit, and no reason.
+2. **`achieved_recall`'s missing reader.** Outside SKILL prose it has **five** occurrences in the
+   shipped plugin, re-derived 2026-09-17: **one** at the cut — its own `TypedDict` line
+   (`memory_status.py:402`) — plus **four added by this cycle**, and every one of the four is a
+   mention of the key's **name** (the trio constant, the remedy string, and two comments). No site
+   reads its **value as a measurement**: the predicate asks only whether it is blank, and nothing
+   renders or reports the number. `tests/simulate_accumulation.py` positively asserts the seed must
+   *not* write it. Clause C enforces the trio **together**, which is SKILL's stated contract and the
+   audited defect's actual shape; the missing reader is a separate defect, recorded in §6 — and it
+   is worth noting that this cycle *added four mentions without adding a reader*, which is how a
+   ghost field stays a ghost while looking increasingly referenced.
+3. **The negative-tally loose reading** (§2.4). "Zero verification recorded" is loose on a negative
+   tally — `{"confirmed": -1}` sums below zero and reads as a lazy-skip. The correct fix belongs at
+   the predicate's `reason` string, which is stamped into **archived payloads**, so changing it
+   re-writes history for records already on disk: out of this cycle's blast radius by the same
+   archive-wide rule that chose the host (§3.3).
+
+---
+
+## 6. Recorded, not scheduled
+
+- **`entries[].action` vs the row's own `reason`** (§2.6) — a model-phrase-vs-model-enum
+  contradiction. Warn-only at best; it never touches `audit`.
+- **`achieved_recall`'s missing reader** (§5) — a field the contract mandates, no consumer reads.
+- **Cycle E's scope**, unchanged from the plan: the remediation note derived from data rather than
+  `lever`; the ASCII registrar's `+N more blocked` parity with its HTML twin; the absent-vs-empty
+  `session` default in the renderer; `Identity += domain_lifecycle` / `Audit −= window`; and the
+  nested-pin coverage claim in `tests/smoke.py`, which names two carve-outs where exactly **seven**
+  shapes are unpinned (`Entry` is enrolled; verified by enumerating the loop's rows against the
+  module's TypedDicts).
+- **`tests/dashboard_fixture.py`'s declaration drift** — its `identity` omits the always-emitted
+  `domain_lifecycle`, its `audit` carries a `window` spelling no producer emits, and it has no
+  `remediation`/`narration`/`maintenance`. Cycle D does **not** touch it: the fixture is clean under
+  A/B/C (session filled, applied filled, no remediation block), and the drift is `Audit`/`Identity`
+  declaration work that belongs with E4 where both sides move together.
+
+---
+
+## Amend ledger
+
+**Revision 1** — first draft, written after the plan was approved and before implementation. Folds
+the three findings that changed the design after approval, all surfaced to the user before this
+revision was written:
+
+| Finding | Change |
+| --- | --- |
+| The host was archive-wide (`_embed_integrity` calls `procedure_integrity` per archived cycle) | new `duty_gaps`, persist-gate only |
+| Clause D's first-drafted form fired on the legitimate standing-justified seed (12 of its 13 fires) | guard added, then the clause dropped entirely on re-measurement |
+| Exit 3 masked exit 4 | duty arm ordered after the arc arm |
+
+Two further deltas from the approved plan, both reducing scope, recorded here rather than folded in
+silently: `_procedure_integrity_section` is **not** changed (its hardcoded subtitle is true for its
+own predicate — §2.4), and `tests/dashboard_fixture.py` is **not** changed (§6).
+
+**Revision 2** — the spec re-read against the shipped code and the shipped harness, before
+adversarial review. Four places where this document described the *draft* rather than the
+*artifact*; all four were found by checking, not by re-reading:
+
+| Finding | Change |
+| --- | --- |
+| §2.2 listed the row type as a five-field `NamedTuple`; the shipped `DutyClause` has **six** — `detail` was added so each clause speaks in its own words | §2.2 corrected, with the reason `detail` is a field rather than a constant |
+| §2.4 showed a hand-drawn panel mock with a **shared closing remedy line**; the renderer prints each row's own remedy and has no shared line | replaced with **verbatim output** (ANSI-stripped). A mock in a design-of-record is a claim no test reads |
+| §4 carried revision 1's numbering (P1–P13, including a P12 that was never shipped), and §3.3's "the correct guard is … P8 below" pointed at a *gate* pin | §4 restated as the thirteen shipped checks (U/P/G); §3.3's cross-reference corrected |
+| **Two guards were labelled "passes pre-fix", and measurement says they do not.** Both assert the new panel's presence, so a pre-fix revert reds them for a reason that is not the property they guard | labels corrected to say how each guard *is* verified, and **§4.4 records the matrix** — the pre-fix revert plus two injected defects |
+
+The fourth is the one worth keeping: a guard's printed label is not its condition, and the label is
+what a later reader quotes as fact. The verification moved from *"revert the tree and see green"*,
+which only an absence-shaped guard can pass, to **inject the defect the guard claims to catch** —
+which is the only test that distinguishes a guard that works from a guard that is merely green.
+
+**Revision 3** — the post-implementation pass. Every number in this document was re-derived from the
+running system rather than carried, and the re-derivation found that most of revision 2's *claims*
+were the same defect as the code it audits: **a description narrower than the thing described,
+failing in the clean direction.** Twelve corrections:
+
+| Finding | Change |
+| --- | --- |
+| §2.1 attributed the `procedure_integrity` tooltip to the `.adverse` block; the literal lives on the archive-list row's ⚠ badge, and `sections.js`'s two consumers interpolate `_integrity.reason` with **no** tooltip — so the consumption is **three surfaces in two files**, and the run-time literal is in a file none of the predicate's own callers appear in | §2.1 corrected, and it is the reason a consumer census over `grep -rn "procedure_integrity" plugins/ tests/` would have missed it |
+| §2.2 documented a **key count** as the shipped predicate ("**the** checks … partially"), and reasoned about a corridor the key count actually has | §2.2 shows the shipped **union** (`present == 0 or filled == 3` abstains) and the two corridors each single-operand projection drops |
+| §2.2 claimed the only producer of the trio writes all three, so a partial fill was unreachable | **False twice over** — `distill_scan --into` writes the `distill` block, and the seed's own comment says *"OMIT pruned/achieved_\* — the model fills them in Phase 5"*. Retired with the measurement (§2.6) |
+| §2.3 asserted *"Exit 3 must never pre-empt exit 4"* as a bare claim about the code | **Measurably false**: the `procedure_integrity` arm sits five lines above the arc arm, so a record carrying a lazy-skip **and** a 4/6 arc exits 3. Replaced with the scoped rule ("this arm never pre-empts the arc arm") |
+| §2.5's table said "value-contradiction checks" and carried ten rows — **the *disagree* subfamily presented as the whole** | restated as **sixteen rows over 22 sites** in three kinds (11 DISAGREE · 4 MEMBERSHIP · 1 ABSENT/DUP), and the family boundary in both the spec and the predicate's docstring now reads *"did the pass fill what it SEEDED"*, since family 3 is seeded-duty presence, **not presence in general**. **This correction was itself short a row** — see the row below, which is the same finding arriving twice |
+| §2.6's prevalence table was measured on a population that has since moved — and §3.1's **own first re-run was superseded while this revision was being written**: 99 → 100 records, A 20 → 21, B 3 → 4, because a run of **this cycle's own test suite** appended to a scratch directory the census's glob admits. The plan's hand-excluded `deadbeef` row turns out to be **one of six** such directories | re-measured (drafted form **11** fires, **0** with the SJ guard, every key-emptiness form **0**); §3.1 names the scratch class, prints both columns, and keeps the mid-revision drift as the evidence for why a prevalence number is testimony |
+| §4's pre-fix column claimed **all seven U checks fail pre-fix on an `AttributeError`**. Measured: the suite **aborts at `tests/smoke.py:3316` after 692 checks with no totals line** — so neither the U group nor anything after it is evaluated | §4 states the abort and gives the per-group method; §4.4's first row *is* the abort |
+| §4 shipped **thirteen** checks and could not pin the advisory path, the severity wire, or the hole it intentionally leaves open | **eighteen** — the W, H and C groups added, and §4.4's matrix built from **four mutants rebuilt in one batch** on a fingerprint-verified frozen tree, because the W label's inherited count ("flipped A-only from 0 to 3, measured by review") is not evidence |
+| §5 named a **P13** that no cycle defines (the name belongs to v0.4.32/v0.4.30) and a denominator the drift had already moved | R3 points at the two `judged` guards actually shipped; R2's denominator moves with §3.1; the open-items list gains the io-error hole, the warn-only arm's second door, and the negative-tally loose reading |
+| §4.4's "every number was measured in one batch, on one revision" was an **assertion no artifact backed**. The wrapper that implements it needed **three** attempts to be honest — v1 fingerprinted `plugins/*/scripts`+`tests`+`docs`, v2 widened to the whole plugin for `SKILL.md`, and both still missed `CHANGELOG.md`/`README.md`/`AGENTS.md`/`cm`/the manifests/`.github/workflows` at the repo root, every one of which `smoke.py` reads | the fingerprint now covers the whole working tree (**201 files**), both sides of this run read **`34d0a07ce1d2ade7`**, and the batch **refuses to report** if they disagree. Each earlier version would have called a revision stable while a file the harness reads had changed — *a gate is only as wide as its match set* — so the three attempts are recorded rather than the last one alone |
+| **C1 — the new census pin — fails quietly in one direction, like every gate this cycle audits.** Its SHAPE/VALUE split is a regex over the warning *text*, so a far-side clause worded in shape language evades the count | the limit is written into the pin's own comment and §4.4 rather than left to be rediscovered, together with the asymmetry that makes it tolerable (the opposite error is **loud**), and the note that a structural classifier was tried and rejected because `held_n is missing or below emitted holders` sits under an `isinstance(int)` too |
+| **The revised §2.5 count was wrong too.** The correction that replaced *"two"* said **"fifteen"** and omitted `network.fact_holdings` holder resolution — a **MEMBERSHIP** row, again exactly the kind the framing hides. Found only by re-deriving with the **site** as the unit instead of the **warning text**: grouping by reading groups by what rows *look like*, while the body emits by *block* | the table gains a **`Sites` column** (22 total, so the count is auditable rather than asserted) and the 16th row; the docstring's row list is **completed and no longer claims body order** — it never had it, and a false ordering claim sends the next reader hunting a mismatch that is not there. **The census is now executed**: a smoke check AST-parses the function, splits SHAPE from VALUE sites, and reds if the body grows a far-side clause the docstring does not name — verified by injecting both the dropped row and an unlisted clause |
+
+The through-line is the one this cycle exists to fix, one layer up: **a claim narrower than the
+thing it describes fails in the clean direction.** A count that excludes the one row it cannot
+explain reads as a census; a table that lists the *disagree* subfamily under a general heading reads
+as the whole; a guard whose label says "passes pre-fix" reads as verified. None of these is a lie
+anyone told — each is a description that stopped being true and kept being printed, which is exactly
+what a duty rendering as an absent line is.
+
+**Revision 4** — the adversarial pass, run against revision 3's shipped revision before
+`/code-review`. Its findings arrived as claims about this document and were each re-measured before
+being accepted — **six findings, four fixed and two recorded** — and three of the four were defects
+**in C1's own coverage or labels**, which is the third time this cycle's error has recurred in the
+sentence written to prevent it:
+
+| Finding | Change |
+| --- | --- |
+| **C1's label named a surface no test read.** It claimed to red until the docstring *and §2.5's table* agreed, while the check parsed the docstring only | the check now parses §2.5's table out of the spec file; the label is true. Measured by editing one `Sites` value ⇒ **RED**, where before the injection was **unobservable** |
+| **C1 was evaded by delegation.** A far-side clause moved into a helper the body calls was measured **GREEN** — a body walk cannot see a clause that lives somewhere else | the walk follows bare-name calls into this module's own functions; the same injection now ⇒ **RED** |
+| **The docstring's own kind figure was wrong.** It said *"three MEMBERSHIP rows"* where the list holds four — in the very sentence listing what the "value-contradiction" framing had hidden from the last reader | corrected to *"the four MEMBERSHIP rows and the one ABSENT/DUP row"*, and the **11/4/1 split is now pinned**, from **both** surfaces (retag a docstring row ⇒ RED; retag a spec row ⇒ RED). An unpinned split is precisely how *"three"* survived as a wrong number |
+| **The §4.4 fingerprint is testimony, not a derived number** — its match set deliberately includes gitignored maintainer-only artifacts, so no other clone can recompute it | §4.4 states the tier and the trade that produced it: over-covering is what makes the gate safe and what stops the value being re-derivable. Recorded, not narrowed — narrowing to *"what the suite reads"* would restore provenance by re-opening the **silent** direction all three earlier versions failed in |
+| **Folding a far-side case into an EXISTING append evades C1** — reproduced GREEN | named as C1's open limit in the check's own label and comment and in §4, with what closing it would require and why the asymmetry makes the bound tolerable |
+
+**On "reviewed to zero".** Four of the six were fixed; the two that were not are *recorded limits*
+rather than open defects — the fingerprint's provenance tier (a property of the method, not a
+failure of it) and C1's site-granularity hole (bounded, reproduced, and stated at the definition).
+The pass also confirmed, by independent re-derivation, the figures the revision rests on: the
+far-side census's 46 sites splitting 24 SHAPE / 22 VALUE onto 16 rows, with **no orphan row and no
+uncovered site**, and all 24 SHAPE-classified sites genuinely family 1. Its closing verdict on the eight properties it
+was asked to test: **six intact**, one holding only for the two injections claimed for it and no
+more, and one holding only when scoped to the census delta — the branch's runtime changes being the
+cycle's declared feature rather than an unremarked drift. (The pass's findings are reported here
+without their own IDs on purpose: it labelled them `C1…C8`, which collides with this section's
+census pin `C1`, and one label naming two things is how a reader ends up verifying the wrong one.)
+
+**Revision 5** — the adversarial pass over revision 4, run against the shipped revision before
+`/code-review` and asked to attack the *fix*, not the defect it fixes. Two confirmed findings, both
+fixed, and both are the cycle's own subject arriving one layer up: **a thing that reports on itself
+read as a report on something else.**
+
+| Finding | Change |
+| --- | --- |
+| **The panel's subtitle counted CLAUSES and said FIELDS.** `len(gaps)` is fired clauses; clause C is three fields behind one clause — so the audited defect shape rendered **"1 seeded field"** above a row naming three fields, two blank. The panel whose whole job is to describe a gap was describing it with an operand its label did not name | the count is now the **rows drawn** and the wording says *duty* (§2.4). The shipped pin did not catch it and could not: its fixture fires clauses A+B, where clauses **==** fields, so the two operands are indistinguishable there. The trio fixture — the one shipped shape where they disagree — now pins the **relationship** (subtitle count == rows drawn) rather than two literals. Measured with the field-count operand restored: **1983 pass / 1 fail, and the red is that check** — so the operand is covered by exactly one check and was covered by none |
+| **C1's delegation fix was short, and its own coverage claim was narrower than its walk.** "CLOSED" was true of the injection as written and false of the class: `body → _h1 → _h2 → append` was **GREEN** (depth 1 only), and a clause added by `warnings.extend([...])` was **GREEN** (only `.append` matched) | the walk is a **worklist fixpoint** over the call graph; a **whitelist** reports every write to `warnings` it cannot follow, as **C2**'s own count (§2.5, §4). Re-measured on this revision: twelve injections RED, one GREEN (widening, still open and still named) |
+
+**The whitelist's last gap was found by mis-aiming an injection.** A retag intended for a docstring
+*row* hit the docstring's *legend* — the three `· KIND — gloss` lines that define the tokens every
+count in this document is keyed on — and **not one operand moved**. That is the fourth evasion, and
+it is recorded because of how it was found rather than despite it: an instrument's own vocabulary is
+the last place anyone looks for a defect when the numbers agree, which is exactly the reasoning that
+let a wrong count survive three revisions of this document. It is now pinned in order.
+
+**Consolidation, stated as a rule rather than a verdict.** Three of the five evasions closed here
+(delegation at depth 2, re-methoded mutation, renamed parameter) were found by asking *what is this
+walk's match set* rather than *does this injection pass* — the injection was already passing, which
+is why it had been accepted. **A green injection measures the injection, not the instrument.** The
+two remaining open limits are stated at the definition: the SHAPE/VALUE classifier is a regex over
+warning text (§2.5), and widening an existing `.append` moves no count.

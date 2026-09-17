@@ -5,6 +5,118 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.33] — 2026-09-17
+
+**Patch — a pass that left a seeded duty unfilled now fails at the terminal render instead of
+rendering as silence. The persist gate gains a PRESENCE family, and exit 3 gains a second
+meaning.**
+
+The last cycle staged from the 2026-09-14 audit. A real `dream` persisted a cycle record carrying
+**four unmet duties, every one of which drew a blank field**: an empty `session`, an empty
+`rigor.applied`, an `achieved_recall` absent beside a present `achieved_index`, and an
+`entries[].action` of `added` contradicting the row's own reason. Nothing caught them, and the
+auditor's diagnosis is the design: **every cross-block clause in `validate_cycle_record` is of the
+form *"two values that both exist must agree"*** — so an unfilled duty is **vacuously satisfied**,
+undetectable **by construction**. No number of clauses in that shape closes the class. Design and
+evidence: `docs/record-duty-presence.spec.md`.
+
+1. **A new presence predicate, and it is PERSIST-GATE ONLY.** `memory_status.duty_gaps` returns the
+   fired clauses from a module-level table, each carrying its own label, detail, remedy and
+   severity; `render_dashboard --persist` renders them in a new panel and routes the gating ones
+   through exit 3. It is deliberately **not** folded into `procedure_integrity`: that predicate is
+   read **per archived cycle** by `render_html`'s embed, which stamps `_integrity` into the payload
+   the HTML masthead, the assessment row and the adverse block all render — narrowing it in place
+   would have retro-flagged every past record with a blank `session`, forever, under a tooltip
+   naming a different cause. The new gate rides the `judged` boundary instead, so **no archived
+   record and no seed/preview render can trip it**: blast radius is structurally zero.
+
+2. **The era gate is "present and holding nothing", never "absent".** A record that never had the
+   key is a different thing, and abstaining on it is what keeps the clause off the archive. So
+   `{"project": "p"}` is silent while `{"session": ""}` fires, and a wrong-typed **non-empty** value
+   (`session: 123`) abstains — a mistyped scalar is the container gate's territory, and a presence
+   clause that also reported it would double-report another gate's job while claiming to be about
+   presence.
+
+3. **Three clauses shipped; three were dropped on measurement.** The gate is `session`
+   present-and-blank (**warn — reported, never gates**), `rigor.applied` present-and-blank, and a
+   **partially filled** Phase-5 progress trio (`pruned` / `achieved_index` / `achieved_recall` —
+   the audited shape). The trio test reads the **contract**: untouched or wholly filled abstain,
+   everything between fires, and *filled* means each key holding a value. Its first cut tested a
+   key **count**, which a model satisfies by writing three keys and leaving one blank — three keys,
+   two facts, and the clause abstains on exactly the shape it was built for. Dropped: a
+   `lever`↔`candidates_surfaced`
+   biconditional whose converse is false and which is script-vs-script besides; an
+   `entries[].action` vs `audit.memory.created` clause with no sound biconditional
+   (`audit.memory` is a per-store rollup while `entries[].files` spans all three stores); and a
+   `remediation` half-seed clause that measured **0/99** on genuine records in every one of its
+   forms, catches none of the audited defects, and — unlike the three that shipped — has **no
+   producer path at all**. Their first-drafted form fired on **12 records of the legitimate
+   standing-justified seed** (24 of the 35 remediation blocks in the population are that shape).
+   `session` is warn-only because `SKILL.md` forbids *fabricated* session ids while the seed says
+   to fill it "when known": gating it would resolve that conflict in favour of fabrication.
+
+4. **Exit 3 acquires a second meaning, and the duty arm runs AFTER the arc arm — but the
+   procedure-integrity arm before them both still pre-empts.** A record with a duty gap **and** a
+   4/6 arc must exit 4 — putting the duty arm first would exit 3 on it, mask the
+   arc diagnostic entirely, and route the model into a Phase-3 loop whose remedy does not apply to
+   the defect. The rule is scoped to that arm on purpose: "exit 3 must never pre-empt exit 4" is
+   **false** of the code, and measurably so — a lazy-skip beside a 4/6 arc exits 3 today, by design
+   since v0.1.44. The exit-3 cue branches on which check fired, so a duty gap is answered with
+   "fill this field", not "run the verification fan-out". Every enumeration of exit 3 was updated
+   with it — `SKILL.md`'s version blurb, its Phase-5 exit-code key and its procedure-integrity
+   scope note, `harness-map.md`'s record-side-gates list and persist key, `AGENTS.md`'s phase list,
+   and `render_dashboard`'s own exit-code comment. `SKILL.md`'s Phase-5 key also **gains the arm
+   order**, because the key's list is a *set*: the same paragraph claimed "arc+unstamped → 4, then
+   5 on the re-render" since v0.4.1, and the measured order is unstamped → 5 **first** (the status
+   check sits before every record-side gate).
+
+5. **The validator's docstring said "two" value-contradiction checks while more than a dozen had
+   accumulated — and the list under that sentence was itself incomplete.** It now enumerates them,
+   every row re-derived by an AST census of the function rather than by counting prose, and states
+   the family boundary the next reader needs: container-type and value-**wrong** clauses live
+   in `validate_cycle_record`, **presence** clauses live in `duty_gaps`. The clauses missing
+   from the old list were added; the fix was to complete it, not to soften its claim to be the
+   census.
+
+   **So was the corrected count, which is the finding worth keeping.** The census shipped as
+   "fifteen rows" and omitted `network.fact_holdings` holder resolution — a *membership* row, the
+   same kind the loose "value-contradiction" name hides, and the second time in one cycle that a
+   count of this list read as complete while a row sat outside it. Both the docstring and the spec
+   table now carry **sixteen rows over 22 warning sites** with a per-row site count, and the count
+   is no longer a claim in prose at all: a smoke check AST-parses the function, splits its warning
+   sites into shape and value, and reds when the body grows a far-side clause the docstring does
+   not name. It reads **three surfaces of that one census** — the body's 22 value sites, the
+   docstring's 16 rows, and the spec table's 16 rows summing to 22 sites — plus each surface's
+   **11 disagree / 4 membership / 1 absent-dup split**, and follows bare-name calls to a **fixpoint
+   over the call graph**, so a clause delegated to a helper counts at any depth. A second check
+   guards the instrument's *coverage*: it enumerates every way to write the `warnings` binding and
+   reds if any is not the one form the census can follow, because a clause added by
+   `warnings.extend([...])` — or written through a helper that renames its parameter — adds a
+   far-side site with **every count unmoved**. The pair is verified by injecting **thirteen**
+   directions on the shipped revision — **twelve RED**: a dropped docstring row, a docstring row
+   retagged, the docstring's *legend* retagged, a spec table row retagged, a spec `Sites` value
+   edited, a new far-side `append`, delegation at depth 1, delegation at depth 2, `extend`, `+=`,
+   item assignment, and a hand-off to a helper that renames its parameter — and **one GREEN**: a
+   second case folded into an *existing* `append`, which is the pin's one named open limit, stated
+   in the check's own label rather than left to be rediscovered.
+
+**Nineteen** new smoke checks: eight predicate pins (each firing half conjoined with its
+abstention half), four gate pins that fail on pre-fix code (a complete arc with a gap exited 0; so
+did the trio's evasion shape), three labelled **guard** checks for the ordering and gate boundaries,
+a pin on the warn-only path (exit 0 *with* the panel, and a cue that no longer says "persist clean"
+over a printed ⚠), a census pin reconciling the validator's docstring, its body and the spec's table, and one check that pins a
+**named open hole** rather than a correctness property — an unappendable cycle log exits 0 with the
+duty panel already on screen — so that closing the hole forces an update here and in the spec
+instead of letting its shape change silently.
+
+**The guards are verified by INJECTION, not by a pre-fix revert.** Only one of the three passes
+pre-fix (the preview render, whose condition is an absence); the other two assert the new panel's
+presence, so a revert reds them for a reason that is not the property each one guards — the check
+text says so rather than letting a green run imply a RED. Measured on this revision, each injected
+defect reds **exactly** the check(s) that guard it and nothing else: the predicate restored to its
+first-cut key count → the two evasion pins; the duty arm moved before the arc arm → the ordering
+guard; `judged` dropped from the panel block → the two gate guards.
+
 ## [0.4.32] — 2026-09-14
 
 **Patch — the periphery kept its own copies of rules the store already states, so `cm local

@@ -2,8 +2,11 @@
 """dream_procedure.py — the conversation-truth detector (v0.4.19).
 
 The persist gates v0.4.1 shipped are RECORD-side: they read what the record says about itself
-(procedure integrity, dream-arc completeness). The measured 2026-09-06 defect class is the
-conversation side: the record's dream block was filled AT record-fill instead of narrated in the
+(procedure integrity, dream-arc completeness). A THIRD joined them in v0.4.33 — record-duty
+presence, a field the pass seeded and left unfilled (`render_dashboard`'s persist path, spec
+`docs/record-duty-presence.spec.md`) — and it is record-side by this paragraph's own test: it reads
+the record and nothing else. The measured 2026-09-06 defect class is the conversation side: the
+record's dream block was filled AT record-fill instead of narrated in the
 session, and Phase 2's extractor never ran with no skip note — both invisible to any record-side
 gate, because the record is self-reported data.
 

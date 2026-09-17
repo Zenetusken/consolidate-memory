@@ -345,10 +345,59 @@ def _procedure_integrity_section(record: Mapping[str, Any]) -> list:
     col = "red" if severity == "alert" else "yellow"
     out = ["", _rule()]
     out.append("  " + _c("⚠ PROCEDURE INTEGRITY", "bold", col)
-               + _c("   · substantial pass, zero verification recorded", "dim"))
+               + _c("   · substantial-or-heavier pass, zero verification recorded", "dim"))
     out.append(_rule())
     out.append("    " + _ui.wrap(_clean(reason), hang=4))
     out.append("    " + _c("→ run the Phase-3 verification fan-out, then re-render (a clean pass clears this ⚠ + exits 0)", "dim"))
+    return out
+
+
+def _duty_gaps_section(record: Mapping[str, Any]) -> list:
+    """v0.4.33: the record-DUTY panel — the presence gate's user-visible teeth. Empty (no panel)
+    when every duty the pass SEEDED was filled. The CALLER gates this on --persist, exactly like
+    the two panels above it, and here that gate is the WHOLE era test: `duty_gaps` cannot tell a
+    seed from a finished pass (the seed writes session:"" / applied:"" by design) and must not try
+    to — see its docstring. Both panel and exit ride the same `judged` so they cannot disagree
+    about WHICH RECORD is being judged.
+
+    That is a claim about the era gate, NOT a claim that panel and exit can never desync — the
+    first cut of this docstring made the stronger claim, the same one `_arc_gate_section`'s
+    docstring was already corrected for, and it is false for the same reason. TWO arms return
+    after this panel has printed (main prints the dashboard, THEN runs `_persist`):
+      · `no-dir`/`io-error` — an unappendable log exits 0 a few lines below, so a gating duty
+        renders "⚠ RECORD DUTY GAPS" beside a clean exit. Named open in spec §5 with the arc arm's
+        identical hole; closing it changes the exit ladder, so it is carried, not fixed here.
+      · the WARN-ONLY path — clause A alone exits 0 by design (see `_DUTY_CLAUSES`), so the panel
+        is the whole report. That one is intended, and the cue below says so in its own words
+        rather than announcing a clean persist over a printed ⚠.
+
+    Every visible word comes from the fired ROW (`label`, `detail`, `remedy`) — never a shared
+    literal. Each clause has a DIFFERENT remedy (fill a session id / record a tier / complete a
+    trio), and one generic sentence for all three would be the same defect this cycle exists to
+    fix, one layer up: a fixed label standing where derived data belongs.
+
+    **The subtitle counts ROWS, and its wording now says so.** Its first cut read `%d seeded
+    field(s)` over `len(gaps)` — and `len(gaps)` is fired CLAUSES, not fields. For clause C the two
+    differ by construction: the trio is THREE fields, and the clause fires whenever they are not
+    untouched-or-wholly-filled. So the audited defect shape (`{"achieved_index": 100}`) rendered
+    "1 seeded field" directly above a row naming three fields, two of them blank — the count and the
+    row beneath it disagreeing on screen. Both operands were defensible in isolation, which is what
+    makes this worth recording rather than just patching: the defect was never the number, it was a
+    LABEL naming one operand while the code used the other — this cycle's subject arriving in this
+    cycle's own panel. The count is now the number of rows drawn (a reader can check it by counting
+    them), and the FIELD count is left where the fields are actually named, in the rows."""
+    gaps = ms.duty_gaps(record)
+    if not gaps:
+        return []
+    col = "red" if any(g.severity == "alert" for g in gaps) else "yellow"
+    out = ["", _rule()]
+    out.append("  " + _c("⚠ RECORD DUTY GAPS", "bold", col)
+               + _c("   · %d seeded dut%s the pass left unfilled"
+                    % (len(gaps), "y" if len(gaps) == 1 else "ies"), "dim"))
+    out.append(_rule())
+    for g in gaps:
+        out.append("    " + _ui.wrap(f"{g.label} — {g.detail}", hang=4))
+        out.append("      " + _c(_ui.wrap("→ " + g.remedy, hang=8), "dim"))
     return out
 
 
@@ -537,6 +586,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
     if judged:
         out += _procedure_integrity_section(record)
         out += _arc_gate_section(record, enforce_post_arc=True)
+        out += _duty_gaps_section(record)
         out += _narration_section(record, narration, enforce_post_arc=True)
         out += _net_capture_section(record)
 
@@ -1642,7 +1692,8 @@ def main() -> int:
         # Strict order print → persist → exit (v0.1.44; extended v0.4.1): the firing record MUST
         # be logged (it accrues for calibration + the archive), THEN the terminal --persist render
         # exits nonzero on a gate violation — the detector teeth at the one boundary a finishing
-        # dream always hits. Exit codes: 0 clean · 3 procedure-integrity (re-verify) · 4 dream-arc
+        # dream always hits. Exit codes: 0 clean · 3 procedure-integrity (re-verify) OR an unfilled
+        # record duty (v0.4.33 — fill the field; the panel and the cue name which) · 4 dream-arc
         # incomplete (backfill beats) · 5 unstamped (re-stamp the marker); 1/2 stay read/arg.
         status = _persist(record, persist_dir)
         if status == "unstamped":
@@ -1714,6 +1765,30 @@ def main() -> int:
             _ui.dream_cue("NOT over — arc incomplete: backfill the missing beats "
                           "(SLEEP · 5 phase beats + surfacing · WAKE) and re-render")
             return 4
+        # v0.4.33 (OPEN 4b): the RECORD-DUTY arm — a field the pass seeded and left unfilled. It
+        # runs AFTER the arc arm, and that order is a design decision, not layout: a record with
+        # `session: ""` AND a 4/6 arc must exit 4 (the arc diagnostic) — putting the duty arm
+        # first would exit 3 on it, mask the arc entirely, and route the model into a Phase-3
+        # loop whose remedy does not apply to the defect.
+        # Scope that rule to THIS ARM: "exit 3 must never pre-empt exit 4" is FALSE as a bare
+        # claim about the code, and measurably so — a procedure violation beside a 4/6 arc exits
+        # 3, five lines above. The procedure arm is first by design and predates this one (the
+        # v0.1.44 lazy-skip outranks the arc cue; reordering it would break the shipped exit-3
+        # key). Below, the EXT arm likewise outranks NAR's 4, by the same record-side-first rule.
+        # The duty arm's own placement is the only load-bearing order here.
+        # Ordering is by check SPECIFICITY: a record-side structural failure outranks a record-side
+        # field gap, and both outrank the conversation-side arms below.
+        _gaps = ms.duty_gaps(record)
+        if any(g.severity == "alert" for g in _gaps):
+            # The remedy normally lives in the PANEL's per-row remedy line (each clause's remedy
+            # differs); this cue names the field and the exit, not a remedy of its own — the first
+            # cut appended "(or record it as honestly unknown)", which is TRUE for clause A and
+            # FALSE for C (the trio's sanctioned abstention is to write NONE of the three, not to
+            # record one as unknown).
+            _ui.dream_cue("NOT over — the record carries an unmet duty: %s; the panel above gives "
+                          "each field's remedy — apply it and re-render; WAKE only on the clean re-run"
+                          % ", ".join(g.label for g in _gaps))
+            return 3
         # v0.4.19: the conversation-truth arms judge LAST — record-side verdicts own their
         # renders (a 4/6 record exits 4 with the record-side panel + cue; NAR never
         # double-reports). EXT unaccounted → exit 3 (the Phase-2 lazy-skip's silent cousin);
@@ -1730,8 +1805,20 @@ def main() -> int:
                           "WAKE only on the clean re-run")
             return 4
         if status == "ok":
-            _ui.dream_cue("persist clean — Phase 5 continues (--diffs, then render_html opens the "
-                          "archive); WAKE comes after that, not now")
+            if _gaps:
+                # WARN-ONLY gaps (clause A alone — every `alert` returned 3 above). Exit 0 here is
+                # by design, but the word "clean" beside a PRINTED ⚠ RECORD DUTY GAPS panel is this
+                # cycle's own thesis re-entering through the cue: a duty rendering as silence, one
+                # layer out. (SKILL defines the WAKE as rendering "only through a clean exit 0", so
+                # `clean` is a term of art here, not a synonym for exit 0.) Same Phase-5
+                # instruction, true words.
+                _ui.dream_cue("persisted — Phase 5 continues (--diffs, then render_html opens the "
+                              "archive), but the record carries an ADVISORY duty gap the panel "
+                              "names; fill it on a later pass if it can be known; WAKE comes after "
+                              "Phase 5, not now")
+            else:
+                _ui.dream_cue("persist clean — Phase 5 continues (--diffs, then render_html opens the "
+                              "archive); WAKE comes after that, not now")
         # duplicate of a clean record: silent — the idempotent re-render must never fake a
         # "persist clean" for an append that did not happen.
     return 0
