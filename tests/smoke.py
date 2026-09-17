@@ -18478,9 +18478,14 @@ _e_c0, _e_c5 = (rd.render(_e34_rec(lever="prune", candidates_surfaced=_n, pruned
                 for _n in (0, 5))
 check("v0.4.34 E1-c (PIN): the verdict line is keyed on `candidates_surfaced`, not on `lever` — "
       "0 candidates renders '0 candidates surfaced — record the justification, or re-triage' and "
-      "5 renders the ⚠ 'gate fired but not acted on'. Pre-fix the 0 case rendered the "
-      "unfalsifiable 'justified — nothing safely prunable (see entries[])' and the 5 case rendered "
-      "the SAME ⚠ only because `lever` happened to be `prune`",
+      "5 renders the ⚠ 'gate fired but not acted on'. Pre-fix BOTH cases rendered that SAME ⚠, "
+      "because the note was a `.get(lever, \"\")` lookup and this fixture's `lever` is `prune` — "
+      "`candidates_surfaced` was read by no note at all, so a record that had surfaced nothing was "
+      "scolded in exactly the words used for one that had surfaced five. The 'justified — nothing "
+      "safely prunable (see entries[])' string WAS reachable pre-fix, but only through "
+      "`lever=\"justify\"`, which is not this fixture — so it is not the counterfactual this "
+      "fixture's own history should name. (Measured on `1d97f54`'s renderer; fourth-pass review, "
+      "finding 7.)",
       "0 candidates surfaced — record the justification, or re-triage" in _e_c0
       and "not acted on" not in _e_c0
       and "⚠ gate fired but not acted on — surface candidates + prune-or-justify" in _e_c5)
@@ -18576,8 +18581,15 @@ check("v0.4.34 E1-e (CENSUS PIN): the remediation panel asserts a measurement ON
       "`''` all render the SAME 'not recorded' panel and never the fabricated `0` (`_num`'s default), "
       "while the operand carried does render its value. The carried spelling is load-bearing, not "
       "decoration: without it a RENAMED operand would satisfy every silent row and the census would "
-      "report health while reading a key that no longer exists. Pre-fix (and on the first cut of E1) "
-      "seven of the eight cells rendered a number the record never carried. The census also carries "
+      "report health while reading a key that no longer exists. The census is TWELVE cells — four "
+      "operands × three not-carried forms — and the eight-cell form in §2.1 and §3.6 predates the "
+      "third pass, which added the `omitted` arm without moving the digit there. The two revisions "
+      "it separates measure differently against the shipped twelve: on `1d97f54` NOT ONE cell is "
+      "green, all twelve rendering a number the record never carried; on `6368288`, the first cut "
+      "of E1, exactly ONE is (`candidates_surfaced` omitted) and eleven are not. A label here "
+      "previously read 'Pre-fix (and on the first cut of E1) seven of the eight cells' — the "
+      "seven-of-eight is the first cut's result on the eight-cell table, and 'Pre-fix' never "
+      "produced it. The census also carries "
       "its LIMIT CASE — a record holding neither `pruned` nor `achieved_index`, which every row above "
       "routes around by construction: it must render the `pending Phase 5` verdict and no coerced `0`, "
       "and carrying `pruned` must retire that verdict. That arm is the ONLY thing sampling the branch, "
@@ -18866,7 +18878,9 @@ _e_3c = rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope":
 check("v0.4.34 E3-c (PIN): a marker whose `commit`/`timestamp` are present and EMPTY renders "
       "→ ? @ ?' — the site already guarded `None` (absent) and so was invisible to both the "
       "old `dict.get` reading and the E3-b census, which needs a 2-arg `.get` call to see a site "
-      "at all. Pre-fix it rendered '→  @ '",
+      "at all. Pre-fix it rendered '→ @' — the SAME spacing as the fixed render, because `_ui.wrap` "
+      "collapses a run of whitespace, so the `?` is the only mark the defect leaves (measured on "
+      "`1d97f54`; the `→  @ ` this label first quoted is what the f-string builds before wrapping)",
       "→ ? @ ?" in _e_3c)
 
 # E3-d — a GUARD, and a regression this cycle's own E3 sweep introduced. The first cut appended
