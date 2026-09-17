@@ -92,13 +92,16 @@ evidence: `docs/record-duty-presence.spec.md`.
    guards the instrument's *coverage*: it enumerates every way to write the `warnings` binding and
    reds if any is not the one form the census can follow, because a clause added by
    `warnings.extend([...])` — or written through a helper that renames its parameter — adds a
-   far-side site with **every count unmoved**. The pair is verified by injecting **thirteen**
-   directions on the shipped revision — **twelve RED**: a dropped docstring row, a docstring row
-   retagged, the docstring's *legend* retagged, a spec table row retagged, a spec `Sites` value
-   edited, a new far-side `append`, delegation at depth 1, delegation at depth 2, `extend`, `+=`,
-   item assignment, and a hand-off to a helper that renames its parameter — and **one GREEN**: a
-   second case folded into an *existing* `append`, which is the pin's one named open limit, stated
-   in the check's own label rather than left to be rediscovered.
+   far-side site with **every count unmoved**. The reconciliation pair is verified by injecting
+   **thirteen** directions on the shipped revision — **twelve RED**: a dropped docstring row, a
+   docstring row retagged, the docstring's *legend* retagged, a spec table row retagged, a spec
+   `Sites` value edited, a new far-side `append`, delegation at depth 1, delegation at depth 2,
+   `extend`, `+=`, item assignment, and a hand-off to a helper that renames its parameter — and
+   **one GREEN**: a second case folded into an *existing* `append`, which is the pin's one named
+   open limit, stated in the check's own label rather than left to be rediscovered. The third
+   census pin covers the direction those thirteen share: a clause worded in *container* language
+   lands among the sites the docstring does not enumerate, so the reconciliation count cannot move
+   while the raw total does.
 
 **Twenty-one** new smoke checks: eight predicate pins (each firing half conjoined with its
 abstention half), five gate pins that fail on pre-fix code (a complete arc with a gap exited 0; so
