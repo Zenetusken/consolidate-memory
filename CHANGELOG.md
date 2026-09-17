@@ -100,11 +100,15 @@ evidence: `docs/record-duty-presence.spec.md`.
    second case folded into an *existing* `append`, which is the pin's one named open limit, stated
    in the check's own label rather than left to be rediscovered.
 
-**Nineteen** new smoke checks: eight predicate pins (each firing half conjoined with its
-abstention half), four gate pins that fail on pre-fix code (a complete arc with a gap exited 0; so
-did the trio's evasion shape), three labelled **guard** checks for the ordering and gate boundaries,
-a pin on the warn-only path (exit 0 *with* the panel, and a cue that no longer says "persist clean"
-over a printed ⚠), a census pin reconciling the validator's docstring, its body and the spec's table, and one check that pins a
+**Twenty-one** new smoke checks: eight predicate pins (each firing half conjoined with its
+abstention half), five gate pins that fail on pre-fix code (a complete arc with a gap exited 0; so
+did the trio's evasion shape; and the three-clause fixture is the only clause count where the
+panel's subtitle and its row loop can disagree, which is where a subset-drawing defect was
+measured), three labelled **guard** checks for the ordering and gate boundaries, a pin on the
+warn-only path (exit 0 *with* the panel, and a cue that no longer says "persist clean" over a
+printed ⚠), three census pins reconciling the validator's docstring, its body and the spec's table
+— including one on the body's raw write surface, so a clause worded in container language cannot
+land outside every assertion — and one check that pins a
 **named open hole** rather than a correctness property — an unappendable cycle log exits 0 with the
 duty panel already on screen — so that closing the hole forces an update here and in the spec
 instead of letting its shape change silently.
@@ -115,7 +119,8 @@ presence, so a revert reds them for a reason that is not the property each one g
 text says so rather than letting a green run imply a RED. Measured on this revision, each injected
 defect reds **exactly** the check(s) that guard it and nothing else: the predicate restored to its
 first-cut key count → the two evasion pins; the duty arm moved before the arc arm → the ordering
-guard; `judged` dropped from the panel block → the two gate guards.
+guard; `judged` dropped from the panel block → the two gate guards; the severity wire dropped →
+the warn-only pin; and the row loop truncated to `gaps[:2]` → the three-clause pin.
 
 ## [0.4.32] — 2026-09-14
 

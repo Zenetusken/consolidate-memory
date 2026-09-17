@@ -18183,13 +18183,14 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
       "ADD checks, and it must equal the reported count)",
       passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 21)  # +9: v0.4.31 store-classifier parity C1..C7
                                                         # +14: v0.4.32 periphery parity P1..P12, P13/P13b
-                                                        # +19: v0.4.33 record-duty presence — 8 predicate, 4 gate
+                                                        # +21: v0.4.33 record-duty presence — 8 predicate, 5 gate
                                                         #      PIN, 3 GUARD, 1 warn-only PIN, 1 HOLE (a named open
-                                                        #      defect), 1 CENSUS PIN (§2.5 — it reads the far side
-                                                        #      of validate_cycle_record's body and reds if a clause
-                                                        #      is added without the docstring), 1 CENSUS WHITELIST
-                                                        #      (no write to `warnings` escapes the census's one
-                                                        #      recognised form). Verification: every
+                                                        #      defect), and 3 CENSUS (a PIN on
+                                                        #      validate_cycle_record's far side — 22 value sites, red
+                                                        #      if a clause is added without the docstring — a SURFACE
+                                                        #      PIN on its 46 `warnings` writes, and a WHITELIST
+                                                        #      pinning that no write escapes the one form the census
+                                                        #      counts). Verification: every
                                                         #      GUARD is verified by INJECTING its defect; one of them
                                                         #      (the preview guard) ALSO passes the pre-fix revert.
                                                         #      The rest assert the new panel or exit, so pre-fix they

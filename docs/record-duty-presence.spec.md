@@ -707,11 +707,13 @@ absent-vs-empty era gate exercised end-to-end through the very arm this cycle ad
 ## 4. Pins
 
 Per the repo rule, a "stays silent" assertion is **conjoined with a firing assertion inside the same
-`check(...)`** — alone it passes pre-fix and is not a pin. **Nineteen** checks ship, in six
-labelled groups, each check's own label naming its group; the census constant in `tests/smoke.py`
-carries the same breakdown and is asserted against the reported total, so a check that vanishes reds
-the suite. (The nineteenth is **C2**, added by revision 5 — see the amend ledger; the C group's
-first check was C1.)
+`check(...)`** — alone it passes pre-fix and is not a pin. **Twenty-one** checks ship, in six
+labelled groups — **U 8, P 5, G 3, W 1, H 1, C 3** — each check's own label naming its group; the
+census constant in `tests/smoke.py` carries the same breakdown and is asserted against the reported
+total, so a check that vanishes reds the suite. Revision 5 shipped nineteen of them; **P5** and
+**C3** are revision 6's, and the amend ledger records what forced each — P5 by the **D1** mutation,
+which showed the panel drawing a subset of the rows its own subtitle counts, and C3 by the
+measurement that C1's taxonomy is blind to a clause worded in *shape* language.
 
 **How the pre-fix column was obtained — measured first, and it is not what revision 2 said.** The
 new harness run against the pre-fix scripts **does not report a set of red U checks; it aborts**.
@@ -760,6 +762,7 @@ one shared persist dir and the existing record-writing helper.
 | P2 | the same with `rigor.applied: ""` alone exits **3** | exit **0**, no panel → PIN |
 | P3 | the same with a partially filled trio alone exits **3**, naming `remediation progress` | exit **0**, no panel → PIN |
 | P4 | **the F1 evasion at the terminal**: three keys with `achieved_recall: ""` exits **3** with the panel and the duty cue | exit **0**, no panel → PIN (and RED under mutant C) |
+| P5 | **all three clauses at once** — the only clause count where the subtitle's number and the row loop *can* differ: exits **3**, the subtitle reads `3 seeded duties the pass left unfilled`, and that number equals the rows actually drawn | exit **0**, no panel → PIN (and RED under **mutant E**, which draws `gaps[:2]`) |
 
 **G — the boundaries.** These guard defects **this design introduces**, so no pre-fix pin can exist
 for them. But "guard" does not mean "passes pre-fix", and the difference was measured rather than
@@ -803,19 +806,23 @@ to update both this spec's §5 list and the check. Its setup is root-proof — a
 the log file must go, so the append raises `IsADirectoryError` with no `chmod` for a root runner to
 defeat.
 
-**C — the §2.5 census, pinned on the body rather than on its own prose.** The two checks in this
+**C — the §2.5 census, pinned on the body rather than on its own prose.** The three checks in this
 cycle that guard a *document* rather than shipped behaviour, and they exist because §2.5's subject
 is a count that was wrong three times running. C1 reconciles the surfaces; C2 states the
 instrument's **coverage**, because a census that reconciles perfectly while a clause sits outside
 its match set reconciles within a set it never questioned — the failure mode of every version of
-this count to date. Two checks rather than one because their reds are different findings with
-different repairs: a count that will not reconcile is a missing row, a whitelist red is a walk
-whose match set is too narrow.
+this count to date; C3 watches the raw **surface**, because C1's taxonomy is blind in exactly one
+direction (a clause worded in *shape* language lands among the sites the docstring does not
+enumerate, where no assertion reads it — measured **green**). Three checks rather than one because
+their reds are different findings with different repairs: a count that will not reconcile is a
+missing row, a whitelist red is a walk whose match set is too narrow, and a surface red is a clause
+that arrived or left and needs classifying.
 
 | # | check | pins |
 | --- | --- | --- |
 | C1 | **three surfaces of one census agree**: the body's **22** VALUE sites, the docstring's **16** `· KIND` rows, and §2.5's table — **16** rows summing to **22** `Sites` — each surface splitting **11 disagree / 4 membership / 1 absent-dup** | that all four numbers move together. It AST-parses `validate_cycle_record`, splits the `warnings.append` sites into SHAPE (*"is not a &lt;type&gt;"*, *"contains a non-dict item"* — family 1's descent rule) and VALUE, **follows bare-name calls to a fixpoint over the call graph** so a clause delegated to a helper counts at any depth, then parses §2.5's table out of the spec file. It **cannot name which row is missing** — a count never can, and the docstring says so — only that a far-side clause arrived without the list |
 | C2 | **no write to `warnings` escapes the census**: over the same closure, every mutation is the one recognised form (`warnings.append(…)`) or a hand-off whose callee names that parameter `warnings` at the matching position | that the census's coverage is *stated*, not assumed. `_mutations` enumerates every way to write the binding — method call, `+=`, item assignment, hand-off — and the count of unrecognised ones must be **0**. A re-methoded or renamed-parameter site reds **here** instead of leaving the count pin green over a clause it never saw (§2.5). It reports no location, only the count; and a widened existing `.append` is invisible to it, which is stated at the definition |
+| C3 | **the far side's raw surface is 46** `warnings` writes in total — the **22** the docstring enumerates (C1's operand) and the **24** it does not | the twin of C1's blind direction, and it over-covers **on purpose**. C1 counts the enumerated 22, so *retagging* a value site into shape wording reds C1 (22 → 21) while *adding* a shape-worded clause is invisible to every other assertion. A pin that catches one direction and misses its twin is the shape this cycle exists for, so this watches the **surface**, not the taxonomy. It cannot see a count-preserving edit — a new case folded into an existing `append`, a widened guard, a conditionalised append — and that limit is stated at the definition rather than hidden |
 
 **The label was wrong before the check was.** Revision 3's C1 said it reds *"until the docstring and
 spec §2.5's table agree"* while **nothing read the spec at all** — a claim wider than its check, in
@@ -1093,7 +1100,7 @@ failing in the clean direction.** Twelve corrections:
 | §2.5's table said "value-contradiction checks" and carried ten rows — **the *disagree* subfamily presented as the whole** | restated as **sixteen rows over 22 sites** in three kinds (11 DISAGREE · 4 MEMBERSHIP · 1 ABSENT/DUP), and the family boundary in both the spec and the predicate's docstring now reads *"did the pass fill what it SEEDED"*, since family 3 is seeded-duty presence, **not presence in general**. **This correction was itself short a row** — see the row below, which is the same finding arriving twice |
 | §2.6's prevalence table was measured on a population that has since moved — and §3.1's **own first re-run was superseded while this revision was being written**: 99 → 100 records, A 20 → 21, B 3 → 4, because a run of **this cycle's own test suite** appended to a scratch directory the census's glob admits. The plan's hand-excluded `deadbeef` row turns out to be **one of six** such directories | re-measured (drafted form **11** fires, **0** with the SJ guard, every key-emptiness form **0**); §3.1 names the scratch class, prints both columns, and keeps the mid-revision drift as the evidence for why a prevalence number is testimony |
 | §4's pre-fix column claimed **all seven U checks fail pre-fix on an `AttributeError`**. Measured: the suite **aborts at `tests/smoke.py:3316` after 692 checks with no totals line** — so neither the U group nor anything after it is evaluated | §4 states the abort and gives the per-group method; §4.4's first row *is* the abort |
-| §4 shipped **thirteen** checks and could not pin the advisory path, the severity wire, or the hole it intentionally leaves open | **eighteen** — the W, H and C groups added, and §4.4's matrix built from **four mutants rebuilt in one batch** on a fingerprint-verified frozen tree, because the W label's inherited count ("flipped A-only from 0 to 3, measured by review") is not evidence |
+| §4 shipped **thirteen** checks and could not pin the advisory path, the severity wire, or the hole it intentionally leaves open | **twenty-one** — the W, H and C groups added, and then **P5** and **C3** forced by this revision's own two findings (the D1 mutation, and C1's one-directional blindness), and §4.4's matrix built from **five mutants rebuilt in one batch** on a fingerprint-verified frozen tree, because the W label's inherited count ("flipped A-only from 0 to 3, measured by review") is not evidence |
 | §5 named a **P13** that no cycle defines (the name belongs to v0.4.32/v0.4.30) and a denominator the drift had already moved | R3 points at the two `judged` guards actually shipped; R2's denominator moves with §3.1; the open-items list gains the io-error hole, the warn-only arm's second door, and the negative-tally loose reading |
 | §4.4's "every number was measured in one batch, on one revision" was an **assertion no artifact backed**. The wrapper that implements it needed **three** attempts to be honest — v1 fingerprinted `plugins/*/scripts`+`tests`+`docs`, v2 widened to the whole plugin for `SKILL.md`, and both still missed `CHANGELOG.md`/`README.md`/`AGENTS.md`/`cm`/the manifests/`.github/workflows` at the repo root, every one of which `smoke.py` reads | the fingerprint now covers the whole working tree (**201 files**), both sides of this run read **`34d0a07ce1d2ade7`**, and the batch **refuses to report** if they disagree. Each earlier version would have called a revision stable while a file the harness reads had changed — *a gate is only as wide as its match set* — so the three attempts are recorded rather than the last one alone |
 | **C1 — the new census pin — fails quietly in one direction, like every gate this cycle audits.** Its SHAPE/VALUE split is a regex over the warning *text*, so a far-side clause worded in shape language evades the count | the limit is written into the pin's own comment and §4.4 rather than left to be rediscovered, together with the asymmetry that makes it tolerable (the opposite error is **loud**), and the note that a structural classifier was tried and rejected because `held_n is missing or below emitted holders` sits under an `isinstance(int)` too |
