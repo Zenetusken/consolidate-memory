@@ -410,6 +410,13 @@ class Remediation(TypedDict, total=False):
     # v0.4.34 (E1): the mirror OPERAND behind `lever`'s routing label — mirror_index_tokens / index_tokens,
     # the quantity `_MIRROR_DOMINATED` is calibrated against (STORE-local; `network.totals` is a FLEET sum
     # and is the wrong operand). Absent on a record written before v0.4.34 or by a path that never triaged.
+    #
+    # UNROUNDED, deliberately, and that is a repair rather than a detail (third pass). The producer routes
+    # with `share > _MIRROR_DOMINATED`; the renderer re-tests that comparison to decide the mirror claim.
+    # Persisting `round(share, 2)` gave the renderer a LOSSY copy, so the two predicates came apart on a
+    # band the producer can build: raw share in (0.5000, 0.50499) routes `gc` and rounds to exactly 0.5,
+    # which fails the renderer's strict `>`, so the panel denied the routing the record's own label states.
+    # A re-tested operand must be the operand that was tested, or a copy that loses nothing.
     mirror_share: float
 
 
@@ -1639,7 +1646,9 @@ def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
     lever = "gc" if share > _MIRROR_DOMINATED else ("prune" if cands else "justify")
     return {
         "required": True, "lever": lever,
-        "index_tokens": index_tokens, "budget": budget, "mirror_share": round(share, 2),
+        # `mirror_share` is the OPERAND, not a display value — unrounded, so a consumer re-testing
+        # `share > _MIRROR_DOMINATED` gets the same answer the `lever` line above was routed with.
+        "index_tokens": index_tokens, "budget": budget, "mirror_share": share,
         "candidates": len(cands), "keep_core": keep, "referenced": len(R),
         "stages": {"A_orphans": A, "B_trackers": B, "C_dated_oversized": C, "R_referenced": R},
         "projected_recall": sum(c["body_tokens"] for c in cands),
@@ -3514,8 +3523,13 @@ def seed_record(ctx: dict) -> CycleRecord:
         # overflow (local prune), so its gc-vs-prune claim was a lookup on a rewritable string. Written only
         # when the triage actually measured it — a legacy/scratch `rem` leaves the key ABSENT rather than
         # asserting a share it never computed (the renderer makes no mirror claim on an absent operand).
-        if isinstance(rem.get("mirror_share"), (int, float)):
-            record["remediation"]["mirror_share"] = round(float(rem["mirror_share"]), 2)
+        # Carried at full precision — see the declaration. Rounding here would undo the triage's own
+        # unrounded operand at the last step before the record, which is where it did it before.
+        # `isinstance(..., (int, float))` admits `bool` (`True` is an `int`), so a hand-set `true` would
+        # persist as 1.0 and read as mirror-dominated; the producer never writes one, and a rejected
+        # non-numeric leaves the key absent, which is the state the renderer makes no claim in.
+        if isinstance(rem.get("mirror_share"), (int, float)) and not isinstance(rem["mirror_share"], bool):
+            record["remediation"]["mirror_share"] = float(rem["mirror_share"])
     # v0.1.67 (Phase C): seed the demotion-triage block whenever the store exists — a DORMANT pass
     # records windows_observed / eligible: 0 HONESTLY ("ran and proposed nothing" ≠ "never ran", the
     # distill precedent). `struck` is written later by extract_signals.inject_usage; `verdict` is the

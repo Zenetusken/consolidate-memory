@@ -52,6 +52,16 @@ The second of two cycles staged from the 2026-09-14 audit. Design and evidence:
    `{n_blocked: 10, n_generic: 30}` prints no `single-node` term rather than a negative one. The
    cold-state line is suppressed whenever the record counts blocked rows.
 
+   **The port deliberately does not carry the JS's *guard*, only its output.** The HTML branches on
+   `!board`, which asks *"was anything at all drawn"* — the right question there, because its
+   counts-only branch **assigns** the board (the guard keeps the breakdown from clobbering the cards)
+   and the blocked count is stated separately in a `reg-counts` header. The ASCII branch **appends**
+   and has no such header, so what it must ask is *"were the count's own rows drawn"*. Carrying
+   `!board` across left the false tail on a shape `sync_global`'s own persist rule builds — one
+   persisted fleet row beside twenty counted `generic-cli` rows records `n_blocked: 20` and persists
+   no blocked row, so a card *is* drawn and the guard goes quiet. **A guard's condition has to name
+   the claim it guards, not the shape of the port it came from.**
+
 4. **A default that fires only on ABSENT cannot see an empty string.** `_clean(x.get(k, "?"))` leaves
    `""` rendering as a hole — the same defect as a missing key, invisible to every reader. Eleven
    sites in the renderer took the repair (the `or` idiom the file already uses for
@@ -86,13 +96,71 @@ The second of two cycles staged from the 2026-09-14 audit. Design and evidence:
    and the claim is now bounded by its two real structural limits (depth ≤ 2, and the
    SKILL↔TypedDict direction) rather than asserted.
 
-**Verification.** Nineteen new checks — **eleven pins**, **seven guards**, and **one regression
-guard** — taking the suite to **2008 checks**. Every pin was mutation-verified against pre-fix trees
+**Verification.** Twenty-seven new checks — **seventeen pins**, **nine guards**, and **one regression
+guard** — taking the suite to **2016 checks**. Every pin was mutation-verified against pre-fix trees
 built with `git archive` (never `git worktree add`, one process per tree): reverting the renderer
-alone reds **exactly** the nine render pins plus the rewritten v0.1.35 arm; re-injecting the two
-producer keys alone reds **exactly** E4-a and E4-b. The one existing check this cycle deliberately
-turns from green to red is v0.1.35's "still over budget" arm, which asserted the ⚠ for the state the
-skill sanctions — that assertion *was* the defect, so the check is rewritten rather than deleted.
+alone reds **exactly** the fifteen render pins plus the rewritten v0.1.35 arm; re-injecting the
+producer drift reds **exactly** E4-a, E4-b, and the `SKILL↔TypedDict` `Identity` arm — **three**, not
+the two an earlier draft of this entry recorded, because the declaration and its schema block are two
+surfaces that necessarily move together and only one of them was counted. The one existing check this
+cycle deliberately turns from green to red is v0.1.35's "still over budget" arm, which asserted the ⚠
+for the state the skill sanctions — that assertion *was* the defect, so the check is rewritten rather
+than deleted.
+
+**Two of the seventeen pins came from a second review pass over this cycle's *own* repairs, and both
+findings were the cycle's subject arriving inside a fix.** The first cut of the E1 repair closed **one
+of eight** cells: the panel's summary line composes four numeric operands and `_num` renders **absent**
+and **blank** alike as `0`, so each operand has two not-carried forms — and the cut guarded one
+operand, in one form, at one site. The first cut of the E2 repair carried the JS guard across, as
+above. **Neither was visible to the suite: it read 2008 passed / 0 failed on the revision carrying
+both.** That is the finding, not an aside — the pins sampled the values the fixes moved *to* and never
+the values they moved *away from*. So both were repaired in **code** (a `_recorded` helper applied per
+operand; a guard condition that names its claim), and **E1-e** and **E2-c** were added to sample the
+sets that were missed. Because the harness moved, all six mutation trees were rebuilt and re-measured;
+that re-run also caught a **build** error rather than a count — one tree had been assembled from a
+sibling's edited file, so it was the union by construction and its recorded number belonged to a
+different tree. The spec now defines every tree by its **edit set**, since `diff -rq` reports which
+*files* differ and never which *edits*.
+
+**Three of the seventeen pins came from a third review pass, and the pass's most useful result was
+that two of its own new checks were mislabelled.** The three are **E1-f** (the remedy and the `✓` are
+one decision), **E1-i** (the no-`budget` fallback read a literal `1200` no producer writes, so a
+record comfortably under the real budget was told the gate had gone unmet) and **E2-f** (the port
+carried the HTML's `− n_day_spread` term across after dropping the guard that made it a no-op, so a
+30-row count rendered a 20-row line). Each is bound by a mutant that restores exactly the one edit it
+guards and reds **exactly** that check and nothing else — a one-to-one map, which is the strongest
+form the repo's pin rule takes.
+
+The two mislabelled checks are the finding worth keeping. **E1-g** shipped as `(GUARD)`, "pre-fix code
+passes it too"; measured on the true pre-fix pair it is **red**, and red on a *different conjunct* than
+the `0 <` bound its name carries — that conjunct belongs to E1-e's repair. **E1-h** shipped as `(PIN)`;
+measured it is **green** on pre-fix code and red in exactly one of the four (renderer, producer) cells,
+the one where a fixed renderer meets a rounded producer — because the pre-fix renderer read the `lever`
+the routing had just written and so could not see the operand at all. The defect it pins was *masked by
+exactly the confusion the cycle removes*, which is why it cannot be a pin on pre-fix code and must not
+be labelled one. Both labels now state the measurement. A tier token in a check name is a claim, and
+this cycle's whole subject is claims nobody re-checks.
+
+**That class turned up a third time, on seven rows that were not new.** The E5 seven were moved into a
+loop of their own because the loop they were added to stamps **every** label it prints
+`(v0.1.12 full nested pin)` — so seven checks introduced in **v0.4.34**, and deliberately built as
+**guards**, were printed as v0.1.12 **pins**. The file already contradicted itself twice: the comment
+above those rows calls them GUARDs, and so does the suite's own D6 accounting. Only the printed line
+was wrong, which is exactly the surface a reader counts. They now carry `(GUARD)` and the revision
+that added them. The check **count** is unchanged — this was a label repair, not a check change, and
+saying so is the point: the suite still reports 2016.
+
+It was found by a census whose **own regex was narrower than its claim** — the third instrument of
+that shape in this pass, after E1-b's normalizer and the red-set extractor that keyed on a summary
+field that does not exist. The census looked for a tier token *first* in the parenthetical, so it read
+E1-e and E3-b's `(CENSUS PIN)` as "no tier" and reported fifteen pins where this entry claims
+seventeen. The claim was right and the census was wrong — the same shape as the seven rows it was
+built to check.
+
+The same pass measured the sweep §3.1 had quoted as testimony: the 324-state cross-product is now
+stated with its axes, and the repair's claim is stronger than "the bad states are gone" — on the fixed
+tree **no** state emits two verdict lines, where pre-fix 18 emitted a remedy beside a success and 72
+emitted two or more.
 
 The regression guard is this cycle's own debt, called out as such: the first cut of the E3 repair
 moved the node row's `[:18]` slice onto its fallback literal, silently un-truncating the column, and
