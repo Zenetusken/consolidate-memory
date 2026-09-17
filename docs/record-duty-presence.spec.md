@@ -1,8 +1,9 @@
 # Record duty presence — design-of-record
 
-**Status: revision 3 — the post-implementation pass, for adversarial review.** Target release:
-**v0.4.33 (patch)** — an added terminal-gate clause and a new panel; no schema, flag, or
-install-contract change.
+**Status: implemented (revision 9) — shipped as v0.4.33.** Target release: **v0.4.33 (patch)** — an
+added terminal-gate clause and a new panel; no schema, flag, or install-contract change. Revisions
+4–9 were the adversarial passes and the `/code-review` round; the amend ledger at the foot records
+what forced each.
 
 This spec closes the OPEN 4b class: **a cycle record's seeded duties were never checked for being
 filled.** It is the first of two staged cycles. Cycle E carries the renderer/declaration fixes
