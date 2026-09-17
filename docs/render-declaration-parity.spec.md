@@ -4,8 +4,13 @@
 than in this document. Every repaired defect survives and no shipped behaviour changes. The fourth
 pass audited revision 6's prose; this one swept this cycle's *pre-fix narratives* — every label
 claiming what a revision the tree no longer contains did — executing each claim against `1d97f54`'s
-renderer rather than re-reading it. **Eight** labels were in scope; **three** were false and **five**
-held. The three: E1-c's (the fourth pass's finding 7, corrected earlier in the pass), E1-e's "seven of
+renderer rather than re-reading it. **The scope was the defect.** The sweep selected with the
+case-sensitive test `"Pre-fix" in label`, and the file spells the counterfactual both ways: enumerated
+structurally from the diff rather than matched, **eighteen** of this branch's twenty-one added labels
+carry a claim about a non-HEAD revision, and the matcher reached **eight** — all three of the cycle's
+GUARDs among the ten it never looked at. Executing all eighteen against the revision each names,
+**seventeen hold and one is false** (E2-b); of the eight reached, three were false and five held.
+The three: E1-c's (the fourth pass's finding 7, corrected earlier in the pass), E1-e's "seven of
 the eight cells" (a count of a superseded eight-cell census, generalized to `Pre-fix` by a parenthesis
 the pre-fix renderer never earned — measured, `1d97f54` leaves **0 of 12** green), and E3-c's `'→  @ '`
 (`_ui.wrap` collapses the whitespace run, so the render was `'→ @'` and the two revisions differ only
@@ -1238,9 +1243,12 @@ the repair.
 
 **E1-e's census has a fifth arm, and it is the one state the other four route around by
 construction.** Each operand row keeps `pending` False on purpose — its siblings carry one of
-`pruned`/`achieved_index` — so the **pre-pass seed**, the record holding *neither*, was rendered by no
+`pruned`/`achieved_index` — so the **pre-pass seed**, the record holding *neither*, was asserted on by no
 check in this suite: `pending Phase 5` appeared in no other assertion, and §3.1's measurement of row 1
-was the only place it was exercised at all. Measured, not assumed: the arm was added, then verified by
+was the only place it was exercised at all. It is **not** unrendered elsewhere — `_ceilRecB` and the
+`over_ceiling: False` record are both pre-pass records and both render the verdict — but no check READS
+it there, so a refactor dropping the branch would leave the suite green. The gap is the missing
+ASSERTION, not a missing render (§4.2 corrects the arm's own label, which said the stronger thing). Measured, not assumed: the arm was added, then verified by
 **injecting the defect it guards** — `pending = not _recorded(rem, "achieved_index")`, an *over-broad*
 condition that drops the `pruned` operand. That single edit reds **two** checks, and for two different
 reasons that are both correct: E1-e's new arm, because a carried `pruned: 3` then reads as pending and
@@ -1758,8 +1766,10 @@ re-hashing the four members **out of the extracted tree**, returns `dd41ac01a055
 
 **The binding was re-proven after an amendment, and that is not a formality.** The first commit of
 this triple carried a count in its *message* that had never been measured — "eighteen of the twenty
-labels held", where the sweep's own scope was eight labels and twenty of the file's twenty-eight
-`Pre-fix` occurrences belong to earlier cycles and were never read. The number is the cycle's own
+labels held", where the matcher reached **eight of the eighteen** labels carrying such a claim and
+nineteen of the file's twenty-eight capital `Pre-fix` occurrences belong to earlier cycles and were
+never read. That denominator is itself the defect: twenty-eight is 13% of the file's 210
+case-insensitive spellings, and the sweep read exactly the denominator it quotes. The number is the cycle's own
 defect class, in the commit message, which is why it was amended rather than left standing. Amending
 rewrites the commit and therefore its SHA; the **tree** is untouched, so the four hashes above should
 be unaffected — but "should be" is the argument this section refuses, so the recovery proof was
@@ -2081,7 +2091,10 @@ Carried forward from the plan, plus what this measurement pass added. None of it
   inside `if judged:`), and the exit-3 gate (`:1933`). `grep -rn duty_gaps` returns **zero** hits in
   `dashboard.sections.js`, `render_html.py` or `dashboard.template.html`, so a clause there is
   structurally invisible to the archive — the very surface the 5-of-46 was measured on. That is the
-  host error this plan already made once and records above (`procedure_integrity`). It also
+  host error this plan already made once — Cycle D's spec records it in its own host-error row
+  (`docs/record-duty-presence.spec.md:1172`: the host was archive-wide, because `_embed_integrity`
+  calls `procedure_integrity` per archived cycle; the answer was a persist-gate-only `duty_gaps`).
+  It also
   contradicts the family's own predicate: `duty_gaps` is *did the pass fill what it **SEEDED***, and
   `memory_status.py:3539-3541` seeds `windows_observed`/`eligible`/`surfaced` — **not** `verdict`,
   which `SKILL.md:1606` calls "the ONE model sentence". `docs/record-duty-presence.spec.md:452-458`
@@ -2116,7 +2129,11 @@ Carried forward from the plan, plus what this measurement pass added. None of it
   data contradicts), and this one does. The blank-aware form is one expression, and `_recorded`
   (`:193-205`) already answers exactly this case. **Recorded rather than fixed, on the prevalence.**
   Measured over the archive corpus: **39** remediation blocks, **9** of them reaching the `:899` arm,
-  **9 of 9 carrying a present `lever`** — 0 of 9 here, and 0 of the 46 in the wider demotion corpus.
+  **9 of 9 carrying a present `lever`** — 0 of 9 here. There is no second witness to borrow: the
+  archive's 46 `demotion` blocks are a **disjoint population**, and `Demotion` declares no `lever` key
+  at all (`memory_status.py`), so the zero recorded for them elsewhere in this section is the
+  whitespace-verdict predicate's — a different predicate, on a set that *cannot* carry this field. A
+  borrowed denominator is not corroboration.
   Reachable by authorship, never yet authored. *(Third-pass review, finding N1.)*
 - **A third-pass review finding the probe REFUTES, recorded so it is not re-filed.** The report was
   that E1-g's first conjunct (`"index: not recorded" in _e_g_blank`, `smoke.py:18625`) is satisfied by
@@ -2246,8 +2263,9 @@ pinned, then re-measured.
   **blank** not-carried form, and `_num` maps both to `0.0`. The first cut asked
   `"candidates_surfaced" not in rem` — one operand, one form, one site. Fixed by `_recorded`
   (`key in m and not ms._duty_blank(m[key])`, reusing Cycle D's canonical blank predicate rather than
-  re-spelling it), applied per operand in the panel and in the verdict arm. **E1-e** pins all twelve
-  cells at the shipped scope *and* the carried spelling — the latter because without it a **renamed**
+  re-spelling it), applied per operand in the panel and in the verdict arm. **E1-e** pinned all
+  **eight** cells at the census as it then stood — §2.1 grew it to twelve in the third pass, and the
+  label now reads twelve — *and* the carried spelling: the latter because without it a **renamed**
   operand would satisfy every silent row.
 - **E2's fix carried the JS's `!board` guard across, and it guards a different claim.** In the JS the
   branch **assigns** `board` (the guard protects the cards) and the count is stated in a `reg-counts`
@@ -2445,9 +2463,13 @@ revision 6's prose for claims about the *code*; this one asked the narrower and 
 finding 7 implied: **does each label's story about the pre-fix revision name a counterfactual that
 revision can actually produce?** Every answer was obtained by driving `1d97f54`'s renderer — extracted
 with `git archive 1d97f54 plugins/consolidate-memory/scripts | tar -x`, never a linked worktree — with
-the fixture the label itself names. Eight labels were in scope. Five survived. Three did not, and all
-three share one shape: **a number or a string that was true of some other revision, stated as true of
-`Pre-fix`.**
+the fixture the label itself names. **Eight** labels were reached, and on that contracted scope five
+survived and three did not, all three sharing one shape: **a number or a string that was true of some
+other revision, stated as true of `Pre-fix`.** The contraction was itself the defect, found by the
+lead's own fourth lens: the selection was the case-sensitive test `"Pre-fix" in label`, and the file
+spells the counterfactual both ways — so **ten** of the eighteen labels in the class were never
+executed at all, **all three GUARDs among them**. Executing all eighteen against the revision each
+names leaves **seventeen holding and one false** (E2-b, below).
 
 - **E1-e's label carried a count of a census that no longer exists.** "Pre-fix (and on the first cut
   of E1) seven of the eight cells rendered a number the record never carried." The census is **twelve**
@@ -2487,8 +2509,9 @@ sites, exactly three labels differing, everything else byte-identical. Both the 
 reasoning are in §4.3.
 
 **Amending the freeze, and re-proving it.** The commit that first froze this triple carried an
-**unmeasured count in its message** — "eighteen of the twenty" for a sweep of eight labels, the other
-twenty of the file's twenty-eight `Pre-fix` occurrences belonging to earlier cycles and never read.
+**unmeasured count in its message** — "eighteen of the twenty" for a sweep that reached eight of the
+eighteen labels carrying such a claim, the other nineteen of the file's twenty-eight capital `Pre-fix`
+occurrences belonging to earlier cycles and never read.
 That is this cycle's defect class arriving in the one artifact nobody diffs, so the commit was amended.
 The tree is untouched by an amendment and the four hashes therefore *should* be unchanged — which is
 the word this document does not accept — so the recovery proof was **re-run** against the new commit

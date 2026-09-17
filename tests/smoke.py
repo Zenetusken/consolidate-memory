@@ -18592,8 +18592,10 @@ check("v0.4.34 E1-e (CENSUS PIN): the remediation panel asserts a measurement ON
       "produced it. The census also carries "
       "its LIMIT CASE — a record holding neither `pruned` nor `achieved_index`, which every row above "
       "routes around by construction: it must render the `pending Phase 5` verdict and no coerced `0`, "
-      "and carrying `pruned` must retire that verdict. That arm is the ONLY thing sampling the branch, "
-      "measured — no other check in this suite renders it",
+      "and carrying `pruned` must retire that verdict. That arm is the ONLY thing ASSERTING on the "
+      "branch, measured — two other checks RENDER it (`_ceilRecB` and the `over_ceiling: False` "
+      "record above) but neither reads the verdict, so a refactor dropping the branch would leave "
+      "the suite green. The gap is the missing ASSERTION, not a missing render",
       _e_rem_cells_uncovered() == [])
 
 # E1-f — the state §1.1's repair was WRITTEN FOR, and the state that nothing sampled until the third
@@ -18737,8 +18739,8 @@ check("v0.4.34 E2-a (PIN): with blocked rows counted but none DISPLAYABLE, the p
 _e_2c = rd.render(_e_reg(n_blocked=0, candidates=[], decline_anchors=[]))
 check("v0.4.34 E2-b (PIN): '0 fleet-candidates — the honest cold state' is SUPPRESSED when the "
       "record counts blocked rows and still rendered when it counts none — pre-fix the panel "
-      "asserted '30 blocked' and '0 fleet-candidates' two lines apart, which is the contradiction "
-      "the suppression exists to remove",
+      "asserted '… +30 more blocked' and '0 fleet-candidates' one line apart, which is the "
+      "contradiction the suppression exists to remove",
       "0 fleet-candidates" not in _e_2a
       and "0 fleet-candidates — the honest cold state" in _e_2c)
 
@@ -18883,10 +18885,14 @@ check("v0.4.34 E3-c (PIN): a marker whose `commit`/`timestamp` are present and E
       "`1d97f54`; the `→  @ ` this label first quoted is what the f-string builds before wrapping)",
       "→ ? @ ?" in _e_3c)
 
-# E3-d — a GUARD, and a regression this cycle's own E3 sweep introduced. The first cut appended
-# `or "?"` to the WHOLE expression (`_clean(n.get("node", "?")) or "?"[:18]`), which rebinds the
-# slice from the cleaned value to the literal `"?"` — a no-op — so a long node name left the column
-# whole while `namew` stayed clamped to 18. The first draft of this comment said the row's "padding
+# E3-d — a GUARD, and a regression this cycle's own E3 sweep introduced. The first cut spliced
+# `or "?"` in AFTER the subscript — `_clean(n.get("node", "?")) or "?"[:18]` — so `[:18]` bound the
+# literal and not the name: a no-op, leaving a long node name unsliced while `namew` stayed clamped
+# to 18. This comment said "appended `or "?"` to the WHOLE expression" until the fourth pass — that
+# describes the OTHER reconstruction, `_clean(...)[:18] or "?"`, which measures GREEN, so a reader
+# rebuilding from the prose would have concluded the claim was false. The form quoted above is the
+# one that reproduces it, and the measurement below is the discriminator. The first draft of this
+# comment said the row's "padding
 # collapsed to 0"; a probe falsified that and the measurement is more interesting. `pad` is
 # `max(0, namew - disp_w(nm))` and CANNOT go negative, so it is 0 on the FIXED tree too — the clamp
 # is silent at its boundary, so an over-long name gets the same `pad` as one that fits and simply
@@ -18903,12 +18909,12 @@ _e_3d = rd.render(cast(ms.CycleRecord, {
                            "facts": 3, "shared": 1}]}}))
 check("v0.4.34 E3-d (GUARD): a network node name longer than the 18-column field is still "
       "TRUNCATED to 18 — the truncation is part of the value being defaulted, not of the default. "
-      "Red on the intermediate revision only (pre-fix and fixed both correct): the sweep appended "
-      "`or \"?\"` to the whole expression, rebinding `[:18]` from the cleaned value onto the "
-      "literal. A probe corrected this label's account of the mechanism: `pad` is "
+      "Red on the intermediate revision only (pre-fix and fixed both correct): the sweep spliced "
+      "`or \"?\"` in AFTER the subscript, so `[:18]` bound the literal and not the cleaned value. "
+      "A probe corrected this label's account of the mechanism: `pad` is "
       "`max(0, namew - disp_w(nm))` and is 0 on the FIXED tree too, so what the defect moves is the "
       "row's WIDTH (26 columns before `always` truncated, 36 whole — apart by the excess), not its "
-      "pad (the note above carries the withdrawn wording and the measurement)",
+      "pad (the note above carries the reconstruction that reproduces it and the measurement)",
       _e34_long not in _e_3d and _e34_long[:18] in _e_3d)
 
 # E4 — the FIRST forward-direction pins here, and the reader rule they encode: THREE surfaces carry
