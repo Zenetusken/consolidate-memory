@@ -890,10 +890,13 @@ on one.
 
 **"One revision" is checkable, not asserted.** The batch wrapper sha256s the working tree before it
 builds the mutants and after their suites finish, and refuses the result if the two disagree; both
-sides of the last run — taken on the shipping tree, after every prose correction below — read
-**`6af3404a4d890d95`** (**202** files, whole tree) — and a later
-re-fingerprint will differ, because this spec lives inside `docs/` and writing the number down
-changes it: the value identifies the *run*, which is the only thing it was ever for.
+sides of the last run — taken on the **committed** tree at **`7e756a2`**, after every prose
+correction below — read **`30d13e3dff685f0e`** (**202** files, whole tree). The commit is named
+because that is what makes the value *recoverable*: `git show 7e756a2` is the tree that produced it.
+A re-fingerprint of the tip will still differ, because this spec lives inside `docs/` and writing
+the number down changes it — the value identifies the *run*, which is the only thing it was ever
+for. (The previous value, `6af3404a4d890d95`, describes the pre-revision-7 tree and is recorded as
+**superseded, not wrong**.)
 
 **It is testimony, not a derived number, and the fix itself is the reason.** The match set is drawn
 around *everything in the tree*, not around *everything the suite reads*, so it deliberately includes
@@ -902,7 +905,7 @@ tracked — re-derivable by anyone who clones — and **8** are not, all of them
 maintainer-only files that will never be in the repository (`release.sh`, five `security/**` documents
 and workflows, `.claude/settings.local.json`, `PREFLIGHT.md`). **This spec is tracked**; what is true
 of it is that a **clone of `main`** cannot see it yet, because the branch has not merged. So
-`6af3404a4d890d95` is **testimony** where the 194 are not: **what makes it good evidence — that
+`30d13e3dff685f0e` is **testimony** where the 194 are not: **what makes it good evidence — that
 it is bound to this checkout — is exactly what stops anyone else re-deriving it.** Over-covering
 is the safe direction for this gate (a
 match set wider than the harness cannot miss a file, and all three of its earlier versions failed by
