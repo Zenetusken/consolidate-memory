@@ -3560,11 +3560,19 @@ with _tf43.TemporaryDirectory() as _td54:
                           "project": "⚠ RECORD DUTY GAPS · " + "9" * 4301
                                      + " seeded duties the pass left unfilled"})
     _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_huge_p, "--persist", str(_p433), cue=True)
+    # The assertion is the SUBTITLE NUMBER, not the pair — deliberately. `== (3, 3)` also encodes the
+    # row count, which is P5's property, and that coupling was caught by the §4.4 diagonal rather than
+    # by reasoning: with the pair asserted, this check reds under **mutant E** (`gaps[:2]`), an
+    # unrelated mutant, which is the repo's own test for a check measuring something other than what
+    # it claims. The subtitle is the right operand because it is the one this fixture isolates: the
+    # record's run contributes NO match at all (`\d{1,4}` refuses it), so a reading of `3` can only be
+    # the real panel's.
     check("v0.4.33 parse PIN (totality): a record-controlled digit run PAST int()'s 4300-digit limit "
-          "neither aborts the parse nor denies it the real panel — pre-fix this record aborted the "
-          "suite at the parse, after 704 checks, with no totals line, leaving 1284 checks unrun",
+          "neither aborts the parse nor denies it the real panel — the parse still reads the panel's "
+          "own subtitle. Pre-fix this record aborted the suite at the parse, after 704 checks, with "
+          "no totals line, leaving 1284 checks unrun",
           _rc43 == 3 and "9" * 4301 in _so43
-          and _duty_panel43(_so43) == (3, 3))
+          and _duty_panel43(_so43)[0] == 3)
     # THE EVASION AT THE TERMINAL — the same shape as the predicate PIN above, end to end. This is
     # the check whose absence let F1 ship: the predicate was fixed while the GATE had no fixture
     # carrying the shape, so nothing would have reddened if the union form had been reverted to a
