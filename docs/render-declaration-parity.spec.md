@@ -1,11 +1,17 @@
 # Render/declaration parity — design-of-record
 
-**Status: revision 7 — a fourth pass, over revision 6's own *prose* rather than over its code or its
-register; every repaired defect survives, no shipped behaviour changes, and every finding is a claim
-this revision made about itself — two in the harness's comments, one in §2.2, and a **false row in
-§4.3's own tree table** that would have made the batch unreproducible. The measured generation is
-bound to commit **`bb5275764e035a3b8952975f6f2d69452e2d8b8e`** (§4.3), because a document cannot bind
-itself to the commit that contains it.**
+**Status: revision 8 — a fifth pass, and the last three of its corrections land in the harness rather
+than in this document. Every repaired defect survives and no shipped behaviour changes. The fourth
+pass audited revision 6's prose; this one swept this cycle's *pre-fix narratives* — every label
+claiming what a revision the tree no longer contains did — executing each claim against `1d97f54`'s
+renderer rather than re-reading it. **Eight** labels were in scope; **three** were false and **five**
+held. The three: E1-c's (the fourth pass's finding 7, corrected earlier in the pass), E1-e's "seven of
+the eight cells" (a count of a superseded eight-cell census, generalized to `Pre-fix` by a parenthesis
+the pre-fix renderer never earned — measured, `1d97f54` leaves **0 of 12** green), and E3-c's `'→  @ '`
+(`_ui.wrap` collapses the whitespace run, so the render was `'→ @'` and the two revisions differ only
+by the `?`). The measured generation is bound to commit
+**`7188c1a2cff1c51f59307ddb717cb54910a8783d`** (§4.3), the commit that froze the corrected triple,
+because a document cannot bind itself to the commit that contains it.**
 Target release: **v0.4.34 (patch)** — five repairs across the ASCII renderer, the **producer**, the schema
 declarations, and the pin that guards them. No cycle-record schema change an existing install can observe
 as incompatible: both E4 edits move a key *into* the contract that the producer already emits, and both E1
@@ -150,20 +156,39 @@ construction on the only case that can fail.
 renders a hole where the fallback was intended. `_clean` is `_CTRL.sub("�", str(s))`: it strips
 control characters and does nothing else, so `""` survives intact.
 
-Measured by AST census over `render_dashboard.py`: **12** sites of the form `_clean(x.get(<key>, <non-empty
-string>))`, of which **1** already carries the correct idiom (`_clean(ident.get("domain_id", "unknown"))
-or "unknown"`) and **11** do not.
+Measured by AST census over **`1d97f54`**'s `render_dashboard.py` — the pre-fix parent, and the revision
+**every anchor in this subsection resolves on**, because the E3 repair rewrote exactly these lines and
+moved them. That binding is stated once here rather than per-table, because it is the thing a reader
+re-deriving these numbers gets wrong first: `:650`, `:598`, `:631` and the rest name a file that no
+longer contains them. The census: **12** sites of the form `_clean(x.get(<key>, <non-empty string>))`,
+of which **1** already carries the correct idiom (`_clean(ident.get("domain_id", "unknown")) or
+"unknown"`) and **11** do not. On the shipped tree the same census reads **12 / 0** — every site
+guarded — and that post-fix pair is exactly what `tests/smoke.py`'s E3-b pin asserts, so the numbers
+here and the pin's numbers describe **two revisions** rather than disagreeing. *(Fourth-pass review,
+finding 8.)*
 
-**The corrected idiom is not an invention — it is already in the same file at nine sites, in four
-syntactic positions.** Revision 3 said *seven sites, two forms*, which was itself the failure mode this
-section describes: a census pattern narrower than its claim. Enumerated exhaustively:
+**The corrected idiom is not an invention — it is already in the same file, and it predates this
+cycle, at nine sites in four syntactic positions.** Revision 3 said *seven sites, two forms*, which was
+itself the failure mode this section describes: a census pattern narrower than its claim. Enumerated
+exhaustively on `1d97f54`:
 
-| Position | Form | Sites |
+| Position | Form | Sites (on `1d97f54`), fallback `D` |
 | --- | --- | --- |
-| BoolOp inside `_clean` | `_clean(X.get(k) or D)` | **5** — `:650`, `:721`, `:722`, `:1082`, `:1120` |
-| BoolOp outside `_clean` | `_clean(X.get(k, D)) or D` | **1** — `:598` (the `domain_id` site) |
-| BoolOp nested in a `str()` | `_clean(str(X.get(k) or D))` | **2** — `:1038`, `:1136` |
-| bare variable | `_clean(<var> or D)` | **1** — `:631`, no `.get` at all |
+| BoolOp inside `_clean` | `_clean(X.get(k) or D)` | **5** — `:650` `"?"` · `:721` `""` · `:722` `""` · `:1082` `""` · `:1120` `"?"` |
+| BoolOp outside `_clean` | `_clean(X.get(k, D)) or D` | **1** — `:598` (the `domain_id` site), `"unknown"` |
+| BoolOp nested in a `str()` | `_clean(str(X.get(k) or D))` | **2** — `:1038` `""`, `:1136` `""` |
+| bare variable | `_clean(<var> or D)` | **1** — `:631`, no `.get` at all, `"?"` |
+
+**Four of those nine instantiate the repair; five spell the same shape with `D = ""` and do not.**
+`:598`, `:631`, `:650`, `:1120` carry a non-empty fallback, so `or` is what makes an empty string take
+it — that is the cure. `:721`, `:722`, `:1038`, `:1082`, `:1136` carry `""`, so absent and empty both
+render blank: behaviourally the deliberate-blank class the second table below already lists, reached
+through a different spelling. The distinction is not pedantry — the sentence above cites the nine as
+evidence that the idiom is **already in use**, and only four of them can serve as that evidence. *(The
+five were measured on the fourth pass; the nine had been counted by shape, which is the same
+narrow-pattern move this subsection is about.)* On the shipped tree the position splits **8 / 3**:
+eight `or`-inside sites, of which `:657`, `:676` and `:1207` carry `"?"` and `:747`, `:748`, `:1125`,
+`:1169`, `:1268` carry `""`.
 
 The third position is the one every summary missed, **and it is invisible to an AST census that tests
 "is the `_clean` argument a `BoolOp`"** — the argument there is a `Call`. That is the same narrow-pattern
@@ -449,13 +474,21 @@ artifact still makes the forbidden claim. The file's own idiom is already there:
 **The census this fix's own first cut got wrong, because a fix that closes one cell reads as closed.**
 The `↓` line composes **four** numeric operands — `candidates_surfaced`, `pruned`, `achieved_index`,
 `projected_index` — and `_num` maps **absent** and **blank** to the same `0.0`, so each operand has
-*two* not-carried forms that render as a measured zero. Four operands × two forms = **eight cells**.
+*two* not-carried forms that render as a measured zero. Four operands × two forms = **eight cells**
+— the scope this repair was audited against, and **not** the scope that ships. The third pass added
+the key's **`omitted`** spelling as a third form (the `_e_missing` sentinel, which exists to
+distinguish omitting the key from carrying a `None`), growing the census to **twelve** cells. Counts
+below are stated on the eight-cell scope that produced them and restated on the twelve where the two
+differ.
 The first cut of this repair closed **one**: it asked `"candidates_surfaced" not in rem` — inline, at
 one site, for the **absent** form only — and left the other three operands reading `_num(… , 0)` and
 the **blank** form falling straight through the membership test. The suite was green on both revisions
 (2008/0 before the second pass, §4.3), which is the whole reason the gap survived a review round.
-**E1-e** closes the other seven and asserts the **carried** spelling too; §2.6's general form — *a
-guard whose pattern is narrower than its claim* — is what the census is for.
+**E1-e** closes the other seven — **eleven of the twelve** the shipped census samples — and asserts
+the **carried** spelling too; §2.6's general form — *a guard whose pattern is narrower than its
+claim* — is what the census is for. Measured, the two revisions the census separates are not alike:
+on `1d97f54` **all twelve** cells render a number the record never carried, and on `6368288` the
+first cut leaves exactly **one** green (`candidates_surfaced` omitted).
 
 **(iv) The mirror verdict needs an operand the record does not carry.** Measured: `lever = "gc" if share >
 _MIRROR_DOMINATED else ("prune" if cands else "justify")` — `gc` routes **before** prune, so
@@ -719,7 +752,8 @@ the pre-fix code. It found two defects, both in the fixes:
 - **E1's repair closed one cell of eight.** §2.1's first cut guarded `candidates_surfaced` for the
   **absent** form only, at one site, and left three other operands and the **blank** form reading
   `_num(…, 0)`. The census is four operands × two not-carried forms (§2.1); **one of eight** was
-  closed. **E1-e** now pins all eight, plus the carried spelling.
+  closed. **E1-e** now pins all of them, plus the carried spelling — **twelve** cells at the shipped
+  scope, because the third pass added the `omitted` form the eight-cell count predates.
 - **E2's repair carried the HTML's guard across, and it guards a different claim.** The first cut
   keyed the counts-only breakdown on `len(_fleet) + _shown_b == 0` — the JS's `!board`, whose reason
   (an **assigning** branch, plus a `reg-counts` header that states the count) does not transfer to an
@@ -1155,7 +1189,7 @@ says so, per `a-check-added-by-a-fix-may-not-flip`.
 | E1-b | rewriting only `lever` does not change the verdict | two records identical but for `lever` → the **whole render**, with the header's `lever {LEVER}` normalized to `lever X` by regex, is byte-identical — on **both** a plain operand set and a mirror-bearing one | **RED** | GREEN |
 | E1-c | the note reads `candidates_surfaced` | `cand=0` vs `cand=5` at one lever → **exact expected strings per arm**, not merely "they differ" | **RED** | GREEN |
 | E1-d | `candidates_surfaced` **absent** ≠ `candidates_surfaced == 0` | both driven through `render()` → absent emits `candidates surfaced: not recorded` **and not** `0 candidate(s) surfaced`, plus the `no candidate count recorded` verdict; the `== 0` arm emits the reverse | **RED** | GREEN |
-| E1-e | **every** numeric operand the panel renders was actually **carried** by the record — and the limit case where it carries **none** of them | for each of the four operands × {omitted, `None`, `""`} → one identical "not recorded" panel carrying no fabricated `0`; **plus** the operand carried, asserting its value takes over; **plus** the pre-pass seed holding neither `pruned` nor `achieved_index` → the `pending Phase 5` verdict and no coerced `0`, and carrying `pruned` retires it | **RED** (1 of 8 cells green) | GREEN |
+| E1-e | **every** numeric operand the panel renders was actually **carried** by the record — and the limit case where it carries **none** of them | for each of the four operands × {omitted, `None`, `""`} → one identical "not recorded" panel carrying no fabricated `0`; **plus** the operand carried, asserting its value takes over; **plus** the pre-pass seed holding neither `pruned` nor `achieved_index` → the `pending Phase 5` verdict and no coerced `0`, and carrying `pruned` retires it | **RED** (1 of 12 cells green; 0 of 8 on the pre-fix renderer) | GREEN |
 | E1-f | the sanction and the **success** are one decision | the **lean-resolvable** state (`pruned=0`, `achieved_index=900` **under** a 1200 budget, `reaches_budget=False`) → the `✓` present, the remedy **and** the ⚠ absent. Every other fixture in this family pairs that flag with an **over-budget** index, so `resolved_by_lean` was False everywhere and this conjunct never bound | **RED** | GREEN |
 | E1-g | the `0 <` lower bound on `resolved_by_lean` | a **BLANK** `achieved_index` beside a **CARRIED** `pruned: 0` → `index: not recorded` and **not** `resolved by rebuild-lean` (a blank coerces to `0.0`, and `0.0 <= budget` resolves the gate) | **RED** | GREEN |
 | E1-i | the panel's budget fallback is the **constant**, not a literal | a record with **no `budget` block** and `achieved_index: 1300` → `resolved by rebuild-lean`, **not** the ⚠. The renderer's `1200` literal was a threshold **no producer writes**, so the gate read as unmet against an invented one (E3's class: a default that is not the real value) | **RED** | GREEN |
@@ -1295,12 +1329,14 @@ inside the `TemporaryDirectory` and restoring it in a `finally`.
 
 **The normalization in E1-b was measured, not assumed.** A whole-render equality is only as strong as
 what the normalizer strips, and a regex sub that strips too much makes the comparison vacuous. Measured
-on both operand sets: each render contains **exactly one** `lever {WORD}` match, and the two renders
-differ in **exactly one** raw line — the panel header that carries the label. So the normalization
-masks the header and nothing else, and the equality that remains is over the other sixteen lines: each
-render is **17 lines** on *both* operand sets and exactly one of them differs. (Revisions 1–5 said
-"fifteen". The figure was counted rather than re-derived; both sets measure sixteen, and re-deriving it
-was the point of the sentence.)
+on both operand sets: each render is **17 lines**, each contains **exactly one** `lever {WORD}` match,
+and the two renders differ in **exactly one** raw line — the panel header that carries the label. So
+the normalization touches the header and nothing else — and because `_re34.sub` **replaces** the label
+in place rather than deleting the line, the equality holds over **all seventeen** lines, the header
+included in its normalized form. (Revisions 1–5 said "fifteen" and revision 6 said "sixteen": both are
+counts of a *remainder*, and the pin compares no remainder — it compares the whole render. The digit
+was corrected twice without the framing being re-derived, which is this section's failure at one
+remove: a number carried on the strength of its being a number.)
 
 **E1-b is *one* pin with *two* operand sets, and the second was added during implementation.** The
 drafted pin drove the `{prune, justify}` pair on a record whose `mirror_share` is **absent**, so the
@@ -1684,6 +1720,51 @@ member. **The order is commit → run → record, and that is the whole point:**
 itself to the commit that contains it, so the run is bound to the one that *precedes* it and the
 recovery path is exercised instead of assumed.
 
+**The eighth measurement, and the second consecutive one whose delta is prose.** Three labels moved —
+E1-c's, E1-e's and E3-c's — so `tests/smoke.py` went `84dc59cb7b68f263` → `eeeafdcd908cd186` and the
+batch was re-taken as **`rev10`**, built the same way (`cp -a rev9 rev10` plus the two-file overlay).
+Every count **and** every red set reproduces `rev9` exactly, tree for tree: `LIVE` 2016 / 0 · `mutA`
+2000 / 16 · `mutD` 2011 / 5 · `mutB` 2013 / 3 · `prefixE` 1997 / 19 · `mutE` 1996 / 20 · `R1f`…`R1j`,
+`R2f`, `RC89` 2015 / 1 each — and all thirteen extractions satisfy `len(set) == reported_failed_count`.
+
+**This run's delta assertion is stronger than the seventh's, and deliberately so.** The seventh argued
+from *reading* its diff ("two comment blocks … no statement added, removed or altered"). Here the
+claim was made structural instead: `check()`'s **first argument** is the label, so an AST pass replaced
+it with a placeholder and dumped the remainder of the module — **1793 `check()` call sites in both
+revisions, exactly three labels differing, and the rest of the tree byte-identical.** The property
+being claimed is "no assertion moved", so it is evaluated on the parse rather than on a reading.
+
+**The two injections reproduce, and the red check's NAME survives the label edit.** Rebuilt against
+`rev10`'s harness: `inj10_branch` = **2015 / 1**, the single red `v0.4.34 E1-e` — the runner's
+extractor strips from the first ` (`, and the rewritten label still opens `v0.4.34 E1-e (CENSUS
+PIN):` — and `inj10_branch_noarm` = **2016 / 0**, green. The green run's evidence is its count and the
+prediction it matched; this section's instrument asymmetry stands, and `[set==reported: 0]` is still
+not a result.
+
+**A third extractor failure, and this one was mine.** Comparing the two generations, every red set
+first read as *MOVED* while every count reproduced — which is the signature of a mismatched extractor,
+not of a moved check, and it was: the re-check used `sed 's/:.*//'` where the shipped runner uses
+`sed 's/ (.*//'`, so the same labels were normalized differently on the two sides and
+`v0.4.34 E1-f (PIN)` was compared against `v0.4.34 E1-f`. Re-derived with the shipped extractor, all
+thirteen are identical. The lesson is the one this section keeps re-learning: **a red-set comparison
+is only as good as the agreement between its two extractors, and re-deriving one side is not a
+comparison.**
+
+**The generation is bound to `7188c1a2cff1c51f59307ddb717cb54910a8783d`**, the commit that froze the
+triple, and verified by recovery rather than asserted: `git archive 7188c1a… | tar -x`, then
+re-hashing the four members **out of the extracted tree**, returns `dd41ac01a055de8b` ·
+`51f460cf8aad3d18` · `e5021dcbcc956772` · `eeeafdcd908cd186` — the four values this section names.
+
+**The binding was re-proven after an amendment, and that is not a formality.** The first commit of
+this triple carried a count in its *message* that had never been measured — "eighteen of the twenty
+labels held", where the sweep's own scope was eight labels and twenty of the file's twenty-eight
+`Pre-fix` occurrences belong to earlier cycles and were never read. The number is the cycle's own
+defect class, in the commit message, which is why it was amended rather than left standing. Amending
+rewrites the commit and therefore its SHA; the **tree** is untouched, so the four hashes above should
+be unaffected — but "should be" is the argument this section refuses, so the recovery proof was
+**re-run** against the new commit rather than carried across. It returns the same four values. A
+commit message is not part of the triple, and that is exactly why it had to be measured separately.
+
 **A generation's identity is the TRIPLE, and `docs/` is outside it on a measurement.** The identity is
 `{render_dashboard.py, memory_status.py, tests/dashboard_fixture.py, tests/smoke.py}` per tree, all four
 hashed and printed above. `docs/` is carried in the trees but excluded, because **nothing in the suite
@@ -1751,6 +1832,16 @@ tree it claims to. Both injections were rebuilt against `rev9`'s harness (`cp -a
 pair plus an overlay, the copy being what asserts the one-line deletion is unchanged) and both
 reproduce: `inj9_branch` **2015 / 1**, the single red `E1-e`; `inj9_branch_noarm` **2016 / 0 —
 green**. The arm still bites, and the pre-arm harness still cannot see the deletion.
+
+**And again on the eighth, for the same reason and with a stronger argument.** `rev10` moved the
+harness a second time (three labels), so the pair was rebuilt against it: `inj10_branch` **2015 / 1**,
+the single red `E1-e`; `inj10_branch_noarm` **2016 / 0 — green**. The `E1-e` *label* was one of the
+three edited, so this run also checks that a relabelled check keeps the name the extractor reports —
+it does, because the runner strips from the first ` (`. What makes the eighth's delta assertion
+stronger is that it is no longer a reading: an AST pass replaced `check()`'s first argument (the
+label) with a placeholder and dumped the rest of the module, giving **1793 call sites, three labels
+differing, and everything else byte-identical.** "No assertion moved" is the property under test, and
+it is now evaluated on the parse.
 
 One asymmetry in the instrument, recorded because it is this cycle's own class. The assertion that
 makes a red count *attributable* is `len(set(reds)) == reported_failed_count` — it is what separates
@@ -2226,9 +2317,11 @@ was corrected.)*
   **render** of the fixture record and therefore data, not a source spelling. Both corrected, with the
   scoping stated: the count is of **source** spellings, and the disagreement between the count and the
   list is now named rather than silent. **§4.1's line arithmetic is likewise stated rather than
-  counted** — each render is **17 lines** and the equality that remains after masking the header is
-  over the other **sixteen** — because the figure had been carried across five revisions on the
-  strength of its being a number.
+  counted** — each render is **17 lines**, exactly one raw line differs (the header), and after
+  normalization the equality holds over **all seventeen**, because `_re34.sub` REPLACES the label in
+  place rather than removing the line. The "remainder" framing was carried across six revisions and
+  the digit corrected twice (fifteen → sixteen → here) before the framing itself was measured: the
+  number had been re-derived from a form that was never the comparison the pin makes.
 - **F2 is disposed as *not* a defect, and the invariant that separates it is now §2.1's.** The hint
   map in `memory_status.py` keys a claim on `lever`, which reads like this cycle's defect — but
   `_remediation_section` is reached only from `ctx.get("remediation")`, the dict `remediation_triage`
@@ -2343,3 +2436,64 @@ a check, and each was found by **executing the claim** rather than by re-reading
 cell. The one code-adjacent change is that `tests/smoke.py`'s content moved — which is why the
 measurement was re-taken rather than argued: the harness is a member of the triple, and the whole
 point of §4.3's discipline is that a member's content is a hash, not a reassurance.
+
+**Revision 8** — **a fifth pass, over this cycle's own pre-fix narratives.** The fourth pass audited
+revision 6's prose for claims about the *code*; this one asked the narrower and sharper question its
+finding 7 implied: **does each label's story about the pre-fix revision name a counterfactual that
+revision can actually produce?** Every answer was obtained by driving `1d97f54`'s renderer — extracted
+with `git archive 1d97f54 plugins/consolidate-memory/scripts | tar -x`, never a linked worktree — with
+the fixture the label itself names. Eight labels were in scope. Five survived. Three did not, and all
+three share one shape: **a number or a string that was true of some other revision, stated as true of
+`Pre-fix`.**
+
+- **E1-e's label carried a count of a census that no longer exists.** "Pre-fix (and on the first cut
+  of E1) seven of the eight cells rendered a number the record never carried." The census is **twelve**
+  cells: the third pass added the key's `omitted` spelling as a third not-carried form (the
+  `_e_missing` sentinel exists precisely to distinguish omitting a key from carrying a `None`), growing
+  four operands × two forms to × three, and the digit was never moved. Measured against the shipped
+  twelve, the two revisions the label conflated are not alike at all: **`1d97f54` leaves 0 of 12
+  green** — every cell fabricates — while **`6368288` leaves exactly 1**, `candidates_surfaced`
+  omitted, which is the seven-of-eight's real origin on the eight-cell scope. The parenthesis
+  generalized one revision's result to both, and it generalized it in the direction that *understates*
+  the defect. Three other sites carried the same stale eight — §2.1's "eight cells", §3.6's "one of
+  eight … now pins all eight", and §4's pin-table cell "RED (1 of 8 cells green)" — and are corrected
+  with it, on the measurement rather than by arithmetic.
+- **E3-c's label quoted a string the renderer never emits.** "Pre-fix it rendered `'→  @ '`." It
+  rendered `'→ @'`: `_ui.wrap` collapses the whitespace run, so the blank operands leave **no** gap,
+  and the pre-fix render differs from the fixed one only by the two `?`. That makes the `?` the sole
+  mark the defect leaves — a fact the corrected label now states, because a reader comparing the two
+  renders by spacing would find them identical and conclude the pin was decorative.
+- **E1-c's label was the fourth pass's finding 7**, corrected earlier in this pass and verified here
+  by the same method: the pre-fix ⚠ is real, but the reassuring `justified — nothing safely prunable`
+  string is reachable only through `lever="justify"`, which is not that fixture.
+
+**The five that held, each by execution:** E1-a's two clauses for one state (the ⚠ and the remedy both
+render on `1d97f54` for the sanctioned fixture), E1-b's lever-swapped verdict, E1-d's collapsed
+absent-vs-zero pair (**the two renders are byte-identical** — "both collapsed" is exact, not
+suggestive), E1-f's remedy beside a success (a different fixture from E1-a's, and the distinction
+matters: `achieved_index = 900` is *under* the budget, so the ✓ renders and the ⚠ does not), and
+E4-a's `domain_lifecycle`, emitted unconditionally by `getattr(ctx, "domain_lifecycle", "active")` and
+declared nowhere.
+
+**The eighth measurement.** Three of those corrections are labels, and `tests/smoke.py` **is** a triple
+member, so the batch was re-taken as **`rev10`** (`cp -a rev9 rev10` plus the two-file overlay). All
+thirteen counts and all thirteen red sets reproduce `rev9`, and both injections reproduce (`2015 / 1`,
+red `E1-e`; `2016 / 0`, green). The delta assertion is **structural this time**: `check()`'s first
+argument is the label, so an AST pass replaced it with a placeholder and dumped the module — 1793 call
+sites, exactly three labels differing, everything else byte-identical. Both the counts and the
+reasoning are in §4.3.
+
+**Amending the freeze, and re-proving it.** The commit that first froze this triple carried an
+**unmeasured count in its message** — "eighteen of the twenty" for a sweep of eight labels, the other
+twenty of the file's twenty-eight `Pre-fix` occurrences belonging to earlier cycles and never read.
+That is this cycle's defect class arriving in the one artifact nobody diffs, so the commit was amended.
+The tree is untouched by an amendment and the four hashes therefore *should* be unchanged — which is
+the word this document does not accept — so the recovery proof was **re-run** against the new commit
+and returns the same four values. The binding names
+**`7188c1a2cff1c51f59307ddb717cb54910a8783d`**. A commit message is not a triple member, and that is
+precisely why it needed its own measurement.
+
+**No shipped behaviour changes in this revision.** Every edit is a label, a comment, or a paragraph of
+this document. The one code-adjacent change is again that `tests/smoke.py`'s content moved — re-taken
+rather than argued, for the same reason as the seventh: the harness is a member of the triple, and a
+member's content is a hash.
