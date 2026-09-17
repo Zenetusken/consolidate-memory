@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml"><img src="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.32-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.32"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.33-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.33"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7fd8b8?style=flat-square&labelColor=0f1c2e" alt="MIT license"></a>
   <a href="#start"><img src="https://img.shields.io/badge/python-3.8%2B-63d3e8?style=flat-square&labelColor=0f1c2e" alt="Python 3.8 or newer"></a>
   <a href="https://github.com/Zenetusken/consolidate-memory"><img src="https://img.shields.io/badge/marketplace-zenetusken--plugins-b9c9da?style=flat-square&labelColor=0f1c2e" alt="Marketplace: zenetusken-plugins"></a>
@@ -35,16 +35,16 @@
 </p>
 
 > [!NOTE]
-> **Current release: v0.4.32** — `cm local rebuild-index` no longer **re-adds a pointer the archive
-> removed**. A fact file does not record its own placement, so a rebuild that globbed fact files
-> alone wrote archived facts back into `MEMORY.md`, silently undoing `cm local archive` — measured on
-> the live store, **2 re-adds** — both completed arcs, whose pointers belong in the on-demand
-> archive rather than the always-loaded index. The rule is no longer re-derived: the rebuild asks
-> what the index places (the canonical `_LINK_RE` anchor over its pinned snapshot of `MEMORY.md`)
-> and what an archive owns
-> (`index_admission.archive_index`), and it can only *decline to re-add*, never delete. Separately,
-> `--justify-demotion` no longer **crashes on the second run** against an unenrolled store: the
-> usage clock's deliberate `None` now reaches its documented fallback instead of `int()`.
+> **Current release: v0.4.33** — a pass that leaves a **gating** seeded duty unfilled now fails
+> loudly at the terminal render instead of rendering as silence. A real `dream` once persisted a
+> record with an empty `rigor.applied` and an `achieved_recall` absent beside a present
+> `achieved_index`; every one of them drew a blank field, and nothing contradicted them, because
+> **every cross-block clause in the validator was of the form "two values that both exist must
+> agree"** — vacuous the moment one operand is missing. The new presence gate closes that by
+> construction, and it is **live-only**:
+> it fires at `--persist`, never over the archive, so no existing store's history changes. A blank
+> `session` is reported in the same panel and **never gates** — `SKILL.md` forbids *fabricated*
+> session ids, and an exit code cannot tell "unknown" from "not worth filling".
 > Public 1.0 remains **HOLD**, with outstanding evidence gates tracked in the
 > [1.0 preflight](docs/1.0-preflight.spec.md). See the [changelog](CHANGELOG.md) for
 > shipped changes.

@@ -28,7 +28,7 @@ import tempfile
 import unicodedata
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Optional, TypedDict, cast
+from typing import Any, Callable, Mapping, NamedTuple, Optional, TypedDict, cast
 
 import _ui  # sibling script: the shared visual vocabulary (color / rule / kv / bar / glyphs)
 
@@ -3525,15 +3525,65 @@ def validate_cycle_record(record: object) -> list[str]:
 
     It flags only a PRESENT key whose CONTAINER type is wrong (the model-slip class behind
     the Gate-2 crashes), at the ACTUAL nesting — every top-level container key (`scope`,
-    `health`, … — `health` included, so a non-dict `health` warns) plus `health.slug_orphans`
-    / `health.schema_drift`, which nest UNDER `health`. It is deliberately QUIET on a missing
-    key (a partial record is normal, the phases fill it incrementally) and on a correct
-    type, and it does NOT check scalar value TYPES — that's the `_num`/`_clean`/`_flag`
-    coercion boundary in render, not this structural gate. Two checks sit on the far side
-    of that line, each because the VALUES contradict one another rather than merely being
-    mistyped: `demotion.verdict` (v0.4.21) and the index reconcile invariant (v0.4.30,
-    spec `docs/record-post-state.spec.md` §2.4). Both stay scalar-TYPE-blind — a mistyped
-    operand still only abstains, never warns."""
+    `health`, … — `health` included, so a non-dict `health` warns) and, wherever a container was
+    well-formed enough to descend into, its nested container keys: `entries[]` items,
+    `dream.beats`, `narration.gaps`, `preflight.{fails,warns}`, `health.slug_orphans` /
+    `health.schema_drift`, and the `distill.*` / `usage.*` / `demotion.*` / `workflow_proposals.*`
+    / `network.*` lists and their items. That is a REPRESENTATIVE list, not a census: the rule is
+    the DESCENT (a present container key at a depth this function actually reaches), so read the
+    body for the set rather than this sentence — an open tail is honest where a false "plus these
+    two" is not. It is deliberately QUIET on a missing key (a partial record is normal, the phases
+    fill it incrementally) and on a correct type, and it does NOT check scalar value TYPES —
+    that's the `_num`/`_clean`/`_flag` coercion boundary in render, not this structural gate.
+
+    ON THE FAR SIDE of that line sit the checks that inspect a present VALUE rather than a
+    container's TYPE — the value is WRONG, where the near side asks only whether it is shaped
+    wrong. Scalar-TYPE-blind like everything here (a mistyped operand only abstains, never warns).
+    THREE KINDS, and stating the kinds is not pedantry: "the far side is the value-contradiction
+    checks" is close enough to be quoted and wrong enough to mislead — it is the sentence that
+    excluded FIVE of the sixteen rows below from the reader who last counted this list: the four
+    MEMBERSHIP rows and the one ABSENT/DUP row, leaving the eleven DISAGREE rows as "the far side".
+      · DISAGREE — two present values must agree (the largest subfamily)
+      · MEMBERSHIP — a value must be one of a known set
+      · ABSENT/DUP — a structurally required value is missing or repeated
+    ENUMERATED, never counted: this docstring once said "two" and went on saying it while clauses
+    accumulated beside it, because a count in a comment is a claim no test reads. Its first
+    replacement said "fifteen" and was short a row as well — so the rows below are grouped by KIND,
+    not walked in body order, and a smoke check pins the two counts that must move together (the
+    far-side sites in the body, the rows in this list). The body is the census; this list indexes it.
+      · DISAGREE   `demotion.verdict` vs the scripted block, three patterns (v0.4.21)
+      · DISAGREE   `demotion.surfaced` vs the rank cap (v0.1.67)
+      · DISAGREE   `distill.{top,top_chains,used}` vs the persist cap (v0.1.82)
+      · DISAGREE   `usage.per_fact` / `usage.misses` / `usage.mention_stems` vs the scanner cap
+                   (v0.1.63 / v0.1.67 / v0.1.85)
+      · DISAGREE   `network.fact_holdings` vs the incidence limits (v0.4.13)
+      · DISAGREE   `network.fact_holdings` vs the holder reference limit (v0.4.13)
+      · DISAGREE   `network.fact_holdings` `held_n` vs the emitted holder count (v0.4.13)
+      · DISAGREE   `network.capture` total/emitted self-consistency (v0.4.17)
+      · DISAGREE   the U1 unverifiable tally vs its named carriers, both directions (v0.4.22)
+      · DISAGREE   the index reconcile invariant (v0.4.30, spec `docs/record-post-state.spec.md` §2.4)
+      · DISAGREE   `dream` arc completeness vs the beats contract (v0.4.1, narrowed by v0.4.29)
+      · MEMBERSHIP `workflow_proposals.candidates[].disposition` is not a known value (v0.1.87)
+      · MEMBERSHIP `workflow_proposals.candidates[].disposition` declared on a non-fleet-candidate
+                   (v0.1.87)
+      · MEMBERSHIP `network.stack_edge_facts` names an unknown node label (v0.4.13)
+      · MEMBERSHIP `network.fact_holdings` holder resolution, unknown or repeated (v0.4.13)
+      · ABSENT/DUP `network.fact_holdings` fact identity missing or duplicate (v0.4.13)
+    The deep CONTAINER checks inside those same blocks (`network.fact_holdings holder_sids is not
+    a string list`, the `.* is not a list` family) belong to family 1 at depth, not here — "is a
+    value the wrong SHAPE" is never this side's question.
+
+    THREE FAMILIES, and the boundary between the last two is load-bearing — a presence clause
+    written in the contradiction shape is VACUOUSLY SATISFIED when its operand is missing, which
+    is how four unfilled duties once shipped rendering as silence (v0.4.33):
+      1. container type ....................................... here
+      2. value wrong (disagree / membership / absent-dup) ..... here, plus `procedure_integrity`
+      3. SEEDED DUTY (did the pass fill what it seeded?) ...... `duty_gaps`, persist-gate ONLY
+    Family 3 is deliberately not checked here: a fresh seed fails it by construction. Note that
+    family 3 is SEEDED-DUTY presence, NOT presence in general — the ABSENT/DUP row above is a
+    structural identity a block needs to be internally meaningful, which is a far-side question,
+    not a duty the pass was handed and skipped. Read the boundary as "did the pass fill what it
+    SEEDED", or the next host choice repeats this cycle's error in the other direction."""
     warnings: list[str] = []
     if not isinstance(record, dict):
         # Not even a dict — render's own json.loads guard handles the parse; here we just
@@ -4028,6 +4078,134 @@ def procedure_integrity(record: object) -> tuple[bool, str, str]:
     else:
         reason += "; no audit trail (Phase-5 --audit also skipped)"
     return (False, reason, severity)
+
+
+class DutyClause(NamedTuple):
+    """One PRESENCE clause — a duty the record seeded and the pass may not have filled. Pure data:
+    the renderer prints `label`/`detail`/`remedy` from the fired ROW, so no clause can be described
+    in another clause's words (`_arc_gate_section`'s derived-subtitle rule, applied to a SET of
+    clauses rather than a single one — a shared literal is what let a duty gap render under a
+    headline asserting a different cause)."""
+    name: str       # the stable key, for pins
+    label: str      # the field name the panel prints
+    detail: str     # what is wrong, in this row's own words
+    remedy: str     # what the pass must do about it
+    severity: str   # "alert" ⇒ routes exit 3 at the persist gate; "warn" ⇒ REPORTED ONLY
+    fires: "Callable[[Mapping[str, Any]], bool]"
+
+
+def _duty_blank(v: object) -> bool:
+    """A seeded duty is UNFILLED when the key is PRESENT and holds nothing: JSON null, or a string
+    that is empty/whitespace-only. This is the family's era gate — a record that never had the key
+    is a different thing (a partial or ancient record is normal, the phases fill it incrementally).
+
+    A wrong-typed NON-empty value (`session: 123`) deliberately ABSTAINS. A mistyped scalar is
+    `validate_cycle_record`'s container territory or render's `_num`/`_clean` coercion boundary,
+    not this family's; a presence clause that also reported it would double-report another gate's
+    job while claiming to be about presence. Same posture as `procedure_integrity`'s operands."""
+    return v is None or (isinstance(v, str) and not v.strip())
+
+
+def _duty_session_fires(record: Mapping[str, Any]) -> bool:
+    return "session" in record and _duty_blank(record.get("session"))
+
+
+def _duty_applied_fires(record: Mapping[str, Any]) -> bool:
+    rg = record.get("rigor")
+    return isinstance(rg, dict) and "applied" in rg and _duty_blank(rg.get("applied"))
+
+
+# The Phase-5 progress trio. SKILL declares the three TOGETHER, and `seed_record` deliberately
+# omits all three (seeding achieved_index=current would read as "no progress"; ABSENT renders as
+# "pending Phase 5" — see its own comment). So the defect is a PARTIAL fill.
+#
+# TWO OPERANDS, and the contract needs both. "Together" can be violated two ways — write some but
+# not all (a KEY count catches that), or write all three but leave one blank (only a VALUE count
+# catches that). Each single-operand form has a corridor the other closes, and the corridor the key
+# count leaves open is the one that reaches the audited defect: a model that writes
+# {"pruned": 3, "achieved_index": 402, "achieved_recall": ""} has three keys and two facts, and the
+# key count calls that complete. So the test is the CONTRACT itself — abstain only when the trio is
+# UNTOUCHED (0 present: the documented intermediate state) or WHOLLY FILLED. Measured on the live
+# population (99 distinct records) all three forms fire identically (6), so the archive cannot
+# choose between them; only the shapes a model can reach can, and the union is correct on all of
+# them. NO numeric coercion is applied — this is a PRESENCE test, so `0` and `0.0` are FILLED
+# (a truthful zero is a measurement) while "" and null are not.
+_DUTY_TRIO = ("pruned", "achieved_index", "achieved_recall")
+
+
+def _duty_trio_fires(record: Mapping[str, Any]) -> bool:
+    rem = record.get("remediation")
+    if not isinstance(rem, dict):
+        return False
+    present = sum(1 for k in _DUTY_TRIO if k in rem)
+    filled = sum(1 for k in _DUTY_TRIO if k in rem and not _duty_blank(rem[k]))
+    return not (present == 0 or filled == len(_DUTY_TRIO))
+
+
+_DUTY_CLAUSES: "tuple[DutyClause, ...]" = (
+    DutyClause("session", "session", "the pass never filled the id it seeded",
+               "fill session with this pass's id — or leave it blank when the id is genuinely "
+               "unknown (SKILL forbids fabricating one); ADVISORY, never gates",
+               "warn", _duty_session_fires),
+    DutyClause("applied", "rigor.applied", "the pass recorded no ceremony tier",
+               "record the tier the pass actually ran, then re-render",
+               "alert", _duty_applied_fires),
+    DutyClause("trio", "remediation progress",
+               "the Phase-5 progress trio is PARTIALLY filled (pruned / achieved_index / "
+               "achieved_recall must appear together, each holding a value)",
+               "fill all three Phase-5 progress fields or none — a partial trio renders progress "
+               "that was never measured",
+               "alert", _duty_trio_fires),
+)
+
+
+def duty_gaps(record: object) -> "list[DutyClause]":
+    """DETECT an unfilled SEEDED duty: a field the producer wrote and the pass left empty. PURE;
+    never raises ON JSON-REACHABLE INPUT; EMPTY by default. Returns the fired clauses, each carrying
+    its own label, detail, remedy and severity.
+
+    The qualifier is measured rather than hedging. A `dict`/`str` SUBCLASS whose `__contains__`,
+    `get` or `strip` raises takes this predicate down (3 of 23 hostile inputs, all of them raising
+    through a method the walk calls), and `arc_completeness` and `procedure_integrity` raise on the
+    identical three — so the bound is inherited, not new. None of them survives `json.loads`, which
+    is the only way a record reaches either call site, so the claim holds where it is made; the
+    bare "never raises" this line first carried did not.
+
+    **PERSIST-GATE ONLY.** Every call site sits inside `render_dashboard`'s `judged` path (the
+    `persist_dir is not None` gate): the exit arm in `main` and the panel builder
+    `_duty_gaps_section`. That is a CONTRACT about the PATH, not a count — a second caller on the
+    same path is fine; a caller that is not is the thing this paragraph exists to refuse. Every
+    other gate in this module is also read from the archive (`procedure_integrity` runs per
+    archived cycle in `render_html`'s embed, which stamps `_integrity` into the payload that the
+    HTML masthead, the assessment row and the adverse block all render). Calling THIS one there
+    would retro-flag every past record that left `session` blank, forever, under a tooltip naming a
+    different cause — the exact error `arc_completeness`'s docstring records for `enforce_post_arc`.
+
+    **The gate's own context IS the era test.** `seed_record` writes `session: ""` and
+    `_provisional_rigor` writes `applied: ""` BY DESIGN, so this predicate fires on a fresh seed —
+    it cannot tell a seed from a finished pass, and must not try: the alternative is reading
+    `rigor.phase`, a model self-report, which would let one omitted field silence the whole family.
+    Only a `--persist` render knows the pass just finished. The same reason `validate_cycle_record`
+    is untouched by this family: a seed flows through it, and it stays deliberately quiet.
+
+    FIRE (per clause):
+      A `session`            — present, and blank/null.                        severity warn
+      B `rigor.applied`      — `rigor` is a dict, present, and blank/null.      severity alert
+      C `remediation` trio   — at least one trio key was written and fewer than all three hold
+                               a value: a strict SUBSET of the keys, or a present key left
+                               blank/null. SEVERITY alert
+    A and B are "present but empty" — an ABSENT key never fires either. C is the multi-key clause,
+    so a strict subset fires it precisely BECAUSE some of its keys are absent; that is the audited
+    shape (`{"achieved_index": 402}` with the other two keys missing), and a key-count test alone
+    misses its evasion (`{... "achieved_recall": ""}`, three keys, two facts).
+    `alert` ⇒ the persist gate exits 3; `warn` ⇒ the panel reports it and the exit is unchanged.
+
+    A is warn-only on purpose: SKILL forbids *fabricated* session ids while the seed says to fill it
+    "when known", so gating on A would resolve that conflict in favour of fabrication — the wrong
+    direction for a validator in a repo whose diagnosed disease is self-reported fields."""
+    if not isinstance(record, dict):
+        return []
+    return [c for c in _DUTY_CLAUSES if c.fires(record)]
 
 
 def _remediation_section(rem: dict) -> list:

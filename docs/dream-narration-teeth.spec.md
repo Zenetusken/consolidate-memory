@@ -20,7 +20,9 @@ contract violation class the harness's existing gates cannot see:
    verdict never narrated.
 
 The existing persist gates are record-side: the procedure-integrity detector (exit 3, the
-0/0/0-verification lazy-skip) and the arc-completeness gate (exit 4) both read the record. **The
+0/0/0-verification lazy-skip) and the arc-completeness gate (exit 4) both read the record; a third
+joined them in v0.4.33 — the record-duty presence gate (exit 3, a field the pass seeded and left
+unfilled; `docs/record-duty-presence.spec.md`), record-side by the same test. **The
 conversation side is the missing ground truth** — and the conversation IS available to the
 scripts: the dream's own session transcript (the same JSONL `extract_signals.py` already reads,
 including at persist time, since the model's narration lines land in the transcript as they are
@@ -153,6 +155,17 @@ need it); the NAR gap panel is suppressed iff the record-side arc fails (pin (6)
 contradictory NAR panel" is a stdout contract); only the EXIT ladder stays ordered after the
 record-side checks, so same-render precedence stays 5 > 3 > 4 and a 4/6 record still exits 4 with
 "4/6 beats" (NAR never double-reports on a record whose arc already fails); (b)
+
+> **Amendment (v0.4.33, 2026-09-17) — the set and the ORDER are two different facts.** The
+> precedence sentence above states the exit-code SET; it never stated the arm order, and a third
+> record-side arm has since joined the ladder. `render_dashboard`'s persist ladder now reads:
+> **procedure integrity (3) → arc completeness (4) → record-duty presence (3) → NAR/EXT (3 / 4) →
+> unstamped (5)**. The duty arm sits between the arc arm and the conversation arms, so a record
+> carrying BOTH a duty gap and a NAR-only gap exits **3**, never reaching NAR's 4 — record-side
+> structural failures outrank conversation-side ones, the same rule that already put EXT's 3 ahead
+> of NAR's 4. Nothing in this paragraph's set changed; what changed is which member wins a tie, and
+> a tie is the only case this paragraph was ever about.
+
 **cue split** — the fixed exit-3/exit-4 `dream_cue` stderr lines are record-side remedies; NAR
 and EXT carry their OWN cue lines naming the conversation-side remedy (narrate the missing beats
 in the window / run the extractor or record the `extractor-skip:` marker), because the cue is

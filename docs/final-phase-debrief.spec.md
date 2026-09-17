@@ -61,6 +61,13 @@ re-verify loop and re-render to exit 0 FIRST. `render_html` is mandatory ONLY on
 (exit-0) pass — NEVER right after an exit-3 `--persist` (doing so would paper over the very lazy-skip
 the gate exists to catch). "Mandatory render_html" closes the dream; it does not override the gate.
 
+> **Amendment (v0.4.33, 2026-09-17) — exit 3 now has TWO arms, and this paragraph's remedy belongs to
+> one of them.** The record-duty gate also exits 3 (a field the pass seeded and left unfilled;
+> `docs/record-duty-presence.spec.md`). "Stopping there is correct by design" still holds for both, but
+> the Phase-3 re-verify loop named above is the **procedure-integrity** remedy only: a duty gap is
+> repaired by filling the field the panel names, and routing it into a verification fan-out is the
+> mis-route the ordering pin exists to prevent.
+
 ### B. The session debrief = PIN PRINCIPLES, NOT A TEMPLATE (the subtle trap)
 
 What the user values is *judgment* (a well-synthesized close), not a form filled in. A rigid

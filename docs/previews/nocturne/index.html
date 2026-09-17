@@ -2385,7 +2385,7 @@ var NocturneSections = (function(){
       el("f-count").textContent=fr.length+(fr.length!==rows.length?" of "+rows.length:"")+" shown";
       el("arch-list").innerHTML=fr.map(function(x){
         return '<a class="arch-row'+(x.i===lastSel?" cur":"")+'" href="#sel='+x.i+'">'
-          +'<span class="dt">'+esc(x.ts)+'</span><span class="oc">'+esc(x.oc)+(x.intg?' <span style="color:var(--crit)" title="procedure integrity: verification skipped on a substantial pass">⚠</span>':'')+'</span><span class="rg">'+esc(x.rg)+'</span>'
+          +'<span class="dt">'+esc(x.ts)+'</span><span class="oc">'+esc(x.oc)+(x.intg?' <span style="color:var(--crit)" title="procedure integrity: verification skipped on a substantial-or-heavier pass">⚠</span>':'')+'</span><span class="rg">'+esc(x.rg)+'</span>'
           +'<span class="ix">'+fmt(x.ix)+'</span><span class="en">'+x.en+'</span><span class="hh">'+esc(x.hh)+'</span></a>';
       }).join("") || '<div class="cap" style="padding:14px 0">no dreams match this filter</div>';
     }

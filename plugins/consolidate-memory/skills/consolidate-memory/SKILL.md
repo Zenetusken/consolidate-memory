@@ -17,12 +17,13 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.32** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.33** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
-terminal persist gates (exit 3 = procedure integrity, exit 4 = incomplete dream
-arc, exit 5 = unstamped cycle — the WAKE renders only through a clean exit 0),
+terminal persist gates (exit 3 = procedure integrity OR an unfilled gating record duty,
+exit 4 = incomplete dream arc, exit 5 = unstamped cycle — the WAKE renders only
+through a clean exit 0),
 plus the production/polish/performance pass (stacks cache on the sync paths,
 warm-pull margin, journal scale, archive embed budget, store-honesty advisories,
 and the renderer coherence sweep, plus the v0.4.6 archive-display pass, plus the
@@ -55,7 +56,20 @@ run against an unenrolled store. Both now read the canonical rule — the `_LINK
 pinned `MEMORY.md` snapshot for what the index places and `index_admission.archive_index` for what
 an archive owns, plus the `None` tolerance `_justify_remaining` already documented — and the
 rebuild can only DECLINE to
-re-add an archived pointer, never delete one).
+re-add an archived pointer, never delete one), plus
+the v0.4.33 record-duty-presence patch (a pass that SEEDED a duty and left it unfilled now fails at
+the terminal `--persist` instead of rendering as silence, when that duty gates — a new `duty_gaps` PRESENCE family beside
+the container-type family and the value-WRONG family (disagree / membership / absent-dup; naming all
+three matters, because "the value-contradiction checks" reads as the whole and leads a later reader
+past the membership and identity rows), gating `session` present-and-blank (warn-only:
+SKILL forbids *fabricated* ids, so gating it would resolve that conflict toward fabrication),
+`rigor.applied` present-and-blank, and a PARTIALLY filled Phase-5 progress trio — the trio test
+reads the CONTRACT (untouched or wholly filled abstain), so a block with all three keys written and
+one left blank is a gap, not a pass, because a key count counts keys and not facts; the clause lives
+in `render_dashboard`'s `judged` path and never in the archive-wide `procedure_integrity`, so no
+archived record and no seed/preview render can trip it, and the duty arm runs AFTER the arc arm so
+*this* arm's exit 3 can never pre-empt the arc's exit 4 — the procedure-integrity arm above it is
+first by design and does pre-empt, and the conversation-truth arms below it are pre-empted).
 Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
@@ -1237,9 +1251,15 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    prints a loud panel and **exits 5**; re-stamp, re-render. So run it AFTER step 5
    stamps the marker.
 
-   **The persist exit-code key (v0.4.1): 0 clean · 3 procedure-integrity (re-verify) ·
-   4 dream-arc incomplete (backfill beats) · 5 unstamped (re-stamp).** Gate
-   precedence: both-violating → 3; arc+unstamped → 4, then 5 on the re-render.
+   **The persist exit-code key (v0.4.1; third arm v0.4.33): 0 clean · 3 procedure-integrity
+   (re-verify) OR an unfilled gating record duty (fill the field) · 4 dream-arc incomplete (backfill
+   beats) · 5 unstamped (re-stamp).** Gate precedence, in the order the arms actually run
+   (measured, not read off the list above): **unstamped → 5, first of all** — the `status` check
+   sits before every record-side gate, so an unstamped record exits 5 whatever its arc or its
+   duties say. This key claimed "arc+unstamped → 4, then 5 on the re-render" until v0.4.33;
+   that half was never true. Then: procedure-integrity, which **does** pre-empt the arc (a
+   measured lazy-skip beside a 4/6 arc exits 3, first by design since v0.1.44); then the arc arm
+   → 4; then the record-duty arm → 3; then the conversation-truth arms (EXT → 3, NAR → 4).
 
    **Dream-arc completeness gate (v0.4.1; widened v0.4.29).** The same terminal `--persist`
    judges the arc: a PRESENT-but-incomplete dream block prints a loud **DREAM ARC
@@ -1289,16 +1309,38 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    every finishing dream runs, the render also JUDGES the completed dream here: if a
    SUBSTANTIAL-or-larger-MAGNITUDE pass recorded **0/0/0 verification** (the lazy-skip — you
    skipped the Phase-3 fan-out), it prints a loud **PROCEDURE INTEGRITY ⚠** panel, persists the
-   record (so the failure is logged + shows in the archive), and then **exits 3**. That nonzero
-   exit means THIS dream is incomplete — go run the Phase-3 verification fan-out, then re-render
-   (a clean pass exits 0; THEN continue Phase 5 — `--diffs`, `render_html`). It is a DETECTOR (not a
+   record (so the failure is logged + shows in the archive), and then **exits 3**. That exit 3 —
+   the one whose panel says **PROCEDURE INTEGRITY** — means the Phase-3 fan-out was skipped: go
+   run it, then re-render (a clean pass exits 0; THEN continue Phase 5 — `--diffs`,
+   `render_html`). Read the PANEL, not the exit code, to pick the remedy: exit 3 has a second arm
+   (an unfilled gating record duty, panel **RECORD DUTY GAPS**) whose repair is to fill a field, and
+   sending that record through a Phase-3 fan-out does nothing for it. It is a DETECTOR (not a
    block — the dashboard prints first); a seed/preview render WITHOUT `--persist` is the BEFORE
    state and is never judged. **SCOPE (be honest about what it does NOT catch):** it catches the
-   *measured* lazy-skip — a skipped **Phase-3** verification (0/0/0 on a substantial pass) — NOT the
+   *measured* lazy-skip — a skipped **Phase-3** verification (0/0/0 on a substantial-or-heavier
+   pass) — NOT the
    general "skipped a phase" class: a pass that DOES verify but skips the Phase-1 re-audits or the
    Phase-5 GC/stale-reverify records `tally>0` and is spared, and a diligent liar who types fake
    tallies defeats it. Rare false-positive: a substantial-commits pass with genuinely nothing
    memory-relevant to verify fires too — note it and proceed (the ⚠ is a signal, not a block).
+
+   **Record-duty gate (v0.4.33).** The same terminal `--persist` also judges the record's
+   SEEDED duties — the fields Phase 0 wrote for you to fill. A duty that is **present and holding
+   nothing** (never an absent key: a partial record is normal, the phases fill it incrementally)
+   prints a loud **RECORD DUTY GAPS ⚠** panel naming each field and its own remedy, and:
+   - `session` present-and-blank → **warn only**, exit unchanged. SKILL forbids *fabricated*
+     session ids while the seed says fill it "when known", so gating it would resolve that
+     conflict in favour of fabrication. The panel is the whole report.
+   - `rigor.applied` present-and-blank → **exit 3**. The field the magnitude→applied calibration
+     exists to collect; record the tier the pass actually ran.
+   - the Phase-5 progress trio (`pruned`/`achieved_index`/`achieved_recall`) → **exit 3** unless
+     it is untouched or wholly filled, **each key holding a value**. Writing all three keys and
+     leaving one blank is a gap, not a pass.
+   The remedy is to fill the field (or, for the trio, to fill all three or none — the clause's
+   own panel line says which), then re-render. This arm runs **after** the arc arm, so a record
+   with both an incomplete arc and a duty gap exits **4** — fix the arc first. Like the
+   procedure-integrity arm it is **live-only**: the panel rides the same `--persist` gate, so no
+   archived cycle is retro-flagged and no seed/preview render trips it.
    The dashboard now includes a **"Neural network — token consumption (all nodes)"**
    sub-section: the per-node and total estimated token tax across the network, plus
    what *this* cycle did in lifecycle terms on the triggering node (the node `dream`

@@ -3300,6 +3300,359 @@ with _tf43.TemporaryDirectory() as _td54:
     check("v0.4.1 unstamped: exit 5, loud UNSTAMPED panel, no append, no 'persist clean'",
           _rc41 == 5 and "UNSTAMPED" in _se41 and "persist clean" not in _se41
           and not _log41b.is_file())
+
+    # ── v0.4.33 (OPEN 4b): record-duty PRESENCE — a field the pass seeded and left unfilled.
+    # docs/record-duty-presence.spec.md. Unit pins first (the predicate), then the gate.
+    #
+    # THE ERA GATE IS "PRESENT AND HOLDING NOTHING", never "absent". Every firing half below is
+    # CONJOINED with its abstention half inside one check — a "stays silent" assertion alone passes
+    # on pre-fix code and is not a pin (the repo rule this suite already applies elsewhere).
+    #
+    # VERIFICATION, measured against 2b07ce3 (pre-fix) and two injected defects, never asserted
+    # from the label: the three gate PINs fail pre-fix on exit code (0 where 3 is required); of
+    # the three GUARDs only the preview render passes the pre-fix revert, and the other two are
+    # verified by INJECTION — duty-arm-before-arc-arm reds the first, dropping `judged` from the
+    # panel block reds the second and third.
+    _gapA = ms.duty_gaps
+    check("v0.4.33 duty A: `session` present-and-blank fires; ABSENT and FILLED both abstain "
+          "(the era gate — a partial record is normal, the phases fill it incrementally)",
+          [g.name for g in _gapA({"session": ""})] == ["session"]
+          and _gapA({}) == [] and _gapA({"project": "p"}) == []
+          and _gapA({"session": "abc"}) == [])
+    check("v0.4.33 duty A is TYPE-BLIND: JSON null and whitespace-only fire (both render as "
+          "nothing), but a wrong-typed NON-empty value abstains — a mistyped scalar is "
+          "validate_cycle_record's container territory, not this family's, and a presence clause "
+          "that also reported it would double-report another gate's job",
+          [g.name for g in _gapA({"session": None})] == ["session"]
+          and [g.name for g in _gapA({"session": "   "})] == ["session"]
+          and _gapA({"session": 123}) == [] and _gapA({"session": ["a"]}) == [])
+    check("v0.4.33 duty B: rigor.applied blank fires; a named tier and an absent key abstain",
+          [g.name for g in _gapA({"rigor": {"applied": ""}})] == ["applied"]
+          and _gapA({"rigor": {"applied": "LIGHT"}}) == []
+          and _gapA({"rigor": {}}) == [] and _gapA({"rigor": {"applied": 5}}) == [])
+    check("v0.4.33 duty C: the trio is tested on the CONTRACT — untouched (0 keys) and wholly "
+          "filled (3 keys, 3 values) both abstain, everything between fires. 1-of-3 is the "
+          "AUDITED shape: a present achieved_index beside an absent achieved_recall, invisible "
+          "to any 'both present must agree' clause",
+          [g.name for g in _gapA({"remediation": {"achieved_index": 100}})] == ["trio"]
+          and [g.name for g in _gapA({"remediation": {"pruned": 0, "achieved_index": 1}})] == ["trio"]
+          and _gapA({"remediation": {"required": True, "lever": "prune"}}) == []
+          and _gapA({"remediation": {"pruned": 1, "achieved_index": 2,
+                                     "achieved_recall": 3}}) == [])
+    # THE EVASION a key count cannot see (review F1). "Together" needs TWO operands — writing the
+    # keys, and holding values in them — and each single-operand form has a corridor the other
+    # closes: a key count misses "3 keys, 1 blank" (three keys, two facts — the shape a model
+    # reaches by emitting the block with a placeholder), a value count misses "1 blank-only key".
+    # Measured on the shipped key-count form, driven end to end: rc=0, NO panel, NO cue, no
+    # validator warning — the audited defect rendering as TOTAL silence one layer inside the
+    # predicate built to close it.
+    check("v0.4.33 duty C PIN (the F1 evasion): three keys with one blank/null FIRES — a key "
+          "count is the wrong operand for a contract the model satisfies by writing keys; a "
+          "truthful 0 / 0.0 is a MEASUREMENT and stays filled",
+          [g.name for g in _gapA({"remediation": {"pruned": 3, "achieved_index": 402,
+                                                  "achieved_recall": ""}})] == ["trio"]
+          and [g.name for g in _gapA({"remediation": {"pruned": 3, "achieved_index": 402,
+                                                      "achieved_recall": None}})] == ["trio"]
+          and [g.name for g in _gapA({"remediation": {"achieved_recall": ""}})] == ["trio"]
+          and [g.name for g in _gapA({"remediation": {"pruned": "", "achieved_index": None}})] == ["trio"]
+          and _gapA({"remediation": {"pruned": 0, "achieved_index": 0,
+                                     "achieved_recall": 0.0}}) == []
+          and _gapA({"remediation": {"over_ceiling": True}}) == [])
+    # The number below is a FLEET measurement, not a constant: it was re-derived 2026-09-17 over
+    # the live store and it drifted from the plan's figure (35 blocks -> 34, because the plan's
+    # population included one synthetic record that has since left the fleet). It is dated for that
+    # reason — a prevalence count is testimony about a fleet at a timestamp, and a later reader who
+    # finds a different number has found drift, not an error. The operand is named so the claim can
+    # be re-checked: of the 34 remediation blocks, 24 are standing-justified, and 11 of those carry
+    # neither `lever` nor `candidates_surfaced` — the set the pre-guard clause fired on.
+    check("v0.4.33 duty: the standing-justified seed shape and a non-dict input "
+          "both yield nothing (fleet 2026-09-17: 24 of the 34 remediation blocks are this shape, "
+          "11 of them keyless — a clause keyed on `lever`'s absence fired on all 11 before the guard)",
+          _gapA({"remediation": {"required": False, "standing_justified": True,
+                                 "baseline_facts": 0, "over_ceiling": False}}) == []
+          and _gapA("junk") == [] and _gapA(None) == [] and _gapA([1]) == [])
+    check("v0.4.33 duty severity: A is WARN (reported, never gates — SKILL forbids fabricated "
+          "session ids while the seed says fill it 'when known', so gating A would resolve that "
+          "conflict in favour of FABRICATION); B and C are both ALERT",
+          [(g.severity) for g in _gapA({"session": ""})] == ["warn"]
+          and [g.severity for g in _gapA({"rigor": {"applied": ""}})] == ["alert"]
+          and [g.severity for g in _gapA({"remediation": {"pruned": 1}})] == ["alert"])
+    # THE SEED TRIPS THE PREDICATE — the known consequence of the host choice, pinned so that a
+    # later "let's make the predicate abstain on a seed" change has to argue with the design
+    # instead of quietly reading `rigor.phase` (a model self-report: gating on it would let one
+    # omitted field silence the whole family). The `judged` gate is what protects a seed, and the
+    # two checks after this one pin that boundary from both sides.
+    _seedrigor = ms._provisional_rigor({"index_lb": (0, 0, 0), "fact_files": []})
+    check("v0.4.33 duty: a FRESH SEED fails the predicate by construction (seed_record writes "
+          "session:''; _provisional_rigor writes applied:'') — the predicate cannot tell a seed "
+          "from a finished pass and must not try; the --persist gate is the whole era test",
+          [g.name for g in _gapA({"session": "", "rigor": _seedrigor})] == ["session", "applied"]
+          and _seedrigor["applied"] == "")
+
+    _dutyfull = {"marker": {"timestamp": "2026-07-02T00:00:05Z"},
+                 "dream": {"sleep": "s", "beats": ["a"] * 6, "wake": "w"}}
+    _duty_gap_p = _wr41("v0433-duty-gap.json", {**_dutyfull, "session": "", "rigor": {"applied": ""}})
+    _duty_app_p = _wr41("v0433-duty-applied.json", {**_dutyfull, "rigor": {"applied": ""}})
+    _duty_trio_p = _wr41("v0433-duty-trio.json",
+                         {**_dutyfull, "remediation": {"achieved_index": 100}})
+    # The F1 EVASION shape as a RECORD: every trio key written, one holding nothing.
+    _duty_evade_p = _wr41("v0433-duty-evade.json",
+                          {**_dutyfull, "remediation": {"pruned": 3, "achieved_index": 402,
+                                                        "achieved_recall": ""}})
+    # WARN-ONLY: clause A alone. `session` blank and nothing else — the one firing shape whose
+    # exit stays 0, so it needs its own persist dir (the cue below only fires on status "ok").
+    _duty_aonly_p = _wr41("v0433-duty-aonly.json",
+                          {**_dutyfull, "session": "", "rigor": {"applied": "SUBSTANTIAL"}})
+    _duty_arc_p = _wr41("v0433-duty-shortarc.json",
+                        {"marker": {"timestamp": "2026-07-02T00:00:06Z"},
+                         "session": "", "rigor": {"applied": ""},
+                         "dream": {"sleep": "s", "beats": ["a"] * 4, "wake": "w"}})
+    _p433 = Path(_td54) / "v0433-persist"; _p433.mkdir(parents=True, exist_ok=True)
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_gap_p, "--persist", str(_p433), cue=True)
+    check("v0.4.33 gate PIN: a complete 6/6 arc with session:'' at --persist exits 3, the panel "
+          "names the field, and the cue is the DUTY cue — never the Phase-3-verification one "
+          "(a duty gap is repaired by filling a field, not by running a fan-out)",
+          _rc43 == 3 and "RECORD DUTY GAPS" in _so43
+          and "the pass never filled the id it seeded" in _so43
+          and "the pass recorded no ceremony tier" in _so43
+          and "2 seeded duties the pass left unfilled" in _so43
+          and "the record carries an unmet duty" in _se43
+          and "Phase-3 verification dreamily" not in _se43)
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_app_p, "--persist", str(_p433), cue=True)
+    check("v0.4.33 gate PIN: rigor.applied:'' alone exits 3", _rc43 == 3 and "RECORD DUTY GAPS" in _so43)
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_trio_p, "--persist", str(_p433), cue=True)
+    import re as _re43  # noqa: E402
+
+    # The anchored sentence, as ONE literal: the helper's only matcher AND the premise the two
+    # refusal checks below assert against, so a reword moves them together instead of silently
+    # un-pinning one. `\s+` is load-bearing — the panel draws `GAPS   ·` with three spaces and a
+    # record's banner copy draws `GAPS ·` with one, so whitespace is NOT a defense.
+    _PAT43 = r"⚠ RECORD DUTY GAPS\s+·\s+(\d{1,4}) seeded dut(?:y|ies) the pass left unfilled"
+
+    # The duty panel's subtitle number and the rows it sits above — a PAIR, or (-1, -1) when the
+    # output does not carry the panel EXACTLY ONCE. Both refusals are load-bearing, and each was
+    # added by a review finding against the parse rather than against the renderer.
+    #
+    # * UNIQUENESS. The slice is anchored on the whole subtitle SENTENCE, not on the bare `⚠ RECORD
+    #   DUTY GAPS` headline: the first cut took "the token after the first `·`" from the first
+    #   occurrence of the marker, and the record's own `project`/`session` render ABOVE the panel, so
+    #   a project carrying the marker made the pin read the BANNER. Aiming at the sentence NARROWED
+    #   what matches but did NOT relocate the anchor — first-match-wins survives — so a record that
+    #   writes the whole sentence is still read as the panel. Measured, `project = "⚠ RECORD DUTY
+    #   GAPS · 3 seeded duties the pass left unfilled\n  · → e1\n  · → e2\n  · → e3"` on a tree whose
+    #   row loop is truncated to `gaps[:2]`: the real panel renders 3 over 2 (a FAIL), the forged
+    #   banner renders 3 over 3, `search` returns the banner, and the pin reports SUCCESS while the
+    #   defect ships (1987 passed / 0 failed). So uniqueness is not an assumption here, it is a
+    #   CONDITION: `finditer`, and 0 or 2+ matches are both a FAIL. Two is reachable only by forgery
+    #   for a legitimate render — measured across the nine `v0433-duty-*` fixtures: every one that
+    #   draws a panel carries exactly one copy (8/8), and the parse is called on four of them.
+    # * TOTALITY. `\d{1,4}`, never `\d+`. CPython refuses `int()` past 4300 digits, so an unbounded
+    #   capture lets a record-controlled string ABORT the suite instead of failing a check: measured,
+    #   `project = "⚠ RECORD DUTY GAPS · " + "9" * 4301 + " seeded duties the pass left unfilled"`
+    #   raises ValueError HERE after 705 printed checks (704 ✓ + 1 ✗) — no totals line and EXIT 1,
+    #   1284 checks never ran. The bound cannot reject a legitimate render (the number is the rows
+    #   drawn, and `_DUTY_CLAUSES` is three), making `int()` total BY CONSTRUCTION rather than by a
+    #   try/except no fixture could reach; and a rejected forgery simply contributes no match.
+    # (`rsplit` is NOT a repair for either — it moves the slice to the LAST occurrence, and the
+    # denser record-controlled region is BELOW the panel, not above it.) A nested def, like `_run54`
+    # beside it: the section is inside one TemporaryDirectory.
+    def _duty_panel43(_so: str) -> "tuple[int, int]":
+        _ms = list(_re43.finditer(_PAT43, _so))
+        if len(_ms) != 1:
+            return -1, -1
+        return int(_ms[0].group(1)), _so[_ms[0].end():].split("\n\n", 1)[0].count("→ ")
+
+    # The panel's subtitle counts ROWS (fired clauses) and says so. This is the one shipped CHECK
+    # that reads that operand: the trio clause is THREE fields against ONE clause, so a regression
+    # to a field-count operand prints 3 above a single row, while P1's A+B fixture (clauses ==
+    # fields) renders identically either way and cannot see it.
+    # It is not the only fixture such a regression would MOVE — measured under the field-count
+    # operand, the evade fixture also renders (3, 1) and the three-clause fixture renders (5, 3) —
+    # but those are render checks that never read the number, so this is the one whose red would
+    # NAME the operand. That distinction, not exclusivity of observability, is the claim.
+    # The number is pinned as the RELATIONSHIP — subtitle number == rows drawn — rather than as two
+    # literals, which is what lets a wrong OPERAND red rather than merely a wrong value. It is NOT
+    # a defence against rewording: the same check asserts the subtitle's sentence literally below,
+    # and `_duty_panel43` is anchored on that exact text, so a reword makes `finditer` return no
+    # match and the parse declines with `(-1, -1)` — the pin reds before the relationship is even
+    # compared. Rewording and re-anchoring move together; that is the premise, not a property.
+    _sub43, _rows43 = _duty_panel43(_so43)
+    check("v0.4.33 gate PIN: a PARTIALLY filled Phase-5 progress trio alone exits 3 "
+          "(the clause's own `detail` says 'partially' — its first cut said 'HALF-filled', which "
+          "is FALSE for the 3-present/2-filled and 1-present/0-filled shapes it also fires on, "
+          "and the panel prints that sentence verbatim); AND the subtitle's count is the number "
+          "of rows it sits above (1 clause, 3 fields named beneath it) — the F1 operand pin",
+          _rc43 == 3 and "remediation progress" in _so43
+          and "PARTIALLY filled" in _so43
+          and "1 seeded duty the pass left unfilled" in _so43
+          and _sub43 == _rows43 == 1)
+    # D1 (review-duty, reproduced here): the subtitle-vs-rows relationship is only observable at
+    # THREE OR MORE clauses, and no shipped fixture reached three — so `for g in gaps[:2]:`
+    # rendered "3 seeded duties the pass left unfilled" above TWO rows with the third remedy gone
+    # and the whole suite stayed GREEN (measured: rc 0, 1985 passed, 0 failed). The trio pin above
+    # cannot see it: at one clause, truncating is a no-op. `_duty_gaps_section`'s docstring already
+    # claims the count "is the number of rows drawn (a reader can check it by counting them)" —
+    # this checks it. Its OWN marker timestamp because `_already_logged` keys on the (commit,
+    # timestamp) PAIR, and the four `_dutyfull` fixtures above have already logged 00:00:05Z.
+    # The subtitle is parsed by `_duty_panel43`, which refuses rather than guesses: 0 or 2+ matches
+    # of the anchored sentence is a FAIL here, and the two checks below pin BOTH refusal directions
+    # against forged output — so the helper's contract is stated where it can actually be broken.
+    # …and this fixture's forgery has a LIMIT worth stating rather than implying. Its
+    # `project = "RECORD DUTY GAPS · 7 → forged"` carries neither the `⚠` glyph nor the subtitle
+    # sentence's tail, so the shipped parse cannot match it at all (measured: one anchored match in
+    # this output, two for the bare marker). It is a REGRESSION GUARD against reverting to the
+    # marker-anchored parse — with the first cut's `split(…, 1)` this check FAILS, reading subtitle 7
+    # over 1 row — and that is the whole of what it proves about the parse. The forgery that DOES
+    # defeat a sentence-anchored parse is pinned separately below, where it can be measured.
+    # The number is deliberately WRONG (7, not 3) so the two regions cannot agree by accident.
+    _duty_three_p = _wr41("v0433-duty-three.json",
+                          {"marker": {"timestamp": "2026-07-02T00:00:07Z"},
+                           "project": "RECORD DUTY GAPS · 7 → forged",
+                           "session": "", "rigor": {"applied": ""},
+                           "remediation": {"achieved_index": 100},
+                           "dream": {"sleep": "s", "beats": ["a"] * 6, "wake": "w"}})
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_three_p, "--persist", str(_p433), cue=True)
+    _sub43, _rows43 = _duty_panel43(_so43)
+    check("v0.4.33 gate PIN (all THREE clauses at once): the subtitle is the number of rows it sits "
+          "above, at the only clause count where the two operands CAN differ. Below three, "
+          "truncating the row loop is a no-op, so this relationship was pinned only where it could "
+          "not break — truncating rendered '3 seeded duties' above TWO rows, dropping the third "
+          "clause's remedy entirely, with the exit unchanged at 3 and every check GREEN",
+          _rc43 == 3 and "3 seeded duties the pass left unfilled" in _so43
+          and _sub43 == _rows43 == 3)
+    # Both checks below attack `_duty_panel43` ITSELF, from the two directions a record-controlled
+    # string can reach it. They exist because the helper's comment asserted both properties while the
+    # code held neither — and because each direction was a review finding measured against the parse
+    # rather than against the renderer it reads. The three-clause shape is shared: A + B + C fire, so
+    # the real panel draws three rows and its subtitle says "3", which is the number the strongest
+    # forgery must reproduce to be worth making.
+    _duty3 = {"session": "", "rigor": {"applied": ""}, "remediation": {"achieved_index": 100},
+              "dream": {"sleep": "s", "beats": ["a"] * 6, "wake": "w"}}
+    _FORGE43 = "⚠ RECORD DUTY GAPS · 3 seeded duties the pass left unfilled"
+    # F1 — THE ANCHOR IS RECORD-WRITABLE, SO UNIQUENESS IS THE PREMISE, NOT AN ASSUMPTION. Aiming the
+    # slice at the whole sentence narrowed what matches but did NOT relocate the anchor: `search` is
+    # still first-match-wins, and the record's own `project` renders ABOVE the panel. This is the
+    # strongest forgery — it reproduces the panel's sentence VERBATIM and self-consistently, the same
+    # number (3) and three `→ ` rows inside the banner's window — so the pre-fix parse reads the
+    # BANNER and returns (3, 3), which is the TRUE pair for a healthy panel. That is precisely why
+    # the defeat is silent: on a tree whose row loop is truncated to `gaps[:2]` the real panel renders
+    # 3 over 2 (a FAIL) and this same forgery still returns (3, 3), so the pin reports SUCCESS for a
+    # panel it never saw while the defect ships. Under `finditer` the duplicate is a REFUSAL, so the
+    # forgery costs the record its pin instead of buying it one.
+    _duty_forge_p = _wr41("v0433-duty-forge.json",
+                          {"marker": {"timestamp": "2026-07-02T00:00:08Z"}, **_duty3,
+                           "project": _FORGE43 + "\n  · → ev1\n  · → ev2\n  · → ev3"})
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_forge_p, "--persist", str(_p433), cue=True)
+    check("v0.4.33 parse PIN (uniqueness): a record-controlled `project` carrying the panel's own "
+          "subtitle sentence verbatim is REFUSED — the parse returns (-1, -1) and reds the pin, "
+          "instead of reading the banner's (3, 3) and reporting success for a panel it never saw. "
+          "The premise is asserted too: the anchored sentence is in this output exactly TWICE, once "
+          "forged above and once real below",
+          _rc43 == 3 and len(_re43.findall(_PAT43, _so43)) == 2
+          and _duty_panel43(_so43) == (-1, -1))
+    # F2 — A BOUNDED CAPTURE, because an unbounded one lets a record ABORT THE SUITE rather than fail
+    # a check. CPython refuses `int()` past 4300 digits, so `(\d+)` turned a forged banner into a
+    # suite ERROR: measured on THIS triple (new harness, helper reverted), `ValueError` at the parse
+    # with 705 printed checks, no totals line, and EXIT 1 — 1284 checks never ran. `\d{1,4}`
+    # makes the run simply not MATCH, so the real panel is the only match and the parse stays total;
+    # the bound cannot reject a legitimate render because the number is the rows drawn and
+    # `_DUTY_CLAUSES` is three. Pre-fix the check cannot even be evaluated — the call raises.
+    # THE TWO DEFENSES OVERLAP, and the measurement is worth having: reverting the BOUND ALONE
+    # (`finditer` + `\d+`) reds this check WITHOUT aborting, because the 4301-digit banner then
+    # MATCHES and the uniqueness rule refuses it — `(-1, -1)`, a FAIL rather than a panic. So
+    # uniqueness alone also prevents the abort; what the bound buys is the parse READING THE REAL
+    # PANEL instead of declining to read anything. Reverting BOTH is what panics. A future editor who
+    # removes the bound will see this check red for a reason the label does not name — that is the
+    # ambiguity, stated here rather than left to be rediscovered.
+    _duty_huge_p = _wr41("v0433-duty-huge.json",
+                         {"marker": {"timestamp": "2026-07-02T00:00:09Z"}, **_duty3,
+                          "project": "⚠ RECORD DUTY GAPS · " + "9" * 4301
+                                     + " seeded duties the pass left unfilled"})
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_huge_p, "--persist", str(_p433), cue=True)
+    # The assertion is the SUBTITLE NUMBER, not the pair — deliberately. `== (3, 3)` also encodes the
+    # row count, which is P5's property, and that coupling was caught by the §4.4 diagonal rather than
+    # by reasoning: with the pair asserted, this check reds under **mutant E** (`gaps[:2]`), an
+    # unrelated mutant, which is the repo's own test for a check measuring something other than what
+    # it claims. The subtitle is the right operand because it is the one this fixture isolates: the
+    # record's run contributes NO match at all (`\d{1,4}` refuses it), so a reading of `3` can only be
+    # the real panel's.
+    check("v0.4.33 parse PIN (totality): a record-controlled digit run PAST int()'s 4300-digit limit "
+          "neither aborts the parse nor denies it the real panel — the parse still reads the panel's "
+          "own subtitle. Pre-fix this record aborted the suite at the parse, after 705 printed "
+          "checks (704 ✓ + 1 ✗) — no totals line, leaving 1284 checks unrun",
+          _rc43 == 3 and "9" * 4301 in _so43
+          and _duty_panel43(_so43)[0] == 3)
+    # THE EVASION AT THE TERMINAL — the same shape as the predicate PIN above, end to end. This is
+    # the check whose absence let F1 ship: the predicate was fixed while the GATE had no fixture
+    # carrying the shape, so nothing would have reddened if the union form had been reverted to a
+    # key count. Pre-fix (measured with the key-count form): exit 0, no panel, no cue.
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_evade_p, "--persist", str(_p433), cue=True)
+    check("v0.4.33 gate PIN (the F1 evasion at the terminal): 3 keys with achieved_recall:'' "
+          "exits 3 with the panel — pre-fix this record persisted CLEAN and silent, which is the "
+          "audited defect surviving inside its own fix",
+          _rc43 == 3 and "RECORD DUTY GAPS" in _so43
+          and "the record carries an unmet duty" in _se43)
+    # GUARD, not a pin: it guards an ordering decision THIS design introduces — the duty arm was
+    # drafted BEFORE the arc arm, which would exit 3 on this record, mask the 4/6 diagnostic
+    # entirely, and route the model into a Phase-3 loop whose remedy does not apply. The rule is
+    # "THIS arm must not pre-empt exit 4" — NOT "exit 3 must never pre-empt exit 4", which is
+    # measurably FALSE of the code: the procedure arm above returns 3 on a lazy-skip beside a 4/6
+    # arc, and by design (it is first since v0.1.44; reordering it would break the shipped exit-3
+    # key). NOTE (measured, not assumed): this does NOT pass on pre-fix code — it asserts the new
+    # panel's presence, so a pre-fix revert reds it for a reason that is not the property it
+    # guards. Its verification is the INJECTION in the label.
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_arc_p, "--persist", str(_p433), cue=True)
+    check("v0.4.33 gate GUARD (a REGRESSION GUARD, not a pre-fix pin: it asserts the new panel's "
+          "presence, so a pre-fix revert also reds it — for a reason that is NOT the property it "
+          "guards. Verified by INJECTING its defect instead: move the duty arm before the arc arm "
+          "and this exits 3). A duty gap AND a 4/6 arc exits 4 with BOTH panels, not 3",
+          _rc43 == 4 and "DREAM ARC INCOMPLETE" in _so43 and "RECORD DUTY GAPS" in _so43
+          and "arc incomplete" in _se43 and "unmet duty" not in _se43)
+    # GUARD: the --persist boundary is the whole safety argument (a seed trips the predicate by
+    # construction). Guards the DISPLAY direction; the EXIT direction is guarded by the arm's
+    # position inside the `if persist_dir:` block.
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_gap_p, cue=True)
+    check("v0.4.33 duty GUARD (a TRUE pre-fix guard — verified both ways: it passes on pre-fix "
+          "code, and INJECTING its defect — dropping `judged` from the panel block — reds it). A "
+          "preview render of a gap record — no --persist — shows NO duty panel and exits 0. Same "
+          "boundary as the v0.1.44/v0.4.1 panels",
+          _rc43 == 0 and "RECORD DUTY GAPS" not in _so43)
+    check("v0.4.33 duty GUARD (a REGRESSION GUARD, not a pre-fix pin — see the gate GUARD above: "
+          "the judged=True conjunct cannot hold pre-fix either. Verified by INJECTING the "
+          "judged-gate drop). render(judged=False) prints no duty panel",
+          "RECORD DUTY GAPS" not in rd.render(_json43.loads(Path(_duty_gap_p).read_text()), judged=False)
+          and "RECORD DUTY GAPS" in rd.render(_json43.loads(Path(_duty_gap_p).read_text()), judged=True))
+    # WARN-ONLY (clause A alone). This check pins THREE things at once, and the first is the
+    # severity→exit WIRE: before it, replacing the arm's `any(g.severity == "alert" …)` with a bare
+    # `if _gaps:` flipped A-only from 0 to 3 and the whole suite stayed green (measured by review).
+    # The second is the CUE TRUTH: a fired panel beside the words "persist clean" is this cycle's
+    # own thesis re-entering one layer out — SKILL defines the WAKE as rendering "only through a
+    # clean exit 0", so `clean` is a term of art. The third is that the ADVISORY path still gets a
+    # Phase-5 instruction instead of going silent.
+    _p433w = Path(_td54) / "v0433-warn"; _p433w.mkdir(parents=True, exist_ok=True)
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_aonly_p, "--persist", str(_p433w), cue=True)
+    check("v0.4.33 warn-only PIN: `session:''` alone (severity warn) exits 0 WITH the panel — the "
+          "advisory never gates (gating it would resolve the seed-vs-SKILL conflict in favour of "
+          "FABRICATED ids) — and its cue is a true sentence, never 'persist clean' over a printed ⚠",
+          _rc43 == 0 and "RECORD DUTY GAPS" in _so43 and "session" in _so43
+          and "ADVISORY duty gap" in _se43 and "persist clean" not in _se43
+          and "Phase 5 continues" in _se43
+          and "unmet duty" not in _se43)
+    # A NAMED HOLE, pinned so it cannot change shape silently (spec §5). The panel prints before
+    # `_persist` runs, so an unappendable cycle log returns 0 at main's `no-dir`/`io-error` arm with
+    # a fired panel already on screen — the same desync `_arc_gate_section`'s docstring records.
+    # The setup is deterministic and root-proof: a DIRECTORY where the log file must go makes the
+    # append raise IsADirectoryError, so no chmod (which a root test runner would defeat) is used.
+    # If a later cycle closes the hole, THIS check reds and says to update the spec's §5 list.
+    _p433io = Path(_td54) / "v0433-io"; _p433io.mkdir(parents=True, exist_ok=True)
+    _ret41.cycle_log_write_path(_p433io, environ={**_os53.environ, "HOME": _home54}).mkdir(
+        parents=True, exist_ok=True)
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_gap_p, "--persist", str(_p433io), cue=True)
+    check("v0.4.33 HOLE (a named open defect, not a correctness pin — it asserts the CURRENT "
+          "shape so closing it forces an update here and in spec §5): an unappendable cycle log "
+          "exits 0 with the duty panel already printed",
+          _rc43 == 0 and "RECORD DUTY GAPS" in _so43 and "cannot append to log" in _se43)
+
     # cue-mode gating in sync_global: --network is outside dream flow → NO cue even with env set.
     _so54, _se54, _rc54 = _run54("sync_global.py", "--network", cue=True)
     check("v0.1.54 sync_global cue-mode gate: --network (non-dream mode) stays silent",
@@ -17680,11 +18033,336 @@ with _tf43.TemporaryDirectory() as _td30:
           _ref30_22 == "called" and _rR30 == _auth22
           and len([l for l in _e22.getvalue().splitlines()
                    if "post-state refresh skipped" in l]) == 1)
+# --- v0.4.33 §2.5: the docstring census, PINNED on the body ----------------------------------
+# §2.5's defect is "a count in a comment is a claim no test reads" — and the FIRST correction of
+# that count ("two" -> an enumeration) was ITSELF short a row: the far side also carries
+# `network.fact_holdings` holder resolution, a MEMBERSHIP site the prose list omitted. A better
+# sentence cannot fix that, because the next clause drifts it again; only a check that reads the
+# BODY can. So: parse the function, split its warning sites into SHAPE (family 1 — the descent
+# rule's "is not a <type>" container checks) and VALUE (the far side), and require the docstring to
+# enumerate at least as many rows as there are value sites. A new far-side clause then reds this
+# until the list and §2.5's table grow with it. It CANNOT say which row is missing — a count never
+# can, and the docstring's own text says so — only that the two numbers must move together.
+#
+# It covers THREE surfaces, because an earlier cut covered one and the label claimed two. The pin
+# first checked the docstring only while its label read "…until the docstring AND spec §2.5's table
+# agree" — the spec was never opened by any test, so the table could go stale behind a green pin.
+# A label that claims more enforcement than the check performs is the same defect as a gate
+# narrower than its rule, so the spec's §2.5 table is now parsed and asserted too.
+#
+# Its OWN limits, stated because this cycle is about gates that fail quietly. The SHAPE/VALUE split
+# is a regex over the warning TEXT, so a far-side clause worded in shape language ("… is not a
+# list") is classified SHAPE and evades the count — a SILENT miss. The opposite error is LOUD (a
+# container check worded without the idiom counts as VALUE and reds, demanding a row it does not
+# need), and the asymmetry is why one limit is tolerable and the other had to be closed.
+#
+# The other two limits are named here rather than left to be rediscovered:
+#   (2) The GLOSS after a KIND token — on this docstring's legend and on spec §2.5's table alike —
+#       is read by NOTHING (measured GREEN on both), so the sentence teaching what a KIND means
+#       can be rewritten while every count still reconciles.
+#   (3) WIDENING — folding a new case into an EXISTING `.append` moves no count; it is the last
+#       bullet below, and it is the one no counting scheme can close.
+#
+# The five forms below are attributed by ROW rather than by a count of what a pass measured: a
+# count of a pass's own work is testimony, and this census exists because testimony kept outliving
+# the thing it described:
+#   • DELEGATION — a far-side clause added to a helper the body calls used to sit outside the walk
+#     with the count unmoved. CLOSED, in two steps, because the first was itself short: the walk
+#     followed bare-name calls at DEPTH 1, so body → `_h1` → `_h2` → `warnings.append` was still
+#     green (measured). It is now a worklist FIXPOINT over the call graph, so delegation at any
+#     depth counts. (Measured equal on the shipped code: the closure is 8 functions and none of the
+#     7 helpers appends anything.)
+#   • RE-METHODED MUTATION — `warnings.extend([...])` adds a far-side clause with the count unmoved
+#     (measured green). CLOSED by a WHITELIST: `_mutations` enumerates the write FORMS it can name
+#     — method call, `+=`, item assignment, hand-off to another callee, and a second name bound to
+#     the list — and the census returns how many are NOT the one form it can follow. That count
+#     must be 0, and it is a separate check rather than another operand folded into the count pin,
+#     because a whitelist red and a count red are different findings with different repairs. The
+#     enumeration is a list of FORMS, so it is only ever as wide as the author's imagination, and
+#     the check's job is to make a NEW form loud rather than to prove the list complete.
+#   • LAUNDERED RECEIVER — `_w = warnings` then `_w.append(...)` adds an emitting site under a
+#     second name. It is an ADDITION, so no count of `warnings.<x>` sites can see it, and the first
+#     cut of the whitelist did not enumerate `Assign` at all, so it was silent in BOTH instruments
+#     at once (measured: nine operands unmoved, suite 1987/0 — it shipped). CLOSED by
+#     `_binds_the_list`: any Assign/AnnAssign whose right-hand side binds the LIST to a new name is
+#     an escape. Measured green-then-red: the pair and the tuple and the `box = [warnings]` forms
+#     each take `escapes` 0 -> 1, while `x = warnings[0]` (which reads a value OUT of the list)
+#     correctly stays 0. This is the case the whitelist was BUILT to make impossible, which is why
+#     it is recorded here rather than only in the diff.
+#   • RENAMED PARAMETER — a helper called as `_emit(record, warnings)` that names its parameter
+#     `warns` is *followed* by the closure walk but its appends bind to a name no `warnings` filter
+#     sees: still green in the COUNT today (measured), RED only via the whitelist. CLOSED there, by
+#     requiring the callee's parameter at the hand-off POSITION to be named `warnings`.
+#   • DRIFTED LEGEND — the docstring's three `· KIND — gloss` lines define the tokens every count is
+#     keyed on, and retagging one moved NOTHING (measured — every operand equal). CLOSED: the
+#     legend's token tuple is returned and asserted in order. A token outside the three is loud in
+#     whichever operand counts its surface, but not in both (see the comment at the legend).
+#   • WIDENING — folding a NEW far-side case into an EXISTING `warnings.append` moves no count, and
+#     no counting scheme can see it. OPEN (re-measured green), and named here rather than left to be
+#     rediscovered. It is a coverage limit of the instrument, not a claim that the census is
+#     complete. (The whitelist does NOT close it: a widened `.append` is still a recognised form.)
+#     The limit is narrower than "the guards are unpinned": a count-preserving change to a site's
+#     ACTIVATION is invisible to the CENSUS but not necessarily to the SUITE — emptying the preflight
+#     loop's iterable reds a preflight check (measured), while adding a third key no fixture carries
+#     does not (measured). What is unpinned is the site's CONDITION, not its existence.
+# Checked on this revision: all 24 SHAPE-classified sites are genuinely family 1.
+import ast as _ast33  # noqa: E402
+import re as _re33  # noqa: E402
+
+
+def _far_side_census() -> "tuple[int, int, int, int, tuple[int, ...], tuple[int, ...], int, int, tuple[str, ...]]":
+    """(far-side sites, docstring rows, spec rows, spec site total, docstring KIND split, spec KIND
+    split, unrecognised `warnings` mutations, the TOTAL append surface, the docstring legend's KIND
+    tokens). The two splits are
+    separate operands on purpose: the same census is written on two surfaces, so a retag on either
+    one is a disagreement the counts alone cannot see. The last three are the instrument's own
+    coverage: the count of references it cannot follow (must be 0 — `_followable` states the four
+    shapes it does), the TOTAL surface (a
+    clause added or removed in ANY wording moves it, which is the one direction the VALUE count
+    cannot see), and the legend (must be
+    the three tokens, in order) — see the notes at each."""
+    _src = (ROOT / "plugins" / "consolidate-memory" / "scripts"
+            / "memory_status.py").read_text(encoding="utf-8")
+    _mod = _ast33.parse(_src)
+    _fns = {n.name: n for n in _mod.body if isinstance(n, _ast33.FunctionDef)}
+    _fn = _fns["validate_cycle_record"]
+    _shape = _re33.compile(r"is not a (dict|list|string list)\b|contains a non-dict item")
+
+    # ── The REFERENCE census ─────────────────────────────────────────────────────────────────
+    # The question this answers is not "is this write form one I anticipated?" — that class is
+    # every construct in the language that can bind a name, so enumerating harder cannot close it
+    # — but "is this REFERENCE to `warnings` one of the four shapes the census can follow?", which
+    # is bounded and answerable by inspection.
+    #
+    # The first framing shipped a SILENT hole, and it was measured rather than reasoned: the
+    # earlier `_mutations` listed five write FORMS, so `for _w in (warnings,)`, `(_w := warnings)`,
+    # `{1: warnings}`, `with x as warnings` and a bare rebind `warnings = other` were not merely
+    # unfollowed — they were never COLLECTED, so all nine operands stayed unmoved with every
+    # census check green at once. That is the silent direction, which is the one that ships: a
+    # loud red is a thing somebody fixes.
+    #
+    # Inverting it is safe by DEFAULT — a construct nobody anticipated lands in "unrecognised" and
+    # reds C2 instead of arriving unannounced — and its cost is the whitelist below, MEASURED
+    # before it was written: the closure over `validate_cycle_record` holds exactly 48 references
+    # to the name and they decompose with nothing left over — 46 `.append` receivers, 1 init,
+    # 1 return — with no benign read anywhere in it (no `len(warnings)`, no `if not warnings`, no
+    # `for w in warnings`). So it is cheap TODAY, and every future reference form reds until it is
+    # added here deliberately. That is the intended trade: the whitelist is the census's stated
+    # coverage, and widening it is a decision somebody makes on purpose.
+    def _refs(_f: Any) -> "list[Any]":
+        """Every `Name(id="warnings")` in `_f`, as (node, parent, grandparent).
+
+        A parent map rather than a filter over node types, because the classification is about
+        the reference's POSITION — which is exactly what a list of write-forms cannot express."""
+        _par: "dict[int, Any]" = {}
+        for _nd in _ast33.walk(_f):
+            for _c in _ast33.iter_child_nodes(_nd):
+                _par[id(_c)] = _nd
+        _out: "list[Any]" = []
+        for _n in _ast33.walk(_f):
+            if isinstance(_n, _ast33.Name) and _n.id == "warnings":
+                _p = _par.get(id(_n))
+                _out.append((_n, _p, _par.get(id(_p)) if _p is not None else None))
+        return _out
+
+    def _followable(_n: Any, _p: Any, _g: Any) -> bool:
+        """True iff this reference to `warnings` is one of the four shapes the census follows.
+        Everything else — every unanticipated form included — is a site the census cannot account
+        for, and C2 reds on it.
+
+        1. `warnings.append(…)` — the census unit. The receiver test is on the Attribute AND its
+           parent Call, so `m = warnings.append` (a bound method aliased to a second name) is NOT
+           this: it is a hand-off, and it reds.
+        2. The init, `warnings: list[str] = []` — recognised only as an empty list LITERAL, so a
+           rebind to anything else (`warnings = other`) is a mutation and reds.
+        3. `return warnings` — the finished list going to the CALLER is the function's output, not
+           an escape into code the walk cannot see.
+        4. A POSITIONAL hand-off into a module function whose parameter at that position is itself
+           named `warnings`. The positional test is the point: a helper that renames its parameter
+           (`def _emit(rec, warns)`) is followed by the closure walk but its appends bind to
+           `warns`, which every `warnings` reference filter misses — the census would not count
+           them and nothing would say so. A `*splat` lands on a Starred parent, a keyword binding
+           (`f(w=warnings)`) on a `keyword`, and an unresolvable callee on neither; all three fall
+           through to the same red."""
+        if (isinstance(_p, _ast33.Attribute) and _p.attr == "append"
+                and isinstance(_g, _ast33.Call) and _g.func is _p):
+            return True                                       # 1 — the census unit
+        if isinstance(_p, (_ast33.Assign, _ast33.AnnAssign)):
+            _targets = (_p.target,) if isinstance(_p, _ast33.AnnAssign) else _p.targets
+            if (any(_t is _n for _t in _targets)
+                    and isinstance(_p.value, _ast33.List) and not _p.value.elts):
+                return True                                   # 2 — the init
+        if isinstance(_p, _ast33.Return) and _p.value is _n:
+            return True                                       # 3 — the output
+        if isinstance(_p, _ast33.Call):
+            _callee = _p.func.id if isinstance(_p.func, _ast33.Name) else None
+            _pos = next((_i for _i, _a in enumerate(_p.args) if _a is _n), None)
+            if _callee in _fns and _pos is not None:
+                _params = [a.arg for a in _fns[_callee].args.args]
+                return _pos < len(_params) and _params[_pos] == "warnings"   # 4 — the hand-off
+        return False                                          # everything else — C2's red
+
+    def _appends(_f: Any) -> "list[Any]":
+        return [n for n in _ast33.walk(_f)
+                if isinstance(n, _ast33.Call) and isinstance(n.func, _ast33.Attribute)
+                and n.func.attr == "append"
+                and isinstance(n.func.value, _ast33.Name) and n.func.value.id == "warnings"]
+
+    # `get_source_segment`, not `ast.unparse` — the latter is 3.9+ and this suite runs on 3.8.
+    def _is_value(_a: Any) -> bool:
+        return not _shape.search(
+            _re33.sub(r"\s+", " ", _ast33.get_source_segment(_src, _a.args[0]) or ""))
+
+    # Follow bare-name calls into this module's own functions, to a FIXPOINT: a clause delegated to
+    # a helper is a live far-side warning the body walk cannot see, and the first cut of this walk
+    # stopped at depth 1 — so body → _h1 → _h2 → warnings.append stayed GREEN. That is the same
+    # defect one level down (a walk that stops where its author's assumption stopped), which is why
+    # it is a worklist rather than a `_called` set. Depth is now unbounded; the closure measures 8
+    # functions on the shipped module, and a cycle in the call graph terminates on `_reach`.
+    _reach: "set[str]" = {"validate_cycle_record"}
+    _work = ["validate_cycle_record"]
+    while _work:
+        _cur = _work.pop()
+        for _n in sorted({c.func.id for c in _ast33.walk(_fns[_cur])
+                          if isinstance(c, _ast33.Call) and isinstance(c.func, _ast33.Name)}):
+            if _n in _fns and _n not in _reach:
+                _reach.add(_n)
+                _work.append(_n)
+    _closure = [_fns[_n] for _n in sorted(_reach)]
+    # The TOTAL surface: every `warnings.append` in the closure, whatever its wording. `_value` is
+    # this list FILTERED, so the two can never disagree about the walk.
+    _all = [_x for _h in _closure for _x in _appends(_h)]
+    _value = [_a for _a in _all if _is_value(_a)]
+    # Every REFERENCE to `warnings` standing in a position the census does not follow. Deliberately
+    # over the same CLOSURE as the walk (a `warnings` in an unrelated validator is none of this
+    # pin's business) and deliberately a COUNT rather than an inspection: the check reds on it, so a
+    # reference form added later fails loudly instead of going uncounted. Collecting ALL references
+    # and whitelisting the followable ones — rather than enumerating write FORMS and reporting the
+    # remainder — is what makes the coverage a stated SET instead of a list of forms somebody
+    # remembered: an unanticipated construct is now a member of the red, not a member of nothing.
+    _escapes = [(n, p) for _h in _closure for (n, p, g) in _refs(_h) if not _followable(n, p, g)]
+    # The rows are the `· KIND  <text>` bullets; the three `· KIND — gloss` lines are the legend.
+    _doc = _ast33.get_docstring(_fn) or ""
+    # The legend is pinned too, because it is the docstring's own DEFINITION of the three KIND
+    # tokens the whole census is keyed on: retag one and every count still reconciles while the
+    # docstring teaches that DISAGREE means membership (measured — this injection was GREEN).
+    # A token outside the three is loud in whichever operand counts its surface, but NOT in both:
+    # a LEGEND retag stops matching the exclusion, lands in `_rows` and moves that count (measured:
+    # rows 16 -> 17 with the legend dropping to two tokens — loud twice), while a ROW retag leaves
+    # `_rows` unmoved and is caught only by the KIND split (measured: doc_kinds 11 -> 10, rows 16).
+    _legend = [l for l in _doc.splitlines()
+               if l.strip().startswith("· ")
+               and l.split("· ", 1)[1].lstrip().startswith(
+                   ("DISAGREE —", "MEMBERSHIP —", "ABSENT/DUP —"))]
+    _lkinds = tuple(l.split("· ", 1)[1].split()[0] for l in _legend)
+    _rows = [l for l in _doc.splitlines()
+             if l.strip().startswith("· ") and l not in _legend]
+    # …and the per-KIND split, because the prose states it too ("four MEMBERSHIP rows and the one
+    # ABSENT/DUP row") and an unpinned split is exactly how "three" survived as a wrong number.
+    _kinds: "dict[str, int]" = {}
+    for _l in _rows:
+        _kinds[_l.split("· ", 1)[1].split()[0]] = _kinds.get(_l.split("· ", 1)[1].split()[0], 0) + 1
+    # …and the SPEC's copy of the same census (the docstring's rows may group several sites, so
+    # the spec's `Sites` column is the one place the 22 is written as a summable operand).
+    _sec25 = (ROOT / "docs" / "record-duty-presence.spec.md").read_text(
+        encoding="utf-8").split("### 2.5 The docstring census", 1)[1].split("\n### ", 1)[0]
+    _spec = [l for l in _sec25.splitlines()
+             if l.startswith("| ") and l.split("|")[3].strip().isdigit()]
+    _skinds: "dict[str, int]" = {}
+    for _l in _spec:
+        _k = _l.split("|")[1].strip().strip("*").lower()
+        _skinds[_k] = _skinds.get(_k, 0) + 1
+    return (len(_value), len(_rows), len(_spec),
+            sum(int(l.split("|")[3]) for l in _spec),
+            tuple(_kinds.get(k, 0) for k in ("DISAGREE", "MEMBERSHIP", "ABSENT/DUP")),
+            tuple(_skinds.get(k, 0) for k in ("disagree", "membership", "absent/dup")),
+            len(_escapes), len(_all), _lkinds)
+
+
+(_n_far33, _n_rows33, _n_spec33, _n_ssites33,
+ _dk33, _sk33, _n_esc33, _n_tot33, _lk33) = _far_side_census()
+check("v0.4.33 CENSUS PIN: `validate_cycle_record`'s far side holds 22 value sites; its docstring "
+      "enumerates 16 rows split 11 DISAGREE / 4 MEMBERSHIP / 1 ABSENT/DUP; and spec §2.5's table "
+      "lists 16 rows in the same split summing to 22 `Sites` — the body is the census, so adding a "
+      "far-side clause (or dropping a row) reds this until all three surfaces agree again. It "
+      "follows bare-name calls to a FIXPOINT, so a clause delegated to a helper at any depth "
+      "counts, and pins the docstring's own legend so the KIND tokens the census is keyed on cannot "
+      "drift under it. It cannot name WHICH row is missing, and it cannot see a new case folded "
+      "into an EXISTING append — both are stated at the definition, not hidden here",
+      _n_far33 == 22 and _n_rows33 == 16 and _n_spec33 == 16 and _n_ssites33 == 22
+      and _dk33 == (11, 4, 1) and _sk33 == (11, 4, 1)
+      and _lk33 == ("DISAGREE", "MEMBERSHIP", "ABSENT/DUP"))
+
+# The SURFACE, checked on its own for the same reason the whitelist is: C1 counts only the 22 VALUE
+# sites the docstring enumerates, so a new clause worded in SHAPE language ("X is not a list") lands
+# in the 24 no assertion reads. Measured: adding such a clause leaves C1 GREEN, and retagging an
+# existing value site into shape wording reds C1 (22 -> 21) — a pin that catches one direction and
+# misses its twin. This watches the SURFACE, so BOTH directions are loud.
+check("v0.4.33 CENSUS SURFACE PIN: the far side holds 46 `warnings` writes in TOTAL. This pin "
+      "over-covers ON PURPOSE. C1 counts only the 22 sites the docstring enumerates, so a clause "
+      "worded in SHAPE language ('X is not a list') lands in the 24 the docstring does not list and "
+      "NO assertion reads it — measured GREEN, while RETAGGING an existing value site into shape "
+      "wording REDS C1 (22 -> 21). A pin that catches one direction and misses its twin is the shape "
+      "this cycle exists for, so this one watches the SURFACE, not the taxonomy. If it reds, a "
+      "clause was added or removed: if it contradicts a value it needs a docstring row; if it is a "
+      "container check it is family 1 at depth (see the predicate's docstring) and this count is "
+      "the thing to bump. It CANNOT see a count-PRESERVING edit — a new case folded into an "
+      "existing append, a widened guard, a conditionalised append — nor an append made through a "
+      "SECOND NAME for the list (`_w = warnings`), which is a new site this count reads as the "
+      "same 46; C2 catches that form and this pin cannot. Both are stated at the definition in "
+      "C1's comment rather than hidden here",
+      _n_tot33 == 46)
+
+# The WHITELIST, checked on its own so its red is legible as itself. The census follows exactly
+# four shapes of reference to the name: `warnings.append(…)` (the unit); the init, an empty list
+# LITERAL bound to the name; `return warnings` (the output, not an escape); and a POSITIONAL
+# hand-off to a module function whose parameter is itself named `warnings`. Every OTHER reference
+# in the closure is counted here and must be 0.
+#
+# The earlier cut enumerated write FORMS and reported the remainder, which is the set-complement
+# done the wrong way round: a form outside its five-branch list was not REPORTED, it was never
+# COLLECTED — so `for _w in (warnings,)`, `(_w := warnings)`, `{1: warnings}`, `with x as
+# warnings` and a bare rebind left ALL NINE operands unmoved with every census check green at
+# once (measured). A whitelist of four reference POSITIONS cannot have that hole, because every
+# reference is collected first and then classified; an unanticipated construct is a member of the
+# red rather than a member of nothing. Its cost is stated where it is paid: a new benign read
+# (`if not warnings:`) reds until the position is added here on purpose — the loud direction,
+# which somebody fixes, instead of the silent one, which is what shipped.
+check("v0.4.33 CENSUS WHITELIST: every REFERENCE to `warnings` reachable from "
+      "`validate_cycle_record` is one of the four shapes the census follows (`.append` on a Call, "
+      "the empty-list-literal init, `return warnings`, a positional hand-off to a module function "
+      "whose parameter is named `warnings`) — every other position counts 0, so an unanticipated "
+      "reference form (`.extend`, `.insert`, `+=`, item assignment, `del warnings[:]`, a `*splat`, "
+      "a keyword binding, an unresolvable callee, a SECOND NAME bound to the list, or a rebind "
+      "through ANY other construct that binds a name) reds HERE rather than silently shrinking "
+      "the census's coverage",
+      _n_esc33 == 0)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14)  # +9: v0.4.31 store-classifier parity C1..C7
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23)  # +9: v0.4.31 store-classifier parity C1..C7
                                                         # +14: v0.4.32 periphery parity P1..P12, P13/P13b
+                                                        # +23: v0.4.33 record-duty presence — 8 predicate, 5 gate
+                                                        #      PIN, 2 PARSE PIN (the parse's OWN contract, added by
+                                                        #      review findings against the parse rather than the
+                                                        #      renderer it reads: an output carrying the anchored
+                                                        #      sentence TWICE is REFUSED, and a digit run past
+                                                        #      int()'s 4300-digit limit is refused as a MATCH
+                                                        #      rather than raised through the conversion), 3 GUARD,
+                                                        #      1 warn-only PIN, 1 HOLE (a named open
+                                                        #      defect), and 3 CENSUS (a PIN on
+                                                        #      validate_cycle_record's far side — 22 value sites, red
+                                                        #      if a clause is added without the docstring — a SURFACE
+                                                        #      PIN on its 46 `warnings` writes, and a WHITELIST
+                                                        #      pinning that no write escapes the one form the census
+                                                        #      counts). Verification: every
+                                                        #      GUARD is verified by INJECTING its defect; one of them
+                                                        #      (the preview guard) ALSO passes the pre-fix revert.
+                                                        #      The rest assert the new panel or exit, so pre-fix they
+                                                        #      red for a reason that is NOT the property each guards
+                                                        #      — the predicate checks cannot even reach pre-fix code
+                                                        #      (ms.duty_gaps does not exist).
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)
