@@ -2104,8 +2104,12 @@ Carried forward from the plan, plus what this measurement pass added. None of it
   predicate.
 - **A third verdict state is not a divergence but a shared defect, and the sentence above was false
   about it.** Probed on the frozen tree: `{"verdict": "   "}` renders `    verdict:    ` in ASCII — a
-  dangling label with nothing after it — where *absent* and `""` both render no line at all; and the
-  HTML twin's `if(dvd)` takes the truthy path for the same input, so a blank verdict **suppresses the
+  dangling label with nothing after it — where *absent* and `""` both render no line at all. And the
+  blank is not the only route: a verdict consisting **only** of the `eligible N` prefix that `:878`'s
+  `sub` later strips — `"eligible 3"`, `"eligible 0"`, even `"  eligible   7  "` — passes `if _dv:`
+  and renders `verdict:` with nothing after it too, so the presence test is narrower than the output
+  it guards and this entry's own account of the mechanism was (`a-guards-label-is-not-its-predicate`,
+  one level in). The HTML twin's `if(dvd)` takes the truthy path for the same input, so a blank verdict **suppresses the
   very fallback** ("Demotion verdict not captured.") written to name that state. Both surfaces key
   presence on **truthiness**, which is the test E3 spent this cycle replacing. `:874-875`'s
   `_clean(demo.get("verdict", ""))` followed by `if _dv:` is a **local re-spelling of the blank test**,
