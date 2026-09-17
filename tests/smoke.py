@@ -3444,13 +3444,14 @@ with _tf43.TemporaryDirectory() as _td54:
     #   banner renders 3 over 3, `search` returns the banner, and the pin reports SUCCESS while the
     #   defect ships (1987 passed / 0 failed). So uniqueness is not an assumption here, it is a
     #   CONDITION: `finditer`, and 0 or 2+ matches are both a FAIL. Two is reachable only by forgery
-    #   for a legitimate render — measured over all five duty fixtures, one match each.
+    #   for a legitimate render — measured across the nine `v0433-duty-*` fixtures: every one that
+    #   draws a panel carries exactly one copy (8/8), and the parse is called on four of them.
     # * TOTALITY. `\d{1,4}`, never `\d+`. CPython refuses `int()` past 4300 digits, so an unbounded
     #   capture lets a record-controlled string ABORT the suite instead of failing a check: measured,
     #   `project = "⚠ RECORD DUTY GAPS · " + "9" * 4301 + " seeded duties the pass left unfilled"`
-    #   raises ValueError HERE, after 704 checks, with no totals line and EXIT 1 — 1284 checks never
-    #   ran. The bound cannot reject a legitimate render (the number is the rows drawn, and
-    #   `_DUTY_CLAUSES` is three), so it makes `int()` total BY CONSTRUCTION rather than by a
+    #   raises ValueError HERE after 705 printed checks (704 ✓ + 1 ✗) — no totals line and EXIT 1,
+    #   1284 checks never ran. The bound cannot reject a legitimate render (the number is the rows
+    #   drawn, and `_DUTY_CLAUSES` is three), making `int()` total BY CONSTRUCTION rather than by a
     #   try/except no fixture could reach; and a rejected forgery simply contributes no match.
     # (`rsplit` is NOT a repair for either — it moves the slice to the LAST occurrence, and the
     # denser record-controlled region is BELOW the panel, not above it.) A nested def, like `_run54`
@@ -3461,12 +3462,20 @@ with _tf43.TemporaryDirectory() as _td54:
             return -1, -1
         return int(_ms[0].group(1)), _so[_ms[0].end():].split("\n\n", 1)[0].count("→ ")
 
-    # The panel's subtitle counts ROWS (fired clauses) and says so. This is the ONE shipped
-    # fixture where that operand is observable: the trio clause is THREE fields against ONE
-    # clause, so a regression to a field-count operand prints 3 above a single row, while P1's
-    # A+B fixture (clauses == fields) renders identically either way and cannot see it. Pinned
-    # as the RELATIONSHIP — subtitle number == rows drawn — not as two literals, so it holds
-    # against a reworded subtitle, and both halves are the reader's own check (count the rows).
+    # The panel's subtitle counts ROWS (fired clauses) and says so. This is the one shipped CHECK
+    # that reads that operand: the trio clause is THREE fields against ONE clause, so a regression
+    # to a field-count operand prints 3 above a single row, while P1's A+B fixture (clauses ==
+    # fields) renders identically either way and cannot see it.
+    # It is not the only fixture such a regression would MOVE — measured under the field-count
+    # operand, the evade fixture also renders (3, 1) and the three-clause fixture renders (5, 3) —
+    # but those are render checks that never read the number, so this is the one whose red would
+    # NAME the operand. That distinction, not exclusivity of observability, is the claim.
+    # The number is pinned as the RELATIONSHIP — subtitle number == rows drawn — rather than as two
+    # literals, which is what lets a wrong OPERAND red rather than merely a wrong value. It is NOT
+    # a defence against rewording: the same check asserts the subtitle's sentence literally below,
+    # and `_duty_panel43` is anchored on that exact text, so a reword makes `finditer` return no
+    # match and the parse declines with `(-1, -1)` — the pin reds before the relationship is even
+    # compared. Rewording and re-anchoring move together; that is the premise, not a property.
     _sub43, _rows43 = _duty_panel43(_so43)
     check("v0.4.33 gate PIN: a PARTIALLY filled Phase-5 progress trio alone exits 3 "
           "(the clause's own `detail` says 'partially' — its first cut said 'HALF-filled', which "
@@ -3544,7 +3553,7 @@ with _tf43.TemporaryDirectory() as _td54:
     # F2 — A BOUNDED CAPTURE, because an unbounded one lets a record ABORT THE SUITE rather than fail
     # a check. CPython refuses `int()` past 4300 digits, so `(\d+)` turned a forged banner into a
     # suite ERROR: measured on THIS triple (new harness, helper reverted), `ValueError` at the parse
-    # with 704 checks printed, no totals line, and EXIT 1 — 1284 checks never ran at all. `\d{1,4}`
+    # with 705 printed checks, no totals line, and EXIT 1 — 1284 checks never ran. `\d{1,4}`
     # makes the run simply not MATCH, so the real panel is the only match and the parse stays total;
     # the bound cannot reject a legitimate render because the number is the rows drawn and
     # `_DUTY_CLAUSES` is three. Pre-fix the check cannot even be evaluated — the call raises.
@@ -3569,8 +3578,8 @@ with _tf43.TemporaryDirectory() as _td54:
     # the real panel's.
     check("v0.4.33 parse PIN (totality): a record-controlled digit run PAST int()'s 4300-digit limit "
           "neither aborts the parse nor denies it the real panel — the parse still reads the panel's "
-          "own subtitle. Pre-fix this record aborted the suite at the parse, after 704 checks, with "
-          "no totals line, leaving 1284 checks unrun",
+          "own subtitle. Pre-fix this record aborted the suite at the parse, after 705 printed "
+          "checks (704 ✓ + 1 ✗) — no totals line, leaving 1284 checks unrun",
           _rc43 == 3 and "9" * 4301 in _so43
           and _duty_panel43(_so43)[0] == 3)
     # THE EVASION AT THE TERMINAL — the same shape as the predicate PIN above, end to end. This is
@@ -18107,7 +18116,8 @@ def _far_side_census() -> "tuple[int, int, int, int, tuple[int, ...], tuple[int,
     tokens). The two splits are
     separate operands on purpose: the same census is written on two surfaces, so a retag on either
     one is a disagreement the counts alone cannot see. The last three are the instrument's own
-    coverage: the whitelist's count of writes it cannot follow (must be 0), the TOTAL surface (a
+    coverage: the count of references it cannot follow (must be 0 — `_followable` states the four
+    shapes it does), the TOTAL surface (a
     clause added or removed in ANY wording moves it, which is the one direction the VALUE count
     cannot see), and the legend (must be
     the three tokens, in order) — see the notes at each."""
@@ -18118,96 +18128,79 @@ def _far_side_census() -> "tuple[int, int, int, int, tuple[int, ...], tuple[int,
     _fn = _fns["validate_cycle_record"]
     _shape = _re33.compile(r"is not a (dict|list|string list)\b|contains a non-dict item")
 
-    def _binds_the_list(_v: Any) -> bool:
-        """True iff this expression BINDS the `warnings` list to another name, rather than reading
-        a value OUT of it. `_w = warnings`, `(_w,) = (warnings,)`, `box = [warnings]` and
-        `m = warnings.append` bind; `warnings[0]`, `warnings.copy()` and `warnings + other`
-        produce a value derived from the list, not the list, and are not this.
+    # ── The REFERENCE census ─────────────────────────────────────────────────────────────────
+    # The question this answers is not "is this write form one I anticipated?" — that class is
+    # every construct in the language that can bind a name, so enumerating harder cannot close it
+    # — but "is this REFERENCE to `warnings` one of the four shapes the census can follow?", which
+    # is bounded and answerable by inspection.
+    #
+    # The first framing shipped a SILENT hole, and it was measured rather than reasoned: the
+    # earlier `_mutations` listed five write FORMS, so `for _w in (warnings,)`, `(_w := warnings)`,
+    # `{1: warnings}`, `with x as warnings` and a bare rebind `warnings = other` were not merely
+    # unfollowed — they were never COLLECTED, so all nine operands stayed unmoved with every
+    # census check green at once. That is the silent direction, which is the one that ships: a
+    # loud red is a thing somebody fixes.
+    #
+    # Inverting it is safe by DEFAULT — a construct nobody anticipated lands in "unrecognised" and
+    # reds C2 instead of arriving unannounced — and its cost is the whitelist below, MEASURED
+    # before it was written: the closure over `validate_cycle_record` holds exactly 48 references
+    # to the name and they decompose with nothing left over — 46 `.append` receivers, 1 init,
+    # 1 return — with no benign read anywhere in it (no `len(warnings)`, no `if not warnings`, no
+    # `for w in warnings`). So it is cheap TODAY, and every future reference form reds until it is
+    # added here deliberately. That is the intended trade: the whitelist is the census's stated
+    # coverage, and widening it is a decision somebody makes on purpose.
+    def _refs(_f: Any) -> "list[Any]":
+        """Every `Name(id="warnings")` in `_f`, as (node, parent, grandparent).
 
-        This branch's absence is why a laundered write shipped GREEN: `_w = warnings` followed by
-        `_w.append("…")` left ALL NINE operands unmoved and the suite at 1987/0 (measured on this
-        revision). The whitelist's unit was never the NAME `warnings` — it is THE LIST, and a
-        second name for that list is precisely the hand-off the first cut could not see. It is an
-        ADDITION (a new emitting site), so no count of `warnings.<x>` sites can see it either, and
-        unlike the widening limit it was not named anywhere."""
-        if isinstance(_v, _ast33.Name):
-            return _v.id == "warnings"
-        if isinstance(_v, _ast33.Attribute):
-            return _binds_the_list(_v.value)      # `m = warnings.append` — a bound method aliases it
-        if isinstance(_v, _ast33.Starred):
-            return _binds_the_list(_v.value)
-        if isinstance(_v, (_ast33.Tuple, _ast33.List)):
-            return any(_binds_the_list(_e) for _e in _v.elts)
-        if isinstance(_v, _ast33.IfExp):
-            return _binds_the_list(_v.body) or _binds_the_list(_v.orelse)
-        return False        # Subscript / Call / BinOp derive a value; they do not alias the list
-
-    def _mutations(_f: Any) -> "list[Any]":
-        """Every node in `_f` that WRITES the `warnings` binding, or hands it to another callee.
-        Enumerating the ways to write is what makes the whitelist loud: a mutation form nobody
-        anticipated is a node type this function does not list, so it goes unreported rather than
-        silently shrinking the census. The judgment of which of these is followable lives in
-        `_unrecognised`, one layer up — this function only finds them.
-
-        `.extend([...])` / `.insert` add a far-side clause with the count unmoved (measured GREEN),
-        `warnings += [...]` is an AugAssign, `warnings[i] = x` is a Store subscript,
-        `f(…, warnings, …)` hands the list to a callee that may be outside the module entirely, and
-        `_w = warnings` binds the LIST to a second name whose appends no `warnings` filter sees."""
-        _out: "list[Any]" = []     # not `list[Call]` — it also collects AugAssign / Subscript / Assign
+        A parent map rather than a filter over node types, because the classification is about
+        the reference's POSITION — which is exactly what a list of write-forms cannot express."""
+        _par: "dict[int, Any]" = {}
+        for _nd in _ast33.walk(_f):
+            for _c in _ast33.iter_child_nodes(_nd):
+                _par[id(_c)] = _nd
+        _out: "list[Any]" = []
         for _n in _ast33.walk(_f):
-            if isinstance(_n, _ast33.Call):
-                _handoff = (
-                    any(isinstance(_a, _ast33.Name) and _a.id == "warnings" for _a in _n.args)
-                    or any(isinstance(_a, _ast33.Starred)
-                           and isinstance(_a.value, _ast33.Name) and _a.value.id == "warnings"
-                           for _a in _n.args)
-                    or any(isinstance(_k.value, _ast33.Name) and _k.value.id == "warnings"
-                           for _k in _n.keywords))
-                if _handoff or (isinstance(_n.func, _ast33.Attribute)
-                                and isinstance(_n.func.value, _ast33.Name)
-                                and _n.func.value.id == "warnings"):
-                    _out.append(_n)            # warnings.<attr>(…) or a hand-off
-            elif (isinstance(_n, _ast33.AugAssign) and isinstance(_n.target, _ast33.Name)
-                    and _n.target.id == "warnings"):
-                _out.append(_n)                         # warnings += […]
-            elif (isinstance(_n, _ast33.Subscript) and isinstance(_n.value, _ast33.Name)
-                    and _n.value.id == "warnings" and isinstance(_n.ctx, _ast33.Store)):
-                _out.append(_n)                         # warnings[i] = x
-            elif (isinstance(_n, (_ast33.Assign, _ast33.AnnAssign)) and _n.value is not None
-                    and _binds_the_list(_n.value)):
-                _out.append(_n)                         # _w = warnings — a second name for the LIST
-            elif (isinstance(_n, _ast33.Delete) and any(
-                    isinstance(_t, _ast33.Subscript) and isinstance(_t.value, _ast33.Name)
-                    and _t.value.id == "warnings" for _t in _n.targets)):
-                _out.append(_n)                         # del warnings[:] — in place, unaccounted
+            if isinstance(_n, _ast33.Name) and _n.id == "warnings":
+                _p = _par.get(id(_n))
+                _out.append((_n, _p, _par.get(id(_p)) if _p is not None else None))
         return _out
 
-    def _unrecognised(_n: Any) -> bool:
-        """True iff this write is NOT something the census can account for.
+    def _followable(_n: Any, _p: Any, _g: Any) -> bool:
+        """True iff this reference to `warnings` is one of the four shapes the census follows.
+        Everything else — every unanticipated form included — is a site the census cannot account
+        for, and C2 reds on it.
 
-        Two forms are recognised. `warnings.append(…)` is the census's unit — the body IS the
-        census. A hand-off `f(…, warnings, …)` is recognised only when the walk genuinely lands on
-        it: `f` must be a module function whose parameter at that POSITION is itself named
-        `warnings`, because the closure then reaches whatever `f` appends. That second condition is
-        the point of the pair — a helper that renames its parameter (`def _emit(rec, warns)`) is
-        followed by the closure walk but its appends bind to `warns`, which every `warnings` filter
-        in this file misses. The census would not count them and nothing would say so; this does.
-        A `*splat`, a keyword binding (`f(w=warnings)`) and an unresolvable callee are all
-        unfollowable for the same reason and take the same branch."""
-        if (isinstance(_n, _ast33.Call) and isinstance(_n.func, _ast33.Attribute)
-                and _n.func.attr == "append"):
-            return False
-        if (isinstance(_n, _ast33.Call) and isinstance(_n.func, _ast33.Name)
-                and _n.func.id in _fns):
-            _params = [a.arg for a in _fns[_n.func.id].args.args]
-            for _i, _a in enumerate(_n.args):
-                if isinstance(_a, _ast33.Starred):
-                    return True
-                if isinstance(_a, _ast33.Name) and _a.id == "warnings":
-                    if _i >= len(_params) or _params[_i] != "warnings":
-                        return True
-            return bool(_n.keywords)     # a keyword binding names a parameter, not the list
-        return True
+        1. `warnings.append(…)` — the census unit. The receiver test is on the Attribute AND its
+           parent Call, so `m = warnings.append` (a bound method aliased to a second name) is NOT
+           this: it is a hand-off, and it reds.
+        2. The init, `warnings: list[str] = []` — recognised only as an empty list LITERAL, so a
+           rebind to anything else (`warnings = other`) is a mutation and reds.
+        3. `return warnings` — the finished list going to the CALLER is the function's output, not
+           an escape into code the walk cannot see.
+        4. A POSITIONAL hand-off into a module function whose parameter at that position is itself
+           named `warnings`. The positional test is the point: a helper that renames its parameter
+           (`def _emit(rec, warns)`) is followed by the closure walk but its appends bind to
+           `warns`, which every `warnings` reference filter misses — the census would not count
+           them and nothing would say so. A `*splat` lands on a Starred parent, a keyword binding
+           (`f(w=warnings)`) on a `keyword`, and an unresolvable callee on neither; all three fall
+           through to the same red."""
+        if (isinstance(_p, _ast33.Attribute) and _p.attr == "append"
+                and isinstance(_g, _ast33.Call) and _g.func is _p):
+            return True                                       # 1 — the census unit
+        if isinstance(_p, (_ast33.Assign, _ast33.AnnAssign)):
+            _targets = (_p.target,) if isinstance(_p, _ast33.AnnAssign) else _p.targets
+            if (any(_t is _n for _t in _targets)
+                    and isinstance(_p.value, _ast33.List) and not _p.value.elts):
+                return True                                   # 2 — the init
+        if isinstance(_p, _ast33.Return) and _p.value is _n:
+            return True                                       # 3 — the output
+        if isinstance(_p, _ast33.Call):
+            _callee = _p.func.id if isinstance(_p.func, _ast33.Name) else None
+            _pos = next((_i for _i, _a in enumerate(_p.args) if _a is _n), None)
+            if _callee in _fns and _pos is not None:
+                _params = [a.arg for a in _fns[_callee].args.args]
+                return _pos < len(_params) and _params[_pos] == "warnings"   # 4 — the hand-off
+        return False                                          # everything else — C2's red
 
     def _appends(_f: Any) -> "list[Any]":
         return [n for n in _ast33.walk(_f)
@@ -18240,11 +18233,14 @@ def _far_side_census() -> "tuple[int, int, int, int, tuple[int, ...], tuple[int,
     # this list FILTERED, so the two can never disagree about the walk.
     _all = [_x for _h in _closure for _x in _appends(_h)]
     _value = [_a for _a in _all if _is_value(_a)]
-    # Anything that writes `warnings` in a form the census does not recognise. Deliberately over the
-    # same CLOSURE as the walk (a `warnings` in an unrelated validator is none of this pin's
-    # business) and deliberately a COUNT rather than an inspection: the check reds on it, so a
-    # mutation form added later fails loudly instead of going uncounted.
-    _escapes = [_n for _h in _closure for _n in _mutations(_h) if _unrecognised(_n)]
+    # Every REFERENCE to `warnings` standing in a position the census does not follow. Deliberately
+    # over the same CLOSURE as the walk (a `warnings` in an unrelated validator is none of this
+    # pin's business) and deliberately a COUNT rather than an inspection: the check reds on it, so a
+    # reference form added later fails loudly instead of going uncounted. Collecting ALL references
+    # and whitelisting the followable ones — rather than enumerating write FORMS and reporting the
+    # remainder — is what makes the coverage a stated SET instead of a list of forms somebody
+    # remembered: an unanticipated construct is now a member of the red, not a member of nothing.
+    _escapes = [(n, p) for _h in _closure for (n, p, g) in _refs(_h) if not _followable(n, p, g)]
     # The rows are the `· KIND  <text>` bullets; the three `· KIND — gloss` lines are the legend.
     _doc = _ast33.get_docstring(_fn) or ""
     # The legend is pinned too, because it is the docstring's own DEFINITION of the three KIND
@@ -18317,17 +18313,29 @@ check("v0.4.33 CENSUS SURFACE PIN: the far side holds 46 `warnings` writes in TO
       "C1's comment rather than hidden here",
       _n_tot33 == 46)
 
-# The WHITELIST, checked on its own so its red is legible as itself: the census knows one way to
-# write `warnings` (`.append`) and one way to rebind it (the `warnings = [] if … else warnings`
-# init). Every OTHER write in the closure — `.extend`, `+=`, item assignment, handing the list to a
-# callee the walk cannot follow — is counted here and must be 0. Without it the walk is only as
-# wide as its match set: a far-side clause added by any other form sat outside the census with the
-# count unmoved and every surface green (measured — `.extend` really did pass).
-check("v0.4.33 CENSUS WHITELIST: every way of writing the `warnings` list reachable from "
-      "`validate_cycle_record` is the one form the census counts (`.append`) — an unanticipated "
-      "mutation form (`.extend`, `.insert`, `+=`, item assignment, `del warnings[:]`, a hand-off to "
-      "an unresolvable callee, or a SECOND NAME bound to the list) is 0, so adding one reds HERE "
-      "rather than silently shrinking the census's coverage",
+# The WHITELIST, checked on its own so its red is legible as itself. The census follows exactly
+# four shapes of reference to the name: `warnings.append(…)` (the unit); the init, an empty list
+# LITERAL bound to the name; `return warnings` (the output, not an escape); and a POSITIONAL
+# hand-off to a module function whose parameter is itself named `warnings`. Every OTHER reference
+# in the closure is counted here and must be 0.
+#
+# The earlier cut enumerated write FORMS and reported the remainder, which is the set-complement
+# done the wrong way round: a form outside its five-branch list was not REPORTED, it was never
+# COLLECTED — so `for _w in (warnings,)`, `(_w := warnings)`, `{1: warnings}`, `with x as
+# warnings` and a bare rebind left ALL NINE operands unmoved with every census check green at
+# once (measured). A whitelist of four reference POSITIONS cannot have that hole, because every
+# reference is collected first and then classified; an unanticipated construct is a member of the
+# red rather than a member of nothing. Its cost is stated where it is paid: a new benign read
+# (`if not warnings:`) reds until the position is added here on purpose — the loud direction,
+# which somebody fixes, instead of the silent one, which is what shipped.
+check("v0.4.33 CENSUS WHITELIST: every REFERENCE to `warnings` reachable from "
+      "`validate_cycle_record` is one of the four shapes the census follows (`.append` on a Call, "
+      "the empty-list-literal init, `return warnings`, a positional hand-off to a module function "
+      "whose parameter is named `warnings`) — every other position counts 0, so an unanticipated "
+      "reference form (`.extend`, `.insert`, `+=`, item assignment, `del warnings[:]`, a `*splat`, "
+      "a keyword binding, an unresolvable callee, a SECOND NAME bound to the list, or a rebind "
+      "through ANY other construct that binds a name) reds HERE rather than silently shrinking "
+      "the census's coverage",
       _n_esc33 == 0)
 
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "

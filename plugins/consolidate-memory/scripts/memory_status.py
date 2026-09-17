@@ -4161,8 +4161,15 @@ _DUTY_CLAUSES: "tuple[DutyClause, ...]" = (
 
 def duty_gaps(record: object) -> "list[DutyClause]":
     """DETECT an unfilled SEEDED duty: a field the producer wrote and the pass left empty. PURE;
-    never raises; EMPTY by default. Returns the fired clauses, each carrying its own label, detail,
-    remedy and severity.
+    never raises ON JSON-REACHABLE INPUT; EMPTY by default. Returns the fired clauses, each carrying
+    its own label, detail, remedy and severity.
+
+    The qualifier is measured rather than hedging. A `dict`/`str` SUBCLASS whose `__contains__`,
+    `get` or `strip` raises takes this predicate down (3 of 23 hostile inputs, all of them raising
+    through a method the walk calls), and `arc_completeness` and `procedure_integrity` raise on the
+    identical three — so the bound is inherited, not new. None of them survives `json.loads`, which
+    is the only way a record reaches either call site, so the claim holds where it is made; the
+    bare "never raises" this line first carried did not.
 
     **PERSIST-GATE ONLY.** Every call site sits inside `render_dashboard`'s `judged` path (the
     `persist_dir is not None` gate): the exit arm in `main` and the panel builder

@@ -1694,8 +1694,10 @@ def main() -> int:
         # be logged (it accrues for calibration + the archive), THEN the terminal --persist render
         # exits nonzero on a gate violation — the detector teeth at the one boundary a finishing
         # dream always hits. Exit codes: 0 clean · 3 procedure-integrity (re-verify) OR an unfilled
-        # record duty (v0.4.33 — fill the field; the panel and the cue name which) · 4 dream-arc
-        # incomplete (backfill beats) · 5 unstamped (re-stamp the marker); 1/2 stay read/arg.
+        # record duty the panel marks as GATING (v0.4.33 — fill the field; the panel and the cue name
+        # which. Only a clause carrying severity "alert" gates, so a warn-only gap such as a blank
+        # `session` draws the panel and still exits 0) · 4 dream-arc incomplete (backfill beats) ·
+        # 5 unstamped (re-stamp the marker); 1/2 stay read/arg.
         status = _persist(record, persist_dir)
         if status == "unstamped":
             print("⚠ UNSTAMPED CYCLE · no marker.timestamp in the record and no stamp in "
@@ -1767,10 +1769,17 @@ def main() -> int:
                           "(SLEEP · 5 phase beats + surfacing · WAKE) and re-render")
             return 4
         # v0.4.33 (OPEN 4b): the RECORD-DUTY arm — a field the pass seeded and left unfilled. It
-        # runs AFTER the arc arm, and that order is a design decision, not layout: a record with
-        # `session: ""` AND a 4/6 arc must exit 4 (the arc diagnostic) — putting the duty arm
-        # first would exit 3 on it, mask the arc entirely, and route the model into a Phase-3
-        # loop whose remedy does not apply to the defect.
+        # runs AFTER the arc arm, and that order is a design decision, not layout: a record with a
+        # GATING gap (a clause whose severity is "alert" — `rigor.applied: ""`, say) AND a 4/6 arc
+        # must exit 4, the arc diagnostic; putting the duty arm first would exit 3 on it and name
+        # the wrong cause — the record's ARC is what is incomplete, and the duty cue's remedy
+        # ("apply it and re-render") does not backfill a missing beat.
+        # The witness is deliberately an ALERT clause, and NOT the `session: ""` record this comment
+        # first named: the arm below gates on `severity == "alert"` while clause A is `warn`, so a
+        # session-only gap cannot feel this reorder at all — it exits 4 under EITHER order, measured
+        # on both trees. A warning that cannot exhibit the defect it is cited for is the same slip
+        # the spec records against its own revision 3: the design's intent written as the code's
+        # property.
         # Scope that rule to THIS ARM: "exit 3 must never pre-empt exit 4" is FALSE as a bare
         # claim about the code, and measurably so — a procedure violation beside a 4/6 arc exits
         # 3, five lines above. The procedure arm is first by design and predates this one (the

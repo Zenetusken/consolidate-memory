@@ -21,7 +21,7 @@ description: >-
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
-terminal persist gates (exit 3 = procedure integrity OR an unfilled record duty,
+terminal persist gates (exit 3 = procedure integrity OR an unfilled gating record duty,
 exit 4 = incomplete dream arc, exit 5 = unstamped cycle — the WAKE renders only
 through a clean exit 0),
 plus the production/polish/performance pass (stacks cache on the sync paths,
@@ -58,7 +58,7 @@ an archive owns, plus the `None` tolerance `_justify_remaining` already document
 rebuild can only DECLINE to
 re-add an archived pointer, never delete one), plus
 the v0.4.33 record-duty-presence patch (a pass that SEEDED a duty and left it unfilled now fails at
-the terminal `--persist` instead of rendering as silence — a new `duty_gaps` PRESENCE family beside
+the terminal `--persist` instead of rendering as silence, when that duty gates — a new `duty_gaps` PRESENCE family beside
 the container-type family and the value-WRONG family (disagree / membership / absent-dup; naming all
 three matters, because "the value-contradiction checks" reads as the whole and leads a later reader
 past the membership and identity rows), gating `session` present-and-blank (warn-only:
@@ -1252,7 +1252,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    stamps the marker.
 
    **The persist exit-code key (v0.4.1; third arm v0.4.33): 0 clean · 3 procedure-integrity
-   (re-verify) OR an unfilled record duty (fill the field) · 4 dream-arc incomplete (backfill
+   (re-verify) OR an unfilled gating record duty (fill the field) · 4 dream-arc incomplete (backfill
    beats) · 5 unstamped (re-stamp).** Gate precedence, in the order the arms actually run
    (measured, not read off the list above): **unstamped → 5, first of all** — the `status` check
    sits before every record-side gate, so an unstamped record exits 5 whatever its arc or its
@@ -1313,7 +1313,7 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    the one whose panel says **PROCEDURE INTEGRITY** — means the Phase-3 fan-out was skipped: go
    run it, then re-render (a clean pass exits 0; THEN continue Phase 5 — `--diffs`,
    `render_html`). Read the PANEL, not the exit code, to pick the remedy: exit 3 has a second arm
-   (an unfilled record duty, panel **RECORD DUTY GAPS**) whose repair is to fill a field, and
+   (an unfilled gating record duty, panel **RECORD DUTY GAPS**) whose repair is to fill a field, and
    sending that record through a Phase-3 fan-out does nothing for it. It is a DETECTOR (not a
    block — the dashboard prints first); a seed/preview render WITHOUT `--persist` is the BEFORE
    state and is never judged. **SCOPE (be honest about what it does NOT catch):** it catches the

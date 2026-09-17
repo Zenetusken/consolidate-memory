@@ -206,7 +206,7 @@ Six phases, 0–5 (there is no phase 6), driven from SKILL.md:
   clean-vs-edited); health + dangling links; `--tokens` +
   `--recalls` usage capture; marker merge; distill scan (`--from/--into --verdict`);
   `render_dashboard.py --persist` (terminal gates — exit 3 on a measured
-  lazy-skip or an unfilled seeded duty; 4 on an incomplete dream arc;
+  lazy-skip or an unfilled gating seeded duty; 4 on an incomplete dream arc;
   5 unstamped); `--diffs` sidecar; mandatory `render_html.py --latest`
   archive; WAKE + structured debrief.
 

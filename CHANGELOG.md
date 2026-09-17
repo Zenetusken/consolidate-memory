@@ -7,7 +7,7 @@ version changes on `main`.
 
 ## [0.4.33] — 2026-09-17
 
-**Patch — a pass that left a seeded duty unfilled now fails at the terminal render instead of
+**Patch — a pass that left a gating seeded duty unfilled now fails at the terminal render instead of
 rendering as silence. The persist gate gains a PRESENCE family, and exit 3 gains a second
 meaning.**
 
@@ -50,8 +50,8 @@ evidence: `docs/record-duty-presence.spec.md`.
    (`audit.memory` is a per-store rollup while `entries[].files` spans all three stores); and a
    `remediation` half-seed clause that measured **0/99** on genuine records in every one of its
    forms, catches none of the audited defects, and — unlike the three that shipped — has **no
-   producer path at all**. Their first-drafted form fired on **12 records of the legitimate
-   standing-justified seed** (24 of the 35 remediation blocks in the population are that shape).
+   producer path at all**. Their first-drafted form fired on **11 records of the legitimate
+   standing-justified seed** (24 of the 34 remediation blocks in the population are that shape).
    `session` is warn-only because `SKILL.md` forbids *fabricated* session ids while the seed says
    to fill it "when known": gating it would resolve that conflict in favour of fabrication.
 
@@ -112,7 +112,7 @@ reads — the helper now requires the anchored sentence to appear **exactly once
 whose `project` reproduces that sentence verbatim and self-consistently was measured defeating a
 sentence-anchored parse and reporting success for a panel it never saw, and it bounds the capture to
 `\d{1,4}`, because an unbounded one let a 4301-digit run raise through `int()` and abort the whole
-suite after 704 checks, leaving 1284 unrun — three labelled **guard** checks for the ordering and gate boundaries, a pin on the
+suite after 705 printed checks (704 ✓ + 1 ✗), leaving 1284 unrun — three labelled **guard** checks for the ordering and gate boundaries, a pin on the
 warn-only path (exit 0 *with* the panel, and a cue that no longer says "persist clean" over a
 printed ⚠), three census pins reconciling the validator's docstring, its body and the spec's table
 — including one on the body's raw write surface, so a clause worded in container language cannot

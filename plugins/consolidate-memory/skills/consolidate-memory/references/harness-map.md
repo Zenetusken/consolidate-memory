@@ -294,11 +294,11 @@ finalizes it in Phase 2 and may override with rationale.
   `ops/<slot>/.consolidation-log.jsonl` (idempotent; leftover native
   `<store>/.consolidation-log.jsonl` is dual-read only; v0.4.1 auto-mirrors an empty stamp from the
   state file and exits 5 on a still-unstamped cycle — the persist exit-key: 0 clean · 3
-  procedure-integrity (re-verify) OR an unfilled record duty (v0.4.33; fill the field) · 4
+  procedure-integrity (re-verify) OR an unfilled gating record duty (v0.4.33; fill the field) · 4
   dream-arc incomplete (backfill beats) · 5 unstamped (re-stamp). The key is a SET; the arm ORDER
   is a separate fact and is NOT the order of that list — SKILL.md's Phase-5 exit-code key states
   the measured precedence (unstamped first → 5; procedure-integrity pre-empts the arc → 3;
-  arc → 4; record duty → 3; conversation-truth last)).
+  arc → 4; a gating record duty → 3; conversation-truth last)).
   LEVER NOTE: `INDEX_TOKEN_BUDGET` is the binding prune lever
   (~20–27 real facts); `PRUNE_PRESSURE_FACTS` is a terse-pointer backstop. CAVEAT: `applied`
   is self-reported (catches over-rigor only); the LAZY-SKIP under-rigor case (SUBSTANTIAL+
