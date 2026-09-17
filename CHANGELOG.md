@@ -103,11 +103,16 @@ evidence: `docs/record-duty-presence.spec.md`.
    lands among the sites the docstring does not enumerate, so the reconciliation count cannot move
    while the raw total does.
 
-**Twenty-one** new smoke checks: eight predicate pins (each firing half conjoined with its
+**Twenty-three** new smoke checks: eight predicate pins (each firing half conjoined with its
 abstention half), five gate pins that fail on pre-fix code (a complete arc with a gap exited 0; so
 did the trio's evasion shape; and the three-clause fixture is the only clause count where the
 panel's subtitle and its row loop can disagree, which is where a subset-drawing defect was
-measured), three labelled **guard** checks for the ordering and gate boundaries, a pin on the
+measured), **two parse pins** added by the review of this cycle's own pin rather than of the code it
+reads — the helper now requires the anchored sentence to appear **exactly once**, because a record
+whose `project` reproduces that sentence verbatim and self-consistently was measured defeating a
+sentence-anchored parse and reporting success for a panel it never saw, and it bounds the capture to
+`\d{1,4}`, because an unbounded one let a 4301-digit run raise through `int()` and abort the whole
+suite after 704 checks, leaving 1284 unrun — three labelled **guard** checks for the ordering and gate boundaries, a pin on the
 warn-only path (exit 0 *with* the panel, and a cue that no longer says "persist clean" over a
 printed ⚠), three census pins reconciling the validator's docstring, its body and the spec's table
 — including one on the body's raw write surface, so a clause worded in container language cannot
@@ -123,7 +128,11 @@ text says so rather than letting a green run imply a RED. Measured on this revis
 defect reds **exactly** the check(s) that guard it and nothing else: the predicate restored to its
 first-cut key count → the two evasion pins; the duty arm moved before the arc arm → the ordering
 guard; `judged` dropped from the panel block → the two gate guards; the severity wire dropped →
-the warn-only pin; and the row loop truncated to `gaps[:2]` → the three-clause pin.
+the warn-only pin; and the row loop truncated to `gaps[:2]` → the three-clause pin. The two parse
+pins are measured the same way, by **single-property** reverts of the helper: restoring
+`search`-based first-match-wins → the uniqueness pin alone, and restoring an unbounded `\d+` → the
+totality pin alone, reddening *without* aborting because the uniqueness rule catches what the bound
+no longer refuses. Reverting both is what aborts.
 
 ## [0.4.32] — 2026-09-14
 

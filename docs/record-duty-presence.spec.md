@@ -717,13 +717,15 @@ absent-vs-empty era gate exercised end-to-end through the very arm this cycle ad
 ## 4. Pins
 
 Per the repo rule, a "stays silent" assertion is **conjoined with a firing assertion inside the same
-`check(...)`** — alone it passes pre-fix and is not a pin. **Twenty-one** checks ship, in six
-labelled groups — **U 8, P 5, G 3, W 1, H 1, C 3** — each check's own label naming its group; the
+`check(...)`** — alone it passes pre-fix and is not a pin. **Twenty-three** checks ship, in seven
+labelled groups — **U 8, P 5, X 2, G 3, W 1, H 1, C 3** — each check's own label naming its group; the
 census constant in `tests/smoke.py` carries the same breakdown and is asserted against the reported
 total, so a check that vanishes reds the suite. Revision 5 shipped nineteen of them; **P5** and
 **C3** are revision 6's, and the amend ledger records what forced each — P5 by the **D1** mutation,
 which showed the panel drawing a subset of the rows its own subtitle counts, and C3 by the
-measurement that C1's taxonomy is blind to a clause worded in *shape* language.
+measurement that C1's taxonomy is blind to a clause worded in *shape* language. **X1** and **X2** are
+revision 8's: unlike every other group here they pin the **parse** rather than the renderer, which is
+the one surface a record can reach without the renderer being wrong at all.
 
 **How the pre-fix column was obtained — measured first, and it is not what revision 2 said.** The
 new harness run against the pre-fix scripts **does not report a set of red U checks; it aborts**.
@@ -773,6 +775,16 @@ one shared persist dir and the existing record-writing helper.
 | P3 | the same with a partially filled trio alone exits **3**, naming `remediation progress` | exit **0**, no panel → PIN |
 | P4 | **the F1 evasion at the terminal**: three keys with `achieved_recall: ""` exits **3** with the panel and the duty cue | exit **0**, no panel → PIN (and RED under mutant C) |
 | P5 | **all three clauses at once** — the only clause count where the subtitle's number and the row loop *can* differ: exits **3**, the subtitle reads `3 seeded duties the pass left unfilled`, and that number equals the rows actually drawn | exit **0**, no panel → PIN (and RED under **mutant E**, which draws `gaps[:2]`) |
+
+**X — the parse's own contract** (revision 8). Both attack `_duty_panel43` from the two directions a
+record-controlled string can reach it, and both were found by review against the **parse** rather
+than against the renderer it reads — which is why §4's earlier tables could not have shown them. The
+mutants below are named **XA/XB/XC** to keep them distinct from §4.4's A–E.
+
+| # | check | pre-fix |
+| --- | --- | --- |
+| X1 | a record-controlled `project` carrying the panel's own subtitle sentence **verbatim and self-consistently** (the same number, the same three `→ ` rows) is **refused**: the parse returns `(-1, -1)`. The premise is asserted too — the anchored sentence appears in that output exactly **twice** | the parse reads the **banner** and returns `(3, 3)` — the *true* pair for a healthy panel, which is what made the defeat silent → PIN, **RED under mutant XA** |
+| X2 | a record-controlled digit run past `int()`'s 4300-digit limit neither aborts the parse nor denies it the real panel: the parse returns `(3, 3)`, having refused the run as a *match* | **the call raises** — 704 checks printed, no totals line, 1284 never run — so the check cannot be evaluated at all → PIN, **RED under mutant XB** (as a refusal, not a panic) and **abort under XC** |
 
 **G — the boundaries.** These guard defects **this design introduces**, so no pre-fix pin can exist
 for them. But "guard" does not mean "passes pre-fix", and the difference was measured rather than
@@ -956,6 +968,28 @@ stable part and the count is not, which is exactly the distinction `mutation-cou
 draws. It is also why this document keeps the earlier numbers rather than overwriting them: an
 inherited count is not evidence, so the base it was measured against is kept beside it.
 
+**Revision 8 re-ran the batch on the corrected tree and added three mutants of its own.** The base is
+now **1989** — the two X checks — and the passing counts in the table above are kept rather than
+overwritten, because each belongs to the tree it ran on:
+
+| tree | suite | reds |
+| --- | --- | --- |
+| **the shipping revision (revision 8)** | rc 0 — **1989 passed, 0 failed** | — |
+| **mutant XA** — the uniqueness rule reverted (`search`), the bound kept | rc 1 — 1988 passed, 1 failed | **X1**, and nothing else |
+| **mutant XB** — the bound reverted (`finditer` + `\d+`), uniqueness kept | rc 1 — 1988 passed, 1 failed | **X2**, and nothing else |
+| **mutant XC** — both reverted (the committed helper) | rc 1 — **X1 reds, then the suite ABORTS** at `int()`; 704 checks printed, no totals line, 1284 never run | X1, then nothing after it is evaluated |
+
+Each is a **single-property** revert — one edit against the shipping file, proven by whole-tree diff
+— so the diagonal reads per property rather than per change, and the base has moved 1987 → 1989 while
+**the reds still did not move at all**.
+
+**Mutant XB is the row worth reading twice.** It reds X2 *without aborting*, because the 4301-digit
+banner **does** match `\d+` and the uniqueness rule then refuses it. The two defenses overlap: what
+the bound buys is not that the suite survives — uniqueness already does that — but that the parse
+**reads the real panel** instead of declining to read anything. Only **XC**, which removes both,
+panics. Recorded because a future editor who removes the bound will watch X2 red for a reason its
+label does not name, and that ambiguity is cheaper written down than rediscovered.
+
 **Mutant E is a finding rather than a regression check, and it is listed here because its evidence is
 this table.** The mutation makes `_duty_gaps_section` draw a *subset* of the rows its own subtitle
 counts; the shipping suite passes it (rc 0, no reds) until the three-clause fixture added in revision
@@ -1119,6 +1153,7 @@ failing in the clean direction.** Twelve corrections:
 | §4.4's "every number was measured in one batch, on one revision" was an **assertion no artifact backed**. The wrapper that implements it needed **three** attempts to be honest — v1 fingerprinted `plugins/*/scripts`+`tests`+`docs`, v2 widened to the whole plugin for `SKILL.md`, and both still missed `CHANGELOG.md`/`README.md`/`AGENTS.md`/`cm`/the manifests/`.github/workflows` at the repo root, every one of which `smoke.py` reads | the fingerprint now covers the whole working tree (**201 files**), both sides of this run read **`34d0a07ce1d2ade7`**, and the batch **refuses to report** if they disagree. Each earlier version would have called a revision stable while a file the harness reads had changed — *a gate is only as wide as its match set* — so the three attempts are recorded rather than the last one alone |
 | **C1 — the new census pin — fails quietly in one direction, like every gate this cycle audits.** Its SHAPE/VALUE split is a regex over the warning *text*, so a far-side clause worded in shape language evades the count | the limit is written into the pin's own comment and §4.4 rather than left to be rediscovered, together with the asymmetry that makes it tolerable (the opposite error is **loud**), and the note that a structural classifier was tried and rejected because `held_n is missing or below emitted holders` sits under an `isinstance(int)` too |
 | **The revised §2.5 count was wrong too.** The correction that replaced *"two"* said **"fifteen"** and omitted `network.fact_holdings` holder resolution — a **MEMBERSHIP** row, again exactly the kind the framing hides. Found only by re-deriving with the **site** as the unit instead of the **warning text**: grouping by reading groups by what rows *look like*, while the body emits by *block* | the table gains a **`Sites` column** (22 total, so the count is auditable rather than asserted) and the 16th row; the docstring's row list is **completed and no longer claims body order** — it never had it, and a false ordering claim sends the next reader hunting a mismatch that is not there. **The census is now executed**: a smoke check AST-parses the function, splits SHAPE from VALUE sites, and reds if the body grows a far-side clause the docstring does not name — verified by injecting both the dropped row and an unlisted clause |
+| **§4's parse pins rested on two claims their own code did not hold.** `_duty_panel43`'s comment asserted *"Both halves of the anchor are literals the record cannot write"* and *"a non-matching output is a FAIL here, never a ValueError out of the suite"* — the record **can** write a copy of the sentence into the banner above the panel, and a **matching** output was the one that raised | **twenty-three** — the two parse pins added, `finditer` + exactly-one (0 or 2+ matches both refuse) and `\d{1,4}` in place of `\d+`. Both findings came from review against the **parse** rather than the renderer it reads, which is why neither was visible from §4's own table; the measurements are in **Revision 8**, including the false universal left standing in Revision 7's `rsplit` row (*"the one span the panel itself writes"*) |
 
 The through-line is the one this cycle exists to fix, one layer up: **a claim narrower than the
 thing it describes fails in the clean direction.** A count that excludes the one row it cannot
@@ -1265,3 +1300,47 @@ is a regex over warning text; and the gloss after a KIND token is read by nothin
 a limit is named.** Conflating the two is how *"reviewed to zero"* becomes a claim about arithmetic
 rather than a claim about a method — and the five-row table in §2.5 now states, for each form, which
 of the two it was.
+
+**Revision 8** — the review's second pass, and the two findings are this document's own subject one
+layer further in: **the parse reads a report and never asks whether it is the report it asked for.**
+Both are against `tests/smoke.py` alone; the renderer is not implicated, and no defect ships in
+`plugins/`.
+
+Revision 7's row above ends: *"The shipped repair is a regex over the header sentence, which is the
+one span the panel itself writes."* The first clause is true; the second is the false universal
+hiding in it. The panel is the only **renderer** of that sentence, and the record can still write a
+**copy** — `project` and `session` are printed verbatim into a banner *above* the panel. So narrowing
+the anchor from the marker to the whole sentence **narrowed what matches and did not relocate the
+anchor**: `re.search` is first-match-wins either way. Specificity and position are independent
+properties of an anchor, and the prior revision improved one while claiming both.
+
+| Finding | Change |
+| --- | --- |
+| **The anchor is record-writable, so first-match-wins reads the banner.** `project = "⚠ RECORD DUTY GAPS · 3 seeded duties the pass left unfilled" + "  · → e1 / e2 / e3"` reproduces the panel's sentence verbatim and self-consistently | **confirmed by injection, and it defeats the shipped parse.** The forged window carries the same number and the same three `→ ` rows, so `search` returns **(3, 3)** — *the true pair for a healthy panel*, which is exactly why the defeat is silent. Measured on a tree whose row loop is truncated to `gaps[:2]`: the real panel renders 3 over 2 (a FAIL) and the same forgery still returns (3, 3) — the pin reports success for a panel it never saw, and the defect ships. Uniqueness is now a **condition**, not an assumption: `finditer`, and 0 or 2+ matches both return `(-1, -1)` |
+| **The capture was unbounded, so a record could abort the suite.** CPython refuses `int()` past 4300 digits, so `(\d+)` turned a forged banner into a suite ERROR instead of a failed check | **confirmed by independent reproduction.** `project = "⚠ RECORD DUTY GAPS · " + "9" * 4301 + " seeded duties the pass left unfilled"` raises `ValueError` at the parse — **704 checks printed, no totals line, EXIT 1, and 1284 checks never ran.** `\d{1,4}` refuses the run as a *match* instead, so the real panel is the only match. The bound cannot reject a legitimate render: the number is the rows drawn and `_DUTY_CLAUSES` is three |
+
+**The two defenses overlap, and the measurement is narrower than it first looks.** Reverting the
+bound *alone* reds the totality pin **without aborting** — the 4301-digit banner then matches, and the
+uniqueness rule refuses it, `(-1, -1)` rather than a panic. So uniqueness alone also prevents the
+abort; what the bound buys is that the parse **reads the real panel** rather than declining to read
+anything. Only reverting **both** panics. Stated here because a future editor who removes the bound
+will watch that check red for a reason its label does not name.
+
+**What the new rule costs, stated rather than left to be found.** A record whose `project` carries the
+sentence verbatim now makes the parse return `(-1, -1)`, i.e. it reds these pins. That is the
+deliberate direction — **loud, not silent** — and it is the same trade the prior revision made when it
+chose "a non-matching output is a FAIL" over a fallback. The alternative, `rsplit`, was rejected on
+Revision 7's own reasoning: the record-controlled region **below** the panel is denser than the banner
+above it, so relocating an anchor trades one writable window for a worse one.
+
+**And the pin that carries these fixtures states its own limit.** `_duty_three_p`'s forgery
+(`"RECORD DUTY GAPS · 7 → forged"`) carries neither the `⚠` glyph nor the sentence's tail, so the
+shipped parse **cannot match it at all** — measured, one anchored match in that output against two
+for the bare marker. Revision 6 described it as *"the FORGERY the parse must survive"*, which
+overstated it: it is a **regression guard** against reverting to the marker-anchored first cut, and
+that is the whole of what it proves about the parse. The forgery that defeats a sentence-anchored
+parse is pinned by the two checks above, where it can be measured.
+
+**The count is now twenty-three** — the twenty-one of Revision 7 plus the two parse pins, which are
+`PIN`s in their own right rather than guards: the uniqueness check reds on the pre-fix helper, and the
+totality check cannot even be evaluated there, because the call raises.
