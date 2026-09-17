@@ -784,7 +784,7 @@ mutants below are named **XA/XB/XC** to keep them distinct from §4.4's A–E.
 | # | check | pre-fix |
 | --- | --- | --- |
 | X1 | a record-controlled `project` carrying the panel's own subtitle sentence **verbatim and self-consistently** (the same number, the same three `→ ` rows) is **refused**: the parse returns `(-1, -1)`. The premise is asserted too — the anchored sentence appears in that output exactly **twice** | the parse reads the **banner** and returns `(3, 3)` — the *true* pair for a healthy panel, which is what made the defeat silent → PIN, **RED under mutant XA** |
-| X2 | a record-controlled digit run past `int()`'s 4300-digit limit neither aborts the parse nor denies it the real panel: the parse returns `(3, 3)`, having refused the run as a *match* | **the call raises** — 704 checks printed, no totals line, 1284 never run — so the check cannot be evaluated at all → PIN, **RED under mutant XB** (as a refusal, not a panic) and **abort under XC** |
+| X2 | a record-controlled digit run past `int()`'s 4300-digit limit neither aborts the parse nor denies it the real panel: the parse still reads the panel's own **subtitle number** — asserted alone, never the pair, because the row count is P5's property and asserting it coupled this check to mutant E (§4.4) | **the call raises** — 704 checks printed, no totals line, 1284 never run — so the check cannot be evaluated at all → PIN, **RED under mutant XB** (as a refusal, not a panic) and **abort under XC** |
 
 **G — the boundaries.** These guard defects **this design introduces**, so no pre-fix pin can exist
 for them. But "guard" does not mean "passes pre-fix", and the difference was measured rather than
@@ -970,11 +970,26 @@ inherited count is not evidence, so the base it was measured against is kept bes
 
 **Revision 8 re-ran the batch on the corrected tree and added three mutants of its own.** The base is
 now **1989** — the two X checks — and the passing counts in the table above are kept rather than
-overwritten, because each belongs to the tree it ran on:
+overwritten, because each belongs to the tree it ran on. **Both batches below read
+`d7320499b38e70d6` on both sides (202 files)**, so they describe one revision — the committed tree at
+**`243331c`**, named for the same reason `7e756a2` is above, and this time the binding is **verified
+rather than asserted**: `git archive 243331c` plus the eight gitignored maintainer artifacts re-hashes
+to `d7320499b38e70d6` exactly, so that one commit recovers the run tree in full.
+
+**The shipped tree reads `b8b43a5ed1f006f7`, and it differs from the run's by exactly one file: this
+one.** That is the self-reference the earlier fingerprint names a section up, here turned into
+checkable arithmetic — the shipped tree minus this document's two revision-8 recording edits re-hashes
+to `d7320499b38e70d6`, and nothing else moved. A number written inside the set it covers can never
+equal the tree that carries the record, so the **commit**, not the working tree, is what it is bound
+to; a reader re-deriving it checks out `243331c` rather than the tip. This is also why the paragraph
+above says the value identifies the *run*: keeping that true is the whole of the discipline, and the
+failure it prevents is a reader measuring the tip, finding a different number, and concluding the
+batch record is false.
 
 | tree | suite | reds |
 | --- | --- | --- |
 | **the shipping revision (revision 8)** | rc 0 — **1989 passed, 0 failed** | — |
+| **A–E, re-run** | as in the table above, base moved 1987 → 1989 | unchanged: **A→G1 · B→G2+G3 · C→U5+P4 · D→W1 · E→the three-clause pin** |
 | **mutant XA** — the uniqueness rule reverted (`search`), the bound kept | rc 1 — 1988 passed, 1 failed | **X1**, and nothing else |
 | **mutant XB** — the bound reverted (`finditer` + `\d+`), uniqueness kept | rc 1 — 1988 passed, 1 failed | **X2**, and nothing else |
 | **mutant XC** — both reverted (the committed helper) | rc 1 — **X1 reds, then the suite ABORTS** at `int()`; 704 checks printed, no totals line, 1284 never run | X1, then nothing after it is evaluated |
@@ -982,6 +997,18 @@ overwritten, because each belongs to the tree it ran on:
 Each is a **single-property** revert — one edit against the shipping file, proven by whole-tree diff
 — so the diagonal reads per property rather than per change, and the base has moved 1987 → 1989 while
 **the reds still did not move at all**.
+
+**And the batch earned its keep on the first run: it caught a coupling in X2 that reasoning had not.**
+X2's first cut asserted the whole **pair** — `_duty_panel43(_so43) == (3, 3)` — which silently also
+asserts the **row count**, and the row count is P5's property, not this check's. Under **mutant E**
+(`gaps[:2]`) the real panel draws 3 rows' worth of subtitle over 2 rows, so X2 red alongside the
+three-clause pin it has nothing to do with. That is precisely the repo's stated test for a check
+measuring something other than what it claims — *"a check that reds under an unrelated mutant would be
+measuring something other than what it claims"* — and it is the same failure mode §4.4 already
+documents for the W group, arriving from the other direction. X2 now asserts the **subtitle number**
+alone, the one operand this fixture isolates: the record's run contributes *no* match at all, so a
+reading of `3` can only be the real panel's. Re-measured on the same fingerprint, **E reds exactly one
+check again** and X2 keeps its own mutant.
 
 **Mutant XB is the row worth reading twice.** It reds X2 *without aborting*, because the 4301-digit
 banner **does** match `\d+` and the uniqueness rule then refuses it. The two defenses overlap: what
