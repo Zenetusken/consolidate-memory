@@ -248,7 +248,7 @@ def _tier_colored(tier: str) -> str:
 def _item(p: object) -> tuple:
     """(name, scope-abbrev) for a pulled/promoted entry (dict or bare string)."""
     if isinstance(p, dict):
-        return _clean(p.get("name", "?")), _clean(_SC.get(p.get("scope", ""), p.get("scope", "")))
+        return _clean(p.get("name", "?")) or "?", _clean(_SC.get(p.get("scope", ""), p.get("scope", "")))
     return _clean(str(p)), ""
 
 
@@ -277,9 +277,19 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
 
     shown = sorted(nodes, key=lambda d: -_num(d.get("always_loaded_tokens", 0)))
     cap = 12
-    namew = min(max((_ui.disp_w(_clean(n.get("node", "?"))) for n in shown[:cap]), default=4), 18)
+    namew = min(max((_ui.disp_w(_clean(n.get("node", "?")) or "?") for n in shown[:cap]), default=4), 18)
     for n in shown[:cap]:
-        nm = _clean(n.get("node", "?"))[:18]
+        # v0.4.34 (E3): the fallback goes INSIDE the slice. The first cut of this repair appended
+        # `or "?"` to the whole expression, which rebinds `[:18]` from the cleaned value to the
+        # literal "?" — a no-op — so a long node name was emitted whole. The truncation is part
+        # of the value being defaulted, not of the default.
+        #
+        # Nothing downstream catches that: `namew` above is clamped to 18, and `pad` below is
+        # `max(0, namew - disp_w(nm))`, which cannot go negative — so an over-long name gets the
+        # SAME pad (0) as one that exactly fills the column, and simply overruns it. The row is
+        # then exactly its excess wider than the column `namew` sized (measured: 26 → 36 columns
+        # on a 28-column name). A clamp that saturates at the boundary is not a check on it.
+        nm = (_clean(n.get("node", "?")) or "?")[:18]
         pad = " " * max(0, namew - _ui.disp_w(nm))
         star = _c("*", "cyan") if n.get("trigger") else " "
         mark = _c("  ◀ dream ran here", "cyan") if n.get("trigger") else ""
@@ -319,7 +329,7 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
     parts = [f"{g} {cnt[k]} {lbl}" for k, (g, lbl, _col) in _ACTIONS.items() if cnt[k]]
     idx = _dget(_dget(record, "budget"), "index")
     xp = _dget(record, "cross_project")
-    trig = _clean(net.get("trigger", "?"))
+    trig = _clean(net.get("trigger", "?")) or "?"
     # DOUBLE-SPACE join (not ' · ') — same reason as the Changes legend: the skip glyph
     # '·' must not read as a doubled dot beside a '·' separator.
     out.append(f"    {_lbl('this cycle on')} {trig}: " + ("  ".join(parts) if parts else "no writes"))
@@ -562,8 +572,8 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
     if not isinstance(record, dict):
         record = {}  # a non-dict record (JSON list/scalar from stdin) degrades — this is the runtime boundary
     out: list = []
-    proj = _clean(record.get("project", "?"))
-    ses = _clean(record.get("session", "?"))
+    proj = _clean(record.get("project", "?")) or "?"
+    ses = _clean(record.get("session", "?")) or "?"
     oc = _outcome(record)
 
     # Banner — a centered rule with the title left, outcome right. Padding is computed on
@@ -706,7 +716,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
                 # out the action ("added" / "skipped" / …) means a skipped entry is
                 # obviously skipped — no glyph-only guessing — and there is NO placeholder
                 # column, so an entry with no tier/store never shows a stray '—'.
-                out.append(f"    {_c(glyph + ' ' + f'{label:<10}', gcol)} {_clean(e.get('name', '?'))}")
+                out.append(f"    {_c(glyph + ' ' + f'{label:<10}', gcol)} {_clean(e.get('name', '?')) or '?'}")
                 # Detail line (dim, consistent order): where-it-landed · scope · why ·
                 # [source]. Empty parts collapse, so it reads as prose with nothing to
                 # misalign and never starts with a dash.
@@ -787,7 +797,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
     hier = _dget(_dget(record, "budget"), "claude_md_hierarchy")
     _cmbud = _num(cm.get("budget_tokens", 0)) or 4000
     if hier and (_num(hier.get("total_files", 0)) > 1 or _num(hier.get("worst_path_tokens", 0)) > _cmbud):
-        wt, wp = _num(hier.get("worst_path_tokens", 0)), _clean(hier.get("worst_path", "?"))
+        wt, wp = _num(hier.get("worst_path_tokens", 0)), _clean(hier.get("worst_path", "?")) or "?"
         heavy = _c("  ⚠ heavy", "yellow") if wt > _cmbud else ""
         _brow("CLAUDE.md tree", f"≈{_g(wt)}", f"{_g(hier.get('total_files', 0))} files · a session in {wp} pays this/turn{heavy}")
 
@@ -813,7 +823,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         _utop = _ufact[:3]
         if _utop:
             out.append("    " + _c("top:", "dim") + " " + " · ".join(
-                f"{_clean(f.get('name', '?'))} ×{_g(f.get('reads', 0))}" for f in _utop)
+                f"{_clean(f.get('name', '?')) or '?'} ×{_g(f.get('reads', 0))}" for f in _utop)
                 + (_c(f"  +{len(_ufact) - 3} more", "dim") if len(_ufact) > 3 else ""))
         # v0.1.67 (Phase C): the MISS-DETECTOR line — an archived-tier fact read organically is a
         # demotion error, rendered LOUD (it is the policy's own error signal). Key-presence gated:
@@ -873,32 +883,63 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         out.append("  " + _c("REMEDIATION", "bold") + _c(f"   · over-budget gate · lever {str(rem.get('lever', '')).upper()}", "dim"))
         if _ceil_ln:
             out.append(_ceil_ln)
+        # v0.4.34 (E1): the verdict is DERIVED from the data, never looked up by `lever`. `lever` is a
+        # ROUTING label the producer picked; keying the verdict on it meant one rewritten field swapped the
+        # panel's meaning (a `prune`→`justify` relabel turned the ⚠ alarm into "nothing safely prunable")
+        # and the reassuring sentence rendered whether or not the data supported it. The outcome space is
+        # (lever, candidates_surfaced, pruned, achieved_index, reaches_budget); the branches below walk it
+        # in the order the code actually has, the pre-Phase-5 seed included.
+        #
+        # `candidates_surfaced` ABSENT is not zero: `_num` maps absent→0, so the line would assert a count
+        # the record does not carry — E3's absent-vs-empty defect living inside E1's own fix. The file's own
+        # idiom for the absent case is the "pending Phase 5" arm directly below (never `≈0`).
         cand, pi = _num(rem.get("candidates_surfaced", 0)), _num(rem.get("projected_index", 0))
-        # G (v0.1.18.x): the seed OMITS pruned/achieved_* (pre-pass) — render "pending Phase 5" when absent,
-        # NOT ≈0 (which reads as "emptied"). Once the model fills them in Phase 5, show the actual values.
+        cand_txt = (f"{_g(cand)} candidate(s) surfaced" if "candidates_surfaced" in rem
+                    else "candidates surfaced: not recorded")
         budget_tok = _num(_dget(_dget(record, "budget"), "index").get("budget_tokens", 1200))
+        # Row 1: the seed OMITS pruned/achieved_* (pre-pass) — "pending Phase 5" IS this state's verdict,
+        # so no note is derived for it below. G (v0.1.18.x) renders absent as "pending", NOT ≈0 ("emptied").
+        pending = not ("achieved_index" in rem or "pruned" in rem)
         resolved_by_lean = False
-        if "achieved_index" in rem or "pruned" in rem:
+        acted: Any = 0
+        if not pending:
             pruned, ai = _num(rem.get("pruned", 0)), _num(rem.get("achieved_index", 0))
-            out.append(f"    {_c('↓', 'yellow')} {_g(cand)} candidate(s) surfaced · {_g(pruned)} pruned · index ≈{_g(ai)} tok (projected ≈{_g(pi)})")
+            out.append(f"    {_c('↓', 'yellow')} {cand_txt} · {_g(pruned)} pruned · index ≈{_g(ai)} tok (projected ≈{_g(pi)})")
             # v0.1.35: "acted on" is NOT eviction-only. A rebuild-lean (pruned=0) that brought the index back
             # UNDER budget RESOLVED the gate — the skill sanctions "prune … and/or rebuild the index lean"
             # (Phase 5 step 0). Was `acted = pruned`, which mislabeled a resolved gate "not acted on".
+            # The `0 <` bound is load-bearing: `_num` maps absent/None/"" → 0.0, so it is what keeps an
+            # ABSENT achieved_index from reading as "under budget" and silently resolving the gate.
             resolved_by_lean = (not pruned) and (0 < ai <= budget_tok)
             acted = pruned or resolved_by_lean
         else:
-            out.append(f"    {_c('↓', 'yellow')} {_g(cand)} candidate(s) surfaced · pruned/achieved pending Phase 5 · projected index ≈{_g(pi)} tok")
-            acted = 0
-        if rem.get("reaches_budget") is False:   # D5 (v0.1.21): a full prune can't reach budget
+            out.append(f"    {_c('↓', 'yellow')} {cand_txt} · pruned/achieved pending Phase 5 · projected index ≈{_g(pi)} tok")
+        # The mirror claim is keyed on the OPERAND, not the label. It says WHERE to act (the global
+        # demote/GC lever), which is a different kind of claim from whether the gate was acted on — so it
+        # is emitted independently of `acted`, and it SUPPRESSES the local-prune advisory below, because
+        # for a mirror-dominated store a local prune is exactly the advice the routing calls futile.
+        share = rem.get("mirror_share")
+        mirror_dominated = isinstance(share, (int, float)) and share > ms._MIRROR_DOMINATED
+        if mirror_dominated:
+            out.append("    " + _c(f"mirror-dominated ({share:.0%} of index tokens) — global demote/GC lever, not a local prune", "dim"))
+        # Row 3 / D5 (v0.1.21): a full prune can't reach budget. This remedy IS the state's verdict, so it
+        # is gated on the lean path NOT having resolved (v0.4.34): remedy and ✓ are one decision, and
+        # emitting both put a sanction beside a SUCCESS (18 of 324 states).
+        if rem.get("reaches_budget") is False and not resolved_by_lean:
             out.append("    " + _c("prune can't reach budget → prune-safe-THEN-standing-justify the residual (earned density)", "dim"))
         if resolved_by_lean:
             out.append("    " + _c("✓ gate resolved by rebuild-lean — index back under budget, no eviction needed", "green"))
-        elif not acted:
-            note = {"gc": "mirror-dominated — global demote/GC lever, not a local prune",
-                    "justify": "justified — nothing safely prunable (see entries[])",
-                    "prune": "⚠ gate fired but not acted on — surface candidates + prune-or-justify"}.get(str(rem.get("lever", "")), "")
-            if note:
-                out.append("    " + _c(note, "dim" if rem.get("lever") != "prune" else "yellow"))
+        elif not acted and not pending and not mirror_dominated and rem.get("reaches_budget") is not False:
+            # Rows 4-6 — the action verdict, keyed on `candidates_surfaced`: present-and-positive,
+            # present-and-zero, and absent are three different states and get three different sentences.
+            # Row 5 no longer claims "nothing safely prunable" (a fact about the STORE that no field
+            # carries); it states what the record actually says.
+            if "candidates_surfaced" not in rem:
+                out.append("    " + _c("no candidate count recorded — whether the gate was actionable is not answerable from this record", "dim"))
+            elif cand > 0:
+                out.append("    " + _c("⚠ gate fired but not acted on — surface candidates + prune-or-justify", "yellow"))
+            else:
+                out.append("    " + _c("0 candidates surfaced — record the justification, or re-triage", "dim"))
 
     # AUDIT (v0.1.22) — the DETERMINISTIC, script-observed mutation trail for THIS pass (a content-hash diff),
     # the counterpart to the model-narrated entries[]. Present only once Phase 5 fills it.
@@ -921,7 +962,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
                                    f"targets only +{_g(cons.get('repo_doc_growth', 0))}: verify this was a prune, not a dropped move", "yellow"))
         if not any_change:
             out.append("    " + _c("no file mutations detected this pass", "dim"))
-        out.append("    " + _c("window phase0..phase5 — any change in the span is attributed to this pass", "dim"))
+        out.append("    " + _c(f"window {ms.AUDIT_WINDOW} — any change in the span is attributed to this pass", "dim"))
 
     # Cross-project (global tier) — aligned direction | scope | name; counts on one line.
     xp = _dget(record, "cross_project")
@@ -1056,7 +1097,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         _dtop = _dtop_all[:3]
         if _dtop:
             out.append("    " + _c("top:", "dim") + " " + " · ".join(
-                f"{_clean(t.get('t', '?'))} ×{_g(t.get('n', 0))} "
+                f"{_clean(t.get('t', '?')) or '?'} ×{_g(t.get('n', 0))} "
                 f"{_g(t.get('d', 0))}d" for t in _dtop)
                 + (_c(f"  +{len(_dtop_all) - 3} more", "dim") if len(_dtop_all) > 3 else ""))
 
@@ -1122,13 +1163,39 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
                 _d = _num(_ev.get("d")); _n = _num(_ev.get("n"))
                 _disp = _engine_disp(c)
                 _gates = " · ".join(_clean(k).replace("_", "-") for k, gv in _mech.items() if _flag(gv))
-                _l = f"    {_c('◈', 'cyan')} {_nm} [{_clean(c.get('form', '?'))}]"
+                _l = f"    {_c('◈', 'cyan')} {_nm} [{_clean(c.get('form', '?')) or '?'}]"
                 if _nds:
                     _l += f" — nodes {_nds} · d={_g(_d)} n={_g(_n)}"
                 _l += f" — {_disp}" + (f" · gates {_gates}" if _gates else "")
                 out.append(_l)
             _shown_b = min(len(_blocked), _REG_BLOCKED_CAP)
-            if _n_blocked > _shown_b:
+            # v0.4.34 (E2): parity with dashboard.sections.js. The record's `n_blocked` and the LOCAL
+            # display list are two different sources, so when the record says rows are blocked and the
+            # display list holds none, "+N more blocked" degrades to a false total — `more` ("beyond what
+            # is displayed") collapses to the whole count with zero rows drawn — and the cold-state line
+            # two lines below then denies the count it just asserted. The HTML twin branches on `!board`
+            # and emits a counts-only breakdown instead; the ASCII was the outlier. Same guard here.
+            _rows_drawn = len(_fleet) + _shown_b
+            if _n_blocked > 0 and _rows_drawn == 0:
+                _b_parts = []
+                _n_gen = _num(_wp.get("n_generic", 0))
+                if _n_gen > 0:
+                    _b_parts.append(f"{_g(_n_gen)} generic-cli")
+                # The JS clamp is CARRIED, not simplified away: unclamped, {n_blocked:10, n_generic:30}
+                # prints "-20 single-node". The remainder is floored, and omitted entirely at zero.
+                _b_rest = max(0, _n_blocked - _n_gen - _num(_wp.get("n_day_spread", 0)))
+                if _b_rest > 0:
+                    _b_parts.append(f"{_g(_b_rest)} single-node")
+                # The JS's third arm (`n_day_spread` -> "N single-day") is deliberately NOT ported: it is
+                # UNREACHABLE in the HTML — `dashboard.sections.js:146` makes `nSpread` truthy on exactly
+                # the input that would reach it at `:197`, which grows `board` at `:181` and so makes the
+                # `!board` guard false. Proven over 1156 reachable states, 0 renderings (see the spec).
+                # It stays subtracted from `_b_rest` above, because those rows are single-day, not
+                # single-node — only the LABEL is missing. Do not "restore" it without re-reading that.
+                out.append("    " + _c(
+                    f"{_g(_n_blocked)} blocked" + (f" — {' · '.join(_b_parts)}" if _b_parts else "")
+                    + " — counts-only by design (generic-cli / single-node are counts only)", "dim"))
+            elif _n_blocked > _shown_b:
                 out.append("    " + _c(f"… +{_g(_n_blocked - _shown_b)} more blocked — see the consult (cm workflows . --registrar)", "dim"))
             _anch = _lget(_wp, "decline_anchors")
             if _anch:
@@ -1136,7 +1203,14 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
             _wv = _clean(str(_wp.get("verdict") or ""))
             if _wv:
                 out.append(_kv("", _c(_wv, "dim")))
-            if not _cands and not _anch:
+            # v0.4.34 (E2): suppressed whenever the record counts blocked rows — this line and the
+            # breakdown above are two claims about ONE state, and "0 fleet-candidates" beside "30
+            # blocked" is the contradiction. Keyed on `_n_blocked` (the record), NOT on `_anch`: the
+            # anchor list describes `decline_anchors`, a different set, so keying on it would suppress
+            # the cold-state line for a record that has anchors and no blocked rows — a third state
+            # neither renderer has a rule for. (`_anch` is in scope here and looks like the natural
+            # operand; it is not the right one.)
+            if not _cands and not _anch and _n_blocked <= 0:
                 out.append("    " + _c("0 fleet-candidates — the honest cold state (never invented breadth)", "dim"))
         else:
             out.append(_kv("REGISTRAR", _c("registrar not consulted this pass (Tier-2 fleet placement)", "dim")))
@@ -1144,10 +1218,13 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
     # Marker
     m = _dget(record, "marker")
     if m:
+        # v0.4.34 (E3): `is None` guards ABSENT and passes EMPTY — a marker with commit "" rendered a
+        # hole where the "?" fallback was intended. Same defect as `x.get(k, D)`, different spelling, so
+        # the site census (which needs a 2-arg `.get`) can never see it; the `or "?"` is the repair here.
         _mc = m.get("commit")
-        _mc = "?" if _mc is None else _clean(str(_mc)[:12])
+        _mc = "?" if _mc is None else (_clean(str(_mc)[:12]) or "?")
         _mt = m.get("timestamp")
-        _mt = "?" if _mt is None else _clean(str(_mt))
+        _mt = "?" if _mt is None else (_clean(str(_mt)) or "?")
         out.append(_kv("MARKER", _c(f"→ {_mc} @ {_mt}", "dim")))
 
     result = "\n".join(out)

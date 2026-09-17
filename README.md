@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml"><img src="https://github.com/Zenetusken/consolidate-memory/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.33-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.33"></a>
+  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/version-0.4.34-a999f5?style=flat-square&labelColor=0f1c2e" alt="Version 0.4.34"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-7fd8b8?style=flat-square&labelColor=0f1c2e" alt="MIT license"></a>
   <a href="#start"><img src="https://img.shields.io/badge/python-3.8%2B-63d3e8?style=flat-square&labelColor=0f1c2e" alt="Python 3.8 or newer"></a>
   <a href="https://github.com/Zenetusken/consolidate-memory"><img src="https://img.shields.io/badge/marketplace-zenetusken--plugins-b9c9da?style=flat-square&labelColor=0f1c2e" alt="Marketplace: zenetusken-plugins"></a>
@@ -35,16 +35,19 @@
 </p>
 
 > [!NOTE]
-> **Current release: v0.4.33** — a pass that leaves a **gating** seeded duty unfilled now fails
-> loudly at the terminal render instead of rendering as silence. A real `dream` once persisted a
-> record with an empty `rigor.applied` and an `achieved_recall` absent beside a present
-> `achieved_index`; every one of them drew a blank field, and nothing contradicted them, because
-> **every cross-block clause in the validator was of the form "two values that both exist must
-> agree"** — vacuous the moment one operand is missing. The new presence gate closes that by
-> construction, and it is **live-only**:
-> it fires at `--persist`, never over the archive, so no existing store's history changes. A blank
-> `session` is reported in the same panel and **never gates** — `SKILL.md` forbids *fabricated*
-> session ids, and an exit code cannot tell "unknown" from "not worth filling".
+> **Current release: v0.4.34** — the dashboard stops deciding what a record **means** by reading its
+> labels instead of the data that produced them. The remediation verdict was a lookup keyed on the
+> `lever` *routing* label, so rewriting that one field swapped the panel's whole meaning: `prune` and
+> `justify` rendered opposite verdicts from byte-identical data, and the skill's own **sanctioned**
+> prune-then-justify state drew a remedy *and* an alarm at once. The verdict is now derived from
+> `candidates_surfaced` / `pruned` / `achieved_index` / `reaches_budget`, and the unfalsifiable
+> "nothing safely prunable" is replaced by sentences that state what the record actually says.
+> The registrar's `… +N more blocked` was a **false total** (the record's full-join count against the
+> local display list) and now emits the counts-only breakdown the HTML archive already used; eleven
+> sites taking a `dict.get` default were repaired to the `or` idiom that catches an empty-but-present
+> string; and two declaration drifts in **opposite** directions were fixed on whichever side the
+> *reader* says is missing — one key emitted and displayed but declared nowhere, one declared and
+> displayed but written by no producer.
 > Public 1.0 remains **HOLD**, with outstanding evidence gates tracked in the
 > [1.0 preflight](docs/1.0-preflight.spec.md). See the [changelog](CHANGELOG.md) for
 > shipped changes.

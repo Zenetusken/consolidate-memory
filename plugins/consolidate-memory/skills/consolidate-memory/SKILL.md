@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.33** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.34** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -69,7 +69,21 @@ one left blank is a gap, not a pass, because a key count counts keys and not fac
 in `render_dashboard`'s `judged` path and never in the archive-wide `procedure_integrity`, so no
 archived record and no seed/preview render can trip it, and the duty arm runs AFTER the arc arm so
 *this* arm's exit 3 can never pre-empt the arc's exit 4 — the procedure-integrity arm above it is
-first by design and does pre-empt, and the conversation-truth arms below it are pre-empted).
+first by design and does pre-empt, and the conversation-truth arms below it are pre-empted), plus
+the v0.4.34 render/declaration-parity patch (the renderer stops deciding what a record MEANS by
+reading its labels: the remediation verdict was a lookup keyed on the `lever` routing label while the
+outcome space is `(lever, candidates_surfaced, pruned, achieved_index, reaches_budget)`, so one
+relabel swapped the verdict — a `prune`→`justify` rewrite turned the ⚠ alarm into "nothing safely
+prunable" from byte-identical data — and the skill's own SANCTIONED prune-then-justify state drew
+the remedy and the alarm at once; the verdict is now derived from the data, `lever` keeps only the
+section header, and `"justified — nothing safely prunable"` is replaced by three sentences that
+state what the record says. Also: the registrar's `… +N more blocked` was a false total (the record's
+full-join count against the LOCAL display list) and now ports the HTML twin's counts-only breakdown,
+cold-state line included; eleven sites taking a `dict.get` default now carry the `or` idiom that
+catches an empty-but-present string; and two declaration drifts in OPPOSITE directions —
+`identity.domain_lifecycle` was emitted and displayed but declared nowhere, `audit.window` was
+declared in both surfaces and read by the archive as `audit.window` yet written by no producer — each
+fixed on the side the READER says is missing, giving the suite its first producer⊆declaration pins).
 Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
@@ -1479,12 +1493,13 @@ this once warned against; the dashboard remains the source of the figures.)
   "project": "repo-name",
   "session": "<active session id>",
   "identity": {
-    "_": "v0.3.0: StoreContext snapshot at seed (domain / enrollment). Absent on pre-0.3 records — HTML falls back to live identity at render. No filesystem paths.",
+    "_": "v0.3.0: StoreContext snapshot at seed (domain / enrollment). Absent on pre-0.3 records — HTML falls back to live identity at render. No filesystem paths. v0.4.34: domain_lifecycle is a real StoreContext field the producer ALWAYS emitted; declared here only from v0.4.34 (the archive renders it via its generic key dump, and sync_global's pull/promote path reads it from a live context).",
     "domain_id": "personal",
     "enrolled": false,
     "registry_state": "absent",
     "cross_project_allowed": false,
-    "conflicts": 0
+    "conflicts": 0,
+    "domain_lifecycle": "active"
   },
   "scope": {"git_range": "abc..HEAD", "git_commits": 0,
             "session_candidates": 0, "memories_reviewed": 0},
@@ -1551,13 +1566,13 @@ this once warned against; the dashboard remains the source of the figures.)
                 "read_failure_scope": "captured native fact files"}
   },
   "remediation": {
-    "_": "v0.1.18: present ONLY when the index is OVER budget (the GATE); absent on a healthy store. v0.1.21: when standing_justified the gate is SUPPRESSED (required=false) until fact-count grows by Δ. v0.1.66: over_ceiling is a SIBLING signal (the hard ceiling, SJ-independent) — never a re-key of required. Seeded by Phase 0; pruned/achieved_* filled in Phase 5.",
+    "_": "v0.1.18: present ONLY when the index is OVER budget (the GATE); absent on a healthy store. v0.1.21: when standing_justified the gate is SUPPRESSED (required=false) until fact-count grows by Δ. v0.1.66: over_ceiling is a SIBLING signal (the hard ceiling, SJ-independent) — never a re-key of required. v0.4.34: mirror_share is the STORE-local operand behind lever's routing label (mirror_index_tokens / index_tokens); the renderer derives its mirror-dominated claim from THIS, never from the label. Seeded by Phase 0; pruned/achieved_* filled in Phase 5.",
     "required": false, "lever": "prune|gc|justify",
     "candidates_surfaced": 0, "pruned": 0,
     "projected_index": 0, "achieved_index": 0,
     "projected_recall": 0, "achieved_recall": 0,
     "standing_justified": false, "baseline_facts": 0, "reaches_budget": true,
-    "over_ceiling": false
+    "over_ceiling": false, "mirror_share": 0.0
   },
   "maintenance": {
     "_": "v0.1.37/v0.1.42: the no-op SELF-HEAL pivot signal (seeded Phase 0, cheap/local). TWO PROCEED cases (NOT a no-op): a NON-EMPTY store with 0 commits = a MAINTENANCE pass; AND (v0.1.42) an EMPTY store + 0 commits + a non-empty network (cross_project.global_store_facts>0) = a COLD-START BOOTSTRAP — both PROCEED to Phase 1 --list→--pull (cross-node enrichment) + Phase 5 health. over_budget_not_justified = remediation.required (the dual-axis suppression result, not a fresh budget compare). Set pivoted=true in Phase 5 when you run either → drives the MAINTENANCE PASS banner.",

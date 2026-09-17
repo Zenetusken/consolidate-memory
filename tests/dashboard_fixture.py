@@ -83,7 +83,10 @@ def sample():
                           read_failure_scope='captured native fact files')
     record = {
         "project": "atlas-api", "session": "example-09",
-        "identity": {"domain_id": "work", "enrolled": True, "registry_state": "healthy", "cross_project_allowed": True, "conflicts": 0},
+        # v0.4.34 (E4): domain_lifecycle is emitted by identity_snapshot unconditionally and the archive
+        # renders it inside "Identity & registry state" (capturedTree's generic key dump), so the fixture
+        # must carry it or the preview shows a shape no real record has.
+        "identity": {"domain_id": "work", "enrolled": True, "registry_state": "healthy", "cross_project_allowed": True, "conflicts": 0, "domain_lifecycle": "active"},
         "scope": {"git_range": "a10cafe..b20cafe", "git_commits": 3, "session_candidates": 2, "memories_reviewed": 24},
         "rigor": {"phase": "final", "applied": "SUBSTANTIAL", "prune_pressure": False},
         "preflight": {"at": "2026-09-05T14:29:00Z", "fails": [], "warns": []},
@@ -104,7 +107,11 @@ def sample():
                   "operations": [{"path": "retry-backoff.md", "store": "memory", "op": "created", "token_delta": 160},
                                  {"path": "MEMORY.md", "store": "memory", "op": "modified", "token_delta": -72},
                                  {"path": "CLAUDE.md", "store": "claude_md", "op": "modified", "token_delta": -40}],
-                  "conservation": {"possible_loss": False}, "window": "phase 0 → phase 5"},
+                  # v0.4.34 (E4): derived from the producer's own constant. The fixture used to carry a
+                  # THIRD spelling ("phase 0 → phase 5") that matched no producer — and because it is an
+                  # untyped dict literal, mypy's typeddict checks could not see the drift. The archive
+                  # renders this row, so the fixture's invention was what the committed preview showed.
+                  "conservation": {"possible_loss": False}, "window": ms.AUDIT_WINDOW},
         "cross_project": {"global_store_facts": 6, "pulled": [{"name": "release-checks", "scope": "stack-general"}], "promoted": [], "refreshed": 0, "held": 0, "gc_removed": 0},
         "usage": {"window": "2026-08-29..2026-09-05", "transcripts": 8, "dream_excluded": 24, "reads": 14, "facts_read": 6, "mentions": 9, "per_fact": [{"name": n, "reads": r} for n, r in [("source-provenance", 3), ("contract-versioning", 3), ("release-checks", 2), ("artifact-provenance", 2), ("queue-boundaries", 2), ("review-conventions", 2)]], "archive_reads": 0, "misses": []},
         "distill": {"sessions": 8, "commands": 96, "n_recurring": 3, "n_chains": 1, "window": "2026-08-06..2026-09-05", "secrets_omitted": 0, "proposed": [], "created": [],

@@ -5,6 +5,102 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.34] — 2026-09-17
+
+**Patch — the renderer stops deciding what a record means by reading its labels. Five fixes, one
+root cause: a surface re-derives meaning from a *label* instead of from the data that produced it,
+and the label is the only thing anything checks.**
+
+The second of two cycles staged from the 2026-09-14 audit. Design and evidence:
+`docs/render-declaration-parity.spec.md`.
+
+1. **The remediation verdict was a 3-way lookup over a 4-dimensional outcome.** The panel's note was
+   `.get(lever, "")` — a dictionary keyed on the *routing label* — while the outcome space is
+   `(lever, candidates_surfaced, pruned, achieved_index, reaches_budget)`. Three measured
+   consequences: the skill's own **sanctioned** prune-then-justify state rendered the
+   `prune can't reach budget → …` remedy *and* the `⚠ gate fired but not acted on` alarm at once
+   (a sanction beside an alarm for one state); **rewriting one label swapped the verdict**, so
+   `lever=prune` and `lever=justify` rendered opposite notes from byte-identical data; and
+   `"justified — nothing safely prunable (see entries[])"` rendered whether or not candidates had
+   been surfaced — which is precisely the claim the surfaced count would falsify. The verdict is now
+   derived from the data, and `lever` keeps only the section header, where it is a *routing* decision.
+
+   **Two user-visible wordings move, and the third does not.** `"mirror-dominated — global demote/GC
+   lever, not a local prune"` now **names the operand** (`mirror-dominated (90% of index tokens) —
+   …`) and fires on `mirror_share > 0.5` rather than on `lever == "gc"`, so it reads as an advisory
+   about *where to act* and no longer suppresses the local-prune advice by label. `"justified —
+   nothing safely prunable"` is **gone**, replaced by three sentences that state what the record
+   actually says — `⚠ gate fired but not acted on — surface candidates + prune-or-justify` /
+   `0 candidates surfaced — record the justification, or re-triage` / `no candidate count recorded —
+   whether the gate was actionable is not answerable from this record`. `"gate fired but not acted
+   on"` keeps its **exact** wording; only its *reachability* narrows, because the remedy and the
+   absent-count arms now take precedence. The dropped phrasing was asserting a fact about the store
+   (nothing *is* prunable) that no field in the record carries.
+
+2. **The remedy and the success are one decision.** `prune can't reach budget → …` and
+   `✓ gate resolved by rebuild-lean` were separate `if`s, so `achieved_index=900, reaches_budget=False`
+   drew a sanction and a success in the same panel. The remedy now fires only when the lean path did
+   not resolve.
+
+3. **`… +N more blocked` was a false total.** The count comes from the record
+   (`workflow_proposals.n_blocked`, the script's full-join count) while the rows come from the local
+   display list — two different sources. An all-`generic-cli` window sets `n_blocked: 30` while
+   persisting no displayable rows, so the panel printed `… +30 more blocked` with **zero rows drawn**
+   and, two lines later, `0 fleet-candidates — the honest cold state`, denying the count it had just
+   asserted. The HTML archive already branched on it and emitted a **counts-only breakdown**; the
+   ASCII renderer was the outlier, and now ports that shape — carrying the JS's clamp, so
+   `{n_blocked: 10, n_generic: 30}` prints no `single-node` term rather than a negative one. The
+   cold-state line is suppressed whenever the record counts blocked rows.
+
+4. **A default that fires only on ABSENT cannot see an empty string.** `_clean(x.get(k, "?"))` leaves
+   `""` rendering as a hole — the same defect as a missing key, invisible to every reader. Eleven
+   sites in the renderer took the repair (the `or` idiom the file already uses for
+   `_clean(_e.get("name") or "?")`), and a **census** pin now asserts the population *and* the
+   verdict: 12 sites match the form, 0 unguarded. Both numbers are asserted together on purpose —
+   dropping a default *removes* a site, which moves the population while leaving the unguarded count
+   at 0, so a verdict-only check would go quiet exactly where it should shout. (Of the 12: eleven
+   were repaired here, and `identity.domain_id` was already guarded before this cycle — which is
+   where the idiom was copied from.) Two further sites spell the same defect a **different** way —
+   the marker's `commit`/`timestamp` guard `None` explicitly and then pass `""` — so they are not in
+   that census's population at all; they are pinned behaviourally instead. The census's own stated
+   limit is that it cannot see an *empty* default (`get(k, "")`), which is excluded by construction.
+
+5. **Two declaration drifts, in opposite directions — and which side moves is decided by the
+   *reader*.** `identity.domain_lifecycle` was emitted by `store_context.identity_snapshot`
+   (unconditionally, via `getattr`) and the HTML archive renders it, yet it was declared on neither
+   `Identity` nor `SKILL.md`: the two declarations agreed with each other and both were wrong about
+   the code. `audit.window` was the mirror image — declared in both, read by the archive as a
+   property access (`audit.window`) and rendered as an "Observation window" row, and never written by
+   any producer, because a grep for `"window"` cannot see a property access. The declaration was
+   brought to the producer for the first, the producer to the declaration for the second, and the
+   committed archive preview now shows a **true** observation window for the first time. Those are
+   the suite's first **forward-direction** pins (producer ⊆ declaration); every earlier shape pin
+   compared `SKILL.md` to the TypedDict, so a producer and a declaration could agree while both
+   disagreed with the code — which is exactly where these two lived.
+
+   Relatedly, `tests/smoke.py`'s nested-shape loop claimed the two documented carve-outs were "the
+   ONLY un-pinned shapes". That was false: **seven** shapes had a `SKILL.md` block and a TypedDict
+   and were pinned by neither (`Narration`, `DomainEntry`, `UniversalFact`, `GroupLink`,
+   `NetworkCapture`, `StackEdgeFacts`, `FactHolding`). They were in perfect key agreement, so this
+   was a **coverage claim that was wrong**, not a drift that had been hidden; all seven are enrolled,
+   and the claim is now bounded by its two real structural limits (depth ≤ 2, and the
+   SKILL↔TypedDict direction) rather than asserted.
+
+**Verification.** Nineteen new checks — **eleven pins**, **seven guards**, and **one regression
+guard** — taking the suite to **2008 checks**. Every pin was mutation-verified against pre-fix trees
+built with `git archive` (never `git worktree add`, one process per tree): reverting the renderer
+alone reds **exactly** the nine render pins plus the rewritten v0.1.35 arm; re-injecting the two
+producer keys alone reds **exactly** E4-a and E4-b. The one existing check this cycle deliberately
+turns from green to red is v0.1.35's "still over budget" arm, which asserted the ⚠ for the state the
+skill sanctions — that assertion *was* the defect, so the check is rewritten rather than deleted.
+
+The regression guard is this cycle's own debt, called out as such: the first cut of the E3 repair
+moved the node row's `[:18]` slice onto its fallback literal, silently un-truncating the column, and
+no other check noticed — including the E3 census, which reads exactly that expression's *source form*
+and passed on the broken revision. A check that cannot fail pre-fix is a guard rather than a pin; it
+is labelled with the revision it *is* red on (the intermediate one) instead of implying pre-fix, and
+it is aimed at the render's **output**, which is where the defect was visible at all.
+
 ## [0.4.33] — 2026-09-17
 
 **Patch — a pass that left a gating seeded duty unfilled now fails at the terminal render instead of
