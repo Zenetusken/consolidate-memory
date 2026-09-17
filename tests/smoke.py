@@ -18843,17 +18843,25 @@ check("v0.4.34 E2-c (PIN): the counts-only breakdown keys on BLOCKED ROWS DRAWN 
 # E2-f — the counts-only line's PARTS must account for its TOTAL, and the operand that broke that is
 # the day-spread count. The three ports (guard, subtraction, clamp) were each justified by the JS, but
 # only the first two had their JUSTIFICATION ported with them: the subtraction is a no-op in the HTML
-# because `!board` makes the branch unreachable with a non-zero field, and the ASCII branch dropped
-# that guard. Named `_e_2f` because `_e_2d`/`_e_2e` are E2-c's fixtures.
+# because `!board` reads the COUNT field and grows the board on any non-zero value, while the ASCII's
+# `_shown_b` reads the ROWS drawn — the field that closes one does not close the other.
+# That makes this a SHAPE pin, not a behaviour pin, and the distinction is worth stating rather than
+# inferring. The producer persists every distinctive day-spread row, so `n_day_spread > 0` always
+# implies a drawn blocked row and the ASCII guard is FALSE in every state the producer builds; 0 of
+# 104 archived records carry the field at all. The fixture's input is AUTHORED — the count without the
+# rows — which is the only shape where the two arms differ. What it guards is a contract over inputs
+# (parts sum to the total), not a state any writer currently reaches.
+# Named `_e_2f` because `_e_2d`/`_e_2e` are E2-c's fixtures.
 _e_2f = rd.render(_e_reg(n_blocked=30, n_generic=10, n_day_spread=20, candidates=[],
                          decline_anchors=[]))
 _e_2g = rd.render(_e_reg(n_blocked=30, n_generic=10, n_day_spread=0, candidates=[],
                          decline_anchors=[]))
 check("v0.4.34 E2-f (PIN): the counts-only line's parts ACCOUNT FOR ITS TOTAL when `n_day_spread` is "
       "non-zero — the remainder is `n_blocked − n_generic`, with no day-spread subtraction. The JS "
-      "subtracts it, and can: `!board` makes that branch unreachable with a non-zero field, so the "
-      "subtraction is a no-op in every state that can print. The ASCII guard is `_shown_b == 0`, which "
-      "IS reachable there, so carrying the subtraction across dropped exactly `n_day_spread` rows out "
+      "subtracts it, and can: `!board` reads the COUNT field, so any non-zero value closes that branch "
+      "and the subtraction is a no-op in every state that can print. The ASCII's `_shown_b` reads the "
+      "ROWS drawn — the same field does not close it — so carrying the subtraction across dropped "
+      "exactly `n_day_spread` rows out "
       "of a line whose whole contract is to account for them — measured on a mutant that restores ONLY "
       "the subtraction, which renders `30 blocked — 10 generic-cli` for a 30-row count. BOTH arms are "
       "red on pre-fix code as well, but for E2-a's reason rather than this one: pre-fix drew the "

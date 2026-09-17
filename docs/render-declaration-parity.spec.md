@@ -573,12 +573,29 @@ branch for the case where there is nothing to draw but the record says there is 
    cannot draw it — the arm is unreachable by construction (§3.2). Carrying it into the ASCII would
    give this renderer a line the other can never print, which is the opposite of parity. **The
    subtraction is a property of the arm, not of the remainder.** The JS can afford `− n_day_spread`
-   only because `!board` makes that branch unreachable whenever the field is non-zero, so the term is a
-   no-op in every state the JS can print. The ASCII guard is `_shown_b == 0`, which **is** reachable
-   with a non-zero field — so the port dropped the guard that made the term dead while keeping the
-   term. Measured: `{n_blocked: 30, n_generic: 10, n_day_spread: 20}` rendered `30 blocked — 10
-   generic-cli`, ten rows short of its own total, with no third arm to account for them. Pinned by
-   **E2-f**, whose `n_day_spread=0` arm is the non-vacuity half. **Do not "restore" it later without
+   only because `!board` reads the **count field** and grows the board on any non-zero value — so that
+   branch is closed by the field alone, and the term is a no-op in every state the JS can print. The
+   ASCII guard is `_shown_b == 0`, which reads the **rows drawn** — a different operand — so the same
+   field does not close it. So the term goes with the arm it belongs to — **the port drops both**, and
+   what that costs is visible in the line it emits: `{n_blocked: 30, n_generic: 10, n_day_spread: 20}`
+   beside an empty `candidates[]` renders `30 blocked — 10 generic-cli · 20 single-node`, so the parts
+   still account for the total, but the day-spread rows are counted under the `single-node` arm **the JS
+   would never have used for them** — the dropped third arm is exactly what leaves them there. Keeping
+   the term instead is the counterfactual, and it is the reason the term cannot be kept: it would print
+   `30 blocked — 10 generic-cli`, **twenty** rows short of its own total, with no third arm to account
+   for them.
+
+   **Reachability, stated exactly, because the loose reading is this cycle's own class.** The
+   producer **cannot** build the pair that makes the subtraction live: `_eval` assigns
+   `blocked: day-spread` only to a distinctive fleet row, and `sync_global` persists every such row
+   (`_spread_src[:_REGISTRAR_BLOCKED_CAP]`, cap 8), so `n_day_spread > 0` always implies a drawn
+   blocked row and `_shown_b ≥ 1`. Measured over the archive: **0 of 104** records carry the field.
+   The guard is therefore reachable with a non-zero field only on an **authored** record that carries
+   the count without the rows — precisely the E2-f fixture's shape. So E2-f is a **shape pin** over
+   an authored input, guarding the arithmetic contract (parts sum to the total) rather than a
+   producer-reachable state; a reader who takes "reachable" for "the producer builds it" will look for
+   a defect that is not there, which is what happened in review. Pinned by **E2-f**, whose
+   `n_day_spread=0` arm is the non-vacuity half. **Do not "restore" it later without
    re-reading §3.2** — that instruction now covers the subtraction as well as the arm.
 
 **F1 — the state the `!board`-shaped guard leaves standing, and it is producer-reachable.** `sync_global`
@@ -3118,3 +3135,228 @@ census was for.)*
 `pref175`.** The counts are the point and so is the shape: `smoke` == 1 is what makes a flat overlay
 correct, `rd` == 9 is what makes a flat overlay fatal, and the two together are the propagation rule
 rather than a description of it.
+
+---
+
+## Revision 13 — the tenth pass: the third review wave, adjudicated, and a gate that could not fail
+
+**Where this pass begins is a review wave, and its largest finding is not a prose finding.** Four
+reviewers — `cr-consumers`, `cr-gates`, `cr-impl` and `rev-pins` — returned findings against revision
+12's tree. Adjudicating them meant reading the source rather than the prose, and the tally is unusual:
+**four** refuted outright, **one** that I first called confirmed and then withdrew after reading the
+twin that falsified my reasoning — and one repair in a file no reviewer had been asked about, where
+this cycle's own root cause had been sitting since the job was written.
+
+**And the pass twice made the same mistake in its own adjudications, so both are recorded rather than
+quietly applied.** Each is **an operand supplied from context instead of derived**, which is the shape
+this document keeps finding, and each was caught by going and measuring rather than by weighing the two
+readings:
+
+- I called a peer's finding **confirmed** on the strength of reading the producer, and it was not. The
+  sentence it indicted is **true**; only its *precision* is at fault. The source that settled it was the
+  JS twin, not the Python — a file the finding did not name and I had not read.
+- I then measured this document's own census **against this document**, found 18 and 76 where the text
+  states 28 and 210, and was one step from recording the spec's figure as false. The operand is
+  `tests/smoke.py`, where the labels live. It is exact in all three revisions checked.
+
+`auditor-disagreement-names-the-operand`: a disagreement about a figure is evidence about its **operand**
+or its **unit**, and the way to settle it is to measure the operand. Both of this pass's self-corrections
+were operand errors, and neither would have been caught by re-reading the sentence more carefully.
+
+### Fixed: the `browser` job could not fail
+
+`ci.yml`'s dashboard step pipes the browser test into `tee`:
+
+```yaml
+          python3 tests/dashboard_browser.py --out browser-report 2>&1 | tee browser-report/run.log
+```
+
+**GitHub's default shell for a Linux runner is `bash -e {0}`** — it sets `-e` and **not** `pipefail`, so
+a piped step's exit status is the **right-hand** command's. `tee` returns 0 whenever it writes. Measured,
+one runner command, one failing left-hand side:
+
+| Shell | Behaviour |
+| --- | --- |
+| `bash -e -c '<exit 7> \| tee f'` | **continues; reports 0** — the step passes |
+| `bash -eo pipefail -c '<exit 7> \| tee f'` | aborts; **rc 7** — the step fails |
+
+And the test does fail loudly, so the failure really does reach the pipe and die there:
+`tests/dashboard_browser.py:31` is `if not ok:raise AssertionError(name)`, and the module's last line —
+`:1123`, in the `__main__` guard opened at `:1118` — is `main(args.out.resolve(),args.capture)`, called
+**unwrapped**. Nothing else in the workflow pipes and no step declares a `shell:`, so this was the one
+site where a green could be false.
+
+**What made it dangerous rather than merely broken is the artifact.** The upload is `if: always()`, so a
+failing run **does** leave `browser-report/run.log` with the red in it. A reader who opens the artifact
+sees the failure; a reader who reads the badge sees success, and the badge is the gate. The two surfaces
+disagree and only one of them is checked — `a-guards-label-is-not-its-predicate`, on the surface that
+reports on all the others. The repair is `shell: bash -eo pipefail {0}` and a comment recording the
+measurement; and because a comment is an unaudited surface in its own right (`audit-the-diffs-prose`),
+the comment states only what was measured here: the default shell, the `tee` behaviour, the two rows
+above, and the `raise`/unwrapped-`main` pair with its line numbers.
+
+### Refuted: four findings, and the shape they share
+
+| Finding | What it claimed | What was measured | Verdict |
+| --- | --- | --- | --- |
+| `cr-gates` F3 | the CHANGELOG's check census is stale | `CHANGELOG.md:99` reads *"Twenty-eight new checks — **eighteen pins**, **nine guards**, and **one regression guard** — taking the suite to **2017 checks**"*, and 18 + 9 + 1 = 28 | **already closed** — corrected in `3f4aaeb`, before the finding was filed |
+| `cr-gates` F2 | the branch introduced `round(share, 2)`, so the band case is new behaviour | `origin/main`'s `memory_status.py:1630` **is** `round(share, 2)`; the branch's `:1651` writes `share` **unrounded**, with the rationale at `:1649-1650`. The change is a **removal**, opposite in direction to the finding. And no producer reaches either arm: of **104** distinct archived records, **39** carry a remediation block and **0** carry `mirror_share` at all | **refuted** — the delta was read backwards |
+| `rev-pins` caveat (b) | the `Pre-fix` census figure is wrong | `tests/smoke.py` carries exactly **28** capital `Pre-fix` and **210** case-insensitive spellings — at `f175b8e`, at `3f4aaeb`, and in the worktree — and `1d97f54` carries **19**, which is the *"nineteen of those 28 predate this branch"* the spec states | **refuted** — exact, and my own first reading of it was wrong (see below) |
+| `cr-impl` F6 | the renderer asserts *"a threshold no producer writes"* | the shipped producer writes `INDEX_TOKEN_BUDGET = 1500` (`memory_status.py:678`); `1200` is the constant at `eba957d^` (`:284`) — i.e. **before** the commit the sentence is about | **refuted** — the present tense is true |
+
+The four share one shape, and it is this document's own subject: **a present-tense claim tested against
+a historical artifact, or a change's direction read backwards.** Three of the four are claims about
+*now* checked against *then*; the fourth is a delta whose sign was inverted. Neither is detectable by
+re-reading the finding — only by opening the artifact the claim is about.
+
+### The finding that survived, and the correction it forced on me
+
+`cr-consumers` F1 held that the E2-f comment's comparative sentence is false: that `_shown_b == 0` is
+**not** reachable with a non-zero `n_day_spread`. I reported it **CONFIRMED**, on the strength of reading
+`_eval` (`sync_global.py:4390-4397`), `_blocked`/`_shown_b` (`render_dashboard.py:1225-1249`) and
+`_persist` (`sync_global.py:4465-4468`), which together show the producer cannot build the guard-true
+pair. That reading is correct as far as it goes.
+
+**It does not go far enough, and the file that settles it is the JS twin.** `dashboard.sections.js` reads
+a **different operand** at every step:
+
+```
+:146   var nSpread=num(WP.n_day_spread, …)
+:181   if(nSpread) board+='<div class="reg-more">'…
+:194   if(!board && num(WP.n_blocked,0)>0){
+```
+
+The JS's `board` grows from the **count field**, so `nSpread > 0` makes `board` non-empty and closes the
+`!board` branch by itself; the ASCII's `_shown_b` (`render_dashboard.py:1249`) counts the **rows drawn**,
+which the same field does not close. The comment's comparative claim is therefore **true**, and it is
+witnessed by the E2-f fixture — an authored record carrying the count with no row beside it. Two
+independent readers then drew the same wrong inference from it, which is the evidence that the **wording**
+was at fault rather than the readers.
+
+What survived is one defect, and it is not the one filed: the sentence said *"reachable with a non-zero
+field"* without naming **which state** it holds in. The producer cannot build that state; an author can.
+The repair names the operand distinction at all three sites — the `render_dashboard.py` comment, the
+E2-f comment and label in `tests/smoke.py`, and bullet 3 here, which now carries a **Reachability, stated
+exactly** paragraph giving `_eval`, `_spread_src[:_REGISTRAR_BLOCKED_CAP]`, the 0-of-104 archive
+measurement, and the conclusion that **E2-f is a shape pin over an authored input** guarding the
+arithmetic contract rather than a producer-reachable state.
+
+**A second defect fell out of the same paragraph and this one is mine to own.** While correcting the
+reachability wording I also found the arithmetic: bullet 3 said the degenerate case left the panel *"ten
+rows short"* where 30 − 10 = **twenty**. It was corrected to twenty in the same edit — found by
+re-deriving the figure rather than re-reading the sentence.
+
+### Fixed: the repair carried its own falsehood forward
+
+The reachability repair rewrote half of bullet 3's sentence and **kept the other half**, and the half it
+kept was the false one. Before, the sentence read:
+
+> The ASCII guard is `_shown_b == 0`, which **is** reachable with a non-zero field — so the port dropped
+> the guard that made the term dead **while keeping the term**.
+
+The repair replaced the guard clause with the operand distinction and **carried `while keeping the term`
+across verbatim**. `render_dashboard.py:1296` is `_b_rest = max(0, _n_blocked - _n_gen)` — the port does
+**not** keep `− n_day_spread`; it drops the term **with** the arm that owns it, which is what bullet 3's
+own header says (*"and its ARITHMETIC goes with the arm"*) and what the shipped line shows. So the
+paragraph's header and its body contradicted each other, and only the header was right.
+
+This is `dropped-hedge-becomes-false-universal` arriving in the sentence that performed the repair: **when
+a repair rewrites a claim, the clause it carries over unchanged keeps the old claim's authority** — it
+reads as re-examined because everything around it was. The edit is now made on the data: the port drops
+both, the dropped third arm is precisely what leaves the day-spread rows counted under the `single-node`
+arm the JS would never have used for them, and keeping the term is stated as the **counterfactual** it is
+— it would print `30 blocked — 10 generic-cli`, twenty rows short of its own total. The shipped line for
+that fixture, asserted at `tests/smoke.py:18872-18873`, is `30 blocked — 10 generic-cli · 20 single-node`,
+so the parts *do* account for the total, and the atom of truth the original was reaching for is the
+*labelling*, not the arithmetic. `a-pins-assertion-shape-sets-its-blind-spot` on a paragraph: a repair
+verified against the half it rewrote is not verified.
+
+### The measurement
+
+Both mutable members of the triple moved, so the generation was rebuilt and every number re-taken. The
+deltas were measured **before** the build rather than after: `render_dashboard.py`'s edit is
+**comment-only**, proven on the delta (all changed lines comment lines) *and* inert by AST dump; the
+`tests/smoke.py` edit is a **string constant** (the E2-f label), proven by a **string-folded** AST dump
+that is identical while the unfiltered dump is not. The prediction — recorded in a separate file before
+the run — was that **every count and every red set reproduces**.
+
+**It did, all thirteen.** `LIVE` 2017 / 0 · `mutA` 2000 / 17 · `mutD` 2011 / 6 · `mutB` 2014 / 3 ·
+`prefixE` 1997 / 20 · `mutE` 1996 / 21 · `R1f` `R1g` `R1h` `R1j` `R2f` `RC89` 2016 / 1 each · `R1i`
+2015 / 2 — **total red 75**, and one extractor applied to both revisions' own logs reports **13/13
+identical, 0 moved, 0 unreadable**. The census constant holds in every tree (`passed + failed = 2017`),
+so D6 remains green everywhere and still cannot be a tree's second red.
+
+**The propagation rule ran again, and its split moved for a reason worth recording.** Measured:
+**9 APPLIED** (LIVE, mutB, R1f, R1g, R1h, R1i, R1j, R2f, RC89), each AST-inert on **that** tree, and
+**4 SKIP** (mutA, mutD, prefixE, mutE), each **byte-identical** to the previous generation
+(`sha(after) == sha(before)` asserted, not assumed). Revision 12 recorded **8 / 5**. The tree that moved
+categories is **`R1i`**, and the reason is the whole point: *which* trees are SKIP is a property of
+**where the delta lands**, not of the tree. Revision 12's delta sat inside the region `R1i`'s mutation
+reverts, so the hunk had no context to land on and the tree was skipped; this revision's delta is the
+E2-f comment, which sits outside that region, so `R1i` takes the patch. Its renderer hash moves
+(`a6ac3f5439b31185` → `302fda69533651d6`) and its red set does not — `E1-i` **and** `E1-i2`, unchanged.
+A SKIP is a statement about a patch attempt, never a property of a mutation.
+
+The red **sets** are checked rather than counted: `mutD ⊆ mutA`; `mutA ∩ mutB = ∅`; `prefixE = mutA ∪
+mutB` exactly at 20 = 17 + 3; `mutE − prefixE` is the single `SKILL:remediation` row; `prefixE − mutE` is
+empty.
+
+**The injections, five of them, re-run on the new harness and identical to their prediction.**
+
+| Injection | Edit | Predicted | Measured |
+| --- | --- | --- | --- |
+| `inj13_branch` | the `else:` arm that renders the pending verdict → `pass` | 2016 / 1, red `E1-e` alone | **2016 / 1 — `E1-e`** |
+| `inj13_branch_noarm` | the same deletion, the `E1-e` arm removed from the harness | **2017 / 0 — green** | **2017 / 0 — green** |
+| `inj13_anch` | `and not _anch` deleted | **2017 / 0 — green** | **2017 / 0 — green** |
+| `inj13_cands` | `and not _cands` deleted | **2017 / 0 — green** | **2017 / 0 — green** |
+| `inj13_nblocked` | `and _n_blocked <= 0` deleted | 2016 / 1, red `E2-b` alone | **2016 / 1 — `E2-b`** |
+
+**And the pin's counterfactual, on the revision its label names.** `f175b8e`'s renderer with this
+revision's harness: **2016 / 1, red `v0.4.34 E1-i2` alone** — PIN CONFIRMED, and unchanged by an edit
+that moved the harness. Identity asserted before the run rather than inferred after it: `pref175`'s
+renderer equals `f175b8e`'s and **not** the batch's; its harness equals the batch's.
+
+### The instrument's own fault: a log read while its writer was still running
+
+The batch's first extraction reported **empty count columns in all thirteen trees, a total red of 0
+against a prediction of 75, and thirteen `.log` files at a byte-identical size**. It was read as a
+suspected harness fault. It was not, and nothing from it was reported.
+
+`runrev.sh` redirects each run to a file with no `PYTHONUNBUFFERED`, so Python block-buffers in ~8 KB
+chunks; every process sat at the same **flush boundary** regardless of what it was computing, and the
+count line had not been flushed yet. The rig itself is sound and **exit-bound** — `:8` backgrounds the
+runs, `:10` is `wait`, and the counts are written at `:12-15`, followed by an
+`=== all runs complete ===` sentinel. Re-read after that sentinel, the same trees report the numbers
+above. Two tells identify the class without waiting, and both were present: a **`wc -c` tie across
+thirteen independent processes** is a buffer boundary rather than content identity (the `sha256sum`s
+differed, which is the check that would have caught it), and **an empty match beside plausible partial
+output** — red rows present, total 0 — is a truncation shape rather than a verdict shape.
+
+**The same class was then closed in the follow-up script rather than merely noted.** A suite that
+*crashes* writes a non-empty log, so the existing empty-output arm passes it, the count greps empty, and
+the verdict block prints `*** PREDICTION FAILED — re-read the label ***` for a tree the suite never
+finished grading. The follow-up now has **three** fault arms with distinct exit codes — **90** the
+tree's identity is wrong, **91** no output at all, **92** the suite ran but never reached its summary
+(the tail is printed) — each saying *"NOT a verdict on the label: nothing was measured."* A fault and a
+verdict no longer share a message, which is the defect revision 12 recorded in the comparer and the
+reason arm 90 exists at all.
+
+### What moved, measured
+
+| Member | Hash (first 16) | Trees |
+| --- | --- | --- |
+| `tests/smoke.py` | `418bab0849c03c2a` | **all thirteen** — one hash, the tree-invariant signature |
+| `render_dashboard.py` | `b8c76efd8a99ba6f` | LIVE, mutB, R1h |
+| | `309e3df5b02a2ec7` | mutA, prefixE, mutE |
+| | `603283368a88fb26` · `717d1182fa3910f6` · `8da601dd4a565f9d` · `302fda69533651d6` · `61e760b1e1473892` · `8bde27efce5fb4fc` · `75628b1bba13c235` | mutD · R1f · R1g · **R1i** · R1j · R2f · RC89 |
+| `render_dashboard.py` — `pref175` | `dd41ac01a055de8b` | asserted **equal to `f175b8e`'s** and **not equal to the batch's** |
+
+**Nine distinct `render_dashboard.py` hashes, one distinct `tests/smoke.py` hash, and one `pref175`** —
+the same signature revision 12 measured, on a different delta. Four members are byte-identical to the
+previous generation (`309e3df5b02a2ec7` and `603283368a88fb26` included) and nine moved; that split is
+the delta's location, not the trees'.
+
+**No shipped behaviour changes in this revision.** Both triple edits are comment-or-string-constant by
+proof and inert by measurement, and the `ci.yml` edit is outside the triple entirely — no test reads the
+workflow. What does change is a gate's **meaning**: a dashboard regression now fails CI instead of
+leaving a red line in an artifact nobody opens.

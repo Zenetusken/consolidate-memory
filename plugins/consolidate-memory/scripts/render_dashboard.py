@@ -1275,9 +1275,16 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
                 # because the JS can only reach this branch with `n_day_spread == 0`: at `:146` a non-zero
                 # field makes `nSpread` truthy, `:181` grows `board`, and the `!board` guard goes false.
                 # So in the HTML the subtraction is a **no-op in every state that can print**. The ASCII
-                # guard is `_shown_b == 0`, which IS reachable with a non-zero field, so carrying the
-                # subtraction across silently dropped exactly `n_day_spread` rows out of a line whose
-                # whole contract is that its parts account for the total.
+                # guard reads a DIFFERENT operand and is not closed by that field: `_shown_b` counts the
+                # persisted blocked ROWS, so `n_day_spread > 0` does not make it false — only drawing no
+                # blocked row does. Say which states those are, because the loose reading ("reachable
+                # with a non-zero field") invites the wrong one: the producer cannot build that pair
+                # (`_eval` gives `blocked: day-spread` only to a distinctive fleet row, and `sync_global`
+                # persists every distinctive day-spread row, so a non-zero count always implies a drawn
+                # row). It is live exactly where a record carries the COUNT with no row beside it — an
+                # authored shape, which is the E2-f fixture. Carrying the subtraction across dropped
+                # `n_day_spread` rows out of a line whose whole contract is that its parts account for
+                # the total.
                 #
                 # The JS's third ARM (`n_day_spread` -> "N single-day") stays unported — it is unreachable
                 # in the HTML (0 of 1156 reachable states, see the spec) — but its ARITHMETIC goes with

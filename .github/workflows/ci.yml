@@ -135,7 +135,15 @@ jobs:
         run: |
           python3 -m pip install playwright==1.60.0
           python3 -m playwright install --with-deps chromium
+      # `shell:` here is required, not decoration. GitHub's default Linux shell is `bash -e {0}` — which
+      # sets `-e` but NOT `pipefail` — so a piped step's exit status is the RIGHT-hand command's, and
+      # `tee` returns 0 whenever it writes. Measured: `bash -e -c '<failing cmd> | tee f'` continues and
+      # reports 0; the same with `-eo pipefail` aborts at 1. Without this the job reports green while
+      # its checks fail, and the failure survives only in the uploaded artifact — the repo's own lesson
+      # that a pipeline's exit status belongs to its last stage. The test does exit non-zero:
+      # dashboard_browser.py raises AssertionError in `main`, which `__main__` calls unwrapped.
       - name: dashboard behavior and responsive layout
+        shell: bash -eo pipefail {0}
         run: |
           mkdir -p browser-report
           python3 tests/dashboard_browser.py --out browser-report 2>&1 | tee browser-report/run.log
