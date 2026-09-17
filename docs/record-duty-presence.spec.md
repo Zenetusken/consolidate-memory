@@ -404,24 +404,29 @@ that claim was false when written, which is how a reader would have been sent lo
 mismatch that was not there.
 
 **An instrument is only as wide as its match set, and this one was widened four times.** The first
-cut walked `validate_cycle_record`'s body for `warnings.append`. The adversarial pass measured three
-evasions of that — and mis-aiming one of its own injections found a fourth — each one an injection
-that left every surface green:
+cut walked `validate_cycle_record`'s body for `warnings.append`. The four closed forms below are attributed by **row** rather than by a count of what a pass
+measured — the count is testimony about the PASS, while each row is checkable against the code.
+*Delegation* and the *re-methoded mutation* were found by asking what this walk's match set is (the
+injection was already passing, which is why it had been accepted); the *renamed parameter* while
+designing the whitelist that closes them; the *drifted legend* by **mis-aiming** an injection — each
+one an injection that left every surface green:
 
 | evasion | before | now |
 | --- | --- | --- |
 | **delegation** — the clause lives in a helper the body calls | measured **GREEN**: a body walk cannot see a clause that lives elsewhere | the walk followed bare-name calls **one level deep**, which closed the injection as written and left the *class* open — body → `_h1` → `_h2` → `append` was **also measured GREEN**. It is now a **worklist fixpoint** over the call graph, so delegation counts at any depth; the closure measures 8 functions on the shipped module |
 | **re-methoded mutation** — the clause is added by `warnings.extend([...])` | measured **GREEN**: only `.append` was matched, so the site existed and no count moved | `_mutations` enumerates *every* way to write the binding — method call, `+=`, item assignment, hand-off to a callee — and the census reports how many are not the one recognised form. That count must be 0, and it is a **separate check** so its red is legible as itself rather than as a count that will not reconcile |
 | **renamed parameter** — the clause is written by a helper that calls its parameter `warns` | **GREEN, and still green in the count even now** — the closure walk follows the call, but `warns.append` binds to a name no `warnings` filter in the file can see | **RED via the whitelist only.** This is the honest shape of the fix: a hand-off is recognised only when the callee's parameter *at that position* is itself named `warnings`, so the unfollowable case is reported instead of assumed benign. Measured: `value=22` (the count pin unmoved) with `escapes=1` |
-| **drifted legend** — the docstring's three `· KIND — gloss` lines, which *define* the tokens every count is keyed on, are retagged (`· MEMBERSHIP —` becomes `· DISAGREE —`) | **GREEN, every operand unmoved** — the legend is excluded from the row list by the same prefix test that a retag preserves. Found by **mis-aiming an injection**: a retag meant for a row hit the legend instead, and the census did not move. The docstring then teaches that *disagree* means *membership*, while the row counts, the split and the spec table all still reconcile | the legend's token tuple is returned and asserted in order. A token **outside** the three was already loud (the exclusion stops matching, the line lands in `_rows`, and that count moves) — so the pair covers the surface completely |
+| **drifted legend** — the docstring's three `· KIND — gloss` lines, which *define* the tokens every count is keyed on, are retagged (`· MEMBERSHIP —` becomes `· DISAGREE —`) | **GREEN, every operand unmoved** — the legend is excluded from the row list by the same prefix test that a retag preserves. Found by **mis-aiming an injection**: a retag meant for a row hit the legend instead, and the census did not move. The docstring then teaches that *disagree* means *membership*, while the row counts, the split and the spec table all still reconcile | the legend's token tuple is returned and asserted in order. A token **outside** the three is loud in whichever operand counts that surface — a **legend** retag stops matching the exclusion, lands in `_rows` and moves that count (measured: rows 16 → 17 with the legend short a token), while a **row** retag leaves `_rows` where it was and is caught only by the KIND split (measured: the split 11 → 10, rows 16). The two guard different directions; **the gloss after the token is read by nothing** — measured GREEN on both the legend and the spec table's prose column |
 
-The last row is the reason the whitelist is a count of *unrecognised* forms rather than a list of
-known-bad ones: an enumeration of bad forms has the same defect as the walk it replaces — it is
+The re-methoded mutation row is the reason the whitelist is a count of *unrecognised* forms rather
+than a list of known-bad ones: an enumeration of bad forms has the same defect as the walk it replaces — it is
 only as wide as the author's imagination. The count is closed against everything that is not the
 one form the census can follow, so a mutation form nobody anticipated fails **loudly** at the
-whitelist. What it still cannot see is stated at the definition rather than left to be
-rediscovered: **folding a new case into an existing `.append` moves nothing**, and no counting
-scheme can see it.
+whitelist. What it still cannot see is stated at the definition rather than left to be rediscovered, and there
+are **three** such limits: **folding a new case into an existing `.append` moves nothing** (no
+counting scheme can see it, though a *behavioural* fixture still catches the cases it exercises);
+the SHAPE/VALUE split is a regex over the warning *text*; and the gloss after a KIND token — on the
+docstring legend and on this table alike — is read by nothing.
 
 **Which forces a refinement of §2.1's family table, not just its count.** Family 3 is
 *seeded-duty* presence — "did the pass fill the field it seeded?" — and the `fact_holdings` identity
@@ -833,8 +838,8 @@ two ways to be vacuous and this one writes its census three times:
 | retag a spec table row likewise | RED | **RED** |
 | **fold a new case into an EXISTING append** | RED | **GREEN — the open limit** |
 
-**The last row is a hole in *granularity* — and C1 has exactly two, of which the classifier is the
-other.** The check counts *sites*, so a far-side case added to a clause that already exists changes
+**The last row is a hole in *granularity* — and C1 has exactly three, of which the classifier is
+one and the unread gloss text is the other.** The check counts *sites*, so a far-side case added to a clause that already exists changes
 no number it reads: reproduced, not theorised. Closing it means classifying *conditions* rather than
 *sites*, and the structural classifier that would do it was tried and rejected (below). Both limits
 ship **named** — in the check's own label, in its comment, and here — because a limit written down
@@ -860,74 +865,87 @@ separate the families either — it trades a silent miss for a different one.
 
 ### 4.4 The measurement behind the table
 
-**Every number below was measured in one batch, on one revision.** Four mutant trees were rebuilt
-from the current working tree (not from an earlier copy) — each differing from it by **exactly one
-edit**, verified by a whole-tree diff — and their suites were run in parallel.
+**Every number below was measured in one batch, on one revision.** **Five** mutant trees were rebuilt
+from the shipping tree itself (not from an earlier copy) — each differing from it by **exactly one
+edit**, verified by a whole-tree diff — and their suites were run in parallel. Four of the five are
+the regression diagonal; the fifth restores **D1**, and its result *is* a finding rather than a check
+on one.
 
 **"One revision" is checkable, not asserted.** The batch wrapper sha256s the working tree before it
-builds the mutants and after their suites finish, and refuses the result if the two disagree;
-both sides of this run read **`34d0a07ce1d2ade7`** (201 files, whole tree) — and a later
+builds the mutants and after their suites finish, and refuses the result if the two disagree; both
+sides of this run read **`a5f559fa5842a05d`** (**202** files, whole tree) — and a later
 re-fingerprint will differ, because this spec lives inside `docs/` and writing the number down
 changes it: the value identifies the *run*, which is the only thing it was ever for.
 
 **It is testimony, not a derived number, and the fix itself is the reason.** The match set is drawn
 around *everything in the tree*, not around *everything the suite reads*, so it deliberately includes
-artifacts the harness never opens. Counted on this checkout: of the **201** files, **192 are
-tracked** — re-derivable by anyone who clones — and **9 are not**, of which **8 are gitignored
-maintainer-only files that will never be in the repository** (`release.sh`, five `security/**`
-documents and workflows, `.claude/settings.local.json`, `PREFLIGHT.md`) and one is **this spec**,
-unreproducible only until the branch merges. So `34d0a07ce1d2ade7` sits in §3.1's third tier:
-**what makes it good evidence — it is bound to this checkout — is exactly what stops anyone else
-re-deriving it.** Over-covering is the safe direction for this gate (a match set wider than the
-harness cannot miss a file, and all three of its earlier versions failed by being **too narrow**),
-and the two directions of match-set error are not symmetric: too narrow is **silent** (a file the
-suite reads can change while the gate reports a stable revision — the defect this wrapper spent
-three versions on), while too wide is **loud and inert**. Only the first can ship unnoticed, which is
-why the wrapper over-covers on purpose and says so here.
+artifacts the harness never opens. Counted on this checkout: of the **202** files, **194** are
+tracked — re-derivable by anyone who clones — and **8** are not, all of them gitignored
+maintainer-only files that will never be in the repository (`release.sh`, five `security/**` documents
+and workflows, `.claude/settings.local.json`, `PREFLIGHT.md`). **This spec is tracked**; what is true
+of it is that a **clone of `main`** cannot see it yet, because the branch has not merged. So
+`a5f559fa5842a05d` is **testimony** where the 194 are not: **what makes it good evidence — that
+it is bound to this checkout — is exactly what stops anyone else re-deriving it.** Over-covering
+is the safe direction for this gate (a
+match set wider than the harness cannot miss a file, and all three of its earlier versions failed by
+being **too narrow**), and the two directions of match-set error are not symmetric: too narrow is
+**silent** (a file the suite reads can change while the gate reports a stable revision — the defect
+this wrapper spent three versions on), while too wide is **loud and inert**. Only the first can ship
+unnoticed, which is why the wrapper over-covers on purpose and says so here.
 
-**What the number is for, kept separate from what it can bear.** Its job is to prove the four mutants
-were built from, and run against, *one* revision — not to be a citation for this document's own
-content. For that narrower question the operative surface is smaller and **is** re-derivable: the
-mutant runs read §2.5's table, the body's `warnings.append` sites, and the pin definitions in
-`tests/smoke.py`. §2.5's region of this file hashes to **`3b06c6344ae4f72a`** on **both sides** of
-the revision-4 corrections, so the census the mutants were measured against is byte-for-byte the
-census shipping here — and unlike the fingerprint, that value anyone can recompute from the shipped
-file, on any machine, with no access to this checkout. It took **three** tries
-to make that fingerprint honest: v1 covered `plugins/*/scripts` + `tests/` + `docs/`; v2 widened to
-the whole plugin because the suite reads `SKILL.md`; both were *still* narrower than the harness,
-which also reads `CHANGELOG.md`, `README.md`, `SECURITY.md`, `AGENTS.md`, `cm`, the marketplace
-manifest and `.github/workflows/*.yml` — every one at the repo root, outside all three roots chosen.
-Each version would have called a revision stable while a file the suite reads had changed, which is
-this cycle's own defect wearing a build-tool costume: **a gate is only as wide as its match set.**
-The counts are recorded because a mutation's RED count belongs to the **triple** (the restored code,
-the fixture, the harness), so an inherited count is not evidence: the W group's own label had
-carried one ("flipped A-only from 0 to 3, measured by review") and it was re-derived, not copied.
+**What the number is for, kept separate from what it can bear.** Its job is to prove the mutants were
+built from, and run against, *one* revision — not to be a citation for this document's own content.
+For that narrower question the operative surface is smaller and **is** re-derivable: the mutant runs
+read §2.5's table, the body's `warnings.append` sites, and the pin definitions in `tests/smoke.py`.
+The hash below is taken over **the rows §2.5's table contributes to the census** — the operand set the
+census actually counts — joined with newlines and sha256'd to its first 16 hex characters, and it reads
+**61feebd6821b89b4**. Revision 5 hashed the *region* instead, and the difference is the whole lesson:
+revision 5's own evasion table was added **into §2.5**, so the region grew 81 → 101 lines and the cited
+value stopped reproducing against the file it ships beside, while the operand set — 16 rows, 22 sites,
+the (11,4,1) split — was **identical on both sides**. The narrower hash covers exactly the claim, which
+is why it survived the edit the wider one did not; unlike the fingerprint, anyone can recompute it
+from the shipped file, on any machine, with no access to this checkout. It took **three** tries to
+make the *fingerprint* honest: v1 covered `plugins/*/scripts` + `tests/` + `docs/`; v2 widened to the
+whole plugin because the suite reads `SKILL.md`; both were *still* narrower than the harness, which
+also reads `CHANGELOG.md`, `README.md`, `SECURITY.md`, `AGENTS.md`, `cm`, the marketplace manifest and
+`.github/workflows/*.yml` — every one at the repo root, outside all three roots chosen. Each version
+would have called a revision stable while a file the suite reads had changed, which is this cycle's own
+defect wearing a build-tool costume: **a gate is only as wide as its match set.** The counts are
+recorded because a mutation's RED count belongs to the **triple** (the restored code, the fixture, the
+harness), so an inherited count is not evidence: the W group's own label had carried one ("flipped
+A-only from 0 to 3, measured by review") and it was re-derived, not copied.
 
 | tree | suite | reds |
 | --- | --- | --- |
-| **the shipped revision** | rc 0 — **1984 passed, 0 failed** | — |
+| **the shipping revision** | rc 0 — **1987 passed, 0 failed** | — |
 | **`2b07ce3` (pre-fix revert)** | rc 1 — **the suite ABORTS** at `tests/smoke.py:3316` after **692 checks**, no totals line | *nothing is evaluated* — not the U group, not anything after it |
-| **mutant A** — duty arm moved before the arc arm | rc 1 — 1983 passed, 1 failed | **G1** |
-| **mutant B** — `judged` dropped from the panel block | rc 1 — 1982 passed, 2 failed | **G2, G3** |
-| **mutant C** — the shipped key-count predicate restored | rc 1 — 1982 passed, 2 failed | **U5, P4** |
-| **mutant D** — the severity wire dropped | rc 1 — 1983 passed, 1 failed | **W1** |
+| **mutant A** — duty arm moved before the arc arm | rc 1 — 1986 passed, 1 failed | **G1** |
+| **mutant B** — `judged` dropped from the panel block | rc 1 — 1985 passed, 2 failed | **G2, G3** |
+| **mutant C** — the shipped key-count predicate restored | rc 1 — 1985 passed, 2 failed | **U5, P4** |
+| **mutant D** — the severity wire dropped | rc 1 — 1986 passed, 1 failed | **W1** |
+| **mutant E** — the panel draws `gaps[:2]` (**D1**) | rc 1 — 1986 passed, 1 failed | **the three-clause pin** — the check added for exactly this |
 
-**These four mutants were rebuilt and re-run after the revision-4 corrections, and the diagonal came
-back identical.** That is deliberate rather than incidental: a gate result belongs to the revision it
-ran on, and between the two batches the tree gained the docstring's corrected kind figure, the
-census pin's kind-split operand and its type annotations — so instead of arguing that a docstring is
-inert, every mutant was rebuilt from the corrected tree and the whole batch re-measured. The
-fingerprint moved `40778217f4bae2ad` → `34d0a07ce1d2ade7`; the reds did not move at all. That is the
-correct reading and not an accident, because the corrections are confined to surfaces no check
-examines — §4 and the amend ledger, plus a `warnings.append`-site census whose §2.5 region and body
-sites are byte-identical on both sides (the hash above). It is also the reason the earlier row count
-of this document is quoted as `40778217f4bae2ad`: an inherited count is not evidence, so the number
-it was measured under is kept beside it rather than overwritten.
+**These four mutants have now been rebuilt and re-run after every round of corrections, and the
+diagonal has come back identical each time.** That is deliberate rather than incidental: a gate result
+belongs to the revision it ran on, so instead of arguing that a docstring is inert, every mutant is
+rebuilt from the corrected tree and the whole batch re-measured. The passing counts have moved with the
+base at every round — 1986/1985/1985/1986 here, against 1983/1982/1982/1983 two revisions
+ago — and **the reds have never moved at all**: A→G1, B→G2+G3, C→U5+P4, D→W1. The identity is the
+stable part and the count is not, which is exactly the distinction `mutation-count-belongs-to-the-triple`
+draws. It is also why this document keeps the earlier numbers rather than overwriting them: an
+inherited count is not evidence, so the base it was measured against is kept beside it.
+
+**Mutant E is a finding rather than a regression check, and it is listed here because its evidence is
+this table.** The mutation makes `_duty_gaps_section` draw a *subset* of the rows its own subtitle
+counts; the shipping suite passes it (rc 0, no reds) until the three-clause fixture added in revision
+6, and reds the check written for it afterwards. **The check is therefore verified by the diagonal
+rather than by the revert**, which is the same method the W group needed and for the same reason: a
+check added by a fix cannot be shown to discriminate by a tree that predates the fix.
 
 **Read the diagonal: every mutant reds exactly the check(s) written to catch it and nothing else.**
-That is a *coverage* measurement, not merely a pin — it says no other check in the 1984 was
-incidentally standing in for the property, and that the pin is not redundant. The census pin C1
-passes in all four, which is the correct reading: none of the mutants touches the docstring, and a
+That is a *coverage* measurement, not merely a pin — it says no other check in the 1987 was
+incidentally standing in for the property, and that the pin is not redundant. Neither of revision 6's
+two new checks reds under any of the four regression mutants, which is the same statement for them: a
 check that reds under an unrelated mutant would be measuring something other than what it claims.
 
 **The revert row is why the injection column exists.** A pre-fix revert cannot verify *any* check in
@@ -1115,8 +1133,8 @@ without their own IDs on purpose: it labelled them `C1…C8`, which collides wit
 census pin `C1`, and one label naming two things is how a reader ends up verifying the wrong one.)
 
 **Revision 5** — the adversarial pass over revision 4, run against the shipped revision before
-`/code-review` and asked to attack the *fix*, not the defect it fixes. Two confirmed findings, both
-fixed, and both are the cycle's own subject arriving one layer up: **a thing that reports on itself
+`/code-review` and asked to attack the *fix*, not the defect it fixes. **Both of the findings below were fixed**, and
+both are the cycle's own subject arriving one layer up: **a thing that reports on itself
 read as a report on something else.**
 
 | Finding | Change |
@@ -1124,16 +1142,62 @@ read as a report on something else.**
 | **The panel's subtitle counted CLAUSES and said FIELDS.** `len(gaps)` is fired clauses; clause C is three fields behind one clause — so the audited defect shape rendered **"1 seeded field"** above a row naming three fields, two blank. The panel whose whole job is to describe a gap was describing it with an operand its label did not name | the count is now the **rows drawn** and the wording says *duty* (§2.4). The shipped pin did not catch it and could not: its fixture fires clauses A+B, where clauses **==** fields, so the two operands are indistinguishable there. The trio fixture — the one shipped shape where they disagree — now pins the **relationship** (subtitle count == rows drawn) rather than two literals. Measured with the field-count operand restored: **1983 pass / 1 fail, and the red is that check** — so the operand is covered by exactly one check and was covered by none |
 | **C1's delegation fix was short, and its own coverage claim was narrower than its walk.** "CLOSED" was true of the injection as written and false of the class: `body → _h1 → _h2 → append` was **GREEN** (depth 1 only), and a clause added by `warnings.extend([...])` was **GREEN** (only `.append` matched) | the walk is a **worklist fixpoint** over the call graph; a **whitelist** reports every write to `warnings` it cannot follow, as **C2**'s own count (§2.5, §4). Re-measured on this revision: twelve injections RED, one GREEN (widening, still open and still named) |
 
-**The whitelist's last gap was found by mis-aiming an injection.** A retag intended for a docstring
+**The census's fourth evasion was found by mis-aiming an injection.** A retag intended for a docstring
 *row* hit the docstring's *legend* — the three `· KIND — gloss` lines that define the tokens every
 count in this document is keyed on — and **not one operand moved**. That is the fourth evasion, and
 it is recorded because of how it was found rather than despite it: an instrument's own vocabulary is
 the last place anyone looks for a defect when the numbers agree, which is exactly the reasoning that
 let a wrong count survive three revisions of this document. It is now pinned in order.
 
-**Consolidation, stated as a rule rather than a verdict.** Three of the five evasions closed here
-(delegation at depth 2, re-methoded mutation, renamed parameter) were found by asking *what is this
-walk's match set* rather than *does this injection pass* — the injection was already passing, which
-is why it had been accepted. **A green injection measures the injection, not the instrument.** The
-two remaining open limits are stated at the definition: the SHAPE/VALUE classifier is a regex over
-warning text (§2.5), and widening an existing `.append` moves no count.
+**Consolidation, stated as a rule rather than a verdict.** Three of the FOUR evasions tabled in
+§2.5 were found by asking *what is this walk's match set* rather than *does this injection pass*
+— delegation at depth 2, the re-methoded mutation, and the renamed parameter; in each case the
+injection was already passing, which is why it had been accepted. **A green injection measures the
+injection, not the instrument.** The fourth, the drifted legend, is the exception that tests the
+rule rather than confirming it: it was found by *mis-aiming* an injection, because an instrument's
+own vocabulary is the last place anyone looks while the numbers agree. The **three** remaining open
+limits are stated at the definition: the SHAPE/VALUE classifier is a regex over warning text; the
+gloss after a KIND token — on the legend and on §2.5's table alike — is read by nothing; and
+widening an existing `.append` moves no count.
+
+**Revision 6** — the adversarial pass over revision 5, run against the shipped revision before
+`/code-review` and asked to attack the *fix*, plus the corrections its findings forced in the
+revision-5 prose written to record the last set. **Every finding it confirmed is fixed below**, and
+the recurring shape is again the cycle's own subject: **a relationship pinned only where its operands
+cannot differ.**
+
+**A note on attribution, because this document's own standard requires it.** The pass reported its
+findings and was then asked a set of follow-up questions — the full parse answer, an injection list,
+and a final count. **It did not return them**: it ran past the end of the revision, and the answers
+never arrived. So the rows below are attributed **by row** rather than by a count of what the pass
+measured, and where a number would have been testimony about the pass, this revision states the row
+instead. That is not a weakening of the standard — it is the standard, applied to a reviewer: *a
+count of a pass's own work outlives the pass*, which is the same reason this document re-derives its
+own numbers rather than carrying them.
+
+| Finding | Change |
+| --- | --- |
+| **The census constrained 22 of 46 sites, and the unconstrained 24 were the silent direction.** C1 asserted the VALUE bucket and said nothing about the rest of the write surface, so a clause worded as a *shape* check — `warnings.append("ooze is not a list")` — landed in the SHAPE bucket, which **no assertion read**. Measured GREEN, four ways, by the pass; reproduced here by injecting the same clause. This is the pin built to close four evasions missing a fifth, found not by an injection aimed at it but by **counting the surface the pin does not enumerate** | the census returns **`len(_all)` — the whole append surface, 46 — as a ninth operand**, and it is pinned by **its own `check(...)`, not as a C1 conjunct**. Measured in four directions: a VALUE-worded addition moves `value` **and** the surface (both red); a **SHAPE**-worded addition moves `value` not at all and now **reds the surface alone** — the silent direction is loud; retagging a value site into shape wording moves `value` 22 → 21 and leaves the surface at 46 (**C1 reds alone**). So **C1 owns the retag, the surface owns the addition**, and the two pins partition the directions with nothing left silent. That the surface is computed *inside* the census rather than re-walked is deliberate: a second walk is a second match set, and this cycle has spent three revisions on what happens when two of those disagree |
+| **D1 — the panel counted CLAUSES where it drew ROWS, and every fixture fired at most two.** `for g in gaps[:2]:` injected into `_duty_gaps_section` **passes the whole suite** (measured on a tar copy: rc 0, no reds). The user-visible effect is the fixed defect reappearing inside its own fix: the panel renders *"3 seeded duties the pass left unfilled"* above **two** rows, the vanished row being the **remediation trio — the F1 clause itself** — and the exit stays **3**, so nothing signals it. *Cause:* the six fixtures fire A+B, A, B, trio, trio, A+B, so the relationship `subtitle == rows drawn` is only ever evaluated where `clauses <= 2`; the one assertion that reads a row count belongs to the trio fixture, which fires **one** clause | a seventh fixture firing **all three** clauses, with its own marker timestamp (`_already_logged` keys on the (commit, timestamp) pair, so reusing the trio's makes `_persist` return `"duplicate"`) and its own check. The docstring at `:379-388` **already promised** the count "is the number of rows drawn (a reader can check it by counting them)" — so this pins a claim that was already written, not a new one. The author had reasoned carefully about the *twin* pair (rows vs fields, and chose the trio fixture to separate them); `len(gaps)` vs *rows the loop draws* is a second, orthogonal pair no ≤2-clause fixture can reach |
+| **`_duty_gaps_section`'s docstring stated a false universal.** *"Every visible word comes from the fired ROW (`label`, `detail`, `remedy`) — never a shared literal."* The panel's frame is shared by construction: the header `⚠ RECORD DUTY GAPS`, the subtitle template, the `→` prefix and `_rule()` | scoped to what the sentence is *about*: every word that **names** the gap comes from the row; the frame is shared, **which is what makes the per-row text the only place a generic sentence could hide**. Recorded rather than silently corrected because it is the same substitution this document audits — a claim about the part that varies, written as a claim about the whole — and the same audit found it twice more in the same hour (§2.5's drifting row, the limits paragraph) |
+| **The open limit was stated too narrowly, in both surfaces.** Both this document and the pin's comment said the limit is *"folding a new case into an existing `.append` moves nothing."* Measured, the class is wider: **any count-preserving change to a site's condition or activation** — a folded predicate, a widened guard, a conditionalised append, a swapped condition | restated as **the census pins the site SET and the wording buckets; it does not pin a site's CONDITION**, with the measured pair that fixes the boundary: emptying the preflight loop's iterable (`("fails","warns")` → `()`, site count unmoved) **REDS** — *`preflight validator: preflight.fails/warns must be lists`*, a **behavioural** check predating this cycle — while folding a third key into it does not. So the census is blind to guard changes and the *suite* is blind only where no fixture exercises the affected case. The absolute ("the guards around those sites are not pinned at all") was **measured false** and is not imported |
+| **The third open limit is the one nothing reads.** The census keys every count on KIND tokens, and the **gloss after a token** — on the docstring's legend lines and on §2.5's prose column alike — is read by nothing. Measured GREEN on both surfaces | named at the definition beside the other two, and the count of open limits corrected **two → three** in the two places that stated it (§2.5 and §5), so the document stops contradicting its own section. Found by **mis-aiming an injection**: a retag aimed at a table row hit the legend instead, and not one operand moved |
+| **§2.5's attribution put a claim about the PASS where every neighbouring sentence is about the WALK.** *"The adversarial pass measured five evasions of the walk — four now closed, one open."* Read in place, that sentence attributes the closure of four forms to one reviewer's afternoon; the four are in fact findings from **four different acts** — two from the pass aiming at the walk, one found while *designing* the whitelist that closes the others, and one by **mis-aiming** an injection — and the number is testimony about the pass that a later reader cannot check | rewritten **by row rather than by count**: each of the five forms below now carries how it was found, which is a claim the next reader can weigh. This is the fingerprint's tier correction one layer in — *a count of a pass's own work outlives the pass* — and it is the same reason this revision attributes its own findings by row (see the note above) |
+| **The whitelist covers more than its own limit statement claimed.** The limit was written as though only the one followable form is covered | measured: `warnings.clear()` and `warnings *= 2` — two write forms outside the enumerated twelve — are **both caught** (`escapes` moves). The whitelist is closed against everything that is *not* the single followable form, and the two are cited as evidence. A limit statement that under-states its instrument sends the next reader to re-derive a bound that does not hold |
+| **§4.4's counts were wrong, and `§3.1` was cited twice inside §4.4 for things §3.1 does not contain.** The tier paragraph read *"of the 201 files, 192 are tracked … and 9 are not … and one is this spec"*, cited as living in **§3.1** — and the paragraph above it placed the fingerprint in *"§3.1's third tier"*. §3.1 is **the population census**: it counts records, defines no tiers, and prints no file counts. A reorganisation moved both and updated neither reference | the dangling section cite is gone and the tier claim is stated where it is made rather than pointed at. On the counts: the spec is **tracked**, so it belongs in the tracked column — −1 untracked, +1 tracked, which is the whole of the first correction ("201 / 193 / 8"), and it touched only the split, leaving the total as the paragraph had it. Re-measured from the shipping tree and cross-checked against `git archive` at the branch tip against the untracked enumeration, the wrapper's own match set is **202 files — 194 tracked, 8 not** — one larger than that correction on both the total and the tracked row, with the 8 matching their prose exactly. §4.4 carries those values, derived by the same wrapper that produces the fingerprint, and **this row deliberately does not restate them**: a number copied into a ledger outlives the method that produced it, which is this row's own defect one degree up. The earlier figures — this row's two pairs, and the **201** in **Revision 3**'s fingerprint row above — are recorded as **superseded, not wrong**: the tree they described is not recoverable from this repo's history (the branch's first commits were reconstituted), so the difference between any of them and the measurement is **unattributable**, and calling it either a miscount or a changed tree would be a claim with no artifact behind it — the defect §4.4 exists to prevent. The provenance conclusion is unaffected, which is why the numbers are corrected rather than the paragraph rewritten |
+| **§4.4's cited hash over-covered, and the edit proved it.** *"§2.5's region … hashes to `3b06c6344ae4f72a` on both sides"* — revision 5 added the evasion table **into §2.5**, which is the hashed region, so the value stopped reproducing against the file it ships beside (101 lines now, 81 at HEAD). The **claim** survived, because it was never about the region's bytes: the census reads the same 16 rows, 22 sites and (11,4,1) split from both revisions | the hash is taken over the **operand set** — the rows the census actually counts — and the method is stated so a reader can recompute it (join the counted rows, sha256, first 16 hex). The narrower hash is the **right width**: it covers exactly the claim, and it survived the edit the wider one did not. The third time this cycle has found a *match set wider than the thing it is evidence for* — the fingerprint's own three attempts are the first two |
+| **The F1 measurement was stale twice over.** §2.4 and the revision-5 ledger both quoted **1983 passed / 1 failed**; on the frozen revision it is **1984 / 1**, because C2 was added after that run | both re-derived, and the count now carries the revision it belongs to. This is `mutation-count-belongs-to-the-triple` arriving in this document's own prose — the count belongs to the restored code, the fixture and the harness together, so a number that outlives any of the three is testimony wearing a measurement's clothes |
+
+**On "reviewed to zero", stated the same way as last time.** The pass's findings were fixed where they
+were defects and **recorded as bounded limits** where they are properties of the method; the
+distinction is not a softening but the same one Revision 4 drew, and the three limits are now named
+at the definition rather than left for the next reader to rediscover. What the revision adds is not a
+claim that the instrument is complete — it is **the count of what it cannot see, printed beside it.**
+
+**And the diagonal was rebuilt once more, because a gate result belongs to the revision it ran on.**
+Four mutants rebuilt from the shipping tree (each differing from it by exactly one edit), plus a
+fifth for D1 itself, whose suite result *is* the finding. Every passed count is **+3** over the
+previous batch — the base moved 1984 → 1987 (+1 C2 already in the frozen tree, +2 for the surface
+pin and D1's fixture) — and the **identities did not move at all**: A reds G1, B reds G2+G3, C reds
+U5+P4, D reds W1. Neither new check reds under any of the four, which is the coverage measurement:
+neither is incidentally standing in for a property another pin owns.

@@ -3429,7 +3429,8 @@ with _tf43.TemporaryDirectory() as _td54:
     # against a reworded subtitle, and both halves are the reader's own check (count the rows).
     _panel43 = (_so43.split("RECORD DUTY GAPS", 1)[1].split("\n\n", 1)[0]
                 if "RECORD DUTY GAPS" in _so43 else "")
-    _sub43 = int(_panel43.split("·", 1)[1].split()[0]) if "·" in _panel43 else -1
+    _tok43 = _panel43.split("·", 1)[1].split()[0] if "·" in _panel43 else ""
+    _sub43 = int(_tok43) if _tok43.isdigit() else -1
     check("v0.4.33 gate PIN: a PARTIALLY filled Phase-5 progress trio alone exits 3 "
           "(the clause's own `detail` says 'partially' — its first cut said 'HALF-filled', which "
           "is FALSE for the 3-present/2-filled and 1-present/0-filled shapes it also fires on, "
@@ -3439,6 +3440,33 @@ with _tf43.TemporaryDirectory() as _td54:
           and "PARTIALLY filled" in _so43
           and "1 seeded duty the pass left unfilled" in _so43
           and _sub43 == _panel43.count("→ ") == 1)
+    # D1 (review-duty, reproduced here): the subtitle-vs-rows relationship is only observable at
+    # THREE OR MORE clauses, and no shipped fixture reached three — so `for g in gaps[:2]:`
+    # rendered "3 seeded duties the pass left unfilled" above TWO rows with the third remedy gone
+    # and the whole suite stayed GREEN (measured: rc 0, 1985 passed, 0 failed). The trio pin above
+    # cannot see it: at one clause, truncating is a no-op. `_duty_gaps_section`'s docstring already
+    # claims the count "is the number of rows drawn (a reader can check it by counting them)" —
+    # this checks it. Its OWN marker timestamp because `_already_logged` keys on the (commit,
+    # timestamp) PAIR, and the four `_dutyfull` fixtures above have already logged 00:00:05Z.
+    # The subtitle is PARSED TOTALLY here: a non-numeric subtitle must FAIL this check, not raise
+    # ValueError out of the suite (see the trio pin's `_tok43` above for why that matters).
+    _duty_three_p = _wr41("v0433-duty-three.json",
+                          {"marker": {"timestamp": "2026-07-02T00:00:07Z"},
+                           "session": "", "rigor": {"applied": ""},
+                           "remediation": {"achieved_index": 100},
+                           "dream": {"sleep": "s", "beats": ["a"] * 6, "wake": "w"}})
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_three_p, "--persist", str(_p433), cue=True)
+    _panel43 = (_so43.split("RECORD DUTY GAPS", 1)[1].split("\n\n", 1)[0]
+                if "RECORD DUTY GAPS" in _so43 else "")
+    _tok43 = _panel43.split("·", 1)[1].split()[0] if "·" in _panel43 else ""
+    _sub43 = int(_tok43) if _tok43.isdigit() else -1
+    check("v0.4.33 gate PIN (all THREE clauses at once): the subtitle is the number of rows it sits "
+          "above, at the only clause count where the two operands CAN differ. Below three, "
+          "truncating the row loop is a no-op, so this relationship was pinned only where it could "
+          "not break — truncating rendered '3 seeded duties' above TWO rows, dropping the third "
+          "clause's remedy entirely, with the exit unchanged at 3 and every check GREEN",
+          _rc43 == 3 and "3 seeded duties the pass left unfilled" in _so43
+          and _sub43 == _panel43.count("→ ") == 3)
     # THE EVASION AT THE TERMINAL — the same shape as the predicate PIN above, end to end. This is
     # the check whose absence let F1 ship: the predicate was fixed while the GATE had no fixture
     # carrying the shape, so nothing would have reddened if the union form had been reverted to a
@@ -17911,8 +17939,18 @@ with _tf43.TemporaryDirectory() as _td30:
 # is a regex over the warning TEXT, so a far-side clause worded in shape language ("… is not a
 # list") is classified SHAPE and evades the count — a SILENT miss. The opposite error is LOUD (a
 # container check worded without the idiom counts as VALUE and reds, demanding a row it does not
-# need), and the asymmetry is why one limit is tolerable and the other had to be closed. An
-# adversarial pass measured FIVE evasions of the walk — four now closed, one open:
+# need), and the asymmetry is why one limit is tolerable and the other had to be closed.
+#
+# The other two limits are named here rather than left to be rediscovered:
+#   (2) The GLOSS after a KIND token — on this docstring's legend and on spec §2.5's table alike —
+#       is read by NOTHING (measured GREEN on both), so the sentence teaching what a KIND means
+#       can be rewritten while every count still reconciles.
+#   (3) WIDENING — folding a new case into an EXISTING `.append` moves no count; it is the last
+#       bullet below, and it is the one no counting scheme can close.
+#
+# The five forms below are attributed by ROW rather than by a count of what a pass measured: a
+# count of a pass's own work is testimony, and this census exists because testimony kept outliving
+# the thing it described:
 #   • DELEGATION — a far-side clause added to a helper the body calls used to sit outside the walk
 #     with the count unmoved. CLOSED, in two steps, because the first was itself short: the walk
 #     followed bare-name calls at DEPTH 1, so body → `_h1` → `_h2` → `warnings.append` was still
@@ -17931,23 +17969,30 @@ with _tf43.TemporaryDirectory() as _td30:
 #     requiring the callee's parameter at the hand-off POSITION to be named `warnings`.
 #   • DRIFTED LEGEND — the docstring's three `· KIND — gloss` lines define the tokens every count is
 #     keyed on, and retagging one moved NOTHING (measured — every operand equal). CLOSED: the
-#     legend's token tuple is returned and asserted in order. A token outside the three was already
-#     loud, since it stops matching the exclusion and lands in `_rows`.
+#     legend's token tuple is returned and asserted in order. A token outside the three is loud in
+#     whichever operand counts its surface, but not in both (see the comment at the legend).
 #   • WIDENING — folding a NEW far-side case into an EXISTING `warnings.append` moves no count, and
 #     no counting scheme can see it. OPEN (re-measured green), and named here rather than left to be
 #     rediscovered. It is a coverage limit of the instrument, not a claim that the census is
 #     complete. (The whitelist does NOT close it: a widened `.append` is still a recognised form.)
+#     The limit is narrower than "the guards are unpinned": a count-preserving change to a site's
+#     ACTIVATION is invisible to the CENSUS but not necessarily to the SUITE — emptying the preflight
+#     loop's iterable reds a preflight check (measured), while adding a third key no fixture carries
+#     does not (measured). What is unpinned is the site's CONDITION, not its existence.
 # Checked on this revision: all 24 SHAPE-classified sites are genuinely family 1.
 import ast as _ast33  # noqa: E402
 import re as _re33  # noqa: E402
 
 
-def _far_side_census() -> "tuple[int, int, int, int, tuple[int, ...], tuple[int, ...], int, tuple[str, ...]]":
+def _far_side_census() -> "tuple[int, int, int, int, tuple[int, ...], tuple[int, ...], int, int, tuple[str, ...]]":
     """(far-side sites, docstring rows, spec rows, spec site total, docstring KIND split, spec KIND
-    split, unrecognised `warnings` mutations, the docstring legend's KIND tokens). The two splits are
+    split, unrecognised `warnings` mutations, the TOTAL append surface, the docstring legend's KIND
+    tokens). The two splits are
     separate operands on purpose: the same census is written on two surfaces, so a retag on either
-    one is a disagreement the counts alone cannot see. The last two are the instrument's own
-    coverage: the whitelist's count of writes it cannot follow (must be 0) and the legend (must be
+    one is a disagreement the counts alone cannot see. The last three are the instrument's own
+    coverage: the whitelist's count of writes it cannot follow (must be 0), the TOTAL surface (a
+    clause added or removed in ANY wording moves it, which is the one direction the VALUE count
+    cannot see), and the legend (must be
     the three tokens, in order) — see the notes at each."""
     _src = (ROOT / "plugins" / "consolidate-memory" / "scripts"
             / "memory_status.py").read_text(encoding="utf-8")
@@ -18042,7 +18087,10 @@ def _far_side_census() -> "tuple[int, int, int, int, tuple[int, ...], tuple[int,
                 _reach.add(_n)
                 _work.append(_n)
     _closure = [_fns[_n] for _n in sorted(_reach)]
-    _value = [_a for _a in [_x for _h in _closure for _x in _appends(_h)] if _is_value(_a)]
+    # The TOTAL surface: every `warnings.append` in the closure, whatever its wording. `_value` is
+    # this list FILTERED, so the two can never disagree about the walk.
+    _all = [_x for _h in _closure for _x in _appends(_h)]
+    _value = [_a for _a in _all if _is_value(_a)]
     # Anything that writes `warnings` in a form the census does not recognise. Deliberately over the
     # same CLOSURE as the walk (a `warnings` in an unrelated validator is none of this pin's
     # business) and deliberately a COUNT rather than an inspection: the check reds on it, so a
@@ -18053,8 +18101,10 @@ def _far_side_census() -> "tuple[int, int, int, int, tuple[int, ...], tuple[int,
     # The legend is pinned too, because it is the docstring's own DEFINITION of the three KIND
     # tokens the whole census is keyed on: retag one and every count still reconciles while the
     # docstring teaches that DISAGREE means membership (measured — this injection was GREEN).
-    # A token outside the three is loud already: it stops matching the exclusion below, lands in
-    # `_rows`, and moves that count.
+    # A token outside the three is loud in whichever operand counts its surface, but NOT in both:
+    # a LEGEND retag stops matching the exclusion, lands in `_rows` and moves that count (measured:
+    # rows 16 -> 17 with the legend dropping to two tokens — loud twice), while a ROW retag leaves
+    # `_rows` unmoved and is caught only by the KIND split (measured: doc_kinds 11 -> 10, rows 16).
     _legend = [l for l in _doc.splitlines()
                if l.strip().startswith("· ")
                and l.split("· ", 1)[1].lstrip().startswith(
@@ -18081,11 +18131,11 @@ def _far_side_census() -> "tuple[int, int, int, int, tuple[int, ...], tuple[int,
             sum(int(l.split("|")[3]) for l in _spec),
             tuple(_kinds.get(k, 0) for k in ("DISAGREE", "MEMBERSHIP", "ABSENT/DUP")),
             tuple(_skinds.get(k, 0) for k in ("disagree", "membership", "absent/dup")),
-            len(_escapes), _lkinds)
+            len(_escapes), len(_all), _lkinds)
 
 
 (_n_far33, _n_rows33, _n_spec33, _n_ssites33,
- _dk33, _sk33, _n_esc33, _lk33) = _far_side_census()
+ _dk33, _sk33, _n_esc33, _n_tot33, _lk33) = _far_side_census()
 check("v0.4.33 CENSUS PIN: `validate_cycle_record`'s far side holds 22 value sites; its docstring "
       "enumerates 16 rows split 11 DISAGREE / 4 MEMBERSHIP / 1 ABSENT/DUP; and spec §2.5's table "
       "lists 16 rows in the same split summing to 22 `Sites` — the body is the census, so adding a "
@@ -18097,6 +18147,24 @@ check("v0.4.33 CENSUS PIN: `validate_cycle_record`'s far side holds 22 value sit
       _n_far33 == 22 and _n_rows33 == 16 and _n_spec33 == 16 and _n_ssites33 == 22
       and _dk33 == (11, 4, 1) and _sk33 == (11, 4, 1)
       and _lk33 == ("DISAGREE", "MEMBERSHIP", "ABSENT/DUP"))
+
+# The SURFACE, checked on its own for the same reason the whitelist is: C1 counts only the 22 VALUE
+# sites the docstring enumerates, so a new clause worded in SHAPE language ("X is not a list") lands
+# in the 24 no assertion reads. Measured: adding such a clause leaves C1 GREEN, and retagging an
+# existing value site into shape wording reds C1 (22 -> 21) — a pin that catches one direction and
+# misses its twin. This watches the SURFACE, so BOTH directions are loud.
+check("v0.4.33 CENSUS SURFACE PIN: the far side holds 46 `warnings` writes in TOTAL. This pin "
+      "over-covers ON PURPOSE. C1 counts only the 22 sites the docstring enumerates, so a clause "
+      "worded in SHAPE language ('X is not a list') lands in the 24 the docstring does not list and "
+      "NO assertion reads it — measured GREEN, while RETAGGING an existing value site into shape "
+      "wording REDS C1 (22 -> 21). A pin that catches one direction and misses its twin is the shape "
+      "this cycle exists for, so this one watches the SURFACE, not the taxonomy. If it reds, a "
+      "clause was added or removed: if it contradicts a value it needs a docstring row; if it is a "
+      "container check it is family 1 at depth (see the predicate's docstring) and this count is "
+      "the thing to bump. It CANNOT see a count-PRESERVING edit — a new case folded into an "
+      "existing append, a widened guard, a conditionalised append — which is stated at the "
+      "definition in C1's comment rather than hidden here",
+      _n_tot33 == 46)
 
 # The WHITELIST, checked on its own so its red is legible as itself: the census knows one way to
 # write `warnings` (`.append`) and one way to rebind it (the `warnings = [] if … else warnings`
@@ -18113,7 +18181,7 @@ check("v0.4.33 CENSUS WHITELIST: every write to `warnings` reachable from `valid
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 19)  # +9: v0.4.31 store-classifier parity C1..C7
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 21)  # +9: v0.4.31 store-classifier parity C1..C7
                                                         # +14: v0.4.32 periphery parity P1..P12, P13/P13b
                                                         # +19: v0.4.33 record-duty presence — 8 predicate, 4 gate
                                                         #      PIN, 3 GUARD, 1 warn-only PIN, 1 HOLE (a named open

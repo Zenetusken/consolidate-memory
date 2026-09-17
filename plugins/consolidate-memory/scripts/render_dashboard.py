@@ -371,8 +371,9 @@ def _duty_gaps_section(record: Mapping[str, Any]) -> list:
         is the whole report. That one is intended, and the cue below says so in its own words
         rather than announcing a clean persist over a printed ⚠.
 
-    Every visible word comes from the fired ROW (`label`, `detail`, `remedy`) — never a shared
-    literal. Each clause has a DIFFERENT remedy (fill a session id / record a tier / complete a
+    Every word that NAMES the gap comes from the fired ROW (`label`, `detail`, `remedy`); the
+    panel's FRAME — header, subtitle and `→` — is shared, which is what makes the per-row text
+    the only place a generic sentence could hide. Each clause has a DIFFERENT remedy (fill a session id / record a tier / complete a
     trio), and one generic sentence for all three would be the same defect this cycle exists to
     fix, one layer up: a fixed label standing where derived data belongs.
 
