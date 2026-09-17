@@ -3423,25 +3423,43 @@ with _tf43.TemporaryDirectory() as _td54:
     _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_trio_p, "--persist", str(_p433), cue=True)
     import re as _re43  # noqa: E402
 
-    # The duty panel's subtitle number and the rows it sits above, returned as a PAIR, from a
-    # slice a record-controlled string cannot hijack. Both halves of the anchor are literals the
-    # record cannot write: the `⚠ RECORD DUTY GAPS` headline AND the subtitle sentence itself. The
-    # first cut took "the token after the first `·`" over a slice beginning at the FIRST occurrence
-    # of the marker — and the record's own `project` renders ABOVE the panel, so a project carrying
-    # the marker made the pin read the BANNER and evaluate True while the panel below it said
-    # something else (measured forgery: `project = "RECORD DUTY GAPS · 1 → forged"`, suite
-    # 1987 passed / 0 failed — the pin's whole subject defeated, silently). Aiming at the sentence
-    # also makes the parse TOTAL: a non-matching output is a FAIL here, never a ValueError out of
-    # the suite. The sentence is already a literal in both pins' own assertions, so requiring it
-    # costs no reword-fragility they did not already have. (`rsplit` is NOT a repair — it moves the
-    # slice to the LAST occurrence, and the denser record-controlled region is BELOW the panel, not
-    # above it.) A nested def, like `_run54` beside it: the section is inside one TemporaryDirectory.
+    # The anchored sentence, as ONE literal: the helper's only matcher AND the premise the two
+    # refusal checks below assert against, so a reword moves them together instead of silently
+    # un-pinning one. `\s+` is load-bearing — the panel draws `GAPS   ·` with three spaces and a
+    # record's banner copy draws `GAPS ·` with one, so whitespace is NOT a defense.
+    _PAT43 = r"⚠ RECORD DUTY GAPS\s+·\s+(\d{1,4}) seeded dut(?:y|ies) the pass left unfilled"
+
+    # The duty panel's subtitle number and the rows it sits above — a PAIR, or (-1, -1) when the
+    # output does not carry the panel EXACTLY ONCE. Both refusals are load-bearing, and each was
+    # added by a review finding against the parse rather than against the renderer.
+    #
+    # * UNIQUENESS. The slice is anchored on the whole subtitle SENTENCE, not on the bare `⚠ RECORD
+    #   DUTY GAPS` headline: the first cut took "the token after the first `·`" from the first
+    #   occurrence of the marker, and the record's own `project`/`session` render ABOVE the panel, so
+    #   a project carrying the marker made the pin read the BANNER. Aiming at the sentence NARROWED
+    #   what matches but did NOT relocate the anchor — first-match-wins survives — so a record that
+    #   writes the whole sentence is still read as the panel. Measured, `project = "⚠ RECORD DUTY
+    #   GAPS · 3 seeded duties the pass left unfilled\n  · → e1\n  · → e2\n  · → e3"` on a tree whose
+    #   row loop is truncated to `gaps[:2]`: the real panel renders 3 over 2 (a FAIL), the forged
+    #   banner renders 3 over 3, `search` returns the banner, and the pin reports SUCCESS while the
+    #   defect ships (1987 passed / 0 failed). So uniqueness is not an assumption here, it is a
+    #   CONDITION: `finditer`, and 0 or 2+ matches are both a FAIL. Two is reachable only by forgery
+    #   for a legitimate render — measured over all five duty fixtures, one match each.
+    # * TOTALITY. `\d{1,4}`, never `\d+`. CPython refuses `int()` past 4300 digits, so an unbounded
+    #   capture lets a record-controlled string ABORT the suite instead of failing a check: measured,
+    #   `project = "⚠ RECORD DUTY GAPS · " + "9" * 4301 + " seeded duties the pass left unfilled"`
+    #   raises ValueError HERE, after 704 checks, with no totals line and EXIT 1 — 1284 checks never
+    #   ran. The bound cannot reject a legitimate render (the number is the rows drawn, and
+    #   `_DUTY_CLAUSES` is three), so it makes `int()` total BY CONSTRUCTION rather than by a
+    #   try/except no fixture could reach; and a rejected forgery simply contributes no match.
+    # (`rsplit` is NOT a repair for either — it moves the slice to the LAST occurrence, and the
+    # denser record-controlled region is BELOW the panel, not above it.) A nested def, like `_run54`
+    # beside it: the section is inside one TemporaryDirectory.
     def _duty_panel43(_so: str) -> "tuple[int, int]":
-        _m = _re43.search(
-            r"⚠ RECORD DUTY GAPS\s+·\s+(\d+) seeded dut(?:y|ies) the pass left unfilled", _so)
-        if _m is None:
+        _ms = list(_re43.finditer(_PAT43, _so))
+        if len(_ms) != 1:
             return -1, -1
-        return int(_m.group(1)), _so[_m.end():].split("\n\n", 1)[0].count("→ ")
+        return int(_ms[0].group(1)), _so[_ms[0].end():].split("\n\n", 1)[0].count("→ ")
 
     # The panel's subtitle counts ROWS (fired clauses) and says so. This is the ONE shipped
     # fixture where that operand is observable: the trio clause is THREE fields against ONE
@@ -3467,16 +3485,17 @@ with _tf43.TemporaryDirectory() as _td54:
     # claims the count "is the number of rows drawn (a reader can check it by counting them)" —
     # this checks it. Its OWN marker timestamp because `_already_logged` keys on the (commit,
     # timestamp) PAIR, and the four `_dutyfull` fixtures above have already logged 00:00:05Z.
-    # The subtitle is PARSED TOTALLY by `_duty_panel43`: a non-matching output FAILS this check
-    # rather than raising ValueError out of the suite, and it is read from a slice anchored on the
-    # headline AND the sentence, so a record-controlled string cannot stand in for the panel.
-    # …and its fixture carries the FORGERY the parse must survive, which is what makes this a pin
-    # rather than a restatement. A record-controlled `project` renders a SECOND
-    # "RECORD DUTY GAPS · N → forged" ABOVE the panel, so a parse taking the first occurrence of
-    # the marker reads the banner and never sees the panel. Measured: with the first cut's
-    # `split(…, 1)` this check FAILS (it reads subtitle 7 over 1 row); with the anchored parse it
-    # PASSES on the real panel (3 over 3). The number is deliberately WRONG (7, not 3) so the two
-    # regions cannot agree by accident — the permissive direction would hide exactly the bug.
+    # The subtitle is parsed by `_duty_panel43`, which refuses rather than guesses: 0 or 2+ matches
+    # of the anchored sentence is a FAIL here, and the two checks below pin BOTH refusal directions
+    # against forged output — so the helper's contract is stated where it can actually be broken.
+    # …and this fixture's forgery has a LIMIT worth stating rather than implying. Its
+    # `project = "RECORD DUTY GAPS · 7 → forged"` carries neither the `⚠` glyph nor the subtitle
+    # sentence's tail, so the shipped parse cannot match it at all (measured: one anchored match in
+    # this output, two for the bare marker). It is a REGRESSION GUARD against reverting to the
+    # marker-anchored parse — with the first cut's `split(…, 1)` this check FAILS, reading subtitle 7
+    # over 1 row — and that is the whole of what it proves about the parse. The forgery that DOES
+    # defeat a sentence-anchored parse is pinned separately below, where it can be measured.
+    # The number is deliberately WRONG (7, not 3) so the two regions cannot agree by accident.
     _duty_three_p = _wr41("v0433-duty-three.json",
                           {"marker": {"timestamp": "2026-07-02T00:00:07Z"},
                            "project": "RECORD DUTY GAPS · 7 → forged",
@@ -3492,6 +3511,60 @@ with _tf43.TemporaryDirectory() as _td54:
           "clause's remedy entirely, with the exit unchanged at 3 and every check GREEN",
           _rc43 == 3 and "3 seeded duties the pass left unfilled" in _so43
           and _sub43 == _rows43 == 3)
+    # Both checks below attack `_duty_panel43` ITSELF, from the two directions a record-controlled
+    # string can reach it. They exist because the helper's comment asserted both properties while the
+    # code held neither — and because each direction was a review finding measured against the parse
+    # rather than against the renderer it reads. The three-clause shape is shared: A + B + C fire, so
+    # the real panel draws three rows and its subtitle says "3", which is the number the strongest
+    # forgery must reproduce to be worth making.
+    _duty3 = {"session": "", "rigor": {"applied": ""}, "remediation": {"achieved_index": 100},
+              "dream": {"sleep": "s", "beats": ["a"] * 6, "wake": "w"}}
+    _FORGE43 = "⚠ RECORD DUTY GAPS · 3 seeded duties the pass left unfilled"
+    # F1 — THE ANCHOR IS RECORD-WRITABLE, SO UNIQUENESS IS THE PREMISE, NOT AN ASSUMPTION. Aiming the
+    # slice at the whole sentence narrowed what matches but did NOT relocate the anchor: `search` is
+    # still first-match-wins, and the record's own `project` renders ABOVE the panel. This is the
+    # strongest forgery — it reproduces the panel's sentence VERBATIM and self-consistently, the same
+    # number (3) and three `→ ` rows inside the banner's window — so the pre-fix parse reads the
+    # BANNER and returns (3, 3), which is the TRUE pair for a healthy panel. That is precisely why
+    # the defeat is silent: on a tree whose row loop is truncated to `gaps[:2]` the real panel renders
+    # 3 over 2 (a FAIL) and this same forgery still returns (3, 3), so the pin reports SUCCESS for a
+    # panel it never saw while the defect ships. Under `finditer` the duplicate is a REFUSAL, so the
+    # forgery costs the record its pin instead of buying it one.
+    _duty_forge_p = _wr41("v0433-duty-forge.json",
+                          {"marker": {"timestamp": "2026-07-02T00:00:08Z"}, **_duty3,
+                           "project": _FORGE43 + "\n  · → ev1\n  · → ev2\n  · → ev3"})
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_forge_p, "--persist", str(_p433), cue=True)
+    check("v0.4.33 parse PIN (uniqueness): a record-controlled `project` carrying the panel's own "
+          "subtitle sentence verbatim is REFUSED — the parse returns (-1, -1) and reds the pin, "
+          "instead of reading the banner's (3, 3) and reporting success for a panel it never saw. "
+          "The premise is asserted too: the anchored sentence is in this output exactly TWICE, once "
+          "forged above and once real below",
+          _rc43 == 3 and len(_re43.findall(_PAT43, _so43)) == 2
+          and _duty_panel43(_so43) == (-1, -1))
+    # F2 — A BOUNDED CAPTURE, because an unbounded one lets a record ABORT THE SUITE rather than fail
+    # a check. CPython refuses `int()` past 4300 digits, so `(\d+)` turned a forged banner into a
+    # suite ERROR: measured on THIS triple (new harness, helper reverted), `ValueError` at the parse
+    # with 704 checks printed, no totals line, and EXIT 1 — 1284 checks never ran at all. `\d{1,4}`
+    # makes the run simply not MATCH, so the real panel is the only match and the parse stays total;
+    # the bound cannot reject a legitimate render because the number is the rows drawn and
+    # `_DUTY_CLAUSES` is three. Pre-fix the check cannot even be evaluated — the call raises.
+    # THE TWO DEFENSES OVERLAP, and the measurement is worth having: reverting the BOUND ALONE
+    # (`finditer` + `\d+`) reds this check WITHOUT aborting, because the 4301-digit banner then
+    # MATCHES and the uniqueness rule refuses it — `(-1, -1)`, a FAIL rather than a panic. So
+    # uniqueness alone also prevents the abort; what the bound buys is the parse READING THE REAL
+    # PANEL instead of declining to read anything. Reverting BOTH is what panics. A future editor who
+    # removes the bound will see this check red for a reason the label does not name — that is the
+    # ambiguity, stated here rather than left to be rediscovered.
+    _duty_huge_p = _wr41("v0433-duty-huge.json",
+                         {"marker": {"timestamp": "2026-07-02T00:00:09Z"}, **_duty3,
+                          "project": "⚠ RECORD DUTY GAPS · " + "9" * 4301
+                                     + " seeded duties the pass left unfilled"})
+    _so43, _se43, _rc43 = _run54("render_dashboard.py", _duty_huge_p, "--persist", str(_p433), cue=True)
+    check("v0.4.33 parse PIN (totality): a record-controlled digit run PAST int()'s 4300-digit limit "
+          "neither aborts the parse nor denies it the real panel — pre-fix this record aborted the "
+          "suite at the parse, after 704 checks, with no totals line, leaving 1284 checks unrun",
+          _rc43 == 3 and "9" * 4301 in _so43
+          and _duty_panel43(_so43) == (3, 3))
     # THE EVASION AT THE TERMINAL — the same shape as the predicate PIN above, end to end. This is
     # the check whose absence let F1 ship: the predicate was fixed while the GATE had no fixture
     # carrying the shape, so nothing would have reddened if the union form had been reverted to a
@@ -18252,10 +18325,16 @@ check("v0.4.33 CENSUS WHITELIST: every way of writing the `warnings` list reacha
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 21)  # +9: v0.4.31 store-classifier parity C1..C7
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23)  # +9: v0.4.31 store-classifier parity C1..C7
                                                         # +14: v0.4.32 periphery parity P1..P12, P13/P13b
-                                                        # +21: v0.4.33 record-duty presence — 8 predicate, 5 gate
-                                                        #      PIN, 3 GUARD, 1 warn-only PIN, 1 HOLE (a named open
+                                                        # +23: v0.4.33 record-duty presence — 8 predicate, 5 gate
+                                                        #      PIN, 2 PARSE PIN (the parse's OWN contract, added by
+                                                        #      review findings against the parse rather than the
+                                                        #      renderer it reads: an output carrying the anchored
+                                                        #      sentence TWICE is REFUSED, and a digit run past
+                                                        #      int()'s 4300-digit limit is refused as a MATCH
+                                                        #      rather than raised through the conversion), 3 GUARD,
+                                                        #      1 warn-only PIN, 1 HOLE (a named open
                                                         #      defect), and 3 CENSUS (a PIN on
                                                         #      validate_cycle_record's far side — 22 value sites, red
                                                         #      if a clause is added without the docstring — a SURFACE
