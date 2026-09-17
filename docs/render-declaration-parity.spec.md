@@ -1,7 +1,9 @@
 # Render/declaration parity — design-of-record
 
-**Status: revision 9 — a sixth pass: the peer review adjudicated, and the audit's own selection
-audited. Every repaired defect survives and no shipped behaviour changes.** The fifth pass swept this
+**Status: revision 10 — a seventh pass: the code review adjudicated. One finding is a live code defect
+and is FIXED here rather than recorded; the rest are prose, and every one is named in the ledger at the
+end. `render_dashboard.py` moves for the first time since the third pass, so the whole mutation table
+was re-derived rather than carried.** The fifth pass swept this
 cycle's *pre-fix narratives* — every label claiming what a revision the tree no longer contains did —
 executing each claim against `1d97f54`'s renderer rather than re-reading it. That pass then found,
 with the lead's own fourth lens, that **the scope was the defect:** the selection matched with the
@@ -481,9 +483,13 @@ artifact still makes the forbidden claim. The file's own idiom is already there:
 The `↓` line composes **four** numeric operands — `candidates_surfaced`, `pruned`, `achieved_index`,
 `projected_index` — and `_num` maps **absent** and **blank** to the same `0.0`, so each operand has
 *two* not-carried forms that render as a measured zero. Four operands × two forms = **eight cells**
-— the scope this repair was audited against, and **not** the scope that ships. The third pass added
-the key's **`omitted`** spelling as a third form (the `_e_missing` sentinel, which exists to
-distinguish omitting the key from carrying a `None`), growing the census to **twelve** cells. Counts
+— the scope this repair was audited against, and **not** the scope that ships. The third pass SPLIT
+the second of those forms: `blank` had counted `None` and `""` as one, and the shipped census walks
+them as two, which is what grows four operands × two forms to × three = **twelve** cells. (`_e_missing`
+is the loop's sentinel for "do not set the key at all" — a test MECHANISM, not a third form: an absent
+key and an omitted one name the same state, and the eight-cell scope already counted it. This
+paragraph said the third pass "added the key's **`omitted`** spelling as a third form", which is false
+on its face — `omitted` ≡ `absent` — and is corrected in revision 11.) Counts
 below are stated on the eight-cell scope that produced them and restated on the twelve where the two
 differ.
 The first cut of this repair closed **one**: it asked `"candidates_surfaced" not in rem` — inline, at
@@ -759,7 +765,7 @@ the pre-fix code. It found two defects, both in the fixes:
   **absent** form only, at one site, and left three other operands and the **blank** form reading
   `_num(…, 0)`. The census is four operands × two not-carried forms (§2.1); **one of eight** was
   closed. **E1-e** now pins all of them, plus the carried spelling — **twelve** cells at the shipped
-  scope, because the third pass added the `omitted` form the eight-cell count predates.
+  scope, because the third pass split that scope's single `blank` form into `None` and `""`.
 - **E2's repair carried the HTML's guard across, and it guards a different claim.** The first cut
   keyed the counts-only breakdown on `len(_fleet) + _shown_b == 0` — the JS's `!board`, whose reason
   (an **assigning** branch, plus a `reg-counts` header that states the count) does not transfer to an
@@ -857,6 +863,20 @@ are written against it.
 verdict lines. On the fixed tree both are **0**. So the claim the repair earns is not "the 18 bad states
 are gone" but the stronger *at most one verdict line per state, across all 324* — which is what
 "one decision per state" has to mean if it means anything.
+
+**And the sweep repeats the grid's error one dimension out.** `mirror_share` is not among the five axes
+above, so "across all 324" is a claim about records that hold it **absent**. Nothing in the row exempts
+it: `:981` emits the "mirror-dominated …" line from an `if` with no guard against any other branch, so
+it co-renders with whatever the state already rendered. Most of that is *by design* and `:977` says so
+in as many words — the mirror advisory is a claim about a different set than the local-prune verdict —
+which is exactly why the repair here is a **scope**, not a count: a sweep that fixes a dimension while
+reading as a statement about every record is the same error as the 12-cell grid eight lines up,
+committed by the paragraph that diagnoses it. (The code review extended the cross-product along that
+axis and found co-rendering where this sheet has none. Its figures are *its* measurement, on its own
+definition of a verdict line, and are recorded as such rather than restated here: this revision's
+reconstruction of that operand did not agree with the sheet's zero at an absent share either, and a
+disagreement about a count is evidence about the count's definition.) The claim is scoped to what was
+measured: **at most one verdict line per state, across all 324, at an absent `mirror_share`**.
 
 The axes are named because the earlier revisions quoted these counts as **testimony**. No axis list
 means no reader can re-run them, and a number that cannot be re-derived is not evidence — the same
@@ -1247,8 +1267,15 @@ construction.** Each operand row keeps `pending` False on purpose — its siblin
 check in this suite: `pending Phase 5` appeared in no other assertion, and §3.1's measurement of row 1
 was the only place it was exercised at all. It is **not** unrendered elsewhere — `_ceilRecB` and the
 `over_ceiling: False` record are both pre-pass records and both render the verdict — but no check READS
-it there, so a refactor dropping the branch would leave the suite green. The gap is the missing
-ASSERTION, not a missing render (§4.2 corrects the arm's own label, which said the stronger thing). Measured, not assumed: the arm was added, then verified by
+it there. This sentence continued "so a refactor dropping the branch would leave the suite green" through
+revision 9, and that is true only of the suite **without** the arm below — but the arm and the clause it
+refutes entered in **one commit**, `bb52757` (revision 6), three lines apart in one bullet of that
+revision's own ledger: the clause was refuted by its own ledger entry from the moment it existed, and
+still reached the label a failure prints, the comment above it, and here, where it stood through
+revision 9 as a claim about the suite *as shipped*. The injection pair measures both halves: branch deleted + arm → **E1-e
+reds alone**; the *same* tree on the pre-arm harness → **green**. The gap is the missing ASSERTION, not
+a missing render — and "missing" is the operative word, since with the arm in place nothing is missing.
+Measured, not assumed: the arm was added, then verified by
 **injecting the defect it guards** — `pending = not _recorded(rem, "achieved_index")`, an *over-broad*
 condition that drops the `pruned` operand. That single edit reds **two** checks, and for two different
 reasons that are both correct: E1-e's new arm, because a carried `pruned: 3` then reads as pending and
@@ -1678,6 +1705,11 @@ the hash tuple is the identity, and the names exist only so the prose can refer 
 it — and they are also, in this cycle's own vocabulary, the whole difference between a name and an
 inventory.
 
+*(The generations narrated from here on — `rev9`, `rev10`, … — are **this narrative's history**, and
+their counts stay as measured. The generation the branch **ships** is `rev16`, whose thirteen counts,
+thirteen red sets, five injections and re-measured pair are in **Revision 12**. Carrying any count
+from below forward is the error the section itself names: a count belongs to the triple.)*
+
 **The `memory_status.py` row was FALSE until revision 7, and it is the sharpest instance of this
 document's own class in the document.** It read *"all thirteen trees"* with one hash, as though the
 member were uniform. Measured on the preserved trees, **nine** trees carry `51f460cf8aad3d18` and
@@ -1776,6 +1808,17 @@ be unaffected — but "should be" is the argument this section refuses, so the r
 **re-run** against the new commit rather than carried across. It returns the same four values. A
 commit message is not part of the triple, and that is exactly why it had to be measured separately.
 
+**And the amended message still carries a number this section's census corrects.** It reads "the 20
+outside §E1–E4 belong to earlier cycles and were NOT swept" — off by one. Enumerated from the diff: of
+the 28 capital `Pre-fix` occurrences, **9** sit at or after the E1-a label through E4-b, and **19**
+outside. The frozen message is *not* rewritten here — its SHA is the identity this section binds to, and
+re-amending it would re-open the proof above — so the disagreement is recorded where a reader diffing
+message against document will meet it, rather than left to be found. The class boundary is also not as
+clean as the message implies in the other direction: one of the nine "inside" occurrences,
+`'Pre-fix (and on the first cut of E1) seven of the eight cells'`, is a **quotation of a retired
+label**, not a claim about the pre-fix renderer. "Inside §E1–E4" and "carries a claim about a non-HEAD
+revision" are overlapping classes, not the same one.
+
 **A generation's identity is the TRIPLE, and `docs/` is outside it on a measurement.** The identity is
 `{render_dashboard.py, memory_status.py, tests/dashboard_fixture.py, tests/smoke.py}` per tree, all four
 hashed and printed above. `docs/` is carried in the trees but excluded, because **nothing in the suite
@@ -1858,7 +1901,8 @@ One asymmetry in the instrument, recorded because it is this cycle's own class. 
 makes a red count *attributable* is `len(set(reds)) == reported_failed_count` — it is what separates
 "one red" from "one red, and it is the one I named". On a **green** run the red set is empty, so the
 assertion holds identically for every green outcome and certifies nothing; the green run's evidence
-is its **count** (2016, the census the thirteen trees report) plus the prediction it matched, and the
+is its **count** (2016 — the census of the thirteen trees **as measured here**; `E1-i2`'s arrival
+later moved the shipped census to **2017**, Revision 12) plus the prediction it matched, and the
 set assertion contributes there only by not failing. A reader taking `[set==reported: 0]` as a
 positive result would be trusting an instrument that cannot fail in that direction. *(The same
 asymmetry appeared while writing this paragraph, in an ad-hoc re-check rather than the runner:
@@ -1961,7 +2005,8 @@ contract check reads module-level scope. Helper names in this suite are era-suff
 showed that one witness was not enough**: the line composes **four** operands with **two** not-carried
 forms each, E1-d sampled one cell of eight, and the suite read 2008/0 while seven cells rendered a
 fabricated `0`. (Those figures are the **eight-cell** scope the second pass audited; the third pass
-added the key's `omitted` spelling as a third form, so the census that ships is **twelve** — §2.1.)
+split that scope's single `blank` form into `None` and `""`, so the census that ships is **twelve** —
+§2.1.)
 **E1-e** now pins all twelve *and* the **carried** spelling, so nothing is satisfied by
 silently renaming an operand. The residual is the census's own: an operand *added* to the line later is
 uncovered until the table is extended — bounded by §2.1's note that the cell count is syntactic
@@ -2105,7 +2150,7 @@ Carried forward from the plan, plus what this measurement pass added. None of it
 - **A third verdict state is not a divergence but a shared defect, and the sentence above was false
   about it.** Probed on the frozen tree: `{"verdict": "   "}` renders `    verdict:    ` in ASCII — a
   dangling label with nothing after it — where *absent* and `""` both render no line at all. And the
-  blank is not the only route: a verdict consisting **only** of the `eligible N` prefix that `:878`'s
+  blank is not the only route: a verdict consisting **only** of the `eligible N` prefix that `:877`'s
   `sub` later strips — `"eligible 3"`, `"eligible 0"`, even `"  eligible   7  "` — passes `if _dv:`
   and renders `verdict:` with nothing after it too, so the presence test is narrower than the output
   it guards and this entry's own account of the mechanism was (`a-guards-label-is-not-its-predicate`,
@@ -2477,8 +2522,7 @@ names leaves **seventeen holding and one false** (E2-b, below).
 
 - **E1-e's label carried a count of a census that no longer exists.** "Pre-fix (and on the first cut
   of E1) seven of the eight cells rendered a number the record never carried." The census is **twelve**
-  cells: the third pass added the key's `omitted` spelling as a third not-carried form (the
-  `_e_missing` sentinel exists precisely to distinguish omitting a key from carrying a `None`), growing
+  cells: the third pass split the eight-cell scope's single `blank` form into `None` and `""`, growing
   four operands × two forms to × three, and the digit was never moved. Measured against the shipped
   twelve, the two revisions the label conflated are not alike at all: **`1d97f54` leaves 0 of 12
   green** — every cell fabricates — while **`6368288` leaves exactly 1**, `candidates_surfaced`
@@ -2567,5 +2611,510 @@ thirteen trees reproduce the eighth revision **exactly**: every red set byte-ide
 `|set| == reported` on all thirteen, total red **70**. Both injections were re-run on the new harness
 and returned as predicted: the branch-deletion reds **E1-e alone** (2015/1, set==reported), and the
 *same injected tree* is **GREEN** on the pre-arm harness (2016/0). The arm bites, and nothing else
-catches it — which is the half of the E1-e label that was always true, now stated without the half
-that was not.
+catches it. **(Revision 10 corrects this sentence.** It claimed the E1-e label was "now stated without
+the half that was not" — and the label, the comment above it, and §4.1 all still carried the false half:
+"a refactor dropping the branch would leave the suite green," which is true only of the suite *without*
+the arm revision 6 added — the *same commit*, `bb52757`, that wrote the clause down. That it was
+refuted by its own ledger entry from the start is the sharper version: there was never a revision on
+which the clause was true of the suite as shipped. The removal was asserted one revision before it
+happened, in the
+ledger entry whose subject is a claim that outran its referent — the cycle's thesis, committed by the
+cycle's own record of it. Corrected in revision 10, on all three surfaces.**)**
+
+---
+
+## Revision 10 — the seventh pass: the code review, adjudicated
+
+Five review lenses ran against the frozen branch (`cr-impl`, `cr-pins`, `cr-consumers`, `cr-gates`,
+`rev-prose`). Every finding was reproduced before it was acted on; a peer finding is a hypothesis, and
+three did not survive contact. The ones that did are below, with the reason each was **fixed** or
+**recorded** — because that split is the judgment this pass had to make, not a scheduling choice.
+
+### Fixed: the threshold is a not-carried operand, and no census of printed operands could see it
+
+`.get("budget_tokens", ms.INDEX_TOKEN_BUDGET)` names the right VALUE and keeps the wrong SHAPE. The
+default fires only on **absent**, so a `budget_tokens` present and blank fell *past* the constant into
+`_num(None)`/`_num("")` → `0.0`, and the lean test became `0 < achieved_index <= 0`. Probed on the
+frozen renderer at `achieved_index: 1300` — the value the pin's own fixture carries, so this table is
+reproducible from `tests/smoke.py` rather than from this sentence (§4's E1-i row states the same index;
+an earlier draft of this ledger entry carried `1400`, which was the whole reason to write the index
+down: a reader who re-ran it at `1400` would have got the same verdict and never learned the figure
+described a different probe than the one that shipped) — against the real `INDEX_TOKEN_BUDGET` of 1500:
+
+| how the threshold failed to arrive | verdict |
+| --- | --- |
+| `budget` block absent | ✓ gate resolved by rebuild-lean |
+| `budget_tokens` key absent | ✓ gate resolved by rebuild-lean |
+| key present, `None` | **⚠ gate fired but not acted on** |
+| key present, `""` | **⚠ gate fired but not acted on** |
+| key present, 1500 | ✓ gate resolved by rebuild-lean |
+
+**Byte-identical numbers, opposite verdicts, decided only by HOW the threshold failed to be carried** —
+the cycle's thesis, on the line whose own comment claimed the not-carried forms were closed. The census
+in §3.6 could not reach it *structurally*: it samples four operands **printed** on the `↓` line, and the
+threshold is only ever compared against. Fixed with `_recorded`, the idiom the same block already uses
+two lines up, and pinned by **E1-i2** — the same fixture as E1-i with only the blank key added, so the
+two are a matched pair one record apart. E1-i2 is **red on the unfixed renderer** (measured: 2015/2 with
+the D6 constant stale, the second red being D6 itself) and green after. E1-i's own comment names the
+reason it hid: its fixture supplies `budget_tokens: 1200` *explicitly* — the value the fallback literal
+used — so no fixture could see the fallback disagree with itself.
+
+### Fixed: the E2-b rule is three-operand, and its own prose denied one
+
+`render_dashboard.py:1271-1277` read *"Keyed on `_n_blocked` (the record), **NOT** on `_anch` … (`_anch`
+is in scope here and looks like the natural operand; it is not the right one.)"* and the condition
+immediately below it reads `not _cands and not _anch and _n_blocked <= 0`. The check label carried the
+same two-operand account. **The prose was the false surface, not the code.** All three sites now state
+the rule that ships and what each operand is for. *(**Revision 11: only two of the three were edited
+here** — the comment above the check in `tests/smoke.py` was not, and carried the same false account one
+revision longer. It is repaired in revision 11; this sentence was true of two sites when written.)*
+**Two** of the three conjuncts are unwitnessed and are labelled as such rather than left looking
+defended: measured, deleting `and not _anch` leaves the suite green while changing the render for a
+record carrying anchors, no blocked rows and no candidates, and deleting `and not _cands` leaves it green
+while changing the render for candidates beside an explicit `n_blocked: 0`. Only `_n_blocked <= 0` is
+defended — its deletion reds E2-b.
+
+### Fixed: the 324-state sweep fixes a fifth dimension while reading as a universal
+
+§1.2 diagnoses the 12-cell grid for *"silently fix[ing] a third dimension to one value … exactly the
+defect this cycle exists to delete"* — and then answers it with a cross-product whose axis list contains
+no `mirror_share`, and reads out *"at most one verdict line per state, across all 324"*. `:981` emits the
+mirror line from an `if` with no guard against any other branch, so it co-renders by design (`:977` says
+so). The claim is now **scoped to the domain that was measured**. The code review's own extension of the
+axis is recorded as *its* measurement on *its* definition of a verdict line: this revision's
+reconstruction of that operand disagreed with the sheet's zero at an absent share, and a disagreement
+about a count is evidence about the count's definition, not about the number.
+
+### Fixed: three prose sites and a ledger claimed a removal that had not happened
+
+The E1-e label, the comment above it, and §4.1 all carried *"a refactor dropping the branch would leave
+the suite green"* — true of the suite **without** the arm, false of the suite as shipped, from revision
+**6** (the revision that added the arm — the *same* commit, `bb52757`, that wrote the clause down)
+through revision 9. The Revision 9 ledger then claimed the false half
+was "now stated without".
+All four are corrected, and the ledger entry is **annotated rather than rewritten**, following
+`ecab87f`'s own convention: a ledger records what a revision did, so a claim that was false *when
+written* gets marked, not silently reconciled. Three smaller repairs ride the same pass: the pointer to
+§4.2 that §4.1's E1-e paragraph carried (cited as `:1265`, which resolves to no state of this file — it
+lived at `:1251` in the frozen commit; the correction it names is the E5 rows' provenance tag, not the
+arm's label), "spliced `or "?"` in
+**AFTER** the subscript" (the splice lands *before* the `[:18]`, so the sentence said the opposite of the
+defect — on the label, in the third drafting of that sentence), and the frozen commit message's "the 20
+outside §E1–E4", which enumerates to **19 outside / 9 inside**.
+
+### Fixed: two figures in this pass's own record, found by re-reading it against the trees
+
+Neither came from a review lens. Both were found reading this ledger against the artifacts it describes,
+and both are one shape: **a figure whose referent had moved while the figure stayed put.**
+
+**The propagation list mispaired two names with two numbers.** It read *"mutA/mutD/mutE/prefixE are
+whole-region reverts (202/202/202/115 changed lines)"*. The multiset `202/202/202/115` is **correct**;
+only the list ORDER was broken. Measured on rev11: `mutA 202 · mutE 202 · prefixE 202`, and `mutD 115`.
+Read positionally — the only reading that sentence offers — it yields `mutD = 202` and `prefixE = 115`,
+and the reader most likely to do it is the one asking *"did `prefixE` receive the fix?"*: they would read
+115, conclude it was not a whole-region revert, and find this very propagation defective. Repaired by
+naming each tree **with its own delta**, so recovering a fact no longer requires pairing two lists by
+position. `audit-the-diffs-prose`, committed by the ledger that records the audit.
+
+**The probe table's index.** The entry above stated `achieved_index: 1400`. The pin's fixture carries
+`1300`, `tests/smoke.py`'s own comment beside that fixture says `1300`, and §4's E1-i row says `1300`.
+This ledger was the lone outlier, and it is the surface least able to be re-derived. Corrected to the
+figure a reader can recover **from the artifact rather than from the prose** — the same priority that
+makes a pin's exact substring worth more than a verdict scan: a number carried in prose is testimony,
+and a number carried in the fixture is reproducible.
+
+**Two checks that came back "sound", recorded so they are not re-flagged.** `render_dashboard.py`'s E3
+comment is **not** duplicated — a `sed` with two overlapping ranges printed line 299 twice and invented
+the duplication. And E3-d's *"spliced `or "?"` in BEFORE the subscript"* is **correct**: the `or` term
+sits at index 27 and the subscript at 33, the defect form emits the full 28-character node name while
+the fixed form truncates to 18, and the `AFTER` it replaced was the error. The preposition `in` belongs
+to the original and is the particle of "spliced in". Both were read as *phrasing* before they were read
+as *claims* — `a-guards-label-is-not-its-predicate` in its prose form.
+
+### Recorded, not fixed — and why this one and not the other
+
+**`cr-impl` F3, the `mirror_share` type gate.** The renderer admits `bool` (`isinstance(share, (int,
+float))`) where the producer explicitly rejects it (`memory_status.py:3531`, `and not
+isinstance(..., bool)`), so a hand-set `true` renders *"mirror-dominated (100% of index tokens)"* —
+asserting a measurement from a literal. It is **real and it is the same class as the fix above.** It is
+recorded because of where the state can come from: `memory_status.py`'s own comment reasons about this
+exact case and defends its side — *"a hand-set `true` would persist as 1.0 and read as mirror-dominated;
+the producer never writes one"* — so the gap needs a **hand-edited record on disk**, the same
+reachability class as `:899` and the `:874-879` pair that §6 already records. F1 was fixed and F3 was
+not because F1's own comment claimed its contract was **closed** and the `_recorded` idiom that answers
+it was two lines above: a code contradicting its own stated rule, versus a documented asymmetry. That
+distinction, not severity, is the line.
+
+**`cr-pins` F2, E3-c is one-sided.** The populated marker row is asserted by a presence test, so a
+hardcoded `"?"` passes it. Recorded; the assertion shape is the finding, and it is the same
+`a-pins-assertion-shape-sets-its-blind-spot` shape §4.3 already discusses.
+
+### The propagation this pass discovered, which is a measurement about the harness
+
+`mkrev.sh` overlays named files from the live worktree into **all thirteen** trees. For
+`render_dashboard.py` that is a trap: it would stamp the fixed file onto every mutant and erase all ten
+mutations. The rule that replaced it is not "which trees carry the anchor" but **is this line inside the
+delta the tree's mutation defines**. Each tree is named below **with its own delta** rather than by
+pairing a list of names against a list of numbers — the first draft of this sentence did exactly that
+and mispaired two of the four (it read `mutD` as 202 and `prefixE` as 115; both are wrong, and the
+numbers `202/202/202/115` are correct as a *multiset*, so nothing but the list ORDER was broken). A
+reader asking "did `prefixE` receive the fix?" would have read 115, concluded it was not a whole-region
+revert, and found this very propagation defective — `audit-the-diffs-prose` committed by the ledger that
+records the audit. Measured on rev11: **mutA 202 · mutE 202 · prefixE 202** (whole-region reverts),
+**mutD 115**, and **R1i 13**, the surgical revert of this very line. All five therefore already red
+**E1-i** and keep their pre-fix `rd` byte-for-byte across rev11→rev12. The other seven trees carry the
+fixed form and received the fix: had the five pre-fix trees been stamped with it instead, R1i's
+one-check revert — the only revert whose named check is this line — would have gone green, and the
+other four would have lost their mutations outright. Separately measured and recorded: the six surgical
+reverts each carry a **9-line comment revert** at `:958-966` that is not their named mutation. It is inert — a comment moves no check — but it is a second, un-named delta in six trees, and
+naming it is the point.
+
+---
+
+## Revision 11 — the eighth pass: the prose lens, and the repair that inverted its own sentence
+
+The prose lens was re-run over revision 10's repairs, against the current worktree rather than against
+the prose. It found that **the repair had inverted a true sentence**, that the pass's ledger claimed a
+third repair it had not made, and that two timing claims named a revision which did not do the thing
+attributed to it. All are the cycle's thesis arriving in the cycle's own text: a surface stating a rule
+in prose while the code states it in a boolean, with nothing able to compare the two.
+
+### The E2-b label stated the inverse of its own condition
+
+Revision 10 rewrote the E2-b check label to *"…is **SUPPRESSED only when** the record counts no blocked
+rows AND carries neither candidates nor decline-anchors, and is **still rendered when it carries any of
+the three**"*. The condition it labels is `if not _cands and not _anch and _n_blocked <= 0:` — the
+branch that **appends** the cold-state line. The line is therefore rendered iff all three operands are
+clear, and the label said the opposite of **both** clauses. The pre-edit label — *"SUPPRESSED when the
+record counts blocked rows and still rendered when it counts none"* — was **true**; the repair broke it.
+
+The sharpest form is that the label contradicted **its own check's assertion**, and nothing in the
+suite can catch that: `_e_2a` (`n_blocked=30`) asserts the line **absent** and `_e_2c` (all clear)
+asserts it **present** — the reverse of each is what the label claimed. A label is prose; `check()`
+prints it and asserts on the expression beside it. That is `a-guards-label-is-not-its-predicate`,
+committed by the check written to repair a label/predicate mismatch.
+
+### The third site was never edited, and the ledger said it was
+
+`tests/smoke.py`'s comment **above** the E2-b check appears nowhere in this pass's diff (0 hits for its
+text). It still read that keying on `_anch` *"would suppress the cold line for a record with anchors and
+no blocked rows — a third state neither renderer has a rule for"* — while the renderer comment added in
+the same pass states that `_anch` **is** the rule for that state. Two comments in the frozen revision
+contradicting each other about one condition, which is the N2 shape. The ledger's *"All three sites now
+state the rule that ships"* was true of two; it is annotated in place rather than rewritten.
+
+### The unwitnessed count was one short, and the phrasing named the defended conjunct
+
+The renderer comment said *"That last conjunct is UNWITNESSED"*. Measured with one scratch mutant per
+conjunct: deleting `and not _anch` and deleting `and not _cands` each change the render for a state no
+fixture builds, and each leaves **every** check green; deleting `_n_blocked <= 0` is the one that reds
+**E2-b**. So **two** conjuncts are unwitnessed, and the singular pointed at the only one defended. The
+revision-10 sentence in §4's E2-b ledger entry carried the same undercount.
+
+### The timing claim, in three places rather than two
+
+Three sentences dated the arm's addition to the revision that carried the false clause — §4.1's *"the
+arm was added in that same revision"*, the revision-10 annotation's *"the arm this same revision
+added"*, and the repair ledger's *"in the same revision that added the arm"*. All three are **right**,
+and `git log -S` says why: **`bb52757`** is the sole introducer of both `_E_REM_PENDING` and the
+*"would leave the suite green"* clause. The first draft of this paragraph recorded that commit as
+revision **7** — a number taken *from this document* rather than derived from the commit, which is this
+cycle's own defect committed by the paragraph reporting its measurement. The commit is revision **6**:
+the arm is ledgered inside Revision 6's section, and `bb52757`'s message names the second *and third*
+passes. The true statement is the stronger one — the clause and the arm that refutes it entered in
+**one commit**, three lines apart in one bullet, so the clause was refuted by its **own ledger entry
+from the moment it existed**. The label a failure printed claimed a gap its own revision had already
+closed, and it did so on the revision that closed it.
+
+### A citation that resolved to nothing, and the census it prompted
+
+The repair ledger cited *"`:1265`'s pointer to §4.2"*. The pointer lived at `:1251` in the frozen commit
+and exists at no line of the worktree. It is the same shape as the dangling-label defect the cycle
+exists to fix, in the sentence recording the fix.
+
+That prompted a **census of every `render_dashboard.py` line citation**, each checked against **both**
+baselines the ledger can mean. The result is that every citation resolves — against one baseline or the
+other — except one:
+
+| Citation | worktree | `f175b8e` | resolves |
+| --- | --- | --- | --- |
+| `:899`, `:874-879` | ✓ | ✓ | both |
+| `:977`, `:981` | ✓ | ✗ | worktree |
+| `:1271-1277`, `:958-966` | ✗ | ✓ | frozen commit |
+| `:878` *(the `sub`)* | ✗ | ✗ | **neither — the `sub` is at `:877` in every state** |
+
+So the diagnosis is not a scatter of stale numbers: it is **one convention split down the middle of a
+single ledger**, with one genuine miss inside it. `:878` is repaired to `:877`. The split is recorded
+rather than mass-repaired — the v0.4.25 rule (greppable anchors over `file:line`) is the repair, and
+applying it across this ledger is not this pass's work — but a reader now knows which file to open for
+which line, which was the whole cost of the split.
+
+### The census that bounded the class
+
+A census over this branch's added lines, matched on polarity vocabulary (`SUPPRESS|only when|iff|fires
+only|abstain|renders? when`), returned **four** sites. One is the E2-b label above; the other three are
+accurate. The census is vocabulary-bounded — the limit `gate-coverage-is-its-match-set` names — so it
+bounds this class rather than proving it empty, and it is recorded as a bound.
+
+### What moved, measured
+
+`render_dashboard.py` is **comment-only by AST equality** — both the comment-insensitive and the
+string-folded dumps equal the frozen tree's. `tests/smoke.py` differs by comment plus **exactly one
+string constant**, the E2-b label, with identical constant counts (19096 before and after), no change to
+any assertion, no change to any call, and no change to the check count — so **D6's constant does not
+move**. Both measured against **`/tmp/ce8/rev12/LIVE`**, the frozen tree, not against `HEAD`: revision
+10's work is uncommitted, so `HEAD` is two revisions stale and comparing against it reports this pass's
+edits and revision 10's together.
+
+**This is the third consecutive revision whose subject is this document's own prose**, and each pass's
+repairs produced the next pass's findings. The honest reading is not that the repairs are wrong but that
+prose asserting a rule is not audited by re-reading it: the E2-b label survived a dedicated prose lens,
+a re-write, and a ledger entry claiming it fixed, and was caught only when the sentence was compared
+against the boolean it describes.
+
+---
+
+## Revision 12 — the ninth pass: the second code review's prose findings, adjudicated
+
+**Where this pass begins is itself the first finding, because a reader cannot recover it from the
+document.** Revision 11's ledger closes with its own *"What moved, measured"* and does not describe the
+edits below. Those edits exist in **no frozen tree before this revision**: `rev12/LIVE`'s harness
+(`62af8616…`) and `rev13/LIVE`'s (`e3c5a13e…`) both still carry the **false** `omitted` lineage, and the
+correction appears only in the tree measured here. So they are this pass's work, and the pass is
+numbered 12. *(The boundary is stated because picking it wrongly is how this document has mis-dated a
+revision before — §4.1's arm, in revision 11.)*
+
+**And drawing that boundary produced the pass's first finding, in the sentence that corrects this
+cycle's thesis.** The repaired E1-e label dated its own correction *"corrected in revision 11"* — a
+number taken from the ledger above rather than derived from the edit, which is this pass's. It now
+reads **revision 12**. The document's own §4.1 paragraph had already named this exact failure for the
+arm's date, one revision earlier; the sentence reporting a correction then committed it again. A number
+in a ledger is a *label*, and the edit is the *data*.
+
+### Fixed: the E1-j guard's label claimed a scope one branch wider than its conjunct
+
+The guard's label read *"a mirror-dominated store is **not ALSO given the local-prune advice**"* — and
+that is true of the row-4-6 verdict branch and false of its neighbour. The D5 remedy
+(`reaches_budget is False and not resolved_by_lean`) is keyed on **neither the label nor the share**, so
+it *co-renders* with the mirror line by design: one record, two lines, both correct. The suppression is
+a property of one branch, and the label stated it as a property of the panel.
+
+The sharpest form is that **the code at the site already said so** — `render_dashboard.py`'s own comment
+reads *"it is a claim about a different **kind**, and it CO-RENDERS with this line, by design"* — while
+the label paraphrased it as *"a different claim about a different **state**"*, which is the half that is
+false. So this was not a missing guard: it was a **label that had drifted from the code it describes**,
+and the repair had to make two moves, not one.
+
+- The label now states the scope and the co-rendering.
+- A **third conjunct** pins the co-rendering instead of leaving it unread: the same lever and share with
+  `reaches_budget=False` (`_e_j_co`) must render the mirror line **and** the D5 remedy together. This is
+  the only behavioural addition in the revision — and it adds **no `check()`**, so D6's constant does
+  not move. `a-pins-assertion-shape-sets-its-blind-spot`: the first two conjuncts cover one branch each
+  and leave the co-render — the thing the label was wrong about — unwitnessed.
+
+### Fixed: the F2 comment's stated REASON was false, though the fix it described was real
+
+The comment above the `_recorded` repair for `budget_tokens` read:
+
+> *No census of the panel's operands could reach it: the four the census samples are PRINTED on the `↓`
+> line and this one is only ever compared AGAINST.*
+
+**"Only ever compared against" is false.** `_over()` prints this operand at
+`render_dashboard.py:237` — `⚠ OVER ≈{b.get('budget_tokens', '?')} tok BUDGET` — one line below the `↓`
+line and only when `over` is set. The true reason the census does not sample it is its **LOCUS**, not its
+reachability: the census walks the four *measured* operands printed on the `↓` line, and this one prints
+through a different function, on a different line, under a condition. *"The census could not reach it"*
+is therefore true of **the census as written** and false of **the operand** — an extended census would
+reach it. The distinction matters because the false version reads as a permanent, structural exclusion,
+and a reader would not go looking for the printing site.
+
+The repair is calibrated to the difference: it says the census *as written* misses it, names the LOCUS,
+and records why the correct repair is not a census extension. That is `gate-coverage-is-its-match-set`
+with the census as its own subject — the same shape revision 9 found in the audit's selection, arriving
+this time in a comment *about* a census.
+
+### Fixed: the `omitted` lineage was false on five surfaces, and the true history is a SPLIT
+
+Five comment/label surfaces carried the lineage *"the third pass added the key's `omitted` spelling as a
+third form"* — §2.1, §3.6, §4, revision 9's ledger, and the E1-e check label a failure prints. **It is
+false on its face**: §2.1's own eight-cell account, written one revision earlier, spells the scope's two
+forms as *"an **absent** and a **blank**"*. An absent key and an omitted one name the **same state**, and
+the eight-cell scope already counted it.
+
+What the third pass actually did was **split** the single `blank` form into `None` and `""` — four
+operands × three spellings = **twelve** cells, from eight. And `_e_missing` is not a third form at all:
+it is the census loop's sentinel meaning *"do not set the key"*, a **test mechanism**, and the reason a
+reader could mistake it for a form is that the loop's triple *looks* like a form list.
+
+Both halves are now stated. The five surfaces are: §2.1 (`:486`), §3.6 (`:768`), §4 (`:2002`), revision
+9's ledger (`:2519`), and the E1-e check label a failure prints.
+
+*(The census comment above the loop was **not** a carrier, and the contrast is the useful part: it names
+the two ways — *absent* and *present-and-blank* — in exactly those terms, so a reader who took it as the
+authority would never have arrived at a third form. What made the third form plausible is the LOOP under
+it. `for _spell in (_e_missing, None, "")` walks a **triple**, and its first element is a sentinel
+**named** `_e_missing`; a three-form list is therefore what the mechanism looks like even though the
+prose beside it says two. That is the same shape as the rest of this cycle — the name was read instead of
+the data — arriving on the one surface that was innocent of the error.)*
+
+### Recorded, not fixed: two hand-edit-only operands whose repair is the coercion the presence test refuses
+
+Both are reachable only by hand-editing a record; no producer can build them, and each repair would cost
+more than the defect. They are recorded at the code site rather than left for a reader to derive.
+
+| Operand | Renders | Why no producer reaches it |
+| --- | --- | --- |
+| `budget.index.budget_tokens` = `None` / `""` | `⚠ OVER ≈None tok BUDGET` — an absence occupying a measurement slot | `memory_status.py:3470-3471` writes `budget_tokens` and `over` **in one dict literal from one constant**, so the two cannot disagree there |
+| the same key = a present, **non-blank, non-numeric** value (`True` / `False` / `"many"`) | `⚠ gate fired but not acted on` — where the absent and blank spellings of the same key render `✓ gate resolved by rebuild-lean` | same site; and the repair would be a **magnitude/type** test on this operand, which is the coercion `_recorded` exists to refuse |
+
+The second row is the sharper one and it is a property of the test, not of the value: **`_recorded` is a
+PRESENCE test** (`key in m and not ms._duty_blank(m[key])`), so a present, non-blank, non-numeric
+threshold **passes** it and `_num` then coerces the value. Measured at `achieved_index: 1300`,
+`budget_tokens` of `True`, `False` and `"many"` become `1.0` / `0.0` / `0.0`, the lean test
+(`0 < ai <= budget_tok`) reads false, and each renders the alarm — while the **absent** and **blank**
+spellings render `✓ gate resolved by rebuild-lean`, rescued by the constant the presence test falls back
+to. The verdict therefore follows the *spelling* of a value that is never validated as a number: a
+non-number the test **rejects** is rescued, and one it **admits** is compared. That is the fourth pass's
+own split — absent vs blank — surviving one rung narrower, which is why a second presence test cannot
+close it. The presence test closes the *blank* forms by design; it cannot close the *wrong-type* forms
+without becoming the magnitude test it was written to replace.
+
+*(Both rows are also the reason the F2 comment's repair is a **scoping** rather than a widening: the
+census is a presence census, and extending it to the threshold would have to decide whether to admit
+non-numeric values — which is precisely the question the panel's own idiom answers "no".)*
+
+### The measurement, and a comparer that could not compare
+
+Both mutable members of the triple moved again since the last measured generation, and each delta was
+measured **before** the run rather than after: `tests/smoke.py` by 23 changed lines of which **8 are
+non-comment** (two check-label strings and prose), `render_dashboard.py` by 18 changed lines of which
+**0 are non-comment**. So no behaviour change was predicted anywhere, and the prediction — recorded in
+a separate file before the run — was that **every count and every red set reproduces**.
+
+**It did, all thirteen.** `LIVE` 2017 / 0 · `mutA` 2000 / 17 · `mutD` 2011 / 6 · `mutB` 2014 / 3 ·
+`prefixE` 1997 / 20 · `mutE` 1996 / 21 · `R1f` `R1g` `R1h` `R1j` `R2f` `RC89` 2016 / 1 each · `R1i`
+2015 / 2 — and **total red 75**, matching the prediction written before the run. The red **sets** are
+not merely counted but checked: `mutD ⊆ mutA`; `mutA ∩ mutB = ∅`; `prefixE = mutA ∪ mutB` exactly, at
+20 = 17 + 3; `mutE − prefixE` is the single `SKILL:remediation` row; `prefixE − mutE` is empty. And
+`R1i`'s two reds are named — **E1-i *and* E1-i2** — because a region revert is not a single check.
+
+The census constant is consistent in a way worth stating, since it is what lets D6 be D6: **every tree
+executes exactly 2017 checks** (`passed + failed = 2017` in all thirteen), so D6 — which counts
+executed checks rather than verdicts — is green in every tree and can never be any tree's second red.
+
+**The propagation rule, and why a flat overlay would have been silent and fatal.**
+`tests/smoke.py` is **tree-invariant** — one hash across all thirteen — so it is overlaid flat.
+`render_dashboard.py` is **tree-variant** (nine distinct hashes: three shared groups plus seven
+singletons, the healthy signature; `1` would be the flattening alarm and `13` the other one), so it is
+patched **per tree**, with an AST dump compared before and after each patch. Measured: **8 APPLIED**
+(LIVE, mutB, R1f, R1g, R1h, R1j, R2f, RC89), each **AST-inert** — the edit is proven comment-only *on
+that tree*, not merely intended to be — and **5 SKIP** (mutA, mutD, prefixE, mutE, R1i), each of which
+is **byte-identical to the previous generation**. The five are the mutations that *revert the very
+region the comment sits in*, so the hunk has no context to land on; byte-identity is a **stronger**
+statement than a patch, because it asserts the mutation is unmoved rather than arguing it. **0 BROKEN.**
+A flat overlay here would have rewritten all thirteen trees with the live renderer: every mutation
+definition destroyed, the batch silently thirteen copies of `LIVE`, and every "this mutant reds exactly
+its own check" claim rendered vacuous — **and green**.
+
+**The comparer could not compare, and it said the opposite of the truth.** Phase D previously compared
+a snapshot text file against freshly extracted red sets. Its writer had changed to a space-padded
+`printf` while its reader still grepped a **tab**-separated field, so the reader matched nothing and
+*every* tree's extracted set came back empty; combined with a stale base it reported **all thirteen
+trees CHANGED when the truth was that all thirteen were identical.** The failure was found by asking
+what the empty set would look like if the instrument were the broken thing. The repair is one
+extractor applied to **both** revisions' own `.log` files — so the comparison cannot be an artifact of
+two differently-written readers — with a `<NO-LOG>` marker that no red set can equal, and explicit
+guards for `FAILED > 0` and `AGREED == 0`. **The repaired comparer was validated on a known answer
+before it was used**: rev13 vs rev14 reports 13/13 identical, and a `mutA`-vs-`LIVE` control still
+sees the difference (17 reds against none). It then reported **13/13 identical, 0 moved, 0 unreadable**.
+
+**The injections, five of them, each an operand deletion measured rather than argued.**
+
+| Injection | Edit | Predicted | Measured |
+| --- | --- | --- | --- |
+| `inj13_branch` | the `else:` arm that renders the pending verdict → `pass` | 2016 / 1, red `E1-e` alone | **2016 / 1 — `E1-e`** |
+| `inj13_branch_noarm` | the same deletion, the five-line `E1-e` arm removed from the harness | **2017 / 0 — green** | **2017 / 0 — green** |
+| `inj13_anch` | `and not _anch` deleted | **2017 / 0 — green** | **2017 / 0 — green** |
+| `inj13_cands` | `and not _cands` deleted | **2017 / 0 — green** | **2017 / 0 — green** |
+| `inj13_nblocked` | `and _n_blocked <= 0` deleted | 2016 / 1, red `E2-b` alone | **2016 / 1 — `E2-b`** |
+
+The first two are the pair that makes the arm's bite attributable: the biting run and the green run
+differ in **exactly one thing**, the assertion. The middle two are the renderer comment's own claim
+that two conjuncts are **unwitnessed** — measured, each moves no check, so the claim holds against the
+shipped bytes rather than by argument. The last is the conjunct that comment claims **is** defended:
+until this pass that sentence was the one operand claim in the comment resting on argument rather than
+on a measured tree, and `_e_2a` (`n_blocked=30`, no candidates, no anchors) is why it bites — the two
+surviving conjuncts are both true, so the line renders exactly where `E2-b` asserts its absence.
+
+**And the pin's own counterfactual, run against the revision its label names.** The thirteen trees
+test `E1-i2` against mutants that share the line, which is a **proxy**; the label names `f175b8e` — the
+branch tip *before* the fix, and deliberately not the base `1d97f54` that the neighbouring `E1-i`
+label names — so the pin was run there: `f175b8e`'s renderer with this revision's harness, **2016 / 1,
+red `v0.4.34 E1-i2` alone**. E1-i stays **green** in that tree by design rather than by accident:
+`_e_i_nobudget` carries no `budget` block at all, so it exercises the *fallback*, while this pin is
+about the *absent key* — two spellings that a single fixture cannot both reach. The **same harness**
+on the shipped renderer is green, which is the pin: the fix clears the red, not the harness.
+
+**And the harness lost a tree between its build and its use.** `pref175` — the counterfactual the
+E1-i2 label names — was built and asserted, and then did not exist when the run that needs it was
+about to start. **No script in the harness deletes it**; the removal is unexplained, and it is
+recorded rather than waved away. What matters is what it would have done: the followup script's
+`cd "$PREF" && python3 tests/smoke.py` would have short-circuited, the count would have grepped empty,
+and the script would have printed **"PREDICTION FAILED — re-read the label, do not adjust the
+prediction"** for a tree that does not exist — a false alarm whose stated remedy points at the label,
+which was never measured. That is the comparer's defect in a second instrument, caught this time
+before it reported: the followup now asserts the tree's identity **first** (renderer equals
+`f175b8e`'s, renderer does **not** equal the batch's, harness equals the batch's) and, on a mismatch,
+exits **90** with *"HARNESS FAULT — NOT a verdict on the label … Do NOT re-read the label: nothing was
+measured."* The two failure modes no longer share a message, and the fault path is verified by running
+it against a tree that is not there.
+
+### The pair, re-measured on the harness this revision ships
+
+**§4.3's** re-measurement narrative stops at the **eighth** harness — its rows name `rev8`'s and
+`rev7`'s harness explicitly, and the last paragraph in the sequence is *"And again on the eighth … so
+the pair was rebuilt against it"* (`rev10`'s). **Every one of those rows is a historical measurement and
+stays as it is.** What the section was missing is the pair on the harness that ships, and it now has
+it — the two rows of the injection table above: the branch deletion at `2016 / 1`, red `E1-e` alone,
+and the *same* tree on the harness minus that arm at `2017 / 0`, green.
+
+The pair moved by exactly one on each side, and *why* is the whole content of this revision's
+measurement discipline: the census constant was bumped `2016 → 2017` when **E1-i2** was added, and the
+deleted arm is still the only thing that reads the pending line — so the biting run reds one check and
+runs one more check, and the green run is **still green on the larger census**. A reader who carried
+the old pair forward would have been reading `rev8`'s numbers as though they were the shipped one's;
+the count is a property of the **triple**, and the harness is a member.
+
+Two repairs follow, and both are to §4.3 rather than to this revision's own text:
+
+- **A present-tense figure that is false of the revision that ships.** The sentence recording what a
+  green run's evidence actually is — *"its count (2016, the census the thirteen trees report) plus the
+  prediction it matched"* — is now scoped: 2016 is the census **as measured there**, and the
+  parenthetical names the shipped census as 2017. Unscoped, a measurement's own commentary asserted a
+  number the branch no longer has — the same defect as the labels, on the one surface nobody re-reads,
+  because it is *about* correct past measurements rather than being one.
+- **A forward pointer at the `rev8` table** naming the generation that ships (`rev16`) and saying its
+  numbers are here, so the three historical generations cannot be carried forward as the current
+  triple.
+
+*(This passage's own first draft named §4.1 for a narrative that lives in §4.3 — a section number
+taken from a task list rather than derived from the document, which is this revision's subject
+arriving in the sentence that opens its measurement. §4.1's only `harness` mention is a summary clause
+at `:1276` pointing forward into §4.3; every row and every ordinal is §4.3's. Recorded rather than
+silently fixed, because a citation that resolves to the wrong section is what revision 11's citation
+census was for.)*
+
+### What moved, measured
+
+| Member | Hash (first 16) | Trees |
+| --- | --- | --- |
+| `tests/smoke.py` | `a50d63358a99caf9` | **all thirteen** — one hash, the tree-invariant signature |
+| `render_dashboard.py` | `86583fa9b86e13d2` | LIVE, mutB, R1h |
+| | `309e3df5b02a2ec7` | mutA, prefixE, mutE |
+| | `603283368a88fb26` · `e8d76ee72a171bf0` · `5795ea3a466ce3d2` · `18fe4d49e2b5fc2a` · `6b7724dae952b3e5` · `249a852a3ff6658b` · `a6ac3f5439b31185` | mutD · R1f · R1g · R1i · R1j · R2f · RC89 |
+| `render_dashboard.py` — `pref175` | `dd41ac01a055de8b` | asserted **equal to `f175b8e`'s** and **not equal to the batch's** |
+
+**Nine distinct `render_dashboard.py` hashes, one distinct `tests/smoke.py` hash, and one
+`pref175`.** The counts are the point and so is the shape: `smoke` == 1 is what makes a flat overlay
+correct, `rd` == 9 is what makes a flat overlay fatal, and the two together are the propagation rule
+rather than a description of it.

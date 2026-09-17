@@ -96,10 +96,10 @@ The second of two cycles staged from the 2026-09-14 audit. Design and evidence:
    and the claim is now bounded by its two real structural limits (depth ≤ 2, and the
    SKILL↔TypedDict direction) rather than asserted.
 
-**Verification.** Twenty-seven new checks — **seventeen pins**, **nine guards**, and **one regression
-guard** — taking the suite to **2016 checks**. Every pin was mutation-verified against pre-fix trees
+**Verification.** Twenty-eight new checks — **eighteen pins**, **nine guards**, and **one regression
+guard** — taking the suite to **2017 checks**. Every pin was mutation-verified against pre-fix trees
 built with `git archive` (never `git worktree add`, one process per tree): reverting the renderer
-alone reds **exactly** the fifteen render pins plus the rewritten v0.1.35 arm; re-injecting the
+alone reds **exactly** the sixteen render pins plus the rewritten v0.1.35 arm; re-injecting the
 producer drift reds **exactly** E4-a, E4-b, and the `SKILL↔TypedDict` `Identity` arm — **three**, not
 the two an earlier draft of this entry recorded, because the declaration and its schema block are two
 surfaces that necessarily move together and only one of them was counted. The one existing check this
@@ -107,7 +107,7 @@ cycle deliberately turns from green to red is v0.1.35's "still over budget" arm,
 for the state the skill sanctions — that assertion *was* the defect, so the check is rewritten rather
 than deleted.
 
-**Two of the seventeen pins came from a second review pass over this cycle's *own* repairs, and both
+**Two of the eighteen pins came from a second review pass over this cycle's *own* repairs, and both
 findings were the cycle's subject arriving inside a fix.** The first cut of the E1 repair closed **one
 of eight** cells: the panel's summary line composes four numeric operands and `_num` renders **absent**
 and **blank** alike as `0`, so each operand has two not-carried forms — and the cut guarded one
@@ -122,7 +122,7 @@ sibling's edited file, so it was the union by construction and its recorded numb
 different tree. The spec now defines every tree by its **edit set**, since `diff -rq` reports which
 *files* differ and never which *edits*.
 
-**Three of the seventeen pins came from a third review pass, and the pass's most useful result was
+**Three of the eighteen pins came from a third review pass, and the pass's most useful result was
 that two of its own new checks were mislabelled.** The three are **E1-f** (the remedy and the `✓` are
 one decision), **E1-i** (the no-`budget` fallback read a literal `1200` no producer writes, so a
 record comfortably under the real budget was told the gate had gone unmet) and **E2-f** (the port
@@ -148,14 +148,14 @@ loop of their own because the loop they were added to stamps **every** label it 
 above those rows calls them GUARDs, and so does the suite's own D6 accounting. Only the printed line
 was wrong, which is exactly the surface a reader counts. They now carry `(GUARD)` and the revision
 that added them. The check **count** is unchanged — this was a label repair, not a check change, and
-saying so is the point: the suite still reports 2016.
+saying so is the point: the suite still reports 2017.
 
 It was found by a census whose **own regex was narrower than its claim** — the third instrument of
 that shape in this pass, after E1-b's normalizer and the red-set extractor that keyed on a summary
 field that does not exist. The census looked for a tier token *first* in the parenthetical, so it read
-E1-e and E3-b's `(CENSUS PIN)` as "no tier" and reported fifteen pins where this entry claims
-seventeen. The claim was right and the census was wrong — the same shape as the seven rows it was
-built to check.
+E1-e and E3-b's `(CENSUS PIN)` as "no tier", so it reported a pin count **two short** of what this
+entry claims — the two rows it cannot see are exactly the two it misreads. The claim was right and
+the census was wrong — the same shape as the seven rows it was built to check.
 
 The same pass measured the sweep §3.1 had quoted as testimony: the 324-state cross-product is now
 stated with its axes, and the repair's claim is stronger than "the bad states are gone" — on the fixed

@@ -931,7 +931,39 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         # compared `achieved_index` against a threshold that does not exist, and at `{pruned: 0,
         # achieved_index: 1300}` it rendered "⚠ gate fired but not acted on" for an index that is UNDER the
         # real budget. Same class as E3: a default that is not the real value asserts a measurement.
-        budget_tok = _num(_dget(_dget(record, "budget"), "index").get("budget_tokens", ms.INDEX_TOKEN_BUDGET))
+        #
+        # Fourth pass: that fix named the right VALUE and left the wrong SHAPE. `.get(k, CONST)` still
+        # fires only on ABSENT — the exact form this file already rejected for `candidates_surfaced` and
+        # `pruned` two lines up — so a `budget_tokens` PRESENT and blank fell PAST the constant into
+        # `_num(None)`/`_num("")` → 0.0, and the lean test became `0 < achieved_index <= 0`. Measured at
+        # `achieved_index: 1300` against the real 1500: key ABSENT → "✓ gate resolved by rebuild-lean";
+        # key present and `None` or `""` → "⚠ gate fired but not acted on". Byte-identical operands,
+        # opposite verdicts, decided only by HOW the threshold failed to be carried. The panel's operand
+        # census did not reach it, but the reason is its LOCUS, not its reachability: the census samples
+        # the four MEASURED operands, which print on the `↓` line, while the threshold prints one line
+        # down through `_over` and only when `over` is set. "The census could not reach it" is therefore
+        # true of the census as written and false of the operand — an extended census would reach it.
+        # RECORDED, not fixed: `_over` prints this threshold RAW, so a record hand-edited to carry
+        # `None`/`""` renders "⚠ OVER ≈None tok BUDGET" — an absence occupying a measurement slot. No
+        # producer can reach it (memory_status writes this key from a module constant, in the same
+        # expression that sets `over`, so the two cannot disagree there), which is why it is recorded
+        # here rather than repaired in this cycle. What `_recorded` DOES close is the LEAN comparison's
+        # read of this key: a blank now falls back to the constant, so the blank spellings cannot move
+        # THAT verdict. It cannot close `_over`, which never consults it — so the RAW print above stays
+        # recorded rather than fixed, and the two readers of one key handle a blank differently by design.
+        # RECORDED WITH IT, same reachability class and the same site: `_recorded` is a PRESENCE test, so
+        # a present, non-blank, NON-NUMERIC threshold passes it and `_num` coerces the value instead.
+        # Measured at `achieved_index: 1300`, `True` / `False` / `"many"` become 1.0 / 0.0 / 0.0, the lean
+        # test reads false, and all three render "⚠ gate fired but not acted on" — while the ABSENT and
+        # BLANK spellings render "✓ gate resolved by rebuild-lean". The fourth pass's split therefore
+        # survives one rung narrower: a non-number the presence test REJECTS is rescued by the constant,
+        # and a non-number it ADMITS is compared, so the verdict follows the spelling of a value that is
+        # never validated as a number. Hand-edit-only for the same reason as the row above, and left
+        # unrepaired because the repair is a magnitude/type test on this operand, which is the coercion
+        # the presence test exists to refuse.
+        _bix = _dget(_dget(record, "budget"), "index")
+        budget_tok = (_num(_bix.get("budget_tokens")) if _recorded(_bix, "budget_tokens")
+                      else ms.INDEX_TOKEN_BUDGET)
         # Row 1: the seed OMITS pruned/achieved_* (pre-pass) — "pending Phase 5" IS this state's verdict,
         # so no note is derived for it below. G (v0.1.18.x) renders absent as "pending", NOT ≈0 ("emptied").
         # Keyed on `_recorded`, so present-but-blank reads the SAME as absent: a record that filled neither
@@ -1268,13 +1300,20 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
             _wv = _clean(str(_wp.get("verdict") or ""))
             if _wv:
                 out.append(_kv("", _c(_wv, "dim")))
-            # v0.4.34 (E2): suppressed whenever the record counts blocked rows — this line and the
-            # breakdown above are two claims about ONE state, and "0 fleet-candidates" beside "30
-            # blocked" is the contradiction. Keyed on `_n_blocked` (the record), NOT on `_anch`: the
-            # anchor list describes `decline_anchors`, a different set, so keying on it would suppress
-            # the cold-state line for a record that has anchors and no blocked rows — a third state
-            # neither renderer has a rule for. (`_anch` is in scope here and looks like the natural
-            # operand; it is not the right one.)
+            # v0.4.34 (E2): the cold-state line is suppressed on THREE operands. The first draft of
+            # this comment named one and explicitly disclaimed another — "Keyed on `_n_blocked` (the
+            # record), NOT on `_anch` … it is not the right one" — sitting immediately above a
+            # condition that reads `not _cands and not _anch and _n_blocked <= 0`. The PROSE was the
+            # false surface, not the code, and the check label carried the same two-operand account.
+            # What each operand is for: `_n_blocked` is the record's own count, and "0 fleet-
+            # candidates" beside "30 blocked" is the contradiction this exists to remove; `_cands` is
+            # what the sentence DENOTES, so a record carrying candidates cannot make a zero-breadth
+            # claim at all; `_anch` covers the third state — anchors, no blocked rows, no candidates.
+            # TWO of the three conjuncts are UNWITNESSED: measured, deleting `and not _anch` changes
+            # the render for the third state and deleting `and not _cands` changes it for candidates
+            # beside an explicit `n_blocked: 0`, and NEITHER leaves a check red. Only `_n_blocked <= 0`
+            # is defended (its deletion reds E2-b). Live rules no check defends — recorded, not relied
+            # on.
             if not _cands and not _anch and _n_blocked <= 0:
                 out.append("    " + _c("0 fleet-candidates — the honest cold state (never invented breadth)", "dim"))
         else:
