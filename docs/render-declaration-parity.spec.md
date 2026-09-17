@@ -32,7 +32,8 @@ declaration drops it"), and that **E5 is not a drift repair at all** — its pre
 
 **Revision 5 turns the same lens on the fixes.** A second pass reviewed revision 4's *repairs*, and both
 findings were the cycle's own subject arriving in the repair rather than in the defect (§2.6): **E1's
-fix closed one cell of eight**, and **E2's fix carried the HTML's guard across when that guard answers a
+fix closed one cell of eight** (the scope as it stood then — the third pass grew the census to
+twelve, §2.1), and **E2's fix carried the HTML's guard across when that guard answers a
 different question**, leaving the false tail standing on a producer-reachable shape. Neither was visible
 to the suite — it was **2008 / 0** on both revisions, because the pins sampled the values the fixes moved
 *to* and never the ones they moved *away from*. So this revision **changes code, not only pins**: E1 gains
@@ -1949,7 +1950,9 @@ contract check reads module-level scope. Helper names in this suite are era-suff
   still makes the forbidden claim is exactly the false-green this cycle keeps finding. **The second pass
 showed that one witness was not enough**: the line composes **four** operands with **two** not-carried
 forms each, E1-d sampled one cell of eight, and the suite read 2008/0 while seven cells rendered a
-fabricated `0`. **E1-e** now pins all eight *and* the **carried** spelling, so nothing is satisfied by
+fabricated `0`. (Those figures are the **eight-cell** scope the second pass audited; the third pass
+added the key's `omitted` spelling as a third form, so the census that ships is **twelve** — §2.1.)
+**E1-e** now pins all twelve *and* the **carried** spelling, so nothing is satisfied by
 silently renaming an operand. The residual is the census's own: an operand *added* to the line later is
 uncovered until the table is extended — bounded by §2.1's note that the cell count is syntactic
 (operands × not-carried forms), so extending it is mechanical rather than a re-derivation.
@@ -2243,9 +2246,9 @@ pinned, then re-measured.
   **blank** not-carried form, and `_num` maps both to `0.0`. The first cut asked
   `"candidates_surfaced" not in rem` — one operand, one form, one site. Fixed by `_recorded`
   (`key in m and not ms._duty_blank(m[key])`, reusing Cycle D's canonical blank predicate rather than
-  re-spelling it), applied per operand in the panel and in the verdict arm. **E1-e** pins all eight
-  cells *and* the carried spelling — the latter because without it a **renamed** operand would satisfy
-  every silent row.
+  re-spelling it), applied per operand in the panel and in the verdict arm. **E1-e** pins all twelve
+  cells at the shipped scope *and* the carried spelling — the latter because without it a **renamed**
+  operand would satisfy every silent row.
 - **E2's fix carried the JS's `!board` guard across, and it guards a different claim.** In the JS the
   branch **assigns** `board` (the guard protects the cards) and the count is stated in a `reg-counts`
   header; the ASCII branch **appends** and has no header. Carried over as
