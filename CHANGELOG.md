@@ -26,7 +26,7 @@ The second of two cycles staged from the 2026-09-14 audit. Design and evidence:
    derived from the data, and `lever` keeps only the section header, where it is a *routing* decision.
 
    **Two user-visible wordings move, and the third does not.** `"mirror-dominated — global demote/GC
-   lever, not a local prune"` now **names the operand** (`mirror-dominated (90% of index tokens) —
+   lever, not a local prune"` now **names the operand** (`mirror-dominated (90.0% of index tokens) —
    …`) and fires on `mirror_share > 0.5` rather than on `lever == "gc"`, so it reads as an advisory
    about *where to act* and no longer suppresses the local-prune advice by label. `"justified —
    nothing safely prunable"` is **gone**, replaced by three sentences that state what the record
@@ -36,6 +36,11 @@ The second of two cycles staged from the 2026-09-14 audit. Design and evidence:
    on"` keeps its **exact** wording; only its *reachability* narrows, because the remedy and the
    absent-count arms now take precedence. The dropped phrasing was asserting a fact about the store
    (nothing *is* prunable) that no field in the record carries.
+
+   **The share moved to `.1%` in the same repair, and the reason is a collision.** `.0%` rendered a
+   share of `0.5025` as `"50%"` — the **boundary's own numeral** — so a store that *exceeded*
+   `_MIRROR_DOMINATED` printed identically to one that merely met it, discarding the distinction the
+   routing immediately above it had just used. The example in this item reads `90.0%` for that reason.
 
 2. **The remedy and the success are one decision.** `prune can't reach budget → …` and
    `✓ gate resolved by rebuild-lean` were separate `if`s, so `achieved_index=900, reaches_budget=False`
@@ -168,6 +173,63 @@ no other check noticed — including the E3 census, which reads exactly that exp
 and passed on the broken revision. A check that cannot fail pre-fix is a guard rather than a pin; it
 is labelled with the revision it *is* red on (the intermediate one) instead of implying pre-fix, and
 it is aimed at the render's **output**, which is where the defect was visible at all.
+
+**A fourth pass then ran over this cycle with two lenses, and it found ten defects — not one of them a
+fabricated figure.** Every one is the class this cycle names: a correct number or fact paired with the
+**wrong operand**, or an enumeration that no longer covers what it names. Twelve prose sites across six
+files, and **three live-code repairs**, one of which is the only part of this cycle a user sees in the
+archive.
+
+**The archive's evidence tree spelled a share as its full binary expansion.** `dashboard.sections.js`'s
+`capturedTree` ended in a bare `String(v)`, so the one leaf a record genuinely carries as a ratio
+shipped into a `<dl>` of small integers as `0.49975012493753124` — while the ASCII twin spells every
+number with `_g` (`f"{n:g}"`, six significant digits). The two views disagreed on exactly the kind of
+figure this cycle's parity claims are about, and nothing renders both, so nothing could see it. The
+repair is `Number(v.toPrecision(6))`, `_g`'s **byte-exact** JS twin, with integers excluded
+deliberately: `toPrecision` renders `1234567` as `"1.23457e+6"` where `_g` gives `1.23457e+06` — the
+same digits, a different spelling, and a second divergence introduced by the fix for the first.
+`v!==Math.floor(v)` is the **ES5** spelling, because the file is ES5 throughout. The check that pins it
+samples a value with a long expansion, and that is what makes it a **pin** rather than a guard: `0.5`
+would have agreed with itself on both revisions.
+
+The other two live repairs are the `.1%` share above and a **duplicated key**: the mutation-log row
+wrote `{"window": AUDIT_WINDOW, …, **diff}` after this cycle had given `audit_diff` that same key, so
+`**diff` won a merge in which both sides held the same constant — byte-identical either way, which is
+precisely why no reader could see that one fact had grown two sources. **The correction that matters
+most is the one the ledger had already certified.** Revision 13 recorded that this cycle's `ci.yml`
+comment "states only what was measured here". It did not: the comment said `-eo pipefail` "aborts at
+1", a mechanism no run produced, since the probe returns **7** (pipefail yields the rightmost non-zero
+stage's own status) and the `1` belongs to Python's exit code. Revision 13 had that `rc 7` in its own
+table and wrote a comment naming a different number anyway — **an audit that certifies a comment is
+an assertion about a surface the audit did not run.**
+
+**The same shape appeared once more, and it is the finding worth keeping.** The renderer's comment
+on the cold state's three conjuncts said "**measured**, deleting `and not _anch` changes the render
+for the third state and deleting `and not _cands` changes it for candidates beside an explicit
+`n_blocked: 0`". Revision 13 had run both deletions and recorded — accurately — that they leave the
+suite **green**. It measured the **suite counts only**. No render probe appears anywhere in the
+record, so what Revision 13 established was that the two conjuncts are **unwitnessed**, never that
+they are **live** — and a rule nobody checks that also does nothing is dead code, two readings with
+opposite remedies. Both halves are now measured, one process per tree: each deletion does move the
+render, in exactly the state the comment names, while the all-clear state renders the line in all
+three trees — so each injection's change is attributable to its own conjunct and not to a broken
+fixture — and only `_n_blocked`'s deletion leaves a check red. **The claim was true in every clause
+and had no measurement behind it. It has one now.**
+
+**The measurement was rebuilt, because the triple moved.** Seven files: `dashboard.sections.js`,
+`memory_status.py` and `render_dashboard.py` live; `tests/smoke.py` (comments and one label),
+`tests/dashboard_fixture.py` (a key order and a comment) and `tests/dashboard_browser.py` (the new
+check) as harness; and `ci.yml`, outside the triple. The 13-tree batch was re-run end to end and the
+red sets compared as **identities, not counts** — a count says how many moved, a probe says which —
+and all 13 trees red the same identities, `75 = 75`. The E1-i2 counterfactual was re-measured against
+the revision its label names. This pass added no smoke check, so the suite still reports **2017**; the
+browser suite gains the pin above. Two of the corrections are mine to own: the F1 comment's first
+draft claimed the new check "cannot fail on the pre-fix revision" while deliberately sampling the one
+value where the two formatters disagree (found by injection, not by re-reading the sentence), and a
+drafted correction to the spec's own `0 of 104` was **withdrawn on the measurement** — the same
+literal appears at two sites, one false and one true, and the true one stays. Two sites sharing a
+literal is an argument for deriving each figure where it is used, not for trusting a
+search-and-replace.
 
 ## [0.4.33] — 2026-09-17
 

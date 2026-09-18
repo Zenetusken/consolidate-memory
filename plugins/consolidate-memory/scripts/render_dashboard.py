@@ -295,10 +295,14 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
     cap = 12
     namew = min(max((_ui.disp_w(_clean(n.get("node", "?")) or "?") for n in shown[:cap]), default=4), 18)
     for n in shown[:cap]:
-        # v0.4.34 (E3): the fallback goes INSIDE the slice. The first cut of this repair appended
-        # `or "?"` to the whole expression, which rebinds `[:18]` from the cleaned value to the
-        # literal "?" — a no-op — so a long node name was emitted whole. The truncation is part
-        # of the value being defaulted, not of the default.
+        # v0.4.34 (E3): the fallback goes INSIDE the slice. The first cut of this repair spliced
+        # `or "?"` in BEFORE the subscript — `_clean(n.get("node", "?")) or "?"[:18]` — so `[:18]`
+        # bound the LITERAL and not the name: a no-op, leaving a long node name unsliced while
+        # `namew` stayed clamped to 18. This comment called that "appended `or "?"` to the whole
+        # expression" until the fifth pass — which is the OTHER reconstruction, `(_clean(...) or
+        # "?")[:18]`, and that one keeps the truncation and measures GREEN, so a reader rebuilding
+        # from the prose would have concluded the claim was false. The truncation is part of the
+        # value being defaulted, not of the default.
         #
         # Nothing downstream catches that: `namew` above is clamped to 18, and `pad` below is
         # `max(0, namew - disp_w(nm))`, which cannot go negative — so an over-long name gets the
@@ -914,9 +918,11 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         # four numeric operands (candidates_surfaced · pruned · achieved_index · projected_index) and each
         # can fail to be carried in two ways — the key ABSENT (`total=False` makes that legal) or the key
         # PRESENT and blank (`None`/`""`: the declaration says `int`, but `_num` accepts both and coerces
-        # them to 0.0). All four rendered a fabricated measurement in the BLANK form, and `pruned` /
-        # `achieved_index` did in the ABSENT form too — seven cells, on the very line the fix had just
-        # claimed to have repaired. `_recorded` is the presence test that closes them; a rendered
+        # them to 0.0). All four rendered a fabricated measurement in the BLANK form (4 cells), and
+        # `pruned` / `achieved_index` / `projected_index` did in the ABSENT form too (3 more) — seven,
+        # on the very line the fix had just claimed to have repaired. An enumeration naming only two
+        # of the three absent operands sums to six and reads as an arithmetic error; the numeral was
+        # right and the list was short. `_recorded` is the presence test that closes them; a rendered
         # measurement now implies the record carried one.
         cand, pi = _num(rem.get("candidates_surfaced", 0)), _num(rem.get("projected_index", 0))
         cand_txt = (f"{_g(cand)} candidate(s) surfaced" if _recorded(rem, "candidates_surfaced")
@@ -999,7 +1005,12 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
         share = rem.get("mirror_share")
         mirror_dominated = isinstance(share, (int, float)) and share > ms._MIRROR_DOMINATED
         if mirror_dominated:
-            out.append("    " + _c(f"mirror-dominated ({share:.0%} of index tokens) — global demote/GC lever, not a local prune", "dim"))
+            # v0.4.34 (review): `.0%` rendered "50%" for a share of 0.5025 — the SAME numeral as the
+            # non-dominated boundary `_MIRROR_DOMINATED` (0.5), so the display discarded the very
+            # distinction the routing above it used. One decimal of a percent restores it: shares are
+            # ratios of index-token counts (~1500 tokens), so they quantize at ~1/1500 = 0.00067 and
+            # the first step above the boundary renders "50.1%", not "50.0%".
+            out.append("    " + _c(f"mirror-dominated ({share:.1%} of index tokens) — global demote/GC lever, not a local prune", "dim"))
         # Row 3 / D5 (v0.1.21): a full prune can't reach budget. This remedy IS the state's verdict, so it
         # is gated on the lean path NOT having resolved (v0.4.34): remedy and ✓ are one decision, and
         # emitting both put a sanction beside a SUCCESS (18 of 324 states).
@@ -1287,8 +1298,14 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
                 # the total.
                 #
                 # The JS's third ARM (`n_day_spread` -> "N single-day") stays unported — it is unreachable
-                # in the HTML (0 of 1156 reachable states, see the spec) — but its ARITHMETIC goes with
-                # it: a dead arm's subtraction is not a live one's operand.
+                # in the HTML, and by PROOF rather than by sampling: `num(n_day_spread, default) > 0` makes
+                # `nSpread` truthy at :146, which grows `board` at :181 and makes the `!board` guard at :194
+                # false, so :197 is never evaluated. Swept over the JS's reachable input space (17 values³ ×
+                # 3 fallbacks × 2 `named` × 2 `evRows` = 58,956 states, see the spec): the BREAKDOWN rendered
+                # in 1156 of them and a `single-day` part in 0. Which number is which matters — 1156 counts
+                # the states where the breakdown RENDERED, not the reachable space, and this comment read
+                # "0 of 1156 reachable states" until the fifth pass, citing a subset as its own population.
+                # But its ARITHMETIC goes with it: a dead arm's subtraction is not a live one's operand.
                 #
                 # `max(0, …)` is kept for parity with the JS, and it is DEFENCE, not the mechanism: the
                 # `> 0` test below already makes a negative unrenderable (`-20 > 0` is false, exactly as

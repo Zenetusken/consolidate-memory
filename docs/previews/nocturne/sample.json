@@ -7,8 +7,8 @@
       "enrolled": true,
       "registry_state": "healthy",
       "cross_project_allowed": true,
-      "conflicts": 0,
-      "domain_lifecycle": "active"
+      "domain_lifecycle": "active",
+      "conflicts": 0
     },
     "scope": {
       "git_range": "b20cafe06..b20cafe07",
@@ -664,8 +664,8 @@
         "enrolled": true,
         "registry_state": "healthy",
         "cross_project_allowed": true,
-        "conflicts": 0,
-        "domain_lifecycle": "active"
+        "domain_lifecycle": "active",
+        "conflicts": 0
       },
       "scope": {
         "git_range": "a10cafe00..b20cafe00",
@@ -1313,8 +1313,8 @@
         "enrolled": true,
         "registry_state": "healthy",
         "cross_project_allowed": true,
-        "conflicts": 0,
-        "domain_lifecycle": "active"
+        "domain_lifecycle": "active",
+        "conflicts": 0
       },
       "scope": {
         "git_range": "b20cafe00..b20cafe01",
@@ -1964,8 +1964,8 @@
         "enrolled": true,
         "registry_state": "healthy",
         "cross_project_allowed": true,
-        "conflicts": 0,
-        "domain_lifecycle": "active"
+        "domain_lifecycle": "active",
+        "conflicts": 0
       },
       "scope": {
         "git_range": "b20cafe01..b20cafe02",
@@ -2615,8 +2615,8 @@
         "enrolled": true,
         "registry_state": "healthy",
         "cross_project_allowed": true,
-        "conflicts": 0,
-        "domain_lifecycle": "active"
+        "domain_lifecycle": "active",
+        "conflicts": 0
       },
       "scope": {
         "git_range": "b20cafe02..b20cafe03",
@@ -3266,8 +3266,8 @@
         "enrolled": true,
         "registry_state": "healthy",
         "cross_project_allowed": true,
-        "conflicts": 0,
-        "domain_lifecycle": "active"
+        "domain_lifecycle": "active",
+        "conflicts": 0
       },
       "scope": {
         "git_range": "b20cafe03..b20cafe04",
@@ -3917,8 +3917,8 @@
         "enrolled": true,
         "registry_state": "healthy",
         "cross_project_allowed": true,
-        "conflicts": 0,
-        "domain_lifecycle": "active"
+        "domain_lifecycle": "active",
+        "conflicts": 0
       },
       "scope": {
         "git_range": "b20cafe04..b20cafe05",
@@ -4568,8 +4568,8 @@
         "enrolled": true,
         "registry_state": "healthy",
         "cross_project_allowed": true,
-        "conflicts": 0,
-        "domain_lifecycle": "active"
+        "domain_lifecycle": "active",
+        "conflicts": 0
       },
       "scope": {
         "git_range": "b20cafe05..b20cafe06",
@@ -5219,8 +5219,8 @@
         "enrolled": true,
         "registry_state": "healthy",
         "cross_project_allowed": true,
-        "conflicts": 0,
-        "domain_lifecycle": "active"
+        "domain_lifecycle": "active",
+        "conflicts": 0
       },
       "scope": {
         "git_range": "b20cafe06..b20cafe07",

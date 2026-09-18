@@ -18791,11 +18791,16 @@ check("v0.4.34 E2-a (PIN): with blocked rows counted but none DISPLAYABLE, the p
 # _n_blocked <= 0`. Both directions are asserted, because a "stays silent" check alone passes
 # pre-fix and is not a pin.
 _e_2c = rd.render(_e_reg(n_blocked=0, candidates=[], decline_anchors=[]))
-check("v0.4.34 E2-b (PIN): '0 fleet-candidates — the honest cold state' is RENDERED only when the "
-      "record counts no blocked rows AND carries neither candidates nor decline-anchors — all three "
-      "operands clear — and is SUPPRESSED as soon as any one of them is not; pre-fix the panel "
+check("v0.4.34 E2-b (PIN): '0 fleet-candidates — the honest cold state' is RENDERED when the record "
+      "counts no blocked rows, carries no candidates and no decline-anchors; pre-fix the panel "
       "asserted '… +30 more blocked' and '0 fleet-candidates' one line apart, which is the "
-      "contradiction the suppression exists to remove",
+      "contradiction the suppression exists to remove. What this check WITNESSES is the "
+      "`_n_blocked <= 0` conjunct ALONE: measured, deleting `and not _cands` or `and not _anch` "
+      "from the renderer's condition moves the render for some states but leaves this suite at "
+      "2017 passed / 0 failed, so those two live rules are unwitnessed — and the earlier label's "
+      "'SUPPRESSED as soon as any one of them is not' asserted a coverage no check provided. The "
+      "renderer's own comment records the same measurement; it is quoted here as a claim about "
+      "the code, not as a substitute for a pin",
       "0 fleet-candidates" not in _e_2a
       and "0 fleet-candidates — the honest cold state" in _e_2c)
 
@@ -18847,10 +18852,13 @@ check("v0.4.34 E2-c (PIN): the counts-only breakdown keys on BLOCKED ROWS DRAWN 
 # `_shown_b` reads the ROWS drawn — the field that closes one does not close the other.
 # That makes this a SHAPE pin, not a behaviour pin, and the distinction is worth stating rather than
 # inferring. The producer persists every distinctive day-spread row, so `n_day_spread > 0` always
-# implies a drawn blocked row and the ASCII guard is FALSE in every state the producer builds; 0 of
-# 104 archived records carry the field at all. The fixture's input is AUTHORED — the count without the
-# rows — which is the only shape where the two arms differ. What it guards is a contract over inputs
-# (parts sum to the total), not a state any writer currently reaches.
+# implies a drawn blocked row and the ASCII guard is FALSE in every state the producer builds. The
+# operand is the VALUE, not the key: `sync_global` writes `n_day_spread` UNCONDITIONALLY, so 28 of the
+# 104 archived records CARRY it and every one of them holds `0` — 0 of 104 carry a NON-ZERO value. An
+# earlier draft of this line said "0 of 104 archived records carry the field at all", which that same
+# producer contradicts: the field is present, it is merely always zero. The fixture's input is
+# AUTHORED — the count without the rows — which is the only shape where the two arms differ. What it
+# guards is a contract over inputs (parts sum to the total), not a state any writer currently reaches.
 # Named `_e_2f` because `_e_2d`/`_e_2e` are E2-c's fixtures.
 _e_2f = rd.render(_e_reg(n_blocked=30, n_generic=10, n_day_spread=20, candidates=[],
                          decline_anchors=[]))
@@ -18932,8 +18940,17 @@ check("v0.4.34 E3-b (CENSUS PIN): exactly 12 sites in the renderer take a DEFAUL
       "enclosing `or` (the repair) or not yet in the population. Population and verdict are one "
       "assertion on purpose (a-complete-guard-inverts-its-question): dropping a default REMOVES a "
       "site, which moves the population while leaving `unguarded` at 0 — the guard would go "
-      "quiet exactly where it should shout. It cannot see a default that is EMPTY (`get(k, \"\")`), "
-      "which is excluded by construction and would be a hole no site census can find",
+      "quiet exactly where it should shout. What it cannot see is a default that is EMPTY "
+      "(`get(k, \"\")`) — a CLASS BOUNDARY the matcher draws with its `bool(d.value)` clause, not a "
+      "blind spot. Widening that one clause admits exactly 9 more sites (render_dashboard.py "
+      "497,513,514,635,711,714,719,721,878 — the population goes 12 -> 21) and not one of the 9 is "
+      "guarded, because an absent text field has nothing to say and EMPTY is the honest render — the "
+      "opposite class from E3's TRUTHY default, which overrides an empty value with a "
+      "plausible-looking one. E3-c's marker (`_mc = m.get(\"commit\")`) sits outside the population "
+      "by a third route — ARITY: `len(_g.args) != 2`, and no `_clean` wrapper either, so a 1-arg "
+      "`.get` is not a `_clean`-of-default call at all. An earlier draft called the empty default "
+      "\"a hole no site census can find\", which is false of the very census it describes: widening "
+      "it found nine sites, and a hole is the one thing they are not",
       _e_pop34 == 12 and _e_ung34 == 0)
 
 # E3-c — the identical defect in a DIFFERENT spelling, which is why the `.get`-shaped census above

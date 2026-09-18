@@ -259,6 +259,12 @@ var NocturneSections = (function(){
     if(v==null)return '<p class="capture-note">Not captured</p>';
     if(Array.isArray(v))return v.length?'<ol class="evidence-rows">'+v.map(function(x){return '<li>'+capturedTree(x)+'</li>';}).join('')+'</ol>':'<span>0 captured rows</span>';
     if(typeof v==='object')return Object.keys(v).length?'<dl class="evidence-fields">'+Object.keys(v).map(function(k){return '<div><dt>'+esc(k.replace(/_/g,' '))+'</dt><dd>'+capturedTree(v[k])+'</dd></div>';}).join('')+'</dl>':'<span>No fields captured</span>';
+    // v0.4.34 (F1): a non-integer renders at 6 SIGNIFICANT digits — the ASCII twin's `_g`
+    // (`f"{n:g}"`), so the two views spell a number the same way. Bare `String(v)` shipped a
+    // share as `0.49975012493753124` into a <dl> of small integers. Integers are left alone
+    // because `toPrecision` would render 1234567 as "1.23457e+6"; `v!==Math.floor(v)` is the
+    // ES5 spelling (`Number.isInteger` is ES6, and this file is ES5 throughout).
+    if(typeof v==='number'&&isFinite(v)&&v!==Math.floor(v))return '<span>'+esc(Number(v.toPrecision(6)))+'</span>';
     return '<span>'+esc(String(v))+'</span>';
   }
   function extra(label,v){return '<details class="captured-details"><summary>'+esc(label)+'</summary>'+capturedTree(v)+'</details>';}

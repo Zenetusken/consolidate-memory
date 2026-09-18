@@ -86,7 +86,11 @@ def sample():
         # v0.4.34 (E4): domain_lifecycle is emitted by identity_snapshot unconditionally and the archive
         # renders it inside "Identity & registry state" (capturedTree's generic key dump), so the fixture
         # must carry it or the preview shows a shape no real record has.
-        "identity": {"domain_id": "work", "enrolled": True, "registry_state": "healthy", "cross_project_allowed": True, "conflicts": 0, "domain_lifecycle": "active"},
+        # v0.4.34 (E4): key ORDER follows the producer. `identity_snapshot` sets its five literal keys
+        # and only then, inside its `try`, adds `conflicts` — so `conflicts` is LAST on a real record.
+        # `capturedTree` dumps `Object.keys` in insertion order, so listing `conflicts` before
+        # `domain_lifecycle` rendered a row order no producer can emit.
+        "identity": {"domain_id": "work", "enrolled": True, "registry_state": "healthy", "cross_project_allowed": True, "domain_lifecycle": "active", "conflicts": 0},
         "scope": {"git_range": "a10cafe..b20cafe", "git_commits": 3, "session_candidates": 2, "memories_reviewed": 24},
         "rigor": {"phase": "final", "applied": "SUBSTANTIAL", "prune_pressure": False},
         "preflight": {"at": "2026-09-05T14:29:00Z", "fails": [], "warns": []},
@@ -108,9 +112,16 @@ def sample():
                                  {"path": "MEMORY.md", "store": "memory", "op": "modified", "token_delta": -72},
                                  {"path": "CLAUDE.md", "store": "claude_md", "op": "modified", "token_delta": -40}],
                   # v0.4.34 (E4): derived from the producer's own constant. The fixture used to carry a
-                  # THIRD spelling ("phase 0 → phase 5") that matched no producer — and because it is an
-                  # untyped dict literal, mypy's typeddict checks could not see the drift. The archive
-                  # renders this row, so the fixture's invention was what the committed preview showed.
+                  # THIRD spelling ("phase 0 → phase 5") that matched no producer. NOT because the
+                  # literal is untyped — this drift is a VALUE on a DECLARED key with a correct TYPE,
+                  # and mypy's two typeddict verdicts both require a structural defect. Measured on
+                  # this fixture's own shape: a fully annotated `ms.Audit` literal carrying the same
+                  # wrong content reports NOTHING, while the same literal with a bogus key name
+                  # reports typeddict-unknown-key and with an `int` value typeddict-item. Content is
+                  # not a type, so no annotation could have caught this one; the untypedness is real
+                  # and it hides the OTHER two classes, which is a different sentence about a
+                  # different defect. The archive renders this row, so the fixture's invention was
+                  # what the committed preview showed.
                   "conservation": {"possible_loss": False}, "window": ms.AUDIT_WINDOW},
         "cross_project": {"global_store_facts": 6, "pulled": [{"name": "release-checks", "scope": "stack-general"}], "promoted": [], "refreshed": 0, "held": 0, "gc_removed": 0},
         "usage": {"window": "2026-08-29..2026-09-05", "transcripts": 8, "dream_excluded": 24, "reads": 14, "facts_read": 6, "mentions": 9, "per_fact": [{"name": n, "reads": r} for n, r in [("source-provenance", 3), ("contract-versioning", 3), ("release-checks", 2), ("artifact-provenance", 2), ("queue-boundaries", 2), ("review-conventions", 2)]], "archive_reads": 0, "misses": []},

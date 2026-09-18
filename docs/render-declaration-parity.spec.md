@@ -1,9 +1,13 @@
 # Render/declaration parity — design-of-record
 
-**Status: revision 10 — a seventh pass: the code review adjudicated. One finding is a live code defect
-and is FIXED here rather than recorded; the rest are prose, and every one is named in the ledger at the
-end. `render_dashboard.py` moves for the first time since the third pass, so the whole mutation table
-was re-derived rather than carried.** The fifth pass swept this
+**Status: revision 14 — an eleventh pass: the fourth review wave, adjudicated. Ten findings land on
+sixteen sites, and the class is uniform — a correct number or fact paired with the wrong OPERAND, or an
+enumeration that no longer covers what it names; not one is a fabricated figure. Three are live code, and
+one of those is this cycle's own root cause arriving in a shipped JS branch rather than in a label. Every
+measured number below was re-derived on this revision's own generation, and the mutation table rebuilt
+rather than carried. This header read "revision 10" for three revisions — the same drift the ledger
+exists to catch, in the document that records it — and is now bound to the generation whose hashes its
+own Revision 14 section states.** The fifth pass had swept this
 cycle's *pre-fix narratives* — every label claiming what a revision the tree no longer contains did —
 executing each claim against `1d97f54`'s renderer rather than re-reading it. That pass then found,
 with the lead's own fourth lens, that **the scope was the defect:** the selection matched with the
@@ -16,9 +20,11 @@ The three: E1-c's (the fourth pass's finding 7, corrected earlier in the pass), 
 the eight cells" (a count of a superseded eight-cell census, generalized to `Pre-fix` by a parenthesis
 the pre-fix renderer never earned — measured, `1d97f54` leaves **0 of 12** green), and E3-c's `'→  @ '`
 (`_ui.wrap` collapses the whitespace run, so the render was `'→ @'` and the two revisions differ only
-by the `?`). The measured generation is bound to commit
+by the `?`). **Revision 10's** generation was bound to commit
 **`7188c1a2cff1c51f59307ddb717cb54910a8783d`** (§4.3), the commit that froze the corrected triple,
-because a document cannot bind itself to the commit that contains it.**
+because a document cannot bind itself to the commit that contains it; the **current** revision's binding
+is stated in its own ledger section, and is a set of file hashes rather than a commit, because its commit
+does not yet exist.**
 Target release: **v0.4.34 (patch)** — five repairs across the ASCII renderer, the **producer**, the schema
 declarations, and the pin that guards them. No cycle-record schema change an existing install can observe
 as incompatible: both E4 edits move a key *into* the contract that the producer already emits, and both E1
@@ -302,9 +308,15 @@ present:
   revisited" forensic does not hold. What holds is narrower and still useful: `operations` and `window`
   are dateless, and neither is written by `audit_diff`.
 - `tests/dashboard_fixture.py` writes a **third** spelling — `"window": "phase 0 → phase 5"` — inside
-  a `def sample():` with **no return annotation**. `mypy` is configured to check `tests/`, but an
-  untyped literal is `dict[str, Any]` to it, so `typeddict-unknown-key` never applies. That is why
-  the fixture's drift survives every gate the repo has.
+  a `def sample():` with **no return annotation**. `mypy` is configured to check `tests/`, and the
+  untyped literal is indeed `dict[str, Any]` to it — but that is **not** why this drift survived, and
+  this clause named the wrong cause. The drift is a **value** on a **declared** key with a **correct
+  type**, and mypy's two typeddict verdicts both need a *structural* defect. Measured on the fixture's
+  own shape: a fully annotated `ms.Audit` literal carrying this same wrong content reports **nothing**,
+  while the same literal with a bogus key name reports `typeddict-unknown-key` and with an `int` value
+  `typeddict-item`. **Content is not a type**, so no annotation could have caught this one; what the
+  untypedness hides is the other two classes — a different defect, and not this one. The fixture's
+  drift survives every gate because of the shape it is, not because of the shape it sits in.
 
 **The unifying rule, and revision 3 had it backwards.** Revision 3 justified (A) by the *absence* of a
 reader and (B) by its presence, then reasoned in opposite directions. The absence premise is **false** —
@@ -589,7 +601,10 @@ branch for the case where there is nothing to draw but the record says there is 
    producer **cannot** build the pair that makes the subtraction live: `_eval` assigns
    `blocked: day-spread` only to a distinctive fleet row, and `sync_global` persists every such row
    (`_spread_src[:_REGISTRAR_BLOCKED_CAP]`, cap 8), so `n_day_spread > 0` always implies a drawn
-   blocked row and `_shown_b ≥ 1`. Measured over the archive: **0 of 104** records carry the field.
+   blocked row and `_shown_b ≥ 1`. Measured over the archive: **0 of 104** records carry a NON-ZERO
+   value — the operand is the VALUE, not the key. `sync_global` writes `n_day_spread`
+   **unconditionally**, so **28 of the 104** carry it and every one of them holds `0`; an earlier
+   draft of this line said "0 of 104 records carry the field", which the producer contradicts.
    The guard is therefore reachable with a non-zero field only on an **authored** record that carries
    the count without the rows — precisely the E2-f fixture's shape. So E2-f is a **shape pin** over
    an authored input, guarding the arithmetic contract (parts sum to the total) rather than a
@@ -3360,3 +3375,241 @@ the delta's location, not the trees'.
 proof and inert by measurement, and the `ci.yml` edit is outside the triple entirely — no test reads the
 workflow. What does change is a gate's **meaning**: a dashboard regression now fails CI instead of
 leaving a red line in an artifact nobody opens.
+
+## Revision 14 — the eleventh pass: the fourth review wave, adjudicated, and a claim that had no measurement
+
+**The fourth review wave ran two lenses — the lead's own prose pass and `rev-prose-2` — and returned ten
+findings. Adjudicated, they land on the sixteen sites below, and the number that matters is not the count
+but the class: every one is a *correct number or fact paired with the wrong operand*, or an enumeration
+that no longer covers what it names. Not one is a fabricated figure.** That is why prose findings survive
+review: a fabrication is self-evident to a reader, while `0 of 104` beside a field 28 records carry reads
+as diligence. Three of the ten are **live code**, and one of those is this cycle's own root cause arriving
+in a shipped JS branch rather than in a label.
+
+The pass audited two surfaces it had not been asked about, and both were its own: the new comment it wrote
+in §F1 claimed the check was a regression guard when it is a pin, and the specimen this document cited for
+an archive figure was **re-measured and found correct** — so the correction was withdrawn rather than
+applied. Both are recorded below.
+
+### Fixed: the JS twin spelled a share as its full binary expansion
+
+`dashboard.sections.js`'s `capturedTree` ended in `return '<span>'+esc(String(v))+'</span>'`. For an
+integer leaf that is right. For a **share** — the one leaf a cycle record genuinely carries as a ratio —
+it shipped `0.49975012493753124` into a `<dl>` of small integers. The ASCII twin spells every number with
+`_g` (`f"{n:g}"`, six significant digits), so the two views disagreed on exactly the kind of figure this
+cycle's parity claims are about, and the disagreement was invisible because nothing renders both.
+
+The repair adds a float arm above the terminal case:
+
+```js
+if(typeof v==='number'&&isFinite(v)&&v!==Math.floor(v))return '<span>'+esc(Number(v.toPrecision(6)))+'</span>';
+```
+
+`Number(v.toPrecision(6))` is `_g`'s **byte-exact** JS twin; integers are excluded deliberately, because
+`toPrecision` would render `1234567` as `"1.23457e+6"` where `_g` renders `1.23457e+06` — the same
+digits, a different spelling, and a second divergence introduced by the fix for the first. `v!==Math.floor(v)`
+is the **ES5** spelling; `Number.isInteger` is ES6 and this file is ES5 throughout.
+
+**The browser check is a pin, and the reason it is one is the value it samples.** At `60a03b4` the
+terminal case is the bare `String(v)` and the file contains **no `toPrecision` at all** (verified by
+`git show`), so the whole expansion renders and the check fails there. A short decimal — `0.5`, `0.5025` —
+would have made it a *regression guard* instead: the two spellings agree on every integer and every value
+of six significant digits or fewer. `a-pins-coverage-is-the-values-and-path-it-samples`, and the value a
+fix moves **to** is the one most likely to be missed.
+
+**And my own comment got that wrong first, which is this section's second finding.** The first draft said
+the check "cannot fail on the pre-fix revision" — reasoning that the two formatters agree on most values,
+while having deliberately sampled a value where they disagree. The comment now states the pin reading and
+names the refutation. `audit-the-diffs-prose` on the repair's own prose: the fix's comment is an
+unaudited surface like any other, and this one was false in the direction that flatters the work.
+
+### Fixed: two spellings that disagreed with their own producer
+
+| Site | What it did | Measurement | Repair |
+| --- | --- | --- | --- |
+| `memory_status.py:4858` | the mutation-log row wrote `{"window": AUDIT_WINDOW, "commit": …, "timestamp": …, **diff}`, and E4 had already given `audit_diff` the `window` key — so `**diff` won the merge | both were the same constant, so the row was **byte-identical either way**: dead duplication, not a defect a reader could see | `window` dropped from the literal; this log row and the record's audit block now have **one source, not two that happen to agree** |
+| `render_dashboard.py:1005` | `mirror-dominated ({share:.0%} of index tokens)` | `.0%` renders `"50%"` for a share of `0.5025` — the **same numeral** as the non-dominated boundary `_MIRROR_DOMINATED` (0.5), so the display discarded the very distinction the routing above it used | `.1%`; shares are ratios of index-token counts (~1500 tokens), so they quantize at `1/1500 ≈ 0.00067` and the first step above the boundary renders `"50.1%"`, never `"50.0%"` |
+
+`weakest-enforcement-site-wins` is the shape of the first row: two sites holding one fact, agreeing by
+coincidence rather than by construction, so a future edit to either one moves the pair apart silently.
+
+### The claim corrections, by site
+
+Twelve prose sites, six files. Two of the ten findings are corrected in **two places each** — the spec and
+the code that states the same claim — which is why the finding count and the site count differ.
+
+| # | Site | The claim | What was measured | Verdict |
+| --- | --- | --- | --- | --- |
+| 1 | `memory_status.py:627` | `domain_lifecycle` is "the **sole** producer↔declaration drift no gate could see" | E4-b's `audit.window` is the same edge, *opposite side*, and its own label says "every gate was blind to it" | **false** — `sole` was the wrong quantifier |
+| 2 | `render_dashboard.py:295` | the first cut of the E3 repair "appended `or "?"` to the whole expression" | the splice was `_clean(n.get("node", "?")) or "?"[:18]` — **before** the subscript; the *other* reconstruction, `(_clean(…) or "?")[:18]`, keeps the truncation and measures **green** | **false**, and false in the direction that matters: a reader rebuilding from the prose would conclude the claim was bogus |
+| 3 | `render_dashboard.py:918` | "seven cells", then an enumeration naming two absent operands | the four blank arms plus `pruned` / `achieved_index` / `projected_index` absent — the numeral was right and the **list was short**, so the sentence read as an arithmetic error against itself | **list corrected**; authority is `_E_REM_CELLS`, the census the E1-e pin iterates |
+| 4 | `render_dashboard.py:1298` | the JS's third arm is unreachable "in the HTML (**0 of 1156** reachable states)" | 1156 is the number of states where the **breakdown rendered**, not the size of the reachable space (17 values³ × 3 fallbacks × 2 × 2 = **58,956**), and a `single-day` part rendered in **0** | **operand wrong** — a subset cited as its own population |
+| 5 | `tests/smoke.py` (F3b) | "**0 of 104** archived records carry the field at all" | `sync_global` writes `n_day_spread` **unconditionally**: **28 of the 104** carry it and every one holds `0` | **false** — the operand is the **VALUE**, not the key |
+| 6 | `tests/smoke.py` (E2-b label) | "SUPPRESSED **as soon as any one of them is not**" | the check supports only the `_n_blocked <= 0` conjunct; deleting either other conjunct moves the render and leaves the suite at 2017 / 0 | **overclaim** — narrowed to what is witnessed, and the unwitnessed pair recorded |
+| 7 | `tests/smoke.py` (E3-b label) | the matcher's blind spot "would be **a hole no site census can find**" | widening the one `bool(d.value)` clause admits exactly **9** more sites (12 → 21) and none of the 9 is guarded | **false of its own census** — nine sites is the one thing a hole is not; it is a **class boundary** the matcher draws |
+| 8 | `tests/dashboard_fixture.py:112` | the `window` drift survives because the literal is untyped, "so `typeddict-unknown-key` never applies" | a **fully annotated** `ms.Audit` literal carrying the same wrong content reports **nothing**; the same literal with a bogus key name reports `typeddict-unknown-key`, and with an `int` value `typeddict-item` | **wrong cause** — content is not a type, so no annotation could have caught it |
+| 9 | `tests/dashboard_fixture.py:86` | `identity` listed `conflicts` before `domain_lifecycle` | `identity_snapshot` sets its five literal keys and adds `conflicts` **inside its `try`**, so `conflicts` is **last** on a real record, and `capturedTree` dumps `Object.keys` in insertion order | **key order** — the fixture rendered a row order no producer can emit |
+| 10 | `.github/workflows/ci.yml` | "the same with `-eo pipefail` **aborts at 1**" | `bash -eo pipefail -c 'exit 7 \| tee f'` reports **7**: pipefail yields the **rightmost non-zero stage's own status**, never a status of its own. The job's own failure reports 1 because an uncaught `AssertionError` exits 1 **in Python** | **wrong mechanism**, matched to the probe's operand |
+| 11 | `docs/…spec.md:595` | "**0 of 104** records carry the field" | as #5 | **false**, as #5 |
+| 12 | `docs/…spec.md:302` | the untyped-literal causal clause | as #8 | **wrong cause**, as #8 |
+
+**Site 5 is the one to read twice, because the same literal `0 of 104` appears in this document and is
+CORRECT at the other site.** `:2346` states that the newly-covered E2-c state occurs **0 of 104** times,
+and that figure was re-derived here by replicating `render_dashboard.py`'s own arithmetic: both guards fire
+on the same 27 records, so the state is genuinely unreachable in the archive. **I drafted a correction for
+it and withdrew it on the measurement.** Two sites sharing a literal, one true and one false, is an argument
+for deriving each figure at its site rather than for trusting a search-and-replace — and it is why this
+table names sites rather than findings.
+
+### The ledger's own claim was false, and so was a comment's
+
+Revision 13 recorded that the `ci.yml` repair's comment "states only what was measured here". It did not.
+The comment's comparison line read *"the same with `-eo pipefail` aborts at 1"* — a mechanism claim no run
+produced, since the probe returns 7 and the 1 belongs to Python's exit code. Revision 13 had the
+measurement in its own table (`rc 7`, at `:3180-3181`) and wrote a comment that named a different number
+anyway. **The ledger recorded the discipline and the artifact broke it**, which is the finding: an audit
+that certifies a comment is an assertion about a surface the audit did not run.
+
+The same shape appears a second time, and this pass found it: `render_dashboard.py:1336-1339` says
+*"**measured**, deleting `and not _anch` changes the render for the third state and deleting `and not
+_cands` changes it for candidates beside an explicit `n_blocked: 0`"*. Revision 13 ran both deletions and
+recorded, accurately, that they leave the suite **green** — but it measured the **suite counts only**. No
+render probe appears anywhere in this document, and a census of the record finds none: what Revision 13
+established was that the conjuncts are **unwitnessed**, never that they are **live**. A rule nobody checks
+that also does nothing is dead code, and the two readings have opposite remedies.
+
+### A claim that had no measurement, now measured
+
+So the render half was measured this pass, in isolation, one process per tree. Two states, each named by
+the comment, driven through the renderer with one conjunct deleted:
+
+| Conjunct deleted | State | Cold-state line, fixed | Cold-state line, injected | Suite |
+| --- | --- | --- | --- | --- |
+| `not _cands` | `n_blocked: 0` beside one fleet candidate | **absent** | **present** | 2017 / 0 |
+| `not _anch` | `n_blocked: 0`, no candidates, one decline-anchor | **absent** | **present** | 2017 / 0 |
+| `_n_blocked <= 0` | the all-clear state | present | — | **2016 / 1 — `E2-b` alone** |
+
+The third row is the pin the suite already had; the first two are the rules it does not defend. The
+all-clear state renders the line in **all three** trees, so each injection's change is attributable to its
+conjunct and not to a broken fixture. **The comment's claim is true in every clause, and it is now a
+measurement rather than an assertion** — which is the whole of what this pass changed about it.
+
+### Two corrections that are mine to own
+
+- **The F1 comment above**, whose first draft claimed a strength the code did not have. Found by injection
+  — deleting the live float arm reds the (4c) check with every check before it green — rather than by
+  re-reading the sentence.
+- **The withdrawn `:2346` correction.** I measured this document's own `0 of 104` against the archive,
+  found the state does occur **0** times, and declined to edit a figure I had already drafted a
+  replacement for. The lesson is the one the third pass recorded in this file's own ledger: a
+  disagreement about a figure is evidence about its **operand**.
+
+### The measurement
+
+The generation was rebuilt because the triple moved: `tests/smoke.py` (comments and one label),
+`tests/dashboard_fixture.py` (a key order and a comment), `tests/dashboard_browser.py` (the new check),
+`dashboard.sections.js` (**live**), `memory_status.py` (**live**, one key dropped),
+`render_dashboard.py` (**live**, `.0%` → `.1%`), and `ci.yml` (outside the triple).
+
+The propagation classification was **measured on the previous generation's own trees before the build**,
+not declared: `dashboard.sections.js`, `smoke.py`, `dashboard_fixture.py`, `dashboard_browser.py` and
+`ci.yml` each hash to **one** value across all thirteen trees and go **flat**; `render_dashboard.py`
+(**9** distinct) and `memory_status.py` (**4** distinct) go **surgically**, per tree, with an AST proof
+each. `propagation-is-safe-only-for-tree-invariant-files`: a flat overlay onto a tree-variant file would
+have made the batch thirteen copies of LIVE and every mutation claim vacuous-but-green.
+
+**A hunk a tree cannot receive must be INERT.** That replaced Revision 13's comment-only guard, which was
+a proxy for this property and no longer applied — this delta **is** a code change. Every rejected hunk was
+proven comment-only, and the delta's live lines were asserted present on every tree that had the line they
+edit (`share:.0%` on 10 trees, the dead `"window": AUDIT_WINDOW` pair on 12; the rest lost the region to
+their own mutation, which is why they are SKIP).
+
+**The batch, tree for tree: `LIVE` 2017 / 0 · `mutA` 2000 / 17 · `mutD` 2011 / 6 · `mutB` 2014 / 3 ·
+`prefixE` 1997 / 20 · `mutE` 1996 / 21 · `R1f` `R1g` `R1h` `R1j` `R2f` `RC89` 2016 / 1 each · `R1i`
+2015 / 2 — total red 75.**
+
+**And the red sets are compared, not the counts.** The counts match the previous generation tree for
+tree, but a count says *how many* moved and a probe says *which*: two trees can red six checks each and
+red different six. Extracted per tree from both generations' own logs as identities: **13/13 identical,
+0 moved, 0 unreadable**. Two shared reds carry **edited label text** (`E2-b`, `E3-b`) — both accounted for
+by the delta's own patch, both identity-preserving, and named rather than reported as a bare boolean.
+
+**The injections.** The two conjunct deletions above ran on the batch's own LIVE tree, so the only
+difference from the 2017 / 0 baseline is the deletion, and the third conjunct's deletion reds `E2-b` and
+**nothing else** — which is what makes `E2-b` a pin rather than a guard.
+
+**The pin's counterfactual, on the revision its label names.** `f175b8e`'s renderer with this revision's
+harness: **2016 / 1, red `v0.4.34 E1-i2` alone** — PIN CONFIRMED, with the tree's identity asserted
+before the run (`pref175`'s renderer equals `f175b8e`'s and not the batch's; its harness equals the
+batch's).
+
+### The instrument's own fault taxonomy, grown
+
+The follow-up comparer now exits a **distinct code per fault**, because a set comparison has failure modes
+a count comparison does not, and none of them look like a number that is wrong:
+
+| Code | Fault | Why it cannot be a verdict |
+| --- | --- | --- |
+| **80** | a precondition failed — a batch lacks its completion sentinel, or a log is missing | nothing was measured; the two sides are not both on disk |
+| **81** | a per-tree log never reached its summary line | the suite crashed mid-run, so its reds are the reds of an **unfinished grading** |
+| **82** | the marker census is **incomplete** — a line carries `✗` in a shape neither recognized arm matches | the extractor's two shapes do not cover the data it is classifying |
+| **83** | the key **collapses** distinct checks — the key count is less than the suite's own reported red count | "sets identical" would be vacuous |
+| **84** | the two generations' harness totals differ | the runs are not the same suite, so set equality says nothing about the delta |
+
+Arm 82 exists because `✗` occurs in this suite in **two** shapes: as a **red verdict** (`  ✗ <label>`) and
+as **quoted text inside a passing label** (`✓ … partial arc shows its ✗ gaps`). In `rev17/mutD.log` there
+are ten occurrences of the glyph and **six** red verdicts. A grep for the character would have conflated
+them; a grep for `FAIL` would have been worse still — all **thirteen** of its hits in that log sit inside
+*passing* labels (`pre-fix FAILS`, `0 FAIL / 2 expected WARNs`). `a-guards-label-is-not-its-predicate`, on
+the instrument written to catch it.
+
+### A log read while its writer ran — three times, in one command
+
+The browser suite's count was taken three times and read `904`, then `1272`, then **`1336`**. The file was
+the same file, the command the same command, and the first two readings are **prefixes**: `nohup … &`
+returns immediately, so the background-task "completed" notification described the *wrapper*, not the
+suite. A three-second stability check also passed mid-run, during a pause.
+
+`tests/dashboard_browser.py` prints **no summary line** — `main()` simply returns, and `__main__` calls it
+unwrapped — so its count is only ever *derived* from its `PASS`/`FAIL` lines, and a derived count read
+mid-run is a prefix that looks like a census. `an-absence-in-a-live-log-is-not-a-measurement`, arriving
+in the pass that had already cited the lesson: **bind a count to the writer's exit, never to the file
+existing, and never to a short stable window.** The recorded figure is **1336 passed / 0 failed**, taken
+after the writer exited.
+
+### What moved, measured
+
+| Member | Hash (first 16) | Trees |
+| --- | --- | --- |
+| `tests/smoke.py` | `8101cf72648f0dea` | **all thirteen** — one hash, the tree-invariant signature |
+| `dashboard.sections.js` | `3edcb4e7b966610e` | all thirteen |
+| `tests/dashboard_fixture.py` | `b2832b6f6e36cce5` | all thirteen |
+| `tests/dashboard_browser.py` | `ec5dc3237c6109af` | all thirteen |
+| `.github/workflows/ci.yml` | `a1829e8c2599ead2` | all thirteen |
+| `memory_status.py` | `3028d545735a5750` | LIVE, mutA, mutD, mutE, R1f, R1g, R1i, R1j, R2f, RC89 |
+| | `01ad157ffb207a2c` | mutB, prefixE |
+| | `f3546bdd01014194` | mutE |
+| | `5423a84e69b98971` | R1h |
+| `render_dashboard.py` | `923ced3f51464d31` | LIVE, mutB, R1h |
+| | `309e3df5b02a2ec7` | mutA, prefixE, mutE |
+| | `3daeeba9bebc6d1b` · `014578a721e1a19c` · `7e7a62e496e93ae2` · `e972e8c66cf40c27` · `423f91515a3b6c9d` · `a92325defc1074a2` · `8ef18f1b67d38c12` | mutD · R1f · R1g · R1i · R1j · R2f · RC89 |
+
+**Nine distinct `render_dashboard.py` hashes, four distinct `memory_status.py` hashes, one each for the
+five flat files** — the signature this cycle has measured at every revision, on a delta that touched two
+triple members for the first time since revision 5. The five flat files are byte-identical to the
+worktree, asserted per file, so the batch measured **what ships**.
+
+**This revision's generation is a working tree, not a commit, and that is stated rather than papered
+over.** HEAD is `60a03b4` plus the delta above; there is no commit to name because the commit does not yet
+exist. The seven hashes are the binding, and the run is recoverable from the commit that lands this delta
+— an instance of the rule revision 10 recorded: **a document cannot bind itself to the commit that
+contains it**, and ordering must be commit → run → record.
+
+### The gates, on this revision
+
+`tests/smoke.py` **2017 passed / 0 failed**; `tests/docs_links.py` ok; `tests/simulate_accumulation.py`
+all lifecycle properties hold; `tests/validate_manifests.py` v0.4.34; `mypy --config-file mypy.ini` clean;
+`tests/dashboard_browser.py` **1336 passed / 0 failed**. The committed previews were regenerated in the
+same change, and the delta audited rather than accepted: `sample.json` differs from the previous preview
+**only in key order** (equal as parsed JSON and under `sort_keys=True` serialization), and `index.html`
+differs by that same reorder plus the inlined `dashboard.sections.js` — the file `render_html.py` embeds.

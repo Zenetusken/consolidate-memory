@@ -137,11 +137,16 @@ jobs:
           python3 -m playwright install --with-deps chromium
       # `shell:` here is required, not decoration. GitHub's default Linux shell is `bash -e {0}` — which
       # sets `-e` but NOT `pipefail` — so a piped step's exit status is the RIGHT-hand command's, and
-      # `tee` returns 0 whenever it writes. Measured: `bash -e -c '<failing cmd> | tee f'` continues and
-      # reports 0; the same with `-eo pipefail` aborts at 1. Without this the job reports green while
-      # its checks fail, and the failure survives only in the uploaded artifact — the repo's own lesson
-      # that a pipeline's exit status belongs to its last stage. The test does exit non-zero:
-      # dashboard_browser.py raises AssertionError in `main`, which `__main__` calls unwrapped.
+      # `tee` returns 0 whenever it writes. Measured: `bash -e -c 'exit 7 | tee f'` continues and reports
+      # 0, while `bash -eo pipefail -c 'exit 7 | tee f'` reports 7. Note WHAT pipefail returns: the
+      # RIGHTMOST NON-ZERO stage's OWN status, never a status of its own — so an earlier draft of this
+      # line ("the same with `-eo pipefail` aborts at 1") named the wrong mechanism and matched only
+      # the probe's operand. 7 is the probe's `exit 7`; THIS job's failure reports 1 because an uncaught
+      # AssertionError exits 1 in Python, which is a fact about the test, not about the shell. Without
+      # pipefail the job reports green while its checks fail, and the failure survives only in the
+      # uploaded artifact — the repo's own lesson that a pipeline's exit status belongs to its last
+      # stage. The test does exit non-zero: dashboard_browser.py raises AssertionError in `main`, which
+      # `__main__` calls unwrapped.
       - name: dashboard behavior and responsive layout
         shell: bash -eo pipefail {0}
         run: |

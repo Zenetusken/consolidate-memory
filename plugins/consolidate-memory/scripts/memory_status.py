@@ -627,9 +627,12 @@ class Identity(TypedDict, total=False):
     cross_project_allowed: bool
     conflicts: int           # open three-way mirror conflicts for this project (omitted if unread)
     # v0.4.34 (E4): ALWAYS emitted by identity_snapshot (it is a real StoreContext field, defaulting to
-    # "active") but declared nowhere until now — the sole producer↔declaration drift no gate could see,
-    # because the SKILL↔TypedDict pin compares two surfaces that were wrong TOGETHER. Not a display
-    # detail: `sync_global`'s pull/promote path REFUSES on a deleting/deleted domain read from it.
+    # "active") but declared nowhere until now — a producer↔declaration drift no gate could see, because
+    # the SKILL↔TypedDict pin compares two surfaces that were wrong TOGETHER. NOT the only one: E4-b's
+    # `audit.window` (declared, emitted by no producer) is the same edge, opposite side, and by its own
+    # label "every gate was blind to it" — so this comment read "the SOLE … drift" until the fifth pass.
+    # Not a display detail: `sync_global`'s pull/promote path REFUSES on a deleting/deleted domain read
+    # from it.
     domain_lifecycle: str    # active | deleting | deleted
 
 
@@ -4855,7 +4858,12 @@ def main() -> int:
                 _mlog = mutation_log_write_path(ctx["auto_mem"])
                 _mlog.parent.mkdir(parents=True, exist_ok=True)
                 with open(_mlog, "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps({"window": AUDIT_WINDOW, "commit": _ident[0], "timestamp": _ident[1], **diff}) + "\n")
+                    # v0.4.34 (E4): `window` now rides inside `diff` (audit_diff emits it under
+                    # AUDIT_WINDOW), so spelling it here as well was dead duplication — `**diff` won the
+                    # merge and both were the same constant, so the row was byte-identical either way.
+                    # Dropped so this log row and the record's audit block have ONE source, not two that
+                    # happen to agree.
+                    fh.write(json.dumps({"commit": _ident[0], "timestamp": _ident[1], **diff}) + "\n")
         except OSError:
             pass
         if audit_into:          # v0.1.53: deterministically inject the audit block INTO the cycle record (no model
