@@ -530,8 +530,17 @@ def main() -> int:
     while i < len(argv):
         a = argv[i]
         if a in _VALUE_FLAGS:
-            if i + 1 >= len(argv):                       # a trailing value-flag (its value lost) is a usage
-                print(f"{a} requires a value", file=sys.stderr)  # error, not an "unknown flag" (code-review [4])
+            # v0.4.35 (RC-1b): `len()` alone admitted two tokens that are not values. (1) The EMPTY
+            # token — `--into ""` is a token, so the guard held and the flag bound "", the very value
+            # an unsupplied flag leaves; measured byte-identical to omitting the flag. (2) The NEXT
+            # FLAG — `--since --into seed.json` bound `--since = "--into"`, so the real `--into` was
+            # consumed as a value and vanished: rc 0, empty stderr, seed untouched, measured
+            # 2026-09-18 against a control that injects and says so. Both are a value never supplied.
+            # (A trailing value-flag, its value lost, is the arm this guard was written for.) The dash
+            # conjunct is the one `memory_status.py`'s `_VALUE_FLAGS` guard has carried since v0.4.29
+            # — this is the sibling catching up to the idiom, not a new rule.
+            if i + 1 >= len(argv) or argv[i + 1].startswith("-") or argv[i + 1] == "":
+                print(f"{a} requires a value", file=sys.stderr)  # usage error, not an "unknown flag" (code-review [4])
                 return 2
             v = argv[i + 1]
             if a == "--since":

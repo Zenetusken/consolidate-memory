@@ -793,7 +793,15 @@ def main() -> int:
     while i < len(argv):
         a = argv[i]
         if a in _VALUE_FLAGS:
-            if i + 1 >= len(argv):                       # a trailing value-flag (its value lost) is usage
+            # v0.4.35 (RC-1b): `len()` alone admitted two tokens that are not values. (1) The EMPTY
+            # token — `--into ""` is a token, so the guard bound "", the very value an unsupplied flag
+            # leaves (measured byte-identical to omitting the flag). (2) The NEXT FLAG —
+            # `--recalls <proj> --since --into seed.json` bound `--since = "--into"`, so the real
+            # `--into` vanished: rc 0, empty stderr, seed untouched, measured 2026-09-18 against a
+            # control that injects and says so. (A trailing value-flag, its value lost, is the arm
+            # this guard was written for.) The dash conjunct is `memory_status.py`'s since v0.4.29 —
+            # the sibling catching up to the idiom, not a new rule. See distill_scan.py's copy.
+            if i + 1 >= len(argv) or argv[i + 1].startswith("-") or argv[i + 1] == "":
                 print(f"{a} requires a value", file=sys.stderr)
                 return 2
             v = argv[i + 1]

@@ -124,14 +124,44 @@ def _lbl(text: str, width: int = 0) -> str:
     return _c(s, "dim")
 
 
-# action -> (glyph, label, color) ; ordering controls display order
-_ACTIONS = {
+# action -> (glyph, label, color) ; ordering controls display order.
+# v0.4.35 (RC-3): the KEYS come from `ms.ACTION_VOCAB` — this table holds presentation only
+# (glyph/label/colour), never the vocabulary itself. Spelling the five names here was how the
+# panel came to count a superset of what the ladder beside it counted; the two now cannot
+# diverge, because there is one list. Both directions of a divergence are the same fault — the
+# declaration and this table disagreeing — and both are read by ONE census check in
+# `tests/smoke.py`, the key set compared for equality in each direction.
+_ACTION_PRESENTATION = {
     "added": ("+", "added", "green"),
     "corrected": ("~", "corrected", "yellow"),
     "deleted": ("−", "deleted", "red"),   # − minus sign
     "reconciled": ("=", "reconciled", "cyan"),
     "skipped": ("·", "skipped", "dim"),    # · middle dot
 }
+
+
+def _actions() -> dict:
+    """The presentation rows for the DECLARED vocabulary, read at CALL time — never at import.
+
+    A name `ACTION_VOCAB` declares with no row here is a real incompleteness, but it is one the
+    panel survives: the **declaration is the truth and the row is cosmetic**, so the action renders
+    under a neutral row (`?`, the name itself, dim) rather than being dropped or raising. Dropping it
+    would make the panel's count line disagree with the declaration — RC-3's own defect — and raising
+    is worse than both. This branch shipped both worse shapes first, and MEASURED 2026-09-18 on `tar`
+    copies of this tree, neither of them yields a totals line: as a MODULE-SCOPE comprehension it
+    raised `KeyError: 'archived'` at `tests/smoke.py:21` (this file is imported at that file's module
+    scope), a traceback with no `✓`/`✗` at all; moved to a call-time raise, it aborted at the 83rd
+    check — 82 printed, then `smoke.py:459`'s `rd.render(...)` raised. An abort is not a tally.
+
+    So the incompleteness is caught where an editor actually looks — the census in `tests/smoke.py`
+    asserts the two KEY SETS are equal against the raw table, so a synthesized row reds there as a
+    counted failure and costs the suite nothing.
+    """
+    rows = dict(_ACTION_PRESENTATION)
+    for name, _w in ms.ACTION_VOCAB:
+        if name not in rows:
+            rows[name] = ("?", name, "dim")
+    return {name: rows[name] for name, _w in ms.ACTION_VOCAB}
 # scope abbreviations for the compact columns
 _SC = {"project-local": "proj", "stack-general": "stack", "user-global": "global"}
 
@@ -345,14 +375,18 @@ def _network_section(record: Mapping[str, Any], net: Mapping[str, Any]) -> list:
 
     # This cycle's lifecycle on the triggering node — derived, not hand-counted.
     entries = _lget(record, "entries")
-    cnt = {k: sum(1 for e in entries if e.get("action") == k) for k in _ACTIONS}
-    parts = [f"{g} {cnt[k]} {lbl}" for k, (g, lbl, _col) in _ACTIONS.items() if cnt[k]]
+    cnt = {k: sum(1 for e in entries if e.get("action") == k) for k in _actions()}
+    parts = [f"{g} {cnt[k]} {lbl}" for k, (g, lbl, _col) in _actions().items() if cnt[k]]
     idx = _dget(_dget(record, "budget"), "index")
     xp = _dget(record, "cross_project")
     trig = _clean(net.get("trigger", "?")) or "?"
     # DOUBLE-SPACE join (not ' · ') — same reason as the Changes legend: the skip glyph
     # '·' must not read as a doubled dot beside a '·' separator.
-    out.append(f"    {_lbl('this cycle on')} {trig}: " + ("  ".join(parts) if parts else "no writes"))
+    # v0.4.35 (RC-3): the fallback names the set this line actually TESTS — every name in
+    # ACTION_VOCAB, not the write subset. It read "no writes" for a matcher that spans all five
+    # actions, so the one string the line emits when it found nothing described a smaller
+    # question than the one it asked.
+    out.append(f"    {_lbl('this cycle on')} {trig}: " + ("  ".join(parts) if parts else "no actions recorded"))
     extras = []
     if "after_tokens" in idx:
         extras.append(f"always-loaded ≈{idx.get('before_tokens', 0)} → ≈{idx.get('after_tokens', 0)} tok")
@@ -397,15 +431,23 @@ def _duty_gaps_section(record: Mapping[str, Any]) -> list:
       · `no-dir`/`io-error` — an unappendable log exits 0 a few lines below, so a gating duty
         renders "⚠ RECORD DUTY GAPS" beside a clean exit. Named open in spec §5 with the arc arm's
         identical hole; closing it changes the exit ladder, so it is carried, not fixed here.
-      · the WARN-ONLY path — clause A alone exits 0 by design (see `_DUTY_CLAUSES`), so the panel
-        is the whole report. That one is intended, and the cue below says so in its own words
-        rather than announcing a clean persist over a printed ⚠.
+      · the WARN-ONLY path — a gap whose every FIRED ROW is `warn` exits 0 by design (see
+        `_DUTY_CLAUSES`: severity is per-row, and the `alert` rows returned 3 above), so the
+        panel is the whole report. That one is intended, and the cue below says so in its own
+        words rather than announcing a clean persist over a printed ⚠. Stated as the relation
+        and not as a roster: this read *"clause A alone"*, which went false the moment a second
+        row shipped at `warn` severity.
 
     Every word that NAMES the gap comes from the fired ROW (`label`, `detail`, `remedy`); the
     panel's FRAME — header, subtitle and `→` — is shared, which is what makes the per-row text
-    the only place a generic sentence could hide. Each clause has a DIFFERENT remedy (fill a session id / record a tier / complete a
-    trio), and one generic sentence for all three would be the same defect this cycle exists to
-    fix, one layer up: a fixed label standing where derived data belongs.
+    the only place a generic sentence could hide. Every clause carries its OWN remedy in its own
+    row, and one generic sentence standing in for the family would be the same defect this cycle
+    exists to fix, one layer up: a fixed label standing where derived data belongs. (v0.4.35: this
+    sentence used to ENUMERATE the remedies — "fill a session id / record a tier / complete a
+    trio" — which made it a third statement of the clause count in shipped prose, false the moment
+    the table grew. The enumeration is gone rather than extended: an inventory of a list that
+    grows is a statement that has to be maintained, and the relation it was reaching for is the
+    one written here — every row carries its own remedy — which is true at any size.)
 
     **The subtitle counts ROWS, and its wording now says so.** Its first cut read `%d seeded
     field(s)` over `len(gaps)` — and `len(gaps)` is fired CLAUSES, not fields. For clause C the two
@@ -730,7 +772,7 @@ def render(record: ms.CycleRecord, *, judged: bool = False, narration: Any = Non
     if not entries:
         out.append("    (none)")
     else:
-        for key, (glyph, label, gcol) in _ACTIONS.items():
+        for key, (glyph, label, gcol) in _actions().items():
             for e in [x for x in entries if x.get("action") == key]:
                 # SELF-LABELLING rows: glyph + the action WORD + the memory name. Spelling
                 # out the action ("added" / "skipped" / …) means a skipped entry is
@@ -2021,7 +2063,7 @@ def main() -> int:
             return 4
         if status == "ok":
             if _gaps:
-                # WARN-ONLY gaps (clause A alone — every `alert` returned 3 above). Exit 0 here is
+                # WARN-ONLY gaps (every fired row is `warn` — every `alert` returned 3 above). Exit 0 here is
                 # by design, but the word "clean" beside a PRINTED ⚠ RECORD DUTY GAPS panel is this
                 # cycle's own thesis re-entering through the cue: a duty rendering as silence, one
                 # layer out. (SKILL defines the WAKE as rendering "only through a clean exit 0", so

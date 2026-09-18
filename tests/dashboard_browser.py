@@ -248,7 +248,13 @@ def main(out,capture=False):
         check('Deep Field is the default under a light system preference',page.locator('body').evaluate('e=>getComputedStyle(e).backgroundColor')=='rgb(4, 7, 14)')
         check('summary follows header KPIs and precedes network',page.evaluate("document.querySelector('#dream-blk').previousElementSibling.id==='kpis' && document.querySelector('#dream-blk').nextElementSibling.id==='network-blk'"))
         check('stable section hooks are retained',all(page.locator('#'+s).count()==1 for s in ['traj','trend','rigor','dream-blk','pass-blk','network-blk','history-blk','entries-blk','audit','verify','dream-arc','net-chips','net-detail']))
-        check('summary names recorded outcome and evidence',all(t in page.locator('#dream-summary').inner_text() for t in ['LIGHT PASS','5 confirmed claims','4 observed file operations','1 unverifiable claim']))
+        # v0.4.35 (RC-3): the expectation moved with the matcher. Selection 7 is the fixture's
+        # LAST cycle, whose entries are `added, reconciled, corrected, skipped`; the ladder used
+        # to count three of those five names, read 2 writes, and stamp LIGHT PASS. `reconciled`
+        # relocates a pointer — a store modification — so the corrected count is 3 and the cycle
+        # lands on SUBSTANTIAL. Measured across all eight cycles, one process per tree: this is
+        # the ONLY cycle whose stamp moves.
+        check('summary names recorded outcome and evidence',all(t in page.locator('#dream-summary').inner_text() for t in ['SUBSTANTIAL PASS','5 confirmed claims','4 observed file operations','1 unverifiable claim']))
         check('summary names the unverifiable claim at the warning (the v0.4.22 carrier join)', '1 unverifiable claim — cache-expiry-claim' in page.locator('#dream-summary').inner_text())
         captured_prose=[record['dream']['sleep']]+record['dream']['beats']+[record['dream']['wake']]
         check('complete narration appears once in captured order',page.locator('#dream-arc .dream-voice').all_text_contents()==[s[1:-1] for s in captured_prose])

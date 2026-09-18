@@ -5,6 +5,111 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.35] — 2026-09-18
+
+**Patch — a refusal stops being spelled like a verdict. Eight faces, one root cause: a surface
+re-derives meaning from something other than the data that produced it, and the value it invents is
+the one that reads as a clean result.**
+
+The first of the two cycles staged from the 2026-09-14 audit — the data-integrity half. The surfaces
+that read the *world* wrong (identity taken from the ambient context, prose asserting what nothing
+ties to the tree) are chartered separately. Design and evidence:
+`docs/refusal-verdict-parity.spec.md`.
+
+1. **RC-1a — a fault must not degrade into a verdict.** `--audit` read an unreadable, absent or
+   invalid-JSON snapshot as `before = {}`, and `audit_diff` then reported **every store file as
+   created** — measured live on 2026-09-15 as a fabricated `+572,437 tok`, **exit 0**, archived as a
+   real row and rendered by every downstream surface. A missing or unreadable snapshot is now a
+   **named fault with a named remedy, a non-zero exit, and no row written**, extending the sibling
+   `--diffs` path's existing idiom rather than inventing a second one. The same arm had a second
+   face: `--diffs` printed **one sentence for four causes**, so a *named* path that could not be read
+   and a legitimately **empty** store snapshot both wore the remedy for an omitted flag — a store
+   that was correctly empty was told to re-run a phase that had already run and succeeded. Each cause
+   now states itself. The third face is in the rebuild's archive pass: a store-root doc **no loop
+   could read** is named and fails the plan closed, because an unreadable placement record cannot be
+   told from an absent one.
+
+2. **RC-1b — a recognized flag with a missing value is a usage error.** Five value-taking flags
+   parsed `--flag <value>` by looking one token ahead and accepting it **only if it did not start
+   with `-`**. A missing value therefore left the variable at the value meaning *"flag not supplied"*,
+   so a malformed command was read as an absent one — the flag accepted, nothing assigned, and each
+   sink failing differently. `--stamp-marker` already re-distinguished the two and exited 2; that
+   verdict is now the general rule across the five flags whose sinks cannot tell the difference, and
+   it is applied to **every** occurrence rather than the first — the parse reads only the first, so
+   `--before <valid> --before` (bare, trailing) would have satisfied a first-occurrence guard while
+   the malformed flag went unreported. **The same guard needed a second predicate**, because a flag
+   present with an explicitly **empty** value is neither *missing* nor *absent*: `--audit ""` — a
+   shell variable that expanded to nothing — carried `"".startswith("-")` as `False`, so it was
+   admitted and reached RC-1a's `before = {}` arm through the plainest route of all. Measured at
+   exit 0 with a summary reading `claude_md: created 1024, token_delta 4075886` where the same
+   fixture's real snapshot reads 0/0; it now exits 2 like every other missing value.
+   **The same arm sat at three more sites, and the class is closed here rather than one site of it:**
+   v0.4.29's `_VALUE_FLAGS` guards in `distill_scan.py` (6 flags), `extract_signals.py` (4) and
+   `sync_global.py` (`--into`, by two routes — `--into ""` and the equals form `--into=`) test a
+   value's **presence**, never its **emptiness** — `i + 1 >= len(argv)` admits `""`, because an empty
+   token *is* a token, so an unset shell variable reached every one of them. Measured 2026-09-18 with
+   each site run three ways (flag omitted / flag with an empty value / flag with a real value) under a
+   hermetic `HOME`: the empty arm was **byte-identical to the omitted arm**, and differed from the
+   real-value arm every script already instruments (`distill_scan` prints its injection,
+   `extract_signals` a scope warning, `sync_global` reaches its read/write arm). All three now exit 2
+   naming the flag. `sync_global`'s guard is scoped to the `--registrar` branch by measurement rather
+   than by convenience — outside it the flag is never consumed, and the script already warns it is
+   ignored (on the pre-fix tree too), so a parse-time guard would fire where the flag is *correctly*
+   ignored. The one arm that already did — `sync_global`'s bare trailing `--into` — is kept by
+   a GUARD and not counted as a pin, because the pre-fix tree measures **12 reds and not 13**.
+
+3. **RC-1c — unevaluated is not a removal verdict.** `_rebuild_plan` argued the safe direction
+   twice in its own comments — *"it may never REMOVE a live one"*, *"reading a refusal as 'no
+   entries' can only re-add, never delete"* — and then treated a fact it could not **evaluate** as one
+   it had decided to **remove**: the stem never entered `planned`, so `would_remove` named it and the
+   apply physically dropped its pointer. The reachable danger is the false positive: a firewall
+   refusal on a live fact's body de-indexed that fact, through a line two comment blocks above
+   forbid it. The plan now gains the stems it could not evaluate and **retains their existing pointer
+   line verbatim** from the already-pinned index snapshot. **Operator-visible change:** a stem that
+   used to disappear from the index now stays — `--skip-invalid`'s `omitted` means *"left in place,
+   unverified"* rather than *"removed"*.
+
+4. **RC-1d — one string cannot carry two causes.** An archive refusal used one message for both *"not
+   a fact"* and *"secret-shaped"*, so the operator could not tell which admission rule fired.
+
+5. **RC-2 — the guard must test what it claims.** `--audit`'s dedup comment promised it would not
+   *"double-append an indistinguishable duplicate"*; the code tested `(commit, timestamp)` **identity**
+   and only against the **last** row. So a same-stamp correction was dropped and a false row was
+   permanent, while a *different* stamp appended a contradiction with equal standing and no marker.
+   The guard now scans every row and writes a `supersedes` field when a later run corrects an earlier
+   one. Measured on the shipped fleet before the change: 105 mutation rows across 13 logs, 73 of them
+   carrying an **empty** commit — the arm the identity test skipped outright.
+
+6. **RC-3 — one vocabulary, one matcher.** `outcome_of` counted a 3-element subset of the action
+   vocabulary while the panel rendered from the *same record* tallied all five, so one record printed
+   `= 5 reconciled` **directly above** `NO-OP PASS · reviewed, nothing changed`. Both now read one
+   declared vocabulary, and a smoke check counts the sites so a sixth cannot appear unmatcher'd.
+
+7. **RC-3b — a name must not invert its value.** `would_readd_archived_pointers` held the re-adds the
+   plan had **declined**. Renamed `would_keep_archived_pointers`, so the operator's one interface
+   stops naming the opposite of what it reports.
+
+8. **RC-4 — two duties gain a carrier.** A seed's `entries: []` was indistinguishable from a
+   decided-nothing pass, and an absent `demotion.verdict` rendered as silence — *"ran and justified
+   both"* and *"never ran"* as the same bytes. Both are now rows in the **existing** record-duty
+   table, held to the same standard as the three shipped in v0.4.33: a clause that fires on a state
+   the producer writes **deliberately** is a false-positive class, not a refinement, so each row
+   abstains on the legitimate classes and is pinned against them.
+
+**Pins and the exit-code rule.** 71 new checks. Each fix's pin **fails on pre-fix code**; checks that
+cannot (they are green pre-fix by construction) are labelled GUARD rather than PIN, and the
+distinction is asserted rather than claimed — several were split into a PIN and a GUARD precisely
+because a conjunction is never covered by covering its operands separately. The `--audit` refusal
+takes a **non-zero exit** while the `--diffs` sibling keeps its `0`, and the difference is stated
+rather than left to be rediscovered: `--diffs`' skip is a routine stamping state under its standing
+rule that a diff-capture failure must never crash a dream, whereas every `--audit` arm here is a
+**fabrication**. The cost is named in the spec — a non-zero exit stalls the pass rather than
+completing it with a bad row, and a stalled step is recoverable in one command.
+
+**Two behavioral changes an operator can observe:** a stem the rebuild could not evaluate now keeps
+its index pointer (item 3), and a named-but-unreadable `--audit` snapshot now exits non-zero and
+writes nothing where it previously wrote a fabricated row (item 1).
+
 ## [0.4.34] — 2026-09-17
 
 **Patch — the renderer stops deciding what a record means by reading its labels. Five fixes, one

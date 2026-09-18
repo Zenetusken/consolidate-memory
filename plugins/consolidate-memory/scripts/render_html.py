@@ -28,17 +28,48 @@ import memory_status as ms  # sibling: the SINGLE-SOURCE procedure_integrity pre
 _TEMPLATE = Path(__file__).parent / "dashboard.template.html"
 _BUNDLES = {"/*__CM_NETWORK__*/": "dashboard.network.js",
             "/*__CM_SECTIONS__*/": "dashboard.sections.js"}
+# v0.4.35 (RC-3): the action vocabulary marker. Its substitution CANNOT ride `_BUNDLES` — that
+# dict maps a marker to a FILENAME read just below, and this one's replacement is a JSON literal
+# with no file to read, so it is not expressible as a member. It gets its own replace and its own
+# exactly-once check beside that loop rather than inside it. The check is not decoration: smoke
+# calls `_load_template()` UNGUARDED to compute the `_EMBED_KEYS` teeth pin, so a marker count
+# other than one raises ValueError OUT OF THE SUITE (no totals line, exit 1) rather than failing
+# a check — and the single-declaration form is what keeps that count at one.
+_WRITE_ACTIONS_MARKER = "/*__CM_WRITE_ACTIONS__*/"
 
 
 def _load_template() -> str:
     """Inline the shipped vanilla-JS modules, retaining a single offline artifact."""
     template = _TEMPLATE.read_text(encoding="utf-8")
+    # Substituted from the declaration, so the template's two count sites cannot restate a
+    # subset of it. First, against the pristine template — a marker that only a bundle could
+    # have introduced is not a marker this check should be satisfied by.
+    _marker_n = template.count(_WRITE_ACTIONS_MARKER)
+    if _marker_n != 1:
+        # ONE string cannot carry two causes (RC-1d, the same defect `local_archive`'s refusal
+        # had): an ABSENT marker and a DUPLICATED one are different faults with different
+        # repairs — restore it, or remove the extra copy — and the shipped sentence named both
+        # while pointing at neither. The count is also the one thing a reader needs and the old
+        # message withheld it.
+        raise ValueError(
+            "action-vocabulary marker %s in the render_html template (exactly one required) — "
+            "%s" % ("is ABSENT" if _marker_n == 0 else "appears %d times" % _marker_n,
+                    "restore it" if _marker_n == 0 else "remove the extra copy/copies"))
+    template = template.replace(_WRITE_ACTIONS_MARKER,
+                                json.dumps([a for a, w in ms.ACTION_VOCAB if w]))
     for marker, filename in _BUNDLES.items():
         source = (_TEMPLATE.parent / filename).read_text(encoding="utf-8")
         if "</script" in source.lower():
             raise ValueError("unsafe script-end sequence in " + filename)
-        if template.count(marker) != 1:
-            raise ValueError("missing or duplicate bundle marker: " + filename)
+        # Same split as the vocabulary marker above, and the same defect: this sentence named
+        # BOTH an absent marker and a duplicated one in one string, so the reader could not tell
+        # which fault they had, and the count they would need to tell was the one fact withheld.
+        _bn = template.count(marker)
+        if _bn != 1:
+            raise ValueError(
+                "bundle marker %s for %s (exactly one required) — %s"
+                % ("is ABSENT" if _bn == 0 else "appears %d times" % _bn, filename,
+                   "restore it" if _bn == 0 else "remove the extra copy/copies"))
         template = template.replace(marker, source)
     return template
 _PLACEHOLDER = "/*__CM_DATA__*/"
@@ -359,9 +390,18 @@ def main(argv: list) -> int:
     # degrade with the same one-line message, never a traceback (per-PR review M1).
     try:
         _load_template()
-    except (FileNotFoundError, ValueError) as e:
-        print(f"render_html: bundled JS module unavailable ({type(e).__name__}: {e}) — is the plugin install complete?",
+    except FileNotFoundError as e:
+        print(f"render_html: bundled JS module missing ({e.filename}) — is the plugin install complete?",
               file=sys.stderr)
+        return 1
+    except ValueError as e:
+        # A ValueError here is NOT a truncated install. It is `_load_template`'s own integrity
+        # refusal — an unsafe script-end sequence in a bundle, or a marker count that is not one
+        # — and each of those already names its fault AND its remedy. Reporting them under
+        # "is the plugin install complete?" sent the reader to reinstall a plugin that was
+        # installed correctly, which is two faults sharing one message: the same defect this
+        # release exists to close, one layer up from the marker check that produced it.
+        print(f"render_html: template integrity fault — {e}", file=sys.stderr)
         return 1
 
     store = _store_for(args.store, args.project)

@@ -5292,15 +5292,20 @@ def _dispatch() -> int:
             _into = None
             for _i2, _a in enumerate(args):
                 if _a == "--into":
-                    if _i2 + 1 >= len(args):
-                        print("error: --into needs a SEED path (usage: --workflows --registrar --into <seed>)",
-                              file=sys.stderr)
-                        return 2
-                    _into = args[_i2 + 1]
+                    _into = args[_i2 + 1] if _i2 + 1 < len(args) else ""
                     break
                 if _a.startswith("--into="):   # review fix: the equals form was silently ignored
                     _into = _a.split("=", 1)[1]
                     break
+            # v0.4.35 (RC-1b): a SEED path that is NAMED but EMPTY is not a SEED. Both routes arrive
+            # here — `--into ""` and the equals form `--into=` — and both previously bound "", which
+            # `registrar_report` reads as "not supplied": measured byte-identical to omitting the flag,
+            # so the injection silently did not happen while the call exited 0. `None` still means
+            # "not supplied"; only a value that was supplied and is empty is the usage error.
+            if _into is not None and not _into:
+                print("error: --into needs a SEED path (usage: --workflows --registrar --into <seed>)",
+                      file=sys.stderr)
+                return 2
             return registrar_report(project_dir, "--json" in args, into=_into)
         if "--into" in args:
             print("warning: --into without --registrar is ignored (the injection rides the registrar consult)",
