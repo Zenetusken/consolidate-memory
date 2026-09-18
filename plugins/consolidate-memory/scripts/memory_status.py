@@ -76,8 +76,22 @@ class Verification(TypedDict, total=False):
     method: str           # "inline" | "subagents"
 
 
+# The cycle record's action vocabulary — ONE source for the `Entry` schema comment, the
+# renderer's display table, the outcome ladder, and both of the template's count sites.
+# True marks an action that MODIFIED the store: `reconciled` relocates a pointer or moves a
+# fact's load tier, body unchanged (SKILL.md's Phase-5 `demote-to-archive`), while `skipped` is a
+# deliberate non-change (SKILL.md's entries[] rule — "just writes but also `skipped` and
+# `reconciled` ones" — and Phase 5's `counter-justify`). The ladder's "no writes" and the panel's
+# count line must agree, so both read this tuple rather than restating a subset of it.
+ACTION_VOCAB = (("added", True), ("corrected", True), ("deleted", True),
+                ("reconciled", True), ("skipped", False))
+# Derived, never restated: the subset every "did this cycle change anything?" matcher reads.
+# A consumer that spelled its own tuple is exactly how the 3/4/5 divergence happened.
+ACTION_WRITES = tuple(a for a, w in ACTION_VOCAB if w)
+
+
 class Entry(TypedDict, total=False):
-    action: str           # "added" | "corrected" | "deleted" | "reconciled" | "skipped"
+    action: str           # a name in ACTION_VOCAB — the declaration is the list, not this line
     tier: str             # "always-loaded" | "recall" | "on-demand" | "-"
     store: str            # "auto-mem" | "repo" | "-"
     scope: str            # "project-local" | "stack-general" | "user-global"
@@ -817,6 +831,27 @@ def _provisional_rigor(ctx: dict) -> Rigor:
             "applied": "", "override_reason": ""}
 
 
+def pivot_fired(record: Mapping[str, Any]) -> bool:
+    """True iff the record is a maintenance/bootstrap pivot pass (scoped to pull + health only).
+
+    ONE definition, three readers: `outcome_of`'s MAINTENANCE PASS rung, and the two
+    `demotion.verdict` duty rows. It is a SEAM, not a convenience — the pivot is a state the
+    producer writes DELIBERATELY, so a check that fires on it is a false-positive class rather
+    than a refinement (`docs/record-duty-presence.spec.md` §2.6). The demotion triage
+    legitimately never runs during a pivot, so a missing verdict there is the expected shape,
+    not a duty gap. `beta_checks._maintenance_pivoted` states the same carve-out for the same
+    three capture families on the oracle side.
+
+    COERCE, don't trust truthiness: a model-authored `"pivoted": "false"` is a truthy STRING
+    (the model-slip class `render_dashboard`'s `_flag` coercion exists for), so a bare
+    `record["maintenance"].get("pivoted")` reads it as pivoted and silences the rung. The
+    accepted spellings are the JSON boolean and its two string forms, exactly as the oracle
+    accepts them; anything else — including `"false"`, `0`, and a missing block — is NOT pivoted."""
+    mt = record.get("maintenance")
+    pv = mt.get("pivoted") if isinstance(mt, dict) else None
+    return pv is True or str(pv).strip().lower() in ("true", "1")
+
+
 def outcome_of(record: Mapping[str, Any]) -> str:
     """The SINGLE-SOURCE outcome vocabulary (L4, v0.4.2) — render_dashboard's banner,
     render_log's OUTCOME column, and the HTML archive's embedded `_outcome` all derive
@@ -827,15 +862,18 @@ def outcome_of(record: Mapping[str, Any]) -> str:
     if record.get("outcome"):
         return str(record["outcome"]).upper()
     entries = [e for e in (record.get("entries") or []) if isinstance(e, dict)]
-    writes = sum(1 for e in entries if e.get("action") in ("added", "corrected", "deleted"))
+    # v0.4.35 (RC-3): the WRITE set, from ACTION_VOCAB's True members — ONE declaration behind
+    # the ladder, the renderer's display table, and both of the template's count sites. This
+    # line used to restate a THREE-element subset of a five-member vocabulary, so a record whose
+    # only action was `reconciled` counted 0 writes HERE and 1 in the panel rendered directly
+    # above it: `= 1 reconciled` sitting on top of `NO-OP PASS · reviewed, nothing changed`.
+    writes = sum(1 for e in entries if e.get("action") in ACTION_WRITES)
     _scope_raw = record.get("scope")
     scope: dict = _scope_raw if isinstance(_scope_raw, dict) else {}
     candidates = scope.get("session_candidates", 0) or 0
     git = scope.get("git_commits", 0) or 0
     reviewed = scope.get("memories_reviewed", 0) or 0
-    _maint_raw = record.get("maintenance")
-    maint: dict = _maint_raw if isinstance(_maint_raw, dict) else {}
-    if maint.get("pivoted") and writes == 0:
+    if pivot_fired(record) and writes == 0:
         return "MAINTENANCE PASS · self-heal / cross-node enrichment"
     if writes == 0 and candidates == 0 and git == 0 and reviewed == 0:
         return "NOTHING TO CONSOLIDATE"
@@ -4143,7 +4181,12 @@ def _duty_blank(v: object) -> bool:
     A wrong-typed NON-empty value (`session: 123`) deliberately ABSTAINS. A mistyped scalar is
     `validate_cycle_record`'s container territory or render's `_num`/`_clean` coercion boundary,
     not this family's; a presence clause that also reported it would double-report another gate's
-    job while claiming to be about presence. Same posture as `procedure_integrity`'s operands."""
+    job while claiming to be about presence. Same posture as `procedure_integrity`'s operands.
+
+    THE ERA CLAUSE ABOVE IS PER-ROW, NOT A FAMILY RULE. It holds for `session` and `applied`,
+    whose era IS the key's arrival. The v0.4.35 rows (`demotion.verdict`) key their era on the
+    BLOCK, so for them an absent KEY inside a present block is the normal failure mode and must
+    fire — see `_duty_verdict_absent`."""
     return v is None or (isinstance(v, str) and not v.strip())
 
 
@@ -4183,6 +4226,121 @@ def _duty_trio_fires(record: Mapping[str, Any]) -> bool:
     return not (present == 0 or filled == len(_DUTY_TRIO))
 
 
+# ── v0.4.35 (RC-4): the `entries` clause — a duty the seed wrote and NO operand could see ─────
+# The seed writes `"entries": [],  # fill in Phase 4` — a comment is not a state — and nothing
+# distinguished that from a pass that decided nothing: `validate_cycle_record` ADMITS an empty
+# list (its entries guards test the CONTAINER and the ITEMS, so `[]` satisfies both) and both
+# render as `(none)`. This is the clause that gives it a carrier.
+#
+# THE OPERAND IS CHOSEN AGAINST TWO ALTERNATIVES, and the disqualifier for each is stated because
+# the reason is what a later reader will want: `scope` counts what the pass LOOKED AT
+# (`git_commits`/`memories_reviewed` are `len()` over Phase-0 inputs), so the seed satisfies it by
+# construction and it does no work as a conjunct — a clause built on it fires on legitimate
+# no-op records, which is the §2.6 error `docs/record-duty-presence.spec.md` was written to
+# refuse. `verification` is a model SELF-REPORT, and a self-report cannot gate the duty to write
+# another self-report. `audit` is the script's own before/after CONTENT-HASH diff, injected by
+# `--into` — "deterministically inject the audit block INTO the cycle record", its own comment —
+# with no model merge: unforgeable, which is what qualifies it.
+#
+# NOT FORGEABLE IS NOT THE SAME PROPERTY AS ATTRIBUTABLE, and neither the docstring nor the
+# severity pretends otherwise. The snapshot window spans Phase 0 to Phase 5, so a Phase-1
+# `--pull` landing mirrors, a concurrent `cm sync`, or a commit mid-dream is attributed to this
+# pass (`SKILL.md`'s snapshot-window caveat says so outright). In that state the clause fires —
+# and the state it reports is TRUE (store bytes changed, the record explains none of them, and
+# SKILL already calls that conjunction a signal to investigate). What would be wrong is a remedy
+# that says "write the row you owe" and a severity that STALLS the pass for it, because the
+# concurrent case has no row to write and a gate whose only exit is a fabrication is the failure
+# clause A's own docstring refuses. Hence `warn`, and a remedy naming both causes.
+_DUTY_AUDIT_STORES = ("memory", "claude_md", "repo_doc")
+
+
+def _duty_entries_fires(record: Mapping[str, Any]) -> bool:
+    e = record.get("entries")
+    if not isinstance(e, list) or e:        # absent | wrong-typed | non-empty → abstain
+        return False
+    a = record.get("audit")
+    if not isinstance(a, dict):             # no audit trail (a seed, a stepped-past Phase 5) → abstain
+        return False
+    for s in _DUTY_AUDIT_STORES:
+        blk = a.get(s)
+        if not isinstance(blk, dict):       # wrong-typed SUB-container → abstain, never RAISE
+            continue
+        for k in ("created", "modified", "deleted"):
+            v = blk.get(k)
+            if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+                return True
+    return False
+
+
+# Two production facts behind the guards above, both checkable rather than asserted. (1) The
+# container guard is the family's stated CONTRACT, not padding: `duty_gaps` promises "never raises
+# ON JSON-REACHABLE INPUT", every sibling clause guards its own container, and the natural
+# `(a.get(s) or {}).get(k)` form is a NULL-guard wearing a type-guard's clothes — `or` substitutes
+# on FALSINESS, so every truthy non-dict (a str, a list, `5`, JSON `true`) reaches `.get` and
+# raises AttributeError AT THE PERSIST GATE, crashing the terminal step instead of exiting 0/3/4.
+# (2) `not isinstance(v, bool)` is a NARROWING of the fire-set, not a guard, and it rests on a
+# producer fact: `audit_snapshot` builds the rollup as a fresh literal of int zeros
+# (`roll = {"memory": {"created": 0,`) and touches it only through `roll[store][op] += 1` and
+# `roll[store]["token_delta"] += delta`, never re-reading parsed JSON — so no write path can
+# produce a bool. Only a hand-forged `{"created": true}` carries one, and a gate abstains on a
+# forgery rather than alerting from it (the idiom this module already uses for the mirror share:
+# a hand-set `true` is refused there by `not isinstance(rem["mirror_share"], bool)`, for the same
+# reason — the producer never writes one).
+
+
+def _duty_verdict_absent(dm: Mapping[str, Any]) -> bool:
+    """BLANK-OR-ABSENT — the one place both `demotion.verdict` rows read it, because it is the
+    property that defines them and two copies of it would be free to drift apart.
+
+    This is the row family's DEPARTURE from the present-and-blank era gate, and the reason is
+    structural rather than stylistic: `demotion`'s era is the BLOCK (`record["demotion"] = {`,
+    written iff the project has an auto-memory dir), not the key. No producer ever writes a blank
+    verdict, so `"verdict" in dm and _duty_blank(...)` fires on NOTHING — the family's rule, copied
+    verbatim into this row, would ship a clause that can never fire."""
+    return "verdict" not in dm or _duty_blank(dm.get("verdict"))
+
+
+def _duty_demotion_fires(record: Mapping[str, Any]) -> bool:
+    """GATE: `demotion` is a dict, `eligible > 0`, the verdict blank-or-absent, and the pass is
+    NOT a maintenance pivot. The pivot arm is a CARVE-OUT, not a narrowing: during a pivot the
+    demotion triage legitimately never runs, so the absent verdict this row exists to catch is
+    the expected shape there — a clause firing on it would be a false-positive class
+    (`docs/record-duty-presence.spec.md` §2.6), and it is the same carve-out
+    `beta_checks._maintenance_pivoted` gives `demotion_capture`, for both rows."""
+    if pivot_fired(record):
+        return False
+    dm = record.get("demotion")
+    if not isinstance(dm, dict) or not _duty_verdict_absent(dm):
+        return False
+    el = dm.get("eligible")
+    return isinstance(el, int) and not isinstance(el, bool) and el > 0
+
+
+def _duty_dormant_fires(record: Mapping[str, Any]) -> bool:
+    """GATE: the same four conditions as `_duty_demotion_fires`, with `eligible == 0` — the
+    dormant policy. The pivot carve-out is shared for the same reason, and it is the reason the
+    two rows cannot drift apart on it: one predicate, not two copies."""
+    if pivot_fired(record):
+        return False
+    dm = record.get("demotion")
+    if not isinstance(dm, dict) or not _duty_verdict_absent(dm):
+        return False
+    el = dm.get("eligible")
+    return isinstance(el, int) and not isinstance(el, bool) and el == 0
+
+
+# `eligible` is narrowed the same way as the audit counts, and that NARROWING DECIDES a shape the
+# draft left open: `demotion` present with `eligible` ABSENT, which exists in no record today.
+# Both rows abstain on it. An absent or wrong-typed count is a partial block — `validate_cycle_
+# record`'s container territory, exactly as clause A abstains on `session: 123` — and `eligible ==
+# 0` is a CLAIM ("the evidence gate is closed") that an absent count does not make. The cost is
+# stated rather than hidden: a dormant record that dropped the count is reported by nothing here.
+# The row split is the family's per-row severity grain, and D being alert is evidence-conditioned
+# — D fires on a fresh seed ONLY if the store already has eligible facts, so it separates a seed
+# from a finished pass on the EVIDENCE clock, never on `rigor.phase` (a model self-report, which
+# A's docstring forbids for exactly this reason).
+
+
 _DUTY_CLAUSES: "tuple[DutyClause, ...]" = (
     DutyClause("session", "session", "the pass never filled the id it seeded",
                "fill session with this pass's id — or leave it blank when the id is genuinely "
@@ -4197,6 +4355,26 @@ _DUTY_CLAUSES: "tuple[DutyClause, ...]" = (
                "fill all three Phase-5 progress fields or none — a partial trio renders progress "
                "that was never measured",
                "alert", _duty_trio_fires),
+    DutyClause("entries", "entries[]",
+               "the record reports no actions while the script-observed audit shows the memory "
+               "plane changed",
+               "reconcile the two: write the entries[] row this pass owes (a Phase-1 --pull "
+               "landing owes one too), or — when the change was a concurrent writer or a commit "
+               "that landed mid-pass — record that it was not this pass's. ADVISORY, never "
+               "gates: that second case has no row to write and must not be forced into one",
+               "warn", _duty_entries_fires),
+    DutyClause("demotion", "demotion.verdict",
+               "the triage had eligible candidates and no verdict sentence was recorded",
+               "record demotion.verdict — one sentence saying what the triage decided and why — "
+               "then re-render",
+               "alert", _duty_demotion_fires),
+    DutyClause("dormant", "demotion.verdict (dormant)",
+               "the policy is dormant and the mandated one-liner is missing, so \"ran and "
+               "proposed nothing\" renders as the same silence as \"never ran\"",
+               "record demotion.verdict as \"dormant — N probative windows\", N taken from the "
+               "block's own seeded count, then re-render. ADVISORY, never gates: nothing was "
+               "at stake while the evidence gate is closed",
+               "warn", _duty_dormant_fires),
 )
 
 
@@ -4235,10 +4413,28 @@ def duty_gaps(record: object) -> "list[DutyClause]":
       C `remediation` trio   — at least one trio key was written and fewer than all three hold
                                a value: a strict SUBSET of the keys, or a present key left
                                blank/null. SEVERITY alert
+      X `entries`            — `entries` is an empty list, and the `audit` block the script
+                               injected holds a NON-ZERO created/modified/deleted count in one
+                               of its three store sub-containers. SEVERITY warn
+      D `demotion.verdict`   — `demotion` is a dict, holds `eligible > 0`, and its verdict is
+                               blank-or-ABSENT. SEVERITY alert
+      E `demotion.verdict`   — the same, with `eligible == 0` (the dormant policy, whose
+                               one-liner SKILL mandates). SEVERITY warn
+    The letters X/D/E are `docs/refusal-verdict-parity.spec.md` §RC-4's, NOT a sequence after C:
+    the clause names in `_DUTY_CLAUSES` (the stable keys pins read) are `entries`, `demotion` and
+    `dormant`, and this list is ordered as the table is, so a reader can go between them.
     A and B are "present but empty" — an ABSENT key never fires either. C is the multi-key clause,
     so a strict subset fires it precisely BECAUSE some of its keys are absent; that is the audited
     shape (`{"achieved_index": 402}` with the other two keys missing), and a key-count test alone
     misses its evasion (`{... "achieved_recall": ""}`, three keys, two facts).
+
+    THE v0.4.35 ROWS READ THE ABSENCE RULE DIFFERENTLY, and the difference is per-row rather than a
+    revision of the two above: for `entries` and `demotion.verdict` the era gate is the audit block
+    and the `demotion` block respectively, so an absent KEY inside a present block is the NORMAL
+    failure mode and fires. Each row's gate is stated in the FIRE list above (and restated in the
+    operator's words by that row's `DutyClause` reason string); the rule "an absent key never
+    fires" is a property of A and B, not of this family.
+
     `alert` ⇒ the persist gate exits 3; `warn` ⇒ the panel reports it and the exit is unchanged.
 
     A is warn-only on purpose: SKILL forbids *fabricated* session ids while the seed says to fill it
@@ -4659,6 +4855,39 @@ def main() -> int:
                 and not _a.startswith(("--color=", "--width=")):
             print(f"unknown flag: {_a}", file=sys.stderr)
             return 2
+    # v0.4.35 (RC-1b): a recognized value-taking flag whose value is MISSING is a usage error.
+    # The `not argv[i+1].startswith("-")` predicates below cannot express this: they accept the
+    # flag and assign nothing, leaving the variable at the value meaning "flag not supplied" — so
+    # a malformed command is read as an absent one. `--stamp-marker` already re-distinguishes the
+    # two and returns 2 (its own "pass --stamp-marker COMMIT" usage error); this generalizes that
+    # verdict to the five flags whose sinks cannot tell the difference, and each of which fails
+    # differently (spec §RC-1b's table).
+    #
+    # EVERY occurrence, not `argv.index(f)`: the parse below takes the FIRST occurrence and
+    # ignores any later one, so `--before <valid> --before` (bare, trailing) would satisfy a
+    # first-occurrence guard while the malformed flag went unreported — the same defect one
+    # layer down, reachable through a legal command line.
+    #
+    # And an EMPTY value is the same operator error, one token state over — the third state the
+    # predicates above cannot express, because `"".startswith("-")` is False. `--audit ""` (a shell
+    # variable that expanded to nothing) therefore left the variable at the value meaning "flag not
+    # supplied", which is exactly the state this guard exists to reject. Measured 2026-09-18
+    # PRE-FIX, one fixture per arm: `--audit ""` exits 0 and prints an audit summary reading
+    # `claude_md: created 1024, token_delta 4075886` where the same fixture's real snapshot reads
+    # 0/0, and names no fault. It was also
+    # the LAST route into that fabrication: an absent flag never enters the `--audit` block at all,
+    # so the `before = {}` default below was reachable only through this one value. On THIS tree
+    # each malformed arm is its own named usage error and both exit 2 — `--audit ""` says the flag
+    # needs a value, `--audit <unreadable>` names the path it could not read. Four input
+    # states now separate — absent, present-with-no-value, present-with-an-EMPTY-value,
+    # present-and-valid.
+    _VALUE_FLAGS = ("--audit", "--before", "--diffs", "--into", "--snooze-until")
+    for _f in _VALUE_FLAGS:
+        for _vi, _vtok in enumerate(argv):
+            if _vtok == _f and (_vi + 1 >= len(argv) or argv[_vi + 1].startswith("-")
+                                or argv[_vi + 1] == ""):
+                print(f"{_f[2:]}: {_f} needs a value", file=sys.stderr)
+                return 2
     audit_before = ""    # v0.1.22: --audit <before-snapshot-path> — capture its path arg so pos doesn't read it as project_dir
     if "--audit" in argv:
         _ai = argv.index("--audit")
@@ -4820,11 +5049,40 @@ def main() -> int:
         _ui.dream_cue(_CUE_PHASE0)
         return 0
     if "--audit" in argv:       # v0.1.22: Phase-5 diff vs the BEFORE snapshot → append the deterministic log + print summary
-        try:
-            before = json.loads(Path(audit_before).read_text(encoding="utf-8")) if audit_before else {}
-        except (OSError, json.JSONDecodeError):
-            before = {}
-        diff = audit_diff(before if isinstance(before, dict) else {}, audit_snapshot(project_dir))
+        # v0.4.35 (RC-1a): a named snapshot that cannot be READ is a FAULT, never an absence.
+        # `before = {}` makes `audit_diff` report every store file as CREATED — measured live as a
+        # fabricated `+572,437 tok`, exit 0, archived as a real row. The three arms separate, and
+        # only the third is a fault: flag ABSENT (no snapshot is not an error — unchanged), value
+        # MISSING (rejected upstream by RC-1b, before this sink), and named-but-unreadable. The
+        # last one takes the sibling `--diffs` path's shape one sink over — fault plus remedy on
+        # stderr — with the exit code `--stamp-marker` already uses for the same situation: the
+        # command cannot run as written, and the remedy says what to run instead. A FOURTH input
+        # state reaches this arm — the flag present with an EMPTY value — and it reached it as the
+        # `before = {}` default below, because a truthiness test cannot tell an empty value from an
+        # absent one. RC-1b's guard now rejects that upstream, so the default is unreachable from
+        # the CLI: that guard, not this block, is what keeps the fabrication arm shut.
+        before: dict = {}
+        if audit_before:
+            try:
+                _b = json.loads(Path(audit_before).read_text(encoding="utf-8"))
+            except (OSError, ValueError) as _e:
+                # ValueError, not JSONDecodeError: the decode is part of "turn this file into
+                # JSON", and `read_text` raises UnicodeDecodeError — a ValueError, and NOT a
+                # JSONDecodeError — on a non-UTF-8 snapshot. Enumerating two members of the
+                # class left the third reaching this CLI as a traceback, which is the one
+                # thing this arm exists to prevent. `tests/simulate_accumulation.py` writes
+                # such a file for exactly this class.
+                print(f"--audit: cannot read the before snapshot {audit_before} "
+                      f"({_e.__class__.__name__}) — run `--snapshot` first and pass the path it "
+                      f"prints, or drop `--audit` to skip the diff", file=sys.stderr)
+                return 2
+            if not isinstance(_b, dict):
+                print(f"--audit: {audit_before} is not a snapshot object — run `--snapshot` first "
+                      f"and pass the path it prints, or drop `--audit` to skip the diff",
+                      file=sys.stderr)
+                return 2
+            before = _b
+        diff = audit_diff(before, audit_snapshot(project_dir))
         # The row carries its DREAM identity (render-chain audit: rows were anonymous — the live log held
         # 24 rows for 26 dreams, the missing two untraceable) and a re-run of --audit (retry / a second
         # Phase-5 pass) must NOT double-append an indistinguishable duplicate.
@@ -4834,7 +5092,12 @@ def main() -> int:
                 _cyc_pre = json.loads(Path(audit_into).read_text(encoding="utf-8"))
                 if isinstance(_cyc_pre, dict) and isinstance(_cyc_pre.get("marker"), dict):
                     _mrk = _cyc_pre["marker"]
-            except (OSError, json.JSONDecodeError):
+            except (OSError, ValueError):
+                # ValueError, not JSONDecodeError — the same short enumeration the `--audit` sink
+                # above documents at length: this read decodes UTF-8 and parses JSON, and a
+                # non-UTF-8 record raises UnicodeDecodeError, which is a ValueError and NOT a
+                # JSONDecodeError. `_mrk` stays `{}`, which is this arm's own "no marker
+                # recoverable" value — the marker is then reconciled from the state file below.
                 _mrk = {}
         # v0.4.1 (D2): the mutation-log row carries its dream identity even when the cycle
         # record's marker was left blank — reconcile from the stamped state file.
@@ -4843,27 +5106,79 @@ def main() -> int:
             from retention import mutation_log_read_paths, mutation_log_write_path
             _ident = (str(_mrk.get("commit", "") or ""), str(_mrk.get("timestamp", "") or ""))
             _dup = False
-            if _ident[0]:
+            _supersedes = ""
+            # v0.4.35 (RC-2): the guard now tests what its own comment always claimed. Three
+            # predicates, and the fleet was measured before any of them was written — 105 rows
+            # across 13 logs, **73 of them carrying an EMPTY commit**, and 1 (file, commit) key
+            # bearing two distinct timestamps (a 42-created / 78071-token row, then 89 seconds
+            # later a 3-modified / 2126-token one: a correction pair, in real data).
+            #  (a) EVERY row, not `rsplit("\n", 1)[-1]`. The old read saw the last row only, so a
+            #      stale duplicate anywhere earlier was invisible and re-appended as new. The
+            #      exception tuple carried the trace of it — `IndexError` existed for that `[-1]`
+            #      and is gone with it.
+            #  (b) the GUARD is `any(_ident)` — whether the IDENTITY is empty decides, not whether
+            #      `commit` is. `if _ident[0]:` skipped the whole dedup whenever the commit was
+            #      empty while the comparison below tested
+            #      `(commit, timestamp)` — two definitions of identity in three lines. Not a
+            #      corner: `_valid_sha` refuses `""`, so an unborn-HEAD repo stamps
+            #      `{"commit": "", "timestamp": …}` and appended on EVERY run. That arm is 70% of
+            #      the measured corpus. `any()` and not a bare `True`: an all-empty identity names
+            #      no cycle, and a row that names none must never suppress another — the log's safe
+            #      direction is to append.
+            #  (c) a same-commit row with a DIFFERENT stamp gets `supersedes`, naming the stamp
+            #      this run is a LATER MEASUREMENT of. What the field asserts is ORDER, not identity:
+            #      both rows measure that commit, the later says so, and the earlier stays put (the
+            #      log is append-only). It deliberately does not claim the two were one dream — a
+            #      second dream against an uncommitted HEAD is an ordinary state the producer writes
+            #      deliberately, and a field that fired there would fabricate a relation the stamps
+            #      cannot witness.
+            if any(_ident):
                 for _cand in mutation_log_read_paths(ctx["auto_mem"]):
                     if not _cand.is_file():
                         continue
                     try:
-                        _last = json.loads(_cand.read_text(encoding="utf-8").strip().rsplit("\n", 1)[-1])
-                        if (_last.get("commit"), _last.get("timestamp")) == _ident:
+                        _raw = _cand.read_text(encoding="utf-8")
+                    except (OSError, ValueError):
+                        # ValueError for the same reason the `--audit` snapshot arm above spells
+                        # out: `read_text(encoding="utf-8")` raises UnicodeDecodeError — a
+                        # ValueError, and NOT an OSError — on a non-UTF-8 log, so `except OSError`
+                        # let it reach the CLI as a traceback. Skipping the candidate is the safe
+                        # direction HERE by this block's own rule, stated below at (b): the log's
+                        # safe direction is to APPEND, and a candidate this loop cannot read can
+                        # only withhold a `_dup`/`_supersedes` verdict, never manufacture one.
+                        continue
+                    for _ln in _raw.splitlines():
+                        _ln = _ln.strip()
+                        if not _ln:
+                            continue
+                        try:
+                            _row = json.loads(_ln)
+                        except json.JSONDecodeError:
+                            continue
+                        if not isinstance(_row, dict):   # a hand-edited line can be any JSON
+                            continue
+                        _c = str(_row.get("commit") or "")
+                        _t = str(_row.get("timestamp") or "")
+                        if (_c, _t) == _ident:
                             _dup = True
                             break
-                    except (OSError, json.JSONDecodeError, IndexError):
-                        continue
+                        if _ident[0] and _c == _ident[0]:
+                            _supersedes = _t       # LAST match wins: the most recent earlier stamp
+                    if _dup:
+                        break
             if not _dup:
                 _mlog = mutation_log_write_path(ctx["auto_mem"])
                 _mlog.parent.mkdir(parents=True, exist_ok=True)
+                _row_out = {"commit": _ident[0], "timestamp": _ident[1], **diff}
+                if _supersedes:
+                    _row_out["supersedes"] = _supersedes
                 with open(_mlog, "a", encoding="utf-8") as fh:
                     # v0.4.34 (E4): `window` now rides inside `diff` (audit_diff emits it under
                     # AUDIT_WINDOW), so spelling it here as well was dead duplication — `**diff` won the
                     # merge and both were the same constant, so the row was byte-identical either way.
                     # Dropped so this log row and the record's audit block have ONE source, not two that
                     # happen to agree.
-                    fh.write(json.dumps({"commit": _ident[0], "timestamp": _ident[1], **diff}) + "\n")
+                    fh.write(json.dumps(_row_out) + "\n")
         except OSError:
             pass
         if audit_into:          # v0.1.53: deterministically inject the audit block INTO the cycle record (no model
@@ -4881,14 +5196,130 @@ def main() -> int:
         _ui.dream_cue(_CUE_PHASE5)
         return 0
     if "--diffs" in argv:       # v0.1.32: Phase-5 (post-persist) diff capture → per-dream sidecar for the diff-modal
+        # v0.4.35 (RC-1a/RC-1b, the `--diffs` sink's OWN reads — the arm between the two).
+        # Both parses sit AHEAD of the `try` that promises this sink never crashes a dream, so
+        # a non-UTF-8 argument traced back out of `--diffs`: UnicodeDecodeError is a ValueError
+        # and only OSError/JSONDecodeError were caught, the same short enumeration the `--audit`
+        # arm above carried. And a MISSING or unparseable cycle read as `{}` — accepted and
+        # reported through the same success line as a good one, keying the sidecar without its
+        # session segment, the disambiguator `diff_key` exists to carry. Each fault is named
+        # where it is detected, and what is lost is the session segment, not the write.
+        # `read_diffs` probes `commit__ts__S<session>` first and `commit__ts` second, so the base
+        # KEY is claimed through its legacy fallback rather than orphaning. **What that key
+        # resolves TO is narrower than the key's existence, and each correction here has overshot
+        # in a new direction.** Measured 2026-09-18 with `read_text` wrapped: the
+        # register-under-every-probed-key step rewrites the base ALIAS on every cycle that LOADS,
+        # so it ends holding the LAST loader's bytes — not the first's. With NO sessioned sibling
+        # covering the marker the fault arm's own cycle is the only loader: its bytes are read and
+        # rendered under that cycle. WITH one, the alias ends holding the SIBLING's bytes in BOTH
+        # orderings — by its probe-1 hit when it loads first, and by its register step re-taking the
+        # key the fault's load had just written when it loads second — and whether the fault arm's
+        # FILE is read turns on the order
+        # — which is why "always positional" and then "never read" were each half wrong. A sibling
+        # loading first claims the alias, so the fault arm's base probe is skipped as already-in-
+        # `out` and the file is never read; the fault arm's cycle loading first DOES read it, and
+        # the sibling's later load overwrites the result. Read-then-overwritten is not unread.
+        # `out` is an INTERMEDIATE, though, and this comment first wrote its OUTCOME from that
+        # dict — a different operand from what a dream's modal shows. The template looks up
+        # `diffKey(marker, session)` first and `diffKey(marker)` second, and the register step
+        # writes the payload under EVERY probed key — a sessioned cycle's OWN among them. So with
+        # no sessioned sibling these bytes render under their own cycle; with one they render
+        # correctly iff the fault cycle carries a session and loads first. Where the sibling loads
+        # first, NOTHING is registered for it — its own key has no file to read (wrapped
+        # `Path.exists` during `read_diffs`: two of its four probes skip on a MISSING FILE, two on
+        # the claim) and the base alias it reaches is already claimed; where a
+        # SESSION-LESS fault cycle loads first its base probe is unclaimed, so it does read and
+        # register — and every key it registers is one the sibling also registers, so the sibling's
+        # later load overwrites them all. Either way the modal resolves to the base alias,
+        # which the sibling's load has taken — and for a SESSION-LESS cycle that alias IS its first
+        # probe rather than a fallback, since `diff_key(m, "")` returns the base key. (A read log
+        # separates those two mechanisms where the
+        # returned dict cannot: `[BASE, BASE+SS]` versus `[BASE+SS]`.) Measured 2026-09-18 at the
+        # consumer, with payloads that name themselves: the key is not merely shadowed but
+        # REATTRIBUTED — the modal shows a real diff belonging to ANOTHER dream. A control isolates
+        # the cause, because the write is the obvious suspect: with this sidecar ABSENT the same
+        # substitution appears in the sibling-present case, so it is the fallback's, not the
+        # write's. Writing is never worse than not writing FOR THE CYCLE THAT WROTE IT — the key is
+        # shared, so where a COVERING cycle has no sidecar of its own the write hands THAT cycle this
+        # arm's diff instead of an empty modal, the reattribution caused by the write rather than by
+        # the fallback the control isolates — and strictly better in exactly five of
+        # the eight cases a session x order x sibling enumeration produces — with no sibling
+        # covering the marker (four cases: either session, either order) it renders this cycle's own
+        # diff instead of an EMPTY modal, and with a sibling present a SESSIONED fault cycle loading
+        # first renders its own diff instead of the sibling's. The other three show the sibling's
+        # diff with or without the write, and the case that defeats the obvious rule is the
+        # session-LESS cycle loading first: "loads first" alone predicts strictly better and
+        # measures equal, because every key it registers is one the sibling registers too. That is a property of
+        # the fallback, not of this arm: this arm names
+        # the fault and does not divert — it falls through to the write, which the skip ladder
+        # below may still take. §Risks carries the full case enumeration.
+        before_err = ""
         try:
             before = json.loads(Path(diffs_before).read_text(encoding="utf-8")) if diffs_before else {}
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError) as e:
+            before_err = f"cannot read --before {diffs_before} ({e.__class__.__name__})"
             before = {}
+        else:
+            # CONTAINER FIRST, emptiness second — the order is the whole of this repair, and it
+            # was the other way round. `[]` and `null` are FALSY, so the emptiness test matched
+            # them and told the operator they had "an empty snapshot — every store file
+            # legitimately reads as new": a cause named for a value that is not a snapshot at
+            # all, and one that reads as a benign state rather than a malformed input. A fault
+            # and a verdict must not share a message (RC-1d); neither may a malformed input and
+            # a legitimate empty one. `isinstance` is the only test that separates them.
+            if not isinstance(before, dict):
+                # The CONTAINER, which the sibling `--audit` sink refuses and this one did not:
+                # valid JSON is not automatically a snapshot, and a truthy non-dict (`[1, 2, 3]`,
+                # `"x"`, `5`, `true`) passed the emptiness test untouched and reached
+                # `audit_diff` as the `before` tree. Same fault, same remedy, same sink shape —
+                # this is the `--audit` arm's second refusal (`isinstance(_b, dict)`) applied one
+                # sink over, because the two loads read the same kind of artifact.
+                before_err = (f"--before {diffs_before} is not a snapshot object — a snapshot is a "
+                              f"JSON object; run `--snapshot` and pass the path it prints")
+                before = {}
+            elif diffs_before and not before:
+                before_err = (f"--before {diffs_before} is an empty snapshot — every store "
+                              f"file legitimately reads as new")
+        cyc_err = ""
         try:
             cyc = json.loads(Path(diffs_cycle).read_text(encoding="utf-8")) if diffs_cycle else {}
-        except (OSError, json.JSONDecodeError):
+        except (OSError, ValueError) as e:
+            cyc_err = f"cannot read the cycle record {diffs_cycle} ({e.__class__.__name__})"
             cyc = {}
+        else:
+            # The CONTAINER, refused the same way `--before` refuses it one sink over, and for
+            # the same reason: an int, a string, a list or `null` is valid JSON, so the read
+            # above SUCCEEDS and the value reaches `cyc.get("session", "")` below — where the
+            # blanket `except Exception` at the end of this block converts it into `--diffs:
+            # skipped ('int' object has no attribute 'get')`. A raw Python exception string where
+            # the sibling names the fault and its remedy. MEASURED 2026-09-18, and the reason it
+            # hides: the "cycle unstamped" early return above is what normally diverts a
+            # non-dict record, so this is reachable only when the state file carries a stamp and
+            # `reconcile_marker` therefore supplies one. Coerced to `{}` rather than refused
+            # outright — that is what the read-failure arm above already documents for this sink
+            # (the sidecar still lands, keyed without its session segment), and skipping a
+            # capture the operator asked for would be a larger behaviour change than this
+            # repair is for.
+            if diffs_cycle and not isinstance(cyc, dict):
+                cyc_err = (f"the cycle record {diffs_cycle} is not a JSON object — a cycle record "
+                           f"is a JSON object")
+                cyc = {}
+        if cyc_err:
+            # The fault is named here; the OUTCOME is not, because it is not decided here — the
+            # skip ladder below can still divert the run, and this line promising a landing while
+            # the next line prints a skip is the same defect as a fault sharing a verdict's
+            # sentence. What IS known here is the keying, so that is what it states, under the
+            # one condition that decides whether there is a key at all: `not before` IMPLIES
+            # `not diffs` (`capture_diffs` returns `{}` for an empty snapshot), so an
+            # empty-`before` run prints this line and THEN skips — measured 2026-09-18 on both
+            # trees: fault line, skip line, no sidecar. "If a sidecar lands" is load-bearing,
+            # not hedging; an editor who tightens it back into a promise restores the defect.
+            print(f"--diffs: {cyc_err} — if a sidecar lands it is keyed without its session "
+                  f"segment (`diff_key(marker, \"\")`), which `read_diffs` resolves only as its "
+                  f"legacy fallback. That fallback key is SHARED: where a sessioned sibling covers "
+                  f"the same marker, the sibling's load takes it, so a lookup that falls through "
+                  f"to it shows the sibling's diff rather than this one. Re-run with the path "
+                  f"Phase 5 wrote", file=sys.stderr)
         marker = cyc.get("marker") if isinstance(cyc, dict) else None
         if not isinstance(marker, dict):
             marker = {}
@@ -4901,7 +5332,13 @@ def main() -> int:
         try:                    # best-effort — a diff-capture failure must NEVER crash a dream (mirrors --audit)
             diffs = capture_diffs(before, project_dir)
             if not diffs and not before:
-                print("--diffs: skipped (no before snapshot — Phase 0 --snapshot wasn't run)", file=sys.stderr)
+                # Only the flag-ABSENT arm may claim a missing snapshot. A named path that
+                # could not be read, or that holds a legitimately empty store snapshot, is a
+                # different cause and used to wear this same sentence — a remedy naming a
+                # cause that did not happen. **An instrument's fault and its verdict must not
+                # share one message**: the reader of that line cannot tell which one it got.
+                print("--diffs: skipped (%s)" % (before_err or
+                      "no before snapshot — Phase 0 --snapshot wasn't run"), file=sys.stderr)
             else:
                 _d = diffs_dir(project_dir)
                 _d.mkdir(parents=True, exist_ok=True)

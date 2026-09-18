@@ -3442,6 +3442,177 @@ with _tf43.TemporaryDirectory() as _td54:
           [g.name for g in _gapA({"session": "", "rigor": _seedrigor})] == ["session", "applied"]
           and _seedrigor["applied"] == "")
 
+    # ── v0.4.35 (RC-4): the two duties that had no machine-visible carrier.
+    # docs/refusal-verdict-parity.spec.md §RC-4. Three more rows in the SAME table — no new
+    # mechanism, no new gate, no change to the exit MAPPING (alert still routes 3, warn still does
+    # not). FOUR PINS and FOUR GUARDS, split by ASSERTION SHAPE rather than by the novelty of the
+    # subject, because the repo's own rule is that a check added by a fix may not fail on pre-fix
+    # code: a check asserting ABSTENTION passes when no clause exists (guard), a check asserting
+    # FIRING fails for exactly the reason the other warrant would call it passing (pin). The two
+    # are counted separately so a guard's green pre-fix status is not quoted as a pin's RED.
+    #
+    # THE SPECIMEN IS A SHAPE, NOT A POPULATION. The audit found both new clauses firing on ONE
+    # fleet record whose duty_gaps already returns three gaps — but a check may not glob the
+    # maintainer's stores: that population MOVES (the audit re-took its own census 24h later and
+    # two counts had drifted), it would be non-hermetic, and a clause's obligation is to abstain
+    # on the CLASSES, which are shapes. So the record below is built to carry all five gaps at
+    # once, and the classes are exercised as synthetics further down.
+    _ZERO_OPS = {"created": 0, "modified": 0, "deleted": 0, "token_delta": 0}
+    _specimen = {
+        "session": "",                                   # clause A
+        "rigor": {"applied": ""},                        # clause B
+        "remediation": {"achieved_index": 402},          # clause C — the 1-of-3 audited shape
+        "entries": [],                                   # clause X
+        "audit": {"memory": {**_ZERO_OPS, "created": 2}, "claude_md": dict(_ZERO_OPS),
+                  "repo_doc": dict(_ZERO_OPS)},
+        "demotion": {"windows_observed": 6, "eligible": 2, "surfaced": ["a-keep"]},   # clause D
+    }
+    # One assertion per row of the spec's acceptance table, and each is scoped to ITS OWN clause
+    # so the two PINs are not two spellings of one check (which would make the tally a lie).
+    _spec_entries = [g for g in _gapA(_specimen) if g.name == "entries"]
+    check("v0.4.35 RC-4 (PIN): the `entries`-vs-`audit` contradiction IS a gap — a record whose "
+          "entries[] is empty while the SCRIPT's own content-hash audit shows the memory plane "
+          "changed. Pre-fix this lookup is empty on every record (no X clause exists; the list is "
+          "the shipped three), so the fire-assertion is FALSE and this reds",
+          len(_spec_entries) == 1 and _spec_entries[0].severity == "warn"
+          and _spec_entries[0].label == "entries[]")
+    _spec_dm = [g for g in _gapA(_specimen) if g.name == "demotion"]
+    check("v0.4.35 RC-4 (PIN): a triage with eligible candidates and no verdict sentence IS a gap "
+          "— SKILL mandates demotion.verdict 'ONE sentence, always', and render_dashboard's "
+          "demotion block renders the verdict with `if _dv:` and no else, so 'ran and proposed "
+          "nothing' and 'never ran' are the same bytes. Reds pre-fix for the same reason as "
+          "above, on its own clause",
+          len(_spec_dm) == 1 and _spec_dm[0].severity == "alert")
+    _dormant_bare = {"demotion": {"windows_observed": 3, "eligible": 0, "surfaced": []}}
+    _dormant_gaps = _gapA(_dormant_bare)
+    check("v0.4.35 RC-4 (PIN): the DORMANT block with no verdict fires, at WARN — SKILL mandates "
+          "that one-liner too ('dormant — N probative windows'), and a committed pass that "
+          "skipped it is currently invisible. Pre-fix there is no such clause, so the list is [] "
+          "and the fire-assertion is FALSE",
+          [g.name for g in _dormant_gaps] == ["dormant"]
+          and _dormant_gaps[0].severity == "warn")
+    # §2.6 × RC-4: the maintenance pivot is a state the producer writes DELIBERATELY — a pivot pass
+    # is scoped to pull + health, so the demotion triage legitimately never runs and an absent
+    # verdict is the EXPECTED shape. A clause that fires on it is therefore a false-positive CLASS
+    # rather than a refinement, and `beta_checks._maintenance_pivoted` already gives
+    # `demotion_capture` exactly this carve-out. `ms.pivot_fired` states it once for both rows and
+    # for `outcome_of`'s MAINTENANCE PASS rung.
+    _pivot_dm = {"maintenance": {"pivoted": True},
+                 "demotion": {"windows_observed": 3, "eligible": 3, "surfaced": []}}
+    check("v0.4.35 RC-4 (GUARD, on the revision where the clause exists WITHOUT the carve-out): a "
+          "maintenance PIVOT abstains on BOTH demotion rows — the triage legitimately never ran, so "
+          "the missing verdict is the expected shape and firing on it would be a false-positive "
+          "class (docs/record-duty-presence.spec.md §2.6). GREEN pre-fix, for the plainer reason "
+          "that `_DUTY_CLAUSES` there is (session, applied, trio) — no `demotion` clause exists to "
+          "fire at all (measured 2026-09-18: pre-fix `duty_gaps` on this record returns `[]`). Its "
+          "revision is therefore the INTERMEDIATE one: a `demotion` clause added before "
+          "`pivot_fired` is consulted",
+          [g.name for g in _gapA(_pivot_dm)] == [])
+    check("v0.4.35 RC-4 (PIN, the same carve-out on the OTHER reader): `outcome_of` coerces the "
+          "pivot rather than truthiness-testing it — `{\"pivoted\": \"false\"}` is a model-authored "
+          "truthy STRING (the slip class render_dashboard's `_flag` coercion exists for), so the "
+          "bare `maint.get(\"pivoted\")` this replaces read a NON-pivot pass as MAINTENANCE PASS. "
+          "Pre-fix that rung wins and this reds",
+          ms.outcome_of(cast(ms.CycleRecord, {"maintenance": {"pivoted": "false"},
+                                              "scope": {}, "entries": []}))
+          == "NOTHING TO CONSOLIDATE")
+    check("v0.4.35 RC-4 (PIN, on two revisions): the coercion is what the carve-out rests on — a "
+          "naive `pivoted` truthiness test abstains here, where a genuinely un-pivoted triage that "
+          "skipped its mandated verdict must still fire. Red pre-fix for the same reason its "
+          "sibling above is green — no `demotion` clause exists there to fire at all — and red on "
+          "that mutation, which is the revision it is AIMED at",
+          [g.name for g in _gapA({"maintenance": {"pivoted": "false"},
+                                  "demotion": {"windows_observed": 3, "eligible": 3,
+                                               "surfaced": []}})] == ["demotion"])
+    check("v0.4.35 RC-4 (PIN): the CONCURRENT-WRITER record FIRES X — entries[] empty while the "
+          "audit shows store bytes that changed between Phase 0 and Phase 5 (a --pull landing, a "
+          "cm sync in another session, a commit mid-dream). This pins the DOCUMENTED behaviour "
+          "rather than the intended one, which is what makes the limit executable: the state it "
+          "reports is TRUE, and X is warn precisely so it reports it without stalling a pass that "
+          "has no row to write for a change it did not make",
+          [g.name for g in _gapA({"entries": [], "audit": {"memory": {**_ZERO_OPS,
+                                                                    "created": 1}}})] == ["entries"])
+
+    check("v0.4.35 RC-4 (GUARD, the classes not the fleet): every legitimate class ABSTAINS — no "
+          "`demotion` block at all (legacy/partial: the era gate is the BLOCK, not the key), a "
+          "dormant block whose mandated one-liner IS filled, entries[] beside an audit whose "
+          "mutations are ALL zero (the legitimate no-op), entries[] with NO audit block (the seed "
+          "— and the shape of the two literals this suite pins to NO-OP PASS, which carry scope "
+          "activity and no audit because that key is Phase-5-only), and non-empty entries beside "
+          "a plane that did change",
+          _gapA({"project": "p", "marker": {"timestamp": "t"}}) == [] and _gapA({"demotion": None}) == []
+          and _gapA({"demotion": {"windows_observed": 9, "eligible": 0,
+                                  "verdict": "dormant — 9 probative usage windows accrued"}}) == []
+          and _gapA({"entries": [], "audit": {"memory": dict(_ZERO_OPS),
+                                              "claude_md": dict(_ZERO_OPS),
+                                              "repo_doc": dict(_ZERO_OPS)}}) == []
+          and _gapA({"entries": [], "scope": {"git_commits": 4, "memories_reviewed": 5,
+                                              "session_candidates": 0}}) == []
+          and _gapA({"entries": [{"action": "reconciled", "name": "x"}],
+                     "audit": {"memory": {**_ZERO_OPS, "created": 3}}}) == [])
+    check("v0.4.35 RC-4 (GUARD): D does NOT fire on that same dormant block — the two rows "
+          "PARTITION the class on `eligible` instead of overlapping it, so each half carries its "
+          "own label and severity rather than one row double-reporting one state. A guard: with "
+          "no clause to fire, the abstention holds pre-fix, which is why it is not counted as a "
+          "RED",
+          all(g.name != "demotion" for g in _dormant_gaps))
+    # THE WRAPPER IS LOAD-BEARING, and it is here because the spec's claim was MEASURED rather
+    # than taken: the row above said this check "reds the buggy implementation", and driving the
+    # `(a.get(s) or {})` form through it — one source mutation, this suite, the same tree —
+    # does NOT red it. It ABORTS THE SUITE: AttributeError at this very expression, 713 checks
+    # printed, NO TOTALS LINE, and 1341 checks never run — and the parts carry their TOTAL here
+    # (713 + 1341 = 2054 = the base's 2017 + the 37 this cycle had landed at the measurement),
+    # because a reader at today's count would otherwise subtract the parts from a number that was
+    # never the same on both sides of the edit. That is the exact failure mode v0.4.33's
+    # F2 finding recorded for the unbounded capture and fixed there by bounding it — a check whose
+    # failure is a crashed run has no result to report, and a suite that dies reports nothing. So
+    # the subject is called through a wrapper that turns a raise into a VALUE: the check reds,
+    # names the exception, and the other 1340 checks still execute. Measured after the wrapper on
+    # the same mutated tree: one RED, totals printed.
+    def _rc4_gap_or_err(_rec: object) -> object:
+        try:
+            return [g.name for g in _gapA(_rec)]
+        except Exception as _e:                        # noqa: BLE001 — the subject is "never raises"
+            return f"{type(_e).__name__}: {_e}"
+
+    check("v0.4.35 RC-4 (GUARD): a wrong-typed CONTAINER makes the clause ABSTAIN and never raise — "
+          "`duty_gaps` promises 'never raises ON JSON-REACHABLE INPUT', every sibling clause guards "
+          "its own container, and a mistyped block is validate_cycle_record's territory. This reds "
+          "the BUGGY IMPLEMENTATION, not the pre-fix tree: the natural `(a.get(s) or {}).get(k)` "
+          "form is a null-guard wearing a type-guard's clothes (`or` substitutes on FALSINESS, so "
+          "every truthy non-dict reaches `.get`), and it raises AttributeError AT THE PERSIST GATE "
+          "— crashing the terminal step instead of exiting 0/3/4. The next conjunct is the same "
+          "guard for the COUNTS: a hand-forged {\"created\": true} abstains, because the producer "
+          "writes ints. The final two carry that promise to `demotion`'s count — `eligible` ABSENT "
+          "(a partial block, whose `eligible == 0` a missing count cannot claim) and wrong-typed — "
+          "so both rows abstain rather than fire on a count the producer never wrote. The two "
+          "guards there are separable and both are sampled: a string/float/null fails "
+          "`isinstance(el, int)`, while JSON `true`/`false` PASS it and are stopped only by the "
+          "`not isinstance(el, bool)` narrowing — `True > 0` would fire D and `False == 0` would "
+          "fire E without it, which is what makes that narrowing load-bearing rather than "
+          "decorative",
+          all(_rc4_gap_or_err({"entries": [], "audit": {"memory": t}}) == []
+              for t in ("not a dict", ["a"], 5, True))
+          and _rc4_gap_or_err({"entries": [], "audit": {"memory": {"created": True}}}) == []
+          and _rc4_gap_or_err({"demotion": {"windows_observed": 3, "surfaced": []}}) == []
+          and all(_rc4_gap_or_err({"demotion": {"windows_observed": 3, "eligible": t,
+                                                "surfaced": []}}) == []
+                  for t in (None, "2", 2.5, True, False)))
+    # The slice below is bounded by the SECTION'S OWN first and last sentence, and both anchors
+    # are asserted rather than `.index`ed: a moved marker must FAIL a check, not abort the suite.
+    # The needles are the clause names themselves — the one list that already exists — so a
+    # seventh clause cannot be added without either naming it in SKILL.md or seeing this red.
+    _duty_i0 = _skill_text.find("**Record-duty gate (v0.4.33).**")
+    _duty_i1 = _skill_text.find("no seed/preview render trips it.", _duty_i0)
+    _duty_doc = _skill_text[_duty_i0:_duty_i1] if 0 <= _duty_i0 < _duty_i1 else ""
+    _duty_clauses = getattr(ms, "_DUTY_CLAUSES", ())
+    check("v0.4.35 RC-4 (GUARD): SKILL.md's duty section names EVERY clause in `_DUTY_CLAUSES`. "
+          "Pre-fix this passes (three names, three clauses) — it reds the UN-UPDATED DOCUMENT, "
+          "which is the drift it exists to catch, and it is the only check that would catch that "
+          "enumeration drifting a second time (nothing else binds the table to its prose)",
+          bool(_duty_doc) and bool(_duty_clauses)
+          and all(g.name in _duty_doc for g in _duty_clauses))
+
     _dutyfull = {"marker": {"timestamp": "2026-07-02T00:00:05Z"},
                  "dream": {"sleep": "s", "beats": ["a"] * 6, "wake": "w"}}
     _duty_gap_p = _wr41("v0433-duty-gap.json", {**_dutyfull, "session": "", "rigor": {"applied": ""}})
@@ -3503,9 +3674,12 @@ with _tf43.TemporaryDirectory() as _td54:
     #   capture lets a record-controlled string ABORT the suite instead of failing a check: measured,
     #   `project = "⚠ RECORD DUTY GAPS · " + "9" * 4301 + " seeded duties the pass left unfilled"`
     #   raises ValueError HERE after 705 printed checks (704 ✓ + 1 ✗) — no totals line and EXIT 1,
-    #   1284 checks never ran. The bound cannot reject a legitimate render (the number is the rows
-    #   drawn, and `_DUTY_CLAUSES` is three), making `int()` total BY CONSTRUCTION rather than by a
-    #   try/except no fixture could reach; and a rejected forgery simply contributes no match.
+    #   1284 checks never ran. The bound cannot reject a legitimate render: the number is the rows
+    #   drawn, so it is bounded by `len(_DUTY_CLAUSES)` — a small constant the four-digit bound
+    #   covers with orders of magnitude of headroom, true at three rows, at six, and at six
+    #   hundred (the RELATION, not a count: the count moved 3 -> 6 in v0.4.35 and will move
+    #   again) — making `int()` total BY CONSTRUCTION rather than by a try/except no fixture could
+    #   reach; and a rejected forgery simply contributes no match.
     # (`rsplit` is NOT a repair for either — it moves the slice to the LAST occurrence, and the
     # denser record-controlled region is BELOW the panel, not above it.) A nested def, like `_run54`
     # beside it: the section is inside one TemporaryDirectory.
@@ -3608,8 +3782,12 @@ with _tf43.TemporaryDirectory() as _td54:
     # suite ERROR: measured on THIS triple (new harness, helper reverted), `ValueError` at the parse
     # with 705 printed checks, no totals line, and EXIT 1 — 1284 checks never ran. `\d{1,4}`
     # makes the run simply not MATCH, so the real panel is the only match and the parse stays total;
-    # the bound cannot reject a legitimate render because the number is the rows drawn and
-    # `_DUTY_CLAUSES` is three. Pre-fix the check cannot even be evaluated — the call raises.
+    # the bound cannot reject a legitimate render because the number is the rows drawn, which is
+    # bounded by `len(_DUTY_CLAUSES)` — a small constant the four-digit bound covers with orders of
+    # magnitude of headroom. Stated as the RELATION and deliberately not as a count: the count has
+    # moved once already (v0.4.35 added rows) and a number written here would go stale in the
+    # comment whose job is to explain why the bound is safe. Pre-fix the check cannot even be
+    # evaluated — the call raises.
     # THE TWO DEFENSES OVERLAP, and the measurement is worth having: reverting the BOUND ALONE
     # (`finditer` + `\d+`) reds this check WITHOUT aborting, because the 4301-digit banner then
     # MATCHES and the uniqueness rule refuses it — `(-1, -1)`, a FAIL rather than a panic. So
@@ -11789,7 +11967,8 @@ with _Env73() as _e_rb2:
     (_e_rb2.store / "bad-rb.md").write_text("not a fact\n", encoding="utf-8")
     (_e_rb2.store / "MEMORY.md").write_text(
         "# Memory Index\n\n- [good-rb](good-rb.md) — keep me\n"
-        "- [bad-rb](bad-rb.md) — was indexed\n", encoding="utf-8")
+        "- [bad-rb](bad-rb.md) — was indexed\n"
+        "- [gone-rb](gone-rb.md) — no fact file at all\n", encoding="utf-8")
     _plan_rb = _li_rb2.local_rebuild_index(_ctx_rb2)
     _apply_rb = _li_rb2.local_rebuild_index(_ctx_rb2, apply=True,
                                            confirm="rebuild-local-index")
@@ -11803,11 +11982,901 @@ with _Env73() as _e_rb2:
     _skip_rb = _li_rb2.local_rebuild_index(
         _ctx_rb2, apply=True, skip_invalid=True, confirm="rebuild-local-index")
     _idx_skip = (_e_rb2.store / "MEMORY.md").read_text(encoding="utf-8")
-    check("R128-6: --skip-invalid enumerates omitted stems and drops only those pointers",
+    # RE-AIMED at v0.4.35 (RC-1c). The label used to read "drops only those pointers" while
+    # the assertion beside it required `](bad-rb.md)` to be GONE — i.e. it pinned the defect:
+    # `bad-rb` was unevaluated, never removed-by-decision. The removal direction it was
+    # reaching for is `gone-rb` (a pointer with no fact file), so the fixture now carries one
+    # and the assertion names it. Two operands are PINs (`would_remove` and `](bad-rb.md)`)
+    # and two are the controls that keep a "removes nothing" rebuild from passing: a valid
+    # stem still indexes, and a pointer whose removal IS justified still goes.
+    check("R128-6: --skip-invalid enumerates the unevaluated stems and drops only the "
+          "pointers whose removal the plan justified",
           _skip_rb.get("ok") is True
           and "bad-rb" in (_skip_rb.get("omitted") or [])
+          and _skip_rb.get("would_remove_existing_pointers") == ["gone-rb"]
           and "](good-rb.md)" in _idx_skip
-          and "](bad-rb.md)" not in _idx_skip)
+          and "](bad-rb.md)" in _idx_skip
+          and "](gone-rb.md)" not in _idx_skip)
+
+# --- v0.4.35 RC-1c: an unevaluable fact is not a removal verdict --------------------------
+# docs/refusal-verdict-parity.spec.md §RC-1c. `would_remove` is `existing_ptrs - planned`, so
+# any stem the plan could not EVALUATE and did not add to `planned` was reported — and WRITTEN —
+# as a pointer the plan had decided to drop. The first fixture is the one that matters: not a
+# stray non-fact, but a REAL, admitted fact whose body trips the secrets firewall's CLI-flag
+# arm. `Use --token <value>` in ordinary prose is the recorded false positive, and so a
+# firewall false negative on a live fact silently de-indexed it.
+with _Env73() as _e_rb7:
+    _ctx_rb7 = sc.resolve_store(_e_rb7.proj)
+    import local_ingress as _li_rb7
+    (_e_rb7.store / "sec-probe.md").write_text(
+        "---\nname: sec-probe\ndescription: registry access\n---\n"
+        "Use `--token <value>` when the registry is private.\n", encoding="utf-8")
+    (_e_rb7.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [sec-probe](sec-probe.md) — registry access\n", encoding="utf-8")
+    _plan_rb7 = _li_rb7._rebuild_plan(_ctx_rb7)
+    _app_rb7 = _li_rb7.local_rebuild_index(
+        _ctx_rb7, apply=True, skip_invalid=True, confirm="rebuild-local-index")
+    _idx_rb7 = (_e_rb7.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("RC-1c (PIN): a firewall false positive on a LIVE fact does not de-index it — the "
+          "pointer survives as `left in place, unverified` (pre-fix: `would_remove` named "
+          "sec-probe and the apply dropped its pointer)",
+          _plan_rb7["would_remove_existing_pointers"] == []
+          and "](sec-probe.md)" in _idx_rb7
+          and _app_rb7.get("ok") is True
+          and "sec-probe" in (_app_rb7.get("omitted") or []))
+    check("RC-1c (GUARD, the fixture's own teeth): the body really does trip the firewall — "
+          "if `_looks_secret` stops flagging it, the check above silently stops testing the case",
+          any(r.get("stem") == "sec-probe" for r in _plan_rb7["invalid"]))
+
+with _Env73() as _e_rb8:
+    _ctx_rb8 = sc.resolve_store(_e_rb8.proj)
+    import local_ingress as _li_rb8
+    (_e_rb8.store / "live-rbs.md").write_text(
+        "---\nname: live-rbs\ndescription: keep me\n---\nG\n", encoding="utf-8")
+    # Deterministic, not a race: `glob("*.md")` lists the NAME, `read_snapshot` follows the
+    # link, and `read_bytes()` raises FileNotFoundError → an absent snapshot. Nothing REFUSED
+    # the read, so the plan had no error to report and skipped it in silence.
+    _os73.symlink(_e_rb8.store / "no-such-target.md", _e_rb8.store / "ghost-rbs.md")
+    (_e_rb8.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [live-rbs](live-rbs.md) — keep me\n"
+        "- [ghost-rbs](ghost-rbs.md) — dangling\n", encoding="utf-8")
+    _plan_rb8 = _li_rb8.local_rebuild_index(_ctx_rb8)
+    _app_rb8 = _li_rb8.local_rebuild_index(
+        _ctx_rb8, apply=True, confirm="rebuild-local-index")
+    _idx_rb8 = (_e_rb8.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("RC-1c (PIN): a fact absent at read is REPORTED (`absent`) rather than skipped in "
+          "silence, its pointer is carried through, and the release does not need "
+          "--skip-invalid (pre-fix: `absent` does not exist, `omitted` is empty without "
+          "--skip-invalid, and the pointer is gone)",
+          any(r.get("stem") == "ghost-rbs" for r in _plan_rb8.get("absent") or [])
+          and _plan_rb8.get("ok") is True
+          and _app_rb8.get("ok") is True
+          and "ghost-rbs" in (_app_rb8.get("omitted") or [])
+          and "](ghost-rbs.md)" in _idx_rb8
+          and "](live-rbs.md)" in _idx_rb8)
+
+# --- v0.4.35 RC-1c (the carry's own SELECTION): which line a carried stem's pointer lives on -
+# The carry exists so a HAND-EDITED index line survives a rebuild. Its selection answers one
+# question — "does this line carry a stem the plan could not evaluate?" — and the two readings of
+# it fail in OPPOSITE directions, which is why this block pins both halves rather than one:
+#
+#   FIRST match (`_LINK_RE.search`, what this shipped as) — blind to a `_carry` stem sitting
+#     behind another stem's pointer. Such a line was not carried at all, so the stem kept its
+#     entry in `planned`, `would_remove` reported NOTHING, and its `](stem.md)` vanished from the
+#     rebuilt index. That is RC-1c's own harm re-entered through RC-1c's repair: an unevaluable
+#     fact de-indexed, silently, with the plan claiming no removal.
+#   ANY match (`_LINK_RE.findall`, which is how `existing_ptrs` itself is built) — carries such a
+#     line, which is right, but a carried line is VERBATIM, so a stem it also names that the
+#     rebuild re-derived would land in `future` TWICE. That duplicate is the reason the narrow
+#     reading was chosen, and it is the only thing it bought.
+#
+# The duplicate is now repaired where it actually occurs — the RE-DERIVED line for a stem the
+# carried line already names is dropped, the hand-edit surviving — which is what lets the reading
+# be the wide one. The direction is the repo's own, stated verbatim a few blocks above: the
+# rebuild "may decline to RE-ADD an archived pointer; it may never REMOVE a live one". A carried
+# line that preserves a quoted token is cosmetic and recoverable; a dropped pointer is neither.
+#
+# The readings differ on exactly ONE shape — a `_carry` stem whose token is not the line's first
+# link — so there are two arms. ARM 1 gives that stem a line of its own as well, so both readings
+# keep it and the arm discriminates on the DUPLICATE instead. ARM 2 gives it no line of its own,
+# so only the wide reading keeps it: ARM 2 is the de-indexing pin.
+with _Env73() as _e_carry:
+    _ctx_carry = sc.resolve_store(_e_carry.proj)
+    import local_ingress as _li_carry
+    (_e_carry.store / "live-rbb.md").write_text(
+        "---\nname: live-rbb\ndescription: d\n---\nG\n", encoding="utf-8")
+    (_e_carry.store / "live-rbd.md").write_text(
+        "---\nname: live-rbd\ndescription: d\n---\nG\n", encoding="utf-8")
+    _os73.symlink(_e_carry.store / "no-such-target.md", _e_carry.store / "gone-rbb.md")
+    _os73.symlink(_e_carry.store / "no-such-target.md", _e_carry.store / "behind-rbd.md")
+    # `live-rbb`'s OWN line is hand-edited (display text is not the stem) and its hook quotes the
+    # other stem's `](gone-rbb.md)` token. `gone-rbb`'s line IS carried, and its display text
+    # deliberately differs from its stem: no fact file is readable behind `gone-rbb`, so the only
+    # source the line can come from is the pinned index — and `Gone RBB` is what makes that
+    # visible, since neither a re-derivation nor a `startswith(f"- [{stem}]")` selection can
+    # produce it. `behind-rbd` is the ARM 2 shape: unevaluable, present in the index, and named
+    # ONLY as a second link on someone else's hand-edited line — the one place the narrow reading
+    # loses it.
+    _hand_rbb = "- [Live RBB](live-rbb.md) — a hook quoting ](gone-rbb.md) inline"
+    _gone_rbb = "- [Gone RBB](gone-rbb.md) — dangling"
+    _hand_rbd = "- [Live RBD](live-rbd.md) — see also ](behind-rbd.md)"
+    (_e_carry.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n" + _hand_rbb + "\n" + _gone_rbb + "\n" + _hand_rbd + "\n",
+        encoding="utf-8")
+    _plan_rbb = _li_carry._rebuild_plan(_ctx_carry)
+    _lines_rbb = _plan_rbb["future"].splitlines()
+    check("v0.4.35 RC-1c (PIN): a stem the plan could not evaluate keeps its EXISTING pointer "
+          "line, carried VERBATIM from the pinned index — display text and all, which nothing "
+          "downstream could have derived (pre-fix: `gone-rbb` is dropped from `future` entirely "
+          "and no report list names it)",
+          _gone_rbb in _lines_rbb
+          and any(r.get("stem") == "gone-rbb" for r in _plan_rbb.get("absent") or []))
+    check("v0.4.35 RC-1c (PIN): a hand-edited line that names an unevaluable stem is carried "
+          "even when its FIRST link belongs to a different, evaluable stem — and the re-derived "
+          "line for THAT stem is dropped, so THAT stem is placed exactly once (the carried line "
+          "still places every other stem it names: measured on its own `future`, `gone-rbb` "
+          "appears twice — its own carried line, plus the token quoted inside `_hand_rbb`, which "
+          "is carried too. The count asserted is `live-rbb`'s, the stem the re-derivation would "
+          "have duplicated; a quoted token in a preserved hand-edit is the cosmetic, recoverable "
+          "survivor this carry exists to keep). The narrow reading fails this on its first "
+          "conjunct: it re-derives `live-rbb` and discards the hand-edit. (pre-fix: no carry "
+          "exists at all, so the hand-edited line is absent from `future`)",
+          _hand_rbb in _lines_rbb
+          and sum(1 for ln in _lines_rbb
+                  if (m := ms._LINK_RE.search(ln)) and m.group(1) == "live-rbb") == 1)
+    check("v0.4.35 RC-1c (PIN, the de-indexing the narrow reading left open): an unevaluable stem "
+          "named ONLY as a second link on another stem's hand-edited line keeps its token. The "
+          "narrow reading cannot see it — that line's first match is `live-rbd` — so the line is "
+          "not carried, and `behind-rbd` is dropped from the index while `planned` still holds it "
+          "and `would_remove` reports no removal. That is RC-1c's harm re-entered through RC-1c's "
+          "repair (pre-fix: no carry exists, so the token is absent from `future` too)",
+          # CONTAINMENT, not membership: `_lines_rbb` is a LIST, so a bare `"](behind-rbd.md)"
+          # in _lines_rbb` would ask whether some line EQUALS the token — false by construction,
+          # and false on the repaired tree too. The claim is that the token survives INSIDE a
+          # line, which is what the any() states. (Measured 2026-09-18: the equality form reds on
+          # the live tree with the carried line sitting at `future[4]`. The sibling conjuncts
+          # above use equality correctly — a verbatim carry IS a whole line — which is exactly
+          # why this one's shape had to change with its operand.)
+          #
+          # Per-conjunct measurement, because only ONE conjunct discriminates between the two
+          # READINGS this pin is about — both are v0.4.35 cuts and both carry an `absent` key, so
+          # the `absent` conjunct is a guard riding inside the pin, not a second pin. It is NOT
+          # true of pristine base: `absent` does not exist there, `plan.get("absent")` is None,
+          # and the conjunct is FALSE. The containment conjunct is the pin.
+          any("](behind-rbd.md)" in _ln for _ln in _lines_rbb)
+          and any(r.get("stem") == "behind-rbd" for r in _plan_rbb.get("absent") or []))
+
+# --- v0.4.35 RC-1c (the carry's own DEDUCTION): a retained stale pointer must be NAMED ------
+# `would_remove` reports what the apply DROPS, and a carried line is VERBATIM, so the key
+# subtracts `_named` — every stem a carried line places. But `_named` is WIDER than `_carry`: it
+# also holds stems that merely SHARE a carried line, and those may be ordinary decided removals.
+# Subtracting them converts a justified removal into a retention that NO list names: the pointer
+# survives, `would_remove` is silent, and the stem appears nowhere in the report. MEASURED
+# 2026-09-18 (peer-reported, reproduced here before repairing): one dead pointer is dropped and
+# reported `would_remove: ['ghost']` sitting alone, and silently retained with `would_remove: []`
+# when the same token shares a line with an unevaluable stem. The verdict keyed to LINE LAYOUT.
+#
+# The repair keeps the retention — the line is carried verbatim because re-deriving it would
+# destroy the hand-edit the carry serves, and §2.3's own direction is that a stale pointer is
+# recoverable while its removal is not — and gives the retained stems their own carrier. The two
+# arms below differ ONLY in layout; the ghost stem is identical in both, so ARM B is what keeps
+# ARM A from passing on a key that is simply populated with every decided removal.
+with _Env73() as _e_keep1:
+    _ctx_keep1 = sc.resolve_store(_e_keep1.proj)
+    import local_ingress as _li_keep1
+    (_e_keep1.store / "live-rkc.md").write_text(
+        "---\nname: live-rkc\ndescription: d\n---\nG\n", encoding="utf-8")
+    # `gone-rkc`: a broken symlink, so the plan cannot evaluate it and its line gets CARRIED.
+    _os73.symlink(_e_keep1.store / "no-such-target.md", _e_keep1.store / "gone-rkc.md")
+    # `ghost-rkc`: NO fact file at all, so no loop classifies it and it is never `planned` — a
+    # decided removal. ARM 1 puts its token on the carried line.
+    (_e_keep1.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [live-rkc](live-rkc.md) — d\n"
+        "- [Gone RKC](gone-rkc.md) — see also ](ghost-rkc.md)\n", encoding="utf-8")
+    _plan_keep1 = _li_keep1._rebuild_plan(_ctx_keep1)
+    check("v0.4.35 RC-1c (PIN): a stale pointer retained only because it SHARES a carried line is "
+          "NAMED. `would_remove` is correctly silent about it — the apply does not drop it — so "
+          "without a carrier of its own the removal the plan justified disappears from the "
+          "report entirely, and the operator sees a dangling pointer with nothing explaining it. "
+          "(pre-fix: the key does not exist, so `.get` is None and this reds on its first "
+          "conjunct; the second is the honest-report half)",
+          _plan_keep1.get("would_keep_stale_pointers") == ["ghost-rkc"]
+          and _plan_keep1.get("would_remove_existing_pointers") == [])
+
+with _Env73() as _e_keep2:
+    _ctx_keep2 = sc.resolve_store(_e_keep2.proj)
+    import local_ingress as _li_keep2
+    (_e_keep2.store / "live-rkd.md").write_text(
+        "---\nname: live-rkd\ndescription: d\n---\nG\n", encoding="utf-8")
+    _os73.symlink(_e_keep2.store / "no-such-target.md", _e_keep2.store / "gone-rkd.md")
+    # The SAME ghost stem, now on a line of its OWN: not carried, so it is dropped and reported.
+    (_e_keep2.store / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [live-rkd](live-rkd.md) — d\n"
+        "- [Gone RKD](gone-rkd.md) — dangling\n"
+        "- [Ghost RKC](ghost-rkc.md) — no fact file at all\n", encoding="utf-8")
+    _plan_keep2 = _li_keep2._rebuild_plan(_ctx_keep2)
+    check("v0.4.35 RC-1c (PIN, ARM 1's control): the same ghost stem on a line of its OWN is "
+          "DROPPED and reported as a removal, and the retained-stale list stays EMPTY. Without "
+          "this arm a key that merely mirrored `_remove_basis` would satisfy ARM 1; the two arms "
+          "differ only in line layout, which is the variable the defect keyed on. (pre-fix: the "
+          "key does not exist — this arm reds on the same conjunct ARM 1 does)",
+          _plan_keep2.get("would_keep_stale_pointers") == []
+          and _plan_keep2.get("would_remove_existing_pointers") == ["ghost-rkc"])
+
+# --- v0.4.35 RC-1a (the cycle record's CONTAINER): a raw exception is not a fault named -----
+# `--before`'s container refusal was applied one sink over to the OTHER load in the same block,
+# because the two read the same kind of artifact. An int/string/list/`null` is valid JSON, so the
+# read SUCCEEDS and the value reaches `cyc.get("session", "")` at the sidecar-keying site, where
+# the block's blanket `except Exception` turns it into `--diffs: skipped ('int' object has no
+# attribute 'get')` — a Python exception string where the sibling names the fault AND its remedy.
+# Reachable only when the state file carries a stamp, because the "cycle unstamped" early return
+# is what otherwise diverts a non-dict record; that is why the fixture stamps first.
+with _tf43.TemporaryDirectory() as _td_f8:
+    _home_f8 = str(Path(_td_f8) / "home")
+    (Path(_td_f8) / "home").mkdir()
+    _proj_f8 = str(Path(_td_f8) / "proj")
+    (Path(_td_f8) / "proj").mkdir()
+    _ms_f8 = str(_scripts54 / "memory_status.py")
+    _int_f8 = Path(_td_f8) / "int.json"
+    _int_f8.write_text("5", encoding="utf-8")
+    # A NON-empty before-tree: the skip ladder is `if not diffs and not before`, so an empty one
+    # diverts the run before the keying site and the pin would measure nothing.
+    _ne_f8 = Path(_td_f8) / "nonempty.json"
+    _ne_f8.write_text('{"gone.md": {"lines": [], "op": "deleted"}}', encoding="utf-8")
+    _run_home_a1(_home_f8, _ms_f8, _proj_f8, "--stamp-marker", "a" * 40)
+    _o_f8, _e_f8, _r_f8 = _run_home_a1(_home_f8, _ms_f8, _proj_f8,
+                                       "--diffs", str(_int_f8), "--before", str(_ne_f8))
+    check("v0.4.35 RC-1a (PIN): a non-dict CYCLE RECORD is refused by name rather than surfacing "
+          "as a Python exception string. The two conjuncts cover the fault and its absence: the "
+          "named refusal is present, and the raw `AttributeError` text is not — pre-fix MEASURED "
+          "2026-09-18 on the base tree: `--diffs: skipped ('int' object has no attribute 'get')`, "
+          "rc 0, and no sidecar",
+          _r_f8 == 0
+          and "is not a JSON object" in _e_f8
+          and "object has no attribute" not in _e_f8)
+
+# --- v0.4.35 RC-1d (render_html's marker messages): one string, two causes -------------------
+# `_load_template` raised `"missing or duplicate bundle marker: <file>"` for BOTH an absent marker
+# and a duplicated one — different faults with different repairs ("restore it" vs "remove the
+# extra copy"), told apart by nothing, with the count the reader needs withheld. The vocabulary
+# marker added this release had the same sentence. Both are split; this pins the BUNDLE one
+# because it exists on the pre-fix tree, so the check can actually FLIP: the assertion is that the
+# two arms produce DIFFERENT messages, which is exactly what a two-cause sentence cannot do.
+# The fixture copies the template into a temp dir with its two bundles symlinked beside it, so
+# `_TEMPLATE` can be pointed at a doctored marker count without touching the shipped asset;
+# `_WRITE_ACTIONS_MARKER` is read defensively because it does not exist on the pre-fix tree,
+# where an unguarded attribute read would ERROR the suite instead of reddening one check.
+with _tf43.TemporaryDirectory() as _td_f11:
+    import render_html as _rh_f11
+    _dir_f11 = Path(_td_f11) / "tpl"
+    _dir_f11.mkdir()
+    for _bn_f11 in ("dashboard.network.js", "dashboard.sections.js"):
+        _os73.symlink(_rh_f11._TEMPLATE.parent / _bn_f11, _dir_f11 / _bn_f11)
+    _saved_f11 = _rh_f11._TEMPLATE
+    _marker_f11 = "/*__CM_NETWORK__*/"
+    _vocab_f11 = getattr(_rh_f11, "_WRITE_ACTIONS_MARKER", "")
+    _msgs_f11: dict = {}
+    try:
+        for _arm_f11, _n_f11 in (("absent", 0), ("dup", 2)):
+            _t_f11 = _dir_f11 / "t.html"
+            _t_f11.write_text(_vocab_f11 + "\n" + _marker_f11 * _n_f11 + "\n", encoding="utf-8")
+            _rh_f11._TEMPLATE = _t_f11
+            try:
+                _rh_f11._load_template()
+                _msgs_f11[_arm_f11] = ""
+            except ValueError as _ex_f11:
+                _msgs_f11[_arm_f11] = str(_ex_f11)
+    finally:
+        _rh_f11._TEMPLATE = _saved_f11
+    check("v0.4.35 RC-1d (PIN): the two marker faults are told apart — an ABSENT marker and a "
+          "DUPLICATED one produce different sentences, each naming its own cause and its own "
+          "repair, and the duplicated arm states the count it found. (pre-fix MEASURED "
+          "2026-09-18: both arms raise the single string `missing or duplicate bundle marker: "
+          "dashboard.network.js`, so the `!=` conjunct is false)",
+          _msgs_f11["absent"] != _msgs_f11["dup"]
+          and "ABSENT" in _msgs_f11["absent"]
+          and "appears 2 times" in _msgs_f11["dup"])
+
+# --- v0.4.35 RC-1a (the archive pass's absent arm): a doc NO loop can report ----------------
+# The archive pass's `if not snap.exists: continue` is the same two-line guard as the fact
+# loop's, and the CONSUMER is what separates them: the fact loop reports an absent fact and
+# carries its pointer, so it has a safe automatic action; a doc that is absent may be the
+# archive whose pointer lines record which facts were evicted, and with it unread every one of
+# those pointers is re-added — `ok: True`, every report list empty. `SHIPPED.md` is the one
+# name the fact loop excludes that this pass does not, so the harm is invisible to both loops.
+with _Env73() as _e_arch:
+    _ctx_arch = sc.resolve_store(_e_arch.proj)
+    import local_ingress as _li_arch
+    (_e_arch.store / "kept-rbc.md").write_text(
+        "---\nname: kept-rbc\ndescription: evicted on purpose\n---\nG\n", encoding="utf-8")
+    # ARM 1 — the archive doc is READABLE. Control: the eviction holds and the rebuild says so.
+    (_e_arch.store / "SHIPPED.md").write_text(
+        "# Shipped\n- [kept-rbc](kept-rbc.md) — evicted\n", encoding="utf-8")
+    (_e_arch.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _li_arch.local_rebuild_index(_ctx_arch, apply=True, confirm="rebuild-local-index")
+    _idx_rbc1 = (_e_arch.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("v0.4.35 RC-1a (GUARD, the fixture's control): with the archive doc READABLE the "
+          "rebuild declines the re-add and the evicted pointer stays out of the index — the "
+          "outcome ARM 2 below silently loses (guard: true on the pre-fix tree too)",
+          "](kept-rbc.md)" not in _idx_rbc1)
+    # ARM 2 — the same store, the archive doc now a dangling symlink.
+    (_e_arch.store / "SHIPPED.md").unlink()
+    _os73.symlink(_e_arch.store / "no-such-target.md", _e_arch.store / "SHIPPED.md")
+    (_e_arch.store / "MEMORY.md").write_text("# Memory Index\n", encoding="utf-8")
+    _plan_rbc2 = _li_arch.local_rebuild_index(_ctx_arch)
+    check("v0.4.35 RC-1a (PIN): a store-root doc NO loop can read is NAMED and fails the plan "
+          "closed — an unreadable placement record cannot be told from an absent one, and the "
+          "rebuild may not re-add what it could not check (pre-fix: `ok` is True, `unreadable` "
+          "is empty, and the apply admits every pointer that doc owned)",
+          _plan_rbc2.get("ok") is False
+          and any(r.get("stem") == "SHIPPED" for r in _plan_rbc2["unreadable"]))
+    _app_rbc2 = _li_arch.local_rebuild_index(
+        _ctx_arch, apply=True, skip_invalid=True, confirm="rebuild-local-index")
+    _idx_rbc2 = (_e_arch.store / "MEMORY.md").read_text(encoding="utf-8")
+    check("v0.4.35 RC-1a (GUARD, the harm the block prevents): under the operator's explicit "
+          "`--skip-invalid` the re-add still happens — so the block is what stands between the "
+          "store and a silently undone eviction, and the escape is a decision, not an accident "
+          "(guard: true on the pre-fix tree too — pre-fix it needed no flag at all)",
+          _app_rbc2.get("ok") is True and "](kept-rbc.md)" in _idx_rbc2)
+
+# --- v0.4.35 RC-1b: a recognized value-flag with a MISSING value is a usage error ----------
+# A trailing `--audit` left `audit_before` at "" — the value meaning "flag not supplied" — so a
+# malformed command was read as an absent one. Each of the five fails differently downstream (a
+# `memory.created` row naming the whole store, a session-less key on the `--diffs` sidecar when it
+# writes, an uninjected `--into` block, a snooze that writes nothing), but the parse defect is ONE.
+# The precedent is `--stamp-marker`, which already re-distinguishes the two and exits 2.
+with _tf43.TemporaryDirectory() as _td_rb9:
+    _home_rb9 = str(Path(_td_rb9) / "home")
+    Path(_home_rb9).mkdir()
+    _proj_rb9 = str(Path(_td_rb9) / "proj")
+    Path(_proj_rb9).mkdir()
+    _ms_rb9 = str(_scripts54 / "memory_status.py")
+    for _f9rb in ("--audit", "--before", "--diffs", "--into", "--snooze-until"):
+        _o9rb, _e9rb, _r9rb = _run_home_a1(_home_rb9, _ms_rb9, _proj_rb9, _f9rb)
+        check(f"RC-1b (PIN): a trailing `{_f9rb}` with no value is a usage error that NAMES the "
+              f"flag (pre-fix: exit 0 — the variable stayed at the value meaning 'not supplied')",
+              _r9rb == 2 and f"{_f9rb} needs a value" in _e9rb)
+    _o9rb, _e9rb, _r9rb = _run_home_a1(_home_rb9, _ms_rb9, _proj_rb9, "--justify-demotion")
+    check("RC-1b (GUARD): `--justify-demotion` with no stems still exits 2 with ITS OWN runner "
+          "message — the new guard did not swallow a legitimate zero-stem shape",
+          _r9rb == 2 and "pass one or more STEM" in _e9rb and "needs a value" not in _e9rb)
+    _o9rb, _e9rb, _r9rb = _run_home_a1(_home_rb9, _ms_rb9, _proj_rb9,
+                                 "--diffs", "/x/c.json", "--before", "/x/b.json", "--before")
+    check("RC-1b (PIN): a DUPLICATE flag whose SECOND occurrence is bare is still a usage error. "
+          "This is the check that separates a complete fix from a plausible one: an "
+          "`argv.index`-based guard passes this command, because the valid first occurrence "
+          "satisfies it. Pre-fix this command exits 0 and writes NO sidecar, so the discrimination "
+          "here is the exit code alone — but NOT for the reason the label once gave: `/x/b.json` is "
+          "not what diverts it. `/x/c.json` is missing too, so the marker is unstamped and the run "
+          "exits at the CYCLE skip (`run --stamp-marker first`) without ever reasoning about "
+          "`before`; measured 2026-09-18 on the pre-fix tree, that skip is reached even with a "
+          "READABLE `--before`. A sidecar lands there only where BOTH operands are readable and "
+          "the cycle is stamped; this command carries neither",
+          _r9rb == 2 and "--before needs a value" in _e9rb)
+    # …and the cell the arm above does NOT reach: a duplicate whose second occurrence is EMPTY rather
+    # than bare. The two arms are different diagonal cells of {first, later occurrence} x {bare,
+    # empty}, and neither covers the other: the arm above exercises the dash conjunct at a LATER
+    # index, this one exercises the emptiness conjunct at a later index. A guard that iterates for
+    # the dash test and reads `argv.index()` for the emptiness test — a plausible half-fix, and the
+    # shape the parse itself uses — passes the arm above and fails here. Measured 2026-09-18:
+    # pre-fix rc 0 and no sidecar, via the same CYCLE-unstamped skip the arm above takes — this
+    # command samples the same operand pair, and the empty-snapshot sentence is this branch's, so
+    # no pre-fix run can print it on any operand. A PIN on the exit code, the same discrimination
+    # as its sibling.
+    _o9rb, _e9rb, _r9rb = _run_home_a1(_home_rb9, _ms_rb9, _proj_rb9,
+                                 "--diffs", "/x/c.json", "--before", "/x/b.json", "--before", "")
+    check("RC-1b (PIN): a DUPLICATE flag whose SECOND occurrence is EMPTY — the sibling of the bare "
+          "arm above, one token state over — is still a usage error naming the flag. It samples the "
+          "emptiness conjunct at a LATER index, where the arm above samples the dash conjunct, so a "
+          "fix that iterates for one and uses `argv.index()` for the other passes that arm and fails "
+          "this one (pre-fix: exit 0, at the cycle-unstamped skip — see the arm above)",
+          _r9rb == 2 and "--before needs a value" in _e9rb)
+    # The THIRD token state: present but EMPTY. `"".startswith("-")` is False, so the guard above
+    # admitted it and the variable stayed at the value meaning "flag not supplied" — the same defect
+    # as a MISSING value, one token over, and the reason this loop is not folded into the one above
+    # is that the two predicates are different (`--before` bare and `--before ""` are different
+    # commands). It was also the LAST route into RC-1a's fabrication: an absent flag never enters
+    # the `--audit` block, so the `before = {}` default was reachable through this value alone.
+    for _f9re, _harm9 in (
+            ("--audit", "the sink read `before = {}` and reported every store file as created"),
+            ("--before", "the sink printed the omitted-flag remedy for a cause that had not happened "
+                         "(in the two-flag `--diffs --before` invocation — a lone `--before` is read "
+                         "by nothing, so its own line exhibits no harm at all)"),
+            ("--diffs", "the sink keyed its sidecar without the session segment, naming no fault "
+                        "(given a stamped store and a readable `--before`: a LONE `--diffs` is "
+                        "skipped before the write on either value, empty or real)"),
+            ("--into", "the sink injected nothing, all three explanatory prints sitting inside the "
+                       "block that never ran"),
+            ("--snooze-until", "the sink wrote `beacon_snooze_until: \"\"` — the empty timestamp, "
+                               "where the flag is HONORED (a `--stamp-marker` is supplied); without "
+                               "a stamp it writes no key on any value, empty or real")):
+        _o9re, _e9re, _r9re = _run_home_a1(_home_rb9, _ms_rb9, _proj_rb9, _f9re, "")
+        check(f"RC-1b (PIN): `{_f9re} \"\"` — present but EMPTY — is the same usage error as a "
+              f"missing value, and names the flag (pre-fix: exit 0, the variable left at the value "
+              f"meaning 'not supplied' — the state the bare spelling leaves too, so this arm's harm "
+              f"is that arm's: {_harm9})",
+              _r9re == 2 and f"{_f9re} needs a value" in _e9re)
+    _o9re, _e9re, _r9re = _run_home_a1(_home_rb9, _ms_rb9, _proj_rb9, "--audit", "")
+    check("RC-1b (PIN): `--audit \"\"` emits NO audit summary at all — the harm, not the mechanism. "
+          "Measured 2026-09-18 one-fixture-per-arm on the PRE-FIX tree: exit 0 and a 446-byte "
+          "summary whose every store block reads created/modified/deleted/token_delta 0 — this "
+          "fixture is empty, so its fabrication is the ROW, not a false count. (The larger figures "
+          "this label first carried, `claude_md: created 1024, token_delta 4075886`, came from an "
+          "instrument whose fixture HAD store content; they reproduce there and not here.) The "
+          "exit-code conjunct is what keeps this from passing on ANY silent run: stdout-emptiness "
+          "alone is satisfied by a crash and by an unrelated exit 2",
+          _r9re == 2 and _o9re.strip() == "")
+
+# --- v0.4.35 RC-1b, the SIBLING SITES: the same empty-token arm, three scripts over ----------
+# The `_VALUE_FLAGS` guards these three carry came from v0.4.29, and they test a value's PRESENCE,
+# never its EMPTINESS: `if i + 1 >= len(argv)` admits `""`, because an empty token IS a token. So
+# "needs a value" meant "a token follows", not "a value was supplied". Measured 2026-09-18 with each
+# site run three ways — flag omitted / flag with an EMPTY value / flag with a real value — the empty
+# arm was BYTE-IDENTICAL to the omitted arm and differed from the real-value arm, which each script
+# already instruments (distill_scan prints its injection, extract_signals a scope warning,
+# sync_global reaches its read/write arm). A value never supplied was therefore spelled as the
+# absence on all three, exactly as `memory_status.py` spelled it. `sync_global.py` carries TWO routes
+# into one arm — `--into ""` and the equals form `--into=`, whose `split("=", 1)[1]` yields "" just
+# as quietly — so both are pinned rather than assumed to share the other scripts' fate.
+#
+# Each condition asserts the HARM, not just the mechanism: `_o9s.strip() == ""` rides every arm,
+# because "a usage error naming the flag" is satisfied by a guard placed AFTER the work, and the
+# harm is that the run did not happen. Measured on the fixed tree: the empty arm's stdout is 0
+# bytes on all twelve arms, where the omitted arm emits 376 (distill_scan) / 382 (extract_signals)
+# — so the conjunct discriminates in both directions and cannot pass vacuously.
+with _tf43.TemporaryDirectory() as _td_rb9s:
+    _home_rb9s = str(Path(_td_rb9s) / "home")
+    Path(_home_rb9s).mkdir()
+    _proj_rb9s = str(Path(_td_rb9s) / "proj")
+    Path(_proj_rb9s).mkdir()
+    _ds_rb9s = str(_scripts54 / "distill_scan.py")
+    _es_rb9s = str(_scripts54 / "extract_signals.py")
+    _sg_rb9s = str(_scripts54 / "sync_global.py")
+    # Per-flag pre-fix text, NOT one shared sentence: a loop over heterogeneous sites is exactly
+    # where a single measured sentence becomes N asserted ones, and these arms do not share one
+    # fate. The four scalar flags swallow the empty token silently; the two LIST-valued ones
+    # CAPTURE it (`[""]` where unsupplied is `[]`), which trips a downstream warning instead.
+    _S9d = ("exit 0, stderr empty, stdout identical to omitting the flag modulo the run's own "
+            "`window` timestamp, so the injection silently did not happen")
+    for _fl_rb9s, _pf9s in (
+            ("--since", _S9d), ("--into", _S9d), ("--from", _S9d), ("--verdict", _S9d),
+            ("--proposed", "exit 0 with 72 B of stderr — LIST-valued, so the empty token is "
+                           "CAPTURED (`proposed` becomes `[\"\"]` where unsupplied is `[]`) and what "
+                           "it changes is the downstream `require --into` warning, not silence"),
+            ("--created", "exit 0 with 72 B of stderr — LIST-valued, so the empty token is CAPTURED "
+                          "(`created` becomes `[\"\"]` where unsupplied is `[]`) and what it changes "
+                          "is the downstream `require --into` warning, not silence")):
+        _o9s, _e9s, _r9s = _run_home_a1(_home_rb9s, _ds_rb9s, _proj_rb9s, _fl_rb9s, "")
+        check(f"RC-1b (PIN): `distill_scan.py {_fl_rb9s} \"\"` — present but EMPTY — is a usage error "
+              f"naming the flag (pre-fix: {_pf9s})",
+              _r9s == 2 and f"{_fl_rb9s} requires a value" in _e9s and _o9s.strip() == "")
+    _S9e = ("exit 0, stderr empty, output identical to omitting the flag, so the capture silently "
+            "did not happen")
+    for _fl_rb9s, _pf9s in (
+            ("--since", _S9e), ("--into", _S9e), ("--before", _S9e),
+            ("--max", "exit 2 ALREADY — refused by its own `int()` parse with `--max expects an "
+                      "integer, got ''` — so this arm reds on the MESSAGE conjunct alone")):
+        _o9s, _e9s, _r9s = _run_home_a1(_home_rb9s, _es_rb9s, _proj_rb9s, _fl_rb9s, "")
+        check(f"RC-1b (PIN): `extract_signals.py {_fl_rb9s} \"\"` — present but EMPTY — is a usage "
+              f"error naming the flag (pre-fix: {_pf9s})",
+              _r9s == 2 and f"{_fl_rb9s} requires a value" in _e9s and _o9s.strip() == "")
+    # The THIRD token a `_VALUE_FLAGS` guard must reject: the NEXT FLAG. `--since --into <seed>`
+    # binds `--since = "--into"`, so the real `--into` is eaten as a value and vanishes — and the
+    # two scripts do NOT share a fate there, so the pre-fix text below is PER-SCRIPT rather than one
+    # shared sentence. Measured 2026-09-18 at `e5cce77` on this exact shape: `extract_signals.py` →
+    # rc 0, empty stderr, seed untouched, where the control (`--into <seed>` with a real value)
+    # injects and prints — so there the arm really is the silent swallow. `distill_scan.py` → rc 2
+    # ALREADY, with its own `--since expects an ISO timestamp, got '--into'`: the timestamp parse
+    # caught the swallow before the flag guard could, so that arm is a pin on its MESSAGE conjunct
+    # and not on the silence this comment first claimed for both. `memory_status.py` has carried the
+    # dash conjunct since v0.4.29; these two were the siblings still missing it. The seed-absence
+    # conjunct is a CONTROL, not a pin — true on both trees, since nothing injects either way —
+    # and what it rules out is a guard placed AFTER the work, the same reason `_o9s.strip() == ""`
+    # rides every arm above.
+    _dashseed_rb9s = Path(_td_rb9s) / "seed.json"   # distinct from `_seed_rb9s` below, which is
+    #                                                  a seed that EXISTS (the injection control);
+    #                                                  this one must not, so they cannot share a name
+    for _lbl6, _sc6, _pf6 in (
+            ("distill_scan.py", _ds_rb9s,
+             "exit 2 ALREADY, naming `--since` — `--since expects an ISO timestamp, got '--into'` "
+             "— the timestamp parse caught the swallow before the flag guard, so this arm reds on "
+             "the MESSAGE conjunct"),
+            ("extract_signals.py", _es_rb9s,
+             "exit 0, empty stderr, the injection silently did not happen while the run reported "
+             "success")):
+        _o9s, _e9s, _r9s = _run_home_a1(_home_rb9s, _sc6, _proj_rb9s, "--since", "--into",
+                                        str(_dashseed_rb9s))
+        check(f"RC-1b (PIN): `{_lbl6} --since --into <seed>` — a value-flag whose value is the "
+              f"NEXT FLAG — is a usage error naming the flag (pre-fix: {_pf6})",
+              _r9s == 2 and "--since requires a value" in _e9s and _o9s.strip() == ""
+              and not _dashseed_rb9s.exists())
+    for _lbl_rb9s, _a9s in (
+            ('`--into ""`', ("--workflows", "--registrar", _proj_rb9s, "--into", "")),
+            ("`--into=` (the equals form, empty)",
+             ("--workflows", "--registrar", _proj_rb9s, "--into="))):
+        _o9s, _e9s, _r9s = _run_home_a1(_home_rb9s, _sg_rb9s, *_a9s)
+        check(f"RC-1b (PIN): `sync_global.py --workflows --registrar` with {_lbl_rb9s} is a usage "
+              f"error naming the remedy (pre-fix: the empty token bound `_into = \"\"`, which "
+              f"`registrar_report` reads as 'not supplied' — exit 0, empty stderr, output "
+              f"byte-identical to omitting the flag)",
+              _r9s == 2 and "--into needs a SEED path" in _e9s and _o9s.strip() == "")
+    # The BARE trailing flag is NOT a pin, and the pre-fix run is what says so: this arm already
+    # exited 2 before the fix, so the check is green on both revisions. It is a GUARD on the
+    # RESTRUCTURE — the arm moved from inside the loop to after it, and the move is precisely what
+    # could have lost it. (A label is not a predicate. This one read `PIN` until the pre-fix tree
+    # put it among the GREENS: measured 2026-09-18 at `e5cce77`, this block reds 14 and this arm is
+    # not one of them — every red is a PIN, every GUARD is green. The per-arm fact is what the
+    # relabel rests on, so state that and not the total: the total moves with every arm added to
+    # the block, which is how this comment came to carry a `12` that no longer reproduced.)
+    _o9s, _e9s, _r9s = _run_home_a1(_home_rb9s, _sg_rb9s,
+                                    "--workflows", "--registrar", _proj_rb9s, "--into")
+    check("RC-1b (GUARD): `sync_global.py --workflows --registrar --into` (bare, trailing) still "
+          "exits 2 — this arm predates the fix and the restructure must not have lost it",
+          _r9s == 2 and "--into needs a SEED path" in _e9s)
+    # …and the SCOPE of that guard is a measured claim, not an assumption, so it gets its own check.
+    # Without `--registrar` the flag is never consumed: `sync_global.py` already warns that it is
+    # ignored, and it does so on the PRE-FIX tree as well as this one — measured, `--into ""`, bare
+    # `--into` and a real path are byte-identical to EACH OTHER (91 B of stderr apiece) and all three
+    # differ from the omitted arm by exactly that warning. So the defect this block repairs is
+    # unreachable outside the registrar path, and that is why the guard sits inside that branch
+    # rather than over the flag family at parse time: a parse-time guard would fire where the script
+    # correctly ignores the flag, which is the false-positive class §2.6 names.
+    # The warning is what the scope argument RESTS ON, and nothing else pins it — delete it and an
+    # `--into ""` outside `--registrar` goes silent, restoring the old state at the one site this
+    # fix deliberately does not cover (`weakest-enforcement-site-wins`).
+    #
+    # The operand is named in the label because the warning does not span the flag's FORMS, and a
+    # reader who supplies the other one gets the opposite answer. Measured 2026-09-18, all four
+    # outside `--registrar`: `--into ""` → 91 B of that warning; `--into <real path>` → the same
+    # 91 B; omitted → 0 B; and `--into=` (the equals form, empty) → **0 B**, byte-identical to
+    # omitting the flag. So the equals form already sits in the state this PR exists to remove, and
+    # that is stated rather than repaired here: the warning fires on a supplied *value*, and the
+    # equals form parses to no value at all, which is a parse question rather than this guard's.
+    # Locally-scoped claim, locally-stated operand — the same lesson the duplicate-flag block above
+    # learned, where two true sentences about different operands read as a contradiction.
+    _o9s, _e9s, _r9s = _run_home_a1(_home_rb9s, _sg_rb9s, "--workflows", _proj_rb9s, "--into", "")
+    check("RC-1b (GUARD): outside `--registrar`, `--into <value>` — the space-separated form — is "
+          "WARNED as ignored rather than consumed "
+          "— the reason this fix's guard is registrar-scoped, and the site that would go silent if "
+          "that warning were ever dropped. NOT claimed of the equals form: `--into=` is silent here "
+          "(0 B, measured), so the label names the form it speaks for",
+          _r9s == 0 and "without --registrar is ignored" in _e9s)
+    # The REGRESSION GUARDS. They pass pre-fix too, so they are guards and not pins — but they are
+    # the ones that stop the cheapest wrong fix, since the fastest way to make the pins above pass
+    # is to reject the flag outright, and that would be a worse defect than the one being repaired.
+    _seed_rb9s = Path(_td_rb9s) / "seed.json"
+    _seed_rb9s.write_text("{}", encoding="utf-8")
+    _o9s, _e9s, _r9s = _run_home_a1(_home_rb9s, _ds_rb9s, _proj_rb9s, "--into", str(_seed_rb9s))
+    check("RC-1b (GUARD): `distill_scan.py --into <real path>` still REACHES its injection arm — "
+          "the guard rejects an empty value, not the flag",
+          _r9s == 0 and "injected into" in _e9s)
+    _o9s, _e9s, _r9s = _run_home_a1(_home_rb9s, _es_rb9s, _proj_rb9s, "--into", str(_seed_rb9s))
+    check("RC-1b (GUARD): `extract_signals.py --into <real path>` still exits 0 — the guard rejects "
+          "an empty value, not the flag",
+          _r9s == 0)
+    _o9s, _e9s, _r9s = _run_home_a1(_home_rb9s, _sg_rb9s, "--workflows", "--registrar", _proj_rb9s,
+                                    "--into", str(_seed_rb9s))
+    check("RC-1b (GUARD): `sync_global.py --into <real path>` still exits 0 — the guard rejects an "
+          "empty value, not the flag",
+          _r9s == 0)
+    _o9s, _e9s, _r9s = _run_home_a1(_home_rb9s, _sg_rb9s, "--workflows", "--registrar", _proj_rb9s)
+    check("RC-1b (GUARD): `sync_global.py --workflows --registrar` with NO `--into` still exits 0 — "
+          "`None` ('never supplied') is not the empty value this guard rejects",
+          _r9s == 0)
+
+# --- v0.4.35 RC-1a: a fault must not degrade into a verdict --------------------------------
+# `--audit` at a snapshot that cannot be read kept `before = {}`, and `audit_diff({}, after)`
+# then reports EVERY store file as created. Measured on a 4-file fixture: exit 0 and a log row
+# reading `created: 4` — the whole store — archived as a real pass. The three arms separate and
+# only the third is a fault: flag absent (no snapshot is not an error), value missing (RC-1b
+# rejects it upstream), named-but-unreadable (this one).
+with _tf43.TemporaryDirectory() as _td_rbA:
+    _home_rbA = str(Path(_td_rbA) / "home")
+    Path(_home_rbA).mkdir()
+    _proj_rbA = Path(_td_rbA) / "proj"
+    _proj_rbA.mkdir()
+    _nat_rbA = Path(_home_rbA) / ".claude" / "projects" / ms.slug_for(_proj_rbA) / "memory"
+    _nat_rbA.mkdir(parents=True)
+    for _i_rbA in range(3):
+        (_nat_rbA / f"fact-{_i_rbA}.md").write_text(
+            f"---\nname: fact-{_i_rbA}\ndescription: d{_i_rbA}\n---\nbody\n", encoding="utf-8")
+    (_nat_rbA / "MEMORY.md").write_text(
+        "# Memory Index\n\n- [fact-0](fact-0.md) — d0\n", encoding="utf-8")
+    import retention as _ret_rbA
+    _mlog_rbA = _ret_rbA.mutation_log_write_path(_nat_rbA)
+    _ms_rbA = str(_scripts54 / "memory_status.py")
+
+    def _rows_rbA() -> int:
+        return len(_mlog_rbA.read_text(encoding="utf-8").splitlines()) \
+            if _mlog_rbA.exists() else 0
+
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--audit",
+                                       str(Path(_td_rbA) / "nope.json"), str(_proj_rbA))
+    check("RC-1a (PIN): `--audit` at an unreadable snapshot is a FAULT, never an empty before — "
+          "exit 2, the remedy named on stderr, and NO log row (pre-fix: exit 0 and a row whose "
+          "`created` count is the WHOLE store, archived as a real pass)",
+          _rArb == 2 and "cannot read the before snapshot" in _eArb
+          and "--snapshot" in _eArb and _rows_rbA() == 0)
+    _badA = Path(_td_rbA) / "bad.json"
+    _badA.write_text("{not json", encoding="utf-8")
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--audit", str(_badA), str(_proj_rbA))
+    check("RC-1a (PIN): the invalid-JSON arm behaves identically — it is caught today and is "
+          "equally silent, so the fabrication was reachable through it too",
+          _rArb == 2 and "cannot read the before snapshot" in _eArb and _rows_rbA() == 0)
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--json", str(_proj_rbA))
+    check("RC-1a (GUARD): `--audit` ABSENT is unchanged — no snapshot is not a fault, and the new "
+          "arm did not turn a plain status run into an exit 2",
+          _rArb == 0 and "cannot read" not in _eArb)
+    _dcyc = Path(_td_rbA) / "cycle.json"
+    _dcyc.write_text(_json43.dumps({"project": "p", "session": "S1", "marker": {
+        "commit": "abc1234", "timestamp": "2026-01-01T00:00:00Z"}}), encoding="utf-8")
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--diffs", str(_dcyc),
+                                       "--before", str(Path(_td_rbA) / "nope.json"),
+                                       str(_proj_rbA))
+    check("RC-1a (GUARD): the sibling sink already refuses — `--diffs --before` at a nonexistent "
+          "path fabricates nothing (`capture_diffs` refuses, `created` never reaches stdout). It "
+          "is cited as the PRECEDENT shape RC-1a generalized, not as a second site of the defect",
+          _rArb == 0 and "created" not in _oArb and "skipped" in _eArb)
+
+    # --- the skip MESSAGE, per cause. The check above is a guard (true on both revisions); these
+    # four are the sink's own second face. `--diffs` parses two inputs ahead of the `try` that
+    # promises it never crashes a dream, and the sentence it printed was one sentence for four
+    # causes — so a store that was legitimately EMPTY was told to re-run a phase that had run.
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--diffs", str(_dcyc),
+                                       str(_proj_rbA))
+    check("RC-1a (GUARD, the fixture's control): the flag-ABSENT arm keeps the original sentence, "
+          "and there it is CORRECT — no snapshot is genuinely absent and `--snapshot` first is the "
+          "right remedy. This is the only arm the old message was ever true for, and separating it "
+          "from the other three is the whole repair (guard: true on the pre-fix tree too)",
+          "no before snapshot" in _eArb and "cannot read" not in _eArb
+          and "empty snapshot" not in _eArb)
+    _empty = Path(_td_rbA) / "empty.json"
+    _empty.write_text("{}", encoding="utf-8")
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--diffs", str(_dcyc),
+                                       "--before", str(_empty), str(_proj_rbA))
+    check("RC-1a (PIN): a `--before` that is VALID and legitimately EMPTY is named as empty. The "
+          "input is correct, so the old sentence sent its operator to re-run a phase that had "
+          "already run — a remedy naming a cause that did not happen (pre-fix: `no before snapshot "
+          "— Phase 0 --snapshot wasn't run`)",
+          "empty snapshot" in _eArb and "wasn't run" not in _eArb)
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--diffs", str(_dcyc),
+                                       "--before", str(Path(_td_rbA) / "nope.json"),
+                                       str(_proj_rbA))
+    check("RC-1a (PIN): an UNREADABLE named `--before` path names the PATH, not a missing phase — "
+          "the two are different faults with different remedies and shared one sentence (pre-fix: "
+          "the same `wasn't run` string, which names a cause that did not happen)",
+          "cannot read --before" in _eArb and "wasn't run" not in _eArb)
+    # The state file carries a stamp, which is the arm that MATTERS: without one the run takes
+    # the `cycle unstamped` skip and never reaches the write. `--before` must ALSO be a real
+    # non-empty snapshot — with the empty `{}` the `not diffs and not before` skip fires first
+    # and again nothing is written. Both preconditions are load-bearing for the WRITE conjunct
+    # below, which asserts the sidecar landed: diverted to either skip, that run writes nothing
+    # on EITHER tree — and because the conjunct is an EQUALITY on the sidecar list it is then
+    # UNSATISFIABLE, reddening on both. Measured 2026-09-18 by building each single-precondition
+    # tree in turn: 2103 passed, 1 failed, the red being this guard in both — measured on the
+    # 2,104-check suite this comment ships in, because a count belongs to the TRIPLE (code,
+    # fixture, harness) and is never carried across an edit. So they make the
+    # check PASSABLE, not merely non-vacuous — this comment first claimed the comparison "goes
+    # green vacuously", which is the behaviour of a DIFFERENCING conjunct (an absence, or a
+    # two-revision comparison, is satisfied by the state that starves it); an equality is not.
+    # They are NOT what makes the message conjunct discriminate — that sentence is printed at the
+    # fault, ahead of both skips, so it fires with no stamp and with an empty `{}` before alike
+    # (measured 2026-09-18 by removing each precondition in turn: the sentence prints in all three
+    # variants on live and in none on pre-fix). An editor who reads them as the message's
+    # precondition can drop them and silently break the write.
+    _stateA = Path(_home_rbA) / ".claude" / "projects" / ms.slug_for(_proj_rbA) / "memory"
+    (_stateA / ms.STATE_FILE).write_text(_json43.dumps(
+        {"commit": "abc1234", "timestamp": "2026-01-01T00:00:00Z"}), encoding="utf-8")
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--snapshot", str(_proj_rbA))
+    _snapA = next((ln.strip() for ln in _oArb.splitlines()
+                   if ln.strip().endswith(".json")), "")
+    (_stateA / "fact-0.md").write_text(
+        "---\nname: fact-0\ndescription: d0 edited\n---\nbody edited\n", encoding="utf-8")
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--diffs",
+                                       str(Path(_td_rbA) / "no-cycle.json"),
+                                       "--before", _snapA, str(_proj_rbA))
+    _ddir = Path(_home_rbA) / ".claude" / "projects" / ms.slug_for(_proj_rbA) / "dashboards" / "diffs"
+    _hitsA = sorted(_p.name for _p in _ddir.glob("*.json")) if _ddir.exists() else []
+    check("RC-1a (PIN): an unreadable CYCLE record is a NAMED fault. Pre-fix `cyc = {}` was taken "
+          "in silence and reported through the same success line as a good record, so the run said "
+          "nothing about the one input it could not read — a fault spelled as a verdict, which is "
+          "the one thing an instrument's message must never do",
+          "cannot read the cycle record" in _eArb)
+    check("RC-1a (GUARD): and in THIS FIXTURE'S RUN the measurement still lands, keyed by the "
+          "legacy base key — the arm names the degraded key and does not divert, so the write "
+          "below is reached rather than the record being traded for no record at all; the fixture "
+          "carries both preconditions precisely to reach it (an empty `{}` before-snapshot, or no "
+          "stamp, fires a skip first and NOTHING lands, on either tree). "
+          "Green on the pre-fix tree too (there it wrote the same base key, silently), so it is a "
+          "REGRESSION GUARD, not a pin: it exists so a future fix cannot quietly turn the named "
+          "fault into a dropped sidecar. Measured 2026-09-18 at the CONSUMER — the template's own "
+          "`diffKey(marker, session)`-then-`diffKey(marker)` lookup, because `read_diffs`' output "
+          "dict is an intermediate and its state is not what a modal shows. This key is claimed "
+          "through the reader's legacy fallback: with no sessioned sibling these bytes ARE rendered "
+          "under their own cycle, and with one they render correctly only when this cycle carries a "
+          "session and loads first — in every other ordering the modal falls through to the base "
+          "alias, which the sibling's load has taken, and shows THE SIBLING'S diff. REATTRIBUTED, "
+          "not merely shadowed, and a property of the reader's fallback rather than of this arm: a "
+          "control with this sidecar ABSENT shows the same substitution. §Risks "
+          "of the RC-1 spec carries it as an out-of-scope finding. Exit stays 0 for the "
+          "same reason: the sidecar's CONTENT is a true diff of real files — nothing here is "
+          "fabricated, unlike `--audit`'s empty-snapshot arm, which refuses with exit 2 rather "
+          "than print a number it could not compute",
+          _rArb == 0 and _hitsA == [ms.diff_key({"commit": "abc1234",
+                                                 "timestamp": "2026-01-01T00:00:00Z"}) + ".json"])
+
+    # --- the CONTAINER face, and the two short exception enumerations -------------------------
+    # The last three of the fault family, and they are two defects: a container test that one
+    # sink had and its twin did not, and an `except` tuple that enumerates FEWER exception types
+    # than the operation can raise. Both were measured on the pre-fix tree before either was
+    # written — these are not reasonings about what "should" happen.
+    _arrA = Path(_td_rbA) / "before_list.json"
+    _arrA.write_text("[1, 2, 3]", encoding="utf-8")
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--diffs", str(_dcyc),
+                                       "--before", str(_arrA), str(_proj_rbA))
+    check("RC-1a (PIN): a `--before` holding a JSON ARRAY — a truthy non-dict — is refused as a "
+          "FAULT, not diffed against. Valid JSON is not automatically a snapshot, and `[1, 2, 3]` "
+          "cleared the emptiness test above untouched, so it reached `capture_diffs` as the "
+          "before-tree. Pre-fix, MEASURED 2026-09-18: exit 0, stderr EMPTY, and the run took the "
+          "WRITE arm — a sidecar whose every line is a comparison against a list, with nothing "
+          "anywhere saying the operand was not a snapshot. The `--audit` sink has refused this "
+          "container all along; this is that refusal applied one sink over",
+          "is not a snapshot object" in _eArb and "diffs →" not in _oArb)
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--audit", str(_arrA), str(_proj_rbA))
+    check("RC-1a (PIN): `--audit` at the same ARRAY refuses too — the third route to this sink, and "
+          "the one that best shows why the two arms are one defect. At base this sink did not "
+          "refuse a non-dict, it COERCED it (`before if isinstance(before, dict) else {}`), which is "
+          "the fabrication arm itself: the `{}` that makes every store file read as created, "
+          "substituted silently. Pre-fix: exit 0 and a row appended. The check asserts the exit and "
+          "the name, never the row count — `_rows_rbA()` reads the log as UTF-8 and is not usable "
+          "once the mutation-log pin below has planted bytes in it",
+          _rArb == 2 and "is not a snapshot object" in _eArb)
+    _nunA = Path(_td_rbA) / "nonutf8-into.json"
+    _nunA.write_bytes(b"\xff\xfe{}")
+    _okA = Path(_td_rbA) / "ok.json"
+    _okA.write_text("{}", encoding="utf-8")
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--audit", str(_okA),
+                                       "--into", str(_nunA), str(_proj_rbA))
+    check("RC-1a (PIN): a NON-UTF-8 `--into` record does not crash the run. Decoding a file as "
+          "UTF-8 raises UnicodeDecodeError — a ValueError, and NOT a JSONDecodeError, which "
+          "is all the `except` tuple named. MEASURED pre-fix 2026-09-18: rc 1 and a raw traceback "
+          "out of `main()`, which is the one thing this arm's own comment says it exists to "
+          "prevent. What the OPERATOR is told here comes from the inject sink one step later "
+          "(`--into: skipped`), not from this pre-read: this repair's observable effect is that "
+          "the run REACHES it",
+          _rArb == 0 and "Traceback" not in _eArb and "--into: skipped" in _eArb)
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--audit", str(_okA),
+                                       "--into", str(_dcyc), str(_proj_rbA))
+    check("RC-1a (GUARD, the fixture's control): the same pair of flags with a READABLE record "
+          "still exits 0 and injects — the new tolerance did not turn the pre-read into a refusal "
+          "that swallows the marker this arm exists to reconcile",
+          _rArb == 0 and "injected into" in _eArb)
+    _mlog_rbA.parent.mkdir(parents=True, exist_ok=True)
+    _mlog_rbA.write_bytes(b"\xff\xfe not utf-8\n")
+    _oArb, _eArb, _rArb = _run_home_a1(_home_rbA, _ms_rbA, "--audit", str(_okA),
+                                       "--into", str(_dcyc), str(_proj_rbA))
+    check("RC-1a (PIN): a NON-UTF-8 mutation LOG does not crash the run either — the second site "
+          "of the same short enumeration, in the dedup scan this arm runs over every candidate "
+          "log. MEASURED pre-fix 2026-09-18: rc 1 and a traceback from the very `read_text` call "
+          "inside the scan. Skipping an unreadable candidate is the safe direction HERE by the "
+          "block's own rule: a candidate the scan cannot read can only withhold a `_dup` verdict, "
+          "never manufacture one — which is also why this GUARD exists beside the pin, since the "
+          "log's safe direction is to APPEND. Asserted on the run's own output and not on the "
+          "row count: the bytes this pin plants are exactly what would make `_rows_rbA()` raise",
+          _rArb == 0 and "Traceback" not in _eArb and "injected into" in _eArb)
+
+# --- v0.4.35 RC-1d: one string cannot carry two causes -------------------------------------
+# `prepare_local_fact` returns every refusal through ONE `{ok: False, error}` channel, and
+# `local_archive` passes that string straight to the operator — so "this is not a fact" and
+# "this is a valid fact the firewall will not re-admit" arrived as interchangeable text. They
+# need different responses, and the firewall arm reads the BODY: `_looks_secret_fn()` runs
+# before and independently of `inject`, so the flag is not the remedy.
+with _Env73() as _e_rbB:
+    _ctx_rbB = sc.resolve_store(_e_rbB.proj)
+    import local_ingress as _li_rbB
+    (_e_rbB.store / "sec-arch.md").write_text(
+        "---\nname: sec-arch\ndescription: registry access\n---\n"
+        "Use `--token <value>` when the registry is private.\n", encoding="utf-8")
+    (_e_rbB.store / "notfact-arch.md").write_text("not a fact\n", encoding="utf-8")
+    _fw_rbB = _li_rbB.local_archive(_ctx_rbB, "sec-arch")
+    _nf_rbB = _li_rbB.local_archive(_ctx_rbB, "notfact-arch")
+    check("RC-1d (PIN): the archived-firewall refusal NAMES its arm and its route, so it is "
+          "legible beside the not-a-fact refusal (pre-fix: 'secret-shaped content refused' — no "
+          "arm, no route, and nothing in the string says which cause it is)",
+          _fw_rbB.get("ok") is False
+          and "firewall" in (_fw_rbB.get("error") or "")
+          and _nf_rbB.get("ok") is False
+          and "firewall" not in (_nf_rbB.get("error") or "")
+          and _fw_rbB.get("error") != _nf_rbB.get("error"))
+
+# --- v0.4.35 RC-2: the --audit dedup guard tests what it claims -----------------------------
+# The guard's own comment promised it would not "double-append an indistinguishable duplicate",
+# but it read ONE row (`rsplit("\n", 1)[-1]`), gated on `commit` alone while comparing the PAIR,
+# and wrote no supersession. Measured on the shipped fleet before this was written: 105 mutation
+# rows across 13 logs, 73 with an EMPTY commit (the arm the gate skipped outright), and 1
+# (file, commit) key carrying two timestamps 89s apart — a real correction pair.
+with _tf43.TemporaryDirectory() as _td_rbC:
+    import json as _jsonrbC  # noqa: E402
+    _home_rbC = str(Path(_td_rbC) / "home")
+    Path(_home_rbC).mkdir()
+    _proj_rbC = Path(_td_rbC) / "proj"
+    _proj_rbC.mkdir()
+    _nat_rbC = Path(_home_rbC) / ".claude" / "projects" / ms.slug_for(_proj_rbC) / "memory"
+    _nat_rbC.mkdir(parents=True)
+    for _i_rbC in range(3):
+        (_nat_rbC / f"fact-{_i_rbC}.md").write_text(
+            f"---\nname: fact-{_i_rbC}\ndescription: d{_i_rbC}\n---\nbody\n", encoding="utf-8")
+    (_nat_rbC / "MEMORY.md").write_text(
+        "# Memory Index\n\n" + "".join(
+            f"- [fact-{_i_rbC}](fact-{_i_rbC}.md) — d{_i_rbC}\n" for _i_rbC in range(3)),
+        encoding="utf-8")
+    import retention as _ret_rbC
+    _mlog_rbC = _ret_rbC.mutation_log_write_path(_nat_rbC)
+    _ms_rbC = str(_scripts54 / "memory_status.py")
+
+    def _rows_rbC() -> list:
+        if not _mlog_rbC.exists():
+            return []
+        return [_jsonrbC.loads(ln) for ln in
+                _mlog_rbC.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+    def _cyc_rbC(commit: str, stamp: str) -> str:
+        p = Path(_td_rbC) / f"cycle-{stamp.replace(':', '')}.json"
+        p.write_text(_jsonrbC.dumps({"marker": {"commit": commit, "timestamp": stamp}}),
+                     encoding="utf-8")
+        return str(p)
+
+    _o_rbC, _e_rbC, _r_rbC = _run_home_a1(_home_rbC, _ms_rbC, "--snapshot", str(_proj_rbC))
+    _snap_rbC = next((ln.strip() for ln in _o_rbC.splitlines()
+                      if ln.strip().endswith(".json")), "")
+    _C_rbC, _T1_rbC = "a" * 40, "2026-01-01T00:00:00.000Z"
+    _o_rbC, _e_rbC, _r_rbC = _run_home_a1(_home_rbC, _ms_rbC, "--audit", _snap_rbC,
+                                          "--into", _cyc_rbC(_C_rbC, _T1_rbC), str(_proj_rbC))
+    check("RC-2 (GUARD — the fixture's own teeth, and RC-1a's missing positive control): a "
+          "well-formed `--audit` DOES append exactly one row, at the path the harness reads. "
+          "Every row-count assertion in this suite is an ABSENCE (`== 0` or a held count), so "
+          "without this a wrong log path would satisfy all of them",
+          _r_rbC == 0 and len(_rows_rbC()) == 1
+          and _rows_rbC()[0].get("commit") == _C_rbC
+          and _rows_rbC()[0].get("timestamp") == _T1_rbC)
+
+    # (1) the duplicate sits FIRST in the log, with other rows after it.
+    _T2_rbC = "2026-02-02T00:00:00.000Z"
+    with open(_mlog_rbC, "a", encoding="utf-8") as _fh:
+        _fh.write(_jsonrbC.dumps({"commit": "b" * 40, "timestamp": _T2_rbC, "window": "phase0..phase5"}) + "\n")
+    _before_rbC = len(_rows_rbC())
+    _o_rbC, _e_rbC, _r_rbC = _run_home_a1(_home_rbC, _ms_rbC, "--audit", _snap_rbC,
+                                          "--into", _cyc_rbC(_C_rbC, _T1_rbC), str(_proj_rbC))
+    check("RC-2 (PIN): a re-run whose identity already sits ANYWHERE in the log appends nothing — "
+          "here the match is the FIRST row and a later row follows it (pre-fix: `rsplit(\"\\n\", 1)"
+          "[-1]` read only the last row, saw commit b…, and appended a second copy of the a… row)",
+          _r_rbC == 0 and len(_rows_rbC()) == _before_rbC)
+
+    # (2) same commit, a DIFFERENT stamp → one new row that says which stamp it is later than.
+    _T3_rbC = "2026-03-03T00:00:00.000Z"
+    _before_rbC = len(_rows_rbC())
+    _o_rbC, _e_rbC, _r_rbC = _run_home_a1(_home_rbC, _ms_rbC, "--audit", _snap_rbC,
+                                          "--into", _cyc_rbC(_C_rbC, _T3_rbC), str(_proj_rbC))
+    _new_rbC = _rows_rbC()[-1] if len(_rows_rbC()) > _before_rbC else {}
+    check("RC-2 (PIN): the same commit re-measured under a NEW stamp appends one row carrying "
+          "`supersedes` = the older stamp, and the older row STAYS (the log is append-only). "
+          "Pre-fix: appended with no supersession, so two contradictory rows for one commit "
+          "coexisted with equal standing and nothing said which was later",
+          _r_rbC == 0 and len(_rows_rbC()) == _before_rbC + 1
+          and _new_rbC.get("supersedes") == _T1_rbC
+          and any(r.get("timestamp") == _T1_rbC for r in _rows_rbC()))
+
+    # (3) the empty-commit arm — the one the old gate skipped outright.
+    _T4_rbC = "2026-04-04T00:00:00.000Z"
+    for _pass_rbC in (1, 2):
+        _o_rbC, _e_rbC, _r_rbC = _run_home_a1(_home_rbC, _ms_rbC, "--audit", _snap_rbC,
+                                              "--into", _cyc_rbC("", _T4_rbC), str(_proj_rbC))
+    check("RC-2 (PIN): a marker with a timestamp but an EMPTY commit dedups too — the second "
+          "identical run appends nothing (pre-fix: `if _ident[0]:` skipped the entire guard "
+          "whenever the commit was empty, while the comparison below tested the PAIR, so this "
+          "appended on every run — and `_valid_sha` refuses \"\", so an unborn-HEAD repo, which is "
+          "every project on its first day, is exactly this shape)",
+          _r_rbC == 0 and sum(1 for r in _rows_rbC() if r.get("timestamp") == _T4_rbC) == 1)
 
 # --- v0.4.32 periphery parity (docs/periphery-parity.spec.md §2/§5) -------------------------
 # A fact file does not record its own PLACEMENT — only a pointer doc does — so a rebuild that
@@ -11847,7 +12916,7 @@ with _Env73() as _e_rb3:
     check("v0.4.32 P4 (PIN): plan mode NAMES the prevented re-adds, so the undo direction is "
           "visible where the operator looks (pre-fix: the key does not exist — the plan reported "
           "only `would_remove_existing_pointers`)",
-          _rep_rb3.get("would_readd_archived_pointers") == ["archived-rbp"])
+          _rep_rb3.get("would_keep_archived_pointers") == ["archived-rbp"])
     check("v0.4.32 P5 (PIN): the archive doc enters `snaps` — the plan reads its contents, so the "
           "apply transaction must verify the revision it planned against (pre-fix: SHIPPED.md was "
           "excluded by name and never pinned). Also a private-plan key: `snaps` holds "
@@ -12047,8 +13116,8 @@ with _Env73() as _e_pr:
           and "](kept-live.md)" in _plan_pr["future"])
     check("v0.4.32 P9 (PIN): the plan does not LABEL that repair an intentional eviction — a bare "
           "stem list asserts a `cm local archive` the operator cannot check (intermediate: "
-          "would_readd_archived_pointers == ['mention-fact']; pre-fix: the key does not exist)",
-          _rep_pr.get("would_readd_archived_pointers") == [])
+          "would_keep_archived_pointers == ['mention-fact']; pre-fix: the key does not exist)",
+          _rep_pr.get("would_keep_archived_pointers") == [])
     check("v0.4.32 P10 (GUARD on every arm — forward-verified, the way a check whose red is only "
           "reachable by mutating the rule it reads has to be): the fixture exercises the "
           "NARROWING and not the fact-file path — the shared rule calls the prose doc an archive, "
@@ -12080,8 +13149,19 @@ with _Env73() as _e_pr2:
           "indistinguishable from an archive, so the stem is declined; the plan must then name "
           "the doc that claimed it rather than vouch for it (pre-fix the stem was re-added and "
           "the key did not exist; intermediate the key still did not exist)",
-          _rep_pr2.get("would_readd_archived_pointers") == ["list-claimed"]
-          and _rep_pr2.get("would_readd_archived_sources") == {"list-claimed": ["prose-list.md"]})
+          _rep_pr2.get("would_keep_archived_pointers") == ["list-claimed"]
+          and _rep_pr2.get("would_keep_archived_sources") == {"list-claimed": ["prose-list.md"]})
+    # v0.4.35 RC-3b: the name inverted its own value — `would_readd_…` named the plan's INTENT
+    # for exactly the re-adds the plan refuses, in the one `would_*` family whose sibling
+    # (`would_remove_existing_pointers`) names its verdict directly. This is the rename's own
+    # pin, and it is the ONLY check that separates the two policies: "rename" and "add the
+    # corrected name alongside the deprecated old one" are indistinguishable to every other
+    # check here, because all of them assert the new key's presence and none its exclusivity.
+    check("v0.4.35 RC-3b (PIN): the rename is TOTAL — the superseded key names are absent from "
+          "the report, so a half-rename that kept the old spelling beside the new one reds "
+          "(pre-fix: both old names are present, which is the arm this asserts against)",
+          "would_readd_archived_pointers" not in _rep_pr2
+          and "would_readd_archived_sources" not in _rep_pr2)
 
 # ── Phase 2: journal terminal cleanup / schema split ──
 with _Env73() as _e_js:
@@ -15135,6 +16215,128 @@ check("v0.4.2 L4: the template prefers the embedded single-source label (the JS 
       "stays as the legacy fallback)",
       'g(c,"_outcome","")' in (ROOT / "plugins" / "consolidate-memory" / "scripts"
                                / "dashboard.template.html").read_text(encoding="utf-8"))
+
+# ── v0.4.35 RC-3: one vocabulary, one matcher ──────────────────────────────────
+import json as _jsonr3  # noqa: E402  (smoke is one flat scope; suffixed to avoid a collision)
+# Six sites counted the action vocabulary across three different subsets, and the reason for any
+# subset was stated nowhere: the ladder counted 3 while the panel rendered DIRECTLY ABOVE it
+# tallied 4, so one record printed `= 1 reconciled` on top of `NO-OP PASS · reviewed, nothing
+# changed`. The fix declares the vocabulary once (`ms.ACTION_VOCAB`, True = "modified the store")
+# and derives every consumer from it; these checks pin the declaration, the derivation, and the
+# payload that used to disagree with itself.
+#
+# The fixtures below sample the DISAGREEMENT REGION — `reconciled >= 1` with the 3-set count at a
+# rung boundary — which is where two matchers land in different ladder ARMS. The discriminator is
+# an arm transition, not a boundary count: `r >= 1 and w3 <= 2 and (w3 == 0 or w3 + r >= 3)`. Each
+# expected label is the POST-fix one and the parenthesised value is what the PRE-fix tree measured,
+# one process per tree, so a reader can see which rows are pins (they move) and which are guards.
+def _oc_r3(actions, cands=0, git=0, reviewed=0):
+    return ms.outcome_of(cast(ms.CycleRecord, {
+        "entries": [{"action": a} for a in actions],
+        "scope": {"session_candidates": cands, "git_commits": git,
+                  "memories_reviewed": reviewed}}))
+
+
+check("v0.4.35 RC-3 (PIN): `reconciled` IS a write — a cycle whose only action relocated a "
+      "pointer ends LIGHT, not NO-OP (pre-fix: 'NO-OP PASS · reviewed, nothing changed')",
+      _oc_r3(["reconciled"], reviewed=5) == "LIGHT PASS")
+check("v0.4.35 RC-3 (PIN): the rung at `writes <= 2` moves with the matcher — two adds plus a "
+      "reconcile is three writes, not two (pre-fix: LIGHT PASS, so this is the row a boundary-"
+      "count reading of the defect would have missed)",
+      _oc_r3(["added", "added", "reconciled"], reviewed=1) == "SUBSTANTIAL PASS")
+check("v0.4.35 RC-3 (PIN): `skipped` is in NEITHER write set, so it neither adds to nor "
+      "subtracts from the reconcile beside it (pre-fix: NO-OP PASS at reviewed >= 1)",
+      _oc_r3(["reconciled", "skipped"], reviewed=1) == "LIGHT PASS")
+check("v0.4.35 RC-3 (PIN): the all-zero arm CONSUMES the write count — it does not precede it, "
+      "as an earlier drafting of the spec had it — so the same pair at zero candidates and zero "
+      "commits ends NOTHING TO CONSOLIDATE pre-fix and LIGHT post-fix",
+      _oc_r3(["reconciled", "skipped"]) == "LIGHT PASS"
+      and _oc_r3(["reconciled"]) == "LIGHT PASS")
+check("v0.4.35 RC-3 (GUARD): a skipped-only cycle is stable on BOTH revisions at BOTH readings "
+      "(a regression GUARD, not a pin — it may not red on pre-fix code, and its stability is a "
+      "fact about the action NAME being in neither set, not about the all-zero arm)",
+      _oc_r3(["skipped"] * 3) == "NOTHING TO CONSOLIDATE"
+      and _oc_r3(["skipped"] * 3, cands=2, git=2, reviewed=1)
+          == "NO-OP PASS · reviewed, nothing changed")
+# The flagship: ONE payload, and everything the reader sees derived from it. This is the shipped
+# contradiction rather than a proxy for it — the two lines below are adjacent in the real panel.
+_r3_panel = rd.render(cast(ms.CycleRecord, {
+    "project": "p", "session": "s", "scope": {"memories_reviewed": 5},
+    "entries": [{"action": "reconciled", "name": "x"}],
+    "network": {"trigger": "proj", "basis": "b", "basis_scope": "fleet",
+                "nodes": [{"node": "proj", "trigger": True, "facts": 10,
+                           "always_loaded_tokens": 700, "mirror_index_tokens": 40,
+                           "recall_tokens": 1000, "shared": 0, "universal": 0,
+                           "stack": 0, "domain": "personal"}],
+                "totals": {"nodes": 1, "facts": 10, "always_loaded_tokens": 700,
+                           "mirror_index_tokens": 40, "recall_tokens": 1000,
+                           "shared": 0, "universal": 0, "stack": 0}}}))
+check("v0.4.35 RC-3 (PIN): the banner and the count line BESIDE it cannot disagree — pre-fix "
+      "this one record rendered `= 1 reconciled` directly above `NO-OP PASS · reviewed, nothing "
+      "changed`, and both lines are asserted here, so a fix that moved only one of them reds",
+      "= 1 reconciled" in _r3_panel and "LIGHT PASS" in _r3_panel
+      and "NO-OP PASS" not in _r3_panel)
+# The census, in BOTH directions, and the GAIN direction is the reason both are asserted against the
+# RAW presentation table rather than against `rd._actions()`.
+#
+# The GAIN direction (a declared name with no presentation row) was caught, in THIS BRANCH'S OWN
+# first cut, by a `KeyError` out of a module-scope comprehension in `render_dashboard` — and this
+# file imports that module at ITS module scope, so the fault arrived at `:21`, before a single check
+# ran: a traceback, no ✓/✗ lines and NO totals line, the other 2,104 checks unrun (measured
+# 2026-09-18; the pre-fix tree cannot show this at all, its `_ACTIONS` being a literal with no
+# declaration behind it, so there is no gain to make). `_actions()` now synthesizes a neutral
+# row instead of raising, so the panel still renders every declared action and the suite still runs.
+# That makes THIS assertion the guard: `_r3_pres` is the raw table, so a declared name with no row
+# fails the equality as a counted red — and it is the ONLY check that can see the gain, for either
+# kind of name. The template check below censuses the WRITE names: the marker's substitution is fed
+# the declaration's own write list, so a gained write name is manufactured into the literal by the
+# declaration itself and lands there exactly once however the template is written, while a gained
+# name that is not a write is not censused at all. The conjunct reading `_actions()` is no
+# instrument for it either — that call is total by construction, and the conjunct is in the check
+# only so a tree WITHOUT `_actions` reds here rather than aborting the suite at module scope, which
+# is what the guard below catches.
+#
+# MEASURED 2026-09-18 on `tar` copies of this tree, one fixture per arm, the injected sixth
+# `ACTION_VOCAB` entry being `("archived", True)` in one and `("archived", False)` in the other:
+# BOTH read `2103 passed, 1 failed`, the one red being this check. The write bit does not move the
+# red set because it is not what the gain is keyed to — and the count is the point, the fault
+# costing the suite one check rather than the other 2,102.
+_r3_vocab = getattr(ms, "ACTION_VOCAB", ())
+_r3_writes = tuple(a for a, w in _r3_vocab if w)
+_r3_pres = getattr(rd, "_ACTION_PRESENTATION", {})
+_r3_rows, _r3_fault = set(), ""
+try:
+    _r3_rows = set(rd._actions())
+except AttributeError as _exc:      # `_actions` absent: the pre-fix tree, or a tree that lost it
+    _r3_fault = f" — {_exc}"
+_r3_tmpl = rhtml._load_template()
+_r3_lit = _jsonr3.dumps(list(_r3_writes))
+# Censused over the WRITE names only, because those are the names the template has no independent
+# reason to spell: the marker's substitution feeds it the declaration's own write list, so exactly
+# one occurrence is the substitution and a second is an array the template kept of its own. A name
+# that is NOT a write has no such tie — `skipped` occurs once as a registrar label (the pooled
+# sections bundle's `reg-counts`), a string nothing in the action vocabulary reaches — so
+# censusing it would make a UI-COPY edit red here. That is a false-positive class (§2.6: a check
+# that fires on a state its producer writes DELIBERATELY is not a refinement), not coverage.
+_r3_quoted = {a: _r3_tmpl.count(_jsonr3.dumps(a)) for a in _r3_writes}
+check("v0.4.35 RC-3 (PIN): the vocabulary is DECLARED, one write bit per action, and the renderer's "
+      "display table agrees with it in both directions — a name the declaration gains without a "
+      "presentation row, and a row the declaration loses, are ONE fault read twice, and neither "
+      f"costs the suite its other checks{_r3_fault} (pre-fix: the declaration does not exist)",
+      len(_r3_vocab) == 5 and "reconciled" in _r3_writes and "skipped" not in _r3_writes
+      and set(_r3_pres) == {a for a, _w in _r3_vocab}
+      and _r3_rows == {a for a, _w in _r3_vocab})
+check("v0.4.35 RC-3 (PIN): the template holds NO action-name array of its own — every name the "
+      "declaration marks as a WRITE appears as a quoted token exactly ONCE in the loaded page, "
+      "that one being the marker's substitution (pre-fix: `added` appeared twice, in writeCount's "
+      "3-set and the tally's 4-set). Spelling-independent by construction: the census counts the "
+      "token, not an array's punctuation",
+      bool(_r3_writes) and set(_r3_quoted.values()) == {1})
+check("v0.4.35 RC-3 (PIN): BOTH of the template's count sites read that one declaration, and "
+      "the marker itself is gone from the loaded page (pre-fix: each site spelled its own array, "
+      "so this reads 0)",
+      bool(_r3_writes) and _r3_tmpl.count(_r3_lit) == 1
+      and _r3_tmpl.count("CM_WRITE_ACTIONS.indexOf") == 2)
 # L2: top-3 distill.top rows in the USAGE top: idiom (ASCII + template BODY list); legacy no-top unchanged
 _rec_l2 = {"project": "p", "session": "s", "scope": {}, "entries": [],
            "distill": {"n_recurring": 4, "n_chains": 1,
@@ -19038,7 +20240,179 @@ check("v0.4.34 E4-b (PIN): every key declared on `ms.Audit` is EMITTED by `audit
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28)  # +9: v0.4.31 store-classifier parity C1..C7
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 6 + 18 + 5 + 4)
+                                                        # +4: v0.4.35 code-review round 2 — the
+                                                        #      carry's own DEDUCTION (a stale
+                                                        #      pointer retained because it SHARES a
+                                                        #      carried line, now named by
+                                                        #      `would_keep_stale_pointers`: its PIN
+                                                        #      plus the own-line control) and the
+                                                        #      two RC-1d message splits (the
+                                                        #      non-dict CYCLE RECORD, which base
+                                                        #      surfaced as `'int' object has no
+                                                        #      attribute 'get'`, and the
+                                                        #      marker-fault pair in render_html's
+                                                        #      `_load_template`). A count belongs
+                                                        #      to the triple that produced it, so
+                                                        #      this is its own term
+                                                        # +5: v0.4.35 refusal-verdict parity —
+                                                        #      the CONTAINER face and the two short
+                                                        #      exception enumerations (four PINs:
+                                                        #      the truthy non-dict `--before`, the
+                                                        #      same array at `--audit` where base
+                                                        #      COERCED rather than refused, the
+                                                        #      non-UTF-8 `--into`, the non-UTF-8
+                                                        #      mutation LOG; plus the control GUARD
+                                                        #      that a READABLE `--into` still
+                                                        #      injects). Counted separately from
+                                                        #      the RC-1a third increment above
+                                                        #      because these were found by review
+                                                        #      AFTER that increment's measurement,
+                                                        #      and a count belongs to the triple
+                                                        #      that produced it, not to the family
+                                                        #      it is filed under
+                                                        # +24: v0.4.35 refusal-verdict parity —
+                                                        #      RC-1 + RC-2 merged into one term; RC-3
+                                                        #      is its own `+9` below and `+11` is
+                                                        #      RC-4. The term moved 23 → 24 with the
+                                                        #      duplicate-flag EMPTY-at-a-later-
+                                                        #      occurrence PIN, which is RC-1b's
+                                                        #      second cell
+                                                        # What is RE-DERIVABLE is the census
+                                                        # below, not a hand-kept increment list:
+                                                        # the eight family tallies sum to this
+                                                        # constant's own delta from the
+                                                        # pre-v0.4.35 base (the seven terms
+                                                        # through `28`, which total 2017) —
+                                                        # 2104 − 2017 = 87. To re-derive, tally
+                                                        # the suite's own ✓/✗ lines anchored
+                                                        # `^(v[\d.]+ )?RC-\w+`, which reads each
+                                                        # label's LEADING family token. A sweep
+                                                        # that counts EVERY `RC-\d[a-z]?` token on
+                                                        # the ✓/✗ lines re-buckets those whose text
+                                                        # names a second one — MEASURED 2026-09-18:
+                                                        # RC-1a 20 and RC-1c 10 against the anchored
+                                                        # 18 and 8, RC-3 agreeing at 9, plus a bare
+                                                        # `RC-1` bucket that is not a family at all
+                                                        # (label prose, not a family token). Both
+                                                        # figures move together and neither is
+                                                        # carried across an edit: a count belongs
+                                                        # to the harness that produced it.
+                                                        # MEASURED 2026-09-18 on the passing tree
+                                                        # — Family census
+                                                        # RC-1a 18, RC-1b 34, RC-1c 8, RC-1d 2,
+                                                        # RC-2 4, RC-3 9, RC-3b 1, RC-4 11 (= 87).
+                                                        # RC-89 4 / RC-90 23 / RC-91 2 lie outside
+                                                        # these eight and are not in the sum.
+                                                        # The per-family itemizations below say
+                                                        # WHAT each family's checks are; the
+                                                        # tally above is the total they must
+                                                        # reach, and this pin is the arithmetic
+                                                        # that says so
+                                                        #      +4 RC-1c — the firewall false-positive
+                                                        #      PIN, its fixture-teeth GUARD, the
+                                                        #      absent-at-read PIN, and the CARRY's
+                                                        #      ARM-2 de-indexing PIN (a stem named
+                                                        #      ONLY as a second link on another
+                                                        #      stem's line). The re-aimed
+                                                        #      R128-6 REPLACES its own check, so it
+                                                        #      contributes none.
+                                                        #      +10 RC-1b — the five trailing
+                                                        #      value-flags, the zero-stem
+                                                        #      `--justify-demotion` GUARD, the
+                                                        #      duplicate-flag PINs in BOTH cells that
+                                                        #      separate a complete fix from an
+                                                        #      argv.index one (BARE and EMPTY at a
+                                                        #      LATER occurrence — one per guard
+                                                        #      conjunct), and the two DASH-LEADING
+                                                        #      arms (the
+                                                        #      third token a value-flag guard must
+                                                        #      reject: the NEXT FLAG).
+                                                        #      +4 RC-1a — the unreadable-snapshot and
+                                                        #      invalid-JSON PINs plus the two GUARDs
+                                                        #      +1 RC-1d — the two-cause message PIN
+                                                        #      (one check asserts both arms at once,
+                                                        #      so it counts once)
+                                                        #      +1 RC-3b — the TOTAL-rename PIN,
+                                                        #      which is also the only check that
+                                                        #      tells the chosen policy from its
+                                                        #      alternative
+                                                        # +9: v0.4.35 refusal-verdict parity RC-3
+                                                        #      +5 the outcome-ladder PINs (the
+                                                        #      reconcile-is-a-write PIN, the rung
+                                                        #      PIN, the skipped-beside-reconcile
+                                                        #      PIN, the all-zero-arm PIN, and the
+                                                        #      flagship panel PIN) + 1 GUARD (the
+                                                        #      skipped-only cycle) + 3 structural
+                                                        #      (the census, the template's
+                                                        #      no-array-of-its-own PIN, and the
+                                                        #      both-sites-read-the-declaration PIN)
+                                                        #      +4 RC-2 — the row-count positive
+                                                        #      control, the first-row duplicate, the
+                                                        #      `supersedes` pair, and the
+                                                        #      empty-commit dedup
+                                                        #      (flag-absent unchanged; the sibling
+                                                        #      `--diffs` sink already refuses)
+                                                        # +11: v0.4.35 refusal-verdict parity RC-4
+                                                        #      — six PINs (the `entries`-vs-`audit`
+                                                        #      gap, the `demotion.verdict` gap, the
+                                                        #      dormant fire, the concurrent-writer
+                                                        #      record, the maintenance-pivot
+                                                        #      carve-out's `outcome_of` reader, and
+                                                        #      the pivot coercion's uninverted
+                                                        #      control) and five GUARDs (the
+                                                        #      legitimate classes, the D/E
+                                                        #      partition, the wrong-typed
+                                                        #      sub-containers, the SKILL.md
+                                                        #      enumeration, and the maintenance-pivot
+                                                        #      carve-out — whose own revision is
+                                                        #      the INTERMEDIATE one, since pre-fix
+                                                        #      has no `demotion` clause at all), one
+                                                        #      check per row of the spec's
+                                                        #      acceptance table so the two tallies
+                                                        #      are the same number
+                                                        # +5: v0.4.35 refusal-verdict parity RC-1,
+                                                        #      SECOND increment — the two faces the
+                                                        #      adversarial review of the RC-1 work
+                                                        #      found, each its own defect because
+                                                        #      one repair closes neither of the
+                                                        #      first four: the CARRY's selection
+                                                        #      (its PIN reds pre-fix because the
+                                                        #      pointer is dropped entirely; the
+                                                        #      re-aimed arm that sampled the
+                                                        #      quoted-token form the old predicate
+                                                        #      matched became a SECOND PIN, because
+                                                        #      the wide reading reds on the
+                                                        #      duplicate it must now drop; and the
+                                                        #      third is the de-indexing the narrow
+                                                        #      reading left open)
+                                                        #      and the ARCHIVE PASS's absent arm
+                                                        #      (the control GUARD and the
+                                                        #      harm GUARD are true on both
+                                                        #      revisions; the PIN is the one that
+                                                        #      moves). Not folded into the RC-1a
+                                                        #      four above: those count the SNAPSHOT
+                                                        #      faces, these count a doc no loop
+                                                        #      read at all.
+                                                        # +5: v0.4.35 refusal-verdict parity RC-1a,
+                                                        #      THIRD increment — the `--diffs` sink's
+                                                        #      own reads and the one sentence it
+                                                        #      printed for four causes. Three PINs
+                                                        #      (the legitimately EMPTY snapshot, the
+                                                        #      named-but-unreadable path, and the
+                                                        #      unreadable CYCLE record, whose empty
+                                                        #      `cyc` silently re-keyed the sidecar)
+                                                        #      and TWO GUARDs: the flag-absent arm,
+                                                        #      the only cause the old sentence was
+                                                        #      ever true for, and the sidecar's
+                                                        #      landing at the legacy base key, split
+                                                        #      out of the cycle-record PIN because a
+                                                        #      conjunction is never covered by
+                                                        #      covering its operands separately. The
+                                                        #      flag-absent GUARD is the control that
+                                                        #      makes the three PINs about a REPAIR
+                                                        #      rather than about deleting the message
+                                                        # +9: v0.4.31 store-classifier parity C1..C7
                                                         # +14: v0.4.32 periphery parity P1..P12, P13/P13b
                                                         # +28: v0.4.34 render/declaration parity — 7 SKILL↔TypedDict
                                                         #      GUARD rows (E5: the shapes the "ONLY un-pinned"
@@ -19079,6 +20453,68 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                                         #      red for a reason that is NOT the property each guards
                                                         #      — the predicate checks cannot even reach pre-fix code
                                                         #      (ms.duty_gaps does not exist).
+                                                        # +6: v0.4.35 refusal-verdict parity RC-1b,
+                                                        #      FOURTH increment — the EMPTY value, the
+                                                        #      third token state the trailing-flag
+                                                        #      guard's predicates cannot express
+                                                        #      (`"".startswith("-")` is False). Five
+                                                        #      checks, one per value-flag, mirroring
+                                                        #      the increment above (each sink fails
+                                                        #      differently: `--audit` fabricates a
+                                                        #      summary, `--diffs` writes a mis-keyed
+                                                        #      sidecar in silence, `--into` never
+                                                        #      injects, `--snooze-until` no-ops), plus
+                                                        #      ONE harm check — the absence of the
+                                                        #      fabricated summary, which is the class
+                                                        #      RC-1a exists to close and which this
+                                                        #      value alone still reached.
+                                                        # +18: v0.4.35 refusal-verdict parity RC-1b,
+                                                        #      FIFTH increment — the SIBLING SITES of
+                                                        #      that same empty-token arm. The v0.4.29
+                                                        #      `_VALUE_FLAGS` guards test a value's
+                                                        #      PRESENCE, never its EMPTINESS (`i + 1 >=
+                                                        #      len(argv)` admits `""`), so the defect
+                                                        #      the increment above repairs in
+                                                        #      `memory_status.py` sat at three more
+                                                        #      sites: 6 flags in `distill_scan.py`,
+                                                        #      4 in `extract_signals.py`, and
+                                                        #      `sync_global.py`'s `--into`, whose TWO
+                                                        #      routes into one arm (`--into ""` and
+                                                        #      the equals form `--into=`) are each
+                                                        #      pinned rather than assumed to share a
+                                                        #      fate. FOURTEEN PINs: twelve, one
+                                                        #      per flag and per route, PLUS the two
+                                                        #      NEXT-FLAG arms (`--since --into`),
+                                                        #      which are a different family and
+                                                        #      would make "one per flag" false if
+                                                        #      left uncounted. Plus SIX GUARDs — four
+                                                        #      because the legitimate value must still
+                                                        #      REACH the arm each script names (the
+                                                        #      flag must not be rejected just to make
+                                                        #      the PINs green), one for the bare
+                                                        #      trailing `--into`, an arm that already
+                                                        #      exited 2 before the fix and is green on
+                                                        #      both revisions, and one for the SCOPE of
+                                                        #      the `sync_global` guard: outside
+                                                        #      `--registrar` the flag is WARNED as
+                                                        #      ignored rather than consumed (measured
+                                                        #      on both trees), which is why the guard
+                                                        #      sits inside that branch — and that
+                                                        #      warning is what the scope argument
+                                                        #      RESTS ON, so it is pinned rather than
+                                                        #      assumed. Measured 2026-09-18 at
+                                                        #      `e5cce77`, this term's sites red
+                                                        #      FOURTEEN and green six — every red a
+                                                        #      PIN, every GUARD green, which is what
+                                                        #      makes the six GUARDs GUARDs. Stated
+                                                        #      per arm and not as the term's total:
+                                                        #      the sites emit twenty checks while the
+                                                        #      term above is 18, two of them filed
+                                                        #      under other terms, and a reader who
+                                                        #      sums the split will not reproduce it —
+                                                        #      as this comment's own former `12` did
+                                                        #      not. The TOTAL is the number the D6
+                                                        #      pin owns, and it is measured.
 
 print(f"\n{passed} passed, {failed} failed")
 sys.exit(1 if failed else 0)

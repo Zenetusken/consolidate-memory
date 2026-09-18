@@ -157,7 +157,21 @@ def prepare_local_fact(stem: str, text: str, *, now: Optional[str] = None,
     except IdentifierRefused as e:
         return {"ok": False, "error": str(e), "text": text, "fm": {}}
     if _looks_secret_fn()(text):
-        return {"ok": False, "error": "secret-shaped content refused", "text": text, "fm": {}}
+        # v0.4.35 (RC-1d): name the ARM, and name the ROUTE. Every refusal below shares one
+        # `{ok: False, error}` channel, so a caller — `local_archive` hands this string
+        # straight to the operator, and `_rebuild_plan` files it as that fact's `error` —
+        # could not tell "this is not a fact" from
+        # "this is a fact the firewall will not re-admit". The two need different responses:
+        # the first is a fact that was never valid, the second is valid content being
+        # RELOCATED, and for it the flag is not the remedy — the arm reads the BODY, and
+        # `_looks_secret_fn()` runs at this line, before and independently of `inject` below,
+        # so `inject=True` does not bypass it (the recorded cause "inherits the firewall via
+        # inject=True" names the wrong operand: it is the body, not the flag).
+        return {"ok": False,
+                "error": "secret-shaped content refused (arm: firewall — the BODY matches a "
+                         "credential-shaped pattern; this content is already admitted and is "
+                         "being relocated, so the route is to reword the body, not the flag)",
+                "text": text, "fm": {}}
     dup = _duplicate_reserved(text)
     if dup:
         return {"ok": False, "error": dup, "text": text, "fm": {}}
@@ -467,10 +481,18 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
     included: list = []
     invalid: list = []
     unreadable: list = []
+    # A `*.md` the directory listing carries but the read reports ABSENT. A broken symlink is
+    # the reachable form: `glob("*.md")` lists the name, `read_snapshot` follows the link,
+    # finds nothing, and returns an absent snapshot — deterministic, not a race. Kept apart
+    # from `unreadable` because nothing REFUSED the read; there is no error to report, which
+    # is precisely why the plan had no entry for it and why the fact loop could `continue`
+    # past it without a trace.
+    absent: list = []
     mirrors: list = []
-    readd_archived: list = []
+    keep_archived: list = []
     snaps: dict = {str(idxp): idx_snap}
     existing_ptrs: set = set()
+    idx_text = ""
     if idx_snap.exists:
         idx_text = (idx_snap.data or b"").decode("utf-8", errors="replace")
         existing_ptrs = set(_LINK_RE.findall(idx_text))
@@ -500,6 +522,9 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
     # entry single-homed, since the fact loop would otherwise report the same path again.
     archive_paths: set = set()
     reported_unreadable: set = set()
+    # Store-root `*.md` entries this pass listed and could not READ. Recorded rather than
+    # skipped; the block after the fact loop decides which of them no loop ever reports.
+    absent_docs: list = []
     if native.is_dir():
         for f in sorted(native.glob("*.md")):
             if f.name == "MEMORY.md" or "/quarantine/" in str(f):
@@ -511,6 +536,7 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
                 reported_unreadable.add(str(f))
                 continue
             if not snap.exists:
+                absent_docs.append(str(f))
                 continue
             if _is_archive_index_text((snap.data or b"").decode("utf-8", errors="replace")):
                 archive_paths.add(str(f))
@@ -560,6 +586,9 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
                 continue
             snaps[str(f)] = snap
             if not snap.exists:
+                absent.append({"stem": f.stem,
+                               "error": "no file at read time (broken symlink, or "
+                                        "removed while the pass ran)"})
                 continue
             try:
                 text = (snap.data or b"").decode("utf-8")
@@ -576,7 +605,13 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
                 # Placed by an archive on purpose. Declining to re-add IS the fix; naming it
                 # is the other half — the plan reported only the REMOVE direction, so an
                 # operator could not see the rebuild about to undo an eviction (§4).
-                readd_archived.append(f.stem)
+                # v0.4.35 (RC-3b): the KEY is `would_keep_archived_pointers`. It read
+                # `would_readd_…` — the plan's intent for exactly the re-adds it declines, so a
+                # reader scanning the `would_*` family saw the opposite of the plan (the list
+                # this stem lands in is the one a re-add would APPEAR in had the plan not
+                # refused). Its sibling `would_remove_existing_pointers` names its own verdict;
+                # this now does the same. The value, the report shape and the pins are unchanged.
+                keep_archived.append(f.stem)
                 continue
             if _is_mirror(text):
                 fm = _frontmatter(text)
@@ -597,17 +632,137 @@ def _rebuild_plan(ctx: StoreContext) -> dict:
             _warn_fat_hook(ptr, f.stem, source_path=str(f))
             lines.append(ptr)
             included.append({"stem": f.stem, "sha256": snap.sha256})
+    # An absent store-root `*.md` is an entry the PLACEMENT rule cannot read: any doc here may
+    # be an archive (§2.3's residual — a stray doc whose link is formatted as a pointer line is
+    # structurally indistinguishable from one), so a doc that is absent may have owned
+    # placements the plan cannot recover. That is NOT the absent-FACT case the loop above
+    # reports. A fact has a safe automatic action (carry its pointer, which is what keeps it
+    # out of `would_remove`); a placement record has none, because the stems it owned are
+    # unknowable — `archived` comes out empty for that doc, so EVERY pointer it owned is
+    # re-added and the apply admits it with `ok: True` and every report list empty. That is
+    # P13's harm signature verbatim — "the plan re-adds every pointer that doc owns while
+    # reporting `ok: True` and an empty `unreadable`" — reached through the branch P13's own
+    # fixture steps around, and needing no operation at all to fire.
+    #
+    # Which entries those are is taken from `snaps` rather than by restating the loop above's
+    # exclusion list: a path lands here only if NO loop READ it, which is what "no loop
+    # reported this one" means in the loops' own data. Today that is `SHIPPED.md` and nothing
+    # else — the one store-root name the fact loop excludes that this pass does not, and the
+    # name the whole archive rule is about. It fails the plan closed through the same `blocked`
+    # machinery this pass's unreadable arm already uses, leaving `--skip-invalid` as the
+    # operator's explicit escape.
+    for _p in absent_docs:
+        if _p in snaps:
+            continue
+        unreadable.append({
+            "stem": Path(_p).stem,
+            "error": "no file at read time (broken symlink, or removed while the pass ran); "
+                     "this doc is a PLACEMENT record — with it unread, the pointers it owns "
+                     "cannot be told from stale ones, and rebuilding re-adds every one of them"})
+
+    # One question the plan has to answer before it can call any pointer a REMOVAL: could
+    # this fact be evaluated at all? `invalid` and `unreadable` are refusals the operator
+    # can read; `absent` is the same condition with no error attached to carry it, which is
+    # why it had no list and the loop could skip it without a trace.
+    #
+    # Derived from those three lists rather than appended at each of the five `continue`s
+    # that fill them, so a refusal that REPORTS cannot drift out of this set. The loop's
+    # other skips are accounted for and do not belong here: the two name exclusions
+    # (MEMORY.md, SHIPPED.md) name stems no pointer can reference, the archive/dedup
+    # handoffs are already represented in `unreadable` or by the archive rule, and the
+    # archived decline at `f.stem in archived` evaluated the file and simply refuses to
+    # re-add it — a verdict, not a failure.
+    unevaluated = ([r["stem"] for r in unreadable] + [r["stem"] for r in invalid]
+                   + [r["stem"] for r in absent])
+    # §2.3's invariant, applied to the OTHER direction. The comments above argue it for
+    # archives — the rebuild may decline to re-add, never remove — and the same argument
+    # binds harder here: `planned` is the set REMOVAL is differenced against, so a stem the
+    # plan could not evaluate must enter it. A stale pointer is recoverable; its removal is
+    # not, because the fact it named was never read. Pre-fix this read `existing_ptrs -
+    # planned` with `planned` built from `included | mirrors` alone, so an unevaluable fact
+    # was reported as a removal the plan had DECIDED, and the apply wrote that verdict.
+    planned = ({row["stem"] for row in included} | {row["stem"] for row in mirrors}
+               | set(unevaluated))
+    _remove_basis = existing_ptrs - planned
+    # Carry those stems' EXISTING pointer lines through, VERBATIM from the pinned index
+    # snapshot. Never re-derived: there is no evaluable fact file to derive one from, and a
+    # hand-edited index line has to survive a rebuild — the same reason `existing_ptrs`
+    # reads `idx_snap` above rather than going back to disk. Order is the index's own, so the
+    # carried lines keep their relative order; they follow the re-derived ones because
+    # placement among THOSE is not recorded anywhere to consult.
+    #
+    # A line is carried when it names ANY stem in `_carry` — the `findall` reading, which is how
+    # `existing_ptrs` itself was built at its `findall` site. The FIRST-match reading this
+    # replaces could not see a `_carry` stem sitting behind a different stem's pointer, so such a
+    # line was not carried at all: the stem stayed in `planned` and therefore never appeared in
+    # `would_remove`, while its `](stem.md)` vanished from the rebuilt index. That is RC-1c's own
+    # harm re-entered through RC-1c's repair — an unevaluable fact de-indexed with the plan
+    # reporting nothing removed — and it landed on multi-pointer lines, which are hand-edits,
+    # which is the case this carry exists to serve.
+    #
+    # Carrying by the any-match reading needs the duplicate that reading used to cause solved the
+    # other way. A carried line is VERBATIM, so a stem it names that the rebuild ALSO re-derived
+    # would land in `future` twice — once re-derived, once under the carried line. The re-derived
+    # line for such a stem is therefore dropped and the hand-edited line is the survivor, while
+    # `included`/`mirrors` are left untouched so `planned` does not move: the stem IS still
+    # placed, by the carried line. Machine-written lines cannot reach that dedup (`_pointer_line`
+    # strips `[]()` from the hook); hand-edited hooks are exactly what this carry preserves.
+    # Requiring the display text to equal the stem is still rejected — it would drop
+    # `- [My Title](stem.md)`, which a `startswith` test misses.
+    #
+    # `would_remove` is computed AFTER the carry, because a carried line preserves every stem it
+    # names, and the key reports what the apply will DROP. Subtracting `_named` is what keeps the
+    # two in step: without it a carried line could hold a pointer the plan also announced as
+    # removed, and the report would claim a removal the apply does not perform.
+    #
+    # But `_named` and `_carry` are NOT the same set, and the difference is the whole of this
+    # repair. `_carry` is what the carry exists to PROTECT — the unevaluable stems. `_named`
+    # additionally holds every OTHER stem sharing a carried line, and those may be ordinary
+    # decided removals (`_remove_basis`) that merely happen to sit beside an unevaluable one.
+    # Subtracting them from `_remove_basis` would then suppress a removal the plan justified AND
+    # perform no removal — a decided verdict turned into an unreported retention, with nothing
+    # anywhere naming the stem. MEASURED 2026-09-18 (a peer's fixture, reproduced here): one dead
+    # pointer is DROPPED and reported `would_remove: ['ghost']` when it sits alone, and silently
+    # RETAINED with `would_remove: []` when the same token shares a line with an unevaluable
+    # stem — the verdict keyed to line LAYOUT, which is the class this release exists to close.
+    #
+    # The line is still carried VERBATIM (re-deriving it would destroy the hand-edit the carry
+    # serves), so retention is what actually happens and `would_remove` must keep saying so. What
+    # was missing is the carrier: the stems that survive against a justified removal get their
+    # own key. Retention is the safe direction — a stale pointer is recoverable, its removal is
+    # not, which is §2.3's own argument — but the SILENCE was not, and this is the second time
+    # this release has had to repair a silence rather than a wrong value.
+    _carry = {s for s in unevaluated if s in existing_ptrs}
+    _carried: list = []
+    _named: set = set()
+    if _carry:
+        for _ln in idx_text.splitlines():
+            _ls = _LINK_RE.findall(_ln)
+            if any(s in _carry for s in _ls):
+                _carried.append(_ln)
+                _named |= set(_ls)
+    would_remove = sorted(_remove_basis - _named)
+    would_keep_stale = sorted(_remove_basis & _named)
+    lines = [ln for ln in lines
+             if (m := _LINK_RE.search(ln)) is None or m.group(1) not in _named]
+    lines.extend(_carried)
     future = "\n".join(lines) + "\n"
-    planned = {row["stem"] for row in included} | {row["stem"] for row in mirrors}
-    would_remove = sorted(existing_ptrs - planned)
     return {
         "included": included,
         "invalid": invalid,
         "unreadable": unreadable,
+        "absent": absent,
         "mirrors": mirrors,
         "would_remove_existing_pointers": would_remove,
-        "would_readd_archived_pointers": sorted(readd_archived),
-        "would_readd_archived_sources": {s: readd_sources[s] for s in sorted(readd_archived)},
+        # v0.4.35 (RC-1c): a stale pointer whose removal the plan justified, retained anyway
+        # because it shares a VERBATIM carried line. Named `would_keep_*` to sit with its
+        # sibling below: both are the verdict that KEPT a pointer, and neither is a removal.
+        "would_keep_stale_pointers": would_keep_stale,
+        # v0.4.35 (RC-3b): renamed from `would_readd_archived_pointers` /
+        # `would_readd_archived_sources`. Both `would_*` keys are the plan's own verdicts, and
+        # these two hold the verdict that REFUSED the re-add — see the note at their fill site.
+        "would_keep_archived_pointers": sorted(keep_archived),
+        "would_keep_archived_sources": {s: readd_sources[s] for s in sorted(keep_archived)},
         "future": future,
         "snaps": snaps,
         "idx_snap": idx_snap,
@@ -619,20 +774,30 @@ def local_rebuild_index(ctx: StoreContext, *, apply: bool = False,
     """Rebuild MEMORY.md from native fact files (skip quarantine / SHIPPED).
 
     Default is plan-only. `--apply` requires `--confirm rebuild-local-index`.
-    Any invalid/unreadable fact fails closed unless skip_invalid=True.
+    Any invalid/unreadable fact fails closed unless skip_invalid=True — and so does a
+    store-root doc no loop could read, because a doc may be the archive whose pointer lines
+    record which facts were evicted (`_rebuild_plan`).
+
+    A fact the plan could not evaluate — invalid, unreadable, or absent at read — keeps its
+    EXISTING pointer line and is named in `omitted` ("left in place, unverified"); only a
+    stem whose removal the plan justified is dropped. `absent` is the one family that does
+    not fail the plan closed: nothing refused the read, so there is no error for the
+    operator to act on, and the carried pointer is already the safe direction.
     """
     from control_plane import ABSENT, transact
     from index_admission import project_index
     assert_writable(ctx)
     plan = _rebuild_plan(ctx)
     report = {k: plan[k] for k in (
-        "included", "invalid", "unreadable", "mirrors",
-        "would_remove_existing_pointers", "would_readd_archived_pointers",
-        "would_readd_archived_sources")}
+        "included", "invalid", "unreadable", "absent", "mirrors",
+        "would_remove_existing_pointers", "would_keep_stale_pointers",
+        "would_keep_archived_pointers",
+        "would_keep_archived_sources")}
     blocked = bool(plan["invalid"] or plan["unreadable"]) and not skip_invalid
     if not apply:
         return {"ok": not blocked, "plan": True, "error":
-                ("invalid or unreadable facts; pass --skip-invalid to omit them"
+                ("invalid or unreadable facts; pass --skip-invalid to carry their pointers "
+                 "through, unverified"
                  if blocked else ""),
                 **report}
     if confirm != REBUILD_CONFIRM:
@@ -643,9 +808,14 @@ def local_rebuild_index(ctx: StoreContext, *, apply: bool = False,
         return {"ok": False, "error":
                 "invalid or unreadable facts; index unchanged",
                 **report}
-    omitted = []
-    if skip_invalid:
-        omitted = [r["stem"] for r in plan["invalid"] + plan["unreadable"]]
+    # Every unevaluated stem is left in place with its existing pointer, so `omitted` names
+    # the stems this run did NOT decide — "left in place, unverified", not "removed". It is
+    # no longer gated on `skip_invalid`: the absent family is carried through on the plain
+    # `--apply` route too, and reporting that only under `--skip-invalid` would be the same
+    # silence one flag over. The key keeps its name (the report shape is a wire contract);
+    # the meaning it now carries is the one both routes actually produce.
+    omitted = sorted({r["stem"] for r in
+                      plan["invalid"] + plan["unreadable"] + plan["absent"]})
     native = ctx.native_memory_dir
     idxp = native / "MEMORY.md"
     future = plan["future"]

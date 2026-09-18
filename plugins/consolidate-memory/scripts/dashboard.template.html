@@ -933,6 +933,15 @@
   if(!ALL.length)ALL=[{}];
   function _readSel(){if(location.hash==="#archive")return null;var m=(location.hash+" "+location.search).match(/sel=(\d+)/);if(!m)return null;var i=+m[1];return (i>=0&&i<ALL.length)?i:null;}
   var SEL, VIEW, selIdx, CUR, HIST, ENT, CYCLES, DREAMDIFFS, traj, PROJ;
+  // v0.4.35 (RC-3): the WRITE set, substituted from ms.ACTION_VOCAB at render time — ONE
+  // declaration behind both count sites below (`writeCount` and the archive table's `en` tally).
+  // They held the 3-set and the 4-set respectively, so one cycle could report two different
+  // write counts in two views of the same page. It must be ASSIGNED before the first
+  // `outcomeOf` call site (`var lab=outcomeOf(CUR);`): `var` hoists the BINDING, not the value, so
+  // a declaration placed after that call leaves this `undefined` and throws on `.indexOf` — a
+  // failure invisible to the plain-text pin, because the marker is present and both sites do read
+  // it.
+  var CM_WRITE_ACTIONS=/*__CM_WRITE_ACTIONS__*/;
   var lastSel=ALL.length-1;
   var ALLDIFFS=(DATA.diffs&&typeof DATA.diffs==="object"&&!Array.isArray(DATA.diffs))?DATA.diffs:{};   // v0.1.32: cycleKey → its persisted memory diffs
   function ownObject(o,key){if(!o||!Object.prototype.hasOwnProperty.call(o,key))return null;var value=o[key];return value&&typeof value==="object"&&!Array.isArray(value)?value:null;}
@@ -1042,7 +1051,7 @@
   // a pivoted no-write pass is Maintenance, not No-op.
   function writeCount(c){
     var ents=Array.isArray(c&&c.entries)?c.entries:[];
-    return ents.filter(function(e){return ["added","corrected","deleted"].indexOf(g(e,"action",""))>=0;}).length;
+    return ents.filter(function(e){return CM_WRITE_ACTIONS.indexOf(g(e,"action",""))>=0;}).length;
   }
   function outcomeOf(c){
     // L4 (v0.4.2): the embedded single-source label wins; the ladder below is the
@@ -1514,7 +1523,7 @@
         rgRaw:rg, rg:rg.charAt(0)+rg.slice(1).toLowerCase(),
         ts:String(g(c,"marker.timestamp","")||"—").replace("T"," ").replace(/(\+.*|Z)$/,"").slice(0,16), tsRaw:String(g(c,"marker.timestamp","")||""),
         ix:num(g(c,"budget.index.after_tokens",g(c,"budget.index.before_tokens",0))),
-        en:(Array.isArray(c.entries)?c.entries:[]).filter(function(e){return ["added","corrected","deleted","reconciled"].indexOf(g(e,"action",""))>=0;}).length,
+        en:(Array.isArray(c.entries)?c.entries:[]).filter(function(e){return CM_WRITE_ACTIONS.indexOf(g(e,"action",""))>=0;}).length,
         hh:String(g(c,"marker.commit","")).slice(0,9)||"—"};});
     var st={rig:"all", key:"tsRaw", dir:-1};   // default: newest first
     var rigs=["all"].concat(["HEAVY","SUBSTANTIAL","LIGHT"].filter(function(r){return rows.some(function(x){return x.rgRaw===r;});}));

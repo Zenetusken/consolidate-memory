@@ -17,7 +17,7 @@ description: >-
 
 # Consolidate Memory
 
-**v0.4.34** — sole-authority topology (SQLite holders/grants/migration state; one
+**v0.4.35** — sole-authority topology (SQLite holders/grants/migration state; one
 enumerator, ordinary ops never dual-read leftover `~/.claude/memory`), consolidated
 canonical writer, facts-manifest cache, journal pagination + complete-old,
 `cm local` pointer+link parity with pull, hook-sketch infrastructure removed,
@@ -83,7 +83,28 @@ cold-state line included; eleven sites taking a `dict.get` default now carry the
 catches an empty-but-present string; and two declaration drifts in OPPOSITE directions —
 `identity.domain_lifecycle` was emitted and displayed but declared nowhere, `audit.window` was
 declared in both surfaces and read by the archive as `audit.window` yet written by no producer — each
-fixed on the side the READER says is missing, giving the suite its first producer⊆declaration pins).
+fixed on the side the READER says is missing, giving the suite its first producer⊆declaration pins), plus
+the v0.4.35 refusal-verdict-parity patch (a refusal must never be spelled like a verdict: eight faces
+of one root cause — a surface re-derives meaning from something other than the data that produced it,
+and the value it invents is the one that reads as a clean result). `--audit` read an unreadable,
+absent or invalid snapshot as an EMPTY one and reported every store file as created (measured live: a
+fabricated `+572,437 tok`, exit 0, archived as a real row); it now names the fault and the remedy,
+exits non-zero and writes no row. A recognized flag with a *missing* value was read as an absent flag
+— and because an empty token IS a token, `--audit ""` reached that same arm by the plainest route of
+all — so a missing or empty value is now a usage error at exit 2, applied to EVERY occurrence rather
+than the first. The rebuild plan's `would_remove` counted a fact it could not EVALUATE as one it had
+decided to DROP, so a firewall false positive on a live fact's body de-indexed it under
+`--skip-invalid` while reporting `ok: true`; retention is now a carrier rather than a tighter
+subtraction. One string carried two causes at both of its sites — a firewall refusal and a not-a-fact
+refusal shared one `error` channel, and the marker guard named an absent marker and a duplicated one
+in the same sentence — and `--audit`'s dedup tested the LAST ROW only, so an older marker reappearing
+re-appended as new. The outcome ladder counted a 3-element subset of the declaration's five names
+while the panel beside it tallied all five — one record rendered `= 5 reconciled` directly above
+`NO-OP PASS · reviewed, nothing changed` — and the template's own literal arrays are now ONE
+substituted declaration that both of its count sites read. `would_readd_archived_pointers`, which held
+the re-adds the plan DECLINED, is renamed to name its value; and two duties gained machine-visible
+carriers (a seeded empty `entries` is not a decided-nothing pass, and an absent `demotion.verdict` no
+longer renders as silence).
 Public 1.0 stays HOLD.
 
 **Unenrolled is local-only:** a project that is not enrolled cannot create or pull
@@ -1340,8 +1361,11 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
 
    **Record-duty gate (v0.4.33).** The same terminal `--persist` also judges the record's
    SEEDED duties — the fields Phase 0 wrote for you to fill. A duty that is **present and holding
-   nothing** (never an absent key: a partial record is normal, the phases fill it incrementally)
-   prints a loud **RECORD DUTY GAPS ⚠** panel naming each field and its own remedy, and:
+   nothing** prints a loud **RECORD DUTY GAPS ⚠** panel naming each field and its own remedy, and
+   (the era gate is **per row**, and each bullet below states its own: for `session` and
+   `rigor.applied` it is the KEY, so an absent key never fires — a partial record is normal, the
+   phases fill it incrementally; for the three v0.4.35 rows it is the **CONTAINER**, so a missing
+   key inside a container that IS present is the normal failure mode and does fire):
    - `session` present-and-blank → **warn only**, exit unchanged. SKILL forbids *fabricated*
      session ids while the seed says fill it "when known", so gating it would resolve that
      conflict in favour of fabrication. The panel is the whole report.
@@ -1350,6 +1374,19 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    - the Phase-5 progress trio (`pruned`/`achieved_index`/`achieved_recall`) → **exit 3** unless
      it is untouched or wholly filled, **each key holding a value**. Writing all three keys and
      leaving one blank is a gap, not a pass.
+   - (v0.4.35) `entries[]` empty while the audit block the script injected shows the store
+     **changed** → **warn only**, exit unchanged. Two states reach this and only the first has a
+     row to write: a pass that wrote nothing it should have narrated (including a Phase-1 `--pull`
+     landing, whose mirrors owe a row like any other write), or a change that was **not** this
+     pass's — a concurrent `cm sync`, or a commit landing mid-dream. Investigate, reconcile if it
+     is yours; if it is not, say so and move on. It never gates *because* that second state has no
+     row to write, and a gate whose only exit is a fabrication is worse than no gate.
+   - (v0.4.35) `demotion.verdict` blank-or-absent with `eligible > 0` → **exit 3**. The triage had
+     candidates and its sentence is missing; nothing else in the record — or in any surface —
+     distinguishes that from a triage that ran and proposed nothing.
+   - (v0.4.35) `demotion.verdict` blank-or-absent with `eligible == 0` — the **dormant** policy —
+     → **warn only**, exit unchanged. The mandated one-liner ("dormant — N probative windows"),
+     and nothing was at stake while the evidence gate is closed.
    The remedy is to fill the field (or, for the trio, to fill all three or none — the clause's
    own panel line says which), then re-render. This arm runs **after** the arc arm, so a record
    with both an incomplete arc and a duty gap exits **4** — fix the arc first. Like the
@@ -1378,8 +1415,10 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    appended as its own `changed` row instead (nothing observed is ever silently dropped). A
    claude_md/repo_doc file too large to snapshot (`_DIFF_CONTENT_CAP_TOKENS`, memory facts are
    exempt — always small) still gets its op recorded, flagged `size_capped` instead of a
-   misleading partial diff. Best-effort — skipped (never crashes a dream) if the cycle is
-   unstamped or the snapshot is missing.
+   misleading partial diff. Best-effort — never a crash, but not always a skip: an **unreadable
+   cycle record** is a **named fault** on stderr, and the sidecar, **if it lands**, is keyed without
+   its session segment (the legacy base key); the run is **skipped** if the cycle is unstamped or the
+   snapshot is missing — and one run can take both, the fault named first and the skip beneath it.
 
    Then generate the **rich HTML dashboard + dream ARCHIVE** — the visual sibling of the ASCII
    report (one cycle-record contract, two renderers): the same data plus the longitudinal
