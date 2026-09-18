@@ -306,8 +306,16 @@ _rem_lean = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "
 _rem_lean_out = rd.render(_rem_lean)
 check("v0.1.35: rebuild-lean-resolved gate (pruned=0, achieved≤budget) renders RESOLVED, not 'not acted on'",
       "resolved by rebuild-lean" in _rem_lean_out and "not acted on" not in _rem_lean_out)
-check("v0.1.35: a gate STILL over budget (pruned=0, achieved>budget) DOES warn 'not acted on'",
-      "not acted on" in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+check("v0.1.35: a gate STILL over budget (pruned=0, achieved>budget) renders the prune-then-"
+      "standing-justify REMEDY — rewritten in v0.4.34, when the verdict stopped being looked up "
+      "by `lever`. The sanctioned state is not the ⚠ 'not acted on' alarm: that fired because "
+      "`lever=prune` matched a label, and `prune` is precisely what this record says to do. Same "
+      "fixture as v0.1.35, same bug it was written for, opposite assertion (see E1-a)",
+      "prune can't reach budget" in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+          "budget": {"index": {"after_tokens": 1500, "budget_tokens": 1200, "over": True}},
+          "remediation": {"required": True, "lever": "prune", "candidates_surfaced": 1, "pruned": 0,
+                          "achieved_index": 1500, "projected_index": 480, "reaches_budget": False}}))
+      and "not acted on" not in rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
           "budget": {"index": {"after_tokens": 1500, "budget_tokens": 1200, "over": True}},
           "remediation": {"required": True, "lever": "prune", "candidates_surfaced": 1, "pruned": 0,
                           "achieved_index": 1500, "projected_index": 480, "reaches_budget": False}})))
@@ -1608,7 +1616,24 @@ check("v0.4.32 P7 (GUARD, forward-verified): every scalar the drift walker REACH
 # (SchemaDrift + the pulled/promoted item dicts aren't enumerated in the block — the former renders as
 # an empty {} placeholder, the latter are untyped list[dict] — so they're out of scope for this pin.)
 # v0.1.69/A7: usage/usage.per_fact/demotion + explicit audit.claude_md/repo_doc rows close the last
-# gaps — the two carve-outs above are now the ONLY un-pinned shapes.
+# gaps.
+# v0.4.34/E5: …but "the ONLY un-pinned shapes" was FALSE, and had been since the v0.1.87 W-C rows.
+# Measured: 34 rows over 32 distinct TypedDicts vs 43 defined; SEVEN shapes had a SKILL block and a
+# TypedDict and were pinned by neither (Narration, DomainEntry, UniversalFact, GroupLink,
+# NetworkCapture, StackEdgeFacts, FactHolding — all seven now added below). They were in perfect key
+# agreement, so this was a coverage claim that was false, not a drift that was hidden.
+# The claim is now bounded rather than asserted, and it has TWO structural limits, neither of them
+# an unfinished task:
+#   • DEPTH. This loop compares one LEVEL's keys, so it reaches only shapes at depth ≤ 2. Four
+#     depth-3 inline sub-shapes are backed by bare `dict[str, Any]` / `list` —
+#     workflow_proposals.candidates[0].{evidence,mechanical} and
+#     workflow_proposals.decline_anchors[0].{top[0],top_chains[0]} — so there is no key set to
+#     compare and this mechanism cannot reach them by adding rows.
+#   • DIRECTION. This pins SKILL↔TypedDict. The producer→declaration edge is a different check,
+#     added in v0.4.34 for the two shapes that cycle touched only: 41 of the 43 TypedDicts remain
+#     unpinned in that direction, and that edge is exactly where v0.4.34's two drifts lived. A
+#     forward pin must compare with `<=`, never `==` — narration_block legitimately omits `gaps`
+#     when empty (total=False), so an equality form would RED falsely on a correct shape.
 _sk_b = _skill_schema.get("budget", {})
 _sk_n = _skill_schema.get("network", {})
 for _nm, _obj, _td in [
@@ -1653,6 +1678,28 @@ for _nm, _obj, _td in [
     ("audit.conservation", _skill_schema.get("audit", {}).get("conservation", {}), ms.Conservation),   # v0.1.24
 ]:
     check(f"SKILL↔TypedDict: schema-block {_nm} == {_td.__name__} (v0.1.12 full nested pin)",
+          {k for k in _obj if not k.startswith("_")} == set(_td.__annotations__))
+
+# v0.4.34/E5: the seven gaps the "ONLY un-pinned shapes" comment hid — given their OWN loop so their
+# label can be TRUE. Inside the v0.1.12 loop above they inherited its `(v0.1.12 full nested pin)` tag,
+# which is false twice over: they were added in v0.4.34, and they are GUARDS, not pins — they cannot
+# fail on pre-fix code because pre-fix they do not exist (a-check-added-by-a-fix-may-not-flip). A label
+# naming the wrong revision AND the wrong tier is this cycle's own defect, and D6's accounting below
+# already called them GUARDs while the printed line called them pins; the label moves, not the check.
+# What they buy is that a future drift in any of the seven reds the suite instead of landing in a blind
+# spot nobody is looking at. `network` has TWO producer sites (see the spec): _fleet_layers returns
+# four of these keys; capture + fact_holdings are added by its caller.
+for _nm, _obj, _td in [
+    ("narration", _skill_schema.get("narration", {}), ms.Narration),
+    ("network.domains[0]", (_sk_n.get("domains") or [{}])[0], ms.DomainEntry),
+    ("network.universal_facts[0]", (_sk_n.get("universal_facts") or [{}])[0], ms.UniversalFact),
+    ("network.group_links[0]", (_sk_n.get("group_links") or [{}])[0], ms.GroupLink),
+    ("network.capture", _sk_n.get("capture", {}), ms.NetworkCapture),
+    ("network.stack_edge_facts[0]", (_sk_n.get("stack_edge_facts") or [{}])[0], ms.StackEdgeFacts),
+    ("network.fact_holdings[0]", (_sk_n.get("fact_holdings") or [{}])[0], ms.FactHolding),
+]:
+    check(f"v0.4.34 E5 (GUARD): SKILL↔TypedDict: schema-block {_nm} == {_td.__name__} — the shape "
+          f"the v0.1.12 loop above could not see at all, added here as a GUARD against future drift",
           {k for k in _obj if not k.startswith("_")} == set(_td.__annotations__))
 
 # v0.1.52: BLOCKER guard — Phase-5's health fill MUST call dangling_links with the SAME global_dir as Phase-0
@@ -2818,10 +2865,16 @@ check("v0.1.90: registrar blocked persist cap is 8 (HTML no longer samples block
 _RC9_cands = [{"candidate": f"cmd{i}", "form": "command", "evidence": {"nodes": ["a"], "d": 2, "n": 2},
                "mechanical": {"fleet_recurrence": False, "day_spread": True}, "disposition": "declined"}
               for i in range(15)]
-_RC9 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, workflow_proposals={"candidates": _RC9_cands})))
+# v0.4.34 (E2): `n_blocked` is carried as its OWN operand (22, against 15 candidate rows), and the
+# independence is the repair. With the key absent, `_n_blocked` falls back to `len(_blocked)` and the
+# tail `_n_blocked - _shown_b` is computed from the same source as the row count — so the check below
+# asserted the cap arithmetic against itself and was GREEN on the one case that can fail (a broken cap
+# moves both operands together). Two sources is what makes the assertion mean something.
+_RC9 = rd.render(cast(ms.CycleRecord, dict(_RC_BASE, workflow_proposals={"n_blocked": 22,
+                                                                          "candidates": _RC9_cands})))
 _check_rc9_rows = _RC9.count("◈")
 check("RC-89: the ASCII registrar caps blocked rows at 8 + the '+N more' tail (parity with the HTML)",
-      _check_rc9_rows == 8 and "+7 more blocked" in _RC9)
+      _check_rc9_rows == 8 and "+14 more blocked" in _RC9)
 _RC10_cands = [{"candidate": f"cmd{i}", "form": "command",
                 "evidence": {"nodes": ["a"], "d": 1, "n": 2},
                 "mechanical": {"fleet_recurrence": True, "day_spread": False}}
@@ -18338,11 +18391,674 @@ check("v0.4.33 CENSUS WHITELIST: every REFERENCE to `warnings` reachable from "
       "the census's coverage",
       _n_esc33 == 0)
 
+# === v0.4.34 render/declaration parity (docs/render-declaration-parity.spec.md §4) ==============
+# Five independent fixes sharing ONE root cause, which is this cycle's thesis: a surface re-derives
+# meaning from a LABEL instead of from the data that produced it, and the label is the only thing
+# anyone checks. The pins are pitched at the OPERAND each fix moved — E1's outcome space, E2's two
+# sources, E3's absent-vs-empty, E4's producer-vs-declaration — because the value a fix moves TO is
+# the one most likely to be left unpinned.
+#
+# E4's two are the FIRST forward-direction pins in this suite. Every shape pin above compares
+# SKILL.md to the TypedDict, so a producer and a declaration can agree with each other and both
+# disagree with the code that writes the record — which is exactly where both v0.4.34 drifts lived
+# (the older claim that the nested-shape loop closed the class was false; see the E5 comment). The
+# direction is asymmetric: a forward pin must be `<=`, never `==`, because a `total=False`
+# declaration legitimately permits a producer to omit a key.
+import re as _re34  # noqa: E402  — separate alias: `_re` above is scoped to its own era's block
+import ast as _ast34  # noqa: E402
+import os as _os34  # noqa: E402  — E4-a only: HOME must be the temp dir before resolve_store
+
+
+def _e34_rec(**rem: object) -> "ms.CycleRecord":
+    """The smallest record that renders the REMEDIATION panel, with `rem` merged into its block.
+
+    `required: True` is what enters the panel's `elif` (v0.1.36 gates on `required`, not on
+    presence), so omitting it would make every E1 pin below vacuous rather than green.
+    """
+    return cast(ms.CycleRecord, {
+        "project": "p", "session": "s", "scope": {}, "entries": [],
+        "budget": {"index": {"after_tokens": 1500, "budget_tokens": 1200, "over": True}},
+        "remediation": {"required": True, **rem}})
+
+
+def _e_reg(**wp: object) -> "ms.CycleRecord":
+    """The same, for the REGISTRAR panel: a truthy `workflow_proposals` renders the panel."""
+    return cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                                 "workflow_proposals": wp})
+
+
+def _e_nl(t: str) -> str:
+    """A render with the header's `lever {LEVER}` normalized out — the ONE token two E1-b records
+    legitimately differ in. Normalizing it lets the comparison be the WHOLE render, which is
+    strictly stronger than comparing the derived notes: it asserts that a relabel changes nothing
+    but the header's own label."""
+    return _re34.sub(r"lever \w+", "lever X", t)
+
+
+# E1-a — the state the skill itself sanctions (`prune-or-justify`), and the one the pre-fix lookup
+# got wrong in the LOUD direction: `prune` + pruned=0 + over budget matched the `prune` label's
+# "gate fired but not acted on" alarm, so the sanctioned prune-then-justify pass was scolded. The
+# remedy line and the alarm are two clauses about ONE state, which is the defect.
+_e_a = rd.render(_e34_rec(lever="prune", candidates_surfaced=1, pruned=0,
+                        achieved_index=1500, reaches_budget=False))
+check("v0.4.34 E1-a (PIN): an over-budget prune with 0 pruned but a NOTICEABLE candidate count "
+      "renders the prune-safe-THEN-standing-justify REMEDY and NOT the ⚠ alarm — the state is "
+      "sanctioned, so alarming it trains the model away from the sanctioned action. Pre-fix both "
+      "lines rendered together for this single state (the alarm sits in the label lookup, the "
+      "remedy outside its if/elif chain)",
+      "prune can't reach budget → prune-safe-THEN-standing-justify" in _e_a
+      and "not acted on" not in _e_a
+      and "resolved by rebuild-lean" not in _e_a)
+
+# E1-b — the enforcement hole: `lever` is a ROUTING label the producer picked, and the note was
+# keyed on it, so rewriting ONE field swapped the panel's whole meaning. Held constant here: every
+# operand (candidates_surfaced, pruned, achieved_index, budget) — only `lever` moves. The mirror
+# variant is a SECOND conjunct rather than a second pin because it exercises the branch where the
+# old lookup's `gc`/`justify` entries were ALSO reachable, which the first pair cannot reach: with
+# `mirror_share` absent, the mirror row is never emitted and that arm would go untested.
+_e_b1, _e_b2 = (rd.render(_e34_rec(lever=_lv, candidates_surfaced=1, pruned=0, achieved_index=1500))
+                for _lv in ("prune", "justify"))
+_e_b3, _e_b4 = (rd.render(_e34_rec(lever=_lv, candidates_surfaced=1, pruned=0, achieved_index=1500,
+                                 mirror_share=0.9))
+                for _lv in ("prune", "justify"))
+check("v0.4.34 E1-b (PIN): relabeling `lever` — and ONLY `lever` — leaves the whole render "
+      "byte-identical once the header's own label is normalized out, on BOTH the plain and the "
+      "mirror-bearing operand sets. Pre-fix `prune` rendered the ⚠ and `justify` rendered "
+      "'justified — nothing safely prunable' from IDENTICAL data, so the label decided the "
+      "verdict (→ weakest-enforcement-site-wins). The `REMEDIATION` conjunct is a non-vacuity "
+      "guard: two EMPTY panels also compare equal, and that is not the property being asserted",
+      "REMEDIATION" in _e_b1 and "mirror-dominated" in _e_b3
+      and _e_nl(_e_b1) == _e_nl(_e_b2) and _e_nl(_e_b3) == _e_nl(_e_b4))
+
+# E1-c — the reassuring sentence. "justified — nothing safely prunable" was a claim about the STORE
+# that no field in the record carries; it rendered whether or not candidates had been surfaced, and
+# the surfaced count is exactly what would make it false. Both arms are asserted by EXACT text, so
+# a scanner bug can only produce a false FAIL, never a false green.
+_e_c0, _e_c5 = (rd.render(_e34_rec(lever="prune", candidates_surfaced=_n, pruned=0, achieved_index=1500))
+                for _n in (0, 5))
+check("v0.4.34 E1-c (PIN): the verdict line is keyed on `candidates_surfaced`, not on `lever` — "
+      "0 candidates renders '0 candidates surfaced — record the justification, or re-triage' and "
+      "5 renders the ⚠ 'gate fired but not acted on'. Pre-fix BOTH cases rendered that SAME ⚠, "
+      "because the note was a `.get(lever, \"\")` lookup and this fixture's `lever` is `prune` — "
+      "`candidates_surfaced` was read by no note at all, so a record that had surfaced nothing was "
+      "scolded in exactly the words used for one that had surfaced five. The 'justified — nothing "
+      "safely prunable (see entries[])' string WAS reachable pre-fix, but only through "
+      "`lever=\"justify\"`, which is not this fixture — so it is not the counterfactual this "
+      "fixture's own history should name. (Measured on `1d97f54`'s renderer; fourth-pass review, "
+      "finding 7.)",
+      "0 candidates surfaced — record the justification, or re-triage" in _e_c0
+      and "not acted on" not in _e_c0
+      and "⚠ gate fired but not acted on — surface candidates + prune-or-justify" in _e_c5)
+
+# E1-d — the absent-vs-empty defect INSIDE E1's own fix, which is why it gets its own pin: `_num`
+# maps an ABSENT key to 0, so a naive `_g(cand)` would print "0 candidate(s) surfaced" for a record
+# that never recorded a count — asserting a number the record does not carry, in the very panel
+# whose job is to stop asserting what the data does not support.
+_e_da = rd.render(_e34_rec(lever="prune", pruned=0, achieved_index=1500))
+_e_db = rd.render(_e34_rec(lever="prune", candidates_surfaced=0, pruned=0, achieved_index=1500))
+check("v0.4.34 E1-d (PIN): an ABSENT `candidates_surfaced` and a recorded 0 render DIFFERENT "
+      "panels — 'candidates surfaced: not recorded' + 'no candidate count recorded — whether the "
+      "gate was actionable is not answerable from this record' versus '0 candidate(s) surfaced'. "
+      "Pre-fix both collapsed: the lookup never read the field at all. The `not in` conjunct is "
+      "the half that catches the regression, because printing 0 for an absent key is the seductive "
+      "fix (`_num`'s own default) and it is the wrong one",
+      "candidates surfaced: not recorded" in _e_da
+      and "0 candidate(s) surfaced" not in _e_da
+      and "no candidate count recorded" in _e_da
+      and "0 candidate(s) surfaced" in _e_db
+      and "no candidate count recorded" not in _e_db)
+
+# E1-e — the CENSUS of the class E1-d closed ONE CELL of. The panel reads four numeric operands and
+# each one can fail to be CARRIED two ways: the key ABSENT (`total=False` makes that legal for every
+# one of them) or the key PRESENT and blank (`None`/`""` — the declaration says `int`, but `_num`
+# accepts both and coerces them to 0.0, after which a blank is indistinguishable from a recorded
+# zero). So the census walks THREE spellings per operand — absent, `None`, `""` — for twelve cells;
+# the eight cells the second pass audited counted `None` and `""` as ONE blank form, and SPLITTING
+# that form is what grew the count. The lineage recorded for this count on the FIVE surfaces that
+# carried it — four in `docs/render-declaration-parity.spec.md` (§2.1, §3.6, §4 and revision 9's
+# ledger) and the check label below — was wrong on its face: an absent key and an omitted one name
+# the SAME state, which the eight-cell scope already counted. `_e_missing` is the loop's
+# sentinel for "do not set the key at all" — a test MECHANISM, not a third form. E1-d closed
+# `candidates_surfaced`-absent; the other seven cells went on rendering a
+# fabricated measurement on the very line the fix had just claimed to repair, and NOTHING in this
+# suite sampled any of them — measured, this pin is red on `6368288` (the first cut of E1) and the
+# whole suite was GREEN there, which is the "a pin's coverage is the values it samples" rule landing
+# on the fix that was written to satisfy it.
+#
+# Each row is asserted in FOUR spellings, and the fourth is what makes this a guard rather than a
+# loop that a rename walks through: if `pruned` were renamed, the three "not carried" spellings
+# would STILL render `pruned: not recorded` (the panel reads a key that no longer exists) and the
+# row would pass while the real operand went unread. So each row also carries the operand and
+# asserts the measured form takes over — population and verdict in one assertion, the same inversion
+# `a-complete-guard-inverts-its-question` asks for.
+_e_missing = object()  # distinguishes "omit the key" from a carried `None` in the table below
+_E_REM_CELLS = (
+    # (operand, siblings keeping `pending` False and the line non-empty, carried value,
+    #  the phrase that value renders as, the silent phrase, the FABRICATED phrase)
+    ("candidates_surfaced", {"lever": "prune", "pruned": 0, "achieved_index": 1500}, 7,
+     "7 candidate(s) surfaced", "candidates surfaced: not recorded", "0 candidate(s) surfaced"),
+    ("pruned", {"lever": "prune", "achieved_index": 1500}, 3,
+     "3 pruned", "pruned: not recorded", "0 pruned"),
+    ("achieved_index", {"lever": "prune", "pruned": 0}, 1500,
+     "index ≈1500 tok", "index: not recorded", "index ≈0 tok"),
+    ("projected_index", {"lever": "prune", "pruned": 0, "achieved_index": 1500}, 900,
+     "projected ≈900", "projected: not recorded", "projected ≈"),
+)
+# The census's LIMIT CASE, and the one state every row above routes around BY CONSTRUCTION: each
+# row's siblings deliberately keep `pending` False by carrying one of `pruned`/`achieved_index`, so
+# the pre-pass seed — the record carrying NEITHER — has no sibling HERE to fall back on. It is NOT
+# unrendered elsewhere: the `_ceilRecB` fixture above and the `over_ceiling: False` one after it are
+# both pre-pass records, and both render the pending verdict. But no check READS it there — measured,
+# `pending Phase 5` appears in no other check's assertion. This sentence ended "so a refactor that
+# dropped the branch would leave the suite green" until this revision, and that is true only of the
+# suite WITHOUT the arm below: with the arm present, deleting the branch reds it and nothing else.
+# The injection pair is the discriminator — branch-deleted + arm → ONE red, this check; the SAME tree
+# on the pre-arm harness → green. The gap is the missing ASSERTION, not a missing render. Asserted in
+# the same population+verdict shape as the rows: the silent form must render the pending verdict and
+# no coerced `0`, and carrying `pruned` must take the line over and retire it.
+_E_REM_PENDING = ({"lever": "prune"}, {"lever": "prune", "pruned": 3},
+                  "pruned/achieved pending Phase 5", "3 pruned", ("0 pruned", "index ≈0 tok"))
+
+
+def _e_rem_cells_uncovered() -> "list[str]":
+    """The operands whose silent spellings do NOT render as silent. Scoped as a FUNCTION rather than
+    written inline: this module is long enough that short module-level names like `_k`/`_sib`/`_p`
+    are already bound above with other types, and mypy types a name from its FIRST binding — so an
+    inline loop here is a silent type collision that only `mypy` sees (it did)."""
+    bad: "list[str]" = []
+    for _k, _sib, _val, _carried, _want, _fab in _E_REM_CELLS:
+        _silent = []
+        for _spell in (_e_missing, None, ""):
+            _r = dict(_sib)
+            if _spell is not _e_missing:
+                _r[_k] = _spell
+            _silent.append(rd.render(_e34_rec(**_r)))
+        _loud = rd.render(_e34_rec(**{**_sib, _k: _val}))
+        if not (len(set(_silent)) == 1
+                and all(_want in _p and _fab not in _p for _p in _silent)
+                and _carried in _loud and _want not in _loud):
+            bad.append(_k)
+    _quiet, _loud_sib, _pending, _over, _forged = _E_REM_PENDING
+    _p, _l = rd.render(_e34_rec(**_quiet)), rd.render(_e34_rec(**_loud_sib))
+    if not (_pending in _p and not any(_f in _p for _f in _forged)
+            and _over in _l and _pending not in _l):
+        bad.append("pending Phase 5")
+    return bad
+
+
+check("v0.4.34 E1-e (CENSUS PIN): the remediation panel asserts a measurement ONLY for operands the "
+      "record actually CARRIES — for each of its four numeric operands, the key omitted / `None` / "
+      "`''` all render the SAME 'not recorded' panel and never the fabricated `0` (`_num`'s default), "
+      "while the operand carried does render its value. The carried spelling is load-bearing, not "
+      "decoration: without it a RENAMED operand would satisfy every silent row and the census would "
+      "report health while reading a key that no longer exists. The census is TWELVE cells — four "
+      "operands × three not-carried forms — and the eight-cell form in §2.1 and §3.6 predates the "
+      "third pass, which SPLIT that scope's single `blank` form into `None` and `''` without moving "
+      "the digit there. (This sentence was corrected in revision 12: it read that the third pass "
+      "'added the `omitted` arm', which "
+      "is not a third form at all — `omitted` and `absent` name the SAME state, and the eight-cell "
+      "scope already counted it.) The two revisions "
+      "it separates measure differently against the shipped twelve: on `1d97f54` NOT ONE cell is "
+      "green, all twelve rendering a number the record never carried; on `6368288`, the first cut "
+      "of E1, exactly ONE is (`candidates_surfaced` omitted) and eleven are not. A label here "
+      "previously read 'Pre-fix (and on the first cut of E1) seven of the eight cells' — the "
+      "seven-of-eight is the first cut's result on the eight-cell table, and 'Pre-fix' never "
+      "produced it. The census also carries "
+      "its LIMIT CASE — a record holding neither `pruned` nor `achieved_index`, which every row above "
+      "routes around by construction: it must render the `pending Phase 5` verdict and no coerced `0`, "
+      "and carrying `pruned` must retire that verdict. That arm is the ONLY thing ASSERTING on the "
+      "branch, measured — two other checks RENDER it (`_ceilRecB` and the `over_ceiling: False` "
+      "record above) but neither reads the verdict. Measured, deleting the branch reds THIS check "
+      "alone, and the same injected tree on the pre-arm harness is GREEN — which is the sense in "
+      "which the gap is the missing ASSERTION, not a missing render",
+      _e_rem_cells_uncovered() == [])
+
+# E1-f — the state §1.1's repair was WRITTEN FOR, and the state that nothing sampled until the third
+# pass. The repair gates the D5 remedy on `not resolved_by_lean`; every fixture in this family pairs
+# `reaches_budget=False` with an `achieved_index` ABOVE the budget, so `resolved_by_lean` was False
+# everywhere and the conjunct NEVER BOUND. Measured on a single-edit mutant: deleting it left the
+# suite green at 2010/0. A repair whose motivating state is unsampled is the E1-e finding one
+# revision later, on the repair instead of on the defect.
+_e_f_fix = rd.render(_e34_rec(lever="prune", candidates_surfaced=1, pruned=0,
+                              achieved_index=900, reaches_budget=False))
+check("v0.4.34 E1-f (PIN): the sanction and the SUCCESS are ONE decision — a record that says a full "
+      "prune can't reach budget while the index is back UNDER it renders the ✓ and NOT the "
+      "prune-safe-THEN-justify remedy. Pre-fix this single state rendered the remedy AND the ✓ — a "
+      "sanction beside a success, TWO clauses for one record (measured on `1d97f54`; the ⚠ is not "
+      "among them, because `reaches_budget is False` takes the earlier branch and the lever-keyed "
+      "note never runs); post-fix it renders exactly one. The remedy is the D5 state's verdict only "
+      "when the lean path did not already resolve it",
+      "✓ gate resolved by rebuild-lean" in _e_f_fix
+      and "prune can't reach budget" not in _e_f_fix
+      and "not acted on" not in _e_f_fix)
+
+# E1-g — the `0 <` lower bound on `resolved_by_lean`, whose stated reason went stale when E1-e's
+# `_recorded` closed the ABSENT case. It is still load-bearing, but for the case the comment did not
+# name: a BLANK `achieved_index` beside a CARRIED `pruned` keeps `pending` False, so the branch runs
+# with `_num("") == 0.0`, and `0.0 <= budget` is true.
+#
+# TIER, MEASURED — a PIN, and the earlier "(GUARD … pre-fix code passes it too)" label was false in
+# both halves. On the true pre-fix pair (`1d97f54`'s render_dashboard AND memory_status) the check is
+# red on its FIRST conjunct, because pre-fix rendered `index ≈0 tok` — the coerced zero E1-e's
+# `_recorded` exists to stop. The bound's own conjuncts are the OTHER two, and they bind on their own
+# evidence: dropping the `0 <` (every other edit left in place) prints `index: not recorded` and then
+# `✓ gate resolved by rebuild-lean` — a success verdict for a record whose index is not recorded.
+_e_g_blank = rd.render(_e34_rec(lever="prune", candidates_surfaced=1, pruned=0, achieved_index=""))
+check("v0.4.34 E1-g (PIN): a BLANK `achieved_index` beside a CARRIED `pruned: 0` does not resolve "
+      "the gate by lean. PIN, with its conjuncts attributed: on pre-fix code it is red on the "
+      "`index: not recorded` arm (pre-fix printed the coerced `≈0 tok`), while the `0 <` bound the "
+      "name carries is what the OTHER two bind — measured, removing it renders `index: not recorded` "
+      "beside a fabricated `✓ … back under budget`. The bound is not redundant now that `_recorded` "
+      "closes the absent operand: `pruned` is carried, so `pending` is False and the branch still "
+      "runs on a coerced 0.0",
+      "index: not recorded" in _e_g_blank
+      and "resolved by rebuild-lean" not in _e_g_blank
+      and "not acted on" in _e_g_blank)
+
+# E1-h — the mirror boundary, driven through the REAL path: `remediation_triage` routes the lever and
+# hands the renderer an operand, and the panel's mirror claim must AGREE with the routing it came with.
+# The check is on that agreement, not on the renderer's comparison in isolation — handing the renderer a
+# raw share would exercise a line that was never the wrong side of the defect (the producer rounded the
+# copy on the way out, so only the producer→operand→panel path can see it).
+#
+# TIER, MEASURED — a GUARD, and it is the PIN for the producer half. Green on the true pre-fix pair
+# (`1d97f54`'s both scripts): the pre-fix renderer read the `lever` the routing had just written, so it
+# could not see the operand AT ALL — the defect was masked by exactly the confusion E1(iv) removes. Red
+# in exactly one of the four (renderer, producer) cells, the one where a fixed renderer meets a rounded
+# producer. So it cannot be a pin on pre-fix code, and labelling it one would claim a redness that the
+# pre-fix tree does not have.
+_E_H_BAND = ((2000, 1005), (2000, 1001), (2000, 1000), (2000, 999), (2000, 1200), (2000, 2001))
+def _e_mirror_disagreements() -> "list[tuple[int, int]]":
+    """The (index_tokens, mirror_index_tokens) pairs where the panel's mirror claim contradicts the
+    `lever` the triage routed on the same run. Scoped as a function for the same mypy reason as
+    `_e_rem_cells_uncovered`: module-level short names here are already bound to other types."""
+    bad: "list[tuple[int, int]]" = []
+    for _it, _mt in _E_H_BAND:
+        _t = ms.remediation_triage([], set(), _it, _mt)
+        _p = rd.render(_e34_rec(lever=_t["lever"], candidates_surfaced=_t["candidates"], pruned=0,
+                                achieved_index=1500, reaches_budget=False,
+                                mirror_share=_t["mirror_share"]))
+        if ("mirror-dominated" in _p) != (_t["lever"] == "gc"):
+            bad.append((_it, _mt))
+    return bad
+
+
+check("v0.4.34 E1-h (GUARD — the PIN for the producer half): the mirror claim AGREES with the routing "
+      "the same run produced — `remediation_triage` routes `share > _MIRROR_DOMINATED` on the raw "
+      "share and the panel re-tests the operand it persisted. A ROUNDED copy comes apart from the "
+      "predicate on a band the producer actually builds: 1005/2000 = 0.5025 routes `gc` and rounds to "
+      "exactly 0.5, which fails the renderer's strict `>`, so the panel rendered NO mirror claim — "
+      "denying the routing its own label states. The band straddles the boundary on BOTH sides "
+      "(999/2000 and 1000/2000 agree at and below it), so the repair cannot be a `>=`: that would move "
+      "the disagreement to the other side instead of removing it. GUARD, because on pre-fix code the "
+      "pre-fix renderer read the label and the operand was invisible — its redness needs the renderer "
+      "half of E1(iv) present, which is the only cell of the four that fails",
+      _e_mirror_disagreements() == [])
+
+# E1-i — the budget fallback. `_e34_rec` supplies `budget_tokens: 1200` explicitly, which is the same
+# value the renderer's fallback literal used, so no fixture could see them disagree.
+_e_i_nobudget = cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                                      "remediation": {"required": True, "lever": "prune",
+                                                      "candidates_surfaced": 1, "pruned": 0,
+                                                      "achieved_index": 1300, "reaches_budget": True}})
+_e_i = rd.render(_e_i_nobudget)
+check("v0.4.34 E1-i (PIN): with no `budget` block the panel falls back to `INDEX_TOKEN_BUDGET`, not to "
+      "a literal. The record writer seeds that block FROM the constant, so `1200` was a threshold no "
+      "producer writes, and pre-fix `{pruned: 0, achieved_index: 1300}` — comfortably under the real "
+      "1500 budget — rendered '⚠ gate fired but not acted on'. The panel was asserting the gate had "
+      "gone unmet against a threshold it had invented (E3's class: a default that is not the real "
+      "value). The third conjunct keeps the fixture honest if the constant ever moves above 1300",
+      "resolved by rebuild-lean" in _e_i and "not acted on" not in _e_i
+      and ms.INDEX_TOKEN_BUDGET > 1300)
+
+# E1-i2 — the THRESHOLD is a fifth not-carried operand, and the one no census of RENDERED operands can
+# reach, because it is compared AGAINST and never printed. `.get(k, CONST)` fires only on ABSENT, so a
+# `budget_tokens` PRESENT and blank fell past the constant to `_num(None)`/`_num('')` → 0.0 and the lean
+# test became `0 < achieved_index <= 0`. Measured at `achieved_index: 1300` against the real 1500: key
+# ABSENT rendered "✓ gate resolved by rebuild-lean"; key present and `None` or `''` rendered "⚠ gate
+# fired but not acted on" — byte-identical operands, opposite verdicts, decided only by HOW the threshold
+# failed to be carried. Same fixture as E1-i with only the blank key added, so the two checks are a
+# matched pair one record apart (absent vs blank), in E1-d's idiom. The comment above is why this hid:
+# the SHARED `_e34_rec` supplies `budget_tokens: 1200` EXPLICITLY — the same value the fallback literal
+# used — so every check built on it bypassed the fallback entirely and none could see it disagree with
+# itself. E1-i's own fixture is the opposite by design: `_e_i_nobudget` carries no `budget` block at
+# all, which is exactly what puts the fallback under test there. The pair below is the first that reads
+# BOTH not-carried shapes of ONE key. The fix that named the right value left the wrong shape.
+_e_i_blank = [rd.render(cast(ms.CycleRecord, dict(_e_i_nobudget, budget={"index": {"budget_tokens": _t}})))
+              for _t in (None, "")]
+check("v0.4.34 E1-i2 (PIN): a budget threshold PRESENT and BLANK reads the same as one that is absent — "
+      "the panel falls back to `INDEX_TOKEN_BUDGET` in all three not-carried forms, so the verdict is a "
+      "fact about the record's index and not about how its threshold failed to arrive. Its counterfactual "
+      "is the branch tip BEFORE this fix (`f175b8e`), NOT the base (`1d97f54`) that the E1-i label above "
+      "names — two revisions that would otherwise share one token. Unfixed it renders "
+      "the ⚠ for an index under the real budget",
+      all("resolved by rebuild-lean" in o and "not acted on" not in o for o in _e_i_blank)
+      and ms.INDEX_TOKEN_BUDGET > 1300)
+
+# E1-j — the mirror suppression, the ONE conjunct in the verdict block whose deletion no check noticed.
+_e_j = rd.render(_e34_rec(lever="gc", candidates_surfaced=0, pruned=0, achieved_index=1500,
+                          mirror_share=0.9))
+# The state the conjunct does NOT cover — and the reason the label below no longer claims "the
+# local-prune advice" without qualification. Same lever, same share, `reaches_budget: False`: the D5
+# remedy is keyed on neither the label nor the share, so it renders BESIDE the mirror line. One
+# record, one state, by design. `rd` says so at its own site (`CO-RENDERS with this line, by design`);
+# this label said "a different claim about a different state", and the second half of that was false —
+# the code says a different KIND of claim, which is true, and co-rendering, which is the operative part.
+_e_j_co = rd.render(_e34_rec(lever="gc", candidates_surfaced=0, pruned=0, achieved_index=2500,
+                             reaches_budget=False, mirror_share=0.9))
+check("v0.4.34 E1-j (GUARD): for a mirror-dominated store the row-4-6 ACTION verdict is suppressed — "
+      "the mirror line says where to act (the global demote/GC lever) and `not mirror_dominated` is "
+      "what stops the `0 candidates surfaced` sentence contradicting it one line below. SCOPE, "
+      "measured: the conjunct sits on the row-4-6 branch ONLY. The D5 remedy is keyed on neither the "
+      "label nor the share and co-renders with the mirror line by design, so `lever=gc, mirror_share="
+      "0.9, reaches_budget=False` renders both — the third conjunct pins that co-rendering instead of "
+      "leaving it unread, because `not also given the local-prune advice` was true of one branch and "
+      "false of its neighbour. GUARD: the suppressed sentence does not exist pre-fix, so pre-fix code "
+      "passes it; measured, deleting the conjunct moves no other check",
+      "mirror-dominated" in _e_j and "0 candidates surfaced" not in _e_j
+      and "mirror-dominated" in _e_j_co and "prune can't reach budget" in _e_j_co)
+
+# E2-a — the record's `n_blocked` and the LOCAL display list are two different sources, so
+# "+N more blocked" — where `more` means "beyond what is displayed" — degraded into the WHOLE
+# count with zero rows drawn. Two fixtures, because the port carries the JS's OMISSION as well as
+# its clamp, and the omission is the half a reader is most likely to "simplify" away: drop the
+# `> 0` and the second fixture prints "0 single-node" from {n_blocked:10, n_generic:30}. NOT the
+# clamp — behind that test `max(0, …)` is unobservable, since -20 fails `> 0` exactly as 0 does.
+# The renderer states this at its own site; this comment said the opposite until the third-pass
+# review measured it (spec §3.2).
+_e_2a = rd.render(_e_reg(n_blocked=30, n_generic=12, candidates=[], decline_anchors=[]))
+_e_2b = rd.render(_e_reg(n_blocked=10, n_generic=30, n_day_spread=0, candidates=[],
+                         decline_anchors=[]))
+check("v0.4.34 E2-a (PIN): with blocked rows counted but none DISPLAYABLE, the panel emits the "
+      "counts-only breakdown ('30 blocked — 12 generic-cli · 18 single-node') instead of "
+      "'… +30 more blocked' with zero rows above it — the phantom tail was a false total, and "
+      "the HTML twin already branched on `!board` (the ASCII renderer was the outlier). The "
+      "remainder is FLOORED at 0 and omitted at 0, so {n_blocked:10, n_generic:30} prints no "
+      "single-node term at all rather than a negative one; `single-node` is read only LEFT of the "
+      "legend, which legitimately names both terms",
+      "30 blocked — 12 generic-cli · 18 single-node" in _e_2a
+      and "+30 more blocked" not in _e_2a
+      and "-20 single-node" not in _e_2b
+      and "single-node" not in _e_2b.split("— counts-only")[0])
+
+# E2-b — the cold-state line and the breakdown are two claims about ONE state, so the line is
+# suppressed as soon as the record contradicts it. Keyed on THREE operands, all of them in scope:
+# `_n_blocked` (the record's own count — "0 fleet-candidates" beside "30 blocked" is the
+# contradiction this removes), `_cands` (what the sentence DENOTES, so a record carrying candidates
+# cannot make a zero-breadth claim at all), and `_anch` (the third state: anchors, no blocked rows,
+# no candidates). An earlier version of this comment named `_n_blocked` and disclaimed `_anch` as
+# "not the right one" — immediately above a condition reading `not _cands and not _anch and
+# _n_blocked <= 0`. Both directions are asserted, because a "stays silent" check alone passes
+# pre-fix and is not a pin.
+_e_2c = rd.render(_e_reg(n_blocked=0, candidates=[], decline_anchors=[]))
+check("v0.4.34 E2-b (PIN): '0 fleet-candidates — the honest cold state' is RENDERED when the record "
+      "counts no blocked rows, carries no candidates and no decline-anchors; pre-fix the panel "
+      "asserted '… +30 more blocked' and '0 fleet-candidates' one line apart, which is the "
+      "contradiction the suppression exists to remove. What this check WITNESSES is the "
+      "`_n_blocked <= 0` conjunct ALONE: measured, deleting `and not _cands` or `and not _anch` "
+      "from the renderer's condition moves the render for some states but leaves this suite at "
+      "2017 passed / 0 failed, so those two live rules are unwitnessed — and the earlier label's "
+      "'SUPPRESSED as soon as any one of them is not' asserted a coverage no check provided. The "
+      "renderer's own comment records the same measurement; it is quoted here as a claim about "
+      "the code, not as a substitute for a pin",
+      "0 fleet-candidates" not in _e_2a
+      and "0 fleet-candidates — the honest cold state" in _e_2c)
+
+# E2-c — the guard's CONDITION. The first cut keyed the breakdown on `len(_fleet) + _shown_b == 0`,
+# which is "the candidate list is empty" — a different proposition from the claim the guard makes
+# ("no BLOCKED row is drawn"), and narrower than the class it names. It was copied from the JS's
+# `!board`, whose reason does not transfer: the JS's counts-only branch ASSIGNS the board (so its
+# guard exists to avoid clobbering the cards) and the JS states the blocked count in its
+# `reg-counts` header; the ASCII branch APPENDS and has no such header. The gap is not exotic —
+# `sync_global` persists ALL fleet-candidates plus a capped day-spread sample while `n_blocked`
+# counts EVERY non-fleet disposition, so ONE fleet row beside 20 generic-cli rows is a producer-
+# reachable state.
+#
+# PREVALENCE, stated because the two numbers differ and the smaller one is this pin's:
+# measured over the 104-record archive (deduped on marker.(commit, timestamp)) — 35 records carry
+# a workflow_proposals block, 28 of those count n_blocked > 0, and **27** are the EMPTY-candidates
+# form, which the FIRST cut already fixed. The state THIS pin adds — a persisted fleet row beside
+# counted blocked rows — occurs **0 times**. So this is not a repair aimed at observed damage; it
+# is a guard whose CONDITION did not name its claim, and it is fixed on the condition, not on the
+# count. Both figures are re-derivable from the archive census in spec §3.2; re-derive, don't
+# re-quote — the archive grows and neither number is carried across it.
+#
+# Both directions are asserted: the tail must still render where it is TRUE (a real base of drawn
+# blocked rows), so this pin cannot be satisfied by deleting the tail.
+_E_E_FLEET = {"candidate": "cmd-fleet", "form": "command",
+              "mechanical": {"distinctive": True, "fleet_recurrence": True, "day_spread": True}}
+_e_2d = rd.render(_e_reg(n_blocked=20, n_generic=20, n_fleet=1, n_day_spread=0,
+                         candidates=[_E_E_FLEET], decline_anchors=[]))
+_e_2e = rd.render(_e_reg(n_blocked=30, n_generic=0, n_day_spread=0, decline_anchors=[],
+                         candidates=[{"candidate": f"cmd-b{i}", "form": "command",
+                                      "mechanical": {"distinctive": True, "fleet_recurrence": False,
+                                                     "day_spread": True}} for i in range(8)]))
+check("v0.4.34 E2-c (PIN): the counts-only breakdown keys on BLOCKED ROWS DRAWN (`_shown_b == 0`), "
+      "not on an empty candidate list — a record carrying one fleet-candidate and 20 generic-cli "
+      "rows renders '20 blocked — 20 generic-cli' instead of '… +20 more blocked' with no blocked "
+      "row above it. The second fixture is the non-vacuity arm: with 8 blocked rows actually drawn "
+      "under a count of 30, the tail still renders '+22 more blocked' with no breakdown, so the "
+      "guard narrows the claim rather than deleting it",
+      "20 blocked — 20 generic-cli" in _e_2d
+      and "+20 more blocked" not in _e_2d
+      and "counts-only by design" in _e_2d
+      and "+22 more blocked" in _e_2e
+      and "counts-only by design" not in _e_2e)
+
+# E2-f — the counts-only line's PARTS must account for its TOTAL, and the operand that broke that is
+# the day-spread count. The three ports (guard, subtraction, clamp) were each justified by the JS, but
+# only the first two had their JUSTIFICATION ported with them: the subtraction is a no-op in the HTML
+# because `!board` reads the COUNT field and grows the board on any non-zero value, while the ASCII's
+# `_shown_b` reads the ROWS drawn — the field that closes one does not close the other.
+# That makes this a SHAPE pin, not a behaviour pin, and the distinction is worth stating rather than
+# inferring. The producer persists every distinctive day-spread row, so `n_day_spread > 0` always
+# implies a drawn blocked row and the ASCII guard is FALSE in every state the producer builds. The
+# operand is the VALUE, not the key: `sync_global` writes `n_day_spread` UNCONDITIONALLY, so 28 of the
+# 104 archived records CARRY it and every one of them holds `0` — 0 of 104 carry a NON-ZERO value. An
+# earlier draft of this line said "0 of 104 archived records carry the field at all", which that same
+# producer contradicts: the field is present, it is merely always zero. The fixture's input is
+# AUTHORED — the count without the rows — which is the only shape where the two arms differ. What it
+# guards is a contract over inputs (parts sum to the total), not a state any writer currently reaches.
+# Named `_e_2f` because `_e_2d`/`_e_2e` are E2-c's fixtures.
+_e_2f = rd.render(_e_reg(n_blocked=30, n_generic=10, n_day_spread=20, candidates=[],
+                         decline_anchors=[]))
+_e_2g = rd.render(_e_reg(n_blocked=30, n_generic=10, n_day_spread=0, candidates=[],
+                         decline_anchors=[]))
+check("v0.4.34 E2-f (PIN): the counts-only line's parts ACCOUNT FOR ITS TOTAL when `n_day_spread` is "
+      "non-zero — the remainder is `n_blocked − n_generic`, with no day-spread subtraction. The JS "
+      "subtracts it, and can: `!board` reads the COUNT field, so any non-zero value closes that branch "
+      "and the subtraction is a no-op in every state that can print. The ASCII's `_shown_b` reads the "
+      "ROWS drawn — the same field does not close it — so carrying the subtraction across dropped "
+      "exactly `n_day_spread` rows out "
+      "of a line whose whole contract is to account for them — measured on a mutant that restores ONLY "
+      "the subtraction, which renders `30 blocked — 10 generic-cli` for a 30-row count. BOTH arms are "
+      "red on pre-fix code as well, but for E2-a's reason rather than this one: pre-fix drew the "
+      "phantom tail, so the counts-only line did not exist to be wrong. The exact-string arms are "
+      "deliberate: a parts-sum test and a substring test can disagree, and each state here has one "
+      "correct spelling. The `n_day_spread=0` arm is the non-vacuity half — it stays GREEN under the "
+      "subtraction mutant, which is what shows the repair removed a term rather than the whole line",
+      "30 blocked — 10 generic-cli · 20 single-node" in _e_2f
+      and "30 blocked — 10 generic-cli · 20 single-node" in _e_2g)
+
+# E3-a — `_clean(record.get("session", "?"))`: `dict.get`'s default fires only on ABSENT, so a
+# seeded-but-unfilled `""` sailed through and rendered a hole next to the label.
+_e_3a = rd.render(cast(ms.CycleRecord, {"project": "p", "session": "", "scope": {}, "entries": []}))
+check("v0.4.34 E3-a (PIN): a `session` key present and EMPTY renders 'session ?', not an empty "
+      "field — the same defect as the absent-vs-empty E1-d pin, in the oldest spelling of it "
+      "(`dict.get`'s default cannot see a `\"\"`)",
+      "session ?" in _e_3a)
+
+# E3-b — the census. One pin, two numbers, because they move for DIFFERENT reasons and neither
+# alone is a guard: a DROPPED default removes a site (population falls, verdict stays 0 — the
+# guard goes quiet exactly where it should shout), and an added unguarded site moves the verdict.
+# The population is the set of sites the repair's OWN form matches, not a list somebody maintains.
+def _e_default_census() -> "tuple[int, int]":
+    """(population, unguarded) for the absent-vs-empty repair, read off the renderer's source.
+
+    IN: `_clean(<recv>.get(<key>, <non-empty str literal>))` — the form whose default fires only
+    on ABSENT, so an empty string passes straight through and renders a hole.
+    GUARDED: that `_clean(...)` call is the FIRST value of an enclosing `or` — the idiom the
+    repair uses (`_clean(_e.get("name") or "?")`), which is what makes `\"\"` take the fallback.
+    """
+    _tree = _ast34.parse(Path(rd.__file__).read_text(encoding="utf-8"))
+    _par: "dict[object, object]" = {}
+    for _n in _ast34.walk(_tree):
+        for _c in _ast34.iter_child_nodes(_n):
+            _par[_c] = _n
+
+    def _in_pop(_n: object) -> bool:
+        if not isinstance(_n, _ast34.Call):
+            return False
+        if not (isinstance(_n.func, _ast34.Name) and _n.func.id == "_clean"):
+            return False
+        if len(_n.args) != 1:
+            return False
+        _g = _n.args[0]
+        if not isinstance(_g, _ast34.Call) or not isinstance(_g.func, _ast34.Attribute):
+            return False
+        if _g.func.attr != "get" or len(_g.args) != 2:
+            return False
+        _d = _g.args[1]
+        return (isinstance(_d, _ast34.Constant) and isinstance(_d.value, str) and bool(_d.value))
+
+    _pop, _ung = 0, 0
+    for _n in _ast34.walk(_tree):
+        if not _in_pop(_n):
+            continue
+        _pop += 1
+        _p = _par.get(_n)
+        _guarded = (isinstance(_p, _ast34.BoolOp) and isinstance(_p.op, _ast34.Or)
+                    and bool(_p.values) and _p.values[0] is _n)
+        if not _guarded:
+            _ung += 1
+    return _pop, _ung
+
+
+_e_pop34, _e_ung34 = _e_default_census()
+check("v0.4.34 E3-b (CENSUS PIN): exactly 12 sites in the renderer take a DEFAULT through "
+      "`dict.get` and exactly 0 of them are UNGUARDED — every site is either absent-safe by an "
+      "enclosing `or` (the repair) or not yet in the population. Population and verdict are one "
+      "assertion on purpose (a-complete-guard-inverts-its-question): dropping a default REMOVES a "
+      "site, which moves the population while leaving `unguarded` at 0 — the guard would go "
+      "quiet exactly where it should shout. What it cannot see is a default that is EMPTY "
+      "(`get(k, \"\")`) — a CLASS BOUNDARY the matcher draws with its `bool(d.value)` clause, not a "
+      "blind spot. Widening that one clause admits exactly 9 more sites (render_dashboard.py "
+      "497,513,514,635,711,714,719,721,878 — the population goes 12 -> 21) and not one of the 9 is "
+      "guarded, because an absent text field has nothing to say and EMPTY is the honest render — the "
+      "opposite class from E3's TRUTHY default, which overrides an empty value with a "
+      "plausible-looking one. E3-c's marker (`_mc = m.get(\"commit\")`) sits outside the population "
+      "by a third route — ARITY: `len(_g.args) != 2`, and no `_clean` wrapper either, so a 1-arg "
+      "`.get` is not a `_clean`-of-default call at all. An earlier draft called the empty default "
+      "\"a hole no site census can find\", which is false of the very census it describes: widening "
+      "it found nine sites, and a hole is the one thing they are not",
+      _e_pop34 == 12 and _e_ung34 == 0)
+
+# E3-c — the identical defect in a DIFFERENT spelling, which is why the `.get`-shaped census above
+# is structurally blind to it: the marker guards `None` explicitly and then passes `\"\"`.
+_e_3c = rd.render(cast(ms.CycleRecord, {"project": "p", "session": "s", "scope": {}, "entries": [],
+                                        "marker": {"commit": "", "timestamp": ""}}))
+check("v0.4.34 E3-c (PIN): a marker whose `commit`/`timestamp` are present and EMPTY renders "
+      "→ ? @ ?' — the site already guarded `None` (absent) and so was invisible to both the "
+      "old `dict.get` reading and the E3-b census, which needs a 2-arg `.get` call to see a site "
+      "at all. Pre-fix it rendered '→ @' — the SAME spacing as the fixed render, because `_ui.wrap` "
+      "collapses a run of whitespace, so the `?` is the only mark the defect leaves (measured on "
+      "`1d97f54`; the `→  @ ` this label first quoted is what the f-string builds before wrapping)",
+      "→ ? @ ?" in _e_3c)
+
+# E3-d — a GUARD, and a regression this cycle's own E3 sweep introduced. The first cut spliced
+# `or "?"` in BEFORE the subscript — `_clean(n.get("node", "?")) or "?"[:18]` — so `[:18]` bound the
+# literal and not the name: a no-op, leaving a long node name unsliced while `namew` stayed clamped
+# to 18. This comment said "appended `or "?"` to the WHOLE expression" until the fourth pass — that
+# describes the OTHER reconstruction, `_clean(...)[:18] or "?"`, which measures GREEN, so a reader
+# rebuilding from the prose would have concluded the claim was false. The form quoted above is the
+# one that reproduces it, and the measurement below is the discriminator. The first draft of this
+# comment said the row's "padding
+# collapsed to 0"; a probe falsified that and the measurement is more interesting. `pad` is
+# `max(0, namew - disp_w(nm))` and CANNOT go negative, so it is 0 on the FIXED tree too — the clamp
+# is silent at its boundary, so an over-long name gets the same `pad` as one that fits and simply
+# OVERRUNS: the row ends up exactly its excess wider than the column `namew` sized. Measured, the
+# pre-`always` segment is 26 columns truncated and 36 whole — apart by exactly the 10 the name
+# exceeded. It is red on the INTERMEDIATE revision and green on BOTH the pre-fix and the fixed tree,
+# so it is a regression guard and not a pin (`a-check-added-by-a-fix-may-not-flip`), and it is aimed
+# at the OUTPUT rather than at the source form because the source form is what the census already
+# reads and did not catch. Re-aimed at the source it would red on the same bug for the wrong reason.
+_e34_long = "a-very-long-node-name-indeed"
+_e_3d = rd.render(cast(ms.CycleRecord, {
+    "project": "p", "session": "s", "scope": {}, "entries": [],
+    "network": {"nodes": [{"node": _e34_long, "always_loaded_tokens": 500, "recall_tokens": 10,
+                           "facts": 3, "shared": 1}]}}))
+check("v0.4.34 E3-d (GUARD): a network node name longer than the 18-column field is still "
+      "TRUNCATED to 18 — the truncation is part of the value being defaulted, not of the default. "
+      "Red on the intermediate revision only (pre-fix and fixed both correct): the sweep spliced "
+      "`or \"?\"` in BEFORE the subscript, so `[:18]` bound the literal and not the cleaned value. "
+      "A probe corrected this label's account of the mechanism: `pad` is "
+      "`max(0, namew - disp_w(nm))` and is 0 on the FIXED tree too, so what the defect moves is the "
+      "row's WIDTH (26 columns before `always` truncated, 36 whole — apart by the excess), not its "
+      "pad (the note above carries the reconstruction that reproduces it and the measurement)",
+      _e34_long not in _e_3d and _e34_long[:18] in _e_3d)
+
+# E4 — the FIRST forward-direction pins here, and the reader rule they encode: THREE surfaces carry
+# this contract (producer, declaration, and the SKILL.md block), the suite pinned declaration↔SKILL
+# only, so a pair could agree and BOTH disagree with the code that writes the record. Which side is
+# brought to which is decided by the READER: `identity_snapshot` emits `domain_lifecycle` and two
+# doctor surfaces read it, so the DECLARATION was the missing side; `dashboard.sections.js` reads
+# `audit.window` as a property and renders an "Observation window" row, so the PRODUCER was.
+with _tempfile.TemporaryDirectory() as _e_td34:
+    # HOME first, then resolve: `resolve_store` falls back to `os.environ` when given no `environ`
+    # kwarg, so without this the pin reads the MAINTAINER's real config root — the one
+    # `identity_snapshot` site in the suite that would, and the only one that could pick up a real
+    # `control.sqlite` for the `conflicts` sub-count. Not a verdict risk (that key is declared, and
+    # absent-or-present both satisfy `<=`), but this suite's header promises hermeticity, and a pin
+    # whose inputs depend on the machine it runs on is a pin that can only be trusted on that machine.
+    _e_oldh34 = _os34.environ.get("HOME")
+    _os34.environ["HOME"] = str(_e_td34)
+    try:
+        _e_ctx34 = sc.resolve_store(Path(_e_td34))
+        _e_ident34 = set(sc.identity_snapshot(_e_ctx34))
+    finally:
+        if _e_oldh34 is None:
+            _os34.environ.pop("HOME", None)
+        else:
+            _os34.environ["HOME"] = _e_oldh34
+check("v0.4.34 E4-a (PIN): every key `store_context.identity_snapshot` EMITS is declared on "
+      "`ms.Identity` — the producer→declaration edge, which no earlier pin in this suite reads. "
+      "Pre-fix `domain_lifecycle` was emitted (unconditionally, by `getattr` with a default) and "
+      "declared nowhere, so the TypedDict and SKILL.md agreed with each other and both were wrong. "
+      "`<=` and not `==`: a `total=False` declaration may legitimately cover MORE than one producer "
+      "emits, and only the other direction is a defect here",
+      _e_ident34 <= set(ms.Identity.__annotations__))
+check("v0.4.34 E4-b (PIN): every key declared on `ms.Audit` is EMITTED by `audit_diff` — the same "
+      "edge, opposite side. `window` was declared, the HTML archive READS it as `audit.window` and "
+      "renders it as an 'Observation window' row, and no producer wrote it: a grep for `\"window\"` "
+      "could not see a property access, so every gate was blind to it and the committed preview "
+      "showed a value only its own fixture could supply. Here the READER is the declaration's "
+      "witness, so the producer is the side that moves",
+      set(ms.Audit.__annotations__) <= set(ms.audit_diff({}, {})))
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23)  # +9: v0.4.31 store-classifier parity C1..C7
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28)  # +9: v0.4.31 store-classifier parity C1..C7
                                                         # +14: v0.4.32 periphery parity P1..P12, P13/P13b
+                                                        # +28: v0.4.34 render/declaration parity — 7 SKILL↔TypedDict
+                                                        #      GUARD rows (E5: the shapes the "ONLY un-pinned"
+                                                        #      comment hid), 11 render/producer PINs, and the
+                                                        #      third pass's 6 (E1-f/-g/-h/-i/-j, E2-f) closing
+                                                        #      four conjuncts whose deletion moved no check
+                                                        #      (E1-a..d, E2-a/b, E3-a/c, E4-a/b, and the E3-b
+                                                        #      site census), plus E3-d, a GUARD for a regression
+                                                        #      this cycle's own E3 sweep introduced (red on the
+                                                        #      INTERMEDIATE revision only), and the budget for
+                                                        #      both directions of the declaration contract.
+                                                        #      +2 from the adversarial review of the committed
+                                                        #      revision: E1-e (the eight-cell census of the
+                                                        #      class E1-d closed one cell of) and E2-c (the
+                                                        #      guard's condition, which the first cut had
+                                                        #      ported from the JS's `!board`)
+                                                        #      +1 from the code review: E1-i2, the threshold as
+                                                        #      the FIFTH not-carried operand — the one no census
+                                                        #      of RENDERED operands can reach, since it is
+                                                        #      compared AGAINST and never printed
                                                         # +23: v0.4.33 record-duty presence — 8 predicate, 5 gate
                                                         #      PIN, 2 PARSE PIN (the parse's OWN contract, added by
                                                         #      review findings against the parse rather than the

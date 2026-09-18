@@ -797,6 +797,31 @@ def main(out,capture=False):
         check('a count the record carries in the wrong shape renders as itself, not as one it lacks',
               summary_rows().get('Held by')=='2')
 
+        # (4c) A NON-INTEGER CAPTURED LEAF RENDERS AT SIX SIGNIFICANT DIGITS. capturedTree's terminal
+        # case was a bare `String(v)`, so a share — the one leaf a cycle record genuinely carries as a
+        # ratio — shipped its full binary expansion into a <dl> of small integers. The ASCII twin
+        # spells a number with `_g` (`f"{n:g}"`), so the two views disagreed on exactly the kind of
+        # figure this cycle's parity claims are about. `Number(v.toPrecision(6))` is `_g`'s byte-exact
+        # JS twin; integers are excluded deliberately, since `toPrecision` would render 1234567 as
+        # "1.23457e+6".
+        # This IS a pin, and it is one only because of the VALUE it samples. At `60a03b4` the terminal
+        # case is `return '<span>'+esc(String(v))+'</span>';` and the file contains no `toPrecision`
+        # at all, so the whole expansion renders and the check fails there. A short decimal — 0.5,
+        # 0.5025 — would make it a regression guard instead: the two spellings agree on every integer
+        # and every value of six significant digits or fewer. An earlier draft of this comment said
+        # the guard reading anyway ("cannot fail on the pre-fix revision"), which the injection
+        # refutes. **A check's strength is the values it samples**, and this one samples the value
+        # the fix moves *to*.
+        # Verified by injection rather than by argument: deleting the live float arm reds this check
+        # with every check before it green — 1 red as far as the run graded, the tail ungraded because
+        # the harness aborts on the first red.
+        float_leaf=copy.deepcopy(record)
+        float_leaf['remediation']={'required':True,'lever':'gc','mirror_share':0.49975012493753124}
+        fixture('float-leaf',float_leaf);open_evidence()
+        leaf_text=page.locator('#pass-blk .evidence-fields dd').all_text_contents()
+        check('a non-integer captured value renders at six significant digits, not as its full expansion',
+              '0.49975' in leaf_text and not any('49975012493753124' in t for t in leaf_text))
+
         # (5) ONE ANCHOR PER VIEW, EVEN WHEN THE CAPTURE NAMES TWO TRIGGERS. `trigger` is a truthy
         # test, not a uniqueness test: nothing in the record schema, normalize() or any gate bounds
         # it to one node, so a truncated or hand-merged capture can flag two — and re-testing

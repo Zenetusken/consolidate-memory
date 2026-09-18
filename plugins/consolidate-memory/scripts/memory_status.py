@@ -407,6 +407,17 @@ class Remediation(TypedDict, total=False):
     # v0.1.66 (Phase B): the hard ceiling — a SIBLING of `required`, never its replacement. Computed
     # independently (index tokens > INDEX_CEILING_TOKENS); standing-justify does NOT apply to it.
     over_ceiling: bool             # the index exceeds the HARD ceiling — M1 holds all new pulls until it shrinks
+    # v0.4.34 (E1): the mirror OPERAND behind `lever`'s routing label — mirror_index_tokens / index_tokens,
+    # the quantity `_MIRROR_DOMINATED` is calibrated against (STORE-local; `network.totals` is a FLEET sum
+    # and is the wrong operand). Absent on a record written before v0.4.34 or by a path that never triaged.
+    #
+    # UNROUNDED, deliberately, and that is a repair rather than a detail (third pass). The producer routes
+    # with `share > _MIRROR_DOMINATED`; the renderer re-tests that comparison to decide the mirror claim.
+    # Persisting `round(share, 2)` gave the renderer a LOSSY copy, so the two predicates came apart on a
+    # band the producer can build: raw share in (0.5000, 0.50499) routes `gc` and rounds to exactly 0.5,
+    # which fails the renderer's strict `>`, so the panel denied the routing the record's own label states.
+    # A re-tested operand must be the operand that was tested, or a copy that loses nothing.
+    mirror_share: float
 
 
 class Maintenance(TypedDict, total=False):
@@ -615,6 +626,14 @@ class Identity(TypedDict, total=False):
     registry_state: str      # absent | healthy | locked | corrupt | permission-denied | incompatible
     cross_project_allowed: bool
     conflicts: int           # open three-way mirror conflicts for this project (omitted if unread)
+    # v0.4.34 (E4): ALWAYS emitted by identity_snapshot (it is a real StoreContext field, defaulting to
+    # "active") but declared nowhere until now — a producer↔declaration drift no gate could see, because
+    # the SKILL↔TypedDict pin compares two surfaces that were wrong TOGETHER. NOT the only one: E4-b's
+    # `audit.window` (declared, emitted by no producer) is the same edge, opposite side, and by its own
+    # label "every gate was blind to it" — so this comment read "the SOLE … drift" until the fifth pass.
+    # Not a display detail: `sync_global`'s pull/promote path REFUSES on a deleting/deleted domain read
+    # from it.
+    domain_lifecycle: str    # active | deleting | deleted
 
 
 class Preflight(TypedDict, total=False):
@@ -1476,6 +1495,9 @@ _DATED_RE = re.compile(r"(?:^|[_-])20\d\d[_-]\d\d[_-]\d\d(?:[_-]|$)")   # an Aut
 _KEEP_RE = re.compile(r"(?i)\b(?:never|don['’]?t|do not|avoid|gotcha|footgun|always|must|shall|prefer|should|shouldn['’]?t|cannot|can['’]?t|won['’]?t|caveat)\b")  # lesson/negative/directive → VETO archive_candidates (a dated-but-live lesson STAYS); scanned over the WHOLE body, false-negative bias (over-veto is the safe direction)
 _OVERSIZED_TOK = 2500          # a body this big is a dump/research-note → a (ranking) content-review candidate
 _MIRROR_DOMINATED = 0.5        # mirror share of the index above which the lever is GC, not a futile local prune
+AUDIT_WINDOW = "phase0..phase5"  # v0.4.34 (E4): the pass's observation span — ONE site, because it is both
+#                               the .mutation-log.jsonl row's field AND the record's audit.window (which
+#                               `class Audit` and SKILL.md declared and no producer emitted until v0.4.34).
 _LEAN_HOOK_TOK = 30            # est tokens/pointer for a lean re-index of the keep core (the projected_index target)
 _STANDING_JUSTIFY_DELTA = 10   # v0.1.21: a standing-justified over-budget gate re-FIRES once the store grows by this
                                # many facts past the justified baseline (the delta-detector) — keeps the v0.1.18 teeth
@@ -1627,7 +1649,9 @@ def remediation_triage(fact_files: list, index_names: set, index_tokens: int,
     lever = "gc" if share > _MIRROR_DOMINATED else ("prune" if cands else "justify")
     return {
         "required": True, "lever": lever,
-        "index_tokens": index_tokens, "budget": budget, "mirror_share": round(share, 2),
+        # `mirror_share` is the OPERAND, not a display value — unrounded, so a consumer re-testing
+        # `share > _MIRROR_DOMINATED` gets the same answer the `lever` line above was routed with.
+        "index_tokens": index_tokens, "budget": budget, "mirror_share": share,
         "candidates": len(cands), "keep_core": keep, "referenced": len(R),
         "stages": {"A_orphans": A, "B_trackers": B, "C_dated_oversized": C, "R_referenced": R},
         "projected_recall": sum(c["body_tokens"] for c in cands),
@@ -2783,8 +2807,13 @@ def audit_diff(before: dict, after: dict) -> dict:
     repo_growth = sum(o["token_delta"] for o in ops if o["store"] == "repo_doc" and o["token_delta"] > 0)
     conservation = {"claude_md_drop": cmd_drop, "repo_doc_growth": repo_growth,
                     "possible_loss": cmd_drop > 50 and repo_growth < cmd_drop * 0.5}
+    # v0.4.34 (E4): `window` was DECLARED in `class Audit` and in SKILL.md and emitted by NO producer, so
+    # the archive's "Observation window" row read `audit.window` and rendered "Not captured" on every real
+    # record — a display whose producer never filled it. The declarations were the correct side here: the
+    # span is a property of the pass, and `audit_diff` is the pass's own observation record. Emitted under
+    # the same constant the .mutation-log.jsonl row writes, so the two cannot spell it differently.
     return {"memory": roll["memory"], "claude_md": roll["claude_md"], "repo_doc": roll["repo_doc"],
-            "operations": ops, "conservation": conservation}
+            "operations": ops, "conservation": conservation, "window": AUDIT_WINDOW}
 
 
 # ── v0.1.32: per-dream diff capture for the diff-modal (ALL tracked stores; sidecar OUTSIDE the cycle record) ──
@@ -3492,6 +3521,18 @@ def seed_record(ctx: dict) -> CycleRecord:
             "reaches_budget": rem.get("reaches_budget", True),   # D5: False ⇒ prune-then-standing-justify
             "over_ceiling": bool(rem.get("over_ceiling")),       # v0.1.66 (Phase B): sibling of required, never a re-key
         }
+        # v0.4.34 (E1): persist the mirror OPERAND. `lever` is the routing LABEL; without the share behind
+        # it the renderer could not tell a mirror-dominated store (global demote/GC) from a locally-authored
+        # overflow (local prune), so its gc-vs-prune claim was a lookup on a rewritable string. Written only
+        # when the triage actually measured it — a legacy/scratch `rem` leaves the key ABSENT rather than
+        # asserting a share it never computed (the renderer makes no mirror claim on an absent operand).
+        # Carried at full precision — see the declaration. Rounding here would undo the triage's own
+        # unrounded operand at the last step before the record, which is where it did it before.
+        # `isinstance(..., (int, float))` admits `bool` (`True` is an `int`), so a hand-set `true` would
+        # persist as 1.0 and read as mirror-dominated; the producer never writes one, and a rejected
+        # non-numeric leaves the key absent, which is the state the renderer makes no claim in.
+        if isinstance(rem.get("mirror_share"), (int, float)) and not isinstance(rem["mirror_share"], bool):
+            record["remediation"]["mirror_share"] = float(rem["mirror_share"])
     # v0.1.67 (Phase C): seed the demotion-triage block whenever the store exists — a DORMANT pass
     # records windows_observed / eligible: 0 HONESTLY ("ran and proposed nothing" ≠ "never ran", the
     # distill precedent). `struck` is written later by extract_signals.inject_usage; `verdict` is the
@@ -4817,7 +4858,12 @@ def main() -> int:
                 _mlog = mutation_log_write_path(ctx["auto_mem"])
                 _mlog.parent.mkdir(parents=True, exist_ok=True)
                 with open(_mlog, "a", encoding="utf-8") as fh:
-                    fh.write(json.dumps({"window": "phase0..phase5", "commit": _ident[0], "timestamp": _ident[1], **diff}) + "\n")
+                    # v0.4.34 (E4): `window` now rides inside `diff` (audit_diff emits it under
+                    # AUDIT_WINDOW), so spelling it here as well was dead duplication — `**diff` won the
+                    # merge and both were the same constant, so the row was byte-identical either way.
+                    # Dropped so this log row and the record's audit block have ONE source, not two that
+                    # happen to agree.
+                    fh.write(json.dumps({"commit": _ident[0], "timestamp": _ident[1], **diff}) + "\n")
         except OSError:
             pass
         if audit_into:          # v0.1.53: deterministically inject the audit block INTO the cycle record (no model

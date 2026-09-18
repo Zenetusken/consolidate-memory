@@ -5,6 +5,232 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.34] — 2026-09-17
+
+**Patch — the renderer stops deciding what a record means by reading its labels. Five fixes, one
+root cause: a surface re-derives meaning from a *label* instead of from the data that produced it,
+and the label is the only thing anything checks.**
+
+The second of two cycles staged from the 2026-09-14 audit. Design and evidence:
+`docs/render-declaration-parity.spec.md`.
+
+1. **The remediation verdict was a 3-way lookup over a 4-dimensional outcome.** The panel's note was
+   `.get(lever, "")` — a dictionary keyed on the *routing label* — while the outcome space is
+   `(lever, candidates_surfaced, pruned, achieved_index, reaches_budget)`. Three measured
+   consequences: the skill's own **sanctioned** prune-then-justify state rendered the
+   `prune can't reach budget → …` remedy *and* the `⚠ gate fired but not acted on` alarm at once
+   (a sanction beside an alarm for one state); **rewriting one label swapped the verdict**, so
+   `lever=prune` and `lever=justify` rendered opposite notes from byte-identical data; and
+   `"justified — nothing safely prunable (see entries[])"` rendered whether or not candidates had
+   been surfaced — which is precisely the claim the surfaced count would falsify. The verdict is now
+   derived from the data, and `lever` keeps only the section header, where it is a *routing* decision.
+
+   **Two user-visible wordings move, and the third does not.** `"mirror-dominated — global demote/GC
+   lever, not a local prune"` now **names the operand** (`mirror-dominated (90.0% of index tokens) —
+   …`) and fires on `mirror_share > 0.5` rather than on `lever == "gc"`, so it reads as an advisory
+   about *where to act* and no longer suppresses the local-prune advice by label. `"justified —
+   nothing safely prunable"` is **gone**, replaced by three sentences that state what the record
+   actually says — `⚠ gate fired but not acted on — surface candidates + prune-or-justify` /
+   `0 candidates surfaced — record the justification, or re-triage` / `no candidate count recorded —
+   whether the gate was actionable is not answerable from this record`. `"gate fired but not acted
+   on"` keeps its **exact** wording; only its *reachability* narrows, because the remedy and the
+   absent-count arms now take precedence. The dropped phrasing was asserting a fact about the store
+   (nothing *is* prunable) that no field in the record carries.
+
+   **The share moved to `.1%` in the same repair, and the reason is a collision.** `.0%` rendered a
+   share of `0.5025` as `"50%"` — the **boundary's own numeral** — so a store that *exceeded*
+   `_MIRROR_DOMINATED` printed identically to one that merely met it, discarding the distinction the
+   routing immediately above it had just used. The example in this item reads `90.0%` for that reason.
+
+2. **The remedy and the success are one decision.** `prune can't reach budget → …` and
+   `✓ gate resolved by rebuild-lean` were separate `if`s, so `achieved_index=900, reaches_budget=False`
+   drew a sanction and a success in the same panel. The remedy now fires only when the lean path did
+   not resolve.
+
+3. **`… +N more blocked` was a false total.** The count comes from the record
+   (`workflow_proposals.n_blocked`, the script's full-join count) while the rows come from the local
+   display list — two different sources. An all-`generic-cli` window sets `n_blocked: 30` while
+   persisting no displayable rows, so the panel printed `… +30 more blocked` with **zero rows drawn**
+   and, two lines later, `0 fleet-candidates — the honest cold state`, denying the count it had just
+   asserted. The HTML archive already branched on it and emitted a **counts-only breakdown**; the
+   ASCII renderer was the outlier, and now ports that shape — carrying the JS's clamp, so
+   `{n_blocked: 10, n_generic: 30}` prints no `single-node` term rather than a negative one. The
+   cold-state line is suppressed whenever the record counts blocked rows.
+
+   **The port deliberately does not carry the JS's *guard*, only its output.** The HTML branches on
+   `!board`, which asks *"was anything at all drawn"* — the right question there, because its
+   counts-only branch **assigns** the board (the guard keeps the breakdown from clobbering the cards)
+   and the blocked count is stated separately in a `reg-counts` header. The ASCII branch **appends**
+   and has no such header, so what it must ask is *"were the count's own rows drawn"*. Carrying
+   `!board` across left the false tail on a shape `sync_global`'s own persist rule builds — one
+   persisted fleet row beside twenty counted `generic-cli` rows records `n_blocked: 20` and persists
+   no blocked row, so a card *is* drawn and the guard goes quiet. **A guard's condition has to name
+   the claim it guards, not the shape of the port it came from.**
+
+4. **A default that fires only on ABSENT cannot see an empty string.** `_clean(x.get(k, "?"))` leaves
+   `""` rendering as a hole — the same defect as a missing key, invisible to every reader. Eleven
+   sites in the renderer took the repair (the `or` idiom the file already uses for
+   `_clean(_e.get("name") or "?")`), and a **census** pin now asserts the population *and* the
+   verdict: 12 sites match the form, 0 unguarded. Both numbers are asserted together on purpose —
+   dropping a default *removes* a site, which moves the population while leaving the unguarded count
+   at 0, so a verdict-only check would go quiet exactly where it should shout. (Of the 12: eleven
+   were repaired here, and `identity.domain_id` was already guarded before this cycle — which is
+   where the idiom was copied from.) Two further sites spell the same defect a **different** way —
+   the marker's `commit`/`timestamp` guard `None` explicitly and then pass `""` — so they are not in
+   that census's population at all; they are pinned behaviourally instead. The census's own stated
+   limit is that it cannot see an *empty* default (`get(k, "")`), which is excluded by construction.
+
+5. **Two declaration drifts, in opposite directions — and which side moves is decided by the
+   *reader*.** `identity.domain_lifecycle` was emitted by `store_context.identity_snapshot`
+   (unconditionally, via `getattr`) and the HTML archive renders it, yet it was declared on neither
+   `Identity` nor `SKILL.md`: the two declarations agreed with each other and both were wrong about
+   the code. `audit.window` was the mirror image — declared in both, read by the archive as a
+   property access (`audit.window`) and rendered as an "Observation window" row, and never written by
+   any producer, because a grep for `"window"` cannot see a property access. The declaration was
+   brought to the producer for the first, the producer to the declaration for the second, and the
+   committed archive preview now shows a **true** observation window for the first time. Those are
+   the suite's first **forward-direction** pins (producer ⊆ declaration); every earlier shape pin
+   compared `SKILL.md` to the TypedDict, so a producer and a declaration could agree while both
+   disagreed with the code — which is exactly where these two lived.
+
+   Relatedly, `tests/smoke.py`'s nested-shape loop claimed the two documented carve-outs were "the
+   ONLY un-pinned shapes". That was false: **seven** shapes had a `SKILL.md` block and a TypedDict
+   and were pinned by neither (`Narration`, `DomainEntry`, `UniversalFact`, `GroupLink`,
+   `NetworkCapture`, `StackEdgeFacts`, `FactHolding`). They were in perfect key agreement, so this
+   was a **coverage claim that was wrong**, not a drift that had been hidden; all seven are enrolled,
+   and the claim is now bounded by its two real structural limits (depth ≤ 2, and the
+   SKILL↔TypedDict direction) rather than asserted.
+
+**Verification.** Twenty-eight new checks — **eighteen pins**, **nine guards**, and **one regression
+guard** — taking the suite to **2017 checks**. Every pin was mutation-verified against pre-fix trees
+built with `git archive` (never `git worktree add`, one process per tree): reverting the renderer
+alone reds **exactly** the sixteen render pins plus the rewritten v0.1.35 arm; re-injecting the
+producer drift reds **exactly** E4-a, E4-b, and the `SKILL↔TypedDict` `Identity` arm — **three**, not
+the two an earlier draft of this entry recorded, because the declaration and its schema block are two
+surfaces that necessarily move together and only one of them was counted. The one existing check this
+cycle deliberately turns from green to red is v0.1.35's "still over budget" arm, which asserted the ⚠
+for the state the skill sanctions — that assertion *was* the defect, so the check is rewritten rather
+than deleted.
+
+**Two of the eighteen pins came from a second review pass over this cycle's *own* repairs, and both
+findings were the cycle's subject arriving inside a fix.** The first cut of the E1 repair closed **one
+of eight** cells: the panel's summary line composes four numeric operands and `_num` renders **absent**
+and **blank** alike as `0`, so each operand has two not-carried forms — and the cut guarded one
+operand, in one form, at one site. The first cut of the E2 repair carried the JS guard across, as
+above. **Neither was visible to the suite: it read 2008 passed / 0 failed on the revision carrying
+both.** That is the finding, not an aside — the pins sampled the values the fixes moved *to* and never
+the values they moved *away from*. So both were repaired in **code** (a `_recorded` helper applied per
+operand; a guard condition that names its claim), and **E1-e** and **E2-c** were added to sample the
+sets that were missed. Because the harness moved, all six mutation trees were rebuilt and re-measured;
+that re-run also caught a **build** error rather than a count — one tree had been assembled from a
+sibling's edited file, so it was the union by construction and its recorded number belonged to a
+different tree. The spec now defines every tree by its **edit set**, since `diff -rq` reports which
+*files* differ and never which *edits*.
+
+**Three of the eighteen pins came from a third review pass, and the pass's most useful result was
+that two of its own new checks were mislabelled.** The three are **E1-f** (the remedy and the `✓` are
+one decision), **E1-i** (the no-`budget` fallback read a literal `1200` no producer writes, so a
+record comfortably under the real budget was told the gate had gone unmet) and **E2-f** (the port
+carried the HTML's `− n_day_spread` term across after dropping the guard that made it a no-op, so a
+30-row count rendered a 20-row line). Each is bound by a mutant that restores exactly the one edit it
+guards and reds **exactly** that check and nothing else — a one-to-one map, which is the strongest
+form the repo's pin rule takes.
+
+The two mislabelled checks are the finding worth keeping. **E1-g** shipped as `(GUARD)`, "pre-fix code
+passes it too"; measured on the true pre-fix pair it is **red**, and red on a *different conjunct* than
+the `0 <` bound its name carries — that conjunct belongs to E1-e's repair. **E1-h** shipped as `(PIN)`;
+measured it is **green** on pre-fix code and red in exactly one of the four (renderer, producer) cells,
+the one where a fixed renderer meets a rounded producer — because the pre-fix renderer read the `lever`
+the routing had just written and so could not see the operand at all. The defect it pins was *masked by
+exactly the confusion the cycle removes*, which is why it cannot be a pin on pre-fix code and must not
+be labelled one. Both labels now state the measurement. A tier token in a check name is a claim, and
+this cycle's whole subject is claims nobody re-checks.
+
+**That class turned up a third time, on seven rows that were not new.** The E5 seven were moved into a
+loop of their own because the loop they were added to stamps **every** label it prints
+`(v0.1.12 full nested pin)` — so seven checks introduced in **v0.4.34**, and deliberately built as
+**guards**, were printed as v0.1.12 **pins**. The file already contradicted itself twice: the comment
+above those rows calls them GUARDs, and so does the suite's own D6 accounting. Only the printed line
+was wrong, which is exactly the surface a reader counts. They now carry `(GUARD)` and the revision
+that added them. The check **count** is unchanged — this was a label repair, not a check change, and
+saying so is the point: the suite still reports 2017.
+
+It was found by a census whose **own regex was narrower than its claim** — the third instrument of
+that shape in this pass, after E1-b's normalizer and the red-set extractor that keyed on a summary
+field that does not exist. The census looked for a tier token *first* in the parenthetical, so it read
+E1-e and E3-b's `(CENSUS PIN)` as "no tier", so it reported a pin count **two short** of what this
+entry claims — the two rows it cannot see are exactly the two it misreads. The claim was right and
+the census was wrong — the same shape as the seven rows it was built to check.
+
+The same pass measured the sweep §3.1 had quoted as testimony: the 324-state cross-product is now
+stated with its axes, and the repair's claim is stronger than "the bad states are gone" — on the fixed
+tree **no** state emits two verdict lines, where pre-fix 18 emitted a remedy beside a success and 72
+emitted two or more.
+
+The regression guard is this cycle's own debt, called out as such: the first cut of the E3 repair
+moved the node row's `[:18]` slice onto its fallback literal, silently un-truncating the column, and
+no other check noticed — including the E3 census, which reads exactly that expression's *source form*
+and passed on the broken revision. A check that cannot fail pre-fix is a guard rather than a pin; it
+is labelled with the revision it *is* red on (the intermediate one) instead of implying pre-fix, and
+it is aimed at the render's **output**, which is where the defect was visible at all.
+
+**A fourth pass then ran over this cycle with two lenses, and it found ten defects — not one of them a
+fabricated figure.** Every one is the class this cycle names: a correct number or fact paired with the
+**wrong operand**, or an enumeration that no longer covers what it names. Twelve prose sites across six
+files, and **three live-code repairs**, one of which is the only part of this cycle a user sees in the
+archive.
+
+**The archive's evidence tree spelled a share as its full binary expansion.** `dashboard.sections.js`'s
+`capturedTree` ended in a bare `String(v)`, so the one leaf a record genuinely carries as a ratio
+shipped into a `<dl>` of small integers as `0.49975012493753124` — while the ASCII twin spells every
+number with `_g` (`f"{n:g}"`, six significant digits). The two views disagreed on exactly the kind of
+figure this cycle's parity claims are about, and nothing renders both, so nothing could see it. The
+repair is `Number(v.toPrecision(6))`, `_g`'s **byte-exact** JS twin, with integers excluded
+deliberately: `toPrecision` renders `1234567` as `"1.23457e+6"` where `_g` gives `1.23457e+06` — the
+same digits, a different spelling, and a second divergence introduced by the fix for the first.
+`v!==Math.floor(v)` is the **ES5** spelling, because the file is ES5 throughout. The check that pins it
+samples a value with a long expansion, and that is what makes it a **pin** rather than a guard: `0.5`
+would have agreed with itself on both revisions.
+
+The other two live repairs are the `.1%` share above and a **duplicated key**: the mutation-log row
+wrote `{"window": AUDIT_WINDOW, …, **diff}` after this cycle had given `audit_diff` that same key, so
+`**diff` won a merge in which both sides held the same constant — byte-identical either way, which is
+precisely why no reader could see that one fact had grown two sources. **The correction that matters
+most is the one the ledger had already certified.** Revision 13 recorded that this cycle's `ci.yml`
+comment "states only what was measured here". It did not: the comment said `-eo pipefail` "aborts at
+1", a mechanism no run produced, since the probe returns **7** (pipefail yields the rightmost non-zero
+stage's own status) and the `1` belongs to Python's exit code. Revision 13 had that `rc 7` in its own
+table and wrote a comment naming a different number anyway — **an audit that certifies a comment is
+an assertion about a surface the audit did not run.**
+
+**The same shape appeared once more, and it is the finding worth keeping.** The renderer's comment
+on the cold state's three conjuncts said "**measured**, deleting `and not _anch` changes the render
+for the third state and deleting `and not _cands` changes it for candidates beside an explicit
+`n_blocked: 0`". Revision 13 had run both deletions and recorded — accurately — that they leave the
+suite **green**. It measured the **suite counts only**. No render probe appears anywhere in the
+record, so what Revision 13 established was that the two conjuncts are **unwitnessed**, never that
+they are **live** — and a rule nobody checks that also does nothing is dead code, two readings with
+opposite remedies. Both halves are now measured, one process per tree: each deletion does move the
+render, in exactly the state the comment names, while the all-clear state renders the line in all
+three trees — so each injection's change is attributable to its own conjunct and not to a broken
+fixture — and only `_n_blocked`'s deletion leaves a check red. **The claim was true in every clause
+and had no measurement behind it. It has one now.**
+
+**The measurement was rebuilt, because the triple moved.** Seven files: `dashboard.sections.js`,
+`memory_status.py` and `render_dashboard.py` live; `tests/smoke.py` (comments and one label),
+`tests/dashboard_fixture.py` (a key order and a comment) and `tests/dashboard_browser.py` (the new
+check) as harness; and `ci.yml`, outside the triple. The 13-tree batch was re-run end to end and the
+red sets compared as **identities, not counts** — a count says how many moved, a probe says which —
+and all 13 trees red the same identities, `75 = 75`. The E1-i2 counterfactual was re-measured against
+the revision its label names. This pass added no smoke check, so the suite still reports **2017**; the
+browser suite gains the pin above. Two of the corrections are mine to own: the F1 comment's first
+draft claimed the new check "cannot fail on the pre-fix revision" while deliberately sampling the one
+value where the two formatters disagree (found by injection, not by re-reading the sentence), and a
+drafted correction to the spec's own `0 of 104` was **withdrawn on the measurement** — the same
+literal appears at two sites, one false and one true, and the true one stays. Two sites sharing a
+literal is an argument for deriving each figure where it is used, not for trusting a
+search-and-replace.
+
 ## [0.4.33] — 2026-09-17
 
 **Patch — a pass that left a gating seeded duty unfilled now fails at the terminal render instead of
