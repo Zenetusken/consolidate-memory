@@ -28,29 +28,15 @@
 </p>
 
 <p align="center">
+  <sub>Current release <strong>v0.4.34</strong> · <a href="CHANGELOG.md">what changed</a></sub>
+</p>
+
+<p align="center">
   <a href="#why">🧠 Why</a> · <a href="#start">🚀 Quick start</a> · <a href="#dashboard">🌌 Dashboard</a> ·
   <a href="#network">🕸️ Memory network</a> · <a href="#commands">🧭 Commands</a><br>
   <a href="#workflow">🔬 How it works</a> · <a href="#privacy">🔒 Privacy</a> ·
   <a href="#development">🛠️ Contribute</a>
 </p>
-
-> [!NOTE]
-> **Current release: v0.4.34** — the dashboard stops deciding what a record **means** by reading its
-> labels instead of the data that produced them. The remediation verdict was a lookup keyed on the
-> `lever` *routing* label, so rewriting that one field swapped the panel's whole meaning: `prune` and
-> `justify` rendered opposite verdicts from byte-identical data, and the skill's own **sanctioned**
-> prune-then-justify state drew a remedy *and* an alarm at once. The verdict is now derived from
-> `candidates_surfaced` / `pruned` / `achieved_index` / `reaches_budget`, and the unfalsifiable
-> "nothing safely prunable" is replaced by sentences that state what the record actually says.
-> The registrar's `… +N more blocked` was a **false total** (the record's full-join count against the
-> local display list) and now emits the counts-only breakdown the HTML archive already used; eleven
-> sites taking a `dict.get` default were repaired to the `or` idiom that catches an empty-but-present
-> string; and two declaration drifts in **opposite** directions were fixed on whichever side the
-> *reader* says is missing — one key emitted and displayed but declared nowhere, one declared and
-> displayed but written by no producer.
-> Public 1.0 remains **HOLD**, with outstanding evidence gates tracked in the
-> [1.0 preflight](docs/1.0-preflight.spec.md). See the [changelog](CHANGELOG.md) for
-> shipped changes.
 
 <a id="why"></a>
 ## 🧠 The two costs it removes
@@ -63,7 +49,7 @@ session, in every repository, whether or not you noticed.
 One explicit **`dream`** settles both. It proposes candidate lessons from the session,
 **checks each one against the live files, symbols, and commit history**, keeps a short
 recall cue pointing at the ones that survived, and hands you a report of exactly what
-changed and why.
+changed and why. A claim with no supporting evidence is flagged or dropped.
 
 | When this happens… | What a dream helps you retain |
 | :--- | :--- |
@@ -73,11 +59,6 @@ changed and why.
 | Client work and personal experiments must stay separate | Explicit trust domains, with narrowly granted exceptions through groups |
 | The memory index keeps growing | Measured context cost, stale-fact review, and proposals to move detail out of the always-loaded tier |
 | You repeat the same multi-step checks across projects | Evidence for a reusable command or skill, proposed for your decision |
-
-**For example:** you learn why a queue worker needs jittered retries. A dream checks
-that claim against the implementation and keeps the rationale where a future session
-can find it. A broader Python tooling lesson can be verified in another repo and
-shared with eligible projects. A claim with no supporting evidence is flagged or dropped.
 
 Useful when you maintain several repositories, return to work after a break, or keep
 re-explaining the same testing conventions, architectural decisions, and hard-won gotchas.
@@ -100,15 +81,17 @@ The scripts use Python's standard library; the agent performs the reasoning and 
 <a id="start"></a>
 ## 🚀 From install to your first dream
 
-**Requires:** Claude Code with plugins enabled, `python3` **3.8+** on
-PATH **with the `sqlite3` stdlib module (SQLite ≥ 3.24)** — no system sqlite3 binary
-needed — and a POSIX environment (Linux, macOS, or WSL). No runtime packages to
-install. Native Auto-Memory features are **not** required — the plugin is
-self-contained, and `preflight` reports a disabled auto-memory as a supported *skip*,
-not a failure (`preflight.py:207-209`, exit 0); `git` is optional (dream scope
-degrades without it). Check all of
-this up front with `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/preflight.py" .` after
-installing (exit 0 = clean; exit 2 = fix the FAILs first).
+**Requires:** Claude Code with plugins enabled, `python3` **3.8+** on PATH, and a POSIX
+environment (Linux, macOS, or WSL). The SQLite is the one bundled with Python — the
+dialect uses UPSERT, so it must be **≥ 3.24** — and no system `sqlite3` binary is involved.
+
+**Nothing to install, and nothing to enable.** The scripts are stdlib-only, so there are
+no runtime packages. Native Auto-Memory is **not** required: the plugin is self-contained,
+and a disabled auto-memory is reported as a supported *skip*, never a failure. `git` is
+optional — dream scope degrades without it.
+
+**Check the environment first** with `/cm-doctor` after installing. Exit **0** = clean;
+exit **2** = a named check FAILed — fix it before dreaming.
 
 In Claude Code:
 
@@ -143,86 +126,25 @@ boundary. An existing domain is never silently switched.
 <a id="dashboard"></a>
 ## 🌌 See what the system actually kept
 
-**Nocturne** is the memory observatory that closes a dream: a self-contained HTML
-archive, rendered from the same structured cycle record as the terminal summary.
-Start with the recorded outcome, then follow a claim, project, or decision to its
-evidence. Open the generated file in a browser; it needs no server or internet connection.
+Every dream closes with **Nocturne**, the memory observatory: a self-contained HTML
+archive, rendered from the same structured cycle record as the terminal summary. Open
+the generated file in a browser; it needs no server or internet connection.
 
 ![Nocturne overview: the memory-index chart and key measures lead into an outcome summary, linked evidence, and the complete dream as flowing italic paragraphs. Fictional sample data.](docs/assets/nocturne-overview.png)
 
 | What do you want to know? | Where to look |
 | :--- | :--- |
-| **What did this dream accomplish?** | **Dream summary** leads with the recorded outcome, verified claims, observed changes, and attention items. Read the complete narration as one passage of italic paragraphs, from sleep through wake. |
-| **Who holds this lesson, and who may receive it?** | **Memory network** unfolds from fleet → domains → projects. Choose a fact or group in **View** to see its holders or permitted members on the map. |
-| **What changed over time?** | **Memory activity** fits the captured decision and read history into two timelines. Select a dream for its short summary, then use **Open this dream** to navigate. |
-| **What needs attention, and what supports the result?** | **Verification & health** puts exceptions first. Each disclosure names its status; open it for readable findings and supporting evidence. |
-| **Why was a lesson changed or kept?** | **Changes & decisions** leads with each action, lesson, and reason. Expand its decision details for sources and declared files, or open a captured diff. |
+| **What did this dream accomplish?** | **Dream summary** — the recorded outcome, verified claims, observed changes, and attention items, with the complete narration as one passage of italic paragraphs. |
+| **Who holds this lesson, and who may receive it?** | **Memory network** — unfolds from fleet → domains → projects. Pick a fact or group in **View** to see its holders or permitted members. |
+| **What changed over time?** | **Memory activity** — captured decisions and reads on two aligned timelines; select a dream for its summary, then **Open this dream**. |
+| **What needs attention, and what supports the result?** | **Verification & health** — exceptions first. Each disclosure names its status; open it for readable findings and evidence. |
+| **Why was a lesson changed or kept?** | **Changes & decisions** — each action, lesson, and reason, with sources, declared files, and captured diffs. |
 
-The header keeps the **memory-index trajectory and budget projection**. Historical
-fact counts and cadence remain available in the activity table. Decisions, physical
-file changes, and observed usage have separate labels; missing observations stay
-explicitly **Not captured**. Token figures are estimates, approximately characters ÷ 4.
-Distinct headings, prominent conclusions, labeled statuses, and quieter source notes
-separate the result from its supporting detail. Narration, charts, and evidence use
-the section width, with aligned controls and mobile layouts that keep long text
-readable. Primary actions, toolbar controls, evidence links, and expandable details
-have distinct visual treatments, with clear hover and keyboard focus states. Source
-labels identify the saved records behind each section; a dream's save time is never
-presented as a live check.
-
-<details>
-<summary><strong>Explore the network, activity, and evidence</strong></summary>
-
-### Expand a domain. Follow a fact.
-
-Every captured domain appears, with the current project's domain expanded first.
-Browse projects in pages of 12, or search for a project. The **View** selector
-switches between the fleet, a shared fact's holders, and a group's permitted
-members. Project names appear directly on the map; a short caption explains the
-selection and identifies its saved snapshot.
-
-The network stays a visual summary. A brief note identifies partial capture when
-needed. The complete saved data remains available in the page's **Inspect the
-complete captured cycle record** disclosure.
-
-![Nocturne memory network: an orbital fleet root branches to research, tools, and work domains; work is expanded into three named projects. A View selector and project search control the map. Fictional sample data.](docs/assets/nocturne-dashboard.png)
-
-New snapshots identify shared facts by their canonical identity, so differently
-named local mirrors of one lesson count as one fact. Older archives retain their
-recorded links and explicitly identify missing canonical detail. The view covers
-captured shared-memory stores plus the triggering project; absent projects are
-outside that snapshot.
-
-### Inspect activity before opening another dream
-
-Two aligned timelines fit the section width without horizontal scrolling. They
-show all captured dreams through the open dream, with sparse labels to keep dense
-history readable. Use the dream selector or **Previous / Next** to inspect an exact
-cycle. Its recorded outcome and brief summary lead into optional details for exact
-decision categories, verification, fact-count change, rigor, and usage window.
-**Open this dream** opens that report, or returns to its summary if it is already
-open. Reads from overlapping windows are never added into a total, and missing
-observations remain gaps.
-
-![Memory activity: a dream selector and Previous/Next controls accompany two timelines that fit the section width, followed by a concise summary with expandable detail and a separate Open this dream action. Fictional sample data.](docs/assets/nocturne-activity.png)
-
-### Follow an attention item to its evidence
-
-Disclosure headings identify claims, store integrity, and observed changes as
-**Needs attention**, **Recorded clear**, **Partially captured**, or **Not captured**.
-Adverse or pending results open by default. Named findings and file diffs come
-before detailed accounting. Further disclosures preserve preflight timestamps and
-failure IDs, recall observations, workflow verdicts, and decline lineage.
-
-The decision ledger keeps each lesson's action and reason together. **Decision
-details** exposes its full citation, scope, tier, and declared files. Other observed
-file changes appear under their own label, separate from recorded decisions.
-**View diff** opens the corresponding captured file change in a dialog that supports
-keyboard scrolling. Evidence links open and focus their supporting detail.
-
-![Verification and health: attention items lead into four disclosures with status labels, concise findings, and optional supporting evidence. Fictional sample data.](docs/assets/nocturne-evidence.png)
-
-</details>
+The header keeps the **memory-index trajectory and budget projection**; historical fact
+counts and cadence remain in the activity table. Missing observations stay explicitly
+**Not captured**, and a dream's save time is never presented as a live check. Token
+figures are estimates, approximately characters ÷ 4. The complete saved data is always
+available in the page's **Inspect the complete captured cycle record** disclosure.
 
 ### Pick a theme
 
@@ -237,7 +159,8 @@ keyboard scrolling. Evidence links open and focus their supporting detail.
 Whichever you pick, the archive retains filtering, sorting, previous/next navigation,
 compact mode, keyboard controls, reduced motion, print support, and complete captured
 records. **Archive** returns to the dream list; unavailable previous/next actions are
-disabled. The network switches to a vertical hierarchy before its controls become cramped.
+disabled. Narration, charts, and evidence use the section width, with mobile layouts
+that keep long text readable.
 
 **Try the fictional preview:** [HTML archive](docs/previews/nocturne/index.html#sel=7) ·
 [dashboard network SVG](docs/assets/nocturne-network.svg) ·
@@ -321,7 +244,7 @@ These are the packaged commands available to marketplace users:
 | Author one shared lesson | `/cm-share "<claim>"` | Verify, deduplicate, show, then write on confirmation |
 | Absorb approved shared memory | `/cm-sync` | List, pull, and harvest usage; reports held facts |
 | Inspect the fleet | `/cm-network` | Read-only topology, costs, and recall utility |
-| Diagnose resolved paths and grants | `/cm-doctor` | Read-only setup and registry inspection |
+| Diagnose resolved paths and grants | `/cm-doctor` | Read-only setup, registry, and environment inspection |
 | Manage retained plugin data | `/cm-data` | Inventory, export, compact, or scoped purge |
 
 The SessionStart beacon can add one factual reminder when memory is behind. It is
@@ -343,6 +266,9 @@ Verification uses live files, symbols, git history, and documentation consistenc
 Unverifiable claims are flagged or dropped. The proposal makes authoring and
 irreversible changes reviewable; already-approved shared facts can be pulled earlier
 in the pass. Every decision lands in the cycle record.
+
+A pass that reaches the end with a gating duty still unfilled **fails loudly at the
+terminal render** instead of rendering as silence, naming the field and its remedy.
 
 ### Put detail where it costs the least
 
