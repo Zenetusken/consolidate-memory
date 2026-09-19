@@ -68,7 +68,7 @@ users run the skill — they do not have ./cm on PATH)
   cm canonical forget|supersede|expire|reactivate STEM
   cm canonical resurrect STEM --file PATH   replace a tombstone stub with a new body
   cm local upsert|update|archive|forget STEM [--file PATH]
-  cm local rebuild-index [--plan|--apply --confirm rebuild-local-index] [--skip-invalid]
+  cm local rebuild-index [--apply --confirm rebuild-local-index] [--skip-invalid]
   cm local migrate-schema [--apply --confirm migrate-local-schema]
   cm marker stamp --commit SHA [--timestamp ISO]
   cm marker standing-justify --facts N [--index-tokens N]

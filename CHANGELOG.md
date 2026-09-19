@@ -5,6 +5,67 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.37] — 2026-09-19
+
+**Patch — prose stops asserting what nothing ties to the tree. Where v0.4.36 tied an identity to its
+subject, this ties an assertion to its subject: give it a producer, gate it, or label it a guard.**
+
+The second of the two cycles staged under the F2 charter — the half that reads the *world* wrong.
+Five families were docketed; **three closed, two were refuted as posed and are recorded as refuted
+rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree.spec.md`.
+
+1. **A figure stops being hand-derived — it cites its producer.** `docs/index-usage-and-budget-ladder.spec.md`
+   stated three fleet positions, and the byte figures **reconstruct from two different operands in
+   one sentence** (node 1 needs 25,000, node 2 needs 25,600) while the document's own fixture asserted
+   `cliff_pct == 24` for the very inputs the prose called 25%. A **second** bad figure was found by
+   re-measure: the closing sentence named the *ceiling* axis (0.6 × 200 = 120 lines) where the cliff
+   is 200. The root cause is not sloppiness — the producer rounds 25 KB as 25×1024 and *documents*
+   the shift as immaterial to an 80% alarm, which is sound for an alarm and exactly enough to move
+   23.98 → 24.55. A producer already existed, so the spec now **cites** it instead of restating its
+   output, and the dated duplicate collapses to one home.
+
+2. **`cm`'s usage block is gated against its parser.** The heredoc advertised
+   `[--plan|--apply --confirm rebuild-local-index]`, and the shared `local` subparser declares no
+   `--plan` at all — MEASURED, `./cm local rebuild-index --plan` exits **2** with *"unrecognized
+   arguments: --plan"*, so the advertised flag was unusable rather than merely undocumented. The
+   obvious gate had a hole (the existing doc-flag sweep **carves `cm_ops.py` out** and reads only
+   bash-fenced blocks, while the heredoc is in neither), so this one reads the heredoc directly.
+
+3. **The packaging prose is corrected at BOTH sites, and the reason is that they lie in opposite
+   directions.** `release.yml` over-claimed *"attaches all three"*; `SECURITY.md` put provenance
+   *to the Release* and omitted `SHA256SUMS` entirely. Ground truth: **two** assets are attached
+   (`sbom.spdx.json`, `SHA256SUMS`) and provenance reaches a verifier through the **attestations
+   API**, not as an asset. **The one item the two pages agree on is the false one**, so cross-reading
+   them reinforces the error — which is why fixing one site alone leaves the defect alive.
+
+4. **The citation rule is made enforceable — REFUTED as posed, and the refutation is the
+   deliverable.** The docket claimed stale citations; measured, six hand-read samples were **all in
+   range** — every line number resolves cleanly, which is why no check could ever have found them.
+   One is not drift but **inversion**: a doc reports that `CLAUDE.md` claims *"byte-pinned copies"*
+   while `CLAUDE.md` now says the opposite. The adopted rule — *a `file:line` is legitimate iff the
+   doc declares the revision its coordinates resolve on* — is therefore shipped as **binding plus a
+   resolution check**, with the phrase half **refuted by measurement**: over 494 citations, **313
+   (63%)** carry no extractable identifier on their citing line, so a corpus-wide phrase gate would
+   fire on correct content. The census that motivated the docket is itself an instance of the class
+   it measures: three reasonable matchers over one tree returned a **1.66× spread**, so the
+   deliverable is **the matcher, stated**, not the number.
+
+5. **The wrapped anchors — REFUTED as posed; shipped as a REGRESSION GUARD.**
+   `CLAUDE.md:32-33` contains a phrase a contiguous `grep -c` returns **0** for, because the source
+   wraps it. No check verifies phrases today, so this becomes live the moment the anchor rule is
+   adopted: **an anchor that wraps is not greppable, therefore not an anchor.** A ninth `docs_links`
+   check normalizes whitespace before matching. It **cannot fail on pre-fix code**, so by this repo's
+   own rule it is labelled a guard, never a pin.
+
+⚠ **This release adds the suite's first check that reads the tree's own git history**, so `ci.yml`
+now sets `fetch-depth: 0`. A shallow clone makes three of these checks report **verdicts about the
+corpus** rather than name a missing input — measured, an archive tree and a `--depth 1` clone are
+indistinguishable: the fault arm advises deepening a clone that does not exist, the verdict arm
+prints *"0 failing"* from an instrument that cannot read, and the history arm calls the one correctly
+bound docket BAD.
+
+Gate: smoke **2176** passed / 0 failed · docs_links · sim · mypy (42 source files) · manifests.
+
 ## [0.4.36] — 2026-09-19
 
 **Patch — an identity stops being taken from the room. The archive's masthead was read from whatever

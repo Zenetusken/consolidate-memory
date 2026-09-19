@@ -1,5 +1,9 @@
 # SPEC — dream procedure-integrity safeguard
 
+> **Reading the citations.** Every `file:line` below is **`c6b432c`-numbered**. Resolve it against
+> that commit — `git show c6b432c:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status:** REVISED after an independent 3-lens spec-review gate + advisor pressure-test + an empirical
 measurement against the live `.consolidation-log.jsonl` (2026-06-22). The original "conductor that runs the
 phases" design was found to be partly a category error (see §Reframe); this revision is the lean, buildable,

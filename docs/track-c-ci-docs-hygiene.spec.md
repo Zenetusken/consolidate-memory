@@ -1,5 +1,9 @@
 # CI + repo-doc hygiene (Track C) — spec DRAFT
 
+> **Reading the citations.** Every `file:line` below is **`e733938`-numbered**. Resolve it against
+> that commit — `git show e733938:<path>` — and **never against the working tree**, which has moved
+> them. This document is a defect ledger: its rows describe the revision their **fixes landed against**, so `e733938` is the parent of the commit that closed them.
+
 <!-- Materializes as docs/track-c-ci-docs-hygiene.spec.md on branch fix/ci-docs-hygiene.
      SEQUENCING (corrected at Gate-1C): Track C is main-INDEPENDENT — Track A's diff never
      touched README.md/CLAUDE.md (confirmed empty diff on those files) and Track B's scope

@@ -1,5 +1,9 @@
 # Deep Field — design-of-record
 
+> **Reading the citations.** Every `file:line` below is **`e15ac3e`-numbered**. Resolve it against
+> that commit — `git show e15ac3e:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status: implemented.** Target release: **v0.4.24 (patch)** — a new default colour theme
 for the HTML archive, the visual system behind the README art, and the maintainer capture
 path that keeps that art honest.

@@ -1,5 +1,9 @@
 # Audit-hygiene remediation (Track A) — spec
 
+> **Reading the citations.** Every `file:line` below is **`1db1308`-numbered**. Resolve it against
+> that commit — `git show 1db1308:<path>` — and **never against the working tree**, which has moved
+> them. This document is a defect ledger: its rows describe the revision their **fixes landed against**, so `1db1308` is the parent of the commit that closed them.
+
 **Provenance:** the 2026-07-05 four-lens release-readiness audit of the skillset @ v0.1.68
 (docs-contract · scripts-runtime · packaging/tests · beta-tester lenses, every finding
 confirmed at file:line against the live tree). This spec covers **Track A** — the

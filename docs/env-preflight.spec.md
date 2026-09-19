@@ -1,5 +1,9 @@
 # Environment pre-flight — design-of-record
 
+> **Reading the citations.** Every `file:line` below is **`6a8eaac`-numbered**. Resolve it against
+> that commit — `git show 6a8eaac:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status: advisor pass (11 findings, amend-1) + adversarial review-to-zero (11 findings, amend-2 —
 1 HIGH · 5 MED · 5 LOW, all folded) + per-PR implementation review (8 findings — 3 MED · 5 LOW,
 all fixed + pinned, amend-3) + the shipped-state audit (1 MED · 2 LOW, fixed + pinned,
