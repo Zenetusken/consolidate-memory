@@ -146,8 +146,9 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    base revision is DERIVABLE"*: a universal over an unestablished class, since **22** of this repo's
    docs carry a `` **`X`-numbered** `` note and **seven** of them have a fixing commit whose subject
    phrase is derived and measured unique. Two were added (`dbt-truth-restoration` → `6ac5380`,
-   `signal-pipeline-hardening` → `ceaccc0`), each with **one** child rather than the other five's two —
-   the needle's work there is uniqueness, not discrimination — and six numeral sites moved with the
+   `signal-pipeline-hardening` → `ceaccc0`), each with **one** child, the fix itself — as do two of
+   the other five, while the remaining three have two (the fix and the merge that brought it in,
+   PRs #222/#230/#228) and there the needle is what picks the fix. Six numeral sites moved with the
    scope, the check's own printed message among them. (3) The spec's stated **two-part rule** still
    carried the phrase half its own row 7 refutes by measurement; what PR B adopts is the resolution
    half, and it now says so where the rule is stated rather than only where it was refuted. (4) Item 5

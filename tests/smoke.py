@@ -22030,11 +22030,14 @@ with _tf36.TemporaryDirectory() as _td36w:
     #
     # ⚠ The table listed TWO of the five when this first shipped, so the check's universal named a
     # class it sampled a third of — the same defect as the census it replaces, one layer down. All
-    # seven were verified to satisfy the rule before being added; for three of them the needle is
-    # load-bearing (their binding has two children — the fix and its merge — so the phrase is what
-    # picks the fix). ⚠ And MEASURED for the two added 2026-09-19: their bindings have ONE child
-    # each, so the child relation alone would pick the fix and the needle's work is uniqueness
-    # rather than discrimination. Recorded because the difference is real, not decorative.
+    # seven were verified to satisfy the rule before being added, and the child counts are MEASURED
+    # rather than assumed, because they say which part of the derivation is load-bearing: for THREE
+    # of them the binding has two children — the fix, and the merge that brought it in (PR #222,
+    # #230, #228) — so the child relation alone does not pick the fix and the needle is what
+    # discriminates. The other FOUR have ONE child each, the fix itself, so there the needle's work
+    # is uniqueness rather than discrimination. The two added 2026-09-19 (`6ac5380`, `ceaccc0`) are
+    # both in that four, which is why the check's own message could move with the scope without
+    # changing what the needles are doing.
     #
     # ⚠ The needle must match EXACTLY ONE commit, and that was measured for all seven before the
     # table grew — but the loop below originally took the FIRST match and stopped, so a needle that
