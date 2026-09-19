@@ -13,6 +13,23 @@
 > *"resolve against `1d97f54`"* — a sentence about the **shipped** line cites an anchor, a sentence
 > about **pre-fix** behaviour cites a coordinate, and an anchor that does not resolve at the revision
 > you are reading is a claim about a *different* revision rather than a typo.
+>
+> ⚠ **And the exception is WIDER than the anchors — measured rather than assumed, because this note
+> declared a convention this document does not keep.** The paragraph above names the second system as
+> *bare identifier anchors*, but a sentence about the **shipped** tree may carry a **`file:line`**
+> that is numbered against a shipped revision too, and `1d97f54` then does not hold it. HAND-VERIFIED
+> on two: `render_dashboard.py:1249` is `def _persist(...)` at `1d97f54` but
+> `_shown_b = min(len(_blocked), _REG_BLOCKED_CAP)` at `60a03b4`; `smoke.py:4451` is an unrelated
+> comment at `1d97f54` but `_ceilRecB = cast(ms.CycleRecord, …)` at `60a03b4`. In each case the
+> citing sentence names that identifier and the shipped revision is the one carrying it — and
+> `60a03b4` is a **descendant** of `1d97f54`, i.e. it is *later than* the declared base, which is why
+> resolving these against `1d97f54` finds unrelated content rather than a near-miss.
+> **So the discriminator is the SENTENCE, not the citation form:** a sentence about **pre-fix**
+> behaviour resolves against `1d97f54`; a sentence about the **shipped** line resolves against the
+> tree this document is about, and its coordinate is numbered accordingly. ⚠ **No count is asserted
+> here.** An automatic screen over this document's citation lines flags nine further candidates, but
+> the tokens it keys on include ordinary words like `rem` and `over`, so that figure is a *screen*
+> and not a verdict; the boundary a reader needs is the one the sentence's own subject gives them.
 
 **Status: revision 14 — an eleventh pass: the fourth review wave, adjudicated. Ten findings land on
 sixteen sites, and the class is uniform — a correct number or fact paired with the wrong OPERAND, or an

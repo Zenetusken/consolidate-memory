@@ -64,10 +64,12 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    check normalizes whitespace before matching. It **cannot fail on pre-fix code**, so by this repo's
    own rule it is labelled a guard, never a pin.
 
-6. **The harness this release adds was itself reviewed, and the defects found in it are fixed here
-   rather than shipped.** A first round fixed three; a second, adjudicating that round's own docket,
-   fixed three more — **two of them in this release's own new prose**, which is the cleanest
-   evidence that the rule is a rule rather than a theme. (a) The D6 ledger's provenance note carried a **superseded numeral**:
+6. **The release's own new content was itself reviewed, and the defects found in it are fixed here
+   rather than shipped.** The opening round found three; each later round — adjudicating the previous
+   round's own docket — found more, **most of them in this release's own new prose and labels**,
+   which is the cleanest evidence that the rule is a rule rather than a theme. ⚠ **No count is
+   claimed here**, and that is deliberate rather than coy: a count in this position was falsified by
+   the very next round, twice. The rounds are enumerated below in the order they landed. (a) The D6 ledger's provenance note carried a **superseded numeral**:
    it read *"RED on 18 of `fbfe07e`'s citing docs"*, the pre-widening figure — the spec beside it
    records *"`18 of 19` became `20 of 21` when it was widened"*, and the check's own printed label
    says *"reddens the other 20"*. The ledger contradicted both. (b) An **unguarded `read_text`** in
@@ -95,7 +97,32 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    away. (f) And the reach comment itself, first drafted for item 4, **paired one population's doc
    count with another's citation count** — 18 docs / 135 citations against the printed 9 / 59. It
    was caught by running the check and comparing the two figures, which is the whole argument for
-   printing a reach instead of inferring one.
+   printing a reach instead of inferring one. (g) The spec's **row 7 quoted its own subject wrongly,
+   and the misquote made the row argue itself out of its own example**: it called the second
+   `SKILL.md` *"the beta-tester's **vendored** copy"*, while the canary directory under
+   `fixtures/canary-v0.1.19/` vendors **no `SKILL.md` at all** (six `.py` files, `README.md`,
+   `SHA256SUMS`) — the second file is the beta-tester's **own** skill. The distinction is
+   load-bearing, not pedantic: **EXCLUDED** is that row's verdict for a vendored copy, so a vendored
+   second file could not have produced the ambiguity the row reports. The row named it correctly one
+   clause later, so the document disagreed with itself. (h) **The needle registry is delimited by
+   punctuation *on at least one side*, not by punctuation** — the qualifier was already in the
+   sentence while the head clause over-claimed, and MEASURED **2 of the 7** needles (`/cm-connect`,
+   `/cm-share`) carry a SPACE as the right neighbour at every occurrence, so the head clause was
+   false of them. Corrected at both sites — the helper's docstring and the spec — to the form the
+   argument actually rests on. (i) **A reading note declared a coordinate convention its own document
+   does not keep, and this one misdirects the reader.** `render-declaration-parity.spec.md`'s note —
+   added by this release — read *"every `file:line` below is `1d97f54`-numbered"*. Measured:
+   `render_dashboard.py:1249` is `def _persist(...)` at `1d97f54` but `_shown_b = min(len(_blocked),
+   _REG_BLOCKED_CAP)` at `60a03b4`, and `smoke.py:4451` is an unrelated comment at the base but the
+   `_ceilRecB` fixture at `60a03b4` — and `60a03b4` is a **descendant** of the declared base, so
+   following the note lands the reader on unrelated content rather than a near-miss. The note's
+   stated exception was too narrow (it named bare *identifier anchors* as the shipped-tree system,
+   when a shipped-describing **sentence** may cite a coordinate too); the discriminator is now the
+   **sentence**, not the citation form, with both instances hand-verified and **no count asserted** —
+   the automatic screen flags nine more but keys on ordinary words like `rem` and `over`, so that
+   figure is a screen and not a verdict. (j) The spec's row 9 referred to *"the label"* in a table
+   that **has a `label` column** whose own row-9 value is `**GUARD**`; it now names the **message**
+   the check emits, which is the surface that actually changed.
 
 ⚠ **This release adds the suite's first check that reads the tree's own git history**, so `ci.yml`
 now sets `fetch-depth: 0`. A shallow clone makes three of these checks report **verdicts about the

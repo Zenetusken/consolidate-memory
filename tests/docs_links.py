@@ -301,12 +301,19 @@ def check_contiguity() -> None:
     the FIXTURE as much as to the code).
 
     ⚠ That mutation is green for an AMBIENT reason, and it is worth naming because it hid a real
-    hole: MEASURED, every needle in `REQUIRED_IN_README` is delimited in README by PUNCTUATION
-    (`/cm-sync` by backticks both sides, `docs/network-guide.md` by `(` at `:225` and `#` at
+    hole: MEASURED, every needle in `REQUIRED_IN_README` carries PUNCTUATION on **at least one**
+    side at every occurrence — **5 of the 7 on both sides, and 2 with a SPACE as the right
+    neighbour** — so not one is delimited by whitespace on both sides. ⚠ The head clause here used
+    to read "delimited by PUNCTUATION" outright, which this sentence's own parenthetical
+    contradicted: `/cm-connect` is named below as *"a backtick and a space"*, and a needle with a
+    space on one side is not delimited by punctuation. The qualified form is the true one and the
+    only one the argument needs. Named per needle: (`/cm-sync` by backticks both sides,
+    `docs/network-guide.md` by `(` at `:225` and `#` at
     `:322` — the delimiter is the single `#`; an earlier draft wrote `#)`, and no `#)` occurs
-    there — `/cm-connect` by a backtick and a space) — not one by whitespace on both sides. So
+    there — `/cm-connect` and `/cm-share` by a backtick and a space). So
     the README fixture can only
-    ever exercise a needle whose boundary survives whitespace removal, and it cannot reach the
+    ever exercise a needle with at least one PUNCTUATION boundary — never one whose every boundary
+    is whitespace — and it cannot reach the
     PROSE case at all. The matcher pair therefore carries its own seven-case table, asserted at the
     end of this function — contiguous · wrapped in a table cell · wrapped in prose · wrapped at
     line end · broken by a stray space, plus two CONTROLS (a longer token, and genuine absence)
