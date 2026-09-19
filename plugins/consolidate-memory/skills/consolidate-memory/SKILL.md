@@ -1425,8 +1425,19 @@ AND unreferenced — disk-only, **0 index relief**). vs the durable-keep core. *
    index-budget trajectory, rendered into the per-repo archive mini-site.
    ```bash
    CM_DREAM_ARC=1 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/render_html.py" "<the --seed path>" \
-       --store "<native_memory_dir from Phase 0 / cm doctor>" --latest
+       --store "<native_memory_dir from Phase 0 / cm doctor>" --project "$(pwd)" --latest
    ```
+   The store is where the cycle series comes from, the project is whose identity the masthead
+   carries — and naming **both** is what lets the renderer **check that they agree**: a
+   **transcription slip** (pasting another project's `native_memory_dir`) is a named refusal
+   (`is not the store for …`) instead of a wrong masthead, and the one-step fix prints with it —
+   re-run **without `--store`** (it derives that from `--project`). ⚠ **`--project "$(pwd)"` names
+   the directory you are *in*, which is the one the renderer infers anyway** (measured:
+   byte-identical output on its own) — the flag earns its place as the second **operand of that
+   check**, not as a name. So the pair agrees whenever the cwd is **inside the store's project** —
+   the project root, or anywhere under a git repo, since the store resolves through the repo root —
+   and **disagrees for a non-git project rendered from a subdirectory**; there, run from the
+   project root. (Renaming either by hand is the mistake this pair exists to catch.)
    It writes a ZERO-dependency, self-contained `dashboards/index.html` (the whole per-repo
    archive of dreams in one file) and **auto-opens this dream's dashboard** (`--latest` →
    `#sel=<newest>`); headless-safe (no browser → prints the path; `--no-open` suppresses).

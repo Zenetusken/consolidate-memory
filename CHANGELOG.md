@@ -5,6 +5,229 @@ follows [Semantic Versioning](https://semver.org/) (pre-1.0: minor versions may 
 breaking changes). Installed plugins auto-update at Claude Code startup when this
 version changes on `main`.
 
+## [0.4.36] — 2026-09-19
+
+**Patch — an identity stops being taken from the room. The archive's masthead was read from whatever
+directory the process happened to be standing in, while the archive series it was stamped into was
+read from the store it was handed.**
+
+The first of the two cycles staged under the F2 charter — the half that reads the *world* wrong.
+Design and evidence: `docs/identity-from-the-input.spec.md`.
+
+1. **RC-5 — a masthead must be derived from the archive it stamps.** `render_html.py` resolved the
+   archive *series* from `--store` and the *identity* from `Path.cwd()`, so the shipped dream path —
+   which passes **only** `--store` — stamped every archive with the identity of whatever directory the
+   process was launched from. Measured on the pre-fix tree, calling `resolve_store` from three cwds:
+   this repo yields `personal / enrolled / allowed`, while `/tmp` and a home directory that is not a
+   project (`/home/you`) yield `unknown / false / false` — and **no cwd raises**. Driven end-to-end with the same `--store`, the
+   same cycle record and `--out` to a temp dir, the two runs differ (215535 vs 215536 bytes) with
+   `generated_at` identical, so the difference is the embedded identity and nothing else. There is no
+   guard to fool: the wrong value is non-empty, correctly shaped and schema-valid, and the renderer
+   draws it. **The identity is now recovered from its subject** — the registry row whose
+   `native_memory_dir` is that store, then the store's own marker
+   (`.consolidation-state.json` → `project_path`), then a guarded `cwd` — and a candidate is admitted
+   only if it **both round-trips and is project-derived**, so nothing resolving through a user-,
+   managed- or settings-scoped override can name the subject. Nothing verifies ⇒ the render refuses,
+   naming the flag that resolves it.
+
+2. **RC-5a — a fault stops being spelled like an absence.** The same block sat inside a bare
+   `except Exception: pass`, so a resolution *fault* and an *absence* were the same `{}`. The
+   resolution is lifted out; only the advisory warning stays wrapped. **The scope is stated rather
+   than implied: this arm is LATENT, and the fix converts exactly one behavior.** An AST census finds
+   **zero `raise` statements** in `resolve_store`, `_merge_settings`, `identity_snapshot` and
+   `warn_unenrolled_share`, and six hostile cwds (a garbage `.git` file, a `.git` symlink to nowhere,
+   a malformed `settings.json`, a nonexistent dir, a dangling `gitfile:`, a plain dir) each returned a
+   context without raising — so what the blanket catch could actually reach is the **import**, and
+   removing it means a **broken plugin install now exits 1 rather than silently rendering `{}`**.
+   That lands on the neither-flag arm, so it is a **listed** behavior change rather than one left for
+   the implementer to discover.
+
+3. **RC-5b — two inputs that must agree, compared nothing.** `--store S --project P` was accepted
+   with no check that `S` is `P`'s store. Measured live: `--store <temp store> --project <repo>`
+   returned **rc=0**, no refusal, and an archive stamped `personal / enrolled / allowed` rendering the
+   temp store. The pair now verifies agreement through the sole-authority constructor
+   (`resolve_store`, ADR 002), and a mismatch is a refusal rather than a silent preference for one.
+
+4. **RC-5c — the same misdirection WROTE.** This is the row that makes the defect outlive the render:
+   `warn_unenrolled_share` was called with the cwd-derived context, so it set `_warned_unenrolled` in
+   the **cwd project's** state file — and because that flag is a one-shot gate, it **silently
+   suppressed the cwd project's future warnings**. A display defect that persists as durable state.
+   **Two sites, and the row is a census whose matcher is the warn, not the cwd:** counting `cwd()`
+   sites would count cwd *reads*, most of which are correct. There are **nine** call sites of
+   `warn_unenrolled_share` in the tree, of which **two** derive their context from a directory while
+   the same call names its subject by argument — `render_html.py:415` and `render_dashboard.py:1936`.
+   The other seven pass a `ctx` already resolved from their own subject. Naming both is not
+   decoration: a cell naming one would be read as *"there is one"* — and the second site is
+   `render_dashboard.py`, the very module this fix adopts as its precedent, where the hardened call
+   and the unhardened one sit twenty lines apart.
+
+5. **Five refusal arms, and two faults do not share a message.** The recovery refuses when a store
+   belongs to no registered project, when it belongs to a *different* project than the one named, when
+   the named pair disagrees, and when the **registry itself cannot be read** — and that last arm
+   deliberately does *not* wear the unenrolled arm's remedy, because telling a reader to enroll a
+   project that is already enrolled is the fault-as-verdict collapse v0.4.35 closed, one layer down.
+   A corrupt registry is the arm that reaches it: SQLite opens lazily, so a garbage-byte database
+   returns a **live connection** and fails only at first query, as a `DatabaseError`, which is the
+   **parent** of the `OperationalError` its callers catch.
+   **The fifth arm is this release's one contract addition, and it is the same rule applied one fault
+   further out:** a subject whose store path **cannot be canonicalized at all** — a NUL arriving
+   through a settings redirect. It is not a miss. A miss says *nothing names this store*; this says
+   *nothing could be **tested***, because the one operand every source is compared against was
+   unusable. Printing the miss's line for it hands the reader a remedy that **faults identically**
+   (`--project` is governed by the same redirect), so the fault gets its own arm, its own message and
+   its own remedy — *check `autoMemoryDirectory` in your settings*. Measured pre-fix: rc 0, an archive
+   shipped with an **empty** masthead.
+
+6. **The shipped path names its subject — and that naming is what creates the CHECK, not a second
+   name.** `SKILL.md` now passes `--project "$(pwd)"` beside `--store`. ⚠ **Measured: on its own the
+   flag is a tautology** — `$(pwd)` *is* the directory the renderer already infers, and the two forms
+   render **byte-identical** output whenever the pair agrees. What it buys is the **agreement
+   check**: a `--store` transcribed from another project is now a refusal that **names the pair**
+   (`is not the store for …`), where the old form's refusal misdiagnosed the same command as
+   *"belongs to no registered project — pass `--project`"*. **And the pair is not guaranteed to
+   agree:** for a non-git project rendered from a subdirectory it refuses deliberately (measured,
+   rc 1), since there is no repo root to resolve through — there, run from the project root.
+
+7. **RC-5d — a stored value that cannot be RESOLVED was resolved anyway.** Three defects, one line
+   each, in two files, all reachable from the same mistake: `Path.resolve()` raises
+   `ValueError: embedded null byte` on a NUL, and **`ValueError` is neither `OSError` nor
+   `sqlite3.Error`**, so it escaped both files' guards as an uncaught traceback.
+   - **The marker vector.** `json.loads` **accepts** an escaped NUL, so a garbled marker still
+     PARSES while the resolve raises — and the raise landed outside the parse's own `except`, so the
+     documented degrade to source 3 never ran. Measured: the same store renders rc 0 with no marker,
+     exit 1 with a NUL in one, from every cwd.
+   - **The registry vector, which is broader.** `rows_for_store` resolved **every** row and ran
+     **first**, so one corrupt row took down every `--store` invocation rather than only its own —
+     which is why the repair is in `control_plane` and not at the call site.
+   - **And the relative-value arm, sharpest because it needs no corruption at all:**
+     `Path(raw).resolve()` on a **relative** stored value anchors the match to the **process cwd**,
+     so which row the lookup returns — and so the identity the archive wears — depends on where the
+     render ran. Measured on one registry with one `--store` from two cwds: a store owned by charlie
+     was stamped with **atlas's** identity. RC-5 reproduced inside RC-5's own repair.
+   The guard names `(OSError, ValueError)` specifically; `except Exception` was **rejected**, since a
+   fault and an absence sharing one representation is RC-1's exact mechanism. Stored values are now
+   compared **absolute-only**, which is the contract `store_context` already writes.
+8. **RC-5e — the truncated install, and the dependency that was left unwrapped.** `render_html.py`
+   guards three shipping-class dependencies that live in the same directory, under a rule its own
+   comment states: a truncated install *"must degrade with the same one-line message, **never a
+   traceback**"*. Two of them followed it; the `from store_context import …` did not — it was the one
+   thing RC-5a's removal of `except Exception: pass` left bare. **Measured, and there are three
+   states, not two:** on `fbfe07e` the removal renders at **rc=0 with empty stderr** (the blanket
+   catch turned a fault into an absence and shipped an empty masthead); with that catch gone it
+   raised an **uncaught `ModuleNotFoundError`**; it now degrades with its siblings' one line. Only
+   `ImportError` is caught — a fault *inside* `store_context` is not a truncated install, and must
+   not go to the reader wearing that remedy.
+9. **RC-5f — the managed-policy route, which nothing drove.** `_merge_settings` applies **four**
+   settings scopes; the redirect pins drove three. `policy` (`managed-settings.json`) is the highest-
+   precedence scope and the one whose own docstring says it **may name an explicit absolute dir** —
+   i.e. exactly the constant the predicate's second conjunct exists to refuse. **A one-line widening
+   of `_project_derived` to admit it leaves the whole suite green (2146 passed / 0 failed)** while
+   the render stamps the **room's** identity (`domain_id: unknown`, `cross_project_allowed: false`)
+   onto an enrolled subject's store at rc=0. Pin 19 is the **instance** rather than a table over the
+   predicate's constant, and that is the finding's own shape: a predicate edited to admit a *name* is
+   caught only by a check that *drives* that name.
+
+**Pins and the exit-code rule.** Each fix's pin **fails on pre-fix code**; checks that cannot are
+labelled GUARD rather than PIN. **59 new checks, measured 2026-09-19 by running the branch's own
+suite against a `fbfe07e` tree: 2129 passed / 34 failed there, and 2163 passed / 0 failed here** —
+the same total on both (2163), which is what makes the two runs comparable. **33 of the 34 failures
+carry `(PIN` in their own label, and not one GUARD or CONTROL failed** — ⚠ **and the count is stated
+over *that* matcher, because the label has three spellings:** `(PIN)` × 17, `(PIN, site 1 of 2)` × 5,
+and `(PIN — …)` × 11. A reader who greps the **bare literal `(PIN)`** returns **17** and undercounts
+by half, which is the failure mode this entry's own subject is about — a census believed because its
+matcher was never named. Over the right matcher the taxonomy is enforced by the
+run rather than asserted by this entry: a reader who wants to audit the split can read it off
+the failures instead of counting the greys. ⚠ **The thirty-fourth is a stated exception rather than a
+pin:** pin 19's PRECONDITION, which is red on `fbfe07e` *because it asserts the fixture* — the field
+it reads (`mem_dir_source`) is introduced by this change, so the fixture cannot even be established
+there. That red pins no behaviour, and its label says so; a reader totalling the split should not
+count it among the pins. ⚠ **The increment is the sharp
+form of the same evidence, and it is read per round:** the two checks round 1 added are *exactly* the
+two that joined the red set (17 + 2 = 19), and the three that cannot flip — one GUARD, two
+PRECONDITIONs — stayed green on both trees. **Round 2 added six checks and moved the red count by
+ONE (19 → 20) — and that is the honest reading, not a shortfall:** three are PRECONDITIONs by
+construction, and of the three that discriminate, **two are green on `fbfe07e` for the same reason
+they are green there for every other source-2/3 check — the base tree never consults the marker or
+the registry at all.** Their discrimination is proved against a tree where it *can* be, which is the
+**pre-repair revert**: both repairs textually undone → 2143 passed / **exactly 15, 16 and 17
+failed**; repaired → 2146 / 0. A round that added a check which could not discriminate on *any* tree
+would show a smaller increment than its check count under *both* measurements, which is the one way
+to tell a pin from a ceremony. **Round 3 added four and moved the red count by THREE (20 → 23)**, the
+missing one being pin 18's GUARD — regression cover for a rule that already held on `fbfe07e`, so it
+has no red to contribute; the round also brings the one stated non-pin failure above.
+**Round 4 added thirteen and moved the red count by ELEVEN (23 → 34)** — the twelve checks of pins
+20–26 plus one GUARD inside pin 3 — and the two that cannot flip are named here rather than left to be
+re-derived: **pin 24's PRECONDITION**, green on `fbfe07e` *on purpose*, because its job is to
+attribute that pin's red to the arm rather than to a fixture that failed to build, and **pin 3's
+GUARD**, which measures `_restore36`'s promise to leave the shared registry as found and so has no
+pre-fix state to be red against. That GUARD is not decoration: **removing the `chmod` it guards turns
+it red and nothing else** (measured: 2162 passed / 1 failed), which is the only available way to show
+a guard is not vacuous, since by this repo's own rule no PIN may cover it. **The identity pin
+renders **one
+store under two cwds** and requires the
+embedded `identity` payload **byte-identical** — pre-fix the two runs differ in exactly that payload.
+RC-5c's pin cannot use the rendered archive at all: its observable is the **flag written into the
+subject's state file**, a side effect scoped to the subject, measured RED pre-fix with the flag
+landing in the cwd's store and leaving `--store`'s untouched. The unrecoverable-store and
+disagreement arms are pinned on exit 1 *plus* their named message, and the registry-fault arm on
+**not** producing the unenrolled arm's message, since that separation is the arm's whole point.
+The **25** checks green on both trees are not filler, and the split is exact rather than
+approximate: **10 GUARD, 14 PRECONDITION, 1 CONTROL — and not one PIN.** That is the taxonomy proved
+as an identity rather than described: every check in this release that *can* flip does, and every
+check that does not is *labelled* as one that cannot. **The two that matter most run the opposite way
+from every pin, so a predicate tightened past the design turns them red while every pin above is
+still greening:** a **symlinked** store paired with its **own** project (a legitimate pair a one-sided
+compare refuses), and a **project-scoped, contained** `autoMemoryDirectory` (which must still recover)
+— each must still render. ⚠ Both are GUARDs, and the reason is worth reading rather than counting:
+neither can fail on `fbfe07e`, because pre-fix the render succeeds there too — stamped with the
+**wrong** identity. They guard against **over**-tightening, which is the direction a suite built
+entirely of pins cannot see.
+
+**A misdiagnosis the fix itself introduced, found by self-review and repaired.** Handing
+`render_html` a `--store` that **does not exist** and nothing else reported *"belongs to no
+registered project"* and advised passing `--project <its dir>` — a **registration** fault, about a
+path that is not there, with a remedy naming a directory that does not exist. Pre-fix the same
+command exited 0 and rendered, so this was **new**, and it read **two different ways depending on a
+flag with nothing to do with the mistake**: with `--project` present the pairing branch already
+tested the path and said *"does not exist"*; without it, control fell past every source to the
+unenrolled arm. The repair dispatches the message on whether the path exists **after every recovery
+source has run, never before them** — the position is the whole design, because the same test placed
+first would refuse two invocations this release deliberately supports: a store **deleted since
+enrolment** (recovered from its registry row, which is a stored key) and a store **the cwd derives**
+(a project that has not dreamed yet). Both were measured rendering rc 0 after the repair. The
+absent-path remedy names **both** routes, since the two situations are indistinguishable from the
+input and one clause alone would misdiagnose the other.
+
+10. **The registry scan is bounded at the target end — and the bound sits *after* the query on
+    purpose.** The design-of-record left one finding open: `rows_for_store` resolved **every** row to
+    answer about one, with its cost **unmeasured**. Measured now: ~16 µs/row and the resolve loop is
+    **89-92%** of the function, against the 340-row live registry → 7.9 ms (10k → 0.19 s; 100k →
+    1.6 s). **No repair that speeds the loop is sound** — an index or a `WHERE` prefilter would speed
+    the ~8-11% that is *left*, and is unsound on its own terms anyway, since a non-canonical stored
+    value can still **resolve onto** the target (only `resolve()` sees that, and the loop may not stop
+    at a first hit because `native_memory_dir` carries no `UNIQUE`); `os.path.realpath` is **1.80×
+    faster** and not swappable, silently dropping the raises `safe_resolve` exists to convert. So the
+    one available win is a **bound**: an unusable store yields `target is None`, no row can equal
+    `None`, and the scan is *determined by the argument*. ⚠ **Hoisting that bound above the
+    `conn.execute` is the one placement that is wrong**, and it was measured rather than argued: the
+    query is this function's only **fault channel** (`classify_registry` verifies tables and never
+    columns), so skipping it reports a registry **fault** as an **absence** — `fault ≡ absence`, this
+    cycle's own mechanism, sending the reader to re-enroll a project that is already enrolled. The
+    bound consequently trades the query's cost, on a rare input, for that signal. Two single-variable
+    mutations carry it, each producing a different single red: bound **deleted** → the **pin** alone;
+    bound **hoisted** → the **regression guard** alone. **Not operator-visible** — nothing behaves
+    differently, and the work skipped was work whose answer the argument had already fixed.
+
+**An operator can observe:** an archive render whose subject cannot be named now exits non-zero and
+writes nothing, where it previously rendered a wrong identity under a clean exit 0; a store that is
+named but disagrees with its `--project` is now refused rather than half-honored; a broken plugin
+install now exits 1 rather than rendering an empty masthead (RC-5a); and a single corrupt value in
+the registry no longer takes the render down (RC-5d) — it is skipped, the way a key that cannot be
+compared should be, instead of escaping as an uncaught `ValueError` from a row with nothing to do
+with the store. The cost is named: a refusal
+stalls the render where it used to complete with a wrong masthead, and a stalled render is
+recoverable in one command.
+
 ## [0.4.35] — 2026-09-18
 
 **Patch — a refusal stops being spelled like a verdict. Eight faces, one root cause: a surface

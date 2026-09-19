@@ -590,15 +590,32 @@ def _net_capture_section(record: Mapping[str, Any]) -> list:
     return out
 
 
-def _narration_session_dir(store: Any) -> Any:
-    """v0.4.19: the transcript pool for the narration detector, resolved from the PERSISTED
-    STORE's identity — NEVER ambient cwd (render_dashboard operates cross-cwd today; a
-    wrong-store pool could satisfy NAR on a fabricated record with a byte-identical scripted
-    beat — a cross-project false-clean in the forbidden direction). Order: (1) the store's own
-    state file project_path → resolve_store (the script-owned anchor); (2) cwd resolves to THIS
-    store (the usage-clock check's shape); (3) the default layout — the session pool is the
-    native memory dir's parent (store_context: session_dir = cfg/projects/<slot>, native =
-    session_dir/"memory"); (4) None → the caller degrades honestly."""
+def _context_for_store(store: Any) -> Any:
+    """v0.4.36: the StoreContext whose `native_memory_dir` IS `store` — or None.
+
+    Extracted from `_narration_session_dir`, which has asked this question since v0.4.19 and has
+    asked it correctly: the marker's script-owned `project_path` first, then cwd, each behind the
+    ownership guard. What was NOT correct is the unenrolled-share warn below, which took
+    `resolve_store(Path.cwd())` with no guard at all — so this is ONE HOME FOR THAT COPY, not for
+    every copy. A third site, the usage-window clock, still resolves its own pair — cwd first, the
+    marker as its fallback, and a skip branch neither caller here needs — and is deliberately left
+    alone; its `v0.4.0 review (R128 clock liveness)` comment records why the guard is not optional,
+    and that site's `except` already names `ValueError` beside `OSError`, the resolve-raise class
+    the archive path had to be taught.
+
+    Verification-only, like its caller: `resolve_store` answers "what does this DIRECTORY resolve
+    to?", so a candidate is admitted only when the store it yields IS the store we were handed.
+
+    Source 1 (the registry row) is deliberately not reproduced here, and NOT because it is inert:
+    measured on a hermetic HOME, an un-enrolled project keeps its row (`status='active'`,
+    `domain_id='unknown'`, `native_memory_dir` still this store), and `is_unenrolled_share` is
+    `(not enrolled) or domain_id == "unknown"` — so the warn FIRES rather than returning early, and
+    with no marker and a foreign cwd this helper answers None and that project loses one advisory
+    (skipped loudly, never silently). A row is a STORED KEY, not a resolution: admitting it returns
+    a context whose `session_dir` rests on a root nothing re-checked against the store — the
+    mis-pooled transcripts `_narration_session_dir` forbids. Ask the directory, not the ledger. Its
+    home is the registry lookup the archive path consumes.
+    """
     from pathlib import Path as _P
     try:
         st_raw = (_P(str(store)) / ms.STATE_FILE).read_text(encoding="utf-8")
@@ -609,18 +626,34 @@ def _narration_session_dir(store: Any) -> Any:
             _ctx_a = _rs_a(_P(str(pp)))
             # Ownership guard (the usage-clock fallback's precedent): a stale/migrated
             # project_path must NOT mis-pool the transcripts to the wrong project — only
-            # return the pool when the resolved store IS the store being persisted.
+            # return the context when the resolved store IS the store being persisted.
             if _ctx_a.native_memory_dir.resolve() == _P(str(store)).resolve():
-                return _ctx_a.session_dir
+                return _ctx_a
     except Exception:
         pass
     try:
         from store_context import resolve_store as _rs_b
         _ctx_c = _rs_b(_P.cwd())
         if _ctx_c.native_memory_dir.resolve() == _P(str(store)).resolve():
-            return _ctx_c.session_dir
+            return _ctx_c
     except Exception:
         pass
+    return None
+
+
+def _narration_session_dir(store: Any) -> Any:
+    """v0.4.19: the transcript pool for the narration detector, resolved from the PERSISTED
+    STORE's identity — NEVER ambient cwd (render_dashboard operates cross-cwd today; a
+    wrong-store pool could satisfy NAR on a fabricated record with a byte-identical scripted
+    beat — a cross-project false-clean in the forbidden direction). Order: (1) the store's own
+    state file project_path → resolve_store (the script-owned anchor); (2) cwd resolves to THIS
+    store (the usage-clock check's shape); (3) the default layout — the session pool is the
+    native memory dir's parent (store_context: session_dir = cfg/projects/<slot>, native =
+    session_dir/"memory"); (4) None → the caller degrades honestly."""
+    from pathlib import Path as _P
+    _ctx = _context_for_store(store)
+    if _ctx is not None:
+        return _ctx.session_dir
     try:
         _p_store = _P(str(store))
         if _p_store.name == "memory" and _p_store.parent.is_dir():
@@ -1932,8 +1965,33 @@ def main() -> int:
     if persist_dir:
         try:
             from pathlib import Path as _P
-            from store_context import resolve_store as _rs_dash, warn_unenrolled_share as _w_dash
-            _w_dash(_rs_dash(_P.cwd()))
+            from store_context import warn_unenrolled_share as _w_dash
+            # RC-5c. The subject is named by --persist; cwd is not evidence about it. The tempting
+            # repair — `resolve_store(Path(persist_dir))` — is the WRONG one, and §Design forbids
+            # it: `persist_dir` is a STORE path while `resolve_store` takes a project DIRECTORY, so
+            # it slugs the store back in as a root and answers with a PHANTOM (measured on a
+            # hermetic HOME: pid p_e85b61ed… vs the project's p_1da1b0b2…, native != the store). The
+            # warn would then fire for a project that does not exist and set its one-shot flag in a
+            # store that does not exist, while the subject's own flag stays unset — and because that
+            # flag is a ONE-SHOT gate, the subject's future warnings are silently suppressed.
+            _ctx_dash = _context_for_store(_P(persist_dir))
+            if _ctx_dash is None:
+                # SKIP, and say so. A warn is advisory, so losing one costs a nag; a warn against a
+                # phantom costs the nag AND the durable suppression above. The stderr line is
+                # load-bearing — `fault ≡ absence` is the RC-1 mechanism F1 closed, and a silent
+                # skip would reintroduce it here under a new spelling.
+                #
+                # ⚠ So the line must not assert a VERDICT either. It used to read "no project
+                # resolves to the --persist store", and `None` is returned for two different
+                # reasons: no source verified, and a source could not be ASKED (the helper's own
+                # broad catches, plus a cwd deleted under the process). Measured: one store, two
+                # runs — the subject's own project as cwd prints no line, the same render with a
+                # deleted cwd prints "no project resolves", which was never established. Say what
+                # was measured: the verification, not the world it failed to observe.
+                print(f"render_dashboard: unenrolled-share check skipped — could not verify which "
+                      f"project owns the --persist store {persist_dir}", file=sys.stderr)
+            else:
+                _w_dash(_ctx_dash)
         except Exception:
             pass
     if persist_dir:

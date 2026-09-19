@@ -2903,17 +2903,43 @@ check("RC-89: _mark_open then _open_recent — one open per (archive, anchor) pe
       and rhtml._open_recent(Path("/tmp/x.html"), "#sel=4", _TS + 3000, _tmpd) is False
       and rhtml._open_recent(Path("/tmp/x.html"), "#sel=3", _TS + 3000, _tmpd) is False)
 with _tempfile.TemporaryDirectory() as _tdn4:
+    import os as _os_n4
+    import store_context as _sc_n4
     _cyc_n4 = Path(_tdn4) / "c.json"
     _cyc_n4.write_text(_json43.dumps({"project": "p", "marker": {"commit": "c", "timestamp": "t"}}), encoding="utf-8")
-    _store_n4 = Path(_tdn4) / "memory"; _store_n4.mkdir()
-    (_store_n4 / ".consolidation-log.jsonl").write_text("", encoding="utf-8")
-    _out_n4 = Path(_tdn4) / "index.html"
-    _real_open_n4 = rhtml.webbrowser.open
-    rhtml.webbrowser.open = cast(Any, lambda url: False)
+    # v0.4.36: the fixture now renders a store whose SUBJECT is recoverable, under a PINNED HOME.
+    # It previously ran with the ambient one and was stamped with whatever identity the developer's
+    # own repo resolved to — a fixture that had never been hermetic, and whose stated purpose (a
+    # FAILED open writes no marker) is unrelated to attribution. Its old shape is arm A's pin below.
+    _home_n4 = Path(_tdn4) / "home"; _home_n4.mkdir()
+    _proj_n4 = Path(_tdn4) / "proj"; _proj_n4.mkdir()
+    _saved_n4 = {_k: _os_n4.environ.get(_k) for _k in
+                 ("HOME", "CLAUDE_CONFIG_DIR", "CLAUDE_PLUGIN_DATA", "CM_STORE_OVERRIDE",
+                  "CLAUDE_CODE_PROJECT_DIR_NAME", "CLAUDE_CODE_SETTINGS")}
     try:
-        _rc_n4 = rhtml.main([str(_cyc_n4), "--store", str(_store_n4), "--out", str(_out_n4)])
+        for _k in _saved_n4:
+            _os_n4.environ.pop(_k, None)
+        _os_n4.environ["HOME"] = str(_home_n4)
+        _store_n4 = _sc_n4.resolve_store(_proj_n4).native_memory_dir
+        _store_n4.mkdir(parents=True, exist_ok=True)
+        # source 2: the store's OWN marker. Written here so recovery does not depend on cwd —
+        # a fixture that recovered via source 3 would be green only when run from the right room.
+        (_store_n4 / ms.STATE_FILE).write_text(
+            _json43.dumps({"project_path": str(_proj_n4)}), encoding="utf-8")
+        (_store_n4 / ".consolidation-log.jsonl").write_text("", encoding="utf-8")
+        _out_n4 = Path(_tdn4) / "index.html"
+        _real_open_n4 = rhtml.webbrowser.open
+        rhtml.webbrowser.open = cast(Any, lambda url: False)
+        try:
+            _rc_n4 = rhtml.main([str(_cyc_n4), "--store", str(_store_n4), "--out", str(_out_n4)])
+        finally:
+            rhtml.webbrowser.open = _real_open_n4
     finally:
-        rhtml.webbrowser.open = _real_open_n4
+        for _k, _v in _saved_n4.items():
+            if _v is None:
+                _os_n4.environ.pop(_k, None)
+            else:
+                _os_n4.environ[_k] = _v
     check("RC-89/n4: a FAILED webbrowser.open writes no .last-open marker (the next attempt is never suppressed)",
           _rc_n4 == 0 and not (Path(_tdn4) / rhtml._OPEN_MARKER_NAME).exists())
 
@@ -20237,10 +20263,1452 @@ check("v0.4.34 E4-b (PIN): every key declared on `ms.Audit` is EMITTED by `audit
       "witness, so the producer is the side that moves",
       set(ms.Audit.__annotations__) <= set(ms.audit_diff({}, {})))
 
+# =============================================================================================
+# v0.4.36 — IDENTITY FROM THE INPUT (RC-5). An archive stamps an identity, and its SUBJECT is the
+# store named by --store / --project. The directory the process happens to be standing in is not
+# evidence about it: RC-5 was the archive asking the room.
+#
+# Every pin here runs render_html.py as a SUBPROCESS under a hermetic env, because the defect IS
+# the process's environment — an in-process pin that patches cwd cannot witness a HOME- or
+# redirect-derived identity, and a developer's own CM_STORE_OVERRIDE would otherwise decide the
+# result. The env is `_xp_env` (which pops seven names, CLAUDE_CONFIG_DIR and CM_STORE_OVERRIDE
+# among them) PLUS `CLAUDE_PLUGIN_DATA`, which is in neither of this repo's two helper lists and
+# relocates the registry outright — without it every pin below reads the developer's REAL registry
+# and can find a row for a store that has none.
+#
+# ⚠ A StoreContext is a FROZEN SNAPSHOT, not a live view: `enrolled`, `domain_id` and
+# `registry_state` are captured at construction, so a fixture that resolves a project BEFORE
+# enrolling it holds a context that reads `unenrolled`/`absent` forever — and the contrast pin
+# built on it goes green on BOTH trees for want of a difference. Resolve after every mutation.
+#
+# Labelling, per this repo's own rule: a **PIN** fails on the pre-fix tree; a **GUARD** cannot (it
+# guards a future refactor or catches an over-tightened predicate) and is named as one.
+# =============================================================================================
+import json as _json36
+import os as _os36
+import shutil as _shutil36
+import subprocess as _sp36
+import tempfile as _tf36
+import store_context as _sc36
+
+_ARM36_A = "belongs to no registered project"
+_ARM36_C = "cannot read the control-plane registry"
+_ARM36_D = "is not the store for"
+_ARM36_NO_PATH = "does not exist"
+# The fifth arm and its own remedy, read here as LITERALS rather than imported: a pin that took
+# the string from the module under test would move with the module and assert nothing about what
+# a reader is actually told. (`_ARM36_A` above is a copy for the same reason.)
+_ARM36_ENV = "resolves through an unusable store path"
+_REMEDY36_ENV = "check autoMemoryDirectory in your settings"
+_ARM36_CWD = "the working directory does not exist"
+_ARM36_INSTALL = "is the plugin install complete?"
+_ARM36_B = "is claimed by"
+_NUL36 = chr(0)     # BUILT, never typed. A literal escape in this source would be materialized as a
+                    # real NUL by an editor or a patch tool, and the injection has to be a NUL in
+                    # the DATA the script reads — not in this file. Building it keeps the source
+                    # plain ASCII no matter what touches it.
+
+
+def _rh36(cycle, store, cwd, env, extra=None):
+    return _sp36.run(
+        [sys.executable,
+         str(ROOT / "plugins" / "consolidate-memory" / "scripts" / "render_html.py"),
+         str(cycle), "--store", str(store), *(extra or []),
+         "--out", str(Path(cwd) / "_out36.html"), "--no-open"],
+        capture_output=True, text=True, timeout=120, env=env, cwd=str(cwd))
+
+
+def _id36(cwd):
+    """The `identity` sub-object of the rendered `id="cm-data"` payload — a TOP-LEVEL key, built by
+    `build_html`. Sub-payload and not whole-file: `generated_at` is second-resolution and rendered
+    twice by the template, so two whole files one second apart are not byte-identical (measured),
+    while the identity is timestamp-immune and still tests the `main()` wiring the fix changes."""
+    try:
+        _h36 = (Path(cwd) / "_out36.html").read_text(encoding="utf-8")
+        return _json36.loads(
+            _h36.split('id="cm-data">', 1)[1].split("</script>", 1)[0]).get("identity")
+    except Exception:
+        return None
+
+
+with _tf36.TemporaryDirectory() as _td36:
+    _home36 = Path(_td36) / "home"; _home36.mkdir()
+    _pdat36 = Path(_td36) / "pdata"; _pdat36.mkdir()
+    _env36 = _xp_env(_home36, {"CLAUDE_PLUGIN_DATA": str(_pdat36), "CM_NO_OPEN": "1"})
+    _src36 = Path(_td36) / "src"; _src36.mkdir()
+    _A36 = (_src36 / "atlas").resolve()
+    _U36 = (_src36 / "uranus").resolve()
+    _R36 = (_src36 / "rigel").resolve()
+    _Q36 = (_src36 / "quasar").resolve()
+    for _p36 in (_A36, _U36, _R36, _Q36):
+        _p36.mkdir()
+        _sc36.resolve_store(_p36, environ=_env36).native_memory_dir.mkdir(parents=True, exist_ok=True)
+    _conn36 = cp.connect(cp.db_path(_sc36.resolve_store(_A36, environ=_env36)))
+    try:
+        # atlas and rigel enrolled in a REAL domain; uranus and quasar left unenrolled. Which
+        # row must carry what is not a list to memorize — it follows from which COLUMN the varied
+        # row feeds: `resolve_store` learns a domain only through `enrolled_domain`, which gates on
+        # a real one, so the row must be enrolled-with-a-domain exactly where it feeds the CWD
+        # column (pins 1 and 9); where it feeds only the RECOVERED column (pin 5, via the
+        # registry-row producer, which reads the domain straight off the row) a bare real domain
+        # suffices and enrollment buys the three-key WIDTH rather than the contrast.
+        cp.enroll_project(_conn36, _sc36.resolve_store(_A36, environ=_env36), "example")
+        cp.enroll_project(_conn36, _sc36.resolve_store(_R36, environ=_env36), "example")
+        _conn36.commit()
+    finally:
+        _conn36.close()
+    # RESOLVE AFTER ENROLLING — see the snapshot ⚠ above. A context taken before the commit reads
+    # `unenrolled`/`absent` for the rest of the run, which is exactly how a contrast pin goes
+    # vacuous while still printing green.
+    _ctxA36 = _sc36.resolve_store(_A36, environ=_env36)
+    _ctxU36 = _sc36.resolve_store(_U36, environ=_env36)
+    _ctxR36 = _sc36.resolve_store(_R36, environ=_env36)
+    _ctxQ36 = _sc36.resolve_store(_Q36, environ=_env36)
+    _SA36, _SU36, _SR36, _SQ36 = (_c.native_memory_dir
+                                  for _c in (_ctxA36, _ctxU36, _ctxR36, _ctxQ36))
+    for _s36 in (_SA36, _SQ36):
+        (_s36 / ".consolidation-log.jsonl").write_text("", encoding="utf-8")
+    _cyc36 = Path(_td36) / "cycle.json"
+    _cyc36.write_text(_json36.dumps({"project": "p",
+                                     "marker": {"commit": "c", "timestamp": "t"}}), encoding="utf-8")
+
+    # ---- pins 1 and 5, one fixture: the ROW's identity is recovered, and it is cwd-invariant
+    _r1_36 = _rh36(_cyc36, _SA36, _A36, _env36)      # cwd IS the store's project
+    _r2_36 = _rh36(_cyc36, _SA36, _U36, _env36)      # cwd is an unrelated, unenrolled project
+    _pA36, _pU36 = _id36(_A36), _id36(_U36)
+    check("v0.4.36 pin 1 (PIN): ONE store, TWO cwds, ONE payload — the archive's identity does not "
+          "move with the room it was rendered in. Pre-fix the two runs differ in the embedded "
+          "identity (run 1 carries atlas's, run 2 carries the unrelated cwd's), and neither "
+          "raises: `resolve_store` synthesizes a WELL-FORMED identity for every cwd, so there was "
+          "no guard to fool — the value simply was wrong and nothing downstream could tell. The "
+          "fixture carries a registry ROW so source 1 wins on both runs; with no row and no marker "
+          "the second run has nothing that verifies and REFUSES, making the equality unsatisfiable",
+          _r1_36.returncode == 0 and _r2_36.returncode == 0 and _pA36 is not None
+          and _pA36 == _pU36)
+    check("v0.4.36 pin 5 (PIN): the ROW's identity is recovered, not the cwd's — `--store S` where "
+          "S IS named by a registry row, rendered from a cwd that does not resolve to S. The first "
+          "conjunct is the recovery; the second is the CONTRAST that makes it discriminating, and "
+          "it is the half a fixture gets wrong: two unenrolled cwds snapshot byte-identically, so a "
+          "fixture that omits the row — or registers it the ordinary `active`/`unknown` way — "
+          "leaves this green on both trees. Measured here: enrolled vs unenrolled differ in "
+          "`enrolled`, `domain_id` and `cross_project_allowed`",
+          _pU36 == _sc36.identity_snapshot(_ctxA36)
+          and _pU36 != _sc36.identity_snapshot(_ctxU36))
+
+    # ---- pin 8, the guard pin: NO row and NO marker. Assert the SECOND run ALONE.
+    _r8a_36 = _rh36(_cyc36, _SQ36, _Q36, _env36)     # cwd IS the store's own project
+    _r8b_36 = _rh36(_cyc36, _SQ36, _U36, _env36)     # nothing verifies -> Arm A
+    check("v0.4.36 pin 8 (PIN, asserted on the SECOND run alone): a store with NO row and NO "
+          "marker, rendered from an unrelated cwd, REFUSES — this is the pin for RC-5 proper. The "
+          "first run is green pre-fix too (it renders, just with the cwd's identity), so a "
+          "conjunction of the two would read green on both trees and discriminate nothing; the "
+          "discriminator is the rc and the named fault, never the identity, because with no row "
+          "every cwd's snapshot is the SAME dict and so the payload cannot separate them either",
+          _r8b_36.returncode == 1 and _ARM36_A in _r8b_36.stderr)
+    check("v0.4.36 pin 8 (CONTROL, green on BOTH trees by design): the first run still RENDERS — "
+          "source 3 admits the cwd when it verifies, so `--store <its own project's store>` from "
+          "that project's own directory is unchanged. This is what forbids the blanket reading of "
+          "the refusal above; a fix that refused here would break the dream path for every user",
+          _r8a_36.returncode == 0 and _id36(_Q36) == _sc36.identity_snapshot(_ctxQ36))
+
+    # ---- pin 2, Arm A — and this fixture's OLD SHAPE is what `tests/smoke.py`'s RC-89/n4 test
+    #      used to be: a `--store` for a fresh temp dir with no registry row. It is not merely a
+    #      test that broke; it was the defect's own witness, and it inverts rather than vanishes.
+    check("v0.4.36 pin 2 (PIN): Arm A names the fault AND the remedy — `belongs to no registered "
+          "project`, and `--project <its dir>`, which is the one-step fix. Verified in the "
+          "configuration where it looks least likely to work: under a global redirect every "
+          "project resolves to the store, and even there `--project <its dir>` recovers correctly, "
+          "because Arm D then finds the pair AGREEING",
+          _r8b_36.returncode == 1 and _ARM36_A in _r8b_36.stderr
+          and "pass --project" in _r8b_36.stderr)
+
+    # ---- pin 9, source 2: the store's OWN marker, with no registry row
+    (_SQ36 / ms.STATE_FILE).write_text(_json36.dumps({"project_path": str(_Q36)}), encoding="utf-8")
+    check("v0.4.36 pin 9 (PRECONDITION): the fixture's marker really is the ONLY admitting source "
+          "— quasar's store carries no registry row, and rigel (the cwd) resolves to its own store, "
+          "not to this one. `project_path` is written by the pull path, not by anything the render "
+          "does — THREE writer sites among the shipped scripts on `fbfe07e`, by the census in "
+          "`docs/identity-from-the-input.spec.md`; an earlier draft of this label said \"exactly ONE "
+          "writer in the tree\", which never reproduced under any matcher I tried and is exactly the "
+          "shape of claim a check label is not audited for — so the fixture writes the marker "
+          "deliberately; a test that assumes a marker is present because a store exists is "
+          "assuming a field nothing has written",
+          _sc36.resolve_store(_Q36, environ=_env36).native_memory_dir.resolve() == _SQ36.resolve()
+          and _sc36.resolve_store(_R36, environ=_env36).native_memory_dir.resolve() != _SQ36.resolve())
+    _r9_36 = _rh36(_cyc36, _SQ36, _R36, _env36)      # cwd = ENROLLED rigel, whose store is not S
+    _p9_36 = _id36(_R36)
+    check("v0.4.36 pin 9 (PIN): source 2 renders the MARKER's project, not the cwd's — the half "
+          "that makes the narrowed capability loss a measured claim rather than an argument. The "
+          "observable must be the ARCHIVE and not the rc: the marker is precisely what makes "
+          "source 2 verify, so both trees exit 0 (measured), and only the payload separates them. "
+          "⚠ `no row` binds the STORE, not the cwd — the cwd here is an ENROLLED project, and it "
+          "has to be, because that is what supplies the contrast the cwd-side payload needs",
+          _r9_36.returncode == 0 and _p9_36 == _sc36.identity_snapshot(_ctxQ36)
+          and _p9_36 != _sc36.identity_snapshot(_ctxR36))
+    (_SQ36 / ms.STATE_FILE).unlink()
+
+    # ---- pin 11, the tie-break: ONE store carrying a row AND a marker
+    _alias36 = (_src36 / "alias-atlas")
+    _alias36.symlink_to(_A36, target_is_directory=True)
+    check("v0.4.36 pin 11 (PRECONDITION): the second path derives to the SAME store, so the marker "
+          "is an admitting candidate and only the ORDER can decide — a marker that failed the "
+          "round-trip would make this pin read the row for a reason that is not the ordering",
+          _sc36.resolve_store(_alias36, environ=_env36).native_memory_dir.resolve() == _SA36.resolve())
+    (_SA36 / ms.STATE_FILE).write_text(_json36.dumps({"project_path": str(_alias36)}),
+                                       encoding="utf-8")
+    _r11_36 = _rh36(_cyc36, _SA36, _U36, _env36)
+    check("v0.4.36 pin 11 (PIN): with ONE store carrying BOTH a registry row naming atlas and a "
+          "marker naming a second path to atlas, the archive carries ATLAS's identity — the row "
+          "wins over the marker, and both beat the cwd. ⚠ Its discriminating power is over FUTURE "
+          "reorders, and the label says so rather than letting it read as a witness it is not: "
+          "pre-fix it is red, but for pin 5's coarser reason (cwd's identity is stamped), not for "
+          "the ordering. Every other pin here is blind to this by construction — pin 5's store "
+          "carries only a row, pin 9's only a marker, pin 8's neither — so a one-line reorder "
+          "putting the marker ahead of the row would keep them all green while inverting 'the "
+          "first to verify wins'. It is blind to the order BETWEEN sources 2 and 3, which nothing "
+          "in the design turns on",
+          _r11_36.returncode == 0 and _id36(_U36) == _sc36.identity_snapshot(_ctxA36))
+    (_SA36 / ms.STATE_FILE).unlink()
+
+    # ---- pin 4, Arm D, plus the symlinked-store conjunct that runs the OTHER WAY
+    _r4a_36 = _rh36(_cyc36, _SA36, _U36, _env36, ["--project", str(_U36)])
+    check("v0.4.36 pin 4 (PIN): two inputs that must agree, compared nothing — `--store` for "
+          "atlas's store with `--project` naming uranus REFUSES with `is not the store for`. "
+          "Pre-fix it silently prefers one and renders a wrong masthead with the right answer in "
+          "hand. Both flags name the subject; a disagreement is the reader's slip, and the fix is "
+          "to say so rather than to pick",
+          _r4a_36.returncode == 1 and _ARM36_D in _r4a_36.stderr)
+    _r4b_36 = _rh36(_cyc36, Path(_td36) / "nope", _U36, _env36, ["--project", str(_U36)])
+    check("v0.4.36 pin 4 (PIN): a PATH fault does not wear a PAIRING fault's message. `--store "
+          "<a directory that does not exist>` would satisfy `is not the store for` — true, and "
+          "aimed at the wrong mistake, sending the reader to check a pairing when the typo is the "
+          "path. Asserting BOTH that the pairing anchor is absent and that the path fault is "
+          "named, because a message that merely differs is not yet the right one",
+          _r4b_36.returncode == 1 and _ARM36_D not in _r4b_36.stderr
+          and _ARM36_NO_PATH in _r4b_36.stderr)
+
+    # ---- pin 12, the SIBLING of 4b: the same nonexistent path, reached with the OTHER flag set.
+    #      Pin 4b alone left the defect live, because it passes `--project` — and with `--project`
+    #      the very existence test that produces the path fault was already running. Without it,
+    #      control fell all the way to Arm A, so ONE typos'd --store read two different ways
+    #      depending on a flag with nothing to do with the mistake. Measured pre-fix: rc 0, an
+    #      archive rendered, stamped with the cwd's identity — RC-5 on a typo.
+    _r12_36 = _rh36(_cyc36, Path(_td36) / "typoo-store", _U36, _env36)
+    check("v0.4.36 pin 12 (PIN): a `--store` that does not exist and that nothing derives names "
+          "the PATH fault when it is the ONLY subject flag — not a registration fault. The remedy "
+          "names both routes because both are real readings of this input: a typo'd path (check "
+          "it) and a correct path passed from the wrong cwd (pass --project, which derives the "
+          "absent store and then AGREES with it). Asserting the wrong fault ABSENT as well as the "
+          "right one present, since a message that merely differs is not yet the correct one",
+          _r12_36.returncode == 1 and _ARM36_NO_PATH in _r12_36.stderr
+          and _ARM36_A not in _r12_36.stderr)
+    _slink36 = Path(_td36) / "storelink"
+    _slink36.symlink_to(_SA36, target_is_directory=True)
+    _r4c_36 = _rh36(_cyc36, _slink36, _A36, _env36, ["--project", str(_A36)])
+    check("v0.4.36 pin 4 (GUARD — green on both trees by design, and folded into the exit-1 family "
+          "it would encode the defect as expected behaviour): a SYMLINKED store path paired with "
+          "its OWN project is a LEGITIMATE pair and must render. This is the conjunct that runs "
+          "the other way — a one-sided compare gets it wrong by REFUSING a correct invocation — "
+          "so it asserts rc == 0 and a rendered archive, not a refusal. It is also the conjunct "
+          "that goes red when the predicate is tightened past the design",
+          _r4c_36.returncode == 0 and _id36(_A36) == _sc36.identity_snapshot(_ctxA36))
+
+    # ---- pin 3, Arm C: a FILE that cannot be read. A DIRECTORY is the trap.
+    _db36 = cp.db_path(_ctxA36)
+    _real36 = _db36.read_bytes()
+    # The mode is captured, not assumed. `_restore36` cannot hardcode one: the directory shape
+    # below DESTROYS the file and `write_bytes` re-creates it under the process umask — measured
+    # at 0002 on this machine, so `0o664` — and the original was written by SQLite, whose mode is
+    # nobody's guess here. A literal would make the docstring's "exactly as found" false on the
+    # one shape that re-creates rather than rewrites.
+    _real36_mode = _db36.stat().st_mode & 0o777
+
+    def _restore36():
+        """Leave the SHARED registry exactly as found — on EVERY exit, a raise included.
+
+        `_db36` is the same file pins 10, 18 and 19 resolve against (`_sc36.resolve_store(...,
+        environ=_env36)`). Without this, a raise anywhere in the sequence below — a render timing
+        out, a classification call faulting — would run the remaining checks of this block against
+        a corrupt-or-absent registry and fail them for a reason unrelated to what they name, masking
+        the real failure. The sibling fixtures in this block already restore inside a `finally`.
+
+        Idempotent across all three shapes it has to undo, which are three DIFFERENT states:
+        corrupt bytes (a file to rewrite), mode 000 (a file that cannot be written until the mode
+        is lifted), and a directory (no file at all — `rmdir` first).
+        """
+        if _db36.is_dir():
+            _db36.rmdir()
+        elif _db36.exists():
+            _os36.chmod(_db36, 0o644)   # mode 000 makes the write below EACCES even for the owner
+        _db36.write_bytes(_real36)
+        _os36.chmod(_db36, _real36_mode)   # AFTER the write, in EVERY branch, for the reason above
+
+    try:
+        _db36.write_bytes(b"not a sqlite database at all\x00\x01\x02")
+        check("v0.4.36 pin 3 (PRECONDITION — and the spec's own requirement that the pin assert the "
+              "CLASSIFICATION it produced, not only the message): the fixture's registry really does "
+              "classify `corrupt`. Garbage BYTES and not a missing file, because `absent` routes "
+              "elsewhere by design and would make this pin assert the wrong arm",
+              cp.classify_registry(_db36)[0] == "corrupt")
+        _r3a_36 = _rh36(_cyc36, _SA36, _A36, _env36)
+        check("v0.4.36 pin 3 (PIN): a corrupt registry is Arm C and NEVER Arm A. The two must not "
+              "collide: `iter_registered_projects` swallows `OperationalError -> []`, and reusing that "
+              "swallow would report a registry we could not READ as 'this store belongs to no "
+              "registered project' — sending the reader to re-enroll a project that is already "
+              "enrolled. Asserting the absence of the OTHER anchor, because the defect being closed is "
+              "a fault and a verdict sharing one message",
+              _r3a_36.returncode == 1 and _ARM36_C in _r3a_36.stderr
+              and _ARM36_A not in _r3a_36.stderr)
+        # The duplication finding, closed by measurement rather than by the shared call:
+        # `_registry_state_line` and Arm C now call ONE formatter, and this reads the string back
+        # OUT of each surface — the doctor's line and the refusal's stderr — because a claim about
+        # what a CONSUMER shows cannot be settled from the producer's return value. A shared helper
+        # whose two callers pass it different INPUTS still describes one fault twice, which is the
+        # defect the extraction exists to close and is invisible to any check on the helper alone.
+        # Measured while building this: the first draft of the pin compared against
+        # `identity_snapshot` and went red — correctly. That field is a bare TOKEN on purpose (the
+        # template branches on it: `!== "healthy"`, `['healthy','absent'].indexOf(...) < 0`, and
+        # `CycleRecord` types it as an enum), so a sentence there would break a comparison rather
+        # than inform a reader. THREE surfaces, TWO kinds of value, and the column decides which.
+        _doc36 = [ln.split(":", 1)[1].strip() for ln in
+                  _sc36.doctor_report(_sc36.resolve_store(_A36, environ=_env36)).splitlines()
+                  if ln.startswith("registry_state:")]
+        check("v0.4.36 pin 25 (PIN — RED on the base tree, measured: there is no Arm C there to "
+              "compare against): the SAME fault reaches the reader in ONE sentence whichever of the "
+              "two human surfaces prints it — the parenthetical in Arm C's refusal and the "
+              "`registry_state` line of `cm doctor` are the same string for the same "
+              "classification. The second conjunct is the half that keeps them from agreeing on "
+              "something useless: the value must carry the CLASSIFIER's own words as well as the "
+              "state, so `corrupt: file is not a database` and not a bare `corrupt` — agreement on "
+              "a bare token would satisfy the equality while leaving the refusing render with no "
+              "diagnosis at all, which is the state the extraction was meant to end",
+              len(_doc36) == 1 and _doc36[0].startswith("corrupt")
+              and _doc36[0] != "corrupt" and f"({_doc36[0]})" in _r3a_36.stderr)
+        _db36.write_bytes(_real36)
+        # ⚠ ROOT GUARD, the suite's own precedent (`geteuid() != 0`, the 11308-11316 shape):
+        # root bypasses DAC, so chmod-000 does not deny anything, the PRECONDITION below is FALSE,
+        # and the PIN under it would then run against a fully READABLE registry and fail naming a
+        # cause that is not the cause. Skipped where it cannot hold, rather than asserted where it
+        # does not — the shape belongs to the CI matrix's non-root runners, which is exactly why it
+        # would otherwise go unnoticed until someone ran the gate in a root container.
+        if _os36.geteuid() != 0:
+            _os36.chmod(_db36, 0o000)
+            check("v0.4.36 pin 3 (PRECONDITION): chmod-000 classifies `permission-denied` — a second "
+                  "unreadable-file shape, so the arm is not resting on one corruption mode",
+                  cp.classify_registry(_db36)[0] == "permission-denied")
+            _r3b_36 = _rh36(_cyc36, _SA36, _A36, _env36)
+            check("v0.4.36 pin 3 (PIN): an unreadable registry is Arm C on both shapes",
+                  _r3b_36.returncode == 1 and _ARM36_C in _r3b_36.stderr
+                  and _ARM36_A not in _r3b_36.stderr)
+        _os36.chmod(_db36, 0o644)
+        _db36.unlink(); _db36.mkdir()
+        check("v0.4.36 pin 3 (GUARD — the under-specified reading, pinned so a later reader cannot "
+              "re-derive it wrongly): a DIRECTORY at the db path classifies `absent`, because the "
+              "first check is `path.is_file()` and a directory is not a file. The natural reading of "
+              "'present but unreadable' routes to ARM A's shape, not arm C's — which is why the "
+              "fixture above is a file",
+              cp.classify_registry(_db36)[0] == "absent")
+        _r3c_36 = _rh36(_cyc36, _SA36, _A36, _env36)
+        check("v0.4.36 pin 3 (GUARD): ...and therefore it does NOT produce Arm C's message — it falls "
+              "through to sources 2/3 and renders, which is the correct behaviour for an absent "
+              "registry (`assert_mutation_allowed` returns early on `(\"absent\", \"healthy\")`: with "
+              "no file there are no rows, so 'no registered project names this store' is VACUOUSLY "
+              "true and belongs to Arm A)",
+              _r3c_36.returncode == 0 and _ARM36_C not in _r3c_36.stderr)
+    finally:
+        _restore36()
+    # ⚠ `_restore36`'s docstring promises the registry is left "exactly as found — on EVERY exit,
+    # a raise included". Read the file back rather than trusting it: a promise about the tree that
+    # nothing measures is the defect class this whole release is about, and the four lines above
+    # are the branch's own new prose. The three corruption shapes leave three different states
+    # (`corrupt` bytes, mode 000, a DIRECTORY), so a restore that handles the first and forgets
+    # the third still reads green in every pin below — those pins would simply run against a
+    # registry their own fixtures rebuilt, and the block's later readings would be unattributable.
+    # A GUARD, not a pin, by this repo's own rule: restoring was correct before this change too.
+    check("v0.4.36 pin 3 (GUARD — restores on both trees, so it cannot pin anything this change "
+          "did; it witnesses the promise in `_restore36`'s docstring instead): every corruption "
+          "shape above is fully undone — the path is a FILE again (not a directory, not absent, "
+          "not mode 000) and carries the ORIGINAL BYTES, so pins 10/18/19 below read the registry "
+          "they were written against",
+          _db36.is_file() and not _db36.is_dir()
+          # The mode it was FOUND with, not a literal: the first draft of this line asserted
+          # `0o644` and went red on the one shape that re-creates the file, which is a fact about
+          # the process umask rather than about `_restore36`. `& 0o777`, not `stat.S_IMODE`:
+          # `_os36` is `os`, whose `stat` attribute is the FUNCTION, and the sibling blocks that
+          # spell `S_IMODE` import `stat` under its own alias.
+          and (_db36.stat().st_mode & 0o777) == _real36_mode
+          and _db36.read_bytes() == _real36)
+
+    # ---- pin 10, the redirects: the family of routes that make `resolve_store` constant. A pin
+    #      written from the predicate's enumeration inherits the predicate's blind spot, so each
+    #      instance is its own run and the third is the one the predicate's FIRST form admitted.
+    _e_ov36 = _xp_env(_home36, {"CLAUDE_PLUGIN_DATA": str(_pdat36), "CM_NO_OPEN": "1",
+                                "CM_STORE_OVERRIDE": str(_SQ36)})
+    _ctx_ov36 = _sc36.resolve_store(_Q36, environ=_e_ov36)
+    check("v0.4.36 pin 10 (PRECONDITION): CM_STORE_OVERRIDE round-trips — the candidate's store IS "
+          "the store we render — yet its `resolution_source` is `store-override`, so "
+          "`project_derived` is false and nothing is admitted. The round-trip is what makes this "
+          "the pin that fails when the SECOND conjunct is dropped while the first still passes, "
+          "which is precisely the mutation that reintroduces RC-5",
+          _ctx_ov36.native_memory_dir.resolve() == _SQ36.resolve()
+          and _ctx_ov36.resolution_source == "store-override")
+    _r10a_36 = _rh36(_cyc36, _SQ36, _U36, _e_ov36)
+    check("v0.4.36 pin 10 (PIN): under CM_STORE_OVERRIDE, pre-fix stamps the unrelated cwd's "
+          "identity and exits 0; post-fix the round-trip SUCCEEDS while `project_derived` fails, "
+          "so nothing is admitted and it refuses on Arm A",
+          _r10a_36.returncode == 1 and _ARM36_A in _r10a_36.stderr)
+    _e_slot36 = _xp_env(_home36, {"CLAUDE_PLUGIN_DATA": str(_pdat36), "CM_NO_OPEN": "1",
+                                  "CLAUDE_CODE_PROJECT_DIR_NAME": "shared-slot"})
+    _SS36 = _sc36.resolve_store(_Q36, environ=_e_slot36).native_memory_dir
+    _SS36.mkdir(parents=True, exist_ok=True)
+    (_SS36 / ".consolidation-log.jsonl").write_text("", encoding="utf-8")
+    check("v0.4.36 pin 10 (PRECONDITION): CLAUDE_CODE_PROJECT_DIR_NAME is CONSTANT across roots — "
+          "its constancy is the least obvious of the three, because the value reads as a slot while "
+          "`slot_env or slug_for(root)` discards the root entirely. This is the instance the "
+          "predicate's FIRST form admitted, so a pin carrying only the other two would stay green "
+          "over exactly the hole the whitelist was written to close",
+          _sc36.resolve_store(_A36, environ=_e_slot36).native_memory_dir == _SS36
+          and _sc36.resolve_store(_Q36, environ=_e_slot36).native_memory_dir == _SS36)
+    _r10b_36 = _rh36(_cyc36, _SS36, _U36, _e_slot36)
+    check("v0.4.36 pin 10 (PIN): the shared-slot route refuses on Arm A too — a redirect is not a "
+          "way to name a subject",
+          _r10b_36.returncode == 1 and _ARM36_A in _r10b_36.stderr)
+    _cfg36 = _sc36.config_root(_env36)
+    _cfg36.mkdir(parents=True, exist_ok=True)
+    _set36 = _cfg36 / "settings.json"
+    _set36.write_text(_json36.dumps({"autoMemoryDirectory": str(_SQ36)}), encoding="utf-8")
+    check("v0.4.36 pin 10 (PRECONDITION): a USER-scope autoMemoryDirectory redirects as well, "
+          "arriving through the settings route rather than the environment — the two instances "
+          "this spec names, plus the slot above, are three PROVEN routes and each is its own run",
+          _sc36.resolve_store(_Q36, environ=_env36).native_memory_dir.resolve() == _SQ36.resolve()
+          and _sc36.resolve_store(_Q36, environ=_env36).resolution_source == "autoMemoryDirectory")
+    _r10c_36 = _rh36(_cyc36, _SQ36, _U36, _env36)
+    check("v0.4.36 pin 10 (PIN): the user-scope settings redirect refuses on Arm A",
+          _r10c_36.returncode == 1 and _ARM36_A in _r10c_36.stderr)
+    _set36.unlink()
+    (_Q36 / ".claude").mkdir(exist_ok=True)
+    (_Q36 / ".claude" / "settings.local.json").write_text(
+        _json36.dumps({"autoMemoryDirectory": str(_SQ36)}), encoding="utf-8")
+    _r10d_36 = _rh36(_cyc36, _SQ36, _Q36, _env36)
+    check("v0.4.36 pin 10 (GUARD, and the spec forbids wording it as a pin): a PROJECT-scoped, "
+          "CONTAINED autoMemoryDirectory must still RECOVER. The tempting positive phrasing "
+          "('...must still recover') discriminates NOTHING, because recovery means exit 0 with an "
+          "archive and pre-fix also exits 0 with an archive — stamped with the wrong identity. It "
+          "is a guard against OVER-tightening, and it is the half that cannot detect over-tightening "
+          "at all from the other side: with an outside cwd the round-trip fails first, so that one "
+          "refuses whether the predicate is too tight or exactly right",
+          _r10d_36.returncode == 0
+          and _id36(_Q36) == _sc36.identity_snapshot(_sc36.resolve_store(_Q36, environ=_env36)))
+
+    # ---- pin 18, the truncated install: ONE rule, THREE dependencies, and until now no check.
+    #      The rule is stated in the source beside `_load_template` — a truncated install "must
+    #      degrade with the same one-line message, never a traceback" — and three shipping-class
+    #      files live in the same directory under it. Pinning it only where it broke would be
+    #      pinning by enumeration; the cells are driven together, and each is LABELLED by its own
+    #      pre-fix reading rather than by the label the group would like to carry.
+    _trunc18 = Path(_td36) / "trunc"; _trunc18.mkdir()
+    _shutil36.copytree(ROOT / "plugins" / "consolidate-memory" / "scripts",
+                       _trunc18 / "scripts")   # self-contained: template, bundles and siblings
+    _store18 = Path(_td36) / "truncstore"; _store18.mkdir()
+
+    def _dropped18(name):
+        """render_html from a copy of scripts/ with exactly ONE shipping-class file removed."""
+        _p18 = _trunc18 / "scripts" / name
+        _bak18 = _p18.read_bytes()
+        _p18.unlink()
+        try:
+            return _sp36.run(
+                [sys.executable, str(_trunc18 / "scripts" / "render_html.py"), str(_cyc36),
+                 "--store", str(_store18),
+                 "--out", str(Path(_td36) / f"_trunc18_{name.replace('.', '_')}.html"),
+                 "--no-open"],
+                capture_output=True, text=True, timeout=120, env=_env36, cwd=str(_td36))
+        finally:
+            _p18.write_bytes(_bak18)
+
+    _tpl18 = _dropped18("dashboard.template.html")
+    _njs18 = _dropped18("dashboard.network.js")
+    _sjs18 = _dropped18("dashboard.sections.js")
+    _scx18 = _dropped18("store_context.py")
+
+    def _one_line18(r):
+        return (r.returncode == 1 and "Traceback" not in r.stderr
+                and len([_l for _l in r.stderr.splitlines() if _l.strip()]) == 1
+                and "is the plugin install complete?" in r.stderr)
+
+    check("v0.4.36 pin 18 (GUARD, measured green on BOTH trees): the bundled template and both JS "
+          "modules already degraded with one line, and they stay that way. A GUARD by this repo's "
+          "own rule — none of the three cells can fail on pre-fix code, so none of them pins what "
+          "this change did — and they are here because the rule is ONE rule for THREE "
+          "dependencies: an assertion pinned only where it broke is pinned by an enumeration the "
+          "author wrote, which is the trap the pin block above names",
+          _one_line18(_tpl18) and _one_line18(_njs18) and _one_line18(_sjs18))
+    check("v0.4.36 pin 18 (PIN): `store_context` — the fourth shipping-class dependency, same "
+          "directory, same rule — did not. THREE states, measured, which is why this one "
+          "discriminates where its siblings cannot: on the BASE tree the removal renders at rc=0 "
+          "with EMPTY stderr (the blanket `except Exception: pass` turned a fault into an absence "
+          "and shipped an empty masthead); with that catch removed the import raised an uncaught "
+          "`ModuleNotFoundError` — a traceback, the exact thing the rule forbids; and post-repair "
+          "it degrades with the siblings' own one line. Only ImportError is caught, for the reason "
+          "`_load_template`'s ValueError arm already records: a fault INSIDE store_context is not "
+          "a truncated install and must not go to the reader wearing that remedy",
+          _one_line18(_scx18))
+
+    # ---- pin 19, the MANAGED-POLICY route: the settings family's fourth and most permissive scope.
+    #      `_merge_settings` applies four scopes; pin 10 drives three of them. `policy` is the one
+    #      whose own docstring says it MAY name an explicit absolute dir — i.e. precisely the
+    #      constant the second conjunct exists to refuse — and it was driven by nothing.
+    _P19 = (_src36 / "policy-subject").resolve()
+    _P19.mkdir()
+    _SOLD19 = _sc36.resolve_store(_P19, environ=_env36).native_memory_dir
+    _SOLD19.mkdir(parents=True, exist_ok=True)
+    # ⚠ The registry path is captured ONCE, here, and both the enrolment below and `_no_rows19`
+    # read it from this binding. The enrolment happens BEFORE the redirect and the precondition
+    # reads back AFTER it, so resolving the path twice would make "the registry we wrote" and
+    # "the registry we read" the same file only by an argument about which inputs `db_path`
+    # consults — `plugin_data_dir`, not the native memory dir, so the redirect does not move it.
+    # That argument is true and it is still the wrong thing to depend on: this pin's whole
+    # subject is a value that changed meaning between two readings of the same name.
+    _PDB19 = cp.db_path(_sc36.resolve_store(_P19, environ=_env36))
+    _c19 = cp.connect(_PDB19)
+    try:
+        cp.enroll_project(_c19, _sc36.resolve_store(_P19, environ=_env36), "personal")
+        _c19.commit()
+    finally:
+        _c19.close()
+    _SNEW19 = (_src36 / "redirected-store").resolve()
+    _SNEW19.mkdir()
+    _cfg36.mkdir(parents=True, exist_ok=True)
+    _managed19 = _cfg36 / "managed-settings.json"
+    _managed19.write_text(_json36.dumps({"autoMemoryDirectory": str(_SNEW19)}), encoding="utf-8")
+
+    def _no_rows19() -> bool:
+        """True iff NO registry row names the store this pin renders — source 1's precondition.
+
+        Read OUT of the registry rather than described in a comment, because "no row stores it"
+        is a claim about the FIXTURE, and the fixture is the one thing a pin's own prose cannot
+        be trusted to describe: the first draft of this pin carried that sentence while the row
+        it needed was absent for a different reason, rendered the CORRECT identity on the
+        UNMUTATED tree, and would have pinned nothing.
+        """
+        rows_for_store = getattr(cp, "rows_for_store", None)
+        if rows_for_store is None:
+            # The same shape as the `mem_dir_source` conjunct below, guarding a structural certainty
+            # rather than a measured one — and the difference is worth stating, because the sibling
+            # CAN say "measured" and this one cannot. Measured on the base tree: a bare
+            # `cp.rows_for_store` raises `AttributeError`, and that cell's precondition is red there
+            # because `mem_dir_source` fails FIRST. So this branch is unreachable on the base tree
+            # exactly as the chain is written today, and it is here so that the helper does not
+            # depend on the ORDER of an `and`-chain for its safety — the sibling's hazard was
+            # measured only because nothing short-circuited ahead of it, which is a property of the
+            # fixture and not a promise anyone made.
+            # Not a match is the honest outcome — a tree with no way to make this claim has not
+            # made it, and this check is already counted as red-on-base for that reason.
+            return False
+        _conn19 = cp.connect(_PDB19)
+        try:
+            return not rows_for_store(_conn19, _SNEW19)
+        finally:
+            _conn19.close()
+
+    try:
+        _room19 = _sc36.resolve_store(_U36, environ=_env36)
+        _subj19 = _sc36.resolve_store(_P19, environ=_env36)
+        check("v0.4.36 pin 19 (PRECONDITION — RED on the base tree, and NOT a pin for that reason: "
+              "it asserts the FIXTURE, and it fails there because `mem_dir_source` — a field this "
+              "change introduces, and the FIRST conjunct that can fail — is absent, so a base-tree "
+              "reading counts it as red without it pinning any behaviour. Stated so a later reader "
+              "totalling the two-tree split does not miscount "
+              "any behaviour. Stated so a later reader totalling the two-tree split does not miscount "
+              "it as one of the pins): a managed-policy autoMemoryDirectory is CONSTANT — "
+              "the room, the subject and every other directory resolve onto ONE store — while the "
+              "subject is ENROLLED on a row naming its PRE-redirect store, so no row STORES the "
+              "store we render and source 1 cannot fire. Both halves are the fixture, not colour: "
+              "with a row naming the rendered store, source 1 admits it ungated and "
+              "`_project_derived` is never consulted at all — measured, and it is what exposed the "
+              "first draft of this pin, which rendered the CORRECT identity on the UNMUTATED tree "
+              "and would have pinned nothing",
+              _room19.native_memory_dir.resolve() == _SNEW19.resolve()
+              and _subj19.native_memory_dir.resolve() == _SNEW19.resolve()
+              # `getattr`, not attribute access: `mem_dir_source` arrives WITH this change, so on
+              # the base tree an access raises `AttributeError` and takes the WHOLE SUITE down at
+              # the precondition — measured, and it costs more than the pin: the abort swallowed
+              # every reading after it, including this pin's own. A precondition's job is to
+              # report that its fixture is not what it needs, never to crash the harness.
+              and getattr(_room19, "mem_dir_source", None) == "policy"
+              # The registry half of the precondition lives in its own function because it opens
+              # and closes a handle, which an `and`-chain cannot do without leaking it for the
+              # remainder of the suite. `_conn36`, `_conn36w`, `_conn36x` and `_c19` all close in
+              # a `finally` too; one leak is not a crash, but this fixture family is the template
+              # the next pins copy.
+              and _no_rows19())
+        _r19 = _rh36(_cyc36, _SNEW19, _U36, _env36)
+        check("v0.4.36 pin 19 (PIN): the managed-policy redirect refuses on Arm A — a redirect is "
+              "not a way to name a subject. Measured on BOTH trees and against a mutation of the "
+              "predicate: pre-fix the render exits 0; post-fix it refuses (`--store ... belongs to "
+              "no registered project`); and widening `_project_derived` to admit "
+              "`mem_dir_source == \"policy\"` leaves the ENTIRE SUITE GREEN — 2146 passed, 0 "
+              "failed — while this very cell renders again at rc=0 wearing the ROOM's identity "
+              "(`domain_id: unknown`, `enrolled: false`, `cross_project_allowed: false`) on a "
+              "store whose own project is enrolled `personal`. That is RC-5 re-opened by a "
+              "one-line edit, and it is why the INSTANCE is the pin rather than a table over the "
+              "predicate's constant: a predicate edited to admit a NAME is caught only by a check "
+              "that DRIVES that name, since the `return False` default below every branch is "
+              "reached by names the author never listed and by nothing else. The constant-level "
+              "slip (adding \"policy\" to PROJECT_LOCAL_SCOPES) IS red — but COLLATERALLY, and the "
+              "distinction is the point: its one failure is `review-1`'s containment check, which "
+              "reads the OTHER site that constant feeds (`store_context`'s ambiguity guard, where "
+              "the widened scope also drags the policy store through a containment test it should "
+              "never have entered), not this predicate",
+              _r19.returncode == 1 and _ARM36_A in _r19.stderr)
+    finally:
+        _managed19.unlink()
+
+
+# ---- pins 20-23, the RESOLVE-RAISE round — a REVIEWER's findings, not a self-review's, and the
+#      first round this release let one in. Three ways a path can be UNUSABLE, at the sites the RC-5
+#      repair did not reach: `Path.resolve()` raises `RuntimeError` on a symlink loop (3.8-3.12 — on
+#      3.13 it does NOT raise and returns the loop path itself, whose `exists()` is False), `ValueError`
+#      on a NUL (every version), and `FileNotFoundError` on a cwd deleted under the process. The
+#      blanket `except Exception: pass` that used to sit where identity is resolved turned all three
+#      into a silent EMPTY identity; removing it converted that into an uncaught traceback at exactly
+#      the sites no guard covered. So every cell below is a REGRESSION this change introduced: each is
+#      measured RED on the base tree, at rc=0 or as a traceback, and each asserts the READER-VISIBLE
+#      outcome rather than the route, because the route is version-dependent.
+with _tf36.TemporaryDirectory() as _td36n:
+    _home36n = Path(_td36n) / "home"; _home36n.mkdir()
+    (_home36n / ".claude").mkdir()
+    _pdat36n = Path(_td36n) / "pdata"; _pdat36n.mkdir()
+    _env36n = _xp_env(_home36n, {"CLAUDE_PLUGIN_DATA": str(_pdat36n), "CM_NO_OPEN": "1"})
+    _src36n = Path(_td36n) / "src"; _src36n.mkdir()
+
+    def _rh36n(cycle, extra, cwd, env, out, inherit=False):
+        """`render_html` driven with NO argument of this helper's own choice.
+
+        `_rh36` always passes `--store`, so it cannot drive the arms where the FLAG is the
+        variable — and three of the four reviewer cells are exactly those. `out` is explicit
+        because two cells run from a working directory that has been DELETED, where an out path
+        under `cwd` could not be written at all.
+        `inherit` spawns the child in THIS process's cwd, which is what the deleted-cwd cells need:
+        the raise must come from the child's own `Path.cwd()`, not from a path passed to it.
+        """
+        return _sp36.run(
+            [sys.executable,
+             str(ROOT / "plugins" / "consolidate-memory" / "scripts" / "render_html.py"),
+             str(cycle), *extra, "--out", str(out), "--no-open"],
+            capture_output=True, text=True, timeout=120, env=env,
+            cwd=(None if inherit else str(cwd)))
+
+    def _one_line36n(r):
+        """The house refusal shape: exit 1, no traceback, exactly ONE non-blank stderr line.
+
+        The count is the load-bearing half, not decoration: every refusal in this module is one
+        line by design, and the defect being closed is a failure that arrived as a TRACEBACK — a
+        check matching only the message would pass on a crash that happened to print it.
+        """
+        return (r.returncode == 1 and "Traceback" not in r.stderr
+                and len([_l for _l in r.stderr.splitlines() if _l.strip()]) == 1)
+
+    def _id36n(out):
+        """The rendered `identity` payload, or None when nothing was written.
+
+        The observable for the cells below whose exit code MOVES NOTHING: `--store` unset, so the
+        cwd is the subject and stays renderable — the fault lands in the PAYLOAD. Measured on the
+        base tree, that payload is `{}` — an empty masthead shipping at rc=0 — which is `fault ≡
+        absence` caught in the act, and it is invisible to every assertion on `returncode`.
+        """
+        try:
+            _h36n = Path(out).read_text(encoding="utf-8")
+            return _json36.loads(
+                _h36n.split('id="cm-data">', 1)[1].split("</script>", 1)[0]).get("identity")
+        except Exception:
+            return None
+
+    _ck36n = Path(_td36n) / "cycle.json"
+    _ck36n.write_text(_json36.dumps({"project": "p",
+                                     "marker": {"commit": "c", "timestamp": "t"}}), encoding="utf-8")
+    _PJ36n = (_src36n / "nunki").resolve(); _PJ36n.mkdir()
+    _ST36n = (_src36n / "store").resolve(); _ST36n.mkdir()
+    _CWD36n = (_src36n / "cwd").resolve(); _CWD36n.mkdir()
+    _O36n = _src36n / "_out36n"; _O36n.mkdir()
+    _SET36n = _home36n / ".claude" / "settings.json"
+
+    # ---- pin 20: a SYMLINK LOOP, the one fault whose exception CLASS is version-dependent.
+    _loopdir36n = _src36n / "loopdir"; _loopdir36n.mkdir()
+    _os36.symlink("loop", _loopdir36n / "loop")
+    _loop36n = _loopdir36n / "loop"
+    _r20a = _rh36n(_ck36n, ["--store", str(_loop36n)], _CWD36n, _env36n, _O36n / "s1.html")
+    check("v0.4.36 pin 20 (PIN — RED on the base tree, measured): a --store that is a SYMLINK LOOP "
+          "refuses on the path arm, in one line, instead of exiting 0. Pre-fix it exits 0 wearing "
+          "the ROOM's identity — measured, not inferred: `domain_id: unknown`, `enrolled: false`, "
+          "the cwd's own snapshot on an archive whose store is a path that cannot be resolved at "
+          "all. That is RC-5's own signature rather than a nearby failure, and it is the worse of "
+          "the two shapes: an empty masthead is visibly broken, while a plausible wrong one is not. "
+          "The TRACEBACK this pin also asserts against is the half this change introduced — the "
+          "recovery machinery is what first resolves `--store`, so the loop reaches a `resolve()` "
+          "only once the fix exists. The assertion is on the OUTCOME and not the route on purpose: "
+          "`RuntimeError` is the class on 3.8-3.12 where 3.13 does not raise at all, returning the "
+          "loop path itself, whose `exists()` is False — and that arrives at this same line through "
+          "the existence test. One observable, two version-specific paths to it, so the pin cannot "
+          "go red merely because CI runs a different interpreter",
+          _one_line36n(_r20a) and _ARM36_NO_PATH in _r20a.stderr)
+    _r20b = _rh36n(_ck36n, ["--store", str(_loop36n), "--project", str(_PJ36n)],
+                   _CWD36n, _env36n, _O36n / "s2.html")
+    check("v0.4.36 pin 20 (PIN — RED on the base tree, measured): and the SAME loop under "
+          "`--store --project` refuses too, which is a different site: with both flags the store is "
+          "canonicalized for the AGREEMENT check rather than for the candidate loop, so a repair at "
+          "one leaves the other exactly as it was — the shape of this whole round. Measured on the "
+          "candidate-loop site alone, the two-flag cell still exits 1 with a traceback",
+          _one_line36n(_r20b) and _ARM36_NO_PATH in _r20b.stderr)
+
+    # ---- pin 21: a settings `autoMemoryDirectory` carrying a NUL. THREE flag shapes, because the
+    #      fault surfaces on a different arm in each — and one of the three moves only the payload.
+    _SET36n.write_text(_json36.dumps({"autoMemoryDirectory": "/tmp/x" + _NUL36 + "y"}),
+                       encoding="utf-8")
+    _r21a = _rh36n(_ck36n, ["--store", str(_ST36n)], _CWD36n, _env36n, _O36n / "n1.html")
+    check("v0.4.36 pin 21 (PIN — RED on the base tree, measured, and the pin that forced the FIFTH "
+          "refusal arm): a NUL in the configured store path refuses on the ENV arm and names the "
+          "setting, rather than borrowing Arm A's verdict. Pre-fix it renders rc=0. The arm exists "
+          "because Arm A's sentence — 'this store belongs to no registered project' — is a claim "
+          "about the REGISTRY, and here no source could be tested at all: the path is unusable "
+          "before any of the three is consulted. A verdict that was never reached is worse than a "
+          "refusal, because it also hands over the WRONG REMEDY: `pass --project` faults identically "
+          "while the fault is a settings value. Two faults must not share one message",
+          _one_line36n(_r21a) and _ARM36_ENV in _r21a.stderr and _REMEDY36_ENV in _r21a.stderr
+          and _ARM36_A not in _r21a.stderr)
+    _r21b = _rh36n(_ck36n, ["--store", str(_ST36n), "--project", str(_PJ36n)],
+                   _CWD36n, _env36n, _O36n / "n2.html")
+    check("v0.4.36 pin 21 (PIN — RED on the base tree, measured): the two-flag shape refuses on the "
+          "ENV arm as well, and its message names `--project` rather than `--store` because THAT is "
+          "the flag whose resolution faulted. The arm is chosen by which path was being unwrapped, "
+          "not by a fixed name — so this cell and the one above are two readings of one rule, not "
+          "one reading twice",
+          _one_line36n(_r21b) and _ARM36_ENV in _r21b.stderr and _REMEDY36_ENV in _r21b.stderr
+          and "--project" in _r21b.stderr)
+    _r21c = _rh36n(_ck36n, [], _CWD36n, _env36n, _O36n / "n3.html")
+    _id21c_nul = _id36n(_O36n / "n3.html")
+    _SET36n.unlink()
+    _r21d = _rh36n(_ck36n, [], _CWD36n, _env36n, _O36n / "n4.html")
+    _id21d_clean = _id36n(_O36n / "n4.html")
+    check("v0.4.36 pin 21 (PIN — RED on the base tree, and the ONLY cell in this block whose exit "
+          "code MOVES NOTHING): with NO flags the cwd is the subject and the render exits 0 on BOTH "
+          "trees, so the discriminator is the PAYLOAD. Measured: pre-fix this cell renders "
+          "`identity: {}` — an archive shipping at rc=0 with an EMPTY masthead — where the same cell "
+          "with the settings file REMOVED carries the full identity. So the assertion is that "
+          "differential: the unusable settings value must not change one word of what the archive "
+          "says about its subject. ⚠ The `not in (None, {})` conjunct is what keeps this from being "
+          "green on the tree it is meant to indict: two EMPTY payloads are equal to each other, so "
+          "the differential alone is satisfied by the very defect it names. Removing the suspect "
+          "input is the control that makes the empty dict the fault's work rather than the "
+          "fixture's — and it is measured, in both directions, on both trees",
+          _r21c.returncode == 0 and _r21d.returncode == 0
+          and _id21c_nul not in (None, {})
+          and _id21c_nul == _id21d_clean)
+
+    # ---- pin 22: a working directory DELETED under the running process.
+    _gone36n = _src36n / "gone"; _gone36n.mkdir()
+    _here36n = _os36.getcwd()
+    try:
+        _os36.chdir(_gone36n)
+        _shutil36.rmtree(_gone36n)
+        _r22a = _rh36n(_ck36n, ["--store", str(_ST36n)], None, _env36n, _O36n / "c1.html",
+                       inherit=True)
+        _r22b = _rh36n(_ck36n, [], None, _env36n, _O36n / "c2.html", inherit=True)
+    finally:
+        _os36.chdir(_here36n)
+    check("v0.4.36 pin 22 (PIN — RED on the base tree, measured): a DELETED working directory is not "
+          "fatal when `--store` names the subject. It refuses — Arm A, because the room cannot be "
+          "read and nothing else derives the store — and it refuses in ONE LINE instead of tracing "
+          "back through `Path.cwd()`. Measured pre-fix: rc=0 with `identity: {}`, an archive that "
+          "ships with an EMPTY masthead — `fault ≡ absence` in its plainest form, and the case where "
+          "the swallow really did produce the empty dict rather than the room's value",
+          _one_line36n(_r22a) and _ARM36_A in _r22a.stderr)
+    check("v0.4.36 pin 22 (PIN — RED on the base tree, measured): with NO flags the deleted cwd IS "
+          "the subject, so this is not a missing identity but a missing ROOM, and it says so — "
+          "naming the working directory rather than reporting that some store belongs to no "
+          "project. The two cells above and this one are three different sentences for three "
+          "different faults, which is the rule the fifth arm was added under",
+          _one_line36n(_r22b) and _ARM36_CWD in _r22b.stderr)
+
+    # ---- pin 23: a TRUNCATED plugin install, driven through `--project`. ⚠ The `--store` half of
+    #      this rule is ALREADY pin 18's `_scx18` cell — same removal, same one-line expectation —
+    #      so it is deliberately NOT repeated here: a second copy of one claim is the defect class
+    #      v0.4.32 shipped a release about, and a reader totalling reds would double-count it. Pin 18
+    #      owns the flag that already worked; this one owns the flag that did not.
+    _work36n = Path(_td36n) / "work"
+    _shutil36.copytree(ROOT / "plugins" / "consolidate-memory" / "scripts", _work36n / "scripts")
+    (_work36n / "scripts" / "store_context.py").unlink()
+    _r23 = _sp36.run(
+        [sys.executable, str(_work36n / "scripts" / "render_html.py"), str(_ck36n),
+         "--project", str(_PJ36n), "--out", str(_O36n / "p1.html"), "--no-open"],
+        capture_output=True, text=True, timeout=120, env=_env36n, cwd=str(_CWD36n))
+    check("v0.4.36 pin 23 (PIN — RED on the base tree, measured as a TRACEBACK): a truncated install "
+          "driven through `--project` degrades with the module's own one line, exactly as the "
+          "`--store` arm already did. Pre-fix it did NOT: `_store_for(args.store, args.project)` ran "
+          "BEFORE the guard that catches the missing module, so the arm the shipped CLI actually "
+          "uses was the uncovered one — `cm` resolves `--project` on ALL THREE of its report "
+          "branches and `--store` on none of them, which makes this the flag a user reaches and the "
+          "one a review of the `--store` path would never have touched. Measured: base exits 1 with "
+          "an uncaught `ModuleNotFoundError`. That is why the ORDER of those two statements in "
+          "`main()` is the guard and not a style preference",
+          _one_line36n(_r23) and _ARM36_INSTALL in _r23.stderr)
+
+
+# ---- pin 24, Arm B: TWO registry rows claiming ONE store. Correct and reachable, and until this
+#      check pinned by NOTHING — the spec's own arm inventory records it as `0 files`, which is how
+#      the gap was found: by a census over the suite, not by reading the code. A reader who took the
+#      inventory at its word would have believed this arm was covered.
+with _tf36.TemporaryDirectory() as _td36b:
+    _home36b = Path(_td36b) / "home"; _home36b.mkdir()
+    _pdat36b = Path(_td36b) / "pdata"; _pdat36b.mkdir()
+    _env36b = _xp_env(_home36b, {"CLAUDE_PLUGIN_DATA": str(_pdat36b), "CM_NO_OPEN": "1"})
+    _src36b = Path(_td36b) / "src"; _src36b.mkdir()
+    _BA36 = (_src36b / "alpha").resolve(); _BA36.mkdir()
+    _BB36 = (_src36b / "beta").resolve(); _BB36.mkdir()
+    _ctxBA36 = _sc36.resolve_store(_BA36, environ=_env36b)
+    _ctxBB36 = _sc36.resolve_store(_BB36, environ=_env36b)
+    _SB36 = _ctxBA36.native_memory_dir
+    _SB36.mkdir(parents=True, exist_ok=True)
+    _conn36b = cp.connect(cp.db_path(_ctxBA36))
+    try:
+        cp.enroll_project(_conn36b, _ctxBA36, "personal")
+        cp.enroll_project(_conn36b, _ctxBB36, "personal")
+        # ⚠ Repointed BY HAND, because `upsert_project` cannot produce this state: it stores
+        # `str(ctx.native_memory_dir)`, so one row per project is the only thing an ordinary write
+        # yields. This writes what a re-pointed deployment leaves behind — two projects
+        # consolidated onto one store — and `native_memory_dir` carries no UNIQUE constraint,
+        # which is precisely why `rows_for_store` returns a LIST rather than a row.
+        _conn36b.execute("UPDATE projects SET native_memory_dir = ? WHERE project_id = ?",
+                         (str(_SB36), _ctxBB36.project_id))
+        _conn36b.commit()
+        # ⚠ Counted in SQL, NOT through `rows_for_store`. A precondition asserts the FIXTURE, so it
+        # must be evaluable on a tree that lacks the code under test — and `rows_for_store` arrives
+        # WITH this change, so calling it here would raise `AttributeError` on the base tree and
+        # abort the whole suite, swallowing every reading after it. That is the same hazard the
+        # `_no_rows19` helper guards against, and here it is REACHABLE rather than short-circuited.
+        # The matcher differs from the one the pin exercises — SQL equality on the stored string
+        # versus resolved-path comparison — and that difference is right: the two rows were written
+        # as the literal `str(_SB36)`, so equality on the stored value IS the fixture's claim.
+        _n36b = _conn36b.execute(
+            "SELECT COUNT(*) FROM projects WHERE native_memory_dir = ?",
+            (str(_SB36),)).fetchone()[0]
+    finally:
+        _conn36b.close()
+    _ck36b = Path(_td36b) / "cycle.json"
+    _ck36b.write_text(_json36.dumps({"project": "p",
+                                     "marker": {"commit": "c", "timestamp": "t"}}), encoding="utf-8")
+    check("v0.4.36 pin 24 (PRECONDITION): the registry really holds TWO rows naming the ONE store "
+          "this pin renders. A fixture that produced one row would exercise the HIT arm instead, and "
+          "the pin below would pass for a reason other than the one it names",
+          _n36b == 2)
+    _r24 = _rh36(_ck36b, _SB36, _BA36, _env36b)
+    check("v0.4.36 pin 24 (PIN — and the arm was pinned by NOTHING until this: the spec's own arm "
+          "table records `is claimed by` as `0 files`, found by a census over the suite rather than "
+          "by reading the code): two rows claiming one store REFUSES rather than taking a "
+          "first match. Note what the store is here — it is alpha's OWN store, rendered from "
+          "alpha's OWN directory, so `_project_derived` would admit it and source 3 would derive "
+          "it. It refuses anyway, because the ambiguity is about WHO and not about WHETHER: any "
+          "answer would be a choice of subject made by ROW ORDER, so the same command on another "
+          "machine could stamp the other project's name on the same archive. The remedy is the "
+          "pairing that removes the ambiguity, which is why it names `--project`",
+          _r24.returncode == 1 and _ARM36_B in _r24.stderr
+          and "2 registry rows" in _r24.stderr and "Traceback" not in _r24.stderr)
+
+
+# ---- pins 6 and 7, the unit pin and the write pin — their own fixture, because pin 7's subject
+#      must be an UNENROLLED project's store (the warn returns early on an enrolled one).
+with _tf36.TemporaryDirectory() as _td36w:
+    _home36w = Path(_td36w) / "home"; _home36w.mkdir()
+    _pdat36w = Path(_td36w) / "pdata"; _pdat36w.mkdir()
+    _env36w = _xp_env(_home36w, {"CLAUDE_PLUGIN_DATA": str(_pdat36w), "CM_NO_OPEN": "1"})
+    _src36w = Path(_td36w) / "src"; _src36w.mkdir()
+    _X36 = (_src36w / "xray").resolve()       # the subject: unenrolled, marker at its own store
+    _B36 = (_src36w / "bravo").resolve()      # the foreign cwd: unenrolled, marker of its own
+    _C36 = (_src36w / "charlie").resolve()    # an ENROLLED project, for the row pin 6 consumes
+    for _p36 in (_X36, _B36, _C36):
+        _p36.mkdir()
+        _sc36.resolve_store(_p36, environ=_env36w).native_memory_dir.mkdir(parents=True, exist_ok=True)
+    _conn36w = cp.connect(cp.db_path(_sc36.resolve_store(_X36, environ=_env36w)))
+    try:
+        cp.enroll_project(_conn36w, _sc36.resolve_store(_C36, environ=_env36w), "example")
+        _conn36w.commit()
+        _row36w = dict(_conn36w.execute(
+            "SELECT * FROM projects WHERE project_id = ?",
+            (_sc36.resolve_store(_C36, environ=_env36w).project_id,)).fetchone())
+    finally:
+        _conn36w.close()
+    _SB36 = _sc36.resolve_store(_B36, environ=_env36w).native_memory_dir
+    _SX36 = _sc36.resolve_store(_X36, environ=_env36w).native_memory_dir
+    _SC36 = _sc36.resolve_store(_C36, environ=_env36w).native_memory_dir
+    (_SX36 / ".consolidation-log.jsonl").write_text("", encoding="utf-8")
+    (_SB36 / ".consolidation-log.jsonl").write_text("", encoding="utf-8")
+    # A marker on the SUBJECT's store (source 2) and one on the cwd's, so that a one-shot flag
+    # write has somewhere to land on either side — the site is what the pin reads.
+    (_SX36 / ms.STATE_FILE).write_text(_json36.dumps({"project_path": str(_X36)}), encoding="utf-8")
+    (_SB36 / ms.STATE_FILE).write_text(_json36.dumps({"project_path": str(_B36)}), encoding="utf-8")
+
+    _tmpl36 = _sc36.resolve_store(_B36, environ=_env36w)
+    _rec36 = _sc36.store_context_from_registry(_row36w, template=_tmpl36)
+    check("v0.4.36 pin 6 (PRECONDITION): the row's root and the template's root are DIFFERENT "
+          "projects — without this the assertion below is satisfied by a fallback it is meant to "
+          "catch, and a fixture whose template happened to share the root would read green for the "
+          "wrong reason",
+          str(_sc36.resolve_store(_C36, environ=_env36w).project_root.resolve())
+          != str(_sc36.resolve_store(_B36, environ=_env36w).project_root.resolve()))
+    check("v0.4.36 pin 6 (GUARD, not a pin — it cannot fail on the pre-fix tree, and this repo's "
+          "own rule says a check added by a fix that does not flip is a regression guard): the "
+          "recovered context's `project_root` is the ROW's `current_root`, not the cwd template's. "
+          "This is the pin that catches the `iter_registered_projects` trap — that sibling omits "
+          "`current_root` and `git_common_dir`, `_col` returns `default=\"\"`, and the producer "
+          "then takes `template.project_root`, i.e. the CWD's: RC-5 re-entering through its own "
+          "repair. A future refactor is most likely to break exactly this, which is why it is "
+          "worth a check even though it witnesses no rendered defect — `display_name` appears 0 "
+          "times in the template, so there is no archive-level observable for it",
+          str(_rec36.project_root) == str(_row36w.get("current_root"))
+          and str(_rec36.project_root) != str(_tmpl36.project_root))
+
+    def _flag36(store):
+        try:
+            return bool(_json36.loads((Path(store) / ms.STATE_FILE)
+                                      .read_text(encoding="utf-8")).get("_warned_unenrolled"))
+        except Exception:
+            return None
+
+    _rec36j = Path(_td36w) / "rec.json"
+    _rec36j.write_text(_json36.dumps(
+        {"cycle_id": "p7", "commit": "c", "marker": {"commit": "c", "timestamp": "t"},
+         "project": "p", "session": "s",
+         "verification": {"confirmed": 0, "corrected": 0, "unverifiable": 0, "method": "inline"},
+         "rigor": {"phase": "final", "applied": "LIGHT", "prune_pressure": False},
+         "scope": {"git_commits": 0, "session_candidates": 0, "memories_reviewed": 0}}),
+        encoding="utf-8")
+    _cyc36w = Path(_td36w) / "cycle.json"
+    _cyc36w.write_text(_json36.dumps({"project": "p",
+                                      "marker": {"commit": "c", "timestamp": "t"}}), encoding="utf-8")
+
+    _r7a_36 = _rh36(_cyc36w, _SX36, _B36, _env36w)          # ARCHIVE site
+    check("v0.4.36 pin 7 (PIN, site 1 of 2 — rendered from an unrelated cwd): the archive's "
+          "`--store` SUBJECT receives the one-shot `_warned_unenrolled` flag",
+          _r7a_36.returncode == 0 and _flag36(_SX36) is True)
+    check("v0.4.36 pin 7 (PIN, site 1 of 2): and the CWD's project does NOT. This is the half "
+          "that made RC-5c a WRITE and not a display: the flag is a ONE-SHOT gate, so writing it "
+          "into the wrong project's state file silently suppresses that project's future "
+          "warnings — a display defect that persists as durable state. Pre-fix the two conjuncts "
+          "read exactly inverted (subject unset, cwd set)",
+          _flag36(_SB36) is not True)
+    (_SX36 / ms.STATE_FILE).write_text(_json36.dumps({"project_path": str(_X36)}), encoding="utf-8")
+    (_SB36 / ms.STATE_FILE).write_text(_json36.dumps({"project_path": str(_B36)}), encoding="utf-8")
+    _r7b_36 = _sp36.run([sys.executable,
+                         str(ROOT / "plugins" / "consolidate-memory" / "scripts"
+                             / "render_dashboard.py"),
+                         str(_rec36j), "--persist", str(_SX36)],
+                        capture_output=True, text=True, timeout=120, env=_env36w, cwd=str(_B36))
+    check("v0.4.36 pin 7 (PIN, site 2 of 2 — its OWN run, never folded into site 1): "
+          "`render_dashboard --persist` hands the warn the subject's context too. A fix that "
+          "repaired the archive path while leaving the dashboard on cwd would pass a pin that "
+          "only exercised site 1 — and `--persist` is the dream's MANDATORY closing step, reached "
+          "from a foreign cwd often enough that the module's own comment names that case as its "
+          "premise. The same file hardened this exact cwd-to-store form twice, eight lines above "
+          "the call it got wrong",
+          _flag36(_SX36) is True)
+    check("v0.4.36 pin 7 (PIN, site 2 of 2): and site 2 does NOT write the cwd's flag either — "
+          "the site is part of the assertion, because the two sites are the same defect in two "
+          "places and a repair at one says nothing about the other",
+          _flag36(_SB36) is not True)
+    (_SX36 / ms.STATE_FILE).unlink()
+
+    # ---- pin 26: the SKIP LINE's own claim. Same fixture as pin 7's site 2, one variable changed —
+    #      the ROOM — because that is what the repair was measured against: the skipped warn's
+    #      message used to assert a VERDICT ("no project resolves to the --persist store") while the
+    #      helper returns `None` for two different reasons, only one of which is a verdict.
+    _gone36w = Path(_td36w) / "gonew"; _gone36w.mkdir()
+    _here36w = _os36.getcwd()   # captured BEFORE the chdir: inside the deleted dir `getcwd` raises
+    try:
+        _os36.chdir(_gone36w)
+        _shutil36.rmtree(_gone36w)
+        _r26 = _sp36.run([sys.executable,
+                          str(ROOT / "plugins" / "consolidate-memory" / "scripts"
+                              / "render_dashboard.py"),
+                          str(_rec36j), "--persist", str(_SX36)],
+                         capture_output=True, text=True, timeout=120, env=_env36w, cwd=None)
+    finally:
+        _os36.chdir(_here36w)
+    check("v0.4.36 pin 26 (PIN — RED on the base tree, measured, by BOTH conjuncts): the skipped "
+          "unenrolled-share check says what was MEASURED, not what the world was assumed to be. "
+          "With the working directory deleted, the helper cannot be asked, and the old line — `no "
+          "project resolves to the --persist store` — asserted an absence that was never "
+          "established: the same store, rendered from the subject's OWN directory, prints no line "
+          "at all. So the message now names the VERIFICATION that failed. Both conjuncts are load-"
+          "bearing and they are not the same reading: the first requires the new claim, the second "
+          "forbids the old one, and a repair that appended the new sentence would satisfy the first "
+          "alone. `fault ≡ absence` is the RC-1 mechanism this release closes, and a silent skip "
+          "would reintroduce it here under a new spelling — which is why the line exists at all",
+          "could not verify which project owns" in _r26.stderr
+          and "no project resolves to" not in _r26.stderr
+          and "Traceback" not in _r26.stderr)
+
+    # ---- pins 13/14, the POSITION of the existence test. The repair puts `store_p.exists()` at the
+    #      END of the `--store`-alone arm, after every source has run, and that position is what
+    #      keeps two legitimate absent-store invocations working. A comment asserting a position is
+    #      load-bearing is exactly the claim this repo pins, so both readings get a check — and they
+    #      land on OPPOSITE sides of the pin/guard line, which is stated rather than smoothed over.
+    _shutil36.rmtree(_SC36)
+    check("v0.4.36 pin 13 (PRECONDITION): charlie's store is really GONE before the render below, "
+          "so a recovery cannot be a recovery from a directory that is still on disk",
+          not _SC36.exists() and _row36w.get("native_memory_dir") == str(_SC36))
+    _r13_36 = _rh36(_cyc36w, _SC36, _B36, _env36w)
+    check("v0.4.36 pin 13 (PIN): a registry ROW naming a store that no longer EXISTS still "
+          "recovers. Source 1 is a STORED KEY rather than a re-derivation, and a store deleted "
+          "since enrolment is the case it exists for. Pre-fix this RENDERS too, so the "
+          "discriminator is the IDENTITY and never the exit code: pre-fix it stamps the unrelated "
+          "cwd's snapshot, post-fix the row's. This is the check that goes red if the existence "
+          "test is moved above source 1",
+          _r13_36.returncode == 0
+          and _id36(_B36) == _sc36.identity_snapshot(_sc36.resolve_store(_C36, environ=_env36w)))
+    _SC36.mkdir(parents=True, exist_ok=True)
+
+    _shutil36.rmtree(_SX36)
+    check("v0.4.36 pin 14 (PRECONDITION): xray's store is really gone, and nothing in the registry "
+          "names it — so the ONLY source that can admit the render below is source 3, the cwd, "
+          "verifying by round-trip",
+          not _SX36.exists() and _sc36.resolve_store(_X36, environ=_env36w)
+          .native_memory_dir.resolve() == _SX36.resolve())
+    _r14_36 = _rh36(_cyc36w, _SX36, _X36, _env36w)
+    check("v0.4.36 pin 14 (GUARD — green on both trees, and labelled one for that reason): an "
+          "ABSENT store that the cwd DERIVES still recovers — a project that has not dreamed yet, "
+          "since the store is not created until it does. Pre-fix and post-fix both stamp xray's "
+          "own identity, so nothing here can flip and this is a regression guard by this repo's "
+          "own rule. It is the second half of the position claim: with only pin 13 above, moving "
+          "the existence test above source 3 would leave the suite green while refusing a "
+          "legitimate invocation",
+          _r14_36.returncode == 0
+          and _id36(_X36) == _sc36.identity_snapshot(_sc36.resolve_store(_X36, environ=_env36w)))
+    _SX36.mkdir(parents=True, exist_ok=True)
+
+    # ---- pins 15..17, the RESOLVE-RAISE class: a STORED value that cannot be resolved.
+    #
+    # Both injection sites are NEW in this change, so neither the marker nor a registry row is even
+    # READ on the base tree — which makes a check built on either one a REGRESSION GUARD by this
+    # repo's own rule, and it is labelled one rather than dressed as a pin. What earns them their
+    # place is the middle column: BOTH go red on the revision this change reached BEFORE the
+    # repair, and that is measured, not asserted — so the guard is not vacuous, it is a repair
+    # whose redness has already been spent. Pin 17 is the exception and is a real PIN: the
+    # absolute-value rule changes the EXIT CODE, so pre-fix it renders and post-fix it refuses.
+
+    # pin 15 — a NUL in the STORE's own marker. `json.loads` accepts the escaped sequence, so the
+    # file PARSES while `Path.resolve()` raises: "garbled" is two states, and the parse's own
+    # except clause named only one of them.
+    _mk36 = str(_X36) + _NUL36 + "trailing"
+    _mkr36 = _json36.dumps({"project_path": _mk36})
+    (_SX36 / ms.STATE_FILE).write_text(_mkr36, encoding="utf-8")
+    _rd36 = _json36.loads((_SX36 / ms.STATE_FILE).read_text(encoding="utf-8"))
+    check("v0.4.36 pin 15 (PRECONDITION): the marker really PARSES, and its value really carries a "
+          "NUL — if either half were false the injection would be inert and the guard below would "
+          "pass for a reason other than the one it names. The source builds the byte with chr(0) "
+          "rather than an escape, so this asserts the value in the FILE, not the spelling",
+          isinstance(_rd36, dict) and _rd36.get("project_path") == _mk36
+          and _NUL36 in _rd36["project_path"])
+    _r15_36 = _rh36(_cyc36w, _SX36, _X36, _env36w)
+    check("v0.4.36 pin 15 (GUARD — and the label is the honest one, per this repo's rule: the base "
+          "tree never reads the marker, so nothing built on it can fail there. It is RED on the "
+          "revision this change reached before the repair — measured, that revision exits 1 with "
+          "an uncaught `ValueError: embedded null byte` and a traceback, from EVERY cwd, because "
+          "`c = _rs(cand)` sat outside the parse's own except clause. Post-repair the marker "
+          "degrades to source 3 exactly as the code comment always promised): a GARBLED marker "
+          "does not kill the render. Note the assertion reads the traceback as well as the code, "
+          "because the failure it guards against still exits non-zero — it just exits as a Python "
+          "crash instead of a named fault",
+          _r15_36.returncode == 0 and "Traceback" not in _r15_36.stderr
+          and _id36(_X36) == _sc36.identity_snapshot(_sc36.resolve_store(_X36, environ=_env36w)))
+    (_SX36 / ms.STATE_FILE).unlink()
+
+    # pins 16/17 — the registry side, and it is a BROADER shape than pin 15's. `rows_for_store`
+    # resolves EVERY row and runs FIRST, before any source: the corrupt value does not have to be
+    # in the store under test, it only has to be in the registry. One bad row, every invocation.
+    _conn36x = cp.connect(cp.db_path(_sc36.resolve_store(_X36, environ=_env36w)))
+    try:
+        _pid36 = _row36w["project_id"]
+        _nulrow36 = "/tmp/decoy" + _NUL36 + "trailing"
+        _conn36x.execute("UPDATE projects SET native_memory_dir = ? WHERE project_id = ?",
+                         (_nulrow36, _pid36))
+        _conn36x.commit()
+        _got36 = _conn36x.execute("SELECT native_memory_dir FROM projects WHERE project_id = ?",
+                                  (_pid36,)).fetchone()[0]
+        check("v0.4.36 pin 16 (PRECONDITION): an UNRELATED project's row now carries a NUL, and "
+              "the value round-trips through SQLite — a database that truncated or rejected it "
+              "would leave the guard below testing nothing more than an ordinary MISSING row",
+              _got36 == _nulrow36 and _NUL36 in _got36)
+        _r16_36 = _rh36(_cyc36w, _SX36, _X36, _env36w)
+        check("v0.4.36 pin 16 (GUARD — green on the base tree, RED on the revision this change "
+              "reached before the repair, and a guard rather than a pin for pin 15's reason: the "
+              "base tree has no registry lookup to crash in. Sharper than pin 15 in the one "
+              "respect that made it worth writing: the corrupt row belongs to a project with "
+              "NOTHING to do with this store, and it still takes the render down — measured): an "
+              "unresolvable row is SKIPPED, not fatal. A row is a lookup key, and a key that "
+              "cannot be compared simply does not match",
+              _r16_36.returncode == 0 and "Traceback" not in _r16_36.stderr
+              and _id36(_X36) == _sc36.identity_snapshot(_sc36.resolve_store(_X36, environ=_env36w)))
+
+        # pin 17 — a RELATIVE stored value, which is a different defect wearing the same line of
+        # code. Resolving it anchors the match to the PROCESS's cwd, so the row this lookup returns
+        # — and therefore the identity the archive is stamped with — depends on where the render
+        # ran. That is RC-5 itself, reproduced inside RC-5's repair. The store is
+        # `<config>/projects/<slug>/memory`, whose basename IS `memory`, so the relative value
+        # `memory` resolves onto it from exactly one cwd: the slug directory.
+        _slug36 = _SX36.parent
+        _rel36 = _SX36.name
+        _conn36x.execute("UPDATE projects SET native_memory_dir = ? WHERE project_id = ?",
+                         (_rel36, _pid36))
+        _conn36x.commit()
+        check("v0.4.36 pin 17 (PRECONDITION): the relative value really RESOLVES onto the store "
+              "under test from the slug directory, AND the slug directory does NOT derive that "
+              "store through `resolve_store` — with either half missing the pin below would pass "
+              "for a reason other than the one it names. The second half is what makes the pin "
+              "sharp: source 3 cannot rescue this render, so the ONLY thing that can admit it is "
+              "the row",
+              (Path(_slug36) / _rel36).resolve() == _SX36.resolve()
+              and _sc36.resolve_store(_slug36, environ=_env36w).native_memory_dir.resolve()
+              != _SX36.resolve())
+        _r17_36 = _rh36(_cyc36w, _SX36, _slug36, _env36w)
+        check("v0.4.36 pin 17 (PIN): a RELATIVE stored value is not a match. Pre-fix this RENDERS "
+              "(the base tree never consults the registry), and pre-repair it renders WEARING THE "
+              "DECOY ROW'S IDENTITY — which is the worse of the two failures, and the reason this "
+              "one is a pin where 15 and 16 are guards: not a crash but a silent misattribution, "
+              "xray's archive stamped as an enrolled project it has nothing to do with, decided "
+              "solely by the directory the process happened to be launched from. Reachability, "
+              "stated rather than implied: `upsert_project` stores `str(ctx.native_memory_dir)`, "
+              "always absolute, so no ordinary write produces this row — the pin holds the RULE "
+              "(a stored key is compared absolutely) rather than closing a live user-facing bug",
+              _r17_36.returncode == 1 and _ARM36_A in _r17_36.stderr)
+    finally:
+        # RESTORE: pins 13/14 above and everything after share this row.
+        _conn36x.execute("UPDATE projects SET native_memory_dir = ? WHERE project_id = ?",
+                         (_row36w["native_memory_dir"], _pid36))
+        _conn36x.commit()
+        _conn36x.close()
+
+    # ---- v0.4.36 pin 27: THE BOUND — an unusable store must not RESOLVE a single row ------------
+    class _RowWatch27:
+        """Records whether the RESOLVE LOOP ran. ONE instrument, both directions.
+
+        The observable is the LOOP, and BOTH other candidates are excluded by measurement rather
+        than by taste. A result-only assertion is vacuous: an unusable store makes every row fail
+        the comparison, so the pre-fix and post-fix functions BOTH return `[]` — a result check
+        pins nothing here. And the QUERY cannot be the observable either: the query is this
+        function's only FAULT CHANNEL, since `classify_registry` verifies tables and never columns,
+        so a registry can classify `healthy` and still raise on SELECT — which is exactly why
+        `rows_for_store` refuses to swallow `sqlite3.Error`. A pin asserting `not queried` would
+        therefore DEMAND the one placement that turns a registry fault into an absence, this
+        release's own mechanism, and would print green while doing it. What separates the revisions
+        is whether a row was RESOLVED for an answer the argument had already determined.
+        """
+
+        def __init__(self) -> None:
+            self.touched = False
+
+        def __str__(self) -> str:
+            self.touched = True
+            return "/nonexistent/store"     # absolute, so a row carrying it is not skipped by the
+                                            # loop's own `is_absolute` guard and reaches `safe_resolve`
+
+    class _Conn27:
+        """A connection whose ONE row carries the sentinel above. The loop's first act on a row is
+        `str(d.get("native_memory_dir") or "")`, so TOUCHING THE SENTINEL *is* the loop running —
+        which is the whole observable, and it needs no timing assertion to read."""
+
+        def __init__(self, watch: "_RowWatch27") -> None:
+            self._watch = watch
+
+        def execute(self, *_a, **_k):
+            watch = self._watch
+
+            class _Cur:
+                @staticmethod
+                def fetchall() -> list:
+                    return [{"native_memory_dir": watch}]
+
+            return _Cur()
+
+    _unusable27 = "unusable" + chr(0) + "store"   # BUILT, never typed: writer tools materialize a
+                                                  # typed NUL byte into the file itself
+    # ⚠ The lookup is guarded, and not defensively: `rows_for_store` is itself ADDED by this PR, so
+    # on `fbfe07e` an unguarded call raises `AttributeError` and takes the WHOLE SUITE down,
+    # swallowing every reading after it — the harm this document already records for pin 24's
+    # precondition, arriving here on the pin itself instead. Absent is not a red for the bound; it is
+    # a missing SUBJECT, so the assertion below fails on it loudly without aborting the run.
+    _rfs27 = getattr(cp, "rows_for_store", None)
+    _w27 = _RowWatch27()
+    # `cast(Any, ...)`: this file's trust-boundary idiom (the `gives ~zero static value` cast above).
+    # `_Conn27` is deliberately NOT a `sqlite3.Connection` — being one would mean opening a
+    # database, and the row this pin needs is one no real registry should ever hold.
+    _rows27 = _rfs27(cast(Any, _Conn27(_w27)), _unusable27) if _rfs27 is not None else None
+    check("v0.4.36 pin 27 (PIN — RED on the intermediate revision, MEASURED as a single-variable "
+          "mutation: the bound DELETED and nothing else changed -> 2165 passed, 1 failed, THIS "
+          "check the only red. ⚠ NOT the base tree, and the distinction is load-bearing rather than "
+          "pedantic: `rows_for_store` is itself added by this PR, so `fbfe07e` has no such attribute "
+          "and the pin reports a FAILURE for the missing subject rather than a red for the bound. A "
+          "pin's RED belongs to the revision that CARRIES the defect, and this defect is the scan "
+          "being unconditional, so it exists only from the revision that introduced the scan): an "
+          "UNUSABLE `--store` resolves NO row. `safe_resolve` yields `None` for a NUL on EVERY "
+          "supported interpreter, 3.8-3.13 (`store_context.py:192-193`), and no row can equal "
+          "`None` — so the scan is DETERMINED by the argument and every row would be resolved only "
+          "to fail the same comparison. Pre-fix it resolved all 340 live rows to reach a result it "
+          "already had. The bound sits AFTER the query on purpose, and this pin asserts the query is "
+          "NOT the thing it measures: the scan is irreducible for a USABLE target and pointless for "
+          "an unusable one, and only the second is free to skip",
+          _rfs27 is not None and _rows27 == [] and _w27.touched is False)
+
+    _w27c = _RowWatch27()
+    if _rfs27 is not None:
+        _rfs27(cast(Any, _Conn27(_w27c)), str(Path.cwd()))   # `Path`, not `os`: smoke.py imports no bare `os`,
+                                                # so `os.getcwd()` here is a `NameError` — and a
+                                                # NameError is a suite ERROR, not the red this
+                                                # control exists to produce
+    check("v0.4.36 pin 27 (CONTROL — green on the revision carrying the fix, and NOT green on the "
+          "base tree: it drives the same attribute the pin does, so with `rows_for_store` absent it "
+          "reports the same missing-subject FAILURE as the pin — a failure of its SUBJECT, never a "
+          "red for the bound and never a green. An earlier label of this check said `green on BOTH "
+          "revisions`, which its own base-tree run falsifies): "
+          "the SAME instrument reads `True` for a USABLE store, whose bound does not fire. Without "
+          "this the pin above is satisfied by a function that resolves no row for ANY input — the "
+          "assertion is a conjunction over a NEGATIVE, and a negative alone is not discriminating. "
+          "Note what this control does NOT say: it does not require the query to be skipped, because "
+          "the query is the fault channel. Stated as the control it is, not counted as a pin",
+          _rfs27 is not None and _w27c.touched is True)
+
+    # ⚠ REGRESSION GUARD, not a pin — labelled one by this repo's own rule, because the PROPERTY it
+    # guards cannot fail on pre-fix code: pre-fix there is no bound to hoist, and the query cannot be
+    # left where it is by a bound that does not exist. ⚠ The CHECK is a different matter, and an
+    # earlier revision of this comment ran the two together: on the base tree `rows_for_store` is
+    # absent, so this reports the same missing-subject FAILURE as pin 27 above. That failure is a
+    # failure of its SUBJECT and not a red for its property — which is exactly why the labelling rule
+    # is about the property. A guard called "green pre-fix" would be the same over-claim in the other
+    # direction. What it guards is a MEASURED property of the PLACEMENT rather than of the
+    # fix. The query is `rows_for_store`'s only fault channel, so an unreadable registry must still
+    # RAISE through an unusable store. Hoisting the bound above the `conn.execute` — the one-line
+    # "optimization" the bound's own comment warns against, and which reads as strictly better — skips
+    # that raise, and the caller then reads an ABSENCE where it should read a FAULT ("cannot read the
+    # control-plane registry"). That is `fault == absence`, the mechanism this release closes and the
+    # reason Arm C exists. ⚠ The ABSENCE message is Arm E's, not Arm A's, and an earlier revision of
+    # this comment named Arm A — which `render_html.py:680-685` orders the fifth arm BEFORE, with the
+    # comment "before Arm A, whose verdict this would otherwise counterfeit". An unusable `--store` is
+    # exactly Arm E's input, so Arm E is what fires. Arm A is what a USABLE store would have read.
+    # Measured on the hoist: this check is
+    # the ONLY red, and the pin above stays green throughout — which is precisely why the pin could
+    # not carry this on its own.
+    class _Broken27:
+        """A registry that cannot be read at all. `classify_registry` calls one of these `healthy`,
+        because it verifies tables and never columns — which is exactly why the fault must survive."""
+
+        def execute(self, *_a, **_k):
+            raise cp.sqlite3.Error("no such column: display_name")   # `cp.sqlite3`: smoke.py imports
+                                                                     # no bare `sqlite3`
+    _fault27 = None
+    try:
+        if _rfs27 is not None:
+            _rfs27(cast(Any, _Broken27()), _unusable27)
+    except cp.sqlite3.Error as _e27:
+        _fault27 = str(_e27)
+    check("v0.4.36 pin 27 (REGRESSION GUARD — a guard by this repo's own rule, because the PROPERTY "
+          "it asserts has no pre-fix form: there is no bound to hoist. Green wherever the bound is "
+          "correctly placed; RED on the hoist, and the ONLY red there — that is the property it "
+          "guards. RED on the base tree as well, but for the missing SUBJECT rather than for the "
+          "property): an unusable `--store` does NOT suppress a registry "
+          "FAULT. The bound is one line away from reintroducing `fault == absence`: skip the query, "
+          "and a column-broken registry is reported as an ABSENCE. On this input the absence is "
+          "Arm E's, whose remedy sends the reader to their SETTINGS for a registry fault — and the "
+          "fifth arm is ordered before Arm A precisely so Arm A's own verdict (`belongs to no "
+          "registered project`, remedy `--project`) cannot counterfeit the fault. Naming Arm A here, "
+          "as an earlier revision did, mis-aims the harm; the arm that fires is the one that exists "
+          "for this input. "
+          "Also load-bearing on the base tree, where "
+          "the subject is absent and this fails with the pin rather than passing vacuously",
+          _fault27 == "no such column: display_name")
+
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 6 + 18 + 5 + 4)
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 7 + 18 + 5 + 4 + 31 + 5 + 6 + 4 + 8 + 2 + 1 + 1 + 3)
+                                                        # +3: pin 27, the BOUND — an unusable
+                                                        #     `--store` no longer RESOLVES a row.
+                                                        #     One is the pin, one is its CONTROL,
+                                                        #     and one is a REGRESSION GUARD. Neither
+                                                        #     of the latter two is padding: the pin
+                                                        #     asserts a NEGATIVE ("no row was
+                                                        #     resolved"), and a negative on its own
+                                                        #     is satisfied by a function that never
+                                                        #     resolves anything — while the guard
+                                                        #     holds a MEASURED property of the
+                                                        #     bound's placement that the pin cannot
+                                                        #     see (hoist it over the query and the
+                                                        #     guard is the only red).
+                                                        # +1: pin 26 — the skip line, which now
+                                                        #     names its MEASUREMENT instead of a
+                                                        #     verdict it never established.
+                                                        # +1: pin 25 — the duplication finding,
+                                                        #     closed by reading the string out of
+                                                        #     BOTH human surfaces instead of trusting
+                                                        #     their shared call.
+                                                        # +2: pin 24, Arm B — the arm the spec's
+                                                        #     own inventory recorded as `0 FILES`,
+                                                        #     i.e. correct, reachable, and pinned by
+                                                        #     nothing. Found by a census over the
+                                                        #     suite; a reader trusting the table
+                                                        #     would have counted this arm covered.
+                                                        # +8: v0.4.36 pins 20-23, the RESOLVE-RAISE
+                                                        #     round's own cells — EIGHT readings over
+                                                        #     three ways a path can be UNUSABLE,
+                                                        #     measured on BOTH trees. Seven move the
+                                                        #     EXIT CODE; the eighth moves ONLY THE
+                                                        #     PAYLOAD (base renders `identity: {}`
+                                                        #     at rc=0), which is why it is here at
+                                                        #     all: a round counted in exit codes
+                                                        #     would have read it as "no move" and
+                                                        #     left the empty masthead pinned by
+                                                        #     nothing.
+                                                        # +6: v0.4.36 identity-from-the-input (RC-5),
+                                                        #     the RESOLVE-RAISE round — a reviewer's
+                                                        #     findings, not a self-review's, and the
+                                                        #     first time this release let one in.
+                                                        #     A STORED value that cannot be resolved
+                                                        #     was resolved anyway, at two sites: the
+                                                        #     store's own marker (render_html's
+                                                        #     candidate loop) and a registry row
+                                                        #     (rows_for_store). `Path.resolve()`
+                                                        #     raises ValueError on a NUL, and a
+                                                        #     ValueError is not the OSError or the
+                                                        #     sqlite3.Error either site guarded, so
+                                                        #     both escaped as an uncaught traceback
+                                                        #     — measured, and on the BASE tree both
+                                                        #     render rc=0, so both are regressions
+                                                        #     this change introduced. The third,
+                                                        #     found while pinning those two: a
+                                                        #     RELATIVE stored value was resolved
+                                                        #     against the PROCESS's cwd, so the
+                                                        #     row the lookup returned — and the
+                                                        #     identity the archive wore — depended
+                                                        #     on where it was launched. That is
+                                                        #     RC-5 inside RC-5's repair, and it is
+                                                        #     the one of the three that is a real
+                                                        #     PIN: the rule changes the exit code,
+                                                        #     not just the identity.
+                                                        #     (bumped again by the round that closed
+                                                        #     the two holes these pins left open —
+                                                        #     and by the GUARD that makes pin 3's
+                                                        #     own `_restore36` docstring measured
+                                                        #     rather than asserted: it promises the
+                                                        #     shared registry is left as found on
+                                                        #     EVERY exit, and the three corruption
+                                                        #     shapes leave three different states,
+                                                        #     so a restore that handles the first
+                                                        #     and forgets the third reads green in
+                                                        #     every pin that follows.)
+                                                        # +4: v0.4.36 identity-from-the-input
+                                                        #     (RC-5), the TWO-HOLES round — again a
+                                                        #     reviewer's findings, and both are
+                                                        #     holes in my own pins rather than
+                                                        #     defects in the repair:
+                                                        #     (a) pin 18, the truncated install.
+                                                        #     `render_html`'s rule beside
+                                                        #     `_load_template` — a truncated install
+                                                        #     degrades with one line, "never a
+                                                        #     traceback" — governs THREE
+                                                        #     shipping-class files and had NO check
+                                                        #     at all. The import was the one left
+                                                        #     unwrapped when RC-5a removed the
+                                                        #     blanket catch, so a truncated install
+                                                        #     went from rc=0-with-an-empty-masthead
+                                                        #     (base tree, measured) to an uncaught
+                                                        #     ModuleNotFoundError. Two checks: the
+                                                        #     template and both bundles are GUARDS
+                                                        #     (green on both trees, stated as such),
+                                                        #     and store_context is the PIN, because
+                                                        #     it is the only cell whose pre-fix
+                                                        #     reading is not the post-fix one.
+                                                        #     (b) pin 19, the managed-policy route.
+                                                        #     `_merge_settings` applies FOUR
+                                                        #     settings scopes; pin 10 drove three.
+                                                        #     `policy` — the scope whose own
+                                                        #     docstring says it MAY name an explicit
+                                                        #     absolute dir — was driven by nothing,
+                                                        #     so widening `_project_derived` to
+                                                        #     admit it left the suite at 2146/0
+                                                        #     while a one-line edit re-opened RC-5
+                                                        #     end to end (rc=0, the room's identity,
+                                                        #     on an enrolled subject's store).
+                                                        # +5: v0.4.36 identity-from-the-input
+                                                        #      (RC-5), the path-fault round. A
+                                                        #      self-review finding, not a reviewer's:
+                                                        #      pin 4b covered a nonexistent --store
+                                                        #      ONLY when --project was also passed,
+                                                        #      which is the one shape where the
+                                                        #      existence test already ran — so the
+                                                        #      same typo'd --store read `does not
+                                                        #      exist` with --project and a
+                                                        #      REGISTRATION fault without it, and
+                                                        #      the remedy pointed `--project <its
+                                                        #      dir>` at a directory that does not
+                                                        #      exist. Measured: pre-fix the
+                                                        #      store-alone form exits 0 and renders,
+                                                        #      stamped with the CWD's identity, so
+                                                        #      pin 12 is a PIN. Pins 13/14 pin the
+                                                        #      POSITION of the new existence test
+                                                        #      (last, after every source), and they
+                                                        #      split across the label line on
+                                                        #      measurement: 13 is a PIN (pre-fix
+                                                        #      renders with the cwd's identity
+                                                        #      where post-fix stamps the deleted
+                                                        #      store's ROW), 14 is a GUARD (both
+                                                        #      trees stamp the cwd's, because here
+                                                        #      the cwd IS the subject). Both are
+                                                        #      stated, since the position claim is
+                                                        #      exactly the kind no single check
+                                                        #      covers.
+                                                        # +31: v0.4.36 identity-from-the-input
+                                                        #      (RC-5). Measured 2026-09-18 by
+                                                        #      running the section against BOTH
+                                                        #      trees: SEVENTEEN red on `fbfe07e`
+                                                        #      and FOURTEEN green, so every one of
+                                                        #      the seventeen is a PIN and the
+                                                        #      fourteen are PRECONDITIONs, CONTROLs
+                                                        #      and GUARDs — which is what makes
+                                                        #      them those and not pins. The split is
+                                                        #      stated because a term's total cannot
+                                                        #      carry it: two fixtures emit the 31.
+                                                        #      ⚠ The scratch probes that validated
+                                                        #      these fixtures emitted THIRTY, not
+                                                        #      31: the transcription adds pin 9's
+                                                        #      PRECONDITION (measured green on both
+                                                        #      trees), so a reader who sums the
+                                                        #      probes' own 24 + 6 will not
+                                                        #      reproduce this term. The D6 pin owns
+                                                        #      the TOTAL, and the total is measured.
+                                                        #      ⚠ Two labels here are load-bearing
+                                                        #      and were corrected against the
+                                                        #      FIRST draft: pin 6 is a GUARD, not
+                                                        #      the "root pin" — it cannot fail on
+                                                        #      the pre-fix tree, because the fix
+                                                        #      did not change
+                                                        #      `store_context_from_registry`, and
+                                                        #      this repo's own rule makes a check
+                                                        #      that cannot flip a REGRESSION
+                                                        #      GUARD. Likewise pin 10's fourth
+                                                        #      instance and pin 4's symlinked-store
+                                                        #      conjunct are GUARDs, and both are
+                                                        #      the half that catches
+                                                        #      OVER-tightening: they assert rc 0,
+                                                        #      so a predicate narrowed past the
+                                                        #      design turns them red while every
+                                                        #      PIN stays green. ⚠ Pin 11's
+                                                        #      discriminating power is over FUTURE
+                                                        #      reorders and its label says so: it
+                                                        #      IS red pre-fix, but for pin 5's
+                                                        #      coarser reason (the cwd's identity is
+                                                        #      stamped), not for the ordering it
+                                                        #      names — a one-line reorder putting
+                                                        #      the marker ahead of the row would
+                                                        #      leave it green.
                                                         # +4: v0.4.35 code-review round 2 — the
                                                         #      carry's own DEDUCTION (a stale
                                                         #      pointer retained because it SHARES a

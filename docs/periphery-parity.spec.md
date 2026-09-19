@@ -703,6 +703,25 @@ cycles` from the planning document; the live file re-derives at `1,514,984` char
 is dropped rather than reconciled — a number belonging to a measurement nobody can re-run is
 testimony, and this spec carries only the re-derivable ones.)
 
+⚠ **The `embedded cycle payload` row is partly superseded by v0.4.36 (RC-5); it stands as a
+*pre-fix* measurement.** `docs/identity-from-the-input.spec.md` removes the very mechanism the row's
+three-operand argument turns on — `render_html.main`'s fallback from `--project` to `Path.cwd()`.
+After it, `--store` alone recovers the project **from the store** and **refuses** where no source
+verifies, so the cwd can no longer **supply** the identity: it survives only as a candidate to be
+*verified against* the store, admitted solely when it round-trips to it. Rendering *this* store from
+any of the three cwds yields the same `personal` / `true` / `true` payload — and the third reading
+(`tools` — a *foreign* identity) is unreachable by any shape, since with `--store` given the identity
+comes from the store or from a `--project` that resolves to it, and a disagreeing pair **refuses**
+rather than rendering one. The `unknown` / `false` / `false` reading survives only as a **different
+population** — a store whose own project is unenrolled, where it is a true statement about the store
+instead of a false one about the room. **Neither digit is retracted:** `1,299,980` and `1,299,976`
+remain what they were measured as, and the conclusion they carry — that this digit is render-time
+state rather than a re-derivable figure — holds in a simpler form, because the operand is now the
+**store** and not the directory the render happened to run in: the variation is with *when* you
+render and with what the store holds, no longer with how it is addressed. Left unnamed, this chain
+would have rotted quietly — a reader following it post-fix would find **one** payload where the row
+promises three, and would be measuring a behavior that no longer exists.
+
 The bare-matcher row is the reason the new plugin-table check exists: **four of those six picks
 are not the document's current version** (two are not versions at all — `1.0.0` is the versioning
 policy's example, `127.0.0` is a loopback address), which is the measured basis for §6 R5 and for
