@@ -21529,10 +21529,50 @@ with _tf36.TemporaryDirectory() as _td36w:
     # PR B's one rule: an assertion must be derivable from its SUBJECT, or gated so it cannot
     # silently drift — and where it is gated, the gate names BOTH the source and the matcher it
     # reads. Every check below therefore states its matcher and its scope on the check itself.
+    #
+    # ⚠ ONE RULE GOVERNING EVERY READ IN THIS BLOCK, stated here so it is checked rather than
+    # re-derived: a read is GUARDED iff this block is the FIRST STRICT reader of its input. An
+    # unguarded read aborts the suite where it stands, and every check after it — D6 included —
+    # never prints, so a read that nothing else would have failed on must report a verdict instead.
+    # Three reads here are therefore deliberately left raw — `cm`, `.github/workflows/release.yml`
+    # and `SECURITY.md` — because each is read STRICTLY and unconditionally far earlier in this same
+    # file: `SECURITY.md` and `cm` inside the `_live_docs` list literal, `release.yml` under
+    # `_wf_r5` and `_wf_cs`. An absent or undecodable one already aborts there, so guarding them
+    # here would print a verdict the suite can never reach — a worse lie than the abort it replaces.
+    # The ones this block IS first to read carry the guards: the ladder spec (nothing else reads it
+    # at all), the docket docs and `docs/**/*.md` (their earlier reader is TOLERANT —
+    # `errors="replace"` — and so is not a reader of the same inputs), and the `.github/workflows/
+    # *.yml` glob inside pin 10, which owns `ci.yml` and every workflow that is not `release.yml`.
+    # ⚠ Anchors, not line numbers, and this clause is why: its first draft cited four coordinates in
+    # this very file, and every one had already moved by the time the edit that wrote them landed.
+    # The re-check is one question per raw read: is there an earlier STRICT read of it?
     import re as _re37
 
     _ladder_spec37 = ROOT / "docs" / "index-usage-and-budget-ladder.spec.md"
-    _ladder37 = _ladder_spec37.read_text(encoding="utf-8")
+    # ⚠ GUARDED rather than assumed, for the reason the docket loop below already records at its own
+    # read: an unguarded read ABORTS the suite here, and this line sits BEFORE D6 — so a missing spec
+    # takes the pinned-surface pin down with it and nothing after it ever executes. MEASURED on a
+    # clone with this file removed: pins 1 and 2 never print, the summary line never prints, and D6 is
+    # absent from the output entirely. A missing FILE is a verdict naming the INPUT, so it is carried
+    # beside the count rather than raised — the same shape the docket loop uses for `no such doc`.
+    # ⚠ And `exists()` then `read_text()` leaves the OTHER half open, which the same reasoning
+    # reaches: `errors="replace"` at the `v0.1.69` sweep (`:5401`) makes that reader tolerant of
+    # bytes this one refuses, so a tracked `docs/*.md` that is not UTF-8 passes the sweep one
+    # screen up and dies HERE — a `UnicodeDecodeError` upstream of D6, which is the abort this
+    # guard exists to stop. MEASURED for the mechanism: on the same bytes, the strict read raises
+    # while `errors="replace"` returns 19 characters, so the two readers really do disagree about
+    # which inputs are readable. The catch is on the READ, not on a precondition about it, so both
+    # halves of "nothing to read" arrive as one verdict naming the INPUT.
+    _ladder_noread37 = False
+    try:
+        _ladder37 = _ladder_spec37.read_text(encoding="utf-8")
+        _ladder_fault37 = ""
+    except (OSError, UnicodeDecodeError) as _e37:
+        _ladder_noread37 = True
+        _ladder37 = ""
+        _ladder_fault37 = (f" ⚠ `docs/{_ladder_spec37.name}` could not be read "
+                           f"({_e37.__class__.__name__}), so there was nothing to read: "
+                           "the zero matched here is about the INPUT and not the corpus.")
 
     # ---- Family 1: the budget-ladder trio's positions -------------------------------------------------
     # The PRODUCER is `memory_status.cliff_pct` (`:918`), so the prose is checked against it rather
@@ -21566,11 +21606,12 @@ with _tf36.TemporaryDirectory() as _td36w:
           "producer's 24, so 25 != 24): every fleet position the budget-ladder spec states equals "
           f"`cliff_pct` on that node's OWN stated inputs ({len(_fleet37)} matched, "
           f"{_fleet_bad37 or 'none'} disagreeing). Matcher: the fleet-position regex over that "
-          "spec; scope: its prose block only. The limit is stated rather than implied — this "
+          f"spec; scope: its prose block only.{_ladder_fault37} The limit is stated rather than "
+          "implied — this "
           "verifies the ARITHMETIC, not the OPERANDS (the three stores are other projects', so "
           "`6,138 B / 27 ln` is not derivable from this tree), and the unit is the DOCUMENT's own, "
           "1 KB = 1024, so `≈8.8 KB` is 9,011 B and not 8,800",
-          len(_fleet37) == 3 and not _fleet_bad37)
+          not _ladder_noread37 and len(_fleet37) == 3 and not _fleet_bad37)
 
     # G-A3 (`:324`) asserts the SAME fixture's producer value, so prose and fixture are two
     # assertions about ONE input and must agree. Pre-fix they did not: the prose said 25 while
@@ -21585,11 +21626,16 @@ with _tf36.TemporaryDirectory() as _td36w:
     check("v0.4.37 pin 2 (PIN — RED on the pre-fix doc: the prose read `25%` where `:324`'s own "
           "G-A3 fixture asserts `cliff_pct == 24` for the very same inputs, so the document carried "
           "both answers): the prose's node-1 figures and G-A3's fixture are the SAME fixture at the "
-          "SAME value, checked against the producer. This is the duplicate that could not survive: "
+          "SAME value, checked against the producer. ⚠ The amount is compared as a NUMBER rather "
+          "than as its rendered text: `6,138` and `6138` are ONE value, and MEASURED, the string "
+          "form reddened on the second while every numeric equality held — a separator is not a "
+          "disagreement this check has any claim about. This is the duplicate that could not "
+          "survive: "
           "a percentage restated by hand and an assertion derived by fixture are two sites, and "
-          "Family 1's whole finding is that nothing tied them together until this check did",
-          _ga3_37 is not None and _n1_37 is not None
-          and _n1_37[1] == f"{_gb37:,}" and int(_n1_37[3]) == _gl37
+          f"Family 1's whole finding is that nothing tied them together until this check did."
+          f"{_ladder_fault37}",
+          not _ladder_noread37 and _ga3_37 is not None and _n1_37 is not None
+          and int(float(_n1_37[1].replace(",", ""))) == _gb37 and int(_n1_37[3]) == _gl37
           and int(_n1_37[4]) == _gv37 == ms.cliff_pct(_gb37, _gl37))
 
     # ---- Family 2: `cm`'s usage block vs the parser that must accept it ------------------------------
@@ -21633,12 +21679,35 @@ with _tf36.TemporaryDirectory() as _td36w:
     _top37 = _cmops37.build_parser()
     _cmops_subs37 = set(_choices37(_top37))
     _usage37 = (ROOT / "cm").read_text(encoding="utf-8").split("cat <<'EOF'", 1)[1].split("EOF", 1)[0]
+    # ⚠ The usage block WRAPS, so a read that sees only the lines opening `cm <sub>` reads a
+    # SUBSTRING of what the block advertises. MEASURED: `cm extract [--json]  … ; --recalls [--into
+    # SEED]` continues two lines further with `[--before SNAPSHOT]`, which the line-wise read never
+    # reached — a flag advertised on a CONTINUATION was unchecked, in the exact register this check
+    # exists to catch, since `--plan` was also advertised and unusable. ⚠ And it is not a small
+    # remainder: measured on this revision, the line-wise read gives 29 pairs across 6 subcommands
+    # and the widened one 43 across 9, with `data`, `group` and `journal` wholly invisible before.
+    # A continuation inherits the anchor above it; a BLANK line, or a `cm <verb>` outside the parser
+    # surface, ends that inheritance — so the header prose mentioning `cm project enroll` mid-sentence
+    # is never an anchor, the match being anchored at line start and that sentence beginning with a
+    # word.
     _adv37 = []
+    _cur37 = ""
     for _line37 in _usage37.splitlines():
         _m37 = _re37.match(r"\s+cm (\S+)(.*)$", _line37)
-        if _m37 and _m37.group(1) in _cmops_subs37:
-            for _f37 in _re37.findall(r"--[a-z][a-z0-9-]*", _m37.group(2)):
-                _adv37.append((_m37.group(1), _f37))
+        if _m37:
+            _cur37 = _m37.group(1) if _m37.group(1) in _cmops_subs37 else ""
+            _body37 = _m37.group(2)
+        elif not _line37.strip():
+            _cur37 = ""
+            continue
+        elif _cur37:
+            _body37 = _line37
+        else:
+            continue
+        if _cur37:
+            for _f37 in _re37.findall(r"--[a-z][a-z0-9-]*", _body37):
+                _adv37.append((_cur37, _f37))
+    _advertised37 = sorted({_s37 for _s37, _f37 in _adv37})
     _unaccepted37 = sorted(
         (_s37, _f37) for _s37, _f37 in set(_adv37)
         if _f37 not in _options_under37(_choices37(_top37)[_s37]))
@@ -21647,7 +21716,11 @@ with _tf36.TemporaryDirectory() as _td36w:
           "`unrecognized arguments: --plan` — the advertised flag was UNUSABLE, not merely "
           f"undocumented): every flag `cm`'s usage block advertises under a parser-backed "
           f"subcommand is accepted by THAT subcommand's subtree ({len(set(_adv37))} pairs across "
-          f"{len(_cmops_subs37)} parser-backed subcommands; {_unaccepted37 or 'none'} unaccepted). "
+          f"{len(_advertised37)} of the {len(_cmops_subs37)} parser-backed subcommands; "
+          f"{_unaccepted37 or 'none'} unaccepted). ⚠ The denominator is the whole parser surface and "
+          "the numerator is what the block ADVERTISES, since those are different sets and a flag "
+          "the block never mentions is out of this check's reach by construction. Continuation lines "
+          "inherit their anchor, so a wrapped advertisement is read rather than half-read. "
           "The scope is the `build_parser()` surface — the `exec` pass-through lines declare their "
           "flags in their own scripts — and the subtree walk is what stops `--plan` being found on "
           "`migrate` while it is being advertised under `local`",
@@ -21697,7 +21770,18 @@ with _tf36.TemporaryDirectory() as _td36w:
     # interior markers have to come off. SECURITY.md is markdown, so it needs neither.
     _code_flat37 = " ".join(ln for ln in _rel37.splitlines() if not ln.lstrip().startswith("#"))
     _sec_flat37 = " ".join(_sec37.split())
-    _sec_rel37 = _sec_flat37.split("## Release integrity", 1)[-1].split("## ", 1)[0]
+    # ⚠ The split FAILS OPEN, and that is not hypothetical. `[-1]` on a MISSING needle yields the
+    # whole flattened document, whose `.split("## ", 1)[0]` is the pre-heading PREAMBLE — so a
+    # renamed heading silently swaps the region for one holding NONE of the prose this check exists
+    # to read, and the check prints green about it. MEASURED over two copies of this tree: with the
+    # pre-fix over-claim restored under the intact heading, `pin 5: FAIL`; the same sentence with the
+    # heading renamed to `## Provenance and release integrity` gives `pin 5: PASS`. So the heading is
+    # asserted as the read's PRECONDITION rather than assumed by it — the same discipline the clause
+    # split below is given, since a matcher that cannot report its own failure to match is not a
+    # weaker check but a different one.
+    _sec_h37 = "## Release integrity"
+    _sec_rel37 = (_sec_flat37.split(_sec_h37, 1)[1].split("## ", 1)[0]
+                  if _sec_h37 in _sec_flat37 else "")
     # The GROUND TRUTH: the filenames the upload line actually carries. Read from the workflow, not
     # restated — a gate that hard-codes `sbom.spdx.json SHA256SUMS` would stay green through the
     # very edit it exists to catch.
@@ -21778,8 +21862,10 @@ with _tf36.TemporaryDirectory() as _td36w:
           "destination is the ACTION's own behaviour, not a property of this tree, so what is "
           "asserted is the fail-safe half — provenance is not claimed as a Release asset and is not "
           "uploaded as one. The clause split is on `[.;—]` rather than on the em dash alone, because "
-          "the corrected `release.yml` comment is one dash-free run containing both terms",
-          not _bad37 and not _prov_asset37)
+          "the corrected `release.yml` comment is one dash-free run containing both terms — and the "
+          f"section read is asserted to EXIST (`{_sec_h37}` in SECURITY.md), because a renamed "
+          "heading used to hand this check the preamble and a green with it",
+          _sec_h37 in _sec_flat37 and not _bad37 and not _prov_asset37)
 
     # ---- Family 4: every citation resolves at the revision its doc declares ------------------------
     # The corpus's unbound docs now declare a binding, and this is the gate. THREE identities,
@@ -21805,10 +21891,15 @@ with _tf36.TemporaryDirectory() as _td36w:
     # `path:10-500` in a 20-line file passed on the strength of its start — a claim wider than its
     # matcher, which is the family this gate exists to close.
     #
-    # ⚠ RESOLUTION IS BY CONTENT, NOT BY NAME. A bare `SKILL.md:NNN` matches TWO files — the memory
-    # skill's and the beta-tester's — and MEASURED, all 29 bare `SKILL.md` cites in the corpus fit
-    # ONLY the memory skill, because the beta file is shorter than the cited line. So a citation
-    # resolves iff EXACTLY ONE admissible file can CARRY it: "ambiguous by name" is not the verdict
+    # ⚠ RESOLUTION IS BY LINE-FIT, NOT BY NAME — and this sentence said "by CONTENT" until the
+    # predicate was read against it, which it was not and never had been: resolution compares the
+    # cited line numbers against the cited file's LENGTH at the declared revision, and NO cited
+    # line's text is ever read, so a citation whose line holds unrelated prose resolves cleanly.
+    # The narrower claim is both true and the one worth keeping: a bare `SKILL.md:NNN` matches TWO
+    # files — the memory skill's and the beta-tester's — and MEASURED, all 29 bare `SKILL.md` cites
+    # in the corpus fit ONLY the memory skill, because the beta file is shorter than the cited line.
+    # So a citation resolves iff EXACTLY ONE admissible file can CARRY it: "ambiguous by name" is not
+    # the verdict
     # "ambiguous", and only the second fails. A third verdict is the canary
     # (`plugins/dream-beta-tester/fixtures/canary-v0.1.19/`), whose vendored copies are byte-faithful
     # to ANOTHER version and whose line numbers are deliberately that version's — out of scope by
@@ -21926,10 +22017,22 @@ with _tf36.TemporaryDirectory() as _td36w:
         r"(?<![\w`/.-])([A-Za-z0-9_./-]+\.(?:py|md|json|html|sh|yml|js))"
         r":(\d+(?:[-–—]\d+)?(?:\s*,\s*\d+(?:[-–—]\d+)?)*)(?![\w`])")
     _unbound47, _fail47, _unver47, _self47, _vac47, _bare47 = [], [], [], [], [], []
+    _unread47: list = []
     _ran47 = _scan47 = _citing47 = 0
     for _d47 in sorted((ROOT / "docs").rglob("*.md")):
         _scan47 += 1
-        _t47 = _d47.read_text(encoding="utf-8")
+        # ⚠ GUARDED, and the asymmetry IS the finding: the docket loop one screen down guards this
+        # identical read and its own comment cites the abort it prevents, while this one — which sits
+        # EARLIER, before D6 — did not. MEASURED on a clone with one `docs/*.md` made unreadable:
+        # pins 1–9 print, then the run ends in a traceback, and neither the summary line nor D6
+        # appears. A doc that cannot be READ also cannot be reported as scanning cleanly, so it is
+        # recorded by name and check 6 — which owns this census — asserts the list is empty rather
+        # than reporting a denominator that silently shrank under it.
+        try:
+            _t47 = _d47.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as _e47:
+            _unread47.append(f"{_d47.relative_to(ROOT)} ({_e47.__class__.__name__})")
+            continue
         if not _CITE47.search(_t47):
             _nb47 = len(_BARE47.findall(_t47))
             if _nb47:
@@ -21965,7 +22068,23 @@ with _tf36.TemporaryDirectory() as _td36w:
                     continue                             # EXCLUDED — out of scope, not absent
                 else:
                     _ad47 = [_p for _p in _by47 if not _p.startswith(_CAN47)]
-                    _fit47 = [_p for _p in _ad47 if (_nlines47(_sha47, _p) or 0) >= _need47]
+                    # ⚠ A FAILED READ and a genuinely short file must not share a representation.
+                    # `_nlines47` returns `None` when `git show` exits non-zero, and the `or 0` that
+                    # used to sit here folded that into a count of 0 — so a FAULT was reported as
+                    # `out-of-range`, a verdict about a DOCUMENT from an instrument that could not
+                    # read it, the precise conflation pin 7a/7b exist to keep apart. MEASURED with a
+                    # synthetic gitlink entry (listed by `git ls-tree`, `git show <sha>:sub` exits
+                    # 128 `fatal: bad object`): the citation read `out-of-range`, word for word the
+                    # message a short file yields. No such entry exists in this repo today, which is
+                    # why the arm is latent rather than absent. The fault goes to pin 7a's register
+                    # — "a revision this clone cannot answer for" — and the verdict arm is SKIPPED
+                    # rather than made to speak about it.
+                    _lens47 = {_p: _nlines47(_sha47, _p) for _p in _ad47}
+                    _nolen47 = [_p for _p, _n47 in _lens47.items() if _n47 is None]
+                    if _nolen47:
+                        _unver47.append(f"{_name47}@{_sha47}: {_nolen47[0]} unreadable there")
+                        continue
+                    _fit47 = [_p for _p, _n47 in _lens47.items() if _n47 >= _need47]
                     if not _fit47:
                         _fail47.append(f"{_name47}:{_ln47} out-of-range {_b47}:{_spec47}")
                     elif len(_fit47) > 1:
@@ -21977,6 +22096,9 @@ with _tf36.TemporaryDirectory() as _td36w:
           f"declares the revision its coordinates resolve on ({_citing47} citing docs of "
           f"{_scan47} scanned, {len(_unbound47)} unbound"
           f"{': ' + ', '.join(_unbound47[:4]) if _unbound47 else ''}). "
+          f"⚠ {len(_unread47)} doc(s) could not be READ at all and so sit in NEITHER population "
+          f"({'; '.join(_unread47) if _unread47 else 'none'}) — a scan that drops what it cannot "
+          "read reports a smaller corpus as a clean one, so this is ASSERTED rather than skipped. "
           f"⚠ REACH, printed rather than inferred: {len(_bare47)} further doc(s) carry "
           f"{sum(_c47 for _n47, _c47 in _bare47)} `file:line` citation(s) in a BARE form — not "
           f"backticked — which `_CITE47` cannot see, so they are absent from the {_citing47} "
@@ -21996,7 +22118,7 @@ with _tf36.TemporaryDirectory() as _td36w:
           "incompatible forms cannot be gated, and `dream-teeth-coverage`'s per-citation "
           "annotations leave its UNannotated cites unbound regardless, so it was never compliant "
           "at document level.",
-          not _unbound47 and _citing47 >= _MIN_DOCS47)
+          not _unread47 and not _unbound47 and _citing47 >= _MIN_DOCS47)
 
     # ⚠ REGRESSION GUARD, NOT A PIN — and the distinction is the repo's own rule, measured: on the
     # pre-fix corpus every declared revision is PRESENT (there is only one bound doc, and its
@@ -22021,7 +22143,10 @@ with _tf36.TemporaryDirectory() as _td36w:
           "revision to resolve against, so the floor alone reddens it, and the genuine defects this "
           "found redden it too): every `file:line` resolves at its doc's declared revision — the "
           "path exists there and every line number the citation names, a range's END included, is "
-          "within it — resolving by CONTENT where the name is ambiguous. "
+          "within it — resolving by LINE-FIT where the name is ambiguous, so a name shared by two "
+          "files is no defect while only ONE of them is long enough to carry the cited lines. ⚠ No "
+          "cited line's TEXT is read, and the label says so rather than claiming more: this arm is "
+          "a range check, and a citation whose line holds unrelated prose passes it. "
           f"{_ran47} of {_citing47} citing docs resolved, {len(_unbound47)} unbound, "
           f"{len(_fail47)} failing"
           f"{': ' + '; '.join(_fail47[:3]) if _fail47 else ''}. "
@@ -22096,25 +22221,47 @@ with _tf36.TemporaryDirectory() as _td36w:
     _sh47 = _sp53.run(["git", "-C", str(ROOT), "rev-parse", "--is-shallow-repository"],
                       capture_output=True, text=True)
     _log47 = _r47.stdout.splitlines()
+    # ⚠ The fault's SCOPE travels with the fault, because the three arms do not reach equally far
+    # and one clause cannot be true of all three. This replaces a discriminator that inferred reach
+    # from `not _log47` — a question about whether a LOG existed, answered as one about whether the
+    # walk FINISHED — which is the same defect this check was repaired to stop, one register across:
+    # a fault arm that overstates its own reach tells the reader no document was examined, when the
+    # truth is that some were. The loop below can now stop partway (a failed `rev-parse`, a docket
+    # doc it cannot read), and that arm is neither of the two the old clause could express.
     _fault47 = ""
+    _faultscope47 = ""
     if _r47.returncode != 0:
         _fault47 = "this tree cannot be asked for its own history (no readable `.git`)"
+        _faultscope47 = "No needle was searched, so **no document is reported on**"
     elif not _r47.stdout.strip():
         _fault47 = "this tree's history is EMPTY"
+        _faultscope47 = "No needle was searched, so **no document is reported on**"
     for _dn47, _needle47 in _DOCKET47.items():
         # ⚠ GUARDED rather than assumed, because an unguarded read here ABORTS the suite at this
-        # line — and this line sits BEFORE D6, so a missing docket doc takes the pinned-surface
-        # pin down with it and nothing after it ever executes. MEASURED 2026-09-19 on a clone at
+        # line — and this line sits BEFORE D6, so a missing docket doc takes the pinned-surface pin
+        # down with it and nothing after it ever executes. MEASURED 2026-09-19 on a clone at
         # v0.4.37: with `docs/dream-teeth-coverage.spec.md` removed, pins 1–9 print, then
-        # FileNotFoundError, no summary line, and D6 absent from the output. A missing FILE is a
-        # verdict about the corpus, so it belongs in this list beside `unbound` rather than in a
-        # traceback. The adjacent `if not _m47b` guard shows the author guarded "no binding" but
-        # not "no file" — a predicate narrower than the message it serves.
+        # FileNotFoundError, no summary line, and D6 absent from the output. And ABSENCE is only
+        # half of "nothing to read": the `exists()` this guard grew from handed the other half to a
+        # raw `read_text`, which the `errors="replace"` sweep at `:5401` does not share — that
+        # reader takes bytes this one refuses, so an undecodable file reached a strict read here and
+        # aborted exactly as an absent one used to. MEASURED for the mechanism, on one byte string:
+        # the strict read raises while `errors="replace"` returns 19 characters. The two outcomes
+        # are DIFFERENT claims and must not print as one — an ABSENT doc is a verdict about the
+        # corpus (the docket named is not in the tree, so it belongs beside `unbound`, not in a
+        # traceback), while a doc that cannot be READ is a fault about the instrument.
         _doc47 = ROOT / "docs" / f"{_dn47}.spec.md"
-        if not _doc47.exists():
+        try:
+            _t47d = _doc47.read_text(encoding="utf-8")
+        except FileNotFoundError:
             _rule_bad47.append(f"{_dn47}: no such doc")
             continue
-        _m47b = _CANON47.search(_doc47.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError) as _e47d:
+            _fault47 = f"`docs/{_dn47}.spec.md` could not be READ here ({_e47d.__class__.__name__})"
+            _faultscope47 = ("The walk STOPPED before reaching every docket, so **no document is "
+                             "reported on**")
+            break
+        _m47b = _CANON47.search(_t47d)
         if not _m47b:
             _rule_bad47.append(f"{_dn47}: unbound")
             continue
@@ -22124,8 +22271,23 @@ with _tf36.TemporaryDirectory() as _td36w:
             _rule_bad47.append(f"{_dn47}: the needle matches {len(_hits47)} commits, not 1")
             continue
         _h47 = _hits47[0].partition("\t")[0]
-        _par47 = _sp53.run(["git", "-C", str(ROOT), "rev-parse", f"{_h47}^"],
-                           capture_output=True, text=True).stdout.strip()
+        # ⚠ rc-checked, like its `_ls47` and `_nlines47` siblings. Unchecked, a failed `rev-parse`
+        # hands back an empty stdout that simply misses the `startswith` below and prints "is no
+        # fixing commit's parent" — a verdict about a DOCUMENT from a call that never ran, which is
+        # the very conflation this check was repaired to stop. Latent by construction (it needs a
+        # matched needle whose commit has no resolvable parent), so the arm is stated rather than
+        # demonstrated. The fault register is the shallow arm's, since it is the same claim: this
+        # clone cannot answer, and the walk STOPS rather than reporting on documents it could not
+        # check — the verdict arm's own rule, applied inside the loop.
+        _par47r = _sp53.run(["git", "-C", str(ROOT), "rev-parse", f"{_h47}^"],
+                            capture_output=True, text=True)
+        if _par47r.returncode != 0:
+            _fault47 = (f"`git rev-parse {_h47[:7]}^` failed here "
+                        f"({_par47r.stderr.strip().splitlines()[0] if _par47r.stderr.strip() else 'no stderr'})")
+            _faultscope47 = ("The walk STOPPED before reaching every docket, so **no document is "
+                             "reported on**")
+            break
+        _par47 = _par47r.stdout.strip()
         if _par47.startswith(_bind47):
             _rule_ok47.append(f"{_dn47} -> {_bind47} = {_h47[:7]}^")
         else:
@@ -22139,10 +22301,12 @@ with _tf36.TemporaryDirectory() as _td36w:
     # indistinguishable and the honest verdict is about the INSTRUMENT.
     if not _fault47 and _rule_bad47 and _sh47.returncode == 0 and _sh47.stdout.strip() == "true":
         _fault47 = "this clone is SHALLOW, so the needles may name commits it cannot see"
+        _faultscope47 = ("Every needle WAS searched, against a history this clone cannot vouch for, "
+                         "so **documents were examined and none can be reported on**")
 
     if _fault47:
         _msg47 = ("v0.4.37 pin 8 (PIN): ⚠ **A FAULT, and NOT a verdict — "
-                  f"{_fault47}.** No needle was searched, so **no document is reported on**: the "
+                  f"{_fault47}.** {_faultscope47}: the "
                   "zero this check would otherwise print is about the INSTRUMENT, not the corpus. "
                   "⚠ MEASURED on an archive tree, this check used to call the one correctly-bound "
                   "docket BAD — a verdict about a DOCUMENT from an instrument that could not read, "
@@ -22193,14 +22357,19 @@ with _tf36.TemporaryDirectory() as _td36w:
           "with ITSELF — the example command it hands the reader uses the revision it declares "
           f"({len(_self47)} disagree"
           f"{': ' + '; '.join(_self47) if _self47 else ''}). "
-          f"⚠ REACH, printed rather than inferred: {len(_vac47)} bound doc(s) contribute NO assertion "
-          f"at all{': ' + ', '.join(_vac47) if _vac47 else ''} — the note block yields no `git show`, "
-          "so the walk above has nothing to compare and skips them. ⚠ This count IS the check's "
-          "boundary, and the boundary MOVED when the walk was widened: it printed **2** on the 23 "
-          "bound docs under the `>` rule and prints **0** here, so the guard's reach is now the "
-          "WHOLE bound corpus rather than the SUBSET the sentence this one replaces claimed. Printed "
-          "on every run rather than inferred, because a reader cannot reconstruct a reach from a "
-          "count nobody prints. "
+          f"⚠ REACH, ASSERTED and not merely printed: {len(_vac47)} bound doc(s) contribute NO "
+          f"assertion at all{': ' + ', '.join(_vac47) if _vac47 else ''} — the note block yields no "
+          "`git show`, so the walk above has nothing to compare and skips them. ⚠ Until that count "
+          "was ASSERTED the guard carried the same gap its own label describes one layer up — "
+          "announced rather than enforced: MEASURED on a corpus whose every bound doc is vacuous, "
+          "`_vac47 = 23` with `_self47 = 0` and this check printed PASS with the 23 sitting in this "
+          "very sentence, so the vacuous class could swallow the WHOLE binding corpus in silence. "
+          "This count IS the check's boundary, and the boundary MOVED when the walk was widened: it "
+          "printed **2** on the 23 bound docs under the `>` rule and prints **0** here, so the "
+          "guard's reach is now the WHOLE bound corpus rather than the SUBSET the sentence this one "
+          "replaces claimed — a reach that is now both printed and asserted, because a reader "
+          "cannot reconstruct a boundary from a count nobody prints, and a run cannot enforce one "
+          "that nobody reads. "
           "⚠ The note declares its revision TWICE — the canonical token this gate reads, and the "
           "literal `git show <sha>:<path>` one line later — and only the first was ever checked. "
           "MEASURED, the rebindings that repaired the token and left the command produced THREE "
@@ -22215,7 +22384,7 @@ with _tf36.TemporaryDirectory() as _td36w:
           "to its token line under the `>` rule, which is exactly how two docs came to assert "
           "nothing. A blockquote remains a special case of this rule rather than a different one, "
           "since its `>` lines are non-blank and open no new block.",
-          not _self47)
+          not _self47 and not _vac47)
 
     # ---- v0.4.37 pin 10: every workflow JOB that runs the suite also hands it HISTORY. ----
     # ⚠ This closes a precondition the suite ALREADY asserted in prose, scoped to the wrong member.
@@ -22239,8 +22408,19 @@ with _tf36.TemporaryDirectory() as _td36w:
     # cannot infer a container's type from `setdefault`'s return — unlike the sibling accumulators it
     # was modelled on, which write with a plain `.append` and need no hint.
     _sw47: dict[str, list[tuple[str, bool]]] = {}
+    # ⚠ The one glob of this directory in the whole suite, so THIS read is the only thing that can
+    # report on a workflow it cannot decode — nothing earlier is even looking. An unguarded read
+    # would abort upstream of D6, and worse for this check than for its siblings: the file would
+    # simply not appear in `_sw47`, so a third workflow that vanished this way would leave the
+    # anti-vacuity clause below satisfied by the two known runners and the check GREEN over a
+    # directory it had stopped reading. The fault is carried, not skipped.
+    _swf47: list = []
     for _wfp47 in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
-        _wls47 = _wfp47.read_text(encoding="utf-8").splitlines()
+        try:
+            _wls47 = _wfp47.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError) as _e47f:
+            _swf47.append(f"{_wfp47.name} ({_e47f.__class__.__name__})")
+            continue
         _jkey47 = [_i for _i, _s in enumerate(_wls47) if _s.rstrip() == "jobs:"]
         if not _jkey47:
             continue
@@ -22262,11 +22442,14 @@ with _tf36.TemporaryDirectory() as _td36w:
           "2-space-indented blocks under a top-level `jobs:` key; a block containing the literal "
           "`tests/smoke.py` must also contain `fetch-depth: 0`. ⚠ TEXT, not a YAML parse — so it "
           "pins the remedy the suite's own fault message names, not the depth actually fetched. "
-          "⚠ ANTI-VACUITY: this also asserts BOTH known suite-runners are still MATCHED "
-          f"({sorted(_sw47)}), since a rename that dropped one would otherwise leave a check about a "
-          "workflow it no longer reads."
-          + (f" ⚠ FAILING: {', '.join(_sbad47)}" if _sbad47 else ""),
-          {"ci.yml", "release.yml"} <= set(_sw47) and not _sbad47)
+          "⚠ ANTI-VACUITY: this also asserts BOTH known suite-runners are still MATCHED — MEASURED "
+          f"{sorted(_sw47)}, since a rename that dropped one would otherwise leave a check about a "
+          "workflow it no longer reads — and it asserts the directory was READABLE, because a "
+          "workflow this loop could not decode is a file the check never examined rather than a "
+          "runner that is absent, and the two must not print as one."
+          + (f" ⚠ FAILING: {', '.join(_sbad47)}" if _sbad47 else "")
+          + (f" ⚠ UNREADABLE: {', '.join(_swf47)}" if _swf47 else ""),
+          {"ci.yml", "release.yml"} <= set(_sw47) and not _sbad47 and not _swf47)
 
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
@@ -22310,11 +22493,17 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                                         #     banner to D6 holds ELEVEN `check(` calls,
                                                         #     and the v0.4.37 blocks above bump
                                                         #     +1/+1/+1/+3/+5 = 11. ⚠ Count them with a
-                                                        #     literal `check("v0.4.37` and you get TEN:
-                                                        #     pin 8's label is built in `_msg47`, so the
-                                                        #     eleventh is invisible to that matcher. The
-                                                        #     count is a claim about the MATCHER until
-                                                        #     the matcher is stated.
+                                                        #     literal `check("v0.4.37` and you get
+                                                        #     ELEVEN — ten calls, plus THIS ANNOTATION
+                                                        #     matching the token it quotes. Drop the
+                                                        #     self-match and the literal read is ten,
+                                                        #     and pin 8 is STILL not among them: its
+                                                        #     label is built in `_msg47`. So that
+                                                        #     matcher lands on eleven by counting the
+                                                        #     wrong thing and missing the right one —
+                                                        #     the same total reached by the wrong
+                                                        #     route. The count is a claim about the
+                                                        #     MATCHER until the matcher is stated.
                                                         # +3: v0.4.37 PR B, Family 4 — the citation
                                                         #     gate, which is THREE checks because it
                                                         #     is three claims taking three different

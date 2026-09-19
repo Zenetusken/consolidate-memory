@@ -191,7 +191,59 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    that pin's accumulator, `Need type annotation for "_sw47"`. Its only write is
    `setdefault(...).append(...)`, a return mypy cannot infer a value type from — unlike the sibling
    accumulators it was modelled on, which write with a plain `.append` and need no hint. So the Gate
-   line below is stated for **one** revision, all five legs taken on that same content.
+   line below is stated for **one** revision, all five legs taken on that same content. (o) **The
+   abort class (b) opened was closed the only way a class closes — by asking its question instead of
+   enumerating its members**, and the answer is a criterion now stated in the block's own preamble so
+   the next editor checks it rather than re-derives it: **a read is GUARDED iff this block is the
+   FIRST STRICT reader of its input.** Three reads are therefore deliberately left raw — `cm`,
+   `release.yml` and `SECURITY.md` are each read strictly and unconditionally far earlier in the same
+   file, so a guard here would print a verdict the suite can never reach. The four this block IS
+   first to read carry one now: the ladder spec (nothing else reads it at all), the docket docs and
+   `docs/**/*.md` (whose earlier reader is TOLERANT — `errors="replace"` — and so is not a reader of
+   the same *inputs*), and the workflow glob, which owns `ci.yml` and every workflow that is not
+   `release.yml`. ⚠ **At one of those sites an unguarded read is not an abort but a GREEN:** a
+   workflow the glob cannot decode never enters the mapping, so pin 10's anti-vacuity clause would be
+   satisfied by the two known runners and the check would pass over a directory it had stopped
+   reading. MEASURED with three mutations, one per guard, on a tree that is otherwise this content —
+   the ladder spec removed, then a docket doc and `ci.yml` each replaced by a directory — the suite
+   prints **2172 passed / 5 failed** with **D6 evaluated**: pins 1 and 2 carry the new input clause,
+   pin 8 its FAULT with its own scope, pin 10 the file it could not read, pin 6 asserts the
+   unreadable doc rather than dropping it, and nothing aborts. Two further repairs are not about
+   guards at all. **A fault's scope now travels with the fault:** pin 8's fault arms do not reach
+   equally far, so one clause cannot be true of all of them, and the scope is set at each arm rather
+   than computed once from `not _log47` — which answered a question about whether a LOG existed as if
+   it were one about whether the walk FINISHED. And **the resolution rule was described as CONTENT
+   while the predicate compares a line COUNT** — the spec's rule statement, its row-7 detail and the
+   check's own comment all said *content*, no cited line's text is ever read, and the row's own
+   parenthetical had defined it line-fit all along, so the document contradicted itself and the
+   correction reached the rule statement last. (p) **The contiguity helper's own needle space was the
+   one position its join could not reach** — `re.escape(" ")` is a backslash-space, a LITERAL space,
+   so the `\s*` separators tolerated a dropped or doubled space *between* characters while the
+   character that IS a space still demanded one exactly there. MEASURED, a space-bearing needle set
+   against wrapped text reads ABSENT: `check_required_strings` reported a present string as gone
+   **and** `check_contiguity` — the arm that owns exactly that shape — stayed silent,
+   so the pair's claimed partition broke with no message at all, in the direction that reads as a
+   clean run. Whitespace inside a needle is now mapped rather than escaped. (q) **The `/code-review`
+   stage was run**, in the shape the sibling release used: four lenses over a clean clone, each told
+   to treat its own findings as hypotheses to verify before reporting them. Three delivered reports;
+   the fourth — `cr-b-pins` — **executed and delivered nothing**, which is recorded as a statement
+   about DELIVERY rather than about execution, since this cycle has published each of those two
+   errors in turn. Adjudicating at the head rather than at the binding, every finding in those
+   reports is either **repaired** or **refuted by measurement**, and the refutations carry the
+   lesson. A `release.yml` finding reached **independently by two lenses** describes the BASE's
+   state as the head's: `fetch-depth` occurs **zero** times at `fbfe07e` and is present in the very
+   job the finding names, so the defect is real, it is caught by pin 10, and the fix and the check
+   rode the same commit. Every report's own head-status line used a `rev-parse <rev>:<path>`
+   comparison, which answers *did this file change* and not *is the defect in it*. The second
+   refutation is sharper still, because it is the one no blob test can ever see: a finding can cite
+   a line that **is** byte-identical while the read AROUND it changed — the continuation-line blind
+   spot's matcher is unchanged to the byte, its loop now carries its anchor across continuations,
+   and the report's own "widened" experiment reproduces the SHIPPED read exactly. MEASURED with a
+   mutation placing `--domains` on a continuation line and nowhere else: **2176 passed, 1 failed**,
+   pin 3 the **only** red, D6 evaluated — while the pre-fix read prints `unaccepted: none` on the
+   same text. **And one defect was found here rather than by any lens, in the table that says what
+   the checks ARE:** row 10 was committed with a prose fragment for a first cell, the paragraph
+   below it resuming mid-sentence. Repaired, and swept for siblings — one site.
 
 ⚠ **This release adds the suite's first check that reads the tree's own git history**, so **every
 workflow that runs the suite** sets `fetch-depth: 0` — `ci.yml` on both of its jobs, and

@@ -237,8 +237,19 @@ def _ws_tolerant(needle: str) -> str:
     `/cm-connect` as *"a backtick and a space"* — and MEASURED, 5 of the 7 needles carry a
     punctuation neighbour on BOTH sides while the other 2 carry a SPACE on the right, so the
     unqualified form was false of them.
+
+    ⚠ A needle's OWN whitespace had to be MAPPED rather than escaped, and it is the one position the
+    join does not reach. `re.escape(" ")` is a backslash-space — a LITERAL space, since space sits
+    in `re`'s escape table — so the `\\s*` separators tolerate a dropped or doubled space BETWEEN
+    characters while the character that IS a space still demands a space character exactly there.
+    MEASURED: the needle `plugin marketplace add` against `run plugin marketplace` + a newline +
+    `add ./ now` read ABSENT, so `check_required_strings` reported a present string as gone AND
+    `check_contiguity` — the arm that owns precisely that shape — stayed silent: the pair's claimed
+    partition broke with NO message at all, in the direction that reads as a clean run. Every needle
+    in `REQUIRED_IN_README` is space-free and the case table's probe is `/cm-probe`, so the live file
+    cannot expose it. `isspace` rather than `== " "` so a tab in a future needle maps too.
     """
-    return r"\s*".join(re.escape(c) for c in needle)
+    return r"\s*".join(r"\s+" if c.isspace() else re.escape(c) for c in needle)
 
 
 def check_required_strings() -> None:
