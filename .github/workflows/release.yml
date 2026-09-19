@@ -28,7 +28,16 @@ jobs:
     name: verify candidate
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 is REQUIRED here for the SAME reason `ci.yml` sets it, and this job is the one
+      # where getting it wrong is invisible until a release is attempted. v0.4.37's citation/docket
+      # gates read history (`git ls-tree <sha>`, `git log --all`); at the default depth 1 they find
+      # nothing and fail by design — naming the remedy — rather than skipping. `provenance` has
+      # `needs: verify`, so a red here does not degrade the release, it CANCELS it. The suite is run
+      # by exactly two workflows; both must hand it the same history, or "green in CI" and "green at
+      # release" would be two different claims.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

@@ -59,9 +59,12 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
 
 5. **The wrapped anchors — REFUTED as posed; shipped as a REGRESSION GUARD.**
    `CLAUDE.md:32-33` contains a phrase a contiguous `grep -c` returns **0** for, because the source
-   wraps it. No check verifies phrases today, so this becomes live the moment the anchor rule is
-   adopted: **an anchor that wraps is not greppable, therefore not an anchor.** A ninth `docs_links`
-   check matches a needle across a wrap by interleaving `\s*` through it and reading the **raw** file —
+   wraps it. The contiguity requirement arrives WITH the anchor rule, and the pre-fix reader shows why
+   it had to: `check_required_strings` matched its needles literally, so a wrap did fail it — as
+   *`README.md no longer mentions '<needle>'`*, a verdict naming the wrong defect for a phrase still
+   present one line down. **An anchor that wraps is not greppable, therefore not an anchor.** A ninth
+   `docs_links` check matches a needle across a wrap by interleaving `\s*` through it and reading the
+   **raw** file —
    normalizing the haystack instead would delete the very neighbours its boundaries read. It **cannot
    fail on pre-fix code**, so by this repo's own rule it is labelled a guard, never a pin.
 
@@ -77,8 +80,8 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    the docket loop sat *before* D6, so deleting a single docket doc aborted the suite with a
    `FileNotFoundError` and **D6 never ran** — the *"an orphaned section can never print green"*
    guarantee defeated upstream of the counter that guarantees it. It now reports a verdict
-   (`no such doc`) and D6 still evaluates; **mutation-verified: 2176 passed / 0 failed with the doc,
-   2175 / 1 without it.** (c) Pin 9's reach is **the whole bound corpus, 23 of 23**, and it is
+   (`no such doc`) and D6 still evaluates; **mutation-verified: 2177 passed / 0 failed with the doc,
+   2176 / 1 without it.** (c) Pin 9's reach is **the whole bound corpus, 23 of 23**, and it is
    **printed, not inferred**. Two rounds were needed to get there. The first disclosed that **21 of
    the 23** asserted and two were skipped in silence: a reading note authored as a bold paragraph
    rather than a blockquote returned its token line alone, so the walk found no `git show` to
@@ -143,8 +146,9 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    `#network-blk .domain-count,.project-meta`, one `--faint` and the later one `--ink2`) sit at
    `:252`/`:381` — and the note now carves out the one coordinate belonging to a later pass's own
    reading. (2) `_DOCKET47`'s scope claimed its **five** dockets were *"the corpus's ONLY docs whose
-   base revision is DERIVABLE"*: a universal over an unestablished class, since **22** of this repo's
-   docs carry a `` **`X`-numbered** `` note and **seven** of them have a fixing commit whose subject
+   base revision is DERIVABLE"*: a universal over an unestablished class, since **23** of the 81 docs
+   under `docs/**/*.md` (`_CANON47`'s own scan, recursive) carry a `` **`X`-numbered** `` note, and
+   **seven** of them have a fixing commit whose subject
    phrase is derived and measured unique. Two were added (`dbt-truth-restoration` → `6ac5380`,
    `signal-pipeline-hardening` → `ceaccc0`), each with **one** child, the fix itself — as do two of
    the other five, while the remaining three have two (the fix and the merge that brought it in,
@@ -158,10 +162,45 @@ rather than quietly dropped.** Design and evidence: `docs/prose-tied-to-the-tree
    `refusal-verdict-parity.spec.md` asserted that *"on every commit of the branch"* line 830 holds
    `ACTION_WRITES`; measured, it holds an unrelated `return` at both branch heads, and `ACTION_WRITES`
    is what it holds at the doc's **declared base** `e5cce77` — a true statement about the base, in a
-   sentence that asserted it of the branch.
+   sentence that asserted it of the branch. (l) **Pin 4's ground truth stated a property of its own
+   matcher that the matcher did not have — in three homes at once.** The upload line's filename list
+   was read from **plainly** flattened workflow text, and the code comment, the check's printed label
+   and the spec's row 4 all justified that with one clause: *"so a commented-out upload cannot still
+   supply its filenames."* MEASURED 2026-09-19 with the live upload line commented out, the pattern
+   matches it under **both** normalizations — `search` carries no `^` anchor, so a leading `#` is just
+   another character, and `_uncomment37` **keeps** the line, dropping only the marker. The pin would
+   therefore have gone on asserting the prose against a line the workflow no longer runs: a green
+   verdict about a dead line, which is this release's defect class arriving in the release's own gate.
+   The read now **drops the comment lines** — which is what makes the clause true — and it asserts
+   there is exactly **one live** upload line, the same defect's second half, since a first-match read
+   of an unasserted set is a partial census wearing a whole one's clothes. Measured in all three
+   directions rather than argued: live → `count=1`, green; commented out → `count=0`, **red**;
+   duplicated → `count=2`, **red**. The new conjunct also holds on pre-fix code, so it cannot flip
+   the pin's RED. (m) **A reading note carved one coordinate out of its binding and named no revision
+   for it** — `deep-field-theme.spec.md`'s note, the surface (k)(1) repaired, whose exception read
+   *"the reading that pass took on the tree it ran against"* and left the reader to go find that tree.
+   There is none to find: MEASURED, that number resolves to a different line at each of four
+   revisions — `#network-blk .hierarchy-branch.grant-edge` at `v0.4.23`, the reduced-motion `@media`
+   block at `v0.4.24`, `.record-detail{…}` at `e15ac3e^`, `.arch-tools select{…}` at `e15ac3e` —
+   because the pass read a **working tree no commit preserves**. The note now names that tier
+   (testimony, quoted as it was read) rather than dressing the number as a citation, and its
+   **self-coordinate** into the same document is replaced by the heading it points at: a line number
+   into a document that grows is the very decay that note warns about. (n) **A green `smoke` count is
+   not a green gate** — the release says so, and then this round paid for it. Pin 10 is uncommitted
+   work, and when the full gate was finally taken on the tree that *contains* it, `mypy` failed on
+   that pin's accumulator, `Need type annotation for "_sw47"`. Its only write is
+   `setdefault(...).append(...)`, a return mypy cannot infer a value type from — unlike the sibling
+   accumulators it was modelled on, which write with a plain `.append` and need no hint. So the Gate
+   line below is stated for **one** revision, all five legs taken on that same content.
 
-⚠ **This release adds the suite's first check that reads the tree's own git history**, so `ci.yml`
-now sets `fetch-depth: 0`. A shallow clone makes two of these checks report **verdicts about the
+⚠ **This release adds the suite's first check that reads the tree's own git history**, so **every
+workflow that runs the suite** sets `fetch-depth: 0` — `ci.yml` on both of its jobs, and
+`release.yml`'s `verify`, the one such job the first cut left at the default depth. That gap is
+material rather than tidy, and it is this release's own defect arriving in its own harness: the
+comment recording the dependency named the file in front of its author, and `verify`'s stake is
+categorically higher — `provenance` declares `needs: verify`, so a red there does not warn, it
+cancels the release. Pin 10 asserts the class now rather than the instance. A shallow clone makes
+two of these checks report **verdicts about the
 corpus** rather than name a missing input — measured, an archive tree and a `--depth 1` clone are
 indistinguishable: the fault arm advises deepening a clone that does not exist, and the verdict arm
 prints *"0 failing"* from an instrument that cannot read. **The third is repaired here rather than
@@ -169,10 +208,10 @@ disclosed:** the history arm used to call the one correctly bound docket BAD, an
 two faults — a tree that cannot be asked for its own history, by the command's own **return code**,
 and a **shallow clone whose truncation actually BIT**, the one shape a return code cannot see — and
 on either it fails naming the INSTRUMENT (`this clone is SHALLOW`) instead of reporting on
-documents. MEASURED on a `--depth 1` clone: **2173 passed / 3 failed**, pin 8 RED with that fault
+documents. MEASURED on a `--depth 1` clone: **2174 passed / 3 failed**, pin 8 RED with that fault
 message.
 
-Gate: smoke **2176** passed / 0 failed · docs_links · sim · mypy (42 source files) · manifests.
+Gate: smoke **2177** passed / 0 failed · docs_links · sim · mypy (42 source files) · manifests.
 
 ## [0.4.36] — 2026-09-19
 

@@ -229,10 +229,14 @@ def _ws_tolerant(needle: str) -> str:
     space inside `Run the` dies with the line break, so a flattening cannot be quoted as though
     only the break had gone. Against that haystack ``/cm-sync`` sits with a word character on
     BOTH sides (`e` left, `v` right), so both lookarounds fail and a wrapped needle reads as
-    ABSENT. It passed its own mutation test only because every needle in `REQUIRED_IN_README` is
-    delimited in README by PUNCTUATION (`/cm-sync` by backticks, `docs/network-guide.md` by
-    parens, `/cm-connect` by a backtick and a space) — a fixture green for an AMBIENT reason,
-    which this repo already records.
+    ABSENT. It passed its own mutation test only because every needle in `REQUIRED_IN_README`
+    carries PUNCTUATION on **at least one side** in README (`/cm-sync` by backticks,
+    `docs/network-guide.md` by parens, `/cm-connect` by a backtick and a SPACE) — a fixture green
+    for an AMBIENT reason, which this repo already records. ⚠ This clause read *"is delimited in
+    README by PUNCTUATION"* outright, which its own parenthetical already contradicted — it names
+    `/cm-connect` as *"a backtick and a space"* — and MEASURED, 5 of the 7 needles carry a
+    punctuation neighbour on BOTH sides while the other 2 carry a SPACE on the right, so the
+    unqualified form was false of them.
     """
     return r"\s*".join(re.escape(c) for c in needle)
 

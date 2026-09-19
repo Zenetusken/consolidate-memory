@@ -1,9 +1,13 @@
 # Deep Field — design-of-record
 
-> **Reading the citations.** Every `file:line` below is **`e15ac3e`-numbered** — except the coordinate
-> inside the re-anchoring account at `:400`, which is the reading that pass took on the tree it ran
-> against. Resolve the rest against that commit — `git show e15ac3e:<path>` — and **never against the
-> working tree**, which has moved them.
+> **Reading the citations.** Every `file:line` below is **`e15ac3e`-numbered** — with one exception, and
+> it is in *§11 How this document cites code*, where the account says why. The template coordinate
+> quoted inside that account is **the reading that pass took**, not a citation, and **no revision is
+> named for it because there is none to name**: measured 2026-09-19, that number resolves to a
+> different line at `v0.4.23`, at `v0.4.24`, at `e15ac3e^` and at `e15ac3e`, so it is a reading of a
+> working tree no commit preserves — testimony, quoted as it was read. Resolve everything else against
+> that commit — `git show e15ac3e:<path>` — and **never against the working tree**, which has moved
+> them.
 
 **Status: implemented.** Target release: **v0.4.24 (patch)** — a new default colour theme
 for the HTML archive, the visual system behind the README art, and the maintainer capture

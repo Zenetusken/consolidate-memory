@@ -21684,18 +21684,33 @@ with _tf36.TemporaryDirectory() as _td36w:
 
     _rel37 = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
     _sec37 = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
-    # TWO normalizations, and which one a read gets is not cosmetic. Executable text (the `run:`
-    # block below) gets PLAIN flattening; comment prose gets marker-stripped flattening. Strip `#`
-    # file-wide and a commented-OUT upload line would still yield its filenames — the ground truth
-    # would report assets that are no longer uploaded. SECURITY.md is markdown, so it needs neither.
-    _rel_flat37 = " ".join(_rel37.split())
+    # TWO normalizations, and which one a read gets is not cosmetic — but the distinction that
+    # matters here is not plain-vs-stripped, and MEASURING that is what moved this read. With the live
+    # upload line commented out (2026-09-19; the line at `:133`), the pattern below still matches it
+    # under BOTH: `search` carries no `^` anchor, so a leading `#` is just another character, and
+    # `_uncomment37` KEEPS the line and drops only the marker. Plain flattening therefore did NOT
+    # deliver what an earlier version of this comment said it did — a commented-out upload DID still
+    # supply its filenames, and the pin would have asserted the prose against a line the workflow no
+    # longer runs. A green verdict about a dead line is this PR's own defect class, so the upload read
+    # now drops the COMMENT LINES outright: no live upload line ⇒ no names ⇒ red. The provenance read
+    # is the opposite case and keeps `_uncomment37`, because its subject IS comment prose and the
+    # interior markers have to come off. SECURITY.md is markdown, so it needs neither.
+    _code_flat37 = " ".join(ln for ln in _rel37.splitlines() if not ln.lstrip().startswith("#"))
     _sec_flat37 = " ".join(_sec37.split())
     _sec_rel37 = _sec_flat37.split("## Release integrity", 1)[-1].split("## ", 1)[0]
     # The GROUND TRUTH: the filenames the upload line actually carries. Read from the workflow, not
     # restated — a gate that hard-codes `sbom.spdx.json SHA256SUMS` would stay green through the
     # very edit it exists to catch.
-    _up37 = _re37.search(r'gh release upload\s+"\$TAG"\s+([^\n]*?)\s*--clobber', _rel_flat37)
-    _assets37 = _up37.group(1).split() if _up37 else []
+    # ⚠ ALL matches, never the first, and the count is asserted in the predicate below. A first-match
+    # read of a set whose SIZE is not asserted is a partial census wearing a whole one's clothes:
+    # `release.yml` already carries a second `gh release upload` spelling inside the comment at its
+    # head. That one is excluded twice over — by the comment rule above, and by the `"$TAG"` …
+    # `--clobber` anchoring — and a check should not rest on WHICH of two independent exclusions
+    # happens to hold. Add a second LIVE upload line and a first-match read would silently gate the
+    # prose against whichever came first: green, against the wrong line, the arm reading exactly as
+    # it does now. ⚠ A comment at `:12` is not a counted upload line, so it is not a counterexample.
+    _uploads37 = _re37.findall(r'gh release upload\s+"\$TAG"\s+([^\n]*?)\s*--clobber', _code_flat37)
+    _assets37 = _uploads37[0].split() if _uploads37 else []
     _provc37 = _uncomment37(_rel37).split("provenance:", 1)[-1].split("on:", 1)[0]
     # Each asset is named in BOTH live sites by a token derived from its FILENAME, so adding a third
     # asset to the workflow reddens this until the prose names it too.
@@ -21708,9 +21723,12 @@ with _tf36.TemporaryDirectory() as _td36w:
           "`provenance:` comment claimed it \"attaches all three\", while `SECURITY.md` named an "
           "SPDX SBOM and never mentioned SHA256SUMS): the live packaging prose names exactly the "
           f"assets the workflow's upload line carries ({len(_assets37)}: {_assets37 or 'NONE'}); "
-          f"unnamed {_named37 or 'none'}, count-claims {_countclaim37 or 'none'}. Matcher: the "
-          "upload line's own filename list for the ground truth, read from PLAINLY flattened "
-          "workflow text so a commented-out upload cannot still supply its filenames, and a "
+          f"unnamed {_named37 or 'none'}, count-claims {_countclaim37 or 'none'}, "
+          f"upload lines read {len(_uploads37)} (must be exactly 1). Matcher: the "
+          "upload line's own filename list for the ground truth, read from COMMENT-LINE-STRIPPED "
+          "workflow text — the lines are DROPPED, not merely un-marked, because a marker-stripped "
+          "read still matches a commented-out upload — so a commented-out upload cannot supply its "
+          "filenames, and a "
           "filename-derived token for each site (so a THIRD asset reddens this until the prose "
           "names it) over COMMENT-MARKER-STRIPPED text — `\" \".join(t.split())` crosses a newline "
           "but not the `#` leading the next line, and the pre-fix comment wraps as `attaches all` / "
@@ -21728,7 +21746,7 @@ with _tf36.TemporaryDirectory() as _td36w:
           "`CHANGELOG.md:2495-2496`, resolves to a `## [0.4.5]` heading at this revision and to "
           "older-release journal prose on the base, while the cited passage is byte-identical at "
           "both — a CHANGELOG grows from the top, so a coordinate into one is decay, not a handle",
-          len(_assets37) == 2 and not _named37 and bool(_provc37.strip())
+          len(_uploads37) == 1 and len(_assets37) == 2 and not _named37 and bool(_provc37.strip())
           and all(_num37[w] == len(_assets37) for w in _countclaim37))
 
     # The DESTINATION half, and the half no check reached before this one: the workflow's attest arm
@@ -21798,7 +21816,12 @@ with _tf36.TemporaryDirectory() as _td36w:
     #
     # ⚠ This is the suite's FIRST history-reading check: `git ls-tree <sha>` needs the revision
     # present, so its verdict depends on CLONE DEPTH (the other ~2170 checks read the live tree
-    # only). `ci.yml` sets `fetch-depth: 0` for it. `_MIN_DOCS47` is the anti-vacuity clause on BOTH
+    # only). BOTH workflows that run this suite therefore set `fetch-depth: 0` — `ci.yml` on each of
+    # its two jobs, `release.yml` on `verify` — which pin 10 ASSERTS rather than assumes. ⚠ This
+    # sentence named `ci.yml` ALONE, and the naming is what let the defect through: a claim about a
+    # CLASS, scoped to the one member in front of its author, left the RELEASE runner at the default
+    # depth — where a red `verify` does not warn, it CANCELS (`provenance` declares `needs: verify`).
+    # `_MIN_DOCS47` is the anti-vacuity clause on BOTH
     # halves — a corpus that stopped citing anything would otherwise pass check 6 with `0 unbound`,
     # and a shallow clone would pass check 7b having resolved nothing.
     _CITE47 = _re37.compile(
@@ -21987,8 +22010,9 @@ with _tf36.TemporaryDirectory() as _td36w:
           f"answer for{': ' + ', '.join(_unver47[:3]) if _unver47 else ''}). "
           "⚠ This is the FAULT half, split out because a fault and a verdict must not share a "
           "message: one check carrying both sent the reader to inspect citations whose only problem "
-          "was that nobody could read them. The remedy for THIS arm is `fetch-depth: 0` (which "
-          "`ci.yml` sets for this job) — never a doc edit. A missing revision FAILS rather than "
+          "was that nobody could read them. The remedy for THIS arm is a FULL clone — "
+          "`fetch-depth: 0`, which every workflow that runs this suite sets (pin 10 asserts the "
+          "class) — never a doc edit. A missing revision FAILS rather than "
           "skipping: 'too shallow' is a fault, and a check that skips is a check that measures "
           "nothing while printing green.",
           not _unver47)
@@ -22019,8 +22043,12 @@ with _tf36.TemporaryDirectory() as _td36w:
     # inherits check 7's clone-depth dependency.
     #
     # ⚠ Scope: the SEVEN dockets below — a set of VERIFIED bindings, not a clause over a class.
-    # MEASURED 2026-09-19: 22 of this repo's docs carry a `**`X`-numbered**` note, and only these
-    # seven have had their fixing commit's subject phrase derived and measured unique. This read
+    # MEASURED 2026-09-19 over `_CANON47`'s OWN scan — `docs/**/*.md`, recursive, 81 files — **23**
+    # carry a `**`X`-numbered**` note, and only these seven have had their fixing commit's subject
+    # phrase derived and measured unique. ⚠ The figure is SCOPE-BOUND: 22 is what a NON-recursive
+    # `docs/*.md` returns, because `docs/adr/024-trajectory-evidence-ladder.md` is the 23rd — and a
+    # numeral about a scan that names no scope is a claim about the matcher, not about the tree, which
+    # is how this one first shipped a digit low. This read
     # "the FIVE dockets are the corpus's ONLY docs whose base revision is DERIVABLE", which the
     # sweep falsifies — `dbt-truth-restoration` and `signal-pipeline-hardening` pass the same test.
     # The needle is a phrase from the FIXING COMMIT's own subject, so this matches history, never
@@ -22061,7 +22089,8 @@ with _tf36.TemporaryDirectory() as _td36w:
     # return code cannot see: a shallow clone answers rc=0 with a truncated log, so that fault is
     # claimed only when the truncation actually BIT (a needle went short). A fault FAILS rather than
     # skipping, since a check that skips measures nothing while printing green; its remedy is a FULL
-    # clone (`fetch-depth: 0`, which `ci.yml` sets for this job) and never a doc edit.
+    # clone (`fetch-depth: 0`, which every workflow that runs this suite sets — pin 10) and never a
+    # doc edit.
     _r47 = _sp53.run(["git", "-C", str(ROOT), "log", "--all", "--format=%H%x09%s"],
                      capture_output=True, text=True)
     _sh47 = _sp53.run(["git", "-C", str(ROOT), "rev-parse", "--is-shallow-repository"],
@@ -22105,7 +22134,7 @@ with _tf36.TemporaryDirectory() as _td36w:
     # ⚠ The second fault shape, and the reason a return code alone is not enough: a SHALLOW clone
     # answers rc=0 with a TRUNCATED log, so a needle can go short because the commit is older than
     # the truncation point rather than because the binding is wrong. The fault is claimed only when
-    # the truncation actually BIT — a shallow clone deep enough to contain all five needles is not
+    # the truncation actually BIT — a shallow clone deep enough to contain all SEVEN needles is not
     # faulted, so this arm cannot manufacture a red. Where it does bite, the two causes are
     # indistinguishable and the honest verdict is about the INSTRUMENT.
     if not _fault47 and _rule_bad47 and _sh47.returncode == 0 and _sh47.stdout.strip() == "true":
@@ -22119,8 +22148,9 @@ with _tf36.TemporaryDirectory() as _td36w:
                   "docket BAD — a verdict about a DOCUMENT from an instrument that could not read, "
                   "which is `fault == absence` arriving in the check that guards against it, and "
                   "why the citation analogue is split into pin 7a (fault) and 7b (verdict). The "
-                  "remedy is a FULL clone (`fetch-depth: 0`, which `ci.yml` sets for this job) and "
-                  "never a doc edit. A fault FAILS rather than skipping: a check that skips "
+                  "remedy is a FULL clone — `fetch-depth: 0`, which every workflow that runs this "
+                  "suite sets (pin 10 asserts the class) — and never a doc edit. A fault FAILS "
+                  "rather than skipping: a check that skips "
                   "measures nothing while printing green.")
     else:
         _msg47 = ("v0.4.37 pin 8 (PIN — RED on the pre-fix corpus, where six of the seven dockets "
@@ -22147,7 +22177,7 @@ with _tf36.TemporaryDirectory() as _td36w:
     check(_msg47, not _fault47 and not _rule_bad47 and len(_rule_ok47) == len(_DOCKET47))
 
     check("v0.4.37 pin 9 (REGRESSION GUARD, NOT A PIN — MEASURED green on BOTH corpora: pre-fix "
-          "`2131 passed, 45 failed` with this check green, live `2176 passed, 0 failed`. ⚠ Green at "
+          "`2131 passed, 46 failed` with this check green, live `2177 passed, 0 failed`. ⚠ Green at "
           "each revision for a DIFFERENT reason, and an earlier label of this check got the pre-fix "
           "one wrong: it read that the pre-fix corpus's ONE bound doc left this `VACUOUS`, because "
           "the walk was `>`-delimited, that doc's note opens `**H` rather than `>`, and the "
@@ -22187,11 +22217,72 @@ with _tf36.TemporaryDirectory() as _td36w:
           "since its `>` lines are non-blank and open no new block.",
           not _self47)
 
+    # ---- v0.4.37 pin 10: every workflow JOB that runs the suite also hands it HISTORY. ----
+    # ⚠ This closes a precondition the suite ALREADY asserted in prose, scoped to the wrong member.
+    # Check 6's comment and the D6 ledger both said the citation gate's verdict "depends on CLONE
+    # DEPTH" and that "`ci.yml` sets `fetch-depth: 0` for it" — true of the workflow a DEVELOPER
+    # runs, silent about the one that PUBLISHES. MEASURED at the base `fbfe07e`: all THREE jobs that
+    # run this suite read False, because `fetch-depth` occurs ZERO times in either workflow there,
+    # and this branch — the very change that introduced the dependency — added it to `ci.yml`'s two
+    # jobs and not to `release.yml`'s `verify`. `provenance` declares `needs: verify`, so that is not
+    # a degraded release but a CANCELLED one, and it is the worst shape a silent failure takes here:
+    # CI is green either way, so only an actual release can reveal it. A claim about the harness's
+    # own input is the class this PR exists to gate, so it is gated rather than left in the comment.
+    #
+    # MATCHER, stated because the check is only as wide as it: the 2-space-indented blocks under a
+    # top-level `jobs:` key, per `.github/workflows/*.yml`; each block containing the literal
+    # `tests/smoke.py` must also contain `fetch-depth: 0`. It is TEXT and not a YAML parse — the same
+    # reading this suite's two existing `release.yml` readers use — so it pins the REMEDY the suite's
+    # own fault message names, NOT the depth actually fetched: a job could satisfy it and still
+    # clone shallow. It is here because the alternative was the comment.
+    # Annotated because this accumulator's ONLY write is a `setdefault(...).append(...)`, and mypy
+    # cannot infer a container's type from `setdefault`'s return — unlike the sibling accumulators it
+    # was modelled on, which write with a plain `.append` and need no hint.
+    _sw47: dict[str, list[tuple[str, bool]]] = {}
+    for _wfp47 in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        _wls47 = _wfp47.read_text(encoding="utf-8").splitlines()
+        _jkey47 = [_i for _i, _s in enumerate(_wls47) if _s.rstrip() == "jobs:"]
+        if not _jkey47:
+            continue
+        _jst47 = [_i for _i, _s in enumerate(_wls47)
+                  if _i > _jkey47[0] and _re37.match(r"^  [A-Za-z0-9_-]+:\s*$", _s)]
+        for _jx47, _jb47 in enumerate(_jst47):
+            _jend47 = _jst47[_jx47 + 1] if _jx47 + 1 < len(_jst47) else len(_wls47)
+            _jtxt47 = "\n".join(_wls47[_jb47:_jend47])
+            if "tests/smoke.py" in _jtxt47:
+                _sw47.setdefault(_wfp47.name, []).append(
+                    (_wls47[_jb47].strip(), "fetch-depth: 0" in _jtxt47))
+    _sbad47 = [f"{_f}:{_j}" for _f, _js in _sw47.items() for _j, _ok in _js if not _ok]
+    check("v0.4.37 pin 10 (PIN — MEASURED RED at the base `fbfe07e`, where ALL THREE jobs that run "
+          "`tests/smoke.py` read False, because `fetch-depth` occurs zero times in either workflow "
+          "there): every workflow JOB that runs this suite must also give it HISTORY, because the "
+          "citation and docket gates resolve against revisions a depth-1 checkout does not contain — "
+          "and on the release path a red `verify` CANCELS the release (`provenance` declares "
+          "`needs: verify`) rather than degrading it, while CI stays green either way. MATCHER: the "
+          "2-space-indented blocks under a top-level `jobs:` key; a block containing the literal "
+          "`tests/smoke.py` must also contain `fetch-depth: 0`. ⚠ TEXT, not a YAML parse — so it "
+          "pins the remedy the suite's own fault message names, not the depth actually fetched. "
+          "⚠ ANTI-VACUITY: this also asserts BOTH known suite-runners are still MATCHED "
+          f"({sorted(_sw47)}), since a rename that dropped one would otherwise leave a check about a "
+          "workflow it no longer reads."
+          + (f" ⚠ FAILING: {', '.join(_sbad47)}" if _sbad47 else ""),
+          {"ci.yml", "release.yml"} <= set(_sw47) and not _sbad47)
+
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
       passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 7 + 18 + 5 + 4 + 31 + 5 + 6 + 4 + 8 + 2 + 1 + 1 + 3
-                            + 5 + 2 + 1 + 1 + 1)
+                            + 5 + 2 + 1 + 1 + 1
+                            + 1)
+                                                        # +1: v0.4.37 PR B pin 10 — every workflow
+                                                        #     JOB that runs the suite also gives it
+                                                        #     HISTORY. A PIN rather than a guard:
+                                                        #     MEASURED RED at the base, where all
+                                                        #     three such jobs read False. It is the
+                                                        #     gate for the precondition check 6's
+                                                        #     comment states, which is the whole
+                                                        #     reason it exists as a check rather
+                                                        #     than as one more sentence.
                                                         # +1: v0.4.37 PR B pin 9 — the reading
                                                         #     note's SECOND declaration site. A
                                                         #     REGRESSION GUARD, not a pin: the
@@ -22213,13 +22304,17 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                                         #     post-fix commit, and landing on the fix
                                                         #     is the failure this pin names. ⚠ This
                                                         #     annotation is why the ledger's terms
-                                                        #     and the region's checks are now equal —
-                                                        #     MEASURED 2026-09-19: the region holds
-                                                        #     TEN `check("v0.4.37 …` calls and the
-                                                        #     bumps read +1/+3/+5 = 9, so this term
-                                                        #     had gone unaccounted for and a reader
-                                                        #     auditing the ledger would have found an
-                                                        #     unexplained 1.
+                                                        #     and the region's checks are equal —
+                                                        #     MEASURED 2026-09-19: the block from the
+                                                        #     `v0.4.37 — PR B's doc-coherence pins`
+                                                        #     banner to D6 holds ELEVEN `check(` calls,
+                                                        #     and the v0.4.37 blocks above bump
+                                                        #     +1/+1/+1/+3/+5 = 11. ⚠ Count them with a
+                                                        #     literal `check("v0.4.37` and you get TEN:
+                                                        #     pin 8's label is built in `_msg47`, so the
+                                                        #     eleventh is invisible to that matcher. The
+                                                        #     count is a claim about the MATCHER until
+                                                        #     the matcher is stated.
                                                         # +3: v0.4.37 PR B, Family 4 — the citation
                                                         #     gate, which is THREE checks because it
                                                         #     is three claims taking three different
@@ -22237,8 +22332,9 @@ check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned sect
                                                         #     and the remedy is `fetch-depth: 0`.
                                                         #     ⚠ This is the suite's FIRST
                                                         #     history-reading gate — its verdict
-                                                        #     depends on clone depth, so `ci.yml`
-                                                        #     carries `fetch-depth: 0` for it, and
+                                                        #     depends on clone depth, so EVERY
+                                                        #     workflow running it carries
+                                                        #     `fetch-depth: 0` (pin 10), and
                                                         #     7b's label carries the anti-vacuity
                                                         #     clause that stops a shallow clone
                                                         #     printing a green that measured nothing.
