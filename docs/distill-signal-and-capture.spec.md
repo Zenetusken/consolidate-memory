@@ -1,5 +1,11 @@
 # Distill — clean signal, chain structure, captured verdict (v0.1.55)
 
+> **Reading the citations.** Every `file:line` below is **`2e4e1b2`-numbered**. Resolve it against
+> that commit — `git show 2e4e1b2:<path>` — and **never against the working tree**, which has moved
+> them. The binding is the PARENT of the commit that shipped this spec: the coordinates below name
+> the pins this change UPDATES and the block it REVISES, so they describe the state it was written
+> against, never the state it produced.
+
 **Status:** draft → spec-review (design+prose lens, impl lens) → implement.
 **Scope:** arc 2 of the 2026-07-01 directive ("The distill does nothing or is poorly
 implemented"). LOCAL detection quality + capture + instruction only — the cross-project

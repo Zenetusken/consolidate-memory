@@ -1,5 +1,9 @@
 # Spec — cross-store resolution for the dangling-link detector
 
+> **Reading the citations.** Every `file:line` below is **`c6b432c`-numbered**. Resolve it against
+> that commit — `git show c6b432c:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status:** REVIEWED — ready to ship as v0.1.52 (spec-review to zero + 3-reviewer code-review, SHIP).
 Track 2 of the "wikilinks recurrence" fix (Track 1 = the canonical de-link, already applied + verified).
 **Bump:** PATCH (additive, backward-compatible — legacy call site + behavior preserved).

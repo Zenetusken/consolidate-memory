@@ -1,5 +1,9 @@
 # Spec — filter transient tool-protocol noise from the error-signal channel (+ cap)
 
+> **Reading the citations.** Every `file:line` below is **`1d20166`-numbered**. Resolve it against
+> that commit — `git show 1d20166:<path>` — and **never against the working tree**, which has moved
+> them.
+
 Status: gate-1 PASS (independent spec-review: no blockers, all 10 checks verified against source + a re-run of
 the measurement; 1 medium + 3 low gaps folded in) · target: cm v0.1.49 (PATCH) · scope: `extract_signals.py` +
 a smoke pin

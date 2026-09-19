@@ -142,8 +142,9 @@ report; they are the stories `cm doctor` / mutating commands must fail closed on
   tag. Threat model: `main` is PR-only (branch ruleset) and the pubkey is
   committed, so a tag the key did not sign cannot pass the gate.
 - The tag-triggered workflow also re-runs the strict plugin validates
-  (marketplace + both plugins) and publishes **SLSA build provenance** plus a
-  **stdlib-generated SPDX SBOM** to the GitHub Release.
+  (marketplace + both plugins) and publishes **SLSA build provenance** to the GitHub
+  **attestations API** — not a release asset — while a **stdlib-generated SPDX SBOM**
+  and `SHA256SUMS` are attached to the GitHub Release.
 
 ## Reporting a vulnerability
 

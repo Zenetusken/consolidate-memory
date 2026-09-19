@@ -1800,7 +1800,8 @@ contract drifts while every gate stays green:
   to `CycleRecord.__annotations__`, so those two cannot drift; nothing does that for the duty
   enumeration, which is why the first bullet is a manual obligation and why it would drift again.
   The Acceptance section adds the cheap structural guard that retires the risk.
-- **`SKILL.md:64-66` also enumerates clauses, and is deliberately left as written.** That paragraph
+- **`skills/consolidate-memory/SKILL.md:64-66` also enumerates clauses, and is deliberately left as
+  written.** That paragraph
   is a per-release changelog: `:60` opens *"the v0.4.33 record-duty-presence patch"* and `:64-66`
   names the clauses **that patch** shipped. A later patch adding clauses does not falsify a sentence
   about an earlier one, and the paragraph's own growth mechanism is to append a new
@@ -2282,7 +2283,8 @@ One finding falsified a claim in three places, and it is the reason the method e
     class, so 1/99 measures the audited-defect case only. D4 came back LOW and *"inherited, not
     introduced"*; this fold agrees on severity and disagrees on disposition — an inherited limit that
     a new clause newly gates is the new clause's to state.
-19. **`SKILL.md:64-66`'s enumeration is a dated changelog entry, not a current contract** — the
+19. **`skills/consolidate-memory/SKILL.md:64-66`'s enumeration is a dated changelog entry, not a
+    current contract** — the
     review raised it as a second gap, and the correct disposition is the *opposite* of the first.
     `:60` opens *"the v0.4.33 record-duty-presence patch"*, so a later patch adding clauses does not
     falsify a sentence about an earlier one, and that paragraph grows by appending its own version

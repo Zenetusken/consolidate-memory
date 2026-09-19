@@ -44,7 +44,13 @@ jobs:
           - python-version: "3.13"
             os: ubuntu-latest
     steps:
+      # fetch-depth: 0 is REQUIRED, not an optimization: smoke.py's citation gate resolves every
+      # `docs/*.md` `file:line` against the revision its doc declares, and `git ls-tree <sha>` needs
+      # that revision present. On a shallow clone the gate fails by design (naming this remedy)
+      # rather than skipping, so a green here cannot mean "nothing was checked".
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -60,6 +66,8 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # smoke.py's citation gate resolves against historical revisions
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

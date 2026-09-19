@@ -1,5 +1,19 @@
 # Render/declaration parity — design-of-record
 
+> **Reading the citations.** Every `file:line` below is **`1d97f54`-numbered**. Resolve it against
+> that commit — `git show 1d97f54:<path>` — and **never against the working tree**, which has moved
+> them. Revision-bound prose below states its own narrower or wider binding where it has one, and that statement governs there.
+>
+> ⚠ **This document uses TWO coordinate systems and the note above declares only one, so the other is
+> stated here.** A bare **identifier anchor** — a fixture name such as `_e_g_blank` or `_e_2f` — names
+> the **shipped** tree, not `1d97f54`, and it *must*: those fixtures are part of the change this
+> document reviews, so they do not exist at the base at all. MEASURED: neither token occurs at
+> `1d97f54` or at `6368288`; both first occur in `bb52757` (revision 6, the commit that froze the
+> triple). So read an anchor as *"grep the tree this sentence is about"* and a `file:line` as
+> *"resolve against `1d97f54`"* — a sentence about the **shipped** line cites an anchor, a sentence
+> about **pre-fix** behaviour cites a coordinate, and an anchor that does not resolve at the revision
+> you are reading is a claim about a *different* revision rather than a typo.
+
 **Status: revision 14 — an eleventh pass: the fourth review wave, adjudicated. Ten findings land on
 sixteen sites, and the class is uniform — a correct number or fact paired with the wrong OPERAND, or an
 enumeration that no longer covers what it names; not one is a fabricated figure. Three are live code, and
@@ -2217,7 +2231,7 @@ Carried forward from the plan, plus what this measurement pass added. None of it
   borrowed denominator is not corroboration.
   Reachable by authorship, never yet authored. *(Third-pass review, finding N1.)*
 - **A third-pass review finding the probe REFUTES, recorded so it is not re-filed.** The report was
-  that E1-g's first conjunct (`"index: not recorded" in _e_g_blank`, `smoke.py:18625`) is satisfied by
+  that E1-g's first conjunct (`"index: not recorded" in _e_g_blank`) is satisfied by
   the *pending* arm's own `"projected index: not recorded"` (`:927`) rather than by the `:945` string
   it names, leaving only conjunct 3 to discriminate. The containment is real as a fact about the two
   literals, but the fixture never reaches `:927`: `_e_g_blank` carries `pruned: 0`, which `_recorded`
@@ -3281,7 +3295,7 @@ reads as re-examined because everything around it was. The edit is now made on t
 both, the dropped third arm is precisely what leaves the day-spread rows counted under the `single-node`
 arm the JS would never have used for them, and keeping the term is stated as the **counterfactual** it is
 — it would print `30 blocked — 10 generic-cli`, twenty rows short of its own total. The shipped line for
-that fixture, asserted at `tests/smoke.py:18872-18873`, is `30 blocked — 10 generic-cli · 20 single-node`,
+that fixture, asserted at `tests/smoke.py` as `"30 blocked — 10 generic-cli · 20 single-node" in _e_2f`, is `30 blocked — 10 generic-cli · 20 single-node`,
 so the parts *do* account for the total, and the atom of truth the original was reaching for is the
 *labelling*, not the arithmetic. `a-pins-assertion-shape-sets-its-blind-spot` on a paragraph: a repair
 verified against the half it rewrote is not verified.

@@ -9,9 +9,10 @@ name: Release gate
 #          a valid SSH signature from the committed public key (.github/release-tag.pub).
 #          Threat model: main is PR-only (branch ruleset) and the pubkey is committed —
 #          a tag the key didn't sign cannot pass.
-# provenance:  builds SLSA provenance, an SPDX SBOM, and SHA256SUMS and attaches all
-#          three to the GitHub Release (create-if-missing — `--finalize`'s
-#          `gh release create` may race it).
+# provenance:  builds SLSA provenance, an SPDX SBOM, and SHA256SUMS. `gh release upload`
+#          attaches the SBOM and SHA256SUMS to the GitHub Release (create-if-missing —
+#          `--finalize`'s `gh release create` may race it); the provenance reaches the
+#          attestations API instead, over the two plugin dirs as subjects — not an asset.
 
 on:
   workflow_dispatch:

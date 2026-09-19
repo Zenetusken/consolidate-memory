@@ -21525,11 +21525,558 @@ with _tf36.TemporaryDirectory() as _td36w:
           "the subject is absent and this fails with the pin rather than passing vacuously",
           _fault27 == "no such column: display_name")
 
+    # ================= v0.4.37 — PR B's doc-coherence pins (the RC-6 families) ==================
+    # PR B's one rule: an assertion must be derivable from its SUBJECT, or gated so it cannot
+    # silently drift — and where it is gated, the gate names BOTH the source and the matcher it
+    # reads. Every check below therefore states its matcher and its scope on the check itself.
+    import re as _re37
+
+    _ladder_spec37 = ROOT / "docs" / "index-usage-and-budget-ladder.spec.md"
+    _ladder37 = _ladder_spec37.read_text(encoding="utf-8")
+
+    # ---- Family 1: the budget-ladder trio's positions -------------------------------------------------
+    # The PRODUCER is `memory_status.cliff_pct` (`:918`), so the prose is checked against it rather
+    # than against a second hand-derivation — which is exactly the defect Family 1 measures: a
+    # percentage derived by hand at a precision the operand's own documented ambiguity does not
+    # permit (the same file records that "25KB is read as 25x1024 ... if the harness means 25,000
+    # the shift is <2.5%", and 2.5% is precisely enough to move 23.98 -> 24.55, i.e. 24 vs 25).
+    #
+    # ⚠ SCOPE, stated on the check rather than left to the reader: this gate verifies the
+    # ARITHMETIC and NOT the OPERANDS. The three nodes are other projects' stores, so `6,138 B /
+    # 27 ln` is not derivable from this tree and a wrong operand lies outside what any check here
+    # can see. What it catches is a figure disagreeing with the producer GIVEN its own stated
+    # inputs — which is how node 1 read 25 against the producer's 24.
+    #
+    # ⚠ The UNIT is the document's own (1 KB = 1024, matching the `25KB` = 25,600 cliff it names).
+    # That is load-bearing, not pedantic: reading `≈8.8 KB` as 8,800 B yields 34 where the
+    # producer's own convention yields 35 — the operand-convention error Family 1 is about.
+    _fleet_re37 = _re37.compile(
+        r"([\w-]+) ≈?([\d,]+(?:\.\d+)?) (KB|B) / ~?(\d+) ln = \*\*(\d+)% / (\d+)%\*\*")
+        # `≈?` sits OUTSIDE the capture: `≈8.8` must yield the number `8.8`, and a group that keeps
+        # the mark makes `float()` raise — a matcher bug that surfaces as a suite ERROR rather than
+        # as the red this check exists to produce.
+    _fleet37 = _fleet_re37.findall(_ladder37)
+    _fleet_bad37 = []
+    for _nm37, _amt37, _unit37, _ln37, _bp37, _lp37 in _fleet37:
+        _b37 = int(float(_amt37.replace(",", "")) * (1024 if _unit37 == "KB" else 1))
+        _l37 = int(_ln37)
+        if ms.cliff_pct(_b37, _l37) != int(_bp37) or abs(100 * _l37 / 200 - int(_lp37)) > 0.5:
+            _fleet_bad37.append((_nm37, _b37, _l37, _bp37, ms.cliff_pct(_b37, _l37), _lp37))
+    check("v0.4.37 pin 1 (PIN — RED on the pre-fix doc, MEASURED: node 1 read `25%` against the "
+          "producer's 24, so 25 != 24): every fleet position the budget-ladder spec states equals "
+          f"`cliff_pct` on that node's OWN stated inputs ({len(_fleet37)} matched, "
+          f"{_fleet_bad37 or 'none'} disagreeing). Matcher: the fleet-position regex over that "
+          "spec; scope: its prose block only. The limit is stated rather than implied — this "
+          "verifies the ARITHMETIC, not the OPERANDS (the three stores are other projects', so "
+          "`6,138 B / 27 ln` is not derivable from this tree), and the unit is the DOCUMENT's own, "
+          "1 KB = 1024, so `≈8.8 KB` is 9,011 B and not 8,800",
+          len(_fleet37) == 3 and not _fleet_bad37)
+
+    # G-A3 (`:324`) asserts the SAME fixture's producer value, so prose and fixture are two
+    # assertions about ONE input and must agree. Pre-fix they did not: the prose said 25 while
+    # G-A3's own fixture said 24 — the document carried both answers, which is the checkable form
+    # of "nothing tied them together".
+    _ga3_re37 = _re37.compile(r"G-A3:\*\* fixture: ([\d,]+) B / (\d+) ln → `cliff_pct == (\d+)`")
+    _ga3_37 = _ga3_re37.search(_ladder37)
+    _n1_37 = next((t for t in _fleet37 if t[0] == "consolidate-memory"), None)
+    _gb37 = int(_ga3_37.group(1).replace(",", "")) if _ga3_37 else 0
+    _gl37 = int(_ga3_37.group(2)) if _ga3_37 else 0
+    _gv37 = int(_ga3_37.group(3)) if _ga3_37 else -1
+    check("v0.4.37 pin 2 (PIN — RED on the pre-fix doc: the prose read `25%` where `:324`'s own "
+          "G-A3 fixture asserts `cliff_pct == 24` for the very same inputs, so the document carried "
+          "both answers): the prose's node-1 figures and G-A3's fixture are the SAME fixture at the "
+          "SAME value, checked against the producer. This is the duplicate that could not survive: "
+          "a percentage restated by hand and an assertion derived by fixture are two sites, and "
+          "Family 1's whole finding is that nothing tied them together until this check did",
+          _ga3_37 is not None and _n1_37 is not None
+          and _n1_37[1] == f"{_gb37:,}" and int(_n1_37[3]) == _gl37
+          and int(_n1_37[4]) == _gv37 == ms.cliff_pct(_gb37, _gl37))
+
+    # ---- Family 2: `cm`'s usage block vs the parser that must accept it ------------------------------
+    # ⚠ THREE constraints, each measured, and none optional:
+    #
+    # (a) The flag is tested against the SUBCOMMAND's own subtree, never the top-level parser.
+    #     `--plan` is accepted GLOBALLY — `cm_ops.py` declares it on `migrate` AND on `data` — so a
+    #     gate asking only "does some parser accept `--plan`" reads GREEN on the pre-fix tree and
+    #     pins nothing at all. Pre-fix the heredoc advertised it under `local`, whose subtree
+    #     declares no `--plan`. This is the difference between a gate and a gate-shaped no-op.
+    # (b) argv construction is NOT the observable. Probing the heredoc's triples through argv,
+    #     positional artifacts false-RED 32 times where a genuine rejection occurs once. The
+    #     parser's own option table is the fact; that is what is read.
+    # (c) The subtree, not the subcommand: the usage block does not distinguish `cm project` from
+    #     `cm project enroll` (nor `journal cleanup` from `journal`), so the gate must not either.
+    #
+    # ⚠ SCOPE: only the cm_ops-backed subcommands HAVE a parser to be checked against. Lines like
+    # `cm beacon`, `cm render` and `cm calibration` are thin `exec` pass-throughs to their own
+    # scripts, so their flags are declared THERE and not in `build_parser()`. Naming the scope is
+    # what keeps this from false-REDding on the lines that are correct as written.
+    import cm_ops as _cmops37
+
+    def _options_under37(_parser: Any) -> set:
+        """Every option string reachable from `_parser`, nested sub-subparsers included (c)."""
+        _out: set = set()
+        for _act37 in getattr(_parser, "_actions", []):
+            _out |= set(getattr(_act37, "option_strings", None) or [])
+            _ch37 = getattr(_act37, "choices", None)
+            if isinstance(_ch37, dict):
+                for _sub37 in _ch37.values():
+                    _out |= _options_under37(_sub37)
+        return _out
+
+    def _choices37(_parser: Any) -> dict:
+        for _act37 in getattr(_parser, "_actions", []):
+            _ch37 = getattr(_act37, "choices", None)
+            if isinstance(_ch37, dict):
+                return _ch37
+        return {}
+
+    _top37 = _cmops37.build_parser()
+    _cmops_subs37 = set(_choices37(_top37))
+    _usage37 = (ROOT / "cm").read_text(encoding="utf-8").split("cat <<'EOF'", 1)[1].split("EOF", 1)[0]
+    _adv37 = []
+    for _line37 in _usage37.splitlines():
+        _m37 = _re37.match(r"\s+cm (\S+)(.*)$", _line37)
+        if _m37 and _m37.group(1) in _cmops_subs37:
+            for _f37 in _re37.findall(r"--[a-z][a-z0-9-]*", _m37.group(2)):
+                _adv37.append((_m37.group(1), _f37))
+    _unaccepted37 = sorted(
+        (_s37, _f37) for _s37, _f37 in set(_adv37)
+        if _f37 not in _options_under37(_choices37(_top37)[_s37]))
+    check("v0.4.37 pin 3 (PIN — RED on the pre-fix heredoc, MEASURED: `cm local rebuild-index "
+          "--plan` is advertised, `local` declares no `--plan`, and the real invocation exits rc=2 "
+          "`unrecognized arguments: --plan` — the advertised flag was UNUSABLE, not merely "
+          f"undocumented): every flag `cm`'s usage block advertises under a parser-backed "
+          f"subcommand is accepted by THAT subcommand's subtree ({len(set(_adv37))} pairs across "
+          f"{len(_cmops_subs37)} parser-backed subcommands; {_unaccepted37 or 'none'} unaccepted). "
+          "The scope is the `build_parser()` surface — the `exec` pass-through lines declare their "
+          "flags in their own scripts — and the subtree walk is what stops `--plan` being found on "
+          "`migrate` while it is being advertised under `local`",
+          bool(_adv37) and not _unaccepted37)
+
+    # ---- Family 3: the packaging prose vs the workflow -------------------------------------------------
+    # THREE sites assert this, and the census is named because it took a third pass to find them:
+    # `release.yml`'s `provenance:` comment (over-claims — it attached provenance to the Release),
+    # `SECURITY.md` §Release integrity (mis-locates provenance AND omits SHA256SUMS), and
+    # `CHANGELOG.md:2495-2496` in the shipped `## [0.4.2]` entry (mis-locates, omits). All three
+    # agree on the one item they all get wrong, which is the finding: cross-reading any two
+    # REINFORCES the error. ⚠ The CHANGELOG site is deliberately OUT of the gate's scope — it is
+    # the dated record of a shipped release, so rewriting it would make the record disagree with
+    # what shipped — and that exclusion is stated here rather than left implicit.
+    def _uncomment37(_text: str) -> str:
+        """Flatten a COMMENT BLOCK: drop the line-leading marker, then normalize whitespace.
+
+        ⚠ `" ".join(t.split())` crosses a newline but NOT the `#` that leads the next line, so a
+        phrase wrapping inside a comment block keeps an interior marker. MEASURED — the pre-fix
+        `release.yml` comment wraps as `attaches all` / `#   three to the GitHub Release`, and a
+        count-claim matcher reading `all (two|three|…)` saw `all # three` and reported NO CLAIM.
+        That is a matcher fault wearing an absence's clothes, and on this check it was invisible:
+        the other arm still reddened, so only a single-arm red hid a dead arm. Strip, then flatten.
+        """
+        return " ".join(ln.strip().lstrip("#").strip() for ln in _text.splitlines() if ln.strip())
+
+    _rel37 = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    _sec37 = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+    # TWO normalizations, and which one a read gets is not cosmetic. Executable text (the `run:`
+    # block below) gets PLAIN flattening; comment prose gets marker-stripped flattening. Strip `#`
+    # file-wide and a commented-OUT upload line would still yield its filenames — the ground truth
+    # would report assets that are no longer uploaded. SECURITY.md is markdown, so it needs neither.
+    _rel_flat37 = " ".join(_rel37.split())
+    _sec_flat37 = " ".join(_sec37.split())
+    _sec_rel37 = _sec_flat37.split("## Release integrity", 1)[-1].split("## ", 1)[0]
+    # The GROUND TRUTH: the filenames the upload line actually carries. Read from the workflow, not
+    # restated — a gate that hard-codes `sbom.spdx.json SHA256SUMS` would stay green through the
+    # very edit it exists to catch.
+    _up37 = _re37.search(r'gh release upload\s+"\$TAG"\s+([^\n]*?)\s*--clobber', _rel_flat37)
+    _assets37 = _up37.group(1).split() if _up37 else []
+    _provc37 = _uncomment37(_rel37).split("provenance:", 1)[-1].split("on:", 1)[0]
+    # Each asset is named in BOTH live sites by a token derived from its FILENAME, so adding a third
+    # asset to the workflow reddens this until the prose names it too.
+    _toks37 = [a.split(".")[0].lower() for a in _assets37]
+    _named37 = [t for t in _toks37 if t not in _sec_flat37.lower() or t not in _provc37.lower()]
+    _countclaim37 = [w for w in _re37.findall(r"all\s+(two|three|four|five)\b",
+                                              _sec_flat37 + " " + _provc37)]
+    _num37 = {"two": 2, "three": 3, "four": 4, "five": 5}
+    check("v0.4.37 pin 4 (PIN — RED on the pre-fix prose, MEASURED twice over: `release.yml`'s "
+          "`provenance:` comment claimed it \"attaches all three\", while `SECURITY.md` named an "
+          "SPDX SBOM and never mentioned SHA256SUMS): the live packaging prose names exactly the "
+          f"assets the workflow's upload line carries ({len(_assets37)}: {_assets37 or 'NONE'}); "
+          f"unnamed {_named37 or 'none'}, count-claims {_countclaim37 or 'none'}. Matcher: the "
+          "upload line's own filename list for the ground truth, read from PLAINLY flattened "
+          "workflow text so a commented-out upload cannot still supply its filenames, and a "
+          "filename-derived token for each site (so a THIRD asset reddens this until the prose "
+          "names it) over COMMENT-MARKER-STRIPPED text — `\" \".join(t.split())` crosses a newline "
+          "but not the `#` leading the next line, and the pre-fix comment wraps as `attaches all` / "
+          "`#   three to …`, so a plain flatten made the count arm read `none` while the other arm "
+          "still reddened and hid it. That is why the count arm also requires a NON-EMPTY "
+          "extraction: an absent claim and an unread one must not share a representation. ⚠ A "
+          "LIMIT, stated rather than closed: that arm's matcher is the literal `all <N>` wording, "
+          "so an over-claim phrased another way would evade it — the token arm and this one "
+          "together caught the real defect, and neither is a general counter. Scope: "
+          "`release.yml`'s `provenance:` comment and `SECURITY.md` §Release integrity — "
+          "`CHANGELOG.md:2495-2496` asserts the same false claim but is a dated release record, so "
+          "it is named here and deliberately not gate-read",
+          len(_assets37) == 2 and not _named37 and bool(_provc37.strip())
+          and all(_num37[w] == len(_assets37) for w in _countclaim37))
+
+    # The DESTINATION half, and the half no check reached before this one: the workflow's attest arm
+    # was pinned as EXISTING (`tests/smoke.py`'s older release.yml reader), never as to WHERE its
+    # output goes — which is precisely the claim both prose sites got wrong.
+    #
+    # ⚠ The gate splits on `[.;—]` and not on `—` alone, and the difference is measured: the
+    # repaired `release.yml` comment is ONE em-dash-free run containing both "provenance" and
+    # "GitHub Release", so a coarser split would red the corrected text. Only a CLAUSE carrying
+    # both is the defect.
+    #
+    # ⚠ And a LIMIT, stated rather than implied: the attestations API destination is a property of
+    # `actions/attest-build-provenance`'s own behaviour and is NOT decidable from the tree. What
+    # this gate can assert is the fail-safe half — that no prose clause puts provenance on the
+    # Release, and that no provenance-shaped artifact rides the upload line.
+    def _bad_clause37(_text: str) -> list:
+        return [c.strip() for c in _re37.split(r"[.;—]", _text)
+                if "provenance" in c.lower() and "github release" in c.lower()]
+
+    _bad37 = _bad_clause37(_sec_rel37) + _bad_clause37(_provc37)
+    _prov_asset37 = [a for a in _assets37
+                     if "provenance" in a.lower() or "intoto" in a.lower() or "sigstore" in a.lower()]
+    check("v0.4.37 pin 5 (PIN — RED on the pre-fix prose, MEASURED: `SECURITY.md` read \"publishes "
+          "**SLSA build provenance** plus a **stdlib-generated SPDX SBOM** to the GitHub Release\", "
+          "and a clause carrying both `provenance` and `GitHub Release` is the defect in its "
+          f"checkable form): no prose clause places provenance on the Release ({_bad37 or 'none'}), "
+          "and no provenance-shaped artifact rides the upload line "
+          f"({_prov_asset37 or 'none'}). ⚠ The limit is stated on the check: the attestations-API "
+          "destination is the ACTION's own behaviour, not a property of this tree, so what is "
+          "asserted is the fail-safe half — provenance is not claimed as a Release asset and is not "
+          "uploaded as one. The clause split is on `[.;—]` rather than on the em dash alone, because "
+          "the corrected `release.yml` comment is one dash-free run containing both terms",
+          not _bad37 and not _prov_asset37)
+
+    # ---- Family 4: every citation resolves at the revision its doc declares ------------------------
+    # The corpus's unbound docs now declare a binding, and this is the gate. THREE identities,
+    # deliberately distinct because they take three different repairs: the doc must NAME a revision
+    # (check 6), the named revision must be PRESENT here so its citations can be read at all (check
+    # 7a — a fault about the CLONE, never a verdict about a doc), and the naming must be TRUE
+    # (check 7b). Before these, the census itself was the defect — the plan recorded "31 stale
+    # citations" and "289 across 19 files", and NEITHER number reproduced under any matcher, because
+    # neither was tied to the tree that produced it.
+    #
+    # ⚠ THE MATCHER IS THE GATE'S REACH, and every form it could not reach was a way to be uncited.
+    # MEASURED when the four gaps closed: `.js` was missing from the extension set (3 docs cite JS),
+    # the range separator took `-` only (so `smoke.py:1461–1462`'s EN DASH read as no citation at
+    # all), a comma list (`docs/SPEC.md:27,31-52`) matched nothing — 16 occurrences, SIX of them
+    # `dbt-truth-restoration`'s own evidence ledger, the one docket here whose binding was false —
+    # and the glob was `docs/*.md`, which put `docs/adr/` outside the gate entirely. The widening
+    # added 24 citations and exactly ONE true failure: `unverifiable-carrier.spec.md`'s
+    # `sections.js:269`, written `dashboard.sections.js:269` three lines earlier in the same doc.
+    # Every other one resolves; the defect was that nothing read them.
+    #
+    # ⚠ The SPEC grammar is a comma list of `N` or `N-M` (either dash), and EVERY number it names
+    # must be within the file. The first draft captured a range's end and never read it, so
+    # `path:10-500` in a 20-line file passed on the strength of its start — a claim wider than its
+    # matcher, which is the family this gate exists to close.
+    #
+    # ⚠ RESOLUTION IS BY CONTENT, NOT BY NAME. A bare `SKILL.md:NNN` matches TWO files — the memory
+    # skill's and the beta-tester's — and MEASURED, all 29 bare `SKILL.md` cites in the corpus fit
+    # ONLY the memory skill, because the beta file is shorter than the cited line. So a citation
+    # resolves iff EXACTLY ONE admissible file can CARRY it: "ambiguous by name" is not the verdict
+    # "ambiguous", and only the second fails. A third verdict is the canary
+    # (`plugins/dream-beta-tester/fixtures/canary-v0.1.19/`), whose vendored copies are byte-faithful
+    # to ANOTHER version and whose line numbers are deliberately that version's — out of scope by
+    # construction, therefore EXCLUDED, never ABSENT.
+    #
+    # ⚠ This is the suite's FIRST history-reading check: `git ls-tree <sha>` needs the revision
+    # present, so its verdict depends on CLONE DEPTH (the other ~2170 checks read the live tree
+    # only). `ci.yml` sets `fetch-depth: 0` for it. `_MIN_DOCS47` is the anti-vacuity clause on BOTH
+    # halves — a corpus that stopped citing anything would otherwise pass check 6 with `0 unbound`,
+    # and a shallow clone would pass check 7b having resolved nothing.
+    _CITE47 = _re37.compile(
+        r"`([A-Za-z0-9_./-]+\.(?:py|md|json|html|sh|yml|js))"
+        r":(\d+(?:[-–—]\d+)?(?:\s*,\s*\d+(?:[-–—]\d+)?)*)`")
+    _CANON47 = _re37.compile(r"\*\*`([0-9a-f]{7,40})`-numbered\*\*")
+    _CAN47 = "plugins/dream-beta-tester/fixtures/canary-v0.1.19/"
+    _MIN_DOCS47 = 15           # the anti-vacuity floor, on citing docs NAMED (check 6) and RESOLVED
+                               # (7b) alike. MEASURED at the widened matcher: 23 of 81 files cite
+                               # and all 23 resolve, so 15 is a floor against a vacuous green, never
+                               # a tripwire on ordinary corpus drift.
+    _tree47: dict = {}
+    _len47: dict = {}
+
+    def _ls47(_sha):
+        if _sha not in _tree47:
+            _r = _sp53.run(["git", "-C", str(ROOT), "ls-tree", "-r", "--name-only", _sha],
+                           capture_output=True, text=True)
+            _tree47[_sha] = _r.stdout.splitlines() if _r.returncode == 0 else None
+        return _tree47[_sha]
+
+    def _nlines47(_sha, _path):
+        if (_sha, _path) not in _len47:
+            _r = _sp53.run(["git", "-C", str(ROOT), "show", f"{_sha}:{_path}"],
+                           capture_output=True, text=True)
+            _len47[(_sha, _path)] = len(_r.stdout.splitlines()) if _r.returncode == 0 else None
+        return _len47[(_sha, _path)]
+
+    def _spec_max47(_spec):
+        """The largest line number a citation's spec names — a range's END included.
+
+        The first draft captured the end and never read it, so `path:10-500` in a 20-line file
+        passed on the strength of its start alone: a claim wider than its matcher's reach, which
+        is the family this whole gate exists to close. Reading it costs nothing — MEASURED across
+        the corpus's bound docs at their declared revisions, 0 such failures — and closes the
+        class for the citations that arrive later.
+        """
+        _hi = 0
+        for _part in _spec.split(","):
+            for _num in _re37.split(r"[-–—]", _part.strip()):
+                if _num.strip().isdigit():
+                    _hi = max(_hi, int(_num))
+        return _hi
+
+    def _note_block47(_text):
+        """The markdown blockquote block holding the canonical binding — the doc's reading note.
+
+        Scoped to the BLOCK deliberately: a doc may legitimately `git show` an unrelated commit
+        elsewhere (an evidence ledger naming a historical revision), so what is asserted is that
+        the note's example command agrees with the note's own declaration.
+        """
+        _lines = _text.splitlines()
+        for _i, _l in enumerate(_lines):
+            if _CANON47.search(_l):
+                _lo = _hi = _i
+                while _lo > 0 and _lines[_lo - 1].lstrip().startswith(">"):
+                    _lo -= 1
+                while _hi + 1 < len(_lines) and _lines[_hi + 1].lstrip().startswith(">"):
+                    _hi += 1
+                return _lines[_lo:_hi + 1]
+        return None
+
+    _unbound47, _fail47, _unver47, _self47 = [], [], [], []
+    _ran47 = _scan47 = _citing47 = 0
+    for _d47 in sorted((ROOT / "docs").rglob("*.md")):
+        _scan47 += 1
+        _t47 = _d47.read_text(encoding="utf-8")
+        if not _CITE47.search(_t47):
+            continue
+        _name47 = str(_d47.relative_to(ROOT))       # the relative path: `docs/adr/` names would
+        _citing47 += 1                              # collide with `docs/` ones as bare basenames
+        _m47 = _CANON47.search(_t47)
+        if not _m47:
+            _unbound47.append(_name47)
+            continue
+        _sha47 = _m47.group(1)
+        for _s47 in _re37.findall(r"git show ([0-9a-f]{7,40})",
+                                  "\n".join(_note_block47(_t47) or [])):
+            if not (_sha47.startswith(_s47) or _s47.startswith(_sha47)):
+                _self47.append(f"{_name47}: declares {_sha47} but its note runs "
+                               f"`git show {_s47}`")
+        _paths47 = _ls47(_sha47)
+        if _paths47 is None:
+            _unver47.append(f"{_name47}@{_sha47}")
+            continue
+        _ran47 += 1
+        for _ln47, _line47 in enumerate(_t47.splitlines(), 1):
+            for _b47, _spec47 in _CITE47.findall(_line47):
+                _need47 = _spec_max47(_spec47)
+                _by47 = [_p for _p in _paths47 if _p == _b47 or _p.endswith("/" + _b47)]
+                if not _by47:
+                    _fail47.append(f"{_name47}:{_ln47} absent {_b47}:{_spec47}")
+                elif all(_p.startswith(_CAN47) for _p in _by47):
+                    continue                             # EXCLUDED — out of scope, not absent
+                else:
+                    _ad47 = [_p for _p in _by47 if not _p.startswith(_CAN47)]
+                    _fit47 = [_p for _p in _ad47 if (_nlines47(_sha47, _p) or 0) >= _need47]
+                    if not _fit47:
+                        _fail47.append(f"{_name47}:{_ln47} out-of-range {_b47}:{_spec47}")
+                    elif len(_fit47) > 1:
+                        _fail47.append(f"{_name47}:{_ln47} ambiguous {_b47}:{_spec47}")
+
+    check("v0.4.37 pin 6 (PIN — RED on the pre-fix corpus, MEASURED: of the citing docs at "
+          "`fbfe07e`, ONE carries the canonical binding, so this reddens the other 20): every "
+          "`docs/**/*.md` carrying a `file:line` citation declares the revision its coordinates "
+          f"resolve on ({_citing47} citing docs of {_scan47} scanned, {len(_unbound47)} unbound"
+          f"{': ' + ', '.join(_unbound47[:4]) if _unbound47 else ''}). "
+          f"⚠ `{_MIN_DOCS47} <= citing` is the anti-vacuity clause, and the denominator is printed "
+          "for the same reason: without either, a corpus that stopped citing anything prints "
+          "`0 unbound` — a green over an empty set, which is the exact shape this family exists to "
+          "kill (the plan's own census was one). "
+          "⚠ The matcher is the CANONICAL form `**`<sha>`-numbered**`, and the canonical form was "
+          "not invented here — `refusal-verdict-parity.spec.md`, the corpus's best-complying doc, "
+          "arrived at that exact idiom independently. Two docs that comply in their OWN words "
+          "(`render-declaration-parity`, `dream-teeth-coverage`) do not match it, and they were "
+          "given the canonical line rather than the matcher widened: a phrase family over three "
+          "incompatible forms cannot be gated, and `dream-teeth-coverage`'s per-citation "
+          "annotations leave its UNannotated cites unbound regardless, so it was never compliant "
+          "at document level.",
+          not _unbound47 and _citing47 >= _MIN_DOCS47)
+
+    # ⚠ REGRESSION GUARD, NOT A PIN — and the distinction is the repo's own rule, measured: on the
+    # pre-fix corpus every declared revision is PRESENT (there is only one bound doc, and its
+    # revision is in the clone), so this arm is green before the fix and cannot fail on it. What it
+    # closes is the FAULT the old single check conflated with its verdict: a shallow clone printed
+    # "every `file:line` resolves at its doc's declared revision" while nothing had been resolved.
+    check("v0.4.37 pin 7a (REGRESSION GUARD — green on the pre-fix corpus by construction, since "
+          "every revision it then declared was present): every revision a citing doc declares is "
+          "PRESENT in this clone, so the citation verdict beside this has something to resolve "
+          f"against ({len(_unver47)} of {_citing47} citing docs name a revision this clone cannot "
+          f"answer for{': ' + ', '.join(_unver47[:3]) if _unver47 else ''}). "
+          "⚠ This is the FAULT half, split out because a fault and a verdict must not share a "
+          "message: one check carrying both sent the reader to inspect citations whose only problem "
+          "was that nobody could read them. The remedy for THIS arm is `fetch-depth: 0` (which "
+          "`ci.yml` sets for this job) — never a doc edit. A missing revision FAILS rather than "
+          "skipping: 'too shallow' is a fault, and a check that skips is a check that measures "
+          "nothing while printing green.",
+          not _unver47)
+
+    check("v0.4.37 pin 7b (PIN — RED on the pre-fix corpus: with the corpus unbound there is no "
+          "revision to resolve against, so the floor alone reddens it, and the genuine defects this "
+          "found redden it too): every `file:line` resolves at its doc's declared revision — the "
+          "path exists there and every line number the citation names, a range's END included, is "
+          "within it — resolving by CONTENT where the name is ambiguous. "
+          f"{_ran47} of {_citing47} citing docs resolved, {len(_unbound47)} unbound, "
+          f"{len(_fail47)} failing"
+          f"{': ' + '; '.join(_fail47[:3]) if _fail47 else ''}. "
+          f"⚠ `{_MIN_DOCS47} <= resolved` is the anti-vacuity clause: without it a clone that could "
+          "answer for one doc and not the next prints a green proportional to how little it read.",
+          not _fail47 and _ran47 >= _MIN_DOCS47)
+
+    # ---- Family 4, the RULE: a defect docket binds to the parent of its FIXING commit -------------
+    # The binding table was DERIVED by probe, not chosen — and the derivation is the interesting part,
+    # because it is what separates a defect docket from a design record. Probing
+    # `audit-hygiene-remediation`'s A4 row across three revisions found the DEFECT at one
+    # (`except …: return ""`), its FIX at the next (`_GIT_WARNED`, `global _GIT_WARNED`), and an
+    # unrelated region at the third: the row describes the revision its fix landed AGAINST, so a
+    # docket binds to that fix's PARENT. A design record binds to its own last commit instead.
+    #
+    # Check 6 asserts a revision is named; check 7 asserts the naming is TRUE. Neither can tell a
+    # derived binding from a plausible-looking constant — this is the third claim, and the only one
+    # that makes the binding re-derivable by a reader rather than trusted. It reads history, so it
+    # inherits check 7's clone-depth dependency.
+    #
+    # ⚠ Scope: the FIVE dockets. The needle is a phrase from the FIXING COMMIT's own subject, so
+    # this matches history, never the document's prose — which is the point, since the whole family
+    # is about prose asserting what nothing ties to the tree. A docket whose fix commit is reworded
+    # reddens this, and that is a true red: the binding has stopped being re-derivable.
+    #
+    # ⚠ The table listed TWO of the five when this first shipped, so the check's universal named a
+    # class it sampled a third of — the same defect as the census it replaces, one layer down. All
+    # five were verified to satisfy the rule before being added; what made the other three SAFE to
+    # add is that the needle is load-bearing for them (their binding has two children — the fix and
+    # its merge — so the phrase is what picks the fix), which is measured, not assumed.
+    #
+    # ⚠ The needle must match EXACTLY ONE commit, and that was measured for all five before the
+    # table grew — but the loop below originally took the FIRST match and stopped, so a needle that
+    # later collided would have silently re-targeted this check at a different commit while still
+    # printing green. Uniqueness is now asserted rather than trusted.
+    _DOCKET47 = {"audit-hygiene-remediation": "audit-hygiene remediation",
+                 "track-c-ci-docs-hygiene": "repo-doc hygiene",
+                 "dream-teeth-coverage": "make every gate mean what it claims",
+                 "refusal-verdict-parity": "a refusal stops being spelled like a verdict",
+                 "render-declaration-parity": "the dashboard reads the data, not the label"}
+    _rule_ok47, _rule_bad47 = [], []
+    _log47 = _sp53.run(["git", "-C", str(ROOT), "log", "--all", "--format=%H%x09%s"],
+                       capture_output=True, text=True).stdout.splitlines()
+    for _dn47, _needle47 in _DOCKET47.items():
+        _m47b = _CANON47.search((ROOT / "docs" / f"{_dn47}.spec.md").read_text(encoding="utf-8"))
+        if not _m47b:
+            _rule_bad47.append(f"{_dn47}: unbound")
+            continue
+        _bind47 = _m47b.group(1)
+        _hits47 = [_l47 for _l47 in _log47 if _needle47.lower() in _l47.partition("\t")[2].lower()]
+        if len(_hits47) != 1:
+            _rule_bad47.append(f"{_dn47}: the needle matches {len(_hits47)} commits, not 1")
+            continue
+        _h47 = _hits47[0].partition("\t")[0]
+        _par47 = _sp53.run(["git", "-C", str(ROOT), "rev-parse", f"{_h47}^"],
+                           capture_output=True, text=True).stdout.strip()
+        if _par47.startswith(_bind47):
+            _rule_ok47.append(f"{_dn47} -> {_bind47} = {_h47[:7]}^")
+        else:
+            _rule_bad47.append(f"{_dn47} -> {_bind47} is no fixing commit's parent")
+
+    check("v0.4.37 pin 8 (PIN — RED on the pre-fix corpus, where four of the five dockets declare "
+          "no binding at all, so the rule has nothing to hold): a defect docket's binding is the "
+          "PARENT of the commit that FIXED its rows — re-derived from history rather than trusted "
+          f"from the table ({len(_rule_ok47)}/{len(_DOCKET47)}: {'; '.join(_rule_ok47) or 'none'}"
+          f"{'; BAD: ' + '; '.join(_rule_bad47) if _rule_bad47 else ''}). "
+          "⚠ This is the third and last claim about a binding, and the other two cannot stand in for "
+          "it: check 6 asserts a revision is NAMED and check 7b that the naming is TRUE, but a "
+          "plausible constant passes both. Only this one makes the binding RE-DERIVABLE — the "
+          "reader can run the same two git commands and get the same number. The needle is a phrase "
+          "from the fixing commit's SUBJECT, so the matcher reads history and never the document's "
+          "prose, which is what keeps it out of the family it is checking. A docket whose fix commit "
+          "is reworded reddens this, and that red is true: the binding stopped being re-derivable. "
+          "⚠ The universal here is only as wide as the TABLE, and the table is hand-reviewed by "
+          "necessity: MEASURED, the discriminating fact (a docket asserts pre-state; a design record "
+          "does not) is not in the `file:line` token — three docs are syntactically identical and "
+          "semantically opposite — and two needle-free structural predicates failed to separate them "
+          "(0 docs fail both, the mis-bound docket included). So this gates the five that were "
+          "hand-adjudicated, and a docket outside the table is outside the check.",
+          not _rule_bad47 and len(_rule_ok47) == len(_DOCKET47))
+
+    check("v0.4.37 pin 9 (REGRESSION GUARD, NOT A PIN — MEASURED: the pre-fix corpus carries NO such "
+          "token at all, since only one doc was bound and its reading note has no `git show`, so "
+          "this cannot fail on pre-fix code by construction): a bound doc's reading note agrees "
+          "with ITSELF — the example command it hands the reader uses the revision it declares "
+          f"({len(_self47)} disagree"
+          f"{': ' + '; '.join(_self47) if _self47 else ''}). "
+          "⚠ The note declares its revision TWICE — the canonical token this gate reads, and the "
+          "literal `git show <sha>:<path>` one line later — and only the first was ever checked. "
+          "MEASURED, the rebindings that repaired the token and left the command produced THREE "
+          "docs in one session, each GREEN on checks 6, 7a and 7b while instructing the reader to "
+          "resolve every citation against the very revision the repair had just moved away from. "
+          "That is this family's thesis one layer down: the check read the token it could match, "
+          "and the reader runs the token it could not. The assertion is scoped to the DECLARATION's "
+          "own blockquote block, never the whole file, because a doc may legitimately `git show` an "
+          "unrelated historical commit in its evidence ledger.",
+          not _self47)
 
 check("v0.4.21 D6: the suite executes its EXACT pinned surface (an orphaned section can never "
       "print green — the constant is the full-suite total INCLUDING this pin; bump it when you "
       "ADD checks, and it must equal the reported count)",
-      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 7 + 18 + 5 + 4 + 31 + 5 + 6 + 4 + 8 + 2 + 1 + 1 + 3)
+      passed + failed + 1 == 1773 + 45 + 125 + 9 + 14 + 23 + 28 + 24 + 9 + 11 + 5 + 5 + 7 + 18 + 5 + 4 + 31 + 5 + 6 + 4 + 8 + 2 + 1 + 1 + 3
+                            + 5 + 2 + 1 + 1 + 1)
+                                                        # +1: v0.4.37 PR B pin 9 — the reading
+                                                        #     note's SECOND declaration site. A
+                                                        #     REGRESSION GUARD, not a pin: the
+                                                        #     pre-fix corpus has no such token to
+                                                        #     disagree with. Found live, three
+                                                        #     instances, all GREEN on 6/7a/7b while
+                                                        #     telling the reader to resolve against
+                                                        #     the superseded revision.
+                                                        # +3: v0.4.37 PR B, Family 4 — the citation
+                                                        #     gate, which is THREE checks because it
+                                                        #     is three claims taking three different
+                                                        #     repairs: pin 6 asserts the revision is
+                                                        #     NAMED (RED on 18 of `fbfe07e`'s
+                                                        #     citing docs), pin 7a that it is
+                                                        #     PRESENT — a REGRESSION GUARD, green
+                                                        #     pre-fix by construction since every
+                                                        #     revision then declared was in the
+                                                        #     clone — and pin 7b that the naming is
+                                                        #     TRUE. The split is the repo's own
+                                                        #     fault-vs-verdict rule: one identity
+                                                        #     carrying both sent the reader to
+                                                        #     inspect citations nobody could read,
+                                                        #     and the remedy is `fetch-depth: 0`.
+                                                        #     ⚠ This is the suite's FIRST
+                                                        #     history-reading gate — its verdict
+                                                        #     depends on clone depth, so `ci.yml`
+                                                        #     carries `fetch-depth: 0` for it, and
+                                                        #     7b's label carries the anti-vacuity
+                                                        #     clause that stops a shallow clone
+                                                        #     printing a green that measured nothing.
+                                                        # +5: v0.4.37 PR B, Families 1–3 — the two
+                                                        #     budget-ladder positions (arithmetic +
+                                                        #     the G-A3 agreement), the `cm`
+                                                        #     usage-block parser gate, and Family 3's
+                                                        #     two packaging-prose arms (the asset
+                                                        #     census and the destination clause).
+                                                        #     All five are PINs and all five are RED
+                                                        #     on `fbfe07e`: 25 != 24, the prose read
+                                                        #     25 against G-A3's own 24, `--plan` was
+                                                        #     advertised under `local`, the comment
+                                                        #     claimed it "attaches all three" while
+                                                        #     SECURITY.md never named SHA256SUMS,
+                                                        #     and SECURITY.md put provenance and
+                                                        #     "to the GitHub Release" in ONE clause.
                                                         # +3: pin 27, the BOUND — an unusable
                                                         #     `--store` no longer RESOLVES a row.
                                                         #     One is the pin, one is its CONTROL,

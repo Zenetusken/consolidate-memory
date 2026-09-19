@@ -1,5 +1,9 @@
 # Budget-trajectory early-warning — the index slope, projected honestly, with staleness attached
 
+> **Reading the citations.** Every `file:line` below is **`1d20166`-numbered**. Resolve it against
+> that commit — `git show 1d20166:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status:** shipped (v0.1.86; carry-forward 0-vs-missing parity + HTML ceiling
 projection aligned v0.1.90). **Scope:**
 `memory_status.py` only (new `_ls_slope` + `budget_trajectory_advisory` functions, one call site

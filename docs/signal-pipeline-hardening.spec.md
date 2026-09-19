@@ -1,5 +1,9 @@
 # Spec — signal-pipeline hardening (v0.1.53): the noise + crash + dream-arc fixes
 
+> **Reading the citations.** Every `file:line` below is **`ceaccc0`-numbered**. Resolve it against
+> that commit — `git show ceaccc0:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status:** DRAFT (gated, "fix everything" arc — the user's v0.1.51 live-run logs showed ~one lingering
 defect per recent release).
 **Bump:** PATCH (all backward-compatible — `--json` schema unchanged, new flag is additive, SKILL prose;

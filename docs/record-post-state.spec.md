@@ -1,5 +1,9 @@
 # Record post-state — design-of-record
 
+> **Reading the citations.** Every `file:line` below is **`b63b474`-numbered**. Resolve it against
+> that commit — `git show b63b474:<path>` — and **never against the working tree**, which has moved
+> them.
+
 **Status: revision 11 — for adversarial review** (2427 lines; revision 10 read 2266, revision 9 read
 1965, revision 8 read 1941, revision 6 read 1657). Target release: **v0.4.30 (patch)** — a repair to
 fields that were always meant to be measured; no schema, flag, or install-contract change.
